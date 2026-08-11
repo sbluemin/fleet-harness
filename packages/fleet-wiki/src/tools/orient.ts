@@ -13,6 +13,7 @@ import {
 } from "../prompts.js";
 import { ensureWorkspaceSchema, readWorkspaceSchemaSummary } from "../schema.js";
 import { pathExists } from "../store.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface OrientInput {
   includeSchema: boolean;
@@ -59,7 +60,7 @@ export function buildOrientToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeInput(params);
       const paths = resolveToolMemoryPaths(ctx);

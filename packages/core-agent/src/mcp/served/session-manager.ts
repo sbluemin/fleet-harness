@@ -74,19 +74,8 @@ export interface ExecutorServerToken {
   readonly token: string;
 }
 
-export interface CoreExecutorMcpSession {
-  readonly serverName: string;
-  readonly token: string;
-  readonly mcpServer: McpServerConfig;
-  cleanup(): void;
-}
-
-export interface CoreExecutorMcpSessionRequest {
-  readonly serverName: string;
-  readonly specs: readonly AgentToolSpec[];
-  readonly cwd: string;
-  readonly signal?: AbortSignal;
-}
+export type CoreExecutorMcpSession = ExecutorMcpSession;
+export type CoreExecutorMcpSessionRequest = ExecutorMcpSessionRequest;
 
 export interface ExecutorSessionManager {
   getEndpoint(): Promise<ExecutorEndpoint>;

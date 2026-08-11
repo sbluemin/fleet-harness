@@ -12,6 +12,7 @@ import {
 import { assertSafeEntryId, computeContentHash, pathExists, readWikiEntry } from "../store.js";
 import { resolveWikiContext, type WikiContextPack, type WikiResolvePayload } from "./resolve.js";
 import type { Patch, WikiEntry, WikiRawSourceRef } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface QueryCitationInput {
   entry_id: string;
@@ -81,7 +82,7 @@ export function buildQueryToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const paths = resolveToolMemoryPaths(ctx);
       const input = normalizeQueryInput(params as unknown as WikiQueryInput);

@@ -19,6 +19,11 @@ import { buildSchemaReadToolConfig } from "./tools/schema.js";
 import type { MemoryPaths } from "./types.js";
 import type { WikiWorkspaceResolver } from "./workspace-resolver.js";
 
+export interface WikiToolExecutionContext {
+  readonly cwd: string;
+  readonly paths?: MemoryPaths;
+}
+
 interface WikiAgentToolConfig {
   readonly name: string;
   readonly label: string;
@@ -31,7 +36,7 @@ interface WikiAgentToolConfig {
     params: Record<string, unknown>,
     signal: AbortSignal | undefined,
     onUpdate: unknown,
-    ctx: { cwd: string; paths?: MemoryPaths },
+    ctx: WikiToolExecutionContext,
   ): Promise<{ content: Array<{ type: "text"; text: string }>; details?: Record<string, unknown> }>;
 }
 

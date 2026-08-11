@@ -1,6 +1,7 @@
 import { projectAnthropicResponseUsage } from "../anthropic/claude-context.js";
 import { eagerAnthropicRequestBody } from "../anthropic/passthrough.js";
 import { withSseKeepAlive } from "../transport/sse-keepalive.js";
+import { findCauseCode } from "../transport/upstream-sse.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 
 // 도구 eager 정규화는 core-ai-gateway 소유로 이전됐다. 기존 런타임 소비자(ai-gateway-routes)를
@@ -140,22 +141,6 @@ export function writeSseErrorFrame(
   } catch {
     // 프레임 작성 자체가 실패해도 응답 종료는 막지 않는다.
   }
-}
-
-function findCauseCode(error: unknown): string | undefined {
-  let current: unknown = error;
-  const seen = new Set<object>();
-  for (let depth = 0; depth <= 4; depth += 1) {
-    if (current === null || typeof current !== "object") return undefined;
-    if (seen.has(current)) return undefined;
-    seen.add(current);
-    if (Object.prototype.hasOwnProperty.call(current, "code")) {
-      const code = (current as Record<string, unknown>).code;
-      if (typeof code === "string") return code;
-    }
-    current = (current as Record<string, unknown>).cause;
-  }
-  return undefined;
 }
 
 export function errorMessage(error: unknown): string {

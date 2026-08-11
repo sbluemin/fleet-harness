@@ -11,6 +11,7 @@
  */
 
 import type { AuthService } from "@dotobokuri/core-infra";
+import { findCauseCode } from "../transport/upstream-sse.js";
 import type { CredentialResolverDeps } from "../transport/credentials.js";
 import type { OpencodeGoWindowsResult } from "../opencode-go/usage-scan.js";
 import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
@@ -85,22 +86,6 @@ export function object(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null;
-}
-
-function findCauseCode(error: unknown): string | undefined {
-  let current: unknown = error;
-  const seen = new Set<object>();
-  for (let depth = 0; depth <= 4; depth += 1) {
-    if (current === null || typeof current !== "object") return undefined;
-    if (seen.has(current)) return undefined;
-    seen.add(current);
-    if (Object.prototype.hasOwnProperty.call(current, "code")) {
-      const code = (current as Record<string, unknown>).code;
-      if (typeof code === "string") return code;
-    }
-    current = (current as Record<string, unknown>).cause;
-  }
-  return undefined;
 }
 
 export function array(value: unknown): readonly unknown[] {

@@ -8,6 +8,22 @@
  * transport mechanics live here.
  */
 
+export function findCauseCode(error: unknown): string | undefined {
+  let current: unknown = error;
+  const seen = new Set<object>();
+  for (let depth = 0; depth <= 4; depth += 1) {
+    if (current === null || typeof current !== "object") return undefined;
+    if (seen.has(current)) return undefined;
+    seen.add(current);
+    if (Object.prototype.hasOwnProperty.call(current, "code")) {
+      const code = (current as Record<string, unknown>).code;
+      if (typeof code === "string") return code;
+    }
+    current = (current as Record<string, unknown>).cause;
+  }
+  return undefined;
+}
+
 export type FetchLike = (
   input: string | URL | Request,
   init?: RequestInit
@@ -119,6 +135,59 @@ export async function readWithIdleTimeout(
       }
     );
   });
+}
+
+export async function* parseUpstreamSseStream<T>(
+  body: ReadableStream<Uint8Array> | null,
+  options: UpstreamReadOptions & { onClose: () => void; missingBodyMessage: string },
+  parseFrame: (frame: string) => T | undefined,
+): AsyncGenerator<T> {
+  if (body === null) {
+    options.onClose();
+    throw new UpstreamProtocolError(options.missingBodyMessage);
+  }
+
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let byteLength = 0;
+  try {
+    while (true) {
+      const result = await readWithIdleTimeout(reader, options);
+      if (result.done) {
+        buffer += decoder.decode();
+        break;
+      }
+      byteLength += result.value.byteLength;
+      if (byteLength > options.maxBodyBytes) {
+        const error = new UpstreamBodyLimitError(options.maxBodyBytes);
+        options.controller.abort(error);
+        throw error;
+      }
+      buffer += decoder.decode(result.value, { stream: true });
+
+      let boundary = nextEventBoundary(buffer);
+      while (boundary !== undefined) {
+        const frame = buffer.slice(0, boundary.index);
+        buffer = buffer.slice(boundary.index + boundary.length);
+        const event = parseFrame(frame);
+        if (event !== undefined) {
+          yield event;
+        }
+        boundary = nextEventBoundary(buffer);
+      }
+    }
+
+    if (buffer.trim().length > 0) {
+      const event = parseFrame(buffer);
+      if (event !== undefined) {
+        yield event;
+      }
+    }
+  } finally {
+    await reader.cancel().catch(() => undefined);
+    options.onClose();
+  }
 }
 
 export function nextEventBoundary(buffer: string): { index: number; length: number } | undefined {

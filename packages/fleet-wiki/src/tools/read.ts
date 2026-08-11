@@ -20,6 +20,7 @@ import type {
   WikiReadRelatedResult,
   WikiReadWarning,
 } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface WikiReadInput {
   ids: string[];
@@ -66,7 +67,7 @@ export function buildReadToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeReadInput(params);
       const paths = resolveToolMemoryPaths(ctx);

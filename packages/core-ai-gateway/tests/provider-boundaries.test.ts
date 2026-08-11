@@ -343,7 +343,7 @@ describe("core-ai-gateway provider boundaries", () => {
     }
   });
 
-  it("keeps cursor exec-policy, exec-redirect, and unknown-exec internal to the cursor folder", () => {
+  it("keeps cursor exec-responses and exec-redirect internal to the cursor folder", () => {
     // The only path from the root facade to those modules is the cursor/native barrel,
     // so pinning the barrel means CursorClientToolReference, CursorUnknownExecReply,
     // cursorNativeExecPolicyReplies, cursorNativeExecRedirect, cursorUnknownExecCaseName,
@@ -351,9 +351,8 @@ describe("core-ai-gateway provider boundaries", () => {
     const nativeIndexSpecifiers = moduleSpecifiers(
       readFileSync(path.join(srcDir, "cursor", "native", "index.ts"), "utf8"),
     );
-    expect(nativeIndexSpecifiers).not.toContain("./exec-policy.js");
+    expect(nativeIndexSpecifiers).not.toContain("./exec-responses.js");
     expect(nativeIndexSpecifiers).not.toContain("./exec-redirect.js");
-    expect(nativeIndexSpecifiers).not.toContain("./unknown-exec.js");
   });
 });
 

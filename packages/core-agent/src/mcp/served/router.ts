@@ -3,11 +3,9 @@ import crypto from "node:crypto";
 import type { McpToolRegistry } from "../../tools/registry.js";
 import type { McpToolSnapshotStore } from "../../tools/snapshot.js";
 import type { AgentToolSpec, McpCallToolResult, McpTool } from "../../tools/spec.js";
+import type { ToolCallArrivedCallback } from "./jsonrpc.js";
 
-export type ToolCallArrivedCallback = (
-  toolName: string,
-  args: Record<string, unknown>,
-) => string;
+export type { ToolCallArrivedCallback } from "./jsonrpc.js";
 
 export interface McpRouterServer {
   start(): Promise<string>;

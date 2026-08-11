@@ -24,6 +24,7 @@ import type {
   WikiEntry,
   WikiIngestMode,
 } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface WikiIngestParams {
   id: string;
@@ -97,7 +98,7 @@ export function buildIngestToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const now = new Date().toISOString();
       const paths = resolveToolMemoryPaths(ctx);
