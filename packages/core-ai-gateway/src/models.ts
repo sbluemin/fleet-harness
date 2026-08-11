@@ -4,7 +4,6 @@ import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
 import {
-  canProjectClaudeContextWindow,
   hasClaudeOneMillionMarker,
   isClaudeOneMillionContextWindow,
   stripClaudeOneMillionMarker,
@@ -344,31 +343,17 @@ export function toGatewayModelAlias(modelId: string): string {
 }
 
 /**
- * Claude Code only understands its default 200k coordinate and a `[1m]`
- * coordinate. Translated models whose real window is above 200k use the latter
- * while the gateway projects their response usage onto it.
- *
- * The projection divides by the model's real window and nothing else. Dividing by
- * a smaller budget — a provider's own compaction threshold, say — would map the
- * band between that budget and the real window onto 100%+ of the 1M coordinate, a
- * region Claude Code treats as "context exceeds the limit" and refuses to
- * auto-compact out of. Metering against the real window instead lets Claude Code's
- * own reserve compact the session while capacity remains.
- *
- * Anthropic passthrough models (Kimi, and OpenCode's anthropic-wire entries)
- * additionally require a real window of at least 1M, so a synthetic long-context
- * beta never reaches a sub-1M Anthropic-compatible upstream.
+ * Claude Code understands only its default 200k coordinate and the `[1m]` 1M
+ * coordinate. Keep that marker truthful: only a provider model whose real window
+ * reaches 1M is advertised as such. The response compatibility seam maps every
+ * other real window onto the unmarked 200k coordinate while preserving Claude's
+ * absolute compaction reserve.
  */
 export function toClaudeGatewayModelId(model: GatewayModel): string {
   const alias = toGatewayModelAlias(model.id);
-  if (
-    canProjectClaudeContextWindow(model.contextWindow)
-    && (!isAnthropicPassthroughModel(model)
-      || isClaudeOneMillionContextWindow(model.contextWindow))
-  ) {
-    return `${alias}${CLAUDE_ONE_MILLION_MARKER}`;
-  }
-  return alias;
+  return isClaudeOneMillionContextWindow(model.contextWindow)
+    ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
+    : alias;
 }
 
 function toClaudeGatewayModelDisplayName(model: GatewayModel): string {

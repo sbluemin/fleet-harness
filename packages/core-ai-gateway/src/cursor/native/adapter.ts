@@ -2029,13 +2029,13 @@ function recallCursorContextCheckpoint(
  * Refuse a new turn once Cursor's own measurement says the conversation already fills
  * the model's window.
  *
- * This is not a transport budget — it is what keeps Claude Code's occupancy meter
- * informative. That meter reads a projection onto Claude Code's 1M coordinate, and the
- * projection saturates at exactly this point: past it every turn reports 1,000,000 no
- * matter how much further the conversation grew, so the client can no longer see itself
- * approaching its own compaction threshold. Measured on 2026-08-05, a `grok-4.5-fast`
- * session sat at a saturated 1,000,000 across 31 consecutive requests before compaction
- * finally fired from the client's own local accounting, several minutes late.
+ * This is not a transport budget — it keeps Claude Code's occupancy meter informative.
+ * Projection saturates at the model-id-selected coordinate once Cursor's measured window
+ * is full; past that point every turn reports the same ceiling, so the client can no longer
+ * see further growth. Measured on 2026-08-05 under the former synthetic 1M policy, a
+ * `grok-4.5-fast` session sat at a saturated 1,000,000 across 31 consecutive requests
+ * before compaction finally fired from the client's own local accounting, several minutes
+ * late.
  *
  * The refusal restores that signal: it carries the 413 Claude Code arms reactive
  * compaction from, so the turn compacts instead of continuing blind. The count is

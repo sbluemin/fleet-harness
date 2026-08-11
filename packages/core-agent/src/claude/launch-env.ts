@@ -48,6 +48,9 @@ export function claudeGatewayLaunchEnv(
   env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1";
   // Gateway가 tool_reference 계약을 보존한다.
   env.ENABLE_TOOL_SEARCH = "true";
+  // 1M ceiling은 `[1m]` 모델의 선제 압축을 켜고, unmarked custom model에서는
+  // Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
+  env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= "1000000";
 
   // 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
   // 게이트웨이의 sk-ant-* 호출자 게이트를 통과할 자격증명이 사라진다.

@@ -29,7 +29,7 @@ function runGuard(toolInput: unknown): { readonly status: number; readonly stder
 describe("workflow-guard hook", () => {
   it("passes a full gateway modelId", () => {
     const { status } = runGuard({
-      script: `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast[1m]", effort: "low" })`,
+      script: `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast", effort: "low" })`,
     });
     expect(status).toBe(0);
   });
@@ -55,7 +55,7 @@ describe("workflow-guard hook", () => {
 
   it("blocks agentType usage in a dynamic workflow", () => {
     const { status, stderr } = runGuard({
-      script: `agent("x", { agentType: "fleet:codex-gpt-5-6-sol-fast-1m-high" })`,
+      script: `agent("x", { agentType: "fleet:codex-gpt-5-6-sol-fast-high" })`,
     });
     expect(status).toBe(2);
     expect(stderr).toContain("agentType");
@@ -65,7 +65,7 @@ describe("workflow-guard hook", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "workflow-guard-"));
     tempDirs.push(dir);
     const scriptPath = path.join(dir, "wf.js");
-    writeFileSync(scriptPath, `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast[1m]" })`);
+    writeFileSync(scriptPath, `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast" })`);
     expect(runGuard({ scriptPath }).status).toBe(0);
     writeFileSync(scriptPath, `agent("x", { model: "codex--gpt-5.6-sol-fast[1m]" })`);
     expect(runGuard({ scriptPath }).status).toBe(2);

@@ -164,11 +164,11 @@ describe("claude-gateway custom agents", () => {
   });
 
   it("embeds CursorBench figures and a role-fit sentence in each identity description", () => {
-    const solHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-sol-fast")])["codex-gpt-5-6-sol-fast-1m-high"];
+    const solHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-sol-fast")])["codex-gpt-5-6-sol-fast-high"];
     expect(solHigh?.description).toContain("Bench CursorBench 3.2: 63.5% at high effort, ~14k tokens/task.");
     expect(solHigh?.description).toContain("Class prior: judgment-seat candidate (decide, judge, synthesize) — the figures above, not the label, set its band.");
 
-    const lunaHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-luna-fast")])["codex-gpt-5-6-luna-fast-1m-high"];
+    const lunaHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-luna-fast")])["codex-gpt-5-6-luna-fast-high"];
     expect(lunaHigh?.description).toContain("Class prior: light lineup — fits wide mechanical fans (recon, scan, extract, verify), though measured figures can still earn a band seat.");
 
     for (const definition of Object.values(buildGatewayCustomAgents([requireGatewayModel("cursor--grok-4.5")]))) {

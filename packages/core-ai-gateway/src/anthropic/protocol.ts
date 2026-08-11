@@ -533,7 +533,7 @@ interface OpenBlock {
 }
 
 export interface ClaudeResponseCompatibilityOptions {
-  /** Picker-advertised window that decides whether Claude uses its 1M compatibility path. */
+  /** Real provider window mapped onto Claude Code's model-id-selected context coordinate. */
   readonly contextWindow?: number;
   /** Rewrites the echoed response model to the client-requested id. */
   readonly model?: string;
@@ -556,9 +556,8 @@ interface AnthropicCacheAwareUsage {
  * (message_start, message_delta) and non-streaming callers share this conversion so their
  * usage shapes never drift apart.
  *
- * When the 1M compatibility projection is active, the three input coordinates are scaled
- * together (by the same ratio used for the plain input-only path) so their sum still equals
- * the projected total input exactly.
+ * When context projection is active, the aggregate input is mapped once and the three
+ * coordinates are redistributed proportionally so their sum equals that projected total.
  */
 function toAnthropicCacheAwareUsage(
   rawInputTokens: number,
@@ -612,8 +611,8 @@ function toAnthropicCacheAwareUsage(
     };
   }
 
-  // Scale each cache coordinate by the same ratio as the total, flooring so the three
-  // parts can never overshoot the projected total; the remainder lands on input_tokens.
+  // Redistribute the projected total by the original cache proportions, flooring so the
+  // three parts cannot overshoot it; the remainder lands on input_tokens.
   const scaledCacheRead = Math.floor((safeCacheRead * projectedTotal) / safeInputTokens);
   const scaledCacheCreation = Math.floor((safeCacheCreation * projectedTotal) / safeInputTokens);
   return {

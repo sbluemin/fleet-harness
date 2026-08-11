@@ -190,7 +190,7 @@ export function toGatewayAgentSelector(modelId: string, effort?: GatewayReasonin
 
 /**
  * Agent 파일 이름과 frontmatter `name`에 쓰는 stem.
- * `claude-gateway--cursor--grok-4.5[1m]` + `high` → `cursor-grok-4-5-1m-high`
+ * `claude-gateway--opencode--deepseek-v4-flash[1m]` + `high` → `opencode-deepseek-v4-flash-1m-high`
  */
 export function toGatewayAgentName(modelId: string, effort?: GatewayReasoningEffort): string {
   const stripped = modelId.startsWith("claude-gateway--")

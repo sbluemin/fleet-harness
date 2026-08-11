@@ -16,6 +16,7 @@ describe("claudeGatewayLaunchEnv", () => {
     const env = claudeGatewayLaunchEnv({}, { baseUrl: BASE_URL, configDir: CONFIG_DIR });
     expect(env.ANTHROPIC_BASE_URL).toBe(BASE_URL);
     expect(env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY).toBe("1");
+    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("1000000");
     expect(env.ENABLE_TOOL_SEARCH).toBe("true");
   });
 
@@ -41,10 +42,18 @@ describe("claudeGatewayLaunchEnv", () => {
     // fleet-admiral의 launch-env가 이 변수를 세우므로 Fleet 터미널에서 기동된 프로세스는
     // 다른 게이트웨이를 가리키는 값을 상속한다.
     const env = claudeGatewayLaunchEnv(
-      { ANTHROPIC_MODEL: "claude-gateway--codex--gpt-5.6-sol-fast[1m]" },
+      { ANTHROPIC_MODEL: "claude-gateway--codex--gpt-5.6-sol-fast" },
       { baseUrl: BASE_URL, configDir: CONFIG_DIR },
     );
     expect(env).not.toHaveProperty("ANTHROPIC_MODEL");
+  });
+
+  it("preserves an explicit auto-compact ceiling", () => {
+    const env = claudeGatewayLaunchEnv(
+      { CLAUDE_CODE_AUTO_COMPACT_WINDOW: "850000" },
+      { baseUrl: BASE_URL, configDir: CONFIG_DIR },
+    );
+    expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
   });
 
   it("drops undefined inherited entries rather than forwarding them as empty strings", () => {
@@ -60,7 +69,7 @@ describe("claudeGatewayModelCache", () => {
   });
 
   it("advertises exactly the models it was handed, under their Claude-facing ids", () => {
-    const model = findGatewayModel("claude-gateway--codex--gpt-5.6-luna-fast[1m]");
+    const model = findGatewayModel("claude-gateway--codex--gpt-5.6-luna-fast");
     expect(model).toBeDefined();
     const cache = claudeGatewayModelCache({ baseUrl: BASE_URL, models: [model!], fetchedAt: 1 });
     expect(cache.models).toEqual([

@@ -14,7 +14,7 @@ const ANTHROPIC_INPUT_USAGE_FIELDS = [
 
 export interface AnthropicResponseUsageProjectionOptions {
   readonly contentType?: string | null;
-  /** Usage projection denominator. Omit — or pass a window at or below Claude's 200k default — to skip that projection. */
+  /** Real provider window mapped onto Claude Code's 200k or `[1m]` 1M coordinate. */
   readonly contextWindow?: number;
   /**
    * Client-requested model id to echo back in place of the provider's wire id.
@@ -38,7 +38,7 @@ interface SseSeparator {
   readonly length: number;
 }
 
-/** A provider window that needs Claude Code's 1M compatibility coordinate. */
+/** A provider window whose usage must be mapped onto one of Claude Code's fixed coordinates. */
 export function canProjectClaudeContextWindow(contextWindow: number | undefined): boolean {
   return typeof contextWindow === "number"
     && Number.isFinite(contextWindow)
@@ -61,39 +61,35 @@ export function stripClaudeOneMillionMarker(modelId: string): string {
 }
 
 /**
- * Project a marked provider model's input usage onto Claude Code's 1M coordinate.
- * The projection preserves the provider model's occupied-context ratio.
+ * Map a provider model's occupied input onto the fixed coordinate Claude Code assigns
+ * from its model id: 200k without `[1m]`, 1M with it.
  *
- * The result is capped at the coordinate itself. Claude Code has no representation
- * for an occupancy above the window it was told the model has: past that point it
- * reports `Context exceeds the <limit>-token limit by <n> tokens — run /compact or
- * /clear to continue.`, handing the session back to a manual step (message observed
- * in Claude Code 2.1.221, 2026-08-04; whether its own auto-compaction still fires
- * from that state was not measured, and the cap keeps sessions out of the band
- * where the answer would matter). A denominator that
- * understates the real window — or an upstream that reports more input than the
- * catalog claims the model holds — would otherwise push the session into that
- * state, so the cap is a floor under the whole projection, not a rounding detail.
+ * Claude Code keeps roughly the same absolute reserve on both coordinates (2.1.227
+ * compacted between 166k/168k on 200k and 966k/968k on 1M). Removing only the
+ * provider window's excess over Claude's coordinate therefore preserves that reserve:
+ * a 272k provider maps 240k real input to 168k, rather than sacrificing everything
+ * above 168k or pretending the model itself has a 1M window.
+ *
+ * An upstream-reported window can narrow the catalog value. This matters for routing
+ * aliases whose serving model changes per turn: the reported window, when present,
+ * is the real capacity the current response occupied. The result is capped at the
+ * coordinate so an inconsistent over-window usage cannot strand Claude Code in its
+ * manual "context exceeds the limit" state.
  */
 export function projectClaudeContextInputTokens(
   inputTokens: number,
   advertisedContextWindow: number | undefined,
   upstreamContextWindow: number | undefined = advertisedContextWindow,
 ): number {
-  if (
-    !Number.isFinite(inputTokens)
-    || inputTokens < 0
-    || !canProjectClaudeContextWindow(advertisedContextWindow)
-  ) {
-    return inputTokens;
-  }
-  const projectionWindow = positiveContextWindow(upstreamContextWindow)
-    ?? positiveContextWindow(advertisedContextWindow);
-  if (projectionWindow === undefined) return inputTokens;
-  return Math.min(
-    CLAUDE_COMPAT_CONTEXT_WINDOW,
-    Math.ceil(inputTokens * CLAUDE_COMPAT_CONTEXT_WINDOW / projectionWindow),
-  );
+  if (!Number.isFinite(inputTokens) || inputTokens < 0) return inputTokens;
+  const advertisedWindow = positiveContextWindow(advertisedContextWindow);
+  if (advertisedWindow === undefined) return inputTokens;
+  const projectionWindow = positiveContextWindow(upstreamContextWindow) ?? advertisedWindow;
+  const coordinate = advertisedWindow >= CLAUDE_COMPAT_CONTEXT_WINDOW
+    ? CLAUDE_COMPAT_CONTEXT_WINDOW
+    : CLAUDE_DEFAULT_CONTEXT_WINDOW;
+  if (projectionWindow <= coordinate) return Math.min(coordinate, inputTokens);
+  return Math.min(coordinate, Math.max(0, inputTokens - (projectionWindow - coordinate)));
 }
 
 /**
@@ -105,9 +101,7 @@ export async function* projectAnthropicResponseUsage(
   chunks: AsyncIterable<Uint8Array>,
   options: AnthropicResponseUsageProjectionOptions,
 ): AsyncGenerator<Uint8Array> {
-  const contextWindow = canProjectClaudeContextWindow(options.contextWindow)
-    ? options.contextWindow
-    : undefined;
+  const contextWindow = positiveContextWindow(options.contextWindow);
   const responseModel = typeof options.responseModel === "string"
     && options.responseModel.length > 0
     ? options.responseModel
@@ -341,20 +335,32 @@ function projectUsageProperty(
   const usage = container[property];
   if (!isRecord(usage)) return { changed: false, value: container };
 
-  let projectedUsage = usage;
-  let changed = false;
-  for (const field of ANTHROPIC_INPUT_USAGE_FIELDS) {
+  const coordinates = ANTHROPIC_INPUT_USAGE_FIELDS.map((field) => {
     const tokens = usage[field];
-    if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) continue;
-    const projectedTokens = projectClaudeContextInputTokens(tokens, contextWindow);
-    if (projectedTokens === tokens) continue;
-    if (!changed) projectedUsage = { ...usage };
-    projectedUsage[field] = projectedTokens;
-    changed = true;
+    return typeof tokens === "number" && Number.isFinite(tokens) && tokens >= 0
+      ? { field, tokens }
+      : undefined;
+  }).filter((entry): entry is { field: typeof ANTHROPIC_INPUT_USAGE_FIELDS[number]; tokens: number } => (
+    entry !== undefined
+  ));
+  if (coordinates.length === 0) return { changed: false, value: container };
+
+  const total = coordinates.reduce((sum, entry) => sum + entry.tokens, 0);
+  const projectedTotal = projectClaudeContextInputTokens(total, contextWindow);
+  if (projectedTotal === total) return { changed: false, value: container };
+
+  const projectedUsage = { ...usage };
+  let assigned = 0;
+  for (const [index, entry] of coordinates.entries()) {
+    const projectedTokens = index === coordinates.length - 1
+      ? projectedTotal - assigned
+      : total === 0
+        ? 0
+        : Math.floor(entry.tokens * projectedTotal / total);
+    projectedUsage[entry.field] = projectedTokens;
+    assigned += projectedTokens;
   }
-  return changed
-    ? { changed: true, value: { ...container, [property]: projectedUsage } }
-    : { changed: false, value: container };
+  return { changed: true, value: { ...container, [property]: projectedUsage } };
 }
 
 function findSseSeparator(bytes: Uint8Array): SseSeparator | undefined {

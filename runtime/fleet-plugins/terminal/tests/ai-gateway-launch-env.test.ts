@@ -72,9 +72,9 @@ describe("Claude gateway launch environment", () => {
       readonly models: readonly { readonly id: string }[];
     };
     expect(cache.models.map((model) => model.id)).toEqual([
-      "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
-      "claude-gateway--codex--gpt-5.6-luna-fast[1m]",
-      "claude-gateway--cursor--grok-4.5-fast[1m]",
+      "claude-gateway--codex--gpt-5.6-sol-fast",
+      "claude-gateway--codex--gpt-5.6-luna-fast",
+      "claude-gateway--cursor--grok-4.5-fast",
       "claude-gateway--kimi--k3[1m]",
     ]);
   });
@@ -116,13 +116,13 @@ describe("Claude gateway launch environment", () => {
       bin: "claude",
       args: [],
       cwd: "/workspace",
-      env: { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_MODEL: "claude-gateway--codex--gpt-5.6-sol[1m]" },
+      env: { CLAUDE_CONFIG_DIR: configDir, ANTHROPIC_MODEL: "claude-gateway--codex--gpt-5.6-sol" },
       terminalName: "xterm-256color",
     } as const, {
       baseUrl: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
       selection,
     });
 
-    expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--codex--gpt-5.6-sol[1m]");
+    expect(configured.env.ANTHROPIC_MODEL).toBe("claude-gateway--codex--gpt-5.6-sol");
   });
 });
