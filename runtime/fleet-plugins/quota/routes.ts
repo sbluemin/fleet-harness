@@ -31,11 +31,11 @@ export default definePlugin({
         authService: createAuthService({ authPath: DEFAULT_AUTH_PATH }),
       }),
     });
-    registerRouter(ctx, "summary", async ({ req, res }) => {
+    registerRouter(ctx, "summary", { method: "GET", path: "", summary: "Read provider quota summary.", category: "Quota Plugin", gate: "origin-write", transport: "http" }, async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);
       return true;
     });
-    registerRouter(ctx, "connect", async ({ req, res }) => {
+    registerRouter(ctx, "connect", { method: "POST", path: "", summary: "Update provider quota connection state.", category: "Quota Plugin", gate: "origin-write", transport: "http" }, async ({ req, res }) => {
       await handleConnect(req, res, ctx, service, serializeSettings);
       return true;
     });

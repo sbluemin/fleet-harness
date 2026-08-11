@@ -49,7 +49,10 @@ export interface TerminalSettingsState {
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
-  registerRouter(ctx, "settings", async ({ req, res }) => {
+  registerRouter(ctx, "settings", [
+    { method: "GET", path: "", summary: "Read Terminal plugin settings.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Save Terminal plugin settings.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ], async ({ req, res }) => {
     if (req.method === "GET") {
       // 세션 없는 요청은 상류가 이미 걷어냈다. 다만 상류가 보장하는 것은 loopback이 아니다 —
       // 원격 리스너에서 온 GET도 여기 닿고, 원격 세션은 이 콘솔의 설정 화면을 그리는 주체이므로

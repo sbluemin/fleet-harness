@@ -69,7 +69,23 @@ export async function registerAgentRoutes(
     await api.handleExit(operationId);
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
-  registerRouter(ctx, "agent", api.handle);
+  registerRouter(ctx, "agent", [
+    { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "PUT", path: "/agent-cli/path", summary: "Save an Agent CLI executable path.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/events", summary: "Stream Agent session events.", category: "Terminal Plugin", gate: "loopback", transport: "sse" },
+    { method: "GET", path: "/sessions", summary: "List Agent sessions.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
+    { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ], api.handle);
   return api.launchKinds;
 }
 

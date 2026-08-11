@@ -40,7 +40,11 @@ export function registerTerminalModelAuthRoutes(
   ctx: FleetPluginServerContext,
   deps: Pick<TerminalModelAuthRouteDeps, "authService">,
 ): void {
-  registerRouter(ctx, "model-auth", createTerminalModelAuthRouter(ctx, {
+  registerRouter(ctx, "model-auth", [
+    { method: "GET", path: "/state", summary: "Read Terminal model provider authentication state.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "/providers/:providerId", summary: "Save Terminal model provider credentials.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/providers/:providerId", summary: "Remove Terminal model provider credentials.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ], createTerminalModelAuthRouter(ctx, {
     ...deps,
     validateApiKey: (provider, apiKey) => MODEL_AUTH_VALIDATORS[provider](apiKey),
   }));

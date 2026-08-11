@@ -1,5 +1,5 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
 export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
@@ -441,13 +441,7 @@ export interface GlobalSettingsMutationResult {
   readonly state: GlobalSettingsState;
 }
 
-export interface ApiCatalogEntry {
-  readonly method: string;
-  readonly path: string;
-  readonly summary: string;
-  readonly category: string;
-  readonly gate: string;
-}
+export type ApiCatalogEntry = SdkApiCatalogEntry;
 
 export type ConnectionState = "connecting" | "live" | "offline";
 

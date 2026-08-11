@@ -51,7 +51,17 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
   );
   const inFlightStartDeletionMarkers = new Set<InFlightStartDeletionMarker>();
 
-  registerRouter(ctx, "analysis", async ({ req, res, pathname }) => {
+  registerRouter(ctx, "analysis", [
+    { method: "GET", path: "/catalog", summary: "Read Analyst model catalog.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/stream", summary: "Stream all Analyst events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "GET", path: "/artifacts/:artifactId", summary: "Read an Analyst artifact.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/:operationId/artifacts", summary: "Clear Analyst artifacts.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:operationId/ready", summary: "Read Analyst readiness.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:operationId/start", summary: "Start an Analyst session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:operationId/message", summary: "Send an Analyst message.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:operationId/stream", summary: "Stream Analyst session events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "POST", path: "/:operationId/stop", summary: "Stop an Analyst session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ], async ({ req, res, pathname }) => {
     // 어느 리스너의 Host 경계인지는 호스트만 안다.
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) {
       writeError(ctx, res, 403, ANALYSIS_ERROR_CODES.catalogInvalid, "Analysis request is not accepted by this host.");

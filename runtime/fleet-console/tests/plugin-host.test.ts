@@ -5,6 +5,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
+
 import { discoverFleetPlugins } from "../core/host/plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "../core/host/plugin-host/plugin-host.js";
 import { RouteRegistry } from "../core/host/route-registry/registry.js";
@@ -279,6 +281,262 @@ describe("plugin host", () => {
 
     expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/demo/api" })).toBe(true);
     expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/demo/ws/stream" })).toBe(true);
+  });
+
+  it("resolves router and WebSocket metadata against final mount paths while preserving old calls", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-catalog-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: "/missing",
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: noopHostCapabilities,
+      importModule: async () => ({
+        register: (ctx) => {
+          ctx.registerRouter("legacy", () => true);
+          ctx.registerRouter("nested", [
+            { method: "GET", path: "", summary: "Read nested root.", category: "Demo Plugin", gate: "loopback", transport: "http" },
+            { method: "POST", path: "/:itemId", summary: "Write nested item.", category: "Demo Plugin", gate: "origin-write", transport: "http" },
+          ], () => true);
+          ctx.registerWsHandler("stream", {
+            method: "GET", path: "", summary: "Open demo stream.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket",
+          }, () => true);
+        },
+      }),
+    });
+
+    await host.boot();
+
+    expect(host.apiCatalog).toEqual([
+      expect.objectContaining({ method: "GET", path: "/plugins/demo/nested", transport: "http" }),
+      expect.objectContaining({ method: "POST", path: "/plugins/demo/nested/:itemId", transport: "http" }),
+      expect.objectContaining({ method: "GET", path: "/plugins/demo/ws/stream", transport: "websocket" }),
+    ]);
+    expect(host.apiCatalog.some((entry) => entry.path.includes("legacy"))).toBe(false);
+  });
+
+  it.each([
+    ["method type", { method: 42 }],
+    ["method value", { method: "get" }],
+    ["summary type", { summary: 42 }],
+    ["blank summary", { summary: " \t" }],
+    ["category type", { category: 42 }],
+    ["blank category", { category: " \n" }],
+    ["gate type", { gate: 42 }],
+    ["gate value", { gate: "public" }],
+    ["transport type", { transport: 42 }],
+    ["transport value", { transport: "udp" }],
+    ["path type", { path: 42 }],
+    ["relative path", { path: "items" }],
+    ["multiple leading slashes", { path: "//items" }],
+    ["empty path segment", { path: "/items//detail" }],
+    ["query", { path: "/items?active=true" }],
+    ["fragment", { path: "/items#detail" }],
+    ["backslash", { path: "/items\\detail" }],
+    ["current-directory traversal", { path: "/items/./detail" }],
+    ["parent traversal", { path: "/items/../detail" }],
+  ])("transactionally skips external plugin catalog metadata with malformed %s", async (_label, override) => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-catalog-invalid-"));
+    tempDirs.push(dir);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
+    const routes = new RouteRegistry();
+    const upgrades = new UpgradeRegistry();
+    const validEntry = {
+      method: "GET", path: "", summary: "Plugin endpoint.", category: "Demo Plugin", gate: "loopback", transport: "http",
+    } as const;
+    const malformedEntry = { ...validEntry, ...override } as unknown as ApiCatalogEntry;
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      routes,
+      upgrades,
+      host: noopHostCapabilities,
+      importModule: async () => ({
+        register: (ctx) => {
+          ctx.registerRouter("ready", validEntry, () => true);
+          ctx.registerWsHandler("stream", { ...validEntry, gate: "one-use-ticket", transport: "websocket" }, () => true);
+          ctx.registerRouter("invalid", [validEntry, malformedEntry], () => true);
+        },
+      }),
+    });
+
+    await expect(host.boot()).resolves.toBeUndefined();
+
+    expect(host.apiCatalog).toEqual([]);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/bad/ready" })).toBe(false);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/bad/invalid" })).toBe(false);
+    expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/bad/ws/stream" })).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin bad routes skipped: plugin_catalog_entry_invalid"));
+  });
+
+  it("rolls back host registrations, routes, upgrades, and catalog metadata from a failed external plugin", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-catalog-rollback-"));
+    tempDirs.push(dir);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "ready"), "ready");
+    writePlugin(path.join(dir, "home", ".fleet", "plugins", "bad"), "bad", { apiVersion: 1 });
+    const routes = new RouteRegistry();
+    const upgrades = new UpgradeRegistry();
+    const disposed: string[] = [];
+    const createDisposer = (name: string) => vi.fn(() => { disposed.push(name); });
+    const operationTypeDisposer = createDisposer("operation-type");
+    const sanitizerDisposer = createDisposer("sanitizer");
+    const launchCatalogDisposer = createDisposer("launch-catalog");
+    const subscriptionDisposer = createDisposer("subscription");
+    const sseChannelDisposer = createDisposer("sse-channel");
+    const cleanup = vi.fn(async () => {
+      disposed.push("cleanup");
+      throw new Error("rollback_failed");
+    });
+    const cleanupUnregister = createDisposer("cleanup-unregister");
+    const manuallyUnregisteredCleanup = vi.fn(() => { disposed.push("manual-cleanup"); });
+    const manualCleanupUnregister = createDisposer("manual-cleanup-unregister");
+    const hostCapabilities: FleetPluginHostCapabilities = {
+      ...noopHostCapabilities,
+      operations: {
+        ...noopHostCapabilities.operations,
+        registerOperationType: vi.fn(() => operationTypeDisposer),
+        registerPayloadSanitizer: vi.fn(() => sanitizerDisposer),
+        registerLaunchCatalog: vi.fn(() => launchCatalogDisposer),
+      },
+      events: {
+        ...noopHostCapabilities.events,
+        subscribe: vi.fn(() => subscriptionDisposer),
+        registerSseChannel: vi.fn(() => sseChannelDisposer),
+      },
+      lifecycle: {
+        registerCleanup: vi.fn((registeredCleanup) => registeredCleanup === cleanup ? cleanupUnregister : manualCleanupUnregister),
+      },
+    };
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: path.join(dir, "home"),
+      routes,
+      upgrades,
+      host: hostCapabilities,
+      importModule: async (entry) => ({
+        register: (ctx) => {
+          const routeCatalog = { method: "GET", path: "", summary: "Plugin route.", category: "Demo Plugin", gate: "loopback", transport: "http" } as const;
+          const upgradeCatalog = { method: "GET", path: "", summary: "Plugin upgrade.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket" } as const;
+          ctx.registerRouter("route", routeCatalog, () => true);
+          ctx.registerWsHandler("stream", upgradeCatalog, () => true);
+          if (!entry.includes(`${path.sep}bad${path.sep}`)) return;
+          ctx.host.operations.registerOperationType("bad");
+          const disposeSanitizer = ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, ["pluginSecret"]);
+          ctx.host.operations.registerLaunchCatalog(ctx.pluginId, () => []);
+          ctx.host.events.subscribe("bad:event", () => {});
+          ctx.host.events.registerSseChannel("bad:sse");
+          ctx.host.lifecycle.registerCleanup(cleanup);
+          const disposeManualCleanup = ctx.host.lifecycle.registerCleanup(manuallyUnregisteredCleanup);
+          disposeSanitizer();
+          disposeManualCleanup();
+          ctx.registerRouter("invalid", { ...routeCatalog, method: "get" } as unknown as ApiCatalogEntry, () => true);
+        },
+      }),
+    });
+
+    await expect(host.boot()).resolves.toBeUndefined();
+
+    expect(disposed).toEqual([
+      "sanitizer",
+      "manual-cleanup-unregister",
+      "cleanup",
+      "cleanup-unregister",
+      "sse-channel",
+      "subscription",
+      "launch-catalog",
+      "operation-type",
+    ]);
+    for (const disposer of [operationTypeDisposer, sanitizerDisposer, launchCatalogDisposer, subscriptionDisposer, sseChannelDisposer, cleanupUnregister, manualCleanupUnregister]) {
+      expect(disposer).toHaveBeenCalledTimes(1);
+    }
+    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(manuallyUnregisteredCleanup).not.toHaveBeenCalled();
+    expect(host.apiCatalog.map((entry) => entry.path)).toEqual([
+      "/plugins/ready/route",
+      "/plugins/ready/ws/stream",
+    ]);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/ready/route" })).toBe(true);
+    expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/ready/ws/stream" })).toBe(true);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/bad/route" })).toBe(false);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/bad/invalid" })).toBe(false);
+    expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/bad/ws/stream" })).toBe(false);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("Plugin bad routes skipped: plugin_catalog_entry_invalid"));
+    expect(warn).not.toHaveBeenCalledWith(expect.stringContaining("rollback_failed"));
+  });
+
+  it("retains successful host registrations and keeps returned disposers once-only", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-registration-success-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "demo"), "demo");
+    const operationTypeDisposer = vi.fn();
+    let disposeOperationType: (() => void) | null = null;
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: "/missing",
+      routes: new RouteRegistry(),
+      upgrades: new UpgradeRegistry(),
+      host: {
+        ...noopHostCapabilities,
+        operations: {
+          ...noopHostCapabilities.operations,
+          registerOperationType: vi.fn(() => operationTypeDisposer),
+        },
+      },
+      importModule: async () => ({
+        register: (ctx) => {
+          disposeOperationType = ctx.host.operations.registerOperationType("demo");
+        },
+      }),
+    });
+
+    await host.boot();
+
+    expect(operationTypeDisposer).not.toHaveBeenCalled();
+    expect(disposeOperationType).not.toBeNull();
+    disposeOperationType!();
+    disposeOperationType!();
+    expect(operationTypeDisposer).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves no partial route surface when a built-in plugin register fails", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-built-in-rollback-"));
+    tempDirs.push(dir);
+    writePlugin(path.join(dir, "runtime", "fleet-plugins", "bad"), "bad");
+    const routes = new RouteRegistry();
+    const upgrades = new UpgradeRegistry();
+    const operationTypeDisposer = vi.fn();
+    const host = createFleetPluginHost({
+      cwd: dir,
+      homeDir: "/missing",
+      routes,
+      upgrades,
+      host: {
+        ...noopHostCapabilities,
+        operations: {
+          ...noopHostCapabilities.operations,
+          registerOperationType: vi.fn(() => operationTypeDisposer),
+        },
+      },
+      importModule: async () => ({
+        register: (ctx) => {
+          ctx.registerRouter("route", { method: "GET", path: "", summary: "Plugin route.", category: "Demo Plugin", gate: "loopback", transport: "http" }, () => true);
+          ctx.registerWsHandler("stream", { method: "GET", path: "", summary: "Plugin upgrade.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket" }, () => true);
+          ctx.host.operations.registerOperationType("bad");
+          throw new Error("boot_failed");
+        },
+      }),
+    });
+
+    await expect(host.boot()).rejects.toThrow("boot_failed");
+
+    expect(operationTypeDisposer).toHaveBeenCalledTimes(1);
+    expect(host.apiCatalog).toEqual([]);
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/bad/route" })).toBe(false);
+    expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/bad/ws/stream" })).toBe(false);
   });
 
   it("loads route modules through scoped plugin facades", async () => {

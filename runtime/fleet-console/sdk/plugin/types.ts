@@ -221,6 +221,19 @@ export type FleetPluginRouteExport =
   | ((ctx: FleetPluginServerContext) => void | Promise<void>)
   | { readonly register?: (ctx: FleetPluginServerContext) => void | Promise<void> };
 
+export type ApiCatalogMethod = "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "*";
+export type ApiCatalogGate = "loopback" | "origin-write" | "origin-strict" | "lock-token" | "anthropic-credential" | "one-use-ticket";
+export type ApiCatalogTransport = "http" | "sse" | "websocket" | "proxy";
+
+export interface ApiCatalogEntry {
+  readonly method: ApiCatalogMethod;
+  readonly path: string;
+  readonly summary: string;
+  readonly category: string;
+  readonly gate: ApiCatalogGate;
+  readonly transport: ApiCatalogTransport;
+}
+
 export interface FleetPluginServerContext {
   readonly pluginId: string;
   readonly manifest: FleetPluginManifest;
@@ -228,7 +241,9 @@ export interface FleetPluginServerContext {
   readonly wsBasePath: string;
   readonly host: FleetPluginHostCapabilities;
   registerRouter(path: string, handler: RouteHandler): void;
+  registerRouter(path: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: RouteHandler): void;
   registerWsHandler(path: string, handler: UpgradeHandler): void;
+  registerWsHandler(path: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: UpgradeHandler): void;
 }
 
 export interface FleetPluginHostCapabilities {
