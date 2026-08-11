@@ -57,7 +57,12 @@ export function registerChatRoutes(ctx: FleetPluginServerContext, deps: ChatRout
     if (match[2] === "message") return handleMessage(ctx, req, res, chatId, registry);
     if (match[2] === "stream") return handleStream(ctx, req, res, chatId, registry);
     return handleStop(ctx, req, res, chatId, registry);
-  });
+  }, [
+    { method: "POST", path: "/start", summary: "Start a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:chatId/message", summary: "Send a Scuttlebutt chat message.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:chatId/stream", summary: "Stream a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "sse" },
+    { method: "POST", path: "/:chatId/stop", summary: "Stop a Scuttlebutt chat session.", category: "Scuttlebutt Plugin", gate: "origin-write", transport: "http" },
+  ]);
 
   ctx.host.lifecycle.registerCleanup(() => registry.dispose());
   return registry;

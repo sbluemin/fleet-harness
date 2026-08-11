@@ -2019,8 +2019,9 @@
   }
 }
 
-/* 백엔드 API 카탈로그 — introspection 응답을 category별로 접고 펼친다. */
+/* 백엔드 API 카탈로그 — core category와 path namespace로 식별한 plugin별 라우트 위계를 보여준다. */
 .backend-api-section {
+  container-type: inline-size;
   gap: var(--space-4);
 }
 
@@ -2035,9 +2036,24 @@
 }
 
 .backend-api-groups,
+.backend-api-hierarchy-section,
+.backend-api-section-groups,
 .backend-api-list {
   display: grid;
   gap: 8px;
+}
+
+.backend-api-groups {
+  gap: var(--space-5);
+}
+
+.backend-api-section-heading {
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.04em;
 }
 
 .backend-api-group {
@@ -2047,22 +2063,89 @@
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
 }
 
-.backend-api-group-head {
+.backend-api-core-toggle,
+.backend-api-plugin-toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-3);
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 10px;
   font-weight: var(--weight-bold);
   letter-spacing: 0.14em;
+  text-align: left;
   text-transform: uppercase;
+  cursor: pointer;
+}
+
+.backend-api-core-toggle:hover,
+.backend-api-core-toggle:focus-visible,
+.backend-api-plugin-toggle:hover,
+.backend-api-plugin-toggle:focus-visible {
+  color: var(--brass-bright);
+}
+
+.backend-api-core-toggle:focus-visible,
+.backend-api-plugin-toggle:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 5px;
+}
+
+.backend-api-core-group {
+  padding-inline: var(--space-2);
+}
+
+.backend-api-core-label {
+  color: var(--text-tertiary);
+}
+
+.backend-api-core-meta,
+.backend-api-plugin-meta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  flex: none;
+}
+
+.backend-api-core-count,
+.backend-api-plugin-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  min-height: 20px;
+  padding-inline: 6px;
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 75%, transparent);
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+}
+
+.backend-api-core-group .backend-api-list,
+.backend-api-plugin-group .backend-api-list {
+  padding-top: var(--space-2);
+}
+
+.backend-api-plugin-group {
+  padding: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--surface-rim) 65%, transparent);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--surface-glass-strong) 24%, transparent);
+}
+
+.backend-api-plugin-label {
+  color: var(--text-secondary);
+  text-transform: none;
 }
 
 .backend-api-row {
   display: grid;
-  grid-template-columns: minmax(68px, auto) minmax(180px, 0.9fr) minmax(220px, 1.2fr) minmax(92px, auto);
+  grid-template-columns: minmax(68px, auto) minmax(180px, 0.9fr) minmax(220px, 1.2fr) minmax(92px, auto) minmax(92px, auto);
   align-items: center;
   gap: var(--space-3);
   min-width: 0;
@@ -2106,7 +2189,8 @@
   line-height: 1.45;
 }
 
-.backend-api-gate {
+.backend-api-gate,
+.backend-api-transport {
   min-width: 0;
   justify-self: end;
   color: var(--text-tertiary);
@@ -2117,7 +2201,11 @@
   text-transform: uppercase;
 }
 
-@media (max-width: 720px) {
+.backend-api-transport {
+  color: var(--text-secondary);
+}
+
+@container (max-width: 720px) {
   .backend-api-row {
     grid-template-columns: minmax(0, 1fr);
     align-items: start;
@@ -2127,7 +2215,8 @@
     justify-self: start;
   }
 
-  .backend-api-gate {
+  .backend-api-gate,
+  .backend-api-transport {
     justify-self: start;
   }
 }

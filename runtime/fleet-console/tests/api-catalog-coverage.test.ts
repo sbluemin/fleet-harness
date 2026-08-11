@@ -18,13 +18,6 @@ const SERVER_SOURCE = fs.readFileSync(new URL("../core/host/server.ts", import.m
  */
 const UNDECLARED_BY_DESIGN = new Set(["/api/v1/environment"]);
 
-/**
- * 이 트립와이어가 도입되기 전부터 선언되지 않은 표면. 의도된 예외가 아니라 갚아야 할 빚이고,
- * 카탈로그에 올리면 설정 화면의 백엔드 API 목록이 함께 바뀌므로 별도 변경으로 처리한다.
- * 목록은 줄어들 수만 있다 — 새 미선언 접두사는 아래 단언에서 실패한다.
- */
-const KNOWN_UNDECLARED_PREFIXES = new Set(["/api/v1/operations"]);
-
 describe("api catalog coverage", () => {
   const catalogPaths = buildApiCatalog().map((entry) => entry.path);
 
@@ -40,7 +33,7 @@ describe("api catalog coverage", () => {
     const undeclared = prefixes.filter((prefix) => !catalogPaths.some((route) => route === prefix || route.startsWith(`${prefix}/`)));
 
     expect(prefixes.length).toBeGreaterThan(0);
-    expect(undeclared.filter((prefix) => !KNOWN_UNDECLARED_PREFIXES.has(prefix))).toEqual([]);
+    expect(undeclared).toEqual([]);
   });
 
   it("keeps the exemption lists honest", () => {
@@ -48,10 +41,6 @@ describe("api catalog coverage", () => {
     for (const route of UNDECLARED_BY_DESIGN) {
       expect(SERVER_SOURCE, `${route} is exempt but no longer dispatched`).toContain(`pathname === "${route}"`);
       expect(catalogPaths, `${route} is exempt but now declared`).not.toContain(route);
-    }
-    for (const prefix of KNOWN_UNDECLARED_PREFIXES) {
-      expect(SERVER_SOURCE, `${prefix} is listed as a known gap but no longer registered`).toContain(`routeRegistry.register("${prefix}"`);
-      expect(catalogPaths.some((route) => route === prefix || route.startsWith(`${prefix}/`)), `${prefix} is declared now — drop it from the known-gap list`).toBe(false);
     }
   });
 });

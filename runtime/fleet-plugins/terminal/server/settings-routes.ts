@@ -123,7 +123,10 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
     }
     ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
     return true;
-  });
+  }, [
+    { method: "GET", path: "", summary: "Read Terminal plugin settings.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "PUT", path: "", summary: "Save Terminal plugin settings.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ]);
 }
 
 export function toTerminalSettingsState(

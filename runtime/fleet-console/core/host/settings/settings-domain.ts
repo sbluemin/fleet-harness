@@ -9,7 +9,7 @@ import {
   type DurableJsonStore,
 } from "@dotobokuri/core-infra";
 
-import type { ApiCatalogEntry } from "../api-catalog.js";
+import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { GlobalSettingsMutationResult, GlobalSettingsState } from "../console-contract-types.js";
 import { createConsoleDataPaths, type ConsoleDataPaths } from "../paths.js";
 
@@ -401,6 +401,7 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Get the global console settings status.",
     category: "Settings",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "PUT",
@@ -408,6 +409,7 @@ export const GLOBAL_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Save the global console settings.",
     category: "Settings",
     gate: "origin-write",
+    transport: "http",
   },
 ];
 
@@ -618,6 +620,7 @@ export const PLUGIN_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Get the settings for a specific plugin.",
     category: "Settings",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "PUT",
@@ -625,6 +628,7 @@ export const PLUGIN_SETTINGS_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Save the settings for a specific plugin.",
     category: "Settings",
     gate: "origin-write",
+    transport: "http",
   },
 ];
 

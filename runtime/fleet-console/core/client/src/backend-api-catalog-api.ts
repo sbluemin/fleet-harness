@@ -37,11 +37,12 @@ function assertApiCatalogEntry(value: unknown, status: number): ApiCatalogEntry 
   if (
     !entry ||
     typeof entry !== "object" ||
-    typeof entry.method !== "string" ||
+    !isApiCatalogMethod(entry.method) ||
     typeof entry.path !== "string" ||
     typeof entry.summary !== "string" ||
     typeof entry.category !== "string" ||
-    typeof entry.gate !== "string"
+    !isApiCatalogGate(entry.gate) ||
+    !isApiCatalogTransport(entry.transport)
   ) {
     throw new ApiError(status, "Invalid backend API catalog entry");
   }
@@ -51,5 +52,18 @@ function assertApiCatalogEntry(value: unknown, status: number): ApiCatalogEntry 
     summary: entry.summary,
     category: entry.category,
     gate: entry.gate,
+    transport: entry.transport,
   };
+}
+
+function isApiCatalogMethod(value: unknown): value is ApiCatalogEntry["method"] {
+  return value === "GET" || value === "POST" || value === "PUT" || value === "PATCH" || value === "DELETE" || value === "*";
+}
+
+function isApiCatalogGate(value: unknown): value is ApiCatalogEntry["gate"] {
+  return value === "loopback" || value === "origin-write" || value === "origin-strict" || value === "lock-token" || value === "anthropic-credential" || value === "one-use-ticket";
+}
+
+function isApiCatalogTransport(value: unknown): value is ApiCatalogEntry["transport"] {
+  return value === "http" || value === "sse" || value === "websocket" || value === "proxy";
 }

@@ -71,7 +71,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
         ...(role ? { role } : {}),
       }));
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Issue a Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "shell/sessions", ({ req, res, pathname }) => {
       const suffix = pathname.slice(`${ctx.basePath}/shell/sessions/`.length);
       const match = suffix.match(/^([^/]+)(?:\/(relaunch))?$/);
@@ -108,7 +108,10 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       ctx.host.operations.delete(operationId);
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
-    });
+    }, [
+      { method: "DELETE", path: "/:operationId", summary: "Terminate a Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+      { method: "POST", path: "/:operationId/relaunch", summary: "Relaunch a dormant Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    ]);
 }
 
 function isRestoredShellEvent(value: unknown, pluginId: string): value is { readonly operationId: string } {

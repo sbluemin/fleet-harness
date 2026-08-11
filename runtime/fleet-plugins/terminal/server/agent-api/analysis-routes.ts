@@ -86,7 +86,17 @@ export function registerAnalysisRoutes(ctx: FleetPluginServerContext, deps: Anal
     if (action === "message") return handleMessage(ctx, req, res, operationId, registry);
     if (action === "stream") return handleStream(ctx, req, res, operationId, registry);
     return handleStop(ctx, req, res, operationId, registry);
-  });
+  }, [
+    { method: "GET", path: "/catalog", summary: "Read Analyst model catalog.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/stream", summary: "Stream all Analyst events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "GET", path: "/artifacts/:artifactId", summary: "Read an Analyst artifact.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/:operationId/artifacts", summary: "Clear Analyst artifacts.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:operationId/ready", summary: "Read Analyst readiness.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:operationId/start", summary: "Start an Analyst session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/:operationId/message", summary: "Send an Analyst message.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/:operationId/stream", summary: "Stream Analyst session events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "POST", path: "/:operationId/stop", summary: "Stop an Analyst session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+  ]);
 
   const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
     if (isOperationDeletedEvent(payload) && payload.pluginId === ctx.pluginId) {

@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { ApiCatalogEntry } from "./api-catalog.js";
+import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import type { ConsoleThemeId } from "./settings/settings-domain.js";
 
 export const DESKTOP_FULLSCREEN_PATH = "/api/v1/desktop/fullscreen";
@@ -39,6 +39,7 @@ export const DESKTOP_FULLSCREEN_API_CATALOG: readonly ApiCatalogEntry[] = [{
   summary: "Update the ephemeral Desktop native fullscreen snapshot.",
   category: "Desktop",
   gate: "origin-strict",
+  transport: "http",
 }];
 
 export function createDesktopFullscreenRouter(deps: DesktopFullscreenRouteDeps): (context: DesktopFullscreenRouteContext) => Promise<boolean> {
@@ -112,6 +113,7 @@ export const DESKTOP_SHELL_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Read where the Desktop that published it can send this window home; every other viewer reads nothing.",
     category: "Desktop",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "PUT",
@@ -119,6 +121,7 @@ export const DESKTOP_SHELL_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Publish the console the attached Desktop launched, so this window can go back to it.",
     category: "Desktop",
     gate: "origin-strict",
+    transport: "http",
   },
 ];
 
@@ -194,6 +197,7 @@ export const DESKTOP_THEME_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Get the Console-owned Desktop title bar theme.",
     category: "Desktop",
     gate: "origin-strict",
+    transport: "http",
   },
   {
     method: "GET",
@@ -201,6 +205,7 @@ export const DESKTOP_THEME_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Stream server-confirmed Desktop title bar theme changes.",
     category: "Desktop",
     gate: "origin-strict",
+    transport: "sse",
   },
 ];
 

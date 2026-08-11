@@ -84,5 +84,5 @@ export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime
       ...(role ? { role } : {}),
     }));
     return true;
-  });
+  }, { method: "POST", path: "", summary: "Issue a Global Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-strict", transport: "http" });
 }

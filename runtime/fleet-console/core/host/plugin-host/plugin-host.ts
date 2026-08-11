@@ -7,6 +7,7 @@ export interface DiscoveredFleetPlugin extends SdkDiscoveredFleetPlugin {
 }
 
 export type {
+  ApiCatalogEntry,
   FleetPluginDefinition,
   FleetPluginEventsHost,
   FleetPluginHostCapabilities,
@@ -24,7 +25,7 @@ export type {
   OperationLaunchCatalogProvider,
   OperationLaunchKind,
 } from "@fleet-console/sdk/plugin";
-import type { FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry, FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { createHash } from "node:crypto";
 import { existsSync, realpathSync } from "node:fs";
@@ -347,6 +348,7 @@ export interface FleetPluginHostDeps extends DiscoverFleetPluginsOptions {
 export interface FleetPluginHost {
   readonly plugins: readonly DiscoveredFleetPlugin[];
   readonly sensitiveFieldsByPluginId: ReadonlyMap<string, readonly string[]>;
+  readonly apiCatalog: readonly ApiCatalogEntry[];
   boot(): Promise<void>;
   cleanup(): Promise<void>;
 }
@@ -422,6 +424,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
   const plugins = filterDiscoveredPlugins(discoverFleetPlugins(deps));
   const sensitiveFieldsByPluginId = new Map(plugins.map((plugin) => [plugin.manifest.id, plugin.manifest.sensitiveFields ?? []]));
   const generatedBundleDirs = new Set<string>();
+  const apiCatalog: ApiCatalogEntry[] = [];
   const isProcessAlive = deps.isProcessAlive ?? isPluginBundleOwnerAlive;
   const removeBundleDir = deps.removeBundleDir ?? removePluginBundleDir;
   const importModule = deps.importModule ?? ((entry) => importPluginModule(entry, deps.bundleCacheDir, generatedBundleDirs));
@@ -457,22 +460,122 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     }
   }
 
-  return { plugins, sensitiveFieldsByPluginId, boot, cleanup };
+  return { plugins, sensitiveFieldsByPluginId, apiCatalog, boot, cleanup };
 
   async function bootPluginRoutes(plugin: DiscoveredFleetPlugin): Promise<void> {
+    const pendingRoutes: PendingRouteRegistration[] = [];
+    const pendingUpgrades: PendingUpgradeRegistration[] = [];
+    const pendingCatalog: ApiCatalogEntry[] = [];
     const mod = await importModule(plugin.routesEntry!);
     const register = resolveRegister(mod);
     if (!register) return;
-    await register({
-      pluginId: plugin.manifest.id,
-      manifest: plugin.manifest,
-      basePath: `/plugins/${plugin.manifest.id}`,
-      wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
-      host: deps.host,
-      registerRouter: createScopedRouteRegistrar(deps.routes, `/plugins/${plugin.manifest.id}`, `/api/v1/plugins/${plugin.manifest.id}`),
-      registerWsHandler: createScopedUpgradeRegistrar(deps.upgrades, `/plugins/${plugin.manifest.id}/ws`),
-    });
+    const registrationTransaction = createPluginRegistrationTransaction(deps.host);
+    try {
+      await register({
+        pluginId: plugin.manifest.id,
+        manifest: plugin.manifest,
+        basePath: `/plugins/${plugin.manifest.id}`,
+        wsBasePath: `/plugins/${plugin.manifest.id}/ws`,
+        host: registrationTransaction.host,
+        registerRouter: createScopedRouteRegistrar(
+          deps.routes,
+          apiCatalog,
+          pendingRoutes,
+          pendingCatalog,
+          `/plugins/${plugin.manifest.id}`,
+          `/api/v1/plugins/${plugin.manifest.id}`,
+        ),
+        registerWsHandler: createScopedUpgradeRegistrar(
+          deps.upgrades,
+          apiCatalog,
+          pendingUpgrades,
+          pendingCatalog,
+          `/plugins/${plugin.manifest.id}/ws`,
+        ),
+      });
+    } catch (error) {
+      await registrationTransaction.rollback();
+      throw error;
+    }
+    for (const route of pendingRoutes) deps.routes.register(route.prefix, route.handler);
+    for (const upgrade of pendingUpgrades) deps.upgrades.register(upgrade.prefix, upgrade.handler);
+    apiCatalog.push(...pendingCatalog);
   }
+}
+
+interface PluginRegistrationTransaction {
+  readonly host: FleetPluginHostCapabilities;
+  rollback(): Promise<void>;
+}
+
+function createPluginRegistrationTransaction(host: FleetPluginHostCapabilities): PluginRegistrationTransaction {
+  const rollbackActions: Array<() => void | Promise<void>> = [];
+
+  function track(disposer: () => void): () => void {
+    let active = true;
+    const trackedDisposer = () => {
+      if (!active) return;
+      active = false;
+      disposer();
+    };
+    rollbackActions.push(trackedDisposer);
+    return trackedDisposer;
+  }
+
+  function trackCleanup(cleanup: () => void | Promise<void>): () => void {
+    const unregister = host.lifecycle.registerCleanup(cleanup);
+    let active = true;
+    const trackedUnregister = () => {
+      if (!active) return;
+      active = false;
+      unregister();
+    };
+    rollbackActions.push(async () => {
+      if (!active) return;
+      active = false;
+      try {
+        await cleanup();
+      } catch {
+        // Preserve the original registration failure.
+      }
+      try {
+        unregister();
+      } catch {
+        // Preserve the original registration failure.
+      }
+    });
+    return trackedUnregister;
+  }
+
+  return {
+    host: {
+      ...host,
+      operations: {
+        ...host.operations,
+        registerOperationType: (type) => track(host.operations.registerOperationType(type)),
+        registerPayloadSanitizer: (pluginId, fields) => track(host.operations.registerPayloadSanitizer(pluginId, fields)),
+        registerLaunchCatalog: (pluginId, provider) => track(host.operations.registerLaunchCatalog(pluginId, provider)),
+      },
+      events: {
+        ...host.events,
+        subscribe: (channel, listener) => track(host.events.subscribe(channel, listener)),
+        registerSseChannel: (channel) => track(host.events.registerSseChannel(channel)),
+      },
+      lifecycle: {
+        ...host.lifecycle,
+        registerCleanup: trackCleanup,
+      },
+    },
+    rollback: async () => {
+      for (let index = rollbackActions.length - 1; index >= 0; index -= 1) {
+        try {
+          await rollbackActions[index]!();
+        } catch {
+          // Preserve the original registration failure.
+        }
+      }
+    },
+  };
 }
 
 function filterDiscoveredPlugins(plugins: readonly DiscoveredFleetPlugin[]): readonly DiscoveredFleetPlugin[] {
@@ -636,20 +739,125 @@ function resolveRegister(mod: FleetPluginRouteModule): ((ctx: FleetPluginServerC
   return mod.default?.register ?? null;
 }
 
-function createScopedRouteRegistrar(routes: RouteRegistry, basePath: string, apiBasePath: string): FleetPluginServerContext["registerRouter"] {
-  return (requestedPath: string, handler: RouteHandler) => {
-    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
-    assertNoRouteOverlap(prefix, routes.list().map((route) => route.prefix));
-    routes.register(prefix, handler);
-  };
+interface PendingRouteRegistration {
+  readonly prefix: string;
+  readonly handler: RouteHandler;
 }
 
-function createScopedUpgradeRegistrar(upgrades: UpgradeRegistry, basePath: string): FleetPluginServerContext["registerWsHandler"] {
-  return (requestedPath: string, handler: UpgradeHandler) => {
+interface PendingUpgradeRegistration {
+  readonly prefix: string;
+  readonly handler: UpgradeHandler;
+}
+
+function createScopedRouteRegistrar(
+  routes: RouteRegistry,
+  apiCatalog: readonly ApiCatalogEntry[],
+  pendingRoutes: PendingRouteRegistration[],
+  pendingCatalog: ApiCatalogEntry[],
+  basePath: string,
+  apiBasePath: string,
+): FleetPluginServerContext["registerRouter"] {
+  function registerRouter(requestedPath: string, handler: RouteHandler): void;
+  function registerRouter(requestedPath: string, handler: RouteHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
+  function registerRouter(
+    requestedPath: string,
+    handler: RouteHandler,
+    catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
+  ): void {
+    const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
+    const entries = catalog ? resolveCatalogEntries(prefix, catalog) : [];
+    assertNoCatalogDuplicates([...apiCatalog, ...pendingCatalog], entries);
+    assertNoRouteOverlap(prefix, [
+      ...routes.list().map((route) => route.prefix),
+      ...pendingRoutes.map((route) => route.prefix),
+    ]);
+    pendingRoutes.push({ prefix, handler });
+    pendingCatalog.push(...entries);
+  }
+  return registerRouter;
+}
+
+function createScopedUpgradeRegistrar(
+  upgrades: UpgradeRegistry,
+  apiCatalog: readonly ApiCatalogEntry[],
+  pendingUpgrades: PendingUpgradeRegistration[],
+  pendingCatalog: ApiCatalogEntry[],
+  basePath: string,
+): FleetPluginServerContext["registerWsHandler"] {
+  function registerWsHandler(requestedPath: string, handler: UpgradeHandler): void;
+  function registerWsHandler(requestedPath: string, handler: UpgradeHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
+  function registerWsHandler(
+    requestedPath: string,
+    handler: UpgradeHandler,
+    catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
+  ): void {
     const prefix = resolveScopedPrefix(basePath, requestedPath);
-    assertNoRouteOverlap(prefix, upgrades.list().map((upgrade) => upgrade.prefix));
-    upgrades.register(prefix, handler);
-  };
+    const entries = catalog ? resolveCatalogEntries(prefix, catalog) : [];
+    assertNoCatalogDuplicates([...apiCatalog, ...pendingCatalog], entries);
+    assertNoRouteOverlap(prefix, [
+      ...upgrades.list().map((upgrade) => upgrade.prefix),
+      ...pendingUpgrades.map((upgrade) => upgrade.prefix),
+    ]);
+    pendingUpgrades.push({ prefix, handler });
+    pendingCatalog.push(...entries);
+  }
+  return registerWsHandler;
+}
+
+const API_CATALOG_METHODS = new Set<unknown>(["GET", "POST", "PUT", "PATCH", "DELETE", "*"]);
+const API_CATALOG_GATES = new Set<unknown>(["loopback", "origin-write", "origin-strict", "lock-token", "anthropic-credential", "one-use-ticket"]);
+const API_CATALOG_TRANSPORTS = new Set<unknown>(["http", "sse", "websocket", "proxy"]);
+
+function resolveCatalogEntries(prefix: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): ApiCatalogEntry[] {
+  return (Array.isArray(catalog) ? catalog : [catalog]).map((entry) => {
+    assertValidCatalogEntry(entry);
+    return {
+      ...entry,
+      path: resolveCatalogPath(prefix, entry.path),
+    };
+  });
+}
+
+function assertValidCatalogEntry(entry: unknown): asserts entry is ApiCatalogEntry {
+  if (!entry || typeof entry !== "object" || Array.isArray(entry)) throw new Error("plugin_catalog_entry_invalid");
+  const candidate = entry as Record<string, unknown>;
+  if (
+    !API_CATALOG_METHODS.has(candidate.method)
+    || typeof candidate.summary !== "string"
+    || candidate.summary.trim().length === 0
+    || typeof candidate.category !== "string"
+    || candidate.category.trim().length === 0
+    || !API_CATALOG_GATES.has(candidate.gate)
+    || !API_CATALOG_TRANSPORTS.has(candidate.transport)
+    || !isValidCatalogPath(candidate.path)
+  ) {
+    throw new Error("plugin_catalog_entry_invalid");
+  }
+}
+
+function isValidCatalogPath(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  if (value === "") return true;
+  if (!value.startsWith("/") || value.startsWith("//") || value.includes("//") || /[?#\\]/u.test(value)) return false;
+  return !value.split("/").some((segment) => segment === "." || segment === "..");
+}
+
+function resolveCatalogPath(prefix: string, suffix: string): string {
+  if (suffix === "") return prefix;
+  return normalizePrefix(`${prefix}${suffix}`);
+}
+
+function assertNoCatalogDuplicates(existing: readonly ApiCatalogEntry[], additions: readonly ApiCatalogEntry[]): void {
+  const identities = new Set(existing.map(catalogIdentity));
+  for (const entry of additions) {
+    const identity = catalogIdentity(entry);
+    if (identities.has(identity)) throw new Error(`duplicate_api_catalog_entry:${entry.method}:${entry.path}:${entry.transport}`);
+    identities.add(identity);
+  }
+}
+
+function catalogIdentity(entry: ApiCatalogEntry): string {
+  return `${entry.method}|${entry.path}|${entry.transport}`;
 }
 
 function resolveScopedPrefix(basePath: string, requestedPath: string, apiBasePath?: string): string {

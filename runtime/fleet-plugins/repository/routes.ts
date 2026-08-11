@@ -18,47 +18,47 @@ export default definePlugin({
     registerRouter(ctx, "repos", async ({ req, res }) => {
       await handleRepositoryRepos(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "List repositories in a Theater.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "worktrees", async ({ req, res }) => {
       await handleRepositoryWorktrees(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "List repository worktrees.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "changed", async ({ req, res }) => {
       await handleRepositoryChanged(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "List changed repository files.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "fetch", async ({ req, res }) => {
       await handleRepositoryFetch(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Fetch repository data.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "file", async ({ req, res }) => {
       await handleRepositoryFile(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Read a repository file diff.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "log", async ({ req, res }) => {
       await handleRepositoryLog(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Read repository history.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "palette-search", async ({ req, res }) => {
       await handleRepositorySearch(req, res, ctx);
       return true;
-    });
-    registerRouter(ctx, "refs", async ({ req, res }) => { await handleRepositoryRefs(req, res, ctx); return true; });
+    }, { method: "POST", path: "", summary: "Search repository commits.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "refs", async ({ req, res }) => { await handleRepositoryRefs(req, res, ctx); return true; }, { method: "POST", path: "", summary: "Read repository refs.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "commit", async ({ req, res }) => {
       await handleRepositoryCommit(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Read repository commit details.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "commit-file", async ({ req, res }) => {
       await handleRepositoryCommitFile(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Read a file diff at a repository commit.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "compare", async ({ req, res }) => {
       await handleRepositoryCompare(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Compare repository revisions.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "compare-file", async ({ req, res }) => {
       await handleRepositoryCompareFile(req, res, ctx);
       return true;
-    });
+    }, { method: "POST", path: "", summary: "Compare repository files.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
   },
 });

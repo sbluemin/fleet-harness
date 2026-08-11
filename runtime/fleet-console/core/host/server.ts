@@ -75,6 +75,7 @@ export interface ConsoleServerDeps {
   readonly version?: string;
   readonly codexCwd?: string;
   readonly dataDir?: string;
+  readonly pluginHomeDir?: string;
   readonly agentRuntime?: unknown;
   readonly release?: FleetConsoleRelease;
   readonly releaseNotes?: ConsoleReleaseNotesService;
@@ -152,6 +153,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Read the loopback runtime pairing identity.",
     category: "Observer",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "GET",
@@ -159,6 +161,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "콘솔 관측 상태를 조회합니다.",
     category: "Observer",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "GET",
@@ -166,6 +169,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "백엔드 API 카탈로그를 조회합니다.",
     category: "Observer",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "GET",
@@ -173,6 +177,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Get the console release notes.",
     category: "Update",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "GET",
@@ -180,6 +185,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Theater 목록을 조회합니다.",
     category: "Observer",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "POST",
@@ -187,6 +193,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "새 Theater를 등록합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "PATCH",
@@ -194,6 +201,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Theater 표시 순서를 변경합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "DELETE",
@@ -201,6 +209,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Theater와 소속 Operation을 제거합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -208,6 +217,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "유예 중인 Operation 또는 Theater 삭제를 복구합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -215,27 +225,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Resolve the Codex workspace for a Theater.",
     category: "Observer",
     gate: "origin-write",
-  },
-  {
-    method: "POST",
-    path: "/plugins/terminal/shell/ticket",
-    summary: "Shell WebSocket 접속 티켓을 발급합니다.",
-    category: "Terminal Plugin",
-    gate: "origin-write",
-  },
-  {
-    method: "GET",
-    path: "/plugins/terminal/settings",
-    summary: "Get Terminal plugin prompt settings.",
-    category: "Terminal Plugin",
-    gate: "loopback",
-  },
-  {
-    method: "PUT",
-    path: "/plugins/terminal/settings",
-    summary: "Save Terminal plugin prompt settings.",
-    category: "Terminal Plugin",
-    gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -243,6 +233,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Theater 폴더 선택 목록을 조회합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -250,6 +241,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Theater 폴더 접근 grant를 발급합니다.",
     category: "Observer",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -257,6 +249,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Request console update application.",
     category: "Update",
     gate: "origin-strict",
+    transport: "http",
   },
   {
     method: "POST",
@@ -264,6 +257,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Issue a single-use grant that opens a console session.",
     category: "Access",
     gate: "lock-token",
+    transport: "http",
   },
   {
     method: "GET",
@@ -271,6 +265,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Report the remote listener, its identity, its unused links, and the devices it has paired.",
     category: "Access",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "DELETE",
@@ -278,6 +273,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Revoke one unused remote access link.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "DELETE",
@@ -285,6 +281,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "End one open remote session, leaving its pairing intact.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "DELETE",
@@ -292,6 +289,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Unpair one device so it cannot rejoin without a new access link.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -299,6 +297,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Issue a new remote certificate, invalidating every link, pin, and session for the old one.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -306,6 +305,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Create a remote access link for this console.",
     category: "Access",
     gate: "lock-token",
+    transport: "http",
   },
   {
     method: "POST",
@@ -313,6 +313,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Exchange a single-use grant for a pairing, or resume an existing pairing.",
     category: "Access",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "GET",
@@ -320,6 +321,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "List the other consoles this one can jump to.",
     category: "Access",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "POST",
@@ -327,6 +329,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Remember another console from its access link, after confirming its certificate.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "PATCH",
@@ -334,6 +337,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Rename a remembered console.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "DELETE",
@@ -341,6 +345,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Forget a remembered console and its certificate pin.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "POST",
@@ -348,6 +353,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Check whether a remembered console answers and still presents its pinned certificate.",
     category: "Access",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "GET",
@@ -355,6 +361,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "List the consoles running on this machine that this one can point a window at.",
     category: "Access",
     gate: "loopback",
+    transport: "http",
   },
   {
     method: "POST",
@@ -362,6 +369,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Hand the attached Desktop what it needs to open one remembered console, consuming any pending grant.",
     category: "Desktop",
     gate: "origin-write",
+    transport: "http",
   },
   {
     method: "GET",
@@ -369,6 +377,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "Check console status with the lock token.",
     category: "Health",
     gate: "lock-token",
+    transport: "http",
   },
 ];
 
@@ -622,6 +631,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   process.env.FLEET_CONSOLE_PACKAGE_ROOT = release.packageRoot;
   const pluginHost = createFleetPluginHost({
     ...resolveBuiltInPluginDiscoveryRoots(release.packageRoot),
+    homeDir: deps.pluginHomeDir,
     bundleCacheDir: path.join(durablePaths.dir, "plugin-cache"),
     routes: routeRegistry,
     upgrades: upgradeRegistry,
@@ -1742,7 +1752,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 405, { error: "Method not allowed" });
       return;
     }
-    writeJson(res, 200, { version, routes: buildApiCatalog() });
+    writeJson(res, 200, { version, routes: buildApiCatalog(pluginHost.apiCatalog) });
   }
 
   function handleEnvironmentDiagnostics(req: http.IncomingMessage, res: http.ServerResponse): void {

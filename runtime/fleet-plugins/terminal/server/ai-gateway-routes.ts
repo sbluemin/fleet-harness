@@ -57,5 +57,9 @@ export function registerAiGatewayRoutes(
     router.dispose();
     return ownedDiagnostics?.flush();
   });
-  registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle);
+  registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle, [
+    { method: "*", path: "/api/hello", summary: "Read the AI Gateway health response.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
+    { method: "*", path: "/v1/models", summary: "Proxy the AI Gateway model listing.", category: "Terminal Plugin", gate: "anthropic-credential", transport: "proxy" },
+    { method: "POST", path: "/v1/messages", summary: "Proxy an Anthropic Messages request through the AI Gateway.", category: "Terminal Plugin", gate: "anthropic-credential", transport: "proxy" },
+  ]);
 }

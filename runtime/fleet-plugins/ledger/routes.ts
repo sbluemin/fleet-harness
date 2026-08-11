@@ -17,6 +17,6 @@ export default definePlugin({
     registerRouter(ctx, "summary", async ({ req, res }) => {
       await handleSummary(req, res, ctx, service);
       return true;
-    });
+    }, { method: "GET", path: "", summary: "Read Ledger usage summary.", category: "Ledger Plugin", gate: "origin-write", transport: "http" });
   },
 });

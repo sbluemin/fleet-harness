@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { ApiCatalogEntry } from "./api-catalog.js";
+import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 import { buildSystemFontsResponse, type SystemFontsService } from "./system-fonts.js";
 
 export interface SystemFontsRouteDeps {
@@ -23,6 +23,7 @@ export const SYSTEM_FONTS_API_CATALOG: readonly ApiCatalogEntry[] = [
     summary: "List sanitized system font families for built-in settings.",
     category: "Settings",
     gate: "loopback",
+    transport: "http",
   },
 ];
 

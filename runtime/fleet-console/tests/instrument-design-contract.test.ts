@@ -348,6 +348,17 @@ function findRawProductSelectsInSourceFile(
 }
 
 describe("Instrument core design contract", () => {
+  it("collapses backend API rows against their Settings card width", () => {
+    const components = source("styles/components.css");
+    const section = components.match(/\.backend-api-section \{[^}]*\}/)?.[0] ?? "";
+    const narrowContainer = components.match(/@container \(max-width: 720px\) \{[\s\S]*?\n\}/)?.[0] ?? "";
+
+    expect(section).toContain("container-type: inline-size;");
+    expect(narrowContainer).toContain(".backend-api-row {");
+    expect(narrowContainer).toContain("grid-template-columns: minmax(0, 1fr);");
+    expect(components).not.toMatch(/@media \(max-width: 720px\) \{\s*\.backend-api-row/);
+  });
+
   it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
     const types = externalSource(SDK_RAIL_TYPES_PATH);
     const version = externalSource(SDK_VERSION_PATH);
