@@ -3760,6 +3760,110 @@
   /* 상한은 뷰포트 높이에서 산출된 geometry 변수가 소유한다 — 짧은 화면에서도 메뉴가 잘리지 않는다. */
   max-height: var(--canvas-menu-max-height, 520px);
   overflow-y: auto;
+  /* 네이티브 스크롤바는 걷어낸다 — 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼
+     읽힌다. 절단 신호와 포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다.
+     휠·키보드 스크롤과 강도 플라이아웃의 scroll-follow는 스크롤 포트 그대로라 영향이 없다. */
+  scrollbar-width: none;
+}
+
+.canvas-context-menu::-webkit-scrollbar {
+  display: none;
+}
+
+/* 방향 스트립 — 잘린 방향에만 서는 절단 신호이자 hover 글라이드/클릭 페이지 점프 조작면.
+   sticky+height:0이라 배치 변형(cursor/above/triage fixed)과 무관하게 스크롤 포트 가장자리에
+   붙고 목록 흐름을 밀지 않는다. 음수 오프셋은 메뉴 패딩(--space-1)을 넘어 테두리 안쪽까지
+   덮기 위한 것이다. */
+.canvas-context-menu-edge {
+  position: sticky;
+  z-index: 3;
+  height: 0;
+  margin: 0 var(--space-1);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+
+.canvas-context-menu-edge--top {
+  top: calc(-1 * var(--space-1));
+}
+
+.canvas-context-menu-edge--bottom {
+  bottom: calc(-1 * var(--space-1));
+}
+
+.canvas-context-menu-edge.is-on {
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.canvas-context-menu-edge-fill {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+}
+
+/* 페이드는 메뉴 언더레이(.theater-menu의 불투명 --ink-deep 믹스)와 같은 식이어야 한다 —
+   다른 색으로 접으면 접힘선이 띠처럼 분리돼 보인다. */
+.canvas-context-menu-edge--top .canvas-context-menu-edge-fill {
+  background: linear-gradient(color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 35%, transparent);
+}
+
+.canvas-context-menu-edge--bottom .canvas-context-menu-edge-fill {
+  transform: translateY(-100%);
+  background: linear-gradient(transparent, color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)) 65%);
+}
+
+/* brass는 위치/hover 채널 — 스트립 hover 강조는 그 문법 그대로다. */
+.canvas-context-menu-edge.is-on:hover .canvas-context-menu-edge-fill {
+  color: var(--brass);
+}
+
+.canvas-context-menu-edge-fill svg {
+  width: 14px;
+  height: 14px;
+  display: block;
+}
+
+/* 스크롤 게이지 — 굴리는 동안에만 나타나는 표시 전용 위치 표식(is-on은 TSX 스크롤 핸들러가
+   토글). 기하(top/height)는 프레임당 재렌더를 피해 TSX가 직접 쓴다. */
+.canvas-context-menu-gauge {
+  position: sticky;
+  top: calc(-1 * var(--space-1));
+  z-index: 4;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease;
+}
+
+.canvas-context-menu-gauge.is-on {
+  opacity: 1;
+}
+
+.canvas-context-menu-gauge-thumb {
+  position: absolute;
+  right: -1px;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--scrollbar-thumb-hover);
+}
+
+/* 방향키 포커스 스크롤이 목표 행을 스트립(26px) 아래에 두고 멈추지 않게 여유를 준다. */
+.canvas-context-menu .canvas-context-menu-item,
+.canvas-context-menu .operation-launch-variant-row {
+  scroll-margin-block: 28px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas-context-menu-edge,
+  .canvas-context-menu-gauge {
+    transition: none;
+  }
 }
 
 /* 바깥 패딩은 캔버스 메뉴에서만 좁힌다 — 공유 .theater-menu를 고치면 사이드바 Theater 메뉴까지
