@@ -7854,102 +7854,50 @@
   50% { opacity: 0.95; transform: translateY(-50%) scale(1.1); }
 }
 
-/* 게이트 장치는 트랙 밖 버튼이 아니라 트랙 우측 림 안쪽의 캡이다. 닫힌 동안 아펙스 빛이
-   림 틈으로 새어 "봉인된 구획이 있다"를 상시 암시하고(호버가 강화), 클릭이 봉인을 연다.
-   열린 뒤에는 같은 캡이 ‹ 접힘 손잡이가 된다 — 외부 ✦ 버튼 시절의 마운트 교체(26px→18px)가
-   사라져 라벨 점프도 함께 사라진다. 시맨틱은 버튼 그대로라 접근성 표면은 변하지 않는다. */
-.effort-track-apex-cap {
-  position: absolute;
-  top: 1px;
-  bottom: 1px;
-  right: 1px;
-  width: 12px;
+/* 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태라(마운트 교체 없음)
+   26px 자리가 늘 지켜지고, 게이트가 열려도 라벨이 밀리지 않는다 — 트랙의 픽셀 앵커와 같은
+   약속이다. 열린 상태는 테두리를 지운 ‹ 접힘 글리프로 시각 무게만 낮춘다. */
+.effort-track-apex-toggle {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: none;
-  border-radius: 0 999px 999px 0;
+  border: 1px dashed color-mix(in oklch, var(--text-tertiary) 65%, transparent);
+  border-radius: 999px;
   background: transparent;
-  color: transparent;
+  color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   cursor: pointer;
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    border-style var(--duration-base) var(--ease-spring),
+    color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
-/* 림 안쪽의 봉인선 — 닫힌 동안의 유일한 정적 단서. */
-.effort-track-apex-cap::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  top: 3px;
-  bottom: 3px;
-  width: 1px;
-  background: linear-gradient(to bottom, transparent, var(--apex) 35% 65%, transparent);
-  opacity: 0.5;
-  transition: opacity var(--duration-base) var(--ease-spring);
+.effort-track-apex-toggle:hover {
+  border-color: var(--apex);
+  border-style: solid;
+  color: var(--apex-ink);
+  box-shadow: var(--apex-halo);
 }
 
-/* 봉인 틈으로 새는 빛 — 3.2s 호흡. 신호가 아니라 티어 채널(apex)이다. */
-.effort-track-apex-cap::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(10px 120% at 100% 50%, var(--apex-glow), transparent 70%);
-  animation: effort-apex-leak 3.2s ease-in-out infinite;
-}
-
-@keyframes effort-apex-leak {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
-}
-
-.effort-track-apex-cap:hover::before {
-  opacity: 1;
-}
-
-.effort-track-apex-cap:hover::after {
-  animation: none;
-  opacity: 1;
-  background: radial-gradient(
-    14px 130% at 100% 50%,
-    color-mix(in oklch, var(--apex) 28%, transparent),
-    transparent 75%);
-}
-
-.effort-track-apex-cap:focus-visible {
+.effort-track-apex-toggle:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
 
-/* 열린 캡은 접힘 손잡이다 — 글리프가 드러나고 빛샘은 잦아든다. */
-.effort-track[data-apex-open="true"] .effort-track-apex-cap {
-  color: var(--text-tertiary);
-  transition: color var(--duration-fast) var(--ease-spring);
+.effort-track-apex-toggle[data-open="true"] {
+  border-color: transparent;
+  font-size: 13px;
 }
 
-.effort-track[data-apex-open="true"] .effort-track-apex-cap:hover {
+.effort-track-apex-toggle[data-open="true"]:hover {
+  border-color: transparent;
   color: var(--apex-ink);
-}
-
-.effort-track[data-apex-open="true"] .effort-track-apex-cap::after {
-  animation: none;
-  opacity: 0.35;
-}
-
-/* 오버트래블 — 끝 단 너머로 미는 첫 제스처는 트랙이 버틴다(러버밴드). 봉인선이 함께 밝아져
-   "여기가 잠겨 있다"를 답한다. 창 안의 두 번째 밀기는 TSX가 게이트를 연다. */
-.effort-track[data-armed="true"] {
-  animation: effort-track-overtravel 260ms ease-out 1;
-}
-
-.effort-track[data-armed="true"] .effort-track-apex-cap::before {
-  opacity: 1;
-}
-
-@keyframes effort-track-overtravel {
-  0% { transform: translateX(0); }
-  35% { transform: translateX(4px); }
-  100% { transform: translateX(0); }
+  box-shadow: none;
 }
 
 .effort-track-apex-seam {
@@ -8202,7 +8150,7 @@
 }
 
 /* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 픽셀 앵커 규칙을
-   그대로 쓰고, 셸은 트랙(캡 포함)·라벨만 품는 max-content다. */
+   그대로 쓰고, 셸은 트랙·토글·라벨만 품는 max-content다. */
 .quick-launch-effort-track {
   flex: 0 0 auto;
   width: max-content;
@@ -8242,12 +8190,10 @@
     animation: none;
   }
 
-  /* 티어 모션 전부 정지 — 결·오로라·별·헤일로·빛샘·러버밴드는 정적 상태로 남는다. */
+  /* 티어 모션 전부 정지 — 결·오로라·별·헤일로는 정적 상태로 남는다. */
   .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill::before,
   .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob,
-  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill,
-  .effort-track-apex-cap::after,
-  .effort-track[data-armed="true"] {
+  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
     animation: none;
   }
 
@@ -8259,7 +8205,7 @@
 
   .effort-track,
   .effort-track-apex-seam,
-  .effort-track-apex-cap::before,
+  .effort-track-apex-toggle,
   .quick-launch-effort-track {
     transition: none;
   }
@@ -11889,7 +11835,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   .quick-launch-submit,
   .effort-track-apex-seam,
   .effort-track-stop[data-apex-rung="true"],
-  .effort-track-apex-cap,
+  .effort-track-apex-toggle,
   .quick-launch-effort-track,
   .effort-track-fill,
   .effort-track-knob,

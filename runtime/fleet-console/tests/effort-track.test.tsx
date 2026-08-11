@@ -333,29 +333,30 @@ describe("EffortTrack", () => {
     expect(onChange).not.toHaveBeenCalled();
   });
 
-  it("hides gated stops behind the apex cap", () => {
+  it("hides gated stops behind the apex toggle", () => {
     render(row({ gatedEfforts: ["max", "ultra"] }), "high");
 
-    // 게이트 장치는 트랙 밖 버튼이 아니라 트랙 우측 림 안쪽의 빛샘 캡이다.
-    const cap = required(".effort-track-apex-cap");
-    expect(cap.getAttribute("aria-expanded")).toBe("false");
-    expect(cap.getAttribute("aria-label")).toBe("Show Max and Ultracode");
+    const toggle = required(".effort-track-apex-toggle");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.getAttribute("aria-label")).toBe("Show Max and Ultracode");
+    expect(toggle.textContent).toBe("✦");
     expect(stops()).toHaveLength(5);
     expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
     expect(track().getAttribute("aria-valuemax")).toBe("4");
   });
 
-  it("reveals gated stops and extends the slider range when the cap is pressed", () => {
+  it("reveals gated stops and extends the slider range when toggled", () => {
     render(row({
       effortAxis: [...AXIS, "ultra"],
       chips: [...row().chips!, { id: "ultra", label: "ULTRA", launch: { model: "kimi--k3", effort: "ultra" } }],
       gatedEfforts: ["max", "ultra"],
     }), "high");
 
-    act(() => required(".effort-track-apex-cap").click());
-    // 같은 캡이 접힘 손잡이가 된다 — 마운트 교체가 없어 라벨이 점프하지 않는다.
-    expect(required(".effort-track-apex-cap").getAttribute("aria-expanded")).toBe("true");
-    expect(required(".effort-track-apex-cap").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    act(() => required(".effort-track-apex-toggle").click());
+    // 같은 버튼이 ‹ 접힘 상태가 된다 — 마운트 교체가 없어 26px 자리가 지켜지고 라벨이 밀리지 않는다.
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(required(".effort-track-apex-toggle").textContent).toBe("‹");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
     expect(track().getAttribute("aria-valuemax")).toBe("6");
     // 열린 뒤에도 닫힌 사다리 간격을 그대로 쓴다 — CSS 폭 공식이 이 두 값에서 간격을 만든다.
@@ -367,7 +368,7 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max"] }), "high");
 
     const closedAnchors = stops().map((mark) => mark.style.left);
-    act(() => required(".effort-track-apex-cap").click());
+    act(() => required(".effort-track-apex-toggle").click());
     // 픽셀 앵커의 요지: 열림이 기존 스톱의 좌표 문자열을 한 글자도 바꾸지 않는다.
     expect(stops().slice(0, closedAnchors.length).map((mark) => mark.style.left)).toEqual(closedAnchors);
   });
@@ -375,7 +376,7 @@ describe("EffortTrack", () => {
   it("marks a selected gated rung as apex and maximum", () => {
     const gatedRow = row({ gatedEfforts: ["max"] });
     const onChange = render(gatedRow, "xhigh");
-    act(() => required(".effort-track-apex-cap").click());
+    act(() => required(".effort-track-apex-toggle").click());
     act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
     expect(onChange).toHaveBeenLastCalledWith("max");
 
@@ -404,23 +405,23 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max"] }), "max");
 
     expect(track().dataset.apexOpen).toBe("true");
-    // apex 값이 선택된 동안에도 캡은 접힘 손잡이로 남는다 — 접으면 일상 단으로 내려
+    // apex 값이 선택된 동안에도 토글은 접힘 상태로 남는다 — 접으면 일상 단으로 내려
     // 숨은 apex 제출 모순을 만들지 않는다.
-    expect(required(".effort-track-apex-cap").getAttribute("aria-expanded")).toBe("true");
-    expect(required(".effort-track-apex-cap").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
   });
 
   it("demotes a gated value to the last ordinary rung when collapsed", () => {
     const onChange = render(row({ gatedEfforts: ["max"] }), "max");
-    act(() => required(".effort-track-apex-cap").click());
+    act(() => required(".effort-track-apex-toggle").click());
     // 이 모델의 일상 사다리에서 고를 수 있는 마지막 단은 high다(xhigh는 gap).
     expect(onChange).toHaveBeenLastCalledWith("high");
   });
 
   it("places the apex seam between ordinary and gated stops when only max is gated", () => {
     render(row({ gatedEfforts: ["max"] }), "xhigh");
-    act(() => required(".effort-track-apex-cap").click());
+    act(() => required(".effort-track-apex-toggle").click());
 
     // auto + low/med/high/xhigh + max → ordinary 4단 → 심은 4.5번째 간격 위에 선다.
     expect(track().getAttribute("aria-valuemax")).toBe("5");
@@ -432,67 +433,11 @@ describe("EffortTrack", () => {
   it("preserves the gate-free rendering contract", () => {
     render(row(), "high");
 
-    expect(document.querySelector(".effort-track-apex-cap")).toBeNull();
+    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
     expect(document.querySelector(".effort-track-apex-seam")).toBeNull();
     expect(track().dataset.apexOpen).toBeUndefined();
     expect(track().dataset.apex).toBeUndefined();
     expect(stops()).toHaveLength(6);
-  });
-
-  it("arms on the first push past the ladder and opens on the second", () => {
-    const gatedRow = row({ gatedEfforts: ["max"] });
-    const onChange = render(gatedRow, "high");
-
-    // 끝 단(high)에서 →: 보이는 사다리 밖 = 닫힌 게이트를 미는 것. 첫 밀기는 저항만 한다.
-    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(track().dataset.armed).toBe("true");
-    expect(track().dataset.apexOpen).toBeUndefined();
-
-    // 창 안의 두 번째 밀기 — 봉인이 풀리고 민 방향 그대로 첫 게이트 단에 올라선다.
-    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(onChange).toHaveBeenLastCalledWith("max");
-    expect(track().dataset.apexOpen).toBe("true");
-  });
-
-  it("disarms when the overtravel window lapses", () => {
-    vi.useFakeTimers();
-    const gatedRow = row({ gatedEfforts: ["max"] });
-    const onChange = render(gatedRow, "high");
-
-    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(track().dataset.armed).toBe("true");
-    act(() => vi.advanceTimersByTime(900));
-    expect(track().dataset.armed).toBeUndefined();
-
-    // 창이 지난 뒤의 밀기는 다시 저항이다 — 오래전 밀기가 게이트를 열어 두지 않는다.
-    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true })));
-    expect(onChange).not.toHaveBeenCalled();
-    expect(track().dataset.apexOpen).toBeUndefined();
-  });
-
-  it("treats a pointer push past the ladder as overtravel, never as confirm", () => {
-    const onChange = vi.fn();
-    const onConfirmCurrent = vi.fn();
-    render(row({ gatedEfforts: ["max"] }), "high", onChange, onConfirmCurrent);
-    const element = stubTrackPointer();
-
-    // gap 22px(=88/4) 기준 last(4) 너머: x=130 → round((130-13)/22)=5 > 4.
-    act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 130, clientY: 13 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 130, clientY: 13 }));
-    });
-    expect(track().dataset.armed).toBe("true");
-    expect(onChange).not.toHaveBeenCalled();
-    // 봉인을 민 제스처는 현재 단 재클릭이 아니다 — 확정 금지.
-    expect(onConfirmCurrent).not.toHaveBeenCalled();
-
-    act(() => {
-      element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 2, button: 0, isPrimary: true, clientX: 130, clientY: 13 }));
-      element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 2, button: 0, isPrimary: true, clientX: 130, clientY: 13 }));
-    });
-    expect(onChange).toHaveBeenLastCalledWith("max");
-    expect(onConfirmCurrent).not.toHaveBeenCalled();
   });
 });
 

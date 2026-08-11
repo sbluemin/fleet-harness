@@ -12,9 +12,6 @@ const CLOSED_TRACK_WIDTH = 116;
     간격 산술에서 테두리를 빼먹으면 포인터 적중 판정이 CSS 좌표와 어긋난다. */
 const TRACK_CHROME = EDGE * 2 + 2;
 
-/** 오버트래블 2연타 개방 창(ms) — 첫 밀기는 저항, 이 창 안의 두 번째 밀기가 게이트를 연다. */
-const OVERTRAVEL_WINDOW = 900;
-
 interface EffortSlot {
   readonly id: string | null;
   readonly label: string;
@@ -37,9 +34,9 @@ export interface EffortTrackProps {
   readonly autoLabel: string;
   readonly ariaLabel: string;
   readonly autoValueText: string;
-  /** 닫힌 게이트의 빛샘 캡(트랙 우측 림)이 가지는 개방 라벨. */
+  /** 닫힌 게이트의 ✦ 토글이 가지는 개방 라벨. */
   readonly apexToggleLabel?: string;
-  /** 게이트가 열린 동안 같은 캡이 가지는 접힘 라벨. */
+  /** 게이트가 열린 동안 같은 토글이 가지는 접힘 라벨. */
   readonly apexCollapseLabel?: string;
   readonly className?: string;
 }
@@ -77,16 +74,11 @@ export function EffortTrack({
   const [apexOpen, setApexOpen] = useState(() => value !== null && gatedRungs.includes(value));
   const [burstKey, setBurstKey] = useState(0);
   const [burstLeft, setBurstLeft] = useState("50%");
-  // 오버트래블 무장 상태. 끝 단 너머로 미는 첫 제스처는 트랙이 버티고(러버밴드), 창 안의
-  // 두 번째 밀기가 봉인을 연다 — 시간 기준은 ref가, 시각 상태는 state가 든다.
-  const [armed, setArmed] = useState(false);
-  const armedAtRef = useRef(0);
-  const disarmTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 제스처 동안 React 커밋을 기다리지 않고 고른 단을 추적한다 — 같은 포인터 시퀀스에서
   // "다른 단으로 옮겼다"와 "처음부터 이 단을 다시 눌렀다"를 갈라야 한다.
   const liveIndexRef = useRef(0);
   // pointerId까지 묶어 두면 터치에서 두 번째 손가락(button===0)이 제스처를 덮어 쓰지 못한다.
-  const gestureRef = useRef<{ readonly pointerId: number; readonly originIndex: number; dirty: boolean; overtravelled: boolean } | null>(null);
+  const gestureRef = useRef<{ readonly pointerId: number; readonly originIndex: number; dirty: boolean } | null>(null);
 
   const clearCollapseTimer = useCallback(() => {
     if (collapseTimerRef.current === null) return;
@@ -95,14 +87,6 @@ export function EffortTrack({
   }, []);
 
   useEffect(() => clearCollapseTimer, [clearCollapseTimer]);
-
-  const clearDisarmTimer = useCallback(() => {
-    if (disarmTimerRef.current === null) return;
-    clearTimeout(disarmTimerRef.current);
-    disarmTimerRef.current = null;
-  }, []);
-
-  useEffect(() => clearDisarmTimer, [clearDisarmTimer]);
 
   useEffect(() => {
     if (value === null || !gatedRungs.includes(value)) return;
@@ -178,41 +162,6 @@ export function EffortTrack({
     return nearestSelectable(Math.round((clientX - rect.left - EDGE) / gap));
   }, [gap, last, nearestSelectable]);
 
-  /** 포인터가 보이는 마지막 단 너머(닫힌 게이트의 봉인 구역)를 가리키는가. */
-  const pointerBeyondEnd = useCallback((clientX: number): boolean => {
-    const track = trackRef.current;
-    if (!track || last === 0) return false;
-    const rect = track.getBoundingClientRect();
-    return Math.round((clientX - rect.left - EDGE) / gap) > last;
-  }, [gap, last]);
-
-  const tryOvertravel = useCallback(() => {
-    if (!hasGate || apexOpen) return;
-    clearDisarmTimer();
-    if (armedAtRef.current !== 0 && Date.now() - armedAtRef.current < OVERTRAVEL_WINDOW) {
-      // 두 번째 밀기 — 봉인이 풀리고, 민 방향 그대로 첫 게이트 단에 올라선다.
-      armedAtRef.current = 0;
-      setArmed(false);
-      clearCollapseTimer();
-      setApexOpen(true);
-      const target = gatedRungs.find((id) => (row.chips ?? []).some((chip) => chip.id === id));
-      if (target !== undefined) {
-        const openIndex = 1 + ladder.indexOf(target);
-        liveIndexRef.current = openIndex;
-        setBurstLeft(leftAt(openIndex));
-        setBurstKey((key) => key + 1);
-        onChange(target);
-      }
-      return;
-    }
-    armedAtRef.current = Date.now();
-    setArmed(true);
-    disarmTimerRef.current = setTimeout(() => {
-      disarmTimerRef.current = null;
-      armedAtRef.current = 0;
-      setArmed(false);
-    }, OVERTRAVEL_WINDOW);
-  }, [apexOpen, clearCollapseTimer, clearDisarmTimer, gatedRungs, hasGate, ladder, leftAt, onChange, row]);
 
   const fromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const next = indexFromPointer(event.clientX);
@@ -228,8 +177,7 @@ export function EffortTrack({
     // 시작한 포인터만 끝낸다 — 다른 접촉의 up이 활성 제스처를 지우면 안 된다.
     if (!gesture || gesture.pointerId !== event.pointerId) return;
     gestureRef.current = null;
-    // 오버트래블 제스처는 봉인을 미는 것이지 현재 단을 다시 누른 것이 아니다 — 확정 금지.
-    if (!confirm || gesture.dirty || gesture.overtravelled || !onConfirmCurrent) return;
+    if (!confirm || gesture.dirty || !onConfirmCurrent) return;
     // 주버튼으로 트랙 안에서 손을 뗄 때만 확정한다 — 우클릭·가운데 클릭이나
     // 세로로 트랙 밖까지 끌어 뺀 해제는 값을 고르는 실수가 되지 않게 막는다.
     if (event.button !== 0) return;
@@ -260,14 +208,6 @@ export function EffortTrack({
         if (slots[i]!.selectable) { next = i; break; }
       }
     }
-    // 위쪽 방향키가 보이는 사다리 밖으로 나가는 것은 닫힌 게이트를 미는 것이다 —
-    // 포인터의 오버트래블과 같은 규칙(1회 저항, 창 안의 2회째 개방)을 탄다.
-    if (direction > 0 && next === null && hasGate && !apexOpen) {
-      event.preventDefault();
-      event.stopPropagation();
-      tryOvertravel();
-      return;
-    }
     if (event.key === "Home") next = 0;
     if (event.key === "End") next = nearestSelectable(last);
     if (event.key === "Enter" && onConfirmCurrent) {
@@ -281,7 +221,7 @@ export function EffortTrack({
     // 트랙은 메뉴 안에 산다. 방향키가 위로 새면 메뉴가 항목 이동으로 받아 함께 움직인다.
     event.stopPropagation();
     commit(next);
-  }, [apexOpen, commit, hasGate, index, last, nearestSelectable, onConfirmCurrent, slots, tryOvertravel]);
+  }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
 
 
   return (
@@ -297,7 +237,6 @@ export function EffortTrack({
         aria-valuenow={index}
         aria-valuetext={isAuto ? autoValueText : current.label}
         data-apex-open={hasGate && apexOpen ? true : undefined}
-        data-armed={armed ? true : undefined}
         data-apex={isApex ? true : undefined}
         data-at-max={hasGate ? (isApex ? true : undefined) : (index === last && !isAuto ? true : undefined)}
         // 자동은 사다리의 최소 단이 아니라 "사다리를 쓰지 않음"이다. 파선 테두리·빈 손잡이·채움 0이
@@ -315,12 +254,7 @@ export function EffortTrack({
           event.preventDefault();
           event.currentTarget.setPointerCapture(event.pointerId);
           event.currentTarget.focus();
-          const beyond = !apexOpen && hasGate && pointerBeyondEnd(event.clientX);
-          gestureRef.current = { pointerId: event.pointerId, originIndex: liveIndexRef.current, dirty: false, overtravelled: beyond };
-          if (beyond) {
-            tryOvertravel();
-            return;
-          }
+          gestureRef.current = { pointerId: event.pointerId, originIndex: liveIndexRef.current, dirty: false };
           fromPointer(event);
         }}
         onPointerMove={(event) => {
@@ -329,14 +263,6 @@ export function EffortTrack({
           const gesture = gestureRef.current;
           if (!gesture || gesture.pointerId !== event.pointerId) return;
           if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
-          if (!apexOpen && hasGate && pointerBeyondEnd(event.clientX)) {
-            // 드래그로 끝 너머를 미는 것도 같은 오버트래블 규칙을 탄다 — 한 제스처당 1회만.
-            if (!gesture.overtravelled) {
-              gesture.overtravelled = true;
-              tryOvertravel();
-            }
-            return;
-          }
           fromPointer(event);
         }}
         onPointerUp={(event) => endGesture(event, { confirm: true })}
@@ -391,38 +317,35 @@ export function EffortTrack({
           data-auto={isAuto ? true : undefined}
           aria-hidden="true"
         />
-        {hasGate ? (
-          // 게이트 장치는 트랙 밖 버튼이 아니라 트랙 우측 림 안쪽의 빛샘 캡이다 — 닫힌 동안
-          // 아펙스 빛이 새어 "봉인된 구획"을 암시하고, 클릭이 봉인을 연다. 열린 뒤에는 같은
-          // 캡이 ‹ 접힘 손잡이가 된다. apex 단이 선택된 채 접으면 일상 사다리의 마지막
-          // 고를 수 있는 단으로 내려, 숨은 apex 값을 제출하는 모순을 만들지 않는다.
-          <button
-            type="button"
-            className="effort-track-apex-cap"
-            aria-expanded={apexOpen}
-            aria-label={apexOpen ? apexCollapseLabel : apexToggleLabel}
-            title={apexOpen ? apexCollapseLabel : apexToggleLabel}
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={() => {
-              clearCollapseTimer();
-              clearDisarmTimer();
-              armedAtRef.current = 0;
-              setArmed(false);
-              if (!apexOpen) {
-                setApexOpen(true);
-                return;
-              }
-              if (isApex) {
-                const fallback = [...ordinaryRungs]
-                  .reverse()
-                  .find((id) => (row.chips ?? []).some((chip) => chip.id === id));
-                onChange(fallback ?? null);
-              }
-              setApexOpen(false);
-            }}
-          >‹</button>
-        ) : null}
       </div>
+      {hasGate ? (
+        // 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태라(마운트 교체
+        // 없음) 라벨이 밀리지 않고, 열린 동안은 같은 자리의 ‹ 접힘 글리프가 된다. apex 단이
+        // 선택된 채 접으면 일상 사다리의 마지막 고를 수 있는 단으로 내려, 숨은 apex 값을
+        // 제출하는 모순을 만들지 않는다.
+        <button
+          type="button"
+          className="effort-track-apex-toggle"
+          aria-expanded={apexOpen}
+          aria-label={apexOpen ? apexCollapseLabel : apexToggleLabel}
+          title={apexOpen ? apexCollapseLabel : apexToggleLabel}
+          data-open={apexOpen ? true : undefined}
+          onClick={() => {
+            clearCollapseTimer();
+            if (!apexOpen) {
+              setApexOpen(true);
+              return;
+            }
+            if (isApex) {
+              const fallback = [...ordinaryRungs]
+                .reverse()
+                .find((id) => (row.chips ?? []).some((chip) => chip.id === id));
+              onChange(fallback ?? null);
+            }
+            setApexOpen(false);
+          }}
+        >{apexOpen ? "‹" : "✦"}</button>
+      ) : null}
       {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다.
           data-apex는 게이트 뒤 티어의 라벨 모션 전용이다: 게이트 없는 모델의 최고 단(max)은 같은
           data-effort-level이라도 정적 글로우에 머문다. */}

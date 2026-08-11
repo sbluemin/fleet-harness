@@ -1748,28 +1748,25 @@ describe("Effort track interaction grammar", () => {
       "effort-max-crest-breathe",
       "effort-ultra-aurora-drift",
       "effort-ultra-twinkle",
-      "effort-apex-leak",
-      "effort-track-overtravel",
     ]) {
       expect(components).toContain(`@keyframes ${keyframes}`);
     }
     // 게이트 뒤 MAX 라벨(엠버)은 감속 모션에서 정적 crest 글로우로 돌아간다 —
     // 게이트 없는 max 라벨과 같은 모습이 되는 것이 계약이다.
     expect(components).toMatch(/\.effort-track-value\[data-apex="true"\]\[data-effort-level="max"\] \{\s*animation: none;/);
-    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \.effort-track-fill,[\s\S]*\.effort-track\[data-armed="true"\] \{\s*animation: none;/);
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \.effort-track-fill \{\s*animation: none;/);
   });
 
-  it("pins the in-track apex cap and the pixel-anchored gap", () => {
+  it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
     const trackSource = source("components/effort-track.tsx");
 
-    // 게이트 장치는 트랙 안 캡이다 — 외부 토글/셰브론 문법은 되돌아오면 안 된다(마운트 교체가
-    // 라벨을 8px 점프시키던 원인). 버튼 시맨틱과 개방 상태는 aria로 남는다.
-    expect(components).toContain(".effort-track-apex-cap");
-    expect(components).not.toContain("effort-track-apex-toggle");
+    // 게이트 장치는 트랙 우측의 ✦ 토글 하나다. 닫힘·열림이 같은 26px 버튼의 두 상태라
+    // 마운트 교체(26px→18px)가 없고, 게이트가 열려도 라벨이 밀리지 않는다.
+    expect(components).toContain(".effort-track-apex-toggle");
     expect(components).not.toContain("effort-track-apex-collapse");
-    expect(trackSource).toContain('className="effort-track-apex-cap"');
-    expect(trackSource).not.toContain("effort-track-apex-toggle");
+    expect(trackSource).toContain('className="effort-track-apex-toggle"');
+    expect(trackSource).not.toContain("effort-track-apex-collapse");
     expect(trackSource).toContain("aria-expanded={apexOpen}");
 
     // 폭과 모든 좌표가 한 간격 변수를 공유한다 — 게이트가 열려도 기존 스톱·손잡이가 움직이지
