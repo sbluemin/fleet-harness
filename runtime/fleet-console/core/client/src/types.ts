@@ -200,7 +200,7 @@ export interface RemoteAccessStatus {
     readonly lastError: string | null;
   };
   readonly publicReachability: "unverified";
-  /** 리스너가 열린 뒤 거절한 조인 수. 영속되지 않으며 리스너와 함께 초기화된다. */
+  /** 이 콘솔이 시작된 뒤 거절한 조인 수. 영속되지 않으며 콘솔 프로세스와 수명을 같이한다. */
   readonly rejectedJoins: { readonly count: number; readonly lastAt: number | null };
   readonly fingerprint: string | null;
   readonly links: readonly RemoteAccessLinkSummary[];
@@ -267,8 +267,13 @@ export function isValidRemoteListenAddress(value: string): boolean {
   return REMOTE_HOST_PATTERN.test(value) && !REMOTE_UNUSABLE_LISTEN_HOSTS.has(value);
 }
 
+/**
+ * 서버 isValidRemoteAdvertisedHost와 같은 집합이어야 한다. 여기만 느슨하면 화면은 준비됨을
+ * 보이고 저장만 invalid_remote_access로 거부되어, 켜지지 않는 이유가 화면 밖에 남는다.
+ * 공표 이름도 루프백·와일드카드일 수 없다 — 그 링크를 받은 기기는 자기 자신에게 향한다.
+ */
 export function isValidRemoteAdvertisedHost(value: string): boolean {
-  return REMOTE_HOST_PATTERN.test(value);
+  return isValidRemoteListenAddress(value);
 }
 
 /** 기기가 실제로 향하는 주소. LAN 전용이면 수신 튜플이 곧 공표 튜플이다. */

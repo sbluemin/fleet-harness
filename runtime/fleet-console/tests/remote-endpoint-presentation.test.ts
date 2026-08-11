@@ -57,9 +57,11 @@ describe("remote listen address validity", () => {
     expect(isValidRemoteListenAddress("")).toBe(false);
   });
 
-  it("does not apply the bind-only exclusions to an advertised hostname", () => {
-    // 공개 호스트 이름은 이 기계가 바인드하는 주소가 아니라 기기가 향하는 이름이다.
-    expect(isValidRemoteAdvertisedHost("localhost")).toBe(true);
+  it("holds an advertised hostname to the same set the server accepts", () => {
+    // 여기만 느슨하면 화면은 준비됨을 보이고 저장만 서버에서 거부된다.
+    for (const host of ["127.0.0.1", "0.0.0.0", "localhost"]) {
+      expect(isValidRemoteAdvertisedHost(host)).toBe(false);
+    }
     expect(isValidRemoteAdvertisedHost("console.example.com")).toBe(true);
     expect(isValidRemoteAdvertisedHost("not a host")).toBe(false);
   });

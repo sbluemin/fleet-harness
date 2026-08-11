@@ -2377,6 +2377,22 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const previousIdentity = remoteIdentityStore.read();
     const identity = await remoteIdentityStore.ensure(advertised.host);
     const storedEndpoint = remoteEndpointStore.read();
+    /**
+     * 판정과 취소는 bind보다 먼저 끝난다. `ensure()`는 회전한 인증서를 이미 디스크에 남기므로,
+     * bind가 실패해 취소를 건너뛰면 다음 기동에서는 그 새 인증서가 곧 previousIdentity가 되어
+     * 변화가 감지되지 않는다 — 사라진 인증서에 묶인 페어링이 목록에만 살아남는다.
+     *
+     * 공표한 뒤에는 포트가 미끄러지지 않으므로(위 startConfiguredRemoteListener) 실제로 열릴 포트는
+     * 이 시점에 이미 configured의 값으로 정해져 있고, 아직 공표 전이라면 포트 축 자체가 판정에 없다.
+     */
+    const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
+      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== advertised.port);
+    if (publicIdentityChanged) {
+      access.revokeGrants("remote");
+      access.revokeSessions("remote");
+      pairedDeviceStore.revokeAll("remote");
+      remoteEndpointStore.forget();
+    }
     const started = await startConfiguredRemoteListener(configured, identity, storedEndpoint !== null);
     const effectiveConfigured = started.port === configured.listenPort.value
       ? configured
@@ -2385,14 +2401,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 소유권을 먼저 옮긴다 — 아래 내구성 쓰기가 실패하면 가드가 stopRemoteAccess를 부르는데,
     // 그때 remoteServer가 비어 있으면 이미 열린 소켓이 프로세스가 끝날 때까지 포트를 쥔 채 남는다.
     remoteServer = started.server;
-    const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
-      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== effectiveAdvertised.port);
-    if (publicIdentityChanged) {
-      access.revokeGrants("remote");
-      access.revokeSessions("remote");
-      pairedDeviceStore.revokeAll("remote");
-      remoteEndpointStore.forget();
-    }
     const listener: ListenerIdentity = {
       audience: "remote",
       host: effectiveAdvertised.host,
@@ -2436,7 +2444,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...updated, enabled: false } } }));
           throw codedRemoteError("FLEET_ACKNOWLEDGMENT_REQUIRED");
         }
-        consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: updated } }));
+        try {
+          consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: updated } }));
+        } catch (error) {
+          // 아직 소유권이 넘어가기 전이라 바깥 정리가 이 소켓을 닫지 못한다. 여기서 닫지 않으면
+          // 대체 포트를 프로세스가 끝날 때까지 쥔 채 남는다.
+          await closeHttpServer(started.server);
+          throw error;
+        }
         return started;
       } catch (error) {
         const code = errorCodeOf(error);

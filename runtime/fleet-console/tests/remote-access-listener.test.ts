@@ -982,6 +982,46 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 바로 이 버튼이 필요한 자리다.
    */
   /**
+   * 인증서가 바뀌면 페어링은 사라져야 한다. `ensure()`는 회전한 인증서를 bind보다 먼저 디스크에
+   * 남기므로, bind 실패로 취소를 건너뛰면 다음 기동에서는 그 새 인증서가 previousIdentity가 되어
+   * 변화가 감지되지 않는다 — 사라진 인증서에 묶인 페어링이 목록에만 살아남는다.
+   */
+  it("voids pairings for a renewed certificate even when the listener then fails to bind", async () => {
+    const paired = await startFixture({ remote: true });
+    await joinAs(paired, "full", "MacBook Pro");
+    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
+    expect((await readRemoteStatus(paired)).devices).toHaveLength(1);
+
+    // 주인이 공표 이름을 바꾼다 — 신원이 회전할 조건. 그리고 그 포트를 남이 쥔 채로 다시 뜬다.
+    await stopFixture(paired);
+    const settingsPath = path.join(paired.dir, "fleet-home", "console", "settings.json");
+    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+    const renamed = { ...saved.general.remoteAccess, advertisedHost: "renamed.example.test" };
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      ...saved,
+      general: {
+        ...saved.general,
+        remoteAccess: { ...renamed, acknowledgment: { version: 1 as const, listenAddress: renamed.listenAddress, listenPort: renamed.listenPort.value, advertisedHost: renamed.advertisedHost, advertisedPort: renamed.advertisedPort.value } },
+      },
+    }));
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const stuck = await bootFixtureFrom(paired);
+      const failed = await readRemoteStatus(stuck);
+
+      expect(failed.listener.listening).toBe(false);
+      // 인증서는 이미 갈렸다. 그 기기가 신뢰하던 지문은 사라졌으므로 목록에 남기면 거짓말이 된다.
+      expect(failed.devices).toHaveLength(0);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  /**
    * 공표한 뒤에는 Auto도 미끄러지지 않는다. LAN-only에서 수신 포트는 곧 공표 tuple이라,
    * 잠깐 막혔다고 다른 후보를 취하면 링크가 알려 준 주소가 사라지고 전 기기의 페어링이
    * 주인의 행위 없이 해제된다. 그 자리는 실패로 남고 주인이 결정한다.

@@ -22,7 +22,13 @@ export type RemoteJoinVerdict = "ok" | "throttled" | "busy";
 export type RemoteJoinOutcome = "paired" | "rejected";
 
 export interface RemoteJoinStats {
-  /** 리스너가 열린 뒤 거절한 조인 수. 영속되지 않으며 리스너와 함께 초기화된다. */
+  /**
+   * 이 콘솔이 시작된 뒤 거절한 조인 수. 영속되지 않는다.
+   *
+   * 리스너를 껐다 켜도 예산과 계수는 유지한다 — 리스너 재시작으로 예산이 지워지면 그것이 곧
+   * 예산을 비우는 방법이 되고, 주인이 그 초기화를 필요로 하는 흐름도 없다. 성공한 페어링이
+   * 이미 그 출처의 예산을 지우므로 정상 기기가 갇히지도 않는다.
+   */
   readonly count: number;
   readonly lastAt: number | null;
 }
