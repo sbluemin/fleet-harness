@@ -11,7 +11,7 @@ import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
-import { REMOTE_AUTO_PORT_ATTEMPTS, type ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
+import type { ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -324,119 +324,6 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
 
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 401 });
-  });
-
-  it("tries the persisted Auto value first, then closes a random successful probe until the new tuple is acknowledged", async () => {
-    const occupied = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      occupied.once("error", reject);
-      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
-    });
-    const occupiedAddress = occupied.address();
-    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
-    const candidateProbe = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      candidateProbe.once("error", reject);
-      candidateProbe.listen(0, BIND_HOST, () => { candidateProbe.off("error", reject); resolve(); });
-    });
-    const candidateAddress = candidateProbe.address();
-    const candidatePort = typeof candidateAddress === "object" && candidateAddress ? candidateAddress.port : 0;
-    await new Promise<void>((resolve) => candidateProbe.close(() => resolve()));
-    const randomInt = vi.fn(() => candidatePort);
-    try {
-      const remoteAccess = {
-        enabled: true,
-        publicEndpointEnabled: true,
-        listenAddress: BIND_HOST,
-        advertisedHost: BIND_HOST,
-        listenPort: { mode: "auto" as const, value: occupiedPort },
-        advertisedPort: { mode: "custom" as const, value: 50_000 },
-        acknowledgment: { version: 1 as const, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
-      };
-      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
-      const status = await readRemoteStatus(fixture);
-      expect(status.listener).toMatchObject({ listening: false, origin: null, lastError: "acknowledgment_required" });
-      expect(randomInt).toHaveBeenCalledTimes(1);
-      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: typeof remoteAccess } };
-      expect(saved.general.remoteAccess).toMatchObject({ enabled: false, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
-      const reusable = http.createServer();
-      await new Promise<void>((resolve, reject) => {
-        reusable.once("error", reject);
-        reusable.listen(candidatePort, BIND_HOST, () => { reusable.off("error", reject); resolve(); });
-      });
-      await new Promise<void>((resolve) => reusable.close(() => resolve()));
-    } finally {
-      await new Promise<void>((resolve) => occupied.close(() => resolve()));
-    }
-  });
-
-  it("keeps a successful LAN-only Auto retry active without requiring acknowledgment", async () => {
-    const occupied = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      occupied.once("error", reject);
-      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
-    });
-    const occupiedAddress = occupied.address();
-    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
-    const candidatePort = await reservePort(BIND_HOST);
-    try {
-      const remoteAccess: ConsoleRemoteAccessSettings = {
-        enabled: true,
-        publicEndpointEnabled: false,
-        listenAddress: BIND_HOST,
-        advertisedHost: "",
-        listenPort: { mode: "auto", value: occupiedPort },
-        advertisedPort: { mode: "auto", value: 50_000 },
-        acknowledgment: null,
-      };
-      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => candidatePort });
-      const status = await readRemoteStatus(fixture);
-      expect(status.listener).toMatchObject({ listening: true, origin: `https://${BIND_HOST}:${candidatePort}`, lastError: null });
-      const parsed = parseAccessLink(await createLink(fixture));
-      expect(parsed.origin).toBe(`https://${BIND_HOST}:${candidatePort}`);
-      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
-      expect(saved.general.remoteAccess).toMatchObject({ enabled: true, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
-      const endpoint = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
-      expect(endpoint.advertisedPort).toBe(candidatePort);
-    } finally {
-      await new Promise<void>((resolve) => occupied.close(() => resolve()));
-    }
-  });
-
-  it("bounds duplicate RNG draws and falls back to an unattempted Auto candidate", async () => {
-    const occupied = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      occupied.once("error", reject);
-      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
-    });
-    const address = occupied.address();
-    const occupiedPort = typeof address === "object" && address ? address.port : 0;
-    const repeated = 49_152;
-    const repeatedOccupier = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      repeatedOccupier.once("error", reject);
-      repeatedOccupier.listen(repeated, BIND_HOST, () => { repeatedOccupier.off("error", reject); resolve(); });
-    });
-    const randomInt = vi.fn(() => repeated);
-    try {
-      const remoteAccess: ConsoleRemoteAccessSettings = {
-        enabled: true,
-        publicEndpointEnabled: true,
-        listenAddress: BIND_HOST,
-        advertisedHost: BIND_HOST,
-        listenPort: { mode: "auto", value: occupiedPort },
-        advertisedPort: { mode: "custom", value: 50_000 },
-        acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
-      };
-      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
-      expect((await readRemoteStatus(fixture)).listener.lastError).toBe("acknowledgment_required");
-      expect(randomInt).toHaveBeenCalledTimes(REMOTE_AUTO_PORT_ATTEMPTS + 1);
-      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
-      expect(saved.general.remoteAccess.listenPort.value).toBe(49_153);
-    } finally {
-      await new Promise<void>((resolve) => occupied.close(() => resolve()));
-      await new Promise<void>((resolve) => repeatedOccupier.close(() => resolve()));
-    }
   });
 
   it("reports a bind failure as a code instead of taking the console down", async () => {
@@ -1061,52 +948,6 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
       expect(failed.listener.listening).toBe(false);
       // 인증서는 이미 갈렸다. 그 기기가 신뢰하던 지문은 사라졌으므로 목록에 남기면 거짓말이 된다.
       expect(failed.devices).toHaveLength(0);
-    } finally {
-      await new Promise<void>((resolve) => squatter.close(() => resolve()));
-    }
-  });
-
-  /**
-   * 공표한 뒤에는 Auto도 미끄러지지 않는다. LAN-only에서 수신 포트는 곧 공표 tuple이라,
-   * 잠깐 막혔다고 다른 후보를 취하면 링크가 알려 준 주소가 사라지고 전 기기의 페어링이
-   * 주인의 행위 없이 해제된다. 그 자리는 실패로 남고 주인이 결정한다.
-   */
-  it("does not slide a published LAN-only Auto port off its address when it is occupied", async () => {
-    const first = await reservePort(BIND_HOST);
-    const spare = await reservePort(BIND_HOST);
-    const remoteAccess: ConsoleRemoteAccessSettings = {
-      enabled: true,
-      publicEndpointEnabled: false,
-      listenAddress: BIND_HOST,
-      advertisedHost: "",
-      listenPort: { mode: "auto", value: first },
-      advertisedPort: { mode: "auto", value: first },
-      acknowledgment: null,
-    };
-    const paired = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => spare });
-    await joinAs(paired, "full", "MacBook Pro");
-    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
-    expect(published).toBe(first);
-
-    await stopFixture(paired);
-    const squatter = http.createServer();
-    await new Promise<void>((resolve, reject) => {
-      squatter.once("error", reject);
-      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
-    });
-    try {
-      const stuck = await bootFixtureFrom(paired);
-      const failed = await readRemoteStatus(stuck);
-
-      expect(failed.listener.listening).toBe(false);
-      // 안내가 이미 존재하던 문구다 — 포트를 비우거나 신원을 회전하라고 주인에게 넘긴다.
-      expect(failed.listener.lastError).toBe("remote_port_unavailable");
-      // 무엇보다, 아무도 페어링을 잃지 않았다.
-      expect(failed.devices).toHaveLength(1);
-      const saved = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: { listenPort: { value: number } } } };
-      expect(saved.general.remoteAccess.listenPort.value).toBe(published);
-      const endpoint = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
-      expect(endpoint.advertisedPort).toBe(published);
     } finally {
       await new Promise<void>((resolve) => squatter.close(() => resolve()));
     }

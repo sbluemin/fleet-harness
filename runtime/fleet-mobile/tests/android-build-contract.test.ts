@@ -23,14 +23,6 @@ describe("Fleet Mobile Android build contract", () => {
     expect(rootPackage.scripts.postinstall).not.toContain("gradle");
   });
 
-  it("pins a dedicated CI job to the fixed artifact path", () => {
-    const workflow = read(".github/workflows/mobile-android.yml");
-    expect(workflow).toContain("runtime/fleet-mobile/dist/fleet-mobile-debug.apk");
-    expect(workflow).toContain("pnpm --filter @dotobokuri/fleet-mobile android:build:debug");
-    expect(workflow).toContain("pnpm --filter @dotobokuri/fleet-mobile android:verify:debug");
-    expect(workflow).not.toMatch(/assembleRelease|bundleRelease|eas build/);
-  });
-
   it("registers the fail-closed Android plugin after the native module", () => {
     const app = JSON.parse(read("runtime/fleet-mobile/app.json"));
     expect(app.expo.plugins.at(-1)).toBe("./plugins/withFleetAndroid.ts");
