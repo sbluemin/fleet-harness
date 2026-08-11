@@ -7943,9 +7943,9 @@
   50% { opacity: 0.95; transform: translateY(-50%) scale(1.1); }
 }
 
-/* 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태라(마운트 교체 없음)
-   26px 자리가 늘 지켜지고, 게이트가 열려도 라벨이 밀리지 않는다 — 트랙의 픽셀 앵커와 같은
-   약속이다. 열린 상태는 테두리를 지운 ‹ 접힘 글리프로 시각 무게만 낮춘다. */
+/* 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태다(마운트 교체 없음).
+   열린 상태는 테두리 없는 18px ‹ 접힘 글리프로 줄어든다 — 접힘 컨트롤이 26px 상자를 지키면
+   글리프와 라벨 사이가 벌어져 라벨이 겉돈다. */
 .effort-track-apex-toggle {
   flex: 0 0 26px;
   width: 26px;
@@ -7979,6 +7979,8 @@
 }
 
 .effort-track-apex-toggle[data-open="true"] {
+  flex-basis: 18px;
+  width: 18px;
   border-color: transparent;
   font-size: 13px;
 }

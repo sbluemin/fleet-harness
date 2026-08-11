@@ -11,5 +11,5 @@ branch: effort-gauge-rev2
 
 #### Fixed
 
-- Opening the apex effort gate no longer shifts the track's existing stops and knob: the ladder keeps its closed spacing and only extends to the right, and the gate control stays one persistent button so the label no longer jumps when it opens.
-  ko: apex 강도 게이트를 열어도 트랙의 기존 스톱과 손잡이가 더는 밀리지 않습니다. 사다리는 닫혀 있을 때의 간격을 그대로 유지한 채 오른쪽으로만 늘어나고, 게이트 컨트롤이 한 버튼으로 유지되어 열릴 때 라벨이 튀던 현상도 사라졌습니다.
+- Opening the apex effort gate no longer shifts the track's existing stops and knob: the ladder keeps its closed spacing and only extends to the right.
+  ko: apex 강도 게이트를 열어도 트랙의 기존 스톱과 손잡이가 더는 밀리지 않습니다. 사다리는 닫혀 있을 때의 간격을 그대로 유지한 채 오른쪽으로만 늘어납니다.

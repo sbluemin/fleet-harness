@@ -353,7 +353,7 @@ describe("EffortTrack", () => {
     }), "high");
 
     act(() => required(".effort-track-apex-toggle").click());
-    // 같은 버튼이 ‹ 접힘 상태가 된다 — 마운트 교체가 없어 26px 자리가 지켜지고 라벨이 밀리지 않는다.
+    // 같은 버튼이 ‹ 접힘 상태가 된다 — 마운트 교체 없이 aria-expanded와 글리프만 바뀐다.
     expect(required(".effort-track-apex-toggle").getAttribute("aria-expanded")).toBe("true");
     expect(required(".effort-track-apex-toggle").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(required(".effort-track-apex-toggle").textContent).toBe("‹");
