@@ -135,6 +135,17 @@ export const agentResumeFailedNotification = defineNotificationKind({
   title: (locale) => getT(locale)("terminal.notifications.resumeFailed"),
 });
 
+function isLaunchOptionError(error: unknown): boolean {
+  return error instanceof AgentApiError
+    && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort");
+}
+
+function resumeFailureMessage(error: unknown, locale?: ConsoleLocale): string {
+  return getT(locale)(isLaunchOptionError(error)
+    ? "terminal.notifications.resumeLaunchOptionFailedMessage"
+    : "terminal.notifications.resumeFailedMessage");
+}
+
 export const agentPlugin = definePlugin({
   id: "terminal",
   operationKinds: [agentOperationKind],
@@ -158,7 +169,7 @@ export const agentPlugin = definePlugin({
       installedNotifications?.emit({
         kind: agentResumeFailedNotification.id,
         operationId,
-        message: getT(currentTerminalLocale())("terminal.notifications.resumeFailedMessage"),
+        message: resumeFailureMessage(error, currentTerminalLocale()),
       });
       throw error;
     }
@@ -1422,13 +1433,11 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
       // 성공 시 이전 실패 알림을 거둔다 — 두지 않으면 live 세션에 "Resume failed" 뱃지가 남는다.
       context.notifications.dismiss(session.sessionId);
     } catch (error) {
-      const launchOptionError = error instanceof AgentApiError
-        && (error.message === "gateway_model_not_enabled" || error.message === "invalid_effort");
-      setResumeState(launchOptionError ? "launch-option-error" : "error");
+      setResumeState(isLaunchOptionError(error) ? "launch-option-error" : "error");
       context.notifications.emit({
         kind: agentResumeFailedNotification.id,
         operationId: session.sessionId,
-        message: t(launchOptionError ? "terminal.notifications.resumeLaunchOptionFailedMessage" : "terminal.notifications.resumeFailedMessage"),
+        message: resumeFailureMessage(error, context.language),
       });
     }
   }, [context, session.sessionId, t]);
@@ -1445,14 +1454,18 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
               : t("terminal.dormant.resumeFailedBody", { name: session.label || session.cwdLabel })}
         </p>
         <div className="canvas-operation-dormant-error-actions">
-          {freshOnly ? null : (
+          {freshOnly ? (
+            <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(true); }}>
+              {t("terminal.dormant.tryAgain")}
+            </button>
+          ) : (
             <button type="button" className="canvas-operation-dormant-action" onClick={() => { void resume(false); }}>
               {t("terminal.dormant.tryAgain")}
             </button>
           )}
-          {resumeState === "launch-option-error" ? null : (
+          {resumeState === "launch-option-error" || freshOnly ? null : (
             <button type="button" className="canvas-operation-dormant-action canvas-operation-dormant-action--ghost" onClick={() => { void resume(true); }}>
-              {freshOnly ? t("terminal.dormant.tryAgain") : t("terminal.dormant.startFresh")}
+              {t("terminal.dormant.startFresh")}
             </button>
           )}
         </div>
