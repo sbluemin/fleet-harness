@@ -156,14 +156,18 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     glideRef.current.raf = requestAnimationFrame(step);
   };
   const updateEdgeDepth = (event: { readonly clientY: number; readonly currentTarget: Element }, direction: -1 | 1) => {
-    const rect = event.currentTarget.getBoundingClientRect();
-    if (rect.height <= 0) return;
+    // 스트립 호스트는 height:0(sticky 앵커)이라 재면 항상 0이 나온다 — 보이는 fill(26px)을 잰다.
+    const rect = event.currentTarget.querySelector(".canvas-context-menu-edge-fill")?.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return;
     const into = direction === 1 ? (event.clientY - rect.top) / rect.height : (rect.bottom - event.clientY) / rect.height;
     glideRef.current.depth = Math.max(0, Math.min(1, into));
   };
   const jumpEdgePage = (direction: -1 | 1) => {
     const menu = menuRef.current;
     if (!menu) return;
+    // 클릭 직전의 pointermove가 이미 글라이드를 돌리고 있다 — rAF의 scrollTop 직접 대입이
+    // smooth 스크롤을 끊어 점프가 잘리므로, 점프는 글라이드를 멈추고 시작한다.
+    stopEdgeGlide();
     menu.scrollBy({
       top: direction * menu.clientHeight * EDGE_PAGE_JUMP_RATIO,
       behavior: prefersReducedMotion() ? "auto" : "smooth",
