@@ -47,6 +47,23 @@ const ASIDE_WIDTH = 208;
 const ASIDE_GAP = 8;
 // 방향키가 훑는 항목. 실행 종류 행과 모델 행은 이제 같은 목록의 형제라 한 집합으로 돈다.
 const MENU_ITEM_SELECTOR = ".canvas-context-menu-item, .operation-launch-variant-row";
+// 방향 스트립 hover 글라이드 속도(px/초). 스트립 안쪽으로 깊이 들어갈수록 가속한다 —
+// 스트립 가장자리를 스치면 천천히, 끝까지 밀어 넣으면 빠르게. rAF 타임스탬프로 경과 시간을
+// 곱해 이동하므로 60Hz든 120Hz든 초당 속도가 같다.
+const EDGE_GLIDE_BASE_SPEED = 132;
+const EDGE_GLIDE_DEPTH_SPEED = 288;
+// 한 프레임으로 인정하는 경과 시간 상한(초) — 탭 비활성 등으로 rAF가 오래 멈췄다 돌아와도
+// 그 공백만큼 목록이 한 번에 튀지 않게 자른다.
+const EDGE_GLIDE_MAX_FRAME_SECONDS = 0.064;
+// 스트립 클릭 한 번이 넘기는 분량 — 한 화면의 80%. 정확히 한 화면이면 경계 행이 화면을
+// 건널 때 연속성이 끊겨 어디까지 봤는지 잃는다.
+const EDGE_PAGE_JUMP_RATIO = 0.8;
+// 스크롤 게이지가 마지막 스크롤 뒤 사라지기까지의 대기.
+const SCROLL_GAUGE_HIDE_MS = 650;
+
+function prefersReducedMotion(): boolean {
+  return window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+}
 
 export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor", fixed = false, catalog, canLaunch, renderKindIcon, onLaunchKind, onClose }: CanvasContextMenuProps) {
   const t = useT();
@@ -74,6 +91,13 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   const effortAnchorRefs = useRef(new Map<string, HTMLDivElement>());
   const effortMenuRef = useRef<HTMLDivElement | null>(null);
   const effortCloseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 잘린 방향에만 서는 스트립. 네이티브 스크롤바를 걷어냈으므로(components.css) 이 스트립이
+  // 유일한 상시 절단 신호이자 포인터 항해 조작면이다.
+  const [edgeState, setEdgeState] = useState<{ readonly up: boolean; readonly down: boolean }>({ up: false, down: false });
+  const glideRef = useRef<{ raf: number | null; depth: number; lastTime: number | null }>({ raf: null, depth: 0.5, lastTime: null });
+  const gaugeRef = useRef<HTMLDivElement | null>(null);
+  const gaugeThumbRef = useRef<HTMLDivElement | null>(null);
+  const gaugeHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seenFeatureTours = globalSettings.state?.seenFeatureTours ?? [];
   const effortConfirmTipSeen = seenFeatureTours.includes(EFFORT_CONFIRM_TIP_SEEN_KEY);
   const openEffortValue = openEffortRow === null ? null : (rowEfforts[openEffortRow] ?? null);
@@ -110,6 +134,55 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     setEffortPosition({ id: rowId, ...placement });
     setOpenEffortRow(rowId);
   };
+  const stopEdgeGlide = useCallback(() => {
+    if (glideRef.current.raf === null) return;
+    cancelAnimationFrame(glideRef.current.raf);
+    glideRef.current.raf = null;
+  }, []);
+  const startEdgeGlide = (direction: -1 | 1) => {
+    // reduced-motion에서는 연속 이동을 접는다 — 클릭 스텝·휠·키보드가 그대로 남는다.
+    if (prefersReducedMotion()) return;
+    // 이미 흐르는 중이면 그대로 둔다 — pointermove마다 재시작하면 프레임이 리셋된다.
+    if (glideRef.current.raf !== null) return;
+    const menu = menuRef.current;
+    if (!menu) return;
+    glideRef.current.lastTime = null;
+    const step = (now: number) => {
+      const max = menu.scrollHeight - menu.clientHeight;
+      // 끝에 닿으면 루프를 끊는다 — 스트립이 사라져도 pointerleave는 포인터가 움직여야
+      // 발화하므로, 여기서 멈추지 않으면 빈 rAF가 hover 내내 돈다.
+      if ((direction === -1 && menu.scrollTop <= 0) || (direction === 1 && menu.scrollTop >= max)) {
+        stopEdgeGlide();
+        return;
+      }
+      // 이동량은 프레임 수가 아니라 경과 시간에 비례한다 — 120Hz에서 두 배로 흐르지 않게.
+      const elapsed = glideRef.current.lastTime === null
+        ? 0
+        : Math.min((now - glideRef.current.lastTime) / 1000, EDGE_GLIDE_MAX_FRAME_SECONDS);
+      glideRef.current.lastTime = now;
+      menu.scrollTop += direction * (EDGE_GLIDE_BASE_SPEED + glideRef.current.depth * EDGE_GLIDE_DEPTH_SPEED) * elapsed;
+      glideRef.current.raf = requestAnimationFrame(step);
+    };
+    glideRef.current.raf = requestAnimationFrame(step);
+  };
+  const updateEdgeDepth = (event: { readonly clientY: number; readonly currentTarget: Element }, direction: -1 | 1) => {
+    // 스트립 호스트는 height:0(sticky 앵커)이라 재면 항상 0이 나온다 — 보이는 fill(26px)을 잰다.
+    const rect = event.currentTarget.querySelector(".canvas-context-menu-edge-fill")?.getBoundingClientRect();
+    if (!rect || rect.height <= 0) return;
+    const into = direction === 1 ? (event.clientY - rect.top) / rect.height : (rect.bottom - event.clientY) / rect.height;
+    glideRef.current.depth = Math.max(0, Math.min(1, into));
+  };
+  const jumpEdgePage = (direction: -1 | 1) => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    // 클릭 직전의 pointermove가 이미 글라이드를 돌리고 있다 — rAF의 scrollTop 직접 대입이
+    // smooth 스크롤을 끊어 점프가 잘리므로, 점프는 글라이드를 멈추고 시작한다.
+    stopEdgeGlide();
+    menu.scrollBy({
+      top: direction * menu.clientHeight * EDGE_PAGE_JUMP_RATIO,
+      behavior: prefersReducedMotion() ? "auto" : "smooth",
+    });
+  };
   const scheduleEffortClose = () => {
     cancelEffortClose();
     // Cascade leave must wait for the grace window: closing the effort menu
@@ -138,6 +211,60 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
+  }, []);
+
+  // 잘린 방향 판정 — 목록 내용(카탈로그)·상자 크기·스크롤 위치가 바뀔 때마다 다시 센다.
+  // ResizeObserver는 뷰포트 clamp로 상자 높이가 변한 경우를, scroll 리스너는 항해를 좇는다.
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    if (!menu) return;
+    const sync = () => {
+      const max = menu.scrollHeight - menu.clientHeight;
+      const up = menu.scrollTop > 2;
+      const down = menu.scrollTop < max - 2;
+      setEdgeState((previous) => (previous.up === up && previous.down === down ? previous : { up, down }));
+    };
+    sync();
+    menu.addEventListener("scroll", sync, { passive: true });
+    if (typeof ResizeObserver === "undefined") return () => menu.removeEventListener("scroll", sync);
+    const observer = new ResizeObserver(sync);
+    observer.observe(menu);
+    return () => {
+      menu.removeEventListener("scroll", sync);
+      observer.disconnect();
+    };
+  }, [catalog, canLaunch]);
+
+  // 스크롤 게이지 — 굴리는 동안에만 나타나는 표시 전용 위치 표식. 매 스크롤 프레임의 기하는
+  // React 상태를 거치지 않고 DOM에 직접 쓴다(triage 덱 줌의 applyZoom과 같은 이유: 프레임당
+  // 재렌더를 피한다). is-on 클래스는 이 효과만 만지므로 정적 className과 충돌하지 않는다.
+  useEffect(() => {
+    const menu = menuRef.current;
+    const gauge = gaugeRef.current;
+    const thumb = gaugeThumbRef.current;
+    if (!menu || !gauge || !thumb) return;
+    const paint = () => {
+      const max = menu.scrollHeight - menu.clientHeight;
+      if (max <= 0) return;
+      const track = menu.clientHeight - 16;
+      const height = Math.max(24, (track * menu.clientHeight) / menu.scrollHeight);
+      thumb.style.height = `${height}px`;
+      thumb.style.top = `${8 + (menu.scrollTop / max) * (track - height)}px`;
+      gauge.classList.add("is-on");
+      if (gaugeHideTimerRef.current !== null) clearTimeout(gaugeHideTimerRef.current);
+      gaugeHideTimerRef.current = setTimeout(() => {
+        gaugeHideTimerRef.current = null;
+        gauge.classList.remove("is-on");
+      }, SCROLL_GAUGE_HIDE_MS);
+    };
+    menu.addEventListener("scroll", paint, { passive: true });
+    return () => {
+      menu.removeEventListener("scroll", paint);
+      if (gaugeHideTimerRef.current !== null) {
+        clearTimeout(gaugeHideTimerRef.current);
+        gaugeHideTimerRef.current = null;
+      }
+    };
   }, []);
 
   // Effort submenu uses a measured-height clamp — opening near the bottom would
@@ -194,7 +321,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
 
   useEffect(() => () => {
     cancelEffortClose();
-  }, []);
+    stopEdgeGlide();
+  }, [stopEdgeGlide]);
 
   // 강도 서브메뉴는 fixed라 목록이 굴러도 제자리에 남는다. 짚고 있던 행이 스크롤로 올라가면
   // 그 상자는 엉뚱한 행 옆에 붙어 그 행의 강도인 척한다 — 행을 눌러 실행하는 표면에서는
@@ -266,6 +394,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   }, []);
 
   const handleMenuKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    // 키보드가 개입하면 흐르던 글라이드를 끊는다 — 두 항해 수단이 같은 스크롤을 다투지 않게.
+    stopEdgeGlide();
     const target = event.target as HTMLElement;
     const onItem = target.matches?.(MENU_ITEM_SELECTOR) === true;
     switch (event.key) {
@@ -343,6 +473,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         tabIndex={-1}
         ref={menuRef}
         onKeyDown={handleMenuKeyDown}
+        // 휠·트랙패드가 개입하면 흐르던 글라이드를 끊는다(키보드와 같은 규율) — 스트립 위에서
+        // 역방향 제스처가 rAF 가산과 싸우지 않게. 네이티브 휠 스크롤은 그대로 흐른다.
+        onWheel={stopEdgeGlide}
         onMouseLeave={() => setHoverKey(null)}
         // 항목이 전부 tabIndex=-1이라 Tab은 메뉴를 건너뛴다. 그때 메뉴만 열린 채 남으면 사용자는
         // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
@@ -360,6 +493,29 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         }}
         {...{ [FEATURE_TOUR_BOUNDARY_ATTRIBUTE]: "" }}
       >
+        {/* 게이지·스트립은 sticky라 배치 변형(cursor/above/triage fixed)과 무관하게 스크롤 포트
+            가장자리에 붙고, height:0이라 목록 흐름을 밀지 않는다. 전부 aria-hidden 포인터 전용
+            장치다 — 키보드는 기존 방향키 포커스 추적이, 보조기술은 목록 자체가 담당한다. */}
+        <div ref={gaugeRef} className="canvas-context-menu-gauge" aria-hidden="true">
+          <div ref={gaugeThumbRef} className="canvas-context-menu-gauge-thumb" />
+        </div>
+        <div
+          className={`canvas-context-menu-edge canvas-context-menu-edge--top${edgeState.up ? " is-on" : ""}`}
+          aria-hidden="true"
+          // 글라이드는 실제 포인터 이동에만 시작한다. pointerenter는 키보드·휠 스크롤이 정지한
+          // 포인터 아래로 스트립을 데려와도(재히트테스트) 발화하므로, enter로 걸면 키보드 탐색
+          // 중에 목록이 저 혼자 흐른다.
+          onPointerMove={(event) => {
+            updateEdgeDepth(event, -1);
+            startEdgeGlide(-1);
+          }}
+          onPointerLeave={stopEdgeGlide}
+          // 포커스를 뺏지 않는다 — 메뉴 컨테이너 포커스가 흔들리면 blur 닫힘 규율과 겨룬다.
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => jumpEdgePage(-1)}
+        >
+          <div className="canvas-context-menu-edge-fill"><EdgeChevron direction="up" /></div>
+        </div>
         {catalog.length > 0 ? <>
           {primaryCatalog.map((plugin, index) => {
             // 모델 밴드를 펼치는 실행 종류와 바로 실행되는 종류를 갈라 세운다. Terminal Shell은
@@ -577,6 +733,19 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
             </div>
           ) : null}
         </> : <p className="theater-menu-empty">{t("canvas.menu.empty")}</p>}
+        <div
+          className={`canvas-context-menu-edge canvas-context-menu-edge--bottom${edgeState.down ? " is-on" : ""}`}
+          aria-hidden="true"
+          onPointerMove={(event) => {
+            updateEdgeDepth(event, 1);
+            startEdgeGlide(1);
+          }}
+          onPointerLeave={stopEdgeGlide}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => jumpEdgePage(1)}
+        >
+          <div className="canvas-context-menu-edge-fill"><EdgeChevron direction="down" /></div>
+        </div>
       </div>
       {activeDescription && asideSide
         ? (
@@ -831,6 +1000,21 @@ function itemKey(pluginId: string, kindId: string): string {
 }
 
 // 플러그인이 아이콘을 등록하지 않았을 때의 일반 폴백 마크 — 특정 플러그인 지식이 아니다.
+function EdgeChevron({ direction }: { readonly direction: "up" | "down" }) {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d={direction === "up" ? "M3.5 10 8 5.5 12.5 10" : "M3.5 6 8 10.5 12.5 6"}
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
 function FallbackGlyph() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">

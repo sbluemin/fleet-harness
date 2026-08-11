@@ -852,6 +852,63 @@ describe("CanvasContextMenu effort confirm tip", () => {
   });
 });
 
+describe("CanvasContextMenu edge strips", () => {
+  // jsdom은 레이아웃이 없어 scrollHeight/clientHeight가 0이다 — 오버플로를 인스턴스 속성으로 흉내 낸다.
+  function mockOverflow(menu: Element, { scrollHeight, clientHeight }: { readonly scrollHeight: number; readonly clientHeight: number }): void {
+    Object.defineProperty(menu, "scrollHeight", { value: scrollHeight, configurable: true });
+    Object.defineProperty(menu, "clientHeight", { value: clientHeight, configurable: true });
+  }
+  const stripOn = (side: "top" | "bottom"): boolean =>
+    document.querySelector(`.canvas-context-menu-edge--${side}`)!.classList.contains("is-on");
+
+  it("raises only the strip pointing at hidden content", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    const menu = document.querySelector(".canvas-context-menu")!;
+    mockOverflow(menu, { scrollHeight: 640, clientHeight: 320 });
+
+    menu.scrollTop = 0;
+    act(() => { menu.dispatchEvent(new Event("scroll")); });
+    expect(stripOn("top")).toBe(false);
+    expect(stripOn("bottom")).toBe(true);
+
+    menu.scrollTop = 160;
+    act(() => { menu.dispatchEvent(new Event("scroll")); });
+    expect(stripOn("top")).toBe(true);
+    expect(stripOn("bottom")).toBe(true);
+
+    menu.scrollTop = 320;
+    act(() => { menu.dispatchEvent(new Event("scroll")); });
+    expect(stripOn("top")).toBe(true);
+    expect(stripOn("bottom")).toBe(false);
+  });
+
+  it("keeps both strips down when the list fits", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    const menu = document.querySelector(".canvas-context-menu")!;
+    mockOverflow(menu, { scrollHeight: 320, clientHeight: 320 });
+
+    act(() => { menu.dispatchEvent(new Event("scroll")); });
+    expect(stripOn("top")).toBe(false);
+    expect(stripOn("bottom")).toBe(false);
+  });
+
+  it("lights the scroll gauge while the list is scrolling", () => {
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
+    const menu = document.querySelector(".canvas-context-menu")!;
+    mockOverflow(menu, { scrollHeight: 640, clientHeight: 320 });
+
+    const gauge = document.querySelector(".canvas-context-menu-gauge")!;
+    expect(gauge.classList.contains("is-on")).toBe(false);
+
+    menu.scrollTop = 160;
+    act(() => { menu.dispatchEvent(new Event("scroll")); });
+    expect(gauge.classList.contains("is-on")).toBe(true);
+    const thumb = document.querySelector<HTMLElement>(".canvas-context-menu-gauge-thumb")!;
+    expect(thumb.style.height).not.toBe("");
+    expect(thumb.style.top).not.toBe("");
+  });
+});
+
 function renderMenu(
   anchor: { readonly x: number; readonly y: number },
   viewportBounds: { readonly width: number; readonly height: number },

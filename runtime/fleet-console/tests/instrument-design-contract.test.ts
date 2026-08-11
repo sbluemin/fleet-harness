@@ -383,6 +383,31 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain("menuRef.current?.focus({ preventScroll: true });");
   });
 
+  it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
+    const components = source("styles/components.css");
+    const contextMenu = source("canvas/canvas-context-menu.tsx");
+    const menuBlock = components.match(/\n\.canvas-context-menu \{[\s\S]*?\n\}/)?.[0] ?? "";
+
+    // 떠 있는 실행 메뉴 안의 OS풍 스크롤바는 제품 밖 장치처럼 읽힌다 — 스크롤 포트(휠·키보드·
+    // 플라이아웃 scroll-follow)는 남기고 시각 장치만 메뉴 문법으로 바꾼다.
+    expect(menuBlock).toContain("overflow-y: auto;");
+    expect(menuBlock).toContain("scrollbar-width: none;");
+    expect(components).toContain(".canvas-context-menu::-webkit-scrollbar");
+
+    // 절단 신호·포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다. 전부 포인터
+    // 전용 장치라 aria-hidden이어야 한다 — 키보드는 방향키 포커스 추적이, 보조기술은 목록
+    // 자체가 담당한다.
+    expect(contextMenu).toContain("canvas-context-menu-edge canvas-context-menu-edge--top");
+    expect(contextMenu).toContain("canvas-context-menu-edge canvas-context-menu-edge--bottom");
+    expect(contextMenu).toContain('className="canvas-context-menu-gauge"');
+
+    // 스트립 hover 강조는 brass(위치/hover 채널) 문법 그대로다.
+    expect(components).toContain(".canvas-context-menu-edge.is-on:hover .canvas-context-menu-edge-fill");
+
+    // reduced-motion에서는 연속 글라이드를 접는다 — 클릭 스텝·휠·키보드만 남긴다.
+    expect(contextMenu).toContain("if (prefersReducedMotion()) return;");
+  });
+
   it("keeps minimap navigation and collapse controls while hiding Map in Formation and maximize", () => {
     const minimap = source("canvas/canvas-minimap.tsx");
     const canvas = source("canvas/canvas.tsx");
