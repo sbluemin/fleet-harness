@@ -256,6 +256,96 @@ export function isCommittableRemotePortDraft(value: string): boolean {
   return Number.isInteger(port) && port >= REMOTE_PORT_MIN && port <= REMOTE_PORT_MAX;
 }
 
+/** 서버 settings-domain의 REMOTE_BIND_HOST와 같은 집합. */
+const REMOTE_HOST_PATTERN = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
+/** 루프백과 와일드카드는 로컬 리스너와 포트를 다투므로 바인드 값이 아니다. 공표 호스트에는 이 제한이 없다. */
+const REMOTE_UNUSABLE_LISTEN_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
+export function isValidRemoteListenAddress(value: string): boolean {
+  return REMOTE_HOST_PATTERN.test(value) && !REMOTE_UNUSABLE_LISTEN_HOSTS.has(value);
+}
+
+export function isValidRemoteAdvertisedHost(value: string): boolean {
+  return REMOTE_HOST_PATTERN.test(value);
+}
+
+/** 기기가 실제로 향하는 주소. LAN 전용이면 수신 튜플이 곧 공표 튜플이다. */
+export function remoteEffectiveEndpoint(state: RemoteAccessState): { readonly host: string; readonly port: number } {
+  return state.publicEndpointEnabled
+    ? { host: state.advertisedHost, port: state.advertisedPort.value }
+    : { host: state.listenAddress, port: state.listenPort.value };
+}
+
+export type RemoteEndpointRequirement = "listenAddress" | "advertisedHost" | "acknowledgment";
+
+/** 리스너를 켜기 전에 아직 채워지지 않은 것. 비활성 컨트롤이 이유를 삼키지 않도록 화면이 그대로 읽는다. */
+export function remoteEndpointRequirements(state: RemoteAccessState): readonly RemoteEndpointRequirement[] {
+  const missing: RemoteEndpointRequirement[] = [];
+  if (!isValidRemoteListenAddress(state.listenAddress)) missing.push("listenAddress");
+  if (state.publicEndpointEnabled) {
+    if (!isValidRemoteAdvertisedHost(state.advertisedHost)) missing.push("advertisedHost");
+    if (!remoteAccessAcknowledgmentMatches(state)) missing.push("acknowledgment");
+  }
+  return missing;
+}
+
+/**
+ * 적용이 실제로 무엇을 끊는지. 서버의 reconcile 분기와 같은 판정이며, 화면이 미리 말할 근거다.
+ * - `none`: 리스너 무동작
+ * - `restart`: 세션은 끊기고 페어링은 남는다
+ * - `identity`: 인증서 신원이 바뀌므로 세션·미사용 권한·페어링이 모두 사라진다
+ */
+export type RemoteEndpointImpact = "none" | "restart" | "identity";
+
+export function remoteEndpointImpact(baseline: RemoteAccessState, next: RemoteAccessState): RemoteEndpointImpact {
+  const before = remoteEffectiveEndpoint(baseline);
+  const after = remoteEffectiveEndpoint(next);
+  if (before.host !== after.host || before.port !== after.port) return "identity";
+  if (baseline.listenAddress !== next.listenAddress || baseline.listenPort.value !== next.listenPort.value) return "restart";
+  return "none";
+}
+
+/** 화면이 그리는 경로 하나. 값이 갖춰지기 전에는 주소를 만들지 않는다 — 자리표시자를 코드체로 보이면 기기에 그대로 옮겨 적힌다. */
+export interface RemoteEndpointPresentation {
+  readonly ready: boolean;
+  readonly missing: readonly RemoteEndpointRequirement[];
+  readonly origin: string | null;
+  readonly forwardsTo: string | null;
+}
+
+export function buildRemoteEndpointPresentation(state: RemoteAccessState): RemoteEndpointPresentation {
+  const missing = remoteEndpointRequirements(state);
+  const addressed = !missing.includes("listenAddress") && !missing.includes("advertisedHost");
+  const endpoint = remoteEffectiveEndpoint(state);
+  return {
+    ready: missing.length === 0,
+    missing,
+    origin: addressed ? remoteAccessOrigin(endpoint.host, endpoint.port) : null,
+    forwardsTo: addressed && state.publicEndpointEnabled ? `${state.listenAddress}:${state.listenPort.value}` : null,
+  };
+}
+
+export function remoteAccessStateEquals(a: RemoteAccessState, b: RemoteAccessState): boolean {
+  return a.enabled === b.enabled
+    && a.publicEndpointEnabled === b.publicEndpointEnabled
+    && a.listenAddress === b.listenAddress
+    && a.advertisedHost === b.advertisedHost
+    && a.listenPort.mode === b.listenPort.mode
+    && a.listenPort.value === b.listenPort.value
+    && a.advertisedPort.mode === b.advertisedPort.mode
+    && a.advertisedPort.value === b.advertisedPort.value
+    && remoteAcknowledgmentEquals(a.acknowledgment, b.acknowledgment);
+}
+
+function remoteAcknowledgmentEquals(a: RemoteAccessAcknowledgment | null, b: RemoteAccessAcknowledgment | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.version === b.version
+    && a.listenAddress === b.listenAddress
+    && a.listenPort === b.listenPort
+    && a.advertisedHost === b.advertisedHost
+    && a.advertisedPort === b.advertisedPort;
+}
+
 export function isValidRemoteAccessPort(value: unknown): value is RemoteAccessPort {
   if (!value || typeof value !== "object") return false;
   const port = value as Partial<RemoteAccessPort>;

@@ -1101,21 +1101,17 @@
 .remote-switch.is-on .remote-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
 .remote-switch:disabled { cursor: not-allowed; opacity: 0.5; }
 
-.remote-choices { display: flex; flex-direction: column; gap: var(--space-2); }
-.remote-choice { display: flex; align-items: baseline; gap: var(--space-3); cursor: default; }
-.remote-choice input { accent-color: var(--brass); }
-.remote-choice-label { color: var(--text-primary); font-size: 13px; }
-.remote-choice code { color: var(--text-secondary); font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.04em; }
-.remote-custom { display: flex; flex-direction: column; gap: 4px; margin-left: 26px; }
-.remote-custom .console-port-input { width: 100%; max-width: 260px; }
-
-.remote-endpoint-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
+/* 한 단으로 흐른다. 옆 칸에 세우면 그리드 행 높이를 따라 늘어나, 짧은 쪽이 제 legend에서 100px 넘게 떨어진다. */
+.remote-endpoint-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
 .remote-public-endpoint-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); padding-top: var(--space-3); border-top: 1px solid var(--surface-rim); }
 .remote-listen-address-control { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .remote-field { display: flex; flex-direction: column; gap: var(--space-2); color: var(--text-secondary); font-size: 12px; }
-.remote-interface-presets { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.remote-field-legend { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.remote-requirements { margin: 0; padding-left: 18px; color: var(--text-secondary); font-size: 12.5px; line-height: 1.6; }
+/* 트랙 폭이 같아야 인터페이스 이름 길이에 따라 줄이 들쭉날쭉해지지 않는다. */
+.remote-interface-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: var(--space-2); }
 .remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink-abyss) 32%, transparent); color: var(--text-secondary); text-align: left; }
-.remote-interface-preset code { color: var(--text-primary); font-family: var(--font-mono); font-size: 11.5px; }
+.remote-interface-preset code { color: var(--text-primary); font-family: var(--font-mono); font-size: 11.5px; overflow-wrap: anywhere; }
 .remote-interface-preset:hover, .remote-interface-preset.is-selected { border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); background: color-mix(in oklch, var(--brass) 10%, transparent); }
 .remote-interface-preset.is-selected { box-shadow: inset 3px 0 0 var(--brass); }
 .remote-field input, .remote-port-control input[type="number"] {
@@ -1128,18 +1124,51 @@
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
-.remote-port-control { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); }
+.remote-field input[aria-invalid="true"], .remote-port-control input[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim-strong)); }
+
+/* 내용 높이만 차지한다 — 이웃 칸을 따라 늘어나지 않으므로 legend와 컨트롤이 붙어 있다. */
+.remote-port-control { display: flex; flex-direction: column; gap: var(--space-2); align-self: start; margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); }
 .remote-port-control legend { padding: 0 var(--space-1); color: var(--text-secondary); font-size: 12px; }
 .remote-port-control label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: 12px; }
 .remote-port-control input[type="radio"], .remote-acknowledgment input { accent-color: var(--brass); }
 .remote-port-control input[type="number"] { width: 110px; }
-.remote-route-preview { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: 0; color: var(--text-secondary); font-size: 12px; }
-.remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-mono); overflow-wrap: anywhere; }
+.remote-port-modes { display: flex; flex-wrap: wrap; gap: var(--space-3); }
+.remote-port-value { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.remote-port-auto { color: var(--text-primary); font-family: var(--font-mono); font-size: 12.5px; }
+
+/* 경로는 이 카드에서 한 번만 그린다. 두 곳에서 그리면 같은 값이 두 서식으로 어긋난다. */
+.remote-route-preview { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink-abyss) 30%, transparent); color: var(--text-secondary); font-size: 12px; }
+.remote-route-caption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2); margin: 0 0 var(--space-1); color: var(--text-primary); font-size: 12.5px; font-weight: var(--weight-bold); }
+.remote-route-caption span { color: var(--text-secondary); font-family: var(--font-mono); font-size: 10.5px; font-weight: var(--weight-regular); letter-spacing: 0.12em; text-transform: uppercase; }
+.remote-route-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-2); margin: 0; }
+.remote-route-row span { flex: none; font-size: 11.5px; }
+.remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+
 .remote-acknowledgment { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
-.remote-status-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
-.remote-status-grid p { margin: 0; color: var(--text-secondary); font-size: 12px; }
-.remote-status-grid strong { color: var(--text-primary); }
-@media (max-width: 720px) { .remote-endpoint-grid, .remote-status-grid { grid-template-columns: 1fr; } }
+.remote-status-note { margin: 0; color: var(--text-secondary); font-size: 12px; }
+.remote-status-note strong { color: var(--text-primary); }
+
+/* 설정이 갖춰졌는지와 리스너가 살아 있는지는 다른 사실이라 색이 아니라 상태로 갈린다. */
+.remote-lozenge { flex: none; padding: 3px var(--space-3); border: 1px solid var(--surface-rim-strong); border-radius: 999px; color: var(--text-secondary); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; white-space: nowrap; }
+.remote-lozenge[data-remote-state="listening"] { border-color: color-mix(in oklch, var(--positive) 55%, transparent); background: color-mix(in oklch, var(--positive) 10%, transparent); color: var(--positive-ink); }
+.remote-lozenge[data-remote-state="failed"] { border-color: color-mix(in oklch, var(--coral) 55%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
+
+.remote-stale { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding: var(--space-3); border: 1px solid color-mix(in oklch, var(--warn) 45%, transparent); border-radius: var(--radius-sm); background: var(--warn-glow); color: var(--warn-ink); font-size: 12px; }
+
+/* 적용이 무엇을 끊는지 먼저 말한다. 재시작과 신원 교체는 잃는 것이 달라 한 색으로 덮지 않는다. */
+.remote-consequence { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); color: var(--text-secondary); font-size: 12px; line-height: 1.55; }
+.remote-consequence p { margin: 0; }
+.remote-consequence-title { color: var(--text-primary); font-size: 12.5px; font-weight: var(--weight-bold); }
+.remote-consequence-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-top: var(--space-1); }
+.remote-consequence.is-restart { border-color: color-mix(in oklch, var(--warn) 45%, transparent); background: var(--warn-glow); }
+.remote-consequence.is-identity, .remote-consequence.is-stop { border-color: color-mix(in oklch, var(--coral) 45%, transparent); background: color-mix(in oklch, var(--coral) 8%, transparent); }
+
+.remote-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-3); padding-top: var(--space-3); border-top: 1px solid var(--surface-rim); }
+.remote-actions-note { min-width: 0; color: var(--text-secondary); font-size: 12px; }
+.remote-actions-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.remote-create.is-quiet { border-color: var(--surface-rim-strong); background: transparent; color: var(--text-primary); }
+.remote-create.is-quiet:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 55%, transparent); }
+.remote-create.is-danger { border-color: color-mix(in oklch, var(--coral) 55%, transparent); background: color-mix(in oklch, var(--coral) 12%, transparent); color: var(--coral-ink); }
 
 .remote-fingerprint {
   overflow-wrap: anywhere;
