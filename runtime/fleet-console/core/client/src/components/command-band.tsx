@@ -10,6 +10,7 @@ import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
 import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
+import { ViewModeToggle } from "./view-mode-toggle.js";
 import { launchProviderFromOperationPayload, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -22,7 +23,7 @@ import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
-import { cycleViewModePreference, useViewMode } from "../view-mode-store.js";
+import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
 interface NavigatorWithUserAgentData extends Navigator {
@@ -71,11 +72,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const railChromeExpanded = useRailChromeExpanded();
   const viewMode = useViewMode();
   const operationsViewVisible = requestedOperationsViewVisible && viewMode.effective !== "mobile";
-  const viewModeLabel = t(viewMode.preference === "auto"
-    ? "chrome.commandBand.viewModeAuto"
-    : viewMode.preference === "mobile"
-      ? "chrome.commandBand.viewModeMobile"
-      : "chrome.commandBand.viewModeDesktop");
   const modLabel = resolveModLabel();
   const sideBarShortcut = `${modLabel}${modLabel === "⌘" ? "" : "+"}B`;
   const railShortcut = `${modLabel}${modLabel === "⌘" ? "⌥" : "+Alt+"}B`;
@@ -659,9 +655,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         {fullscreen.isFullscreen ? <button type="button" className="command-band-button command-band-dock-toggle" onClick={fullscreen.toggleDock} aria-label={t("chrome.commandBand.keepCommandBandVisible")} aria-pressed={fullscreen.isDocked} title={fullscreen.isDocked ? t("chrome.commandBand.stopKeepingCommandBandVisible") : t("chrome.commandBand.keepCommandBandVisible")}>
           <PinIcon />
         </button> : null}
-        <button type="button" className="command-band-button command-band-viewmode" onClick={cycleViewModePreference} aria-label={viewModeLabel} aria-pressed={viewMode.preference !== "auto"} title={viewModeLabel}>
-          {viewMode.preference === "auto" ? <ViewModeAutoIcon /> : viewMode.preference === "mobile" ? <ViewModeMobileIcon /> : <ViewModeDesktopIcon />}
-        </button>
+        <ViewModeToggle className="command-band-button command-band-viewmode" />
         <CommandBandSystemCluster />
         {panelTogglesVisible ? <button type="button" className="command-band-button command-band-rail-toggle" onClick={handleRailToggle} aria-label={railToggleLabel} title={railToggleLabel}>
           <PanelToggleIcon side="right" />
@@ -739,17 +733,8 @@ function SearchIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="7" cy="7" r="4.2" fill="none" stroke="currentColor" strokeWidth="1.3" /><path d="M10.4 10.4 13.5 13.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>;
 }
 
-function ViewModeAutoIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="2.5" width="10" height="7.5" rx="1.4" strokeWidth="1.2" /><path d="M4.5 12.5h4M6.5 10v2.5" strokeWidth="1.2" strokeLinecap="round" /><rect x="9.5" y="6.5" width="4.5" height="7" rx="1" strokeWidth="1.2" /></svg>;
-}
 
-function ViewModeMobileIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="4.25" y="1.5" width="7.5" height="13" rx="1.6" strokeWidth="1.3" /><path d="M6.7 3.3h2.6M7.4 12.7h1.2" strokeWidth="1.2" strokeLinecap="round" /></svg>;
-}
 
-function ViewModeDesktopIcon() {
-  return <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true"><rect x="1.5" y="2.25" width="13" height="9" rx="1.5" strokeWidth="1.3" /><path d="M5 14h6M8 11.25V14" strokeWidth="1.3" strokeLinecap="round" /></svg>;
-}
 
 // War Room 도착 스포트라이트 — 무대를 비추는 광원.
 function SpotlightIcon() {

@@ -34,7 +34,9 @@ import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
-import { getViewModeSnapshot } from "./view-mode-store.js";
+import { useMobileSessionOpen } from "./mobile/mobile-store.js";
+import { MobileTabBar } from "./mobile/mobile-tab-bar.js";
+import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
 import type { CompanionShortcutEntry } from "./shortcuts-catalog.js";
 import { availableCompanionPanels, usableCompanionShortcuts } from "./companion-shortcut.js";
@@ -99,6 +101,8 @@ export function App() {
 
   const pathname = location.pathname;
   const operationsViewVisible = pathname.startsWith("/operations");
+  const mobileLayout = useViewMode().effective === "mobile";
+  const mobileSessionOpen = useMobileSessionOpen();
   const navigate = useNavigate();
   // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /operations에만 마운트되므로
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
@@ -312,7 +316,10 @@ export function App() {
   return (
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
       <div className="console-shell">
-        <CommandBand operationsViewVisible={operationsViewVisible} />
+        {/* The mobile layout carries its own header and tab bar, so the band would be a second,
+            taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
+            mobile header and its settings entry becomes a tab, so nothing is stranded. */}
+        {mobileLayout ? null : <CommandBand operationsViewVisible={operationsViewVisible} />}
         <FloatingWidgetLayer />
         {/* 배너는 링크가 live가 아닌 동안 유지한다 — offline에만 걸면 재연결 시도가 시작되는 순간
             배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
@@ -323,14 +330,23 @@ export function App() {
           </div>
         ) : null}
         <ControlBar />
-        <main className="console-route-content">
-          <Routes>
-            <Route path="/" element={<Navigate to="/operations" replace />} />
-            <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
-            <Route path="/settings" element={<GlobalSettings />} />
-            <Route path="*" element={<Navigate to="/operations" replace />} />
-          </Routes>
-        </main>
+        {(() => {
+          const routeContent = (
+            <main className="console-route-content">
+              <Routes>
+                <Route path="/" element={<Navigate to="/operations" replace />} />
+                <Route path="/operations" element={<Operations state={state} claimBootPanelMinimization={claimBootPanelMinimization} onDeferredDeletion={enqueueDeletion} />} />
+                <Route path="/settings" element={<GlobalSettings />} />
+                <Route path="*" element={<Navigate to="/operations" replace />} />
+              </Routes>
+            </main>
+          );
+          // The tab bar sits outside the routes because its destinations are routes: settings is a
+          // tab, and a bar that unmounted with the operations route would strand the way back.
+          return mobileLayout
+            ? <div className="mobile-frame">{routeContent}{mobileSessionOpen ? null : <MobileTabBar />}</div>
+            : routeContent;
+        })()}
         <OperationSearch
           state={state}
           railPanels={paletteRailPanels}

@@ -403,7 +403,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     context.onSetCompanionPanelVisible,
   ]);
 
-  const handles = (
+  // A host that cannot open companions gets no handle for them — the mobile layout hands the
+  // whole surface to the session and leaves this callback out, so the chip would open nothing.
+  const handles = context.onRequestCompanions === undefined ? null : (
     <div className="session-analyst-handle-stack">
       <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
     </div>

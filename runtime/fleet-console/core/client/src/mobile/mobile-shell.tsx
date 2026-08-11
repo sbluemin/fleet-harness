@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
 
@@ -6,11 +6,10 @@ import { useT } from "../i18n/index.js";
 import type { OperationNode, OperationNotification } from "../types.js";
 import { MobileOperationList } from "./mobile-operation-list.js";
 import { MobileSessionView } from "./mobile-session-view.js";
-import { useMobileTab } from "./mobile-store.js";
-import { MobileTabBar } from "./mobile-tab-bar.js";
+import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theme, language, onSelectOperation, onCloseOperation }: {
+export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theme, language, onSelectOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
@@ -18,7 +17,6 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly onSelectOperation: (operationId: string | null) => void;
-  readonly onCloseOperation: (operationId: string) => void;
 }) {
   const t = useT();
   const activeTab = useMobileTab();
@@ -48,6 +46,24 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
     onSelectOperation(selectedOperation.id);
   }, [onSelectOperation, selectedOperation]);
 
+  // An open operation takes the whole layout, so the bar above this shell steps aside for it.
+  useEffect(() => {
+    setMobileSessionOpen(selectedOperation !== null);
+    return () => setMobileSessionOpen(false);
+  }, [selectedOperation]);
+
+  // The tab bar lives above this shell, so a tab press is observed here rather than handed down;
+  // picking a tab leaves the open operation the same way the bar used to close it directly.
+  const previousTabRef = useRef(activeTab);
+  useEffect(() => {
+    if (previousTabRef.current === activeTab) return;
+    previousTabRef.current = activeTab;
+    if (selectedOperationId === null) return;
+    replaceOperationId(null);
+    setSelectedOperationId(null);
+    onSelectOperation(null);
+  }, [activeTab, onSelectOperation, selectedOperationId]);
+
   const openOperation = (operationId: string) => {
     const url = new URL(window.location.href);
     url.searchParams.set("op", operationId);
@@ -55,15 +71,6 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
     setSelectedOperationId(operationId);
     onSelectOperation(operationId);
   };
-  const closeSession = () => {
-    if (window.history.state?.fleetMobileOperation === true) window.history.back();
-    else {
-      replaceOperationId(null);
-      setSelectedOperationId(null);
-      onSelectOperation(null);
-    }
-  };
-
   let content;
   if (selectedOperation) {
     content = (
@@ -73,17 +80,11 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
         language={language}
         active={activeOperationId === selectedOperation.id}
         onActivate={() => onSelectOperation(selectedOperation.id)}
-        onBack={closeSession}
-        onClose={() => {
-          onCloseOperation(selectedOperation.id);
-          replaceOperationId(null);
-          setSelectedOperationId(null);
-        }}
       />
     );
   } else if (activeTab === "operations") {
     content = <MobileOperationList operations={operations} operationStatus={operationStatus} notificationIds={notificationIds} onOpen={openOperation} />;
-  } else if (activeTab === "alerts") {
+  } else {
     content = (
       <section className="mobile-simple-panel">
         <h1>{t("mobile.alerts.title")}</h1>
@@ -92,19 +93,11 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
         ))}
       </section>
     );
-  } else {
-    content = <section className="mobile-simple-panel"><h1>{t("mobile.tools.title")}</h1><p>{t("mobile.tools.empty")}</p></section>;
   }
 
   return (
     <main className="mobile-shell">
       <div className="mobile-shell-content">{content}</div>
-      <MobileTabBar onSelect={() => {
-        if (selectedOperationId === null) return;
-        replaceOperationId(null);
-        setSelectedOperationId(null);
-        onSelectOperation(null);
-      }} />
     </main>
   );
 }

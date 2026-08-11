@@ -1,0 +1,17 @@
+{
+  "name": "fleet-console-view",
+  "version": "0.1.0",
+  "private": true,
+  "main": "src/index.ts",
+  "expo": {
+    "autolinking": {
+      "nativeModuleDir": "android"
+    }
+  },
+  "peerDependencies": {
+    "expo": "*",
+    "expo-modules-core": "*",
+    "react": "*",
+    "react-native": "*"
+  }
+}

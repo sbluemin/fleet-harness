@@ -1,7 +1,9 @@
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
+import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../i18n/index.js";
 import { operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
+import { openQuickLaunch } from "../store.js";
 import type { OperationNode } from "../types.js";
 
 const STATUS_ORDER: readonly OperationActivity[] = ["awaiting", "running", "background", "idle", "dormant"];
@@ -20,11 +22,16 @@ export function MobileOperationList({ operations, operationStatus, notificationI
   return (
     <section className="mobile-operation-list" aria-labelledby="mobile-operation-list-title">
       <header className="mobile-list-header">
-        <div>
-          <span className="mobile-kicker">{t("mobile.operations.kicker")}</span>
-          <h1 id="mobile-operation-list-title">{t("mobile.operations.title")}</h1>
+        <h1 id="mobile-operation-list-title">{t("mobile.operations.title")}</h1>
+        <div className="mobile-list-actions">
+          <ViewModeToggle className="mobile-header-icon-button" />
+          <span className="mobile-total-count">{operations.length}</span>
+          {/* Quick Launch is the one launch path the shell owns; the desktop reaches it from the
+              command band, which this layout hides. */}
+          <button type="button" className="mobile-new-operation" onClick={openQuickLaunch} aria-label={t("mobile.operations.new")}>
+            <span aria-hidden="true">+</span>
+          </button>
         </div>
-        <span className="mobile-total-count">{operations.length}</span>
       </header>
       <div className="mobile-status-sections">
         {sections.length === 0 ? (

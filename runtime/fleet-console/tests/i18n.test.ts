@@ -44,6 +44,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Quick Launch",
   "Theater",
   "Codex",
+  // 실행 그룹은 공급자 제품명을 그대로 읽는다 — Codex와 같은 자리다.
+  "Claude",
   "Console",
   "Terminal",
   // 테마·포트 모드·언어 선택 라벨(고유명)

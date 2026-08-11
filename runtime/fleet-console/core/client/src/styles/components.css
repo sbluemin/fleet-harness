@@ -8475,6 +8475,10 @@
   inset: 0;
   border-radius: var(--radius-md);
   overflow: hidden;
+  /* A pinch here resizes the terminal, so the browser must not read it as page zoom. The gesture
+     starts on the compositor, which consults this before any handler runs — a touchmove
+     preventDefault cannot take it back, and the WebView's own zoom switch did not hold. */
+  touch-action: none;
 }
 
 .terminal-canvas .xterm,

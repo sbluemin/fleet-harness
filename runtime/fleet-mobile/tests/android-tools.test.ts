@@ -1,0 +1,104 @@
+import { describe, expect, it } from "vitest";
+import {
+  APPLICATION_ID,
+  inspectAaptManifestTree,
+  inspectBadging,
+  parseJavaMajor,
+  requireAndroidSdk,
+  verifyDebugSigner,
+  verifyManifestContract,
+  withJavaNativeAccess,
+} from "../scripts/lib/android-tools.mjs";
+
+const manifestTree = `
+N: android=http://schemas.android.com/apk/res/android
+  E: manifest (line=2)
+    A: package="com.dotobokuri.fleet.mobile" (Raw: "com.dotobokuri.fleet.mobile")
+    E: uses-permission (line=6)
+      A: android:name(0x01010003)="android.permission.INTERNET" (Raw: "android.permission.INTERNET")
+    E: permission (line=7)
+      A: android:name(0x01010003)="com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" (Raw: "com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+      A: android:protectionLevel(0x01010009)=(type 0x11)0x2
+    E: uses-permission (line=9)
+      A: android:name(0x01010003)="com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" (Raw: "com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
+    E: application (line=10)
+      A: android:debuggable(0x0101000f)=(type 0x12)0xffffffff
+      A: android:usesCleartextTraffic(0x010104ec)=(type 0x12)0x0
+      E: activity (line=11)
+        A: android:name(0x01010003)="com.dotobokuri.fleet.mobile.MainActivity" (Raw: "com.dotobokuri.fleet.mobile.MainActivity")
+        A: android:exported(0x01010510)=(type 0x12)0xffffffff
+      E: activity (line=15)
+        A: android:name(0x01010003)="com.dotobokuri.fleet.mobile.FleetLinkActivity" (Raw: "com.dotobokuri.fleet.mobile.FleetLinkActivity")
+        A: android:exported(0x01010510)=(type 0x12)0xffffffff
+      E: provider (line=20)
+        A: android:name(0x01010003)="expo.modules.filesystem.FileSystemFileProvider" (Raw: "expo.modules.filesystem.FileSystemFileProvider")
+        A: android:exported(0x01010510)=(type 0x12)0x0
+`;
+
+const badging = `
+package: name='com.dotobokuri.fleet.mobile' versionCode='1' versionName='1.0.0'
+sdkVersion:'24'
+targetSdkVersion:'36'
+`;
+
+const signer = `
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Signer #1 certificate DN: CN=Android Debug, OU=Android, O=Unknown, L=Unknown, ST=Unknown, C=US
+Signer #1 certificate SHA-256 digest: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+`;
+
+describe("Android APK contract helpers", () => {
+  it("accepts the fixed package, SDK, permission, and component contract", () => {
+    verifyManifestContract(inspectAaptManifestTree(manifestTree), inspectBadging(badging));
+  });
+
+  it("fails closed on additional permissions", () => {
+    const manifest = inspectAaptManifestTree(
+      manifestTree.replace(
+        "    E: application",
+        `    E: uses-permission (line=7)\n      A: android:name(0x01010003)=\"android.permission.CAMERA\" (Raw: \"android.permission.CAMERA\")\n    E: application`,
+      ),
+    );
+    expect(() => verifyManifestContract(manifest, inspectBadging(badging))).toThrow(
+      /Unexpected APK permissions/,
+    );
+  });
+
+  it("fails closed on another exported component", () => {
+    const manifest = inspectAaptManifestTree(
+      manifestTree.replace(
+        "      E: provider",
+        `      E: service (line=18)\n        A: android:name(0x01010003)=\".LeakedService\" (Raw: \".LeakedService\")\n        A: android:exported(0x01010510)=(type 0x12)0xffffffff\n      E: provider`,
+      ),
+    );
+    expect(() => verifyManifestContract(manifest, inspectBadging(badging))).toThrow(
+      `service:${APPLICATION_ID}.LeakedService`,
+    );
+  });
+
+  it("requires an Android debug signer", () => {
+    verifyDebugSigner(signer);
+    expect(() => verifyDebugSigner(signer.replace("CN=Android Debug", "CN=Release"))).toThrow(
+      /exactly one Android Debug signer/,
+    );
+    expect(() => verifyDebugSigner(signer.replace("CN=Android Debug", "CN=Android Debugger"))).toThrow(
+      /exactly one Android Debug signer/,
+    );
+  });
+
+  it("requires one absolute SDK root", () => {
+    expect(() => requireAndroidSdk({})).toThrow(/ANDROID_SDK_ROOT/);
+    expect(() => requireAndroidSdk({ ANDROID_SDK_ROOT: "relative" })).toThrow(/absolute/);
+  });
+
+  it("enables native access only for JDK 24 and newer", () => {
+    expect(parseJavaMajor('openjdk version "21.0.8" 2025-07-15 LTS')).toBe(21);
+    expect(parseJavaMajor('openjdk version "25.0.1" 2025-10-21')).toBe(25);
+    expect(withJavaNativeAccess(21, "-Xmx2g")).toBe("-Xmx2g");
+    expect(withJavaNativeAccess(25, "-Xmx2g")).toBe("-Xmx2g --enable-native-access=ALL-UNNAMED");
+    expect(withJavaNativeAccess(25, "--enable-native-access=ALL-UNNAMED")).toBe(
+      "--enable-native-access=ALL-UNNAMED",
+    );
+  });
+});

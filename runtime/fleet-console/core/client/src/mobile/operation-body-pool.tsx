@@ -19,10 +19,11 @@ export interface OperationBodyConfig {
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
-  readonly onRequestCompanions: (open: boolean) => void;
-  readonly companionsOpen: boolean;
-  readonly hiddenCompanionPanelIds: readonly string[];
-  readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
+  /** Absent on a host without companion panels; a plugin reads that absence and offers none. */
+  readonly onRequestCompanions?: (open: boolean) => void;
+  readonly companionsOpen?: boolean;
+  readonly hiddenCompanionPanelIds?: readonly string[];
+  readonly onSetCompanionPanelVisible?: (companionPanelId: string, visible: boolean) => void;
 }
 
 interface PoolRegistry {
@@ -239,10 +240,16 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     onActivate: () => configRef.current?.onActivate(),
     onClose: () => configRef.current?.onClose(),
     onGeometryChange: (geometry: OperationGeometry) => configRef.current?.onGeometryChange(geometry),
-    onRequestCompanions: (open: boolean) => configRef.current?.onRequestCompanions(open),
+    // Forwarded only when the host declares them; wrapping an absent callback would turn "no
+    // companions here" into a handler that exists and does nothing.
+    onRequestCompanions: current.onRequestCompanions === undefined
+      ? undefined
+      : (open: boolean) => configRef.current?.onRequestCompanions?.(open),
     companionsOpen: current.companionsOpen,
     hiddenCompanionPanelIds: current.hiddenCompanionPanelIds,
-    onSetCompanionPanelVisible: (id: string, visible: boolean) => configRef.current?.onSetCompanionPanelVisible(id, visible),
+    onSetCompanionPanelVisible: current.onSetCompanionPanelVisible === undefined
+      ? undefined
+      : (id: string, visible: boolean) => configRef.current?.onSetCompanionPanelVisible?.(id, visible),
   } satisfies OperationRenderContext;
 
   return createPortal(
