@@ -5,6 +5,13 @@ import type { OperationLaunchVariantChip, OperationLaunchVariantRow } from "@fle
 /** 트랙 좌우 안쪽 여백 — 손잡이 반지름과 같아야 양 끝 스톱에서 손잡이가 트랙을 넘지 않는다. */
 const EDGE = 13;
 
+/** 닫힌 트랙의 외곽 폭. CSS의 --effort-closed-track-width와 같은 값이어야 한다. */
+const CLOSED_TRACK_WIDTH = 116;
+
+/** 스톱 스팬이 아닌 외곽 폭 — 좌우 패딩(EDGE×2)과 1px 테두리 둘. box-sizing이 border-box라
+    간격 산술에서 테두리를 빼먹으면 포인터 적중 판정이 CSS 좌표와 어긋난다. */
+const TRACK_CHROME = EDGE * 2 + 2;
+
 interface EffortSlot {
   readonly id: string | null;
   readonly label: string;
@@ -27,8 +34,9 @@ export interface EffortTrackProps {
   readonly autoLabel: string;
   readonly ariaLabel: string;
   readonly autoValueText: string;
+  /** 닫힌 게이트의 ✦ 토글이 가지는 개방 라벨. */
   readonly apexToggleLabel?: string;
-  /** 게이트가 열린 동안 ✦ 자리를 물려받는 접힘 셰브론의 라벨. */
+  /** 게이트가 열린 동안 같은 토글이 가지는 접힘 라벨. */
   readonly apexCollapseLabel?: string;
   readonly className?: string;
 }
@@ -114,6 +122,17 @@ export function EffortTrack({
     return liveIndexRef.current;
   }, [last, slots]);
 
+  // 닫힌 사다리(일상 단) 간격을 열린 뒤에도 그대로 쓴다. 좌표는 전부 픽셀 앵커다 —
+  // 비율(index/last) 좌표는 게이트가 열려 슬롯 수가 바뀌는 순간 %가 즉시 점프해,
+  // 폭 전이(360ms)를 따라 기존 스톱·손잡이가 미끄러진다. 픽셀 좌표에서는 기존 단이
+  // 단 1px도 움직이지 않고 오른쪽 봉인만 늘어난다. CSS 쪽 같은 값은 --effort-track-gap.
+  const closedIntervals = Math.max(ordinaryRungs.length, 1);
+  const gap = (CLOSED_TRACK_WIDTH - TRACK_CHROME) / closedIntervals;
+  const leftAt = useCallback(
+    (position: number) => `calc(${EDGE}px + var(--effort-track-gap) * ${position})`,
+    [],
+  );
+
   const commit = useCallback((next: number) => {
     clearCollapseTimer();
     const slot = slots[next];
@@ -124,8 +143,7 @@ export function EffortTrack({
       && (previous?.id == null || !gatedRungs.includes(previous.id));
     liveIndexRef.current = next;
     if (entersApex) {
-      const ratio = last === 0 ? 0 : next / last;
-      setBurstLeft(`calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))`);
+      setBurstLeft(leftAt(next));
       setBurstKey((key) => key + 1);
     } else if (apexOpen && (slot.id === null || !gatedRungs.includes(slot.id))) {
       collapseTimerRef.current = setTimeout(() => {
@@ -141,11 +159,9 @@ export function EffortTrack({
     const track = trackRef.current;
     if (!track || last === 0) return null;
     const rect = track.getBoundingClientRect();
-    const span = rect.width - EDGE * 2;
-    if (span <= 0) return null;
-    const ratio = Math.max(0, Math.min((clientX - rect.left - EDGE) / span, 1));
-    return nearestSelectable(Math.round(ratio * last));
-  }, [last, nearestSelectable]);
+    return nearestSelectable(Math.round((clientX - rect.left - EDGE) / gap));
+  }, [gap, last, nearestSelectable]);
+
 
   const fromPointer = useCallback((event: PointerEvent<HTMLDivElement>) => {
     const next = indexFromPointer(event.clientX);
@@ -207,13 +223,6 @@ export function EffortTrack({
     commit(next);
   }, [commit, index, last, nearestSelectable, onConfirmCurrent, slots]);
 
-  const ratio = last === 0 ? 0 : index / last;
-  // 심은 열린 트랙의 슬롯 좌표로 둔다 — 전체 사다리 길이로 나누면 게이트 부분집합
-  // (max만 등)에서 심이 max/ultra 사이가 아니라 엉뚱한 자리에 선다.
-  const seamRatio = !apexOpen || last === 0 ? 0 : (ordinaryRungs.length + 0.5) / last;
-  // 닫힌 사다리(일상 단) 간격 폭을 열린 뒤에도 유지한다 — 스톱 수를 늘릴 때 트랙만
-  // 비례해 넓히고, 셸이 남는 폭을 트랙에 밀어 넣어 간격을 벌리지 않는다.
-  const closedIntervals = Math.max(ordinaryRungs.length, 1);
 
   return (
     <div className={`effort-track-shell${className ? ` ${className}` : ""}`}>
@@ -264,7 +273,7 @@ export function EffortTrack({
             비운 상태가 최소 강도를 고른 것처럼 보인다. */}
         <span
           className="effort-track-fill"
-          style={{ width: isAuto ? 0 : `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }}
+          style={{ width: isAuto ? 0 : leftAt(index) }}
           aria-hidden="true"
         />
         <span className="effort-track-stops" aria-hidden="true">
@@ -275,7 +284,7 @@ export function EffortTrack({
                 key={slot.id ?? "auto"}
                 className="effort-track-stop"
                 style={{
-                  left: last === 0 ? "50%" : `${(position / last) * 100}%`,
+                  left: `calc(var(--effort-track-gap) * ${position})`,
                   animationDelay: gatedIndex >= 0 ? `${(gatedIndex + 1) * 90}ms` : undefined,
                 }}
                 data-apex-rung={gatedIndex >= 0 ? true : undefined}
@@ -289,7 +298,7 @@ export function EffortTrack({
         {hasGate ? (
           <span
             className="effort-track-apex-seam"
-            style={{ left: `calc(${EDGE}px + ${seamRatio} * (100% - ${EDGE * 2}px))` }}
+            style={{ left: leftAt(ordinaryRungs.length + 0.5) }}
             aria-hidden="true"
           />
         ) : null}
@@ -304,35 +313,29 @@ export function EffortTrack({
         ) : null}
         <span
           className="effort-track-knob"
-          style={{ left: `calc(${EDGE}px + ${ratio} * (100% - ${EDGE * 2}px))` }}
+          style={{ left: leftAt(index) }}
           data-auto={isAuto ? true : undefined}
           aria-hidden="true"
         />
       </div>
-      {hasGate && !apexOpen ? (
+      {hasGate ? (
+        // 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태라(마운트 교체
+        // 없음) 라벨이 밀리지 않고, 열린 동안은 같은 자리의 ‹ 접힘 글리프가 된다. apex 단이
+        // 선택된 채 접으면 일상 사다리의 마지막 고를 수 있는 단으로 내려, 숨은 apex 값을
+        // 제출하는 모순을 만들지 않는다.
         <button
           type="button"
           className="effort-track-apex-toggle"
-          aria-pressed={apexOpen}
-          aria-label={apexToggleLabel}
-          title={apexToggleLabel}
+          aria-expanded={apexOpen}
+          aria-label={apexOpen ? apexCollapseLabel : apexToggleLabel}
+          title={apexOpen ? apexCollapseLabel : apexToggleLabel}
+          data-open={apexOpen ? true : undefined}
           onClick={() => {
             clearCollapseTimer();
-            setApexOpen(true);
-          }}
-        >✦</button>
-      ) : null}
-      {hasGate && apexOpen ? (
-        // 열림에서는 ✦가 사라지고 트랙이 그 자리까지 늘어난다 — 접힘은 이 얇은 셰브론이
-        // 맡는다. apex 단이 선택된 동안에도 셰브론은 남긴다: 접으면 일상 사다리의 마지막
-        // 고를 수 있는 단으로 내려, 숨은 apex 값을 제출하는 모순을 만들지 않는다.
-        <button
-          type="button"
-          className="effort-track-apex-collapse"
-          aria-label={apexCollapseLabel}
-          title={apexCollapseLabel}
-          onClick={() => {
-            clearCollapseTimer();
+            if (!apexOpen) {
+              setApexOpen(true);
+              return;
+            }
             if (isApex) {
               const fallback = [...ordinaryRungs]
                 .reverse()
@@ -341,10 +344,17 @@ export function EffortTrack({
             }
             setApexOpen(false);
           }}
-        >‹</button>
+        >{apexOpen ? "‹" : "✦"}</button>
       ) : null}
-      {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다. */}
-      <span className="effort-track-value" data-auto={isAuto} data-effort-level={current.id ?? "auto"}>
+      {/* 단계 톤은 CSS가 이 속성 하나로 읽는다 — 라벨 문자열은 번역·모델마다 달라 색의 기준이 될 수 없다.
+          data-apex는 게이트 뒤 티어의 라벨 모션 전용이다: 게이트 없는 모델의 최고 단(max)은 같은
+          data-effort-level이라도 정적 글로우에 머문다. */}
+      <span
+        className="effort-track-value"
+        data-auto={isAuto}
+        data-apex={isApex ? true : undefined}
+        data-effort-level={current.id ?? "auto"}
+      >
         {current.label}
       </span>
     </div>

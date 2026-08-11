@@ -7667,13 +7667,17 @@
 
 .effort-track {
   position: relative;
-  /* 남는 셸 폭을 먹어 스톱 간격을 벌리지 않는다 — 폭은 닫힌 간격×현재 구간 수.
-     Quick Launch와 캔버스 추론강도 트랙이 같은 값을 쓴다. */
+  /* 폭은 픽셀 앵커다: 크롬(패딩 26px + 테두리 2px) + 닫힌 간격 × 현재 구간 수. 게이트가 열려도
+     --effort-track-gap이 변하지 않아 기존 스톱·손잡이는 제자리에 남고 오른쪽 봉인만 늘어난다 —
+     예전의 폭 비례 확대(116 × last / 닫힌 구간)는 크롬까지 비례시켜 간격 자체를 벌렸다.
+     Quick Launch와 캔버스 추론강도 트랙이 같은 값을 쓰고, TSX의 픽셀 산술(EDGE·TRACK_CHROME)과
+     같은 상수여야 한다. */
   flex: 0 0 auto;
   --effort-closed-track-width: 116px;
   --effort-intervals: 1;
   --effort-closed-intervals: 1;
-  width: calc(var(--effort-closed-track-width) * var(--effort-intervals) / var(--effort-closed-intervals));
+  --effort-track-gap: calc((var(--effort-closed-track-width) - 28px) / var(--effort-closed-intervals));
+  width: calc(28px + var(--effort-track-gap) * var(--effort-intervals));
   height: 26px;
   padding: 0 13px;
   display: flex;
@@ -7754,12 +7758,37 @@
 }
 
 .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill {
-  background:
-    repeating-linear-gradient(
-      115deg,
-      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
-      transparent 1.5px 10px),
-    linear-gradient(90deg, var(--brass) 0%, var(--crest) 82%);
+  background: linear-gradient(90deg, var(--brass) 0%, var(--crest) 82%);
+}
+
+/* MAX의 결은 용융 금속처럼 손잡이 쪽으로 흐른다. 115° 스트라이프(주기 10px)의 수평 주기는
+   10px / sin(115°) ≈ 11.03px — 정확히 1주기를 옮겨 이음매 없이 순환하고, 왼쪽 12px 블리드가
+   이동분을 가린다. 정지 시(감속 모션) 결은 base 규칙 없이 이 레이어의 정적 상태로 남는다. */
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -12px;
+  right: 0;
+  background: repeating-linear-gradient(
+    115deg,
+    color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+    transparent 1.5px 10px);
+  animation: effort-max-molten-drift 1.15s linear infinite;
+}
+
+@keyframes effort-max-molten-drift {
+  to { transform: translateX(11.03px); }
+}
+
+/* MAX의 광택 스윕은 공용 흰색이 아니라 구리빛으로 데워진다 — 라벨과 같은 열을 말한다. */
+.effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill::after {
+  background: linear-gradient(
+    100deg,
+    transparent 35%,
+    color-mix(in oklch, var(--crest) 45%, oklch(100% 0 0 / 30%)) 50%,
+    transparent 65%);
 }
 
 .effort-track[data-apex="true"][data-effort-level="ultra"] {
@@ -7769,15 +7798,65 @@
     0 0 22px -4px var(--apex-glow);
 }
 
+/* ULTRACODE의 채움은 오로라처럼 유영한다 — 넓은 그라데이션이 3.6s 왕복으로 흐르고 결은 정지. */
 .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
   background:
     repeating-linear-gradient(
       115deg,
       color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
       transparent 1.5px 10px),
-    linear-gradient(90deg, var(--brass) 0%, var(--apex) 82%);
+    linear-gradient(
+      90deg,
+      var(--brass) 0%,
+      var(--apex) 40%,
+      color-mix(in oklch, var(--apex) 62%, white) 58%,
+      var(--apex) 76%,
+      color-mix(in oklch, var(--apex) 75%, var(--brass)) 100%);
+  background-size: 100% 100%, 180% 100%;
+  animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate;
 }
 
+@keyframes effort-ultra-aurora-drift {
+  from { background-position: 0 0, 0% 0; }
+  to { background-position: 0 0, 100% 0; }
+}
+
+/* 이 티어의 흰 스윕은 별빛으로 대체된다 — 게이트 글리프 ✦가 위상이 다른 두 별로 반짝인다.
+   공용 스윕 규칙(data-at-max ::after)을 이 selector가 특이도로 덮는다. */
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before,
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
+  content: "✦";
+  position: absolute;
+  inset: auto;
+  top: 50%;
+  border-radius: 0;
+  background: none;
+  font-size: 7px;
+  line-height: 1;
+  color: color-mix(in oklch, var(--text-primary) 70%, var(--apex));
+  transform: translateY(-50%);
+  animation: effort-ultra-twinkle 2.3s ease-in-out infinite 0.4s;
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
+  right: 22%;
+}
+
+.effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before {
+  right: 45%;
+  font-size: 5px;
+  animation-duration: 3.1s;
+  animation-delay: 1.2s;
+}
+
+@keyframes effort-ultra-twinkle {
+  0%, 100% { opacity: 0; transform: translateY(-50%) scale(0.6); }
+  50% { opacity: 0.95; transform: translateY(-50%) scale(1.1); }
+}
+
+/* 게이트 장치는 트랙 우측의 ✦ 토글이다. 닫힘·열림이 한 버튼의 두 상태라(마운트 교체 없음)
+   26px 자리가 늘 지켜지고, 게이트가 열려도 라벨이 밀리지 않는다 — 트랙의 픽셀 앵커와 같은
+   약속이다. 열린 상태는 테두리를 지운 ‹ 접힘 글리프로 시각 무게만 낮춘다. */
 .effort-track-apex-toggle {
   flex: 0 0 26px;
   width: 26px;
@@ -7798,8 +7877,7 @@
     box-shadow var(--duration-base) var(--ease-spring);
 }
 
-.effort-track-apex-toggle:hover,
-.effort-track-apex-toggle[aria-pressed="true"] {
+.effort-track-apex-toggle:hover {
   border-color: var(--apex);
   border-style: solid;
   color: var(--apex-ink);
@@ -7811,30 +7889,15 @@
   outline-offset: 2px;
 }
 
-/* 열린 동안 ✦를 대신하는 접힘 컨트롤 — 게이트는 한 번 열리면 트랙이 그 자리를 물려받아
-   늘어나므로, 닫기 장치는 시각 무게를 거의 갖지 않는 얇은 셰브론이다. */
-.effort-track-apex-collapse {
-  flex: 0 0 18px;
-  width: 18px;
-  height: 26px;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
+.effort-track-apex-toggle[data-open="true"] {
+  border-color: transparent;
   font-size: 13px;
-  line-height: 1;
-  cursor: pointer;
-  transition: color var(--duration-fast) var(--ease-spring);
 }
 
-.effort-track-apex-collapse:hover {
+.effort-track-apex-toggle[data-open="true"]:hover {
+  border-color: transparent;
   color: var(--apex-ink);
-}
-
-.effort-track-apex-collapse:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: none;
 }
 
 .effort-track-apex-seam {
@@ -7952,6 +8015,24 @@
     0 0 0 2.5px var(--crest),
     var(--crest-halo),
     0 1px 3px oklch(0% 0 0 / 55%);
+  /* 헤일로가 2.2s로 숨쉰다 — 감속 모션에서는 animation만 꺼져 위의 정적 링이 남는다. */
+  animation: effort-max-crest-breathe 2.2s ease-in-out infinite;
+}
+
+@keyframes effort-max-crest-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2.5px var(--crest),
+      0 0 10px var(--crest-glow),
+      0 1px 3px oklch(0% 0 0 / 55%);
+  }
+
+  50% {
+    box-shadow:
+      0 0 0 2.5px var(--crest),
+      0 0 22px var(--crest-glow),
+      0 1px 3px oklch(0% 0 0 / 55%);
+  }
 }
 
 .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-knob {
@@ -7986,6 +8067,44 @@
 .effort-track-value[data-effort-level="max"] {
   font-weight: var(--weight-medium);
   text-shadow: 0 0 12px var(--crest-glow);
+}
+
+/* 게이트 뒤의 MAX — 용융 구리가 글자 위를 흐르고(웨이브 2.1s) 광량이 불규칙하게 맥동한다
+   (플리커 1.7s). 두 주기가 달라 결합 위상은 35.7s마다 돌아온다 — 루프가 보이지 않는 "이글거림".
+   data-apex 없는 max(게이트 없는 모델의 최고 단)는 위의 정적 글로우에 머문다. */
+.effort-track-value[data-apex="true"][data-effort-level="max"] {
+  background-image: linear-gradient(
+    100deg,
+    var(--crest-ink) 0%,
+    color-mix(in oklch, var(--crest) 45%, white) 14%,
+    var(--crest-ink) 30%,
+    color-mix(in oklch, var(--crest) 60%, var(--brass)) 52%,
+    color-mix(in oklch, var(--crest) 40%, white) 72%,
+    var(--crest-ink) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  animation:
+    effort-max-ember-wave 2.1s linear infinite,
+    effort-max-ember-flicker 1.7s linear infinite;
+}
+
+@keyframes effort-max-ember-wave {
+  to { background-position: -220% 0; }
+}
+
+@keyframes effort-max-ember-flicker {
+  0%, 100% { filter: drop-shadow(0 0 3px var(--crest-glow)) brightness(1); }
+  9% { filter: drop-shadow(0 0 8px var(--crest-glow)) brightness(1.18); }
+  23% { filter: drop-shadow(0 0 2px var(--crest-glow)) brightness(0.96); }
+  36% { filter: drop-shadow(0 0 6px var(--crest-glow)) brightness(1.12); }
+  51% { filter: drop-shadow(0 0 3px var(--crest-glow)) brightness(1.02); }
+  62% { filter: drop-shadow(0 0 9px var(--crest-glow)) brightness(1.22); }
+  78% { filter: drop-shadow(0 0 2px var(--crest-glow)) brightness(0.98); }
+  88% { filter: drop-shadow(0 0 6px var(--crest-glow)) brightness(1.1); }
 }
 
 /* ULTRACODE — 그라데이션이 글자를 가로질러 흘러 물결처럼 읽힌다. */
@@ -8030,7 +8149,7 @@
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-/* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 116px 비례 규칙을
+/* 바 안에서는 자리를 정해 준다. 트랙 폭은 캔버스 추론강도 트랙과 같은 픽셀 앵커 규칙을
    그대로 쓰고, 셸은 트랙·토글·라벨만 품는 max-content다. */
 .quick-launch-effort-track {
   flex: 0 0 auto;
@@ -8057,8 +8176,31 @@
     color: var(--apex-ink);
   }
 
+  /* 게이트 뒤 MAX 라벨은 정적 crest 글로우로 돌아간다 — 게이트 없는 max와 같은 모습. */
+  .effort-track-value[data-apex="true"][data-effort-level="max"] {
+    animation: none;
+    background-image: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--crest-ink);
+    text-shadow: 0 0 12px var(--crest-glow);
+  }
+
   .effort-track-stop[data-apex-rung="true"] {
     animation: none;
+  }
+
+  /* 티어 모션 전부 정지 — 결·오로라·별·헤일로는 정적 상태로 남는다. */
+  .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill::before,
+  .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-knob,
+  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill {
+    animation: none;
+  }
+
+  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::before,
+  .effort-track[data-apex="true"][data-effort-level="ultra"] .effort-track-fill::after {
+    animation: none;
+    opacity: 0.6;
   }
 
   .effort-track,

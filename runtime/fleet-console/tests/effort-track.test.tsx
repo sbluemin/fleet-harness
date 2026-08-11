@@ -115,10 +115,11 @@ describe("EffortTrack", () => {
 
     // AUTO + 5단 축. low/high/max만 고를 수 있고 medium·xhigh는 자리만 지킨다 —
     // 셋을 균등히 벌리면 high가 한가운데 서서 3/5 지점인 단을 절반이라고 말하게 된다.
+    // 좌표는 %가 아니라 픽셀 앵커다: 게이트가 열려 슬롯 수가 바뀌어도 %처럼 점프하지 않는다.
     const marks = stops();
     expect(marks).toHaveLength(6);
     expect(marks.map((mark) => mark.dataset.gap ?? null)).toEqual([null, null, "true", null, "true", null]);
-    expect(marks[3]!.style.left).toBe("60%");
+    expect(marks[3]!.style.left).toBe("calc(var(--effort-track-gap) * 3)");
   });
 
   it("falls back to the offered rungs when the row carries no axis", () => {
@@ -246,7 +247,8 @@ describe("EffortTrack", () => {
     render(row(), "high", onChange, onConfirmCurrent);
     const element = stubTrackPointer();
 
-    // high(3) 자리: EDGE 13 + 0.6 × (126 − 26) = 73. 같은 단을 다시 누르면 값이 아니라 확정이다.
+    // high(3) 자리: EDGE 13 + 간격 17.6px(=88/5) × 3 ≈ 66 — 73은 round로 같은 3에 떨어진다.
+    // 같은 단을 다시 누르면 값이 아니라 확정이다.
     act(() => {
       element.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
       element.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, pointerId: 1, button: 0, isPrimary: true, clientX: 73, clientY: 13 }));
@@ -335,8 +337,9 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max", "ultra"] }), "high");
 
     const toggle = required(".effort-track-apex-toggle");
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
     expect(toggle.getAttribute("aria-label")).toBe("Show Max and Ultracode");
+    expect(toggle.textContent).toBe("✦");
     expect(stops()).toHaveLength(5);
     expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
     expect(track().getAttribute("aria-valuemax")).toBe("4");
@@ -350,14 +353,24 @@ describe("EffortTrack", () => {
     }), "high");
 
     act(() => required(".effort-track-apex-toggle").click());
-    // 열리면 ✦는 사라지고 그 자리를 트랙이 물려받는다 — 접힘은 얇은 셰브론이 맡는다.
-    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
-    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    // 같은 버튼이 ‹ 접힘 상태가 된다 — 마운트 교체가 없어 26px 자리가 지켜지고 라벨이 밀리지 않는다.
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(required(".effort-track-apex-toggle").textContent).toBe("‹");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(2);
     expect(track().getAttribute("aria-valuemax")).toBe("6");
-    // 열린 뒤에도 닫힌 사다리 간격 비율을 유지한다 — 셸 여분을 트랙이 먹어 간격을 벌리지 않는다.
+    // 열린 뒤에도 닫힌 사다리 간격을 그대로 쓴다 — CSS 폭 공식이 이 두 값에서 간격을 만든다.
     expect(track().style.getPropertyValue("--effort-intervals")).toBe("6");
     expect(track().style.getPropertyValue("--effort-closed-intervals")).toBe("4");
+  });
+
+  it("keeps ordinary stop anchors identical while the gate opens", () => {
+    render(row({ gatedEfforts: ["max"] }), "high");
+
+    const closedAnchors = stops().map((mark) => mark.style.left);
+    act(() => required(".effort-track-apex-toggle").click());
+    // 픽셀 앵커의 요지: 열림이 기존 스톱의 좌표 문자열을 한 글자도 바꾸지 않는다.
+    expect(stops().slice(0, closedAnchors.length).map((mark) => mark.style.left)).toEqual(closedAnchors);
   });
 
   it("marks a selected gated rung as apex and maximum", () => {
@@ -392,16 +405,16 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max"] }), "max");
 
     expect(track().dataset.apexOpen).toBe("true");
-    expect(document.querySelector(".effort-track-apex-toggle")).toBeNull();
-    // apex 값이 선택된 동안에도 접힘 셰브론은 남는다 — 접으면 일상 단으로 내려
+    // apex 값이 선택된 동안에도 토글은 접힘 상태로 남는다 — 접으면 일상 단으로 내려
     // 숨은 apex 제출 모순을 만들지 않는다.
-    expect(required(".effort-track-apex-collapse").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-expanded")).toBe("true");
+    expect(required(".effort-track-apex-toggle").getAttribute("aria-label")).toBe("Hide Max and Ultracode");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
   });
 
   it("demotes a gated value to the last ordinary rung when collapsed", () => {
     const onChange = render(row({ gatedEfforts: ["max"] }), "max");
-    act(() => required(".effort-track-apex-collapse").click());
+    act(() => required(".effort-track-apex-toggle").click());
     // 이 모델의 일상 사다리에서 고를 수 있는 마지막 단은 high다(xhigh는 gap).
     expect(onChange).toHaveBeenLastCalledWith("high");
   });
@@ -410,9 +423,9 @@ describe("EffortTrack", () => {
     render(row({ gatedEfforts: ["max"] }), "xhigh");
     act(() => required(".effort-track-apex-toggle").click());
 
-    // auto + low/med/high/xhigh + max → last=5, ordinary=4 → seam at 4.5/5 = 0.9.
+    // auto + low/med/high/xhigh + max → ordinary 4단 → 심은 4.5번째 간격 위에 선다.
     expect(track().getAttribute("aria-valuemax")).toBe("5");
-    expect(required(".effort-track-apex-seam").style.left).toContain("0.9");
+    expect(required(".effort-track-apex-seam").style.left).toBe("calc(13px + var(--effort-track-gap) * 4.5)");
     expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
     expect(stops()).toHaveLength(6);
   });
