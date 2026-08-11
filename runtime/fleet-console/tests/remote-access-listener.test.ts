@@ -982,6 +982,51 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 바로 이 버튼이 필요한 자리다.
    */
   /**
+   * 공개 엔드포인트에 443은 가장 자연스러운 선택인데, 스킴의 기본 포트를 권위에 적어 두면
+   * 기기가 보내는 `Host: host`와 어긋나 정상 접속이 전부 막힌다. 쿠키 이름이 쓰는 숫자 포트는
+   * 그대로여야 하므로 정규화는 문자열 권위에만 적용된다.
+   */
+  it("accepts the authority a client sends when the advertised port is the scheme default", async () => {
+    const listenPort = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: true,
+      listenAddress: BIND_HOST,
+      advertisedHost: "nat.example.test",
+      listenPort: { mode: "custom", value: listenPort },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort, advertisedHost: "nat.example.test", advertisedPort: 443 },
+    };
+    const fixture = await startFixture({ remote: true, remoteAccess });
+
+    expect((await readRemoteStatus(fixture)).listener.origin).toBe("https://nat.example.test");
+
+    /**
+     * 실제 클라이언트는 https://nat.example.test 로 붙으므로 기본 포트를 생략한 Host를 보낸다.
+     * 테스트는 NAT가 없으니 수신 소켓에 직접 붙되 그 헤더를 그대로 흉내 낸다. Host 게이트를
+     * 지나면 자격이 없어 401이고, 403 host_mismatch면 문 앞에서 막힌 것이다.
+     */
+    const send = (hostHeader: string) => new Promise<{ status: number; cookies: readonly string[] }>((resolve, reject) => {
+      const body = JSON.stringify({ token: "probe" });
+      const request = https.request({
+        host: BIND_HOST, port: listenPort, path: "/api/v1/join", method: "POST",
+        rejectUnauthorized: false, checkServerIdentity: () => undefined,
+        headers: { host: hostHeader, "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      }, (response) => {
+        response.resume();
+        response.on("end", () => resolve({ status: response.statusCode ?? 0, cookies: response.headers["set-cookie"] ?? [] }));
+      });
+      request.on("error", reject);
+      request.write(body);
+      request.end();
+    });
+
+    await expect(send("nat.example.test")).resolves.toMatchObject({ status: 401 });
+    // 정규화하지 않은 형태도 계속 받는다 — 기존 기기가 그렇게 보내고 있을 수 있다.
+    await expect(send("nat.example.test:443")).resolves.toMatchObject({ status: 401 });
+  });
+
+  /**
    * 인증서가 바뀌면 페어링은 사라져야 한다. `ensure()`는 회전한 인증서를 bind보다 먼저 디스크에
    * 남기므로, bind 실패로 취소를 건너뛰면 다음 기동에서는 그 새 인증서가 previousIdentity가 되어
    * 변화가 감지되지 않는다 — 사라진 인증서에 묶인 페어링이 목록에만 살아남는다.

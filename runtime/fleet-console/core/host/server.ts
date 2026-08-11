@@ -12,7 +12,7 @@ import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-va
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot } from "./access-control-contract.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
@@ -806,7 +806,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
   function isRequestHostAllowed(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
-    return listener !== null && validateHost(req, `${listener.host}:${listener.port}`);
+    return listener !== null && validateHost(req, listenerAuthority(listener.host, listener.port, listener.secure), listener.secure);
   }
 
   /** 요청이 도착한 리스너. 등록되지 않은 소켓에서 온 요청은 어떤 게이트도 통과하지 못한다. */
@@ -2393,7 +2393,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       pairedDeviceStore.revokeAll("remote");
       remoteEndpointStore.forget();
     }
-    const started = await startConfiguredRemoteListener(configured, identity, storedEndpoint !== null);
+    // 취소가 돌았다면 기억된 엔드포인트도 함께 지워졌다 — 지킬 주소가 없으므로 Auto는 다시 고를 수 있다.
+    const started = await startConfiguredRemoteListener(configured, identity, storedEndpoint !== null && !publicIdentityChanged);
     const effectiveConfigured = started.port === configured.listenPort.value
       ? configured
       : { ...configured, listenPort: { ...configured.listenPort, value: started.port } };
@@ -2463,8 +2464,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   function remoteOrigin(hostname: string, port: number): string {
-    const formattedHost = hostname.includes(":") && !hostname.startsWith("[") ? `[${hostname}]` : hostname;
-    return `https://${formattedHost}:${port}`;
+    return listenerOrigin(hostname, port, true);
   }
 
   function remoteAdmission(req: http.IncomingMessage): boolean {
@@ -2819,13 +2819,21 @@ function runAsyncBooleanHandler(handler: Promise<boolean>, res: http.ServerRespo
  * Host는 리스너가 실제로 바인드한 주소와만 일치해야 한다. 허용 집합을 요청 Host나 DNS에서
  * 유도하면 DNS rebinding으로 이 경계가 무너지므로, 비교 대상은 언제나 구성으로 정해진 리터럴이다.
  */
-function validateHost(req: http.IncomingMessage, expectedHostPort: string): boolean {
+function validateHost(req: http.IncomingMessage, expectedHostPort: string, secure?: boolean): boolean {
   if (req.url?.startsWith("http://") || req.url?.startsWith("https://")) return false;
   const hostHeaderCount = req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === "host").length;
   if (hostHeaderCount !== 1) return false;
   const hostHeader = req.headers.host;
   if (!hostHeader) return false;
-  return hostHeader === expectedHostPort;
+  // 같은 권위의 두 표기를 하나로 본다. 기본 포트를 적은 형태와 생략한 형태는 URL 규격상 같은 곳이고,
+  // 어느 쪽만 받으면 그 표기를 쓰는 클라이언트가 통째로 막힌다. 다른 포트는 그대로 구분한다.
+  return stripDefaultPort(hostHeader, secure) === stripDefaultPort(expectedHostPort, secure);
+}
+
+function stripDefaultPort(authority: string, secure?: boolean): string {
+  if (secure === undefined) return authority;
+  const suffix = secure ? ":443" : ":80";
+  return authority.endsWith(suffix) ? authority.slice(0, -suffix.length) : authority;
 }
 
 // 신규 terminal 라우트의 출처 경계. 브라우저 요청은 console origin과 일치해야 하고,
