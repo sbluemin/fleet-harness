@@ -19,7 +19,7 @@ function makeTheater(id: string): TheaterInfo {
 const GROUPS: readonly OperationLaunchVariantGroup[] = [
   {
     id: "builtin",
-    label: "Claude 내장",
+    label: "Claude",
     rows: [
       {
         id: "fable",

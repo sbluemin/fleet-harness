@@ -68,7 +68,7 @@ export const commonEn = {
   "launchKind.claudeGateway.description": "Runs Claude Code with built-in Claude and enabled Gateway models",
   // 실행 종류 옆에 늘 보이는 짧은 설명. 긴 설명 문장은 항목을 짚었을 때만 펼친다.
   "launchKind.claudeGateway.brief": "Built-in + Gateway",
-  "launchVariants.group.native": "Claude built-in",
+  "launchVariants.group.native": "Claude",
   "launchVariants.group.gateway": "Gateway — models you enabled",
   "launchVariants.effort.track": "Reasoning effort",
   "launchVariants.effort.auto": "AUTO",
@@ -147,7 +147,7 @@ export const commonKo: Record<keyof typeof commonEn, string> = {
   "common.experimental": "실험 기능",
   "launchKind.claudeGateway.description": "Claude Code 내장 Claude와 설정에서 켠 Gateway 모델을 실행",
   "launchKind.claudeGateway.brief": "내장 + Gateway",
-  "launchVariants.group.native": "Claude 내장",
+  "launchVariants.group.native": "Claude",
   "launchVariants.group.gateway": "Gateway — 설정에서 켠 모델",
   "launchVariants.effort.track": "추론 강도",
   "launchVariants.effort.auto": "자동",
