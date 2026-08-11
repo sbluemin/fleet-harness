@@ -959,8 +959,8 @@ describe("Kimi passthrough", () => {
     expect(JSON.parse(payload ?? "null")).toMatchObject({
       message: {
         usage: {
-          input_tokens: 1_696,
-          cache_read_input_tokens: 1_696,
+          input_tokens: 22_366,
+          cache_read_input_tokens: 22_365,
           cache_creation_input_tokens: 0,
           output_tokens: 2,
         },
@@ -1008,7 +1008,7 @@ describe("Kimi passthrough", () => {
       message: {
         id: "msg_kimi",
         model: "claude-gateway--kimi--k3[1m]",
-        usage: { input_tokens: 0, output_tokens: 1 },
+        usage: { input_tokens: 10, output_tokens: 1 },
       },
     });
     // 요청은 여전히 wire id로 나간다.
@@ -1043,7 +1043,7 @@ describe("Kimi passthrough", () => {
       id: "msg_kimi",
       model: "claude-gateway--kimi--k3[1m]",
       content: [{ type: "text", text: "done" }],
-      usage: { input_tokens: 0, output_tokens: 4 },
+      usage: { input_tokens: 10, output_tokens: 4 },
     });
   });
 

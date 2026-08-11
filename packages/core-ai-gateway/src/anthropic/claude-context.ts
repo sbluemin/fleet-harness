@@ -2,6 +2,8 @@ import { estimateTokens } from "../transport/token-estimate.js";
 
 export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;
+export const CLAUDE_COMPACT_RESERVE = 32_000;
+export const PROVIDER_COMPACT_RESERVE = 16_000;
 const DEFAULT_MAX_JSON_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_SSE_FRAME_BYTES = 1024 * 1024;
 const MAX_SSE_SEPARATOR_BYTES = 4;
@@ -64,11 +66,11 @@ export function stripClaudeOneMillionMarker(modelId: string): string {
  * Map a provider model's occupied input onto the fixed coordinate Claude Code assigns
  * from its model id: 200k without `[1m]`, 1M with it.
  *
- * Claude Code keeps roughly the same absolute reserve on both coordinates (2.1.227
- * compacted between 166k/168k on 200k and 966k/968k on 1M). Removing only the
- * provider window's excess over Claude's coordinate therefore preserves that reserve:
- * a 272k provider maps 240k real input to 168k, rather than sacrificing everything
- * above 168k or pretending the model itself has a 1M window.
+ * Claude Code 2.1.227 compacted between 166k/168k on 200k and 966k/968k on 1M,
+ * leaving roughly 32k on either coordinate. Scale usage so that observed compact
+ * threshold lands 16k before the real provider window instead. This keeps the status
+ * line increasing from the first token, while letting a 272k model reach 256k and a
+ * 1M model reach 984k before compaction.
  *
  * An upstream-reported window can narrow the catalog value. This matters for routing
  * aliases whose serving model changes per turn: the reported window, when present,
@@ -88,8 +90,13 @@ export function projectClaudeContextInputTokens(
   const coordinate = advertisedWindow >= CLAUDE_COMPAT_CONTEXT_WINDOW
     ? CLAUDE_COMPAT_CONTEXT_WINDOW
     : CLAUDE_DEFAULT_CONTEXT_WINDOW;
-  if (projectionWindow <= coordinate) return Math.min(coordinate, inputTokens);
-  return Math.min(coordinate, Math.max(0, inputTokens - (projectionWindow - coordinate)));
+  const claudeCompactThreshold = coordinate - CLAUDE_COMPACT_RESERVE;
+  const providerCompactThreshold = projectionWindow - PROVIDER_COMPACT_RESERVE;
+  if (providerCompactThreshold <= 0) return Math.min(coordinate, inputTokens);
+  return Math.min(
+    coordinate,
+    Math.ceil(inputTokens * claudeCompactThreshold / providerCompactThreshold),
+  );
 }
 
 /**
@@ -350,16 +357,19 @@ function projectUsageProperty(
   if (projectedTotal === total) return { changed: false, value: container };
 
   const projectedUsage = { ...usage };
+  const remainderField = coordinates.some((entry) => entry.field === "input_tokens")
+    ? "input_tokens"
+    : coordinates[0]!.field;
   let assigned = 0;
-  for (const [index, entry] of coordinates.entries()) {
-    const projectedTokens = index === coordinates.length - 1
-      ? projectedTotal - assigned
-      : total === 0
-        ? 0
-        : Math.floor(entry.tokens * projectedTotal / total);
+  for (const entry of coordinates) {
+    if (entry.field === remainderField) continue;
+    const projectedTokens = total === 0
+      ? 0
+      : Math.floor(entry.tokens * projectedTotal / total);
     projectedUsage[entry.field] = projectedTokens;
     assigned += projectedTokens;
   }
+  projectedUsage[remainderField] = projectedTotal - assigned;
   return { changed: true, value: { ...container, [property]: projectedUsage } };
 }
 
