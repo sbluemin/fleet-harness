@@ -472,6 +472,7 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const registrationTransaction = createPluginRegistrationTransaction(deps.host);
     try {
       await register({
+        apiCatalogVersion: 1,
         pluginId: plugin.manifest.id,
         manifest: plugin.manifest,
         basePath: `/plugins/${plugin.manifest.id}`,

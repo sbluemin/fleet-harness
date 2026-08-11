@@ -19,11 +19,11 @@ export function registerRouter(
   catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | RouteHandler,
   metadataHandler?: RouteHandler,
 ): void {
-  if (metadataHandler) {
+  if (metadataHandler && ctx.apiCatalogVersion === 1) {
     ctx.registerRouter(normalizePath(path), catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[], metadataHandler);
     return;
   }
-  ctx.registerRouter(normalizePath(path), catalogOrHandler as RouteHandler);
+  ctx.registerRouter(normalizePath(path), metadataHandler ?? catalogOrHandler as RouteHandler);
 }
 
 export function registerWsHandler(ctx: FleetPluginServerContext, path: string, handler: UpgradeHandler): void;
@@ -39,11 +39,11 @@ export function registerWsHandler(
   catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | UpgradeHandler,
   metadataHandler?: UpgradeHandler,
 ): void {
-  if (metadataHandler) {
+  if (metadataHandler && ctx.apiCatalogVersion === 1) {
     ctx.registerWsHandler(normalizePath(path), catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[], metadataHandler);
     return;
   }
-  ctx.registerWsHandler(normalizePath(path), catalogOrHandler as UpgradeHandler);
+  ctx.registerWsHandler(normalizePath(path), metadataHandler ?? catalogOrHandler as UpgradeHandler);
 }
 
 export function registerLaunchCatalog(ctx: FleetPluginServerContext, provider: OperationLaunchCatalogProvider): () => void {

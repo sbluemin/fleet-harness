@@ -235,6 +235,7 @@ export interface ApiCatalogEntry {
 }
 
 export interface FleetPluginServerContext {
+  readonly apiCatalogVersion?: 1;
   readonly pluginId: string;
   readonly manifest: FleetPluginManifest;
   readonly basePath: string;
