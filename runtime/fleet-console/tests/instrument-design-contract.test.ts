@@ -1739,6 +1739,48 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(/\.effort-track-apex-burst \{\s*animation: none;\s*\}/);
     expect(components).toMatch(/effort-ultracode-wave/);
     expect(components).toMatch(/\.effort-track-value\[data-effort-level="ultra"\] \{\s*animation: none;/);
+
+    // 티어 모션은 전부 티어 채널(crest/apex) 안에서만 놀고, 감속 모션에서 정적 상태로 남는다.
+    for (const keyframes of [
+      "effort-max-ember-wave",
+      "effort-max-ember-flicker",
+      "effort-max-molten-drift",
+      "effort-max-crest-breathe",
+      "effort-ultra-aurora-drift",
+      "effort-ultra-twinkle",
+      "effort-apex-leak",
+      "effort-track-overtravel",
+    ]) {
+      expect(components).toContain(`@keyframes ${keyframes}`);
+    }
+    // 게이트 뒤 MAX 라벨(엠버)은 감속 모션에서 정적 crest 글로우로 돌아간다 —
+    // 게이트 없는 max 라벨과 같은 모습이 되는 것이 계약이다.
+    expect(components).toMatch(/\.effort-track-value\[data-apex="true"\]\[data-effort-level="max"\] \{\s*animation: none;/);
+    expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \.effort-track-fill,[\s\S]*\.effort-track\[data-armed="true"\] \{\s*animation: none;/);
+  });
+
+  it("pins the in-track apex cap and the pixel-anchored gap", () => {
+    const components = source("styles/components.css");
+    const trackSource = source("components/effort-track.tsx");
+
+    // 게이트 장치는 트랙 안 캡이다 — 외부 토글/셰브론 문법은 되돌아오면 안 된다(마운트 교체가
+    // 라벨을 8px 점프시키던 원인). 버튼 시맨틱과 개방 상태는 aria로 남는다.
+    expect(components).toContain(".effort-track-apex-cap");
+    expect(components).not.toContain("effort-track-apex-toggle");
+    expect(components).not.toContain("effort-track-apex-collapse");
+    expect(trackSource).toContain('className="effort-track-apex-cap"');
+    expect(trackSource).not.toContain("effort-track-apex-toggle");
+    expect(trackSource).toContain("aria-expanded={apexOpen}");
+
+    // 폭과 모든 좌표가 한 간격 변수를 공유한다 — 게이트가 열려도 기존 스톱·손잡이가 움직이지
+    // 않는 픽셀 앵커의 근거. 크롬 28px = 패딩 26px + 1px 테두리 둘(border-box).
+    expect(components).toContain("--effort-track-gap: calc((var(--effort-closed-track-width) - 28px) / var(--effort-closed-intervals));");
+    expect(components).toContain("width: calc(28px + var(--effort-track-gap) * var(--effort-intervals));");
+    expect(trackSource).toContain("var(--effort-track-gap)");
+
+    // 스윕의 티어 분화: MAX는 구리빛 스윕, ULTRACODE는 스윕 대신 ✦ 별빛.
+    expect(components).toMatch(/data-effort-level="max"\] \.effort-track-fill::after \{[^}]*var\(--crest\)/);
+    expect(components).toMatch(/data-effort-level="ultra"\] \.effort-track-fill::before,[\s\S]{0,120}::after \{[^}]*content: "✦"/);
   });
 
   it("pins the shared effort track's pointer preview motion", () => {
