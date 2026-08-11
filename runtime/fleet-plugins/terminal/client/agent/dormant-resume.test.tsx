@@ -2,7 +2,7 @@
 
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import type { ClientApiCapability, ClientNotificationsCapability, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { ClientApiCapability, ClientNotificationsCapability, OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../shared/index.js", () => ({
@@ -10,7 +10,7 @@ vi.mock("../shared/index.js", () => ({
 }));
 
 import { disposeAnalysisStore } from "./analysis-store.js";
-import { agentOperationKind } from "./index.js";
+import { agentOperationKind, agentPlugin } from "./index.js";
 import { applySessionUpdate, getAgentState, removeSession } from "./store.js";
 
 const OPERATION_ID = "dormant-resume-operation";
@@ -95,6 +95,75 @@ describe("dormant resume feedback", () => {
     }));
     // 실패 후에도 세션은 dormant를 유지한다.
     expect(getAgentState().sessions[OPERATION_ID]?.status).toBe("dormant");
+  });
+
+  it("explains an unavailable saved launch option without offering Start fresh", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    }));
+    const { notifications } = await renderDormant(fetch);
+
+    act(() => dormantButton().click());
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    const card = container?.querySelector(".canvas-operation-dormant--error");
+    expect(card?.textContent).toContain("Re-enable its saved model or effort");
+    expect(card?.textContent).toContain("Try again");
+    expect(card?.textContent).not.toContain("Start fresh");
+    expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
+      message: "Resume failed — the saved model or effort is unavailable.",
+    }));
+  });
+
+  it("keeps retry available after a fresh-only launch-option failure", async () => {
+    const launchOptionFailure = new Response(JSON.stringify({ error: "invalid_effort" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+    const fetch = vi.fn()
+      .mockResolvedValueOnce(launchOptionFailure)
+      .mockResolvedValueOnce(sessionResponse("live"));
+    await renderOperation(fetch, { cliId: "claude-gateway" });
+
+    await act(async () => { dormantButton().click(); });
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    const retry = [...(container?.querySelectorAll("button") ?? [])].find((button) => button.textContent === "Try again");
+    expect(retry).toBeDefined();
+    await act(async () => { retry?.click(); });
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    const init = fetch.mock.calls[1]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
+  });
+
+  it("uses launch-option feedback for host-triggered resumes", async () => {
+    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {
+        return Promise.resolve(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        }));
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal("fetch", fetch);
+    const notifications = { emit: vi.fn(), dismiss: vi.fn() };
+    const dispose = agentPlugin.install?.({
+      api: { resync: vi.fn() },
+      notifications,
+      operations: {},
+      status: {},
+    } as unknown as PluginInstallContext);
+
+    await expect(agentPlugin.resumeOperation?.(OPERATION_ID)).rejects.toThrow("gateway_model_not_enabled");
+
+    expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
+      operationId: OPERATION_ID,
+      message: "Resume failed — the saved model or effort is unavailable.",
+    }));
+    dispose?.();
   });
 
   it("Start fresh retries the resume route with { fresh: true }", async () => {

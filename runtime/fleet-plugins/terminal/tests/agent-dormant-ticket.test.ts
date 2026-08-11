@@ -123,7 +123,7 @@ describe("agent launch variants", () => {
     expect(harness.operations).toHaveLength(1);
   });
 
-  it("threads a valid built-in model alias and effort into the initial attach only", async () => {
+  it("persists the launch model and effort and reuses them for resume", async () => {
     const harness = await createHarness({
       body: { cliId: "claude-gateway", model: "fable[1m]", effort: "max" },
     });
@@ -136,6 +136,10 @@ describe("agent launch variants", () => {
       model: "fable[1m]",
       effort: "max",
     }));
+    expect(harness.operations[0]?.payload).toMatchObject({
+      launchModel: "fable[1m]",
+      launchEffort: "max",
+    });
 
     const sessionId = harness.operations[0]!.id;
     harness.operations[0]!.payload.providerSession = {
@@ -146,9 +150,64 @@ describe("agent launch variants", () => {
     await harness.transitionToDormant(sessionId);
     await harness.resumeSession(sessionId);
 
-    const resumeContext = harness.attach.mock.calls[1]?.[0];
-    expect(resumeContext).not.toHaveProperty("model");
-    expect(resumeContext).not.toHaveProperty("effort");
+    expect(harness.attach.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      model: "fable[1m]",
+      effort: "max",
+      resumeSessionId: "provider-session-1",
+    }));
+  });
+
+  it("falls back to opus[1m] when a legacy Claude Gateway operation has no launch model", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+    });
+    const sessionId = await harness.createLiveSession();
+    await harness.transitionToDormant(sessionId);
+    delete harness.operations[0]!.payload.launchModel;
+    delete harness.operations[0]!.payload.launchEffort;
+    expect(harness.operations[0]?.payload).toMatchObject({ cliId: "claude-gateway" });
+    expect(harness.operations[0]?.payload).not.toHaveProperty("launchModel");
+
+    await harness.resumeSession(sessionId);
+
+    expect(harness.attach).toHaveBeenCalledTimes(2);
+    expect(harness.attach.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      cliId: "claude-gateway",
+      model: "opus[1m]",
+      resumeSessionId: "provider-session-1",
+    }));
+    expect(harness.attach.mock.calls[1]?.[0]).not.toHaveProperty("effort");
+    expect(harness.operations[0]?.payload).toMatchObject({ launchModel: "opus[1m]" });
+  });
+
+  it("reuses the persisted launch model and effort when starting fresh", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+    });
+    const sessionId = await harness.createLiveSession();
+    await harness.transitionToDormant(sessionId);
+
+    await harness.resumeSession(sessionId, { fresh: true });
+
+    expect(harness.attach.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
+      model: "sonnet",
+      effort: "high",
+    }));
+    expect(harness.attach.mock.calls[1]?.[0]).not.toHaveProperty("resumeSessionId");
+  });
+
+  it("reports a persisted gateway model that is no longer enabled", async () => {
+    const harness = await createHarness({
+      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+      resumeAttachError: new GatewayLaunchOptionError("gateway_model_not_enabled", "gateway_model_not_enabled"),
+    });
+    const sessionId = await harness.createLiveSession();
+    await harness.transitionToDormant(sessionId);
+
+    await harness.resumeSession(sessionId);
+
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "gateway_model_not_enabled" } });
+    expect((await harness.getSessions())[0]).toMatchObject({ sessionId, status: "dormant" });
   });
 
   it.each([
@@ -265,10 +324,15 @@ describe("agent dormant ticket guards", () => {
   });
 });
 
+type TestRequest = http.IncomingMessage & {
+  readonly __body?: { readonly operationId?: string; readonly fresh?: boolean };
+};
+
 async function createHarness(options: {
   readonly body?: Readonly<Record<string, unknown>>;
   readonly aiGatewaySettings?: AiGatewayStoredSettings;
   readonly attachError?: Error;
+  readonly resumeAttachError?: Error;
 } = {}) {
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-dormant-ticket-"));
   temporaryDirectories.push(fleetDataDir);
@@ -288,6 +352,7 @@ async function createHarness(options: {
   });
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
     if (options.attachError) throw options.attachError;
+    if (options.resumeAttachError && attach.mock.calls.length > 1) throw options.resumeAttachError;
   });
   const terminalRuntime: TerminalRuntime = {
     handleUpgrade: () => false,
@@ -393,8 +458,8 @@ async function createHarness(options: {
         writeJson: (_res: http.ServerResponse, status: number, responseBody: unknown) => { responses.push({ status, body: responseBody }); },
         readJsonBody: async <T,>(req: http.IncomingMessage) => {
           const url = req.url ?? "";
-          if (url.includes("/ticket")) return { operationId: (req as http.IncomingMessage & { __body?: { operationId?: string } }).__body?.operationId } as T;
-          if (url.includes("/resume")) return {} as T;
+          if (url.includes("/ticket")) return { operationId: (req as TestRequest).__body?.operationId } as T;
+          if (url.includes("/resume")) return ((req as TestRequest).__body ?? {}) as T;
           return { theaterId: "theater-1", cliId: "claude", ...options.body } as T;
         },
       },
@@ -480,10 +545,10 @@ async function createHarness(options: {
     return body?.sessions ?? [];
   }
 
-  async function resumeSession(sessionId: string): Promise<void> {
+  async function resumeSession(sessionId: string, body?: { readonly fresh?: boolean }): Promise<void> {
     if (!route) throw new Error("Agent route was not registered");
     await route({
-      req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/resume` } as http.IncomingMessage,
+      req: { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/resume`, ...(body ? { __body: body } : {}) } as TestRequest,
       res: {} as http.ServerResponse,
       pathname: `/plugins/terminal/agent/sessions/${sessionId}/resume`,
     });

@@ -117,7 +117,13 @@ export async function resumeAgentSession(sessionId: string, options?: { readonly
       : {}),
     signal: options?.signal,
   });
-  await assertOk(response);
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+    );
+  }
   return assertSessionInfo(await response.json(), response.status);
 }
 
