@@ -4,6 +4,7 @@ import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } fr
 import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import { ExperimentalBadge } from "@fleet-console/sdk/settings/browser";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
@@ -592,7 +593,7 @@ function RemoteAccessSection({ state, saving }: { readonly state: GlobalSettings
               있다", 하나는 "켜면 이 기계가 열린다"이므로 한 줄로 합치지 않는다. */}
           <h3>
             {t("settings.remote.title")}
-            <span className="experimental-badge">{t("common.experimental")}</span>
+            <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
           </h3>
           <p>{t("settings.remote.lede")}</p>
         </header>

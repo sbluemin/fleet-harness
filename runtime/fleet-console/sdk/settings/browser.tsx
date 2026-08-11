@@ -4,7 +4,7 @@ import { Select } from "../react/browser.js";
 import type { SettingsSectionDescriptor } from "./types.js";
 
 export interface SettingsCardProps {
-  readonly title?: string;
+  readonly title?: React.ReactNode;
   readonly description?: string;
   readonly children: React.ReactNode;
 }
@@ -43,6 +43,10 @@ export interface SettingsFieldProps {
 
 export function defineSettingsSection(descriptor: SettingsSectionDescriptor): SettingsSectionDescriptor {
   return descriptor;
+}
+
+export function ExperimentalBadge({ children }: { readonly children: React.ReactNode }): React.ReactElement {
+  return <span className="experimental-badge">{children}</span>;
 }
 
 export function SettingsCard({ title, description, children }: SettingsCardProps): React.ReactElement {

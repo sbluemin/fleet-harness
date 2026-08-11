@@ -32,6 +32,7 @@ describe("Scuttlebutt translations", () => {
       en("departure.manyCount", { count: 2 }),
       en("bubble.dismiss"),
       en("settings.section.title"),
+      en("settings.section.experimental"),
       en("settings.section.roster"),
       en("settings.section.rosterHint"),
     ]).toEqual([
@@ -60,6 +61,7 @@ describe("Scuttlebutt translations", () => {
       "2 operations",
       "Dismiss",
       "Quaker Admirals",
+      "Experimental",
       "Admirals on duty",
       "Each admiral keeps their own chat.",
     ]);
@@ -89,6 +91,7 @@ describe("Scuttlebutt translations", () => {
       ko("departure.manyCount", { count: 2 }),
       ko("bubble.dismiss"),
       ko("settings.section.title"),
+      ko("settings.section.experimental"),
       ko("settings.section.roster"),
       ko("settings.section.rosterHint"),
     ]).toEqual([
@@ -117,6 +120,7 @@ describe("Scuttlebutt translations", () => {
       "Operation 2건",
       "닫기",
       "퀘이커 제독단",
+      "실험 기능",
       "출근 중인 제독",
       "제독마다 대화가 따로 유지됩니다.",
     ]);
