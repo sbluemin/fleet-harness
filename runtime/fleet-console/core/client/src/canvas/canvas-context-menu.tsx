@@ -47,10 +47,14 @@ const ASIDE_WIDTH = 208;
 const ASIDE_GAP = 8;
 // 방향키가 훑는 항목. 실행 종류 행과 모델 행은 이제 같은 목록의 형제라 한 집합으로 돈다.
 const MENU_ITEM_SELECTOR = ".canvas-context-menu-item, .operation-launch-variant-row";
-// 방향 스트립 hover 글라이드 속도(px/frame). 스트립 안쪽으로 깊이 들어갈수록 가속한다 —
-// 스트립 가장자리를 스치면 천천히, 끝까지 밀어 넣으면 빠르게.
-const EDGE_GLIDE_BASE_SPEED = 2.2;
-const EDGE_GLIDE_DEPTH_SPEED = 4.8;
+// 방향 스트립 hover 글라이드 속도(px/초). 스트립 안쪽으로 깊이 들어갈수록 가속한다 —
+// 스트립 가장자리를 스치면 천천히, 끝까지 밀어 넣으면 빠르게. rAF 타임스탬프로 경과 시간을
+// 곱해 이동하므로 60Hz든 120Hz든 초당 속도가 같다.
+const EDGE_GLIDE_BASE_SPEED = 132;
+const EDGE_GLIDE_DEPTH_SPEED = 288;
+// 한 프레임으로 인정하는 경과 시간 상한(초) — 탭 비활성 등으로 rAF가 오래 멈췄다 돌아와도
+// 그 공백만큼 목록이 한 번에 튀지 않게 자른다.
+const EDGE_GLIDE_MAX_FRAME_SECONDS = 0.064;
 // 스트립 클릭 한 번이 넘기는 분량 — 한 화면의 80%. 정확히 한 화면이면 경계 행이 화면을
 // 건널 때 연속성이 끊겨 어디까지 봤는지 잃는다.
 const EDGE_PAGE_JUMP_RATIO = 0.8;
@@ -90,7 +94,7 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   // 잘린 방향에만 서는 스트립. 네이티브 스크롤바를 걷어냈으므로(components.css) 이 스트립이
   // 유일한 상시 절단 신호이자 포인터 항해 조작면이다.
   const [edgeState, setEdgeState] = useState<{ readonly up: boolean; readonly down: boolean }>({ up: false, down: false });
-  const glideRef = useRef<{ raf: number | null; depth: number }>({ raf: null, depth: 0.5 });
+  const glideRef = useRef<{ raf: number | null; depth: number; lastTime: number | null }>({ raf: null, depth: 0.5, lastTime: null });
   const gaugeRef = useRef<HTMLDivElement | null>(null);
   const gaugeThumbRef = useRef<HTMLDivElement | null>(null);
   const gaugeHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,7 +146,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
     if (glideRef.current.raf !== null) return;
     const menu = menuRef.current;
     if (!menu) return;
-    const step = () => {
+    glideRef.current.lastTime = null;
+    const step = (now: number) => {
       const max = menu.scrollHeight - menu.clientHeight;
       // 끝에 닿으면 루프를 끊는다 — 스트립이 사라져도 pointerleave는 포인터가 움직여야
       // 발화하므로, 여기서 멈추지 않으면 빈 rAF가 hover 내내 돈다.
@@ -150,7 +155,12 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         stopEdgeGlide();
         return;
       }
-      menu.scrollTop += direction * (EDGE_GLIDE_BASE_SPEED + glideRef.current.depth * EDGE_GLIDE_DEPTH_SPEED);
+      // 이동량은 프레임 수가 아니라 경과 시간에 비례한다 — 120Hz에서 두 배로 흐르지 않게.
+      const elapsed = glideRef.current.lastTime === null
+        ? 0
+        : Math.min((now - glideRef.current.lastTime) / 1000, EDGE_GLIDE_MAX_FRAME_SECONDS);
+      glideRef.current.lastTime = now;
+      menu.scrollTop += direction * (EDGE_GLIDE_BASE_SPEED + glideRef.current.depth * EDGE_GLIDE_DEPTH_SPEED) * elapsed;
       glideRef.current.raf = requestAnimationFrame(step);
     };
     glideRef.current.raf = requestAnimationFrame(step);
