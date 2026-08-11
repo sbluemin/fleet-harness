@@ -1,5 +1,6 @@
 import { React, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 import {
+  ExperimentalBadge,
   SettingsCard,
   SettingsRow,
   SettingsToggle,
@@ -35,12 +36,13 @@ function ScuttlebuttSettingsSection() {
 
   return (
     <SettingsCard
-      title={t("settings.section.title")}
+      title={
+        <>
+          {t("settings.section.title")}
+          <ExperimentalBadge>{t("settings.section.experimental")}</ExperimentalBadge>
+        </>
+      }
     >
-      <p className="scuttlebutt-settings-experimental">
-        <span className="scuttlebutt-settings-experimental-badge">{t("settings.section.experimental")}</span>
-        {t("settings.section.experimentalHint")}
-      </p>
       <SettingsRow label={t("settings.section.roster")} hint={t("settings.section.rosterHint")}>
         <div className="scuttlebutt-settings-roster">
           {(["tori", "bori", "dori"] as const).map((admiral) => (
