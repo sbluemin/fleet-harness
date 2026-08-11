@@ -7,6 +7,7 @@ import {
   WIKI_BRIEFING_PROMPT_SNIPPET,
   buildWikiBriefingSchema,
 } from "../prompts.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 export function buildBriefingToolConfig() {
   return {
@@ -21,7 +22,7 @@ export function buildBriefingToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const hits = await briefingQuery(resolveToolMemoryPaths(ctx), {
         topic: typeof params.topic === "string" ? params.topic : undefined,
@@ -63,7 +64,7 @@ export function buildDryDockToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const report = await runDryDock(resolveToolMemoryPaths(ctx), { fix: params.fix === true });
       return {

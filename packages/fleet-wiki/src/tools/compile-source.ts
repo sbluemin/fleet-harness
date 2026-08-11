@@ -17,6 +17,7 @@ import {
 import { assertNoUnsafeSecret } from "../store.js";
 import { assertSafeEntryId, computeContentHash, listWiki, pathExists, readPatchFile, readRawSourceEntry, writeRawSourceEntry } from "../store.js";
 import type { Patch, RawSourceEntry, WikiEntry } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface WikiCompileSourceInput {
   source?: string;
@@ -107,7 +108,7 @@ export function buildCompileSourceToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const now = new Date().toISOString();
       const paths = resolveToolMemoryPaths(ctx);

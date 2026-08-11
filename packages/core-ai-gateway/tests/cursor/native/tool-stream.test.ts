@@ -25,7 +25,7 @@ import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
 } from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
-import { cursorNativeExecPolicyReplies } from "../../../src/cursor/native/exec-policy.js";
+import { cursorNativeExecPolicyReplies } from "../../../src/cursor/native/exec-responses.js";
 import {
   cursorNativeExecRedirect,
   cursorNativeRedirectResultReplies,

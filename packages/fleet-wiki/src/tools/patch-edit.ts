@@ -12,6 +12,7 @@ import {
 } from "../prompts.js";
 import { assertSafeEntryId, computeContentHash, readJsonFile, readPatchFile } from "../store.js";
 import type { Patch, PatchMeta, WikiEntry } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 interface BodyReplaceInput {
   find: string;
@@ -80,7 +81,7 @@ export function buildPatchEditToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const paths = resolveToolMemoryPaths(ctx);
       const input = parsePatchEditParams(params);

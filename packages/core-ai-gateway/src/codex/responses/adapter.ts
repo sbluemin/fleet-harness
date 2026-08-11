@@ -18,11 +18,10 @@ import {
   UpstreamIdleTimeoutError,
   UpstreamProtocolError,
   linkAbortSignal,
-  nextEventBoundary,
   parseSseFrameFields,
+  parseUpstreamSseStream,
   positiveInteger,
   readBoundedBody,
-  readWithIdleTimeout,
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
@@ -216,7 +215,10 @@ export interface CodexResponsesAdapterOptions {
  * generic OpenAIResponsesAdapter remains for the public OpenAI surface.
  */
 export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
+  private readonly isMarkedFetchFailure: (error: unknown) => boolean;
+
   constructor(options: CodexResponsesAdapterOptions = {}) {
+    const fetchFailureTracker = createCodexFetchFailureTracker(options.fetch ?? globalThis.fetch.bind(globalThis));
     super({
       url: CHATGPT_CODEX_RESPONSES_URL,
       dropSamplingParams: true,
@@ -224,11 +226,12 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
         ...(options.accountId ? { "chatgpt-account-id": options.accountId } : {}),
         ...options.headers,
       },
-      fetch: markCodexFetchFailures(options.fetch ?? globalThis.fetch.bind(globalThis)),
+      fetch: fetchFailureTracker.fetch,
       // `!== undefined` 여야 명시적 0이 상속된 positiveInteger 검증을 통과한다.
       ...(options.maxBodyBytes !== undefined ? { maxBodyBytes: options.maxBodyBytes } : {}),
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
     });
+    this.isMarkedFetchFailure = fetchFailureTracker.isMarkedFailure;
   }
 
   override async stream(
@@ -251,7 +254,7 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
     try {
       response = await super.stream(request, callOptions);
     } catch (error) {
-      if (!isRetryableCodexFetchSocketTermination(error, callOptions.signal)) {
+      if (!isRetryableCodexFetchSocketTermination(error, callOptions.signal, this.isMarkedFetchFailure)) {
         unlinkCallAbort();
         throw error;
       }
@@ -474,29 +477,35 @@ function commitsCodexOutput(event: CanonicalResponseEvent): boolean {
   }
 }
 
-const codexFetchFailures = new WeakSet<object>();
-
-function markCodexFetchFailures(fetchImpl: FetchLike): FetchLike {
-  return async (input, init) => {
-    try {
-      return await fetchImpl(input, init);
-    } catch (error) {
-      if (error !== null && typeof error === "object") {
-        codexFetchFailures.add(error);
+function createCodexFetchFailureTracker(fetchImpl: FetchLike): {
+  fetch: FetchLike;
+  isMarkedFailure: (error: unknown) => boolean;
+} {
+  const fetchFailures = new WeakSet<object>();
+  return {
+    fetch: async (input, init) => {
+      try {
+        return await fetchImpl(input, init);
+      } catch (error) {
+        if (error !== null && typeof error === "object") {
+          fetchFailures.add(error);
+        }
+        throw error;
       }
-      throw error;
-    }
+    },
+    isMarkedFailure: (error: unknown) =>
+      error !== null && typeof error === "object" && fetchFailures.has(error),
   };
 }
 
-function isRetryableCodexFetchSocketTermination(error: unknown, signal?: AbortSignal): boolean {
+function isRetryableCodexFetchSocketTermination(
+  error: unknown,
+  signal: AbortSignal | undefined,
+  isMarkedFailure: (error: unknown) => boolean,
+): boolean {
   return signal?.aborted !== true
-    && isMarkedCodexFetchFailure(error)
+    && isMarkedFailure(error)
     && isUndiciSocketTermination(error);
-}
-
-function isMarkedCodexFetchFailure(error: unknown): boolean {
-  return error !== null && typeof error === "object" && codexFetchFailures.has(error);
 }
 
 function isUndiciSocketTermination(error: unknown): boolean {
@@ -654,56 +663,15 @@ function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean 
 
 type ReadOptions = UpstreamReadOptions;
 
-async function* parseOpenAIEventStream(
+function parseOpenAIEventStream(
   body: ReadableStream<Uint8Array> | null,
   options: ReadOptions & { onClose: () => void }
 ): AsyncGenerator<CanonicalResponseEvent> {
-  if (body === null) {
-    options.onClose();
-    throw new UpstreamProtocolError("OpenAI streaming response had no body");
-  }
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let byteLength = 0;
-  try {
-    while (true) {
-      const result = await readWithIdleTimeout(reader, options);
-      if (result.done) {
-        buffer += decoder.decode();
-        break;
-      }
-      byteLength += result.value.byteLength;
-      if (byteLength > options.maxBodyBytes) {
-        const error = new UpstreamBodyLimitError(options.maxBodyBytes);
-        options.controller.abort(error);
-        throw error;
-      }
-      buffer += decoder.decode(result.value, { stream: true });
-
-      let boundary = nextEventBoundary(buffer);
-      while (boundary !== undefined) {
-        const frame = buffer.slice(0, boundary.index);
-        buffer = buffer.slice(boundary.index + boundary.length);
-        const event = parseEventFrame(frame);
-        if (event !== undefined) {
-          yield event;
-        }
-        boundary = nextEventBoundary(buffer);
-      }
-    }
-
-    if (buffer.trim().length > 0) {
-      const event = parseEventFrame(buffer);
-      if (event !== undefined) {
-        yield event;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    options.onClose();
-  }
+  return parseUpstreamSseStream(
+    body,
+    { ...options, missingBodyMessage: "OpenAI streaming response had no body" },
+    parseEventFrame,
+  );
 }
 
 function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {

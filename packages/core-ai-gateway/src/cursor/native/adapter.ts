@@ -28,7 +28,11 @@ import {
   canonicalMessageImages,
   canonicalMessageText,
 } from "../../canonical/index.js";
-import { cursorNativeExecPolicyReplies } from "./exec-policy.js";
+import {
+  cursorNativeExecPolicyReplies,
+  cursorUnknownExecCaseName,
+  cursorUnknownExecReply,
+} from "./exec-responses.js";
 import {
   cursorNativeExecRedirect,
   cursorNativeRedirectResultReplies,
@@ -37,10 +41,6 @@ import {
   type CursorNativeRedirectResultType,
 } from "./exec-redirect.js";
 import { wireLog } from "../../transport/wire-log.js";
-import {
-  cursorUnknownExecCaseName,
-  cursorUnknownExecReply,
-} from "./unknown-exec.js";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,

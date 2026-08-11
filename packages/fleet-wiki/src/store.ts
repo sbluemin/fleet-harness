@@ -85,7 +85,7 @@ export async function writeWikiEntry(entry: WikiEntry, paths: MemoryPaths): Prom
   await ensureMemoryRoot(paths);
   assertSafeEntryId(entry.id);
   const relativePath = `wiki/${entry.id}.md`;
-  await writeMarkdownAtomic(path.join(paths.root, relativePath), serializeWikiEntry(entry), paths);
+  await writeAtomic(path.join(paths.root, relativePath), serializeWikiEntry(entry), paths);
   return relativePath;
 }
 
@@ -104,7 +104,7 @@ export async function writeWikiEntryAtTarget(entry: WikiEntry, target: string, p
     throw new Error("wiki patch body id must match target filename");
   }
   await mkdir(path.dirname(absoluteTarget), { recursive: true });
-  await writeMarkdownAtomic(absoluteTarget, serializeWikiEntry(entry), paths);
+  await writeAtomic(absoluteTarget, serializeWikiEntry(entry), paths);
   return path.join("wiki", relativeTarget).replaceAll(path.sep, "/");
 }
 
@@ -125,7 +125,7 @@ export async function writeRawSourceEntry(entry: RawSourceEntry, paths: MemoryPa
     },
     entry.content,
   );
-  await writeMarkdownAtomic(path.join(paths.root, relativePath), content, paths);
+  await writeAtomic(path.join(paths.root, relativePath), content, paths);
   return relativePath;
 }
 
@@ -177,7 +177,7 @@ export async function rebuildIndex(paths: MemoryPaths): Promise<Record<string, W
     entryPathMap[item.entry.id] = item.path;
   }
   await writeJsonAtomic(paths.indexFile, nextIndex, paths);
-  await writeMarkdownAtomic(getIndexMarkdownFile(paths), renderIndexMarkdown(entries.map((item) => item.entry), entryPathMap), paths);
+  await writeAtomic(getIndexMarkdownFile(paths), renderIndexMarkdown(entries.map((item) => item.entry), entryPathMap), paths);
   await appendLog(paths, "index rebuilt", { entry_count: entries.length });
   return nextIndex;
 }
@@ -264,7 +264,7 @@ export async function readPatchFile(filePath: string): Promise<string> {
 }
 
 export async function writePatchFile(filePath: string, content: string, paths: MemoryPaths): Promise<void> {
-  await writeMarkdownAtomic(filePath, content, paths);
+  await writeAtomic(filePath, content, paths);
 }
 
 export async function readJsonFile<T>(filePath: string): Promise<T> {
@@ -568,10 +568,6 @@ function isFrontmatterBlock(rawFrontmatter: string): boolean {
     keys.add(key);
   }
   return keys.has("id") && keys.has("title");
-}
-
-async function writeMarkdownAtomic(filePath: string, content: string, paths: MemoryPaths): Promise<void> {
-  await writeAtomic(filePath, content, paths);
 }
 
 async function writeJsonAtomic(filePath: string, value: unknown, paths: MemoryPaths): Promise<void> {

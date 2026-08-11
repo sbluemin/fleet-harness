@@ -64,8 +64,13 @@ interface DedicatedMcpSession {
   releaseSessionToken(label: string): void;
 }
 
+interface ExecutorServerEndpoint {
+  readonly name: string;
+  readonly url: string;
+}
+
 interface ExecutorEndpoint {
-  readonly servers: readonly { readonly name: string; readonly url: string }[];
+  readonly servers: readonly ExecutorServerEndpoint[];
 }
 
 interface ExecutorServerToken {
@@ -171,8 +176,8 @@ export async function injectAgentCliProfile(
 
 
 function buildAgentCliMcpServerConfigs(
-  endpoints: readonly { readonly name: string; readonly url: string }[],
-  tokens: readonly { readonly name: string; readonly token: string }[],
+  endpoints: readonly ExecutorServerEndpoint[],
+  tokens: readonly ExecutorServerToken[],
 ): AgentCliMcpServerArg[] {
   return endpoints.map((endpoint) => {
     const token = tokens.find((entry) => entry.name === endpoint.name)?.token;

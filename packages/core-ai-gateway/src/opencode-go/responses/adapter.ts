@@ -14,15 +14,12 @@ import type {
   CanonicalWebSearchSource,
 } from "../../canonical/index.js";
 import {
-  UpstreamBodyLimitError,
-  UpstreamIdleTimeoutError,
   UpstreamProtocolError,
   linkAbortSignal,
-  nextEventBoundary,
   parseSseFrameFields,
+  parseUpstreamSseStream,
   positiveInteger,
   readBoundedBody,
-  readWithIdleTimeout,
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
@@ -265,56 +262,15 @@ function forOpenCodeGoResponsesBackend(
 
 type ReadOptions = UpstreamReadOptions;
 
-async function* parseOpenCodeGoEventStream(
+function parseOpenCodeGoEventStream(
   body: ReadableStream<Uint8Array> | null,
   options: ReadOptions & { onClose: () => void }
 ): AsyncGenerator<CanonicalResponseEvent> {
-  if (body === null) {
-    options.onClose();
-    throw new UpstreamProtocolError("OpenCode Go streaming response had no body");
-  }
-
-  const reader = body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let byteLength = 0;
-  try {
-    while (true) {
-      const result = await readWithIdleTimeout(reader, options);
-      if (result.done) {
-        buffer += decoder.decode();
-        break;
-      }
-      byteLength += result.value.byteLength;
-      if (byteLength > options.maxBodyBytes) {
-        const error = new UpstreamBodyLimitError(options.maxBodyBytes);
-        options.controller.abort(error);
-        throw error;
-      }
-      buffer += decoder.decode(result.value, { stream: true });
-
-      let boundary = nextEventBoundary(buffer);
-      while (boundary !== undefined) {
-        const frame = buffer.slice(0, boundary.index);
-        buffer = buffer.slice(boundary.index + boundary.length);
-        const event = parseEventFrame(frame);
-        if (event !== undefined) {
-          yield event;
-        }
-        boundary = nextEventBoundary(buffer);
-      }
-    }
-
-    if (buffer.trim().length > 0) {
-      const event = parseEventFrame(buffer);
-      if (event !== undefined) {
-        yield event;
-      }
-    }
-  } finally {
-    await reader.cancel().catch(() => undefined);
-    options.onClose();
-  }
+  return parseUpstreamSseStream(
+    body,
+    { ...options, missingBodyMessage: "OpenCode Go streaming response had no body" },
+    parseEventFrame,
+  );
 }
 
 function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {

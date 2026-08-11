@@ -7,6 +7,7 @@ import {
   WIKI_PATCH_QUEUE_PROMPT_SNIPPET,
   buildWikiPatchQueueSchema,
 } from "../prompts.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 export function buildPatchQueueToolConfig() {
   return {
@@ -21,7 +22,7 @@ export function buildPatchQueueToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const paths = resolveToolMemoryPaths(ctx);
       const action = String(params.action ?? "list");

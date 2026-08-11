@@ -12,6 +12,7 @@ import {
 } from "../prompts.js";
 import { listWiki, readRawSourceEntry, readWikiEntry } from "../store.js";
 import type { BriefingHit, MemoryPaths, WikiEntry, WikiEntryStatus } from "../types.js";
+import type { WikiToolExecutionContext } from "../agent-specs.js";
 
 export interface WikiResolveInput {
   query: string;
@@ -90,7 +91,7 @@ export function buildResolveToolConfig() {
       params: Record<string, unknown>,
       _signal: AbortSignal | undefined,
       _onUpdate: unknown,
-      ctx: { cwd: string; paths?: import("../types.js").MemoryPaths },
+      ctx: WikiToolExecutionContext,
     ) {
       const input = normalizeResolveInput(params);
       const paths = resolveToolMemoryPaths(ctx);
