@@ -981,6 +981,52 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 지문도 없는데, 그때 갱신이 막히면 안내가 지키지 못할 약속이 된다 — 리스너가 없는 상태가
    * 바로 이 버튼이 필요한 자리다.
    */
+  /**
+   * 공표한 뒤에는 Auto도 미끄러지지 않는다. LAN-only에서 수신 포트는 곧 공표 tuple이라,
+   * 잠깐 막혔다고 다른 후보를 취하면 링크가 알려 준 주소가 사라지고 전 기기의 페어링이
+   * 주인의 행위 없이 해제된다. 그 자리는 실패로 남고 주인이 결정한다.
+   */
+  it("does not slide a published LAN-only Auto port off its address when it is occupied", async () => {
+    const first = await reservePort(BIND_HOST);
+    const spare = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: BIND_HOST,
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: first },
+      advertisedPort: { mode: "auto", value: first },
+      acknowledgment: null,
+    };
+    const paired = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => spare });
+    await joinAs(paired, "full", "MacBook Pro");
+    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
+    expect(published).toBe(first);
+
+    await stopFixture(paired);
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const stuck = await bootFixtureFrom(paired);
+      const failed = await readRemoteStatus(stuck);
+
+      expect(failed.listener.listening).toBe(false);
+      // 안내가 이미 존재하던 문구다 — 포트를 비우거나 신원을 회전하라고 주인에게 넘긴다.
+      expect(failed.listener.lastError).toBe("remote_port_unavailable");
+      // 무엇보다, 아무도 페어링을 잃지 않았다.
+      expect(failed.devices).toHaveLength(1);
+      const saved = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: { listenPort: { value: number } } } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(published);
+      const endpoint = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+      expect(endpoint.advertisedPort).toBe(published);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
   it("keeps an occupied Custom port after destructive identity rotation without falling back", async () => {
     const paired = await startFixture({ remote: true });
     await joinAs(paired, "full", "MacBook Pro");

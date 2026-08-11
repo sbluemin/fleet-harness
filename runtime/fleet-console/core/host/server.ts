@@ -2362,6 +2362,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    *
    * Custom listen port는 정확히 한 번만 시도하고 대체하지 않는다. Auto는 저장된 concrete 값을
    * 먼저 시도한 뒤 EADDRINUSE/EADDRNOTAVAIL에 한해서만 다른 무작위 후보를 최대 12회까지 시험한다.
+   * 단 그 대체는 아직 아무 주소도 공표하지 않았을 때뿐이다 — 한 번 공표한 뒤에는 포트가 잠깐
+   * 막혔다는 이유로 다른 포트로 옮기지 않는다. 옮기면 링크가 알려 준 주소가 사라지고, LAN-only에서는
+   * 그 포트가 곧 공표 tuple이라 전 기기의 페어링이 주인의 행위 없이 해제된다. 그 자리는 실패로 남기고
+   * 주인이 포트를 비우거나 신원을 회전해 스스로 결정하게 한다.
    * Public mode의 새 후보는 확인이 필요한 split route라 리스너를 닫고 비활성화한다. LAN-only에서는
    * 새 후보 자체가 공표 tuple이므로 즉시 저장하고 같은 리스너를 정상 활성화한다.
    */
@@ -2373,11 +2377,14 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const previousIdentity = remoteIdentityStore.read();
     const identity = await remoteIdentityStore.ensure(advertised.host);
     const storedEndpoint = remoteEndpointStore.read();
-    const started = await startConfiguredRemoteListener(configured, identity);
+    const started = await startConfiguredRemoteListener(configured, identity, storedEndpoint !== null);
     const effectiveConfigured = started.port === configured.listenPort.value
       ? configured
       : { ...configured, listenPort: { ...configured.listenPort, value: started.port } };
     const effectiveAdvertised = effectiveRemoteAccessAdvertisedTuple(effectiveConfigured);
+    // 소유권을 먼저 옮긴다 — 아래 내구성 쓰기가 실패하면 가드가 stopRemoteAccess를 부르는데,
+    // 그때 remoteServer가 비어 있으면 이미 열린 소켓이 프로세스가 끝날 때까지 포트를 쥔 채 남는다.
+    remoteServer = started.server;
     const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
       || (storedEndpoint !== null && storedEndpoint.advertisedPort !== effectiveAdvertised.port);
     if (publicIdentityChanged) {
@@ -2397,12 +2404,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     };
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
-    remoteServer = started.server;
     remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: effectiveAdvertised.port });
     startControlExpirySweep();
   }
 
-  async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
+  async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
     if (configured.listenPort.mode === "custom") {
       try {
         return await startRemoteListener({ identity, bindHost: configured.listenAddress, port: configured.listenPort.value, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
@@ -2418,6 +2424,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       try {
         const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
         if (candidate === configured.listenPort.value) return started;
+        if (published) {
+          // 여기까지 왔다면 공표한 포트가 막혀 다른 후보가 열린 것이다. 그 주소를 취하면
+          // 기기가 받은 주소가 조용히 무효가 되므로, 열린 소켓을 닫고 주인에게 넘긴다.
+          await closeHttpServer(started.server);
+          throw codedRemoteError("FLEET_REMOTE_PORT_UNAVAILABLE");
+        }
         const updated = { ...configured, listenPort: { mode: "auto" as const, value: candidate }, acknowledgment: null };
         if (configured.publicEndpointEnabled) {
           await closeHttpServer(started.server);
@@ -2428,7 +2440,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return started;
       } catch (error) {
         const code = errorCodeOf(error);
-        if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED") throw error;
+        if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED" || code === REMOTE_PORT_UNAVAILABLE) throw error;
         if (code !== "EADDRINUSE" && code !== "EADDRNOTAVAIL") throw error;
       }
     }

@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import { buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
+import { buildRemoteEndpointPresentation, generateRemoteAutoPort, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -837,7 +837,7 @@ function RemoteListenerCard({
   // 남겨 두면 Auto로 돌아간 뒤 화면에 없는 오류가 액션을 계속 막는다.
   const editPortField = (field: RemotePortField, port: RemoteAccessState["listenPort"]) => {
     setPortDrafts((current) => ({ ...current, [field]: null }));
-    edit({ [field]: port });
+    edit({ [field]: normalizeAutoPort(port) });
   };
   const acknowledge = (checked: boolean) => {
     setShelf(null);
@@ -1047,6 +1047,17 @@ type PortDrafts = { readonly [field in RemotePortField]: string | null };
 type RemoteConsequence = "restart" | "identity" | "stop";
 
 const EMPTY_PORT_DRAFTS: PortDrafts = { listenPort: null, advertisedPort: null };
+
+/**
+ * Auto는 Custom이 허용하는 1–65535 전체가 아니라 49152–65535만 쓴다. 사용자가 443 같은 값을
+ * Custom으로 넣은 뒤 Auto로 돌리면 그 값이 그대로 남는데, 화면은 준비됨으로 보이고 저장은 서버에서
+ * 거부된다 — 켜지지 않는 이유가 화면 밖에 있는 상태다. 전환하는 그 자리에서 유효한 값을 뽑아 둔다.
+ */
+function normalizeAutoPort(port: RemoteAccessPort): RemoteAccessPort {
+  if (port.mode !== "auto") return port;
+  if (port.value >= REMOTE_AUTO_PORT_MIN && port.value <= REMOTE_AUTO_PORT_MAX) return port;
+  return { mode: "auto", value: generateRemoteAutoPort() };
+}
 
 const REMOTE_REQUIREMENT_KEYS: Record<RemoteEndpointRequirement, CoreMessageKey> = {
   listenAddress: "settings.remote.requirement.listenAddress",

@@ -8,6 +8,8 @@ import {
   remoteEffectiveEndpoint,
   remoteEndpointImpact,
   remoteEndpointRequirements,
+  isValidRemoteAccessPort,
+  REMOTE_AUTO_PORT_MIN,
   type RemoteAccessState,
 } from "../core/client/src/types.js";
 
@@ -166,5 +168,17 @@ describe("remote access state equality", () => {
     const b = published({ acknowledgment: { ...a.acknowledgment! } });
     expect(remoteAccessStateEquals(a, b)).toBe(true);
     expect(remoteAccessStateEquals(a, { ...a, acknowledgment: null })).toBe(false);
+  });
+});
+
+describe("auto port range on a mode switch", () => {
+  it("does not carry a Custom value the Auto range would refuse", () => {
+    // 443은 Custom으로는 유효하지만 Auto 범위 밖이다. 그대로 끌고 가면 화면은 준비됨을 보이고
+    // 저장만 서버에서 거부되어, 켜지지 않는 이유가 화면 밖에 남는다.
+    const outOfRange = buildRemoteEndpointPresentation({ ...lan(), listenPort: { mode: "auto", value: 443 } });
+    expect(outOfRange.ready).toBe(true);
+    expect(isValidRemoteAccessPort({ mode: "auto", value: 443 })).toBe(false);
+    expect(isValidRemoteAccessPort({ mode: "custom", value: 443 })).toBe(true);
+    expect(isValidRemoteAccessPort({ mode: "auto", value: REMOTE_AUTO_PORT_MIN })).toBe(true);
   });
 });

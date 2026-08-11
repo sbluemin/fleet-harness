@@ -513,7 +513,12 @@ async function mutateGlobalSettings(
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
   if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
-  const response: GlobalSettingsMutationResult = { state: withRemoteAccessVisibility(toGlobalSettingsState(updated), req, deps) };
+  /**
+   * 응답은 조정이 끝난 뒤의 저장값으로 짓는다. Auto 대체 포트를 고르는 경로는 이 콜백 안에서
+   * 설정을 다시 쓰므로, 호출 전 스냅샷을 돌려주면 화면이 낡은 tuple을 기준선으로 삼고 다음 저장에
+   * 그 값을 되돌려 쓴다.
+   */
+  const response: GlobalSettingsMutationResult = { state: withRemoteAccessVisibility(buildGlobalSettingsState(deps.consoleSettingsStore), req, deps) };
   deps.writeJson(res, 200, response);
 }
 
