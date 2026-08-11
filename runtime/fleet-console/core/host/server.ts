@@ -12,13 +12,13 @@ import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-va
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot } from "./access-control-contract.js";
-import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
+import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces } from "./remote-interfaces.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
-import { createConsoleSettingsStore, type ConsoleThemeId } from "./settings/settings-domain.js";
+import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
 import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
@@ -47,6 +47,7 @@ import { createRemoteEndpointStore } from "./remote-endpoint.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
+import { createRemoteJoinGuard, normalizeRemoteJoinSource } from "./remote-join-guard.js";
 import { probeRemoteIdentity } from "./remote-probe.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
@@ -80,6 +81,8 @@ export interface ConsoleServerDeps {
   readonly updateCheck?: ConsoleUpdateCheckService;
   readonly updateApply?: ConsoleUpdateApplyService;
   readonly systemFonts?: SystemFontsService;
+  /** 테스트가 Auto 포트 후보를 결정적으로 주입하는 경계. 반환값은 [min, maxExclusive) 범위다. */
+  readonly remoteRandomInt?: (min: number, maxExclusive: number) => number;
 }
 
 export interface ConsoleServer {
@@ -298,13 +301,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
-    method: "GET",
-    path: "/join",
-    summary: "Explain that an access link opens in Fleet Console Desktop.",
-    category: "Access",
-    gate: "loopback",
-  },
-  {
     method: "POST",
     path: "/api/v1/access-links",
     summary: "Create a remote access link for this console.",
@@ -445,6 +441,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let remoteFingerprint: string | null = null;
   let remoteReconcile: Promise<void> = Promise.resolve();
   let remoteLastError: string | null = null;
+  // 리스너와 수명을 같이한다 — 영속되는 값이 아니라 지금 열려 있는 문에 대한 계량이다.
+  const remoteJoinGuard = createRemoteJoinGuard();
   let boundPort: number | null = null;
   /**
    * 만료도 회수와 같은 신호를 낸다. prune은 다른 레지스트리 호출 안에서 도는 일이 많아
@@ -675,10 +673,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const globalSettingsRouter = createGlobalSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
+    isRemoteAccessOwner: isLoopbackListener,
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,
-    onRemoteAccessChanged: () => reconcileRemoteAccess(),
+    onRemoteAccessChanged: (change) => reconcileRemoteAccess(change),
   });
   const desktopThemeRouter = createDesktopThemeRouter({
     getTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
@@ -807,7 +806,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 요청과 업그레이드가 같은 Host 경계를 쓰도록 판정을 한 곳에 둔다.
   function isRequestHostAllowed(req: http.IncomingMessage): boolean {
     const listener = listenerForRequest(req);
-    return listener !== null && validateHost(req, `${listener.host}:${listener.port}`);
+    return listener !== null && validateHost(req, listenerAuthority(listener.host, listener.port, listener.secure), listener.secure);
   }
 
   /** 요청이 도착한 리스너. 등록되지 않은 소켓에서 온 요청은 어떤 게이트도 통과하지 못한다. */
@@ -821,10 +820,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
   function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+    // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
+    // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     if (pathname === "/api/v1/join") return true;
-    // 링크는 웹 URL 모양을 하고 있어 사람은 브라우저에 붙여넣는다. 아무 설명 없는 401로
-    // 끝내지 않도록 이 한 경로만 세션 없이 통과시킨다 — 자격도 상태도 읽지 않는 정적 문서다.
-    if (pathname === JOIN_NOTICE_PATH && req.method === "GET") return true;
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session === null) return false;
     // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
@@ -863,10 +861,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
       handlePairingIdentity(req, res);
-      return;
-    }
-    if (pathname === JOIN_NOTICE_PATH) {
-      handleJoinNotice(req, res);
       return;
     }
     if (tryServeStaticConsole(req, res, pathname)) return;
@@ -1067,10 +1061,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const remote = listeners.find((entry) => entry.audience === "remote");
     const sessions = access.listSessions("remote");
     writeJson(res, 200, {
-      listening: remote !== undefined && remoteFingerprint !== null,
-      origin: remote?.origin ?? null,
+      listener: {
+        listening: remote !== undefined && remoteFingerprint !== null,
+        origin: remote?.origin ?? null,
+        lastError: remoteLastError,
+      },
+      publicReachability: "unverified",
+      // 거절이 일어나고 있다는 사실 자체가 "지금 열어둘 만한가"의 판단 재료다.
+      rejectedJoins: remoteJoinGuard.stats(),
       fingerprint: remoteFingerprint,
-      lastError: remoteLastError,
       // 발급 사실만 나간다 — 목록을 보는 것으로는 어떤 링크도 다시 쓸 수 없다.
       links: access.listGrants("remote"),
       /**
@@ -1198,13 +1197,13 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      * 놓는 유일한 길이 여기이고, 리스너를 조건으로 걸면 그 길이 자기 자신에 막힌다.
      */
     const configured = consoleSettingsStore.load().general?.remoteAccess;
-    const bindHost = listeners.find((entry) => entry.audience === "remote")?.host
-      ?? (configured?.enabled === true ? configured.bindHost : null);
-    if (!bindHost) {
+    const advertisedHost = listeners.find((entry) => entry.audience === "remote")?.host
+      ?? (configured?.enabled === true ? effectiveRemoteAccessAdvertisedTuple(configured).host : null);
+    if (!advertisedHost) {
       writeJson(res, 409, { error: "remote_access_disabled" });
       return true;
     }
-    await remoteIdentityStore.rotate(bindHost);
+    await remoteIdentityStore.rotate(advertisedHost);
     access.revokeGrants("remote");
     pairedDeviceStore.revokeAll("remote");
     remoteEndpointStore.forget();
@@ -1217,22 +1216,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return true;
   }
 
-  /** 정적 안내 문서. 스크립트가 없으므로 fragment를 읽지 않고, 읽을 상태도 없다. */
-  function handleJoinNotice(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.method !== "GET") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const body = Buffer.from(JOIN_NOTICE_DOCUMENT, "utf8");
-    res.writeHead(200, withSecurityHeaders({
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Length": String(body.byteLength),
-      "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-      "Referrer-Policy": "no-referrer",
-    }));
-    res.end(body);
-  }
 
   /**
    * 원격 액세스 링크. 주소·자격·신원·이름을 하나의 봉투에 담아 `fleet://join?code=`로 실어
@@ -1283,6 +1266,30 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    // 루프백은 이 기계 앞에 앉은 사람이라 예산을 두지 않는다. 인터넷을 향한 문만 계량한다.
+    if (listener.audience !== "remote") return performAccessJoin(req, res, listener);
+    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
+    const verdict = remoteJoinGuard.begin(source);
+    if (verdict !== "ok") {
+      // 본문을 읽기 전에 끝낸다 — 거절의 값이 요청의 값보다 싸야 예산이 뜻을 가진다.
+      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
+        "Content-Type": "application/json",
+        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
+      }));
+      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
+      return true;
+    }
+    let paired = false;
+    try {
+      paired = await performAccessJoin(req, res, listener);
+    } finally {
+      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
+    }
+    return true;
+  }
+
+  /** 조인 본체. 반환값은 "페어링에 성공했는가"이며, 응답은 이 안에서 끝난다. */
+  async function performAccessJoin(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
     const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
@@ -1301,10 +1308,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
         }));
         res.end(JSON.stringify({ error: joined.error }));
-        return true;
+        return false;
       }
       writeJson(res, joined.status, { error: joined.error });
-      return true;
+      return false;
     }
     if (listener.audience === "remote" && joined.session.access === "full") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
@@ -2237,13 +2244,19 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 만들 수 없고, 그 실패는 설정이 저장되지 않은 것처럼 보인다. 전환은 직렬화한다 —
    * 두 저장이 겹치면 같은 포트에 두 번 바인드하려 든다.
    */
-  function reconcileRemoteAccess(): Promise<void> {
+  function reconcileRemoteAccess(change: RemoteAccessSettingsChange): Promise<void> {
     return queueRemoteReconcile(() => {
-      const configured = consoleSettingsStore.load().general?.remoteAccess;
-      const desiredHost = configured?.enabled === true ? configured.bindHost : undefined;
-      const active = listeners.find((entry) => entry.audience === "remote");
-      // 바인드 주소가 그대로면 리스너를 흔들 이유가 없다.
-      return (active?.host ?? undefined) === desiredHost ? null : restartRemoteAccess;
+      const { previous, next } = change;
+      const previousAdvertised = effectiveRemoteAccessAdvertisedTuple(previous);
+      const nextAdvertised = effectiveRemoteAccessAdvertisedTuple(next);
+      const publicChanged = previousAdvertised.host !== nextAdvertised.host || previousAdvertised.port !== nextAdvertised.port;
+      const localChanged = previous.listenAddress !== next.listenAddress || previous.listenPort.value !== next.listenPort.value;
+      const explicitDisable = previous.enabled && !next.enabled && !publicChanged && !localChanged;
+      if (publicChanged) return () => reconcilePublicEndpointChange(next);
+      if (explicitDisable) return stopRemoteAccessForDisable;
+      if (localChanged) return () => reconcileLocalEndpointChange(next);
+      if (!previous.enabled && next.enabled) return restartRemoteAccess;
+      return null;
     });
   }
 
@@ -2265,6 +2278,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     await stopRemoteAccess();
     remoteLastError = null;
     await startRemoteAccessGuarded(boundPort!);
+  }
+
+  async function stopRemoteAccessForDisable(): Promise<void> {
+    await stopRemoteAccess();
+    access.revokeGrants("remote");
+  }
+
+  async function reconcileLocalEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
+    await stopRemoteAccess();
+    remoteLastError = null;
+    if (next.enabled) await startRemoteAccessGuarded(boundPort!);
+  }
+
+  async function reconcilePublicEndpointChange(next: ConsoleRemoteAccessSettings): Promise<void> {
+    await stopRemoteAccess();
+    access.revokeGrants("remote");
+    pairedDeviceStore.revokeAll("remote");
+    remoteEndpointStore.forget();
+    if (next.enabled) {
+      remoteLastError = null;
+      await startRemoteAccessGuarded(boundPort!);
+    }
   }
 
   /**
@@ -2310,10 +2345,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     remoteServer = null;
     remoteFingerprint = null;
     listeners = listeners.filter((entry) => entry.audience !== "remote");
-    // 리스너만 닫고 자격을 남기면, 다시 켰을 때 예전 자격이 되살아난다. 미사용 링크도
-    // 옛 주소와 옛 지문을 실어 나르므로 함께 버린다.
+    // A listener stop ends live sessions, but unused grants remain valid unless public identity changes.
     access.revokeSessions("remote");
-    access.revokeGrants("remote");
     for (const owner of desktopShellsByOwner.keys()) {
       if (owner !== "local") desktopShellsByOwner.delete(owner);
     }
@@ -2324,81 +2357,133 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 원격 리스너는 설정이 켜졌을 때만 열린다. 처음 열릴 때는 콘솔이 지금 쓰는 포트를 다른
-   * 인터페이스에 그대로 바인드하고, 그 포트를 공표된 주소로 적어 둔다.
+   * 원격 리스너는 listenAddress/listenPort에 바인드한다. LAN-only는 그 tuple을 그대로 공표하고,
+   * 명시적으로 Public endpoint를 켠 경우에만 advertisedHost/advertisedPort를 Host·Origin·링크·쿠키·인증서에 쓴다.
    *
-   * 그 뒤로는 콘솔 포트가 아니라 적어 둔 포트를 연다. 루프백 포트는 dynamic이면 기동마다
-   * 달라지는데, 액세스 링크는 주소를 한 번만 실어 보내고 상대는 그것을 저장해 두기 때문이다 —
-   * 포트가 움직이면 페어링이 남아 있어도 그 기기는 죽은 주소를 두드린다. 재시작이 손님의
-   * 돌아올 길을 빼앗지 않는다는 계약은 주소가 고정되어야만 참이다.
-   *
-   * 적어 둔 포트를 열지 못하면 조용히 다른 포트로 옮기지 않는다. 옮기는 순간 페어링 전원이
-   * 아무 신호 없이 닿을 수 없게 되므로, 실패를 상태로 남기고 리스너는 닫힌 채 둔다.
+   * Custom listen port는 정확히 한 번만 시도하고 대체하지 않는다. Auto는 저장된 concrete 값을
+   * 먼저 시도한 뒤 EADDRINUSE/EADDRNOTAVAIL에 한해서만 다른 무작위 후보를 최대 12회까지 시험한다.
+   * 단 그 대체는 아직 아무 주소도 공표하지 않았을 때뿐이다 — 한 번 공표한 뒤에는 포트가 잠깐
+   * 막혔다는 이유로 다른 포트로 옮기지 않는다. 옮기면 링크가 알려 준 주소가 사라지고, LAN-only에서는
+   * 그 포트가 곧 공표 tuple이라 전 기기의 페어링이 주인의 행위 없이 해제된다. 그 자리는 실패로 남기고
+   * 주인이 포트를 비우거나 신원을 회전해 스스로 결정하게 한다.
+   * Public mode의 새 후보는 확인이 필요한 split route라 리스너를 닫고 비활성화한다. LAN-only에서는
+   * 새 후보 자체가 공표 tuple이므로 즉시 저장하고 같은 리스너를 정상 활성화한다.
    */
-  async function startRemoteAccessIfEnabled(actualPort: number): Promise<void> {
+  async function startRemoteAccessIfEnabled(_actualPort: number): Promise<void> {
     const configured = consoleSettingsStore.load().general?.remoteAccess;
-    const bindHost = configured?.enabled === true ? configured.bindHost : undefined;
-    if (!bindHost) return;
+    if (configured?.enabled !== true || configured.listenAddress === "") return;
+    if (configured.publicEndpointEnabled && !acknowledgmentMatches(configured, configured.acknowledgment)) return;
+    const advertised = effectiveRemoteAccessAdvertisedTuple(configured);
+    const previousIdentity = remoteIdentityStore.read();
+    const identity = await remoteIdentityStore.ensure(advertised.host);
+    const storedEndpoint = remoteEndpointStore.read();
     /**
-     * `ensure`는 조용히 갱신하기도 한다 — 바인드 주소가 바뀌었거나 만료가 가까우면 새 인증서를
-     * 만든다. 그 순간 옛 지문을 믿고 있던 페어링은 이 콘솔에 닿을 수 없으므로, 명시적 갱신과
-     * 같은 값을 치러야 한다. 그러지 않으면 붙지 못할 손님이 목록과 상한을 차지한 채 남는다.
+     * 판정과 취소는 bind보다 먼저 끝난다. `ensure()`는 회전한 인증서를 이미 디스크에 남기므로,
+     * bind가 실패해 취소를 건너뛰면 다음 기동에서는 그 새 인증서가 곧 previousIdentity가 되어
+     * 변화가 감지되지 않는다 — 사라진 인증서에 묶인 페어링이 목록에만 살아남는다.
      *
-     * 판정은 지문으로만 한다. `ensure`는 콘솔이 뜰 때마다 불리고 대개는 있던 인증서를 그대로
-     * 돌려주는데, 호출 사실만으로 회수하면 재시작이 매번 손님을 내보내 페어링이 무의미해진다.
+     * 공표한 뒤에는 포트가 미끄러지지 않으므로(위 startConfiguredRemoteListener) 실제로 열릴 포트는
+     * 이 시점에 이미 configured의 값으로 정해져 있고, 아직 공표 전이라면 포트 축 자체가 판정에 없다.
      */
-    const previousFingerprint = remoteIdentityStore.read()?.fingerprint ?? null;
-    const identity = await remoteIdentityStore.ensure(bindHost);
-    if (previousFingerprint === null || !fingerprintsMatch(previousFingerprint, identity.fingerprint)) {
+    const publicIdentityChanged = previousIdentity === null || !fingerprintsMatch(previousIdentity.fingerprint, identity.fingerprint)
+      || (storedEndpoint !== null && storedEndpoint.advertisedPort !== advertised.port);
+    if (publicIdentityChanged) {
+      access.revokeGrants("remote");
+      access.revokeSessions("remote");
       pairedDeviceStore.revokeAll("remote");
-      // 아무도 이 주소로 돌아올 수 없게 된 순간이다. 붙들고 있던 포트가 그사이 남의 것이
-      // 되었다면 그것 때문에 열리지 못할 이유도 함께 사라진다 — 명시적 갱신과 같은 처분이다.
       remoteEndpointStore.forget();
     }
-    // 포트는 신원 처분이 끝난 뒤에 읽는다. 방금 놓은 포트를 그대로 다시 여는 순서가 되면
-    // 위의 처분이 아무 일도 하지 않는다.
-    const published = remoteEndpointStore.read();
-    const publishedPort = published ?? actualPort;
-    const started = await startRemoteListener({
-      identity,
-      bindHost,
-      port: publishedPort,
-      handler: handleRequest,
-      upgradeRegistry,
-      isHostAllowed: isRequestHostAllowed,
-      isAdmitted: (req) => {
-        const resolved = listenerForRequest(req);
-        return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
-      },
-    }).catch((error: unknown) => {
-      // 공표해 둔 포트를 남이 쥐고 있다. "주소가 쓰이는 중"으로만 말하면 사용자는 바인드
-      // 주소를 의심하는데, 실제로 막힌 것은 이 콘솔이 이미 손님에게 알려 준 포트다.
-      if (published !== null && isAddressInUse(error)) throw remotePortUnavailable(error);
-      throw error;
-    });
+    // 취소가 돌았다면 기억된 엔드포인트도 함께 지워졌다 — 지킬 주소가 없으므로 Auto는 다시 고를 수 있다.
+    const started = await startConfiguredRemoteListener(configured, identity, storedEndpoint !== null && !publicIdentityChanged);
+    const effectiveConfigured = started.port === configured.listenPort.value
+      ? configured
+      : { ...configured, listenPort: { ...configured.listenPort, value: started.port } };
+    const effectiveAdvertised = effectiveRemoteAccessAdvertisedTuple(effectiveConfigured);
+    // 소유권을 먼저 옮긴다 — 아래 내구성 쓰기가 실패하면 가드가 stopRemoteAccess를 부르는데,
+    // 그때 remoteServer가 비어 있으면 이미 열린 소켓이 프로세스가 끝날 때까지 포트를 쥔 채 남는다.
+    remoteServer = started.server;
     const listener: ListenerIdentity = {
       audience: "remote",
-      host: bindHost,
-      port: publishedPort,
-      origin: `https://${bindHost}:${publishedPort}`,
+      host: effectiveAdvertised.host,
+      port: effectiveAdvertised.port,
+      origin: remoteOrigin(effectiveAdvertised.host, effectiveAdvertised.port),
       secure: true,
-      // 게이트는 소켓의 실제 주소로 리스너를 찾는다. 설정이 이름을 받으므로, 여기에 그 이름을
-      // 그대로 두면 어떤 요청도 자기 리스너를 찾지 못해 조인부터 전부 막힌다 — 리스너와 링크는
-      // 멀쩡해 보이는 채로.
       bindAddress: started.address,
+      bindPort: started.port,
     };
-    /**
-     * 열린 소켓을 먼저 이 서버의 것으로 만든다. 아래 쓰기가 실패하면 상위 가드가 원격을 닫는데,
-     * 그 정리는 `remoteServer`에 담긴 것만 닫는다 — 담기 전에 던지면 아무도 소유하지 않은 채
-     * 열려 있는 리스너가 남아, 상태는 "닫혔다"고 말하면서 그 포트를 계속 붙들고 있다.
-     */
     listeners = [...listeners, listener];
     remoteFingerprint = identity.fingerprint;
-    remoteServer = started.server;
-    // 실제로 열린 뒤에만 적는다. 바인드가 실패한 포트를 공표된 주소로 남기면, 그 주소를 믿는
-    // 기기가 생기기도 전에 다음 기동이 같은 실패를 반복한다.
-    remoteEndpointStore.remember(publishedPort);
+    remoteEndpointStore.remember({ listenPort: started.port, advertisedPort: effectiveAdvertised.port });
     startControlExpirySweep();
+  }
+
+  async function startConfiguredRemoteListener(configured: ConsoleRemoteAccessSettings, identity: { readonly certificatePem: string; readonly privateKeyPem: string }, published: boolean): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
+    if (configured.listenPort.mode === "custom") {
+      try {
+        return await startRemoteListener({ identity, bindHost: configured.listenAddress, port: configured.listenPort.value, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
+      } catch (error) {
+        if (errorCodeOf(error) === "EADDRINUSE") throw codedRemoteError("FLEET_CUSTOM_PORT_UNAVAILABLE", error);
+        throw error;
+      }
+    }
+    const attempted = new Set<number>();
+    while (attempted.size < REMOTE_AUTO_PORT_ATTEMPTS) {
+      const candidate = attempted.size === 0 ? configured.listenPort.value : nextRemoteAutoPort(attempted);
+      attempted.add(candidate);
+      try {
+        const started = await startRemoteListener({ identity, bindHost: configured.listenAddress, port: candidate, handler: handleRequest, upgradeRegistry, isHostAllowed: isRequestHostAllowed, isAdmitted: remoteAdmission });
+        if (candidate === configured.listenPort.value) return started;
+        if (published) {
+          // 여기까지 왔다면 공표한 포트가 막혀 다른 후보가 열린 것이다. 그 주소를 취하면
+          // 기기가 받은 주소가 조용히 무효가 되므로, 열린 소켓을 닫고 주인에게 넘긴다.
+          await closeHttpServer(started.server);
+          throw codedRemoteError("FLEET_REMOTE_PORT_UNAVAILABLE");
+        }
+        const updated = { ...configured, listenPort: { mode: "auto" as const, value: candidate }, acknowledgment: null };
+        if (configured.publicEndpointEnabled) {
+          await closeHttpServer(started.server);
+          consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: { ...updated, enabled: false } } }));
+          throw codedRemoteError("FLEET_ACKNOWLEDGMENT_REQUIRED");
+        }
+        try {
+          consoleSettingsStore.update((current) => ({ ...current, general: { ...current.general, remoteAccess: updated } }));
+        } catch (error) {
+          // 아직 소유권이 넘어가기 전이라 바깥 정리가 이 소켓을 닫지 못한다. 여기서 닫지 않으면
+          // 대체 포트를 프로세스가 끝날 때까지 쥔 채 남는다.
+          await closeHttpServer(started.server);
+          throw error;
+        }
+        return started;
+      } catch (error) {
+        const code = errorCodeOf(error);
+        if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED" || code === REMOTE_PORT_UNAVAILABLE) throw error;
+        if (code !== "EADDRINUSE" && code !== "EADDRNOTAVAIL") throw error;
+      }
+    }
+    throw codedRemoteError("FLEET_AUTO_PORT_EXHAUSTED");
+  }
+
+  function remoteOrigin(hostname: string, port: number): string {
+    return listenerOrigin(hostname, port, true);
+  }
+
+  function remoteAdmission(req: http.IncomingMessage): boolean {
+    const resolved = listenerForRequest(req);
+    return resolved === null || resolved.audience === "local" || isRemoteRequestAdmitted(resolved, req, getPathname(req));
+  }
+
+  function nextRemoteAutoPort(attempted: ReadonlySet<number>): number {
+    const randomInt = deps.remoteRandomInt ?? crypto.randomInt;
+    // 주입된 RNG도 같은 값을 계속 돌려줄 수 있다. 무한 재추첨 대신 bounded draw 뒤에 순차
+    // fallback으로 아직 시도하지 않은 값을 보장한다 — bind attempt 수는 바깥 Set이 12로 제한한다.
+    for (let draw = 0; draw < REMOTE_AUTO_PORT_ATTEMPTS; draw += 1) {
+      const candidate = randomInt(REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX + 1);
+      if (!attempted.has(candidate)) return candidate;
+    }
+    for (let candidate = REMOTE_AUTO_PORT_MIN; candidate <= REMOTE_AUTO_PORT_MAX; candidate += 1) {
+      if (!attempted.has(candidate)) return candidate;
+    }
+    throw codedRemoteError("FLEET_AUTO_PORT_EXHAUSTED");
   }
 
   function listenOnce(portToBind: number, statePatch: Omit<ConsolePortRuntimeState, "effectivePort">): Promise<ConsolePortListenResult> {
@@ -2464,41 +2549,6 @@ function consoleLabel(): string {
   return sanitizeAccessLabel(os.hostname().replace(/\.local$/iu, "")) || "Fleet Console";
 }
 
-export const JOIN_NOTICE_PATH = "/join";
-
-/**
- * 이 주소를 브라우저 주소창에 넣어 본 사람에게 보여주는 정적 안내. 액세스 링크는 `fleet://`라
- * 브라우저가 따라올 수 없고, 이 문서에는 아무 스크립트도 없다 — 설명만 하고 아무것도 하지
- * 않는 것이 요점이다.
- */
-const JOIN_NOTICE_DOCUMENT = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fleet Console access link</title>
-<style>
-:root { color-scheme: dark; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
-  background: #0b1116; color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-main { max-width: 30rem; }
-h1 { margin: 0 0 12px; font-size: 20px; font-weight: 650; }
-p { margin: 0 0 12px; color: #aebbc5; font-size: 14px; line-height: 1.55; }
-strong { color: #e6edf3; font-weight: 600; }
-</style>
-</head>
-<body>
-<main>
-<h1>This console is reached with an access link</h1>
-<p>You have found the remote listener of a Fleet Console. It does not open in a browser: a browser cannot check this console&#39;s certificate fingerprint, so <strong>remote access is not available to browsers</strong>.</p>
-<p>Ask for an access link instead. It looks like <strong>fleet://join?code=&hellip;</strong> and carries the address, a one-time credential, and the fingerprint together.</p>
-<p>In the Fleet Console you are already using, open <strong>Settings &rarr; Remote access &rarr; Hosts</strong> and paste the link there.</p>
-<p><strong>Remote access is experimental.</strong> How links and pairings behave can still change between releases.</p>
-</main>
-</body>
-</html>
-`;
 
 /** 경로에서 온 이름은 그대로 비교하지 않는다 — 디코드 실패는 존재하지 않는 이름으로 본다. */
 function decodeHandle(raw: string): string {
@@ -2513,11 +2563,19 @@ function decodeHandle(raw: string): string {
 /** 원격 바인드 실패 사유를 안전한 코드로만 표면화한다 — 주소·경로는 밖으로 내보내지 않는다. */
 function remoteAccessErrorCode(error: unknown): string {
   const code = errorCodeOf(error);
+  if (code === "FLEET_AUTO_PORT_EXHAUSTED") return "auto_port_exhausted";
+  if (code === "FLEET_ACKNOWLEDGMENT_REQUIRED") return "acknowledgment_required";
+  if (code === "FLEET_CUSTOM_PORT_UNAVAILABLE") return "custom_port_unavailable";
   if (code === REMOTE_PORT_UNAVAILABLE) return "remote_port_unavailable";
   if (code === "EADDRNOTAVAIL") return "bind_address_unavailable";
-  if (code === "EADDRINUSE") return "bind_address_in_use";
+  if (code === "EADDRINUSE") return "custom_port_unavailable";
   if (code === "EACCES") return "bind_permission_denied";
   return "remote_listener_failed";
+}
+
+
+function codedRemoteError(code: string, cause?: unknown): Error {
+  return Object.assign(new Error(code), { code, cause });
 }
 
 function errorCodeOf(error: unknown): string {
@@ -2581,7 +2639,7 @@ async function startRemoteListener(input: {
   readonly upgradeRegistry: UpgradeRegistry;
   readonly isHostAllowed: (req: http.IncomingMessage) => boolean;
   readonly isAdmitted: (req: http.IncomingMessage) => boolean;
-}): Promise<{ readonly server: https.Server; readonly address: string }> {
+}): Promise<{ readonly server: https.Server; readonly address: string; readonly port: number }> {
   const srv = https.createServer({ cert: input.identity.certificatePem, key: input.identity.privateKeyPem }, input.handler);
   srv.timeout = SERVER_TIMEOUT_MS;
   srv.keepAliveTimeout = SERVER_TIMEOUT_MS;
@@ -2597,7 +2655,7 @@ async function startRemoteListener(input: {
   });
   // 설정이 DNS 이름을 받으므로, 게이트가 비교할 주소는 바인드가 끝난 뒤 소켓에서 읽는다.
   const address = srv.address();
-  return { server: srv, address: typeof address === "object" && address ? address.address : input.bindHost };
+  return { server: srv, address: typeof address === "object" && address ? address.address : input.bindHost, port: typeof address === "object" && address ? address.port : input.port };
 }
 
 function createHttpServer(
@@ -2761,13 +2819,21 @@ function runAsyncBooleanHandler(handler: Promise<boolean>, res: http.ServerRespo
  * Host는 리스너가 실제로 바인드한 주소와만 일치해야 한다. 허용 집합을 요청 Host나 DNS에서
  * 유도하면 DNS rebinding으로 이 경계가 무너지므로, 비교 대상은 언제나 구성으로 정해진 리터럴이다.
  */
-function validateHost(req: http.IncomingMessage, expectedHostPort: string): boolean {
+function validateHost(req: http.IncomingMessage, expectedHostPort: string, secure?: boolean): boolean {
   if (req.url?.startsWith("http://") || req.url?.startsWith("https://")) return false;
   const hostHeaderCount = req.rawHeaders.filter((header, index) => index % 2 === 0 && header.toLowerCase() === "host").length;
   if (hostHeaderCount !== 1) return false;
   const hostHeader = req.headers.host;
   if (!hostHeader) return false;
-  return hostHeader === expectedHostPort;
+  // 같은 권위의 두 표기를 하나로 본다. 기본 포트를 적은 형태와 생략한 형태는 URL 규격상 같은 곳이고,
+  // 어느 쪽만 받으면 그 표기를 쓰는 클라이언트가 통째로 막힌다. 다른 포트는 그대로 구분한다.
+  return stripDefaultPort(hostHeader, secure) === stripDefaultPort(expectedHostPort, secure);
+}
+
+function stripDefaultPort(authority: string, secure?: boolean): string {
+  if (secure === undefined) return authority;
+  const suffix = secure ? ":443" : ":80";
+  return authority.endsWith(suffix) ? authority.slice(0, -suffix.length) : authority;
 }
 
 // 신규 terminal 라우트의 출처 경계. 브라우저 요청은 console origin과 일치해야 하고,

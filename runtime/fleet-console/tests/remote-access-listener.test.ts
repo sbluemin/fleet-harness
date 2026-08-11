@@ -11,6 +11,7 @@ import { createConsoleLock } from "../core/host/lock.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import { REMOTE_AUTO_PORT_ATTEMPTS, type ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
 // 하므로, 테스트 클라이언트도 CA가 아니라 지문으로 서버를 확인한다.
@@ -157,17 +158,160 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   it("opens and closes the remote listener when the setting changes, without a restart", async () => {
     const fixture = await startFixture({ remote: false });
 
-    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, origin: null, fingerprint: null });
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listener: { listening: false, origin: null }, fingerprint: null });
 
     await saveRemoteAccess(fixture, { enabled: true, bindHost: BIND_HOST });
     const enabled = await readRemoteStatus(fixture);
-    expect(enabled).toMatchObject({ listening: true, origin: `https://${BIND_HOST}:${fixture.remotePort}` });
+    expect(enabled).toMatchObject({ listener: { listening: true, origin: `https://${BIND_HOST}:${fixture.remotePort}` } });
     const token = grantTokenOf(await createLink(fixture));
     await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token }))).resolves.toMatchObject({ status: 204 });
 
     await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
-    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, fingerprint: null });
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listener: { listening: false }, fingerprint: null });
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters")).rejects.toThrow();
+  });
+
+  it("revokes unused links on an explicit disable while preserving pairings", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    expect((await readRemoteStatus(fixture)).links).toHaveLength(1);
+    expect((await readRemoteStatus(fixture)).devices).toHaveLength(1);
+
+    await saveRemoteAccess(fixture, { enabled: false, bindHost: BIND_HOST });
+    const disabled = await readRemoteStatus(fixture);
+    expect(disabled.links).toHaveLength(0);
+    expect(disabled.devices).toHaveLength(1);
+  });
+
+  it("uses the listen tuple for LAN-only links, TLS identity, Host checks, and persisted advertised port", async () => {
+    const port = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: BIND_HOST,
+      advertisedHost: "public-draft.example",
+      listenPort: { mode: "custom", value: port },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: null,
+    };
+    const fixture = await startFixture({ remote: true, remoteAccess });
+    const parsed = parseAccessLink(await createLink(fixture));
+    const certificate = new crypto.X509Certificate(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "identity-cert.pem"), "utf8"));
+    const savedEndpoint = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+
+    expect(parsed.origin).toBe(`https://${BIND_HOST}:${port}`);
+    expect(certificate.subjectAltName).toContain(`IP Address:${BIND_HOST}`);
+    expect(savedEndpoint.advertisedPort).toBe(port);
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookiesOf(joined), { host: `public-draft.example:443` })).resolves.toMatchObject({ status: 403 });
+  });
+
+  it("keeps credentials when a disabled LAN-only public draft changes", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const lanOnly = { ...remoteSettings(false, BIND_HOST, fixture.remotePort), publicEndpointEnabled: false, acknowledgment: null };
+    await putRemoteAccess(fixture, lanOnly);
+    const before = await readRemoteStatus(fixture);
+
+    await putRemoteAccess(fixture, { ...lanOnly, advertisedHost: "unused-public.example", advertisedPort: { mode: "custom", value: 443 } });
+
+    const after = await readRemoteStatus(fixture);
+    expect(after.links).toEqual(before.links);
+    expect(after.devices).toEqual(before.devices);
+  });
+
+  it("treats a LAN-only listen tuple edit as a public identity change", async () => {
+    const lanOnly = { ...remoteSettings(true, BIND_HOST, await reservePort(BIND_HOST)), publicEndpointEnabled: false, acknowledgment: null };
+    const fixture = await startFixture({ remote: true, remoteAccess: lanOnly });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const before = await readRemoteStatus(fixture);
+    expect(before).toMatchObject({ links: [expect.any(Object)], devices: [expect.any(Object)] });
+
+    await putRemoteAccess(fixture, { ...lanOnly, enabled: false, listenPort: { mode: "custom", value: fixture.remotePort + 1 } });
+
+    const after = await readRemoteStatus(fixture);
+    expect(after.links).toHaveLength(0);
+    expect(after.devices).toHaveLength(0);
+  });
+
+  it("preserves unused links and pairings when a public route keeps its effective tuple", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const active = await readRemoteStatus(fixture);
+    const remoteAccess = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    remoteAccess.listenPort = { mode: "custom", value: fixture.remotePort + 1 };
+    remoteAccess.acknowledgment = null;
+
+    await putRemoteAccess(fixture, remoteAccess);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toEqual(active.links);
+    expect(stopped.devices).toHaveLength(1);
+  });
+
+  it("revokes links and pairings immediately for a public identity edit", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const remoteAccess = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    remoteAccess.advertisedHost = "new-public.example";
+    remoteAccess.acknowledgment = null;
+
+    await putRemoteAccess(fixture, remoteAccess);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toHaveLength(0);
+    expect(stopped.devices).toHaveLength(0);
+  });
+
+  it("revokes public credentials after a prior local edit already removed the active listener", async () => {
+    const fixture = await startFixture({ remote: true });
+    await joinAs(fixture, "monitoring", "paired-device");
+    await createLink(fixture);
+    const localEdit = remoteSettings(false, BIND_HOST, fixture.remotePort);
+    localEdit.listenPort = { mode: "custom", value: fixture.remotePort + 1 };
+    localEdit.acknowledgment = null;
+    await putRemoteAccess(fixture, localEdit);
+    expect((await readRemoteStatus(fixture))).toMatchObject({ links: [expect.any(Object)], devices: [expect.any(Object)] });
+
+    const publicEdit = { ...localEdit, advertisedHost: "sequential-public.example" };
+    await putRemoteAccess(fixture, publicEdit);
+
+    const stopped = await readRemoteStatus(fixture);
+    expect(stopped.listener.listening).toBe(false);
+    expect(stopped.links).toHaveLength(0);
+    expect(stopped.devices).toHaveLength(0);
+  });
+
+  it("revokes unused grants when a failed listener is explicitly disabled", async () => {
+    const fixture = await startFixture({ remote: true });
+    await createLink(fixture);
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(0, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const address = squatter.address();
+      const occupiedPort = typeof address === "object" && address ? address.port : 0;
+      const failed = remoteSettings(true, BIND_HOST, fixture.remotePort);
+      failed.listenPort = { mode: "custom", value: occupiedPort };
+      failed.acknowledgment = { ...failed.acknowledgment!, listenPort: occupiedPort };
+      await putRemoteAccess(fixture, failed);
+      expect((await readRemoteStatus(fixture))).toMatchObject({ listener: { listening: false, lastError: "custom_port_unavailable" }, links: [expect.any(Object)] });
+
+      await putRemoteAccess(fixture, { ...failed, enabled: false, acknowledgment: null });
+
+      expect((await readRemoteStatus(fixture)).links).toHaveLength(0);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
   });
 
   it("kills the sessions a closed remote listener issued instead of leaving them redeemable", async () => {
@@ -182,12 +326,125 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 401 });
   });
 
+  it("tries the persisted Auto value first, then closes a random successful probe until the new tuple is acknowledged", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const occupiedAddress = occupied.address();
+    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
+    const candidateProbe = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      candidateProbe.once("error", reject);
+      candidateProbe.listen(0, BIND_HOST, () => { candidateProbe.off("error", reject); resolve(); });
+    });
+    const candidateAddress = candidateProbe.address();
+    const candidatePort = typeof candidateAddress === "object" && candidateAddress ? candidateAddress.port : 0;
+    await new Promise<void>((resolve) => candidateProbe.close(() => resolve()));
+    const randomInt = vi.fn(() => candidatePort);
+    try {
+      const remoteAccess = {
+        enabled: true,
+        publicEndpointEnabled: true,
+        listenAddress: BIND_HOST,
+        advertisedHost: BIND_HOST,
+        listenPort: { mode: "auto" as const, value: occupiedPort },
+        advertisedPort: { mode: "custom" as const, value: 50_000 },
+        acknowledgment: { version: 1 as const, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
+      const status = await readRemoteStatus(fixture);
+      expect(status.listener).toMatchObject({ listening: false, origin: null, lastError: "acknowledgment_required" });
+      expect(randomInt).toHaveBeenCalledTimes(1);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: typeof remoteAccess } };
+      expect(saved.general.remoteAccess).toMatchObject({ enabled: false, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
+      const reusable = http.createServer();
+      await new Promise<void>((resolve, reject) => {
+        reusable.once("error", reject);
+        reusable.listen(candidatePort, BIND_HOST, () => { reusable.off("error", reject); resolve(); });
+      });
+      await new Promise<void>((resolve) => reusable.close(() => resolve()));
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
+  });
+
+  it("keeps a successful LAN-only Auto retry active without requiring acknowledgment", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const occupiedAddress = occupied.address();
+    const occupiedPort = typeof occupiedAddress === "object" && occupiedAddress ? occupiedAddress.port : 0;
+    const candidatePort = await reservePort(BIND_HOST);
+    try {
+      const remoteAccess: ConsoleRemoteAccessSettings = {
+        enabled: true,
+        publicEndpointEnabled: false,
+        listenAddress: BIND_HOST,
+        advertisedHost: "",
+        listenPort: { mode: "auto", value: occupiedPort },
+        advertisedPort: { mode: "auto", value: 50_000 },
+        acknowledgment: null,
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => candidatePort });
+      const status = await readRemoteStatus(fixture);
+      expect(status.listener).toMatchObject({ listening: true, origin: `https://${BIND_HOST}:${candidatePort}`, lastError: null });
+      const parsed = parseAccessLink(await createLink(fixture));
+      expect(parsed.origin).toBe(`https://${BIND_HOST}:${candidatePort}`);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+      expect(saved.general.remoteAccess).toMatchObject({ enabled: true, listenPort: { mode: "auto", value: candidatePort }, acknowledgment: null });
+      const endpoint = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+      expect(endpoint.advertisedPort).toBe(candidatePort);
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+    }
+  });
+
+  it("bounds duplicate RNG draws and falls back to an unattempted Auto candidate", async () => {
+    const occupied = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      occupied.once("error", reject);
+      occupied.listen(0, BIND_HOST, () => { occupied.off("error", reject); resolve(); });
+    });
+    const address = occupied.address();
+    const occupiedPort = typeof address === "object" && address ? address.port : 0;
+    const repeated = 49_152;
+    const repeatedOccupier = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      repeatedOccupier.once("error", reject);
+      repeatedOccupier.listen(repeated, BIND_HOST, () => { repeatedOccupier.off("error", reject); resolve(); });
+    });
+    const randomInt = vi.fn(() => repeated);
+    try {
+      const remoteAccess: ConsoleRemoteAccessSettings = {
+        enabled: true,
+        publicEndpointEnabled: true,
+        listenAddress: BIND_HOST,
+        advertisedHost: BIND_HOST,
+        listenPort: { mode: "auto", value: occupiedPort },
+        advertisedPort: { mode: "custom", value: 50_000 },
+        acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort: occupiedPort, advertisedHost: BIND_HOST, advertisedPort: 50_000 },
+      };
+      const fixture = await startFixture({ remote: true, remoteAccess, remoteRandomInt: randomInt });
+      expect((await readRemoteStatus(fixture)).listener.lastError).toBe("acknowledgment_required");
+      expect(randomInt).toHaveBeenCalledTimes(REMOTE_AUTO_PORT_ATTEMPTS + 1);
+      const saved = JSON.parse(fs.readFileSync(path.join(fixture.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(49_153);
+    } finally {
+      await new Promise<void>((resolve) => occupied.close(() => resolve()));
+      await new Promise<void>((resolve) => repeatedOccupier.close(() => resolve()));
+    }
+  });
+
   it("reports a bind failure as a code instead of taking the console down", async () => {
     const fixture = await startFixture({ remote: false });
 
     await saveRemoteAccess(fixture, { enabled: true, bindHost: "203.0.113.7" });
 
-    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listening: false, lastError: "bind_address_unavailable" });
+    await expect(readRemoteStatus(fixture)).resolves.toMatchObject({ listener: { listening: false, lastError: "bind_address_unavailable" } });
     await expect(fetch(`${fixture.loopbackEndpoint}api/v1/theaters`).then((r) => r.status)).resolves.toBe(200);
   });
 
@@ -258,7 +515,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(rotated.status).toBe(200);
 
     const after = await readRemoteStatus(fixture);
-    expect(after.listening).toBe(true);
+    expect(after.listener.listening).toBe(true);
     expect(normalizeFingerprint(after.fingerprint!)).not.toBe(normalizeFingerprint(before.fingerprint!));
     expect(after.links).toHaveLength(0);
     // 지문이 바뀌면 그 지문을 믿고 붙던 페어링도 더는 성립하지 않는다.
@@ -348,29 +605,45 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 
     const status = await fetch(`${fixture.loopbackEndpoint}api/v1/access-links`, {
       headers: { Authorization: `Bearer ${fixture.lockToken}` },
-    }).then((response) => response.json() as Promise<{ listening: boolean; lastError: string | null }>);
+    }).then((response) => response.json() as Promise<{ listener: { listening: boolean; lastError: string | null } }>);
 
     expect(fixture.loopbackEndpoint).toContain("127.0.0.1");
-    expect(status.listening).toBe(false);
-    expect(status.lastError).not.toBeNull();
+    expect(status.listener.listening).toBe(false);
+    expect(status.listener.lastError).not.toBeNull();
   });
 
-  it("answers a browser that typed the address with an explanation instead of a bare 401", async () => {
+  it("leaves the join endpoint as the only door a session-less request can reach", async () => {
     const fixture = await startFixture({ remote: true });
 
-    const notice = await remoteRequestBody(fixture, "GET", "/join");
-
-    expect(notice.status).toBe(200);
-    expect(notice.headers["content-type"]).toContain("text/html");
-    // 막다른 길에서 끝내지 않고, 링크의 모양과 그것을 붙여넣을 자리를 함께 알려 준다.
-    expect(notice.body).toContain("fleet://join?code=");
-    expect(notice.body).toContain("Remote access");
-    // 설명만 하고 아무것도 하지 않는 문서여야 한다.
-    expect(notice.body).not.toMatch(/<script|\bon[a-z]+=/iu);
-    expect(notice.headers["content-security-policy"]).toContain("default-src 'none'");
-    // 나머지 표면은 그대로 닫혀 있다.
-    await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
+    // 브라우저는 자기서명 인증서의 지문을 대조할 수 없어 페어링을 끝낼 수 없다. 설명 표면조차 두지 않는다.
+    for (const path of ["/", "/join", "/console/", "/api/v1/state", "/api/v1/theaters", "/plugin-runtime/manifest"]) {
+      await expect(remoteRequest(fixture, "GET", path)).resolves.toMatchObject({ status: 401 });
+    }
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
+
+    // 통과하는 것은 이 하나뿐이며, 자격이 없으면 401로 끝난다 — 열려 있다는 것과 들여보낸다는 것은 다르다.
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: "not-a-grant" })))
+      .resolves.toMatchObject({ status: 401 });
+  });
+
+  it("spends a failure budget on the unauthenticated join door and reports the rejections", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    // 실패만 계수된다. 예산을 넘기면 본문을 읽기 전에 429로 끝나고 Retry-After를 실어 준다.
+    let throttled: Awaited<ReturnType<typeof remoteRequest>> | null = null;
+    for (let attempt = 0; attempt < 24 && throttled === null; attempt += 1) {
+      const response = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: `bad-${attempt}` }));
+      if (response.status === 429) throttled = response;
+    }
+
+    expect(throttled).not.toBeNull();
+    expect(throttled!.headers["retry-after"]).toBeDefined();
+    expect(throttled!.body).toContain("too_many_attempts");
+
+    // 조용히 막지 않는다 — 주인이 이 사실을 화면에서 볼 수 있어야 판단할 수 있다.
+    const status = await readRemoteStatus(fixture);
+    expect(status.rejectedJoins.count).toBeGreaterThan(0);
+    expect(status.rejectedJoins.lastAt).not.toBeNull();
   });
 
   it("holds a monitoring session to reading, and lets a full one through", async () => {
@@ -418,6 +691,52 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 그리고 이 기계가 가진 모든 주소가 실려 있고, 이 쓰기들은 손님이 자기보다 오래 사는
    * 초대장을 새로 찍거나 남의 자리를 끊거나 호스트 신원을 통째로 갈아 끼우게 한다.
    */
+  it("does not ship the remote access section to a remote session at all", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const asRemote = { origin: `https://${BIND_HOST}:${fixture.remotePort}` };
+
+    const seen = await remoteRequest(fixture, "GET", "/api/v1/settings/global", undefined, cookie, asRemote);
+    expect(seen.status).toBe(200);
+    const remoteView = JSON.parse(seen.body) as Record<string, unknown>;
+    // 이 기계의 LAN 주소는 초대받은 손님이 읽을 값이 아니다 — 관리 목록을 루프백에 둔 것과 같은 이유다.
+    expect(remoteView).not.toHaveProperty("remoteAccess");
+    expect(remoteView).toHaveProperty("theme");
+    expect(JSON.stringify(remoteView)).not.toContain(BIND_HOST);
+
+    // 원격이 쓴 응답도 같은 규칙을 따른다 — 한쪽만 가리면 왕복 한 번에 새어 나간다.
+    const wrote = await remoteRequest(fixture, "PUT", "/api/v1/settings/global", JSON.stringify({ theme: "carbon" }), cookie, asRemote);
+    expect(wrote.status).toBe(200);
+    expect(JSON.parse(wrote.body).state).not.toHaveProperty("remoteAccess");
+
+    // 루프백에서는 그대로 보인다.
+    const owner = await fetch(`${fixture.loopbackEndpoint}api/v1/settings/global`, { headers: { Origin: fixture.loopbackEndpoint.replace(/\/$/u, "") } });
+    expect(await owner.json()).toHaveProperty("remoteAccess");
+  });
+
+  it("refuses a remote session the listener's own settings, not just the access routes", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const asRemote = { origin: `https://${BIND_HOST}:${fixture.remotePort}` };
+
+    // 공표 튜플을 바꾸면 신원이 교체되어 전 기기가 페어링 해제된다. 그 결과에 이르는 전용
+    // 라우트가 401인데 이 문이 열려 있으면, 막아 둔 것은 이름뿐이다.
+    const body = JSON.stringify({
+      remoteAccess: {
+        enabled: true, publicEndpointEnabled: true, listenAddress: BIND_HOST, advertisedHost: "attacker.example.com",
+        listenPort: { mode: "custom", value: fixture.remotePort }, advertisedPort: { mode: "custom", value: 55553 },
+        acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort: fixture.remotePort, advertisedHost: "attacker.example.com", advertisedPort: 55553 },
+      },
+    });
+    await expect(remoteRequest(fixture, "PUT", "/api/v1/settings/global", body, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+
+    // 원격 세션이 못 만지는 것은 이 섹션뿐이다 — 테마·글꼴까지 잠그면 원격 조작이 무의미해진다.
+    await expect(remoteRequest(fixture, "PUT", "/api/v1/settings/global", JSON.stringify({ theme: "carbon" }), cookie, asRemote))
+      .resolves.toMatchObject({ status: 200 });
+
+    expect((await readRemoteStatus(fixture)).listener.origin).toBe(`https://${BIND_HOST}:${fixture.remotePort}`);
+  });
+
   it("keeps remote access administration on the loopback side", async () => {
     const fixture = await startFixture({ remote: true });
     const cookie = await joinAs(fixture, "full", "guest");
@@ -631,7 +950,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   it("reopens the published port after a console restart moves the console port", async () => {
     const first = await startFixture({ remote: true });
     const cookies = await joinAs(first, "full", "MacBook Pro");
-    const publishedOrigin = (await readRemoteStatus(first)).origin;
+    const publishedOrigin = (await readRemoteStatus(first)).listener.origin;
     const consolePort = Number(new URL(first.loopbackEndpoint).port);
 
     const restarted = await restartFixture(first);
@@ -639,7 +958,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     // 콘솔 포트는 새로 뽑혔지만, 손님에게 알려 준 주소는 그대로여야 한다.
     expect(Number(new URL(restarted.loopbackEndpoint).port)).not.toBe(consolePort);
     const status = await readRemoteStatus(restarted);
-    expect(status.origin).toBe(publishedOrigin);
+    expect(status.listener.origin).toBe(publishedOrigin);
     expect(status.devices).toHaveLength(1);
     expect(status.devices[0]!.sessionHandle).toBeNull();
 
@@ -650,11 +969,11 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   /** 페어링이 없어도 주소는 약속이다 — 링크를 받아 갈 기기가 아직 없을 때도 같은 곳이 열린다. */
   it("keeps the published port even when the console port moves before anyone pairs", async () => {
     const first = await startFixture({ remote: true });
-    const publishedOrigin = (await readRemoteStatus(first)).origin;
+    const publishedOrigin = (await readRemoteStatus(first)).listener.origin;
 
     const restarted = await restartFixture(first);
 
-    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(publishedOrigin);
+    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(publishedOrigin);
   });
 
   /**
@@ -662,9 +981,141 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 지문도 없는데, 그때 갱신이 막히면 안내가 지키지 못할 약속이 된다 — 리스너가 없는 상태가
    * 바로 이 버튼이 필요한 자리다.
    */
-  it("still rotates out of a published port another program has taken", async () => {
+  /**
+   * 공개 엔드포인트에 443은 가장 자연스러운 선택인데, 스킴의 기본 포트를 권위에 적어 두면
+   * 기기가 보내는 `Host: host`와 어긋나 정상 접속이 전부 막힌다. 쿠키 이름이 쓰는 숫자 포트는
+   * 그대로여야 하므로 정규화는 문자열 권위에만 적용된다.
+   */
+  it("accepts the authority a client sends when the advertised port is the scheme default", async () => {
+    const listenPort = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: true,
+      listenAddress: BIND_HOST,
+      advertisedHost: "nat.example.test",
+      listenPort: { mode: "custom", value: listenPort },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort, advertisedHost: "nat.example.test", advertisedPort: 443 },
+    };
+    const fixture = await startFixture({ remote: true, remoteAccess });
+
+    expect((await readRemoteStatus(fixture)).listener.origin).toBe("https://nat.example.test");
+
+    /**
+     * 실제 클라이언트는 https://nat.example.test 로 붙으므로 기본 포트를 생략한 Host를 보낸다.
+     * 테스트는 NAT가 없으니 수신 소켓에 직접 붙되 그 헤더를 그대로 흉내 낸다. Host 게이트를
+     * 지나면 자격이 없어 401이고, 403 host_mismatch면 문 앞에서 막힌 것이다.
+     */
+    const send = (hostHeader: string) => new Promise<{ status: number; cookies: readonly string[] }>((resolve, reject) => {
+      const body = JSON.stringify({ token: "probe" });
+      const request = https.request({
+        host: BIND_HOST, port: listenPort, path: "/api/v1/join", method: "POST",
+        rejectUnauthorized: false, checkServerIdentity: () => undefined,
+        headers: { host: hostHeader, "content-type": "application/json", "content-length": Buffer.byteLength(body) },
+      }, (response) => {
+        response.resume();
+        response.on("end", () => resolve({ status: response.statusCode ?? 0, cookies: response.headers["set-cookie"] ?? [] }));
+      });
+      request.on("error", reject);
+      request.write(body);
+      request.end();
+    });
+
+    await expect(send("nat.example.test")).resolves.toMatchObject({ status: 401 });
+    // 정규화하지 않은 형태도 계속 받는다 — 기존 기기가 그렇게 보내고 있을 수 있다.
+    await expect(send("nat.example.test:443")).resolves.toMatchObject({ status: 401 });
+  });
+
+  /**
+   * 인증서가 바뀌면 페어링은 사라져야 한다. `ensure()`는 회전한 인증서를 bind보다 먼저 디스크에
+   * 남기므로, bind 실패로 취소를 건너뛰면 다음 기동에서는 그 새 인증서가 previousIdentity가 되어
+   * 변화가 감지되지 않는다 — 사라진 인증서에 묶인 페어링이 목록에만 살아남는다.
+   */
+  it("voids pairings for a renewed certificate even when the listener then fails to bind", async () => {
     const paired = await startFixture({ remote: true });
-    const published = Number(new URL((await readRemoteStatus(paired)).origin!).port);
+    await joinAs(paired, "full", "MacBook Pro");
+    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
+    expect((await readRemoteStatus(paired)).devices).toHaveLength(1);
+
+    // 주인이 공표 이름을 바꾼다 — 신원이 회전할 조건. 그리고 그 포트를 남이 쥔 채로 다시 뜬다.
+    await stopFixture(paired);
+    const settingsPath = path.join(paired.dir, "fleet-home", "console", "settings.json");
+    const saved = JSON.parse(fs.readFileSync(settingsPath, "utf8")) as { general: { remoteAccess: ConsoleRemoteAccessSettings } };
+    const renamed = { ...saved.general.remoteAccess, advertisedHost: "renamed.example.test" };
+    fs.writeFileSync(settingsPath, JSON.stringify({
+      ...saved,
+      general: {
+        ...saved.general,
+        remoteAccess: { ...renamed, acknowledgment: { version: 1 as const, listenAddress: renamed.listenAddress, listenPort: renamed.listenPort.value, advertisedHost: renamed.advertisedHost, advertisedPort: renamed.advertisedPort.value } },
+      },
+    }));
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const stuck = await bootFixtureFrom(paired);
+      const failed = await readRemoteStatus(stuck);
+
+      expect(failed.listener.listening).toBe(false);
+      // 인증서는 이미 갈렸다. 그 기기가 신뢰하던 지문은 사라졌으므로 목록에 남기면 거짓말이 된다.
+      expect(failed.devices).toHaveLength(0);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  /**
+   * 공표한 뒤에는 Auto도 미끄러지지 않는다. LAN-only에서 수신 포트는 곧 공표 tuple이라,
+   * 잠깐 막혔다고 다른 후보를 취하면 링크가 알려 준 주소가 사라지고 전 기기의 페어링이
+   * 주인의 행위 없이 해제된다. 그 자리는 실패로 남고 주인이 결정한다.
+   */
+  it("does not slide a published LAN-only Auto port off its address when it is occupied", async () => {
+    const first = await reservePort(BIND_HOST);
+    const spare = await reservePort(BIND_HOST);
+    const remoteAccess: ConsoleRemoteAccessSettings = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: BIND_HOST,
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: first },
+      advertisedPort: { mode: "auto", value: first },
+      acknowledgment: null,
+    };
+    const paired = await startFixture({ remote: true, remoteAccess, remoteRandomInt: () => spare });
+    await joinAs(paired, "full", "MacBook Pro");
+    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
+    expect(published).toBe(first);
+
+    await stopFixture(paired);
+    const squatter = http.createServer();
+    await new Promise<void>((resolve, reject) => {
+      squatter.once("error", reject);
+      squatter.listen(published, BIND_HOST, () => { squatter.off("error", reject); resolve(); });
+    });
+    try {
+      const stuck = await bootFixtureFrom(paired);
+      const failed = await readRemoteStatus(stuck);
+
+      expect(failed.listener.listening).toBe(false);
+      // 안내가 이미 존재하던 문구다 — 포트를 비우거나 신원을 회전하라고 주인에게 넘긴다.
+      expect(failed.listener.lastError).toBe("remote_port_unavailable");
+      // 무엇보다, 아무도 페어링을 잃지 않았다.
+      expect(failed.devices).toHaveLength(1);
+      const saved = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: { listenPort: { value: number } } } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(published);
+      const endpoint = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "remote", "listener.json"), "utf8")) as { advertisedPort: number };
+      expect(endpoint.advertisedPort).toBe(published);
+    } finally {
+      await new Promise<void>((resolve) => squatter.close(() => resolve()));
+    }
+  });
+
+  it("keeps an occupied Custom port after destructive identity rotation without falling back", async () => {
+    const paired = await startFixture({ remote: true });
+    await joinAs(paired, "full", "MacBook Pro");
+    const published = Number(new URL((await readRemoteStatus(paired)).listener.origin!).port);
 
     // 콘솔을 내려 두고 그 포트를 남이 잡는다. 그 상태로 다시 뜨는 것이 사용자가 겪는 순서다.
     await stopFixture(paired);
@@ -676,19 +1127,22 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     try {
       const stuck = await bootFixtureFrom(paired);
       const failed = await readRemoteStatus(stuck);
-      expect(failed.listening).toBe(false);
-      expect(failed.lastError).toBe("remote_port_unavailable");
+      expect(failed.listener.listening).toBe(false);
+      expect(failed.listener.lastError).toBe("custom_port_unavailable");
 
-      // 안내가 시키는 대로 신원을 갱신한다 — 리스너가 없어도 받아들여져야 한다.
       const rotated = await fetch(`${stuck.loopbackEndpoint}api/v1/remote-identity/rotations`, {
         method: "POST",
         headers: { Authorization: `Bearer ${stuck.lockToken}` },
       });
-      expect(rotated.status).toBe(200);
+      expect(rotated.status).toBe(500);
 
-      const recovered = await readRemoteStatus(stuck);
-      expect(recovered.listening).toBe(true);
-      expect(recovered.origin).toBe(`https://${BIND_HOST}:${new URL(stuck.loopbackEndpoint).port}`);
+      const afterRotation = await readRemoteStatus(stuck);
+      expect(afterRotation.listener.listening).toBe(false);
+      expect(afterRotation.listener.lastError).toBe("custom_port_unavailable");
+      expect(afterRotation.devices).toHaveLength(0);
+      const saved = JSON.parse(fs.readFileSync(path.join(stuck.dir, "fleet-home", "console", "settings.json"), "utf8")) as { general: { remoteAccess: { listenPort: { value: number }; advertisedPort: { value: number } } } };
+      expect(saved.general.remoteAccess.listenPort.value).toBe(published);
+      expect(saved.general.remoteAccess.advertisedPort.value).toBe(published);
     } finally {
       await new Promise<void>((resolve) => squatter.close(() => resolve()));
     }
@@ -698,12 +1152,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 신원 갱신은 이미 손님을 전부 내보내는 자리다. 그 순간에는 주소를 붙들 이유가 없고, 남이
    * 그 포트를 쥐어 원격이 열리지 않을 때 빠져나오는 길도 이것 하나뿐이다.
    */
-  it("re-anchors the published port when the identity is rotated", async () => {
-    // 재기동을 한 번 거쳐야 공표된 포트와 콘솔 포트가 갈라진다 — 갈라져야 재고정이 보인다.
+  it("preserves configured Custom ports when the identity is rotated", async () => {
     const restarted = await restartFixture(await startFixture({ remote: true }));
-    const before = (await readRemoteStatus(restarted)).origin;
-    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
-    expect(before).not.toBe(consoleOrigin);
+    const before = (await readRemoteStatus(restarted)).listener.origin;
 
     const rotated = await fetch(`${restarted.loopbackEndpoint}api/v1/remote-identity/rotations`, {
       method: "POST",
@@ -711,7 +1162,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     });
     expect(rotated.status).toBe(200);
 
-    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(consoleOrigin);
+    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(before);
   });
 
   /** 재개는 등급을 물려받을 뿐 올리지 못한다. 페어링이 등급의 유일한 근거다. */
@@ -769,11 +1220,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 그리고 그 순간에는 공표한 포트도 놓는다. 아무도 이 주소로 돌아오지 못하므로 붙들 이유가
    * 없고, 그사이 남이 그 포트를 쥐었다면 놓지 않는 편이 원격을 아예 못 열게 만든다.
    */
-  it("releases the published port when the certificate silently changes", async () => {
-    // 재기동으로 공표된 포트와 콘솔 포트를 갈라 둔다 — 갈라져야 놓은 것이 보인다.
+  it("preserves configured Custom ports when the certificate silently changes", async () => {
     const restarted = await restartFixture(await startFixture({ remote: true }));
-    const consoleOrigin = `https://${BIND_HOST}:${new URL(restarted.loopbackEndpoint).port}`;
-    expect((await readRemoteStatus(restarted)).origin).not.toBe(consoleOrigin);
+    const before = (await readRemoteStatus(restarted)).listener.origin;
 
     const metaFile = path.join(restarted.dir, "fleet-home", "console", "remote", "identity.json");
     const meta = JSON.parse(fs.readFileSync(metaFile, "utf8")) as Record<string, unknown>;
@@ -781,7 +1230,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await saveRemoteAccess(restarted, { enabled: false, bindHost: BIND_HOST });
     await saveRemoteAccess(restarted, { enabled: true, bindHost: BIND_HOST });
 
-    await expect(readRemoteStatus(restarted).then((status) => status.origin)).resolves.toBe(consoleOrigin);
+    await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(before);
   });
 
   /** 저장된 것은 해시뿐이다 — 이 파일이 새어도 그것으로 붙을 수 없다. */
@@ -799,10 +1248,10 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 });
 
 interface RemoteAccessStatus {
-  readonly listening: boolean;
-  readonly origin: string | null;
+  readonly listener: { readonly listening: boolean; readonly origin: string | null; readonly lastError: string | null };
+  readonly publicReachability: "unverified";
+  readonly rejectedJoins: { readonly count: number; readonly lastAt: number | null };
   readonly fingerprint: string | null;
-  readonly lastError: string | null;
   readonly links: readonly { readonly id: string; readonly access: string; readonly issuedAt: number; readonly expiresAt: number }[];
   readonly devices: readonly { readonly id: string; readonly device: string | null; readonly access: string; readonly pairedAt: number; readonly lastSeenAt: number; readonly sessionHandle: string | null }[];
   readonly interfaces: readonly { readonly kind: string; readonly label: string; readonly address: string }[];
@@ -918,7 +1367,27 @@ async function readRemoteStatusAt(loopbackEndpoint: string): Promise<RemoteAcces
   return await response.json() as RemoteAccessStatus;
 }
 
-async function saveRemoteAccess(fixture: Fixture, remoteAccess: { readonly enabled: boolean; readonly bindHost: string }): Promise<void> {
+async function reservePort(host: string): Promise<number> {
+  const probe = http.createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen(0, host, () => { probe.off("error", reject); resolve(); });
+  });
+  const address = probe.address();
+  const port = typeof address === "object" && address ? address.port : 0;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
+async function saveRemoteAccess(fixture: Fixture, input: { readonly enabled: boolean; readonly bindHost: string }): Promise<void> {
+  const remoteAccess = remoteSettings(input.enabled, input.bindHost, fixture.remotePort);
+  await putRemoteAccess(fixture, remoteAccess);
+  // 저장 응답은 리스너 전환이 끝난 뒤에 온다. 곧바로 읽은 상태가 이미 확정이어야 한다.
+  const status = await readRemoteStatus(fixture);
+  expect(status.listener.listening).toBe(remoteAccess.enabled && status.listener.lastError === null);
+}
+
+async function putRemoteAccess(fixture: Fixture, remoteAccess: ConsoleRemoteAccessSettings): Promise<void> {
   const origin = fixture.loopbackEndpoint.replace(/\/$/u, "");
   const response = await fetch(`${origin}/api/v1/settings/global`, {
     method: "PUT",
@@ -926,9 +1395,6 @@ async function saveRemoteAccess(fixture: Fixture, remoteAccess: { readonly enabl
     body: JSON.stringify({ remoteAccess }),
   });
   if (!response.ok) throw new Error(`settings save failed: ${response.status} ${await response.text()}`);
-  // 저장 응답은 리스너 전환이 끝난 뒤에 온다. 곧바로 읽은 상태가 이미 확정이어야 한다.
-  const status = await readRemoteStatus(fixture);
-  expect(status.listening).toBe(remoteAccess.enabled && status.lastError === null);
 }
 
 function grantTokenOf(link: string): string {
@@ -1018,7 +1484,19 @@ function remoteRequestBody(
   });
 }
 
-async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string }): Promise<Fixture> {
+function remoteSettings(enabled: boolean, host: string, port: number) {
+  return {
+    enabled,
+    publicEndpointEnabled: true,
+    listenAddress: host,
+    advertisedHost: host,
+    listenPort: { mode: "custom" as const, value: port },
+    advertisedPort: { mode: "custom" as const, value: port },
+    acknowledgment: enabled ? { version: 1 as const, listenAddress: host, listenPort: port, advertisedHost: host, advertisedPort: port } : null,
+  };
+}
+
+async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string; readonly remoteAccess?: ConsoleRemoteAccessSettings; readonly remoteRandomInt?: (min: number, maxExclusive: number) => number }): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
   const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
@@ -1028,10 +1506,10 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
     fs.mkdirSync(consoleDataDir, { recursive: true });
     fs.writeFileSync(
       path.join(consoleDataDir, "settings.json"),
-      JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: options.bindHost ?? BIND_HOST } }, plugins: {} }),
+      JSON.stringify({ version: 1, general: { remoteAccess: options.remoteAccess ?? remoteSettings(true, options.bindHost ?? BIND_HOST, 50_000) }, plugins: {} }),
     );
   }
-  return bootFixture(dir, dataRoot, consoleDataDir, options.remote);
+  return bootFixture(dir, dataRoot, consoleDataDir, options.remote, options.remoteRandomInt);
 }
 
 /**
@@ -1054,13 +1532,14 @@ function bootFixtureFrom(fixture: Fixture): Promise<Fixture> {
   return bootFixture(fixture.dir, dataRoot, path.join(dataRoot, "console"), true);
 }
 
-async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean): Promise<Fixture> {
+async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean, remoteRandomInt?: (min: number, maxExclusive: number) => number): Promise<Fixture> {
   const server = createConsoleServer({
     port: 0,
     version: "test",
     agentRuntime: createFakeConsoleRuntime() as never,
     dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
+    remoteRandomInt,
   });
   servers.push(server);
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });
@@ -1076,7 +1555,7 @@ async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string
   const base = { dir, server, loopbackEndpoint, lockToken: lock.token, fingerprint };
   if (!remote) return { ...base, remotePort: lock.port };
   const status = await readRemoteStatusAt(loopbackEndpoint);
-  const published = status.origin === null ? null : Number(new URL(status.origin).port);
+  const published = status.listener.origin === null ? null : Number(new URL(status.listener.origin).port);
   return { ...base, remotePort: published ?? lock.port };
 }
 

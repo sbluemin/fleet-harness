@@ -52,6 +52,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Carbon",
   "Whites",
   "Auto",
+  "Etc",
   "English",
   "Dynamic",
   "Static",

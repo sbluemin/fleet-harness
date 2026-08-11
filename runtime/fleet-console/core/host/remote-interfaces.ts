@@ -25,7 +25,7 @@ export function listRemoteInterfaces(interfaces: NodeJS.Dict<NetworkAddress[]> =
       if (entry.family !== "IPv4" || entry.internal || seen.has(entry.address)) continue;
       seen.add(entry.address);
       const kind = isCarrierGradeNat(entry.address) ? "tailscale" : "local";
-      candidates.push({ kind, label: kind === "tailscale" ? "Tailscale" : labelFor(name), address: entry.address });
+      candidates.push({ kind, label: kind === "tailscale" ? `Tailscale (${sanitizeName(name)})` : labelFor(name), address: entry.address });
     }
   }
   // Tailscale을 먼저 — 그 주소는 어디서든 닿고, 사설망 주소는 같은 망에서만 닿는다.
@@ -39,7 +39,7 @@ function isCarrierGradeNat(address: string): boolean {
 }
 
 function labelFor(interfaceName: string): string {
-  return /^(?:en|eth|wl|wlan)/u.test(interfaceName) ? "Local network" : `Local network (${sanitizeName(interfaceName)})`;
+  return `Local network (${sanitizeName(interfaceName)})`;
 }
 
 function sanitizeName(value: string): string {

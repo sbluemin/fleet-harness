@@ -1,3 +1,5 @@
+import crypto from "node:crypto";
+import fs from "node:fs";
 import type http from "node:http";
 import path from "node:path";
 
@@ -17,13 +19,42 @@ export type UiFontSettings =
   | { readonly source: "builtin"; readonly id: ConsoleUiFontId; readonly size: number }
   | { readonly source: "system"; readonly familyName: string; readonly size: number };
 
-/**
- * 원격 접속은 기본으로 꺼져 있다. 켜질 때 사용자가 고른 바인드 주소는 구성 리터럴로만
- * 취급되며, 요청 Host나 DNS에서 유도되지 않는다 — 그래야 Host 검사가 rebinding 경계로 남는다.
- */
+export const REMOTE_AUTO_PORT_MIN = 49152;
+export const REMOTE_AUTO_PORT_MAX = 65535;
+export const REMOTE_AUTO_PORT_ATTEMPTS = 12;
+
+export interface RemotePortSetting {
+  readonly mode: "auto" | "custom";
+  readonly value: number;
+}
+
+export interface RemoteAccessAcknowledgment {
+  readonly version: 1;
+  readonly listenAddress: string;
+  readonly listenPort: number;
+  readonly advertisedHost: string;
+  readonly advertisedPort: number;
+}
+
 export interface ConsoleRemoteAccessSettings {
-  readonly enabled?: boolean;
-  readonly bindHost?: string;
+  readonly enabled: boolean;
+  readonly publicEndpointEnabled: boolean;
+  readonly listenAddress: string;
+  readonly advertisedHost: string;
+  readonly listenPort: RemotePortSetting;
+  readonly advertisedPort: RemotePortSetting;
+  readonly acknowledgment: RemoteAccessAcknowledgment | null;
+}
+
+export interface RemoteAccessAdvertisedTuple {
+  readonly host: string;
+  readonly port: number;
+}
+
+export function effectiveRemoteAccessAdvertisedTuple(settings: ConsoleRemoteAccessSettings): RemoteAccessAdvertisedTuple {
+  return settings.publicEndpointEnabled
+    ? { host: settings.advertisedHost, port: settings.advertisedPort.value }
+    : { host: settings.listenAddress, port: settings.listenPort.value };
 }
 
 export interface ConsoleGeneralSettings {
@@ -40,11 +71,29 @@ export interface ConsoleGeneralSettings {
 const REMOTE_BIND_HOST = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
 
 export function sanitizeRemoteAccessSettings(value: unknown): ConsoleRemoteAccessSettings | undefined {
-  if (!isRecord(value)) return undefined;
-  const enabled = typeof value.enabled === "boolean" ? value.enabled : undefined;
-  const bindHost = isValidRemoteBindHost(value.bindHost) ? canonicalizeRemoteBindHost(value.bindHost) : undefined;
-  if (enabled === undefined && bindHost === undefined) return undefined;
-  return { ...(enabled !== undefined ? { enabled } : {}), ...(bindHost !== undefined ? { bindHost } : {}) };
+  if (!isRecord(value) || "bindHost" in value) return undefined;
+  if (typeof value.enabled !== "boolean") return undefined;
+  const listenAddress = value.listenAddress === "" ? "" : isValidRemoteBindHost(value.listenAddress) ? canonicalizeRemoteBindHost(value.listenAddress) : null;
+  const advertisedHost = value.advertisedHost === "" ? "" : isValidRemoteAdvertisedHost(value.advertisedHost) ? canonicalizeRemoteBindHost(value.advertisedHost) : null;
+  if (listenAddress === null || advertisedHost === null) return undefined;
+  const listenPort = sanitizeRemotePortSetting(value.listenPort);
+  const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
+  if (!listenPort || !advertisedPort) return undefined;
+  const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
+  const explicitPublicEndpointEnabled = typeof value.publicEndpointEnabled === "boolean" ? value.publicEndpointEnabled : null;
+  if (explicitPublicEndpointEnabled === true && value.acknowledgment !== null && !acknowledgment) return undefined;
+  const publicEndpointEnabled = explicitPublicEndpointEnabled
+    ?? acknowledgmentMatches({ listenAddress, advertisedHost, listenPort, advertisedPort }, acknowledgment);
+  if (value.enabled && (listenAddress === "" || (publicEndpointEnabled && (advertisedHost === "" || !acknowledgmentMatches({ listenAddress, advertisedHost, listenPort, advertisedPort }, acknowledgment))))) return undefined;
+  return {
+    enabled: value.enabled,
+    publicEndpointEnabled,
+    listenAddress,
+    advertisedHost,
+    listenPort,
+    advertisedPort,
+    acknowledgment: publicEndpointEnabled ? acknowledgment : null,
+  };
 }
 
 /**
@@ -75,6 +124,8 @@ export interface ConsoleSettingsData {
 }
 
 export interface CreateConsoleSettingsStoreDeps {
+  readonly randomInt?: (min: number, max: number) => number;
+  readonly readFile?: (file: string) => string;
   readonly paths?: ConsoleDataPaths;
   readonly createStore?: (deps: CreateDurableJsonStoreDeps<ConsoleSettingsData>) => DurableJsonStore<ConsoleSettingsData>;
   readonly now?: () => number;
@@ -96,7 +147,9 @@ const MAX_FEATURE_TOUR_KEY_LENGTH = 64;
 export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps = {}): DurableJsonStore<ConsoleSettingsData> {
   const paths = deps.paths ?? createConsoleDataPaths();
   const createStore = deps.createStore ?? createDurableJsonStore;
-  return createStore({
+  const randomInt = deps.randomInt ?? crypto.randomInt;
+  const readFile = deps.readFile ?? ((file: string) => fs.readFileSync(file, "utf8"));
+  const base = createStore({
     filePath: paths.settingsFile,
     lockDir: path.join(paths.dir, SETTINGS_LOCK_DIR_NAME),
     lockOwnerFileName: SETTINGS_LOCK_OWNER_FILE_NAME,
@@ -105,6 +158,24 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     sensitivity: "sensitive",
     tempCleanupPrefix: SETTINGS_TEMP_PREFIX,
   });
+  let initialized = false;
+  function initialize(): ConsoleSettingsData {
+    if (initialized) return base.load();
+    initialized = true;
+    const current = base.load();
+    const raw = readRawSettings(paths.settingsFile, readFile);
+    const legacy = readLegacyRemoteAccess(raw, paths.dir, readFile, randomInt);
+    const remoteAccess = current.general?.remoteAccess ?? legacy ?? createDefaultRemoteAccess(randomInt);
+    const next = { ...current, general: { ...current.general, remoteAccess } };
+    if (!current.general?.remoteAccess || legacy || currentRemoteAccessNeedsMigration(raw)) base.save(next);
+    return next;
+  }
+  return {
+    path: base.path,
+    load: initialize,
+    save(data) { initialized = true; base.save(data); },
+    update(mutate) { const next = mutate(initialize()); base.save(next); return base.load(); },
+  };
 }
 
 export function sanitizeConsoleSettingsData(value: unknown): ConsoleSettingsData {
@@ -197,6 +268,70 @@ function readConsolePluginSettings(value: unknown): Record<string, Record<string
   return result;
 }
 
+/**
+ * 공표 이름은 바인드하지 않지만, 루프백·와일드카드는 여기서도 값이 아니다 — 그 이름을 실은 링크를
+ * 받은 기기는 자기 자신에게 향한다. 바인드와 같은 집합을 쓰지 않으면 정상 접속이 불가능한 설정을
+ * 저장할 수 있고, 그때 실제 소켓은 다른 이름으로 여전히 열려 있어 상태가 어긋난다.
+ */
+function isValidRemoteAdvertisedHost(value: unknown): value is string {
+  return isValidRemoteBindHost(value);
+}
+
+function sanitizeRemotePortSetting(value: unknown): RemotePortSetting | null {
+  if (!isRecord(value) || (value.mode !== "auto" && value.mode !== "custom") || !isBindablePort(value.value)) return null;
+  if (value.mode === "auto" && (value.value < REMOTE_AUTO_PORT_MIN || value.value > REMOTE_AUTO_PORT_MAX)) return null;
+  return { mode: value.mode, value: value.value };
+}
+
+function sanitizeAcknowledgment(value: unknown): RemoteAccessAcknowledgment | null {
+  if (value === null) return null;
+  if (!isRecord(value) || value.version !== 1 || !isValidRemoteBindHost(value.listenAddress)
+    || !isValidRemoteAdvertisedHost(value.advertisedHost) || !isBindablePort(value.listenPort) || !isBindablePort(value.advertisedPort)) return null;
+  return { version: 1, listenAddress: canonicalizeRemoteBindHost(value.listenAddress), listenPort: value.listenPort, advertisedHost: canonicalizeRemoteBindHost(value.advertisedHost), advertisedPort: value.advertisedPort };
+}
+
+export function acknowledgmentMatches(settings: Pick<ConsoleRemoteAccessSettings, "listenAddress" | "listenPort" | "advertisedHost" | "advertisedPort">, acknowledgment: RemoteAccessAcknowledgment | null): boolean {
+  return acknowledgment !== null && acknowledgment.version === 1
+    && acknowledgment.listenAddress === settings.listenAddress && acknowledgment.listenPort === settings.listenPort.value
+    && acknowledgment.advertisedHost === settings.advertisedHost && acknowledgment.advertisedPort === settings.advertisedPort.value;
+}
+
+function createDefaultRemoteAccess(randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings {
+  return { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: randomAutoPort(randomInt) }, advertisedPort: { mode: "auto", value: randomAutoPort(randomInt) }, acknowledgment: null };
+}
+
+function randomAutoPort(randomInt: (min: number, max: number) => number): number {
+  return randomInt(REMOTE_AUTO_PORT_MIN, REMOTE_AUTO_PORT_MAX + 1);
+}
+
+function isBindablePort(value: unknown): value is number {
+  return typeof value === "number" && Number.isSafeInteger(value) && value > 0 && value <= 65_535;
+}
+
+function readRawSettings(file: string, readFile: (file: string) => string): unknown {
+  try { return JSON.parse(readFile(file)); } catch { return null; }
+}
+
+function currentRemoteAccessNeedsMigration(raw: unknown): boolean {
+  return isRecord(raw) && raw.version === 1 && isRecord(raw.general) && isRecord(raw.general.remoteAccess)
+    && !("bindHost" in raw.general.remoteAccess) && typeof raw.general.remoteAccess.publicEndpointEnabled !== "boolean";
+}
+
+function readLegacyRemoteAccess(raw: unknown, consoleDir: string, readFile: (file: string) => string, randomInt: (min: number, max: number) => number): ConsoleRemoteAccessSettings | null {
+  if (!isRecord(raw) || raw.version !== 1 || !isRecord(raw.general) || !isRecord(raw.general.remoteAccess)) return null;
+  const legacy = raw.general.remoteAccess;
+  if (!isValidRemoteBindHost(legacy.bindHost)) return null;
+  const host = canonicalizeRemoteBindHost(legacy.bindHost);
+  let port: number | null = null;
+  try {
+    const endpoint = JSON.parse(readFile(path.join(consoleDir, "remote", "listener.json"))) as unknown;
+    if (isRecord(endpoint) && endpoint.version === 1 && isBindablePort(endpoint.port)) port = endpoint.port;
+  } catch {}
+  const listenPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
+  const advertisedPort: RemotePortSetting = port === null ? { mode: "auto", value: randomAutoPort(randomInt) } : { mode: "custom", value: port };
+  return { enabled: legacy.enabled === true, publicEndpointEnabled: false, listenAddress: host, advertisedHost: host, listenPort, advertisedPort, acknowledgment: null };
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -217,9 +352,19 @@ function sanitizeSystemFontFamily(value: string): string {
   return value.replace(/[\x00-\x1F\x7F]/g, "").trim().slice(0, 128);
 }
 
+export interface RemoteAccessSettingsChange {
+  readonly previous: ConsoleRemoteAccessSettings;
+  readonly next: ConsoleRemoteAccessSettings;
+}
+
 interface GlobalSettingsRouteDeps {
   readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  /**
+   * 원격 리스너 자신의 설정은 소유자 것이다. 신원 회전과 기기 해제가 루프백 전용인데 여기가
+   * 열려 있으면, 공표 튜플을 바꾸는 것만으로 같은 결과(전 기기 페어링 해제)에 도달한다.
+   */
+  readonly isRemoteAccessOwner?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
@@ -227,7 +372,7 @@ interface GlobalSettingsRouteDeps {
    * 저장 직후 살아 있는 리스너를 설정에 맞춘다 — 켜자마자 링크를 만들 수 있어야 한다.
    * 전환이 끝나기 전에 응답하면 저장 직후의 상태 조회가 항상 "꺼짐"을 읽는다.
    */
-  readonly onRemoteAccessChanged?: () => void | Promise<void>;
+  readonly onRemoteAccessChanged?: (change: RemoteAccessSettingsChange) => void | Promise<void>;
 }
 
 interface GlobalSettingsRouteContext {
@@ -271,7 +416,7 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
     const { req, res, pathname } = context;
     if (pathname === "/api/v1/settings/global") {
       if (req.method === "GET") {
-        deps.writeJson(res, 200, buildGlobalSettingsState(deps.consoleSettingsStore));
+        deps.writeJson(res, 200, withRemoteAccessVisibility(buildGlobalSettingsState(deps.consoleSettingsStore), req, deps));
         return true;
       }
       if (req.method === "PUT") {
@@ -319,6 +464,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_language" });
     return;
   }
+  if (body.remoteAccess !== undefined && deps.isRemoteAccessOwner !== undefined && !deps.isRemoteAccessOwner(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
+    return;
+  }
   // 읽기가 쓰기보다 느슨하면 GET 정규형을 그대로 PUT으로 돌려보낼 때 섹션 저장이 통째로 잠긴다.
   if (body.remoteAccess !== undefined && !isValidRemoteAccessInput(body.remoteAccess)) {
     deps.writeJson(res, 400, { error: "invalid_remote_access" });
@@ -344,6 +493,9 @@ async function mutateGlobalSettings(
     || body.theme === "whites"
     ? body.theme
     : undefined;
+  const beforeUpdate = deps.consoleSettingsStore.load();
+  const previousRemoteAccess = beforeUpdate.general?.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt);
+  const nextRemoteAccess = body.remoteAccess !== undefined ? normalizeRemoteAccessInput(body.remoteAccess) : previousRemoteAccess;
   const updated = deps.consoleSettingsStore.update((current) => ({
     ...current,
     version: 1,
@@ -352,7 +504,7 @@ async function mutateGlobalSettings(
       ...(body.consolePortMode === "dynamic" || body.consolePortMode === "static" ? { consolePortMode: body.consolePortMode } : {}),
       ...(isValidGlobalStaticPortInput(body.consoleStaticPort) ? { consoleStaticPort: body.consoleStaticPort } : {}),
       ...(body.language === "auto" || body.language === "en" || body.language === "ko" ? { language: body.language } : {}),
-      ...(body.remoteAccess !== undefined ? { remoteAccess: normalizeRemoteAccessInput(body.remoteAccess) } : {}),
+      ...(body.remoteAccess !== undefined ? { remoteAccess: nextRemoteAccess } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
@@ -360,24 +512,55 @@ async function mutateGlobalSettings(
     plugins: current.plugins,
   }));
   if (theme !== undefined) deps.onThemeChanged?.(theme);
-  if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.();
-  const response: GlobalSettingsMutationResult = { state: toGlobalSettingsState(updated) };
+  if (body.remoteAccess !== undefined) await deps.onRemoteAccessChanged?.({ previous: previousRemoteAccess, next: nextRemoteAccess });
+  /**
+   * 응답은 조정이 끝난 뒤의 저장값으로 짓는다. Auto 대체 포트를 고르는 경로는 이 콜백 안에서
+   * 설정을 다시 쓰므로, 호출 전 스냅샷을 돌려주면 화면이 낡은 tuple을 기준선으로 삼고 다음 저장에
+   * 그 값을 되돌려 쓴다.
+   */
+  const response: GlobalSettingsMutationResult = { state: withRemoteAccessVisibility(buildGlobalSettingsState(deps.consoleSettingsStore), req, deps) };
   deps.writeJson(res, 200, response);
 }
 
-/** GET 정규형은 bindHost를 null로 돌려주므로 PUT도 null을 받아들여야 왕복이 성립한다. */
 function isValidRemoteAccessInput(value: unknown): boolean {
-  if (!isRecord(value)) return false;
-  if (value.enabled !== undefined && typeof value.enabled !== "boolean") return false;
-  if (value.bindHost !== undefined && value.bindHost !== null && !isValidRemoteBindHost(value.bindHost)) return false;
-  // 원격을 켜려면 바인드 주소가 있어야 한다 — 주소 없이 켜면 리스너가 열릴 곳이 없다.
-  return value.enabled !== true || isValidRemoteBindHost(value.bindHost);
+  if (!isRecord(value) || "bindHost" in value || typeof value.enabled !== "boolean" || typeof value.publicEndpointEnabled !== "boolean") return false;
+  const validListenAddress = value.listenAddress === "" || isValidRemoteBindHost(value.listenAddress);
+  const validAdvertisedHost = value.advertisedHost === "" || isValidRemoteAdvertisedHost(value.advertisedHost);
+  if (!validListenAddress || !validAdvertisedHost) return false;
+  const listenPort = sanitizeRemotePortSetting(value.listenPort);
+  const advertisedPort = sanitizeRemotePortSetting(value.advertisedPort);
+  if (!listenPort || !advertisedPort) return false;
+  const acknowledgment = sanitizeAcknowledgment(value.acknowledgment);
+  if (value.acknowledgment !== null && !acknowledgment) return false;
+  if (value.publicEndpointEnabled !== true) return value.acknowledgment === null && (value.enabled !== true || value.listenAddress !== "");
+  if (value.enabled !== true) return true;
+  return value.listenAddress !== "" && value.advertisedHost !== ""
+    && acknowledgmentMatches({ listenAddress: value.listenAddress as string, advertisedHost: value.advertisedHost as string, listenPort, advertisedPort }, acknowledgment);
 }
 
 function normalizeRemoteAccessInput(value: unknown): ConsoleRemoteAccessSettings {
-  const record = isRecord(value) ? value : {};
-  const enabled = typeof record.enabled === "boolean" ? record.enabled : false;
-  return { enabled, ...(isValidRemoteBindHost(record.bindHost) ? { bindHost: record.bindHost } : {}) };
+  const record = value as Record<string, unknown>;
+  const publicEndpointEnabled = record.publicEndpointEnabled === true;
+  return {
+    enabled: record.enabled === true,
+    publicEndpointEnabled,
+    listenAddress: record.listenAddress === "" ? "" : canonicalizeRemoteBindHost(record.listenAddress as string),
+    advertisedHost: record.advertisedHost === "" ? "" : canonicalizeRemoteBindHost(record.advertisedHost as string),
+    listenPort: sanitizeRemotePortSetting(record.listenPort)!,
+    advertisedPort: sanitizeRemotePortSetting(record.advertisedPort)!,
+    acknowledgment: publicEndpointEnabled ? sanitizeAcknowledgment(record.acknowledgment) : null,
+  };
+}
+
+/**
+ * 원격 세션에는 이 섹션이 아예 없다. 값을 비워 보내면 화면이 거짓을 그리고, 그대로 보내면
+ * 손님이 이 기계의 LAN 주소를 읽는다 — 관리 라우트를 루프백에 둔 것과 같은 이유다.
+ * 부재가 곧 "여기서는 다루지 않는다"는 뜻이고, 화면은 그때 섹션을 세우지 않는다.
+ */
+function withRemoteAccessVisibility(state: GlobalSettingsState, req: http.IncomingMessage, deps: GlobalSettingsRouteDeps): GlobalSettingsState {
+  if (deps.isRemoteAccessOwner === undefined || deps.isRemoteAccessOwner(req)) return state;
+  const { remoteAccess: _hidden, ...rest } = state;
+  return rest as GlobalSettingsState;
 }
 
 function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
@@ -386,7 +569,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     consolePortMode: general.consolePortMode ?? "dynamic",
     consoleStaticPort: general.consoleStaticPort ?? null,
     language: general.language ?? "auto",
-    remoteAccess: { enabled: general.remoteAccess?.enabled ?? false, bindHost: general.remoteAccess?.bindHost ?? null },
+    remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,

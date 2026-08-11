@@ -4,9 +4,11 @@ import os from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
+import { listRemoteInterfaces } from "../core/host/remote-interfaces.js";
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,
+  sanitizeRemoteAccessSettings,
   emptyConsoleSettingsData,
   type ConsoleSettingsData,
 } from "../core/host/settings/settings-domain.js";
@@ -32,6 +34,18 @@ function makeFakePaths(dir: string): ConsoleDataPaths {
     settingsFile: path.join(dir, "settings.json"),
   };
 }
+
+describe("remote interface candidates", () => {
+  it("keeps device names in local and Tailscale labels", () => {
+    expect(listRemoteInterfaces({
+      en0: [{ family: "IPv4", internal: false, address: "192.168.1.20" }],
+      tailscale0: [{ family: "IPv4", internal: false, address: "100.64.0.7" }],
+    })).toEqual([
+      { kind: "tailscale", label: "Tailscale (tailscale0)", address: "100.64.0.7" },
+      { kind: "local", label: "Local network (en0)", address: "192.168.1.20" },
+    ]);
+  });
+});
 
 describe("sanitizeConsoleSettingsData", () => {
   it("returns empty for non-object input", () => {
@@ -195,12 +209,91 @@ describe("sanitizeConsoleSettingsData", () => {
     })).toEqual({ version: 1, general: {}, plugins: {} });
   });
 
+  it("normalizes current v2 data without the public opt-in key from a valid acknowledgment", () => {
+    const tuple = {
+      enabled: true,
+      listenAddress: "192.0.2.10",
+      advertisedHost: "console.example",
+      listenPort: { mode: "custom", value: 50_001 },
+      advertisedPort: { mode: "custom", value: 50_002 },
+    } as const;
+    const acknowledgment = { version: 1, listenAddress: tuple.listenAddress, listenPort: 50_001, advertisedHost: tuple.advertisedHost, advertisedPort: 50_002 };
+
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...tuple, acknowledgment } } }).general?.remoteAccess)
+      .toEqual({ ...tuple, publicEndpointEnabled: true, acknowledgment });
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...tuple, enabled: false, acknowledgment: null } } }).general?.remoteAccess)
+      .toEqual({ ...tuple, enabled: false, publicEndpointEnabled: false, acknowledgment: null });
+
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    fs.writeFileSync(paths.settingsFile, JSON.stringify({ version: 1, general: { remoteAccess: { ...tuple, acknowledgment } }, plugins: {} }));
+    createConsoleSettingsStore({ paths }).load();
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toMatchObject({ general: { remoteAccess: { publicEndpointEnabled: true } } });
+  });
+
+  it("sanitizes LAN-only state without a public hostname or acknowledgment", () => {
+    const remoteAccess = {
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: "192.0.2.10",
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: 49_152 },
+      advertisedPort: { mode: "custom", value: 443 },
+      acknowledgment: null,
+    } as const;
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess } }).general?.remoteAccess).toEqual(remoteAccess);
+    expect(sanitizeConsoleSettingsData({ version: 1, general: { remoteAccess: { ...remoteAccess, acknowledgment: { version: 1, listenAddress: "192.0.2.10", listenPort: 49_152, advertisedHost: "console.example", advertisedPort: 443 } } } }).general?.remoteAccess)
+      .toEqual(remoteAccess);
+  });
+
+  it("generates concrete Auto port defaults once and persists them", () => {
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    const ports = [49_152, 65_535];
+    const store = createConsoleSettingsStore({ paths, randomInt: () => ports.shift()! });
+
+    expect(store.load().general?.remoteAccess).toEqual({
+      enabled: false,
+      publicEndpointEnabled: false,
+      listenAddress: "",
+      advertisedHost: "",
+      listenPort: { mode: "auto", value: 49_152 },
+      advertisedPort: { mode: "auto", value: 65_535 },
+      acknowledgment: null,
+    });
+    expect(createConsoleSettingsStore({ paths, randomInt: () => { throw new Error("must not regenerate"); } }).load().general?.remoteAccess)
+      .toEqual(store.load().general?.remoteAccess);
+  });
+
+  it("migrates legacy bindHost plus listener v1 port without rotating adjacent remote state", () => {
+    const dir = makeTempDir();
+    const paths = makeFakePaths(dir);
+    fs.mkdirSync(path.join(dir, "remote"), { recursive: true });
+    fs.writeFileSync(paths.settingsFile, JSON.stringify({ version: 1, general: { remoteAccess: { enabled: true, bindHost: "Console.Example" } }, plugins: {} }));
+    fs.writeFileSync(path.join(dir, "remote", "listener.json"), JSON.stringify({ version: 1, port: 54_321 }));
+    fs.writeFileSync(path.join(dir, "remote", "pairings.json"), "preserve-me");
+
+    const migrated = createConsoleSettingsStore({ paths }).load().general?.remoteAccess;
+
+    expect(migrated).toEqual({
+      enabled: true,
+      publicEndpointEnabled: false,
+      listenAddress: "console.example",
+      advertisedHost: "console.example",
+      listenPort: { mode: "custom", value: 54_321 },
+      advertisedPort: { mode: "custom", value: 54_321 },
+      acknowledgment: null,
+    });
+    expect(fs.readFileSync(path.join(dir, "remote", "pairings.json"), "utf8")).toBe("preserve-me");
+    expect(JSON.stringify(createConsoleSettingsStore({ paths }).load())).not.toContain("bindHost");
+  });
+
   it("round-trips valid data through store", () => {
     const dir = makeTempDir();
     const paths = makeFakePaths(dir);
     const store = createConsoleSettingsStore({ paths });
 
-    expect(store.load()).toEqual({ version: 1, general: {}, plugins: {} });
+    expect(store.load()).toMatchObject({ version: 1, general: { remoteAccess: { enabled: false, acknowledgment: null } }, plugins: {} });
 
     store.update(() => ({
       version: 1,
@@ -227,19 +320,14 @@ describe("sanitizeConsoleSettingsData", () => {
     }), "utf8");
     const store = createConsoleSettingsStore({ paths });
 
-    expect(store.load()).toEqual({
+    expect(store.load()).toMatchObject({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 }, remoteAccess: { enabled: false, acknowledgment: null } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
-    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
+    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toMatchObject({
       version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
-      plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
-    });
-    expect(JSON.parse(fs.readFileSync(paths.settingsFile, "utf8"))).toEqual({
-      version: 1,
-      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } },
+      general: { consolePortMode: "static", consoleStaticPort: 7777, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 }, remoteAccess: { enabled: false, acknowledgment: null } },
       plugins: { terminal: { font: { size: 14 } }, skills: { includePrerelease: true } },
     });
   });
@@ -306,5 +394,20 @@ describe("sanitizeConsoleSettingsData", () => {
 describe("emptyConsoleSettingsData", () => {
   it("returns version 1 with empty general and plugins", () => {
     expect(emptyConsoleSettingsData()).toEqual({ version: 1, general: {}, plugins: {} });
+  });
+});
+
+describe("remote advertised host validity", () => {
+  it("refuses the hosts a bind address refuses, because a device that dials them reaches itself", () => {
+    for (const advertisedHost of ["127.0.0.1", "0.0.0.0", "localhost"]) {
+      expect(sanitizeRemoteAccessSettings({
+        enabled: false, publicEndpointEnabled: true, listenAddress: "192.168.0.68", advertisedHost,
+        listenPort: { mode: "custom", value: 55551 }, advertisedPort: { mode: "custom", value: 55552 }, acknowledgment: null,
+      })).toBeUndefined();
+    }
+    expect(sanitizeRemoteAccessSettings({
+      enabled: false, publicEndpointEnabled: true, listenAddress: "192.168.0.68", advertisedHost: "console.example.com",
+      listenPort: { mode: "custom", value: 55551 }, advertisedPort: { mode: "custom", value: 55552 }, acknowledgment: null,
+    })).toMatchObject({ advertisedHost: "console.example.com" });
   });
 });

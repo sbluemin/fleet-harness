@@ -1486,6 +1486,24 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).not.toContain('role="dialog"');
   });
 
+  it("keeps the remote NAT endpoint on the established token grammar without warn hover", () => {
+    const settings = source("pages/global-settings.tsx");
+    const components = source("styles/components.css");
+
+    expect(settings).toContain('t("settings.remote.listenAddress")');
+    expect(settings).toContain('t("settings.remote.listenPresets")');
+    expect(settings).toContain('aria-pressed={selected}');
+    expect(settings).toContain('draft.publicEndpointEnabled ? (');
+    expect(settings).toContain('t("settings.remote.advertisedHost")');
+    expect(settings).toContain('className="remote-route-preview"');
+    expect(settings).toContain('className="remote-acknowledgment"');
+    expect(components).toContain(".remote-endpoint-grid");
+    expect(components).toContain(".remote-interface-preset.is-selected");
+    expect(components).toContain("var(--surface-rim-strong)");
+    expect(components).not.toMatch(/remote-(?:acknowledgment|port-control):hover[^\n]*var\(--warn/);
+    expect(components).not.toMatch(/remote-[^\n{]*\{[^}]*#[0-9a-f]{3,8}/i);
+  });
+
   it("keeps the access-link entry in the host box and out of Settings", () => {
     const systemCluster = source("components/command-band-system-cluster.tsx");
     const settings = source("pages/global-settings.tsx");

@@ -138,10 +138,28 @@ export interface OperationNode {
   };
 }
 
-/** 원격 접속 설정. 바인드 주소는 구성 리터럴이며 요청이나 DNS에서 유도되지 않는다. */
+/** Remote listener and public endpoint settings. Auto and Custom modes both carry persisted concrete candidates. */
+export interface RemoteAccessPort {
+  readonly mode: "auto" | "custom";
+  readonly value: number;
+}
+
+export interface RemoteAccessAcknowledgment {
+  readonly version: 1;
+  readonly listenAddress: string;
+  readonly listenPort: number;
+  readonly advertisedHost: string;
+  readonly advertisedPort: number;
+}
+
 export interface RemoteAccessState {
   readonly enabled: boolean;
-  readonly bindHost: string | null;
+  readonly publicEndpointEnabled: boolean;
+  readonly listenAddress: string;
+  readonly advertisedHost: string;
+  readonly listenPort: RemoteAccessPort;
+  readonly advertisedPort: RemoteAccessPort;
+  readonly acknowledgment: RemoteAccessAcknowledgment | null;
 }
 
 export type RemoteAccessClass = "full" | "monitoring";
@@ -174,15 +192,230 @@ export interface RemoteAccessInterface {
   readonly address: string;
 }
 
-/** 지금 열려 있는 리스너의 사실. 설정값과 달리 바인드 실패를 그대로 드러낸다. */
+/** 로컬 리스너와 공개 도달성은 서로를 추측하지 않고 별도 상태로 보고한다. */
 export interface RemoteAccessStatus {
-  readonly listening: boolean;
-  readonly origin: string | null;
+  readonly listener: {
+    readonly listening: boolean;
+    readonly origin: string | null;
+    readonly lastError: string | null;
+  };
+  readonly publicReachability: "unverified";
+  /** 이 콘솔이 시작된 뒤 거절한 조인 수. 영속되지 않으며 콘솔 프로세스와 수명을 같이한다. */
+  readonly rejectedJoins: { readonly count: number; readonly lastAt: number | null };
   readonly fingerprint: string | null;
-  readonly lastError: string | null;
   readonly links: readonly RemoteAccessLinkSummary[];
   readonly devices: readonly RemoteAccessPairedDevice[];
   readonly interfaces: readonly RemoteAccessInterface[];
+}
+
+export const REMOTE_AUTO_PORT_MIN = 49152;
+export const REMOTE_AUTO_PORT_MAX = 65535;
+export const REMOTE_PORT_MIN = 1;
+export const REMOTE_PORT_MAX = 65535;
+
+export type RemoteAccessErrorCode =
+  | "auto_port_exhausted"
+  | "custom_port_unavailable"
+  | "acknowledgment_required"
+  | "bind_address_unavailable"
+  | "bind_address_in_use"
+  | "remote_port_unavailable"
+  | "bind_permission_denied"
+  | "remote_listener_failed";
+
+export function remoteAccessOrigin(host: string, port: number): string {
+  const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
+  return `https://${formattedHost}:${port}`;
+}
+
+export function remoteAccessAcknowledgmentMatches(
+  state: RemoteAccessState,
+  acknowledgment: RemoteAccessAcknowledgment | null = state.acknowledgment,
+): boolean {
+  return acknowledgment !== null
+    && acknowledgment.version === 1
+    && acknowledgment.listenAddress === state.listenAddress
+    && acknowledgment.listenPort === state.listenPort.value
+    && acknowledgment.advertisedHost === state.advertisedHost
+    && acknowledgment.advertisedPort === state.advertisedPort.value;
+}
+
+export function isWarnableLocalPort(port: RemoteAccessPort): boolean {
+  return port.mode === "custom" && port.value < 1024;
+}
+
+export function generateRemoteAutoPort(randomValues: (values: Uint32Array<ArrayBuffer>) => Uint32Array<ArrayBuffer> = (values) => crypto.getRandomValues(values)): number {
+  const range = REMOTE_AUTO_PORT_MAX - REMOTE_AUTO_PORT_MIN + 1;
+  const limit = Math.floor(0x1_0000_0000 / range) * range;
+  const sample = new Uint32Array(1);
+  do randomValues(sample); while (sample[0]! >= limit);
+  return REMOTE_AUTO_PORT_MIN + (sample[0]! % range);
+}
+
+export function isCommittableRemotePortDraft(value: string): boolean {
+  if (!/^\d{1,5}$/u.test(value)) return false;
+  const port = Number(value);
+  return Number.isInteger(port) && port >= REMOTE_PORT_MIN && port <= REMOTE_PORT_MAX;
+}
+
+/** 서버 settings-domain의 REMOTE_BIND_HOST와 같은 집합. */
+const REMOTE_HOST_PATTERN = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[A-Za-z0-9](?:[A-Za-z0-9._-]{0,252}[A-Za-z0-9])?)$/u;
+/** 루프백과 와일드카드는 로컬 리스너와 포트를 다투므로 바인드 값이 아니다. 공표 호스트에는 이 제한이 없다. */
+const REMOTE_UNUSABLE_LISTEN_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.0.0.0"]);
+
+export function isValidRemoteListenAddress(value: string): boolean {
+  return REMOTE_HOST_PATTERN.test(value) && !REMOTE_UNUSABLE_LISTEN_HOSTS.has(value);
+}
+
+/**
+ * 서버 isValidRemoteAdvertisedHost와 같은 집합이어야 한다. 여기만 느슨하면 화면은 준비됨을
+ * 보이고 저장만 invalid_remote_access로 거부되어, 켜지지 않는 이유가 화면 밖에 남는다.
+ * 공표 이름도 루프백·와일드카드일 수 없다 — 그 링크를 받은 기기는 자기 자신에게 향한다.
+ */
+export function isValidRemoteAdvertisedHost(value: string): boolean {
+  return isValidRemoteListenAddress(value);
+}
+
+/** 기기가 실제로 향하는 주소. LAN 전용이면 수신 튜플이 곧 공표 튜플이다. */
+export function remoteEffectiveEndpoint(state: RemoteAccessState): { readonly host: string; readonly port: number } {
+  return state.publicEndpointEnabled
+    ? { host: state.advertisedHost, port: state.advertisedPort.value }
+    : { host: state.listenAddress, port: state.listenPort.value };
+}
+
+export type RemoteEndpointRequirement = "listenAddress" | "advertisedHost" | "acknowledgment";
+
+/** 리스너를 켜기 전에 아직 채워지지 않은 것. 비활성 컨트롤이 이유를 삼키지 않도록 화면이 그대로 읽는다. */
+export function remoteEndpointRequirements(state: RemoteAccessState): readonly RemoteEndpointRequirement[] {
+  const missing: RemoteEndpointRequirement[] = [];
+  if (!isValidRemoteListenAddress(state.listenAddress)) missing.push("listenAddress");
+  if (state.publicEndpointEnabled) {
+    if (!isValidRemoteAdvertisedHost(state.advertisedHost)) missing.push("advertisedHost");
+    if (!remoteAccessAcknowledgmentMatches(state)) missing.push("acknowledgment");
+  }
+  return missing;
+}
+
+/**
+ * 적용이 실제로 무엇을 끊는지. 서버의 reconcile 분기와 같은 판정이며, 화면이 미리 말할 근거다.
+ * - `none`: 리스너 무동작
+ * - `restart`: 세션은 끊기고 페어링은 남는다
+ * - `identity`: 인증서 신원이 바뀌므로 세션·미사용 권한·페어링이 모두 사라진다
+ */
+export type RemoteEndpointImpact = "none" | "restart" | "identity";
+
+export function remoteEndpointImpact(baseline: RemoteAccessState, next: RemoteAccessState): RemoteEndpointImpact {
+  const before = remoteEffectiveEndpoint(baseline);
+  const after = remoteEffectiveEndpoint(next);
+  if (before.host !== after.host || before.port !== after.port) return "identity";
+  if (baseline.listenAddress !== next.listenAddress || baseline.listenPort.value !== next.listenPort.value) return "restart";
+  return "none";
+}
+
+/**
+ * 라우터 설정 화면에 그대로 옮겨 적을 세 값. 공표 포트와 수신 포트는 따로 정해지므로 같다는 보장이 없고,
+ * 둘을 같은 값으로 매핑하면 아무것도 듣지 않는 자리로 전달된다 — 그래서 칸 이름을 라우터 어휘로 나눠 준다.
+ */
+export interface RemoteForwardRule {
+  readonly externalPort: number;
+  readonly internalHost: string;
+  readonly internalPort: number;
+}
+
+/** 화면이 그리는 경로 하나. 값이 갖춰지기 전에는 주소를 만들지 않는다 — 자리표시자를 코드체로 보이면 기기에 그대로 옮겨 적힌다. */
+export interface RemoteEndpointPresentation {
+  readonly ready: boolean;
+  readonly missing: readonly RemoteEndpointRequirement[];
+  readonly origin: string | null;
+  readonly forward: RemoteForwardRule | null;
+}
+
+export function buildRemoteEndpointPresentation(state: RemoteAccessState): RemoteEndpointPresentation {
+  const missing = remoteEndpointRequirements(state);
+  const addressed = !missing.includes("listenAddress") && !missing.includes("advertisedHost");
+  const endpoint = remoteEffectiveEndpoint(state);
+  return {
+    ready: missing.length === 0,
+    missing,
+    origin: addressed ? remoteAccessOrigin(endpoint.host, endpoint.port) : null,
+    forward: addressed && state.publicEndpointEnabled
+      ? { externalPort: state.advertisedPort.value, internalHost: state.listenAddress, internalPort: state.listenPort.value }
+      : null,
+  };
+}
+
+export function remoteAccessStateEquals(a: RemoteAccessState, b: RemoteAccessState): boolean {
+  return a.enabled === b.enabled
+    && a.publicEndpointEnabled === b.publicEndpointEnabled
+    && a.listenAddress === b.listenAddress
+    && a.advertisedHost === b.advertisedHost
+    && a.listenPort.mode === b.listenPort.mode
+    && a.listenPort.value === b.listenPort.value
+    && a.advertisedPort.mode === b.advertisedPort.mode
+    && a.advertisedPort.value === b.advertisedPort.value
+    && remoteAcknowledgmentEquals(a.acknowledgment, b.acknowledgment);
+}
+
+function remoteAcknowledgmentEquals(a: RemoteAccessAcknowledgment | null, b: RemoteAccessAcknowledgment | null): boolean {
+  if (a === null || b === null) return a === b;
+  return a.version === b.version
+    && a.listenAddress === b.listenAddress
+    && a.listenPort === b.listenPort
+    && a.advertisedHost === b.advertisedHost
+    && a.advertisedPort === b.advertisedPort;
+}
+
+export function isValidRemoteAccessPort(value: unknown): value is RemoteAccessPort {
+  if (!value || typeof value !== "object") return false;
+  const port = value as Partial<RemoteAccessPort>;
+  return (port.mode === "auto" || port.mode === "custom")
+    && typeof port.value === "number"
+    && Number.isInteger(port.value)
+    && port.value >= (port.mode === "auto" ? REMOTE_AUTO_PORT_MIN : REMOTE_PORT_MIN)
+    && port.value <= REMOTE_PORT_MAX;
+}
+
+export function isValidRemoteAccessAcknowledgment(value: unknown): value is RemoteAccessAcknowledgment | null {
+  if (value === null) return true;
+  if (!value || typeof value !== "object") return false;
+  const acknowledgment = value as Partial<RemoteAccessAcknowledgment>;
+  return acknowledgment.version === 1
+    && typeof acknowledgment.listenAddress === "string"
+    && isValidRemotePortNumber(acknowledgment.listenPort)
+    && typeof acknowledgment.advertisedHost === "string"
+    && isValidRemotePortNumber(acknowledgment.advertisedPort);
+}
+
+export function isValidRemoteAccessState(value: unknown): value is RemoteAccessState {
+  if (!value || typeof value !== "object") return false;
+  const state = value as Partial<RemoteAccessState>;
+  if (typeof state.enabled !== "boolean" || typeof state.publicEndpointEnabled !== "boolean" || typeof state.listenAddress !== "string" || typeof state.advertisedHost !== "string") return false;
+  if (state.enabled && (state.listenAddress.length === 0 || (state.publicEndpointEnabled && state.advertisedHost.length === 0))) return false;
+  return isValidRemoteAccessPort(state.listenPort)
+    && isValidRemoteAccessPort(state.advertisedPort)
+    && isValidRemoteAccessAcknowledgment(state.acknowledgment)
+    && (state.publicEndpointEnabled || state.acknowledgment === null)
+    && (!state.enabled || !state.publicEndpointEnabled || remoteAccessAcknowledgmentMatches(state as RemoteAccessState));
+}
+
+export function isValidRemoteAccessId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
+}
+
+export function isValidRemoteAccessLinkValue(value: unknown): value is string {
+  return typeof value === "string" && /^fleet:\/\/join\?code=[A-Za-z0-9._~-]+$/u.test(value);
+}
+
+export function isValidRemoteFingerprint(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && /^[0-9a-f]{2}(?::[0-9a-f]{2})+$/iu.test(value));
+}
+
+export function isValidRemoteTimestamp(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0;
+}
+
+function isValidRemotePortNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= REMOTE_PORT_MIN && value <= REMOTE_PORT_MAX;
 }
 
 export interface RemoteAccessLink {
@@ -196,7 +429,8 @@ export interface RemoteAccessLink {
 export interface GlobalSettingsState {
   readonly consolePortMode: "dynamic" | "static";
   readonly consoleStaticPort: number | null;
-  readonly remoteAccess: RemoteAccessState;
+  /** 원격 접속에는 실리지 않는다. 부재는 "여기서는 다루지 않는다"는 뜻이며 화면은 섹션을 세우지 않는다. */
+  readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ThemeId;
   readonly uiFont: UiFontSettings;
