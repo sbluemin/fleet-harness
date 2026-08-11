@@ -1,0 +1,34 @@
+{
+  "expo": {
+    "name": "Fleet",
+    "slug": "fleet-mobile",
+    "version": "0.1.0",
+    "orientation": "default",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "icon": "./assets/icon.png",
+    "android": {
+      "package": "com.dotobokuri.fleet.mobile",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0D1B2A"
+      }
+    },
+    "plugins": [
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 24,
+            "compileSdkVersion": 36,
+            "targetSdkVersion": 36,
+            "usesCleartextTraffic": false
+          }
+        }
+      ],
+      "./modules/fleet-console-view",
+      "./plugins/withFleetAndroid.ts"
+    ]
+  }
+}

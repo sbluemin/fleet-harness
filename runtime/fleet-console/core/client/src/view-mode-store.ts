@@ -15,6 +15,19 @@ const PREFS_VIEW_MODE = "fleet-console.view-mode.preference";
 const listeners = new Set<Listener>();
 let narrowViewportQuery: MediaQueryList | null = null;
 let wideViewportQuery: MediaQueryList | null = null;
+
+const FLEET_MOBILE_UA_MARKER = /(?:^|\s)FleetMobile\/\d/;
+
+export function isFleetMobileUserAgent(userAgent: string): boolean {
+  return FLEET_MOBILE_UA_MARKER.test(userAgent);
+}
+
+// The Fleet Mobile shell stamps its user agent because width cannot carry this decision: a phone
+// in landscape crosses the desktop breakpoint, and the shell's local gateway origin churns across
+// re-links so a localStorage preference does not reliably survive. Auto resolves mobile there;
+// an explicit desktop preference still wins.
+const fleetMobileShell = typeof navigator !== "undefined" && isFleetMobileUserAgent(navigator.userAgent ?? "");
+
 let store: ViewModeSnapshot = createSnapshot(readStoredPreference(), false);
 
 initializeViewportQueries();
@@ -68,7 +81,7 @@ function createSnapshot(preference: ViewModePreference, viewportNarrow: boolean)
   return {
     preference,
     viewportNarrow,
-    effective: preference === "auto" ? (viewportNarrow ? "mobile" : "desktop") : preference,
+    effective: preference === "auto" ? (fleetMobileShell || viewportNarrow ? "mobile" : "desktop") : preference,
   };
 }
 

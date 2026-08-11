@@ -1,0 +1,30 @@
+{
+  "name": "fleet-access-link",
+  "version": 1,
+  "scheme": "fleet",
+  "action": "join",
+  "query": {
+    "required": ["code"],
+    "additionalProperties": false,
+    "code": {
+      "encoding": "base64url",
+      "padding": false,
+      "content": "utf-8-json"
+    }
+  },
+  "payload": {
+    "type": "object",
+    "required": ["v", "endpoint", "token", "fingerprint", "label"],
+    "additionalProperties": false,
+    "properties": {
+      "v": { "const": 1 },
+      "endpoint": { "type": "string", "format": "https-origin" },
+      "token": { "type": "string", "pattern": "^[A-Za-z0-9_-]{16,512}$" },
+      "fingerprint": { "type": "string", "normalizedFormat": "uppercase-sha256-hex" },
+      "label": { "type": "string", "sanitizedMaxLength": 48 }
+    }
+  },
+  "errors": {
+    "invalid": "pairing_target_invalid"
+  }
+}

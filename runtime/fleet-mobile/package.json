@@ -1,0 +1,29 @@
+{
+  "name": "@dotobokuri/fleet-mobile",
+  "version": "0.1.0",
+  "description": "Fleet Console Android shell.",
+  "private": true,
+  "main": "index.ts",
+  "scripts": {
+    "android": "expo run:android",
+    "android:build:debug": "node scripts/build-android-debug.mjs",
+    "android:verify:debug": "node scripts/verify-android-debug.mjs",
+    "build": "expo export --platform android --output-dir dist/bundle",
+    "generate:android": "expo prebuild --platform android --clean --no-install",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:android": "expo prebuild --platform android --clean --no-install && cd android && ./gradlew :fleet-console-view:testDebugUnitTest"
+  },
+  "dependencies": {
+    "expo": "57.0.11",
+    "expo-build-properties": "57.0.9",
+    "expo-modules-core": "57.0.10",
+    "react": "19.2.8",
+    "react-native": "0.86.2"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.7",
+    "typescript": "6.0.3",
+    "vitest": "4.0.18"
+  }
+}

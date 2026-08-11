@@ -1,0 +1,71 @@
+{
+  "positive": [
+    {
+      "name": "ipv4",
+      "payload": {
+        "endpoint": "https://172.30.1.35:54240",
+        "token": "sEPaty9_Yzq-N46FjCUfme4_DrCZeYlTitGcbWd8kLA",
+        "fingerprint": "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F",
+        "label": "devbox"
+      },
+      "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vMTcyLjMwLjEuMzU6NTQyNDAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImRldmJveCJ9",
+      "parsed": {
+        "origin": "https://172.30.1.35:54240",
+        "hostname": "172.30.1.35",
+        "port": 54240,
+        "label": "devbox",
+        "consoleUrl": "https://172.30.1.35:54240/console/",
+        "joinUrl": "https://172.30.1.35:54240/api/v1/join",
+        "token": "sEPaty9_Yzq-N46FjCUfme4_DrCZeYlTitGcbWd8kLA",
+        "fingerprint": "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F"
+      }
+    },
+    {
+      "name": "ipv6-and-normalization",
+      "payload": {
+        "endpoint": "https://[fd00::1]:4310",
+        "token": "sEPaty9_Yzq-N46FjCUfme4_DrCZeYlTitGcbWd8kLA",
+        "fingerprint": "8d:3f:bb:2a:85:50:53:30:5c:32:28:0a:2a:bb:56:6f:ff:9c:5b:14:c3:53:ae:05:27:09:2e:d4:76:cb:b7:0f",
+        "label": " dev‮box​ "
+      },
+      "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vW2ZkMDA6OjFdOjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImRldmJveCJ9",
+      "parsed": {
+        "origin": "https://[fd00::1]:4310",
+        "hostname": "fd00::1",
+        "port": 4310,
+        "label": "devbox",
+        "consoleUrl": "https://[fd00::1]:4310/console/",
+        "joinUrl": "https://[fd00::1]:4310/api/v1/join",
+        "token": "sEPaty9_Yzq-N46FjCUfme4_DrCZeYlTitGcbWd8kLA",
+        "fingerprint": "8D3FBB2A855053305C32280A2ABB566FFF9C5B14C353AE0527092ED476CBB70F"
+      }
+    }
+  ],
+  "negative": [
+    { "name": "superseded-https-link", "link": "https://172.30.1.35:54240/join#t=abc&f=def" },
+    { "name": "foreign-scheme", "link": "orca://join?code=abc" },
+    { "name": "another-action", "link": "fleet://pair?code=abc" },
+    { "name": "action-host-port", "link": "fleet://join:8080?code=abc" },
+    { "name": "action-path", "link": "fleet://join/path?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vMTcyLjMwLjEuMzU6NTQyNDAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImRldmJveCJ9" },
+    { "name": "credentials", "link": "fleet://user@join?code=abc" },
+    { "name": "fragment", "link": "fleet://join?code=abc#extra" },
+    { "name": "second-parameter", "link": "fleet://join?code=abc&mode=full" },
+    { "name": "renamed-parameter", "link": "fleet://join?c=abc" },
+    { "name": "empty-envelope", "link": "fleet://join?code=" },
+    { "name": "non-base64-envelope", "link": "fleet://join?code=not*base64" },
+    { "name": "embedded-newline", "link": "fleet://join?code=aGVsbG8\nd29ybGQ" },
+    { "name": "non-canonical-base64-padding-bits", "link": "fleet://join?code=Zh" },
+    { "name": "invalid-utf8", "link": "fleet://join?code=_w" },
+    { "name": "future-version", "link": "fleet://join?code=eyJ2IjoyLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImEifQ" },
+    { "name": "missing-field", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYifQ" },
+    { "name": "extra-field", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImEiLCJhY2Nlc3MiOiJmdWxsIn0" },
+    { "name": "plaintext-endpoint", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHA6Ly9hLnRlc3Q6NDMxMCIsInRva2VuIjoic0VQYXR5OV9ZenEtTjQ2RmpDVWZtZTRfRHJDWmVZbFRpdEdjYldkOGtMQSIsImZpbmdlcnByaW50IjoiOEQzRkJCMkE4NTUwNTMzMDVDMzIyODBBMkFCQjU2NkZGRjlDNUIxNEMzNTNBRTA1MjcwOTJFRDQ3NkNCQjcwRiIsImxhYmVsIjoiYSJ9" },
+    { "name": "endpoint-path", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAvY29uc29sZS8iLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImEifQ" },
+    { "name": "endpoint-credentials", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vdTpwQGEudGVzdDo0MzEwIiwidG9rZW4iOiJzRVBhdHk5X1l6cS1ONDZGakNVZm1lNF9EckNaZVlsVGl0R2NiV2Q4a0xBIiwiZmluZ2VycHJpbnQiOiI4RDNGQkIyQTg1NTA1MzMwNUMzMjI4MEEyQUJCNTY2RkZGOUM1QjE0QzM1M0FFMDUyNzA5MkVENDc2Q0JCNzBGIiwibGFiZWwiOiJhIn0" },
+    { "name": "short-token", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InRpbnkiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImEifQ" },
+    { "name": "truncated-fingerprint", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBIiwibGFiZWwiOiJhIn0" },
+    { "name": "empty-sanitized-label", "link": "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6IuKAi-KAiyJ9" },
+    { "name": "array-payload", "link": "fleet://join?code=WzEsMiwzXQ" },
+    { "name": "string-payload", "link": "fleet://join?code=Im5vcGUi" }
+  ]
+}

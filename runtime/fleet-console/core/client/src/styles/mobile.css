@@ -1,6 +1,17 @@
-.mobile-shell {
+/* The frame holds the route content and the tab bar together, above the routes, so a tab that
+   leaves /operations still has a bar to come back with. */
+.mobile-frame {
   display: grid;
   grid-template-rows: minmax(0, 1fr) auto;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mobile-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
   width: 100%;
   height: 100%;
   min-width: 0;
@@ -26,36 +37,71 @@
   overflow: auto;
 }
 
-.mobile-list-header,
-.mobile-session-header {
+.mobile-list-header {
   display: flex;
   align-items: center;
-  min-height: 56px;
-  padding: var(--space-3) var(--space-4);
+  min-height: 48px;
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--hairline);
   background: var(--ink-deep);
 }
 
-.mobile-list-header {
-  justify-content: space-between;
+/* The session names itself and stops there — no band, no border, nothing that reads as a second
+   surface above the terminal. Leaving the session is the platform's back gesture. */
+.mobile-session-title {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: var(--weight-bold);
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: var(--canvas-sea-core);
 }
 
-.mobile-kicker {
-  display: block;
-  color: var(--text-tertiary);
-  font-size: 11px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+.mobile-list-header {
+  justify-content: space-between;
+  gap: var(--space-3);
 }
 
 .mobile-list-header h1,
-.mobile-session-header h1,
 .mobile-simple-panel h1 {
   margin: 0;
   color: var(--text-primary);
   font-size: 18px;
   font-weight: var(--weight-bold);
+}
+
+.mobile-list-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.mobile-header-icon-button {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+}
+
+.mobile-header-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.mobile-header-icon-button:focus-visible,
+.mobile-header-icon-button[aria-pressed="true"] {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
+  outline: none;
 }
 
 .mobile-total-count {
@@ -66,6 +112,26 @@
   color: var(--text-secondary);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
+}
+
+.mobile-new-operation {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 40px;
+  padding: 0;
+  color: var(--brass);
+  font-size: 22px;
+  font-weight: var(--weight-medium);
+  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brass) 40%, var(--hairline));
+  border-radius: var(--radius-pill);
+}
+
+.mobile-new-operation:focus-visible,
+.mobile-new-operation:active {
+  border-color: var(--brass);
+  outline: none;
 }
 
 .mobile-status-sections {
@@ -205,35 +271,6 @@
   overflow: hidden;
 }
 
-.mobile-session-header {
-  display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) auto;
-  gap: var(--space-2);
-  padding-block: var(--space-2);
-}
-
-.mobile-session-header h1 {
-  overflow: hidden;
-  text-align: center;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-header-button,
-.mobile-header-action {
-  min-width: 40px;
-  min-height: 40px;
-  color: var(--text-secondary);
-  background: transparent;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  font-weight: var(--weight-medium);
-}
-
-.mobile-header-button {
-  font-size: 24px;
-}
-
 .mobile-session-body {
   position: relative;
   overflow: hidden;
@@ -269,4 +306,78 @@
   visibility: hidden;
   pointer-events: none;
   overflow: hidden;
+}
+
+/*
+ * A short, wide viewport — a phone held sideways — keeps this layout but cannot afford its portrait
+ * chrome: a bottom tab bar plus a header take a quarter of a ~380px viewport. So the tabs stand up
+ * as a rail on the right, the side the desktop Activity Rail already occupies, and the headers
+ * compact, leaving the height to the operation body.
+ *
+ * The bound is width and height rather than `orientation`, which reads the viewport's aspect: a
+ * keyboard over a portrait phone makes the visible area wider than it is tall, and an orientation
+ * query would answer "landscape" and grow a rail beside the terminal being typed into. The height
+ * bound also keeps a tablet on the roomy portrait layout.
+ */
+@media (min-width: 600px) and (max-height: 560px) {
+  .mobile-frame {
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .mobile-tab-bar {
+    grid-template-columns: none;
+    grid-auto-rows: max-content;
+    align-content: start;
+    gap: var(--space-1);
+    width: 76px;
+    padding: var(--space-2) max(var(--space-1), env(safe-area-inset-right)) max(var(--space-2), env(safe-area-inset-bottom)) var(--space-1);
+    border-top: 0;
+    border-left: 1px solid var(--hairline);
+  }
+
+  .mobile-tab {
+    min-height: 52px;
+  }
+
+  .mobile-tab span {
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-list-header {
+    min-height: 44px;
+    padding-block: var(--space-1);
+  }
+
+  .mobile-session-title {
+    padding-block: var(--space-1);
+    font-size: 14px;
+  }
+
+  .mobile-list-header h1,
+  .mobile-simple-panel h1 {
+    font-size: 16px;
+  }
+
+  .mobile-total-count {
+    min-width: 32px;
+    min-height: 32px;
+  }
+
+  .mobile-status-sections {
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+
+  .mobile-status-section > header {
+    min-height: 32px;
+  }
+
+  /* Width is the plentiful axis here, so two card columns halve the scroll distance. */
+  .mobile-operation-cards {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }

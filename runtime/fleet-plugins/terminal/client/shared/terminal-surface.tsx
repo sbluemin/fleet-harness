@@ -11,6 +11,7 @@ import { createTerminalConnection, type TerminalConnection } from "./terminal-co
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
+import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { getT } from "../i18n/index.js";
@@ -190,6 +191,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 실제 보정에 반영된 줌(=settle된 zoom). zoom prop은 보간 중 매 프레임 바뀌므로 디바운스로 이 값에 수렴시킨다.
   // 초기값을 zoom으로 두어 이미 확대된 패널이 마운트될 때 첫 렌더부터 올바른 스타일을 갖게 한다.
   const [appliedZoom, setAppliedZoom] = useState(zoom);
+  // A pinch scales this surface's font only. It multiplies the settings size rather than writing
+  // it back, so one terminal resized by hand does not resize every other one. A touch screen opens
+  // at the smallest step, where the most of a session fits; pinching out is how it grows.
+  const [touchFontScale, setTouchFontScale] = useState(() => (prefersTouchTerminal() ? MIN_FONT_SCALE : 1));
+  const touchFontScaleRef = useRef(touchFontScale);
+  touchFontScaleRef.current = touchFontScale;
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
@@ -232,7 +239,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       const terminal = new XtermTerminal({
         ...TERMINAL_OPTIONS,
         fontFamily: terminalFontSettings.family,
-        fontSize: terminalFontSettings.size * appliedZoom,
+        fontSize: terminalFontSettings.size * appliedZoom * touchFontScaleRef.current,
         theme: terminalTheme,
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
       });
@@ -294,6 +301,17 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         imeEventTarget,
         scrollFollow.recordUserViewportChange,
       );
+      const touchGestures = createTerminalTouchGestures(container, {
+        // The wheel is the input xterm already routes correctly for whatever is running, so a pan
+        // arrives as one rather than as a buffer scroll this surface chose on its own.
+        scrollByPixels: (deltaY) => {
+          const target = container.querySelector(".xterm-screen") ?? container.querySelector(".xterm") ?? container;
+          target.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: 0, bubbles: true, cancelable: true }));
+        },
+      }, {
+        onFontScale: setTouchFontScale,
+        readFontScale: () => touchFontScaleRef.current,
+      });
       const outputScheduler = createTerminalOutputScheduler(
         terminal,
         activeRef.current !== false,
@@ -378,6 +396,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         copyOnSelect.dispose();
         osc52Clipboard.dispose();
         scrollGesture.dispose();
+        touchGestures.dispose();
         outputScheduler.dispose();
         statusDetailReporter.dispose();
         scrollFollow.dispose();
@@ -509,7 +528,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   useEffect(() => {
     const terminal = terminalRef.current;
     if (!terminal) return;
-    terminal.options.fontSize = terminalFontSettings.size * appliedZoom;
+    terminal.options.fontSize = terminalFontSettings.size * appliedZoom * touchFontScale;
     // 여기서 WebglAddon.clearTextureAtlas()를 호출하면 안 된다. xterm WebGL의 글리프 atlas는 동일 설정(폰트·
     // 테마·cell크기) 터미널들이 모듈 레벨 캐시(acquireTextureAtlas)에서 1개를 공유한다. 따라서 한 터미널이
     // atlas를 비우면 형제 터미널이 쓰는 공유 atlas까지 함께 비워지고, 형제에는 재그리기 신호가 가지 않아
@@ -518,7 +537,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     // cell크기 키로 atlas를 자동 재획득하므로 수동 무효화는 불필요하다. atlas는 건드리지 않고 이 터미널만
     // fit + refresh로 재배치/재도색한다.
     fitResizeAndRefreshTerminal(terminal, fitAddonRef.current, connectionRef.current, scrollFollowRef.current);
-  }, [appliedZoom, terminalFontSettings.size, mountedTerminalEpoch]);
+  }, [appliedZoom, touchFontScale, terminalFontSettings.size, mountedTerminalEpoch]);
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
@@ -814,4 +833,11 @@ function fitResizeAndRefreshTerminal(
     return;
   }
   fitResizeAndRefresh();
+}
+
+/** A coarse pointer means fingers, and a finger-sized terminal starts at its smallest step. */
+function prefersTouchTerminal(): boolean {
+  return typeof window !== "undefined"
+    && typeof window.matchMedia === "function"
+    && window.matchMedia("(pointer: coarse)").matches;
 }
