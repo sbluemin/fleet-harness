@@ -784,7 +784,9 @@ function RemoteListenerCard({
   // 저장은 아래 액션 넷뿐이며, 그래야 살아 있는 리스너가 편집 한 번에 조용히 꺼지지 않는다.
   const [draft, setDraft] = useState<RemoteAccessState>(remote);
   const [portDrafts, setPortDrafts] = useState<PortDrafts>(EMPTY_PORT_DRAFTS);
-  const [shelf, setShelf] = useState<RemoteConsequence | null>(null);
+  // 예고는 열릴 때 계산된 것이므로 그때의 payload를 함께 얼린다. 뒤이은 편집이 확정에 얹혀 가면
+  // "페어링은 남습니다"라고 적힌 확인이 페어링을 지우는 저장을 실어 나른다.
+  const [shelf, setShelf] = useState<{ readonly kind: RemoteConsequence; readonly payload: RemoteAccessState } | null>(null);
   const [stale, setStale] = useState(false);
   const draftRef = useRef(draft);
   draftRef.current = draft;
@@ -812,12 +814,15 @@ function RemoteListenerCard({
     || (draft.publicEndpointEnabled && draft.advertisedPort.mode === "custom" && portDrafts.advertisedPort !== null);
   const blocked = saving || stale || portError;
 
+  // 어떤 편집이든 열려 있던 예고를 닫는다. 화면이 바뀌었으면 그 예고는 더 이상 이 화면의 이야기가 아니다.
   const edit = (patch: Partial<RemoteAccessState>) => {
+    setShelf(null);
     setDraft((current) => ({ ...current, ...patch, acknowledgment: null }));
   };
   const editPortRaw = (field: RemotePortField, raw: string) => {
     const committable = isCommittableRemotePortDraft(raw);
     // 잘못된 입력은 지우지 않고 남긴다. 값이 사라지면 무엇이 거부됐는지 볼 수 없다.
+    setShelf(null);
     setPortDrafts((current) => ({ ...current, [field]: committable ? null : raw }));
     if (committable) edit({ [field]: { mode: "custom", value: Number(raw) } });
   };
@@ -828,6 +833,7 @@ function RemoteListenerCard({
     edit({ [field]: port });
   };
   const acknowledge = (checked: boolean) => {
+    setShelf(null);
     setDraft((current) => ({
       ...current,
       acknowledgment: checked ? {
@@ -840,8 +846,7 @@ function RemoteListenerCard({
     }));
   };
 
-  const persist = (enabled: boolean) => {
-    const next = { ...draft, enabled };
+  const persist = (next: RemoteAccessState) => {
     setDraft(next);
     setPortDrafts(EMPTY_PORT_DRAFTS);
     setShelf(null);
@@ -855,11 +860,12 @@ function RemoteListenerCard({
     setStale(false);
   };
   const requestApply = () => {
+    const payload = { ...draft, enabled: true };
     // 멈춰 있는 리스너에는 끊을 것이 없다. 예고는 살아 있을 때만 뜻이 있다.
-    if (!listening) { persist(true); return; }
+    if (!listening) { persist(payload); return; }
     const impact = remoteEndpointImpact(remote, draft);
-    if (impact === "none") { persist(true); return; }
-    setShelf(impact);
+    if (impact === "none") { persist(payload); return; }
+    setShelf({ kind: impact, payload });
   };
 
   return (
@@ -904,7 +910,7 @@ function RemoteListenerCard({
           </label>
           <p className="remote-card-help">{t("settings.remote.listenHelp")}</p>
         </div>
-        <RemotePortControl label={t("settings.remote.listenPort")} port={draft.listenPort} raw={portDrafts.listenPort} saving={saving}
+        <RemotePortControl label={t("settings.remote.listenPort")} errorId="remote-listen-port-error" port={draft.listenPort} raw={portDrafts.listenPort} saving={saving}
           onMode={(mode) => editPortField("listenPort", { ...draft.listenPort, mode })}
           onRaw={(raw) => editPortRaw("listenPort", raw)}
           onRegenerate={() => editPortField("listenPort", { mode: "auto", value: generateRemoteAutoPort() })} />
@@ -934,7 +940,7 @@ function RemoteListenerCard({
                 aria-invalid={draft.advertisedHost !== "" && !isValidRemoteAdvertisedHost(draft.advertisedHost)}
                 onChange={(event) => edit({ advertisedHost: event.target.value.trim().toLowerCase() })} />
             </label>
-            <RemotePortControl label={t("settings.remote.advertisedPort")} port={draft.advertisedPort} raw={portDrafts.advertisedPort} saving={saving}
+            <RemotePortControl label={t("settings.remote.advertisedPort")} errorId="remote-advertised-port-error" port={draft.advertisedPort} raw={portDrafts.advertisedPort} saving={saving}
               onMode={(mode) => editPortField("advertisedPort", { ...draft.advertisedPort, mode })}
               onRaw={(raw) => editPortRaw("advertisedPort", raw)}
               onRegenerate={() => editPortField("advertisedPort", { mode: "auto", value: generateRemoteAutoPort() })} />
@@ -971,17 +977,17 @@ function RemoteListenerCard({
       ) : null}
 
       {shelf ? (
-        <RemoteConsequenceShelf kind={shelf} t={t} busy={saving}
-          onConfirm={() => persist(shelf !== "stop")}
+        <RemoteConsequenceShelf kind={shelf.kind} t={t} busy={saving}
+          onConfirm={() => persist(shelf.payload)}
           onCancel={() => setShelf(null)} />
       ) : null}
 
       <div className="remote-actions">
+        {/* 거부된 포트의 사유는 그 칸 옆에서 말한다 — 여기에 다시 적으면 같은 오류가 두 자리에 흩어진다. */}
         <span className="remote-actions-note">
-          {portError ? t("settings.remote.portInvalid")
-            : dirty && listening ? t("settings.remote.draft.pending")
-              : dirty && presentation.ready && remoteEndpointImpact(remote, draft) === "none" ? t("settings.remote.impact.none")
-                : ""}
+          {dirty && listening ? t("settings.remote.draft.pending")
+            : dirty && !portError && presentation.ready && remoteEndpointImpact(remote, draft) === "none" ? t("settings.remote.impact.none")
+              : ""}
         </span>
         <div className="remote-actions-buttons">
           {dirty ? (
@@ -994,22 +1000,22 @@ function RemoteListenerCard({
               ? <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={requestApply}>
                 {t("settings.remote.action.apply")}
               </button>
-              : <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => setShelf("stop")}>
+              : <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => setShelf({ kind: "stop", payload: { ...draft, enabled: false } })}>
                 {t("settings.remote.action.stop")}
               </button>
           ) : (
             <>
               {dirty ? (
-                <button type="button" className="remote-create is-quiet" disabled={blocked} onClick={() => persist(false)}>
+                <button type="button" className="remote-create is-quiet" disabled={blocked} onClick={() => persist({ ...draft, enabled: false })}>
                   {t("settings.remote.action.saveLater")}
                 </button>
               ) : null}
               {draft.enabled && !dirty ? (
-                <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => persist(false)}>
+                <button type="button" className="remote-create is-danger" disabled={saving} onClick={() => persist({ ...draft, enabled: false })}>
                   {t("settings.remote.action.stop")}
                 </button>
               ) : (
-                <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={() => persist(true)}>
+                <button type="button" className="remote-create" disabled={blocked || !presentation.ready} onClick={() => persist({ ...draft, enabled: true })}>
                   {t("settings.remote.action.start")}
                 </button>
               )}
@@ -1049,7 +1055,9 @@ function RemoteListenerLozenge({ status, listening, ready }: {
       : state === "failed" ? "settings.remote.status.failed"
         : state === "stopped" ? "settings.remote.status.stopped" : "settings.remote.status.setupRequired";
   return (
-    <span className="remote-lozenge" data-remote-state={state} aria-label={t("settings.remote.listenerState")}>
+    // aria-label을 걸면 그 이름이 자식 텍스트를 덮어, 눈에 보이는 상태가 접근성 트리에서 사라진다.
+    // 상태 문구 자체가 이름이 되게 두고, 바뀔 때 읽히도록 live 영역으로만 표시한다.
+    <span className="remote-lozenge" data-remote-state={state} role="status">
       {t(label)}
     </span>
   );
@@ -1105,8 +1113,9 @@ function RemoteConsequenceShelf({ kind, t, busy, onConfirm, onCancel }: {
   );
 }
 
-function RemotePortControl({ label, port, raw, saving, onMode, onRaw, onRegenerate }: {
+function RemotePortControl({ label, errorId, port, raw, saving, onMode, onRaw, onRegenerate }: {
   readonly label: string;
+  readonly errorId: string;
   readonly port: GlobalSettingsState["remoteAccess"]["listenPort"];
   readonly raw: string | null;
   readonly saving: boolean;
@@ -1131,9 +1140,12 @@ function RemotePortControl({ label, port, raw, saving, onMode, onRaw, onRegenera
       ) : (
         <input type="number" min={1} max={65535} value={raw ?? String(port.value)} disabled={saving}
           aria-invalid={raw !== null} aria-label={label}
+          aria-describedby={raw === null ? undefined : errorId}
           onChange={(event) => onRaw(event.target.value)} />
       )}
     </div>
+    {/* 거부 사유는 거부한 칸에 붙는다 — 떨어뜨려 놓으면 보조 기술이 무엇이 잘못됐는지 닿을 길이 없다. */}
+    {raw === null ? null : <p className="remote-port-error" id={errorId} role="alert">{t("settings.remote.portInvalid")}</p>}
   </fieldset>;
 }
 
