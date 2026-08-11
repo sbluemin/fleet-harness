@@ -473,6 +473,9 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
         tabIndex={-1}
         ref={menuRef}
         onKeyDown={handleMenuKeyDown}
+        // 휠·트랙패드가 개입하면 흐르던 글라이드를 끊는다(키보드와 같은 규율) — 스트립 위에서
+        // 역방향 제스처가 rAF 가산과 싸우지 않게. 네이티브 휠 스크롤은 그대로 흐른다.
+        onWheel={stopEdgeGlide}
         onMouseLeave={() => setHoverKey(null)}
         // 항목이 전부 tabIndex=-1이라 Tab은 메뉴를 건너뛴다. 그때 메뉴만 열린 채 남으면 사용자는
         // 다른 컨트롤에 포커스를 둔 채 떠 있는 실행 메뉴를 보게 된다 — 포커스가 떠나면 닫는다.
