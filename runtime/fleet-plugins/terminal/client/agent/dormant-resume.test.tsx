@@ -97,6 +97,25 @@ describe("dormant resume feedback", () => {
     expect(getAgentState().sessions[OPERATION_ID]?.status).toBe("dormant");
   });
 
+  it("explains an unavailable saved launch option without offering Start fresh", async () => {
+    const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    }));
+    const { notifications } = await renderDormant(fetch);
+
+    act(() => dormantButton().click());
+    await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+
+    const card = container?.querySelector(".canvas-operation-dormant--error");
+    expect(card?.textContent).toContain("Re-enable its saved model or effort");
+    expect(card?.textContent).toContain("Try again");
+    expect(card?.textContent).not.toContain("Start fresh");
+    expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
+      message: "Resume failed — the saved model or effort is unavailable.",
+    }));
+  });
+
   it("Start fresh retries the resume route with { fresh: true }", async () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(new Response("{}", { status: 503 }))

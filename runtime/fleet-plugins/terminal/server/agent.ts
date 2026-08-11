@@ -440,6 +440,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       payload: {
         ...toOperationPayload(undefined, cwd, session),
         [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: agentLaunchProviderFromModel(launchOptions.model),
+        // Claude Code의 resume가 launch 좌표를 자체 복원한다고 가정하지 않는다 — 정규화된
+        // 최초 선택을 Operation에 남겨 dormant·Console 재시작 뒤에도 같은 인자로 재개한다.
+        ...(launchOptions.model ? { launchModel: launchOptions.model } : {}),
+        ...(launchOptions.effort ? { launchEffort: launchOptions.effort } : {}),
       },
       createdAt: session.createdAt,
     });
@@ -469,7 +473,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     } catch (error) {
       if (error instanceof GatewayLaunchOptionError) {
         removeSession(sessionId);
-        ctx.host.http.writeJson(res, error.code === "gateway_model_not_enabled" ? 409 : 400, { error: error.code });
+        ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
         return;
       }
       // 프롬프트를 이 실행 경로로 안전하게 전달할 수 없을 때 spawn 전에 거부된다(cmd.exe shim 재해석,
@@ -509,6 +513,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
+    // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
+    // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
+    const launchModel = readPayloadString(node.payload, "launchModel")
+      || (cliId === "claude-gateway" ? "opus[1m]" : undefined);
+    const launchEffort = readPayloadString(node.payload, "launchEffort") || undefined;
     resetOscActivity(sessionId);
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
     try {
@@ -536,6 +545,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         pluginId: node.pluginId,
         theaterId: node.theaterId,
         cliId,
+        ...(launchModel ? { model: launchModel } : {}),
+        ...(launchEffort ? { effort: launchEffort } : {}),
         ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
@@ -546,9 +557,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // payload는 spawn 전에 비워 두었으므로, 읽히는 세션은 반드시 자식의 신규 capture다.
       const currentPayload = fresh ? ctx.host.operations.get(sessionId)?.payload : node.payload;
       const effectiveProviderSession = fresh ? readProviderSession(currentPayload) : providerSession;
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
+      const resumedPayload = toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle);
+      // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
+      // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
+      if (!readPayloadString(resumedPayload, "launchModel") && launchModel) resumedPayload.launchModel = launchModel;
+      ctx.host.operations.patch(sessionId, { payload: resumedPayload });
       ctx.host.http.writeJson(res, 200, resumed);
-    } catch {
+    } catch (error) {
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
@@ -561,7 +576,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);
-      ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+      if (error instanceof GatewayLaunchOptionError) {
+        ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
+      } else {
+        ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+      }
     }
     return true;
   }
@@ -962,6 +981,11 @@ function readProviderTitle(value: Record<string, unknown> | undefined): AgentPro
   const candidate = marker as Record<string, unknown>;
   if (candidate.source !== "provider" || Object.keys(candidate).length !== 1) return undefined;
   return { source: "provider" };
+}
+
+// create와 resume는 같은 launch-option 오류 계약을 공유한다.
+function gatewayLaunchOptionErrorStatus(error: GatewayLaunchOptionError): 400 | 409 {
+  return error.code === "gateway_model_not_enabled" ? 409 : 400;
 }
 
 function readPayloadString(payload: Record<string, unknown>, key: string): string {
