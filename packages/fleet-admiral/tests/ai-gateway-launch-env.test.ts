@@ -47,6 +47,7 @@ describe("prepareAiGatewayLaunchProfile", () => {
 			ANTHROPIC_API_KEY: "key",
 			ANTHROPIC_BASE_URL: "http://127.0.0.1:4310/plugins/terminal/ai-gateway",
 			CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY: "1",
+			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "1000000",
 			ENABLE_TOOL_SEARCH: "true",
 		});
 
@@ -61,6 +62,17 @@ describe("prepareAiGatewayLaunchProfile", () => {
 		expect(statSync(cachePath).mode & 0o777).toBe(0o600);
 	});
 
+	it("preserves an explicit auto-compact ceiling", () => {
+		const homeDir = makeTemporaryDirectory();
+		const prepared = prepareAiGatewayLaunchProfile(makeProfile({
+			CLAUDE_CODE_AUTO_COMPACT_WINDOW: "850000",
+		}), {
+			baseUrl: "http://127.0.0.1:4310/gateway",
+			homeDir,
+		});
+
+		expect(prepared.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
+	});
 
 	it("throws for an invalid base URL before writing a cache", () => {
 		const homeDir = makeTemporaryDirectory();

@@ -71,7 +71,7 @@ describe("router lifecycle", () => {
         await router.handle(ctx({
           res: response(),
           token: ANTHROPIC_CRED,
-          model: "claude-gateway--cursor--grok-4.5[1m]",
+          model: "claude-gateway--cursor--grok-4.5",
         }));
       }
       expect(adapters).toHaveLength(2);
@@ -168,7 +168,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
+      model: "claude-gateway--codex--gpt-5.6-sol-fast",
     }));
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
@@ -212,7 +212,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-luna[1m]",
+      model: "claude-gateway--codex--gpt-5.6-luna",
       thinking: { type: "adaptive" },
       outputConfig: { effort: "ultra" },
     }));
@@ -236,7 +236,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--grok-4.5[1m]",
+      model: "claude-gateway--cursor--grok-4.5",
       thinking: { type: "adaptive" },
       outputConfig: { effort: "medium" },
     }));
@@ -362,7 +362,7 @@ describe("upstream credential", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--cursor--grok-4.5[1m]",
+      model: "claude-gateway--cursor--grok-4.5",
       metadata: null,
     }));
 
@@ -406,14 +406,12 @@ describe("upstream credential", () => {
 
 describe("model context window", () => {
   it.each([
-    // The guard and the projection both take the model's real window, so a marked
-    // model's occupancy can never be reported above the 1M coordinate.
-    ["claude-gateway--codex--gpt-5.6-sol", 272_000, 272_000],
-    ["claude-gateway--cursor--grok-4.5-fast", 256_000, 256_000],
-    // A 200000-window Cursor native model earns no `[1m]` marker, so it gets no
-    // projection denominator — but the guard still needs its real window.
-    ["claude-gateway--cursor--composer-2.5", 200_000, undefined],
-  ])("passes %s's real window as modelContextWindow", async (model, expected, projected) => {
+    // The guard and Claude-coordinate projection both take the model's real window.
+    // Marker choice only selects Claude's 200k or 1M coordinate.
+    ["claude-gateway--codex--gpt-5.6-sol", 272_000],
+    ["claude-gateway--cursor--grok-4.5-fast", 256_000],
+    ["claude-gateway--cursor--composer-2.5", 200_000],
+  ])("passes %s's real window to both context contracts", async (model, expected) => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({
@@ -425,14 +423,9 @@ describe("model context window", () => {
     await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model }));
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      contextWindow: expected,
       modelContextWindow: expected,
     }));
-    const options = streamSpy.mock.calls[0]?.[1];
-    if (projected === undefined) {
-      expect(options).not.toHaveProperty("contextWindow");
-    } else {
-      expect(options).toHaveProperty("contextWindow", projected);
-    }
   });
 
   it("answers a pre-flight overflow with Claude's prompt-too-long contract", async () => {
@@ -924,7 +917,7 @@ describe("Kimi passthrough", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it("passes sub-1M cache-aware SSE usage through without projection", async () => {
+  it("projects sub-1M cache-aware SSE usage onto the 200k coordinate", async () => {
     const upstreamBody = [
       "event: message_start\r\n",
       `data: ${JSON.stringify({
@@ -966,8 +959,8 @@ describe("Kimi passthrough", () => {
     expect(JSON.parse(payload ?? "null")).toMatchObject({
       message: {
         usage: {
-          input_tokens: 32_768,
-          cache_read_input_tokens: 32_768,
+          input_tokens: 1_696,
+          cache_read_input_tokens: 1_696,
           cache_creation_input_tokens: 0,
           output_tokens: 2,
         },
@@ -1015,7 +1008,7 @@ describe("Kimi passthrough", () => {
       message: {
         id: "msg_kimi",
         model: "claude-gateway--kimi--k3[1m]",
-        usage: { input_tokens: 10, output_tokens: 1 },
+        usage: { input_tokens: 0, output_tokens: 1 },
       },
     });
     // 요청은 여전히 wire id로 나간다.
@@ -1050,7 +1043,7 @@ describe("Kimi passthrough", () => {
       id: "msg_kimi",
       model: "claude-gateway--kimi--k3[1m]",
       content: [{ type: "text", text: "done" }],
-      usage: { input_tokens: 10, output_tokens: 4 },
+      usage: { input_tokens: 0, output_tokens: 4 },
     });
   });
 
@@ -1435,7 +1428,7 @@ describe("route surface", () => {
       }));
 
       expect(JSON.parse(settingsResponse.body).data).toEqual([
-        expect.objectContaining({ id: "claude-gateway--codex--gpt-5.6-sol[1m]" }),
+        expect.objectContaining({ id: "claude-gateway--codex--gpt-5.6-sol" }),
       ]);
       expect(withoutReaderSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
         model: "gpt-5.6-sol",
@@ -1471,21 +1464,21 @@ describe("route surface", () => {
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
     expect(list.data).toHaveLength(24);
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
-    expect(ids).toContain("claude-gateway--cursor--auto[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
+    expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5-fast");
-    expect(ids).toContain("claude-gateway--cursor--grok-4.5[1m]");
-    expect(ids).toContain("claude-gateway--cursor--grok-4.5-fast[1m]");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.5-fast");
     expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
     expect(ids).not.toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
     expect(ids).not.toContain("claude-gateway--cursor--kimi-k3");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
-    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(true);
+    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(false);
     expect(list.data).toContainEqual(expect.objectContaining({
-      id: "claude-gateway--cursor--grok-4.5[1m]",
+      id: "claude-gateway--cursor--grok-4.5",
       display_name: "Cursor-Grok-4.5",
     }));
     expect(list.data).toContainEqual(expect.objectContaining({
@@ -1517,7 +1510,7 @@ describe("route surface", () => {
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
     expect(list.data.map((entry) => entry.id)).toEqual([
       "claude-gateway--cursor--composer-2.5",
-      "claude-gateway--cursor--grok-4.5[1m]",
+      "claude-gateway--cursor--grok-4.5",
       "claude-gateway--kimi--k3-256k",
     ]);
   });
@@ -1542,9 +1535,9 @@ describe("route surface", () => {
     expect(res.status).toBe(200);
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
     expect(list.data.map((entry) => entry.id)).toEqual([
-      "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
-      "claude-gateway--codex--gpt-5.6-luna-fast[1m]",
-      "claude-gateway--cursor--grok-4.5-fast[1m]",
+      "claude-gateway--codex--gpt-5.6-sol-fast",
+      "claude-gateway--codex--gpt-5.6-luna-fast",
+      "claude-gateway--cursor--grok-4.5-fast",
       "claude-gateway--kimi--k3[1m]",
     ]);
   });

@@ -8,7 +8,6 @@ import {
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
   OPENCODE_SUBSCRIPTION_MODELS,
-  isAnthropicPassthroughModel,
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
@@ -926,13 +925,13 @@ describe("model catalog", () => {
     );
     // Claude Code는 claude로 시작하지 않는 id를 discovery 결과에서 버린다.
     expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol[1m]")).toMatchObject({
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol")).toMatchObject({
       display_name: "Codex-GPT-5.6-Sol",
       max_input_tokens: 272_000,
     });
     expect(list.data.some((entry) => entry.id.includes("--codex--") && entry.id.endsWith("[1m]")))
-      .toBe(true);
-    expect(list.data.find((entry) => entry.id.endsWith("cursor--grok-4.5[1m]"))).toMatchObject({
+      .toBe(false);
+    expect(list.data.find((entry) => entry.id.endsWith("cursor--grok-4.5"))).toMatchObject({
       display_name: "Cursor-Grok-4.5",
       max_input_tokens: 256_000,
     });
@@ -948,47 +947,42 @@ describe("model catalog", () => {
       display_name: "Moonshot-Kimi-K3-256K",
       max_input_tokens: 262_144,
     });
-    // Anthropic passthrough models require a real 1M window for the marker:
-    // Claude Code's long-context beta must not reach a sub-1M compatible upstream.
-    // Translated wires (opencode responses/chat) project like Codex/Cursor instead.
+    // `[1m]` describes the provider model, not a synthetic compatibility axis.
+    // Every real window below 1M stays on Claude's unmarked 200k coordinate.
     expect(GATEWAY_MODELS.every((model) => (
       toClaudeGatewayModelId(model).endsWith("[1m]")
-      === (
-        (model.contextWindow ?? 0) > 200_000
-        && (!isAnthropicPassthroughModel(model) || (model.contextWindow ?? 0) >= 1_000_000)
-      )
+      === (model.contextWindow ?? 0) >= 1_000_000
     ))).toBe(true);
     expect(list.data.every((entry) => (
       entry.display_name.endsWith(" (1M Context)") === (entry.max_input_tokens ?? 0) >= 1_000_000
     ))).toBe(true);
   });
 
-  it("projects every marked provider window onto Claude Code's 1M coordinate", () => {
-    expect(projectClaudeContextInputTokens(65_536, 1_048_576)).toBe(62_500);
-    expect(projectClaudeContextInputTokens(50_000, 1_000_000, 800_000)).toBe(62_500);
-    expect(projectClaudeContextInputTokens(221_000, 272_000)).toBe(812_500);
-    expect(projectClaudeContextInputTokens(250_000, 500_000)).toBe(500_000);
-    expect(projectClaudeContextInputTokens(50_000, 256_000, 200_000)).toBe(250_000);
-    expect(projectClaudeContextInputTokens(50_000, 200_000)).toBe(50_000);
+  it("removes only the provider capacity above Claude's truthful coordinate", () => {
+    expect(projectClaudeContextInputTokens(1_016_576, 1_048_576)).toBe(968_000);
+    expect(projectClaudeContextInputTokens(968_000, 1_000_000)).toBe(968_000);
+    expect(projectClaudeContextInputTokens(240_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(468_000, 500_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(224_000, 256_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(168_000, 200_000)).toBe(168_000);
     expect(projectClaudeContextInputTokens(50_000, undefined)).toBe(50_000);
   });
 
-  it("never projects past the 1M coordinate Claude Code was told to meter against", () => {
-    // Claude Code reads any occupancy above the advertised window as
-    // "Context exceeds the 1m-token limit" and stops auto-compacting, so an
-    // upstream reporting more input than the catalog window must still land at 100%.
-    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(1_000_000);
-    expect(projectClaudeContextInputTokens(300_000, 272_000)).toBe(1_000_000);
+  it("uses a runtime-reported window while capping usage at Claude's coordinate", () => {
+    expect(projectClaudeContextInputTokens(168_000, 256_000, 200_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(240_000, 256_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(200_000);
+    expect(projectClaudeContextInputTokens(300_000, 272_000)).toBe(200_000);
     expect(projectClaudeContextInputTokens(2_000_000, 1_048_576)).toBe(1_000_000);
   });
 
   it("advertises the official Anthropic effort capability per gateway model", () => {
     const entries = new Map(buildAnthropicModelList().data.map((entry) => [entry.id, entry]));
-    const sol = entries.get("claude-gateway--codex--gpt-5.6-sol[1m]");
-    const luna = entries.get("claude-gateway--codex--gpt-5.6-luna[1m]");
+    const sol = entries.get("claude-gateway--codex--gpt-5.6-sol");
+    const luna = entries.get("claude-gateway--codex--gpt-5.6-luna");
     const kimi = entries.get("claude-gateway--kimi--k3[1m]");
-    const cursor = entries.get("claude-gateway--cursor--auto[1m]");
-    const cursorGrok = entries.get("claude-gateway--cursor--grok-4.5[1m]");
+    const cursor = entries.get("claude-gateway--cursor--auto");
+    const cursorGrok = entries.get("claude-gateway--cursor--grok-4.5");
     const cursorComposer = entries.get("claude-gateway--cursor--composer-2.5-fast");
 
     expect(sol?.capabilities.effort).toEqual({
@@ -1047,18 +1041,16 @@ describe("model catalog", () => {
     })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
   });
 
-  it("accepts current marked ids and their scoped legacy unmarked aliases", () => {
+  it("accepts truthful marked ids and current unmarked aliases", () => {
     const model = findGatewayModel("claude-gateway--kimi--k3[1m]");
     expect(model).toMatchObject({ id: "kimi--k3", upstreamId: "k3" });
     expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
       id: "codex--gpt-5.6-luna",
       upstreamId: "gpt-5.6-luna",
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toMatchObject({
-      id: "codex--gpt-5.6-luna",
-    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--kimi--k3")).toMatchObject({ id: "kimi--k3" });
-    expect(findGatewayModel("claude-gateway--cursor--grok-4.5[1m]")).toMatchObject({
+    expect(findGatewayModel("claude-gateway--cursor--grok-4.5")).toMatchObject({
       id: "cursor--grok-4.5",
       upstreamId: "grok-4.5",
       contextWindow: 256_000,
@@ -1093,25 +1085,24 @@ describe("Claude context coordinate", () => {
     ...over,
   } as GatewayModel);
 
-  it("marks a model whose real window clears Claude's default coordinate", () => {
+  it("marks only a model whose real window reaches one million", () => {
     const codex = CODEX_SUBSCRIPTION_MODELS[0]!;
     expect(codex.contextWindow).toBe(272_000);
-    expect(toClaudeGatewayModelId(codex).endsWith("[1m]")).toBe(true);
+    expect(toClaudeGatewayModelId(codex).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(model({ contextWindow: 1_000_000 })).endsWith("[1m]")).toBe(true);
   });
 
-  it("withholds the marker when there is no window above Claude's default coordinate", () => {
+  it("withholds the marker below one million or without a known window", () => {
     expect(toClaudeGatewayModelId(model({ contextWindow: 200_000 })).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(model({ contextWindow: 500_000 })).endsWith("[1m]")).toBe(false);
     expect(toClaudeGatewayModelId(model({})).endsWith("[1m]")).toBe(false);
   });
 
-  it("keeps auto-compact reachable inside the real window", () => {
-    // Claude Code compacts at 967_000 of its 1M axis. Dividing by the real window
-    // puts that at 263_024 real tokens — under the 272_000 the backend accepts, so
-    // the session compacts instead of pinning at an exceeded context. A smaller
-    // denominator (Codex's own 258_400 compaction budget) would instead map the
-    // remaining capacity above 100%, where Claude Code refuses to auto-compact.
-    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(1_000_000);
-    expect(Math.floor(967_000 * 272_000 / 1_000_000)).toBe(263_024);
+  it("keeps Claude's absolute reserve inside each real window", () => {
+    expect(projectClaudeContextInputTokens(238_000, 272_000)).toBe(166_000);
+    expect(projectClaudeContextInputTokens(240_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(1_014_576, 1_048_576)).toBe(966_000);
+    expect(projectClaudeContextInputTokens(1_016_576, 1_048_576)).toBe(968_000);
   });
 });
 
@@ -1162,8 +1153,8 @@ describe("Anthropic response context projection", () => {
     expect(events[0]?.data).toMatchObject({
       message: {
         usage: {
-          input_tokens: 31_250,
-          cache_read_input_tokens: 31_250,
+          input_tokens: 8_480,
+          cache_read_input_tokens: 8_480,
           cache_creation_input_tokens: 0,
           output_tokens: 7,
         },
@@ -1171,8 +1162,8 @@ describe("Anthropic response context projection", () => {
     });
     expect(events[1]?.data).toMatchObject({
       usage: {
-        input_tokens: 62_500,
-        cache_read_input_tokens: 125_000,
+        input_tokens: 49_344,
+        cache_read_input_tokens: 98_688,
         cache_creation_input_tokens: 0,
         output_tokens: 11,
       },
@@ -1201,7 +1192,7 @@ describe("Anthropic response context projection", () => {
       id: "msg_json",
       content: [{ type: "text", text: "done" }],
       usage: {
-        input_tokens: 62_500,
+        input_tokens: 16_960,
         cache_read_input_tokens: 0,
         cache_creation_input_tokens: 0,
         output_tokens: 9,
@@ -1256,7 +1247,7 @@ describe("Anthropic response context projection", () => {
     const events = parseSse(output);
 
     expect(events[0]?.data).toMatchObject({ usage: { input_tokens: 65_536, output_tokens: 4 } });
-    expect(events[1]?.data).toMatchObject({ usage: { input_tokens: 31_250, output_tokens: 5 } });
+    expect(events[1]?.data).toMatchObject({ usage: { input_tokens: 0, output_tokens: 5 } });
   });
 });
 
@@ -1289,7 +1280,7 @@ describe("Anthropic response model rewrite", () => {
       message: {
         id: "msg_kimi",
         model: "claude-gateway--kimi--k3[1m]",
-        usage: { input_tokens: 10, output_tokens: 1 },
+        usage: { input_tokens: 0, output_tokens: 1 },
       },
     });
     expect(events[1]?.data).toEqual({ type: "message_stop" });
@@ -1316,7 +1307,7 @@ describe("Anthropic response model rewrite", () => {
       id: "msg_kimi",
       model: "claude-gateway--kimi--k3[1m]",
       content: [{ type: "text", text: "done" }],
-      usage: { input_tokens: 10, output_tokens: 4 },
+      usage: { input_tokens: 0, output_tokens: 4 },
     });
   });
 
@@ -1581,7 +1572,7 @@ describe("Anthropic SSE encoding", () => {
     });
   });
 
-  it("projects streaming input usage for a marked sub-1M model", async () => {
+  it("projects streaming input usage onto an unmarked 200k coordinate", async () => {
     const events = iterable<CanonicalResponseEvent>([
       {
         type: "response.created",
@@ -1606,14 +1597,14 @@ describe("Anthropic SSE encoding", () => {
     })));
 
     expect(frames[0]?.data).toMatchObject({
-      message: { usage: { input_tokens: 812_500, output_tokens: 0 } },
+      message: { usage: { input_tokens: 149_000, output_tokens: 0 } },
     });
     expect(frames[1]?.data).toMatchObject({
-      usage: { input_tokens: 812_500, output_tokens: 6_277 },
+      usage: { input_tokens: 149_000, output_tokens: 6_277 },
     });
   });
 
-  it("projects a marked Cursor runtime checkpoint using its authoritative wire window", async () => {
+  it("projects a Cursor routing alias using its authoritative runtime window", async () => {
     const events = iterable<CanonicalResponseEvent>([
       {
         type: "response.created",
@@ -1638,14 +1629,14 @@ describe("Anthropic SSE encoding", () => {
     })));
 
     expect(frames[0]?.data).toMatchObject({
-      message: { usage: { input_tokens: 195_313 } },
+      message: { usage: { input_tokens: 0 } },
     });
     expect(frames[1]?.data).toMatchObject({
-      usage: { input_tokens: 250_000, output_tokens: 1 },
+      usage: { input_tokens: 50_000, output_tokens: 1 },
     });
   });
 
-  it("preserves the projected input total when a cache breakdown rides the 1M coordinate", async () => {
+  it("preserves the projected input total across a cache breakdown", async () => {
     const events = iterable<CanonicalResponseEvent>([
       {
         type: "response.created",
@@ -1684,13 +1675,13 @@ describe("Anthropic SSE encoding", () => {
       output_tokens: number;
     };
 
-    // Same total as the plain (non-cache-aware) 1M projection test above: the
-    // breakdown must land on the identical coordinate, never inflate or shrink it.
-    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(812_500);
+    // Same total as the plain projection test above: the offset applies once to
+    // the aggregate, then the cache coordinates retain their original proportions.
+    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(149_000);
     expect(usage).toEqual({
-      input_tokens: 261_030,
-      cache_read_input_tokens: 367_647,
-      cache_creation_input_tokens: 183_823,
+      input_tokens: 47_870,
+      cache_read_input_tokens: 67_420,
+      cache_creation_input_tokens: 33_710,
       output_tokens: 6_277,
     });
   });
@@ -3235,7 +3226,7 @@ describe("non-streaming requests", () => {
     });
   });
 
-  it("projects non-streaming usage for a marked sub-1M model", async () => {
+  it("projects non-streaming usage onto an unmarked 200k coordinate", async () => {
     const adapter: AiGatewayAdapter = {
       async stream() {
         return {
@@ -3256,11 +3247,11 @@ describe("non-streaming requests", () => {
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      usage: { input_tokens: 812_500, output_tokens: 6_277 },
+      usage: { input_tokens: 149_000, output_tokens: 6_277 },
     });
   });
 
-  it("projects a marked Cursor runtime checkpoint in non-streaming mode", async () => {
+  it("projects a Cursor runtime checkpoint in non-streaming mode", async () => {
     const adapter: AiGatewayAdapter = {
       async stream() {
         return {
@@ -3288,7 +3279,7 @@ describe("non-streaming requests", () => {
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      usage: { input_tokens: 250_000, output_tokens: 1 },
+      usage: { input_tokens: 50_000, output_tokens: 1 },
     });
   });
 
@@ -3397,22 +3388,22 @@ describe("response model rewrite", () => {
   });
 
   it("rewrites the streamed message_start model to the client-requested id", async () => {
-    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast[1m]" };
+    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast" };
     const response = await new AnthropicMessagesGateway(adapterEchoing()).stream(request, { apiKey: "k" });
     const frames = parseSse(await collectBody(response.body));
     const start = frames.find((item) => item.event === "message_start");
 
     expect(start?.data).toMatchObject({
-      message: { model: "claude-gateway--cursor--grok-4.5-fast[1m]" },
+      message: { model: "claude-gateway--cursor--grok-4.5-fast" },
     });
   });
 
   it("rewrites the non-streaming response model to the client-requested id", async () => {
-    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast[1m]", stream: false };
+    const request = { ...baseRequest(), model: "claude-gateway--cursor--grok-4.5-fast", stream: false };
     const response = await new AnthropicMessagesGateway(adapterEchoing()).stream(request, { apiKey: "k" });
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      model: "claude-gateway--cursor--grok-4.5-fast[1m]",
+      model: "claude-gateway--cursor--grok-4.5-fast",
     });
   });
 });

@@ -6,10 +6,7 @@ import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../anthropic/native.js";
-import {
-  hasClaudeOneMillionMarker,
-  pruneClaudeSkillPayloads,
-} from "../anthropic/claude-context.js";
+import { pruneClaudeSkillPayloads } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
@@ -31,7 +28,6 @@ import {
   findGatewayModel,
   GATEWAY_MODEL_ALIAS_PREFIX,
   GATEWAY_MODELS,
-  toClaudeGatewayModelId,
   upstreamModelId,
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
@@ -307,15 +303,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         await proxyToAnthropic(req.headers, res, body, fetchImpl, controller.signal);
         return true;
       }
-      // Claude Code may strip the discovery-only `[1m]` suffix before sending a
-      // request. Derive the projection denominator from the resolved registry
-      // model so every alias for the same Cursor/Codex model projects usage in
-      // the same way. It is the model's real window: projecting against anything
-      // smaller maps the remaining capacity above 100% of the 1M coordinate,
-      // which Claude Code reads as an exceeded context and will not compact.
-      const claudeContextWindow = hasClaudeOneMillionMarker(toClaudeGatewayModelId(target))
-        ? target.contextWindow
-        : undefined;
+      // Claude Code meters every custom model on either its unmarked 200k coordinate
+      // or the truthful `[1m]` coordinate. Pass the real catalog window for both: the
+      // compatibility seam removes only the capacity above Claude's chosen coordinate,
+      // so each model reaches its real window minus Claude's own compaction reserve.
+      const claudeContextWindow = target.contextWindow;
       if (target.provider === "kimi") {
         await proxyToKimi(
           req.headers,
