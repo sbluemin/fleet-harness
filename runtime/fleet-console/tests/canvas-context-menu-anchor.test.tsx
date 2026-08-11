@@ -457,7 +457,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     // 실행 종류를 짚어 여는 단이 사라졌다 — 모델 밴드가 메뉴의 첫 단이다.
     expect(document.querySelector(".operation-launch-flyout")).toBeNull();
-    expect(document.querySelector(".operation-launch-variant-caption")?.textContent).toBe("Claude built-in");
+    expect(document.querySelector(".operation-launch-variant-caption")?.textContent).toBe("Claude");
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
@@ -533,7 +533,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       .map((element) => element.getAttribute("data-launch-variant-row")
         ?? element.getAttribute("data-operation-launch-kind")
         ?? `caption:${element.textContent?.trim()}`);
-    expect(order).toEqual(["caption:Claude built-in", "fable", "caption:Etc", "shell"]);
+    expect(order).toEqual(["caption:Claude", "fable", "caption:Etc", "shell"]);
     expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
   });
 
