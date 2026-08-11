@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.54.1] - 2026-08-11
+
+### fleet-cli
+
+#### Changed
+- Advertise `[1m]` only for gateway models with a real 1M-or-larger context window, while continuously mapping usage so Claude Code reports approximate context progress and compacts with 16K of each model's real window remaining in mixed-model sessions.
+
+### fleet-console
+
+#### Changed
+- Advertise `[1m]` only for gateway models with a real 1M-or-larger context window, while continuously mapping usage so Claude Code reports approximate context progress and compacts with 16K of each model's real window remaining in mixed-model sessions.
+
 ## [1.54.0] - 2026-08-10
 
 ### fleet-cli
