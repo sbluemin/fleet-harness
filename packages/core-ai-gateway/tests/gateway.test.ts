@@ -958,21 +958,29 @@ describe("model catalog", () => {
     ))).toBe(true);
   });
 
-  it("removes only the provider capacity above Claude's truthful coordinate", () => {
-    expect(projectClaudeContextInputTokens(1_016_576, 1_048_576)).toBe(968_000);
-    expect(projectClaudeContextInputTokens(968_000, 1_000_000)).toBe(968_000);
-    expect(projectClaudeContextInputTokens(240_000, 272_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(468_000, 500_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(224_000, 256_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(168_000, 200_000)).toBe(168_000);
+  it("reports a continuous approximation of real context occupancy", () => {
+    expect(projectClaudeContextInputTokens(1, 200_000)).toBe(1);
+    expect(projectClaudeContextInputTokens(92_000, 200_000)).toBe(84_000);
+    expect(projectClaudeContextInputTokens(120_000, 256_000)).toBe(84_000);
+    expect(projectClaudeContextInputTokens(128_000, 272_000)).toBe(84_000);
+    expect(projectClaudeContextInputTokens(492_000, 1_000_000)).toBe(484_000);
     expect(projectClaudeContextInputTokens(50_000, undefined)).toBe(50_000);
   });
 
+  it("lands Claude's compact threshold 16k before each real window", () => {
+    expect(projectClaudeContextInputTokens(184_000, 200_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(240_000, 256_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(256_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(484_000, 500_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(984_000, 1_000_000)).toBe(968_000);
+    expect(projectClaudeContextInputTokens(1_032_576, 1_048_576)).toBe(968_000);
+  });
+
   it("uses a runtime-reported window while capping usage at Claude's coordinate", () => {
-    expect(projectClaudeContextInputTokens(168_000, 256_000, 200_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(240_000, 256_000, 272_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(200_000);
-    expect(projectClaudeContextInputTokens(300_000, 272_000)).toBe(200_000);
+    expect(projectClaudeContextInputTokens(184_000, 256_000, 200_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(256_000, 256_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(272_000, 272_000)).toBe(178_500);
+    expect(projectClaudeContextInputTokens(300_000, 272_000)).toBe(196_875);
     expect(projectClaudeContextInputTokens(2_000_000, 1_048_576)).toBe(1_000_000);
   });
 
@@ -1098,11 +1106,11 @@ describe("Claude context coordinate", () => {
     expect(toClaudeGatewayModelId(model({})).endsWith("[1m]")).toBe(false);
   });
 
-  it("keeps Claude's absolute reserve inside each real window", () => {
-    expect(projectClaudeContextInputTokens(238_000, 272_000)).toBe(166_000);
-    expect(projectClaudeContextInputTokens(240_000, 272_000)).toBe(168_000);
-    expect(projectClaudeContextInputTokens(1_014_576, 1_048_576)).toBe(966_000);
-    expect(projectClaudeContextInputTokens(1_016_576, 1_048_576)).toBe(968_000);
+  it("keeps a 16k provider reserve on both Claude coordinates", () => {
+    expect(projectClaudeContextInputTokens(254_000, 272_000)).toBe(166_688);
+    expect(projectClaudeContextInputTokens(256_000, 272_000)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(1_030_576, 1_048_576)).toBe(966_126);
+    expect(projectClaudeContextInputTokens(1_032_576, 1_048_576)).toBe(968_000);
   });
 });
 
@@ -1153,8 +1161,8 @@ describe("Anthropic response context projection", () => {
     expect(events[0]?.data).toMatchObject({
       message: {
         usage: {
-          input_tokens: 8_480,
-          cache_read_input_tokens: 8_480,
+          input_tokens: 30_719,
+          cache_read_input_tokens: 30_719,
           cache_creation_input_tokens: 0,
           output_tokens: 7,
         },
@@ -1162,8 +1170,8 @@ describe("Anthropic response context projection", () => {
     });
     expect(events[1]?.data).toMatchObject({
       usage: {
-        input_tokens: 49_344,
-        cache_read_input_tokens: 98_688,
+        input_tokens: 61_438,
+        cache_read_input_tokens: 122_875,
         cache_creation_input_tokens: 0,
         output_tokens: 11,
       },
@@ -1192,7 +1200,7 @@ describe("Anthropic response context projection", () => {
       id: "msg_json",
       content: [{ type: "text", text: "done" }],
       usage: {
-        input_tokens: 16_960,
+        input_tokens: 61_438,
         cache_read_input_tokens: 0,
         cache_creation_input_tokens: 0,
         output_tokens: 9,
@@ -1247,7 +1255,7 @@ describe("Anthropic response context projection", () => {
     const events = parseSse(output);
 
     expect(events[0]?.data).toMatchObject({ usage: { input_tokens: 65_536, output_tokens: 4 } });
-    expect(events[1]?.data).toMatchObject({ usage: { input_tokens: 0, output_tokens: 5 } });
+    expect(events[1]?.data).toMatchObject({ usage: { input_tokens: 30_719, output_tokens: 5 } });
   });
 });
 
@@ -1280,7 +1288,7 @@ describe("Anthropic response model rewrite", () => {
       message: {
         id: "msg_kimi",
         model: "claude-gateway--kimi--k3[1m]",
-        usage: { input_tokens: 0, output_tokens: 1 },
+        usage: { input_tokens: 10, output_tokens: 1 },
       },
     });
     expect(events[1]?.data).toEqual({ type: "message_stop" });
@@ -1307,7 +1315,7 @@ describe("Anthropic response model rewrite", () => {
       id: "msg_kimi",
       model: "claude-gateway--kimi--k3[1m]",
       content: [{ type: "text", text: "done" }],
-      usage: { input_tokens: 0, output_tokens: 4 },
+      usage: { input_tokens: 10, output_tokens: 4 },
     });
   });
 
@@ -1597,10 +1605,10 @@ describe("Anthropic SSE encoding", () => {
     })));
 
     expect(frames[0]?.data).toMatchObject({
-      message: { usage: { input_tokens: 149_000, output_tokens: 0 } },
+      message: { usage: { input_tokens: 145_032, output_tokens: 0 } },
     });
     expect(frames[1]?.data).toMatchObject({
-      usage: { input_tokens: 149_000, output_tokens: 6_277 },
+      usage: { input_tokens: 145_032, output_tokens: 6_277 },
     });
   });
 
@@ -1629,10 +1637,10 @@ describe("Anthropic SSE encoding", () => {
     })));
 
     expect(frames[0]?.data).toMatchObject({
-      message: { usage: { input_tokens: 0 } },
+      message: { usage: { input_tokens: 35_000 } },
     });
     expect(frames[1]?.data).toMatchObject({
-      usage: { input_tokens: 50_000, output_tokens: 1 },
+      usage: { input_tokens: 45_653, output_tokens: 1 },
     });
   });
 
@@ -1675,13 +1683,13 @@ describe("Anthropic SSE encoding", () => {
       output_tokens: number;
     };
 
-    // Same total as the plain projection test above: the offset applies once to
-    // the aggregate, then the cache coordinates retain their original proportions.
-    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(149_000);
+    // Same total as the plain projection test above: scaling applies once to the
+    // aggregate, then the cache coordinates retain their original proportions.
+    expect(usage.input_tokens + usage.cache_read_input_tokens + usage.cache_creation_input_tokens).toBe(145_032);
     expect(usage).toEqual({
-      input_tokens: 47_870,
-      cache_read_input_tokens: 67_420,
-      cache_creation_input_tokens: 33_710,
+      input_tokens: 46_595,
+      cache_read_input_tokens: 65_625,
+      cache_creation_input_tokens: 32_812,
       output_tokens: 6_277,
     });
   });
@@ -3247,7 +3255,7 @@ describe("non-streaming requests", () => {
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      usage: { input_tokens: 149_000, output_tokens: 6_277 },
+      usage: { input_tokens: 145_032, output_tokens: 6_277 },
     });
   });
 
@@ -3279,7 +3287,7 @@ describe("non-streaming requests", () => {
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
-      usage: { input_tokens: 50_000, output_tokens: 1 },
+      usage: { input_tokens: 45_653, output_tokens: 1 },
     });
   });
 
