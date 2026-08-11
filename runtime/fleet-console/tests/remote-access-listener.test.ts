@@ -691,6 +691,29 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
    * 그리고 이 기계가 가진 모든 주소가 실려 있고, 이 쓰기들은 손님이 자기보다 오래 사는
    * 초대장을 새로 찍거나 남의 자리를 끊거나 호스트 신원을 통째로 갈아 끼우게 한다.
    */
+  it("refuses a remote session the listener's own settings, not just the access routes", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookie = await joinAs(fixture, "full", "guest");
+    const asRemote = { origin: `https://${BIND_HOST}:${fixture.remotePort}` };
+
+    // 공표 튜플을 바꾸면 신원이 교체되어 전 기기가 페어링 해제된다. 그 결과에 이르는 전용
+    // 라우트가 401인데 이 문이 열려 있으면, 막아 둔 것은 이름뿐이다.
+    const body = JSON.stringify({
+      remoteAccess: {
+        enabled: true, publicEndpointEnabled: true, listenAddress: BIND_HOST, advertisedHost: "attacker.example.com",
+        listenPort: { mode: "custom", value: fixture.remotePort }, advertisedPort: { mode: "custom", value: 55553 },
+        acknowledgment: { version: 1, listenAddress: BIND_HOST, listenPort: fixture.remotePort, advertisedHost: "attacker.example.com", advertisedPort: 55553 },
+      },
+    });
+    await expect(remoteRequest(fixture, "PUT", "/api/v1/settings/global", body, cookie, asRemote)).resolves.toMatchObject({ status: 401 });
+
+    // 원격 세션이 못 만지는 것은 이 섹션뿐이다 — 테마·글꼴까지 잠그면 원격 조작이 무의미해진다.
+    await expect(remoteRequest(fixture, "PUT", "/api/v1/settings/global", JSON.stringify({ theme: "carbon" }), cookie, asRemote))
+      .resolves.toMatchObject({ status: 200 });
+
+    expect((await readRemoteStatus(fixture)).listener.origin).toBe(`https://${BIND_HOST}:${fixture.remotePort}`);
+  });
+
   it("keeps remote access administration on the loopback side", async () => {
     const fixture = await startFixture({ remote: true });
     const cookie = await joinAs(fixture, "full", "guest");

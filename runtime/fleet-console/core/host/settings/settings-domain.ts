@@ -268,8 +268,13 @@ function readConsolePluginSettings(value: unknown): Record<string, Record<string
   return result;
 }
 
+/**
+ * 공표 이름은 바인드하지 않지만, 루프백·와일드카드는 여기서도 값이 아니다 — 그 이름을 실은 링크를
+ * 받은 기기는 자기 자신에게 향한다. 바인드와 같은 집합을 쓰지 않으면 정상 접속이 불가능한 설정을
+ * 저장할 수 있고, 그때 실제 소켓은 다른 이름으로 여전히 열려 있어 상태가 어긋난다.
+ */
 function isValidRemoteAdvertisedHost(value: unknown): value is string {
-  return typeof value === "string" && REMOTE_BIND_HOST.test(value);
+  return isValidRemoteBindHost(value);
 }
 
 function sanitizeRemotePortSetting(value: unknown): RemotePortSetting | null {
@@ -355,6 +360,11 @@ export interface RemoteAccessSettingsChange {
 interface GlobalSettingsRouteDeps {
   readonly consoleSettingsStore: DurableJsonStore<ConsoleSettingsData>;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  /**
+   * 원격 리스너 자신의 설정은 소유자 것이다. 신원 회전과 기기 해제가 루프백 전용인데 여기가
+   * 열려 있으면, 공표 튜플을 바꾸는 것만으로 같은 결과(전 기기 페어링 해제)에 도달한다.
+   */
+  readonly isRemoteAccessOwner?: (req: http.IncomingMessage) => boolean;
   readonly readJsonBody: <T>(req: http.IncomingMessage) => Promise<T | null>;
   readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
   readonly onThemeChanged?: (theme: ConsoleThemeId) => void;
@@ -452,6 +462,10 @@ async function mutateGlobalSettings(
   }
   if (body.language !== undefined && body.language !== "auto" && body.language !== "en" && body.language !== "ko") {
     deps.writeJson(res, 400, { error: "invalid_language" });
+    return;
+  }
+  if (body.remoteAccess !== undefined && deps.isRemoteAccessOwner !== undefined && !deps.isRemoteAccessOwner(req)) {
+    deps.writeJson(res, 401, { error: "unauthorized" });
     return;
   }
   // 읽기가 쓰기보다 느슨하면 GET 정규형을 그대로 PUT으로 돌려보낼 때 섹션 저장이 통째로 잠긴다.

@@ -18,3 +18,5 @@ branch: remote-nat-endpoint
   ko: 원격 리스너가 세션 없이 응답하는 것은 페어링 하나뿐입니다. 페어링은 이 콘솔의 인증서 지문을 대조할 수 있는 Fleet Console 앱에서만 이루어지므로, 그 사실을 설명하던 브라우저용 페이지는 더 이상 제공하지 않습니다.
 - Spend a failure budget on that pairing door so a public endpoint cannot be hammered for free, and report the rejected attempts in Settings instead of counting them silently. A successful pairing clears its source's budget, so a device that connects is never punished for someone else's noise.
   ko: 공개 엔드포인트가 값 없이 두들겨지지 않도록 페어링 문에 실패 예산을 두고, 거절한 시도를 조용히 세는 대신 설정에 알립니다. 페어링에 성공하면 그 출처의 예산이 지워지므로, 접속에 성공한 기기가 다른 곳의 소음 때문에 막히지 않습니다.
+- Keep the listener's own settings on the owner's side. A paired device can operate this console, but it cannot rewrite the address that console publishes, and a public hostname that no device could reach - a loopback or wildcard address - is refused the same way a listen address already was.
+  ko: 리스너 자신의 설정은 소유자 쪽에 둡니다. 페어링된 기기는 이 콘솔을 조작할 수 있지만 콘솔이 공표하는 주소를 바꿀 수는 없으며, 어떤 기기도 닿을 수 없는 공개 호스트 이름(루프백·와일드카드)은 수신 주소와 똑같이 거부합니다.

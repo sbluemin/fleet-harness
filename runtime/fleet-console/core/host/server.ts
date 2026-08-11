@@ -673,6 +673,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const globalSettingsRouter = createGlobalSettingsRouter({
     consoleSettingsStore,
     isAuthorized: isTerminalAuthorized,
+    isRemoteAccessOwner: isLoopbackListener,
     readJsonBody,
     writeJson,
     onThemeChanged: broadcastDesktopThemeChanged,

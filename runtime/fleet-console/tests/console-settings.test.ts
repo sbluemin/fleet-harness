@@ -8,6 +8,7 @@ import { listRemoteInterfaces } from "../core/host/remote-interfaces.js";
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,
+  sanitizeRemoteAccessSettings,
   emptyConsoleSettingsData,
   type ConsoleSettingsData,
 } from "../core/host/settings/settings-domain.js";
@@ -393,5 +394,20 @@ describe("sanitizeConsoleSettingsData", () => {
 describe("emptyConsoleSettingsData", () => {
   it("returns version 1 with empty general and plugins", () => {
     expect(emptyConsoleSettingsData()).toEqual({ version: 1, general: {}, plugins: {} });
+  });
+});
+
+describe("remote advertised host validity", () => {
+  it("refuses the hosts a bind address refuses, because a device that dials them reaches itself", () => {
+    for (const advertisedHost of ["127.0.0.1", "0.0.0.0", "localhost"]) {
+      expect(sanitizeRemoteAccessSettings({
+        enabled: false, publicEndpointEnabled: true, listenAddress: "192.168.0.68", advertisedHost,
+        listenPort: { mode: "custom", value: 55551 }, advertisedPort: { mode: "custom", value: 55552 }, acknowledgment: null,
+      })).toBeUndefined();
+    }
+    expect(sanitizeRemoteAccessSettings({
+      enabled: false, publicEndpointEnabled: true, listenAddress: "192.168.0.68", advertisedHost: "console.example.com",
+      listenPort: { mode: "custom", value: 55551 }, advertisedPort: { mode: "custom", value: 55552 }, acknowledgment: null,
+    })).toMatchObject({ advertisedHost: "console.example.com" });
   });
 });
