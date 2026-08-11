@@ -18,7 +18,7 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, [RESTORED_DORMANT_PAYLOAD_KEY]: true } });
     });
     ctx.host.lifecycle.registerCleanup(unsubscribeRestore);
-    registerRouter(ctx, "shell/ticket", { method: "POST", path: "", summary: "Issue a Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" }, async ({ req, res }) => {
+    registerRouter(ctx, "shell/ticket", async ({ req, res }) => {
       if (req.method !== "POST") {
         ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
         return true;
@@ -71,11 +71,8 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
         ...(role ? { role } : {}),
       }));
       return true;
-    });
-    registerRouter(ctx, "shell/sessions", [
-      { method: "DELETE", path: "/:operationId", summary: "Terminate a Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-      { method: "POST", path: "/:operationId/relaunch", summary: "Relaunch a dormant Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-    ], ({ req, res, pathname }) => {
+    }, { method: "POST", path: "", summary: "Issue a Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "shell/sessions", ({ req, res, pathname }) => {
       const suffix = pathname.slice(`${ctx.basePath}/shell/sessions/`.length);
       const match = suffix.match(/^([^/]+)(?:\/(relaunch))?$/);
       if (!match) return false;
@@ -111,7 +108,10 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       ctx.host.operations.delete(operationId);
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
-    });
+    }, [
+      { method: "DELETE", path: "/:operationId", summary: "Terminate a Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+      { method: "POST", path: "/:operationId/relaunch", summary: "Relaunch a dormant Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    ]);
 }
 
 function isRestoredShellEvent(value: unknown, pluginId: string): value is { readonly operationId: string } {

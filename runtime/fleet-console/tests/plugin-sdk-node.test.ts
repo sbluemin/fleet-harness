@@ -4,55 +4,46 @@ import { registerRouter, registerWsHandler } from "../sdk/plugin/node.js";
 import type { ApiCatalogEntry, FleetPluginServerContext } from "../sdk/plugin/types.js";
 import type { RouteHandler, UpgradeHandler } from "../sdk/routing/types.js";
 
-const catalog: ApiCatalogEntry = {
-  method: "GET",
-  path: "/health",
-  summary: "Health",
-  category: "test",
-  gate: "loopback",
-  transport: "http",
-};
+const catalog: ApiCatalogEntry = { method: "GET", path: "/health", summary: "Health", category: "test", gate: "loopback", transport: "http" };
+const context = (values: Partial<FleetPluginServerContext>) => values as FleetPluginServerContext;
 
-function context(overrides: Partial<FleetPluginServerContext> = {}): FleetPluginServerContext {
-  return overrides as FleetPluginServerContext;
-}
+const legacyRegisterRouter = (ctx: FleetPluginServerContext, path: string, handler: RouteHandler) => ctx.registerRouter(path, handler);
+const legacyRegisterWsHandler = (ctx: FleetPluginServerContext, path: string, handler: UpgradeHandler) => ctx.registerWsHandler(path, handler);
 
 describe("plugin SDK node helpers", () => {
-  it("uses the handler as the second HTTP registrar argument on old hosts", async () => {
+  it("old bundled HTTP helper ignores trailing catalog metadata", () => {
     const handler: RouteHandler = () => true;
-    const register = vi.fn();
+    const register = vi.fn((_path: string, actual: RouteHandler) => actual({} as never));
+    const oldContext = context({ registerRouter: register });
 
-    registerRouter(context({ registerRouter: register }), "/health", catalog, handler);
+    (legacyRegisterRouter as unknown as (ctx: FleetPluginServerContext, path: string, handler: RouteHandler, catalog: ApiCatalogEntry) => void)(oldContext, "/health", handler, catalog);
 
     expect(register).toHaveBeenCalledWith("/health", handler);
-    expect(register.mock.calls[0]?.[1]()).toBe(true);
+    expect(register.mock.calls[0]?.[1]({} as never)).toBe(true);
   });
 
-  it("passes HTTP metadata to marker-aware hosts", () => {
-    const handler: RouteHandler = () => true;
-    const register = vi.fn();
-
-    registerRouter(context({ apiCatalogVersion: 1, registerRouter: register }), "/health", catalog, handler);
-
-    expect(register).toHaveBeenCalledWith("/health", catalog, handler);
-  });
-
-  it("uses the handler as the second WebSocket registrar argument on old hosts", () => {
+  it("old bundled WebSocket helper ignores trailing catalog metadata", () => {
     const handler: UpgradeHandler = () => true;
-    const register = vi.fn();
+    const register = vi.fn((_path: string, actual: UpgradeHandler) => actual({} as never));
+    const oldContext = context({ registerWsHandler: register });
 
-    registerWsHandler(context({ registerWsHandler: register }), "/health", catalog, handler);
+    (legacyRegisterWsHandler as unknown as (ctx: FleetPluginServerContext, path: string, handler: UpgradeHandler, catalog: ApiCatalogEntry) => void)(oldContext, "/health", handler, catalog);
 
     expect(register).toHaveBeenCalledWith("/health", handler);
-    expect(register.mock.calls[0]?.[1]()).toBe(true);
+    expect(register.mock.calls[0]?.[1]({} as never)).toBe(true);
   });
 
-  it("passes WebSocket metadata to marker-aware hosts", () => {
+  it("current helper registers HTTP handler with trailing catalog on old host", () => {
+    const handler: RouteHandler = () => true;
+    const register = vi.fn();
+    registerRouter(context({ registerRouter: register }), "/health", handler, catalog);
+    expect(register).toHaveBeenCalledWith("/health", handler, catalog);
+  });
+
+  it("current helper registers WebSocket handler with trailing catalog on current host", () => {
     const handler: UpgradeHandler = () => true;
     const register = vi.fn();
-
-    registerWsHandler(context({ apiCatalogVersion: 1, registerWsHandler: register }), "/health", catalog, handler);
-
-    expect(register).toHaveBeenCalledWith("/health", catalog, handler);
+    registerWsHandler(context({ registerWsHandler: register }), "/health", handler, catalog);
+    expect(register).toHaveBeenCalledWith("/health", handler, catalog);
   });
 });

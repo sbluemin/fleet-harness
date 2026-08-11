@@ -10,40 +10,40 @@ export function registerRouter(ctx: FleetPluginServerContext, path: string, hand
 export function registerRouter(
   ctx: FleetPluginServerContext,
   path: string,
-  catalog: ApiCatalogEntry | readonly ApiCatalogEntry[],
   handler: RouteHandler,
+  catalog: ApiCatalogEntry | readonly ApiCatalogEntry[],
 ): void;
 export function registerRouter(
   ctx: FleetPluginServerContext,
   path: string,
-  catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | RouteHandler,
-  metadataHandler?: RouteHandler,
+  handler: RouteHandler,
+  catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
 ): void {
-  if (metadataHandler && ctx.apiCatalogVersion === 1) {
-    ctx.registerRouter(normalizePath(path), catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[], metadataHandler);
+  if (catalog) {
+    ctx.registerRouter(normalizePath(path), handler, catalog);
     return;
   }
-  ctx.registerRouter(normalizePath(path), metadataHandler ?? catalogOrHandler as RouteHandler);
+  ctx.registerRouter(normalizePath(path), handler);
 }
 
 export function registerWsHandler(ctx: FleetPluginServerContext, path: string, handler: UpgradeHandler): void;
 export function registerWsHandler(
   ctx: FleetPluginServerContext,
   path: string,
-  catalog: ApiCatalogEntry | readonly ApiCatalogEntry[],
   handler: UpgradeHandler,
+  catalog: ApiCatalogEntry | readonly ApiCatalogEntry[],
 ): void;
 export function registerWsHandler(
   ctx: FleetPluginServerContext,
   path: string,
-  catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | UpgradeHandler,
-  metadataHandler?: UpgradeHandler,
+  handler: UpgradeHandler,
+  catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
 ): void {
-  if (metadataHandler && ctx.apiCatalogVersion === 1) {
-    ctx.registerWsHandler(normalizePath(path), catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[], metadataHandler);
+  if (catalog) {
+    ctx.registerWsHandler(normalizePath(path), handler, catalog);
     return;
   }
-  ctx.registerWsHandler(normalizePath(path), metadataHandler ?? catalogOrHandler as UpgradeHandler);
+  ctx.registerWsHandler(normalizePath(path), handler);
 }
 
 export function registerLaunchCatalog(ctx: FleetPluginServerContext, provider: OperationLaunchCatalogProvider): () => void {

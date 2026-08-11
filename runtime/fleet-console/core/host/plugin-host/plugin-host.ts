@@ -472,7 +472,6 @@ export function createFleetPluginHost(deps: FleetPluginHostDeps): FleetPluginHos
     const registrationTransaction = createPluginRegistrationTransaction(deps.host);
     try {
       await register({
-        apiCatalogVersion: 1,
         pluginId: plugin.manifest.id,
         manifest: plugin.manifest,
         basePath: `/plugins/${plugin.manifest.id}`,
@@ -759,15 +758,14 @@ function createScopedRouteRegistrar(
   apiBasePath: string,
 ): FleetPluginServerContext["registerRouter"] {
   function registerRouter(requestedPath: string, handler: RouteHandler): void;
-  function registerRouter(requestedPath: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: RouteHandler): void;
+  function registerRouter(requestedPath: string, handler: RouteHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   function registerRouter(
     requestedPath: string,
-    catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | RouteHandler,
-    metadataHandler?: RouteHandler,
+    handler: RouteHandler,
+    catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
   ): void {
     const prefix = resolveScopedPrefix(basePath, requestedPath, apiBasePath);
-    const handler = metadataHandler ?? catalogOrHandler as RouteHandler;
-    const entries = metadataHandler ? resolveCatalogEntries(prefix, catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[]) : [];
+    const entries = catalog ? resolveCatalogEntries(prefix, catalog) : [];
     assertNoCatalogDuplicates([...apiCatalog, ...pendingCatalog], entries);
     assertNoRouteOverlap(prefix, [
       ...routes.list().map((route) => route.prefix),
@@ -787,15 +785,14 @@ function createScopedUpgradeRegistrar(
   basePath: string,
 ): FleetPluginServerContext["registerWsHandler"] {
   function registerWsHandler(requestedPath: string, handler: UpgradeHandler): void;
-  function registerWsHandler(requestedPath: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: UpgradeHandler): void;
+  function registerWsHandler(requestedPath: string, handler: UpgradeHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   function registerWsHandler(
     requestedPath: string,
-    catalogOrHandler: ApiCatalogEntry | readonly ApiCatalogEntry[] | UpgradeHandler,
-    metadataHandler?: UpgradeHandler,
+    handler: UpgradeHandler,
+    catalog?: ApiCatalogEntry | readonly ApiCatalogEntry[],
   ): void {
     const prefix = resolveScopedPrefix(basePath, requestedPath);
-    const handler = metadataHandler ?? catalogOrHandler as UpgradeHandler;
-    const entries = metadataHandler ? resolveCatalogEntries(prefix, catalogOrHandler as ApiCatalogEntry | readonly ApiCatalogEntry[]) : [];
+    const entries = catalog ? resolveCatalogEntries(prefix, catalog) : [];
     assertNoCatalogDuplicates([...apiCatalog, ...pendingCatalog], entries);
     assertNoRouteOverlap(prefix, [
       ...upgrades.list().map((upgrade) => upgrade.prefix),

@@ -235,16 +235,15 @@ export interface ApiCatalogEntry {
 }
 
 export interface FleetPluginServerContext {
-  readonly apiCatalogVersion?: 1;
   readonly pluginId: string;
   readonly manifest: FleetPluginManifest;
   readonly basePath: string;
   readonly wsBasePath: string;
   readonly host: FleetPluginHostCapabilities;
   registerRouter(path: string, handler: RouteHandler): void;
-  registerRouter(path: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: RouteHandler): void;
+  registerRouter(path: string, handler: RouteHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
   registerWsHandler(path: string, handler: UpgradeHandler): void;
-  registerWsHandler(path: string, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[], handler: UpgradeHandler): void;
+  registerWsHandler(path: string, handler: UpgradeHandler, catalog: ApiCatalogEntry | readonly ApiCatalogEntry[]): void;
 }
 
 export interface FleetPluginHostCapabilities {

@@ -69,7 +69,7 @@ export async function registerAgentRoutes(
     await api.handleExit(operationId);
   });
   ctx.host.lifecycle.registerCleanup(api.cleanup);
-  registerRouter(ctx, "agent", [
+  registerRouter(ctx, "agent", api.handle, [
     { method: "GET", path: "/state", summary: "Read Agent session state.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/state", summary: "Read installed Agent CLI status.", category: "Terminal Plugin", gate: "loopback", transport: "http" },
     { method: "GET", path: "/agent-cli/diagnostics", summary: "Read Agent CLI diagnostics.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
@@ -85,7 +85,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-  ], api.handle);
+  ]);
   return api.launchKinds;
 }
 

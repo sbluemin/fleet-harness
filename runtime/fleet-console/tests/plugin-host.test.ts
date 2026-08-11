@@ -283,6 +283,32 @@ describe("plugin host", () => {
     expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/demo/ws/stream" })).toBe(true);
   });
 
+  it("bundles external TypeScript plugins with callable HTTP and WebSocket catalog routes", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-external-plugin-catalog-"));
+    tempDirs.push(dir);
+    const pluginRoot = path.join(dir, "home", ".fleet", "plugins", "external-catalog");
+    writePlugin(pluginRoot, "external-catalog", { apiVersion: 1 });
+    fs.writeFileSync(path.join(pluginRoot, "routes.ts"), [
+      "import { definePlugin, registerRouter, registerWsHandler } from \"@fleet-console/sdk/plugin/node\";",
+      "export default definePlugin({ id: \"external-catalog\", register(ctx) {",
+      "  registerRouter(ctx, \"http\", () => true, { method: \"GET\", path: \"\", summary: \"External HTTP\", category: \"External\", gate: \"loopback\", transport: \"http\" });",
+      "  registerWsHandler(ctx, \"socket\", () => true, { method: \"GET\", path: \"\", summary: \"External WS\", category: \"External\", gate: \"loopback\", transport: \"websocket\" });",
+      "} });",
+    ].join("\n"));
+    const routes = new RouteRegistry();
+    const upgrades = new UpgradeRegistry();
+    const host = createFleetPluginHost({ cwd: dir, homeDir: path.join(dir, "home"), routes, upgrades, host: noopHostCapabilities });
+
+    await host.boot();
+
+    expect(await routes.handle({ req: {} as never, res: {} as never, pathname: "/plugins/external-catalog/http" })).toBe(true);
+    expect(upgrades.handle({ req: {} as never, socket: {} as never, head: Buffer.alloc(0), pathname: "/plugins/external-catalog/ws/socket" })).toBe(true);
+    expect(host.apiCatalog).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: "/plugins/external-catalog/http", transport: "http" }),
+      expect.objectContaining({ path: "/plugins/external-catalog/ws/socket", transport: "websocket" }),
+    ]));
+  });
+
   it("resolves router and WebSocket metadata against final mount paths while preserving old calls", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-plugin-catalog-"));
     tempDirs.push(dir);
@@ -296,13 +322,13 @@ describe("plugin host", () => {
       importModule: async () => ({
         register: (ctx) => {
           ctx.registerRouter("legacy", () => true);
-          ctx.registerRouter("nested", [
+          ctx.registerRouter("nested", () => true, [
             { method: "GET", path: "", summary: "Read nested root.", category: "Demo Plugin", gate: "loopback", transport: "http" },
             { method: "POST", path: "/:itemId", summary: "Write nested item.", category: "Demo Plugin", gate: "origin-write", transport: "http" },
-          ], () => true);
-          ctx.registerWsHandler("stream", {
+          ]);
+          ctx.registerWsHandler("stream", () => true, {
             method: "GET", path: "", summary: "Open demo stream.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket",
-          }, () => true);
+          });
         },
       }),
     });
@@ -356,9 +382,9 @@ describe("plugin host", () => {
       host: noopHostCapabilities,
       importModule: async () => ({
         register: (ctx) => {
-          ctx.registerRouter("ready", validEntry, () => true);
-          ctx.registerWsHandler("stream", { ...validEntry, gate: "one-use-ticket", transport: "websocket" }, () => true);
-          ctx.registerRouter("invalid", [validEntry, malformedEntry], () => true);
+          ctx.registerRouter("ready", () => true, validEntry);
+          ctx.registerWsHandler("stream", () => true, { ...validEntry, gate: "one-use-ticket", transport: "websocket" });
+          ctx.registerRouter("invalid", () => true, [validEntry, malformedEntry]);
         },
       }),
     });
@@ -421,8 +447,8 @@ describe("plugin host", () => {
         register: (ctx) => {
           const routeCatalog = { method: "GET", path: "", summary: "Plugin route.", category: "Demo Plugin", gate: "loopback", transport: "http" } as const;
           const upgradeCatalog = { method: "GET", path: "", summary: "Plugin upgrade.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket" } as const;
-          ctx.registerRouter("route", routeCatalog, () => true);
-          ctx.registerWsHandler("stream", upgradeCatalog, () => true);
+          ctx.registerRouter("route", () => true, routeCatalog);
+          ctx.registerWsHandler("stream", () => true, upgradeCatalog);
           if (!entry.includes(`${path.sep}bad${path.sep}`)) return;
           ctx.host.operations.registerOperationType("bad");
           const disposeSanitizer = ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, ["pluginSecret"]);
@@ -433,7 +459,7 @@ describe("plugin host", () => {
           const disposeManualCleanup = ctx.host.lifecycle.registerCleanup(manuallyUnregisteredCleanup);
           disposeSanitizer();
           disposeManualCleanup();
-          ctx.registerRouter("invalid", { ...routeCatalog, method: "get" } as unknown as ApiCatalogEntry, () => true);
+          ctx.registerRouter("invalid", () => true, { ...routeCatalog, method: "get" } as unknown as ApiCatalogEntry);
         },
       }),
     });
@@ -523,8 +549,8 @@ describe("plugin host", () => {
       },
       importModule: async () => ({
         register: (ctx) => {
-          ctx.registerRouter("route", { method: "GET", path: "", summary: "Plugin route.", category: "Demo Plugin", gate: "loopback", transport: "http" }, () => true);
-          ctx.registerWsHandler("stream", { method: "GET", path: "", summary: "Plugin upgrade.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket" }, () => true);
+          ctx.registerRouter("route", () => true, { method: "GET", path: "", summary: "Plugin route.", category: "Demo Plugin", gate: "loopback", transport: "http" });
+          ctx.registerWsHandler("stream", () => true, { method: "GET", path: "", summary: "Plugin upgrade.", category: "Demo Plugin", gate: "one-use-ticket", transport: "websocket" });
           ctx.host.operations.registerOperationType("bad");
           throw new Error("boot_failed");
         },

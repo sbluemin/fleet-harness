@@ -10,7 +10,7 @@ const GLOBAL_SHELL_OPERATION_PREFIX = "global-shell:theater:";
 const GLOBAL_SHELL_OPERATION_TYPE = "shell";
 
 export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {
-  registerRouter(ctx, "global/ticket", { method: "POST", path: "", summary: "Issue a Global Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-strict", transport: "http" }, async ({ req, res }) => {
+  registerRouter(ctx, "global/ticket", async ({ req, res }) => {
     if (req.method !== "POST") {
       ctx.host.http.writeJson(res, 405, { error: "Method not allowed" });
       return true;
@@ -84,5 +84,5 @@ export function registerGlobalShellRoutes(ctx: FleetPluginServerContext, runtime
       ...(role ? { role } : {}),
     }));
     return true;
-  });
+  }, { method: "POST", path: "", summary: "Issue a Global Shell WebSocket ticket.", category: "Terminal Plugin", gate: "origin-strict", transport: "http" });
 }

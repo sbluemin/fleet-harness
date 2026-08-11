@@ -68,7 +68,7 @@ export default definePlugin({
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
     const runtime = createTerminalRuntime(ctx);
-    registerWsHandler(ctx, "/", { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Terminal Plugin", gate: "one-use-ticket", transport: "websocket" }, runtime.handleUpgrade);
+    registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Terminal Plugin", gate: "one-use-ticket", transport: "websocket" });
     ctx.host.lifecycle.registerCleanup(() => runtime.stop());
     const unsubscribeDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
       if (!isOperationDeletedEvent(payload) || payload.pluginId !== ctx.pluginId) return;
