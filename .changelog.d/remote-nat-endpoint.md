@@ -12,3 +12,5 @@ branch: remote-nat-endpoint
   ko: 적용이 무엇을 잃게 하는지 먼저 알립니다. 리스너 재시작은 페어링된 기기를 유지하지만, 기기가 신뢰하던 주소가 바뀌면 세션이 끊기고 사용하지 않은 액세스 링크가 취소되며 모든 기기의 페어링이 해제됩니다.
 - Show the connection route once, and only once every required value is valid, so an incomplete endpoint reads as a named requirement instead of a placeholder hostname.
   ko: 연결 경로를 한 곳에서만, 그리고 필요한 값이 모두 유효해진 뒤에만 보여 주므로 미완성 엔드포인트는 자리표시자 호스트 이름 대신 부족한 항목으로 읽힙니다.
+- Spell the router rule out in the fields a router actually asks for - external port, internal IP address, internal port - and say so when the external and internal ports differ, because entering the public port on both sides forwards to a socket nothing is listening on.
+  ko: 라우터가 실제로 묻는 칸 그대로 외부 포트·내부 IP 주소·내부 포트를 제시하고, 외부 포트와 내부 포트가 다를 때는 그 사실을 짚어 줍니다. 공개 포트를 양쪽에 똑같이 넣으면 아무것도 듣지 않는 자리로 전달되기 때문입니다.

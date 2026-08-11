@@ -19,7 +19,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
-import { buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
+import { buildRemoteEndpointPresentation, generateRemoteAutoPort, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
 interface LanguageOption {
   readonly id: GlobalSettingsState["language"];
@@ -953,7 +953,8 @@ function RemoteListenerCard({
 
       {draft.publicEndpointEnabled ? (
         <>
-          {/* 경로는 위에서 한 번만 그린다. 여기에 다시 적으면 같은 값이 두 서식으로 어긋난다. */}
+          {presentation.forward === null ? null : <RemoteForwardRuleCard rule={presentation.forward} t={t} />}
+          {/* 경로와 규칙은 위에서 한 번씩만 그린다. 여기에 다시 적으면 같은 값이 두 서식으로 어긋난다. */}
           <label className="remote-acknowledgment">
             <input type="checkbox" checked={draft.acknowledgment !== null}
               disabled={saving || presentation.origin === null}
@@ -1077,12 +1078,27 @@ function RemoteRoutePreview({ presentation, live, t }: {
       {presentation.origin === null ? (
         <p className="remote-card-help">{t("settings.remote.route.waiting")}</p>
       ) : (
-        <>
-          <p className="remote-route-row"><span>{t("settings.remote.route.devicesUse")}</span><code>{presentation.origin}</code></p>
-          {presentation.forwardsTo === null ? null : (
-            <p className="remote-route-row"><span>{t("settings.remote.route.forwardsTo")}</span><code>{presentation.forwardsTo}</code></p>
-          )}
-        </>
+        <p className="remote-route-row"><span>{t("settings.remote.route.devicesUse")}</span><code>{presentation.origin}</code></p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 포워딩 규칙은 산문이 아니라 라우터 설정 화면의 칸 이름으로 준다. "위의 수신 주소와 포트로 전달"이라고만
+ * 적으면 외부 포트를 내부 포트에도 그대로 넣는 실수가 나오고, 그러면 아무것도 듣지 않는 자리로 전달된다.
+ */
+function RemoteForwardRuleCard({ rule, t }: { readonly rule: RemoteForwardRule; readonly t: T }) {
+  return (
+    <div className="remote-forward-rule">
+      <p className="remote-forward-rule-title">{t("settings.remote.forward.title")}</p>
+      <dl>
+        <div><dt>{t("settings.remote.forward.externalPort")}</dt><dd><code>{rule.externalPort}</code></dd></div>
+        <div><dt>{t("settings.remote.forward.internalHost")}</dt><dd><code>{rule.internalHost}</code></dd></div>
+        <div><dt>{t("settings.remote.forward.internalPort")}</dt><dd><code>{rule.internalPort}</code></dd></div>
+      </dl>
+      {rule.externalPort === rule.internalPort ? null : (
+        <p className="remote-forward-rule-note">{t("settings.remote.forward.differs")}</p>
       )}
     </div>
   );

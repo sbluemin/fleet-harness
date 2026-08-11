@@ -1145,6 +1145,16 @@
 .remote-route-row span { flex: none; font-size: 11.5px; }
 .remote-route-preview code { color: var(--aurora-ink); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
 
+/* 라우터 설정 화면의 칸 이름과 값을 1:1로 세운다 — 산문으로 풀면 외부·내부 포트를 같은 값으로 넣게 된다. */
+.remote-forward-rule { display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--ink-abyss) 30%, transparent); }
+.remote-forward-rule-title { margin: 0; color: var(--text-primary); font-size: 12.5px; font-weight: var(--weight-bold); }
+.remote-forward-rule dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: 0; }
+.remote-forward-rule dl > div { display: contents; }
+.remote-forward-rule dt { color: var(--text-secondary); font-size: 12px; }
+.remote-forward-rule dd { margin: 0; min-width: 0; }
+.remote-forward-rule dd code { color: var(--aurora-ink); font-family: var(--font-mono); font-size: 12.5px; overflow-wrap: anywhere; }
+.remote-forward-rule-note { margin: 0; color: var(--warn-ink); font-size: 11.5px; }
+
 .remote-acknowledgment { display: flex; align-items: flex-start; gap: var(--space-2); padding: var(--space-3); border: 1px solid color-mix(in oklch, var(--coral) 35%, transparent); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--coral) 8%, transparent); color: var(--text-secondary); font-size: 12px; line-height: 1.5; }
 .remote-status-note { margin: 0; color: var(--text-secondary); font-size: 12px; }
 .remote-status-note strong { color: var(--text-primary); }

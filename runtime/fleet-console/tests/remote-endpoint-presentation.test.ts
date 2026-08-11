@@ -87,21 +87,23 @@ describe("remote endpoint presentation", () => {
     const presentation = buildRemoteEndpointPresentation(BASE);
     // 자리표시자를 주소처럼 보이면 기기에 그대로 옮겨 적힌다.
     expect(presentation.origin).toBeNull();
-    expect(presentation.forwardsTo).toBeNull();
+    expect(presentation.forward).toBeNull();
     expect(presentation.ready).toBe(false);
   });
 
   it("shows the LAN route as the single origin devices open", () => {
     const presentation = buildRemoteEndpointPresentation(lan());
     expect(presentation.origin).toBe("https://192.168.0.68:50000");
-    expect(presentation.forwardsTo).toBeNull();
+    // LAN 전용에는 전달할 라우터 규칙이 없다.
+    expect(presentation.forward).toBeNull();
     expect(presentation.ready).toBe(true);
   });
 
   it("shows the published origin and the tuple NAT must forward to", () => {
     const presentation = buildRemoteEndpointPresentation(published());
     expect(presentation.origin).toBe("https://console.example.com:50001");
-    expect(presentation.forwardsTo).toBe("192.168.0.68:50000");
+    // 라우터 칸 이름 그대로 나뉘어야 한다 — 외부와 내부 포트가 한 값으로 뭉치면 안 된다.
+    expect(presentation.forward).toEqual({ externalPort: 50001, internalHost: "192.168.0.68", internalPort: 50000 });
   });
 
   it("still shows the route while only the acknowledgment is outstanding", () => {

@@ -305,12 +305,22 @@ export function remoteEndpointImpact(baseline: RemoteAccessState, next: RemoteAc
   return "none";
 }
 
+/**
+ * 라우터 설정 화면에 그대로 옮겨 적을 세 값. 공표 포트와 수신 포트는 따로 정해지므로 같다는 보장이 없고,
+ * 둘을 같은 값으로 매핑하면 아무것도 듣지 않는 자리로 전달된다 — 그래서 칸 이름을 라우터 어휘로 나눠 준다.
+ */
+export interface RemoteForwardRule {
+  readonly externalPort: number;
+  readonly internalHost: string;
+  readonly internalPort: number;
+}
+
 /** 화면이 그리는 경로 하나. 값이 갖춰지기 전에는 주소를 만들지 않는다 — 자리표시자를 코드체로 보이면 기기에 그대로 옮겨 적힌다. */
 export interface RemoteEndpointPresentation {
   readonly ready: boolean;
   readonly missing: readonly RemoteEndpointRequirement[];
   readonly origin: string | null;
-  readonly forwardsTo: string | null;
+  readonly forward: RemoteForwardRule | null;
 }
 
 export function buildRemoteEndpointPresentation(state: RemoteAccessState): RemoteEndpointPresentation {
@@ -321,7 +331,9 @@ export function buildRemoteEndpointPresentation(state: RemoteAccessState): Remot
     ready: missing.length === 0,
     missing,
     origin: addressed ? remoteAccessOrigin(endpoint.host, endpoint.port) : null,
-    forwardsTo: addressed && state.publicEndpointEnabled ? `${state.listenAddress}:${state.listenPort.value}` : null,
+    forward: addressed && state.publicEndpointEnabled
+      ? { externalPort: state.advertisedPort.value, internalHost: state.listenAddress, internalPort: state.listenPort.value }
+      : null,
   };
 }
 
