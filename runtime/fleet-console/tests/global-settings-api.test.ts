@@ -88,11 +88,15 @@ describe("global settings client transport", () => {
   });
 
   it("strictly validates remote status arrays and the split listener state", async () => {
-    const status = { listener: { listening: true, origin: "https://console.example:5443", lastError: null }, publicReachability: "unverified", fingerprint: "AA:BB", links: [{ id: "link-1", access: "full", issuedAt: 1, expiresAt: 2 }], devices: [{ id: "device-1", device: null, access: "monitoring", pairedAt: 1, lastSeenAt: 2, sessionHandle: null }], interfaces: [{ kind: "local", label: "LAN", address: "192.168.1.20" }] };
+    const status = { listener: { listening: true, origin: "https://console.example:5443", lastError: null }, publicReachability: "unverified", rejectedJoins: { count: 0, lastAt: null }, fingerprint: "AA:BB", links: [{ id: "link-1", access: "full", issuedAt: 1, expiresAt: 2 }], devices: [{ id: "device-1", device: null, access: "monitoring", pairedAt: 1, lastSeenAt: 2, sessionHandle: null }], interfaces: [{ kind: "local", label: "LAN", address: "192.168.1.20" }] };
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify(status))) as typeof fetch;
     await expect(fetchRemoteAccessStatus()).resolves.toEqual(status);
 
     globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...status, links: [{ ...status.links[0], access: "admin" }] }))) as typeof fetch;
+    await expect(fetchRemoteAccessStatus()).rejects.toBeInstanceOf(ApiError);
+
+    // 거절 계수는 화면이 읽는 값이라 모양이 어긋나면 응답 전체를 버린다.
+    globalThis.fetch = vi.fn(async () => new Response(JSON.stringify({ ...status, rejectedJoins: { count: -1, lastAt: null } }))) as typeof fetch;
     await expect(fetchRemoteAccessStatus()).rejects.toBeInstanceOf(ApiError);
   });
 

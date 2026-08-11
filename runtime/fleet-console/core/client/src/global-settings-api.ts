@@ -83,6 +83,13 @@ function isPairedDevice(value: unknown): value is RemoteAccessPairedDevice {
     && (entry.sessionHandle === null || isValidRemoteAccessId(entry.sessionHandle));
 }
 
+function isRejectedJoins(value: unknown): value is RemoteAccessStatus["rejectedJoins"] {
+  if (!value || typeof value !== "object") return false;
+  const entry = value as Partial<RemoteAccessStatus["rejectedJoins"]>;
+  return typeof entry.count === "number" && Number.isInteger(entry.count) && entry.count >= 0
+    && (entry.lastAt === null || isValidRemoteTimestamp(entry.lastAt));
+}
+
 function isRemoteAccessStatus(value: unknown): value is RemoteAccessStatus {
   if (!value || typeof value !== "object") return false;
   const entry = value as Partial<RemoteAccessStatus>;
@@ -92,6 +99,7 @@ function isRemoteAccessStatus(value: unknown): value is RemoteAccessStatus {
     && (listener.origin === null || typeof listener.origin === "string")
     && (listener.lastError === null || typeof listener.lastError === "string")
     && entry.publicReachability === "unverified"
+    && isRejectedJoins(entry.rejectedJoins)
     && isValidRemoteFingerprint(entry.fingerprint)
     && Array.isArray(entry.links) && entry.links.every(isLinkSummary)
     && Array.isArray(entry.devices) && entry.devices.every(isPairedDevice)

@@ -200,6 +200,8 @@ export interface RemoteAccessStatus {
     readonly lastError: string | null;
   };
   readonly publicReachability: "unverified";
+  /** 리스너가 열린 뒤 거절한 조인 수. 영속되지 않으며 리스너와 함께 초기화된다. */
+  readonly rejectedJoins: { readonly count: number; readonly lastAt: number | null };
   readonly fingerprint: string | null;
   readonly links: readonly RemoteAccessLinkSummary[];
   readonly devices: readonly RemoteAccessPairedDevice[];

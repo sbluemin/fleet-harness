@@ -47,6 +47,7 @@ import { createRemoteEndpointStore } from "./remote-endpoint.js";
 import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.js";
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
+import { createRemoteJoinGuard, normalizeRemoteJoinSource } from "./remote-join-guard.js";
 import { probeRemoteIdentity } from "./remote-probe.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
@@ -300,13 +301,6 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     gate: "origin-write",
   },
   {
-    method: "GET",
-    path: "/join",
-    summary: "Explain that an access link opens in Fleet Console Desktop.",
-    category: "Access",
-    gate: "loopback",
-  },
-  {
     method: "POST",
     path: "/api/v1/access-links",
     summary: "Create a remote access link for this console.",
@@ -447,6 +441,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   let remoteFingerprint: string | null = null;
   let remoteReconcile: Promise<void> = Promise.resolve();
   let remoteLastError: string | null = null;
+  // 리스너와 수명을 같이한다 — 영속되는 값이 아니라 지금 열려 있는 문에 대한 계량이다.
+  const remoteJoinGuard = createRemoteJoinGuard();
   let boundPort: number | null = null;
   /**
    * 만료도 회수와 같은 신호를 낸다. prune은 다른 레지스트리 호출 안에서 도는 일이 많아
@@ -823,10 +819,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 맡기면 하나만 빠져도 통째로 열리므로, 판정을 라우팅 이전 한 곳에서 끝낸다.
    */
   function isRemoteRequestAdmitted(listener: ListenerIdentity, req: http.IncomingMessage, pathname: string): boolean {
+    // 세션 없이 지나는 경로는 이 하나뿐이다. 페어링은 전용 앱으로만 이루어지고 브라우저는
+    // 자기서명 인증서의 지문을 대조할 수 없으므로, 브라우저를 향한 안내 표면을 두지 않는다.
     if (pathname === "/api/v1/join") return true;
-    // 링크는 웹 URL 모양을 하고 있어 사람은 브라우저에 붙여넣는다. 아무 설명 없는 401로
-    // 끝내지 않도록 이 한 경로만 세션 없이 통과시킨다 — 자격도 상태도 읽지 않는 정적 문서다.
-    if (pathname === JOIN_NOTICE_PATH && req.method === "GET") return true;
     const session = access.resolveSession(readSessionCookie(req.headers, listener.port), listener.audience);
     if (session === null) return false;
     // monitoring 자격은 보기만 한다. 등급이 사고 후 범위를 좁히려면 여기서 실제로 막혀야 한다.
@@ -865,10 +860,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === PAIRING_IDENTITY_PATH) {
       handlePairingIdentity(req, res);
-      return;
-    }
-    if (pathname === JOIN_NOTICE_PATH) {
-      handleJoinNotice(req, res);
       return;
     }
     if (tryServeStaticConsole(req, res, pathname)) return;
@@ -1075,6 +1066,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         lastError: remoteLastError,
       },
       publicReachability: "unverified",
+      // 거절이 일어나고 있다는 사실 자체가 "지금 열어둘 만한가"의 판단 재료다.
+      rejectedJoins: remoteJoinGuard.stats(),
       fingerprint: remoteFingerprint,
       // 발급 사실만 나간다 — 목록을 보는 것으로는 어떤 링크도 다시 쓸 수 없다.
       links: access.listGrants("remote"),
@@ -1222,22 +1215,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return true;
   }
 
-  /** 정적 안내 문서. 스크립트가 없으므로 fragment를 읽지 않고, 읽을 상태도 없다. */
-  function handleJoinNotice(req: http.IncomingMessage, res: http.ServerResponse): void {
-    if (req.method !== "GET") {
-      writeJson(res, 405, { error: "Method not allowed" });
-      return;
-    }
-    const body = Buffer.from(JOIN_NOTICE_DOCUMENT, "utf8");
-    res.writeHead(200, withSecurityHeaders({
-      "Content-Type": "text/html; charset=utf-8",
-      "Content-Length": String(body.byteLength),
-      "Cache-Control": "no-store",
-      "Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
-      "Referrer-Policy": "no-referrer",
-    }));
-    res.end(body);
-  }
 
   /**
    * 원격 액세스 링크. 주소·자격·신원·이름을 하나의 봉투에 담아 `fleet://join?code=`로 실어
@@ -1288,6 +1265,30 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
+    // 루프백은 이 기계 앞에 앉은 사람이라 예산을 두지 않는다. 인터넷을 향한 문만 계량한다.
+    if (listener.audience !== "remote") return performAccessJoin(req, res, listener);
+    const source = normalizeRemoteJoinSource(req.socket.remoteAddress);
+    const verdict = remoteJoinGuard.begin(source);
+    if (verdict !== "ok") {
+      // 본문을 읽기 전에 끝낸다 — 거절의 값이 요청의 값보다 싸야 예산이 뜻을 가진다.
+      res.writeHead(verdict === "throttled" ? 429 : 503, withSecurityHeaders({
+        "Content-Type": "application/json",
+        "Retry-After": String(remoteJoinGuard.retryAfterSeconds(source)),
+      }));
+      res.end(JSON.stringify({ error: verdict === "throttled" ? "too_many_attempts" : "busy" }));
+      return true;
+    }
+    let paired = false;
+    try {
+      paired = await performAccessJoin(req, res, listener);
+    } finally {
+      remoteJoinGuard.settle(source, paired ? "paired" : "rejected");
+    }
+    return true;
+  }
+
+  /** 조인 본체. 반환값은 "페어링에 성공했는가"이며, 응답은 이 안에서 끝난다. */
+  async function performAccessJoin(req: http.IncomingMessage, res: http.ServerResponse, listener: ListenerIdentity): Promise<boolean> {
     const body = await readJsonBody<{ readonly token?: unknown; readonly device?: unknown }>(req);
     const token = isPlainObject(body) && typeof body.token === "string" ? body.token : null;
     const device = isPlainObject(body) ? sanitizeDeviceName(body.device) : null;
@@ -1306,10 +1307,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
           "Set-Cookie": expirePairingCookie({ secure: listener.secure, port: listener.port }),
         }));
         res.end(JSON.stringify({ error: joined.error }));
-        return true;
+        return false;
       }
       writeJson(res, joined.status, { error: joined.error });
-      return true;
+      return false;
     }
     if (listener.audience === "remote" && joined.session.access === "full") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
@@ -2520,41 +2521,6 @@ function consoleLabel(): string {
   return sanitizeAccessLabel(os.hostname().replace(/\.local$/iu, "")) || "Fleet Console";
 }
 
-export const JOIN_NOTICE_PATH = "/join";
-
-/**
- * 이 주소를 브라우저 주소창에 넣어 본 사람에게 보여주는 정적 안내. 액세스 링크는 `fleet://`라
- * 브라우저가 따라올 수 없고, 이 문서에는 아무 스크립트도 없다 — 설명만 하고 아무것도 하지
- * 않는 것이 요점이다.
- */
-const JOIN_NOTICE_DOCUMENT = `<!doctype html>
-<html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Fleet Console access link</title>
-<style>
-:root { color-scheme: dark; }
-body { margin: 0; min-height: 100vh; display: grid; place-items: center; padding: 24px;
-  background: #0b1116; color: #e6edf3;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-main { max-width: 30rem; }
-h1 { margin: 0 0 12px; font-size: 20px; font-weight: 650; }
-p { margin: 0 0 12px; color: #aebbc5; font-size: 14px; line-height: 1.55; }
-strong { color: #e6edf3; font-weight: 600; }
-</style>
-</head>
-<body>
-<main>
-<h1>This console is reached with an access link</h1>
-<p>You have found the remote listener of a Fleet Console. It does not open in a browser: a browser cannot check this console&#39;s certificate fingerprint, so <strong>remote access is not available to browsers</strong>.</p>
-<p>Ask for an access link instead. It looks like <strong>fleet://join?code=&hellip;</strong> and carries the address, a one-time credential, and the fingerprint together.</p>
-<p>In the Fleet Console you are already using, open <strong>Settings &rarr; Remote access &rarr; Hosts</strong> and paste the link there.</p>
-<p><strong>Remote access is experimental.</strong> How links and pairings behave can still change between releases.</p>
-</main>
-</body>
-</html>
-`;
 
 /** 경로에서 온 이름은 그대로 비교하지 않는다 — 디코드 실패는 존재하지 않는 이름으로 본다. */
 function decodeHandle(raw: string): string {

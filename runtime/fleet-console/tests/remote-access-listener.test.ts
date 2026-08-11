@@ -612,22 +612,38 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     expect(status.listener.lastError).not.toBeNull();
   });
 
-  it("answers a browser that typed the address with an explanation instead of a bare 401", async () => {
+  it("leaves the join endpoint as the only door a session-less request can reach", async () => {
     const fixture = await startFixture({ remote: true });
 
-    const notice = await remoteRequestBody(fixture, "GET", "/join");
-
-    expect(notice.status).toBe(200);
-    expect(notice.headers["content-type"]).toContain("text/html");
-    // 막다른 길에서 끝내지 않고, 링크의 모양과 그것을 붙여넣을 자리를 함께 알려 준다.
-    expect(notice.body).toContain("fleet://join?code=");
-    expect(notice.body).toContain("Remote access");
-    // 설명만 하고 아무것도 하지 않는 문서여야 한다.
-    expect(notice.body).not.toMatch(/<script|\bon[a-z]+=/iu);
-    expect(notice.headers["content-security-policy"]).toContain("default-src 'none'");
-    // 나머지 표면은 그대로 닫혀 있다.
-    await expect(remoteRequest(fixture, "GET", "/console/")).resolves.toMatchObject({ status: 401 });
+    // 브라우저는 자기서명 인증서의 지문을 대조할 수 없어 페어링을 끝낼 수 없다. 설명 표면조차 두지 않는다.
+    for (const path of ["/", "/join", "/console/", "/api/v1/state", "/api/v1/theaters", "/plugin-runtime/manifest"]) {
+      await expect(remoteRequest(fixture, "GET", path)).resolves.toMatchObject({ status: 401 });
+    }
     await expect(remoteRequest(fixture, "POST", "/join")).resolves.toMatchObject({ status: 401 });
+
+    // 통과하는 것은 이 하나뿐이며, 자격이 없으면 401로 끝난다 — 열려 있다는 것과 들여보낸다는 것은 다르다.
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: "not-a-grant" })))
+      .resolves.toMatchObject({ status: 401 });
+  });
+
+  it("spends a failure budget on the unauthenticated join door and reports the rejections", async () => {
+    const fixture = await startFixture({ remote: true });
+
+    // 실패만 계수된다. 예산을 넘기면 본문을 읽기 전에 429로 끝나고 Retry-After를 실어 준다.
+    let throttled: Awaited<ReturnType<typeof remoteRequest>> | null = null;
+    for (let attempt = 0; attempt < 24 && throttled === null; attempt += 1) {
+      const response = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: `bad-${attempt}` }));
+      if (response.status === 429) throttled = response;
+    }
+
+    expect(throttled).not.toBeNull();
+    expect(throttled!.headers["retry-after"]).toBeDefined();
+    expect(throttled!.body).toContain("too_many_attempts");
+
+    // 조용히 막지 않는다 — 주인이 이 사실을 화면에서 볼 수 있어야 판단할 수 있다.
+    const status = await readRemoteStatus(fixture);
+    expect(status.rejectedJoins.count).toBeGreaterThan(0);
+    expect(status.rejectedJoins.lastAt).not.toBeNull();
   });
 
   it("holds a monitoring session to reading, and lets a full one through", async () => {
@@ -1057,6 +1073,7 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 interface RemoteAccessStatus {
   readonly listener: { readonly listening: boolean; readonly origin: string | null; readonly lastError: string | null };
   readonly publicReachability: "unverified";
+  readonly rejectedJoins: { readonly count: number; readonly lastAt: number | null };
   readonly fingerprint: string | null;
   readonly links: readonly { readonly id: string; readonly access: string; readonly issuedAt: number; readonly expiresAt: number }[];
   readonly devices: readonly { readonly id: string; readonly device: string | null; readonly access: string; readonly pairedAt: number; readonly lastSeenAt: number; readonly sessionHandle: string | null }[];

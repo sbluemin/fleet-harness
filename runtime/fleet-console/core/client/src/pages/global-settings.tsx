@@ -970,6 +970,13 @@ function RemoteListenerCard({
 
       {status?.listener.lastError ? <p className="remote-card-alert" role="alert">{t(remoteErrorKey(status.listener.lastError))}</p> : null}
 
+      {/* 거절이 일어나고 있다는 사실은 "지금 열어둘 만한가"의 판단 재료다. 조용히 세고만 있으면 값이 없다. */}
+      {status !== null && status.rejectedJoins.count > 0 ? (
+        <p className="remote-status-note">
+          {renderMessage(t("settings.remote.rejectedJoins"), { count: String(status.rejectedJoins.count) })}
+        </p>
+      ) : null}
+
       {stale ? (
         <div className="remote-stale" role="alert">
           <span>{t("settings.remote.draft.stale")}</span>
