@@ -26,9 +26,11 @@ interface RightRailProps {
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
 // 호버-리빌 헤더 입력 계약: 진입은 pointermove로만 판정하고(스크롤-언더-포인터 오발화 방지)
-// 의도 지연을 거친다. 24px 진입 띠와 64px 이탈 경계 사이는 히스테리시스 중립 지대다.
-const HEAD_REVEAL_ZONE_PX = 24;
-const HEAD_REVEAL_TOUCH_ZONE_PX = 40;
+// 의도 지연을 거친다. 진입 띠와 64px 이탈 경계 사이는 히스테리시스 중립 지대다.
+// 진입 띠는 패널 본문 상단 컨트롤(Skills 탭 등)의 클릭을 방해하지 않도록 가장자리
+// 12px로 좁게 잡는다 — 24px에서는 상단 첫 줄 컨트롤로 향하는 호버가 헤더를 오발화했다.
+const HEAD_REVEAL_ZONE_PX = 12;
+const HEAD_REVEAL_TOUCH_ZONE_PX = 28;
 const HEAD_HIDE_BOUNDARY_PX = 64;
 const HEAD_REVEAL_INTENT_DELAY_MS = 120;
 const HEAD_HIDE_DELAY_MS = 320;
