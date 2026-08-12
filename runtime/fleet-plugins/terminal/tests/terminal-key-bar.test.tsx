@@ -13,6 +13,8 @@ const terminalMocks = vi.hoisted(() => ({
   sent: vi.fn<(data: string) => void>(),
   emitData: null as ((data: string) => void) | null,
   applicationCursorKeysMode: false,
+  /** Swapped for a deferred promise to hold the terminal in its pre-mount state. */
+  symbolsReady: Promise.resolve(),
 }));
 
 vi.mock("@xterm/xterm", () => ({
@@ -69,7 +71,7 @@ vi.mock("../client/shared/ime-shift-enter.js", () => ({
     onCompositionStart() {},
   }),
 }));
-vi.mock("../client/shared/symbols-font.js", () => ({ waitForSymbolsNerdFontMono: () => Promise.resolve() }));
+vi.mock("../client/shared/symbols-font.js", () => ({ waitForSymbolsNerdFontMono: () => terminalMocks.symbolsReady }));
 vi.mock("../client/shared/terminal-connection.js", () => ({
   createTerminalConnection: (options: { terminal: { onData: (listener: (data: string) => void) => unknown } }) => {
     options.terminal.onData((data) => terminalMocks.sent(data));
@@ -127,6 +129,7 @@ beforeEach(() => {
   terminalMocks.sent.mockClear();
   terminalMocks.emitData = null;
   terminalMocks.applicationCursorKeysMode = false;
+  terminalMocks.symbolsReady = Promise.resolve();
   fontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
   Object.defineProperty(document, "fonts", { configurable: true, value: { ready: Promise.resolve() } });
   matchMediaDescriptor = Object.getOwnPropertyDescriptor(window, "matchMedia");
@@ -226,6 +229,39 @@ describe("TerminalKeyBar on a touch terminal", () => {
     expect(terminalMocks.focus.mock.calls.length).toBe(focusCallsWhileOpen + 1);
   });
 
+  it("does not refocus the terminal while the panel stands in for the keyboard", async () => {
+    await renderSurface();
+    await press("⋯");
+    const focusCallsWhileOpen = terminalMocks.focus.mock.calls.length;
+
+    // A focus request — reselecting the operation, the session becoming active again — must not
+    // reopen the soft keyboard underneath the open panel.
+    await renderSurface({ keyboardFocusRequestId: 2 });
+
+    expect(terminalMocks.focus.mock.calls.length).toBe(focusCallsWhileOpen);
+  });
+
+  it("does not let a terminal that mounts later steal focus back", async () => {
+    // The bar renders before xterm finishes mounting, so the panel can open while terminalRef is
+    // still null — the blur lands nowhere, and the mount's own focus would undo the replacement.
+    let releaseSymbols!: () => void;
+    terminalMocks.symbolsReady = new Promise<void>((resolve) => { releaseSymbols = () => resolve(); });
+
+    await renderSurface();
+    await press("⋯");
+    expect(terminalMocks.focus).not.toHaveBeenCalled();
+
+    await act(async () => {
+      releaseSymbols();
+      await terminalMocks.symbolsReady;
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(terminalMocks.focus).not.toHaveBeenCalled();
+  });
+
   it("sends a symbol as itself", async () => {
     await renderSurface();
     await press("⋯");
@@ -247,13 +283,14 @@ describe("TerminalKeyBar on a touch terminal", () => {
   });
 });
 
-async function renderSurface(): Promise<void> {
+async function renderSurface(overrides: { readonly keyboardFocusRequestId?: number } = {}): Promise<void> {
   await act(async () => {
     root!.render(createElement(TerminalSurface, {
       operationId: "operation-a",
       ticketPath: "/ticket",
       wsPath: "/terminal",
       active: true,
+      ...overrides,
     }));
     await Promise.resolve();
     await Promise.resolve();
