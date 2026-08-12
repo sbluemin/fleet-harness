@@ -8,6 +8,7 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createConsoleLock } from "../core/host/lock.js";
+import { PAIRED_DEVICE_LIMIT } from "../core/host/paired-devices.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
 import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
@@ -536,11 +537,13 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   it("holds a monitoring session to reading, and lets a full one through", async () => {
     const fixture = await startFixture({ remote: true });
     const watcher = await joinAs(fixture, "monitoring", "iPad");
-    const operator = await joinAs(fixture, "full", "MacBook Pro");
 
     // 등급이 사고 후 범위를 좁히려면 쓰기가 실제로 막혀야 한다.
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, watcher)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", watcher)).resolves.toMatchObject({ status: 401 });
+
+    // 자리는 하나이므로 full은 관전자를 대신해서 들어온다. 등급은 그와 무관하게 각자의 것이다.
+    const operator = await joinAs(fixture, "full", "MacBook Pro");
     await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", operator)).resolves.not.toMatchObject({ status: 401 });
 
     const listed = await readRemoteStatus(fixture);
@@ -643,25 +646,116 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /**
-   * 제어를 쥔 원격은 하나다. 둘째를 받으면 커튼이 "누가" 몰고 있는지 하나로 말하지 못하고
-   * 회수 버튼의 대상도 갈라진다. 거절은 자격을 태우기 전에 일어나야 한다 — 뒤에서 막으면
-   * 1회용 링크만 소멸하고 아무도 붙지 못한다.
+   * 붙어 있는 원격은 하나다. 둘이 동시에 붙으면 커튼이 "누가" 몰고 있는지 하나로 말하지 못하고
+   * 회수 버튼의 대상도 갈라진다. 그래서 둘째를 거절하는 대신 첫째를 대신한다 — 페어링 목록은
+   * 둘 다 기억하되, 접속 줄은 언제나 하나만 살아 있다.
    */
-  it("admits one full remote session and leaves the refused link usable", async () => {
+  it("hands the single remote seat to the newest join and leaves the earlier pairing intact", async () => {
     const fixture = await startFixture({ remote: true });
-    await joinAs(fixture, "full", "first");
+    const first = await joinAs(fixture, "full", "first");
     const secondLink = await createLink(fixture);
 
-    const refused = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }));
-    expect(refused.status).toBe(409);
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink), device: "second" })))
+      .resolves.toMatchObject({ status: 204 });
 
+    // 페어링은 둘이지만 접속은 하나다. 살아 있는 줄은 방금 붙은 쪽이다.
     const held = await readRemoteStatus(fixture);
-    expect(held.devices).toHaveLength(1);
-    expect(held.links).toHaveLength(1);
+    expect(held.devices).toHaveLength(2);
+    expect(held.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)).toEqual(["second"]);
 
-    // 보유자가 물러나면 같은 링크가 그대로 통한다 — 태워 버렸다면 여기서 401이 난다.
-    await expect(revoke(fixture, `access-sessions/${held.devices[0]!.sessionHandle}`)).resolves.toBe(204);
-    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(secondLink) }))).resolves.toMatchObject({ status: 204 });
+    // 밀려난 기기의 세션 쿠키는 그 자리에서 죽는다.
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, first)).resolves.toMatchObject({ status: 401 });
+
+    // 그래도 그 기기는 자기 페어링으로 돌아와 자리를 되찾는다 — 축출이 자격까지 지우지는 않는다.
+    const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first);
+    expect(resumed.status).toBe(204);
+    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)))
+      .resolves.toEqual(["first"]);
+  });
+
+  /**
+   * 자리를 비우는 순서가 이 규칙의 절반이다. 조인이 앞사람을 대신하게 되면서, 거절 판정이
+   * 축출보다 먼저 끝나야 한다는 조건이 생겼다 — 그러지 않으면 받아 주지도 않을 조인이
+   * 붙어 있던 기기를 끊어 놓고, 자리는 아무도 쓰지 않은 채 빈다.
+   *
+   * 기억 상한이 그 순서를 시험할 수 있는 유일한 거절이므로, 상한을 실제로 채워서 본다.
+   */
+  it("leaves the open session untouched when the join is refused at the pairing limit", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+
+    let holder = "";
+    for (let index = 0; index < PAIRED_DEVICE_LIMIT; index += 1) {
+      holder = await joinAs(fixture, "full", `device-${index}`);
+    }
+    const seated = await local.waitFor("control:changed", (data) => data.holder?.device === `device-${PAIRED_DEVICE_LIMIT - 1}`);
+    const framesBefore = local.seen("control:changed");
+
+    const spare = await createLink(fixture);
+    const refused = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(spare), device: "one too many" }));
+    expect(refused.status).toBe(409);
+    expect(refused.body).toContain("paired_device_limit");
+
+    // 앉아 있던 기기는 그대로다 — 세션도, 이 기계가 보는 보유자도 움직이지 않는다.
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, holder)).resolves.toMatchObject({ status: 200 });
+    expect(local.seen("control:changed")).toBe(framesBefore);
+    expect((await readRemoteStatus(fixture)).devices.filter((entry) => entry.sessionHandle !== null)).toHaveLength(1);
+
+    // 자격도 타지 않았다. 자리를 비우면 같은 링크가 아직 통해야 한다.
+    await expect(revoke(fixture, `access-sessions/${seated.holder.handle}`)).resolves.toBe(204);
+    await expect(revoke(fixture, `paired-devices/${(await readRemoteStatus(fixture)).devices[0]!.id}`)).resolves.toBe(204);
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(spare) }))).resolves.toMatchObject({ status: 204 });
+
+    local.close();
+  });
+
+  /**
+   * 같은 기기가 자기 접속을 갈아 끼울 때 건너뛰는 것은 안내뿐이다. 두고 간 스트림까지 함께
+   * 남겨 두면 자격이 죽은 그 구독이 다음 Operation 갱신부터 계속 받는다 — 앞의 화면을 아직
+   * 띄운 채 다시 조인하는 흐름이 실제로 있으므로, 상대가 스스로 물러나 주기를 기대할 수 없다.
+   */
+  it("closes the stream a device leaves behind when it rejoins under its own pairing", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+    const stale = await openRemoteEvents(fixture, cookies);
+
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
+
+    await stale.waitForClose();
+    // 자기 자신에게 "다른 기기가 이어받았습니다"를 띄우지는 않는다.
+    expect(stale.seen("control:reclaimed")).toBe(0);
+
+    stale.close();
+  });
+
+  /**
+   * 밀려난 쪽은 자기가 왜 끊겼는지 듣는다. 주인이 되찾은 것과 다른 기기가 이어받은 것을 한
+   * 사유로 뭉개면, 아무도 회수하지 않았는데 "회수되었습니다"가 뜬다.
+   */
+  it("tells only the displaced session that another device took the seat", async () => {
+    const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
+
+    const cookie = await joinAs(fixture, "full", "Kitchen iPad");
+    const displaced = await openRemoteEvents(fixture, cookie);
+    await local.waitFor("control:changed", (data) => data.holder?.device === "Kitchen iPad");
+
+    await joinAs(fixture, "full", "MacBook Pro");
+
+    expect(await displaced.waitFor("control:reclaimed", () => true)).toEqual({ reason: "superseded" });
+    /**
+     * 안내만 보내고 스트림을 남겨 두면, 자격을 잃은 그 기기가 다음 Operation 갱신부터 계속
+     * 받는다 — 이 스트림에는 요청마다 걸리는 세션 게이트가 없다. 서버가 닫아야 한다.
+     */
+    await displaced.waitForClose();
+    // 이 기계 앞 화면은 보유자가 바뀐 것을 듣는다 — 커튼은 새 기기의 이름을 단다.
+    expect((await local.waitFor("control:changed", (data) => data.holder?.device === "MacBook Pro")).holder)
+      .toMatchObject({ device: "MacBook Pro" });
+    // 밀려난 원격은 다른 기기의 이름을 한 번도 받지 않는다.
+    expect(displaced.seen("control:changed")).toBe(0);
+
+    local.close();
+    displaced.close();
   });
 
   /**
@@ -681,8 +775,9 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
 
     await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
 
-    // 끊긴 쪽은 자기 회수를 듣는다.
+    // 끊긴 쪽은 자기 회수를 듣고, 그 구독은 서버가 닫는다.
     expect(await remote.waitFor("control:reclaimed", () => true)).toEqual({ reason: "reclaimed" });
+    await remote.waitForClose();
     // 이 기계 앞 화면은 보유자가 사라진 것을 듣는다.
     expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
     // 원격은 보유자 정보를 한 번도 받지 않는다.
@@ -715,40 +810,46 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /**
-   * monitoring은 제어를 쥔 적이 없으므로 그 세션이 사라져도 보유자는 그대로다. 그때까지 신호로
+   * monitoring은 제어를 쥔 적이 없으므로 그 세션이 오가도 보유자는 내내 없다. 그때까지 신호로
    * 세면 붙어 있던 터미널이 통째로 끊겼다 다시 붙으며 scrollback을 재생한다 — 아무것도 바뀌지
    * 않았는데 화면이 깜빡인다.
    */
-  it("stays quiet when a session that never held control goes away", async () => {
+  it("stays quiet when a session that never held control comes and goes", async () => {
     const fixture = await startFixture({ remote: true });
     const local = await openLoopbackEvents(fixture);
-    await joinAs(fixture, "full", "holder");
-    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
-    await joinAs(fixture, "monitoring", "watcher");
+    await local.waitFor("control:changed", (data) => data.holder === null);
 
-    const watcher = (await readRemoteStatus(fixture)).devices.find((entry) => entry.access === "monitoring");
     const framesBefore = local.seen("control:changed");
+    await joinAs(fixture, "monitoring", "watcher");
+    const watcher = (await readRemoteStatus(fixture)).devices.find((entry) => entry.access === "monitoring");
     await expect(revoke(fixture, `access-sessions/${watcher!.sessionHandle}`)).resolves.toBe(204);
 
-    // 보유자는 그대로다. 프레임이 늘지 않아야 한다.
-    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null))).resolves.toHaveLength(1);
+    // 보유자는 내내 없었다. 프레임이 늘지 않아야 한다.
     expect(local.seen("control:changed")).toBe(framesBefore);
 
-    // 진짜 보유자가 나가면 그때는 알린다 — 조용해진 것이지 멎은 것이 아니다.
+    // full이 오가면 그때는 알린다 — 조용해진 것이지 멎은 것이 아니다.
+    await joinAs(fixture, "full", "holder");
+    const held = await local.waitFor("control:changed", (data) => data.holder !== null);
     await expect(revoke(fixture, `access-sessions/${held.holder.handle}`)).resolves.toBe(204);
     expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
 
     local.close();
   });
 
-  /** monitoring은 제어를 쥐지 않으므로 상한과 무관하게 full 옆에 함께 붙는다. */
-  it("lets a monitoring session join while a full session holds control", async () => {
+  /** 자리는 등급을 가리지 않는다 — monitoring 조인도 앞의 full을 대신하고, 커튼은 그때 걷힌다. */
+  it("lets a monitoring join take the seat from a full session", async () => {
     const fixture = await startFixture({ remote: true });
+    const local = await openLoopbackEvents(fixture);
     await joinAs(fixture, "full", "holder");
+    await local.waitFor("control:changed", (data) => data.holder !== null);
+
     await joinAs(fixture, "monitoring", "watcher");
 
     const status = await readRemoteStatus(fixture);
-    expect(status.devices.map((entry) => entry.access).sort()).toEqual(["full", "monitoring"]);
+    expect(status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.access)).toEqual(["monitoring"]);
+    expect(await local.waitFor("control:changed", (data) => data.holder === null)).toEqual({ holder: null });
+
+    local.close();
   });
 
   /**
@@ -1006,29 +1107,41 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     await expect(readRemoteStatus(restarted).then((status) => status.listener.origin)).resolves.toBe(before);
   });
 
-  /** 재개는 등급을 물려받을 뿐 올리지 못한다. 페어링이 등급의 유일한 근거다. */
-  it("resumes a monitoring pairing as monitoring, and refuses control while a full device holds it", async () => {
+  /**
+   * 재개는 자리를 되찾을 뿐 등급을 올리지 못한다. 페어링이 등급의 유일한 근거이므로, 자리를
+   * 이어받았다고 해서 관전자가 명령을 실행하게 되어서는 안 된다.
+   */
+  it("resumes a monitoring pairing as monitoring even when it takes the seat from a full device", async () => {
     const fixture = await startFixture({ remote: true });
     const watcher = await joinAs(fixture, "monitoring", "iPad");
     await joinAs(fixture, "full", "MacBook Pro");
 
     const resumed = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), watcher);
     expect(resumed.status).toBe(204);
+    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)))
+      .resolves.toEqual(["iPad"]);
 
     const cookies = cookiesOf(resumed);
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, cookies)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "POST", "/api/v1/theaters", "{}", cookies)).resolves.toMatchObject({ status: 401 });
   });
 
-  /** 두 번째 full 기기는 자리가 차 있는 동안 돌아오지 못한다 — 축출은 주인의 결정이다. */
-  it("refuses a full pairing that tries to resume while another device holds control", async () => {
+  /**
+   * 자리가 차 있어도 페어링된 기기는 돌아온다. 거절하던 시절에는 앞 기기가 두고 간 접속 하나가
+   * 주인이 자기 콘솔 앞에 가서 그 줄을 끊기 전까지 나머지 기기를 전부 밖에 세워 두었다.
+   */
+  it("lets a full pairing resume by taking the seat from the device that holds it", async () => {
     const fixture = await startFixture({ remote: true });
     const first = await joinAs(fixture, "full", "first");
     const held = (await readRemoteStatus(fixture)).devices[0]!.sessionHandle!;
     await expect(revoke(fixture, `access-sessions/${held}`)).resolves.toBe(204);
-    await joinAs(fixture, "full", "second");
+    const second = await joinAs(fixture, "full", "second");
 
-    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first)).resolves.toMatchObject({ status: 409 });
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), first)).resolves.toMatchObject({ status: 204 });
+
+    await expect(readRemoteStatus(fixture).then((status) => status.devices.filter((entry) => entry.sessionHandle !== null).map((entry) => entry.device)))
+      .resolves.toEqual(["first"]);
+    await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, second)).resolves.toMatchObject({ status: 401 });
   });
 
   /**
@@ -1123,6 +1236,8 @@ function cookiesOf(response: { readonly headers: import("node:http").IncomingHtt
 interface EventProbe {
   waitFor(event: string, predicate: (data: any) => boolean, timeoutMs?: number): Promise<any>;
   seen(event: string): number;
+  /** 서버가 이 스트림을 스스로 닫기를 기다린다. 자격을 잃은 구독이 남지 않았음의 증거다. */
+  waitForClose(timeoutMs?: number): Promise<void>;
   close(): void;
 }
 
@@ -1130,6 +1245,13 @@ function readEventStream(response: import("node:http").IncomingMessage): EventPr
   const received: Array<{ readonly event: string; readonly data: unknown }> = [];
   const waiters: Array<() => void> = [];
   let buffer = "";
+  let closed = false;
+  const markClosed = () => {
+    closed = true;
+    while (waiters.length > 0) waiters.pop()!();
+  };
+  response.on("end", markClosed);
+  response.on("close", markClosed);
   response.setEncoding("utf8");
   response.on("data", (chunk: string) => {
     buffer += chunk;
@@ -1158,6 +1280,16 @@ function readEventStream(response: import("node:http").IncomingMessage): EventPr
         const hit = received.find((entry) => entry.event === event && predicate(entry.data));
         if (hit) return hit.data;
         if (Date.now() >= deadline) throw new Error(`timed out waiting for ${event}`);
+        await new Promise<void>((resolve) => {
+          waiters.push(resolve);
+          setTimeout(resolve, 50);
+        });
+      }
+    },
+    async waitForClose(timeoutMs = 5_000) {
+      const deadline = Date.now() + timeoutMs;
+      while (!closed) {
+        if (Date.now() >= deadline) throw new Error("timed out waiting for the server to close the stream");
         await new Promise<void>((resolve) => {
           waiters.push(resolve);
           setTimeout(resolve, 50);

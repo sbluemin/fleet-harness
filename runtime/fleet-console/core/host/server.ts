@@ -11,7 +11,7 @@ import { createWikiWorkspaceResolver } from "@dotobokuri/fleet-wiki";
 import { readLaunchVariantGroups } from "@fleet-console/sdk/operations/launch-variants";
 
 import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
-import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot } from "./access-control-contract.js";
+import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "./access-control-contract.js";
 import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
 import { listRemoteInterfaces } from "./remote-interfaces.js";
@@ -1135,8 +1135,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const handle = decodeHandle(rawHandle);
     if (!access.revokeSessionByHandle(handle)) {
       // 이미 만료된 보유자를 향한 회수다. 404로만 끝내면 화면은 유령 보유자를 계속 띄운 채
-      // 남으므로, 사라졌다는 사실을 여기서 알려 스스로 정리되게 한다.
-      broadcastControlChanged();
+      // 남으므로, 사라졌다는 사실을 여기서 다시 알려 스스로 정리되게 한다.
+      broadcastControlChanged(true);
       writeJson(res, 404, { error: "session_not_found" });
       return;
     }
@@ -1144,7 +1144,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
     desktopShellsByOwner.delete(handle);
     // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
-    notifyControlReclaimed(handle);
+    endSessionStreams(handle, "reclaimed");
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
     res.end();
@@ -1173,7 +1173,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     access.revokeSessionsByPairing(removed.id);
     for (const session of closed) {
       desktopShellsByOwner.delete(session.handle);
-      notifyControlReclaimed(session.handle);
+      endSessionStreams(session.handle, "reclaimed");
     }
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
@@ -1323,7 +1323,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, joined.status, { error: joined.error });
       return false;
     }
-    if (listener.audience === "remote" && joined.session.access === "full") broadcastControlChanged();
+    /**
+     * 등급을 가리지 않고 알린다. 원격 접속이 하나뿐이므로 monitoring 조인도 앞선 보유자를
+     * 대신하고, 그때 커튼은 걷혀야 한다. 실제로 바뀌지 않은 사실은 브로드캐스트가 걸러낸다.
+     */
+    if (listener.audience === "remote") broadcastControlChanged();
     // 평문 http 리스너에 Secure를 붙이면 브라우저가 쿠키를 버린다.
     const cookies = [formatSessionCookie(joined.session, { secure: listener.secure, port: listener.port })];
     if (joined.pairingSecret !== null) cookies.push(formatPairingCookie(joined.pairingSecret, { secure: listener.secure, port: listener.port }));
@@ -1349,7 +1353,6 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
      * 뒤에서 거절하면 1회용 링크만 태우고 아무도 붙지 못한다.
      */
     const pending = access.peekGrant(token, listener.audience);
-    if (pending !== null && !canTakeControl(listener.audience, pending.access)) return { status: 409, error: "remote_control_held" };
     /**
      * 상한에 걸린 조인은 grant를 태우지 않는다 — 자리를 비운 뒤 같은 링크가 아직 통해야 한다.
      * 다만 되살아나는 것은 링크 문자열뿐이다. 셸이 들고 있던 자격은 handoff가 한 번만 넘기므로,
@@ -1366,6 +1369,8 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     const paired = pairedDeviceStore.pair({ audience: listener.audience, access: grant.access, device });
     if (!paired) return { status: 409, error: "paired_device_limit" };
+    // 거절이 끝난 뒤에 자리를 비운다 — 받지도 못할 조인이 앞사람을 내보내서는 안 된다.
+    supersedeRemoteSessions(null);
     return {
       session: access.openSession(listener.audience, grant.access, device, paired.device.id),
       pairingSecret: paired.secret,
@@ -1377,13 +1382,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     const paired = pairedDeviceStore.resolve(secret, listener.audience);
     if (!paired || secret === null) return { status: 401, error: "unauthorized" };
     /**
-     * 같은 페어링이 두 접속을 동시에 여는 것은 이 기기가 앞의 접속을 잃었다는 뜻이다. 남겨 두면
-     * 목록에 유령 접속이 쌓이고, 그중 어느 줄을 끊어야 하는지 알 수 없다. 자리 판정보다 먼저
-     * 치우는 이유는, 자기 자신이 두고 간 접속 때문에 자리가 찼다고 거절당하지 않기 위해서다.
+     * 자기 페어링이 두고 간 접속은 축출이 아니라 자기 자신의 잔상이므로 안내 없이 걷는다 —
+     * 창을 다시 여는 것만으로 "다른 기기가 이어받았습니다"를 자기 화면에 띄울 수는 없다.
      */
-    const reclaimedOwn = access.revokeSessionsByPairing(paired.id);
-    if (!canTakeControl(listener.audience, paired.access)) return { status: 409, error: "remote_control_held" };
-    if (reclaimedOwn) broadcastControlChanged();
+    supersedeRemoteSessions(paired.id);
     return {
       // 등급은 페어링이 정한다 — 재개가 monitoring을 full로 올릴 수 없어야 한다.
       session: access.openSession(listener.audience, paired.access, device ?? paired.device, paired.id),
@@ -1393,14 +1395,29 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 제어를 쥔 원격은 한 번에 하나다. 커튼은 "누가" 몰고 있는지를 하나로 말해야 하고 회수
-   * 버튼은 대상이 하나여야 하므로, 둘째 full 조인은 받지 않는다. 밀어내기로 하지 않는 이유는
-   * 유효한 자격을 쥔 사람이 현 보유자를 조용히 축출할 수 있게 되기 때문이다 — 자리를 비우는
-   * 판단은 콘솔 주인의 몫으로 남긴다.
+   * 원격 접속은 한 번에 하나다. 이 콘솔은 하나의 화면이고 하나의 터미널이므로, 둘이 동시에
+   * 붙으면 커튼은 "누가" 몰고 있는지 하나로 말하지 못하고 회수 버튼의 대상도 갈라진다.
+   *
+   * 그래서 새 조인이 앞선 접속을 대신한다. 거절하지 않는 이유는, 거절이 자기 기기를 되찾는
+   * 길까지 막기 때문이다 — 앞의 접속이 유휴로 남아 있거나 셸이 두고 간 잔상일 때 주인은
+   * 자기 콘솔 앞에 가서 그 줄을 끊기 전에는 돌아올 수 없었다. 페어링은 이미 주인이 승인한
+   * 자격이고, 그 자격을 거둘 자리는 여전히 기기 목록의 회수 버튼이다.
+   *
+   * 세션을 열기 전에 부른다 — 열고 나서 걷으면 방금 연 접속이 자기 자신에 걸린다.
+   * `ownPairingId`가 두고 간 접속은 축출이 아니므로 안내 없이 걷는다.
    */
-  function canTakeControl(audience: AccessAudience, requested: AccessClass): boolean {
-    if (audience !== "remote" || requested !== "full") return true;
-    return !access.hasSession("remote", "full");
+  function supersedeRemoteSessions(ownPairingId: string | null): void {
+    for (const session of access.listSessions("remote")) {
+      if (!access.revokeSessionByHandle(session.handle)) continue;
+      // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다.
+      desktopShellsByOwner.delete(session.handle);
+      /**
+       * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
+       * 잔상이므로. 건너뛰는 것은 안내뿐이고 스트림은 그 사정과 무관하게 닫힌다.
+       */
+      const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
+      endSessionStreams(session.handle, displaced ? "superseded" : null);
+    }
   }
 
   /**
@@ -2071,18 +2088,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     return null;
   }
 
-  /** 보유자 변화는 이 기계 앞에 앉은 사람에게만 간다. 원격은 다른 세션의 존재를 알 이유가 없다. */
-  function broadcastControlChanged(): void {
+  /**
+   * 보유자 변화는 이 기계 앞에 앉은 사람에게만 간다. 원격은 다른 세션의 존재를 알 이유가 없다.
+   *
+   * `resend`는 사실이 그대로일 때도 프레임을 한 번 더 내보낸다. 유령 보유자를 향한 회수처럼
+   * 서버는 아무것도 바뀌지 않았는데 화면만 틀린 것을 그리고 있는 자리에만 쓴다.
+   */
+  function broadcastControlChanged(resend = false): void {
     /**
      * 실제로 보유자가 바뀐 경우에만 알린다.
      *
-     * 이 함수는 원격 세션이 사라지는 모든 자리에서 불리는데, 그중에는 제어를 쥔 적 없는
-     * monitoring 세션의 만료·회수도 있다. 그때까지 신호로 세면 터미널이 통째로 끊겼다
+     * 이 함수는 원격 세션이 오가는 모든 자리에서 불리는데, 그중에는 제어를 쥔 적 없는
+     * monitoring 세션의 조인·만료·회수도 있다. 그때까지 신호로 세면 터미널이 통째로 끊겼다
      * 다시 붙으며 scrollback을 재생한다 — 아무것도 바뀌지 않았는데 화면이 깜빡인다.
+     *
+     * "없음"도 하나의 사실이므로 null끼리도 같은 것으로 본다. 옛 비교는 `undefined`와 `null`을
+     * 견주어 보유자가 없는 동안의 모든 호출을 프레임으로 만들었다 — 걸름이 가장 필요한 상태에서
+     * 걸러 내지 못한 셈이다.
      */
     const holder = currentControlHolder();
-    if (holder?.handle === lastPublishedControlHolder) return;
-    lastPublishedControlHolder = holder?.handle ?? null;
+    const handle = holder?.handle ?? null;
+    if (!resend && handle === lastPublishedControlHolder) return;
+    lastPublishedControlHolder = handle;
     /**
      * 플러그인 쪽이 먼저다. 이미 열려 있는 터미널 소켓은 티켓 발급 시점의 등급을 그대로
      * 들고 있으므로, 화면이 새 사실을 그리기 전에 전송이 그 사실에 맞춰져야 한다.
@@ -2099,16 +2126,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 회수 통지는 끊긴 그 세션에게만. 쿠키는 이미 무효라 다음 요청이 401이 되는데, SPA가 떠 있는
-   * 동안에는 그 401을 아무도 마주치지 않는다 — 이 이벤트가 원격 화면에 안내를 띄우고 스스로
-   * 이동하게 만드는 유일한 신호다.
+   * 이 세션으로 열려 있던 구독을 끝낸다. 세션이 죽어도 이미 열린 SSE는 스스로 끝나지 않으므로,
+   * 남겨 두면 자격을 잃은 기기가 다음 브로드캐스트부터 Operation 갱신을 계속 받는다 — 이
+   * 스트림에는 요청마다 걸리는 세션 게이트가 없다. 끊는 시점을 상대의 새로고침에 맡길 수 없다.
+   * 그쪽 화면이 스스로 물러나 주기를 기다리는 것은 규약을 지키는 클라이언트에만 성립하는
+   * 가정이고, 이 리스너는 인터넷을 향해 있다.
+   *
+   * 안내는 그 위에 얹힌다. 쿠키는 이미 무효라 다음 요청이 401이 되는데, SPA가 떠 있는 동안에는
+   * 그 401을 아무도 마주치지 않는다 — 이 이벤트가 원격 화면에 안내를 띄우는 유일한 신호다.
+   * 사유를 함께 싣는 이유는, 주인이 되찾은 것과 다른 기기가 이어받은 것이 그 화면 앞에 앉은
+   * 사람에게 서로 다른 일을 뜻하기 때문이다.
+   *
+   * `reason`이 null이면 닫기만 하고 아무것도 말하지 않는다. 닫는 일과 알리는 일을 가르는 것이
+   * 이 인자의 존재 이유다 — 둘을 하나로 두면 안내를 건너뛰는 자리가 정리까지 함께 건너뛴다.
    */
-  function notifyControlReclaimed(handle: string): void {
+  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null): void {
     if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot("reclaimed"));
-    for (const subscriber of operationSseSubscribers) {
+    const data = reason === null ? null : encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
+    for (const subscriber of [...operationSseSubscribers]) {
       if (subscriber.sessionHandle !== handle) continue;
-      subscriber.res.write(data);
+      operationSseSubscribers.delete(subscriber);
+      if (data !== null) subscriber.res.write(data);
+      subscriber.res.end();
     }
   }
 

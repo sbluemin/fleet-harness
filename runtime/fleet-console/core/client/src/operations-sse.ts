@@ -1,11 +1,11 @@
 import { fetchObserverStatus, fetchOperations } from "./api.js";
+import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
 import type { ControlHolder, OperationNode } from "./types.js";
 
 const MAX_RECONNECT_DELAY_MS = 30_000;
 const CONTROL_RECLAIM_NAVIGATION_DELAY_MS = 2_500;
-const CONTROL_RECLAIMED_EVENT = "fleet-console:control-reclaimed";
 
 // 누락 스냅샷은 SSE가 열리기 전에만 hydrate해 이후 실시간 프레임을 덮어쓰지 않는다.
 let reconnectDelayMs = 1_000;
@@ -68,8 +68,9 @@ export function connectOperationsSse(): void {
     const msg = e as MessageEvent<string>;
     try {
       const data = JSON.parse(msg.data) as { readonly reason?: unknown };
-      if (!isControlReclaimed(data)) return;
-      window.dispatchEvent(new Event(CONTROL_RECLAIMED_EVENT));
+      if (!isSessionEnded(data)) return;
+      // 사유를 실어 보낸다 — 안내 문구는 "주인이 되찾았다"와 "다른 기기가 이어받았다"로 갈린다.
+      window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: data.reason } }));
       window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);
     } catch {
       // ignore malformed SSE event
@@ -163,6 +164,6 @@ function isControlHolderSnapshot(value: unknown): value is { readonly holder: Co
     && Number.isFinite(value.holder.openedAt);
 }
 
-function isControlReclaimed(value: unknown): value is { readonly reason: "reclaimed" } {
-  return isRecord(value) && Object.keys(value).length === 1 && value.reason === "reclaimed";
+function isSessionEnded(value: unknown): value is { readonly reason: SessionEndedReason } {
+  return isRecord(value) && Object.keys(value).length === 1 && (value.reason === "reclaimed" || value.reason === "superseded");
 }
