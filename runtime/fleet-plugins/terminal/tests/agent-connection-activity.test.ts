@@ -54,8 +54,16 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "not-working" }))).toBe("background");
   });
 
-  it("keeps background-pending working sessions running", () => {
+  it("keeps background-pending working sessions running while the turn is still in flight", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working" }))).toBe("running");
+    expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working", turnState: "running" }))).toBe("running");
+  });
+
+  // 턴이 끝난 뒤에도 스피너는 돈다 — 백그라운드 서브에이전트·워크플로우가 남아 있기 때문이다. 그 구간의
+  // "작업 중"은 호스트의 것이 아니므로 백그라운드로 읽어야 한다. 턴 경계가 유일한 구분자다.
+  it("reads a spinning title after turn end as background work, not a running turn", () => {
+    expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working", turnState: "ended" }))).toBe("background");
+    expect(sessionActivity(makeSession({ attentionPending: true, backgroundPending: true, modelActivity: "working", turnState: "ended" }))).toBe("awaiting");
   });
 
   it("does not notify when entering background and notifies when it returns idle", () => {
