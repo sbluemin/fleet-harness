@@ -17,6 +17,7 @@ const POLL_INTERVAL_MS = 2_000;
  */
 const QR_TARGET_PX = 320;
 
+/** `expired`는 시간이 다한 경우만이 아니라 회수와 신원 갱신까지 아우른다 — 사용자에게는 모두 "이 링크로는 더 붙을 수 없다"는 하나의 결말이다. */
 type PairPhase = "waiting" | "paired" | "expired";
 
 /**
@@ -98,21 +99,25 @@ export function PairDeviceDialog({ link, onClose, openerRef }: {
   }, [link.expiresAt, phase]);
 
   /**
-   * 성사는 기기가 늘었다는 사실이 아니라 이 링크가 미사용 목록에서 빠졌다는 사실로 판정한다.
+   * 성사는 두 사실이 함께 성립할 때만 인정한다 — 이 링크가 미사용 목록에서 빠졌고, 그 순간
+   * 기기가 하나 늘었다는 것.
    *
-   * 기기 수의 증가로 읽으면 두 방향으로 틀린다. 화면은 기기마다 새 링크를 만들라고 안내하므로
-   * 미사용 링크가 여럿인 것이 정상인데, 그때 다른 링크로 붙은 기기가 이 창을 성공으로 만들어
-   * 아직 쓰지 않은 QR을 거두게 한다. 반대로 첫 조회가 끝나기 전에 이 링크가 쓰이면 그 기기가
-   * 기준 집합에 들어가 성사가 영영 보고되지 않는다.
+   * 어느 한쪽만 보면 각각 다른 방향으로 틀린다. 기기 수만 보면, 화면이 기기마다 새 링크를
+   * 만들라고 안내하므로 미사용 링크가 여럿인 것이 정상인데 다른 링크로 붙은 기기가 이 창을
+   * 성공으로 만들어 아직 쓰지 않은 QR을 거두게 한다. 링크의 부재만 보면, 다른 창에서 이 링크를
+   * 회수하거나 신원을 갱신했을 때도 아무도 붙지 않은 채 목록에서 빠지므로 거짓 성공이 된다.
    *
-   * 링크는 한 번, 한 기기에만 통하므로 목록에서 빠졌다는 것은 그 자체로 결말이다. 남은 일은
-   * 만료로 빠진 것과 누가 써서 빠진 것을 가르는 것뿐이고, 그것은 만료 시각이 말해 준다.
+   * 둘을 함께 요구하면 그 두 경우가 모두 걸러지고, 남는 것은 만료뿐이라 시계로 가른다.
+   *
+   * 서버는 이 링크가 소비된 것인지 회수된 것인지를 따로 알려 주지 않고, 어느 기기가 이 링크로
+   * 붙었는지도 말해 주지 않는다. 그래서 첫 조회에서 이미 빠져 있던 경우 — 비교할 직전 상태가
+   * 없는 그 한 자리 — 만 근사로 남는다.
    */
   useEffect(() => {
     if (phase !== "waiting") return;
     const controller = new AbortController();
-    // 직전 조회의 기기들 — 성사 여부가 아니라 "어느 기기가 붙었는지" 이름을 고르는 데만 쓴다.
-    let seen: ReadonlySet<string> = new Set();
+    // 직전 조회의 기기들. null은 아직 한 번도 못 봤다는 뜻이며, 판정을 근사로 낮추는 유일한 자리다.
+    let seen: ReadonlySet<string> | null = null;
     let stopped = false;
 
     const poll = () => {
@@ -127,11 +132,15 @@ export function PairDeviceDialog({ link, onClose, openerRef }: {
             setPhase("expired");
             return;
           }
-          // 방금 늘어난 기기가 이 링크로 붙은 기기다. 첫 조회에서 이미 빠져 있었다면 비교할
-          // 직전 상태가 없으므로, 가장 최근에 페어링된 기기를 이름으로 삼는다.
-          const arrived = seen.size > 0
-            ? status.devices.find((device) => !seen.has(device.id)) ?? null
-            : null;
+          const arrived = seen === null
+            ? null
+            : status.devices.find((device) => !seen!.has(device.id)) ?? null;
+          if (seen !== null && arrived === null) {
+            // 만료 전에 빠졌는데 늘어난 기기가 없다 — 회수되었거나 신원이 갱신되었다.
+            // 어느 쪽이든 이 링크로는 더 붙을 수 없으므로 성사로 읽지 않는다.
+            setPhase("expired");
+            return;
+          }
           const newest = [...status.devices].sort((left, right) => right.pairedAt - left.pairedAt)[0] ?? null;
           setPairedDevice((arrived ?? newest)?.device ?? null);
           setPhase("paired");
