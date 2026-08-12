@@ -12,6 +12,7 @@ const UI = {
   navHierarchy: { ko: "구성", en: "How it works" },
   navProviders: { ko: "게이트웨이", en: "Gateway" },
   navModes:     { ko: "3 모드", en: "3 Modes" },
+  navAnywhere:  { ko: "어디서든", en: "Anywhere" },
   navDiffs:     { ko: "차별점", en: "Why us" },
   primaryAria:  { ko: "주요 메뉴", en: "Primary" },
 
@@ -62,6 +63,10 @@ const UI = {
   ordersTitle: { ko: ["항상 켜져 있는", "여섯 개의 명령."], en: ["Six orders,", "always on."] },
   ordersLede:  { ko: "모든 작업 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every task — and never switched off, even on conversational requests." },
   active:      { ko: "Active", en: "Active" },
+
+  anywhereEy:    { ko: "Remote access · Experimental", en: "Remote access · Experimental" },
+  anywhereTitle: { ko: ["같은 함대를,", "어떤 화면에서든."], en: ["The same fleet,", "on any screen."] },
+  anywhereLede:  { ko: "Operation의 주인은 서버이므로, 화면은 골라 쓰면 된다. 브라우저, 네이티브 데스크톱, 그리고 QR 한 번으로 페어링되는 Android 앱 — 책상에 두고 온 세션이 주머니 속에서 그대로 이어진다.", en: "The server owns every Operation, so the screen is your choice: a browser, a native desktop window, or the Android app that pairs with one QR scan. The session you left on the desk continues in your pocket." },
 
   diffsEy:    { ko: "What sets it apart · 04", en: "What sets it apart · 04" },
   diffsTitle: { ko: ["왜 또 하나의", "에이전트 프레임워크가 아닌가."], en: ["Why this isn't", "just another agent framework."] },
@@ -128,15 +133,13 @@ const PROVIDERS = [
     cli: "subscription",
     color: "#d4af37",
     mission: {
-      ko: "한 구독으로 여러 벤더의 모델에 닿는 가장 넓은 경로. Composer부터 Grok·GPT·Claude·Kimi까지 같은 게이트웨이 뒤에 선다.",
-      en: "The widest path: one subscription reaching models from several vendors — Composer, Grok, GPT, Claude, and Kimi all stand behind the same gateway.",
+      ko: "쓰던 Cursor 구독으로 Cursor의 에이전트 라인업에 닿는다. Auto는 작업에 맞는 모델을 Cursor가 스스로 고르는 좌석이고, Composer와 Grok은 Fast 변형까지 따로 선다.",
+      en: "Rides the Cursor subscription you already have into Cursor's agent lineup. Auto is the seat where Cursor picks the model for the task; Composer and Grok each stand with their own Fast variant.",
     },
     models: [
-      { ko: "Composer 2.5", en: "Composer 2.5" },
-      { ko: "Grok 4.5", en: "Grok 4.5" },
-      { ko: "GPT-5.6 Sol", en: "GPT-5.6 Sol" },
-      { ko: "Claude Opus 5 · Claude Fable 5 — 각각 Max Mode 1M 변형 포함", en: "Claude Opus 5 and Claude Fable 5 — each with a Max Mode 1M variant" },
-      { ko: "Kimi K3 · Auto", en: "Kimi K3 and Auto" },
+      { ko: "Auto — Cursor가 모델을 선택", en: "Auto — Cursor picks the model" },
+      { ko: "Composer 2.5 — Fast 변형 포함", en: "Composer 2.5 — Fast variant included" },
+      { ko: "Grok 4.5 — Fast 변형 포함", en: "Grok 4.5 — Fast variant included" },
     ],
   },
   {
@@ -163,9 +166,10 @@ const PROVIDERS = [
       en: "The widest bench of open-weight models. This is where the breadth comes from when mechanical, high-volume work is spread across cheaper identities.",
     },
     models: [
-      { ko: "MiniMax M3 · Qwen3 Max", en: "MiniMax M3 and Qwen3 Max" },
-      { ko: "DeepSeek V4 · GLM-5", en: "DeepSeek V4 and GLM-5" },
-      { ko: "Kimi K3 · MiMo", en: "Kimi K3 and MiMo" },
+      { ko: "MiniMax M3 · Qwen3.8 Max", en: "MiniMax M3 and Qwen3.8 Max" },
+      { ko: "DeepSeek V4 Flash · Pro", en: "DeepSeek V4 Flash and Pro" },
+      { ko: "GLM-5.2 · Kimi K3 · HY3", en: "GLM-5.2, Kimi K3, and HY3" },
+      { ko: "MiMo V2.5 · Pro", en: "MiMo V2.5 and Pro" },
       { ko: "Grok 4.5 · GPT-5.6 Luna", en: "Grok 4.5 and GPT-5.6 Luna" },
     ],
   },
@@ -240,6 +244,27 @@ const ORDERS = [
     name: "Result Integrity",
     kr: { ko: "결과 무결성", en: "Result Integrity" },
     desc: { ko: "위임한 실행이 돌려준 결과는 관련성·완결성·내부 충돌 3축으로 검사하고, 파일을 바꾼 실행은 서사가 아니라 diff를 직접 읽어 판정한다. 실패가 누적되면 사용자에게 보고한다.", en: "Every delegated result is checked on three axes — relevance, completeness, internal consistency — and a run that changed files is judged by reading its diff, never its own summary. Repeated failure is reported to you." },
+  },
+];
+
+const ANYWHERE = [
+  {
+    n: "01",
+    name: "Pairing Is the Only Door",
+    kr: { ko: "문은 페어링 하나뿐", en: "Pairing Is the Only Door" },
+    body: { ko: "원격 리스너는 세션 없이는 다른 무엇에도 답하지 않는다. 액세스 링크는 QR 하나로 전달되고, 한 번만 쓰이며, 안 쓰면 15분에 만료된다. 그러나 페어링 자체는 양쪽의 재시작을 견딘다 — 링크는 일회용, 신뢰는 영속.", en: "A remote listener answers nothing without a session. Access links travel as one QR, work once, and expire in 15 minutes unused — while the pairing itself survives restarts on both ends. Links are disposable; trust is durable." },
+  },
+  {
+    n: "02",
+    name: "Certificates, Pinned",
+    kr: { ko: "인증서 핀 고정", en: "Certificates, Pinned" },
+    body: { ko: "모든 링크는 콘솔의 인증서 지문을 싣고 다닌다. 다른 인증서로 답하는 콘솔은 그냥 열리지 않는다. Android 셸은 WebView가 한 바이트라도 보기 전에 네이티브로 핀을 검증한다.", en: "Every link carries the console's certificate fingerprint; a console answering with a different certificate simply does not open. The Android shell verifies the pin natively before the WebView sees a single byte." },
+  },
+  {
+    n: "03",
+    name: "One Controller at a Time",
+    kr: { ko: "조종간은 한 번에 하나", en: "One Controller at a Time" },
+    body: { ko: "다른 기기가 제어권을 잡으면 나머지는 명시적인 커튼 뒤에서 관전으로 내려간다 — 하나의 PTY에 두 개의 키보드는 없다. 보기만 하는 모니터링 전용 링크가 따로 있고, NAT 경로의 공개 도달은 별도의 확인까지 요구하는 두 번째 옵트인이다.", en: "When another device takes control, everyone else drops to watching behind an explicit curtain — no two keyboards on one PTY. Monitoring-only links exist for screens that should never type, and public reach over NAT is a second, explicitly acknowledged opt-in." },
   },
 ];
 
@@ -334,6 +359,7 @@ function Nav() {
           <a href="#hierarchy">{t(UI.navHierarchy)}</a>
           <a href="#providers">{t(UI.navProviders)}</a>
           <a href="#modes">{t(UI.navModes)}</a>
+          <a href="#anywhere">{t(UI.navAnywhere)}</a>
           <a href="#diffs">{t(UI.navDiffs)}</a>
         </nav>
         <a href="https://github.com/sbluemin/fleet-harness.git" className="nav-cta" target="_blank" rel="noreferrer">
@@ -656,6 +682,35 @@ function Orders() {
   );
 }
 
+// ───── Anywhere (remote access) ─────
+function Anywhere() {
+  const title = t(UI.anywhereTitle);
+  return (
+    <section className="section" id="anywhere">
+      <div className="shell">
+        <div className="section-head">
+          <span className="eyebrow">{t(UI.anywhereEy)}</span>
+          <div className="divider"></div>
+          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
+          <p className="lede">{t(UI.anywhereLede)}</p>
+        </div>
+        <div className="diff-list">
+          {ANYWHERE.map(d => (
+            <div className="diff-row" key={d.n}>
+              <div className="diff-num">{d.n}</div>
+              <div className="diff-name">
+                <span>{t(d.kr)}</span>
+                {d.name}
+              </div>
+              <div className="diff-body">{t(d.body)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 // ───── Differentiators ─────
 function Diffs() {
   const title = t(UI.diffsTitle);
@@ -725,7 +780,7 @@ function Closer() {
           <div className="code-block" style={{textAlign:"left", maxWidth: 540, margin: "0 auto 36px"}}>
             <span className="cm">{t(UI.installCmt)}</span><br/>
             <span className="pr">$</span> npm install -g <span className="ar">@dotobokuri/fleet-console</span><br/>
-            <span className="pr">$</span> fleet-console <span className="cm">{t(UI.setSailCmt)}</span>
+            <span className="pr">$</span> fleet console <span className="cm">{t(UI.setSailCmt)}</span>
           </div>
           <div className="closer-actions">
             <a className="btn-primary" href="https://github.com/sbluemin/fleet-harness.git" target="_blank" rel="noreferrer">
@@ -759,6 +814,7 @@ function App() {
         <Backends />
         <Providers />
         <Modes />
+        <Anywhere />
         <Orders />
         <Diffs />
         <Compare />
