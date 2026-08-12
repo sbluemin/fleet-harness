@@ -428,6 +428,232 @@
   border-radius: var(--radius-sm);
 }
 
+/* ===== Settings — 목록 화면과 상세 화면 ===== */
+
+.mobile-settings-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.mobile-settings-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.mobile-settings-back {
+  display: grid;
+  place-items: center;
+  min-width: 40px;
+  min-height: 40px;
+  margin-left: calc(var(--space-2) * -1);
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.mobile-settings-back svg {
+  width: 20px;
+  height: 20px;
+}
+
+.mobile-settings-back:focus-visible {
+  color: var(--text-primary);
+  outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* 헤더는 뒤로가기·제목·저장 표시 세 자리다. 제목이 가운데 자리를 다 쓰도록 남은 둘은 늘어나지 않는다. */
+.mobile-settings-page .mobile-list-header {
+  justify-content: flex-start;
+  gap: var(--space-2);
+}
+
+.mobile-settings-page .mobile-list-header h1 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-settings-saving {
+  flex: none;
+  color: var(--aurora-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.mobile-settings-groups {
+  display: grid;
+  align-content: start;
+  gap: var(--space-4);
+  padding: var(--space-3) var(--space-4) var(--space-8);
+}
+
+.mobile-settings-group {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.mobile-settings-group-label {
+  margin: 0;
+  padding: 0 var(--space-1);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* 한 그룹은 이어진 한 판이고 행 사이의 선이 경계다 — 행마다 카드를 세우면 목록이 다시 더미가 된다. */
+.mobile-settings-rows {
+  display: grid;
+  overflow: hidden;
+  background: var(--ink-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.mobile-settings-row {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  min-height: 56px;
+  padding: var(--space-2) var(--space-3);
+  color: var(--text-primary);
+  text-align: left;
+  background: transparent;
+  border: 0;
+  border-top: 1px solid var(--hairline);
+}
+
+.mobile-settings-row:first-child {
+  border-top: 0;
+}
+
+.mobile-settings-row:focus-visible,
+.mobile-settings-row:active {
+  background: var(--ink-mid);
+  outline: none;
+}
+
+.mobile-settings-row-icon {
+  display: grid;
+  place-items: center;
+  color: var(--brass);
+}
+
+.mobile-settings-row-icon svg {
+  width: 17px;
+  height: 17px;
+}
+
+.mobile-settings-row-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.mobile-settings-row-copy strong,
+.mobile-settings-row-copy span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-settings-row-copy strong {
+  font-weight: var(--weight-medium);
+}
+
+.mobile-settings-row-copy span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/*
+ * 상세는 데스크톱 섹션 본문을 그대로 싣는다. 그 본문의 카드는 넓은 열 안에서 서로를 가르는
+ * 껍질이지만, 한 섹션만 있는 화면에서는 자기 자신을 한 번 더 감싸는 테두리일 뿐이다 — 폰에서
+ * 카드 껍질을 벗기면 그 안쪽 카드(remote-card 등)가 유일한 카드 층으로 남고, 실측 268px까지
+ * 좁아졌던 본문 폭이 화면 폭으로 돌아온다.
+ */
+.mobile-settings-detail {
+  display: grid;
+  align-content: start;
+  gap: var(--space-6);
+  padding: var(--space-4) var(--space-4) var(--space-8);
+}
+
+.mobile-settings-detail .global-settings-card {
+  gap: var(--space-5);
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.mobile-settings-detail .global-settings-row {
+  align-items: stretch;
+  flex-direction: column;
+}
+
+.mobile-settings-detail .global-settings-row-text {
+  max-width: none;
+}
+
+/*
+ * 손가락이 닿는 최소 치수. 데스크톱 값은 포인터를 기준으로 정해져 있어 폰에서는 21~38px까지
+ * 내려가므로(실측), 이 화면 안에서만 44px 바닥을 깐다. 라디오·체크박스는 자기 라벨 전체가
+ * 타깃이라 여기서 늘리면 상자만 커지고 정렬이 깨진다.
+ */
+.mobile-settings-detail button,
+.mobile-settings-detail select,
+.mobile-settings-detail input:not([type="radio"]):not([type="checkbox"]) {
+  min-height: 44px;
+}
+
+.mobile-settings-detail label:has(> input[type="radio"]),
+.mobile-settings-detail label:has(> input[type="checkbox"]) {
+  min-height: 44px;
+  align-items: center;
+}
+
+/*
+ * 데스크톱에서 테마 카드는 남는 가로를 채우며 흐르지만, 폰에서는 그 흐름이 카드마다 다른 폭의
+ * 계단이 된다(실측 158·145·132px 2행). 선택지가 셋뿐이라 한 열로 세우면 계단도 사라지고 각
+ * 카드가 이름 전체를 싣는다.
+ */
+.mobile-settings-detail .theme-picker,
+.mobile-settings-detail .theme-dark-tray {
+  flex-flow: column;
+  /* 가로였을 때의 align-items: center가 세로에서는 교차축이 되어 각 항목이 제 글자 폭으로
+     가운데 정렬된다 — 그러면 열로 세운 의미가 없으므로 교차축을 다시 늘린다. */
+  align-items: stretch;
+}
+
+/* 행이 세로로 서면 뒤따르는 액션은 stretch를 상속해 폭 전체를 먹는 판이 된다 — 자기 글자만큼만 쓴다. */
+.mobile-settings-detail .global-settings-row > button {
+  align-self: flex-start;
+}
+
+/* 상호배타 선택지는 열 폭을 균등하게 나눈다 — 늘어난 껍질 안에서 글자 폭 그대로 왼쪽에 몰리면
+   빈 오른쪽이 눌리는 자리로 보인다. */
+.mobile-settings-detail .theme-mode-seg > button,
+.mobile-settings-detail .segmented > .segmented-option {
+  flex: 1;
+}
+
 .operation-body-parking {
   position: fixed;
   left: -10000px;

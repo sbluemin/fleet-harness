@@ -48,7 +48,7 @@ interface SettingsSectionNavItem {
   readonly eyebrow: string;
 }
 
-interface PluginSettingsNavItem {
+export interface PluginSettingsNavItem {
   readonly id: PluginSettingsSectionId;
   readonly pluginId: string;
   readonly pluginLabel: string;
@@ -216,7 +216,7 @@ export function GlobalSettings() {
 }
 
 // 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 PluginErrorBoundary에 잡힌다.
-function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
+export function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
 }
 
@@ -247,7 +247,7 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
   }
 }
 
-function collectPluginSettingsSections(
+export function collectPluginSettingsSections(
   plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: LocalizedText; readonly render?: () => ReactNode }[] }[],
   locale: ConsoleLocale,
   t: T,
@@ -281,7 +281,7 @@ function formatPluginLabel(pluginId: string, t: T): string {
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
 }
 
-function ThemeCard({
+export function ThemeCard({
   state,
   saving,
 }: {
@@ -367,7 +367,7 @@ function ThemeCard({
   );
 }
 
-function TypographyCard({
+export function TypographyCard({
   state,
   saving,
 }: {
@@ -478,7 +478,7 @@ function TypographyCard({
   );
 }
 
-function GeneralSettingsCard({
+export function GeneralSettingsCard({
   state,
   saving,
 }: {
@@ -542,7 +542,7 @@ const ROTATE_ARM_TIMEOUT_MS = 5_000;
 /** README와 같은 최신 Desktop 아티팩트 진입점 — bare /releases가 아니라 latest로 바로 보낸다. */
 const FLEET_DESKTOP_RELEASES_URL = "https://github.com/sbluemin/fleet-harness/releases/latest";
 
-function RemoteAccessSection({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
+export function RemoteAccessSection({ remote, saving }: { readonly remote: RemoteAccessState; readonly saving: boolean }) {
   const t = useT();
   const [status, setStatus] = useState<RemoteAccessStatus | null>(null);
   const [link, setLink] = useState<RemoteAccessLink | null>(null);

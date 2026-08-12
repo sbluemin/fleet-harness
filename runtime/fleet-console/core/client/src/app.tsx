@@ -36,6 +36,7 @@ import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fet
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useMobileSessionOpen } from "./mobile/mobile-store.js";
 import { MobileTabBar } from "./mobile/mobile-tab-bar.js";
+import { MobileSettingsPage } from "./mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "./mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
@@ -340,7 +341,7 @@ export function App() {
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
-                <Route path="/settings" element={<GlobalSettings />} />
+                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <GlobalSettings />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>

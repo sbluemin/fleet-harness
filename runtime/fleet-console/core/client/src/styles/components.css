@@ -335,7 +335,10 @@
   }
 }
 
-@media (max-width: 720px) {
+/* 경계는 모바일 셸이 켜지는 폭(view-mode-store의 max-width: 767px)과 같아야 한다. 720px에 두면
+   721~767px 구간이 모바일 셸 안에서 데스크톱 가로 배치로 남아, 설명 문단이 세로 리본으로 눌린다
+   (실측 65px 폭). Fleet Console 앱은 폭과 무관하게 모바일 셸을 켜므로 그 구간이 실제로 열린다. */
+@media (max-width: 767px) {
   .global-settings-page {
     width: min(100vw - 28px, 760px);
   }
