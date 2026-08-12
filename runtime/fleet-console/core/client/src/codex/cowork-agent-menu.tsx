@@ -33,7 +33,7 @@ export function CoworkAgentMenu({ models, efforts, model, effort, onSelect }: Co
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const flyoutRef = useRef<HTMLDivElement | null>(null);
   const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [flyout, setFlyout] = useState<{ readonly model: string; readonly top: number; readonly opensLeft: boolean } | null>(null);
+  const [flyout, setFlyout] = useState<{ readonly model: string; readonly top: number; readonly placement: "left" | "right" | "overlay" } | null>(null);
 
   // 세 모델이 같은 강도 사다리를 쓰므로 트랙 행은 하나로 충분하다 — 어느 행에서 열었는지는
   // 플라이아웃의 model이 들고 있고, 고르는 순간 그 모델까지 함께 확정된다.
@@ -71,9 +71,18 @@ export function CoworkAgentMenu({ models, efforts, model, effort, onSelect }: Co
     const root = rootRef.current;
     const row = rowRefs.current.get(rowModel);
     if (!root || !row) return;
-    // 도크는 문서 중앙에 떠 있어 보통 왼쪽이 넓다 — 왼쪽에 폭이 안 나올 때만 오른쪽으로 편다.
-    const opensLeft = root.getBoundingClientRect().left >= FLYOUT_WIDTH + 8;
-    setFlyout({ model: rowModel, top: row.offsetTop, opensLeft });
+    // 도크는 대개 문서 중앙에 떠 왼쪽이 넓다 — 왼쪽부터 재고, 안 되면 오른쪽을 재고, 좁은
+    // 화면(≤720px에서 팝오버가 도크 폭으로 늘어난다)처럼 양쪽 다 폭이 안 나오면 화면 밖으로
+    // 여는 대신 메뉴 위에 겹쳐 행 아래로 연다 — 가려지는 것은 조작 불능보다 낫다.
+    const rect = root.getBoundingClientRect();
+    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+    const placement = rect.left >= FLYOUT_WIDTH + 8
+      ? "left"
+      : viewportWidth - rect.right >= FLYOUT_WIDTH + 8
+        ? "right"
+        : "overlay";
+    const top = placement === "overlay" ? row.offsetTop + row.offsetHeight + 4 : row.offsetTop;
+    setFlyout({ model: rowModel, top, placement });
   }, [cancelClose]);
 
   const focusTrack = useCallback(() => {
@@ -148,7 +157,7 @@ export function CoworkAgentMenu({ models, efforts, model, effort, onSelect }: Co
           // 슬라이더 하나를 담는 상자다 — menu로 선언하면 보조기술이 방향키를 항목 이동으로 가로챈다.
           role="group"
           aria-label={t("launchVariants.effort.track")}
-          className={`cowork-effort-flyout${flyout.opensLeft ? " is-left" : ""}`}
+          className={`cowork-effort-flyout${flyout.placement === "left" ? " is-left" : flyout.placement === "overlay" ? " is-overlay" : ""}`}
           style={{ top: flyout.top }}
           onPointerEnter={cancelClose}
           onPointerLeave={scheduleClose}

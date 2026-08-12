@@ -2909,6 +2909,8 @@ kbd {
   padding: var(--space-2) var(--space-3);
 }
 .cowork-effort-flyout.is-left { left: auto; right: calc(100% + var(--space-2)); }
+/* 좁은 화면의 마지막 자리 — 옆이 아니라 메뉴 위, 손잡이 아래에 겹쳐 선다. */
+.cowork-effort-flyout.is-overlay { left: auto; right: var(--space-1); }
 
 /* 칩의 강도 표식 — 모델명 옆에서 사다리 위 현재 단을 되비친다. */
 .cowork-chip-effort { display: inline-flex; align-items: center; margin-left: 2px; }

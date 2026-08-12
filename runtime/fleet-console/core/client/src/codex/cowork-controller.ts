@@ -130,6 +130,33 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     }));
   };
 
+  // 세션 설정 동기화는 한 번에 하나만 비행한다 — 트랙 드래그는 단을 지날 때마다 변경을 내므로,
+  // 병렬 POST의 완료 순서가 뒤집히면 중간 강도가 세션의 최종값으로 남는다. 비행 중 변경은 표시만
+  // 해 두고, 착지 후 그 시점의 최신 settings로 한 번만 더 보낸다(중간 값은 싣지 않는다).
+  let settingsSyncInFlight = false;
+  let settingsSyncQueued = false;
+  const syncSessionSettings = () => {
+    if (!session || disposed) return;
+    if (settingsSyncInFlight) {
+      settingsSyncQueued = true;
+      return;
+    }
+    settingsSyncInFlight = true;
+    void updateCoworkSettings(options.theaterId, session.id, settings)
+      .then((next) => { if (!disposed) session = next; })
+      .catch((cause) => {
+        error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed");
+        renderDock();
+      })
+      .finally(() => {
+        settingsSyncInFlight = false;
+        if (settingsSyncQueued) {
+          settingsSyncQueued = false;
+          syncSessionSettings();
+        }
+      });
+  };
+
   const handleSelect = (model: string, effort: string) => {
     const modelChanged = model !== settings.model;
     settings = { model, effort };
@@ -137,8 +164,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     if (modelChanged) {
       // 모델이 바뀌면 강도 사다리가 달라질 수 있다 — 재조회가 강도를 정규화한 뒤 도크를 다시 세운다.
       void updateOptions()
-        .then(() => (session ? mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)) : undefined))
-        .then(renderDock)
+        .then(() => { syncSessionSettings(); renderDock(); })
         .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
       return;
     }
@@ -146,10 +172,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     // 드래그 중인 트랙과 열린 플라이아웃을 죽인다. 칩 표식은 제자리 패치, 메뉴는 리렌더만 한다.
     patchChipEffort();
     mountSettingsSelectIfNeeded();
-    if (!session) return;
-    void updateCoworkSettings(options.theaterId, session.id, settings)
-      .then((next) => { if (!disposed) session = next; })
-      .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
+    syncSessionSettings();
   };
 
   // 칩의 강도 표식 — 사다리 위 몇 번째 단인지 실행 메뉴 손잡이와 같은 글리프로 되비친다.
@@ -234,7 +257,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       <div class="cowork-bar${running ? " is-running" : ""}" data-cowork-form>
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
         <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
-        <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
+        <input class="cowork-dock-input" name="prompt" autocomplete="off" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
         <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}${chipEffortGauge()}</button>
         ${running
           ? `<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="${escapeAttribute(t("codex.cowork.stopAria"))}"><span aria-hidden="true"></span></button>`
@@ -420,7 +443,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
   const updateOptions = async () => {
-    settings = { ...settings, model: normalizeRememberedModel(settings.model) };
     optionsDto = await fetchCoworkOptions(options.theaterId, settings.model || undefined);
     // 저장값이 무효하면 제품 기본값(sonnet/low)을 우선 채택한다.
     const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
@@ -838,16 +860,12 @@ function stripFrontmatter(markdown: string): string { return markdown.replace(/^
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 // 저장돼 있던 `cli`는 읽지 않는다 — Cowork가 Agent CLI를 고르지 않게 되면서 의미가 사라졌다.
-// 옛 값이 남아 있어도 무시될 뿐이라 마이그레이션이 필요 없다.
-function normalizeRememberedModel(model: string): string {
-  return model === "fable" ? "fable[1m]" : model;
-}
+// 목록에서 빠진 모델(fable 계열 등)의 옛 저장값도 마이그레이션이 필요 없다 — 옵션 재조회가
+// 목록 밖 값을 기본값으로 되돌린다.
 function readSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
-    const settings = { model: typeof saved.model === "string" ? normalizeRememberedModel(saved.model) : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
-    if (settings.model !== saved.model) saveSettings(settings);
-    return settings;
+    return { model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
   } catch { return { model: "", effort: "low" }; }
 }
 function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }

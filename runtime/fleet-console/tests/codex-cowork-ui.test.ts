@@ -106,18 +106,20 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("migrates a stored bare Fable setting before roster matching", async () => {
+  it("recovers a stored model that left the lineup by falling back to the product default", async () => {
+    // fable 계열은 더 이상 cowork 목록에 없다 — 옛 저장값은 마이그레이션 없이 재조회가 기본값으로 되돌린다.
     localStorage.setItem("fleet.codex.cowork.settings", JSON.stringify({ model: "fable", effort: "max" }));
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["fable[1m]"], efforts: ["max"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["opus[1m]", "sonnet", "haiku"], efforts: ["low", "medium", "high"], defaultModel: "sonnet", defaultEffort: "low" }));
       return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
     const { article, body } = host();
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("model=fable%5B1m%5D"))).toBe(true));
-    expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings")!)).toMatchObject({ model: "fable[1m]" });
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings")!)).toEqual({ model: "sonnet", effort: "low" });
+    });
     controller.destroy();
     article.remove();
   });
@@ -723,6 +725,58 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => {
       expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings") ?? "{}")).toEqual({ model: "opus[1m]", effort: "medium" });
     });
+
+    controller.destroy();
+  });
+
+  it("serializes session settings writes during a drag: one in flight, latest wins", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releaseFirst: (() => void) | null = null;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const settingsPosts: Array<{ model?: string; effort?: string }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["low", "medium", "high"], defaultModel: "gpt", defaultEffort: "low" }));
+      if (url.endsWith("/settings")) {
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { model?: string; effort?: string };
+        settingsPosts.push(payload);
+        // 첫 쓰기는 게이트가 풀릴 때까지 착지하지 못한다 — 드래그 중 병렬 쓰기가 있었다면
+        // 두 번째 POST가 이 사이에 이미 도착해 순서 역전을 재현한다.
+        if (settingsPosts.length === 1) await firstGate;
+        return new Response(JSON.stringify(sessionDto({ model: payload.model, effort: payload.effort })));
+      }
+      return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1));
+    article.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    // 드래그처럼 연속으로 두 단을 지난다: low → medium(첫 쓰기 비행) → high(대기).
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await vi.waitFor(() => expect(settingsPosts).toHaveLength(1));
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    // 첫 쓰기가 비행 중인 동안 두 번째 쓰기는 출발하지 않는다 — 직렬화가 없으면 여기서 2가 된다.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settingsPosts).toHaveLength(1);
+    expect(settingsPosts[0]).toMatchObject({ effort: "medium" });
+
+    releaseFirst!();
+    // 착지 후 최신 값(high) 하나만 더 실린다 — 중간 값 재전송이나 병렬 비행이 없다.
+    await vi.waitFor(() => expect(settingsPosts).toHaveLength(2));
+    expect(settingsPosts[1]).toMatchObject({ effort: "high" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settingsPosts).toHaveLength(2);
 
     controller.destroy();
   });

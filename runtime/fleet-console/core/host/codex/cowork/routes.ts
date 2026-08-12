@@ -1,15 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { MemoryPaths } from "@dotobokuri/fleet-wiki";
-import { NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 import type { CoworkAnnotationDto, CoworkService, CoworkStoredEvent } from "@dotobokuri/fleet-wiki/cowork";
 import { encodeSseData } from "../../sse.js";
 import { withSecurityHeaders } from "../contracts.js";
 
 const CONFLICT_ERRORS = new Set(["cowork_busy", "cowork_apply_stale", "cowork_apply_busy", "cowork_apply_stale_revision"]);
 
-// Cowork는 문서 위 경량 코워크라 게이트웨이 5단 중 상위 두 단(xhigh/max)은 내리지 않는다.
-// 목록을 좁히는 곳은 이 하나다: 클라이언트는 받은 목록만 그리고, 저장돼 있던 상위 단은
-// 옵션 재조회에서 기본값으로 정규화된다.
+// Cowork는 문서 위 경량 코워크다 — 모델은 상용 축(opus[1m]/sonnet/haiku)만 싣고 fable은
+// 내리지 않으며, 강도도 게이트웨이 5단 중 상위 두 단(xhigh/max)을 내리지 않는다. 목록을 좁히는
+// 곳은 이 하나다: 클라이언트는 받은 목록만 그리고, 목록 밖 저장값은 옵션 재조회가 기본값으로
+// 정규화한다.
+const COWORK_MODELS = ["opus[1m]", "sonnet", "haiku"] as const;
 const COWORK_EFFORTS = ["low", "medium", "high"] as const;
 
 export async function handleCoworkRequest(request: IncomingMessage, response: ServerResponse, context: { workspaceId: string; paths: MemoryPaths; coworkService: CoworkService; allowedOrigins: Set<string>; port: number; admitted: boolean }): Promise<boolean> {
@@ -26,7 +27,7 @@ export async function handleCoworkRequest(request: IncomingMessage, response: Se
     // Cowork는 더 이상 Agent CLI를 고르지 않는다 — 모델 하나만 고르고, 전송은 Console의 AI
     // Gateway가 담당한다. 저장돼 있던 모델이 목록에서 사라졌어도 500이 아니라 기본값으로 복구한다.
     if (request.method === "GET" && parts.length === 3 && parts[2] === "options") {
-      const models = [...NATIVE_CLAUDE_MODEL_ALIASES];
+      const models = [...COWORK_MODELS];
       const efforts = [...COWORK_EFFORTS];
       // cowork 제품 기본은 경량 모델이다.
       const defaultModel = models.includes("sonnet") ? "sonnet" : models[0] ?? "";
