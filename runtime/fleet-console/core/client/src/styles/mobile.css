@@ -444,6 +444,7 @@
 }
 
 .mobile-settings-back {
+  position: relative;
   display: grid;
   place-items: center;
   min-width: 40px;
@@ -454,6 +455,18 @@
   background: transparent;
   border: 0;
   border-radius: var(--radius-pill);
+}
+
+/*
+ * 상세를 나가는 주 내비게이션이므로 손끝 치수(44px)를 지켜야 하지만, 상자를 키우면 헤더가 함께
+ * 자란다 — 세로에서는 목록 헤더(48px)와의 단차가 벌어지고, 가로 압축 구간에서는 세로 공간을
+ * 아끼려고 44px로 줄여 둔 헤더를 넘는다. 그래서 그려지는 크기는 다른 헤더 아이콘 버튼(40px)에
+ * 맞춰 두고, 닿는 영역만 넓힌다.
+ */
+.mobile-settings-back::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
 }
 
 .mobile-settings-back svg {

@@ -62,6 +62,19 @@ describe("mobile settings", () => {
   });
 
   /**
+   * Back is how a detail is left, so it owes the same 44px. Growing the box was not the way: the
+   * header grows with it, widening the step from the 48px list header and overrunning the 44px
+   * height the landscape rail query compacts the header to. The drawn size stays with the other
+   * header icons and only the hit area reaches 44.
+   */
+  it("gives Back a 44px hit area without growing the header", () => {
+    const back = MOBILE_CSS.slice(MOBILE_CSS.indexOf(".mobile-settings-back {"));
+    expect(back).toMatch(/\.mobile-settings-back \{[^}]*min-width: 40px;/);
+    expect(back).toMatch(/\.mobile-settings-back::after \{[^}]*inset: -2px;/);
+    expect(back).toMatch(/\.mobile-settings-back::after \{[^}]*position: absolute;/);
+  });
+
+  /**
    * The add-host dialog is portaled to the body, so no ancestor of the detail reaches it. Reached
    * from Remote access on a phone it kept a 28px close button until the floor was written against
    * width instead.
