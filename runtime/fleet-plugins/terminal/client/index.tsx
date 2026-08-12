@@ -43,9 +43,13 @@ export const terminalPlugin = definePlugin({
   },
   // Quick Launch 멘션 전달. 대상 자체가 messageableOperationTypes로 agent 타입에 한정되므로
   // shell 판별 조회 없이 agent 구현으로 곧장 넘긴다 — 래퍼가 hook을 삼키면 호스트는 부재로 읽는다.
-  messageableOperationTypes: [...AGENT_OPERATION_TYPES],
+  // 타입 선언은 agent 구현의 것을 그대로 실어 두 목록이 갈라질 자리를 없앤다.
+  messageableOperationTypes: agentPlugin.messageableOperationTypes,
   messageOperation: async (operationId, text) => {
-    await agentPlugin.messageOperation?.(operationId, text);
+    // 옵셔널 체인은 구현 소실을 무음 전달 성공으로 만든다 — 없으면 던져서 컴포저가 실패를 말하게 한다.
+    const deliver = agentPlugin.messageOperation;
+    if (!deliver) throw new Error("terminal_message_unsupported");
+    await deliver(operationId, text);
   },
   launch: async (ctx) => ctx.kind.type === "shell"
     ? shellPlugin.launch?.(ctx) ?? { id: "" }

@@ -151,6 +151,7 @@ export function buildQuickLaunchMentionGroups(
 export function quickLaunchMentionErrorMessageKey(code: string | null): string {
   switch (code) {
     case "resume_unavailable": return "chrome.quickLaunch.mentionErrorResumeUnavailable";
+    case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";

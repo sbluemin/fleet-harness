@@ -85,6 +85,9 @@ describe("Quick Launch effort surface", () => {
     // 멘션 제출은 런치 좌표가 필요 없으므로 launch 분기에만 이 gate가 선다.
     expect(quickLaunch).toMatch(/if \(!theaterId \|\| !target \|\| !selectedRow\) return;/u);
     expect(quickLaunch).toMatch(/\(mentionTarget !== null \|\| \(!!theaterId && !!target && !!selectedRow\)\);/u);
+    // submitting 재진입 가드는 버튼과 Enter가 공유하는 유일한 이중 제출 방지선이다.
+    expect(quickLaunch).toMatch(/\|\| submitting\) return;/u);
+    expect(quickLaunch).toMatch(/&& !submitting && !deckHasRows/u);
   });
 
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {

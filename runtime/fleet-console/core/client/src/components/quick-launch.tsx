@@ -35,6 +35,9 @@ export function QuickLaunch() {
   const modelChipRef = useRef<HTMLButtonElement | null>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const wasOpenRef = useRef(false);
+  // 컴포저 세션 에포크 — 열림 전이마다 오른다. 대기 중인 멘션 전달 promise가 다음 세션을
+  // 닫거나(성공 콜백) 스테일 에러로 칠하는(실패 콜백) 것을 막는 유일한 신선도 기준이다.
+  const composerEpochRef = useRef(0);
 
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [prompt, setPrompt] = useState("");
@@ -81,6 +84,9 @@ export function QuickLaunch() {
     ? null
     : selectableMentions[Math.min(mentionActiveIndex, selectableMentions.length - 1)] ?? null;
   const mentionDeckOpen = mentionToken !== null;
+  // 행이 있는 덱만 Enter/Tab/제출을 가로챈다 — 매치가 없으면 "@3pm" 같은 프로즈 토큰이므로
+  // Enter는 평소처럼 제출로 흐른다. 행이 있는 동안은 마우스 제출 버튼도 같은 계약으로 잠근다.
+  const deckHasRows = mentionDeckOpen && mentionEntries.length > 0;
 
   // 열릴 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후 열어도 목록이 실제와 어긋나지 않는다.
   useEffect(() => {
@@ -98,6 +104,7 @@ export function QuickLaunch() {
     const opening = open && !wasOpenRef.current;
     wasOpenRef.current = open;
     if (!opening) return;
+    composerEpochRef.current += 1;
     const remembered = readQuickLaunchSelection();
     const rememberedTheater = remembered.theaterId !== null && theaters.some((candidate) => candidate.id === remembered.theaterId)
       ? remembered.theaterId
@@ -203,18 +210,25 @@ export function QuickLaunch() {
     // 상한을 넘긴 요청은 서버가 반드시 400으로 거절한다. 그대로 보내면 컴포저만 닫히고 초안이
     // 사라지므로, 확실히 실패할 요청으로는 넘기지 않는다.
     if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || submitting) return;
+    // 행이 있는 덱이 열려 있는 동안은 어떤 경로(Enter·버튼 클릭)로도 제출하지 않는다 —
+    // '@token' 리터럴이 프롬프트로 발사되는 것을 키보드 가로채기만으로는 못 막는다.
+    if (deckHasRows) return;
     if (mentionTarget) {
       const plugin = registry.plugins.find((candidate) => candidate.id === mentionTarget.pluginId);
       if (!plugin?.messageOperation) return;
       setSubmitting(true);
       setMentionErrorKey(null);
       // 전달 성공 시 화면 전환 없이 닫기만 한다(제품 결정: 지금 보던 것을 떠나지 않는다).
-      // 실패는 초안·멘션을 그대로 지킨 채 거절 사유만 바에 싣는다.
+      // 실패는 초안·멘션을 그대로 지킨 채 거절 사유만 바에 싣는다. 콜백은 세션 에포크를 검사한다 —
+      // 느린 재기동 중 Escape로 닫고 다시 연 컴포저를 옛 promise가 닫거나 스테일 에러로 칠하면 안 된다.
+      const epoch = composerEpochRef.current;
       void plugin.messageOperation(mentionTarget.operationId, text)
         .then(() => {
+          if (composerEpochRef.current !== epoch) return;
           closeQuickLaunch();
         })
         .catch((error: unknown) => {
+          if (composerEpochRef.current !== epoch) return;
           setSubmitting(false);
           setMentionErrorKey(quickLaunchMentionErrorMessageKey(error instanceof Error ? error.message : null));
         });
@@ -232,7 +246,7 @@ export function QuickLaunch() {
     requestQuickLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant });
     navigate("/operations");
     closeQuickLaunch();
-  }, [effort, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, submitting, target, theaterId]);
+  }, [deckHasRows, effort, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -252,7 +266,7 @@ export function QuickLaunch() {
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionDeckOpen) {
       // 방향키는 선택 가능한 행만 순환한다 — awaiting은 dim이자 스킵 대상(제품 결정).
-      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      if (deckHasRows && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
         event.preventDefault();
         if (selectableMentions.length === 0) return;
         const delta = event.key === "ArrowDown" ? 1 : -1;
@@ -262,9 +276,9 @@ export function QuickLaunch() {
         });
         return;
       }
-      // 덱이 열려 있는 동안 Enter는 제출이 아니라 선택이다 — '@token'이 리터럴로 실려 나가는 오발사를 막는다.
-      // Tab은 카드 포커스 트랩보다 먼저 소비한다.
-      if ((event.key === "Enter" && !event.shiftKey) || event.key === "Tab") {
+      // 행이 있는 덱에서 Enter는 제출이 아니라 선택이다 — '@token'이 리터럴로 실려 나가는 오발사를 막는다.
+      // Tab은 카드 포커스 트랩보다 먼저 소비하되, Shift+Tab(역방향 이동)은 트랩에 넘긴다.
+      if (deckHasRows && (event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
         if (event.nativeEvent.isComposing) return;
         event.preventDefault();
         event.stopPropagation();
@@ -289,14 +303,15 @@ export function QuickLaunch() {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     submit();
-  }, [activeMention, clearMention, mentionDeckOpen, mentionTarget, pickMention, prompt.length, selectableMentions.length, submit]);
+  }, [activeMention, clearMention, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt.length, selectableMentions.length, submit]);
 
   if (!open) return null;
 
   const promptLength = prompt.trim().length;
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
   // 멘션 제출은 런치 좌표(theater/model/effort)가 필요 없다 — 행선지가 그 자리를 대신한다.
-  const canSubmit = promptLength > 0 && !overLimit && !submitting
+  // 행이 있는 덱이 열린 동안은 버튼도 잠근다(submit의 deckHasRows 가드와 같은 계약).
+  const canSubmit = promptLength > 0 && !overLimit && !submitting && !deckHasRows
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
@@ -328,7 +343,7 @@ export function QuickLaunch() {
         style={{ maxWidth: CARD_WIDTH_FALLBACK }}
       >
         {mentionDeckOpen ? (
-          <div className="quick-launch-mention-deck" role="listbox" id="quick-launch-mention-deck" aria-label={t("chrome.quickLaunch.mentionDeck")}>
+          <div className="quick-launch-mention-deck theater-menu" role="listbox" id="quick-launch-mention-deck" aria-label={t("chrome.quickLaunch.mentionDeck")}>
             <p className="quick-launch-mention-category">
               <span>{t("chrome.quickLaunch.mentionCategoryOperations")}</span>
               <span className="quick-launch-mention-category-rule" aria-hidden="true" />
@@ -404,7 +419,9 @@ export function QuickLaunch() {
         <div className="quick-launch-bar" ref={barRef}>
           {/* 멘션이 확정되면 런치 3종(theater/model/effort)은 접히고 행선지 태그가 그 자리를 잇는다 —
               한 입력의 행선지는 하나라는 사실을 바가 배타적으로 말한다. */}
-          <span className={`quick-launch-launch-sel${mentionTarget ? " is-hidden" : ""}`}>
+          {/* inert는 접힘 전환(360ms) 동안에도 하위 컨트롤을 포커스 대상에서 즉시 제외한다 —
+              visibility는 전환이 끝나야 뒤집혀 그 창 동안 Tab이 보이지 않는 칩에 닿는다. */}
+          <span className={`quick-launch-launch-sel${mentionTarget ? " is-hidden" : ""}`} inert={mentionTarget !== null || undefined}>
           <button
             ref={theaterChipRef}
             type="button"

@@ -384,6 +384,7 @@ describe("buildQuickLaunchMentionGroups", () => {
 describe("mention rejection messages", () => {
   it("maps delivery codes onto message keys with a generic fallback", () => {
     expect(quickLaunchMentionErrorMessageKey("resume_unavailable")).toBe("chrome.quickLaunch.mentionErrorResumeUnavailable");
+    expect(quickLaunchMentionErrorMessageKey("session_awaiting_input")).toBe("chrome.quickLaunch.mentionErrorAwaiting");
     expect(quickLaunchMentionErrorMessageKey("session_not_found")).toBe("chrome.quickLaunch.mentionErrorGone");
     expect(quickLaunchMentionErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
     expect(quickLaunchMentionErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
@@ -400,6 +401,7 @@ describe("mention rejection messages", () => {
       "chrome.quickLaunch.mentionPlaceholder",
       "chrome.quickLaunch.mentionTarget",
       "chrome.quickLaunch.mentionErrorResumeUnavailable",
+      "chrome.quickLaunch.mentionErrorAwaiting",
       "chrome.quickLaunch.mentionErrorGone",
       "chrome.quickLaunch.mentionErrorDeliveryFailed",
     ];

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -54,6 +54,9 @@ interface AgentRouteDeps {
 
 const AGENT_OPERATION_TYPE = "agent";
 const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
+// 재기동 직후 전달의 부팅 여유폭 — resume된 CLI가 컴포저를 세우기 전의 stdin flush에 페이로드가
+// 삼켜지지 않도록 페이로드 앞에 두는 지연이다.
+const RESUMED_PTY_MESSAGE_BOOT_DELAY_MS = 1500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const TERMINAL_PLUGIN_ID = "terminal";
@@ -531,19 +534,36 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
+    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    if (!result.ok) {
+      ctx.host.http.writeJson(res, result.status, { error: result.error });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, result.resumed);
+    return true;
+  }
+
+  // handleResume(fresh 포함)과 handleMessage(dormant 전달)가 공유하는 재기동 코어 — 상태 어휘·
+  // 기본 모델 폴백·롤백 계약이 한 곳에만 살아야 두 진입점이 같은 Operation을 같은 좌표로 되살린다.
+  async function resumeAgentSessionCore(
+    node: OperationNode,
+    sessionId: string,
+    cliId: AgentCliId,
+    options: { readonly fresh: boolean; readonly providerSession: AgentProviderSession | undefined },
+  ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
+    const { fresh, providerSession } = options;
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
     const launchModel = readPayloadString(node.payload, "launchModel")
       || (cliId === "claude-gateway" ? "opus[1m]" : undefined);
     const launchEffort = readPayloadString(node.payload, "launchEffort") || undefined;
+    // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
+    // 복귀를 건너뛰어 세션이 starting에 고착된다.
+    const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
+    if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     resetOscActivity(sessionId);
     const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
     try {
-      const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
-      if (!cwd) {
-        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-        return true;
-      }
       if (fresh) {
         // stale provider 상태는 spawn 전에 observability와 payload에서 모두 떼어낸다 —
         // attach 도중 새 CLI의 capture hook이 먼저 완료되면 attach 후 정리가 새
@@ -580,7 +600,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
       if (!readPayloadString(resumedPayload, "launchModel") && launchModel) resumedPayload.launchModel = launchModel;
       ctx.host.operations.patch(sessionId, { payload: resumedPayload });
-      ctx.host.http.writeJson(res, 200, resumed);
+      return { ok: true, resumed };
     } catch (error) {
       resetOscActivity(sessionId);
       if (fresh && providerSession) {
@@ -595,12 +615,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);
       if (error instanceof GatewayLaunchOptionError) {
-        ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
-      } else {
-        ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+        return { ok: false, status: gatewayLaunchOptionErrorStatus(error), error: error.code };
       }
+      return { ok: false, status: 503, error: "terminal_unavailable" };
     }
-    return true;
   }
 
   // Quick Launch 멘션 전달 라우트. 살아 있는 세션이면 PTY에 곧장 쓰고, dormant면 재기동(비-fresh
@@ -634,16 +652,22 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
       return true;
     }
-    const deliver = () => {
+    const deliver = (leadChunks: readonly PtyInputChunk[] = []) => {
       const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
       // rename 주입과 같은 세션 키/writer로 직렬화해 rename+메시지 인터리브를 막는다.
       reminderWriter.enqueue(
         sessionId,
         (data) => terminalRuntime.write(sessionId, data),
-        formatPtyMessage(policy, sanitized, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+        [...leadChunks, ...formatPtyMessage(policy, sanitized, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY)],
       );
     };
     if (terminalRuntime.getSessionLastActivityAt(sessionId) !== null) {
+      // awaiting 재검사: 덱은 pick 시점만 가드한다 — 작성하는 사이 CLI가 권한 프롬프트로 전환하면
+      // 전달 끝의 줄 종결자가 대기 중인 선택지를 그대로 확정해 버린다. 직접 POST 호출도 여기서 닫힌다.
+      if (observability.getTerminalSessionInfo(sessionId)?.attentionPending === true) {
+        ctx.host.http.writeJson(res, 409, { error: "session_awaiting_input" });
+        return true;
+      }
       deliver();
       ctx.host.http.writeJson(res, 200, { delivered: true });
       return true;
@@ -656,50 +680,16 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 409, { error: "resume_unavailable" });
       return true;
     }
-    const launchModel = readPayloadString(node.payload, "launchModel")
-      || (cliId === "claude-gateway" ? "opus[1m]" : undefined);
-    const launchEffort = readPayloadString(node.payload, "launchEffort") || undefined;
-    resetOscActivity(sessionId);
-    const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
-    try {
-      const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
-      if (!cwd) {
-        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-        return true;
-      }
-      await terminalRuntime.attach({
-        cwd,
-        sessionId,
-        operationId: sessionId,
-        operationType: node.type,
-        pluginId: node.pluginId,
-        theaterId: node.theaterId,
-        cliId,
-        ...(launchModel ? { model: launchModel } : {}),
-        ...(launchEffort ? { effort: launchEffort } : {}),
-        resumeSessionId: providerSession.sessionId,
-      });
-      const runtimeSession = pendingRuntimeSessions.get(sessionId);
-      pendingRuntimeSessions.delete(sessionId);
-      const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
-      observability.notifySessionUpdated(resumed);
-      const resumedPayload = toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle);
-      if (!readPayloadString(resumedPayload, "launchModel") && launchModel) resumedPayload.launchModel = launchModel;
-      ctx.host.operations.patch(sessionId, { payload: resumedPayload });
-      // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
-      deliver();
-      ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
-    } catch (error) {
-      resetOscActivity(sessionId);
-      pendingRuntimeSessions.delete(sessionId);
-      const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
-      if (reverted) observability.notifySessionUpdated(reverted);
-      if (error instanceof GatewayLaunchOptionError) {
-        ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
-      } else {
-        ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
-      }
+    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh: false, providerSession });
+    if (!result.ok) {
+      ctx.host.http.writeJson(res, result.status, { error: result.error });
+      return true;
     }
+    // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
+    // 선두의 빈 지연 청크는 재기동된 CLI TUI의 부팅·raw-mode 초기화에 여유를 준다. readiness
+    // 신호가 없는 경로라 보장이 아니라 여유폭이다(fresh launch는 argv로 프롬프트를 넘겨 이 경합이 없다).
+    deliver([{ data: "", submitDelayMs: RESUMED_PTY_MESSAGE_BOOT_DELAY_MS }]);
+    ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
     return true;
   }
 
