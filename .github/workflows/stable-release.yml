@@ -68,6 +68,8 @@ jobs:
       release_sha: ${{ steps.release.outputs.release_sha }}
       desktop_changed: ${{ steps.desktop.outputs.desktop_changed }}
       desktop_version: ${{ steps.desktop.outputs.desktop_version }}
+      mobile_changed: ${{ steps.mobile.outputs.mobile_changed }}
+      mobile_version: ${{ steps.mobile.outputs.mobile_version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -196,6 +198,47 @@ jobs:
           " "$pkg_version" "$bump")
           emit true "$next" true
 
+      # mobile 셸도 독립 버저닝이다. 차이는 두 가지뿐: 앱이 싣는 버전이 package.json이 아니라
+      # app.json이라는 것(package.json은 워크스페이스 sync에 휩쓸리고 APK에 닿지 않는다), 그리고
+      # 마커 태그가 없을 때 무조건 빌드하지 않고 직전 릴리스 태그를 기준점으로 변경을 판정한다는 것
+      # — 첫 릴리스 서명 APK는 이미 수동으로 테스터에게 나갔으므로, 무변경 릴리스가 같은 빌드를
+      # 다시 배포해 테스터 알림만 울리는 일을 막는다.
+      - name: Resolve mobile shell version
+        if: steps.version.outputs.should_release == 'true' && vars.FLEET_MOBILE_DISTRIBUTION == 'true'
+        id: mobile
+        env:
+          LATEST_TAG: ${{ steps.version.outputs.latest_tag }}
+        run: |
+          app_version=$(node -p "require('./runtime/fleet-mobile/app.json').expo.version")
+          last_tag=$(git tag --list 'mobile-v*' --sort=-version:refname | grep -E '^mobile-v[0-9]+\.[0-9]+\.[0-9]+$' | head -n 1)
+
+          emit() {
+            echo "mobile_changed=$1" >> "$GITHUB_OUTPUT"
+            echo "mobile_version=$2" >> "$GITHUB_OUTPUT"
+            echo "mobile_bump=$3" >> "$GITHUB_OUTPUT"
+          }
+
+          if [ -n "$last_tag" ] && [ "$app_version" != "${last_tag#mobile-v}" ]; then
+            # 이미 범프됨(릴리스 커밋 재실행 경로 또는 PR에서의 수동 범프) — 그 버전 그대로 빌드한다.
+            emit true "$app_version" ""
+            exit 0
+          fi
+
+          base="${last_tag:-$LATEST_TAG}"
+          if [ -z "$base" ] || git diff --quiet "$base"..HEAD -- runtime/fleet-mobile; then
+            emit false "$app_version" ""
+            exit 0
+          fi
+
+          # main 버전 산정과 같은 규칙을 mobile 경로 커밋에만 적용한다: feat이면 minor, 아니면 patch.
+          bump="patch"
+          if git log --format=%B "$base"..HEAD -- runtime/fleet-mobile | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
+            bump="minor"
+          fi
+          # 계산은 적용과 같은 스크립트가 한다. versionCode는 여기서 쓰지 않지만 같은 호출이 뒤에서
+          # 파일에 적용되므로, 이 값과 커밋에 담기는 값이 갈라질 수 없다.
+          emit true "$(node runtime/fleet-mobile/scripts/set-app-version.mjs --bump "$bump" --dry-run | sed -n 's/^version=//p')" "$bump"
+
       - name: Update version and changelog
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
         env:
@@ -257,6 +300,15 @@ jobs:
           }
           fs.writeFileSync(file, updated);
           NODE
+
+      - name: Bump mobile shell version
+        if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true' && steps.mobile.outputs.mobile_bump != ''
+        env:
+          MOBILE_BUMP: ${{ steps.mobile.outputs.mobile_bump }}
+        run: |
+          # mobile 변경이 감지된 릴리스에서만 app.json의 version과 versionCode를 범프해 릴리스 커밋에
+          # 함께 담는다. versionCode가 움직이지 않으면 App Distribution이 직전 릴리스를 덮어쓴다.
+          node runtime/fleet-mobile/scripts/set-app-version.mjs --bump "$MOBILE_BUMP"
 
       - name: Verify workspace version sync
         if: steps.version.outputs.should_release == 'true' && steps.release_state.outputs.release_committed != 'true'
@@ -320,6 +372,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A CHANGELOG.md CHANGELOG.ko.md .changelog.d
           git ls-files | grep -E '(^|/)package\.json$' | xargs git add
+          # 앱이 싣는 버전은 package.json이 아니라 여기에 있다. 빠지면 범프가 커밋에 담기지 않고
+          # 빌드는 직전 versionCode로 나가 App Distribution이 이전 릴리스를 덮어쓴다.
+          git add runtime/fleet-mobile/app.json
           git commit -m "chore(release): $NEXT_TAG"
           # 검증이 도는 동안 main이 나아가면 이 push가 거절된다. 그 사이 커밋이 위 paths-ignore가
           # 이미 릴리스 산출물과 무관하다고 선언한 경로뿐이라면 릴리스 커밋을 그 위로 옮겨 다시
@@ -474,6 +529,18 @@ jobs:
       tag: ${{ needs.release.outputs.next_tag }}
     secrets: inherit
 
+  # mobile 셸은 GitHub Release에 자산을 붙이지 않고 Firebase App Distribution으로만 나가므로,
+  # 위 console(npm publish) 잡의 needs에 들어가지 않는다 — 테스터 배포가 npm 게시를 막을 이유도,
+  # npm 게시가 테스터 배포를 기다릴 이유도 없다. 무변경 릴리스에는 이월할 자산도 없으니
+  # desktop-carry에 해당하는 짝도 없다: 변경이 없으면 그냥 배포하지 않는다.
+  mobile-build:
+    needs: release
+    if: needs.release.outputs.should_release == 'true' && needs.release.outputs.mobile_changed == 'true'
+    uses: ./.github/workflows/mobile-release.yml
+    with:
+      ref: ${{ needs.release.outputs.release_sha }}
+    secrets: inherit
+
   # desktop 무변경 릴리스 → 직전 릴리스의 셸 설치본을 그대로 초안 Release에 이월한다.
   # 바이트 동일 복사라 서명/노터라이즈가 유지되고, 직전 릴리스에서 받으므로 무변경이 연속돼도
   # 자산 체인이 자동으로 이어진다. 매 릴리스에 설치본이 항상 부착되게 하기 위한 장치.
@@ -522,6 +589,27 @@ jobs:
             exit 0
           fi
           gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$DESKTOP_TAG" -f sha="$RELEASE_SHA"
+
+  # 배포가 성공했을 때만 마커 태그(mobile-v*)를 남긴다. 이 태그가 다음 릴리스의 변경 감지 기준점이므로,
+  # 실패하면 태그가 없어 다음 릴리스가 같은 변경을 다시 잡아 재배포한다.
+  mobile-tag:
+    needs: [release, mobile-build]
+    if: needs.release.outputs.should_release == 'true' && needs.mobile-build.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Tag the distributed mobile shell version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MOBILE_TAG: mobile-v${{ needs.release.outputs.mobile_version }}
+          RELEASE_SHA: ${{ needs.release.outputs.release_sha }}
+        run: |
+          if gh api "repos/${{ github.repository }}/git/ref/tags/$MOBILE_TAG" >/dev/null 2>&1; then
+            echo "Tag $MOBILE_TAG already exists. Treating as success."
+            exit 0
+          fi
+          gh api "repos/${{ github.repository }}/git/refs" -f ref="refs/tags/$MOBILE_TAG" -f sha="$RELEASE_SHA"
 
   # 릴리스의 마무리 단계. npm 게시(latest)까지 끝난 뒤 초안 Release를 공개한다.
   # console가 실패하면 이 잡은 실행되지 않아 Release는 draft로 남는다(desktop 실패는 console

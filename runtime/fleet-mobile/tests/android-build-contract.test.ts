@@ -53,6 +53,22 @@ describe("Fleet Mobile Android build contract", () => {
     expect(modulePlugin).not.toContain("fleet_mobile_release_requires_signing");
   });
 
+  it("distributes from CI only when the mobile path changed", () => {
+    const release = read(".github/workflows/stable-release.yml");
+    expect(release).toContain("mobile_changed=$1");
+    expect(release).toContain('git diff --quiet "$base"..HEAD -- runtime/fleet-mobile');
+    expect(release).toContain("needs.release.outputs.mobile_changed == 'true'");
+    expect(release).toContain("uses: ./.github/workflows/mobile-release.yml");
+  });
+
+  // The APK carries app.json, not package.json. Dropping it from the release commit would ship the
+  // previous versionCode and silently replace the last App Distribution release.
+  it("commits the bumped app.json in the release commit", () => {
+    const release = read(".github/workflows/stable-release.yml");
+    expect(release).toContain("git add runtime/fleet-mobile/app.json");
+    expect(release).toContain("scripts/set-app-version.mjs --bump");
+  });
+
   it("keeps signing material out of git", () => {
     const ignore = read(".gitignore");
     expect(ignore).toContain("*.keystore");

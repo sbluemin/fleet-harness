@@ -60,12 +60,46 @@ Passwords belong in the shell environment or a secret manager, never in the repo
 and `*.jks` are git-ignored so a stray copy cannot be committed, but the keystore should not live
 here in the first place.
 
-## Each round
+## Automatic distribution from `main`
 
-1. Raise `expo.android.versionCode` in `app.json`. App Distribution keys a release by
-   applicationId + versionCode + versionName, so reusing a triple **replaces** the previous release
-   instead of notifying testers of a new one. Raise `expo.version` too when the user-visible version
-   changes.
+`stable-release.yml` distributes a build on a push to `main`, on the same terms every other runtime
+gets: **only when `runtime/fleet-mobile` actually changed.** The mobile shell is independently
+versioned, like the desktop shell:
+
+- The change baseline is the last `mobile-v*` marker tag, which is written only after a successful
+  distribution. A failed run leaves no tag, so the next release picks the same change back up.
+  Before the first marker exists the baseline is the previous release tag, so an unchanged mobile
+  path still distributes nothing.
+- A `feat:` commit under `runtime/fleet-mobile` bumps the minor, anything else bumps the patch.
+  `versionCode` increments by one on every bump, and both land in the release commit.
+- `runtime/fleet-mobile/package.json` is swept into the workspace-wide version sync and does not
+  reach the APK. `app.json` is the version the app carries.
+
+The job is gated on the repository variable `FLEET_MOBILE_DISTRIBUTION` being `true`; without it the
+mobile path is inert. It also needs these repository secrets:
+
+| Secret | Value |
+|---|---|
+| `FLEET_ANDROID_KEYSTORE_BASE64` | `base64 -i ~/.keystores/fleet-mobile-release.jks` |
+| `FLEET_ANDROID_KEYSTORE_PASSWORD` | keystore password |
+| `FLEET_ANDROID_KEY_ALIAS` | `fleet-mobile` |
+| `FLEET_ANDROID_KEY_PASSWORD` | key password |
+| `FIREBASE_APP_ID` | `1:<number>:android:<hash>` |
+| `FIREBASE_TESTER_GROUPS` | group alias, e.g. `fleet-users` |
+| `FIREBASE_SERVICE_ACCOUNT` | service account JSON (whole file contents) |
+
+CI cannot run `firebase login`, so it authenticates with a service account: in the Google Cloud
+console create one under the Firebase project, grant it **Firebase App Distribution Admin**, and
+download a JSON key.
+
+## Each round (manual)
+
+The steps below are for distributing by hand. On `main` the workflow above does all of it.
+
+1. Raise `expo.android.versionCode` in `app.json` — or run
+   `node scripts/set-app-version.mjs --bump patch`, the same script CI uses. App Distribution keys a
+   release by applicationId + versionCode + versionName, so reusing a triple **replaces** the
+   previous release instead of notifying testers of a new one.
 2. Build and verify:
    ```sh
    pnpm --dir runtime/fleet-mobile android:build:release
