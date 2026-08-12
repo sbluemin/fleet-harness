@@ -30,8 +30,14 @@ export interface ControlChangedSnapshot {
 
 export const controlChangedSnapshot = (holder: ControlHolderSnapshot | null): ControlChangedSnapshot => ({ holder });
 
-/** 회수 사유. 지금은 하나뿐이지만, 만료·리스너 종료와 구분할 자리를 남겨 둔다. */
-export type ControlReclaimedReason = "reclaimed";
+/**
+ * 접속이 끝난 사유. 끊긴 기기가 화면에 무엇을 띄울지가 여기서 갈린다 — 콘솔 주인이 자리를
+ * 되찾은 것(`reclaimed`)과 다른 기기가 그 자리를 이어받은 것(`superseded`)은 사용자가 다음에
+ * 할 일이 다르다. 하나로 뭉개면 아무도 회수하지 않았는데 "회수되었습니다"가 뜬다.
+ *
+ * 만료·리스너 종료와 구분할 자리도 그대로 남겨 둔다.
+ */
+export type ControlReclaimedReason = "reclaimed" | "superseded";
 
 export interface ControlReclaimedSnapshot {
   readonly reason: ControlReclaimedReason;
