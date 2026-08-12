@@ -133,8 +133,11 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // 세션 설정 동기화는 한 번에 하나만 비행한다 — 트랙 드래그는 단을 지날 때마다 변경을 내므로,
   // 병렬 POST의 완료 순서가 뒤집히면 중간 강도가 세션의 최종값으로 남는다. 비행 중 변경은 표시만
   // 해 두고, 착지 후 그 시점의 최신 settings로 한 번만 더 보낸다(중간 값은 싣지 않는다).
+  // 드레인 전체가 하나의 프라미스로 남는 것은 send()를 위해서다 — 큐가 비기 전에 프롬프트가
+  // 출발하면, 도크가 보여 주는 값이 아니라 중간 값으로 턴이 돈다.
   let settingsSyncInFlight = false;
   let settingsSyncQueued = false;
+  let settingsSyncDrain: Promise<void> = Promise.resolve();
   const syncSessionSettings = () => {
     if (!session || disposed) return;
     if (settingsSyncInFlight) {
@@ -142,19 +145,19 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       return;
     }
     settingsSyncInFlight = true;
-    void updateCoworkSettings(options.theaterId, session.id, settings)
-      .then((next) => { if (!disposed) session = next; })
-      .catch((cause) => {
-        error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed");
-        renderDock();
-      })
-      .finally(() => {
-        settingsSyncInFlight = false;
-        if (settingsSyncQueued) {
-          settingsSyncQueued = false;
-          syncSessionSettings();
+    settingsSyncDrain = (async () => {
+      do {
+        settingsSyncQueued = false;
+        try {
+          const next = await updateCoworkSettings(options.theaterId, session!.id, settings);
+          if (!disposed) session = next;
+        } catch (cause) {
+          error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed");
+          renderDock();
         }
-      });
+      } while (settingsSyncQueued && !disposed);
+      settingsSyncInFlight = false;
+    })();
   };
 
   const handleSelect = (model: string, effort: string) => {
@@ -590,6 +593,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       await ensureSession();
       if (attempt.cancelled || promptAttempt !== attempt) return;
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
+      if (attempt.cancelled || promptAttempt !== attempt) return;
+      // 설정 쓰기 큐가 빌 때까지 기다린다 — 드래그 직후 곧장 보낸 프롬프트가 큐에 남은 최신
+      // 강도보다 먼저 도착하면, 도크가 보여 주는 값이 아니라 중간 값으로 턴이 돈다.
+      await settingsSyncDrain;
       if (attempt.cancelled || promptAttempt !== attempt) return;
       attempt.submitted = true;
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));

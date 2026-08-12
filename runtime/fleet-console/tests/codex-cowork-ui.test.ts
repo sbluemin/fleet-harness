@@ -780,4 +780,60 @@ describe("Cowork inline copilot", () => {
 
     controller.destroy();
   });
+
+  it("holds a prompt until queued settings drain: the run never uses an intermediate effort", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releaseFirst: (() => void) | null = null;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const calls: string[] = [];
+    let settingsCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["low", "medium", "high"], defaultModel: "gpt", defaultEffort: "low" }));
+      if (url.endsWith("/settings")) {
+        settingsCount += 1;
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { effort?: string };
+        if (settingsCount === 1) await firstGate;
+        calls.push(`settings:${payload.effort}`);
+        return new Response(JSON.stringify(sessionDto({ effort: payload.effort })));
+      }
+      if (url.endsWith("/prompt")) { calls.push("prompt"); return new Response(JSON.stringify(sessionDto({ state: "running", effort: "high" })), { status: 202 }); }
+      return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1));
+    article.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    // 첫 쓰기(medium)가 비행에 오른 것을 확인한 뒤 다음 단으로 — 렌더 반영 전의 연속 키는 no-op이다.
+    await vi.waitFor(() => expect(settingsCount).toBe(1));
+    await vi.waitFor(() => expect(track.getAttribute("aria-valuenow")).toBe("1"));
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    // 첫 설정 쓰기가 비행 중인 채로 곧장 전송한다 — 프롬프트는 큐가 빌 때까지 출발하면 안 된다.
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Tighten the intro.";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(calls).not.toContain("prompt");
+
+    releaseFirst!();
+    await vi.waitFor(() => expect(calls).toContain("prompt"));
+    // 순서가 계약이다: 중간 값(medium) → 최신 값(high) → 프롬프트.
+    expect(calls.indexOf("prompt")).toBeGreaterThan(calls.indexOf("settings:high"));
+    expect(calls.indexOf("settings:high")).toBeGreaterThan(calls.indexOf("settings:medium"));
+
+    controller.destroy();
+  });
 });
