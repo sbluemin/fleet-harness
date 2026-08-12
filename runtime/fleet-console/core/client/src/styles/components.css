@@ -11888,8 +11888,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-input {
   flex: 1;
   min-width: 0;
-  /* 한 줄 높이에 딱 맞게 시작한다(46px는 글줄보다 컸다) — 성장은 autoGrow가 담당한다. */
-  min-height: 26px;
+  min-height: 46px;
   /* 6줄까지 자라고 그 뒤로는 스크롤한다 — Analyst 컴포저와 같은 clamp 정책. */
   max-height: calc(1.55em * 6 + var(--space-2));
   padding: 0;
