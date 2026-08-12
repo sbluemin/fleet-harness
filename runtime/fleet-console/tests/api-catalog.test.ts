@@ -144,6 +144,7 @@ POST|/plugins/terminal/agent/sessions/:sessionId/attention|http
 POST|/plugins/terminal/agent/sessions/:sessionId/auto-name|http
 POST|/plugins/terminal/agent/sessions/:sessionId/background|http
 POST|/plugins/terminal/agent/sessions/:sessionId/capture|http
+POST|/plugins/terminal/agent/sessions/:sessionId/message|http
 POST|/plugins/terminal/agent/sessions/:sessionId/resume|http
 POST|/plugins/terminal/agent/sessions/:sessionId/turn|http
 POST|/plugins/terminal/agent/sessions|http
@@ -193,7 +194,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(123);
+    expect(body.routes).toHaveLength(124);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);
