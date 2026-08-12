@@ -12,12 +12,13 @@ release is never signed with the debug key, which every Android SDK install shar
 
 ### 1. Create the release keystore
 
-Keep it outside the repository. Losing it is unrecoverable: a different key forces every tester to
-uninstall before the next build will apply.
+Keep it outside the repository, and outside `~/.fleet` — that directory is Fleet's runtime data and
+gets wiped or isolated by tooling. Losing the keystore is unrecoverable: a different key forces every
+tester to uninstall before the next build will apply.
 
 ```sh
 keytool -genkeypair -v \
-  -keystore ~/.fleet/fleet-mobile-release.jks \
+  -keystore ~/.keystores/fleet-mobile-release.jks \
   -alias fleet-mobile -keyalg RSA -keysize 2048 -validity 10000
 ```
 
