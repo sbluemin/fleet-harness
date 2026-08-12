@@ -47,12 +47,12 @@ interface CanvasModeSegment {
   readonly titleKey: CoreMessageKey;
 }
 
-// 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다. 세그먼트에 아이콘을 함께 두면 클러스터가
-// 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 통째로 사라진다(2026-08 실측).
 // 카탈로그가 아직 도착하지 않은 첫 페인트의 빈 색인. 리터럴을 useState에 직접 넘기면 렌더마다
 // 새 Map이 생겨 아래 effect의 의존이 흔들린다.
 const NO_LAUNCH_MODEL_LABELS: ReadonlyMap<string, string> = new Map();
 
+// 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다. 세그먼트에 아이콘을 함께 두면 클러스터가
+// 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 통째로 사라진다(2026-08 실측).
 const CANVAS_MODES: readonly CanvasModeSegment[] = [
   { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },
   { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },
