@@ -1144,7 +1144,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 재사용되지 않는 이상 되살아나지는 않지만, 오래 뜬 서버에서 계속 쌓이기만 한다.
     desktopShellsByOwner.delete(handle);
     // 순서가 있다: 끊긴 쪽이 먼저 자기 안내를 받고, 그 다음 이 기계의 화면이 커튼을 걷는다.
-    notifySessionEnded(handle, "reclaimed");
+    endSessionStreams(handle, "reclaimed");
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
     res.end();
@@ -1173,7 +1173,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     access.revokeSessionsByPairing(removed.id);
     for (const session of closed) {
       desktopShellsByOwner.delete(session.handle);
-      notifySessionEnded(session.handle, "reclaimed");
+      endSessionStreams(session.handle, "reclaimed");
     }
     broadcastControlChanged();
     res.writeHead(204, withSecurityHeaders({}));
@@ -1411,8 +1411,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       if (!access.revokeSessionByHandle(session.handle)) continue;
       // 세션이 사라지면 그 세션이 게시한 집 주소도 가리킬 주인이 없다.
       desktopShellsByOwner.delete(session.handle);
-      if (session.pairingId !== null && session.pairingId === ownPairingId) continue;
-      notifySessionEnded(session.handle, "superseded");
+      /**
+       * 자기 페어링이 두고 간 접속에는 안내를 보내지 않는다 — 축출이 아니라 자기 자신의
+       * 잔상이므로. 건너뛰는 것은 안내뿐이고 스트림은 그 사정과 무관하게 닫힌다.
+       */
+      const displaced = session.pairingId === null || session.pairingId !== ownPairingId;
+      endSessionStreams(session.handle, displaced ? "superseded" : null);
     }
   }
 
@@ -2122,28 +2126,27 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   }
 
   /**
-   * 종료 통지는 끊긴 그 세션에게만. 쿠키는 이미 무효라 다음 요청이 401이 되는데, SPA가 떠 있는
-   * 동안에는 그 401을 아무도 마주치지 않는다 — 이 이벤트가 원격 화면에 안내를 띄우고 스스로
-   * 이동하게 만드는 유일한 신호다.
+   * 이 세션으로 열려 있던 구독을 끝낸다. 세션이 죽어도 이미 열린 SSE는 스스로 끝나지 않으므로,
+   * 남겨 두면 자격을 잃은 기기가 다음 브로드캐스트부터 Operation 갱신을 계속 받는다 — 이
+   * 스트림에는 요청마다 걸리는 세션 게이트가 없다. 끊는 시점을 상대의 새로고침에 맡길 수 없다.
+   * 그쪽 화면이 스스로 물러나 주기를 기다리는 것은 규약을 지키는 클라이언트에만 성립하는
+   * 가정이고, 이 리스너는 인터넷을 향해 있다.
    *
-   * 사유는 함께 실어 보낸다. 주인이 되찾은 것과 다른 기기가 이어받은 것은 그 화면 앞에 앉은
-   * 사람이 다음에 할 일이 다르다.
+   * 안내는 그 위에 얹힌다. 쿠키는 이미 무효라 다음 요청이 401이 되는데, SPA가 떠 있는 동안에는
+   * 그 401을 아무도 마주치지 않는다 — 이 이벤트가 원격 화면에 안내를 띄우는 유일한 신호다.
+   * 사유를 함께 싣는 이유는, 주인이 되찾은 것과 다른 기기가 이어받은 것이 그 화면 앞에 앉은
+   * 사람에게 서로 다른 일을 뜻하기 때문이다.
+   *
+   * `reason`이 null이면 닫기만 하고 아무것도 말하지 않는다. 닫는 일과 알리는 일을 가르는 것이
+   * 이 인자의 존재 이유다 — 둘을 하나로 두면 안내를 건너뛰는 자리가 정리까지 함께 건너뛴다.
    */
-  function notifySessionEnded(handle: string, reason: ControlReclaimedReason): void {
+  function endSessionStreams(handle: string, reason: ControlReclaimedReason | null): void {
     if (operationSseSubscribers.size === 0) return;
-    const data = encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
+    const data = reason === null ? null : encodeSseData(CONTROL_RECLAIMED_EVENT, controlReclaimedSnapshot(reason));
     for (const subscriber of [...operationSseSubscribers]) {
       if (subscriber.sessionHandle !== handle) continue;
-      /**
-       * 안내를 실은 뒤 그 스트림을 여기서 닫는다. 세션이 죽어도 이미 열려 있는 SSE는 스스로
-       * 끝나지 않으므로, 남겨 두면 자격을 잃은 기기가 다음 브로드캐스트부터 Operation 갱신을
-       * 계속 받는다 — 이 스트림에는 요청마다 걸리는 세션 게이트가 없다.
-       *
-       * 끊는 시점을 상대의 새로고침에 맡길 수 없다. 그쪽 화면이 스스로 물러나 주기를 기다리는
-       * 것은 규약을 지키는 클라이언트에만 성립하는 가정이고, 이 리스너는 인터넷을 향해 있다.
-       */
       operationSseSubscribers.delete(subscriber);
-      subscriber.res.write(data);
+      if (data !== null) subscriber.res.write(data);
       subscriber.res.end();
     }
   }

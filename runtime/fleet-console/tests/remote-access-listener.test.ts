@@ -710,6 +710,25 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
   });
 
   /**
+   * 같은 기기가 자기 접속을 갈아 끼울 때 건너뛰는 것은 안내뿐이다. 두고 간 스트림까지 함께
+   * 남겨 두면 자격이 죽은 그 구독이 다음 Operation 갱신부터 계속 받는다 — 앞의 화면을 아직
+   * 띄운 채 다시 조인하는 흐름이 실제로 있으므로, 상대가 스스로 물러나 주기를 기대할 수 없다.
+   */
+  it("closes the stream a device leaves behind when it rejoins under its own pairing", async () => {
+    const fixture = await startFixture({ remote: true });
+    const cookies = await joinAs(fixture, "full", "MacBook Pro");
+    const stale = await openRemoteEvents(fixture, cookies);
+
+    await expect(remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({}), cookies)).resolves.toMatchObject({ status: 204 });
+
+    await stale.waitForClose();
+    // 자기 자신에게 "다른 기기가 이어받았습니다"를 띄우지는 않는다.
+    expect(stale.seen("control:reclaimed")).toBe(0);
+
+    stale.close();
+  });
+
+  /**
    * 밀려난 쪽은 자기가 왜 끊겼는지 듣는다. 주인이 되찾은 것과 다른 기기가 이어받은 것을 한
    * 사유로 뭉개면, 아무도 회수하지 않았는데 "회수되었습니다"가 뜬다.
    */
