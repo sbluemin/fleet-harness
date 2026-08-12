@@ -1,7 +1,11 @@
 const { useState, useEffect, useRef } = React;
 
 // ───── Locale ─────
-const lang = (typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("ko")) ? "ko" : "en";
+// ?lang=en|ko가 우선, 없으면 브라우저 언어. 토글은 App 재마운트로 전체를 다시 그린다.
+const urlLang = new URLSearchParams(location.search).get("lang");
+let lang = (urlLang === "en" || urlLang === "ko")
+  ? urlLang
+  : ((typeof navigator !== "undefined" && navigator.language && navigator.language.startsWith("ko")) ? "ko" : "en");
 if (typeof document !== "undefined" && document.documentElement) {
   document.documentElement.lang = lang;
 }
@@ -9,117 +13,148 @@ const t = (obj) => (obj && typeof obj === "object" && (obj.ko || obj.en)) ? (obj
 
 // ───── UI strings ─────
 const UI = {
-  navHierarchy: { ko: "구성", en: "How it works" },
-  navProviders: { ko: "게이트웨이", en: "Gateway" },
-  navModes:     { ko: "3 모드", en: "3 Modes" },
-  navAnywhere:  { ko: "어디서든", en: "Anywhere" },
-  navDiffs:     { ko: "차별점", en: "Why us" },
-  primaryAria:  { ko: "주요 메뉴", en: "Primary" },
+  navGateway:  { ko: "게이트웨이", en: "Gateway" },
+  navModes:    { ko: "캔버스", en: "Canvas" },
+  navAnywhere: { ko: "어디서든", en: "Anywhere" },
+  navDoctrine: { ko: "교리", en: "Doctrine" },
+  navCompare:  { ko: "비교", en: "Compare" },
+  primaryAria: { ko: "주요 메뉴", en: "Primary" },
+  langAria:    { ko: "언어 전환", en: "Switch language" },
 
-  heroEyebrow:  { ko: "Fleet Console · Research preview", en: "Fleet Console · Research preview" },
-  heroTitle:    { ko: ["하나의 콘솔.", "모든 에이전트."], en: ["One console.", "Every coding agent."] },
-  heroDescPre:    { ko: "Fleet Console은 코딩 에이전트를 브라우저가 아니라 로컬 서버가 소유하는 ", en: "Fleet Console runs coding agents as " },
-  heroDescOperation:{ ko: "Operation", en: "Operations" },
-  heroDescMid:    { ko: "으로 실행합니다. 탭을 닫아도 세션은 계속 돌고, 호스트 에이전트인 ", en: " owned by a local server, not your browser. Close the tab and the session keeps running. The host agent — the " },
-  heroDescHost:   { ko: "Admiral", en: "Admiral" },
-  heroDescMid2:   { ko: "은 여섯 개의 ", en: " — plans and delegates under six always-on " },
-  heroDescOrders: { ko: "Standing Order", en: "Standing Orders" },
-  heroDescTail:   { ko: " 아래에서 계획하고 위임합니다.", en: "." },
-
-  ctaRepo:      { ko: "저장소 살펴보기", en: "Explore the repo" },
-  ctaProviders: { ko: "게이트웨이 모델 보기", en: "See the gateway models" },
-  ctaGithubView:{ ko: "GitHub에서 보기", en: "View on GitHub" },
-  ctaModes:     { ko: "캔버스 모드 보기", en: "See the canvas modes" },
-
-  metaKinds: { ko: "Launch kinds", en: "Launch kinds" },
-  metaKindsVal: { ko: "Claude Gateway", en: "Claude Gateway" },
+  heroEyebrow: { ko: "Fleet Console · Research preview", en: "Fleet Console · Research preview" },
+  heroT1: { ko: "모든 프런티어 코딩 에이전트.", en: "Every frontier coding agent." },
+  heroT2: { ko: "하나의 콘솔.", en: "One console." },
+  heroT3: { ko: "어떤 화면에서든.", en: "Any screen." },
+  heroSub: {
+    ko: "Fleet는 코딩 에이전트들을 내 머신이 소유한 라이브 세션으로 실행합니다. 탭을 닫아도 세션은 계속 돌고 — 브라우저에서도, 데스크톱 창에서도, 주머니 속 폰에서도 같은 함대를 지휘합니다.",
+    en: "Fleet runs your coding agents as live sessions owned by your machine. Close the tab and they keep working — and you command the same fleet from a browser, a desktop window, or the phone in your pocket.",
+  },
   metaProviders: { ko: "Gateway providers", en: "Gateway providers" },
-  metaProvidersVal: { ko: "구독과 API 키", en: "Subscriptions and API keys" },
-  metaOrders: { ko: "Standing Orders", en: "Standing Orders" },
-  metaOrdersVal: { ko: "상시 작동", en: "Always on" },
+  metaProvidersV: { ko: "구독과 API 키", en: "Subscriptions & API keys" },
+  metaModes: { ko: "Canvas modes", en: "Canvas modes" },
+  metaModesV: { ko: "Cruise · Tactical · War Room", en: "Cruise · Tactical · War Room" },
+  metaScreens: { ko: "Screens", en: "Screens" },
+  metaScreensV: { ko: "브라우저 · 데스크톱 · Android", en: "Browser · Desktop · Android" },
+  bootTitle: { ko: "fleet — zsh", en: "fleet — zsh" },
+  heroCap: {
+    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.5가 나란히 도는 Tactical 캔버스.",
+    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.5 running side by side on the Tactical canvas, on this very repository.",
+  },
 
-  hierarchyEy:  { ko: "How it works", en: "How it works" },
-  hierarchyTitle: { ko: "결정 · 계획 · 실행", en: "Decide, plan, execute" },
-  hierarchyLede:  { ko: "사용자는 코드를 쓰지 않는다. 결정한다. 호스트가 그 결정을 Operation으로 환원한다.", en: "You don't write code — you decide. The host turns each decision into an Operation." },
+  thesis1: { ko: "서버가 세션을 소유하면, ", en: "When the server owns the session, " },
+  thesisEm: { ko: "화면은 골라 쓰는 것", en: "the screen becomes a choice" },
+  thesis2: { ko: "이 됩니다.", en: "." },
+  screenBrowser: { ko: "브라우저", en: "Browser" },
+  screenDesktop: { ko: "데스크톱 앱", en: "Desktop app" },
+  screenAndroid: { ko: "Android", en: "Android" },
+  screenAndroidTag: { ko: "테스터 배포 중", en: "rolling out to testers" },
 
-  backendsEy:    { ko: "Launch kind · 01", en: "Launch kind · 01" },
-  backendsTitle: { ko: ["하나의 Gateway,", "모든 모델."], en: ["One Gateway,", "every model."] },
-  backendsLede:  { ko: "Fleet은 실제 CLI 바이너리를 선언된 제품 표면에서 실행한다. 제작사가 다듬은 에이전트 루프와 이미 쓰던 인증이 그대로 보존된다.", en: "Fleet launches the actual CLI binary in its declared product surface, preserving the model-native agent loop and the authentication you already use." },
+  gwEy: { ko: "AI Gateway", en: "AI Gateway" },
+  gwT1: { ko: "런치 메뉴 하나 뒤의", en: "Every frontier model," },
+  gwT2: { ko: "모든 프런티어 모델.", en: "one launch menu behind." },
+  gwLede: {
+    ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다. 네이티브 에이전트 루프와 인증은 그대로 보존되고, 비-Anthropic 자격증명은 에이전트 프로세스에 결코 들어가지 않습니다.",
+    en: "The gateway is a local Claude Code endpoint, not an API proxy. The native agent loop and authentication are preserved, and non-Anthropic credentials never enter the agent process.",
+  },
+  gwAria: { ko: "게이트웨이 공급자", en: "Gateway providers" },
+  gwModels: { ko: "Models", en: "Models" },
+  gwNote: {
+    ko: "추론 강도는 모델마다 다르게 열립니다 — 지원하는 모델은 저마다의 사다리를 갖고, 가장 깊은 모델은 <b>MAX</b>와 <b>ULTRACODE</b>(xhigh 강도 + 상시 멀티 에이전트 오케스트레이션)를 정점 게이트 뒤에 드러냅니다.",
+    en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and the deepest expose <b>MAX</b> and <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) behind an apex gate.",
+  },
+  gwShotCap: {
+    ko: "실제 화면 — 캔버스 우클릭 한 번에 열리는 런치 메뉴. Claude, Codex, Cursor, Kimi, OpenCode가 한 목록에.",
+    en: "Real capture — the launch menu on one right-click: Claude, Codex, Cursor, Kimi, and OpenCode in a single list.",
+  },
 
-  providersEy:    { ko: "AI Gateway · 04", en: "AI Gateway · 04" },
-  providersTitle: { ko: ["네 곳의 공급자,", "당신의 계정으로."], en: ["Four providers,", "on accounts you own."] },
-  providersLede:  { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 상류 요청은 Console이 직접 보내고, 어떤 공급자의 자격 증명도 Claude Code 프로세스에 들어가지 않는다. Codex와 Cursor는 이미 쓰던 구독을 타고, Kimi와 OpenCode Go는 설정에 등록한 API 키를 쓴다. 좌측에서 공급자를 고르면 게이트웨이로 닿는 모델이 펼쳐진다.", en: "The gateway is a local Claude Code endpoint, not an API proxy: the Console makes the upstream request itself, and no provider credential ever enters the Claude Code process. Codex and Cursor ride the subscription you already have; Kimi and OpenCode Go take an API key you register in Settings. Pick a provider to see the models it reaches." },
-  providersAria:  { ko: "게이트웨이 공급자", en: "Gateway providers" },
-  providerCap:    { ko: "Provider", en: "Provider" },
-  reachableModels: { ko: "Models", en: "Models" },
+  modesEy: { ko: "Canvas modes", en: "Canvas modes" },
+  modesT1: { ko: "에이전트 하나에서", en: "A canvas that scales" },
+  modesT2: { ko: "함대까지 늘어나는 캔버스.", en: "from one agent to a fleet." },
+  modesLede: {
+    ko: "Operation은 무한 캔버스 위에 살고, 커맨드 밴드의 스위치가 배치를 어디까지 직접 할지 정합니다.",
+    en: "Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself.",
+  },
+  modesAria: { ko: "캔버스 모드", en: "Canvas modes" },
+  modesShotCap: {
+    ko: "실제 화면 — War Room이 Operation 하나를 스테이지에 올리고, 사이드바는 상태순, 하단 레일은 다음 순서를 쥐고 있다.",
+    en: "Real capture — War Room stages one Operation, the sidebar sorts by status, and the bottom rail holds what's up next.",
+  },
 
-  modesEy:    { ko: "Canvas modes · 03", en: "Canvas modes · 03" },
-  modesTitle: { ko: ["같은 캔버스를 쓰는", "세 가지 방식."], en: ["Three ways to work", "the same canvas."] },
-  modesLede:  { ko: "Operation은 무한 캔버스 위에 놓이고, 커맨드 밴드의 스위치가 배치를 어디까지 직접 할지 정한다. 여러 에이전트가 동시에 응답을 기다릴 때 고르는 것이 War Room이다.", en: "Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself. War Room is the one to reach for when several agents are waiting on you." },
-  modesAria:  { ko: "캔버스 모드", en: "Canvas modes" },
-  modeLabel:  { ko: "Mode", en: "Mode" },
+  railEy: { ko: "Activity Rail", en: "Activity Rail" },
+  railT1: { ko: "터미널 옆의", en: "The whole project," },
+  railT2: { ko: "프로젝트 전체.", en: "beside the terminal." },
+  railLede: {
+    ko: "여덟 개의 내장 패널이 감독 중인 Operation을 떠나지 않고 히스토리·워크트리·브랜치·토큰 지출·쿼터를 보여줍니다. 플러그인이 자기 패널을 더할 수 있습니다.",
+    en: "Eight built-in panels show history, worktrees, branches, token spend, and quota without leaving the Operation you are supervising. Plugins can contribute their own.",
+  },
+  railShotCap: {
+    ko: "실제 화면 — Repository 패널이 이 저장소의 커밋 그래프·워크트리 5개·브랜치·태그를 라이브 Operation 옆에 펼친 모습.",
+    en: "Real capture — the Repository panel with this repo's commit graph, five worktrees, branches, and tags beside live Operations.",
+  },
+  analystT: { ko: "Session Analyst", en: "Session Analyst" },
+  analystB: {
+    ko: "Operation 하나에 붙는 읽기 전용 지성. 무슨 일이 있었는지 묻고, 근거가 인용된 아티팩트로 핸드오프 브리핑을 받습니다 — 에이전트는 건드리지 않습니다.",
+    en: "Read-only intelligence for a single Operation. Ask what happened and get an evidence-cited handoff brief as an artifact — without disturbing the agent.",
+  },
 
-  ordersEy:    { ko: "Standing Orders · Always Active", en: "Standing Orders · Always Active" },
-  ordersTitle: { ko: ["항상 켜져 있는", "여섯 개의 명령."], en: ["Six orders,", "always on."] },
-  ordersLede:  { ko: "모든 작업 위에 상시 작동하는 호스트 차원의 안전 장치. 대화형 요청에서도 꺼지지 않는다.", en: "Host-level safeguards that run above every task — and never switched off, even on conversational requests." },
-  active:      { ko: "Active", en: "Active" },
+  anyEy: { ko: "Remote access · Experimental", en: "Remote access · Experimental" },
+  anyT1: { ko: "주머니 속의", en: "Your fleet," },
+  anyT2: { ko: "함대.", en: "in your pocket." },
+  anyLede: {
+    ko: "원격 접속을 켜면 이 콘솔은 페어링한 기기만 열 수 있습니다. QR 한 번이면 폰이 들어옵니다 — 아래는 전부 Android 에뮬레이터에서 실제 페어링에 성공한 화면입니다.",
+    en: "Turn on Remote access and this console opens only to devices you pair. One QR scan brings the phone in — everything below is a real, successful pairing captured on the Android emulator.",
+  },
+  anyShotCap: {
+    ko: "실제 화면 — 페어링된 콘솔 덱, Operations 목록, 그리고 폰 위에서 도는 Claude Code 세션.",
+    en: "Real capture — the paired-consoles deck, the Operations list, and a Claude Code session running on the phone.",
+  },
+  pairT: { ko: "페어링은 세 걸음", en: "Pairing takes three steps" },
+  qrCap: {
+    ko: "콘솔이 QR 액세스 링크를 띄우고 기기를 기다리는 실제 화면. 링크는 한 번만, 15분만.",
+    en: "The console showing a QR access link and waiting for a device — real capture. One use, fifteen minutes.",
+  },
 
-  anywhereEy:    { ko: "Remote access · Experimental", en: "Remote access · Experimental" },
-  anywhereTitle: { ko: ["같은 함대를,", "어떤 화면에서든."], en: ["The same fleet,", "on any screen."] },
-  anywhereLede:  { ko: "Operation의 주인은 서버이므로, 화면은 골라 쓰면 된다. 브라우저, 네이티브 데스크톱, 그리고 QR 한 번으로 페어링되는 Android 앱 — 책상에 두고 온 세션이 주머니 속에서 그대로 이어진다.", en: "The server owns every Operation, so the screen is your choice: a browser, a native desktop window, or the Android app that pairs with one QR scan. The session you left on the desk continues in your pocket." },
+  docEy: { ko: "Doctrine", en: "Doctrine" },
+  docT1: { ko: "결정은 당신이,", en: "You decide." },
+  docT2: { ko: "실행은 함대가.", en: "The fleet executes." },
+  docLede: {
+    ko: "호스트 에이전트 Admiral이 작업을 분해해 적합한 모델에 위임하고, 여섯 개의 Standing Order가 모든 작업 위에서 상시 작동합니다.",
+    en: "The Admiral — the host agent — decomposes work and delegates it to the model that fits, while six Standing Orders run above every task.",
+  },
+  active: { ko: "Active", en: "Active" },
 
-  diffsEy:    { ko: "What sets it apart · 04", en: "What sets it apart · 04" },
-  diffsTitle: { ko: ["왜 또 하나의", "에이전트 프레임워크가 아닌가."], en: ["Why this isn't", "just another agent framework."] },
+  cmpEy: { ko: "Landscape", en: "Landscape" },
+  cmpTitle: { ko: "에이전트 지형도 위에서.", en: "On the agent-tooling landscape." },
+  cmpLede: {
+    ko: "비슷한 도구는 많습니다. 그러나 에이전트를 서버가 소유하는 살아 있는 작업 단위로 다루는 도구는 드뭅니다.",
+    en: "Plenty of similar tools. Few treat an agent as a live, server-owned unit of work.",
+  },
 
-  compareEy:    { ko: "Landscape", en: "Landscape" },
-  compareTitle: { ko: "에이전트 지형도 위에서.", en: "On the agent-tooling landscape." },
-  compareLede:  { ko: "비슷한 도구는 많다. 그러나 에이전트를 서버가 소유하는 살아 있는 작업 단위로 다루는 도구는 드물다.", en: "Plenty of similar tools. Few treat an agent as a live, server-owned unit of work." },
-
-  closerEy:    { ko: "Get started", en: "Get started" },
-  closerTitle: { ko: ["콘솔을 켜고", "첫 Operation을 띄우세요."], en: ["Start the console,", "launch your first Operation."] },
-  closerSub:   { ko: "모든 실행은 내 머신 안에서 이루어진다. 서버는 기본적으로 루프백에 바인딩되고, 브라우저에는 MCP·공급자 토큰이 전달되지 않는다. 실험 기능인 원격 접속은 켜야 열린다.", en: "Everything runs on your machine: the server binds to loopback by default, and the browser never receives MCP or provider tokens. Remote access — still experimental — opens only when you turn it on." },
-  installCmt:  { ko: "# install the console", en: "# install the console" },
-  setSailCmt:  { ko: "# Start it, and it opens in your browser.", en: "# Start it, and it opens in your browser." },
-  footerLine:  { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
-  builtOn:     { ko: "native CLI orchestration", en: "native CLI orchestration" },
-  countMeta:   { ko: "· 1 Launch kind · 4 Providers · 6 Standing Orders", en: "· 1 Launch kind · 4 Providers · 6 Standing Orders" },
+  closerEy: { ko: "Get started", en: "Get started" },
+  closerT1: { ko: "콘솔을 켜고,", en: "Start the console," },
+  closerT2: { ko: "첫 Operation을 띄우세요.", en: "launch your first Operation." },
+  closerSub: {
+    ko: "모든 것이 내 머신에서 돕니다. 서버는 기본적으로 루프백에만 바인딩되고, 브라우저는 프로바이더 토큰을 받지 않으며, 원격 접속은 켜야 열리고 — 열려도 페어링한 기기만 들어옵니다.",
+    en: "Everything runs on your machine. The server binds to loopback by default, the browser never receives provider tokens, and remote access opens only when you turn it on — and even then, only to devices you've paired.",
+  },
+  installCmt: { ko: "# install the console", en: "# install the console" },
+  startCmt: { ko: "# starts it, and opens it in your browser", en: "# starts it, and opens it in your browser" },
+  ctaGithub: { ko: "GitHub에서 보기", en: "View on GitHub" },
+  ctaGateway: { ko: "게이트웨이 모델 보기", en: "See the gateway models" },
+  footerLine: { ko: "fleet-harness · Fleet Console", en: "fleet-harness · Fleet Console" },
+  footerMeta: { ko: "1 콘솔 · 4 프로바이더 · 3 캔버스 모드 · 어떤 화면에서든", en: "one console · four providers · three canvas modes · any screen" },
 };
 
 // ───── Data ─────
-const HIERARCHY = [
-  {
-    rank: "Tier 01",
-    role: { ko: "사용자", en: "You" },
-    en: "You · DECIDE",
-    desc: { ko: "최종 의사 결정자. 무엇을 할지 정하고, 되돌리기 어려운 행동을 승인한다.", en: "The final decision-maker. Sets what gets done and approves anything hard to reverse." },
-  },
-  {
-    rank: "Tier 02",
-    role: { ko: "Admiral", en: "Admiral" },
-    en: "Admiral · HOST AGENT",
-    desc: { ko: "호스트 에이전트. 작업을 분해하고 적합한 모델에 위임하며, 돌아온 결과를 산출물 단위로 검사한 뒤 통합한다.", en: "The host agent. Decomposes the work, delegates it to the model that fits, then inspects the returned artifacts before integrating them." },
-  },
-  {
-    rank: "Tier 03",
-    role: { ko: "Operation", en: "Operation" },
-    en: "Operation · AGENT SESSION",
-    desc: { ko: "실제 터미널 세션. 로컬 Fleet Console 서버가 소유하므로 탭을 닫아도 계속 실행되고 출력도 계속 쌓인다.", en: "A real terminal session owned by the local Fleet Console server, so it keeps running and buffering output after you close the tab." },
-  },
-];
-
-const CLI_BACKENDS = [
-  { num: "01", vendor: "Anthropic · Codex · Cursor · Moonshot · OpenCode", name: "Claude (Gateway)", tag: { ko: "Claude Code 자체 모델과 설정에서 켠 Gateway 모델을 하나의 실행 종류로 사용", en: "One launch kind for Claude Code's own models and the Gateway models enabled in Settings." }, color: "oklch(72% 0.17 25)" },
-];
-
 const PROVIDERS = [
   {
     id: "Codex",
     role: { ko: "OpenAI · ChatGPT 구독", en: "OpenAI · ChatGPT subscription" },
-    cli: "subscription",
+    cred: "subscription",
     color: "#5fd673",
     mission: {
       ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol과 Terra는 low부터 ultra까지, Luna는 max까지 노출하므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
-      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol and Terra run from low through ultra, Luna through max, so one model can serve both cheap mechanical work and hard judgment at different efforts.",
+      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol and Terra run from low through ultra, Luna through max, so one model serves both cheap mechanical work and hard judgment.",
     },
     models: [
       { ko: "GPT-5.6 Sol — low~ultra, Fast 변형 포함", en: "GPT-5.6 Sol — low through ultra, Fast variant included" },
@@ -130,7 +165,7 @@ const PROVIDERS = [
   {
     id: "Cursor",
     role: { ko: "Cursor 구독", en: "Cursor subscription" },
-    cli: "subscription",
+    cred: "subscription",
     color: "#d4af37",
     mission: {
       ko: "쓰던 Cursor 구독으로 Cursor의 에이전트 라인업에 닿는다. Auto는 작업에 맞는 모델을 Cursor가 스스로 고르는 좌석이고, Composer와 Grok은 Fast 변형까지 따로 선다.",
@@ -145,7 +180,7 @@ const PROVIDERS = [
   {
     id: "Moonshot",
     role: { ko: "Moonshot AI · Kimi API 키", en: "Moonshot AI · Kimi API key" },
-    cli: "API key",
+    cred: "API key",
     color: "#ff6b6b",
     mission: {
       ko: "긴 컨텍스트가 필요한 작업을 위한 경로. K3는 백만 토큰 창을 들고 오므로, 큰 하위 시스템을 한 세션 안에서 통째로 읽힐 수 있다.",
@@ -159,7 +194,7 @@ const PROVIDERS = [
   {
     id: "OpenCode",
     role: { ko: "OpenCode Go API 키", en: "OpenCode Go API key" },
-    cli: "API key",
+    cred: "API key",
     color: "#fb7185",
     mission: {
       ko: "오픈 웨이트 모델을 가장 많이 모아 둔 경로. 기계적인 대량 작업을 값싼 신원에 흩뿌릴 때 쓰는 폭이 여기서 나온다.",
@@ -177,122 +212,124 @@ const PROVIDERS = [
 
 const MODES = [
   {
-    n: "01",
     name: "Cruise",
-    kr: { ko: "직접 배치", en: "Place them yourself" },
     tag: { ko: "기본", en: "Default" },
-    required: true,
-    desc: { ko: "패널을 원하는 자리에 직접 놓는 기본 모드. 무한 캔버스 위에서 위치와 크기를 스스로 정하고, 그 배치는 다음에 열 때도 그대로 남는다.", en: "The default: put each panel where you want it. You choose position and size on the infinite canvas, and the arrangement is still there when you come back." },
+    kr: { ko: "직접 배치", en: "Place them yourself" },
+    keys: null,
+    desc: {
+      ko: "패널을 원하는 자리에 직접 놓는 기본 모드. 무한 캔버스 위에서 위치와 크기를 스스로 정하고, 그 배치는 다음에 열 때도 그대로 남는다. Station Keeping을 켜면 패널이 서로 겹치지 않게 자동으로 간격을 지킨다.",
+      en: "The default: put each panel where you want it. Position and size are yours on the infinite canvas, and the arrangement survives your next visit. Station Keeping, if you turn it on, keeps panels clear of one another.",
+    },
     points: [
-      { m: "CANVAS", t: { ko: "**무한 캔버스** — 패널마다 위치·크기를 기억한다.", en: "**An infinite canvas** — every panel remembers its own position and size." } },
-      { m: "SEARCH", t: { ko: "**⌘K**로 모든 Theater에 걸쳐 Operation을 검색하고, **⌘P**로 커맨드 팔레트를 연다.", en: "**⌘K** searches Operations across every Theater; **⌘P** opens the command palette." } },
+      { ko: "**무한 캔버스** — 패널마다 위치·크기를 기억한다.", en: "**An infinite canvas** — every panel remembers its own position and size." },
+      { ko: "**⌘K**로 모든 Theater에 걸쳐 검색, **⌘P**로 커맨드 팔레트.", en: "**⌘K** searches across every Theater; **⌘P** opens the command palette." },
     ],
   },
   {
-    n: "02",
     name: "Tactical",
-    kr: { ko: "한 번에 정렬", en: "Lay them all out" },
     tag: { ko: "Alt+F", en: "Alt+F" },
-    required: false,
-    desc: { ko: "열려 있는 패널을 한 번에 정렬해 전부 한 화면에 세운다. 무엇이 떠 있는지부터 확인하고 싶을 때 쓰는 모드다.", en: "Lays every open panel out at once so the whole set is on screen. This is the mode for finding out what is running before deciding where to look." },
+    kr: { ko: "한 번에 정렬", en: "Lay them all out" },
+    keys: ["Alt", "F"],
+    desc: {
+      ko: "열려 있는 패널을 그리드·열·행으로 한 번에 정렬해 전부 한 화면에 세운다. 무엇이 떠 있는지부터 확인하고 싶을 때 쓰는 모드다.",
+      en: "Lays every open panel out at once — grid, columns, or rows — so the whole set is on screen. This is the mode for finding out what is running before deciding where to look.",
+    },
     points: [
-      { m: "LAYOUT", t: { ko: "**전체 자동 정렬** — 직접 배치한 좌표는 보존되고, Cruise로 돌아오면 되살아난다.", en: "**Everything arranged at once** — your hand-placed coordinates survive and come back with Cruise." } },
-      { m: "SORT", t: { ko: "**Alt+S**로 사이드바를 Operation 상태 기준으로 정렬한다.", en: "**Alt+S** sorts the sidebar by operation status." } },
+      { ko: "**전체 자동 정렬** — 직접 배치한 좌표는 보존되고, Cruise로 돌아오면 되살아난다.", en: "**Everything arranged at once** — hand-placed coordinates survive and come back with Cruise." },
+      { ko: "**Alt+S**로 사이드바를 Operation 상태 기준으로 정렬한다.", en: "**Alt+S** sorts the sidebar by operation status." },
     ],
   },
   {
-    n: "03",
     name: "War Room",
-    kr: { ko: "한 건씩 처리", en: "One at a time" },
     tag: { ko: "Alt+T", en: "Alt+T" },
-    required: false,
-    desc: { ko: "여러 에이전트가 동시에 응답을 기다릴 때 고르는 모드. Operation을 한 번에 하나씩 무대에 올리고 나머지는 큐에 세워, 무엇부터 볼지 고르는 일 자체를 없앤다.", en: "The mode for when several agents are waiting on you. It stages a single Operation at a time and keeps the rest in a queue, so choosing what to look at stops being a decision." },
+    kr: { ko: "한 건씩 처리", en: "One at a time" },
+    keys: ["Alt", "T"],
+    desc: {
+      ko: "여러 에이전트가 동시에 응답을 기다릴 때 고르는 모드. Theater를 가로지르는 대기열에서 Operation을 한 번에 하나씩 무대에 올리고, 무엇부터 볼지 고르는 일 자체를 없앤다.",
+      en: "The mode for when several agents are waiting on you. It stages one Operation at a time from a cross-Theater queue, so choosing what to look at stops being a decision.",
+    },
     points: [
-      { m: "STAGE", t: { ko: "**한 번에 하나** — 나머지는 대기 큐에 서고, 순서를 잃지 않는다.", en: "**One at a time** — the rest wait in a queue without losing their place." } },
-      { m: "DEFER", t: { ko: "**Alt+→**로 지금 것을 뒤로 미룬다. 답할 준비가 안 된 것을 붙잡고 있지 않아도 된다.", en: "**Alt+→** defers the staged one, so nothing you aren't ready to answer holds up the queue." } },
+      { ko: "**한 번에 하나** — 나머지는 대기 큐에 서고, 순서를 잃지 않는다.", en: "**One at a time** — the rest wait in a queue without losing their place." },
+      { ko: "**Alt+→**로 지금 것을 뒤로 미룬다. 답할 준비가 안 된 것이 큐를 막지 않는다.", en: "**Alt+→** defers the staged one, so nothing you aren't ready for holds up the queue." },
     ],
+  },
+];
+
+const PANELS = [
+  { n: "Alerts", d: { ko: "알림", en: "notifications" } },
+  { n: "Codex", d: { ko: "세션 노트", en: "session notes" } },
+  { n: "Shell", d: { ko: "PTY", en: "a real PTY" } },
+  { n: "Files", d: { ko: "파일 탐색", en: "file explorer" } },
+  { n: "Repository", d: { ko: "git 전부", en: "all of git" } },
+  { n: "Skills", d: { ko: "워크플로우", en: "workflows" } },
+  { n: "Ledger", d: { ko: "토큰 지출", en: "token spend" } },
+  { n: "Usage limits", d: { ko: "쿼터·리스크", en: "quota & risk" } },
+];
+
+const PAIR_STEPS = [
+  {
+    h: { ko: "콘솔이 링크를 발급한다", en: "The console mints a link" },
+    p: {
+      ko: "Settings → Remote access에서 QR 액세스 링크를 만든다. **한 번만 쓰이고, 안 쓰면 15분에 만료**되며, 정확히 한 기기를 페어링한다.",
+      en: "Create a QR access link under Settings → Remote access. It **works once, expires in 15 minutes unused**, and pairs exactly one device.",
+    },
+  },
+  {
+    h: { ko: "폰이 신원을 검증한다", en: "The phone verifies identity" },
+    p: {
+      ko: "링크는 콘솔의 **인증서 지문**을 싣고 다닌다. Android 셸은 WebView가 한 바이트라도 보기 전에 네이티브로 핀을 검증한다 — 다른 인증서로 답하는 콘솔은 열리지 않는다.",
+      en: "The link carries the console's **certificate fingerprint**. The Android shell verifies the pin natively before the WebView sees a single byte — a console answering with a different certificate does not open.",
+    },
+  },
+  {
+    h: { ko: "페어링은 살아남는다", en: "The pairing survives" },
+    p: {
+      ko: "링크는 일회용이지만 **페어링은 양쪽의 재시작을 견딘다**. 제어권은 한 번에 한 기기 — 다른 기기가 잡으면 나머지는 명시적인 커튼 뒤에서 관전한다.",
+      en: "Links are disposable, but **the pairing survives restarts on both ends**. Control belongs to one device at a time — when another takes it, everyone else watches behind an explicit curtain.",
+    },
+  },
+];
+
+const GUARDS = [
+  {
+    k: "LISTENER",
+    b: { ko: "<b>문은 페어링 하나뿐.</b> 원격 리스너는 세션 없이는 다른 무엇에도 답하지 않고, 페어링 문에는 실패 예산이 걸려 노출된 엔드포인트를 공짜로 두들길 수 없다.", en: "<b>Pairing is the only door.</b> A remote listener answers nothing without a session, and a failure budget on the pairing door means an exposed endpoint cannot be hammered for free." },
+  },
+  {
+    k: "WATCH",
+    b: { ko: "<b>보기만 하는 링크가 따로 있다.</b> 모니터링 전용 링크로 페어링한 기기는 관전만 하고, 이 머신에서 명령을 실행할 수 없다.", en: "<b>Watch-only links exist.</b> A device paired with a monitoring-only link can watch but never run commands on this machine." },
+  },
+  {
+    k: "NAT",
+    b: { ko: "<b>공개 도달은 이중 옵트인.</b> LAN 수신이 하나의 결정이라면, NAT 경로로 공개 호스트 이름을 광고하는 것은 별도의 확인까지 요구하는 또 하나의 결정이다.", en: "<b>Public reach is a double opt-in.</b> LAN listening is one decision; advertising a public hostname over a NAT route is a second, explicitly acknowledged one." },
+  },
+];
+
+const TIERS = [
+  {
+    k: "Tier 01 · Decide",
+    name: { ko: "당신", en: "You" },
+    p: { ko: "최종 의사 결정자. 무엇을 할지 정하고, 되돌리기 어려운 행동을 승인한다.", en: "The final decision-maker. Sets what gets done and approves anything hard to reverse." },
+  },
+  {
+    k: "Tier 02 · Host agent",
+    name: { ko: "Admiral", en: "Admiral" },
+    p: { ko: "작업을 분해하고 적합한 모델에 위임하며, 돌아온 결과를 산출물 단위로 검사한 뒤 통합한다.", en: "Decomposes the work, delegates it to the model that fits, then inspects the returned artifacts before integrating them." },
+  },
+  {
+    k: "Tier 03 · Session",
+    name: { ko: "Operation", en: "Operation" },
+    p: { ko: "실제 터미널 세션. 로컬 서버가 소유하므로 탭을 닫아도 계속 실행되고 출력도 계속 쌓인다.", en: "A real terminal session, owned by the local server — it keeps running and buffering output after the tab closes." },
   },
 ];
 
 const ORDERS = [
-  {
-    name: "Command Integrity",
-    kr: { ko: "명령 무결성", en: "Command Integrity" },
-    desc: { ko: "명령 수령 단계의 무결성을 지킨다. 기술적으로 결함 있는 명령에는 근거를 갖춰 진언하고, 착수 전 결정형 모호함은 질문으로 해소하며, 명시 범위 밖 권한을 가정하지 않고, 지침 충돌은 안전·정확·명료·효율 순으로 중재한다.", en: "Guards integrity at order reception. Technically flawed orders get a reasoned pushback, decision-shaped ambiguity is clarified before work starts, no permission is assumed beyond the granted scope, and conflicting directives resolve by safety, correctness, clarity, then efficiency." },
-  },
-  {
-    name: "Mission Anchor",
-    kr: { ko: "임무 정렬", en: "Mission Anchor" },
-    desc: { ko: "임무 목표를 단 한 문장의 북극성으로 고정한다. 모든 체크포인트 진입 전 목표를 복창하고, 진출 후 정렬을 자가 점검하며, 표류가 감지되면 즉시 정지·복귀한다.", en: "Pins the mission to a single-sentence north star. Recall the objective before every checkpoint, self-check alignment after, and halt to recover the moment drift appears." },
-  },
-  {
-    name: "Context Confidence",
-    kr: { ko: "맥락 확신", en: "Context Confidence" },
-    desc: { ko: "결정 경계에 들어서기 전 증거 충분성을 complete·sufficient·partial·speculative로 판정한다. 증거 목록 없는 확신은 speculative로 강등되고, 기준 미달이면 정찰로 재진입한다.", en: "Grades evidence sufficiency — complete, sufficient, partial, speculative — before any decision boundary. Confidence with no evidence list is demoted to speculative; below threshold, it re-enters reconnaissance." },
-  },
-  {
-    name: "Orchestration Policy",
-    kr: { ko: "오케스트레이션 정책", en: "Orchestration Policy" },
-    desc: { ko: "실행은 위임하고 판단은 보유한다. 작업 복잡도에 실행 폭을 비례시키고, 모든 위임은 실행 표면과 신원을 명시적으로 고정한다.", en: "Delegate execution, retain judgment. Size the run to the task's complexity, and pin every handoff to an explicit surface and identity." },
-  },
-  {
-    name: "Deep Dive",
-    kr: { ko: "딥 다이브", en: "Deep Dive" },
-    desc: { ko: "추측이 발견되는 즉시 자동 검증을 띄운다. 동일 가정에 대해 최대 2회까지 재검증하고, 그래도 불확실하면 미해결로 표시해 사용자에게 회부한다.", en: "Auto-verification launches the moment a guess appears. Up to two re-checks per assumption — still uncertain, it is surfaced to you as unresolved." },
-  },
-  {
-    name: "Result Integrity",
-    kr: { ko: "결과 무결성", en: "Result Integrity" },
-    desc: { ko: "위임한 실행이 돌려준 결과는 관련성·완결성·내부 충돌 3축으로 검사하고, 파일을 바꾼 실행은 서사가 아니라 diff를 직접 읽어 판정한다. 실패가 누적되면 사용자에게 보고한다.", en: "Every delegated result is checked on three axes — relevance, completeness, internal consistency — and a run that changed files is judged by reading its diff, never its own summary. Repeated failure is reported to you." },
-  },
-];
-
-const ANYWHERE = [
-  {
-    n: "01",
-    name: "Pairing Is the Only Door",
-    kr: { ko: "문은 페어링 하나뿐", en: "Pairing Is the Only Door" },
-    body: { ko: "원격 리스너는 세션 없이는 다른 무엇에도 답하지 않는다. 액세스 링크는 QR 하나로 전달되고, 한 번만 쓰이며, 안 쓰면 15분에 만료된다. 그러나 페어링 자체는 양쪽의 재시작을 견딘다 — 링크는 일회용, 신뢰는 영속.", en: "A remote listener answers nothing without a session. Access links travel as one QR, work once, and expire in 15 minutes unused — while the pairing itself survives restarts on both ends. Links are disposable; trust is durable." },
-  },
-  {
-    n: "02",
-    name: "Certificates, Pinned",
-    kr: { ko: "인증서 핀 고정", en: "Certificates, Pinned" },
-    body: { ko: "모든 링크는 콘솔의 인증서 지문을 싣고 다닌다. 다른 인증서로 답하는 콘솔은 그냥 열리지 않는다. Android 셸은 WebView가 한 바이트라도 보기 전에 네이티브로 핀을 검증한다.", en: "Every link carries the console's certificate fingerprint; a console answering with a different certificate simply does not open. The Android shell verifies the pin natively before the WebView sees a single byte." },
-  },
-  {
-    n: "03",
-    name: "One Controller at a Time",
-    kr: { ko: "조종간은 한 번에 하나", en: "One Controller at a Time" },
-    body: { ko: "다른 기기가 제어권을 잡으면 나머지는 명시적인 커튼 뒤에서 관전으로 내려간다 — 하나의 PTY에 두 개의 키보드는 없다. 보기만 하는 모니터링 전용 링크가 따로 있고, NAT 경로의 공개 도달은 별도의 확인까지 요구하는 두 번째 옵트인이다.", en: "When another device takes control, everyone else drops to watching behind an explicit curtain — no two keyboards on one PTY. Monitoring-only links exist for screens that should never type, and public reach over NAT is a second, explicitly acknowledged opt-in." },
-  },
-];
-
-const DIFFS = [
-  {
-    n: "01",
-    name: "Multi-CLI Orchestration",
-    kr: { ko: "멀티-CLI 오케스트레이션", en: "Multi-CLI Orchestration" },
-    body: { ko: "제작사가 다듬은 에이전트 루프를 대체하지 않고 조율한다. Fleet은 실제 CLI 바이너리를 실행하고 지원 프로토콜로 말하므로, 이미 쓰던 기능과 인증이 그대로 살아 있다.", en: "Native runtimes are coordinated, not replaced. Fleet launches the actual CLI binary and speaks its supported protocol, so the capabilities and authentication you already use stay intact." },
-  },
-  {
-    n: "02",
-    name: "Sessions That Outlive the Tab",
-    kr: { ko: "탭보다 오래 사는 세션", en: "Sessions That Outlive the Tab" },
-    body: { ko: "Operation은 브라우저가 아니라 로컬 서버가 소유한다. 탭을 닫으면 소켓만 분리되고 PTY는 계속 돈다. 다시 열면 스크롤백을 재생하고 하던 일을 이어간다.", en: "An Operation is owned by the local server, not the browser. Closing the tab detaches the socket while the PTY keeps running; reopen it and the session replays its scrollback and carries on." },
-  },
-  {
-    n: "03",
-    name: "Credentials Stay Out of the Agent",
-    kr: { ko: "자격 증명은 에이전트 밖에", en: "Credentials Stay Out of the Agent" },
-    body: { ko: "게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트다. 자격 증명은 Console이 들고 상류 요청도 Console이 보내므로, 에이전트 프로세스는 그것을 한 번도 보지 않는다. 계정은 각자 자기 것을 쓴다 — Codex와 Cursor는 기존 구독, Kimi와 OpenCode Go는 등록한 API 키.", en: "The gateway is a local Claude Code endpoint, not an API proxy. The Console holds the credential and makes the upstream request, so the agent process never sees it. Each provider runs on your own account: an existing subscription for Codex and Cursor, a registered API key for Kimi and OpenCode Go." },
-  },
-  {
-    n: "04",
-    name: "Architectural Discipline",
-    kr: { ko: "아키텍처 규율", en: "Architectural Discipline" },
-    body: { ko: "빌드 게이트는 협상 불가. 패키지 경계는 CI가 매 PR마다 검사한다 — `core-*`는 Fleet 도메인을 몰라야 하고, 어기면 검사에서 걸린다. 각 단계는 그 자체로 컴파일·테스트를 통과해야 다음으로 넘어간다.", en: "Build gates are non-negotiable. Package boundaries are checked by CI on every pull request: `core-*` must stay Fleet-domain-agnostic, and a violation fails the check. Each step must compile and test on its own to advance." },
-  },
+  { name: "Command Integrity", kr: { ko: "명령 무결성", en: "" }, desc: { ko: "결함 있는 명령에는 근거를 갖춰 진언하고, 결정형 모호함은 착수 전에 질문으로 해소하며, 명시 범위 밖 권한을 가정하지 않는다.", en: "Flawed orders get a reasoned pushback, decision-shaped ambiguity is resolved before work starts, and no permission is assumed beyond the granted scope." } },
+  { name: "Mission Anchor", kr: { ko: "임무 정렬", en: "" }, desc: { ko: "임무 목표를 한 문장으로 고정하고, 경계마다 복창·자가 점검하며, 표류가 감지되면 즉시 복귀한다.", en: "The mission is pinned to one sentence, recalled at every boundary, and drift halts the work until the objective is recovered." } },
+  { name: "Context Confidence", kr: { ko: "맥락 확신", en: "" }, desc: { ko: "결정 경계 전 증거 충분성을 판정한다. 증거 목록 없는 확신은 추측으로 강등되고, 기준 미달이면 정찰로 재진입한다.", en: "Evidence sufficiency is graded before decisions. Confidence with no evidence list is demoted to speculation; below threshold, back to reconnaissance." } },
+  { name: "Orchestration Policy", kr: { ko: "오케스트레이션 정책", en: "" }, desc: { ko: "실행은 위임하고 판단은 보유한다. 작업 복잡도에 실행 폭을 비례시키고, 모든 위임은 표면과 신원을 고정한다.", en: "Delegate execution, retain judgment. Size the run to the task, and pin every handoff to an explicit surface and identity." } },
+  { name: "Deep Dive", kr: { ko: "딥 다이브", en: "" }, desc: { ko: "추측이 발견되는 즉시 검증을 띄운다. 두 번 재검증해도 불확실하면 미해결로 표시해 사용자에게 회부한다.", en: "Verification launches the moment a guess appears. Still uncertain after two re-checks, it is surfaced as unresolved." } },
+  { name: "Result Integrity", kr: { ko: "결과 무결성", en: "" }, desc: { ko: "위임 결과는 관련성·완결성·충돌 3축으로 검사하고, 파일을 바꾼 실행은 서사가 아니라 diff를 직접 읽어 판정한다.", en: "Results are checked for relevance, completeness, and conflicts — and a run that changed files is judged by its diff, never its own summary." } },
 ];
 
 const COMPARES = [
@@ -333,435 +370,398 @@ const COMPARES = [
     bullets: [
       { ko: "서버가 소유하는 병렬 Operation", en: "Parallel, server-owned Operations" },
       { ko: "내 계정으로 닿는 4개 공급자", en: "Four providers on accounts you own" },
-      { ko: "상시 작동하는 6개 Standing Order", en: "Six always-on Standing Orders" },
+      { ko: "브라우저·데스크톱·Android", en: "Browser, desktop, and Android" },
     ],
     verdict: { ko: "여러 에이전트를 동시에 감독하는 자리로 설계되었다.", en: "Built to be the place you supervise several agents at once." },
   },
 ];
 
-// ───── Top nav ─────
-function Nav() {
+// ───── helpers ─────
+const strong = (s) => ({ __html: t(s).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>") });
+
+function Reveal({ children, as: Tag = "div", className = "" }) {
+  const ref = useRef(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      el.classList.add("in");
+      return;
+    }
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach((e) => { if (e.isIntersecting) { el.classList.add("in"); io.disconnect(); } });
+    }, { threshold: 0.12 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  return <Tag ref={ref} className={"rv " + className}>{children}</Tag>;
+}
+
+// ───── Nav ─────
+function Nav({ onFlip }) {
   return (
     <header className="topnav">
       <div className="shell topnav-inner">
         <a href="#top" className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 20h20" />
-              <path d="M5 20l-2-7h18l-2 7" />
-              <path d="M12 4v9" />
-              <path d="M8 8h8" />
-            </svg>
-          </span>
-          fleet-harness
+          <span className="dot" aria-hidden="true"></span>
+          fleet<span className="muted">-harness</span>
         </a>
         <nav className="nav-links" aria-label={t(UI.primaryAria)}>
-          <a href="#hierarchy">{t(UI.navHierarchy)}</a>
-          <a href="#providers">{t(UI.navProviders)}</a>
+          <a href="#gateway">{t(UI.navGateway)}</a>
           <a href="#modes">{t(UI.navModes)}</a>
           <a href="#anywhere">{t(UI.navAnywhere)}</a>
-          <a href="#diffs">{t(UI.navDiffs)}</a>
+          <a href="#doctrine">{t(UI.navDoctrine)}</a>
+          <a href="#compare">{t(UI.navCompare)}</a>
         </nav>
-        <a href="https://github.com/sbluemin/fleet-harness.git" className="nav-cta" target="_blank" rel="noreferrer">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-            <path d="M12 .5C5.7.5.5 5.7.5 12c0 5 3.3 9.3 7.8 10.8.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.5-3.9-1.5-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.2 1.2.9-.3 1.9-.4 2.9-.4s2 .1 2.9.4c2.2-1.5 3.2-1.2 3.2-1.2.6 1.7.2 2.9.1 3.2.7.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.4 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.5-1.5 7.8-5.8 7.8-10.8C23.5 5.7 18.3.5 12 .5z" />
-          </svg>
-          GitHub
-        </a>
+        <div className="nav-side">
+          <button className="lang-flip" onClick={onFlip} aria-label={t(UI.langAria)}>
+            {lang === "ko" ? "EN" : "한국어"}
+          </button>
+          <a href="https://github.com/sbluemin/fleet-harness" className="nav-cta" target="_blank" rel="noreferrer">GitHub</a>
+        </div>
       </div>
     </header>
   );
 }
 
 // ───── Hero ─────
+const BOOT_LINES = [
+  { cls: "d", text: "$ npm install -g @dotobokuri/fleet-console" },
+  { cls: "c", text: "$ fleet console" },
+  { cls: "", text: "Fleet Console opened." },
+  { cls: "", text: "Fleet Console server: running" },
+  { cls: "p", text: "  console    http://127.0.0.1:52696/console/" },
+];
+
+function BootTerminal() {
+  const [typed, setTyped] = useState(() =>
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches ? BOOT_LINES.length : 0);
+  const [chars, setChars] = useState(0);
+
+  useEffect(() => {
+    if (typed >= BOOT_LINES.length) return;
+    const line = BOOT_LINES[typed];
+    const isCommand = line.text.startsWith("$");
+    if (isCommand && chars < line.text.length) {
+      const id = setTimeout(() => setChars(chars + 1), 26);
+      return () => clearTimeout(id);
+    }
+    const id = setTimeout(() => { setTyped(typed + 1); setChars(0); }, isCommand ? 320 : 150);
+    return () => clearTimeout(id);
+  }, [typed, chars]);
+
+  return (
+    <div className="boot" role="img" aria-label="fleet console starting in a terminal">
+      <div className="boot-bar" aria-hidden="true"><i></i><i></i><i></i><span>{t(UI.bootTitle)}</span></div>
+      <div className="boot-body" aria-hidden="true">
+        {BOOT_LINES.slice(0, typed).map((l, i) => (
+          <span key={i} className={l.cls}>{l.text}{"\n"}</span>
+        ))}
+        {typed < BOOT_LINES.length && BOOT_LINES[typed].text.startsWith("$") && (
+          <span className={BOOT_LINES[typed].cls}>{BOOT_LINES[typed].text.slice(0, chars)}</span>
+        )}
+        <span className="caret"></span>
+      </div>
+    </div>
+  );
+}
+
 function Hero() {
-  const nodeCount = PROVIDERS.length;
-  const radius = 38;
-  const nodes = Array.from({ length: nodeCount }, (_, i) => {
-    const angle = (i / nodeCount) * Math.PI * 2 - Math.PI / 2;
-    return {
-      x: 50 + Math.cos(angle) * radius,
-      y: 50 + Math.sin(angle) * radius,
-      label: ["CX", "CR", "MS", "OC"][i],
-      full: PROVIDERS[i].id,
-      color: PROVIDERS[i].color,
-    };
-  });
-
-  const titleLines = t(UI.heroTitle);
   return (
-    <section className="hero section" id="top">
+    <section className="hero" id="top">
       <div className="shell">
-        <div className="hero-grid">
-          <div>
-            <div className="hero-eyebrow">
-              <span className="pulse" aria-hidden="true"></span>
-              <span className="eyebrow">{t(UI.heroEyebrow)}</span>
+        <div className="hero-eyebrow">
+          <span className="pulse" aria-hidden="true"></span>
+          {t(UI.heroEyebrow)}
+        </div>
+        <h1 className="hero-title">
+          {t(UI.heroT1)}<br/>{t(UI.heroT2)} <em>{t(UI.heroT3)}</em>
+        </h1>
+        <p className="hero-sub">{t(UI.heroSub)}</p>
+
+        <div className="hero-row">
+          <div className="hero-meta">
+            <div className="item">
+              <div className="k">{t(UI.metaProviders)}</div>
+              <div className="v"><em>4</em> · {t(UI.metaProvidersV)}</div>
             </div>
-            <h1 className="hero-title">{titleLines[0]}<br/>{titleLines[1]}</h1>
-            <p className="hero-desc">
-              {t(UI.heroDescPre)}
-              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescOperation)}</em>
-              {t(UI.heroDescMid)}
-              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescHost)}</em>
-              {t(UI.heroDescMid2)}
-              <em style={{color:"var(--brass-bright)", fontStyle:"italic"}}>{t(UI.heroDescOrders)}</em>
-              {t(UI.heroDescTail)}
-            </p>
-            <div className="hero-actions">
-              <a className="btn-primary" href="https://github.com/sbluemin/fleet-harness.git" target="_blank" rel="noreferrer">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5C5.7.5.5 5.7.5 12c0 5 3.3 9.3 7.8 10.8.6.1.8-.3.8-.6v-2.1c-3.2.7-3.9-1.5-3.9-1.5-.5-1.4-1.3-1.7-1.3-1.7-1.1-.7.1-.7.1-.7 1.2.1 1.8 1.2 1.8 1.2 1 1.8 2.7 1.3 3.4 1 .1-.8.4-1.3.8-1.6-2.6-.3-5.4-1.3-5.4-5.9 0-1.3.5-2.4 1.2-3.2-.1-.3-.5-1.5.1-3.2 0 0 1-.3 3.2 1.2.9-.3 1.9-.4 2.9-.4s2 .1 2.9.4c2.2-1.5 3.2-1.2 3.2-1.2.6 1.7.2 2.9.1 3.2.7.8 1.2 1.9 1.2 3.2 0 4.6-2.8 5.6-5.4 5.9.4.4.8 1.1.8 2.2v3.3c0 .3.2.7.8.6 4.5-1.5 7.8-5.8 7.8-10.8C23.5 5.7 18.3.5 12 .5z" /></svg>
-                {t(UI.ctaRepo)}
-              </a>
-              <a className="btn-secondary" href="#providers">{t(UI.ctaProviders)}</a>
+            <div className="item">
+              <div className="k">{t(UI.metaModes)}</div>
+              <div className="v"><em>3</em> · {t(UI.metaModesV)}</div>
             </div>
-            <div className="hero-meta">
-              <div className="hero-meta-item">
-                <div className="label">{t(UI.metaKinds)}</div>
-                <div className="value"><em>{CLI_BACKENDS.length}</em> · {t(UI.metaKindsVal)}</div>
-              </div>
-              <div className="hero-meta-item">
-                <div className="label">{t(UI.metaProviders)}</div>
-                <div className="value"><em>{PROVIDERS.length}</em> · {t(UI.metaProvidersVal)}</div>
-              </div>
-              <div className="hero-meta-item">
-                <div className="label">{t(UI.metaOrders)}</div>
-                <div className="value"><em>{ORDERS.length}</em> · {t(UI.metaOrdersVal)}</div>
-              </div>
+            <div className="item">
+              <div className="k">{t(UI.metaScreens)}</div>
+              <div className="v"><em>3</em> · {t(UI.metaScreensV)}</div>
             </div>
           </div>
+          <BootTerminal />
+        </div>
 
-          <div className="hero-diagram" aria-hidden="true">
-            <div className="hero-diagram-ring"></div>
-            <div className="hero-diagram-ring r2"></div>
-            <div className="hero-diagram-ring r3"></div>
-            <div className="hero-diagram-sweep"></div>
-            <div className="hero-diagram-center">
-              <div>
-                <div className="role">Admiral</div>
-                <div className="name">Admiral<br/>HOST</div>
-              </div>
-            </div>
-            {nodes.map((n, i) => (
-              <div
-                key={i}
-                className="hero-diagram-node"
-                style={{ left: n.x + "%", top: n.y + "%", "--node-color": n.color }}
-                title={n.full}
-              >
-                <span className="node-label">{n.label}</span>
-                <span className="node-name">{n.full}</span>
-              </div>
-            ))}
+        <Reveal as="figure" className="dock">
+          <div className="plate"><img src="assets/console-canvas.png" alt={t(UI.heroCap)} /></div>
+          <i className="corner tl" aria-hidden="true"></i><i className="corner tr" aria-hidden="true"></i>
+          <i className="corner bl" aria-hidden="true"></i><i className="corner br" aria-hidden="true"></i>
+          <figcaption><b>●</b> {t(UI.heroCap)}</figcaption>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+// ───── Thesis ─────
+function Thesis() {
+  return (
+    <section className="thesis">
+      <div className="shell">
+        <Reveal>
+          <p className="thesis-line">{t(UI.thesis1)}<em>{t(UI.thesisEm)}</em>{t(UI.thesis2)}</p>
+          <div className="screens">
+            <span className="screen-chip"><i aria-hidden="true"></i>{t(UI.screenBrowser)}</span>
+            <span className="screen-chip"><i aria-hidden="true"></i>{t(UI.screenDesktop)}</span>
+            <span className="screen-chip soon"><i aria-hidden="true"></i>{t(UI.screenAndroid)} <span className="tag">· {t(UI.screenAndroidTag)}</span></span>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// ───── Hierarchy ─────
-function Hierarchy() {
-  return (
-    <section className="section" id="hierarchy">
-      <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.hierarchyEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{t(UI.hierarchyTitle)}</h2>
-          <p className="lede">{t(UI.hierarchyLede)}</p>
-        </div>
-        <div className="hierarchy">
-          {HIERARCHY.map((tier, i) => (
-            <div className="tier" key={tier.rank}>
-              <div className="tier-rank">{tier.rank}</div>
-              <div className="tier-role">{t(tier.role)}</div>
-              <div className="tier-en">{tier.en}</div>
-              <div className="tier-desc">{t(tier.desc)}</div>
-              {i < HIERARCHY.length - 1 && <div className="tier-arrow" aria-hidden="true">→</div>}
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ───── CLI Backends ─────
-function Backends() {
-  const title = t(UI.backendsTitle);
-  return (
-    <section className="section" id="backends">
-      <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.backendsEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.backendsLede)}</p>
-        </div>
-        <div className="cli-grid">
-          {CLI_BACKENDS.map(c => (
-            <div className="cli" key={c.name} style={{ "--cli-color": c.color }}>
-              <div className="cli-head">
-                <span className="cli-num">No. {c.num}</span>
-                <span className="cli-vendor">{c.vendor}</span>
-              </div>
-              <div className="cli-name">{c.name}</div>
-              <div className="cli-tag">{t(c.tag)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ───── Gateway providers ─────
-function Providers() {
+// ───── Gateway ─────
+function Gateway() {
   const [active, setActive] = useState(0);
   const c = PROVIDERS[active];
-  const title = t(UI.providersTitle);
   return (
-    <section className="section" id="providers">
+    <section className="section" id="gateway">
       <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.providersEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.providersLede)}</p>
-        </div>
-        <div className="providers-wrap">
-          <div className="provider-list" role="tablist" aria-label={t(UI.providersAria)}>
-            {PROVIDERS.map((cap, i) => (
-              <button
-                key={cap.id}
-                role="tab"
-                aria-selected={active === i}
-                className={"provider-list-item " + (active === i ? "active" : "")}
-                style={{ "--cap-color": cap.color }}
-                onClick={() => setActive(i)}
-              >
-                <span className="provider-dot" aria-hidden="true"></span>
-                <span className="provider-list-text">
-                  <span className="provider-list-name">{cap.id}</span>
-                  <span className="provider-list-role">{t(cap.role)}</span>
-                </span>
-              </button>
-            ))}
-          </div>
-
-          <div
-            className="provider-detail"
-            style={{ "--cap-color": c.color }}
-            key={c.id}
-          >
-            <div style={{animation: "fleet-pop 360ms var(--ease-spring) both"}}>
-              <div className="provider-detail-head">
-                <div className="provider-detail-title-block">
-                  <div className="provider-id"><span>{t(UI.providerCap)}</span> · {c.id.toUpperCase()}</div>
-                  <h3 className="provider-name">{c.id}</h3>
-                  <div className="provider-role">{t(c.role)}</div>
-                </div>
-                <div className="provider-cli-badge">
-                  <span className="ind" aria-hidden="true"></span>
-                  {c.cli}
-                </div>
-              </div>
-              <div className="provider-body">
-                <div className="provider-mission">"{t(c.mission)}"</div>
-                <div>
-                  <div className="provider-model-title">{t(UI.reachableModels)}</div>
-                  <ul className="provider-model-list">
-                    {c.models.map((d, i) => <li key={i}>{t(d)}</li>)}
-                  </ul>
-                </div>
-              </div>
+        <Reveal className="section-head">
+          <span className="eyebrow">{t(UI.gwEy)}</span>
+          <h2 className="section-title">{t(UI.gwT1)}<br/><em>{t(UI.gwT2)}</em></h2>
+          <p className="lede">{t(UI.gwLede)}</p>
+        </Reveal>
+        <Reveal>
+          <div className="gateway-grid">
+            <div className="provider-tabs" role="tablist" aria-label={t(UI.gwAria)}>
+              {PROVIDERS.map((p, i) => (
+                <button key={p.id} role="tab" aria-selected={active === i}
+                  className="provider-tab" style={{ "--pv": p.color }}
+                  onClick={() => setActive(i)}>
+                  <span className="pd" aria-hidden="true"></span>
+                  <span><span className="nm">{p.id}</span><span className="rl">{t(p.role)}</span></span>
+                </button>
+              ))}
+            </div>
+            <div className="provider-detail" style={{ "--pv": c.color }} key={c.id}>
+              <div className="cred">{c.cred}</div>
+              <h3>{c.id}</h3>
+              <p className="mission">{t(c.mission)}</p>
+              <div className="eyebrow" style={{ marginBottom: 10 }}>{t(UI.gwModels)}</div>
+              <ul className="model-list">
+                {c.models.map((m, i) => <li key={i}>{t(m)}</li>)}
+              </ul>
             </div>
           </div>
-        </div>
+          <div className="gateway-note" dangerouslySetInnerHTML={{ __html: t(UI.gwNote) }}></div>
+        </Reveal>
+        <Reveal className="gateway-shot">
+          <div className="shot"><img src="assets/console-launch-menu.png" alt={t(UI.gwShotCap)} /></div>
+          <div className="shot-cap">● {t(UI.gwShotCap)}</div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// ───── Canvas modes ─────
+// ───── Modes ─────
 function Modes() {
-  const [active, setActive] = useState(0);
-  const p = MODES[active];
-  const title = t(UI.modesTitle);
+  const [active, setActive] = useState(2);
+  const m = MODES[active];
   return (
     <section className="section" id="modes">
       <div className="shell">
-        <div className="section-head">
+        <Reveal className="section-head">
           <span className="eyebrow">{t(UI.modesEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
+          <h2 className="section-title">{t(UI.modesT1)}<br/><em>{t(UI.modesT2)}</em></h2>
           <p className="lede">{t(UI.modesLede)}</p>
-        </div>
-        <div className="modes-wrap">
-          <div className="mode-rail" role="tablist" aria-label={t(UI.modesAria)}>
-            {MODES.map((ph, i) => (
-              <button
-                key={ph.n}
-                role="tab"
-                aria-selected={active === i}
-                className={
-                  "mode-step " +
-                  (active === i ? "active " : "") +
-                  (ph.required ? "required" : "conditional")
-                }
-                onClick={() => setActive(i)}
-              >
-                <span className="mode-step-num">{ph.n}</span>
-                <span className="mode-step-body">
-                  <span className="mode-step-title">{ph.name}</span>
-                  <span className="mode-step-tag">· {t(ph.tag)} · {t(ph.kr)}</span>
-                </span>
+        </Reveal>
+        <Reveal>
+          <div className="mode-band" role="tablist" aria-label={t(UI.modesAria)}>
+            {MODES.map((mm, i) => (
+              <button key={mm.name} role="tab" aria-selected={active === i}
+                className="mode-pill" onClick={() => setActive(i)}>
+                {mm.name}
               </button>
             ))}
           </div>
-          <div className="mode-detail" key={p.n}>
-            <div style={{animation: "fleet-pop 320ms var(--ease-spring) both"}}>
-              <div className="mode-detail-num" aria-hidden="true">{p.n}</div>
-              <div className="mode-detail-eyebrow">
-                <span>{t(UI.modeLabel)} {p.n}</span>
-                <span style={{
-                  width: 6, height: 6, borderRadius: "50%",
-                  background: p.required ? "var(--coral)" : "var(--aurora)",
-                  boxShadow: `0 0 8px ${p.required ? "var(--coral)" : "var(--aurora)"}`,
-                }}></span>
-                <span style={{color: p.required ? "var(--coral)" : "var(--aurora)"}}>{t(p.tag)}</span>
+          <div className="mode-split" key={m.name}>
+            <div className="mode-copy">
+              <h3>{m.name}</h3>
+              <div className="kbd-row">
+                {m.keys
+                  ? m.keys.map((k, i) => <React.Fragment key={k}>{i > 0 && " + "}<kbd>{k}</kbd></React.Fragment>)
+                  : <kbd>{t(m.tag)}</kbd>}
+                <span style={{ color: "var(--fog)", fontSize: 13, marginLeft: 10 }}>{t(m.kr)}</span>
               </div>
-              <h3 className="mode-detail-title">{p.name} <span style={{color:"var(--ink-fog)", fontWeight:300}}>· {t(p.kr)}</span></h3>
-              <p className="mode-detail-desc">{t(p.desc)}</p>
-              <div className="mode-detail-points">
-                {p.points.map((pt, i) => (
-                  <div className="mode-detail-point" key={i}>
-                    <span className="pt-marker">{pt.m}</span>
-                    <span dangerouslySetInnerHTML={{__html: t(pt.t).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")}}></span>
+              <p>{t(m.desc)}</p>
+              <div className="mode-points">
+                {m.points.map((pt, i) => (
+                  <div className="pt" key={i}><i aria-hidden="true"></i><span dangerouslySetInnerHTML={strong(pt)}></span></div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="shot"><img src="assets/console-war-room.png" alt={t(UI.modesShotCap)} /></div>
+              <div className="shot-cap">● {t(UI.modesShotCap)}</div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+// ───── Rail ─────
+function Rail() {
+  return (
+    <section className="section" id="rail">
+      <div className="shell">
+        <Reveal className="section-head">
+          <span className="eyebrow">{t(UI.railEy)}</span>
+          <h2 className="section-title">{t(UI.railT1)}<br/><em>{t(UI.railT2)}</em></h2>
+          <p className="lede">{t(UI.railLede)}</p>
+        </Reveal>
+        <Reveal>
+          <div className="rail-grid">
+            <div>
+              <div className="shot"><img src="assets/console-repository.png" alt={t(UI.railShotCap)} /></div>
+              <div className="shot-cap">● {t(UI.railShotCap)}</div>
+            </div>
+            <div>
+              <div className="panel-list">
+                {PANELS.map((p) => (
+                  <div className="p" key={p.n}>{p.n} <span>· {t(p.d)}</span></div>
+                ))}
+              </div>
+              <div className="analyst">
+                <div className="t">{t(UI.analystT)}</div>
+                {t(UI.analystB)}
+              </div>
+            </div>
+          </div>
+        </Reveal>
+      </div>
+    </section>
+  );
+}
+
+// ───── Anywhere ─────
+function Anywhere() {
+  return (
+    <section className="section" id="anywhere">
+      <div className="shell">
+        <Reveal className="section-head">
+          <span className="eyebrow">{t(UI.anyEy)}</span>
+          <h2 className="section-title">{t(UI.anyT1)} <em>{t(UI.anyT2)}</em></h2>
+          <p className="lede">{t(UI.anyLede)}</p>
+        </Reveal>
+        <Reveal className="anywhere-hero">
+          <div className="shot"><img src="assets/mobile-android.png" alt={t(UI.anyShotCap)} /></div>
+          <div className="shot-cap">● {t(UI.anyShotCap)}</div>
+        </Reveal>
+        <Reveal>
+          <div className="pairing">
+            <div>
+              <div className="eyebrow" style={{ marginBottom: 6 }}>{t(UI.pairT)}</div>
+              <div className="steps">
+                {PAIR_STEPS.map((s, i) => (
+                  <div className="step" key={i}>
+                    <div className="n" aria-hidden="true"></div>
+                    <div>
+                      <h4>{t(s.h)}</h4>
+                      <p dangerouslySetInnerHTML={strong(s.p)}></p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="guard-list">
+                {GUARDS.map((g) => (
+                  <div className="guard" key={g.k}>
+                    <i>{g.k}</i>
+                    <span dangerouslySetInnerHTML={{ __html: t(g.b) }}></span>
                   </div>
                 ))}
               </div>
             </div>
+            <div>
+              <div className="shot"><img src="assets/console-remote-pairing.png" alt={t(UI.qrCap)} /></div>
+              <div className="shot-cap">● {t(UI.qrCap)}</div>
+            </div>
           </div>
-        </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// ───── Standing Orders ─────
-function Orders() {
-  const title = t(UI.ordersTitle);
+// ───── Doctrine ─────
+function Doctrine() {
   return (
-    <section className="section" id="orders">
+    <section className="section" id="doctrine">
       <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.ordersEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.ordersLede)}</p>
-        </div>
-        <div className="orders-grid">
-          {ORDERS.map(o => (
-            <div className="order" key={o.name}>
-              <div className="order-glow" aria-hidden="true"></div>
-              <div className="order-status">
-                <span className="live" aria-hidden="true"></span> {t(UI.active)}
+        <Reveal className="section-head">
+          <span className="eyebrow">{t(UI.docEy)}</span>
+          <h2 className="section-title">{t(UI.docT1)} <em>{t(UI.docT2)}</em></h2>
+          <p className="lede">{t(UI.docLede)}</p>
+        </Reveal>
+        <Reveal>
+          <div className="tiers">
+            {TIERS.map((tr) => (
+              <div className="tier" key={tr.k}>
+                <div className="k">{tr.k}</div>
+                <h4>{t(tr.name)}</h4>
+                <p>{t(tr.p)}</p>
               </div>
-              <div className="order-name">
-                {o.name}
-                <span>· {t(o.kr)}</span>
+            ))}
+          </div>
+          <div className="orders-grid">
+            {ORDERS.map((o) => (
+              <div className="order" key={o.name}>
+                <div className="live-row"><i aria-hidden="true"></i>{t(UI.active)}</div>
+                <h4>{o.name}</h4>
+                {lang === "ko" && <div className="kr">{t(o.kr)}</div>}
+                <p>{t(o.desc)}</p>
               </div>
-              <div className="order-desc">{t(o.desc)}</div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </Reveal>
       </div>
     </section>
   );
 }
 
-// ───── Anywhere (remote access) ─────
-function Anywhere() {
-  const title = t(UI.anywhereTitle);
-  return (
-    <section className="section" id="anywhere">
-      <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.anywhereEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-          <p className="lede">{t(UI.anywhereLede)}</p>
-        </div>
-        <div className="diff-list">
-          {ANYWHERE.map(d => (
-            <div className="diff-row" key={d.n}>
-              <div className="diff-num">{d.n}</div>
-              <div className="diff-name">
-                <span>{t(d.kr)}</span>
-                {d.name}
-              </div>
-              <div className="diff-body">{t(d.body)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ───── Differentiators ─────
-function Diffs() {
-  const title = t(UI.diffsTitle);
-  return (
-    <section className="section" id="diffs">
-      <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.diffsEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{title[0]}<br/>{title[1]}</h2>
-        </div>
-        <div className="diff-list">
-          {DIFFS.map(d => (
-            <div className="diff-row" key={d.n}>
-              <div className="diff-num">{d.n}</div>
-              <div className="diff-name">
-                <span>{t(d.kr)}</span>
-                {d.name}
-              </div>
-              <div className="diff-body">{t(d.body)}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ───── Comparison ─────
+// ───── Compare ─────
 function Compare() {
   return (
     <section className="section" id="compare">
       <div className="shell">
-        <div className="section-head">
-          <span className="eyebrow">{t(UI.compareEy)}</span>
-          <div className="divider"></div>
-          <h2 className="section-title">{t(UI.compareTitle)}</h2>
-          <p className="lede">{t(UI.compareLede)}</p>
-        </div>
-        <div className="compare-grid">
-          {COMPARES.map(c => (
-            <div className={"compare-col " + (c.us ? "us" : "")} key={c.name}>
-              <div className="compare-cat">{t(c.cat)}</div>
-              <div className="compare-name">{c.name}</div>
-              <ul className="compare-list">
-                {c.bullets.map((b, i) => <li key={i}>{t(b)}</li>)}
-              </ul>
-              <div className="compare-verdict">{t(c.verdict)}</div>
-            </div>
-          ))}
-        </div>
+        <Reveal className="section-head">
+          <span className="eyebrow">{t(UI.cmpEy)}</span>
+          <h2 className="section-title">{t(UI.cmpTitle)}</h2>
+          <p className="lede">{t(UI.cmpLede)}</p>
+        </Reveal>
+        <Reveal>
+          <div className="compare-grid">
+            {COMPARES.map((c) => (
+              <div className={"compare-col " + (c.us ? "us" : "")} key={c.name}>
+                <div className="compare-cat">{t(c.cat)}</div>
+                <div className="compare-name">{c.name}</div>
+                <ul className="compare-list">
+                  {c.bullets.map((b, i) => <li key={i}>{t(b)}</li>)}
+                </ul>
+                <div className="compare-verdict">{t(c.verdict)}</div>
+              </div>
+            ))}
+          </div>
+        </Reveal>
       </div>
     </section>
   );
@@ -769,34 +769,26 @@ function Compare() {
 
 // ───── Closer ─────
 function Closer() {
-  const title = t(UI.closerTitle);
   return (
     <section className="closer" id="install">
       <div className="shell">
-        <div className="closer-card">
-          <div className="closer-eyebrow">{t(UI.closerEy)}</div>
-          <h2 className="closer-title">{title[0]}<br/>{title[1]}</h2>
+        <Reveal className="closer-card">
+          <span className="eyebrow">{t(UI.closerEy)}</span>
+          <h2 className="closer-title">{t(UI.closerT1)}<br/><em>{t(UI.closerT2)}</em></h2>
           <p className="closer-sub">{t(UI.closerSub)}</p>
-          <div className="code-block" style={{textAlign:"left", maxWidth: 540, margin: "0 auto 36px"}}>
+          <div className="install">
             <span className="cm">{t(UI.installCmt)}</span><br/>
             <span className="pr">$</span> npm install -g <span className="ar">@dotobokuri/fleet-console</span><br/>
-            <span className="pr">$</span> fleet console <span className="cm">{t(UI.setSailCmt)}</span>
+            <span className="pr">$</span> fleet console  <span className="cm">{t(UI.startCmt)}</span>
           </div>
           <div className="closer-actions">
-            <a className="btn-primary" href="https://github.com/sbluemin/fleet-harness.git" target="_blank" rel="noreferrer">
-              {t(UI.ctaGithubView)}
-            </a>
-            <a className="btn-secondary" href="#modes">
-              {t(UI.ctaModes)}
-            </a>
+            <a className="btn-primary" href="https://github.com/sbluemin/fleet-harness" target="_blank" rel="noreferrer">{t(UI.ctaGithub)}</a>
+            <a className="btn-secondary" href="#gateway">{t(UI.ctaGateway)}</a>
           </div>
-        </div>
+        </Reveal>
         <div className="footer">
           <div>{t(UI.footerLine)}</div>
-          <div className="footer-meta">
-            <span>{t(UI.builtOn)}</span>
-            <span>{t(UI.countMeta)}</span>
-          </div>
+          <div>{t(UI.footerMeta)}</div>
         </div>
       </div>
     </section>
@@ -805,22 +797,30 @@ function Closer() {
 
 // ───── App ─────
 function App() {
+  const [, force] = useState(0);
+  const flip = () => {
+    lang = lang === "ko" ? "en" : "ko";
+    document.documentElement.lang = lang;
+    const url = new URL(location.href);
+    url.searchParams.set("lang", lang);
+    history.replaceState(null, "", url);
+    force((n) => n + 1);
+  };
   return (
-    <>
-      <Nav />
+    <React.Fragment key={lang}>
+      <Nav onFlip={flip} />
       <main>
         <Hero />
-        <Hierarchy />
-        <Backends />
-        <Providers />
+        <Thesis />
+        <Gateway />
         <Modes />
+        <Rail />
         <Anywhere />
-        <Orders />
-        <Diffs />
+        <Doctrine />
         <Compare />
         <Closer />
       </main>
-    </>
+    </React.Fragment>
   );
 }
 
