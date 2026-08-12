@@ -74,6 +74,34 @@
   font-weight: var(--weight-bold);
 }
 
+/* The header names the Theater this list belongs to. brass carries location, so the mark reads as
+   "where you are" rather than a state signal, and the title stays a title — the Theater tab owns
+   switching, and a caret or a border here would promise a control this is not. */
+.mobile-list-header h1.mobile-list-theater {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 16px;
+}
+
+.mobile-list-theater-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-theater-mark {
+  flex: none;
+  padding: 1px 4px;
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  background: var(--brass-glow);
+  border-radius: var(--radius-xs);
+}
+
 .mobile-list-actions {
   display: flex;
   align-items: center;
@@ -228,9 +256,110 @@
   font-size: 24px;
 }
 
+/* Theater page — one row per registered Theater, each carrying what is happening inside it so the
+   tab is a place to read rather than a picker that throws you out on the first tap. */
+.mobile-theater-page {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+}
+
+.mobile-theater-rows {
+  display: grid;
+  gap: var(--space-2);
+  align-content: start;
+  padding: var(--space-4);
+  overflow: auto;
+}
+
+.mobile-theater-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 60px;
+  padding: var(--space-3);
+  color: var(--text-secondary);
+  text-align: left;
+  background: var(--ink-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+}
+
+.mobile-theater-row[aria-current="true"] {
+  border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
+  background: var(--brass-glow);
+}
+
+.mobile-theater-row:focus-visible {
+  border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
+  outline: none;
+}
+
+.mobile-theater-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mobile-theater-copy strong {
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-theater-summary {
+  display: flex;
+  gap: var(--space-3);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+/* Waiting is a state, so it speaks on the signal channel — not on brass, which carries location. */
+.mobile-theater-awaiting {
+  color: var(--warn-ink);
+}
+
+.mobile-theater-here {
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.mobile-theater-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 48px;
+  padding: var(--space-3);
+  color: var(--brass-ink);
+  font-size: 14px;
+  text-align: left;
+  background: transparent;
+  border: 1px dashed var(--hairline-strong);
+  border-radius: var(--radius-md);
+}
+
+.mobile-theater-add:disabled {
+  color: color-mix(in srgb, var(--brass) 45%, transparent);
+  cursor: wait;
+}
+
+.mobile-theater-error {
+  margin: 0;
+  color: var(--coral-ink);
+  font-size: 13px;
+}
+
 .mobile-tab-bar {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   padding: var(--space-1) max(var(--space-2), env(safe-area-inset-right)) max(var(--space-1), env(safe-area-inset-bottom)) max(var(--space-2), env(safe-area-inset-left));
   border-top: 1px solid var(--hairline);
   background: var(--ink-deep);

@@ -9,11 +9,12 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theme, language, onSelectOperation }: {
+export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theaterLabel, theme, language, onSelectOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
+  readonly theaterLabel: string | null;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly onSelectOperation: (operationId: string | null) => void;
@@ -83,7 +84,7 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
       />
     );
   } else if (activeTab === "operations") {
-    content = <MobileOperationList operations={operations} operationStatus={operationStatus} notificationIds={notificationIds} onOpen={openOperation} />;
+    content = <MobileOperationList operations={operations} operationStatus={operationStatus} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
   } else {
     content = (
       <section className="mobile-simple-panel">

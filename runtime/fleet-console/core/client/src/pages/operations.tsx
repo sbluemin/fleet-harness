@@ -4,7 +4,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { addTheater, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, issueTheaterFolderGrant, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
+import { createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
@@ -28,7 +28,8 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
-import { beginAddTheater, cancelAddTheater, compareOperationCreatedAt, completeAddTheater, consumeOperationFocus, consumeQuickLaunch, failAddTheater, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { registerTheaterFromPath } from "../theater-add.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -575,18 +576,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }), [handleClose, language, state.activeOperationId, state.activeTheme]);
 
   const handleAddTheater = useCallback(async (path: string) => {
-    beginAddTheater();
-    try {
-      const folderGrantId = await issueTheaterFolderGrant(path);
-      const result = await addTheater(folderGrantId);
-      completeAddTheater(result);
-      // 서버 register()는 기존 order를 보존하므로, 이미 수동 정렬된 Theater를 재-오픈하면
-      // completeAddTheater의 낙관적 prepend가 저장된 위치와 어긋난다(Codex P2). 서버 순서로 재수화해
-      // "열어도 위치 고정" 계약을 지킨다. hydrate는 방금 활성화한 result.id 선택을 유지한다.
-      void fetchTheaters(null).then(hydrateTheaters).catch(() => {});
-    } catch (error) {
-      failAddTheater(error instanceof Error ? error.message : String(error));
-    }
+    await registerTheaterFromPath(path);
   }, []);
 
   const handleForgetTheater = useCallback(async (theaterId: string) => {
@@ -599,6 +589,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       activeOperationId={state.activeOperationId}
       operationStatus={state.operationStatus}
       operationNotifications={state.operationNotifications}
+      theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
       theme={state.activeTheme}
       language={language}
       onSelectOperation={setActiveOperation}
