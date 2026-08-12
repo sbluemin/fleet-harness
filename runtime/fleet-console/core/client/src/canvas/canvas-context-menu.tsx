@@ -5,7 +5,7 @@ import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "..
 import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
-import { EffortTrack, effortLadderPosition } from "../components/effort-track.js";
+import { EffortGaugeGlyph, EffortTrack, effortLadderPosition } from "../components/effort-track.js";
 import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
 import { launchEtcGlyph, launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
@@ -835,47 +835,6 @@ async function persistEffortConfirmTipSeen(): Promise<void> {
     if (saved) return;
     await new Promise((resolve) => setTimeout(resolve, 40));
   }
-}
-
-const GAUGE_BAR_WIDTH = 1.5;
-const GAUGE_BAR_PITCH = 2.5;
-const GAUGE_HEIGHT = 8;
-const GAUGE_MIN_BAR = 2;
-
-/**
- * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,
- * 오르는 막대로 "단계를 고르는 자리"임을 아이콘 하나로 알린다. 자동은 한 칸도 켜지지 않는다 —
- * 최소 단을 고른 것과 갈려야 한다.
- */
-function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly total: number }) {
-  if (total <= 0) return null;
-  const width = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
-  return (
-    <svg
-      className="operation-launch-variant-effort-gauge"
-      viewBox={`0 0 ${width} ${GAUGE_HEIGHT}`}
-      width={width}
-      height={GAUGE_HEIGHT}
-      aria-hidden="true"
-    >
-      {Array.from({ length: total }, (_unused, index) => {
-        const height = total === 1
-          ? GAUGE_HEIGHT
-          : GAUGE_MIN_BAR + (index * (GAUGE_HEIGHT - GAUGE_MIN_BAR)) / (total - 1);
-        return (
-          <rect
-            key={index}
-            x={index * GAUGE_BAR_PITCH}
-            y={GAUGE_HEIGHT - height}
-            width={GAUGE_BAR_WIDTH}
-            height={height}
-            rx={0.5}
-            data-lit={index < rung ? "true" : undefined}
-          />
-        );
-      })}
-    </svg>
-  );
 }
 
 // 모델 밴드로 펼쳐지는 실행 종류. 지금 실행할 수 없으면 — 그 종류가 비활성이든 Theater가 없어

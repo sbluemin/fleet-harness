@@ -2751,7 +2751,7 @@ kbd {
 .cowork-chip span { color: var(--brass-bright); }
 .cowork-chip:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); color: var(--text-primary); }
 .cowork-chip.is-active { background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
-.cowork-chip--config { max-width: 12ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cowork-chip--config { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cowork-dock-input {
   flex: 1;
@@ -2853,9 +2853,65 @@ kbd {
 .cowork-card.is-sent .cowork-card-status { color: var(--aurora-ink); }
 .cowork-card.is-done .cowork-card-status { color: var(--positive-ink); }
 
-.cowork-config { display: flex; flex-wrap: wrap; gap: var(--space-2); width: auto; }
-.cowork-selector { display: grid; gap: var(--space-1); min-inline-size: 120px; }
-.cowork-selector span { color: var(--text-tertiary); font-size: var(--font-size-2xs); font-weight: var(--weight-medium); }
+/* 에이전트 설정 메뉴 — 실행 메뉴와 같은 문법: 모델 행 + 행 오른쪽 강도 손잡이 + 강도 트랙
+   플라이아웃. 정렬 스트립이 바와 같은 폭을 잡아, 팝오버가 도크 중앙이 아니라 여는 칩 쪽에 선다. */
+.cowork-config-row { width: min(560px, 100%); display: flex; justify-content: flex-end; }
+/* 강도 플라이아웃이 옆으로 비어져 나온다 — 팝오버 공통의 overflow: auto를 되물려 자르지 않는다. */
+.cowork-config { width: max-content; max-height: none; overflow: visible; }
+
+.cowork-agent-menu { position: relative; display: grid; gap: 2px; }
+.cowork-agent-menu-label { color: var(--text-tertiary); font-size: var(--font-size-2xs); font-weight: var(--weight-medium); letter-spacing: 0.08em; text-transform: uppercase; padding: var(--space-1) var(--space-2) 0; }
+.cowork-agent-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 224px;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  padding: var(--space-1) var(--space-2);
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+.cowork-agent-row:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); }
+.cowork-agent-row[aria-pressed="true"] { background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
+.cowork-agent-row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cowork-agent-check { color: var(--brass-bright); font-size: var(--font-size-xs); inline-size: 12px; flex: none; }
+/* 손잡이는 실행 메뉴의 어휘 그대로다 — 행을 짚으면 윤곽이 먼저 서고, 짚거나 열면 brass 워시. */
+.cowork-agent-effort-handle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  margin-right: -3px;
+  padding: 2px 3px 2px 5px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
+}
+.cowork-agent-row:hover .cowork-agent-effort-handle,
+.cowork-agent-row:focus-visible .cowork-agent-effort-handle { border-color: color-mix(in oklch, var(--surface-rim) 85%, transparent); }
+.cowork-agent-effort-handle:hover,
+.cowork-agent-effort-handle[data-open="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 14%, transparent); }
+.cowork-effort-flyout {
+  position: absolute;
+  z-index: 9;
+  left: calc(100% + var(--space-2));
+  width: max-content;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
+  box-shadow: 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
+  padding: var(--space-2) var(--space-3);
+}
+.cowork-effort-flyout.is-left { left: auto; right: calc(100% + var(--space-2)); }
+
+/* 칩의 강도 표식 — 모델명 옆에서 사다리 위 현재 단을 되비친다. */
+.cowork-chip-effort { display: inline-flex; align-items: center; margin-left: 2px; }
 
 /* AI 요약 카드 */
 .cowork-summary {

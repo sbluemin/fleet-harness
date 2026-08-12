@@ -13,7 +13,7 @@ import {
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
 import type { DraftLine } from "./cowork-diff.js";
-import { CoworkSettingsSelect } from "./cowork-settings-select.js";
+import { CoworkAgentMenu } from "./cowork-agent-menu.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils.js";
 
@@ -121,35 +121,59 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const host = dockZone.querySelector<HTMLElement>("[data-cowork-settings-host]");
     if (!host) return;
     if (!settingsSelectRoot) settingsSelectRoot = createRoot(host);
-    settingsSelectRoot.render(createElement(CoworkSettingsSelect, {
+    settingsSelectRoot.render(createElement(CoworkAgentMenu, {
       models: optionsDto.models,
       efforts: optionsDto.efforts,
       model: settings.model,
       effort: settings.effort,
-      onModelChange: (value) => handleSettingChange("model", value),
-      onEffortChange: (value) => handleSettingChange("effort", value),
+      onSelect: handleSelect,
     }));
   };
 
-  const handleSettingChange = (name: "model" | "effort", value: string) => {
-    // 모델을 바꾸면 강도 사다리가 달라질 수 있으므로 강도는 비워 두고 옵션 재조회가 채우게 한다.
-    settings = name === "model" ? { model: value, effort: "" } : { ...settings, [name]: value };
+  const handleSelect = (model: string, effort: string) => {
+    const modelChanged = model !== settings.model;
+    settings = { model, effort };
     saveSettings(settings);
-    if (!session) {
-      if (name !== "effort") void updateOptions().then(() => { renderDock(); }).catch(() => undefined);
-      else mountSettingsSelectIfNeeded();
-      return;
-    }
-    if (name !== "effort") {
+    if (modelChanged) {
+      // 모델이 바뀌면 강도 사다리가 달라질 수 있다 — 재조회가 강도를 정규화한 뒤 도크를 다시 세운다.
       void updateOptions()
-        .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
+        .then(() => (session ? mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)) : undefined))
         .then(renderDock)
         .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
-    } else {
-      void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings))
-        .then(renderDock)
-        .catch(() => undefined);
+      return;
     }
+    // 강도만 바뀌면 도크 HTML을 다시 세우지 않는다 — 재구축은 메뉴의 React 루트를 갈아치워
+    // 드래그 중인 트랙과 열린 플라이아웃을 죽인다. 칩 표식은 제자리 패치, 메뉴는 리렌더만 한다.
+    patchChipEffort();
+    mountSettingsSelectIfNeeded();
+    if (!session) return;
+    void updateCoworkSettings(options.theaterId, session.id, settings)
+      .then((next) => { if (!disposed) session = next; })
+      .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
+  };
+
+  // 칩의 강도 표식 — 사다리 위 몇 번째 단인지 실행 메뉴 손잡이와 같은 글리프로 되비친다.
+  const chipEffortGauge = (): string => {
+    const total = optionsDto.efforts.length;
+    const rung = optionsDto.efforts.indexOf(settings.effort) + 1;
+    if (total === 0 || rung === 0) return "";
+    const bars = Array.from({ length: total }, (_unused, index) => {
+      const height = total === 1 ? 8 : 2 + (index * 6) / (total - 1);
+      return `<rect x="${index * 2.5}" y="${8 - height}" width="1.5" height="${height}" rx="0.5"${index < rung ? ' data-lit="true"' : ""}></rect>`;
+    }).join("");
+    const width = total * 2.5 - 1;
+    return `<span class="cowork-chip-effort" data-cowork-chip-effort data-effort-level="${escapeAttribute(settings.effort)}" aria-hidden="true"><svg class="operation-launch-variant-effort-gauge" viewBox="0 0 ${width} 8" width="${width}" height="8">${bars}</svg></span>`;
+  };
+
+  const patchChipEffort = () => {
+    const holder = dockZone.querySelector<HTMLElement>("[data-cowork-chip-effort]");
+    if (!holder) return;
+    holder.dataset.effortLevel = settings.effort;
+    const rung = optionsDto.efforts.indexOf(settings.effort) + 1;
+    holder.querySelectorAll("rect").forEach((rect, index) => {
+      if (index < rung) rect.setAttribute("data-lit", "true");
+      else rect.removeAttribute("data-lit");
+    });
   };
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
@@ -211,7 +235,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
         <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
         <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
-        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}</button>
+        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}${chipEffortGauge()}</button>
         ${running
           ? `<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="${escapeAttribute(t("codex.cowork.stopAria"))}"><span aria-hidden="true"></span></button>`
           : `<button type="button" class="cowork-send" data-cowork-action="send" aria-label="${escapeAttribute(t("codex.cowork.sendToAi"))}">↑</button>`}
@@ -313,9 +337,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const renderConfig = () => {
     const t = consoleT();
+    // 정렬 스트립은 바와 같은 폭이다 — 팝오버가 도크 중앙이 아니라 여는 칩(설정) 쪽에 선다.
     return `
-    <div class="cowork-popover cowork-config" role="region" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}">
-      <div data-cowork-settings-host></div>
+    <div class="cowork-config-row">
+      <div class="cowork-popover cowork-config" role="region" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}">
+        <div data-cowork-settings-host></div>
+      </div>
     </div>`;
   };
 

@@ -341,19 +341,16 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
-    // CLI 선택기가 사라져 이제 모델과 강도 둘뿐이다.
-    await vi.waitFor(() => expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2));
-    const modelTrigger = article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[0]!;
-    modelTrigger.click();
-    await vi.waitFor(() => expect(document.querySelector(".fc-select__popup")).not.toBeNull());
-    [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")].find((option) => option.textContent === "opus")!.click();
+    // 메뉴는 모델 행으로 선다 — 폼 셀렉트는 더 없다.
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(2));
+    [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")].find((row) => row.textContent?.includes("opus"))!.click();
 
-    // 모델이 바뀌면 강도 사다리가 달라질 수 있으므로, 옛 강도를 들고 재조회하지 않고 새 목록으로 교체한다.
-    await vi.waitFor(() => expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[1]?.textContent).toContain("high"));
+    // 모델이 바뀌면 그 모델로 재조회하고, 새 사다리에 없는 강도는 새 기본값으로 교체된다.
+    await vi.waitFor(() => expect(article.querySelector(".cowork-agent-effort")?.textContent).toBe("HIGH"));
     expect(fetchMock.mock.calls.map((call) => String(call[0])).some((url) => url.includes("model=opus"))).toBe(true);
 
     controller.destroy();
-    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-effort-flyout")).toHaveLength(0);
     article.remove();
   });
 
@@ -377,19 +374,19 @@ describe("Cowork inline copilot", () => {
       article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')!.click();
       await vi.waitFor(() => {
         const open = article.querySelector(".cowork-config") !== null;
-        expect(article.querySelectorAll(".fc-select").length).toBe(open ? 2 : 0);
+        expect(article.querySelectorAll(".cowork-agent-row").length).toBe(open ? 1 : 0);
         expect(article.querySelectorAll("[data-cowork-settings-host]").length).toBe(open ? 1 : 0);
       });
     }
 
-    expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
+    expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1);
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-panel"]')!.click();
     await vi.waitFor(() => expect(article.querySelector(".cowork-config")).toBeNull());
-    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-effort-flyout")).toHaveLength(0);
 
     controller.destroy();
     expect(article.querySelector(".cowork-dock-zone")).toBeNull();
-    expect(document.querySelectorAll(".fc-select")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-agent-row")).toHaveLength(0);
     article.remove();
   });
 
@@ -670,5 +667,63 @@ describe("Cowork inline copilot", () => {
 
     controller.destroy();
     reader.remove();
+  });
+
+  it("selects model and effort through the agent menu's rows and effort flyout", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) {
+        return new Response(JSON.stringify({
+          models: ["fable[1m]", "opus[1m]", "sonnet"],
+          efforts: ["low", "medium", "high"],
+          defaultModel: "sonnet",
+          defaultEffort: "low",
+        }));
+      }
+      return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // 옵션이 채워지면 칩은 모델명과 함께 현재 강도 표식(1/3 점등)을 단다.
+    await vi.waitFor(() => expect(article.querySelector("[data-cowork-chip-effort]")).not.toBeNull());
+    expect(article.querySelector<HTMLElement>("[data-cowork-chip-effort]")!.dataset.effortLevel).toBe("low");
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    // 메뉴는 단일 레이어다 — 폼 셀렉트 없이 모델 행 3개가 바로 선다.
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(3));
+    expect(article.querySelector("select")).toBeNull();
+    const rows = [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")];
+    expect(rows.find(row => row.getAttribute("aria-pressed") === "true")?.textContent).toContain("sonnet");
+
+    // 강도 손잡이를 누르면 그 행 옆에 트랙 플라이아웃이 열린다.
+    const sonnetRow = rows.find(row => row.textContent?.includes("sonnet"))!;
+    sonnetRow.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+
+    // 자동 슬롯 없는 3단 사다리 — 방향키 한 번이 low → medium.
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    expect(track.getAttribute("aria-valuemax")).toBe("2");
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings") ?? "{}")).toEqual({ model: "sonnet", effort: "medium" });
+    });
+    // 강도만 바뀌면 도크는 재구축되지 않고 칩 표식이 제자리에서 갱신된다 — 플라이아웃은 열린 채다.
+    expect(article.querySelector<HTMLElement>("[data-cowork-chip-effort]")!.dataset.effortLevel).toBe("medium");
+    expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull();
+
+    // 모델 행 클릭은 고른 강도를 유지한 채 모델만 바꾸고, 그 모델로 옵션을 재조회한다.
+    fetchMock.mockClear();
+    const opusRow = [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")].find(row => row.textContent?.includes("opus[1m]"))!;
+    opusRow.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("model=opus%5B1m%5D"))).toBe(true));
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings") ?? "{}")).toEqual({ model: "opus[1m]", effort: "medium" });
+    });
+
+    controller.destroy();
   });
 });
