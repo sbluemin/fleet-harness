@@ -5,6 +5,22 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.56.0] - 2026-08-12
+
+### fleet-console
+
+#### Added
+- Switch Theater on a phone from a Theater tab, where each Theater lists how many Operations it holds and how many are waiting.
+- Show a new access link as a QR code so a phone can take it off the screen instead of through a chat app, with the link's remaining time and the moment a device pairs both visible in the same window.
+
+#### Changed
+- Open Settings on a phone as a list of sections, and tap one to give it the whole screen. The section list no longer takes most of the first screen, and each row shows what it currently holds, so the theme, language or gateway in use reads without opening anything.
+- Size every control on the phone's Settings screens for a fingertip, and stand the theme choices in one column instead of letting them wrap into uneven rows.
+- Name the active Theater above the mobile Operation list, so the list says which Theater it belongs to.
+
+#### Fixed
+- Stack the desktop Settings rows on any window narrow enough for the mobile layout. Between 721 and 767 pixels the help text was squeezed into a narrow vertical ribbon beside a wide empty gap.
+
 ## [1.55.0] - 2026-08-11
 
 ### fleet-console
