@@ -33,7 +33,6 @@ const HEAD_REVEAL_ZONE_PX = 12;
 const HEAD_REVEAL_TOUCH_ZONE_PX = 28;
 const HEAD_HIDE_BOUNDARY_PX = 64;
 const HEAD_REVEAL_INTENT_DELAY_MS = 120;
-const HEAD_HIDE_DELAY_MS = 320;
 const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
 
@@ -143,7 +142,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const headRevealedRef = useRef(headRevealed);
   headRevealedRef.current = headRevealed;
   const revealIntentTimerRef = useRef<number | null>(null);
-  const hideHeadTimerRef = useRef<number | null>(null);
 
   const cancelRevealIntent = useCallback(() => {
     if (revealIntentTimerRef.current === null) return;
@@ -151,46 +149,39 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     revealIntentTimerRef.current = null;
   }, []);
 
-  const cancelHeadHide = useCallback(() => {
-    if (hideHeadTimerRef.current === null) return;
-    window.clearTimeout(hideHeadTimerRef.current);
-    hideHeadTimerRef.current = null;
-  }, []);
-
   const holdHeadOpen = useCallback(() => {
-    cancelHeadHide();
     cancelRevealIntent();
     if (!headRevealedRef.current) setHeadRevealed(true);
-  }, [cancelHeadHide, cancelRevealIntent]);
+  }, [cancelRevealIntent]);
 
   const hideHeadUnlessFocused = useCallback(() => {
-    // 포커스가 헤더 안에 남아 있는 동안은 어떤 경로로도 숨기지 않는다 — 숨기면 포커스가
-    // 투명한 컨트롤에 갇힌다. 포커스가 떠나면 헤더의 블러 핸들러가 숨김을 다시 예약한다.
+    // 키보드 포커스(:focus-visible)가 헤더 안에 남아 있는 동안만 숨기지 않는다 — 숨기면
+    // 포커스가 투명한 컨트롤에 갇힌다. 마우스 클릭·드래그가 남긴 잔류 포커스는 리빌을
+    // 붙잡는 근거가 아니므로, 블러로 걷어내고 즉시 숨긴다.
     const active = document.activeElement;
-    if (active instanceof Element && active.closest(".right-rail-panel-head-reveal") !== null) return;
+    if (active instanceof HTMLElement && active.closest(".right-rail-panel-head-reveal") !== null) {
+      if (active.matches(":focus-visible")) return;
+      active.blur();
+    }
     setHeadRevealed(false);
   }, []);
 
-  const scheduleHeadHide = useCallback(() => {
+  // 이탈은 지연 없이 즉시 숨긴다 — 리빌 진입만 의도 지연을 거친다.
+  const releaseHead = useCallback(() => {
     cancelRevealIntent();
-    if (!headRevealedRef.current || hideHeadTimerRef.current !== null) return;
-    hideHeadTimerRef.current = window.setTimeout(() => {
-      hideHeadTimerRef.current = null;
-      hideHeadUnlessFocused();
-    }, HEAD_HIDE_DELAY_MS);
+    if (!headRevealedRef.current) return;
+    hideHeadUnlessFocused();
   }, [cancelRevealIntent, hideHeadUnlessFocused]);
 
   // 패널이 바뀌거나 닫히면 리빌 상태를 초기화한다.
   useLayoutEffect(() => {
     cancelRevealIntent();
-    cancelHeadHide();
     setHeadRevealed(false);
-  }, [activeId, cancelHeadHide, cancelRevealIntent]);
+  }, [activeId, cancelRevealIntent]);
 
   useLayoutEffect(() => () => {
     cancelRevealIntent();
-    cancelHeadHide();
-  }, [cancelHeadHide, cancelRevealIntent]);
+  }, [cancelRevealIntent]);
 
   const handleSlotPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     // 진입 판정은 hover 포인터에만 적용한다. 터치는 pointerdown 폴백이 담당한다.
@@ -198,7 +189,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     const slotTop = event.currentTarget.getBoundingClientRect().top;
     const y = event.clientY - slotTop;
     if (y <= HEAD_REVEAL_ZONE_PX) {
-      cancelHeadHide();
       if (headRevealedRef.current || revealIntentTimerRef.current !== null) return;
       revealIntentTimerRef.current = window.setTimeout(() => {
         revealIntentTimerRef.current = null;
@@ -207,13 +197,12 @@ export function RightRail({ theaterId, api }: RightRailProps) {
       return;
     }
     cancelRevealIntent();
-    if (y > HEAD_HIDE_BOUNDARY_PX) scheduleHeadHide();
-  }, [cancelHeadHide, cancelRevealIntent, scheduleHeadHide]);
+    if (y > HEAD_HIDE_BOUNDARY_PX) releaseHead();
+  }, [cancelRevealIntent, releaseHead]);
 
   const handleSlotPointerLeave = useCallback(() => {
-    cancelRevealIntent();
-    scheduleHeadHide();
-  }, [cancelRevealIntent, scheduleHeadHide]);
+    releaseHead();
+  }, [releaseHead]);
 
   const handleSlotPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     if (event.pointerType !== "touch") return;
@@ -226,10 +215,9 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     }
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest(".right-rail-panel-head-reveal") === null) {
-      cancelHeadHide();
       hideHeadUnlessFocused();
     }
-  }, [cancelHeadHide, hideHeadUnlessFocused, holdHeadOpen]);
+  }, [hideHeadUnlessFocused, holdHeadOpen]);
 
   useLayoutEffect(() => {
     const onResize = () => {
@@ -401,7 +389,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
               overlayAlpha={overlayAlpha}
               revealed={headRevealed}
               onHoldOpen={holdHeadOpen}
-              onRelease={scheduleHeadHide}
+              onRelease={releaseHead}
             />
             <div className="right-rail-panel-peek" aria-hidden="true" />
             <RailPanelBody activePanel={activePanel} activeId={activeId} ctx={ctx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
