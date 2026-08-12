@@ -33,6 +33,17 @@
   height: 100%;
 }
 
+/* A plugin body sizes itself with flex — the terminal's stage, shell, and viewport are a flex chain
+   whose height comes from the parent. A block mount gives that chain nothing to divide, so the
+   whole session collapses to the height of its own padding and the terminal disappears. The canvas
+   layout already declares this for its own mount; the phone needs the same statement. */
+.mobile-session-body,
+.mobile-operation-body-slot,
+.mobile-session-body .operation-body-mount {
+  display: flex;
+  flex-direction: column;
+}
+
 .mobile-shell-content {
   overflow: auto;
 }
