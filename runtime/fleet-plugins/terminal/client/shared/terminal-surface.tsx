@@ -4,8 +4,10 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal as XtermTerminal, type ITheme } from "@xterm/xterm";
-import { useEffect, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
+import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
+import { applyTerminalModifiers, terminalKeySequence, type TerminalKeyId } from "./terminal-key-sequences.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
 import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
@@ -20,6 +22,7 @@ import { createTerminalScrollFollow, type TerminalScrollFollowController } from 
 import { createTerminalStatusDetailReporter, type TerminalStatusDetailReporter } from "./status-detail.js";
 import { createWindowsSelectionCopyHandler } from "./windows-selection-copy.js";
 import { waitForSymbolsNerdFontMono } from "./symbols-font.js";
+import "./terminal-key-bar.css";
 
 type TerminalThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
@@ -197,6 +200,18 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const [touchFontScale, setTouchFontScale] = useState(() => (prefersTouchTerminal() ? MIN_FONT_SCALE : 1));
   const touchFontScaleRef = useRef(touchFontScale);
   touchFontScaleRef.current = touchFontScale;
+  // A touch keyboard has no Escape, no arrows, and no Ctrl, so the surface carries them itself.
+  // The check is read once at mount: a device does not grow a keyboard mid-session, and re-reading
+  // it every render would flip the bar in and out under a hybrid's changing pointer.
+  const [keyBarVisible] = useState(prefersTouchTerminal);
+  const [keyPanelOpen, setKeyPanelOpen] = useState(false);
+  const keyPanelOpenRef = useRef(keyPanelOpen);
+  keyPanelOpenRef.current = keyPanelOpen;
+  // Ctrl and Alt latch rather than being held — a finger cannot press two keys at once — so they
+  // arm the next key and release on it, wherever that key comes from.
+  const [latchedModifiers, setLatchedModifiers] = useState<TerminalKeyBarModifiers>(NO_LATCHED_MODIFIERS);
+  const latchedModifiersRef = useRef(latchedModifiers);
+  latchedModifiersRef.current = latchedModifiers;
   // onExit는 매 렌더 새 함수일 수 있으므로 ref로 고정해 connection effect의 의존성에서 제외한다.
   const onExitRef = useRef(onExit);
   onExitRef.current = onExit;
@@ -220,6 +235,55 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   const [mountedTerminalEpoch, setMountedTerminalEpoch] = useState(0);
   // 포커스 요청은 xterm 생성만으로는 충분하지 않고 입력 transport가 시작된 뒤에 처리해야 한다.
   const [inputReadyEpoch, setInputReadyEpoch] = useState(0);
+
+  /**
+   * Reads the latch and clears it in the same synchronous step. The clear has to land on the ref
+   * rather than waiting for the state update, because the very next thing to run is xterm's data
+   * listener — a latch still set there would apply the modifier a second time.
+   */
+  const consumeLatchedModifiers = useCallback((): TerminalKeyBarModifiers => {
+    const modifiers = latchedModifiersRef.current;
+    if (modifiers.ctrl || modifiers.alt) {
+      latchedModifiersRef.current = NO_LATCHED_MODIFIERS;
+      setLatchedModifiers(NO_LATCHED_MODIFIERS);
+    }
+    return modifiers;
+  }, []);
+  // 마운트 effect는 재실행되지 않으므로(재실행하면 세션이 끊긴다) 최신 콜백을 ref로 읽는다.
+  const consumeLatchedModifiersRef = useRef(consumeLatchedModifiers);
+  consumeLatchedModifiersRef.current = consumeLatchedModifiers;
+
+  const sendBarKey = useCallback((id: TerminalKeyId) => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const { ctrl, alt } = consumeLatchedModifiers();
+    const sequence = terminalKeySequence(id, { ctrl, alt, shift: false }, terminal.modes.applicationCursorKeysMode);
+    terminal.input(sequence, true);
+  }, [consumeLatchedModifiers]);
+
+  const sendBarText = useCallback((text: string) => {
+    const terminal = terminalRef.current;
+    if (!terminal) return;
+    const { ctrl, alt } = consumeLatchedModifiers();
+    terminal.input(applyTerminalModifiers(text, { ctrl, alt, shift: false }), true);
+  }, [consumeLatchedModifiers]);
+
+  const toggleBarModifier = useCallback((modifier: "ctrl" | "alt") => {
+    const current = latchedModifiersRef.current;
+    const next = { ...current, [modifier]: !current[modifier] };
+    latchedModifiersRef.current = next;
+    setLatchedModifiers(next);
+  }, []);
+
+  const toggleKeyPanel = useCallback(() => {
+    const next = !keyPanelOpenRef.current;
+    keyPanelOpenRef.current = next;
+    setKeyPanelOpen(next);
+    // The panel takes the soft keyboard's place instead of stacking above it: a phone showing both
+    // leaves the session two or three rows tall, which is no longer a terminal.
+    if (next) terminalRef.current?.blur();
+    else terminalRef.current?.focus();
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -334,7 +398,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
             // xterm's normal scrollOnUserInput behavior resumes follow for every local input,
             // not only Enter. Keep the explicit follow state in lockstep with it.
             scrollFollow.resumeFollowing();
-            listener(data);
+            // A latched Ctrl or Alt applies to whatever arrives next, and on a phone that is
+            // usually a letter from the soft keyboard — which is the only way Ctrl+C exists there.
+            // Keys sent from the bar clear the latch before calling input(), so they arrive here
+            // already carrying their modifier and pass through untouched.
+            const { ctrl, alt } = consumeLatchedModifiersRef.current();
+            listener(ctrl || alt ? applyTerminalModifiers(data, { ctrl, alt, shift: false }) : data);
           }),
           write: (data) => {
             statusDetailReporter.push(data);
@@ -582,6 +651,19 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         <div className="terminal-viewport">
           <div className="terminal-canvas" ref={containerRef} style={zoomStyle} />
         </div>
+        {/* A read-only session takes no input, so the bar stays away rather than offering keys that
+            would go nowhere. */}
+        {keyBarVisible && !isViewing ? (
+          <TerminalKeyBar
+            locale={locale}
+            modifiers={latchedModifiers}
+            expanded={keyPanelOpen}
+            onToggleModifier={toggleBarModifier}
+            onToggleExpanded={toggleKeyPanel}
+            onKey={sendBarKey}
+            onText={sendBarText}
+          />
+        ) : null}
       </div>
     </section>
   );
