@@ -161,14 +161,22 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     if (!headRevealedRef.current) setHeadRevealed(true);
   }, [cancelHeadHide, cancelRevealIntent]);
 
+  const hideHeadUnlessFocused = useCallback(() => {
+    // 포커스가 헤더 안에 남아 있는 동안은 어떤 경로로도 숨기지 않는다 — 숨기면 포커스가
+    // 투명한 컨트롤에 갇힌다. 포커스가 떠나면 헤더의 블러 핸들러가 숨김을 다시 예약한다.
+    const active = document.activeElement;
+    if (active instanceof Element && active.closest(".right-rail-panel-head-reveal") !== null) return;
+    setHeadRevealed(false);
+  }, []);
+
   const scheduleHeadHide = useCallback(() => {
     cancelRevealIntent();
     if (!headRevealedRef.current || hideHeadTimerRef.current !== null) return;
     hideHeadTimerRef.current = window.setTimeout(() => {
       hideHeadTimerRef.current = null;
-      setHeadRevealed(false);
+      hideHeadUnlessFocused();
     }, HEAD_HIDE_DELAY_MS);
-  }, [cancelRevealIntent]);
+  }, [cancelRevealIntent, hideHeadUnlessFocused]);
 
   // 패널이 바뀌거나 닫히면 리빌 상태를 초기화한다.
   useLayoutEffect(() => {
@@ -217,9 +225,9 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     const target = event.target instanceof Element ? event.target : null;
     if (target?.closest(".right-rail-panel-head-reveal") === null) {
       cancelHeadHide();
-      setHeadRevealed(false);
+      hideHeadUnlessFocused();
     }
-  }, [cancelHeadHide, holdHeadOpen]);
+  }, [cancelHeadHide, hideHeadUnlessFocused, holdHeadOpen]);
 
   useLayoutEffect(() => {
     const onResize = () => {
