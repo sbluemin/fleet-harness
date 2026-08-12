@@ -36,6 +36,7 @@ import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fet
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { useMobileSessionOpen } from "./mobile/mobile-store.js";
 import { MobileTabBar } from "./mobile/mobile-tab-bar.js";
+import { MobileSettingsPage } from "./mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "./mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
@@ -104,6 +105,15 @@ export function App() {
   const operationsViewVisible = pathname.startsWith("/operations");
   const mobileLayout = useViewMode().effective === "mobile";
   const mobileSessionOpen = useMobileSessionOpen();
+
+  /*
+   * 모바일 여부는 폭만으로 정해지지 않는다 — Fleet Console 앱은 UA로, 사용자는 명시 선호로 켤 수
+   * 있어 넓은 화면에서도 모바일 셸이 선다. 그 판정을 루트에 실어야 포털로 body에 그려지는 표면처럼
+   * React 트리 밖에 놓인 CSS도 같은 답을 읽는다(미디어 쿼리는 거기서 어긋난다).
+   */
+  useEffect(() => {
+    document.documentElement.dataset.viewMode = mobileLayout ? "mobile" : "desktop";
+  }, [mobileLayout]);
   const navigate = useNavigate();
   // 전역 단축키는 밴드의 패널 토글과 같은 계약을 따른다 — 사이드바·rail은 /operations에만 마운트되므로
   // 다른 경로에서 누르면 조작할 표면이 없다. ref로 읽어 리스너 재설치 없이 최신 경로를 본다.
@@ -340,7 +350,7 @@ export function App() {
                 {/* Theater is a phone-only destination: the desktop switches Theater from the band
                     and lists every Theater in its sidebar, so this route has nothing to add there. */}
                 <Route path="/theaters" element={mobileLayout ? <MobileTheaterPage state={state} /> : <Navigate to="/operations" replace />} />
-                <Route path="/settings" element={<GlobalSettings />} />
+                <Route path="/settings" element={mobileLayout ? <MobileSettingsPage /> : <GlobalSettings />} />
                 <Route path="*" element={<Navigate to="/operations" replace />} />
               </Routes>
             </main>

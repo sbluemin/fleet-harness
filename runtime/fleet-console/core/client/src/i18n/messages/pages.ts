@@ -465,6 +465,11 @@ export const pagesEn = {
   "mobile.status.dormant": "Dormant",
   "mobile.alerts.title": "Alerts",
   "mobile.alerts.empty": "No active alerts.",
+  "mobile.settings.appearance": "Appearance",
+  "mobile.settings.console": "Console",
+  "mobile.settings.back": "Back to settings",
+  "mobile.settings.on": "On",
+  "mobile.settings.off": "Off",
 } as const;
 
 export const pagesKo: Record<keyof typeof pagesEn, string> = {
@@ -926,4 +931,9 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "mobile.status.dormant": "휴면",
   "mobile.alerts.title": "알림",
   "mobile.alerts.empty": "활성 알림이 없습니다.",
+  "mobile.settings.appearance": "화면과 글꼴",
+  "mobile.settings.console": "콘솔 동작",
+  "mobile.settings.back": "설정으로 돌아가기",
+  "mobile.settings.on": "켜짐",
+  "mobile.settings.off": "꺼짐",
 };
