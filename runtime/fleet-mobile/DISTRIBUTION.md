@@ -129,5 +129,8 @@ or scanning the console's QR code.
 ## Switching keys
 
 The debug-signed builds installed by `adb` cannot be upgraded in place by a release-signed APK, and
-neither can a release signed by a different keystore. Both cases require uninstalling first. The
-verification output prints the signing certificate digest so a key change is visible before it ships.
+neither can a release signed by a different keystore. Both cases require uninstalling first.
+
+`dist/fleet-mobile-release.manifest.json` records the signing certificate digest as `signerSha256`,
+and verification fails if the APK no longer matches it. Comparing that field between two promoted
+manifests is how a rotated or wrong keystore is caught before testers are asked to uninstall.

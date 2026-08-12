@@ -88,7 +88,7 @@ export function buildPromotedApk(buildType) {
 
   // Fail on missing signing credentials before Gradle spends minutes reaching the same conclusion.
   if (buildType === "release") requireReleaseKeystore();
-  const { env } = androidEnvironment(buildType);
+  const { buildTools, env } = androidEnvironment(buildType);
   const paths = artifactPaths(buildType);
   const variant = `${buildType[0].toUpperCase()}${buildType.slice(1)}`;
   const sourceApk = path.join(androidRoot, "app", "build", "outputs", "apk", buildType, `app-${buildType}.apk`);
@@ -113,6 +113,15 @@ export function buildPromotedApk(buildType) {
   const bytes = readFileSync(paths.apk);
   const sha256 = createHash("sha256").update(bytes).digest("hex");
   const { versionCode, versionName } = readAppVersion();
+  // The digest goes in the manifest, not just the build log: comparing two promoted manifests is how
+  // a rotated or wrong keystore is caught before it ships, and a key change forces every tester to
+  // uninstall. Debug builds all share the one Android debug key, so there is nothing to record.
+  const signerSha256 =
+    buildType === "release"
+      ? verifyReleaseSigner(
+          run(buildTools.apksigner, ["verify", "--verbose", "--print-certs", paths.apk], { capture: true, env }),
+        )
+      : undefined;
   writeFileSync(paths.sha256, `${sha256}  ${paths.name}\n`);
   writeFileSync(
     paths.manifest,
@@ -129,6 +138,7 @@ export function buildPromotedApk(buildType) {
         versionName,
         sha256,
         size: bytes.byteLength,
+        ...(signerSha256 ? { signerSha256 } : {}),
       },
       null,
       2,
@@ -188,7 +198,9 @@ export function verifyPromotedApk(buildType, requestedArtifact) {
     manifestFile.versionCode !== versionCode ||
     manifestFile.versionName !== versionName ||
     manifestFile.sha256 !== sha256 ||
-    manifestFile.size !== bytes.byteLength
+    manifestFile.size !== bytes.byteLength ||
+    // Undefined on both sides for debug; a mismatch here means the manifest describes a different key.
+    manifestFile.signerSha256 !== signerSha256
   ) {
     fail("APK build manifest does not match the promoted artifact and fixed Android contract");
   }

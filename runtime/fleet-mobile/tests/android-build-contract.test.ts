@@ -53,12 +53,22 @@ describe("Fleet Mobile Android build contract", () => {
     expect(modulePlugin).not.toContain("fleet_mobile_release_requires_signing");
   });
 
+  // The release commit rewrites both mobile package.json files through the workspace version sync.
+  // Counting that machine edit as a change would distribute an APK for a release that never touched
+  // the app, so detection skips release commits rather than the files they rewrite.
   it("distributes from CI only when the mobile path changed", () => {
     const release = read(".github/workflows/stable-release.yml");
     expect(release).toContain("mobile_changed=$1");
-    expect(release).toContain('git diff --quiet "$base"..HEAD -- runtime/fleet-mobile');
+    expect(release).toContain("--invert-grep --grep='^chore(release):'");
+    expect(release).toContain("-- runtime/fleet-mobile");
     expect(release).toContain("needs.release.outputs.mobile_changed == 'true'");
     expect(release).toContain("uses: ./.github/workflows/mobile-release.yml");
+  });
+
+  it("records the release signing certificate in the promoted manifest", () => {
+    const promote = read("runtime/fleet-mobile/scripts/lib/android-promote.mjs");
+    expect(promote).toContain("signerSha256");
+    expect(promote).toContain("manifestFile.signerSha256 !== signerSha256");
   });
 
   // The APK carries app.json, not package.json. Dropping it from the release commit would ship the
