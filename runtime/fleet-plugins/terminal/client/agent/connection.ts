@@ -84,6 +84,11 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
 export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.status === "dormant") return "dormant";
   if (session.attentionPending === true) return "awaiting";
+  // 타이틀 스피너는 누구의 작업인지 말해주지 않는다 — 호스트 턴이 도는 동안에도, 턴이 끝나고 백그라운드
+  // 서브에이전트·워크플로우만 남은 동안에도 똑같이 돈다(2026-08-12 실측). 그 둘을 가르는 것은 턴 경계다:
+  // 턴 종료가 보고된 뒤에 남은 작업은 정의상 백그라운드이므로, 이 구간에서만 backgroundPending이
+  // 스피너보다 앞선다. 턴이 도는 동안에는 종전대로 running이 우선이다.
+  if (session.turnState === "ended" && session.backgroundPending === true) return "background";
   if (session.modelActivity === "working") return "running";
   if (session.modelActivity === "not-working") return backgroundOrIdle(session);
   if (session.turnState === "running") return "running";

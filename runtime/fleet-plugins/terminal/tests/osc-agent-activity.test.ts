@@ -20,6 +20,16 @@ describe("OSC Agent activity classification", () => {
     expect(classifyOscAgentActivity("claude-gateway", "⠐ child-title")).toBe("working");
     expect(classifyOscAgentActivity("claude-gateway", "✳ child-title")).toBe("not-working");
   });
+
+  // Claude Code v2.1.228은 작업 중 스피너를 브라유가 아니라 원형 4프레임으로 그린다. 두 계열 모두
+  // 같은 뜻(호스트 턴 진행 중)이므로 함께 인식해야 한다 — 하나만 알면 턴 내내 not-working으로 굳어
+  // 입력 대기가 풀리지 않는다.
+  it("reads the circle spinner frames as working alongside braille", () => {
+    for (const title of ["◐ Claude Code", "◑ Claude Code", "◒ 서브에이전트로 1부터 30까지 세기", "◓ project"]) {
+      expect(classifyOscAgentActivity("claude-gateway", title)).toBe("working");
+    }
+    expect(classifyOscAgentActivity("claude-gateway", "○ project")).toBe("unknown");
+  });
 });
 
 describe("OSC Agent activity debounce", () => {
@@ -64,6 +74,32 @@ describe("OSC Agent activity debounce", () => {
     tracker.observeTitle("✳ project");
     vi.advanceTimersByTime(400);
     expect(emitted).toEqual(["working", "working", "working", "not-working"]);
+  });
+
+  // 실측 파형: 턴이 도는 동안 CLI는 기본 타이틀(✳)과 스피너 프레임을 100ms 이내로 번갈아 쓴다.
+  // 스피너 계열을 못 읽으면 이 파형이 통째로 not-working으로 굳어 패널이 유휴/입력 대기에 갇힌다.
+  it("stays working while the CLI alternates the base title with circle spinner frames", () => {
+    vi.useFakeTimers();
+    const emitted: string[] = [];
+    const tracker = createOscAgentActivityTracker({
+      cliId: "claude-gateway",
+      cwdBasename: "project",
+      onActivity: (activity) => emitted.push(activity),
+    });
+
+    for (let frame = 0; frame < 6; frame += 1) {
+      tracker.observeTitle("✳ Claude Code");
+      vi.advanceTimersByTime(90);
+      tracker.observeTitle(frame % 2 === 0 ? "◐ Claude Code" : "◑ Claude Code");
+      vi.advanceTimersByTime(90);
+    }
+
+    expect(emitted).not.toContain("not-working");
+    vi.advanceTimersByTime(400);
+    expect(emitted).not.toContain("not-working");
+    tracker.observeTitle("✳ Claude Code");
+    vi.advanceTimersByTime(400);
+    expect(emitted[emitted.length - 1]).toBe("not-working");
   });
 
 
