@@ -1,4 +1,4 @@
 #!/usr/bin/env node
 import { verifyPromotedApk } from "./lib/android-promote.mjs";
 
-verifyPromotedApk("debug", process.argv[2]);
+verifyPromotedApk("release", process.argv[2]);

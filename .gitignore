@@ -19,3 +19,7 @@ runtime/fleet-console/core/host/plugin-host/shim-keys.generated.ts
 # Fleet Mobile native projects and promoted APKs are disposable generated output.
 runtime/fleet-mobile/android/
 runtime/fleet-mobile/dist/
+# Release signing material is never disposable and never committed. Keep the keystore outside the
+# repository; this only stops an accidental copy from landing in a commit.
+*.keystore
+*.jks

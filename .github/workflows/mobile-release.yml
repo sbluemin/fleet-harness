@@ -1,0 +1,88 @@
+name: Mobile Release
+
+# stable-release.yml이 릴리스 커밋을 만든 뒤 같은 런에서 호출한다(workflow_call).
+# 산출물은 GitHub Release에 붙지 않는다. 릴리스 서명 APK는 Firebase App Distribution으로만 나가며,
+# 받는 사람은 테스터 그룹에 등록된 계정뿐이다.
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: 빌드할 릴리스 커밋의 git ref/sha (app.json 버전이 이미 bump된 상태)
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 빌드할 git ref (미지정 시 기본 브랜치)
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  distribute:
+    name: Build and distribute Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      # resolveJavaHome()은 CI에서 JAVA_HOME을 쓴다(macOS 로컬에서만 Android Studio 번들 JDK를 찾는다).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - name: Install the pinned Android platform and build-tools
+        run: sdkmanager --install "platforms;android-36" "build-tools;36.0.0"
+      - run: pnpm install --frozen-lockfile
+
+      # 서명 자료는 파일로만 존재하고 저장소에는 들어가지 않는다. 러너는 일회용이므로 작업 디렉터리
+      # 밖(RUNNER_TEMP)에 쓰고 경로만 빌드에 넘긴다.
+      - name: Materialize the release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.FLEET_ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::FLEET_ANDROID_KEYSTORE_BASE64 is not set; a release cannot be signed" >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/release.jks"
+          chmod 600 "$RUNNER_TEMP/release.jks"
+
+      - name: Build and verify the release APK
+        env:
+          FLEET_ANDROID_KEYSTORE: ${{ runner.temp }}/release.jks
+          FLEET_ANDROID_KEYSTORE_PASSWORD: ${{ secrets.FLEET_ANDROID_KEYSTORE_PASSWORD }}
+          FLEET_ANDROID_KEY_ALIAS: ${{ secrets.FLEET_ANDROID_KEY_ALIAS }}
+          FLEET_ANDROID_KEY_PASSWORD: ${{ secrets.FLEET_ANDROID_KEY_PASSWORD }}
+        run: pnpm --filter @dotobokuri/fleet-mobile android:build:release
+
+      # CI는 `firebase login`을 밟을 수 없으므로 서비스 계정으로 인증한다.
+      - name: Distribute to Firebase App Distribution
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS: ${{ runner.temp }}/firebase-service-account.json
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_APP_ID: ${{ secrets.FIREBASE_APP_ID }}
+          FIREBASE_TESTER_GROUPS: ${{ secrets.FIREBASE_TESTER_GROUPS }}
+          RELEASE_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          if [ -z "$FIREBASE_SERVICE_ACCOUNT" ]; then
+            echo "::error::FIREBASE_SERVICE_ACCOUNT is not set; the CLI cannot authenticate" >&2
+            exit 1
+          fi
+          printf '%s' "$FIREBASE_SERVICE_ACCOUNT" > "$GOOGLE_APPLICATION_CREDENTIALS"
+          chmod 600 "$GOOGLE_APPLICATION_CREDENTIALS"
+          npm install -g firebase-tools
+          pnpm --filter @dotobokuri/fleet-mobile android:distribute -- \
+            --notes "$(git log -1 --format=%s "$RELEASE_SHA")"
+
+      - name: Remove signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/firebase-service-account.json"

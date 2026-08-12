@@ -1,4 +1,4 @@
-const { createRunOncePlugin, withAndroidManifest, withAppBuildGradle } = require("expo/config-plugins");
+const { createRunOncePlugin, withAndroidManifest } = require("expo/config-plugins");
 
 const packageJson = require("./package.json");
 
@@ -23,23 +23,10 @@ function withFleetConsoleView(config) {
     }
     return result;
   });
-  return withAppBuildGradle(config, (result) => {
-    if (!result.modResults.contents.includes("fleet_mobile_release_requires_signing")) {
-      result.modResults.contents += `
-
-// Fleet Mobile currently supports debug signing only. Never let a release APK inherit it.
-afterEvaluate {
-    def forbidUnsignedFleetRelease = tasks.register("forbidUnsignedFleetRelease") {
-        doLast { throw new GradleException("fleet_mobile_release_requires_signing") }
-    }
-    tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
-        dependsOn(forbidUnsignedFleetRelease)
-    }
-}
-`;
-    }
-    return result;
-  });
+  // Release signing policy belongs to the app-level plugin (plugins/withFleetAndroid.ts), which owns
+  // signingConfigs and refuses a release without the keystore environment. This module stays a
+  // native-module plugin.
+  return config;
 }
 
 module.exports = createRunOncePlugin(withFleetConsoleView, packageJson.name, packageJson.version);

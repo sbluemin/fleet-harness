@@ -72,18 +72,51 @@ export const withFleetAndroid: ConfigPlugin = (config) => {
     );
     source = replaceExactlyOnce(
       source,
+      /signingConfigs\s*\{\s*debug\s*\{[\s\S]*?\n {4}\}/,
+      `signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+        // Tester-distribution signing. The keystore and its passwords come from the environment so
+        // they never enter git; an absent keystore leaves this config empty and the guard below stops
+        // the build rather than letting Gradle fall back to the debug key.
+        release {
+            def releaseStore = System.getenv("FLEET_ANDROID_KEYSTORE")
+            if (releaseStore) {
+                storeFile file(releaseStore)
+                storePassword System.getenv("FLEET_ANDROID_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("FLEET_ANDROID_KEY_ALIAS")
+                keyPassword System.getenv("FLEET_ANDROID_KEY_PASSWORD")
+            }
+        }
+    }`,
+      "signingConfigs block",
+    );
+    source = replaceExactlyOnce(
+      source,
       /buildTypes\s*\{\s*debug\s*\{\s*signingConfig signingConfigs\.debug\s*\}\s*release\s*\{[\s\S]*?\n\s*\}\s*\}/,
       `buildTypes {
         debug {
             signingConfig signingConfigs.debug
         }
+        release {
+            signingConfig signingConfigs.release
+            minifyEnabled enableMinifyInReleaseBuilds
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
     }
 
-    // Production release signing is intentionally unsupported. Refuse every release task.
+    // Release signing is opt-in, not implicit. Without the keystore environment every release task
+    // stops here instead of producing an unsigned or debug-signed artifact that looks shippable.
     tasks.configureEach { task ->
         if (task.name.toLowerCase(java.util.Locale.ROOT).contains("release")) {
             task.doFirst {
-                throw new GradleException("Fleet Mobile release signing is not configured; build the debug APK only")
+                if (!System.getenv("FLEET_ANDROID_KEYSTORE")) {
+                    throw new GradleException("Fleet Mobile release signing requires FLEET_ANDROID_KEYSTORE, FLEET_ANDROID_KEYSTORE_PASSWORD, FLEET_ANDROID_KEY_ALIAS, and FLEET_ANDROID_KEY_PASSWORD")
+                }
             }
         }
     }`,
