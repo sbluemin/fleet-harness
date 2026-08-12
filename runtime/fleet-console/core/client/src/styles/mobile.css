@@ -654,6 +654,24 @@
   flex: 1;
 }
 
+/*
+ * 호스트 추가 팝업은 createPortal로 body에 그려지므로 위의 자손 선택자가 닿지 않는다 — 원격 접속
+ * 상세에서 열어도 닫기 28px·액션 32px·입력 40px 그대로 남는다(실측). 조상으로 좁힐 수 없으니
+ * 모바일 셸이 켜지는 폭을 경계로 삼는다. 스위처에서 연 같은 팝업도 함께 손가락 치수가 된다.
+ */
+@media (max-width: 767px) {
+  .add-host-close {
+    width: 44px;
+    height: 44px;
+  }
+
+  .add-host-field input,
+  .add-host-cancel,
+  .add-host-submit {
+    min-height: 44px;
+  }
+}
+
 .operation-body-parking {
   position: fixed;
   left: -10000px;

@@ -61,6 +61,18 @@ describe("mobile settings", () => {
     expect(MOBILE_CSS).toMatch(/\.mobile-settings-row \{[\s\S]{0,400}min-height: 56px;/);
   });
 
+  /**
+   * The add-host dialog is portaled to the body, so no ancestor of the detail reaches it. Reached
+   * from Remote access on a phone it kept a 28px close button until the floor was written against
+   * width instead.
+   */
+  it("floors the portaled add-host dialog too", () => {
+    const scoped = MOBILE_CSS.slice(MOBILE_CSS.indexOf(".add-host-close"));
+    expect(MOBILE_CSS.slice(0, MOBILE_CSS.indexOf(".add-host-close"))).toMatch(/@media \(max-width: 767px\) \{\s*$/m);
+    expect(scoped).toContain("height: 44px");
+    expect(scoped).toMatch(/\.add-host-cancel,\s*\n\s*\.add-host-submit \{\s*\n\s*min-height: 44px;/);
+  });
+
   /** Selection groups laid out for a wide column wrap into uneven steps at phone width. */
   it("stands the theme choices in one column", () => {
     expect(MOBILE_CSS).toContain(".mobile-settings-detail .theme-dark-tray");
