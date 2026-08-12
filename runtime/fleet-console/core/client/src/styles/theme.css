@@ -90,6 +90,13 @@
   --id-plum: oklch(72% 0.065 318);
   --id-rose: oklch(73% 0.06 350);
 
+  /* An access-link QR is read by a camera, not by a person, and the spec assumes dark modules on a
+     light field. An inverted symbol is outside that spec — many scanners read it, none promise to.
+     A single-use credential must not depend on which theme the owner happens to run, so these two
+     stay outside theme overrides exactly like the Scuttlebutt QK source colors below. */
+  --qr-field: oklch(94% 0.008 90);
+  --qr-module: oklch(13% 0.014 245);
+
   /* Scuttlebutt QK mascot source colors are the pre-daylight Instrument palette.
      They intentionally stay outside theme overrides so every theme renders the same SVG colors. */
   --scuttlebutt-qk-ink-abyss: oklch(13% 0.014 245);

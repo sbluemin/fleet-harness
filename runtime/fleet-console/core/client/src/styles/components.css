@@ -1004,6 +1004,219 @@
   .add-host-close { transition: none; }
 }
 
+/* ── 기기 연결 팝업 ───────────────────────────────────────────────────
+   방금 만든 액세스 링크를 QR로 넘기는 한 장. 오버레이 지오메트리는 .add-host-*의 계약을
+   승계한다 — 둘 다 배타적인 모달이라 같은 층에 산다. */
+.pair-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+}
+
+.pair-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 64%, transparent);
+  cursor: default;
+}
+
+.pair-card {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(640px, 94vw);
+  max-height: 92vh;
+  padding: var(--space-5);
+  overflow-y: auto;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-lg);
+  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
+  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
+}
+
+.pair-head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); }
+
+.pair-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 19px;
+  font-weight: var(--weight-medium);
+  line-height: 1.2;
+}
+
+.pair-close {
+  display: grid;
+  flex: none;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-tertiary);
+  font-size: 16px;
+  line-height: 1;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.pair-close:hover {
+  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
+  color: var(--brass-bright);
+}
+
+.pair-body { display: flex; gap: var(--space-5); align-items: flex-start; flex-wrap: wrap; }
+
+.pair-symbol { flex: none; display: grid; place-items: center; min-width: 200px; min-height: 200px; }
+
+.pair-symbol-void {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
+
+/* QR 판은 테마를 따르지 않는다 — theme.css의 --qr-* 주석이 그 이유를 갖는다.
+   여백은 심볼 안의 4모듈 quiet zone이 맡으므로 판에 padding을 더하지 않는다 — 더하면 같은
+   폭에서 데이터 모듈만 작아진다. */
+.qr-plate {
+  display: grid;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  background: var(--qr-field);
+}
+
+.qr-symbol { display: block; }
+.qr-symbol path { fill: var(--qr-module); }
+
+.pair-side { flex: 1; min-width: 220px; display: flex; flex-direction: column; gap: var(--space-3); }
+
+.pair-steps { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--space-2); }
+
+.pair-steps li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.pair-step-index { color: var(--brass); font-family: var(--font-mono); font-size: 11px; }
+
+.pair-expiry { display: flex; flex-direction: column; gap: var(--space-2); }
+.pair-expiry-row { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); }
+
+.pair-expiry-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pair-expiry-time {
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pair-expiry-track { height: 3px; border-radius: var(--radius-pill); background: var(--surface-rim); overflow: hidden; }
+.pair-expiry-fill { height: 100%; border-radius: var(--radius-pill); background: var(--brass); transition: width var(--duration-base) linear; }
+
+/* 남은 시간이 얼마 없다는 사실은 숫자를 읽지 않아도 보여야 한다. */
+.pair-expiry[data-urgent="true"] .pair-expiry-time { color: var(--coral-ink); }
+.pair-expiry[data-urgent="true"] .pair-expiry-fill { background: var(--coral); }
+
+.pair-state {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.pair-state.is-paired {
+  border-color: color-mix(in oklch, var(--positive) 45%, transparent);
+  background: var(--positive-glow);
+  color: var(--positive-ink);
+}
+
+.pair-state.is-expired {
+  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
+  background: var(--coral-glow);
+  color: var(--coral-ink);
+}
+
+.pair-warning { margin: 0; color: var(--text-tertiary); font-size: 11.5px; line-height: 1.55; }
+
+.pair-fallback { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.pair-reveal {
+  align-self: flex-start;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.pair-reveal:hover { border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim)); color: var(--brass-bright); }
+
+.pair-link-field { display: flex; gap: var(--space-2); align-items: stretch; }
+
+.pair-link-field input {
+  flex: 1;
+  min-width: 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
+  color: var(--brass-bright);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.pair-link-field button {
+  flex: none;
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+.pair-link-field button:hover { border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim)); color: var(--brass-bright); }
+
+@media (prefers-reduced-motion: reduce) {
+  .pair-card { animation: none; }
+  .pair-close, .pair-reveal, .pair-link-field button { transition: none; }
+  .pair-expiry-fill { transition: none; }
+}
+
 /* Remote access 섹션 — Desktop 설치 경로·보안 경고·수신 주소·신원·링크와 기기. */
 .remote-section { display: flex; flex-direction: column; gap: var(--space-4); }
 

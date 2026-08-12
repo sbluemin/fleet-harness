@@ -27,6 +27,14 @@
           }
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Fleet uses the camera only to read a Console access link from a QR code.",
+          "recordAudioAndroid": false,
+          "barcodeScannerEnabled": true
+        }
+      ],
       "./modules/fleet-console-view",
       "./plugins/withFleetAndroid.ts"
     ]

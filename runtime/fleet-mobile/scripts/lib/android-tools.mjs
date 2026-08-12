@@ -8,6 +8,14 @@ export const TARGET_SDK = 36;
 export const COMPILE_SDK = 36;
 export const REQUIRED_PERMISSION = "android.permission.INTERNET";
 export const RECEIVER_PERMISSION = `${APPLICATION_ID}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`;
+/** Reading an access link off the console's screen. The scanner is a native surface — the WebView still denies every permission request it makes. */
+export const CAMERA_PERMISSION = "android.permission.CAMERA";
+/**
+ * Not ours and not asked for: expo-camera's barcode path pulls Play Services' code scanner, whose
+ * datatransport transitives declare it. It is listed here because the merged manifest of the built
+ * APK carries it, not because any Fleet code reads network state — measured, not predicted.
+ */
+export const NETWORK_STATE_PERMISSION = "android.permission.ACCESS_NETWORK_STATE";
 
 export function fail(message) {
   throw new Error(message);
@@ -181,7 +189,7 @@ export function verifyManifestContract(manifest, badging) {
   if (manifest.networkSecurityConfig !== undefined) fail("Fleet Mobile must not install an alternate network security trust policy");
 
   const permissions = [...new Set(manifest.permissions)].sort();
-  const expectedPermissions = [RECEIVER_PERMISSION, REQUIRED_PERMISSION].sort();
+  const expectedPermissions = [RECEIVER_PERMISSION, REQUIRED_PERMISSION, CAMERA_PERMISSION, NETWORK_STATE_PERMISSION].sort();
   if (JSON.stringify(permissions) !== JSON.stringify(expectedPermissions)) {
     fail(`Unexpected APK permissions: ${permissions.join(", ") || "none"}`);
   }

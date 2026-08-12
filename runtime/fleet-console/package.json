@@ -79,6 +79,7 @@
     "font-list": "^2.1.0",
     "node-pty": "^1.0.0",
     "pretendard": "^1.3.9",
+    "qrcode-generator": "2.0.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.17.0",
