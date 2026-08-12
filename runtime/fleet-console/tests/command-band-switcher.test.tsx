@@ -129,8 +129,10 @@ describe("CommandBandOperationMenu", () => {
       operations: [
         { ...makeOperation("op-1", "theater-a"), payload: { cliLabel: "Claude Code" } },
         makeOperation("op-2", "theater-a"),
+        { ...makeOperation("op-3", "theater-a"), payload: { cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" } },
       ],
       activeOperationId: "op-1",
+      launchModelLabels: new Map([["codex--gpt-5.6-sol-fast", "GPT-5.6-Sol-Fast"]]),
       theaterLabel: "Alpha",
       onSelectOperation,
       onRenameOperation,
@@ -140,9 +142,11 @@ describe("CommandBandOperationMenu", () => {
 
     const menu = document.querySelector<HTMLElement>('[role="menu"][aria-label="Switch operation"]');
     const radios = Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]') ?? []);
-    expect(radios).toHaveLength(2);
+    expect(radios).toHaveLength(3);
     expect(radios[0]?.getAttribute("aria-checked")).toBe("true");
     expect(radios[0]?.querySelector(".command-band-menu-meta")?.textContent).toBe("Claude Code");
+    // 게이트웨이로 띄운 행은 CLI 이름이 아니라 실제로 돌고 있는 모델 이름을 단다.
+    expect(radios[2]?.querySelector(".command-band-menu-meta")?.textContent).toBe("GPT-5.6-Sol-Fast");
     const actionItems = Array.from(menu?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]') ?? []);
     expect(actionItems.map((item) => item.textContent)).toEqual(["Rename current operation…", "New Operation in Alpha…"]);
 
@@ -156,6 +160,7 @@ describe("CommandBandOperationMenu", () => {
     renderMenu(createElement(CommandBandOperationMenu, {
       operations: [],
       activeOperationId: null,
+      launchModelLabels: new Map<string, string>(),
       theaterLabel: "Alpha",
       onSelectOperation: vi.fn(),
       onRenameOperation: null,

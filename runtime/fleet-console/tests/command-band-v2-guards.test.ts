@@ -5,7 +5,9 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
+import type { OperationCatalogPlugin } from "../sdk/operations/types.js";
+
+import { commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandOperationAttribute, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "../core/client/src/components/command-band-guards.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 describe("Command Band v2 guards", () => {
@@ -173,6 +175,75 @@ describe("Command Band operation menu ordering", () => {
     const groups = [makeGroup("g1", "t1", 0), makeGroup("g9", "t2", 0)];
     const ids = commandBandTheaterOperations(operations, groups, "t1", []).map((op) => op.id);
     expect(ids).toEqual(["op-a"]);
+  });
+});
+
+describe("Command Band Operation attribute", () => {
+  // 실행 카탈로그가 내놓는 모양 그대로다: 네이티브 Claude 그룹과 공급자별 게이트웨이 그룹.
+  // 게이트웨이 행 라벨은 models.json의 `name`(provider 접두를 벗긴 소재 이름)이다.
+  const catalog: readonly OperationCatalogPlugin[] = [
+    {
+      id: "terminal",
+      title: "Terminal",
+      kinds: [
+        { id: "claude", type: "agent", title: "Claude Code" },
+        {
+          id: "claude-gateway",
+          type: "agent",
+          title: "Claude (Gateway)",
+          variants: [
+            {
+              id: "native",
+              label: "Claude",
+              rows: [{ id: "opus[1m]", label: "Opus", launch: { model: "opus[1m]" } }],
+            },
+            {
+              id: "gateway:codex",
+              label: "Codex",
+              rows: [{ id: "codex--gpt-5.6-sol-fast", label: "GPT-5.6-Sol-Fast", launch: { model: "codex--gpt-5.6-sol-fast" } }],
+            },
+          ],
+        },
+      ],
+    },
+  ];
+  const labels = commandBandLaunchModelLabels(catalog);
+
+  it("indexes every launch row by its model coordinate", () => {
+    expect(labels.get("codex--gpt-5.6-sol-fast")).toBe("GPT-5.6-Sol-Fast");
+    expect(labels.get("opus[1m]")).toBe("Opus");
+    expect(labels.size).toBe(2);
+  });
+
+  it("names the model that is actually running instead of the CLI", () => {
+    expect(commandBandOperationAttribute(
+      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" },
+      labels,
+    )).toBe("GPT-5.6-Sol-Fast");
+    expect(commandBandOperationAttribute(
+      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "opus[1m]" },
+      labels,
+    )).toBe("Opus");
+  });
+
+  it("falls back to the CLI label when the coordinate is missing or unknown", () => {
+    // 옛 payload(launchModel 이전)와 카탈로그가 모르는 좌표(꺼진 모델·개편된 id) 둘 다.
+    expect(commandBandOperationAttribute({ cliId: "claude-gateway", cliLabel: "Claude (Gateway)" }, labels))
+      .toBe("Claude (Gateway)");
+    expect(commandBandOperationAttribute(
+      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "kimi--k3" },
+      labels,
+    )).toBe("Claude (Gateway)");
+    expect(commandBandOperationAttribute({ cliId: "codex" }, labels)).toBe("codex");
+    expect(commandBandOperationAttribute({}, labels)).toBeNull();
+  });
+
+  it("reads an empty index before the catalog arrives", () => {
+    expect(commandBandLaunchModelLabels([]).size).toBe(0);
+    expect(commandBandOperationAttribute(
+      { cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" },
+      commandBandLaunchModelLabels([]),
+    )).toBe("Claude (Gateway)");
   });
 });
 

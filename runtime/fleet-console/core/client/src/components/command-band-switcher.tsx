@@ -1,5 +1,6 @@
 import { Fragment, useEffect, type CSSProperties, type KeyboardEvent, type RefObject } from "react";
 
+import { commandBandOperationAttribute } from "./command-band-guards.js";
 import { useT } from "../i18n/index.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationNode, TheaterInfo } from "../types.js";
@@ -41,6 +42,9 @@ interface CommandBandOperationMenuProps {
   // 활성 Theater 소속 Operation만, 사이드바 표시 순서로 정렬해 전달한다.
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
+  // 밴드의 속성 칩과 같은 색인을 받아 같은 문장을 말한다 — 칩은 모델 이름, 메뉴는 CLI 이름이면
+  // 같은 Operation이 한 표면에서 두 이름을 갖는다.
+  readonly launchModelLabels: ReadonlyMap<string, string>;
   readonly theaterLabel: string;
   readonly onSelectOperation: (operationId: string) => void;
   readonly onRenameOperation: (() => void) | null;
@@ -76,7 +80,7 @@ export function CommandBandTheaterMenu({ theaters, operations, activeTheaterId, 
   return <CommandBandMenu menuLabel={t("chrome.commandBand.switchTheater")} sections={sections} style={style} containerRef={containerRef} />;
 }
 
-export function CommandBandOperationMenu({ operations, activeOperationId, theaterLabel, onSelectOperation, onRenameOperation, onNewOperation, style, containerRef }: CommandBandOperationMenuProps) {
+export function CommandBandOperationMenu({ operations, activeOperationId, launchModelLabels, theaterLabel, onSelectOperation, onRenameOperation, onNewOperation, style, containerRef }: CommandBandOperationMenuProps) {
   const t = useT();
   const sections: readonly (readonly CommandBandMenuEntry[])[] = [
     operations.map((operation) => ({
@@ -84,7 +88,7 @@ export function CommandBandOperationMenu({ operations, activeOperationId, theate
       role: "menuitemradio" as const,
       label: operation.title,
       checked: operation.id === activeOperationId,
-      meta: operationCliLabel(operation),
+      meta: commandBandOperationAttribute(operation.payload, launchModelLabels),
       onSelect: () => onSelectOperation(operation.id),
     })),
     [
@@ -179,11 +183,4 @@ export function CommandBandTriggerCaret() {
 
 function MenuCheckIcon() {
   return <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5 6.5 11.5 12.5 4.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>;
-}
-
-function operationCliLabel(operation: OperationNode): string | null {
-  const cliLabel = operation.payload.cliLabel;
-  if (typeof cliLabel === "string") return cliLabel;
-  const cliId = operation.payload.cliId;
-  return typeof cliId === "string" ? cliId : null;
 }

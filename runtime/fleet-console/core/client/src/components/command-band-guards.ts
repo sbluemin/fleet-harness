@@ -1,3 +1,5 @@
+import type { OperationCatalogPlugin } from "@fleet-console/sdk/operations";
+
 import { flattenGroupedOrder } from "../store.js";
 import type { OperationGroup, OperationNode } from "../types.js";
 
@@ -30,6 +32,41 @@ export function commandBandActiveOperation(
   if (activeOperationId === null || activeTheaterId === null) return null;
   const operation = operations.find((candidate) => candidate.id === activeOperationId) ?? null;
   return operation !== null && operation.theaterId === activeTheaterId ? operation : null;
+}
+
+// 실행 카탈로그가 선언한 모델 행을 `launch.model → 표시 이름` 색인으로 접는다.
+// 표시 이름의 출처는 실행 메뉴·Quick Launch 칩과 같은 카탈로그 행 라벨이다 — 게이트웨이 행은
+// models.json의 `name`(provider 접두를 벗긴 소재 이름), 네이티브 Claude 행은 Opus/Fable/Sonnet.
+// 브라우저 코드는 core-ai-gateway를 끌어올 수 없어 카탈로그가 유일한 통로이고, 라벨을 Operation
+// payload에 복제해 두면 카탈로그가 바뀐 뒤 옛 Operation이 스테일 문자열을 안고 남는다.
+export function commandBandLaunchModelLabels(catalog: readonly OperationCatalogPlugin[]): ReadonlyMap<string, string> {
+  const labels = new Map<string, string>();
+  for (const plugin of catalog) {
+    for (const kind of plugin.kinds) {
+      for (const group of kind.variants ?? []) {
+        for (const row of group.rows) {
+          const model = row.launch.model;
+          if (typeof model === "string" && model !== "" && !labels.has(model)) labels.set(model, row.label);
+        }
+      }
+    }
+  }
+  return labels;
+}
+
+// 브레드크럼 속성 칩이 말할 한 줄. 어떤 모델 좌표로 띄웠는지가 payload에 남아 있고 카탈로그가
+// 그 이름을 알면 모델 이름이 CLI 라벨을 대신한다 — "Claude (Gateway)"는 지금 무엇이 돌고 있는지
+// 말해 주지 않는다. 좌표가 없거나(옛 payload) 카탈로그가 모르는 모델(꺼진 모델·개편된 id)일
+// 때만 CLI 라벨로 물러난다.
+export function commandBandOperationAttribute(
+  payload: Record<string, unknown>,
+  modelLabels: ReadonlyMap<string, string>,
+): string | null {
+  const launchModel = typeof payload.launchModel === "string" ? payload.launchModel : null;
+  const modelLabel = launchModel === null ? undefined : modelLabels.get(launchModel);
+  if (modelLabel !== undefined && modelLabel !== "") return modelLabel;
+  if (typeof payload.cliLabel === "string") return payload.cliLabel;
+  return typeof payload.cliId === "string" ? payload.cliId : null;
 }
 
 // Tab 등으로 포커스가 스위처 래퍼(트리거+메뉴) 밖으로 나가면 메뉴를 닫는다.
