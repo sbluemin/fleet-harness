@@ -31,6 +31,8 @@ macOS has no system `keytool`; use the one inside Android Studio's bundled JDK a
    not needed — the shell embeds no Firebase SDK, and App Distribution uploads identify the app by id.
 3. Open **Release & Monitor → App Distribution** and start it.
 4. Create a tester group and add the tester email addresses. Each tester needs a Google account.
+   `FIREBASE_TESTER_GROUPS` takes the group **alias** shown next to the group name, not the display
+   name.
 5. Copy the app id from **Project settings → Your apps** (`1:<number>:android:<hash>`).
 
 ### 3. Local CLI
