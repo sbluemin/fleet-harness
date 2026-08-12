@@ -132,7 +132,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
-  const unresolvedLaunchModel = activeLaunchModel !== null && !launchModelLabels.has(activeLaunchModel) ? activeLaunchModel : null;
   // 속성 칩은 CLI 이름이 아니라 실제로 돌고 있는 모델 이름을 말한다(카탈로그가 그 좌표를 알 때).
   const activeOperationAttribute = activeOperation
     ? commandBandOperationAttribute(activeOperation.payload, launchModelLabels)
@@ -236,11 +235,19 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   }, [edgeRevealActive]);
 
   // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 밴드에 올라올 때만
-  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation). 조회 이력을 ref에 적어 두지 않는다 —
-  // 개발 채널의 StrictMode는 이 effect를 setup→cleanup→setup으로 돌리는데, 그때 두 번째 setup이
-  // 첫 setup이 적어 둔 이력을 보고 물러나 색인이 영영 비고, 중단된 요청이 뒤늦게 그 이력을 지워도
-  // 되돌릴 렌더가 없다. 의존만으로 충분하다: 같은 좌표가 그대로면 다시 묻지 않는다.
+  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation).
+  //
+  // 의존은 활성 좌표 하나다. 해결 여부를 의존에 실으면 조회가 성공해 좌표가 해결되는 순간이 곧
+  // 다음 조회의 방아쇠가 되어, 카탈로그가 매번 수행하는 Agent CLI 탐지를 시작마다 두 번 돌린다.
+  // 조회 이력을 ref에 적어 두지도 않는다 — 개발 채널의 StrictMode는 이 effect를
+  // setup→cleanup→setup으로 돌리는데, 그때 두 번째 setup이 첫 setup이 적어 둔 이력을 보고 물러나
+  // 색인이 영영 비고, 중단된 요청이 뒤늦게 그 이력을 지워도 되돌릴 렌더가 없다.
   useEffect(() => {
+    // 좌표가 없는 Operation은 색인이 필요 없다 — 첫 페인트(빈 색인)에서만 읽어 둔다.
+    const needsCatalog = activeLaunchModel === null
+      ? launchModelLabels.size === 0
+      : !launchModelLabels.has(activeLaunchModel);
+    if (!needsCatalog) return;
     const controller = new AbortController();
     fetchOperationCatalog(controller.signal)
       .then((catalog) => {
@@ -248,7 +255,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       })
       .catch(() => {});
     return () => controller.abort();
-  }, [unresolvedLaunchModel]);
+  }, [activeLaunchModel]);
 
   useEffect(() => {
     if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
