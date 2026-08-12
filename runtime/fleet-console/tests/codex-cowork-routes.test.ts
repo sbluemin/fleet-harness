@@ -82,6 +82,10 @@ describe("Cowork DTO", () => {
       // cowork 제품 기본은 sonnet/low다 — 무거운 기본으로 도는 편집 보조는 비용만 늘린다.
       expect(body.defaultModel).toBe("sonnet");
       expect(body.defaultEffort).toBe("low");
+      // 문서 코워크는 경량이다 — 모델은 상용 축(fable 제외·haiku 포함)만, 강도는 xhigh/max를
+      // 뺀 3단만 이 표면에 내린다.
+      expect(body.models).toEqual(["opus[1m]", "sonnet", "haiku"]);
+      expect(body.efforts).toEqual(["low", "medium", "high"]);
     } finally {
       server.closeAllConnections();
       server.close();

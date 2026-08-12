@@ -27,8 +27,9 @@ import { runVendorQuery } from "./vendor-sdk.js";
  * 게이트웨이가 원문 중계하며 자식도 받아들인다 — 카탈로그 항목이 하나도 없는 캐시로도 통과하는
  * 것을 실측했다.
  */
-/** 자식이 스스로 구체 id로 푸는 vendor 모델 별칭. */
-const NATIVE_MODEL_ALIASES = new Set(["sonnet", "opus", "haiku", "fable", "fable[1m]"]);
+/** 자식이 스스로 구체 id로 푸는 vendor 모델 별칭. [1m] 좌표도 별칭이다 — Console 제품 축의
+    opus[1m]이 빠져 있으면 게이트웨이 생성 시점에 거부돼, 자식이 받아 줄 모델이 오타 취급된다. */
+const NATIVE_MODEL_ALIASES = new Set(["sonnet", "opus", "opus[1m]", "haiku", "fable", "fable[1m]"]);
 
 type AcceptedModel =
   | { readonly kind: "catalog"; readonly id: string; readonly model: GatewayModel }

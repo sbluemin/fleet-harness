@@ -106,18 +106,20 @@ describe("Cowork inline copilot", () => {
     article.remove();
   });
 
-  it("migrates a stored bare Fable setting before roster matching", async () => {
+  it("recovers a stored model that left the lineup by falling back to the product default", async () => {
+    // fable 계열은 더 이상 cowork 목록에 없다 — 옛 저장값은 마이그레이션 없이 재조회가 기본값으로 되돌린다.
     localStorage.setItem("fleet.codex.cowork.settings", JSON.stringify({ model: "fable", effort: "max" }));
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["fable[1m]"], efforts: ["max"] }));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["opus[1m]", "sonnet", "haiku"], efforts: ["low", "medium", "high"], defaultModel: "sonnet", defaultEffort: "low" }));
       return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
     });
     vi.stubGlobal("fetch", fetchMock);
     const { article, body } = host();
     const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: vi.fn() });
-    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("model=fable%5B1m%5D"))).toBe(true));
-    expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings")!)).toMatchObject({ model: "fable[1m]" });
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings")!)).toEqual({ model: "sonnet", effort: "low" });
+    });
     controller.destroy();
     article.remove();
   });
@@ -341,19 +343,16 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
 
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')?.click();
-    // CLI 선택기가 사라져 이제 모델과 강도 둘뿐이다.
-    await vi.waitFor(() => expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2));
-    const modelTrigger = article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[0]!;
-    modelTrigger.click();
-    await vi.waitFor(() => expect(document.querySelector(".fc-select__popup")).not.toBeNull());
-    [...document.querySelectorAll<HTMLLIElement>(".fc-select__option")].find((option) => option.textContent === "opus")!.click();
+    // 메뉴는 모델 행으로 선다 — 폼 셀렉트는 더 없다.
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(2));
+    [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")].find((row) => row.textContent?.includes("opus"))!.click();
 
-    // 모델이 바뀌면 강도 사다리가 달라질 수 있으므로, 옛 강도를 들고 재조회하지 않고 새 목록으로 교체한다.
-    await vi.waitFor(() => expect(article.querySelectorAll<HTMLButtonElement>(".fc-select__trigger")[1]?.textContent).toContain("high"));
+    // 모델이 바뀌면 그 모델로 재조회하고, 새 사다리에 없는 강도는 새 기본값으로 교체된다.
+    await vi.waitFor(() => expect(article.querySelector(".cowork-agent-effort")?.textContent).toBe("HIGH"));
     expect(fetchMock.mock.calls.map((call) => String(call[0])).some((url) => url.includes("model=opus"))).toBe(true);
 
     controller.destroy();
-    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-effort-flyout")).toHaveLength(0);
     article.remove();
   });
 
@@ -377,19 +376,19 @@ describe("Cowork inline copilot", () => {
       article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')!.click();
       await vi.waitFor(() => {
         const open = article.querySelector(".cowork-config") !== null;
-        expect(article.querySelectorAll(".fc-select").length).toBe(open ? 2 : 0);
+        expect(article.querySelectorAll(".cowork-agent-row").length).toBe(open ? 1 : 0);
         expect(article.querySelectorAll("[data-cowork-settings-host]").length).toBe(open ? 1 : 0);
       });
     }
 
-    expect(article.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
+    expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1);
     article.querySelector<HTMLElement>('[data-cowork-action="toggle-panel"]')!.click();
     await vi.waitFor(() => expect(article.querySelector(".cowork-config")).toBeNull());
-    expect(document.querySelectorAll(".fc-select__popup")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-effort-flyout")).toHaveLength(0);
 
     controller.destroy();
     expect(article.querySelector(".cowork-dock-zone")).toBeNull();
-    expect(document.querySelectorAll(".fc-select")).toHaveLength(0);
+    expect(document.querySelectorAll(".cowork-agent-row")).toHaveLength(0);
     article.remove();
   });
 
@@ -670,5 +669,171 @@ describe("Cowork inline copilot", () => {
 
     controller.destroy();
     reader.remove();
+  });
+
+  it("selects model and effort through the agent menu's rows and effort flyout", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) {
+        return new Response(JSON.stringify({
+          models: ["fable[1m]", "opus[1m]", "sonnet"],
+          efforts: ["low", "medium", "high"],
+          defaultModel: "sonnet",
+          defaultEffort: "low",
+        }));
+      }
+      return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    // 옵션이 채워지면 칩은 모델명과 함께 현재 강도 표식(1/3 점등)을 단다.
+    await vi.waitFor(() => expect(article.querySelector("[data-cowork-chip-effort]")).not.toBeNull());
+    expect(article.querySelector<HTMLElement>("[data-cowork-chip-effort]")!.dataset.effortLevel).toBe("low");
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    // 메뉴는 단일 레이어다 — 폼 셀렉트 없이 모델 행 3개가 바로 선다.
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(3));
+    expect(article.querySelector("select")).toBeNull();
+    const rows = [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")];
+    expect(rows.find(row => row.getAttribute("aria-pressed") === "true")?.textContent).toContain("sonnet");
+
+    // 강도 손잡이를 누르면 그 행 옆에 트랙 플라이아웃이 열린다.
+    const sonnetRow = rows.find(row => row.textContent?.includes("sonnet"))!;
+    sonnetRow.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+
+    // 자동 슬롯 없는 3단 사다리 — 방향키 한 번이 low → medium.
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    expect(track.getAttribute("aria-valuemax")).toBe("2");
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings") ?? "{}")).toEqual({ model: "sonnet", effort: "medium" });
+    });
+    // 강도만 바뀌면 도크는 재구축되지 않고 칩 표식이 제자리에서 갱신된다 — 플라이아웃은 열린 채다.
+    expect(article.querySelector<HTMLElement>("[data-cowork-chip-effort]")!.dataset.effortLevel).toBe("medium");
+    expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull();
+
+    // 모델 행 클릭은 고른 강도를 유지한 채 모델만 바꾸고, 그 모델로 옵션을 재조회한다.
+    fetchMock.mockClear();
+    const opusRow = [...article.querySelectorAll<HTMLButtonElement>(".cowork-agent-row")].find(row => row.textContent?.includes("opus[1m]"))!;
+    opusRow.click();
+    await vi.waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("model=opus%5B1m%5D"))).toBe(true));
+    await vi.waitFor(() => {
+      expect(JSON.parse(localStorage.getItem("fleet.codex.cowork.settings") ?? "{}")).toEqual({ model: "opus[1m]", effort: "medium" });
+    });
+
+    controller.destroy();
+  });
+
+  it("serializes session settings writes during a drag: one in flight, latest wins", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releaseFirst: (() => void) | null = null;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const settingsPosts: Array<{ model?: string; effort?: string }> = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["low", "medium", "high"], defaultModel: "gpt", defaultEffort: "low" }));
+      if (url.endsWith("/settings")) {
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { model?: string; effort?: string };
+        settingsPosts.push(payload);
+        // 첫 쓰기는 게이트가 풀릴 때까지 착지하지 못한다 — 드래그 중 병렬 쓰기가 있었다면
+        // 두 번째 POST가 이 사이에 이미 도착해 순서 역전을 재현한다.
+        if (settingsPosts.length === 1) await firstGate;
+        return new Response(JSON.stringify(sessionDto({ model: payload.model, effort: payload.effort })));
+      }
+      return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1));
+    article.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    // 드래그처럼 연속으로 두 단을 지난다: low → medium(첫 쓰기 비행) → high(대기).
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    await vi.waitFor(() => expect(settingsPosts).toHaveLength(1));
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    // 첫 쓰기가 비행 중인 동안 두 번째 쓰기는 출발하지 않는다 — 직렬화가 없으면 여기서 2가 된다.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settingsPosts).toHaveLength(1);
+    expect(settingsPosts[0]).toMatchObject({ effort: "medium" });
+
+    releaseFirst!();
+    // 착지 후 최신 값(high) 하나만 더 실린다 — 중간 값 재전송이나 병렬 비행이 없다.
+    await vi.waitFor(() => expect(settingsPosts).toHaveLength(2));
+    expect(settingsPosts[1]).toMatchObject({ effort: "high" });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(settingsPosts).toHaveLength(2);
+
+    controller.destroy();
+  });
+
+  it("holds a prompt until queued settings drain: the run never uses an intermediate effort", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    let releaseFirst: (() => void) | null = null;
+    const firstGate = new Promise<void>((resolve) => { releaseFirst = resolve; });
+    const calls: string[] = [];
+    let settingsCount = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["gpt"], efforts: ["low", "medium", "high"], defaultModel: "gpt", defaultEffort: "low" }));
+      if (url.endsWith("/settings")) {
+        settingsCount += 1;
+        const payload = JSON.parse(String(init?.body ?? "{}")) as { effort?: string };
+        if (settingsCount === 1) await firstGate;
+        calls.push(`settings:${payload.effort}`);
+        return new Response(JSON.stringify(sessionDto({ effort: payload.effort })));
+      }
+      if (url.endsWith("/prompt")) { calls.push("prompt"); return new Response(JSON.stringify(sessionDto({ state: "running", effort: "high" })), { status: 202 }); }
+      return new Response(JSON.stringify(sessionDto({ effort: "low" })));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    await vi.waitFor(() => expect(article.querySelector(".cowork-chip")?.textContent).toContain("1"));
+
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1));
+    article.querySelector<HTMLElement>(".cowork-agent-effort-handle")!.click();
+    await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout .effort-track")).not.toBeNull());
+    const track = article.querySelector<HTMLElement>(".cowork-effort-flyout .effort-track")!;
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+    // 첫 쓰기(medium)가 비행에 오른 것을 확인한 뒤 다음 단으로 — 렌더 반영 전의 연속 키는 no-op이다.
+    await vi.waitFor(() => expect(settingsCount).toBe(1));
+    await vi.waitFor(() => expect(track.getAttribute("aria-valuenow")).toBe("1"));
+    track.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true }));
+
+    // 첫 설정 쓰기가 비행 중인 채로 곧장 전송한다 — 프롬프트는 큐가 빌 때까지 출발하면 안 된다.
+    const input = article.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "Tighten the intro.";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    article.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    expect(calls).not.toContain("prompt");
+
+    releaseFirst!();
+    await vi.waitFor(() => expect(calls).toContain("prompt"));
+    // 순서가 계약이다: 중간 값(medium) → 최신 값(high) → 프롬프트.
+    expect(calls.indexOf("prompt")).toBeGreaterThan(calls.indexOf("settings:high"));
+    expect(calls.indexOf("settings:high")).toBeGreaterThan(calls.indexOf("settings:medium"));
+
+    controller.destroy();
   });
 });

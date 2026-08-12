@@ -32,6 +32,11 @@ export interface EffortTrackProps {
   readonly onConfirmCurrent?: () => void;
   /** 강도를 비운 상태를 트랙 맨 앞 자리로 노출한다. */
   readonly autoLabel: string;
+  /**
+   * 자동(비움) 슬롯을 사다리 앞에 세울지. Cowork처럼 항상 구체 강도를 가지는 표면은 끈다 —
+   * 그 표면에서 `value`는 null이 되지 않고, `onChange`도 null을 내보내지 않는다.
+   */
+  readonly autoSlot?: boolean;
   readonly ariaLabel: string;
   readonly autoValueText: string;
   /** 닫힌 게이트의 ✦ 토글이 가지는 개방 라벨. */
@@ -52,6 +57,7 @@ export function EffortTrack({
   onChange,
   onConfirmCurrent,
   autoLabel,
+  autoSlot = true,
   ariaLabel,
   autoValueText,
   apexToggleLabel,
@@ -102,8 +108,8 @@ export function EffortTrack({
       label: byId.get(id)?.label ?? id.toUpperCase(),
       selectable: byId.has(id),
     }));
-    return [{ id: null, label: autoLabel, selectable: true }, ...rungs];
-  }, [apexOpen, autoLabel, ladder, ordinaryRungs, row]);
+    return [...(autoSlot ? [{ id: null, label: autoLabel, selectable: true }] : []), ...rungs];
+  }, [apexOpen, autoLabel, autoSlot, ladder, ordinaryRungs, row]);
 
   const last = slots.length - 1;
   const index = Math.max(0, slots.findIndex((slot) => slot.id === value));
@@ -126,7 +132,8 @@ export function EffortTrack({
   // 비율(index/last) 좌표는 게이트가 열려 슬롯 수가 바뀌는 순간 %가 즉시 점프해,
   // 폭 전이(360ms)를 따라 기존 스톱·손잡이가 미끄러진다. 픽셀 좌표에서는 기존 단이
   // 단 1px도 움직이지 않고 오른쪽 봉인만 늘어난다. CSS 쪽 같은 값은 --effort-track-gap.
-  const closedIntervals = Math.max(ordinaryRungs.length, 1);
+  // 자동 슬롯이 서면 구간 수는 일상 단 수와 같고(자동→첫 단이 한 구간), 서지 않으면 하나 적다.
+  const closedIntervals = Math.max(ordinaryRungs.length - (autoSlot ? 0 : 1), 1);
   const gap = (CLOSED_TRACK_WIDTH - TRACK_CHROME) / closedIntervals;
   const leftAt = useCallback(
     (position: number) => `calc(${EDGE}px + var(--effort-track-gap) * ${position})`,
@@ -387,4 +394,45 @@ export function effortLadderPosition(row: OperationLaunchVariantRow, effort: str
 export function resolveRowEffort(row: OperationLaunchVariantRow | null, effort: string | null): string | null {
   if (!row || effort === null) return null;
   return row.chips?.some((chip) => chip.id === effort) ? effort : null;
+}
+
+const GAUGE_BAR_WIDTH = 1.5;
+const GAUGE_BAR_PITCH = 2.5;
+const GAUGE_HEIGHT = 8;
+const GAUGE_MIN_BAR = 2;
+
+/**
+ * 강도 사다리를 그대로 줄인 계기 표식. 꺾쇠만으로는 이 손잡이가 무엇을 여는지 말하지 못하므로,
+ * 오르는 막대로 "단계를 고르는 자리"임을 아이콘 하나로 알린다. 자동은 한 칸도 켜지지 않는다 —
+ * 최소 단을 고른 것과 갈려야 한다.
+ */
+export function EffortGaugeGlyph({ rung, total }: { readonly rung: number; readonly total: number }) {
+  if (total <= 0) return null;
+  const width = total * GAUGE_BAR_PITCH - (GAUGE_BAR_PITCH - GAUGE_BAR_WIDTH);
+  return (
+    <svg
+      className="operation-launch-variant-effort-gauge"
+      viewBox={`0 0 ${width} ${GAUGE_HEIGHT}`}
+      width={width}
+      height={GAUGE_HEIGHT}
+      aria-hidden="true"
+    >
+      {Array.from({ length: total }, (_unused, index) => {
+        const height = total === 1
+          ? GAUGE_HEIGHT
+          : GAUGE_MIN_BAR + (index * (GAUGE_HEIGHT - GAUGE_MIN_BAR)) / (total - 1);
+        return (
+          <rect
+            key={index}
+            x={index * GAUGE_BAR_PITCH}
+            y={GAUGE_HEIGHT - height}
+            width={GAUGE_BAR_WIDTH}
+            height={height}
+            rx={0.5}
+            data-lit={index < rung ? "true" : undefined}
+          />
+        );
+      })}
+    </svg>
+  );
 }

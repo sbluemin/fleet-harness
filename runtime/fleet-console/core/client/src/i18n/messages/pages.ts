@@ -371,7 +371,6 @@ export const pagesEn = {
   "codex.cowork.applyStale": "This entry changed or is busy. Your draft is safe; reopen the entry before applying.",
   "codex.cowork.copied": "Copied",
   "codex.cowork.defaultComment": "Please revise this passage.",
-  "codex.cowork.cli": "CLI",
   "codex.cowork.model": "Model",
   "codex.cowork.effort": "Effort",
 
@@ -853,7 +852,6 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "codex.cowork.applyStale": "이 항목이 바뀌었거나 사용 중입니다. 초안은 안전하니 적용 전에 항목을 다시 여세요.",
   "codex.cowork.copied": "복사됨",
   "codex.cowork.defaultComment": "이 구절을 수정해 주세요.",
-  "codex.cowork.cli": "CLI",
   "codex.cowork.model": "Model",
   "codex.cowork.effort": "Effort",
 

@@ -13,7 +13,7 @@ import {
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
 import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
 import type { DraftLine } from "./cowork-diff.js";
-import { CoworkSettingsSelect } from "./cowork-settings-select.js";
+import { CoworkAgentMenu } from "./cowork-agent-menu.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils.js";
 
@@ -121,35 +121,85 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
     const host = dockZone.querySelector<HTMLElement>("[data-cowork-settings-host]");
     if (!host) return;
     if (!settingsSelectRoot) settingsSelectRoot = createRoot(host);
-    settingsSelectRoot.render(createElement(CoworkSettingsSelect, {
+    settingsSelectRoot.render(createElement(CoworkAgentMenu, {
       models: optionsDto.models,
       efforts: optionsDto.efforts,
       model: settings.model,
       effort: settings.effort,
-      onModelChange: (value) => handleSettingChange("model", value),
-      onEffortChange: (value) => handleSettingChange("effort", value),
+      onSelect: handleSelect,
     }));
   };
 
-  const handleSettingChange = (name: "model" | "effort", value: string) => {
-    // 모델을 바꾸면 강도 사다리가 달라질 수 있으므로 강도는 비워 두고 옵션 재조회가 채우게 한다.
-    settings = name === "model" ? { model: value, effort: "" } : { ...settings, [name]: value };
-    saveSettings(settings);
-    if (!session) {
-      if (name !== "effort") void updateOptions().then(() => { renderDock(); }).catch(() => undefined);
-      else mountSettingsSelectIfNeeded();
+  // 세션 설정 동기화는 한 번에 하나만 비행한다 — 트랙 드래그는 단을 지날 때마다 변경을 내므로,
+  // 병렬 POST의 완료 순서가 뒤집히면 중간 강도가 세션의 최종값으로 남는다. 비행 중 변경은 표시만
+  // 해 두고, 착지 후 그 시점의 최신 settings로 한 번만 더 보낸다(중간 값은 싣지 않는다).
+  // 드레인 전체가 하나의 프라미스로 남는 것은 send()를 위해서다 — 큐가 비기 전에 프롬프트가
+  // 출발하면, 도크가 보여 주는 값이 아니라 중간 값으로 턴이 돈다.
+  let settingsSyncInFlight = false;
+  let settingsSyncQueued = false;
+  let settingsSyncDrain: Promise<void> = Promise.resolve();
+  const syncSessionSettings = () => {
+    if (!session || disposed) return;
+    if (settingsSyncInFlight) {
+      settingsSyncQueued = true;
       return;
     }
-    if (name !== "effort") {
+    settingsSyncInFlight = true;
+    settingsSyncDrain = (async () => {
+      do {
+        settingsSyncQueued = false;
+        try {
+          const next = await updateCoworkSettings(options.theaterId, session!.id, settings);
+          if (!disposed) session = next;
+        } catch (cause) {
+          error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed");
+          renderDock();
+        }
+      } while (settingsSyncQueued && !disposed);
+      settingsSyncInFlight = false;
+    })();
+  };
+
+  const handleSelect = (model: string, effort: string) => {
+    const modelChanged = model !== settings.model;
+    settings = { model, effort };
+    saveSettings(settings);
+    if (modelChanged) {
+      // 모델이 바뀌면 강도 사다리가 달라질 수 있다 — 재조회가 강도를 정규화한 뒤 도크를 다시 세운다.
       void updateOptions()
-        .then(() => mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings)))
-        .then(renderDock)
+        .then(() => { syncSessionSettings(); renderDock(); })
         .catch((cause) => { error = cause instanceof Error ? cause.message : consoleT()("codex.cowork.requestFailed"); renderDock(); });
-    } else {
-      void mutate(() => updateCoworkSettings(options.theaterId, session!.id, settings))
-        .then(renderDock)
-        .catch(() => undefined);
+      return;
     }
+    // 강도만 바뀌면 도크 HTML을 다시 세우지 않는다 — 재구축은 메뉴의 React 루트를 갈아치워
+    // 드래그 중인 트랙과 열린 플라이아웃을 죽인다. 칩 표식은 제자리 패치, 메뉴는 리렌더만 한다.
+    patchChipEffort();
+    mountSettingsSelectIfNeeded();
+    syncSessionSettings();
+  };
+
+  // 칩의 강도 표식 — 사다리 위 몇 번째 단인지 실행 메뉴 손잡이와 같은 글리프로 되비친다.
+  const chipEffortGauge = (): string => {
+    const total = optionsDto.efforts.length;
+    const rung = optionsDto.efforts.indexOf(settings.effort) + 1;
+    if (total === 0 || rung === 0) return "";
+    const bars = Array.from({ length: total }, (_unused, index) => {
+      const height = total === 1 ? 8 : 2 + (index * 6) / (total - 1);
+      return `<rect x="${index * 2.5}" y="${8 - height}" width="1.5" height="${height}" rx="0.5"${index < rung ? ' data-lit="true"' : ""}></rect>`;
+    }).join("");
+    const width = total * 2.5 - 1;
+    return `<span class="cowork-chip-effort" data-cowork-chip-effort data-effort-level="${escapeAttribute(settings.effort)}" aria-hidden="true"><svg class="operation-launch-variant-effort-gauge" viewBox="0 0 ${width} 8" width="${width}" height="8">${bars}</svg></span>`;
+  };
+
+  const patchChipEffort = () => {
+    const holder = dockZone.querySelector<HTMLElement>("[data-cowork-chip-effort]");
+    if (!holder) return;
+    holder.dataset.effortLevel = settings.effort;
+    const rung = optionsDto.efforts.indexOf(settings.effort) + 1;
+    holder.querySelectorAll("rect").forEach((rect, index) => {
+      if (index < rung) rect.setAttribute("data-lit", "true");
+      else rect.removeAttribute("data-lit");
+    });
   };
 
   // ── 렌더 ────────────────────────────────────────────────────────────────────
@@ -210,8 +260,8 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       <div class="cowork-bar${running ? " is-running" : ""}" data-cowork-form>
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
         <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
-        <input class="cowork-dock-input" name="prompt" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
-        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}</button>
+        <input class="cowork-dock-input" name="prompt" autocomplete="off" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
+        <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}${chipEffortGauge()}</button>
         ${running
           ? `<button type="button" class="cowork-send cowork-stop" data-cowork-action="cancel-run" aria-label="${escapeAttribute(t("codex.cowork.stopAria"))}"><span aria-hidden="true"></span></button>`
           : `<button type="button" class="cowork-send" data-cowork-action="send" aria-label="${escapeAttribute(t("codex.cowork.sendToAi"))}">↑</button>`}
@@ -313,9 +363,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
 
   const renderConfig = () => {
     const t = consoleT();
+    // 정렬 스트립은 바와 같은 폭이다 — 팝오버가 도크 중앙이 아니라 여는 칩(설정) 쪽에 선다.
     return `
-    <div class="cowork-popover cowork-config" role="region" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}">
-      <div data-cowork-settings-host></div>
+    <div class="cowork-config-row">
+      <div class="cowork-popover cowork-config" role="region" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}">
+        <div data-cowork-settings-host></div>
+      </div>
     </div>`;
   };
 
@@ -393,7 +446,6 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   // ── 세션 수명주기 ───────────────────────────────────────────────────────────
 
   const updateOptions = async () => {
-    settings = { ...settings, model: normalizeRememberedModel(settings.model) };
     optionsDto = await fetchCoworkOptions(options.theaterId, settings.model || undefined);
     // 저장값이 무효하면 제품 기본값(sonnet/low)을 우선 채택한다.
     const fallbackModel = optionsDto.defaultModel && optionsDto.models.includes(optionsDto.defaultModel) ? optionsDto.defaultModel : optionsDto.models[0] ?? "";
@@ -541,6 +593,10 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       await ensureSession();
       if (attempt.cancelled || promptAttempt !== attempt) return;
       await mutate(() => updateCoworkAnnotations(options.theaterId, session!.id, annotations.map(annotationToDto)));
+      if (attempt.cancelled || promptAttempt !== attempt) return;
+      // 설정 쓰기 큐가 빌 때까지 기다린다 — 드래그 직후 곧장 보낸 프롬프트가 큐에 남은 최신
+      // 강도보다 먼저 도착하면, 도크가 보여 주는 값이 아니라 중간 값으로 턴이 돈다.
+      await settingsSyncDrain;
       if (attempt.cancelled || promptAttempt !== attempt) return;
       attempt.submitted = true;
       await mutate(() => promptCowork(options.theaterId, session!.id, prompt));
@@ -811,16 +867,12 @@ function stripFrontmatter(markdown: string): string { return markdown.replace(/^
 function clip(value: string, max: number): string { return value.length > max ? `${value.slice(0, max - 1)}…` : value; }
 function annotationId(): string { return typeof crypto?.randomUUID === "function" ? crypto.randomUUID() : `annotation-${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 // 저장돼 있던 `cli`는 읽지 않는다 — Cowork가 Agent CLI를 고르지 않게 되면서 의미가 사라졌다.
-// 옛 값이 남아 있어도 무시될 뿐이라 마이그레이션이 필요 없다.
-function normalizeRememberedModel(model: string): string {
-  return model === "fable" ? "fable[1m]" : model;
-}
+// 목록에서 빠진 모델(fable 계열 등)의 옛 저장값도 마이그레이션이 필요 없다 — 옵션 재조회가
+// 목록 밖 값을 기본값으로 되돌린다.
 function readSettings(): Settings {
   try {
     const saved = JSON.parse(localStorage.getItem(SETTINGS_KEY) ?? "{}");
-    const settings = { model: typeof saved.model === "string" ? normalizeRememberedModel(saved.model) : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
-    if (settings.model !== saved.model) saveSettings(settings);
-    return settings;
+    return { model: typeof saved.model === "string" ? saved.model : "", effort: typeof saved.effort === "string" ? saved.effort : "low" };
   } catch { return { model: "", effort: "low" }; }
 }
 function saveSettings(settings: Settings): void { try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings)); } catch { /* Storage is optional. */ } }
