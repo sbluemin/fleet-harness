@@ -8,9 +8,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { findVariantLaunchKind, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, resolveSelection } from "../core/client/src/quick-launch.js";
+import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { getState, removeTheater, setState } from "../core/client/src/store.js";
-import type { TheaterInfo } from "../core/client/src/types.js";
+import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
   return { id, label: id, createdAt: "2026-01-01T00:00:00.000Z", lastOpenedAt: "2026-01-01T00:00:00.000Z", hasWiki: false, activeAdmiralCount: 0 };
@@ -288,6 +288,120 @@ describe("rejection messages", () => {
       "chrome.quickLaunch.errorEffortOff",
       "chrome.quickLaunch.errorCliUnavailable",
       "chrome.quickLaunch.errorGeneric",
+    ];
+    for (const key of keys) {
+      expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
+    }
+  });
+});
+
+function makeOperation(id: string, overrides: Partial<OperationNode> = {}): OperationNode {
+  return {
+    id,
+    theaterId: "th-a",
+    type: "agent",
+    pluginId: "terminal",
+    title: id,
+    payload: {},
+    geometry: null,
+    ts: { createdAt: 1, updatedAt: 1 },
+    ...overrides,
+  };
+}
+
+const MESSAGEABLE = new Map<string, ReadonlySet<string>>([["terminal", new Set(["agent"])]]);
+
+describe("readMentionToken", () => {
+  it("opens at the start of the input", () => {
+    expect(readMentionToken("@", 1)).toEqual({ at: 0, query: "" });
+    expect(readMentionToken("@gate", 5)).toEqual({ at: 0, query: "gate" });
+  });
+
+  it("opens after whitespace only — mid-word @ stays literal", () => {
+    expect(readMentionToken("see @op", 7)).toEqual({ at: 4, query: "op" });
+    expect(readMentionToken("mail a@b", 8)).toBeNull();
+  });
+
+  it("closes once the token carries whitespace or a second @", () => {
+    expect(readMentionToken("@a b", 4)).toBeNull();
+    expect(readMentionToken("@@x", 3)).toBeNull();
+  });
+
+  it("reads relative to the caret, not the end of the value", () => {
+    expect(readMentionToken("@ab rest", 3)).toEqual({ at: 0, query: "ab" });
+    expect(readMentionToken("@ab rest", 0)).toBeNull();
+  });
+});
+
+describe("stripMentionToken", () => {
+  it("removes exactly the @token span", () => {
+    expect(stripMentionToken("@gate", { at: 0, query: "gate" })).toBe("");
+    expect(stripMentionToken("see @op now", { at: 4, query: "op" })).toBe("see  now");
+  });
+});
+
+describe("isMentionSelectable", () => {
+  it("blocks awaiting only — dormant resumes on delivery", () => {
+    expect(isMentionSelectable("awaiting")).toBe(false);
+    for (const activity of ["idle", "running", "dormant", "background"] as const) {
+      expect(isMentionSelectable(activity), activity).toBe(true);
+    }
+  });
+});
+
+describe("buildQuickLaunchMentionGroups", () => {
+  it("lists only declared plugin/type pairs, grouped by theater, with raw activity", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a"), makeTheater("th-b")],
+      operations: [
+        makeOperation("op-live"),
+        makeOperation("op-dormant", { theaterId: "th-b", payload: { resumeAvailable: true } }),
+        makeOperation("op-shell", { type: "shell" }),
+        makeOperation("op-foreign", { pluginId: "analyst" }),
+      ],
+      operationStatus: { "op-live": "running" as const },
+    };
+    const groups = buildQuickLaunchMentionGroups(state, MESSAGEABLE, "");
+    expect(groups.map((group) => group.theaterId)).toEqual(["th-a", "th-b"]);
+    expect(groups.flatMap((group) => group.entries.map((entry) => entry.operationId))).toEqual(["op-live", "op-dormant"]);
+    expect(groups[0]?.entries[0]?.activity).toBe("running");
+    expect(groups[1]?.entries[0]?.activity).toBe("dormant");
+  });
+
+  it("filters by query across name and theater label", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a")],
+      operations: [makeOperation("gateway sweep", { title: "gateway sweep" }), makeOperation("docs run", { title: "docs run" })],
+      operationStatus: {},
+    };
+    const groups = buildQuickLaunchMentionGroups(state, MESSAGEABLE, "gate");
+    expect(groups.flatMap((group) => group.entries.map((entry) => entry.operationName))).toEqual(["gateway sweep"]);
+  });
+});
+
+describe("mention rejection messages", () => {
+  it("maps delivery codes onto message keys with a generic fallback", () => {
+    expect(quickLaunchMentionErrorMessageKey("resume_unavailable")).toBe("chrome.quickLaunch.mentionErrorResumeUnavailable");
+    expect(quickLaunchMentionErrorMessageKey("session_not_found")).toBe("chrome.quickLaunch.mentionErrorGone");
+    expect(quickLaunchMentionErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
+    expect(quickLaunchMentionErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
+    expect(quickLaunchMentionErrorMessageKey("terminal_unavailable")).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
+    expect(quickLaunchMentionErrorMessageKey(null)).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
+  });
+
+  it("declares every mention key in both locales", () => {
+    const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
+    const keys = [
+      "chrome.quickLaunch.mentionDeck",
+      "chrome.quickLaunch.mentionCategoryOperations",
+      "chrome.quickLaunch.mentionNoMatch",
+      "chrome.quickLaunch.mentionPlaceholder",
+      "chrome.quickLaunch.mentionTarget",
+      "chrome.quickLaunch.mentionErrorResumeUnavailable",
+      "chrome.quickLaunch.mentionErrorGone",
+      "chrome.quickLaunch.mentionErrorDeliveryFailed",
     ];
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
