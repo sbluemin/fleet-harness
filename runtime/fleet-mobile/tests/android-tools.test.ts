@@ -5,8 +5,10 @@ import {
   inspectBadging,
   parseJavaMajor,
   requireAndroidSdk,
+  requireReleaseKeystore,
   verifyDebugSigner,
   verifyManifestContract,
+  verifyReleaseSigner,
   withJavaNativeAccess,
 } from "../scripts/lib/android-tools.mjs";
 
@@ -92,6 +94,31 @@ describe("Android APK contract helpers", () => {
     expect(() => verifyDebugSigner(signer.replace("CN=Android Debug", "CN=Android Debugger"))).toThrow(
       /exactly one Android Debug signer/,
     );
+  });
+
+  it("reads the shipped version out of aapt badging", () => {
+    expect(inspectBadging(badging)).toMatchObject({ versionCode: 1, versionName: "1.0.0" });
+  });
+
+  // The release APK carries no android:debuggable attribute at all; the debug one must carry it.
+  it("holds each build type to the opposite debuggable value", () => {
+    const debuggable = inspectAaptManifestTree(manifestTree);
+    const stripped = inspectAaptManifestTree(manifestTree.replace(/^.*android:debuggable.*\n/m, ""));
+    expect(() => verifyManifestContract(debuggable, inspectBadging(badging), { buildType: "release" })).toThrow(
+      /must not be debuggable/,
+    );
+    expect(() => verifyManifestContract(stripped, inspectBadging(badging))).toThrow(/must be marked debuggable/);
+    verifyManifestContract(stripped, inspectBadging(badging), { buildType: "release" });
+  });
+
+  it("refuses the shared debug key on a release APK", () => {
+    expect(() => verifyReleaseSigner(signer)).toThrow(/must not be signed with the Android debug key/);
+    expect(verifyReleaseSigner(signer.replace("CN=Android Debug", "CN=Fleet Mobile"))).toBe("a".repeat(64));
+  });
+
+  it("requires complete release signing credentials", () => {
+    expect(() => requireReleaseKeystore({})).toThrow(/FLEET_ANDROID_KEYSTORE must name/);
+    expect(() => requireReleaseKeystore({ FLEET_ANDROID_KEYSTORE: "fleet.jks" })).toThrow(/absolute/);
   });
 
   it("requires one absolute SDK root", () => {

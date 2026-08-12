@@ -28,14 +28,35 @@ describe("Fleet Mobile Android build contract", () => {
     expect(app.expo.plugins.at(-1)).toBe("./plugins/withFleetAndroid.ts");
   });
 
-  it("keeps production Android release assembly unsupported", () => {
+  it("applies the same hardening to both build types", () => {
     const plugin = read("runtime/fleet-mobile/plugins/withFleetAndroid.ts");
-    expect(plugin).toContain("release signing is not configured");
     expect(plugin).toContain('application.$["android:usesCleartextTraffic"] = "false"');
     expect(plugin).toContain('"app", "src", "debug", "AndroidManifest.xml"');
     expect(plugin).toContain("androidx.profileinstaller.ProfileInstallReceiver");
     expect(plugin).toContain("rmSync");
-    expect(plugin).not.toContain("signingConfig signingConfigs.debug\n        }\n        release");
+  });
+
+  it("takes release signing material from the environment and refuses a release without it", () => {
+    const plugin = read("runtime/fleet-mobile/plugins/withFleetAndroid.ts");
+    expect(plugin).toContain("signingConfig signingConfigs.release");
+    expect(plugin).toContain('System.getenv("FLEET_ANDROID_KEYSTORE")');
+    expect(plugin).toContain("Fleet Mobile release signing requires FLEET_ANDROID_KEYSTORE");
+    // A release must never silently inherit the debug key that every Android SDK install shares.
+    expect(plugin).not.toContain("release {\n            signingConfig signingConfigs.debug");
+    expect(plugin).not.toMatch(/storePassword ['"](?!android')/);
+  });
+
+  // A second gate on the same Gradle tasks is how the release path stayed silently blocked once.
+  it("keeps release policy in the app-level plugin alone", () => {
+    const modulePlugin = read("runtime/fleet-mobile/modules/fleet-console-view/index.js");
+    expect(modulePlugin).not.toContain("assembleRelease");
+    expect(modulePlugin).not.toContain("fleet_mobile_release_requires_signing");
+  });
+
+  it("keeps signing material out of git", () => {
+    const ignore = read(".gitignore");
+    expect(ignore).toContain("*.keystore");
+    expect(ignore).toContain("*.jks");
   });
 
   it("verifies the dedicated access-link activity and secure loopback transport", () => {

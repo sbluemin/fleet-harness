@@ -7,7 +7,10 @@
   "scripts": {
     "android": "expo run:android",
     "android:build:debug": "node scripts/build-android-debug.mjs",
+    "android:build:release": "node scripts/build-android-release.mjs",
     "android:verify:debug": "node scripts/verify-android-debug.mjs",
+    "android:verify:release": "node scripts/verify-android-release.mjs",
+    "android:distribute": "node scripts/distribute-firebase.mjs",
     "build": "expo export --platform android --output-dir dist/bundle",
     "generate:android": "expo prebuild --platform android --clean --no-install",
     "typecheck": "tsc --noEmit -p tsconfig.json",

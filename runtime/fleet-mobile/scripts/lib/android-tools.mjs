@@ -17,6 +17,18 @@ export const CAMERA_PERMISSION = "android.permission.CAMERA";
  */
 export const NETWORK_STATE_PERMISSION = "android.permission.ACCESS_NETWORK_STATE";
 
+/**
+ * Release signing credentials are read from the environment and never from git. The keystore itself
+ * lives outside the repository: losing it means every already-installed tester has to uninstall
+ * before the next build will apply.
+ */
+export const RELEASE_KEYSTORE_ENV = Object.freeze({
+  storeFile: "FLEET_ANDROID_KEYSTORE",
+  storePassword: "FLEET_ANDROID_KEYSTORE_PASSWORD",
+  keyAlias: "FLEET_ANDROID_KEY_ALIAS",
+  keyPassword: "FLEET_ANDROID_KEY_PASSWORD",
+});
+
 export function fail(message) {
   throw new Error(message);
 }
@@ -48,6 +60,20 @@ export function requireAndroidSdk(env = process.env) {
     fail("ANDROID_HOME and ANDROID_SDK_ROOT must resolve to the same directory");
   }
   return sdkRoot;
+}
+
+export function requireReleaseKeystore(env = process.env) {
+  const storeFile = env[RELEASE_KEYSTORE_ENV.storeFile];
+  if (!storeFile || !path.isAbsolute(storeFile) || !existsSync(storeFile)) {
+    fail(`${RELEASE_KEYSTORE_ENV.storeFile} must name an existing absolute keystore file`);
+  }
+  const credentials = { storeFile };
+  for (const key of ["storePassword", "keyAlias", "keyPassword"]) {
+    const value = env[RELEASE_KEYSTORE_ENV[key]];
+    if (!value) fail(`${RELEASE_KEYSTORE_ENV[key]} must be set to sign the release APK`);
+    credentials[key] = value;
+  }
+  return credentials;
 }
 
 export function resolveJavaHome(env = process.env, platform = process.platform) {
@@ -112,6 +138,8 @@ export function requireAndroidPlatform(sdkRoot) {
 export function inspectBadging(output) {
   return {
     packageName: output.match(/^package: name='([^']+)'/m)?.[1],
+    versionCode: Number(output.match(/^package:[^\n]*versionCode='(\d+)'/m)?.[1]),
+    versionName: output.match(/^package:[^\n]*versionName='([^']*)'/m)?.[1],
     minSdk: Number(output.match(/^sdkVersion:'(\d+)'/m)?.[1]),
     targetSdk: Number(output.match(/^targetSdkVersion:'(\d+)'/m)?.[1]),
   };
@@ -178,13 +206,17 @@ export function normalizeComponentName(name) {
   return name;
 }
 
-export function verifyManifestContract(manifest, badging) {
+export function verifyManifestContract(manifest, badging, { buildType = "debug" } = {}) {
+  if (buildType !== "debug" && buildType !== "release") fail(`Unknown Android build type: ${buildType}`);
   if (manifest.packageName !== APPLICATION_ID || badging.packageName !== APPLICATION_ID) {
     fail(`Unexpected APK package: ${manifest.packageName ?? badging.packageName ?? "missing"}`);
   }
   if (badging.minSdk !== MIN_SDK) fail(`Unexpected minSdk: ${badging.minSdk}`);
   if (badging.targetSdk !== TARGET_SDK) fail(`Unexpected targetSdk: ${badging.targetSdk}`);
-  if (manifest.debuggable !== "true") fail("Debug APK must be marked debuggable");
+  // A debuggable release APK would hand anyone with the phone an `adb` route into paired console
+  // credentials, so the two build types assert opposite values of the same attribute.
+  if (buildType === "debug" && manifest.debuggable !== "true") fail("Debug APK must be marked debuggable");
+  if (buildType === "release" && manifest.debuggable === "true") fail("Release APK must not be debuggable");
   if (manifest.usesCleartextTraffic !== "false") fail("Fleet Mobile must disable cleartext traffic");
   if (manifest.networkSecurityConfig !== undefined) fail("Fleet Mobile must not install an alternate network security trust policy");
 
@@ -212,16 +244,36 @@ export function verifyManifestContract(manifest, badging) {
   }
 }
 
-export function verifyDebugSigner(output) {
+function inspectSigners(output) {
   if (!/Verified using v\d scheme.*true/.test(output)) {
     fail("apksigner did not report a verified APK signature");
   }
   const signerDns = [...output.matchAll(/Signer #\d+ certificate DN: (.+)/g)].map((match) => match[1].trim());
   const commonNames = signerDns[0]?.split(/,\s*/).filter((part) => part.startsWith("CN="));
-  if (signerDns.length !== 1 || commonNames?.length !== 1 || commonNames[0] !== "CN=Android Debug") {
+  return { signerDns, commonName: commonNames?.length === 1 ? commonNames[0] : undefined };
+}
+
+export function verifyDebugSigner(output) {
+  const { signerDns, commonName } = inspectSigners(output);
+  if (signerDns.length !== 1 || commonName !== "CN=Android Debug") {
     fail(`APK must have exactly one Android Debug signer; got ${signerDns.join(", ") || "none"}`);
   }
   if (!/Signer #1 certificate SHA-256 digest: [0-9a-f]{64}/i.test(output)) {
     fail("apksigner did not report the debug certificate SHA-256 digest");
   }
+}
+
+/**
+ * Returns the signing certificate digest so the promoted manifest records which key testers already
+ * trust — a changed digest is what forces an uninstall, and it is worth seeing before shipping.
+ */
+export function verifyReleaseSigner(output) {
+  const { signerDns, commonName } = inspectSigners(output);
+  if (signerDns.length !== 1 || !commonName) {
+    fail(`Release APK must have exactly one signer with a single CN; got ${signerDns.join(", ") || "none"}`);
+  }
+  if (commonName === "CN=Android Debug") fail("Release APK must not be signed with the Android debug key");
+  const digest = output.match(/Signer #1 certificate SHA-256 digest: ([0-9a-f]{64})/i)?.[1];
+  if (!digest) fail("apksigner did not report the release certificate SHA-256 digest");
+  return digest.toLowerCase();
 }
