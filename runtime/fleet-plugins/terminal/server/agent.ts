@@ -79,6 +79,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions", summary: "Create an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
@@ -419,6 +420,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "auto-name") return handleAutoName(req, res, sessionId);
     if (action === "capture") return handleCapture(req, res, sessionId);
     if (action === "resume") return handleResume(req, res, sessionId);
+    if (action === "message") return handleMessage(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -589,6 +591,106 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
         observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       }
+      pendingRuntimeSessions.delete(sessionId);
+      const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
+      if (reverted) observability.notifySessionUpdated(reverted);
+      if (error instanceof GatewayLaunchOptionError) {
+        ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
+      } else {
+        ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+      }
+    }
+    return true;
+  }
+
+  // Quick Launch 멘션 전달 라우트. 살아 있는 세션이면 PTY에 곧장 쓰고, dormant면 재기동(비-fresh
+  // resume) 후 같은 요청 안에서 전달한다 — 재기동 흐름은 handleResume의 비-fresh 경로와 행동
+  // 쌍둥이로 유지한다(fresh 분기가 얽힌 handleResume를 쪼개면 그쪽 롤백 계약이 흔들린다).
+  // 응답에는 프롬프트 원문·providerSession·경로를 싣지 않는다.
+  async function handleMessage(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) {
+      ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{ readonly text?: unknown }>(req);
+    const text = body?.text;
+    if (typeof text !== "string") {
+      ctx.host.http.writeJson(res, 400, { error: "message_invalid" });
+      return true;
+    }
+    if (text.length > MAX_LAUNCH_PROMPT_CHARS) {
+      ctx.host.http.writeJson(res, 400, { error: "prompt_too_long" });
+      return true;
+    }
+    // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
+    const sanitized = sanitizePtyMessageText(text);
+    if (sanitized.trim().length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "message_empty" });
+      return true;
+    }
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const deliver = () => {
+      const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
+      // rename 주입과 같은 세션 키/writer로 직렬화해 rename+메시지 인터리브를 막는다.
+      reminderWriter.enqueue(
+        sessionId,
+        (data) => terminalRuntime.write(sessionId, data),
+        formatPtyMessage(policy, sanitized, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY),
+      );
+    };
+    if (terminalRuntime.getSessionLastActivityAt(sessionId) !== null) {
+      deliver();
+      ctx.host.http.writeJson(res, 200, { delivered: true });
+      return true;
+    }
+    // dormant 대상은 재기동 후 전달한다(제품 결정). providerSession이 없으면 이어붙일 세션이 없다.
+    const cliId = readOptionalAgentCliId(node.payload?.cliId, res);
+    if (cliId === false) return true;
+    const providerSession = readProviderSession(node.payload);
+    if (!cliId || !providerSession) {
+      ctx.host.http.writeJson(res, 409, { error: "resume_unavailable" });
+      return true;
+    }
+    const launchModel = readPayloadString(node.payload, "launchModel")
+      || (cliId === "claude-gateway" ? "opus[1m]" : undefined);
+    const launchEffort = readPayloadString(node.payload, "launchEffort") || undefined;
+    resetOscActivity(sessionId);
+    const starting = observability.updateTerminalSessionStatus(sessionId, "starting") ?? injectOperation(node);
+    try {
+      const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
+      if (!cwd) {
+        ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+        return true;
+      }
+      await terminalRuntime.attach({
+        cwd,
+        sessionId,
+        operationId: sessionId,
+        operationType: node.type,
+        pluginId: node.pluginId,
+        theaterId: node.theaterId,
+        cliId,
+        ...(launchModel ? { model: launchModel } : {}),
+        ...(launchEffort ? { effort: launchEffort } : {}),
+        resumeSessionId: providerSession.sessionId,
+      });
+      const runtimeSession = pendingRuntimeSessions.get(sessionId);
+      pendingRuntimeSessions.delete(sessionId);
+      const resumed = runtimeSession ? observability.registerTerminalRuntimeSession(runtimeSession) ?? starting : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? starting;
+      observability.notifySessionUpdated(resumed);
+      const resumedPayload = toOperationPayload(node.payload, cwd, resumed, providerSession, observability.getDurableOperation(sessionId)?.providerTitle);
+      if (!readPayloadString(resumedPayload, "launchModel") && launchModel) resumedPayload.launchModel = launchModel;
+      ctx.host.operations.patch(sessionId, { payload: resumedPayload });
+      // 전달은 attach 성공 뒤에만 큐에 올린다 — 죽은 세션에 쌓인 메시지가 다음 재기동에 새는 것을 막는다.
+      deliver();
+      ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
+    } catch (error) {
+      resetOscActivity(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const reverted = observability.updateTerminalSessionStatus(sessionId, "dormant");
       if (reverted) observability.notifySessionUpdated(reverted);

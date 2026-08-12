@@ -28,7 +28,7 @@ import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "
 import "./analysis.css";
 import "./agent-cli.css";
 
-import { AgentApiError, createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
+import { AgentApiError, createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
 import { startAgentConnection } from "./connection.js";
 import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
@@ -173,6 +173,11 @@ export const agentPlugin = definePlugin({
       });
       throw error;
     }
+  },
+  // Quick Launch 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
+  messageableOperationTypes: ["agent"],
+  messageOperation: async (operationId, text) => {
+    await messageAgentSession(operationId, text);
   },
   launch: async ({ theaterId, kind, variant }) => {
     const session = await createAgentSession(theaterId, kind.id, {

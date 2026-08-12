@@ -41,6 +41,12 @@ export const terminalPlugin = definePlugin({
     if (operation?.type === "shell") return;
     await agentPlugin.resumeOperation?.(operationId);
   },
+  // Quick Launch 멘션 전달. 대상 자체가 messageableOperationTypes로 agent 타입에 한정되므로
+  // shell 판별 조회 없이 agent 구현으로 곧장 넘긴다 — 래퍼가 hook을 삼키면 호스트는 부재로 읽는다.
+  messageableOperationTypes: [...AGENT_OPERATION_TYPES],
+  messageOperation: async (operationId, text) => {
+    await agentPlugin.messageOperation?.(operationId, text);
+  },
   launch: async (ctx) => ctx.kind.type === "shell"
     ? shellPlugin.launch?.(ctx) ?? { id: "" }
     : agentPlugin.launch?.(ctx) ?? { id: "" },
