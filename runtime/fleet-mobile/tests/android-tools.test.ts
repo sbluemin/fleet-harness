@@ -16,6 +16,10 @@ N: android=http://schemas.android.com/apk/res/android
     A: package="com.dotobokuri.fleet.mobile" (Raw: "com.dotobokuri.fleet.mobile")
     E: uses-permission (line=6)
       A: android:name(0x01010003)="android.permission.INTERNET" (Raw: "android.permission.INTERNET")
+    E: uses-permission (line=6)
+      A: android:name(0x01010003)="android.permission.CAMERA" (Raw: "android.permission.CAMERA")
+    E: uses-permission (line=6)
+      A: android:name(0x01010003)="android.permission.ACCESS_NETWORK_STATE" (Raw: "android.permission.ACCESS_NETWORK_STATE")
     E: permission (line=7)
       A: android:name(0x01010003)="com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION" (Raw: "com.dotobokuri.fleet.mobile.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION")
       A: android:protectionLevel(0x01010009)=(type 0x11)0x2
@@ -53,11 +57,14 @@ describe("Android APK contract helpers", () => {
     verifyManifestContract(inspectAaptManifestTree(manifestTree), inspectBadging(badging));
   });
 
+  // The scanner needs CAMERA, so that one is now expected. RECORD_AUDIO stands in as the thing the
+  // gate must still refuse — expo-camera declares it unless recordAudioAndroid is explicitly false,
+  // so this case fails the moment that option is dropped from app.json.
   it("fails closed on additional permissions", () => {
     const manifest = inspectAaptManifestTree(
       manifestTree.replace(
         "    E: application",
-        `    E: uses-permission (line=7)\n      A: android:name(0x01010003)=\"android.permission.CAMERA\" (Raw: \"android.permission.CAMERA\")\n    E: application`,
+        `    E: uses-permission (line=7)\n      A: android:name(0x01010003)=\"android.permission.RECORD_AUDIO\" (Raw: \"android.permission.RECORD_AUDIO\")\n    E: application`,
       ),
     );
     expect(() => verifyManifestContract(manifest, inspectBadging(badging))).toThrow(

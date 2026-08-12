@@ -1408,6 +1408,27 @@ describe("Instrument core design contract", () => {
     expect(theme).not.toMatch(/body::(?:before|after)/);
   });
 
+  it("pins the access-link QR colors outside every theme", () => {
+    const theme = source("styles/theme.css");
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
+    // A QR is read by a camera, and the spec assumes dark modules on a light field. Letting a theme
+    // repaint it would make a single-use credential's delivery depend on the owner's theme.
+    const sourceTokens = {
+      "--qr-field": "oklch(94% 0.008 90)",
+      "--qr-module": "oklch(13% 0.014 245)",
+    } as const;
+
+    for (const [token, value] of Object.entries(sourceTokens)) {
+      expect(base).toContain(`${token}: ${value};`);
+      expect(theme.match(new RegExp(`${token}:`, "g"))).toHaveLength(1);
+    }
+
+    // And the symbol must consume them rather than carrying its own literals.
+    const components = source("styles/components.css");
+    expect(components).toContain("background: var(--qr-field);");
+    expect(components).toContain("fill: var(--qr-module);");
+  });
+
   it("pins immutable Scuttlebutt QK source colors to the base Instrument palette", () => {
     const theme = source("styles/theme.css");
     const base = theme.slice(0, theme.indexOf(':root[data-theme="'));

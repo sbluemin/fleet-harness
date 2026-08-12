@@ -13,12 +13,13 @@ import {
   View,
 } from "react-native";
 import type { AppStateStatus } from "react-native";
+import { CameraView, useCameraPermissions } from "expo-camera";
 
 import { FleetConsoleView } from "./modules/fleet-console-view/src";
 import type { FleetConsoleEvent, FleetConsoleTarget, FleetConsoleViewHandle } from "./modules/fleet-console-view/src";
 
 type ShellState = "waiting" | "connecting" | "connected" | "error";
-type Screen = "landing" | "console";
+type Screen = "landing" | "console" | "scanner";
 
 const MESSAGES: Record<ShellState, string> = {
   waiting: "Open a Fleet access link on this device to connect.",
@@ -44,6 +45,10 @@ export default function App(): React.JSX.Element {
   const [linkDraft, setLinkDraft] = useState("");
   const [armRemove, setArmRemove] = useState<string | null>(null);
   const [insets, setInsets] = useState<WindowInsets>(NO_INSETS);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const [permission, requestPermission] = useCameraPermissions();
+  // A latch rather than state: the camera callback fires faster than a re-render would settle.
+  const scannedRef = useRef(false);
   const refreshTargets = useCallback((): void => {
     consoleRef.current?.listTargets().then(setTargets, () => {});
   }, []);
@@ -141,8 +146,11 @@ export default function App(): React.JSX.Element {
     refreshTargets();
   }, [refreshTargets]);
 
-  const submitLink = useCallback((): void => {
-    const link = linkDraft.trim();
+  /**
+   * Both intake paths end here. A scanned link and a pasted one are the same string, and the native
+   * parser is the only thing that decides whether it is trustworthy — the camera earns no shortcut.
+   */
+  const acceptLink = useCallback((link: string): void => {
     if (!link.toLowerCase().startsWith("fleet://")) return;
     setAddOpen(false);
     setLinkDraft("");
@@ -151,12 +159,49 @@ export default function App(): React.JSX.Element {
     setDetail(null);
     setRetryLeft(null);
     consoleRef.current?.submitAccessLink(link);
-  }, [linkDraft]);
+  }, []);
+
+  const submitLink = useCallback((): void => {
+    acceptLink(linkDraft.trim());
+  }, [acceptLink, linkDraft]);
+
+  const openScanner = useCallback((): void => {
+    setAddOpen(false);
+    setScanError(null);
+    setScreen("scanner");
+    if (permission?.granted !== true) void requestPermission();
+  }, [permission?.granted, requestPermission]);
+
+  /**
+   * The camera keeps firing for as long as the code is in frame. Without this latch the same link is
+   * submitted several times, and every attempt after the first spends a grant that is already gone —
+   * the console then reports a rejected join for a pairing that actually succeeded.
+   */
+  const onBarcodeScanned = useCallback(({ data }: { readonly data: string }): void => {
+    if (scannedRef.current) return;
+    const link = data.trim();
+    if (!link.toLowerCase().startsWith("fleet://")) {
+      setScanError("That code is not a Fleet access link.");
+      return;
+    }
+    scannedRef.current = true;
+    setScanError(null);
+    acceptLink(link);
+  }, [acceptLink]);
+
+  // Leaving the scanner re-arms it, so a second visit can scan again.
+  useEffect(() => {
+    if (screen !== "scanner") scannedRef.current = false;
+  }, [screen]);
 
   useEffect(() => {
     const onBack = (): boolean => {
       if (addOpen) {
         setAddOpen(false);
+        return true;
+      }
+      if (screen === "scanner") {
+        setScreen("landing");
         return true;
       }
       if (screen === "console") {
@@ -272,14 +317,74 @@ export default function App(): React.JSX.Element {
           </Pressable>
         </View>
       ) : null}
+      {screen === "scanner" ? (
+        <View style={styles.scanner}>
+          {permission?.granted === true ? (
+            <CameraView
+              style={styles.scannerCamera}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+              onBarcodeScanned={onBarcodeScanned}
+            />
+          ) : null}
+          <View style={[styles.scannerChrome, { paddingTop: 24 + insets.top, paddingBottom: 24 + insets.bottom }]}>
+            <Text style={styles.eyebrow}>FLEET</Text>
+            <Text style={styles.scannerTitle}>Scan the console's code</Text>
+            {permission?.granted === true ? (
+              <>
+                <View style={styles.reticle} />
+                <Text style={styles.scannerHint}>
+                  Point the camera at the QR code in Remote access settings.
+                </Text>
+              </>
+            ) : (
+              <Text style={styles.scannerHint}>
+                {permission?.canAskAgain === false
+                  ? "Camera access is turned off for Fleet. Turn it on in Android settings, or paste the link instead."
+                  : "Fleet needs the camera to read the code. Nothing is recorded or sent anywhere."}
+              </Text>
+            )}
+            {scanError ? <Text style={styles.detail}>{scanError}</Text> : null}
+            <View style={styles.scannerActions}>
+              {permission?.granted === true || permission?.canAskAgain === false ? null : (
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => { void requestPermission(); }}
+                  style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+                >
+                  <Text style={styles.buttonLabel}>Allow camera</Text>
+                </Pressable>
+              )}
+              {/* The paste path never goes away — a denied camera, or a code that will not read, still needs a way in. */}
+              <Pressable
+                accessibilityRole="button"
+                onPress={() => { setScreen("landing"); setAddOpen(true); }}
+                style={styles.keepButton}
+              >
+                <Text style={styles.keepLabel}>Paste a link instead</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" onPress={() => setScreen("landing")} style={styles.overlayLanding}>
+                <Text style={styles.overlayLandingLabel}>Cancel</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      ) : null}
       <Modal visible={addOpen} transparent animationType="slide" onRequestClose={() => setAddOpen(false)}>
         <View style={styles.sheetScrim}>
           <Pressable style={styles.sheetScrimTouch} onPress={() => setAddOpen(false)} />
           <View style={[styles.sheet, { paddingBottom: 24 + insets.bottom }]}>
             <Text style={styles.sheetTitle}>Add console</Text>
             <Text style={styles.sheetBody}>
-              Paste an access link from the console's Remote access settings. Links expire in 15 minutes and work once.
+              Scan the QR code shown in the console's Remote access settings, or paste the link. Links expire in 15 minutes and work once.
             </Text>
+            <Pressable
+              accessibilityRole="button"
+              onPress={openScanner}
+              style={({ pressed }) => [styles.scanCta, pressed && styles.buttonPressed]}
+            >
+              <Text style={styles.scanCtaLabel}>Scan QR code</Text>
+            </Pressable>
             <TextInput
               accessibilityLabel="Access link"
               autoCapitalize="none"
@@ -436,4 +541,33 @@ const styles = StyleSheet.create({
   },
   sheetRow: { flexDirection: "row", justifyContent: "flex-end", alignItems: "center", gap: 10, marginTop: 16 },
   sheetAdd: { marginTop: 0 },
+  scanCta: {
+    alignItems: "center",
+    backgroundColor: "#d3b578",
+    borderRadius: 10,
+    marginTop: 14,
+    paddingVertical: 12,
+  },
+  scanCtaLabel: { color: "#17140e", fontSize: 15, fontWeight: "700" },
+  scanner: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: "#111318" },
+  scannerCamera: { position: "absolute", top: 0, right: 0, bottom: 0, left: 0 },
+  scannerChrome: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    // The camera keeps showing through; the scrim only makes the copy legible over it.
+    backgroundColor: "#111318b8",
+  },
+  scannerTitle: { color: "#f1eee8", fontSize: 22, fontWeight: "600", letterSpacing: -0.3, textAlign: "center" },
+  scannerHint: { color: "#b9b5ae", fontSize: 14, lineHeight: 21, marginTop: 14, maxWidth: 340, textAlign: "center" },
+  reticle: {
+    borderColor: "#d3b578",
+    borderRadius: 16,
+    borderWidth: 2,
+    height: 220,
+    marginTop: 24,
+    width: 220,
+  },
+  scannerActions: { alignItems: "center", marginTop: 26 },
 });

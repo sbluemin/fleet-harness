@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
 import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk/i18n";
@@ -11,6 +11,7 @@ import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-pic
 import { AddHostDialog } from "../components/add-host-dialog.js";
 import { BackendApiSection } from "../components/backend-api-section.js";
 import { propagateSettingsEntryIndex } from "../components/command-band-system-cluster.js";
+import { PairDeviceDialog } from "../components/pair-device-dialog.js";
 import { createRemoteAccessLink, fetchRemoteAccessStatus, revokeRemoteAccessDevice, revokeRemoteAccessLink, revokeRemoteAccessSession, rotateRemoteIdentity } from "../global-settings-api.js";
 import { getGlobalSettingsStoreState, loadGlobalSettings, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { renderMessage, useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
@@ -552,6 +553,10 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
   const [copied, setCopied] = useState(false);
   const [rotateArmed, setRotateArmed] = useState(false);
   const [reloadToken, setReloadToken] = useState(0);
+  // 방금 만든 링크를 QR로 넘기는 창. 발급된 링크 자체(link)와 분리해 둔다 — 창을 닫아도 링크는
+  // 카드에 남아야 하고, 카드에 남은 링크는 다시 열 수 있어야 한다.
+  const [pairing, setPairing] = useState<RemoteAccessLink | null>(null);
+  const showQrRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -570,6 +575,9 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
   const refresh = () => setReloadToken((token) => token + 1);
   const save = (next: RemoteAccessState) => {
     setLink(null);
+    // 리스너가 바뀌면 그 링크가 가리키던 주소가 사라진다 — 살아 있는 QR을 그대로 두면 이미
+    // 닿지 않는 자격을 계속 비추게 된다.
+    setPairing(null);
     setActionError(null);
     setRotateArmed(false);
     // 저장은 낙관적 상태를 먼저 쓴다. 그 값에 걸린 위 effect는 서버가 리스너를 다시 세우기 전에
@@ -581,7 +589,9 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
     setBusy(kind);
     setActionError(null);
     void action()
-      .then((result) => { if (kind === "create") { setLink(result as RemoteAccessLink); setCopied(false); } })
+      // 새 링크는 곧바로 QR 창으로 넘긴다. 발급과 전달이 갈라져 있으면 남은 일이 전부 제품
+      // 밖에서 일어나고, 그 바깥 경로가 바로 이 화면이 보내지 말라고 경고하는 경로다.
+      .then((result) => { if (kind === "create") { const issued = result as RemoteAccessLink; setLink(issued); setPairing(issued); setCopied(false); } })
       .catch((error: unknown) => { setActionError(error instanceof Error ? error.message : String(error)); })
       .finally(() => { setBusy(null); refresh(); });
   };
@@ -635,6 +645,9 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
             if (!rotateArmed) { setRotateArmed(true); return; }
             setRotateArmed(false);
             setLink(null);
+            // 갱신은 발급된 링크를 전부 무효로 만든다. 열려 있던 QR을 남겨 두면 아무도 붙을 수
+            // 없는 자격을 계속 비추는 창이 된다.
+            setPairing(null);
             run("rotate", rotateRemoteIdentity);
           }}
         />
@@ -655,11 +668,15 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
             onRevokeLink={(id) => run("revoke", () => revokeRemoteAccessLink(id))}
             onRevokeSession={(handle) => run("revoke", () => revokeRemoteAccessSession(handle))}
             onRevokeDevice={(id) => run("revoke", () => revokeRemoteAccessDevice(id))}
+            showQrRef={showQrRef}
+            onShowQr={() => setPairing(link)}
           />
         ) : null}
 
         {actionError ? <p className="global-settings-error" role="alert">{actionError}</p> : null}
       </section>
+
+      {pairing ? <PairDeviceDialog link={pairing} openerRef={showQrRef} onClose={() => setPairing(null)} /> : null}
     </>
   );
 }
@@ -1241,6 +1258,8 @@ function RemoteLinksCard({
   onRevokeLink,
   onRevokeSession,
   onRevokeDevice,
+  showQrRef,
+  onShowQr,
 }: {
   readonly status: RemoteAccessStatus;
   readonly link: RemoteAccessLink | null;
@@ -1253,6 +1272,8 @@ function RemoteLinksCard({
   readonly onRevokeLink: (id: string) => void;
   readonly onRevokeSession: (handle: string) => void;
   readonly onRevokeDevice: (id: string) => void;
+  readonly showQrRef: RefObject<HTMLButtonElement | null>;
+  readonly onShowQr: () => void;
 }) {
   const t = useT();
   /**
@@ -1295,6 +1316,9 @@ function RemoteLinksCard({
         <>
           <div className="remote-link-field">
             <input readOnly value={link.link} aria-label={t("settings.remote.linkLabel")} onFocus={(event) => event.currentTarget.select()} />
+            {/* QR 창은 발급 직후 스스로 열리지만, 닫은 뒤에도 같은 링크로 다시 열 수 있어야 한다 —
+                한 번 닫았다고 링크를 새로 만들게 하면 쓰지 않은 자격이 하나씩 쌓인다. */}
+            <button ref={showQrRef} type="button" onClick={onShowQr}>{t("settings.remote.pair.open")}</button>
             <button type="button" onClick={onCopy}>{copied ? t("settings.remote.copied") : t("settings.remote.copy")}</button>
           </div>
           {/*
