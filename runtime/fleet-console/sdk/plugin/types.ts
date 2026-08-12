@@ -42,6 +42,18 @@ export interface FleetClientPlugin {
    * Plugins without resumable sessions omit it; the host falls back to focusing the Operation.
    */
   readonly resumeOperation?: (operationId: string) => void | Promise<void>;
+  /**
+   * Operation types (OperationNode.type) this plugin accepts host-forwarded user
+   * messages for. Quick Launch mentions list only Operations whose plugin declares
+   * their type here alongside `messageOperation`.
+   */
+  readonly messageableOperationTypes?: readonly string[];
+  /**
+   * Host→plugin request to deliver user text to an Operation's live session.
+   * A dormant Operation is resumed by the plugin before delivery. Rejects with an
+   * Error whose `message` is the server rejection code when one is available.
+   */
+  readonly messageOperation?: (operationId: string, text: string) => Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
 }
 
