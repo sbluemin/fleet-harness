@@ -67,9 +67,12 @@ gets: **only when `runtime/fleet-mobile` actually changed.** The mobile shell is
 versioned, like the desktop shell:
 
 - The change baseline is the last `mobile-v*` marker tag, which is written only after a successful
-  distribution. A failed run leaves no tag, so the next release picks the same change back up.
-  Before the first marker exists the baseline is the previous release tag, so an unchanged mobile
-  path still distributes nothing.
+  distribution. Once a marker exists, a release that did not touch `runtime/fleet-mobile`
+  distributes nothing.
+- **Until the first marker exists — initial enablement, or a first distribution that failed — every
+  release distributes and bumps, changed or not.** That is what guarantees the retry: a failed run
+  leaves no marker, and measuring from the previous release tag instead would hide the very changes
+  that still need to ship.
 - A `feat:` commit under `runtime/fleet-mobile` bumps the minor, anything else bumps the patch.
   `versionCode` increments by one on every bump, and both land in the release commit.
 - `runtime/fleet-mobile/package.json` is swept into the workspace-wide version sync and does not
