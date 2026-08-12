@@ -131,7 +131,6 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
   const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
-  const catalogRequestedKeysRef = useRef(new Set<string>());
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
   const unresolvedLaunchModel = activeLaunchModel !== null && !launchModelLabels.has(activeLaunchModel) ? activeLaunchModel : null;
   // 속성 칩은 CLI 이름이 아니라 실제로 돌고 있는 모델 이름을 말한다(카탈로그가 그 좌표를 알 때).
@@ -237,20 +236,17 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   }, [edgeRevealActive]);
 
   // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 밴드에 올라올 때만
-  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation). 좌표별로 한 번씩만 물어 실패한 조회가
-  // 매 렌더 재시도로 번지지 않게 하고, 실패·중단은 표를 지워 다음 기회를 남긴다.
+  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation). 조회 이력을 ref에 적어 두지 않는다 —
+  // 개발 채널의 StrictMode는 이 effect를 setup→cleanup→setup으로 돌리는데, 그때 두 번째 setup이
+  // 첫 setup이 적어 둔 이력을 보고 물러나 색인이 영영 비고, 중단된 요청이 뒤늦게 그 이력을 지워도
+  // 되돌릴 렌더가 없다. 의존만으로 충분하다: 같은 좌표가 그대로면 다시 묻지 않는다.
   useEffect(() => {
-    const key = unresolvedLaunchModel ?? "";
-    if (catalogRequestedKeysRef.current.has(key)) return;
-    catalogRequestedKeysRef.current.add(key);
     const controller = new AbortController();
     fetchOperationCatalog(controller.signal)
       .then((catalog) => {
         if (!controller.signal.aborted) setLaunchModelLabels(commandBandLaunchModelLabels(catalog));
       })
-      .catch(() => {
-        catalogRequestedKeysRef.current.delete(key);
-      });
+      .catch(() => {});
     return () => controller.abort();
   }, [unresolvedLaunchModel]);
 
