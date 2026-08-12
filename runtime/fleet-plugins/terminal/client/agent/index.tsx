@@ -21,11 +21,14 @@ import {
   closeAnalystCompanionPanels,
   countRemainingVisibleCompanionPanels,
   isCompanionPanelVisible,
+  TRANSCRIPT_READER_COMPANION_ID,
+  TRANSCRIPT_READER_COMPANION_IDS,
 } from "./analysis-visibility.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
+import "./reader.css";
 import "./agent-cli.css";
 
 import { AgentApiError, createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
@@ -36,6 +39,8 @@ import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
 import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
+import { TranscriptReaderPanel } from "./reader-panel.js";
+import { disposeReaderStore, primeTranscriptReaderGate, useTranscriptReaderEnabled } from "./reader-store.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
 
@@ -101,6 +106,7 @@ export const agentOperationKind = defineOperationKind({
   companions: [
     { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, render: (context) => <AnalystChatPanel context={context} /> },
     { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
+    { id: TRANSCRIPT_READER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.transcriptReader"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyR", label: "R", clusterIds: TRANSCRIPT_READER_COMPANION_IDS }, render: (context) => <TranscriptReaderPanel context={context} /> },
   ],
 });
 
@@ -157,6 +163,7 @@ export const agentPlugin = definePlugin({
       await terminateAgentSession(operationId);
     } finally {
       disposeAnalysisStore(operationId);
+      disposeReaderStore(operationId);
       removeSession(operationId);
     }
   },
@@ -199,6 +206,7 @@ let installedNotifications: PluginInstallContext["notifications"] | null = null;
 
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
   installedNotifications = ctx.notifications;
+  primeTranscriptReaderGate();
   const disposeConnection = startAgentConnection({
     operations: ctx.operations,
     notifications: ctx.notifications,
@@ -374,6 +382,25 @@ function SessionAnalystHandle({
   );
 }
 
+function TranscriptReaderHandle({ context }: { readonly context: OperationRenderContext }) {
+  const open = isCompanionPanelVisible(context, TRANSCRIPT_READER_COMPANION_ID);
+  const language = context.language ?? "en";
+  const t = getT(language);
+  return (
+    <button
+      type="button"
+      className="session-analyst-handle session-analyst-handle--reader"
+      aria-label={t(open ? "terminal.reader.exit" : "terminal.reader.open")}
+      aria-pressed={open}
+      title={t("terminal.reader.experimental")}
+      onClick={() => toggleCompanionPanel(context, TRANSCRIPT_READER_COMPANION_ID, TRANSCRIPT_READER_COMPANION_IDS)}
+    >
+      <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
+      <span className="session-analyst-handle__label">{t(open ? "terminal.handle.exit" : "terminal.handle.render")}</span>
+    </button>
+  );
+}
+
 const SORTIE_RIBBON_INLINE_LIMIT = 2;
 
 function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
@@ -381,6 +408,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
+  const readerEnabled = useTranscriptReaderEnabled();
   // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
   // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
   const previousCompanionsOpenRef = React.useRef(true);
@@ -408,6 +436,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const handles = context.onRequestCompanions === undefined ? null : (
     <div className="session-analyst-handle-stack">
       <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
+      {readerEnabled ? <TranscriptReaderHandle context={context} /> : null}
     </div>
   );
 
@@ -449,9 +478,48 @@ function GeneralSection() {
     <>
       <ClaudeGatewaySystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
+      <TranscriptReaderSettingsCard />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
     </>
+  );
+}
+
+function TranscriptReaderSettingsCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.transcriptReader")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {state ? (
+        <>
+          <SettingToggleRow
+            title={t("terminal.settings.transcriptReader")}
+            help={t("terminal.settings.transcriptReaderHelp")}
+            onLabel={t("terminal.settings.enabled")}
+            offLabel={t("terminal.settings.off")}
+            value={state.transcriptReaderEnabled}
+            disabled={saving}
+            onToggle={() => void setSystemPromptSettingsField(
+              "transcriptReaderEnabled",
+              !state.transcriptReaderEnabled,
+            )}
+          />
+          <p className="global-settings-foot">{t("terminal.settings.transcriptReaderFoot")}</p>
+        </>
+      ) : (
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      )}
+    </section>
   );
 }
 

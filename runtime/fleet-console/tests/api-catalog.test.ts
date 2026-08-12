@@ -91,6 +91,7 @@ GET|/plugins/terminal/analysis/artifacts/:artifactId|http
 GET|/plugins/terminal/analysis/catalog|http
 GET|/plugins/terminal/analysis/stream|sse
 GET|/plugins/terminal/model-auth/state|http
+GET|/plugins/terminal/reader/:operationId/stream|sse
 GET|/plugins/terminal/settings|http
 GET|/plugins/terminal/ws|websocket
 PATCH|/api/v1/operations/:operationId|http
@@ -193,7 +194,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(123);
+    expect(body.routes).toHaveLength(124);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

@@ -1,4 +1,4 @@
-export { TranscriptIndexer } from "./transcript-indexer.js";
+export { TranscriptIndexer, redactTranscriptString } from "./transcript-indexer.js";
 export { AnalystTools, type AnalystToolSpec } from "./tools.js";
 export { AnalystSession, toAnalystEvents } from "./session.js";
 export { ANALYST_SYSTEM_PROMPT } from "./prompt.js";

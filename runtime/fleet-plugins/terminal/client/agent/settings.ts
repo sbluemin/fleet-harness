@@ -54,6 +54,7 @@ export interface SystemPromptSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  readonly transcriptReaderEnabled: boolean;
 }
 
 export type SystemPromptSettingsUpdate =
@@ -61,7 +62,8 @@ export type SystemPromptSettingsUpdate =
   | { readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
-  | { readonly wireLogEnabled: boolean };
+  | { readonly wireLogEnabled: boolean }
+  | { readonly transcriptReaderEnabled: boolean };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -111,6 +113,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
+    || typeof payload.transcriptReaderEnabled !== "boolean"
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -121,6 +124,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
+    transcriptReaderEnabled: payload.transcriptReaderEnabled,
   };
 }
 
@@ -144,7 +148,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeGatewaySystemPromptMode" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeGatewaySystemPromptMode" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "transcriptReaderEnabled";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -225,6 +229,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
+  }
+  if (field === "transcriptReaderEnabled") {
+    return { transcriptReaderEnabled: state.transcriptReaderEnabled };
   }
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }

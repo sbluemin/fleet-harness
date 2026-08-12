@@ -58,8 +58,10 @@ describe("Session Analyst contract", () => {
     expect(source).toContain('id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true');
     expect(source).toContain('id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true');
     expect(visibility).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
-    expect(source.match(/hideCaption: true/g)).toHaveLength(2);
-    expect(source.match(/defaultHidden: true/g)).toHaveLength(2);
+    // Analyst 2종 + 트랜스크립트 리더 1종. 모든 companion은 기본 숨김이라는 계약은 유지된다.
+    expect(source.match(/hideCaption: true/g)).toHaveLength(3);
+    expect(source.match(/defaultHidden: true/g)).toHaveLength(3);
+    expect(source).toContain('id: TRANSCRIPT_READER_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.transcriptReader"), hideCaption: true, defaultHidden: true');
     expect(source).toContain('shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }');
     expect(source).not.toMatch(/id: ANALYST_ARTIFACTS_COMPANION_ID[^\n]*shortcut:/);
     expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS)");

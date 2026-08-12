@@ -11,6 +11,11 @@ export interface GlobalOptionsData {
   readonly agentIdleDormantMinutes?: number | null;
   /** Fleet system-prompt composition for new AI Gateway sessions. */
   readonly claudeGatewaySystemPromptMode?: ClaudeGatewaySystemPromptMode;
+  /**
+   * Experimental opt-in for the agent transcript reader. Key absent means off: a transcript
+   * reaches the browser only while the user is holding this switch on.
+   */
+  readonly transcriptReaderEnabled?: boolean;
 }
 
 export interface GlobalOptionsValidationResult {
@@ -115,14 +120,24 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   const validMode = sanitizeClaudeGatewaySystemPromptMode(value.claudeGatewaySystemPromptMode);
   const claudeGatewaySystemPromptMode = validMode
     ?? (!hasCanonicalMode && value.replaceClaudeGatewaySystemPrompt === true ? "replace" : "append");
+  // Absence is the off state, so only `true` is carried forward — a malformed value must not be
+  // readable as an opt-in that the user never gave.
+  const transcriptReaderEnabled = value.transcriptReaderEnabled === true ? true : undefined;
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
     claudeGatewaySystemPromptMode,
+    ...(transcriptReaderEnabled !== undefined ? { transcriptReaderEnabled } : {}),
   };
-  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "claudeGatewaySystemPromptMode"]);
+  const allowedKeys = new Set([
+    "version",
+    "agentIdleDormantMinutes",
+    "claudeGatewaySystemPromptMode",
+    "transcriptReaderEnabled",
+  ]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
     ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
+    ("transcriptReaderEnabled" in value && value.transcriptReaderEnabled !== true) ||
     validMode === undefined;
 
   return { data, changed };

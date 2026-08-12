@@ -561,7 +561,8 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel({
       operationId: "chat-test",
       companionsOpen: true,
-      hiddenCompanionPanelIds: [],
+      // Analyst 클러스터만 열린 상태 — 리더 companion이 열려 있으면 덱은 닫히지 않는 것이 정상이다.
+      hiddenCompanionPanelIds: ["transcript-reader"],
       onRequestCompanions,
       onSetCompanionPanelVisible,
     } as unknown as OperationRenderContext);

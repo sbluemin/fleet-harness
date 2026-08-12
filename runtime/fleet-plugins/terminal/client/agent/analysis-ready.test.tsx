@@ -94,7 +94,7 @@ describe("Session Analyst readiness handle", () => {
     store.dispatch({ type: "event", event: { type: "chunk", text: "Retained answer" }, now: 2 });
     store.dispatch({ type: "event", event: { type: "complete" }, now: 3 });
     const onRequestCompanions = vi.fn();
-    await renderOperation(fetch, "live", onRequestCompanions, true, ["session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, true, ["session-analyst-artifacts", "transcript-reader"]);
 
     expect(analystHandle().textContent).toContain("EXIT");
     act(() => analystHandle().click());
@@ -103,7 +103,7 @@ describe("Session Analyst readiness handle", () => {
     expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
 
     onRequestCompanions.mockClear();
-    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat", "session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat", "session-analyst-artifacts", "transcript-reader"]);
     await vi.waitFor(() => expect(analystHandle().disabled).toBe(false));
     expect(analystHandle().textContent).toContain("ANALYZE");
     act(() => analystHandle().click());
@@ -160,7 +160,7 @@ describe("Session Analyst readiness handle", () => {
       "live",
       onRequestCompanions,
       true,
-      [],
+      ["transcript-reader"],
       onSetCompanionPanelVisible,
     );
 
@@ -199,9 +199,10 @@ async function renderOperation(
   status: "live" | "dormant",
   onRequestCompanions = vi.fn(),
   companionsOpen = false,
+  // 이 시나리오들은 Analyst 클러스터만 다룬다 — 리더 companion은 열려 있지 않다.
   hiddenCompanionPanelIds = companionsOpen
-    ? ["session-analyst-artifacts"]
-    : ["session-analyst-chat", "session-analyst-artifacts"],
+    ? ["session-analyst-artifacts", "transcript-reader"]
+    : ["session-analyst-chat", "session-analyst-artifacts", "transcript-reader"],
   onSetCompanionPanelVisible = vi.fn(),
 ): Promise<void> {
   if (!container) {

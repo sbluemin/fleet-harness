@@ -18,6 +18,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
+import { registerTranscriptReaderRoutes } from "./server/agent-api/transcript-reader-routes.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerGlobalShellRoutes } from "./server/global.js";
@@ -113,6 +114,10 @@ export default definePlugin({
     registerAnalysisRoutes(ctx, {
       // 분석가는 이제 게이트웨이 위에서 돈다. 고를 수 있는 모델은 사용자가 켠 선별이다.
       readAiGatewaySettings: aiGatewayStore.read,
+    });
+    // 실험 기능. 옵트인 스위치는 요청마다 다시 읽으므로, 끄면 다음 리더부터 곧바로 닫힌다.
+    registerTranscriptReaderRoutes(ctx, {
+      globalOptionsService: infraServices.globalOptionsService,
     });
     const agentLaunchKinds = await registerAgentRoutes(ctx, runtime, {
       globalOptionsService: infraServices.globalOptionsService,

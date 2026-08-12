@@ -28,6 +28,7 @@ interface TerminalSettingsBody {
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
+  readonly transcriptReaderEnabled?: unknown;
 }
 
 type TerminalSettingsUpdate =
@@ -35,7 +36,8 @@ type TerminalSettingsUpdate =
   | { readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
-  | { readonly wireLogEnabled: boolean };
+  | { readonly wireLogEnabled: boolean }
+  | { readonly transcriptReaderEnabled: boolean };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
@@ -46,6 +48,7 @@ export interface TerminalSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  readonly transcriptReaderEnabled: boolean;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -150,7 +153,13 @@ export function toTerminalSettingsState(
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
+    transcriptReaderEnabled: resolveTranscriptReaderEnabled(data),
   };
+}
+
+/** Absence is off. The reader route reads this, so a missing opt-in must never widen into on. */
+export function resolveTranscriptReaderEnabled(data: GlobalOptionsData): boolean {
+  return data.transcriptReaderEnabled === true;
 }
 
 export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
@@ -187,6 +196,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "wireLogEnabled") {
     return typeof body.wireLogEnabled === "boolean"
       ? { wireLogEnabled: body.wireLogEnabled }
+      : null;
+  }
+  if (keys[0] === "transcriptReaderEnabled") {
+    return typeof body.transcriptReaderEnabled === "boolean"
+      ? { transcriptReaderEnabled: body.transcriptReaderEnabled }
       : null;
   }
   return null;

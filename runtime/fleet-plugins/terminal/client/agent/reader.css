@@ -1,0 +1,130 @@
+/* Transcript reader companion panel.
+   Colors are theme tokens only: signal tokens carry state, and identity never repaints them. */
+
+.transcript-reader {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface-glass);
+}
+
+.transcript-reader--empty {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+.transcript-reader__notice {
+  margin: 0;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  color: var(--warn-ink);
+  font-size: 11.5px;
+}
+
+.transcript-reader__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.transcript-reader__block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.transcript-reader__block--user .transcript-reader__markdown {
+  padding: 8px 11px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  background: var(--surface-frame);
+}
+
+.transcript-reader__markdown {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.transcript-reader__markdown pre {
+  overflow-x: auto;
+}
+
+.transcript-reader__thought {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px dashed var(--surface-rim);
+  border-radius: var(--radius-pill);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.transcript-reader__thought.is-live {
+  border-color: color-mix(in oklch, var(--aurora) 40%, transparent);
+  color: var(--aurora-ink);
+}
+
+.transcript-reader__tool {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 6px 10px;
+  border: 1px solid var(--surface-rim);
+  border-left: 2px solid var(--aurora);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--aurora) 8%, transparent);
+  min-width: 0;
+}
+
+.transcript-reader__tool-name {
+  color: var(--aurora-ink);
+  font-size: 11.5px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+
+.transcript-reader__tool-detail {
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transcript-reader__block--result {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 10px;
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.transcript-reader__result-size {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.transcript-reader__result-note {
+  margin-left: auto;
+  color: var(--text-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transcript-reader__thought.is-live {
+    border-style: dashed;
+  }
+}

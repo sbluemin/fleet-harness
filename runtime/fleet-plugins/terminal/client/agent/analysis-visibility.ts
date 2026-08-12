@@ -5,7 +5,12 @@ export const ANALYST_CHAT_COMPANION_ID = "session-analyst-chat";
 export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";
 export const ANALYST_COMPANION_IDS = [ANALYST_CHAT_COMPANION_ID, ANALYST_ARTIFACTS_COMPANION_ID] as const;
 
-const AGENT_COMPANION_IDS = ANALYST_COMPANION_IDS;
+export const TRANSCRIPT_READER_COMPANION_ID = "transcript-reader";
+export const TRANSCRIPT_READER_COMPANION_IDS = [TRANSCRIPT_READER_COMPANION_ID] as const;
+
+// Every companion this Operation can own. The reader belongs here so that closing the Analyst
+// cluster counts an open reader as a reason to keep the companion deck open.
+const AGENT_COMPANION_IDS = [...ANALYST_COMPANION_IDS, ...TRANSCRIPT_READER_COMPANION_IDS] as const;
 
 export function isCompanionPanelVisible(context: OperationRenderContext, companionId: string): boolean {
   return Boolean(context.companionsOpen) && !(context.hiddenCompanionPanelIds ?? []).includes(companionId);

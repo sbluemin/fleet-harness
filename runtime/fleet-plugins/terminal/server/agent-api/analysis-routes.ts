@@ -500,7 +500,7 @@ async function handleStop(ctx: FleetPluginServerContext, req: http.IncomingMessa
 // 이 Operation이 만들어진 이후에 생성된(birthtime) 트랜스크립트가 정확히 하나일 때만 폴백한다 —
 // 같은 프로젝트에서 동시 진행 중인 다른 세션(예: 별개 CLI 세션)의 파일을 집지 않기 위한 경계다.
 // birthtime을 못 주는 파일시스템(0 이하)은 후보에 포함하되, 역시 단일 후보여야 한다.
-async function resolveTranscriptPath(capturePath: string, operationCreatedAt: number): Promise<string | null> {
+export async function resolveTranscriptPath(capturePath: string, operationCreatedAt: number): Promise<string | null> {
   if (await fileExists(capturePath)) return capturePath;
   const dir = path.dirname(capturePath);
   const bornCutoff = operationCreatedAt - 60_000;
