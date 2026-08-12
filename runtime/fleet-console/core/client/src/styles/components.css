@@ -11995,9 +11995,14 @@ body[data-codex-reading="true"] .operations-side-bar {
   text-align: left;
 }
 
-.quick-launch-mention-row:hover:not(.is-dim),
+.quick-launch-mention-row:hover:not(.is-dim) {
+  background: color-mix(in oklch, var(--surface-pillar) 75%, transparent);
+}
+
+/* 키보드 활성 행은 pillar 믹스로는 덱의 pillar 언더레이에 묻힌다 — 포커스 위치는 brass 워시가
+   말한다(칩 aria-expanded와 같은 문법). */
 .quick-launch-mention-row.is-active {
-  background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
+  background: var(--brass-glow);
 }
 
 .quick-launch-mention-row.is-active .quick-launch-mention-name {
