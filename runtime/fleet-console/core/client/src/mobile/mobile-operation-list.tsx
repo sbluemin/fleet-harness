@@ -3,15 +3,17 @@ import type { OperationActivity } from "@fleet-console/sdk/plugin";
 import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../i18n/index.js";
 import { operationActivityVisual, resolveOperationActivity } from "../operation-activity.js";
+import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { openQuickLaunch } from "../store.js";
 import type { OperationNode } from "../types.js";
 
 const STATUS_ORDER: readonly OperationActivity[] = ["awaiting", "running", "background", "idle", "dormant"];
 
-export function MobileOperationList({ operations, operationStatus, notificationIds, onOpen }: {
+export function MobileOperationList({ operations, operationStatus, notificationIds, theaterLabel, onOpen }: {
   readonly operations: readonly OperationNode[];
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
   readonly notificationIds: ReadonlySet<string>;
+  readonly theaterLabel: string | null;
   readonly onOpen: (operationId: string) => void;
 }) {
   const t = useT();
@@ -22,7 +24,17 @@ export function MobileOperationList({ operations, operationStatus, notificationI
   return (
     <section className="mobile-operation-list" aria-labelledby="mobile-operation-list-title">
       <header className="mobile-list-header">
-        <h1 id="mobile-operation-list-title">{t("mobile.operations.title")}</h1>
+        {/* The list is one Theater's, and the phone had no other place saying which. This names it
+            and stops there — switching lives in the Theater tab, so no caret, no border, nothing
+            that reads as a control the title is not. */}
+        {theaterLabel === null ? (
+          <h1 id="mobile-operation-list-title">{t("mobile.operations.title")}</h1>
+        ) : (
+          <h1 id="mobile-operation-list-title" className="mobile-list-theater">
+            <span className="mobile-theater-mark" aria-hidden="true">{theaterInitials(theaterLabel)}</span>
+            <span className="mobile-list-theater-label">{theaterLabel}</span>
+          </h1>
+        )}
         <div className="mobile-list-actions">
           <ViewModeToggle className="mobile-header-icon-button" />
           <span className="mobile-total-count">{operations.length}</span>

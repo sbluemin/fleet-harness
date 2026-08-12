@@ -3,20 +3,24 @@ import { useLocation, useNavigate } from "react-router-dom";
 import { useT } from "../i18n/index.js";
 import { setMobileTab, useMobileTab, type MobileTab } from "./mobile-store.js";
 
-type TabId = MobileTab | "settings";
+type RouteTab = "theaters" | "settings";
+type TabId = MobileTab | RouteTab;
 
-const TABS: readonly TabId[] = ["operations", "alerts", "settings"];
+// Theater leads because it contains the rest: a Theater holds Operations, and their alerts follow.
+const TABS: readonly TabId[] = ["theaters", "operations", "alerts", "settings"];
+const ROUTE_TABS: Readonly<Record<RouteTab, string>> = { theaters: "/theaters", settings: "/settings" };
 
 export function MobileTabBar({ onSelect }: { readonly onSelect?: (tab: MobileTab) => void }) {
   const t = useT();
   const activeTab = useMobileTab();
   const navigate = useNavigate();
   const location = useLocation();
-  const onSettings = location.pathname.replace(/\/+$/, "") === "/settings";
+  const path = location.pathname.replace(/\/+$/, "");
+  const routeTab = (Object.keys(ROUTE_TABS) as readonly RouteTab[]).find((tab) => ROUTE_TABS[tab] === path) ?? null;
   return (
     <nav className="mobile-tab-bar" aria-label={t("mobile.tabs.aria")}>
       {TABS.map((tab) => {
-        const active = tab === "settings" ? onSettings : !onSettings && activeTab === tab;
+        const active = isRouteTab(tab) ? tab === routeTab : routeTab === null && activeTab === tab;
         return (
           <button
             key={tab}
@@ -24,13 +28,13 @@ export function MobileTabBar({ onSelect }: { readonly onSelect?: (tab: MobileTab
             className={`mobile-tab ${active ? "is-active" : ""}`}
             aria-current={active ? "page" : undefined}
             onClick={() => {
-              if (tab === "settings") {
-                navigate("/settings");
+              if (isRouteTab(tab)) {
+                navigate(ROUTE_TABS[tab]);
                 return;
               }
               setMobileTab(tab);
-              // A tab is a destination, so an operations tab pressed from settings returns there.
-              if (onSettings) navigate("/operations");
+              // A tab is a destination, so an operations tab pressed from a route tab returns there.
+              if (routeTab !== null) navigate("/operations");
               onSelect?.(tab);
             }}
           >
@@ -43,7 +47,20 @@ export function MobileTabBar({ onSelect }: { readonly onSelect?: (tab: MobileTab
   );
 }
 
+function isRouteTab(tab: TabId): tab is RouteTab {
+  return tab === "theaters" || tab === "settings";
+}
+
 function MobileTabIcon({ tab }: { readonly tab: TabId }) {
+  if (tab === "theaters") {
+    return (
+      <svg className="mobile-tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true">
+        <rect x="3" y="4" width="6" height="12" rx="1.5" />
+        <rect x="11" y="4" width="6" height="5" rx="1.5" />
+        <rect x="11" y="11" width="6" height="5" rx="1.5" />
+      </svg>
+    );
+  }
   if (tab === "operations") {
     return (
       <svg className="mobile-tab-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" aria-hidden="true">
