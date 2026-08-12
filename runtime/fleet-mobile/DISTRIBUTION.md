@@ -46,7 +46,7 @@ firebase login
 ### 4. Environment
 
 ```sh
-export FLEET_ANDROID_KEYSTORE="$HOME/.fleet/fleet-mobile-release.jks"
+export FLEET_ANDROID_KEYSTORE="$HOME/.keystores/fleet-mobile-release.jks"
 export FLEET_ANDROID_KEYSTORE_PASSWORD=...
 export FLEET_ANDROID_KEY_ALIAS=fleet-mobile
 export FLEET_ANDROID_KEY_PASSWORD=...

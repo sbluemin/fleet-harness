@@ -224,19 +224,32 @@ jobs:
             exit 0
           fi
 
-          base="${last_tag:-$LATEST_TAG}"
           # 릴리스 커밋은 워크스페이스 버전 sync로 mobile의 package.json 두 개(패키지와 네이티브 모듈)를
           # 매번 다시 쓴다. APK에 닿지 않는 기계 편집이므로 변경으로 세지 않는다 — 세면 mobile을 건드리지
           # 않은 릴리스가 그 다음 릴리스에서 배포를 유발한다. pathspec에서 package.json을 빼는 방식은
           # 의존성 추가처럼 APK를 바꾸는 진짜 편집까지 함께 지우므로, 파일이 아니라 릴리스 커밋을 제외한다.
-          if [ -z "$base" ] || [ -z "$(git log --format=%H --invert-grep --grep='^chore(release):' "$base"..HEAD -- runtime/fleet-mobile | head -n 1)" ]; then
-            emit false "$app_version" ""
-            exit 0
+          mobile_commits() {
+            git log --format="$1" --invert-grep --grep='^chore(release):' "$2" -- runtime/fleet-mobile
+          }
+
+          if [ -n "$last_tag" ]; then
+            range="$last_tag..HEAD"
+            if [ -z "$(mobile_commits %H "$range" | head -n 1)" ]; then
+              emit false "$app_version" ""
+              exit 0
+            fi
+          else
+            # 마커가 없으면 무조건 배포한다(desktop과 같은 규칙). 배포 실패는 마커를 남기지 않으므로 다음
+            # 릴리스가 미배포 변경을 반드시 다시 잡아야 하는데, 여기서 직전 릴리스 태그를 변경 기준점으로
+            # 삼으면 실패한 그 릴리스가 기준이 되어 재시도가 영영 사라진다. 그 태그는 feat 판정 범위로만 쓴다.
+            range="${LATEST_TAG:+$LATEST_TAG..}HEAD"
           fi
 
           # main 버전 산정과 같은 규칙을 mobile 경로 커밋에만 적용한다: feat이면 minor, 아니면 patch.
+          # 부트스트랩에서도 범프한다 — 0.1.0(versionCode 1)은 이미 수동으로 테스터에게 나갔고, 같은
+          # 버전을 다시 올리면 App Distribution이 그 릴리스를 덮어쓴다.
           bump="patch"
-          if git log --format=%B --invert-grep --grep='^chore(release):' "$base"..HEAD -- runtime/fleet-mobile | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
+          if mobile_commits %B "$range" | grep -Eq '^[[:space:]]*feat(\([^)]+\))?!?:'; then
             bump="minor"
           fi
           # 계산은 적용과 같은 스크립트가 한다. versionCode는 여기서 쓰지 않지만 같은 호출이 뒤에서
