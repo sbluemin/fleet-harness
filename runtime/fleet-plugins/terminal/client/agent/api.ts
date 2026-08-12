@@ -127,6 +127,24 @@ export async function resumeAgentSession(sessionId: string, options?: { readonly
   return assertSessionInfo(await response.json(), response.status);
 }
 
+export async function messageAgentSession(sessionId: string, text: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+    signal,
+  });
+  if (!response.ok) {
+    // 서버 거절 코드를 그대로 실어 던진다 — Quick Launch 멘션 컴포저가 초안을 지키면서
+    // 무엇이 잘못됐는지 말하려면 상태 코드만으로는 부족하다(resumeAgentSession과 같은 형태).
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+    );
+  }
+}
+
 export async function terminateAgentSession(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", signal });
   await assertOk(response);

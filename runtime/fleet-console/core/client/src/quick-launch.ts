@@ -1,4 +1,8 @@
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
+import type { OperationActivity } from "@fleet-console/sdk/plugin";
+
+import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchGroup } from "./operation-search.js";
+import type { ConsoleState } from "./types.js";
 
 /**
  * Quick Launch 컴포저의 순수 선택 로직.
@@ -89,6 +93,72 @@ export function resolveSelection(
     modelLabel: row.label,
     effortLabel: chip?.label ?? null,
   };
+}
+
+export interface QuickLaunchMentionToken {
+  readonly at: number;
+  readonly query: string;
+}
+
+/**
+ * caret 앞의 `@`가 문두나 공백 뒤에 있고 caret까지 공백·`@`가 섞이지 않았을 때만 멘션 토큰이다 —
+ * 문장 중간의 이메일·리터럴 `@`는 목록을 깨우지 않는다.
+ */
+export function readMentionToken(value: string, caretIndex: number): QuickLaunchMentionToken | null {
+  const caret = Math.max(0, Math.min(caretIndex, value.length));
+  const at = value.lastIndexOf("@", caret - 1);
+  // lastIndexOf는 음수 fromIndex를 0으로 클램프한다 — caret이 '@' 앞이면 토큰이 아니다.
+  if (at < 0 || at >= caret) return null;
+  if (at > 0 && !/\s/.test(value[at - 1] ?? "")) return null;
+  const query = value.slice(at + 1, caret);
+  if (/[\s@]/.test(query)) return null;
+  return { at, query };
+}
+
+/** 확정된 토큰(`@query`)을 입력값에서 걷어낸다 — 멘션은 텍스트가 아니라 행선지로 남는다. */
+export function stripMentionToken(value: string, token: QuickLaunchMentionToken): string {
+  return `${value.slice(0, token.at)}${value.slice(token.at + 1 + token.query.length)}`;
+}
+
+/**
+ * awaiting은 CLI가 응답 입력을 기다리는 상태라 임의 텍스트가 프롬프트 응답을 오염시킨다 —
+ * 목록에서 dim + 선택 불가 + 방향키 스킵(제품 결정). dormant는 선택 가능하며 서버가 재기동 후 전달한다.
+ */
+export function isMentionSelectable(activity: OperationActivity): boolean {
+  return activity !== "awaiting";
+}
+
+/**
+ * 멘션 덱의 목록: messageOperation을 선언한 플러그인의 해당 타입 Operation만, Theater로 묶어서.
+ * 활동 분류는 팔레트와 같은 원천(resolveOperationActivity)을 쓰되 idle-arrival 화면 승격은 받지
+ * 않는다 — 여기서 awaiting은 선택 차단 신호라, 표시용 승격이 섞이면 보낼 수 있는 대상이 막힌다.
+ */
+export function buildQuickLaunchMentionGroups(
+  state: ConsoleState,
+  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  query: string,
+): readonly OperationSearchGroup[] {
+  const mentionable = state.operations.filter((operation) => messageableTypesByPlugin.get(operation.pluginId)?.has(operation.type) === true);
+  if (mentionable.length === 0) return [];
+  const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
+  return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
+}
+
+/**
+ * 멘션 전달 거절 코드를 문구 키로 옮긴다. 런치 거절 코드와 겹치는 것은 그 문구를 재사용하고,
+ * 모르는 코드는 일반 실패 문구로 떨어뜨린다.
+ */
+export function quickLaunchMentionErrorMessageKey(code: string | null): string {
+  switch (code) {
+    case "resume_unavailable": return "chrome.quickLaunch.mentionErrorResumeUnavailable";
+    case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
+    case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
+    case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
+    case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
+    case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
+    case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
+    default: return "chrome.quickLaunch.mentionErrorDeliveryFailed";
+  }
 }
 
 /**

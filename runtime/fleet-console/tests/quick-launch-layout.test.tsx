@@ -82,8 +82,12 @@ describe("Quick Launch effort surface", () => {
   it("waits for the seeded model to resolve against the catalog before submission", () => {
     // 다른 plugin 카탈로그에 Opus가 없을 수 있다. passive 정규화 effect 전 한 프레임에서도 버튼과
     // Enter 제출 모두 invalid opus[1m]을 보내면 안 되므로 같은 selectedRow gate를 공유한다.
-    expect(quickLaunch).toMatch(/\|\| !target \|\| !selectedRow \|\| submitting\) return;/u);
-    expect(quickLaunch).toMatch(/&& !!target && !!selectedRow && !submitting;/u);
+    // 멘션 제출은 런치 좌표가 필요 없으므로 launch 분기에만 이 gate가 선다.
+    expect(quickLaunch).toMatch(/if \(!theaterId \|\| !target \|\| !selectedRow\) return;/u);
+    expect(quickLaunch).toMatch(/\(mentionTarget !== null \|\| \(!!theaterId && !!target && !!selectedRow\)\);/u);
+    // submitting 재진입 가드는 버튼과 Enter가 공유하는 유일한 이중 제출 방지선이다.
+    expect(quickLaunch).toMatch(/\|\| submitting\) return;/u);
+    expect(quickLaunch).toMatch(/&& !submitting && !deckHasRows/u);
   });
 
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {

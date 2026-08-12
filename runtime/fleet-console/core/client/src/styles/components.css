@@ -11879,11 +11879,15 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-field {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
 .quick-launch-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   min-height: 46px;
   /* 6줄까지 자라고 그 뒤로는 스크롤한다 — Analyst 컴포저와 같은 clamp 정책. */
   max-height: calc(1.55em * 6 + var(--space-2));
@@ -11904,6 +11908,179 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .quick-launch-input::placeholder {
   color: var(--text-tertiary);
+}
+
+/* 멘션 행선지 — 배지가 아니라 글리프+이름 텍스트다. 테두리·배경·닫기 버튼 없음, 해제는 입력이 빈
+   상태의 Backspace가 전담한다. 이름은 brass(행선지 채널), 글리프는 공급자 톤 — 신호 토큰은 쓰지 않는다. */
+.quick-launch-mention {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+  max-width: 45%;
+  color: var(--brass);
+  font-size: 16.5px;
+  font-weight: var(--weight-medium);
+  line-height: 1.55;
+  white-space: nowrap;
+  animation: quick-launch-mention-in var(--duration-base) var(--ease-glide);
+}
+
+.quick-launch-mention-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes quick-launch-mention-in {
+  from { opacity: 0; transform: translateY(3px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 멘션 덱 — 별도 팝업이 아니라 컴포저의 확장면: .theater-menu의 팝업 스킨(테두리·언더레이·그림자)을
+   그대로 입고, 위치(입력창 위)와 전폭·스크롤만 덮는다(quick-launch-pop과 같은 상속 문법). */
+.quick-launch-mention-deck {
+  top: auto;
+  left: -1px;
+  right: -1px;
+  bottom: calc(100% + var(--space-2));
+  z-index: 41;
+  max-height: min(340px, 42vh);
+  overflow-y: auto;
+  padding: var(--space-1);
+  animation: quick-launch-mention-in var(--duration-fast) var(--ease-glide);
+}
+
+/* 카테고리 밴드는 brass — 이 덱이 행선지 선택 표면임을 말한다(위치 채널). 확장 카테고리의 자리. */
+.quick-launch-mention-category {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  padding: var(--space-2) var(--space-2) 4px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.quick-launch-mention-category-rule {
+  flex: 1;
+  height: 1px;
+  background: color-mix(in oklch, var(--brass) 30%, transparent);
+}
+
+.quick-launch-mention-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 7px var(--space-2);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.quick-launch-mention-row:hover:not(.is-dim) {
+  background: color-mix(in oklch, var(--surface-pillar) 75%, transparent);
+}
+
+/* 키보드 활성 행은 pillar 믹스로는 덱의 pillar 언더레이에 묻힌다 — 포커스 위치는 brass 워시가
+   말한다(칩 aria-expanded와 같은 문법). */
+.quick-launch-mention-row.is-active {
+  background: var(--brass-glow);
+}
+
+.quick-launch-mention-row.is-active .quick-launch-mention-name {
+  color: var(--brass);
+}
+
+/* AWAITING은 dim + 선택 불가 + 방향키 스킵(제품 결정) — CLI가 응답 입력을 기다리는 중이라
+   임의 텍스트가 프롬프트 응답을 오염시킨다. 숨기면 "내 op가 왜 없지"가 된다. */
+.quick-launch-mention-row.is-dim {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.quick-launch-mention-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+
+.quick-launch-mention-empty {
+  margin: 0;
+  padding: var(--space-2);
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+}
+
+/* 멘션 확정 시 런치 3종은 접히고(가로 접힘 + 페이드) 행선지 태그가 나타난다. 접힌 컨트롤은
+   visibility로도 감춰 포커스 트랩·탭 순서에서 빠진다. */
+.quick-launch-launch-sel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  overflow: hidden;
+  max-width: 640px;
+  opacity: 1;
+  transition:
+    max-width var(--duration-slow) var(--ease-glide),
+    opacity var(--duration-base) var(--ease-glide),
+    visibility 0s linear 0s;
+}
+
+.quick-launch-launch-sel.is-hidden {
+  max-width: 0;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    max-width var(--duration-slow) var(--ease-glide),
+    opacity var(--duration-base) var(--ease-glide),
+    visibility 0s linear var(--duration-slow);
+}
+
+.quick-launch-target-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  animation: quick-launch-mention-in var(--duration-base) var(--ease-glide);
+}
+
+.quick-launch-target-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brass);
+  box-shadow: var(--brass-halo);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-launch-mention,
+  .quick-launch-mention-deck,
+  .quick-launch-target-tag {
+    animation: none;
+  }
+
+  .quick-launch-launch-sel,
+  .quick-launch-launch-sel.is-hidden {
+    transition: none;
+  }
 }
 
 .quick-launch-bar {
