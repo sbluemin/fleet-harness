@@ -6,6 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ControlBar } from "../core/client/src/components/control-bar.js";
 import { ControlCurtain } from "../core/client/src/components/control-curtain.js";
+import { ControlReclaimedNotice } from "../core/client/src/components/control-reclaimed-notice.js";
+import { CONTROL_RECLAIMED_EVENT } from "../core/client/src/control-session.js";
 import { applyControlHolder, dismissControlCurtain, getState, setState } from "../core/client/src/store.js";
 import type { ControlHolder } from "../core/client/src/types.js";
 
@@ -70,6 +72,28 @@ describe("remote control handover client", () => {
     expect(shell.inert).toBe(true);
     act(() => dismissControlCurtain());
     expect(shell.inert).toBe(false);
+  });
+
+  /**
+   * 끊긴 기기가 읽는 문장은 사유에 따라 갈린다. 다른 기기가 자리를 이어받았을 뿐인데
+   * "회수되었습니다"가 뜨면, 이어받은 기기를 찾아가야 할 사람이 콘솔 주인을 의심한다.
+   */
+  it.each([
+    ["reclaimed", "Control was taken back"],
+    ["superseded", "Another device connected"],
+  ])("names %s as the reason this session ended", (reason, title) => {
+    act(() => root?.render(createElement(ControlReclaimedNotice)));
+    act(() => { window.dispatchEvent(new CustomEvent(CONTROL_RECLAIMED_EVENT, { detail: { reason } })); });
+
+    expect(document.querySelector(".control-reclaimed-card")?.textContent).toContain(title);
+  });
+
+  /** 사유를 읽지 못한 신호도 안내는 띄운다 — 조용히 사라지는 것이 가장 나쁘다. */
+  it("falls back to the reclaimed copy when the signal carries no reason", () => {
+    act(() => root?.render(createElement(ControlReclaimedNotice)));
+    act(() => { window.dispatchEvent(new Event(CONTROL_RECLAIMED_EVENT)); });
+
+    expect(document.querySelector(".control-reclaimed-card")?.textContent).toContain("Control was taken back");
   });
 });
 
