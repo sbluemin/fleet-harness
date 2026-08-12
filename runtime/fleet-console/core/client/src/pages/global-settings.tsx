@@ -676,7 +676,18 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
         {actionError ? <p className="global-settings-error" role="alert">{actionError}</p> : null}
       </section>
 
-      {pairing ? <PairDeviceDialog link={pairing} openerRef={showQrRef} onClose={() => setPairing(null)} /> : null}
+      {pairing ? (
+        <PairDeviceDialog
+          link={pairing}
+          openerRef={showQrRef}
+          onClose={() => {
+            setPairing(null);
+            // 창이 본 것은 창 안에만 남는다 — 닫으면서 다시 읽지 않으면 방금 붙은 기기가 없고
+            // 이미 쓰인 링크가 그대로 있는 표로 돌아간다.
+            refresh();
+          }}
+        />
+      ) : null}
     </>
   );
 }
