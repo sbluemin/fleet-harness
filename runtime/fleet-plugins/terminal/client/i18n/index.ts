@@ -273,6 +273,16 @@ export const terminalEn = {
   "terminal.viewer.readOnly": "Another device is using this terminal — read-only",
   "terminal.viewer.takeBack": "Take back control",
   "terminal.viewer.remoteControlled": "A remote device has control — read-only",
+  "terminal.keyBar.aria": "Terminal keys",
+  "terminal.keyBar.more": "More keys",
+  "terminal.keyBar.fewer": "Hide extra keys",
+  "terminal.keyBar.key.up": "Arrow up",
+  "terminal.keyBar.key.down": "Arrow down",
+  "terminal.keyBar.key.left": "Arrow left",
+  "terminal.keyBar.key.right": "Arrow right",
+  "terminal.keyBar.key.enter": "Enter",
+  "terminal.keyBar.key.backspace": "Backspace",
+  "terminal.keyBar.key.shiftTab": "Shift Tab",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -544,6 +554,16 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.viewer.readOnly": "다른 기기가 이 터미널을 쓰고 있습니다 — 읽기 전용",
   "terminal.viewer.takeBack": "제어권 가져오기",
   "terminal.viewer.remoteControlled": "원격 기기가 제어 중입니다 — 읽기 전용",
+  "terminal.keyBar.aria": "터미널 키",
+  "terminal.keyBar.more": "키 더 보기",
+  "terminal.keyBar.fewer": "추가 키 숨기기",
+  "terminal.keyBar.key.up": "위쪽 화살표",
+  "terminal.keyBar.key.down": "아래쪽 화살표",
+  "terminal.keyBar.key.left": "왼쪽 화살표",
+  "terminal.keyBar.key.right": "오른쪽 화살표",
+  "terminal.keyBar.key.enter": "엔터",
+  "terminal.keyBar.key.backspace": "백스페이스",
+  "terminal.keyBar.key.shiftTab": "시프트 탭",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

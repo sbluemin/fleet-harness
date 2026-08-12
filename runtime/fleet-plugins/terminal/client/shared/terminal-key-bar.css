@@ -1,0 +1,78 @@
+/* On-screen terminal keys.
+   Every colour here is a theme token, so the bar retunes with instrument, maritime, carbon, and
+   whites rather than carrying a palette of its own — it sits directly against the terminal, which
+   is the one surface where a fixed colour would read as a foreign panel in three of four themes. */
+
+.terminal-key-bar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding-top: var(--space-1);
+}
+
+/* Equal columns, explicitly floored at 0: an auto-sized track lets one wide label (F10, PgDn)
+   stretch its column and push the row past the panel width. */
+.terminal-key-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: var(--space-1);
+}
+
+.terminal-key-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.terminal-key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 42px;
+  padding: 0 2px;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  white-space: nowrap;
+  background: var(--surface-glass-strong);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  /* A key is tapped repeatedly; without this the browser waits for a double-tap zoom and every
+     press lands late. */
+  touch-action: manipulation;
+  transition:
+    background var(--duration-fast) var(--ease-glide),
+    border-color var(--duration-fast) var(--ease-glide),
+    color var(--duration-fast) var(--ease-glide);
+}
+
+.terminal-key-row-primary .terminal-key {
+  color: var(--text-primary);
+}
+
+.terminal-key:active {
+  background: color-mix(in oklch, var(--brass) 20%, var(--surface-glass-strong));
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  color: var(--brass-ink);
+}
+
+/* A latched Ctrl or Alt, and the open panel, speak the same brass fill every other pressed toggle
+   in the product uses. */
+.terminal-key[aria-pressed="true"] {
+  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  color: var(--brass-ink);
+}
+
+.terminal-key:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
