@@ -667,22 +667,28 @@
   flex: 1;
 }
 
+/* 글자 없는 버튼은 높이만 깔아서는 손끝에 닿지 않는다 — 글꼴 크기 스테퍼가 2.2em(실측 31px)로
+   남는다. 폭 바닥은 글자 폭에 기대는 텍스트 버튼을 늘리지 않도록 이 두 개에만 건다. */
+.mobile-settings-detail .fc-font-browser__stepper {
+  min-width: 44px;
+}
+
 /*
  * 호스트 추가 팝업은 createPortal로 body에 그려지므로 위의 자손 선택자가 닿지 않는다 — 원격 접속
  * 상세에서 열어도 닫기 28px·액션 32px·입력 40px 그대로 남는다(실측). 조상으로 좁힐 수 없으니
- * 모바일 셸이 켜지는 폭을 경계로 삼는다. 스위처에서 연 같은 팝업도 함께 손가락 치수가 된다.
+ * 루트가 싣는 뷰 모드를 읽는다. 폭으로 대신하면 앱(UA)이나 명시 선호로 넓은 화면에서 모바일 셸이
+ * 선 경우를 놓친다 — 1024px에서 넷 다 데스크톱 치수로 돌아갔다(실측). 스위처에서 연 같은 팝업도
+ * 함께 손가락 치수가 된다.
  */
-@media (max-width: 767px) {
-  .add-host-close {
-    width: 44px;
-    height: 44px;
-  }
+:root[data-view-mode="mobile"] .add-host-close {
+  width: 44px;
+  height: 44px;
+}
 
-  .add-host-field input,
-  .add-host-cancel,
-  .add-host-submit {
-    min-height: 44px;
-  }
+:root[data-view-mode="mobile"] .add-host-field input,
+:root[data-view-mode="mobile"] .add-host-cancel,
+:root[data-view-mode="mobile"] .add-host-submit {
+  min-height: 44px;
 }
 
 .operation-body-parking {

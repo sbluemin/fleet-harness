@@ -79,11 +79,17 @@ describe("mobile settings", () => {
    * from Remote access on a phone it kept a 28px close button until the floor was written against
    * width instead.
    */
-  it("floors the portaled add-host dialog too", () => {
-    const scoped = MOBILE_CSS.slice(MOBILE_CSS.indexOf(".add-host-close"));
-    expect(MOBILE_CSS.slice(0, MOBILE_CSS.indexOf(".add-host-close"))).toMatch(/@media \(max-width: 767px\) \{\s*$/m);
-    expect(scoped).toContain("height: 44px");
-    expect(scoped).toMatch(/\.add-host-cancel,\s*\n\s*\.add-host-submit \{\s*\n\s*min-height: 44px;/);
+  it("floors the portaled add-host dialog by view mode, not by width", () => {
+    // Width misses the app (UA) and the explicit preference, which keep the mobile shell up on a
+    // wide screen; at 1024px all four dialog controls fell back to the desktop sizes.
+    expect(APP).toContain('document.documentElement.dataset.viewMode = mobileLayout ? "mobile" : "desktop"');
+    expect(MOBILE_CSS).toContain('[data-view-mode="mobile"] .add-host-close');
+    expect(MOBILE_CSS).toMatch(/\[data-view-mode="mobile"\] \.add-host-submit \{\s*\n\s*min-height: 44px;/);
+  });
+
+  /** A control with no text is only as wide as its box, so a height floor alone leaves it narrow. */
+  it("floors the width of icon-only controls", () => {
+    expect(MOBILE_CSS).toMatch(/\.mobile-settings-detail \.fc-font-browser__stepper \{\s*\n\s*min-width: 44px;/);
   });
 
   /** Selection groups laid out for a wide column wrap into uneven steps at phone width. */
