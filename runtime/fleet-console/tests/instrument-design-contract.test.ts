@@ -991,6 +991,16 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
+    // Doctrine: the panel head is hover-reveal chrome, not resident chrome — it hides
+    // with opacity+transform only (never display/visibility) so keyboard focus can
+    // still enter and reveal it, and its reveal entry stays pointermove-gated with an
+    // intent delay so scroll-under-pointer never triggers it.
+    expect(rail).toContain(".right-rail-panel-head-reveal");
+    expect(rail).toMatch(/\.right-rail-panel-head-reveal \{[^}]*pointer-events:\s*none/);
+    expect(rail).toMatch(/\.right-rail-panel-head-reveal\.is-revealed \{[^}]*pointer-events:\s*auto/);
+    expect(rail).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^{]*\.right-rail-panel-head-reveal/);
+    expect(rightRail).toContain("HEAD_REVEAL_INTENT_DELAY_MS");
+    expect(rightRail).not.toMatch(/onPointerEnter=\{(?:handleSlotPointerMove|holdHeadOpen)/);
   });
 
   it("pins the popup opacity underlay contract", () => {
