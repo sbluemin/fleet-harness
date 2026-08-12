@@ -55,7 +55,7 @@ Right-click the canvas and launch Claude Code on any model you have enabled — 
 | **Moonshot-Kimi** | API key | Kimi K3 1M · K3 256K |
 | **OpenCode Go** | API key | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 
-Enable exactly the roster you want under **Settings → AI Gateway** — only those models appear in the launch menu and in Claude Code's `/model` picker. Each model carries a reasoning-effort ladder from LOW to XHIGH, and models that support them expose the apex tiers behind their own gate: **MAX**, and **ULTRACODE** — which launches Claude Code with xhigh effort and standing multi-agent orchestration in one move. Usage-limit meters read the same risk verdict the gateway uses, so a window being spent faster than it refills shows as at-risk before a run stops.
+Enable exactly the roster you want under **Settings → AI Gateway** — only those models appear in the launch menu and in Claude Code's `/model` picker. Models that support reasoning effort carry their own ladder — how far it climbs varies by model — and the deepest expose apex tiers behind a gate of their own: **MAX**, and **ULTRACODE**, which launches Claude Code with xhigh effort and standing multi-agent orchestration in one move. Usage-limit meters read the same risk verdict the gateway uses, so a window being spent faster than it refills shows as at-risk before a run stops.
 
 ## A canvas that scales from one agent to a fleet
 
