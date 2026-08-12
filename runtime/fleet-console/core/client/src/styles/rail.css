@@ -51,7 +51,8 @@
   max-width: calc(100vw - 148px);
   overflow: hidden;
   display: grid;
-  grid-template-rows: auto 1fr;
+  /* 헤더는 호버-리빌 오버레이(absolute)로 빠져 본문이 슬롯 전체 높이를 쓴다. */
+  grid-template-rows: minmax(0, 1fr);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
@@ -92,6 +93,54 @@
   pointer-events: none;
 }
 
+/* ── 호버-리빌 헤더 ─────────────────────────────────────────────────
+   세 통제(타이틀·플로팅·닫기)는 전부 저빈도 set-and-forget이라 46px 상주 대신
+   상단 접근 시에만 본문 위 오버레이로 소환한다(진입 판정은 right-rail.tsx의
+   pointermove+의도 지연 계약). 숨김은 opacity+transform으로만 처리해 Tab
+   포커스 진입이 리빌 경로로 남는다. */
+.right-rail-panel-head-reveal {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  transform: translateY(-100%);
+  opacity: 0;
+  pointer-events: none;
+  border-bottom: 1px solid var(--surface-rim);
+  /* 본문 위에 얹히는 오버레이라 glass 카드와 같은 불투명 언더레이가 필요하다. */
+  background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
+  /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
+  box-shadow: 0 10px 26px oklch(0% 0 0 / 40%);
+  transition: transform 180ms var(--ease-spring), opacity 140ms ease;
+}
+
+.right-rail-panel-head-reveal.is-revealed {
+  transform: none;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 리빌 힌트 — 헤더가 숨어 있음을 알리는 유일한 상주 크롬(3px 대시). */
+.right-rail-panel-peek {
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 30px;
+  height: 3px;
+  border-radius: 2px;
+  z-index: 2;
+  background: var(--text-tertiary);
+  opacity: 0.32;
+  pointer-events: none;
+  transition: opacity 140ms ease;
+}
+
+.right-rail-panel-head-reveal.is-revealed + .right-rail-panel-peek {
+  opacity: 0;
+}
+
 .right-rail-panel-head {
   position: relative;
   z-index: 1;
@@ -100,7 +149,6 @@
   align-items: center;
   gap: 6px;
   padding: 9px 44px 9px 10px;
-  border-bottom: 1px solid var(--surface-rim);
   min-height: 46px;
   min-width: 240px;
 }
@@ -448,7 +496,9 @@
 /* ── prefers-reduced-motion 단락 ───────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .right-rail,
-  .right-rail-panel-slot {
+  .right-rail-panel-slot,
+  .right-rail-panel-head-reveal,
+  .right-rail-panel-peek {
     transition: none !important;
   }
 
