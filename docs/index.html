@@ -116,6 +116,12 @@ a { color: inherit; text-decoration: none; }
 }
 .nav-cta:hover, .nav-cta:focus-visible { filter: brightness(1.08); }
 @media (max-width: 860px) { .nav-links { display: none; } }
+@media (max-width: 400px) {
+  .topnav-inner { gap: 12px; }
+  .brand .muted { display: none; }
+  .lang-flip { padding: 4px 9px; }
+  .nav-cta { padding: 6px 12px; font-size: 12.5px; }
+}
 
 :focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; border-radius: 4px; }
 
