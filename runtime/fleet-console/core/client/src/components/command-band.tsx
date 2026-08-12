@@ -2,12 +2,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { Link, useNavigate } from "react-router-dom";
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandOperationAttribute, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
@@ -48,6 +49,10 @@ interface CanvasModeSegment {
 
 // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다. 세그먼트에 아이콘을 함께 두면 클러스터가
 // 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 통째로 사라진다(2026-08 실측).
+// 카탈로그가 아직 도착하지 않은 첫 페인트의 빈 색인. 리터럴을 useState에 직접 넘기면 렌더마다
+// 새 Map이 생겨 아래 effect의 의존이 흔들린다.
+const NO_LAUNCH_MODEL_LABELS: ReadonlyMap<string, string> = new Map();
+
 const CANVAS_MODES: readonly CanvasModeSegment[] = [
   { id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },
   { id: "tactical", label: "Tactical", titleKey: "chrome.commandBand.modeTactical" },
@@ -125,7 +130,14 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
   const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
-  const activeCliLabel = typeof activeOperation?.payload.cliLabel === "string" ? activeOperation.payload.cliLabel : activeCliId;
+  const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
+  const catalogRequestedKeysRef = useRef(new Set<string>());
+  const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
+  const unresolvedLaunchModel = activeLaunchModel !== null && !launchModelLabels.has(activeLaunchModel) ? activeLaunchModel : null;
+  // 속성 칩은 CLI 이름이 아니라 실제로 돌고 있는 모델 이름을 말한다(카탈로그가 그 좌표를 알 때).
+  const activeOperationAttribute = activeOperation
+    ? commandBandOperationAttribute(activeOperation.payload, launchModelLabels)
+    : null;
   const activeKind = activeOperation ? activePlugin?.operationKinds?.find((kind) => kind.type === activeOperation.type) ?? null : null;
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
@@ -223,6 +235,24 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     const edge = edgeRevealRef.current;
     if (edge !== null && document.activeElement === edge) edge.blur();
   }, [edgeRevealActive]);
+
+  // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 밴드에 올라올 때만
+  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation). 좌표별로 한 번씩만 물어 실패한 조회가
+  // 매 렌더 재시도로 번지지 않게 하고, 실패·중단은 표를 지워 다음 기회를 남긴다.
+  useEffect(() => {
+    const key = unresolvedLaunchModel ?? "";
+    if (catalogRequestedKeysRef.current.has(key)) return;
+    catalogRequestedKeysRef.current.add(key);
+    const controller = new AbortController();
+    fetchOperationCatalog(controller.signal)
+      .then((catalog) => {
+        if (!controller.signal.aborted) setLaunchModelLabels(commandBandLaunchModelLabels(catalog));
+      })
+      .catch(() => {
+        catalogRequestedKeysRef.current.delete(key);
+      });
+    return () => controller.abort();
+  }, [unresolvedLaunchModel]);
 
   useEffect(() => {
     if (!rename.renaming || commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationId)) return;
@@ -615,7 +645,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}
-              {activeCliLabel ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeCliLabel}>{activeOperationIcon ? <span className={`command-band-operation-kind${activeLaunchProvider ? ` operation-provider-mark is-${activeLaunchProvider}` : ""}`} aria-hidden="true">{activeOperationIcon}</span> : null}{activeCliLabel}</span> : null}
+              {activeOperationAttribute ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeOperationAttribute}>{activeOperationIcon ? <span className={`command-band-operation-kind${activeLaunchProvider ? ` operation-provider-mark is-${activeLaunchProvider}` : ""}`} aria-hidden="true">{activeOperationIcon}</span> : null}{activeOperationAttribute}</span> : null}
             </> : <button
               ref={operationTriggerRef}
               type="button"
@@ -642,6 +672,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           {switcherMenu === "operation" ? <CommandBandOperationMenu
             operations={theaterOperations}
             activeOperationId={activeOperation?.id ?? null}
+            launchModelLabels={launchModelLabels}
             theaterLabel={activeTheater.label}
             onSelectOperation={selectOperationFromMenu}
             onRenameOperation={activeOperation ? beginRename : null}
