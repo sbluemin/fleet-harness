@@ -174,6 +174,71 @@ describe("Quick Launch effort surface", () => {
   });
 });
 
+describe("Quick Launch picker keyboard grammar", () => {
+  it("moves focus into the checked item when a picker opens", () => {
+    // 포커스가 칩에 남으면 방향키·Tab이 열린 목록 밖에서 동작한다(실측: 첫 항목까지 Tab 4회).
+    expect(quickLaunch).toMatch(/\[role='menuitemradio'\]\[aria-checked='true'\]/u);
+    expect(quickLaunch).toMatch(/\(checked \?\? pop\.querySelector<HTMLElement>\("\[role='menuitemradio'\]"\)\)\?\.focus\(\)/u);
+  });
+
+  it("wires the same keyboard handler to both pickers", () => {
+    // theater와 model 팝오버가 같은 계약을 이행한다 — 한쪽만 배선되면 두 픽커의 문법이 갈린다.
+    const wired = quickLaunch.match(/onKeyDown=\{handlePopoverKeyDown\}/gu);
+    expect(wired).toHaveLength(2);
+  });
+
+  it("implements the menu contract: arrows cycle, Home/End jump, Tab leaves via the chip", () => {
+    expect(quickLaunch).toMatch(/event\.key === "ArrowDown" \|\| event\.key === "ArrowUp"/u);
+    expect(quickLaunch).toMatch(/event\.key === "Home" \|\| event\.key === "End"/u);
+    // Tab은 메뉴를 닫고 칩에서 이어 간다 — 항목 순회로 남으면 열린 목록이 Tab 미로가 된다.
+    const tabBranch = /if \(event\.key === "Tab"\) \{[\s\S]*?closePopover\(\);[\s\S]*?\.current\?\.focus\(\);/u;
+    expect(quickLaunch).toMatch(tabBranch);
+  });
+
+  it("gives every picker item a roving tabIndex and a typeahead label", () => {
+    // tabIndex -1이 아니면 항목이 Tab 정지점으로 남고, data-menu-label이 없으면 typeahead가 침묵한다.
+    const theaterItem = /role="menuitemradio"\s+aria-checked=\{theater\.id === theaterId\}\s+tabIndex=\{-1\}\s+data-menu-label=\{theater\.label\}/u;
+    const variantItem = /role="menuitemradio"\s+aria-checked=\{rowModel === selectedModel\}\s+tabIndex=\{-1\}\s+data-menu-label=\{row\.label\}/u;
+    expect(quickLaunch).toMatch(theaterItem);
+    expect(quickLaunch).toMatch(variantItem);
+  });
+
+  it("excludes roving items from the modal focus trap's edge math", () => {
+    // 버튼 셀렉터가 tabIndex -1 항목을 다시 주워 담으면 트랩의 first/last가 보이지 않는 행이 된다.
+    expect(quickLaunch).toMatch(/element\.tabIndex >= 0 && element\.offsetParent !== null/u);
+  });
+
+  it("keeps the focus ring whole by inflating only the collapse clip box", () => {
+    // overflow: hidden은 접힘 애니메이션의 것이다 — 클립 상자만 5px 부풀려 링(4px 돌출)을 살린다.
+    const sel = ruleFor(".quick-launch-launch-sel");
+    expect(sel).toMatch(/overflow:\s*hidden;/u);
+    expect(sel).toMatch(/padding:\s*5px;/u);
+    expect(sel).toMatch(/margin:\s*-5px;/u);
+    // 접힘에서는 수평 여백이 0이어야 max-width: 0이 유령 폭 없이 닫힌다.
+    const hidden = ruleFor(".quick-launch-launch-sel.is-hidden");
+    expect(hidden).toMatch(/padding-inline:\s*0;/u);
+    expect(hidden).toMatch(/margin-inline:\s*0;/u);
+  });
+
+  it("preserves an unfired draft across every close path, except submission", () => {
+    // 경로별 저장은 하나가 빠질 때마다 초안이 샌다 — 닫힘 전이 한 곳이 모든 닫힘을 대표한다.
+    expect(quickLaunch).toMatch(/preserveQuickLaunchDraft\(promptRef\.current\)/u);
+    expect(quickLaunch).toMatch(/submittedRef\.current = true;/u);
+  });
+
+  it("consumes only the mid-flight preserved draft this delivery owns", () => {
+    // 전달 중 Escape가 보존한 초안을 성공 콜백이 소비하지 않으면 전달된 문장이 미발사 초안으로
+    // 되살아나고, 소유권 검사 없이 소비하면 다른 제출의 거절 초안까지 지운다(둘 다 Codex P2).
+    expect(quickLaunch).toMatch(/quickLaunchDraft\?\.trim\(\) === deliveredText/u);
+    expect(quickLaunch).toMatch(/finishSubmission\(text\)/u);
+  });
+
+  it("remembers a picked Theater immediately, like model and effort", () => {
+    // 실행까지 기억을 미루면 보존된 초안이 재오픈에서 옛 Theater로 되돌아간다(실측 재현).
+    expect(quickLaunch).toMatch(/setTheaterId\(theater\.id\);[\s\S]{0,200}?writeQuickLaunchTheater\(theater\.id\);/u);
+  });
+});
+
 describe("canvas effort submenu", () => {
   it("sizes the flyout to its content so labels are not clipped", () => {
     // 고정 폭이면 짧을 때 잘리고 길면 빈 칸이 남는다 — max-content가 둘을 막는다.

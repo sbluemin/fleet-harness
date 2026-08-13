@@ -8,11 +8,11 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, isQuickLaunchDocked, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -59,6 +59,11 @@ export function QuickLaunch() {
   // 접힘은 상태로 소유하되 실제 포커스에서만 파생시킨다 — 포커스와 별도로 관리하면 둘이 어긋나
   // "보이는데 못 쓰는" 바가 생긴다. 고정된 채로 화면을 열면 접힌 채 상주한다(포커스를 훔치지 않는다).
   const [collapsed, setCollapsed] = useState(() => state.quickLaunchPinned);
+  // 발사되지 않은 초안은 닫힘 경로(Escape·오버레이 클릭·Mod+J·고정 해제)와 무관하게 살아남는다.
+  // 제출만이 초안을 소비하므로, 제출 경로가 이 플래그를 올려 닫힘 전이의 보존을 건너뛰게 한다.
+  const promptRef = useRef(prompt);
+  promptRef.current = prompt;
+  const submittedRef = useRef(false);
 
   // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
   // 바가 되돌아오고, 그동안 Mod+J는 예전처럼 모달을 여닫는다(단축키를 죽이지 않는다).
@@ -140,6 +145,22 @@ export function QuickLaunch() {
     setEffort(remembered.effort);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, state.activeTheaterId, theaters]);
+
+  // 닫힘 전이에서 발사되지 않은 초안을 store에 남긴다. 경로별(Escape·오버레이·Mod+J·고정 해제)로
+  // 저장을 심으면 하나가 빠질 때마다 초안이 새므로, 전이 한 곳이 모든 닫힘을 대표한다.
+  // 열림 전이의 초안 복원(위 효과)과 짝이며, 제출 닫힘만 submittedRef로 보존을 건너뛴다.
+  const wasOpenForDraftRef = useRef(open);
+  useEffect(() => {
+    const was = wasOpenForDraftRef.current;
+    wasOpenForDraftRef.current = open;
+    if (open) {
+      submittedRef.current = false;
+      return;
+    }
+    if (!was) return;
+    if (!submittedRef.current && promptRef.current.trim().length > 0) preserveQuickLaunchDraft(promptRef.current);
+    submittedRef.current = false;
+  }, [open]);
 
   // 카탈로그가 도착하면 기억해 둔 조합을 실제 목록에 맞춘다.
   // model/effort도 의존성에 둔다 — 재오픈이 bare opus를 잠깐 복원해도 정규화된 값으로 다시 맞춘다.
@@ -235,6 +256,17 @@ export function QuickLaunch() {
     return () => window.removeEventListener("resize", handleResize);
   }, [popover]);
 
+  // 메뉴가 열리면 포커스는 체크된 항목으로 들어간다(WAI-APG menu button 계약). 포커스가 칩에
+  // 남으면 방향키·Tab이 목록 밖에서 동작해, 열린 메뉴가 화면에서 가장 도달하기 어려운 컨트롤이
+  // 된다(실측: 첫 항목까지 Tab 4회).
+  useLayoutEffect(() => {
+    if (!popover) return;
+    const pop = barRef.current?.querySelector<HTMLElement>(".quick-launch-pop");
+    if (!pop) return;
+    const checked = pop.querySelector<HTMLElement>("[role='menuitemradio'][aria-checked='true']");
+    (checked ?? pop.querySelector<HTMLElement>("[role='menuitemradio']"))?.focus();
+  }, [popover]);
+
   const updatePrompt = useCallback((nextPrompt: string, element: HTMLTextAreaElement) => {
     setPrompt(nextPrompt);
     autoGrow(element);
@@ -268,12 +300,63 @@ export function QuickLaunch() {
 
   const closePopover = useCallback(() => setPopover(null), []);
 
+  // 픽커는 자신이 선언한 role="menu" 계약을 이행한다 — 방향키 순환, Home/End, 첫 글자 typeahead.
+  // 항목은 tabIndex -1(로빙)이라 Tab 정지점이 아니고, Tab은 메뉴를 닫고 칩에서 이어 간다.
+  // Enter/Space는 버튼 기본 클릭에 맡긴다(onClick이 선택·닫기·입력 복귀를 이미 소유한다).
+  const handlePopoverKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const items = Array.from(event.currentTarget.querySelectorAll<HTMLButtonElement>("[role='menuitemradio']"));
+    if (items.length === 0) return;
+    const activeIndex = items.findIndex((item) => item === document.activeElement);
+    const focusItem = (index: number) => items[((index % items.length) + items.length) % items.length]?.focus();
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      event.preventDefault();
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      // 포커스가 아직 항목 밖이면(마우스 열림 직후 등) 방향에 맞는 끝에서 시작한다.
+      focusItem(activeIndex === -1 ? (delta === 1 ? 0 : items.length - 1) : activeIndex + delta);
+      return;
+    }
+    if (event.key === "Home" || event.key === "End") {
+      event.preventDefault();
+      focusItem(event.key === "Home" ? 0 : items.length - 1);
+      return;
+    }
+    if (event.key === "Tab") {
+      // 메뉴 계약: Tab은 항목 순회가 아니라 메뉴를 닫고 다음 컨트롤로 넘어간다. 칩에 포커스를
+      // 되돌린 채 기본 동작을 살려 두면 브라우저가 칩의 다음(또는 이전) 정지점으로 옮긴다.
+      closePopover();
+      (popover === "theater" ? theaterChipRef : modelChipRef).current?.focus();
+      return;
+    }
+    if (event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey && /\S/.test(event.key)) {
+      // 활성 다음 항목부터 순환 탐색 — 팔레트·'@' 덱과 같은 "치면 닿는" 문법의 최소형.
+      const query = event.key.toLowerCase();
+      for (let step = 1; step <= items.length; step += 1) {
+        const candidate = items[(activeIndex + step + items.length) % items.length]!;
+        if ((candidate.dataset.menuLabel ?? "").toLowerCase().startsWith(query)) {
+          event.preventDefault();
+          candidate.focus();
+          return;
+        }
+      }
+    }
+  }, [closePopover, popover]);
+
   // 제출이 끝나면 모달은 사라진다. 고정된 바는 남으므로 초안을 비우고 물러나야 다음 지시를 받는
   // 상태가 된다 — 비우지 않으면 방금 보낸 문장이 그대로 남아 아직 못 보낸 것처럼 읽힌다.
   // 고정 여부는 호출 시점에 store에서 읽는다 — 멘션 전달은 비동기라, 넘길 때의 값을 닫아 두면
   // 전달 중에 고정을 푼 사용자에게 빈 모달이 닫히지 않은 채 남는다.
-  const finishSubmission = useCallback(() => {
+  const finishSubmission = useCallback((deliveredText: string | null = null) => {
     if (!isQuickLaunchDocked()) {
+      // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
+      // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
+      submittedRef.current = true;
+      // 전달이 비동기(멘션)인 동안 Escape로 먼저 닫혔다면 닫힘 전이가 이 문장을 보존해 뒀다 —
+      // 남기면 전달된 문장이 미발사 초안으로 되살아난다. 단, store의 초안 슬롯은 공유라 다른
+      // 제출의 거절 초안(reopenQuickLaunchWithDraft)이 도착해 있을 수 있으므로, 지금 전달된
+      // 문장과 일치하는 보존분만 소비한다(보존은 원문, 전달은 trim이라 trim으로 비교한다).
+      if (deliveredText !== null && getState().quickLaunchDraft?.trim() === deliveredText) {
+        consumeQuickLaunchDraft();
+      }
       closeQuickLaunch();
       return;
     }
@@ -314,7 +397,8 @@ export function QuickLaunch() {
       void plugin.messageOperation(mentionTarget.operationId, text)
         .then(() => {
           if (composerEpochRef.current !== epoch) return;
-          finishSubmission();
+          // 전달된 문장을 넘겨 이 제출이 보존한 초안만 소비하게 한다.
+          finishSubmission(text);
         })
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;
@@ -710,6 +794,7 @@ export function QuickLaunch() {
               className="quick-launch-pop quick-launch-pop--theater theater-menu"
               role="menu"
               aria-label={t("chrome.quickLaunch.theaterMenu")}
+              onKeyDown={handlePopoverKeyDown}
               style={{ ...(popoverLeft === null ? {} : { left: popoverLeft }), ...(popoverMaxHeight === null ? {} : { "--quick-launch-pop-max-height": `${popoverMaxHeight}px` }) }}
             >
               {theaters.map((theater) => (
@@ -719,8 +804,13 @@ export function QuickLaunch() {
                   className="quick-launch-pop-item"
                   role="menuitemradio"
                   aria-checked={theater.id === theaterId}
+                  tabIndex={-1}
+                  data-menu-label={theater.label}
                   onClick={() => {
                     setTheaterId(theater.id);
+                    // 모델·강도와 같은 "고르면 기억" 계층 — 실행까지 미루면 보존된 초안이
+                    // 재오픈에서 옛 Theater로 돌아간 채 발사 좌표만 어긋난다.
+                    writeQuickLaunchTheater(theater.id);
                     closePopover();
                     inputRef.current?.focus();
                   }}
@@ -738,6 +828,7 @@ export function QuickLaunch() {
               className="quick-launch-pop quick-launch-pop--model theater-menu"
               role="menu"
               aria-label={t("chrome.quickLaunch.modelMenu")}
+              onKeyDown={handlePopoverKeyDown}
               style={{ ...(popoverLeft === null ? {} : { left: popoverLeft }), ...(popoverMaxHeight === null ? {} : { "--quick-launch-pop-max-height": `${popoverMaxHeight}px` }) }}
             >
               {groups.map((group) => (
@@ -794,6 +885,8 @@ function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
         className="quick-launch-variant-name"
         role="menuitemradio"
         aria-checked={rowModel === selectedModel}
+        tabIndex={-1}
+        data-menu-label={row.label}
         onClick={() => onPick(rowModel)}
       >
         {/* ★는 라벨 뒤에 선다 — 앞에 두고 오른쪽으로 밀면 그 행만 통째로 우측 정렬돼 목록의 좌측 기준선이 끊긴다. */}
@@ -856,8 +949,9 @@ function trapFocus(event: KeyboardEvent, card: HTMLElement | null): void {
   const scopes = [card, ...Array.from(document.querySelectorAll<HTMLElement>(FEATURE_TOUR_LAYER_SELECTOR))];
   const focusable = scopes.flatMap((scope) => Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)))
     // 멘션 전환으로 접힌 런치 3종은 visibility:hidden으로 남는다 — offsetParent만 보면 트랩이
-    // 보이지 않는 칩으로 포커스를 되돌린다.
-    .filter((element) => element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
+    // 보이지 않는 칩으로 포커스를 되돌린다. 로빙(tabIndex -1) 항목 — 픽커·멘션 덱의 행 — 은
+    // Tab 정지점이 아니므로 트랩의 양 끝 계산에서도 빠져야 한다(버튼 셀렉터가 다시 주워 담는다).
+    .filter((element) => element.tabIndex >= 0 && element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
   if (focusable.length === 0) return;
   const first = focusable[0];
   const last = focusable[focusable.length - 1];

@@ -613,6 +613,15 @@ export function consumeQuickLaunchDraft(): void {
   setState({ quickLaunchDraft: null });
 }
 
+/**
+ * 발사되지 않은 초안을 다음 열림까지 지킨다. 닫힘은 취소가 아니라 미룸이다 — Escape 한 번이
+ * 문장을 지우면 컴포저가 키보드 사용자에게 유일한 데이터 손실 키를 쥐여 주는 셈이다.
+ * 복원은 열림 전이의 기존 경로(quickLaunchDraft 읽기 + consume)가 그대로 맡는다.
+ */
+export function preserveQuickLaunchDraft(draft: string): void {
+  setState({ quickLaunchDraft: draft });
+}
+
 export function closeQuickLaunch(): void {
   setState({ quickLaunchOpen: false, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
