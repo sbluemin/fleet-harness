@@ -12045,6 +12045,9 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-launch-sel.is-hidden {
+  /* 접힐 때는 줄바꿈을 되돌린다 — 폭이 0으로 줄면 컨트롤이 저마다 줄을 차지해, 보이지 않는 채로
+     바 높이만 부풀린다(visibility: hidden은 레이아웃에서 빠지지 않는다). */
+  flex-wrap: nowrap;
   max-width: 0;
   opacity: 0;
   visibility: hidden;
@@ -12053,6 +12056,11 @@ body[data-codex-reading="true"] .operations-side-bar {
     max-width var(--duration-slow) var(--ease-glide),
     opacity var(--duration-base) var(--ease-glide),
     visibility 0s linear var(--duration-slow);
+}
+
+/* 셸 안쪽 줄바꿈도 같은 이유로 되돌린다 — 좁은 화면 규칙이라 특정도로 덮는다. */
+.quick-launch-launch-sel.is-hidden .quick-launch-effort-track {
+  flex-wrap: nowrap;
 }
 
 .quick-launch-target-tag {
