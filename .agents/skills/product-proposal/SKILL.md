@@ -1,6 +1,6 @@
 ---
 name: product-proposal
-description: From a PO/PD lens, take a fleet-console product-improvement or new-feature request, measure the current behavior live through the console-e2e skill to pin it as fact, separate the user's named solution (surface) from the real Job-to-be-done (essence), derive UX options scored on fixed trade-off axes, then build an interactive mock in the product's real design tokens via the frontend-design skill, and report a decision-ready proposal. Use whenever a fleet-console feature request, issue, or complaint is vague — or names a specific fix that needs essence-checking — and must become a decision-ready proposal grounded in measurement and a visual mock rather than guesswork. Implementation is out of scope (hand off to genesis/pr-workflow).
+description: From a PO/PD lens, take a fleet-console product-improvement or new-feature request, measure the current behavior live through the console-e2e skill to pin it as fact, separate the user's named solution (surface) from the real Job-to-be-done (essence), derive UX options scored on fixed trade-off axes, then build an interactive mock in the product's real design tokens via the frontend-design skill, and report a decision-ready proposal. Use whenever a fleet-console feature request, issue, or complaint is vague — or names a specific fix that needs essence-checking — and must become a decision-ready proposal grounded in measurement and a visual mock rather than guesswork. Implementation is out of scope.
 ---
 
 # Product Proposal (PO/PD · measured + visual)
@@ -14,7 +14,7 @@ This skill **orchestrates two existing skills** — `console-e2e` (real-browser 
 - A fleet-console **product improvement or new feature** where "how should we provide this?" is the open question.
 - A request / issue / complaint that is **vague**, OR that **names a specific solution** (e.g. "add a checkbox") which should be essence-checked before it is built.
 - **Before implementation** — when a direction must first become a decision-ready, visual form.
-- **NOT for**: an already-decided implementation (→ `genesis` / `pr-workflow`); a pure runtime bug diagnosis (→ `console-e2e` alone); code review (→ `sentinel`); architecture arbitration (→ `nimitz`).
+- **NOT for**: an already-decided implementation (→ implement, then `pr-workflow`); a pure runtime bug diagnosis (→ `console-e2e` alone); code review; architecture arbitration.
 
 ## The three commitments (the skill's spine)
 
@@ -43,7 +43,7 @@ These are the reason the skill exists. Without them it degrades into "a guide fo
 - Use the `console-e2e` skill to boot an **isolated** instance and measure current behavior in a real browser.
   - **Never restart the user's console daemon.** Isolate with `FLEET_CONSOLE_DIR`; confirm the served bundle hash matches your build.
   - Seed **dormant Operations** (via a pre-written `state.json`; each restored op needs a `providerSession`) to inspect the UI without spawning real CLIs or auth.
-- When the path or constraints matter, send `vanguard` to map the code and **cross-check** the measurement against the implementation (file:line evidence).
+- When the path or constraints matter, map the code and **cross-check** the measurement against the implementation (file:line evidence).
 - Output: a list of **measured facts** — "today it does X" — each with evidence (count, screenshot, HTTP status, `file:line`). Speculation is not permitted in this phase.
 
 ### Phase 3 — PO/PD review
@@ -65,12 +65,12 @@ These are the reason the skill exists. Without them it degrades into "a guide fo
 
 - Report in order: **measured facts → PO/PD review → mock → recommendation**.
 - Provide a **live URL** so the decider can touch the mock.
-- Propose the next pipeline (`genesis` implement → `console-e2e` QA → `pr-workflow`) but **leave the product-direction call to the Admiral of the Navy** — this skill ends at a decision-ready proposal, not a decision.
+- Propose the next steps (implement → `console-e2e` QA → `pr-workflow`) but **leave the product-direction call to the user** — this skill ends at a decision-ready proposal, not a decision.
 
 ## Must not
 
-- **Do not implement.** Stop at the proposal; implementation is `genesis` / `pr-workflow`.
-- **Do not make the final product-direction decision.** Produce a decision-ready form only — the direction is the Admiral of the Navy's.
+- **Do not implement.** Stop at the proposal; implementation and `pr-workflow` come after the user picks a direction.
+- **Do not make the final product-direction decision.** Produce a decision-ready form only — the direction is the user's.
 - **Do not assert current behavior from guesswork.** Present-state claims must be `console-e2e` measurements with evidence.
 
 ## Gotchas (paid for in the field)
@@ -81,9 +81,3 @@ These are the reason the skill exists. Without them it degrades into "a guide fo
 - **Mock language**: write mock copy in the product's UI language (English for the console).
 - **Proportionality**: a small ask → fewer options and a lighter measurement; "audit / be thorough" → the full option pool and a deeper measurement.
 - **Output language** follows the session working language; functional identifiers (skill ids, token keys) stay as-is.
-
-## Delegation
-
-- `vanguard` — code recon to confirm the path / constraints behind a measured behavior.
-- `nimitz` — only when two options need an architecture call before a recommendation (read-only).
-- Implementation runs and `pr-workflow` belong to the **next** phase, after the user picks a direction.

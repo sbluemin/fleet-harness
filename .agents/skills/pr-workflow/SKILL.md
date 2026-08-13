@@ -5,7 +5,7 @@ description: End-to-end PR lifecycle on sbluemin/fleet-harness — commit staged
 
 # PR Workflow
 
-Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, mirroring the full cycle the Admiral runs by hand: **commit the change (plus a feature-level changelog fragment when warranted) → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
+Use this skill to drive a change from committed work to a merged pull request on `sbluemin/fleet-harness`, following this cycle: **commit the change (plus a feature-level changelog fragment when warranted) → open PR → await Codex review → judge & apply feedback → re-review → detect approval → auto-merge**.
 
 This is a single end-to-end workflow. Enter at Phase 1 for a fresh change; if the branch is already committed and pushed with an open PR, skip to Phase 3 to resume at the review loop; if the PR is already approved, resume at Phase 6 to merge it.
 
@@ -30,7 +30,7 @@ Replace each `<placeholder>` before running. Optional inputs may be left blank �
 
 ## Goal
 
-Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the Admiral judgment gate, and — after Codex signals approval and the cumulative review-driven diff passes a final product-context audit — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
+Publish a PR authored by the authenticated user's GitHub account, carry it through the Codex automated review by applying only the feedback that passes the judgment policy, and — after Codex signals approval and the cumulative review-driven diff passes a final product-context audit — auto-merge the PR into `<base>` (rebasing the head onto `<base>` and force-pushing first when the PR conflicts), unless `<auto_merge>` is `false`.
 
 ## Changelog Fragment (autonomous)
 
@@ -42,7 +42,7 @@ The fragment opens with `---`, `branch: <exact git branch name>`, `---`, and the
 
 When the change is not a feature-level product delta — refactors, boundary gates, doctrine and prompt edits, test repairs, release tooling, and similar — write no fragment and do not invent a `no-changelog` ceremony.
 
-## Admiral Judgment Policy
+## Judgment Policy
 
 Treat GitHub Codex review as code-local, context-incomplete evidence, never authority. Codex sees the code tree and diff but may not know the product background, cognitive-debt decisions, original user intent, or intended trade-offs. Codex approval is not proof of product correctness.
 
@@ -99,7 +99,7 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
    - When a new release note was committed, the fragment itself is the record; no PR-body ceremony is required.
    - For an amendment, apply the `changelog-amend` label after creating the PR and add one `Changelog-Amend: <file-name>.md` line per amended fragment to the body; do not add a branch fragment.
    - When no fragment was warranted, leave the PR body without changelog declarations.
-4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the Admiral of the Navy only when metadata is genuinely ambiguous or a safety guard trips.
+4. Echo the final title/body/base/head/draft once for the record, then create directly — invoking this skill is itself the authorization to open the PR, so do not pause for a separate confirmation round-trip. The safety guards still bind: the base-branch guard rejects `main`/`master` unless explicitly overridden, and `<head>` must not equal `<base>` (step 1). Pause for the user only when metadata is genuinely ambiguous or a safety guard trips.
    ```bash
    gh pr create --repo sbluemin/fleet-harness --base "$base" --head "$head" \
      --title "$title" --body "$(cat <<'EOF'
@@ -114,9 +114,9 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 
 ### Phase 3 — Await the Codex review (deterministic background poll)
 
-The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the Admiral to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
+The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronously. The skill **waits with a deterministic background poll that wakes you only when something real changes** — never ask the user to run `/loop` by hand, and prefer this over a fixed-interval cron that re-invokes the model every tick whether or not anything happened. A cheap `gh` loop runs in the background (no model tokens) and re-invokes you on the first genuine signal.
 
-0. **Ensure PR metadata, any warranted changelog path, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. When a new release note was chosen, require the branch-named fragment on the remote head. For an amendment, require every declared pending fragment on the remote head plus the `changelog-amend` label and exact `Changelog-Amend:` body lines. Omission of a fragment needs no declaration. If the selected path is incomplete, return to Phase 1 or 2 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the Admiral before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the Admiral before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
+0. **Ensure PR metadata, any warranted changelog path, the right branch, and frozen context.** Confirm `<pr_number>`, `<repo>`, and `<headRefName>` are known. On a fresh run they come from Phase 2; on a resume entry, resolve them first via `gh pr view --json number,headRefName,url` for the current branch (or the `<pr_number>` carried in the resume prompt). Never poll or push without them. When a new release note was chosen, require the branch-named fragment on the remote head. For an amendment, require every declared pending fragment on the remote head plus the `changelog-amend` label and exact `Changelog-Amend:` body lines. Omission of a fragment needs no declaration. If the selected path is incomplete, return to Phase 1 or 2 before activating review. Then confirm the **current branch equals `<headRefName>`** (`git branch --show-current`); if it does not, stop and ask the user before editing or committing — do not auto-checkout and never commit fixes onto a non-head branch. Finally confirm the **working tree is clean** (`git status --short`); if there are unrelated uncommitted changes, stop and ask the user before editing — never overwrite them or fold pre-existing changes into a review-fix commit. Before the first review-fix, freeze the Product Context Record and set `REVIEW_BASE_HEAD` to the current pushed head SHA.
 1. **Activate the initial review before waiting.** Apply this gate once per PR, before the first long-running poll. Skip it after Codex has already reacted, reviewed, commented, or been explicitly requested.
    1. Check PR-body reactions, reviews, and Codex top-level comments. Any `chatgpt-codex-connector[bot]` reaction, review, or comment means the reviewer is active; continue to step 2.
    2. If no Codex signal exists, post `@codex Please review this PR.` as a PR comment and record its comment ID, URL, and creation time. Do not start the 40-minute poll yet.
@@ -151,7 +151,7 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
    - **New actionable feedback** → Phase 4.
    - **Spurious wake or timeout** (only `eyes`, a re-anchored old comment, or nothing genuinely new) → relaunch the background poll (step 3) and keep waiting.
 
-   **Stop rule — the loop must terminate on your judgment, not on the reviewer running out of ideas.** Count review passes. Go to Phase 6 as soon as a pass yields no FIX-class finding under the Admiral Judgment Policy, and by default stop after the third pass; post the declines first either way. A clean approval is not a merge requirement — Codex can always produce another suggestion, so waiting for silence is an unbounded loop. Continuing past the third pass requires naming the specific reproduced defect that justifies it. If the Admiral of the Navy has to interrupt to end the loop, the stop rule was already breached.
+   **Stop rule — the loop must terminate on your judgment, not on the reviewer running out of ideas.** Count review passes. Go to Phase 6 as soon as a pass yields no FIX-class finding under the Judgment Policy, and by default stop after the third pass; post the declines first either way. A clean approval is not a merge requirement — Codex can always produce another suggestion, so waiting for silence is an unbounded loop. Continuing past the third pass requires naming the specific reproduced defect that justifies it. If the user has to interrupt to end the loop, the stop rule was already breached.
 
 **Fallback — cron.** If the harness cannot re-invoke you when a background task completes, fall back to a recurring `CronCreate` (`*/1 * * * *`, `recurring: true`, prompt re-entering Phase 3 with `<pr_number>`/`<repo>`), armed exactly once; the same baseline, freshness, and re-anchor rules apply on each tick. Stop it with `CronDelete` at Phase 6 (instead of `TaskStop`).
 
@@ -161,8 +161,8 @@ The Codex automated reviewer (`chatgpt-codex-connector[bot]`) posts asynchronous
 2. Before considering new feedback, audit existing cumulative review-driven changes with `git diff REVIEW_BASE_HEAD` plus staged/untracked-file inventory. Compare every hunk to the frozen record and cited user-directed amendments. Roll back only drifted review-driven intent to `REVIEW_BASE_HEAD` behavior; preserve later user-directed and concurrent changes.
 3. Collect and group review items by author/severity (Codex P1/P2/P3, human asks, nits). Filter to `<scope_hint>`. Severity never determines disposition and no comment grants new scope.
 4. For each item, verify the claim against current code/docs and classify it as code-local correctness/security/data-loss or product policy/behavior/trade-off/hypothetical hardening.
-5. Decide **FIX / DECLINE / DEFER** under the Admiral Judgment Policy. For FIX, record evidence for all four gates before editing. Record cited evidence for every disposition; never silently skip.
-6. Delegate multi-file or non-trivial FIX items to a pinned run (load the `workflow` skill first) with the frozen Product Context Record plus explicit `<objective>`/`<scope>`/`<constraints>` blocks; apply trivial single-file edits directly.
+5. Decide **FIX / DECLINE / DEFER** under the Judgment Policy. For FIX, record evidence for all four gates before editing. Record cited evidence for every disposition; never silently skip.
+6. Apply FIX items in this session with the frozen Product Context Record in view. For multi-file or non-trivial fixes, keep the objective, scope, and constraints explicit before editing; keep trivial single-file edits equally narrow.
 7. Apply FIX items narrowly — restrict edits to the verified defect and preserve all supported behavior named in the record. No opportunistic refactors, renames, formatting churn, or speculative hardening. Prefer `Edit` over full-file rewrite; re-read each file immediately before editing. New code comments in Korean.
 8. Repeat the cumulative audit after applying the pass. Roll back drifted review-driven hunks before continuing while preserving cited user-directed amendments; never add a compensating fix for review-created drift.
 
@@ -200,7 +200,7 @@ Reached after Phase 3 confirms review completion (a fresh Codex `+1` with no ope
    - `mergeable: UNKNOWN` → GitHub is still computing mergeability; wait briefly and re-check before deciding.
 4. **Conflict path — rebase the head onto `<base>`, then force-push.**
    1. Invoke the **rebase-on-canary** skill against the PR head (current-branch mode in the head's worktree, or its explicit `<worktree_path>`) with base = `<base>`. By default that skill auto-resolves conflicts by integrating both sides and validates the result.
-   2. rebase-on-canary escalates only a genuinely ambiguous/unsafe conflict or a post-rebase validation failure. If it escalates, **halt auto-merge** and surface its report to the Admiral of the Navy — do not merge.
+   2. rebase-on-canary escalates only a genuinely ambiguous/unsafe conflict or a post-rebase validation failure. If it escalates, **halt auto-merge** and surface its report to the user — do not merge.
    3. On a successful rebase (clean or auto-resolved), confirm the current branch is `<headRefName>`, then publish the rewritten history with a lease: `git push --force-with-lease origin HEAD:<headRefName>`. Never `--force`; never force-push `<base>`.
    4. Re-check mergeability (step 3), then repeat the final context audit (step 2) against the rebased diff. If mergeability or context validation fails, halt and escalate; never merge a conflict resolution that changed product intent or supported behavior.
 5. **Merge.** `gh pr merge <pr_number> --repo <repo> --<merge_method>` (default `--squash`, matching the repo convention). Do not pass `--admin` or otherwise bypass branch protection or a required check — if the merge is rejected, halt and escalate.
@@ -209,7 +209,7 @@ Reached after Phase 3 confirms review completion (a fresh Codex `+1` with no ope
 
 ### Phase 7 — Cleanup & completion
 
-**Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself — do **not** ask the Admiral of the Navy. Follow the git-worktree skill's remove flow:
+**Autonomous cleanup (only when the merge succeeded).** When Phase 6 confirmed `state: MERGED`, clean up the merged head branch's local artifacts yourself — do **not** ask the user. Follow the git-worktree skill's remove flow:
 1. If `<headRefName>` is checked out in a dedicated worktree under `.fleet/worktrees/`, run that remove flow against it: leave the worktree directory (`cd` to the main checkout), kill the matching tmux session if present, `git worktree remove --force <path>` + `git worktree prune`, then `git branch -D <headRefName>` (a squash merge leaves the branch "unmerged" to `-d`, so force-delete is expected).
 2. If the head branch was worked directly in the main checkout (no separate worktree), switch to `<base>` (`git switch <base>`) and `git branch -D <headRefName>`.
 3. Hard stops — never cross even autonomously: never delete the main checkout, and never delete a protected branch (`main` / `master` / `<base>`). The remote head branch is typically auto-deleted by GitHub on merge; otherwise leave it unless remote cleanup was requested.
@@ -225,16 +225,9 @@ Then report in Korean:
 - **Merge outcome**: merged (`<merge_method>` + merge commit SHA + whether a pre-merge rebase/force-push was needed), or — when `<auto_merge>` is `false` or auto-merge halted — the approved-but-unmerged state and the reason. The Phase 3 wait poll was stopped in Phase 6.
 - **Cleanup outcome**: worktree removed / tmux session killed / local branch force-deleted, or skipped (with reason).
 
-## Delegation Guidance
-
-- **Genesis** — implementation of fixes (default for ≥ 2 files or non-trivial logic).
-- **Sentinel** — additional code/security review when a fix touches concurrency, auth, input validation, or other sensitive surfaces.
-- **Nimitz** — only when reviewers disagree or a fix needs an architecture decision (read-only).
-- Skip delegation for trivial single-file edits.
-
 ## Documentation Synthesis
 
-PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis.
+Write PR titles, summaries, bodies, and `.changelog.d/` fragments in this session from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments.
 
 ## Safety Rules
 

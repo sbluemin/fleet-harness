@@ -21,7 +21,7 @@ Living sources — always re-read these in Phase 1; the numbers below are exampl
 
 1. **Signal = state only** — `aurora` (awaiting), `warn` (turn/progress), `coral` (danger), `positive` (complete). Never used for identity, branding, or decoration (e.g. a LOCAL/NEW badge is not a state).
 2. **Location/Focus = brass only** — current location, keyboard focus, hover affordance. Brass never idles at full strength ("소등" rule: no permanently lit brass ornaments).
-3. **Identity = `--id-*` only** — the 8-tone theme-tuned palette (crimson/amber/moss/teal/cerulean/indigo/plum/rose), painted exclusively through the **spine+mark grammar**: left 3px spine + small nameplate mark + ~10% titlebar wash. Borders stay state-owned — `border-color: var(--user-accent)` is a hard violation. Captain colors map 1:1 onto `--id-*`; raw hex captain colors are defects.
+3. **Identity = `--id-*` only** — the 8-tone theme-tuned palette (crimson/amber/moss/teal/cerulean/indigo/plum/rose), painted exclusively through the **spine+mark grammar**: left 3px spine + small nameplate mark + ~10% titlebar wash. Borders stay state-owned — `border-color: var(--user-accent)` is a hard violation. Identity tones map 1:1 onto `--id-*`; raw hex identity colors are defects.
 
 **Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · brass-mix hover. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
 
@@ -39,7 +39,7 @@ Living sources — always re-read these in Phase 1; the numbers below are exampl
 - A **periodic product-wide design health check** ("훑어보고 개선") — quarterly, after a release train, or on user request.
 - **After a large feature lands** — new surfaces are the main drift inlet.
 - The user reports the UI "튄다 / 따로 논다 / 올드하다" without naming a specific element.
-- **NOT for**: designing a brand-new visual feature (→ `product-proposal`); a single already-diagnosed CSS bug (→ direct fix); non-visual code quality (→ `sentinel`).
+- **NOT for**: designing a brand-new visual feature (→ `product-proposal`); a single already-diagnosed CSS bug (→ direct fix); non-visual code quality.
 
 ## Inputs
 
@@ -55,7 +55,7 @@ Re-read the living sources above. The contract test tells you what is **already 
 
 ### Phase 2 — Static detector sweep
 
-Run the detectors over `<scope>` — dispatch `vanguard` per surface for `full` depth (parallel, one dispatch per surface family), or run directly for `quick`:
+Run the detectors over `<scope>` — for `full` depth, sweep each surface family (in parallel when useful); for `quick`, run directly:
 
 - **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console AGENTS.md Design invariants) — classify them out instead of reporting them. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
@@ -112,9 +112,6 @@ Do not start implementation before the user picks a direction.
 - **Proportionality**: `quick` depth is a report, not a repaint — resist expanding a periodic check into an unapproved redesign.
 - Output language follows the session working language; token names, file paths, and grammar terms stay as-is.
 
-## Delegation
+## Related skills
 
-- `vanguard` — Phase 2 detector sweeps (parallel per surface family) and code recon behind a measured behavior.
-- `genesis` — Phase 6 multi-file conformance batches, unless the user directs direct execution.
-- `sentinel` — post-implementation review of the changed CSS + contract test.
-- `console-e2e`, `product-proposal`, `git-worktree`, `pr-workflow` — invoked as skills at their phases; never inline their procedures (one home per procedure).
+- `console-e2e`, `product-proposal`, `git-worktree`, `pr-workflow` — follow those skills at their phases; do not inline their procedures.
