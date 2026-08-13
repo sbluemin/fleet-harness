@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.57.1] - 2026-08-13
+
+### fleet-console
+
+#### Fixed
+- 휴대폰에서 Quick Launch 컴포저가 화면 밖으로 나가지 않습니다. 긴 Theater 이름은 칩 안에서 말줄임으로 잘리고, Theater·모델·추론강도 컨트롤이 각자 줄로 내려가 모든 컨트롤에 손이 닿습니다.
+
 ## [1.57.0] - 2026-08-12
 
 ### fleet-console

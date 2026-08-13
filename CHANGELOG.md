@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.57.1] - 2026-08-13
+
+### fleet-console
+
+#### Fixed
+- Keep the Quick Launch composer inside the screen on phones: a long Theater name now truncates in its chip instead of pushing the card past the viewport, and the Theater, model, and effort controls wrap onto their own rows so every control stays reachable.
+
 ## [1.57.0] - 2026-08-12
 
 ### fleet-console
