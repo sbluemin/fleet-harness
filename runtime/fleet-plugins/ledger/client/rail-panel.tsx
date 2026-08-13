@@ -3,7 +3,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { LedgerOperationDto, LedgerSummaryDto, LedgerWindow } from "../server/types.js";
+import type { LedgerOperationDto, LedgerSummaryDto, LedgerUnmatchedOperationDto, LedgerWindow } from "../server/types.js";
 import { cliDisplayName, cliGlyph, markKeyFromCliId } from "./cli-glyphs.js";
 import {
   costValueTier,
@@ -22,6 +22,13 @@ import "./ledger.css";
 type T = Translate<LedgerMessageKey>;
 type ScopeMode = "theater" | "all";
 type SortMode = "activity" | "cost";
+
+type DisplayRow =
+  | { readonly kind: "matched"; readonly operation: LedgerOperationDto }
+  | { readonly kind: "unmatched"; readonly operation: LedgerUnmatchedOperationDto };
+
+/** 유령 행은 시각 홍수를 막기 위해 5개까지 — 전체 수는 커버리지 라인과 롤업이 전한다. */
+const MAX_GHOST_ROWS = 5;
 
 interface LedgerPanelProps {
   readonly ctx: RailPanelContext;
@@ -136,34 +143,51 @@ function attributionShare(attributed: number, deviceWide: number): number {
 
 function formatShare(share: number): string {
   const percent = share * 100;
-  if (percent >= 9.95) return `${Math.round(percent)}%`;
+  if (percent <= 0) return "0%";
+  if (share >= 1) return "100%";
+  // 반올림이 정확한 범례 수치와 모순되는 극단은 부등호로 표기한다(0.04%→"0.0%", 99.96%→"100%" 방지).
+  if (percent < 0.05) return "<0.1%";
+  if (percent > 99.95) return ">99.9%";
+  if (percent >= 9.95) return `${Math.min(99, Math.round(percent))}%`;
   return `${percent.toFixed(1)}%`;
 }
 
 /** 귀속분(totals)과 기기 전체(deviceTotals)의 관계를 한눈에 잇는 브릿지 — 두 숫자가
-    같은 window의 서로 다른 모집단이라는 사실을 패널의 첫 문장으로 올린다. */
+    같은 window의 서로 다른 모집단이라는 사실을 패널의 첫 문장으로 올린다.
+    Theater 스코프에서는 다른 Theater의 Console 귀속분을 별도 버킷으로 분리해
+    "기타 로컬 세션"이 Console 바깥 사용량만 뜻하도록 정직하게 나눈다. */
 function BridgeSection({ data, t }: { readonly data: LedgerSummaryDto; readonly t: T }) {
   const attributed = data.totals.costUsd;
   const deviceWide = data.deviceTotals.costUsd;
   if (deviceWide <= 0) return null;
+  const otherTheater = data.scope.theaterId !== null ? data.otherTheaterTotals.costUsd : 0;
   const share = attributionShare(attributed, deviceWide);
-  const other = Math.max(0, deviceWide - attributed);
+  const otherTheaterShare = attributionShare(otherTheater, deviceWide);
+  const other = Math.max(0, deviceWide - attributed - otherTheater);
   const aria = t("ledger.bridge.aria", {
     attributed: formatCost(attributed),
     share: formatShare(share),
-    other: formatCost(other),
+    other: formatCost(Math.max(0, deviceWide - attributed)),
   });
   return (
     <div className="ledger-bridge">
       <div className="ledger-bridge-bar" role="img" aria-label={aria}>
         {share > 0 ? <span className="ledger-bridge-attributed" style={{ width: `${share * 100}%` }} /> : null}
+        {otherTheaterShare > 0 ? <span className="ledger-bridge-other-theater" style={{ width: `${otherTheaterShare * 100}%` }} /> : null}
       </div>
       <div className="ledger-bridge-legend">
         <span className="ledger-bridge-row">
           <span className="ledger-bridge-swatch ledger-bridge-swatch--attributed" aria-hidden="true" />
-          <span>{t("ledger.bridge.attributed")}</span>
+          <span>{data.scope.theaterId !== null ? t("ledger.bridge.attributedTheater") : t("ledger.bridge.attributed")}</span>
           <strong>{formatCost(attributed)} · {formatShare(share)}</strong>
         </span>
+        {otherTheater > 0 ? (
+          <span className="ledger-bridge-row">
+            <span className="ledger-bridge-swatch ledger-bridge-swatch--other-theater" aria-hidden="true" />
+            <span>{t("ledger.bridge.otherTheaters")}</span>
+            <strong>{formatCost(otherTheater)}</strong>
+          </span>
+        ) : null}
         <span className="ledger-bridge-row">
           <span className="ledger-bridge-swatch ledger-bridge-swatch--other" aria-hidden="true" />
           <span>{t("ledger.bridge.other")}</span>
@@ -318,11 +342,23 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
 
   const expectedTheaterId = scope === "theater" ? ctx.theaterId : null;
   const visibleData = data?.scope.window === window && data.scope.theaterId === expectedTheaterId ? data : null;
-  // 서버는 최근 활동순으로 보낸다. 비용순은 클라이언트 정렬 — 동점이면 최근 활동이 이긴다.
-  const displayOperations = useMemo(() => {
-    if (!visibleData || sort === "activity") return visibleData?.operations ?? [];
-    return [...visibleData.operations].sort((a, b) => b.costUsd - a.costUsd || b.lastActivityAtMs - a.lastActivityAtMs);
+  // 서버는 matched를 최근 활동순으로 보낸다. activity 모드는 유령 행을 lastActivityAtMs
+  // (미귀속은 Operation 갱신 시각)로 인터리브하고, cost 모드는 비용을 알 수 없는 유령을 뒤에 묶는다.
+  const displayRows = useMemo<DisplayRow[]>(() => {
+    if (!visibleData) return [];
+    const matched = visibleData.operations.map((operation) => ({ kind: "matched" as const, operation }));
+    const ghosts = visibleData.unmatched.map((operation) => ({ kind: "unmatched" as const, operation }));
+    if (sort === "cost") {
+      matched.sort((a, b) => b.operation.costUsd - a.operation.costUsd || b.operation.lastActivityAtMs - a.operation.lastActivityAtMs);
+      return [...matched, ...ghosts];
+    }
+    return [...matched, ...ghosts].sort((a, b) => b.operation.lastActivityAtMs - a.operation.lastActivityAtMs);
   }, [visibleData, sort]);
+  const displayRowsCapped = useMemo(() => {
+    let ghosts = 0;
+    return displayRows.filter((row) => row.kind === "matched" || ++ghosts <= MAX_GHOST_ROWS);
+  }, [displayRows]);
+  const ghostsRendered = Math.min(visibleData?.unmatched.length ?? 0, MAX_GHOST_ROWS);
   const selected = visibleData?.operations.find((operation) => operation.operationId === selectedId) ?? null;
   if (selected) return <div className="ledger-root" ref={rootRef}><DetailView operation={selected} t={t} back={() => setSelectedId(null)} /></div>;
 
@@ -372,44 +408,45 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
                 <button type="button" aria-pressed={sort === "cost"} onClick={() => setSort("cost")}>{t("ledger.sort.cost")}</button>
               </div>
             </div>
-            {visibleData.unmatched.length > 0 ? (
+            {visibleData.unmatchedTotal > 0 ? (
               <div className="ledger-coverage">
-                <span>{t("ledger.coverage.count", { count: visibleData.operations.length + visibleData.unmatched.length })}</span>
+                <span>{t("ledger.coverage.count", { count: visibleData.operations.length + visibleData.unmatchedTotal })}</span>
                 <span className="ledger-coverage-match">
-                  {t("ledger.coverage.matched", { matched: visibleData.operations.length, unmatched: visibleData.unmatched.length })}
+                  {t("ledger.coverage.matched", { matched: visibleData.operations.length, unmatched: visibleData.unmatchedTotal })}
                 </span>
               </div>
             ) : null}
-            {displayOperations.length === 0 && visibleData.unmatched.length === 0 ? (
+            {displayRows.length === 0 ? (
               <div className="ledger-inline-empty"><strong>{t("ledger.empty.title")}</strong><p>{t("ledger.empty.body")}</p></div>
             ) : null}
-            {displayOperations.map((operation) => (
-              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(operation.cliId)}`} key={operation.operationId} onClick={() => openDetail(operation.operationId)}>
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(operation.cliId))}</span>
+            {displayRowsCapped.map((row) => row.kind === "matched" ? (
+              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(row.operation.cliId)}`} key={row.operation.operationId} onClick={() => openDetail(row.operation.operationId)}>
+                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(row.operation.cliId))}</span>
                 <span className="ledger-operation-copy">
-                  <strong>{operation.title}</strong>
-                  <small>{t("ledger.operation.messages", { cliLabel: operation.cliLabel || t("ledger.value.unknownCli"), count: operation.messages })}</small>
+                  <strong>{row.operation.title}</strong>
+                  <small>{t("ledger.operation.messages", { cliLabel: row.operation.cliLabel || t("ledger.value.unknownCli"), count: row.operation.messages })}</small>
                 </span>
                 <span className="ledger-operation-values">
-                  <ValueAmount parts={formatCostParts(operation.costUsd)} tier={costValueTier(operation.costUsd)} />
-                  <ValueAmount parts={formatTokenParts(totalTokens(operation.usage))} tier={tokenValueTier(totalTokens(operation.usage))} />
+                  <ValueAmount parts={formatCostParts(row.operation.costUsd)} tier={costValueTier(row.operation.costUsd)} />
+                  <ValueAmount parts={formatTokenParts(totalTokens(row.operation.usage))} tier={tokenValueTier(totalTokens(row.operation.usage))} />
                 </span>
                 <span className="ledger-chevron">›</span>
               </button>
-            ))}
-            {visibleData.unmatched.map((operation) => (
+            ) : (
               <div
-                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromCliId(operation.cliId)}`}
-                key={operation.operationId}
-                aria-label={`${operation.title} — ${t("ledger.operation.unmatched", { cliLabel: operation.cliLabel || t("ledger.value.unknownCli") })}`}
+                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromCliId(row.operation.cliId)}`}
+                key={row.operation.operationId}
               >
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(operation.cliId))}</span>
+                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(row.operation.cliId))}</span>
                 <span className="ledger-operation-copy">
-                  <strong>{operation.title}</strong>
-                  <small>{t("ledger.operation.unmatched", { cliLabel: operation.cliLabel || t("ledger.value.unknownCli") })}</small>
+                  <strong>{row.operation.title}</strong>
+                  <small>{t("ledger.operation.unmatched", { cliLabel: row.operation.cliLabel || t("ledger.value.unknownCli") })}</small>
                 </span>
               </div>
             ))}
+            {visibleData.unmatchedTotal > ghostsRendered ? (
+              <div className="ledger-coverage-more">{t("ledger.coverage.more", { count: visibleData.unmatchedTotal - ghostsRendered })}</div>
+            ) : null}
           </section>
 
           <section className="ledger-clients">

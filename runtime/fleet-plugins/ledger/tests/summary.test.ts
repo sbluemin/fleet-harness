@@ -384,7 +384,38 @@ describe("buildSummary coverage", () => {
       title: "Operation ghost",
       cliId: "claude",
       cliLabel: "Claude Code",
+      lastActivityAtMs: 200,
     }]);
+    expect(dto.unmatchedTotal).toBe(1);
+  });
+
+  it("caps the serialized unmatched list while unmatchedTotal keeps the full count", () => {
+    const ghosts = Array.from({ length: 60 }, (_, index) => operation(
+      `ghost-${index}`,
+      "theater-a",
+      "claude",
+      `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      index,
+    ));
+    const dto = buildSummary([], ghosts, { theaterId: "theater-a", window: "week" });
+    expect(dto.unmatched).toHaveLength(50);
+    expect(dto.unmatchedTotal).toBe(60);
+    expect(dto.unmatched[0]?.operationId).toBe("ghost-59");
+  });
+
+  it("keeps other-theater Console attribution out of both operations and unmatched but counts it in otherTheaterTotals", () => {
+    const operations = [
+      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
+    ];
+    const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" });
+    expect(scoped.operations.map((entry) => entry.operationId)).toEqual(["a"]);
+    expect(scoped.unmatched).toEqual([]);
+    expect(scoped.otherTheaterTotals).toEqual({ costUsd: 1.75, input: 800_000, output: 30_000, cacheRead: 100_000, messages: 8 });
+    expect(scoped.deviceTotals.costUsd).toBe(4.05);
+
+    const all = buildSummary(sessions, operations, { theaterId: null, window: "week" });
+    expect(all.otherTheaterTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
   });
 
   it("excludes operations without a claim and losing duplicate claims from unmatched", () => {
@@ -409,6 +440,8 @@ describe("buildSummary coverage", () => {
       { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
     ], [], { theaterId: null, window: "today" }, "ok", lastActive);
     expect(dto.unmatched).toEqual([]);
+    expect(dto.unmatchedTotal).toBe(0);
+    expect(dto.otherTheaterTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
     expect(dto.deviceTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 });
   });
 });

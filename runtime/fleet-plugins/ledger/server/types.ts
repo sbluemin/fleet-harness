@@ -55,6 +55,8 @@ export interface LedgerUnmatchedOperationDto {
   readonly title: string;
   readonly cliId: string;
   readonly cliLabel: string;
+  /** 사용량 활동이 없으므로 Operation의 최종 갱신 시각(ts.updatedAt)을 싣는다. */
+  readonly lastActivityAtMs: number;
 }
 
 export interface LedgerSummaryDto {
@@ -63,8 +65,12 @@ export interface LedgerSummaryDto {
   readonly generatedAtMs: number;
   readonly totals: LedgerUsage & { readonly costUsd: number; readonly messages: number };
   readonly operations: LedgerOperationDto[];
-  /** 저장 세션은 있으나 이 window에서 매칭된 사용량이 없는 Operation이다(스코프 필터 적용). */
+  /** 저장 세션은 있으나 이 window에서 매칭된 사용량이 없는 Operation이다(스코프 필터 적용). 최대 50건으로 자르고 전체 수는 unmatchedTotal이 든다. */
   readonly unmatched: readonly LedgerUnmatchedOperationDto[];
+  /** 스코프 안 미매칭 Operation 전체 수다. unmatched가 잘렸을 때도 커버리지 라인이 정확하도록 분리한다. */
+  readonly unmatchedTotal: number;
+  /** 스코프가 특정 Theater일 때, 다른 Theater의 Console Operation에 귀속된 사용량이다. all-theaters 스코프에서는 항상 0이다. */
+  readonly otherTheaterTotals: LedgerUsage & { readonly costUsd: number; readonly messages: number };
   /** 스코프와 무관한 이 기기 전체 합계다. totals(귀속분)와의 관계를 화면에 드러내는 근거다. */
   readonly deviceTotals: LedgerUsage & { readonly costUsd: number; readonly messages: number; readonly sessions: number };
   /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 CLI별 사용량이다. */

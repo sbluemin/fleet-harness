@@ -50,6 +50,8 @@ function dto(
       lastActivityAtMs: Date.now(),
     }],
     unmatched: [],
+    unmatchedTotal: 0,
+    otherTheaterTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
     deviceTotals: {
       costUsd: costUsd * 2,
       input: 2_000,
@@ -288,7 +290,7 @@ describe("Ledger attribution bridge and coverage", () => {
     await renderWith(dto("ok", "week", 12.34));
     const bridge = container.querySelector(".ledger-bridge");
     expect(bridge).not.toBeNull();
-    expect(bridge?.textContent).toContain("Console operations");
+    expect(bridge?.textContent).toContain("This Theater's operations");
     expect(bridge?.textContent).toContain("$12.34 · 50%");
     expect(bridge?.textContent).toContain("Other local sessions");
     expect(bridge?.textContent).toContain("Device-wide this window");
@@ -312,7 +314,9 @@ describe("Ledger attribution bridge and coverage", () => {
         title: "Ghost Operation",
         cliId: "codex",
         cliLabel: "Codex",
+        lastActivityAtMs: Date.now() - 1_000,
       }],
+      unmatchedTotal: 1,
     });
     expect(container.textContent).toContain("2 operations with saved sessions");
     expect(container.textContent).toContain("1 matched · 1 unmatched");
@@ -321,6 +325,7 @@ describe("Ledger attribution bridge and coverage", () => {
     expect(ghost?.textContent).toContain("Ghost Operation");
     expect(ghost?.textContent).toContain("No usage matched in this window");
     expect(ghost?.closest("button")).toBeNull();
+    expect(ghost?.getAttribute("aria-label")).toBeNull();
   });
 
   it("keeps the list honest when nothing matches: ghost rows without the empty-state copy", async () => {
@@ -332,7 +337,9 @@ describe("Ledger attribution bridge and coverage", () => {
         title: "Ghost Operation",
         cliId: "codex",
         cliLabel: "Codex",
+        lastActivityAtMs: Date.now() - 1_000,
       }],
+      unmatchedTotal: 1,
     });
     expect(container.textContent).not.toContain("No usage in this window");
     expect(container.querySelector(".ledger-operation--unmatched")).not.toBeNull();
@@ -359,5 +366,138 @@ describe("Ledger attribution bridge and coverage", () => {
     const activitySort = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Recent activity");
     await act(async () => activitySort!.click());
     expect(titles()).toEqual(["Cheap Recent", "Dear Stale"]);
+  });
+});
+
+describe("Ledger bridge share boundaries and buckets", () => {
+  function bridgeDto(attributed: number, deviceWide: number): LedgerSummaryDto {
+    const value = dto("ok");
+    return {
+      ...value,
+      totals: { ...value.totals, costUsd: attributed },
+      deviceTotals: { ...value.deviceTotals, costUsd: deviceWide },
+    };
+  }
+
+  function bridgeText(): string {
+    return container.querySelector(".ledger-bridge")?.textContent ?? "";
+  }
+
+  it.each([
+    [0, 100, "0%"],
+    [0.04, 100, "<0.1%"],
+    [9.94, 100, "9.9%"],
+    [9.95, 100, "10%"],
+    [50, 100, "50%"],
+    [99.5, 100, "99%"],
+    [99.96, 100, ">99.9%"],
+    [100, 100, "100%"],
+  ])("formats the share %s / %s as %s without contradicting the remainder", async (attributed, deviceWide, label) => {
+    await renderWith(bridgeDto(attributed, deviceWide));
+    expect(bridgeText()).toContain(label);
+    expect(bridgeText()).not.toContain(label === "100%" ? ">99.9%" : "100%");
+  });
+
+  it("clamps an over-attributed share to 100% with a zero remainder", async () => {
+    await renderWith(bridgeDto(120, 100));
+    expect(bridgeText()).toContain("100%");
+    expect(bridgeText()).toContain("$0.00");
+    expect(container.querySelector(".ledger-bridge-attributed")?.getAttribute("style")).toContain("width: 100%");
+  });
+
+  it("stays finite at maximum values", async () => {
+    await renderWith(bridgeDto(Number.MAX_VALUE, Number.MAX_VALUE));
+    expect(bridgeText()).toContain("100%");
+    expect(bridgeText()).not.toContain("NaN");
+    expect(bridgeText()).not.toContain("Infinity");
+  });
+
+  it("splits other theaters' Console attribution into its own bucket in Theater scope", async () => {
+    const value = bridgeDto(5, 10);
+    await renderWith({
+      ...value,
+      otherTheaterTotals: { costUsd: 3, input: 0, output: 0, cacheRead: 0, messages: 0 },
+    });
+    expect(bridgeText()).toContain("This Theater's operations");
+    expect(bridgeText()).toContain("Other theaters' operations");
+    expect(bridgeText()).toContain("$3.00");
+    expect(bridgeText()).toContain("Other local sessions");
+    expect(bridgeText()).toContain("$2.00");
+    expect(container.querySelector(".ledger-bridge-other-theater")).not.toBeNull();
+  });
+
+  it("hides the other-theater bucket in all-theaters scope even if the payload carries one", async () => {
+    const value = bridgeDto(5, 10);
+    const payload = {
+      ...value,
+      scope: { theaterId: null, window: "week" as const },
+      otherTheaterTotals: { costUsd: 3, input: 0, output: 0, cacheRead: 0, messages: 0 },
+    };
+    const fetch = vi.fn(async () => ({ json: async () => payload } as Response));
+    await act(async () => {
+      root.render(ledgerPanel.render({ ...context(fetch), theaterId: null }));
+    });
+    expect(bridgeText()).toContain("Console operations");
+    expect(bridgeText()).not.toContain("Other theaters' operations");
+    expect(container.querySelector(".ledger-bridge-other-theater")).toBeNull();
+  });
+});
+
+describe("Ledger unmatched capping and sort interleave", () => {
+  function ghost(index: number, lastActivityAtMs: number) {
+    return {
+      operationId: `ghost-${index}`,
+      title: `Ghost ${index}`,
+      cliId: "codex",
+      cliLabel: "Codex",
+      lastActivityAtMs,
+    };
+  }
+
+  it("renders at most five ghost rows and rolls the rest into a +N line", async () => {
+    const now = Date.now();
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      unmatched: Array.from({ length: 7 }, (_, index) => ghost(index, now - (index + 1) * 60_000)),
+      unmatchedTotal: 7,
+    });
+    expect(container.querySelectorAll(".ledger-operation--unmatched")).toHaveLength(5);
+    expect(container.textContent).toContain("+2 more unmatched");
+    expect(container.textContent).toContain("1 matched · 7 unmatched");
+  });
+
+  it("interleaves ghost rows by activity in recent-activity mode and groups them in cost mode", async () => {
+    const now = Date.now();
+    const value = dto("ok");
+    const staleMatched = { ...value.operations[0]!, title: "Stale Matched", lastActivityAtMs: now - 3_600_000 };
+    await renderWith({
+      ...value,
+      operations: [staleMatched],
+      unmatched: [ghost(0, now)],
+      unmatchedTotal: 1,
+    });
+    const titles = () => [...container.querySelectorAll(".ledger-operation .ledger-operation-copy strong")].map((node) => node.textContent);
+    expect(titles()).toEqual(["Ghost 0", "Stale Matched"]);
+
+    const costSort = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Highest cost");
+    await act(async () => costSort!.click());
+    expect(titles()).toEqual(["Stale Matched", "Ghost 0"]);
+  });
+
+  it("breaks cost-sort ties by recent activity", async () => {
+    const now = Date.now();
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      operations: [
+        { ...value.operations[0]!, operationId: "older", title: "Older Same Cost", costUsd: 10, lastActivityAtMs: now - 60_000 },
+        { ...value.operations[0]!, operationId: "newer", title: "Newer Same Cost", costUsd: 10, lastActivityAtMs: now },
+      ],
+    });
+    const costSort = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Highest cost");
+    await act(async () => costSort!.click());
+    const titles = [...container.querySelectorAll(".ledger-operation .ledger-operation-copy strong")].map((node) => node.textContent);
+    expect(titles).toEqual(["Newer Same Cost", "Older Same Cost"]);
   });
 });
