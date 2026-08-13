@@ -54,6 +54,7 @@ describe("feature tour", () => {
   it("ships one walkthrough per reworked screen, and a spotlight only where the screen cannot carry one", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
+      "quick-launch-pin",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
@@ -142,6 +143,38 @@ describe("feature tour", () => {
     const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document, true);
     expect(presentation?.tour.id).toBe("remote-access");
     expect(presentation?.phase).toBe("walkthrough");
+  });
+
+  it("lets a dialog carry the tour that points inside it, and blocks the ones that do not", () => {
+    // 사용자가 직접 연 표면에서 그 표면의 컨트롤을 짚는 것은 이 게이트가 막으려던 상황이 아니다.
+    document.body.innerHTML = [
+      '<div class="command-band-mode-switch"></div>',
+      '<section aria-modal="true" class="quick-launch-card">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+
+    const inside = resolveNextFeatureTour(FEATURE_TOURS, [], document);
+    expect(inside?.tour.id).toBe("quick-launch-pin");
+    // 같은 모달이 떠 있는 동안 그 밖을 가리키는 안내(모드 스위치)는 여전히 막힌다.
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document)).toBeNull();
+  });
+
+  it("holds the pin tour back while the docked bar is collapsed, since the button has no size then", () => {
+    // 접힌 바에서도 버튼은 DOM에 남지만 높이 0 + inert다 — 짚어도 가리킬 것이 없다.
+    document.body.innerHTML = [
+      '<section class="quick-launch-card is-pinned is-collapsed">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)).toBeNull();
+
+    document.body.innerHTML = [
+      '<section class="quick-launch-card is-pinned">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)?.tour.id).toBe("quick-launch-pin");
   });
 
   it("anchors the War Room walkthrough on its own tool tray, so an empty screen still teaches the mode", () => {

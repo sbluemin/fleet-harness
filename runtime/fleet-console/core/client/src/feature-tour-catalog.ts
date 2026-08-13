@@ -38,6 +38,20 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     ],
   },
   {
+    id: "quick-launch-pin",
+    // 컴포저를 직접 연 순간에만 뜬다 — 고정 버튼은 그 안에만 있고, 그 자리에서 짚어야 닿는다.
+    // 접힌 도킹 바는 배제한다: 버튼이 DOM에 남지만 높이 0 + inert라, 짚어도 가리킬 것이 없다
+    // (접힌 사이드바를 배제하는 war-room-sidebar와 같은 이유·같은 문법).
+    spotlight: null,
+    walkthrough: [
+      {
+        anchor: ".quick-launch-card:not(.is-collapsed) .quick-launch-pin",
+        titleKey: "featureTour.quickLaunchPin.step1Title",
+        bodyKey: "featureTour.quickLaunchPin.step1Body",
+      },
+    ],
+  },
+  {
     id: "war-room",
     // 활성화 앵커(첫 non-null 앵커)는 두 조건을 동시에 만족해야 한다: War Room에서 항상 있을 것,
     // 그리고 War Room에서만 있을 것. 무대는 대기 건이, 덱은 살아 있는 Operation이 있어야 서고,

@@ -70,11 +70,18 @@ describe("Quick Launch docking", () => {
 
   it("releases the modal contract while docked so the screen behind stays usable", () => {
     expect(quickLaunch).toMatch(/aria-modal=\{pinned \? undefined : true\}/u);
-    // 스크롤 잠금·포커스 탈취는 모달 전용이다.
+    // 스크롤 잠금·포커스 탈취·Tab 가둠은 모두 모달 전용이다(고정 중에는 뒤 화면을 계속 쓴다).
     expect(quickLaunch).toMatch(/if \(!open \|\| pinned\) return;/u);
-    expect(quickLaunch).toMatch(/event\.key === "Tab" && !pinned/u);
+    expect(quickLaunch).toMatch(/document\.addEventListener\("keydown", onKeyDown, true\);/u);
     expect(ruleFor(".quick-launch-overlay.is-pinned")).toMatch(/pointer-events:\s*none;/u);
     expect(ruleFor(".quick-launch-card.is-pinned")).toMatch(/pointer-events:\s*auto;/u);
+  });
+
+  it("keeps a tour card that points into the composer inside its focus scope", () => {
+    // 안내 카드는 스스로 포커스를 가져가지 않고 컴포저 밖에 렌더된다 — 트랩이 카드를 빼면 키보드로는
+    // 안내를 닫을 수 없고, 카드에만 핸들러를 걸면 카드에서 나가는 Tab이 모달 뒤로 샌다.
+    expect(quickLaunch).toMatch(/FEATURE_TOUR_LAYER_SELECTOR/u);
+    expect(quickLaunch).toMatch(/const scopes = \[card, \.\.\.Array\.from\(document\.querySelectorAll<HTMLElement>\(FEATURE_TOUR_LAYER_SELECTOR\)\)\];/u);
   });
 
   it("collapses and recedes as one state, and holds both back while a message is showing", () => {

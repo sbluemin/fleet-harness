@@ -10,6 +10,7 @@ import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
+import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
@@ -336,8 +337,19 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-    if (event.key === "Tab" && !pinned) trapFocus(event, cardRef.current);
   }, [closePopover, pinned, popover]);
+
+  // 모달일 때의 Tab 가둠은 문서 수준에서 건다 — 안내 카드는 이 컴포저 밖에 렌더되므로 카드에만
+  // 건 핸들러로는 카드에서 나가는 Tab을 잡지 못해, 열려 있는 모달 뒤로 포커스가 샌다.
+  useEffect(() => {
+    if (!open || pinned) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab" || event.defaultPrevented) return;
+      trapFocus(event, cardRef.current);
+    };
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => document.removeEventListener("keydown", onKeyDown, true);
+  }, [open, pinned]);
 
   // 접힘은 실제 포커스에서만 파생된다. 카드 안에서 카드 안으로 옮겨가는 포커스는 이탈이 아니다.
   const handleFocusIn = useCallback(() => {
@@ -812,9 +824,12 @@ function blurWithin(card: HTMLElement | null): void {
   active.blur();
 }
 
-function trapFocus(event: ReactKeyboardEvent<HTMLElement>, card: HTMLElement | null): void {
+function trapFocus(event: KeyboardEvent, card: HTMLElement | null): void {
   if (!card) return;
-  const focusable = Array.from(card.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+  // 화면 안내가 이 컴포저 안을 가리키고 있으면 그 카드도 이 대화의 포커스 범위다 — 안내 카드는
+  // 스스로 포커스를 가져가지 않으므로, 트랩이 카드를 빼면 키보드로는 안내를 닫을 방법이 없다.
+  const scopes = [card, ...Array.from(document.querySelectorAll<HTMLElement>(FEATURE_TOUR_LAYER_SELECTOR))];
+  const focusable = scopes.flatMap((scope) => Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)))
     // 멘션 전환으로 접힌 런치 3종은 visibility:hidden으로 남는다 — offsetParent만 보면 트랩이
     // 보이지 않는 칩으로 포커스를 되돌린다.
     .filter((element) => element.offsetParent !== null && getComputedStyle(element).visibility !== "hidden");
