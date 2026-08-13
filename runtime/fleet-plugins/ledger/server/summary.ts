@@ -150,6 +150,7 @@ export function buildSummary(
       deviceTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 },
       clients: [],
       daily: [],
+      dailyAttributed: [],
       source: {
         status: "unreadable",
         skippedSessions: skippedSessions + sessions.length,
@@ -181,6 +182,7 @@ function buildSummaryUnchecked(
 
   const operationBuckets = new Map<string, { claim: OperationClaim; sessions: TokscaleSession[] }>();
   const otherTheaterValues = emptyAccumulator();
+  const dailyAttributedMap = new Map<string, number>();
   for (const session of sessions) {
     const sessionId = nativeSessionId(session);
     const provider = session.client === "claude" || session.client === "codex" ? session.client : null;
@@ -191,6 +193,9 @@ function buildSummaryUnchecked(
       addSession(otherTheaterValues, session);
       continue;
     }
+    // 차트 귀속 레이어 — 브릿지의 첫 버킷(스코프 귀속)과 같은 모집단을 일별로 나눈다.
+    const attributedDay = localDayKey(session.lastActive);
+    dailyAttributedMap.set(attributedDay, addFinite(dailyAttributedMap.get(attributedDay) ?? 0, session.costUsd));
     const bucket = operationBuckets.get(claim.operation.id) ?? { claim, sessions: [] };
     bucket.sessions.push(session);
     operationBuckets.set(claim.operation.id, bucket);
@@ -265,6 +270,11 @@ function buildSummaryUnchecked(
     .map(([day, costUsd]) => ({ day, costUsd }))
     .sort((a, b) => a.day < b.day ? -1 : a.day > b.day ? 1 : 0);
   const daily = fillDailyPoints(observedDaily, derivedDailyRange(scope.window, generatedAtMs));
+  // daily와 같은 날짜 축을 보장해 클라이언트가 인덱스 정렬 없이 겹쳐 그릴 수 있게 한다.
+  const dailyAttributed: LedgerDailyPoint[] = daily.map((point) => ({
+    day: point.day,
+    costUsd: dailyAttributedMap.get(point.day) ?? 0,
+  }));
 
   return {
     schemaVersion: 1,
@@ -278,6 +288,7 @@ function buildSummaryUnchecked(
     deviceTotals: { ...usageOf(deviceValues), costUsd: deviceValues.costUsd, messages: deviceValues.messages, sessions: deviceSessions },
     clients,
     daily,
+    dailyAttributed,
     source: { status, skippedSessions },
   };
 }

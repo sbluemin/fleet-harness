@@ -77,6 +77,8 @@ export interface LedgerSummaryDto {
   readonly clients: LedgerClientDto[];
   /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 일별 비용이다. */
   readonly daily: readonly LedgerDailyPoint[];
+  /** daily와 같은 날짜 축에서, 스코프 안 Console Operation에 귀속된 일별 비용이다(차트의 귀속 레이어). */
+  readonly dailyAttributed: readonly LedgerDailyPoint[];
   /** 사용량 수집에 쓰는 외부 도구는 구현 세부이므로 브라우저 payload에 이름·버전을 싣지 않는다. */
   readonly source: {
     readonly status: LedgerSourceStatus;

@@ -445,3 +445,39 @@ describe("buildSummary coverage", () => {
     expect(dto.deviceTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 });
   });
 });
+
+describe("buildSummary dailyAttributed", () => {
+  it("splits scope-attributed cost onto the same day axis as daily", () => {
+    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
+    const dto = buildSummary(sessions, [
+      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
+    ], { theaterId: "theater-a", window: "week" }, "ok", generatedAtMs);
+    expect(dto.dailyAttributed).toHaveLength(dto.daily.length);
+    expect(dto.dailyAttributed.map((point) => point.day)).toEqual(dto.daily.map((point) => point.day));
+    // claude(theater-a 귀속 $2.25)만 레이어에 오르고 codex(theater-b)·opencode(미귀속)는 오르지 않는다.
+    expect(dto.dailyAttributed.reduce((sum, point) => sum + point.costUsd, 0)).toBe(2.25);
+    const claudeDay = localDayKey(sessions[0]!.lastActive);
+    expect(dto.dailyAttributed.find((point) => point.day === claudeDay)?.costUsd).toBe(2.25);
+  });
+
+  it("counts every theater's claims in the all-theaters scope", () => {
+    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
+    const dto = buildSummary(sessions, [
+      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
+    ], { theaterId: null, window: "week" }, "ok", generatedAtMs);
+    expect(dto.dailyAttributed.reduce((sum, point) => sum + point.costUsd, 0)).toBe(4);
+  });
+
+  it("stays empty in the overflow fallback and when no sessions exist", () => {
+    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
+    expect(buildSummary([], [], { theaterId: null, window: "week" }, "ok", generatedAtMs).dailyAttributed).toEqual([]);
+    const lastActive = new Date(2026, 6, 15, 12).getTime();
+    const overflow = buildSummary([
+      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
+      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
+    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
+    expect(overflow.dailyAttributed).toEqual([]);
+  });
+});

@@ -88,28 +88,60 @@ function TrendSummaryText({ t, message, day, cost }: {
   );
 }
 
-function TrendSection({ daily, language, t }: {
+type TrendScale = "linear" | "sqrt";
+
+function TrendSection({ daily, dailyAttributed, language, t }: {
   readonly daily: LedgerSummaryDto["daily"];
+  readonly dailyAttributed: LedgerSummaryDto["dailyAttributed"];
   readonly language: RailPanelContext["language"];
   readonly t: T;
 }) {
-  const dayFormatter = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" });
+  const [scale, setScale] = useState<TrendScale>("linear");
+  // Intl 포매터 생성은 비싸므로 스케일 토글 같은 무관한 리렌더에서 재생성하지 않는다.
+  const dayFormatter = useMemo(
+    () => new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }),
+    [language],
+  );
   const formatDay = (day: string) => dayFormatter.format(new Date(day + "T12:00:00"));
+  // 스케일은 값에 적용하는 함수다 — 막대 전체와 귀속 레이어에 같은 함수를 써야
+  // sqrt 모드에서도 "높이 ∝ 변환(값)" 해석이 모든 세그먼트에 일관되게 성립한다.
+  const transform = (value: number) => scale === "sqrt" ? Math.sqrt(value) : value;
   const maxCost = Math.max(...daily.map((point) => point.costUsd));
+  const maxTransformed = transform(maxCost);
   const peak = daily.reduce((current, point) => point.costUsd > current.costUsd ? point : current);
   const average = daily.reduce((total, point) => total + point.costUsd / daily.length, 0);
   const averageCost = formatCost(Number.isFinite(average) ? average : 0);
+  const scaleLabel = t(scale === "sqrt" ? "ledger.trend.scale.sqrt" : "ledger.trend.scale.linear");
+  // 인덱스 상관 대신 day 키로 정렬 — 서버는 축 동일을 보장하지만, 키 조회는 미래 회귀에 대한
+  // 저항을 추가 비용 없이 준다(맵 구축 1회).
+  const attributedByDay = useMemo(
+    () => new Map(dailyAttributed.map((point) => [point.day, point.costUsd])),
+    [dailyAttributed],
+  );
 
   return (
     <div className="ledger-trend">
-      <h3>{t("ledger.trend.title")}</h3>
+      <div className="ledger-trend-header">
+        <h3>{t("ledger.trend.title")}</h3>
+        <div className="ledger-segment ledger-segment--compact" role="group" aria-label={t("ledger.trend.scale.aria")}>
+          <button type="button" aria-pressed={scale === "linear"} onClick={() => setScale("linear")}>{t("ledger.trend.scale.linear")}</button>
+          <button type="button" aria-pressed={scale === "sqrt"} onClick={() => setScale("sqrt")}>{t("ledger.trend.scale.sqrt")}</button>
+        </div>
+      </div>
       <p className="ledger-trend-description">{t("ledger.trend.explanation")}</p>
+      <p className="ledger-trend-attributed-note">{t("ledger.trend.attributedNote")}</p>
       <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
         {daily.map((point, index) => {
           const day = formatDay(point.day);
           const cost = formatCost(point.costUsd);
-          const label = t("ledger.trend.day", { day, cost });
-          const height = `${Math.max(3, maxCost > 0 ? (point.costUsd / maxCost) * 100 : 0)}%`;
+          const attributed = attributedByDay.get(point.day) ?? 0;
+          const label = attributed > 0
+            ? t("ledger.trend.dayAttributed", { day, cost, attributed: formatCost(attributed), scale: scaleLabel })
+            : t("ledger.trend.day", { day, cost, scale: scaleLabel });
+          const height = `${Math.max(3, maxTransformed > 0 ? (transform(point.costUsd) / maxTransformed) * 100 : 0)}%`;
+          const attributedHeight = point.costUsd > 0 && attributed > 0
+            ? `${Math.min(100, (transform(attributed) / transform(point.costUsd)) * 100)}%`
+            : null;
           return (
             <span
               key={point.day}
@@ -119,6 +151,7 @@ function TrendSection({ daily, language, t }: {
               role="img"
               aria-label={label}
             >
+              {attributedHeight ? <span className="ledger-trend-bar-attributed" style={{ height: attributedHeight }} /> : null}
               <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>
             </span>
           );
@@ -132,6 +165,7 @@ function TrendSection({ daily, language, t }: {
         <TrendSummaryText t={t} message="ledger.trend.peak" day={formatDay(peak.day)} cost={formatCost(peak.costUsd)} />
         <TrendSummaryText t={t} message="ledger.trend.average" cost={averageCost} />
       </div>
+      <p className="ledger-trend-scale-note">{t(scale === "sqrt" ? "ledger.trend.scaleNoteSqrt" : "ledger.trend.scaleNoteLinear")}</p>
     </div>
   );
 }
@@ -459,7 +493,7 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
           </section>
 
           <section className="ledger-clients">
-            {visibleData.daily.length >= 2 ? <TrendSection daily={visibleData.daily} language={ctx.language} t={t} /> : null}
+            {visibleData.daily.length >= 2 ? <TrendSection daily={visibleData.daily} dailyAttributed={visibleData.dailyAttributed} language={ctx.language} t={t} /> : null}
             <h3>{t("ledger.section.clients")}</h3>
             <p className="ledger-clients-description">{t("ledger.clients.explanation")}</p>
             <div className="ledger-client-list">

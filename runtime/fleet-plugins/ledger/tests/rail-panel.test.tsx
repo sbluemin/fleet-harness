@@ -67,6 +67,7 @@ function dto(
       costUsd,
     }],
     daily,
+    dailyAttributed: daily.map((point) => ({ day: point.day, costUsd: 0 })),
     source: { status, skippedSessions },
   };
 }
@@ -154,8 +155,8 @@ describe("Ledger rail status rendering", () => {
       { tag: "SPAN", role: "img", tabIndex: 0 },
     ]);
     expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
-      "Jul 28 · $1.25",
-      "Jul 29 · $3.75",
+      "Jul 28 · $1.25 · Linear scale",
+      "Jul 29 · $3.75 · Linear scale",
     ]);
   });
 
@@ -504,5 +505,63 @@ describe("Ledger unmatched capping and sort interleave", () => {
     await act(async () => costSort!.click());
     const titles = [...container.querySelectorAll(".ledger-operation .ledger-operation-copy strong")].map((node) => node.textContent);
     expect(titles).toEqual(["Newer Same Cost", "Older Same Cost"]);
+  });
+});
+
+describe("Ledger trend scale and attributed layer", () => {
+  const twoDay = [
+    { day: "2026-08-13", costUsd: 100 },
+    { day: "2026-08-14", costUsd: 1 },
+  ];
+
+  function trendDto(attributedSecond: number): LedgerSummaryDto {
+    const value = dto("ok", "week", 12.34, 0, twoDay);
+    return {
+      ...value,
+      dailyAttributed: [
+        { day: "2026-08-13", costUsd: 0 },
+        { day: "2026-08-14", costUsd: attributedSecond },
+      ],
+    };
+  }
+
+  it("renders the attributed layer only on days with attributed cost and labels it with the scale", async () => {
+    await renderWith(trendDto(0.5));
+    const bars = [...container.querySelectorAll(".ledger-trend-bar")];
+    expect(bars[0]!.querySelector(".ledger-trend-bar-attributed")).toBeNull();
+    const layer = bars[1]!.querySelector(".ledger-trend-bar-attributed");
+    expect(layer).not.toBeNull();
+    expect(bars[1]!.getAttribute("aria-label")).toBe("Aug 14 · $1.00 · attributed $0.50 · Linear scale");
+    expect(bars[0]!.getAttribute("aria-label")).toBe("Aug 13 · $100.00 · Linear scale");
+    expect(container.textContent).toContain("Inset layer: cost attributed to this scope's Console operations.");
+    expect(container.textContent).toContain("Linear scale — bar height is proportional to cost.");
+  });
+
+  it("keeps the attributed layer height as the truthful intra-day share with no pixel floor", async () => {
+    await renderWith(trendDto(0.01));
+    const layer = container.querySelectorAll(".ledger-trend-bar")[1]!.querySelector(".ledger-trend-bar-attributed");
+    // $0.01 / $1.00 = 1% — min-height 바닥이 있으면 수십 배로 부풀던 값이다.
+    expect(layer?.getAttribute("style")).toContain("height: 1%");
+  });
+
+  it("rescales bar heights on the square-root toggle and says so in the note and aria", async () => {
+    await renderWith(trendDto(0));
+    const heights = () => [...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")].map((bar) => bar.style.height);
+    const linearHeights = heights();
+    expect(linearHeights[0]).toBe("100%");
+    expect(Number.parseFloat(linearHeights[1]!)).toBeCloseTo(3, 5);
+
+    const sqrt = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Square root");
+    await act(async () => sqrt!.click());
+    const sqrtHeights = heights();
+    // sqrt(1)/sqrt(100) = 10% — 선형의 1%(최소 3% 클램프) 위로 작은 날이 살아난다.
+    expect(Number.parseFloat(sqrtHeights[1]!)).toBeCloseTo(10, 5);
+    expect(container.textContent).toContain("Square-root scale — heights follow √cost so small days stay readable; compare labels, not heights.");
+
+    await renderWith(trendDto(0.5));
+    const sqrtAgain = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Square root");
+    await act(async () => sqrtAgain!.click());
+    const bars = [...container.querySelectorAll(".ledger-trend-bar")];
+    expect(bars[1]!.getAttribute("aria-label")).toBe("Aug 14 · $1.00 · attributed $0.50 · Square root scale");
   });
 });
