@@ -94,16 +94,23 @@ async function persistRefreshedEntry(
   deps: CredentialResolverDeps,
   filePath: string,
   entryKey: string,
+  expected: { readonly accessToken: string; readonly refreshToken?: string },
   patch: Record<string, string>,
   writeAuthFile: (filePath: string, contents: string) => Promise<void>,
 ): Promise<void> {
   // Re-read so a concurrent `grok login` / CLI refresh is not replaced by a
-  // reconstructed object that would drop the other profiles' fields.
+  // reconstructed object that would drop the other profiles' fields. Skip the
+  // write when this entry's tokens already moved: Fleet's response may be from
+  // the refresh grant we started with, and overwriting a rotated pair revokes
+  // the file owner's newer session.
   const raw = await deps.readBounded(filePath, MAX_CREDENTIAL_BYTES);
   if (raw === null) return;
   const auth = credentialRecord(JSON.parse(raw));
   if (!auth) return;
-  const current = credentialRecord(auth[entryKey]) ?? {};
+  const current = credentialRecord(auth[entryKey]);
+  if (!current) return;
+  if (optionalTrimmedString(current.key) !== expected.accessToken) return;
+  if (expected.refreshToken !== undefined && refreshToken(current) !== expected.refreshToken) return;
   auth[entryKey] = { ...current, ...patch };
   await writeAuthFile(filePath, `${JSON.stringify(auth, null, 2)}\n`);
 }
@@ -193,7 +200,14 @@ export async function resolveXaiCliAuth(
           };
           if (refreshed.refreshToken !== undefined) patch.refresh_token = refreshed.refreshToken;
           try {
-            await persistRefreshedEntry(deps, filePath, entryKey, patch, writeAuthFile);
+            await persistRefreshedEntry(
+              deps,
+              filePath,
+              entryKey,
+              { accessToken, refreshToken: refreshToken(entry) },
+              patch,
+              writeAuthFile,
+            );
           } catch {
             // In-memory token is still usable this probe; the next read retries persist.
           }

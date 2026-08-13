@@ -134,6 +134,43 @@ describe("Grok CLI credentials", () => {
     expect(String(init?.body)).toContain("refresh_token=refresh-1");
   });
 
+  it("does not persist a refresh when the file owner already rotated the same entry", async () => {
+    const original = {
+      "https://auth.x.ai::profile": {
+        key: jwtWithExp(Math.floor(Date.parse("2026-08-14T00:04:00Z") / 1_000)),
+        oidc_issuer: "https://auth.x.ai",
+        expires_at: "2026-08-14T00:04:00Z",
+        refresh_token: "refresh-1",
+        user_id: "user-1",
+      },
+    };
+    const rotated = {
+      "https://auth.x.ai::profile": {
+        key: "cli-newer-access",
+        oidc_issuer: "https://auth.x.ai",
+        expires_at: "2026-08-14T02:00:00Z",
+        refresh_token: "refresh-2",
+        user_id: "user-1",
+      },
+    };
+    let reads = 0;
+    const credentialDeps = deps(JSON.stringify(original));
+    const readBounded = vi.fn(async () => {
+      reads += 1;
+      return JSON.stringify(reads === 1 ? original : rotated);
+    });
+    const sequentialDeps: CredentialResolverDeps = { ...credentialDeps, readBounded };
+    const writeAuthFile = vi.fn(async () => {});
+    const result = await resolveXaiCliAuth(sequentialDeps, {
+      now: () => Date.parse("2026-08-14T00:00:00Z"),
+      fetch: vi.fn<typeof fetch>(async () => refreshResponse("fleet-stale-access", 7_200)),
+      writeAuthFile,
+    });
+    expect(result.status).toBe("ok");
+    if (result.status === "ok") expect(result.credentials.accessToken).toBe("fleet-stale-access");
+    expect(writeAuthFile).not.toHaveBeenCalled();
+  });
+
   it("reports expired when every renewable profile fails to refresh", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response("invalid_grant", { status: 400 }));
     await expect(resolveXaiCliAuth(deps(JSON.stringify({
