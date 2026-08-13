@@ -246,6 +246,31 @@ describe("upstream credential", () => {
     expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
   });
 
+  it("routes Cursor Grok 4.6 xhigh to its exact wire model id", async () => {
+    let canonical: CanonicalResponseRequest | undefined;
+    const gateway = stubGateway((request) => {
+      canonical = request;
+    });
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.6",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "xhigh" },
+    }));
+
+    expect(canonical?.model).toBe("grok-4.6");
+    expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "xhigh" });
+    expect(streamSpy.mock.calls[0]?.[1]).not.toHaveProperty("reasoningEfforts");
+  });
+
   // 이 케이스가 보는 것은 진단 옵트인이지만, 설정을 실어 주는 순간 노출 선별도 함께 선다 —
   // 요청하는 모델을 켜 두지 않으면 진단 단언에 닿기 전에 실행이 거절된다.
   it.each([
@@ -1463,13 +1488,15 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(24);
+    expect(list.data).toHaveLength(26);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5-fast");
     expect(ids).toContain("claude-gateway--cursor--grok-4.5");
     expect(ids).toContain("claude-gateway--cursor--grok-4.5-fast");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.6");
+    expect(ids).toContain("claude-gateway--cursor--grok-4.6-fast");
     expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-sol[1m]");
     expect(ids).not.toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
     expect(ids).not.toContain("claude-gateway--cursor--kimi-k3");

@@ -33,7 +33,15 @@ afterEach(() => {
 });
 
 describe("Cursor live client-tool Run bridge", () => {
-  it.each(["grok-4.5", "grok-4.5-fast", "auto", "composer-2.5", "composer-2.5-fast"])(
+  it.each([
+    "grok-4.5",
+    "grok-4.5-fast",
+    "grok-4.6",
+    "grok-4.6-fast",
+    "auto",
+    "composer-2.5",
+    "composer-2.5-fast",
+  ])(
     "parks and attaches %s without opening a resume Run",
     async (model) => {
       const call = cursorCall("call-read-1", 21);

@@ -4,7 +4,7 @@
     "cursorbench": {
       "name": "CursorBench",
       "benchVersion": "3.2",
-      "observedAt": "2026-07-30T00:00:00Z",
+      "observedAt": "2026-08-13T00:00:00Z",
       "url": "https://cursor.com/cursorbench",
       "method": "Third-party agentic-coding benchmark: ambiguous multi-file tasks from real Cursor sessions, run in Cursor's own harness. Scores are evidence about the vendor model and transfer across gateway providers serving it; token and step figures are harness-relative efficiency signals, not billing facts.",
       "routingTieBandPoints": 2
@@ -121,6 +121,31 @@
         }
       },
       "caveat": "Bench footnote: an earlier snapshot of Cursor's codebase was unintentionally present in this model's training data, inflating scores by an unknown amount; the advantage does not transfer to other repositories."
+    },
+    "grok-4.6": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": {
+          "score": 61.0,
+          "tokensPerTask": 10658,
+          "stepsPerTask": 23
+        },
+        "medium": {
+          "score": 67.1,
+          "tokensPerTask": 17942,
+          "stepsPerTask": 29
+        },
+        "high": {
+          "score": 69.9,
+          "tokensPerTask": 32449,
+          "stepsPerTask": 39
+        },
+        "xhigh": {
+          "score": 70.8,
+          "tokensPerTask": 41136,
+          "stepsPerTask": 46
+        }
+      }
     },
     "kimi-k3": {
       "source": "cursorbench",
