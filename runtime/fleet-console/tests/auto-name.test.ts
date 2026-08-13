@@ -30,6 +30,15 @@ describe("deriveOperationLabel", () => {
     expect(deriveOperationLabel("/Users/secret/project/file.ts\nUpdate the config loader")).toBe("Update the config loader");
   });
 
+  it("rejects a launch-prompt file-pointer instruction so Quick Launch cannot be named from the temp path", () => {
+    expect(deriveOperationLabel(
+      "Read and follow the launch prompt file: C:\\Users\\a\\AppData\\Local\\Temp\\fleet-quick-launch-xyz\\prompt.md",
+    )).toBeNull();
+    expect(deriveOperationLabel(
+      "Read and follow the launch prompt file: /tmp/fleet-quick-launch-xyz/prompt.md",
+    )).toBeNull();
+  });
+
   it("skips token-like secret strings with no whitespace", () => {
     expect(deriveOperationLabel("ghp_0123456789abcdef0123456789abcdef0123")).toBeNull();
   });

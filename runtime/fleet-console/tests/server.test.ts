@@ -12,6 +12,7 @@ import type { ConsoleLockPayload } from "../core/host/console-contract-types.js"
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-contract.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-contract.js";
 import { createConsoleLock } from "../core/host/lock.js";
+import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-api/auto-name.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
 import { createConsoleServer, SERVER_API_CATALOG, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { AgentCliDetector } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-detect.js";
@@ -358,6 +359,28 @@ describe("console terminal observability", () => {
     expect(store.listDurableOperations()[0]?.label).toBeUndefined();
     expect(store.autoNameTerminalSession("session-a", "Add the search index")).toMatchObject({ renamed: true });
     expect(store.listDurableOperations()[0]?.label).toBe("Add the search index");
+  });
+
+  it("keeps a launch-prompt auto-name when the first UserPromptSubmit is a file pointer", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-autoname-pointer-"));
+    tempDirs.push(dir);
+    const store = createConsoleObservabilityStore();
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: dir, createdAt: 1_000 });
+
+    // createSession applies the original body before spawn. The hook then forwards the
+    // file-pointer instruction, which deriveOperationLabel rejects as an absolute path.
+    const original = "Fix the login redirect bug";
+    expect(store.autoNameTerminalSession("session-a", deriveOperationLabel(original))).toMatchObject({
+      renamed: true,
+    });
+    expect(store.autoNameTerminalSession(
+      "session-a",
+      deriveOperationLabel("Read and follow the launch prompt file: C:\\Users\\a\\AppData\\Local\\Temp\\fleet-quick-launch-xyz\\prompt.md"),
+    )).toMatchObject({ renamed: false });
+    expect(store.autoNameTerminalSession("session-a", "A later follow-up that would steal the title")).toMatchObject({
+      renamed: false,
+    });
+    expect(store.listDurableOperations()[0]).toMatchObject({ label: original, labelSource: "auto" });
   });
 
   it("protects legacy operator labels that predate labelSource from auto-naming", () => {
@@ -1510,6 +1533,36 @@ describe("console static and terminal ticket boundary", () => {
     const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
 
     expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+  });
+
+  it("names a Quick Launch Operation from the original prompt without putting that prompt on the browser payload", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-ql-autoname-"));
+    tempDirs.push(dir);
+    const fixture = await startFixture({
+      terminalStartShell: () => createMockPty(),
+    });
+    const theater = await createTheater(fixture, dir);
+    const original = "Fix the login redirect bug";
+    const created = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theaterId: theater.id, cliId: "claude", prompt: original }),
+    });
+    const session = await created.json() as { readonly sessionId?: string; readonly label?: string; readonly prompt?: unknown };
+    const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly id: string; readonly title: string; readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}api/v1/operations`);
+    const operation = operationsResponse.operations.find((entry) => entry.id === session.sessionId);
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly id: string; readonly title?: string; readonly payload?: Record<string, unknown> }> };
+    const durable = state.operations.find((entry) => entry.id === session.sessionId);
+    const serializedPayloads = JSON.stringify({ sessionPayloadPrompt: session.prompt, operationPayload: operation?.payload, durablePayload: durable?.payload });
+
+    expect(created.status).toBe(200);
+    expect(session.label).toBe(original);
+    expect(operation?.title).toBe(original);
+    expect(durable).toMatchObject({ title: original, payload: { labelSource: "auto" } });
+    expect(session).not.toHaveProperty("prompt");
+    expect(operation?.payload).not.toHaveProperty("prompt");
+    expect(durable?.payload).not.toHaveProperty("prompt");
+    expect(serializedPayloads).not.toContain(original);
   });
 
   it("keeps the active Theater identity server-side across initial and resumed Agent launch", async () => {

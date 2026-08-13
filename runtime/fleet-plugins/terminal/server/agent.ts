@@ -450,16 +450,24 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const sessionId = crypto.randomUUID();
     const session = observability.createPendingTerminalSession({ sessionId, cwd, cliId });
+    // 원문은 argv에 오르지 않고 파일 포인터가 첫 UserPromptSubmit이 된다. 그 지시는 절대
+    // 경로라 deriveOperationLabel이 폐기하고, 작명이 후속 턴으로 밀린다. 원문은 이 시점에만
+    // 서버에 있으므로 같은 휴리스틱으로 첫 작명을 여기서 적용한다. payload·브라우저 DTO에는
+    // 원문을 넣지 않는다.
+    const named = launchOptions.prompt === undefined
+      ? null
+      : observability.autoNameTerminalSession(sessionId, deriveOperationLabel(launchOptions.prompt));
+    const namedSession = named?.session ?? session;
     ctx.host.operations.create({
       id: session.sessionId,
       theaterId,
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
-      title: session.label ?? path.basename(cwd),
+      title: namedSession.label ?? session.label ?? path.basename(cwd),
       // 공급자는 실행 시점에 한 번 확정되고 이후 어떤 patch도 다시 쓰지 않는다 —
       // toOperationPayload가 지우는 키 목록 밖이라 resume·복원을 지나도 그대로 남는다.
       payload: {
-        ...toOperationPayload(undefined, cwd, session),
+        ...toOperationPayload(undefined, cwd, namedSession),
         [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: agentLaunchProviderFromModel(launchOptions.model),
         // Claude Code의 resume가 launch 좌표를 자체 복원한다고 가정하지 않는다 — 정규화된
         // 최초 선택을 Operation에 남겨 dormant·Console 재시작 뒤에도 같은 인자로 재개한다.
@@ -486,8 +494,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
-        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? session
-        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? session;
+        ? observability.registerTerminalRuntimeSession(runtimeSession) ?? namedSession
+        : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? namedSession;
       observability.notifySessionUpdated(created);
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
