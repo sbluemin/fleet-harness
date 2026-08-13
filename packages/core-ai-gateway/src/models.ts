@@ -25,7 +25,7 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi", "opencode", "xai"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "kimi"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**

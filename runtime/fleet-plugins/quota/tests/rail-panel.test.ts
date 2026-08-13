@@ -1,3 +1,5 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 
 import type { QuotaWindow } from "@dotobokuri/core-ai-gateway";
@@ -18,6 +20,7 @@ import {
   sanitizeProviderOrder,
   SIGNED_OUT_KEY,
 } from "../client/rail-panel.js";
+import { providerGlyph } from "../client/cli-glyphs.js";
 import { QUOTA_MESSAGES } from "../client/i18n/messages.js";
 
 describe("quota countdown", () => {
@@ -120,6 +123,15 @@ describe("meter risk", () => {
   });
 });
 
+describe("provider glyphs", () => {
+  it("renders the Grok product mark at the quota header size", () => {
+    const markup = renderToStaticMarkup(createElement("span", null, providerGlyph("xai")));
+    expect(markup).toContain('viewBox="0 0 512 512"');
+    expect(markup).toContain('width="16"');
+    expect(markup).toContain('height="16"');
+  });
+});
+
 describe("provider status copy", () => {
   // 상태 문구는 해당 공급자에서 무엇을 해야 하는지 지시한다. 한 공급자의 안내가 다른
   // 공급자 카드에 뜨면 사용자는 엉뚱한 CLI나 설정 화면으로 보내진다.
@@ -150,17 +162,17 @@ describe("provider order", () => {
   // 빠뜨린 순서라도 카드 다섯 장이 전부, 정확히 한 번씩 그려져야 한다.
   it("drops unknown ids, dedupes, and appends missing providers in default order", () => {
     expect(sanitizeProviderOrder(["opencode", "bogus", "claude", "opencode"]))
-      .toEqual(["opencode", "claude", "codex", "cursor", "kimi"]);
+      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi"]);
     expect(sanitizeProviderOrder(undefined)).toEqual([...PROVIDER_ORDER_DEFAULT]);
     expect(sanitizeProviderOrder("claude")).toEqual([...PROVIDER_ORDER_DEFAULT]);
   });
 
   it("moves a provider one step and refuses to cross the list boundary", () => {
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", -1))
-      .toEqual(["claude", "cursor", "codex", "kimi", "opencode"]);
+      .toEqual(["claude", "codex", "cursor", "xai", "opencode", "kimi"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", 1))
-      .toEqual(["claude", "codex", "kimi", "cursor", "opencode"]);
+      .toEqual(["claude", "codex", "xai", "opencode", "cursor", "kimi"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toBeNull();
-    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "opencode", 1)).toBeNull();
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "kimi", 1)).toBeNull();
   });
 });

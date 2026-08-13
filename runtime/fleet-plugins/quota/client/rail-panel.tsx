@@ -20,7 +20,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   cursor: "Cursor",
   kimi: "Kimi",
   opencode: "OpenCode Go",
-  xai: "Grok",
+  xai: "xAI",
 };
 
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {

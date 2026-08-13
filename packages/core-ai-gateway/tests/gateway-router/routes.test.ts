@@ -1559,8 +1559,11 @@ describe("route surface", () => {
       id: "claude-gateway--kimi--k3[1m]",
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
-    expect(ids).toContain("claude-gateway--xai--grok-4.6");
-    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|Grok)-/.test(entry.display_name))).toBe(true);
+    expect(list.data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-4.6",
+      display_name: "xAI-Grok-4.6",
+    }));
+    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(entry.display_name))).toBe(true);
   });
 
   it("filters model discovery to the curated allowlist", async () => {

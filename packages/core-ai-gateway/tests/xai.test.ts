@@ -82,6 +82,16 @@ describe("Grok quota", () => {
     expect(XAI_CLI_CREDITS_URL).toContain("billing?format=credits");
   });
 
+  it("rejects a credits response without a finite usage percentage", () => {
+    const period = {
+      type: "USAGE_PERIOD_TYPE_WEEKLY",
+      start: "2026-08-10T00:00:00Z",
+      end: "2026-08-17T00:00:00Z",
+    };
+    expect(parseXaiCredits({ config: { currentPeriod: period } })).toBeNull();
+    expect(parseXaiCredits({ config: { creditUsagePercent: Number.NaN, currentPeriod: period } })).toBeNull();
+  });
+
   it("reads weekly credits with Grok CLI subscription headers", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ config: {
       creditUsagePercent: 42.4,

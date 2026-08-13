@@ -942,7 +942,7 @@ describe("model catalog", () => {
       cursor: "Cursor",
       kimi: "Moonshot-Kimi",
       opencode: "OpenCode",
-      xai: "Grok",
+      xai: "xAI",
     } as const;
     expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
       `${providerLabels[model.provider]}-`,
@@ -966,6 +966,10 @@ describe("model catalog", () => {
     expect(list.data.find((entry) => entry.id.endsWith("cursor--grok-4.5"))).toMatchObject({
       display_name: "Cursor-Grok-4.5",
       max_input_tokens: 256_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--xai--grok-4.6")).toMatchObject({
+      display_name: "xAI-Grok-4.6",
+      max_input_tokens: 500_000,
     });
     expect(list.data.find((entry) => entry.id.endsWith("cursor--composer-2.5"))).toMatchObject({
       display_name: "Cursor-Composer-2.5",

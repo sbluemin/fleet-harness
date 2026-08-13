@@ -387,13 +387,13 @@
       ]
     },
     "xai": {
-      "name": "Grok",
+      "name": "xAI",
       "defaultModel": "grok-4.6",
       "source": "official Grok CLI 1.0.3 ~/.grok/models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models (observed 2026-08-13)",
       "models": [
         {
           "modelId": "grok-4.6",
-          "name": "Grok 4.6",
+          "name": "Grok-4.6",
           "capabilityClass": "flagship",
           "wire": "responses",
           "contextWindow": 500000,

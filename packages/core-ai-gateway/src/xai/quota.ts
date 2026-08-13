@@ -21,10 +21,8 @@ export function parseXaiCredits(payload: unknown): QuotaWindow | null {
   const startsAt = safeTimestamp(period.start);
   const resetsAt = safeTimestamp(period.end);
   if (startsAt === undefined || resetsAt === undefined || resetsAt <= startsAt) return null;
-  if (config.creditUsagePercent !== undefined
-    && (typeof config.creditUsagePercent !== "number" || !Number.isFinite(config.creditUsagePercent))) {
-    return null;
-  }
+  if (typeof config.creditUsagePercent !== "number"
+    || !Number.isFinite(config.creditUsagePercent)) return null;
   return {
     id: "weekly",
     usedPercent: percent(config.creditUsagePercent),

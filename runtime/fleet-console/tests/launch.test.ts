@@ -662,8 +662,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
       id: "claude-gateway--kimi--k3[1m]",
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
+    expect(cache.models).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-4.6",
+      display_name: "xAI-Grok-4.6",
+    }));
     expect(cache.models.every((model) => model.id.startsWith("claude"))).toBe(true);
-    expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|Grok)-/.test(model.display_name))).toBe(true);
+    expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(model.display_name))).toBe(true);
   });
 
   it("preserves an explicit Claude Code auto-compact window for gateway launches", async () => {
