@@ -4,7 +4,7 @@ import { launchProviderFromOperationPayload } from "../core/client/src/component
 
 describe("launchProviderFromOperationPayload", () => {
   it("기록된 공급자를 그대로 읽는다", () => {
-    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode"] as const) {
+    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"] as const) {
       expect(launchProviderFromOperationPayload({ launchProvider: provider })).toBe(provider);
     }
   });

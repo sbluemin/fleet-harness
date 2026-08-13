@@ -46,7 +46,7 @@ describe("terminal settings routes", () => {
       readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly capabilityClass: string | null; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
-    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
+    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode", "xai"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor는 auto/composer/grok만 지원하고, Kimi 프로바이더는 별개 경로로 그대로 노출한다.
     expect(allIds).toContain("kimi--k3");

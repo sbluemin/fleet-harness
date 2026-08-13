@@ -10,7 +10,7 @@ import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
 type T = Translate<QuotaMessageKey>;
-type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai";
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude" | "cursor";
 
@@ -20,6 +20,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   cursor: "Cursor",
   kimi: "Kimi",
   opencode: "OpenCode Go",
+  xai: "Grok",
 };
 
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
@@ -28,6 +29,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   cursor: "quota.cursor.signedOut",
   kimi: "quota.kimi.signedOut",
   opencode: "quota.opencode.signedOut",
+  xai: "quota.xai.signedOut",
 };
 
 export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
@@ -36,6 +38,7 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   cursor: "quota.expired.cursor",
   kimi: "quota.expired.kimi",
   opencode: "quota.expired.opencode",
+  xai: "quota.expired.xai",
 };
 
 // Cursor와 Kimi만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다), 프로바이더별
@@ -46,13 +49,14 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   cursor: "quota.noSubscription",
   kimi: "quota.kimi.noSubscription",
   opencode: "quota.noSubscription",
+  xai: "quota.noSubscription",
 };
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude" || id === "cursor";
 }
 
-export const PROVIDER_ORDER_DEFAULT: readonly ProviderId[] = ["claude", "codex", "cursor", "kimi", "opencode"];
+export const PROVIDER_ORDER_DEFAULT: readonly ProviderId[] = ["claude", "codex", "xai", "cursor", "opencode", "kimi"];
 
 function isProviderId(value: unknown): value is ProviderId {
   return (PROVIDER_ORDER_DEFAULT as readonly unknown[]).includes(value);
@@ -655,6 +659,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     data?.providers.cursor.fetchedAt ?? 0,
     data?.providers.kimi.fetchedAt ?? 0,
     data?.providers.opencode.fetchedAt ?? 0,
+    data?.providers.xai.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   return (

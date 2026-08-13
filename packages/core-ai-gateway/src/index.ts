@@ -28,6 +28,7 @@ export * from "./codex/quota.js";
 export * from "./cursor/quota.js";
 export * from "./kimi/quota.js";
 export * from "./opencode-go/quota.js";
+export * from "./xai/index.js";
 export * from "./opencode-go/usage-scan.js";
 export * from "./canonical/index.js";
 export * from "./cursor/credentials.js";

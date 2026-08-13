@@ -78,6 +78,7 @@
   --provider-codex: oklch(78% 0.035 248);
   --provider-cursor: oklch(72% 0.13 238);
   --provider-opencode: oklch(72% 0.07 165);
+  --provider-xai: oklch(76% 0.055 258);
   /* 정체성 톤(--id-*) — Operation accent·그룹색·captain 식별이 공유하는 8톤.
      각 테마의 채도 봉투를 따라 재조율된다(Instrument C≈0.06). 신호색(brass/aurora/warn/coral)과
      hue가 이웃한 crimson/amber는 채도를 낮춰 상태 신호와 혼동되지 않게 한다. */
@@ -395,6 +396,7 @@
   --provider-codex: oklch(43% 0.035 255);
   --provider-cursor: oklch(50% 0.115 238);
   --provider-opencode: oklch(48% 0.08 165);
+  --provider-xai: oklch(46% 0.06 258);
 
   --id-crimson: oklch(54% 0.1 25);
   --id-amber: oklch(56% 0.095 70);

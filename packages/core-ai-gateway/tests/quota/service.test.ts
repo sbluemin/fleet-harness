@@ -77,9 +77,11 @@ describe("quota service", () => {
     let claudeCount = 0;
     let codexCount = 0;
     let cursorCount = 0;
+    let xaiCount = 0;
     const fetchClaude = vi.fn(async () => ok(1, 10 + ++claudeCount));
     const fetchCodex = vi.fn(async () => ok(1, 20 + ++codexCount));
     const fetchCursor = vi.fn(async () => ok(1, 30 + ++cursorCount));
+    const fetchXai = vi.fn(async () => ok(1, 40 + ++xaiCount));
     const service = createQuotaService({
       now: () => 1_000,
       isClaudeConnected: async () => true,
@@ -89,15 +91,18 @@ describe("quota service", () => {
       fetchCodex,
       fetchCursor,
       fetchOpencode: async () => ({ status: "signed_out" }),
+      fetchXai,
     });
     const cached = await service.getSummary();
-    const refreshed = await service.getSummary({ forceProvider: "cursor" });
+    const refreshed = await service.getSummary({ forceProvider: "xai" });
     expect(fetchClaude).toHaveBeenCalledTimes(1);
     expect(fetchCodex).toHaveBeenCalledTimes(1);
-    expect(fetchCursor).toHaveBeenCalledTimes(2);
+    expect(fetchCursor).toHaveBeenCalledTimes(1);
+    expect(fetchXai).toHaveBeenCalledTimes(2);
     expect(refreshed.providers.claude).toEqual(cached.providers.claude);
     expect(refreshed.providers.codex).toEqual(cached.providers.codex);
-    expect(refreshed.providers.cursor.windows?.[0]?.usedPercent).toBe(32);
+    expect(refreshed.providers.cursor).toEqual(cached.providers.cursor);
+    expect(refreshed.providers.xai.windows?.[0]?.usedPercent).toBe(42);
   });
 
   it("collectors read Kimi and OpenCode keys only through the injected auth service", async () => {

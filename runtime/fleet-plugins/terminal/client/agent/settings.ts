@@ -14,7 +14,7 @@ export interface AiGatewaySettings {
   readonly providerPriority?: readonly AiGatewayProviderId[];
 }
 
-export type AiGatewayProviderId = "codex" | "cursor" | "kimi" | "opencode";
+export type AiGatewayProviderId = "codex" | "cursor" | "kimi" | "opencode" | "xai";
 
 /**
  * 카탈로그가 매기는 등급 축. core-ai-gateway의 `GatewayCapabilityClass`를 그대로 옮겨 적은

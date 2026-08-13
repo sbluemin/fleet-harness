@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-13T00:00:00Z",
+  "updatedAt": "2026-08-14T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -383,6 +383,30 @@
           "capabilityClass": "flagship",
           "wire": "chat-completions",
           "contextWindow": 256000
+        }
+      ]
+    },
+    "xai": {
+      "name": "Grok",
+      "defaultModel": "grok-4.6",
+      "source": "official Grok CLI 1.0.3 ~/.grok/models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models (observed 2026-08-13)",
+      "models": [
+        {
+          "modelId": "grok-4.6",
+          "name": "Grok 4.6",
+          "capabilityClass": "flagship",
+          "wire": "responses",
+          "contextWindow": 500000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "benchmarkKey": "grok-4.6"
         }
       ]
     }

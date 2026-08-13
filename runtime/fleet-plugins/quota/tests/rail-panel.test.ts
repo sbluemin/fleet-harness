@@ -131,6 +131,7 @@ describe("provider status copy", () => {
       cursor: "Cursor",
       kimi: "Kimi",
       opencode: "OpenCode Go",
+      xai: "Grok CLI",
     };
     for (const map of [SIGNED_OUT_KEY, EXPIRED_KEY]) {
       for (const [provider, key] of Object.entries(map)) {

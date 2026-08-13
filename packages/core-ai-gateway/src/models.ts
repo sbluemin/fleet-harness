@@ -25,7 +25,7 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi", "opencode"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "cursor", "kimi", "opencode", "xai"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -212,6 +212,7 @@ export const GatewayModelsRegistrySchema = z.object({
     cursor: GatewayProviderSchema,
     kimi: GatewayProviderSchema,
     opencode: GatewayProviderSchema,
+    xai: GatewayProviderSchema,
   }).strict(),
 }).strict();
 
@@ -773,10 +774,10 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       if (model.quotaScope && provider !== "cursor") {
         throw new Error(`Gateway quota scope is only supported by Cursor: ${provider}/${model.modelId}`);
       }
-      // OpenCode Go is the only provider serving one subscription over several
-      // wire protocols; elsewhere a wire declaration would be dead metadata.
-      if (model.wire && provider !== "opencode") {
-        throw new Error(`Gateway model wire is only supported by OpenCode: ${provider}/${model.modelId}`);
+      // OpenCode Go selects among several wires per model; xAI's Grok CLI subscription
+      // is fixed to Responses but declares it so routing never falls back to Anthropic.
+      if (model.wire && provider !== "opencode" && provider !== "xai") {
+        throw new Error(`Gateway model wire is not supported by provider: ${provider}/${model.modelId}`);
       }
       if (model.effort?.supported) {
         if (new Set(model.effort.levels).size !== model.effort.levels.length) {

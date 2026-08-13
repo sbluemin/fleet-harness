@@ -187,7 +187,7 @@ export function exposableEffortLadder(model: GatewayModel): readonly GatewayReas
   return buildGatewayModelConstraints(model).effortLadder;
 }
 
-/** Stable provider clusters (codex → cursor → kimi → opencode), then catalog order within each. */
+/** Stable provider clusters (codex → cursor → kimi → opencode → xai), then catalog order within each. */
 function sortGatewayModelsByProvider(models: readonly GatewayModel[]): GatewayModel[] {
   return [...models].sort((left, right) => {
     const providerDelta =

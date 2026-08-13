@@ -46,10 +46,21 @@ function OpencodeGlyph() {
   );
 }
 
-export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi" | "opencode"): ReactNode {
+function GrokGlyph() {
+  // Official Grok product mark served by https://grok.com/images/favicon.svg.
+  return (
+    <svg viewBox="0 0 512 512" aria-hidden="true">
+      <path d="M210.484 312.759 343.465 210.383c6.519-5.019 15.837-3.061 18.943 4.734 16.35 41.114 9.046 90.523-23.483 124.446-32.528 33.924-77.788 41.364-119.157 24.42l-45.191 21.82c64.817 46.205 143.527 34.778 192.712-16.552 39.014-40.687 51.097-96.147 39.799-146.16 4.184-42.914 18.276-77.775 48.912-121.784L456 56l-55.022 57.382v-.178L210.45 312.794" fill="currentColor" />
+      <path d="M183.042 337.641c-46.523-46.347-38.502-118.074 1.194-159.438 29.354-30.613 77.447-43.107 119.43-24.739l45.089-21.714c-8.123-6.123-18.534-12.708-30.48-17.336-53.998-23.173-118.645-11.64-162.54 34.102-42.222 44.033-55.499 111.738-32.699 169.511 17.033 43.179-10.888 73.721-39.013 104.548C74.056 433.503 64.055 444.431 56 456l127.007-118.323" fill="currentColor" />
+    </svg>
+  );
+}
+
+export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai"): ReactNode {
   if (provider === "claude") return <ClaudeGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
   if (provider === "kimi") return <KimiGlyph />;
   if (provider === "opencode") return <OpencodeGlyph />;
+  if (provider === "xai") return <GrokGlyph />;
   return <CodexGlyph />;
 }
