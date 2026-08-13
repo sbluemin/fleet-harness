@@ -5,6 +5,26 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.57.0] - 2026-08-12
+
+### fleet-console
+
+#### Added
+- Give a terminal opened on a touch screen a bar of the keys a soft keyboard leaves out: Escape, Tab, arrows, and latching Ctrl and Alt, with function keys, paging keys, and shell punctuation behind one more tap.
+- Mention a running agent Operation with @ in Quick Launch and the prompt goes straight to that Operation's terminal instead of starting a new one. A dormant Operation is resumed first, and the composer stays where you are after sending.
+
+#### Changed
+- Name the model an Operation is actually running in the command band and its Operation menu, so a breadcrumb reads GPT-5.6-Sol-Fast or Opus instead of the launcher it went through.
+- Rebuilt the Cowork dock's agent settings as a single-layer model menu: each model row carries a reasoning-effort handle that opens the same effort track the launch menu uses, the chip now reflects both the model and the chosen effort, and Cowork offers the low/medium/high tiers that fit document co-editing.
+- Recast the Cowork model lineup to opus[1m], sonnet, and haiku - fable is no longer offered for document co-editing - and stopped the instruction input from triggering the browser's autofill suggestions.
+- The right rail panel header no longer occupies a resident row; it now reveals as an overlay when the pointer approaches the panel top (or via keyboard focus and a top-edge tap on touch), returning its full height to panel content, and Escape inside the revealed header closes the panel.
+- A console keeps one remote connection at a time and hands that seat to the device that joined last, instead of turning a device away because another one is still connected. The device that had the seat is disconnected and told that another device connected, rather than that its control was taken back, and it keeps its pairing, so it takes the seat back by simply joining again. Nothing changes on the machine itself: the same notice names whoever is connected and still offers to take control back or keep watching.
+
+#### Fixed
+- Return an Agent Operation to running as soon as you answer its question in the terminal, instead of leaving it marked as waiting for input until the turn ends.
+- Read an Operation as running background work once its turn has ended, so subagents and workflows that outlive the turn no longer read as a running turn.
+- Show the terminal at full height on a phone; an open session had collapsed to a sliver above empty space.
+
 ## [1.56.0] - 2026-08-12
 
 ### fleet-console
