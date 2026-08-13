@@ -5,6 +5,42 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.58.0] - 2026-08-13
+
+### fleet-cli
+
+#### Added
+- Added Grok 4.6 through the official Grok CLI subscription, reusing its local sign-in without API keys or a Fleet-managed OAuth flow, matching the CLI proxy's client contract, and rejecting incomplete tool calls before they can appear as running work.
+
+#### Changed
+- Gateway models other than Claude and Kimi no longer receive Claude Code's Web Search tool, so those models stop attempting a search they cannot run.
+
+### fleet-console
+
+#### Added
+- Added Grok 4.6 gateway routing, weekly subscription quota, and the official Grok product mark across launch, settings, and quota surfaces.
+- Reconcile the Ledger hero with device-wide spend: an attribution bridge under the summary splits the window's cost into Console-attributed operations and other local sessions, with the device-wide total named in the same block.
+- Keep Operations visible in Ledger when their saved session has no matched usage in the window: they render as dimmed ghost rows with a matched/unmatched coverage line, and the operation list gains a recent-activity / highest-cost sort toggle.
+- Read the Ledger daily trend past one peak day: a square-root scale toggle keeps small days readable, and a bright layer inside each bar marks the cost attributed to this scope's Console operations on the same day axis as the totals.
+- Close an Operation from the mobile session title with the same two-tap arm and undo window as the desktop frame.
+- Pin Quick Launch to the bottom of the screen so you can write an instruction while the work stays visible. The docked bar recedes into a single line carrying your draft when you look away, and returns when you focus it or press the Quick Launch shortcut. Settings folds the bar away and brings it back when you leave. Opening the composer for the first time points out the pin.
+- Reorder provider cards in the usage limits panel by dragging their grip: cards collapse into single rows while dragging so every drop target stays visible, the order persists across sessions, and the grip also moves cards with the arrow keys.
+
+#### Changed
+- Move the provider glyph onto the Command Band Operation name and drop the trailing model chip. The mark sits to the left of the name the way the sidebar chip already does; which model is running stays in the Operation switcher list.
+- The codex workspace agent menu now opens the effort track to the right of the model rows first, falling back to the left only when the right side lacks room.
+- Gateway models other than Claude and Kimi no longer receive Claude Code's Web Search tool, so those models stop attempting a search they cannot run.
+- Quick Launch picker menus now follow the standard menu keyboard grammar: opening a picker focuses the current choice, arrow keys and Home/End move through the list, typing a letter jumps to a matching entry, Enter picks and returns to the prompt, and Escape returns to the chip.
+- The usage limits panel now shows a proper loading state that explains provider usage is being read, instead of a bare "..." while the first summary loads.
+- Quick Launch still puts the original prompt on the Claude argv on POSIX, and on Windows when that prompt is short enough and has no cmd.exe metacharacters. On Windows, Fleet writes the original prompt to a unique OS temp file per launch and the session receives only a short instruction to read that file when the prompt contains a character cmd.exe would reinterpret (" & < > ( ) @ ^ | %), or when the command line would overflow (8,191 characters through a cmd shim, 32,767 through native claude.exe). Trust folder and update dialogs still complete before the first user turn. The Operation title still comes from the original prompt, not from a file instruction.
+
+#### Fixed
+- The focus ring on the Theater and model chips draws as a complete ring instead of two clipped side arcs.
+- Closing Quick Launch with Escape no longer discards a typed prompt; reopening restores the draft.
+
+#### Removed
+- Drop the War Room bottom rail. The sidebar already keeps the waiting order, so two places announced the same backlog and split your attention across the screen. Setting an item aside and pushing it to the back are unchanged.
+
 ## [1.57.2] - 2026-08-13
 
 ### fleet-cli
