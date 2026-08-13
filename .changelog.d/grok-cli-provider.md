@@ -4,8 +4,8 @@ branch: grok-cli-provider
 
 ### fleet-cli
 #### Added
-- Added Grok 4.6 through the official Grok CLI subscription, reusing its local sign-in without API keys or a Fleet-managed OAuth flow and matching the CLI proxy's client contract.
-  ko: API key나 Fleet 관리 OAuth 흐름 없이 공식 Grok CLI의 로컬 로그인을 재사용하고 CLI proxy의 client 계약을 준수하는 Grok 4.6 지원을 추가했습니다.
+- Added Grok 4.6 through the official Grok CLI subscription, reusing its local sign-in without API keys or a Fleet-managed OAuth flow, matching the CLI proxy's client contract, and rejecting incomplete tool calls before they can appear as running work.
+  ko: API key나 Fleet 관리 OAuth 흐름 없이 공식 Grok CLI의 로컬 로그인을 재사용하고 CLI proxy의 client 계약을 준수하며, 불완전한 도구 호출이 실행 중인 작업으로 나타나기 전에 거부하는 Grok 4.6 지원을 추가했습니다.
 
 ### fleet-console
 #### Added

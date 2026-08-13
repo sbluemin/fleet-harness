@@ -26,6 +26,7 @@ export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/respons
 export const XAI_CLI_CLIENT_VERSION = "1.0.3";
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
+export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
 
 /**
  * Grok CLI's Responses wire accepts the canonical OpenAI-shaped request after
@@ -46,6 +47,7 @@ export interface XaiResponsesAdapterOptions {
   fetch?: FetchLike;
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
+  functionCallTimeoutMs?: number;
   /** 구독 경로가 요구하는 추가 헤더. */
   headers?: Readonly<Record<string, string>>;
 }
@@ -55,6 +57,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
+  private readonly functionCallTimeoutMs: number;
   private readonly url: string;
   private readonly extraHeaders: Readonly<Record<string, string>>;
 
@@ -71,6 +74,10 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     this.idleTimeoutMs = positiveInteger(
       options.idleTimeoutMs ?? DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS,
       "idleTimeoutMs"
+    );
+    this.functionCallTimeoutMs = positiveInteger(
+      options.functionCallTimeoutMs ?? DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS,
+      "functionCallTimeoutMs"
     );
   }
 
@@ -140,7 +147,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
         onClose: unlinkAbort
-      })
+      }, this.functionCallTimeoutMs)
     };
   }
 }
@@ -169,13 +176,162 @@ type ReadOptions = UpstreamReadOptions;
 
 function parseXaiEventStream(
   body: ReadableStream<Uint8Array> | null,
-  options: ReadOptions & { onClose: () => void }
+  options: ReadOptions & { onClose: () => void },
+  functionCallTimeoutMs: number
 ): AsyncGenerator<CanonicalResponseEvent> {
-  return parseUpstreamSseStream(
-    body,
-    { ...options, missingBodyMessage: "Grok CLI streaming response had no body" },
-    parseEventFrame,
+  return assembleXaiFunctionCalls(
+    parseUpstreamSseStream(
+      body,
+      { ...options, missingBodyMessage: "Grok CLI streaming response had no body" },
+      parseEventFrame,
+    ),
+    options.controller,
+    functionCallTimeoutMs,
   );
+}
+
+interface PendingXaiFunctionCall {
+  readonly added: Extract<CanonicalResponseEvent, { type: "response.output_item.added" }>;
+  readonly deadlineAt: number;
+  argumentsDone?: Extract<CanonicalResponseEvent, { type: "response.function_call_arguments.done" }>;
+}
+
+async function* assembleXaiFunctionCalls(
+  source: AsyncIterable<CanonicalResponseEvent>,
+  controller: AbortController,
+  timeoutMs: number,
+): AsyncGenerator<CanonicalResponseEvent> {
+  const iterator = source[Symbol.asyncIterator]();
+  const pending = new Map<string, PendingXaiFunctionCall>();
+  let completedNormally = false;
+  try {
+    while (true) {
+      const deadlineAt = earliestXaiFunctionCallDeadline(pending);
+      const result = deadlineAt === undefined
+        ? await iterator.next()
+        : await nextXaiEventBeforeDeadline(iterator, deadlineAt, controller, timeoutMs);
+      if (result.done) {
+        if (pending.size > 0) {
+          throw incompleteXaiFunctionCall("stream ended before function call output_item.done");
+        }
+        completedNormally = true;
+        return;
+      }
+
+      const event = result.value;
+      if (event.type === "response.completed" && pending.size > 0) {
+        throw incompleteXaiFunctionCall("response.completed arrived before function call output_item.done");
+      }
+      if (event.type === "response.output_item.added" && event.item.type === "function_call") {
+        const key = xaiFunctionCallKey(event.output_index, event.item.id);
+        pending.set(key, {
+          added: event,
+          // Each call gets a full timeout from its own added event. Waiting uses the
+          // earliest active deadline, so a later parallel call is never shortened by
+          // an earlier call's age.
+          deadlineAt: Date.now() + timeoutMs,
+        });
+        continue;
+      }
+      if (event.type === "response.function_call_arguments.done") {
+        const call = pending.get(xaiFunctionCallKey(event.output_index, event.item_id));
+        if (call !== undefined) {
+          call.argumentsDone = event;
+          continue;
+        }
+      }
+      if (event.type === "response.output_item.done" && event.item.type === "function_call") {
+        const key = xaiFunctionCallKey(event.output_index, event.item.id);
+        const call = pending.get(key);
+        if (call !== undefined) {
+          pending.delete(key);
+          yield call.added;
+          if (call.argumentsDone !== undefined) {
+            yield call.argumentsDone;
+          } else if (event.item.arguments.length > 0) {
+            yield {
+              type: "response.function_call_arguments.done",
+              item_id: event.item.id,
+              output_index: event.output_index,
+              arguments: event.item.arguments,
+            };
+          }
+          yield event;
+          continue;
+        }
+      }
+      yield event;
+    }
+  } finally {
+    // A normal source completion must retain the existing lifecycle: the caller's
+    // signal is not aborted just because the response ended successfully. On an
+    // error or early consumer return, abort first so any pending upstream read is
+    // released before returning the iterator.
+    if (!completedNormally && !controller.signal.aborted) {
+      controller.abort();
+    }
+    const returned = iterator.return?.();
+    if (returned !== undefined) {
+      await returned.catch(() => undefined);
+    }
+  }
+}
+
+function earliestXaiFunctionCallDeadline(
+  pending: ReadonlyMap<string, PendingXaiFunctionCall>,
+): number | undefined {
+  let earliest: number | undefined;
+  for (const call of pending.values()) {
+    if (earliest === undefined || call.deadlineAt < earliest) {
+      earliest = call.deadlineAt;
+    }
+  }
+  return earliest;
+}
+
+async function nextXaiEventBeforeDeadline(
+  iterator: AsyncIterator<CanonicalResponseEvent>,
+  deadlineAt: number,
+  controller: AbortController,
+  timeoutMs: number,
+): Promise<IteratorResult<CanonicalResponseEvent>> {
+  const remainingMs = deadlineAt - Date.now();
+  if (remainingMs <= 0) {
+    const error = incompleteXaiFunctionCall(`function call assembly exceeded ${timeoutMs}ms`);
+    controller.abort(error);
+    throw error;
+  }
+
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const next = iterator.next();
+  // A timeout wins the race by design, but aborting the upstream reader rejects
+  // this losing read shortly afterwards. Consume that rejection so timeout
+  // cleanup never leaks an unhandled promise.
+  void next.catch(() => undefined);
+  try {
+    return await Promise.race([
+      next,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(() => {
+          const error = incompleteXaiFunctionCall(`function call assembly exceeded ${timeoutMs}ms`);
+          controller.abort(error);
+          reject(error);
+        }, remainingMs);
+      }),
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      clearTimeout(timeout);
+    }
+  }
+}
+
+function incompleteXaiFunctionCall(reason: string): UpstreamProtocolError {
+  return new UpstreamProtocolError(`Grok CLI ${reason}`);
+}
+
+function xaiFunctionCallKey(outputIndex: number, itemId: string): string {
+  return `${outputIndex}:${itemId}`;
 }
 
 function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
