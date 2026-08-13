@@ -164,11 +164,20 @@ function BridgeSection({ data, t }: { readonly data: LedgerSummaryDto; readonly 
   const share = attributionShare(attributed, deviceWide);
   const otherTheaterShare = attributionShare(otherTheater, deviceWide);
   const other = Math.max(0, deviceWide - attributed - otherTheater);
-  const aria = t("ledger.bridge.aria", {
-    attributed: formatCost(attributed),
-    share: formatShare(share),
-    other: formatCost(Math.max(0, deviceWide - attributed)),
-  });
+  // ARIA 라벨도 시각 범례와 같은 버킷으로 말한다 — otherTheater를 "기타 로컬 세션"에 합산하면
+  // 스크린리더 사용자에게 모순된 2버킷 설명이 된다.
+  const aria = otherTheater > 0
+    ? t("ledger.bridge.ariaTheater", {
+      attributed: formatCost(attributed),
+      share: formatShare(share),
+      otherTheater: formatCost(otherTheater),
+      other: formatCost(other),
+    })
+    : t("ledger.bridge.aria", {
+      attributed: formatCost(attributed),
+      share: formatShare(share),
+      other: formatCost(other),
+    });
   return (
     <div className="ledger-bridge">
       <div className="ledger-bridge-bar" role="img" aria-label={aria}>

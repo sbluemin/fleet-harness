@@ -424,6 +424,11 @@ describe("Ledger bridge share boundaries and buckets", () => {
     expect(bridgeText()).toContain("Other local sessions");
     expect(bridgeText()).toContain("$2.00");
     expect(container.querySelector(".ledger-bridge-other-theater")).not.toBeNull();
+    // ARIA 라벨도 3버킷을 그대로 말해야 한다(시각 범례와 모순 금지).
+    const aria = container.querySelector(".ledger-bridge-bar")?.getAttribute("aria-label") ?? "";
+    expect(aria).toContain("this Theater's operations");
+    expect(aria).toContain("$3.00 to other theaters' operations");
+    expect(aria).toContain("$2.00 to other local sessions");
   });
 
   it("hides the other-theater bucket in all-theaters scope even if the payload carries one", async () => {
