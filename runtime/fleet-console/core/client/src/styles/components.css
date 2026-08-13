@@ -12057,6 +12057,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   flex-wrap: wrap;
   gap: var(--space-2);
   overflow: hidden;
+  /* 접힘 클립이 전역 포커스 링(2px + offset 2px = 4px 돌출)을 자르면 칩의 링이 좌우 호 두 개로
+     남는다(실측). padding+음수 margin 짝은 콘텐츠 원점과 이웃 간격을 그대로 둔 채 클립 상자만
+     5px 부풀리는 레이아웃 중립 확장이다. */
+  padding: 5px;
+  margin: -5px;
   max-width: min(640px, 100%);
   opacity: 1;
   transition:
@@ -12069,6 +12074,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   /* 접힐 때는 줄바꿈을 되돌린다 — 폭이 0으로 줄면 컨트롤이 저마다 줄을 차지해, 보이지 않는 채로
      바 높이만 부풀린다(visibility: hidden은 레이아웃에서 빠지지 않는다). */
   flex-wrap: nowrap;
+  /* 링용 수평 여백은 접힘에서 0이 된다 — 남기면 max-width: 0이어도 10px 유령 폭이 바에 남는다. */
+  padding-inline: 0;
+  margin-inline: 0;
   max-width: 0;
   opacity: 0;
   visibility: hidden;
