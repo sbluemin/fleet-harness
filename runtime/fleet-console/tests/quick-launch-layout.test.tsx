@@ -60,6 +60,80 @@ describe("Quick Launch composer layout", () => {
   });
 });
 
+describe("Quick Launch docking", () => {
+  it("moves by transform so the dock interpolates and the bottom edge holds while it collapses", () => {
+    // place-items를 바꾸면 보간되지 않아 카드가 튄다. translateY의 50%는 카드 자기 높이라
+    // 접혀 높이가 줄어도 아래 모서리는 제자리에 남는다.
+    expect(ruleFor(".quick-launch-card.is-pinned")).toMatch(/transform:\s*translateY\(calc\(50vh - var\(--space-4\) - 50%\)\);/u);
+    expect(ruleFor(".quick-launch-card")).toMatch(/transform var\(--duration-slow\) var\(--ease-spring\)/u);
+  });
+
+  it("releases the modal contract while docked so the screen behind stays usable", () => {
+    expect(quickLaunch).toMatch(/aria-modal=\{pinned \? undefined : true\}/u);
+    // 스크롤 잠금·포커스 탈취·Tab 가둠은 모두 모달 전용이다(고정 중에는 뒤 화면을 계속 쓴다).
+    expect(quickLaunch).toMatch(/if \(!open \|\| pinned\) return;/u);
+    expect(quickLaunch).toMatch(/document\.addEventListener\("keydown", onKeyDown, true\);/u);
+    expect(ruleFor(".quick-launch-overlay.is-pinned")).toMatch(/pointer-events:\s*none;/u);
+    expect(ruleFor(".quick-launch-card.is-pinned")).toMatch(/pointer-events:\s*auto;/u);
+  });
+
+  it("renders the pin only where it can be pressed, so its presence is the tour's gate", () => {
+    // 물러난 바의 컨트롤은 높이 0 + inert다 — 버튼을 남기면 안내가 가리킬 것 없는 자리를 짚고,
+    // 상태 클래스로 앵커를 거르면 옵저버가 class를 보지 않아 펼친 뒤에도 다시 서지 않는다.
+    expect(quickLaunch).toMatch(/\{dockSuppressed \|\| showStrip \? null : \(/u);
+  });
+
+  it("folds the mention deck away when the dock loses focus", () => {
+    // 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남기면 물러난 바 위로 목록이 떠서
+    // 도킹이 되돌려 준 화면을 도로 가린다.
+    expect(quickLaunch).toMatch(/setPopover\(null\);[\s\S]{0,220}setMentionToken\(null\);[\s\S]{0,40}setCollapsed\(true\);/u);
+  });
+
+  it("reads the pin state when an async submission settles, not when it was dispatched", () => {
+    // 멘션 전달 중에 고정을 풀면, 넘길 때 닫아 둔 값으로는 모달을 닫지 못해 빈 대화가 남는다.
+    expect(quickLaunch).toMatch(/if \(!isQuickLaunchDocked\(\)\) \{/u);
+  });
+
+  it("keeps a tour card that points into the composer inside its focus scope", () => {
+    // 안내 카드는 스스로 포커스를 가져가지 않고 컴포저 밖에 렌더된다 — 트랩이 카드를 빼면 키보드로는
+    // 안내를 닫을 수 없고, 카드에만 핸들러를 걸면 카드에서 나가는 Tab이 모달 뒤로 샌다.
+    expect(quickLaunch).toMatch(/FEATURE_TOUR_LAYER_SELECTOR/u);
+    expect(quickLaunch).toMatch(/const scopes = \[card, \.\.\.Array\.from\(document\.querySelectorAll<HTMLElement>\(FEATURE_TOUR_LAYER_SELECTOR\)\)\];/u);
+  });
+
+  it("collapses and recedes as one state, and holds both back while a message is showing", () => {
+    expect(ruleFor(".quick-launch-card.is-pinned.is-collapsed")).toMatch(/opacity:\s*var\(--quick-launch-idle-opacity\);/u);
+    // 접힘은 펼친 높이를 선언한 기저 규칙과 특정도가 같으면 조용히 진다 — .is-pinned를 함께 물어야
+    // 이긴다(실브라우저에서 max-height가 320px로 남는 회귀로 확인된 계약).
+    expect(ruleFor(".quick-launch-card.is-pinned.is-collapsed .quick-launch-field")).toMatch(/max-height:\s*0;/u);
+    expect(css).not.toMatch(/^\.quick-launch-card\.is-collapsed \.quick-launch-(?:field|bar),?$/mu);
+    expect(quickLaunch).toMatch(/const showStrip = pinned && collapsed && !holdsMessage;/u);
+    expect(quickLaunch).toMatch(/rejectionKey !== null \|\| mentionErrorKey !== null \|\| overLimit/u);
+  });
+
+  it("keeps the collapsed controls out of the tab order", () => {
+    // max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다 — 멘션 접힘과 같은 inert 계약.
+    expect(quickLaunch).toMatch(/className="quick-launch-field" inert=\{showStrip \|\| undefined\}/u);
+    expect(quickLaunch).toMatch(/className="quick-launch-bar" ref=\{barRef\} inert=\{showStrip \|\| undefined\}/u);
+  });
+
+  it("opens the docked popover upward and never clips it away", () => {
+    expect(ruleFor(".quick-launch-card.is-pinned .quick-launch-pop")).toMatch(/bottom:\s*calc\(100% \+ var\(--space-2\)\);/u);
+    expect(quickLaunch).toMatch(/bar\.getBoundingClientRect\(\)\.top - safePadding/u);
+    // 접힘은 자르기를 요구하지만 팝오버는 바 밖으로 서는 바의 자식이다 — 열린 동안에는 놓는다.
+    expect(css).toMatch(/\.quick-launch-card\.is-pinned:not\(\.has-popover\) \.quick-launch-bar \{[^}]*overflow:\s*hidden;/u);
+  });
+
+  it("leaves one control behind when collapsed, carrying the draft it would otherwise hide", () => {
+    expect(quickLaunch).toMatch(/className="quick-launch-strip"/u);
+    // 접힌 줄의 빈 상태는 컴포저 플레이스홀더와 같은 초대 문구다 — 키를 나누면 둘이 어긋난다.
+    expect(quickLaunch).toMatch(/draftTrace\.length === 0 \? t\("chrome\.quickLaunch\.placeholder"\) : draftTrace/u);
+    // 펼친 동안에는 접근성 트리와 탭 순서 어디에도 없어야 한다.
+    expect(ruleFor(".quick-launch-strip")).toMatch(/display:\s*none;/u);
+    expect(ruleFor(".quick-launch-card.is-collapsed .quick-launch-strip")).toMatch(/display:\s*flex;/u);
+  });
+});
+
 describe("Quick Launch effort surface", () => {
   it("carries effort on the bar, not in a submenu the model list has to open", () => {
     // 강도가 팝오버 밖으로 나오면서 서브메뉴 표면 자체가 사라졌다 — 겹칠 상자가 없다.

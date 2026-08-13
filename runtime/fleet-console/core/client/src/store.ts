@@ -2,6 +2,7 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { readQuickLaunchSelection, writeQuickLaunchPinned } from "./quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
 import { acknowledgeIdleArrival } from "./operation-idle-arrival.js";
 import { uiFontFamily } from "./ui-font.js";
@@ -80,6 +81,10 @@ let state: ConsoleState = {
   operationSearchOpen: false,
   operationSearchSeed: null,
   quickLaunchOpen: false,
+  quickLaunchPinned: readQuickLaunchSelection().pinned,
+  quickLaunchFocusToggle: 0,
+  quickLaunchExpandRequest: 0,
+  quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchError: null,
   quickLaunchErrorShortenBy: null,
@@ -584,6 +589,17 @@ export function toggleOperationSearch(): void {
 }
 
 export function openQuickLaunch(): void {
+  // 고정된 컴포저는 이미 떠 있다 — 여는 대신 펼쳐 포커스한다. 열림 플래그를 참으로 올려 두면
+  // 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서 모달로 되살아나고 열림을 보고 자기를
+  // 억제하는 What's New가 영영 뜨지 않는다(setQuickLaunchPinned가 막는 것과 같은 경로).
+  if (isQuickLaunchDocked()) {
+    setState({
+      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
+      quickLaunchError: null,
+      quickLaunchErrorShortenBy: null,
+    });
+    return;
+  }
   setState({ quickLaunchOpen: true, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
@@ -601,8 +617,44 @@ export function closeQuickLaunch(): void {
   setState({ quickLaunchOpen: false, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
+/**
+ * 거절 사유만 내린다. 모달은 닫히면서 사유를 함께 버리지만, 고정된 컴포저는 닫히지 않으므로
+ * 성공한 재시도 뒤에도 지난 거절이 바에 남아 — 사유가 붙어 있는 동안 접히지도 않는다.
+ */
+export function clearQuickLaunchRejection(): void {
+  if (state.quickLaunchError === null && state.quickLaunchErrorShortenBy === null) return;
+  setState({ quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
 export function toggleQuickLaunch(): void {
+  // 고정 중에는 컴포저가 상주하므로 Mod+J가 여닫을 것이 없다 — 대신 포커스를 왕복시킨다
+  // (펼쳐 두고 쓰다가 같은 키로 물러나게 하는 것이 이 단축키의 고정판 계약).
+  // 도킹이 접힌 화면에서는 상주하는 바가 없으므로 예전처럼 모달로 여닫는다.
+  if (isQuickLaunchDocked()) {
+    setState({ quickLaunchFocusToggle: state.quickLaunchFocusToggle + 1 });
+    return;
+  }
   setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
+/** 고정이 켜져 있고, 지금 화면이 그 도킹을 접어 두지 않았을 때만 참이다. */
+export function isQuickLaunchDocked(): boolean {
+  return state.quickLaunchPinned && !state.quickLaunchDockSuppressed;
+}
+
+export function setQuickLaunchDockSuppressed(suppressed: boolean): void {
+  if (state.quickLaunchDockSuppressed === suppressed) return;
+  setState({ quickLaunchDockSuppressed: suppressed });
+}
+
+export function setQuickLaunchPinned(pinned: boolean): void {
+  if (state.quickLaunchPinned === pinned) return;
+  writeQuickLaunchPinned(pinned);
+  // 고정을 풀면 그 자리에서 계속 쓰던 컴포저가 모달로 돌아온다 — 닫아 버리면 되돌리기가 아니라
+  // 취소가 된다. 반대로 고정을 켤 때는 모달 열림을 반드시 내린다: 고정된 컴포저는 배치가 존재를
+  // 결정하므로 이 값이 참으로 남으면 도킹을 접어 둔 화면(설정)에서 컴포저가 모달로 되살아나고,
+  // 열림을 보고 자기를 억제하는 What's New가 영영 뜨지 않는다.
+  setState({ quickLaunchOpen: !pinned, quickLaunchPinned: pinned });
 }
 
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,

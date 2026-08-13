@@ -7,9 +7,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
-import { getState, removeTheater, setState } from "../core/client/src/store.js";
+import { clearQuickLaunchRejection, getState, isQuickLaunchDocked, openQuickLaunch, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
@@ -155,12 +155,12 @@ describe("quick launch preferences", () => {
   });
 
   it("round-trips the last selection", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
   });
 
   it("updates model and effort without replacing the last launched Theater", () => {
-    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high" });
+    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true });
 
     writeQuickLaunchModelEffort("codex--gpt-5.6-luna-fast", "max");
 
@@ -168,6 +168,7 @@ describe("quick launch preferences", () => {
       theaterId: "launched",
       model: "codex--gpt-5.6-luna-fast",
       effort: "max",
+      pinned: true,
     });
   });
 
@@ -176,26 +177,137 @@ describe("quick launch preferences", () => {
       "fleet-console.quickLaunch.selection",
       JSON.stringify({ theaterId: "t1", model: "opus", effort: "high" }),
     );
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
     expect(JSON.parse(window.localStorage.getItem("fleet-console.quickLaunch.selection")!)).toEqual({
       theaterId: "t1",
       model: "opus[1m]",
       effort: "high",
+      pinned: false,
     });
   });
 
   it("reads an empty selection when nothing was stored", () => {
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
   });
 
   it("treats a corrupt entry as no memory rather than throwing", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", "{not json");
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
   });
 
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false });
+  });
+
+  it("treats any non-true pin value as unpinned rather than trusting it", () => {
+    window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ pinned: "yes" }));
+    expect(readQuickLaunchSelection().pinned).toBe(false);
+  });
+});
+
+describe("quick launch pin", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0, quickLaunchExpandRequest: 0, quickLaunchDockSuppressed: false, quickLaunchError: null, quickLaunchErrorShortenBy: null, quickLaunchDraft: null });
+  });
+
+  it("remembers the pin beside the launch coordinates instead of replacing them", () => {
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
+
+    writeQuickLaunchPinned(true);
+
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true });
+  });
+
+  // 고정 중에는 여닫을 것이 없다 — 같은 키가 포커스를 왕복시킨다.
+  it("turns Mod+J into a focus toggle while pinned instead of closing the composer", () => {
+    setQuickLaunchPinned(true);
+
+    toggleQuickLaunch();
+
+    // 고정 중에는 열림 플래그가 아니라 도킹이 이 표면의 존재를 결정한다.
+    expect(isQuickLaunchDocked()).toBe(true);
+    expect(getState().quickLaunchFocusToggle).toBe(1);
+  });
+
+  it("still opens and closes the composer when it is not pinned", () => {
+    toggleQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchFocusToggle).toBe(0);
+
+    toggleQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(false);
+  });
+
+  // 되돌리기가 취소가 되면 안 된다 — 고정을 풀면 쓰던 컴포저가 모달로 돌아올 뿐이다.
+  it("keeps the composer open when the pin is released", () => {
+    setQuickLaunchPinned(true);
+
+    setQuickLaunchPinned(false);
+
+    expect(getState().quickLaunchPinned).toBe(false);
+    expect(getState().quickLaunchOpen).toBe(true);
+  });
+
+  it("persists the pin so a reload restores the docked bar", () => {
+    setQuickLaunchPinned(true);
+
+    expect(readQuickLaunchSelection().pinned).toBe(true);
+  });
+
+  // 고정된 컴포저는 배치가 존재를 결정한다 — 모달 열림이 남으면 도킹을 접어 둔 화면에서 컴포저가
+  // 모달로 되살아나고, 열림을 보고 자기를 억제하는 What's New가 영영 뜨지 않는다.
+  it("lowers the modal-open flag when the pin goes on, and raises it again when it comes off", () => {
+    openQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(true);
+
+    setQuickLaunchPinned(true);
+    expect(getState().quickLaunchOpen).toBe(false);
+
+    setQuickLaunchPinned(false);
+    expect(getState().quickLaunchOpen).toBe(true);
+  });
+
+  it("keeps the composer off screens that fold the dock away, even right after pinning", () => {
+    openQuickLaunch();
+    setQuickLaunchPinned(true);
+    setQuickLaunchDockSuppressed(true);
+
+    // 화면이 그리는 조건과 같은 식: state.quickLaunchOpen || (pinned && !dockSuppressed)
+    expect(getState().quickLaunchOpen || isQuickLaunchDocked()).toBe(false);
+  });
+
+  // 열림 플래그를 참으로 올려 두면 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서
+  // 모달로 되살아나고 What's New가 억제된다 — 명시적인 열기도 그 함정을 밟으면 안 된다.
+  it("routes an explicit open to the dock instead of raising the modal-open flag", () => {
+    setQuickLaunchPinned(true);
+    const before = getState().quickLaunchExpandRequest;
+
+    openQuickLaunch();
+
+    expect(getState().quickLaunchOpen).toBe(false);
+    expect(getState().quickLaunchExpandRequest).toBe(before + 1);
+  });
+
+  it("still opens the modal composer when nothing is docked", () => {
+    openQuickLaunch();
+
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchExpandRequest).toBe(0);
+  });
+
+  // 모달은 닫히며 사유를 버리지만 고정된 바는 닫히지 않는다 — 성공한 재시도 위에 옛 실패가 남으면
+  // 발사된 지시가 실패한 것처럼 읽히고, 사유가 붙어 있는 동안 바가 접히지도 않는다.
+  it("clears a stale rejection without closing the composer", () => {
+    reopenQuickLaunchWithDraft("draft", "errorGeneric", 12);
+    setQuickLaunchPinned(true);
+
+    clearQuickLaunchRejection();
+
+    expect(getState().quickLaunchError).toBeNull();
+    expect(getState().quickLaunchErrorShortenBy).toBeNull();
+    expect(getState().quickLaunchPinned).toBe(true);
   });
 });
 

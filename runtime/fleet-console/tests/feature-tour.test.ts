@@ -54,6 +54,7 @@ describe("feature tour", () => {
   it("ships one walkthrough per reworked screen, and a spotlight only where the screen cannot carry one", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
+      "quick-launch-pin",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
@@ -144,23 +145,53 @@ describe("feature tour", () => {
     expect(presentation?.phase).toBe("walkthrough");
   });
 
-  it("anchors the War Room walkthrough on the rail, so an empty queue still teaches the mode", () => {
+  it("lets a dialog carry the tour that points inside it, and blocks the ones that do not", () => {
+    // 사용자가 직접 연 표면에서 그 표면의 컨트롤을 짚는 것은 이 게이트가 막으려던 상황이 아니다.
+    document.body.innerHTML = [
+      '<div class="command-band-mode-switch"></div>',
+      '<section aria-modal="true" class="quick-launch-card">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+
+    const inside = resolveNextFeatureTour(FEATURE_TOURS, [], document);
+    expect(inside?.tour.id).toBe("quick-launch-pin");
+    // 같은 모달이 떠 있는 동안 그 밖을 가리키는 안내(모드 스위치)는 여전히 막힌다.
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document)).toBeNull();
+  });
+
+  it("gates the pin tour on the button existing, not on a state class the observer cannot see", () => {
+    // 물러난 바는 이 버튼을 렌더하지 않는다. 상태 클래스로 걸러내면 옵저버가 class를 보지 않아
+    // (투어 자신이 앵커에 클래스를 붙였다 떼므로 볼 수도 없다) 펼친 뒤에도 안내가 다시 서지 않는다.
+    const step = FEATURE_TOURS.find((tour) => tour.id === "quick-launch-pin")?.walkthrough[0];
+    expect(step?.anchor).toBe(".quick-launch-pin");
+
+    document.body.innerHTML = '<section class="quick-launch-card is-pinned is-collapsed"></section>';
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)).toBeNull();
+
+    document.body.innerHTML = [
+      '<section class="quick-launch-card is-pinned">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)?.tour.id).toBe("quick-launch-pin");
+  });
+
+  it("anchors the War Room walkthrough on its own tool tray, so an empty screen still teaches the mode", () => {
     const warRoom = FEATURE_TOURS.find((tour) => tour.id === "war-room");
-    // 활성화 스텝(첫 non-null 앵커)이 무대면 대기 0건 진입에서 투어 전체가 조용히 사라진다.
-    expect(warRoom?.walkthrough[0]?.anchor).toBe(".canvas-triage-rail");
+    // 활성화 스텝(첫 non-null 앵커)은 War Room에서 항상 있으면서 War Room에서만 있어야 한다. 무대는
+    // 대기 건이, 덱은 살아 있는 Operation이 있어야 서고, 모드 스위치는 다른 모드에도 있어 조기 발화한다.
+    expect(warRoom?.walkthrough[0]?.anchor).toBe('[data-war-room-tool="density"]');
     expect(warRoom?.walkthrough.map((step) => step.anchor)).toEqual([
-      ".canvas-triage-rail",
+      '[data-war-room-tool="density"]',
       ".canvas-operation.is-triage-stage",
       ".canvas-triage-deck",
-      '[data-war-room-tool="density"]',
       '[data-war-room-tool="spotlight"]',
-      ".command-band-mode-switch",
     ]);
   });
 
   it("keeps the War Room walkthrough on an empty queue, minus the stage step", () => {
     document.body.innerHTML = [
-      '<aside class="canvas-triage-rail"></aside>',
       '<section class="canvas-triage-deck"></section>',
       '<button data-war-room-tool="density"></button>',
       '<button data-war-room-tool="spotlight"></button>',
@@ -170,7 +201,20 @@ describe("feature tour", () => {
     const presentation = resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document);
     expect(presentation?.tour.id).toBe("war-room");
     expect(presentation?.steps.map((step) => step.anchor)).not.toContain(".canvas-operation.is-triage-stage");
-    expect(presentation?.steps).toHaveLength(5);
+    expect(presentation?.steps).toHaveLength(3);
+  });
+
+  // 작전이 하나도 없으면 덱도 서지 않는다 — 그때도 투어는 살아 있어야 한다.
+  it("still teaches War Room when nothing is on screen but the chrome", () => {
+    document.body.innerHTML = [
+      '<button data-war-room-tool="density"></button>',
+      '<button data-war-room-tool="spotlight"></button>',
+      '<div class="command-band-mode-switch"></div>',
+    ].join("");
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document);
+    expect(presentation?.tour.id).toBe("war-room");
+    expect(presentation?.steps[0]?.anchor).toBe('[data-war-room-tool="density"]');
   });
 
   it("holds the sidebar walkthrough back until an item is actually waiting", () => {
@@ -219,7 +263,7 @@ describe("feature tour", () => {
   it("releases the deferred walkthrough once the completed tour's screen is gone", () => {
     // 오버레이는 라우트 밖에 한 번만 마운트되므로 "이 마운트에서 끝냈다"로 재면 War Room을 오가도
     // 값이 그대로다 — 판정은 끝낸 투어의 화면이 아직 보이는지로 해야 다음 방문에 뜬다.
-    document.body.innerHTML = '<aside class="canvas-triage-rail"></aside>';
+    document.body.innerHTML = '<button data-war-room-tool="density"></button>';
     expect(isCompletedTourScreenVisible("war-room", FEATURE_TOURS, document)).toBe(true);
 
     document.body.innerHTML = '<div class="command-band-mode-switch"></div>';
@@ -273,7 +317,7 @@ describe("feature tour", () => {
     ].join("");
 
     expect(resolveNextFeatureTour(FEATURE_TOURS, [], document)?.tour.id).toBe("canvas-modes");
-    // 모드 스위치만 보이는 화면은 War Room이 아니다 — 대기 레일이 그 경계를 판정한다.
+    // 모드 스위치만 보이는 화면은 War Room이 아니다 — War Room 전용 도구 트레이가 그 경계를 판정한다.
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)).toBeNull();
   });
 

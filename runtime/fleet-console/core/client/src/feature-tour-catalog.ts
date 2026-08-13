@@ -38,13 +38,31 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     ],
   },
   {
-    id: "war-room",
-    // 활성화 앵커는 War Room에 들어가면 항상 있는 대기 레일이다 — 무대를 앞에 두면 대기 건이
-    // 없는 진입에서 투어 전체가 조용히 사라진다. 무대 스텝은 있을 때만 재생된다.
+    id: "quick-launch-pin",
+    // 컴포저를 직접 연 순간에만 뜬다 — 고정 버튼은 그 안에만 있고, 그 자리에서 짚어야 닿는다.
+    // 컴포저가 이 버튼을 누를 수 있을 때만 렌더하므로 존재가 곧 판정이다. 상태 클래스로 걸러내면
+    // 안 되는데, 옵저버가 class를 보지 않아(투어 자신이 앵커에 클래스를 붙였다 떼므로 볼 수도 없다)
+    // 접힌 바를 펼쳐도 안내가 다시 계산되지 않는다.
     spotlight: null,
     walkthrough: [
       {
-        anchor: ".canvas-triage-rail",
+        anchor: ".quick-launch-pin",
+        titleKey: "featureTour.quickLaunchPin.step1Title",
+        bodyKey: "featureTour.quickLaunchPin.step1Body",
+      },
+    ],
+  },
+  {
+    id: "war-room",
+    // 활성화 앵커(첫 non-null 앵커)는 두 조건을 동시에 만족해야 한다: War Room에서 항상 있을 것,
+    // 그리고 War Room에서만 있을 것. 무대는 대기 건이, 덱은 살아 있는 Operation이 있어야 서고,
+    // 모드 스위치는 다른 모드에서도 있어 투어가 조기 발화한다 — 남는 것은 War Room 전용 도구 트레이뿐이다.
+    // (하단 대기 레일이 맡던 자리이며, 레일이 사라지면서 그 판정을 이 트레이가 승계했다.)
+    // 도구는 의미 속성으로 짚는다 — 트레이 안의 순서나 아이콘이 바뀌어도 앵커가 살아남는다.
+    spotlight: null,
+    walkthrough: [
+      {
+        anchor: '[data-war-room-tool="density"]',
         titleKey: "featureTour.warRoom.step1Title",
         bodyKey: "featureTour.warRoom.step1Body",
       },
@@ -58,21 +76,10 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         titleKey: "featureTour.warRoom.step3Title",
         bodyKey: "featureTour.warRoom.step3Body",
       },
-      // 도구는 의미 속성으로 짚는다 — 트레이 안의 순서나 아이콘이 바뀌어도 앵커가 살아남는다.
-      {
-        anchor: '[data-war-room-tool="density"]',
-        titleKey: "featureTour.warRoom.step4Title",
-        bodyKey: "featureTour.warRoom.step4Body",
-      },
       {
         anchor: '[data-war-room-tool="spotlight"]',
         titleKey: "featureTour.warRoom.step5Title",
         bodyKey: "featureTour.warRoom.step5Body",
-      },
-      {
-        anchor: ".command-band-mode-switch",
-        titleKey: "featureTour.warRoom.step6Title",
-        bodyKey: "featureTour.warRoom.step6Body",
       },
     ],
   },

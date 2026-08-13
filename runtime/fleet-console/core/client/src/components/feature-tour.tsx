@@ -83,14 +83,17 @@ export function FeatureTourOverlay() {
   }, [domRevision]);
 
   const resolved = useMemo(() => {
-    if (domRevision === 0 || !settings.state || hasVisibleModal(document)) return null;
+    if (domRevision === 0 || !settings.state) return null;
     if (lockedTour) {
       const tour = FEATURE_TOURS.find((entry) => entry.id === lockedTour.tourId);
       if (!tour || seen.includes(featureTourSeenKey(tour.id, lockedTour.phase))) return null;
       const steps = lockedTour.phase === "spotlight"
         ? tour.spotlight && resolveFeatureTourAnchor(tour.spotlight, document) ? [tour.spotlight] : []
         : availableFeatureTourSteps(tour.walkthrough, document);
-      return steps.length > 0 ? { tour, phase: lockedTour.phase, steps } satisfies FeatureTourPresentation : null;
+      if (steps.length === 0) return null;
+      // 재생 중에도 발동과 같은 기준으로 다시 잰다 — 안내가 걸린 표면 위로 다른 모달이 열리면 물러난다.
+      if (isTourBlockedByModal(document, resolveFeatureTourAnchor(steps[0]!, document))) return null;
+      return { tour, phase: lockedTour.phase, steps } satisfies FeatureTourPresentation;
     }
     return resolveNextFeatureTour(
       FEATURE_TOURS,
@@ -293,12 +296,13 @@ export function resolveNextFeatureTour(
   root: ParentNode,
   completedAnotherTour = false,
 ): FeatureTourPresentation | null {
-  if (hasVisibleModal(root)) return null;
   for (const tour of tours) {
     if (seen.includes(featureTourSeenKey(tour.id, "walkthrough"))) continue;
     if (tour.deferAfterAnotherTour === true && completedAnotherTour) continue;
     const activationStep = tour.walkthrough.find((step) => step.anchor !== null);
-    if (!activationStep?.anchor || root.querySelector(activationStep.anchor) === null) continue;
+    if (!activationStep?.anchor) continue;
+    const activationAnchor = root.querySelector(activationStep.anchor);
+    if (activationAnchor === null || isTourBlockedByModal(root, activationAnchor)) continue;
     const steps = availableFeatureTourSteps(tour.walkthrough, root);
     if (steps.length > 0) return { tour, phase: "walkthrough", steps };
   }
@@ -312,7 +316,8 @@ export function resolveNextFeatureTour(
   if (completedAnotherTour) return null;
   for (const tour of tours) {
     if (!tour.spotlight || seen.includes(featureTourSeenKey(tour.id, "spotlight"))) continue;
-    if (resolveFeatureTourAnchor(tour.spotlight, root)) {
+    const anchor = resolveFeatureTourAnchor(tour.spotlight, root);
+    if (anchor !== null && !isTourBlockedByModal(root, anchor)) {
       return { tour, phase: "spotlight", steps: [tour.spotlight] };
     }
   }
@@ -361,10 +366,17 @@ function resolveFeatureTourAnchor(step: FeatureTourStep, root: ParentNode): HTML
   return step.anchor === null ? null : root.querySelector<HTMLElement>(step.anchor);
 }
 
-function hasVisibleModal(root: ParentNode): boolean {
-  return [...root.querySelectorAll<HTMLElement>('[aria-modal="true"]')].some((element) => {
+function visibleModals(root: ParentNode): readonly HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('[aria-modal="true"]')].filter((element) => {
     if (element.hidden || element.getAttribute("aria-hidden") === "true") return false;
     const style = getComputedStyle(element);
     return style.display !== "none" && style.visibility !== "hidden";
   });
+}
+
+// 열려 있는 모달은 안내를 막는다 — 지금 답해야 할 대화 위로 다른 이야기를 꺼내면 안내가 아니라
+// 방해다. 다만 그 모달 안의 컨트롤을 짚는 안내까지 막지는 않는다: 사용자가 직접 연 표면에서 그
+// 표면의 컨트롤을 가리키는 것은 이 게이트가 막으려던 상황이 아니라, 안내가 가장 잘 닿는 순간이다.
+function isTourBlockedByModal(root: ParentNode, anchor: Element | null): boolean {
+  return visibleModals(root).some((modal) => anchor === null || !modal.contains(anchor));
 }

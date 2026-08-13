@@ -30,7 +30,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageCleared, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -996,47 +996,8 @@ export function OperationsCanvas({
             <span className="canvas-mode-bracket canvas-mode-bracket--sw" />
             <span className="canvas-mode-bracket canvas-mode-bracket--se" />
           </div>
-          <div className="canvas-triage-rail" data-canvas-blocker>
-            {triageStage ? (
-              <>
-                <div className="canvas-triage-rail-current">
-                  <span className="canvas-triage-rail-current-label">{t("canvas.triage.railCurrent")}</span>
-                  <span aria-hidden="true">▸</span>
-                  <span className="canvas-triage-rail-current-name" title={triageStage.operation.title}>{triageStage.operation.title}</span>
-                </div>
-                <span className="canvas-triage-rail-divider" aria-hidden="true" />
-              </>
-            ) : null}
-            <div className="canvas-triage-rail-next">
-              <span className="canvas-triage-rail-lead">{t("canvas.triage.railLead")}</span>
-              <span aria-hidden="true">▸</span>
-              <div className="canvas-triage-rail-track">
-                {triageDisplayQueue.slice(1).length > 0 ? triageDisplayQueue.slice(1).map((entry) => (
-                  <button
-                    key={entry.operation.id}
-                    type="button"
-                    className={isTriageWaitingOperation(entry.operation, state.operationStatus) && !isTriageOperationDeferred(entry.operation.id) ? "is-fresh" : undefined}
-                    aria-haspopup="menu"
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onOpenOperationMenu?.(entry.operation.id, new DOMRect(event.clientX, event.clientY, 0, 0), event.currentTarget);
-                    }}
-                    onKeyDown={(event) => {
-                      if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
-                      event.preventDefault();
-                      event.stopPropagation();
-                      onOpenOperationMenu?.(entry.operation.id, event.currentTarget.getBoundingClientRect(), event.currentTarget);
-                    }}
-                    onClick={() => pickTriageOperation(entry.operation.id)}
-                  >
-                    {entry.operation.title}
-                  </button>
-                )) : <span className="canvas-triage-rail-empty">{t("canvas.triage.railEmpty")}</span>}
-              </div>
-            </div>
-            <span className="canvas-triage-rail-cleared">{t("canvas.triage.railCleared", { count: getTriageCleared() })}</span>
-          </div>
+          {/* 하단 대기 레일은 제거됐다 — 사이드바 '대기'가 이미 같은 순서를 쥐고 있어, 두 곳이
+              동시에 "처리할 것이 있다"고 말하면 시선만 화면 아래위로 갈라진다(제품 결정). */}
           {triageEntering ? <div className="canvas-triage-sweep" aria-hidden="true" /> : null}
           {triageEntering ? (
             <div className="canvas-mode-curtain canvas-triage-curtain" aria-hidden="true">
