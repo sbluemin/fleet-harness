@@ -160,13 +160,13 @@ describe("feature tour", () => {
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document)).toBeNull();
   });
 
-  it("holds the pin tour back while the docked bar is collapsed, since the button has no size then", () => {
-    // 접힌 바에서도 버튼은 DOM에 남지만 높이 0 + inert다 — 짚어도 가리킬 것이 없다.
-    document.body.innerHTML = [
-      '<section class="quick-launch-card is-pinned is-collapsed">',
-      '  <button class="quick-launch-pin"></button>',
-      '</section>',
-    ].join("");
+  it("gates the pin tour on the button existing, not on a state class the observer cannot see", () => {
+    // 물러난 바는 이 버튼을 렌더하지 않는다. 상태 클래스로 걸러내면 옵저버가 class를 보지 않아
+    // (투어 자신이 앵커에 클래스를 붙였다 떼므로 볼 수도 없다) 펼친 뒤에도 안내가 다시 서지 않는다.
+    const step = FEATURE_TOURS.find((tour) => tour.id === "quick-launch-pin")?.walkthrough[0];
+    expect(step?.anchor).toBe(".quick-launch-pin");
+
+    document.body.innerHTML = '<section class="quick-launch-card is-pinned is-collapsed"></section>';
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)).toBeNull();
 
     document.body.innerHTML = [

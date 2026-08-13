@@ -40,12 +40,13 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
   {
     id: "quick-launch-pin",
     // 컴포저를 직접 연 순간에만 뜬다 — 고정 버튼은 그 안에만 있고, 그 자리에서 짚어야 닿는다.
-    // 접힌 도킹 바는 배제한다: 버튼이 DOM에 남지만 높이 0 + inert라, 짚어도 가리킬 것이 없다
-    // (접힌 사이드바를 배제하는 war-room-sidebar와 같은 이유·같은 문법).
+    // 컴포저가 이 버튼을 누를 수 있을 때만 렌더하므로 존재가 곧 판정이다. 상태 클래스로 걸러내면
+    // 안 되는데, 옵저버가 class를 보지 않아(투어 자신이 앵커에 클래스를 붙였다 떼므로 볼 수도 없다)
+    // 접힌 바를 펼쳐도 안내가 다시 계산되지 않는다.
     spotlight: null,
     walkthrough: [
       {
-        anchor: ".quick-launch-card:not(.is-collapsed) .quick-launch-pin",
+        anchor: ".quick-launch-pin",
         titleKey: "featureTour.quickLaunchPin.step1Title",
         bodyKey: "featureTour.quickLaunchPin.step1Body",
       },

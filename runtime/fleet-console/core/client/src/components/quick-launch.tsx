@@ -12,7 +12,7 @@ import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunch
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, isQuickLaunchDocked, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -260,8 +260,10 @@ export function QuickLaunch() {
 
   // 제출이 끝나면 모달은 사라진다. 고정된 바는 남으므로 초안을 비우고 물러나야 다음 지시를 받는
   // 상태가 된다 — 비우지 않으면 방금 보낸 문장이 그대로 남아 아직 못 보낸 것처럼 읽힌다.
+  // 고정 여부는 호출 시점에 store에서 읽는다 — 멘션 전달은 비동기라, 넘길 때의 값을 닫아 두면
+  // 전달 중에 고정을 푼 사용자에게 빈 모달이 닫히지 않은 채 남는다.
   const finishSubmission = useCallback(() => {
-    if (!pinned) {
+    if (!isQuickLaunchDocked()) {
       closeQuickLaunch();
       return;
     }
@@ -280,7 +282,7 @@ export function QuickLaunch() {
       element.style.height = "auto";
       element.blur();
     }
-  }, [pinned]);
+  }, []);
 
   const submit = useCallback(() => {
     const text = prompt.trim();
@@ -663,8 +665,10 @@ export function QuickLaunch() {
             </span>
           ) : null}
           {/* 고정 토글 — 옵트인 진입점. 켜진 상태는 brass로 말한다(위치 채널).
-              도킹이 접힌 화면에서는 눌러도 이 화면에 설 자리가 없으므로 아예 내놓지 않는다. */}
-          {dockSuppressed ? null : (
+              도킹이 접힌 화면에서는 눌러도 설 자리가 없고, 물러난 바에서는 높이 0 + inert라 누를 수
+              없다 — 둘 다 아예 내놓지 않아, 이 버튼의 존재가 곧 "지금 누를 수 있다"가 되게 한다
+              (화면 안내가 이 버튼을 앵커로 삼으므로, 존재만으로 판정이 서야 한다). */}
+          {dockSuppressed || showStrip ? null : (
             <button
               type="button"
               className="quick-launch-pin"

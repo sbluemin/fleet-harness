@@ -77,6 +77,17 @@ describe("Quick Launch docking", () => {
     expect(ruleFor(".quick-launch-card.is-pinned")).toMatch(/pointer-events:\s*auto;/u);
   });
 
+  it("renders the pin only where it can be pressed, so its presence is the tour's gate", () => {
+    // 물러난 바의 컨트롤은 높이 0 + inert다 — 버튼을 남기면 안내가 가리킬 것 없는 자리를 짚고,
+    // 상태 클래스로 앵커를 거르면 옵저버가 class를 보지 않아 펼친 뒤에도 다시 서지 않는다.
+    expect(quickLaunch).toMatch(/\{dockSuppressed \|\| showStrip \? null : \(/u);
+  });
+
+  it("reads the pin state when an async submission settles, not when it was dispatched", () => {
+    // 멘션 전달 중에 고정을 풀면, 넘길 때 닫아 둔 값으로는 모달을 닫지 못해 빈 대화가 남는다.
+    expect(quickLaunch).toMatch(/if \(!isQuickLaunchDocked\(\)\) \{/u);
+  });
+
   it("keeps a tour card that points into the composer inside its focus scope", () => {
     // 안내 카드는 스스로 포커스를 가져가지 않고 컴포저 밖에 렌더된다 — 트랩이 카드를 빼면 키보드로는
     // 안내를 닫을 수 없고, 카드에만 핸들러를 걸면 카드에서 나가는 Tab이 모달 뒤로 샌다.
