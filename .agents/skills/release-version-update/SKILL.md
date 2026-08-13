@@ -55,11 +55,11 @@ Update the root `fleet-harness` version and compile the release notes from repos
    - Validation performed.
    - Whether tests were run or intentionally skipped.
 
-## Host Synthesis
+## Release notes
 
-Release notes and changelog compilation are host-owned. Synthesize release items directly from the branch diff, commit history, and validated `.changelog.d/` fragments — never delegate release-note synthesis.
+Write release notes and compile changelog fragments in this session from the branch diff, commit history, and validated `.changelog.d/` fragments.
 
-Scale the synthesis to the evidence: small changes may need only the validated fragments and a concise diff/commit review, while broad releases require a correspondingly wider host audit.
+Scale the writing to the evidence: small changes may need only the validated fragments and a concise diff/commit review; broad releases need a wider audit.
 
 ## Safety Rules
 

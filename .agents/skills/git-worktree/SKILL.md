@@ -14,7 +14,7 @@ Replace each `<placeholder>` before running. The LLM must infer whether the requ
 - `<mode>` — `create` | `remove`. Required by interpretation. Route phrases like "make/create/new worktree" to `create`; route phrases like "remove/delete/cleanup current worktree" to `remove`.
 - `<worktree-name>` — Required for `create`. Use as the directory name under `.fleet/worktrees/` and as the default branch name. Sanitize by trimming whitespace, lowercasing only when the user did not provide a deliberate case-sensitive token, replacing spaces with `-`, and rejecting values containing `/`, `..`, leading `.`, shell metacharacters, or path separators. Allowed safe shape: `[A-Za-z0-9._-]+`.
 - `<new-branch>` — Optional for `create`. Default `<worktree-name>`. Apply the same safety rejection as `<worktree-name>`; branch names must not be `main` or `master`.
-- `<base-branch>` — Optional for `create`. Default `canary`. Reject `main` and `master`. Non-standard bases require Nimitz judgment before proceeding.
+- `<base-branch>` — Optional for `create`. Default `canary`. Reject `main` and `master`. Non-standard bases require explicit user confirmation before proceeding.
 - `<force>` — Optional for `remove`. Default `yes` (autonomous cleanup). The remove flow self-applies `git worktree remove --force` and `git branch -D` as needed — including a squash-merged branch that `-d` rejects as unmerged — after reporting any dirty/unpushed/unmerged state. It never pauses for confirmation; the only hard stops are the main checkout and protected branches.
 - `<delete-remote>` — Optional for `remove`. Default `no`. Delete the remote tracking branch (`git push origin --delete <branch>`) only when the user's request explicitly asks for remote cleanup.
 
@@ -48,16 +48,16 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 4. **Input validation**:
    - Validate `<worktree-name>` and `<new-branch>` using the sanitization rules from Inputs.
    - Reject `<base-branch>` when it is `main` or `master`.
-   - Unless Nimitz has approved a non-standard base, use `canary`.
+   - Unless the user has confirmed a non-standard base, use `canary`.
 
 5. **Fetch the base**:
    - `git fetch origin canary`
-   - For a Nimitz-approved non-standard `<base-branch>`, use `git fetch origin <base-branch>` instead.
+   - For a user-confirmed non-standard `<base-branch>`, use `git fetch origin <base-branch>` instead.
 
 6. **Create the worktree**:
    - `abs_worktree_path="$repo_root/.fleet/worktrees/<worktree-name>"`
    - `git worktree add -b <new-branch> .fleet/worktrees/<worktree-name> origin/canary`
-   - For a Nimitz-approved non-standard `<base-branch>`, replace `origin/canary` with `origin/<base-branch>`.
+   - For a user-confirmed non-standard `<base-branch>`, replace `origin/canary` with `origin/<base-branch>`.
 
 7. **Fix the active command context**:
    - Run `cd <abs-worktree-path>`.
@@ -66,7 +66,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 
 8. **Complete mandatory project setup inside the worktree**:
    - From `<abs-worktree-path>`, always run `pnpm install --frozen-lockfile` before reporting create-mode completion.
-   - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed to delegation.
+   - If installation fails, stop immediately and report the command failure. Do not report the worktree as ready and do not proceed with further work.
 
 9. **Report in Korean**:
    - Worktree path.
@@ -138,9 +138,8 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
 - Do not use destructive git commands such as `git reset --hard` or `git checkout --` to clean a worktree.
 - Do not bypass hooks or hide command failures.
 
-## Delegation Guidance
+## Stop and report
 
-- **Nimitz** — consult before proceeding with any non-standard `<base-branch>` request. This is especially important when the requested base changes branch policy or release flow.
-- **Stop and report** — when a worktree path or branch is already present or in use. Do not resolve collisions autonomously.
-- Skip delegation for clean create/remove operations that follow the standard `origin/canary` path and have no conflict or policy issue.
-- **Delegated edits inside the new worktree** — after `create`, a run that edits files must be given the **absolute worktree path** as its working directory so its repo-relative paths resolve here; a run left to default lands in the **main checkout**. Before delegating, confirm `pnpm install --frozen-lockfile` succeeded in this worktree, identify every target package, and run each package's declared `typecheck` and `build` scripts from this worktree. If either preflight script is absent or fails, stop and report instead of delegating. After each return run `git -C <main-checkout> status --short` to confirm the main checkout stayed clean, and trust the real `git status` over any run's own report of what it changed.
+- Stop and ask the user before proceeding with any non-standard `<base-branch>` request. This is especially important when the requested base changes branch policy or release flow.
+- Stop and report when a worktree path or branch is already present or in use. Do not resolve collisions autonomously.
+- After `create`, every subsequent repository command and file edit must use the **absolute worktree path**. Work left in the default directory lands in the **main checkout**. Confirm `pnpm install --frozen-lockfile` succeeded before further work. After later edits, `git -C <main-checkout> status --short` must stay clean — trust that status over any report of what changed.

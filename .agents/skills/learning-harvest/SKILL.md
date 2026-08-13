@@ -1,6 +1,6 @@
 ---
 name: learning-harvest
-description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (an AGENTS.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the Admiral of the Navy's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill that produces other skills and assets, not product code.
+description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (an AGENTS.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the user's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill that produces other skills and assets, not product code.
 ---
 
 # Learning Harvest (compounding engineering)
@@ -19,7 +19,7 @@ This is a **meta-skill**: its product is other skills, rules, tests, ADRs, or me
 
 ## Trigger discipline (skill + self-trigger)
 
-Invoked explicitly (`/learning-harvest`) OR **self-triggered by the Admiral at the end of substantive work** — propose the harvest without being asked. It is deliberately **not** an automatic task-end hook; that hook is a possible next step, not the current contract. Keep the proposal short, and gate it on Admiral approval before encoding anything.
+Invoked explicitly (`/learning-harvest`) OR **self-triggered at the end of substantive work** — propose the harvest without being asked. It is deliberately **not** an automatic task-end hook; that hook is a possible next step, not the current contract. Keep the proposal short, and gate it on user approval before encoding anything.
 
 ## The harvest loop (four stages)
 
@@ -73,7 +73,7 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 
 ## Guards (do not skip)
 
-1. **Propose, then approve** - surface candidates; the Admiral of the Navy approves; encode only approved items. No silent auto-encoding.
+1. **Propose, then approve** - surface candidates; the user approves; encode only approved items. No silent auto-encoding.
 2. **Validate before encoding** - encode only what the work proved, never speculation.
 3. **SSoT + migration** - one home per fact; migrate, do not duplicate.
 4. **Pruning is mandatory** - encoding and deletion are a pair.
@@ -87,21 +87,16 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 2. **Extract** - apply the three-condition gate; drop what fails.
 3. **Route** - assign each survivor a single home (Stage 2 table); check for an existing duplicate first.
 4. **Draft encodings** - write each as `symptom -> action -> why` at the most-actionable layer.
-5. **Propose** - present candidates as: one-line summary - extraction judgment (the three conditions) - home + why - encoding phrasing - any duplicate found. Await Admiral of the Navy approval.
+5. **Propose** - present candidates as: one-line summary - extraction judgment (the three conditions) - home + why - encoding phrasing - any duplicate found. Await user approval.
 6. **Encode approved** - apply each to its home (edit a skill / `AGENTS.md`, add a test, write a memory, register a `wiki-history` ADR). A new procedure skill or a multi-file change routes through the normal pipeline (worktree -> implement -> `pr-workflow`).
 7. **Prune (optional)** - if a touched surface is crowded, flag weak or stale items for removal.
 
 ## Must not
 
-- Do not encode without Admiral of the Navy approval (propose-then-approve).
+- Do not encode without user approval (propose-then-approve).
 - Do not duplicate a fact across homes - migrate instead.
 - Do not encode speculation or a one-off accident (three-condition gate).
 - Do not re-record what code or git history already captures - capture the non-obvious "why".
-
-## Delegation
-
-- `vanguard` - confirm where a candidate's home already exists (avoid duplication).
-- An approved encoding that is a code or skill change routes through `genesis` and `pr-workflow`; a pure memory write the Admiral does directly.
 
 ## Relationship to other assets
 

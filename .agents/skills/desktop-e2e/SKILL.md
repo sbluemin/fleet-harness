@@ -13,7 +13,7 @@ Test the thin Electron shell without re-testing the entire Console product. Coll
 - **Native:** menu accelerators, native dialogs, single-instance behavior, window close/show, tray, quit/relaunch.
 - **Runtime:** Desktop-owned Console lock, child process, log, shutdown, conflict behavior.
 - **Package:** unpacked artifact, ASAR boundary, fuses, architecture, signing/release evidence.
-- **Console UI:** delegate any post-handoff SPA-only scenario to `console-e2e`.
+- **Console UI:** follow `console-e2e` for any post-handoff SPA-only scenario.
 
 State the target OS and lane before testing. Never claim Windows/Linux native results from macOS or treat unsigned local packaging as release-signing evidence.
 
