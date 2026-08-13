@@ -280,6 +280,7 @@
 .ledger-list-header > h3,
 .ledger-clients > h3,
 .ledger-trend > h3,
+.ledger-trend-header > h3,
 .ledger-source h3,
 .ledger-detail-section h3 {
   margin: 0 0 var(--space-2);
@@ -291,8 +292,45 @@
 }
 
 /* 공유 헤딩 규칙(위)보다 뒤에 둬야 flex 헤더 안의 하단 여백 리셋이 산다. */
-.ledger-list-header > h3 {
+.ledger-list-header > h3,
+.ledger-trend-header > h3 {
   margin-bottom: 0;
+}
+
+.ledger-trend-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-1) var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+/* 귀속 레이어 스태킹 — 막대를 column-reverse flex로 바꿔 밝은 레이어가 하단에 쌓이게 한다.
+   툴팁은 absolute라 플로우 영향 없음(앵커는 .ledger-trend-bars). */
+.ledger-trend-bar {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.ledger-trend-bar-attributed {
+  width: 100%;
+  min-height: 2px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: var(--ink-pearl);
+}
+
+.ledger-trend-attributed-note {
+  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.ledger-trend-scale-note {
+  margin: var(--space-2) 0 0;
+  color: var(--text-tertiary);
+  font-size: 10px;
 }
 
 .ledger-operation {
