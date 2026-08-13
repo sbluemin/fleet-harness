@@ -11862,6 +11862,10 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-card {
   position: relative;
   width: min(760px, 100%);
+  /* 그리드 아이템의 auto 최소폭은 min-content라, 긴 Theater 이름 하나가 100% 상한을 이기고 카드를
+     뷰포트 밖으로 밀어낸다(모바일 375px에서 실측). 0으로 눌러 상한을 실제 상한으로 만든다. */
+  min-width: 0;
+  max-width: 100%;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
   /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
@@ -12027,9 +12031,12 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-launch-sel {
   display: inline-flex;
   align-items: center;
+  /* 좁은 화면에서는 줄을 바꾼다. overflow: hidden은 접힘 애니메이션의 것이라, 줄을 못 바꾸면
+     추론강도 트랙이 잘려 보이지도 만져지지도 않는다(모바일 375px에서 실측). */
+  flex-wrap: wrap;
   gap: var(--space-2);
   overflow: hidden;
-  max-width: 640px;
+  max-width: min(640px, 100%);
   opacity: 1;
   transition:
     max-width var(--duration-slow) var(--ease-glide),
@@ -12102,6 +12109,12 @@ body[data-codex-reading="true"] .operations-side-bar {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  /* 이름 길이가 카드 폭을 정하면 바가 아니라 화면이 밀린다. 상한은 바 폭이고, 그 안에서는 줄이지
+     않고 줄을 바꾼다(flex: none) — 자리가 남는데도 이름부터 깎으면 칩이 빈 알약으로 읽힌다.
+     min-width: 0은 auto(=min-content)가 상한을 이기는 것을 막는 짝이다. */
+  flex: none;
+  min-width: 0;
+  max-width: 100%;
   padding: 6px 11px;
   border: 1px solid var(--surface-rim);
   border-radius: 999px;
@@ -12131,13 +12144,19 @@ body[data-codex-reading="true"] .operations-side-bar {
   color: var(--brass);
 }
 
+/* 마크·캐럿은 고정 슬롯이고, 줄어드는 쪽은 이름뿐이다 — 잘릴 때는 말줄임으로 잘렸음을 말한다. */
 .quick-launch-chip-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
   font-weight: var(--weight-bold);
 }
 
 
 .quick-launch-caret {
+  flex: none;
   color: var(--text-tertiary);
   font-size: 10px;
 }
@@ -12224,6 +12243,8 @@ body[data-codex-reading="true"] .operations-side-bar {
   z-index: 41;
   max-height: min(340px, var(--quick-launch-pop-max-height, 340px));
   overflow-y: auto;
+  /* 좌표는 JS가 바 안으로 클램프하지만 폭은 고정값이다 — 바보다 넓으면 클램프해도 오른쪽으로 샌다. */
+  max-width: 100%;
 }
 
 .quick-launch-pop--theater {
@@ -12308,6 +12329,33 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-variant-name[aria-expanded="true"] {
   background: color-mix(in oklch, var(--surface-pillar) 55%, transparent);
   color: var(--text-primary);
+}
+
+/* 모바일 셸과 같은 경계(view-mode-store의 narrow 질의)다. 이 폭에서 선택 줄은 전송 버튼과 한 줄을
+   다투다 자기 폭 아래로 짜부라지고, 접힘용 overflow: hidden이 추론강도 트랙을 잘라 낸다.
+   줄을 통째로 내주면 트랙이 온전히 서고 전송은 아래 줄로 내려간다. */
+@media (max-width: 767px) {
+  .quick-launch-launch-sel {
+    flex: 1 1 100%;
+  }
+
+  /* 스페이서가 같은 줄에 남으면 그 최소폭만큼 선택 줄을 다시 깎는다 — 전송을 오른쪽에 붙이는 일은
+     자동 여백이 대신한다. */
+  .quick-launch-spacer {
+    display: none;
+  }
+
+  .quick-launch-submit {
+    margin-left: auto;
+  }
+
+  /* 트랙 폭은 TSX의 픽셀 산술과 묶인 앵커라 줄일 수 없다 — apex가 열려 줄을 넘칠 때는 셸이 줄을
+     바꿔 라벨을 아래로 내린다. */
+  .quick-launch-effort-track {
+    flex-wrap: wrap;
+    max-width: 100%;
+    min-width: 0;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
