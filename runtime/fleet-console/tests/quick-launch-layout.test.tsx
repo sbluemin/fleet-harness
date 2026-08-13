@@ -109,7 +109,8 @@ describe("Quick Launch docking", () => {
 
   it("leaves one control behind when collapsed, carrying the draft it would otherwise hide", () => {
     expect(quickLaunch).toMatch(/className="quick-launch-strip"/u);
-    expect(quickLaunch).toMatch(/draftTrace\.length === 0 \? t\("chrome\.quickLaunch\.stripIdle"\) : draftTrace/u);
+    // 접힌 줄의 빈 상태는 컴포저 플레이스홀더와 같은 초대 문구다 — 키를 나누면 둘이 어긋난다.
+    expect(quickLaunch).toMatch(/draftTrace\.length === 0 \? t\("chrome\.quickLaunch\.placeholder"\) : draftTrace/u);
     // 펼친 동안에는 접근성 트리와 탭 순서 어디에도 없어야 한다.
     expect(ruleFor(".quick-launch-strip")).toMatch(/display:\s*none;/u);
     expect(ruleFor(".quick-launch-card.is-collapsed .quick-launch-strip")).toMatch(/display:\s*flex;/u);

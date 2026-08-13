@@ -482,7 +482,7 @@ export function QuickLaunch() {
               </span>
             ) : null}
             <span className={`quick-launch-strip-trace${draftTrace.length === 0 ? " is-idle" : ""}`}>
-              {draftTrace.length === 0 ? t("chrome.quickLaunch.stripIdle") : draftTrace}
+              {draftTrace.length === 0 ? t("chrome.quickLaunch.placeholder") : draftTrace}
             </span>
             <kbd className="quick-launch-strip-key" aria-hidden="true">⌘J</kbd>
           </button>
