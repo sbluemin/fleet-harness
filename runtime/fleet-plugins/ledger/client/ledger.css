@@ -313,9 +313,11 @@
   flex-direction: column-reverse;
 }
 
+/* 귀속 레이어 — min-height 바닥을 두지 않는다. 부모 막대가 3%/3px로 클램프된 저비용일에
+   2px 바닥은 점유율을 수십 배 부풀리는 거짓이 된다(소수 px 렌더링에 맡긴다).
+   색은 "밝은"이 아니라 최대 대비 전경 — Whites 테마에서는 가장 어두운 톤이 되는 게 정상이다. */
 .ledger-trend-bar-attributed {
   width: 100%;
-  min-height: 2px;
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
   background: var(--ink-pearl);
 }

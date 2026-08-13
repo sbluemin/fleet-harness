@@ -112,6 +112,12 @@ function TrendSection({ daily, dailyAttributed, language, t }: {
   const average = daily.reduce((total, point) => total + point.costUsd / daily.length, 0);
   const averageCost = formatCost(Number.isFinite(average) ? average : 0);
   const scaleLabel = t(scale === "sqrt" ? "ledger.trend.scale.sqrt" : "ledger.trend.scale.linear");
+  // 인덱스 상관 대신 day 키로 정렬 — 서버는 축 동일을 보장하지만, 키 조회는 미래 회귀에 대한
+  // 저항을 추가 비용 없이 준다(맵 구축 1회).
+  const attributedByDay = useMemo(
+    () => new Map(dailyAttributed.map((point) => [point.day, point.costUsd])),
+    [dailyAttributed],
+  );
 
   return (
     <div className="ledger-trend">
@@ -128,10 +134,10 @@ function TrendSection({ daily, dailyAttributed, language, t }: {
         {daily.map((point, index) => {
           const day = formatDay(point.day);
           const cost = formatCost(point.costUsd);
-          const attributed = dailyAttributed[index]?.costUsd ?? 0;
+          const attributed = attributedByDay.get(point.day) ?? 0;
           const label = attributed > 0
             ? t("ledger.trend.dayAttributed", { day, cost, attributed: formatCost(attributed), scale: scaleLabel })
-            : t("ledger.trend.day", { day, cost });
+            : t("ledger.trend.day", { day, cost, scale: scaleLabel });
           const height = `${Math.max(3, maxTransformed > 0 ? (transform(point.costUsd) / maxTransformed) * 100 : 0)}%`;
           const attributedHeight = point.costUsd > 0 && attributed > 0
             ? `${Math.min(100, (transform(attributed) / transform(point.costUsd)) * 100)}%`

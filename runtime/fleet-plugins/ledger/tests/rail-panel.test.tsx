@@ -155,8 +155,8 @@ describe("Ledger rail status rendering", () => {
       { tag: "SPAN", role: "img", tabIndex: 0 },
     ]);
     expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
-      "Jul 28 · $1.25",
-      "Jul 29 · $3.75",
+      "Jul 28 · $1.25 · Linear scale",
+      "Jul 29 · $3.75 · Linear scale",
     ]);
   });
 
@@ -532,8 +532,16 @@ describe("Ledger trend scale and attributed layer", () => {
     const layer = bars[1]!.querySelector(".ledger-trend-bar-attributed");
     expect(layer).not.toBeNull();
     expect(bars[1]!.getAttribute("aria-label")).toBe("Aug 14 · $1.00 · attributed $0.50 · Linear scale");
-    expect(container.textContent).toContain("Bright layer: cost attributed to this scope's Console operations.");
+    expect(bars[0]!.getAttribute("aria-label")).toBe("Aug 13 · $100.00 · Linear scale");
+    expect(container.textContent).toContain("Inset layer: cost attributed to this scope's Console operations.");
     expect(container.textContent).toContain("Linear scale — bar height is proportional to cost.");
+  });
+
+  it("keeps the attributed layer height as the truthful intra-day share with no pixel floor", async () => {
+    await renderWith(trendDto(0.01));
+    const layer = container.querySelectorAll(".ledger-trend-bar")[1]!.querySelector(".ledger-trend-bar-attributed");
+    // $0.01 / $1.00 = 1% — min-height 바닥이 있으면 수십 배로 부풀던 값이다.
+    expect(layer?.getAttribute("style")).toContain("height: 1%");
   });
 
   it("rescales bar heights on the square-root toggle and says so in the note and aria", async () => {
