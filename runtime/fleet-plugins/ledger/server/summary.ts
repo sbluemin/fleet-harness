@@ -22,6 +22,8 @@ interface Accumulator {
 class AggregateOverflowError extends Error {}
 
 const MAX_DAILY_DAYS = 366;
+/** 미매칭 목록 직렬화 상한 — 오래된 Theater의 누적 클레임이 payload를 무한히 키우지 못하게 한다. 전체 수는 unmatchedTotal이 별도로 싣는다. */
+const MAX_UNMATCHED = 50;
 
 function emptyAccumulator(): Accumulator {
   return { input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 };
@@ -142,6 +144,10 @@ export function buildSummary(
       generatedAtMs,
       totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
       operations: [],
+      unmatched: [],
+      unmatchedTotal: 0,
+      otherTheaterTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
+      deviceTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 },
       clients: [],
       daily: [],
       source: {
@@ -174,11 +180,17 @@ function buildSummaryUnchecked(
   }
 
   const operationBuckets = new Map<string, { claim: OperationClaim; sessions: TokscaleSession[] }>();
+  const otherTheaterValues = emptyAccumulator();
   for (const session of sessions) {
     const sessionId = nativeSessionId(session);
     const provider = session.client === "claude" || session.client === "codex" ? session.client : null;
     const claim = sessionId && provider ? claims.get(`${provider}:${sessionId}`) : undefined;
     if (!claim) continue;
+    // 스코프 밖 Theater에 귀속된 사용량 — "기타 로컬 세션"과 구분해 브릿지가 Console 귀속을 거짓으로 말하지 않게 한다.
+    if (scope.theaterId !== null && claim.operation.theaterId !== scope.theaterId) {
+      addSession(otherTheaterValues, session);
+      continue;
+    }
     const bucket = operationBuckets.get(claim.operation.id) ?? { claim, sessions: [] };
     bucket.sessions.push(session);
     operationBuckets.set(claim.operation.id, bucket);
@@ -203,6 +215,22 @@ function buildSummaryUnchecked(
       };
     }).sort((a, b) => b.lastActivityAtMs - a.lastActivityAtMs);
 
+  // 저장 세션 클레임은 있으나 이 window의 원본에서 한 세션도 매칭되지 않은 Operation —
+  // 목록에서 조용히 지우지 않고 화면이 그 사실을 말할 수 있게 별도 목록으로보낸다.
+  // dedup된 claims(같은 세션을 두 Operation이 가리키면 최신만 남음) 기준이라
+  // 사용량이 다른 Operation에 귀속된 중복 클레임은 unmatched로 오표기되지 않는다.
+  const unmatchedAll = [...claims.values()]
+    .filter((claim) => !operationBuckets.has(claim.operation.id))
+    .filter((claim) => scope.theaterId === null || claim.operation.theaterId === scope.theaterId)
+    .map((claim) => ({
+      operationId: claim.operation.id,
+      title: claim.operation.title,
+      cliId: claim.cliId,
+      cliLabel: claim.cliLabel,
+      lastActivityAtMs: claim.operation.ts.updatedAt,
+    }));
+  const unmatched = unmatchedAll.slice(0, MAX_UNMATCHED);
+
   const totalValues = emptyAccumulator();
   for (const operation of operationDtos) {
     totalValues.input = addFinite(totalValues.input, operation.usage.input);
@@ -213,11 +241,15 @@ function buildSummaryUnchecked(
   }
   const clientMap = new Map<string, { sessions: number; totals: Accumulator }>();
   const dailyMap = new Map<string, number>();
+  const deviceValues = emptyAccumulator();
+  let deviceSessions = 0;
   for (const session of sessions) {
     const client = clientMap.get(session.client) ?? { sessions: 0, totals: emptyAccumulator() };
     client.sessions = addFinite(client.sessions, 1);
     addSession(client.totals, session);
     clientMap.set(session.client, client);
+    addSession(deviceValues, session);
+    deviceSessions = addFinite(deviceSessions, 1);
     const day = localDayKey(session.lastActive);
     dailyMap.set(day, addFinite(dailyMap.get(day) ?? 0, session.costUsd));
   }
@@ -240,6 +272,10 @@ function buildSummaryUnchecked(
     generatedAtMs,
     totals: { ...usageOf(totalValues), costUsd: totalValues.costUsd, messages: totalValues.messages },
     operations: operationDtos,
+    unmatched,
+    unmatchedTotal: unmatchedAll.length,
+    otherTheaterTotals: { ...usageOf(otherTheaterValues), costUsd: otherTheaterValues.costUsd, messages: otherTheaterValues.messages },
+    deviceTotals: { ...usageOf(deviceValues), costUsd: deviceValues.costUsd, messages: deviceValues.messages, sessions: deviceSessions },
     clients,
     daily,
     source: { status, skippedSessions },
