@@ -83,6 +83,7 @@ let state: ConsoleState = {
   quickLaunchOpen: false,
   quickLaunchPinned: readQuickLaunchSelection().pinned,
   quickLaunchFocusToggle: 0,
+  quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchError: null,
   quickLaunchErrorShortenBy: null,
@@ -607,11 +608,22 @@ export function closeQuickLaunch(): void {
 export function toggleQuickLaunch(): void {
   // 고정 중에는 컴포저가 상주하므로 Mod+J가 여닫을 것이 없다 — 대신 포커스를 왕복시킨다
   // (펼쳐 두고 쓰다가 같은 키로 물러나게 하는 것이 이 단축키의 고정판 계약).
-  if (state.quickLaunchPinned) {
+  // 도킹이 접힌 화면에서는 상주하는 바가 없으므로 예전처럼 모달로 여닫는다.
+  if (isQuickLaunchDocked()) {
     setState({ quickLaunchFocusToggle: state.quickLaunchFocusToggle + 1 });
     return;
   }
   setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
+/** 고정이 켜져 있고, 지금 화면이 그 도킹을 접어 두지 않았을 때만 참이다. */
+export function isQuickLaunchDocked(): boolean {
+  return state.quickLaunchPinned && !state.quickLaunchDockSuppressed;
+}
+
+export function setQuickLaunchDockSuppressed(suppressed: boolean): void {
+  if (state.quickLaunchDockSuppressed === suppressed) return;
+  setState({ quickLaunchDockSuppressed: suppressed });
 }
 
 export function setQuickLaunchPinned(pinned: boolean): void {

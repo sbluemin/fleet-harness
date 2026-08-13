@@ -2905,135 +2905,9 @@
   animation: triage-sweep-pass 900ms cubic-bezier(0.3, 0.1, 0.2, 1) both;
 }
 
-.canvas-triage-rail {
-  position: absolute;
-  right: 18px;
-  bottom: 14px;
-  left: 18px;
-  z-index: 90;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 42px;
-  padding: 5px 8px 5px 12px;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--brass) 18%, var(--hairline));
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--brass) 4%, var(--ink-abyss));
-}
-
-.canvas-triage-rail-current {
-  display: flex;
-  flex: 0 1 32%;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--brass-ink);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.canvas-triage-rail-current-label {
-  flex: none;
-  color: var(--brass-ink);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.canvas-triage-rail-current-name {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  font-weight: var(--weight-bold);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-triage-rail-divider {
-  flex: none;
-  align-self: stretch;
-  width: 1px;
-  background: color-mix(in oklch, var(--brass) 26%, transparent);
-}
-
-.canvas-triage-rail-next {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  color: var(--text-tertiary);
-}
-
-.canvas-triage-rail-lead {
-  flex: none;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.canvas-triage-rail-track {
-  display: flex;
-  flex: 1;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.canvas-triage-rail-track button {
-  flex: none;
-  max-width: 220px;
-  padding: 5px 10px;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--brass) 18%, var(--hairline));
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text-secondary);
-  font-family: var(--font-body);
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-triage-rail-track button:hover,
-.canvas-triage-rail-track button:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 48%, var(--hairline));
-  background: color-mix(in oklch, var(--brass) 9%, transparent);
-  color: var(--text-primary);
-  outline: none;
-}
-
 /* 무대가 점유된 동안 검토 전인 대기 항목 — 상태는 aurora가 border/텍스트로 말하고(애니메이션이
    hover의 brass border보다 우선), hover/focus 피드백은 기존 brass 배경 워시가 그대로 맡는다.
    미룬 항목에는 붙지 않는다 — 사용자가 이미 본 신호를 다시 흔드는 소음이 된다. */
-.canvas-triage-rail-track button.is-fresh {
-  border-color: var(--aurora);
-  color: var(--aurora);
-  animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
-}
-
-.canvas-triage-rail-empty {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.canvas-triage-rail-cleared {
-  flex: none;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  white-space: nowrap;
-}
-
 .canvas-mode-curtain {
   position: absolute;
   inset: 0;
@@ -4006,7 +3880,6 @@
   .canvas-triage-map-dot.is-landed,
   .canvas-triage-deck-card.is-arriving,
   .canvas-triage-deck-card.is-fresh,
-  .canvas-triage-rail-track button.is-fresh,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,
@@ -4015,8 +3888,7 @@
   }
 
   /* 움직임 없이도 검토 전 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
-  .canvas-triage-deck-card.is-fresh,
-  .canvas-triage-rail-track button.is-fresh {
+  .canvas-triage-deck-card.is-fresh {
     border-color: var(--aurora);
   }
 

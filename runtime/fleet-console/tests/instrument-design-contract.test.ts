@@ -454,16 +454,17 @@ describe("Instrument core design contract", () => {
     }
     expect(canvas).not.toContain("canvas-mode-hud");
     expect(components).not.toContain(".canvas-mode-hud");
-    expect(canvas).toContain("canvas-triage-rail-current");
-    expect(canvas).toContain("canvas-triage-rail-cleared");
+    // 하단 대기 레일은 제거됐다 — 사이드바 '대기'가 이미 같은 순서를 쥐고 있어, 두 곳이 동시에
+    // "처리할 것이 있다"고 말하면 시선이 화면 아래위로 갈라진다. 화면 하단은 컴포저의 자리다.
+    expect(canvas).not.toContain("canvas-triage-rail");
+    expect(components).not.toContain(".canvas-triage-rail");
     // 스포트라이트·덱 밀도는 War Room 트레이(커맨드 밴드)가 소유한다 — 모드 전용 컨트롤은
     // 캔버스 구석이 아니라 그 모드의 트레이 한 곳에 모인다.
-    expect(canvas).not.toContain('className="canvas-triage-rail-spotlight"');
     expect(canvas).not.toContain("canvas-triage-density-chip");
     // OFF의 지속 맥동은 검토 전 신호다 — 지목·미룸 항목은 deck 카드에서도 레일 칩과 동일하게 제외한다.
     expect(canvas).toContain("!entry.picked && !isTriageOperationDeferred(entry.operation.id)");
-    // 두 번 눌러 확정 안내는 레일이 아니라 패널 안 HUD가 소유한다 — 확인 순간에 시선이 화면 하단으로 내려가지 않게.
-    expect(canvas).not.toContain("canvas-triage-rail-arm");
+    // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
+    expect(canvas).toContain("setAsideArmed");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
     expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
@@ -812,7 +813,6 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-arriving,");
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-fresh,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-rail-track button.is-fresh,");
     // 작전지도 LOD 전환(cross-fade·마커 강조)도 같은 봉인 안에서 즉시 상태로 떨어진다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");

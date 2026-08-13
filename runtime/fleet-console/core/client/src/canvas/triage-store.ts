@@ -45,7 +45,6 @@ let setAsideArmed: {
   readonly operationId: string;
   readonly timer: ReturnType<typeof globalThis.setTimeout>;
 } | null = null;
-let clearedCount = 0;
 let enteredAt: number | null = null;
 // 선별 중 마지막으로 무대에 올랐던 Operation의 Theater — 종료 시 이 Theater로 복귀한다.
 let lastStagedTheaterId: string | null = null;
@@ -612,7 +611,6 @@ export function setTriageActive(active: boolean): void {
     if (!triageActive) {
       triageActive = true;
       rememberWarRoomActive(true);
-      clearedCount = 0;
       enteredAt = Date.now();
       lastStagedTheaterId = null;
     }
@@ -754,13 +752,8 @@ export function markTriageCleared(operationId: string): void {
   clearTriageSetAsideArm();
   deferredAt.delete(operationId);
   lastClearedAt.set(operationId, Date.now());
-  clearedCount += 1;
   if (pickedOperationId === operationId) pickedOperationId = null;
   emitTriage();
-}
-
-export function getTriageCleared(): number {
-  return clearedCount;
 }
 
 export function dismissTriageOperation(operationId: string): void {

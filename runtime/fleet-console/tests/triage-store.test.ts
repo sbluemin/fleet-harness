@@ -46,7 +46,6 @@ import {
   enterTriage,
   focusedTriageOperationId,
   forgetTriageOperation,
-  getTriageCleared,
   getTriageDeckZoom,
   getTriagePick,
   getTriageSetAsideArmedId,
@@ -583,7 +582,6 @@ describe("triage store", () => {
     const completedRound = resolveTriageQueue(operations, awaiting, 2_000);
     expect(completedRound.map((entry) => entry.operation.id)).toEqual(["first", "second", "third"]);
     expect(completedRound).toHaveLength(3);
-    expect(getTriageCleared()).toBe(0);
   });
 
   it("keeps round-robining past a full cycle when waiting states differ", () => {
@@ -609,7 +607,6 @@ describe("triage store", () => {
     }
 
     expect(visited).toEqual(["aw", "idle-a", "idle-b", "aw", "idle-a", "idle-b"]);
-    expect(getTriageCleared()).toBe(0);
   });
 
   it("clears deferrals when picked, transitioned out of waiting, or Triage exits", () => {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
@@ -11,7 +11,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchPinned } from "../store.js";
+import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -26,6 +26,7 @@ export function QuickLaunch() {
   const state = useConsoleState();
   const t = useT();
   const navigate = useNavigate();
+  const location = useLocation();
   const registry = usePluginRegistry();
 
   const cardRef = useRef<HTMLElement | null>(null);
@@ -58,7 +59,14 @@ export function QuickLaunch() {
   // "보이는데 못 쓰는" 바가 생긴다. 고정된 채로 화면을 열면 접힌 채 상주한다(포커스를 훔치지 않는다).
   const [collapsed, setCollapsed] = useState(() => state.quickLaunchPinned);
 
-  const pinned = state.quickLaunchPinned;
+  // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
+  // 바가 되돌아오고, 그동안 Mod+J는 예전처럼 모달을 여닫는다(단축키를 죽이지 않는다).
+  const dockSuppressed = location.pathname.startsWith("/settings");
+  useEffect(() => {
+    setQuickLaunchDockSuppressed(dockSuppressed);
+  }, [dockSuppressed]);
+
+  const pinned = state.quickLaunchPinned && !dockSuppressed;
   // 고정 중에는 컴포저가 상주한다 — 열림 여부가 아니라 배치가 이 표면의 존재를 결정한다.
   const open = state.quickLaunchOpen || pinned;
   const theaters = state.theaters ?? [];
@@ -629,17 +637,20 @@ export function QuickLaunch() {
               )}
             </span>
           ) : null}
-          {/* 고정 토글 — 옵트인 진입점. 켜진 상태는 brass로 말한다(위치 채널). */}
-          <button
-            type="button"
-            className="quick-launch-pin"
-            aria-pressed={pinned}
-            onClick={togglePinned}
-            aria-label={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
-            title={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
-          >
-            <PinIcon />
-          </button>
+          {/* 고정 토글 — 옵트인 진입점. 켜진 상태는 brass로 말한다(위치 채널).
+              도킹이 접힌 화면에서는 눌러도 이 화면에 설 자리가 없으므로 아예 내놓지 않는다. */}
+          {dockSuppressed ? null : (
+            <button
+              type="button"
+              className="quick-launch-pin"
+              aria-pressed={pinned}
+              onClick={togglePinned}
+              aria-label={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
+              title={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
+            >
+              <PinIcon />
+            </button>
+          )}
           <button
             type="button"
             className="quick-launch-submit"

@@ -153,6 +153,7 @@ const STATE: ConsoleState = {
   quickLaunchOpen: false,
   quickLaunchPinned: false,
   quickLaunchFocusToggle: 0,
+  quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchError: null,
   pendingQuickLaunch: null,
