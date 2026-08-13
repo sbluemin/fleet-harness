@@ -12,7 +12,7 @@ import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunch
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -267,7 +267,13 @@ export function QuickLaunch() {
     }
     setPrompt("");
     setMentionTarget(null);
+    // 열려 있던 멘션 덱도 함께 접는다 — 매치 없는 '@' 토큰은 제출을 막지 않으므로(프로즈 토큰),
+    // 토큰을 남기면 비운 컴포저 위로 빈 덱만 떠 있는다.
+    setMentionToken(null);
     setMentionErrorKey(null);
+    // 지난 거절은 성공한 재시도와 함께 내려간다. 모달은 닫히며 버리지만 고정된 바는 닫히지 않아,
+    // 사유가 남으면 이미 발사된 지시 위에 옛 실패가 붙어 있고 그동안 바가 접히지도 않는다.
+    clearQuickLaunchRejection();
     setSubmitting(false);
     const element = inputRef.current;
     if (element) {
@@ -310,14 +316,16 @@ export function QuickLaunch() {
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
     if (effort) variant.effort = effort;
-    writeQuickLaunchSelection({ theaterId, model, effort, pinned });
+    // 고정은 저장된 값을 그대로 다시 쓴다 — 화면별 실효값(설정에서는 접어 두므로 거짓)을 저장하면
+    // 그 화면에서 한 번 실행한 것만으로 사용자의 고정 설정이 조용히 꺼진다.
+    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned });
     // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
     // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
     setActiveTheater(theaterId);
     requestQuickLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant });
     navigate("/operations");
     finishSubmission();
-  }, [deckHasRows, effort, finishSubmission, mentionTarget, model, navigate, pinned, prompt, registry.plugins, selectedRow, submitting, target, theaterId]);
+  }, [deckHasRows, effort, finishSubmission, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {

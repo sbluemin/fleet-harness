@@ -605,6 +605,15 @@ export function closeQuickLaunch(): void {
   setState({ quickLaunchOpen: false, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
+/**
+ * 거절 사유만 내린다. 모달은 닫히면서 사유를 함께 버리지만, 고정된 컴포저는 닫히지 않으므로
+ * 성공한 재시도 뒤에도 지난 거절이 바에 남아 — 사유가 붙어 있는 동안 접히지도 않는다.
+ */
+export function clearQuickLaunchRejection(): void {
+  if (state.quickLaunchError === null && state.quickLaunchErrorShortenBy === null) return;
+  setState({ quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
 export function toggleQuickLaunch(): void {
   // 고정 중에는 컴포저가 상주하므로 Mod+J가 여닫을 것이 없다 — 대신 포커스를 왕복시킨다
   // (펼쳐 두고 쓰다가 같은 키로 물러나게 하는 것이 이 단축키의 고정판 계약).
@@ -630,8 +639,10 @@ export function setQuickLaunchPinned(pinned: boolean): void {
   if (state.quickLaunchPinned === pinned) return;
   writeQuickLaunchPinned(pinned);
   // 고정을 풀면 그 자리에서 계속 쓰던 컴포저가 모달로 돌아온다 — 닫아 버리면 되돌리기가 아니라
-  // 취소가 된다. 고정을 켤 때도 열림 상태를 참으로 맞춰 두 경로의 상태가 갈라지지 않게 한다.
-  setState({ quickLaunchOpen: true, quickLaunchPinned: pinned });
+  // 취소가 된다. 반대로 고정을 켤 때는 모달 열림을 반드시 내린다: 고정된 컴포저는 배치가 존재를
+  // 결정하므로 이 값이 참으로 남으면 도킹을 접어 둔 화면(설정)에서 컴포저가 모달로 되살아나고,
+  // 열림을 보고 자기를 억제하는 What's New가 영영 뜨지 않는다.
+  setState({ quickLaunchOpen: !pinned, quickLaunchPinned: pinned });
 }
 
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,

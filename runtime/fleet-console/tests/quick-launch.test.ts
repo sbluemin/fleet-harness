@@ -9,7 +9,7 @@ import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet
 
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
-import { getState, removeTheater, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
+import { clearQuickLaunchRejection, getState, isQuickLaunchDocked, openQuickLaunch, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
@@ -209,7 +209,7 @@ describe("quick launch preferences", () => {
 describe("quick launch pin", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0 });
+    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0, quickLaunchDockSuppressed: false, quickLaunchError: null, quickLaunchErrorShortenBy: null, quickLaunchDraft: null });
   });
 
   it("remembers the pin beside the launch coordinates instead of replacing them", () => {
@@ -226,7 +226,8 @@ describe("quick launch pin", () => {
 
     toggleQuickLaunch();
 
-    expect(getState().quickLaunchOpen).toBe(true);
+    // 고정 중에는 열림 플래그가 아니라 도킹이 이 표면의 존재를 결정한다.
+    expect(isQuickLaunchDocked()).toBe(true);
     expect(getState().quickLaunchFocusToggle).toBe(1);
   });
 
@@ -253,6 +254,41 @@ describe("quick launch pin", () => {
     setQuickLaunchPinned(true);
 
     expect(readQuickLaunchSelection().pinned).toBe(true);
+  });
+
+  // 고정된 컴포저는 배치가 존재를 결정한다 — 모달 열림이 남으면 도킹을 접어 둔 화면에서 컴포저가
+  // 모달로 되살아나고, 열림을 보고 자기를 억제하는 What's New가 영영 뜨지 않는다.
+  it("lowers the modal-open flag when the pin goes on, and raises it again when it comes off", () => {
+    openQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(true);
+
+    setQuickLaunchPinned(true);
+    expect(getState().quickLaunchOpen).toBe(false);
+
+    setQuickLaunchPinned(false);
+    expect(getState().quickLaunchOpen).toBe(true);
+  });
+
+  it("keeps the composer off screens that fold the dock away, even right after pinning", () => {
+    openQuickLaunch();
+    setQuickLaunchPinned(true);
+    setQuickLaunchDockSuppressed(true);
+
+    // 화면이 그리는 조건과 같은 식: state.quickLaunchOpen || (pinned && !dockSuppressed)
+    expect(getState().quickLaunchOpen || isQuickLaunchDocked()).toBe(false);
+  });
+
+  // 모달은 닫히며 사유를 버리지만 고정된 바는 닫히지 않는다 — 성공한 재시도 위에 옛 실패가 남으면
+  // 발사된 지시가 실패한 것처럼 읽히고, 사유가 붙어 있는 동안 바가 접히지도 않는다.
+  it("clears a stale rejection without closing the composer", () => {
+    reopenQuickLaunchWithDraft("draft", "errorGeneric", 12);
+    setQuickLaunchPinned(true);
+
+    clearQuickLaunchRejection();
+
+    expect(getState().quickLaunchError).toBeNull();
+    expect(getState().quickLaunchErrorShortenBy).toBeNull();
+    expect(getState().quickLaunchPinned).toBe(true);
   });
 });
 
