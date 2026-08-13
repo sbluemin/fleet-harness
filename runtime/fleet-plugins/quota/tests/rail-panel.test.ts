@@ -159,7 +159,7 @@ describe("provider status copy", () => {
 
 describe("provider order", () => {
   // 옛 릴리스의 설정 파일이 살아남는다: 모르는 id를 담거나 그 사이 추가된 공급자를
-  // 빠뜨린 순서라도 카드 다섯 장이 전부, 정확히 한 번씩 그려져야 한다.
+  // 빠뜨린 순서라도 카드가 전부, 정확히 한 번씩 그려져야 한다.
   it("drops unknown ids, dedupes, and appends missing providers in default order", () => {
     expect(sanitizeProviderOrder(["opencode", "bogus", "claude", "opencode"]))
       .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi"]);

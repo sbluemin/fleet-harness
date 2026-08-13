@@ -5,12 +5,20 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@dotobokuri/core-ai-gateway";
+import {
+  isProviderId,
+  PROVIDER_ORDER_DEFAULT,
+  sanitizeProviderOrder,
+  type ProviderId,
+} from "../provider-order.js";
 import { providerGlyph } from "./cli-glyphs.js";
 import { getT, type QuotaMessageKey } from "./i18n/index.js";
 import "./quota.css";
 
+export { PROVIDER_ORDER_DEFAULT, sanitizeProviderOrder };
+export type { ProviderId };
+
 type T = Translate<QuotaMessageKey>;
-type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai";
 /** Providers whose credential read is gated behind an explicit connect. */
 type ConnectableProviderId = "claude" | "cursor";
 
@@ -54,30 +62,6 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude" || id === "cursor";
-}
-
-export const PROVIDER_ORDER_DEFAULT: readonly ProviderId[] = ["claude", "codex", "xai", "cursor", "opencode", "kimi"];
-
-function isProviderId(value: unknown): value is ProviderId {
-  return (PROVIDER_ORDER_DEFAULT as readonly unknown[]).includes(value);
-}
-
-/**
- * 서버가 보낸 순서를 그대로 믿지 않는다: 옛 릴리스의 설정 파일이 모르는 id를 담거나
- * 새 공급자를 빠뜨릴 수 있다. 모르는 id는 버리고 빠진 id는 기본 순서로 덧붙여
- * 카드 다섯 장이 전부, 정확히 한 번씩 그려지게 한다. (서버 sanitize의 미러)
- */
-export function sanitizeProviderOrder(value: unknown): ProviderId[] {
-  const order: ProviderId[] = [];
-  if (Array.isArray(value)) {
-    for (const entry of value) {
-      if (isProviderId(entry) && !order.includes(entry)) order.push(entry);
-    }
-  }
-  for (const id of PROVIDER_ORDER_DEFAULT) {
-    if (!order.includes(id)) order.push(id);
-  }
-  return order;
 }
 
 /** 한 칸 이동. 경계 밖이면 null — 호출자가 저장·공지를 건너뛴다. */

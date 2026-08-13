@@ -23,5 +23,5 @@
       "react/jsx-runtime": ["../../fleet-console/node_modules/@types/react/jsx-runtime.d.ts"]
     }
   },
-  "include": ["routes.ts", "server/**/*.ts", "client/**/*.ts", "client/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
+  "include": ["provider-order.ts", "routes.ts", "server/**/*.ts", "client/**/*.ts", "client/**/*.tsx", "tests/**/*.ts", "tests/**/*.tsx"]
 }
