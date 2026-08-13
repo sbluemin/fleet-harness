@@ -439,7 +439,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const requestGenerationRef = useRef(0);
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dropLineRef = useRef<HTMLSpanElement | null>(null);
-  const dragRef = useRef<{ id: ProviderId; pointerY: number; raf: number } | null>(null);
+  const dragRef = useRef<{ id: ProviderId; pointerY: number; startY: number; moved: boolean; raf: number } | null>(null);
   // 저장 요청 체인. 연속 이동의 POST가 서로를 추월하면 서버는 도착순으로 기록해
   // 옛 순열이 최종본이 될 수 있다 — 앞 요청이 끝난 뒤에만 다음을 보낸다.
   const orderSaveRef = useRef<Promise<void>>(Promise.resolve());
@@ -503,7 +503,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     dragRef.current = null;
     setDraggingId(null);
     const body = bodyRef.current;
-    if (!commit || !body) return;
+    if (!commit || !body || !drag.moved) return;
     const cards = [...body.querySelectorAll<HTMLElement>("[data-provider]")];
     const domOrder = cards.map((card) => card.dataset.provider).filter(isProviderId);
     const rest = cards.filter((card) => card.dataset.provider !== drag.id);
@@ -527,14 +527,21 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     const grip = target?.closest(".quota-grip");
     const body = bodyRef.current;
     if (!grip || !body || dragRef.current) return;
+    // 보조 버튼(우클릭·미들클릭)과 비주 포인터는 드래그가 아니다 — 컨텍스트 메뉴를
+    // 여는 동작이 재배열을 저장해 버리면 안 된다.
+    if (event.button !== 0 || !event.isPrimary) return;
     const id = grip.closest<HTMLElement>("[data-provider]")?.dataset.provider;
     if (!isProviderId(id)) return;
     event.preventDefault();
-    const drag = { id, pointerY: event.clientY, raf: 0 };
+    /* moved 전에는 커밋·인디케이터·오토스크롤을 모두 보류한다. 누르는 순간 카드가
+       접히며 눌렀던 좌표가 접힌 레이아웃의 몇 행 아래를 가리키게 되므로, 이동 없이
+       놓았을 때 그 스테일 좌표를 드롭으로 해석하면 의도 없는 재배열이 저장된다. */
+    const drag = { id, pointerY: event.clientY, startY: event.clientY, moved: false, raf: 0 };
     dragRef.current = drag;
     setDraggingId(id);
     const onMove = (moveEvent: PointerEvent) => {
       drag.pointerY = moveEvent.clientY;
+      if (!drag.moved && Math.abs(moveEvent.clientY - drag.startY) > 4) drag.moved = true;
     };
     const detach = () => {
       document.removeEventListener("pointermove", onMove);
@@ -556,11 +563,18 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
        흔들릴 때마다 카드가 밀려 판정 자체가 떨리기 때문에 absolute 오버레이로만 그린다. */
     const tick = () => {
       if (dragRef.current !== drag) return;
+      if (!drag.moved) {
+        const idleLine = dropLineRef.current;
+        if (idleLine) idleLine.style.visibility = "hidden";
+        drag.raf = requestAnimationFrame(tick);
+        return;
+      }
       const bodyRect = body.getBoundingClientRect();
       if (drag.pointerY < bodyRect.top + 48) body.scrollTop -= 9;
       else if (drag.pointerY > bodyRect.bottom - 48) body.scrollTop += 9;
       const line = dropLineRef.current;
       if (line) {
+        line.style.visibility = "visible";
         const rest = [...body.querySelectorAll<HTMLElement>("[data-provider]")]
           .filter((card) => card.dataset.provider !== drag.id);
         let top: number | null = null;
