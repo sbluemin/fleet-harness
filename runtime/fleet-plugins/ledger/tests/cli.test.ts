@@ -115,12 +115,19 @@ describe("tokscale bootstrap", () => {
       'import { spawn } from "node:child_process";',
       'import fs from "node:fs";',
       'const child = spawn(process.execPath, ["-e", "process.on(\\"SIGTERM\\", () => {}); setInterval(() => {}, 1000)"], { stdio: "ignore" });',
-      'fs.writeFileSync(process.argv[2], String(child.pid));',
+      'child.on("spawn", () => { fs.writeFileSync(process.argv[2], String(child.pid)); });',
       'setInterval(() => {}, 1000);',
     ].join("\n"));
-    const result = await createDefaultExecutor(cliHome)([pidFile], { cwd: cliHome, timeout: 200 });
+    const run = createDefaultExecutor(cliHome)([pidFile], { cwd: cliHome, timeout: 1_500 });
+    const grandchildPid = await vi.waitFor(async () => {
+      const raw = await fs.readFile(pidFile, "utf8").catch(() => "");
+      const pid = Number.parseInt(raw, 10);
+      expect(Number.isInteger(pid) && pid > 0).toBe(true);
+      return pid;
+    }, { timeout: 1_000 });
+    expect(isProcessAlive(grandchildPid)).toBe(true);
+    const result = await run;
     expect(result.exitCode).not.toBe(0);
-    const grandchildPid = Number.parseInt(await fs.readFile(pidFile, "utf8"), 10);
     await vi.waitFor(() => {
       expect(isProcessAlive(grandchildPid)).toBe(false);
     }, { timeout: 2_000 });
