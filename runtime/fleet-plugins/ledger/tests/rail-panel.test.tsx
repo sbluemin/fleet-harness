@@ -49,6 +49,15 @@ function dto(
       models: ["claude-sonnet-4"],
       lastActivityAtMs: Date.now(),
     }],
+    unmatched: [],
+    deviceTotals: {
+      costUsd: costUsd * 2,
+      input: 2_000,
+      output: 400,
+      cacheRead: 600,
+      messages: 8,
+      sessions: 2,
+    },
     clients: [{
       client: "claude",
       sessions: 1,
@@ -271,5 +280,84 @@ describe("Ledger rail status rendering", () => {
       resolveAll({ json: async () => ({ ...allDto, scope: { theaterId: null, window: "week" } }) } as Response);
     });
     expect(container.textContent).toContain("$99.00");
+  });
+});
+
+describe("Ledger attribution bridge and coverage", () => {
+  it("renders the attribution bridge reconciling the hero to the device-wide total", async () => {
+    await renderWith(dto("ok", "week", 12.34));
+    const bridge = container.querySelector(".ledger-bridge");
+    expect(bridge).not.toBeNull();
+    expect(bridge?.textContent).toContain("Console operations");
+    expect(bridge?.textContent).toContain("$12.34 · 50%");
+    expect(bridge?.textContent).toContain("Other local sessions");
+    expect(bridge?.textContent).toContain("Device-wide this window");
+    expect(bridge?.textContent).toContain("$24.68");
+    expect(bridge?.querySelector(".ledger-bridge-bar")?.getAttribute("aria-label")).toContain("50%");
+    expect(bridge?.querySelector(".ledger-bridge-attributed")?.getAttribute("style")).toContain("width: 50%");
+  });
+
+  it("hides the bridge when the device-wide total is zero", async () => {
+    const value = dto("ok", "week", 0);
+    await renderWith({ ...value, deviceTotals: { ...value.deviceTotals, costUsd: 0 } });
+    expect(container.querySelector(".ledger-bridge")).toBeNull();
+  });
+
+  it("renders unmatched operations as ghost rows with a coverage line", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      unmatched: [{
+        operationId: "operation-ghost",
+        title: "Ghost Operation",
+        cliId: "codex",
+        cliLabel: "Codex",
+      }],
+    });
+    expect(container.textContent).toContain("2 operations with saved sessions");
+    expect(container.textContent).toContain("1 matched · 1 unmatched");
+    const ghost = container.querySelector(".ledger-operation--unmatched");
+    expect(ghost).not.toBeNull();
+    expect(ghost?.textContent).toContain("Ghost Operation");
+    expect(ghost?.textContent).toContain("No usage matched in this window");
+    expect(ghost?.closest("button")).toBeNull();
+  });
+
+  it("keeps the list honest when nothing matches: ghost rows without the empty-state copy", async () => {
+    const value = dto("ok", "week", 0);
+    await renderWith({
+      ...value,
+      unmatched: [{
+        operationId: "operation-ghost",
+        title: "Ghost Operation",
+        cliId: "codex",
+        cliLabel: "Codex",
+      }],
+    });
+    expect(container.textContent).not.toContain("No usage in this window");
+    expect(container.querySelector(".ledger-operation--unmatched")).not.toBeNull();
+  });
+
+  it("switches the operation list order between recent activity and highest cost", async () => {
+    const value = dto("ok");
+    const now = Date.now();
+    await renderWith({
+      ...value,
+      operations: [
+        { ...value.operations[0]!, operationId: "cheap-recent", title: "Cheap Recent", costUsd: 0.5, lastActivityAtMs: now },
+        { ...value.operations[0]!, operationId: "dear-stale", title: "Dear Stale", costUsd: 40, lastActivityAtMs: now - 3_600_000 },
+      ],
+      totals: { ...value.totals, costUsd: 40.5 },
+    });
+    const titles = () => [...container.querySelectorAll(".ledger-operation .ledger-operation-copy strong")].map((node) => node.textContent);
+    expect(titles()).toEqual(["Cheap Recent", "Dear Stale"]);
+
+    const costSort = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Highest cost");
+    await act(async () => costSort!.click());
+    expect(titles()).toEqual(["Dear Stale", "Cheap Recent"]);
+
+    const activitySort = [...container.querySelectorAll<HTMLElement>(".ledger-segment button")].find((button) => button.textContent === "Recent activity");
+    await act(async () => activitySort!.click());
+    expect(titles()).toEqual(["Cheap Recent", "Dear Stale"]);
   });
 });

@@ -355,3 +355,60 @@ describe("buildSummary matching", () => {
     expect(serialized).not.toContain("workspace_label");
   });
 });
+
+describe("buildSummary coverage", () => {
+  it("reports device-wide totals across every session regardless of operation claims or theater scope", () => {
+    const dto = buildSummary(sessions, [
+      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+    ], { theaterId: "theater-a", window: "week" });
+    expect(dto.totals.costUsd).toBe(2.25);
+    expect(dto.deviceTotals).toEqual({
+      input: 2_001_000,
+      output: 72_200,
+      cacheRead: 1_000_000,
+      costUsd: 4.05,
+      messages: 22,
+      sessions: 3,
+    });
+  });
+
+  it("lists claimed operations with no matched session as unmatched, scoped by theater", () => {
+    const dto = buildSummary(sessions, [
+      operation("matched", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+      operation("ghost", "theater-a", "claude", "00000000-0000-4000-8000-000000000000", 200),
+      operation("other-theater", "theater-b", "claude", "11111111-1111-4111-8111-111111111111", 300),
+    ], { theaterId: "theater-a", window: "week" });
+    expect(dto.operations.map((entry) => entry.operationId)).toEqual(["matched"]);
+    expect(dto.unmatched).toEqual([{
+      operationId: "ghost",
+      title: "Operation ghost",
+      cliId: "claude",
+      cliLabel: "Claude Code",
+    }]);
+  });
+
+  it("excludes operations without a claim and losing duplicate claims from unmatched", () => {
+    const withoutSession: OperationNode = {
+      ...operation("no-session", "theater-a", "claude", "ignored", 100),
+      payload: { cliId: "claude", cliLabel: "Claude Code" },
+    };
+    const sessionId = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
+    const dto = buildSummary([sessions[0]!], [
+      operation("older", "theater-a", "claude", sessionId, 100),
+      operation("newer", "theater-a", "claude", sessionId, 200),
+      withoutSession,
+    ], { theaterId: null, window: "week" });
+    expect(dto.operations.map((entry) => entry.operationId)).toEqual(["newer"]);
+    expect(dto.unmatched).toEqual([]);
+  });
+
+  it("keeps unmatched empty and deviceTotals zeroed in the overflow fallback", () => {
+    const lastActive = new Date(2026, 6, 15, 12).getTime();
+    const dto = buildSummary([
+      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
+      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
+    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
+    expect(dto.unmatched).toEqual([]);
+    expect(dto.deviceTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 });
+  });
+});

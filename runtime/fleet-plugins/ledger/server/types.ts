@@ -49,12 +49,24 @@ export interface LedgerDailyPoint {
   readonly costUsd: number;
 }
 
+/** 저장 세션은 있지만 이 window의 사용량 원본에서 매칭되지 않은 Operation이다. */
+export interface LedgerUnmatchedOperationDto {
+  readonly operationId: string;
+  readonly title: string;
+  readonly cliId: string;
+  readonly cliLabel: string;
+}
+
 export interface LedgerSummaryDto {
   readonly schemaVersion: 1;
   readonly scope: { readonly theaterId: string | null; readonly window: LedgerWindow };
   readonly generatedAtMs: number;
   readonly totals: LedgerUsage & { readonly costUsd: number; readonly messages: number };
   readonly operations: LedgerOperationDto[];
+  /** 저장 세션은 있으나 이 window에서 매칭된 사용량이 없는 Operation이다(스코프 필터 적용). */
+  readonly unmatched: readonly LedgerUnmatchedOperationDto[];
+  /** 스코프와 무관한 이 기기 전체 합계다. totals(귀속분)와의 관계를 화면에 드러내는 근거다. */
+  readonly deviceTotals: LedgerUsage & { readonly costUsd: number; readonly messages: number; readonly sessions: number };
   /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 CLI별 사용량이다. */
   readonly clients: LedgerClientDto[];
   /** Theater와 Operation 귀속 여부에 무관한 이 기기 전체의 일별 비용이다. */

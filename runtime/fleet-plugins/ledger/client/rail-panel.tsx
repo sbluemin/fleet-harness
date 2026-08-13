@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -21,6 +21,7 @@ import "./ledger.css";
 
 type T = Translate<LedgerMessageKey>;
 type ScopeMode = "theater" | "all";
+type SortMode = "activity" | "cost";
 
 interface LedgerPanelProps {
   readonly ctx: RailPanelContext;
@@ -128,6 +129,55 @@ function TrendSection({ daily, language, t }: {
   );
 }
 
+function attributionShare(attributed: number, deviceWide: number): number {
+  if (deviceWide <= 0 || attributed <= 0) return 0;
+  return Math.min(1, attributed / deviceWide);
+}
+
+function formatShare(share: number): string {
+  const percent = share * 100;
+  if (percent >= 9.95) return `${Math.round(percent)}%`;
+  return `${percent.toFixed(1)}%`;
+}
+
+/** 귀속분(totals)과 기기 전체(deviceTotals)의 관계를 한눈에 잇는 브릿지 — 두 숫자가
+    같은 window의 서로 다른 모집단이라는 사실을 패널의 첫 문장으로 올린다. */
+function BridgeSection({ data, t }: { readonly data: LedgerSummaryDto; readonly t: T }) {
+  const attributed = data.totals.costUsd;
+  const deviceWide = data.deviceTotals.costUsd;
+  if (deviceWide <= 0) return null;
+  const share = attributionShare(attributed, deviceWide);
+  const other = Math.max(0, deviceWide - attributed);
+  const aria = t("ledger.bridge.aria", {
+    attributed: formatCost(attributed),
+    share: formatShare(share),
+    other: formatCost(other),
+  });
+  return (
+    <div className="ledger-bridge">
+      <div className="ledger-bridge-bar" role="img" aria-label={aria}>
+        {share > 0 ? <span className="ledger-bridge-attributed" style={{ width: `${share * 100}%` }} /> : null}
+      </div>
+      <div className="ledger-bridge-legend">
+        <span className="ledger-bridge-row">
+          <span className="ledger-bridge-swatch ledger-bridge-swatch--attributed" aria-hidden="true" />
+          <span>{t("ledger.bridge.attributed")}</span>
+          <strong>{formatCost(attributed)} · {formatShare(share)}</strong>
+        </span>
+        <span className="ledger-bridge-row">
+          <span className="ledger-bridge-swatch ledger-bridge-swatch--other" aria-hidden="true" />
+          <span>{t("ledger.bridge.other")}</span>
+          <strong>{formatCost(other)}</strong>
+        </span>
+      </div>
+      <div className="ledger-bridge-total">
+        <span>{t("ledger.bridge.deviceTotal")}</span>
+        <strong>{formatCost(deviceWide)}</strong>
+      </div>
+    </div>
+  );
+}
+
 function LoadingState({ t }: { readonly t: T }) {
   return (
     <div className="ledger-state ledger-source-notice" data-ledger-source-status="bootstrapping">
@@ -213,6 +263,7 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
   const t = getT(ctx.language);
   const [scope, setScope] = useState<ScopeMode>(ctx.theaterId ? "theater" : "all");
   const [window, setWindow] = useState<LedgerWindow>("week");
+  const [sort, setSort] = useState<SortMode>("activity");
   const [data, setData] = useState<LedgerSummaryDto | null>(null);
   const [error, setError] = useState(false);
   const [refreshEpoch, setRefreshEpoch] = useState(0);
@@ -267,6 +318,11 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
 
   const expectedTheaterId = scope === "theater" ? ctx.theaterId : null;
   const visibleData = data?.scope.window === window && data.scope.theaterId === expectedTheaterId ? data : null;
+  // 서버는 최근 활동순으로 보낸다. 비용순은 클라이언트 정렬 — 동점이면 최근 활동이 이긴다.
+  const displayOperations = useMemo(() => {
+    if (!visibleData || sort === "activity") return visibleData?.operations ?? [];
+    return [...visibleData.operations].sort((a, b) => b.costUsd - a.costUsd || b.lastActivityAtMs - a.lastActivityAtMs);
+  }, [visibleData, sort]);
   const selected = visibleData?.operations.find((operation) => operation.operationId === selectedId) ?? null;
   if (selected) return <div className="ledger-root" ref={rootRef}><DetailView operation={selected} t={t} back={() => setSelectedId(null)} /></div>;
 
@@ -305,14 +361,29 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
               <Metric label={t("ledger.metric.cacheRead")} value={formatTokens(visibleData.totals.cacheRead)} />
               <Metric label={t("ledger.metric.messages")} value={formatTokens(visibleData.totals.messages)} />
             </div>
+            <BridgeSection data={visibleData} t={t} />
           </section>
 
           <section className="ledger-list">
-            <h3>{t("ledger.section.operations")}</h3>
-            {visibleData.operations.length === 0 ? (
+            <div className="ledger-list-header">
+              <h3>{t("ledger.section.operations")}</h3>
+              <div className="ledger-segment ledger-segment--compact" role="group" aria-label={t("ledger.sort.aria")}>
+                <button type="button" aria-pressed={sort === "activity"} onClick={() => setSort("activity")}>{t("ledger.sort.activity")}</button>
+                <button type="button" aria-pressed={sort === "cost"} onClick={() => setSort("cost")}>{t("ledger.sort.cost")}</button>
+              </div>
+            </div>
+            {visibleData.unmatched.length > 0 ? (
+              <div className="ledger-coverage">
+                <span>{t("ledger.coverage.count", { count: visibleData.operations.length + visibleData.unmatched.length })}</span>
+                <span className="ledger-coverage-match">
+                  {t("ledger.coverage.matched", { matched: visibleData.operations.length, unmatched: visibleData.unmatched.length })}
+                </span>
+              </div>
+            ) : null}
+            {displayOperations.length === 0 && visibleData.unmatched.length === 0 ? (
               <div className="ledger-inline-empty"><strong>{t("ledger.empty.title")}</strong><p>{t("ledger.empty.body")}</p></div>
             ) : null}
-            {visibleData.operations.map((operation) => (
+            {displayOperations.map((operation) => (
               <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(operation.cliId)}`} key={operation.operationId} onClick={() => openDetail(operation.operationId)}>
                 <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(operation.cliId))}</span>
                 <span className="ledger-operation-copy">
@@ -325,6 +396,19 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
                 </span>
                 <span className="ledger-chevron">›</span>
               </button>
+            ))}
+            {visibleData.unmatched.map((operation) => (
+              <div
+                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromCliId(operation.cliId)}`}
+                key={operation.operationId}
+                aria-label={`${operation.title} — ${t("ledger.operation.unmatched", { cliLabel: operation.cliLabel || t("ledger.value.unknownCli") })}`}
+              >
+                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(operation.cliId))}</span>
+                <span className="ledger-operation-copy">
+                  <strong>{operation.title}</strong>
+                  <small>{t("ledger.operation.unmatched", { cliLabel: operation.cliLabel || t("ledger.value.unknownCli") })}</small>
+                </span>
+              </div>
             ))}
           </section>
 

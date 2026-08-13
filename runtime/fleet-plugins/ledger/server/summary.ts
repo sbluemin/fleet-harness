@@ -142,6 +142,8 @@ export function buildSummary(
       generatedAtMs,
       totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
       operations: [],
+      unmatched: [],
+      deviceTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 },
       clients: [],
       daily: [],
       source: {
@@ -203,6 +205,20 @@ function buildSummaryUnchecked(
       };
     }).sort((a, b) => b.lastActivityAtMs - a.lastActivityAtMs);
 
+  // 저장 세션 클레임은 있으나 이 window의 원본에서 한 세션도 매칭되지 않은 Operation —
+  // 목록에서 조용히 지우지 않고 화면이 그 사실을 말할 수 있게 별도 목록으로보낸다.
+  // dedup된 claims(같은 세션을 두 Operation이 가리키면 최신만 남음) 기준이라
+  // 사용량이 다른 Operation에 귀속된 중복 클레임은 unmatched로 오표기되지 않는다.
+  const unmatched = [...claims.values()]
+    .filter((claim) => !operationBuckets.has(claim.operation.id))
+    .filter((claim) => scope.theaterId === null || claim.operation.theaterId === scope.theaterId)
+    .map((claim) => ({
+      operationId: claim.operation.id,
+      title: claim.operation.title,
+      cliId: claim.cliId,
+      cliLabel: claim.cliLabel,
+    }));
+
   const totalValues = emptyAccumulator();
   for (const operation of operationDtos) {
     totalValues.input = addFinite(totalValues.input, operation.usage.input);
@@ -213,11 +229,15 @@ function buildSummaryUnchecked(
   }
   const clientMap = new Map<string, { sessions: number; totals: Accumulator }>();
   const dailyMap = new Map<string, number>();
+  const deviceValues = emptyAccumulator();
+  let deviceSessions = 0;
   for (const session of sessions) {
     const client = clientMap.get(session.client) ?? { sessions: 0, totals: emptyAccumulator() };
     client.sessions = addFinite(client.sessions, 1);
     addSession(client.totals, session);
     clientMap.set(session.client, client);
+    addSession(deviceValues, session);
+    deviceSessions = addFinite(deviceSessions, 1);
     const day = localDayKey(session.lastActive);
     dailyMap.set(day, addFinite(dailyMap.get(day) ?? 0, session.costUsd));
   }
@@ -240,6 +260,8 @@ function buildSummaryUnchecked(
     generatedAtMs,
     totals: { ...usageOf(totalValues), costUsd: totalValues.costUsd, messages: totalValues.messages },
     operations: operationDtos,
+    unmatched,
+    deviceTotals: { ...usageOf(deviceValues), costUsd: deviceValues.costUsd, messages: deviceValues.messages, sessions: deviceSessions },
     clients,
     daily,
     source: { status, skippedSessions },
