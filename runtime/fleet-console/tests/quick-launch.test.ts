@@ -7,9 +7,9 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
-import { getState, removeTheater, setState } from "../core/client/src/store.js";
+import { getState, removeTheater, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
@@ -198,6 +198,61 @@ describe("quick launch preferences", () => {
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
     expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false });
+  });
+
+  it("treats any non-true pin value as unpinned rather than trusting it", () => {
+    window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ pinned: "yes" }));
+    expect(readQuickLaunchSelection().pinned).toBe(false);
+  });
+});
+
+describe("quick launch pin", () => {
+  beforeEach(() => {
+    window.localStorage.clear();
+    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0 });
+  });
+
+  it("remembers the pin beside the launch coordinates instead of replacing them", () => {
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
+
+    writeQuickLaunchPinned(true);
+
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true });
+  });
+
+  // 고정 중에는 여닫을 것이 없다 — 같은 키가 포커스를 왕복시킨다.
+  it("turns Mod+J into a focus toggle while pinned instead of closing the composer", () => {
+    setQuickLaunchPinned(true);
+
+    toggleQuickLaunch();
+
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchFocusToggle).toBe(1);
+  });
+
+  it("still opens and closes the composer when it is not pinned", () => {
+    toggleQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchFocusToggle).toBe(0);
+
+    toggleQuickLaunch();
+    expect(getState().quickLaunchOpen).toBe(false);
+  });
+
+  // 되돌리기가 취소가 되면 안 된다 — 고정을 풀면 쓰던 컴포저가 모달로 돌아올 뿐이다.
+  it("keeps the composer open when the pin is released", () => {
+    setQuickLaunchPinned(true);
+
+    setQuickLaunchPinned(false);
+
+    expect(getState().quickLaunchPinned).toBe(false);
+    expect(getState().quickLaunchOpen).toBe(true);
+  });
+
+  it("persists the pin so a reload restores the docked bar", () => {
+    setQuickLaunchPinned(true);
+
+    expect(readQuickLaunchSelection().pinned).toBe(true);
   });
 });
 

@@ -11885,6 +11885,12 @@ body[data-codex-reading="true"] .operations-side-bar {
     ),
     var(--ink-deep);
   box-shadow: var(--shadow-floating);
+  /* 고정 시 언포커스가 물러나는 깊이. 접힘과 한 동작으로 걸린다. */
+  --quick-launch-idle-opacity: 0.55;
+  --quick-launch-idle-hover-opacity: 0.85;
+  transition:
+    transform var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-glide);
 }
 
 .quick-launch-card:focus-visible {
@@ -11896,15 +11902,6 @@ body[data-codex-reading="true"] .operations-side-bar {
    transform으로 그린다 — 오버레이의 place-items를 바꾸면 보간되지 않아 카드가 튄다.
    translateY의 50%는 카드 자기 높이라, 접혀 높이가 줄어도 아래 모서리는 --space-4에 붙어 있는다
    (계산: 중앙정렬 bottom (V+h)/2 + (V/2 - s - h/2) = V - s, h와 무관). */
-.quick-launch-card {
-  /* 언포커스 시 물러나는 깊이. 접힘과 함께 한 동작으로 걸린다. */
-  --quick-launch-idle-opacity: 0.55;
-  --quick-launch-idle-hover-opacity: 0.85;
-  transition:
-    transform var(--duration-slow) var(--ease-spring),
-    opacity var(--duration-base) var(--ease-glide);
-}
-
 .quick-launch-card.is-pinned {
   transform: translateY(calc(50vh - var(--space-4) - 50%));
   /* 오버레이가 클릭을 통과시키는 동안에도 카드 자신은 받아야 한다. */
@@ -11918,16 +11915,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .quick-launch-card.is-pinned.is-collapsed:hover {
   opacity: var(--quick-launch-idle-hover-opacity);
-}
-
-/* 접히는 두 층. 높이를 0으로 눌러 자리를 돌려주고, 포커스 차단은 JSX의 inert가 맡는다. */
-.quick-launch-card.is-collapsed .quick-launch-field,
-.quick-launch-card.is-collapsed .quick-launch-bar {
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-top-color: transparent;
-  opacity: 0;
 }
 
 .quick-launch-card.is-pinned .quick-launch-field,
@@ -11945,6 +11932,18 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-card.is-pinned:not(.has-popover) .quick-launch-field,
 .quick-launch-card.is-pinned:not(.has-popover) .quick-launch-bar {
   overflow: hidden;
+}
+
+/* 접히는 두 층. 높이를 0으로 눌러 자리를 돌려주고, 포커스 차단은 JSX의 inert가 맡는다.
+   .is-pinned를 함께 물어 기저 규칙(펼친 높이)보다 특정도를 높인다 — 같은 특정도로 두면 뒤에 선
+   기저가 이겨 접힘이 조용히 무효가 된다(실브라우저에서 max-height가 320px로 남는 것으로 실측). */
+.quick-launch-card.is-pinned.is-collapsed .quick-launch-field,
+.quick-launch-card.is-pinned.is-collapsed .quick-launch-bar {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-color: transparent;
+  opacity: 0;
 }
 
 /* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤. display:none이라 펼친 동안에는 접근성 트리와
