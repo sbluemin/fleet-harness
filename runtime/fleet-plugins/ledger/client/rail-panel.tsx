@@ -97,7 +97,11 @@ function TrendSection({ daily, dailyAttributed, language, t }: {
   readonly t: T;
 }) {
   const [scale, setScale] = useState<TrendScale>("linear");
-  const dayFormatter = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" });
+  // Intl 포매터 생성은 비싸므로 스케일 토글 같은 무관한 리렌더에서 재생성하지 않는다.
+  const dayFormatter = useMemo(
+    () => new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }),
+    [language],
+  );
   const formatDay = (day: string) => dayFormatter.format(new Date(day + "T12:00:00"));
   // 스케일은 값에 적용하는 함수다 — 막대 전체와 귀속 레이어에 같은 함수를 써야
   // sqrt 모드에서도 "높이 ∝ 변환(값)" 해석이 모든 세그먼트에 일관되게 성립한다.
