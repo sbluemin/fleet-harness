@@ -12,7 +12,7 @@ import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunch
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -345,15 +345,18 @@ export function QuickLaunch() {
   // 상태가 된다 — 비우지 않으면 방금 보낸 문장이 그대로 남아 아직 못 보낸 것처럼 읽힌다.
   // 고정 여부는 호출 시점에 store에서 읽는다 — 멘션 전달은 비동기라, 넘길 때의 값을 닫아 두면
   // 전달 중에 고정을 푼 사용자에게 빈 모달이 닫히지 않은 채 남는다.
-  const finishSubmission = useCallback(() => {
+  const finishSubmission = useCallback((deliveredText: string | null = null) => {
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
       // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
       submittedRef.current = true;
-      // 전달이 비동기(멘션)인 동안 Escape로 먼저 닫혔다면 닫힘 전이가 이미 초안을 보존했다.
-      // 성공이 뒤늦게 도착한 지금 그 보존분을 소비한다 — 남기면 전달된 문장이 미발사 초안으로
-      // 되살아난다. 에포크 가드가 위에서 스테일 세션을 걸렀으므로 여기서는 안전하다.
-      consumeQuickLaunchDraft();
+      // 전달이 비동기(멘션)인 동안 Escape로 먼저 닫혔다면 닫힘 전이가 이 문장을 보존해 뒀다 —
+      // 남기면 전달된 문장이 미발사 초안으로 되살아난다. 단, store의 초안 슬롯은 공유라 다른
+      // 제출의 거절 초안(reopenQuickLaunchWithDraft)이 도착해 있을 수 있으므로, 지금 전달된
+      // 문장과 일치하는 보존분만 소비한다(보존은 원문, 전달은 trim이라 trim으로 비교한다).
+      if (deliveredText !== null && getState().quickLaunchDraft?.trim() === deliveredText) {
+        consumeQuickLaunchDraft();
+      }
       closeQuickLaunch();
       return;
     }
@@ -394,7 +397,8 @@ export function QuickLaunch() {
       void plugin.messageOperation(mentionTarget.operationId, text)
         .then(() => {
           if (composerEpochRef.current !== epoch) return;
-          finishSubmission();
+          // 전달된 문장을 넘겨 이 제출이 보존한 초안만 소비하게 한다.
+          finishSubmission(text);
         })
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;

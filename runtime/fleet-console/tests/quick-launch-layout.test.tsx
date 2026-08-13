@@ -226,11 +226,11 @@ describe("Quick Launch picker keyboard grammar", () => {
     expect(quickLaunch).toMatch(/submittedRef\.current = true;/u);
   });
 
-  it("consumes a mid-flight preserved draft when asynchronous delivery succeeds", () => {
-    // 전달 중 Escape가 보존한 초안을 성공 콜백이 소비하지 않으면, 전달된 문장이 미발사 초안으로
-    // 되살아나 중복 전달을 부른다(Codex P2 실측 경로).
-    const modalFinish = /submittedRef\.current = true;[\s\S]{0,400}?consumeQuickLaunchDraft\(\);[\s\S]{0,200}?closeQuickLaunch\(\);/u;
-    expect(quickLaunch).toMatch(modalFinish);
+  it("consumes only the mid-flight preserved draft this delivery owns", () => {
+    // 전달 중 Escape가 보존한 초안을 성공 콜백이 소비하지 않으면 전달된 문장이 미발사 초안으로
+    // 되살아나고, 소유권 검사 없이 소비하면 다른 제출의 거절 초안까지 지운다(둘 다 Codex P2).
+    expect(quickLaunch).toMatch(/quickLaunchDraft\?\.trim\(\) === deliveredText/u);
+    expect(quickLaunch).toMatch(/finishSubmission\(text\)/u);
   });
 
   it("remembers a picked Theater immediately, like model and effort", () => {
