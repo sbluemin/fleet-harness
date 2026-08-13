@@ -1,8 +1,8 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   assertLaunchCommandLineBudget,
@@ -16,6 +16,11 @@ import {
   type AgentCliProfile,
   type LaunchCommandLineLimit,
 } from "../src/index.js";
+import {
+  LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX,
+  LAUNCH_PROMPT_FILE_NAME,
+  LAUNCH_PROMPT_TEMP_DIR_PREFIX,
+} from "../src/agent-cli/prompt.js";
 
 const tempDirs: string[] = [];
 
@@ -23,6 +28,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+  vi.restoreAllMocks();
 });
 
 // core-process wrapWindowsShim이 npm `.cmd` shim에 대해 실제로 만들어 내는 모양이다.
@@ -227,92 +233,261 @@ describe("assertLaunchCommandLineBudget", () => {
       limit: CMD_SHIM_LIMIT,
     })).toThrow(LaunchPromptError);
   });
+
+  it("does not tell the user to shorten a prompt that is already a file pointer", () => {
+    const fits = [...CMD_WRAPPED_PREFIX_ARGS, "--mcp-config", "b".repeat(8_050)];
+    const pointer = `${LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX}C:\\tmp\\fleet-quick-launch-x\\prompt.md`;
+    expect(() => assertLaunchCommandLineBudget({
+      args: fits,
+      argsWithoutPrompt: fits,
+      bin: "cmd.exe",
+      limit: CMD_SHIM_LIMIT,
+    })).not.toThrow();
+    try {
+      assertLaunchCommandLineBudget({
+        args: [...fits, pointer],
+        argsWithoutPrompt: fits,
+        bin: "cmd.exe",
+        limit: CMD_SHIM_LIMIT,
+        promptIsFixedLength: true,
+      });
+      expect.unreachable("expected a refusal");
+    } catch (error) {
+      expect((error as LaunchPromptError).code).toBe("launch_command_line_too_long");
+      expect((error as LaunchPromptError).shortenByChars).toBeUndefined();
+      expect((error as LaunchPromptError).message).not.toMatch(/Shorten the launch prompt/);
+      expect((error as LaunchPromptError).message).toMatch(/even after moving the launch prompt into a file/);
+    }
+  });
 });
 
 // 헬퍼가 있다는 것과 실행 경로가 그것을 부른다는 것은 다른 사실이다. 상한이 걸리는 지점은
 // 프로필 조립이 아니라 주입이 끝난 뒤이므로, 그 배선을 여기서 못 박는다.
 describe("injectAgentCliProfile command-line enforcement", () => {
-  it("refuses a launch whose merged argv overflows the declared limit, and leaves no plugin behind", async () => {
-    const root = createTempRoot("fleet-admiral-cmdline-");
-    const profile: AgentCliProfile = {
-      args: [...CMD_WRAPPED_PREFIX_ARGS],
-      bin: "cmd.exe",
-      commandLineLimit: CMD_SHIM_LIMIT,
-      cwd: root,
-      env: { HOME: root },
-      id: "claude-gateway",
-      label: "claude-gateway",
-      promptArgs: ["a".repeat(10_000)],
-      terminalName: "xterm-256color",
-    };
-    let releasedToken = false;
+  it("delivers a cmd-shim launch prompt through a unique temp file, including shim-unsafe and over-budget bodies", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-file-");
+    const original = 'Summarize %USERPROFILE% & then do "this" ' + "a".repeat(10_000);
     const isolatedTmp = path.join(root, "tmp");
     mkdirSync(isolatedTmp);
-    const originalTemp = process.env.TEMP;
-    const originalTmp = process.env.TMP;
-    process.env.TEMP = isolatedTmp;
-    process.env.TMP = isolatedTmp;
+    const restoreTmp = isolateTmp(isolatedTmp);
 
     try {
-      await expect(injectAgentCliProfile(profile, {
-        buildSystemPrompt: () => "Fleet doctrine",
-        dataDir: path.join(root, "data"),
-        dedicatedMcpSession: {
-          async getEndpoint() {
-            return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
-          },
-          issueSessionToken() {
-            return [{ name: "fleet", token: "token-123" }];
-          },
-          releaseSessionToken() {
-            releasedToken = true;
-          },
-        },
-        withMarketplaceLock: async (_target, fn) => fn(),
-      })).rejects.toThrow(LaunchPromptError);
-
-      // 거부가 세션 토큰과 플러그인 디렉터리를 남기면, 실패한 실행마다 찌꺼기가 쌓인다.
-      expect(releasedToken).toBe(true);
-      expect(existsSync(path.join(root, "data", "plugins"))).toBe(false);
-      expect(readdirSync(isolatedTmp)).toEqual([]);
+      const injected = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: [original] }),
+        injectOptions(root),
+      );
+      const instruction = injected.args.at(-1)!;
+      expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
+      expect(injected.args).not.toContain(original);
+      expect(injected.args.some((arg) => arg.includes("%USERPROFILE%"))).toBe(false);
+      const filePath = instruction.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(path.basename(filePath)).toBe(LAUNCH_PROMPT_FILE_NAME);
+      expect(path.basename(path.dirname(filePath)).startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX)).toBe(true);
+      expect(readFileSync(filePath, "utf8")).toBe(original);
+      expect(injected.promptArgs).toEqual([]);
+      injected.cleanup?.();
+      expect(existsSync(filePath)).toBe(false);
+      expect(existsSync(path.dirname(filePath))).toBe(false);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
     } finally {
-      if (originalTemp === undefined) delete process.env.TEMP;
-      else process.env.TEMP = originalTemp;
-      if (originalTmp === undefined) delete process.env.TMP;
-      else process.env.TMP = originalTmp;
+      restoreTmp();
     }
   });
 
-  it("admits the same launch when the platform declares no command-line limit", async () => {
+  it("refuses to collapse multiple positional prompt args into one file, and leaves no temp file", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-multi-prompt-");
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+    const released = { token: false };
+
+    try {
+      await expect(injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: ["first", "second"] }),
+        injectOptions(root, released),
+      )).rejects.toThrow(/single positional prompt/);
+
+      expect(released.token).toBe(true);
+      expect(readdirSync(isolatedTmp)).toEqual([]);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("uses distinct temp directories for concurrent cmd-shim launches", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-unique-");
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const first = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: ["first & launch"] }),
+        injectOptions(root),
+      );
+      const second = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: ["second & launch"] }),
+        injectOptions(root),
+      );
+      expect(first.args.at(-1)).not.toBe(second.args.at(-1));
+      const firstPath = first.args.at(-1)!.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      const secondPath = second.args.at(-1)!.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(readFileSync(firstPath, "utf8")).toBe("first & launch");
+      expect(readFileSync(secondPath, "utf8")).toBe("second & launch");
+      first.cleanup?.();
+      second.cleanup?.();
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("still refuses a cmd-shim launch whose arguments overflow without the prompt, and leaves no temp file", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-");
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+    const released = { token: false };
+
+    try {
+      await expect(injectAgentCliProfile(
+        cmdShimProfile(root, {
+          commandLineLimit: { maxChars: 64, via: "cmd-shim" },
+          promptArgs: ["a & b"],
+        }),
+        injectOptions(root, released),
+      )).rejects.toThrow(LaunchPromptError);
+
+      expect(released.token).toBe(true);
+      expect(existsSync(path.join(root, "data", "plugins"))).toBe(false);
+      expect(readdirSync(isolatedTmp)).toEqual([]);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("refuses a cmd-shim file pointer when the temp path itself is cmd-unsafe, and leaves no file", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-unsafe-tmp-");
+    const isolatedTmp = path.join(root, "tmp&shim");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+    const released = { token: false };
+
+    try {
+      try {
+        await injectAgentCliProfile(
+          cmdShimProfile(root, { promptArgs: ["hello"] }),
+          injectOptions(root, released),
+        );
+        expect.unreachable("expected a refusal");
+      } catch (error) {
+        expect(error).toBeInstanceOf(LaunchPromptError);
+        expect((error as LaunchPromptError).code).toBe("prompt_unsafe_for_shim");
+      }
+      expect(released.token).toBe(true);
+      expect(readdirSync(isolatedTmp)).toEqual([]);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("delivers a native CreateProcess launch prompt through a unique temp file even when the body would fit", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-create-process-");
+    const original = 'Summarize %USERPROFILE% & then do "this"';
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const injected = await injectAgentCliProfile({
+        args: [],
+        bin: "claude.exe",
+        commandLineLimit: { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" },
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [original],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
+
+      const instruction = injected.args.at(-1)!;
+      expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
+      expect(injected.args).not.toContain(original);
+      expect(injected.args.some((arg) => arg.includes("%USERPROFILE%"))).toBe(false);
+      const filePath = instruction.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(readFileSync(filePath, "utf8")).toBe(original);
+      injected.cleanup?.();
+      expect(existsSync(filePath)).toBe(false);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("does not ask to shorten a prompt after the body has already moved to a file", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-pointer-overflow-");
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+    const released = { token: false };
+
+    try {
+      const baseline = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: [] }),
+        injectOptions(root),
+      );
+      const withoutPrompt = estimateWindowsCommandLineChars(baseline.bin, baseline.args);
+      baseline.cleanup?.();
+
+      try {
+        await injectAgentCliProfile(
+          cmdShimProfile(root, {
+            commandLineLimit: { maxChars: withoutPrompt + 20, via: "cmd-shim" },
+            promptArgs: ["hello"],
+          }),
+          injectOptions(root, released),
+        );
+        expect.unreachable("expected a refusal");
+      } catch (error) {
+        expect(error).toBeInstanceOf(LaunchPromptError);
+        expect((error as LaunchPromptError).code).toBe("launch_command_line_too_long");
+        expect((error as LaunchPromptError).shortenByChars).toBeUndefined();
+      }
+      expect(released.token).toBe(true);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("delivers a POSIX launch prompt through a unique temp file even when the platform declares no command-line limit", async () => {
     const root = createTempRoot("fleet-admiral-cmdline-posix-");
-    const profile: AgentCliProfile = {
-      args: [],
-      bin: "claude",
-      cwd: root,
-      env: { HOME: root },
-      id: "claude-gateway",
-      label: "claude-gateway",
-      promptArgs: ["a".repeat(10_000)],
-      terminalName: "xterm-256color",
-    };
+    const original = "a".repeat(10_000);
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
 
-    const injected = await injectAgentCliProfile(profile, {
-      buildSystemPrompt: () => "Fleet doctrine",
-      dataDir: path.join(root, "data"),
-      dedicatedMcpSession: {
-        async getEndpoint() {
-          return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
-        },
-        issueSessionToken() {
-          return [{ name: "fleet", token: "token-123" }];
-        },
-        releaseSessionToken() {},
-      },
-      withMarketplaceLock: async (_target, fn) => fn(),
-    });
+    try {
+      const injected = await injectAgentCliProfile({
+        args: [],
+        bin: "claude",
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [original],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
 
-    expect(injected.args.at(-1)).toBe("a".repeat(10_000));
-    injected.cleanup?.();
+      const instruction = injected.args.at(-1)!;
+      expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
+      expect(injected.args).not.toContain(original);
+      const filePath = instruction.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(readFileSync(filePath, "utf8")).toBe(original);
+      injected.cleanup?.();
+      expect(existsSync(filePath)).toBe(false);
+    } finally {
+      restoreTmp();
+    }
   });
 });
 
@@ -320,4 +495,47 @@ function createTempRoot(prefix: string): string {
   const root = mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);
   return root;
+}
+
+function cmdShimProfile(root: string, overrides: {
+  readonly commandLineLimit?: LaunchCommandLineLimit;
+  readonly promptArgs: readonly string[];
+}): AgentCliProfile {
+  return {
+    args: [...CMD_WRAPPED_PREFIX_ARGS],
+    bin: "cmd.exe",
+    commandLineLimit: overrides.commandLineLimit ?? CMD_SHIM_LIMIT,
+    cwd: root,
+    env: { HOME: root },
+    id: "claude-gateway",
+    label: "claude-gateway",
+    promptArgs: overrides.promptArgs,
+    terminalName: "xterm-256color",
+  };
+}
+
+function injectOptions(root: string, released?: { token: boolean }): Parameters<typeof injectAgentCliProfile>[1] {
+  return {
+    buildSystemPrompt: () => "Fleet doctrine",
+    dataDir: path.join(root, "data"),
+    dedicatedMcpSession: {
+      async getEndpoint() {
+        return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+      },
+      issueSessionToken() {
+        return [{ name: "fleet", token: "token-123" }];
+      },
+      releaseSessionToken() {
+        if (released) released.token = true;
+      },
+    },
+    withMarketplaceLock: async (_target, fn) => fn(),
+  };
+}
+
+function isolateTmp(isolatedTmp: string): () => void {
+  const spy = vi.spyOn(os, "tmpdir").mockReturnValue(isolatedTmp);
+  return () => {
+    spy.mockRestore();
+  };
 }

@@ -1,13 +1,23 @@
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
 // Windows의 .cmd/.bat shim은 cmd.exe /d /s /c 로 감싸 실행된다(core-process wrapWindowsShim).
 // cmd는 따옴표 안에서도 %NAME%을 전개하고 ^를 이스케이프로 읽으므로, 그 명령줄에 실린 임의
 // 텍스트는 조용히 변조되고 환경변수 값이 그대로 모델에 실려 나간다. 명령줄에서는 %%도 접히지
-// 않아 이스케이프로 막을 수단이 없다 — 그래서 core-process가 shim 경로에 대해 이미 택한 규율
-// (rejectCmdExpansionSensitiveShim: 이스케이프가 아니라 거부)을 프롬프트에도 그대로 적용한다.
-// %는 전개, 나머지는 cmd의 연산자·인용 경계다. 이 저장소의 quoteForCmd
-// (구 ACP BaseConnection)가 `& < > ( ) @ ^ |`와 `"`를 cmd 특수문자로 분류하면서
-// **내부 `"`의 이중화와 windowsVerbatimArguments를 함께 요구**한다고 명시하는데, node-pty로
-// 나가는 이 런치 경로는 둘 다 제공하지 않는다. 따라서 따옴표 안이라는 가정도 성립하지 않는다.
+// 않아 이스케이프로 막을 수단이 없다. native `.exe`와 POSIX도 원문을 argv에 올리지 않는다 —
+// 명령줄 상한과 플랫폼을 가리지 않고 Fleet이 만든 파일 경로를 가리키는 짧은 지시만 실는다.
+// 그 지시(경로 포함)는 cmd shim일 때 이 문자 집합을 통과해야 한다. %는 전개, 나머지는 cmd의
+// 연산자·인용 경계다. 이 저장소의 quoteForCmd (구 ACP BaseConnection)가 `& < > ( ) @ ^ |`와
+// `"`를 cmd 특수문자로 분류하면서 **내부 `"`의 이중화와 windowsVerbatimArguments를 함께
+// 요구**한다고 명시하는데, node-pty로 나가는 이 런치 경로는 둘 다 제공하지 않는다. 따라서
+// 따옴표 안이라는 가정도 성립하지 않는다.
 const CMD_UNSAFE_PROMPT_PATTERN = /["&<>()@^|%]/;
+const LAUNCH_PROMPT_FILE_MODE = 0o600;
+
+export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-quick-launch-";
+export const LAUNCH_PROMPT_FILE_NAME = "prompt.md";
+export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch prompt file: ";
 
 /**
  * Windows 명령줄 상한. cmd.exe를 경유하는 shim 실행은 8,191자, 실행 파일을 직접 부르는
@@ -46,8 +56,10 @@ export class LaunchPromptError extends Error {
 }
 
 /**
- * cmd.exe로 감싸인 shim으로 실행될 때에 한해, cmd가 재해석할 문자를 담은 프롬프트를 거부한다.
- * `prefixArgs`가 비어 있으면(POSIX 또는 실행 파일 직접 실행) 아무 제약도 걸지 않는다.
+ * cmd.exe로 감싸인 shim으로 실행될 때에 한해, cmd가 재해석할 문자를 담은 argv 텍스트를 거부한다.
+ * 사용자 원문은 이 검사에 올리지 않는다 — 원문은 파일로 두고, 여기에는 그 파일을 가리키는
+ * 짧은 지시(경로 포함)만 온다. `prefixArgs`가 비어 있으면(POSIX 또는 실행 파일 직접 실행)
+ * 아무 제약도 걸지 않는다.
  */
 export function assertLaunchPromptShimSafe(prompt: string | undefined, prefixArgs: readonly string[]): void {
   if (prompt === undefined || prefixArgs.length === 0) return;
@@ -132,6 +144,11 @@ export function assertLaunchCommandLineBudget(options: {
   readonly argsWithoutPrompt: readonly string[];
   readonly bin: string;
   readonly limit: LaunchCommandLineLimit | undefined;
+  /**
+   * argv에 남은 프롬프트가 파일 포인터처럼 길이를 줄일 수 없는 지시일 때. 원문은 이미 파일에
+   * 있으므로 "몇 자를 줄이라"는 말은 따를 수 없다 — 설정 쪽 거절로 돌린다.
+   */
+  readonly promptIsFixedLength?: boolean;
 }): void {
   const { limit } = options;
   if (limit === undefined) return;
@@ -145,6 +162,12 @@ export function assertLaunchCommandLineBudget(options: {
     throw new LaunchPromptError(
       "launch_command_line_too_long",
       `The launch command line is ${withoutPrompt} characters before any launch prompt, over the ${limit.maxChars}-character Windows ${boundary} limit. Shortening the prompt cannot help; reduce the launch configuration instead.`,
+    );
+  }
+  if (options.promptIsFixedLength === true) {
+    throw new LaunchPromptError(
+      "launch_command_line_too_long",
+      `The launch command line is ${total} characters, over the ${limit.maxChars}-character Windows ${boundary} limit even after moving the launch prompt into a file. Shortening the prompt cannot help; reduce the launch configuration instead.`,
     );
   }
   const shortenByChars = total - limit.maxChars;
@@ -168,4 +191,77 @@ export function sanitizeLaunchPrompt(value: string | undefined): string | undefi
 
   const trimmed = normalized.trim();
   return trimmed.length === 0 ? undefined : trimmed;
+}
+
+export function formatLaunchPromptFileInstruction(filePath: string): string {
+  return `${LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX}${filePath}`;
+}
+
+/**
+ * Quick Launch 원문을 OS temp의 고유 디렉터리에 쓰고, argv에 실을 짧은 지시를 반환한다.
+ * 지시(경로 포함)가 cmd shim에서 재해석되면 방금 만든 파일을 지우고 거절한다.
+ */
+export function writeLaunchPromptPointer(
+  body: string,
+  onCleanup: (cleanup: () => void) => void,
+  cmdWrapped: boolean,
+): string {
+  const written = writeLaunchPromptFile(body, onCleanup);
+  try {
+    assertLaunchPromptShimSafe(written.instruction, cmdWrapped ? ["cmd-shim"] : []);
+  } catch (error) {
+    written.cleanup();
+    if (error instanceof LaunchPromptError && error.code === "prompt_unsafe_for_shim") {
+      throw new LaunchPromptError(
+        "prompt_unsafe_for_shim",
+        'The launch prompt file path contains a character cmd.exe would reinterpret (" & < > ( ) @ ^ | %) while running the Windows shim. Fleet cannot start this launch from the current Windows temp directory.',
+      );
+    }
+    throw error;
+  }
+  return written.instruction;
+}
+
+export function writeLaunchPromptFile(
+  body: string,
+  onCleanup: (cleanup: () => void) => void,
+): { readonly cleanup: () => void; readonly filePath: string; readonly instruction: string } {
+  // os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를 돌려준다. Claude의 cwd는 Theater라
+  // 상대 포인터는 방금 만든 파일을 찾지 못한다 — 지시에는 절대 경로만 실어야 한다.
+  const tempRoot = path.resolve(os.tmpdir());
+  mkdirSync(tempRoot, { recursive: true });
+  const tempDir = mkdtempSync(path.join(tempRoot, LAUNCH_PROMPT_TEMP_DIR_PREFIX));
+  const cleanup = () => rmBestEffort(tempDir);
+  try {
+    const filePath = path.join(tempDir, LAUNCH_PROMPT_FILE_NAME);
+    writeFileSync(filePath, body, { encoding: "utf8", flag: "wx", mode: LAUNCH_PROMPT_FILE_MODE });
+    chmodBestEffort(filePath, LAUNCH_PROMPT_FILE_MODE);
+    // 쓰기가 끝난 뒤에만 호출자 cleanup 스택에 올린다. 그 전에 실패하면 이 함수가
+    // 디렉터리를 거두고, 호출자가 받은 콜백을 실행할 기회 없이 누수하지 않는다.
+    onCleanup(cleanup);
+    return {
+      cleanup,
+      filePath,
+      instruction: formatLaunchPromptFileInstruction(filePath),
+    };
+  } catch (error) {
+    cleanup();
+    throw error;
+  }
+}
+
+function chmodBestEffort(targetPath: string, mode: number): void {
+  try {
+    chmodSync(targetPath, mode);
+  } catch {
+    // POSIX 권한을 지원하지 않는 파일시스템에서는 best-effort로 둔다.
+  }
+}
+
+function rmBestEffort(targetPath: string): void {
+  try {
+    rmSync(targetPath, { force: true, recursive: true });
+  } catch {
+    // 세션 정리는 파일이 이미 사라진 경우에도 전체 shutdown을 막지 않는다.
+  }
 }

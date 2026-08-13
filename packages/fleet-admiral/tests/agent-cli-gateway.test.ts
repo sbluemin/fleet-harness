@@ -1,9 +1,9 @@
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
 import { findGatewayModel } from "@dotobokuri/core-ai-gateway";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   FLEET_PLUGIN_NAME,
@@ -30,6 +30,7 @@ afterEach(() => {
   for (const dir of tempDirs.splice(0)) {
     rmSync(dir, { recursive: true, force: true });
   }
+  vi.restoreAllMocks();
 });
 
 describe("claude-gateway profile", () => {
@@ -274,18 +275,27 @@ describe("claude-gateway system prompt mode", () => {
 
   it("cleans the prompt file when plugin injection fails", async () => {
     const root = createTempRoot("fleet-admiral-gateway-injection-failure-");
-    const promptTempDirsBefore = new Set(readdirSync(os.tmpdir()).filter((name) => name.startsWith("fleet-claude-gateway-")));
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    vi.spyOn(os, "tmpdir").mockReturnValue(isolatedTmp);
 
-    await expect(injectAgentCliProfile(
-      baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } }),
-      {
-        ...baseInjectOptions(root),
-        withMarketplaceLock: async () => { throw new Error("injected marketplace failure"); },
-      },
-    )).rejects.toThrow("injected marketplace failure");
+    try {
+      await expect(injectAgentCliProfile(
+        {
+          ...baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } }),
+          commandLineLimit: { maxChars: 8191, via: "cmd-shim" },
+          promptArgs: ["hello & world"],
+        },
+        {
+          ...baseInjectOptions(root),
+          withMarketplaceLock: async () => { throw new Error("injected marketplace failure"); },
+        },
+      )).rejects.toThrow("injected marketplace failure");
 
-    const promptTempDirsAfter = readdirSync(os.tmpdir()).filter((name) => name.startsWith("fleet-claude-gateway-"));
-    expect(promptTempDirsAfter.filter((name) => !promptTempDirsBefore.has(name))).toEqual([]);
+      expect(readdirSync(isolatedTmp)).toEqual([]);
+    } finally {
+      vi.restoreAllMocks();
+    }
   });
 
   it("composes append, replace, and off without disabling gateway assets", async () => {
