@@ -9,7 +9,7 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theaterLabel, theme, language, onSelectOperation }: {
+export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationStatus: Readonly<Record<string, OperationActivity>>;
@@ -18,6 +18,7 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly onSelectOperation: (operationId: string | null) => void;
+  readonly onCloseOperation: (operationId: string) => void;
 }) {
   const t = useT();
   const activeTab = useMobileTab();
@@ -72,6 +73,14 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
     setSelectedOperationId(operationId);
     onSelectOperation(operationId);
   };
+  const closeOperation = (operationId: string) => {
+    // Leave the session immediately so Close is not stuck on a disposing terminal, then
+    // dispose through the same host path the canvas and palette already use.
+    replaceOperationId(null);
+    setSelectedOperationId(null);
+    onSelectOperation(null);
+    onCloseOperation(operationId);
+  };
   let content;
   if (selectedOperation) {
     content = (
@@ -81,6 +90,7 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
         language={language}
         active={activeOperationId === selectedOperation.id}
         onActivate={() => onSelectOperation(selectedOperation.id)}
+        onClose={() => closeOperation(selectedOperation.id)}
       />
     );
   } else if (activeTab === "operations") {
