@@ -183,6 +183,16 @@ export function QuickLaunch() {
     else blurWithin(cardRef.current);
   }, [collapsed, expandAndFocus, focusToggle, pinned]);
 
+  // 명시적인 열기 요청(모바일 새 Operation 버튼 등)은 왕복이 아니라 언제나 펼침이다 — 펼쳐진 바에서
+  // 열기를 누른 사용자를 물러나게 하면 버튼이 거꾸로 동작한다.
+  const expandRequest = state.quickLaunchExpandRequest;
+  const lastExpandRequestRef = useRef(expandRequest);
+  useEffect(() => {
+    if (expandRequest === lastExpandRequestRef.current) return;
+    lastExpandRequestRef.current = expandRequest;
+    if (pinned) expandAndFocus();
+  }, [expandAndFocus, expandRequest, pinned]);
+
   // 거절이 초안과 함께 돌아왔을 때, 고정 상태에는 "열림 전이"가 없어 초안 복원 경로가 없다.
   // 상주하는 컴포저는 초안이 도착하는 즉시 그것을 싣고 펼쳐야 한다.
   useEffect(() => {
@@ -372,6 +382,9 @@ export function QuickLaunch() {
     if (next instanceof Node && cardRef.current?.contains(next)) return;
     // 접히면서 열린 팝오버를 남기면, 잘라내기가 돌아온 바 안에서 목록만 사라진 채 상태가 남는다.
     setPopover(null);
+    // 멘션 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남겨 두면 물러난 바 위로 목록이
+    // 떠서, 도킹이 되돌려 준 그 화면을 도로 가린다.
+    setMentionToken(null);
     setCollapsed(true);
   }, [pinned]);
 

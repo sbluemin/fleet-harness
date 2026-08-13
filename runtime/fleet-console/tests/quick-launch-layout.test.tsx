@@ -83,6 +83,12 @@ describe("Quick Launch docking", () => {
     expect(quickLaunch).toMatch(/\{dockSuppressed \|\| showStrip \? null : \(/u);
   });
 
+  it("folds the mention deck away when the dock loses focus", () => {
+    // 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남기면 물러난 바 위로 목록이 떠서
+    // 도킹이 되돌려 준 화면을 도로 가린다.
+    expect(quickLaunch).toMatch(/setPopover\(null\);[\s\S]{0,220}setMentionToken\(null\);[\s\S]{0,40}setCollapsed\(true\);/u);
+  });
+
   it("reads the pin state when an async submission settles, not when it was dispatched", () => {
     // 멘션 전달 중에 고정을 풀면, 넘길 때 닫아 둔 값으로는 모달을 닫지 못해 빈 대화가 남는다.
     expect(quickLaunch).toMatch(/if \(!isQuickLaunchDocked\(\)\) \{/u);

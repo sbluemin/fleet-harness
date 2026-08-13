@@ -209,7 +209,7 @@ describe("quick launch preferences", () => {
 describe("quick launch pin", () => {
   beforeEach(() => {
     window.localStorage.clear();
-    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0, quickLaunchDockSuppressed: false, quickLaunchError: null, quickLaunchErrorShortenBy: null, quickLaunchDraft: null });
+    setState({ quickLaunchOpen: false, quickLaunchPinned: false, quickLaunchFocusToggle: 0, quickLaunchExpandRequest: 0, quickLaunchDockSuppressed: false, quickLaunchError: null, quickLaunchErrorShortenBy: null, quickLaunchDraft: null });
   });
 
   it("remembers the pin beside the launch coordinates instead of replacing them", () => {
@@ -276,6 +276,25 @@ describe("quick launch pin", () => {
 
     // 화면이 그리는 조건과 같은 식: state.quickLaunchOpen || (pinned && !dockSuppressed)
     expect(getState().quickLaunchOpen || isQuickLaunchDocked()).toBe(false);
+  });
+
+  // 열림 플래그를 참으로 올려 두면 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서
+  // 모달로 되살아나고 What's New가 억제된다 — 명시적인 열기도 그 함정을 밟으면 안 된다.
+  it("routes an explicit open to the dock instead of raising the modal-open flag", () => {
+    setQuickLaunchPinned(true);
+    const before = getState().quickLaunchExpandRequest;
+
+    openQuickLaunch();
+
+    expect(getState().quickLaunchOpen).toBe(false);
+    expect(getState().quickLaunchExpandRequest).toBe(before + 1);
+  });
+
+  it("still opens the modal composer when nothing is docked", () => {
+    openQuickLaunch();
+
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchExpandRequest).toBe(0);
   });
 
   // 모달은 닫히며 사유를 버리지만 고정된 바는 닫히지 않는다 — 성공한 재시도 위에 옛 실패가 남으면

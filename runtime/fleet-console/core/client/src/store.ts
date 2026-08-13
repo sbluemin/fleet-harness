@@ -83,6 +83,7 @@ let state: ConsoleState = {
   quickLaunchOpen: false,
   quickLaunchPinned: readQuickLaunchSelection().pinned,
   quickLaunchFocusToggle: 0,
+  quickLaunchExpandRequest: 0,
   quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchError: null,
@@ -588,6 +589,17 @@ export function toggleOperationSearch(): void {
 }
 
 export function openQuickLaunch(): void {
+  // 고정된 컴포저는 이미 떠 있다 — 여는 대신 펼쳐 포커스한다. 열림 플래그를 참으로 올려 두면
+  // 눈에 보이는 변화 없이 값만 남아, 도킹을 접어 둔 화면에서 모달로 되살아나고 열림을 보고 자기를
+  // 억제하는 What's New가 영영 뜨지 않는다(setQuickLaunchPinned가 막는 것과 같은 경로).
+  if (isQuickLaunchDocked()) {
+    setState({
+      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
+      quickLaunchError: null,
+      quickLaunchErrorShortenBy: null,
+    });
+    return;
+  }
   setState({ quickLaunchOpen: true, quickLaunchError: null, quickLaunchErrorShortenBy: null });
 }
 
