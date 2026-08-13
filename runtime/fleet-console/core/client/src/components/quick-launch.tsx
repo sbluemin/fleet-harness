@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
 import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -350,6 +350,10 @@ export function QuickLaunch() {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
       // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
       submittedRef.current = true;
+      // 전달이 비동기(멘션)인 동안 Escape로 먼저 닫혔다면 닫힘 전이가 이미 초안을 보존했다.
+      // 성공이 뒤늦게 도착한 지금 그 보존분을 소비한다 — 남기면 전달된 문장이 미발사 초안으로
+      // 되살아난다. 에포크 가드가 위에서 스테일 세션을 걸렀으므로 여기서는 안전하다.
+      consumeQuickLaunchDraft();
       closeQuickLaunch();
       return;
     }
@@ -800,6 +804,9 @@ export function QuickLaunch() {
                   data-menu-label={theater.label}
                   onClick={() => {
                     setTheaterId(theater.id);
+                    // 모델·강도와 같은 "고르면 기억" 계층 — 실행까지 미루면 보존된 초안이
+                    // 재오픈에서 옛 Theater로 돌아간 채 발사 좌표만 어긋난다.
+                    writeQuickLaunchTheater(theater.id);
                     closePopover();
                     inputRef.current?.focus();
                   }}

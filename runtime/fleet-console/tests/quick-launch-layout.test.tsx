@@ -223,7 +223,19 @@ describe("Quick Launch picker keyboard grammar", () => {
   it("preserves an unfired draft across every close path, except submission", () => {
     // 경로별 저장은 하나가 빠질 때마다 초안이 샌다 — 닫힘 전이 한 곳이 모든 닫힘을 대표한다.
     expect(quickLaunch).toMatch(/preserveQuickLaunchDraft\(promptRef\.current\)/u);
-    expect(quickLaunch).toMatch(/submittedRef\.current = true;\s*\n\s*closeQuickLaunch\(\);/u);
+    expect(quickLaunch).toMatch(/submittedRef\.current = true;/u);
+  });
+
+  it("consumes a mid-flight preserved draft when asynchronous delivery succeeds", () => {
+    // 전달 중 Escape가 보존한 초안을 성공 콜백이 소비하지 않으면, 전달된 문장이 미발사 초안으로
+    // 되살아나 중복 전달을 부른다(Codex P2 실측 경로).
+    const modalFinish = /submittedRef\.current = true;[\s\S]{0,400}?consumeQuickLaunchDraft\(\);[\s\S]{0,200}?closeQuickLaunch\(\);/u;
+    expect(quickLaunch).toMatch(modalFinish);
+  });
+
+  it("remembers a picked Theater immediately, like model and effort", () => {
+    // 실행까지 기억을 미루면 보존된 초안이 재오픈에서 옛 Theater로 되돌아간다(실측 재현).
+    expect(quickLaunch).toMatch(/setTheaterId\(theater\.id\);[\s\S]{0,200}?writeQuickLaunchTheater\(theater\.id\);/u);
   });
 });
 

@@ -72,6 +72,15 @@ export function writeQuickLaunchPinned(pinned: boolean): void {
   writeQuickLaunchSelection({ ...remembered, pinned });
 }
 
+/**
+ * Theater도 모델·강도(writeQuickLaunchModelEffort)와 같은 "고르면 기억" 계층이다. 실행까지만
+ * 기억을 미루면, 보존된 초안이 재오픈에서 옛 Theater로 되돌아간 채 발사 좌표만 어긋난다.
+ */
+export function writeQuickLaunchTheater(theaterId: string | null): void {
+  const remembered = readQuickLaunchSelection();
+  writeQuickLaunchSelection({ ...remembered, theaterId });
+}
+
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
