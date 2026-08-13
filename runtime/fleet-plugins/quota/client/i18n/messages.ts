@@ -45,6 +45,11 @@ export const quotaEn = {
   "quota.credits": "{n} rate-limit resets available",
   "quota.credits.expiry": "Next expires in {t}",
   "quota.privacy": "Reads usage with your local CLI sign-in. Requests go only to each provider; nothing else leaves this machine.",
+  "quota.loading.title": "Reading provider usage",
+  "quota.loading.body": "Querying each provider with your local CLI sign-in. Nothing else leaves this machine.",
+  "quota.reorder.handle": "Reorder {provider}. Use the arrow keys to move it.",
+  "quota.reorder.moved": "{provider} moved to position {n}",
+  "quota.reorder.error": "Couldn't save the order.",
 } as const;
 
 export const quotaKo: Record<keyof typeof quotaEn, string> = {
@@ -94,6 +99,11 @@ export const quotaKo: Record<keyof typeof quotaEn, string> = {
   "quota.credits": "rate-limit 재설정 {n}회 사용 가능",
   "quota.credits.expiry": "다음 만료까지 {t}",
   "quota.privacy": "로컬 CLI 로그인 정보로 사용량을 조회합니다. 요청은 각 공급자에게만 전송되며 그 외에는 이 기기를 떠나지 않습니다.",
+  "quota.loading.title": "사용량을 읽는 중",
+  "quota.loading.body": "로컬 CLI 로그인 정보로 각 공급자에 사용량을 조회합니다. 그 외에는 이 기기를 떠나지 않습니다.",
+  "quota.reorder.handle": "{provider} 순서 변경. 화살표 키로 이동합니다.",
+  "quota.reorder.moved": "{provider} — {n}번째로 이동",
+  "quota.reorder.error": "순서를 저장하지 못했습니다.",
 };
 
 export const QUOTA_MESSAGES = { en: quotaEn, ko: quotaKo } as const;

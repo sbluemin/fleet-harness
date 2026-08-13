@@ -10,9 +10,12 @@ import {
   formatPace,
   isLatestRequestGeneration,
   meterSeverity,
+  movedProviderOrder,
   NO_SUBSCRIPTION_KEY,
   projectedSpan,
+  PROVIDER_ORDER_DEFAULT,
   riskNote,
+  sanitizeProviderOrder,
   SIGNED_OUT_KEY,
 } from "../client/rail-panel.js";
 import { QUOTA_MESSAGES } from "../client/i18n/messages.js";
@@ -138,5 +141,25 @@ describe("provider status copy", () => {
     expect(en[NO_SUBSCRIPTION_KEY.kimi]).toContain("Kimi");
     expect(en[NO_SUBSCRIPTION_KEY.kimi]).not.toContain("Cursor");
     expect(en[NO_SUBSCRIPTION_KEY.cursor]).toContain("Cursor");
+  });
+});
+
+describe("provider order", () => {
+  // 옛 릴리스의 설정 파일이 살아남는다: 모르는 id를 담거나 그 사이 추가된 공급자를
+  // 빠뜨린 순서라도 카드 다섯 장이 전부, 정확히 한 번씩 그려져야 한다.
+  it("drops unknown ids, dedupes, and appends missing providers in default order", () => {
+    expect(sanitizeProviderOrder(["opencode", "bogus", "claude", "opencode"]))
+      .toEqual(["opencode", "claude", "codex", "cursor", "kimi"]);
+    expect(sanitizeProviderOrder(undefined)).toEqual([...PROVIDER_ORDER_DEFAULT]);
+    expect(sanitizeProviderOrder("claude")).toEqual([...PROVIDER_ORDER_DEFAULT]);
+  });
+
+  it("moves a provider one step and refuses to cross the list boundary", () => {
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", -1))
+      .toEqual(["claude", "cursor", "codex", "kimi", "opencode"]);
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", 1))
+      .toEqual(["claude", "codex", "kimi", "cursor", "opencode"]);
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toBeNull();
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "opencode", 1)).toBeNull();
   });
 });

@@ -5,7 +5,7 @@ import {
 } from "@dotobokuri/core-ai-gateway";
 import { createAuthService, DEFAULT_AUTH_PATH } from "@dotobokuri/core-infra";
 
-import { handleConnect, handleSummary } from "./server/handlers.js";
+import { handleConnect, handleOrder, handleSummary } from "./server/handlers.js";
 
 export default definePlugin({
   id: "quota",
@@ -39,5 +39,9 @@ export default definePlugin({
       await handleConnect(req, res, ctx, service, serializeSettings);
       return true;
     }, { method: "POST", path: "", summary: "Update provider quota connection state.", category: "Quota Plugin", gate: "origin-write", transport: "http" });
+    registerRouter(ctx, "order", async ({ req, res }) => {
+      await handleOrder(req, res, ctx, serializeSettings);
+      return true;
+    }, { method: "POST", path: "", summary: "Persist the provider card order.", category: "Quota Plugin", gate: "origin-write", transport: "http" });
   },
 });
