@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.57.2] - 2026-08-13
+
+### fleet-cli
+
+#### Added
+- Cursor Grok 4.5를 유지하면서 Grok 4.6과 Grok 4.6 Fast를 Low, Medium, High, Extra High 추론 강도로 추가합니다.
+
+### fleet-console
+
+#### Added
+- AI Gateway 모델 선택에 Cursor Grok 4.6과 Grok 4.6 Fast를 CursorBench 3.2 품질 근거와 함께 제공합니다.
+
 ## [1.57.1] - 2026-08-13
 
 ### fleet-console
