@@ -579,20 +579,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   font-weight: var(--weight-medium);
 }
 
-.command-band-operation-attribute {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  padding: 2px 6px;
-  border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--ink-fog) 10%, transparent);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 9.5px;
-}
-
-.command-band-operation-kind { display: flex; align-items: center; line-height: 0; }
+.command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }
 .command-band-operation-kind svg { display: block; width: 13px; height: 13px; }
 
 /* ===== Command Band 세그먼트 드롭다운 전환기 — 메뉴 문법은 components.css .theater-menu 계열의 밴드 스코프 미러 ===== */

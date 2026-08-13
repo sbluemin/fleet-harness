@@ -1699,8 +1699,10 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain('glanceVisible ? "is-glance" : ""');
     expect(canvas).toContain('window.addEventListener("blur", clearGlance)');
     expect(canvas).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
-    expect(source("styles/layout.css")).toContain(".command-band-operation-kind { display: flex; align-items: center; line-height: 0; }");
-    expect(source("styles/layout.css")).toContain("background: color-mix(in oklch, var(--ink-fog) 10%, transparent);");
+    expect(source("styles/layout.css")).toContain(".command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }");
+    expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
+    expect(commandBand).not.toContain("command-band-operation-attribute");
+    expect(commandBand).toContain("command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}");
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
   });

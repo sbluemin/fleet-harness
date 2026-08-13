@@ -1,29 +1,25 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { fetchConsoleEnvironment, fetchOperations, renameOperation } from "../api.js";
 import { animateViewportTo, clearFormationView, fitAllOperations, selectFormationLayout, setStationKeeping, toggleFormationView, useCanvasState, useFormationLayout, useFormationView, useStationKeeping, type FormationLayout } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, setTriageActive, setTriageSpotlightEnabled, useTriageActive, useTriageDeckZoomLive, useTriageSpotlightEnabled, visitTriageTheater } from "../canvas/triage-store.js";
 import { cycleTriageDeckZoomPreset } from "../canvas/triage-watch-deck.js";
-import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandOperationAttribute, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
+import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCenterFits, commandBandCenterGutter, commandBandLaunchModelLabels, commandBandMapControlsAnchor, commandBandMenuClampedLeft, commandBandRenameCommitTarget, commandBandSwitcherFocusLeft, commandBandTheaterOperations } from "./command-band-guards.js";
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { launchProviderFromOperationPayload, launchProviderGlyph } from "./launch-provider-glyphs.js";
-import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
-import { usePluginRegistry } from "../plugin-registry.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
 import { focusOperation, hydrateOperations, requestSideBarAddTheater, requestSideBarTheaterLaunch, setActiveTheater, toggleOperationSearch } from "../store.js";
 import type { ConsoleEnvironmentDiagnostics } from "../types.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
-import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
 
@@ -72,7 +68,6 @@ const TACTICAL_LAYOUTS: readonly {
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
   const state = useConsoleState();
-  const registry = usePluginRegistry();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
   const viewMode = useViewMode();
@@ -128,26 +123,14 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
-  const activePlugin = activeOperation ? registry.plugins.find((plugin) => plugin.id === activeOperation.pluginId) : null;
-  const activeCliId = typeof activeOperation?.payload.cliId === "string" ? activeOperation.payload.cliId : null;
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
-  // 속성 칩은 CLI 이름이 아니라 실제로 돌고 있는 모델 이름을 말한다(카탈로그가 그 좌표를 알 때).
-  const activeOperationAttribute = activeOperation
-    ? commandBandOperationAttribute(activeOperation.payload, launchModelLabels)
-    : null;
-  const activeKind = activeOperation ? activePlugin?.operationKinds?.find((kind) => kind.type === activeOperation.type) ?? null : null;
-  const globalSettings = useGlobalSettingsStore();
-  const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
-  const activeKindTitle = activeKind ? resolveLocalizedText(activeKind.title, language) : null;
-  // 사이드바 칩과 같은 규율: 실행된 공급자가 기록된 Operation은 그 공급자의 마크가
-  // 플러그인 실행 종류 아이콘을 대신하고, 캐리어 시그니처 톤을 함께 입는다.
+  // 사이드바 칩과 같은 규율: 실행된 공급자가 기록된 Operation은 그 마크를
+  // 이름 왼쪽에 붙인다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
   const activeLaunchProvider = launchProviderFromOperationPayload(activeOperation?.payload);
-  const activeOperationIcon = activeLaunchProvider
-    ? launchProviderGlyph(activeLaunchProvider)
-    : activeOperation && activePlugin?.renderLaunchIcon
-      ? activePlugin.renderLaunchIcon({ id: activeCliId ?? activeOperation.type, type: activeOperation.type, title: activeKindTitle ?? activeOperation.type })
-      : null;
+  const activeOperationProviderMark = activeLaunchProvider
+    ? <span className={`command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}`} aria-hidden="true">{launchProviderGlyph(activeLaunchProvider)}</span>
+    : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
   const commandBandRef = useRef<HTMLElement>(null);
@@ -234,8 +217,8 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
     if (edge !== null && document.activeElement === edge) edge.blur();
   }, [edgeRevealActive]);
 
-  // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 밴드에 올라올 때만
-  // 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation).
+  // 모델 이름 색인은 첫 페인트에서 한 번 읽고, 그 뒤로는 색인이 모르는 좌표가 스위처 메뉴에
+  // 올라올 때만 다시 읽는다(설정에서 모델을 켠 직후 띄운 Operation).
   //
   // 의존은 활성 좌표 하나다. 해결 여부를 의존에 실으면 조회가 성공해 좌표가 해결되는 순간이 곧
   // 다음 조회의 방아쇠가 되어, 카탈로그가 매번 수행하는 Agent CLI 탐지를 시작마다 두 번 돌린다.
@@ -635,7 +618,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             </button>
             <span className="command-band-theater-separator" aria-hidden="true">›</span>
             {activeOperation ? <>
-              {rename.renaming ? <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={t("chrome.commandBand.renameOperationAria", { title: activeOperation.title })} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} /> : <button
+              {rename.renaming ? <>
+                {activeOperationProviderMark}
+                <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={t("chrome.commandBand.renameOperationAria", { title: activeOperation.title })} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} />
+              </> : <button
                 ref={operationTriggerRef}
                 type="button"
                 className={`command-band-operation-name command-band-segment-trigger${switcherMenu === "operation" ? " is-open" : ""}`}
@@ -645,10 +631,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 onClick={() => toggleSwitcherMenu("operation")}
                 onDoubleClick={beginRename}
               >
+                {activeOperationProviderMark}
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}
-              {activeOperationAttribute ? <span className="command-band-operation-attribute" title={activeKindTitle ?? activeOperationAttribute}>{activeOperationIcon ? <span className={`command-band-operation-kind${activeLaunchProvider ? ` operation-provider-mark is-${activeLaunchProvider}` : ""}`} aria-hidden="true">{activeOperationIcon}</span> : null}{activeOperationAttribute}</span> : null}
             </> : <button
               ref={operationTriggerRef}
               type="button"

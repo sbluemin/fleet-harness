@@ -75,6 +75,17 @@ describe("Command Band switcher disclosure", () => {
     expect(caretRule).toContain("opacity: 0.75");
     expect(styles).not.toContain(".command-band-segment-trigger:hover .command-band-trigger-caret");
   });
+
+  it("places the provider glyph on the Operation name and drops the trailing model chip", () => {
+    const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
+    const styles = readFileSync(resolve(process.cwd(), "core/client/src/styles/layout.css"), "utf8");
+
+    expect(source).toContain("command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}");
+    expect(source).toContain("{activeOperationProviderMark}");
+    expect(source).not.toContain("command-band-operation-attribute");
+    expect(styles).not.toContain(".command-band-operation-attribute");
+    expect(styles).toContain(".command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }");
+  });
 });
 
 describe("Command Band switcher focusout close decision", () => {
