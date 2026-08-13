@@ -181,6 +181,64 @@ describe("upstream credential", () => {
     }));
   });
 
+  it("withholds Claude Code's Web Search tools from translated providers", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol-fast",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+      toolChoice: { type: "tool", name: "web_search" },
+      messages: [{
+        role: "assistant",
+        content: [{ type: "tool_use", id: "call_1", name: "WebSearch", input: { query: "x" } }],
+      }],
+    }));
+
+    expect(res.status).toBe(200);
+    const [request] = streamSpy.mock.calls[0] ?? [];
+    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
+    expect(request?.tool_choice).toEqual({ type: "auto" });
+    expect(request?.messages).toEqual([{
+      role: "assistant",
+      content: [{ type: "tool_use", id: "call_1", name: "WebSearch", input: { query: "x" } }],
+    }]);
+  });
+
+  it("withholds Claude Code's Web Search tools from Cursor", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+      toolChoice: { type: "tool", name: "WebSearch" },
+    }));
+
+    expect(res.status).toBe(200);
+    const [request] = streamSpy.mock.calls[0] ?? [];
+    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
+    expect(request?.tool_choice).toEqual({ type: "auto" });
+  });
+
   it("projects Codex usage from the registry when Claude strips the 1M marker", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
@@ -677,6 +735,36 @@ describe("OpenCode Go passthrough", () => {
     expect(`${JSON.stringify(res.headers)}${res.body}`).not.toContain("opencode-secret");
   });
 
+  it("withholds Claude Code's Web Search tools from OpenCode", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+      toolChoice: { type: "tool", name: "WebSearch" },
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly tools?: ReadonlyArray<{ readonly name?: string }>;
+      readonly tool_choice?: { readonly type?: string };
+    };
+    expect(body.tools?.map((tool) => tool.name)).toEqual(["Read"]);
+    expect(body.tool_choice).toEqual({ type: "auto" });
+  });
+
   it("drops output_config entirely when effort was its only field", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "event: message_stop\n\n",
@@ -780,6 +868,33 @@ describe("Grok CLI Responses", () => {
     expect(headers.get("x-grok-client-version")).toBe("1.0.3");
     expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
     expect(body.model).toBe("grok-4.6");
+  });
+
+  it("withholds Claude Code's Web Search tools from the Grok CLI wire", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readXaiToken: () => "grok-subscription-token",
+    });
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly tools?: ReadonlyArray<{ readonly name?: string; readonly type?: string }>;
+    };
+    expect(body.tools?.map((tool) => tool.name ?? tool.type)).toEqual(["Read"]);
   });
 
   it("refuses an xAI model without an active Grok CLI sign-in", async () => {
@@ -914,6 +1029,34 @@ describe("Kimi passthrough", () => {
       type: "tool_result",
       content: [{ type: "text", text: "Tool available: mcp__fleet__wiki_read" }],
     });
+  });
+
+  it("forwards Claude Code's Web Search tools to Kimi unchanged", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3-256k",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly tools?: ReadonlyArray<{ readonly name?: string }>;
+    };
+    expect(body.tools?.map((tool) => tool.name)).toEqual(["Read", "WebSearch", "web_search"]);
   });
 
   it.each([
@@ -1235,6 +1378,29 @@ describe("anthropic passthrough", () => {
     await router.handle(ctx({ res, model: "claude-sonnet-4-6" }));
 
     expect(res.status).toBe(401);
+  });
+
+  it("forwards Claude Code's Web Search tools to native Anthropic unchanged", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-sonnet-4-6",
+      tools: [
+        { name: "Read", input_schema: { type: "object", properties: {} } },
+        { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+        { type: "web_search_20250305", name: "web_search" },
+      ],
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly tools?: ReadonlyArray<{ readonly name?: string; readonly type?: string }>;
+    };
+    expect(body.tools?.map((tool) => tool.name)).toEqual(["Read", "WebSearch", "web_search"]);
   });
 
   it("does not rewrite the echoed model on the real-Anthropic path", async () => {

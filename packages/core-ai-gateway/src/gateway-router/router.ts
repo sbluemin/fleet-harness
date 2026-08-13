@@ -6,7 +6,10 @@ import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../anthropic/native.js";
-import { pruneClaudeSkillPayloads } from "../anthropic/claude-context.js";
+import {
+  omitClaudeWebSearchTools,
+  pruneClaudeSkillPayloads,
+} from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
@@ -265,6 +268,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       });
       for (const skill of pruned.withheld) withheldSkills.add(skill.name);
       if (pruned.changed) body = { ...body, messages: [...pruned.messages] };
+    }
+    // Claude Code의 Web Search는 Claude·Kimi 소유 능력이다. 다른 공급자에게 정의를
+    // 넘기면 모델이 호출을 시도한다. 네이티브 Anthropic(`!target`)과 Kimi는 그대로 둔다.
+    if (target && target.provider !== "kimi") {
+      const omitted = omitClaudeWebSearchTools(body);
+      if (omitted.changed) body = omitted.request;
     }
 
     let credential = "";
