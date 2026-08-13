@@ -593,6 +593,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       theme={state.activeTheme}
       language={language}
       onSelectOperation={setActiveOperation}
+      onCloseOperation={handleClose}
     />
   ) : (
     <div className="console-body is-canvas">

@@ -57,11 +57,22 @@
   background: var(--ink-deep);
 }
 
-/* The session names itself and stops there — no band, no border, nothing that reads as a second
-   surface above the terminal. Leaving the session is the platform's back gesture. */
+/* The session names itself and offers Close on the same row. Leave is still the platform
+   back gesture; Close is the two-tap dispose the desktop frame already owns. Side tracks
+   share leftover equally so arming "Close?" cannot shift the centered title. */
+.mobile-session-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  align-items: center;
+  min-height: 44px;
+  padding-inline: var(--space-1);
+  background: var(--canvas-sea-core);
+}
+
 .mobile-session-title {
+  grid-column: 2;
   margin: 0;
-  padding: var(--space-2) var(--space-4);
+  min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
   font-size: 15px;
@@ -69,7 +80,54 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: var(--canvas-sea-core);
+}
+
+.mobile-session-close {
+  grid-column: 3;
+  justify-self: end;
+  display: grid;
+  place-items: center;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 0;
+  border-radius: var(--radius-pill);
+}
+
+.mobile-session-close svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mobile-session-close:focus-visible {
+  color: var(--text-primary);
+  outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);
+  outline-offset: 2px;
+}
+
+/* chip-close-arm lives in components.css — same 1.5s coral arm as the desktop frame. */
+.mobile-session-close.is-armed {
+  padding: 0 10px;
+  border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
+  background: color-mix(in oklch, var(--coral) 20%, transparent);
+  color: var(--coral-ink);
+  font-size: 11px;
+  font-weight: var(--weight-bold);
+  animation: chip-close-arm 1.5s linear forwards;
+}
+
+.mobile-session-close.is-armed:focus-visible {
+  background: color-mix(in oklch, var(--coral) 32%, transparent);
+  color: var(--coral-ink);
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-session-close.is-armed {
+    animation: none;
+  }
 }
 
 .mobile-list-header {
@@ -756,7 +814,6 @@
   }
 
   .mobile-session-title {
-    padding-block: var(--space-1);
     font-size: 14px;
   }
 
