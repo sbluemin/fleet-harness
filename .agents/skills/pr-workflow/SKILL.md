@@ -227,7 +227,7 @@ Then report in Korean:
 
 ## Documentation Synthesis
 
-Write PR titles, summaries, bodies, and `.changelog.d/` fragments in this session from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments.
+PR titles, summaries, bodies, and `.changelog.d/` fragments are host-owned. Synthesize them directly from the frozen Product Context Record, verified `git diff`/`git log` evidence, and validated changelog fragments — never delegate documentation synthesis.
 
 ## Safety Rules
 
