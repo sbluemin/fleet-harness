@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
@@ -49,6 +50,45 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
 
 function isConnectable(id: ProviderId): id is ConnectableProviderId {
   return id === "claude" || id === "cursor";
+}
+
+export const PROVIDER_ORDER_DEFAULT: readonly ProviderId[] = ["claude", "codex", "cursor", "kimi", "opencode"];
+
+function isProviderId(value: unknown): value is ProviderId {
+  return (PROVIDER_ORDER_DEFAULT as readonly unknown[]).includes(value);
+}
+
+/**
+ * 서버가 보낸 순서를 그대로 믿지 않는다: 옛 릴리스의 설정 파일이 모르는 id를 담거나
+ * 새 공급자를 빠뜨릴 수 있다. 모르는 id는 버리고 빠진 id는 기본 순서로 덧붙여
+ * 카드 다섯 장이 전부, 정확히 한 번씩 그려지게 한다. (서버 sanitize의 미러)
+ */
+export function sanitizeProviderOrder(value: unknown): ProviderId[] {
+  const order: ProviderId[] = [];
+  if (Array.isArray(value)) {
+    for (const entry of value) {
+      if (isProviderId(entry) && !order.includes(entry)) order.push(entry);
+    }
+  }
+  for (const id of PROVIDER_ORDER_DEFAULT) {
+    if (!order.includes(id)) order.push(id);
+  }
+  return order;
+}
+
+/** 한 칸 이동. 경계 밖이면 null — 호출자가 저장·공지를 건너뛴다. */
+export function movedProviderOrder(
+  order: readonly ProviderId[],
+  id: ProviderId,
+  delta: -1 | 1,
+): ProviderId[] | null {
+  const index = order.indexOf(id);
+  const target = index + delta;
+  if (index < 0 || target < 0 || target >= order.length) return null;
+  const next = [...order];
+  next.splice(index, 1);
+  next.splice(target, 0, id);
+  return next;
 }
 
 interface RequestGeneration {
@@ -287,18 +327,36 @@ function BarLegend({ t }: { readonly t: T }) {
   );
 }
 
+/* 드래그와 키보드 이동이 같은 자리에서 시작한다. 실제 조작은 패널이 위임으로 받고,
+   버튼인 이유는 키보드 포커스가 앉을 실재하는 자리가 필요해서다. */
+function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
+  return (
+    <button type="button" className="quota-grip" aria-label={t("quota.reorder.handle", { provider: name })}>
+      <svg width="8" height="13" viewBox="0 0 8 13" aria-hidden="true">
+        <g fill="currentColor">
+          <circle cx="1.5" cy="1.5" r="1.3" /><circle cx="6.5" cy="1.5" r="1.3" />
+          <circle cx="1.5" cy="6.5" r="1.3" /><circle cx="6.5" cy="6.5" r="1.3" />
+          <circle cx="1.5" cy="11.5" r="1.3" /><circle cx="6.5" cy="11.5" r="1.3" />
+        </g>
+      </svg>
+    </button>
+  );
+}
+
 function ProviderCard({
   id,
   provider,
   now,
   t,
   connect,
+  dragging,
 }: {
   readonly id: ProviderId;
   readonly provider: ProviderDto;
   readonly now: number;
   readonly t: T;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
+  readonly dragging: boolean;
 }) {
   const name = PROVIDER_NAME[id];
   if (isConnectable(id) && provider.status === "not_connected") {
@@ -306,25 +364,33 @@ function ProviderCard({
     const bodyKey = id === "claude" ? "quota.connect.body" : "quota.connect.body.cursor";
     const actionKey = id === "claude" ? "quota.connect.action" : "quota.connect.action.cursor";
     return (
-      <section className="quota-connect-card">
-        <h3>
+      <section className={`quota-connect-card${dragging ? " quota-card--dragging" : ""}`} data-provider={id}>
+        <header className="quota-provider__header">
+          <GripButton name={name} t={t} />
           <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
-          {t(titleKey)}
-        </h3>
-        <p>{t(bodyKey)}</p>
-        {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
-        <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(actionKey)}</button>
+          <h3>{t(titleKey)}</h3>
+        </header>
+        <div className="quota-card__collapse">
+          <div className="quota-card__rest">
+            <p>{t(bodyKey)}</p>
+            {provider.method === "keychain" ? <p className="quota-connect-card__hint">{t("quota.connect.keychain")}</p> : null}
+            <button type="button" className="quota-button quota-button--primary" onClick={() => connect(id, true)}>{t(actionKey)}</button>
+          </div>
+        </div>
       </section>
     );
   }
   return (
-    <section className="quota-provider" data-provider={id}>
+    <section className={`quota-provider${dragging ? " quota-card--dragging" : ""}`} data-provider={id}>
       <header className="quota-provider__header">
+        <GripButton name={name} t={t} />
         <span className={`quota-provider__mark quota-provider__mark--${id}`}>{providerGlyph(id)}</span>
         <h3>{name}</h3>
         {isConnectable(id) ? <button type="button" className="quota-disconnect" onClick={() => connect(id, false)}>{t("quota.disconnect.action")}</button> : null}
         {provider.plan ? <span className="quota-plan">{provider.plan}</span> : null}
       </header>
+      <div className="quota-card__collapse">
+      <div className="quota-card__rest">
       {provider.status === "signed_out" ? <div className="quota-signed-out">{t(SIGNED_OUT_KEY[id])}</div> : null}
       {provider.status === "no_subscription" ? <div className="quota-signed-out">{t(NO_SUBSCRIPTION_KEY[id])}</div> : null}
       {provider.status === "expired" ? <StatusStrip kind="expired">{t(EXPIRED_KEY[id])}</StatusStrip> : null}
@@ -351,9 +417,14 @@ function ProviderCard({
           {provider.credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(provider.credits.nextExpiresAt, now) })}</small> : null}
         </div>
       ) : null}
+      </div>
+      </div>
     </section>
   );
 }
+
+/** summary 계열 응답은 코어 DTO에 플러그인 소유의 저장 순서를 얹어 온다. */
+type SummaryResponse = QuotaSummaryDto & { readonly providerOrder?: unknown };
 
 function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const t = useMemo(() => getT(ctx.language), [ctx.language]);
@@ -361,8 +432,14 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const [requestError, setRequestError] = useState(false);
   const [now, setNow] = useState(Date.now());
   const [refreshNonce, setRefreshNonce] = useState(0);
+  const [order, setOrder] = useState<readonly ProviderId[]>(PROVIDER_ORDER_DEFAULT);
+  const [draggingId, setDraggingId] = useState<ProviderId | null>(null);
+  const [announcement, setAnnouncement] = useState("");
   const forceRef = useRef(false);
   const requestGenerationRef = useRef(0);
+  const bodyRef = useRef<HTMLDivElement | null>(null);
+  const dropLineRef = useRef<HTMLSpanElement | null>(null);
+  const dragRef = useRef<{ id: ProviderId; pointerY: number; raf: number } | null>(null);
 
   const refresh = useCallback((forceRequest = false) => {
     forceRef.current = forceRequest;
@@ -379,11 +456,12 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     })
       .then((response) => {
         if (!response.ok) throw new Error("connect_failed");
-        return response.json() as Promise<QuotaSummaryDto>;
+        return response.json() as Promise<SummaryResponse>;
       })
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
+          setOrder(sanitizeProviderOrder(result.providerOrder));
           setRequestError(false);
           setNow(Date.now());
         }
@@ -393,6 +471,121 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
       });
   }, [ctx.api]);
 
+  const persistOrder = useCallback((next: readonly ProviderId[], movedId: ProviderId) => {
+    setOrder(next);
+    setAnnouncement(t("quota.reorder.moved", { provider: PROVIDER_NAME[movedId], n: next.indexOf(movedId) + 1 }));
+    ctx.api.fetch("quota", "order", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order: next }),
+    })
+      .then((response) => {
+        if (!response.ok) throw new Error("order_failed");
+      })
+      .catch(() => {
+        // 낙관 반영을 손으로 되돌리지 않는다 — summary가 실어 오는 서버 진실로 재동기화한다.
+        setAnnouncement(t("quota.reorder.error"));
+        refresh(false);
+      });
+  }, [ctx.api, t, refresh]);
+
+  /* 드롭 판정은 상태가 아니라 DOM에서 읽는다. 카드가 order 상태를 그대로 그리는 동안은
+     둘이 같지만, 드래그 중 도착한 connect 응답이 순서를 바꿔도 화면에 보이던 그대로가
+     판정 기준으로 남는다. */
+  const endDrag = useCallback((commit: boolean) => {
+    const drag = dragRef.current;
+    if (!drag) return;
+    cancelAnimationFrame(drag.raf);
+    dragRef.current = null;
+    setDraggingId(null);
+    const body = bodyRef.current;
+    if (!commit || !body) return;
+    const cards = [...body.querySelectorAll<HTMLElement>("[data-provider]")];
+    const domOrder = cards.map((card) => card.dataset.provider).filter(isProviderId);
+    const rest = cards.filter((card) => card.dataset.provider !== drag.id);
+    let index = rest.length;
+    for (const [position, card] of rest.entries()) {
+      const rect = card.getBoundingClientRect();
+      if (drag.pointerY < rect.top + rect.height / 2) {
+        index = position;
+        break;
+      }
+    }
+    const restIds = rest.map((card) => card.dataset.provider).filter(isProviderId);
+    const next = [...restIds.slice(0, index), drag.id, ...restIds.slice(index)];
+    if (next.some((id, position) => id !== domOrder[position])) persistOrder(next, drag.id);
+  }, [persistOrder]);
+
+  const onBodyPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const grip = target?.closest(".quota-grip");
+    const body = bodyRef.current;
+    if (!grip || !body || dragRef.current) return;
+    const id = grip.closest<HTMLElement>("[data-provider]")?.dataset.provider;
+    if (!isProviderId(id)) return;
+    event.preventDefault();
+    const drag = { id, pointerY: event.clientY, raf: 0 };
+    dragRef.current = drag;
+    setDraggingId(id);
+    const onMove = (moveEvent: PointerEvent) => {
+      drag.pointerY = moveEvent.clientY;
+    };
+    const detach = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onDrop);
+      document.removeEventListener("pointercancel", onCancel);
+    };
+    const onDrop = () => {
+      detach();
+      endDrag(true);
+    };
+    const onCancel = () => {
+      detach();
+      endDrag(false);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onDrop);
+    document.addEventListener("pointercancel", onCancel);
+    /* 인디케이터는 매 프레임 DOM 좌표로 다시 놓는다. 레이아웃에 참여시키면 삽입 지점이
+       흔들릴 때마다 카드가 밀려 판정 자체가 떨리기 때문에 absolute 오버레이로만 그린다. */
+    const tick = () => {
+      if (dragRef.current !== drag) return;
+      const bodyRect = body.getBoundingClientRect();
+      if (drag.pointerY < bodyRect.top + 48) body.scrollTop -= 9;
+      else if (drag.pointerY > bodyRect.bottom - 48) body.scrollTop += 9;
+      const line = dropLineRef.current;
+      if (line) {
+        const rest = [...body.querySelectorAll<HTMLElement>("[data-provider]")]
+          .filter((card) => card.dataset.provider !== drag.id);
+        let top: number | null = null;
+        for (const card of rest) {
+          const rect = card.getBoundingClientRect();
+          if (drag.pointerY < rect.top + rect.height / 2) {
+            top = card.offsetTop - 8;
+            break;
+          }
+        }
+        if (top === null) {
+          const last = rest[rest.length - 1];
+          top = last ? last.offsetTop + last.offsetHeight + 6 : 0;
+        }
+        line.style.top = `${top}px`;
+      }
+      drag.raf = requestAnimationFrame(tick);
+    };
+    drag.raf = requestAnimationFrame(tick);
+  }, [endDrag]);
+
+  const onBodyKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
+    const target = event.target instanceof HTMLElement ? event.target : null;
+    const id = target?.closest(".quota-grip")?.closest<HTMLElement>("[data-provider]")?.dataset.provider;
+    if (!isProviderId(id)) return;
+    event.preventDefault();
+    const next = movedProviderOrder(order, id, event.key === "ArrowUp" ? -1 : 1);
+    if (next) persistOrder(next, id);
+  }, [order, persistOrder]);
+
   useEffect(() => {
     const generation = beginRequestGeneration(requestGenerationRef);
     if (isLatestRequestGeneration(requestGenerationRef, generation)) setRequestError(false);
@@ -401,11 +594,12 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     ctx.api.fetch("quota", force ? "summary?force=1" : "summary")
       .then((response) => {
         if (!response.ok) throw new Error("summary_failed");
-        return response.json() as Promise<QuotaSummaryDto>;
+        return response.json() as Promise<SummaryResponse>;
       })
       .then((result) => {
         if (isLatestRequestGeneration(requestGenerationRef, generation)) {
           setData(result);
+          setOrder(sanitizeProviderOrder(result.providerOrder));
           setRequestError(false);
           setNow(Date.now());
         }
@@ -445,21 +639,36 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
   return (
     <div className="quota-root">
-      <div className="quota-body">
+      <div
+        className={`quota-body${draggingId !== null ? " quota-body--compact" : ""}`}
+        ref={bodyRef}
+        onPointerDown={onBodyPointerDown}
+        onKeyDown={onBodyKeyDown}
+      >
         {requestError ? <div className="quota-error">{t("quota.error.summary")}</div> : null}
-        {!data && !requestError ? <div className="quota-loading" aria-live="polite">…</div> : null}
-        {data ? (
-          <>
-            <ProviderCard id="claude" provider={data.providers.claude} now={now} t={t} connect={connect} />
-            <ProviderCard id="codex" provider={data.providers.codex} now={now} t={t} connect={connect} />
-            <ProviderCard id="cursor" provider={data.providers.cursor} now={now} t={t} connect={connect} />
-            <ProviderCard id="kimi" provider={data.providers.kimi} now={now} t={t} connect={connect} />
-            <ProviderCard id="opencode" provider={data.providers.opencode} now={now} t={t} connect={connect} />
-          </>
+        {!data && !requestError ? (
+          <div className="quota-state" role="status">
+            <span className="quota-state__mark" aria-hidden="true" />
+            <strong>{t("quota.loading.title")}</strong>
+            <p>{t("quota.loading.body")}</p>
+          </div>
         ) : null}
+        {data ? order.map((id) => (
+          <ProviderCard
+            key={id}
+            id={id}
+            provider={data.providers[id]}
+            now={now}
+            t={t}
+            connect={connect}
+            dragging={draggingId === id}
+          />
+        )) : null}
+        {draggingId !== null ? <span className="quota-drop-line" ref={dropLineRef} aria-hidden="true" /> : null}
       </div>
       <footer className="quota-footer">
         <div className="quota-footer__row">
+          <span className="quota-live" aria-live="polite">{announcement}</span>
           {fetchedAt > 0 ? <span>{updatedMinutes < 1 ? t("quota.updated.now") : t("quota.updated.ago", { m: updatedMinutes })}</span> : null}
           <BarLegend t={t} />
           <button type="button" className="quota-refresh" onClick={() => refresh(true)}>{t("quota.refresh")}</button>

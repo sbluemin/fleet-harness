@@ -4,7 +4,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { QuotaService } from "@dotobokuri/core-ai-gateway";
 import { describe, expect, it, vi } from "vitest";
 
-import { handleConnect, handleSummary } from "../server/handlers.js";
+import { handleConnect, handleOrder, handleSummary } from "../server/handlers.js";
 import type { SettingsSerializer } from "../server/handlers.js";
 
 function createSerializer(): SettingsSerializer {
@@ -24,7 +24,7 @@ function harness(
 ) {
   const writes: Array<{ status: number; payload: unknown }> = [];
   const writeJson = vi.fn(async () => {});
-  const readJson = vi.fn(async () => ({ claudeConnected: true, cursorConnected: false }));
+  const readJson = vi.fn(async (): Promise<Record<string, unknown>> => ({ claudeConnected: true, cursorConnected: false }));
   const ctx = {
     host: {
       security: { isTerminalAuthorized: () => true },
@@ -178,6 +178,54 @@ describe("quota route handlers", () => {
     const wrongMethod = harness("POST");
     await handleSummary(wrongMethod.req, wrongMethod.res, wrongMethod.ctx, wrongMethod.service);
     expect(wrongMethod.writes[0]?.status).toBe(405);
+  });
+
+  it("appends the stored provider order to summary responses after sanitizing it", async () => {
+    const test = harness("GET", "/plugins/quota/summary");
+    test.readJson.mockResolvedValue({ providerOrder: ["opencode", "bogus", "claude", "opencode"] });
+    await handleSummary(test.req, test.res, test.ctx, test.service);
+    expect((test.writes[0]?.payload as { providerOrder: unknown }).providerOrder)
+      .toEqual(["opencode", "claude", "codex", "cursor", "kimi"]);
+  });
+
+  it("persists a full provider order while preserving connection flags", async () => {
+    const order = ["opencode", "kimi", "cursor", "codex", "claude"];
+    const test = harness("POST", "/plugins/quota/order", { order });
+    await handleOrder(test.req, test.res, test.ctx, test.serializeSettings);
+    expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      cursorConnected: false,
+      providerOrder: order,
+    });
+    expect(test.writes).toEqual([{ status: 200, payload: { providerOrder: order } }]);
+  });
+
+  it("rejects partial, duplicated, unknown, or non-array provider orders", async () => {
+    const invalid: unknown[] = [
+      ["claude", "codex", "cursor", "kimi"],
+      ["claude", "claude", "codex", "cursor", "kimi"],
+      ["claude", "codex", "cursor", "kimi", "bogus"],
+      "claude",
+    ];
+    for (const order of invalid) {
+      const test = harness("POST", "/plugins/quota/order", { order });
+      await handleOrder(test.req, test.res, test.ctx, test.serializeSettings);
+      expect(test.writes, JSON.stringify(order)).toEqual([{ status: 400, payload: { error: "invalid_order_request" } }]);
+      expect(test.writeJson, JSON.stringify(order)).not.toHaveBeenCalled();
+    }
+  });
+
+  it("keeps a stored provider order when a connection flag changes", async () => {
+    const test = harness("POST", "/plugins/quota/connect", { provider: "claude", connected: true });
+    test.readJson.mockResolvedValue({
+      claudeConnected: false,
+      providerOrder: ["kimi", "claude", "codex", "cursor", "opencode"],
+    });
+    await handleConnect(test.req, test.res, test.ctx, test.service, test.serializeSettings);
+    expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
+      claudeConnected: true,
+      providerOrder: ["kimi", "claude", "codex", "cursor", "opencode"],
+    });
   });
 
   it("requires the exact JSON media type while accepting parameters", async () => {

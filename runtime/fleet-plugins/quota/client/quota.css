@@ -7,7 +7,10 @@
   color: var(--text-primary);
 }
 
+/* position: relative는 드롭 인디케이터의 기준 상자다 — 인디케이터는 스크롤 콘텐츠
+   좌표(offsetTop)로 놓이므로 기준이 이 스크롤 컨테이너 자신이어야 한다. */
 .quota-body {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;
@@ -157,6 +160,133 @@
   align-items: center;
   gap: 8px;
   min-height: 22px;
+}
+
+/* ── 공급자 재배열 ─────────────────────────────
+   그립을 잡는 순간 전 카드가 헤더 한 줄로 접혀(quota-body--compact) 드롭 타깃
+   다섯 개가 모두 한 화면에 들어온다. 놓으면 원래 밀도로 복귀한다. */
+.quota-grip {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 22px;
+  margin-left: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  color: var(--text-tertiary);
+  background: transparent;
+  opacity: 0.35;
+  cursor: grab;
+  touch-action: none;
+}
+
+.quota-provider:hover .quota-grip,
+.quota-connect-card:hover .quota-grip,
+.quota-grip:focus-visible {
+  opacity: 1;
+}
+
+.quota-grip:hover,
+.quota-grip:focus-visible {
+  color: var(--brass);
+}
+
+.quota-grip:focus-visible {
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.quota-grip:active {
+  cursor: grabbing;
+}
+
+/* 접힘은 grid-template-rows 1fr→0fr 전환으로 만든다 — 높이 애니메이션 없이
+   내용 높이가 제각각인 카드 다섯 장을 같은 문법으로 접는다. */
+.quota-card__collapse {
+  display: grid;
+  grid-template-rows: 1fr;
+  transition: grid-template-rows 180ms ease;
+}
+
+.quota-card__rest {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.quota-body--compact {
+  user-select: none;
+}
+
+.quota-body--compact .quota-card__collapse {
+  grid-template-rows: 0fr;
+}
+
+.quota-body--compact .quota-provider,
+.quota-body--compact .quota-connect-card {
+  padding: 8px 12px;
+}
+
+/* 접힌 행에서는 헤더 우측 컨트롤을 치운다 — 드래그 중 남는 정보는 정체뿐이다. */
+.quota-body--compact .quota-plan,
+.quota-body--compact .quota-disconnect {
+  display: none;
+}
+
+.quota-card--dragging {
+  border-color: var(--brass);
+  opacity: 0.5;
+}
+
+.quota-drop-line {
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  z-index: 3;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  box-shadow: var(--brass-halo);
+}
+
+/* 스크린리더 전용 이동 공지. */
+.quota-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* 로딩 상태 카드 — Ledger의 상태 카드 문법(ledger-state) 미러. */
+.quota-state {
+  padding: 20px 16px;
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-md);
+  text-align: center;
+}
+
+.quota-state > strong {
+  display: block;
+  font-size: 13.5px;
+  font-weight: var(--weight-medium);
+}
+
+.quota-state > p {
+  margin: 6px 0 0;
+  color: var(--text-tertiary);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+
+.quota-state__mark {
+  display: block;
+  width: 8px;
+  height: 8px;
+  margin: 0 auto 12px;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
 }
 
 .quota-provider__header h3,
@@ -429,8 +559,7 @@
 }
 
 .quota-error,
-.quota-signed-out,
-.quota-loading {
+.quota-signed-out {
   margin-top: 12px;
   color: var(--text-tertiary);
   font-size: 12.5px;
@@ -471,7 +600,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .quota-meter__fill,
-  .quota-legend__bubble {
+  .quota-legend__bubble,
+  .quota-card__collapse {
     transition: none;
   }
 }
