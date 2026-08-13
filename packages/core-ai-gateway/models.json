@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-11T00:00:00Z",
+  "updatedAt": "2026-08-13T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -142,7 +142,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "auto",
-      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
+      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
       "models": [
         {
           "modelId": "auto",
@@ -200,6 +200,41 @@
               "high"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
+          }
+        },
+        {
+          "modelId": "grok-4.6",
+          "name": "Grok-4.6",
+          "capabilityClass": "flagship",
+          "quotaScope": "auto",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}"
+          },
+          "benchmarkKey": "grok-4.6"
+        },
+        {
+          "modelId": "grok-4.6-fast",
+          "name": "Grok-4.6-Fast",
+          "capabilityClass": "light",
+          "quotaScope": "auto",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ],
+            "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}-fast"
           }
         }
       ]

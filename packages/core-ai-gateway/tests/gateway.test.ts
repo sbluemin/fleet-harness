@@ -713,6 +713,18 @@ describe("model catalog", () => {
     expect(findGatewayModel("cursor--auto")?.benchmark).toBeUndefined();
     expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark).toBeUndefined();
 
+    const grok46 = findGatewayModel("cursor--grok-4.6");
+    expect(grok46?.benchmark?.source).toBe("CursorBench 3.2");
+    expect(grok46?.benchmark?.rungs).toEqual({
+      low: { score: 61.0, tokensPerTask: 10658, stepsPerTask: 23 },
+      medium: { score: 67.1, tokensPerTask: 17942, stepsPerTask: 29 },
+      high: { score: 69.9, tokensPerTask: 32449, stepsPerTask: 39 },
+      xhigh: { score: 70.8, tokensPerTask: 41136, stepsPerTask: 46 },
+    });
+    expect(grok46?.benchmark?.caveat).toBeUndefined();
+    expect(findGatewayModel("cursor--grok-4.6-fast")?.benchmark).toBeUndefined();
+    expect(grok46?.benchmark?.observedAt).toBe("2026-08-13T00:00:00Z");
+
     const constraints = buildGatewayModelConstraints(findGatewayModel("codex--gpt-5.6-sol")!);
     expect(constraints.benchmark).toEqual(base?.benchmark);
   });
@@ -790,9 +802,9 @@ describe("model catalog", () => {
     expect(() => validateBenchmarkCoverage(parseGatewayModelsRegistry(orphanBench))).toThrow(/benchmark entry is orphaned/);
   });
 
-  it("contains only the approved latest provider families", () => {
+  it("contains only the approved provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
-    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(5);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(7);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
@@ -803,6 +815,8 @@ describe("model catalog", () => {
       "composer-2.5-fast",
       "grok-4.5",
       "grok-4.5-fast",
+      "grok-4.6",
+      "grok-4.6-fast",
     ]);
     expect(Object.fromEntries(CURSOR_SUBSCRIPTION_MODELS.map((model) => [
       model.upstreamId,
@@ -812,6 +826,8 @@ describe("model catalog", () => {
       "composer-2.5-fast": 200_000,
       "grok-4.5": 256_000,
       "grok-4.5-fast": 256_000,
+      "grok-4.6": 256_000,
+      "grok-4.6-fast": 256_000,
       default: 256_000,
     });
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
@@ -868,6 +884,16 @@ describe("model catalog", () => {
       levels: ["low", "medium", "high"],
       upstreamModelIdTemplate: "cursor-grok-4.5-{effort}-fast",
     });
+    expect(efforts["cursor--grok-4.6"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh"],
+      upstreamModelIdTemplate: "cursor-grok-4.6-{effort}",
+    });
+    expect(efforts["cursor--grok-4.6-fast"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh"],
+      upstreamModelIdTemplate: "cursor-grok-4.6-{effort}-fast",
+    });
     expect(efforts["cursor--auto"]).toEqual({ supported: false });
     expect(efforts["cursor--composer-2.5"]).toEqual({ supported: false });
   });
@@ -877,6 +903,11 @@ describe("model catalog", () => {
     ["grok-4.5", "medium", "cursor-grok-4.5-medium"],
     ["grok-4.5", undefined, "cursor-grok-4.5-high"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
+    ["grok-4.6", "low", "cursor-grok-4.6-low"],
+    ["grok-4.6", "medium", "cursor-grok-4.6-medium"],
+    ["grok-4.6", "high", "cursor-grok-4.6-high"],
+    ["grok-4.6", "xhigh", "cursor-grok-4.6-xhigh"],
+    ["grok-4.6-fast", "xhigh", "cursor-grok-4.6-xhigh-fast"],
     ["composer-2.5", "high", "composer-2.5"],
     ["unknown-model", "high", "unknown-model"],
   ] as const)("resolves Cursor base model %s at effort %s to %s", (model, effort, expected) => {
@@ -991,6 +1022,7 @@ describe("model catalog", () => {
     const kimi = entries.get("claude-gateway--kimi--k3[1m]");
     const cursor = entries.get("claude-gateway--cursor--auto");
     const cursorGrok = entries.get("claude-gateway--cursor--grok-4.5");
+    const cursorGrok46 = entries.get("claude-gateway--cursor--grok-4.6");
     const cursorComposer = entries.get("claude-gateway--cursor--composer-2.5-fast");
 
     expect(sol?.capabilities.effort).toEqual({
@@ -1029,6 +1061,15 @@ describe("model catalog", () => {
       max: { supported: false },
       xhigh: { supported: false },
     });
+    expect(cursorGrok46?.capabilities.effort).toEqual({
+      supported: true,
+      low: { supported: true },
+      medium: { supported: true },
+      high: { supported: true },
+      max: { supported: false },
+      xhigh: { supported: true },
+    });
+    expect(cursorGrok46?.max_input_tokens).toBe(256_000);
   });
 
   it("unwraps the alias a picked model comes back as", () => {
@@ -1061,6 +1102,11 @@ describe("model catalog", () => {
     expect(findGatewayModel("claude-gateway--cursor--grok-4.5")).toMatchObject({
       id: "cursor--grok-4.5",
       upstreamId: "grok-4.5",
+      contextWindow: 256_000,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--grok-4.6")).toMatchObject({
+      id: "cursor--grok-4.6",
+      upstreamId: "grok-4.6",
       contextWindow: 256_000,
     });
     expect(findGatewayModel("claude-gateway--cursor--composer-2.5")).toMatchObject({
