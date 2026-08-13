@@ -6,7 +6,7 @@ import path from "node:path";
 import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 
 import { buildClaudeGatewayArgs } from "./builders/claude.js";
-import { assertLaunchCommandLineBudget } from "./prompt.js";
+import { assertLaunchCommandLineBudget, writeLaunchPromptPointer } from "./prompt.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
@@ -101,6 +101,20 @@ export async function injectAgentCliProfile(
     const systemPromptFile = systemPromptMode === "off"
       ? undefined
       : writeSystemPromptFile(profile.id, options.buildSystemPrompt(), (cleanup) => tempCleanups.push(cleanup));
+    let promptArgs = [...(profile.promptArgs ?? [])];
+    let deliveredViaFile = false;
+    // 런치 프롬프트 원문은 argv에 올리지 않는다. cmd shim·native·POSIX 모두 파일 포인터만
+    // 실어, Trust folder가 끝난 뒤 첫 사용자 턴이 그 파일을 읽게 한다. 플러그인 조립이
+    // 실패해도 파일이 남으면 안 되므로 시스템 프롬프트와 같이 플러그인보다 먼저 쓰고
+    // tempCleanups에 올린다. cmd shim 여부 분기는 지시 경로의 안전 검사에만 쓴다.
+    if (promptArgs.length > 0) {
+      promptArgs = [writeLaunchPromptPointer(
+        takeLaunchPromptBody(promptArgs),
+        (cleanupFn) => tempCleanups.push(cleanupFn),
+        profile.commandLineLimit?.via === "cmd-shim",
+      )];
+      deliveredViaFile = true;
+    }
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
       doctrine,
@@ -137,30 +151,33 @@ export async function injectAgentCliProfile(
       systemPromptFile,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
-    const mergedArgs = mergeAgentCliArgs(profile, capability.builderId, context, injectedArgs);
+    const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(
+      { ...profile, promptArgs: nextPromptArgs },
+      capability.builderId,
+      context,
+      injectedArgs,
+    );
+    const argsWithoutPrompt = mergeArgs([]);
+    const checkBudget = () => assertLaunchCommandLineBudget({
+      args: mergeArgs(promptArgs),
+      argsWithoutPrompt,
+      bin: profile.bin,
+      limit: profile.commandLineLimit,
+      promptIsFixedLength: deliveredViaFile,
+    });
     // 명령줄 상한은 여기서만 판정할 수 있다 — 프롬프트 길이와 달리 주입 인자까지 합쳐진 뒤라야
     // 실제 값이 나온다. 프롬프트 없는 판본은 같은 병합을 한 번 더 돌려 만든다: 후미 인자라는
     // 위치 가정을 두면 병합 순서가 바뀌는 날 조용히 어긋난다.
     // 거부는 spawn 전에 끝나야 하므로 이 프로필이 만든 플러그인을 먼저 거둔다.
     try {
-      assertLaunchCommandLineBudget({
-        args: mergedArgs,
-        argsWithoutPrompt: mergeAgentCliArgs(
-          { ...profile, promptArgs: [] },
-          capability.builderId,
-          context,
-          injectedArgs,
-        ),
-        bin: profile.bin,
-        limit: profile.commandLineLimit,
-      });
+      checkBudget();
     } catch (error) {
       cleanup();
       throw error;
     }
     return {
       ...profile,
-      args: mergedArgs,
+      args: mergeArgs(promptArgs),
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],
       cleanup,
@@ -190,6 +207,15 @@ function buildAgentCliMcpServerConfigs(
       bearerToken: token,
     };
   });
+}
+
+function takeLaunchPromptBody(promptArgs: readonly string[]): string {
+  // 파일 포인터는 프롬프트 원문 하나다. 배열을 줄바꿈으로 이어 붙이면 서로 다른 위치
+  // 인자의 경계가 사라지고, 이후 호출자가 promptArgs에 인자를 더 넣어도 조용히 본문이 된다.
+  if (promptArgs.length !== 1) {
+    throw new Error(`Launch prompt file conversion expects a single positional prompt, got ${promptArgs.length}`);
+  }
+  return promptArgs[0]!;
 }
 
 function writeSystemPromptFile(

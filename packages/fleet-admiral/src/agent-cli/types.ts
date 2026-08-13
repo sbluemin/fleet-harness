@@ -29,8 +29,8 @@ export interface AgentCliProfile {
   // 그 경우 호스트는 rename 주입을 건너뛴다. messagePolicy와 동일하게 resolved profile에 실린다.
   readonly renameCommand?: string;
   // 런치 프롬프트의 후미 위치(positional) 인자. `--mcp-config`는 가변 인자라 그 뒤에
-  // 오는 위치 인자를 삼키므로, 최종 argv의 맨 끝에 남아야 한다. 주입 계층이 이 값을
-  // args 끝에 합친 뒤 비운다.
+  // 오는 위치 인자를 삼키므로, 최종 argv의 맨 끝에 남아야 한다. 주입 계층이 원문 대신
+  // 임시 파일 지시를 실고, args 끝에 합친 뒤 비운다.
   readonly promptArgs?: readonly string[];
   readonly terminalName: string;
 }

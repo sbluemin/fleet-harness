@@ -1,6 +1,6 @@
 import { createChildEnv, resolveBinary } from "@dotobokuri/core-process";
 
-import { assertLaunchPromptShimSafe, resolveLaunchCommandLineLimit, sanitizeLaunchPrompt } from "../prompt.js";
+import { resolveLaunchCommandLineLimit, sanitizeLaunchPrompt } from "../prompt.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfileOptions } from "../types.js";
 
 interface ClaudeFamilyCliFactoryOptions {
@@ -17,8 +17,8 @@ export function createClaudeFamilyCliDefinition(
     async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
       const launchPrompt = sanitizeLaunchPrompt(profileOptions.prompt);
-      // prefixArgs가 있으면 이 실행은 cmd.exe를 거친다 — 그 명령줄에 임의 텍스트를 실을 수 없다.
-      assertLaunchPromptShimSafe(launchPrompt, prefixArgs);
+      // 원문은 여기서 거절하지 않는다. 주입 계층이 파일 포인터로 바꾸고,
+      // cmd shim이면 그 짧은 지시만 shim 안전 검사를 받는다.
       const commandLineLimit = resolveLaunchCommandLineLimit(prefixArgs);
       const childEnv = createChildEnv(profileOptions.env, {});
       return {
