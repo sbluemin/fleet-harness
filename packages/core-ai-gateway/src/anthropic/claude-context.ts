@@ -619,3 +619,86 @@ function withheldClaudeSkillStub(name: string, tokens: number, budget: number): 
     + `over the ${budget}-token ceiling one skill may take from this model's context window. `
     + `Read the skill's own files if you need it, or run this work on a model with a larger window.]`;
 }
+
+/** Claude Code's client-side Web Search tool. */
+export const CLAUDE_WEB_SEARCH_TOOL_NAME = "WebSearch";
+/** Anthropic's server-side web search tool name. */
+export const ANTHROPIC_WEB_SEARCH_TOOL_NAME = "web_search";
+/** Anthropic's server-side web search tool type. */
+export const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
+
+interface ClaudeToolLike {
+  readonly name?: unknown;
+  readonly type?: unknown;
+}
+
+interface ClaudeToolChoiceLike {
+  readonly type?: unknown;
+  readonly name?: unknown;
+  readonly disable_parallel_tool_use?: unknown;
+}
+
+/** Structural shape of an Anthropic tools request, kept local so this module stays a leaf. */
+interface ClaudeToolsRequestLike<TTool, TChoice> {
+  readonly tools?: readonly TTool[];
+  readonly tool_choice?: TChoice;
+}
+
+export interface ClaudeWebSearchOmitResult<R> {
+  readonly request: R;
+  readonly changed: boolean;
+}
+
+function isClaudeWebSearchTool(tool: ClaudeToolLike): boolean {
+  return tool.type === ANTHROPIC_WEB_SEARCH_TOOL_TYPE
+    || tool.name === CLAUDE_WEB_SEARCH_TOOL_NAME
+    || tool.name === ANTHROPIC_WEB_SEARCH_TOOL_NAME;
+}
+
+function isClaudeWebSearchToolChoice(choice: ClaudeToolChoiceLike | undefined): boolean {
+  return choice?.type === "tool"
+    && (choice.name === CLAUDE_WEB_SEARCH_TOOL_NAME
+      || choice.name === ANTHROPIC_WEB_SEARCH_TOOL_NAME);
+}
+
+/**
+ * Drop Claude Code's Web Search tool definitions from a request.
+ *
+ * Past `tool_use` / `tool_result` history stays in `messages` — only the
+ * catalog is withheld. The caller decides which requests this applies to.
+ */
+export function omitClaudeWebSearchTools<
+  TTool extends ClaudeToolLike,
+  TChoice extends ClaudeToolChoiceLike,
+  R extends ClaudeToolsRequestLike<TTool, TChoice>,
+>(request: R): ClaudeWebSearchOmitResult<R> {
+  const tools = request.tools;
+  const kept = tools?.filter((tool) => !isClaudeWebSearchTool(tool));
+  const toolsChanged = tools !== undefined && kept !== undefined && kept.length !== tools.length;
+  const choice = request.tool_choice;
+  const choiceChanged = isClaudeWebSearchToolChoice(choice);
+  if (!toolsChanged && !choiceChanged) {
+    return { request, changed: false };
+  }
+
+  const { tools: _tools, tool_choice: _toolChoice, ...rest } = request;
+  return {
+    request: {
+      ...rest,
+      ...(toolsChanged
+        ? (kept.length === 0 ? {} : { tools: kept })
+        : (tools === undefined ? {} : { tools })),
+      ...(choiceChanged
+        ? {
+            tool_choice: {
+              type: "auto",
+              ...(choice?.disable_parallel_tool_use === undefined
+                ? {}
+                : { disable_parallel_tool_use: choice.disable_parallel_tool_use }),
+            } as TChoice,
+          }
+        : (choice === undefined ? {} : { tool_choice: choice })),
+    } as R,
+    changed: true,
+  };
+}
