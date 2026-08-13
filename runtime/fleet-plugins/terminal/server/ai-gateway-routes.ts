@@ -7,6 +7,7 @@ import {
   createCursorDiagnosticLog,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
+  readXaiSubscriptionToken,
 } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayRouteDeps } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
@@ -22,6 +23,7 @@ export {
   createAiGatewayRouter,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
+  readXaiSubscriptionToken,
 } from "@dotobokuri/core-ai-gateway";
 export type {
   AiGatewayRouteDeps,
@@ -31,8 +33,8 @@ export type {
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readCursorToken"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken">>;
+  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken">>;
 
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
@@ -50,6 +52,7 @@ export function registerAiGatewayRoutes(
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
+    readXaiToken: deps.readXaiToken ?? (() => readXaiSubscriptionToken()),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });

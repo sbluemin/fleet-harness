@@ -7,6 +7,7 @@ import {
   createCursorDiagnosticLog,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
+  readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
 } from "@dotobokuri/core-ai-gateway";
 import {
@@ -34,6 +35,7 @@ export async function startGatewayHttpServer(deps: {
     // 자격증명 조달은 호스트 결정이다 — thin 런처도 export된 기본 reader를 명시 주입한다.
     readAuth: () => readCodexSubscriptionAuth(),
     readCursorToken: () => readCursorSubscriptionToken(),
+    readXaiToken: () => readXaiSubscriptionToken(),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: diagnostics.write,
   });

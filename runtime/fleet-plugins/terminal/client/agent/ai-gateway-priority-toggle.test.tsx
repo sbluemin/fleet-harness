@@ -23,7 +23,7 @@ afterEach(() => {
   container = null;
 });
 
-const PROVIDERS: readonly AiGatewayProviderId[] = ["codex", "cursor", "kimi", "opencode"];
+const PROVIDERS: readonly AiGatewayProviderId[] = ["codex", "cursor", "kimi", "opencode", "xai"];
 
 /** 카드가 공급자 헤드마다 토글 하나를 그리는 자리를 그대로 재현한다. */
 function render(

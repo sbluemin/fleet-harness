@@ -46,7 +46,7 @@ describe("terminal settings routes", () => {
       readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly capabilityClass: string | null; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
-    expect(providers.map((provider) => provider.id)).toEqual(["codex", "cursor", "kimi", "opencode"]);
+    expect(providers.map((provider) => provider.id)).toEqual(["codex", "xai", "cursor", "opencode", "kimi"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor는 auto/composer/grok만 지원하고, Kimi 프로바이더는 별개 경로로 그대로 노출한다.
     expect(allIds).toContain("kimi--k3");
@@ -63,12 +63,12 @@ describe("terminal settings routes", () => {
     expect(allIds).not.toContain("cursor--claude-fable-5-1m");
     expect(allIds).not.toContain("cursor--kimi-k3-1m");
     // 남은 Cursor 라인업에는 Max Mode 경로가 없다 — 제거된 1M Max Mode 모델을 되살리지 않는다.
-    expect(providers[1]?.models.every((model) => model.maxMode === false)).toBe(true);
+    expect(providers.find((provider) => provider.id === "cursor")?.models.every((model) => model.maxMode === false)).toBe(true);
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);
     // 등급은 이 응답으로만 브라우저에 닿는다 — 투영에서 잘리면 로스터 배지가 사라진다.
     expect(providers[0]?.models.find((model) => model.id === "codex--gpt-5.6-sol")?.capabilityClass).toBe("flagship");
-    expect(providers[1]?.models.find((model) => model.id === "cursor--auto")?.capabilityClass).toBeNull();
+    expect(providers.find((provider) => provider.id === "cursor")?.models.find((model) => model.id === "cursor--auto")?.capabilityClass).toBeNull();
   });
 
   it("PUT /plugins/terminal/settings updates the agent idle dormant threshold in global options", async () => {

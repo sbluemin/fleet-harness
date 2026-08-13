@@ -632,7 +632,7 @@ describe("Instrument core design contract", () => {
     // 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
     // .operation-provider-mark 한 곳에만 있어야 하고, 표면 클래스는 치수만 소유한다.
     const css = source("styles/components.css");
-    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode"]) {
+    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
       expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
     }
     // 공급자는 정체성 축이다 — 마크의 잉크에만 머물러야 하므로 배경·테두리로 번지지 않고,

@@ -18,6 +18,8 @@ import {
 } from "../cursor/native/adapter.js";
 import type { CursorDiagnosticSink } from "../cursor/native/adapter.js";
 import { resolveCursorCredentials } from "../cursor/credentials.js";
+import { resolveXaiCliCredentials } from "../xai/credentials.js";
+import { XaiResponsesAdapter } from "../xai/responses/adapter.js";
 import {
   kimiAnthropicHeaders,
   kimiRequestBody,
@@ -105,6 +107,11 @@ export async function readCursorSubscriptionToken(): Promise<string | null> {
  * 존중하고 있었다. 게이트웨이는 `chatgpt-account-id` 헤더가 필요하므로 account id가 없는
  * 자격증명은 여기서 사용 불가로 판정한다.
  */
+export async function readXaiSubscriptionToken(): Promise<string | null> {
+  const credentials = await resolveXaiCliCredentials(defaultCredentialDeps);
+  return credentials?.accessToken ?? null;
+}
+
 export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
   const credentials = await resolveCodexCredentials(defaultCredentialDeps);
   if (!credentials?.accountId) return null;
@@ -121,6 +128,7 @@ export interface AiGatewayRouteDeps {
   // 접근 금지), 각 호스트가 export된 reader를 명시 주입한다.
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readCursorToken: () => string | null | Promise<string | null>;
+  readonly readXaiToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
@@ -291,6 +299,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = opencodeApiKey;
+    } else if (target?.provider === "xai") {
+      const xaiToken = await deps.readXaiToken?.();
+      if (!xaiToken) {
+        writeAnthropicError(res, 401, "authentication_error", "No active Grok CLI sign-in was found. Run `grok login` first.");
+        return true;
+      }
+      credential = xaiToken;
     }
 
     const controller = new AbortController();
@@ -339,7 +354,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           ? ownedCursorGateway!
           : target.provider === "opencode"
             ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
-            : createGatewayFor(target, chatgptAccountId, deps.originator));
+            : target.provider === "xai"
+              ? new AnthropicMessagesGateway(new XaiResponsesAdapter({ fetch: fetchImpl }))
+              : createGatewayFor(target, chatgptAccountId, deps.originator));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()
         : undefined;

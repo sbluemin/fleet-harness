@@ -7610,6 +7610,8 @@
 .quick-launch-pop-band.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .operation-launch-variant-caption.is-opencode,
 .quick-launch-pop-band.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.operation-launch-variant-caption.is-xai,
+.quick-launch-pop-band.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* Etc는 공급자가 아니므로 캐리어 색을 빌리지 않고 머리글 잉크를 그대로 쓴다. */
 .operation-launch-provider-glyph--etc {
@@ -7638,7 +7640,8 @@
 .quick-launch-kind-icon.is-codex,
 .quick-launch-kind-icon.is-cursor,
 .quick-launch-kind-icon.is-kimi,
-.quick-launch-kind-icon.is-opencode {
+.quick-launch-kind-icon.is-opencode,
+.quick-launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
 .quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
@@ -7646,6 +7649,7 @@
 .quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
 .quick-launch-kind-icon.is-kimi { --launch-provider-tone: var(--provider-kimi); }
 .quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
 /* 실행된 공급자 마크 — Operation 글리프는 어느 공급자의 모델로 돌았는지를 이름한다. Operation을
    세는 세 크롬 표면(사이드바 칩·커맨드 밴드·팔레트)이 하나의 캐리어 시그니처 톤을 공유하므로
@@ -7656,6 +7660,7 @@
 .operation-provider-mark.is-cursor { color: var(--provider-cursor); }
 .operation-provider-mark.is-kimi { color: var(--provider-kimi); }
 .operation-provider-mark.is-opencode { color: var(--provider-opencode); }
+.operation-provider-mark.is-xai { color: var(--provider-xai); }
 
 .operation-launch-variant-entry {
   padding: 1px var(--space-1);

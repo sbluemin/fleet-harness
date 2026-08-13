@@ -933,7 +933,7 @@ describe("model catalog", () => {
 
   it("includes every provider with collision-free ids and provider-prefixed labels", () => {
     expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
-      new Set(["codex", "cursor", "kimi", "opencode"]),
+      new Set(["codex", "cursor", "kimi", "opencode", "xai"]),
     );
     expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
     expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
@@ -942,6 +942,7 @@ describe("model catalog", () => {
       cursor: "Cursor",
       kimi: "Moonshot-Kimi",
       opencode: "OpenCode",
+      xai: "xAI",
     } as const;
     expect(GATEWAY_MODELS.every((model) => model.displayName.startsWith(
       `${providerLabels[model.provider]}-`,
@@ -965,6 +966,10 @@ describe("model catalog", () => {
     expect(list.data.find((entry) => entry.id.endsWith("cursor--grok-4.5"))).toMatchObject({
       display_name: "Cursor-Grok-4.5",
       max_input_tokens: 256_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--xai--grok-4.6")).toMatchObject({
+      display_name: "xAI-Grok-4.6",
+      max_input_tokens: 500_000,
     });
     expect(list.data.find((entry) => entry.id.endsWith("cursor--composer-2.5"))).toMatchObject({
       display_name: "Cursor-Composer-2.5",
@@ -3759,6 +3764,7 @@ function minimalRegistry() {
       cursor: provider("Cursor", "auto"),
       kimi: provider("Kimi", "k3"),
       opencode: provider("OpenCode", "minimax-m3"),
+      xai: provider("Grok", "grok-4.6"),
     },
   };
 }

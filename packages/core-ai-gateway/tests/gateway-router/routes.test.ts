@@ -18,6 +18,7 @@ import {
   KIMI_MESSAGES_URL,
   MAX_GATEWAY_REQUEST_BODY_BYTES,
   OPENCODE_MESSAGES_URL,
+  XAI_CLI_RESPONSES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
   errorMessage,
 } from "../../src/index.js";
@@ -748,6 +749,52 @@ describe("OpenCode Go passthrough", () => {
     }));
     expect(res.status).toBe(401);
     expect(res.body).toContain("OpenCode Go");
+  });
+});
+
+describe("Grok CLI Responses", () => {
+  it("routes xAI models through the CLI proxy with the reused subscription credential", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readXaiToken: () => "grok-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+    }));
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    const headers = new Headers(init?.headers);
+    const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(res.status).toBe(200);
+    expect(String(url)).toBe(XAI_CLI_RESPONSES_URL);
+    expect(headers.get("authorization")).toBe("Bearer grok-subscription-token");
+    expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
+    expect(headers.get("x-grok-client-version")).toBe("1.0.3");
+    expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
+    expect(body.model).toBe("grok-4.6");
+  });
+
+  it("refuses an xAI model without an active Grok CLI sign-in", async () => {
+    const fetchMock = vi.fn<typeof fetch>();
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+    }));
+
+    expect(res.status).toBe(401);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(res.body).toContain("grok login");
   });
 });
 
@@ -1488,7 +1535,7 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(26);
+    expect(list.data).toHaveLength(27);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
@@ -1512,7 +1559,11 @@ describe("route surface", () => {
       id: "claude-gateway--kimi--k3[1m]",
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
-    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode)-/.test(entry.display_name))).toBe(true);
+    expect(list.data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-4.6",
+      display_name: "xAI-Grok-4.6",
+    }));
+    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(entry.display_name))).toBe(true);
   });
 
   it("filters model discovery to the curated allowlist", async () => {

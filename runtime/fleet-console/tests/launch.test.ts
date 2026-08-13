@@ -640,7 +640,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
     // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그가 바뀌면 이 수도 함께 맞춘다.
-    expect(cache.models).toHaveLength(26);
+    expect(cache.models).toHaveLength(27);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
@@ -662,8 +662,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
       id: "claude-gateway--kimi--k3[1m]",
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
     }));
+    expect(cache.models).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-4.6",
+      display_name: "xAI-Grok-4.6",
+    }));
     expect(cache.models.every((model) => model.id.startsWith("claude"))).toBe(true);
-    expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode)-/.test(model.display_name))).toBe(true);
+    expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(model.display_name))).toBe(true);
   });
 
   it("preserves an explicit Claude Code auto-compact window for gateway launches", async () => {
