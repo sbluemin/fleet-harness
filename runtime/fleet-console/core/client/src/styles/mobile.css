@@ -58,11 +58,12 @@
 }
 
 /* The session names itself and offers Close on the same row. Leave is still the platform
-   back gesture; Close is the two-tap dispose the desktop frame already owns. Side tracks
-   share leftover equally so arming "Close?" cannot shift the centered title. */
+   back gesture; Close is the two-tap dispose the desktop frame already owns. Three equal
+   shrinkable tracks keep the title centered when Close arms, and stop a long nowrap title
+   from covering the control. */
 .mobile-session-bar {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
   min-height: 44px;
   padding-inline: var(--space-1);

@@ -56,7 +56,7 @@ describe("mobile session close", () => {
   });
 
   it("keeps the title centered when Close arms", () => {
-    expect(MOBILE_CSS).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, auto) minmax(0, 1fr)");
+    expect(MOBILE_CSS).toContain("grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)");
     expect(MOBILE_CSS).toContain("grid-column: 2");
     expect(MOBILE_CSS).toContain("grid-column: 3");
     expect(SESSION).not.toContain("mobile-session-bar-slot");
