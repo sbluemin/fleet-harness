@@ -11857,6 +11857,15 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: var(--space-5);
   background: color-mix(in oklch, var(--ink-abyss) 66%, transparent);
   animation: fleet-pop 280ms var(--ease-spring) both;
+  transition: background-color var(--duration-slow) var(--ease-glide);
+}
+
+/* 고정 중에는 스크림이 물러나고 오버레이가 클릭을 통과시킨다 — 뒤 화면을 계속 쓰는 것이 목적이다.
+   등장 pop도 끈다: 상주하는 바가 매 로드마다 화면 가운데에서 튀어나올 이유가 없다. */
+.quick-launch-overlay.is-pinned {
+  background-color: transparent;
+  animation: none;
+  pointer-events: none;
 }
 
 .quick-launch-card {
@@ -11880,6 +11889,142 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .quick-launch-card:focus-visible {
   outline: none;
+}
+
+/* ── 고정(도킹) ────────────────────────────────────────────────────────
+   옵트인 고정은 컴포저를 화면 하단에 상주시켜 실행 화면과 공존하게 한다. 이동은 카드 자신의
+   transform으로 그린다 — 오버레이의 place-items를 바꾸면 보간되지 않아 카드가 튄다.
+   translateY의 50%는 카드 자기 높이라, 접혀 높이가 줄어도 아래 모서리는 --space-4에 붙어 있는다
+   (계산: 중앙정렬 bottom (V+h)/2 + (V/2 - s - h/2) = V - s, h와 무관). */
+.quick-launch-card {
+  /* 언포커스 시 물러나는 깊이. 접힘과 함께 한 동작으로 걸린다. */
+  --quick-launch-idle-opacity: 0.55;
+  --quick-launch-idle-hover-opacity: 0.85;
+  transition:
+    transform var(--duration-slow) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-glide);
+}
+
+.quick-launch-card.is-pinned {
+  transform: translateY(calc(50vh - var(--space-4) - 50%));
+  /* 오버레이가 클릭을 통과시키는 동안에도 카드 자신은 받아야 한다. */
+  pointer-events: auto;
+}
+
+/* 물러남 — 접힘과 같은 상태다. 거절 사유를 싣고 있을 때는 이 상태로 내려가지 않는다(판독 우선). */
+.quick-launch-card.is-pinned.is-collapsed {
+  opacity: var(--quick-launch-idle-opacity);
+}
+
+.quick-launch-card.is-pinned.is-collapsed:hover {
+  opacity: var(--quick-launch-idle-hover-opacity);
+}
+
+/* 접히는 두 층. 높이를 0으로 눌러 자리를 돌려주고, 포커스 차단은 JSX의 inert가 맡는다. */
+.quick-launch-card.is-collapsed .quick-launch-field,
+.quick-launch-card.is-collapsed .quick-launch-bar {
+  max-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-color: transparent;
+  opacity: 0;
+}
+
+.quick-launch-card.is-pinned .quick-launch-field,
+.quick-launch-card.is-pinned .quick-launch-bar {
+  max-height: 320px;
+  transition:
+    max-height var(--duration-base) var(--ease-glide),
+    padding var(--duration-base) var(--ease-glide),
+    opacity var(--duration-fast) var(--ease-glide);
+}
+
+/* 접힘은 넘치는 내용을 잘라야 성립하지만, 팝오버는 바 밖으로 서는 바의 자식이다 — 상시로 자르면
+   Theater·모델 목록이 통째로 사라진다. 팝오버가 열려 있는 동안만 자르기를 놓는다(그때 카드는
+   이미 완전히 펼쳐져 있어 잘릴 것이 없다). */
+.quick-launch-card.is-pinned:not(.has-popover) .quick-launch-field,
+.quick-launch-card.is-pinned:not(.has-popover) .quick-launch-bar {
+  overflow: hidden;
+}
+
+/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤. display:none이라 펼친 동안에는 접근성 트리와
+   탭 순서 어디에도 없다. */
+.quick-launch-strip {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: var(--space-3) var(--space-4);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 13.5px;
+  text-align: left;
+}
+
+.quick-launch-card.is-collapsed .quick-launch-strip {
+  display: flex;
+}
+
+.quick-launch-strip-trace {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* 초안이 없을 때만 안내 문구가 대신 선다 — 자취가 있으면 그것이 이 줄의 내용이다. */
+.quick-launch-strip-trace.is-idle {
+  color: var(--text-tertiary);
+}
+
+.quick-launch-strip-key {
+  flex: none;
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+/* 고정 토글 — 켜지면 brass로 자기 상태를 말한다(위치 채널). */
+.quick-launch-pin {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-tertiary);
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.quick-launch-pin svg {
+  width: 15px;
+  height: 15px;
+}
+
+.quick-launch-pin:hover {
+  color: var(--text-secondary);
+}
+
+.quick-launch-pin[aria-pressed="true"] {
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+  color: var(--brass);
+}
+
+/* 도킹된 바에서 팝오버는 위로 열린다 — 아래로 열면 바가 이미 화면 바닥이라 설 자리가 없다
+   (멘션 덱이 쓰는 방향과 같다). */
+.quick-launch-card.is-pinned .quick-launch-pop {
+  top: auto;
+  bottom: calc(100% + var(--space-2));
 }
 
 .quick-launch-field {
@@ -12369,6 +12514,15 @@ body[data-codex-reading="true"] .operations-side-bar {
 @media (prefers-reduced-motion: reduce) {
   .quick-launch-overlay {
     animation: none;
+  }
+
+  /* 도킹 이동과 접힘도 같은 규약을 따른다 — 전역 단락이 duration을 0.01ms로 눌러 주지만, 이 표면의
+     의도를 규칙 옆에 남긴다(.quick-launch-launch-sel 선례와 같은 형태). */
+  .quick-launch-overlay,
+  .quick-launch-card,
+  .quick-launch-card.is-pinned .quick-launch-field,
+  .quick-launch-card.is-pinned .quick-launch-bar {
+    transition: none;
   }
 
   .effort-track-apex-burst {

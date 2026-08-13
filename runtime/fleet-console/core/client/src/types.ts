@@ -504,6 +504,12 @@ export interface ConsoleState {
   readonly operationSearchOpen: boolean;
   readonly operationSearchSeed: string | null;
   readonly quickLaunchOpen: boolean;
+  // 컴포저를 화면 하단에 도킹해 두는 옵트인 상태. 고정 중에는 컴포저가 상주하므로 quickLaunchOpen과
+  // 무관하게 떠 있고, 모달 계약(스크림·포커스 트랩·스크롤 잠금)을 내려놓는다 — 공존이 목적이다.
+  readonly quickLaunchPinned: boolean;
+  // 고정 중 Mod+J가 보내는 포커스 왕복 요청. 접힘 여부는 실제 포커스에서 파생되므로 상태로 두지
+  // 않고, 단축키는 "뒤집어 달라"는 요청만 남긴다(양방향 동기화로 인한 루프를 만들지 않는다).
+  readonly quickLaunchFocusToggle: number;
   // 실행이 거절되면 컴포저를 이 초안과 함께 다시 연다 — 서버 거절(모델 비활성·CLI 미가용·
   // 프롬프트 전달 불가)은 컴포저가 결과를 기다리지 않는 구조라 이 경로로만 사용자에게 돌아온다.
   readonly quickLaunchDraft: string | null;

@@ -2,6 +2,7 @@ import type { ClientNotification } from "@fleet-console/sdk/notifications";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
+import { readQuickLaunchSelection, writeQuickLaunchPinned } from "./quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
 import { acknowledgeIdleArrival } from "./operation-idle-arrival.js";
 import { uiFontFamily } from "./ui-font.js";
@@ -80,6 +81,8 @@ let state: ConsoleState = {
   operationSearchOpen: false,
   operationSearchSeed: null,
   quickLaunchOpen: false,
+  quickLaunchPinned: readQuickLaunchSelection().pinned,
+  quickLaunchFocusToggle: 0,
   quickLaunchDraft: null,
   quickLaunchError: null,
   quickLaunchErrorShortenBy: null,
@@ -602,7 +605,21 @@ export function closeQuickLaunch(): void {
 }
 
 export function toggleQuickLaunch(): void {
+  // 고정 중에는 컴포저가 상주하므로 Mod+J가 여닫을 것이 없다 — 대신 포커스를 왕복시킨다
+  // (펼쳐 두고 쓰다가 같은 키로 물러나게 하는 것이 이 단축키의 고정판 계약).
+  if (state.quickLaunchPinned) {
+    setState({ quickLaunchFocusToggle: state.quickLaunchFocusToggle + 1 });
+    return;
+  }
   setState({ quickLaunchOpen: !state.quickLaunchOpen, quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
+export function setQuickLaunchPinned(pinned: boolean): void {
+  if (state.quickLaunchPinned === pinned) return;
+  writeQuickLaunchPinned(pinned);
+  // 고정을 풀면 그 자리에서 계속 쓰던 컴포저가 모달로 돌아온다 — 닫아 버리면 되돌리기가 아니라
+  // 취소가 된다. 고정을 켤 때도 열림 상태를 참으로 맞춰 두 경로의 상태가 갈라지지 않게 한다.
+  setState({ quickLaunchOpen: true, quickLaunchPinned: pinned });
 }
 
 // pendingOperationFocus/consumeOperationFocus와 같은 request/consume 계약. 컴포저는 의도만 남기고,

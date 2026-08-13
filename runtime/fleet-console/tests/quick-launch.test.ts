@@ -155,12 +155,12 @@ describe("quick launch preferences", () => {
   });
 
   it("round-trips the last selection", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh" });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
   });
 
   it("updates model and effort without replacing the last launched Theater", () => {
-    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high" });
+    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true });
 
     writeQuickLaunchModelEffort("codex--gpt-5.6-luna-fast", "max");
 
@@ -168,6 +168,7 @@ describe("quick launch preferences", () => {
       theaterId: "launched",
       model: "codex--gpt-5.6-luna-fast",
       effort: "max",
+      pinned: true,
     });
   });
 
@@ -176,26 +177,27 @@ describe("quick launch preferences", () => {
       "fleet-console.quickLaunch.selection",
       JSON.stringify({ theaterId: "t1", model: "opus", effort: "high" }),
     );
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
     expect(JSON.parse(window.localStorage.getItem("fleet-console.quickLaunch.selection")!)).toEqual({
       theaterId: "t1",
       model: "opus[1m]",
       effort: "high",
+      pinned: false,
     });
   });
 
   it("reads an empty selection when nothing was stored", () => {
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
   });
 
   it("treats a corrupt entry as no memory rather than throwing", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", "{not json");
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
   });
 
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false });
   });
 });
 

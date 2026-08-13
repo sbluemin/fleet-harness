@@ -85,6 +85,11 @@ export const chromeEn = {
   "chrome.operationSearch.quickSearchDialog": "Operation quick search",
   // quick-launch
   "chrome.quickLaunch.dialog": "Quick Launch",
+  "chrome.quickLaunch.dockedRegion": "Quick Launch, docked",
+  "chrome.quickLaunch.pin": "Dock to the bottom",
+  "chrome.quickLaunch.unpin": "Return to the center",
+  "chrome.quickLaunch.expand": "Open the composer",
+  "chrome.quickLaunch.stripIdle": "What should it work on?",
   "chrome.quickLaunch.placeholder": "What should it work on? @ messages a running Operation",
   "chrome.quickLaunch.promptLabel": "Prompt",
   "chrome.quickLaunch.mentionDeck": "Mention an Operation",
@@ -364,6 +369,11 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.operationSearch.quickSearchDialog": "Operation 빠른 검색",
   // quick-launch
   "chrome.quickLaunch.dialog": "Quick Launch",
+  "chrome.quickLaunch.dockedRegion": "Quick Launch · 하단 고정",
+  "chrome.quickLaunch.pin": "하단에 고정",
+  "chrome.quickLaunch.unpin": "가운데로 되돌리기",
+  "chrome.quickLaunch.expand": "컴포저 펼치기",
+  "chrome.quickLaunch.stripIdle": "무엇을 시킬까요?",
   "chrome.quickLaunch.placeholder": "무엇을 시킬까요? @로 실행 중인 Operation에 지시합니다",
   "chrome.quickLaunch.promptLabel": "프롬프트",
   "chrome.quickLaunch.mentionDeck": "Operation 멘션",
