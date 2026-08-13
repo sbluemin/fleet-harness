@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.57.2] - 2026-08-13
+
+### fleet-cli
+
+#### Added
+- Add Cursor Grok 4.6 and Grok 4.6 Fast with Low, Medium, High, and Extra High reasoning levels while retaining Grok 4.5.
+
+### fleet-console
+
+#### Added
+- Offer Cursor Grok 4.6 and Grok 4.6 Fast in AI Gateway model selection with CursorBench 3.2 quality evidence.
+
 ## [1.57.1] - 2026-08-13
 
 ### fleet-console
