@@ -64,6 +64,9 @@ export function QuickLaunch() {
   const dockSuppressed = location.pathname.startsWith("/settings");
   useEffect(() => {
     setQuickLaunchDockSuppressed(dockSuppressed);
+    // 접어 두는 동안 쉬는 상태로 되돌린다 — 그러지 않으면 돌아온 바가 펼쳐진 채, 그러나 포커스는
+    // 없는 상태로 서서 아무도 쓰고 있지 않은 컴포저가 자리를 차지한다.
+    if (dockSuppressed) setCollapsed(true);
   }, [dockSuppressed]);
 
   const pinned = state.quickLaunchPinned && !dockSuppressed;
@@ -356,10 +359,12 @@ export function QuickLaunch() {
     expandAndFocus();
   }, [expandAndFocus, pinned]);
 
-  // 고정을 풀면 접힘이라는 상태 자체가 없어진다(모달은 접히지 않는다).
+  // 고정을 풀면 접힘이라는 상태 자체가 없어진다(모달은 접히지 않는다). 판정은 실효값이 아니라
+  // 저장된 고정값으로 한다 — 설정 화면의 일시 억제까지 해제로 읽으면, 잠시 접어 둔 바가 돌아올 때
+  // 쉬는 상태를 잃고 펼쳐진 채 선다.
   useEffect(() => {
-    if (!pinned) setCollapsed(false);
-  }, [pinned]);
+    if (!state.quickLaunchPinned) setCollapsed(false);
+  }, [state.quickLaunchPinned]);
 
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (mentionDeckOpen) {
