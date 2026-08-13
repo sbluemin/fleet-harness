@@ -440,6 +440,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const bodyRef = useRef<HTMLDivElement | null>(null);
   const dropLineRef = useRef<HTMLSpanElement | null>(null);
   const dragRef = useRef<{ id: ProviderId; pointerY: number; raf: number } | null>(null);
+  // 저장 요청 체인. 연속 이동의 POST가 서로를 추월하면 서버는 도착순으로 기록해
+  // 옛 순열이 최종본이 될 수 있다 — 앞 요청이 끝난 뒤에만 다음을 보낸다.
+  const orderSaveRef = useRef<Promise<void>>(Promise.resolve());
 
   const refresh = useCallback((forceRequest = false) => {
     forceRef.current = forceRequest;
@@ -474,7 +477,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   const persistOrder = useCallback((next: readonly ProviderId[], movedId: ProviderId) => {
     setOrder(next);
     setAnnouncement(t("quota.reorder.moved", { provider: PROVIDER_NAME[movedId], n: next.indexOf(movedId) + 1 }));
-    ctx.api.fetch("quota", "order", {
+    const save = () => ctx.api.fetch("quota", "order", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ order: next }),
@@ -487,6 +490,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
         setAnnouncement(t("quota.reorder.error"));
         refresh(false);
       });
+    orderSaveRef.current = orderSaveRef.current.then(save, save);
   }, [ctx.api, t, refresh]);
 
   /* 드롭 판정은 상태가 아니라 DOM에서 읽는다. 카드가 order 상태를 그대로 그리는 동안은
@@ -517,7 +521,9 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   }, [persistOrder]);
 
   const onBodyPointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    // 그립을 누르면 타깃은 대개 내부 <svg>/<circle>(SVGElement)다 — Element로 받아야
+    // 보이는 글리프 자체에서 드래그가 시작된다.
+    const target = event.target instanceof Element ? event.target : null;
     const grip = target?.closest(".quota-grip");
     const body = bodyRef.current;
     if (!grip || !body || dragRef.current) return;
@@ -578,7 +584,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
 
   const onBodyKeyDown = useCallback((event: ReactKeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return;
-    const target = event.target instanceof HTMLElement ? event.target : null;
+    const target = event.target instanceof Element ? event.target : null;
     const id = target?.closest(".quota-grip")?.closest<HTMLElement>("[data-provider]")?.dataset.provider;
     if (!isProviderId(id)) return;
     event.preventDefault();
