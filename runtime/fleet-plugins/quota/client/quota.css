@@ -164,7 +164,7 @@
 
 /* ── 공급자 재배열 ─────────────────────────────
    그립을 잡는 순간 전 카드가 헤더 한 줄로 접혀(quota-body--compact) 드롭 타깃
-   다섯 개가 모두 한 화면에 들어온다. 놓으면 원래 밀도로 복귀한다. */
+   전부가 한 화면에 들어온다. 놓으면 원래 밀도로 복귀한다. */
 .quota-grip {
   display: grid;
   place-items: center;
@@ -202,7 +202,7 @@
 }
 
 /* 접힘은 grid-template-rows 1fr→0fr 전환으로 만든다 — 높이 애니메이션 없이
-   내용 높이가 제각각인 카드 다섯 장을 같은 문법으로 접는다. */
+   내용 높이가 제각각인 카드를 같은 문법으로 접는다. */
 .quota-card__collapse {
   display: grid;
   grid-template-rows: 1fr;
