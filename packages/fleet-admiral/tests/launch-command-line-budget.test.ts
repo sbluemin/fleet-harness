@@ -375,7 +375,7 @@ describe("injectAgentCliProfile command-line enforcement", () => {
     try {
       try {
         await injectAgentCliProfile(
-          cmdShimProfile(root, { promptArgs: ["hello"] }),
+          cmdShimProfile(root, { promptArgs: ["hello & world"] }),
           injectOptions(root, released),
         );
         expect.unreachable("expected a refusal");
@@ -442,7 +442,7 @@ describe("injectAgentCliProfile command-line enforcement", () => {
         await injectAgentCliProfile(
           cmdShimProfile(root, {
             commandLineLimit: { maxChars: withoutPrompt + 20, via: "cmd-shim" },
-            promptArgs: ["hello"],
+            promptArgs: ["a".repeat(50)],
           }),
           injectOptions(root, released),
         );
@@ -459,9 +459,9 @@ describe("injectAgentCliProfile command-line enforcement", () => {
     }
   });
 
-  it("delivers a POSIX launch prompt through a unique temp file even when the platform declares no command-line limit", async () => {
+  it("delivers a POSIX launch prompt on argv even when it contains cmd metacharacters", async () => {
     const root = createTempRoot("fleet-admiral-cmdline-posix-");
-    const original = "a".repeat(10_000);
+    const original = 'Summarize %USERPROFILE% & then do "this" ' + "a".repeat(10_000);
     const isolatedTmp = path.join(root, "tmp");
     mkdirSync(isolatedTmp);
     const restoreTmp = isolateTmp(isolatedTmp);
@@ -478,6 +478,48 @@ describe("injectAgentCliProfile command-line enforcement", () => {
         terminalName: "xterm-256color",
       }, injectOptions(root));
 
+      expect(injected.args.at(-1)).toBe(original);
+      expect(injected.args.some((arg) => arg.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX))).toBe(false);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
+      injected.cleanup?.();
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("delivers a cmd-shim launch prompt on argv when it is shim-safe and under budget", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-cmd-argv-");
+    const original = "Fix the login redirect bug";
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const injected = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: [original] }),
+        injectOptions(root),
+      );
+      expect(injected.args.at(-1)).toBe(original);
+      expect(injected.args.some((arg) => arg.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX))).toBe(false);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
+      injected.cleanup?.();
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("moves a shim-safe cmd-shim launch prompt into a file when the original argv overflows", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-cmd-overflow-");
+    const original = "a".repeat(10_000);
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const injected = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: [original] }),
+        injectOptions(root),
+      );
       const instruction = injected.args.at(-1)!;
       expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
       expect(injected.args).not.toContain(original);
@@ -485,6 +527,78 @@ describe("injectAgentCliProfile command-line enforcement", () => {
       expect(readFileSync(filePath, "utf8")).toBe(original);
       injected.cleanup?.();
       expect(existsSync(filePath)).toBe(false);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("delivers a native CreateProcess launch prompt on argv when it is under budget and has no cmd metacharacters", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-native-argv-");
+    const original = "Fix the login redirect bug";
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const injected = await injectAgentCliProfile({
+        args: [],
+        bin: "claude.exe",
+        commandLineLimit: { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" },
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [original],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
+      expect(injected.args.at(-1)).toBe(original);
+      expect(injected.args.some((arg) => arg.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX))).toBe(false);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
+      injected.cleanup?.();
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  it("moves a native CreateProcess launch prompt into a file when the original argv overflows", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-native-overflow-");
+    const original = "a".repeat(500);
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const baseline = await injectAgentCliProfile({
+        args: [],
+        bin: "claude.exe",
+        commandLineLimit: { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" },
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
+      const withoutPrompt = estimateWindowsCommandLineChars(baseline.bin, baseline.args);
+      baseline.cleanup?.();
+
+      const injected = await injectAgentCliProfile({
+        args: [],
+        bin: "claude.exe",
+        commandLineLimit: { maxChars: withoutPrompt + 200, via: "create-process" },
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [original],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
+      const instruction = injected.args.at(-1)!;
+      expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
+      expect(injected.args).not.toContain(original);
+      const filePath = instruction.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(readFileSync(filePath, "utf8")).toBe(original);
+      injected.cleanup?.();
     } finally {
       restoreTmp();
     }

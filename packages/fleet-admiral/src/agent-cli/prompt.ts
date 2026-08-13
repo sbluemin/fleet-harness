@@ -5,8 +5,9 @@ import path from "node:path";
 // Windows의 .cmd/.bat shim은 cmd.exe /d /s /c 로 감싸 실행된다(core-process wrapWindowsShim).
 // cmd는 따옴표 안에서도 %NAME%을 전개하고 ^를 이스케이프로 읽으므로, 그 명령줄에 실린 임의
 // 텍스트는 조용히 변조되고 환경변수 값이 그대로 모델에 실려 나간다. 명령줄에서는 %%도 접히지
-// 않아 이스케이프로 막을 수단이 없다. native `.exe`와 POSIX도 원문을 argv에 올리지 않는다 —
-// 명령줄 상한과 플랫폼을 가리지 않고 Fleet이 만든 파일 경로를 가리키는 짧은 지시만 실는다.
+// 않아 이스케이프로 막을 수단이 없다. POSIX와 한도 안의 Windows 원문은 argv에 그대로 둔다.
+// Windows에서 이 문자 집합이 원문에 있거나 명령줄 상한을 넘기면 Fleet이 만든 파일 경로를
+// 가리키는 짧은 지시만 실는다.
 // 그 지시(경로 포함)는 cmd shim일 때 이 문자 집합을 통과해야 한다. %는 전개, 나머지는 cmd의
 // 연산자·인용 경계다. 이 저장소의 quoteForCmd (구 ACP BaseConnection)가 `& < > ( ) @ ^ |`와
 // `"`를 cmd 특수문자로 분류하면서 **내부 `"`의 이중화와 windowsVerbatimArguments를 함께
@@ -18,6 +19,10 @@ const LAUNCH_PROMPT_FILE_MODE = 0o600;
 export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-quick-launch-";
 export const LAUNCH_PROMPT_FILE_NAME = "prompt.md";
 export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch prompt file: ";
+
+export function launchPromptHasCmdUnsafeChars(prompt: string): boolean {
+  return CMD_UNSAFE_PROMPT_PATTERN.test(prompt);
+}
 
 /**
  * Windows 명령줄 상한. cmd.exe를 경유하는 shim 실행은 8,191자, 실행 파일을 직접 부르는
@@ -57,9 +62,9 @@ export class LaunchPromptError extends Error {
 
 /**
  * cmd.exe로 감싸인 shim으로 실행될 때에 한해, cmd가 재해석할 문자를 담은 argv 텍스트를 거부한다.
- * 사용자 원문은 이 검사에 올리지 않는다 — 원문은 파일로 두고, 여기에는 그 파일을 가리키는
- * 짧은 지시(경로 포함)만 온다. `prefixArgs`가 비어 있으면(POSIX 또는 실행 파일 직접 실행)
- * 아무 제약도 걸지 않는다.
+ * 사용자 원문이 이 문자 집합을 가지면 주입 계층이 파일로 옮기므로, 여기에는 그 파일을
+ * 가리키는 짧은 지시(경로 포함)만 온다. `prefixArgs`가 비어 있으면(POSIX 또는 실행 파일
+ * 직접 실행) 아무 제약도 걸지 않는다.
  */
 export function assertLaunchPromptShimSafe(prompt: string | undefined, prefixArgs: readonly string[]): void {
   if (prompt === undefined || prefixArgs.length === 0) return;

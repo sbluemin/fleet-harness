@@ -17,8 +17,9 @@ export function createClaudeFamilyCliDefinition(
     async createProfile(profileOptions: AgentCliProfileOptions) {
       const { bin, prefixArgs } = resolveBinary("claude", "CLAUDE_BIN", profileOptions.env);
       const launchPrompt = sanitizeLaunchPrompt(profileOptions.prompt);
-      // 원문은 여기서 거절하지 않는다. 주입 계층이 파일 포인터로 바꾸고,
-      // cmd shim이면 그 짧은 지시만 shim 안전 검사를 받는다.
+      // 원문은 여기서 거절하지 않는다. Windows에서 cmd가 재해석할 문자이거나 명령줄
+      // 상한을 넘길 때만 주입 계층이 파일 포인터로 바꾸고, cmd shim이면 그 짧은 지시만
+      // shim 안전 검사를 받는다.
       const commandLineLimit = resolveLaunchCommandLineLimit(prefixArgs);
       const childEnv = createChildEnv(profileOptions.env, {});
       return {

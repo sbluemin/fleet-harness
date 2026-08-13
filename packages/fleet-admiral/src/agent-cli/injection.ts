@@ -6,7 +6,12 @@ import path from "node:path";
 import type { GatewayModel } from "@dotobokuri/core-ai-gateway";
 
 import { buildClaudeGatewayArgs } from "./builders/claude.js";
-import { assertLaunchCommandLineBudget, writeLaunchPromptPointer } from "./prompt.js";
+import {
+  assertLaunchCommandLineBudget,
+  LaunchPromptError,
+  launchPromptHasCmdUnsafeChars,
+  writeLaunchPromptPointer,
+} from "./prompt.js";
 import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
@@ -103,17 +108,23 @@ export async function injectAgentCliProfile(
       : writeSystemPromptFile(profile.id, options.buildSystemPrompt(), (cleanup) => tempCleanups.push(cleanup));
     let promptArgs = [...(profile.promptArgs ?? [])];
     let deliveredViaFile = false;
-    // 런치 프롬프트 원문은 argv에 올리지 않는다. cmd shim·native·POSIX 모두 파일 포인터만
-    // 실어, Trust folder가 끝난 뒤 첫 사용자 턴이 그 파일을 읽게 한다. 플러그인 조립이
-    // 실패해도 파일이 남으면 안 되므로 시스템 프롬프트와 같이 플러그인보다 먼저 쓰고
-    // tempCleanups에 올린다. cmd shim 여부 분기는 지시 경로의 안전 검사에만 쓴다.
-    if (promptArgs.length > 0) {
+    const cmdWrapped = profile.commandLineLimit?.via === "cmd-shim";
+    const windowsLaunch = profile.commandLineLimit !== undefined;
+    const convertPromptToFile = (body: string) => {
       promptArgs = [writeLaunchPromptPointer(
-        takeLaunchPromptBody(promptArgs),
+        body,
         (cleanupFn) => tempCleanups.push(cleanupFn),
-        profile.commandLineLimit?.via === "cmd-shim",
+        cmdWrapped,
       )];
       deliveredViaFile = true;
+    };
+    // POSIX와 한도 안의 Windows 원문은 argv에 그대로 둔다. Windows에서 cmd가 재해석할
+    // 문자가 있으면 길이 상한과 무관하게 파일 포인터로 옮긴다 — 플러그인 조립이 실패해도
+    // 파일이 남으면 안 되므로 시스템 프롬프트와 같이 플러그인보다 먼저 쓰고 tempCleanups에
+    // 올린다. 명령줄 초과는 주입 인자가 합쳐진 뒤에만 알 수 있어 예산 검사에서 옮긴다.
+    if (promptArgs.length > 0 && windowsLaunch) {
+      const body = takeLaunchPromptBody(promptArgs);
+      if (launchPromptHasCmdUnsafeChars(body)) convertPromptToFile(body);
     }
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
@@ -172,8 +183,24 @@ export async function injectAgentCliProfile(
     try {
       checkBudget();
     } catch (error) {
-      cleanup();
-      throw error;
+      // Windows에서 원문 argv가 상한을 넘기면 파일 포인터로 한 번 더 시도한다. 포인터조차
+      // 넘치면 줄일 대상이 프롬프트가 아니므로 설정 쪽 거절로 둔다.
+      const canMoveToFile = !deliveredViaFile
+        && windowsLaunch
+        && promptArgs.length === 1
+        && error instanceof LaunchPromptError
+        && error.code === "prompt_command_line_too_long";
+      if (!canMoveToFile) {
+        cleanup();
+        throw error;
+      }
+      convertPromptToFile(takeLaunchPromptBody(promptArgs));
+      try {
+        checkBudget();
+      } catch (retryError) {
+        cleanup();
+        throw retryError;
+      }
     }
     return {
       ...profile,

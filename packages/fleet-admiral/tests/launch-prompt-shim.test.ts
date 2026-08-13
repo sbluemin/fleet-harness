@@ -10,14 +10,15 @@ import {
   LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX,
   LAUNCH_PROMPT_FILE_NAME,
   LAUNCH_PROMPT_TEMP_DIR_PREFIX,
+  launchPromptHasCmdUnsafeChars,
   writeLaunchPromptFile,
   writeLaunchPromptPointer,
 } from "../src/agent-cli/prompt.js";
 
 // Windows의 .cmd shim은 cmd.exe /d /s /c 로 감싸 실행된다(core-process wrapWindowsShim). cmd는 따옴표
 // 안에서도 %NAME%을 전개하므로, 그 명령줄에 실린 프롬프트는 조용히 변조되고 환경변수 값이 모델로 샌다.
-// 사용자 원문은 argv에 올리지 않고 파일로 두며, 이 헬퍼는 그 파일을 가리키는 짧은 지시(경로 포함)를
-// 같은 규율로 검사한다.
+// Windows에서 원문이 cmd 특수문자를 가지거나 명령줄을 넘기면 파일로 두고, 이 헬퍼는 그 파일을
+// 가리키는 짧은 지시(경로 포함)를 같은 규율로 검사한다.
 const CMD_WRAPPED_PREFIX_ARGS = ["/d", "/s", "/c", "call", "C:\\Users\\a\\AppData\\Roaming\\npm\\claude.cmd "] as const;
 
 const promptFileCleanups: Array<() => void> = [];
@@ -27,6 +28,14 @@ afterEach(() => {
     cleanup();
   }
   vi.restoreAllMocks();
+});
+
+describe("launchPromptHasCmdUnsafeChars", () => {
+  it("detects cmd metacharacters that force a Windows file pointer", () => {
+    expect(launchPromptHasCmdUnsafeChars("Fix the login redirect bug")).toBe(false);
+    expect(launchPromptHasCmdUnsafeChars("Summarize %USERPROFILE%")).toBe(true);
+    expect(launchPromptHasCmdUnsafeChars("a & b")).toBe(true);
+  });
 });
 
 describe("assertLaunchPromptShimSafe", () => {
