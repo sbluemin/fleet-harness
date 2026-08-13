@@ -71,15 +71,16 @@ export function CoworkAgentMenu({ models, efforts, model, effort, onSelect }: Co
     const root = rootRef.current;
     const row = rowRefs.current.get(rowModel);
     if (!root || !row) return;
-    // 도크는 대개 문서 중앙에 떠 왼쪽이 넓다 — 왼쪽부터 재고, 안 되면 오른쪽을 재고, 좁은
-    // 화면(≤720px에서 팝오버가 도크 폭으로 늘어난다)처럼 양쪽 다 폭이 안 나오면 화면 밖으로
-    // 여는 대신 메뉴 위에 겹쳐 행 아래로 연다 — 가려지는 것은 조작 불능보다 낫다.
+    // 강도 손잡이가 행 오른쪽 끝에 있으니 트랙은 같은 방향으로 이어지는 오른쪽부터 재고, 안
+    // 되면 왼쪽을 재고, 좁은 화면(≤720px에서 팝오버가 도크 폭으로 늘어난다)처럼 양쪽 다 폭이
+    // 안 나오면 화면 밖으로 여는 대신 메뉴 위에 겹쳐 행 아래로 연다 — 가려지는 것은 조작
+    // 불능보다 낫다.
     const rect = root.getBoundingClientRect();
     const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
-    const placement = rect.left >= FLYOUT_WIDTH + 8
-      ? "left"
-      : viewportWidth - rect.right >= FLYOUT_WIDTH + 8
-        ? "right"
+    const placement = viewportWidth - rect.right >= FLYOUT_WIDTH + 8
+      ? "right"
+      : rect.left >= FLYOUT_WIDTH + 8
+        ? "left"
         : "overlay";
     const top = placement === "overlay" ? row.offsetTop + row.offsetHeight + 4 : row.offsetTop;
     setFlyout({ model: rowModel, top, placement });

@@ -729,6 +729,59 @@ describe("Cowork inline copilot", () => {
     controller.destroy();
   });
 
+  it("opens the effort flyout to the right first, then left, then overlay as space runs out", async () => {
+    localStorage.removeItem("fleet.codex.cowork.settings");
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) {
+        return new Response(JSON.stringify({ models: ["gpt"], efforts: ["low", "medium", "high"], defaultModel: "gpt", defaultEffort: "low" }));
+      }
+      return new Response(JSON.stringify({ error: "not_found" }), { status: 404 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, onApplied: () => {} });
+    article.querySelector<HTMLButtonElement>('[data-cowork-action="toggle-config"]')!.click();
+    await vi.waitFor(() => expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1));
+
+    const menu = article.querySelector<HTMLElement>(".cowork-agent-menu")!;
+    const handle = article.querySelector<HTMLElement>(".cowork-agent-effort-handle")!;
+    const setMenuRect = (left: number, right: number) => {
+      menu.getBoundingClientRect = () => ({ left, right, top: 0, bottom: 0, width: right - left, height: 0, x: left, y: 0, toJSON: () => ({}) }) as DOMRect;
+    };
+    const flyoutClass = async () => {
+      await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout")).not.toBeNull());
+      return article.querySelector(".cowork-effort-flyout")!.className;
+    };
+    const toggleClosed = async () => {
+      handle.click();
+      await vi.waitFor(() => expect(article.querySelector(".cowork-effort-flyout")).toBeNull());
+    };
+
+    // 양쪽 다 넓으면 오른쪽 — 강도 손잡이가 행 오른쪽 끝이라 트랙이 같은 방향으로 이어진다.
+    vi.stubGlobal("innerWidth", 1200);
+    setMenuRect(400, 700);
+    handle.click();
+    expect(await flyoutClass()).toBe("cowork-effort-flyout");
+
+    // 오른쪽이 좁고 왼쪽만 넓으면 왼쪽으로 돌아간다.
+    await toggleClosed();
+    vi.stubGlobal("innerWidth", 1024);
+    setMenuRect(600, 1000);
+    handle.click();
+    expect(await flyoutClass()).toContain("is-left");
+
+    // 양쪽 다 폭이 안 나오면 화면 밖으로 여는 대신 메뉴 위에 겹친다.
+    await toggleClosed();
+    vi.stubGlobal("innerWidth", 500);
+    setMenuRect(100, 400);
+    handle.click();
+    expect(await flyoutClass()).toContain("is-overlay");
+
+    controller.destroy();
+  });
+
   it("serializes session settings writes during a drag: one in flight, latest wins", async () => {
     localStorage.removeItem("fleet.codex.cowork.settings");
     const listeners = new Map<string, EventListener>();
