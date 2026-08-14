@@ -161,4 +161,125 @@ describe("Quick Launch shortcut", () => {
     expect(toggleQuickLaunch).toHaveBeenCalledOnce();
     cleanup();
   });
+
+  it("opens on Ctrl+Space on every platform, including macOS Control+Space", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const xterm = document.createElement("div");
+    xterm.className = "xterm";
+    const helper = document.createElement("textarea");
+    xterm.append(helper);
+    document.body.append(xterm);
+    helper.focus();
+    const dispatch = (init: KeyboardEventInit) => {
+      const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+      const stopImmediatePropagation = vi.spyOn(event, "stopImmediatePropagation");
+      window.dispatchEvent(event);
+      return { event, stopImmediatePropagation };
+    };
+
+    const byKey = dispatch({ key: " ", ctrlKey: true });
+    const byCode = dispatch({ code: "Space", ctrlKey: true });
+    const ctrlJ = dispatch({ key: "j", ctrlKey: true });
+
+    expect(toggleQuickLaunch).toHaveBeenCalledTimes(3);
+    expect(byKey.event.defaultPrevented).toBe(true);
+    expect(byKey.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(byCode.event.defaultPrevented).toBe(true);
+    expect(byCode.stopImmediatePropagation).toHaveBeenCalledOnce();
+    expect(ctrlJ.event.defaultPrevented).toBe(true);
+    cleanup();
+  });
+
+  it("ignores Command+Space, Shift/Alt chords, and Ctrl+Space behind a blocking dialog", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const dispatch = (init: KeyboardEventInit) =>
+      window.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init }));
+
+    dispatch({ key: " ", code: "Space", metaKey: true });
+    dispatch({ key: " ", code: "Space", ctrlKey: true, metaKey: true });
+    dispatch({ key: " ", code: "Space", ctrlKey: true, shiftKey: true });
+    dispatch({ key: " ", code: "Space", ctrlKey: true, altKey: true });
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+
+    const dialog = document.createElement("div");
+    dialog.setAttribute("aria-modal", "true");
+    document.body.append(dialog);
+    dispatch({ key: " ", code: "Space", ctrlKey: true });
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+
+    dialog.remove();
+    dispatch({ key: " ", code: "Space", ctrlKey: true });
+    expect(toggleQuickLaunch).toHaveBeenCalledOnce();
+    cleanup();
+  });
+
+  it("toggles closed while Quick Launch itself is the blocking dialog", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const overlay = document.createElement("div");
+    overlay.className = "quick-launch-overlay";
+    const card = document.createElement("section");
+    card.className = "quick-launch-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    overlay.append(card);
+    document.body.append(overlay);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", ctrlKey: true, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+
+    expect(toggleQuickLaunch).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
+
+  it("stays closed when a foreign modal is open even if Quick Launch is also marked modal", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const overlay = document.createElement("div");
+    overlay.className = "quick-launch-overlay";
+    const card = document.createElement("section");
+    card.className = "quick-launch-card";
+    card.setAttribute("aria-modal", "true");
+    overlay.append(card);
+    document.body.append(overlay);
+    const foreign = document.createElement("div");
+    foreign.setAttribute("aria-modal", "true");
+    document.body.append(foreign);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", ctrlKey: true, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+    cleanup();
+  });
 });

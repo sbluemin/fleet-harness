@@ -4,13 +4,14 @@ import { getT } from "../core/client/src/i18n/index.js";
 import { buildShortcutGroups } from "../core/client/src/shortcuts-catalog.js";
 
 describe("shortcut catalog", () => {
-  it("lists the command palette immediately after operation search", () => {
+  it("lists the command palette immediately after operation search, then Quick Launch", () => {
     const consoleGroup = buildShortcutGroups(getT("en"))
       .find((group) => group.title === "Console")!;
 
-    expect(consoleGroup.entries.slice(0, 2)).toEqual([
+    expect(consoleGroup.entries.slice(0, 3)).toEqual([
       { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
       { combos: [["Mod", "P"]], description: "Open Command Palette" },
+      { combos: [["Mod", "J"], ["Ctrl", "Space"]], description: "Toggle Quick Launch" },
     ]);
   });
 
