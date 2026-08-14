@@ -195,6 +195,14 @@ describe("Quick Launch picker keyboard grammar", () => {
     expect(quickLaunch).toMatch(tabBranch);
   });
 
+  it("scrolls the active command or mention row into the clipped deck", () => {
+    // 방향키는 하이라이트만 옮기고 포커스는 textarea에 남는다 — 잘린 덱이 활성 행을
+    // 따라가지 않으면 /model·/effort·@ 목록에서 하이라이트가 화면 밖으로 걷는다.
+    expect(quickLaunch).toMatch(/scrollIntoView\(\{\s*block:\s*"nearest"\s*\}\)/u);
+    expect(quickLaunch).toMatch(/quick-launch-command-\$\{activeCommandRow\.id\}/u);
+    expect(quickLaunch).toMatch(/quick-launch-mention-\$\{activeMention\.operationId\}/u);
+  });
+
   it("gives every picker item a roving tabIndex and a typeahead label", () => {
     // tabIndex -1이 아니면 항목이 Tab 정지점으로 남고, data-menu-label이 없으면 typeahead가 침묵한다.
     const theaterItem = /role="menuitemradio"\s+aria-checked=\{theater\.id === theaterId\}\s+tabIndex=\{-1\}\s+data-menu-label=\{theater\.label\}/u;
