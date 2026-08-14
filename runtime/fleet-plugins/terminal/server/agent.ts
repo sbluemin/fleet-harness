@@ -452,11 +452,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       throw error;
     }
-    await createSession(cwd, theaterId, cliId, res, {
-      ...launchOptions,
-      ...(composedPrompt ? { prompt: composedPrompt } : {}),
-      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
-    });
+    try {
+      await createSession(cwd, theaterId, cliId, res, {
+        ...launchOptions,
+        ...(composedPrompt ? { prompt: composedPrompt } : {}),
+        ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+      });
+    } catch (error) {
+      // createSession이 스스로 처리하지 못한 throw까지 예약을 되돌린다 — bind 후에는 no-op이라 안전.
+      if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
+      throw error;
+    }
     return true;
   }
 
@@ -599,6 +605,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
         launchAttachments.bind(sessionId, launchOptions.attachmentIds);
+        // attach의 await 동안 DELETE가 지나갔다면 이 bind는 고아다 — 되짚어 거둔다(멘션 경로와 같은 계약).
+        if (!ctx.host.operations.get(sessionId)) launchAttachments.releaseSession(sessionId);
       }
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
@@ -808,9 +816,18 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const settleAttachments = (delivered: boolean) => {
       if (attachmentIds.length === 0) return;
-      if (delivered) launchAttachments.bind(sessionId, attachmentIds);
-      else launchAttachments.unreserve(attachmentIds);
+      if (delivered) {
+        launchAttachments.bind(sessionId, attachmentIds);
+        // resume·chat ensure의 await 동안 DELETE가 지나갔다면 releaseSession은 이미 끝났고
+        // (예약분은 건너뛰었다), 방금의 bind는 고아가 된다 — 지금 되짚어 거둔다.
+        if (!ctx.host.operations.get(sessionId)) launchAttachments.releaseSession(sessionId);
+        return;
+      }
+      launchAttachments.unreserve(attachmentIds);
     };
+    // resolve가 연 예약은 아래 어떤 경로로 던져져도 닫혀야 한다 — settle을 지나 bind된 뒤의
+    // unreserve는 no-op이라(sessionId가 이미 붙었다) 이중 정산이 안전하다.
+    try {
     // Chat Mode Operation은 PTY가 없다 — 전달은 SDK 턴으로 실행된다. 구조화 경로라 PTY 정화를
     // 거치지 않은 원문을 그대로 쓴다(빈 문자열·상한 검사는 위에서 끝났다).
     if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
@@ -887,6 +904,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     settleAttachments(true);
     ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
     return true;
+    } catch (error) {
+      // 처리되지 않은 throw가 예약을 영구 고착시키면 그 id는 어떤 재시도에도 실리지 못한다.
+      if (attachmentIds.length > 0) launchAttachments.unreserve(attachmentIds);
+      throw error;
+    }
   }
 
   // ── Chat Mode ──────────────────────────────────────────────────────────────

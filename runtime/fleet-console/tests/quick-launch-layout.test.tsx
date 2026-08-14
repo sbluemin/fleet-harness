@@ -231,7 +231,8 @@ describe("Quick Launch picker keyboard grammar", () => {
     // 전달 중 Escape가 보존한 초안을 성공 콜백이 소비하지 않으면 전달된 문장이 미발사 초안으로
     // 되살아나고, 소유권 검사 없이 소비하면 다른 제출의 거절 초안까지 지운다(둘 다 Codex P2).
     expect(quickLaunch).toMatch(/quickLaunchDraft\?\.trim\(\) === deliveredText/u);
-    expect(quickLaunch).toMatch(/finishSubmission\(text\)/u);
+    // 멘션 성공은 전달 중 새로 붙은 칩을 지우지 않는다 — keepAttachments가 그 계약을 싣는다.
+    expect(quickLaunch).toMatch(/finishSubmission\(text, \{ keepAttachments: true \}\)/u);
   });
 
   it("remembers a picked Theater immediately, like model and effort", () => {

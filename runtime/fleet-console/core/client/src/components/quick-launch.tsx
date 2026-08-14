@@ -113,6 +113,8 @@ export function QuickLaunch() {
   // 업로드가 끝나기 전에 칩이 사라진 key들. 완료 콜백이 여기서 자신을 발견하면 방금 받은 id를
   // 서버에서 도로 거둔다 — 안 거두면 보이지 않는 파일이 미발사 슬롯을 30분간 차지한다.
   const canceledUploadKeysRef = useRef(new Set<string>());
+  // 실제로 떠 있는 확대 레이어 — 칩이 사라지면 스스로 null이 된다(Escape 판정의 원천).
+  const zoomedAttachment = zoomedKey === null ? null : attachments.find((attachment) => attachment.key === zoomedKey) ?? null;
   const submittedRef = useRef(false);
 
   // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
@@ -305,6 +307,9 @@ export function QuickLaunch() {
   // 상주하는 컴포저는 초안이 도착하는 즉시 그것을 싣고 펼쳐야 한다.
   useEffect(() => {
     if (!pinned || state.quickLaunchDraft === null) return;
+    // 복원은 고정 컴포저의 세션 경계다 — 에포크를 올리지 않으면 진행 중이던 멘션 성공이
+    // 방금 복원된 초안을 finishSubmission으로 지워 버린다(모달의 열림 전이와 같은 계약).
+    composerEpochRef.current += 1;
     setPrompt(state.quickLaunchDraft);
     // 복원은 교체다(텍스트와 같은 의미론) — 발사 후 새로 붙인 칩은 물러나되, 그 URL·서버 파일을
     // 조용히 버리지 않고 거둔다. 고정 컴포저는 열림 전이(에포크 승급)가 없어 진행 중 업로드는
@@ -617,6 +622,7 @@ export function QuickLaunch() {
       else canceledUploadKeysRef.current.add(key);
     }
     setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+    setZoomedKey((current) => (current === key ? null : current));
     setAttachmentErrorKey(null);
     inputRef.current?.focus();
   }, [attachmentPlugin]);
@@ -700,11 +706,12 @@ export function QuickLaunch() {
   // 상태가 된다 — 비우지 않으면 방금 보낸 문장이 그대로 남아 아직 못 보낸 것처럼 읽힌다.
   // 고정 여부는 호출 시점에 store에서 읽는다 — 멘션 전달은 비동기라, 넘길 때의 값을 닫아 두면
   // 전달 중에 고정을 푼 사용자에게 빈 모달이 닫히지 않은 채 남는다.
-  const finishSubmission = useCallback((deliveredText: string | null = null) => {
+  const finishSubmission = useCallback((deliveredText: string | null = null, options: { readonly keepAttachments?: boolean } = {}) => {
     // 발사된 칩은 두 경로 모두에서 즉시 내려놓는다 — 모달 경로에서 남기면 다음 열림 전이의
     // 회수 루프가, 진행 중인 실행이 거절 복원용으로 들고 있는 previewUrl을 revoke해 버린다.
     // revoke는 하지 않는다: 그 URL의 소유권은 실행 의도(성공 시 Operations 화면이 회수)로 넘어갔다.
-    setAttachments([]);
+    // 멘션 전달은 전달된 칩을 스스로 정확히 걷어냈다 — 남은 칩(전달 중 새로 붙은 것)은 산 초안이다.
+    if (!options.keepAttachments) setAttachments([]);
     setAttachmentErrorKey(null);
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
@@ -764,14 +771,18 @@ export function QuickLaunch() {
       const epoch = composerEpochRef.current;
       void plugin.messageOperation(mentionTarget.operationId, text, deliveredAttachments.map((attachment) => attachment.id))
         .then(() => {
-          // 에포크가 지났으면 이 URL들은 재열린 컴포저가 초안 슬롯에서 복원한 칩의 소유다 —
-          // 거두면 산 칩의 썸네일이 깨진다(텍스트 초안을 소비하지 않는 것과 같은 계약).
-          if (composerEpochRef.current !== epoch) return;
-          // 전달된 첨부의 미리보기는 여기가 마지막 소유자다 — 발사 경로(Operations 화면 회수)와
-          // 달리 멘션은 성공을 이 콜백만 안다.
+          // 전달이 확정된 순간, 같은 id를 단 칩은 어느 세션에 복원돼 있든 이미 발사된 것이다 —
+          // 남기면 재제출 전체가 attachment_not_found로 굳는다. 상태에서 그 칩만 정확히 걷어내고
+          // 미리보기를 거둔다(전달 중 새로 붙은 칩은 건드리지 않는다).
+          const deliveredIds = new Set(deliveredAttachments.map((attachment) => attachment.id));
+          setAttachments((current) => current.filter((attachment) => attachment.id === null || !deliveredIds.has(attachment.id)));
           for (const attachment of deliveredAttachments) URL.revokeObjectURL(attachment.previewUrl);
-          // 전달된 문장을 넘겨 이 제출이 보존한 초안만 소비하게 한다.
-          finishSubmission(text);
+          // 에포크가 지났으면(닫고 재연 세션) 여기까지만 — 텍스트 초안은 건드리지 않는다
+          // (전달된 문장이 초안으로 남는 것은 텍스트 멘션의 기존 계약과 같다).
+          if (composerEpochRef.current !== epoch) return;
+          // 전달된 문장을 넘겨 이 제출이 보존한 초안만 소비하게 한다. 전달 중 붙인 칩은
+          // finishSubmission이 지우지 않는다(keepAttachments) — 조용한 소멸이 초안 보존 계약을 깬다.
+          finishSubmission(text, { keepAttachments: true });
         })
         .catch((error: unknown) => {
           if (composerEpochRef.current !== epoch) return;
@@ -812,8 +823,9 @@ export function QuickLaunch() {
     if (event.key === "Escape") {
       event.preventDefault();
       event.stopPropagation();
-      // 확대 보기가 최상단 레이어다 — 컴포저를 닫기 전에 그것부터 접는다.
-      if (zoomedKey !== null) {
+      // 확대 보기가 최상단 레이어다 — 컴포저를 닫기 전에 그것부터 접는다. 판정은 실제로 떠 있는
+      // 파생값으로 한다: 칩이 사라져 스테일해진 key가 Escape 한 번을 조용히 삼키면 안 된다.
+      if (zoomedAttachment !== null) {
         setZoomedKey(null);
         return;
       }
@@ -831,7 +843,7 @@ export function QuickLaunch() {
       closeQuickLaunch();
       return;
     }
-  }, [closePopover, pinned, popover, zoomedKey]);
+  }, [closePopover, pinned, popover, zoomedAttachment]);
 
   // 모달일 때의 Tab 가둠은 문서 수준에서 건다 — 안내 카드는 이 컴포저 밖에 렌더되므로 카드에만
   // 건 핸들러로는 카드에서 나가는 Tab을 잡지 못해, 열려 있는 모달 뒤로 포커스가 샌다.
@@ -955,7 +967,6 @@ export function QuickLaunch() {
   const promptLength = prompt.trim().length;
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
   const attachmentsUploading = attachments.some((attachment) => attachment.uploading);
-  const zoomedAttachment = zoomedKey === null ? null : attachments.find((attachment) => attachment.key === zoomedKey) ?? null;
   // 멘션 제출은 런치 좌표(theater/model/effort)가 필요 없다 — 행선지가 그 자리를 대신한다.
   // 행이 있는 덱이 열린 동안은 버튼도 잠근다(submit의 deckHasRows 가드와 같은 계약).
   // 업로드 중인 첨부도 같은 계약으로 잠근다(submit의 가드와 짝).
@@ -1311,7 +1322,8 @@ export function QuickLaunch() {
               <input
                 ref={attachmentInputRef}
                 type="file"
-                accept="image/png,image/jpeg,image/gif,image/webp"
+                // 입구 폭은 paste·드롭과 같다(image/*) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
+                accept="image/*"
                 multiple
                 hidden
                 onChange={(event) => {

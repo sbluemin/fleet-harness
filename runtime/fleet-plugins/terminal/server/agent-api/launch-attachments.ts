@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -147,9 +147,17 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
   // 네임스페이스를 통째로 비운다. 같은 데이터 루트는 runtime lock이 동시 실행을 배제하므로
   // 여기 있는 것은 전부 죽은 프로세스의 잔재이고, 다른 인스턴스의 네임스페이스는 밟지 않는다.
   try {
-    if (existsSync(namespaceRoot)) {
-      rmSync(namespaceRoot, { force: true, recursive: true });
-      // 위 TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
+    // 존재 판정은 lstat으로 한다 — existsSync는 깨진 심볼릭 링크에 false를 돌려주고, 그 링크를
+    // 남기면 save()의 mkdirSync가 영구히 ENOENT로 죽는다(rm은 판정과 무관하게 무조건 수행).
+    let hadLeftovers = true;
+    try {
+      lstatSync(namespaceRoot);
+    } catch {
+      hadLeftovers = false;
+    }
+    rmSync(namespaceRoot, { force: true, recursive: true });
+    // TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
+    if (hadLeftovers) {
       process.stderr.write("[fleet-console] quick-launch attachments: cleared leftover attachment namespace from a previous run\n");
     }
   } catch {
