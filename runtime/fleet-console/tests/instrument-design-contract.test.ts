@@ -1670,7 +1670,10 @@ describe("Instrument core design contract", () => {
     expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: -32px;");
     expect(components).toContain("background-clip: padding-box;");
-    expect(components).toContain(".canvas-operation:has(> .canvas-operation-titlebar) {");
+    const captionSeamBlock = components.match(/\.canvas-operation:has\(> \.canvas-operation-titlebar\) \{[^}]*\}/)?.[0] ?? "";
+    expect(captionSeamBlock).toContain("border-top-width: 0;");
+    expect(captionSeamBlock).toContain("border-top-style: none;");
+    expect(captionSeamBlock).not.toContain("border-top: none;");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("color: var(--text-secondary);");
     // 활성은 패널 아웃라인만 말한다 — 캡션 brass 틴트와 이름 재채색은 같은 신호를 중복한다.

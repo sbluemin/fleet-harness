@@ -5854,9 +5854,12 @@
 }
 
 /* 캡션이 본문 위에 붙는 Operation만 상단 보더를 비운다 — 1px 이음새가 두 장의 창처럼 읽힌다.
-   companion은 자체 캡션이라 상단 보더를 유지한다. */
+   companion은 자체 캡션이라 상단 보더를 유지한다.
+   단축 border-top: none은 색까지 currentColor로 리셋한다. 캡션이 inherit하는
+   상태 아웃라인(brass/aurora/positive)의 윗변을 텍스트색으로 가른다. */
 .canvas-operation:has(> .canvas-operation-titlebar) {
-  border-top: none;
+  border-top-width: 0;
+  border-top-style: none;
 }
 
 .canvas-operation-identity-name,
