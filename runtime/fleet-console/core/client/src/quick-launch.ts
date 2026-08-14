@@ -1,4 +1,4 @@
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchGroup } from "./operation-search.js";
@@ -118,6 +118,76 @@ export function readMentionToken(value: string, caretIndex: number): QuickLaunch
 /** 확정된 토큰(`@query`)을 입력값에서 걷어낸다 — 멘션은 텍스트가 아니라 행선지로 남는다. */
 export function stripMentionToken(value: string, token: QuickLaunchMentionToken): string {
   return `${value.slice(0, token.at)}${value.slice(token.at + 1 + token.query.length)}`;
+}
+
+/** 값 레벨을 가지는 커맨드. `/pin`은 액션이라 1레벨에서 끝난다. */
+export type QuickLaunchCommandId = "theater" | "model" | "effort" | "pin";
+const COMMAND_VALUE_TOKENS: readonly Exclude<QuickLaunchCommandId, "pin">[] = ["theater", "model", "effort"];
+
+export type QuickLaunchCommandInput =
+  | { readonly kind: "commands"; readonly query: string }
+  | { readonly kind: "values"; readonly command: Exclude<QuickLaunchCommandId, "pin">; readonly query: string };
+
+/**
+ * '/' 커맨드는 프롬프트 **첫 글자**에서만 깨어난다 — '@'와 달리 `/`는 파일 경로의 첫 글자이기도
+ * 해서, 단어 시작마다 깨우면 `/Users/…`를 치는 내내 덱이 명멸한다. 첫 단어 안의 두 번째 `/`나
+ * 공백은 즉시 리터럴로 눕힌다('@' 토큰의 공백 해제와 같은 계약). 첫 단어가 값 커맨드 토큰과
+ * 정확히 일치하고 공백이 뒤따르면 값 레벨이다 — 값 쿼리는 모델 이름처럼 공백을 품을 수 있어
+ * 해제 문자를 두지 않고, 매치 없는 덱이 Enter를 막지 않는 계약이 회복을 보장한다.
+ *
+ * 쿼리는 caret이 아니라 문면에 앵커된다('@' 토큰과 다른 점). 커맨드는 입력 전체를 소유하고
+ * 선택이 입력 전체를 갈아치우므로, caret 위치가 목록과 실행을 가르면 보이는 필터와 Enter의
+ * 결과가 어긋난다 — caret은 "커맨드 영역 밖(0)"인지만 가른다.
+ */
+export function readCommandInput(value: string, caretIndex: number): QuickLaunchCommandInput | null {
+  if (!value.startsWith("/")) return null;
+  const caret = Math.max(0, Math.min(caretIndex, value.length));
+  if (caret < 1) return null;
+  const boundary = value.slice(1).search(/\s/);
+  const wordEnd = boundary === -1 ? value.length : boundary + 1;
+  const word = value.slice(1, wordEnd);
+  if (word.includes("/")) return null;
+  if (boundary === -1) return { kind: "commands", query: word };
+  const command = COMMAND_VALUE_TOKENS.find((token) => token === word);
+  if (!command) return null;
+  return { kind: "values", command, query: value.slice(wordEnd + 1) };
+}
+
+export interface QuickLaunchEffortOption {
+  readonly id: string | null;
+  readonly label: string;
+  readonly checked: boolean;
+}
+
+/**
+ * `/effort` 값 목록. EffortTrack의 apex 게이트를 미러링한다 — 게이트된 단(MAX·ULTRACODE)은
+ * 기본 목록에 서지 않고, 그 단의 이름을 앞에서부터 명시적으로 타이핑했을 때만 나타난다(트랙의
+ * ✦ 펼침에 상응하는 명시 동작). 현재 값이 이미 게이트된 단이면 트랙이 게이트를 열어 두는 것과
+ * 같이 전부 보인다. includes가 아니라 startsWith로 가르는 이유: "l" 같은 우연한 부분 일치가
+ * 고비용 단을 조용히 드러내면 게이트가 없는 것과 같다.
+ */
+export function buildQuickLaunchEffortOptions(
+  row: OperationLaunchVariantRow | null,
+  effort: string | null,
+  autoLabel: string,
+  query: string,
+): readonly QuickLaunchEffortOption[] {
+  const trimmed = query.trim().toLowerCase();
+  const gated = new Set(row?.gatedEfforts ?? []);
+  const gateOpen = effort !== null && gated.has(effort);
+  return [
+    { id: null as string | null, label: autoLabel },
+    ...(row?.chips ?? []).map((chip) => ({ id: chip.id as string | null, label: chip.label })),
+  ]
+    .filter((chip) => {
+      const label = chip.label.toLowerCase();
+      const id = (chip.id ?? "").toLowerCase();
+      if (trimmed.length > 0 && !label.includes(trimmed) && !id.includes(trimmed)) return false;
+      if (chip.id === null || !gated.has(chip.id)) return true;
+      if (gateOpen) return true;
+      return trimmed.length > 0 && (label.startsWith(trimmed) || id.startsWith(trimmed));
+    })
+    .map((chip) => ({ id: chip.id, label: chip.label, checked: chip.id === effort }));
 }
 
 /**

@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, getState, isQuickLaunchDocked, openQuickLaunch, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -449,6 +449,90 @@ describe("stripMentionToken", () => {
   it("removes exactly the @token span", () => {
     expect(stripMentionToken("@gate", { at: 0, query: "gate" })).toBe("");
     expect(stripMentionToken("see @op now", { at: 4, query: "op" })).toBe("see  now");
+  });
+});
+
+describe("readCommandInput", () => {
+  it("opens only when / is the first character of the prompt", () => {
+    expect(readCommandInput("/", 1)).toEqual({ kind: "commands", query: "" });
+    expect(readCommandInput("/mo", 3)).toEqual({ kind: "commands", query: "mo" });
+    expect(readCommandInput("run /model", 10)).toBeNull();
+    expect(readCommandInput("", 0)).toBeNull();
+  });
+
+  it("stays closed when the caret sits before the slash", () => {
+    expect(readCommandInput("/model", 0)).toBeNull();
+  });
+
+  it("lies down as a literal on a second slash — file paths never wake the deck", () => {
+    expect(readCommandInput("/Users/sbluemin", 15)).toBeNull();
+    expect(readCommandInput("/etc/hosts 확인", 13)).toBeNull();
+  });
+
+  it("enters the value level when the first word is a value command followed by whitespace", () => {
+    expect(readCommandInput("/theater ", 9)).toEqual({ kind: "values", command: "theater", query: "" });
+    expect(readCommandInput("/model sol", 10)).toEqual({ kind: "values", command: "model", query: "sol" });
+    expect(readCommandInput("/effort xh", 10)).toEqual({ kind: "values", command: "effort", query: "xh" });
+  });
+
+  it("keeps value queries alive across spaces — model labels carry spaces", () => {
+    expect(readCommandInput("/model gpt-5.6 sol", 18)).toEqual({ kind: "values", command: "model", query: "gpt-5.6 sol" });
+  });
+
+  it("treats an unknown first word with trailing text as prose", () => {
+    expect(readCommandInput("/foo bar", 8)).toBeNull();
+    // '/pin'은 값 레벨이 없는 액션 — 공백이 뒤따르면 명령이 아니라 프로즈다.
+    expect(readCommandInput("/pin now", 8)).toBeNull();
+  });
+
+  it("stays at the value level when the caret returns into a committed command word", () => {
+    expect(readCommandInput("/model sol", 3)).toEqual({ kind: "values", command: "model", query: "sol" });
+  });
+
+  it("anchors queries to the text, not the caret — Enter must match what the deck shows", () => {
+    expect(readCommandInput("/model solx", 10)).toEqual({ kind: "values", command: "model", query: "solx" });
+    // 기존 텍스트 앞에 '/'만 끼워 넣은 입력은 전체 단어가 쿼리다 — 매치가 없으면 프로즈로 흘러
+    // 선택이 뒤 텍스트를 파괴하지 않는다.
+    expect(readCommandInput("/hello", 1)).toEqual({ kind: "commands", query: "hello" });
+  });
+});
+
+describe("buildQuickLaunchEffortOptions", () => {
+  const row = {
+    id: "fable",
+    label: "Fable",
+    launch: { model: "fable[1m]" },
+    effortAxis: ["low", "medium", "high", "xhigh", "max", "ultracode"],
+    gatedEfforts: ["max", "ultracode"],
+    chips: [
+      { id: "low", label: "LOW", launch: { model: "fable[1m]", effort: "low" } },
+      { id: "high", label: "HIGH", launch: { model: "fable[1m]", effort: "high" } },
+      { id: "max", label: "MAX", launch: { model: "fable[1m]", effort: "max" } },
+      { id: "ultracode", label: "ULTRACODE", launch: { model: "fable[1m]", effort: "ultracode" } },
+    ],
+  } as const;
+
+  it("hides gated apex tiers from the default list — the track's gate is mirrored", () => {
+    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "").map((option) => option.id))
+      .toEqual([null, "low", "high"]);
+  });
+
+  it("reveals a gated tier only when its name is typed from the start", () => {
+    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "ma").map((option) => option.id)).toEqual(["max"]);
+    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "ultra").map((option) => option.id)).toEqual(["ultracode"]);
+    // 우연한 부분 일치("l" ⊂ ULTRACODE)는 게이트를 열지 않는다.
+    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "l").map((option) => option.id)).toEqual(["low"]);
+  });
+
+  it("keeps the gate open while the current effort is a gated tier", () => {
+    expect(buildQuickLaunchEffortOptions(row, "max", "AUTO", "").map((option) => option.id))
+      .toEqual([null, "low", "high", "max", "ultracode"]);
+    expect(buildQuickLaunchEffortOptions(row, "max", "AUTO", "").find((option) => option.id === "max")?.checked).toBe(true);
+  });
+
+  it("marks the checked option and survives a missing row", () => {
+    expect(buildQuickLaunchEffortOptions(row, "high", "AUTO", "").find((option) => option.id === "high")?.checked).toBe(true);
+    expect(buildQuickLaunchEffortOptions(null, null, "AUTO", "")).toEqual([{ id: null, label: "AUTO", checked: true }]);
   });
 });
 

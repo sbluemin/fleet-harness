@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type FocusEvent as ReactFocusEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
@@ -9,11 +9,11 @@ import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
-import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchMentionToken } from "../quick-launch.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
-import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
@@ -22,6 +22,26 @@ const POPOVER_GAP = 8;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
 
 type PopoverKind = "theater" | "model";
+
+interface QuickLaunchCommandRow {
+  readonly id: string;
+  readonly label: string;
+  readonly lead?: ReactNode;
+  readonly starred?: boolean;
+  readonly checked?: boolean;
+  /** 1레벨 명령 행이 싣는 현재 값 — 목록이 곧 발사 좌표의 현황판이 되게 한다. */
+  readonly value?: string;
+  /** 1레벨 명령 행의 타이핑 별칭(`/theater`) — 오른쪽 끝에서 문법을 가르친다. */
+  readonly token?: string;
+  readonly pick: () => void;
+}
+
+interface QuickLaunchCommandSection {
+  readonly key: string;
+  /** 모델 레벨의 프로바이더 밴드 — 모델 픽커와 같은 문법. 다른 레벨은 밴드가 없다. */
+  readonly band: { readonly label: string; readonly provider: LaunchProviderGlyphId | null } | null;
+  readonly rows: readonly QuickLaunchCommandRow[];
+}
 
 export function QuickLaunch() {
   const state = useConsoleState();
@@ -56,6 +76,10 @@ export function QuickLaunch() {
   const [mentionTarget, setMentionTarget] = useState<OperationSearchEntry | null>(null);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [mentionErrorKey, setMentionErrorKey] = useState<string | null>(null);
+  // '/' 커맨드 덱: 문면("/model sol")이 레벨의 원천이라 별도 레벨 상태가 없다 — 여기는 파싱
+  // 결과와 키보드 활성 행만 산다. '@' 덱과는 한 번에 하나만 선다(updatePrompt가 강제).
+  const [commandInput, setCommandInput] = useState<QuickLaunchCommandInput | null>(null);
+  const [commandActiveIndex, setCommandActiveIndex] = useState(0);
   // 접힘은 상태로 소유하되 실제 포커스에서만 파생시킨다 — 포커스와 별도로 관리하면 둘이 어긋나
   // "보이는데 못 쓰는" 바가 생긴다. 고정된 채로 화면을 열면 접힌 채 상주한다(포커스를 훔치지 않는다).
   const [collapsed, setCollapsed] = useState(() => state.quickLaunchPinned);
@@ -132,7 +156,8 @@ export function QuickLaunch() {
       ? remembered.theaterId
       : null;
     // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
-    setPrompt(state.quickLaunchDraft ?? "");
+    const restoredPrompt = state.quickLaunchDraft ?? "";
+    setPrompt(restoredPrompt);
     consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
@@ -140,6 +165,10 @@ export function QuickLaunch() {
     setMentionTarget(null);
     setMentionActiveIndex(0);
     setMentionErrorKey(null);
+    // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
+    // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
+    setCommandInput(readCommandInput(restoredPrompt, restoredPrompt.length));
+    setCommandActiveIndex(0);
     setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
     setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
@@ -189,6 +218,10 @@ export function QuickLaunch() {
   // 포커스를 넣는다 — 같은 틱에 부르면 focus()가 조용히 실패해 바가 열리지 않은 것처럼 보인다.
   const expandAndFocus = useCallback(() => {
     setCollapsed(false);
+    // 물러남(focus-out)이 비운 커맨드 상태를 유지된 문면에서 되살린다 — 접힘/펼침 왕복이
+    // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
+    setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandActiveIndex(0);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
@@ -271,12 +304,17 @@ export function QuickLaunch() {
     setPrompt(nextPrompt);
     autoGrow(element);
     setMentionErrorKey(null);
-    // 멘션 보유 중 '@'는 리터럴로 남는다 — 행선지는 최대 1개(제품 계약). 해제 후에만 다시 깨어난다.
-    if (mentionTarget) {
+    const caret = element.selectionStart ?? nextPrompt.length;
+    // 멘션 보유 중에는 '@'도 '/'도 리터럴로 남는다 — 행선지가 발사 좌표를 대신하는 동안 좌표
+    // 커맨드는 설 자리가 없다(바가 런치 3종을 접는 것과 같은 배타).
+    const command = mentionTarget ? null : readCommandInput(nextPrompt, caret);
+    setCommandInput(command);
+    setCommandActiveIndex(0);
+    if (mentionTarget || command !== null) {
       setMentionToken(null);
       return;
     }
-    setMentionToken(readMentionToken(nextPrompt, element.selectionStart ?? nextPrompt.length));
+    setMentionToken(readMentionToken(nextPrompt, caret));
     setMentionActiveIndex(0);
   }, [mentionTarget]);
 
@@ -297,6 +335,142 @@ export function QuickLaunch() {
     setMentionErrorKey(null);
     inputRef.current?.focus();
   }, []);
+
+  // 커맨드 확정("/model ")과 값 적용(비움) 모두 프로그램 쓰기라 textarea input 이벤트가 없다 —
+  // 파싱 상태를 문면과 같은 자리에서 함께 갱신해야 덱이 입력과 어긋나지 않는다.
+  const applyCommandPrompt = useCallback((next: string) => {
+    setPrompt(next);
+    setCommandInput(readCommandInput(next, next.length));
+    setCommandActiveIndex(0);
+    const element = inputRef.current;
+    // 제어 컴포넌트라 값 반영 뒤에야 높이를 잴 수 있다(pickMention과 같은 계약).
+    if (element) requestAnimationFrame(() => autoGrow(element));
+    element?.focus();
+  }, []);
+
+  const finishCommand = useCallback(() => {
+    setPrompt("");
+    setCommandInput(null);
+    setCommandActiveIndex(0);
+    const element = inputRef.current;
+    if (element) {
+      element.style.height = "auto";
+      element.focus();
+    }
+  }, []);
+
+  // '/' 커맨드 덱의 목록. 문면이 레벨을 소유하므로(commandInput.kind) 여기는 그 레벨의 행만
+  // 계산한다. 값 레벨은 기존 픽커·트랙과 같은 원천(theaters·카탈로그 groups·chips)과 같은
+  // 저장 계층(고르면 즉시 기억)을 쓴다 — 커맨드는 지름길이지 두 번째 진실이 아니다.
+  const commandSections = useMemo<readonly QuickLaunchCommandSection[]>(() => {
+    if (commandInput === null) return [];
+    const query = commandInput.query.trim().toLowerCase();
+    if (commandInput.kind === "commands") {
+      const effortLabel = effort === null
+        ? t("launchVariants.effort.auto")
+        : selectedRow?.chips?.find((chip) => chip.id === effort)?.label ?? effort;
+      const rows: QuickLaunchCommandRow[] = [];
+      const push = (id: string, token: string, label: string, lead: ReactNode, value: string | undefined, pick: () => void) => {
+        if (query.length > 0 && !token.slice(1).startsWith(query) && !label.toLowerCase().includes(query)) return;
+        rows.push({ id: `cmd-${id}`, label, lead: <span className="quick-launch-command-icon" aria-hidden="true">{lead}</span>, value, token, pick });
+      };
+      if (theaters.length > 0) {
+        push("theater", "/theater", t("chrome.quickLaunch.commandTheater"), <TheaterCommandIcon />, activeTheater?.label, () => applyCommandPrompt("/theater "));
+      }
+      if (groups.length > 0) {
+        push("model", "/model", t("chrome.quickLaunch.commandModel"), <ModelCommandIcon />, selectedRow?.label, () => applyCommandPrompt("/model "));
+      }
+      if (selectedRow && (selectedRow.chips?.length ?? 0) > 0) {
+        push("effort", "/effort", t("chrome.quickLaunch.commandEffort"), <EffortCommandIcon />, effortLabel, () => applyCommandPrompt("/effort "));
+      }
+      // 고정 버튼과 같은 조건으로만 선다 — 도킹이 접힌 화면에서 고정 커맨드는 설 자리가 없다.
+      if (!dockSuppressed) {
+        push("pin", "/pin", t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin"), <PinIcon />, undefined, () => {
+          setQuickLaunchPinned(!pinned);
+          expandAndFocus();
+          finishCommand();
+        });
+      }
+      return rows.length === 0 ? [] : [{ key: "commands", band: null, rows }];
+    }
+    if (commandInput.command === "theater") {
+      const rows = theaters
+        .filter((theater) => theater.label.toLowerCase().includes(query))
+        .map<QuickLaunchCommandRow>((theater) => ({
+          id: `theater-${theater.id}`,
+          label: theater.label,
+          lead: <span className="quick-launch-mark" aria-hidden="true">{theaterInitials(theater.label)}</span>,
+          checked: theater.id === theaterId,
+          pick: () => {
+            setTheaterId(theater.id);
+            // 칩 픽커와 같은 "고르면 기억" 계층.
+            writeQuickLaunchTheater(theater.id);
+            finishCommand();
+          },
+        }));
+      return rows.length === 0 ? [] : [{ key: "theaters", band: null, rows }];
+    }
+    if (commandInput.command === "model") {
+      return groups
+        .map<QuickLaunchCommandSection>((group) => {
+          const provider = launchProviderFromGroupId(group.id);
+          return {
+            key: group.id,
+            band: { label: group.label, provider },
+            rows: group.rows
+              .filter((row) => row.label.toLowerCase().includes(query))
+              .map<QuickLaunchCommandRow>((row) => {
+                const rowModel = row.launch.model ?? null;
+                // 밴드가 프로바이더를 말하지 못하는 그룹에서도 행은 자기 공급자 마크를 단다 —
+                // 필터로 밴드가 성기어질수록 행 스스로 출처를 말해야 한다.
+                const rowProvider = provider ?? launchProviderFromModelId(rowModel ?? row.id);
+                return {
+                  id: `model-${row.id}`,
+                  label: row.label,
+                  lead: rowProvider === null ? null : (
+                    <span className={`quick-launch-kind-icon is-${rowProvider}`} aria-hidden="true">
+                      {launchProviderGlyph(rowProvider)}
+                    </span>
+                  ),
+                  starred: row.starred === true,
+                  checked: rowModel === model,
+                  pick: () => {
+                    // 새 모델의 사다리에 없는 강도는 들고 갈 수 없다(모델 픽커와 같은 규칙).
+                    const nextEffort = resolveRowEffort(row, effort);
+                    setModel(rowModel);
+                    setEffort(nextEffort);
+                    writeQuickLaunchModelEffort(rowModel, nextEffort);
+                    finishCommand();
+                  },
+                };
+              }),
+          };
+        })
+        .filter((section) => section.rows.length > 0);
+    }
+    // 게이트된 apex 단은 트랙의 ✦ 펼침 계약을 미러링해 명시적 타이핑으로만 드러난다(헬퍼 주석 참조).
+    const rows = buildQuickLaunchEffortOptions(selectedRow, effort, t("launchVariants.effort.auto"), commandInput.query)
+      .map<QuickLaunchCommandRow>((chip) => ({
+        id: `effort-${chip.id ?? "auto"}`,
+        label: chip.label,
+        checked: chip.checked,
+        pick: () => {
+          setEffort(chip.id);
+          writeQuickLaunchModelEffort(model, chip.id);
+          finishCommand();
+        },
+      }));
+    return rows.length === 0 ? [] : [{ key: "efforts", band: null, rows }];
+  }, [activeTheater, applyCommandPrompt, commandInput, dockSuppressed, effort, expandAndFocus, finishCommand, groups, model, pinned, selectedRow, t, theaterId, theaters]);
+
+  const commandRowsFlat = useMemo(() => commandSections.flatMap((section) => section.rows), [commandSections]);
+  const commandDeckOpen = commandInput !== null;
+  // 멘션 덱과 같은 계약: 행이 있는 덱만 Enter/Tab/제출을 가로챈다 — 매치가 없으면
+  // "/etc/hosts 확인해줘" 같은 프로즈이므로 Enter는 평소처럼 제출로 흐른다.
+  const commandDeckHasRows = commandDeckOpen && commandRowsFlat.length > 0;
+  const activeCommandRow = commandRowsFlat.length === 0
+    ? null
+    : commandRowsFlat[Math.min(commandActiveIndex, commandRowsFlat.length - 1)] ?? null;
 
   const closePopover = useCallback(() => setPopover(null), []);
 
@@ -362,9 +536,10 @@ export function QuickLaunch() {
     }
     setPrompt("");
     setMentionTarget(null);
-    // 열려 있던 멘션 덱도 함께 접는다 — 매치 없는 '@' 토큰은 제출을 막지 않으므로(프로즈 토큰),
+    // 열려 있던 덱도 함께 접는다 — 매치 없는 '@'·'/' 토큰은 제출을 막지 않으므로(프로즈 토큰),
     // 토큰을 남기면 비운 컴포저 위로 빈 덱만 떠 있는다.
     setMentionToken(null);
+    setCommandInput(null);
     setMentionErrorKey(null);
     // 지난 거절은 성공한 재시도와 함께 내려간다. 모달은 닫히며 버리지만 고정된 바는 닫히지 않아,
     // 사유가 남으면 이미 발사된 지시 위에 옛 실패가 붙어 있고 그동안 바가 접히지도 않는다.
@@ -383,8 +558,8 @@ export function QuickLaunch() {
     // 사라지므로, 확실히 실패할 요청으로는 넘기지 않는다.
     if (text.length === 0 || text.length > QUICK_LAUNCH_PROMPT_MAX_CHARS || submitting) return;
     // 행이 있는 덱이 열려 있는 동안은 어떤 경로(Enter·버튼 클릭)로도 제출하지 않는다 —
-    // '@token' 리터럴이 프롬프트로 발사되는 것을 키보드 가로채기만으로는 못 막는다.
-    if (deckHasRows) return;
+    // '@token'·'/token' 리터럴이 프롬프트로 발사되는 것을 키보드 가로채기만으로는 못 막는다.
+    if (deckHasRows || commandDeckHasRows) return;
     if (mentionTarget) {
       const plugin = registry.plugins.find((candidate) => candidate.id === mentionTarget.pluginId);
       if (!plugin?.messageOperation) return;
@@ -421,7 +596,7 @@ export function QuickLaunch() {
     requestQuickLaunch({ theaterId, pluginId: target.pluginId, kind: target.kind, variant });
     navigate("/operations");
     finishSubmission();
-  }, [deckHasRows, effort, finishSubmission, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
+  }, [commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -466,9 +641,10 @@ export function QuickLaunch() {
     if (next instanceof Node && cardRef.current?.contains(next)) return;
     // 접히면서 열린 팝오버를 남기면, 잘라내기가 돌아온 바 안에서 목록만 사라진 채 상태가 남는다.
     setPopover(null);
-    // 멘션 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남겨 두면 물러난 바 위로 목록이
-    // 떠서, 도킹이 되돌려 준 그 화면을 도로 가린다.
+    // 멘션·커맨드 덱은 카드 직속이라 접힘에도 inert에도 걸리지 않는다 — 남겨 두면 물러난 바 위로
+    // 목록이 떠서, 도킹이 되돌려 준 그 화면을 도로 가린다.
     setMentionToken(null);
+    setCommandInput(null);
     setCollapsed(true);
   }, [pinned]);
 
@@ -486,6 +662,38 @@ export function QuickLaunch() {
   }, [state.quickLaunchPinned]);
 
   const handleInputKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    if (commandDeckOpen) {
+      if (commandDeckHasRows && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+        event.preventDefault();
+        const delta = event.key === "ArrowDown" ? 1 : -1;
+        setCommandActiveIndex((index) => {
+          const bounded = Math.min(index, commandRowsFlat.length - 1);
+          return (bounded + delta + commandRowsFlat.length) % commandRowsFlat.length;
+        });
+        return;
+      }
+      // 행이 있는 덱에서 Enter는 제출이 아니라 선택이다 — '/token' 리터럴 오발사를 막는다.
+      // IME 조합 중 Enter는 확정이지 선택이 아니다(멘션 덱과 같은 계약).
+      if (commandDeckHasRows && (event.key === "Enter" || event.key === "Tab") && !event.shiftKey) {
+        if (event.nativeEvent.isComposing) return;
+        event.preventDefault();
+        event.stopPropagation();
+        activeCommandRow?.pick();
+        return;
+      }
+      if (event.key === "Escape") {
+        // 카드의 Escape(컴포저 닫기)보다 먼저, 값 레벨은 명령 목록으로 한 단계만 물러난다 —
+        // 두 단계를 한 번에 무너뜨리면 방금 고른 명령까지 잃는다.
+        event.preventDefault();
+        event.stopPropagation();
+        if (commandInput?.kind === "values") {
+          applyCommandPrompt("/");
+          return;
+        }
+        setCommandInput(null);
+        return;
+      }
+    }
     if (mentionDeckOpen) {
       // 방향키는 선택 가능한 행만 순환한다 — awaiting은 dim이자 스킵 대상(제품 결정).
       if (deckHasRows && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
@@ -525,7 +733,7 @@ export function QuickLaunch() {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     submit();
-  }, [activeMention, clearMention, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt.length, selectableMentions.length, submit]);
+  }, [activeCommandRow, activeMention, applyCommandPrompt, clearMention, commandDeckHasRows, commandDeckOpen, commandInput, commandRowsFlat.length, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt.length, selectableMentions.length, submit]);
 
   if (!open) return null;
 
@@ -533,7 +741,7 @@ export function QuickLaunch() {
   const overLimit = promptLength > QUICK_LAUNCH_PROMPT_MAX_CHARS;
   // 멘션 제출은 런치 좌표(theater/model/effort)가 필요 없다 — 행선지가 그 자리를 대신한다.
   // 행이 있는 덱이 열린 동안은 버튼도 잠근다(submit의 deckHasRows 가드와 같은 계약).
-  const canSubmit = promptLength > 0 && !overLimit && !submitting && !deckHasRows
+  const canSubmit = promptLength > 0 && !overLimit && !submitting && !deckHasRows && !commandDeckHasRows
     && (mentionTarget !== null || (!!theaterId && !!target && !!selectedRow));
   const modelLabel = selectedRow?.label ?? t("chrome.quickLaunch.modelUnset");
   const rejectionKey = quickLaunchErrorMessageKey(state.quickLaunchError, state.quickLaunchErrorShortenBy);
@@ -641,6 +849,65 @@ export function QuickLaunch() {
           </div>
         ) : null}
 
+        {/* '/' 커맨드 덱 — 멘션 덱과 같은 표면 문법(위로 열림·카테고리 밴드·행 어휘)을 공유하고,
+            내용만 레벨(명령 목록 ↔ 값 목록)이 갈아 끼운다. */}
+        {commandDeckOpen ? (
+          <div className="quick-launch-mention-deck quick-launch-command-deck theater-menu" role="listbox" id="quick-launch-command-deck" aria-label={t("chrome.quickLaunch.commandDeck")}>
+            <p className="quick-launch-mention-category">
+              <span>
+                {commandInput?.kind === "commands"
+                  ? t("chrome.quickLaunch.commandCategory")
+                  : commandInput?.command === "theater"
+                    ? t("chrome.quickLaunch.theaterMenu")
+                    : commandInput?.command === "model"
+                      ? t("chrome.quickLaunch.modelMenu")
+                      : t("launchVariants.effort.track")}
+              </span>
+              <span className="quick-launch-mention-category-rule" aria-hidden="true" />
+            </p>
+            {commandRowsFlat.length === 0 ? (
+              <p className="quick-launch-mention-empty">{t("chrome.quickLaunch.commandNoMatch")}</p>
+            ) : commandSections.map((section) => (
+              <div key={section.key}>
+                {section.band ? (
+                  <p className={`quick-launch-pop-band${section.band.provider ? ` is-${section.band.provider}` : ""}`}>
+                    {section.band.provider ? (
+                      <span className="operation-launch-provider-glyph" aria-hidden="true">
+                        {launchProviderGlyph(section.band.provider)}
+                      </span>
+                    ) : null}
+                    <span>{section.band.label}</span>
+                  </p>
+                ) : null}
+                {section.rows.map((row) => {
+                  const active = row === activeCommandRow;
+                  return (
+                    <button
+                      key={row.id}
+                      id={`quick-launch-command-${row.id}`}
+                      type="button"
+                      className={`quick-launch-mention-row quick-launch-command-row${active ? " is-active" : ""}`}
+                      role="option"
+                      aria-selected={active}
+                      tabIndex={-1}
+                      // 클릭이 textarea 포커스를 뺏지 않아야 선택 직후 바로 타이핑이 이어진다.
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={row.pick}
+                    >
+                      {row.lead}
+                      <span className="quick-launch-mention-name">{row.label}</span>
+                      {row.starred ? <span className="quick-launch-variant-star" aria-hidden="true">★</span> : null}
+                      {row.value === undefined ? null : <span className="quick-launch-command-value">{row.value}</span>}
+                      {row.token === undefined ? null : <span className="quick-launch-command-token" aria-hidden="true">{row.token}</span>}
+                      {row.checked ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <div className="quick-launch-field" inert={showStrip || undefined}>
@@ -665,8 +932,12 @@ export function QuickLaunch() {
               ? t("chrome.quickLaunch.mentionPlaceholder", { name: mentionTarget.operationName })
               : t("chrome.quickLaunch.placeholder")}
             aria-label={t("chrome.quickLaunch.promptLabel")}
-            aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : undefined}
-            aria-activedescendant={mentionDeckOpen && activeMention ? `quick-launch-mention-${activeMention.operationId}` : undefined}
+            aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : commandDeckOpen ? "quick-launch-command-deck" : undefined}
+            aria-activedescendant={mentionDeckOpen && activeMention
+              ? `quick-launch-mention-${activeMention.operationId}`
+              : commandDeckOpen && activeCommandRow
+                ? `quick-launch-command-${activeCommandRow.id}`
+                : undefined}
             spellCheck={false}
           />
         </div>
@@ -895,6 +1166,42 @@ function QuickLaunchVariantRow({ row, selectedModel, onPick }: {
         {rowModel === selectedModel ? <span className="quick-launch-pop-check" aria-hidden="true">✓</span> : null}
       </button>
     </div>
+  );
+}
+
+// 커맨드 덱 1레벨의 리드 아이콘 3종 — Pin·SubmitArrow와 같은 16 viewBox·1.5px stroke 문법.
+// 값 레벨은 기존 어휘(이니셜 마크·프로바이더 글리프)를 그대로 쓰므로 여기서 끝난다.
+function TheaterCommandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M2.5 5.5 8 2.5l5.5 3v5L8 13.5l-5.5-3v-5ZM8 8.5v5M2.5 5.5 8 8.5l5.5-3"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function ModelCommandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <rect x="3" y="3" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+      <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+    </svg>
+  );
+}
+
+function EffortCommandIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d="M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+      <circle cx="5" cy="8" r="1.4" fill="currentColor" />
+      <circle cx="11" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
   );
 }
 
