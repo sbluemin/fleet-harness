@@ -11905,6 +11905,10 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .quick-launch-field {
   display: flex;
+  /* 첨부 트레이(flex-basis:100%)가 textarea 아래 줄로 내려서게 한다 — nowrap이면 트레이가
+     옆자리에 서며 textarea를 너비 0까지 짓누른다(실브라우저 실측). 멘션 칩+textarea는
+     textarea의 flex:1·min-width:0 덕에 여전히 한 줄을 지킨다. */
+  flex-wrap: wrap;
   align-items: flex-start;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4) var(--space-2);
