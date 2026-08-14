@@ -273,6 +273,12 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);
+      // 네임스페이스 루트도 함께 거둔다 — 항목만 지우면 빈 루트가 종료마다 하나씩 쌓인다.
+      try {
+        rmSync(namespaceRoot, { force: true, recursive: true });
+      } catch {
+        // best-effort.
+      }
     },
   };
 }
