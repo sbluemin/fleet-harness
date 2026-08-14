@@ -15,6 +15,19 @@ export interface QuickLaunchRequest {
   readonly pluginId: string;
   readonly kind: OperationLaunchKind;
   readonly variant: Readonly<Record<string, string>>;
+  /**
+   * 첨부 이미지의 컴포저측 자취. id는 variant의 `attachments` CSV로도 실려 서버에 닿고,
+   * 이름·미리보기(object URL)는 실행이 거절됐을 때 칩을 되살리기 위한 브라우저 전용 값이다 —
+   * 저장 경로는 어디에도 없다.
+   */
+  readonly attachments?: readonly QuickLaunchDraftAttachment[];
+}
+
+/** 컴포저 밖(초안 슬롯·실행 의도)을 오가는 첨부 자취. previewUrl은 브라우저 object URL이다. */
+export interface QuickLaunchDraftAttachment {
+  readonly id: string;
+  readonly name: string;
+  readonly previewUrl: string;
 }
 
 export type ReleaseNotesLocale = "en" | "ko";
@@ -519,6 +532,9 @@ export interface ConsoleState {
   // 실행이 거절되면 컴포저를 이 초안과 함께 다시 연다 — 서버 거절(모델 비활성·CLI 미가용·
   // 프롬프트 전달 불가)은 컴포저가 결과를 기다리지 않는 구조라 이 경로로만 사용자에게 돌아온다.
   readonly quickLaunchDraft: string | null;
+  // 초안과 함께 살아남는 첨부 자취. 텍스트만 보존하면 거절·닫힘이 방금 붙여넣은 이미지를
+  // 조용히 버린다 — 파일 자체는 서버에 미발사분으로 남아 있으므로 id로 다시 실을 수 있다.
+  readonly quickLaunchDraftAttachments: readonly QuickLaunchDraftAttachment[] | null;
   // 거절 사유의 서버 코드. 초안만 되살리면 결정적 실패(Windows shim 문자·FLEET_TERMINAL_CMD)는
   // 무엇을 고쳐야 하는지 모른 채 같은 Run을 반복하게 된다.
   readonly quickLaunchError: string | null;

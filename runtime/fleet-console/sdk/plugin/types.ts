@@ -54,6 +54,16 @@ export interface FleetClientPlugin {
    * Error whose `message` is the server rejection code when one is available.
    */
   readonly messageOperation?: (operationId: string, text: string) => Promise<void>;
+  /**
+   * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
+   * server-side and returns an opaque id only — absolute storage paths never enter the
+   * browser. The returned id rides the launch variant (`attachments`, comma-joined) and
+   * the plugin's launch path forwards it to the server. Rejects with an Error whose
+   * `message` is the server rejection code when one is available.
+   */
+  readonly uploadLaunchAttachment?: (file: Blob) => Promise<{ readonly id: string }>;
+  /** Best-effort discard of an uploaded-but-unsent attachment (composer chip removal). */
+  readonly discardLaunchAttachment?: (id: string) => Promise<void>;
   readonly renderLaunchIcon?: (kind: OperationLaunchKind) => ReactNode;
 }
 

@@ -25,6 +25,7 @@ import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
 import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
@@ -36,7 +37,7 @@ import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -101,6 +102,8 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
   ]);
   return api.launchKinds;
 }
@@ -164,6 +167,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   // 설치돼 있는지에 따라 갈린다.
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
+  const launchAttachments = createLaunchAttachmentStore();
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
@@ -294,6 +298,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (path === "/sessions") return handleSessions(req, res);
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
+    if (path === "/attachments") return handleAttachmentUpload(req, res);
+    const attachmentMatch = path.match(/^\/attachments\/([^/]+)$/);
+    if (attachmentMatch) return handleAttachmentDiscard(req, res, decodeURIComponent(attachmentMatch[1] ?? ""));
     if (path === "/ticket") {
       if (req.method !== "POST") return methodNotAllowed(res);
       if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -347,6 +354,32 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return false;
   }
 
+  async function handleAttachmentUpload(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    try {
+      const bytes = await readLaunchAttachmentBody(req);
+      // 응답은 불투명 id뿐이다 — 저장 경로는 브라우저 DTO에 오르지 못한다(Console 보안 불변식).
+      ctx.host.http.writeJson(res, 200, launchAttachments.save(bytes));
+    } catch (error) {
+      if (error instanceof LaunchAttachmentError) {
+        ctx.host.http.writeJson(res, 400, { error: error.code });
+        return true;
+      }
+      ctx.host.http.writeJson(res, 500, { error: "attachment_upload_failed" });
+    }
+    return true;
+  }
+
+  async function handleAttachmentDiscard(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], attachmentId: string): Promise<boolean> {
+    if (req.method !== "DELETE") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    // 발사된 첨부는 지울 수 없고, 이미 사라진 id는 이미 원하는 상태다 — 둘 다 200으로 답한다.
+    launchAttachments.discard(attachmentId);
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
   async function handleSessions(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -384,6 +417,20 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // spawn-only: sanitizeLaunchPrompt 결과는 Operation payload·브라우저 DTO에 넣지 않는다
     // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
     const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
+    const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
+    if (attachmentIds === false) return true;
+    let composedPrompt: string | undefined;
+    try {
+      // 모르는 id·상한 초과는 스폰 전에 거절한다 — 세션을 만들고 나서 거절하면 빈 Operation이 남는다.
+      // 경로 지시는 여기서 합성되어 이후의 런치 프롬프트 가드(cmd-shim·명령줄 예산)를 그대로 지난다.
+      composedPrompt = composeLaunchPromptWithAttachments(prompt, launchAttachments.resolve(attachmentIds));
+    } catch (error) {
+      if (error instanceof LaunchAttachmentError) {
+        ctx.host.http.writeJson(res, 400, { error: error.code });
+        return true;
+      }
+      throw error;
+    }
     const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
@@ -391,9 +438,19 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     await createSession(cwd, theaterId, cliId, res, {
       ...launchOptions,
-      ...(prompt ? { prompt } : {}),
+      ...(composedPrompt ? { prompt: composedPrompt } : {}),
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
     return true;
+  }
+
+  function readAttachmentIds(value: unknown, res: Parameters<typeof handle>[0]["res"]): readonly string[] | false {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || id.length === 0)) {
+      ctx.host.http.writeJson(res, 400, { error: "attachment_not_found" });
+      return false;
+    }
+    return value as readonly string[];
   }
 
   function readLaunchOptions(
@@ -467,7 +524,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     theaterId: string,
     cliId: AgentCliId,
     res: Parameters<typeof handle>[0]["res"],
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[] } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -517,6 +574,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
         ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
       });
+      // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
+      // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.bind(sessionId, launchOptions.attachmentIds);
+      }
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -1103,6 +1165,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
+    // 첨부 파일의 수명은 Operation을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
+    launchAttachments.releaseSession(sessionId);
     ctx.host.operations.delete(sessionId);
   }
 
@@ -1115,6 +1179,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
+    launchAttachments.cleanup();
     await runtime.cleanup();
   }
 

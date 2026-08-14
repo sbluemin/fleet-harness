@@ -28,7 +28,7 @@ import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "
 import "./analysis.css";
 import "./agent-cli.css";
 
-import { AgentApiError, convertAgentSessionToChat, createAgentSession, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
+import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { formatElapsedDuration } from "./helpers.js";
@@ -180,11 +180,18 @@ export const agentPlugin = definePlugin({
   messageOperation: async (operationId, text) => {
     await messageAgentSession(operationId, text);
   },
+  // Quick Launch 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
+  uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),
+  discardLaunchAttachment: async (id) => discardLaunchAttachment(id),
   launch: async ({ theaterId, kind, variant }) => {
+    // 첨부 id는 variant 문자열 계약(Record<string,string>)에 CSV로 실려 온다 — id는 서버가 만든
+    // UUID라 쉼표를 품지 않는다.
+    const attachmentIds = variant?.attachments?.split(",").filter((id) => id.length > 0);
     const session = await createAgentSession(theaterId, kind.id, {
       model: variant?.model,
       effort: variant?.effort,
       prompt: variant?.prompt,
+      ...(attachmentIds?.length ? { attachmentIds } : {}),
     });
     applySessionUpdate(session);
     selectSession(session.sessionId);

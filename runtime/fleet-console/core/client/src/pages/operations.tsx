@@ -379,16 +379,23 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     // 실행이 거절되면(모델 비활성·CLI 미가용·프롬프트 전달 불가) 초안을 잃지 않게 컴포저를 되연다.
     // 컴포저는 결과를 기다리지 않는 구조라, 사용자에게 되돌아오는 경로는 여기뿐이다.
     void launchViaPlugin(request.pluginId, request.kind, geometry, request.theaterId, registry.plugins, request.variant)
+      .then(() => {
+        // 발사가 확정된 첨부의 미리보기 object URL은 여기서만 회수할 수 있다 — 컴포저는 결과를
+        // 기다리지 않고 닫혔고, 거절이었다면 이 URL이 칩 복원에 다시 쓰인다.
+        for (const attachment of request.attachments ?? []) URL.revokeObjectURL(attachment.previewUrl);
+      })
       .catch((error: unknown) => {
         const draft = request.variant.prompt;
         if (!draft) return;
         // 플러그인 클라이언트가 서버 error 코드를 message로 실어 던진다. 코드를 모르면 일반 문구로 떨어진다.
         // 프롬프트를 몇 글자 줄여야 하는지도 같은 에러에 붙어 온다 — 플러그인 타입을 끌어오지 않으려고
         // 구조로만 읽는다(코드를 message로 읽는 위 계약과 같은 형태).
+        // 첨부 자취도 초안과 함께 되돌린다 — 서버 파일은 미발사분으로 남아 재시도가 같은 id를 싣는다.
         reopenQuickLaunchWithDraft(
           draft,
           error instanceof Error ? error.message : null,
           readShortenByChars(error),
+          request.attachments ?? null,
         );
       });
   }, [registry.plugins, state.activeTheaterId, state.pendingQuickLaunch]);

@@ -11927,6 +11927,96 @@ body[data-codex-reading="true"] .operations-side-bar {
   overflow-y: auto;
 }
 
+/* ── 이미지 첨부 트레이 ──────────────────────────────────────────────
+   field의 자식으로 두어 접힘·inert 계약을 그대로 상속한다. flex 줄바꿈으로 textarea 아래
+   전폭을 차지한다. */
+.quick-launch-attachments {
+  flex-basis: 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+.quick-launch-attachment {
+  position: relative;
+  display: inline-flex;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .quick-launch-attachment {
+    animation: quick-launch-attachment-in var(--duration-base) var(--ease-glide);
+  }
+
+  @keyframes quick-launch-attachment-in {
+    from {
+      opacity: 0;
+      transform: translateY(3px);
+    }
+  }
+}
+
+.quick-launch-attachment-thumb {
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  object-fit: cover;
+  display: block;
+  background: var(--ink-veil);
+}
+
+/* 업로드가 끝나야 발사 가능한 칩이 된다 — 진행 중임을 밝기로 말한다(색 채널을 쓰지 않는다). */
+.quick-launch-attachment.is-uploading .quick-launch-attachment-thumb {
+  opacity: 0.45;
+}
+
+.quick-launch-attachment-wait {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  color: var(--text-secondary);
+}
+
+.quick-launch-attachment-wait::after {
+  content: "…";
+  font-size: 12px;
+}
+
+.quick-launch-attachment-remove {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--ink-deep);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* 제거는 파괴 동작 — coral은 상태 채널이라 이 hover에만 허용된다(거절 문구와 같은 채널). */
+.quick-launch-attachment-remove:hover {
+  color: var(--coral);
+  border-color: var(--coral);
+}
+
+.quick-launch-attachment-remove:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+/* 드래그 중 카드 강조 — brass는 위치/포커스 채널이라 "여기 놓으라"는 지시에 맞는 색이다. */
+.quick-launch-card.is-dragover {
+  border-color: var(--brass);
+}
+
 .quick-launch-input:focus-visible {
   outline: none;
 }

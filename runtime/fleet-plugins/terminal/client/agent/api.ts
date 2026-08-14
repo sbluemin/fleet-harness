@@ -79,17 +79,18 @@ export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<Ope
 export async function createAgentSession(
   theaterId: string,
   cliId: string,
-  options?: { readonly model?: string; readonly effort?: string; readonly prompt?: string },
+  options?: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[] },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
   const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
   const effort = typeof options?.effort === "string" && options.effort.length > 0 ? options.effort : undefined;
   // 요청 body에는 prompt를 실을 수 있지만, 응답 DTO에는 절대 오면 안 된다 — FORBIDDEN_BROWSER_PAYLOAD_KEYS의 "prompt"는 응답 가드이므로 지우지 않는다.
   const prompt = typeof options?.prompt === "string" && options.prompt.length > 0 ? options.prompt : undefined;
+  const attachmentIds = options?.attachmentIds?.length ? options.attachmentIds : undefined;
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}) }),
+    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}) }),
     signal,
   });
   // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지
@@ -159,6 +160,34 @@ export async function exitAgentChat(sessionId: string, signal?: AbortSignal): Pr
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
   }
+}
+
+export async function uploadLaunchAttachment(file: Blob, signal?: AbortSignal): Promise<{ readonly id: string }> {
+  const response = await fetch("/plugins/terminal/agent/attachments", {
+    method: "POST",
+    // 서버는 라벨이 아니라 바이트로 이미지 여부를 판정한다 — Content-Type은 참고값일 뿐이다.
+    headers: { "Content-Type": file.type || "application/octet-stream" },
+    body: file,
+    signal,
+  });
+  if (!response.ok) {
+    // 서버 거절 코드를 그대로 실어 던진다 — 컴포저가 칩을 지키면서 사유를 말하려면 코드가 필요하다.
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+    );
+  }
+  const payload = await response.json() as { readonly id?: unknown };
+  if (typeof payload.id !== "string" || payload.id.length === 0) {
+    throw new AgentApiError(response.status, "attachment_upload_failed");
+  }
+  return { id: payload.id };
+}
+
+export async function discardLaunchAttachment(id: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/attachments/${encodeURIComponent(id)}`, { method: "DELETE", signal });
+  await assertOk(response);
 }
 
 export async function terminateAgentSession(sessionId: string, signal?: AbortSignal): Promise<void> {
