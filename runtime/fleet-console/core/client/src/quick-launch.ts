@@ -120,6 +120,42 @@ export function stripMentionToken(value: string, token: QuickLaunchMentionToken)
   return `${value.slice(0, token.at)}${value.slice(token.at + 1 + token.query.length)}`;
 }
 
+/** 값 레벨을 가지는 커맨드. `/pin`은 액션이라 1레벨에서 끝난다. */
+export type QuickLaunchCommandId = "theater" | "model" | "effort" | "pin";
+const COMMAND_VALUE_TOKENS: readonly Exclude<QuickLaunchCommandId, "pin">[] = ["theater", "model", "effort"];
+
+export type QuickLaunchCommandInput =
+  | { readonly kind: "commands"; readonly query: string }
+  | { readonly kind: "values"; readonly command: Exclude<QuickLaunchCommandId, "pin">; readonly query: string };
+
+/**
+ * '/' 커맨드는 프롬프트 **첫 글자**에서만 깨어난다 — '@'와 달리 `/`는 파일 경로의 첫 글자이기도
+ * 해서, 단어 시작마다 깨우면 `/Users/…`를 치는 내내 덱이 명멸한다. 첫 단어 안의 두 번째 `/`나
+ * 공백은 즉시 리터럴로 눕힌다('@' 토큰의 공백 해제와 같은 계약). 첫 단어가 값 커맨드 토큰과
+ * 정확히 일치하고 공백이 뒤따르면 값 레벨이다 — 값 쿼리는 모델 이름처럼 공백을 품을 수 있어
+ * 해제 문자를 두지 않고, 매치 없는 덱이 Enter를 막지 않는 계약이 회복을 보장한다.
+ */
+export function readCommandInput(value: string, caretIndex: number): QuickLaunchCommandInput | null {
+  if (!value.startsWith("/")) return null;
+  const caret = Math.max(0, Math.min(caretIndex, value.length));
+  if (caret < 1) return null;
+  const boundary = value.slice(1).search(/\s/);
+  const wordEnd = boundary === -1 ? value.length : boundary + 1;
+  const word = value.slice(1, wordEnd);
+  if (word.includes("/")) return null;
+  if (caret <= wordEnd) {
+    // 공백이 이미 뒤따르는 단어 안으로 caret이 돌아온 경우도 값 레벨로 본다 — 커맨드가 확정된
+    // 문면에서 1레벨 목록을 다시 세우면 화면이 입력 내용을 부정한다.
+    const committed = COMMAND_VALUE_TOKENS.find((token) => token === word);
+    if (boundary !== -1 && committed) return { kind: "values", command: committed, query: value.slice(wordEnd + 1, value.length) };
+    if (boundary !== -1) return null;
+    return { kind: "commands", query: value.slice(1, caret) };
+  }
+  const command = COMMAND_VALUE_TOKENS.find((token) => token === word);
+  if (!command) return null;
+  return { kind: "values", command, query: value.slice(wordEnd + 1, caret) };
+}
+
 /**
  * awaiting은 CLI가 응답 입력을 기다리는 상태라 임의 텍스트가 프롬프트 응답을 오염시킨다 —
  * 목록에서 dim + 선택 불가 + 방향키 스킵(제품 결정). dormant는 선택 가능하며 서버가 재기동 후 전달한다.

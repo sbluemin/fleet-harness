@@ -12047,6 +12047,50 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-size: 12.5px;
 }
 
+/* ── '/' 커맨드 덱 ──────────────────────────────────────────────────────
+   멘션 덱의 표면 문법(.quick-launch-mention-deck/-row)을 그대로 입고, 아래는 커맨드 행에만
+   있는 어휘다 — 리드 아이콘(16vb 스트로크), 현재 값, 타이핑 별칭 토큰. 활성은 멘션 행과 같은
+   brass 워시가 말하고, 리드·토큰도 그 워시를 따라간다(위치 채널). */
+.quick-launch-command-icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--text-tertiary);
+}
+
+.quick-launch-command-icon svg {
+  display: block;
+  width: 15px;
+  height: 15px;
+}
+
+.quick-launch-command-row.is-active .quick-launch-command-icon {
+  color: var(--brass);
+}
+
+.quick-launch-command-value {
+  flex: none;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+.quick-launch-command-token {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.quick-launch-command-row.is-active .quick-launch-command-token {
+  color: var(--brass);
+}
+
 /* 멘션 확정 시 런치 3종은 접히고(가로 접힘 + 페이드) 행선지 태그가 나타난다. 접힌 컨트롤은
    visibility로도 감춰 포커스 트랩·탭 순서에서 빠진다. */
 .quick-launch-launch-sel {

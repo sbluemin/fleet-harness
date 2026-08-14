@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, getState, isQuickLaunchDocked, openQuickLaunch, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -449,6 +449,48 @@ describe("stripMentionToken", () => {
   it("removes exactly the @token span", () => {
     expect(stripMentionToken("@gate", { at: 0, query: "gate" })).toBe("");
     expect(stripMentionToken("see @op now", { at: 4, query: "op" })).toBe("see  now");
+  });
+});
+
+describe("readCommandInput", () => {
+  it("opens only when / is the first character of the prompt", () => {
+    expect(readCommandInput("/", 1)).toEqual({ kind: "commands", query: "" });
+    expect(readCommandInput("/mo", 3)).toEqual({ kind: "commands", query: "mo" });
+    expect(readCommandInput("run /model", 10)).toBeNull();
+    expect(readCommandInput("", 0)).toBeNull();
+  });
+
+  it("stays closed when the caret sits before the slash", () => {
+    expect(readCommandInput("/model", 0)).toBeNull();
+  });
+
+  it("lies down as a literal on a second slash — file paths never wake the deck", () => {
+    expect(readCommandInput("/Users/sbluemin", 15)).toBeNull();
+    expect(readCommandInput("/etc/hosts 확인", 13)).toBeNull();
+  });
+
+  it("enters the value level when the first word is a value command followed by whitespace", () => {
+    expect(readCommandInput("/theater ", 9)).toEqual({ kind: "values", command: "theater", query: "" });
+    expect(readCommandInput("/model sol", 10)).toEqual({ kind: "values", command: "model", query: "sol" });
+    expect(readCommandInput("/effort xh", 10)).toEqual({ kind: "values", command: "effort", query: "xh" });
+  });
+
+  it("keeps value queries alive across spaces — model labels carry spaces", () => {
+    expect(readCommandInput("/model gpt-5.6 sol", 18)).toEqual({ kind: "values", command: "model", query: "gpt-5.6 sol" });
+  });
+
+  it("treats an unknown first word with trailing text as prose", () => {
+    expect(readCommandInput("/foo bar", 8)).toBeNull();
+    // '/pin'은 값 레벨이 없는 액션 — 공백이 뒤따르면 명령이 아니라 프로즈다.
+    expect(readCommandInput("/pin now", 8)).toBeNull();
+  });
+
+  it("stays at the value level when the caret returns into a committed command word", () => {
+    expect(readCommandInput("/model sol", 3)).toEqual({ kind: "values", command: "model", query: "sol" });
+  });
+
+  it("reads the value query relative to the caret", () => {
+    expect(readCommandInput("/model solx", 10)).toEqual({ kind: "values", command: "model", query: "sol" });
   });
 });
 
