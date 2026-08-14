@@ -570,17 +570,17 @@ describe("canvas store", () => {
     const slots = calculateGridSlots({ x: 10, y: 20, width: 100, height: 100 }, 3, 320, 200, 16, 24);
 
     expect(slots).toHaveLength(3);
-    expect(slots[0]).toEqual({ x: 34, y: 44, width: 18, height: 4 });
+    expect(slots[0]).toEqual({ x: 34, y: 44, width: 18, height: 2 });
     expect(slots[1]?.x).toBe(68);
-    expect(slots[2]).toEqual({ x: 34, y: 92, width: 52, height: 4 });
+    expect(slots[2]).toEqual({ x: 34, y: 94, width: 52, height: 2 });
   });
 
   it("stretches the last row across the full width so no empty cell remains", () => {
     const slots = calculateGridSlots({ x: 0, y: 0, width: 1000, height: 800 }, 3, 100, 100, 10, 0);
 
-    expect(slots[0]).toEqual({ x: 0, y: 0, width: 495, height: 381 });
-    expect(slots[1]).toEqual({ x: 505, y: 0, width: 495, height: 381 });
-    expect(slots[2]).toEqual({ x: 0, y: 419, width: 1000, height: 381 });
+    expect(slots[0]).toEqual({ x: 0, y: 0, width: 495, height: 379 });
+    expect(slots[1]).toEqual({ x: 505, y: 0, width: 495, height: 379 });
+    expect(slots[2]).toEqual({ x: 0, y: 421, width: 1000, height: 379 });
   });
 
   it("caps the effective minimum size to a narrow canvas", () => {
@@ -601,8 +601,8 @@ describe("canvas store", () => {
     const slots = calculateGridSlots({ x: 10, y: 20, width: 1000, height: 800 }, 5, 320, 200, 10, 20, "rows");
 
     expect(slots).toHaveLength(5);
-    expect(slots[0]).toEqual({ x: 30, y: 40, width: 960, height: 121.6 });
-    expect(slots[4]).toEqual({ x: 30, y: 678.4, width: 960, height: 121.6 });
+    expect(slots[0]).toEqual({ x: 30, y: 40, width: 960, height: 118.4 });
+    expect(slots[4]).toEqual({ x: 30, y: 681.6, width: 960, height: 118.4 });
   });
 
   it("quantifies the Formation frame padding and caption row stride at 1280x720", () => {
@@ -615,15 +615,15 @@ describe("canvas store", () => {
     const rowsFour = calculateGridSlots(formationRect, 4, 320, 200, 8, 18, "rows");
 
     expect(gridNine[0]).toMatchObject({ x: 18, y: 18, width: 409.3333333333333 });
-    expect(gridNine[0]?.height).toBe(204);
+    expect(gridNine[0]?.height).toBe(201.33333333333334);
     expect(gridTwelve[0]).toMatchObject({ x: 18, y: 18, width: 305 });
-    expect(gridTwelve[0]?.height).toBe(204);
+    expect(gridTwelve[0]?.height).toBe(201.33333333333334);
     expect(columnsThree[0]).toMatchObject({ width: 409.3333333333333, height: 684 });
     expect(columnsFour[0]).toMatchObject({ width: 305, height: 684 });
     expect(rowsThree[0]?.width).toBe(1_244);
-    expect(rowsThree[0]?.height).toBe(204);
+    expect(rowsThree[0]?.height).toBe(201.33333333333334);
     expect(rowsFour[0]?.width).toBe(1_244);
-    expect(rowsFour[0]?.height).toBe(144);
+    expect(rowsFour[0]?.height).toBe(141);
     expect(gridNine[3]!.y - OPERATION_WINDOW_CAPTION_HEIGHT).toBeGreaterThanOrEqual(gridNine[0]!.y + gridNine[0]!.height + 8);
     expect(rowsThree[1]!.y - OPERATION_WINDOW_CAPTION_HEIGHT).toBeGreaterThanOrEqual(rowsThree[0]!.y + rowsThree[0]!.height + 8);
   });
