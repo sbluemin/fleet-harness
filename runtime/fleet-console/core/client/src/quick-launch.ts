@@ -48,6 +48,8 @@ export function quickLaunchAttachmentErrorMessageKey(code: string | null): strin
     case "attachment_too_large": return "chrome.quickLaunch.errorAttachmentTooLarge";
     case "attachment_unsupported": return "chrome.quickLaunch.errorAttachmentUnsupported";
     case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
+    // 미발사 총량 상한 — "다시 붙여넣으라"는 일반 문구로 떨어뜨리면 재시도가 같은 벽에 반복해 부딪힌다.
+    case "attachment_storage_exhausted": return "chrome.quickLaunch.errorAttachmentStorageExhausted";
     default: return "chrome.quickLaunch.errorAttachmentUploadFailed";
   }
 }

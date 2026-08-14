@@ -65,6 +65,7 @@ const RESUMED_PTY_MESSAGE_BOOT_DELAY_MS = 1500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 const TERMINAL_PLUGIN_ID = "terminal";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
@@ -236,6 +237,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     observability.notifySessionUpdated(dormant);
   });
 
+  // 호스트 주도 삭제(Theater 잊기 등)는 플러그인 DELETE 라우트를 지나지 않는다 — 유예가 끝나
+  // 복원 불가로 확정되는 purge가 그 경로의 유일한 회수 신호다. deleted 시점에 거두면 유예 중
+  // 복원된 Operation이 첨부를 잃는다.
+  const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
+    if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
+    launchAttachments.releaseSession(payload.operationId);
+  });
+
   backfillAgentOperationLaunchAxes();
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
@@ -358,6 +367,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (req.method !== "POST") return methodNotAllowed(res);
     if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
     try {
+      // 상한이 이미 찼으면 본문을 받기 전에 거절한다 — 10MB를 다 받아 놓고 거절하는 상한은
+      // 메모리 보호라는 목적을 잃는다.
+      launchAttachments.assertSaveCapacity();
       const bytes = await readLaunchAttachmentBody(req);
       // 응답은 불투명 id뿐이다 — 저장 경로는 브라우저 DTO에 오르지 못한다(Console 보안 불변식).
       ctx.host.http.writeJson(res, 200, launchAttachments.save(bytes));
@@ -421,10 +433,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
     const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
     if (attachmentIds === false) return true;
+    const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
+    if (!cwd) {
+      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
+      return true;
+    }
     let composedPrompt: string | undefined;
     try {
       // 모르는 id·상한 초과는 스폰 전에 거절한다 — 세션을 만들고 나서 거절하면 빈 Operation이 남는다.
-      // 경로 지시는 여기서 합성되어 이후의 런치 프롬프트 가드(cmd-shim·명령줄 예산)를 그대로 지난다.
+      // 해석은 스폰이 끝날 때까지 id를 예약하므로 마지막 거절 관문 뒤에 서고, 스폰 실패는
+      // createSession이 unreserve로 되돌린다. 경로 지시는 여기서 합성되어 이후의 런치 프롬프트
+      // 가드(cmd-shim·명령줄 예산)를 그대로 지난다.
       composedPrompt = composeLaunchPromptWithAttachments(prompt, launchAttachments.resolve(attachmentIds));
     } catch (error) {
       if (error instanceof LaunchAttachmentError) {
@@ -432,11 +451,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         return true;
       }
       throw error;
-    }
-    const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
-    if (!cwd) {
-      ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-      return true;
     }
     await createSession(cwd, theaterId, cliId, res, {
       ...launchOptions,
@@ -590,6 +604,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch (error) {
+      // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
+      // 남으면 TTL이 거둔다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.unreserve(launchOptions.attachmentIds);
+      }
       if (error instanceof GatewayLaunchOptionError) {
         removeSession(sessionId);
         ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
@@ -1180,6 +1199,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     unsubscribeRename();
     unsubscribeRestore();
     unsubscribeChatDelete();
+    unsubscribePurge();
     unsubscribeTitle();
     await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();

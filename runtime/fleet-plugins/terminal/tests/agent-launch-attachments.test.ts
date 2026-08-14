@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -18,6 +18,7 @@ import {
   MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH,
   MAX_PENDING_LAUNCH_ATTACHMENTS,
   readLaunchAttachmentBody,
+  reapStaleLaunchAttachmentDirs,
   sniffLaunchAttachmentImage,
 } from "../server/agent-api/launch-attachments.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
@@ -117,6 +118,42 @@ describe("launch attachment store", () => {
     expect(existsSync(filePath as string)).toBe(false);
   });
 
+  it("reserves an id for the spawn window and releases it on failure", () => {
+    const store = createLaunchAttachmentStore();
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    const [filePath] = store.resolve([id]);
+    // 스폰 창 동안 같은 id는 두 번째 실행에 실리지 않고, 사용자 discard도 파일을 거두지 못한다.
+    expect(() => store.resolve([id])).toThrowError(expect.objectContaining({ code: "attachment_not_found" }));
+    store.discard(id);
+    expect(existsSync(filePath as string)).toBe(true);
+    // 스폰 실패가 예약을 되돌리면 재시도가 같은 id를 다시 싣는다.
+    store.unreserve([id]);
+    expect(store.resolve([id])).toEqual([filePath]);
+  });
+
+  it("rolls back sibling reservations when one id in the batch is rejected", () => {
+    const store = createLaunchAttachmentStore();
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    expect(() => store.resolve([id, "missing"])).toThrowError(expect.objectContaining({ code: "attachment_not_found" }));
+    // 함께 온 형제의 예약이 남으면 그 id는 어떤 재시도에도 실리지 못한다.
+    expect(store.resolve([id])).toHaveLength(1);
+  });
+
+  it("reaps stale attachment dirs from previous processes by mtime", async () => {
+    const staleDir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-"));
+    const freshDir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-"));
+    cleanups.push(() => { rmSync(staleDir, { recursive: true, force: true }); rmSync(freshDir, { recursive: true, force: true }); });
+    // 크래시가 남긴 디렉터리는 mtime만이 나이를 말한다 — 31분 전으로 되돌려 지난 프로세스 잔재를 흉내 낸다.
+    const past = new Date(Date.now() - 31 * 60 * 1000);
+    utimesSync(staleDir, past, past);
+    await reapStaleLaunchAttachmentDirs();
+    expect(existsSync(staleDir)).toBe(false);
+    // TTL보다 어린 디렉터리는 살아 있는 다른 Console 채널의 것일 수 있어 남긴다.
+    expect(existsSync(freshDir)).toBe(true);
+  });
+
   it("caps how many unsent uploads can pile up", () => {
     const store = createLaunchAttachmentStore();
     cleanups.push(() => store.cleanup());
@@ -145,11 +182,14 @@ describe("launch attachment store", () => {
     cleanups.push(() => store.cleanup());
     const first = store.save(PNG_BYTES);
     const [firstPath] = store.resolve([first.id]);
+    store.unreserve([first.id]);
     store.discard(first.id);
     expect(existsSync(firstPath as string)).toBe(false);
     // 발사되지 않은 업로드는 TTL이 거둔다 — 저장·해석 경로에서 게으르게 청소한다.
+    // (경로 확인용 해석은 예약을 되돌려 sweep 대상으로 되돌아가게 한다.)
     const stale = store.save(PNG_BYTES);
     const [stalePath] = store.resolve([stale.id]);
+    store.unreserve([stale.id]);
     nowValue = 31 * 60 * 1000;
     store.save(PNG_BYTES);
     expect(existsSync(stalePath as string)).toBe(false);

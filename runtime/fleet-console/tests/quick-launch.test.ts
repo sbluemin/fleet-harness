@@ -347,6 +347,7 @@ describe("attachment contract", () => {
     expect(quickLaunchAttachmentErrorMessageKey("attachment_too_large")).toBe("chrome.quickLaunch.errorAttachmentTooLarge");
     expect(quickLaunchAttachmentErrorMessageKey("attachment_unsupported")).toBe("chrome.quickLaunch.errorAttachmentUnsupported");
     expect(quickLaunchAttachmentErrorMessageKey("attachment_limit")).toBe("chrome.quickLaunch.errorAttachmentLimit");
+    expect(quickLaunchAttachmentErrorMessageKey("attachment_storage_exhausted")).toBe("chrome.quickLaunch.errorAttachmentStorageExhausted");
     // 모르는 코드·네트워크 실패는 일반 업로드 실패 문구로 떨어진다 — 아무 말도 못 하는 상태를 만들지 않는다.
     expect(quickLaunchAttachmentErrorMessageKey("something_new")).toBe("chrome.quickLaunch.errorAttachmentUploadFailed");
     expect(quickLaunchAttachmentErrorMessageKey(null)).toBe("chrome.quickLaunch.errorAttachmentUploadFailed");
@@ -367,6 +368,7 @@ describe("attachment contract", () => {
       "chrome.quickLaunch.errorAttachmentUnsupported",
       "chrome.quickLaunch.errorAttachmentLimit",
       "chrome.quickLaunch.errorAttachmentUploadFailed",
+      "chrome.quickLaunch.errorAttachmentStorageExhausted",
       "chrome.quickLaunch.errorAttachmentGone",
       "chrome.quickLaunch.errorAttachmentMention",
     ];

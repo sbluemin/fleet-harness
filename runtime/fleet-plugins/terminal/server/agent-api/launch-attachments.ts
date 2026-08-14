@@ -1,5 +1,6 @@
 import crypto from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { readdir, rm, stat } from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -105,18 +106,30 @@ interface LaunchAttachmentEntry {
   /** 저장·해석 시점에 갱신된다 — 해석이 만졌다는 것은 발사가 임박했다는 뜻이라 TTL을 되돌린다. */
   createdAt: number;
   sessionId: string | null;
+  /**
+   * 해석과 바인딩 사이의 스폰 창 동안 참이다. 이 창에서 같은 id를 실은 두 번째 실행·discard·
+   * TTL 청소가 파일을 건드리면, 먼저 뜬 CLI가 사라진 경로를 읽는다.
+   */
+  reserved: boolean;
 }
 
 export interface LaunchAttachmentStore {
+  /** 업로드 본문을 읽기 전에 부른다 — 상한이 찼는데 10MB를 다 받아 놓고 거절하면 상한의 목적이 없다. */
+  assertSaveCapacity(): void;
   /** 바이트를 판정·저장하고 불투명 id를 돌려준다. 경로는 돌려주지 않는다. */
   save(bytes: Buffer): { readonly id: string };
-  /** 실행이 실을 id 목록을 절대 경로로 푼다. 모르는 id·상한 초과는 스폰 전에 거절한다. */
+  /**
+   * 실행이 실을 id 목록을 절대 경로로 풀고, 스폰이 끝날 때까지 예약한다. 모르는 id·이미 예약·
+   * 바인딩된 id·상한 초과는 스폰 전에 거절한다. bind 또는 unreserve가 예약을 닫는다.
+   */
   resolve(ids: readonly string[]): readonly string[];
-  /** 스폰이 성공한 뒤에만 부른다 — 파일 수명이 이 세션을 따라간다. */
+  /** 스폰이 성공한 뒤에만 부른다 — 예약을 바인딩으로 승격해 파일 수명이 이 세션을 따라간다. */
   bind(sessionId: string, ids: readonly string[]): void;
+  /** 스폰이 실패했을 때 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있다. */
+  unreserve(ids: readonly string[]): void;
   /** 세션 제거와 함께 그 세션에 묶인 파일을 거둔다. */
   releaseSession(sessionId: string): void;
-  /** 컴포저에서 칩을 지운 사용자 의도 — 미발사분만 지울 수 있다. */
+  /** 컴포저에서 칩을 지운 사용자 의도 — 미발사·미예약분만 지울 수 있다. */
   discard(id: string): void;
   /** 플러그인 종료 — 남은 파일 전부 회수. */
   cleanup(): void;
@@ -124,11 +137,30 @@ export interface LaunchAttachmentStore {
 
 export function createLaunchAttachmentStore(now: () => number = Date.now): LaunchAttachmentStore {
   const entries = new Map<string, LaunchAttachmentEntry>();
+  // 지난 프로세스(크래시·kill -9)가 남긴 디렉터리는 게으른 TTL이 영영 보지 못한다 — 기동 시
+  // 한 번, mtime 기준으로 거둔다(update-apply의 stale worker 청소와 같은 계보). 살아 있는 다른
+  // Console 채널의 30분 미만 업로드는 cutoff가 지켜 준다.
+  void reapStaleLaunchAttachmentDirs(now);
 
   function sweepExpired(): void {
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
     for (const entry of [...entries.values()]) {
-      if (entry.sessionId === null && entry.createdAt <= cutoff) removeEntry(entry);
+      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) removeEntry(entry);
+    }
+  }
+
+  function assertSaveCapacity(): void {
+    sweepExpired();
+    // 발사 없이 쌓이는 업로드의 총량을 자른다 — 회당 상한(4장)은 컴포저 계약이고, 이것은 디스크 계약이다.
+    let pending = 0;
+    for (const entry of entries.values()) {
+      if (entry.sessionId === null) pending += 1;
+    }
+    if (pending >= MAX_PENDING_LAUNCH_ATTACHMENTS) {
+      throw new LaunchAttachmentError(
+        "attachment_storage_exhausted",
+        `More than ${MAX_PENDING_LAUNCH_ATTACHMENTS} images are waiting to launch — launch or remove some first.`,
+      );
     }
   }
 
@@ -142,19 +174,9 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
   }
 
   return {
+    assertSaveCapacity,
     save(bytes) {
-      sweepExpired();
-      // 발사 없이 쌓이는 업로드의 총량을 자른다 — 회당 상한(4장)은 컴포저 계약이고, 이것은 디스크 계약이다.
-      let pending = 0;
-      for (const entry of entries.values()) {
-        if (entry.sessionId === null) pending += 1;
-      }
-      if (pending >= MAX_PENDING_LAUNCH_ATTACHMENTS) {
-        throw new LaunchAttachmentError(
-          "attachment_storage_exhausted",
-          `More than ${MAX_PENDING_LAUNCH_ATTACHMENTS} images are waiting to launch — launch or remove some first.`,
-        );
-      }
+      assertSaveCapacity();
       const sniffed = sniffLaunchAttachmentImage(bytes);
       if (!sniffed) {
         throw new LaunchAttachmentError(
@@ -176,7 +198,7 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
         throw error;
       }
       const id = crypto.randomUUID();
-      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null });
+      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false });
       return { id };
     },
     resolve(ids) {
@@ -187,23 +209,37 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
           `A launch carries at most ${MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH} attached images.`,
         );
       }
-      return ids.map((id) => {
+      const resolved: LaunchAttachmentEntry[] = [];
+      for (const id of ids) {
         const entry = entries.get(id);
-        // 다른 실행에 이미 묶인 id도 모르는 id다 — 파일 수명이 그 세션을 따르는 동안 두 번째
-        // 실행이 같은 경로를 실으면 삭제 시점이 얽힌다.
-        if (!entry || entry.sessionId !== null) {
+        // 다른 실행에 이미 묶였거나 스폰 창에 예약된 id도 모르는 id다 — 파일 수명이 한 세션을
+        // 따르는 동안 두 번째 실행이 같은 경로를 실으면 삭제 시점이 얽힌다(스토어 불변식:
+        // 한 id는 한 실행).
+        if (!entry || entry.sessionId !== null || entry.reserved) {
+          // 부분 해석은 남기지 않는다 — 함께 온 id 중 하나가 거절되면 전부 예약 전으로 돌린다.
+          for (const taken of resolved) taken.reserved = false;
           throw new LaunchAttachmentError("attachment_not_found", "An attached image is no longer available.");
         }
-        // 해석과 바인딩(스폰 성공 후) 사이에 다른 요청의 게으른 청소가 이 파일을 거두면 CLI가
-        // 사라진 경로를 읽는다 — 해석이 TTL 시계를 되돌려 그 창을 닫는다.
+        // 해석은 발사가 임박했다는 뜻이다 — TTL 시계를 되돌리고 스폰이 끝날 때까지 예약한다.
         entry.createdAt = now();
-        return entry.filePath;
-      });
+        entry.reserved = true;
+        resolved.push(entry);
+      }
+      return resolved.map((entry) => entry.filePath);
     },
     bind(sessionId, ids) {
       for (const id of ids) {
         const entry = entries.get(id);
-        if (entry && entry.sessionId === null) entry.sessionId = sessionId;
+        if (entry && entry.sessionId === null) {
+          entry.sessionId = sessionId;
+          entry.reserved = false;
+        }
+      }
+    },
+    unreserve(ids) {
+      for (const id of ids) {
+        const entry = entries.get(id);
+        if (entry && entry.sessionId === null) entry.reserved = false;
       }
     },
     releaseSession(sessionId) {
@@ -213,12 +249,35 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
     },
     discard(id) {
       const entry = entries.get(id);
-      if (entry && entry.sessionId === null) removeEntry(entry);
+      if (entry && entry.sessionId === null && !entry.reserved) removeEntry(entry);
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);
     },
   };
+}
+
+/**
+ * 지난 프로세스가 남긴 첨부 디렉터리를 mtime 기준으로 거둔다. 이 스토어의 항목은 프로세스
+ * 메모리에만 살아, 크래시·kill -9 뒤에는 어떤 TTL도 그 파일을 다시 보지 못한다. TTL보다 어린
+ * 디렉터리는 살아 있는 다른 Console 채널의 것일 수 있어 남긴다.
+ */
+export async function reapStaleLaunchAttachmentDirs(now: () => number = Date.now): Promise<void> {
+  try {
+    const tempRoot = path.resolve(os.tmpdir());
+    const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
+    for (const name of await readdir(tempRoot)) {
+      if (!name.startsWith(LAUNCH_ATTACHMENT_TEMP_DIR_PREFIX)) continue;
+      const dir = path.join(tempRoot, name);
+      try {
+        if ((await stat(dir)).mtimeMs <= cutoff) await rm(dir, { force: true, recursive: true });
+      } catch {
+        // 경합으로 사라진 디렉터리는 이미 원하는 상태다.
+      }
+    }
+  } catch {
+    // 청소는 best-effort다 — temp 루트를 읽지 못해도 기동을 막지 않는다.
+  }
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

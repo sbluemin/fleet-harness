@@ -107,6 +107,9 @@ export function QuickLaunch() {
   promptRef.current = prompt;
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
+  // 업로드가 끝나기 전에 칩이 사라진 key들. 완료 콜백이 여기서 자신을 발견하면 방금 받은 id를
+  // 서버에서 도로 거둔다 — 안 거두면 보이지 않는 파일이 미발사 슬롯을 30분간 차지한다.
+  const canceledUploadKeysRef = useRef(new Set<string>());
   const submittedRef = useRef(false);
 
   // 설정처럼 실행이 할 일이 아닌 화면에서는 도킹을 접어 둔다. 고정 자체는 그대로라 화면을 벗어나면
@@ -178,11 +181,18 @@ export function QuickLaunch() {
     // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
     const restoredPrompt = state.quickLaunchDraft ?? "";
     setPrompt(restoredPrompt);
-    // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것의 미리보기 URL을 먼저 거둔다 —
-    // 닫힌 뒤 완료된 업로드처럼 보존을 비켜 간 칩은 여기가 마지막 회수 지점이다.
+    // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것을 먼저 거둔다 — 미리보기 URL과
+    // 서버의 미발사 파일 모두. 닫힌 뒤 완료된 업로드처럼 보존을 비켜 간 칩은 여기가 마지막
+    // 회수 지점이고, 아직 업로드 중인 칩은 완료 콜백이 취소 집합에서 자신을 발견해 거둔다.
     const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
     for (const attachment of attachmentsRef.current) {
-      if (!restoredPreviews.has(attachment.previewUrl)) URL.revokeObjectURL(attachment.previewUrl);
+      if (restoredPreviews.has(attachment.previewUrl)) continue;
+      if (attachment.uploading) {
+        canceledUploadKeysRef.current.add(attachment.key);
+        continue;
+      }
+      URL.revokeObjectURL(attachment.previewUrl);
+      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
     }
     // 첨부 칩도 초안과 같은 슬롯에서 돌아온다 — 서버 파일은 미발사분으로 남아 있어 id가 유효하다.
     setAttachments((state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
@@ -294,6 +304,19 @@ export function QuickLaunch() {
   useEffect(() => {
     if (!pinned || state.quickLaunchDraft === null) return;
     setPrompt(state.quickLaunchDraft);
+    // 복원은 교체다(텍스트와 같은 의미론) — 발사 후 새로 붙인 칩은 물러나되, 그 URL·서버 파일을
+    // 조용히 버리지 않고 거둔다. 고정 컴포저는 열림 전이(에포크 승급)가 없어 진행 중 업로드는
+    // 취소 집합으로만 회수된다.
+    const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
+    for (const attachment of attachmentsRef.current) {
+      if (restoredPreviews.has(attachment.previewUrl)) continue;
+      if (attachment.uploading) {
+        canceledUploadKeysRef.current.add(attachment.key);
+        continue;
+      }
+      URL.revokeObjectURL(attachment.previewUrl);
+      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
+    }
     // 거절과 함께 돌아온 첨부 칩도 같은 슬롯에서 되살린다(열림 전이 복원과 같은 계약).
     setAttachments((state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
       key: attachment.id,
@@ -528,17 +551,26 @@ export function QuickLaunch() {
     () => (target ? registry.plugins.find((plugin) => plugin.id === target.pluginId) : undefined),
     [registry.plugins, target],
   );
+  // 열림 전이 효과는 의존성에 플러그인을 올리지 않는다(열림에만 반응하는 계약) — 회수 호출은 ref로 읽는다.
+  const attachmentPluginRef = useRef(attachmentPlugin);
+  attachmentPluginRef.current = attachmentPlugin;
 
   const addAttachmentFiles = useCallback((files: readonly File[]) => {
+    const images = files.filter((file) => isQuickLaunchAttachmentCandidate(file));
+    // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 멘션 가드가 먼저 서면 .txt 드롭에
+    // "이미지를 보낼 수 없다"는 없는 일의 에러가 붙는다.
+    if (images.length === 0) return;
     // 멘션 전달(PTY 타이핑)은 이미지가 갈 수 없는 채널이다 — 조용히 버리지 않고 사유를 말한다.
     if (mentionTarget) {
       setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentMention");
       return;
     }
     const upload = attachmentPlugin?.uploadLaunchAttachment;
-    if (!upload) return;
-    const images = files.filter((file) => isQuickLaunchAttachmentCandidate(file));
-    if (images.length === 0) return;
+    if (!upload) {
+      // 카탈로그가 아직 도착하지 않은 창(또는 능력 미선언 대상) — 삼키지 않고 재시도를 청한다.
+      setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentUploadFailed");
+      return;
+    }
     setAttachmentErrorKey(null);
     const epoch = composerEpochRef.current;
     // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다 — ref만 보면 같은 드롭의 앞 장이 안 보인다.
@@ -559,16 +591,24 @@ export function QuickLaunch() {
       setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
       void upload(file)
         .then(({ id }) => {
-          // 다음 컴포저 세션에 도착한 완료는 버린다 — 열림 전이가 초안 슬롯에서 다시 시작하므로
-          // 이 칩은 이미 없다. 미리보기 URL도 여기서 거두지 않으면 blob 메모리가 남는다.
+          // 칩이 완료 전에 사라졌다(× 클릭·거절 복원 교체) — 방금 받은 id를 서버에서 도로 거둔다.
+          if (canceledUploadKeysRef.current.delete(key)) {
+            URL.revokeObjectURL(previewUrl);
+            void attachmentPluginRef.current?.discardLaunchAttachment?.(id).catch(() => {});
+            return;
+          }
+          // 다음 컴포저 세션에 도착한 완료도 같은 결말이다 — 열림 전이가 초안 슬롯에서 다시
+          // 시작하므로 이 칩은 이미 없고, URL과 서버 파일을 여기서 거두지 않으면 남는다.
           if (composerEpochRef.current !== epoch) {
             URL.revokeObjectURL(previewUrl);
+            void attachmentPluginRef.current?.discardLaunchAttachment?.(id).catch(() => {});
             return;
           }
           setAttachments((current) => current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)));
         })
         .catch((error: unknown) => {
           URL.revokeObjectURL(previewUrl);
+          if (canceledUploadKeysRef.current.delete(key)) return;
           if (composerEpochRef.current !== epoch) return;
           setAttachments((current) => current.filter((attachment) => attachment.key !== key));
           // 플러그인이 서버 거절 코드를 message로 실어 던진다(멘션 전달과 같은 형태).
@@ -581,33 +621,30 @@ export function QuickLaunch() {
     const found = attachmentsRef.current.find((attachment) => attachment.key === key);
     if (found) {
       URL.revokeObjectURL(found.previewUrl);
-      // 서버의 미발사분도 함께 거둔다 — best-effort라 실패해도 TTL이 회수한다.
+      // 서버의 미발사분도 함께 거둔다 — best-effort라 실패해도 TTL이 회수한다. 아직 업로드 중이면
+      // id가 없으므로 취소 집합에 남겨, 완료 콜백이 도착하는 id를 그 자리에서 거두게 한다.
       if (found.id !== null) void attachmentPlugin?.discardLaunchAttachment?.(found.id).catch(() => {});
+      else canceledUploadKeysRef.current.add(key);
     }
     setAttachments((current) => current.filter((attachment) => attachment.key !== key));
     setAttachmentErrorKey(null);
     inputRef.current?.focus();
   }, [attachmentPlugin]);
 
-  // 대상 플러그인이 능력을 선언하지 않았고 멘션 안내도 필요 없으면 paste/드롭을 아예 받지 않는다 —
-  // 가로채 놓고 조용히 버리면 기존의 "무반응"보다 나쁜, 이유 없는 삼킴이 된다.
-  const canAttachImages = !!attachmentPlugin?.uploadLaunchAttachment;
-
   const handlePaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
-    if (!canAttachImages && !mentionTarget) return;
     const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isQuickLaunchAttachmentCandidate(file));
     if (files.length === 0) return;
     // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
+    // 능력·멘션 판정은 addAttachmentFiles가 사유와 함께 말한다(조건 없는 삼킴을 만들지 않는다).
     event.preventDefault();
     addAttachmentFiles(files);
-  }, [addAttachmentFiles, canAttachImages, mentionTarget]);
+  }, [addAttachmentFiles]);
 
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
-    if (!canAttachImages && !mentionTarget) return;
     if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
     event.preventDefault();
     setDragOver(true);
-  }, [canAttachImages, mentionTarget]);
+  }, []);
 
   const handleDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
     // 자식 사이를 오가는 이동은 이탈이 아니다 — 카드 밖으로 나갈 때만 하이라이트를 내린다.
@@ -618,14 +655,13 @@ export function QuickLaunch() {
 
   const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     setDragOver(false);
-    if (!canAttachImages && !mentionTarget) return;
     const files = Array.from(event.dataTransfer?.files ?? []);
     if (files.length === 0) return;
-    // 파일이 실린 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로
-    // 내비게이션해 SPA째로 떠난다(이미지 필터는 그다음 문제다).
+    // 파일이 실린 드롭은 이미지가 아니어도, 능력 판정이 끝나기 전이어도 기본 동작을 막는다 —
+    // 막지 않으면 브라우저가 그 파일로 내비게이션해 SPA째로 떠난다(카탈로그 로딩 창 포함).
     event.preventDefault();
-    addAttachmentFiles(files.filter((file) => isQuickLaunchAttachmentCandidate(file)));
-  }, [addAttachmentFiles, canAttachImages, mentionTarget]);
+    addAttachmentFiles(files);
+  }, [addAttachmentFiles]);
 
   const closePopover = useCallback(() => setPopover(null), []);
 
@@ -675,6 +711,11 @@ export function QuickLaunch() {
   // 고정 여부는 호출 시점에 store에서 읽는다 — 멘션 전달은 비동기라, 넘길 때의 값을 닫아 두면
   // 전달 중에 고정을 푼 사용자에게 빈 모달이 닫히지 않은 채 남는다.
   const finishSubmission = useCallback((deliveredText: string | null = null) => {
+    // 발사된 칩은 두 경로 모두에서 즉시 내려놓는다 — 모달 경로에서 남기면 다음 열림 전이의
+    // 회수 루프가, 진행 중인 실행이 거절 복원용으로 들고 있는 previewUrl을 revoke해 버린다.
+    // revoke는 하지 않는다: 그 URL의 소유권은 실행 의도(성공 시 Operations 화면이 회수)로 넘어갔다.
+    setAttachments([]);
+    setAttachmentErrorKey(null);
     if (!isQuickLaunchDocked()) {
       // 제출로 닫히는 초안은 소비된 것이다 — 닫힘 전이의 보존이 이 문장을 초안으로 되살리면
       // 다음 열림이 이미 발사된 지시를 미발사처럼 싣는다.
@@ -696,10 +737,6 @@ export function QuickLaunch() {
     setMentionToken(null);
     setCommandInput(null);
     setMentionErrorKey(null);
-    // 발사된 첨부의 previewUrl은 실행 의도에 실려 나갔다 — 회수는 성공/거절을 아는 소비자(Operations
-    // 화면)의 몫이라 여기서 revoke하면 거절 복원이 깨진 이미지를 싣는다.
-    setAttachments([]);
-    setAttachmentErrorKey(null);
     // 지난 거절은 성공한 재시도와 함께 내려간다. 모달은 닫히며 버리지만 고정된 바는 닫히지 않아,
     // 사유가 남으면 이미 발사된 지시 위에 옛 실패가 붙어 있고 그동안 바가 접히지도 않는다.
     clearQuickLaunchRejection();
