@@ -156,7 +156,8 @@ export function QuickLaunch() {
       ? remembered.theaterId
       : null;
     // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
-    setPrompt(state.quickLaunchDraft ?? "");
+    const restoredPrompt = state.quickLaunchDraft ?? "";
+    setPrompt(restoredPrompt);
     consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
@@ -164,7 +165,9 @@ export function QuickLaunch() {
     setMentionTarget(null);
     setMentionActiveIndex(0);
     setMentionErrorKey(null);
-    setCommandInput(null);
+    // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
+    // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
+    setCommandInput(readCommandInput(restoredPrompt, restoredPrompt.length));
     setCommandActiveIndex(0);
     setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
     setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
