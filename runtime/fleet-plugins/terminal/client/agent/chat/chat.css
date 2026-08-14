@@ -1,0 +1,438 @@
+/* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
+   색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, 사용자 식별은
+   --id-cerulean spine+wash 문법만 쓴다. 입력창은 없다 — 하단 스트립은 입력 경로 안내다. */
+
+.agent-chat {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--ink-abyss);
+}
+
+.agent-chat-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--hairline);
+  background: var(--ink-deep);
+}
+
+.agent-chat-sess {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-sess b {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.agent-chat-sess-effort {
+  letter-spacing: 0.08em;
+}
+
+.agent-chat-cap {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  color: var(--aurora-ink);
+  border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 1px 9px;
+}
+
+.agent-chat-to-term {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-to-term:hover:not(:disabled) {
+  color: var(--text-secondary);
+  border-color: var(--hairline-strong);
+}
+
+.agent-chat-to-term:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
+}
+
+.agent-chat-log {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-5) clamp(var(--space-4), 4vw, var(--space-8)) var(--space-4);
+}
+
+.agent-chat-log > * + * {
+  margin-top: var(--space-4);
+}
+
+.agent-chat-sys {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-sys::before,
+.agent-chat-sys::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.agent-chat-sys--warn { color: var(--warn-ink); }
+.agent-chat-sys--error { color: var(--coral-ink); }
+
+.agent-chat-empty {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-tertiary);
+  padding: var(--space-8) 0;
+}
+
+/* 디스패치 카드 — Quick Launch에서 온 사용자 지시. 정체성 spine+wash(--id-cerulean)만 쓴다. */
+.agent-chat-dispatch {
+  position: relative;
+  max-width: 64ch;
+  margin-left: auto;
+  background: color-mix(in oklch, var(--id-cerulean) 7%, var(--ink-deep));
+  border: 1px solid color-mix(in oklch, var(--id-cerulean) 22%, var(--hairline));
+  border-radius: var(--radius-md);
+  padding: var(--space-2) var(--space-3);
+}
+
+.agent-chat-dispatch::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  width: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--id-cerulean);
+}
+
+.agent-chat-dispatch-kicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  margin-bottom: 3px;
+}
+
+.agent-chat-dispatch-via {
+  color: color-mix(in oklch, var(--id-cerulean) 80%, var(--text-secondary));
+}
+
+.agent-chat-dispatch-text {
+  color: var(--text-primary);
+  font-size: 13.5px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 에이전트 턴 — 좌측 스파인 노드가 상태를 신호 토큰으로만 말한다. */
+.agent-chat-turn {
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr);
+  gap: var(--space-3);
+  max-width: 72ch;
+}
+
+.agent-chat-turn-spine {
+  position: relative;
+}
+
+.agent-chat-turn-spine::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 22px;
+  bottom: 2px;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline);
+}
+
+.agent-chat-turn-node {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--positive);
+  background: var(--ink-abyss);
+}
+
+.agent-chat-turn.is-working .agent-chat-turn-node {
+  border-color: var(--aurora);
+  animation: agent-chat-node-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-chat-turn.is-working .agent-chat-turn-spine::before {
+  background: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
+}
+
+.agent-chat-turn.is-error .agent-chat-turn-node {
+  border-color: var(--coral);
+}
+
+@keyframes agent-chat-node-pulse {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; box-shadow: 0 0 10px 1px var(--aurora-glow); }
+}
+
+.agent-chat-turn-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-turn-model {
+  color: var(--provider-claude);
+}
+
+.agent-chat-turn-text {
+  margin-top: var(--space-2);
+  color: var(--text-secondary);
+  font-size: 13.5px;
+}
+
+.agent-chat-tool {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 5px var(--space-3);
+  background: var(--ink-deep);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-tool + .agent-chat-tool {
+  margin-top: var(--space-1);
+}
+
+.agent-chat-tool-name {
+  color: var(--text-secondary);
+  flex: none;
+}
+
+.agent-chat-tool-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+/* 하단 커맨드 스트립 — 입력창이 아니라 입력 경로 안내. */
+.agent-chat-strip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border-top: 1px solid var(--hairline);
+  background: var(--ink-deep);
+  padding: var(--space-2) var(--space-3);
+}
+
+.agent-chat-strip-state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-strip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+}
+
+.agent-chat-strip.is-working .agent-chat-strip-dot {
+  background: var(--aurora);
+  animation: agent-chat-node-pulse 1.6s ease-in-out infinite;
+}
+
+.agent-chat-strip-hint {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-secondary);
+  border: 1px solid var(--hairline-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0 6px;
+  background: var(--ink-mid);
+}
+
+/* 터미널 뷰 우상단의 전환 칩 — brass는 위치·포커스 채널이므로 hover에만 오른다. */
+.agent-chat-mode-chip {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--ink-mid);
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-secondary);
+  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.agent-chat-mode-chip:hover {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: 0 0 14px var(--brass-glow);
+}
+
+/* 전환 확인 — 패널 내부 오버레이. */
+.agent-chat-interstitial {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in oklch, var(--ink-abyss) 72%, transparent);
+}
+
+.agent-chat-inter-card {
+  width: min(420px, calc(100% - 48px));
+  background: var(--ink-deep);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-floating);
+  padding: var(--space-5) var(--space-6);
+}
+
+.agent-chat-inter-card h4 {
+  margin: 0 0 var(--space-2);
+  color: var(--text-primary);
+  font-size: 15px;
+  font-weight: var(--weight-bold);
+}
+
+.agent-chat-inter-card p {
+  margin: 0 0 var(--space-2);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.agent-chat-inter-fine {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-inter-error {
+  font-size: 12px;
+  color: var(--coral-ink);
+}
+
+.agent-chat-inter-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  justify-content: flex-end;
+}
+
+.agent-chat-inter-button {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.agent-chat-inter-button:hover {
+  color: var(--text-primary);
+  border-color: var(--brass);
+}
+
+.agent-chat-inter-button--primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--text-on-brass);
+}
+
+.agent-chat-inter-button--primary:hover {
+  color: var(--text-on-brass);
+}
+
+/* 휴면 카드 아래의 chat 진입 고스트 — Console 소유 dormant 카드 위 오버레이로 얹는다. */
+.agent-chat-dormant-open {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--space-6);
+  z-index: 2;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline-strong);
+  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  color: var(--text-tertiary);
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-dormant-open:hover:not(:disabled) {
+  color: var(--brass-ink);
+  border-color: var(--brass);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-turn.is-working .agent-chat-turn-node,
+  .agent-chat-strip.is-working .agent-chat-strip-dot {
+    animation: none;
+  }
+}

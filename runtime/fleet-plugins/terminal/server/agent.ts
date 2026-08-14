@@ -30,6 +30,10 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
+import { AgentChatRegistry, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
+import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
+import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
+import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown };
@@ -59,7 +63,12 @@ const CONSOLE_PTY_MESSAGE_DELIVERY = { submitDelayMs: 250 } as const;
 const RESUMED_PTY_MESSAGE_BOOT_DELAY_MS = 1500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
+const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
 const TERMINAL_PLUGIN_ID = "terminal";
+/** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
+const CHAT_MODE_PAYLOAD_KEY = "chatMode";
+/** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
+const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
 
 export async function registerAgentRoutes(
   ctx: FleetPluginServerContext,
@@ -83,6 +92,9 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/sessions/:sessionId", summary: "Delete an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/resume", summary: "Resume an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/chat", summary: "Switch an Agent session to chat mode.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Leave chat mode for an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Stream Agent chat events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
@@ -155,6 +167,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
+  // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
+  const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
+  const chatRegistry = testChatSdkFactory ? new AgentChatRegistry(testChatSdkFactory) : new AgentChatRegistry();
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
@@ -205,6 +220,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
     }
     injectRenameCommand(payload.operationId, payload.title);
+  });
+  const unsubscribeChatDelete = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
+    if (isOperationDeletedEventPayload(payload) && payload.pluginId === ctx.pluginId) void chatRegistry.dispose(payload.operationId);
   });
   const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
     if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
@@ -296,6 +314,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // resume은 /resume이 status를 dormant에서 뺀 뒤에야 TerminalSurface가 ticket을 요청한다.
       if (observability.getTerminalSessionInfo(operation.id)?.status === "dormant") {
         ctx.host.http.writeJson(res, 409, { error: "operation_dormant" });
+        return true;
+      }
+      // chat 전환 응답과 PTY 종료 사이의 좁은 창에서 stale TerminalSurface가 ticket으로
+      // 터미널을 되살리지 못하게 한다 — 터미널 복귀는 /chat DELETE + /resume 경로만이 연다.
+      if (operation.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+        ctx.host.http.writeJson(res, 409, { error: "operation_chat_mode" });
         return true;
       }
       const cwd = readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId);
@@ -424,6 +448,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "capture") return handleCapture(req, res, sessionId);
     if (action === "resume") return handleResume(req, res, sessionId);
     if (action === "message") return handleMessage(req, res, sessionId);
+    if (action === "chat") return handleChat(req, res, sessionId);
+    if (action === "chat-stream") return handleChatStream(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -542,7 +568,24 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
-    const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh, providerSession });
+    // chat 모드 Operation의 resume은 터미널 복귀다 — 진행 중 chat 턴이 있으면 같은 세션 위에
+    // 두 필자를 만들 수 없어 거절하고, 아니면 chat 세션을 접고 모드 마커를 걷은 뒤 재기동한다.
+    let resumeNode = node;
+    let resumeProviderSession = providerSession;
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+      if (chatRegistry.isBusy(sessionId)) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_busy" });
+        return true;
+      }
+      await chatRegistry.dispose(sessionId);
+      // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload로 다시 읽는다.
+      const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
+      delete cleared[CHAT_MODE_PAYLOAD_KEY];
+      ctx.host.operations.patch(sessionId, { payload: cleared });
+      resumeNode = ctx.host.operations.get(sessionId) ?? node;
+      if (!fresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
+    }
+    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh, providerSession: resumeProviderSession });
     if (!result.ok) {
       ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
@@ -660,6 +703,24 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
       return true;
     }
+    // Chat Mode Operation은 PTY가 없다 — 전달은 SDK 턴으로 실행된다. 구조화 경로라 PTY 정화를
+    // 거치지 않은 원문을 그대로 쓴다(빈 문자열·상한 검사는 위에서 끝났다).
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+      const seed = await resolveChatSeed(node);
+      if (!seed.ok) {
+        ctx.host.http.writeJson(res, seed.status, { error: seed.error });
+        return true;
+      }
+      try {
+        const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        chat.send(text.trim());
+      } catch {
+        ctx.host.http.writeJson(res, 503, { error: "chat_unavailable" });
+        return true;
+      }
+      ctx.host.http.writeJson(res, 200, { delivered: true, chat: true });
+      return true;
+    }
     const deliver = (leadChunks: readonly PtyInputChunk[] = []) => {
       const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
       // rename 주입과 같은 세션 키/writer로 직렬화해 rename+메시지 인터리브를 막는다.
@@ -699,6 +760,148 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     deliver([{ data: "", submitDelayMs: RESUMED_PTY_MESSAGE_BOOT_DELAY_MS }]);
     ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
     return true;
+  }
+
+  // ── Chat Mode ──────────────────────────────────────────────────────────────
+  // 전환(POST)·터미널 복귀 준비(DELETE). 전환은 payload 마커를 먼저 심은 뒤 PTY를 접는다 —
+  // handleExit의 payload 재작성은 기존 키를 보존하므로 마커는 dormant 전이를 지나도 남는다.
+  async function handleChat(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST" && req.method !== "DELETE") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    if (req.method === "DELETE") {
+      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+        return true;
+      }
+      if (chatRegistry.isBusy(sessionId)) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_busy" });
+        return true;
+      }
+      await chatRegistry.dispose(sessionId);
+      // dispose까지의 write-back이 providerSession을 갱신했을 수 있다 — 최신 payload에서 마커만 걷는다.
+      const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
+      delete cleared[CHAT_MODE_PAYLOAD_KEY];
+      ctx.host.operations.patch(sessionId, { payload: cleared });
+      ctx.host.http.writeJson(res, 200, { ok: true });
+      return true;
+    }
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+      ctx.host.http.writeJson(res, 200, { ok: true });
+      return true;
+    }
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok) {
+      ctx.host.http.writeJson(res, seed.status, { error: seed.error });
+      return true;
+    }
+    const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
+    if (live) {
+      // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기 중의 PTY를 접으면 그 턴을 잃는다.
+      const info = observability.getTerminalSessionInfo(sessionId);
+      if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working") {
+        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+        return true;
+      }
+    }
+    ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
+    if (live) {
+      terminalRuntime.invalidateTicketsForSession(sessionId);
+      terminalRuntime.terminate(sessionId);
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  function handleChatStream(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): boolean {
+    if (req.method !== "GET") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    let closed = false;
+    let unsubscribe: (() => void) | null = null;
+    const write = (data: string) => {
+      if (!closed && !res.writableEnded && !res.destroyed) res.write(data);
+    };
+    res.writeHead(200, {
+      "Content-Type": "text/event-stream",
+      "Cache-Control": "no-store",
+      Connection: "keep-alive",
+      "Cross-Origin-Opener-Policy": "same-origin",
+      "Cross-Origin-Resource-Policy": "same-origin",
+      "Referrer-Policy": "no-referrer",
+      "X-Content-Type-Options": "nosniff",
+    });
+    const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
+    req.on("close", () => {
+      closed = true;
+      clearInterval(keepalive);
+      unsubscribe?.();
+    });
+    void (async () => {
+      const seed = await resolveChatSeed(node);
+      if (!seed.ok) {
+        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: seed.error } })}\n\n`);
+        res.end();
+        return;
+      }
+      try {
+        const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        if (closed) return;
+        unsubscribe = chat.subscribe((entry) => write(`data: ${JSON.stringify(entry)}\n\n`));
+      } catch {
+        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: "chat_unavailable" } })}\n\n`);
+        res.end();
+      }
+    })();
+    return true;
+  }
+
+  type ChatSeedResolution =
+    | { readonly ok: true; readonly seed: AgentChatSessionSeed }
+    | { readonly ok: false; readonly status: number; readonly error: string };
+
+  async function resolveChatSeed(node: OperationNode): Promise<ChatSeedResolution> {
+    if (readPayloadString(node.payload, "cliId") !== CHAT_SUPPORTED_CLI_ID) {
+      return { ok: false, status: 409, error: "chat_unsupported" };
+    }
+    const providerSession = readProviderSession(node.payload);
+    if (!providerSession?.transcriptPath) return { ok: false, status: 409, error: "chat_transcript_missing" };
+    const transcriptPath = await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt);
+    if (!transcriptPath) return { ok: false, status: 409, error: "chat_transcript_missing" };
+    const origin = ctx.host.server.origin();
+    if (!origin) return { ok: false, status: 503, error: "chat_gateway_unavailable" };
+    const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
+    if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
+    // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
+    const model = readPayloadString(node.payload, "launchModel") || "opus[1m]";
+    const effort = chatEffortFromLaunchEffort(readPayloadString(node.payload, "launchEffort"));
+    return {
+      ok: true,
+      seed: {
+        baseUrl: resolveAnalysisGatewayBaseUrl(origin),
+        model,
+        ...(effort ? { effort } : {}),
+        cwd,
+        transcriptPath,
+        onProviderSessionUpdate: (updated) => {
+          const operation = ctx.host.operations.get(node.id);
+          if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
+          observability.updateTerminalSessionProviderSession(node.id, updated);
+        },
+      },
+    };
   }
 
   async function handleTurn(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
@@ -876,6 +1079,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
     resetOscActivity(sessionId);
+    void chatRegistry.dispose(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
@@ -886,7 +1090,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     reminderWriter.cancelAll();
     unsubscribeRename();
     unsubscribeRestore();
+    unsubscribeChatDelete();
     unsubscribeTitle();
+    await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
     await runtime.cleanup();
@@ -1009,6 +1215,21 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
     return true;
   }
+}
+
+// launch factory의 ultra는 wire effort가 아니라 하네스 능력이다 — SDK 턴에는 max로 옮긴다.
+function chatEffortFromLaunchEffort(value: string): ClaudeGatewayEffort | undefined {
+  if (value.length === 0) return undefined;
+  if (value === "ultra") return "max";
+  return (["low", "medium", "high", "xhigh", "max"] as readonly string[]).includes(value)
+    ? value as ClaudeGatewayEffort
+    : undefined;
+}
+
+function isOperationDeletedEventPayload(value: unknown): value is { readonly operationId: string; readonly pluginId: string } {
+  if (!value || typeof value !== "object") return false;
+  const event = value as { readonly operationId?: unknown; readonly pluginId?: unknown };
+  return typeof event.operationId === "string" && typeof event.pluginId === "string";
 }
 
 function isOperationRestoredEvent(value: unknown): value is { readonly operationId: string; readonly pluginId: string; readonly type: string } {
