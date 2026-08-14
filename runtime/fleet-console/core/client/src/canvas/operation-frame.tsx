@@ -45,11 +45,17 @@ interface DragState {
   readonly startX: number;
   readonly startY: number;
   readonly geometry: OperationGeometry;
+  capturing: boolean;
   latest: OperationGeometry;
 }
 
-interface ResizeState extends DragState {
+interface ResizeState {
+  readonly pointerId: number;
+  readonly startX: number;
+  readonly startY: number;
+  readonly geometry: OperationGeometry;
   readonly direction: ResizeDirection;
+  latest: OperationGeometry;
 }
 
 type ResizeDirection = "n" | "ne" | "e" | "se" | "s" | "sw" | "w" | "nw";
@@ -58,6 +64,7 @@ const RESIZE_DIRECTIONS: readonly ResizeDirection[] = ["n", "ne", "e", "se", "s"
 const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
+const DRAG_THRESHOLD_PX = 3;
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
@@ -174,24 +181,30 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     disarmClose();
     if (maximized || interactionDisabled) return;
     if (event.button !== 0) return;
-    event.preventDefault();
     event.stopPropagation();
     onActivate();
-    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry };
-    setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
+    // 제자리 클릭·더블클릭은 캡처하지 않는다 — 캡처하면 제목 버튼의 dblclick이 캡션으로 간다.
+    dragRef.current = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, geometry, latest: geometry, capturing: false };
   };
 
   const updateDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (maximized || interactionDisabled) return;
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
+    const dx = event.clientX - drag.startX;
+    const dy = event.clientY - drag.startY;
+    if (!drag.capturing) {
+      if (dx * dx + dy * dy < DRAG_THRESHOLD_PX * DRAG_THRESHOLD_PX) return;
+      drag.capturing = true;
+      setDragging(true);
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
     event.preventDefault();
     event.stopPropagation();
     const next = {
       ...drag.geometry,
-      x: drag.geometry.x + (event.clientX - drag.startX) / zoom,
-      y: drag.geometry.y + (event.clientY - drag.startY) / zoom,
+      x: drag.geometry.x + dx / zoom,
+      y: drag.geometry.y + dy / zoom,
     };
     drag.latest = next;
     onGeometryChange(next);
@@ -205,12 +218,15 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     }
     const drag = dragRef.current;
     if (!drag || drag.pointerId !== event.pointerId) return;
-    event.preventDefault();
-    event.stopPropagation();
+    const moved = drag.capturing;
     dragRef.current = null;
     setDragging(false);
-    event.currentTarget.releasePointerCapture(event.pointerId);
-    onGeometryCommit(drag.latest);
+    if (moved) {
+      event.preventDefault();
+      event.stopPropagation();
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      onGeometryCommit(drag.latest);
+    }
   };
 
   const beginResize = (direction: ResizeDirection, event: ReactPointerEvent<HTMLDivElement>) => {

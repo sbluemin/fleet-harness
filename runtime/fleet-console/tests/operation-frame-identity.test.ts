@@ -97,7 +97,9 @@ describe("OperationFrame identity rename", () => {
 
     act(() => {
       if (action === "double-click") {
-        trigger.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true }));
+        const titlebar = document.querySelector(".canvas-operation-titlebar")!;
+        trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }));
+        titlebar.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }));
         trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
         return;
       }
@@ -107,6 +109,23 @@ describe("OperationFrame identity rename", () => {
     expect(identityInput()).not.toBeNull();
     expect(document.activeElement).toBe(identityInput());
     expect(onRename).not.toHaveBeenCalled();
+  });
+
+  it("does not capture the pointer on a stationary title click so dblclick stays on the button", () => {
+    const onRename = vi.fn();
+    renderFrame(onRename, true);
+    const trigger = identityTrigger();
+    const titlebar = document.querySelector(".canvas-operation-titlebar") as HTMLElement;
+    titlebar.setPointerCapture = vi.fn();
+    const capture = titlebar.setPointerCapture as ReturnType<typeof vi.fn>;
+
+    act(() => {
+      trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 7, clientX: 12, clientY: 12, button: 0 }));
+      titlebar.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 7, clientX: 12, clientY: 12, button: 0 }));
+    });
+
+    expect(capture).not.toHaveBeenCalled();
+    expect(identityInput()).toBeNull();
   });
 
   it("marks the frame with is-top-edge when the canvas would clip the attached caption", () => {

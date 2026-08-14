@@ -997,6 +997,9 @@ describe("Instrument core design contract", () => {
     expect(rail).toContain(".right-rail-panel-head {");
     expect(rail).toContain("height: calc(100% + 28px);");
     expect(rail).toContain("grid-template-rows: 28px minmax(0, 1fr);");
+    expect(rail).toContain(".console-shell:has(.command-band.is-fullscreen:not(.is-docked)) .right-rail.is-open .right-rail-panel-slot");
+    expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
+    expect(source("canvas/operation-frame.tsx")).toContain("capturing: false");
     expect(rail).toContain("height: 28px;");
     expect(rail).not.toContain(".right-rail-panel-head-reveal");
     expect(rail).not.toContain(".right-rail-panel-peek");

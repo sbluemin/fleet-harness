@@ -67,6 +67,13 @@
   grid-template-rows: 28px minmax(0, 1fr);
 }
 
+/* 언독 풀스크린은 밴드가 흐름에서 빠져 .console-route-content가 뷰포트 최상단이다.
+   그 조상이 overflow:hidden이라 -28px 연장은 캡션을 잘라낸다 — 슬롯 안으로 접는다. */
+.console-shell:has(.command-band.is-fullscreen:not(.is-docked)) .right-rail.is-open .right-rail-panel-slot {
+  margin-top: 0;
+  height: 100%;
+}
+
 .right-rail.is-overlay .right-rail-panel-slot {
   position: absolute;
   right: 44px;
