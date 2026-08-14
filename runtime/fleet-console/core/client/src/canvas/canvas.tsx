@@ -18,7 +18,7 @@ import { resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
+import { calculateGridSlots, animateViewportTo, claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, enforceStationKeeping, focusOperation, forceDropCompanionOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterMinimizedIds, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, prefersReducedMotion, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, setTheaterOperationMinimized, settleOperationGeometry, setViewport, useCanvasState, useCompanionOperationId, useCompanionPanelVisibilityOverrides, useFormationLayout, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "./canvas-store.js";
 import { escapeSelectorValue, flyPanelMotionGhost, playMinimizeFlight } from "./panel-motion.js";
 import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
@@ -75,8 +75,9 @@ interface PluginOperationRendererProps {
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
 /* components.css의 .canvas-operation-titlebar top(-28px)과 짝을 이루는 상수.
-   캡션은 본문·PTY geometry 밖에 붙는 패널 속성이라, 이 높이만큼만 캔버스 클립을 본다. */
-const TITLEBAR_OUTSET_PX = 28;
+   캡션은 본문·PTY geometry 밖에 붙는 패널 속성이라, 이 높이만큼만 캔버스 클립을 본다.
+   행 보폭은 calculateGridSlots가 같은 상수를 쓴다. */
+const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT;
 // 프리뷰 config는 identity 비교로 재발행이 억제되므로 공유 불변 배열을 쓴다.
 const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 
