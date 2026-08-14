@@ -1,4 +1,4 @@
-export const PROVIDER_ORDER_DEFAULT = ["claude", "codex", "xai", "cursor", "opencode", "kimi"] as const;
+export const PROVIDER_ORDER_DEFAULT = ["claude", "codex", "xai", "cursor", "kimi"] as const;
 export type ProviderId = (typeof PROVIDER_ORDER_DEFAULT)[number];
 
 export function isProviderId(value: unknown): value is ProviderId {

@@ -88,7 +88,6 @@ export interface QuotaSummaryDto {
     readonly codex: ProviderDto;
     readonly cursor: ProviderDto;
     readonly kimi: ProviderDto;
-    readonly opencode: ProviderDto;
     readonly xai: ProviderDto;
   };
 }

@@ -11,8 +11,7 @@ vi.mock("@dotobokuri/fleet-analyst", () => ({ AnalystSession: class {} }));
 import { analysisArtifactUrl } from "../../client/agent/analysis-api.js";
 import { AnalysisRegistry, MAX_ANALYSIS_ARTIFACTS, MAX_STOPPED_ANALYSIS_ARTIFACTS } from "./analysis-registry.js";
 import { ANALYSIS_ARTIFACT_CSP, registerAnalysisRoutes } from "./analysis-routes.js";
-// core-ai-gateway의 루트 facade는 `node:sqlite`를 동적 import한다. 이 스위트가 그것을 번들하려
-// 들면 수집 단계에서 죽으므로, 여기서 쓰는 세 표면만 세워 둔다.
+// 이 스위트는 게이트웨이 카탈로그·런타임을 jsdom 수집에 끌어오지 않는다. 여기서 쓰는 세 표면만 세운다.
 vi.mock("@dotobokuri/core-ai-gateway", () => ({
   AI_GATEWAY_ROUTE_SEGMENT: "ai-gateway",
   resolveAiGatewaySelection: () => ({ models: [] }),
@@ -72,7 +71,7 @@ describe("Session Analyst server contract", () => {
       { modelId: "opus", name: "Claude Opus", effort: { supported: true, levels: ["low", "high"], default: "xhigh" } },
     ];
     // 카탈로그 내용이 아니라 두 갈래가 한 목록으로 합쳐지는지를 본다. 실제 카탈로그를 import하면
-    // 이 스위트가 core-ai-gateway 전체(node:sqlite 포함)를 번들하려다 죽는다.
+    // 이 스위트가 core-ai-gateway 전체를 번들하려다 수집 단계에서 죽는다.
     const gateway = [{
       id: "codex--gpt-5.6-luna-fast",
       displayName: "GPT-5.6-Luna-Fast",

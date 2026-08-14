@@ -27,7 +27,6 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   codex: "Codex",
   cursor: "Cursor",
   kimi: "Kimi",
-  opencode: "OpenCode Go",
   xai: "xAI",
 };
 
@@ -36,7 +35,6 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.codex.signedOut",
   cursor: "quota.cursor.signedOut",
   kimi: "quota.kimi.signedOut",
-  opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
 
@@ -45,7 +43,6 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.expired.codex",
   cursor: "quota.expired.cursor",
   kimi: "quota.expired.kimi",
-  opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
@@ -56,7 +53,6 @@ export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> 
   codex: "quota.noSubscription",
   cursor: "quota.noSubscription",
   kimi: "quota.kimi.noSubscription",
-  opencode: "quota.noSubscription",
   xai: "quota.noSubscription",
 };
 
@@ -392,13 +388,6 @@ function ProviderCard({
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}
-      {/* OpenCode Go에는 키 인증 사용량 API가 없다. 창은 이 기기 opencode CLI 로그의
-          관측 스펜딩이고(OpenUsage 방식), 로컬 데이터가 없으면 그 사실만 정직하게 알린다. */}
-      {id === "opencode" && (provider.status === "ok" || provider.status === "stale")
-        ? (provider.windows?.length ?? 0) === 0
-          ? <div className="quota-signed-out">{t("quota.opencode.noLocalData")}</div>
-          : <div className="quota-signed-out">{t("quota.opencode.observedLocal")}</div>
-        : null}
       {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
         <div className="quota-credits">
           <span>{t("quota.credits", { n: provider.credits.available })}</span>
@@ -642,7 +631,6 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     data?.providers.codex.fetchedAt ?? 0,
     data?.providers.cursor.fetchedAt ?? 0,
     data?.providers.kimi.fetchedAt ?? 0,
-    data?.providers.opencode.fetchedAt ?? 0,
     data?.providers.xai.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
