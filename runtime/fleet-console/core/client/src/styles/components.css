@@ -5832,7 +5832,8 @@
   min-height: 28px;
   height: 28px;
   padding: 0 var(--space-2);
-  border: 1px solid var(--surface-rim);
+  /* 보더는 패널 아웃라인을 잇는다 — 활성 전용 틴트는 같은 신호를 캡션에 한 번 더 칠한다. */
+  border: 1px solid inherit;
   border-bottom: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
@@ -5846,11 +5847,6 @@
 
 .canvas-operation-titlebar:active {
   cursor: grabbing;
-}
-
-.canvas-operation.is-active .canvas-operation-titlebar {
-  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
-  background: color-mix(in oklch, var(--brass) 7%, var(--surface-frame));
 }
 
 .canvas-operation-identity-name,
@@ -5876,10 +5872,6 @@
 }
 
 .canvas-operation-identity-name:hover {
-  color: var(--text-primary);
-}
-
-.canvas-operation.is-active .canvas-operation-identity-name {
   color: var(--text-primary);
 }
 
