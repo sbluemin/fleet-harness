@@ -991,17 +991,19 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
-    // Doctrine: the panel head is a 28px caption attached above the slot. It does
+    // Doctrine: the panel head is a 32px caption attached above the slot. It does
     // not take a body row and does not hover-reveal. The body keeps the full slot
     // height; PTY/plugin geometry is unaware of the caption.
     expect(rail).toContain(".right-rail-panel-head {");
-    expect(rail).toContain("grid-template-rows: 28px minmax(0, 1fr);");
-    expect(rail).not.toContain("height: calc(100% + 28px);");
+    expect(rail).toContain("grid-template-rows: 32px minmax(0, 1fr);");
+    expect(rail).not.toContain("height: calc(100% + 32px);");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
     expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
     expect(source("canvas/operation-frame.tsx")).toContain("capturing: false");
-    expect(rail).toContain("height: 28px;");
+    const railHead = rail.match(/^\.right-rail-panel-head \{[^}]*\}/m)?.[0] ?? "";
+    expect(railHead).toContain("height: 32px;");
+    expect(railHead).toContain("min-height: 32px;");
     expect(rail).not.toContain(".right-rail-panel-head-reveal");
     expect(rail).not.toContain(".right-rail-panel-peek");
     expect(rightRail).not.toContain("HEAD_REVEAL_INTENT_DELAY_MS");
@@ -1662,11 +1664,13 @@ describe("Instrument core design contract", () => {
     expect(source("pages/operations.tsx")).toContain("onRename={handleRename}");
     expect(components).toContain(".canvas-operation-identity-name,");
     expect(components).toContain("font-family: var(--font-body);");
-    expect(components).toContain("font-size: calc(var(--font-body-size) * 0.86);");
+    expect(components).toContain("font-size: calc(var(--font-body-size) * 0.92);");
     const identityInputBlock = components.match(/^\.canvas-operation-identity-input \{\n  flex: 1 1 auto;[^}]*\}/m)?.[0] ?? "";
     expect(identityInputBlock).toContain("width: min(28ch, 34vw);");
     expect(identityInputBlock).not.toContain("width: 0;");
-    expect(components).toContain("top: -28px;");
+    expect(components).toContain("top: -32px;");
+    expect(components).toContain("background-clip: padding-box;");
+    expect(components).toContain(".canvas-operation:has(> .canvas-operation-titlebar) {");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("color: var(--text-secondary);");
     // 활성은 패널 아웃라인만 말한다 — 캡션 brass 틴트와 이름 재채색은 같은 신호를 중복한다.
@@ -1693,14 +1697,14 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
-    // Tactical/War Room/최대화는 슬롯을 28px 내려 캡션을 본문 밖에 둔다.
-    // Tactical grid/rows 행 보폭은 같은 28px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
-    expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 28");
+    // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 본문 밖에 둔다.
+    // Tactical grid/rows 행 보폭은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
+    expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
     expect(source("canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
-    expect(source("canvas/coordinates.ts")).toContain("y: 18 + 28");
+    expect(source("canvas/coordinates.ts")).toContain("y: 18 + 32");
     expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-beacon-button {");

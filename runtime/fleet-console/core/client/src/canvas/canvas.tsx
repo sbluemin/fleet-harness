@@ -74,7 +74,7 @@ interface PluginOperationRendererProps {
 
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
-/* components.css의 .canvas-operation-titlebar top(-28px)과 짝을 이루는 상수.
+/* components.css의 .canvas-operation-titlebar top(-32px)과 짝을 이루는 상수.
    캡션은 본문·PTY geometry 밖에 붙는 패널 속성이라, 이 높이만큼만 캔버스 클립을 본다.
    행 보폭은 calculateGridSlots가 같은 상수를 쓴다. */
 const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT;
@@ -875,8 +875,8 @@ export function OperationsCanvas({
               ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
               : companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
-          // 보더 위 캡션(top: -28px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
-          // Tactical/War Room/최대화는 슬롯을 28px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
+          // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
+          // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {

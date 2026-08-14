@@ -42,7 +42,7 @@
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
-   폭 전환으로 spring 펼침/접힘을 구현한다. 캡션은 슬롯을 위로 28px
+   폭 전환으로 spring 펼침/접힘을 구현한다. 캡션은 슬롯을 위로 32px
    연장해 붙이고, 본문 1fr은 원래 높이를 유지한다. */
 .right-rail-panel-slot {
   position: relative;
@@ -58,8 +58,8 @@
 .right-rail.is-open .right-rail-panel-slot {
   width: var(--right-rail-panel-width, 312px);
   /* 캡션은 슬롯 첫 행. 조상 route-content가 overflow:hidden이라 밴드 쪽으로
-     연장하면 잘리거나 밴드를 덮는다. Operation PTY와 달리 Rail 본문은 28px를 내준다. */
-  grid-template-rows: 28px minmax(0, 1fr);
+     연장하면 잘리거나 밴드를 덮는다. Operation PTY와 달리 Rail 본문은 32px를 내준다. */
+  grid-template-rows: 32px minmax(0, 1fr);
 }
 
 .right-rail.is-overlay .right-rail-panel-slot {
@@ -69,7 +69,7 @@
   bottom: 0;
   margin-top: 0;
   height: auto;
-  grid-template-rows: 28px minmax(0, 1fr);
+  grid-template-rows: 32px minmax(0, 1fr);
   width: var(--right-rail-panel-width, 0px);
   border-left: 1px solid var(--surface-rim);
   /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
@@ -99,7 +99,7 @@
 }
 
 /* ── 패널 캡션 ─────────────────────────────────────────────────────
-   슬롯이 위로 28px 연장한 첫 행. 본문 1fr은 원래 높이다. 호버-리빌이 아니다. */
+   슬롯이 위로 32px 연장한 첫 행. 본문 1fr은 원래 높이다. 호버-리빌이 아니다. */
 .right-rail-panel-head {
   position: relative;
   z-index: 3;
@@ -107,8 +107,8 @@
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  height: 28px;
-  min-height: 28px;
+  height: 32px;
+  min-height: 32px;
   min-width: 0;
   padding: 0 8px;
   border: 1px solid var(--surface-rim);
