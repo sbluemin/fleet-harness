@@ -42,8 +42,8 @@
 }
 
 /* ── 패널 슬롯 ─────────────────────────────────────────────────────
-   overflow:hidden + width 전환으로 spring 펼침/접힘을 구현한다.
-   min-width는 애니메이션 중 내부 레이아웃 흔들림을 방지한다.        */
+   폭 전환으로 spring 펼침/접힘을 구현한다. 캡션은 슬롯을 위로 28px
+   연장해 붙이고, 본문 1fr은 원래 높이를 유지한다. */
 .right-rail-panel-slot {
   position: relative;
   width: 0;
@@ -51,13 +51,15 @@
   max-width: calc(100vw - 148px);
   overflow: hidden;
   display: grid;
-  /* 헤더는 호버-리빌 오버레이(absolute)로 빠져 본문이 슬롯 전체 높이를 쓴다. */
   grid-template-rows: minmax(0, 1fr);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
 .right-rail.is-open .right-rail-panel-slot {
   width: var(--right-rail-panel-width, 312px);
+  /* 캡션은 슬롯 첫 행. 조상 route-content가 overflow:hidden이라 밴드 쪽으로
+     연장하면 잘리거나 밴드를 덮는다. Operation PTY와 달리 Rail 본문은 28px를 내준다. */
+  grid-template-rows: 28px minmax(0, 1fr);
 }
 
 .right-rail.is-overlay .right-rail-panel-slot {
@@ -65,6 +67,9 @@
   right: 44px;
   top: 0;
   bottom: 0;
+  margin-top: 0;
+  height: auto;
+  grid-template-rows: 28px minmax(0, 1fr);
   width: var(--right-rail-panel-width, 0px);
   border-left: 1px solid var(--surface-rim);
   /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
@@ -93,64 +98,23 @@
   pointer-events: none;
 }
 
-/* ── 호버-리빌 헤더 ─────────────────────────────────────────────────
-   세 통제(타이틀·플로팅·닫기)는 전부 저빈도 set-and-forget이라 46px 상주 대신
-   상단 접근 시에만 본문 위 오버레이로 소환한다(진입 판정은 right-rail.tsx의
-   pointermove+의도 지연 계약). 숨김은 opacity+transform으로만 처리해 Tab
-   포커스 진입이 리빌 경로로 남는다. */
-.right-rail-panel-head-reveal {
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  z-index: 3;
-  transform: translateY(-100%);
-  opacity: 0;
-  pointer-events: none;
-  border-bottom: 1px solid var(--surface-rim);
-  /* 본문 위에 얹히는 오버레이라 glass 카드와 같은 불투명 언더레이가 필요하다. */
-  background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
-  /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
-  box-shadow: 0 10px 26px oklch(0% 0 0 / 40%);
-  transition: transform 180ms var(--ease-spring), opacity 140ms ease;
-}
-
-.right-rail-panel-head-reveal.is-revealed {
-  transform: none;
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* 리빌 힌트 — 헤더가 숨어 있음을 알리는 유일한 상주 크롬(3px 대시). */
-.right-rail-panel-peek {
-  position: absolute;
-  top: 5px;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 30px;
-  height: 3px;
-  border-radius: 2px;
-  z-index: 2;
-  background: var(--text-tertiary);
-  opacity: 0.32;
-  pointer-events: none;
-  transition: opacity 140ms ease;
-}
-
-.right-rail-panel-head-reveal.is-revealed + .right-rail-panel-peek {
-  opacity: 0;
-}
-
+/* ── 패널 캡션 ─────────────────────────────────────────────────────
+   슬롯이 위로 28px 연장한 첫 행. 본문 1fr은 원래 높이다. 호버-리빌이 아니다. */
 .right-rail-panel-head {
   position: relative;
-  z-index: 1;
+  z-index: 3;
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
   gap: 6px;
-  padding: 9px 44px 9px 10px;
-  min-height: 46px;
-  min-width: 240px;
+  height: 28px;
+  min-height: 28px;
+  min-width: 0;
+  padding: 0 8px;
+  border: 1px solid var(--surface-rim);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
 }
 
 .right-rail-panel-title {
@@ -168,8 +132,8 @@
 
 .right-rail-float-toggle {
   flex: none;
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   display: inline-grid;
   place-items: center;
   padding: 0;
@@ -182,8 +146,8 @@
 }
 
 .right-rail-float-toggle svg {
-  width: 14px;
-  height: 14px;
+  width: 12px;
+  height: 12px;
   display: block;
 }
 
@@ -213,8 +177,8 @@
   gap: 6px;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-sm);
-  padding: 0 7px;
-  height: 24px;
+  padding: 0 6px;
+  height: 20px;
 }
 
 .right-rail-alpha-slider {
@@ -223,7 +187,7 @@
   flex: 1 1 44px;
   width: 64px;
   min-width: 44px;
-  height: 20px;
+  height: 16px;
   background: transparent;
   cursor: pointer;
 }
@@ -296,25 +260,33 @@
 }
 
 .right-rail-close-btn {
-  position: absolute;
-  top: 9px;
-  right: 10px;
-  width: 24px;
-  height: 24px;
+  margin-left: auto;
+  width: 20px;
+  height: 20px;
   flex: none;
   display: inline-grid;
   place-items: center;
-  border-radius: var(--radius-xs);
+  border-radius: var(--radius-sm);
   background: none;
-  border: none;
+  border: 1px solid transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  transition: color 140ms, background 140ms;
+  transition: color 140ms, background 140ms, border-color 140ms;
 }
 
-.right-rail-close-btn:hover {
-  color: var(--text-primary);
-  background: var(--surface-glass);
+.right-rail-close-btn svg {
+  width: 12px;
+  height: 12px;
+  display: block;
+}
+
+.right-rail-close-btn:hover,
+.right-rail-close-btn:focus-visible {
+  color: var(--brass-bright);
+  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
+  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
+  outline-offset: 2px;
 }
 
 .right-rail-panel-body {
@@ -490,6 +462,7 @@
   width: 0;
   border-color: transparent;
   visibility: hidden;
+  overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 200ms;
 }
 
@@ -497,8 +470,7 @@
 @media (prefers-reduced-motion: reduce) {
   .right-rail,
   .right-rail-panel-slot,
-  .right-rail-panel-head-reveal,
-  .right-rail-panel-peek {
+  .right-rail-panel-head {
     transition: none !important;
   }
 

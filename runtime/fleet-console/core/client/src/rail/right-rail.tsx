@@ -25,14 +25,6 @@ interface RightRailProps {
 
 const MIN_PANEL_WIDTH = 240;
 const DEFAULT_PANEL_WIDTH = 312;
-// 호버-리빌 헤더 입력 계약: 진입은 pointermove로만 판정하고(스크롤-언더-포인터 오발화 방지)
-// 의도 지연을 거친다. 진입 띠와 64px 이탈 경계 사이는 히스테리시스 중립 지대다.
-// 진입 띠는 패널 본문 상단 컨트롤(Skills 탭 등)의 클릭을 방해하지 않도록 가장자리
-// 12px로 좁게 잡는다 — 24px에서는 상단 첫 줄 컨트롤로 향하는 호버가 헤더를 오발화했다.
-const HEAD_REVEAL_ZONE_PX = 12;
-const HEAD_REVEAL_TOUCH_ZONE_PX = 28;
-const HEAD_HIDE_BOUNDARY_PX = 64;
-const HEAD_REVEAL_INTENT_DELAY_MS = 120;
 const PREFS_PANEL_WIDTHS = "fleet-console.rail.panelWidths";
 const LEGACY_PREFS_PANEL_WIDTH = "fleet-console.rail.panelWidth";
 
@@ -138,86 +130,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const panelWidthRef = useRef(panelWidth);
   const [isDragging, setIsDragging] = useState(false);
   const [isSwitching, setIsSwitching] = useState(false);
-  const [headRevealed, setHeadRevealed] = useState(false);
-  const headRevealedRef = useRef(headRevealed);
-  headRevealedRef.current = headRevealed;
-  const revealIntentTimerRef = useRef<number | null>(null);
-
-  const cancelRevealIntent = useCallback(() => {
-    if (revealIntentTimerRef.current === null) return;
-    window.clearTimeout(revealIntentTimerRef.current);
-    revealIntentTimerRef.current = null;
-  }, []);
-
-  const holdHeadOpen = useCallback(() => {
-    cancelRevealIntent();
-    if (!headRevealedRef.current) setHeadRevealed(true);
-  }, [cancelRevealIntent]);
-
-  const hideHeadUnlessFocused = useCallback(() => {
-    // 키보드 포커스(:focus-visible)가 헤더 안에 남아 있는 동안만 숨기지 않는다 — 숨기면
-    // 포커스가 투명한 컨트롤에 갇힌다. 마우스 클릭·드래그가 남긴 잔류 포커스는 리빌을
-    // 붙잡는 근거가 아니므로, 블러로 걷어내고 즉시 숨긴다.
-    const active = document.activeElement;
-    if (active instanceof HTMLElement && active.closest(".right-rail-panel-head-reveal") !== null) {
-      if (active.matches(":focus-visible")) return;
-      active.blur();
-    }
-    setHeadRevealed(false);
-  }, []);
-
-  // 이탈은 지연 없이 즉시 숨긴다 — 리빌 진입만 의도 지연을 거친다.
-  const releaseHead = useCallback(() => {
-    cancelRevealIntent();
-    if (!headRevealedRef.current) return;
-    hideHeadUnlessFocused();
-  }, [cancelRevealIntent, hideHeadUnlessFocused]);
-
-  // 패널이 바뀌거나 닫히면 리빌 상태를 초기화한다.
-  useLayoutEffect(() => {
-    cancelRevealIntent();
-    setHeadRevealed(false);
-  }, [activeId, cancelRevealIntent]);
-
-  useLayoutEffect(() => () => {
-    cancelRevealIntent();
-  }, [cancelRevealIntent]);
-
-  const handleSlotPointerMove = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    // 진입 판정은 hover 포인터에만 적용한다. 터치는 pointerdown 폴백이 담당한다.
-    if (event.pointerType === "touch") return;
-    const slotTop = event.currentTarget.getBoundingClientRect().top;
-    const y = event.clientY - slotTop;
-    if (y <= HEAD_REVEAL_ZONE_PX) {
-      if (headRevealedRef.current || revealIntentTimerRef.current !== null) return;
-      revealIntentTimerRef.current = window.setTimeout(() => {
-        revealIntentTimerRef.current = null;
-        setHeadRevealed(true);
-      }, HEAD_REVEAL_INTENT_DELAY_MS);
-      return;
-    }
-    cancelRevealIntent();
-    if (y > HEAD_HIDE_BOUNDARY_PX) releaseHead();
-  }, [cancelRevealIntent, releaseHead]);
-
-  const handleSlotPointerLeave = useCallback(() => {
-    releaseHead();
-  }, [releaseHead]);
-
-  const handleSlotPointerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    if (event.pointerType !== "touch") return;
-    const slotTop = event.currentTarget.getBoundingClientRect().top;
-    const y = event.clientY - slotTop;
-    if (!headRevealedRef.current) {
-      // 상단 가장자리 탭 = 리빌. preventDefault 없이 콘텐츠 탭도 그대로 통과시킨다.
-      if (y <= HEAD_REVEAL_TOUCH_ZONE_PX) holdHeadOpen();
-      return;
-    }
-    const target = event.target instanceof Element ? event.target : null;
-    if (target?.closest(".right-rail-panel-head-reveal") === null) {
-      hideHeadUnlessFocused();
-    }
-  }, [hideHeadUnlessFocused, holdHeadOpen]);
 
   useLayoutEffect(() => {
     const onResize = () => {
@@ -362,9 +274,6 @@ export function RightRail({ theaterId, api }: RightRailProps) {
         style={panelBehavior === "overlay"
           ? { "--right-rail-overlay-alpha": overlayAlpha / 100 } as CSSProperties
           : undefined}
-        onPointerMove={hasPanel ? handleSlotPointerMove : undefined}
-        onPointerLeave={hasPanel ? handleSlotPointerLeave : undefined}
-        onPointerDown={hasPanel ? handleSlotPointerDown : undefined}
       >
         {activePanel && (
           <div
@@ -387,11 +296,7 @@ export function RightRail({ theaterId, api }: RightRailProps) {
               activePanelTitle={activePanelTitle}
               panelBehavior={panelBehavior}
               overlayAlpha={overlayAlpha}
-              revealed={headRevealed}
-              onHoldOpen={holdHeadOpen}
-              onRelease={releaseHead}
             />
-            <div className="right-rail-panel-peek" aria-hidden="true" />
             <RailPanelBody activePanel={activePanel} activeId={activeId} ctx={ctx} connection={connection} connectionLostAt={connectionLostAt} language={language} />
           </>
         )}
@@ -417,81 +322,56 @@ interface RailPanelHeadProps {
   readonly activePanelTitle: string;
   readonly panelBehavior: "push" | "overlay";
   readonly overlayAlpha: RailOverlayAlpha;
-  readonly revealed: boolean;
-  readonly onHoldOpen: () => void;
-  readonly onRelease: () => void;
 }
 
-// 헤더의 세 통제(타이틀·플로팅·닫기)는 전부 저빈도라 상시 46px 대신 호버-리빌
-// 오버레이로 소환한다. 숨김 상태에서도 DOM에 남아 Tab 진입(focus)이 리빌 경로가 된다.
-function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha, revealed, onHoldOpen, onRelease }: RailPanelHeadProps) {
+// 캡션은 본문 높이를 빼지 않고 슬롯 위에 붙는 패널 속성이다. Esc는 헤더 포커스 범위로만 닫는다.
+function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha }: RailPanelHeadProps) {
   const t = useT();
-
-  const handlePointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
-    // slot의 진입/이탈 판정으로 버블되면 46px 헤더 하단부(y>24px)가 이탈로 오판된다.
-    event.stopPropagation();
-    onHoldOpen();
-  };
-
-  const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
-    if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
-    onRelease();
-  };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape") return;
-    // Esc 닫기는 헤더 포커스 범위로 한정한다 — 패널 본문(Shell PTY 등)의 Esc 어휘를 뺏지 않는다.
     event.stopPropagation();
     closeRailPanel();
   };
 
   return (
-    <div
-      className={`right-rail-panel-head-reveal${revealed ? " is-revealed" : ""}`}
-      onPointerMove={handlePointerMove}
-      onPointerLeave={onRelease}
-      onFocusCapture={onHoldOpen}
-      onBlurCapture={handleBlur}
-      onKeyDown={handleKeyDown}
-    >
-      <div className="right-rail-panel-head">
-        <span className="right-rail-panel-title">{activePanelTitle}</span>
-        <button
-          className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
-          type="button"
-          aria-pressed={panelBehavior === "overlay"}
-          aria-label={t("rail.chrome.floatToggle")}
-          title={t("rail.chrome.floatLabel")}
-          onClick={toggleRailPanelBehavior}
-        >
-          <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><rect x="7.5" y="7.5" width="5" height="4" rx="1" fill="currentColor" /></svg>
-        </button>
-        {panelBehavior === "overlay" ? (
-          <div className="right-rail-alpha">
-            <input
-              className="right-rail-alpha-slider"
-              type="range"
-              min={RAIL_OVERLAY_ALPHA_MIN}
-              max={RAIL_OVERLAY_ALPHA_MAX}
-              step={1}
-              value={overlayAlpha}
-              aria-label={t("rail.chrome.opacityAria")}
-              onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
-              onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
-              style={{ "--alpha-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
-            />
-            <span className="right-rail-alpha-value" aria-hidden="true">{overlayAlpha}%</span>
-          </div>
-        ) : null}
-        <button
-          className="right-rail-close-btn"
-          type="button"
-          aria-label={t("rail.chrome.closePanel", { title: activePanelTitle })}
-          onClick={closeRailPanel}
-        >
-          ✕
-        </button>
-      </div>
+    <div className="right-rail-panel-head" onKeyDown={handleKeyDown}>
+      <span className="right-rail-panel-title">{activePanelTitle}</span>
+      <button
+        className={`right-rail-float-toggle${panelBehavior === "overlay" ? " is-active" : ""}`}
+        type="button"
+        aria-pressed={panelBehavior === "overlay"}
+        aria-label={t("rail.chrome.floatToggle")}
+        title={t("rail.chrome.floatLabel")}
+        onClick={toggleRailPanelBehavior}
+      >
+        <svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="1.5" stroke="currentColor" /><rect x="7.5" y="7.5" width="5" height="4" rx="1" fill="currentColor" /></svg>
+      </button>
+      {panelBehavior === "overlay" ? (
+        <div className="right-rail-alpha">
+          <input
+            className="right-rail-alpha-slider"
+            type="range"
+            min={RAIL_OVERLAY_ALPHA_MIN}
+            max={RAIL_OVERLAY_ALPHA_MAX}
+            step={1}
+            value={overlayAlpha}
+            aria-label={t("rail.chrome.opacityAria")}
+            onChange={(event) => setRailOverlayAlpha(Number(event.currentTarget.value))}
+            onDoubleClick={() => setRailOverlayAlpha(RAIL_OVERLAY_ALPHA_DEFAULT)}
+            style={{ "--alpha-fill": `${((overlayAlpha - RAIL_OVERLAY_ALPHA_MIN) / (RAIL_OVERLAY_ALPHA_MAX - RAIL_OVERLAY_ALPHA_MIN)) * 100}%` } as CSSProperties}
+          />
+          <span className="right-rail-alpha-value" aria-hidden="true">{overlayAlpha}%</span>
+        </div>
+      ) : null}
+      <button
+        className="right-rail-close-btn"
+        type="button"
+        aria-label={t("rail.chrome.closePanel", { title: activePanelTitle })}
+        onClick={closeRailPanel}
+      >
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M4.6 4.6 11.4 11.4M11.4 4.6 4.6 11.4" fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" /></svg>
+      </button>
     </div>
   );
 }

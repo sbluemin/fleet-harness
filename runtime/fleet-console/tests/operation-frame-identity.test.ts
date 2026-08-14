@@ -87,7 +87,7 @@ describe("OperationFrame identity rename", () => {
     expect(children[1]?.className).toBe("canvas-operation-beacon-button");
     expect(children[2]?.className).toBe("canvas-operation-window-controls");
     expect(document.querySelectorAll(".canvas-operation-window-controls .canvas-operation-icon-button")).toHaveLength(3);
-    expect(identityTrigger().title).toBe("A deliberately long Operation title — Double-click, Enter, or F2 to rename");
+    expect(identityTrigger().title).toBe("A deliberately long Operation title — Drag to move. Double-click, Enter, or F2 to rename");
   });
 
   it.each(["double-click", "Enter", "F2"])("renders active identity and begins rename with %s", (action) => {
@@ -97,7 +97,9 @@ describe("OperationFrame identity rename", () => {
 
     act(() => {
       if (action === "double-click") {
-        trigger.dispatchEvent(new Event("pointerdown", { bubbles: true, cancelable: true }));
+        const titlebar = document.querySelector(".canvas-operation-titlebar")!;
+        trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }));
+        titlebar.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 1, clientX: 10, clientY: 10, button: 0 }));
         trigger.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
         return;
       }
@@ -109,7 +111,24 @@ describe("OperationFrame identity rename", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
-  it("marks the frame with is-top-edge so the nameplate insets under the canvas clip", () => {
+  it("does not capture the pointer on a stationary title click so dblclick stays on the button", () => {
+    const onRename = vi.fn();
+    renderFrame(onRename, true);
+    const trigger = identityTrigger();
+    const titlebar = document.querySelector(".canvas-operation-titlebar") as HTMLElement;
+    titlebar.setPointerCapture = vi.fn();
+    const capture = titlebar.setPointerCapture as ReturnType<typeof vi.fn>;
+
+    act(() => {
+      trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 7, clientX: 12, clientY: 12, button: 0 }));
+      titlebar.dispatchEvent(new PointerEvent("pointerup", { bubbles: true, cancelable: true, pointerId: 7, clientX: 12, clientY: 12, button: 0 }));
+    });
+
+    expect(capture).not.toHaveBeenCalled();
+    expect(identityInput()).toBeNull();
+  });
+
+  it("marks the frame with is-top-edge when the canvas would clip the attached caption", () => {
     renderFrame(vi.fn(), false, true);
     expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
   });
@@ -139,9 +158,14 @@ describe("OperationFrame identity rename", () => {
       trigger.dispatchEvent(new KeyboardEvent("keydown", { key: action, bubbles: true, cancelable: true }));
     });
 
-    expect(onActivate).not.toHaveBeenCalled();
+    if (action === "double-click") {
+      // 제목은 캡션 드래그 면이라 pointerdown이 창을 활성화한다. 이름 변경은 더블클릭이 연다.
+      expect(onActivate).toHaveBeenCalled();
+    } else {
+      expect(onActivate).not.toHaveBeenCalled();
+      expect(document.querySelector(".canvas-operation")?.classList.contains("is-active")).toBe(false);
+    }
     expect(identityInput()).not.toBeNull();
-    expect(document.querySelector(".canvas-operation")?.classList.contains("is-active")).toBe(false);
   });
 });
 

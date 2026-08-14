@@ -4344,7 +4344,8 @@
   min-height: 200px;
   overflow: visible;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-lg);
+  /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   /* 창 프레임은 --surface-frame — 라이트에서 최암면이 되지 않도록 밴드와 같은 크롬 패밀리를 탄다. */
   background: var(--surface-frame);
   box-shadow: var(--shadow-soft);
@@ -4399,16 +4400,16 @@
    클립과 일치해 검은 갭 없이 단일 표면을 유지한다.
    드래그/리사이즈가 차단된 상태이므로 코너 필의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
-  border-radius: calc(var(--radius-xl) - 1px);
+  border-radius: 0 0 calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px);
 }
 
 .canvas-operation.is-maximized .canvas-operation-titlebar {
-  top: var(--space-2);
   cursor: default;
+  border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
 }
 
 .canvas-operation.is-maximized .canvas-operation-terminal {
-  border-radius: calc(var(--radius-xl) - 2px);
+  border-radius: 0 0 calc(var(--radius-xl) - 2px) calc(var(--radius-xl) - 2px);
 }
 
 .canvas-operation.is-triage-stage {
@@ -4425,7 +4426,6 @@
 }
 
 .canvas-operation.is-triage-stage .canvas-operation-titlebar {
-  top: var(--space-2);
   cursor: default;
 }
 
@@ -4458,12 +4458,14 @@
   animation-delay: calc(var(--li, 0) * 40ms + 1180ms);
 }
 
-/* Formation 슬롯은 y=0에서 시작하고, 일반 맵 뷰에서도 뷰포트-상대 상단 밀착(is-top-edge) 패널은
-   캔버스 클립(overflow:hidden)이 보더 위 명판을 잘라낸다 — 최대화와 동일하게 내부 인셋으로 전환한다. */
-.operations-canvas.is-formation-view .canvas-operation-titlebar,
-.operations-canvas.is-companion-layout .canvas-operation-titlebar,
+/* Cruise에서 캡션이 캔버스 클립 밖으로 나가면 본문 위 오버레이로 접는다.
+   Tactical/War Room/최대화는 슬롯을 28px 내려 이 경로를 타지 않는다. */
 .canvas-operation.is-top-edge .canvas-operation-titlebar {
-  top: var(--space-2);
+  top: 0;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
 .operations-canvas.is-companion-layout .canvas-operation-titlebar {
@@ -4565,9 +4567,9 @@
   overflow: auto;
 }
 
-/* 포커스는 단일 location accent로만 표시한다. */
+/* 포커스는 단일 location accent로만 표시한다. 캡션과 본문이 같은 보더 선을 잇는다. */
 .canvas-operation.is-active {
-  border-color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
   box-shadow: var(--shadow-soft);
 }
 
@@ -5816,21 +5818,25 @@
 
 .canvas-operation-titlebar {
   position: absolute;
-  top: calc(-1 * var(--space-3));
-  right: var(--space-3);
+  /* 본문·PTY geometry 밖에 붙는 패널 속성 — 인라인 height는 본문만 소유한다.
+     left/right -1px는 본문 보더 바깥선과 같은 사각형을 그린다. */
+  top: -28px;
+  left: -1px;
+  right: -1px;
   z-index: 7;
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  width: fit-content;
-  max-width: calc(100% - (var(--space-3) * 2));
-  min-height: 24px;
-  padding: 3px var(--space-2) 3px var(--space-2);
-  border: 1px solid var(--ink-rim);
-  border-radius: var(--radius-sm);
+  width: auto;
+  max-width: none;
+  min-height: 28px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-bottom: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
   background: var(--surface-frame);
-  box-shadow: var(--shadow-soft);
   cursor: grab;
   touch-action: none;
   transition:
@@ -5857,14 +5863,14 @@
 }
 
 .canvas-operation-identity-name {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
   overflow: hidden;
   padding: 3px 0;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: transparent;
-  cursor: text;
+  cursor: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -5896,21 +5902,6 @@
 .canvas-operation-identity-input:focus {
   border-color: var(--brass);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
-}
-
-.canvas-operation-drag-edge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 4;
-  height: 14px;
-  cursor: grab;
-  touch-action: none;
-}
-
-.canvas-operation-drag-edge:active {
-  cursor: grabbing;
 }
 
 /* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 설정 모달을 연다.
@@ -6187,59 +6178,41 @@
   display: flex;
   align-items: center;
   flex: none;
-  /* 버튼 focus/hover 링이 outline 2px + offset 2px로 보더 밖 4px까지 나온다 —
-     gap이 그보다 좁으면 이웃 칩과 링이 겹쳐 외곽선이 이중으로 보인다. */
-  gap: var(--space-2);
-  max-width: 0;
-  overflow-x: clip;
-  overflow-y: visible;
-  opacity: 0;
-  pointer-events: none;
-  transition:
-    max-width var(--duration-base) var(--ease-spring),
-    opacity var(--duration-base) var(--ease-spring);
+  margin-left: auto;
+  gap: 2px;
+  max-width: none;
+  overflow: visible;
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .canvas-operation-window-controls > .canvas-operation-icon-button:last-child {
-  margin-inline-end: var(--space-1);
+  margin-inline-end: 0;
 }
 
 .canvas-operation-controls-divider {
   flex: none;
   width: 1px;
-  height: var(--space-3);
-  /* 좌측만 보정: titlebar gap(space-1)과 합쳐 beacon–divider 간격을 버튼 간 gap(space-2)과 맞춘다. */
-  margin: 0 0 0 var(--space-1);
+  height: 12px;
+  margin: 0 6px 0 4px;
   background: var(--hairline-strong);
-}
-
-.canvas-operation:hover .canvas-operation-window-controls,
-.canvas-operation-titlebar:focus-within .canvas-operation-window-controls {
-  /* gap(2×8px) + armed "Close?" 확장폭까지 수용해야 한다 — 120px에서는 armed 상태가 잘린다. */
-  max-width: calc(var(--space-3) * 12);
-  opacity: 1;
-  pointer-events: auto;
 }
 
 .canvas-operation-icon-button {
   display: grid;
   place-items: center;
-  flex: 0 0 0;
-  width: 0;
-  height: 0;
+  flex: none;
+  width: 20px;
+  height: 20px;
   padding: 0;
   overflow: hidden;
-  border: 0 solid transparent;
+  border: 1px solid transparent;
   border-radius: var(--radius-sm);
-  color: transparent;
+  color: var(--text-tertiary);
   background: transparent;
-  opacity: 0;
-  pointer-events: none;
+  opacity: 1;
+  pointer-events: auto;
   transition:
-    width var(--duration-base) var(--ease-spring),
-    height var(--duration-base) var(--ease-spring),
-    padding var(--duration-base) var(--ease-spring),
-    opacity var(--duration-base) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring);
@@ -6263,30 +6236,14 @@
 
 .canvas-operation-icon-button svg {
   display: block;
-  width: 15px;
-  height: 15px;
+  width: 12px;
+  height: 12px;
 }
 
-.canvas-operation:hover .canvas-operation-window-controls .canvas-operation-icon-button,
-.canvas-operation-titlebar:focus-within .canvas-operation-window-controls .canvas-operation-icon-button {
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid var(--surface-rim);
-  color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--surface-glass) 58%, transparent);
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* .canvas-operation-window-controls 프리픽스 필수 — hover 전개 규칙(.canvas-operation:hover
-   .canvas-operation-window-controls .canvas-operation-icon-button, 0-4-0)이 armed의 width/padding을
-   24px로 되누르지 않도록 armed를 같은 특이도(0-4-0)의 후순위로 둔다. */
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {
   flex: none;
   width: auto;
-  height: 24px;
+  height: 20px;
   padding: 0 6px;
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
@@ -6306,8 +6263,7 @@
   outline: none;
 }
 
-/* 명판은 name → beacon → collapsed controls 순서다. hover/focus에서 컨트롤은 beacon 오른쪽으로
-   전개되며, status 색은 beacon 도트만 소유한다. */
+/* 캡션은 name → beacon → 상시 컨트롤 순서다. 창 컨트롤은 패널 속성이라 호버 전개하지 않는다. */
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
@@ -6425,7 +6381,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: calc(var(--radius-lg) - 1px);
+  border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-pillar));
 }
 
@@ -6563,7 +6519,8 @@
 
 .canvas-operation-resize {
   position: absolute;
-  z-index: 5;
+  /* 캡션(z 7)보다 위에 두어 북쪽 가장자리는 리사이즈, 캡션 안은 드래그가 받는다. */
+  z-index: 8;
   touch-action: none;
 }
 
@@ -6576,7 +6533,8 @@
 }
 
 .canvas-operation-resize--n {
-  top: -4px;
+  /* 캡션이 본문 위 28px에 붙으므로 북쪽 리사이즈도 그 상단에 둔다. */
+  top: -32px;
 }
 
 .canvas-operation-resize--s {
@@ -6608,7 +6566,7 @@
 }
 
 .canvas-operation-resize--ne {
-  top: -5px;
+  top: -33px;
   right: -5px;
   cursor: nesw-resize;
 }
@@ -6626,9 +6584,19 @@
 }
 
 .canvas-operation-resize--nw {
-  top: -5px;
+  top: -33px;
   left: -5px;
   cursor: nwse-resize;
+}
+
+/* 캡션이 본문 위로 접히면 북쪽 리사이즈도 그 가장자리를 따른다. */
+.canvas-operation.is-top-edge .canvas-operation-resize--n {
+  top: -4px;
+}
+
+.canvas-operation.is-top-edge .canvas-operation-resize--ne,
+.canvas-operation.is-top-edge .canvas-operation-resize--nw {
+  top: -5px;
 }
 
 .canvas-rubber-band {
