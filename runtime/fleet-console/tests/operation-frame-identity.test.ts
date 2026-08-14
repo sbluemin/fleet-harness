@@ -109,7 +109,7 @@ describe("OperationFrame identity rename", () => {
     expect(onRename).not.toHaveBeenCalled();
   });
 
-  it("marks the frame with is-top-edge so the nameplate insets under the canvas clip", () => {
+  it("marks the frame with is-top-edge so the caption overlays when the canvas would clip it", () => {
     renderFrame(vi.fn(), false, true);
     expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
   });

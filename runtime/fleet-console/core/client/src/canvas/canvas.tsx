@@ -74,8 +74,9 @@ interface PluginOperationRendererProps {
 
 const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
-/* components.css의 .canvas-operation-titlebar top(-1 * --space-3)과 짝을 이루는 상수. */
-const TITLEBAR_OUTSET_PX = 12;
+/* components.css의 .canvas-operation-titlebar top(-28px)과 짝을 이루는 상수.
+   캡션은 본문·PTY geometry 밖에 붙는 패널 속성이라, 이 높이만큼만 캔버스 클립을 본다. */
+const TITLEBAR_OUTSET_PX = 28;
 // 프리뷰 config는 identity 비교로 재발행이 억제되므로 공유 불변 배열을 쓴다.
 const EMPTY_HIDDEN_COMPANION_IDS: readonly string[] = [];
 
@@ -873,8 +874,8 @@ export function OperationsCanvas({
               ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
               : companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
-          // 보더 위 명판(top: -space-3)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 내부 인셋으로 전환한다.
-          // 최대화/Formation은 전용 CSS 인셋 규칙이 이미 소유한다.
+          // 보더 위 캡션(top: -28px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 본문 위 오버레이로 전환한다.
+          // 최대화/Formation은 전용 CSS 오버레이 규칙이 이미 소유한다. 어느 쪽이든 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {

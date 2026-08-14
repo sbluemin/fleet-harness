@@ -991,15 +991,16 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
-    // Doctrine: the panel head is hover-reveal chrome, not resident chrome — it hides
-    // with opacity+transform only (never display/visibility) so keyboard focus can
-    // still enter and reveal it, and its reveal entry stays pointermove-gated with an
-    // intent delay so scroll-under-pointer never triggers it.
-    expect(rail).toContain(".right-rail-panel-head-reveal");
-    expect(rail).toMatch(/\.right-rail-panel-head-reveal \{[^}]*pointer-events:\s*none/);
-    expect(rail).toMatch(/\.right-rail-panel-head-reveal\.is-revealed \{[^}]*pointer-events:\s*auto/);
-    expect(rail).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^{]*\.right-rail-panel-head-reveal/);
-    expect(rightRail).toContain("HEAD_REVEAL_INTENT_DELAY_MS");
+    // Doctrine: the panel head is a 28px caption attached above the slot. It does
+    // not take a body row and does not hover-reveal. The body keeps the full slot
+    // height; PTY/plugin geometry is unaware of the caption.
+    expect(rail).toContain(".right-rail-panel-head {");
+    expect(rail).toContain("height: calc(100% + 28px);");
+    expect(rail).toContain("grid-template-rows: 28px minmax(0, 1fr);");
+    expect(rail).toContain("height: 28px;");
+    expect(rail).not.toContain(".right-rail-panel-head-reveal");
+    expect(rail).not.toContain(".right-rail-panel-peek");
+    expect(rightRail).not.toContain("HEAD_REVEAL_INTENT_DELAY_MS");
     expect(rightRail).not.toMatch(/onPointerEnter=\{(?:handleSlotPointerMove|holdHeadOpen)/);
   });
 
@@ -1660,7 +1661,7 @@ describe("Instrument core design contract", () => {
     const identityInputBlock = components.match(/^\.canvas-operation-identity-input \{\n  flex: 1 1 auto;[^}]*\}/m)?.[0] ?? "";
     expect(identityInputBlock).toContain("width: min(28ch, 34vw);");
     expect(identityInputBlock).not.toContain("width: 0;");
-    expect(components).toContain("top: calc(-1 * var(--space-3));");
+    expect(components).toContain("top: -28px;");
     expect(components).toContain("border-radius: 999px;");
     // 활성 타이틀바는 brass 7% 틴트를 frame 위에 얹는다 — ink-mid 재결합 회귀를 여기서 잡는다.
     expect(components).toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");
@@ -1668,29 +1669,29 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation.is-active .canvas-operation-titlebar {");
     expect(components).toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
     expect(components).toContain(".canvas-operation-window-controls {");
-    expect(components).toContain("max-width: 0;");
     const windowControlsBlock = components.match(/\.canvas-operation-window-controls \{[^}]*\}/)?.[0] ?? "";
-    expect(windowControlsBlock).toContain("overflow-x: clip;");
-    expect(windowControlsBlock).toContain("overflow-y: visible;");
+    expect(windowControlsBlock).toContain("margin-left: auto;");
+    expect(windowControlsBlock).toContain("max-width: none;");
+    expect(windowControlsBlock).not.toContain("max-width: 0;");
     const windowControlsLastButtonBlock = components.match(/\.canvas-operation-window-controls > \.canvas-operation-icon-button:last-child \{[^}]*\}/)?.[0] ?? "";
-    expect(windowControlsLastButtonBlock).toContain("margin-inline-end: var(--space-1);");
+    expect(windowControlsLastButtonBlock).toContain("margin-inline-end: 0;");
     expect(components).toContain(".operations-canvas.is-glance .canvas-operation-glance-hud {");
     expect(components).not.toContain(".canvas-triage-rail-arm {");
     expect(components).toContain(".canvas-operation-glance-hud-arm {");
     // 무장 안내는 Alt 홀드와 무관하게 떠 있어야 한다 — 확인 기한이 1.5초뿐이다.
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
-    // armed-close는 hover 전개 규칙(0-4-0)과 같은 특이도의 후순위여야 Close? 라벨이 잘리지 않는다.
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
-    // Formation(y=0 슬롯)과 일반 맵 뷰의 뷰포트-상대 상단 밀착 패널은 명판을 내부 인셋으로 전환한다.
+    // Formation(y=0 슬롯)과 일반 맵 뷰의 뷰포트-상대 상단 밀착 패널은 캡션을 본문 위 오버레이로 옮긴다.
+    // 본문·PTY geometry는 그대로다.
     expect(components).toContain(".operations-canvas.is-formation-view .canvas-operation-titlebar,");
     expect(components).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar {");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-beacon-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
-    expect(components).toContain("right: var(--space-3);");
-    expect(components).toContain("name → beacon → collapsed controls");
+    expect(components).toContain("left: 0;");
+    expect(components).toContain("name → beacon → 상시 컨트롤");
     const canvas = source("canvas/canvas.tsx");
     expect(canvas).toContain("export function useGlanceHold(): boolean");
     expect(canvas).toContain('event.code === "AltLeft" || event.code === "AltRight"');
