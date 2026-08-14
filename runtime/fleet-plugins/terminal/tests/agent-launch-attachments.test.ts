@@ -130,13 +130,38 @@ describe("launch attachment store", () => {
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     const [filePath] = store.resolve([id]);
-    // 스폰 창 동안 같은 id는 두 번째 실행에 실리지 않고, 사용자 discard도 파일을 거두지 못한다.
+    // 스폰 창 동안 같은 id는 두 번째 실행에 실리지 않는다(제거 의사는 별도 계약 — 아래 테스트).
     expect(() => store.resolve([id])).toThrowError(expect.objectContaining({ code: "attachment_not_found" }));
-    store.discard(id);
     expect(existsSync(filePath as string)).toBe(true);
     // 스폰 실패가 예약을 되돌리면 재시도가 같은 id를 다시 싣는다.
     store.unreserve([id]);
     expect(store.resolve([id])).toEqual([filePath]);
+  });
+
+  it("honors a removal requested during the reservation window", () => {
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    const [filePath] = store.resolve([id]);
+    // 전달 대기 중의 × 클릭 — 그 자리에서는 못 지우지만 의사는 기억된다.
+    store.discard(id);
+    expect(existsSync(filePath as string)).toBe(true);
+    // 전달 실패 → 예약이 풀리며 즉시 회수된다(칩 없는 파일이 TTL까지 남지 않는다).
+    store.unreserve([id]);
+    expect(existsSync(filePath as string)).toBe(false);
+  });
+
+  it("lets a completed delivery outrank a mid-flight removal", () => {
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    const [filePath] = store.resolve([id]);
+    store.discard(id);
+    // 전달 성공 — 파일 수명은 세션이 소유하고, 미뤄 둔 제거 의사는 소멸한다.
+    store.bind("session-1", [id]);
+    expect(existsSync(filePath as string)).toBe(true);
+    store.releaseSession("session-1");
+    expect(existsSync(filePath as string)).toBe(false);
   });
 
   it("rolls back sibling reservations when one id in the batch is rejected", () => {
@@ -271,6 +296,42 @@ describe("agent attachment routes", () => {
     expect(harness.responses.at(-1)?.status).toBe(200);
   });
 
+  it("delivers a mention message with the attachment path composed after the text", async () => {
+    const harness = await createHarness();
+    await harness.postSessions({ theaterId: "theater-1", cliId: "claude" });
+    const sessionId = harness.operations[0]?.id as string;
+    harness.setLive(sessionId);
+    await harness.postAttachment(PNG_BYTES);
+    const id = (harness.responses.at(-1)?.body as { id: string }).id;
+
+    await harness.postMessage(sessionId, { text: "look at this", attachmentIds: [id] });
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true } });
+    // 경로 지시는 서버가 본문 뒤에 합성해 PTY로 타이핑된다(런치 argv 합성과 같은 문법).
+    const delivered = harness.writes.join("");
+    expect(delivered).toContain("look at this");
+    expect(delivered).toMatch(new RegExp(`${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}.*fleet-attachments-.*image\.png`));
+
+    // 전달된 첨부는 그 세션에 묶인다 — 두 번째 전달·발사가 같은 id를 실으면 거절된다.
+    await harness.postMessage(sessionId, { text: "again", attachmentIds: [id] });
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
+  });
+
+  it("keeps attachments unsent when mention delivery is rejected", async () => {
+    const harness = await createHarness();
+    await harness.postSessions({ theaterId: "theater-1", cliId: "claude" });
+    const sessionId = harness.operations[0]?.id as string;
+    await harness.postAttachment(PNG_BYTES);
+    const id = (harness.responses.at(-1)?.body as { id: string }).id;
+
+    // dormant + providerSession 없음 → resume_unavailable. 예약이 되돌아와 발사가 같은 id를 싣는다.
+    await harness.postMessage(sessionId, { text: "hello", attachmentIds: [id] });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "resume_unavailable" } });
+
+    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "use it", attachmentIds: [id] });
+    expect(harness.responses.at(-1)?.status).toBe(200);
+  });
+
   it("discards an uploaded attachment on request", async () => {
     const harness = await createHarness();
     await harness.postAttachment(PNG_BYTES);
@@ -287,6 +348,8 @@ describe("agent attachment routes", () => {
 async function createHarness(options: { readonly attachError?: Error } = {}) {
   const operations: OperationNode[] = [];
   const responses: Array<{ readonly status: number; readonly body: unknown }> = [];
+  const writes: string[] = [];
+  const liveSessions = new Set<string>();
   const lifecycleCleanups: Array<() => void | Promise<void>> = [];
   let route: RouteHandler | undefined;
   let attachError = options.attachError;
@@ -301,11 +364,14 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     invalidateTicketsForSession: (sessionId) => tickets.invalidateForSession(sessionId),
     canAttach: () => true,
     attach,
-    write: () => true,
+    write: (_operationId, data) => {
+      writes.push(data);
+      return true;
+    },
     terminate: () => true,
     getMessagePolicy: () => ({}),
     getRenameCommand: () => undefined,
-    getSessionLastActivityAt: () => null,
+    getSessionLastActivityAt: (operationId) => (liveSessions.has(operationId) ? 5 : null),
     resolveSessionIdentity: async () => null,
     onExit: () => () => {},
     onTitle: () => () => {},
@@ -411,6 +477,12 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     attach,
     operations,
     responses,
+    writes,
+    setLive: (sessionId: string) => { liveSessions.add(sessionId); },
+    postMessage: async (sessionId: string, body: Record<string, unknown>) => {
+      const req = { method: "POST", url: `/plugins/terminal/agent/sessions/${sessionId}/message`, __body: body } as TestRequest;
+      await dispatch(req, `/plugins/terminal/agent/sessions/${sessionId}/message`);
+    },
     clearAttachError: () => { attachError = undefined; },
     postAttachment: async (bytes: Buffer) => {
       const req = Readable.from([bytes]) as unknown as http.IncomingMessage;

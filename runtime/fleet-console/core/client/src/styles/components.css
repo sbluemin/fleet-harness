@@ -11960,6 +11960,20 @@ body[data-codex-reading="true"] .operations-side-bar {
   }
 }
 
+.quick-launch-attachment-thumb-button {
+  display: block;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.quick-launch-attachment-thumb-button:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
 .quick-launch-attachment-thumb {
   width: 52px;
   height: 52px;
@@ -12014,6 +12028,62 @@ body[data-codex-reading="true"] .operations-side-bar {
 .quick-launch-attachment-remove:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 1px;
+}
+
+/* 확대 보기 — 카드 위에 뜨는 단일 레이어. 클릭·Escape로 닫힌다(팝오버와 같은 소유). */
+.quick-launch-attachment-zoom {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + var(--space-2));
+  transform: translateX(-50%);
+  z-index: 1;
+  padding: var(--space-2);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--surface-pillar) 94%, transparent),
+      color-mix(in oklch, var(--surface-pillar) 94%, transparent)
+    ),
+    var(--ink-deep);
+  box-shadow: var(--shadow-floating);
+  cursor: zoom-out;
+}
+
+.quick-launch-attachment-zoom img {
+  display: block;
+  max-width: min(420px, 70vw);
+  max-height: 320px;
+  border-radius: var(--radius-sm);
+}
+
+/* 파일 픽커 — 고정 토글과 같은 무채 유틸 버튼 문법. */
+.quick-launch-attach {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.quick-launch-attach:hover {
+  color: var(--brass);
+}
+
+.quick-launch-attach:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.quick-launch-attach svg {
+  width: 16px;
+  height: 16px;
 }
 
 /* 드래그 중 카드 강조 — brass는 위치/포커스 채널이라 "여기 놓으라"는 지시에 맞는 색이다. */

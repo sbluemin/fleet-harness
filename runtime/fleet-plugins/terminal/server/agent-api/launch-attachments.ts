@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -115,6 +115,11 @@ interface LaunchAttachmentEntry {
    * TTL 청소가 파일을 건드리면, 먼저 뜬 CLI가 사라진 경로를 읽는다.
    */
   reserved: boolean;
+  /**
+   * 예약 창에 도착한 사용자의 제거 의사. 그 자리에서 지우면 전달 중인 CLI가 사라진 경로를
+   * 읽으므로 기억해 뒀다가, 전달이 실패해 예약이 풀리는 순간 거둔다(성공하면 전달이 이겼다).
+   */
+  pendingDiscard: boolean;
 }
 
 export interface LaunchAttachmentStore {
@@ -147,15 +152,36 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
   // 네임스페이스를 통째로 비운다. 같은 데이터 루트는 runtime lock이 동시 실행을 배제하므로
   // 여기 있는 것은 전부 죽은 프로세스의 잔재이고, 다른 인스턴스의 네임스페이스는 밟지 않는다.
   try {
+    // 존재 판정은 lstat으로 한다 — existsSync는 깨진 심볼릭 링크에 false를 돌려주고, 그 링크를
+    // 남기면 save()의 mkdirSync가 영구히 ENOENT로 죽는다(rm은 판정과 무관하게 무조건 수행).
+    let hadLeftovers = true;
+    try {
+      lstatSync(namespaceRoot);
+    } catch {
+      hadLeftovers = false;
+    }
     rmSync(namespaceRoot, { force: true, recursive: true });
+    // TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
+    if (hadLeftovers) {
+      process.stderr.write("[fleet-console] quick-launch attachments: cleared leftover attachment namespace from a previous run\n");
+    }
   } catch {
     // 청소는 best-effort다 — 잔재가 남아도 기동을 막지 않는다.
   }
 
   function sweepExpired(): void {
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
+    let reclaimed = 0;
     for (const entry of [...entries.values()]) {
-      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) removeEntry(entry);
+      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) {
+        removeEntry(entry);
+        reclaimed += 1;
+      }
+    }
+    // TTL 회수는 조용한 데이터 소멸이라 운영 로그에 남긴다 — "붙여넣은 이미지가 사라졌다"는
+    // 문의에 서버가 답할 수 있는 유일한 흔적이다(회수가 없으면 침묵).
+    if (reclaimed > 0) {
+      process.stderr.write(`[fleet-console] quick-launch attachments: reclaimed ${reclaimed} expired unsent image(s)\n`);
     }
   }
 
@@ -205,7 +231,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         throw error;
       }
       const id = crypto.randomUUID();
-      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false });
+      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
       return { id };
     },
     resolve(ids) {
@@ -240,13 +266,21 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         if (entry && entry.sessionId === null) {
           entry.sessionId = sessionId;
           entry.reserved = false;
+          // 전달이 제거 의사보다 먼저 확정됐다 — 파일 수명은 이제 세션이 소유한다.
+          entry.pendingDiscard = false;
         }
       }
     },
     unreserve(ids) {
       for (const id of ids) {
         const entry = entries.get(id);
-        if (entry && entry.sessionId === null) entry.reserved = false;
+        if (!entry || entry.sessionId !== null) continue;
+        // 예약 창에 제거를 요청받은 항목은 풀리는 즉시 거둔다 — 칩 없는 파일이 TTL까지 남지 않는다.
+        if (entry.pendingDiscard) {
+          removeEntry(entry);
+          continue;
+        }
+        entry.reserved = false;
       }
     },
     releaseSession(sessionId) {
@@ -256,10 +290,22 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     },
     discard(id) {
       const entry = entries.get(id);
-      if (entry && entry.sessionId === null && !entry.reserved) removeEntry(entry);
+      if (!entry || entry.sessionId !== null) return;
+      // 예약 창의 제거는 미룬다 — 전달 중인 CLI가 읽을 경로를 그 자리에서 지울 수 없다.
+      if (entry.reserved) {
+        entry.pendingDiscard = true;
+        return;
+      }
+      removeEntry(entry);
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);
+      // 네임스페이스 루트도 함께 거둔다 — 항목만 지우면 빈 루트가 종료마다 하나씩 쌓인다.
+      try {
+        rmSync(namespaceRoot, { force: true, recursive: true });
+      } catch {
+        // best-effort.
+      }
     },
   };
 }
