@@ -182,26 +182,22 @@ export function QuickLaunch() {
     const restoredPrompt = state.quickLaunchDraft ?? "";
     setPrompt(restoredPrompt);
     // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것을 먼저 거둔다 — 미리보기 URL과
-    // 서버의 미발사 파일 모두. 닫힌 뒤 완료된 업로드처럼 보존을 비켜 간 칩은 여기가 마지막
-    // 회수 지점이고, 아직 업로드 중인 칩은 완료 콜백이 취소 집합에서 자신을 발견해 거둔다.
+    // 첨부 칩은 초안 슬롯의 보존분과, 컴포저가 닫힌 동안에도 상태에 남아 있던 미보존분(닫힘
+    // 시점에 업로드 중이던 칩과 그 뒤 완료된 칩)을 병합해 되살린다 — 텍스트 초안은 살아남는데
+    // 늦게 끝난 이미지만 조용히 사라지면 보존 계약이 반쪽이 된다. 제출은 finishSubmission이
+    // 상태를 비우므로 여기로 이월되지 않는다.
     const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
-    for (const attachment of attachmentsRef.current) {
-      if (restoredPreviews.has(attachment.previewUrl)) continue;
-      if (attachment.uploading) {
-        canceledUploadKeysRef.current.add(attachment.key);
-        continue;
-      }
-      URL.revokeObjectURL(attachment.previewUrl);
-      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
-    }
-    // 첨부 칩도 초안과 같은 슬롯에서 돌아온다 — 서버 파일은 미발사분으로 남아 있어 id가 유효하다.
-    setAttachments((state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
-      key: attachment.id,
-      id: attachment.id,
-      name: attachment.name,
-      previewUrl: attachment.previewUrl,
-      uploading: false,
-    })));
+    const carried = attachmentsRef.current.filter((attachment) => !restoredPreviews.has(attachment.previewUrl));
+    setAttachments([
+      ...(state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
+        key: attachment.id,
+        id: attachment.id,
+        name: attachment.name,
+        previewUrl: attachment.previewUrl,
+        uploading: false,
+      })),
+      ...carried,
+    ]);
     consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
@@ -233,7 +229,9 @@ export function QuickLaunch() {
       return;
     }
     if (!was) return;
-    // 업로드가 끝난 첨부만 보존한다 — 진행 중이던 업로드는 다음 열림의 에포크가 걸러낸다.
+    // 업로드가 끝난 첨부는 초안 슬롯으로 보존한다. 진행 중이던 칩은 id가 없어 슬롯에 실을 수
+    // 없지만 버려지지 않는다 — 컴포저 상태에 남아 완료 콜백이 ready로 승급시키고, 다음 열림
+    // 전이가 슬롯 보존분과 병합해 되살린다.
     const preservedAttachments = attachmentsRef.current
       .filter((attachment) => attachment.id !== null)
       .map((attachment) => ({ id: attachment.id as string, name: attachment.name, previewUrl: attachment.previewUrl }));
@@ -572,7 +570,6 @@ export function QuickLaunch() {
       return;
     }
     setAttachmentErrorKey(null);
-    const epoch = composerEpochRef.current;
     // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다 — ref만 보면 같은 드롭의 앞 장이 안 보인다.
     let count = attachmentsRef.current.length;
     for (const file of images) {
@@ -591,15 +588,10 @@ export function QuickLaunch() {
       setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
       void upload(file)
         .then(({ id }) => {
-          // 칩이 완료 전에 사라졌다(× 클릭·거절 복원 교체) — 방금 받은 id를 서버에서 도로 거둔다.
-          if (canceledUploadKeysRef.current.delete(key)) {
-            URL.revokeObjectURL(previewUrl);
-            void attachmentPluginRef.current?.discardLaunchAttachment?.(id).catch(() => {});
-            return;
-          }
-          // 다음 컴포저 세션에 도착한 완료도 같은 결말이다 — 열림 전이가 초안 슬롯에서 다시
-          // 시작하므로 이 칩은 이미 없고, URL과 서버 파일을 여기서 거두지 않으면 남는다.
-          if (composerEpochRef.current !== epoch) {
+          // 칩의 생사는 key로 판정한다 — 컴포저가 닫혀 있어도 칩은 상태에 살아 있으므로(초안
+          // 보존 계약) 완료를 그대로 승급시키고, 명시 취소(× 클릭·거절 복원 교체)나 칩이
+          // 사라진 완료만 방금 받은 id를 서버에서 도로 거둔다.
+          if (canceledUploadKeysRef.current.delete(key) || !attachmentsRef.current.some((attachment) => attachment.key === key)) {
             URL.revokeObjectURL(previewUrl);
             void attachmentPluginRef.current?.discardLaunchAttachment?.(id).catch(() => {});
             return;
@@ -609,7 +601,7 @@ export function QuickLaunch() {
         .catch((error: unknown) => {
           URL.revokeObjectURL(previewUrl);
           if (canceledUploadKeysRef.current.delete(key)) return;
-          if (composerEpochRef.current !== epoch) return;
+          if (!attachmentsRef.current.some((attachment) => attachment.key === key)) return;
           setAttachments((current) => current.filter((attachment) => attachment.key !== key));
           // 플러그인이 서버 거절 코드를 message로 실어 던진다(멘션 전달과 같은 형태).
           setAttachmentErrorKey(quickLaunchAttachmentErrorMessageKey(error instanceof Error ? error.message : null));
