@@ -425,6 +425,11 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   );
 
   const chatMode = context.operation.payload.chatMode === true;
+  // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
+  // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
+  // 떠버린다. "직접 연 순간에만"은 quick-launch-pin 투어와 같은 판정이다.
+  const wasChatModeAtMountRef = React.useRef(chatMode);
+  const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
   const openTerminal = React.useCallback(async () => {
     // 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살릴 수 있다(서버 ticket 가드).
     await exitAgentChat(context.operationId);
@@ -445,7 +450,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {handles}
-        <AgentChatView context={context} session={session} onOpenTerminal={openTerminal} />
+        <AgentChatView context={context} session={session} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} />
       </div>
     );
   }

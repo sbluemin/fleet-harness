@@ -126,9 +126,11 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
   {
     id: "chat-mode",
     // 앵커는 Terminal 플러그인의 Chat Mode 화면에 있다 — 크로스 번들 DOM 계약이라 클래스가
-    // 아니라 전용 의미 속성(data-chat-tour)으로 짚는다. 세 앵커 모두 채팅 화면이 마운트된
-    // 동안 항상 있으므로, 투어는 사용자가 패널을 처음 연 그 순간에 뜬다. 펄스 카드·영수증은
-    // 턴이 돌아야 생기는 표면이라 앵커로 삼지 않고 첫 스텝의 문장이 대신 말한다.
+    // 아니라 전용 의미 속성(data-chat-tour)으로 짚는다. 플러그인은 사용자가 그 마운트에서
+    // 직접 채팅 뷰로 전환했을 때만 앵커를 세운다(quick-launch-pin과 같은 판정) — chatMode가
+    // payload에 영속되므로, 항상 세우면 리로드로 복원된 채팅 패널이 콘솔 로드 화면에서 투어를
+    // 발화시킨다. 펄스 카드·영수증은 턴이 돌아야 생기는 표면이라 앵커로 삼지 않고 첫 스텝의
+    // 문장이 대신 말한다.
     spotlight: null,
     walkthrough: [
       {

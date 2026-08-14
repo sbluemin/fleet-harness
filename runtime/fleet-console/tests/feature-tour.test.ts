@@ -71,8 +71,9 @@ describe("feature tour", () => {
   });
 
   // Chat Mode 앵커는 Terminal 플러그인 DOM에 있다 — 코어 카탈로그가 짚는 크로스 번들 계약이라
-  // 클래스가 아니라 전용 의미 속성(data-chat-tour)으로 고정한다. 세 앵커 모두 채팅 화면이
-  // 마운트된 동안 항상 존재하므로 투어는 패널을 처음 연 순간에 뜬다.
+  // 클래스가 아니라 전용 의미 속성(data-chat-tour)으로 고정한다. 플러그인은 사용자가 직접
+  // 채팅 뷰로 전환한 마운트에서만 앵커를 세우므로, 투어는 리로드로 복원된 패널이 아니라
+  // 패널을 직접 연 순간에 뜬다.
   it("anchors the chat-mode walkthrough on the plugin's data-chat-tour contract", () => {
     const chatMode = FEATURE_TOURS.find((tour) => tour.id === "chat-mode");
     expect(chatMode?.spotlight).toBeNull();
@@ -83,8 +84,8 @@ describe("feature tour", () => {
     ]);
   });
 
-  // 채팅 화면이 마운트되면(세 앵커가 함께 생기면) 다른 화면의 투어 없이도 chat-mode가 바로 뜬다.
-  it("starts the chat-mode walkthrough when the chat surface mounts", () => {
+  // 앵커가 세워지면(=사용자가 채팅 뷰를 직접 연 마운트) 다른 화면의 투어 없이도 chat-mode가 바로 뜬다.
+  it("starts the chat-mode walkthrough when the chat anchors are raised", () => {
     document.body.innerHTML = [
       '<span data-chat-tour="badge"></span>',
       '<span data-chat-tour="composer"></span>',

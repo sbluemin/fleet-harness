@@ -21,10 +21,13 @@ export function AgentChatView({
   context,
   session,
   onOpenTerminal,
+  tourAnchors,
 }: {
   readonly context: OperationRenderContext;
   readonly session: SessionInfo;
   readonly onOpenTerminal: () => Promise<void>;
+  /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
+  readonly tourAnchors: boolean;
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId);
@@ -79,12 +82,13 @@ export function AgentChatView({
           {effort ? <span className="agent-chat-sess-effort">{effort.toUpperCase()}</span> : null}
         </span>
         {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
-            세 앵커 모두 채팅 화면이 떠 있는 동안 항상 존재해야 한다. */}
-        <span className="agent-chat-cap" data-chat-tour="badge">{t("terminal.chat.badge")}</span>
+            사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
+            콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
+        <span className="agent-chat-cap" {...(tourAnchors ? { "data-chat-tour": "badge" } : {})}>{t("terminal.chat.badge")}</span>
         <button
           type="button"
           className="agent-chat-to-term"
-          data-chat-tour="terminal"
+          {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
           disabled={terminalPending}
           aria-label={t("terminal.chat.openTerminalAria")}
           onClick={() => { void handleOpenTerminal(); }}
@@ -131,7 +135,7 @@ export function AgentChatView({
           <span className="agent-chat-strip-dot" aria-hidden="true" />
           {state.working ? t("terminal.chat.working") : t("terminal.chat.idle")}
         </span>
-        <span className="agent-chat-strip-hint" data-chat-tour="composer">
+        <span className="agent-chat-strip-hint" {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}>
           {t("terminal.chat.replyHint")}
           <kbd className="agent-chat-kbd">⌃Space</kbd>
         </span>
