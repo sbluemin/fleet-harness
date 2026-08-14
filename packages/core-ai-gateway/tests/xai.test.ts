@@ -546,6 +546,92 @@ describe("Grok Responses function-call assembly", () => {
   });
 });
 
+describe("Grok Responses tool loading", () => {
+  const tools = [
+    { type: "function" as const, name: "ToolSearch", parameters: {}, defer_loading: true },
+    { type: "function" as const, name: "deferred", parameters: {}, defer_loading: true },
+    { type: "function" as const, name: "eager", parameters: {}, defer_loading: false },
+  ];
+
+  it("filters deferred tools only when ToolSearch is declared", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({ tools })).map((tool) => tool.name)).toEqual([
+      "ToolSearch",
+      "eager",
+    ]);
+    expect(adapter.wireTools(xaiRequest({
+      tools: [{ ...tools[1] }, { ...tools[2] }],
+    }))).toEqual([
+      expect.objectContaining({ name: "deferred" }),
+      expect.objectContaining({ name: "eager" }),
+    ]);
+  });
+
+  it("restores only referenced deferred tools on continuation", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools: [...tools, { type: "function" as const, name: "unreferenced", parameters: {}, defer_loading: true }],
+      input: [{ type: "function_call_output", call_id: "c", output: "ok", tool_references: ["deferred"] }],
+    })).map((tool) => tool.name)).toEqual(["ToolSearch", "deferred", "eager"]);
+  });
+
+  it("does not treat near-match names as ToolSearch", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools: [{ ...tools[1], name: "ToolSearcher" }],
+    }))).toEqual([expect.objectContaining({ name: "ToolSearcher" })]);
+  });
+
+  it("keeps an explicitly selected deferred tool", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools,
+      tool_choice: { type: "function", name: "deferred" },
+    })).map((tool) => tool.name)).toEqual(["ToolSearch", "deferred", "eager"]);
+  });
+
+  it("matches an unqualified selected leaf to a qualified declared tool", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools: [...tools.slice(0, 1), { ...tools[1], name: "mcp__deferred" }],
+      tool_choice: { type: "function", name: "deferred" },
+    })).map((tool) => tool.name)).toEqual(["ToolSearch", "mcp__deferred"]);
+  });
+
+  it("matches qualified selected and declared names by leaf", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools: [...tools.slice(0, 1), { ...tools[1], name: "mcp__deferred" }],
+      tool_choice: { type: "function", name: "other__deferred" },
+    })).map((tool) => tool.name)).toEqual(["ToolSearch", "mcp__deferred"]);
+  });
+
+  it("does not match a near-match leaf", () => {
+    const adapter = new XaiResponsesAdapter();
+    expect(adapter.wireTools(xaiRequest({
+      tools: [...tools.slice(0, 1), { ...tools[1], name: "mcp__deferredExtra" }],
+      tool_choice: { type: "function", name: "deferred" },
+    })).map((tool) => tool.name)).toEqual(["ToolSearch"]);
+  });
+
+  it("omits tools from the payload when the request has no tools", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response("data: [DONE]\\n\\n", { status: 200 }));
+    await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tools");
+  });
+
+  it("uses the same canonical subset for wireTools and the serialized payload", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response("data: [DONE]\\n\\n", { status: 200 }));
+    const adapter = new XaiResponsesAdapter({ fetch: fetchMock });
+    const request = xaiRequest({ tools, tool_choice: { type: "function", name: "deferred" } });
+    await adapter.stream(request, { apiKey: "k" });
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as { tools: Array<{ name: string }> };
+    expect(body.tools.map((tool) => tool.name)).toEqual(adapter.wireTools(request)?.map((tool) => tool.name));
+    expect(body.tools.every((tool) => !("defer_loading" in tool))).toBe(true);
+  });
+});
+
 describe("Grok Responses adapter", () => {
   it("uses the CLI proxy with subscription and model headers", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response("data: [DONE]\n\n", { status: 200 }));
