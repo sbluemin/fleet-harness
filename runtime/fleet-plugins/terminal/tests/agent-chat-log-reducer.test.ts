@@ -107,6 +107,24 @@ describe("chat log reducer", () => {
     expect(splitAgentChatTurn(state.turns.at(-1)!).streamingText).toBe("Hello there.");
   });
 
+  // 델타 개별은 서버 캡 안이어도 누적은 무제한이 될 수 있다 — draft는 확정 text와 같은
+  // 60k 상한에서 성장을 멈춘다.
+  it("caps the accumulated draft at the shared text limit", () => {
+    let state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "text-delta", text: "x".repeat(59_999) },
+    ]);
+    state = fold([
+      { kind: "text-delta", text: "y".repeat(10_000) },
+      { kind: "text-delta", text: "z".repeat(10_000) },
+    ], state);
+    expect(state.turns.at(-1)?.draft).toHaveLength(60_000);
+    expect(state.turns.at(-1)?.draft.endsWith("y")).toBe(true);
+  });
+
   it("recovers an unsettled draft into an item when the turn ends early", () => {
     const state = fold([
       { kind: "replay-start" },

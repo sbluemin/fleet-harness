@@ -114,6 +114,9 @@ export interface AgentChatLogState {
   readonly errorCode: string | null;
 }
 
+/** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
+const MAX_DRAFT_CHARS = 60_000;
+
 export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
@@ -152,7 +155,12 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       // 완성 text는 흘러온 델타의 정정 앵커다 — 버퍼를 비우고 확정 아이템으로 치환한다.
       return withLastTurn(appendItem(state, { type: "text", text: event.text }), (turn) => ({ ...turn, draft: "" }));
     case "text-delta":
-      return withLastTurn(state, (turn) => turn.state === "working" ? { ...turn, draft: turn.draft + event.text } : turn);
+      // 델타 개별은 서버가 캡을 지키지만 누적 버퍼는 여기서 다시 상한을 진다 — 병합 앵커가
+      // 도착하기 전의 초장문 응답이 draft를 무한히 키우면 매 렌더가 그 전체를 복사한다.
+      return withLastTurn(state, (turn) => {
+        if (turn.state !== "working" || turn.draft.length >= MAX_DRAFT_CHARS) return turn;
+        return { ...turn, draft: (turn.draft + event.text).slice(0, MAX_DRAFT_CHARS) };
+      });
     case "tool":
       return appendItem(state, { type: "tool", name: event.name, detail: event.detail });
     case "turn-end":

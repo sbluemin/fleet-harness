@@ -228,14 +228,16 @@ function PulseCard({
       : t("terminal.chat.activityStarting");
   const note = !writing && lastTool?.detail ? lastTool.detail : null;
   return (
-    <div className="agent-chat-pulse" role="status">
+    <div className="agent-chat-pulse">
       <span className="agent-chat-pulse-orbit" aria-hidden="true" />
-      <span className="agent-chat-pulse-copy">
+      {/* 라이브 리전은 활동 라벨로 한정한다 — 매초 바뀌는 elapsed까지 status에 넣으면
+          스크린 리더가 턴 내내 카드를 재낭독한다. 타이머는 시각 전용이다. */}
+      <span className="agent-chat-pulse-copy" role="status">
         <strong>{label}</strong>
         {note ? <small>{note}</small> : null}
       </span>
       {turn.startedAt !== undefined
-        ? <time className="agent-chat-pulse-elapsed">{formatElapsed(elapsedMs)}</time>
+        ? <time className="agent-chat-pulse-elapsed" aria-hidden="true">{formatElapsed(elapsedMs)}</time>
         : null}
     </div>
   );
