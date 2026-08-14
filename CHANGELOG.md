@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.58.1] - 2026-08-14
+
+### fleet-cli
+
+#### Changed
+- Reduced repeated Grok 4.6 tool-schema uploads during tool-search loops while preserving selected and continuation-referenced tools.
+
+### fleet-console
+
+#### Changed
+- Reduced repeated Grok 4.6 tool-schema uploads during gateway Operations that use tool search while preserving selected and continuation-referenced tools.
+
 ## [1.58.0] - 2026-08-13
 
 ### fleet-cli
