@@ -202,6 +202,65 @@ describe("chat completions request translation", () => {
     expect(generic).toHaveProperty("tools");
   });
 
+  it("omits the tool catalog for tool_choice none on the OpenCode wrapper only", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    const tools: CanonicalResponseRequest["tools"] = [{
+      type: "function",
+      name: "Read",
+      parameters: { type: "object", properties: {} },
+    }];
+    const wireTools = [{
+      type: "function" as const,
+      function: { name: "Read", parameters: { type: "object", properties: {} } },
+    }];
+    const opencode = new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock });
+
+    // positive: 일반 프롬프트 + none이면 tools/tool_choice/parallel_tool_calls를 모두
+    // 생략하고, preflight용 wireTools도 빈 catalog를 보고한다.
+    await opencode.stream(request({
+      tools,
+      tool_choice: "none",
+      parallel_tool_calls: true,
+    }), { apiKey: "k" });
+    const noneBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(noneBody).not.toHaveProperty("tools");
+    expect(noneBody).not.toHaveProperty("tool_choice");
+    expect(noneBody).not.toHaveProperty("parallel_tool_calls");
+    expect(opencode.wireTools(request({ tools, tool_choice: "none", parallel_tool_calls: true }))).toEqual([]);
+
+    // negative: auto / required / forced function은 tools와 wireTools를 유지한다.
+    for (const toolChoice of ["auto" as const, "required" as const]) {
+      fetchMock.mockClear();
+      await opencode.stream(request({
+        tools,
+        tool_choice: toolChoice,
+        parallel_tool_calls: true,
+      }), { apiKey: "k" });
+      const kept = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+      expect(kept.tools).toEqual(wireTools);
+      expect(kept.tool_choice).toBe(toolChoice);
+      expect(opencode.wireTools(request({ tools, tool_choice: toolChoice }))).toEqual(tools);
+    }
+    fetchMock.mockClear();
+    const forced = { type: "function", name: "Read" } as const;
+    await opencode.stream(request({ tools, tool_choice: forced }), { apiKey: "k" });
+    const forcedBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(forcedBody.tools).toEqual(wireTools);
+    expect(forcedBody.tool_choice).toEqual({ type: "function", function: { name: "Read" } });
+    expect(opencode.wireTools(request({ tools, tool_choice: forced }))).toEqual(tools);
+
+    // generic adapter + none은 호환성 때문에 기존대로 tools와 tool_choice가 wire에 남는다.
+    fetchMock.mockClear();
+    await adapter(fetchMock).stream(request({
+      tools,
+      tool_choice: "none",
+      parallel_tool_calls: true,
+    }), { apiKey: "k" });
+    const genericBody = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(genericBody.tools).toEqual(wireTools);
+    expect(genericBody.tool_choice).toBe("none");
+  });
+
   it("replays reasoning only for DeepSeek V4 assistant tool turns", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await adapter(fetchMock).stream(request({
