@@ -1694,6 +1694,10 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
     // Tactical/War Room/최대화는 슬롯을 28px 내려 캡션을 본문 밖에 둔다.
+    // Tactical grid/rows 행 보폭은 같은 28px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
+    expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 28");
+    expect(source("canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
     expect(source("canvas/coordinates.ts")).toContain("y: 18 + 28");
