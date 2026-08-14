@@ -65,6 +65,26 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).not.toHaveBeenCalled();
   });
 
+  it("rejects conversion while a pty launch is still pending", async () => {
+    let releaseAttach: () => void = () => {};
+    const gate = new Promise<void>((resolve) => { releaseAttach = resolve; });
+    const harness = await createHarness({ holdAttachAfterFirst: gate });
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    // dormant 전달이 재기동을 시작해 attach가 in-flight인 'starting' 창을 연다.
+    const delivery = harness.post(sessionId, "message", { text: "resume me" });
+    await vi.waitFor(() => {
+      expect(harness.attach).toHaveBeenCalledTimes(2);
+    });
+
+    await harness.post(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
+    releaseAttach();
+    await delivery;
+  });
+
   it("rejects conversion without a captured transcript", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -176,7 +196,7 @@ describe("agent chat mode routes", () => {
   });
 });
 
-async function createHarness(options: { readonly cliId?: string } = {}) {
+async function createHarness(options: { readonly cliId?: string; readonly holdAttachAfterFirst?: Promise<void> } = {}) {
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
@@ -222,7 +242,9 @@ async function createHarness(options: { readonly cliId?: string } = {}) {
   const liveSessions = new Set<string>();
   let route: RouteHandler | undefined;
   const tickets = createPluginTerminalTicketRegistry();
-  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {});
+  const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
+    if (options.holdAttachAfterFirst && attach.mock.calls.length > 1) await options.holdAttachAfterFirst;
+  });
   const terminate = vi.fn((sessionId: string) => {
     liveSessions.delete(sessionId);
     return true;

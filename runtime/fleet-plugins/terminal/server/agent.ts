@@ -711,6 +711,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, seed.status, { error: seed.error });
         return true;
       }
+      // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — ensure와 같은 tick에서 모드를
+      // 재검증해야 stale 요청이 새 chat 세션을 만들어 되살아난 PTY와 이중 필자가 되지 않는다.
+      if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+        return true;
+      }
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
         chat.send(text.trim());
@@ -799,11 +805,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, seed.status, { error: seed.error });
       return true;
     }
+    const info = observability.getTerminalSessionInfo(sessionId);
+    // PTY 스폰이 in-flight인 세션(starting)은 activity가 아직 null이라 non-live로 읽힌다 —
+    // 이때 전환하면 launch가 완주해 PTY와 SDK가 같은 provider 세션의 이중 필자가 된다.
+    if (info?.status === "starting") {
+      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+      return true;
+    }
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (live) {
       // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기·턴 종료 후에도 살아 있는 백그라운드
       // 작업(backgroundPending) 중의 PTY를 접으면 그 작업을 잃는다(활동축 불변식과 같은 판정).
-      const info = observability.getTerminalSessionInfo(sessionId);
       if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working" || info?.backgroundPending === true) {
         ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
         return true;
@@ -854,6 +866,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const seed = await resolveChatSeed(node);
       if (!seed.ok) {
         write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: seed.error } })}\n\n`);
+        res.end();
+        return;
+      }
+      // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — ensure와 같은 tick의 재검증이
+      // stale 스트림 요청의 새 세션 생성을 막는다(메시지 라우트와 같은 계약).
+      if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: "chat_not_active" } })}\n\n`);
         res.end();
         return;
       }
