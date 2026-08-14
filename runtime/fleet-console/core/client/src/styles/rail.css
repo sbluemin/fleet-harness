@@ -26,9 +26,7 @@
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     color-mix(in oklch, var(--surface-glass-strong) 92%, var(--ink-deep));
   box-shadow: var(--shadow-floating);
-  /* 캡션은 슬롯 위 28px에 붙는다. hidden이면 잘리므로 펼친 레일은 세로만 연다.
-     접힘은 is-closed가 다시 클립한다. */
-  overflow: visible;
+  overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
@@ -51,33 +49,23 @@
   width: 0;
   /* 요청 시점 클램프(rail-store) 이후 뷰포트가 줄어도 슬롯이 캔버스를 밀어내지 않도록 렌더 시점 상한 — 드래그 클램프(148px 여유)와 동일 시맨틱 */
   max-width: calc(100vw - 148px);
-  overflow: visible;
+  overflow: hidden;
   display: grid;
-  /* 캡션은 슬롯 위(-28px)에 붙는다. 본문 그리드 행·마진으로 높이를 빼지 않는다. */
   grid-template-rows: minmax(0, 1fr);
   transition: width var(--duration-base) var(--ease-spring);
 }
 
 .right-rail.is-open .right-rail-panel-slot {
   width: var(--right-rail-panel-width, 312px);
-  /* 캡션 28px는 슬롯을 커맨드 밴드 쪽으로 연장해 붙인다. 1fr 본문은 원래 슬롯 높이다. */
-  align-self: start;
-  margin-top: -28px;
-  height: calc(100% + 28px);
+  /* 캡션은 슬롯 첫 행. 조상 route-content가 overflow:hidden이라 밴드 쪽으로
+     연장하면 잘리거나 밴드를 덮는다. Operation PTY와 달리 Rail 본문은 28px를 내준다. */
   grid-template-rows: 28px minmax(0, 1fr);
-}
-
-/* 언독 풀스크린은 밴드가 흐름에서 빠져 .console-route-content가 뷰포트 최상단이다.
-   그 조상이 overflow:hidden이라 -28px 연장은 캡션을 잘라낸다 — 슬롯 안으로 접는다. */
-.console-shell:has(.command-band.is-fullscreen:not(.is-docked)) .right-rail.is-open .right-rail-panel-slot {
-  margin-top: 0;
-  height: 100%;
 }
 
 .right-rail.is-overlay .right-rail-panel-slot {
   position: absolute;
   right: 44px;
-  top: -28px;
+  top: 0;
   bottom: 0;
   margin-top: 0;
   height: auto;

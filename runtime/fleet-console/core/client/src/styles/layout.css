@@ -762,8 +762,7 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
 .console-body.is-canvas {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
-  /* 레일 캡션이 슬롯 위로 28px 붙으므로 세로 클립을 열다. 가로 넘침은 셸이 막는다. */
-  overflow: visible;
+  overflow: hidden;
 }
 
 /* 명시적 열 고정 — 접힌 크롬이 display:none으로 슬롯을 비워도(auto-placement 시프트)

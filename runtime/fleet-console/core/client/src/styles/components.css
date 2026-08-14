@@ -4458,6 +4458,16 @@
   animation-delay: calc(var(--li, 0) * 40ms + 1180ms);
 }
 
+/* Cruise에서 캡션이 캔버스 클립 밖으로 나가면 본문 위 오버레이로 접는다.
+   Tactical/War Room/최대화는 슬롯을 28px 내려 이 경로를 타지 않는다. */
+.canvas-operation.is-top-edge .canvas-operation-titlebar {
+  top: 0;
+  left: 0;
+  right: 0;
+  border-bottom: 1px solid var(--surface-rim);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
 .operations-canvas.is-companion-layout .canvas-operation-titlebar {
   cursor: default;
 }
