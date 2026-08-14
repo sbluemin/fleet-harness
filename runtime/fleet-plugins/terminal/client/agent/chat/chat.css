@@ -5,6 +5,8 @@
    마크다운 컴포넌트(.markdown-body)로 렌더하고 여기서는 챗 밀도 스케일만 오버라이드한다. */
 
 .agent-chat {
+  /* 로그 컬럼의 공유 measure — 턴·디스패치·시스템 줄이 전부 이 폭의 중앙 컬럼 안에 산다. */
+  --agent-chat-measure: 100ch;
   position: absolute;
   inset: 0;
   display: flex;
@@ -78,6 +80,14 @@
   padding: var(--space-5) clamp(var(--space-4), 4vw, var(--space-8)) var(--space-4);
 }
 
+/* 모든 로그 항목은 패널 중앙의 한 컬럼을 공유한다 — 에이전트 턴은 컬럼 전폭을 쓰고,
+   디스패치 버블은 컬럼의 오른쪽 가장자리에 붙는다. */
+.agent-chat-log > * {
+  width: 100%;
+  max-width: var(--agent-chat-measure);
+  margin-inline: auto;
+}
+
 .agent-chat-log > * + * {
   margin-top: var(--space-4);
 }
@@ -112,8 +122,6 @@
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
-  max-width: 64ch;
-  margin-left: auto;
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -134,6 +142,7 @@
 }
 
 .agent-chat-dispatch-bubble {
+  max-width: 64ch;
   background: color-mix(in oklch, var(--id-cerulean) 10%, var(--ink-deep));
   border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline));
   border-radius: 14px 14px 5px 14px;
@@ -150,7 +159,6 @@
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr);
   gap: var(--space-3);
-  max-width: 72ch;
 }
 
 .agent-chat-turn-spine {
@@ -394,10 +402,11 @@
 }
 
 /* 공유 .markdown-body(리딩 스케일 17px·78ch 중앙 정렬)를 챗 밀도로 오버라이드한다 —
-   마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다. */
+   마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다.
+   measure는 자체 상한 대신 턴 컬럼 전폭을 따른다. */
 .agent-chat .markdown-body {
   --font-size-body: 14.5px;
-  max-inline-size: 66ch;
+  max-inline-size: 100%;
   margin-inline: 0;
   line-height: 1.7;
 }
