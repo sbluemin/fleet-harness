@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, rmSync, utimesSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -18,7 +18,7 @@ import {
   MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH,
   MAX_PENDING_LAUNCH_ATTACHMENTS,
   readLaunchAttachmentBody,
-  reapStaleLaunchAttachmentDirs,
+  resolveLaunchAttachmentNamespaceRoot,
   sniffLaunchAttachmentImage,
 } from "../server/agent-api/launch-attachments.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
@@ -31,6 +31,13 @@ const cleanups: Array<() => void | Promise<void>> = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
+
+// 스토어마다 고유 데이터 루트를 주어 네임스페이스가 테스트 간에 겹치지 않게 한다.
+function makeStoreDataDir(): string {
+  const dir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-store-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  return dir;
+}
 
 // 1x1 투명 PNG — 매직 바이트 판정을 실제 바이트로 통과한다.
 const PNG_BYTES = Buffer.from(
@@ -87,17 +94,17 @@ describe("composeLaunchPromptWithAttachments", () => {
 
 describe("launch attachment store", () => {
   it("stores bytes as a 0600 file and resolves ids to absolute paths", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     const [filePath] = store.resolve([id]);
     expect(filePath).toBeDefined();
     expect(existsSync(filePath as string)).toBe(true);
-    expect(filePath).toMatch(/fleet-attachment-.*image\.png$/);
+    expect(filePath).toMatch(/fleet-attachments-.*image\.png$/);
   });
 
   it("rejects unknown ids and over-limit launches before any spawn", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     expect(() => store.resolve(["missing"])).toThrow(LaunchAttachmentError);
     const ids = Array.from({ length: MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH + 1 }, () => store.save(PNG_BYTES).id);
@@ -105,7 +112,7 @@ describe("launch attachment store", () => {
   });
 
   it("follows the session lifecycle once bound", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     const [filePath] = store.resolve([id]);
@@ -119,7 +126,7 @@ describe("launch attachment store", () => {
   });
 
   it("reserves an id for the spawn window and releases it on failure", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     const [filePath] = store.resolve([id]);
@@ -133,7 +140,7 @@ describe("launch attachment store", () => {
   });
 
   it("rolls back sibling reservations when one id in the batch is rejected", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     expect(() => store.resolve([id, "missing"])).toThrowError(expect.objectContaining({ code: "attachment_not_found" }));
@@ -141,21 +148,28 @@ describe("launch attachment store", () => {
     expect(store.resolve([id])).toHaveLength(1);
   });
 
-  it("reaps stale attachment dirs from previous processes by mtime", async () => {
-    const staleDir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-"));
-    const freshDir = mkdtempSync(path.join(os.tmpdir(), "fleet-attachment-"));
-    cleanups.push(() => { rmSync(staleDir, { recursive: true, force: true }); rmSync(freshDir, { recursive: true, force: true }); });
-    // 크래시가 남긴 디렉터리는 mtime만이 나이를 말한다 — 31분 전으로 되돌려 지난 프로세스 잔재를 흉내 낸다.
-    const past = new Date(Date.now() - 31 * 60 * 1000);
-    utimesSync(staleDir, past, past);
-    await reapStaleLaunchAttachmentDirs();
-    expect(existsSync(staleDir)).toBe(false);
-    // TTL보다 어린 디렉터리는 살아 있는 다른 Console 채널의 것일 수 있어 남긴다.
-    expect(existsSync(freshDir)).toBe(true);
+  it("reaps only its own namespace leftovers at startup", () => {
+    const ownDataDir = makeStoreDataDir();
+    const otherDataDir = makeStoreDataDir();
+    // 크래시가 남긴 잔재를 흉내 낸다 — 같은 데이터 루트의 동시 실행은 runtime lock이 배제하므로
+    // 자기 네임스페이스 안의 파일은 전부 죽은 프로세스의 것이다.
+    const ownRoot = resolveLaunchAttachmentNamespaceRoot(ownDataDir);
+    const otherRoot = resolveLaunchAttachmentNamespaceRoot(otherDataDir);
+    mkdirSync(path.join(ownRoot, "attachment-stale"), { recursive: true });
+    mkdirSync(path.join(otherRoot, "attachment-live"), { recursive: true });
+    cleanups.push(() => { rmSync(ownRoot, { recursive: true, force: true }); rmSync(otherRoot, { recursive: true, force: true }); });
+
+    const store = createLaunchAttachmentStore({ dataDir: ownDataDir });
+    cleanups.push(() => store.cleanup());
+
+    expect(existsSync(ownRoot)).toBe(false);
+    // 다른 인스턴스(dev/published 채널)의 네임스페이스는 나이와 무관하게 밟지 않는다 —
+    // 그 안의 파일이 살아 있는 Operation에 묶여 있는지는 그 프로세스만 안다.
+    expect(existsSync(path.join(otherRoot, "attachment-live"))).toBe(true);
   });
 
   it("caps how many unsent uploads can pile up", () => {
-    const store = createLaunchAttachmentStore();
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
     cleanups.push(() => store.cleanup());
     for (let index = 0; index < MAX_PENDING_LAUNCH_ATTACHMENTS; index += 1) store.save(PNG_BYTES);
     // 회당 상한(4장)은 컴포저 계약이고 이것은 디스크 계약이다 — 발사에 묶이면 자리가 돌아온다.
@@ -164,7 +178,7 @@ describe("launch attachment store", () => {
 
   it("resets the TTL clock when a launch resolves an attachment", () => {
     let nowValue = 0;
-    const store = createLaunchAttachmentStore(() => nowValue);
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir(), now: () => nowValue });
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     // 해석은 발사가 임박했다는 뜻이다 — 그 직후의 게으른 청소가 방금 해석된 파일을 거두면
@@ -178,7 +192,7 @@ describe("launch attachment store", () => {
 
   it("discards an unsent attachment and sweeps expired ones", () => {
     let nowValue = 0;
-    const store = createLaunchAttachmentStore(() => nowValue);
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir(), now: () => nowValue });
     cleanups.push(() => store.cleanup());
     const first = store.save(PNG_BYTES);
     const [firstPath] = store.resolve([first.id]);
@@ -234,7 +248,7 @@ describe("agent attachment routes", () => {
     // 경로 합성은 서버의 일이다 — spawn 프롬프트에는 사용자 텍스트 뒤에 절대 경로 지시가 실린다.
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
       prompt: expect.stringMatching(
-        new RegExp(`^fix it\\n\\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}.*fleet-attachment-.*image\\.png$`),
+        new RegExp(`^fix it\\n\\n${LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX}.*fleet-attachments-.*image\\.png$`),
       ) as unknown as string,
     }));
 

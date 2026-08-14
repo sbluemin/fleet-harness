@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { readdir, rm, stat } from "node:fs/promises";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -14,7 +13,12 @@ import path from "node:path";
  * 기존 런치 프롬프트 가드(cmd-shim·명령줄 예산·파일 포인터 폴백)를 그대로 통과한다.
  */
 
-const LAUNCH_ATTACHMENT_TEMP_DIR_PREFIX = "fleet-attachment-";
+/**
+ * 인스턴스 네임스페이스 루트의 접두. dev/published 채널처럼 여러 Console이 한 OS temp를 공유하므로,
+ * 데이터 루트 해시로 디렉터리를 갈라 기동 청소가 남의 인스턴스 파일을 절대 밟지 않게 한다.
+ * 같은 데이터 루트의 동시 실행은 Console runtime lock이 배제한다.
+ */
+const LAUNCH_ATTACHMENT_NAMESPACE_PREFIX = "fleet-attachments-";
 const LAUNCH_ATTACHMENT_FILE_MODE = 0o600;
 /** 발사되지 않은 업로드가 디스크에 눌러앉지 않게 하는 회수 시한. 발사되면 세션 수명을 따른다. */
 const UNBOUND_LAUNCH_ATTACHMENT_TTL_MS = 30 * 60 * 1000;
@@ -135,12 +139,18 @@ export interface LaunchAttachmentStore {
   cleanup(): void;
 }
 
-export function createLaunchAttachmentStore(now: () => number = Date.now): LaunchAttachmentStore {
+export function createLaunchAttachmentStore(options: { readonly dataDir: string; readonly now?: () => number }): LaunchAttachmentStore {
+  const now = options.now ?? Date.now;
+  const namespaceRoot = resolveLaunchAttachmentNamespaceRoot(options.dataDir);
   const entries = new Map<string, LaunchAttachmentEntry>();
-  // 지난 프로세스(크래시·kill -9)가 남긴 디렉터리는 게으른 TTL이 영영 보지 못한다 — 기동 시
-  // 한 번, mtime 기준으로 거둔다(update-apply의 stale worker 청소와 같은 계보). 살아 있는 다른
-  // Console 채널의 30분 미만 업로드는 cutoff가 지켜 준다.
-  void reapStaleLaunchAttachmentDirs(now);
+  // 지난 프로세스(크래시·kill -9)가 남긴 파일은 게으른 TTL이 영영 보지 못한다 — 기동 시 자기
+  // 네임스페이스를 통째로 비운다. 같은 데이터 루트는 runtime lock이 동시 실행을 배제하므로
+  // 여기 있는 것은 전부 죽은 프로세스의 잔재이고, 다른 인스턴스의 네임스페이스는 밟지 않는다.
+  try {
+    rmSync(namespaceRoot, { force: true, recursive: true });
+  } catch {
+    // 청소는 best-effort다 — 잔재가 남아도 기동을 막지 않는다.
+  }
 
   function sweepExpired(): void {
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
@@ -184,11 +194,8 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
           "The uploaded bytes are not a PNG, JPEG, GIF, or WebP image.",
         );
       }
-      // os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를 돌려준다. 프롬프트에 실릴 지시는
-      // 절대 경로여야 하므로(launch prompt 파일 포인터와 같은 이유) 여기서 고정한다.
-      const tempRoot = path.resolve(os.tmpdir());
-      mkdirSync(tempRoot, { recursive: true });
-      const dir = mkdtempSync(path.join(tempRoot, LAUNCH_ATTACHMENT_TEMP_DIR_PREFIX));
+      mkdirSync(namespaceRoot, { recursive: true });
+      const dir = mkdtempSync(path.join(namespaceRoot, "attachment-"));
       const filePath = path.join(dir, `image.${sniffed.ext}`);
       try {
         writeFileSync(filePath, bytes, { flag: "wx", mode: LAUNCH_ATTACHMENT_FILE_MODE });
@@ -258,26 +265,13 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
 }
 
 /**
- * 지난 프로세스가 남긴 첨부 디렉터리를 mtime 기준으로 거둔다. 이 스토어의 항목은 프로세스
- * 메모리에만 살아, 크래시·kill -9 뒤에는 어떤 TTL도 그 파일을 다시 보지 못한다. TTL보다 어린
- * 디렉터리는 살아 있는 다른 Console 채널의 것일 수 있어 남긴다.
+ * 데이터 루트별 첨부 네임스페이스 루트. os.tmpdir()은 TEMP/TMP가 상대값이면 상대 경로를
+ * 돌려주는데, 프롬프트에 실릴 지시는 절대 경로여야 하므로(launch prompt 파일 포인터와 같은
+ * 이유) 여기서 고정한다.
  */
-export async function reapStaleLaunchAttachmentDirs(now: () => number = Date.now): Promise<void> {
-  try {
-    const tempRoot = path.resolve(os.tmpdir());
-    const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
-    for (const name of await readdir(tempRoot)) {
-      if (!name.startsWith(LAUNCH_ATTACHMENT_TEMP_DIR_PREFIX)) continue;
-      const dir = path.join(tempRoot, name);
-      try {
-        if ((await stat(dir)).mtimeMs <= cutoff) await rm(dir, { force: true, recursive: true });
-      } catch {
-        // 경합으로 사라진 디렉터리는 이미 원하는 상태다.
-      }
-    }
-  } catch {
-    // 청소는 best-effort다 — temp 루트를 읽지 못해도 기동을 막지 않는다.
-  }
+export function resolveLaunchAttachmentNamespaceRoot(dataDir: string): string {
+  const hash = crypto.createHash("sha256").update(path.resolve(dataDir)).digest("hex").slice(0, 12);
+  return path.join(path.resolve(os.tmpdir()), `${LAUNCH_ATTACHMENT_NAMESPACE_PREFIX}${hash}`);
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

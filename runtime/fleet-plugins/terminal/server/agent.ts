@@ -168,7 +168,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   // 설치돼 있는지에 따라 갈린다.
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
-  const launchAttachments = createLaunchAttachmentStore();
+  const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.fleetDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
@@ -544,6 +544,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
+      // 이 preflight 거절은 unreserve가 있는 아래 try보다 앞이다 — 여기서 되돌리지 않으면
+      // 예약이 영영 남아 재시도가 전부 attachment_not_found로 떨어진다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.unreserve(launchOptions.attachmentIds);
+      }
       ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
       return;
     }
