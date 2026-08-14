@@ -1639,6 +1639,7 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain("onPointerDown={stopIdentityPointer}");
     expect(operationFrame).toContain("onBegin: () => {\n      disarmClose();\n    },");
     const identityPointerBlock = operationFrame.match(/const stopIdentityPointer = \([^]*?\n  };/)?.[0] ?? "";
+    expect(identityPointerBlock).toContain("if (rename.renaming) event.stopPropagation();");
     expect(identityPointerBlock).toContain("disarmClose();");
     expect(identityPointerBlock).not.toContain("onActivate();");
     expect(operationFrame).toContain('event.key !== "Enter" && event.key !== "F2"');

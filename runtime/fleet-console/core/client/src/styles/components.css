@@ -5860,7 +5860,7 @@
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
   background: transparent;
-  cursor: text;
+  cursor: inherit;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -6509,7 +6509,8 @@
 
 .canvas-operation-resize {
   position: absolute;
-  z-index: 5;
+  /* 캡션(z 7)보다 위에 두어 북쪽 가장자리는 리사이즈, 캡션 안은 드래그가 받는다. */
+  z-index: 8;
   touch-action: none;
 }
 
@@ -6522,7 +6523,8 @@
 }
 
 .canvas-operation-resize--n {
-  top: -4px;
+  /* 캡션이 본문 위 28px에 붙으므로 북쪽 리사이즈도 그 상단에 둔다. */
+  top: -32px;
 }
 
 .canvas-operation-resize--s {
@@ -6554,7 +6556,7 @@
 }
 
 .canvas-operation-resize--ne {
-  top: -5px;
+  top: -33px;
   right: -5px;
   cursor: nesw-resize;
 }
@@ -6572,7 +6574,7 @@
 }
 
 .canvas-operation-resize--nw {
-  top: -5px;
+  top: -33px;
   left: -5px;
   cursor: nwse-resize;
 }

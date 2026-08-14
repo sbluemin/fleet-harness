@@ -255,7 +255,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   };
 
   const stopIdentityPointer = (event: ReactPointerEvent<HTMLButtonElement | HTMLInputElement>) => {
-    event.stopPropagation();
+    // 이름 입력 중만 드래그를 막는다. 제목 버튼은 캡션과 같이 창을 움직인다.
+    if (rename.renaming) event.stopPropagation();
     disarmClose();
   };
 

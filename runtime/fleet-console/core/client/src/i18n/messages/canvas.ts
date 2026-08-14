@@ -44,7 +44,7 @@ export const canvasEn = {
 
   "canvas.frame.operationAria": "Operation {title}",
   "canvas.frame.renameAria": "Rename operation {title}",
-  "canvas.frame.renameTitle": "{title} — Double-click, Enter, or F2 to rename",
+  "canvas.frame.renameTitle": "{title} — Drag to move. Double-click, Enter, or F2 to rename",
   "canvas.frame.setAccentAria": "Set accent for operation {title}",
   "canvas.frame.setAccentTitle": "Set accent",
   "canvas.frame.minimizeAria": "Minimize operation {title}",
@@ -250,7 +250,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "canvas.frame.operationAria": "Operation {title}",
   "canvas.frame.renameAria": "Operation {title} 이름 바꾸기",
-  "canvas.frame.renameTitle": "{title} — 더블클릭, Enter 또는 F2로 이름 변경",
+  "canvas.frame.renameTitle": "{title} — 드래그로 이동. 더블클릭, Enter 또는 F2로 이름 변경",
   "canvas.frame.setAccentAria": "Operation {title} 액센트 설정",
   "canvas.frame.setAccentTitle": "액센트 설정",
   "canvas.frame.minimizeAria": "Operation {title} 최소화",
