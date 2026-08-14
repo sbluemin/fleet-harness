@@ -40,8 +40,8 @@ export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
  */
 type XaiResponsesWireRequest = Omit<
   CanonicalResponseRequest,
-  "metadata" | "native_tools"
->;
+  "metadata" | "native_tools" | "tools"
+> & { tools?: XaiWireTool[] };
 
 export interface XaiResponsesAdapterOptions {
   fetch?: FetchLike;
@@ -91,7 +91,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
 
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    const payload = forXaiResponsesBackend(request);
+    const payload = forXaiResponsesBackend(request, xaiWireTools(request));
     // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
     wireLog("xai-responses.wire.request", { url: this.url, payload });
     let response: Response;
@@ -150,10 +150,15 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       }, this.functionCallTimeoutMs)
     };
   }
+
+  wireTools(request: CanonicalResponseRequest): readonly NonNullable<CanonicalResponseRequest["tools"]>[number][] {
+    return xaiWireTools(request) ?? [];
+  }
 }
 
 function forXaiResponsesBackend(
   request: CanonicalResponseRequest,
+  tools: readonly XaiWireTool[] | undefined = xaiWireTools(request),
 ): XaiResponsesWireRequest {
   const { metadata: _metadata, native_tools: _nativeTools, ...rest } = request;
   return {
@@ -166,10 +171,41 @@ function forXaiResponsesBackend(
       const { reasoning_content: _reasoningContent, ...wireItem } = item;
       return wireItem;
     }),
-    ...(request.tools === undefined
-      ? {}
-      : { tools: request.tools.map(({ defer_loading: _deferLoading, ...tool }) => tool) }),
+    ...(tools === undefined ? {} : { tools: [...tools] }),
   };
+}
+
+type XaiWireTool = Omit<NonNullable<CanonicalResponseRequest["tools"]>[number], "defer_loading">;
+
+function xaiWireTools(request: CanonicalResponseRequest): XaiWireTool[] | undefined {
+  if (request.tools === undefined) return undefined;
+  const tools = request.tools;
+  const toolSearchActive = tools.some((tool) => isToolSearchName(tool.name));
+  const selectedName = request.tool_choice && typeof request.tool_choice === "object"
+    ? request.tool_choice.name
+    : undefined;
+  const referencedNames = new Set(
+    request.input.flatMap((item) => item.type === "function_call_output" ? item.tool_references ?? [] : []),
+  );
+  return tools
+    .filter((tool) => !toolSearchActive || tool.defer_loading !== true
+      || isToolSearchName(tool.name)
+      || (selectedName !== undefined && toolNameMatches(tool.name, selectedName))
+      || referencedNames.has(tool.name))
+    .map(({ defer_loading: _deferLoading, ...tool }) => tool);
+}
+
+function toolLeafName(name: string): string {
+  const separator = name.lastIndexOf("__");
+  return separator === -1 ? name : name.slice(separator + 2);
+}
+
+function isToolSearchName(name: string): boolean {
+  return toolLeafName(name).replace(/[_-]/g, "").toLowerCase() === "toolsearch";
+}
+
+function toolNameMatches(declaredName: string, selectedName: string): boolean {
+  return declaredName === selectedName || toolLeafName(declaredName) === toolLeafName(selectedName);
 }
 
 type ReadOptions = UpstreamReadOptions;
