@@ -83,6 +83,16 @@ describe("summarizeToolInput", () => {
     expect(summarizeToolInput({ command: `run ${"x".repeat(400)}` }).length).toBeLessThanOrEqual(160);
     expect(summarizeToolInput({ unrelated: 1 })).toBe("");
   });
+
+  // 브라우저로 나가는 스트림에 raw 절대 경로를 싣지 않는다(Console 보안 계약) —
+  // cwd 안은 상대화, 밖은 마지막 두 조각 축약, 상대 경로는 그대로.
+  it("relativizes absolute paths against the operation cwd", () => {
+    const options = { cwd: "/Users/someone/workspace/project" };
+    expect(summarizeToolInput({ file_path: "/Users/someone/workspace/project/src/a.ts" }, options)).toBe("src/a.ts");
+    expect(summarizeToolInput({ path: "/Users/someone/.claude/projects/x/session.jsonl" }, options)).toBe("…/x/session.jsonl");
+    expect(summarizeToolInput({ file_path: "src/a.ts" }, options)).toBe("src/a.ts");
+    expect(summarizeToolInput({ file_path: "/etc/hosts" })).toBe("…/etc/hosts");
+  });
 });
 
 // 클라이언트 union은 서버 union의 손 복제다 — 서버가 내보내는 모든 kind를 클라이언트 해석기가

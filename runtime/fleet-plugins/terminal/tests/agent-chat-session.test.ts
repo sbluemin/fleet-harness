@@ -195,6 +195,70 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  it("skips the provider session update and surfaces an error when write-back fails", async () => {
+    const transcriptPath = writeTranscript("sid-6", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const updates: unknown[] = [];
+    const configDir = tempDir("chat-sdk-");
+    const grown = path.join(configDir, "projects", "-tmp-workspace", "sid-6.jsonl");
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      startTurn: async () => {
+        // SDK 트랜스크립트는 자랐지만, 원본 쪽 디렉터리가 사라져 write-back이 실패하는 상황.
+        writeFileSync(grown, `${readFileSync(grown, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
+        rmSync(path.dirname(transcriptPath), { recursive: true, force: true });
+        const messages = [{ type: "result", subtype: "success", is_error: false }];
+        let index = 0;
+        return {
+          close: () => {},
+          [Symbol.asyncIterator]() {
+            return {
+              async next() {
+                if (index >= messages.length) return { done: true as const, value: undefined };
+                return { done: false as const, value: messages[index++] };
+              },
+            };
+          },
+        };
+      },
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => seedFor(transcriptPath, (providerSession) => updates.push(providerSession)));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("continue");
+    await drainTurn(registry, "op-1");
+
+    expect(updates).toEqual([]);
+    expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_writeback_failed")).toBe(true);
+    await registry.disposeAll();
+  });
+
+  it("dispose waits for an in-flight ensure so no chat session survives it", async () => {
+    const transcriptPath = writeTranscript("sid-7", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const sdkDispose = vi.fn(async () => {});
+    const factory = (async () => ({
+      configDir: tempDir("chat-sdk-"),
+      models: ["opus[1m]"],
+      startTurn: async () => { throw new Error("unused"); },
+      dispose: sdkDispose,
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+
+    const ensureFlight = registry.ensure("op-1", () => seedFor(transcriptPath));
+    await registry.dispose("op-1");
+
+    await ensureFlight.catch(() => undefined);
+    expect(registry.has("op-1")).toBe(false);
+    await registry.disposeAll();
+  });
+
   it("reports busy while a turn is in flight", async () => {
     const transcriptPath = writeTranscript("sid-5", [
       { type: "user", message: { role: "user", content: "first order" } },

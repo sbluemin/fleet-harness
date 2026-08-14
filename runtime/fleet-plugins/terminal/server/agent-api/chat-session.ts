@@ -70,7 +70,7 @@ class AgentChatSession {
       const raw = await fs.readFile(this.seed.transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
-        for (const event of chatEventsFromTranscriptLine(line)) {
+        for (const event of chatEventsFromTranscriptLine(line, { cwd: this.seed.cwd })) {
           if (event.kind === "dispatch") turns += 1;
           this.push(event);
         }
@@ -179,7 +179,7 @@ class AgentChatSession {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
             this.latestSessionId = message.session_id;
           }
-          for (const event of chatEventsFromSdkMessage(message)) {
+          for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd })) {
             if (event.kind === "turn-end") sawResult = true;
             this.push(event);
           }
@@ -212,7 +212,14 @@ class AgentChatSession {
     const dest = path.join(path.dirname(this.seed.transcriptPath), `${this.latestSessionId}.jsonl`);
     const destStat = await fs.stat(dest).catch(() => null);
     if (destStat?.isFile() && destStat.size > sourceStat.size) return;
-    await fs.copyFile(source, dest).catch(() => undefined);
+    // 복사가 실패하면 providerSession을 갱신하지 않는다 — 존재하지 않는 파일을 durable 권위로
+    // 가리키면 터미널 복귀·재시작·Analyst가 조용히 턴을 잃는다. 실패는 저널로 표면화한다.
+    try {
+      await fs.copyFile(source, dest);
+    } catch {
+      this.push({ kind: "error", code: "chat_writeback_failed" });
+      return;
+    }
     this.seed.onProviderSessionUpdate({
       provider: "claude",
       sessionId: this.latestSessionId,
@@ -263,6 +270,10 @@ export class AgentChatRegistry {
   }
 
   async dispose(operationId: string): Promise<void> {
+    // 생성이 아직 in-flight면 완주를 기다린 뒤 접는다 — 그냥 돌아가면 DELETE가 터미널을
+    // 되살린 뒤에 pending ensure가 chat 세션을 등록해 같은 Claude 세션의 이중 필자가 된다.
+    const flight = this.ensureFlights.get(operationId);
+    if (flight) await flight.then(() => undefined, () => undefined);
     const session = this.sessions.get(operationId);
     if (!session) return;
     this.sessions.delete(operationId);
@@ -270,6 +281,8 @@ export class AgentChatRegistry {
   }
 
   async disposeAll(): Promise<void> {
+    const flights = [...this.ensureFlights.values()];
+    if (flights.length > 0) await Promise.all(flights.map((flight) => flight.then(() => undefined, () => undefined)));
     const all = [...this.sessions.values()];
     this.sessions.clear();
     await Promise.all(all.map((session) => session.dispose()));

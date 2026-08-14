@@ -45,11 +45,16 @@ interface TranscriptLine {
   };
 }
 
+/** 경로 표시를 cwd 기준으로 상대화하기 위한 매퍼 옵션. */
+export interface ChatEventMapOptions {
+  readonly cwd?: string;
+}
+
 /**
  * 트랜스크립트 한 줄을 이벤트 목록으로 옮긴다. 대화가 아닌 줄(mode/snapshot/attachment 등),
  * meta 줄, sidechain(서브에이전트) 줄은 빈 목록이다.
  */
-export function chatEventsFromTranscriptLine(raw: string): readonly AgentChatStreamEvent[] {
+export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
   let line: TranscriptLine;
   try {
     line = JSON.parse(raw) as TranscriptLine;
@@ -64,7 +69,7 @@ export function chatEventsFromTranscriptLine(raw: string): readonly AgentChatStr
     return text ? [{ kind: "dispatch", text, ...atField }] : [];
   }
   if (line.type === "assistant") {
-    return eventsFromAssistantContent(line.message?.content);
+    return eventsFromAssistantContent(line.message?.content, options);
   }
   return [];
 }
@@ -76,10 +81,10 @@ export function chatEventsFromTranscriptLine(raw: string): readonly AgentChatStr
 export function chatEventsFromSdkMessage(message: {
   readonly type: string;
   readonly [key: string]: unknown;
-}): readonly AgentChatStreamEvent[] {
+}, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
-    return eventsFromAssistantContent(body?.content);
+    return eventsFromAssistantContent(body?.content, options);
   }
   if (message.type === "result") {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
@@ -92,7 +97,7 @@ export function chatEventsFromSdkMessage(message: {
   return [];
 }
 
-function eventsFromAssistantContent(content: unknown): readonly AgentChatStreamEvent[] {
+function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   if (!Array.isArray(content)) return [];
   const events: AgentChatStreamEvent[] = [];
   for (const block of content as readonly TranscriptContentBlock[]) {
@@ -102,7 +107,7 @@ function eventsFromAssistantContent(content: unknown): readonly AgentChatStreamE
       continue;
     }
     if (block.type === "tool_use" && typeof block.name === "string" && block.name.length > 0) {
-      events.push({ kind: "tool", name: block.name, detail: summarizeToolInput(block.input) });
+      events.push({ kind: "tool", name: block.name, detail: summarizeToolInput(block.input, options) });
     }
     // thinking·redacted_thinking은 의도적으로 버린다.
   }
@@ -131,19 +136,37 @@ function normalizeDispatchText(text: string): string | null {
 
 /**
  * 도구 입력에서 한 줄 요약을 뽑는다. 사람이 스캔할 좌표 성격의 필드만 고르고 상한을 둔다 —
- * 전체 입력(파일 본문·프롬프트)은 싣지 않는다.
+ * 전체 입력(파일 본문·프롬프트)은 싣지 않는다. 경로 필드는 브라우저로 나가는 스트림이므로
+ * raw 절대 경로 대신 표시형으로 옮긴다(Console 보안 계약).
  */
-export function summarizeToolInput(input: unknown): string {
+export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}): string {
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const record = input as Record<string, unknown>;
   for (const key of ["file_path", "path", "command", "pattern", "url", "query", "description", "prompt", "subject"]) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       const flat = value.replace(/\s+/g, " ").trim();
-      return flat.length > MAX_TOOL_DETAIL_CHARS ? `${flat.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : flat;
+      const shown = key === "file_path" || key === "path" ? displayPath(flat, options.cwd) : flat;
+      return shown.length > MAX_TOOL_DETAIL_CHARS ? `${shown.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : shown;
     }
   }
   return "";
+}
+
+/**
+ * 절대 경로를 브라우저 표시형으로 옮긴다: Operation cwd 안이면 상대 경로, 밖이면 마지막 두
+ * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
+ */
+function displayPath(value: string, cwd: string | undefined): string {
+  const normalized = value.replace(/\\/g, "/");
+  if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return value;
+  if (cwd) {
+    const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (normalized === root) return ".";
+    if (normalized.startsWith(`${root}/`)) return normalized.slice(root.length + 1);
+  }
+  const segments = normalized.split("/").filter((segment) => segment.length > 0);
+  return `…/${segments.slice(-2).join("/")}`;
 }
 
 function capText(text: string): string {
