@@ -538,13 +538,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         return operation;
       },
       patch: (id, input) => {
-        const previousTitle = "title" in input ? operations.get(id)?.title : undefined;
+        const before = operations.get(id);
         const operation = operations.patch(id, input);
-        if (operation) {
+        if (operation && before) {
           persistDurableState();
-          if (previousTitle !== undefined && previousTitle !== operation.title) {
+          // 브라우저가 볼 수 있는 투영이 실제로 달라졌을 때만 밀어낸다 — 민감 필드
+          // (providerSession 등)만 바뀐 patch는 sanitized DTO가 같아 계속 침묵하고,
+          // payload 모드 마커(예: chatMode)처럼 뷰 분기를 쥔 변화는 리로드 없이 도달한다.
+          if (sanitizedOperationJson(before) !== sanitizedOperationJson(operation)) {
             broadcastOperationChanged(operation);
           }
+        } else if (operation) {
+          persistDurableState();
         }
         return operation;
       },
@@ -2045,6 +2050,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     for (const theater of ordered) {
       await codex.registerWorkspace(theater.realpath, theater.lastOpenedAt, theater.id);
     }
+  }
+
+  // patch 브로드캐스트 게이트가 쓰는 "브라우저가 보는 모양" — broadcastOperationChanged와 같은
+  // 새니타이즈 규칙을 공유해야 민감 필드 전용 patch가 조용히 남는다. ts는 모든 patch가 건드리는
+  // 축이라 비교에서 뺀다 — 남기면 게이트가 항상 열려 게이트가 아니게 된다.
+  function sanitizedOperationJson(node: OperationNode): string {
+    const sensitiveFields = [
+      ...(pluginHost.sensitiveFieldsByPluginId.get(node.pluginId) ?? []),
+      ...(pluginPayloadSanitizers.get(node.pluginId) ?? []),
+    ];
+    const { ts: _ts, ...rest } = createSanitizedOpDto(node, { sensitiveFields });
+    return JSON.stringify(rest);
   }
 
   function broadcastOperationChanged(node: OperationNode): void {

@@ -28,7 +28,8 @@ import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "
 import "./analysis.css";
 import "./agent-cli.css";
 
-import { AgentApiError, createAgentSession, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
+import { AgentApiError, convertAgentSessionToChat, createAgentSession, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession } from "./api.js";
+import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
@@ -416,6 +417,32 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     </div>
   );
 
+  const chatMode = context.operation.payload.chatMode === true;
+  const openTerminal = React.useCallback(async () => {
+    // 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살릴 수 있다(서버 ticket 가드).
+    await exitAgentChat(context.operationId);
+    try {
+      await resumeSession(context.operationId);
+      context.notifications.dismiss(context.operationId);
+    } catch (error) {
+      context.notifications.emit({
+        kind: agentResumeFailedNotification.id,
+        operationId: context.operationId,
+        message: resumeFailureMessage(error, context.language),
+      });
+      throw error;
+    }
+  }, [context]);
+
+  if (chatMode) {
+    return (
+      <div className="agent-stream-host">
+        {handles}
+        <AgentChatView context={context} session={session} onOpenTerminal={openTerminal} />
+      </div>
+    );
+  }
+
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
@@ -423,6 +450,9 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         {session.resumeAvailable || isSupportedAgentOperationCliId(session.cliId)
           ? <DormantOperationView context={context} session={session} />
           : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
+        {session.resumeAvailable && isSupportedAgentOperationCliId(session.cliId)
+          ? <DormantChatEntry context={context} />
+          : null}
       </div>
     );
   }
@@ -441,7 +471,85 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
+      {isSupportedAgentOperationCliId(session.cliId) ? <ChatModeEntry context={context} /> : null}
     </div>
+  );
+}
+
+/** 터미널 뷰 우상단의 Chat view 전환 진입 — 확인 오버레이를 거쳐 서버 전환을 요청한다. */
+function ChatModeEntry({ context }: { readonly context: OperationRenderContext }) {
+  const t = getT(context.language ?? "en");
+  const [open, setOpen] = React.useState(false);
+  const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
+  const titleId = `agent-chat-inter-${context.operationId}`;
+  const convert = React.useCallback(async () => {
+    setState("converting");
+    try {
+      await convertAgentSessionToChat(context.operationId);
+      // payload.chatMode 반영이 뷰를 전환한다 — 여기서는 오버레이만 닫는다.
+      setOpen(false);
+      setState("idle");
+    } catch (error) {
+      setState(error instanceof AgentApiError && error.message === "chat_convert_busy" ? "busy" : "error");
+    }
+  }, [context.operationId]);
+  return (
+    <>
+      <button
+        type="button"
+        className="agent-chat-mode-chip"
+        aria-label={t("terminal.chat.openAria")}
+        onClick={() => { setState("idle"); setOpen(true); }}
+      >
+        <span aria-hidden="true">≣</span> {t("terminal.chat.open")}
+      </button>
+      {open ? (
+        <div className="agent-chat-interstitial" onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+          <div className="agent-chat-inter-card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+            <h4 id={titleId}>{t("terminal.chat.confirmTitle")}</h4>
+            <p>{t("terminal.chat.confirmBody")}</p>
+            <p className="agent-chat-inter-fine">{t("terminal.chat.confirmFine")}</p>
+            {state === "busy" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertBusy")}</p> : null}
+            {state === "error" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertFailed")}</p> : null}
+            <div className="agent-chat-inter-actions">
+              <button type="button" className="agent-chat-inter-button" autoFocus onClick={() => setOpen(false)}>
+                {t("terminal.chat.confirmKeep")}
+              </button>
+              <button
+                type="button"
+                className="agent-chat-inter-button agent-chat-inter-button--primary"
+                disabled={state === "converting"}
+                onClick={() => { void convert(); }}
+              >
+                {t("terminal.chat.confirmSwitch")}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** 휴면 카드 위의 chat 진입 고스트 — 죽일 PTY조차 없는 가장 안전한 전환 경로다. */
+function DormantChatEntry({ context }: { readonly context: OperationRenderContext }) {
+  const t = getT(context.language ?? "en");
+  const [state, setState] = React.useState<"idle" | "working" | "error">("idle");
+  return (
+    <button
+      type="button"
+      className="agent-chat-dormant-open"
+      disabled={state === "working"}
+      aria-label={t("terminal.chat.dormantOpenAria")}
+      onClick={() => {
+        setState("working");
+        void convertAgentSessionToChat(context.operationId)
+          .catch(() => { setState("error"); })
+          .then(() => { setState((current) => current === "error" ? current : "idle"); });
+      }}
+    >
+      {state === "error" ? t("terminal.chat.convertFailed") : t("terminal.chat.dormantOpen")}
+    </button>
   );
 }
 

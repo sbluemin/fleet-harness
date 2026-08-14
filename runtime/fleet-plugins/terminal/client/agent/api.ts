@@ -145,6 +145,22 @@ export async function messageAgentSession(sessionId: string, text: string, signa
   }
 }
 
+export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+export async function exitAgentChat(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "DELETE", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
 export async function terminateAgentSession(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}`, { method: "DELETE", signal });
   await assertOk(response);
