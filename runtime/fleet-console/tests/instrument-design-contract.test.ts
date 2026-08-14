@@ -1668,11 +1668,17 @@ describe("Instrument core design contract", () => {
     expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: -28px;");
     expect(components).toContain("border-radius: 999px;");
-    // 활성 타이틀바는 brass 7% 틴트를 frame 위에 얹는다 — ink-mid 재결합 회귀를 여기서 잡는다.
-    expect(components).toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");
     expect(components).toContain("color: var(--text-secondary);");
-    expect(components).toContain(".canvas-operation.is-active .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
+    // 활성은 패널 아웃라인만 말한다 — 캡션 brass 틴트와 이름 재채색은 같은 신호를 중복한다.
+    // inherit은 단축 전체가 아니라 border-color만 받는다. 1px solid inherit은 선언이 버려진다.
+    expect(components).toContain("border-width: 1px;");
+    expect(components).toContain("border-style: solid;");
+    expect(components).toContain("border-color: inherit;");
+    expect(components).not.toContain("border: 1px solid inherit;");
+    expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-titlebar");
+    expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-identity-name");
+    expect(components).not.toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");
+    expect(components).toContain(".canvas-operation.is-active {\n  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));");
     expect(components).toContain(".canvas-operation-window-controls {");
     const windowControlsBlock = components.match(/\.canvas-operation-window-controls \{[^}]*\}/)?.[0] ?? "";
     expect(windowControlsBlock).toContain("margin-left: auto;");
