@@ -177,8 +177,8 @@ export const agentPlugin = definePlugin({
   },
   // Quick Launch 멘션 전달. 실패 표현은 컴포저가 거절 코드로 소유하므로 여기서는 알림을 내지 않는다.
   messageableOperationTypes: ["agent"],
-  messageOperation: async (operationId, text) => {
-    await messageAgentSession(operationId, text);
+  messageOperation: async (operationId, text, attachmentIds) => {
+    await messageAgentSession(operationId, text, attachmentIds);
   },
   // Quick Launch 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
   uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),

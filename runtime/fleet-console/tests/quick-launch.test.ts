@@ -358,10 +358,18 @@ describe("attachment contract", () => {
     expect(quickLaunchErrorMessageKey("attachment_limit")).toBe("chrome.quickLaunch.errorAttachmentLimit");
   });
 
+  it("maps mention-delivery rejections that involve attachments", () => {
+    // 멘션 채널도 같은 첨부 코드를 돌려준다 — 문구는 런치 거절과 공유한다.
+    expect(quickLaunchMentionErrorMessageKey("attachment_not_found")).toBe("chrome.quickLaunch.errorAttachmentGone");
+    expect(quickLaunchMentionErrorMessageKey("attachment_limit")).toBe("chrome.quickLaunch.errorAttachmentLimit");
+  });
+
   it("declares every attachment key in both locales", () => {
     const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
     const keys = [
       "chrome.quickLaunch.attachments",
+      "chrome.quickLaunch.attachmentAdd",
+      "chrome.quickLaunch.attachmentZoom",
       "chrome.quickLaunch.attachmentRemove",
       "chrome.quickLaunch.attachmentUploading",
       "chrome.quickLaunch.errorAttachmentTooLarge",
@@ -370,7 +378,6 @@ describe("attachment contract", () => {
       "chrome.quickLaunch.errorAttachmentUploadFailed",
       "chrome.quickLaunch.errorAttachmentStorageExhausted",
       "chrome.quickLaunch.errorAttachmentGone",
-      "chrome.quickLaunch.errorAttachmentMention",
     ];
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);

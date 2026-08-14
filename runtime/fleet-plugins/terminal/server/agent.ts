@@ -770,7 +770,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
     }
-    const body = await ctx.host.http.readJsonBody<{ readonly text?: unknown }>(req);
+    const body = await ctx.host.http.readJsonBody<{ readonly text?: unknown; readonly attachmentIds?: unknown }>(req);
     const text = body?.text;
     if (typeof text !== "string") {
       ctx.host.http.writeJson(res, 400, { error: "message_invalid" });
@@ -780,6 +780,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 400, { error: "prompt_too_long" });
       return true;
     }
+    const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
+    if (attachmentIds === false) return true;
     // PTY로 나가는 텍스트에서 제어 바이트·괄호붙임 종료 마커를 벗겨낸다 — rename 주입과 같은 방어선.
     const sanitized = sanitizePtyMessageText(text);
     if (sanitized.trim().length === 0) {
@@ -791,60 +793,90 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
       return true;
     }
+    // 첨부 경로는 런치와 같은 문법으로 본문 뒤에 합성된다. 해석은 전달이 끝날 때까지 id를
+    // 예약하므로 여기(모든 syntactic 거절 뒤)에 서고, 이후의 모든 실패 경로가 settle(false)로
+    // 되돌린다 — 성공만 세션에 묶어 파일 수명이 그 Operation을 따르게 한다.
+    let attachmentPaths: readonly string[] = [];
+    try {
+      attachmentPaths = launchAttachments.resolve(attachmentIds);
+    } catch (error) {
+      if (error instanceof LaunchAttachmentError) {
+        ctx.host.http.writeJson(res, 400, { error: error.code });
+        return true;
+      }
+      throw error;
+    }
+    const settleAttachments = (delivered: boolean) => {
+      if (attachmentIds.length === 0) return;
+      if (delivered) launchAttachments.bind(sessionId, attachmentIds);
+      else launchAttachments.unreserve(attachmentIds);
+    };
     // Chat Mode Operation은 PTY가 없다 — 전달은 SDK 턴으로 실행된다. 구조화 경로라 PTY 정화를
     // 거치지 않은 원문을 그대로 쓴다(빈 문자열·상한 검사는 위에서 끝났다).
     if (node.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
       const seed = await resolveChatSeed(node);
       if (!seed.ok) {
+        settleAttachments(false);
         ctx.host.http.writeJson(res, seed.status, { error: seed.error });
         return true;
       }
       // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — ensure와 같은 tick에서 모드를
       // 재검증해야 stale 요청이 새 chat 세션을 만들어 되살아난 PTY와 이중 필자가 되지 않는다.
       if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+        settleAttachments(false);
         ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
         return true;
       }
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
-        chat.send(text.trim());
+        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string);
       } catch {
+        settleAttachments(false);
         ctx.host.http.writeJson(res, 503, { error: "chat_unavailable" });
         return true;
       }
+      settleAttachments(true);
       ctx.host.http.writeJson(res, 200, { delivered: true, chat: true });
       return true;
     }
+    const deliveredText = composeLaunchPromptWithAttachments(sanitized, attachmentPaths) as string;
     const deliver = (leadChunks: readonly PtyInputChunk[] = []) => {
       const policy = terminalRuntime.getMessagePolicy(sessionId) ?? {};
       // rename 주입과 같은 세션 키/writer로 직렬화해 rename+메시지 인터리브를 막는다.
       reminderWriter.enqueue(
         sessionId,
         (data) => terminalRuntime.write(sessionId, data),
-        [...leadChunks, ...formatPtyMessage(policy, sanitized, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY)],
+        [...leadChunks, ...formatPtyMessage(policy, deliveredText, process.platform, CONSOLE_PTY_MESSAGE_DELIVERY)],
       );
     };
     if (terminalRuntime.getSessionLastActivityAt(sessionId) !== null) {
       // awaiting 재검사: 덱은 pick 시점만 가드한다 — 작성하는 사이 CLI가 권한 프롬프트로 전환하면
       // 전달 끝의 줄 종결자가 대기 중인 선택지를 그대로 확정해 버린다. 직접 POST 호출도 여기서 닫힌다.
       if (observability.getTerminalSessionInfo(sessionId)?.attentionPending === true) {
+        settleAttachments(false);
         ctx.host.http.writeJson(res, 409, { error: "session_awaiting_input" });
         return true;
       }
       deliver();
+      settleAttachments(true);
       ctx.host.http.writeJson(res, 200, { delivered: true });
       return true;
     }
     // dormant 대상은 재기동 후 전달한다(제품 결정). providerSession이 없으면 이어붙일 세션이 없다.
     const cliId = readOptionalAgentCliId(node.payload?.cliId, res);
-    if (cliId === false) return true;
+    if (cliId === false) {
+      settleAttachments(false);
+      return true;
+    }
     const providerSession = readProviderSession(node.payload);
     if (!cliId || !providerSession) {
+      settleAttachments(false);
       ctx.host.http.writeJson(res, 409, { error: "resume_unavailable" });
       return true;
     }
     const result = await resumeAgentSessionCore(node, sessionId, cliId, { fresh: false, providerSession });
     if (!result.ok) {
+      settleAttachments(false);
       ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
     }
@@ -852,6 +884,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // 선두의 빈 지연 청크는 재기동된 CLI TUI의 부팅·raw-mode 초기화에 여유를 준다. readiness
     // 신호가 없는 경로라 보장이 아니라 여유폭이다(fresh launch는 argv로 프롬프트를 넘겨 이 경합이 없다).
     deliver([{ data: "", submitDelayMs: RESUMED_PTY_MESSAGE_BOOT_DELAY_MS }]);
+    settleAttachments(true);
     ctx.host.http.writeJson(res, 200, { delivered: true, resumed: true });
     return true;
   }

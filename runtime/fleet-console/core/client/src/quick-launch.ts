@@ -256,6 +256,9 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
     case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
+    // 첨부가 만료·소실된 전달 거절 — 칩은 남았지만 그 서버 파일은 이미 없다(런치 거절과 같은 문구).
+    case "attachment_not_found": return "chrome.quickLaunch.errorAttachmentGone";
+    case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";

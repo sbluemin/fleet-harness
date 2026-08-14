@@ -50,10 +50,12 @@ export interface FleetClientPlugin {
   readonly messageableOperationTypes?: readonly string[];
   /**
    * Host→plugin request to deliver user text to an Operation's live session.
-   * A dormant Operation is resumed by the plugin before delivery. Rejects with an
-   * Error whose `message` is the server rejection code when one is available.
+   * A dormant Operation is resumed by the plugin before delivery. Optional attachment
+   * ids (from `uploadLaunchAttachment`) ride along and the plugin's server composes
+   * the stored file paths after the text. Rejects with an Error whose `message` is
+   * the server rejection code when one is available.
    */
-  readonly messageOperation?: (operationId: string, text: string) => Promise<void>;
+  readonly messageOperation?: (operationId: string, text: string, attachmentIds?: readonly string[]) => Promise<void>;
   /**
    * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the

@@ -45,11 +45,11 @@ export const terminalPlugin = definePlugin({
   // shell 판별 조회 없이 agent 구현으로 곧장 넘긴다 — 래퍼가 hook을 삼키면 호스트는 부재로 읽는다.
   // 타입 선언은 agent 구현의 것을 그대로 실어 두 목록이 갈라질 자리를 없앤다.
   messageableOperationTypes: agentPlugin.messageableOperationTypes,
-  messageOperation: async (operationId, text) => {
+  messageOperation: async (operationId, text, attachmentIds) => {
     // 옵셔널 체인은 구현 소실을 무음 전달 성공으로 만든다 — 없으면 던져서 컴포저가 실패를 말하게 한다.
     const deliver = agentPlugin.messageOperation;
     if (!deliver) throw new Error("terminal_message_unsupported");
-    await deliver(operationId, text);
+    await deliver(operationId, text, attachmentIds);
   },
   // Quick Launch 이미지 첨부 — agent 전용 능력이라 shell 판별 없이 곧장 넘긴다(멘션 전달과 같은 계약).
   uploadLaunchAttachment: async (file) => {

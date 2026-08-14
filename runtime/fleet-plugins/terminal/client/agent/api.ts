@@ -128,11 +128,11 @@ export async function resumeAgentSession(sessionId: string, options?: { readonly
   return assertSessionInfo(await response.json(), response.status);
 }
 
-export async function messageAgentSession(sessionId: string, text: string, signal?: AbortSignal): Promise<void> {
+export async function messageAgentSession(sessionId: string, text: string, attachmentIds?: readonly string[], signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, ...(attachmentIds?.length ? { attachmentIds } : {}) }),
     signal,
   });
   if (!response.ok) {

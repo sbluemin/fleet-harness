@@ -1,5 +1,5 @@
 import crypto from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -147,15 +147,28 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
   // 네임스페이스를 통째로 비운다. 같은 데이터 루트는 runtime lock이 동시 실행을 배제하므로
   // 여기 있는 것은 전부 죽은 프로세스의 잔재이고, 다른 인스턴스의 네임스페이스는 밟지 않는다.
   try {
-    rmSync(namespaceRoot, { force: true, recursive: true });
+    if (existsSync(namespaceRoot)) {
+      rmSync(namespaceRoot, { force: true, recursive: true });
+      // 위 TTL 회수와 같은 이유의 흔적 — 지난 프로세스의 잔재가 있었음을 기동 로그가 말한다.
+      process.stderr.write("[fleet-console] quick-launch attachments: cleared leftover attachment namespace from a previous run\n");
+    }
   } catch {
     // 청소는 best-effort다 — 잔재가 남아도 기동을 막지 않는다.
   }
 
   function sweepExpired(): void {
     const cutoff = now() - UNBOUND_LAUNCH_ATTACHMENT_TTL_MS;
+    let reclaimed = 0;
     for (const entry of [...entries.values()]) {
-      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) removeEntry(entry);
+      if (entry.sessionId === null && !entry.reserved && entry.createdAt <= cutoff) {
+        removeEntry(entry);
+        reclaimed += 1;
+      }
+    }
+    // TTL 회수는 조용한 데이터 소멸이라 운영 로그에 남긴다 — "붙여넣은 이미지가 사라졌다"는
+    // 문의에 서버가 답할 수 있는 유일한 흔적이다(회수가 없으면 침묵).
+    if (reclaimed > 0) {
+      process.stderr.write(`[fleet-console] quick-launch attachments: reclaimed ${reclaimed} expired unsent image(s)\n`);
     }
   }
 
