@@ -758,6 +758,12 @@ export function QuickLaunch() {
     if (mentionTarget) {
       const plugin = registry.plugins.find((candidate) => candidate.id === mentionTarget.pluginId);
       if (!plugin?.messageOperation) return;
+      // 칩은 실행 대상 플러그인의 스토어에 업로드됐다 — id는 그 스토어의 불투명 토큰이라 다른
+      // 플러그인의 세션에는 실을 수 없다(오늘은 단일 플러그인이라 도달 불가한 가드).
+      if (attachments.length > 0 && mentionTarget.pluginId !== target?.pluginId) {
+        setAttachmentErrorKey("chrome.quickLaunch.errorAttachmentUploadFailed");
+        return;
+      }
       setSubmitting(true);
       setMentionErrorKey(null);
       // 첨부는 런치와 같은 불투명 id로 동승한다 — 서버가 세션의 PTY(또는 chat 턴)에 경로 지시를
@@ -1000,7 +1006,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}

@@ -115,6 +115,11 @@ interface LaunchAttachmentEntry {
    * TTL 청소가 파일을 건드리면, 먼저 뜬 CLI가 사라진 경로를 읽는다.
    */
   reserved: boolean;
+  /**
+   * 예약 창에 도착한 사용자의 제거 의사. 그 자리에서 지우면 전달 중인 CLI가 사라진 경로를
+   * 읽으므로 기억해 뒀다가, 전달이 실패해 예약이 풀리는 순간 거둔다(성공하면 전달이 이겼다).
+   */
+  pendingDiscard: boolean;
 }
 
 export interface LaunchAttachmentStore {
@@ -226,7 +231,7 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         throw error;
       }
       const id = crypto.randomUUID();
-      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false });
+      entries.set(id, { id, dir, filePath, createdAt: now(), sessionId: null, reserved: false, pendingDiscard: false });
       return { id };
     },
     resolve(ids) {
@@ -261,13 +266,21 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
         if (entry && entry.sessionId === null) {
           entry.sessionId = sessionId;
           entry.reserved = false;
+          // 전달이 제거 의사보다 먼저 확정됐다 — 파일 수명은 이제 세션이 소유한다.
+          entry.pendingDiscard = false;
         }
       }
     },
     unreserve(ids) {
       for (const id of ids) {
         const entry = entries.get(id);
-        if (entry && entry.sessionId === null) entry.reserved = false;
+        if (!entry || entry.sessionId !== null) continue;
+        // 예약 창에 제거를 요청받은 항목은 풀리는 즉시 거둔다 — 칩 없는 파일이 TTL까지 남지 않는다.
+        if (entry.pendingDiscard) {
+          removeEntry(entry);
+          continue;
+        }
+        entry.reserved = false;
       }
     },
     releaseSession(sessionId) {
@@ -277,7 +290,13 @@ export function createLaunchAttachmentStore(options: { readonly dataDir: string;
     },
     discard(id) {
       const entry = entries.get(id);
-      if (entry && entry.sessionId === null && !entry.reserved) removeEntry(entry);
+      if (!entry || entry.sessionId !== null) return;
+      // 예약 창의 제거는 미룬다 — 전달 중인 CLI가 읽을 경로를 그 자리에서 지울 수 없다.
+      if (entry.reserved) {
+        entry.pendingDiscard = true;
+        return;
+      }
+      removeEntry(entry);
     },
     cleanup() {
       for (const entry of [...entries.values()]) removeEntry(entry);

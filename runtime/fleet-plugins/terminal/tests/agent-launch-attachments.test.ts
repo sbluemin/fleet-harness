@@ -130,13 +130,38 @@ describe("launch attachment store", () => {
     cleanups.push(() => store.cleanup());
     const { id } = store.save(PNG_BYTES);
     const [filePath] = store.resolve([id]);
-    // 스폰 창 동안 같은 id는 두 번째 실행에 실리지 않고, 사용자 discard도 파일을 거두지 못한다.
+    // 스폰 창 동안 같은 id는 두 번째 실행에 실리지 않는다(제거 의사는 별도 계약 — 아래 테스트).
     expect(() => store.resolve([id])).toThrowError(expect.objectContaining({ code: "attachment_not_found" }));
-    store.discard(id);
     expect(existsSync(filePath as string)).toBe(true);
     // 스폰 실패가 예약을 되돌리면 재시도가 같은 id를 다시 싣는다.
     store.unreserve([id]);
     expect(store.resolve([id])).toEqual([filePath]);
+  });
+
+  it("honors a removal requested during the reservation window", () => {
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    const [filePath] = store.resolve([id]);
+    // 전달 대기 중의 × 클릭 — 그 자리에서는 못 지우지만 의사는 기억된다.
+    store.discard(id);
+    expect(existsSync(filePath as string)).toBe(true);
+    // 전달 실패 → 예약이 풀리며 즉시 회수된다(칩 없는 파일이 TTL까지 남지 않는다).
+    store.unreserve([id]);
+    expect(existsSync(filePath as string)).toBe(false);
+  });
+
+  it("lets a completed delivery outrank a mid-flight removal", () => {
+    const store = createLaunchAttachmentStore({ dataDir: makeStoreDataDir() });
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    const [filePath] = store.resolve([id]);
+    store.discard(id);
+    // 전달 성공 — 파일 수명은 세션이 소유하고, 미뤄 둔 제거 의사는 소멸한다.
+    store.bind("session-1", [id]);
+    expect(existsSync(filePath as string)).toBe(true);
+    store.releaseSession("session-1");
+    expect(existsSync(filePath as string)).toBe(false);
   });
 
   it("rolls back sibling reservations when one id in the batch is rejected", () => {
