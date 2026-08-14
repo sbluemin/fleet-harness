@@ -574,6 +574,57 @@ describe("createClaudeExecutionLoop settlement", () => {
 });
 
 describe("createClaudeExecutionLoop cancel and dispose", () => {
+  it("remembers cancellation while startTurn is pending and leaves the queued turn untouched", async () => {
+    const starting = deferred<ClaudeGatewayRun>();
+    const canceled = immediateRun([textDelta("late"), resultMessage()]);
+    const sdk = fakeSdk({
+      startTurn: async (turn) => turn.prompt === "one"
+        ? starting.promise
+        : immediateRun([resultMessage("next")]),
+    });
+    const events: ClaudeExecutionEvent[] = [];
+    const loop = makeLoop({
+      createSdk: async () => sdk,
+      onEvent: (event) => events.push(event),
+    });
+    await loop.start();
+    const first = loop.run("one");
+    const queued = loop.run("two");
+    await vi.waitFor(() => expect(sdk.startTurn).toHaveBeenCalledOnce());
+    loop.cancel();
+    starting.resolve(canceled);
+    await Promise.all([first, queued]);
+    expect(canceled.close).toHaveBeenCalledOnce();
+    expect(sdk.startTurn.mock.calls.map((call) => call[0].prompt)).toEqual(["one", "two"]);
+    expect(events).toEqual([
+      { kind: "result", isError: false, detail: "next", source: "message" },
+    ]);
+    await loop.dispose();
+  });
+
+  it("does not let an idle cancel preempt the next turn", async () => {
+    const sdk = fakeSdk();
+    const loop = makeLoop({ createSdk: async () => sdk });
+    await loop.start();
+    loop.cancel();
+    await loop.run("one");
+    expect(sdk.startTurn).toHaveBeenCalledOnce();
+    await loop.dispose();
+  });
+
+  it("keeps cancellation quiet when a pending startTurn rejects", async () => {
+    const starting = deferred<ClaudeGatewayRun>();
+    const sdk = fakeSdk({ startTurn: async () => starting.promise });
+    const loop = makeLoop({ createSdk: async () => sdk });
+    await loop.start();
+    const running = loop.run("one");
+    await vi.waitFor(() => expect(sdk.startTurn).toHaveBeenCalledOnce());
+    loop.cancel();
+    starting.reject(new Error("start failed after cancel"));
+    await expect(running).resolves.toBeUndefined();
+    await loop.dispose();
+  });
+
   it("cancels only the active run and is safe to call repeatedly", async () => {
     const first = hangingRun();
     const second = hangingRun();

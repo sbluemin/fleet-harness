@@ -231,6 +231,28 @@ describe("createCoworkGatewayConnector", () => {
     expect(sdk.dispose).toHaveBeenCalledOnce();
   });
 
+  it("remembers cancelPrompt while startTurn is pending and resets before the next send", async () => {
+    const starting = deferred<ClaudeGatewayRun>();
+    const canceled = immediateRun([textDelta("late"), resultMessage()]);
+    const sdk = new FakeSdk();
+    sdk.startTurn
+      .mockImplementationOnce(async () => starting.promise)
+      .mockImplementationOnce(async () => immediateRun([resultMessage()]));
+    const { client, events } = await connectClient(sdk);
+    const sending = client.sendMessage("hello");
+    await vi.waitFor(() => expect(sdk.startTurn).toHaveBeenCalledOnce());
+    await client.cancelPrompt();
+    starting.resolve(canceled);
+    await expect(sending).resolves.toBeUndefined();
+    expect(events).toEqual([]);
+    expect(canceled.close).toHaveBeenCalledOnce();
+
+    await client.sendMessage("again");
+    expect(events).toEqual([{ type: "promptComplete" }]);
+    expect(sdk.startTurn.mock.calls[1]?.[0].prompt).toBe("again");
+    await client.disconnect();
+  });
+
   it("swallows a close-induced iterator throw on cancel without a terminal event", async () => {
     const hanging = hangingRun({ throwOnClose: true });
     const sdk = new FakeSdk();

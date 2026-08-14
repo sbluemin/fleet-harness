@@ -48,6 +48,12 @@ interface TurnHandle {
   close(): void;
 }
 
+interface TurnControl {
+  canceled: boolean;
+  onCancel: (() => void) | null;
+  cancel(): void;
+}
+
 /**
  * Claude 게이트웨이 턴의 실행 루프.
  *
@@ -60,6 +66,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
   let started = false;
   let disposed = false;
   let active: TurnHandle | null = null;
+  let cancelTurn: (() => void) | null = null;
   let resumeId: string | null = null;
   let queueTail: Promise<void> = Promise.resolve();
   let startFlight: Promise<void> | null = null;
@@ -101,7 +108,18 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
     if (typeof prompt !== "string" || prompt.trim().length === 0) {
       return Promise.reject(new Error("Message required"));
     }
-    const work = queueTail.then(() => runTurn(prompt));
+    const control = createTurnControl();
+    // 첫 턴은 Promise microtask가 runTurn에 들어가기 전에도 취소 대상이다. 뒤에 줄 선 턴은
+    // 현재 턴이 끝날 때까지 이 자리를 빼앗지 않는다.
+    if (cancelTurn === null) cancelTurn = control.cancel;
+    const work = queueTail.then(async () => {
+      if (cancelTurn === null) cancelTurn = control.cancel;
+      try {
+        await runTurn(prompt, control);
+      } finally {
+        if (cancelTurn === control.cancel) cancelTurn = null;
+      }
+    });
     // 거절된 턴이 꼬리를 끊으면 뒤에 줄 선 턴이 영영 시작되지 않는다.
     queueTail = work.catch(() => undefined);
     return work;
@@ -118,7 +136,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
   }
 
   function cancel(): void {
-    active?.stop();
+    cancelTurn?.();
   }
 
   function dispose(): Promise<void> {
@@ -144,7 +162,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
     await owned?.dispose().catch(() => undefined);
   }
 
-  async function runTurn(prompt: string): Promise<void> {
+  async function runTurn(prompt: string, control: TurnControl): Promise<void> {
     // 폐기 뒤에 줄 서 있던 턴은 새 SDK 턴을 열지 않는다.
     if (disposed) return;
     const owned = sdk;
@@ -194,9 +212,14 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
       complete();
     };
 
+    control.onCancel = () => {
+      if (handle !== null) complete();
+    };
+
     try {
+      if (control.canceled) return;
       const built = await options.buildTurn(prompt);
-      if (disposed) return;
+      if (disposed || control.canceled) return;
       assertLoopOwnedKeysAbsent(built);
 
       const resume =
@@ -207,7 +230,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
       try {
         run = await owned.startTurn({ ...built, prompt, ...resume });
       } catch (error) {
-        if (disposed) return;
+        if (disposed || control.canceled) return;
         throw error;
       }
       const startedRun: ClaudeGatewayRun = run;
@@ -229,7 +252,7 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
         },
       };
       active = handle;
-      if (disposed) {
+      if (disposed || control.canceled) {
         complete();
         return;
       }
@@ -309,11 +332,12 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
         }
       }
     } catch (error) {
-      if (!disposed && !failed) {
+      if (!disposed && !control.canceled && !failed) {
         failed = true;
         failure = error;
       }
     } finally {
+      control.onCancel = null;
       complete();
     }
     if (disposed) return;
@@ -321,6 +345,18 @@ export function createClaudeExecutionLoop(options: ClaudeExecutionLoopOptions): 
   }
 
   return { start, run, cancel, dispose };
+}
+
+function createTurnControl(): TurnControl {
+  const control: TurnControl = {
+    canceled: false,
+    onCancel: null,
+    cancel() {
+      control.canceled = true;
+      control.onCancel?.();
+    },
+  };
+  return control;
 }
 
 function assertLoopOwnedKeysAbsent(built: ClaudeExecutionTurn): void {
