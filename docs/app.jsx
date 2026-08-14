@@ -168,13 +168,16 @@ const PROVIDERS = [
     cred: "subscription",
     color: "#d4af37",
     mission: {
-      ko: "쓰던 Cursor 구독으로 Cursor의 에이전트 라인업에 닿는다. Auto는 작업에 맞는 모델을 Cursor가 스스로 고르는 좌석이고, Composer와 Grok은 Fast 변형까지 따로 선다.",
-      en: "Rides the Cursor subscription you already have into Cursor's agent lineup. Auto is the seat where Cursor picks the model for the task; Composer and Grok each stand with their own Fast variant.",
+      ko: "쓰던 Cursor 구독으로 Cursor의 에이전트 라인업에 닿는다. Auto는 작업에 맞는 모델을 Cursor가 스스로 고르는 좌석이고, Composer와 Grok은 Fast 변형까지 따로 선다. Opus 5와 Fable 5는 API 풀로 청구되며 각각 Max Mode 1M 창을 연다.",
+      en: "Rides the Cursor subscription you already have into Cursor's agent lineup. Auto is the seat where Cursor picks the model for the task; Composer and Grok each stand with their own Fast variant. Opus 5 and Fable 5 bill against the API pool and each open a Max Mode 1M window.",
     },
     models: [
       { ko: "Auto — Cursor가 모델을 선택", en: "Auto — Cursor picks the model" },
       { ko: "Composer 2.5 — Fast 변형 포함", en: "Composer 2.5 — Fast variant included" },
       { ko: "Grok 4.5 — Fast 변형 포함", en: "Grok 4.5 — Fast variant included" },
+      { ko: "Grok 4.6 — Fast 변형 포함", en: "Grok 4.6 — Fast variant included" },
+      { ko: "Opus 5 — Max Mode 1M 변형 포함", en: "Opus 5 — Max Mode 1M variant included" },
+      { ko: "Fable 5 — Max Mode 1M 변형 포함", en: "Fable 5 — Max Mode 1M variant included" },
     ],
   },
   {

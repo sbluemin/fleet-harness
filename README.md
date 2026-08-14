@@ -51,7 +51,7 @@ Right-click the canvas and launch Claude Code on any model you have enabled — 
 | Provider | Credential | Models |
 |---|---|---|
 | **Codex** | ChatGPT subscription | GPT-5.6 Sol · Terra · Luna, each with a Fast variant |
-| **Cursor** | Cursor subscription | Auto · Composer 2.5 · Grok 4.5, with Fast variants |
+| **Cursor** | Cursor subscription | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, with Fast variants · Opus 5 · Fable 5, each with a Max Mode 1M variant |
 | **Moonshot-Kimi** | API key | Kimi K3 1M · K3 256K |
 | **OpenCode Go** | API key | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 

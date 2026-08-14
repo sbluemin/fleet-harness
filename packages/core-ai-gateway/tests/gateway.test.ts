@@ -625,6 +625,8 @@ describe("model catalog", () => {
     // worthless for a panel that needs independent judgement.
     expect(constraintsFor("cursor--grok-4.5").homolineage).toBe(false);
     expect(constraintsFor("cursor--composer-2.5").homolineage).toBe(false);
+    expect(constraintsFor("cursor--claude-opus-5").homolineage).toBe(true);
+    expect(constraintsFor("cursor--claude-fable-5-1m").homolineage).toBe(true);
     expect(constraintsFor("kimi--k3").homolineage).toBe(false);
   });
 
@@ -725,6 +727,27 @@ describe("model catalog", () => {
     expect(findGatewayModel("cursor--grok-4.6-fast")?.benchmark).toBeUndefined();
     expect(grok46?.benchmark?.observedAt).toBe("2026-08-13T00:00:00Z");
 
+    const opus = findGatewayModel("cursor--claude-opus-5");
+    const opus1m = findGatewayModel("cursor--claude-opus-5-1m");
+    expect(opus?.benchmark?.source).toBe("CursorBench 3.2");
+    expect(opus1m?.benchmark).toEqual(opus?.benchmark);
+    expect(opus?.benchmark?.rungs && Object.keys(opus.benchmark.rungs).sort()).toEqual([
+      "high",
+      "low",
+      "max",
+      "medium",
+      "xhigh",
+    ]);
+    const fable = findGatewayModel("cursor--claude-fable-5");
+    expect(fable?.benchmark?.rungs && Object.keys(fable.benchmark.rungs).sort()).toEqual([
+      "high",
+      "low",
+      "max",
+      "medium",
+      "xhigh",
+    ]);
+    expect(findGatewayModel("cursor--claude-fable-5-1m")?.benchmark).toEqual(fable?.benchmark);
+
     const constraints = buildGatewayModelConstraints(findGatewayModel("codex--gpt-5.6-sol")!);
     expect(constraints.benchmark).toEqual(base?.benchmark);
   });
@@ -804,7 +827,7 @@ describe("model catalog", () => {
 
   it("contains only the approved provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
-    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(7);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
@@ -817,6 +840,10 @@ describe("model catalog", () => {
       "grok-4.5-fast",
       "grok-4.6",
       "grok-4.6-fast",
+      "claude-opus-5",
+      "claude-opus-5-1m",
+      "claude-fable-5",
+      "claude-fable-5-1m",
     ]);
     expect(Object.fromEntries(CURSOR_SUBSCRIPTION_MODELS.map((model) => [
       model.upstreamId,
@@ -828,8 +855,16 @@ describe("model catalog", () => {
       "grok-4.5-fast": 256_000,
       "grok-4.6": 256_000,
       "grok-4.6-fast": 256_000,
+      "claude-opus-5": 300_000,
+      "claude-opus-5-1m": 1_000_000,
+      "claude-fable-5": 300_000,
+      "claude-fable-5-1m": 1_000_000,
       default: 256_000,
     });
+    for (const id of ["cursor--claude-opus-5-1m", "cursor--claude-fable-5-1m"]) {
+      expect(CURSOR_SUBSCRIPTION_MODELS.find((model) => model.id === id))
+        .toMatchObject({ cursorMaxMode: true });
+    }
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
     // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브). wire 미선언 =
     // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
@@ -894,6 +929,22 @@ describe("model catalog", () => {
       levels: ["low", "medium", "high", "xhigh"],
       upstreamModelIdTemplate: "cursor-grok-4.6-{effort}-fast",
     });
+    expect(efforts["cursor--claude-opus-5"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max"],
+      upstreamModelIdTemplate: "claude-opus-5-{effort}",
+      upstreamModelIds: {
+        xhigh: "claude-opus-5-thinking-xhigh",
+        max: "claude-opus-5-thinking-max",
+      },
+    });
+    expect(efforts["cursor--claude-opus-5-1m"]).toEqual(efforts["cursor--claude-opus-5"]);
+    expect(efforts["cursor--claude-fable-5"]).toEqual({
+      supported: true,
+      levels: ["low", "medium", "high", "xhigh", "max"],
+      upstreamModelIdTemplate: "claude-fable-5-{effort}",
+    });
+    expect(efforts["cursor--claude-fable-5-1m"]).toEqual(efforts["cursor--claude-fable-5"]);
     expect(efforts["cursor--auto"]).toEqual({ supported: false });
     expect(efforts["cursor--composer-2.5"]).toEqual({ supported: false });
   });
@@ -908,6 +959,13 @@ describe("model catalog", () => {
     ["grok-4.6", "high", "cursor-grok-4.6-high"],
     ["grok-4.6", "xhigh", "cursor-grok-4.6-xhigh"],
     ["grok-4.6-fast", "xhigh", "cursor-grok-4.6-xhigh-fast"],
+    ["claude-opus-5", "high", "claude-opus-5-high"],
+    ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
+    ["claude-opus-5-1m", "high", "claude-opus-5-high"],
+    ["claude-opus-5-1m", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-opus-5-1m", "max", "claude-opus-5-thinking-max"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
     ["composer-2.5", "high", "composer-2.5"],
     ["unknown-model", "high", "unknown-model"],
   ] as const)("resolves Cursor base model %s at effort %s to %s", (model, effort, expected) => {
@@ -974,6 +1032,14 @@ describe("model catalog", () => {
     expect(list.data.find((entry) => entry.id.endsWith("cursor--composer-2.5"))).toMatchObject({
       display_name: "Cursor-Composer-2.5",
       max_input_tokens: 200_000,
+    });
+    expect(list.data.find((entry) => entry.id.endsWith("cursor--claude-opus-5-1m[1m]"))).toMatchObject({
+      display_name: "Cursor-Opus-5-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id.endsWith("cursor--claude-fable-5-1m[1m]"))).toMatchObject({
+      display_name: "Cursor-Fable-5-1M (1M Context)",
+      max_input_tokens: 1_000_000,
     });
     expect(list.data.find((entry) => entry.id === "claude-gateway--kimi--k3[1m]")).toMatchObject({
       display_name: "Moonshot-Kimi-K3-1M (1M Context)",
@@ -1119,7 +1185,18 @@ describe("model catalog", () => {
       upstreamId: "composer-2.5",
       contextWindow: 200_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--claude-opus-5-1m[1m]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--cursor--claude-opus-5-1m[1m]")).toMatchObject({
+      id: "cursor--claude-opus-5-1m",
+      upstreamId: "claude-opus-5-1m",
+      contextWindow: 1_000_000,
+      cursorMaxMode: true,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--claude-fable-5-1m[1m]")).toMatchObject({
+      id: "cursor--claude-fable-5-1m",
+      upstreamId: "claude-fable-5-1m",
+      contextWindow: 1_000_000,
+      cursorMaxMode: true,
+    });
     expect(findGatewayModel("claude-gateway--cursor--kimi-k3")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--cursor--glm-5.2[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--k3[1m]")).toBeUndefined();

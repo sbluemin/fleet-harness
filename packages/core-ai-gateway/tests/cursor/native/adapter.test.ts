@@ -33,6 +33,10 @@ describe("Cursor request budgets", () => {
     ["grok-4.5", "low", "cursor-grok-4.5-low"],
     ["grok-4.5", "medium", "cursor-grok-4.5-medium"],
     ["grok-4.5-fast", "low", "cursor-grok-4.5-low-fast"],
+    ["claude-opus-5", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-opus-5", "max", "claude-opus-5-thinking-max"],
+    ["claude-opus-5-1m", "xhigh", "claude-opus-5-thinking-xhigh"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
     ["composer-2.5", "high", "composer-2.5"],
   ] as const)("writes Cursor model %s with effort %s as %s", (model, effort, expected) => {
     const plan = buildCursorRunPlan(request({
@@ -54,6 +58,21 @@ describe("Cursor request budgets", () => {
 
     expect(encodedRunRequest(plan).modelDetails).toMatchObject({ modelId: "cursor-grok-4.5-high" });
     expect(encodedRunRequest(plan).modelDetails).not.toHaveProperty("maxMode");
+  });
+
+  it.each([
+    ["claude-opus-5-1m", "high", "claude-opus-5-high"],
+    ["claude-fable-5-1m", "high", "claude-fable-5-high"],
+  ] as const)("encodes Cursor Max Mode for catalog model %s", (model, effort, wireModel) => {
+    const plan = buildCursorRunPlan(request({
+      model,
+      reasoning: { summary: "auto", effort },
+    }), `conversation-${model}`);
+
+    expect(encodedRunRequest(plan).modelDetails).toMatchObject({
+      modelId: wireModel,
+      maxMode: true,
+    });
   });
 
   it("encodes Cursor Max Mode when explicitly enabled", () => {
