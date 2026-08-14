@@ -13,7 +13,6 @@
 import type { AuthService } from "@dotobokuri/core-infra";
 import { findCauseCode } from "../transport/upstream-sse.js";
 import type { CredentialResolverDeps } from "../transport/credentials.js";
-import type { OpencodeGoWindowsResult } from "../opencode-go/usage-scan.js";
 import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
 
 export const REQUEST_TIMEOUT_MS = 10_000;
@@ -48,8 +47,6 @@ export interface ProviderDeps {
    * the file's shape and its symlink-guarded read — instead of parsing the file here.
    */
   readonly authService?: AuthService;
-  /** 테스트가 opencode 로컬 사용량 스캔을 대체한다. */
-  readonly scanOpencodeGoWindows?: () => Promise<OpencodeGoWindowsResult | null>;
 }
 
 export function windowPeriod(

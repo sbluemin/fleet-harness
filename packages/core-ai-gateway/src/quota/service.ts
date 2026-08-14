@@ -4,9 +4,7 @@ import { fetchClaudeUsage } from "../anthropic/quota.js";
 import { fetchCodexUsage } from "../codex/quota.js";
 import { fetchCursorUsage } from "../cursor/quota.js";
 import { fetchKimiUsage } from "../kimi/quota.js";
-import { fetchOpencodeUsage } from "../opencode-go/quota.js";
 import { fetchXaiUsage } from "../xai/quota.js";
-import { scanOpencodeGoWindows } from "../opencode-go/usage-scan.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import { deriveQuotaWindowRisk } from "./pressure.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
@@ -15,7 +13,7 @@ import { sanitizeProviderError, type ProviderDeps } from "./windows.js";
 const CACHE_TTL_MS = 120_000;
 const STALE_TTL_MS = 1_800_000;
 
-type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai";
+type ProviderId = "claude" | "codex" | "cursor" | "kimi" | "xai";
 
 export interface QuotaService {
   getSummary(options?: {
@@ -31,24 +29,22 @@ export interface QuotaServiceDeps {
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor: () => Promise<ProviderResult>;
   readonly fetchKimi: () => Promise<ProviderResult>;
-  readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai?: () => Promise<ProviderResult>;
   readonly now?: () => number;
   readonly platform?: NodeJS.Platform;
 }
 
 /**
- * Deps for building the five provider probes. `authService` is required here —
- * Kimi and OpenCode Go read the key Fleet itself stores through it — so a host
- * that composes these collectors can never silently fall back to constructing a
- * default auth path inside the package.
+ * Deps for building the provider probes. `authService` is required here —
+ * Kimi reads the key Fleet itself stores through it — so a host that composes
+ * these collectors can never silently fall back to constructing a default auth
+ * path inside the package.
  */
 export interface AiGatewayQuotaCollectorDeps {
   readonly authService: AuthService;
   readonly credentialDeps?: CredentialResolverDeps;
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
-  readonly scanOpencodeWindows?: typeof scanOpencodeGoWindows;
 }
 
 export interface AiGatewayQuotaCollectors {
@@ -56,7 +52,6 @@ export interface AiGatewayQuotaCollectors {
   readonly fetchCodex: () => Promise<ProviderResult>;
   readonly fetchCursor: () => Promise<ProviderResult>;
   readonly fetchKimi: () => Promise<ProviderResult>;
-  readonly fetchOpencode: () => Promise<ProviderResult>;
   readonly fetchXai: () => Promise<ProviderResult>;
 }
 
@@ -66,14 +61,12 @@ export function createAiGatewayQuotaCollectors(deps: AiGatewayQuotaCollectorDeps
     authService: deps.authService,
     ...(deps.fetch !== undefined ? { fetch: deps.fetch } : {}),
     ...(deps.now !== undefined ? { now: deps.now } : {}),
-    ...(deps.scanOpencodeWindows !== undefined ? { scanOpencodeGoWindows: deps.scanOpencodeWindows } : {}),
   };
   return {
     fetchClaude: () => fetchClaudeUsage(providerDeps),
     fetchCodex: () => fetchCodexUsage(providerDeps),
     fetchCursor: () => fetchCursorUsage(providerDeps),
     fetchKimi: () => fetchKimiUsage(providerDeps),
-    fetchOpencode: () => fetchOpencodeUsage(providerDeps),
     fetchXai: () => fetchXaiUsage(providerDeps),
   };
 }
@@ -96,7 +89,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     codex: deps.fetchCodex,
     cursor: deps.fetchCursor,
     kimi: deps.fetchKimi,
-    opencode: deps.fetchOpencode,
     xai: deps.fetchXai ?? (async () => ({ status: "signed_out" })),
   };
   const cache = new Map<ProviderId, CacheEntry>();
@@ -164,12 +156,11 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
 
   return {
     async getSummary(options = {}) {
-      const [claude, codex, cursor, kimi, opencode, xai] = await Promise.all([
+      const [claude, codex, cursor, kimi, xai] = await Promise.all([
         load("claude", options.force === true || options.forceProvider === "claude"),
         load("codex", options.force === true || options.forceProvider === "codex"),
         load("cursor", options.force === true || options.forceProvider === "cursor"),
         load("kimi", options.force === true || options.forceProvider === "kimi"),
-        load("opencode", options.force === true || options.forceProvider === "opencode"),
         load("xai", options.force === true || options.forceProvider === "xai"),
       ]);
       return {
@@ -178,7 +169,6 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
           codex: withRisk(codex),
           cursor: withRisk(cursor),
           kimi: withRisk(kimi),
-          opencode: withRisk(opencode),
           xai: withRisk(xai),
         },
       };

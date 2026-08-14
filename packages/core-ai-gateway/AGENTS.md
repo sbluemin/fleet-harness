@@ -13,7 +13,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 | `src/<provider>/` | One folder per provider (`codex/`, `cursor/`, `kimi/`, `opencode-go/`). OpenCode behavior is additionally split by wire under `src/opencode-go/{anthropic,responses,chat-completions}/` |
 | `src/models.ts`, `models.json`, `benchmarks.json` | Model catalog, context windows, effort ladders, and third-party benchmark evidence |
 | `src/settings/` | Which catalog models a user exposed and where that choice is stored: stored shape, catalog-checked validation, selection resolution, the opt-in `providerPriority` spend order, and the `<dataDir>/ai-gateway.json` durable store |
-| src/quota/ | Provider-neutral quota vocabulary, window normalization, and the cached usage service; per-provider probes live beside each provider as src/<provider>/quota.ts |
+| src/quota/ | Provider-neutral quota vocabulary, window normalization, and the cached usage service; per-provider probes live beside each provider that exposes a usage API as src/<provider>/quota.ts |
 
 ## Routing doctrine
 
@@ -32,7 +32,7 @@ Translates Anthropic Messages traffic onto non-Anthropic provider backends.
 ## Constraints
 
 - Keep Fleet orchestration and persona semantics out of this package; it knows providers, not Fleet personas.
-- Provider usage/quota probing lives beside each provider (src/<provider>/quota.ts) with shared window vocabulary and caching in src/quota/; collectors receive their credential and auth dependencies explicitly — no default auth construction inside this package.
+- Provider usage/quota probing lives beside each provider that exposes a usage API (src/<provider>/quota.ts) with shared window vocabulary and caching in src/quota/; collectors receive their credential and auth dependencies explicitly — no default auth construction inside this package.
 - Each provider Responses implementation that applies strict mode rewrites every compatible tool schema into strict mode and strips the resulting nulls back out on the way in. **These two are one mechanism per implementation.** Change either alone and arguments silently gain or lose meaning: a surviving null reads as a real value to the client, and an un-rewritten schema loses the omission guarantee. The rewrite, the null stripping, and the argument-delta dropping below stay local to each such implementation — never centralize or import this semantic logic across providers.
 - Strict compatibility is decided by an allowlist of JSON Schema keywords, never a denylist. The costs are asymmetric — judging a tool incompatible costs that one tool its guarantee, while wrongly admitting one returns a 400 that fails the entire request, every other tool included. Widen the allowlist only against an observed acceptance.
 - Each provider Responses implementation that applies strict mode drops `response.function_call_arguments.delta` deliberately. Nulls cannot be stripped from a partial JSON fragment, so forwarding fragments would let the client reassemble un-stripped arguments. Restoring argument streaming reintroduces the defect.

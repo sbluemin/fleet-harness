@@ -35,17 +35,6 @@ function KimiGlyph() {
   );
 }
 
-// OpenCode 공식 로고(anomalyco/opencode brand assets, opencode-logo-*-square.svg)를
-// currentColor 2톤으로 옮긴 마크다 (terminal/client/agent/index.tsx의 OpencodeGlyph 미러).
-function OpencodeGlyph() {
-  return (
-    <svg viewBox="0 0 240 300" width="13" height="16" aria-hidden="true">
-      <path fillRule="evenodd" d="M240 0H0v300h240V0ZM180 60H60v180h120V60Z" fill="currentColor" />
-      <path d="M60 120h120v120H60V120Z" fill="currentColor" opacity="0.45" />
-    </svg>
-  );
-}
-
 function GrokGlyph() {
   // Official Grok product mark served by https://grok.com/images/favicon.svg.
   return (
@@ -56,11 +45,10 @@ function GrokGlyph() {
   );
 }
 
-export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi" | "opencode" | "xai"): ReactNode {
+export function providerGlyph(provider: "claude" | "codex" | "cursor" | "kimi" | "xai"): ReactNode {
   if (provider === "claude") return <ClaudeGlyph />;
   if (provider === "cursor") return <CursorGlyph />;
   if (provider === "kimi") return <KimiGlyph />;
-  if (provider === "opencode") return <OpencodeGlyph />;
   if (provider === "xai") return <GrokGlyph />;
   return <CodexGlyph />;
 }
