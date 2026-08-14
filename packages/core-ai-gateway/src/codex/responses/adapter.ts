@@ -639,10 +639,9 @@ function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponse
   for (const field of CHATGPT_UNSUPPORTED_FIELDS) {
     delete copy[field];
   }
-  if (isClaudeCodeSuggestionMode(request)) {
-    // Claude Code asks for one short text suggestion after the visible turn has already ended. Its
-    // own prompt forbids tool use, so replaying the full tool catalog on this stateless backend adds
-    // tens of kilobytes without creating a legal model action.
+  if (request.tool_choice === "none" || isClaudeCodeSuggestionMode(request)) {
+    // 명시적 no-tools 요청과 Claude Code Suggestion turn은 이 stateless backend에 tool
+    // metadata를 재전송하지 않는다. 전자는 caller의 정확한 선택이고 후자는 합법적인 tool action이 없다.
     delete copy.tools;
     delete copy.tool_choice;
     delete copy.native_tools;

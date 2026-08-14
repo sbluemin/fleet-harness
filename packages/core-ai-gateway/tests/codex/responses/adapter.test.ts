@@ -114,6 +114,44 @@ describe("codex responses adapter", () => {
     expect(body.store).toBe(false);
   });
 
+  it("omits all tool controls for explicit tool_choice none", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "Bash",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      }],
+      tool_choice: "none",
+      parallel_tool_calls: true,
+      native_tools: [{ type: "web_search" }],
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body).not.toHaveProperty("tools");
+    expect(body).not.toHaveProperty("tool_choice");
+    expect(body).not.toHaveProperty("native_tools");
+    expect(body).not.toHaveProperty("parallel_tool_calls");
+  });
+
+  it("keeps ordinary auto tool controls on the Codex backend", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      tools: [{
+        type: "function",
+        name: "Bash",
+        parameters: { type: "object", properties: {}, additionalProperties: false },
+      }],
+      tool_choice: "auto",
+      parallel_tool_calls: true,
+    }), { apiKey: "k" });
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    expect(body.tools).toHaveLength(1);
+    expect(body.tool_choice).toBe("auto");
+    expect(body.parallel_tool_calls).toBe(true);
+  });
+
   it("omits tools from Claude Code suggestion-mode requests", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
