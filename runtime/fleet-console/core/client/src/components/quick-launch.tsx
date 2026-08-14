@@ -9,7 +9,7 @@ import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
-import { buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken } from "../quick-launch.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
@@ -441,16 +441,12 @@ export function QuickLaunch() {
         })
         .filter((section) => section.rows.length > 0);
     }
-    const autoLabel = t("launchVariants.effort.auto");
-    const rows = [
-      { id: null as string | null, label: autoLabel },
-      ...(selectedRow?.chips ?? []).map((chip) => ({ id: chip.id as string | null, label: chip.label })),
-    ]
-      .filter((chip) => chip.label.toLowerCase().includes(query) || (chip.id ?? "").toLowerCase().includes(query))
+    // 게이트된 apex 단은 트랙의 ✦ 펼침 계약을 미러링해 명시적 타이핑으로만 드러난다(헬퍼 주석 참조).
+    const rows = buildQuickLaunchEffortOptions(selectedRow, effort, t("launchVariants.effort.auto"), commandInput.query)
       .map<QuickLaunchCommandRow>((chip) => ({
         id: `effort-${chip.id ?? "auto"}`,
         label: chip.label,
-        checked: chip.id === effort,
+        checked: chip.checked,
         pick: () => {
           setEffort(chip.id);
           writeQuickLaunchModelEffort(model, chip.id);
