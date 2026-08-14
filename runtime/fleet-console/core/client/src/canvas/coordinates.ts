@@ -81,8 +81,8 @@ export function triageStageGeometryFor(
 ): OperationGeometry {
   return modeSlotGeometryFor({
     x: 18,
-    y: 18 + 28,
+    y: 18 + 32,
     width: Math.max(320, canvasSize.width - 36),
-    height: Math.max(240, canvasSize.height - 84 - 28),
+    height: Math.max(240, canvasSize.height - 84 - 32),
   }, slotIndex, slotCount, 8, zIndex);
 }

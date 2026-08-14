@@ -68,9 +68,9 @@ export const MIN_OPERATION_WIDTH = 320;
 export const MIN_OPERATION_HEIGHT = 200;
 export const OPERATION_GRID_GAP = 8;
 export const OPERATION_GRID_PADDING = 0;
-// 본문 위에 붙는 창 캡션 높이. CSS top:-28px / height:28px 와 한 값이다.
+// 본문 위에 붙는 창 캡션 높이. CSS top:-32px / height:32px 와 한 값이다.
 // grid/rows 행 보폭에 넣어 아래 행 캡션이 위 행 본문을 침범하지 않게 한다.
-export const OPERATION_WINDOW_CAPTION_HEIGHT = 28;
+export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
 const OPERATION_FOCUS_PADDING = 96;
 const FOCUS_MIN_ZOOM = 0.25;
 // fit-all의 하한은 사용성 경계가 아니라 수치 안전 epsilon이다 — fit은 "전체를 담는" 계약이라
@@ -420,7 +420,7 @@ export function getTheaterMinimizedIds(theaterIds: readonly string[]): readonly 
 // 균형 그리드의 열은 ceil(sqrt(n)), 행은 ceil(n / cols)로 정한다. 마지막 행에 슬롯이 모자라면
 // 남은 패널들이 그 행의 전체 폭을 나눠 채워 빈 셀을 남기지 않는다. 최소 크기는 실제 가용 폭·높이로
 // 캡해, 좁은 Formation 캔버스에서도 panel chrome이 clip되지 않게 한다.
-// grid/rows 행 보폭은 본문 높이 + gap + 캡션이다. 캡션은 본문 위(top: -28px)에 붙으므로
+// grid/rows 행 보폭은 본문 높이 + gap + 캡션이다. 캡션은 본문 위(top: -32px)에 붙으므로
 // 피치에 넣지 않으면 아래 행이 위 행 본문을 침범한다. columns는 한 줄이라 첫 행 여백만
 // 호출부가 지고, 이 함수는 가로 gap만 쓴다.
 export function calculateGridSlots(

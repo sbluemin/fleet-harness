@@ -3927,9 +3927,11 @@
   }
 }
 
-/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
+/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다.
+   background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
 .canvas-operation--shell .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
+  background-clip: padding-box;
 }
 
 .canvas-context-menu {
@@ -4459,7 +4461,7 @@
 }
 
 /* Cruise에서 캡션이 캔버스 클립 밖으로 나가면 본문 위 오버레이로 접는다.
-   Tactical/War Room/최대화는 슬롯을 28px 내려 이 경로를 타지 않는다. */
+   Tactical/War Room/최대화는 슬롯을 32px 내려 이 경로를 타지 않는다. */
 .canvas-operation.is-top-edge .canvas-operation-titlebar {
   top: 0;
   left: 0;
@@ -4637,6 +4639,8 @@
 
 .canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame));
+  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+  background-clip: padding-box;
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -5819,19 +5823,20 @@
 .canvas-operation-titlebar {
   position: absolute;
   /* 본문·PTY geometry 밖에 붙는 패널 속성 — 인라인 height는 본문만 소유한다.
-     left/right -1px는 본문 보더 바깥선과 같은 사각형을 그린다. */
-  top: -28px;
+     left/right -1px는 본문 보더 바깥선과 같은 사각형을 그린다. 채움은
+     padding-box로 잘라 터미널과 폭을 맞춘다. */
+  top: -32px;
   left: -1px;
   right: -1px;
   z-index: 7;
   display: flex;
   align-items: center;
-  gap: var(--space-1);
+  gap: 6px;
   width: auto;
   max-width: none;
-  min-height: 28px;
-  height: 28px;
-  padding: 0 var(--space-2);
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
   /* 보더는 패널 아웃라인을 잇는다 — inherit은 단축 전체가 아니라 색만 받는다. */
   border-width: 1px;
   border-style: solid;
@@ -5840,6 +5845,7 @@
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
   background: var(--surface-frame);
+  background-clip: padding-box;
   cursor: grab;
   touch-action: none;
   transition:
@@ -5851,11 +5857,20 @@
   cursor: grabbing;
 }
 
+/* 캡션이 본문 위에 붙는 Operation만 상단 보더를 비운다 — 1px 이음새가 두 장의 창처럼 읽힌다.
+   companion은 자체 캡션이라 상단 보더를 유지한다.
+   단축 border-top: none은 색까지 currentColor로 리셋한다. 캡션이 inherit하는
+   상태 아웃라인(brass/aurora/positive)의 윗변을 텍스트색으로 가른다. */
+.canvas-operation:has(> .canvas-operation-titlebar) {
+  border-top-width: 0;
+  border-top-style: none;
+}
+
 .canvas-operation-identity-name,
 .canvas-operation-identity-input {
   min-width: 0;
   font-family: var(--font-body);
-  font-size: calc(var(--font-body-size) * 0.86);
+  font-size: calc(var(--font-body-size) * 0.92);
   font-weight: var(--weight-medium);
   line-height: 1;
 }
@@ -5863,7 +5878,7 @@
 .canvas-operation-identity-name {
   flex: 1 1 auto;
   overflow: hidden;
-  padding: 3px 0;
+  padding: 4px 0;
   border: 0;
   border-radius: var(--radius-sm);
   color: var(--text-secondary);
@@ -6173,7 +6188,7 @@
   align-items: center;
   flex: none;
   margin-left: auto;
-  gap: 2px;
+  gap: 4px;
   max-width: none;
   overflow: visible;
   opacity: 1;
@@ -6187,8 +6202,8 @@
 .canvas-operation-controls-divider {
   flex: none;
   width: 1px;
-  height: 12px;
-  margin: 0 6px 0 4px;
+  height: 14px;
+  margin: 0 8px 0 6px;
   background: var(--hairline-strong);
 }
 
@@ -6196,8 +6211,8 @@
   display: grid;
   place-items: center;
   flex: none;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   overflow: hidden;
   border: 1px solid transparent;
@@ -6230,15 +6245,15 @@
 
 .canvas-operation-icon-button svg {
   display: block;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
 }
 
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {
   flex: none;
   width: auto;
-  height: 20px;
-  padding: 0 6px;
+  height: 24px;
+  padding: 0 8px;
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   color: var(--coral-ink);
@@ -6527,8 +6542,8 @@
 }
 
 .canvas-operation-resize--n {
-  /* 캡션이 본문 위 28px에 붙으므로 북쪽 리사이즈도 그 상단에 둔다. */
-  top: -32px;
+  /* 캡션이 본문 위 32px에 붙으므로 북쪽 리사이즈도 그 상단에 둔다. */
+  top: -36px;
 }
 
 .canvas-operation-resize--s {
@@ -6560,7 +6575,7 @@
 }
 
 .canvas-operation-resize--ne {
-  top: -33px;
+  top: -37px;
   right: -5px;
   cursor: nesw-resize;
 }
@@ -6578,7 +6593,7 @@
 }
 
 .canvas-operation-resize--nw {
-  top: -33px;
+  top: -37px;
   left: -5px;
   cursor: nwse-resize;
 }
