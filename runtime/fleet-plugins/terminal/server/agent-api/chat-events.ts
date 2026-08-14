@@ -15,8 +15,11 @@ export type AgentChatStreamEvent =
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
+  /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
+  | { readonly kind: "text-delta"; readonly text: string }
   | { readonly kind: "tool"; readonly name: string; readonly detail: string }
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number }
+  /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
   | { readonly kind: "status"; readonly working: boolean }
   | { readonly kind: "error"; readonly code: string };
 
@@ -84,16 +87,33 @@ export function chatEventsFromSdkMessage(message: {
   readonly type: string;
   readonly [key: string]: unknown;
 }, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
+  if (message.type === "stream_event") {
+    // 모양은 fleet-analyst가 실측으로 고정한 것과 동일하다. text_delta만 취한다 —
+    // thinking_delta는 공개 출력 금지 불변식에 따라 버린다.
+    const inner = (message as { readonly event?: unknown }).event;
+    if (!inner || typeof inner !== "object") return [];
+    if ((inner as { readonly type?: unknown }).type !== "content_block_delta") return [];
+    const delta = (inner as { readonly delta?: unknown }).delta;
+    if (!delta || typeof delta !== "object") return [];
+    const text = (delta as { readonly type?: unknown; readonly text?: unknown });
+    if (text.type === "text_delta" && typeof text.text === "string" && text.text.length > 0) {
+      return [{ kind: "text-delta", text: capText(text.text) }];
+    }
+    return [];
+  }
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
     return eventsFromAssistantContent(body?.content, options);
   }
   if (message.type === "result") {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
+    const ok = (message as { readonly is_error?: unknown }).is_error !== true;
+    const result = (message as { readonly result?: unknown }).result;
     return [{
       kind: "turn-end",
-      ok: (message as { readonly is_error?: unknown }).is_error !== true,
+      ok,
       ...(typeof durationMs === "number" && Number.isFinite(durationMs) ? { durationMs } : {}),
+      ...(ok && typeof result === "string" && result.trim().length > 0 ? { answer: capText(result) } : {}),
     }];
   }
   return [];

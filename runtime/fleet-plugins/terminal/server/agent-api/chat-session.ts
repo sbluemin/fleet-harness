@@ -125,6 +125,16 @@ class AgentChatSession {
     for (const listener of this.listeners) listener(entry);
   }
 
+  /**
+   * 라이브 구독자에게만 흘리고 저널에는 남기지 않는다 — 글자 단위 델타를 저널(cap 2000)에
+   * 쌓으면 즉시 소진된다. 재접속 리플레이는 완성 text 이벤트(병합본)로 같은 내용을 복원하고,
+   * 그 완성 이벤트가 델타 유실의 정정 앵커를 겸한다. seq는 저널과 한 축을 공유한다.
+   */
+  private pushEphemeral(event: AgentChatStreamEvent): void {
+    const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
+    for (const listener of this.listeners) listener(entry);
+  }
+
   private async ensureSdk(): Promise<ClaudeGatewaySdk> {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
@@ -175,6 +185,8 @@ class AgentChatSession {
         cwd: this.seed.cwd,
         resume: this.latestSessionId,
         permissionMode: "bypassPermissions",
+        // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
+        includePartialMessages: true,
       });
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
@@ -183,7 +195,8 @@ class AgentChatSession {
           }
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd })) {
             if (event.kind === "turn-end") sawResult = true;
-            this.push(event);
+            if (event.kind === "text-delta") this.pushEphemeral(event);
+            else this.push(event);
           }
         }
       } finally {

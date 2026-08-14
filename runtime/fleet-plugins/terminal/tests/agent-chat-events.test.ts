@@ -72,6 +72,35 @@ describe("chat sdk message mapping", () => {
       .toEqual([{ kind: "turn-end", ok: false }]);
   });
 
+  // result.result는 최종 응답 텍스트다 — 성공 턴의 turn-end에 answer로 실려 클라이언트의
+  // Answer 승격에 서버 권위를 준다. 실패 턴의 result는 에러 서술이므로 answer가 아니다.
+  it("carries the final result text as the turn-end answer", () => {
+    expect(chatEventsFromSdkMessage({ type: "result", subtype: "success", is_error: false, duration_ms: 5, result: "Final answer." }))
+      .toEqual([{ kind: "turn-end", ok: true, durationMs: 5, answer: "Final answer." }]);
+    expect(chatEventsFromSdkMessage({ type: "result", subtype: "success", is_error: false, result: "   " }))
+      .toEqual([{ kind: "turn-end", ok: true }]);
+    expect(chatEventsFromSdkMessage({ type: "result", is_error: true, result: "boom" }))
+      .toEqual([{ kind: "turn-end", ok: false }]);
+  });
+
+  // 스트리밍 감각의 근거 — text_delta만 글자 단위 이벤트가 되고, thinking_delta는 공개 출력
+  // 금지 불변식에 따라 여기서도 버린다.
+  it("maps text_delta stream events and never thinking_delta", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "chu" } },
+    })).toEqual([{ kind: "text-delta", text: "chu" }]);
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "secret" } },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      event: { type: "content_block_start", content_block: { type: "text" } },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({ type: "stream_event" })).toEqual([]);
+  });
+
   it("ignores stream noise", () => {
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", session_id: "abc" })).toEqual([]);
   });
@@ -114,8 +143,10 @@ describe("client/server event vocabulary parity", () => {
     { kind: "dispatch", text: "hello", at: 1755130000000 },
     { kind: "turn-start", at: 1755130000000 },
     { kind: "text", text: "body" },
+    { kind: "text-delta", text: "bo" },
     { kind: "tool", name: "Read", detail: "a.ts" },
     { kind: "turn-end", ok: true, durationMs: 12 },
+    { kind: "turn-end", ok: true, durationMs: 12, answer: "Final answer." },
     { kind: "status", working: true },
     { kind: "error", code: "chat_turn_failed" },
   ];

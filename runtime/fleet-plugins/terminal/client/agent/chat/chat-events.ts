@@ -12,8 +12,11 @@ export type AgentChatStreamEvent =
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
   | { readonly kind: "text"; readonly text: string }
+  /** 라이브 전용 글자 단위 델타 — 저널에는 실리지 않으며, 완성 text 이벤트가 정정 앵커다. */
+  | { readonly kind: "text-delta"; readonly text: string }
   | { readonly kind: "tool"; readonly name: string; readonly detail: string }
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number }
+  /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
   | { readonly kind: "status"; readonly working: boolean }
   | { readonly kind: "error"; readonly code: string };
 
@@ -46,6 +49,9 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "text":
       if (typeof event.text !== "string") return null;
       return { seq: entry.seq, event: { kind: "text", text: event.text } };
+    case "text-delta":
+      if (typeof event.text !== "string") return null;
+      return { seq: entry.seq, event: { kind: "text-delta", text: event.text } };
     case "tool":
       if (typeof event.name !== "string") return null;
       return { seq: entry.seq, event: { kind: "tool", name: event.name, detail: typeof event.detail === "string" ? event.detail : "" } };
@@ -56,6 +62,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           kind: "turn-end",
           ok: event.ok === true,
           ...(typeof event.durationMs === "number" && Number.isFinite(event.durationMs) ? { durationMs: event.durationMs } : {}),
+          ...(typeof event.answer === "string" && event.answer.length > 0 ? { answer: event.answer } : {}),
         },
       };
     case "status":
@@ -91,6 +98,12 @@ export interface AgentChatTurn {
   readonly state: "done" | "working" | "error";
   readonly durationMs?: number;
   readonly toolCount: number;
+  /** 라이브 델타 누적 버퍼 — 완성 text 이벤트가 도착하면 비워지고 아이템으로 확정된다. */
+  readonly draft: string;
+  /** turn-end가 실어온 서버 권위의 최종 응답 텍스트. */
+  readonly answer?: string;
+  /** turn-start 시각 — 진행 중 elapsed 티커의 기준. */
+  readonly startedAt?: number;
 }
 
 export interface AgentChatLogState {
@@ -125,20 +138,33 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         items: [],
         state: state.replaying ? "done" : "working",
         toolCount: 0,
+        draft: "",
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
     case "turn-start":
-      return withLastTurn(state, (turn) => ({ ...turn, state: "working" }));
+      return withLastTurn(state, (turn) => ({
+        ...turn,
+        state: "working",
+        ...(event.at !== undefined ? { startedAt: event.at } : {}),
+      }));
     case "text":
-      return appendItem(state, { type: "text", text: event.text });
+      // 완성 text는 흘러온 델타의 정정 앵커다 — 버퍼를 비우고 확정 아이템으로 치환한다.
+      return withLastTurn(appendItem(state, { type: "text", text: event.text }), (turn) => ({ ...turn, draft: "" }));
+    case "text-delta":
+      return withLastTurn(state, (turn) => turn.state === "working" ? { ...turn, draft: turn.draft + event.text } : turn);
     case "tool":
       return appendItem(state, { type: "tool", name: event.name, detail: event.detail });
     case "turn-end":
       return withLastTurn(state, (turn) => ({
         ...turn,
+        // 델타만 받고 완성 text 없이 턴이 끝나면(스트림 조기 종료) 버퍼를 아이템으로 회수한다.
+        ...(turn.draft.length > 0
+          ? { items: [...turn.items, { type: "text" as const, text: turn.draft }], draft: "" }
+          : { draft: "" }),
         state: event.ok ? "done" : "error",
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+        ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
     case "status":
       return { ...state, working: event.working };
@@ -147,6 +173,45 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
     default:
       return state;
   }
+}
+
+/** 뷰가 소비하는 턴의 파생 형태 — 원장(과정)과 Answer(결론)와 스트리밍 말미를 가른다. */
+export interface AgentChatTurnView {
+  /** 접힌 영수증에 들어가는 과정 아이템 — Answer로 승격된 말미 텍스트는 제외된다. */
+  readonly ledger: readonly AgentChatTurnItem[];
+  /** done 턴의 확정 응답. 서버 권위(turn-end.answer)가 있으면 그것, 없으면 말미 text 승격. */
+  readonly answer: string | null;
+  /** working 턴이 지금 흘리고 있는 말미 텍스트(확정 text 아이템 + 델타 버퍼). */
+  readonly streamingText: string | null;
+}
+
+/**
+ * 턴을 뷰 구조로 가른다. done 턴의 말미 text 아이템은 Answer로 승격되어 원장에서 빠진다 —
+ * 서버 answer가 있으면 그것이 권위이고, 말미 text와 같은 내용이면 중복을 걷어낸다. 재생 턴은
+ * turn-end 이벤트가 없으므로 말미 승격 규칙이 곧 Answer 판정이다.
+ */
+export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
+  const last = turn.items.at(-1);
+  const trailingText = last?.type === "text" ? last.text ?? "" : null;
+  if (turn.state === "working") {
+    const streaming = (trailingText ?? "") + turn.draft;
+    return {
+      ledger: trailingText !== null ? turn.items.slice(0, -1) : turn.items,
+      answer: null,
+      streamingText: streaming.length > 0 ? streaming : null,
+    };
+  }
+  if (turn.state === "error") {
+    return { ledger: turn.items, answer: null, streamingText: null };
+  }
+  if (turn.answer !== undefined) {
+    const promoted = trailingText !== null && trailingText.trim() === turn.answer.trim();
+    return { ledger: promoted ? turn.items.slice(0, -1) : turn.items, answer: turn.answer, streamingText: null };
+  }
+  if (trailingText !== null && trailingText.length > 0) {
+    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null };
+  }
+  return { ledger: turn.items, answer: null, streamingText: null };
 }
 
 /** 재생 중 dispatch가 연달아 오면 앞 턴은 그 시점에 닫힌 것이다. */
@@ -167,7 +232,7 @@ function appendItem(state: AgentChatLogState, item: AgentChatTurnItem): AgentCha
   const last = state.turns.at(-1);
   // 재생이 dispatch 이전의 assistant 줄로 시작할 수 있다(파일 중간 잘림) — 디스패치 없는 턴으로 담는다.
   if (!last) {
-    const turn: AgentChatTurn = { dispatch: null, items: [item], state: state.replaying ? "done" : "working", toolCount: item.type === "tool" ? 1 : 0 };
+    const turn: AgentChatTurn = { dispatch: null, items: [item], state: state.replaying ? "done" : "working", toolCount: item.type === "tool" ? 1 : 0, draft: "" };
     return { ...state, turns: [turn] };
   }
   return withLastTurn(state, (turn) => ({

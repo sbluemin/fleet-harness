@@ -1,6 +1,8 @@
 /* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
    색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, 사용자 식별은
-   --id-cerulean spine+wash 문법만 쓴다. 입력창은 없다 — 하단 스트립은 입력 경로 안내다. */
+   --id-cerulean 워시 문법만 쓴다(단일 화자 표면이라 spine 띠는 두지 않는다 — 우측 정렬이
+   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer는 공유
+   마크다운 컴포넌트(.markdown-body)로 렌더하고 여기서는 챗 밀도 스케일만 오버라이드한다. */
 
 .agent-chat {
   position: absolute;
@@ -107,46 +109,38 @@
   padding: var(--space-8) 0;
 }
 
-/* 디스패치 카드 — Quick Launch에서 온 사용자 지시. 정체성 spine+wash(--id-cerulean)만 쓴다. */
+/* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
+   우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
-  position: relative;
   max-width: 64ch;
   margin-left: auto;
-  background: color-mix(in oklch, var(--id-cerulean) 7%, var(--ink-deep));
-  border: 1px solid color-mix(in oklch, var(--id-cerulean) 22%, var(--hairline));
-  border-radius: var(--radius-md);
-  padding: var(--space-2) var(--space-3);
-}
-
-.agent-chat-dispatch::before {
-  content: "";
-  position: absolute;
-  left: -1px;
-  top: var(--space-2);
-  bottom: var(--space-2);
-  width: 3px;
-  border-radius: var(--radius-pill);
-  background: var(--id-cerulean);
-}
-
-.agent-chat-dispatch-kicker {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: flex-end;
+}
+
+.agent-chat-dispatch-meta {
+  display: flex;
   gap: var(--space-2);
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.08em;
   color: var(--text-tertiary);
-  margin-bottom: 3px;
+  margin: 0 var(--space-1) 4px 0;
 }
 
 .agent-chat-dispatch-via {
-  color: color-mix(in oklch, var(--id-cerulean) 80%, var(--text-secondary));
+  color: color-mix(in oklch, var(--id-cerulean) 75%, var(--text-tertiary));
 }
 
-.agent-chat-dispatch-text {
+.agent-chat-dispatch-bubble {
+  background: color-mix(in oklch, var(--id-cerulean) 10%, var(--ink-deep));
+  border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline));
+  border-radius: 14px 14px 5px 14px;
+  padding: var(--space-2) var(--space-3);
   color: var(--text-primary);
   font-size: 13.5px;
+  line-height: 1.55;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -218,10 +212,126 @@
   color: var(--provider-claude);
 }
 
-.agent-chat-turn-text {
+/* 진행 중 펄스 카드 — 현재 활동 + elapsed. Session Analyst의 진행 문법과 한 계열. */
+.agent-chat-pulse {
   margin-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  border: 1px solid color-mix(in oklch, var(--aurora) 24%, var(--hairline));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--aurora) 4%, var(--ink-deep));
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
   color: var(--text-secondary);
-  font-size: 13.5px;
+}
+
+.agent-chat-pulse-orbit {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  animation: agent-chat-orbit 0.9s linear infinite;
+}
+
+@keyframes agent-chat-orbit {
+  to { transform: rotate(360deg); }
+}
+
+.agent-chat-pulse-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.agent-chat-pulse-copy strong {
+  font-weight: var(--weight-medium);
+}
+
+.agent-chat-pulse-copy small {
+  font-family: var(--font-body);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-pulse-elapsed {
+  margin-left: auto;
+  flex: none;
+  align-self: flex-start;
+  color: var(--aurora-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
+.agent-chat-receipt {
+  margin-top: var(--space-2);
+}
+
+.agent-chat-receipt > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+  padding: 4px var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-deep);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-receipt > summary:hover {
+  color: var(--text-secondary);
+  border-color: var(--hairline-strong);
+}
+
+.agent-chat-receipt > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-receipt > summary::-webkit-details-marker {
+  display: none;
+}
+
+.agent-chat-receipt-chev {
+  font-size: 9px;
+  transition: transform var(--duration-fast);
+}
+
+.agent-chat-receipt[open] .agent-chat-receipt-chev {
+  transform: rotate(90deg);
+}
+
+.agent-chat-receipt-mark {
+  color: var(--positive);
+}
+
+.agent-chat-receipt-mark.is-error {
+  color: var(--coral);
+}
+
+.agent-chat-receipt-body {
+  padding: var(--space-1) 0 0 var(--space-3);
+}
+
+.agent-chat-receipt-note {
+  margin-top: var(--space-2);
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .agent-chat-tool {
@@ -253,6 +363,47 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--text-tertiary);
+}
+
+/* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
+.agent-chat-answer {
+  margin-top: var(--space-3);
+}
+
+.agent-chat-answer-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-answer-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+.agent-chat-stream {
+  margin-top: var(--space-3);
+}
+
+/* 공유 .markdown-body(리딩 스케일 17px·78ch 중앙 정렬)를 챗 밀도로 오버라이드한다 —
+   마크다운 문법(brass 인라인 코드·리스트 마커·코드 블록 툴바)은 그대로 상속한다. */
+.agent-chat .markdown-body {
+  --font-size-body: 14.5px;
+  max-inline-size: 66ch;
+  margin-inline: 0;
+  line-height: 1.7;
+}
+
+.agent-chat .markdown-body > * + * {
+  margin-top: var(--space-3);
 }
 
 /* 하단 커맨드 스트립 — 입력창이 아니라 입력 경로 안내. */
@@ -432,7 +583,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
-  .agent-chat-strip.is-working .agent-chat-strip-dot {
+  .agent-chat-strip.is-working .agent-chat-strip-dot,
+  .agent-chat-pulse-orbit {
     animation: none;
+  }
+
+  .agent-chat-receipt-chev {
+    transition: none;
   }
 }
