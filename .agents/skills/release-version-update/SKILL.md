@@ -135,11 +135,14 @@ Stable Release does **not** move `canary`. After Phase 6 success:
 
 ```
 git fetch origin main canary --tags
-git -C <canary-path> merge --ff-only origin/main
-git -C <canary-path> push origin HEAD:canary
 ```
 
-If local `main` exists and is not checked out in another worktree, fast-forward that ref too (`git fetch origin main:main`). Confirm `canary` = `origin/canary` = `origin/main` = `vX.Y.Z`.
+Then:
+
+- If `origin/canary` is still an ancestor of `origin/main` (no concurrent canary landings): `git -C <canary-path> merge --ff-only origin/main`, then `git -C <canary-path> push origin HEAD:canary`.
+- If `origin/canary` advanced while CI ran (`git rev-list --left-right --count origin/main...origin/canary` shows both sides ahead): first `git -C <canary-path> merge --ff-only origin/canary` so the checkout matches the advanced tip, then `git -C <canary-path> merge --no-edit origin/main` with the same changelog/version conflict rule as Phase 2, then `git -C <canary-path> push origin HEAD:canary`. Do not force-push. Stop if that merge is still diverged after the push.
+
+If local `main` exists and is not checked out in another worktree, fast-forward that ref too (`git fetch origin main:main`). Confirm `origin/main` is the `vX.Y.Z` release commit and that `origin/canary` contains it. When no concurrent work landed, `canary` = `origin/canary` = `origin/main` = `vX.Y.Z`. When concurrent work landed, report that canary contains the release commit and is ahead of `origin/main`.
 
 ### Phase 8 — Report in Korean
 
@@ -151,11 +154,11 @@ If local `main` exists and is not checked out in another worktree, fast-forward 
 - Whether `release-tip-guard` reported release-affecting or ignorable.
 - Main push SHA and the Stable Release run URL.
 - Published version, tag, GitHub Release URL, npm version, desktop built vs carried.
-- Final equality of `canary` / `origin/canary` / `origin/main` / the version tag — or that 현행화 found nothing to ship.
+- Final refs: equality of `canary` / `origin/canary` / `origin/main` / the version tag, or that canary contains the release commit and is ahead, or that 현행화 found nothing to ship.
 
 ## Host Synthesis
 
-The Korean report and the commit-without-fragment audit are host-owned. Read them from `git log` / `git diff` and from `.changelog.d/` fragments. Do not invent release bullets, do not rewrite fragment prose, and do not edit `CHANGELOG.md` or `CHANGELOG.ko.md`.
+The Korean report, the commit-without-fragment audit, and any operator summary of what ships are host-owned. Synthesize them directly from the branch diff, commit history, and validated `.changelog.d/` fragments — never delegate release-note synthesis. Do not invent release bullets, do not rewrite fragment prose, and do not edit `CHANGELOG.md` or `CHANGELOG.ko.md`.
 
 ## Safety Rules
 
