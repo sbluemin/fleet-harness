@@ -12,6 +12,19 @@
   display: flex;
   flex-direction: column;
   background: var(--ink-abyss);
+  /* 캔버스·패널 조상이 pan용 손 커서와 user-select: none을 상속시킨다 — 채팅은 읽고
+     복사하는 표면이므로 서브트리에서 텍스트 커서와 선택을 되살린다. */
+  cursor: auto;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+/* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
+.agent-chat-to-term:not(:disabled),
+.agent-chat-inter-button,
+.agent-chat-mode-chip,
+.agent-chat-dormant-open:not(:disabled) {
+  cursor: pointer;
 }
 
 .agent-chat-head {
