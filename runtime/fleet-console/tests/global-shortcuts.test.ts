@@ -228,4 +228,58 @@ describe("Quick Launch shortcut", () => {
     expect(toggleQuickLaunch).toHaveBeenCalledOnce();
     cleanup();
   });
+
+  it("toggles closed while Quick Launch itself is the blocking dialog", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const overlay = document.createElement("div");
+    overlay.className = "quick-launch-overlay";
+    const card = document.createElement("section");
+    card.className = "quick-launch-card";
+    card.setAttribute("role", "dialog");
+    card.setAttribute("aria-modal", "true");
+    overlay.append(card);
+    document.body.append(overlay);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", ctrlKey: true, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+
+    expect(toggleQuickLaunch).toHaveBeenCalledTimes(2);
+    cleanup();
+  });
+
+  it("stays closed when a foreign modal is open even if Quick Launch is also marked modal", () => {
+    const toggleQuickLaunch = vi.fn();
+    const cleanup = installConsoleGlobalShortcuts({
+      getSideBarCollapsed: () => false,
+      setSideBarCollapsed: vi.fn(),
+      openOperationSearch: vi.fn(),
+      toggleOperationSearch: vi.fn(),
+      toggleQuickLaunch,
+      toggleRailChrome: vi.fn(),
+    });
+    const overlay = document.createElement("div");
+    overlay.className = "quick-launch-overlay";
+    const card = document.createElement("section");
+    card.className = "quick-launch-card";
+    card.setAttribute("aria-modal", "true");
+    overlay.append(card);
+    document.body.append(overlay);
+    const foreign = document.createElement("div");
+    foreign.setAttribute("aria-modal", "true");
+    document.body.append(foreign);
+
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: " ", code: "Space", ctrlKey: true, bubbles: true, cancelable: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "j", metaKey: true, bubbles: true, cancelable: true }));
+
+    expect(toggleQuickLaunch).not.toHaveBeenCalled();
+    cleanup();
+  });
 });

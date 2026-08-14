@@ -35,11 +35,32 @@ function isQuickLaunchToggleShortcut(event: KeyboardEvent): boolean {
   return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && isSpaceKey(event);
 }
 
+// 가운데 Quick Launch는 스스로 aria-modal이다. 그 가드를 그대로 적용하면 토글이 열기만 하고
+// 닫히지 않는다. 다른 차단 다이얼로그가 떠 있을 때만 막는다.
+function isForeignBlockingDialogOpen(documentFor: Document): boolean {
+  return [...documentFor.querySelectorAll('[aria-modal="true"]:not([hidden])')]
+    .some((element) => element.closest(".quick-launch-overlay") === null);
+}
+
 // This listener is intentionally installed on window: it owns Console-wide
 // commands and checks the shared modal boundary before any command can run.
 export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcutDependencies, windowFor: Window = window): () => void {
   const handleKeyDown = (event: KeyboardEvent) => {
-    if (isKeyboardShortcutsModalOpen() || isBlockingDialogOpen(windowFor.document)) return;
+    if (isKeyboardShortcutsModalOpen()) return;
+    // Quick Launch: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
+    // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
+    // Mod+J는 Alt만 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
+    // Ctrl+Space는 모든 OS에서 Control+Space다(macOS의 Command+Space/Spotlight가 아니다).
+    // Shift·Alt·Meta는 거른다 — Ctrl+Shift+Space와 IME/Spotlight 코드를 삼키지 않는다.
+    // 토글은 자기 모달 가드보다 먼저 본다 — 가운데 컴포저가 aria-modal이라 닫힘이 막히면 안 된다.
+    if (isQuickLaunchToggleShortcut(event)) {
+      if (isForeignBlockingDialogOpen(windowFor.document)) return;
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      dependencies.toggleQuickLaunch();
+      return;
+    }
+    if (isBlockingDialogOpen(windowFor.document)) return;
     if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "z" && dependencies.canUndoLastClose?.()) {
       const active = windowFor.document.activeElement;
       if (active instanceof HTMLElement && (active.matches("input, textarea, [contenteditable='true']") || active.closest(".xterm"))) return;
@@ -58,17 +79,6 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.openOperationSearch();
-      return;
-    }
-    // Quick Launch: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
-    // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
-    // Mod+J는 Alt만 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
-    // Ctrl+Space는 모든 OS에서 Control+Space다(macOS의 Command+Space/Spotlight가 아니다).
-    // Shift·Alt·Meta는 거른다 — Ctrl+Shift+Space와 IME/Spotlight 코드를 삼키지 않는다.
-    if (isQuickLaunchToggleShortcut(event)) {
-      event.preventDefault();
-      event.stopImmediatePropagation();
-      dependencies.toggleQuickLaunch();
       return;
     }
     // Mod+Alt+B(rail): macOS는 ⌘(+⌥)로 발화하며 ⌥B의 합성문자(∫)는 무시하고 code로 판정한다.
