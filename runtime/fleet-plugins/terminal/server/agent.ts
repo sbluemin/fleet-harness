@@ -362,6 +362,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // 응답은 불투명 id뿐이다 — 저장 경로는 브라우저 DTO에 오르지 못한다(Console 보안 불변식).
       ctx.host.http.writeJson(res, 200, launchAttachments.save(bytes));
     } catch (error) {
+      // 업로드 중 클라이언트가 끊으면 본문 스트림이 거절로 끝난다 — 죽은 소켓에는 답하지 않는다.
+      if (res.destroyed || res.writableEnded) return true;
       if (error instanceof LaunchAttachmentError) {
         ctx.host.http.writeJson(res, 400, { error: error.code });
         return true;

@@ -16,6 +16,7 @@ import {
   LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX,
   LaunchAttachmentError,
   MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH,
+  MAX_PENDING_LAUNCH_ATTACHMENTS,
   readLaunchAttachmentBody,
   sniffLaunchAttachmentImage,
 } from "../server/agent-api/launch-attachments.js";
@@ -114,6 +115,28 @@ describe("launch attachment store", () => {
     expect(existsSync(filePath as string)).toBe(true);
     store.releaseSession("session-1");
     expect(existsSync(filePath as string)).toBe(false);
+  });
+
+  it("caps how many unsent uploads can pile up", () => {
+    const store = createLaunchAttachmentStore();
+    cleanups.push(() => store.cleanup());
+    for (let index = 0; index < MAX_PENDING_LAUNCH_ATTACHMENTS; index += 1) store.save(PNG_BYTES);
+    // 회당 상한(4장)은 컴포저 계약이고 이것은 디스크 계약이다 — 발사에 묶이면 자리가 돌아온다.
+    expect(() => store.save(PNG_BYTES)).toThrowError(expect.objectContaining({ code: "attachment_storage_exhausted" }));
+  });
+
+  it("resets the TTL clock when a launch resolves an attachment", () => {
+    let nowValue = 0;
+    const store = createLaunchAttachmentStore(() => nowValue);
+    cleanups.push(() => store.cleanup());
+    const { id } = store.save(PNG_BYTES);
+    // 해석은 발사가 임박했다는 뜻이다 — 그 직후의 게으른 청소가 방금 해석된 파일을 거두면
+    // CLI가 사라진 경로를 읽는다.
+    nowValue = 29 * 60 * 1000;
+    const [filePath] = store.resolve([id]);
+    nowValue = 31 * 60 * 1000;
+    store.save(PNG_BYTES);
+    expect(existsSync(filePath as string)).toBe(true);
   });
 
   it("discards an unsent attachment and sweeps expired ones", () => {

@@ -178,6 +178,12 @@ export function QuickLaunch() {
     // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
     const restoredPrompt = state.quickLaunchDraft ?? "";
     setPrompt(restoredPrompt);
+    // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것의 미리보기 URL을 먼저 거둔다 —
+    // 닫힌 뒤 완료된 업로드처럼 보존을 비켜 간 칩은 여기가 마지막 회수 지점이다.
+    const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
+    for (const attachment of attachmentsRef.current) {
+      if (!restoredPreviews.has(attachment.previewUrl)) URL.revokeObjectURL(attachment.previewUrl);
+    }
     // 첨부 칩도 초안과 같은 슬롯에서 돌아온다 — 서버 파일은 미발사분으로 남아 있어 id가 유효하다.
     setAttachments((state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
       key: attachment.id,
@@ -553,8 +559,12 @@ export function QuickLaunch() {
       setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
       void upload(file)
         .then(({ id }) => {
-          // 다음 컴포저 세션에 도착한 완료는 버린다 — 열림 전이가 초안 슬롯에서 다시 시작한다.
-          if (composerEpochRef.current !== epoch) return;
+          // 다음 컴포저 세션에 도착한 완료는 버린다 — 열림 전이가 초안 슬롯에서 다시 시작하므로
+          // 이 칩은 이미 없다. 미리보기 URL도 여기서 거두지 않으면 blob 메모리가 남는다.
+          if (composerEpochRef.current !== epoch) {
+            URL.revokeObjectURL(previewUrl);
+            return;
+          }
           setAttachments((current) => current.map((attachment) => (attachment.key === key ? { ...attachment, id, uploading: false } : attachment)));
         })
         .catch((error: unknown) => {
@@ -579,19 +589,25 @@ export function QuickLaunch() {
     inputRef.current?.focus();
   }, [attachmentPlugin]);
 
+  // 대상 플러그인이 능력을 선언하지 않았고 멘션 안내도 필요 없으면 paste/드롭을 아예 받지 않는다 —
+  // 가로채 놓고 조용히 버리면 기존의 "무반응"보다 나쁜, 이유 없는 삼킴이 된다.
+  const canAttachImages = !!attachmentPlugin?.uploadLaunchAttachment;
+
   const handlePaste = useCallback((event: ReactClipboardEvent<HTMLTextAreaElement>) => {
+    if (!canAttachImages && !mentionTarget) return;
     const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isQuickLaunchAttachmentCandidate(file));
     if (files.length === 0) return;
     // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
     event.preventDefault();
     addAttachmentFiles(files);
-  }, [addAttachmentFiles]);
+  }, [addAttachmentFiles, canAttachImages, mentionTarget]);
 
   const handleDragOver = useCallback((event: ReactDragEvent<HTMLElement>) => {
+    if (!canAttachImages && !mentionTarget) return;
     if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
     event.preventDefault();
     setDragOver(true);
-  }, []);
+  }, [canAttachImages, mentionTarget]);
 
   const handleDragLeave = useCallback((event: ReactDragEvent<HTMLElement>) => {
     // 자식 사이를 오가는 이동은 이탈이 아니다 — 카드 밖으로 나갈 때만 하이라이트를 내린다.
@@ -602,11 +618,14 @@ export function QuickLaunch() {
 
   const handleDrop = useCallback((event: ReactDragEvent<HTMLElement>) => {
     setDragOver(false);
-    const files = Array.from(event.dataTransfer?.files ?? []).filter((file) => isQuickLaunchAttachmentCandidate(file));
+    if (!canAttachImages && !mentionTarget) return;
+    const files = Array.from(event.dataTransfer?.files ?? []);
     if (files.length === 0) return;
+    // 파일이 실린 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로
+    // 내비게이션해 SPA째로 떠난다(이미지 필터는 그다음 문제다).
     event.preventDefault();
-    addAttachmentFiles(files);
-  }, [addAttachmentFiles]);
+    addAttachmentFiles(files.filter((file) => isQuickLaunchAttachmentCandidate(file)));
+  }, [addAttachmentFiles, canAttachImages, mentionTarget]);
 
   const closePopover = useCallback(() => setPopover(null), []);
 

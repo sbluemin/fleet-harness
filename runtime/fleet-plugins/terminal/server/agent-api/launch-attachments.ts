@@ -20,13 +20,19 @@ const UNBOUND_LAUNCH_ATTACHMENT_TTL_MS = 30 * 60 * 1000;
 
 export const MAX_LAUNCH_ATTACHMENT_BYTES = 10 * 1024 * 1024;
 export const MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH = 4;
+/**
+ * 미발사분 총량 상한. 컴포저는 회당 4장까지만 실지만 업로드 자체는 발사 없이도 쌓일 수 있어,
+ * TTL(30분)이 돌기 전에 temp 디스크가 무한히 자라는 것을 여기서 끊는다.
+ */
+export const MAX_PENDING_LAUNCH_ATTACHMENTS = 32;
 export const LAUNCH_ATTACHMENT_INSTRUCTION_PREFIX = "Read the attached image file: ";
 
 export type LaunchAttachmentErrorCode =
   | "attachment_too_large"
   | "attachment_unsupported"
   | "attachment_not_found"
-  | "attachment_limit";
+  | "attachment_limit"
+  | "attachment_storage_exhausted";
 
 export class LaunchAttachmentError extends Error {
   readonly code: LaunchAttachmentErrorCode;
@@ -96,7 +102,8 @@ interface LaunchAttachmentEntry {
   readonly id: string;
   readonly dir: string;
   readonly filePath: string;
-  readonly createdAt: number;
+  /** 저장·해석 시점에 갱신된다 — 해석이 만졌다는 것은 발사가 임박했다는 뜻이라 TTL을 되돌린다. */
+  createdAt: number;
   sessionId: string | null;
 }
 
@@ -137,6 +144,17 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
   return {
     save(bytes) {
       sweepExpired();
+      // 발사 없이 쌓이는 업로드의 총량을 자른다 — 회당 상한(4장)은 컴포저 계약이고, 이것은 디스크 계약이다.
+      let pending = 0;
+      for (const entry of entries.values()) {
+        if (entry.sessionId === null) pending += 1;
+      }
+      if (pending >= MAX_PENDING_LAUNCH_ATTACHMENTS) {
+        throw new LaunchAttachmentError(
+          "attachment_storage_exhausted",
+          `More than ${MAX_PENDING_LAUNCH_ATTACHMENTS} images are waiting to launch — launch or remove some first.`,
+        );
+      }
       const sniffed = sniffLaunchAttachmentImage(bytes);
       if (!sniffed) {
         throw new LaunchAttachmentError(
@@ -176,6 +194,9 @@ export function createLaunchAttachmentStore(now: () => number = Date.now): Launc
         if (!entry || entry.sessionId !== null) {
           throw new LaunchAttachmentError("attachment_not_found", "An attached image is no longer available.");
         }
+        // 해석과 바인딩(스폰 성공 후) 사이에 다른 요청의 게으른 청소가 이 파일을 거두면 CLI가
+        // 사라진 경로를 읽는다 — 해석이 TTL 시계를 되돌려 그 창을 닫는다.
+        entry.createdAt = now();
         return entry.filePath;
       });
     },
