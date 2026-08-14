@@ -29,6 +29,7 @@ export function buildShortcutGroups(
       entries: [
         { combos: [["Mod", "K"]], description: t("shortcuts.console.searchOps") },
         { combos: [["Mod", "P"]], description: t("shortcuts.console.commandPalette") },
+        { combos: [["Mod", "J"], ["Ctrl", "Space"]], description: t("shortcuts.console.quickLaunch") },
         { combos: [["Mod", "B"]], description: t("shortcuts.console.toggleSidebar") },
         { combos: [["Mod", "Alt", "B"]], description: t("shortcuts.console.toggleRail") },
       ],

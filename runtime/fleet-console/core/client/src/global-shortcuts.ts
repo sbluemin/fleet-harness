@@ -26,6 +26,15 @@ export interface ConsoleGlobalShortcutDependencies {
   readonly undoLastClose?: () => void;
 }
 
+function isSpaceKey(event: KeyboardEvent): boolean {
+  return event.code === "Space" || event.key === " ";
+}
+
+function isQuickLaunchToggleShortcut(event: KeyboardEvent): boolean {
+  if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "j") return true;
+  return event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey && isSpaceKey(event);
+}
+
 // This listener is intentionally installed on window: it owns Console-wide
 // commands and checks the shared modal boundary before any command can run.
 export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcutDependencies, windowFor: Window = window): () => void {
@@ -51,10 +60,12 @@ export function installConsoleGlobalShortcuts(dependencies: ConsoleGlobalShortcu
       dependencies.openOperationSearch();
       return;
     }
-    // Mod+J(Quick Launch): 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
+    // Quick Launch: 입력·터미널 포커스 가드를 두지 않는다 — Mod+K/Mod+P와 같은 정책으로,
     // 터미널을 보고 있다가 떠오른 지시를 그 자리에서 띄우는 것이 이 단축키의 목적이다.
-    // Alt는 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
-    if ((event.metaKey || event.ctrlKey) && !event.altKey && event.key.toLowerCase() === "j") {
+    // Mod+J는 Alt만 거르고 Shift는 허용한다(Mod+P와 동일한 술어 폭).
+    // Ctrl+Space는 모든 OS에서 Control+Space다(macOS의 Command+Space/Spotlight가 아니다).
+    // Shift·Alt·Meta는 거른다 — Ctrl+Shift+Space와 IME/Spotlight 코드를 삼키지 않는다.
+    if (isQuickLaunchToggleShortcut(event)) {
       event.preventDefault();
       event.stopImmediatePropagation();
       dependencies.toggleQuickLaunch();
