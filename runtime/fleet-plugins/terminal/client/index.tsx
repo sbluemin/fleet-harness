@@ -51,6 +51,15 @@ export const terminalPlugin = definePlugin({
     if (!deliver) throw new Error("terminal_message_unsupported");
     await deliver(operationId, text);
   },
+  // Quick Launch 이미지 첨부 — agent 전용 능력이라 shell 판별 없이 곧장 넘긴다(멘션 전달과 같은 계약).
+  uploadLaunchAttachment: async (file) => {
+    const upload = agentPlugin.uploadLaunchAttachment;
+    if (!upload) throw new Error("attachment_upload_failed");
+    return upload(file);
+  },
+  discardLaunchAttachment: async (id) => {
+    await agentPlugin.discardLaunchAttachment?.(id);
+  },
   launch: async (ctx) => ctx.kind.type === "shell"
     ? shellPlugin.launch?.(ctx) ?? { id: "" }
     : agentPlugin.launch?.(ctx) ?? { id: "" },

@@ -17,6 +17,7 @@ import type {
   OperationNotification,
   OperationNode,
   ObserverStatus,
+  QuickLaunchDraftAttachment,
   QuickLaunchRequest,
   ReleaseNotesResponse,
   ThemeId,
@@ -86,6 +87,7 @@ let state: ConsoleState = {
   quickLaunchExpandRequest: 0,
   quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
+  quickLaunchDraftAttachments: null,
   quickLaunchError: null,
   quickLaunchErrorShortenBy: null,
   pendingQuickLaunch: null,
@@ -604,13 +606,13 @@ export function openQuickLaunch(): void {
 }
 
 // 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
-export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null, shortenByChars: number | null = null): void {
-  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchError: errorCode, quickLaunchErrorShortenBy: shortenByChars });
+export function reopenQuickLaunchWithDraft(draft: string, errorCode: string | null, shortenByChars: number | null = null, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
+  setState({ quickLaunchOpen: true, quickLaunchDraft: draft, quickLaunchDraftAttachments: attachments, quickLaunchError: errorCode, quickLaunchErrorShortenBy: shortenByChars });
 }
 
 export function consumeQuickLaunchDraft(): void {
-  if (state.quickLaunchDraft === null) return;
-  setState({ quickLaunchDraft: null });
+  if (state.quickLaunchDraft === null && state.quickLaunchDraftAttachments === null) return;
+  setState({ quickLaunchDraft: null, quickLaunchDraftAttachments: null });
 }
 
 /**
@@ -618,8 +620,8 @@ export function consumeQuickLaunchDraft(): void {
  * 문장을 지우면 컴포저가 키보드 사용자에게 유일한 데이터 손실 키를 쥐여 주는 셈이다.
  * 복원은 열림 전이의 기존 경로(quickLaunchDraft 읽기 + consume)가 그대로 맡는다.
  */
-export function preserveQuickLaunchDraft(draft: string): void {
-  setState({ quickLaunchDraft: draft });
+export function preserveQuickLaunchDraft(draft: string, attachments: readonly QuickLaunchDraftAttachment[] | null = null): void {
+  setState({ quickLaunchDraft: draft, quickLaunchDraftAttachments: attachments });
 }
 
 export function closeQuickLaunch(): void {

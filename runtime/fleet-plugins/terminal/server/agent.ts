@@ -25,6 +25,7 @@ import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
 import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
@@ -36,7 +37,7 @@ import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -64,6 +65,7 @@ const RESUMED_PTY_MESSAGE_BOOT_DELAY_MS = 1500;
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const OPERATION_DELETED_EVENT_CHANNEL = "operation:deleted";
+const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 const TERMINAL_PLUGIN_ID = "terminal";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
@@ -101,6 +103,8 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/auto-name", summary: "Receive an Agent auto-name hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/capture", summary: "Receive an Agent session capture hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/ticket", summary: "Issue an Agent Terminal WebSocket ticket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/attachments", summary: "Upload a Quick Launch image attachment.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
   ]);
   return api.launchKinds;
 }
@@ -164,6 +168,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   // 설치돼 있는지에 따라 갈린다.
   const testDetector = (globalThis as { __fleetAgentCliDetector?: AgentCliDetector }).__fleetAgentCliDetector;
   const detector = testDetector ?? createDefaultAgentCliDetector(readAgentCliPaths);
+  const launchAttachments = createLaunchAttachmentStore({ dataDir: ctx.host.paths.fleetDataDir });
   const pendingRuntimeSessions = new Map<string, ConsoleRuntimeSessionInfo>();
   const identityRefreshes = new Map<string, { running: boolean; queued: boolean }>();
   const oscActivityTrackers = new Map<string, OscAgentActivityTracker>();
@@ -232,6 +237,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     observability.notifySessionUpdated(dormant);
   });
 
+  // 호스트 주도 삭제(Theater 잊기 등)는 플러그인 DELETE 라우트를 지나지 않는다 — 유예가 끝나
+  // 복원 불가로 확정되는 purge가 그 경로의 유일한 회수 신호다. deleted 시점에 거두면 유예 중
+  // 복원된 Operation이 첨부를 잃는다.
+  const unsubscribePurge = ctx.host.events.subscribe(OPERATION_PURGED_EVENT_CHANNEL, (payload) => {
+    if (!isOperationRestoredEvent(payload) || payload.pluginId !== ctx.pluginId || payload.type !== AGENT_OPERATION_TYPE) return;
+    launchAttachments.releaseSession(payload.operationId);
+  });
+
   backfillAgentOperationLaunchAxes();
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
@@ -294,6 +307,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (path === "/sessions") return handleSessions(req, res);
     const sessionMatch = path.match(/^\/sessions\/([^/]+)(?:\/([^/]+))?$/);
     if (sessionMatch) return handleSessionItem(req, res, decodeURIComponent(sessionMatch[1] ?? ""), sessionMatch[2] ?? "");
+    if (path === "/attachments") return handleAttachmentUpload(req, res);
+    const attachmentMatch = path.match(/^\/attachments\/([^/]+)$/);
+    if (attachmentMatch) return handleAttachmentDiscard(req, res, decodeURIComponent(attachmentMatch[1] ?? ""));
     if (path === "/ticket") {
       if (req.method !== "POST") return methodNotAllowed(res);
       if (!ctx.host.security.isTerminalAuthorized(req)) {
@@ -347,6 +363,37 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return false;
   }
 
+  async function handleAttachmentUpload(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    try {
+      // 상한이 이미 찼으면 본문을 받기 전에 거절한다 — 10MB를 다 받아 놓고 거절하는 상한은
+      // 메모리 보호라는 목적을 잃는다.
+      launchAttachments.assertSaveCapacity();
+      const bytes = await readLaunchAttachmentBody(req);
+      // 응답은 불투명 id뿐이다 — 저장 경로는 브라우저 DTO에 오르지 못한다(Console 보안 불변식).
+      ctx.host.http.writeJson(res, 200, launchAttachments.save(bytes));
+    } catch (error) {
+      // 업로드 중 클라이언트가 끊으면 본문 스트림이 거절로 끝난다 — 죽은 소켓에는 답하지 않는다.
+      if (res.destroyed || res.writableEnded) return true;
+      if (error instanceof LaunchAttachmentError) {
+        ctx.host.http.writeJson(res, 400, { error: error.code });
+        return true;
+      }
+      ctx.host.http.writeJson(res, 500, { error: "attachment_upload_failed" });
+    }
+    return true;
+  }
+
+  async function handleAttachmentDiscard(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], attachmentId: string): Promise<boolean> {
+    if (req.method !== "DELETE") return methodNotAllowed(res);
+    if (!ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    // 발사된 첨부는 지울 수 없고, 이미 사라진 id는 이미 원하는 상태다 — 둘 다 200으로 답한다.
+    launchAttachments.discard(attachmentId);
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
   async function handleSessions(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"]): Promise<boolean> {
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
@@ -384,16 +431,42 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // spawn-only: sanitizeLaunchPrompt 결과는 Operation payload·브라우저 DTO에 넣지 않는다
     // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
     const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
+    const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
+    if (attachmentIds === false) return true;
     const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
       return true;
     }
+    let composedPrompt: string | undefined;
+    try {
+      // 모르는 id·상한 초과는 스폰 전에 거절한다 — 세션을 만들고 나서 거절하면 빈 Operation이 남는다.
+      // 해석은 스폰이 끝날 때까지 id를 예약하므로 마지막 거절 관문 뒤에 서고, 스폰 실패는
+      // createSession이 unreserve로 되돌린다. 경로 지시는 여기서 합성되어 이후의 런치 프롬프트
+      // 가드(cmd-shim·명령줄 예산)를 그대로 지난다.
+      composedPrompt = composeLaunchPromptWithAttachments(prompt, launchAttachments.resolve(attachmentIds));
+    } catch (error) {
+      if (error instanceof LaunchAttachmentError) {
+        ctx.host.http.writeJson(res, 400, { error: error.code });
+        return true;
+      }
+      throw error;
+    }
     await createSession(cwd, theaterId, cliId, res, {
       ...launchOptions,
-      ...(prompt ? { prompt } : {}),
+      ...(composedPrompt ? { prompt: composedPrompt } : {}),
+      ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
     });
     return true;
+  }
+
+  function readAttachmentIds(value: unknown, res: Parameters<typeof handle>[0]["res"]): readonly string[] | false {
+    if (value === undefined) return [];
+    if (!Array.isArray(value) || value.some((id) => typeof id !== "string" || id.length === 0)) {
+      ctx.host.http.writeJson(res, 400, { error: "attachment_not_found" });
+      return false;
+    }
+    return value as readonly string[];
   }
 
   function readLaunchOptions(
@@ -467,10 +540,15 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     theaterId: string,
     cliId: AgentCliId,
     res: Parameters<typeof handle>[0]["res"],
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[] } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
+      // 이 preflight 거절은 unreserve가 있는 아래 try보다 앞이다 — 여기서 되돌리지 않으면
+      // 예약이 영영 남아 재시도가 전부 attachment_not_found로 떨어진다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.unreserve(launchOptions.attachmentIds);
+      }
       ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
       return;
     }
@@ -517,6 +595,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // (FORBIDDEN_BROWSER_PAYLOAD_KEYS에 "prompt" 포함).
         ...(launchOptions.prompt ? { prompt: launchOptions.prompt } : {}),
       });
+      // 스폰이 성공했을 때만 묶는다 — 거절·실패한 실행의 첨부는 미발사분으로 남아 재시도가
+      // 같은 id를 다시 실을 수 있고, 남으면 TTL이 거둔다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.bind(sessionId, launchOptions.attachmentIds);
+      }
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
       const created = runtimeSession
@@ -526,6 +609,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch (error) {
+      // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
+      // 남으면 TTL이 거둔다.
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.unreserve(launchOptions.attachmentIds);
+      }
       if (error instanceof GatewayLaunchOptionError) {
         removeSession(sessionId);
         ctx.host.http.writeJson(res, gatewayLaunchOptionErrorStatus(error), { error: error.code });
@@ -1092,6 +1180,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
     } else {
       observability.removeTerminalSession(operationId);
+      // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
+      // 이 경로도 회수해야 플러그인 종료까지 파일이 눌러앉지 않는다(removeSession과 같은 계약).
+      launchAttachments.releaseSession(operationId);
       ctx.host.operations.delete(operationId);
     }
   }
@@ -1103,6 +1194,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
+    // 첨부 파일의 수명은 Operation을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
+    launchAttachments.releaseSession(sessionId);
     ctx.host.operations.delete(sessionId);
   }
 
@@ -1111,10 +1204,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     unsubscribeRename();
     unsubscribeRestore();
     unsubscribeChatDelete();
+    unsubscribePurge();
     unsubscribeTitle();
     await chatRegistry.disposeAll();
     for (const tracker of oscActivityTrackers.values()) tracker.reset();
     oscActivityTrackers.clear();
+    launchAttachments.cleanup();
     await runtime.cleanup();
   }
 

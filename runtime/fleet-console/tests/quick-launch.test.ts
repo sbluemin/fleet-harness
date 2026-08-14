@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
-import { clearQuickLaunchRejection, getState, isQuickLaunchDocked, openQuickLaunch, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
@@ -320,6 +320,82 @@ describe("prompt limit", () => {
     const declared = source.match(/MAX_LAUNCH_PROMPT_CHARS = (\d+)/)?.[1];
     expect(declared).toBeDefined();
     expect(QUICK_LAUNCH_PROMPT_MAX_CHARS).toBe(Number(declared));
+  });
+});
+
+describe("attachment contract", () => {
+  it("mirrors the plugin-server attachment limits", () => {
+    // 프롬프트 상한과 같은 계약 — 브라우저 사본이 서버와 갈라지면 확실히 400으로 거절될
+    // 업로드·발사가 왕복한다. 패키지 import 대신 소스를 읽어 고정한다(prompt limit과 같은 방식).
+    const source = readFileSync(resolve(process.cwd(), "../fleet-plugins/terminal/server/agent-api/launch-attachments.ts"), "utf8");
+    const declaredBytes = source.match(/MAX_LAUNCH_ATTACHMENT_BYTES = ([^;]+);/)?.[1]?.trim();
+    const declaredCount = source.match(/MAX_LAUNCH_ATTACHMENTS_PER_LAUNCH = (\d+)/)?.[1];
+    expect(declaredBytes).toBeDefined();
+    expect(declaredCount).toBeDefined();
+    expect(QUICK_LAUNCH_ATTACHMENT_MAX_BYTES).toBe(Number(new Function(`return ${declaredBytes}`)()));
+    expect(QUICK_LAUNCH_MAX_ATTACHMENTS).toBe(Number(declaredCount));
+  });
+
+  it("accepts only files the browser labels as images", () => {
+    expect(isQuickLaunchAttachmentCandidate({ type: "image/png" })).toBe(true);
+    expect(isQuickLaunchAttachmentCandidate({ type: "image/webp" })).toBe(true);
+    expect(isQuickLaunchAttachmentCandidate({ type: "text/plain" })).toBe(false);
+    expect(isQuickLaunchAttachmentCandidate({ type: "" })).toBe(false);
+  });
+
+  it("names what to fix for each upload rejection", () => {
+    expect(quickLaunchAttachmentErrorMessageKey("attachment_too_large")).toBe("chrome.quickLaunch.errorAttachmentTooLarge");
+    expect(quickLaunchAttachmentErrorMessageKey("attachment_unsupported")).toBe("chrome.quickLaunch.errorAttachmentUnsupported");
+    expect(quickLaunchAttachmentErrorMessageKey("attachment_limit")).toBe("chrome.quickLaunch.errorAttachmentLimit");
+    expect(quickLaunchAttachmentErrorMessageKey("attachment_storage_exhausted")).toBe("chrome.quickLaunch.errorAttachmentStorageExhausted");
+    // 모르는 코드·네트워크 실패는 일반 업로드 실패 문구로 떨어진다 — 아무 말도 못 하는 상태를 만들지 않는다.
+    expect(quickLaunchAttachmentErrorMessageKey("something_new")).toBe("chrome.quickLaunch.errorAttachmentUploadFailed");
+    expect(quickLaunchAttachmentErrorMessageKey(null)).toBe("chrome.quickLaunch.errorAttachmentUploadFailed");
+  });
+
+  it("maps launch rejections that involve attachments", () => {
+    expect(quickLaunchErrorMessageKey("attachment_not_found")).toBe("chrome.quickLaunch.errorAttachmentGone");
+    expect(quickLaunchErrorMessageKey("attachment_limit")).toBe("chrome.quickLaunch.errorAttachmentLimit");
+  });
+
+  it("declares every attachment key in both locales", () => {
+    const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
+    const keys = [
+      "chrome.quickLaunch.attachments",
+      "chrome.quickLaunch.attachmentRemove",
+      "chrome.quickLaunch.attachmentUploading",
+      "chrome.quickLaunch.errorAttachmentTooLarge",
+      "chrome.quickLaunch.errorAttachmentUnsupported",
+      "chrome.quickLaunch.errorAttachmentLimit",
+      "chrome.quickLaunch.errorAttachmentUploadFailed",
+      "chrome.quickLaunch.errorAttachmentStorageExhausted",
+      "chrome.quickLaunch.errorAttachmentGone",
+      "chrome.quickLaunch.errorAttachmentMention",
+    ];
+    for (const key of keys) {
+      expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
+    }
+  });
+
+  it("keeps attachment traces in the draft slot until consumed", () => {
+    // 초안 텍스트만 보존하면 거절·닫힘이 방금 붙여넣은 이미지를 조용히 버린다.
+    const attachments = [{ id: "att-1", name: "shot.png", previewUrl: "blob:preview-1" }];
+    reopenQuickLaunchWithDraft("fix the layout", "attachment_not_found", null, attachments);
+    expect(getState().quickLaunchDraft).toBe("fix the layout");
+    expect(getState().quickLaunchDraftAttachments).toEqual(attachments);
+    consumeQuickLaunchDraft();
+    expect(getState().quickLaunchDraft).toBeNull();
+    expect(getState().quickLaunchDraftAttachments).toBeNull();
+  });
+
+  it("preserves attachment traces alongside an unsent draft", () => {
+    const attachments = [{ id: "att-2", name: "mock.png", previewUrl: "blob:preview-2" }];
+    preserveQuickLaunchDraft("compare against the mock", attachments);
+    expect(getState().quickLaunchDraftAttachments).toEqual(attachments);
+    // 첨부 없이 보존하면 슬롯의 옛 첨부도 함께 내려간다 — 텍스트와 첨부는 한 초안의 두 축이다.
+    preserveQuickLaunchDraft("text only");
+    expect(getState().quickLaunchDraftAttachments).toBeNull();
+    consumeQuickLaunchDraft();
   });
 });
 

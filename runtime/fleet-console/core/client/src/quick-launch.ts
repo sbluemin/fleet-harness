@@ -22,6 +22,38 @@ import type { ConsoleState } from "./types.js";
 export const QUICK_LAUNCH_PROMPT_MAX_CHARS = 16000;
 export const QUICK_LAUNCH_DEFAULT_MODEL = "opus[1m]";
 
+/**
+ * 이미지 첨부 상한의 브라우저 사본(터미널 플러그인 서버 launch-attachments.ts와 동치).
+ * 프롬프트 상한과 같은 이유로 복제한다 — 브라우저 코드는 플러그인 서버 모듈을 끌어올 수 없고,
+ * 여기서 미리 거르지 않으면 확실히 400으로 거절될 업로드가 왕복한다. 서버가 최종 판정자다.
+ */
+export const QUICK_LAUNCH_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+export const QUICK_LAUNCH_MAX_ATTACHMENTS = 4;
+
+/**
+ * 붙여넣기·드롭에서 첨부 후보로 받아들일 파일인지. 최종 판정은 서버의 매직 바이트 검사가 하므로
+ * 여기서는 브라우저가 아는 라벨로만 거른다 — 이미지가 아닌 파일(텍스트 붙여넣기 등)을 조용히
+ * 지나가게 하는 것이 목적이지, 위조를 막는 자리가 아니다.
+ */
+export function isQuickLaunchAttachmentCandidate(file: { readonly type: string }): boolean {
+  return file.type.startsWith("image/");
+}
+
+/**
+ * 업로드 거절 코드를 문구 키로 옮긴다. 모르는 코드·네트워크 실패는 일반 업로드 실패 문구로
+ * 떨어뜨려 아무 말도 못 하는 상태를 만들지 않는다.
+ */
+export function quickLaunchAttachmentErrorMessageKey(code: string | null): string {
+  switch (code) {
+    case "attachment_too_large": return "chrome.quickLaunch.errorAttachmentTooLarge";
+    case "attachment_unsupported": return "chrome.quickLaunch.errorAttachmentUnsupported";
+    case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
+    // 미발사 총량 상한 — "다시 붙여넣으라"는 일반 문구로 떨어뜨리면 재시도가 같은 벽에 반복해 부딪힌다.
+    case "attachment_storage_exhausted": return "chrome.quickLaunch.errorAttachmentStorageExhausted";
+    default: return "chrome.quickLaunch.errorAttachmentUploadFailed";
+  }
+}
+
 export interface VariantKindTarget {
   readonly pluginId: string;
   readonly kind: OperationLaunchKind;
@@ -251,6 +283,9 @@ export function quickLaunchErrorMessageKey(code: string | null, shortenByChars: 
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
+    // 첨부가 만료·소실된 실행 거절 — 초안과 칩은 돌아오지만, 그 칩의 서버 파일은 이미 없다.
+    case "attachment_not_found": return "chrome.quickLaunch.errorAttachmentGone";
+    case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
     default: return "chrome.quickLaunch.errorGeneric";
   }
 }
