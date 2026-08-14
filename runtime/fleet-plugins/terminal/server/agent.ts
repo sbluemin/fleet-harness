@@ -1154,6 +1154,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
     } else {
       observability.removeTerminalSession(operationId);
+      // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
+      // 이 경로도 회수해야 플러그인 종료까지 파일이 눌러앉지 않는다(removeSession과 같은 계약).
+      launchAttachments.releaseSession(operationId);
       ctx.host.operations.delete(operationId);
     }
   }
