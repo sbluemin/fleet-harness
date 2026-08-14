@@ -218,6 +218,10 @@ export function QuickLaunch() {
   // 포커스를 넣는다 — 같은 틱에 부르면 focus()가 조용히 실패해 바가 열리지 않은 것처럼 보인다.
   const expandAndFocus = useCallback(() => {
     setCollapsed(false);
+    // 물러남(focus-out)이 비운 커맨드 상태를 유지된 문면에서 되살린다 — 접힘/펼침 왕복이
+    // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
+    setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandActiveIndex(0);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
