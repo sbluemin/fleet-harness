@@ -104,8 +104,6 @@ export function AgentChatView({
           <ChatTurn
             key={index}
             turn={turn}
-            model={model}
-            effort={effort}
             language={context.language ?? "en"}
             timeFormat={timeFormat}
             streaming={index === state.turns.length - 1 && turn.state === "working"}
@@ -141,15 +139,11 @@ export function AgentChatView({
 
 function ChatTurn({
   turn,
-  model,
-  effort,
   language,
   timeFormat,
   streaming,
 }: {
   readonly turn: AgentChatTurn;
-  readonly model: string;
-  readonly effort: string;
   readonly language: "en" | "ko";
   readonly timeFormat: Intl.DateTimeFormat;
   readonly streaming: boolean;
@@ -172,9 +166,15 @@ function ChatTurn({
         <div className={`agent-chat-turn is-${turn.state}`}>
           <div className="agent-chat-turn-spine" aria-hidden="true"><span className="agent-chat-turn-node" /></div>
           <div className="agent-chat-turn-body">
-            {model ? (
+            {/* 모델·강도는 상단 세션 바가 이미 말한다 — 헤드는 턴의 시간축만 맡는다:
+                진행 중엔 라이브 티커, 완료 후엔 총 소요 시간. */}
+            {working ? (
               <div className="agent-chat-turn-head">
-                <span className="agent-chat-turn-model">{model}{effort ? ` · ${effort.toUpperCase()}` : ""}</span>
+                <TurnElapsedLabel turn={turn} language={language} />
+              </div>
+            ) : turn.durationMs !== undefined ? (
+              <div className="agent-chat-turn-head">
+                <span>{t("terminal.chat.workedFor", { duration: formatDuration(turn.durationMs) })}</span>
               </div>
             ) : null}
             {working
@@ -208,7 +208,20 @@ function ChatTurn({
   );
 }
 
-/** 진행 중 턴의 대변인 — 현재 활동 라벨과 1초 elapsed 티커. Session Analyst의 펄스 문법. */
+/** 진행 중 턴 헤드의 라이브 티커 — 시각 전용이라 라이브 리전이 아니다(매초 재낭독 방지). */
+function TurnElapsedLabel({
+  turn,
+  language,
+}: {
+  readonly turn: AgentChatTurn;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const elapsedMs = useTurnElapsedMs(turn.startedAt, turn.state === "working");
+  return <span aria-hidden="true">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(elapsedMs) })}</span>;
+}
+
+/** 진행 중 턴의 대변인 — 현재 활동 라벨. 시간축은 턴 헤드의 티커가 맡는다. */
 function PulseCard({
   turn,
   writing,
@@ -219,7 +232,6 @@ function PulseCard({
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  const elapsedMs = useTurnElapsedMs(turn.startedAt, turn.state === "working");
   const lastTool = findLastTool(turn.items);
   const label = writing
     ? t("terminal.chat.activityWriting")
@@ -230,15 +242,12 @@ function PulseCard({
   return (
     <div className="agent-chat-pulse">
       <span className="agent-chat-pulse-orbit" aria-hidden="true" />
-      {/* 라이브 리전은 활동 라벨로 한정한다 — 매초 바뀌는 elapsed까지 status에 넣으면
-          스크린 리더가 턴 내내 카드를 재낭독한다. 타이머는 시각 전용이다. */}
+      {/* 라이브 리전은 활동 라벨로 한정한다 — 초 단위로 바뀌는 값이 섞이면 스크린 리더가
+          턴 내내 카드를 재낭독한다. */}
       <span className="agent-chat-pulse-copy" role="status">
         <strong>{label}</strong>
         {note ? <small>{note}</small> : null}
       </span>
-      {turn.startedAt !== undefined
-        ? <time className="agent-chat-pulse-elapsed" aria-hidden="true">{formatElapsed(elapsedMs)}</time>
-        : null}
     </div>
   );
 }
@@ -255,15 +264,13 @@ function Receipt({
 }) {
   const t = getT(language);
   const ok = turn.state === "done";
-  const parts: string[] = [];
-  if (turn.durationMs !== undefined) parts.push(t("terminal.chat.workedFor", { duration: formatDuration(turn.durationMs) }));
-  parts.push(ledger.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: ledger.length }));
+  // 소요 시간은 턴 헤드가 말한다 — 영수증 요약은 스텝 수만 맡아 중복을 피한다.
   return (
     <details className="agent-chat-receipt">
       <summary aria-label={t("terminal.chat.receiptAria")}>
         <span className="agent-chat-receipt-chev" aria-hidden="true">▸</span>
         <span className={`agent-chat-receipt-mark${ok ? "" : " is-error"}`} aria-hidden="true">{ok ? "✓" : "✕"}</span>
-        <span>{parts.join(" · ")}</span>
+        <span>{ledger.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: ledger.length })}</span>
       </summary>
       <div className="agent-chat-receipt-body">
         {ledger.map((item, index) => item.type === "text"

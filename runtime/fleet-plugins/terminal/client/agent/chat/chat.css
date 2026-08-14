@@ -214,10 +214,8 @@
   font-size: 10.5px;
   letter-spacing: 0.06em;
   color: var(--text-tertiary);
-}
-
-.agent-chat-turn-model {
-  color: var(--provider-claude);
+  /* 매초 갱신되는 티커가 흔들리지 않게 숫자 폭을 고정한다. */
+  font-variant-numeric: tabular-nums;
 }
 
 /* 진행 중 펄스 카드 — 현재 활동 + elapsed. Session Analyst의 진행 문법과 한 계열. */
@@ -267,14 +265,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.agent-chat-pulse-elapsed {
-  margin-left: auto;
-  flex: none;
-  align-self: flex-start;
-  color: var(--aurora-ink);
-  font-variant-numeric: tabular-nums;
 }
 
 /* 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
