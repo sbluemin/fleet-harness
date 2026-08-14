@@ -22,9 +22,8 @@ export function createCoworkMcpRuntime(store: CoworkStore, workspaceId: string, 
   // The session-token snapshot scopes tools/list, but the executor call router still
   // invokes through the registry — the same seven specs must be registered there too.
   for (const spec of specs) registry.registerAgentTool(spec);
-  // 스코프 강제는 승인 게이트가 아니라 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
-  // yolo/autoApprove가 없으면 백엔드별 승인 프로토콜(claude/cursor)마다 브릿지가 필요해진다.
-  return { registry, snapshots, server, manager, specs, allowedToolIds, connection: { strictMcp: true, yoloMode: true, autoApprove: true } };
+  // 스코프 강제는 전용 MCP 도구 집합과 현재 게이트웨이 턴 정책이 담당한다.
+  return { registry, snapshots, server, manager, specs, allowedToolIds };
 }
 
 /**
@@ -44,16 +43,12 @@ export interface CoworkAgentClient {
 
 export interface CoworkConnectOptions {
   cwd: string;
-  cli?: string;
   model?: string;
   effort?: string;
   systemPrompt: string;
   mcpServers: readonly unknown[];
   /** 이 세션에 노출되는 도구 id. 도메인이 정하고 호스트가 사전승인에 쓴다. */
   allowedToolIds: readonly string[];
-  strictMcp: boolean;
-  yoloMode: boolean;
-  autoApprove: boolean;
 }
 
 export interface CoworkConnector { connect(options: CoworkConnectOptions): Promise<CoworkAgentClient>; }
@@ -101,9 +96,9 @@ export class CoworkService {
       const mcp = await runtime.manager.createExecutorMcpSession({ serverName: "cowork", specs: runtime.specs, cwd: this.cwd });
       // Provider cwd is the session's own directory — minimizes what a backend CLI can read on its own.
       // 원샷 실행: provider 세션을 resume하지 않고 매 프롬프트마다 새로 연결한다.
-      // 스코프 강제는 yolo + 전용 MCP 도구 주입 + 시스템 프롬프트가 담당한다.
+      // 스코프 강제는 전용 MCP 도구 집합과 현재 게이트웨이 턴 정책이 담당한다.
       const providerCwd = await this.store.sessionDir(workspaceId, id);
-      const client = await this.connector.connect({ cwd: providerCwd, cli: session.cli, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], allowedToolIds: [...runtime.allowedToolIds], ...runtime.connection });
+      const client = await this.connector.connect({ cwd: providerCwd, model: session.model, effort: session.effort, systemPrompt: COWORK_SYSTEM_PROMPT, mcpServers: [mcp.mcpServer], allowedToolIds: [...runtime.allowedToolIds] });
       this.releaseLive(id);
       this.live.set(id, { workspaceId, client, annotations, cleanup: () => { try { mcp.cleanup(); } catch { /* already released */ } } });
       client.on("toolCall", (title, status) => { void this.emit(workspaceId, id, "tool", `${String(title).slice(0, 80)} · ${String(status).slice(0, 24)}`, false); });

@@ -49,10 +49,22 @@ test("a consumer declaring the vendor SDK in its manifest is reported", () => {
   ]);
 });
 
-test("an allowed path is not reported", () => {
+test("an allowed production path is not reported", () => {
   const allowed = "packages/core-agent/src/claude/vendor-sdk.ts";
   const root = fixture({ [allowed]: `import { query } from "${VENDOR_SDK}";\n` });
   assert.deepEqual(findVendorSdkBoundaryViolations(root, [allowed]), []);
+});
+
+test("an exact wrapper test mock is allowed without opening consumer tests", () => {
+  const allowed = "packages/core-agent/tests/claude-vendor-sdk.test.ts";
+  const consumer = "packages/some-consumer/tests/vendor.test.ts";
+  const root = fixture({
+    [allowed]: `vi.mock("${VENDOR_SDK}", () => ({}));\n`,
+    [consumer]: `vi.mock("${VENDOR_SDK}", () => ({}));\n`,
+  });
+  assert.deepEqual(findVendorSdkBoundaryViolations(root, [allowed]), [
+    { kind: "unexpected", path: `${consumer}:1` },
+  ]);
 });
 
 test("an allowlist entry that no longer references the vendor SDK is reported as stale", () => {

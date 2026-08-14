@@ -7,6 +7,7 @@ import { CLAUDE_GATEWAY_MODEL_CACHE_RELPATH } from "../src/claude/launch-env.js"
 
 // 자식 프로세스를 띄우지 않는다. 검증 대상은 spawn 직전까지의 조립과 거부다.
 const runVendorQuery = vi.fn();
+let vendorClose: () => void = () => {};
 vi.mock("../src/claude/vendor-sdk.js", () => ({
   runVendorQuery: (input: unknown) => {
     runVendorQuery(input);
@@ -14,7 +15,7 @@ vi.mock("../src/claude/vendor-sdk.js", () => ({
       [Symbol.asyncIterator]: async function* () {
         yield { type: "result", subtype: "success" };
       },
-      close: () => {},
+      close: () => vendorClose(),
     };
   },
   defineVendorTool: vi.fn(),
@@ -34,6 +35,7 @@ async function drain(run: AsyncIterable<unknown>): Promise<void> {
 
 beforeEach(() => {
   runVendorQuery.mockClear();
+  vendorClose = () => {};
 });
 
 describe("construction", () => {
@@ -169,6 +171,18 @@ describe("fail-closed refusals", () => {
     await expect(sdk.startTurn({ prompt: "hi", model: LUNA })).rejects.toThrow(/already running/);
     await drain(first);
     // 슬롯은 스트림 소진으로 돌아온다.
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
+    await sdk.dispose();
+  });
+
+  it("releases the active slot when underlying close throws", async () => {
+    vendorClose = () => {
+      throw new Error("close failed");
+    };
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    const first = await sdk.startTurn({ prompt: "hi", model: LUNA });
+    expect(() => first.close()).toThrow("close failed");
+    vendorClose = () => {};
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
     await sdk.dispose();
   });

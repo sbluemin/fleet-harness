@@ -1,7 +1,8 @@
 import {
+  createClaudeExecutionLoop,
   createClaudeGatewaySdk,
-  type ClaudeGatewayMessage,
-  type ClaudeGatewayRun,
+  type ClaudeExecutionEvent,
+  type ClaudeExecutionLoop,
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
 
@@ -21,8 +22,7 @@ export const SCUTTLEBUTT_AGENT = {
  *
  * `tools`가 내장 툴의 기본 집합을 이 둘로 잘라내므로 파일·셸 도구는 아예 존재하지 않게 된다.
  * `allowedTools`는 그 둘을 물어보지 않고 쓰게 하고, `dontAsk`는 그 밖의 무엇이든 승인을 기다리지
- * 않고 거부한다 — 헤드리스에서 승인 대기는 곧 멈춘 대화다. 세 값은 하나의 경계이며, 앞선 ACP
- * 권한 분류기가 도구 이름 없이 `kind`와 입력 모양으로 추측하던 것을 구조로 대체한다.
+ * 않고 거부한다 — 헤드리스에서 승인 대기는 곧 멈춘 대화다. 세 값은 하나의 경계다.
  */
 export const PET_TOOLS = ["WebSearch", "WebFetch"] as const;
 
@@ -181,57 +181,17 @@ export interface ChatSessionLike {
 
 export class ChatSession implements ChatSessionLike {
   private readonly options: ChatSessionOptions;
-  private sdk: ClaudeGatewaySdk | null = null;
-  private run: ClaudeGatewayRun | null = null;
-  /** 같은 대화를 이어 가기 위한 자식 세션 id. 첫 턴이 알려 준다. */
-  private resumeId: string | null = null;
-  private started = false;
-  private disposed = false;
-  private turn: Promise<void> = Promise.resolve();
-  private disposeFlight: Promise<void> | null = null;
+  private readonly loop: ClaudeExecutionLoop;
 
   constructor(options: ChatSessionOptions) {
     this.options = { ...options };
-  }
-
-  async start(): Promise<void> {
-    if (this.disposed) throw new Error("Session disposed");
-    if (this.started) return;
-    const create = { baseUrl: this.options.baseUrl, models: [SCUTTLEBUTT_AGENT.model] };
-    const sdk = await (this.options.createSdk?.(create) ?? createClaudeGatewaySdk(create));
-    if (this.disposed) {
-      await sdk.dispose().catch(() => undefined);
-      throw new Error("Session disposed");
-    }
-    this.sdk = sdk;
-    this.started = true;
-  }
-
-  send(text: string): Promise<void> {
-    if (this.disposed) return Promise.reject(new Error("Session disposed"));
-    if (!this.started || !this.sdk) return Promise.reject(new Error("Session not started"));
-    if (!text.trim()) return Promise.reject(new Error("Message required"));
-    const run = this.turn.then(() => this.runTurn(text));
-    this.turn = run.catch(() => undefined);
-    return run;
-  }
-
-  dispose(): Promise<void> {
-    if (this.disposeFlight) return this.disposeFlight;
-    this.disposed = true;
-    this.disposeFlight = this.disposeResources();
-    return this.disposeFlight;
-  }
-
-  private async runTurn(text: string): Promise<void> {
-    const sdk = this.sdk;
-    if (!sdk) throw new Error("Session not started");
-    const emit = (event: ChatEvent): void => this.options.onEvent?.(event);
     const redact = (value: string) => redactScratchPath(value, this.options.cwd);
-    let run: ClaudeGatewayRun;
-    try {
-      run = await sdk.startTurn({
-        prompt: text,
+    this.loop = createClaudeExecutionLoop({
+      createSdk: () => {
+        const create = { baseUrl: this.options.baseUrl, models: [SCUTTLEBUTT_AGENT.model] };
+        return this.options.createSdk?.(create) ?? createClaudeGatewaySdk(create);
+      },
+      buildTurn: () => ({
         model: SCUTTLEBUTT_AGENT.model,
         effort: SCUTTLEBUTT_AGENT.effort,
         systemPrompt: { mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS[this.options.admiral] },
@@ -241,82 +201,66 @@ export class ChatSession implements ChatSessionLike {
         permissionMode: "dontAsk",
         // 텍스트를 흘려 보내려면 부분 메시지가 필요하다. SSE `chunk` 계약이 그것으로 만들어진다.
         includePartialMessages: true,
-        ...(this.resumeId === null ? {} : { resume: this.resumeId }),
-      });
-    } catch (error) {
-      emit({ type: "error", error: { code: "chat_error", message: redact(message(error)) } });
-      throw error;
-    }
-    this.run = run;
-    const toolNames = new Map<string, string>();
-    try {
-      for await (const event of run) {
-        if (typeof event.session_id === "string" && this.resumeId === null) this.resumeId = event.session_id;
-        for (const mapped of toChatEvents(event, toolNames, redact)) emit(mapped);
-      }
-    } catch (error) {
-      if (this.disposed) return;
-      emit({ type: "error", error: { code: "chat_error", message: redact(message(error)) } });
-      throw error;
-    } finally {
-      if (this.run === run) this.run = null;
-    }
+      }),
+      continuation: { kind: "resume-child" },
+      settlement: { kind: "result" },
+      onEvent: (event) => {
+        for (const mapped of toChatEvents(event, redact)) this.options.onEvent?.(mapped);
+      },
+    });
   }
 
-  private async disposeResources(): Promise<void> {
-    this.run?.close();
-    this.run = null;
-    await this.turn.catch(() => undefined);
-    const sdk = this.sdk;
-    this.sdk = null;
-    this.started = false;
-    await sdk?.dispose().catch(() => undefined);
+  start(): Promise<void> {
+    return this.loop.start();
+  }
+
+  send(text: string): Promise<void> {
+    return this.loop.run(text).catch((error: unknown) => {
+      if (!isLifecycleError(error)) {
+        const redact = (value: string) => redactScratchPath(value, this.options.cwd);
+        this.options.onEvent?.({
+          type: "error",
+          error: { code: "chat_error", message: redact(message(error)) },
+        });
+      }
+      throw error;
+    });
+  }
+
+  dispose(): Promise<void> {
+    return this.loop.dispose();
   }
 }
 
 /**
- * 자식이 흘리는 메시지를 이 플러그인의 SSE 계약(chunk/tool/complete/error)으로 옮긴다.
+ * 공통 실행 이벤트를 이 플러그인의 SSE 계약(chunk/tool/complete/error)으로 옮긴다.
  *
- * 모양은 실측으로 고정했다. 텍스트는 `stream_event`의 `content_block_delta` 중 `text_delta`로만
- * 오고, 같은 자리에 `thinking_delta`도 섞여 온다 — 그것까지 흘리면 펫이 생각을 소리내어 말하게
- * 되므로 텍스트만 고른다. 도구는 assistant 메시지의 `tool_use` 블록으로 시작해 user 메시지의
- * `tool_result`로 끝나고, 이름은 앞쪽에만 실려 있어 id로 짝지어 둔다.
+ * 텍스트만 흘린다. 사고는 같은 채널로 오지만 펫이 생각을 소리내어 말하게 되므로 버린다.
+ * 도구 시작은 기존 제목 규칙을 쓰고, 끝은 디코더가 짝지은 이름(없으면 `tool`)을 쓴다.
+ * 실패한 결과는 상세가 없으면 "Chat turn failed"다. 세션 id는 실리지 않는다.
  */
 export function toChatEvents(
-  event: ClaudeGatewayMessage,
-  toolNames: Map<string, string>,
+  event: ClaudeExecutionEvent,
   redact: (value: string) => string,
 ): readonly ChatEvent[] {
-  if (event.type === "stream_event") {
-    const inner = record(event.event);
-    if (inner.type !== "content_block_delta") return [];
-    const delta = record(inner.delta);
-    if (delta.type !== "text_delta" || typeof delta.text !== "string" || delta.text.length === 0) return [];
-    return [{ type: "chunk", text: redact(delta.text) }];
+  if (event.kind === "text") return [{ type: "chunk", text: redact(event.text) }];
+  if (event.kind === "thinking") return [];
+  if (event.kind === "tool-start") {
+    return [{ type: "tool", title: redact(toolTitle(event.name, event.input)), status: "running" }];
   }
-  if (event.type === "assistant") {
-    const events: ChatEvent[] = [];
-    for (const block of blocks(event.message)) {
-      if (block.type !== "tool_use") continue;
-      const name = typeof block.name === "string" ? block.name : "tool";
-      if (typeof block.id === "string") toolNames.set(block.id, name);
-      events.push({ type: "tool", title: redact(toolTitle(name, block.input)), status: "running" });
-    }
-    return events;
+  if (event.kind === "tool-end") {
+    return [{
+      type: "tool",
+      title: redact(event.name ?? "tool"),
+      status: event.isError ? "error" : "done",
+    }];
   }
-  if (event.type === "user") {
-    const events: ChatEvent[] = [];
-    for (const block of blocks(event.message)) {
-      if (block.type !== "tool_result") continue;
-      const name = typeof block.tool_use_id === "string" ? toolNames.get(block.tool_use_id) ?? "tool" : "tool";
-      events.push({ type: "tool", title: redact(name), status: block.is_error === true ? "error" : "done" });
-    }
-    return events;
-  }
-  if (event.type === "result") {
-    if (event.is_error === true) {
-      const detail = typeof event.result === "string" ? event.result : "Chat turn failed";
-      return [{ type: "error", error: { code: "chat_error", message: redact(detail) } }];
+  if (event.kind === "result") {
+    if (event.isError) {
+      return [{
+        type: "error",
+        error: { code: "chat_error", message: redact(event.detail ?? "Chat turn failed") },
+      }];
     }
     return [{ type: "complete" }];
   }
@@ -332,9 +276,9 @@ function toolTitle(name: string, input: unknown): string {
   return name;
 }
 
-function blocks(message: unknown): readonly Record<string, unknown>[] {
-  const content = record(message).content;
-  return Array.isArray(content) ? content.map(record) : [];
+function isLifecycleError(error: unknown): boolean {
+  const text = message(error);
+  return text === "Session disposed" || text === "Session not started" || text === "Message required";
 }
 
 function message(error: unknown): string {

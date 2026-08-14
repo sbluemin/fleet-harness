@@ -125,8 +125,11 @@ export async function createClaudeGatewaySdk(
           };
         },
         close(): void {
-          run.close();
-          release();
+          try {
+            run.close();
+          } finally {
+            release();
+          }
         },
       };
       active = tracked;

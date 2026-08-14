@@ -6,6 +6,8 @@
  * 끌어오게 된다.
  */
 export { createClaudeGatewaySdk } from "./sdk.js";
+export { createClaudeExecutionEventDecoder } from "./execution-events.js";
+export { createClaudeExecutionLoop } from "./execution-loop.js";
 export { defineTool, createEmbeddedMcpServer } from "../mcp/embedded/server.js";
 export type {
   ClaudeGatewayEffort,
@@ -23,4 +25,15 @@ export type {
   ClaudeGatewayToolResult,
   ClaudeGatewayTurn,
 } from "./contracts.js";
+export type {
+  ClaudeExecutionEvent,
+  ClaudeExecutionEventDecoder,
+} from "./execution-events.js";
+export type {
+  ClaudeExecutionContinuation,
+  ClaudeExecutionLoop,
+  ClaudeExecutionLoopOptions,
+  ClaudeExecutionSettlement,
+  ClaudeExecutionTurn,
+} from "./execution-loop.js";
 export { readClaudeSessionTitle } from "./session-info.js";
