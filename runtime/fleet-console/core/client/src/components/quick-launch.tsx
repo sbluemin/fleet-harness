@@ -552,6 +552,21 @@ export function QuickLaunch() {
   const activeCommandRow = commandRowsFlat.length === 0
     ? null
     : commandRowsFlat[Math.min(commandActiveIndex, commandRowsFlat.length - 1)] ?? null;
+  const activeCommandOptionId = commandDeckOpen && activeCommandRow
+    ? `quick-launch-command-${activeCommandRow.id}`
+    : undefined;
+  const activeMentionOptionId = mentionDeckOpen && activeMention
+    ? `quick-launch-mention-${activeMention.operationId}`
+    : undefined;
+
+  // 잘린 덱에서 하이라이트만 움직이면 활성 행이 화면 밖으로 나간다 — 팔레트·useSelect와
+  // 같은 nearest 스크롤을 방향키 인덱스와 짝으로 둔다. 옵션 id는 aria-activedescendant와 공유한다.
+  useEffect(() => {
+    const optionId = activeCommandOptionId ?? activeMentionOptionId;
+    if (!optionId) return;
+    document.getElementById(optionId)?.scrollIntoView({ block: "nearest" });
+  }, [activeCommandOptionId, activeMentionOptionId]);
+
   // 첨부 능력은 실행 대상 플러그인이 선언한다 — console-core는 어느 플러그인인지 모른 채
   // 능력의 존재로만 붙여넣기를 받는다(messageOperation과 같은 계약). 능력이 없으면 기존처럼 무반응.
   const attachmentPlugin = useMemo(
@@ -1172,11 +1187,7 @@ export function QuickLaunch() {
               : t("chrome.quickLaunch.placeholder")}
             aria-label={t("chrome.quickLaunch.promptLabel")}
             aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : commandDeckOpen ? "quick-launch-command-deck" : undefined}
-            aria-activedescendant={mentionDeckOpen && activeMention
-              ? `quick-launch-mention-${activeMention.operationId}`
-              : commandDeckOpen && activeCommandRow
-                ? `quick-launch-command-${activeCommandRow.id}`
-                : undefined}
+            aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
           />
           {attachments.length > 0 ? (
