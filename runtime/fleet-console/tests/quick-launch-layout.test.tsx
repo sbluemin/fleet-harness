@@ -108,7 +108,7 @@ describe("Quick Launch docking", () => {
     expect(ruleFor(".quick-launch-card.is-pinned.is-collapsed .quick-launch-field")).toMatch(/max-height:\s*0;/u);
     expect(css).not.toMatch(/^\.quick-launch-card\.is-collapsed \.quick-launch-(?:field|bar),?$/mu);
     expect(quickLaunch).toMatch(/const showStrip = pinned && collapsed && !holdsMessage;/u);
-    expect(quickLaunch).toMatch(/rejectionKey !== null \|\| mentionErrorKey !== null \|\| overLimit/u);
+    expect(quickLaunch).toMatch(/rejectionKey !== null \|\| mentionErrorKey !== null \|\| attachmentErrorKey !== null \|\| overLimit/u);
   });
 
   it("keeps the collapsed controls out of the tab order", () => {
@@ -222,7 +222,8 @@ describe("Quick Launch picker keyboard grammar", () => {
 
   it("preserves an unfired draft across every close path, except submission", () => {
     // 경로별 저장은 하나가 빠질 때마다 초안이 샌다 — 닫힘 전이 한 곳이 모든 닫힘을 대표한다.
-    expect(quickLaunch).toMatch(/preserveQuickLaunchDraft\(promptRef\.current\)/u);
+    // 초안은 텍스트와 첨부 자취가 함께 보존된다 — 텍스트만 지키면 붙여넣은 이미지가 닫힘에 사라진다.
+    expect(quickLaunch).toMatch(/preserveQuickLaunchDraft\(promptRef\.current, preservedAttachments/u);
     expect(quickLaunch).toMatch(/submittedRef\.current = true;/u);
   });
 
