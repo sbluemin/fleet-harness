@@ -51,7 +51,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 | 프로바이더 | 자격증명 | 모델 |
 |---|---|---|
 | **Codex** | ChatGPT 구독 | GPT-5.6 Sol · Terra · Luna, 각각 Fast 변형 |
-| **Cursor** | Cursor 구독 | Auto · Composer 2.5 · Grok 4.5, Fast 변형 포함 |
+| **Cursor** | Cursor 구독 | Auto · Composer 2.5 · Grok 4.5 · Grok 4.6, Fast 변형 포함 · Opus 5 · Fable 5, 각각 Max Mode 1M 변형 |
 | **Moonshot-Kimi** | API 키 | Kimi K3 1M · K3 256K |
 | **OpenCode Go** | API 키 | MiniMax M3 · Qwen3.8 Max · DeepSeek V4 Flash / Pro · GLM-5.2 · Kimi K3 · MiMo V2.5 / Pro · HY3 · Grok 4.5 · GPT-5.6 Luna |
 

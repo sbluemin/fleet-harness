@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-14T00:00:00Z",
+  "updatedAt": "2026-08-15T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -142,7 +142,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "auto",
-      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
+      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; claude-opus-5 and claude-fable-5 standard/Max Mode windows observed 2026-08-10; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
       "models": [
         {
           "modelId": "auto",
@@ -236,6 +236,94 @@
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}-fast"
           }
+        },
+        {
+          "modelId": "claude-opus-5",
+          "name": "Opus-5",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "contextWindow": 300000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "claude-opus-5-{effort}",
+            "upstreamModelIds": {
+              "xhigh": "claude-opus-5-thinking-xhigh",
+              "max": "claude-opus-5-thinking-max"
+            }
+          },
+          "benchmarkKey": "claude-opus-5"
+        },
+        {
+          "modelId": "claude-opus-5-1m",
+          "name": "Opus-5-1M",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "contextWindow": 1000000,
+          "cursorMaxMode": true,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "claude-opus-5-{effort}",
+            "upstreamModelIds": {
+              "xhigh": "claude-opus-5-thinking-xhigh",
+              "max": "claude-opus-5-thinking-max"
+            }
+          },
+          "benchmarkKey": "claude-opus-5"
+        },
+        {
+          "modelId": "claude-fable-5",
+          "name": "Fable-5",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "description": "NO ZDR",
+          "contextWindow": 300000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "claude-fable-5-{effort}"
+          },
+          "benchmarkKey": "claude-fable-5"
+        },
+        {
+          "modelId": "claude-fable-5-1m",
+          "name": "Fable-5-1M",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "description": "NO ZDR",
+          "contextWindow": 1000000,
+          "cursorMaxMode": true,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "claude-fable-5-{effort}"
+          },
+          "benchmarkKey": "claude-fable-5"
         }
       ]
     },

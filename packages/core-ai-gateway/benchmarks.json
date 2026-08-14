@@ -147,6 +147,26 @@
         }
       }
     },
+    "claude-opus-5": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 62.8, "tokensPerTask": 18529, "stepsPerTask": 37 },
+        "medium": { "score": 64.3, "tokensPerTask": 23612, "stepsPerTask": 44 },
+        "high": { "score": 66.7, "tokensPerTask": 27932, "stepsPerTask": 48 },
+        "xhigh": { "score": 69.3, "tokensPerTask": 54239, "stepsPerTask": 72 },
+        "max": { "score": 70.0, "tokensPerTask": 61838, "stepsPerTask": 78 }
+      }
+    },
+    "claude-fable-5": {
+      "source": "cursorbench",
+      "rungs": {
+        "low": { "score": 62.1, "tokensPerTask": 18182, "stepsPerTask": 31 },
+        "medium": { "score": 65.2, "tokensPerTask": 30366, "stepsPerTask": 41 },
+        "high": { "score": 66.5, "tokensPerTask": 43747, "stepsPerTask": 48 },
+        "xhigh": { "score": 68.4, "tokensPerTask": 64971, "stepsPerTask": 56 },
+        "max": { "score": 70.5, "tokensPerTask": 103525, "stepsPerTask": 72 }
+      }
+    },
     "kimi-k3": {
       "source": "cursorbench",
       "rungs": {

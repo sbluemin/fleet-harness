@@ -48,7 +48,7 @@ describe("terminal settings routes", () => {
     const providers = body.aiGatewayCatalog.providers;
     expect(providers.map((provider) => provider.id)).toEqual(["codex", "xai", "cursor", "opencode", "kimi"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
-    // Cursor는 auto/composer/grok만 지원하고, Kimi 프로바이더는 별개 경로로 그대로 노출한다.
+    // Cursor 경유 Opus/Fable Max Mode와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
     expect(allIds).toContain("kimi--k3");
     for (const id of [
       "cursor--auto",
@@ -56,14 +56,18 @@ describe("terminal settings routes", () => {
       "cursor--composer-2.5-fast",
       "cursor--grok-4.5",
       "cursor--grok-4.5-fast",
+      "cursor--claude-opus-5",
+      "cursor--claude-fable-5",
     ]) {
       expect(allIds).toContain(id);
     }
-    expect(allIds).not.toContain("cursor--claude-opus-5-1m");
-    expect(allIds).not.toContain("cursor--claude-fable-5-1m");
     expect(allIds).not.toContain("cursor--kimi-k3-1m");
-    // 남은 Cursor 라인업에는 Max Mode 경로가 없다 — 제거된 1M Max Mode 모델을 되살리지 않는다.
-    expect(providers.find((provider) => provider.id === "cursor")?.models.every((model) => model.maxMode === false)).toBe(true);
+    const cursorModels = providers.find((provider) => provider.id === "cursor")?.models;
+    for (const id of ["cursor--claude-opus-5-1m", "cursor--claude-fable-5-1m"]) {
+      expect(allIds).toContain(id);
+      expect(cursorModels?.find((model) => model.id === id)?.maxMode).toBe(true);
+    }
+    expect(cursorModels?.find((model) => model.id === "cursor--claude-opus-5")?.maxMode).toBe(false);
     const fastIds = allIds.filter((id) => id.endsWith("-fast"));
     expect(fastIds.length).toBeGreaterThan(0);
     // 등급은 이 응답으로만 브라우저에 닿는다 — 투영에서 잘리면 로스터 배지가 사라진다.
