@@ -584,6 +584,7 @@ describe("Instrument core design contract", () => {
     expect(markBlock).toContain("height: 14px;");
     expect(markBlock).toContain("background: var(--user-accent);");
     expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame))");
+    expect(washBlock).toContain("background-clip: padding-box");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
     expect(chipAccentBlock).toContain("bottom: 7px;");
@@ -1670,6 +1671,8 @@ describe("Instrument core design contract", () => {
     expect(identityInputBlock).not.toContain("width: 0;");
     expect(components).toContain("top: -32px;");
     expect(components).toContain("background-clip: padding-box;");
+    const shellCaptionBlock = components.match(/\.canvas-operation--shell \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    expect(shellCaptionBlock).toContain("background-clip: padding-box;");
     const captionSeamBlock = components.match(/\.canvas-operation:has\(> \.canvas-operation-titlebar\) \{[^}]*\}/)?.[0] ?? "";
     expect(captionSeamBlock).toContain("border-top-width: 0;");
     expect(captionSeamBlock).toContain("border-top-style: none;");

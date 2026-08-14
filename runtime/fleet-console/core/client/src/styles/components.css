@@ -3927,9 +3927,11 @@
   }
 }
 
-/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다. */
+/* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다.
+   background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
 .canvas-operation--shell .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
+  background-clip: padding-box;
 }
 
 .canvas-context-menu {
@@ -4637,6 +4639,8 @@
 
 .canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame));
+  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+  background-clip: padding-box;
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
