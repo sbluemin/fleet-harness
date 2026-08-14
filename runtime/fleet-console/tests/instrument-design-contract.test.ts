@@ -998,6 +998,7 @@ describe("Instrument core design contract", () => {
     expect(rail).toContain("grid-template-rows: 28px minmax(0, 1fr);");
     expect(rail).not.toContain("height: calc(100% + 28px);");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
+    expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
     expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
     expect(source("canvas/operation-frame.tsx")).toContain("capturing: false");
     expect(rail).toContain("height: 28px;");

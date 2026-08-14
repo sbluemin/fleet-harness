@@ -6589,6 +6589,16 @@
   cursor: nwse-resize;
 }
 
+/* 캡션이 본문 위로 접히면 북쪽 리사이즈도 그 가장자리를 따른다. */
+.canvas-operation.is-top-edge .canvas-operation-resize--n {
+  top: -4px;
+}
+
+.canvas-operation.is-top-edge .canvas-operation-resize--ne,
+.canvas-operation.is-top-edge .canvas-operation-resize--nw {
+  top: -5px;
+}
+
 .canvas-rubber-band {
   position: absolute;
   z-index: 20;
