@@ -259,6 +259,72 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  it("dispose closes a stalled active turn instead of waiting for it", async () => {
+    const transcriptPath = writeTranscript("sid-8", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    // 닫히기 전에는 영원히 다음 메시지를 내지 않는 런 — close()가 유일한 탈출구다(실 SDK 계약).
+    let closed = false;
+    let wake: () => void = () => {};
+    const run = {
+      close: () => {
+        closed = true;
+        wake();
+      },
+      [Symbol.asyncIterator]() {
+        return {
+          async next() {
+            if (!closed) await new Promise<void>((resolve) => { wake = resolve; });
+            return { done: true as const, value: undefined };
+          },
+        };
+      },
+    };
+    const factory = (async () => ({
+      configDir: tempDir("chat-sdk-"),
+      models: ["opus[1m]"],
+      startTurn: async () => run,
+      dispose: async () => { run.close(); },
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => seedFor(transcriptPath));
+    session.send("stalls forever");
+    await vi.waitFor(() => {
+      expect(registry.isBusy("op-1")).toBe(true);
+    });
+
+    // 순서가 뒤집혀 있으면(턴 완주 대기 → sdk.dispose) 여기서 영원히 멈춘다.
+    await registry.dispose("op-1");
+    expect(registry.has("op-1")).toBe(false);
+  });
+
+  it("rejects a new ensure while disposal is in progress", async () => {
+    const transcriptPath = writeTranscript("sid-9", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    let releaseDispose: () => void = () => {};
+    const factory = (async () => ({
+      configDir: tempDir("chat-sdk-"),
+      models: ["opus[1m]"],
+      startTurn: async () => { throw new Error("unused"); },
+      dispose: async () => new Promise<void>((resolve) => { releaseDispose = resolve; }),
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => seedFor(transcriptPath));
+    // sdk를 실제로 만들어 두어야 dispose가 sdk.dispose에서 머문다.
+    session.send("boot the sdk");
+    await drainTurn(registry, "op-1");
+
+    const disposal = registry.dispose("op-1");
+    await expect(registry.ensure("op-1", () => seedFor(transcriptPath))).rejects.toThrow("chat_session_disposing");
+    releaseDispose();
+    await disposal;
+    // dispose가 끝난 뒤에는 다시 만들 수 있다(모드 재진입).
+    const recreated = await registry.ensure("op-1", () => seedFor(transcriptPath));
+    expect(recreated).toBeTruthy();
+    await registry.disposeAll();
+  });
+
   it("reports busy while a turn is in flight", async () => {
     const transcriptPath = writeTranscript("sid-5", [
       { type: "user", message: { role: "user", content: "first order" } },

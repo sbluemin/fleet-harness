@@ -51,6 +51,20 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).not.toHaveBeenCalled();
   });
 
+  it("rejects conversion while background agent work is still pending", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+    // 턴은 끝났지만 워크플로우 백그라운드 작업이 살아 있는 상태 — PTY를 접으면 그 작업이 죽는다.
+    await harness.post(sessionId, "background", { input: JSON.stringify({ background_tasks: [{ id: "wf-1", type: "workflow" }] }) });
+
+    await harness.post(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.terminate).not.toHaveBeenCalled();
+  });
+
   it("rejects conversion without a captured transcript", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();

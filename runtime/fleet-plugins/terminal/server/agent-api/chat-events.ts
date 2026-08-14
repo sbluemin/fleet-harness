@@ -1,3 +1,5 @@
+import { homedir } from "node:os";
+
 /**
  * Chat Mode의 브라우저行 이벤트 어휘와, 두 원천(트랜스크립트 JSONL·SDK 메시지 스트림)을
  * 같은 어휘로 옮기는 매퍼.
@@ -146,7 +148,9 @@ export function summarizeToolInput(input: unknown, options: ChatEventMapOptions 
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       const flat = value.replace(/\s+/g, " ").trim();
-      const shown = key === "file_path" || key === "path" ? displayPath(flat, options.cwd) : flat;
+      const shown = key === "file_path" || key === "path"
+        ? displayPath(flat, options.cwd)
+        : normalizePathTokens(flat, options.cwd);
       return shown.length > MAX_TOOL_DETAIL_CHARS ? `${shown.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : shown;
     }
   }
@@ -157,6 +161,22 @@ export function summarizeToolInput(input: unknown, options: ChatEventMapOptions 
  * 절대 경로를 브라우저 표시형으로 옮긴다: Operation cwd 안이면 상대 경로, 밖이면 마지막 두
  * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
  */
+/**
+ * 자유 텍스트 요약(command·prompt 등) 안의 경로 토큰을 표시형으로 정규화한다: Operation cwd
+ * 접두는 `.`으로, 홈 디렉터리 접두는 `~`로 바꾼다. 셸 관용 표기라 의미를 해치지 않으면서
+ * 작업공간·홈 절대 경로가 브라우저 스트림에 원문으로 실리지 않게 한다.
+ */
+function normalizePathTokens(value: string, cwd: string | undefined): string {
+  let result = value;
+  if (cwd) {
+    const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (root.length > 1) result = result.split(root).join(".");
+  }
+  const home = homedir().replace(/\\/g, "/").replace(/\/+$/, "");
+  if (home.length > 1) result = result.split(home).join("~");
+  return result;
+}
+
 function displayPath(value: string, cwd: string | undefined): string {
   const normalized = value.replace(/\\/g, "/");
   if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return value;

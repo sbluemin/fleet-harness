@@ -801,9 +801,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (live) {
-      // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기 중의 PTY를 접으면 그 턴을 잃는다.
+      // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기·턴 종료 후에도 살아 있는 백그라운드
+      // 작업(backgroundPending) 중의 PTY를 접으면 그 작업을 잃는다(활동축 불변식과 같은 판정).
       const info = observability.getTerminalSessionInfo(sessionId);
-      if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working") {
+      if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working" || info?.backgroundPending === true) {
         ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
         return true;
       }

@@ -93,6 +93,16 @@ describe("summarizeToolInput", () => {
     expect(summarizeToolInput({ file_path: "src/a.ts" }, options)).toBe("src/a.ts");
     expect(summarizeToolInput({ file_path: "/etc/hosts" })).toBe("…/etc/hosts");
   });
+
+  // 자유 텍스트 필드(command 등)의 경로 토큰도 원문 절대 경로로 나가지 않는다 —
+  // cwd 접두는 `.`, 홈 접두는 `~`로 바꾸는 셸 관용 표기다.
+  it("normalizes cwd and home prefixes inside free-text fields", async () => {
+    const { homedir } = await import("node:os");
+    const options = { cwd: "/Users/someone/workspace/project" };
+    expect(summarizeToolInput({ command: "cat /Users/someone/workspace/project/src/secret.ts" }, options))
+      .toBe("cat ./src/secret.ts");
+    expect(summarizeToolInput({ command: `ls ${homedir()}/notes` }, options)).toBe("ls ~/notes");
+  });
 });
 
 // 클라이언트 union은 서버 union의 손 복제다 — 서버가 내보내는 모든 kind를 클라이언트 해석기가

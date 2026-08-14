@@ -109,11 +109,13 @@ class AgentChatSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
-    await this.turnFlight.catch(() => undefined);
-    this.listeners.clear();
+    // SDK를 먼저 접는다 — dispose가 활성 런을 close해 진행 중 턴을 끊는다. 순서를 뒤집어
+    // 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을 무기한 막는다.
     const sdk = this.sdk;
     this.sdk = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
+    await this.turnFlight.catch(() => undefined);
+    this.listeners.clear();
   }
 
   private push(event: AgentChatStreamEvent): void {
@@ -233,6 +235,8 @@ class AgentChatSession {
 export class AgentChatRegistry {
   private readonly sessions = new Map<string, AgentChatSession>();
   private readonly ensureFlights = new Map<string, Promise<AgentChatSession>>();
+  /** dispose 진행 중 tombstone — 이 창에서의 ensure 재진입이 두 번째 필자를 만든다. */
+  private readonly disposals = new Map<string, Promise<void>>();
   private readonly createSdk: CreateChatSdk;
 
   constructor(createSdk: CreateChatSdk = (options) => createClaudeGatewaySdk(options)) {
@@ -249,6 +253,9 @@ export class AgentChatRegistry {
 
   /** 세션이 없으면 만들고 트랜스크립트를 재생한다. 동시 진입은 한 생성으로 수렴한다. */
   async ensure(operationId: string, seed: () => AgentChatSessionSeed): Promise<AgentChatSession> {
+    // dispose가 진행 중이면 새 세션을 만들지 않는다 — 터미널 복귀와 경합해 같은 Claude 세션의
+    // 이중 필자가 되는 창이다. 호출자(스트림·메시지 라우트)는 chat_unavailable로 답한다.
+    if (this.disposals.has(operationId)) throw new Error("chat_session_disposing");
     const existing = this.sessions.get(operationId);
     if (existing) return existing;
     const inFlight = this.ensureFlights.get(operationId);
@@ -270,21 +277,29 @@ export class AgentChatRegistry {
   }
 
   async dispose(operationId: string): Promise<void> {
-    // 생성이 아직 in-flight면 완주를 기다린 뒤 접는다 — 그냥 돌아가면 DELETE가 터미널을
-    // 되살린 뒤에 pending ensure가 chat 세션을 등록해 같은 Claude 세션의 이중 필자가 된다.
-    const flight = this.ensureFlights.get(operationId);
-    if (flight) await flight.then(() => undefined, () => undefined);
-    const session = this.sessions.get(operationId);
-    if (!session) return;
-    this.sessions.delete(operationId);
-    await session.dispose();
+    const pending = this.disposals.get(operationId);
+    if (pending) return pending;
+    // tombstone은 동기로 먼저 세운다 — 이후 도착하는 ensure는 전부 거부되고, 이미 in-flight인
+    // 생성은 완주를 기다린 뒤 접는다. 그냥 돌아가면 DELETE가 터미널을 되살린 뒤에 pending
+    // ensure가 chat 세션을 등록해 같은 Claude 세션의 이중 필자가 된다.
+    const disposal = (async () => {
+      const flight = this.ensureFlights.get(operationId);
+      if (flight) await flight.then(() => undefined, () => undefined);
+      const session = this.sessions.get(operationId);
+      if (!session) return;
+      this.sessions.delete(operationId);
+      await session.dispose();
+    })();
+    this.disposals.set(operationId, disposal);
+    try {
+      await disposal;
+    } finally {
+      this.disposals.delete(operationId);
+    }
   }
 
   async disposeAll(): Promise<void> {
-    const flights = [...this.ensureFlights.values()];
-    if (flights.length > 0) await Promise.all(flights.map((flight) => flight.then(() => undefined, () => undefined)));
-    const all = [...this.sessions.values()];
-    this.sessions.clear();
-    await Promise.all(all.map((session) => session.dispose()));
+    const operationIds = new Set([...this.sessions.keys(), ...this.ensureFlights.keys()]);
+    await Promise.all([...operationIds].map((operationId) => this.dispose(operationId)));
   }
 }
