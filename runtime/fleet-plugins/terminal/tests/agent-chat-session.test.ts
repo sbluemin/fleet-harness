@@ -116,9 +116,43 @@ describe("AgentChatRegistry", () => {
       effort: "high",
       cwd: "/tmp/workspace",
       permissionMode: "bypassPermissions",
+      // 글자 단위 스트리밍의 전제 — text_delta는 부분 메시지에만 실린다.
+      includePartialMessages: true,
     }));
     const copied = readFileSync(path.join(configDir, "projects", "-tmp-workspace", "sid-2.jsonl"), "utf8");
     expect(copied).toContain("first order");
+    await registry.disposeAll();
+  });
+
+  // 델타는 라이브 전용이다 — 저널(cap 2000)에 실으면 즉시 소진되므로, 재접속 리플레이는
+  // 완성 text 이벤트(병합본)로 같은 내용을 복원한다.
+  it("streams deltas to live subscribers but keeps them out of the journal", async () => {
+    const transcriptPath = writeTranscript("sid-d", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [
+        { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "Hel" } } },
+        { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "lo" } } },
+        { type: "assistant", message: { content: [{ type: "text", text: "Hello" }] } },
+        { type: "result", subtype: "success", is_error: false, duration_ms: 4, result: "Hello" },
+      ] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-delta", () => seedFor(transcriptPath));
+    const live: AgentChatJournalEvent[] = [];
+    const unsubscribe = session.subscribe((entry) => live.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-delta");
+    unsubscribe();
+
+    expect(kinds(live).filter((kind) => kind === "text-delta")).toHaveLength(2);
+    expect(live.map((entry) => entry.event)).toContainEqual({ kind: "turn-end", ok: true, durationMs: 4, answer: "Hello" });
+
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry))();
+    expect(kinds(replayed)).not.toContain("text-delta");
+    expect(replayed.map((entry) => entry.event)).toContainEqual({ kind: "text", text: "Hello" });
     await registry.disposeAll();
   });
 

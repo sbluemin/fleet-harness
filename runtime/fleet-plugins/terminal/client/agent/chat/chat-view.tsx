@@ -5,15 +5,17 @@ import { getT } from "../../i18n/index.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import type { SessionInfo } from "../types.js";
 import { useAgentChatStream } from "./chat-store.js";
-import type { AgentChatTurn } from "./chat-events.js";
+import { splitAgentChatTurn, type AgentChatTurn, type AgentChatTurnItem } from "./chat-events.js";
+import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
 /**
  * Chat Mode의 Operation 본문 — 읽기 전용 지휘 로그.
  *
- * 입력창은 의도적으로 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정). 이 뷰는
- * 서버 chat-stream을 구독해 디스패치·턴·도구 사용을 렌더링하고, 상태는 좌측 스파인 노드가
- * 신호 토큰(aurora/warn/coral/positive)으로만 말한다.
+ * 입력창은 의도적으로 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정). 턴의 표현
+ * 문법은 Session Analyst와 한 계열이다 — 진행 중에는 펄스 카드(현재 활동 + elapsed) 하나가
+ * 과정을 대변하며 응답이 글자 단위로 스트리밍되고, 끝나면 과정은 영수증 한 줄로 접히고
+ * Answer만 콘솔 마크다운 문법으로 남는다.
  */
 export function AgentChatView({
   context,
@@ -46,12 +48,16 @@ export function AgentChatView({
     }
   }, [onOpenTerminal]);
 
-  const entryCount = state.turns.reduce((count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0), 0);
+  // 델타가 흐르는 동안에도 바닥 추적이 이어지도록 draft 길이를 스크롤 신호에 합산한다.
+  const scrollSignal = state.turns.reduce(
+    (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
+    0,
+  );
   React.useLayoutEffect(() => {
     const log = logRef.current;
     if (!log || !nearBottomRef.current) return;
     log.scrollTop = log.scrollHeight;
-  }, [entryCount, state.working, state.turns.length]);
+  }, [scrollSignal, state.working, state.turns.length]);
 
   const handleScroll = React.useCallback(() => {
     const log = logRef.current;
@@ -149,52 +155,154 @@ function ChatTurn({
   readonly streaming: boolean;
 }) {
   const t = getT(language);
-  const lastTextIndex = turn.items.reduce((last, item, index) => (item.type === "text" ? index : last), -1);
+  const view = splitAgentChatTurn(turn);
+  const working = turn.state === "working";
   return (
     <>
       {turn.dispatch ? (
         <div className="agent-chat-dispatch">
-          <div className="agent-chat-dispatch-kicker">
-            <span>{t("terminal.chat.you")}</span>
+          <div className="agent-chat-dispatch-meta">
             <span className="agent-chat-dispatch-via">{t("terminal.chat.viaQuickLaunch")}</span>
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
           </div>
-          <div className="agent-chat-dispatch-text">{turn.dispatch.text}</div>
+          <div className="agent-chat-dispatch-bubble">{turn.dispatch.text}</div>
         </div>
       ) : null}
-      {turn.items.length > 0 || turn.state === "working" ? (
+      {turn.items.length > 0 || working || view.answer !== null ? (
         <div className={`agent-chat-turn is-${turn.state}`}>
           <div className="agent-chat-turn-spine" aria-hidden="true"><span className="agent-chat-turn-node" /></div>
           <div className="agent-chat-turn-body">
-            <div className="agent-chat-turn-head">
-              {model ? <span className="agent-chat-turn-model">{model}{effort ? ` · ${effort.toUpperCase()}` : ""}</span> : null}
-              {turn.durationMs !== undefined ? <span>{formatDuration(turn.durationMs)}</span> : null}
-              {turn.toolCount > 0
-                ? <span>{turn.toolCount === 1 ? t("terminal.chat.oneTool") : t("terminal.chat.toolCount", { count: turn.toolCount })}</span>
+            {model ? (
+              <div className="agent-chat-turn-head">
+                <span className="agent-chat-turn-model">{model}{effort ? ` · ${effort.toUpperCase()}` : ""}</span>
+              </div>
+            ) : null}
+            {working
+              ? <PulseCard turn={turn} writing={view.streamingText !== null} language={language} />
+              : view.ledger.length > 0
+                ? <Receipt turn={turn} ledger={view.ledger} language={language} />
                 : null}
-            </div>
-            {turn.items.map((item, index) => item.type === "text"
-              ? (
+            {working && view.streamingText !== null ? (
+              <StreamedMarkdown
+                className="agent-chat-stream markdown-body"
+                text={view.streamingText}
+                streaming={streaming}
+                language={language}
+              />
+            ) : null}
+            {!working && view.answer !== null ? (
+              <div className="agent-chat-answer">
+                <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>
                 <StreamedMarkdown
-                  key={index}
-                  className="agent-chat-turn-text"
-                  text={item.text ?? ""}
-                  streaming={streaming && index === lastTextIndex}
+                  className="agent-chat-answer-body markdown-body"
+                  text={view.answer}
+                  streaming={false}
                   language={language}
                 />
-              )
-              : (
-                <div key={index} className="agent-chat-tool">
-                  <span className="agent-chat-tool-glyph" aria-hidden="true">▸</span>
-                  <span className="agent-chat-tool-name">{item.name}</span>
-                  {item.detail ? <span className="agent-chat-tool-detail">{item.detail}</span> : null}
-                </div>
-              ))}
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
     </>
   );
+}
+
+/** 진행 중 턴의 대변인 — 현재 활동 라벨과 1초 elapsed 티커. Session Analyst의 펄스 문법. */
+function PulseCard({
+  turn,
+  writing,
+  language,
+}: {
+  readonly turn: AgentChatTurn;
+  readonly writing: boolean;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const elapsedMs = useTurnElapsedMs(turn.startedAt, turn.state === "working");
+  const lastTool = findLastTool(turn.items);
+  const label = writing
+    ? t("terminal.chat.activityWriting")
+    : lastTool
+      ? t("terminal.chat.activityUsing", { name: lastTool.name ?? "" })
+      : t("terminal.chat.activityStarting");
+  const note = !writing && lastTool?.detail ? lastTool.detail : null;
+  return (
+    <div className="agent-chat-pulse">
+      <span className="agent-chat-pulse-orbit" aria-hidden="true" />
+      {/* 라이브 리전은 활동 라벨로 한정한다 — 매초 바뀌는 elapsed까지 status에 넣으면
+          스크린 리더가 턴 내내 카드를 재낭독한다. 타이머는 시각 전용이다. */}
+      <span className="agent-chat-pulse-copy" role="status">
+        <strong>{label}</strong>
+        {note ? <small>{note}</small> : null}
+      </span>
+      {turn.startedAt !== undefined
+        ? <time className="agent-chat-pulse-elapsed" aria-hidden="true">{formatElapsed(elapsedMs)}</time>
+        : null}
+    </div>
+  );
+}
+
+/** 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
+function Receipt({
+  turn,
+  ledger,
+  language,
+}: {
+  readonly turn: AgentChatTurn;
+  readonly ledger: readonly AgentChatTurnItem[];
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const ok = turn.state === "done";
+  const parts: string[] = [];
+  if (turn.durationMs !== undefined) parts.push(t("terminal.chat.workedFor", { duration: formatDuration(turn.durationMs) }));
+  parts.push(ledger.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: ledger.length }));
+  return (
+    <details className="agent-chat-receipt">
+      <summary aria-label={t("terminal.chat.receiptAria")}>
+        <span className="agent-chat-receipt-chev" aria-hidden="true">▸</span>
+        <span className={`agent-chat-receipt-mark${ok ? "" : " is-error"}`} aria-hidden="true">{ok ? "✓" : "✕"}</span>
+        <span>{parts.join(" · ")}</span>
+      </summary>
+      <div className="agent-chat-receipt-body">
+        {ledger.map((item, index) => item.type === "text"
+          ? <div key={index} className="agent-chat-receipt-note">{item.text}</div>
+          : (
+            <div key={index} className="agent-chat-tool">
+              <span className="agent-chat-tool-glyph" aria-hidden="true">▸</span>
+              <span className="agent-chat-tool-name">{item.name}</span>
+              {item.detail ? <span className="agent-chat-tool-detail">{item.detail}</span> : null}
+            </div>
+          ))}
+      </div>
+    </details>
+  );
+}
+
+function findLastTool(items: readonly AgentChatTurnItem[]): AgentChatTurnItem | null {
+  for (let index = items.length - 1; index >= 0; index -= 1) {
+    if (items[index]?.type === "tool") return items[index] ?? null;
+  }
+  return null;
+}
+
+function useTurnElapsedMs(startedAt: number | undefined, working: boolean): number {
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!working || startedAt === undefined) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [working, startedAt]);
+  if (startedAt === undefined) return 0;
+  return Math.max(0, now - startedAt);
+}
+
+function formatElapsed(elapsedMs: number): string {
+  const seconds = Math.floor(elapsedMs / 1_000);
+  if (seconds < 90) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
 }
 
 function formatDuration(durationMs: number): string {
