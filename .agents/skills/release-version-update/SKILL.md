@@ -90,11 +90,12 @@ From `<canary-path>`:
 pnpm build
 pnpm typecheck
 pnpm test
+node scripts/compile-changelog-fragments.mjs --check --allow-empty
 ```
 
-Root `pnpm build` already excludes `@dotobokuri/fleet-desktop`; do not add a desktop package unless the user asked. `workspace-verify.yml` is install + typecheck + test (postinstall builds); the explicit `pnpm build` is the operator gate the user asked for.
+Root `pnpm build` already excludes `@dotobokuri/fleet-desktop`; do not add a desktop package unless the user asked. `workspace-verify.yml` is install + typecheck + test (postinstall builds); the explicit `pnpm build` is the operator gate the user asked for. The fragment `--check` is the local gate Stable Release does not run until it compiles notes on `main`; `--allow-empty` matches that compiler flag so a no-fragment range still proceeds.
 
-**On failure:** fix on `canary` immediately — do not wait for a separate authorization. Keep the fix in the failing product; no opportunistic refactors. Commit in English Conventional Commits via HEREDOC (no `--amend`, no `--no-verify`). Push `git -C <canary-path> push origin HEAD:canary`. Re-run the three commands. Repeat until green. Do not push `main` on a red tree.
+**On failure:** fix on `canary` immediately — do not wait for a separate authorization. Keep the fix in the failing product; no opportunistic refactors. Commit in English Conventional Commits via HEREDOC (no `--amend`, no `--no-verify`). Push `git -C <canary-path> push origin HEAD:canary`. Re-run the four commands. Repeat until green. Do not push `main` on a red tree.
 
 ### Phase 5 — Fast-forward main (this is the release)
 
@@ -150,7 +151,7 @@ If local `main` exists and is not checked out in another worktree, fast-forward 
 - 현행화: old canary SHA → SHA after fetch/FF/merge, and whether `origin/main` had to be merged in.
 - Commits shipped (`origin/main` before the push → canary tip pushed).
 - Pending fragments consumed vs commits with no fragment.
-- Local `pnpm build` / `typecheck` / `test` pass or fail; any canary fix commit SHAs.
+- Local `pnpm build` / `typecheck` / `test` / fragment `--check` pass or fail; any canary fix commit SHAs.
 - Whether `release-tip-guard` reported release-affecting or ignorable.
 - Main push SHA and the Stable Release run URL.
 - Published version, tag, GitHub Release URL, npm version, desktop built vs carried.
