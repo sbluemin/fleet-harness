@@ -1,6 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
+import type {
+  ClaudeExecutionEvent,
+  ClaudeGatewayMessage,
+  ClaudeGatewayRun,
+  ClaudeGatewaySdk,
+  ClaudeGatewayTurn,
+} from "@dotobokuri/core-agent/claude";
 
 import {
   ADMIRAL_SYSTEM_PROMPTS,
@@ -16,15 +22,14 @@ const BASE_URL = "http://127.0.0.1:43210/plugins/terminal/ai-gateway";
 
 describe("Scuttlebutt tool boundary", () => {
   it("cuts the built-in tool set down to the two web tools and never waits for approval", async () => {
-    // 오늘의 ACP 권한 분류기는 도구 이름 없이 kind와 입력 모양으로 추측했다. 이제는 파일·셸 도구가
-    // 아예 존재하지 않는다 — 실측하면 자식의 system/init이 여기 준 목록 그대로를 보고한다.
     const { session, sdk } = fakeSession();
     await session.start();
     await session.send("hello");
     const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
     expect(turn.tools).toEqual(["WebSearch", "WebFetch"]);
     expect(turn.allowedTools).toEqual(["WebSearch", "WebFetch"]);
-    // 승인 대기는 헤드리스에서 멈춘 대화와 같다. 미승인 도구는 물어보지 않고 거부한다.
+    expect(turn.tools).not.toBe(PET_TOOLS);
+    expect(turn.allowedTools).not.toBe(PET_TOOLS);
     expect(turn.permissionMode).toBe("dontAsk");
     expect(PET_TOOLS).toEqual(["WebSearch", "WebFetch"]);
   });
@@ -37,11 +42,17 @@ describe("ChatSession", () => {
     expect(sdk.createArgs).toEqual({ baseUrl: BASE_URL, models: ["sonnet"] });
 
     await session.send("hello");
-    const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
-    expect(turn.model).toBe("sonnet");
-    expect(turn.effort).toBe("low");
-    expect(turn.cwd).toBe(CWD);
-    expect(turn.systemPrompt).toEqual({ mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS.bori });
+    expect(sdk.startTurn.mock.calls[0]?.[0]).toEqual({
+      prompt: "hello",
+      model: "sonnet",
+      effort: "low",
+      systemPrompt: { mode: "replace", text: ADMIRAL_SYSTEM_PROMPTS.bori },
+      cwd: CWD,
+      tools: ["WebSearch", "WebFetch"],
+      allowedTools: ["WebSearch", "WebFetch"],
+      permissionMode: "dontAsk",
+      includePartialMessages: true,
+    });
   });
 
   it("continues the same conversation by resuming the child's session", async () => {
@@ -84,9 +95,184 @@ describe("ChatSession", () => {
     ]);
   });
 
-  it("disposes the SDK instance and its isolated directory", async () => {
+  it("falls a failed result without detail back to Chat turn failed", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [{ type: "result", is_error: true }],
+    });
+    await session.start();
+    await session.send("hello");
+    expect(events).toEqual([
+      { type: "error", error: { code: "chat_error", message: "Chat turn failed" } },
+    ]);
+  });
+
+  it("drops thinking from the session stream and keeps only assistant text", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [
+        thinkingDelta("hmm"),
+        textDelta("hi"),
+        { type: "result", is_error: false },
+      ],
+    });
+    await session.start();
+    await session.send("hello");
+    expect(events).toEqual([{ type: "chunk", text: "hi" }, { type: "complete" }]);
+  });
+
+  it("correlates a tool result name through the common decoder id", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [
+        {
+          type: "assistant",
+          message: { content: [{ type: "tool_use", id: "t1", name: "WebSearch", input: { query: "fleet console" } }] },
+        },
+        {
+          type: "user",
+          message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: false }] },
+        },
+        { type: "result", is_error: false },
+      ],
+    });
+    await session.start();
+    await session.send("hello");
+    expect(events).toEqual([
+      { type: "tool", title: "WebSearch: fleet console", status: "running" },
+      { type: "tool", title: "WebSearch", status: "done" },
+      { type: "complete" },
+    ]);
+  });
+
+  it("emits nothing for message kinds the SSE contract has no event for", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      stream: [
+        { type: "system", subtype: "init", session_id: "child-session" },
+        { type: "rate_limit_event" },
+        { type: "stream_event" },
+        { type: "result", is_error: false },
+      ],
+    });
+    await session.start();
+    await session.send("hello");
+    expect(events).toEqual([{ type: "complete" }]);
+  });
+
+  it("runs queued prompts in call order and recovers after a failed turn", async () => {
+    const order: string[] = [];
+    const firstTurn = deferred<void>();
+    const events: ChatEvent[] = [];
+    const { session, sdk } = fakeSession({
+      onEvent: (event) => events.push(event),
+      startTurn: async (turn) => {
+        order.push(turn.prompt);
+        if (turn.prompt === "first") await firstTurn.promise;
+        if (turn.prompt === "bad") throw new Error(`denied at ${CWD}`);
+        return immediateRun([
+          { type: "system", subtype: "init", session_id: "child-session" },
+          { type: "result", is_error: false, session_id: "child-session" },
+        ]);
+      },
+    });
+    await session.start();
+    const first = session.send("first");
+    const second = session.send("second");
+    await vi.waitFor(() => expect(order).toEqual(["first"]));
+    firstTurn.resolve();
+    await Promise.all([first, second]);
+    expect(order).toEqual(["first", "second"]);
+
+    await expect(session.send("bad")).rejects.toThrow(`denied at ${CWD}`);
+    await session.send("good");
+    expect(order).toEqual(["first", "second", "bad", "good"]);
+    expect(events.filter((event) => event.type === "error")).toEqual([
+      { type: "error", error: { code: "chat_error", message: "denied at [workspace]" } },
+    ]);
+    expect(sdk.startTurn.mock.calls.map((call) => call[0].prompt)).toEqual([
+      "first",
+      "second",
+      "bad",
+      "good",
+    ]);
+  });
+
+  it("emits one redacted chat_error and rejects send when the iterator fails", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => events.push(event),
+      startTurn: async () => immediateRun(
+        [textDelta(`See ${CWD}/result.md`)],
+        new Error(`stream died at ${CWD}`),
+      ),
+    });
+    await session.start();
+    await expect(session.send("hello")).rejects.toThrow(`stream died at ${CWD}`);
+    expect(events).toEqual([
+      { type: "chunk", text: "See [workspace]/result.md" },
+      { type: "error", error: { code: "chat_error", message: "stream died at [workspace]" } },
+    ]);
+  });
+
+  it("emits one redacted chat_error and rejects send when onEvent throws", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({
+      onEvent: (event) => {
+        events.push(event);
+        if (event.type === "chunk") throw new Error(`listener failed at ${CWD}`);
+      },
+      stream: [textDelta("hi"), { type: "result", is_error: false }],
+    });
+    await session.start();
+    await expect(session.send("hello")).rejects.toThrow(`listener failed at ${CWD}`);
+    expect(events).toEqual([
+      { type: "chunk", text: "hi" },
+      { type: "error", error: { code: "chat_error", message: "listener failed at [workspace]" } },
+    ]);
+  });
+
+  it("suppresses a disposal-induced turn failure and disposes the SDK once", async () => {
+    const events: ChatEvent[] = [];
+    const hanging = hangingRun({ throwOnClose: true });
+    const { session, sdk } = fakeSession({
+      onEvent: (event) => events.push(event),
+      startTurn: async () => hanging,
+    });
+    await session.start();
+    const sending = session.send("hello");
+    await hanging.started;
+    await session.dispose();
+    await expect(sending).resolves.toBeUndefined();
+    expect(events).toEqual([]);
+    expect(sdk.dispose).toHaveBeenCalledOnce();
+    await session.dispose();
+    expect(sdk.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("keeps public start and send error strings and does not emit for them", async () => {
+    const events: ChatEvent[] = [];
+    const { session } = fakeSession({ onEvent: (event) => events.push(event) });
+    await expect(session.send("hello")).rejects.toThrow("Session not started");
+    await session.start();
+    await expect(session.send("")).rejects.toThrow("Message required");
+    await expect(session.send("   \n\t")).rejects.toThrow("Message required");
+    await session.dispose();
+    await expect(session.send("hello")).rejects.toThrow("Session disposed");
+    await expect(session.start()).rejects.toThrow("Session disposed");
+    expect(events).toEqual([]);
+  });
+
+  it("creates the SDK once across idempotent start and dispose", async () => {
     const { session, sdk } = fakeSession();
     await session.start();
+    await session.start();
+    expect(sdk.createCalls).toBe(1);
+    await session.dispose();
     await session.dispose();
     expect(sdk.dispose).toHaveBeenCalledOnce();
     await expect(session.send("hello")).rejects.toThrow(/disposed/i);
@@ -128,37 +314,53 @@ describe("toChatEvents", () => {
   const identity = (value: string): string => value;
 
   it("streams assistant text and drops thinking from the same delta channel", () => {
-    // 두 종류가 같은 자리로 온다. 생각까지 흘리면 펫이 혼잣말을 소리내어 하게 된다.
-    expect(toChatEvents(textDelta("hi"), new Map(), identity)).toEqual([{ type: "chunk", text: "hi" }]);
-    expect(toChatEvents(thinkingDelta("hmm"), new Map(), identity)).toEqual([]);
+    expect(toChatEvents({ kind: "text", text: "hi" }, identity)).toEqual([{ type: "chunk", text: "hi" }]);
+    expect(toChatEvents({ kind: "thinking", text: "hmm" }, identity)).toEqual([]);
   });
 
-  it("pairs a tool call with its result through the id the start block carries", () => {
-    const names = new Map<string, string>();
-    const started = toChatEvents({
-      type: "assistant",
-      message: { content: [{ type: "tool_use", id: "t1", name: "WebSearch", input: { query: "fleet console" } }] },
-    }, names, identity);
-    expect(started).toEqual([{ type: "tool", title: "WebSearch: fleet console", status: "running" }]);
-
-    const finished = toChatEvents({
-      type: "user",
-      message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: false }] },
-    }, names, identity);
-    expect(finished).toEqual([{ type: "tool", title: "WebSearch", status: "done" }]);
-  });
-
-  it("marks a failed tool result rather than reporting it as done", () => {
-    const names = new Map([["t1", "WebFetch"]]);
+  it("maps a tool start through the existing title rule", () => {
     expect(toChatEvents({
-      type: "user",
-      message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: true }] },
-    }, names, identity)).toEqual([{ type: "tool", title: "WebFetch", status: "error" }]);
+      kind: "tool-start",
+      id: "t1",
+      name: "WebSearch",
+      input: { query: "fleet console" },
+    }, identity)).toEqual([{ type: "tool", title: "WebSearch: fleet console", status: "running" }]);
   });
 
-  it("ignores the message kinds the SSE contract has no event for", () => {
-    for (const type of ["system", "rate_limit_event", "stream_event"]) {
-      expect(toChatEvents({ type }, new Map(), identity)).toEqual([]);
+  it("maps a tool end using the name the common decoder correlated", () => {
+    expect(toChatEvents({
+      kind: "tool-end",
+      id: "t1",
+      name: "WebSearch",
+      isError: false,
+    }, identity)).toEqual([{ type: "tool", title: "WebSearch", status: "done" }]);
+  });
+
+  it("falls a missing tool-end name back to tool and marks a failed result", () => {
+    expect(toChatEvents({ kind: "tool-end", isError: true }, identity)).toEqual([
+      { type: "tool", title: "tool", status: "error" },
+    ]);
+  });
+
+  it("completes a successful result and uses the exact failure fallback", () => {
+    expect(toChatEvents({ kind: "result", isError: false, source: "message" }, identity)).toEqual([
+      { type: "complete" },
+    ]);
+    expect(toChatEvents({ kind: "result", isError: true, source: "message" }, identity)).toEqual([
+      { type: "error", error: { code: "chat_error", message: "Chat turn failed" } },
+    ]);
+    expect(toChatEvents({ kind: "result", isError: true, detail: `denied at ${CWD}`, source: "message" }, identity))
+      .toEqual([{ type: "error", error: { code: "chat_error", message: `denied at ${CWD}` } }]);
+  });
+
+  it("maps synthetic failed results through the same fallback", () => {
+    for (const event of [
+      { kind: "result", isError: true, source: "incomplete" },
+      { kind: "result", isError: true, source: "watchdog" },
+    ] satisfies ClaudeExecutionEvent[]) {
+      expect(toChatEvents(event, identity)).toEqual([
+        { type: "error", error: { code: "chat_error", message: "Chat turn failed" } },
+      ]);
     }
   });
 });
@@ -175,12 +377,13 @@ function fakeSession(overrides: {
   admiral?: "tori" | "bori" | "dori";
   onEvent?: (event: ChatEvent) => void;
   stream?: readonly ClaudeGatewayMessage[];
+  startTurn?: (turn: ClaudeGatewayTurn) => Promise<ClaudeGatewayRun>;
 } = {}): { session: ChatSession; sdk: FakeSdk } {
   const stream = overrides.stream ?? [
     { type: "system", subtype: "init", session_id: "child-session" },
     { type: "result", subtype: "success", is_error: false, session_id: "child-session" },
   ];
-  const sdk = new FakeSdk(stream);
+  const sdk = new FakeSdk(overrides.startTurn ?? (async () => immediateRun(stream)));
   const session = new ChatSession({
     cwd: CWD,
     admiral: overrides.admiral ?? "tori",
@@ -194,22 +397,66 @@ function fakeSession(overrides: {
 class FakeSdk {
   /** 세션이 조립해 넘긴 생성 인자. 관측 대상이므로 지어내지 않는다. */
   createArgs: unknown = null;
+  createCalls = 0;
   readonly configDir = "/tmp/fake";
   readonly models = ["sonnet"];
   readonly dispose = vi.fn(async () => undefined);
   readonly startTurn: ReturnType<typeof vi.fn>;
 
-  constructor(stream: readonly ClaudeGatewayMessage[]) {
-    this.startTurn = vi.fn(async (_turn: ClaudeGatewayTurn) => ({
-      [Symbol.asyncIterator]: async function* () {
-        for (const message of stream) yield message;
-      },
-      close: () => {},
-    }));
+  constructor(startTurn: (turn: ClaudeGatewayTurn) => Promise<ClaudeGatewayRun>) {
+    this.startTurn = vi.fn(startTurn);
   }
 
   create(args: unknown): ClaudeGatewaySdk {
+    this.createCalls += 1;
     this.createArgs = args;
     return this as unknown as ClaudeGatewaySdk;
   }
+}
+
+function immediateRun(
+  messages: readonly ClaudeGatewayMessage[],
+  iterateError?: unknown,
+): ClaudeGatewayRun {
+  return {
+    close() {},
+    async *[Symbol.asyncIterator]() {
+      for (const message of messages) yield message;
+      if (iterateError !== undefined) throw iterateError;
+    },
+  };
+}
+
+function hangingRun(options: { throwOnClose?: boolean } = {}): ClaudeGatewayRun & {
+  readonly started: Promise<void>;
+} {
+  let closed = false;
+  const gate = deferred<void>();
+  const started = deferred<void>();
+  return {
+    started: started.promise,
+    close() {
+      closed = true;
+      gate.resolve();
+    },
+    async *[Symbol.asyncIterator]() {
+      started.resolve();
+      if (!closed) await gate.promise;
+      if (options.throwOnClose) throw new Error("run closed");
+    },
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }

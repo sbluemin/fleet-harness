@@ -2,7 +2,7 @@ import { mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import type { ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
+import type { ClaudeExecutionEvent, ClaudeGatewayMessage, ClaudeGatewaySdk, ClaudeGatewayTurn } from "@dotobokuri/core-agent/claude";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { AnalystSession, toAnalystEvents } from "../src/session.js";
@@ -24,9 +24,9 @@ class FakeSdk {
   readonly models = ["test-model"];
   readonly dispose = vi.fn(async () => undefined);
   readonly close = vi.fn();
-  readonly startTurn: ReturnType<typeof vi.fn>;
+  startTurn: ReturnType<typeof vi.fn>;
 
-  constructor(stream: readonly ClaudeGatewayMessage[] = [{ type: "result", subtype: "success", is_error: false, session_id: "child-session" }]) {
+  constructor(stream: readonly ClaudeGatewayMessage[] = [resultMessage()]) {
     const close = this.close;
     this.startTurn = vi.fn(async (_turn: ClaudeGatewayTurn) => ({
       [Symbol.asyncIterator]: async function* () {
@@ -62,14 +62,13 @@ it("binds the SDK to the host gateway and only the selected model", async () => 
 });
 
 it("removes every built-in tool and admits only the analyst's own MCP tools", async () => {
-  // 앞선 ACP 경로는 도구 이름을 접두사로 알아보고 shell 같은 native 도구를 거부했다. 이제
-  // 내장 도구가 아예 없으므로 거부할 것이 남지 않는다.
   const { analyst, sdk } = await session();
   await analyst.start();
   await analyst.send("hello");
   const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
   expect(turn.tools).toEqual([]);
   expect(turn.permissionMode).toBe("dontAsk");
+  expect(turn.includePartialMessages).toBe(true);
   expect(turn.allowedTools).toEqual([
     "mcp__session_analyst__session_outline",
     "mcp__session_analyst__session_events",
@@ -83,14 +82,14 @@ it("removes every built-in tool and admits only the analyst's own MCP tools", as
 });
 
 it("carries the analyst prompt as a replace-mode system prompt, not as user content", async () => {
-  // ACP 기본값 prepend는 이 프롬프트를 첫 사용자 메시지 본문에 실었다. 그러면 프롬프트 안의
-  // 안티-인젝션 조항이 자기가 삼키는 transcript와 같은 층위에 놓인다.
   const { analyst, sdk } = await session();
   await analyst.start();
   await analyst.send("hello");
   const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
   expect(turn.systemPrompt?.mode).toBe("replace");
   expect(turn.systemPrompt?.text).toContain("You are Session Analyst");
+  expect(turn.prompt).toBe("hello");
+  expect(Object.hasOwn(turn, "resume")).toBe(false);
   await analyst.dispose();
 });
 
@@ -123,26 +122,125 @@ it("continues the same analysis by resuming the child's session", async () => {
   await analyst.start();
   await analyst.send("first");
   await analyst.send("second");
+  expect((sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).prompt).toBe("first");
   expect((sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn).resume).toBeUndefined();
+  expect((sdk.startTurn.mock.calls[1]?.[0] as ClaudeGatewayTurn).prompt).toBe("second");
   expect((sdk.startTurn.mock.calls[1]?.[0] as ClaudeGatewayTurn).resume).toBe("child-session");
   await analyst.dispose();
 });
 
-it("rejects sends before start and disposes idempotently", async () => {
-  const { analyst } = await session();
-  await expect(analyst.send("hello")).rejects.toThrow("Session not started");
-  await expect(analyst.dispose()).resolves.toBeUndefined();
-  await expect(analyst.dispose()).resolves.toBeUndefined();
+it("serializes queued sends and recovers after a failed turn", async () => {
+  const events: AnalystEvent[] = [];
+  const order: string[] = [];
+  const first = hangingRun();
+  const sdk = new FakeSdk();
+  sdk.startTurn = vi.fn(async (turn: ClaudeGatewayTurn) => {
+    order.push(turn.prompt);
+    if (turn.prompt === "first") return first;
+    if (turn.prompt === "bad") throw new Error("boom");
+    return {
+      [Symbol.asyncIterator]: async function* () {
+        yield resultMessage();
+      },
+      close: sdk.close,
+    };
+  });
+  const { analyst } = await session({ onEvent: (event) => events.push(event) }, sdk);
+  await analyst.start();
+  const firstSend = analyst.send("first");
+  const secondSend = analyst.send("second");
+  await first.started;
+  expect(order).toEqual(["first"]);
+  first.close();
+  await Promise.all([firstSend, secondSend]);
+  expect(order).toEqual(["first", "second"]);
+  await expect(analyst.send("bad")).rejects.toThrow("boom");
+  await analyst.send("good");
+  expect(order).toEqual(["first", "second", "bad", "good"]);
+  expect(events).toEqual([
+    { type: "complete" },
+    { type: "error", error: { code: "analysis_error", message: "boom" } },
+    { type: "complete" },
+  ]);
+  await analyst.dispose();
 });
 
-it("cancels an active turn on disposal and rejects later sends", async () => {
-  const { analyst, sdk } = await session();
+it("rejects sends before start, blank prompts, and after dispose", async () => {
+  const events: AnalystEvent[] = [];
+  const { analyst } = await session({ onEvent: (event) => events.push(event) });
+  await expect(analyst.send("hello")).rejects.toThrow("Session not started");
   await analyst.start();
-  void analyst.send("long prompt");
-  await Promise.resolve();
+  await expect(analyst.send("")).rejects.toThrow("Message required");
+  await expect(analyst.send("   \n\t")).rejects.toThrow("Message required");
   await analyst.dispose();
+  await expect(analyst.send("hello")).rejects.toThrow("Session disposed");
+  await expect(analyst.start()).rejects.toThrow("Session disposed");
+  await expect(analyst.dispose()).resolves.toBeUndefined();
+  expect(events).toEqual([]);
+});
+
+it("closes an active turn on disposal and disposes the SDK once", async () => {
+  const hanging = hangingRun();
+  const sdk = new FakeSdk();
+  sdk.startTurn = vi.fn(async () => hanging);
+  const { analyst } = await session({}, sdk);
+  await analyst.start();
+  const sending = analyst.send("long prompt");
+  await hanging.started;
+  await analyst.dispose();
+  await expect(sending).resolves.toBeUndefined();
   await expect(analyst.send("too late")).rejects.toThrow("Session disposed");
+  expect(hanging.close).toHaveBeenCalledOnce();
   expect(sdk.dispose).toHaveBeenCalledOnce();
+  await analyst.dispose();
+  expect(hanging.close).toHaveBeenCalledOnce();
+  expect(sdk.dispose).toHaveBeenCalledOnce();
+});
+
+it("disposes a late SDK when disposal wins start", async () => {
+  const created = deferred<ClaudeGatewaySdk>();
+  const creating = deferred<void>();
+  const sdk = new FakeSdk();
+  const analyst = new AnalystSession({
+    capturePath: await capture(),
+    cwd: process.cwd(),
+    baseUrl: BASE_URL,
+    model: "test-model",
+    createSdk: async (args) => {
+      sdk.create(args);
+      creating.resolve();
+      return created.promise;
+    },
+  });
+  const starting = analyst.start();
+  await creating.promise;
+  const disposing = analyst.dispose();
+  created.resolve(sdk as unknown as ClaudeGatewaySdk);
+  await expect(starting).rejects.toThrow("Session disposed");
+  await disposing;
+  expect(sdk.dispose).toHaveBeenCalledOnce();
+  await analyst.dispose();
+  expect(sdk.dispose).toHaveBeenCalledOnce();
+});
+
+it("emits one analysis_error and rejects when the iterator fails", async () => {
+  const events: AnalystEvent[] = [];
+  const sdk = new FakeSdk();
+  sdk.startTurn = vi.fn(async () => ({
+    close: sdk.close,
+    async *[Symbol.asyncIterator]() {
+      yield { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } } };
+      throw new Error("stream died");
+    },
+  }));
+  const { analyst } = await session({ onEvent: (event) => events.push(event) }, sdk);
+  await analyst.start();
+  await expect(analyst.send("hello")).rejects.toThrow("stream died");
+  expect(events).toEqual([
+    { type: "chunk", text: "hi" },
+    { type: "error", error: { code: "analysis_error", message: "stream died" } },
+  ]);
+  await analyst.dispose();
 });
 
 it("reports a failed turn as an error event rather than a silent completion", async () => {
@@ -155,27 +253,122 @@ it("reports a failed turn as an error event rather than a silent completion", as
   await analyst.dispose();
 });
 
+it("falls a result error without detail back to Analysis turn failed", async () => {
+  const events: AnalystEvent[] = [];
+  const sdk = new FakeSdk([{ type: "result", is_error: true }]);
+  const { analyst } = await session({ onEvent: (event) => events.push(event) }, sdk);
+  await analyst.start();
+  await analyst.send("hello");
+  expect(events).toEqual([{ type: "error", error: { code: "analysis_error", message: "Analysis turn failed" } }]);
+  await analyst.dispose();
+});
+
+it("separates thinking from text and maps tools through the common loop", async () => {
+  const events: AnalystEvent[] = [];
+  const sdk = new FakeSdk([
+    { type: "stream_event", event: { type: "content_block_delta", delta: { type: "text_delta", text: "hi" } } },
+    { type: "stream_event", event: { type: "content_block_delta", delta: { type: "thinking_delta", thinking: "hmm" } } },
+    { type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "session_outline", input: {} }] } },
+    { type: "user", message: { content: [{ type: "tool_result", tool_use_id: "t1", is_error: false }] } },
+    resultMessage(),
+  ]);
+  const { analyst } = await session({ onEvent: (event) => events.push(event) }, sdk);
+  await analyst.start();
+  await analyst.send("hello");
+  expect(events).toEqual([
+    { type: "chunk", text: "hi" },
+    { type: "thought", text: "hmm" },
+    { type: "tool", title: "session_outline", status: "running" },
+    { type: "tool", title: "session_outline", status: "done" },
+    { type: "complete" },
+  ]);
+  await analyst.dispose();
+});
+
 it("redacts text, thought, and tool titles on the way out", () => {
-  const names = new Map<string, string>();
-  const redact = (value: string) => value.replace(/chunk-secret|thought-secret-value|ses_tool-secret/g, "[redacted]");
   const emitted = [
-    ...toAnalystEvents(delta("text_delta", { text: "MY_APP_PASSWORD=chunk-secret" }), names, redact),
-    ...toAnalystEvents(delta("thinking_delta", { thinking: "Bearer thought-secret-value" }), names, redact),
-    ...toAnalystEvents({ type: "assistant", message: { content: [{ type: "tool_use", id: "t1", name: "ses_tool-secret" }] } }, names, redact),
+    ...toAnalystEvents({ kind: "text", text: "MY_APP_PASSWORD=chunk-secret" }),
+    ...toAnalystEvents({ kind: "thinking", text: "Bearer thought-secret-value" }),
+    ...toAnalystEvents({ kind: "tool-start", name: "ses_tool-secret", input: {} }),
+    ...toAnalystEvents({ kind: "tool-end", name: "ses_tool-secret", isError: true }),
   ];
   const exposed = JSON.stringify(emitted);
   for (const secret of ["chunk-secret", "thought-secret-value", "ses_tool-secret"]) {
     expect(exposed).not.toContain(secret);
   }
-  expect(emitted.map((event) => event.type)).toEqual(["chunk", "thought", "tool"]);
+  expect(emitted.map((event) => event.type)).toEqual(["chunk", "thought", "tool", "tool"]);
 });
 
 it("keeps assistant text and reasoning on separate event kinds", () => {
-  const identity = (value: string): string => value;
-  expect(toAnalystEvents(delta("text_delta", { text: "hi" }), new Map(), identity)).toEqual([{ type: "chunk", text: "hi" }]);
-  expect(toAnalystEvents(delta("thinking_delta", { thinking: "hmm" }), new Map(), identity)).toEqual([{ type: "thought", text: "hmm" }]);
+  expect(toAnalystEvents({ kind: "text", text: "hi" })).toEqual([{ type: "chunk", text: "hi" }]);
+  expect(toAnalystEvents({ kind: "thinking", text: "hmm" })).toEqual([{ type: "thought", text: "hmm" }]);
 });
 
-function delta(type: string, payload: Record<string, unknown>): ClaudeGatewayMessage {
-  return { type: "stream_event", event: { type: "content_block_delta", delta: { type, ...payload } } };
+it("maps result errors without detail to the analysis fallback and success to complete", () => {
+  expect(toAnalystEvents(resultEvent(true))).toEqual([
+    { type: "error", error: { code: "analysis_error", message: "Analysis turn failed" } },
+  ]);
+  expect(toAnalystEvents(resultEvent(true, "denied"))).toEqual([
+    { type: "error", error: { code: "analysis_error", message: "denied" } },
+  ]);
+  expect(toAnalystEvents(resultEvent(false, "ok"))).toEqual([{ type: "complete" }]);
+  expect(toAnalystEvents({ kind: "result", isError: true, source: "watchdog" })).toEqual([
+    { type: "error", error: { code: "analysis_error", message: "Analysis turn failed" } },
+  ]);
+  expect(toAnalystEvents({ kind: "result", isError: false, source: "incomplete" })).toEqual([{ type: "complete" }]);
+});
+
+it("falls a tool-end without a name back to tool", () => {
+  expect(toAnalystEvents({ kind: "tool-end", isError: false })).toEqual([
+    { type: "tool", title: "tool", status: "done" },
+  ]);
+});
+
+function resultMessage(): ClaudeGatewayMessage {
+  return { type: "result", subtype: "success", is_error: false, session_id: "child-session" };
+}
+
+function resultEvent(isError: boolean, detail?: string): ClaudeExecutionEvent {
+  return {
+    kind: "result",
+    isError,
+    source: "message",
+    ...(detail === undefined ? {} : { detail }),
+  };
+}
+
+function hangingRun(): {
+  readonly close: (() => void) & { readonly mock: { readonly calls: readonly unknown[] } };
+  readonly started: Promise<void>;
+  [Symbol.asyncIterator](): AsyncGenerator<ClaudeGatewayMessage, void, unknown>;
+} {
+  let closed = false;
+  const gate = deferred<void>();
+  const started = deferred<void>();
+  const close = vi.fn((): void => {
+    closed = true;
+    gate.resolve();
+  });
+  return {
+    close,
+    started: started.promise,
+    async *[Symbol.asyncIterator]() {
+      started.resolve();
+      if (!closed) await gate.promise;
+    },
+  };
+}
+
+function deferred<T>(): {
+  promise: Promise<T>;
+  resolve: (value: T | PromiseLike<T>) => void;
+  reject: (error: unknown) => void;
+} {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
 }

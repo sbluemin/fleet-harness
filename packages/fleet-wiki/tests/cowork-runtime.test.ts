@@ -5,15 +5,46 @@ import { join } from "node:path";
 import { createMemoryPaths, ensureMemoryRoot, readWikiEntry, writeWikiEntry } from "../src/index.js";
 import { describe, expect, it } from "vitest";
 import { createCoworkMcpRuntime } from "../src/cowork/index.js";
-import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnector } from "../src/cowork/index.js";
+import { CoworkService, CoworkStore, type CoworkAgentClient, type CoworkConnectOptions, type CoworkConnector } from "../src/cowork/index.js";
+
+const SCOPED_TOOL_IDS = [
+  "wiki_draft_read",
+  "wiki_draft_edit",
+  "wiki_draft_write",
+  "wiki_briefing",
+  "wiki_orient",
+  "wiki_read",
+  "wiki_resolve",
+] as const;
 
 describe("Cowork MCP runtime", () => {
-  it("runs one-shot yolo with only the seven scoped MCP tools", async () => {
+  it("exposes only the seven scoped MCP tools", async () => {
     const store = new CoworkStore(); const session = await store.create("workspace", "entry", "draft");
     const runtime = createCoworkMcpRuntime(store, "workspace", session.id);
-    expect(runtime.allowedToolIds).toHaveLength(7);
-    expect(runtime.specs.map(spec => spec.id).sort()).toEqual([...runtime.allowedToolIds].sort());
-    expect(runtime.connection).toEqual({ strictMcp: true, yoloMode: true, autoApprove: true });
+    expect([...runtime.allowedToolIds]).toEqual([...SCOPED_TOOL_IDS]);
+    expect(runtime.specs.map(spec => spec.id).sort()).toEqual([...SCOPED_TOOL_IDS].sort());
+    expect(runtime).not.toHaveProperty("connection");
+  });
+
+  it("reconnects each prompt without cli or approval-bridge flags", async () => {
+    const connector = new FakeConnector();
+    const { service } = await fixture(connector);
+    const session = await service.create("workspace", "entry", { cli: "claude", model: "sonnet", effort: "high" });
+    await service.prompt("workspace", session.id, "first");
+    connector.client.emit("promptComplete");
+    await until(async () => (await service.get("workspace", session.id))?.state === "idle");
+    await service.prompt("workspace", session.id, "second");
+
+    expect(connector.connected).toHaveLength(2);
+    for (const options of connector.connected) {
+      expect(options).not.toHaveProperty("cli");
+      expect(options).not.toHaveProperty("strictMcp");
+      expect(options).not.toHaveProperty("yoloMode");
+      expect(options).not.toHaveProperty("autoApprove");
+      expect(options.model).toBe("sonnet");
+      expect(options.effort).toBe("high");
+      expect(options.allowedToolIds).toEqual([...SCOPED_TOOL_IDS]);
+    }
   });
 
   it("preserves draft and session when the Wiki base has gone stale", async () => {
@@ -77,8 +108,20 @@ async function fixture(connector: CoworkConnector = new FakeConnector()) {
 }
 function entry() { return { id: "entry", title: "Entry", tags: ["test"], created: "2026-01-01T00:00:00.000Z", updated: "2026-01-01T00:00:00.000Z", version: 1, body: "Original" }; }
 function draft(value: { body: string; version: number; templateId?: string }) { const e = { ...entry(), ...value }; return `---\nid: ${e.id}\ntitle: ${e.title}\ntags: ["test"]\ncreated: ${e.created}\nupdated: ${e.updated}\nversion: ${e.version}\n${value.templateId ? `template_id: ${value.templateId}\n` : ""}---\n${e.body}`; }
+async function until(condition: () => Promise<boolean>, timeoutMs = 2000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (await condition()) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 10));
+  }
+  throw new Error("condition not met within timeout");
+}
 class FakeConnector implements CoworkConnector {
+  readonly connected: CoworkConnectOptions[] = [];
   readonly client = new EventEmitter() as EventEmitter & { getConnectionInfo(): { sessionId: string }; sendMessage(content: string): Promise<{}>; cancelPrompt(): Promise<void>; disconnect(): Promise<void> };
   constructor() { this.client.getConnectionInfo = () => ({ sessionId: "provider-session-only" }); this.client.sendMessage = async () => ({}); this.client.cancelPrompt = async () => {}; this.client.disconnect = async () => {}; }
-  async connect(): Promise<CoworkAgentClient> { return this.client as unknown as CoworkAgentClient; }
+  async connect(options: CoworkConnectOptions): Promise<CoworkAgentClient> {
+    this.connected.push(options);
+    return this.client as unknown as CoworkAgentClient;
+  }
 }

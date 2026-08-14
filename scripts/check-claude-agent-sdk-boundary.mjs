@@ -30,8 +30,9 @@ const REFERENCE = new RegExp(`["']${VENDOR_SDK.replace(/[.*+?^${}()|[\]\\]/g, "\
  * 죽은 예외가 남아 있으면 다음 사람이 그 경로를 "이미 허용된 곳"으로 읽고 창구를 되살린다.
  */
 const ALLOWED = [
-  // 이 리포가 vendor SDK를 부르는 유일한 신규 지점.
+  // 이 리포가 vendor SDK를 부르는 유일한 production 지점과 그 wrapper-only 단위 테스트.
   "packages/core-agent/src/claude/vendor-sdk.ts",
+  "packages/core-agent/tests/claude-vendor-sdk.test.ts",
   "packages/core-agent/package.json",
   // 선존: Console은 소스에서 부르지 않지만 게시 매니페스트 external 해석을 위해 선언한다.
   "runtime/fleet-console/package.json",

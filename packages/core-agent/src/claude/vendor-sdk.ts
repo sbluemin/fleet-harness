@@ -51,7 +51,13 @@ export function runVendorQuery(input: VendorQueryInput): ClaudeGatewayRun {
       if (closed) return;
       closed = true;
       // AsyncGenerator.return()은 이미 끝난 generator에도 안전하다. 진행 중이던 턴은 여기서 끊긴다.
-      void run.return?.(undefined);
+      // cleanup 예외는 결과·프로세스 종점을 바꾸지 않는다. 반환 Promise는 기다리지 않는다.
+      try {
+        const closing = run.return?.(undefined);
+        if (closing !== undefined) void closing.catch(() => undefined);
+      } catch {
+        // return() 호출 자체의 동기 throw도 같은 cleanup 실패다.
+      }
     },
   };
 }
