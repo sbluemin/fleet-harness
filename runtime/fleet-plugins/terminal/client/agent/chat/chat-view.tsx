@@ -78,10 +78,13 @@ export function AgentChatView({
           {model ? <span className="agent-chat-sess-model">{model}</span> : null}
           {effort ? <span className="agent-chat-sess-effort">{effort.toUpperCase()}</span> : null}
         </span>
-        <span className="agent-chat-cap">{t("terminal.chat.badge")}</span>
+        {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
+            세 앵커 모두 채팅 화면이 떠 있는 동안 항상 존재해야 한다. */}
+        <span className="agent-chat-cap" data-chat-tour="badge">{t("terminal.chat.badge")}</span>
         <button
           type="button"
           className="agent-chat-to-term"
+          data-chat-tour="terminal"
           disabled={terminalPending}
           aria-label={t("terminal.chat.openTerminalAria")}
           onClick={() => { void handleOpenTerminal(); }}
@@ -128,7 +131,7 @@ export function AgentChatView({
           <span className="agent-chat-strip-dot" aria-hidden="true" />
           {state.working ? t("terminal.chat.working") : t("terminal.chat.idle")}
         </span>
-        <span className="agent-chat-strip-hint">
+        <span className="agent-chat-strip-hint" data-chat-tour="composer">
           {t("terminal.chat.replyHint")}
           <kbd className="agent-chat-kbd">⌃Space</kbd>
         </span>

@@ -124,6 +124,31 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     ],
   },
   {
+    id: "chat-mode",
+    // 앵커는 Terminal 플러그인의 Chat Mode 화면에 있다 — 크로스 번들 DOM 계약이라 클래스가
+    // 아니라 전용 의미 속성(data-chat-tour)으로 짚는다. 세 앵커 모두 채팅 화면이 마운트된
+    // 동안 항상 있으므로, 투어는 사용자가 패널을 처음 연 그 순간에 뜬다. 펄스 카드·영수증은
+    // 턴이 돌아야 생기는 표면이라 앵커로 삼지 않고 첫 스텝의 문장이 대신 말한다.
+    spotlight: null,
+    walkthrough: [
+      {
+        anchor: '[data-chat-tour="badge"]',
+        titleKey: "featureTour.chatMode.step1Title",
+        bodyKey: "featureTour.chatMode.step1Body",
+      },
+      {
+        anchor: '[data-chat-tour="composer"]',
+        titleKey: "featureTour.chatMode.step2Title",
+        bodyKey: "featureTour.chatMode.step2Body",
+      },
+      {
+        anchor: '[data-chat-tour="terminal"]',
+        titleKey: "featureTour.chatMode.step3Title",
+        bodyKey: "featureTour.chatMode.step3Body",
+      },
+    ],
+  },
+  {
     id: "remote-access",
     // 두 단계를 모두 쓰는 첫 투어다. 원격 접속은 실험 기능이라 존재를 먼저 알려야 하는데,
     // 설명할 항목은 전부 설정 화면에 있다. 그래서 어느 화면에서나 보이는 호스트 칩에

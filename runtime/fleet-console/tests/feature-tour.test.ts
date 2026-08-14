@@ -58,6 +58,7 @@ describe("feature tour", () => {
       "war-room",
       "war-room-sidebar",
       "claude-operations",
+      "chat-mode",
       "remote-access",
     ]);
     for (const tour of FEATURE_TOURS) {
@@ -67,6 +68,33 @@ describe("feature tour", () => {
     for (const tour of FEATURE_TOURS.filter((entry) => entry.id !== "remote-access")) {
       expect(tour.spotlight).toBeNull();
     }
+  });
+
+  // Chat Mode 앵커는 Terminal 플러그인 DOM에 있다 — 코어 카탈로그가 짚는 크로스 번들 계약이라
+  // 클래스가 아니라 전용 의미 속성(data-chat-tour)으로 고정한다. 세 앵커 모두 채팅 화면이
+  // 마운트된 동안 항상 존재하므로 투어는 패널을 처음 연 순간에 뜬다.
+  it("anchors the chat-mode walkthrough on the plugin's data-chat-tour contract", () => {
+    const chatMode = FEATURE_TOURS.find((tour) => tour.id === "chat-mode");
+    expect(chatMode?.spotlight).toBeNull();
+    expect(chatMode?.walkthrough.map((step) => step.anchor)).toEqual([
+      '[data-chat-tour="badge"]',
+      '[data-chat-tour="composer"]',
+      '[data-chat-tour="terminal"]',
+    ]);
+  });
+
+  // 채팅 화면이 마운트되면(세 앵커가 함께 생기면) 다른 화면의 투어 없이도 chat-mode가 바로 뜬다.
+  it("starts the chat-mode walkthrough when the chat surface mounts", () => {
+    document.body.innerHTML = [
+      '<span data-chat-tour="badge"></span>',
+      '<span data-chat-tour="composer"></span>',
+      '<button data-chat-tour="terminal"></button>',
+    ].join("");
+
+    const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);
+    expect(presentation?.tour.id).toBe("chat-mode");
+    expect(presentation?.steps).toHaveLength(3);
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["chat-mode.walkthrough"], document)).toBeNull();
   });
 
   // 원격 접속만 두 단계를 쓴다 — 설명할 항목이 전부 설정 화면에 있어서, 그 화면에 오기 전에는
