@@ -55,6 +55,16 @@ describe("chat transcript mapping", () => {
   it("tolerates malformed lines", () => {
     expect(chatEventsFromTranscriptLine("not json")).toEqual([]);
   });
+
+  // auto-compact 이어짐 요약은 isMeta 없이 isCompactSummary만 달고 온다 — 디스패치로
+  // 재생되면 "전환이 summarize했다"로 오독된다.
+  it("drops compact-summary carrier lines", () => {
+    expect(chatEventsFromTranscriptLine(JSON.stringify({
+      type: "user",
+      isCompactSummary: true,
+      message: { role: "user", content: [{ type: "text", text: "This session is being continued from a previous conversation…" }] },
+    }))).toEqual([]);
+  });
 });
 
 describe("chat sdk message mapping", () => {

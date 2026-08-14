@@ -43,6 +43,7 @@ interface TranscriptLine {
   readonly type?: unknown;
   readonly isMeta?: unknown;
   readonly isSidechain?: unknown;
+  readonly isCompactSummary?: unknown;
   readonly timestamp?: unknown;
   readonly message?: {
     readonly role?: unknown;
@@ -66,7 +67,9 @@ export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapO
   } catch {
     return [];
   }
-  if (line.isMeta === true || line.isSidechain === true) return [];
+  // auto-compact가 남긴 이어짐 요약은 런타임 메타다 — 사람이 친 지시처럼 재생하면
+  // "전환이 세션을 summarize했다"로 읽힌다. isMeta가 없는 별도 플래그라 따로 거른다.
+  if (line.isMeta === true || line.isSidechain === true || line.isCompactSummary === true) return [];
   const at = typeof line.timestamp === "string" ? Date.parse(line.timestamp) : Number.NaN;
   const atField = Number.isFinite(at) ? { at } : {};
   if (line.type === "user") {
