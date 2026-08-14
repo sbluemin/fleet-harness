@@ -3,6 +3,7 @@ import type {
   AdapterResponse,
   AiGatewayAdapter,
   CanonicalError,
+  CanonicalFunctionTool,
   CanonicalInputMessage,
   CanonicalResponseEvent,
   CanonicalResponseRequest,
@@ -122,8 +123,7 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const supportsImageInput = imageInputPolicy.get(this)?.(request.model) ?? true;
-    const omitTools = suggestionModeToolOmissionPolicy.has(this)
-      && isClaudeCodeSuggestionMode(request);
+    const omitTools = toolOmissionPolicy.has(this) && shouldOmitTools(request);
     const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools);
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
@@ -187,8 +187,11 @@ const imageInputPolicy = new WeakMap<
  */
 const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 
-/** OpenCode 전용 Claude Code Suggestion Mode 요청은 도구 호출을 허용하지 않는다. */
-const suggestionModeToolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
+/**
+ * OpenCode 인스턴스는 `shouldOmitTools`가 참일 때 wire에서 도구 catalog를 통째로 뺀다.
+ * 이 omission은 provider 실측에 근거하므로 generic class에는 결합하지 않는다.
+ */
+const toolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
 const CLAUDE_CODE_SUGGESTION_MODE_PREFIX =
   "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]";
 const CLAUDE_CODE_SUGGESTION_MODE_SUFFIXES = [
@@ -227,8 +230,29 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // 미선언 인자 키 정화도 같은 이유로 provider instance 한정이다 — 이 wire가 strict를
     // 무시한다는 실측은 OpenCode의 것이고, 다른 백엔드에 대해서는 측정된 바가 없다.
     argumentPruningPolicy.set(this, true);
-    suggestionModeToolOmissionPolicy.set(this, true);
+    // no-tools 조건은 Suggestion Mode에 더해 `tool_choice: "none"`까지 wire에서 catalog를
+    // 뺀다 — generic class의 호환 동작은 바꾸지 않고 provider instance에만 결합한다.
+    toolOmissionPolicy.set(this, true);
   }
+
+  /**
+   * preflight sizing은 wire에 실릴 catalog로 세야 한다. no-tools 조건에서는 실제 wire에
+   * 도구가 없는데 전체 catalog를 청구하면 발생하지 않는 비용이 잡힌다.
+   */
+  wireTools(request: CanonicalResponseRequest): readonly CanonicalFunctionTool[] {
+    return shouldOmitTools(request) ? [] : request.tools ?? [];
+  }
+}
+
+/**
+ * OpenCode Go 인스턴스가 wire에서 도구 catalog를 생략할 조건.
+ *
+ * `tool_choice: "none"`은 모델이 도구를 호출하지 말라는 명시이고, Suggestion Mode는
+ * wire 자체가 도구 스키마를 거부한다. 두 경우 모두 도구 정의는 호출 결과에 관여하지 않고
+ * wire payload만 키운다.
+ */
+function shouldOmitTools(request: CanonicalResponseRequest): boolean {
+  return request.tool_choice === "none" || isClaudeCodeSuggestionMode(request);
 }
 
 function isClaudeCodeSuggestionMode(request: CanonicalResponseRequest): boolean {
