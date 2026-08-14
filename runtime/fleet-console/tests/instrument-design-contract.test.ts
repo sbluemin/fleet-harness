@@ -1670,7 +1670,11 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("color: var(--text-secondary);");
     // 활성은 패널 아웃라인만 말한다 — 캡션 brass 틴트와 이름 재채색은 같은 신호를 중복한다.
-    expect(components).toContain("border: 1px solid inherit;");
+    // inherit은 단축 전체가 아니라 border-color만 받는다. 1px solid inherit은 선언이 버려진다.
+    expect(components).toContain("border-width: 1px;");
+    expect(components).toContain("border-style: solid;");
+    expect(components).toContain("border-color: inherit;");
+    expect(components).not.toContain("border: 1px solid inherit;");
     expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-titlebar");
     expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-identity-name");
     expect(components).not.toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");

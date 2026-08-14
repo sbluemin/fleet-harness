@@ -5832,8 +5832,10 @@
   min-height: 28px;
   height: 28px;
   padding: 0 var(--space-2);
-  /* 보더는 패널 아웃라인을 잇는다 — 활성 전용 틴트는 같은 신호를 캡션에 한 번 더 칠한다. */
-  border: 1px solid inherit;
+  /* 보더는 패널 아웃라인을 잇는다 — inherit은 단축 전체가 아니라 색만 받는다. */
+  border-width: 1px;
+  border-style: solid;
+  border-color: inherit;
   border-bottom: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
