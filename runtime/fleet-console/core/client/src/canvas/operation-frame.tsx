@@ -351,18 +351,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       inert={minimized || renderHidden ? true : undefined}
     >
       {accentColor ? <span className="canvas-operation-spine" aria-hidden="true" /> : null}
-      {!maximized && !interactionDisabled ? (
-        <div
-          className="canvas-operation-drag-edge"
-          onPointerDown={beginDrag}
-          onPointerMove={updateDrag}
-          onPointerUp={endDrag}
-          onPointerCancel={endDrag}
-          onLostPointerCapture={abortPointerManipulation}
-          data-canvas-blocker
-          aria-hidden="true"
-        />
-      ) : null}
       <div
         className="canvas-operation-titlebar"
         onPointerDown={beginDrag}

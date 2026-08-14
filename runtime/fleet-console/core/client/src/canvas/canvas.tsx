@@ -722,13 +722,13 @@ export function OperationsCanvas({
     : formationOperationIds.length;
   const formationSlotArea = {
     x: 18,
-    y: 18,
+    y: 18 + TITLEBAR_OUTSET_PX,
     width: Math.max(0, canvasSize.width - 36),
-    height: Math.max(0, canvasSize.height - 36),
+    height: Math.max(0, canvasSize.height - 36 - TITLEBAR_OUTSET_PX),
   };
   const allFormationSlots = formationView
     ? calculateGridSlots(
-        { x: 0, y: 0, width: canvasSize.width, height: canvasSize.height },
+        { x: 0, y: TITLEBAR_OUTSET_PX, width: canvasSize.width, height: canvasSize.height - TITLEBAR_OUTSET_PX },
         formationCellCount,
         undefined,
         undefined,
@@ -874,8 +874,8 @@ export function OperationsCanvas({
               ? modeSlotGeometryFor(formationSlotArea, 0, companionSlotCount, 8, topPanelZIndex)
               : companionGeometryFor(canvasSize, 0, companionSlotCount, topPanelZIndex)
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
-          // 보더 위 캡션(top: -28px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치면 본문 위 오버레이로 전환한다.
-          // 최대화/Formation은 전용 CSS 오버레이 규칙이 이미 소유한다. 어느 쪽이든 본문·PTY geometry는 그대로다.
+          // 보더 위 캡션(top: -28px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
+          // Tactical/War Room/최대화는 슬롯을 28px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
           const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
@@ -1139,9 +1139,9 @@ function ensurePluginGeometry(operation: OperationNode): OperationGeometry {
 function maximizedGeometryFor(canvasSize: { readonly width: number; readonly height: number }, zIndex: number): OperationGeometry {
   return {
     x: 0,
-    y: 0,
+    y: TITLEBAR_OUTSET_PX,
     width: Math.max(320, canvasSize.width),
-    height: Math.max(240, canvasSize.height),
+    height: Math.max(240, canvasSize.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
 }
@@ -1154,9 +1154,9 @@ function companionGeometryFor(canvasSize: { readonly width: number; readonly hei
   const width = Math.max(0, (canvasSize.width - gap * (count - 1)) / count);
   return {
     x: slotIndex * (width + gap),
-    y: 0,
+    y: TITLEBAR_OUTSET_PX,
     width,
-    height: Math.max(0, canvasSize.height),
+    height: Math.max(0, canvasSize.height - TITLEBAR_OUTSET_PX),
     zIndex,
   };
 }

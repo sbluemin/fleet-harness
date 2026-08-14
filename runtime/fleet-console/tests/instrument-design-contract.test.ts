@@ -1682,15 +1682,15 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".canvas-operation-glance-hud.is-armed-set-aside {");
     expect(components).toContain("/* 두 번 눌러 확정 중인 위험 상태만 coral 채널을 쓰며");
     expect(components).toContain(".canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close {");
-    // Formation(y=0 슬롯)과 일반 맵 뷰의 뷰포트-상대 상단 밀착 패널은 캡션을 본문 위 오버레이로 옮긴다.
-    // 본문·PTY geometry는 그대로다.
-    expect(components).toContain(".operations-canvas.is-formation-view .canvas-operation-titlebar,");
-    expect(components).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar {");
+    // Tactical/War Room/최대화는 슬롯을 28px 내려 캡션을 본문 밖에 둔다.
+    expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
+    expect(source("canvas/coordinates.ts")).toContain("y: 18 + 28");
+    expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-beacon-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
-    expect(components).toContain("left: 0;");
+    expect(components).toContain("left: -1px;");
     expect(components).toContain("name → beacon → 상시 컨트롤");
     const canvas = source("canvas/canvas.tsx");
     expect(canvas).toContain("export function useGlanceHold(): boolean");

@@ -4344,7 +4344,8 @@
   min-height: 200px;
   overflow: visible;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-lg);
+  /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
+  border-radius: 0 0 var(--radius-lg) var(--radius-lg);
   /* 창 프레임은 --surface-frame — 라이트에서 최암면이 되지 않도록 밴드와 같은 크롬 패밀리를 탄다. */
   background: var(--surface-frame);
   box-shadow: var(--shadow-soft);
@@ -4399,17 +4400,16 @@
    클립과 일치해 검은 갭 없이 단일 표면을 유지한다.
    드래그/리사이즈가 차단된 상태이므로 코너 필의 grab 어포던스 커서도 기본값으로 되돌린다. */
 .canvas-operation.is-maximized {
-  border-radius: calc(var(--radius-xl) - 1px);
+  border-radius: 0 0 calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px);
 }
 
 .canvas-operation.is-maximized .canvas-operation-titlebar {
-  top: 0;
-  border-bottom: 1px solid var(--ink-rim);
   cursor: default;
+  border-radius: calc(var(--radius-xl) - 1px) calc(var(--radius-xl) - 1px) 0 0;
 }
 
 .canvas-operation.is-maximized .canvas-operation-terminal {
-  border-radius: calc(var(--radius-xl) - 2px);
+  border-radius: 0 0 calc(var(--radius-xl) - 2px) calc(var(--radius-xl) - 2px);
 }
 
 .canvas-operation.is-triage-stage {
@@ -4426,8 +4426,6 @@
 }
 
 .canvas-operation.is-triage-stage .canvas-operation-titlebar {
-  top: 0;
-  border-bottom: 1px solid var(--ink-rim);
   cursor: default;
 }
 
@@ -4458,15 +4456,6 @@
 .operations-canvas.is-formation-entering .canvas-operation {
   animation: formation-tile-land 420ms cubic-bezier(0.2, 0.9, 0.25, 1) both;
   animation-delay: calc(var(--li, 0) * 40ms + 1180ms);
-}
-
-/* Formation 슬롯은 y=0에서 시작하고, 일반 맵 뷰에서도 뷰포트-상대 상단 밀착(is-top-edge) 패널은
-   캔버스 클립이 보더 위 캡션을 잘라낸다 — 본문·PTY geometry는 그대로 두고 캡션만 본문 위 오버레이로 옮긴다. */
-.operations-canvas.is-formation-view .canvas-operation-titlebar,
-.operations-canvas.is-companion-layout .canvas-operation-titlebar,
-.canvas-operation.is-top-edge .canvas-operation-titlebar {
-  top: 0;
-  border-bottom: 1px solid var(--ink-rim);
 }
 
 .operations-canvas.is-companion-layout .canvas-operation-titlebar {
@@ -4568,9 +4557,9 @@
   overflow: auto;
 }
 
-/* 포커스는 단일 location accent로만 표시한다. */
+/* 포커스는 단일 location accent로만 표시한다. 캡션과 본문이 같은 보더 선을 잇는다. */
 .canvas-operation.is-active {
-  border-color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
   box-shadow: var(--shadow-soft);
 }
 
@@ -5819,25 +5808,25 @@
 
 .canvas-operation-titlebar {
   position: absolute;
-  /* 본문·PTY geometry 밖에 붙는 패널 속성 — 인라인 height는 본문만 소유한다. */
+  /* 본문·PTY geometry 밖에 붙는 패널 속성 — 인라인 height는 본문만 소유한다.
+     left/right -1px는 본문 보더 바깥선과 같은 사각형을 그린다. */
   top: -28px;
-  left: 0;
-  right: 0;
+  left: -1px;
+  right: -1px;
   z-index: 7;
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  width: 100%;
+  width: auto;
   max-width: none;
   min-height: 28px;
   height: 28px;
   padding: 0 var(--space-2);
-  border: 1px solid var(--ink-rim);
+  border: 1px solid var(--surface-rim);
   border-bottom: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
   background: var(--surface-frame);
-  box-shadow: var(--shadow-soft);
   cursor: grab;
   touch-action: none;
   transition:
@@ -5903,21 +5892,6 @@
 .canvas-operation-identity-input:focus {
   border-color: var(--brass);
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
-}
-
-.canvas-operation-drag-edge {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 4;
-  height: 14px;
-  cursor: grab;
-  touch-action: none;
-}
-
-.canvas-operation-drag-edge:active {
-  cursor: grabbing;
 }
 
 /* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 설정 모달을 연다.
@@ -6397,7 +6371,7 @@
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  border-radius: calc(var(--radius-lg) - 1px);
+  border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
   background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-pillar));
 }
 
