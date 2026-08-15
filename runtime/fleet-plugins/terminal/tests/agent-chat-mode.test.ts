@@ -205,6 +205,33 @@ describe("agent chat mode routes", () => {
     expect(kinds).toContain("replay-end");
   });
 
+  // chatBorn 예외는 첫 좌표가 생기기 전까지만 산다. providerSession이 심린 뒤의 transcript 부재는
+  // 채팅으로 태어난 Operation에서도 상실이므로, 표식만 보고 새 세션을 만들어 이전 정체성을
+  // 덮어쓰면 안 된다.
+  it("rejects a chat-born Operation whose established transcript disappeared", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.markChatBorn(sessionId);
+    harness.attachProviderSession(sessionId);
+    harness.removeTranscript();
+
+    await harness.post(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
+  });
+
+  // 반대편 경계 — 아직 첫 턴을 돌지 않은(좌표가 없는) 채팅 출생은 그대로 통과해야 한다.
+  it("still admits a chat-born Operation that has not produced a session yet", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.markChatBorn(sessionId);
+    harness.removeTranscript();
+
+    await harness.post(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+  });
+
   it("rejects the chat stream when the operation is not in chat mode", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -465,6 +492,16 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error("Operation not found");
       operation.payload.cliId = value;
+    },
+    /** 채팅으로 태어난 Operation의 durable 표식을 세운다. */
+    markChatBorn: (sessionId: string) => {
+      const operation = operations.find((candidate) => candidate.id === sessionId);
+      if (!operation) throw new Error("Operation not found");
+      operation.payload.chatBorn = true;
+    },
+    /** 원 트랜스크립트를 밖에서 치운다 — 되쓰기 뒤 파일이 사라진 상태의 재현. */
+    removeTranscript: () => {
+      rmSync(transcriptDir, { recursive: true, force: true });
     },
     attachProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);
