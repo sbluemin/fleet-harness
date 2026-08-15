@@ -78,7 +78,7 @@ export async function listTheaterContents(
     parentRelativePath: parentRel === "" ? null : (parentRel ?? null),
     entries,
     ...(truncated ? { truncated: true as const, cap: DIRECTORY_ENTRY_CAP } : {}),
-    ...(hiddenVcs.length > 0 ? { hiddenVcsInternals: hiddenVcs.sort() } : {}),
+    ...(hiddenVcs.length > 0 ? { hiddenVcsInternals: [...new Set(hiddenVcs)].sort() } : {}),
   };
 }
 
@@ -102,15 +102,25 @@ async function collectContentsEntries(
   try {
     let dirent = await directory.read();
     while (dirent !== null) {
-      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
-      // VCS 날것은 캡 카운트에도 넣지 않고 제외 사실만 기록한다.
+      // VCS 날것은 cap 판정보다 먼저 분류한다 — 상한 직후에 읽혀도 마커 정보가 남고,
+      // 표시 가능 항목이 정확히 상한과 같을 때 거짓 truncated를 내지 않는다.
       if (VCS_INTERNAL_NAMES.has(dirent.name)) {
         hiddenVcs.push(dirent.name);
         dirent = await directory.read();
         continue;
       }
+      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
       const entry = await toContentsEntry(targetPath, theaterPath, dirent, stat);
-      if (entry !== null) entries.push(entry);
+      if (entry === null) {
+        dirent = await directory.read();
+        continue;
+      }
+      if ("vcsInternal" in entry) {
+        hiddenVcs.push(entry.vcsInternal);
+        dirent = await directory.read();
+        continue;
+      }
+      entries.push(entry);
       dirent = await directory.read();
     }
     return false;
@@ -129,12 +139,27 @@ async function openDirectory(targetPath: string, opendir: typeof fs.promises.ope
   }
 }
 
+/** 심링크 별칭이 VCS 날것으로 확인된 경우의 표식 — 목록에서 빼고 이름을 기록한다. */
+interface VcsInternalMarker {
+  readonly vcsInternal: string;
+}
+
+/** 실해석 경로가 Theater 루트 아래의 VCS 날것(.git 등) 안에 있으면 그 세그먼트 이름을 반환한다. */
+function vcsSegmentOf(realRoot: string, realPath: string): string | null {
+  const rel = path.relative(realRoot, realPath);
+  if (!rel) return null;
+  for (const segment of rel.split(path.sep)) {
+    if (VCS_INTERNAL_NAMES.has(segment)) return segment;
+  }
+  return null;
+}
+
 async function toContentsEntry(
   targetPath: string,
   theaterPath: string,
   dirent: fs.Dirent,
   stat: typeof fs.promises.stat,
-): Promise<FolderEntry | null> {
+): Promise<FolderEntry | VcsInternalMarker | null> {
   const entryPath = path.join(targetPath, dirent.name);
   const rel = path.relative(theaterPath, entryPath);
   if (dirent.isDirectory()) return { name: dirent.name, relativePath: rel, kind: "dir" };
@@ -146,6 +171,9 @@ async function toContentsEntry(
       const realEntryPath = await fs.promises.realpath(entryPath);
       const realNormalizedRoot = theaterPath.endsWith(path.sep) ? theaterPath : theaterPath + path.sep;
       if (realEntryPath !== theaterPath && !realEntryPath.startsWith(realNormalizedRoot)) return null;
+      // 이름 우회 별칭(metadata -> .git)도 실해석 경로의 세그먼트로 VCS 날것을 판별한다.
+      const vcsSegment = vcsSegmentOf(theaterPath, realEntryPath);
+      if (vcsSegment) return { vcsInternal: vcsSegment };
       const s = await stat(realEntryPath);
       if (s.isDirectory()) return { name: dirent.name, relativePath: rel, kind: "dir" };
       if (s.isFile()) return { name: dirent.name, relativePath: rel, kind: "file" };
@@ -426,6 +454,8 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
         try {
           realPath = await fsp.realpath(absolutePath);
           if (!isContained(realRoot, realPath)) continue;
+          // 별칭 심링크가 가리키는 VCS 날것도 검색 대상에서 제외한다.
+          if (vcsSegmentOf(realRoot, realPath)) continue;
           const stat = await fsp.stat(realPath);
           kind = stat.isDirectory() ? "dir" : stat.isFile() ? "file" : null;
         } catch {

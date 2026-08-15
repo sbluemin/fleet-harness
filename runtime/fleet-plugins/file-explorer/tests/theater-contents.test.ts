@@ -120,3 +120,57 @@ describe("listTheaterContents", () => {
     }
   });
 });
+
+describe("listTheaterContents VCS edge cases", () => {
+  it(".git을 가리키는 심링크 별칭도 VCS 날것으로 분류해 숨긴다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-alias-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main");
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+
+    try {
+      const result = await listTheaterContents(dir, "");
+      const names = result.entries.map((e) => e.name);
+
+      expect(names).not.toContain("metadata");
+      expect(result.hiddenVcsInternals).toContain(".git");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("500개 항목 뒤에 오는 .git도 cap 판정 전에 기록한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-order-"));
+    // readdir 순서를 통제하기 위해 opendir을 스텁한다: 파일 500개를 먼저, .git을 마지막에 낸다.
+    const dirents = [
+      ...Array.from({ length: 500 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      {
+        name: ".git",
+        isDirectory: () => true,
+        isFile: () => false,
+        isSymbolicLink: () => false,
+      },
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+
+      // 표시 가능한 항목은 정확히 500개 — 잘린 것이 없으므로 truncated가 아니어야 하고,
+      // .git은 cap 판정 전에 분류되어 마커 정보가 남아야 한다.
+      expect(result.entries).toHaveLength(500);
+      expect(result).not.toHaveProperty("truncated");
+      expect(result.hiddenVcsInternals).toEqual([".git"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

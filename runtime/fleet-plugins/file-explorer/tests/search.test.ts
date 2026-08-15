@@ -63,6 +63,19 @@ describe("Files palette search", () => {
     ]);
   });
 
+  it("does not traverse a symlink alias that points at VCS internals", async () => {
+    await fs.mkdir(path.join(theaterPath, ".git"), { recursive: true });
+    await fs.writeFile(path.join(theaterPath, ".git", "needle-config"), "x");
+    await fs.symlink(path.join(theaterPath, ".git"), path.join(theaterPath, "metadata"), "dir");
+
+    const outcome = await searchTheaterFiles(theaterPath, "needle", 8);
+
+    expect(outcome.files.map((file) => file.relativePath)).toEqual([
+      "src/needle.ts",
+      "src/nested/needle.test.ts",
+    ]);
+  });
+
   it("marks walkCapped when the directory cap stops the traversal", async () => {
     const widePath = path.join(temporaryDirectory, "wide-theater");
     for (let i = 0; i < 510; i += 1) {
