@@ -44,7 +44,7 @@ describe("terminal touch gestures", () => {
     container.dispatchEvent(touchEvent("touchmove", [{ x: 10, y: 120 }]));
     container.dispatchEvent(touchEvent("touchmove", [{ x: 10, y: 150 }]));
     // Dragging down reaches older output, the direction a wheel scrolls back.
-    expect(scrollByPixels).toHaveBeenCalledWith(-30);
+    expect(scrollByPixels).toHaveBeenCalledWith(-30, { clientX: 10, clientY: 150 });
     gestures.dispose();
   });
 
@@ -53,7 +53,7 @@ describe("terminal touch gestures", () => {
     container.dispatchEvent(touchEvent("touchstart", [{ x: 10, y: 200 }]));
     container.dispatchEvent(touchEvent("touchmove", [{ x: 10, y: 180 }]));
     container.dispatchEvent(touchEvent("touchmove", [{ x: 10, y: 160 }]));
-    expect(scrollByPixels).toHaveBeenCalledWith(20);
+    expect(scrollByPixels).toHaveBeenCalledWith(20, { clientX: 10, clientY: 160 });
     gestures.dispose();
   });
 

@@ -14,6 +14,7 @@ import { describeTerminalFailure } from "./terminal-failure.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
+import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -371,10 +372,12 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       );
       const touchGestures = createTerminalTouchGestures(container, {
         // The wheel is the input xterm already routes correctly for whatever is running, so a pan
-        // arrives as one rather than as a buffer scroll this surface chose on its own.
-        scrollByPixels: (deltaY) => {
+        // arrives as one rather than as a buffer scroll this surface chose on its own. The finger's
+        // client point must travel with it: a coordinate-less WheelEvent encodes as `NaN` under
+        // mouse tracking and Claude Code types that literal into the prompt.
+        scrollByPixels: (deltaY, origin) => {
           const target = container.querySelector(".xterm-screen") ?? container.querySelector(".xterm") ?? container;
-          target.dispatchEvent(new WheelEvent("wheel", { deltaY, deltaMode: 0, bubbles: true, cancelable: true }));
+          dispatchSyntheticTerminalWheel(target, deltaY, origin);
         },
       }, {
         onFontScale: setTouchFontScale,
