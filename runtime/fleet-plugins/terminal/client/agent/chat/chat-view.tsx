@@ -373,7 +373,7 @@ function Ledger({
       {segments.map((segment, index) => (
         <div className="agent-chat-segment" key={index}>
           {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
-          <Tally groups={segment.groups} language={language} />
+          <Tally groups={segment.groups} folded={segment.folded} language={language} />
           {segment.inline.map((item, at) => <Step key={`in-${at}`} item={item} language={language} />)}
           {segment.running.map((item, at) => <Step key={`run-${at}`} item={item} language={language} />)}
         </div>
@@ -391,25 +391,40 @@ function Ledger({
 /**
  * 끝난 평범한 스텝의 한 줄 집계 — "파일 2개 읽음 · 셸 1회 실행". 도구를 하나하나 세우면 긴 턴이
  * 읽히지 않으므로 일상은 여기로 접히고, 예외(진행 중·실패·Theater 밖)만 자기 줄을 지킨다.
+ *
+ * 접힌 것은 감춘 것이 아니라 접은 것이다 — 줄 자체가 열쇠다. 누르면 그 집계가 세고 있던 스텝이
+ * 순서대로 펼쳐진다. 그래서 이 줄은 눌린다는 사실을 스스로 말해야 한다: 꺾쇠 하나와 hover에서
+ * 밝아지는 잉크.
  */
 function Tally({
   groups,
+  folded,
   language,
 }: {
   readonly groups: readonly AgentChatStepGroup[];
+  readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
   if (groups.length === 0) return null;
+  const clauses = groups.map((group, index) => (
+    <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
+      {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
+      <span>{groupLabel(group, t)}</span>
+    </React.Fragment>
+  ));
+  // 펼칠 것이 없으면 눌리는 척하지 않는다 — 열쇠 없는 자물쇠는 어포던스가 아니라 거짓말이다.
+  if (folded.length === 0) return <div className="agent-chat-tally">{clauses}</div>;
   return (
-    <div className="agent-chat-tally">
-      {groups.map((group, index) => (
-        <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
-          {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
-          <span>{groupLabel(group, t)}</span>
-        </React.Fragment>
-      ))}
-    </div>
+    <details className="agent-chat-tally-fold">
+      <summary className="agent-chat-tally" aria-label={t("terminal.chat.tallyAria")}>
+        {clauses}
+        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="agent-chat-tally-body">
+        {folded.map((item, index) => <Step key={index} item={item} language={language} />)}
+      </div>
+    </details>
   );
 }
 
@@ -431,20 +446,26 @@ function Step({
   const t = getT(language);
   const running = item.state === "running";
   const failed = item.state === "fail";
+  // 결과를 못 받고 닫힌 스텝은 성공도 실패도 아니다 — 시제도 체크 표시도 붙이지 않는다.
+  // 과거형 동사와 ✓, 그리고 입력에서 뽑은 +N은 셋 다 "그 일이 일어났다"는 주장이고,
+  // 우리가 아는 것은 호출이 나갔다는 사실뿐이다.
+  const unconfirmed = item.state === "done";
   const name = item.name ?? "";
-  const verb = running ? runningVerb(name, language) : pastVerb(name, language);
+  const verb = running ? runningVerb(name, language) : unconfirmed ? name : pastVerb(name, language);
   // 결과 칩은 변경 장부가 있으면 줄 수를, 없으면 도구가 돌려준 한 줄 요약을 보인다.
   // 실패는 언제나 요약이 이긴다 — 무엇이 잘못됐는지가 얼마나 썼는지보다 먼저다.
   const outcome = failed
     ? item.result ?? t("terminal.chat.stepFailed")
-    : item.change && (item.change.added > 0 || item.change.removed > 0)
-      ? formatChange(item.change)
-      : item.result ?? null;
+    : unconfirmed
+      ? t("terminal.chat.stepUnconfirmed")
+      : item.change && (item.change.added > 0 || item.change.removed > 0)
+        ? formatChange(item.change)
+        : item.result ?? null;
   return (
     <div className={`agent-chat-step is-${item.state ?? "done"}`}>
       {running
         ? <span className="agent-chat-step-orbit" aria-hidden="true" />
-        : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : "✓"}</span>}
+        : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : unconfirmed ? "·" : "✓"}</span>}
       <span className="agent-chat-step-verb" {...(running ? { role: "status" } : {})}>{verb}</span>
       {item.detail ? <span className="agent-chat-step-object">{item.detail}</span> : null}
       {item.outside ? (
@@ -452,7 +473,11 @@ function Step({
           {t("terminal.chat.outsideTheater")}
         </span>
       ) : null}
-      {outcome ? <span className={`agent-chat-step-out${failed ? " is-error" : ""}`}>{outcome}</span> : null}
+      {outcome ? (
+        <span className={`agent-chat-step-out${failed ? " is-error" : ""}${unconfirmed ? " is-unknown" : ""}`}>
+          {outcome}
+        </span>
+      ) : null}
     </div>
   );
 }

@@ -367,8 +367,10 @@ export interface AgentChatStepGroup {
 export interface AgentChatLedgerSegment {
   /** 이 구간을 여는 문장. 첫 도구가 문장보다 먼저 오면 없다. */
   readonly note?: string;
-  /** 이 구간에서 한 줄로 접힌 평범한 완료 스텝. */
+  /** 이 구간에서 한 줄로 접힌 평범한 완료 스텝의 집계. */
   readonly groups: readonly AgentChatStepGroup[];
+  /** 그 집계 뒤에 실제로 있던 스텝들 — 집계 줄을 누르면 이것이 펼쳐진다. */
+  readonly folded: readonly AgentChatTurnItem[];
   /** 접지 않고 줄을 지키는 것 — 실패한 스텝, Theater 밖 스텝, 그리고 열린 구간의 최근 스텝. */
   readonly inline: readonly AgentChatTurnItem[];
   /** 지금 도는 스텝. */
@@ -425,6 +427,7 @@ function foldSegment(
 
   const inline: AgentChatTurnItem[] = [];
   const running: AgentChatTurnItem[] = [];
+  const folded: AgentChatTurnItem[] = [];
   const groups: AgentChatStepGroup[] = [];
   const seen = new Map<string, number>();
   steps.forEach((step, at) => {
@@ -433,6 +436,7 @@ function foldSegment(
     // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
     // 두 표면이 서로 다른 사실을 말하게 된다. 확인되지 않은 것은 예외로 줄을 지킨다.
     if (step.state !== "ok" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
+    folded.push(step);
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;
     const found = seen.get(key);
@@ -444,7 +448,7 @@ function foldSegment(
       if (current) groups[found] = { ...current, count: current.count + 1 };
     }
   });
-  return { ...(note !== undefined ? { note } : {}), groups, inline, running };
+  return { ...(note !== undefined ? { note } : {}), groups, folded, inline, running };
 }
 
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */

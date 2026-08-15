@@ -263,6 +263,49 @@
   color: var(--hairline-strong);
 }
 
+/* 집계 줄은 열쇠다 — 누르면 그 줄이 세고 있던 스텝이 펼쳐진다. 눌린다는 사실은 꺾쇠와
+   hover 잉크가 말한다. brass는 위치·포커스 채널이므로 여기서는 쓰지 않는다. */
+.agent-chat-tally-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary::-webkit-details-marker { display: none; }
+
+.agent-chat-tally-fold > summary:hover {
+  color: var(--text-secondary);
+}
+
+.agent-chat-tally-fold > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-tally-chev {
+  font-size: 9px;
+  line-height: 1;
+  align-self: center;
+  color: var(--hairline-strong);
+  transition: transform var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary:hover .agent-chat-tally-chev {
+  color: var(--text-tertiary);
+}
+
+.agent-chat-tally-fold[open] .agent-chat-tally-chev {
+  transform: rotate(180deg);
+}
+
+.agent-chat-tally-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
 .agent-chat-step {
   display: flex;
   align-items: center;
@@ -354,6 +397,11 @@
 .agent-chat-step-out.is-error {
   border-color: color-mix(in oklch, var(--coral) 30%, transparent);
   color: var(--coral-ink);
+}
+
+/* 결과를 못 받은 스텝 — 성공도 실패도 아니므로 신호색을 쓰지 않는다. */
+.agent-chat-step-out.is-unknown {
+  border-style: dashed;
 }
 
 /* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다. */

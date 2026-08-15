@@ -204,15 +204,22 @@ describe("segmentAgentChatLedger", () => {
 
   // 턴 전체를 하나로 세면 숫자만 커지고 무엇을 하려던 건지가 사라진다.
   it("splits one turn into a segment per note, each folding only its own steps", () => {
-    const segments = segmentAgentChatLedger([
+    const items = [
       note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
       note("이제 고치고 돌리겠습니다."), tool("Edit"), tool("Bash"), tool("Bash"),
-    ]);
-    expect(segments).toEqual([
-      { note: "먼저 읽겠습니다.", groups: [{ family: "read", count: 2 }], inline: [], running: [] },
+    ];
+    expect(segmentAgentChatLedger(items)).toEqual([
+      {
+        note: "먼저 읽겠습니다.",
+        groups: [{ family: "read", count: 2 }],
+        folded: [items[1], items[2]],
+        inline: [],
+        running: [],
+      },
       {
         note: "이제 고치고 돌리겠습니다.",
         groups: [{ family: "edit", count: 1 }, { family: "run", count: 2 }],
+        folded: [items[4], items[5], items[6]],
         inline: [],
         running: [],
       },
@@ -220,8 +227,14 @@ describe("segmentAgentChatLedger", () => {
   });
 
   it("opens a leading segment when tools arrive before any note", () => {
-    const segments = segmentAgentChatLedger([tool("Read"), note("읽었습니다."), tool("Bash")]);
-    expect(segments[0]).toEqual({ groups: [{ family: "read", count: 1 }], inline: [], running: [] });
+    const items = [tool("Read"), note("읽었습니다."), tool("Bash")];
+    const segments = segmentAgentChatLedger(items);
+    expect(segments[0]).toEqual({
+      groups: [{ family: "read", count: 1 }],
+      folded: [items[0]],
+      inline: [],
+      running: [],
+    });
     expect(segments[1]?.note).toBe("읽었습니다.");
   });
 
@@ -240,7 +253,13 @@ describe("segmentAgentChatLedger", () => {
       note("이제 돌리겠습니다."), tool("Bash"), tool("Write"), tool("Read", { state: "running" }),
     ];
     const segments = segmentAgentChatLedger(items, 4);
-    expect(segments[0]).toEqual({ note: "먼저 읽겠습니다.", groups: [{ family: "read", count: 2 }], inline: [], running: [] });
+    expect(segments[0]).toEqual({
+      note: "먼저 읽겠습니다.",
+      groups: [{ family: "read", count: 2 }],
+      folded: [items[1], items[2]],
+      inline: [],
+      running: [],
+    });
     expect(segments[1]?.groups).toEqual([]);
     expect(segments[1]?.inline).toEqual([items[4], items[5]]);
     expect(segments[1]?.running).toEqual([items[6]]);
@@ -262,6 +281,14 @@ describe("segmentAgentChatLedger", () => {
     const segments = segmentAgentChatLedger([note("쓰겠습니다."), tool("Read"), unconfirmed]);
     expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
     expect(segments[0]?.inline).toEqual([unconfirmed]);
+  });
+
+  // 접힌 것은 감춘 것이 아니다 — 집계 줄을 누르면 그 줄이 세고 있던 스텝이 순서대로 나온다.
+  it("carries the steps a tally counted so the line can unfold them", () => {
+    const items = [note("보겠습니다."), tool("Read"), tool("Bash"), tool("Read")];
+    const segment = segmentAgentChatLedger(items)[0];
+    expect(segment?.groups).toEqual([{ family: "read", count: 2 }, { family: "run", count: 1 }]);
+    expect(segment?.folded).toEqual([items[1], items[2], items[3]]);
   });
 
   it("counts an unknown tool under its own name", () => {
