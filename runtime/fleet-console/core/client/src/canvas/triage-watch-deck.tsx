@@ -538,6 +538,11 @@ export function TriageWatchDeck({
   const mapDragRef = useRef<TriageMapDragState | null>(null);
   const [draggingMarkerId, setDraggingMarkerId] = useState<string | null>(null);
   const quicklookTimerRef = useRef<number | null>(null);
+  // 확대를 붙들고 있는 Operation — 드웰 무장 시점부터 기록한다. 확대가 존재할 근거는 "포인터(또는
+  // 키보드 포커스)가 그 칸 위에 있다"는 사실이므로, 해제 판정은 그 사실을 직접 물어야 한다.
+  // 상태(quicklook)는 드웰이 끝나야 채워지므로 무장 구간을 덮지 못하고, ref는 렌더를 기다리지
+  // 않아 같은 프레임의 포인터 이벤트에서도 최신이다.
+  const armedQuicklookRef = useRef<string | null>(null);
   // rect 기록 effect는 quicklook을 deps로 갖지 않으므로(스크롤/리사이즈마다 재구독 방지),
   // 스테일 클로저 없이 현재 값을 읽도록 ref 미러를 둔다.
   const quicklookRef = useRef<typeof quicklook>(null);
@@ -703,11 +708,13 @@ export function TriageWatchDeck({
 
   const dismissQuicklook = () => {
     clearQuicklookTimer();
+    armedQuicklookRef.current = null;
     setQuicklook(null);
     setMapQuicklook(null);
   };
 
   const armQuicklook = (operationId: string, card: HTMLElement, dwell: boolean) => {
+    armedQuicklookRef.current = operationId;
     const fire = () => {
       quicklookTimerRef.current = null;
       const grid = gridRef.current;
@@ -842,11 +849,32 @@ export function TriageWatchDeck({
       if (!operationId || deckPointerRef.current.arriving === operationId) return;
       deckPointerRef.current.arm(operationId, cell, true);
     };
-    const onPointerOut = (event: PointerEvent) => {
-      const cell = cellOf(event.target);
-      if (!cell || cellOf(event.relatedTarget) === cell) return;
+    // 확대를 붙들 자격 — 포인터가 그 칸 안에 있거나, 키보드 포커스가 그 칸을 잡고 있어야 한다.
+    // 포커스 예외가 없으면 키보드로 연 확대가 무관한 포인터 이동 한 번에 걷힌다.
+    const holds = (node: EventTarget | null, operationId: string): boolean =>
+      cellOf(node)?.dataset.triageDeckCard === operationId;
+    // 포커스가 확대를 붙들 수 있는 것은 키보드로 옮겨온 포커스뿐이다 — 무장 경로(onFocus)와 같은
+    // :focus-visible 술어를 쓴다. 포인터가 남긴 포커스까지 인정하면, 확대된 칸의 캡션 컨트롤을
+    // 누른 뒤(닫기 첫 클릭은 확인만 무장하고 칸이 그대로 남는다) 포인터를 치워도 해제가 막혀
+    // 이 변경이 없애려는 고착이 그대로 되살아난다.
+    const keyboardHolds = (operationId: string): boolean => {
+      const active = grid.ownerDocument.activeElement;
+      return active instanceof Element && active.matches(":focus-visible") && holds(active, operationId);
+    };
+    // 이탈 판정은 "떠나는 칸"이 아니라 "붙들고 있는 칸"을 기준으로 한다. 칸에서 발화한 out만
+    // 보면, 칸이 재정렬·재마운트로 포인터 밑을 빠져나간 뒤의 이탈은 영영 오지 않아 확대가
+    // 주인 없이 남는다 — 포인터를 치워도 풀리지 않고 이웃 칸을 덮은 채 굳는 경로다.
+    const releaseUnless = (node: EventTarget | null) => {
+      const armed = armedQuicklookRef.current;
+      if (armed === null) return;
+      if (holds(node, armed) || keyboardHolds(armed)) return;
       deckPointerRef.current.dismiss();
     };
+    // out은 도착지(relatedTarget)가, move는 현재 지점(target)이 자격을 답한다.
+    const onPointerOut = (event: PointerEvent) => { releaseUnless(event.relatedTarget); };
+    // 덱을 떠나지 않은 채 칸만 포인터 밑에서 빠져나간 경우는 out이 오지 않는다 — 다음 이동에서
+    // 현재 지점을 다시 물어 확대의 주인을 확인한다.
+    const onPointerMove = (event: PointerEvent) => { releaseUnless(event.target); };
     const onContextMenu = (event: MouseEvent) => {
       const cell = cellOf(event.target);
       const operationId = cell?.dataset.triageDeckCard;
@@ -855,10 +883,12 @@ export function TriageWatchDeck({
     };
     grid.addEventListener("pointerover", onPointerOver);
     grid.addEventListener("pointerout", onPointerOut);
+    grid.addEventListener("pointermove", onPointerMove, { passive: true });
     grid.addEventListener("contextmenu", onContextMenu);
     return () => {
       grid.removeEventListener("pointerover", onPointerOver);
       grid.removeEventListener("pointerout", onPointerOut);
+      grid.removeEventListener("pointermove", onPointerMove);
       grid.removeEventListener("contextmenu", onContextMenu);
     };
   }, [visible]);
