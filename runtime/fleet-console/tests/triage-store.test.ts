@@ -851,6 +851,43 @@ describe("triage store", () => {
     expect(getTriagePick()).toBe("next");
   });
 
+  // 칸에 선 패널은 캔버스가 portal로 들여보낸 것이라 React 트리에서는 캔버스의 자식이다 — 칸에
+  // 건 합성 핸들러는 그 캡션에서 일어난 일을 보지 못한다. 위임은 네이티브라 DOM을 따르므로,
+  // 캡션에서 나간 우클릭도 그 Operation의 메뉴로 오고 확대는 캡션 위에서 살아남아야 한다.
+  it("reads pointer and context menus off the portaled caption, not just the deck's own nodes", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const operationMenu = vi.fn();
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: OPERATIONS,
+        operationRuntime: { picked: { lifecycle: "live", activity: "running" }, next: { lifecycle: "live", activity: "idle" } },
+        operationAccent: {},
+        onOperationContextMenu: operationMenu,
+      }));
+    });
+
+    // 캔버스가 하는 일을 흉내 낸다 — 칸의 mount 안에 패널을 넣는다(React 트리 밖의 DOM 자식).
+    const cell = container.querySelector<HTMLElement>('[data-triage-deck-card="picked"]')!;
+    const mount = cell.querySelector<HTMLElement>(".canvas-triage-deck-mount")!;
+    const panel = document.createElement("article");
+    panel.className = "canvas-operation is-deck-tile";
+    const caption = document.createElement("div");
+    caption.className = "canvas-operation-titlebar";
+    panel.append(caption);
+    mount.append(panel);
+
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 11, clientY: 22 });
+    act(() => caption.dispatchEvent(menu));
+    expect(menu.defaultPrevented).toBe(true);
+    expect(operationMenu).toHaveBeenCalledWith("picked", expect.any(DOMRect), cell.querySelector(".canvas-triage-deck-pick"));
+  });
+
   // 칸의 신호(검토 전 맥동·도착·착지·지도 확대 강조)는 칸이 받아 그 안의 패널이 말한다. 그런데
   // 패널은 portal이 mount 안에 넣으므로 실제 구조는 칸 > 마운트 > 패널이다 — 선택자가 그 한 겹을
   // 건너뛰면 규칙은 파일에 남은 채 아무것도 칠하지 않는다. 문자열 존재만 보는 계약으로는 잡히지

@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { OperationActivityVisual } from "../operation-activity.js";
 
@@ -817,6 +817,52 @@ export function TriageWatchDeck({
   // unmount 시 드웰 타이머를 반납한다 — unmount 뒤 발동하면 떠난 카드에 setState를 던진다.
   useEffect(() => () => clearQuicklookTimer(), []);
 
+  // 칸 위의 포인터·우클릭은 네이티브 리스너가 판(grid)에서 위임으로 받는다. 칸 안에 선 패널은
+  // 캔버스가 portal로 들여보낸 것이라 React 트리에서는 캔버스의 자식이다 — 칸에 건 합성 핸들러는
+  // 그 캡션에서 일어난 일을 영영 보지 못한다(확대는 캡션으로 커서를 옮기는 순간 걷히고, 캡션
+  // 우클릭은 이 판의 메뉴로 오지 않는다). 네이티브 이벤트는 DOM 버블링을 타므로 "물리적으로 칸
+  // 안"이라는 사실을 그대로 읽는다 — 프레임이 이식된 body의 클릭을 네이티브로 받는 것과 같은 이유다.
+  const deckPointerRef = useRef<{
+    arm: (operationId: string, cell: HTMLElement, dwell: boolean) => void;
+    dismiss: () => void;
+    openMenu: (operationId: string, event: MouseEvent, host: HTMLElement) => void;
+    arriving: string | null;
+  }>({ arm: () => {}, dismiss: () => {}, openMenu: () => {}, arriving: null });
+  useEffect(() => {
+    const grid = gridRef.current;
+    if (!grid || !visible) return;
+    const cellOf = (node: EventTarget | null): HTMLElement | null =>
+      node instanceof Element ? node.closest<HTMLElement>("[data-triage-deck-card]") : null;
+    const onPointerOver = (event: PointerEvent) => {
+      if (event.pointerType === "touch") return;
+      const cell = cellOf(event.target);
+      // 같은 칸 안의 이동(본문 → 캡션 → 컨트롤)은 진입이 아니다.
+      if (!cell || cellOf(event.relatedTarget) === cell) return;
+      const operationId = cell.dataset.triageDeckCard;
+      if (!operationId || deckPointerRef.current.arriving === operationId) return;
+      deckPointerRef.current.arm(operationId, cell, true);
+    };
+    const onPointerOut = (event: PointerEvent) => {
+      const cell = cellOf(event.target);
+      if (!cell || cellOf(event.relatedTarget) === cell) return;
+      deckPointerRef.current.dismiss();
+    };
+    const onContextMenu = (event: MouseEvent) => {
+      const cell = cellOf(event.target);
+      const operationId = cell?.dataset.triageDeckCard;
+      if (!cell || !operationId) return;
+      deckPointerRef.current.openMenu(operationId, event, cell);
+    };
+    grid.addEventListener("pointerover", onPointerOver);
+    grid.addEventListener("pointerout", onPointerOut);
+    grid.addEventListener("contextmenu", onContextMenu);
+    return () => {
+      grid.removeEventListener("pointerover", onPointerOver);
+      grid.removeEventListener("pointerout", onPointerOut);
+      grid.removeEventListener("contextmenu", onContextMenu);
+    };
+  }, [visible]);
+
   if (!visible) return null;
 
   const idleArrivalIds = getIdleArrivalIds();
@@ -877,17 +923,25 @@ export function TriageWatchDeck({
     dismissQuicklook();
     pickTriageOperation(operationId);
   };
-  const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLElement>) => {
+  const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLElement> | MouseEvent, host?: HTMLElement) => {
     event.preventDefault();
     event.stopPropagation();
     // 메뉴가 뜬 동안 hover 확대가 메뉴와 패널 body를 두고 싸우지 않게 즉시 걷는다.
     dismissQuicklook();
     // 포커스 복귀 대상은 포커스를 받을 수 있는 요소여야 한다 — 칸에서 연 메뉴는 그 칸의
     // 승격 면으로 돌아간다(칸 자신은 tabindex를 갖지 않는다).
-    const returnFocus = event.currentTarget instanceof HTMLButtonElement
-      ? event.currentTarget
-      : event.currentTarget.querySelector<HTMLElement>(".canvas-triage-deck-pick");
+    const anchorHost = host ?? (event.currentTarget instanceof HTMLElement ? event.currentTarget : null);
+    const returnFocus = anchorHost instanceof HTMLButtonElement
+      ? anchorHost
+      : anchorHost?.querySelector<HTMLElement>(".canvas-triage-deck-pick") ?? null;
     onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus);
+  };
+  // 위임 리스너가 읽는 최신 핸들러 — effect는 한 번만 붙고, 매 렌더의 값은 이 ref로 건넨다.
+  deckPointerRef.current = {
+    arm: armQuicklook,
+    dismiss: dismissQuicklook,
+    openMenu: openOperationMenu,
+    arriving: arrivingOperationId,
   };
   const openOperationMenuFromKeyboard = (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
@@ -1065,12 +1119,6 @@ export function TriageWatchDeck({
                             : isQuicklook
                               ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
                               : undefined}
-                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
-                        onPointerEnter={(event: PointerEvent<HTMLDivElement>) => {
-                          if (event.pointerType === "touch" || arrivingOperationId === operation.id) return;
-                          armQuicklook(operation.id, event.currentTarget, true);
-                        }}
-                        onPointerLeave={dismissQuicklook}
                       >
                         {/* 패널이 들어올 자리 — 캔버스가 이 노드로 portal한다. React 자식을 두지
                             않는 빈 노드여야 한다: portal 대상에 React가 관리하는 형제가 섞이면
@@ -1168,10 +1216,10 @@ interface TriageMapDotHover {
 }
 
 interface TriageMapDotDrag {
-  readonly start: (operationId: string, event: PointerEvent<HTMLButtonElement>) => void;
-  readonly move: (event: PointerEvent<HTMLButtonElement>) => void;
-  readonly end: (event: PointerEvent<HTMLButtonElement>) => void;
-  readonly cancel: (event: PointerEvent<HTMLButtonElement>) => void;
+  readonly start: (operationId: string, event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly move: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly end: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  readonly cancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }
 
 interface TriageMapDragState {
