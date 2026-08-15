@@ -109,6 +109,17 @@ describe("Agent connection activity state machine", () => {
     expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
   });
 
+  // 두 표면은 대칭으로 말한다. 휴면은 어느 표면으로도 돌지 않으므로 표식이 없다.
+  it("names the surface an Operation runs on, for both surfaces and neither when dormant", () => {
+    expect(sessionRuntime(makeSession({ status: "registered", modelActivity: "working" })))
+      .toEqual({ lifecycle: "live", activity: "running", surface: "CLI" });
+    expect(sessionRuntime(makeSession({ status: "registered", attentionPending: true })))
+      .toEqual({ lifecycle: "live", activity: "awaiting", surface: "CLI" });
+    expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true })))
+      .toEqual({ lifecycle: "live", activity: "idle", surface: "CHAT" });
+    expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
+  });
+
   it("does not notify when entering background and notifies when it returns idle", () => {
     const { options, notifications } = createOptions();
     const sessionId = "background-transition";

@@ -102,11 +102,15 @@ export function sessionRuntime(session: SessionInfo): OperationRuntimeState {
     return { lifecycle: "live", activity: session.chatWorking === true ? "running" : "idle", surface: CHAT_SURFACE_LABEL };
   }
   if (session.status === "dormant") return { lifecycle: "dormant" };
-  return { lifecycle: "live", activity: sessionActivity(session) };
+  return { lifecycle: "live", activity: sessionActivity(session), surface: CLI_SURFACE_LABEL };
 }
 
-/** 호스트에 넘기는 실행 표면 표식. 뜻을 아는 쪽은 이 플러그인뿐이다. */
+// 호스트에 넘기는 실행 표면 표식. 뜻을 아는 쪽은 이 플러그인뿐이다.
+// 두 표면은 대칭으로 말한다 — 채팅만 표식을 달면 그 표식이 "특이 상태"로 읽히지만, 둘 다 달면
+// 사용자가 읽는 것은 "이 Operation이 지금 어느 표면으로 도는가" 하나가 된다.
+// 휴면에는 표식이 없다. 어느 표면으로도 돌고 있지 않기 때문이다.
 const CHAT_SURFACE_LABEL = "CHAT";
+const CLI_SURFACE_LABEL = "CLI";
 
 export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.attentionPending === true) return "awaiting";
