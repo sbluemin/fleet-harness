@@ -64,15 +64,16 @@ export const fileExplorerPanel: RailPanelDescriptor = {
       subtitle: file.relativePath,
       activate: () => activateFileSearchTarget(theaterId, file.relativePath),
     }));
-    // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마지막 파일 자리를 표식에 양보해
-    // 항상 살아남게 한다. activate는 no-op이지만 선택 시 코어가 Files 패널을 열어 준다.
+    // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마커 자리를 확보하되
+    // 자리가 남으면 결과를 줄이지 않는다. 추가 매치 수는 실제로 유지되는 결과 기준으로 센다.
+    const keep = Math.min(items.length, Math.max(0, limit - 1));
     const marker: RailSearchResult | null = result.walkCapped
       ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined }
       : result.totalMatches > result.files.length
-        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - result.files.length }), activate: () => undefined }
+        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - keep }), activate: () => undefined }
         : null;
     if (!marker) return items;
-    return [...items.slice(0, Math.max(0, limit - 1)), marker];
+    return [...items.slice(0, keep), marker];
   },
 };
 
