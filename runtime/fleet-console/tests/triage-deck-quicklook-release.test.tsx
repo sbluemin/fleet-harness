@@ -21,7 +21,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
-import { resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoomLive } from "../core/client/src/canvas/triage-store.js";
+import { getTriageDeckZoomLive, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoomLive } from "../core/client/src/canvas/triage-store.js";
 import { TRIAGE_DECK_QUICKLOOK_DWELL_MS } from "../core/client/src/canvas/triage-watch-deck.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -99,6 +99,7 @@ describe("War Room deck Quick-Look release", () => {
 
   const expanded = () => [...container!.querySelectorAll(".canvas-triage-deck-cell.is-quicklook")]
     .map((cell) => (cell as HTMLElement).dataset.triageDeckCard);
+
 
   beforeEach(() => { vi.useFakeTimers(); });
   afterEach(() => { vi.useRealTimers(); });
@@ -219,6 +220,24 @@ describe("War Room deck Quick-Look release", () => {
     expect(expanded()).toEqual([OPERATION.id]);
 
     act(() => setTriageDeckZoomLive(0.6));
+    expect(expanded()).toEqual([]);
+  });
+
+  // 라이브 배율은 표시용으로 소수 첫째 자리까지만 실린다 — 트랙패드의 작은 델타는 그 값을 그대로
+  // 둔 채 칸 크기만 바꾸므로, 표시값을 신호로 삼으면 바로 그 구간에서 확대가 살아남는다. 제품이
+  // 실제로 칸 크기를 정할 때 쓰는 경로(덱에 실리는 CSS 변수)로 잰다.
+  it("releases the expansion on a density change too small to move the displayed zoom", () => {
+    enterDeck();
+    const cell = cellFor(OPERATION.id);
+    hover(cell);
+    expect(expanded()).toEqual([OPERATION.id]);
+
+    // 제품과 같은 경로로 민다: 덱 위의 휠이 곧 밀도 조작이다. deltaY 9는 1.00 → 0.98로, 칸 크기는
+    // 260px → 255px로 바뀌지만 표시 배율은 "1.0" 그대로다.
+    const displayedBefore = getTriageDeckZoomLive();
+    act(() => cell.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 9, deltaMode: 0 })));
+    expect(getTriageDeckZoomLive(), "the displayed zoom must not move, or this case is not the one under test")
+      .toBe(displayedBefore);
     expect(expanded()).toEqual([]);
   });
 

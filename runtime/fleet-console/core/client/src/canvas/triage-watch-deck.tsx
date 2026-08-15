@@ -267,6 +267,21 @@ export interface TriageDeckZoomControl {
   readonly attachWheelListener: (element: HTMLElement) => () => void;
 }
 
+// 밀도 신호 — 줌 컨트롤러가 판의 칸 크기를 실제로 바꾼 프레임에만 울린다. store의 라이브 배율은
+// 표시용으로 소수 첫째 자리까지만 실리므로(매 프레임 emit이 캔버스를 통째로 리렌더하는 것을 막는
+// 장치다) 트랙패드의 작은 델타를 놓치고, 칸 크기를 정하는 CSS 변수는 줌 컨트롤러가 캔버스에 쓴다 —
+// 덱이 그 요소를 알아내 관찰하는 것은 배치에 기대는 결합이라, 값을 쓰는 쪽이 직접 알린다.
+const deckDensityListeners = new Set<() => void>();
+
+function subscribeDeckDensity(listener: () => void): () => void {
+  deckDensityListeners.add(listener);
+  return () => { deckDensityListeners.delete(listener); };
+}
+
+function emitDeckDensityChange(): void {
+  for (const listener of [...deckDensityListeners]) listener();
+}
+
 const TRIAGE_DECK_ZOOM_TWEEN_FACTOR = 0.18;
 const TRIAGE_DECK_ZOOM_TWEEN_EPSILON = 0.002;
 const TRIAGE_DECK_ZOOM_WHEEL_SPEED = 0.0022;
@@ -293,9 +308,14 @@ export function useTriageDeckZoomControl(): {
     zoomRef.current = zoom;
     const owner = ownerRef.current;
     if (owner) {
-      owner.style.setProperty("--triage-card-min", `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`);
+      const cardMin = `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`;
+      // 칸 크기가 실제로 달라진 프레임에만 밀도 신호를 울린다. 최초 부착(이전 값이 비어 있는
+      // 상태)은 전환이 아니라 초기화이므로 울리지 않는다.
+      const previousCardMin = owner.style.getPropertyValue("--triage-card-min");
+      owner.style.setProperty("--triage-card-min", cardMin);
       owner.style.setProperty("--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`);
       owner.style.setProperty("--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`);
+      if (previousCardMin !== "" && previousCardMin !== cardMin) emitDeckDensityChange();
     }
     // 지도 판정은 프레임 정확도로 반영한다 — tween이 임계를 가로지르는 중간에도
     // 카드↔지도 전환이 정확한 프레임에 일어나야 한다.
@@ -779,16 +799,25 @@ export function TriageWatchDeck({
   // 덱 위에서만 발화하므로 조작 내내 포인터는 어떤 칸 위에 있다: 이 충돌은 예외가 아니라 밀도
   // 조작의 기본값이다. 확대를 걷고, 포인터가 실제로 움직이기 전까지는 다시 무장하지 않는다 —
   // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니라 판이 흘려보낸 칸이다.
-  const deckZoomLive = useSyncExternalStore(subscribeTriage, getTriageDeckZoomLive, () => TRIAGE_DECK_ZOOM_DEFAULT);
   const zoomSuppressRef = useRef(false);
+  const releaseForDensityChange = () => {
+    zoomSuppressRef.current = true;
+    dismissQuicklook();
+  };
+  // 칸 크기가 실제로 달라진 모든 전환을 이 구독이 받는다 — 표시값이 움직이지 않는 작은 델타까지.
+  const releaseRef = useRef(releaseForDensityChange);
+  releaseRef.current = releaseForDensityChange;
+  useEffect(() => subscribeDeckDensity(() => { releaseRef.current(); }), []);
+  // 표시값 경로도 함께 둔다 — 줌 컨트롤러가 아직 어떤 요소도 소유하지 않은 구간(덱 마운트 전
+  // 프리셋 순환)에서는 CSS 변수 쓰기가 일어나지 않아 위 신호가 울리지 않는다.
+  const deckZoomLive = useSyncExternalStore(subscribeTriage, getTriageDeckZoomLive, () => TRIAGE_DECK_ZOOM_DEFAULT);
   const previousZoomRef = useRef(deckZoomLive);
   useEffect(() => {
     // 마운트는 밀도 전환이 아니다 — 여기서 억제를 걸면 덱에 처음 들어와 칸에 커서를 얹는 평범한
     // 진입까지 확대가 열리지 않는다. 실제로 값이 움직인 전환에만 반응한다.
     if (previousZoomRef.current === deckZoomLive) return;
     previousZoomRef.current = deckZoomLive;
-    zoomSuppressRef.current = true;
-    dismissQuicklook();
+    releaseForDensityChange();
   }, [deckZoomLive]);
 
   // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
