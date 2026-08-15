@@ -4694,6 +4694,30 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: transparent;
 }
 
+/* 행 안의 활성화 버튼. 예전에는 행 자체가 버튼 역할을 겸하면서 컨트롤 버튼들을 품고 있었다 —
+   남은 자리를 채워 클릭 영역은 그대로 두고, 활성화 대상만 하나로 되돌린다. */
+.side-bar-theater-activate {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: inherit;
+}
+
+.side-bar-theater-activate:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
 .side-bar-theater-header {
   display: flex;
   align-items: center;

@@ -131,7 +131,7 @@ describe("sidebar context menu keyboard path", () => {
 
   it("opens the Theater actions menu from the row with ContextMenu and applies the same focus loop", async () => {
     renderSideBar();
-    const row = required<HTMLElement>(".side-bar-theater-header");
+    const row = required<HTMLElement>(".side-bar-theater-activate");
     row.focus();
 
     dispatchKey(row, "ContextMenu");

@@ -13,6 +13,7 @@
     "check:claude-agent-sdk-boundary": "node scripts/check-claude-agent-sdk-boundary.mjs",
     "check:core-boundary": "node scripts/check-core-boundary.mjs",
     "check:core-unified-agent-absent": "node scripts/check-core-unified-agent-absent.mjs",
+    "check:localized-attributes": "node scripts/check-localized-attributes.mjs",
     "cli": "node scripts/run-isolated.mjs cli",
     "console": "node scripts/run-isolated.mjs console",
     "desktop": "node scripts/run-isolated.mjs desktop",
