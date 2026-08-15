@@ -1251,6 +1251,7 @@ describe("Instrument core design contract", () => {
     expect(operationBlock).toContain("background: var(--surface-panel);");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--surface-window);");
+    expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
     expect(titlebarBlock).toContain("border: 1px solid var(--surface-rim);");
@@ -1516,12 +1517,18 @@ describe("Instrument core design contract", () => {
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
     expect(chatRootBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    // --surface-window는 즉시 바뀐다. 캡션만 background를 보간하면 포커스 동안
+    // 캡션과 로그가 다시 두 장으로 갈린다 — 공유 채팅 면도 같은 전환을 진다.
+    const windowFillTransition = "transition: background var(--duration-base) var(--ease-spring);";
+    expect(chatRootBlock).toContain(windowFillTransition);
     // 채팅 뷰의 지속 크롬(하단 스트립)도 같은 면에 앉는다 — 구분은 hairline이 맡는다.
     // 상단 세션 띠바는 폐기됐다: 패널 면 위에 다른 면을 하나 더 얹어 창을 두 장으로 갈랐다.
     const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
     expect(chatStripBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    expect(chatStripBlock).toContain(windowFillTransition);
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
     expect(chatNodeBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    expect(chatNodeBlock).toContain(windowFillTransition);
     expect(chatStripBlock).toContain("border-top: 1px solid var(--hairline);");
     expect(chat).not.toContain(".agent-chat-head");
     // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
