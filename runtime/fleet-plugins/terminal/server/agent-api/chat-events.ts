@@ -324,13 +324,30 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
  * cwd·홈 정규화를 지나고도 남은 절대 경로를 표시형으로 접는다. 도구 결과는 실행 출력이 그대로
  * 흐르는 경로라 우리 두 접두 밖의 절대 경로가 원문으로 나갈 수 있다 — 실측에서 실패한 쓰기의
  * EACCES 메시지가 다른 사용자의 홈 경로를 실어 왔다. 원장의 경로 필드가 이미 쓰는 규칙과 같게
- * 마지막 두 조각만 남긴다. URL(`scheme://…`)과 이미 정규화된 `./`·`~/`는 건드리지 않는다.
+ * 마지막 두 조각만 남긴다.
+ *
+ * 두 벌로 훑는다. 먼저 따옴표로 감싼 경로를 통째로 — 공백이 든 경로는 실제 오류 메시지에서
+ * 거의 언제나 이 모양이라(`can't open file '/a/My Project/x.py'`), 이것이 공백 문제의 현실적인
+ * 답이다. 그다음 공백 없는 맨 경로를 POSIX·Windows 드라이브·UNC 세 형태로.
+ *
+ * 따옴표 없는 공백 경로는 의도적으로 건드리지 않는다: 산문과 경로를 가를 근거가 없어 공백을
+ * 욕심내면 문장을 먹는다. 그런 경로도 앞 조각은 이 규칙에 잘려 나가므로 사용자 이름 같은
+ * 식별 정보는 남지 않는다. URL(`scheme://…`)과 이미 정규화된 `./`·`~/`, 그리고 이미 접힌
+ * `…/`는 어느 벌에서도 다시 잡지 않는다.
  */
+const QUOTED_ABSOLUTE_PATH = /(['"`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^'"`\n]*)\1/g;
+const BARE_ABSOLUTE_PATH = /(?<![\w:~./\\…])(?:[A-Za-z]:[\\/]|\\\\|\/)[A-Za-z0-9._@+~-][^\s'"`,;:()[\]]*/g;
+
 function abbreviateAbsolutePaths(value: string): string {
-  return value.replace(/(?<![\w:~./])(?:\/[A-Za-z0-9._@+-]+){2,}/g, (match) => {
-    const segments = match.split("/").filter((segment) => segment.length > 0);
-    return `…/${segments.slice(-2).join("/")}`;
-  });
+  return value
+    .replace(QUOTED_ABSOLUTE_PATH, (_match, quote: string, path: string) => `${quote}${foldPath(path)}${quote}`)
+    .replace(BARE_ABSOLUTE_PATH, (match) => foldPath(match));
+}
+
+function foldPath(path: string): string {
+  const segments = path.split(/[\\/]/).filter((segment) => segment.length > 0 && !/^[A-Za-z]:$/.test(segment));
+  if (segments.length === 0) return path;
+  return `…/${segments.slice(-2).join("/")}`;
 }
 
 function readResultText(content: unknown): string | null {

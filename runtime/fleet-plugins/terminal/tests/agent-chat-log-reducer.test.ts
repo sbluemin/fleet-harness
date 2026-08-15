@@ -226,6 +226,26 @@ describe("groupAgentChatLedger", () => {
     expect(view.running).toEqual([live]);
   });
 
+  // 진행 중에는 방금 무엇을 했는지가 보여야 한다 — 끝난 스텝이 곧바로 사라지면 화면에
+  // 남는 것은 집계 한 줄과 "생각 중"뿐이고, 그건 일하는 화면이 아니다.
+  it("keeps the most recent finished steps in order while the turn runs", () => {
+    const items = [tool("Read"), tool("Read"), tool("Bash"), tool("Write")];
+    const live = groupAgentChatLedger(items, 2);
+    expect(live.inline).toEqual([items[2], items[3]]);
+    expect(live.groups).toEqual([{ family: "read", count: 2 }]);
+  });
+
+  it("folds every routine step once the turn is done", () => {
+    const items = [tool("Read"), tool("Read"), tool("Bash"), tool("Write")];
+    const settled = groupAgentChatLedger(items, 0);
+    expect(settled.inline).toEqual([]);
+    expect(settled.groups).toEqual([
+      { family: "read", count: 2 },
+      { family: "run", count: 1 },
+      { family: "write", count: 1 },
+    ]);
+  });
+
   it("counts an unknown tool under its own name", () => {
     const view = groupAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
     expect(view.groups).toEqual([

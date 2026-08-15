@@ -270,6 +270,19 @@ describe("summarizeToolResult", () => {
     expect(summarizeToolResult("fetched https://example.com/a/b/c")).toBe("fetched https://example.com/a/b/c");
   });
 
+  // Console은 Windows를 지원하고, 공백이 든 경로는 오류 메시지에서 거의 언제나 따옴표에 싸여 온다.
+  it("abbreviates Windows, UNC, quoted-with-space and single-segment absolute paths", () => {
+    expect(summarizeToolResult("cannot open C:\\Users\\alice\\Private\\key.txt"))
+      .toBe("cannot open …/Private/key.txt");
+    expect(summarizeToolResult("copy failed from \\\\server\\share\\team\\key.txt"))
+      .toBe("copy failed from …/team/key.txt");
+    expect(summarizeToolResult("can't open file '/Users/alice/My Project/key.txt'"))
+      .toBe("can't open file '…/My Project/key.txt'");
+    expect(summarizeToolResult("no such file /secret")).toBe("no such file …/secret");
+    // 접은 경로를 두 번 접지 않는다.
+    expect(summarizeToolResult("mkdir '/a/b/My Dir/c.txt' failed")).toBe("mkdir '…/My Dir/c.txt' failed");
+  });
+
   it("masks obvious credential shapes", () => {
     expect(summarizeToolResult("token=sk-abcdefghijklmnopqrstuvwxyz")).toBe("token=sk-…");
     expect(summarizeToolResult("ghp_abcdefghijklmnopqrstuvwxyz0123")).toBe("ghp_…");

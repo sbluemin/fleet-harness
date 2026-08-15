@@ -367,30 +367,50 @@ export interface AgentChatLedgerView {
 }
 
 /**
- * 원장을 "집계 + 예외"로 가른다. 도구를 하나하나 나열하면 긴 턴에서 읽을 수 없고, 전부 집계하면
- * 지금 무엇을 하는지와 무엇이 잘못됐는지를 잃는다. 그래서 일상은 세고, 예외만 줄을 지킨다:
- * 진행 중인 스텝, 실패한 스텝, Theater 밖을 가리킨 스텝, 그리고 모델이 남긴 문장.
+ * 원장을 "집계 + 예외"로 가른다. 예외는 언제나 줄을 지킨다 — 진행 중인 스텝, 실패한 스텝,
+ * Theater 밖을 가리킨 스텝, 그리고 모델이 남긴 문장.
+ *
+ * 평범한 완료 스텝을 언제 접는지는 국면이 정한다. 턴이 도는 동안에는 방금 무엇을 했는지가
+ * 곧 "개발 중"이라는 감각이므로 최근 것들은 순서대로 남기고(`recentLimit`), 그보다 오래된
+ * 것만 앞머리 한 줄로 접는다. 턴이 끝나면 남길 이유가 없다 — 전부 집계로 접히고, 결론이
+ * 화면을 차지한다(`recentLimit: 0`).
  */
-export function groupAgentChatLedger(items: readonly AgentChatTurnItem[]): AgentChatLedgerView {
+export function groupAgentChatLedger(
+  items: readonly AgentChatTurnItem[],
+  recentLimit = 0,
+): AgentChatLedgerView {
+  // 뒤에서부터 세어, 인라인으로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
+  let keep = recentLimit;
+  const inlineRoutine = new Set<number>();
+  if (keep > 0) {
+    for (let index = items.length - 1; index >= 0 && keep > 0; index -= 1) {
+      const item = items[index];
+      if (!item || item.type !== "tool") continue;
+      if (item.state === "running" || item.state === "fail" || item.outside === true) continue;
+      inlineRoutine.add(index);
+      keep -= 1;
+    }
+  }
+
   const inline: AgentChatTurnItem[] = [];
   const running: AgentChatTurnItem[] = [];
   const groups: AgentChatStepGroup[] = [];
   const index = new Map<string, number>();
-  for (const item of items) {
-    if (item.type === "text") { inline.push(item); continue; }
-    if (item.state === "running") { running.push(item); continue; }
-    if (item.state === "fail" || item.outside === true) { inline.push(item); continue; }
+  items.forEach((item, at) => {
+    if (item.type === "text") { inline.push(item); return; }
+    if (item.state === "running") { running.push(item); return; }
+    if (item.state === "fail" || item.outside === true || inlineRoutine.has(at)) { inline.push(item); return; }
     const family = agentChatToolFamily(item.name);
     const key = family === "other" ? `other:${item.name ?? ""}` : family;
-    const at = index.get(key);
-    if (at === undefined) {
+    const seen = index.get(key);
+    if (seen === undefined) {
       index.set(key, groups.length);
       groups.push({ family, count: 1, ...(family === "other" ? { name: item.name ?? "" } : {}) });
     } else {
-      const current = groups[at];
-      if (current) groups[at] = { ...current, count: current.count + 1 };
+      const current = groups[seen];
+      if (current) groups[seen] = { ...current, count: current.count + 1 };
     }
-  }
+  });
   return { inline, groups, running };
 }
 

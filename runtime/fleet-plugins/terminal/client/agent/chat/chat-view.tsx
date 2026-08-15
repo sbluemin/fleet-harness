@@ -261,6 +261,7 @@ function ChatTurn({
                 <Ledger
                   items={view.ledger}
                   language={language}
+                  working
                   pending={view.streamingText === null && !view.ledger.some((item) => item.state === "running")}
                 />
               </>
@@ -344,25 +345,36 @@ function ChangeStrip({
  * 라이브 원장 — 스텝과 문장이 도착한 순서 그대로 쌓인다. 진행 중인 스텝 하나만 링을 돌리고,
  * 끝난 스텝은 자리에 남아 결과를 단다. 여기서 사라지는 것은 없다.
  */
+/**
+ * 진행 중에 순서대로 남겨 두는 평범한 완료 스텝의 수. 방금 무엇을 했는지가 보여야 "일하는 중"으로
+ * 읽히지만, 스무 건짜리 턴을 통째로 세우면 다시 벽이 된다 — 최근 것만 남기고 나머지는 앞머리
+ * 한 줄로 접는다. 턴이 끝나면 이 창도 닫히고 전부 집계가 된다.
+ */
+const LIVE_STEP_WINDOW = 8;
+
 function Ledger({
   items,
   language,
+  working = false,
   pending = false,
 }: {
   readonly items: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
+  /** 진행 중인 턴인가 — 최근 스텝을 순서대로 남길지, 전부 집계로 접을지를 가른다. */
+  readonly working?: boolean;
   /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
   readonly pending?: boolean;
 }) {
   const t = getT(language);
-  const view = groupAgentChatLedger(items);
+  const view = groupAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0);
   if (items.length === 0 && !pending) return null;
   return (
     <div className="agent-chat-ledger">
+      {/* 접힌 옛 스텝은 앞머리에 선다 — 시간순으로 이것들이 먼저 있었다. */}
+      <Tally groups={view.groups} language={language} />
       {view.inline.map((item, index) => item.type === "text"
         ? <div key={index} className="agent-chat-ledger-note">{item.text}</div>
         : <Step key={index} item={item} language={language} />)}
-      <Tally groups={view.groups} language={language} />
       {view.running.map((item, index) => <Step key={`run-${index}`} item={item} language={language} />)}
       {pending ? (
         <div className="agent-chat-step is-running">
