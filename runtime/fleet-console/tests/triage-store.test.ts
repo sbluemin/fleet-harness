@@ -2,6 +2,7 @@
 
 import { operationRuntimeVisual, runtimeStateVisual } from "../core/client/src/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFileSync } from "node:fs";
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -848,6 +849,46 @@ describe("triage store", () => {
 
     act(() => (container.querySelector('[data-triage-deck-card="next"] .canvas-triage-deck-pick') as HTMLButtonElement).click());
     expect(getTriagePick()).toBe("next");
+  });
+
+  // 칸의 신호(검토 전 맥동·도착·착지·지도 확대 강조)는 칸이 받아 그 안의 패널이 말한다. 그런데
+  // 패널은 portal이 mount 안에 넣으므로 실제 구조는 칸 > 마운트 > 패널이다 — 선택자가 그 한 겹을
+  // 건너뛰면 규칙은 파일에 남은 채 아무것도 칠하지 않는다. 문자열 존재만 보는 계약으로는 잡히지
+  // 않으므로, 실제 구조에 맞춰 보는 이 검사가 그 자리를 대신한다.
+  it("aims every deck tile signal at the panel the canvas portals into the mount", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: OPERATIONS,
+        operationRuntime: { picked: { lifecycle: "live", activity: "running" }, next: { lifecycle: "live", activity: "idle" } },
+        operationAccent: {},
+      }));
+    });
+
+    const cell = container.querySelector<HTMLElement>('[data-triage-deck-card="picked"]')!;
+    const mount = cell.querySelector<HTMLElement>(".canvas-triage-deck-mount")!;
+    const panel = document.createElement("article");
+    panel.className = "canvas-operation is-deck-tile";
+    mount.append(panel);
+
+    // jsdom 환경의 import.meta.url은 file: 스킴이 아니다 — vitest가 패키지 루트를 cwd로 잡으므로
+    // 그 기준 상대 경로로 읽는다.
+    const css = readFileSync("core/client/src/styles/components.css", "utf8");
+    for (const state of ["is-fresh", "is-arriving", "is-landed", "is-map-quicklook"]) {
+      const selectors = [...css.matchAll(new RegExp(`\\.canvas-triage-deck-cell\\.${state}[^,{]*\\.canvas-operation`, "g"))]
+        .map((match) => match[0]);
+      expect(selectors.length, `${state} has no signal selector`).toBeGreaterThan(0);
+      cell.className = `canvas-triage-deck-cell ${state}`;
+      for (const selector of selectors) {
+        expect(panel.matches(selector), `${selector} never matches the portaled panel`).toBe(true);
+      }
+    }
   });
 
   it("routes deck-slot, map-dot, and owned empty-region context menus without guessing bare space", () => {

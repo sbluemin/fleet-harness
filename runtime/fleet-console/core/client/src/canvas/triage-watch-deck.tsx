@@ -1074,8 +1074,15 @@ export function TriageWatchDeck({
                       >
                         {/* 패널이 들어올 자리 — 캔버스가 이 노드로 portal한다. React 자식을 두지
                             않는 빈 노드여야 한다: portal 대상에 React가 관리하는 형제가 섞이면
-                            자식 조정과 portal 삽입이 서로의 DOM을 밀어낸다. */}
-                        <div className="canvas-triage-deck-mount" ref={slotRefFor(operation.id)} />
+                            자식 조정과 portal 삽입이 서로의 DOM을 밀어낸다.
+                            그래서 폴백도 자식이 아니라 CSS가 :empty에 그린다 — 플러그인이 사라졌거나
+                            render를 내주지 않는 kind는 캔버스가 프레임을 만들지 못해 이 자리가 끝까지
+                            비는데, 이름 없는 빈 칸은 어느 Operation을 올리는 것인지 말해 주지 못한다. */}
+                        <div
+                          className="canvas-triage-deck-mount"
+                          data-fallback-title={operation.title}
+                          ref={slotRefFor(operation.id)}
+                        />
                         {/* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이
                             아니다. 본문 위를 덮어 클릭 한 번을 승격으로 받고, 캡션은 그 위에 남아
                             창 컨트롤이 자기 클릭을 지킨다. */}

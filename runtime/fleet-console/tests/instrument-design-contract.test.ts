@@ -866,12 +866,12 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".side-bar-chip.is-arrival-pulse {");
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
     // Watch Deck 칸이 자기 패널에 실어 주는 도착·착지 신호도 같은 reduced-motion 봉인을 공유한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-landed > .canvas-operation,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,");
     // 지도 점의 착지 플래시도 칸과 같은 봉인을 공유한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-landed,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-arriving > .canvas-operation,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,");
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-operation,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,");
     // 작전지도 LOD 전환(cross-fade·마커 강조)도 같은 봉인 안에서 즉시 상태로 떨어진다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
@@ -2347,6 +2347,10 @@ describe("War Room deck panel grammar", () => {
     expect(deck).toContain("onPanelSlotRefRef.current?.(operationId, element)");
     expect(deck).toContain("ref={slotRefFor(operation.id)}");
     expect(deck).toContain("data-triage-deck-card={operation.id}");
+    // 패널을 만들 수 없는 kind는 자리가 끝까지 빈다 — 그 칸도 어느 Operation인지는 말해야 한다.
+    expect(deck).toContain("data-fallback-title={operation.title}");
+    const fallback = components.match(/\.canvas-triage-deck-mount:empty::after \{[^}]*\}/)?.[0] ?? "";
+    expect(fallback).toContain("content: attr(data-fallback-title);");
     expect(deck).not.toContain("TriageDeckCardFace");
     expect(deck).not.toContain("OperationBodySlot");
     // 패널은 끝까지 캔버스 소유다 — portal은 DOM 부모만 바꾸므로 상태·이벤트·pool 배선이 유지된다.

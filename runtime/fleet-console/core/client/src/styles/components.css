@@ -3417,7 +3417,7 @@
 
 /* 지도 Quick-Look로 끌어올린 칸의 패널 — 판 위에 떠 있다는 사실만 테두리·그림자로 말한다.
    자리와 크기는 칸이 지고(is-map-quicklook), 여기서는 그 위에 얹는 강조만 소유한다. */
-.canvas-triage-deck-cell.is-map-quicklook > .canvas-operation {
+.canvas-triage-deck-cell.is-map-quicklook > .canvas-triage-deck-mount > .canvas-operation {
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
   box-shadow: var(--shadow-floating), 0 0 0 1px var(--brass-glow);
 }
@@ -3537,6 +3537,30 @@
   min-height: 0;
 }
 
+/* 패널을 만들 수 없는 Operation의 자리 — 플러그인이 사라졌거나 render를 내주지 않는 kind는
+   프레임 자체가 서지 않아 이 자리가 끝까지 빈다. 이름 없는 빈 칸은 무엇을 올리는 것인지 말해
+   주지 못하므로, 자리가 비어 있는 동안만 그 Operation의 이름을 판 위에 남긴다. 승격 면은 그대로
+   덮여 있으니 클릭도 여전히 그 Operation을 올린다. */
+.canvas-triage-deck-mount:empty {
+  place-items: center;
+  padding: 0 12px;
+  border: 1px dashed var(--surface-rim);
+  border-radius: var(--radius-lg);
+  background: var(--surface-panel);
+}
+
+.canvas-triage-deck-mount:empty::after {
+  content: attr(data-fallback-title);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: calc(var(--font-body-size) * 0.92);
+  font-weight: var(--weight-medium);
+}
+
 /* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이 아니다. 본문 위를 덮어
    클릭 한 번을 승격으로 받는다. 캡션(z-index 7)보다는 아래에 둔다: 그 위로 올리면 창 컨트롤을
    되살리려 자손 선택자가 필요해지고, 그 규칙이 공용 컨트롤 블록보다 앞서 잡혀 계약을 오탐시킨다. */
@@ -3557,16 +3581,17 @@
 }
 
 /* 검토 전 대기·도착·착지 신호는 칸이 받아 그 안의 패널 테두리로 말한다 — 신호가 칸이 아니라
-   창에 실려야 어느 창이 부르는지 읽힌다. */
-.canvas-triage-deck-cell.is-fresh > .canvas-operation {
+   창에 실려야 어느 창이 부르는지 읽힌다. 패널은 portal이 mount 안에 넣으므로 실제 구조는
+   칸 > 마운트 > 패널이다: 그 한 겹을 건너뛴 선택자는 파일에 남은 채 아무것도 칠하지 않는다. */
+.canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
   animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
 }
 
-.canvas-triage-deck-cell.is-arriving > .canvas-operation {
+.canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation {
   animation: triage-deck-arrival-pulse calc(var(--duration-slow) * 3.0556) var(--ease-glide) 1;
 }
 
-.canvas-triage-deck-cell.is-landed > .canvas-operation {
+.canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation {
   animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
 }
 
@@ -3668,10 +3693,10 @@
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,
   .canvas-triage-map-quicklook,
-  .canvas-triage-deck-cell.is-landed > .canvas-operation,
+  .canvas-triage-deck-cell.is-landed > .canvas-triage-deck-mount > .canvas-operation,
   .canvas-triage-map-dot.is-landed,
-  .canvas-triage-deck-cell.is-arriving > .canvas-operation,
-  .canvas-triage-deck-cell.is-fresh > .canvas-operation,
+  .canvas-triage-deck-cell.is-arriving > .canvas-triage-deck-mount > .canvas-operation,
+  .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,
@@ -3680,7 +3705,7 @@
   }
 
   /* 움직임 없이도 검토 전 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
-  .canvas-triage-deck-cell.is-fresh > .canvas-operation {
+  .canvas-triage-deck-cell.is-fresh > .canvas-triage-deck-mount > .canvas-operation {
     border-color: var(--aurora);
   }
 
