@@ -582,7 +582,7 @@ describe("Instrument core design contract", () => {
     const components = source("styles/components.css");
     const spineBlock = components.match(/\.canvas-operation-spine \{[^}]*\}/)?.[0] ?? "";
     const markBlock = components.match(/\.canvas-operation-id-mark \{[^}]*\}/)?.[0] ?? "";
-    const washBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    const washBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\]:not\(\.is-active\) \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
     const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
     const minimapDotBlock = components.match(/\.canvas-minimap-operation\[style\*="--user-accent"\]::after \{[^}]*\}/)?.[0] ?? "";
     const accentSources = [frame, chip, components].join("\n");
@@ -1247,9 +1247,11 @@ describe("Instrument core design contract", () => {
     // 패널은 하나의 면이다 — 본체·캡션·본문 거터가 모두 --surface-panel을 소비해야 창 하나로 읽힌다.
     // 셋 중 하나라도 다른 값을 잡으면 캡션 이음새나 터미널 둘레 액자 테가 되살아난다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
+    expect(operationBlock).toContain("--surface-window: var(--surface-panel);");
     expect(operationBlock).toContain("background: var(--surface-panel);");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--surface-panel);");
+    expect(titlebarBlock).toContain("background: var(--surface-window);");
+    expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
     expect(titlebarBlock).toContain("border: 1px solid var(--surface-rim);");
@@ -1465,6 +1467,8 @@ describe("Instrument core design contract", () => {
     // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
     // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
     expect(base).toContain("--surface-panel: var(--ink-deep);");
+    expect(base).toContain("--surface-window: var(--surface-panel);");
+    expect(theme.match(/--surface-window:/g)).toHaveLength(1);
     expect(theme.match(/--surface-panel:/g)).toHaveLength(4);
     expect(theme).toContain("--surface-panel: oklch(23% 0.03 248);");
     expect(theme).toContain("--surface-panel: oklch(19% 0.008 252);");
@@ -1512,11 +1516,19 @@ describe("Instrument core design contract", () => {
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatRootBlock).toContain("background: var(--surface-panel);");
+    expect(chatRootBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    // --surface-window는 즉시 바뀐다. 캡션만 background를 보간하면 포커스 동안
+    // 캡션과 로그가 다시 두 장으로 갈린다 — 공유 채팅 면도 같은 전환을 진다.
+    const windowFillTransition = "transition: background var(--duration-base) var(--ease-spring);";
+    expect(chatRootBlock).toContain(windowFillTransition);
     // 채팅 뷰의 지속 크롬(하단 스트립)도 같은 면에 앉는다 — 구분은 hairline이 맡는다.
     // 상단 세션 띠바는 폐기됐다: 패널 면 위에 다른 면을 하나 더 얹어 창을 두 장으로 갈랐다.
     const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatStripBlock).toContain("background: var(--surface-panel);");
+    expect(chatStripBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    expect(chatStripBlock).toContain(windowFillTransition);
+    const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatNodeBlock).toContain("background: var(--surface-window, var(--surface-panel));");
+    expect(chatNodeBlock).toContain(windowFillTransition);
     expect(chatStripBlock).toContain("border-top: 1px solid var(--hairline);");
     expect(chat).not.toContain(".agent-chat-head");
     // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
@@ -1788,11 +1800,13 @@ describe("Instrument core design contract", () => {
     // 1px solid inherit 단축은 선언이 버려지거나 계산색이 갈라진다.
     expect(components).not.toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
-    // 패널 아웃라인은 상태를 놓았다 — 포커스는 캡션 채움 워시, 상태는 캡션 아랫변 레일이 나른다.
+    // 패널 아웃라인은 상태를 놓았다 — 포커스는 창 면 워시, 상태는 캡션 아랫변 레일이 나른다.
     // 포커스는 선을 쓰지 않는다: 상태 레일과 같은 굵기의 brass 선이 캡션 위아래에 겹치면
-    // warn과 brass가 한 덩어리 금색으로 읽힌다.
-    expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
+    // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션 전용이 아니라 창 면 변수다 —
+    // 채팅 본문이 같은 값을 소비해야 캡션과 로그가 한 장으로 읽힌다.
+    expect(components).toContain(".canvas-operation.is-active {");
+    expect(components).toContain("--surface-window: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
+    expect(components).not.toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
     // 도착 플래시는 지속 상태(is-unseen)가 아니라 전이를 표시하는 일시 클래스에만 건다 —
@@ -1802,7 +1816,11 @@ describe("Instrument core design contract", () => {
     expect(operationFrame).toContain('arrivalFlash ? "is-unseen-arriving" : ""');
     expect(operationFrame).toContain("previousUnseenRef");
     // 정체성 워시와 포커스 워시는 같은 표면을 다투지 않는다 — 결합 규칙이 둘을 겹쳐 칠한다.
-    expect(components).toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
+    // 비포커스 accent는 캡션만, 포커스 accent는 창 면 변수가 brass와 겹친다.
+    expect(components).toContain('.canvas-operation[style*="--user-accent"]:not(.is-active) .canvas-operation-titlebar {');
+    expect(components).toContain('.canvas-operation[style*="--user-accent"].is-active {');
+    expect(components).toContain("--surface-window: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)));");
+    expect(components).not.toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
     // oklch 믹스는 hue를 극좌표 호로 보간한다 — brass(78)+ink-rim(245) 62%는 hue 141(초록)에
     // 착지해 위치 채널이 신호 채널 positive(160) 옆에 앉았다. 캡션 워시는 oklab으로 섞는다.
     expect(components).not.toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
