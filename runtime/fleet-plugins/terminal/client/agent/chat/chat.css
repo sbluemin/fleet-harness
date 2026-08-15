@@ -185,24 +185,154 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 진행 중 펄스 카드 — 현재 활동 + elapsed. Session Analyst의 진행 문법과 한 계열. */
-.agent-chat-pulse {
+/* 이 턴이 바꾼 파일 — 원장 맨 위. 추가·삭제는 상태 채널(positive/coral)이 진다. */
+.agent-chat-changes {
   margin-top: var(--space-2);
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--aurora) 24%, var(--hairline));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
-  padding: var(--space-2) var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.agent-chat-change {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 11px;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-raised);
+  border: 1px solid color-mix(in oklch, var(--positive) 22%, var(--hairline));
   color: var(--text-secondary);
 }
 
-.agent-chat-pulse-orbit {
-  width: 10px;
-  height: 10px;
+.agent-chat-change-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-change-add { color: var(--positive); flex: none; }
+.agent-chat-change-del { color: var(--coral); flex: none; }
+
+/* 라이브 원장 — 스텝과 문장이 도착한 순서대로 쌓인다. 진행 중에도 완료 후에도 같은 문법이다. */
+.agent-chat-ledger {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 구간 사이가 구간 안보다 넓어야 쌍으로 읽힌다. */
+.agent-chat-segment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.agent-chat-segment + .agent-chat-segment {
+  margin-top: var(--space-3);
+}
+
+.agent-chat-ledger-note {
+  font-size: 12.5px;
+  font-style: italic;
+  color: var(--text-tertiary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: var(--space-1) 0;
+}
+
+/* 끝난 일상 스텝의 한 줄 집계 — 도구를 세우지 않고 "무엇을 몇 번 했는가"만 남긴다.
+   면도 테두리도 없다: 이 줄은 카드가 아니라 문장이고, 카드는 예외에게만 준다. */
+.agent-chat-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-tally-sep {
+  color: var(--hairline-strong);
+}
+
+/* 집계 줄은 열쇠다 — 누르면 그 줄이 세고 있던 스텝이 펼쳐진다. 눌린다는 사실은 꺾쇠와
+   hover 잉크가 말한다. brass는 위치·포커스 채널이므로 여기서는 쓰지 않는다. */
+.agent-chat-tally-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary::-webkit-details-marker { display: none; }
+
+.agent-chat-tally-fold > summary:hover {
+  color: var(--text-secondary);
+}
+
+.agent-chat-tally-fold > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-tally-chev {
+  font-size: 9px;
+  line-height: 1;
+  align-self: center;
+  color: var(--hairline-strong);
+  transition: transform var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary:hover .agent-chat-tally-chev {
+  color: var(--text-tertiary);
+}
+
+.agent-chat-tally-fold[open] .agent-chat-tally-chev {
+  transform: rotate(180deg);
+}
+
+.agent-chat-tally-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.agent-chat-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 5px var(--space-3);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+/* 진행 중인 스텝 하나만 aurora를 진다 — 상태 채널이므로 완료된 줄은 중립으로 돌아간다. */
+.agent-chat-step.is-running {
+  border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline));
+  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
+}
+
+.agent-chat-step.is-fail {
+  border-color: color-mix(in oklch, var(--coral) 30%, var(--hairline));
+}
+
+.agent-chat-step-orbit {
+  width: 9px;
+  height: 9px;
   flex: none;
   border-radius: var(--radius-pill);
   border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
@@ -214,120 +344,117 @@
   to { transform: rotate(360deg); }
 }
 
-.agent-chat-pulse-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
+.agent-chat-step-mark {
+  flex: none;
+  width: 9px;
+  text-align: center;
+  color: var(--positive);
 }
 
-.agent-chat-pulse-copy strong {
-  font-weight: var(--weight-medium);
+.agent-chat-step.is-fail .agent-chat-step-mark { color: var(--coral); }
+/* 결과 없이 턴이 닫힌 스텝 — 성공을 주장하지 않으므로 신호색을 벗고 줄의 잉크를 따른다. */
+.agent-chat-step.is-done .agent-chat-step-mark { color: var(--text-tertiary); }
+
+.agent-chat-step-verb {
+  color: var(--text-secondary);
+  flex: none;
 }
 
-.agent-chat-pulse-copy small {
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: var(--text-tertiary);
+.agent-chat-step-object {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--text-tertiary);
+  min-width: 0;
 }
 
-/* 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
-.agent-chat-receipt {
+/* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
+.agent-chat-step-outside {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklch, var(--warn) 34%, transparent);
+  color: var(--warn-ink);
+}
+
+.agent-chat-step-out {
+  margin-left: auto;
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-step-out.is-error {
+  border-color: color-mix(in oklch, var(--coral) 30%, transparent);
+  color: var(--coral-ink);
+}
+
+/* 결과를 못 받은 스텝 — 성공도 실패도 아니므로 신호색을 쓰지 않는다. */
+.agent-chat-step-out.is-unknown {
+  border-style: dashed;
+}
+
+/* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다. */
+.agent-chat-fold {
   margin-top: var(--space-2);
 }
 
-.agent-chat-receipt > summary {
+.agent-chat-fold > summary {
   list-style: none;
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
-  padding: 4px var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--surface-panel-raised);
-  transition: color var(--duration-fast), border-color var(--duration-fast);
+  transition: color var(--duration-fast);
 }
 
-.agent-chat-receipt > summary:hover {
-  color: var(--text-secondary);
-  border-color: var(--hairline-strong);
-}
+.agent-chat-fold > summary:hover { color: var(--text-secondary); }
 
-.agent-chat-receipt > summary:focus-visible {
+.agent-chat-fold > summary:focus-visible {
   outline: 2px solid var(--aurora);
-  outline-offset: 2px;
-}
-
-.agent-chat-receipt > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-chat-receipt-chev {
-  font-size: 9px;
-  transition: transform var(--duration-fast);
-}
-
-.agent-chat-receipt[open] .agent-chat-receipt-chev {
-  transform: rotate(90deg);
-}
-
-.agent-chat-receipt-mark {
-  color: var(--positive);
-}
-
-.agent-chat-receipt-mark.is-error {
-  color: var(--coral);
-}
-
-.agent-chat-receipt-body {
-  padding: var(--space-1) 0 0 var(--space-3);
-}
-
-.agent-chat-receipt-note {
-  margin-top: var(--space-2);
-  font-size: 12.5px;
-  font-style: italic;
-  color: var(--text-tertiary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-}
-
-.agent-chat-tool {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  min-width: 0;
-  margin-top: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  color: var(--text-tertiary);
-  padding: 5px var(--space-3);
-  background: var(--surface-panel-raised);
-  border: 1px solid var(--hairline);
+  outline-offset: 3px;
   border-radius: var(--radius-sm);
 }
 
-.agent-chat-tool + .agent-chat-tool {
-  margin-top: var(--space-1);
-}
+.agent-chat-fold > summary::-webkit-details-marker { display: none; }
 
-.agent-chat-tool-name {
-  color: var(--text-secondary);
+.agent-chat-fold-failed { color: var(--coral-ink); }
+
+.agent-chat-fold-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
   flex: none;
+  font-size: 9px;
+  line-height: 1;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast), border-color var(--duration-fast);
 }
 
-.agent-chat-tool-detail {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-tertiary);
+.agent-chat-fold > summary:hover .agent-chat-fold-chev { border-color: var(--hairline-strong); }
+
+.agent-chat-fold[open] .agent-chat-fold-chev { transform: rotate(180deg); }
+
+.agent-chat-fold-body {
+  margin-top: var(--space-1);
 }
 
 /* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
@@ -575,11 +702,11 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
-  .agent-chat-pulse-orbit {
+  .agent-chat-step-orbit {
     animation: none;
   }
 
-  .agent-chat-receipt-chev {
+  .agent-chat-fold-chev {
     transition: none;
   }
 }

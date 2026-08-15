@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  segmentAgentChatLedger,
   initialAgentChatLogState,
   reduceAgentChatLog,
   splitAgentChatTurn,
   type AgentChatLogState,
   type AgentChatStreamEvent,
+  type AgentChatTurnItem,
 } from "../client/agent/chat/chat-events.js";
 
 function fold(events: readonly AgentChatStreamEvent[], from: AgentChatLogState = initialAgentChatLogState): AgentChatLogState {
@@ -147,6 +149,157 @@ describe("chat log reducer", () => {
   });
 });
 
+// 스텝의 생애 — 이름만 아는 시점, 좌표가 채워지는 시점, 결말이 붙는 시점.
+describe("chat log steps", () => {
+  it("fills the step tool-start opened instead of adding a second row", () => {
+    let state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "tool-start", id: "t1", name: "Write" },
+    ]);
+    expect(state.turns.at(-1)?.items).toEqual([
+      { type: "tool", name: "Write", detail: "", id: "t1", state: "running" },
+    ]);
+
+    state = fold([{ kind: "tool", name: "Write", detail: "todo.py", id: "t1" }], state);
+    expect(state.turns.at(-1)?.items).toEqual([
+      { type: "tool", name: "Write", detail: "todo.py", id: "t1", state: "running" },
+    ]);
+
+    state = fold([{ kind: "tool-result", id: "t1", ok: true, summary: "File created" }], state);
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({ state: "ok", result: "File created" });
+  });
+
+  it("settles a still-running step when the turn closes without its result", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "tool-start", id: "t1", name: "Bash" },
+      { kind: "turn-end", ok: true },
+    ]);
+    // 결과를 못 받은 스텝은 성공(✓ ok)이 아니라 중립(done)으로 가라앉는다.
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({ state: "done" });
+  });
+
+  it("drops a result whose step is not in the log", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "tool-result", id: "orphan", ok: false, summary: "nope" },
+    ]);
+    expect(state.turns.at(-1)?.items).toEqual([]);
+  });
+});
+
+// 원장 구간 — 모델의 문장이 구간을 가르고, 각 구간이 자기가 한 일을 한 줄로 접는다.
+describe("segmentAgentChatLedger", () => {
+  const tool = (name: string, extra: Partial<AgentChatTurnItem> = {}): AgentChatTurnItem =>
+    ({ type: "tool", name, detail: "", state: "ok", ...extra });
+  const note = (text: string): AgentChatTurnItem => ({ type: "text", text });
+
+  // 턴 전체를 하나로 세면 숫자만 커지고 무엇을 하려던 건지가 사라진다.
+  it("splits one turn into a segment per note, each folding only its own steps", () => {
+    const items = [
+      note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
+      note("이제 고치고 돌리겠습니다."), tool("Edit"), tool("Bash"), tool("Bash"),
+    ];
+    expect(segmentAgentChatLedger(items)).toEqual([
+      {
+        note: "먼저 읽겠습니다.",
+        groups: [{ family: "read", count: 2 }],
+        folded: [items[1], items[2]],
+        inline: [],
+        running: [],
+      },
+      {
+        note: "이제 고치고 돌리겠습니다.",
+        groups: [{ family: "edit", count: 1 }, { family: "run", count: 2 }],
+        folded: [items[4], items[5], items[6]],
+        inline: [],
+        running: [],
+      },
+    ]);
+  });
+
+  it("opens a leading segment when tools arrive before any note", () => {
+    const items = [tool("Read"), note("읽었습니다."), tool("Bash")];
+    const segments = segmentAgentChatLedger(items);
+    expect(segments[0]).toEqual({
+      groups: [{ family: "read", count: 1 }],
+      folded: [items[0]],
+      inline: [],
+      running: [],
+    });
+    expect(segments[1]?.note).toBe("읽었습니다.");
+  });
+
+  it("keeps the failure and the outside write on their own rows inside their segment", () => {
+    const failed = tool("Bash", { state: "fail", result: "exit 2" });
+    const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
+    const segments = segmentAgentChatLedger([note("해보겠습니다."), tool("Read"), failed, outside]);
+    expect(segments[0]?.inline).toEqual([failed, outside]);
+    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
+  });
+
+  // 진행 중에는 마지막 구간만 열려 있다 — 방금 무엇을 했는지가 곧 "일하는 중"이다.
+  it("leaves only the last segment open while the turn runs", () => {
+    const items = [
+      note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
+      note("이제 돌리겠습니다."), tool("Bash"), tool("Write"), tool("Read", { state: "running" }),
+    ];
+    const segments = segmentAgentChatLedger(items, 4);
+    expect(segments[0]).toEqual({
+      note: "먼저 읽겠습니다.",
+      groups: [{ family: "read", count: 2 }],
+      folded: [items[1], items[2]],
+      inline: [],
+      running: [],
+    });
+    expect(segments[1]?.groups).toEqual([]);
+    expect(segments[1]?.inline).toEqual([items[4], items[5]]);
+    expect(segments[1]?.running).toEqual([items[6]]);
+  });
+
+  it("folds the last segment too once the turn is done", () => {
+    const items = [note("돌리겠습니다."), tool("Bash"), tool("Write")];
+    expect(segmentAgentChatLedger(items, 0)[0]?.inline).toEqual([]);
+    expect(segmentAgentChatLedger(items, 0)[0]?.groups).toEqual([
+      { family: "run", count: 1 },
+      { family: "write", count: 1 },
+    ]);
+  });
+
+  // 결과 없이 닫힌 스텝을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 쓰기를 원장이
+  // 다시 "씀"이라고 말한다 — 두 표면이 어긋난다. 확인되지 않은 것은 줄을 지킨다.
+  it("never counts a result-less step in the past-tense tally", () => {
+    const unconfirmed = tool("Write", { state: "done" });
+    const segments = segmentAgentChatLedger([note("쓰겠습니다."), tool("Read"), unconfirmed]);
+    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
+    expect(segments[0]?.inline).toEqual([unconfirmed]);
+  });
+
+  // 접힌 것은 감춘 것이 아니다 — 집계 줄을 누르면 그 줄이 세고 있던 스텝이 순서대로 나온다.
+  it("carries the steps a tally counted so the line can unfold them", () => {
+    const items = [note("보겠습니다."), tool("Read"), tool("Bash"), tool("Read")];
+    const segment = segmentAgentChatLedger(items)[0];
+    expect(segment?.groups).toEqual([{ family: "read", count: 2 }, { family: "run", count: 1 }]);
+    expect(segment?.folded).toEqual([items[1], items[2], items[3]]);
+  });
+
+  it("counts an unknown tool under its own name", () => {
+    const segments = segmentAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
+    expect(segments[0]?.groups).toEqual([
+      { family: "other", name: "SomeMcpTool", count: 2 },
+      { family: "other", name: "Other", count: 1 },
+    ]);
+  });
+});
+
 // 뷰 파생 — 원장(과정)과 Answer(결론)의 분리 규칙을 못 박는다.
 describe("splitAgentChatTurn", () => {
   it("promotes the trailing text of a settled turn to the answer", () => {
@@ -161,10 +314,11 @@ describe("splitAgentChatTurn", () => {
     ]);
     const view = splitAgentChatTurn(state.turns[0]!);
     expect(view.answer).toBe("The final answer.");
+    // 재생 스텝은 이미 끝난 일이다 — 결과 줄이 없으면 성공을 주장하지 않는 done으로 앉는다.
     expect(view.ledger).toEqual([
-      { type: "tool", name: "Read", detail: "a.ts" },
+      { type: "tool", name: "Read", detail: "a.ts", state: "done" },
       { type: "text", text: "intermediate note" },
-      { type: "tool", name: "Bash", detail: "pnpm test" },
+      { type: "tool", name: "Bash", detail: "pnpm test", state: "done" },
     ]);
     expect(view.streamingText).toBeNull();
   });
@@ -180,7 +334,7 @@ describe("splitAgentChatTurn", () => {
     ]);
     const view = splitAgentChatTurn(state.turns.at(-1)!);
     expect(view.answer).toBe("Final answer.");
-    expect(view.ledger).toEqual([{ type: "tool", name: "Read", detail: "a.ts" }]);
+    expect(view.ledger).toEqual([{ type: "tool", name: "Read", detail: "a.ts", state: "done" }]);
   });
 
   it("keeps a diverging trailing text in the ledger next to the server answer", () => {
@@ -207,8 +361,57 @@ describe("splitAgentChatTurn", () => {
     ]);
     const view = splitAgentChatTurn(state.turns.at(-1)!);
     expect(view.streamingText).toBe("So far so good");
-    expect(view.ledger).toEqual([{ type: "tool", name: "Read", detail: "a.ts" }]);
+    expect(view.ledger).toEqual([{ type: "tool", name: "Read", detail: "a.ts", state: "running" }]);
     expect(view.answer).toBeNull();
+  });
+
+  it("counts failed steps and folds same-file changes into one ledger entry", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "tool", name: "Write", detail: "a.ts", id: "t1", change: { file: "a.ts", added: 10, removed: 0 } },
+      { kind: "tool-result", id: "t1", ok: true, summary: "File created" },
+      { kind: "tool", name: "Edit", detail: "a.ts", id: "t2", change: { file: "a.ts", added: 3, removed: 1 } },
+      { kind: "tool-result", id: "t2", ok: true, summary: "" },
+      { kind: "tool", name: "Bash", detail: "pnpm test", id: "t3" },
+      { kind: "tool-result", id: "t3", ok: false, summary: "1 test failed" },
+      { kind: "turn-end", ok: true, durationMs: 4200 },
+    ]);
+    const view = splitAgentChatTurn(state.turns.at(-1)!);
+    expect(view.failed).toBe(1);
+    expect(view.changes).toEqual([{ file: "a.ts", added: 13, removed: 1 }]);
+    expect(view.ledger.at(-1)).toMatchObject({ name: "Bash", state: "fail", result: "1 test failed" });
+  });
+
+  // 턴이 결과를 못 받고 닫히면 그 쓰기가 실행됐는지 자체를 모른다 — 모르는 것을 "바뀌었다"로
+  // 세우면 이 원장이 고치려던 거짓말(✓로 접히던 실패)을 형태만 바꿔 되풀이하는 것이다.
+  it("keeps a write that never reported a result out of the change ledger", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "tool", name: "Write", detail: "a.ts", id: "t1", change: { file: "a.ts", added: 10, removed: 0 } },
+      { kind: "turn-end", ok: false },
+    ]);
+    const view = splitAgentChatTurn(state.turns.at(-1)!);
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({ state: "done" });
+    expect(view.changes).toEqual([]);
+  });
+
+  it("keeps a failed write out of the change ledger", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "tool", name: "Write", detail: "a.ts", id: "t1", change: { file: "a.ts", added: 10, removed: 0 } },
+      { kind: "tool-result", id: "t1", ok: false, summary: "EACCES" },
+      { kind: "turn-end", ok: true },
+    ]);
+    const view = splitAgentChatTurn(state.turns.at(-1)!);
+    expect(view.changes).toEqual([]);
+    expect(view.failed).toBe(1);
   });
 
   it("never promotes an answer for an error turn", () => {

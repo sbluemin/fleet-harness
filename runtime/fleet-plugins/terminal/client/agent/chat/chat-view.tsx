@@ -4,17 +4,28 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { getT } from "../../i18n/index.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
-import { splitAgentChatTurn, type AgentChatTurn, type AgentChatTurnItem } from "./chat-events.js";
+import {
+  agentChatToolFamily,
+  segmentAgentChatLedger,
+  splitAgentChatTurn,
+  type AgentChatChange,
+  type AgentChatStepGroup,
+  type AgentChatTurn,
+  type AgentChatTurnItem,
+} from "./chat-events.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
 /**
  * Chat Mode의 Operation 본문 — 읽기 전용 지휘 로그.
  *
- * 입력창은 의도적으로 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정). 턴의 표현
- * 문법은 Session Analyst와 한 계열이다 — 진행 중에는 펄스 카드(현재 활동 + elapsed) 하나가
- * 과정을 대변하며 응답이 글자 단위로 스트리밍되고, 끝나면 과정은 영수증 한 줄로 접히고
- * Answer만 콘솔 마크다운 문법으로 남는다.
+ * 입력창은 의도적으로 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정).
+ *
+ * 턴의 표현 문법은 두 국면이다. 진행 중에는 **라이브 원장**이 선다 — 이 턴이 건드린 파일이
+ * 맨 위에 스트립으로 서고, 그 아래로 스텝이 쌓이며, 각 스텝은 이름·좌표·결과를 차례로
+ * 채워 간다. 지나간 스텝과 흘러나온 문장은 화면에서 사라지지 않는다. 끝나면 Answer 앞의
+ * 전부가 `{duration} 동안 작업함` 한 줄로 접히고, 그 줄 오른쪽의 아이콘이 다시 편다.
+ * 접힘은 실패를 삼키지 않는다 — 실패한 스텝이 있으면 그 수가 접힌 줄에 남는다.
  */
 export function AgentChatView({
   context,
@@ -234,22 +245,37 @@ function ChatTurn({
         <div className={`agent-chat-turn is-${turn.state}`}>
           <div className="agent-chat-turn-spine" aria-hidden="true"><span className="agent-chat-turn-node" /></div>
           <div className="agent-chat-turn-body">
-            {/* 모델·강도는 상단 세션 바가 이미 말한다 — 헤드는 턴의 시간축만 맡는다:
-                진행 중엔 라이브 티커, 완료 후엔 총 소요 시간. */}
+            {/* 모델·강도는 상단 세션 바가 이미 말한다 — 진행 중 헤드는 턴의 시간축만 맡는다.
+                완료 턴에는 따로 두지 않는다: 접힘 줄이 같은 시간을 말하므로 두 줄이 겹친다. */}
             {working ? (
               <div className="agent-chat-turn-head">
                 <TurnElapsedLabel turn={turn} language={language} />
               </div>
-            ) : turn.durationMs !== undefined ? (
-              <div className="agent-chat-turn-head">
-                <span>{t("terminal.chat.workedFor", { duration: formatDuration(turn.durationMs) })}</span>
-              </div>
             ) : null}
-            {working
-              ? <PulseCard turn={turn} writing={view.streamingText !== null} language={language} />
-              : view.ledger.length > 0
-                ? <Receipt turn={turn} ledger={view.ledger} language={language} />
-                : null}
+            {working ? (
+              <>
+                <ChangeStrip changes={view.changes} language={language} />
+                {/* 아무 스텝도 돌지 않고 글자도 흐르지 않는 구간이 실제로 길다(실측 34초) —
+                    모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
+                    읽히므로, 원장 꼬리에 살아 있다는 사실 하나를 남긴다(내용은 싣지 않는다). */}
+                <Ledger
+                  items={view.ledger}
+                  language={language}
+                  working
+                  pending={view.streamingText === null && !view.ledger.some((item) => item.state === "running")}
+                />
+              </>
+            ) : view.ledger.length > 0 || view.changes.length > 0 ? (
+              <WorkFold
+                durationMs={turn.durationMs}
+                failed={view.failed}
+                error={turn.state === "error"}
+                language={language}
+              >
+                <ChangeStrip changes={view.changes} language={language} />
+                <Ledger items={view.ledger} language={language} />
+              </WorkFold>
+            ) : null}
             {working && view.streamingText !== null ? (
               <StreamedMarkdown
                 className="agent-chat-stream markdown-body"
@@ -289,77 +315,228 @@ function TurnElapsedLabel({
   return <span aria-hidden="true">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(elapsedMs) })}</span>;
 }
 
-/** 진행 중 턴의 대변인 — 현재 활동 라벨. 시간축은 턴 헤드의 티커가 맡는다. */
-function PulseCard({
-  turn,
-  writing,
+/**
+ * 이 턴이 건드린 파일 — 원장 맨 위에 선다. 도구의 나열보다 먼저 읽히는 것은 "무엇이 남았는가"다.
+ * 줄 수는 쓰기 도구의 입력에서 서버가 접어 보낸 값이고, 파일 본문은 스트림에 실리지 않는다.
+ */
+function ChangeStrip({
+  changes,
   language,
 }: {
-  readonly turn: AgentChatTurn;
-  readonly writing: boolean;
+  readonly changes: readonly AgentChatChange[];
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  const lastTool = findLastTool(turn.items);
-  const label = writing
-    ? t("terminal.chat.activityWriting")
-    : lastTool
-      ? t("terminal.chat.activityUsing", { name: lastTool.name ?? "" })
-      : t("terminal.chat.activityStarting");
-  const note = !writing && lastTool?.detail ? lastTool.detail : null;
+  if (changes.length === 0) return null;
   return (
-    <div className="agent-chat-pulse">
-      <span className="agent-chat-pulse-orbit" aria-hidden="true" />
-      {/* 라이브 리전은 활동 라벨로 한정한다 — 초 단위로 바뀌는 값이 섞이면 스크린 리더가
-          턴 내내 카드를 재낭독한다. */}
-      <span className="agent-chat-pulse-copy" role="status">
-        <strong>{label}</strong>
-        {note ? <small>{note}</small> : null}
-      </span>
+    <div className="agent-chat-changes" aria-label={t("terminal.chat.changesAria")}>
+      {changes.map((change) => (
+        <span key={change.file} className="agent-chat-change">
+          <span className="agent-chat-change-file">{change.file}</span>
+          {change.added > 0 ? <span className="agent-chat-change-add">+{change.added}</span> : null}
+          {change.removed > 0 ? <span className="agent-chat-change-del">−{change.removed}</span> : null}
+        </span>
+      ))}
     </div>
   );
 }
 
-/** 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
-function Receipt({
-  turn,
-  ledger,
+/**
+ * 라이브 원장 — 스텝과 문장이 도착한 순서 그대로 쌓인다. 진행 중인 스텝 하나만 링을 돌리고,
+ * 끝난 스텝은 자리에 남아 결과를 단다. 여기서 사라지는 것은 없다.
+ */
+/**
+ * 진행 중에 순서대로 남겨 두는 평범한 완료 스텝의 수. 방금 무엇을 했는지가 보여야 "일하는 중"으로
+ * 읽히지만, 스무 건짜리 턴을 통째로 세우면 다시 벽이 된다 — 최근 것만 남기고 나머지는 앞머리
+ * 한 줄로 접는다. 턴이 끝나면 이 창도 닫히고 전부 집계가 된다.
+ */
+const LIVE_STEP_WINDOW = 8;
+
+function Ledger({
+  items,
+  language,
+  working = false,
+  pending = false,
+}: {
+  readonly items: readonly AgentChatTurnItem[];
+  readonly language: "en" | "ko";
+  /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
+  readonly working?: boolean;
+  /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
+  readonly pending?: boolean;
+}) {
+  const t = getT(language);
+  const segments = segmentAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0);
+  if (segments.length === 0 && !pending) return null;
+  return (
+    <div className="agent-chat-ledger">
+      {segments.map((segment, index) => (
+        <div className="agent-chat-segment" key={index}>
+          {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
+          <Tally groups={segment.groups} folded={segment.folded} language={language} />
+          {segment.inline.map((item, at) => <Step key={`in-${at}`} item={item} language={language} />)}
+          {segment.running.map((item, at) => <Step key={`run-${at}`} item={item} language={language} />)}
+        </div>
+      ))}
+      {pending ? (
+        <div className="agent-chat-step is-running">
+          <span className="agent-chat-step-orbit" aria-hidden="true" />
+          <span className="agent-chat-step-verb" role="status">{t("terminal.chat.stepThinking")}</span>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 끝난 평범한 스텝의 한 줄 집계 — "파일 2개 읽음 · 셸 1회 실행". 도구를 하나하나 세우면 긴 턴이
+ * 읽히지 않으므로 일상은 여기로 접히고, 예외(진행 중·실패·Theater 밖)만 자기 줄을 지킨다.
+ *
+ * 접힌 것은 감춘 것이 아니라 접은 것이다 — 줄 자체가 열쇠다. 누르면 그 집계가 세고 있던 스텝이
+ * 순서대로 펼쳐진다. 그래서 이 줄은 눌린다는 사실을 스스로 말해야 한다: 꺾쇠 하나와 hover에서
+ * 밝아지는 잉크.
+ */
+function Tally({
+  groups,
+  folded,
   language,
 }: {
-  readonly turn: AgentChatTurn;
-  readonly ledger: readonly AgentChatTurnItem[];
+  readonly groups: readonly AgentChatStepGroup[];
+  readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
-  const ok = turn.state === "done";
-  // 소요 시간은 턴 헤드가 말한다 — 영수증 요약은 스텝 수만 맡아 중복을 피한다.
+  if (groups.length === 0) return null;
+  const clauses = groups.map((group, index) => (
+    <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
+      {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
+      <span>{groupLabel(group, t)}</span>
+    </React.Fragment>
+  ));
+  // 펼칠 것이 없으면 눌리는 척하지 않는다 — 열쇠 없는 자물쇠는 어포던스가 아니라 거짓말이다.
+  if (folded.length === 0) return <div className="agent-chat-tally">{clauses}</div>;
   return (
-    <details className="agent-chat-receipt">
-      <summary aria-label={t("terminal.chat.receiptAria")}>
-        <span className="agent-chat-receipt-chev" aria-hidden="true">▸</span>
-        <span className={`agent-chat-receipt-mark${ok ? "" : " is-error"}`} aria-hidden="true">{ok ? "✓" : "✕"}</span>
-        <span>{ledger.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: ledger.length })}</span>
+    <details className="agent-chat-tally-fold">
+      <summary className="agent-chat-tally" aria-label={t("terminal.chat.tallyAria")}>
+        {clauses}
+        <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
       </summary>
-      <div className="agent-chat-receipt-body">
-        {ledger.map((item, index) => item.type === "text"
-          ? <div key={index} className="agent-chat-receipt-note">{item.text}</div>
-          : (
-            <div key={index} className="agent-chat-tool">
-              <span className="agent-chat-tool-glyph" aria-hidden="true">▸</span>
-              <span className="agent-chat-tool-name">{item.name}</span>
-              {item.detail ? <span className="agent-chat-tool-detail">{item.detail}</span> : null}
-            </div>
-          ))}
+      <div className="agent-chat-tally-body">
+        {folded.map((item, index) => <Step key={index} item={item} language={language} />)}
       </div>
     </details>
   );
 }
 
-function findLastTool(items: readonly AgentChatTurnItem[]): AgentChatTurnItem | null {
-  for (let index = items.length - 1; index >= 0; index -= 1) {
-    if (items[index]?.type === "tool") return items[index] ?? null;
-  }
-  return null;
+/** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
+function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
+  const plural = group.count === 1 ? "one" : "other";
+  const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
+  return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
+}
+
+/** 스텝 한 줄 — 동사·좌표·결과. 진행 중인 줄만 라이브 리전으로 읽힌다. */
+function Step({
+  item,
+  language,
+}: {
+  readonly item: AgentChatTurnItem;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const running = item.state === "running";
+  const failed = item.state === "fail";
+  // 결과를 못 받고 닫힌 스텝은 성공도 실패도 아니다 — 시제도 체크 표시도 붙이지 않는다.
+  // 과거형 동사와 ✓, 그리고 입력에서 뽑은 +N은 셋 다 "그 일이 일어났다"는 주장이고,
+  // 우리가 아는 것은 호출이 나갔다는 사실뿐이다.
+  const unconfirmed = item.state === "done";
+  const name = item.name ?? "";
+  const verb = running ? runningVerb(name, language) : unconfirmed ? name : pastVerb(name, language);
+  // 결과 칩은 변경 장부가 있으면 줄 수를, 없으면 도구가 돌려준 한 줄 요약을 보인다.
+  // 실패는 언제나 요약이 이긴다 — 무엇이 잘못됐는지가 얼마나 썼는지보다 먼저다.
+  const outcome = failed
+    ? item.result ?? t("terminal.chat.stepFailed")
+    : unconfirmed
+      ? t("terminal.chat.stepUnconfirmed")
+      : item.change && (item.change.added > 0 || item.change.removed > 0)
+        ? formatChange(item.change)
+        : item.result ?? null;
+  return (
+    <div className={`agent-chat-step is-${item.state ?? "done"}`}>
+      {running
+        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+        : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : unconfirmed ? "·" : "✓"}</span>}
+      <span className="agent-chat-step-verb" {...(running ? { role: "status" } : {})}>{verb}</span>
+      {item.detail ? <span className="agent-chat-step-object">{item.detail}</span> : null}
+      {item.outside ? (
+        <span className="agent-chat-step-outside" title={t("terminal.chat.outsideTheaterTitle")}>
+          {t("terminal.chat.outsideTheater")}
+        </span>
+      ) : null}
+      {outcome ? (
+        <span className={`agent-chat-step-out${failed ? " is-error" : ""}${unconfirmed ? " is-unknown" : ""}`}>
+          {outcome}
+        </span>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 끝난 턴의 과정 접힘 — 요약 줄이 곧 턴의 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다.
+ * 스텝 수는 세지 않는다: 몇 번 도구를 불렀는지는 접어 둔 사람이 궁금해할 값이 아니다.
+ * 실패한 스텝 수만 예외다 — 접힘이 실패를 삼키면 이 문법을 세운 이유가 사라진다.
+ */
+function WorkFold({
+  durationMs,
+  failed,
+  error,
+  language,
+  children,
+}: {
+  readonly durationMs: number | undefined;
+  readonly failed: number;
+  readonly error: boolean;
+  readonly language: "en" | "ko";
+  readonly children: React.ReactNode;
+}) {
+  const t = getT(language);
+  const label = durationMs !== undefined
+    ? t("terminal.chat.workedFor", { duration: formatDuration(durationMs) })
+    : t("terminal.chat.workedLabel");
+  return (
+    <details className="agent-chat-fold">
+      <summary aria-label={t("terminal.chat.foldAria")}>
+        <span className="agent-chat-fold-label">{label}</span>
+        {failed > 0 ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldFailed", { count: failed })}</span> : null}
+        {failed === 0 && error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
+        <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
+      </summary>
+      <div className="agent-chat-fold-body">{children}</div>
+    </details>
+  );
+}
+
+/** 동사는 계열이 정한다 — 집계 줄과 스텝 줄이 같은 어휘를 쓰도록 한 축에서 온다. */
+function runningVerb(name: string, language: "en" | "ko"): string {
+  const t = getT(language);
+  const family = agentChatToolFamily(name);
+  return family === "other"
+    ? t("terminal.chat.activityUsing", { name })
+    : t(`terminal.chat.verb.${family}.now` as Parameters<typeof t>[0]);
+}
+
+function pastVerb(name: string, language: "en" | "ko"): string {
+  const t = getT(language);
+  const family = agentChatToolFamily(name);
+  return family === "other" ? name : t(`terminal.chat.verb.${family}.past` as Parameters<typeof t>[0]);
+}
+
+function formatChange(change: AgentChatChange): string {
+  const parts: string[] = [];
+  if (change.added > 0) parts.push(`+${change.added}`);
+  if (change.removed > 0) parts.push(`−${change.removed}`);
+  return parts.join(" ");
 }
 
 function useTurnElapsedMs(startedAt: number | undefined, working: boolean): number {
