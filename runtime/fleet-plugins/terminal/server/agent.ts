@@ -1375,6 +1375,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const providerSession = readProviderSession(operation.payload);
       if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
       const dormant = injectOperation(operation);
+      // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
+      // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채
+      // 사이드바만 휴면이라고 말한다(이 결함의 재시작 판).
+      if (operation.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+        const adopted = observability.setTerminalSessionChatActive(operation.id, true);
+        if (adopted) observability.notifySessionUpdated(adopted);
+      }
       const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
       ctx.host.operations.patch(operation.id, { payload: toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle) });
     }

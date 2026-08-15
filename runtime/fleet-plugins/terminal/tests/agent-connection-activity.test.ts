@@ -66,6 +66,38 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ attentionPending: true, backgroundPending: true, modelActivity: "working", turnState: "ended" }))).toBe("awaiting");
   });
 
+  // assertSessionInfo 는 화이트리스트 재구성이라, 목록에 없는 필드는 서버가 실어 보내도 소실된다.
+  // 처음 인도에서 실제로 이 접합부에서 끊겼다 — 해석기만 직접 부르는 테스트는 그것을 잡지 못했으므로,
+  // 이 테스트는 서버가 보내는 모양 그대로의 DTO 를 검증기에 통과시킨 뒤 해석한다.
+  it("carries the chat axis through DTO validation into the runtime resolver", () => {
+    const dto = assertSessionInfo({
+      sessionId: "chat-dto",
+      cwdLabel: "project",
+      status: "dormant",
+      turnState: "ended",
+      chatActive: true,
+      chatWorking: true,
+      createdAt: 1_000,
+      resumeAvailable: true,
+    }, 200);
+
+    expect(dto.chatActive).toBe(true);
+    expect(dto.chatWorking).toBe(true);
+    expect(sessionRuntime(dto)).toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
+
+    // 채팅이 인수하지 않은 같은 모양은 종전대로 휴면이다.
+    const plain = assertSessionInfo({
+      sessionId: "plain-dto",
+      cwdLabel: "project",
+      status: "dormant",
+      turnState: "ended",
+      createdAt: 1_000,
+      resumeAvailable: true,
+    }, 200);
+    expect(plain.chatActive).toBeUndefined();
+    expect(sessionRuntime(plain)).toEqual({ lifecycle: "dormant" });
+  });
+
   // 이 결함의 본체: 채팅이 인수한 세션은 PTY 가 접혀 dormant 여도 실행 표면이 살아 있다.
   // 예전에는 dormant 가 활동 해석의 첫 분기라 아래 신호를 전부 삼켰다.
   it("keeps a chat-adopted session live while its PTY is gone", () => {
