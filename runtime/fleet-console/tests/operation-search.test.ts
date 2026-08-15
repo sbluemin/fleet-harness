@@ -107,7 +107,7 @@ describe("operation search", () => {
     ]);
   });
 
-  it("resolves entry activity: live status wins, resumeAvailable falls back to dormant, otherwise idle", () => {
+  it("resolves entry activity: live status wins, restored markers fall back to ended, otherwise idle", () => {
     const entries = buildOperationSearchEntries(makeState([
       makeOperation("op-live", "theater-alpha", "Live"),
       { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
@@ -122,7 +122,7 @@ describe("operation search", () => {
 
     expect(entries.map((entry) => [entry.operationId, entry.activity])).toEqual([
       ["op-live", "idle"],
-      ["op-restored", "dormant"],
+      ["op-restored", "ended"],
       ["op-plain", "idle"],
     ]);
     expect(withStatus.map((entry) => [entry.operationId, entry.activity])).toEqual([

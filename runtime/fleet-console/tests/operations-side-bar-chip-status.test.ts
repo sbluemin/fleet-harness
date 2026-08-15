@@ -22,7 +22,7 @@ describe("OperationsSideBarChip activity status", () => {
   it.each([
     ["running", "tenant-beacon is-turn-running", "Running"],
     ["awaiting", "tenant-beacon is-awaiting", "Awaiting input"],
-    ["dormant", "tenant-beacon is-dormant", "Dormant"],
+    ["ended", "tenant-beacon is-ended", "Ended"],
     ["idle", "tenant-beacon is-idle", "Idle"],
     [undefined, "tenant-beacon is-idle", "Idle"],
   ] as const)("renders %s as the matching status class and accessible label", (status, expectedClass, expectedLabel) => {
@@ -78,7 +78,7 @@ describe("Operation runtime contract", () => {
     // @ts-expect-error dormant 에는 activity 가 없다
     expect(dormant.activity).toBeUndefined();
     // @ts-expect-error 활동 어휘에서 dormant 는 빠졌다
-    const invalid: OperationRuntimeState = { lifecycle: "live", activity: "dormant" };
+    const invalid: OperationRuntimeState = { lifecycle: "live", activity: "ended" };
     expect(invalid).toBeTruthy();
     expect(running.activity).toBe("running");
   });

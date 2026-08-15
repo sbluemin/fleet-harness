@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
 import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
-import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { getGlobalSettingsStoreState, isSavingGlobalSettingsField, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
 import { EffortGaugeGlyph, EffortTrack, effortLadderPosition, gatedEffortNames } from "../components/effort-track.js";
@@ -815,13 +815,14 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
   );
 }
 
-// 시청 기록 PUT은 전역 저장 슬롯 하나뿐이라, 피처 투어 완료 저장과 겹치면 뒤쪽 호출이 거절된다.
-// 잠깐 양보한 뒤 최신 seen 목록에 키를 합쳐 다시 쓴다. 실패해도 같은 마운트에서는 상한까지만
-// 재시도해, 오프라인처럼 계속 실패하는 경우에도 요청이 무한히 돌지 않는다.
+// 시청 기록 PUT은 같은 필드에 대해 하나씩만 나가므로, 피처 투어 완료 저장과 겹치면 뒤쪽
+// 호출이 거절된다. 잠깐 양보한 뒤 최신 seen 목록에 키를 합쳐 다시 쓴다. 실패해도 같은
+// 마운트에서는 상한까지만 재시도해, 오프라인처럼 계속 실패하는 경우에도 요청이 무한히 돌지 않는다.
 async function persistEffortConfirmTipSeen(): Promise<void> {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const store = getGlobalSettingsStoreState();
-    if (store.savingField !== null) {
+    // 이 필드가 나가는 중일 때만 기다린다 — 무관한 설정의 저장을 기다릴 이유가 없다.
+    if (isSavingGlobalSettingsField("seenFeatureTours")) {
       await new Promise((resolve) => setTimeout(resolve, 40));
       continue;
     }

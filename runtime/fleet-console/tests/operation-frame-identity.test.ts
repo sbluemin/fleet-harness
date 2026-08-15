@@ -128,6 +128,35 @@ describe("OperationFrame identity rename", () => {
     expect(identityInput()).toBeNull();
   });
 
+  it("commits a captured drag when pointer capture is lost without pointerup", () => {
+    const onGeometryCommit = vi.fn();
+    renderFrame(vi.fn(), true, false, onGeometryCommit);
+    const titlebar = document.querySelector(".canvas-operation-titlebar") as HTMLElement;
+    titlebar.setPointerCapture = vi.fn();
+
+    act(() => {
+      titlebar.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 11, clientX: 20, clientY: 20, button: 0 }));
+      titlebar.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, cancelable: true, pointerId: 11, clientX: 20, clientY: 40, button: 0 }));
+      titlebar.dispatchEvent(new PointerEvent("lostpointercapture", { bubbles: true, cancelable: true, pointerId: 11 }));
+    });
+
+    expect(onGeometryCommit).toHaveBeenCalledTimes(1);
+    expect(onGeometryCommit.mock.calls[0]?.[0]).toMatchObject({ x: 0, y: 20, width: 320, height: 200 });
+  });
+
+  it("does not commit a title press that never crossed the drag threshold", () => {
+    const onGeometryCommit = vi.fn();
+    renderFrame(vi.fn(), true, false, onGeometryCommit);
+    const titlebar = document.querySelector(".canvas-operation-titlebar") as HTMLElement;
+
+    act(() => {
+      titlebar.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, cancelable: true, pointerId: 12, clientX: 20, clientY: 20, button: 0 }));
+      titlebar.dispatchEvent(new PointerEvent("lostpointercapture", { bubbles: true, cancelable: true, pointerId: 12 }));
+    });
+
+    expect(onGeometryCommit).not.toHaveBeenCalled();
+  });
+
   it("marks the frame with is-top-edge when the canvas would clip the attached caption", () => {
     renderFrame(vi.fn(), false, true);
     expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
@@ -213,7 +242,12 @@ function renderInactiveFrame(onRename: (title: string) => void): HTMLButtonEleme
   return identityTrigger();
 }
 
-function renderFrame(onRename: (title: string) => void, active: boolean, topEdge = false): void {
+function renderFrame(
+  onRename: (title: string) => void,
+  active: boolean,
+  topEdge = false,
+  onGeometryCommit: (geometry: { x: number; y: number; width: number; height: number; zIndex: number }) => void = () => {},
+): void {
   act(() => root!.render(createElement(OperationFrame, {
     topEdge,
     operation: {
@@ -244,7 +278,7 @@ function renderFrame(onRename: (title: string) => void, active: boolean, topEdge
     onRename,
     onSetAccent: () => {},
     onGeometryChange: () => {},
-    onGeometryCommit: () => {},
+    onGeometryCommit,
     children: createElement("div"),
   })));
 }

@@ -716,7 +716,12 @@ function RemoteHostsCard() {
     for (const host of hosts) {
       void probeRemoteHost(host.id, controller.signal)
         .then((result) => setReach((previous) => ({ ...previous, [host.id]: result })))
-        .catch(() => undefined);
+        // 프로브가 거부되면 이 호스트의 도달 여부는 확인되지 않은 것이다. 자리를 비워 두면
+        // 아래 행이 그것을 "응답함"으로 읽어 열기 버튼을 열어 준다 — 닿지 않는 주소로 보내는 길이다.
+        .catch(() => {
+          if (controller.signal.aborted) return;
+          setReach((previous) => ({ ...previous, [host.id]: { reachable: false, trusted: false } }));
+        });
     }
     return () => controller.abort();
   }, [hosts]);

@@ -81,6 +81,7 @@ export function App() {
   // 사용자 동작뿐이다. theaters bootstrap 같은 무관한 축에 게이트하면 그 응답이 늦거나 실패하는 동안의
   // 전환이 통째로 소실된다(Settings는 그 전에도 조작 가능하다).
   const [themeNotice, setThemeNotice] = useState<"light" | "dark" | null>(null);
+  const [pluginFailuresNotice, setPluginFailuresNotice] = useState(registry.failures.length > 0);
   const themePolarityBaselineRef = useRef<"light" | "dark" | null>(null);
   const activeThemePolarity = themePolarity(state.activeTheme);
   useEffect(() => {
@@ -388,6 +389,15 @@ export function App() {
         <ControlCurtain />
         <ControlReclaimedNotice />
         <ToastHost>
+          {/* 준비되지 않은 플러그인은 패널이 그냥 없는 것으로 보였다 — 서버 로그에만 남아
+              운영자에게는 이유가 도달하지 않았다. 한 번은 말하고 지나간다. */}
+          <Toast
+            open={pluginFailuresNotice}
+            tone="warn"
+            title={t(registry.failures.length === 1 ? "chrome.toast.pluginSkipped_one" : "chrome.toast.pluginSkipped_other", { count: registry.failures.length })}
+            message={registry.failures.map((failure) => failure.name ?? failure.id).join(", ")}
+            onDismiss={() => setPluginFailuresNotice(false)}
+          />
           <Toast
             open={themeNotice !== null}
             tone="info"

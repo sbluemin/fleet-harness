@@ -36,6 +36,7 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
 ]);
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
+const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
@@ -917,7 +918,7 @@ describe("Instrument core design contract", () => {
     const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
     const caption = components.match(/\.triage-side-bar-caption \{[^}]*\}/)?.[0] ?? "";
 
-    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "dormant")');
+    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "ended")');
     expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
     // 선반은 Operation 메뉴를 갖지 않는 표면이므로 브라우저 메뉴도 열지 않는다 — 칩의
     // menuEnabled=false는 핸들러를 떼기만 하므로 억제는 선반 자신이 진다.
@@ -1011,8 +1012,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".tenant-beacon.is-dormant,\n.canvas-triage-map-dot.is-dormant,\n.side-bar-status-section--dormant {");
-    expect(components).toContain("--activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
+    expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-triage-map-dot.is-ended,\n.side-bar-status-section--ended {");
+    expect(components).toContain("--activity-color: var(--ink-fog);");
     expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
     expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
@@ -1075,6 +1076,7 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // Doctrine: scrim-backed popup cards, floating menus, and anchored guidance cards
     // composite their glass layers over an opaque var(--ink-deep) final layer —
     // maritime/carbon/whites glass tokens carry 60~82% alpha, so without the underlay they
@@ -1111,6 +1113,19 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--ink-deep\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--ink-deep\);/);
+    // Quaker aides float over the Map — the same glass token that is opaque on Instrument
+    // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
+    for (const selector of [
+      ".scuttlebutt-bird-tag",
+      ".scuttlebutt-bird-say",
+      ".scuttlebutt-arrival-bubble",
+      ".scuttlebutt-answer-bubble",
+      ".scuttlebutt-departure-bubble",
+      ".scuttlebutt-chat-card",
+    ]) {
+      const scoped = selector.replace(/\./g, "\\.");
+      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--ink-deep\\);`));
+    }
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
@@ -1924,6 +1939,9 @@ describe("Instrument core design contract", () => {
     // Tactical grid/rows 행 보폭은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
     expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
     expect(source("canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
+    // Station Keeping도 같은 32px를 충돌 상자에 넣는다 — 본문 AABB만 보면 아래 캡션이 위를 침범한다.
+    expect(source("canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
+    expect(source("canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");

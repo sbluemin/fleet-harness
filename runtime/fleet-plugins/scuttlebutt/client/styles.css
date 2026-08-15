@@ -32,7 +32,10 @@
   left: 50%;
   top: calc(100% - 8px);
   transform: translateX(-50%);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
@@ -56,7 +59,10 @@
   left: 50%;
   bottom: 96%;
   transform: translate(-50%, -4px);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -378,7 +384,13 @@
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--positive) 50%, var(--hairline));
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong));
+  /* 팝업 판독성 계약: positive wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong)),
+      color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: 12px;
@@ -454,7 +466,10 @@
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: 12px;
@@ -629,7 +644,13 @@
      alpha 조절로 hue 80~90(amber)을 유지한다(awaiting 비콘의 color-mix(aurora, transparent)와 동형). */
   border: 1px solid color-mix(in oklch, var(--warn) 55%, transparent);
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong));
+  /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong)),
+      color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong))
+    ),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: 12px;
@@ -727,7 +748,10 @@
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-lg);
-  background: var(--surface-glass-strong);
+  /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
+  background:
+    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
+    var(--ink-deep);
   box-shadow: var(--shadow-floating);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }

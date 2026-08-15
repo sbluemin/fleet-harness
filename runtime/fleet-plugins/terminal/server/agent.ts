@@ -27,7 +27,7 @@ import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
-import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
+import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromCliId, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
@@ -140,14 +140,16 @@ export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBack
 }
 
 /**
- * 공급자 기록이 없는 agent Operation을 순정 Claude로 메운다. 이 축이 생기기 전에 실행된
- * Operation의 실제 모델은 어디에도 남아 있지 않지만, 그때도 크롬은 Claude 마크를 보여 주고
- * 있었으므로 같은 사실로 메워야 새 실행과 표현이 갈라지지 않는다.
+ * 공급자 기록이 없는 agent Operation은 실행 CLI에서만 메운다. 모델 id가 없으면 Claude가
+ * 아니다 — 모르면 필드를 생략해 크롬이 플러그인 종류 아이콘으로 물러나게 한다.
  */
 export function buildAgentLaunchProviderBackfillPatch(operation: AgentLaunchKindBackfillOperation): Pick<OperationPatchInput, "payload"> | null {
   if (operation.pluginId !== TERMINAL_PLUGIN_ID || operation.type !== AGENT_OPERATION_TYPE) return null;
   if (isAgentLaunchProvider(operation.payload[AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY])) return null;
-  return { payload: { ...operation.payload, [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: "claude" } };
+  const cliId = typeof operation.payload.cliId === "string" ? operation.payload.cliId : undefined;
+  const provider = agentLaunchProviderFromCliId(cliId);
+  if (!provider) return null;
+  return { payload: { ...operation.payload, [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: provider } };
 }
 
 // 로스터는 호출 시점에 해석한다. 노출 선별은 세션이 도는 동안에도 사용자가 바꿀 수 있고,
@@ -639,7 +641,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
         launchAttachments.unreserve(launchOptions.attachmentIds);
       }
-      ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
+      // 설치되지 않은 것과 로그인되지 않은 것은 사용자가 할 일이 서로 다르다. 여기서 이미
+      // 둘을 구분해 알고 있으므로, 하나의 코드로 뭉개면 그 구분이 화면에서 사라진다.
+      ctx.host.http.writeJson(res, 409, { error: meta && !meta.available ? "agent_cli_not_installed" : "agent_cli_signed_out" });
       return;
     }
     const sessionId = crypto.randomUUID();
@@ -732,7 +736,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
-      ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+      // 실패의 종류만 내보낸다. spawn 오류 메시지에는 실행 파일의 절대 경로가 실려 있어
+      // 그대로 실으면 경로가 브라우저 DTO로 새어 나간다 — errno는 경로를 담지 않는다.
+      ctx.host.http.writeJson(res, 503, { error: classifyLaunchSpawnFailure(error) });
     }
   }
 
@@ -1355,7 +1361,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         terminalRuntime.invalidateTicketsForSession(operationId);
         observability.notifySessionUpdated(dormant);
         const exitCwd = readPayloadString(ctx.host.operations.get(operationId)?.payload ?? {}, "cwd") ?? "";
-        ctx.host.operations.patch(operationId, { payload: toOperationPayload(ctx.host.operations.get(operationId)?.payload, exitCwd, dormant, providerSession, observability.getDurableOperation(operationId)?.providerTitle) });
+        ctx.host.operations.patch(operationId, {
+          payload: {
+            ...toOperationPayload(ctx.host.operations.get(operationId)?.payload, exitCwd, dormant, providerSession, observability.getDurableOperation(operationId)?.providerTitle),
+            restoredDormant: true,
+          },
+        });
       }
     } else {
       observability.removeTerminalSession(operationId);
@@ -1483,7 +1494,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // 여기서 걸러 내면 그 Operation은 관측 세션 없이 남아 활동 보고를 받을 자리가 사라지고,
       // 첫 메시지가 chat_activity_unavailable로 거절된다(영영 시작하지 못하는 패널).
       const chatBorn = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true;
-      if ((!providerSession && !chatBorn) || observability.getTerminalSessionInfo(operation.id)) continue;
+      if (observability.getTerminalSessionInfo(operation.id)) continue;
+      if (!providerSession && !chatBorn) {
+        ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, restoredDormant: true } });
+        continue;
+      }
       const dormant = injectOperation(operation);
       // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
       // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채
@@ -1493,7 +1508,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         if (adopted) observability.notifySessionUpdated(adopted);
       }
       const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
-      ctx.host.operations.patch(operation.id, { payload: toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle) });
+      ctx.host.operations.patch(operation.id, {
+        payload: {
+          ...toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle),
+          restoredDormant: true,
+        },
+      });
     }
   }
 
@@ -1556,7 +1576,7 @@ export function createTerminalWikiToolSpecs(fleetDataDir: string) {
 
 function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
-  for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle"]) {
+  for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle", "restoredDormant"]) {
     delete payload[key];
   }
   return {
@@ -1660,3 +1680,17 @@ function readHookPrompt(value: unknown): string | undefined {
   }
 }
 
+
+/**
+ * spawn 실패를 브라우저가 문장으로 옮길 수 있는 코드로 분류한다.
+ *
+ * 원본 메시지를 그대로 실으면 실행 파일의 절대 경로가 따라 나가므로 errno만 읽는다.
+ * 분류되지 않는 실패는 예전과 같은 `terminal_unavailable`로 남는다 — 새 어휘를 추측으로
+ * 넓히면 화면이 사실이 아닌 원인을 말하게 된다.
+ */
+function classifyLaunchSpawnFailure(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "ENOENT") return "agent_cli_binary_missing";
+  if (code === "EACCES" || code === "EPERM") return "agent_cli_not_executable";
+  return "terminal_unavailable";
+}

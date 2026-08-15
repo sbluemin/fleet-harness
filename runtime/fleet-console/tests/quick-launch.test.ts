@@ -729,9 +729,9 @@ describe("buildQuickLaunchEffortDeck", () => {
 });
 
 describe("isMentionSelectable", () => {
-  it("blocks awaiting only — dormant resumes on delivery", () => {
+  it("blocks awaiting only — ended resumes on delivery", () => {
     expect(isMentionSelectable("awaiting")).toBe(false);
-    for (const activity of ["idle", "running", "dormant", "background"] as const) {
+    for (const activity of ["idle", "running", "ended", "background"] as const) {
       expect(isMentionSelectable(activity), activity).toBe(true);
     }
   });
@@ -754,7 +754,7 @@ describe("buildQuickLaunchMentionGroups", () => {
     expect(groups.map((group) => group.theaterId)).toEqual(["th-a", "th-b"]);
     expect(groups.flatMap((group) => group.entries.map((entry) => entry.operationId))).toEqual(["op-live", "op-dormant"]);
     expect(groups[0]?.entries[0]?.activity).toBe("running");
-    expect(groups[1]?.entries[0]?.activity).toBe("dormant");
+    expect(groups[1]?.entries[0]?.activity).toBe("ended");
   });
 
   it("filters by query across name and theater label", () => {

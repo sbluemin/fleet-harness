@@ -142,7 +142,7 @@ export function TriageSideBar({
   // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const isDormantEntry = (entry: SideBarEntry): boolean =>
-    resolveOperationActivity(entry.operation, operationRuntime) === "dormant";
+    resolveOperationActivity(entry.operation, operationRuntime) === "ended";
   const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
   const minimizedSection: StatusSection = {
     status: "minimized",
@@ -151,10 +151,10 @@ export function TriageSideBar({
   };
   const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
   const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
-  const livingSections = sections.filter((section) => section.status !== "dormant");
-  const dormantSection = sections.find((section) => section.status === "dormant");
-  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "dormant" | "minimized" = "none") => {
-    const dormant = shelf === "dormant";
+  const livingSections = sections.filter((section) => section.status !== "ended");
+  const dormantSection = sections.find((section) => section.status === "ended");
+  const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none") => {
+    const dormant = shelf === "ended";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
       ?? operationAccentFromNode(entry.operation);
     // 휴면 plugin에 resume 훅이 없으면 지목해 dormant 프레임의 자체 재개 UI를 보인다 —
@@ -238,7 +238,7 @@ export function TriageSideBar({
               section={dormantSection}
               defaultCollapsed
             >
-              {dormantSection.entries.map((entry, index) => renderChip(entry, index, "dormant"))}
+              {dormantSection.entries.map((entry, index) => renderChip(entry, index, "ended"))}
             </StatusSectionSlot>
           </ol>
         </footer>

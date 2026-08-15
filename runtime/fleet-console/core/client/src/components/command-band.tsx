@@ -204,7 +204,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       const operationId = commandBandRenameCommitTarget(renameTargetOperationIdRef.current, displayedOperationIdRef.current);
       renameTargetOperationIdRef.current = null;
       if (!operationId) return;
-      void renameOperation(operationId, title).then(() => fetchOperations(null)).then(hydrateOperations).catch(() => {});
+      void renameOperation(operationId, title)
+        .then(() => fetchOperations(null))
+        .then(hydrateOperations)
+        .catch(() => { void fetchOperations(null).then(hydrateOperations); });
     },
   });
 

@@ -110,31 +110,26 @@ export function JobStatusDock({
           )}
         </div>
       )}
-      <div
-        role="button"
-        tabIndex={0}
-        className={`skills-dock-summary${isOpen ? " is-open" : ""}`}
-        aria-expanded={isOpen}
-        onClick={toggle}
-        onKeyDown={(e) => {
-          // 자식 버튼(Dismiss/Retry)에서 버블링된 키 이벤트가 도크 토글을 삼키지 않도록,
-          // 요약 바 자체에 포커스가 있을 때만 Enter/Space를 처리한다.
-          if (e.target !== e.currentTarget) return;
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            toggle();
-          }
-        }}
-      >
-        <span className={dotClass} aria-hidden="true" />
-        <span className={labelClass} aria-live="polite">{label}</span>
-        {status === "running" && lines.length > 0 && (
-          <span className="skills-dock-count">
-            {t(lines.length === 1 ? "skills.status.lines_one" : "skills.status.lines_other", {
-              count: lines.length,
-            })}
-          </span>
-        )}
+      {/* 예전에는 이 바 자체가 role="button"이면서 안에 Dismiss·Retry 버튼을 품어, 활성화 대상이
+          둘로 갈리는 중첩 인터랙션이었다(키 이벤트를 손으로 걸러내던 자리가 그 증거다). 토글을
+          형제 버튼으로 꺼내면 셋이 나란한 컨트롤이 되고 키보드 처리는 버튼 기본 동작이 맡는다. */}
+      <div className={`skills-dock-summary${isOpen ? " is-open" : ""}`}>
+        <button
+          type="button"
+          className="skills-dock-toggle"
+          aria-expanded={isOpen}
+          onClick={toggle}
+        >
+          <span className={dotClass} aria-hidden="true" />
+          <span className={labelClass} aria-live="polite">{label}</span>
+          {status === "running" && lines.length > 0 && (
+            <span className="skills-dock-count">
+              {t(lines.length === 1 ? "skills.status.lines_one" : "skills.status.lines_other", {
+                count: lines.length,
+              })}
+            </span>
+          )}
+        </button>
         {status === "done" && (
           <button
             type="button"

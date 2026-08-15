@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/src/canvas/canvas-store.js";
 import { getIdleArrivalIds, markIdleArrival } from "../core/client/src/operation-idle-arrival.js";
 import { requestSideBarOperationAction } from "../core/client/src/sidebar/interaction.js";
+import { findAccessibilityViolations, formatAccessibilityViolations } from "./helpers/accessibility-rules.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";
 import {
   getSideBarStatusSectionCollapsed,
@@ -87,7 +88,7 @@ describe("OperationsSideBar STATUS axis", () => {
       "BACKGROUND",
       "IDLE",
       "Minimized",
-      "DORMANT",
+      "ENDED",
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').style.getPropertyValue("--user-accent")).toBe("var(--id-rose)");
@@ -495,7 +496,7 @@ describe("OperationsSideBar STATUS axis", () => {
     setSideBarStatusAxis(true);
     renderSideBar([operation]);
 
-    expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--dormant")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--ended")).not.toBeNull();
 
     act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "idle" } } }));
 
@@ -531,12 +532,12 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(caret.querySelectorAll("circle")).toHaveLength(3);
     expect(caret.querySelector("path")).toBeNull();
 
-    act(() => required<HTMLElement>(".side-bar-theater-header").click());
+    act(() => required<HTMLElement>(".side-bar-theater-activate").click());
 
     // 활성 Theater 행 클릭은 접기 토글만 수행한다 — 재선택하지 않는다.
     // (비활성 Theater 클릭은 선택만 하고 접기 상태를 건드리지 않는 것이 행 제스처 계약이다.)
     expect(onSelectTheater).not.toHaveBeenCalled();
-    expect(required<HTMLElement>(".side-bar-theater-header").getAttribute("aria-expanded")).toBe("false");
+    expect(required<HTMLElement>(".side-bar-theater-activate").getAttribute("aria-expanded")).toBe("false");
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
   });
 
@@ -545,11 +546,34 @@ describe("OperationsSideBar STATUS axis", () => {
     const onSelectTheater = vi.fn();
     renderSideBar([makeOperation("only", null)], [], onSelectTheater, "theater-other");
 
-    act(() => required<HTMLElement>(".side-bar-theater-header").click());
+    act(() => required<HTMLElement>(".side-bar-theater-activate").click());
 
     expect(onSelectTheater).toHaveBeenCalledWith("theater-a");
     // 비활성 클릭=선택만 — 접힘 영속 키는 그대로 남는다.
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
+  });
+
+  it("keeps the rendered sidebar free of the accessibility defects that shipped here", () => {
+    renderSideBar([makeOperation("only", null)], []);
+
+    // 행 전체가 role="button"이면서 정렬·새 Operation·액션 버튼을 품고 있던 구조가 여기서 걸린다.
+    // Operation 칩은 같은 결함의 다섯 번째 인스턴스이지만 rename 입력·드래그·재배치 키가 한
+    // 요소에 얽혀 있어 아직 풀지 못했다. 지금 상태를 고정해 악화만 막는다 — 이 목록은
+    // 줄어들기만 해야 하고, 새 표면을 여기 더하는 것은 계약 위반이다.
+    const KNOWN_UNFIXED = ["side-bar-chip"];
+    const violations = findAccessibilityViolations(container!)
+      .filter((violation) => !KNOWN_UNFIXED.some((known) => violation.detail.includes(known)));
+    expect(formatAccessibilityViolations(violations)).toBe("");
+  });
+
+  it("holds the known-unfixed list at exactly the Operation chip", () => {
+    renderSideBar([makeOperation("only", null)], []);
+
+    const nested = findAccessibilityViolations(container!).filter((violation) => violation.rule === "nested-interactive");
+    // 칩 하나가 minimize·close 두 버튼을 품는다. 이 수가 늘면 새 중첩이 들어온 것이고,
+    // 0이 되면 칩이 풀린 것이니 위 목록에서 빼야 한다.
+    expect(nested.every((violation) => violation.detail.includes("side-bar-chip"))).toBe(true);
+    expect(nested).toHaveLength(2);
   });
 });
 

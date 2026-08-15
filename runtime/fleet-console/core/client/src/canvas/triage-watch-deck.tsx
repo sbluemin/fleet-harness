@@ -235,7 +235,7 @@ const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivityVisual, number> = {
   running: 1,
   background: 2,
   idle: 3,
-  dormant: 4,
+  ended: 4,
 };
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;
@@ -267,6 +267,21 @@ export interface TriageDeckZoomControl {
   readonly attachWheelListener: (element: HTMLElement) => () => void;
 }
 
+// 밀도 신호 — 줌 컨트롤러가 판의 칸 크기를 실제로 바꾼 프레임에만 울린다. store의 라이브 배율은
+// 표시용으로 소수 첫째 자리까지만 실리므로(매 프레임 emit이 캔버스를 통째로 리렌더하는 것을 막는
+// 장치다) 트랙패드의 작은 델타를 놓치고, 칸 크기를 정하는 CSS 변수는 줌 컨트롤러가 캔버스에 쓴다 —
+// 덱이 그 요소를 알아내 관찰하는 것은 배치에 기대는 결합이라, 값을 쓰는 쪽이 직접 알린다.
+const deckDensityListeners = new Set<() => void>();
+
+function subscribeDeckDensity(listener: () => void): () => void {
+  deckDensityListeners.add(listener);
+  return () => { deckDensityListeners.delete(listener); };
+}
+
+function emitDeckDensityChange(): void {
+  for (const listener of [...deckDensityListeners]) listener();
+}
+
 const TRIAGE_DECK_ZOOM_TWEEN_FACTOR = 0.18;
 const TRIAGE_DECK_ZOOM_TWEEN_EPSILON = 0.002;
 const TRIAGE_DECK_ZOOM_WHEEL_SPEED = 0.0022;
@@ -293,9 +308,24 @@ export function useTriageDeckZoomControl(): {
     zoomRef.current = zoom;
     const owner = ownerRef.current;
     if (owner) {
-      owner.style.setProperty("--triage-card-min", `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`);
-      owner.style.setProperty("--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`);
-      owner.style.setProperty("--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`);
+      // 칸 크기를 정하는 값 중 하나라도 실제로 달라진 프레임에만 밀도 신호를 울린다. 폭만 비교하면
+      // 같은 폭 구간 안에서 행 높이만 넘어가는 델타(예: 1.0020 → 1.0030은 폭을 261px로 둔 채 행
+      // 상한을 210px → 211px로 옮긴다)를 놓쳐, 칸이 바뀌는데 확대가 살아남는다. 최초 부착(이전 값이
+      // 비어 있는 상태)은 전환이 아니라 초기화이므로 울리지 않는다.
+      const sizing: readonly (readonly [string, string])[] = [
+        ["--triage-card-min", `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`],
+        ["--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`],
+        ["--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`],
+      ];
+      let initialised = true;
+      let resized = false;
+      for (const [name, value] of sizing) {
+        const previous = owner.style.getPropertyValue(name);
+        if (previous === "") initialised = false;
+        else if (previous !== value) resized = true;
+        owner.style.setProperty(name, value);
+      }
+      if (initialised && resized) emitDeckDensityChange();
     }
     // 지도 판정은 프레임 정확도로 반영한다 — tween이 임계를 가로지르는 중간에도
     // 카드↔지도 전환이 정확한 프레임에 일어나야 한다.
@@ -538,6 +568,11 @@ export function TriageWatchDeck({
   const mapDragRef = useRef<TriageMapDragState | null>(null);
   const [draggingMarkerId, setDraggingMarkerId] = useState<string | null>(null);
   const quicklookTimerRef = useRef<number | null>(null);
+  // 확대를 붙들고 있는 Operation — 드웰 무장 시점부터 기록한다. 확대가 존재할 근거는 "포인터(또는
+  // 키보드 포커스)가 그 칸 위에 있다"는 사실이므로, 해제 판정은 그 사실을 직접 물어야 한다.
+  // 상태(quicklook)는 드웰이 끝나야 채워지므로 무장 구간을 덮지 못하고, ref는 렌더를 기다리지
+  // 않아 같은 프레임의 포인터 이벤트에서도 최신이다.
+  const armedQuicklookRef = useRef<string | null>(null);
   // rect 기록 effect는 quicklook을 deps로 갖지 않으므로(스크롤/리사이즈마다 재구독 방지),
   // 스테일 클로저 없이 현재 값을 읽도록 ref 미러를 둔다.
   const quicklookRef = useRef<typeof quicklook>(null);
@@ -703,11 +738,13 @@ export function TriageWatchDeck({
 
   const dismissQuicklook = () => {
     clearQuicklookTimer();
+    armedQuicklookRef.current = null;
     setQuicklook(null);
     setMapQuicklook(null);
   };
 
   const armQuicklook = (operationId: string, card: HTMLElement, dwell: boolean) => {
+    armedQuicklookRef.current = operationId;
     const fire = () => {
       quicklookTimerRef.current = null;
       const grid = gridRef.current;
@@ -766,6 +803,32 @@ export function TriageWatchDeck({
     // 확대창이 주인 없는 채로 남는다(후자는 pool 슬롯까지 카드와 다투게 된다).
     dismissQuicklook();
   }, [visible, stagedOperationId, mapMode]);
+
+  // 밀도 전환은 한 칸을 들여다보는 조작이 아니라 판 전체를 다시 짜는 조작이다 — 그동안 한 칸만
+  // 확대된 채로 두면 그 칸이 이웃을 덮어, 사용자가 방금 바꾼 밀도를 읽을 수 없다. 그리고 덱 줌은
+  // 덱 위에서만 발화하므로 조작 내내 포인터는 어떤 칸 위에 있다: 이 충돌은 예외가 아니라 밀도
+  // 조작의 기본값이다. 확대를 걷고, 포인터가 실제로 움직이기 전까지는 다시 무장하지 않는다 —
+  // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니라 판이 흘려보낸 칸이다.
+  const zoomSuppressRef = useRef(false);
+  const releaseForDensityChange = () => {
+    zoomSuppressRef.current = true;
+    dismissQuicklook();
+  };
+  // 칸 크기가 실제로 달라진 모든 전환을 이 구독이 받는다 — 표시값이 움직이지 않는 작은 델타까지.
+  const releaseRef = useRef(releaseForDensityChange);
+  releaseRef.current = releaseForDensityChange;
+  useEffect(() => subscribeDeckDensity(() => { releaseRef.current(); }), []);
+  // 표시값 경로도 함께 둔다 — 줌 컨트롤러가 아직 어떤 요소도 소유하지 않은 구간(덱 마운트 전
+  // 프리셋 순환)에서는 CSS 변수 쓰기가 일어나지 않아 위 신호가 울리지 않는다.
+  const deckZoomLive = useSyncExternalStore(subscribeTriage, getTriageDeckZoomLive, () => TRIAGE_DECK_ZOOM_DEFAULT);
+  const previousZoomRef = useRef(deckZoomLive);
+  useEffect(() => {
+    // 마운트는 밀도 전환이 아니다 — 여기서 억제를 걸면 덱에 처음 들어와 칸에 커서를 얹는 평범한
+    // 진입까지 확대가 열리지 않는다. 실제로 값이 움직인 전환에만 반응한다.
+    if (previousZoomRef.current === deckZoomLive) return;
+    previousZoomRef.current = deckZoomLive;
+    releaseForDensityChange();
+  }, [deckZoomLive]);
 
   // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
   // 점은 %로 재배치되는데 확대창만 옛 px에 남으므로, 재계산 대신 해제해 유령 창을 만들지 않는다.
@@ -840,12 +903,46 @@ export function TriageWatchDeck({
       if (!cell || cellOf(event.relatedTarget) === cell) return;
       const operationId = cell.dataset.triageDeckCard;
       if (!operationId || deckPointerRef.current.arriving === operationId) return;
+      // 밀도를 막 바꾼 직후의 진입은 포인터가 아니라 판이 움직여 생긴 것이다 — 겨눔은 다음
+      // pointermove가 증명한다.
+      if (zoomSuppressRef.current) return;
       deckPointerRef.current.arm(operationId, cell, true);
     };
-    const onPointerOut = (event: PointerEvent) => {
-      const cell = cellOf(event.target);
-      if (!cell || cellOf(event.relatedTarget) === cell) return;
+    // 확대를 붙들 자격 — 포인터가 그 칸 안에 있거나, 키보드 포커스가 그 칸을 잡고 있어야 한다.
+    // 포커스 예외가 없으면 키보드로 연 확대가 무관한 포인터 이동 한 번에 걷힌다.
+    const holds = (node: EventTarget | null, operationId: string): boolean =>
+      cellOf(node)?.dataset.triageDeckCard === operationId;
+    // 포커스가 확대를 붙들 수 있는 것은 키보드로 옮겨온 포커스뿐이다 — 무장 경로(onFocus)와 같은
+    // :focus-visible 술어를 쓴다. 포인터가 남긴 포커스까지 인정하면, 확대된 칸의 캡션 컨트롤을
+    // 누른 뒤(닫기 첫 클릭은 확인만 무장하고 칸이 그대로 남는다) 포인터를 치워도 해제가 막혀
+    // 이 변경이 없애려는 고착이 그대로 되살아난다.
+    const keyboardHolds = (operationId: string): boolean => {
+      const active = grid.ownerDocument.activeElement;
+      return active instanceof Element && active.matches(":focus-visible") && holds(active, operationId);
+    };
+    // 이탈 판정은 "떠나는 칸"이 아니라 "붙들고 있는 칸"을 기준으로 한다. 칸에서 발화한 out만
+    // 보면, 칸이 재정렬·재마운트로 포인터 밑을 빠져나간 뒤의 이탈은 영영 오지 않아 확대가
+    // 주인 없이 남는다 — 포인터를 치워도 풀리지 않고 이웃 칸을 덮은 채 굳는 경로다.
+    const releaseUnless = (node: EventTarget | null) => {
+      const armed = armedQuicklookRef.current;
+      if (armed === null) return;
+      if (holds(node, armed) || keyboardHolds(armed)) return;
       deckPointerRef.current.dismiss();
+    };
+    // out은 도착지(relatedTarget)가, move는 현재 지점(target)이 자격을 답한다.
+    const onPointerOut = (event: PointerEvent) => { releaseUnless(event.relatedTarget); };
+    // 덱을 떠나지 않은 채 칸만 포인터 밑에서 빠져나간 경우는 out이 오지 않는다 — 다음 이동에서
+    // 현재 지점을 다시 물어 확대의 주인을 확인한다. 밀도 전환으로 무장을 막아 둔 동안에는, 이
+    // 이동이 곧 "사용자가 이 칸을 겨눴다"는 증명이므로 여기서 무장을 되살린다(같은 칸에 머무르면
+    // pointerover는 다시 오지 않아 확대가 영영 열리지 않는다).
+    const onPointerMove = (event: PointerEvent) => {
+      releaseUnless(event.target);
+      if (!zoomSuppressRef.current || event.pointerType === "touch") return;
+      zoomSuppressRef.current = false;
+      const cell = cellOf(event.target);
+      const operationId = cell?.dataset.triageDeckCard;
+      if (!cell || !operationId || deckPointerRef.current.arriving === operationId) return;
+      deckPointerRef.current.arm(operationId, cell, true);
     };
     const onContextMenu = (event: MouseEvent) => {
       const cell = cellOf(event.target);
@@ -855,10 +952,12 @@ export function TriageWatchDeck({
     };
     grid.addEventListener("pointerover", onPointerOver);
     grid.addEventListener("pointerout", onPointerOut);
+    grid.addEventListener("pointermove", onPointerMove, { passive: true });
     grid.addEventListener("contextmenu", onContextMenu);
     return () => {
       grid.removeEventListener("pointerover", onPointerOver);
       grid.removeEventListener("pointerout", onPointerOut);
+      grid.removeEventListener("pointermove", onPointerMove);
       grid.removeEventListener("contextmenu", onContextMenu);
     };
   }, [visible]);

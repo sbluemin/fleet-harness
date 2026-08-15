@@ -190,20 +190,29 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     }, CLOSE_ARM_DURATION_MS);
   };
 
-  // 드래그/리사이즈 도중 캡처 대상(드래그 에지·리사이즈 핸들)이 언마운트되는 상태 전환에서는
-  // pointerup/pointercancel이 도달하지 않아 is-dragging이 잔존하고 공통 모션 transition이 영구 차단된다.
-  useEffect(() => {
-    if (!maximized && !interactionDisabled && !minimized) return;
+  // 캡처가 포인터업 없이 끊기면(언마운트·lostpointercapture) 라이브 좌표를 커밋한다.
+  // 버리면 Station Keeping이 정착하지 못해 캡션이 이웃 위에 겹친 채 멈춘다.
+  const finishPointerManipulation = (shouldCommit: boolean) => {
+    const drag = dragRef.current;
+    const resize = resizeRef.current;
+    if (!drag && !resize) return;
     dragRef.current = null;
     resizeRef.current = null;
     setDragging(false);
+    if (!shouldCommit) return;
+    if (drag?.capturing) onGeometryCommit(drag.latest);
+    else if (resize) onGeometryCommit(resize.latest);
+  };
+
+  // 드래그/리사이즈 도중 캡처 대상이 언마운트되면 pointerup이 오지 않는다.
+  // is-dragging을 걷고, 움직인 좌표는 정착 경로로 넘긴다.
+  useEffect(() => {
+    if (!maximized && !interactionDisabled && !minimized) return;
+    finishPointerManipulation(true);
   }, [maximized, interactionDisabled, minimized]);
 
   const abortPointerManipulation = () => {
-    if (!dragRef.current && !resizeRef.current) return;
-    dragRef.current = null;
-    resizeRef.current = null;
-    setDragging(false);
+    finishPointerManipulation(true);
   };
 
   const beginDrag = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -574,7 +583,7 @@ function beaconStatusClass(status: OperationActivityVisual | undefined): string 
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";
   if (visual === "awaiting") return "tenant-beacon is-awaiting";
-  if (visual === "dormant") return "tenant-beacon is-dormant";
+  if (visual === "ended") return "tenant-beacon is-ended";
   return "tenant-beacon is-idle";
 }
 

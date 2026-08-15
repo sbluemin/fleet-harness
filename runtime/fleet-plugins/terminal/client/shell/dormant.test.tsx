@@ -51,7 +51,7 @@ describe("restored Shell dormancy", () => {
     };
 
     act(() => root?.render(shellOperationKind.render?.(context as never)));
-    expect(container?.textContent).toContain("Dormant");
+    expect(container?.textContent).toContain("Ended");
     expect(container?.textContent).toContain("Relaunch");
     expect(terminalSurface).not.toHaveBeenCalled();
 

@@ -46,6 +46,16 @@
 
 /* ─── tab body ──────────────────────────────────────────────────────────────── */
 
+/* 탭 내용을 tabpanel로 감싸면서 생긴 한 겹 — 예전에 .skills-root가 직접 하던 세로 배치를
+   그대로 이어받아야 .skills-tab-body의 flex:1이 높이를 찾는다. */
+.skills-tabpanel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .skills-tab-body {
   display: flex;
   flex-direction: column;
@@ -300,16 +310,32 @@
 
 .skills-dock-summary {
   align-items: center;
-  cursor: pointer;
   display: flex;
   gap: var(--space-2);
   padding: 9px var(--space-3);
   user-select: none;
 }
 
-.skills-dock-summary:focus-visible {
+/* 펼침 토글. 예전에는 요약 바 자체가 버튼 역할을 겸했고 해제·재시도 버튼을 품고 있었다 —
+   남은 자리를 채워 클릭 영역은 그대로 두면서, 활성화 대상은 하나로 되돌린다. */
+.skills-dock-toggle {
+  align-items: center;
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  flex: 1 1 auto;
+  font: inherit;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 0;
+  text-align: left;
+}
+
+.skills-dock-toggle:focus-visible {
   outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .skills-dock-dot {

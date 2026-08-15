@@ -32,6 +32,7 @@ export const globalShellPanel: RailPanelDescriptor = {
         ticketPath={GLOBAL_SHELL_TICKET_PATH}
         wsPath={TERMINAL_WS_PATH}
         theme={ctx.theme ?? "instrument"}
+        locale={ctx.language}
         active
       />
     </div>
