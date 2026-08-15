@@ -206,17 +206,17 @@ importers:
         specifier: workspace:*
         version: link:sdk
       '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
+        specifier: 0.12.0-beta.299
+        version: 0.12.0-beta.299(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-unicode11':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: 0.10.0-beta.299
+        version: 0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-webgl':
-        specifier: ^0.19.0
-        version: 0.19.0
+        specifier: 0.20.0-beta.298
+        version: 0.20.0-beta.298(@xterm/xterm@6.1.0-beta.302)
       '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
+        specifier: 6.1.0-beta.302
+        version: 6.1.0-beta.302
       esbuild:
         specifier: 0.27.7
         version: 0.27.7
@@ -669,17 +669,17 @@ importers:
         specifier: workspace:*
         version: link:../../fleet-console/sdk
       '@xterm/addon-fit':
-        specifier: ^0.11.0
-        version: 0.11.0
+        specifier: 0.12.0-beta.299
+        version: 0.12.0-beta.299(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-unicode11':
-        specifier: ^0.9.0
-        version: 0.9.0
+        specifier: 0.10.0-beta.299
+        version: 0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)
       '@xterm/addon-webgl':
-        specifier: ^0.19.0
-        version: 0.19.0
+        specifier: 0.20.0-beta.298
+        version: 0.20.0-beta.298(@xterm/xterm@6.1.0-beta.302)
       '@xterm/xterm':
-        specifier: ^6.0.0
-        version: 6.0.0
+        specifier: 6.1.0-beta.302
+        version: 6.1.0-beta.302
       node-pty:
         specifier: ^1.0.0
         version: 1.1.0
@@ -2261,17 +2261,23 @@ packages:
     resolution: {integrity: sha512-KRYzxepc14G/CEpEGc3Yn+JKaAeT63smlDr+vjB8jRfgTBBI9wRj/nkQEO+ucV8p8I9bfKLWp37uHgFrbntPvw==}
     engines: {node: '>=10.0.0'}
 
-  '@xterm/addon-fit@0.11.0':
-    resolution: {integrity: sha512-jYcgT6xtVYhnhgxh3QgYDnnNMYTcf8ElbxxFzX0IZo+vabQqSPAjC3c1wJrKB5E19VwQei89QCiZZP86DCPF7g==}
+  '@xterm/addon-fit@0.12.0-beta.299':
+    resolution: {integrity: sha512-LnofeCMLCf4e3eHN6qz27OdDgcNVh/L2oMqCHHgKraNTCGyKmf1BFWQczFF4PEg63LQvNFiItK62YOQhzDyHMw==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.301
 
-  '@xterm/addon-unicode11@0.9.0':
-    resolution: {integrity: sha512-FxDnYcyuXhNl+XSqGZL/t0U9eiNb/q3EWT5rYkQT/zuig8Gz/VagnQANKHdDWFM2lTMk9ly0EFQxxxtZUoRetw==}
+  '@xterm/addon-unicode11@0.10.0-beta.299':
+    resolution: {integrity: sha512-BShRMWsKqoHs9fm0L96zjC4Du5L19bvmdZffm5LPKLbVWUAZj7cjjbpXuFU9FsITIJlvjTqeNfq1vulv60zRDA==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.301
 
-  '@xterm/addon-webgl@0.19.0':
-    resolution: {integrity: sha512-b3fMOsyLVuCeNJWxolACEUED0vm7qC0cy4wRvf3oURSzDTYVQiGPhTnhWZwIHdvC48Y+oLhvYXnY4XDXPoJo6A==}
+  '@xterm/addon-webgl@0.20.0-beta.298':
+    resolution: {integrity: sha512-65jZWGSV3nu2jVyc/r2H31Q+oXnDX8IhcSquREVlDjqmfOINXhAufBj2zcK6BCgYT0jrdx7y64VFgVcQ3vAkRA==}
+    peerDependencies:
+      '@xterm/xterm': ^6.1.0-beta.301
 
-  '@xterm/xterm@6.0.0':
-    resolution: {integrity: sha512-TQwDdQGtwwDt+2cgKDLn0IRaSxYu1tSUjgKarSDkUM0ZNiSRXFpjxEsvc/Zgc5kq5omJ+V0a8/kIM2WD3sMOYg==}
+  '@xterm/xterm@6.1.0-beta.302':
+    resolution: {integrity: sha512-yTlcgFDNe0ZE7U1RA1JX9oZkVOE8gKvLLh55tMHrS3/ZHkJCOWHlC0mFt3GYyWChSQ1XF+VY0iIme7ZktSaMRA==}
 
   abbrev@4.0.0:
     resolution: {integrity: sha512-a1wflyaL0tHtJSmLSOVybYhy22vRih4eduhhrkcjgrWGnRfrZtovJ2FRjxuTtkkj47O/baf0R86QU5OuYpz8fA==}
@@ -7458,13 +7464,19 @@ snapshots:
 
   '@xmldom/xmldom@0.8.13': {}
 
-  '@xterm/addon-fit@0.11.0': {}
+  '@xterm/addon-fit@0.12.0-beta.299(@xterm/xterm@6.1.0-beta.302)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.302
 
-  '@xterm/addon-unicode11@0.9.0': {}
+  '@xterm/addon-unicode11@0.10.0-beta.299(@xterm/xterm@6.1.0-beta.302)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.302
 
-  '@xterm/addon-webgl@0.19.0': {}
+  '@xterm/addon-webgl@0.20.0-beta.298(@xterm/xterm@6.1.0-beta.302)':
+    dependencies:
+      '@xterm/xterm': 6.1.0-beta.302
 
-  '@xterm/xterm@6.0.0': {}
+  '@xterm/xterm@6.1.0-beta.302': {}
 
   abbrev@4.0.0: {}
 
