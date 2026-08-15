@@ -1541,6 +1541,16 @@ describe("Instrument core design contract", () => {
     const chatReplyHoverBlock = chat.match(/^\.agent-chat-reply:hover,\n\.agent-chat-reply:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(chatReplyHoverBlock).toContain("border-color: var(--brass);");
     expect(chatReplyHoverBlock).toContain("outline: none;");
+    // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
+    // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
+    // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 회신 버튼 40px)을 넘어서는지 함께 고정한다.
+    const chatLogBlock = chat.match(/^\.agent-chat-log \{[^}]*\}/m)?.[0] ?? "";
+    const chatLogPadding = chatLogBlock.match(/padding: ([^;]+);/)?.[1] ?? "";
+    expect(chatLogPadding).toContain("calc(var(--space-3) + 34px)");
+    expect(chatLogPadding).toContain("calc(var(--space-3) + 45px)");
+    const replySize = Number(chatReplyBlock.match(/height: (\d+)px;/)?.[1]);
+    const logBottom = Number(chatLogPadding.match(/calc\(var\(--space-3\) \+ (\d+)px\)\s*$/)?.[1]);
+    expect(logBottom).toBeGreaterThan(replySize);
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
