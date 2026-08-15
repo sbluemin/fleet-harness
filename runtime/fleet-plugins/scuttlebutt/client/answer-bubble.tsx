@@ -53,14 +53,24 @@ export function AnswerBubble({
     const placeAbove = mascotRect.top + mascotRect.height / 2 > window.innerHeight / 2;
     const preferredLeft = alignRight ? mascotRect.right - bubbleRect.width : mascotRect.left;
     const left = clamp(preferredLeft, margin, window.innerWidth - bubbleRect.width - margin);
+    // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
+    // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
+    // 겹치는 앞 말풍선만큼만 세로로 비켜선다 — 멀리 떨어진 말풍선까지 밀어내면 이유 없이 떠오른다.
+    const lane = laneOffset(
+      bubble,
+      Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble")),
+      left,
+      bubbleRect.width,
+      gap,
+    );
     // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다(도착 알림과 같다).
     bubble.style.left = `${left}px`;
     if (placeAbove) {
       bubble.style.top = "";
-      bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap}px`;
+      bubble.style.bottom = `${window.innerHeight - mascotRect.top + gap + lane}px`;
     } else {
       bubble.style.bottom = "";
-      bubble.style.top = `${mascotRect.bottom + gap}px`;
+      bubble.style.top = `${mascotRect.bottom + gap + lane}px`;
     }
     bubble.style.visibility = "visible";
   }, [mascot]);
@@ -147,6 +157,32 @@ function readAnswerText(state: ChatState): string | null {
     if (entry && (entry.kind === "assistant" || entry.kind === "error") && entry.text.length > 0) return entry.text;
   }
   return null;
+}
+
+/**
+ * 이 말풍선보다 먼저 선 말풍선 중 **가로로 실제 겹치는** 것들의 높이 합. 그만큼 마스코트에서
+ * 멀어지는 방향으로 비켜서면 답이 서로를 가리지 않는다.
+ *
+ * DOM 순서를 레인 순서로 쓴다 — 무리가 답변 목록 순서대로 렌더하므로 먼저 물은 답이 마스코트에
+ * 가장 가깝게 남고, 뒤에 온 답만 바깥으로 쌓인다.
+ */
+export function laneOffset(
+  bubble: HTMLElement,
+  siblings: readonly HTMLElement[],
+  left: number,
+  width: number,
+  gap: number,
+): number {
+  let offset = 0;
+  for (const sibling of siblings) {
+    if (sibling === bubble) break;
+    // 아직 좌표를 못 잰 형제(첫 프레임)는 건너뛴다 — 0,0에 있는 상자로 레인을 계산하면 튄다.
+    if (sibling.style.visibility !== "visible") continue;
+    const rect = sibling.getBoundingClientRect();
+    const overlaps = rect.left < left + width && left < rect.left + rect.width;
+    if (overlaps) offset += rect.height + gap;
+  }
+  return offset;
 }
 
 function clamp(value: number, min: number, max: number): number {
