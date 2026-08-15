@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray, WebContentsView } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
+import { showBootFailureAndExit } from "./boot-failure.js";
 import { isConsoleConflict, showConsoleConflictAndQuit } from "./console-conflict.js";
 import { createConsoleControls } from "./console-controls.js";
 import { handOffWindowToConsole } from "./console-handoff.js";
@@ -56,7 +57,12 @@ else void boot().catch((error: unknown) => {
   // 어디에도 보이지 않으므로, 이 파일 로그가 개발 진단과 퍼블리싱된 앱의 사용자 이슈 수집의 SSoT다.
   logBootFailure(error);
   process.stderr.write(`Fleet Console bootstrap failed: ${describeError(error)}\n`);
-  app.exit(1);
+  // 로그만 남기고 조용히 사라지면 Finder로 연 사용자에게는 앱이 그냥 뜨지 않은 것이다.
+  showBootFailureAndExit(error, {
+    showErrorBox: (title, content) => dialog.showErrorBox(title, content),
+    exit: (code) => app.exit(code),
+    logDirectory: readBootLogDirectory(),
+  });
 });
 
 const trayHolder: { current: Tray | null } = { current: null };
@@ -331,6 +337,14 @@ async function showUpdateDialog(window: BrowserWindow | null, version: string, m
   };
   // Windows 실기는 darwin에서 [Unverified]다. 숨은 트레이 창은 balloon 클릭 뒤에만 모달을 연다.
   return process.platform === "win32" ? showWindowsHiddenUpdateDialog(activeWindow, trayHolder.current, version, show) : show();
+}
+
+function readBootLogDirectory(): string | null {
+  try {
+    return path.join(app.getPath("userData"), "logs");
+  } catch {
+    return null;
+  }
 }
 
 function logBootFailure(error: unknown): void {
