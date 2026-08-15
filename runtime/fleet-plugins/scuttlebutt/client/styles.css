@@ -306,17 +306,21 @@
   animation: scuttlebutt-qk-salute 1.7s ease-in-out infinite;
 }
 
-.scuttlebutt-bird.is-alert .scuttlebutt-qk {
+/* 보리는 경보 담당이라 도약·퍼덕임이 상시 소음이 된다. 느낌표만 켠다. */
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) {
   animation: scuttlebutt-qk-hop 0.58s cubic-bezier(0.3, 0.7, 0.3, 1) infinite;
 }
 
-.scuttlebutt-bird.is-alert .scuttlebutt-qk-wing-l,
-.scuttlebutt-bird.is-alert .scuttlebutt-qk-wing-r {
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-r {
   animation-duration: 0.22s;
 }
 
 .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
   opacity: 1;
+}
+
+.scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-mark {
   animation: scuttlebutt-qk-markpop 0.58s ease-in-out infinite;
 }
 
