@@ -1,6 +1,7 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationActivityVisual } from "../operation-activity.js";
 
 import { useT } from "../i18n/index.js";
 import { getIdleArrivalIds } from "../operation-idle-arrival.js";
@@ -58,7 +59,7 @@ interface TriageWatchDeckProps {
   /** 전 Theater 목록 — deck는 Theater 밴드로 갈라 전 Theater의 휴면 아닌 Operation을 올린다. */
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationAccent: Readonly<Record<string, string>>;
   readonly arrivingOperationId?: string | null;
   /** 무대에 오른 Operation — 그 카드만 슬롯을 무대 프레임에 넘기고, deck는 은닉된 채 mount를 유지한다. */
@@ -243,7 +244,7 @@ export function resolveTriageMapQuicklookPlacement(
 
 // 카드 정렬 등급 — 사이드바 STATUS 축의 섹션 순서(대기→실행 중→백그라운드→유휴→휴면)를 그대로
 // 따른다. deck이 자체 순서를 정의하면 같은 상태가 두 표면에서 다른 위치로 읽힌다.
-const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivity, number> = {
+const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivityVisual, number> = {
   awaiting: 0,
   running: 1,
   background: 2,
@@ -511,7 +512,7 @@ export function TriageWatchDeck({
   entering,
   theaters,
   operations,
-  operationStatus,
+  operationRuntime,
   operationAccent,
   arrivingOperationId = null,
   stagedOperationId = null,
@@ -846,7 +847,7 @@ export function TriageWatchDeck({
 
   const idleArrivalIds = getIdleArrivalIds();
   const displayActivity = (operation: OperationNode) => resolveOperationDisplayActivity({
-    activity: resolveOperationActivity(operation, operationStatus),
+    activity: resolveOperationActivity(operation, operationRuntime),
     operationId: operation.id,
     idleArrivalIds,
   });
@@ -1211,7 +1212,7 @@ export function TriageWatchDeck({
                 className="canvas-triage-map canvas-triage-map--plane"
                 onContextMenu={(event) => openTheaterMenu(bands[0]!.theater, event)}
               >
-                {renderTriageMapDots(bands[0]!, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
+                {renderTriageMapDots(bands[0]!, operationRuntime, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
               </div>
             ) : bands.map((band, bandIndex) => {
               const zone = fleetZones[bandIndex]!;
@@ -1239,7 +1240,7 @@ export function TriageWatchDeck({
                   </span>
                 </header>
                 <div className="canvas-triage-map">
-                  {renderTriageMapDots(band, operationStatus, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
+                  {renderTriageMapDots(band, operationRuntime, t, pick, mapHover, mapDrag, draggingMarkerId, openMapOperationMenu, openOperationMenuFromKeyboard)}
                 </div>
               </section>
               );
@@ -1352,7 +1353,7 @@ function renderTriageMapDots(
     readonly operations: readonly OperationNode[];
     readonly mapMarkers: readonly { readonly operationId: string; readonly x: number; readonly y: number }[] | null;
   },
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
   t: ReturnType<typeof useT>,
   pick: (operationId: string, element: HTMLElement) => void,
   hover: TriageMapDotHover,
@@ -1366,7 +1367,7 @@ function renderTriageMapDots(
     if (!operation) return null;
     // 카드·지도·사이드바가 같은 display-state resolver를 써서 유휴 도착을 모두 대기로 읽는다.
     const visual = operationActivityVisual(resolveOperationDisplayActivity({
-      activity: resolveOperationActivity(operation, operationStatus),
+      activity: resolveOperationActivity(operation, operationRuntime),
       operationId: operation.id,
       idleArrivalIds: getIdleArrivalIds(),
     }));

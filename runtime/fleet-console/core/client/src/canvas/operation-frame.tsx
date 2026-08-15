@@ -1,10 +1,9 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
-import { operationActivityVisual } from "../operation-activity.js";
+import { operationActivityVisual, type OperationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import { AccentPopover } from "./accent-popover.js";
 import type { GlanceHudModel } from "./glance-hud.js";
@@ -16,7 +15,7 @@ interface OperationFrameProps {
   readonly unseen: boolean;
   readonly geometry: OperationGeometry;
   readonly zoom: number;
-  readonly status?: OperationActivity;
+  readonly status?: OperationActivityVisual;
   readonly minimized?: boolean;
   readonly maximized?: boolean;
   readonly renderHidden?: boolean;
@@ -533,7 +532,7 @@ function resizeGeometry(geometry: OperationGeometry, direction: ResizeDirection,
   return { ...geometry, x, y, width, height };
 }
 
-function frameStatusClass(status: OperationActivity | undefined): string {
+function frameStatusClass(status: OperationActivityVisual | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "is-running is-running--turn";
   if (visual === "background") return "is-running is-running--background";
@@ -541,7 +540,7 @@ function frameStatusClass(status: OperationActivity | undefined): string {
   return "";
 }
 
-function beaconStatusClass(status: OperationActivity | undefined): string {
+function beaconStatusClass(status: OperationActivityVisual | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";

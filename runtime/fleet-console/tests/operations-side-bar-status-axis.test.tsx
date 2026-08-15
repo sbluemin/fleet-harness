@@ -38,7 +38,7 @@ beforeEach(() => {
   setTheaterCollapsed("theater-a", false);
   setTheaterCollapsed("theater-b", false);
   loadForTheater("theater-a");
-  setConsoleState({ operationStatus: {} });
+  setConsoleState({ operationRuntime: {} });
 });
 
 afterEach(() => {
@@ -49,7 +49,7 @@ afterEach(() => {
   setSideBarStatusAxis(false);
   resetSideBarStatusRecencyForTests();
   resetSideBarStatusSectionCollapseForTests();
-  setConsoleState({ operationStatus: {} });
+  setConsoleState({ operationRuntime: {} });
   loadForTheater(null);
 });
 
@@ -63,10 +63,10 @@ describe("OperationsSideBar STATUS axis", () => {
     ];
     setOperationOrder(operations.map((operation) => operation.id));
     setConsoleState({
-      operationStatus: {
-        running: "running",
-        awaiting: "awaiting",
-        dormant: "dormant",
+      operationRuntime: {
+        running: { lifecycle: "live", activity: "running" },
+        awaiting: { lifecycle: "live", activity: "awaiting" },
+        dormant: { lifecycle: "dormant" },
       },
     });
     renderSideBar(operations, [GROUP_A]);
@@ -106,7 +106,7 @@ describe("OperationsSideBar STATUS axis", () => {
   });
 
   it("pins four live sections plus both recovery shelves, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
-    setConsoleState({ operationStatus: { only: "running" } });
+    setConsoleState({ operationRuntime: { only: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("only", null)]);
 
@@ -142,7 +142,7 @@ describe("OperationsSideBar STATUS axis", () => {
 
   it("reveals an idle arrival from the AWAITING section for a palette action", () => {
     const operation = makeOperation("arrived", null);
-    setConsoleState({ operationStatus: { arrived: "idle" } });
+    setConsoleState({ operationRuntime: { arrived: { lifecycle: "live", activity: "idle" } } });
     markIdleArrival(operation.id);
     setSideBarStatusAxis(true);
     toggleSideBarStatusSectionCollapsed(THEATER.id, "awaiting", false);
@@ -157,7 +157,7 @@ describe("OperationsSideBar STATUS axis", () => {
 
   it("continues to reveal an ordinary idle Operation from the IDLE section", () => {
     const operation = makeOperation("idle", null);
-    setConsoleState({ operationStatus: { idle: "idle" } });
+    setConsoleState({ operationRuntime: { idle: { lifecycle: "live", activity: "idle" } } });
     setSideBarStatusAxis(true);
     toggleSideBarStatusSectionCollapsed(THEATER.id, "idle", false);
     renderSideBar([operation]);
@@ -176,13 +176,13 @@ describe("OperationsSideBar STATUS axis", () => {
     act(() => required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING"]').click());
     expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
 
-    act(() => setConsoleState({ operationStatus: { arriving: "awaiting" } }));
+    act(() => setConsoleState({ operationRuntime: { arriving: { lifecycle: "live", activity: "awaiting" } } }));
     rerenderSideBar([makeOperation("arriving", null)]);
 
     expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING"]').getAttribute("aria-expanded")).toBe("true");
     expect(container?.querySelector('[data-side-bar-chip-id="arriving"]')).not.toBeNull();
 
-    act(() => setConsoleState({ operationStatus: {} }));
+    act(() => setConsoleState({ operationRuntime: {} }));
     rerenderSideBar([]);
 
     expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING"]').getAttribute("aria-expanded")).toBe("true");
@@ -194,7 +194,7 @@ describe("OperationsSideBar STATUS axis", () => {
       makeOperation("alpha-running", null),
       makeOperation("bravo-running", null, undefined, THEATER_B.id),
     ];
-    setConsoleState({ operationStatus: { "alpha-running": "running", "bravo-running": "running" } });
+    setConsoleState({ operationRuntime: { "alpha-running": { lifecycle: "live", activity: "running" }, "bravo-running": { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER, THEATER_B]);
 
@@ -213,7 +213,7 @@ describe("OperationsSideBar STATUS axis", () => {
   });
 
   it("suppresses group pills and status beacons but shows idle unseen in inactive Theater preview chips", () => {
-    setConsoleState({ operationStatus: { preview: "running" } });
+    setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("preview", "group-a")], [GROUP_A], vi.fn(), "theater-other");
 
@@ -222,7 +222,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(preview.querySelector(".side-bar-chip-group-mark")).toBeNull();
     expect(preview.querySelector(".side-bar-chip-status")).toBeNull();
 
-    act(() => setConsoleState({ operationStatus: { preview: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "idle" } } }));
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="preview"] .side-bar-chip-unseen')).not.toBeNull();
   });
@@ -233,7 +233,7 @@ describe("OperationsSideBar STATUS axis", () => {
       makeOperation("second", null),
     ];
     setOperationOrder(["first", "second"]);
-    setConsoleState({ operationStatus: { first: "running", second: "running" } });
+    setConsoleState({ operationRuntime: { first: { lifecycle: "live", activity: "running" }, second: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
 
@@ -261,13 +261,13 @@ describe("OperationsSideBar STATUS axis", () => {
 
   it("flashes a chip once when a live status change moves it between sections", () => {
     const operations = [makeOperation("moving", null)];
-    setConsoleState({ operationStatus: { moving: "running" } });
+    setConsoleState({ operationRuntime: { moving: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="moving"]').className).not.toContain("side-bar-chip--status-landed");
 
-    act(() => setConsoleState({ operationStatus: { moving: "awaiting" } }));
+    act(() => setConsoleState({ operationRuntime: { moving: { lifecycle: "live", activity: "awaiting" } } }));
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="moving"]').className).toContain("side-bar-chip--status-landed");
     expect(required<HTMLElement>(".side-bar-status-header__label").textContent).toBe("AWAITING");
@@ -281,33 +281,33 @@ describe("OperationsSideBar STATUS axis", () => {
       makeOperation("untouched-second", null),
     ];
     setOperationOrder(operations.map((operation) => operation.id));
-    setConsoleState({ operationStatus: Object.fromEntries(operations.map((operation) => [operation.id, "running"])) });
+    setConsoleState({ operationRuntime: Object.fromEntries(operations.map((operation) => [operation.id, "running"])) });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
 
-    act(() => setConsoleState({ operationStatus: {
-      "untouched-first": "running",
-      latest: "running",
-      earlier: "idle",
-      "untouched-second": "running",
+    act(() => setConsoleState({ operationRuntime: {
+      "untouched-first": { lifecycle: "live", activity: "running" },
+      latest: { lifecycle: "live", activity: "running" },
+      earlier: { lifecycle: "live", activity: "idle" },
+      "untouched-second": { lifecycle: "live", activity: "running" },
     } }));
-    act(() => setConsoleState({ operationStatus: {
-      "untouched-first": "running",
-      latest: "running",
-      earlier: "running",
-      "untouched-second": "running",
+    act(() => setConsoleState({ operationRuntime: {
+      "untouched-first": { lifecycle: "live", activity: "running" },
+      latest: { lifecycle: "live", activity: "running" },
+      earlier: { lifecycle: "live", activity: "running" },
+      "untouched-second": { lifecycle: "live", activity: "running" },
     } }));
-    act(() => setConsoleState({ operationStatus: {
-      "untouched-first": "running",
-      latest: "idle",
-      earlier: "running",
-      "untouched-second": "running",
+    act(() => setConsoleState({ operationRuntime: {
+      "untouched-first": { lifecycle: "live", activity: "running" },
+      latest: { lifecycle: "live", activity: "idle" },
+      earlier: { lifecycle: "live", activity: "running" },
+      "untouched-second": { lifecycle: "live", activity: "running" },
     } }));
-    act(() => setConsoleState({ operationStatus: {
-      "untouched-first": "running",
-      latest: "running",
-      earlier: "running",
-      "untouched-second": "running",
+    act(() => setConsoleState({ operationRuntime: {
+      "untouched-first": { lifecycle: "live", activity: "running" },
+      latest: { lifecycle: "live", activity: "running" },
+      earlier: { lifecycle: "live", activity: "running" },
+      "untouched-second": { lifecycle: "live", activity: "running" },
     } }));
 
     const runningIds = Array.from(
@@ -325,20 +325,20 @@ describe("OperationsSideBar STATUS axis", () => {
     setOperationOrder(operations.map((operation) => operation.id));
     trackOperationActivityTransitions({
       operations,
-      operationStatus: { recorded: "running" },
+      operationRuntime: { recorded: { lifecycle: "live", activity: "running" } },
       activeTheaterId: THEATER.id,
       activeOperationId: null,
       activeOperationAcknowledged: true,
     });
     expect(trackOperationActivityTransitions({
       operations,
-      operationStatus: { recorded: "idle" },
+      operationRuntime: { recorded: { lifecycle: "live", activity: "idle" } },
       activeTheaterId: THEATER.id,
       activeOperationId: null,
       activeOperationAcknowledged: true,
     })).toEqual(["recorded"]);
 
-    setConsoleState({ operationStatus: { recorded: "idle" } });
+    setConsoleState({ operationRuntime: { recorded: { lifecycle: "live", activity: "idle" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
 
@@ -359,10 +359,10 @@ describe("OperationsSideBar STATUS axis", () => {
 
   it("tracks idle unseen while STATUS is off, omits focused transitions, and clears on focus", () => {
     const operations = [makeOperation("unseen", null), makeOperation("focused", null)];
-    setConsoleState({ operationStatus: { unseen: "running", focused: "running" } });
+    setConsoleState({ operationRuntime: { unseen: { lifecycle: "live", activity: "running" }, focused: { lifecycle: "live", activity: "running" } } });
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], "focused");
 
-    act(() => setConsoleState({ operationStatus: { unseen: "idle", focused: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { unseen: { lifecycle: "live", activity: "idle" }, focused: { lifecycle: "live", activity: "idle" } } }));
     expect(container?.querySelector(".side-bar-chip-unseen")).not.toBeNull();
 
     act(() => setSideBarStatusAxis(true));
@@ -383,22 +383,22 @@ describe("OperationsSideBar STATUS axis", () => {
 
   it("removes idle unseen on exit and grants it again on a later idle episode", () => {
     const operations = [makeOperation("repeat", null)];
-    setConsoleState({ operationStatus: { repeat: "running" } });
+    setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
 
-    act(() => setConsoleState({ operationStatus: { repeat: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "idle" } } }));
     expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"] .side-bar-chip-unseen')).not.toBeNull();
 
-    act(() => setConsoleState({ operationStatus: { repeat: "running" } }));
+    act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "running" } } }));
     expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"]').querySelector(".side-bar-chip-unseen")).toBeNull();
 
-    act(() => setConsoleState({ operationStatus: { repeat: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "idle" } } }));
     expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"] .side-bar-chip-unseen')).not.toBeNull();
   });
 
   it("does not mark an Operation that is already idle on page load", () => {
-    setConsoleState({ operationStatus: { initial: "idle" } });
+    setConsoleState({ operationRuntime: { initial: { lifecycle: "live", activity: "idle" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("initial", null)]);
 
@@ -412,7 +412,7 @@ describe("OperationsSideBar STATUS axis", () => {
       makeOperation("live-minimized", null),
       makeOperation("ordinary-live", null),
     ];
-    setConsoleState({ operationStatus: { "dormant-minimized": "dormant", "live-minimized": "running", "ordinary-live": "idle" } });
+    setConsoleState({ operationRuntime: { "dormant-minimized": { lifecycle: "dormant" }, "live-minimized": { lifecycle: "live", activity: "running" }, "ordinary-live": { lifecycle: "live", activity: "idle" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], null, ["dormant-minimized", "live-minimized"]);
 
@@ -428,11 +428,11 @@ describe("OperationsSideBar STATUS axis", () => {
       makeOperation("minimized-unseen", null),
       { ...makeOperation("dormant-unseen", null), payload: { resumeAvailable: true } },
     ];
-    setConsoleState({ operationStatus: { "minimized-unseen": "running", "dormant-unseen": "running" } });
+    setConsoleState({ operationRuntime: { "minimized-unseen": { lifecycle: "live", activity: "running" }, "dormant-unseen": { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], null, ["minimized-unseen"]);
     act(() => markIdleArrival("dormant-unseen"));
-    act(() => setConsoleState({ operationStatus: { "minimized-unseen": "idle", "dormant-unseen": "dormant" } }));
+    act(() => setConsoleState({ operationRuntime: { "minimized-unseen": { lifecycle: "live", activity: "idle" }, "dormant-unseen": { lifecycle: "dormant" } } }));
 
     const minimizedShelf = required<HTMLElement>(".triage-side-bar-minimized-shelf");
     const dormantShelf = required<HTMLElement>(".triage-side-bar-dormant-shelf");
@@ -464,7 +464,7 @@ describe("OperationsSideBar STATUS axis", () => {
       minimized: ["minimized"],
       collapsedGroups: [],
     }));
-    setConsoleState({ operationStatus: { dormant: "dormant", minimized: "running" } });
+    setConsoleState({ operationRuntime: { dormant: { lifecycle: "dormant" }, minimized: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(
       operations,
@@ -497,7 +497,7 @@ describe("OperationsSideBar STATUS axis", () => {
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--dormant")).not.toBeNull();
 
-    act(() => setConsoleState({ operationStatus: { restored: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "idle" } } }));
 
     const firstLiveChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
     expect(getStatusTransitionTick("restored")).toBeUndefined();
@@ -505,11 +505,11 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(firstLiveChip.className).not.toContain("side-bar-chip--status-landed");
     expect(container?.querySelector(".side-bar-status-section--idle .side-bar-status-header__unseen")).toBeNull();
 
-    act(() => setConsoleState({ operationStatus: { restored: "running" } }));
+    act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "running" } } }));
     const runningTick = getStatusTransitionTick("restored");
     expect(runningTick).toBeDefined();
 
-    act(() => setConsoleState({ operationStatus: { restored: "idle" } }));
+    act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "idle" } } }));
 
     const transitionedChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
     expect(getStatusTransitionTick("restored")).toBeGreaterThan(runningTick ?? 0);

@@ -199,7 +199,7 @@ function readFleetSignals(): FloatingWidgetFleetSignals {
   let running = 0;
   let awaiting = 0;
   for (const operation of state.operations) {
-    const activity = resolveOperationActivity(operation, state.operationStatus);
+    const activity = resolveOperationActivity(operation, state.operationRuntime);
     if (activity === "running") running += 1;
     // 사이드바 STATUS 축과 같은 기준을 쓴다 — 확인하지 않은 도착도 사용자를 기다리는 상태다.
     // 원시 status만 세면 콘솔이 AWAITING이라 표시한 Operation의 절반을 위젯이 놓친다.

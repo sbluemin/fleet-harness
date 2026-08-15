@@ -1,6 +1,7 @@
+import type { OperationActivityVisual } from "../operation-activity.js";
 import { useCallback, useSyncExternalStore } from "react";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { clearDeparture, markDeparture, resetDepartureForTests } from "../operation-departure.js";
 import { clearIdleArrival, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
@@ -166,7 +167,7 @@ export function getStatusTransitionTick(id: string): number | undefined {
 
 export function trackOperationActivityTransitions(input: {
   readonly operations: readonly OperationNode[];
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly activeOperationAcknowledged: boolean;
@@ -174,12 +175,12 @@ export function trackOperationActivityTransitions(input: {
   const nextStatuses = new Map<string, SideBarStatus>(
     input.operations.map((operation) => [
       operation.id,
-      resolveOperationActivity(operation, input.operationStatus),
+      resolveOperationActivity(operation, input.operationRuntime),
     ]),
   );
   const firstLiveIds = input.operations
     .filter((operation) => {
-      if (input.operationStatus[operation.id] === undefined || baselinedLiveActivityIds.has(operation.id)) {
+      if (input.operationRuntime[operation.id] === undefined || baselinedLiveActivityIds.has(operation.id)) {
         return false;
       }
       baselinedLiveActivityIds.add(operation.id);
@@ -228,7 +229,7 @@ export function subscribeOperationActivityTracking(): () => void {
     const state = getState();
     trackOperationActivityTransitions({
       operations: state.operations,
-      operationStatus: state.operationStatus,
+      operationRuntime: state.operationRuntime,
       activeTheaterId: state.activeTheaterId,
       activeOperationId: state.activeOperationId,
       activeOperationAcknowledged: state.activeOperationAcknowledged,

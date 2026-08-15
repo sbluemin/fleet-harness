@@ -20,7 +20,6 @@ export type AgentChatStreamEvent =
   | { readonly kind: "tool"; readonly name: string; readonly detail: string }
   /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
-  | { readonly kind: "status"; readonly working: boolean }
   | { readonly kind: "error"; readonly code: string };
 
 /** 저널에 실리는 형태 — seq는 재접속 클라이언트가 중복 반영을 걸러내는 단조 축이다. */

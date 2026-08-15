@@ -54,7 +54,9 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
     groups: [],
     activeTheaterId: "theater-alpha",
     activeOperationId: null,
-    operationStatus: {},
+    operationRuntime: {},
+    operationRuntimeHydration: "ready",
+    operationRuntimeError: null,
     addingTheater: false,
     theaterError: null,
     operationsViewActive: false,
@@ -211,7 +213,7 @@ describe("buildPaletteCommands", () => {
     const otherTheater = makeOperation("op-other", { resumeAvailable: true }, "theater-beta");
     const commands = buildPaletteCommands(makeState({
       operations: [dormant, live, otherTheater],
-      operationStatus: { "op-live": "running" },
+      operationRuntime: { "op-live": { lifecycle: "live", activity: "running" } },
     }), [], tEn);
     const ids = commands.map((command) => command.commandId);
     expect(ids).toContain("resume-operation:op-dormant");

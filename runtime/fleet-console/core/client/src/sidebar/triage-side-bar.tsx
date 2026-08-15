@@ -1,8 +1,9 @@
+import type { OperationActivityVisual } from "../operation-activity.js";
 import { useEffect, useState, useSyncExternalStore, type CSSProperties, type MouseEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { FleetClientPlugin, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState, FleetClientPlugin } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
@@ -46,7 +47,7 @@ export function resolveTriageSideBarSections(
 interface TriageSideBarProps {
   readonly theaters: readonly TriageDeckTheater[];
   readonly operations: readonly OperationNode[];
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly plugins: readonly FleetClientPlugin[];
@@ -63,7 +64,7 @@ interface TriageSideBarProps {
 export function TriageSideBar({
   theaters,
   operations,
-  operationStatus,
+  operationRuntime,
   operationNotifications,
   catalog,
   plugins,
@@ -122,7 +123,7 @@ export function TriageSideBar({
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
     });
   };
-  const queue = resolveTriageQueue(operations, operationStatus);
+  const queue = resolveTriageQueue(operations, operationRuntime);
   const stagedOperationId = getTriagePick() ?? queue[0]?.operation.id ?? null;
   const theaterLabelById = new Map(theaters.map((theater) => [theater.id, theater.label]));
   const entries = theaters.flatMap((theater) => buildTheaterEntries({
@@ -132,7 +133,7 @@ export function TriageSideBar({
     minimizedSet: EMPTY_MINIMIZED,
     activeOperationId: stagedOperationId,
     operationNotifications,
-    operationStatus,
+    operationRuntime,
     catalog,
     renderKindIcon,
   }));
@@ -141,7 +142,7 @@ export function TriageSideBar({
   // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const isDormantEntry = (entry: SideBarEntry): boolean =>
-    resolveOperationActivity(entry.operation, operationStatus) === "dormant";
+    resolveOperationActivity(entry.operation, operationRuntime) === "dormant";
   const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
   const minimizedSection: StatusSection = {
     status: "minimized",

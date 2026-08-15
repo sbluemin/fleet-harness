@@ -126,7 +126,7 @@ export function buildPaletteCommands(
     // Resume은 dormant(복원 후 미기동) Operation에만 제안한다.
     const theaterOperations = current.operations.filter((operation) => operation.theaterId === activeTheater.id);
     for (const operation of theaterOperations) {
-      if (resolveOperationActivity(operation, current.operationStatus) === "dormant") {
+      if (resolveOperationActivity(operation, current.operationRuntime) === "dormant") {
         commands.push({
           commandId: `resume-operation:${operation.id}`,
           label: t("palette.resumeOperation", { title: operation.title }),

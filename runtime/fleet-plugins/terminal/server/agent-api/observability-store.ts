@@ -67,6 +67,8 @@ interface PendingTerminalSessionState {
   modelActivity?: AgentModelActivity;
   attentionPending?: boolean;
   backgroundPending?: boolean;
+  chatActive?: boolean;
+  chatWorking?: boolean;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
@@ -346,6 +348,28 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  function setTerminalSessionChatActive(sessionId: string, active: boolean): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session) return null;
+    if ((session.chatActive === true) === active) return null;
+    if (active) session.chatActive = true;
+    else {
+      delete session.chatActive;
+      delete session.chatWorking;
+    }
+    return toTerminalSessionInfo(session);
+  }
+
+  function setTerminalSessionChatWorking(sessionId: string, working: boolean): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    // 인수하지 않은 세션에 턴 신호가 오면 그건 배선 오류다 — 조용히 만들어 내지 않고 실패로 돌린다.
+    if (!session || session.chatActive !== true) return null;
+    if ((session.chatWorking === true) === working) return toTerminalSessionInfo(session);
+    if (working) session.chatWorking = true;
+    else delete session.chatWorking;
+    return toTerminalSessionInfo(session);
+  }
+
   function renameTerminalSession(sessionId: string, rawLabel: string): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
@@ -479,6 +503,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     setTerminalSessionBackgroundPending,
     getTerminalSessionSettledAgentIds,
     setTerminalSessionModelActivity,
+    setTerminalSessionChatActive,
+    setTerminalSessionChatWorking,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -504,6 +530,8 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     ...(state.modelActivity ? { modelActivity: state.modelActivity } : {}),
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
+    ...(state.chatActive === true ? { chatActive: true } : {}),
+    ...(state.chatWorking === true ? { chatWorking: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

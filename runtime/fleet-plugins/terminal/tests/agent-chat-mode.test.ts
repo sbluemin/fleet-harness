@@ -37,6 +37,26 @@ describe("agent chat mode routes", () => {
     expect(harness.terminate).toHaveBeenCalledWith(sessionId);
   });
 
+  it("marks the session DTO as chat-adopted on conversion and releases it on DELETE", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+
+    await harness.post(sessionId, "chat");
+
+    // PTY 는 접혔지만 실행 표면은 살아 있다 — 이 사실이 DTO 에 실려야 사이드바가 휴면이라 말하지 않는다.
+    // (이 하네스의 terminate 는 mock 이라 exit 콜백을 태우지 않으므로 status 의 dormant 전이는 여기서 증명되지
+    //  않는다. 두 축이 함께 실린 뒤의 해석은 client/agent/connection 의 sessionRuntime 계약이 고정한다.)
+    const adopted = (await harness.sessions()).find((session) => session.sessionId === sessionId);
+    expect(adopted?.chatActive).toBe(true);
+
+    await harness.del(sessionId, "chat");
+
+    const released = (await harness.sessions()).find((session) => session.sessionId === sessionId);
+    expect(released?.chatActive).toBeUndefined();
+  });
+
   it("rejects conversion while the terminal turn is running", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -396,6 +416,16 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
       const operation = operations[0];
       if (!operation) throw new Error(`Session create failed: ${JSON.stringify(responses.at(-1))}`);
       return operation.id;
+    },
+    sessions: async (): Promise<readonly Record<string, unknown>[]> => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "GET", url: "/plugins/terminal/agent/sessions" } as http.IncomingMessage,
+        res: {} as http.ServerResponse,
+        pathname: "/plugins/terminal/agent/sessions",
+      });
+      const body = responses.at(-1)?.body as { readonly sessions?: readonly Record<string, unknown>[] } | undefined;
+      return body?.sessions ?? [];
     },
     post: (sessionId: string, action: string, body?: Record<string, unknown>) => dispatch("POST", sessionId, action, body),
     del: (sessionId: string, action: string) => dispatch("DELETE", sessionId, action),

@@ -1,10 +1,9 @@
 import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
 import { useT } from "../i18n/index.js";
-import { operationActivityLabel, operationActivityVisual } from "../operation-activity.js";
+import { operationActivityLabel, operationActivityVisual, type OperationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
 import {
@@ -17,7 +16,12 @@ export interface SideBarEntry {
   readonly active: boolean;
   readonly minimized: boolean;
   readonly notificationCount: number;
-  readonly status?: OperationActivity;
+  readonly status?: OperationActivityVisual;
+  /**
+   * 플러그인이 준 실행 표면 표식(예: "CHAT"). 호스트는 뜻을 모른 채 글자만 그린다 —
+   * 색은 활동을 말하는 자리이므로 모드는 신호 채널을 빌리지 않는다.
+   */
+  readonly surface?: string;
   readonly icon: ReactNode;
   /** 실행된 공급자. 있으면 마크가 그 공급자의 캐리어 시그니처 톤을 입는다. */
   readonly launchProvider?: LaunchProviderGlyphId | null;
@@ -93,7 +97,7 @@ export function OperationsSideBarChip({
   const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, notificationCount, status } = entry;
+  const { operation, active, minimized, notificationCount, status, surface } = entry;
   const title = displayTitle(operation);
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
@@ -283,6 +287,9 @@ export function OperationsSideBarChip({
           title={chipStatusLabel(status)}
         />
       ) : null}
+      {surface && !preview ? (
+        <span className="side-bar-chip-surface" title={surface}>{surface}</span>
+      ) : null}
       {!preview && !minimized && minimizeEnabled ? (
         <button
           type="button"
@@ -321,7 +328,7 @@ function displayTitle(operation: OperationNode): string {
   return operation.title;
 }
 
-function chipStatusClass(status: OperationActivity | undefined): string {
+function chipStatusClass(status: OperationActivityVisual | undefined): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";
@@ -330,7 +337,7 @@ function chipStatusClass(status: OperationActivity | undefined): string {
   return "tenant-beacon is-idle";
 }
 
-function chipStatusLabel(status: OperationActivity | undefined): string {
+function chipStatusLabel(status: OperationActivityVisual | undefined): string {
   return operationActivityLabel(status);
 }
 

@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 
+import type { OperationActivityVisual } from "../core/client/src/operation-activity.js";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { OperationsSideBarChip } from "../core/client/src/sidebar/operations-side-bar-chip.js";
 
@@ -31,9 +32,40 @@ describe("OperationsSideBarChip activity status", () => {
     expect(statusDot.getAttribute("aria-label")).toBe(expectedLabel);
   });
 
+  // 실행 표면 표식은 모드를 말하고 상태는 말하지 않는다 — 신호 채널을 빌리지 않으므로
+  // 상태 점의 클래스는 표식이 붙어도 그대로다.
+  it("paints the plugin-supplied surface mark beside the status dot without changing it", () => {
+    renderChip("running", "CHAT");
+    const surface = container?.querySelector<HTMLSpanElement>(".side-bar-chip-surface");
+    const statusDot = container?.querySelector<HTMLSpanElement>('[role="img"]');
+
+    expect(surface?.textContent).toBe("CHAT");
+    expect(statusDot?.className).toContain("is-turn-running");
+    expect(statusDot?.getAttribute("aria-label")).toBe("Running");
+  });
+
+  it("omits the surface mark when the plugin supplies none", () => {
+    renderChip("running");
+    expect(container?.querySelector(".side-bar-chip-surface")).toBeNull();
+  });
 });
 
-function renderChip(status: OperationActivity | undefined): HTMLSpanElement {
+// 두 축은 타입에서 갈라져 있다 — 휴면은 활동값을 가질 수 없고 활동은 휴면을 말할 수 없다.
+describe("Operation runtime contract", () => {
+  it("cannot express a dormant Operation that is also running", () => {
+    const dormant: OperationRuntimeState = { lifecycle: "dormant" };
+    const running: OperationRuntimeState = { lifecycle: "live", activity: "running" };
+
+    // @ts-expect-error dormant 에는 activity 가 없다
+    expect(dormant.activity).toBeUndefined();
+    // @ts-expect-error 활동 어휘에서 dormant 는 빠졌다
+    const invalid: OperationRuntimeState = { lifecycle: "live", activity: "dormant" };
+    expect(invalid).toBeTruthy();
+    expect(running.activity).toBe("running");
+  });
+});
+
+function renderChip(status: OperationActivityVisual | undefined, surface?: string): HTMLSpanElement {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -53,6 +85,7 @@ function renderChip(status: OperationActivity | undefined): HTMLSpanElement {
       minimized: false,
       notificationCount: 0,
       status,
+      ...(surface ? { surface } : {}),
       icon: null,
     },
     index: 0,

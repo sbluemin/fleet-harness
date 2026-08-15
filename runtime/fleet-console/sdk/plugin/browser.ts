@@ -4,12 +4,13 @@ import { assertOperationNode, ApiError } from "../operations/browser.js";
 import type { OperationNode } from "../operations/types.js";
 import type {
   ClientApiCapability,
-  ClientOperationStatusCapability,
+  ClientOperationRuntimeCapability,
   ClientPreferencesCapability,
   ClientSettingsCapability,
   FleetClientPlugin,
-  OperationActivity,
   OperationKindDescriptor,
+  OperationRuntimeHydration,
+  OperationRuntimeState,
   PluginInstallContext,
   UseOperationsResult,
 } from "./types.js";
@@ -24,8 +25,8 @@ export interface BoundPluginSettings {
   readonly write: (value: Record<string, unknown>) => Promise<void>;
 }
 
-export interface BoundOperationStatus {
-  readonly set: (activity: OperationActivity) => void;
+export interface BoundOperationRuntime {
+  readonly set: (state: OperationRuntimeState) => void;
   readonly clear: () => void;
 }
 
@@ -131,9 +132,10 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
         if (!response.ok) throw new ApiError(response.status, `Plugin settings write failed: ${response.status}`);
       },
     },
-    status: {
+    runtime: {
       set: () => undefined,
       clear: () => undefined,
+      setHydration: () => undefined,
     },
     statusDetail: {
       set: () => undefined,
@@ -183,11 +185,17 @@ export function usePluginStorage<T>(preferences: ClientPreferencesCapability, ke
   return [value, write];
 }
 
-export function useOperationStatus(status: ClientOperationStatusCapability, operationId: string): BoundOperationStatus {
+export function useOperationRuntime(runtime: ClientOperationRuntimeCapability, operationId: string): BoundOperationRuntime {
   return React.useMemo(() => ({
-    set: (activity) => status.set(operationId, activity),
-    clear: () => status.clear(operationId),
-  }), [status, operationId]);
+    set: (state) => runtime.set(operationId, state),
+    clear: () => runtime.clear(operationId),
+  }), [runtime, operationId]);
+}
+
+export function useOperationRuntimeHydration(
+  runtime: ClientOperationRuntimeCapability,
+): (state: OperationRuntimeHydration, error?: string) => void {
+  return React.useCallback((state, error) => runtime.setHydration(state, error), [runtime]);
 }
 
 async function assertSafeResponse(response: Response): Promise<Response> {

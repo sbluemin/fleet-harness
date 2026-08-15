@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 
+import { operationRuntimeVisual, runtimeStateVisual } from "../core/client/src/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import {
   acknowledgeIdleArrival,
@@ -101,7 +102,7 @@ beforeEach(() => {
     activeTheaterId: null,
     activeOperationId: null,
     activeOperationAcknowledged: true,
-    operationStatus: {},
+    operationRuntime: {},
   });
   setTriageActive(false);
   resetTriageSpotlightForTests();
@@ -188,21 +189,21 @@ describe("triage store", () => {
   });
 
   it("keeps set-aside armed while an unrelated Operation changes activity", () => {
-    const status: Record<string, OperationActivity> = { picked: "awaiting", next: "awaiting" };
+    const status: Record<string, OperationRuntimeState> = { picked: { lifecycle: "live", activity: "awaiting" }, next: { lifecycle: "live", activity: "awaiting" } };
     recordTriageActivity(OPERATIONS, status);
     armTriageSetAside("picked");
 
-    recordTriageActivity(OPERATIONS, { ...status, next: "running" });
+    recordTriageActivity(OPERATIONS, { ...status, next: { lifecycle: "live", activity: "running" } });
 
     expect(getTriageSetAsideArmedId()).toBe("picked");
   });
 
   it("disarms set-aside once its own Operation stops waiting", () => {
-    const status: Record<string, OperationActivity> = { picked: "awaiting", next: "awaiting" };
+    const status: Record<string, OperationRuntimeState> = { picked: { lifecycle: "live", activity: "awaiting" }, next: { lifecycle: "live", activity: "awaiting" } };
     recordTriageActivity(OPERATIONS, status);
     armTriageSetAside("picked");
 
-    recordTriageActivity(OPERATIONS, { ...status, picked: "running" });
+    recordTriageActivity(OPERATIONS, { ...status, picked: { lifecycle: "live", activity: "running" } });
 
     expect(getTriageSetAsideArmedId()).toBeNull();
   });
@@ -213,16 +214,16 @@ describe("triage store", () => {
     setTriageActive(false);
     expect(getTriageSetAsideArmedId()).toBeNull();
 
-    recordTriageActivity(OPERATIONS, { picked: "awaiting", next: "awaiting" });
+    recordTriageActivity(OPERATIONS, { picked: { lifecycle: "live", activity: "awaiting" }, next: { lifecycle: "live", activity: "awaiting" } });
     armTriageSetAside("picked");
     resetTriageTheater(THEATER_ID);
     expect(getTriageSetAsideArmedId()).toBeNull();
   });
 
   it("removes a picked stage after its waiting activity clears and advances the next item", () => {
-    const waiting: Readonly<Record<string, OperationActivity>> = {
-      picked: "awaiting",
-      next: "idle",
+    const waiting: Readonly<Record<string, OperationRuntimeState>> = {
+      picked: { lifecycle: "live", activity: "awaiting" },
+      next: { lifecycle: "live", activity: "idle" },
     };
     markIdleArrival("next");
     recordTriageActivity(OPERATIONS, waiting, 1_000);
@@ -231,9 +232,9 @@ describe("triage store", () => {
     const initialQueue = resolveTriageQueue(OPERATIONS, waiting, 1_000);
     expect(initialQueue.map((entry) => entry.operation.id)).toEqual(["picked", "next"]);
 
-    const running: Readonly<Record<string, OperationActivity>> = {
+    const running: Readonly<Record<string, OperationRuntimeState>> = {
       ...waiting,
-      picked: "running",
+      picked: { lifecycle: "live", activity: "running" },
     };
     recordTriageActivity(OPERATIONS, running, 2_000);
     expect(isTriageClearedTransition(initialQueue[0]!.activity, "running")).toBe(true);
@@ -277,7 +278,7 @@ describe("triage store", () => {
       activeTheaterId: THEATER_ID,
       activeOperationId: running.id,
       activeOperationAcknowledged: true,
-      operationStatus: { [running.id]: "running" },
+      operationRuntime: { [running.id]: { lifecycle: "live", activity: "running" } },
     });
 
     const focusedOperationId = focusedTriageOperationId(document.activeElement);
@@ -285,7 +286,7 @@ describe("triage store", () => {
     enterTriage(focusedOperationId);
 
     const state = getState();
-    expect(resolveTriageQueue([running], state.operationStatus)).toHaveLength(0);
+    expect(resolveTriageQueue([running], state.operationRuntime)).toHaveLength(0);
     expect(getTriagePick()).toBeNull();
     expect(state.activeOperationId).toBeNull();
     expect(document.activeElement).not.toBe(input);
@@ -294,49 +295,49 @@ describe("triage store", () => {
   it("picks a focused awaiting Operation as the queue head on entry", () => {
     const awaiting = operation("awaiting", 1);
     const later = operation("later", 2);
-    const operationStatus: Readonly<Record<string, OperationActivity>> = {
-      awaiting: "awaiting",
-      later: "awaiting",
+    const operationRuntime: Readonly<Record<string, OperationRuntimeState>> = {
+      awaiting: { lifecycle: "live", activity: "awaiting" },
+      later: { lifecycle: "live", activity: "awaiting" },
     };
-    setConsoleState({ operations: [later, awaiting], operationStatus });
+    setConsoleState({ operations: [later, awaiting], operationRuntime });
 
     enterTriage(awaiting.id);
 
     expect(getTriagePick()).toBe(awaiting.id);
-    expect(resolveTriageQueue([later, awaiting], operationStatus)[0]?.operation.id)
+    expect(resolveTriageQueue([later, awaiting], operationRuntime)[0]?.operation.id)
       .toBe(awaiting.id);
   });
 
   it("picks a focused idle arrival on entry", () => {
     const arrived = operation("arrived", 1);
-    const operationStatus: Readonly<Record<string, OperationActivity>> = { arrived: "idle" };
+    const operationRuntime: Readonly<Record<string, OperationRuntimeState>> = { arrived: { lifecycle: "live", activity: "idle" } };
     markIdleArrival(arrived.id);
-    setConsoleState({ operations: [arrived], operationStatus });
+    setConsoleState({ operations: [arrived], operationRuntime });
 
     enterTriage(arrived.id);
 
     expect(getTriagePick()).toBe(arrived.id);
-    expect(resolveTriageQueue([arrived], operationStatus)[0]?.operation.id)
+    expect(resolveTriageQueue([arrived], operationRuntime)[0]?.operation.id)
       .toBe(arrived.id);
   });
 
   it("does not let a focused non-waiting Operation displace another waiting Operation on entry", () => {
     const running = operation("running", 1);
     const waiting = operation("waiting", 2);
-    const operationStatus: Readonly<Record<string, OperationActivity>> = {
-      running: "running",
-      waiting: "awaiting",
+    const operationRuntime: Readonly<Record<string, OperationRuntimeState>> = {
+      running: { lifecycle: "live", activity: "running" },
+      waiting: { lifecycle: "live", activity: "awaiting" },
     };
     setConsoleState({
       operations: [running, waiting],
       activeOperationId: running.id,
-      operationStatus,
+      operationRuntime,
     });
 
     enterTriage(running.id);
 
     expect(getTriagePick()).toBeNull();
-    expect(resolveTriageQueue([running, waiting], operationStatus)
+    expect(resolveTriageQueue([running, waiting], operationRuntime)
       .map((entry) => entry.operation.id)).toEqual([waiting.id]);
     expect(getState().activeOperationId).toBe(running.id);
   });
@@ -366,9 +367,9 @@ describe("triage store", () => {
   it("does not treat a future clear timestamp as a returned question", () => {
     const older = operation("older", 1);
     const futureCleared = operation("future-cleared", 2);
-    const awaiting: Readonly<Record<string, OperationActivity>> = {
-      older: "awaiting",
-      "future-cleared": "awaiting",
+    const awaiting: Readonly<Record<string, OperationRuntimeState>> = {
+      older: { lifecycle: "live", activity: "awaiting" },
+      "future-cleared": { lifecycle: "live", activity: "awaiting" },
     };
     vi.setSystemTime(5_000);
     markTriageCleared("future-cleared");
@@ -388,22 +389,22 @@ describe("triage store", () => {
     input.focus();
     expect(focusedTriageOperationId(document.activeElement)).toBe("picked");
 
-    const waiting: Readonly<Record<string, OperationActivity>> = {
-      picked: "awaiting",
-      next: "idle",
+    const waiting: Readonly<Record<string, OperationRuntimeState>> = {
+      picked: { lifecycle: "live", activity: "awaiting" },
+      next: { lifecycle: "live", activity: "idle" },
     };
     markIdleArrival("next");
     recordTriageActivity(OPERATIONS, waiting, 1_000);
     pickTriageOperation("picked");
     const initialActivity = resolveTriageQueue(OPERATIONS, waiting, 1_000)[0]!.activity;
-    const running: Readonly<Record<string, OperationActivity>> = {
+    const running: Readonly<Record<string, OperationRuntimeState>> = {
       ...waiting,
-      picked: "running",
+      picked: { lifecycle: "live", activity: "running" },
     };
     recordTriageActivity(OPERATIONS, running, 2_000);
     scheduleTriageClear(
       "picked",
-      () => isTriageClearedTransition(initialActivity, running.picked!),
+      () => isTriageClearedTransition(initialActivity, runtimeStateVisual(running.picked!)),
     );
 
     vi.advanceTimersByTime(599);
@@ -415,7 +416,7 @@ describe("triage store", () => {
   it("queues only idle arrivals unless an ordinary idle Operation is picked", () => {
     const fallbackIdle = operation("fallback-idle", 1);
     const liveIdle = operation("live-idle", 2);
-    const status: Readonly<Record<string, OperationActivity>> = { "live-idle": "idle" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { "live-idle": { lifecycle: "live", activity: "idle" } };
     recordTriageActivity([fallbackIdle, liveIdle], status, 1_000);
 
     expect(resolveTriageQueue([fallbackIdle, liveIdle], status, 1_000)
@@ -432,14 +433,14 @@ describe("triage store", () => {
 
   it("keeps an idle arrival as queue head when the user activates the stage during Triage", () => {
     const arrived = operation("arrived", 1);
-    const status: Readonly<Record<string, OperationActivity>> = { arrived: "idle" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { arrived: { lifecycle: "live", activity: "idle" } };
     markIdleArrival(arrived.id);
     setConsoleState({
       operations: [arrived],
       activeTheaterId: THEATER_ID,
       activeOperationId: null,
       activeOperationAcknowledged: true,
-      operationStatus: status,
+      operationRuntime: status,
     });
 
     setTriageActive(true);
@@ -556,16 +557,16 @@ describe("triage store", () => {
 
   it("always queues awaiting Operations without an idle arrival", () => {
     const awaiting = operation("awaiting", 1);
-    expect(resolveTriageQueue([awaiting], { awaiting: "awaiting" })
+    expect(resolveTriageQueue([awaiting], { awaiting: { lifecycle: "live", activity: "awaiting" } })
       .map((entry) => entry.operation.id)).toEqual(["awaiting"]);
   });
 
   it("round-robins the queue through repeated deferrals without clearing or removing items", () => {
     const operations = [operation("first", 1), operation("second", 2), operation("third", 3)];
-    const awaiting: Readonly<Record<string, OperationActivity>> = {
-      first: "awaiting",
-      second: "awaiting",
-      third: "awaiting",
+    const awaiting: Readonly<Record<string, OperationRuntimeState>> = {
+      first: { lifecycle: "live", activity: "awaiting" },
+      second: { lifecycle: "live", activity: "awaiting" },
+      third: { lifecycle: "live", activity: "awaiting" },
     };
     recordTriageActivity(operations, awaiting, 1_000);
 
@@ -588,10 +589,10 @@ describe("triage store", () => {
     // 대기 상태가 섞이면 한 바퀴 뒤 전부 deferred가 되고, 그때 상태 우선순위가 미룬 순서를
     // 이기면 awaiting 항목이 매번 맨 앞으로 되돌아와 순환이 한 바퀴에서 멈춘다.
     const operations = [operation("aw", 1), operation("idle-a", 2), operation("idle-b", 3)];
-    const mixed: Readonly<Record<string, OperationActivity>> = {
-      aw: "awaiting",
-      "idle-a": "idle",
-      "idle-b": "idle",
+    const mixed: Readonly<Record<string, OperationRuntimeState>> = {
+      aw: { lifecycle: "live", activity: "awaiting" },
+      "idle-a": { lifecycle: "live", activity: "idle" },
+      "idle-b": { lifecycle: "live", activity: "idle" },
     };
     markIdleArrival("idle-a");
     markIdleArrival("idle-b");
@@ -611,9 +612,9 @@ describe("triage store", () => {
 
   it("clears deferrals when picked, transitioned out of waiting, or Triage exits", () => {
     const operations = [operation("first", 1), operation("second", 2)];
-    const awaiting: Readonly<Record<string, OperationActivity>> = {
-      first: "awaiting",
-      second: "awaiting",
+    const awaiting: Readonly<Record<string, OperationRuntimeState>> = {
+      first: { lifecycle: "live", activity: "awaiting" },
+      second: { lifecycle: "live", activity: "awaiting" },
     };
     recordTriageActivity(operations, awaiting, 1_000);
 
@@ -623,7 +624,7 @@ describe("triage store", () => {
     markTriageCleared("first");
 
     deferTriageOperation("first", 3_000);
-    recordTriageActivity(operations, { ...awaiting, first: "running" }, 3_000);
+    recordTriageActivity(operations, { ...awaiting, first: { lifecycle: "live", activity: "running" } }, 3_000);
     recordTriageActivity(operations, awaiting, 4_000);
     expect(resolveTriageQueue(operations, awaiting, 4_000)[0]?.operation.id).toBe("first");
 
@@ -641,10 +642,10 @@ describe("triage store", () => {
     const betaWaiting = operation("beta-waiting", 2, "theater-b");
     const betaArrived = operation("beta-arrived", 3, "theater-b");
     const operations = [betaArrived, betaWaiting, alphaWaiting];
-    const status: Readonly<Record<string, OperationActivity>> = {
-      "alpha-waiting": "awaiting",
-      "beta-waiting": "awaiting",
-      "beta-arrived": "idle",
+    const status: Readonly<Record<string, OperationRuntimeState>> = {
+      "alpha-waiting": { lifecycle: "live", activity: "awaiting" },
+      "beta-waiting": { lifecycle: "live", activity: "awaiting" },
+      "beta-arrived": { lifecycle: "live", activity: "idle" },
     };
     markIdleArrival("beta-arrived");
     recordTriageActivity(operations, status, 1_000);
@@ -666,7 +667,7 @@ describe("triage store", () => {
         hasWiki: false,
         activeAdmiralCount: 0,
       })),
-      operationStatus: { foreign: "awaiting" },
+      operationRuntime: { foreign: { lifecycle: "live", activity: "awaiting" } },
     });
     setTriageActive(true);
 
@@ -716,12 +717,12 @@ describe("triage store", () => {
     const betaIdle = operation("beta-idle", 4, "theater-b");
     const alphaDormant = operation("alpha-dormant", 5);
     const operations = [betaIdle, alphaRunning, betaWaiting, alphaWaiting, alphaDormant];
-    const status: Readonly<Record<string, OperationActivity>> = {
-      "alpha-waiting": "awaiting",
-      "beta-waiting": "awaiting",
-      "alpha-running": "running",
-      "beta-idle": "idle",
-      "alpha-dormant": "dormant",
+    const status: Readonly<Record<string, OperationRuntimeState>> = {
+      "alpha-waiting": { lifecycle: "live", activity: "awaiting" },
+      "beta-waiting": { lifecycle: "live", activity: "awaiting" },
+      "alpha-running": { lifecycle: "live", activity: "running" },
+      "beta-idle": { lifecycle: "live", activity: "idle" },
+      "alpha-dormant": { lifecycle: "dormant" },
     };
     recordTriageActivity(operations, status, 1_000);
     // beta-waiting을 지목해 전역 큐 선두로 올린다 — awaiting 섹션은 이 처리 순서를 따라야 한다.
@@ -732,7 +733,7 @@ describe("triage store", () => {
       active: false,
       minimized: false,
       notificationCount: 0,
-      status: status[candidate.id],
+      status: operationRuntimeVisual(status[candidate.id]),
       icon: null,
     }));
 
@@ -831,7 +832,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: OPERATIONS,
-        operationStatus: { picked: "running", next: "idle" },
+        operationRuntime: { picked: { lifecycle: "live", activity: "running" }, next: { lifecycle: "live", activity: "idle" } },
         operationAccent: {},
       }));
     });
@@ -896,7 +897,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: OPERATIONS,
-        operationStatus: { picked: "running", next: "idle" },
+        operationRuntime: { picked: { lifecycle: "live", activity: "running" }, next: { lifecycle: "live", activity: "idle" } },
         operationAccent: {},
         onOperationContextMenu: operationMenu,
         onTheaterContextMenu: theaterMenu,
@@ -931,10 +932,10 @@ describe("triage store", () => {
     const alphaIdle = operation("alpha-idle", 1);
     const betaWaiting = operation("beta-waiting", 2, "theater-b");
     const betaRunning = operation("beta-running", 3, "theater-b");
-    const status: Readonly<Record<string, OperationActivity>> = {
-      "alpha-idle": "idle",
-      "beta-waiting": "awaiting",
-      "beta-running": "running",
+    const status: Readonly<Record<string, OperationRuntimeState>> = {
+      "alpha-idle": { lifecycle: "live", activity: "idle" },
+      "beta-waiting": { lifecycle: "live", activity: "awaiting" },
+      "beta-running": { lifecycle: "live", activity: "running" },
     };
     recordTriageActivity([alphaIdle, betaWaiting, betaRunning], status, 1_000);
 
@@ -944,7 +945,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: [alphaIdle, betaWaiting, betaRunning],
-        operationStatus: status,
+        operationRuntime: status,
         operationAccent: {},
       }));
     });
@@ -1022,7 +1023,7 @@ describe("triage store", () => {
     document.body.append(container);
     triagePlateRoot = createRoot(container);
     const arrival = operation("arrival", 1);
-    const status: Readonly<Record<string, OperationActivity>> = { arrival: "idle" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { arrival: { lifecycle: "live", activity: "idle" } };
     recordTriageActivity([arrival], status, 1_000);
     markIdleArrival("arrival");
 
@@ -1032,7 +1033,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: [arrival],
-        operationStatus: status,
+        operationRuntime: status,
         operationAccent: {},
       }));
     });
@@ -1116,7 +1117,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: OPERATIONS,
-        operationStatus: { picked: "awaiting", next: "idle" },
+        operationRuntime: { picked: { lifecycle: "live", activity: "awaiting" }, next: { lifecycle: "live", activity: "idle" } },
         operationAccent: {},
         arrivingOperationId: "picked",
       }));
@@ -1137,7 +1138,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: OPERATIONS,
-        operationStatus: { picked: "awaiting", next: "idle" },
+        operationRuntime: { picked: { lifecycle: "live", activity: "awaiting" }, next: { lifecycle: "live", activity: "idle" } },
         operationAccent: {},
         freshOperationIds: new Set(["picked"]),
       }));
@@ -1199,7 +1200,7 @@ describe("triage store", () => {
     setConsoleState({
       operations: [foreign],
       activeTheaterId: THEATER_ID,
-      operationStatus: { foreign: "awaiting" },
+      operationRuntime: { foreign: { lifecycle: "live", activity: "awaiting" } },
     });
     setTriageActive(true);
 
@@ -1236,8 +1237,8 @@ describe("triage store", () => {
 
   it("resets dismissals and returned-window state across exit and re-entry", () => {
     const awaiting = operation("awaiting", 1);
-    const status: Readonly<Record<string, OperationActivity>> = { awaiting: "awaiting" };
-    setConsoleState({ operations: [awaiting], activeTheaterId: THEATER_ID, operationStatus: status });
+    const status: Readonly<Record<string, OperationRuntimeState>> = { awaiting: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operations: [awaiting], activeTheaterId: THEATER_ID, operationRuntime: status });
     recordTriageActivity([awaiting], status, 1_000);
     setTriageActive(true);
 
@@ -1250,7 +1251,7 @@ describe("triage store", () => {
     expect(resolveTriageQueue([awaiting], status, 1_000).map((entry) => entry.operation.id)).toEqual(["awaiting"]);
 
     const older = operation("older", 0);
-    const pairStatus: Readonly<Record<string, OperationActivity>> = { awaiting: "awaiting", older: "awaiting" };
+    const pairStatus: Readonly<Record<string, OperationRuntimeState>> = { awaiting: { lifecycle: "live", activity: "awaiting" }, older: { lifecycle: "live", activity: "awaiting" } };
     recordTriageActivity([awaiting, older], pairStatus, 1_000);
     markTriageCleared("awaiting");
     setTriageActive(false);
@@ -1266,8 +1267,8 @@ describe("triage store", () => {
     const alpha = operation("alpha", 1);
     const beta = operation("beta", 2, "theater-b");
     const operations = [alpha, beta];
-    const status: Readonly<Record<string, OperationActivity>> = { alpha: "awaiting", beta: "awaiting" };
-    setConsoleState({ operations, activeTheaterId: THEATER_ID, operationStatus: status });
+    const status: Readonly<Record<string, OperationRuntimeState>> = { alpha: { lifecycle: "live", activity: "awaiting" }, beta: { lifecycle: "live", activity: "awaiting" } };
+    setConsoleState({ operations, activeTheaterId: THEATER_ID, operationRuntime: status });
     recordTriageActivity(operations, status, 1_000);
     setTriageActive(true);
     pickTriageOperation("beta");
@@ -1323,7 +1324,7 @@ describe("triage store", () => {
     document.body.append(container);
     triagePlateRoot = createRoot(container);
     const operations = [operation("first", 1), operation("second", 2, "theater-b")];
-    const status: Readonly<Record<string, OperationActivity>> = { first: "awaiting", second: "awaiting" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { first: { lifecycle: "live", activity: "awaiting" }, second: { lifecycle: "live", activity: "awaiting" } };
     recordTriageActivity(operations, status, 1_000);
     setTriageActive(true);
 
@@ -1331,7 +1332,7 @@ describe("triage store", () => {
       triagePlateRoot?.render(createElement(TriageSideBar, {
         theaters: THEATERS,
         operations,
-        operationStatus: status,
+        operationRuntime: status,
         operationNotifications: {},
         catalog: [],
         plugins: [],
@@ -1378,7 +1379,7 @@ describe("triage store", () => {
     triagePlateRoot = createRoot(container);
     const dormant = operation("dormant", 1);
     const operations = [dormant];
-    const status: Readonly<Record<string, OperationActivity>> = { dormant: "dormant" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { dormant: { lifecycle: "dormant" } };
     const resumeOperation = vi.fn();
     const onPick = vi.fn();
     setTriageActive(true);
@@ -1386,7 +1387,7 @@ describe("triage store", () => {
     act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
       theaters: THEATERS,
       operations,
-      operationStatus: status,
+      operationRuntime: status,
       operationNotifications: {},
       catalog: [],
       plugins: [{ id: "terminal", resumeOperation }],
@@ -1425,7 +1426,7 @@ describe("triage store", () => {
     document.body.append(container);
     triagePlateRoot = createRoot(container);
     const operations = [operation("first", 1), operation("resting", 2)];
-    const status: Readonly<Record<string, OperationActivity>> = { first: "awaiting", resting: "dormant" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { first: { lifecycle: "live", activity: "awaiting" }, resting: { lifecycle: "dormant" } };
     const onOpenOperationMenu = vi.fn();
     const onLaunchKind = vi.fn();
     recordTriageActivity(operations, status, 1_000);
@@ -1434,7 +1435,7 @@ describe("triage store", () => {
     act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
       theaters: THEATERS,
       operations,
-      operationStatus: status,
+      operationRuntime: status,
       operationNotifications: {},
       catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
       plugins: [],
@@ -1513,7 +1514,7 @@ describe("triage store", () => {
     act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
       theaters: [],
       operations: [],
-      operationStatus: {},
+      operationRuntime: {},
       operationNotifications: {},
       catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
       plugins: [],
@@ -1540,7 +1541,7 @@ describe("triage store", () => {
     const catalog = [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }];
     const props = {
       operations: [],
-      operationStatus: {},
+      operationRuntime: {},
       operationNotifications: {},
       catalog,
       plugins: [],
@@ -1575,7 +1576,7 @@ describe("triage store", () => {
     const home = operation("home", 1);
     const foreign = operation("foreign", 2, "theater-b");
     const operations = [home, foreign];
-    const status: Readonly<Record<string, OperationActivity>> = { home: "running", foreign: "running" };
+    const status: Readonly<Record<string, OperationRuntimeState>> = { home: { lifecycle: "live", activity: "running" }, foreign: { lifecycle: "live", activity: "running" } };
     setConsoleState({ activeTheaterId: THEATER_ID });
 
     const previewConfigFor = (candidate: OperationNode) => candidate.theaterId === THEATER_ID
@@ -1593,6 +1594,7 @@ describe("triage store", () => {
           companionsOpen: false,
           hiddenCompanionPanelIds: [],
           onSetCompanionPanelVisible: () => {},
+          runtimeState: status[candidate.id] ?? null,
         }
       : null;
     const previewSourceFor = (candidate: OperationNode) => {
@@ -1612,7 +1614,7 @@ describe("triage store", () => {
           entering: false,
           theaters: THEATERS,
           operations,
-          operationStatus: status,
+          operationRuntime: status,
           operationAccent: {},
           previewSourceFor,
         }),
@@ -1961,7 +1963,7 @@ describe("triage fleet map markers", () => {
         entering: false,
         theaters: THEATERS,
         operations,
-        operationStatus: { "alpha-map": "running", "beta-map": "awaiting" },
+        operationRuntime: { "alpha-map": { lifecycle: "live", activity: "running" }, "beta-map": { lifecycle: "live", activity: "awaiting" } },
         operationAccent: {},
       }));
     });
@@ -2011,7 +2013,7 @@ describe("triage fleet map markers", () => {
         entering: false,
         theaters: THEATERS,
         operations: [arrival],
-        operationStatus: {},
+        operationRuntime: {},
         operationAccent: {},
       }));
     });
@@ -2038,7 +2040,7 @@ describe("triage fleet map markers", () => {
         entering: false,
         theaters: THEATERS,
         operations,
-        operationStatus: {},
+        operationRuntime: {},
         operationAccent: {},
       }));
     });

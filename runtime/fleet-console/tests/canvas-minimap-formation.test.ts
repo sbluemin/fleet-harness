@@ -214,10 +214,10 @@ describe("CanvasMinimap collapse behavior", () => {
         ...CANVAS_STATE,
         activeTheaterId: theaterId,
         operations,
-        operationStatus: {
-          "formation-1": "awaiting",
-          "formation-2": "running",
-          "formation-3": "idle",
+        operationRuntime: {
+          "formation-1": { lifecycle: "live", activity: "awaiting" },
+          "formation-2": { lifecycle: "live", activity: "running" },
+          "formation-3": { lifecycle: "live", activity: "idle" },
         },
       });
 
@@ -553,7 +553,9 @@ const CANVAS_STATE: ConsoleState = {
   activeTheaterId: "minimap-boundary",
   activeOperationId: null,
   activeOperationAcknowledged: true,
-  operationStatus: {},
+  operationRuntime: {},
+  operationRuntimeHydration: "ready",
+  operationRuntimeError: null,
   addingTheater: false,
   theaterError: null,
   operationsViewActive: true,

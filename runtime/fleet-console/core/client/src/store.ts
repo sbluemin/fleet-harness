@@ -1,5 +1,5 @@
 import type { ClientNotification } from "@fleet-console/sdk/notifications";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { readQuickLaunchSelection, writeQuickLaunchPinned } from "./quick-launch-preferences.js";
@@ -75,7 +75,12 @@ let state: ConsoleState = {
   activeTheaterId: null,
   activeOperationId: null,
   activeOperationAcknowledged: true,
-  operationStatus: {},
+  operationRuntime: {},
+  // 기본은 ready 다. 런타임 축을 보고하는 플러그인이 스스로 pending 을 선언하고 시작하며,
+  // 그런 플러그인이 하나도 없는 Console 은 기다릴 권위가 없으므로 처음부터 신뢰 가능한 상태다 —
+  // 기본을 pending 으로 두면 아무도 보고하지 않는 설치에서 재개가 영구히 막힌다.
+  operationRuntimeHydration: "ready",
+  operationRuntimeError: null,
   addingTheater: false,
   theaterError: null,
   operationsViewActive: false,
@@ -348,19 +353,35 @@ export function setActiveOperation(
   setState({ activeOperationId: operationId, activeOperationAcknowledged: acknowledged });
 }
 
-export function setOperationStatus(operationId: string, status: OperationActivity): void {
-  // idle도 명시 항목으로 저장한다. 항목 삭제로 idle을 표현하면 resumeAvailable 마커를 가진
+export function setOperationRuntime(operationId: string, next: OperationRuntimeState): void {
+  // live/idle도 명시 항목으로 저장한다. 항목 삭제로 유휴를 표현하면 resumeAvailable 마커를 가진
   // live 세션이 resolveOperationActivity 폭백에서 dormant로 재분류된다(Codex P1) —
   // "플러그인이 관측한 live idle"과 "미관측"은 구분되어야 한다.
-  if (state.operationStatus[operationId] === status) return;
-  setState({ operationStatus: { ...state.operationStatus, [operationId]: status } });
+  if (sameRuntimeState(state.operationRuntime[operationId], next)) return;
+  setState({ operationRuntime: { ...state.operationRuntime, [operationId]: next } });
 }
 
-export function clearOperationStatus(operationId: string): void {
-  if (!(operationId in state.operationStatus)) return;
-  const operationStatus = { ...state.operationStatus };
-  delete operationStatus[operationId];
-  setState({ operationStatus });
+function sameRuntimeState(current: OperationRuntimeState | undefined, next: OperationRuntimeState): boolean {
+  if (!current || current.lifecycle !== next.lifecycle) return false;
+  if (current.lifecycle === "dormant" || next.lifecycle === "dormant") return true;
+  // 표면 표식도 값의 일부다 — 활동이 그대로여도 표면이 바뀌면 칩이 달라져야 한다.
+  return current.activity === next.activity && current.surface === next.surface;
+}
+
+export function clearOperationRuntime(operationId: string): void {
+  if (!(operationId in state.operationRuntime)) return;
+  const operationRuntime = { ...state.operationRuntime };
+  delete operationRuntime[operationId];
+  setState({ operationRuntime });
+}
+
+// 런타임 축의 신뢰도는 전역 하나로 둔다 — 지금 이 축을 보고하는 소유자는 터미널 플러그인 하나뿐이고,
+// degraded의 소비처도 전역 배너 하나다. 소유자가 늘어 서로 다른 신뢰도를 동시에 말해야 하는 날이
+// 오면 그때 pluginId 별 맵으로 쪼갠다. 어느 경우든 모르는 상태를 유휴로 접지 않는 계약은 같다.
+export function setOperationRuntimeHydration(next: OperationRuntimeHydration, error?: string): void {
+  const nextError = next === "degraded" ? error ?? null : null;
+  if (state.operationRuntimeHydration === next && state.operationRuntimeError === nextError) return;
+  setState({ operationRuntimeHydration: next, operationRuntimeError: nextError });
 }
 
 export function raiseOperationNotification(input: ClientNotification): void {

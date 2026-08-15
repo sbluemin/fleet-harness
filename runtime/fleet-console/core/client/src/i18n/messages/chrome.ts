@@ -56,6 +56,7 @@ export const chromeEn = {
 
   // console link
   "chrome.link.offline": "Connection lost",
+  "chrome.runtime.degraded": "Operation activity is unavailable right now — what you see may be out of date.",
   "chrome.link.reconnecting": "Reconnecting…",
   "chrome.link.bannerDetail": "Values on screen are from {time}.",
   "chrome.link.reconnect": "Reconnect",
@@ -362,6 +363,7 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.commandBand.noOperationsInTheater": "이 Theater에 Operation이 없습니다",
 
   "chrome.link.offline": "연결 끊김",
+  "chrome.runtime.degraded": "Operation 활동 상태를 지금 확인할 수 없습니다 — 화면의 표시가 최신이 아닐 수 있습니다.",
   "chrome.link.reconnecting": "다시 연결하는 중…",
   "chrome.link.bannerDetail": "화면의 값은 {time} 기준입니다.",
   "chrome.link.reconnect": "다시 연결",

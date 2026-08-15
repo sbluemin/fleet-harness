@@ -1,9 +1,10 @@
+import type { OperationActivityVisual } from "../operation-activity.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
@@ -17,7 +18,7 @@ import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
-import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { operationRuntimeSurface, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
@@ -136,7 +137,7 @@ interface TheaterEntryBuildInput {
   readonly minimizedSet: ReadonlySet<string>;
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly catalog: readonly OperationCatalogPlugin[];
   readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
 }
@@ -381,7 +382,7 @@ export function OperationsSideBar({
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
   const {
-    operationStatus,
+    operationRuntime,
     activeOperationAcknowledged,
     pendingSideBarAddTheater,
     pendingSideBarTheaterLaunch,
@@ -403,7 +404,8 @@ export function OperationsSideBar({
     active: activeOperationId === operation.id,
     minimized: minimizedSet.has(operation.id),
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationActivity(operation, operationStatus),
+    status: resolveOperationActivity(operation, operationRuntime),
+    ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
     ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
@@ -428,7 +430,7 @@ export function OperationsSideBar({
   );
   const currentOrder = allEntries.map((entry) => entry.operation.id);
   const statusSignature = operations
-    .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationStatus)}`)
+    .map((operation) => `${operation.id}:${resolveOperationActivity(operation, operationRuntime)}`)
     .join("\0");
   const renderActiveStatusEntry = (
     entry: SideBarEntry,
@@ -512,7 +514,7 @@ export function OperationsSideBar({
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
       const status = resolveOperationDisplayActivity({
-        activity: resolveOperationActivity(operation, operationStatus),
+        activity: resolveOperationActivity(operation, operationRuntime),
         operationId: operation.id,
         idleArrivalIds,
       });
@@ -526,7 +528,7 @@ export function OperationsSideBar({
       return false;
     }
     return false;
-  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationStatus, operations, statusAxis]);
+  }), [activeTheaterId, collapsed, collapsedGroupSet, collapsedTheaters, idleArrivalIds, operationRuntime, operations, statusAxis]);
 
   useEffect(() => {
     if (armedCloseId === null) return;
@@ -539,7 +541,7 @@ export function OperationsSideBar({
   useEffect(() => {
     trackOperationActivityTransitions({
       operations,
-      operationStatus,
+      operationRuntime,
       activeTheaterId,
       activeOperationId,
       activeOperationAcknowledged,
@@ -924,7 +926,7 @@ export function OperationsSideBar({
         {theaters.map((theater, theaterIndex) => {
           const isActiveTheater = theater.id === activeTheaterId;
           const theaterOperations = operations.filter((operation) => operation.theaterId === theater.id);
-          const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationStatus);
+          const showStatusLiveTick = !statusAxis && hasAwaitingOperation(theaterOperations, operationRuntime);
           const statusActionsOpen = activeContextMenu?.kind === "theater" && activeContextMenu.theaterId === theater.id;
           const theaterCollapsed = collapsedTheaters.includes(theater.id);
           const isTheaterDragging = drag?.kind === "theater" && drag.sourceTheaterId === theater.id && drag.dragging;
@@ -948,7 +950,7 @@ export function OperationsSideBar({
               // 비활성 Theater의 칩은 캔버스에 없으므로 활성(brass/aria-current) 표시 대상이 아니다(Codex P3).
               activeOperationId: null,
               operationNotifications,
-              operationStatus,
+              operationRuntime,
               catalog,
               renderKindIcon,
             });
@@ -1317,12 +1319,12 @@ export function groupOperationsByStatus(
 
 export function hasAwaitingOperation(
   operations: readonly OperationNode[],
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
 ): boolean {
   const idleArrivalIds = getIdleArrivalIds();
   return operations.some((operation) =>
     resolveOperationDisplayActivity({
-      activity: resolveOperationActivity(operation, operationStatus),
+      activity: resolveOperationActivity(operation, operationRuntime),
       operationId: operation.id,
       idleArrivalIds,
     }) === "awaiting");
@@ -1347,7 +1349,7 @@ export function buildTheaterEntries({
   minimizedSet,
   activeOperationId,
   operationNotifications,
-  operationStatus,
+  operationRuntime,
   catalog,
   renderKindIcon,
 }: TheaterEntryBuildInput): SideBarEntry[] {
@@ -1359,7 +1361,8 @@ export function buildTheaterEntries({
     active: activeOperationId === operation.id,
     minimized: minimizedSet.has(operation.id),
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationActivity(operation, operationStatus),
+    status: resolveOperationActivity(operation, operationRuntime),
+    ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
     ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
 }

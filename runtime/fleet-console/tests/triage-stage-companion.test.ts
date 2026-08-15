@@ -106,6 +106,8 @@ describe("Triage stage companion synchronization", () => {
 
 const STATE: ConsoleState = {
   connection: "connecting",
+  operationRuntimeHydration: "ready",
+  operationRuntimeError: null,
   connectionLostAt: null,
   controlHolder: null,
   controlCurtainDismissed: false,
@@ -126,7 +128,7 @@ const STATE: ConsoleState = {
   activeTheaterId: THEATER_A,
   activeOperationId: OPERATION.id,
   activeOperationAcknowledged: true,
-  operationStatus: { [OPERATION.id]: "awaiting" },
+  operationRuntime: { [OPERATION.id]: { lifecycle: "live", activity: "awaiting" } },
   addingTheater: false,
   theaterError: null,
   operationsViewActive: true,

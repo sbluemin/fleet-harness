@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
+import type { OperationActivityVisual } from "../core/client/src/operation-activity.js";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { applyVisibleReorder, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderWithinSegment, type DropSectionInfo } from "../core/client/src/sidebar/operations-side-bar-hit-test.js";
 import { resolveOperationDisplayActivity } from "../core/client/src/operation-activity.js";
@@ -38,7 +39,7 @@ function makeNode(id: string, groupId?: string | null): OperationNode {
   };
 }
 
-function makeEntry(id: string, groupId?: string | null, status?: OperationActivity): SideBarEntry {
+function makeEntry(id: string, groupId?: string | null, status?: OperationActivityVisual): SideBarEntry {
   return {
     operation: makeNode(id, groupId),
     active: false,
@@ -336,7 +337,7 @@ describe("groupOperationsByStatus", () => {
     expect(sections.flatMap((section) => section.entries)).toHaveLength(entries.length);
 
     const operations = entries.map((entry) => entry.operation);
-    const statuses = { awaiting: "awaiting", arrived: "idle", idle: "idle", running: "running" } as const;
+    const statuses = { awaiting: { lifecycle: "live", activity: "awaiting" }, arrived: { lifecycle: "live", activity: "idle" }, idle: { lifecycle: "live", activity: "idle" }, running: { lifecycle: "live", activity: "running" } } as const;
     expect(new Set(sections[0]?.entries.map((entry) => entry.operation.id)))
       .toEqual(new Set(resolveTriageQueue(operations, statuses).map((entry) => entry.operation.id)));
   });
@@ -438,7 +439,7 @@ describe("groupOperationsByStatus", () => {
     const operation = { ...makeNode("operation"), theaterId: "theater-a" };
     trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { operation: "running" },
+      operationRuntime: { operation: { lifecycle: "live", activity: "running" } },
       activeTheaterId: "theater-b",
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -446,7 +447,7 @@ describe("groupOperationsByStatus", () => {
 
     expect(trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { operation: "idle" },
+      operationRuntime: { operation: { lifecycle: "live", activity: "idle" } },
       activeTheaterId: "theater-b",
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -456,7 +457,7 @@ describe("groupOperationsByStatus", () => {
 
     expect(trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { operation: "idle" },
+      operationRuntime: { operation: { lifecycle: "live", activity: "idle" } },
       activeTheaterId: "theater-b",
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -466,7 +467,7 @@ describe("groupOperationsByStatus", () => {
 
     expect(trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { operation: "idle" },
+      operationRuntime: { operation: { lifecycle: "live", activity: "idle" } },
       activeTheaterId: operation.theaterId,
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -478,7 +479,7 @@ describe("groupOperationsByStatus", () => {
     const operation = { ...makeNode("focused"), theaterId: "theater-a" };
     trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { focused: "running" },
+      operationRuntime: { focused: { lifecycle: "live", activity: "running" } },
       activeTheaterId: operation.theaterId,
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -486,7 +487,7 @@ describe("groupOperationsByStatus", () => {
 
     expect(trackOperationActivityTransitions({
       operations: [operation],
-      operationStatus: { focused: "idle" },
+      operationRuntime: { focused: { lifecycle: "live", activity: "idle" } },
       activeTheaterId: operation.theaterId,
       activeOperationId: operation.id,
       activeOperationAcknowledged: true,
@@ -521,12 +522,12 @@ describe("groupOperationsByStatus", () => {
       act(() => {
         setConsoleState({
           operations: [operation],
-          operationStatus: { streamed: "running" },
+          operationRuntime: { streamed: { lifecycle: "live", activity: "running" } },
           activeTheaterId: operation.theaterId,
           activeOperationId: null,
           activeOperationAcknowledged: true,
         });
-        setConsoleState({ operationStatus: { streamed: "idle" } });
+        setConsoleState({ operationRuntime: { streamed: { lifecycle: "live", activity: "idle" } } });
       });
 
       expect(getStatusTransitionTick(operation.id)).toBeDefined();
@@ -535,7 +536,7 @@ describe("groupOperationsByStatus", () => {
       unsubscribe();
       setConsoleState({
         operations: [],
-        operationStatus: {},
+        operationRuntime: {},
         activeTheaterId: null,
         activeOperationId: null,
         activeOperationAcknowledged: true,
@@ -545,8 +546,8 @@ describe("groupOperationsByStatus", () => {
 
   it("detects the GROUP-axis live tick only for an explicit awaiting status", () => {
     const operations = [makeNode("a"), makeNode("b")];
-    expect(hasAwaitingOperation(operations, { a: "running", b: "awaiting" })).toBe(true);
-    expect(hasAwaitingOperation(operations, { a: "running" })).toBe(false);
+    expect(hasAwaitingOperation(operations, { a: { lifecycle: "live", activity: "running" }, b: { lifecycle: "live", activity: "awaiting" } })).toBe(true);
+    expect(hasAwaitingOperation(operations, { a: { lifecycle: "live", activity: "running" } })).toBe(false);
   });
 });
 

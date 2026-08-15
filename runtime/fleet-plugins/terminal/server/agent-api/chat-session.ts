@@ -27,6 +27,12 @@ export interface AgentChatSessionSeed {
   readonly cwd: string;
   readonly transcriptPath: string;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
+  /**
+   * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
+   * 뜻이며, 그때는 턴을 시작하지 않는다 — 배선이 끊긴 채 도는 턴은 화면에 휴면으로 보이고,
+   * 그 조용한 거짓말이 이 계약이 존재하는 이유다.
+   */
+  readonly reportActivity: (working: boolean) => boolean;
 }
 
 /** 테스트가 실 SDK 스폰 없이 레지스트리를 돌리기 위한 주입점. */
@@ -95,6 +101,14 @@ class AgentChatSession {
    * 턴을 직렬화해 실행한다. 반환은 큐 등록 시점이다 — 진행·실패는 저널 이벤트로 전달된다.
    * 실패한 턴은 반드시 run.close()로 슬롯을 반납한다(스파이크에서 실증한 함정).
    */
+  /**
+   * 활동축이 이 세션의 턴을 받을 수 있는지 미리 확인한다. 큐에 넣은 뒤에는 HTTP 응답이 이미
+   * 떠났으므로, 거절은 요청 경계에서만 시끄러울 수 있다.
+   */
+  canReportActivity(): boolean {
+    return this.seed.reportActivity(false);
+  }
+
   send(text: string): void {
     if (this.disposed) return;
     this.pendingTurns += 1;
@@ -174,7 +188,13 @@ class AgentChatSession {
     if (this.disposed) return;
     this.push({ kind: "dispatch", text, at: Date.now() });
     this.push({ kind: "turn-start", at: Date.now() });
-    this.push({ kind: "status", working: true });
+    // 활동 보고가 먼저다. 실패하면 SDK를 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
+    // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.
+    if (!this.seed.reportActivity(true)) {
+      this.push({ kind: "error", code: "chat_activity_unavailable" });
+      this.push({ kind: "turn-end", ok: false });
+      return;
+    }
     let sawResult = false;
     try {
       const sdk = await this.ensureSdk();
@@ -209,7 +229,7 @@ class AgentChatSession {
       this.push({ kind: "error", code: "chat_turn_failed" });
       if (!sawResult) this.push({ kind: "turn-end", ok: false });
     } finally {
-      this.push({ kind: "status", working: false });
+      this.seed.reportActivity(false);
     }
   }
 

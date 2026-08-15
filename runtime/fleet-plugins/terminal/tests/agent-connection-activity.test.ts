@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyActivity, claimChatActivityAxis, releaseChatActivityAxis, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
+import { applyRuntime, sessionActivity, sessionRuntime, type AgentConnectionOptions } from "../client/agent/connection.js";
 import { extractStatusDetail } from "../client/shared/status-detail.js";
 import { assertSessionInfo } from "../client/agent/api.js";
 import type { SessionInfo } from "../client/agent/types.js";
@@ -41,7 +41,7 @@ describe("Agent connection activity state machine", () => {
   });
 
   it("composes attention, working, not-working, dormant, and legacy turn state in fixed priority order", () => {
-    expect(sessionActivity(makeSession({ status: "dormant", attentionPending: true, modelActivity: "working" }))).toBe("dormant");
+    expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
     expect(sessionActivity(makeSession({ attentionPending: true, modelActivity: "working" }))).toBe("awaiting");
     expect(sessionActivity(makeSession({ modelActivity: "working", turnState: "ended" }))).toBe("running");
     expect(sessionActivity(makeSession({ modelActivity: "not-working", turnState: "running" }))).toBe("idle");
@@ -66,12 +66,23 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ attentionPending: true, backgroundPending: true, modelActivity: "working", turnState: "ended" }))).toBe("awaiting");
   });
 
+  // 이 결함의 본체: 채팅이 인수한 세션은 PTY 가 접혀 dormant 여도 실행 표면이 살아 있다.
+  // 예전에는 dormant 가 활동 해석의 첫 분기라 아래 신호를 전부 삼켰다.
+  it("keeps a chat-adopted session live while its PTY is gone", () => {
+    expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true })))
+      .toEqual({ lifecycle: "live", activity: "idle", surface: "CHAT" });
+    expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true, chatWorking: true })))
+      .toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
+    // 인수하지 않았으면 종전대로 휴면이다.
+    expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
+  });
+
   it("does not notify when entering background and notifies when it returns idle", () => {
     const { options, notifications } = createOptions();
     const sessionId = "background-transition";
 
-    applyActivity(options, sessionId, "background");
-    applyActivity(options, sessionId, "idle");
+    applyRuntime(options, sessionId, live("background"));
+    applyRuntime(options, sessionId, live("idle"));
 
     expect(notifications.mock.calls.map((call) => call[0].kind)).toEqual(["agent.ended"]);
   });
@@ -80,13 +91,13 @@ describe("Agent connection activity state machine", () => {
     const { options, statusSet, notifications } = createOptions();
     const sessionId = "activity-transitions";
 
-    applyActivity(options, sessionId, "awaiting");
-    applyActivity(options, sessionId, "awaiting");
-    applyActivity(options, sessionId, "running");
-    applyActivity(options, sessionId, "idle");
-    applyActivity(options, sessionId, "idle");
+    applyRuntime(options, sessionId, live("awaiting"));
+    applyRuntime(options, sessionId, live("awaiting"));
+    applyRuntime(options, sessionId, live("running"));
+    applyRuntime(options, sessionId, live("idle"));
+    applyRuntime(options, sessionId, live("idle"));
 
-    expect(statusSet.mock.calls.map((call) => call[1])).toEqual(["awaiting", "awaiting", "running", "idle", "idle"]);
+    expect(statusSet.mock.calls.map((call) => call[1])).toEqual([live("awaiting"), live("awaiting"), live("running"), live("idle"), live("idle")]);
     expect(notifications.mock.calls.map((call) => call[0].kind)).toEqual(["agent.attention", "agent.ended"]);
   });
 
@@ -100,46 +111,6 @@ describe("Agent connection activity state machine", () => {
 
 describe("Chat Mode activity axis ownership", () => {
   // Chat Mode 전환은 PTY를 접지만 터미널 세션 레코드는 dormant로 남아 스냅샷에 계속 실린다.
-  // 채팅 스트림이 축을 인수하지 않으면 resync가 매 주기마다 진행 중인 턴을 휴면으로 덮어쓴다.
-  it("stops terminal snapshots from claiming an Operation the chat stream owns", () => {
-    const { options, statusSet } = createOptions();
-    applyActivity(options, "op-chat", "idle");
-    expect(statusSet).toHaveBeenCalledWith("op-chat", "idle");
-
-    statusSet.mockClear();
-    claimChatActivityAxis("op-chat");
-    applyActivity(options, "op-chat", "dormant");
-    applyActivity(options, "op-chat", "idle");
-    expect(statusSet).not.toHaveBeenCalled();
-
-    // 다른 Operation은 영향을 받지 않는다 — 주장은 id 단위다.
-    applyActivity(options, "op-terminal", "running");
-    expect(statusSet).toHaveBeenCalledExactlyOnceWith("op-terminal", "running");
-  });
-
-  it("hands the axis back on release so the next frame reports the real state", () => {
-    const { options, statusSet } = createOptions();
-    claimChatActivityAxis("op-chat");
-    releaseChatActivityAxis("op-chat");
-    applyActivity(options, "op-chat", "dormant");
-    expect(statusSet).toHaveBeenCalledWith("op-chat", "dormant");
-  });
-
-  it("forgets the last reported activity on release so a repeat is not swallowed as a no-change", () => {
-    const { notifications, options } = createOptions();
-    applyActivity(options, "op-chat", "running");
-    applyActivity(options, "op-chat", "idle");
-    expect(notifications).toHaveBeenCalledTimes(1);
-
-    notifications.mockClear();
-    claimChatActivityAxis("op-chat");
-    releaseChatActivityAxis("op-chat");
-    // 되돌려받은 축은 이전 관측이 없는 상태다. running -> idle을 다시 관측하면 턴 완료 알림도
-    // 다시 나가야 한다 — lastActivity를 남겨 두면 두 번째 턴의 종료가 조용히 삼켜진다.
-    applyActivity(options, "op-chat", "running");
-    applyActivity(options, "op-chat", "idle");
-    expect(notifications).toHaveBeenCalledTimes(1);
-  });
 });
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {
@@ -159,10 +130,15 @@ function createOptions() {
   const statusSet = vi.fn();
   const notifications = vi.fn();
   const options = {
-    status: { set: statusSet },
+    runtime: { set: statusSet, clear: vi.fn(), setHydration: vi.fn() },
     notifications: { emit: notifications },
     operations: {},
     refreshOperations: vi.fn(),
   } as unknown as AgentConnectionOptions;
   return { notifications, options, statusSet };
+}
+
+/** 표시 어휘 하나를 런타임 상태로 올려 보내는 테스트 편의. */
+function live(activity: "idle" | "running" | "awaiting" | "background") {
+  return { lifecycle: "live", activity } as const;
 }

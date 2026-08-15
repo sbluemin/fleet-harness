@@ -31,22 +31,19 @@ describe("chat log reducer", () => {
   });
 
   it("runs a live turn through working to done with duration", () => {
+    // 현재 작업 여부의 권위는 호스트의 런타임 축으로 옮겼다 — 저널은 턴의 시간축만 소유한다.
     let state = fold([
       { kind: "replay-start" },
       { kind: "replay-end", turns: 0 },
       { kind: "dispatch", text: "go" },
       { kind: "turn-start" },
-      { kind: "status", working: true },
       { kind: "text", text: "working on it" },
     ]);
-    expect(state.working).toBe(true);
     expect(state.turns.at(-1)?.state).toBe("working");
 
     state = fold([
       { kind: "turn-end", ok: true, durationMs: 3200 },
-      { kind: "status", working: false },
     ], state);
-    expect(state.working).toBe(false);
     expect(state.turns.at(-1)).toMatchObject({ state: "done", durationMs: 3200 });
   });
 

@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationActivityVisual } from "./operation-activity.js";
 
 type Listener = () => void;
 
@@ -10,7 +10,7 @@ export interface OperationStatusDetailSnapshot {
 }
 
 const details = new Map<string, string>();
-const activities = new Map<string, OperationActivity>();
+const activities = new Map<string, OperationActivityVisual>();
 const activityChangedAt = new Map<string, number>();
 const listeners = new Set<Listener>();
 let revision = 0;
@@ -30,7 +30,7 @@ export function clearOperationStatusDetail(operationId: string): void {
 
 export function recordOperationActivityTransition(
   operationId: string,
-  activity: OperationActivity,
+  activity: OperationActivityVisual,
   now = Date.now(),
 ): void {
   if (activities.get(operationId) === activity) return;

@@ -173,7 +173,7 @@ const STATE: ConsoleState = {
   activeTheaterId: THEATER,
   activeOperationId: OPERATION.id,
   activeOperationAcknowledged: true,
-  operationStatus: { [OPERATION.id]: "awaiting" },
+  operationRuntime: { [OPERATION.id]: { lifecycle: "live", activity: "awaiting" } },
   addingTheater: false,
   theaterError: null,
   operationsViewActive: true,

@@ -1,5 +1,5 @@
 import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
-import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ApiCatalogEntry as SdkApiCatalogEntry, ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 export type ThemeId = "instrument" | "maritime" | "carbon" | "whites";
 
@@ -510,7 +510,9 @@ export interface ConsoleState {
   readonly activeTheaterId: string | null;
   readonly activeOperationId: string | null;
   readonly activeOperationAcknowledged: boolean;
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
+  readonly operationRuntimeHydration: OperationRuntimeHydration;
+  readonly operationRuntimeError: string | null;
   readonly addingTheater: boolean;
   readonly theaterError: string | null;
   readonly operationsViewActive: boolean;

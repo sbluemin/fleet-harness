@@ -154,7 +154,7 @@ describe("dormant resume feedback", () => {
       api: { resync: vi.fn() },
       notifications,
       operations: {},
-      status: {},
+      runtime: { set: vi.fn(), clear: vi.fn(), setHydration: vi.fn() },
     } as unknown as PluginInstallContext);
 
     await expect(agentPlugin.resumeOperation?.(OPERATION_ID)).rejects.toThrow("gateway_model_not_enabled");

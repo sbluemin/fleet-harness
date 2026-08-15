@@ -678,6 +678,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
       delete cleared[CHAT_MODE_PAYLOAD_KEY];
       ctx.host.operations.patch(sessionId, { payload: cleared });
+      const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
+      if (releasedOnResume) observability.notifySessionUpdated(releasedOnResume);
       resumeNode = ctx.host.operations.get(sessionId) ?? node;
       if (!fresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
     }
@@ -846,6 +848,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        if (!chat.canReportActivity()) {
+          settleAttachments(false);
+          ctx.host.http.writeJson(res, 503, { error: "chat_activity_unavailable" });
+          return true;
+        }
         chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string);
       } catch {
         settleAttachments(false);
@@ -936,6 +943,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
       delete cleared[CHAT_MODE_PAYLOAD_KEY];
       ctx.host.operations.patch(sessionId, { payload: cleared });
+      const released = observability.setTerminalSessionChatActive(sessionId, false);
+      if (released) observability.notifySessionUpdated(released);
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
@@ -965,6 +974,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
     }
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
+    const activated = observability.setTerminalSessionChatActive(sessionId, true);
+    if (activated) observability.notifySessionUpdated(activated);
     if (live) {
       terminalRuntime.invalidateTicketsForSession(sessionId);
       terminalRuntime.terminate(sessionId);
@@ -1062,6 +1073,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
           observability.updateTerminalSessionProviderSession(node.id, updated);
+        },
+        reportActivity: (working) => {
+          const updated = observability.setTerminalSessionChatWorking(node.id, working);
+          // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
+          if (!updated) return false;
+          observability.notifySessionUpdated(updated);
+          return true;
         },
       },
     };

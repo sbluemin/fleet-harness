@@ -17,7 +17,6 @@ export type AgentChatStreamEvent =
   | { readonly kind: "tool"; readonly name: string; readonly detail: string }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
-  | { readonly kind: "status"; readonly working: boolean }
   | { readonly kind: "error"; readonly code: string };
 
 export interface AgentChatJournalEvent {
@@ -65,8 +64,6 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ...(typeof event.answer === "string" && event.answer.length > 0 ? { answer: event.answer } : {}),
         },
       };
-    case "status":
-      return { seq: entry.seq, event: { kind: "status", working: event.working === true } };
     case "error":
       if (typeof event.code !== "string") return null;
       return { seq: entry.seq, event: { kind: "error", code: event.code } };
@@ -110,7 +107,6 @@ export interface AgentChatLogState {
   readonly turns: readonly AgentChatTurn[];
   readonly replaying: boolean;
   readonly replayedTurns: number;
-  readonly working: boolean;
   readonly errorCode: string | null;
 }
 
@@ -121,7 +117,6 @@ export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
   replayedTurns: 0,
-  working: false,
   errorCode: null,
 };
 
@@ -174,8 +169,6 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
-    case "status":
-      return { ...state, working: event.working };
     case "error":
       return { ...state, errorCode: event.code };
     default:
