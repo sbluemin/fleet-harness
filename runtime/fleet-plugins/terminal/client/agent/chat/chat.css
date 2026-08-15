@@ -11,10 +11,11 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  /* 채팅 로그는 Operation 본문이지 그 안의 다른 면이 아니다 — 터미널 뷰와 같은 --surface-panel을
-     칠해 캡션부터 로그까지 한 덩어리로 읽힌다. 이 위에 얹히는 헤드·카드·버블·스트립은
+  /* 채팅 로그는 Operation 본문이지 그 안의 다른 면이 아니다. 캡션과 같은
+     --surface-window를 칠해 포커스 워시까지 한 덩어리로 읽힌다. 호스트가 변수를
+     안 주면 --surface-panel로 폴백한다. 이 위에 얹히는 카드·버블은
      --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다). */
-  background: var(--surface-panel);
+  background: var(--surface-window, var(--surface-panel));
   /* 캔버스·패널 조상이 pan용 손 커서와 user-select: none을 상속시킨다 — 채팅은 읽고
      복사하는 표면이므로 서브트리에서 텍스트 커서와 선택을 되살린다. */
   cursor: auto;
@@ -145,8 +146,8 @@
   height: 12px;
   border-radius: var(--radius-pill);
   border: 2px solid var(--positive);
-  /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */
-  background: var(--surface-panel);
+  /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 창 면을 그대로 따라가야 링으로 읽힌다. */
+  background: var(--surface-window, var(--surface-panel));
 }
 
 .agent-chat-turn.is-working .agent-chat-turn-node {
@@ -375,8 +376,8 @@
   gap: var(--space-3);
   border-top: 1px solid var(--hairline);
   /* 스트립은 패널 안의 다른 면이 아니라 같은 면 위의 마지막 줄이다 — 구분은 윗변 hairline이
-     맡는다. 채움을 한 티어 올리면 채팅 뷰만 터미널 패널과 다른 배경으로 읽힌다. */
-  background: var(--surface-panel);
+     맡는다. 창 면을 따라가야 포커스 워시가 캡션에서 끊기지 않는다. */
+  background: var(--surface-window, var(--surface-panel));
   padding: var(--space-2) var(--space-3);
 }
 
