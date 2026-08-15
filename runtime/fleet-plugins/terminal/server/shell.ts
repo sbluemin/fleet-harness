@@ -10,6 +10,7 @@ const OPERATION_RESTORED_EVENT_CHANNEL = "operation:restored";
 const RESTORED_DORMANT_PAYLOAD_KEY = "restoredDormant";
 
 export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: TerminalRuntime): void {
+    markRestoredShellOperations(ctx);
     const unsubscribeRestore = ctx.host.events.subscribe(OPERATION_RESTORED_EVENT_CHANNEL, (payload) => {
       if (!isRestoredShellEvent(payload, ctx.pluginId)) return;
       const operation = ctx.host.operations.get(payload.operationId);
@@ -112,6 +113,15 @@ export function registerShellRoutes(ctx: FleetPluginServerContext, runtime: Term
       { method: "DELETE", path: "/:operationId", summary: "Terminate a Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
       { method: "POST", path: "/:operationId/relaunch", summary: "Relaunch a dormant Shell session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     ]);
+}
+
+function markRestoredShellOperations(ctx: FleetPluginServerContext): void {
+  // 플러그인 등록은 이 프로세스의 PTY보다 앞선다. durable Shell은 프로세스가 없다.
+  for (const operation of ctx.host.operations.list()) {
+    if (operation.pluginId !== ctx.pluginId || operation.type !== "shell") continue;
+    if (operation.payload[RESTORED_DORMANT_PAYLOAD_KEY] === true) continue;
+    ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, [RESTORED_DORMANT_PAYLOAD_KEY]: true } });
+  }
 }
 
 function isRestoredShellEvent(value: unknown, pluginId: string): value is { readonly operationId: string } {

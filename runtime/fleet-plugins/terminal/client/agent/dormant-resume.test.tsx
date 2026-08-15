@@ -30,13 +30,18 @@ afterEach(() => {
 });
 
 describe("dormant resume feedback", () => {
-  it("keeps a preserved removed-provider Operation dormant without offering Resume or Start fresh", async () => {
-    const fetch = vi.fn();
+  it("offers Start fresh for a restored Codex Operation without captured resume metadata", async () => {
+    const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
     await renderOperation(fetch, { cliId: "codex" });
 
-    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Dormant");
-    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Ended");
+    const button = dormantButton();
+    expect(button.textContent).toContain("Start fresh");
+    await act(async () => { button.click(); });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
   });
 
   it("offers Start fresh for a supported Operation without captured resume metadata", async () => {

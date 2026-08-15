@@ -740,12 +740,12 @@ describe("triage store", () => {
 
     const sections = resolveTriageSideBarSections(entries, queue);
 
-    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle", "dormant"]);
+    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle", "ended"]);
     const byStatus = new Map(sections.map((section) => [section.status, section.entries.map((entry) => entry.operation.id)]));
     expect(byStatus.get("awaiting")).toEqual(["beta-waiting", "alpha-waiting"]);
     expect(byStatus.get("running")).toEqual(["alpha-running"]);
     expect(byStatus.get("idle")).toEqual(["beta-idle"]);
-    expect(byStatus.get("dormant")).toEqual(["alpha-dormant"]);
+    expect(byStatus.get("ended")).toEqual(["alpha-dormant"]);
   });
 
   it("keeps the Triage stage and companions inside the inset without overlap", () => {
@@ -1447,7 +1447,7 @@ describe("triage store", () => {
 
     const shelf = container.querySelector(".triage-side-bar-dormant-shelf");
     expect(shelf).not.toBeNull();
-    expect(container.querySelector(".triage-side-bar-sections .side-bar-status-section--dormant")).toBeNull();
+    expect(container.querySelector(".triage-side-bar-sections .side-bar-status-section--ended")).toBeNull();
     expect(shelf?.querySelector(".side-bar-status-header__count")?.textContent).toBe("1");
     const toggle = shelf?.querySelector<HTMLButtonElement>(".side-bar-status-header__toggle");
     expect(toggle?.getAttribute("aria-expanded")).toBe("false");
@@ -1456,9 +1456,9 @@ describe("triage store", () => {
     act(() => toggle?.click());
     const chip = shelf?.querySelector<HTMLElement>(".side-bar-chip");
     expect(chip).not.toBeNull();
-    expect(chip?.getAttribute("aria-label")).toContain("Resume dormant operation dormant");
+    expect(chip?.getAttribute("aria-label")).toContain("Start ended operation dormant");
     expect(chip?.getAttribute("aria-label")).not.toContain("Focus operation");
-    expect(chip?.getAttribute("title")).toBe("Select to resume");
+    expect(chip?.getAttribute("title")).toBe("Select to start again");
     expect(chip?.getAttribute("title")).not.toContain("right-click");
     act(() => chip?.click());
 

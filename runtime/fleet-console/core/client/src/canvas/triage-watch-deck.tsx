@@ -235,7 +235,7 @@ const TRIAGE_DECK_ACTIVITY_RANK: Record<OperationActivityVisual, number> = {
   running: 1,
   background: 2,
   idle: 3,
-  dormant: 4,
+  ended: 4,
 };
 const deckCardRects = new Map<string, DOMRect>();
 const CARD_FLASH_DURATION_MS = 900;

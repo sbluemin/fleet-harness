@@ -17,6 +17,7 @@ import {
   searchTokens,
   type RailSearchGroup,
 } from "../operation-search.js";
+import { operationActivityLabel } from "../operation-activity.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import {
   buildCodexPaletteEntries,
@@ -685,7 +686,7 @@ export function OperationSearch({
                             <small>{operationMeta(entry)}</small>
                           </span>
                           {entry.activity !== "idle" ? (
-                            <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
+                            <span className={`operation-search-status operation-search-status--${entry.activity}`}>{operationActivityLabel(entry.activity)}</span>
                           ) : null}
                           <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
                         </button>

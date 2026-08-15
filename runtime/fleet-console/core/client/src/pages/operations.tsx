@@ -1,11 +1,12 @@
 import { pluginRuntimeState } from "../operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useT } from "../i18n/index.js";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
+import { createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
@@ -60,7 +61,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const viewMode = useViewMode();
   const globalSettings = useGlobalSettingsStore();
   const language = resolveConsoleLanguage(globalSettings.state?.language ?? "auto");
+  const t = useT();
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
+  const [mutationError, setMutationError] = useState<{ readonly retry: () => void } | null>(null);
   const [triageOperationMenu, setTriageOperationMenu] = useState<{
     readonly operationId: string;
     readonly anchor: DOMRect;
@@ -458,36 +461,63 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     resume();
   }, [handleFocus, registry.plugins]);
 
-  const handleSetAccent = useCallback((operationId: string, accentKey: string | null) => {
-    void patchOperation(operationId, { accent: accentKey })
-      .then(() => fetchOperations(null))
-      .then(hydrateOperations)
-      .catch(() => {});
+  const runMutation = useCallback((task: () => Promise<void>, rollback: () => Promise<void>) => {
+    const attempt = () => {
+      void task()
+        .then(() => setMutationError(null))
+        .catch(() => {
+          void rollback().finally(() => setMutationError({ retry: attempt }));
+        });
+    };
+    attempt();
   }, []);
+
+  const refreshOperations = useCallback(
+    () => fetchOperations(null).then(hydrateOperations),
+    [],
+  );
+  const refreshGroups = useCallback(
+    () => fetchGroups(null).then(hydrateGroups),
+    [],
+  );
+  const refreshTheaters = useCallback(
+    () => fetchTheaters(null).then(hydrateTheaters),
+    [],
+  );
+  const refreshOperationsAndGroups = useCallback(
+    () => Promise.all([refreshOperations(), refreshGroups()]).then(() => undefined),
+    [refreshGroups, refreshOperations],
+  );
+
+  const handleSetAccent = useCallback((operationId: string, accentKey: string | null) => {
+    runMutation(
+      () => patchOperation(operationId, { accent: accentKey }).then(refreshOperations),
+      refreshOperations,
+    );
+  }, [refreshOperations, runMutation]);
 
   const handleRename = useCallback((operationId: string, title: string) => {
-    void renameOperation(operationId, title)
-      .then(() => fetchOperations(null))
-      .then(hydrateOperations)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => renameOperation(operationId, title).then(refreshOperations),
+      refreshOperations,
+    );
+  }, [refreshOperations, runMutation]);
 
   const handleSetGroupId = useCallback((operationId: string, groupId: string | null) => {
-    void patchOperation(operationId, { groupId })
-      .then(() => fetchOperations(null))
-      .then(hydrateOperations)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => patchOperation(operationId, { groupId }).then(refreshOperations),
+      refreshOperations,
+    );
+  }, [refreshOperations, runMutation]);
 
   const handleCreateGroup = useCallback((theaterId: string, name: string, operationId?: string) => {
-    void createGroup({ theaterId, name, color: "blue" })
-      .then((group) => operationId ? patchOperation(operationId, { groupId: group.id }).then(() => {}) : undefined)
-      .then(() => Promise.all([
-        fetchOperations(null).then(hydrateOperations),
-        fetchGroups(null).then(hydrateGroups),
-      ]))
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => createGroup({ theaterId, name, color: "blue" })
+        .then((group) => operationId ? patchOperation(operationId, { groupId: group.id }).then(() => undefined) : undefined)
+        .then(refreshOperationsAndGroups),
+      refreshOperationsAndGroups,
+    );
+  }, [refreshOperationsAndGroups, runMutation]);
 
   const openTriageOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
     if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
@@ -512,18 +542,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
 
   const handleSetGroupColor = useCallback((groupId: string, color: string | null) => {
     if (!color) return;
-    void updateGroup(groupId, { color })
-      .then(() => fetchGroups(null))
-      .then(hydrateGroups)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => updateGroup(groupId, { color }).then(refreshGroups),
+      refreshGroups,
+    );
+  }, [refreshGroups, runMutation]);
 
   const handleRenameGroup = useCallback((groupId: string, name: string) => {
-    void updateGroup(groupId, { name })
-      .then(() => fetchGroups(null))
-      .then(hydrateGroups)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => updateGroup(groupId, { name }).then(refreshGroups),
+      refreshGroups,
+    );
+  }, [refreshGroups, runMutation]);
 
   const handleReorderGroups = useCallback((orderedGroupIds: readonly string[]) => {
     const groupById = new Map(stateRef.current.groups.map((group) => [group.id, group]));
@@ -535,11 +565,11 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (patches.length === 0) return;
     // 일부 PATCH가 실패해도 항상 서버 실제 순서로 재동기화한다 — Promise.all은 첫 실패에서 reject되어
     // refetch를 건너뛰므로, 성공/실패가 섞이면 낙관적 순서가 서버와 어긋난 채 UI에 남는다.
-    void Promise.allSettled(patches)
-      .then(() => fetchGroups(null))
-      .then(hydrateGroups)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => Promise.allSettled(patches).then(refreshGroups),
+      refreshGroups,
+    );
+  }, [refreshGroups, runMutation]);
 
   const handleReorderTheaters = useCallback((orderedTheaterIds: readonly string[]) => {
     const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
@@ -549,20 +579,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       return [patchTheaterOrder(theaterId, order)];
     });
     if (patches.length === 0) return;
-    void Promise.allSettled(patches)
-      .then(() => fetchTheaters(null))
-      .then(hydrateTheaters)
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => Promise.allSettled(patches).then(refreshTheaters),
+      refreshTheaters,
+    );
+  }, [refreshTheaters, runMutation]);
 
   const handleUngroupAll = useCallback((groupId: string) => {
-    void deleteGroup(groupId)
-      .then(() => Promise.all([
-        fetchOperations(null).then(hydrateOperations),
-        fetchGroups(null).then(hydrateGroups),
-      ]))
-      .catch(() => {});
-  }, []);
+    runMutation(
+      () => deleteGroup(groupId).then(refreshOperationsAndGroups),
+      refreshOperationsAndGroups,
+    );
+  }, [refreshOperationsAndGroups, runMutation]);
 
   const handleClose = useCallback((operationId: string) => {
     if (closingOperationIds.has(operationId)) return;
@@ -622,6 +650,14 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     />
   ) : (
     <div className="console-body is-canvas">
+      {mutationError ? (
+        <p className="operations-mutation-error" role="alert">
+          {t("operations.mutation.failed")}
+          <button type="button" className="operations-mutation-retry" onClick={mutationError.retry}>
+            {t("operations.mutation.retry")}
+          </button>
+        </p>
+      ) : null}
       {triageActive ? (
         <TriageSideBar
           theaters={state.theaters}

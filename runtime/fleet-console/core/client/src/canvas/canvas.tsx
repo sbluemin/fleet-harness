@@ -408,7 +408,7 @@ export function OperationsCanvas({
   // 최소화한 Operation도 싣지 않는다: War Room에서 최소화는 "이 판에서 내린다"는 뜻이므로 deck이
   // 곧 그 판이다. 내려간 항목은 사이드바 최소화 선반에서 되올린다.
   const triageDeckOperations = triageActive
-    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) !== "dormant"
+    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) !== "ended"
       && !triageMinimizedSet.has(operation.id))
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));

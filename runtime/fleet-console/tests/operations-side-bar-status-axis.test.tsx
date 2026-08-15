@@ -87,7 +87,7 @@ describe("OperationsSideBar STATUS axis", () => {
       "BACKGROUND",
       "IDLE",
       "Minimized",
-      "DORMANT",
+      "ENDED",
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').style.getPropertyValue("--user-accent")).toBe("var(--id-rose)");
@@ -495,7 +495,7 @@ describe("OperationsSideBar STATUS axis", () => {
     setSideBarStatusAxis(true);
     renderSideBar([operation]);
 
-    expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--dormant")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="restored"]').closest(".side-bar-status-section--ended")).not.toBeNull();
 
     act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "idle" } } }));
 

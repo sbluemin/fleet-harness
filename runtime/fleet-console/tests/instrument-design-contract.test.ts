@@ -918,7 +918,7 @@ describe("Instrument core design contract", () => {
     const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
     const caption = components.match(/\.triage-side-bar-caption \{[^}]*\}/)?.[0] ?? "";
 
-    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "dormant")');
+    expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "ended")');
     expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
     // 선반은 Operation 메뉴를 갖지 않는 표면이므로 브라우저 메뉴도 열지 않는다 — 칩의
     // menuEnabled=false는 핸들러를 떼기만 하므로 억제는 선반 자신이 진다.
@@ -1012,8 +1012,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".tenant-beacon.is-dormant,\n.canvas-triage-map-dot.is-dormant,\n.side-bar-status-section--dormant {");
-    expect(components).toContain("--activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
+    expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-triage-map-dot.is-ended,\n.side-bar-status-section--ended {");
+    expect(components).toContain("--activity-color: var(--ink-fog);");
     expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
     expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.

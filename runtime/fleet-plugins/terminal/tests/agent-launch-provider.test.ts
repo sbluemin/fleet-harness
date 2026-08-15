@@ -37,11 +37,14 @@ describe("isAgentLaunchProvider", () => {
 });
 
 describe("buildAgentLaunchProviderBackfillPatch", () => {
-  it("공급자 기록이 없는 agent Operation을 claude로 메운다", () => {
+  it("공급자 기록이 없는 agent Operation을 실행 CLI에서 메운다", () => {
     const operation = makeOperation({ payload: { cliId: "claude-gateway", cwd: "/tmp/work" } });
 
     expect(buildAgentLaunchProviderBackfillPatch(operation)).toEqual({
       payload: { cliId: "claude-gateway", cwd: "/tmp/work", launchProvider: "claude" },
+    });
+    expect(buildAgentLaunchProviderBackfillPatch(makeOperation({ payload: { cliId: "codex" } }))).toEqual({
+      payload: { cliId: "codex", launchProvider: "codex" },
     });
   });
 
@@ -51,12 +54,10 @@ describe("buildAgentLaunchProviderBackfillPatch", () => {
     expect(buildAgentLaunchProviderBackfillPatch(operation)).toBeNull();
   });
 
-  it("어휘 밖의 값은 기록으로 인정하지 않고 claude로 되돌린다", () => {
-    const operation = makeOperation({ payload: { launchProvider: "gemini" } });
-
-    expect(buildAgentLaunchProviderBackfillPatch(operation)).toEqual({
-      payload: { launchProvider: "claude" },
-    });
+  it("어휘 밖의 값과 알 수 없는 CLI는 마크를 찍지 않는다", () => {
+    expect(buildAgentLaunchProviderBackfillPatch(makeOperation({ payload: { launchProvider: "gemini" } }))).toBeNull();
+    expect(buildAgentLaunchProviderBackfillPatch(makeOperation({ payload: { cliId: "gemini" } }))).toBeNull();
+    expect(buildAgentLaunchProviderBackfillPatch(makeOperation({ payload: {} }))).toBeNull();
   });
 
   it("terminal agent가 아닌 Operation은 no-op이다", () => {

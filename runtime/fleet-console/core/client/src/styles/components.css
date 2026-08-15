@@ -390,6 +390,26 @@
   line-height: 1.55;
 }
 
+.operations-mutation-error {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid color-mix(in oklch, var(--coral) 48%, var(--surface-rim));
+  background: color-mix(in oklch, var(--coral) 10%, transparent);
+  color: var(--coral-ink);
+  font-size: 12px;
+}
+
+.operations-mutation-retry {
+  border: 1px solid color-mix(in oklch, var(--coral) 40%, var(--surface-rim));
+  background: transparent;
+  color: var(--coral-ink);
+  border-radius: var(--radius-sm);
+  padding: 2px 8px;
+}
+
 .global-settings-error {
   margin: 0;
   padding: var(--space-3);
@@ -2536,10 +2556,10 @@
   --activity-glow: var(--positive-glow);
 }
 
-.tenant-beacon.is-dormant,
-.canvas-triage-map-dot.is-dormant,
-.side-bar-status-section--dormant {
-  --activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+.tenant-beacon.is-ended,
+.canvas-triage-map-dot.is-ended,
+.side-bar-status-section--ended {
+  --activity-color: var(--ink-fog);
 }
 
 /* 최소화는 활동 상태가 아니라 사용자가 고른 표시 상태다 — 신호 채널(aurora·warn·positive·coral)을
@@ -2579,7 +2599,7 @@
   animation: aurora-pulse 1.8s ease-in-out infinite;
 }
 
-.tenant-beacon.is-dormant {
+.tenant-beacon.is-ended {
   background: none;
   border: 1.5px solid var(--activity-color);
   box-sizing: border-box;
@@ -9317,7 +9337,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--warn-ink);
 }
 
-.operation-search-status--dormant {
+.operation-search-status--ended {
   color: var(--ink-muted);
 }
 

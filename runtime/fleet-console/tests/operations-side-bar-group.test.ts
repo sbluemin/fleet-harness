@@ -317,7 +317,7 @@ describe("groupOperationsByStatus", () => {
     { status: "idle", operationId: "ordinary", arrivals: new Set<string>(), expected: "idle" },
     { status: "awaiting", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "awaiting" },
     { status: "running", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "running" },
-    { status: "dormant", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "dormant" },
+    { status: "ended", operationId: "arrived", arrivals: new Set(["arrived"]), expected: "ended" },
   ] as const)("resolves $status for $operationId into the shared $expected section", ({ status, operationId, arrivals, expected }) => {
     expect(resolveOperationDisplayActivity({ activity: status, operationId, idleArrivalIds: arrivals })).toBe(expected);
   });
@@ -345,7 +345,7 @@ describe("groupOperationsByStatus", () => {
   it("renders only non-empty sections in the literal status order and treats a missing key as idle", () => {
     const entries = [
       makeEntry("idle-missing"),
-      makeEntry("dormant", null, "dormant"),
+      makeEntry("ended", null, "ended"),
       makeEntry("awaiting", null, "awaiting"),
       makeEntry("running", null, "running"),
       makeEntry("idle-explicit", null, "idle"),
@@ -358,7 +358,7 @@ describe("groupOperationsByStatus", () => {
       ["running", "RUNNING"],
       ["background", "BACKGROUND"],
       ["idle", "IDLE"],
-      ["dormant", "DORMANT"],
+      ["ended", "ENDED"],
     ]);
     expect(sections[3]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
   });

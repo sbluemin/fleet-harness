@@ -456,9 +456,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {analystChip ? <div className="agent-view-chip-row">{analystChip}</div> : null}
-        {session.resumeAvailable || isSupportedAgentOperationCliId(session.cliId)
-          ? <DormantOperationView context={context} session={session} />
-          : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
+        <DormantOperationView context={context} session={session} />
         {session.resumeAvailable && isSupportedAgentOperationCliId(session.cliId)
           ? <DormantChatEntry context={context} />
           : null}
