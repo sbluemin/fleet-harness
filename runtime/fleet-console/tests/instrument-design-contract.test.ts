@@ -1939,6 +1939,9 @@ describe("Instrument core design contract", () => {
     // Tactical grid/rows 행 보폭은 같은 32px를 본문 피치에 넣어 아래 행 캡션이 위 칸을 침범하지 않는다.
     expect(source("canvas/canvas-store.ts")).toContain("export const OPERATION_WINDOW_CAPTION_HEIGHT = 32");
     expect(source("canvas/canvas-store.ts")).toContain("const rowStride = gap + OPERATION_WINDOW_CAPTION_HEIGHT");
+    // Station Keeping도 같은 32px를 충돌 상자에 넣는다 — 본문 AABB만 보면 아래 캡션이 위를 침범한다.
+    expect(source("canvas/canvas-store.ts")).toContain("function stationKeepingFrameFor");
+    expect(source("canvas/canvas-store.ts")).toContain("function resolveStationKeepingPosition");
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");

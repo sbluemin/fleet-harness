@@ -85,6 +85,7 @@ const ZOOM_TWEEN_ZOOM_EPSILON = 0.001;
 const DEFAULT_VIEWPORT: CanvasViewport = { x: 0, y: 0, zoom: 1 };
 const EMPTY_STATE: CanvasState = { viewport: DEFAULT_VIEWPORT, operations: {}, operationOrder: [], operationAccent: {}, minimized: [], collapsedGroups: [], stationKeeping: false };
 // Station Keeping이 유지하는 패널 사이 최소 간격(월드 단위). 줌과 무관하게 월드 좌표로만 계산한다.
+// 충돌 상자는 본문이 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다.
 export const STATION_KEEPING_GAP = 16;
 
 const listeners = new Set<Listener>();
@@ -535,7 +536,7 @@ export function restoreOperation(sessionId: string): void {
   let restored: OperationGeometry = { ...geometry, zIndex };
   // Station Keeping 중에는 복원도 정착을 거친다 — 자리를 비운 사이 다른 패널이 그 자리를 쓸 수 있다.
   if (state.stationKeeping) {
-    const spot = resolveClearPosition(restored, visibleObstacles(sessionId));
+    const spot = resolveStationKeepingPosition(restored, visibleObstacles(sessionId));
     restored = { ...restored, x: spot.x, y: spot.y };
   }
   setState({
@@ -593,7 +594,7 @@ export function ensureDefaultGeometry(sessionId: string): OperationGeometry {
     zIndex: claimTopZIndex(),
   };
   if (state.stationKeeping) {
-    const spot = resolveClearPosition(geometry, visibleObstacles(sessionId));
+    const spot = resolveStationKeepingPosition(geometry, visibleObstacles(sessionId));
     geometry = { ...geometry, x: spot.x, y: spot.y };
   }
   setState({ operations: { ...state.operations, [sessionId]: geometry } });
@@ -602,12 +603,24 @@ export function ensureDefaultGeometry(sessionId: string): OperationGeometry {
 
 // ── Station Keeping ──────────────────────────────────────────────────────────
 // Cruise의 상시 비겹침 규율. 모든 계산은 월드 좌표이고 캔버스는 무한 평면이므로 해는 항상 존재한다.
+// 충돌 상자는 본문 geometry가 아니라 창 캡션(top:-32px)을 더한 시각 프레임이다. 저장 좌표는 본문 그대로다.
 
 interface StationKeepingRect {
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+}
+
+// Formation 가이드와 같은 시각 프레임 — 캡션은 본문 위(top:-32px)에 붙으므로 본문 AABB만
+// 보면 아래 패널 캡션이 위 패널 본문·캡션을 침범해도 규율이 침묵한다.
+function stationKeepingFrameFor(body: StationKeepingRect): StationKeepingRect {
+  return {
+    x: body.x,
+    y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT,
+    width: body.width,
+    height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT,
+  };
 }
 
 // gap 이상 떨어져 있으면 clear — 정확히 gap만큼 떨어진 접촉은 규율을 만족한다.
@@ -649,6 +662,20 @@ export function resolveClearPosition(
   return best ?? { x: target.x, y: target.y };
 }
 
+// 본문 좌표를 받아 시각 프레임으로 정착한 뒤 본문 좌표로 되돌린다.
+function resolveStationKeepingPosition(
+  body: StationKeepingRect,
+  obstacleBodies: readonly StationKeepingRect[],
+  gap = STATION_KEEPING_GAP,
+): { readonly x: number; readonly y: number } {
+  const spot = resolveClearPosition(
+    stationKeepingFrameFor(body),
+    obstacleBodies.map(stationKeepingFrameFor),
+    gap,
+  );
+  return { x: spot.x, y: spot.y + OPERATION_WINDOW_CAPTION_HEIGHT };
+}
+
 // 규율의 장애물은 "보이는 Cruise 패널"뿐이다 — 최소화·모드 투영·접힘은 자리를 차지하지 않는다.
 function visibleObstacles(excludeId: string | null): readonly StationKeepingRect[] {
   return Object.entries(state.operations)
@@ -670,7 +697,7 @@ function spreadVisibleOperations(
   const next = { ...operations };
   let changed = false;
   for (const [sessionId, geometry] of sorted) {
-    const spot = resolveClearPosition(geometry, placed);
+    const spot = resolveStationKeepingPosition(geometry, placed);
     if (spot.x !== geometry.x || spot.y !== geometry.y) {
       next[sessionId] = { ...geometry, x: spot.x, y: spot.y };
       changed = true;
@@ -711,7 +738,7 @@ export function settleOperationGeometry(sessionId: string): void {
   if (!state.stationKeeping) return;
   const geometry = state.operations[sessionId];
   if (!geometry || state.minimized.includes(sessionId)) return;
-  const spot = resolveClearPosition(geometry, visibleObstacles(sessionId));
+  const spot = resolveStationKeepingPosition(geometry, visibleObstacles(sessionId));
   if (spot.x === geometry.x && spot.y === geometry.y) return;
   setState({ operations: { ...state.operations, [sessionId]: { ...geometry, x: spot.x, y: spot.y } } });
 }
@@ -725,7 +752,7 @@ export function resolveLaunchGeometry(theaterId: string, geometry: OperationGeom
   const obstacles = Object.entries(snapshot.operations)
     .filter(([sessionId]) => !minimizedSet.has(sessionId))
     .map(([, existing]) => existing);
-  const spot = resolveClearPosition(geometry, obstacles);
+  const spot = resolveStationKeepingPosition(geometry, obstacles);
   if (spot.x === geometry.x && spot.y === geometry.y) return geometry;
   return { ...geometry, x: spot.x, y: spot.y };
 }
