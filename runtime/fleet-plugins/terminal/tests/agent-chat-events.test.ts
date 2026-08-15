@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { chatEventsFromSdkMessage, chatEventsFromTranscriptLine, summarizeToolInput, type AgentChatStreamEvent } from "../server/agent-api/chat-events.js";
+import {
+  chatEventsFromSdkMessage,
+  chatEventsFromTranscriptLine,
+  summarizeToolInput,
+  summarizeToolResult,
+  type AgentChatStreamEvent,
+} from "../server/agent-api/chat-events.js";
 import { readChatJournalEvent } from "../client/agent/chat/chat-events.js";
 
 describe("chat transcript mapping", () => {
@@ -13,15 +19,34 @@ describe("chat transcript mapping", () => {
     expect(events).toEqual([{ kind: "dispatch", text: "tighten the refund path", at: Date.parse("2026-08-14T01:00:00.000Z") }]);
   });
 
-  it("maps text-block user content and drops tool_result carriers", () => {
+  it("maps text-block user content and never reads a tool_result carrier as a dispatch", () => {
     expect(chatEventsFromTranscriptLine(JSON.stringify({
       type: "user",
       message: { role: "user", content: [{ type: "text", text: "hello" }] },
     }))).toEqual([{ kind: "dispatch", text: "hello" }]);
+    // 좌표(tool_use_id)가 없는 결과는 세울 스텝이 없다 — 조용히 버린다.
     expect(chatEventsFromTranscriptLine(JSON.stringify({
       type: "user",
       message: { role: "user", content: [{ type: "tool_result", content: "output" }] },
     }))).toEqual([]);
+  });
+
+  it("maps a tool_result carrier to the step's outcome", () => {
+    expect(chatEventsFromTranscriptLine(JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "t1", content: "2 tests, OK\ntrailing noise" }],
+      },
+    }))).toEqual([{ kind: "tool-result", id: "t1", ok: true, summary: "2 tests, OK" }]);
+
+    expect(chatEventsFromTranscriptLine(JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: [{ type: "tool_result", tool_use_id: "t2", is_error: true, content: [{ type: "text", text: "exit 2: no such file" }] }],
+      },
+    }))).toEqual([{ kind: "tool-result", id: "t2", ok: false, summary: "exit 2: no such file" }]);
   });
 
   it.each([
@@ -50,6 +75,37 @@ describe("chat transcript mapping", () => {
       { kind: "tool", name: "Read", detail: "src/billing/refund.ts" },
     ]);
     expect(JSON.stringify(events)).not.toContain("secret reasoning");
+  });
+
+  it("carries the tool_use id, the change it makes, and whether it left the Theater", () => {
+    const events = chatEventsFromTranscriptLine(JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [
+          { type: "tool_use", id: "t1", name: "Write", input: { file_path: "/repo/src/a.ts", content: "one\ntwo\nthree" } },
+          { type: "tool_use", id: "t2", name: "Edit", input: { file_path: "/elsewhere/b.ts", old_string: "x", new_string: "y\nz" } },
+        ],
+      },
+    }), { cwd: "/repo" });
+    expect(events).toEqual([
+      { kind: "tool", name: "Write", detail: "src/a.ts", id: "t1", change: { file: "src/a.ts", added: 3, removed: 0 } },
+      {
+        kind: "tool",
+        name: "Edit",
+        detail: "…/elsewhere/b.ts",
+        id: "t2",
+        outside: true,
+        change: { file: "…/elsewhere/b.ts", added: 2, removed: 1 },
+      },
+    ]);
+  });
+
+  it("puts no change on a read-only tool", () => {
+    const events = chatEventsFromTranscriptLine(JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "t1", name: "Bash", input: { command: "pnpm test" } }] },
+    }), { cwd: "/repo" });
+    expect(events).toEqual([{ kind: "tool", name: "Bash", detail: "pnpm test", id: "t1" }]);
   });
 
   it("tolerates malformed lines", () => {
@@ -111,8 +167,56 @@ describe("chat sdk message mapping", () => {
     expect(chatEventsFromSdkMessage({ type: "stream_event" })).toEqual([]);
   });
 
+  /**
+   * 도구 이름은 인자 JSON보다 먼저 온다. 실측(2026-08-15, xAI Grok-4.6)에서 프로바이더가
+   * 이름을 올린 뒤 인자가 끝나기까지 8.5초가 걸렸고, 게이트웨이는 그 자리에서
+   * content_block_start를 낸다(core-ai-gateway anthropic/protocol.ts). 이 분기를 놓치면
+   * 그 8.5초 동안 패널이 무엇을 하는지 말하지 못한다.
+   */
+  it("opens a step from a tool_use block start, before its arguments land", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      event: { type: "content_block_start", content_block: { type: "tool_use", id: "t1", name: "Write", input: {} } },
+    })).toEqual([{ kind: "tool-start", id: "t1", name: "Write" }]);
+    // 좌표가 될 id나 이름이 없으면 세울 스텝이 없다.
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      event: { type: "content_block_start", content_block: { type: "tool_use", name: "Write" } },
+    })).toEqual([]);
+  });
+
+  it("maps an SDK user message carrying a tool_result to that step's outcome", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] },
+    })).toEqual([{ kind: "tool-result", id: "t1", ok: true, summary: "ok" }]);
+  });
+
   it("ignores stream noise", () => {
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", session_id: "abc" })).toEqual([]);
+  });
+});
+
+describe("summarizeToolResult", () => {
+  it("keeps the first line only, under a cap", () => {
+    expect(summarizeToolResult("first line\nsecond line")).toBe("first line");
+    expect(summarizeToolResult("\n\n  padded  \nrest")).toBe("padded");
+    expect(summarizeToolResult("x".repeat(400)).length).toBeLessThanOrEqual(120);
+    expect(summarizeToolResult(undefined)).toBe("");
+  });
+
+  it("normalizes workspace and home paths like the input summary does", () => {
+    expect(summarizeToolResult("File created at /repo/src/a.ts", { cwd: "/repo" }))
+      .toBe("File created at ./src/a.ts");
+  });
+
+  // 도구 결과는 모델이 고른 문장이 아니라 실행 출력이 그대로 흐르는 경로다 — 가장 흔한
+  // 자격 증명 모양은 원문으로 남기지 않는다.
+  it("masks obvious credential shapes", () => {
+    expect(summarizeToolResult("token=sk-abcdefghijklmnopqrstuvwxyz")).toBe("token=sk-…");
+    expect(summarizeToolResult("ghp_abcdefghijklmnopqrstuvwxyz0123")).toBe("ghp_…");
+    // 헤더 이름은 남고 토큰만 사라진다 — 무엇이 실렸는지는 읽히되 값은 나가지 않는다.
+    expect(summarizeToolResult("Authorization: Bearer abcdefghijklmnopqrstuvwxyz")).toBe("Authorization: Bearer …");
   });
 });
 
@@ -154,7 +258,11 @@ describe("client/server event vocabulary parity", () => {
     { kind: "turn-start", at: 1755130000000 },
     { kind: "text", text: "body" },
     { kind: "text-delta", text: "bo" },
+    { kind: "tool-start", id: "t1", name: "Write" },
     { kind: "tool", name: "Read", detail: "a.ts" },
+    { kind: "tool", name: "Write", detail: "a.ts", id: "t1", outside: true, change: { file: "a.ts", added: 3, removed: 1 } },
+    { kind: "tool-result", id: "t1", ok: true, summary: "File created" },
+    { kind: "tool-result", id: "t2", ok: false, summary: "exit 2" },
     { kind: "turn-end", ok: true, durationMs: 12 },
     { kind: "turn-end", ok: true, durationMs: 12, answer: "Final answer." },
     { kind: "error", code: "chat_turn_failed" },

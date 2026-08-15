@@ -247,7 +247,9 @@ class AgentChatSession {
           }
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd })) {
             if (event.kind === "turn-end") sawResult = true;
-            if (event.kind === "text-delta") this.pushEphemeral(event);
+            // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
+            // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
+            if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);
             else this.push(event);
           }
         }

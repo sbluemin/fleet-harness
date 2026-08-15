@@ -4,10 +4,18 @@ import { homedir } from "node:os";
  * Chat Mode의 브라우저行 이벤트 어휘와, 두 원천(트랜스크립트 JSONL·SDK 메시지 스트림)을
  * 같은 어휘로 옮기는 매퍼.
  *
- * 이벤트에는 텍스트·도구 요약만 싣는다 — providerSession 식별자·트랜스크립트 경로·원문 파일
- * 경로는 서버 상태로만 남는다(Console 보안 계약). thinking 블록은 두 원천 모두에서 버린다 —
- * thought 내용은 공개 출력 꼬리가 되어선 안 된다(Terminal 플러그인 불변식).
+ * 이벤트에는 텍스트·도구 요약·도구 결과 요약만 싣는다 — providerSession 식별자·트랜스크립트
+ * 경로·원문 파일 경로는 서버 상태로만 남는다(Console 보안 계약). 도구 결과는 첫 줄만, 상한
+ * 아래로, 경로 정규화와 자격 증명 마스킹을 통과한 뒤에야 나간다. thinking 블록은 두 원천
+ * 모두에서 버린다 — thought 내용은 공개 출력 꼬리가 되어선 안 된다(Terminal 플러그인 불변식).
  */
+
+/** 쓰기 계열 도구가 남긴 파일 변경 — 도구 입력에서 접는다(원문 본문은 싣지 않는다). */
+export interface AgentChatChange {
+  readonly file: string;
+  readonly added: number;
+  readonly removed: number;
+}
 
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
@@ -17,7 +25,24 @@ export type AgentChatStreamEvent =
   | { readonly kind: "text"; readonly text: string }
   /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
   | { readonly kind: "text-delta"; readonly text: string }
-  | { readonly kind: "tool"; readonly name: string; readonly detail: string }
+  /**
+   * 도구 이름이 인자보다 먼저 온다. 프로바이더는 이름을 올린 뒤 인자 JSON을 몇 초에 걸쳐
+   * 흘리고(실측 8.5s), 게이트웨이는 그 자리에서 content_block_start를 낸다. 라이브 전용이다 —
+   * 재생 때는 완성 tool 이벤트가 같은 스텝을 세우므로 저널에 두 번 남길 이유가 없다.
+   */
+  | { readonly kind: "tool-start"; readonly id: string; readonly name: string }
+  | {
+      readonly kind: "tool";
+      readonly name: string;
+      readonly detail: string;
+      /** tool-start·tool-result와 같은 스텝임을 잇는 축. 트랜스크립트 재생에도 실린다. */
+      readonly id?: string;
+      /** 좌표가 Operation cwd 밖을 가리킨다 — 표시형으로 접히면 구별되지 않으므로 따로 싣는다. */
+      readonly outside?: boolean;
+      readonly change?: AgentChatChange;
+    }
+  /** 스텝의 결말. ok는 도구가 돌려준 사실이지 턴의 성패가 아니다. */
+  | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
   /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
   | { readonly kind: "error"; readonly code: string };
@@ -29,13 +54,21 @@ export interface AgentChatJournalEvent {
 }
 
 const MAX_TOOL_DETAIL_CHARS = 160;
+const MAX_TOOL_RESULT_CHARS = 120;
 const MAX_TEXT_CHARS = 60_000;
+
+/** 쓰기 계열 — 이 도구들만 변경 장부에 오른다. */
+const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
 interface TranscriptContentBlock {
   readonly type?: unknown;
   readonly text?: unknown;
   readonly name?: unknown;
+  readonly id?: unknown;
   readonly input?: unknown;
+  readonly tool_use_id?: unknown;
+  readonly content?: unknown;
+  readonly is_error?: unknown;
 }
 
 interface TranscriptLine {
@@ -72,6 +105,9 @@ export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapO
   const at = typeof line.timestamp === "string" ? Date.parse(line.timestamp) : Number.NaN;
   const atField = Number.isFinite(at) ? { at } : {};
   if (line.type === "user") {
+    // 도구 응답을 실은 user 줄은 사람이 친 지시가 아니다 — 재생에서도 스텝의 결말로 옮긴다.
+    const results = toolResultsFrom(line.message?.content, options);
+    if (results.length > 0) return results;
     const text = readUserText(line.message?.content);
     return text ? [{ kind: "dispatch", text, ...atField }] : [];
   }
@@ -83,18 +119,29 @@ export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapO
 
 /**
  * SDK가 흘려보내는 메시지 하나를 이벤트 목록으로 옮긴다. 사용자 프롬프트는 send 시점에
- * 이미 dispatch로 저널에 올랐으므로 여기서는 assistant·result만 본다.
+ * 이미 dispatch로 저널에 올랐으므로 여기서는 assistant·user(도구 응답)·result만 본다.
  */
 export function chatEventsFromSdkMessage(message: {
   readonly type: string;
   readonly [key: string]: unknown;
 }, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
   if (message.type === "stream_event") {
-    // 모양은 fleet-analyst가 실측으로 고정한 것과 동일하다. text_delta만 취한다 —
-    // thinking_delta는 공개 출력 금지 불변식에 따라 버린다.
+    // 모양은 fleet-analyst가 실측으로 고정한 것과 동일하다. text_delta와 tool_use 블록의
+    // 시작만 취한다 — thinking_delta는 공개 출력 금지 불변식에 따라 버리고, input_json_delta는
+    // 부분 인자라 좌표로 쓸 수 없다(완성 tool 이벤트가 그 자리를 채운다).
     const inner = (message as { readonly event?: unknown }).event;
     if (!inner || typeof inner !== "object") return [];
-    if ((inner as { readonly type?: unknown }).type !== "content_block_delta") return [];
+    const innerType = (inner as { readonly type?: unknown }).type;
+    if (innerType === "content_block_start") {
+      const block = (inner as { readonly content_block?: unknown }).content_block;
+      if (!block || typeof block !== "object") return [];
+      const start = block as { readonly type?: unknown; readonly id?: unknown; readonly name?: unknown };
+      if (start.type !== "tool_use") return [];
+      if (typeof start.id !== "string" || start.id.length === 0) return [];
+      if (typeof start.name !== "string" || start.name.length === 0) return [];
+      return [{ kind: "tool-start", id: start.id, name: start.name }];
+    }
+    if (innerType !== "content_block_delta") return [];
     const delta = (inner as { readonly delta?: unknown }).delta;
     if (!delta || typeof delta !== "object") return [];
     const text = (delta as { readonly type?: unknown; readonly text?: unknown });
@@ -106,6 +153,10 @@ export function chatEventsFromSdkMessage(message: {
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
     return eventsFromAssistantContent(body?.content, options);
+  }
+  if (message.type === "user") {
+    const body = (message as { readonly message?: { readonly content?: unknown } }).message;
+    return toolResultsFrom(body?.content, options);
   }
   if (message.type === "result") {
     const durationMs = (message as { readonly duration_ms?: unknown }).duration_ms;
@@ -131,9 +182,34 @@ function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptio
       continue;
     }
     if (block.type === "tool_use" && typeof block.name === "string" && block.name.length > 0) {
-      events.push({ kind: "tool", name: block.name, detail: summarizeToolInput(block.input, options) });
+      const change = changeFromToolInput(block.name, block.input, options);
+      events.push({
+        kind: "tool",
+        name: block.name,
+        detail: summarizeToolInput(block.input, options),
+        ...(typeof block.id === "string" && block.id.length > 0 ? { id: block.id } : {}),
+        ...(pathIsOutsideCwd(block.input, options.cwd) ? { outside: true } : {}),
+        ...(change ? { change } : {}),
+      });
     }
     // thinking·redacted_thinking은 의도적으로 버린다.
+  }
+  return events;
+}
+
+/** user 줄에 실린 tool_result 블록들을 스텝의 결말로 옮긴다. */
+function toolResultsFrom(content: unknown, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+  if (!Array.isArray(content)) return [];
+  const events: AgentChatStreamEvent[] = [];
+  for (const block of content as readonly TranscriptContentBlock[]) {
+    if (!block || typeof block !== "object" || block.type !== "tool_result") continue;
+    if (typeof block.tool_use_id !== "string" || block.tool_use_id.length === 0) continue;
+    events.push({
+      kind: "tool-result",
+      id: block.tool_use_id,
+      ok: block.is_error !== true,
+      summary: summarizeToolResult(block.content, options),
+    });
   }
   return events;
 }
@@ -180,9 +256,99 @@ export function summarizeToolInput(input: unknown, options: ChatEventMapOptions 
 }
 
 /**
- * 절대 경로를 브라우저 표시형으로 옮긴다: Operation cwd 안이면 상대 경로, 밖이면 마지막 두
- * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
+ * 도구 결과에서 한 줄 요약을 뽑는다. 도구가 돌려준 본문 전체는 싣지 않는다 — 첫 줄만,
+ * 상한 아래로, 경로 정규화와 자격 증명 마스킹을 통과시킨다. 모델이 고른 문장이 아니라
+ * 실행 결과가 그대로 흐르는 경로이므로, 도구 입력 요약보다 좁은 문을 지난다.
  */
+export function summarizeToolResult(content: unknown, options: ChatEventMapOptions = {}): string {
+  const text = readResultText(content);
+  if (text === null) return "";
+  const first = text.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
+  if (first === undefined) return "";
+  const flat = normalizePathTokens(first.replace(/\s+/g, " ").trim(), options.cwd);
+  const masked = maskSecrets(flat);
+  return masked.length > MAX_TOOL_RESULT_CHARS ? `${masked.slice(0, MAX_TOOL_RESULT_CHARS - 1)}…` : masked;
+}
+
+function readResultText(content: unknown): string | null {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return null;
+  const parts: string[] = [];
+  for (const block of content as readonly TranscriptContentBlock[]) {
+    if (block?.type === "text" && typeof block.text === "string") parts.push(block.text);
+  }
+  return parts.length > 0 ? parts.join("\n") : null;
+}
+
+/**
+ * 눈에 띄는 자격 증명 모양을 가린다. 완전한 비밀 탐지가 아니라, 실행 출력이 그대로 흐르는
+ * 경로에서 가장 흔한 토큰 모양이 원문으로 남지 않게 하는 최소 방어다.
+ */
+function maskSecrets(value: string): string {
+  return value
+    .replace(/\b(sk|pk|rk)-[A-Za-z0-9_-]{16,}/g, "$1-…")
+    .replace(/\b(gh[pousr]|xox[baprs])_[A-Za-z0-9_-]{16,}/g, "$1_…")
+    .replace(/\bAKIA[0-9A-Z]{12,}/g, "AKIA…")
+    .replace(/\b(?:Bearer|Authorization:)\s+[A-Za-z0-9._~+/=-]{16,}/gi, "Bearer …")
+    .replace(/\beyJ[A-Za-z0-9._-]{24,}/g, "eyJ…");
+}
+
+/**
+ * 쓰기 계열 도구의 입력에서 변경 한 건을 접는다. 파일 본문은 싣지 않고 줄 수만 센다 —
+ * "무엇이 얼마나 바뀌었는가"는 좌표이지 내용이 아니다.
+ */
+export function changeFromToolInput(name: string, input: unknown, options: ChatEventMapOptions = {}): AgentChatChange | null {
+  if (!WRITE_TOOLS.has(name)) return null;
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  const raw = typeof record.file_path === "string" && record.file_path.trim().length > 0
+    ? record.file_path
+    : typeof record.path === "string" && record.path.trim().length > 0 ? record.path : null;
+  if (raw === null) return null;
+  const file = displayPath(raw.trim(), options.cwd);
+  if (name === "Write") {
+    return { file, added: lineCount(record.content), removed: 0 };
+  }
+  if (name === "Edit") {
+    return { file, added: lineCount(record.new_string), removed: lineCount(record.old_string) };
+  }
+  if (name === "MultiEdit") {
+    let added = 0;
+    let removed = 0;
+    const edits = Array.isArray(record.edits) ? record.edits : [];
+    for (const edit of edits) {
+      if (!edit || typeof edit !== "object") continue;
+      const entry = edit as Record<string, unknown>;
+      added += lineCount(entry.new_string);
+      removed += lineCount(entry.old_string);
+    }
+    return { file, added, removed };
+  }
+  // NotebookEdit는 셀 단위라 줄 수를 세지 않는다 — 파일이 바뀌었다는 사실만 장부에 올린다.
+  return { file, added: 0, removed: 0 };
+}
+
+function lineCount(value: unknown): number {
+  if (typeof value !== "string" || value.length === 0) return 0;
+  return value.replace(/\n$/, "").split("\n").length;
+}
+
+/** 도구 입력의 경로 좌표가 Operation cwd 밖을 가리키는지. 좌표가 없으면 false다. */
+export function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boolean {
+  if (!cwd || !input || typeof input !== "object" || Array.isArray(input)) return false;
+  const record = input as Record<string, unknown>;
+  for (const key of ["file_path", "path"]) {
+    const value = record[key];
+    if (typeof value !== "string" || value.trim().length === 0) continue;
+    const normalized = value.trim().replace(/\\/g, "/");
+    if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return false;
+    const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+    if (root.length <= 1) return false;
+    return normalized !== root && !normalized.startsWith(`${root}/`);
+  }
+  return false;
+}
+
 /**
  * 자유 텍스트 요약(command·prompt 등) 안의 경로 토큰을 표시형으로 정규화한다: Operation cwd
  * 접두는 `.`으로, 홈 디렉터리 접두는 `~`로 바꾼다. 셸 관용 표기라 의미를 해치지 않으면서
@@ -199,6 +365,10 @@ function normalizePathTokens(value: string, cwd: string | undefined): string {
   return result;
 }
 
+/**
+ * 절대 경로를 브라우저 표시형으로 옮긴다: Operation cwd 안이면 상대 경로, 밖이면 마지막 두
+ * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
+ */
 function displayPath(value: string, cwd: string | undefined): string {
   const normalized = value.replace(/\\/g, "/");
   if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return value;
