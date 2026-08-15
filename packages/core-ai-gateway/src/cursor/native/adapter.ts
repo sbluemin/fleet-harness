@@ -1009,9 +1009,16 @@ function cursorClientToolDiscipline(
   nativeTools: readonly CanonicalNativeTool[],
 ): string {
   const nativeWebSearch = nativeTools.some((tool) => tool.type === "web_search");
-  const redirectLeaves = new Set(redirectTools.map((tool) => cursorToolLeafName(tool.clientName).replace(/[_-]/g, "").toLowerCase()));
+  const redirectLeaves = new Set(
+    redirectTools
+      .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
+      .map((tool) =>
+        cursorToolLeafName(tool.clientName)
+          .replace(/[_-]/g, "")
+          .toLowerCase()
+      ),
+  );
   const routed: string[] = [];
-  if (redirectLeaves.has("read")) routed.push("read");
   const hasShell = ["bash", "shellcommand", "execcommand"].some((leaf) => redirectLeaves.has(leaf));
   if (redirectLeaves.has("grep") || hasShell) routed.push("search");
   if (hasShell) routed.push("shell");
@@ -2732,11 +2739,13 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
       }
       const redirect = cursorNativeExecRedirect(
         frame.execServerMessage,
-        redirectTools.map((tool) => ({
-          clientName: tool.clientName,
-          wireName: tool.toolName,
-          inputSchemaValue: tool.inputSchemaValue,
-        })),
+        redirectTools
+          .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
+          .map((tool) => ({
+            clientName: tool.clientName,
+            wireName: tool.toolName,
+            inputSchemaValue: tool.inputSchemaValue,
+          })),
         CURSOR_TOOL_PROVIDER_IDENTIFIER,
       );
       if (redirect) {
@@ -3467,11 +3476,13 @@ function isCursorClientToolFrame(
   if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
   return cursorNativeExecRedirect(
     exec,
-    redirectTools.map((tool) => ({
-      clientName: tool.clientName,
-      wireName: tool.toolName,
-      inputSchemaValue: tool.inputSchemaValue,
-    })),
+    redirectTools
+      .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
+      .map((tool) => ({
+        clientName: tool.clientName,
+        wireName: tool.toolName,
+        inputSchemaValue: tool.inputSchemaValue,
+      })),
     CURSOR_TOOL_PROVIDER_IDENTIFIER,
   ) !== null;
 }
