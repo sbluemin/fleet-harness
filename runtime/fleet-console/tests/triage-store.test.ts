@@ -861,7 +861,7 @@ describe("triage store", () => {
         entering: false,
         theaters: THEATERS,
         operations: [claude, shell, unknown],
-        operationStatus: { "claude-op": "running" },
+        operationRuntime: { "claude-op": { lifecycle: "live", activity: "running" } },
         operationAccent: {},
         catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
         renderKindIcon: () => createElement("span", { "data-kind-icon": "shell" }),
