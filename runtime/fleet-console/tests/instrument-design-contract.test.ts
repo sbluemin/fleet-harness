@@ -36,6 +36,7 @@ const PRODUCT_SOURCE_SKIP_DIR_NAMES = new Set([
 ]);
 const JSX_FACTORY_NAMES = new Set(["createElement", "jsx", "jsxs"]);
 const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", import.meta.url);
+const SCUTTLEBUTT_CSS_PATH = new URL("../../fleet-plugins/scuttlebutt/client/styles.css", import.meta.url);
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
@@ -1075,6 +1076,7 @@ describe("Instrument core design contract", () => {
     const layout = source("styles/layout.css");
     const skillsCss = externalSource(SKILLS_CSS_PATH);
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // Doctrine: scrim-backed popup cards, floating menus, and anchored guidance cards
     // composite their glass layers over an opaque var(--ink-deep) final layer —
     // maritime/carbon/whites glass tokens carry 60~82% alpha, so without the underlay they
@@ -1111,6 +1113,19 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--ink-deep\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--ink-deep\);/);
+    // Quaker aides float over the Map — the same glass token that is opaque on Instrument
+    // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
+    for (const selector of [
+      ".scuttlebutt-bird-tag",
+      ".scuttlebutt-bird-say",
+      ".scuttlebutt-arrival-bubble",
+      ".scuttlebutt-answer-bubble",
+      ".scuttlebutt-departure-bubble",
+      ".scuttlebutt-chat-card",
+    ]) {
+      const scoped = selector.replace(/\./g, "\\.");
+      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--ink-deep\\);`));
+    }
   });
 
   it("pins the Command Band and closed-chrome contracts", () => {
