@@ -118,12 +118,15 @@ missing feature, not a hidden one. `Escape` can collapse it as a side effect of 
 something else; re-expand with the `사이드바 펼치기 (⌘B)` button before hunting for the ref.
 
 Verify the launch actually attached to the gateway rather than trusting the banner — the
-header still reads the Claude model name even when every request is being rerouted:
+header still reads the Claude model name even when every request is being rerouted. Confirm
+the owned PID with `ps -p <claude-pid> -o command=` and prove routing from the first
+`anthropic.request` plus provider-wire event in the owned capture; the former records the
+resolved model and the latter exists only after gateway dispatch.
 
-```bash
-ps eww -p <claude-pid> | tr ' ' '\n' | grep -E '^(ANTHROPIC_BASE_URL|FLEET_GATEWAY_WIRE_LOG)'
-# ANTHROPIC_BASE_URL=http://127.0.0.1:<port>/plugins/terminal/ai-gateway
-```
+Never print a process's full environment (`ps eww`, `/proc/<pid>/environ`, or an equivalent)
+and filter it afterward. Provider keys and local credentials have already crossed into tool
+output and the transcript before the filter runs, so post-processing cannot restore the
+secrecy boundary.
 
 ## Typing into the terminal
 

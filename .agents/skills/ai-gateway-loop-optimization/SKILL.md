@@ -31,11 +31,12 @@ Freeze these before the baseline and keep them identical after the change:
 - exact model id and effort;
 - prompt text;
 - caller tool catalog and permission mode;
-- Theater/cwd and repository revision except for the candidate patch;
+- Theater/cwd and the model-visible repository revision;
+- multi-turn dispatch policy: wait for `turn_ended` or enqueue while the prior turn runs;
 - logging settings;
 - trial count and success criteria.
 
-Record the literal values. If any changes, the comparison is not controlled; rerun rather than rationalize.
+Record the literal values. If any changes, the comparison is not controlled; rerun rather than rationalize. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
 
 Use an **isolated** runtime directory and the worktree's absolute built binary. Confirm the running PID command before trusting a log. Build `core-ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
 
@@ -216,6 +217,8 @@ Tests, builds, live wire evidence, cleanup, and unresolved unknowns.
 - **A prompt can manufacture retries.** “Do not explain” plus Claude Code's visible-output requirement creates an empty response followed by an automatic recovery request; classify it before blaming the provider.
 - **Suggestion Mode is a separate host request.** It can arrive after the visible transcript appears complete and must be identified by its input sentinel.
 - **Parallel trials interleave logs.** Correlate with transcript time windows or run sequentially when per-trial attribution matters; never use raw identifiers in persisted product diagnostics to make the experiment easier.
+- **Queued and sequential turns are different treatments.** Fix one dispatch policy before baseline and verify it from `queue-operation` plus turn timestamps; if before and after differ, rerun or exclude queue-sensitive lifecycle and request deltas because enqueueing changes host attachments and request shape.
+- **Rotated diagnostics are partial evidence.** Check `maxBytes` and retained backups before measuring; once rotation drops an earlier segment, use the complete caller transcript and unlimited wire log as the session denominator, because retained lifecycle counts silently omit early parks, attaches, retries, and errors.
 - **A large tool catalog is not automatically deferrable.** Measure actual `defer_loading` distribution and prove the reload/reference contract before filtering it.
 - **Caller amplification and provider amplification are different denominators.** Report both; policy rejects and provider retries do not imply the caller executed more tools.
 - **Cleanup is part of the result.** Stop only the owned Console/agent processes and verify they disappeared.
