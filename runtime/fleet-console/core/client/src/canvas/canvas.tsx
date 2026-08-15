@@ -9,7 +9,7 @@ import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, Fle
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
-import { blurActiveElement } from "../active-operation-surface.js";
+import { clearActiveOperation } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -249,8 +249,8 @@ export function OperationsCanvas({
     },
     consumePointerDown: contextMenu !== null,
     onConsumePointerDown: () => { setContextMenu(null); },
-    // 빈 바다 클릭은 Map 안이다 — 터미널 키보드는 거두되 패널 활성화는 유지한다.
-    onClick: blurActiveElement,
+    // 빈 바다 클릭은 패널을 고르지 않은 것이다 — 터미널 키보드와 캡션 포커스(is-active)를 함께 걷는다.
+    onClick: clearActiveOperation,
   });
 
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는

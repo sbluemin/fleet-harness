@@ -39,7 +39,7 @@ describe("shouldReleaseActiveOperation", () => {
     sidebar.remove();
   });
 
-  it("keeps activation on the Map and on a panel frame", () => {
+  it("lets the document guard keep Map surfaces so canvas onClick owns empty-sea release", () => {
     const canvas = el(`<main class="operations-canvas"><article class="canvas-operation" data-canvas-operation><div class="canvas-operation-titlebar">Panel</div></article></main>`);
     document.body.append(canvas);
     expect(isMapActivationSurface(canvas)).toBe(true);
@@ -75,11 +75,11 @@ describe("operations page wires Map-outside release", () => {
   });
 });
 
-describe("empty Map click keeps activation", () => {
+describe("empty Map click clears activation", () => {
   const source = readFileSync(resolve(process.cwd(), "core/client/src/canvas/canvas.tsx"), "utf8");
 
-  it("blurs the terminal without clearing the active Operation", () => {
-    expect(source).toContain("onClick: blurActiveElement");
-    expect(source).not.toContain("onClick: clearActiveOperation");
+  it("clears the active Operation and blurs the terminal", () => {
+    expect(source).toContain("onClick: clearActiveOperation");
+    expect(source).not.toContain("onClick: blurActiveElement");
   });
 });

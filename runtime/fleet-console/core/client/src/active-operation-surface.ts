@@ -1,8 +1,8 @@
 import { isBlockingDialogOpen } from "./focus-guards.js";
 import { setActiveOperation } from "./store.js";
 
-// Map 위 패널·미니맵·빈 바다만 활성 표면이다. 좌·우 사이드바는 data-canvas-blocker라서
-// 제스처만 막고, 활성화는 유지하지 않는다.
+// 문서 캡처 가드는 Map 위 패널·미니맵·Map 표면을 유지한다. 빈 바다의 해제는 캔버스
+// onClick이 맡고, 좌·우 사이드바는 data-canvas-blocker라서 제스처만 막고 활성화는 풀린다.
 // 칩은 그 Operation을 고르는 진입점이고, 커맨드 밴드·패널 포털 메뉴는 활성 Operation을
 // 전제로 하므로 별도 표식으로 유지한다.
 const KEEP_ACTIVE_SELECTOR = [
