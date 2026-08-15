@@ -1,4 +1,4 @@
-import type { OperationGeometry } from "./canvas-store.js";
+import { OPERATION_WINDOW_CAPTION_HEIGHT, type OperationGeometry } from "./canvas-store.js";
 
 export interface CanvasPoint {
   readonly x: number;
@@ -79,10 +79,12 @@ export function triageStageGeometryFor(
   slotIndex = 0,
   slotCount = 1,
 ): OperationGeometry {
+  // 무대는 Tactical 슬롯과 같은 18px 인셋이다. 하단 대기 레일이 있던 자리(옛 height-84)는
+  // 레일 제거 이후 비워 두지 않는다 — 사이드바 '대기'가 그 순서를 쥐고 있다.
   return modeSlotGeometryFor({
     x: 18,
-    y: 18 + 32,
+    y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT,
     width: Math.max(320, canvasSize.width - 36),
-    height: Math.max(240, canvasSize.height - 84 - 32),
+    height: Math.max(240, canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT),
   }, slotIndex, slotCount, 8, zIndex);
 }

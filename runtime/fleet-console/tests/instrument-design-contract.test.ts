@@ -1732,7 +1732,8 @@ describe("Instrument core design contract", () => {
     expect(source("canvas/canvas.tsx")).toContain("const TITLEBAR_OUTSET_PX = OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/canvas.tsx")).toContain("y: TITLEBAR_OUTSET_PX");
     expect(source("canvas/canvas.tsx")).toContain("TITLEBAR_OUTSET_PX * effectiveZoom");
-    expect(source("canvas/coordinates.ts")).toContain("y: 18 + 32");
+    expect(source("canvas/coordinates.ts")).toContain("y: 18 + OPERATION_WINDOW_CAPTION_HEIGHT");
+    expect(source("canvas/coordinates.ts")).toContain("canvasSize.height - 36 - OPERATION_WINDOW_CAPTION_HEIGHT");
     expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
     expect(components).toContain(".canvas-operation-beacon-button {");
