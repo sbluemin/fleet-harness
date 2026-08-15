@@ -216,9 +216,16 @@ function endWithError(state: AnalysisState, message: string, now: number): Analy
 
 function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt["outcome"], now: number): readonly AnalysisEntry[] {
   const last = state.entries.at(-1);
-  if (last?.role !== "analyst" || last.receipt) return state.entries;
+  if (last?.role === "analyst" && last.receipt) return state.entries;
   const durationMs = state.runStartedAt === null ? 0 : Math.max(0, now - state.runStartedAt);
-  return [...state.entries.slice(0, -1), { ...last, receipt: { outcome, durationMs, tools: state.tools } }];
+  const receipt: AnalysisTurnReceipt = { outcome, durationMs, tools: state.tools };
+  // chunk 없이 끝난 턴(시작 실패·조기 중단·도구 전용 런)도 빈 분석가 엔트리로 봉인한다 —
+  // 봉인하지 않으면 다음 send가 전역 상태를 초기화한 뒤 그 턴 전체가 역사에서 사라진다.
+  if (last?.role !== "analyst") {
+    if (last?.role !== "user") return state.entries;
+    return [...state.entries, { role: "analyst", text: "", at: now, receipt }];
+  }
+  return [...state.entries.slice(0, -1), { ...last, receipt }];
 }
 
 function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string, now: number): readonly AnalysisEntry[] {

@@ -78,6 +78,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const slashOptionId = (command: string) => `analysis-${context.operationId}-slash-${command.slice(1)}`;
   const activeSlashOption = slashOpen ? slashMatches[Math.min(slashSelection, slashMatches.length - 1)] : undefined;
   const evidenceTitle = t("terminal.analyst.evidenceCited");
+  // 1Hz 티커는 이 패널에 단 하나 — 역사 턴마다 타이머가 쌓이지 않게 여기서 한 번 계산해 내려보낸다.
+  const liveElapsedMs = useElapsedMs(state);
   const decorateEvidence = React.useCallback((html: string) => decorateEvidenceHtml(html, evidenceTitle), [evidenceTitle]);
   const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
@@ -217,11 +219,12 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   language={language}
                   entry={entry}
                   isLast={index === lastAnalystIndex && !pendingTurn}
+                  liveElapsedMs={liveElapsedMs}
                   decorateEvidence={decorateEvidence}
                 />
               ))}
               {pendingTurn ? (
-                <AnalystTurn state={state} language={language} entry={null} isLast decorateEvidence={decorateEvidence} />
+                <AnalystTurn state={state} language={language} entry={null} isLast liveElapsedMs={liveElapsedMs} decorateEvidence={decorateEvidence} />
               ) : null}
             </ol>
           ) : (
@@ -410,16 +413,16 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
 /* 분석가 턴 — 스파인 노드가 상태를, 헤드가 시간축을, 영수증이 과정을 말한다.
    entry=null이면 아직 chunk가 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
    entry.receipt만으로 그린다 — 전역 상태는 다음 send에서 이미 초기화됐다. */
-function AnalystTurn({ state, language, entry, isLast, decorateEvidence }: {
+function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEvidence }: {
   readonly state: AnalysisState;
   readonly language: ConsoleLocale;
   readonly entry: AnalysisEntry | null;
   readonly isLast: boolean;
+  readonly liveElapsedMs: number;
   readonly decorateEvidence: (html: string) => string;
 }) {
   const t = getT(language);
   const receipt = entry?.receipt;
-  const liveElapsedMs = useElapsedMs(state);
   const working = isLast && state.busy;
   const liveError = isLast && state.phase === "error";
   const liveStopped = isLast && state.phase === "stopped";
@@ -431,13 +434,13 @@ function AnalystTurn({ state, language, entry, isLast, decorateEvidence }: {
       <div className="session-analyst__turn-main">
         {working ? <div className="session-analyst__turn-head">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</div> : null}
         {!working && receipt?.outcome === "complete" ? <div className="session-analyst__turn-head">{t("terminal.analyst.turnAnswered", { elapsed: formatElapsed(receipt.durationMs) })}</div> : null}
-        {working || liveError ? <TurnPulse state={state} language={language} /> : null}
-        {liveStopped ? <StoppedReceipt state={state} language={language} /> : null}
+        {working || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
+        {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {!liveStopped && !working && receipt?.outcome === "stopped" ? (
           <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>
         ) : null}
         {!working && receipt?.outcome === "complete" ? <TurnReceipt language={language} durationMs={receipt.durationMs} tools={receipt.tools} /> : null}
-        {entry !== null ? (
+        {entry !== null && entry.text !== "" ? (
           <div className="session-analyst__answer">
             <div className="session-analyst__answer-kicker" aria-hidden="true">{t("terminal.chat.answerLabel")}</div>
             <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={working} language={language} transformHtml={decorateEvidence} />
@@ -450,9 +453,9 @@ function AnalystTurn({ state, language, entry, isLast, decorateEvidence }: {
 
 
 /* 진행 펄스 행 — 마지막 확인 활동만 말한다는 정직성 마이크로카피가 함께 붙는다. */
-function TurnPulse({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
+function TurnPulse({ state, language, elapsedMs }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly elapsedMs: number }) {
   const t = getT(language);
-  const elapsed = formatElapsed(useElapsedMs(state));
+  const elapsed = formatElapsed(elapsedMs);
   const activity = activityLabel(state.latestActivity, language);
   const isError = state.phase === "error";
   const current = currentActivity(state.latestActivity, language);
@@ -471,9 +474,9 @@ function TurnPulse({ state, language }: { readonly state: AnalysisState; readonl
   );
 }
 
-function StoppedReceipt({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
+function StoppedReceipt({ state, language, elapsedMs }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly elapsedMs: number }) {
   const t = getT(language);
-  const elapsed = formatElapsed(useElapsedMs(state));
+  const elapsed = formatElapsed(elapsedMs);
   const activity = activityLabel(state.latestActivity, language);
   return <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
 }
