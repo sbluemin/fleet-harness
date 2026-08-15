@@ -19,6 +19,21 @@ export interface CompanionShortcutEntry {
 
 type T = Translate<CoreMessageKey>;
 
+/** Quick Launch 토글. 전역 단축키와 접힌 바 힌트가 같은 목록을 쓴다. */
+export const QUICK_LAUNCH_TOGGLE_COMBOS = [
+  ["Mod", "J"],
+  ["Ctrl", "Space"],
+] as const;
+
+/**
+ * 접힌 바처럼 한 덩어리로 읽는 힌트. Mod는 플랫폼 글쇠(⌘/Ctrl)로 바꾸고,
+ * ⌘ 조합만 붙여 쓴다(⌘J). 그 밖은 +로 잇는다(Ctrl+J, Ctrl+Space).
+ */
+export function formatShortcutCombo(combo: readonly string[], modLabel: string): string {
+  const keys = combo.map((key) => (key === "Mod" ? modLabel : key));
+  return keys.join(keys[0] === "⌘" ? "" : "+");
+}
+
 export function buildShortcutGroups(
   t: T,
   companionShortcuts: readonly CompanionShortcutEntry[] = [],
@@ -29,7 +44,7 @@ export function buildShortcutGroups(
       entries: [
         { combos: [["Mod", "K"]], description: t("shortcuts.console.searchOps") },
         { combos: [["Mod", "P"]], description: t("shortcuts.console.commandPalette") },
-        { combos: [["Mod", "J"], ["Ctrl", "Space"]], description: t("shortcuts.console.quickLaunch") },
+        { combos: [...QUICK_LAUNCH_TOGGLE_COMBOS], description: t("shortcuts.console.quickLaunch") },
         { combos: [["Mod", "B"]], description: t("shortcuts.console.toggleSidebar") },
         { combos: [["Mod", "Alt", "B"]], description: t("shortcuts.console.toggleRail") },
       ],

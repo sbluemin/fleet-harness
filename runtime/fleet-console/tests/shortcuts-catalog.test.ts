@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getT } from "../core/client/src/i18n/index.js";
-import { buildShortcutGroups } from "../core/client/src/shortcuts-catalog.js";
+import { buildShortcutGroups, formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../core/client/src/shortcuts-catalog.js";
 
 describe("shortcut catalog", () => {
   it("lists the command palette immediately after operation search, then Quick Launch", () => {
@@ -11,8 +11,16 @@ describe("shortcut catalog", () => {
     expect(consoleGroup.entries.slice(0, 3)).toEqual([
       { combos: [["Mod", "K"]], description: "Search Operations across Theaters" },
       { combos: [["Mod", "P"]], description: "Open Command Palette" },
-      { combos: [["Mod", "J"], ["Ctrl", "Space"]], description: "Toggle Quick Launch" },
+      { combos: [...QUICK_LAUNCH_TOGGLE_COMBOS], description: "Toggle Quick Launch" },
     ]);
+    expect(QUICK_LAUNCH_TOGGLE_COMBOS).toEqual([["Mod", "J"], ["Ctrl", "Space"]]);
+  });
+
+  it("formats Quick Launch toggle hints as one chord each", () => {
+    expect(formatShortcutCombo(["Mod", "J"], "⌘")).toBe("⌘J");
+    expect(formatShortcutCombo(["Mod", "J"], "Ctrl")).toBe("Ctrl+J");
+    expect(formatShortcutCombo(["Ctrl", "Space"], "⌘")).toBe("Ctrl+Space");
+    expect(formatShortcutCombo(["Ctrl", "Space"], "Ctrl")).toBe("Ctrl+Space");
   });
 
   it("appends active companion shortcuts to the end of Operations", () => {

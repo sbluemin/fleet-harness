@@ -11,6 +11,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
 import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
+import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
@@ -22,6 +23,18 @@ import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 const CARD_WIDTH_FALLBACK = 760;
 const POPOVER_GAP = 8;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
+
+interface NavigatorWithUserAgentData extends Navigator {
+  readonly userAgentData?: {
+    readonly platform?: string;
+  };
+}
+
+function resolveModLabel(): string {
+  const userAgentDataPlatform = (navigator as NavigatorWithUserAgentData).userAgentData?.platform;
+  const platform = userAgentDataPlatform ?? navigator.platform;
+  return /mac|iphone|ipad|ipod/i.test(platform) ? "⌘" : "Ctrl";
+}
 
 /**
  * War Room 무대 id. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
@@ -1194,6 +1207,7 @@ export function QuickLaunch() {
     : (target
       ? registry.plugins.find((plugin) => plugin.id === target.pluginId)?.renderLaunchIcon?.(target.kind) ?? null
       : null);
+  const modLabel = resolveModLabel();
 
   return (
     <div
@@ -1235,7 +1249,14 @@ export function QuickLaunch() {
             <span className={`quick-launch-strip-trace${draftTrace.length === 0 ? " is-idle" : ""}`}>
               {draftTrace.length === 0 ? t("chrome.quickLaunch.placeholder") : draftTrace}
             </span>
-            <kbd className="quick-launch-strip-key" aria-hidden="true">⌘J</kbd>
+            <span className="quick-launch-strip-keys" aria-hidden="true">
+              {QUICK_LAUNCH_TOGGLE_COMBOS.map((combo, index) => (
+                <span key={combo.join("+")}>
+                  {index > 0 ? <span className="quick-launch-strip-or">{t("chrome.shortcuts.or")}</span> : null}
+                  <kbd className="quick-launch-strip-key">{formatShortcutCombo(combo, modLabel)}</kbd>
+                </span>
+              ))}
+            </span>
           </button>
         ) : null}
 
