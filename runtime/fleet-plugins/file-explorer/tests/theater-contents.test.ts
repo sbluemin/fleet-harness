@@ -174,11 +174,13 @@ describe("listTheaterContents VCS edge cases", () => {
     }
   });
 
-  it("500개 항목 뒤의 .git 별칭 심링크도 cap 판정 전에 실해석으로 분류한다", async () => {
+  it("표시 상한 이후의 심링크 꼬리는 실해석하지 않고 truncated로 알린다", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-aliascap-"));
     fs.mkdirSync(path.join(dir, ".git"));
     fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
-    // 순서 통제: 표시 가능 파일 500개를 먼저, 별칭 심링크를 마지막에 낸다.
+    const realpath = vi.spyOn(fs.promises, "realpath");
+    const stat = vi.spyOn(fs.promises, "stat");
+    // 순서 통제: 표시 가능 파일 500개를 먼저, 별칭 심링크와 깨진 심링크 꼬리를 뒤에 낸다.
     const dirents = [
       ...Array.from({ length: 500 }, (_, i) => ({
         name: `file-${String(i).padStart(3, "0")}.txt`,
@@ -192,6 +194,12 @@ describe("listTheaterContents VCS edge cases", () => {
         isFile: () => false,
         isSymbolicLink: () => true,
       },
+      ...Array.from({ length: 32 }, (_, i) => ({
+        name: `alias-${String(i).padStart(2, "0")}`,
+        isDirectory: () => false,
+        isFile: () => false,
+        isSymbolicLink: () => true,
+      })),
     ];
     const fakeOpendir = async () => ({
       read: async () => dirents.shift() ?? null,
@@ -199,12 +207,97 @@ describe("listTheaterContents VCS edge cases", () => {
     });
 
     try {
-      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+      const result = await listTheaterContents(dir, "", {
+        opendir: fakeOpendir as unknown as typeof fs.promises.opendir,
+      });
 
       expect(result.entries).toHaveLength(500);
-      expect(result).not.toHaveProperty("truncated");
-      expect(result.hiddenVcsInternals).toEqual([".git"]);
+      expect(result).toMatchObject({ truncated: true, cap: 500 });
+      expect(result).not.toHaveProperty("hiddenVcsInternals");
+      // 루트/대상 containment용 realpath 2회만 — 상한 이후 심링크는 분류하지 않는다.
+      expect(realpath).toHaveBeenCalledTimes(2);
+      expect(stat).toHaveBeenCalledTimes(1);
     } finally {
+      realpath.mockRestore();
+      stat.mockRestore();
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("심링크 배치가 상한을 넘기면 디렉터리 끝에서도 truncated이다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-batchcap-"));
+    fs.writeFileSync(path.join(dir, "target.txt"), "");
+    for (let index = 0; index < 16; index++) {
+      fs.symlinkSync(path.join(dir, "target.txt"), path.join(dir, `link-${String(index).padStart(2, "0")}`));
+    }
+    const dirents = [
+      ...Array.from({ length: 485 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      ...Array.from({ length: 16 }, (_, i) => ({
+        name: `link-${String(i).padStart(2, "0")}`,
+        isDirectory: () => false,
+        isFile: () => false,
+        isSymbolicLink: () => true,
+      })),
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", {
+        opendir: fakeOpendir as unknown as typeof fs.promises.opendir,
+      });
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).toMatchObject({ truncated: true, cap: 500 });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("상한을 넘는 심링크 배치는 남은 칸만 실해석한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-remain-"));
+    fs.writeFileSync(path.join(dir, "target.txt"), "");
+    for (let index = 0; index < 16; index++) {
+      fs.symlinkSync(path.join(dir, "target.txt"), path.join(dir, `link-${String(index).padStart(2, "0")}`));
+    }
+    const realpath = vi.spyOn(fs.promises, "realpath");
+    const dirents = [
+      ...Array.from({ length: 499 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      ...Array.from({ length: 16 }, (_, i) => ({
+        name: `link-${String(i).padStart(2, "0")}`,
+        isDirectory: () => false,
+        isFile: () => false,
+        isSymbolicLink: () => true,
+      })),
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", {
+        opendir: fakeOpendir as unknown as typeof fs.promises.opendir,
+      });
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).toMatchObject({ truncated: true, cap: 500 });
+      // containment 2회 + 상한을 채우는 심링크 1회만.
+      expect(realpath).toHaveBeenCalledTimes(3);
+    } finally {
+      realpath.mockRestore();
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });

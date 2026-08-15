@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { FolderListResult } from "../server/types.js";
 
-import { buildFlatRows, FILTER_DIRECTORY_CAP, isCurrentContextRequest, isEntryRow, loadFilterDescendants, type PluginFilesClient } from "../client/tree.js";
+import { buildFlatRows, FILTER_DIRECTORY_CAP, isCurrentContextRequest, isEntryRow, loadFilterDescendants, planFolderExpand, type PluginFilesClient } from "../client/tree.js";
 
 const ROOT_ENTRIES = [{ name: "src", relativePath: "src", kind: "dir" }] as const;
 const SRC_RESULT: FolderListResult = {
@@ -103,6 +103,19 @@ describe("FileTree context request guard", () => {
 
     expect(source).toContain("const isFiltering = Boolean(filterText);");
     expect(source).toContain("}, [contextKey, files, isFiltering, result, showHidden]);");
+  });
+
+  it("re-expands from cache and joins an in-flight list instead of starting another", () => {
+    expect(planFolderExpand(true, true, false)).toEqual({ nextExpanded: false, fetch: "none" });
+    expect(planFolderExpand(false, false, false)).toEqual({ nextExpanded: true, fetch: "foreground" });
+    expect(planFolderExpand(false, true, false)).toEqual({ nextExpanded: true, fetch: "background" });
+    expect(planFolderExpand(false, true, true)).toEqual({ nextExpanded: true, fetch: "none" });
+    expect(planFolderExpand(false, false, true)).toEqual({ nextExpanded: true, fetch: "none" });
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain("planFolderExpand(");
+    expect(source).toContain("inFlightFoldersRef");
+    expect(source).toContain("if (childResultsRef.current.has(relPath)) return;");
+    expect(source).toMatch(/setExpandedDirs\(\(prev\) => \{\s*if \(!prev\.has\(relPath\)\) return prev;/);
   });
 
   it("stops traversing when a server result repeats a visited relative path", async () => {
