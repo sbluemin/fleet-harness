@@ -167,27 +167,19 @@ print(json.dumps(req['tools'][0], indent=2)[:800])
 
 ## Skip the UI when the question is about the provider
 
-Driving a browser to ask "does this backend accept X" is slow and confounded. Import the
-built adapter and call it directly — same code path, no Console, no PTY:
+Driving a browser to ask "does this backend accept X" is slow and confounded. For a standard
+provider/canonical/router loop, build `core-ai-gateway` and use its `e2e:provider-loop`
+runner first; it fixes the production router, credential, continuation, and cleanup contracts
+without Console or PTY. Follow `ai-gateway-loop-optimization` for the exact command and
+measurement contract.
 
-```js
-import fs from 'node:fs';
-const { OpencodeGoChatCompletionsAdapter } = await import('<worktree>/packages/core-ai-gateway/dist/index.js');
-const key = JSON.parse(fs.readFileSync('/Users/<you>/.fleet/auth.json','utf8'))['Claude Code with OpenCode Go'].key;
-const res = await new OpencodeGoChatCompletionsAdapter({}).stream(
-  { model: 'deepseek-v4-flash', input: [...], stream: true, tools: [...] },
-  { apiKey: key },
-);
-for await (const ev of res.events) { /* inspect canonical events */ }
-```
-
-Requires `pnpm run build` in the package first — workspace `dist/` is gitignored, so a
+Import the built adapter directly only when the runner cannot express the bespoke request
+shape being tested. Requires a fresh package build — workspace `dist/` is gitignored, so a
 stale or absent build silently tests the previous revision.
 
-Run any probe **several times**. Provider behavior here is not deterministic: measuring
+Run any live probe **several times**. Provider behavior here is not deterministic: measuring
 tool-call arguments on this wire, roughly 1 run in 5 returned truncated JSON with no
 closing brace, independent of anything the gateway does. A single clean run proves nothing.
 
 Use the browser path when the question involves Console — launch wiring, PTY, plugin
-routes, what the operator actually sees. Use the direct-adapter path when the question is
-purely "what does this provider do".
+routes, what the operator actually sees.

@@ -20,9 +20,18 @@ The output is not merely a patch. It is a reproducible before/after account that
 
 ## Execution dependency
 
-For a real Claude Code Operation, read the `console-e2e` skill and its [live agent prompt testing reference](../console-e2e/references/live-agent-prompt-testing.md) before launching anything. That reference owns worktree paths, isolated Console setup, Settings model exposure, wire capture, credentials, PTY/browser choices, and cleanup. Do not copy or improvise those mechanics here.
+Choose the smallest execution surface. For provider-loop, canonical, or router behavior only, use the standalone package runner below and do not start Console. If a bespoke request shape exceeds the runner, call the built adapter directly. If caller tools/transcripts, host-generated or auxiliary turns, process lifecycle, or operator view matter, use a real Operation: read `console-e2e` and its [live agent prompt testing reference](../console-e2e/references/live-agent-prompt-testing.md) first; that reference owns isolated Console setup, credentials, PTY/browser choices, and cleanup.
 
-Skip the browser when the question is purely provider-wire behavior; call the built adapter directly as the reference describes. Use a real Operation when host-generated turns, caller tools, transcripts, process lifecycle, or what the operator sees are part of the question.
+### Standalone provider-loop runner
+
+The runner starts no Console, PTY, Theater, or Operation. It uses the production core-ai-gateway router and production credential readers. From the absolute worktree path, run:
+
+```sh
+pnpm --filter @dotobokuri/core-ai-gateway build
+pnpm --filter @dotobokuri/core-ai-gateway e2e:provider-loop -- --model 'claude-gateway--opencode--deepseek-v4-flash[1m]' --operations 3 --trials 5 --confirm-live-provider
+```
+
+`--effort` accepts `low|medium|high|xhigh|max|ultra`; `--timeout-ms` controls the whole logical trial. Confirmation spends real quota. `FLEET_GATEWAY_WIRE_LOG=<isolated-scratch>/wire.jsonl` is explicit opt-in for raw prompt/tool payloads; credentials are not recorded, but this remains sensitive. Verify a fresh package `dist/`; isolated runtime/PID/Console-build requirements apply only to real Operations. Default test and CI paths never invoke the live runner.
 
 ## Non-negotiable experiment contract
 
@@ -38,7 +47,7 @@ Freeze these before the baseline and keep them identical after the change:
 
 Record the literal values. If any changes, the comparison is not controlled; rerun rather than rationalize. When the workload inspects the candidate's own source, keep the model-visible tree identical and vary only the built runtime under test. Check `git status` around every trial and discard any trial where the model mutates the frozen tree — seeing or changing the patch alters the workload as well as the runtime, so the result has no single cause.
 
-Use an **isolated** runtime directory and the worktree's absolute built binary. Confirm the running PID command before trusting a log. Build `core-ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
+For the standalone runner, use the absolute worktree path and verify a fresh package `dist/`. For a real Operation, use an isolated runtime directory, confirm the running PID command, and build `core-ai-gateway` before Fleet Console whenever Console consumes the package's `dist/` output.
 
 ## Phase 1 — Observe the whole loop
 
@@ -53,7 +62,7 @@ Instrument before the first prompt. Collect all layers that exist for the provid
 | Provider diagnostics | e.g. Cursor bridge/redirect events | Did a live connection park, attach, mismatch, expire, or replay? |
 | Host lifecycle | Operation state, transcript timestamps, processes | Did the agent finish, retry an auxiliary turn, or remain resident? |
 
-Do not infer one layer from another. A provider rejection is not a caller execution. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
+Collect a layer only when it exists for the chosen execution surface. The standalone runner creates no caller transcript, host lifecycle, or auxiliary turns; do not count those as zero or infer them from runner metrics. Do not infer one layer from another. A provider rejection is not a caller execution. A `function_call` in replay history is not a new tool call. A session registry state is not necessarily a terminal process state.
 
 ### Classify every request before counting it
 
@@ -88,7 +97,7 @@ Report counts and denominators, not percentages alone:
 - provider-specific lifecycle counts: selected, parked, exact attach, deferred replay, result written, mismatch, expiry;
 - wall time per successful trial;
 - final visible-output recovery count;
-- process cleanup status.
+- cleanup status: standalone router/server close; real Operation owned-process cleanup.
 
 A privacy-preserving log may omit prompts or call ids. Keep that boundary: add payload-free counters, local operation sequence numbers, adapter labels, sizes, and outcomes before adding raw content. Never persist credentials, prompts, tool output, raw call ids, conversation ids, or session ids merely to make aggregation easier.
 
@@ -144,7 +153,7 @@ Do not edit compiler-owned changelogs. Amend the applicable `.changelog.d/` frag
 
 ## Phase 4 — Measure with the frozen workload
 
-Build the package, rebuild/restart the isolated Console if needed, and rerun the same number of successful trials.
+For a real Operation, rebuild/restart the isolated Console if needed. For the standalone runner, use the identical exact command, sequential trials, and a fresh package build; do not add Console lifecycle steps.
 
 Produce a before/after table for every metric the candidate claimed it would change. Also include invariants that must remain stable:
 
@@ -168,7 +177,9 @@ Run at least:
 - one failure/error result if result conversion or correlation changed;
 - concurrent or repeated trials when ordering/correlation is involved.
 
-Inspect actual artifacts and logs, not just tests or the implementing narrative. Re-run the full package tests, typecheck, build, dependent Console build, changelog validation, and `git diff --check` before accepting the change.
+The fixed standalone runner is for repeating the exact baseline workload. If near-match, auxiliary, or failure request shapes are not supported by its options, use a direct built-adapter probe or focused test instead; do not imply that the runner provides unsupported scenarios.
+
+Inspect actual artifacts and logs, not just tests or the implementing narrative. Re-run package tests, typecheck, build, and `git diff --check`. A dependent Console build is required only when gateway serving/host wiring or real Operation behavior changed; package-only changes use the runner for the exact workload and direct adapter probes/tests for other supported scenarios.
 
 Stop when either:
 
@@ -221,4 +232,6 @@ Tests, builds, live wire evidence, cleanup, and unresolved unknowns.
 - **Rotated diagnostics are partial evidence.** Check `maxBytes` and retained backups before measuring; once rotation drops an earlier segment, use the complete caller transcript and unlimited wire log as the session denominator, because retained lifecycle counts silently omit early parks, attaches, retries, and errors.
 - **A large tool catalog is not automatically deferrable.** Measure actual `defer_loading` distribution and prove the reload/reference contract before filtering it.
 - **Caller amplification and provider amplification are different denominators.** Report both; policy rejects and provider retries do not imply the caller executed more tools.
-- **Cleanup is part of the result.** Stop only the owned Console/agent processes and verify they disappeared.
+- **Standalone confirmation is quota consent.** The default test/CI path never invokes the live runner.
+- **Package dist can be stale.** Build the package before the standalone runner; real Operations additionally rebuild/restart Console when it consumes the package.
+- **Cleanup ownership follows the execution surface.** Confirm the standalone trial's router/server cleanup metrics; for a real Operation, stop only its owned Console/agent processes and verify they disappeared. Mixing the rules either misses an open handle or kills an unrelated process.
