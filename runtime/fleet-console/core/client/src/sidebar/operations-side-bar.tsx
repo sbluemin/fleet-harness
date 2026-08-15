@@ -373,6 +373,11 @@ export function OperationsSideBar({
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [newMenu, setNewMenu] = useState<NewMenuState | null>(null);
   const [browserOpen, setBrowserOpen] = useState(false);
+  // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
+  // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
+  useEffect(() => {
+    if (theaters.length === 0) setNewMenu(null);
+  }, [theaters.length]);
   const { resizing, onPointerDown: onResizePointerDown, onDoubleClick: onResizeDoubleClick } = useSideBarResize();
   const collapsedGroups = useCollapsedGroups();
   const collapsedTheaters = useCollapsedTheaters();
@@ -809,6 +814,7 @@ export function OperationsSideBar({
   // 사이드바 빈 영역 우클릭 = ＋New 버튼과 동일한 launch 오버레이를 커서 위치에 연다.
   // chip/그룹 헤더는 자체 우클릭 핸들러가 preventDefault()를 호출하므로(버블로 도달 시
   // defaultPrevented=true), 그쪽 우클릭은 accent/그룹 메뉴를 유지하고 여기서는 무시한다.
+  // 등록된 Theater가 없으면 실행할 대상이 없다 — 브라우저 메뉴만 막고 상자는 열지 않는다.
   const openNewMenuAtCursor = (event: React.MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented) return;
     event.preventDefault();
@@ -816,6 +822,10 @@ export function OperationsSideBar({
     // 캔버스(Map) 쪽에 이미 열린 캔버스 제어 메뉴는 사이드바 <aside> 안에 있지 않아
     // 포털의 mousedown 외부-클릭 닫기가 안 잡는다 — 포털이 구독하는 닫기 신호를 함께 본다.
     window.dispatchEvent(new Event("canvas-context-menu-close"));
+    if (theaters.length === 0) {
+      setNewMenu(null);
+      return;
+    }
     setNewMenu({
       anchor: { x: event.clientX, y: event.clientY },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },

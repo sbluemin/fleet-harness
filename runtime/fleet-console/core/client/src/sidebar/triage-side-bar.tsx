@@ -98,15 +98,25 @@ export function TriageSideBar({
   useEffect(() => {
     if (sideBar.collapsed) setLaunchMenu(null);
   }, [sideBar.collapsed]);
+  // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
+  // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
+  useEffect(() => {
+    if (theaters.length === 0) setLaunchMenu(null);
+  }, [theaters.length]);
   // 사이드바 빈 영역 우클릭 = 캔버스의 주인 없는 자리와 같은 '캔버스 제어'를 커서 자리에 연다.
   // 칩과 휴면 선반은 자기 우클릭에서 preventDefault()를 부르므로(버블로 도달 시 defaultPrevented=true)
   // 그쪽 계약은 그대로 유지되고 여기서는 무시된다.
+  // 등록된 Theater가 없으면 실행할 대상이 없다 — 브라우저 메뉴만 막고 상자는 열지 않는다.
   const openLaunchMenuAtCursor = (event: MouseEvent<HTMLElement>) => {
     if (event.defaultPrevented) return;
     event.preventDefault();
     // 캔버스가 소유한 메뉴는 이 <aside> 안에 없어 포털의 mousedown 외부-클릭 닫기가 못 잡는다 —
     // 포털이 구독하는 닫기 신호를 함께 보낸다.
     window.dispatchEvent(new Event("canvas-context-menu-close"));
+    if (theaters.length === 0) {
+      setLaunchMenu(null);
+      return;
+    }
     setLaunchMenu({
       anchor: { x: event.clientX, y: event.clientY },
       viewportBounds: { width: window.innerWidth, height: window.innerHeight },
