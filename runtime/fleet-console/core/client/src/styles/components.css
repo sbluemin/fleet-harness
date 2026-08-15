@@ -2513,9 +2513,9 @@
 }
 
 /* OperationActivity 색은 이 축에서 한 번만 선언한다. dormant의 brass는 위치 채널 토큰을
-   상태에 쓰는 기존 STATUS 예외다. 카드·지도까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다. */
+   상태에 쓰는 기존 STATUS 예외다. 지도 점까지 같은 판독을 공유하도록 예외 범위를 함께 넓힌다.
+   War Room 덱은 자기 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다. */
 .tenant-beacon.is-awaiting,
-.canvas-triage-deck-card.is-awaiting,
 .canvas-triage-map-dot.is-awaiting,
 .side-bar-status-section--awaiting {
   --activity-color: var(--aurora);
@@ -2523,7 +2523,6 @@
 }
 
 .tenant-beacon.is-turn-running,
-.canvas-triage-deck-card.is-running,
 .canvas-triage-map-dot.is-running,
 .side-bar-status-section--running {
   --activity-color: var(--warn);
@@ -2531,7 +2530,6 @@
 }
 
 .tenant-beacon.is-idle,
-.canvas-triage-deck-card.is-idle,
 .canvas-triage-map-dot.is-idle,
 .side-bar-status-section--idle {
   --activity-color: var(--positive);
@@ -2539,7 +2537,6 @@
 }
 
 .tenant-beacon.is-dormant,
-.canvas-triage-deck-card.is-dormant,
 .canvas-triage-map-dot.is-dormant,
 .side-bar-status-section--dormant {
   --activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
@@ -2553,7 +2550,6 @@
 }
 
 .tenant-beacon.is-background,
-.canvas-triage-deck-card.is-background,
 .canvas-triage-map-dot.is-background,
 .side-bar-status-section--background {
   --activity-color: var(--warn);
@@ -3046,9 +3042,12 @@
   line-height: 1.55;
 }
 
+/* 덱은 캔버스 안에서 네 변에 같은 여백만 두고 선다. 바닥에만 74px을 남기던 종전 값은 판 아래
+   아무것도 서지 않는 빈 띠였고(실측: 그 자리에 닿는 것은 캔버스 배경뿐), 그만큼 칸의 높이와
+   한 행의 수용량을 깎았다. */
 .canvas-triage-deck {
   position: absolute;
-  inset: 26px 26px 74px;
+  inset: 26px;
   z-index: 80;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
@@ -3112,7 +3111,7 @@
 
 /* 변형 프레임 — 카드가 점 자리로 옮겨 가며 수축한다. 방향은 프레임을 언제 걸고 언제 걷느냐로
    갈린다(지도 진입=걸며 재생, 이탈=걸어 둔 채 다음 프레임에 걷어 재생). */
-.canvas-triage-deck-card.is-morphing {
+.canvas-triage-deck-cell.is-morphing {
   z-index: 2;
   transition:
     transform calc(var(--duration-slow) * 1.15) var(--ease-glide),
@@ -3121,16 +3120,16 @@
 
 /* invert 단계는 전이 없이 즉시 점 자리에 놓인다 — 여기에 전이가 걸리면 카드가 제자리에서
    점 자리로 갔다가 되돌아오는 왕복이 보인다. */
-.canvas-triage-deck-card.is-morph-snap {
+.canvas-triage-deck-cell.is-morph-snap {
   transition: none;
 }
 
-.canvas-triage-deck.is-morph-to-map .canvas-triage-deck-card.is-morphing {
+.canvas-triage-deck.is-morph-to-map .canvas-triage-deck-cell.is-morphing {
   opacity: 0;
 }
 
 /* 지도에서 돌아오는 카드는 점만 한 크기에서 옅게 시작해 제자리에서 또렷해진다. */
-.canvas-triage-deck.is-morph-to-cards .canvas-triage-deck-card.is-morph-snap {
+.canvas-triage-deck.is-morph-to-cards .canvas-triage-deck-cell.is-morph-snap {
   opacity: 0.35;
 }
 
@@ -3416,22 +3415,11 @@
   color: var(--text-secondary);
 }
 
-/* 지도 Quick-Look — 카드가 은닉된 밀도에서도 hover 드웰이 같은 카드 얼굴을 같은 판독 크기로
-   내놓는다. 카드 쪽 Quick-Look은 카드 자신을 확대하지만, 지도에는 확대할 카드가 없으므로 판
-   위에 떠서 점을 덮는 오버레이가 그 자리를 대신한다. 위치·크기는 점 실측에서 JS가 주입한다.
-   포인터는 통과시킨다 — 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 그대로 닿아야 한다.
-   셀렉터에 카드 클래스를 함께 묶는 것은 특이성 때문이다: 카드 얼굴을 재사용하려 카드 클래스를
-   같이 입는데, 뒤에 오는 `.canvas-triage-deck-card`(0,1,0)의 `position: relative`가 같은
-   특이성의 단일 클래스 규칙을 이겨 창이 판 좌표가 아니라 정상 흐름 위치에서 밀려난다. */
-.canvas-triage-deck-card.canvas-triage-map-quicklook {
-  position: absolute;
-  z-index: 3;
+/* 지도 Quick-Look로 끌어올린 칸의 패널 — 판 위에 떠 있다는 사실만 테두리·그림자로 말한다.
+   자리와 크기는 칸이 지고(is-map-quicklook), 여기서는 그 위에 얹는 강조만 소유한다. */
+.canvas-triage-deck-cell.is-map-quicklook > .canvas-operation {
   border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
-  background: color-mix(in oklch, var(--surface-glass) 96%, var(--ink-deep));
   box-shadow: var(--shadow-floating), 0 0 0 1px var(--brass-glow);
-  cursor: default;
-  animation: triage-map-quicklook-in var(--duration-fast) var(--ease-glide) both;
-  pointer-events: none;
 }
 
 /* Theater 밴드 — 전역 deck 안에서 카드 묶음을 소속별로 갈라 헤더(이니셜 칩+라벨+수치)를 단다.
@@ -3504,14 +3492,12 @@
   min-width: 0;
 }
 
-/* 카드를 감싸는 칸 — Quick-Look 확대는 이 칸이 진다. 카드가 <button>이라 그 안에 버튼을 넣을 수
-   없으므로 최소화·닫기를 카드의 형제로 이 칸에 얹고, 확대할 때 함께 따라가되 자기 배율만 되돌린다.
-   밀도 변형(morph)의 transform은 카드가 그대로 소유한다 — 확대와 변형은 공존하지 않는다. */
+/* 덱의 한 칸 — 카드가 아니라 자리다. 여기 서는 것은 그 Operation의 실제 패널이고(캔버스가
+   portal로 들여보낸다), 칸은 자리·배율·변형만 진다. 칸 크기가 곧 패널 크기이자 PTY 크기다:
+   종전의 축소 프리뷰는 transform으로 줄여 글자까지 뭉갰지만, 이제 셸은 이 칸에 맞춰 다시
+   줄바꿈한다. Quick-Look 확대와 밀도 변형(morph)은 둘 다 이 칸의 transform이며 공존하지 않는다. */
 .canvas-triage-deck-cell {
   position: relative;
-  /* grid 한 칸에 카드 하나 — stretch 기본값이 카드를 칸에 꽉 채우므로 카드 크기 규칙을 따로 두지
-     않는다(자손 선택자를 두면 `.canvas-triage-deck-card {` 블록을 문자열로 집는 계약 검사가 그
-     자손 규칙을 먼저 집어 오탐한다). 절대배치된 창 컨트롤은 이 흐름에서 빠진다. */
   display: grid;
   min-width: 0;
   min-height: 0;
@@ -3523,309 +3509,65 @@
   z-index: 9;
 }
 
-.canvas-triage-deck-card {
-  position: relative;
+/* 지도 모드의 Quick-Look — 은닉된 밴드 안의 칸을 판 위로 끌어올려 점 옆에 세운다. 좌표는
+   뷰포트 기준(JS가 판 rect를 더해 넘긴다)이라 칸이 어느 밴드에 속하든 같은 자리에 선다.
+   포인터는 통과시킨다 — 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 그대로 닿는다. */
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards .canvas-triage-deck-cell.is-map-quicklook {
+  position: fixed;
+  z-index: 12;
+  visibility: visible;
+  pointer-events: none;
+  animation: triage-map-quicklook-in var(--duration-fast) var(--ease-glide) both;
+}
+
+/* 은닉된 밴드에서 한 칸만 되살리는 것은 visibility만 할 수 있다 — opacity는 상속이 아니라 합성이라
+   0인 조상 안에서는 자식이 어떤 값을 적어도 보이지 않고, 그 조상이 만든 스택 컨텍스트가 z-index마저
+   가둬 판 아래로 내려보낸다. 확대창이 열린 동안만 그 컨테이너의 투명도를 되돌린다(칸들은 여전히
+   visibility로 숨어 있다). */
+.canvas-triage-deck.is-map-mode .canvas-triage-deck-band-cards:has(.canvas-triage-deck-cell.is-map-quicklook) {
+  opacity: 1;
+}
+
+/* 패널이 들어오는 자리 — 칸을 그대로 채운다. 패널 자신은 이 상자 크기를 입고, 그 크기가
+   xterm이 재는 값이자 PTY에 실리는 cols/rows다. */
+.canvas-triage-deck-mount {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-rows: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
-  padding: 14px 16px;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass) 84%, transparent);
-  color: var(--text-secondary);
-  text-align: left;
-  cursor: pointer;
-  transition:
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide),
-    opacity var(--duration-fast) var(--ease-glide),
-    transform var(--duration-slow) var(--ease-glide),
-    box-shadow var(--duration-slow) var(--ease-glide);
 }
 
-.canvas-triage-deck-card:hover,
-.canvas-triage-deck-card:focus-visible {
-  border-color: color-mix(in oklch, var(--brass) 46%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 7%, var(--surface-glass));
-  outline: none;
-}
-
-/* Quick-Look — hover 드웰 후 카드를 transform으로만 확대해 프리뷰 유효 배율을 판독권(≈0.8)으로
-   올린다. 프리뷰 inner의 측정 크기는 불변이므로 PTY 리사이즈 계약과 pool 슬롯 유일성이 유지된다. */
-.canvas-triage-deck-card.is-quicklook {
-  /* 배율 자체는 감싸는 칸이 진다(.canvas-triage-deck-cell.is-quicklook) — 카드와 그 형제인 창
-     컨트롤이 한 변환을 함께 받아야 버튼이 확대된 카드의 같은 모서리에 남는다. 배율은 발동 시점에
-     JS가 grid 수용 한도로 깎아 주입한다(--triage-quicklook-scale) — 단일 컬럼처럼 카드가 grid를
-     채우는 창에서 고정 1.95는 overflow에 잘려 나가기 때문. */
-  border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
-  box-shadow: 0 18px 60px oklch(0% 0 0 / 55%), 0 0 0 1px var(--brass-glow);
-}
-
-/* 확대 시 카드 크롬(상태줄·제목 줄)은 역보정해 프리뷰가 주인공으로 남게 한다. 제목 줄은
-   마크와 이름을 한 변환으로 묶어, 확대창에서만 마크가 커지는 일이 없게 한다. 역보정은 해상
-   배율에 연동한다 — 1/scale 하한을 두어 캡이 배율을 1까지 깎은 좁은 창에서 크롬이 원본보다
-   작아지는 일이 없게 한다(0.72 고정이면 확대 없는 카드의 제목만 줄어든다). */
-.canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-status,
-.canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-title {
-  transform: scale(max(0.72, calc(1 / var(--triage-quicklook-scale, 1.95))));
-  transform-origin: left top;
-}
-
-.canvas-triage-deck-card.is-idle,
-.canvas-triage-deck-card.is-dormant {
-  opacity: 0.68;
-}
-
-/* 창 컨트롤은 카드 크롬과 같은 배율 되돌림을 받는다 — 확대해도 24px 손잡이는 24px로 남는다. */
-.canvas-triage-deck-card-controls {
+/* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이 아니다. 본문 위를 덮어
+   클릭 한 번을 승격으로 받는다. 캡션(z-index 7)보다는 아래에 둔다: 그 위로 올리면 창 컨트롤을
+   되살리려 자손 선택자가 필요해지고, 그 규칙이 공용 컨트롤 블록보다 앞서 잡혀 계약을 오탐시킨다. */
+.canvas-triage-deck-pick {
   position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 2;
-  display: flex;
-  gap: 4px;
-  transform-origin: right top;
-  transition: transform var(--duration-slow) var(--ease-glide), opacity var(--duration-fast) var(--ease-glide);
-}
-
-.canvas-triage-deck-cell.is-quicklook .canvas-triage-deck-card-controls {
-  transform: scale(max(0.72, calc(1 / var(--triage-quicklook-scale, 1.95))));
-}
-
-/* 밀도 변형 중에는 카드가 자기 점 자리로 날아가고 칸은 제자리에 남는다 — 손잡이만 원래 자리에
-   떠 있으면 무엇에 달린 버튼인지 읽히지 않으므로 변형이 끝날 때까지 걷는다. */
-.canvas-triage-deck-cell.is-morphing .canvas-triage-deck-card-controls {
-  opacity: 0;
-  pointer-events: none;
-}
-
-/* 도트린 예외 — 다른 창 컨트롤(사이드바 20px·캔버스 24px)은 hover/focus 전까지 0×0으로 접히지만,
-   deck 카드의 손잡이는 접지 않고 늘 자리를 지킨다. 카드는 그 자체가 하나의 버튼이라 접힌 손잡이를
-   찾을 단서가 카드 어디에도 남지 않고, 카드 위 hover는 400ms 뒤 Quick-Look 확대를 부르기 때문에
-   "올려서 찾는" 동작이 확대와 경합한다. 대신 쉬는 동안 대비를 낮춰 deck의 소음을 억제한다. */
-.canvas-triage-deck-card-control {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
+  inset: 0;
+  z-index: 5;
   padding: 0;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
-  color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--surface-glass) 72%, transparent);
-  opacity: 0.55;
+  border: 0;
+  border-radius: var(--radius-lg);
+  background: transparent;
   cursor: pointer;
-  transition:
-    opacity var(--duration-fast) var(--ease-glide),
-    color var(--duration-fast) var(--ease-glide),
-    border-color var(--duration-fast) var(--ease-glide),
-    background var(--duration-fast) var(--ease-glide);
 }
 
-.canvas-triage-deck-cell:hover .canvas-triage-deck-card-control,
-.canvas-triage-deck-cell:focus-within .canvas-triage-deck-card-control,
-.canvas-triage-deck-cell.is-quicklook .canvas-triage-deck-card-control {
-  opacity: 1;
+.canvas-triage-deck-pick:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
+  outline-offset: -2px;
 }
 
-.canvas-triage-deck-card-control:hover,
-.canvas-triage-deck-card-control:focus-visible {
-  color: var(--brass-bright);
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-  opacity: 1;
-}
-
-.canvas-triage-deck-card-control svg {
-  display: block;
-  width: 15px;
-  height: 15px;
-}
-
-/* 닫기 무장은 캔버스 패널·사이드바 칩과 같은 문법이다 — 한 번 눌러 무장하고 1.5초 안에 확인한다. */
-.canvas-triage-deck-card-control.is-armed-close {
-  width: auto;
-  padding: 0 6px;
-  border-color: color-mix(in oklch, var(--coral) 50%, transparent);
-  background: color-mix(in oklch, var(--coral) 20%, transparent);
-  color: var(--coral-ink);
-  font-family: var(--font-body);
-  font-size: 11px;
-  font-weight: var(--weight-bold);
-  opacity: 1;
-  animation: chip-close-arm 1.5s linear forwards;
-}
-
-.canvas-triage-deck-card-control.is-armed-close:hover,
-.canvas-triage-deck-card-control.is-armed-close:focus-visible {
-  border-color: color-mix(in oklch, var(--coral) 70%, transparent);
-  background: color-mix(in oklch, var(--coral) 30%, transparent);
-  color: var(--coral-ink);
-}
-
-.canvas-triage-deck-card-spine {
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  width: 2px;
-  border-radius: var(--radius-pill);
-  pointer-events: none;
-}
-
-.canvas-triage-deck-card-status {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  min-width: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.canvas-triage-deck-card-dot {
-  width: 7px;
-  height: 7px;
-  flex: none;
-  border-radius: var(--radius-pill);
-  background: var(--activity-color);
-}
-
-.canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot {
-  box-shadow: 0 0 0 0 var(--activity-glow);
-  animation: triage-deck-running-pulse calc(var(--duration-slow) * 6.6667) var(--ease-glide) infinite;
-}
-
-.canvas-triage-deck-card.is-awaiting .canvas-triage-deck-card-dot {
-  box-shadow: 0 0 10px var(--activity-glow);
-}
-
-.canvas-triage-deck-card.is-background .canvas-triage-deck-card-dot {
-  background: none;
-  border: 1.5px solid var(--activity-color);
-  box-sizing: border-box;
-  box-shadow: 0 0 8px var(--activity-glow);
-}
-
-.canvas-triage-deck-card-title,
-.canvas-triage-deck-card-detail {
-  min-width: 0;
-}
-
-.canvas-triage-deck-card-title {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  align-self: end;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  font-size: 15px;
-  font-weight: var(--weight-bold);
-}
-
-.canvas-triage-deck-card-title > strong,
-.canvas-triage-deck-card-detail {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.canvas-triage-deck-card-title > strong {
-  font: inherit;
-  color: inherit;
-}
-
-/* 사이드바 칩과 같은 16px 슬롯·14px 글리프 — 카드만 치수를 바꾸면 같은 Operation이 두 크기로 읽힌다. */
-.canvas-triage-deck-card-mark {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: none;
-  color: var(--text-secondary);
-}
-
-.canvas-triage-deck-card-mark svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-
-.canvas-triage-deck-card-detail {
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: 10px;
-}
-
-.canvas-triage-deck-card.is-landed {
-  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
-}
-
-/* 라이브 프리뷰 카드 — 제목이 상단에 붙고 프리뷰가 남은 높이를 차지한다. */
-.canvas-triage-deck-card.has-preview {
-  grid-template-rows: auto auto minmax(0, 1fr);
-}
-
-.canvas-triage-deck-card.has-preview .canvas-triage-deck-card-title {
-  align-self: start;
-}
-
-/* 프레임은 카드가 내준 칸을 그대로 채운다 — 출력이 프레임을 채우는 쪽이 정책이므로(fit 산술의
-   height-cover) 프레임이 칸보다 작아질 이유가 없고, 안에 빈 띠가 열릴 수도 없다. */
-.canvas-triage-deck-card-preview {
-  position: relative;
-  display: block;
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-  border: 1px solid color-mix(in oklch, var(--hairline) 70%, transparent);
-  border-radius: var(--radius-sm);
-  background: var(--canvas-abyss);
-  pointer-events: none;
-}
-
-/* 내부 박스는 패널의 원래 픽셀 크기를 유지한 채 transform으로만 축소된다(PTY 리사이즈 금지 계약).
-   translate+scale은 JS가 두 축 중 큰 요구를 따르는 fit으로 계산해 출력이 프레임을 채우게 하고,
-   출력 하단과 프레임 왼쪽에 앵커한다 — 넘치는 폭은 전부 오른쪽으로 나가 줄의 시작이 남는다.
-   Quick-Look이 열리면 같은 값에 실물 크기 하한(1/카드배율)이 들어와 화면상 1:1이 선다. 이
-   transform에는 전이를 두지 않는다 — 전이는 카드 확대가 소유하고, 여기에 따로 걸면 덱 줌
-   tween처럼 fit이 매 프레임 다시 잡히는 동안 프리뷰가 뒤처져 가장자리에 빈 띠가 뜬다. */
-.canvas-triage-deck-card-preview-inner {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: block;
-  transform-origin: left top;
-}
-
-.canvas-triage-deck-card-preview-slot {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.canvas-triage-deck-card.is-arriving {
-  animation: triage-deck-arrival-pulse calc(var(--duration-slow) * 3.0556) var(--ease-glide) 1;
-}
-
-/* 스포트라이트 OFF — 자동 등단 대신 검토 전 대기 카드가 계속 숨 쉬는 지속 aurora 맥동.
-   1회성 도착 pulse와 달리 사용자가 확인할 때까지 반복된다. */
-.canvas-triage-deck-card.is-fresh {
+/* 검토 전 대기·도착·착지 신호는 칸이 받아 그 안의 패널 테두리로 말한다 — 신호가 칸이 아니라
+   창에 실려야 어느 창이 부르는지 읽힌다. */
+.canvas-triage-deck-cell.is-fresh > .canvas-operation {
   animation: triage-fresh-pulse calc(var(--duration-slow) * 6) var(--ease-glide) infinite;
 }
 
-@keyframes triage-deck-running-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--warn-glow); opacity: 0.72; }
-  50% { box-shadow: 0 0 12px 3px var(--warn-glow); opacity: 1; }
+.canvas-triage-deck-cell.is-arriving > .canvas-operation {
+  animation: triage-deck-arrival-pulse calc(var(--duration-slow) * 3.0556) var(--ease-glide) 1;
+}
+
+.canvas-triage-deck-cell.is-landed > .canvas-operation {
+  animation: triage-deck-landed-flash calc(var(--duration-slow) * 2.5) var(--ease-glide) 1;
 }
 
 @keyframes triage-map-awaiting-ring {
@@ -3922,15 +3664,14 @@
 @media (prefers-reduced-motion: reduce) {
   .canvas-triage-sweep,
   .canvas-triage-scan,
-  .canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,
   .canvas-triage-map-dot.is-awaiting::after,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot,
   .canvas-triage-deck.is-map-mode .canvas-triage-map-dot.is-landed,
   .canvas-triage-map-quicklook,
-  .canvas-triage-deck-card.is-landed,
+  .canvas-triage-deck-cell.is-landed > .canvas-operation,
   .canvas-triage-map-dot.is-landed,
-  .canvas-triage-deck-card.is-arriving,
-  .canvas-triage-deck-card.is-fresh,
+  .canvas-triage-deck-cell.is-arriving > .canvas-operation,
+  .canvas-triage-deck-cell.is-fresh > .canvas-operation,
   .operations-canvas.is-triage-entering .canvas-operation.is-triage-stage,
   .operations-canvas.is-formation-entering .canvas-mode-bracket,
   .operations-canvas.is-formation-entering .canvas-formation-guide,
@@ -3939,7 +3680,7 @@
   }
 
   /* 움직임 없이도 검토 전 신호는 읽혀야 한다 — 정지한 aurora 링으로 폴백한다. */
-  .canvas-triage-deck-card.is-fresh {
+  .canvas-triage-deck-cell.is-fresh > .canvas-operation {
     border-color: var(--aurora);
   }
 
@@ -3957,12 +3698,8 @@
 
   /* Quick-Look 확대 자체는 유지하되 전이만 제거해 즉시 스냅되게 한다 — 확대 정보는
      reduced-motion 사용자에게도 동일하게 필요하므로 상태가 아니라 동작만 끊는다. */
-  .canvas-triage-deck-card { transition-property: border-color, background, opacity; }
-
-  /* 확대 자체는 칸이 지므로 칸과 그 위에 얹힌 손잡이도 함께 끊는다 — 카드만 끊으면 확대가
-     그대로 움직여 reduced-motion 사용자에게 의도한 즉시 스냅이 오지 않는다. */
-  .canvas-triage-deck-cell,
-  .canvas-triage-deck-card-controls {
+  /* 확대와 밀도 변형은 칸의 transform이 지므로 칸의 전이만 끊으면 즉시 스냅이 선다. */
+  .canvas-triage-deck-cell {
     transition: none;
   }
 
@@ -4482,6 +4219,42 @@ body[data-side-bar-animating="true"] .canvas-operation {
   min-width: 0;
   min-height: 0;
 }
+
+/* War Room 덱의 칸에 선 패널 — 캔버스 좌표를 버리고 칸을 그대로 채운다. 캡션은 창 밖(-32px)에
+   설 수 없다: 칸 위에는 위 행의 칸이 있어 캡션이 그 위를 덮는다. 그래서 여기서만 캡션이 흐름
+   안으로 들어와 첫 행을 차지하고, 네 모서리를 패널이 함께 진다. */
+.canvas-operation.is-deck-tile {
+  position: relative;
+  inset: auto;
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  height: auto;
+  grid-template-rows: auto minmax(0, 1fr);
+  border-top-width: 1px;
+  border-top-style: solid;
+  border-radius: var(--radius-lg);
+  /* 자리 이동은 칸이 지므로 좌표 전이를 두지 않는다 — 남기면 grid 재배치마다 패널이 뒤늦게 따라온다. */
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    opacity var(--duration-base) var(--ease-glide),
+    box-shadow var(--duration-base) var(--ease-glide);
+}
+
+.canvas-operation.is-deck-tile > .canvas-operation-titlebar {
+  position: relative;
+  top: auto;
+  left: auto;
+  right: auto;
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px) 0 0;
+  cursor: default;
+}
+
+.canvas-operation.is-deck-tile > .canvas-operation-terminal {
+  border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
+}
+
 
 .operations-canvas.is-triage .canvas-operation.is-minimized {
   transition: none;

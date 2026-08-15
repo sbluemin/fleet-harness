@@ -819,12 +819,11 @@ describe("triage store", () => {
       .toBe("Nothing is waiting on you. 2 idle panels sit in the left list. Click one to bring it up.");
   });
 
-  it("renders every Operation in the Watch Deck and promotes a clicked idle card", () => {
+  it("opens one deck slot per Operation and promotes the one whose slot is clicked", () => {
     const container = document.createElement("div");
     document.body.append(container);
     triagePlateRoot = createRoot(container);
-    setOperationStatusDetail("picked", "Inspecting the latest output");
-    recordOperationActivityTransition("picked", "running", 0);
+    const slots = new Map<string, HTMLElement | null>();
 
     act(() => {
       triagePlateRoot?.render(createElement(TriageWatchDeck, {
@@ -834,57 +833,24 @@ describe("triage store", () => {
         operations: OPERATIONS,
         operationRuntime: { picked: { lifecycle: "live", activity: "running" }, next: { lifecycle: "live", activity: "idle" } },
         operationAccent: {},
+        onPanelSlotRef: (operationId, element) => { slots.set(operationId, element); },
       }));
     });
 
-    expect([...container.querySelectorAll("[data-triage-deck-card]")].map((card) => card.getAttribute("data-triage-deck-card")))
+    // 덱이 그리는 것은 자리뿐이다 — 그 자리에 설 패널은 캔버스가 portal로 들여보낸다.
+    expect([...container.querySelectorAll("[data-triage-deck-card]")].map((cell) => cell.getAttribute("data-triage-deck-card")))
       .toEqual(["picked", "next"]);
-    expect(container.querySelector('[data-triage-deck-card="picked"] .canvas-triage-deck-card-detail')?.textContent)
-      .toBe("Inspecting the latest output");
+    expect([...slots.keys()].sort()).toEqual(["next", "picked"]);
+    // 패널이 들어오는 자리는 칸 자신이 아니라 그 안의 빈 mount다 — portal 대상에 React가 관리하는
+    // 형제가 섞이면 자식 조정과 portal 삽입이 서로의 DOM을 밀어낸다.
+    expect(slots.get("picked")).toBe(container.querySelector('[data-triage-deck-card="picked"] .canvas-triage-deck-mount'));
     expect(container.querySelector(".canvas-triage-clear")).toBeNull();
 
-    act(() => (container.querySelector('[data-triage-deck-card="next"]') as HTMLButtonElement).click());
+    act(() => (container.querySelector('[data-triage-deck-card="next"] .canvas-triage-deck-pick') as HTMLButtonElement).click());
     expect(getTriagePick()).toBe("next");
   });
 
-  it("puts the sidebar Operation mark to the left of the card title", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const claude = { ...operation("claude-op", 1), payload: { launchProvider: "claude" } };
-    const shell = operation("shell-op", 2);
-    const unknown = { ...operation("unknown-op", 3), pluginId: "missing", type: "other" };
-
-    act(() => {
-      triagePlateRoot?.render(createElement(TriageWatchDeck, {
-        active: true,
-        entering: false,
-        theaters: THEATERS,
-        operations: [claude, shell, unknown],
-        operationRuntime: { "claude-op": { lifecycle: "live", activity: "running" } },
-        operationAccent: {},
-        catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
-        renderKindIcon: () => createElement("span", { "data-kind-icon": "shell" }),
-      }));
-    });
-
-    const claudeCard = container.querySelector('[data-triage-deck-card="claude-op"]');
-    const claudeMark = claudeCard?.querySelector(".canvas-triage-deck-card-mark");
-    expect(claudeMark?.classList.contains("operation-provider-mark")).toBe(true);
-    expect(claudeMark?.classList.contains("is-claude")).toBe(true);
-    expect(claudeMark?.querySelector("svg")).not.toBeNull();
-    expect(claudeCard?.querySelector(".canvas-triage-deck-card-title")?.textContent).toBe("claude-op");
-
-    const shellMark = container.querySelector('[data-triage-deck-card="shell-op"] .canvas-triage-deck-card-mark');
-    expect(shellMark?.classList.contains("operation-provider-mark")).toBe(false);
-    expect(shellMark?.querySelector("[data-kind-icon=\"shell\"]")).not.toBeNull();
-
-    expect(container.querySelector('[data-triage-deck-card="unknown-op"] .canvas-triage-deck-card-mark')).toBeNull();
-    // 정체성 마크는 상태 점을 다시 칠하지 않는다 — 점은 활동 채널만 쓴다.
-    expect(claudeCard?.querySelector(".canvas-triage-deck-card-dot")?.className).toBe("canvas-triage-deck-card-dot");
-  });
-
-  it("routes card, map-dot, and owned empty-region context menus without guessing bare space", () => {
+  it("routes deck-slot, map-dot, and owned empty-region context menus without guessing bare space", () => {
     const container = document.createElement("div");
     document.body.append(container);
     triagePlateRoot = createRoot(container);
@@ -904,11 +870,13 @@ describe("triage store", () => {
       }));
     });
 
-    const card = container.querySelector<HTMLButtonElement>('[data-triage-deck-card="picked"]')!;
+    const cell = container.querySelector<HTMLElement>('[data-triage-deck-card="picked"]')!;
+    const cellPick = cell.querySelector<HTMLButtonElement>(".canvas-triage-deck-pick")!;
     const cardMenu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 41, clientY: 52 });
-    act(() => card.dispatchEvent(cardMenu));
+    act(() => cell.dispatchEvent(cardMenu));
     expect(cardMenu.defaultPrevented).toBe(true);
-    expect(operationMenu).toHaveBeenCalledWith("picked", expect.any(DOMRect), card);
+    // 포커스는 칸 자신이 아니라 그 승격 면으로 돌아간다 — 칸은 tabindex를 갖지 않는다.
+    expect(operationMenu).toHaveBeenCalledWith("picked", expect.any(DOMRect), cellPick);
     expect(theaterMenu).not.toHaveBeenCalled();
 
     const bandBody = container.querySelector<HTMLElement>(".canvas-triage-deck-band-body")!;
@@ -1569,63 +1537,6 @@ describe("triage store", () => {
     expect(document.querySelector(".canvas-context-menu")).toBeNull();
   });
 
-  it("renders live previews only for active-Theater cards and the detail fallback for foreign ones", () => {
-    const container = document.createElement("div");
-    document.body.append(container);
-    triagePlateRoot = createRoot(container);
-    const home = operation("home", 1);
-    const foreign = operation("foreign", 2, "theater-b");
-    const operations = [home, foreign];
-    const status: Readonly<Record<string, OperationRuntimeState>> = { home: { lifecycle: "live", activity: "running" }, foreign: { lifecycle: "live", activity: "running" } };
-    setConsoleState({ activeTheaterId: THEATER_ID });
-
-    const previewConfigFor = (candidate: OperationNode) => candidate.theaterId === THEATER_ID
-      ? {
-          active: false,
-          geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
-          operation: candidate,
-          theme: "maritime" as const,
-          language: "en" as const,
-          zoom: 1,
-          onActivate: () => {},
-          onClose: () => {},
-          onGeometryChange: () => {},
-          onRequestCompanions: () => {},
-          companionsOpen: false,
-          hiddenCompanionPanelIds: [],
-          onSetCompanionPanelVisible: () => {},
-          runtimeState: status[candidate.id] ?? null,
-        }
-      : null;
-    const previewSourceFor = (candidate: OperationNode) => {
-      const config = previewConfigFor(candidate);
-      return config ? { config, bottomChrome: 0 } : null;
-    };
-    act(() => {
-      // has-preview 클래스는 pool 가용성 게이트를 통과해야 붙는다 — 실제 조립 경로와 같은
-      // OperationBodyPool 안에서 렌더한다.
-      triagePlateRoot?.render(createElement(OperationBodyPool, {
-        operations,
-        operationKinds: [],
-        capabilities: createHostCapabilities(),
-        defaultConfig: (candidate: OperationNode) => previewConfigFor(candidate) ?? ({} as never),
-        children: createElement(TriageWatchDeck, {
-          active: true,
-          entering: false,
-          theaters: THEATERS,
-          operations,
-          operationRuntime: status,
-          operationAccent: {},
-          previewSourceFor,
-        }),
-      }));
-    });
-
-    expect(container.querySelector('[data-triage-deck-card="home"]')?.classList.contains("has-preview")).toBe(true);
-    const foreignCard = container.querySelector('[data-triage-deck-card="foreign"]');
-    expect(foreignCard?.classList.contains("has-preview")).toBe(false);
-    expect(foreignCard?.querySelector(".canvas-triage-deck-card-detail")).not.toBeNull();
-  });
 });
 
 describe("triage deck zoom", () => {

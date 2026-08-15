@@ -702,27 +702,8 @@ describe("Instrument core design contract", () => {
     expect(source("sidebar/operations-side-bar-chip.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
     expect(source("components/command-band.tsx")).toContain("operation-provider-mark is-${activeLaunchProvider}");
     expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
-    expect(source("canvas/triage-watch-deck.tsx")).toContain("operation-provider-mark is-${launchProvider}");
-    // 해석은 한 함수 — 카드가 사이드바와 다른 규칙을 적으면 같은 Operation이 두 마크를 갖는다.
-    expect(source("canvas/triage-watch-deck.tsx")).toContain('from "../operation-mark.js"');
+    // 해석은 한 함수 — 표면마다 다른 규칙을 적으면 같은 Operation이 두 마크를 갖는다.
     expect(source("sidebar/operations-side-bar.tsx")).toContain('from "../operation-mark.js"');
-  });
-
-  it("pins the War Room card title mark — chip-sized slot, inverse-scaled with the title", () => {
-    const css = source("styles/components.css");
-    const mark = css.match(/\.canvas-triage-deck-card-mark \{[^}]*\}/)?.[0] ?? "";
-    expect(mark).toContain("width: 16px;");
-    expect(mark).toContain("height: 16px;");
-    const svg = css.match(/\.canvas-triage-deck-card-mark svg \{[^}]*\}/)?.[0] ?? "";
-    expect(svg).toContain("width: 14px;");
-    expect(svg).toContain("height: 14px;");
-    // 확대창에서 제목만 되돌리고 마크를 빼면 마크가 카드와 함께 커진다.
-    expect(css).toContain(".canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-title");
-    expect(css).not.toContain(".canvas-triage-deck-card.is-quicklook > strong");
-    // 상태 점은 활동 채널 — 마크가 점을 다시 칠하는 선택자를 두지 않는다.
-    const dot = css.match(/\.canvas-triage-deck-card-dot \{[^}]*\}/)?.[0] ?? "";
-    expect(dot).toContain("background: var(--activity-color);");
-    expect(css).not.toMatch(/\.canvas-triage-deck-card-dot[^{]*operation-provider-mark/);
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {
@@ -884,14 +865,13 @@ describe("Instrument core design contract", () => {
     // (e) 안무 표면(칩 도착 맥동·고스트)도 reduced-motion 블록 안에서 무효화된다.
     expect(reducedMotionBlock).toContain(".side-bar-chip.is-arrival-pulse {");
     expect(reducedMotionBlock).toContain(".panel-motion-ghost {");
-    // Watch Deck 상태 맥동과 착지 flash도 같은 reduced-motion 봉인을 공유한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-running .canvas-triage-deck-card-dot,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-landed,");
-    // 지도 점의 착지 플래시도 카드와 같은 봉인을 공유한다.
+    // Watch Deck 칸이 자기 패널에 실어 주는 도착·착지 신호도 같은 reduced-motion 봉인을 공유한다.
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-landed > .canvas-operation,");
+    // 지도 점의 착지 플래시도 칸과 같은 봉인을 공유한다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot.is-landed,");
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-arriving,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-arriving > .canvas-operation,");
     // 스포트라이트 OFF의 지속 맥동은 움직임을 빼고도 정지한 aurora 링으로 읽혀야 한다.
-    expect(reducedMotionBlock).toContain(".canvas-triage-deck-card.is-fresh,");
+    expect(reducedMotionBlock).toContain(".canvas-triage-deck-cell.is-fresh > .canvas-operation,");
     // 작전지도 LOD 전환(cross-fade·마커 강조)도 같은 봉인 안에서 즉시 상태로 떨어진다.
     expect(reducedMotionBlock).toContain(".canvas-triage-map,");
     expect(reducedMotionBlock).toContain(".canvas-triage-map-dot,");
@@ -1029,14 +1009,14 @@ describe("Instrument core design contract", () => {
     // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
-    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-deck-card.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
-    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-deck-card\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
-    expect(components).toContain(".tenant-beacon.is-dormant,\n.canvas-triage-deck-card.is-dormant,\n.canvas-triage-map-dot.is-dormant,\n.side-bar-status-section--dormant {");
+    expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
+    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    expect(components).toContain(".tenant-beacon.is-dormant,\n.canvas-triage-map-dot.is-dormant,\n.side-bar-status-section--dormant {");
     expect(components).toContain("--activity-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));");
-    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-deck-card\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
-    expect(components).toMatch(/\.canvas-triage-deck-card-dot \{[^}]*background:\s*var\(--activity-color\)/);
+    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
     expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
-    expect(components).toMatch(/\.canvas-triage-deck-card\.is-background \.canvas-triage-deck-card-dot \{[^}]*background:\s*none;[^}]*border:\s*1\.5px solid var\(--activity-color\)/);
+    // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
+    expect(components).not.toContain(".canvas-triage-deck-card");
     expect(components).toMatch(/\.canvas-triage-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
@@ -2353,101 +2333,80 @@ describe("Effort track interaction grammar", () => {
   });
 });
 
-// War Room Quick-Look은 확대창 안의 프리뷰를 화면상 실물 크기(1:1)로 세운다. 배율 산술은
-// triage-deck-quicklook.test.ts가 고정하지만, 산술이 맞아도 배선이 끊기거나 전이 소유가 옮겨가면
-// 화면은 조용히 예전 동작 — 같은 축소판이 커지기만 하는 확대 — 으로 돌아간다.
-describe("War Room Quick-Look actual-size grammar", () => {
+// War Room 덱의 한 칸은 카드가 아니라 그 Operation의 실제 패널이 서는 자리다. 이 계약이 풀리면
+// 화면은 조용히 예전 동작 — 덱이 자기 카드 얼굴을 따로 그리고 본문을 transform으로 줄여 글자까지
+// 뭉개던 축소판 — 으로 돌아간다.
+describe("War Room deck panel grammar", () => {
   const deck = source("canvas/triage-watch-deck.tsx");
+  const canvas = source("canvas/canvas.tsx");
+  const frame = source("canvas/operation-frame.tsx");
   const components = source("styles/components.css");
 
-  it("hands a card its own magnification only while its Quick-Look is open", () => {
-    expect(deck).toContain("surfaceScale={isQuicklook ? quicklook.scale : 0}");
+  it("lets the deck draw a place and the canvas put the real panel in it", () => {
+    // 덱은 자리와 그 자리의 주인만 말한다 — 얼굴을 조립하는 조각이 남아 있으면 두 물건이 된다.
+    expect(deck).toContain("onPanelSlotRefRef.current?.(operationId, element)");
+    expect(deck).toContain("ref={slotRefFor(operation.id)}");
+    expect(deck).toContain("data-triage-deck-card={operation.id}");
+    expect(deck).not.toContain("TriageDeckCardFace");
+    expect(deck).not.toContain("OperationBodySlot");
+    // 패널은 끝까지 캔버스 소유다 — portal은 DOM 부모만 바꾸므로 상태·이벤트·pool 배선이 유지된다.
+    expect(canvas).toContain("createPortal(frame, options.deckSlot, operation.id)");
+    expect(canvas).toContain("deckTile={options.deckSlot !== null}");
   });
 
-  it("treats the map Quick-Look window as a magnified surface standing at its own size", () => {
-    expect(deck).toContain("surfaceScale={1}");
+  it("keeps the deck tile off the canvas coordinate system", () => {
+    // 칸이 크기를 정하는데 프레임이 캔버스 좌표를 인라인으로 실으면 패널이 칸을 넘치거나 어긋난다.
+    expect(frame).toMatch(/const frameStyle = deckTile \? \{/);
+    const tile = components.match(/\.canvas-operation\.is-deck-tile \{[^}]*\}/)?.[0] ?? "";
+    expect(tile).toContain("position: relative;");
+    expect(tile).toContain("width: auto;");
+    expect(tile).toContain("height: auto;");
+    // 캡션은 창 밖(-32px)에 설 수 없다 — 위 행의 칸을 덮는다. 덱에서만 흐름 안으로 들어온다.
+    const tileCaption = components.match(/\.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    expect(tileCaption).toContain("position: relative;");
   });
 
-  it("feeds the floor into the fit and re-measures when the floor moves", () => {
-    expect(deck).toContain("resolveTriagePreviewMinScale(surfaceScale)");
-    // Quick-Look 배율은 열린 채로도 재계산된다(recordRects) — deps에서 빠지면 뷰포트가 그대로인
-    // 동안 fit이 낡은 하한에 머물러 확대창이 1:1을 잃는다.
-    expect(deck).toMatch(/\[bottomChrome, innerHeight, innerWidth, minScale\]/);
+  it("lets the shell rewrap to the tile instead of scaling a snapshot of it", () => {
+    // PTY 리사이즈 허용이 이 구조의 목적이다 — 축소 fit 산술이 되살아나면 글자가 다시 뭉개진다.
+    expect(deck).not.toContain("resolveTriagePreviewFit");
+    expect(deck).not.toContain("surfaceScale");
+    expect(components).not.toContain("canvas-triage-deck-card-preview");
+    expect(components).not.toContain("canvas-triage-deck-card");
   });
 
-  it("leaves the preview transform without a transition of its own", () => {
-    const inner = components.match(/\.canvas-triage-deck-card-preview-inner \{[^}]*\}/)?.[0] ?? "";
-    expect(inner).not.toBe("");
-    // fit은 덱 줌 tween과 창 리사이즈마다 매 프레임 다시 잡힌다 — 여기 전이를 걸면 프리뷰가
-    // 카드보다 뒤처져 화면 배율이 1:1을 벗어나고 가장자리에 빈 띠가 뜬다.
-    expect(inner).not.toContain("transition");
-  });
-
-  // 프레임은 카드가 내준 칸을 그대로 채운다 — 프레임 자체가 칸보다 작아지면 그 차이가 카드 안의
-  // 빈 띠가 되어, 산술이 막은 여백을 CSS가 되돌려 놓는다. 채움은 grid 항목의 stretch 기본값에
-  // 기대므로, 명시적 크기나 정렬이 들어오는 순간 조용히 풀린다 — 부재를 검사하는 이유다.
-  it("lets the preview frame fill the cell the card hands it", () => {
-    const frame = components.match(/\.canvas-triage-deck-card-preview \{[^}]*\}/)?.[0] ?? "";
-    expect(frame).not.toBe("");
-    // 확정 크기는 stretch를 start로 바꿔 칸을 남긴다(css-align §6.3). 비율·상한·정렬도 마찬가지다.
-    expect(frame).not.toMatch(/\n\s*(?:width|height|max-width|max-height|aspect-ratio|align-self|justify-self|inset|top|bottom):/);
-    // min-width/min-height는 0으로만 허용한다 — grid 자식의 축소 하한을 푸는 용도다.
-    expect(frame).toContain("min-width: 0;");
-    expect(frame).toContain("min-height: 0;");
-    // 넘치는 출력은 프레임에서 잘려야 한다. 이것이 풀리면 카드 밖으로 글자가 새어 나온다.
-    expect(frame).toContain("overflow: hidden;");
-    // 프레임 크기는 덱 줌 tween마다 다시 잡히므로 전이를 걸면 출력과 프레임이 서로를 쫓는다.
-    expect(frame).not.toContain("transition");
-  });
-
-  // 삭제하면 조용히 깨지는 배선 — 산술은 순수 함수 테스트가 지키지만, 그 함수에 무엇이 들어가는지는
-  // 여기서만 고정된다. bottomChrome이 0으로 흘러 들어가면 Agent CLI의 컴포저와 상태줄이 프레임
-  // 안으로 되돌아오는데(실측 490×333 칸에서 화면상 81.6px), 순수 함수 테스트는 전부 green이다.
-  it("carries the body-declared bottom chrome all the way into the fit", () => {
-    const canvas = source("canvas/canvas.tsx");
-    // kind가 선언한 값을 core가 그대로 싣는다 — 미선언은 0이고, core는 그 구조를 알지 못한다.
-    expect(canvas).toContain("bottomChrome: descriptor.previewBottomChrome?.() ?? 0");
-    // 카드 면이 그 값을 프리뷰로 넘기고, 프리뷰가 fit으로 넘긴다.
-    expect(deck).toContain("bottomChrome={preview.bottomChrome}");
-    expect(deck).toMatch(/resolveTriagePreviewFit\(\s*\{[^}]*\},\s*\{[^}]*\},\s*bottomChrome,/);
-  });
-
-  // 프리뷰의 측정 크기가 카드를 따라가면 FitAddon이 PTY cols/rows를 타일 크기로 재조정해 실세션
-  // 레이아웃이 깨진다 — 이 판 전체가 transform scale만 쓰는 이유이자 가장 비싼 회귀다.
-  it("keeps the preview body at the panel's own pixel size, never the card's", () => {
-    expect(deck).toContain("const innerWidth = Math.max(320, config.geometry.width);");
-    expect(deck).toContain("const innerHeight = Math.max(200, config.geometry.height);");
-    // 인라인 크기는 그 두 값이어야 한다. 뷰포트 측정값이 여기 들어오면 계약이 뒤집힌다.
-    expect(deck).toMatch(/width:\s*innerWidth,\s*\n\s*height:\s*innerHeight,/);
-    const inner = components.match(/\.canvas-triage-deck-card-preview-inner \{[^}]*\}/)?.[0] ?? "";
-    expect(inner).toContain("position: absolute;");
-  });
-
-  it("keeps the magnification transition on the card that owns it", () => {
-    const card = components.match(/\.canvas-triage-deck-card \{[^}]*\}/)?.[0] ?? "";
-    expect(card).toContain("transform var(--duration-slow)");
-  });
-
-  it("magnifies the cell so the card and its window controls take one transform", () => {
-    // 확대가 카드에만 걸리면 카드의 형제인 창 컨트롤이 따라가지 못해 확대된 카드 위에서 손잡이가
-    // 제자리에 남는다. 배율은 칸이 지고, 카드는 테두리·그림자만 입는다.
+  it("magnifies the cell so the panel and its caption take one transform", () => {
     const cell = components.match(/\.canvas-triage-deck-cell\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
     expect(cell).toContain("transform: scale(var(--triage-quicklook-scale");
-    const card = components.match(/\.canvas-triage-deck-card\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
-    expect(card).not.toBe("");
-    expect(card).not.toContain("transform:");
-    // 손잡이는 카드 크롬과 같은 1/배율 되돌림을 받아 확대 중에도 24px을 지킨다.
-    const controls = components.match(/\.canvas-triage-deck-cell\.is-quicklook \.canvas-triage-deck-card-controls \{[^}]*\}/)?.[0] ?? "";
-    expect(controls).toContain("1 / var(--triage-quicklook-scale");
-    // 전이 소유가 칸으로 옮겨졌으므로 reduced-motion도 칸을 끊어야 한다 — 카드만 끊으면 확대가 움직인다.
+    // 밀도 변형도 같은 칸의 transform이다 — 둘은 공존하지 않으므로 한 소유자로 충분하다.
+    expect(components).toContain(".canvas-triage-deck-cell.is-morphing {");
+    // 전이 소유가 칸이므로 reduced-motion도 칸을 끊는다.
     const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell,\s*\.canvas-triage-deck-card-controls \{\s*transition: none;\s*\}/);
+    expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell \{\s*transition: none;\s*\}/);
+  });
+
+  it("gives the promotion surface the body and leaves the caption its own controls", () => {
+    // 덱에서 패널의 본문은 읽는 것이지 조작하는 것이 아니다 — 본문 위를 덮는 면이 클릭 한 번을
+    // 승격으로 받고, 캡션은 그 위에 남아 창 컨트롤이 자기 클릭을 지킨다.
+    const pick = components.match(/\.canvas-triage-deck-pick \{[^}]*\}/)?.[0] ?? "";
+    expect(pick).toContain("inset: 0;");
+    // 캡션(z-index 7)보다 아래 — 그 위로 올리면 창 컨트롤을 되살릴 자손 선택자가 필요해지고,
+    // 그 규칙이 공용 컨트롤 블록보다 앞서 잡혀 계약 검사를 오탐시킨다.
+    expect(pick).toContain("z-index: 5;");
+    expect(deck).toContain('className="canvas-triage-deck-pick"');
+  });
+
+  it("raises the hovered cell onto the plate for the map Quick-Look", () => {
+    // 지도 모드에서도 확대창은 같은 패널이다 — 별도 얼굴을 그리면 밀도마다 다른 물건이 된다.
+    expect(deck).toContain('${mapLook ? "is-map-quicklook" : ""}');
+    const raised = components.match(/\.canvas-triage-deck\.is-map-mode \.canvas-triage-deck-band-cards \.canvas-triage-deck-cell\.is-map-quicklook \{[^}]*\}/)?.[0] ?? "";
+    expect(raised).toContain("position: fixed;");
+    expect(raised).toContain("visibility: visible;");
+    expect(raised).toContain("pointer-events: none;");
   });
 
   it("reads quick-look layout coordinates from the cell that owns positioning", () => {
-    // 칸이 position: relative라 카드의 offsetLeft/Top은 칸 안의 0이다 — grid 기준 offset과 빼려면
-    // 좌표를 칸에서 읽어야 하고, 카드에서 읽으면 복귀 flight 목적지가 grid 모서리로 무너진다.
-    const deck = source("canvas/triage-watch-deck.tsx");
+    // 칸이 position: relative라 그 안의 좌표는 칸 기준 0이다 — grid 기준 offset과 빼려면 좌표를
+    // 칸에서 읽어야 하고, 안쪽 요소에서 읽으면 복귀 flight 목적지가 grid 모서리로 무너진다.
     expect(deck).toContain('target.closest<HTMLElement>(".canvas-triage-deck-cell")');
     expect(deck).toContain("layoutBox.offsetLeft - grid.offsetLeft");
     expect(deck).not.toContain("target.offsetLeft - grid.offsetLeft");
@@ -2469,20 +2428,5 @@ describe("War Room Quick-Look actual-size grammar", () => {
     expect(sidebar.indexOf('className="triage-side-bar-dormant-shelf"')).toBeGreaterThan(
       sidebar.indexOf('className="triage-side-bar-minimized-shelf"'),
     );
-  });
-
-  it("keeps deck card window controls always visible as a recorded exception", () => {
-    // 사이드바 20px·캔버스 24px 손잡이는 hover/focus 전까지 0×0으로 접히지만, deck 카드의 손잡이는
-    // 접지 않는다: 카드가 그 자체로 버튼이라 접힌 손잡이를 찾을 단서가 없고, 카드 위 hover는 400ms 뒤
-    // Quick-Look 확대를 불러 "올려서 찾는" 동작이 확대와 경합한다. 예외는 CSS 옆 주석으로 남는다.
-    const control = components.match(/\.canvas-triage-deck-card-control \{[^}]*\}/)?.[0] ?? "";
-    expect(control).not.toBe("");
-    expect(control).toContain("width: 24px");
-    expect(control).toContain("height: 24px");
-    expect(control).toMatch(/opacity:\s*0\.55/);
-    expect(components).toContain("도트린 예외 — 다른 창 컨트롤");
-    // 닫기는 다른 표면과 같은 두 번 누르기 무장을 그대로 쓴다.
-    const armed = components.match(/\.canvas-triage-deck-card-control\.is-armed-close \{[^}]*\}/)?.[0] ?? "";
-    expect(armed).toContain("chip-close-arm 1.5s");
   });
 });

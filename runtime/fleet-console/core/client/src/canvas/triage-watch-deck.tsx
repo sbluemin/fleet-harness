@@ -1,18 +1,13 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react";
-import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { OperationActivityVisual } from "../operation-activity.js";
 
 import { useT } from "../i18n/index.js";
 import { getIdleArrivalIds } from "../operation-idle-arrival.js";
-import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
-import { resolveOperationMark } from "../operation-mark.js";
-import { operationActivityLabel, operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
-import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
+import { operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { useOperationStatusDetails } from "../operation-status-detail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
-import { operationAccentFromNode, resolveAccentColor } from "./operation-accent.js";
-import { CloseIcon, MinimizeIcon } from "./operation-frame.js";
 import {
   clampTriageDeckZoom,
   getTriageDeckZoom,
@@ -44,15 +39,6 @@ export interface TriageDeckTheater {
   readonly label: string;
 }
 
-/** 라이브 프리뷰 재료 — pool 슬롯 config와, 그 body를 소유한 kind가 선언한 바닥 크롬 높이(패널
-    좌표계 px). 크롬을 선언하지 않은 kind는 바닥까지 출력이 흐른다는 뜻이므로 0이다. */
-export interface TriagePreviewSource {
-  readonly config: OperationBodyConfig;
-  readonly bottomChrome: number;
-}
-
-const CARD_CLOSE_ARM_DURATION_MS = 1500;
-
 interface TriageWatchDeckProps {
   readonly active: boolean;
   readonly entering: boolean;
@@ -69,10 +55,9 @@ interface TriageWatchDeckProps {
   /** 지도 마커용 유효 geometry — durable DTO보다 라이브 캔버스 배치가 정본이다(드래그 직후
       PATCH 왕복 대기·실패, DTO null인 자동 배치 op). canvas가 자기 스토어로 해석해 넘긴다. */
   readonly mapGeometryFor?: (operation: OperationNode) => OperationGeometry | null;
-  /** 카드 본문 라이브 프리뷰 재료 빌더 — pool 슬롯 config와 그 kind가 선언한 바닥 크롬 높이를
-      함께 넘긴다. 핸들러 배선은 canvas가 단일 소유한다. 렌더 가능한 kind가 아니면 null을
-      반환하고 카드는 tail 폴백으로 내려간다. */
-  readonly previewSourceFor?: (operation: OperationNode) => TriagePreviewSource | null;
+  /** 칸이 마운트·해제될 때마다 그 자리를 캔버스에 알린다 — 캔버스는 이 자리로 그 Operation의
+      실제 패널을 portal한다. 덱이 그리는 것은 자리와 배율이고, 패널은 끝까지 캔버스 소유다. */
+  readonly onPanelSlotRef?: (operationId: string, element: HTMLElement | null) => void;
   /** 스포트라이트 OFF에서 검토 전인 대기 카드 — 지속 aurora 맥동(is-fresh)을 얹는다. */
   readonly freshOperationIds?: ReadonlySet<string>;
   /** 지도에서 마커를 끌어 옮겼을 때의 새 캔버스 좌표 — 지도는 함대의 축소판이므로 여기서 옮긴
@@ -81,18 +66,6 @@ interface TriageWatchDeckProps {
   /** Operation 표면의 공용 메뉴와 Theater 소유 빈 영역의 launch 메뉴를 상위 canvas가 호스트한다. */
   readonly onOperationContextMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   readonly onTheaterContextMenu?: (theaterId: string, anchor: { readonly x: number; readonly y: number }) => void;
-  /** 카드의 창 컨트롤 — 최소화는 이 판(deck)에서 내리는 동작이고, 닫기는 두 번 눌러 확정한다.
-      상태 변경은 canvas가 단일 소유하므로 deck는 의도만 올려보낸다. */
-  readonly onMinimizeOperation?: (operationId: string) => void;
-  readonly onCloseOperation?: (operationId: string) => void;
-  /** 사이드바와 같은 Operation 마크를 제목 왼쪽에 그리기 위한 재료. 없으면 마크를 생략한다. */
-  readonly catalog?: readonly OperationCatalogPlugin[];
-  readonly renderKindIcon?: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-}
-
-const EMPTY_OPERATION_CATALOG: readonly OperationCatalogPlugin[] = [];
-function renderMissingKindIcon(_pluginId: string, _kind: OperationLaunchKind): ReactNode {
-  return null;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -212,6 +185,19 @@ const TRIAGE_MAP_QUICKLOOK_GAP = 14;
 // 기본은 점의 오른쪽 아래, 그쪽이 좁으면 반대편으로 뒤집고, 양쪽 다 좁을 때만 경계로 민다.
 // 판이 확대창보다 좁으면 크기 자체를 판에 맞춰 깎는다(카드 Quick-Look의 배율 클램프와 같은
 // 정직한 열화).
+// position: fixed의 실제 원점 — 뷰포트라는 보장이 없다. transform·filter·contain을 가진 조상이
+// 하나라도 있으면 그 조상이 containing block이 되고, 뷰포트 좌표를 그대로 실은 창은 그 조상의
+// 오프셋만큼 밀려난다. 규칙을 거슬러 올라가며 추측하는 대신, 같은 부모에 0×0 프로브를 잠깐 세워
+// 그 원점을 직접 잰다 — 어떤 속성이 컨테이닝 블록을 만들었는지 알 필요가 없다.
+function resolveFixedOrigin(host: HTMLElement): { readonly x: number; readonly y: number } {
+  const probe = host.ownerDocument.createElement("div");
+  probe.style.cssText = "position:fixed;left:0;top:0;width:0;height:0;pointer-events:none;visibility:hidden;";
+  host.appendChild(probe);
+  const rect = probe.getBoundingClientRect();
+  probe.remove();
+  return { x: rect.left, y: rect.top };
+}
+
 export function resolveTriageMapQuicklookPlacement(
   dotRect: DOMRect,
   gridRect: DOMRect,
@@ -518,30 +504,34 @@ export function TriageWatchDeck({
   stagedOperationId = null,
   onBeforePick,
   mapGeometryFor,
-  previewSourceFor,
+  onPanelSlotRef,
   freshOperationIds,
   onMapMarkerMove,
   onOperationContextMenu,
   onTheaterContextMenu,
-  onMinimizeOperation,
-  onCloseOperation,
-  catalog = EMPTY_OPERATION_CATALOG,
-  renderKindIcon = renderMissingKindIcon,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
-  const poolAvailable = useOperationBodyPoolAvailable();
   useOperationStatusDetails();
-  // Quick-Look 상태 — 동시에 한 카드만 확대된다. 타이머도 1개만 유지해 카드 사이를 빠르게
-  // 오갈 때 이전 카드의 드웰이 뒤늦게 발동해 두 카드가 동시에 확대되는 일을 막는다.
+  // 칸의 ref 콜백은 Operation당 하나로 고정한다 — 렌더마다 새 함수를 주면 React가 매 커밋에
+  // 옛 콜백을 null로, 새 콜백을 element로 부르고, 그 두 번이 상위 state를 갱신해 렌더 루프가 된다.
+  const slotRefsRef = useRef(new Map<string, (element: HTMLElement | null) => void>());
+  const onPanelSlotRefRef = useRef(onPanelSlotRef);
+  onPanelSlotRefRef.current = onPanelSlotRef;
+  const slotRefFor = (operationId: string) => {
+    const cache = slotRefsRef.current;
+    const existing = cache.get(operationId);
+    if (existing) return existing;
+    const callback = (element: HTMLElement | null) => { onPanelSlotRefRef.current?.(operationId, element); };
+    cache.set(operationId, callback);
+    return callback;
+  };
+  // Quick-Look 상태 — 동시에 한 칸만 확대된다. 타이머도 1개만 유지해 칸 사이를 빠르게
+  // 오갈 때 이전 칸의 드웰이 뒤늦게 발동해 두 칸이 동시에 확대되는 일을 막는다.
   const [quicklook, setQuicklook] = useState<{ operationId: string; origin: string; scale: number } | null>(null);
-  // 카드의 닫기도 캔버스 패널·사이드바 칩과 같은 두 번 누르기 계약을 쓴다. 무장은 한 번에 하나만
-  // 유지한다 — 여러 카드가 동시에 "확인?"을 걸고 있으면 어느 것을 확인하는지 읽히지 않는다.
-  const [armedCloseId, setArmedCloseId] = useState<string | null>(null);
-  const closeArmTimerRef = useRef<number | null>(null);
-  // 지도 모드의 Quick-Look — 카드가 은닉된 채라 카드 자신을 확대할 수 없다. 같은 hover 문법으로
-  // 같은 카드 얼굴을 점 위에 띄우는 별도 표면이며, 드웰 타이머는 카드와 공유한다(두 표면이
-  // 동시에 열리는 상태가 없어야 한다 — 지도 모드에서는 카드가, 카드 모드에서는 점이 없다).
+  // 지도 모드의 Quick-Look — 칸이 은닉된 채라 칸 자신을 제자리에서 확대할 수 없다. 같은 hover
+  // 문법으로 그 칸(=패널)을 점 위로 옮겨 띄우며, 드웰 타이머는 칸 확대와 공유한다(두 표면이
+  // 동시에 열리는 상태가 없어야 한다 — 지도 모드에서는 칸이, 칸 모드에서는 점이 없다).
   const [mapQuicklook, setMapQuicklook] = useState<{ operationId: string; placement: TriageMapQuicklookPlacement } | null>(null);
   // 드래그 좌표는 ref가 나른다(리렌더 없음). 상태는 "지금 끌고 있는 마커" 한 개뿐이며 잡을 때와
   // 놓을 때만 바뀐다 — 그 클래스가 유영을 끄고 드래그 어포던스를 입힌다.
@@ -711,33 +701,6 @@ export function TriageWatchDeck({
     }
   };
 
-  const clearCloseArmTimer = () => {
-    if (closeArmTimerRef.current === null) return;
-    window.clearTimeout(closeArmTimerRef.current);
-    closeArmTimerRef.current = null;
-  };
-
-  const armCardClose = (operationId: string) => {
-    clearCloseArmTimer();
-    setArmedCloseId(operationId);
-    closeArmTimerRef.current = window.setTimeout(() => {
-      closeArmTimerRef.current = null;
-      setArmedCloseId(null);
-    }, CARD_CLOSE_ARM_DURATION_MS);
-  };
-
-  const pressCardClose = (operationId: string) => {
-    if (armedCloseId === operationId) {
-      clearCloseArmTimer();
-      setArmedCloseId(null);
-      onCloseOperation?.(operationId);
-      return;
-    }
-    armCardClose(operationId);
-  };
-
-  useEffect(() => () => clearCloseArmTimer(), []);
-
   const dismissQuicklook = () => {
     clearQuicklookTimer();
     setQuicklook(null);
@@ -773,9 +736,20 @@ export function TriageWatchDeck({
       quicklookTimerRef.current = null;
       const grid = gridRef.current;
       if (!grid) return;
+      // 확대는 밴드 안에 있는 칸을 판 위로 끌어올리는 것이라, 앵커·클램프는 판(grid)을 상자로
+      // 삼는다. 칸은 그때 position: fixed로 서는데, fixed의 원점은 뷰포트라는 보장이 없다 —
+      // 조상에 transform·filter가 하나라도 있으면 그 조상이 기준이 된다(캔버스 크롬이 그렇다).
+      // 그래서 그 원점을 프로브로 실측해 판 기준 좌표를 그 좌표계로 옮긴다.
+      const gridRect = grid.getBoundingClientRect();
+      const placement = resolveTriageMapQuicklookPlacement(dot.getBoundingClientRect(), gridRect);
+      const origin = resolveFixedOrigin(grid);
       setMapQuicklook({
         operationId,
-        placement: resolveTriageMapQuicklookPlacement(dot.getBoundingClientRect(), grid.getBoundingClientRect()),
+        placement: {
+          ...placement,
+          left: placement.left + gridRect.left - origin.x,
+          top: placement.top + gridRect.top - origin.y,
+        },
       });
     };
     if (!dwell) {
@@ -903,12 +877,17 @@ export function TriageWatchDeck({
     dismissQuicklook();
     pickTriageOperation(operationId);
   };
-  const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLButtonElement>) => {
+  const openOperationMenu = (operationId: string, event: ReactMouseEvent<HTMLElement>) => {
     event.preventDefault();
     event.stopPropagation();
-    // 메뉴가 뜬 동안 hover 확대가 메뉴와 카드 body를 두고 싸우지 않게 즉시 걷는다.
+    // 메뉴가 뜬 동안 hover 확대가 메뉴와 패널 body를 두고 싸우지 않게 즉시 걷는다.
     dismissQuicklook();
-    onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), event.currentTarget);
+    // 포커스 복귀 대상은 포커스를 받을 수 있는 요소여야 한다 — 칸에서 연 메뉴는 그 칸의
+    // 승격 면으로 돌아간다(칸 자신은 tabindex를 갖지 않는다).
+    const returnFocus = event.currentTarget instanceof HTMLButtonElement
+      ? event.currentTarget
+      : event.currentTarget.querySelector<HTMLElement>(".canvas-triage-deck-pick");
+    onOperationContextMenu?.(operationId, new DOMRect(event.clientX, event.clientY, 0, 0), returnFocus);
   };
   const openOperationMenuFromKeyboard = (operationId: string, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return false;
@@ -1032,24 +1011,6 @@ export function TriageWatchDeck({
       if (dragged.moved) setDraggingMarkerId(null);
     },
   };
-  // 확대창에 실을 얼굴 — 무대에 오른 Operation은 body를 무대가 쥐고 있으므로 프리뷰 없이 tail만 싣는다.
-  const mapQuicklookOperation = (() => {
-    if (!mapQuicklook) return null;
-    const operation = operations.find((candidate) => candidate.id === mapQuicklook.operationId);
-    if (!operation) return null;
-    const activity = displayActivity(operation);
-    const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
-    return {
-      operation,
-      visual: operationActivityVisual(activity),
-      label: operationActivityLabel(activity),
-      detail: getOperationStatusDetailSnapshot(operation.id).detail,
-      accentColor: accentKey ? resolveAccentColor(accentKey) : null,
-      preview: poolAvailable && previewSourceFor && operation.id !== stagedOperationId
-        ? previewSourceFor(operation)
-        : null,
-    };
-  })();
   return (
     <section
       className={`canvas-triage-deck ${underStage ? "is-under-stage" : ""} ${mapMode ? "is-map-mode" : ""} ${morph ? `is-morphing is-morph-${morph.phase}` : ""}`}
@@ -1079,120 +1040,58 @@ export function TriageWatchDeck({
                   {band.operations.map((operation) => {
                     const activity = displayActivity(operation);
                     const visual = operationActivityVisual(activity);
-                    const label = operationActivityLabel(activity);
-                    const statusDetail = getOperationStatusDetailSnapshot(operation.id);
-                    const accentKey = operationAccent[operation.id] ?? operationAccentFromNode(operation);
-                    const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
-                    // 지도 모드에서는 카드가 은닉되므로 pool 슬롯도 놓는다 — body는 operation당
-                    // 하나뿐이라, 은닉된 카드가 슬롯을 쥔 채로는 점의 확대창이 그 body를 실을 수 없다.
-                    const preview = poolAvailable && previewSourceFor && operation.id !== stagedOperationId && !mapMode
-                      ? previewSourceFor(operation)
-                      : null;
                     const isQuicklook = quicklook?.operationId === operation.id;
-                    // 밀도 변형 프레임 — 카드를 자기 점 자리로 옮겨 놓는다. Quick-Look 확대와는
+                    // 지도 모드의 확대는 이 칸을 점 위로 옮겨 세운다 — 좌표는 뷰포트 기준이라
+                    // 칸이 어느 밴드에 속하든 판 위 같은 자리에 선다.
+                    const mapLook = mapMode && mapQuicklook?.operationId === operation.id ? mapQuicklook.placement : null;
+                    // 밀도 변형 프레임 — 칸을 자기 점 자리로 옮겨 놓는다. Quick-Look 확대와는
                     // 공존하지 않는다(전환은 열린 확대창을 먼저 해제한다).
                     const morphFrame = morph?.applied ? morph.frames.get(operation.id) ?? null : null;
-                    const cardArmed = armedCloseId === operation.id;
                     return (
-                      // 확대는 이 칸이 진다 — 카드와 그 형제인 창 컨트롤이 한 변환을 함께 받아야
-                      // 손잡이가 확대된 카드의 같은 모서리에 남는다. 포인터 드웰도 칸이 소유한다:
-                      // 카드에만 걸면 손잡이로 커서를 옮기는 순간 pointerleave가 확대를 걷어내
-                      // 버튼이 커서 밑에서 사라진다.
+                      // 칸은 자리이지 물건이 아니다 — 이 안에 서는 것은 캔버스가 소유한 그
+                      // Operation의 실제 패널이고(canvas가 portal로 들여보낸다), 칸은 자리·배율·
+                      // 변형만 진다. 카드 얼굴을 따로 그리던 종전 구조에서는 같은 Operation이
+                      // 밀도마다 다른 물건으로 그려졌고, 축소가 transform이라 글자도 함께 뭉갰다.
+                      // 포인터 드웰은 칸이 소유한다: 패널에만 걸면 캡션 컨트롤로 커서를 옮기는
+                      // 순간 pointerleave가 확대를 걷어내 버튼이 커서 밑에서 사라진다.
                       <div
-                        className={`canvas-triage-deck-cell ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""}`}
+                        className={`canvas-triage-deck-cell is-${visual} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${mapLook ? "is-map-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
                         key={operation.id}
-                        style={isQuicklook
-                          ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
-                          : undefined}
+                        data-triage-deck-card={operation.id}
+                        style={mapLook
+                          ? { left: `${mapLook.left}px`, top: `${mapLook.top}px`, width: `${mapLook.width}px`, height: `${mapLook.height}px` }
+                          : morphFrame
+                            ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
+                            : isQuicklook
+                              ? { transformOrigin: quicklook.origin, "--triage-quicklook-scale": String(quicklook.scale) } as CSSProperties
+                              : undefined}
+                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
                         onPointerEnter={(event: PointerEvent<HTMLDivElement>) => {
                           if (event.pointerType === "touch" || arrivingOperationId === operation.id) return;
                           armQuicklook(operation.id, event.currentTarget, true);
                         }}
                         onPointerLeave={dismissQuicklook}
                       >
-                      <button
-                        className={`canvas-triage-deck-card is-${visual} ${preview ? "has-preview" : ""} ${arrivingOperationId === operation.id ? "is-arriving" : ""} ${freshOperationIds?.has(operation.id) ? "is-fresh" : ""} ${isQuicklook ? "is-quicklook" : ""} ${morph ? "is-morphing" : ""} ${morph?.phase === "to-cards" && morph.applied ? "is-morph-snap" : ""}`}
-                        data-triage-deck-card={operation.id}
-                        type="button"
-                        style={morphFrame
-                          ? { transform: `translate(${morphFrame.dx.toFixed(1)}px, ${morphFrame.dy.toFixed(1)}px) scale(${morphFrame.scale.toFixed(4)})` }
-                          : undefined}
-                        aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
-                        aria-haspopup="menu"
-                        onContextMenu={(event) => openOperationMenu(operation.id, event)}
-                        onFocus={(event) => {
-                          if (!event.currentTarget.matches(":focus-visible")) return;
-                          armQuicklook(operation.id, event.currentTarget, false);
-                        }}
-                        onBlur={dismissQuicklook}
-                        onKeyDown={(event) => { openOperationMenuFromKeyboard(operation.id, event); }}
-                        onClick={(event) => pick(operation.id, event.currentTarget)}
-                      >
-                        <TriageDeckCardFace
-                          operation={operation}
-                          catalog={catalog}
-                          renderKindIcon={renderKindIcon}
-                          label={label}
-                          detail={statusDetail.detail}
-                          accentColor={accentColor}
-                          preview={preview}
-                          // 확대된 카드만 자기 배율을 넘긴다 — 프리뷰는 그 배율을 상쇄해
-                          // 터미널을 화면상 실물 크기로 세운다. 배율이 grid 한도에 걸려 1까지
-                          // 깎인 좁은 창에서도 판독이라는 목적은 그대로 선다.
-                          surfaceScale={isQuicklook ? quicklook.scale : 0}
-                        />
-                      </button>
-                      {onMinimizeOperation || onCloseOperation ? (
-                        <span
-                          className="canvas-triage-deck-card-controls"
-                          // 손잡이 위에서는 확대를 시작하지 않는다 — 누르려고 올린 커서 밑에서 카드가
-                          // 커지면 버튼이 함께 밀려 클릭이 빗나간다. 이미 확대 중이면 그대로 둔다:
-                          // 여기서 걷으면 버튼이 원래 자리로 되돌아가 같은 어긋남이 반대로 일어난다.
-                          onPointerEnter={() => { if (!isQuicklook) clearQuicklookTimer(); }}
-                          // 손잡이를 벗어나 카드로 돌아오면 드웰을 처음부터 다시 잰다. 칸 밖으로
-                          // 나가는 경우는 칸의 onPointerLeave가 확대를 걷는다.
-                          onPointerLeave={(event) => {
-                            if (isQuicklook) return;
-                            const cell = event.currentTarget.parentElement;
-                            const next = event.relatedTarget;
-                            if (!cell || !(next instanceof Node) || !cell.contains(next)) return;
-                            const card = cell.querySelector<HTMLElement>("[data-triage-deck-card]");
-                            if (card) armQuicklook(operation.id, card, true);
+                        {/* 패널이 들어올 자리 — 캔버스가 이 노드로 portal한다. React 자식을 두지
+                            않는 빈 노드여야 한다: portal 대상에 React가 관리하는 형제가 섞이면
+                            자식 조정과 portal 삽입이 서로의 DOM을 밀어낸다. */}
+                        <div className="canvas-triage-deck-mount" ref={slotRefFor(operation.id)} />
+                        {/* 무대로 올리는 면 — 덱에서 패널의 본문은 읽는 것이지 조작하는 것이
+                            아니다. 본문 위를 덮어 클릭 한 번을 승격으로 받고, 캡션은 그 위에 남아
+                            창 컨트롤이 자기 클릭을 지킨다. */}
+                        <button
+                          className="canvas-triage-deck-pick"
+                          type="button"
+                          aria-label={t("canvas.triage.deckCardAria", { title: operation.title })}
+                          aria-haspopup="menu"
+                          onFocus={(event) => {
+                            if (!event.currentTarget.matches(":focus-visible")) return;
+                            armQuicklook(operation.id, event.currentTarget, false);
                           }}
-                        >
-                          {onMinimizeOperation ? (
-                            <button
-                              type="button"
-                              className="canvas-triage-deck-card-control"
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => {
-                                event.stopPropagation();
-                                clearCloseArmTimer();
-                                setArmedCloseId(null);
-                                onMinimizeOperation(operation.id);
-                              }}
-                              aria-label={t("canvas.frame.minimizeAria", { title: operation.title })}
-                              title={t("canvas.frame.minimizeTitle")}
-                            >
-                              <MinimizeIcon />
-                            </button>
-                          ) : null}
-                          {onCloseOperation ? (
-                            <button
-                              type="button"
-                              className={`canvas-triage-deck-card-control ${cardArmed ? "is-armed-close" : ""}`}
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onClick={(event) => { event.stopPropagation(); pressCardClose(operation.id); }}
-                              aria-label={cardArmed
-                                ? t("canvas.frame.confirmCloseAria", { title: operation.title })
-                                : t("canvas.frame.closeAria", { title: operation.title })}
-                              title={cardArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}
-                            >
-                              {cardArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
-                            </button>
-                          ) : null}
-                        </span>
-                      ) : null}
+                          onBlur={dismissQuicklook}
+                          onKeyDown={(event) => { openOperationMenuFromKeyboard(operation.id, event); }}
+                          onClick={(event) => pick(operation.id, event.currentTarget)}
+                        />
                       </div>
                     );
                   })}
@@ -1245,33 +1144,6 @@ export function TriageWatchDeck({
               </section>
               );
             })}
-          </div>
-        ) : null}
-        {mapMode && mapQuicklookOperation ? (
-          // 점의 확대창 — 카드 Quick-Look과 같은 카드 얼굴을 같은 판독 크기로 띄운다. 포인터를
-          // 통과시켜(pointer-events:none) 창이 점을 덮어도 hover가 끊기지 않고 클릭이 점에 닿는다.
-          <div
-            className={`canvas-triage-deck-card canvas-triage-map-quicklook is-${mapQuicklookOperation.visual} ${mapQuicklookOperation.preview ? "has-preview" : ""}`}
-            style={{
-              left: `${mapQuicklook!.placement.left}px`,
-              top: `${mapQuicklook!.placement.top}px`,
-              width: `${mapQuicklook!.placement.width}px`,
-              height: `${mapQuicklook!.placement.height}px`,
-            }}
-            aria-hidden="true"
-          >
-            <TriageDeckCardFace
-              operation={mapQuicklookOperation.operation}
-              catalog={catalog}
-              renderKindIcon={renderKindIcon}
-              label={mapQuicklookOperation.label}
-              detail={mapQuicklookOperation.detail}
-              accentColor={mapQuicklookOperation.accentColor}
-              preview={mapQuicklookOperation.preview}
-              // 지도 확대창은 transform 없이 제 크기로 뜨므로 표면 배율이 곧 1이다 — 그래도
-              // 확대창이라는 사실은 같으므로 프리뷰는 카드 Quick-Look과 같은 실물 크기로 선다.
-              surfaceScale={1}
-            />
           </div>
         ) : null}
       </div>
@@ -1430,178 +1302,6 @@ function renderTriageMapDots(
   });
 }
 
-// 카드 얼굴 — 덱 카드와 지도 점의 확대창이 같은 조각(스파인·상태줄·제목·프리뷰/tail)을 공유한다.
-// 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다. 제목 왼쪽 마크도
-// 이 얼굴이 해석한다 — 사이드바와 같은 resolveOperationMark라 밀도만 달라도 같은 Operation으로 읽힌다.
-function TriageDeckCardFace({ operation, catalog, renderKindIcon, label, detail, accentColor, preview, surfaceScale = 0 }: {
-  readonly operation: OperationNode;
-  readonly catalog: readonly OperationCatalogPlugin[];
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
-  readonly label: string;
-  readonly detail: string | null | undefined;
-  readonly accentColor: string | null;
-  readonly preview: TriagePreviewSource | null;
-  /** 이 얼굴을 담은 표면의 화면상 확대 배율 — 확대창만 넘긴다(기본 0 = 확대창 아님). */
-  readonly surfaceScale?: number;
-}) {
-  const { icon, launchProvider } = resolveOperationMark(operation, catalog, renderKindIcon);
-  return (
-    <>
-      {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
-      <span className="canvas-triage-deck-card-status">
-        <span className="canvas-triage-deck-card-dot" aria-hidden="true" />
-        <span>{label}</span>
-      </span>
-      <span className="canvas-triage-deck-card-title">
-        {icon ? (
-          <span
-            className={`canvas-triage-deck-card-mark${launchProvider ? ` operation-provider-mark is-${launchProvider}` : ""}`}
-            aria-hidden="true"
-          >
-            {icon}
-          </span>
-        ) : null}
-        <strong title={operation.title}>{operation.title}</strong>
-      </span>
-      {preview ? (
-        <TriageDeckCardPreview
-          config={preview.config}
-          bottomChrome={preview.bottomChrome}
-          operationId={operation.id}
-          surfaceScale={surfaceScale}
-        />
-      ) : (
-        <span className="canvas-triage-deck-card-detail" title={detail ?? label}>
-          {detail ?? label}
-        </span>
-      )}
-    </>
-  );
-}
-
-// 작은 패널에서 밴드가 프레임 대부분을 먹지 않도록 한 몫 상한을 둔다 — 하한 200px 패널에서
-// 선언값 104px를 그대로 빼면 남는 출력 영역이 절반 밑으로 떨어져 프리뷰가 오히려 덜 읽힌다.
-const TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO = 0.3;
-
-// 출력 영역의 높이 — 패널 높이에서 body 소유자가 선언한 바닥 크롬을 뺀 만큼이다. 밴드 높이는
-// kind가 선언하며(OperationKindDescriptor.previewBottomChrome), 선언이 없는 body는 바닥까지
-// 출력이 흐른다는 뜻이므로 0 — 순정 셸과 문서형 패널은 최신 행을 잃지 않는다. 선언값은 플러그인이
-// 넘기는 값이라 음수·비유한 값이 계산 전체를 NaN으로 만들지 않게 여기서 막고, 상한도 여기서 건다.
-export function resolveTriagePreviewContentHeight(innerHeight: number, bottomChrome: number): number {
-  const declared = Number.isFinite(bottomChrome) ? Math.max(0, bottomChrome) : 0;
-  const chrome = Math.min(declared, innerHeight * TRIAGE_PREVIEW_BOTTOM_CHROME_MAX_RATIO);
-  return innerHeight - chrome;
-}
-
-// 프리뷰 fit — 출력이 프레임을 채운다. 배율은 두 축이 요구하는 값 중 큰 쪽이고, 남는 쪽은
-// 프레임 밖으로 나간다. 밀도를 올리면 카드가 커진 만큼 글자도 함께 커진다(실측: 1440×900에서
-// 0.7×의 3.7px부터 2.0×의 15.5px까지) — 카드 크기에 프리뷰가 비례해 따라오는 것이 이 판의 목적이다.
-//
-// 어느 축이 이기든 **왼쪽은 프레임의 왼쪽에 앵커한다**. 프리뷰가 담는 것은 왼쪽 정렬 텍스트
-// (터미널 출력·문서·파일 트리)라 두 방향의 크롭이 등가가 아니다: 세로로 잘리면 오래된 줄만
-// 사라지고 최신 줄은 온전하며, 가로로 넘쳐도 줄의 시작은 남아 남은 폭까지 읽을 수 있다. 읽을 수
-// 없게 만드는 것은 가로 크롭 자체가 아니라 **중앙** 앵커였다 — 그때만 모든 줄의 첫 글자가
-// 사라진다. 종전 cover-fit이 좌우를 중앙에서 잘라 이 결함을 만들었고, 그것을 피하려 폭에 고정하자
-// 이번에는 세로가 남아 프레임 위에 빈 띠가 열렸다(실측 최악 30.6%). 좌측 앵커는 그 둘 중 어느
-// 쪽도 감수하지 않는다.
-//
-// 상단 여백은 이제 수식으로 불가능하다: `scale >= viewport.height / contentHeight`이므로
-// `contentHeight * scale >= viewport.height`이고 top은 절대 양수가 되지 않는다.
-//
-// minScale은 확대창이 요구하는 배율 하한이다. Quick-Look은 "축소판을 크게 키운 그림"이 아니라
-// "실물을 들여다보는 창"이다. 표면이 화면에서 S배로 확대돼 있을 때 1/S를 하한으로 받으면 두
-// 배율이 상쇄되어 화면상 1:1이 서고, 글자는 패널에서 읽던 크기 그대로가 된다. 두 축의 요구가
-// 이미 그 하한을 넘으면 창은 그보다 크게 서고, 그때도 위 규칙이 그대로 적용된다.
-//
-// 세로 앵커는 언제나 출력 영역의 하단 — 에이전트 CLI의 최신 출력은 컴포저 바로 위에 쌓이므로
-// 모니터링 가치가 있는 영역이 살아남고, 빈 셸이 비어 보이는 것은 정직한 상태 표현이다.
-export function resolveTriagePreviewFit(
-  viewport: { readonly width: number; readonly height: number },
-  inner: { readonly width: number; readonly height: number },
-  bottomChrome = 0,
-  minScale = 0,
-): { scale: number; left: number; top: number } | null {
-  if (viewport.width <= 0 || viewport.height <= 0) return null;
-  if (inner.width <= 0 || inner.height <= 0) return null;
-  const contentHeight = resolveTriagePreviewContentHeight(inner.height, bottomChrome);
-  const floor = Number.isFinite(minScale) ? Math.max(0, minScale) : 0;
-  const widthFit = viewport.width / inner.width;
-  const heightFit = viewport.height / contentHeight;
-  const scale = Math.max(floor, widthFit, heightFit);
-  return {
-    scale,
-    // 왼쪽은 언제나 프레임의 왼쪽이다. 폭이 이기면 좌우가 프레임과 정확히 만나고, 세로나 실물
-    // 크기 하한이 이기면 넘치는 폭이 전부 오른쪽으로 나간다 — 어느 쪽이든 줄의 시작은 남는다.
-    left: 0,
-    top: viewport.height - contentHeight * scale,
-  };
-}
-
-// 표면 배율을 프리뷰가 되돌려야 할 하한으로 옮긴다 — 확대창이 아니면(0) 하한도 없다.
-export function resolveTriagePreviewMinScale(surfaceScale: number): number {
-  if (!Number.isFinite(surfaceScale) || surfaceScale <= 0) return 0;
-  return 1 / surfaceScale;
-}
-
-// 라이브 프리뷰 — pool 슬롯이 실제 패널 body를 카드 안으로 끌어온다. 내부 박스는 패널의 원래
-// 픽셀 크기를 고정 유지한 채 transform scale로만 축소한다: FitAddon이 카드 크기를 측정하면
-// PTY cols/rows가 타일 크기로 리사이즈되어 실세션 레이아웃이 깨지므로, 측정 크기 불변이 계약이다.
-function TriageDeckCardPreview({ operationId, config, bottomChrome, surfaceScale }: {
-  readonly operationId: string;
-  readonly config: OperationBodyConfig;
-  readonly bottomChrome: number;
-  /** 이 프리뷰를 담은 표면의 화면상 확대 배율 — Quick-Look으로 확대된 표면만 자기 배율을
-      넘긴다. 0은 확대창이 아니라는 뜻이고, 평상시 카드는 축소판(cover-fit)으로 남는다. */
-  readonly surfaceScale: number;
-}) {
-  const viewportRef = useRef<HTMLDivElement | null>(null);
-  const [fit, setFit] = useState<{ scale: number; left: number; top: number } | null>(null);
-  // 하한은 패널 리사이즈 최소값(operation-resize.tsx의 320×200)과 일치시킨다 — 이보다 크게
-  // 올려 잡으면 지원되는 작은 패널의 프리뷰 컨테이너가 실제 geometry보다 커져 refit을 유발한다.
-  const innerWidth = Math.max(320, config.geometry.width);
-  const innerHeight = Math.max(200, config.geometry.height);
-  const minScale = resolveTriagePreviewMinScale(surfaceScale);
-  useLayoutEffect(() => {
-    const viewport = viewportRef.current;
-    if (!viewport) return;
-    const measure = () => {
-      setFit(resolveTriagePreviewFit(
-        { width: viewport.clientWidth, height: viewport.clientHeight },
-        { width: innerWidth, height: innerHeight },
-        bottomChrome,
-        minScale,
-      ));
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    observer.observe(viewport);
-    return () => observer.disconnect();
-    // Quick-Look 배율은 열려 있는 동안에도 grid 스크롤·리사이즈로 재계산되므로(recordRects),
-    // 하한이 바뀌면 fit도 다시 잡아야 한다. 뷰포트 크기는 그대로일 수 있어 ResizeObserver만으로는
-    // 이 변화를 잡지 못한다.
-  }, [bottomChrome, innerHeight, innerWidth, minScale]);
-  return (
-    <span className="canvas-triage-deck-card-preview" ref={viewportRef} aria-hidden="true" inert>
-      {fit ? (
-        // 이 transform에는 전이를 붙이지 않는다. 전이는 카드 확대가 이미 소유하고 있고 프리뷰
-        // 배율은 거기에 올라탄다 — 프리뷰가 자기 전이를 따로 가지면 두 전이가 서로 다른 값을
-        // 쫓게 되고, 덱 줌 tween이나 창 리사이즈처럼 fit이 매 프레임 다시 잡히는 동안 프리뷰가
-        // 뒤처져 화면 배율이 1:1을 벗어나고 가장자리에 빈 띠가 뜬다.
-        <span
-          className="canvas-triage-deck-card-preview-inner"
-          style={{
-            width: innerWidth,
-            height: innerHeight,
-            transform: `translate(${fit.left}px, ${fit.top}px) scale(${fit.scale})`,
-          } as CSSProperties}
-        >
-          <OperationBodySlot className="canvas-triage-deck-card-preview-slot" config={config} operationId={operationId} />
-        </span>
-      ) : null}
-    </span>
-  );
-}
 
 function escapeAttributeValue(value: string): string {
   if (typeof CSS !== "undefined" && typeof CSS.escape === "function") return CSS.escape(value);
