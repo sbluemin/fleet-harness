@@ -426,15 +426,18 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       setSyncHinting(false);
     }, SYNC_HINT_MS);
   }, []);
-  const clearSyncSettled = useCallback(() => {
-    if (syncSettledTimerRef.current !== null) {
-      clearTimeout(syncSettledTimerRef.current);
-      syncSettledTimerRef.current = null;
+  // 한 시도의 답은 배너·✓·말풍선 세 표면에 나뉘어 앉는다. 새 시도를 시작할 때 셋을 함께 걷지 않으면
+  // 앞 시도의 배너가 자기 6초를 사는 동안 뒤 시도의 ✓가 겹쳐, 실패 배너와 "이미 최신 상태"가 동시에 뜬다.
+  // 수동 동기화에는 throttle이 없어 두 번 누르는 것으로 재현된다. 지속 실패 점은 시도별 알림이 아니라
+  // "마지막 결과" 표식이라 여기서 걷지 않고 성공 시에만 해제한다.
+  const clearSyncSurfacing = useCallback(() => {
+    for (const timer of [syncNoticeTimerRef, syncSettledTimerRef, syncHintTimerRef]) {
+      if (timer.current !== null) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
     }
-    if (syncHintTimerRef.current !== null) {
-      clearTimeout(syncHintTimerRef.current);
-      syncHintTimerRef.current = null;
-    }
+    setSyncNotice(null);
     setSyncSettled(false);
     setSyncHinting(false);
     setSyncHintAvailable(false);
@@ -448,8 +451,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (!ctx.theaterId) return;
     const isManual = mode !== "auto";
     const requestId = ++syncRequestIdRef.current;
-    // 새 시도는 지난 결과의 표면을 먼저 걷는다 — ✓가 남은 채 다음 요청이 돌면 어느 시도의 결과인지 읽을 수 없다.
-    if (isManual) clearSyncSettled();
+    // 새 시도는 지난 결과의 표면을 먼저 걷는다 — 앞 결과가 남은 채 다음 요청이 돌면 어느 시도의 결과인지 읽을 수 없다.
+    if (isManual) clearSyncSurfacing();
     setSyncing(true);
     let response: Response;
     try {
@@ -489,7 +492,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       else showSyncNotice({ kind: "success", newRefs, updatedRefs, pruned });
     }
     refreshRepositoryData();
-  }, [clearSyncSettled, ctx.theaterId, refreshRepositoryData, repoRel, showSyncNotice, showSyncSettled]);
+  }, [clearSyncSurfacing, ctx.theaterId, refreshRepositoryData, repoRel, showSyncNotice, showSyncSettled]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     const contextKey = `${ctx.theaterId}:${repoRel}`;

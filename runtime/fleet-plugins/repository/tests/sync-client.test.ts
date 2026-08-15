@@ -25,8 +25,19 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).not.toContain("repository.sync.summaryClean");
   });
 
-  it("clears the previous settled result before the next manual attempt", () => {
-    expect(railPanelSource).toContain("if (isManual) clearSyncSettled();");
+  // 한 시도의 답은 배너·✓·말풍선 세 표면에 나뉘어 앉는다. 새 시도가 셋을 함께 걷지 않으면 앞 시도의
+  // 배너가 자기 6초를 사는 동안 뒤 시도의 ✓가 겹쳐 실패 배너와 "이미 최신 상태"가 동시에 뜬다.
+  it("clears every per-attempt surface before the next manual attempt", () => {
+    expect(railPanelSource).toContain("if (isManual) clearSyncSurfacing();");
+    const start = railPanelSource.indexOf("const clearSyncSurfacing");
+    const end = railPanelSource.indexOf("}, []);", start);
+    const body = railPanelSource.slice(start, end);
+    expect(body).toContain("syncNoticeTimerRef");
+    expect(body).toContain("setSyncNotice(null)");
+    expect(body).toContain("setSyncSettled(false)");
+    expect(body).toContain("setSyncHintAvailable(false)");
+    // 지속 실패 점은 시도별 알림이 아니라 "마지막 결과" 표식이므로 여기서 해제하지 않는다.
+    expect(body).not.toContain("setSyncFailed");
   });
 
   it("keeps the up-to-date result announced and re-openable", () => {
