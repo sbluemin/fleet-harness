@@ -71,6 +71,15 @@ describe("buildFlatRows signal rows", () => {
     expect(rowKinds(filtering)).toEqual(["entry"]);
   });
 
+  it("keeps a truncated folder visible in filter mode even when no listed child matches", () => {
+    // 잘린 목록(500건 뒤의 비표시 항목)에 매치가 숨어 있을 수 있다 — 폴더를 걸러낼 근거가 없다.
+    const root = [entry("many", "many", "dir")];
+    const many = folderResult("many", [entry("other.txt", "many/other.txt", "file")], { truncated: true, cap: 500 });
+    const rows = buildFlatRows(root, 0, null, new Set(), new Set(), new Map([["many", many]]), "zzz", false);
+
+    expect(rowKinds(rows)).toEqual(["entry", "cap"]);
+  });
+
   it("keeps cap rows visible while filtering", () => {
     const root = [entry("many", "many", "dir")];
     const many = folderResult("many", [entry("match.txt", "many/match.txt", "file")], { truncated: true, cap: 500 });

@@ -239,7 +239,9 @@ export function buildFlatRows(
     const children = childResult?.entries;
     const folderIdentity = childResult?.relativePath ?? entry.relativePath;
     const isCycle = entry.kind === "dir" && ancestorFolders.has(folderIdentity);
-    const childMatch = entry.kind === "dir" && !isCycle && hasFilterMatch(children ?? [], childResults, low, showHidden);
+    // 잘린 목록은 비표시 항목에 매치가 숨어 있을 수 있으므로 잠재 매치로 취급해 캡 행을 살린다.
+    const childMatch = entry.kind === "dir" && !isCycle
+      && (hasFilterMatch(children ?? [], childResults, low, showHidden) || Boolean(low && childResult?.truncated));
     if (low) {
       const directMatch = entry.name.toLowerCase().includes(low);
       if (!directMatch && !childMatch) continue;
