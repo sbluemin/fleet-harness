@@ -67,6 +67,7 @@ function ShellOperationView({ context }: { readonly context: OperationRenderCont
       ticketPath={SHELL_TICKET_PATH}
       wsPath={SHELL_WS_PATH}
       theme={context.theme}
+      locale={context.language}
       onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
       onExit={context.onClose}
     />
