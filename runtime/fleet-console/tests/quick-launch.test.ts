@@ -716,6 +716,21 @@ describe("resolveFocusedMention", () => {
     };
     expect(resolveFocusedMention({ ...state, operationsViewActive: false }, MESSAGEABLE)).toBeNull();
     expect(resolveFocusedMention({ ...state, activeTheaterId: "th-b" }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeTheaterId: "th-b" }, MESSAGEABLE, "op-other")).toBeNull();
+  });
+
+  it("allows a foreign-Theater id when it is the live War Room stage", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a"), makeTheater("th-b")],
+      operations: [makeOperation("op-home"), makeOperation("op-stage", { theaterId: "th-b" })],
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
+      activeOperationId: "op-stage",
+    };
+    expect(resolveFocusedMention(state, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention(state, MESSAGEABLE, "op-home")).toBeNull();
+    expect(resolveFocusedMention(state, MESSAGEABLE, "op-stage")?.operationId).toBe("op-stage");
   });
 });
 

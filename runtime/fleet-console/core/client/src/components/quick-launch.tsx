@@ -13,6 +13,7 @@ import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVaria
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
+import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
@@ -21,6 +22,16 @@ import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 const CARD_WIDTH_FALLBACK = 760;
 const POPOVER_GAP = 8;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
+
+/**
+ * War Room 무대 id. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
+ * (pickTriageOperation) 캔버스가 무대 Operation을 active로 세운다. 그 id는
+ * leftover가 아니라 지금 보고 있는 패널이다 — 헬퍼는 Theater 불일치여도
+ * 이 id만 허용한다.
+ */
+function visibleTriageStageOperationId(): string | null {
+  return isTriageActive() ? getState().activeOperationId : null;
+}
 
 type PopoverKind = "theater" | "model";
 
@@ -322,7 +333,11 @@ export function QuickLaunch() {
         promptOccupied: false,
       })
     ) {
-      const focused = resolveFocusedMention(getState(), messageableTypesByPluginRef.current);
+      const focused = resolveFocusedMention(
+        getState(),
+        messageableTypesByPluginRef.current,
+        visibleTriageStageOperationId(),
+      );
       if (focused) setMentionTarget(focused);
     }
     // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
@@ -401,7 +416,11 @@ export function QuickLaunch() {
         promptOccupied: promptRef.current.trim().length > 0 || attachmentsRef.current.length > 0,
       })
     ) {
-      const focused = resolveFocusedMention(getState(), messageableTypesByPluginRef.current);
+      const focused = resolveFocusedMention(
+        getState(),
+        messageableTypesByPluginRef.current,
+        visibleTriageStageOperationId(),
+      );
       if (focused) {
         setMentionTarget(focused);
         setMentionToken(null);
