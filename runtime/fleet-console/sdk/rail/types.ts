@@ -27,6 +27,8 @@ export interface RailSearchRequest {
   readonly theaterId: string;
   readonly limit: number;
   readonly signal: AbortSignal;
+  /** 결과 문자열을 로컬라이즈할 로케일 — 코어가 주입한다. */
+  readonly language?: ConsoleLocale;
 }
 
 export interface RailSearchResult {

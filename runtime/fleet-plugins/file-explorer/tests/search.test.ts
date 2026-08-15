@@ -29,16 +29,53 @@ afterEach(async () => {
 
 describe("Files palette search", () => {
   it("returns sorted Theater-relative file paths and excludes escaping symlinks", async () => {
-    const results = await searchTheaterFiles(theaterPath, "needle", 8);
+    const outcome = await searchTheaterFiles(theaterPath, "needle", 8);
 
-    expect(results).toEqual([
+    expect(outcome.files).toEqual([
       { relativePath: "src/needle.ts" },
       { relativePath: "src/nested/needle.test.ts" },
     ]);
-    const serialized = JSON.stringify(results);
+    expect(outcome.totalMatches).toBe(2);
+    expect(outcome.walkCapped).toBeUndefined();
+    const serialized = JSON.stringify(outcome);
     expect(serialized).not.toContain(temporaryDirectory);
     expect(serialized).not.toContain(await fs.realpath(theaterPath));
     expect(serialized).not.toContain("needle-secret");
+  });
+
+  it("reports totalMatches beyond the requested limit", async () => {
+    const outcome = await searchTheaterFiles(theaterPath, "needle", 1);
+
+    expect(outcome.files).toHaveLength(1);
+    expect(outcome.totalMatches).toBe(2);
+    expect(outcome.walkCapped).toBeUndefined();
+  });
+
+  it("never walks version-control internals, even when they contain matches", async () => {
+    await fs.mkdir(path.join(theaterPath, ".git", "objects"), { recursive: true });
+    await fs.writeFile(path.join(theaterPath, ".git", "needle-config"), "x");
+
+    const outcome = await searchTheaterFiles(theaterPath, "needle", 8);
+
+    expect(outcome.files.map((file) => file.relativePath)).toEqual([
+      "src/needle.ts",
+      "src/nested/needle.test.ts",
+    ]);
+  });
+
+  it("marks walkCapped when the directory cap stops the traversal", async () => {
+    const widePath = path.join(temporaryDirectory, "wide-theater");
+    for (let i = 0; i < 510; i += 1) {
+      await fs.mkdir(path.join(widePath, `d${i}`), { recursive: true });
+      await fs.writeFile(path.join(widePath, `d${i}`, "needle.txt"), "x");
+    }
+
+    const outcome = await searchTheaterFiles(widePath, "needle", 8);
+
+    expect(outcome.walkCapped).toBe(true);
+    expect(outcome.files.length).toBeLessThanOrEqual(8);
+    expect(outcome.totalMatches).toBeGreaterThan(0);
+    expect(outcome.totalMatches).toBeLessThan(510);
   });
 
   it("keeps the HTTP response free of absolute and real paths", async () => {

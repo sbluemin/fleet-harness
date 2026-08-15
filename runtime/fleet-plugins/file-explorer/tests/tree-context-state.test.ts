@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { FolderListResult } from "../server/types.js";
 
-import { buildFlatRows, FILTER_DIRECTORY_CAP, isCurrentContextRequest, loadFilterDescendants, type PluginFilesClient } from "../client/tree.js";
+import { buildFlatRows, FILTER_DIRECTORY_CAP, isCurrentContextRequest, isEntryRow, loadFilterDescendants, type PluginFilesClient } from "../client/tree.js";
 
 const ROOT_ENTRIES = [{ name: "src", relativePath: "src", kind: "dir" }] as const;
 const SRC_RESULT: FolderListResult = {
@@ -51,7 +51,7 @@ describe("FileTree context request guard", () => {
     expect(listFolder).toHaveBeenCalledWith("src");
     expect(listFolder).toHaveBeenCalledWith("src/nested");
     expect(listFolder).not.toHaveBeenCalledWith("src/.git");
-    expect(buildFlatRows(ROOT_ENTRIES, 0, null, new Set(), new Set(), results, "match", false).map((row) => row.entry.relativePath)).toEqual([
+    expect(buildFlatRows(ROOT_ENTRIES, 0, null, new Set(), new Set(), results, "match", false).filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual([
       "src",
       "src/nested",
       "src/nested/match.ts",
@@ -140,7 +140,7 @@ describe("FileTree context request guard", () => {
       ["src/loop", cycleResult],
     ]), "match", false);
 
-    expect(rows.map((row) => row.entry.relativePath)).toEqual(["src", "src/match.ts"]);
+    expect(rows.filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual(["src", "src/match.ts"]);
   });
 
   it("caps distinct directory requests during recursive discovery", async () => {

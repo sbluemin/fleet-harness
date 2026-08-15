@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
-import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
+import type { RailPanelContext, RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import type { FileReadResult, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
 import "./explorer.css";
@@ -48,7 +48,7 @@ export const fileExplorerPanel: RailPanelDescriptor = {
   defaultWidth: 360,
   icon: FileExplorerIcon,
   render: (ctx) => <FileExplorerPanel {...ctx} />,
-  search: async ({ query, theaterId, limit, signal }) => {
+  search: async ({ query, theaterId, limit, signal, language }) => {
     const response = await fetch("/plugins/file-explorer/files/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -57,12 +57,22 @@ export const fileExplorerPanel: RailPanelDescriptor = {
     });
     if (!response.ok) throw new Error("file_search_failed");
     const result = await response.json() as FileSearchResult;
-    return result.files.map((file) => ({
+    const t = getT(language);
+    const items: RailSearchResult[] = result.files.map((file) => ({
       id: file.relativePath,
       title: file.relativePath.split("/").at(-1) ?? file.relativePath,
       subtitle: file.relativePath,
       activate: () => activateFileSearchTarget(theaterId, file.relativePath),
     }));
+    // 상한 표식 행 — 코어가 provider limit으로 자르기 때문에, 마지막 파일 자리를 표식에 양보해
+    // 항상 살아남게 한다. activate는 no-op이지만 선택 시 코어가 Files 패널을 열어 준다.
+    const marker: RailSearchResult | null = result.walkCapped
+      ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined }
+      : result.totalMatches > result.files.length
+        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - result.files.length }), activate: () => undefined }
+        : null;
+    if (!marker) return items;
+    return [...items.slice(0, Math.max(0, limit - 1)), marker];
   },
 };
 

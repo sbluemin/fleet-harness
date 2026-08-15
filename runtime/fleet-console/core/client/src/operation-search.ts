@@ -2,6 +2,7 @@ import type { OperationActivityVisual } from "./operation-activity.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
+import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { launchProviderFromOperationPayload, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
@@ -48,7 +49,7 @@ export async function searchRailPanels(
   const language = resolveConsoleLanguage(getGlobalSettingsStoreState().state?.language ?? "auto");
   const groups = await Promise.all(panels.map(async (panel): Promise<RailSearchGroup | null> => {
     if (!panel.search) return null;
-    const results = await searchRailPanel(panel, query, theaterId, signal);
+    const results = await searchRailPanel(panel, query, theaterId, signal, language);
     if (!results || results.length === 0) return null;
     return {
       panelId: panel.id,
@@ -64,6 +65,7 @@ async function searchRailPanel(
   query: string,
   theaterId: string,
   parentSignal: AbortSignal,
+  language: ConsoleLocale,
 ): Promise<readonly RailSearchResult[] | null> {
   if (!panel.search || parentSignal.aborted) return null;
   const controller = new AbortController();
@@ -84,6 +86,7 @@ async function searchRailPanel(
         theaterId,
         limit: RAIL_SEARCH_PROVIDER_LIMIT,
         signal: controller.signal,
+        language,
       }))
       .then((results) => results, () => null);
     return await Promise.race([request, stopped]);

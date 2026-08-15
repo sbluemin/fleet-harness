@@ -48,6 +48,37 @@ export interface FlatRow {
   readonly isLoading: boolean;
 }
 
+/** 목록 상한에 잘린 폴터 끝에 붙는 표식 행 — 포커스/선택 대상이 아니다. */
+export interface CapRow {
+  readonly type: "cap";
+  readonly depth: number;
+  readonly cap: number;
+  readonly key: string;
+}
+
+/** VCS 날것(.git 등)이 숨겨졌음을 이름으로 밝히는 muted 행 — 펼침/포커스 불가. */
+export interface VcsRow {
+  readonly type: "vcs";
+  readonly name: string;
+  readonly depth: number;
+  readonly key: string;
+}
+
+export type EntryRow = FlatRow & { readonly type: "entry" };
+export type TreeRow = EntryRow | CapRow | VcsRow;
+
+export function isEntryRow(row: TreeRow): row is EntryRow {
+  return row.type === "entry";
+}
+
+function firstEntryPath(rows: readonly TreeRow[]): string | null {
+  return rows.find(isEntryRow)?.entry.relativePath ?? null;
+}
+
+function hasEntryPath(rows: readonly TreeRow[], path: string | null): boolean {
+  return path !== null && rows.some((row) => isEntryRow(row) && row.entry.relativePath === path);
+}
+
 export type TreeNavigationAction =
   | { readonly kind: "focus"; readonly index: number }
   | { readonly kind: "expand" }
@@ -62,6 +93,14 @@ interface FilterDescendantLoadOptions {
   readonly showHidden: boolean;
   readonly isCurrent: () => boolean;
   readonly onFolderResult: (relativePath: string, result: FolderListResult) => void;
+  readonly onProgress?: (walked: number) => void;
+}
+
+export interface FilterLoadStats {
+  /** 실제로 내용을 확인한 폴터 수 (캐시 적중 포함) */
+  readonly walked: number;
+  /** 폴터 상한에 걸려 일부 폴터를 탐색하지 못한 경우 true — UI가 표식을 띄운다. */
+  readonly capped: boolean;
 }
 
 const VIRTUALIZE_THRESHOLD = 200;
@@ -111,16 +150,17 @@ export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boo
   return visibilityState === "visible";
 }
 
-export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult }: FilterDescendantLoadOptions): Promise<void> {
+export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult, onProgress }: FilterDescendantLoadOptions): Promise<FilterLoadStats> {
   const pending: FolderEntry[] = [];
   const knownResults = new Map(cachedResults);
   const queuedPaths = new Set<string>();
   const visitedFolders = new Set<string>();
   let requestCount = 0;
+  let capped = false;
   const enqueue = (candidates: readonly FolderEntry[]) => {
     for (const candidate of candidates) {
       if (!isVisibleDirectory(candidate, showHidden) || queuedPaths.has(candidate.relativePath)) continue;
-      if (queuedPaths.size >= FILTER_DIRECTORY_CAP) return;
+      if (queuedPaths.size >= FILTER_DIRECTORY_CAP) { capped = true; return; }
       queuedPaths.add(candidate.relativePath);
       pending.push(candidate);
     }
@@ -129,28 +169,38 @@ export async function loadFilterDescendants({ entries, cachedResults, files, sho
   enqueue(entries);
   while (pending.length > 0 && isCurrent()) {
     const entry = pending.shift();
-    if (!entry) return;
+    if (!entry) break;
     const cached = knownResults.get(entry.relativePath);
     if (cached) {
       if (visitedFolders.has(cached.relativePath)) continue;
       visitedFolders.add(cached.relativePath);
+      onProgress?.(visitedFolders.size);
       enqueue(cached.entries);
       continue;
     }
-    if (requestCount >= FILTER_DIRECTORY_CAP) return;
+    if (requestCount >= FILTER_DIRECTORY_CAP) { capped = true; break; }
     requestCount += 1;
     try {
       const result = await files.listFolder(entry.relativePath);
-      if (!isCurrent()) return;
+      if (!isCurrent()) break;
       knownResults.set(entry.relativePath, result);
       onFolderResult(entry.relativePath, result);
       if (visitedFolders.has(result.relativePath)) continue;
       visitedFolders.add(result.relativePath);
+      onProgress?.(visitedFolders.size);
       enqueue(result.entries);
     } catch {
       // 권한 오류나 사라진 폴더는 해당 하위 트리만 건너뛴다.
     }
   }
+  return { walked: visitedFolders.size, capped };
+}
+
+interface LevelMeta {
+  /** 이 수준의 목록이 상한에서 잘린 경우의 상한 값 */
+  readonly truncatedCap?: number;
+  /** 이 수준에서 숨겨진 VCS 날것 이름 (.git 등) */
+  readonly hiddenVcs?: readonly string[];
 }
 
 export function buildFlatRows(
@@ -164,8 +214,25 @@ export function buildFlatRows(
   showHidden: boolean,
   ancestorFolders: ReadonlySet<string> = new Set(),
   filterCollapsedDirs: ReadonlySet<string> = new Set(),
-): FlatRow[] {
-  const rows: FlatRow[] = [];
+  levelMeta: LevelMeta = {},
+  levelKey = "",
+): TreeRow[] {
+  const rows: TreeRow[] = [];
+  // VCS 표식 행은 디렉터리 구간에 이름순으로 끼워 넣는다 — 숨김 파일 표시 중이고 필터링이 아닐 때만.
+  const vcsNames = !low && showHidden && levelMeta.hiddenVcs
+    ? [...levelMeta.hiddenVcs].sort((a, b) => a.localeCompare(b))
+    : [];
+  let vcsIdx = 0;
+  const flushVcs = (beforeName?: string) => {
+    for (;;) {
+      const name = vcsNames[vcsIdx];
+      if (name === undefined) return;
+      if (beforeName !== undefined && name.localeCompare(beforeName) >= 0) return;
+      vcsIdx += 1;
+      rows.push({ type: "vcs", name, depth, key: `vcs:${levelKey}:${name}` });
+    }
+  };
+  let filesStarted = false;
   for (const entry of entries) {
     if (!showHidden && entry.name.startsWith(".")) continue;
     const childResult = childResults.get(entry.relativePath);
@@ -177,9 +244,17 @@ export function buildFlatRows(
       const directMatch = entry.name.toLowerCase().includes(low);
       if (!directMatch && !childMatch) continue;
     }
+    if (entry.kind === "dir") {
+      flushVcs(entry.name);
+    } else if (!filesStarted) {
+      // VCS 행은 "디렉터리 같은" 항목 — 첫 파일 행이 나오기 전에 남은 것을 밀어낸다.
+      filesStarted = true;
+      flushVcs();
+    }
     const isExpanded = !filterCollapsedDirs.has(entry.relativePath)
       && (expandedDirs.has(entry.relativePath) || Boolean(low && childMatch));
     rows.push({
+      type: "entry",
       entry,
       depth,
       isSelected: selectedPath === entry.relativePath,
@@ -201,31 +276,52 @@ export function buildFlatRows(
           showHidden,
           nextAncestorFolders,
           filterCollapsedDirs,
+          {
+            truncatedCap: childResult?.truncated ? childResult.cap : undefined,
+            hiddenVcs: childResult?.hiddenVcsInternals,
+          },
+          folderIdentity,
         ));
       }
     }
   }
+  flushVcs();
+  if (levelMeta.truncatedCap !== undefined) {
+    rows.push({ type: "cap", depth, cap: levelMeta.truncatedCap, key: `cap:${levelKey}` });
+  }
   return rows;
 }
 
-export function resolveTreeNavigation(rows: readonly FlatRow[], index: number, key: string): TreeNavigationAction {
+function nextEntryIndex(rows: readonly TreeRow[], from: number, direction: 1 | -1): number | null {
+  for (let i = from + direction; i >= 0 && i < rows.length; i += direction) {
+    if (rows[i]?.type === "entry") return i;
+  }
+  return null;
+}
+
+export function resolveTreeNavigation(rows: readonly TreeRow[], index: number, key: string): TreeNavigationAction {
   const row = rows[index];
-  if (!row) return { kind: "none" };
-  if (key === "ArrowDown") return { kind: "focus", index: Math.min(rows.length - 1, index + 1) };
-  if (key === "ArrowUp") return { kind: "focus", index: Math.max(0, index - 1) };
-  if (key === "Home") return { kind: "focus", index: 0 };
-  if (key === "End") return { kind: "focus", index: rows.length - 1 };
+  if (!row || row.type !== "entry") return { kind: "none" };
+  if (key === "ArrowDown") return { kind: "focus", index: nextEntryIndex(rows, index, 1) ?? index };
+  if (key === "ArrowUp") return { kind: "focus", index: nextEntryIndex(rows, index, -1) ?? index };
+  if (key === "Home") return { kind: "focus", index: nextEntryIndex(rows, -1, 1) ?? index };
+  if (key === "End") return { kind: "focus", index: nextEntryIndex(rows, rows.length, -1) ?? index };
   if (key === "ArrowRight") {
     if (row.entry.kind !== "dir") return { kind: "none" };
     if (!row.isExpanded) return { kind: "expand" };
-    return rows[index + 1]?.depth === row.depth + 1
-      ? { kind: "focus", index: index + 1 }
-      : { kind: "none" };
+    // 첫 자식 엔트리로 내린다 — 중간의 VCS/캡 표식 행은 건어너뛴다.
+    for (let i = index + 1; i < rows.length; i += 1) {
+      const candidate = rows[i];
+      if (!candidate || candidate.depth <= row.depth) break;
+      if (candidate.type === "entry" && candidate.depth === row.depth + 1) return { kind: "focus", index: i };
+    }
+    return { kind: "none" };
   }
   if (key === "ArrowLeft") {
     if (row.entry.kind === "dir" && row.isExpanded) return { kind: "collapse" };
     for (let parentIndex = index - 1; parentIndex >= 0; parentIndex -= 1) {
-      if (rows[parentIndex]?.depth === row.depth - 1) return { kind: "focus", index: parentIndex };
+      const candidate = rows[parentIndex];
+      if (candidate && candidate.type === "entry" && candidate.depth === row.depth - 1) return { kind: "focus", index: parentIndex };
     }
     return { kind: "none" };
   }
@@ -250,6 +346,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
   const [cursorPath, setCursorPath] = useState<string | null>(null);
   const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
+  const [filterWalked, setFilterWalked] = useState<number | null>(null);
+  const [filterCapped, setFilterCapped] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
@@ -304,6 +402,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setScrollTop(0);
     setCursorPath(null);
     setGitStatusResult(null);
+    setFilterWalked(null);
+    setFilterCapped(false);
   }, [contextKey, theaterId]);
 
   useEffect(() => {
@@ -395,6 +495,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const isCurrent = () => active
       && requestId === filterRequestRef.current
       && isCurrentContextRequest(requestContextKey, contextKeyRef.current);
+    setFilterWalked(0);
+    setFilterCapped(false);
     void loadFilterDescendants({
       entries: result.entries,
       cachedResults: childResultsRef.current,
@@ -405,6 +507,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         if (!isCurrent()) return;
         setChildResults((prev) => new Map(prev).set(relativePath, folderResult));
       },
+      onProgress: (walked) => {
+        if (!isCurrent()) return;
+        setFilterWalked(walked);
+      },
+    }).then((stats) => {
+      if (!isCurrent()) return;
+      setFilterWalked(null);
+      setFilterCapped(stats.capped);
     });
     return () => { active = false; };
   }, [contextKey, files, isFiltering, result, showHidden]);
@@ -564,7 +674,20 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const flatRows = useMemo(() => {
     if (!result) return [];
-    return buildFlatRows(result.entries, 0, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, new Set(), filterCollapsedDirs);
+    return buildFlatRows(
+      result.entries,
+      0,
+      selectedPath,
+      expandedDirs,
+      loadingDirs,
+      childResults,
+      low,
+      showHidden,
+      new Set(),
+      filterCollapsedDirs,
+      { truncatedCap: result.truncated ? result.cap : undefined, hiddenVcs: result.hiddenVcsInternals },
+      "",
+    );
   }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs]);
   const gitAvailable = gitStatusResult?.gitAvailable === true;
   const gitStatusByPath = useMemo(
@@ -580,15 +703,24 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const visibleRows = flatRows.slice(startIdx, endIdx);
   const totalHeight = flatRows.length * ROW_HEIGHT;
   const offsetY = startIdx * ROW_HEIGHT;
-  const selectedVisiblePath = selectedPath && flatRows.some((row) => row.entry.relativePath === selectedPath)
+  const selectedVisiblePath = selectedPath && hasEntryPath(flatRows, selectedPath)
     ? selectedPath
     : null;
-  const resolvedCursorPath = cursorPath && flatRows.some((row) => row.entry.relativePath === cursorPath)
+  const resolvedCursorPath = hasEntryPath(flatRows, cursorPath)
     ? cursorPath
-    : selectedVisiblePath ?? flatRows[0]?.entry.relativePath ?? null;
-  const renderedCursorPath = visibleRows.some((row) => row.entry.relativePath === resolvedCursorPath)
+    : selectedVisiblePath ?? firstEntryPath(flatRows);
+  const renderedCursorPath = hasEntryPath(visibleRows, resolvedCursorPath)
     ? resolvedCursorPath
-    : visibleRows[0]?.entry.relativePath ?? null;
+    : firstEntryPath(visibleRows);
+
+  const filterMatchCount = useMemo(() => {
+    if (!low) return 0;
+    let count = 0;
+    for (const row of flatRows) {
+      if (isEntryRow(row) && row.entry.kind === "file" && row.entry.name.toLowerCase().includes(low)) count += 1;
+    }
+    return count;
+  }, [flatRows, low]);
 
   useEffect(() => {
     if (renderedCursorPath !== cursorPath) setCursorPath(renderedCursorPath);
@@ -603,7 +735,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   useLayoutEffect(() => {
     if (!revealTarget || revealTarget.requestId <= revealedRequestRef.current) return;
-    const rowIndex = flatRows.findIndex((row) => row.entry.relativePath === revealTarget.relativePath);
+    const rowIndex = flatRows.findIndex((row) => isEntryRow(row) && row.entry.relativePath === revealTarget.relativePath);
     if (rowIndex < 0) return;
     setCursorPath(revealTarget.relativePath);
     if (shouldVirtualize && (rowIndex < startIdx || rowIndex >= endIdx)) {
@@ -629,7 +761,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const focusRow = (rowIndex: number) => {
     const row = flatRows[rowIndex];
-    if (!row) return;
+    if (!row || row.type !== "entry") return;
     const path = row.entry.relativePath;
     if (path === renderedCursorPath) {
       // 경계(첫/마지막 행)에서는 커서가 그대로라 리렌더가 없다. 요청을 남겨두면 나중의 SSE 리렌더가
@@ -647,8 +779,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
   };
 
-  const handleTreeItemKeyDown = (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => {
-    const index = flatRows.findIndex((candidate) => candidate.entry.relativePath === row.entry.relativePath);
+  const handleTreeItemKeyDown = (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const index = flatRows.findIndex((candidate) => isEntryRow(candidate) && candidate.entry.relativePath === row.entry.relativePath);
     if (index < 0) return;
     const action = resolveTreeNavigation(flatRows, index, event.key);
     if (action.kind === "none") {
@@ -689,7 +821,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     activateRow(row);
   };
 
-  const activateRow = (row: FlatRow) => {
+  const activateRow = (row: EntryRow) => {
     if (row.entry.kind !== "dir") {
       onSelect(row.entry);
       return;
@@ -706,12 +838,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   };
 
-  const handleRowClick = (row: FlatRow) => {
+  const handleRowClick = (row: EntryRow) => {
     setCursorPath(row.entry.relativePath);
     activateRow(row);
   };
 
-  const handleRowContextMenu = (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => {
+  const handleRowContextMenu = (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
     setCursorPath(row.entry.relativePath);
     onContextMenu(row.entry, event.clientX, event.clientY);
@@ -723,8 +855,49 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   if (error && !result) return <div className="fexp-tree-error">{error}</div>;
   if (!result) return <div className="fexp-tree-loading">{t("fileExplorer.status.loading")}</div>;
 
+  const renderTreeRow = (row: TreeRow) => {
+    if (row.type === "cap") {
+      return (
+        <div
+          key={row.key}
+          className="fexp-tree-cap"
+          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
+          role="note"
+        >
+          {t("fileExplorer.tree.listingCapped", { cap: row.cap })}
+        </div>
+      );
+    }
+    if (row.type === "vcs") {
+      return (
+        <div
+          key={row.key}
+          className="fexp-tree-vcs"
+          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
+        >
+          {t("fileExplorer.tree.vcsHidden", { name: row.name })}
+        </div>
+      );
+    }
+    return (
+      <FlatTreeRow
+        key={row.entry.relativePath}
+        row={row}
+        cursor={row.entry.relativePath === renderedCursorPath}
+        rowRefs={rowRefs}
+        gitAvailable={gitAvailable}
+        gitStatus={gitStatusByPath.get(row.entry.relativePath)}
+        onEntryClick={handleRowClick}
+        onContextMenu={handleRowContextMenu}
+        onKeyDown={handleTreeItemKeyDown}
+        t={t}
+      />
+    );
+  };
+
   return (
     <div className="fexp-tree-container">
+      <div className="fexp-head">
       <div className="fexp-filter">
         <input
           type="text"
@@ -781,6 +954,22 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           )}
         </button>
       </div>
+      {isFiltering && filterWalked !== null && (
+        <div className="fexp-filter-scan" role="status">
+          {t("fileExplorer.filter.scanning", { count: filterWalked })}
+        </div>
+      )}
+      {isFiltering && filterWalked === null && filterCapped && (
+        <div className="fexp-filter-cap" role="status">
+          {t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: FILTER_DIRECTORY_CAP })}
+        </div>
+      )}
+      {gitStatusResult?.truncated && (
+        <div className="fexp-git-note" role="status">
+          {t("fileExplorer.git.truncated", { cap: gitStatusResult.cap ?? 0 })}
+        </div>
+      )}
+      </div>
       <div
         ref={treeRef}
         className="fexp-tree"
@@ -802,37 +991,11 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         {shouldVirtualize ? (
           <div style={{ height: totalHeight, position: "relative" }}>
             <div style={{ transform: `translateY(${offsetY}px)` }}>
-              {visibleRows.map((row) => (
-                <FlatTreeRow
-                  key={row.entry.relativePath}
-                  row={row}
-                  cursor={row.entry.relativePath === renderedCursorPath}
-                  rowRefs={rowRefs}
-                  gitAvailable={gitAvailable}
-                  gitStatus={gitStatusByPath.get(row.entry.relativePath)}
-                  onEntryClick={handleRowClick}
-                  onContextMenu={handleRowContextMenu}
-                  onKeyDown={handleTreeItemKeyDown}
-                  t={t}
-                />
-              ))}
+              {visibleRows.map(renderTreeRow)}
             </div>
           </div>
         ) : (
-          visibleRows.map((row) => (
-            <FlatTreeRow
-              key={row.entry.relativePath}
-              row={row}
-              cursor={row.entry.relativePath === renderedCursorPath}
-              rowRefs={rowRefs}
-              gitAvailable={gitAvailable}
-              gitStatus={gitStatusByPath.get(row.entry.relativePath)}
-              onEntryClick={handleRowClick}
-              onContextMenu={handleRowContextMenu}
-              onKeyDown={handleTreeItemKeyDown}
-              t={t}
-            />
-          ))
+          visibleRows.map(renderTreeRow)
         )}
         {flatRows.length === 0 && filterText && (
           <div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div>
@@ -875,14 +1038,14 @@ function isVisibleDirectory(entry: FolderEntry, showHidden: boolean): boolean {
 }
 
 interface FlatTreeRowProps {
-  readonly row: FlatRow;
+  readonly row: EntryRow;
   readonly cursor: boolean;
   readonly rowRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
   readonly gitAvailable: boolean;
   readonly gitStatus: GitFileStatus | undefined;
-  readonly onEntryClick: (row: FlatRow) => void;
-  readonly onContextMenu: (row: FlatRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
-  readonly onKeyDown: (row: FlatRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+  readonly onEntryClick: (row: EntryRow) => void;
+  readonly onContextMenu: (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
+  readonly onKeyDown: (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 

@@ -29,6 +29,9 @@ export class FolderBrowserError extends Error {
 
 const DIRECTORY_ENTRY_CAP = 500;
 
+/** 버전 관리 날것 디렉터리 — 목록·필터·검색에서 항상 제외하고, 제외 사실은 hiddenVcsInternals로 알린다. */
+export const VCS_INTERNAL_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg"]);
+
 export async function listTheaterContents(
   theaterPath: string,
   relativePath: string,
@@ -62,7 +65,8 @@ export async function listTheaterContents(
   if (!targetStat.isDirectory()) throw new FolderBrowserError("invalid_path");
 
   const entries: FolderEntry[] = [];
-  const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries);
+  const hiddenVcs: string[] = [];
+  const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries, hiddenVcs);
   entries.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -73,7 +77,8 @@ export async function listTheaterContents(
     relativePath: rel,
     parentRelativePath: parentRel === "" ? null : (parentRel ?? null),
     entries,
-    ...(truncated ? { truncated: true as const } : {}),
+    ...(truncated ? { truncated: true as const, cap: DIRECTORY_ENTRY_CAP } : {}),
+    ...(hiddenVcs.length > 0 ? { hiddenVcsInternals: hiddenVcs.sort() } : {}),
   };
 }
 
@@ -91,12 +96,19 @@ async function collectContentsEntries(
   opendir: typeof fs.promises.opendir,
   stat: typeof fs.promises.stat,
   entries: FolderEntry[],
+  hiddenVcs: string[],
 ): Promise<boolean> {
   const directory = await openDirectory(targetPath, opendir);
   try {
     let dirent = await directory.read();
     while (dirent !== null) {
       if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
+      // VCS 날것은 캡 카운트에도 넣지 않고 제외 사실만 기록한다.
+      if (VCS_INTERNAL_NAMES.has(dirent.name)) {
+        hiddenVcs.push(dirent.name);
+        dirent = await directory.read();
+        continue;
+      }
       const entry = await toContentsEntry(targetPath, theaterPath, dirent, stat);
       if (entry !== null) entries.push(entry);
       dirent = await directory.read();
@@ -165,6 +177,8 @@ export interface GitStatusResult {
   readonly gitAvailable: boolean;
   readonly statuses: readonly GitStatusEntry[];
   readonly truncated?: true;
+  /** truncated일 때의 상한 값 */
+  readonly cap?: number;
 }
 
 export type GitStatusPathErrorCode = "invalid_path" | "not_found" | "forbidden";
@@ -241,7 +255,7 @@ export async function readTheaterGitStatus(
       ok: true,
       gitAvailable: true,
       statuses: statuses.slice(0, GIT_STATUS_CAP),
-      ...(truncated ? { truncated: true as const } : {}),
+      ...(truncated ? { truncated: true as const, cap: GIT_STATUS_CAP } : {}),
     };
   } catch {
     return { ok: true, gitAvailable: false, statuses: [] };
@@ -364,7 +378,13 @@ function mapGitStatusFsError(error: unknown): GitStatusPathError {
 const SEARCH_DIRECTORY_CAP = 500;
 const SEARCH_ENTRY_CAP = 25_000;
 
-export async function searchTheaterFiles(theaterPath: string, query: string, limit: number): Promise<FileSearchItem[]> {
+export interface TheaterFileSearchOutcome {
+  readonly files: readonly FileSearchItem[];
+  readonly totalMatches: number;
+  readonly walkCapped?: true;
+}
+
+export async function searchTheaterFiles(theaterPath: string, query: string, limit: number): Promise<TheaterFileSearchOutcome> {
   const realRoot = await fsp.realpath(theaterPath);
   const tokens = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const pending: Array<{ readonly absolutePath: string; readonly relativePath: string }> = [{ absolutePath: realRoot, relativePath: "" }];
@@ -372,8 +392,14 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
   const matches: FileSearchItem[] = [];
   let directoryCount = 0;
   let entryCount = 0;
+  let walkCapped = false;
 
-  while (pending.length > 0 && directoryCount < SEARCH_DIRECTORY_CAP && entryCount < SEARCH_ENTRY_CAP) {
+  while (pending.length > 0) {
+    if (directoryCount >= SEARCH_DIRECTORY_CAP || entryCount >= SEARCH_ENTRY_CAP) {
+      // 상한 도달은 조용히 끝내지 않고 호출자에게 알린다 — 클라이언트가 표식을 띄운다.
+      walkCapped = true;
+      break;
+    }
     const directory = pending.shift();
     if (!directory || visited.has(directory.absolutePath)) continue;
     visited.add(directory.absolutePath);
@@ -388,8 +414,10 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
     entries.sort((left, right) => left.name.localeCompare(right.name));
 
     for (const entry of entries) {
-      if (entryCount >= SEARCH_ENTRY_CAP) break;
+      if (entryCount >= SEARCH_ENTRY_CAP) { walkCapped = true; break; }
       entryCount += 1;
+      // VCS 날것은 검색 대상에서 항상 제외한다.
+      if (VCS_INTERNAL_NAMES.has(entry.name)) continue;
       const relativePath = directory.relativePath ? `${directory.relativePath}/${entry.name}` : entry.name;
       const absolutePath = path.join(directory.absolutePath, entry.name);
       let kind: "dir" | "file" | null = entry.isDirectory() ? "dir" : entry.isFile() ? "file" : null;
@@ -412,11 +440,16 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
       const low = relativePath.toLocaleLowerCase();
       if (tokens.every((token) => low.includes(token))) matches.push({ relativePath });
     }
+    if (walkCapped) break;
   }
 
-  return matches
-    .sort((left, right) => compareFileSearchItem(left, right, query))
-    .slice(0, limit);
+  const sorted = matches
+    .sort((left, right) => compareFileSearchItem(left, right, query));
+  return {
+    files: sorted.slice(0, limit),
+    totalMatches: sorted.length,
+    ...(walkCapped ? { walkCapped: true as const } : {}),
+  };
 }
 
 export async function handleFilesSearch(
@@ -446,8 +479,11 @@ export async function handleFilesSearch(
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   try {
+    const outcome = await searchTheaterFiles(theaterPath, body.query, body.limit as number);
     ctx.host.http.writeJson(res, 200, {
-      files: await searchTheaterFiles(theaterPath, body.query, body.limit as number),
+      files: outcome.files,
+      totalMatches: outcome.totalMatches,
+      ...(outcome.walkCapped ? { walkCapped: true } : {}),
     });
   } catch {
     ctx.host.http.writeJson(res, 500, { error: "search_failed" });
