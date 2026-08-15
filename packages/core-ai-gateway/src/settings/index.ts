@@ -1,4 +1,8 @@
-import { hasClaudeOneMillionMarker } from "../anthropic/claude-context.js";
+import {
+  hasClaudeOneMillionMarker,
+  normalizeCompactCeiling,
+  type CompactCeiling,
+} from "../anthropic/claude-context.js";
 import {
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
@@ -50,6 +54,12 @@ export interface AiGatewayStoredSettings {
    * overrides quality evidence; absent means no preference.
    */
   readonly providerPriority?: readonly GatewayProvider[];
+  /**
+   * Global compact-timing policy. Absent is Auto (window − 16k).
+   * `"early"` / `"late"` are 88 / 97 percent of the catalog window.
+   * A number is a Custom percent, 70–99.
+   */
+  readonly compactCeiling?: CompactCeiling;
 }
 
 export interface AiGatewayUpdateValue {
@@ -93,12 +103,14 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     : [];
   // 레거시 defaultModel 키는 조용히 버린다 — 저장하지도, 보존하지도 않는다.
   const providerPriority = sanitizeProviderPriority(value.providerPriority);
+  const compactCeiling = normalizeCompactCeiling(value.compactCeiling);
   return {
     version: 1,
     ...(models.length > 0 ? { models } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
+    ...(compactCeiling !== undefined ? { compactCeiling } : {}),
   };
 }
 

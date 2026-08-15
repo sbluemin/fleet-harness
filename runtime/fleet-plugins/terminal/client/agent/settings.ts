@@ -16,6 +16,9 @@ export interface AiGatewaySettings {
 
 export type AiGatewayProviderId = "codex" | "cursor" | "kimi" | "opencode" | "xai";
 
+/** Absent / null is Auto. `"early"` / `"late"` are 88 / 97. A number is Custom 70–99. */
+export type CompactCeiling = "early" | "late" | number;
+
 /**
  * 카탈로그가 매기는 등급 축. core-ai-gateway의 `GatewayCapabilityClass`를 그대로 옮겨 적은
  * 것으로, 브라우저 코드가 Node 계층 패키지를 끌어오지 않기 위해 이 파일의 다른 카탈로그
@@ -54,6 +57,7 @@ export interface SystemPromptSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  readonly compactCeiling: CompactCeiling | null;
 }
 
 export type SystemPromptSettingsUpdate =
@@ -61,7 +65,8 @@ export type SystemPromptSettingsUpdate =
   | { readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
-  | { readonly wireLogEnabled: boolean };
+  | { readonly wireLogEnabled: boolean }
+  | { readonly compactCeiling: CompactCeiling | null };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -111,6 +116,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
+    || !isCompactCeiling(payload.compactCeiling)
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -121,6 +127,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
+    compactCeiling: payload.compactCeiling,
   };
 }
 
@@ -140,11 +147,17 @@ function isAgentIdleDormantMinutes(value: unknown): value is number | null {
   return typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0;
 }
 
+function isCompactCeiling(value: unknown): value is CompactCeiling | null {
+  if (value === null) return true;
+  if (value === "early" || value === "late") return true;
+  return typeof value === "number" && Number.isInteger(value) && value >= 70 && value <= 99;
+}
+
 import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeGatewaySystemPromptMode" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeGatewaySystemPromptMode" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -225,6 +238,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
+  }
+  if (field === "compactCeiling") {
+    return { compactCeiling: state.compactCeiling };
   }
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }

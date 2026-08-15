@@ -35,6 +35,7 @@ describe("terminal settings routes", () => {
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
     });
     expect(harness.writes[0]?.body).not.toHaveProperty("consolePortMode");
   });
@@ -198,6 +199,43 @@ describe("terminal settings routes", () => {
       status: 200,
       body: { aiGateway: { providerPriority: ["codex", "cursor"] } },
     });
+  });
+
+  it("PUT /plugins/terminal/settings persists compactCeiling independently of models", async () => {
+    const harness = createRouteHarness({
+      body: { compactCeiling: "early" },
+      aiGateway: { version: 1, models: [{ id: "kimi--k3" }] },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]).toMatchObject({
+      status: 200,
+      body: { compactCeiling: "early", aiGateway: { models: [{ id: "kimi--k3" }] } },
+    });
+    expect(harness.currentAiGateway()).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      compactCeiling: "early",
+    });
+  });
+
+  it("PUT /plugins/terminal/settings clears compactCeiling with null", async () => {
+    const harness = createRouteHarness({
+      body: { compactCeiling: null },
+      aiGateway: { version: 1, compactCeiling: 94 },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]).toMatchObject({
+      status: 200,
+      body: { compactCeiling: null },
+    });
+    expect(harness.currentAiGateway()).toEqual({ version: 1 });
+  });
+
+  it("PUT /plugins/terminal/settings rejects an out-of-range compactCeiling", async () => {
+    const harness = createRouteHarness({ body: { compactCeiling: 69 } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings stores a catalog-valid aiGateway selection", async () => {
@@ -594,6 +632,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.providerPriority
             ? { providerPriority: aiGateway.providerPriority }
             : {}),
+          ...(aiGateway.compactCeiling !== undefined
+            ? { compactCeiling: aiGateway.compactCeiling }
+            : {}),
           ...(value ?? {}),
         });
         return aiGateway;
@@ -616,6 +657,19 @@ function createRouteHarness(options: HarnessOptions = {}) {
           const withoutWireLog = { ...aiGateway } as { wireLogEnabled?: boolean };
           delete withoutWireLog.wireLogEnabled;
           aiGateway = withoutWireLog as AiGatewayStoredSettings;
+        }
+        return aiGateway;
+      },
+      writeCompactCeiling: (ceiling) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          ...(ceiling === undefined ? {} : { compactCeiling: ceiling }),
+        });
+        if (ceiling === undefined) {
+          const without = { ...aiGateway } as { compactCeiling?: unknown };
+          delete without.compactCeiling;
+          aiGateway = without as AiGatewayStoredSettings;
         }
         return aiGateway;
       },

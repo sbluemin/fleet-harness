@@ -24,6 +24,8 @@ export interface AnthropicGatewayCallOptions extends TranslateAnthropicRequestOp
    * onto the 1M axis and is never a limit.
    */
   contextWindow?: number;
+  /** Compact-timing policy. Absent is Auto (window − 16k). */
+  compactCeiling?: import("./claude-context.js").CompactCeiling | null;
   /**
    * The model's real usable context window. Always set by the caller, regardless of
    * whether the `[1m]` coordinate applies, and used only by the pre-flight overflow
@@ -119,6 +121,7 @@ export class AnthropicMessagesGateway {
         }),
         body: withSseKeepAlive(encodeAnthropicSse(events, {
           contextWindow: options.contextWindow,
+          compactCeiling: options.compactCeiling,
           model: request.model,
         }))
       };
@@ -127,6 +130,7 @@ export class AnthropicMessagesGateway {
     // Claude Code는 일부 요청을 비스트리밍으로 보낸다. 그때는 이벤트를 모아 단일 Messages 응답을 준다.
     const message = await collectAnthropicMessage(events, request.model, {
       contextWindow: options.contextWindow,
+      compactCeiling: options.compactCeiling,
       model: request.model,
     });
     return {

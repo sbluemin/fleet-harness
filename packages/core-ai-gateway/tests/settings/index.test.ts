@@ -231,6 +231,29 @@ describe("ai-gateway settings", () => {
     })).toEqual({ version: 1, models: [{ id: "kimi--k3", efforts: ["max"] }] });
   });
 
+  it("normalizes compactCeiling and drops invalid values", () => {
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      compactCeiling: "early",
+    })).toEqual({ version: 1, compactCeiling: "early" });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      compactCeiling: "late",
+    })).toEqual({ version: 1, compactCeiling: "late" });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      compactCeiling: 94,
+    })).toEqual({ version: 1, compactCeiling: 94 });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      compactCeiling: 69,
+    })).toEqual({ version: 1 });
+    expect(normalizeAiGatewaySettings({
+      version: 1,
+      compactCeiling: "auto",
+    })).toEqual({ version: 1 });
+  });
+
   it("accepts a legacy defaultModel key but drops it instead of storing it", () => {
     expect(parseAiGatewayUpdate({
       models: [{ id: "kimi--k3" }],

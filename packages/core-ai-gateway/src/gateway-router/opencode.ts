@@ -10,6 +10,7 @@ import {
   opencodeRequestBody,
 } from "../opencode-go/anthropic/index.js";
 import type { GatewayModel, GatewayModelWire } from "../models.js";
+import type { CompactCeiling } from "../anthropic/claude-context.js";
 
 import {
   proxyAnthropicMessages,
@@ -46,6 +47,7 @@ export async function proxyToOpencode(
   body: AnthropicMessagesRequest,
   model: string,
   contextWindow: number | undefined,
+  compactCeiling: CompactCeiling | undefined,
   apiKey: string,
   fetchImpl: typeof fetch,
   signal: AbortSignal,
@@ -56,6 +58,7 @@ export async function proxyToOpencode(
   const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, opencodeRequestBody(body, model), {
     contextWindow,
+    compactCeiling,
     responseModel,
     keepAlive: true,
     fetchImpl,

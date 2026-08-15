@@ -535,6 +535,8 @@ interface OpenBlock {
 export interface ClaudeResponseCompatibilityOptions {
   /** Real provider window mapped onto Claude Code's model-id-selected context coordinate. */
   readonly contextWindow?: number;
+  /** Compact-timing policy. Absent is Auto (window − 16k). */
+  readonly compactCeiling?: import("./claude-context.js").CompactCeiling | null;
   /** Rewrites the echoed response model to the client-requested id. */
   readonly model?: string;
 }
@@ -566,6 +568,7 @@ function toAnthropicCacheAwareUsage(
   outputTokens: number,
   advertisedContextWindow: number | undefined,
   upstreamContextWindow: number | undefined,
+  compactCeiling?: ClaudeResponseCompatibilityOptions["compactCeiling"],
 ): AnthropicCacheAwareUsage {
   const safeInputTokens = Number.isFinite(rawInputTokens) && rawInputTokens > 0 ? rawInputTokens : 0;
 
@@ -573,6 +576,7 @@ function toAnthropicCacheAwareUsage(
     safeInputTokens,
     advertisedContextWindow,
     upstreamContextWindow,
+    compactCeiling,
   );
 
   if (safeInputTokens === 0) {
@@ -634,7 +638,7 @@ function nonNegativeCacheValue(value: number | undefined): number {
 function anthropicUsageFromCanonical(
   usage: CanonicalUsage | null | undefined,
   advertisedContextWindow: number | undefined,
-  options: { forceOutputZero?: boolean } = {},
+  options: { forceOutputZero?: boolean; compactCeiling?: ClaudeResponseCompatibilityOptions["compactCeiling"] } = {},
 ): AnthropicCacheAwareUsage {
   return toAnthropicCacheAwareUsage(
     usage?.input_tokens ?? 0,
@@ -643,6 +647,7 @@ function anthropicUsageFromCanonical(
     options.forceOutputZero ? 0 : usage?.output_tokens ?? 0,
     advertisedContextWindow,
     usage?.context_window,
+    options.compactCeiling,
   );
 }
 
@@ -760,6 +765,7 @@ export async function collectAnthropicMessage(
       outputTokens,
       options.contextWindow,
       upstreamContextWindow,
+      options.compactCeiling,
     ),
   };
 }
@@ -852,6 +858,7 @@ export async function* encodeAnthropicSse(
               stop_sequence: null,
               usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
                 forceOutputZero: true,
+                compactCeiling: options.compactCeiling,
               })
             }
           });
@@ -1021,7 +1028,9 @@ export async function* encodeAnthropicSse(
           // Claude Code updates context occupancy from the terminal cumulative
           // usage frame. Sending output-only leaves Responses-backed models at
           // zero input usage even though Kimi's native Anthropic stream works.
-          usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow)
+          usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
+            compactCeiling: options.compactCeiling,
+          })
         });
         yield encode("message_stop", { type: "message_stop" });
         messageStopped = true;

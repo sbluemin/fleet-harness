@@ -27,6 +27,7 @@ export interface GatewayProxyResponse {
 
 export interface AnthropicProxyOptions {
   readonly contextWindow?: number;
+  readonly compactCeiling?: import("../anthropic/claude-context.js").CompactCeiling | null;
   /**
    * 클라이언트가 요청한 모델 id. 지정하면 upstream이 에코한 wire id를 이 값으로
    * 되돌려 본다 — Claude Code가 자기 요청 모델과 응답 모델을 대조할 수 있게 한다.
@@ -91,6 +92,7 @@ export async function proxyAnthropicMessages(
     : projectAnthropicResponseUsage(observedBody, {
         contentType,
         contextWindow: options.contextWindow,
+        compactCeiling: options.compactCeiling,
         responseModel: options.responseModel,
       });
   const responseBody = options.keepAlive === true && contentType?.split(";", 1)[0]?.trim().toLowerCase() === "text/event-stream"

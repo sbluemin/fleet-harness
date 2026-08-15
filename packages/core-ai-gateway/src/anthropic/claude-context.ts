@@ -4,6 +4,13 @@ export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;
 export const CLAUDE_COMPACT_RESERVE = 32_000;
 export const PROVIDER_COMPACT_RESERVE = 16_000;
+export const COMPACT_CEILING_EARLY_PERCENT = 88;
+export const COMPACT_CEILING_LATE_PERCENT = 97;
+export const COMPACT_CEILING_CUSTOM_MIN = 70;
+export const COMPACT_CEILING_CUSTOM_MAX = 99;
+
+/** Stored compact-timing policy. Absent / null is Auto (window − 16k). */
+export type CompactCeiling = "early" | "late" | number;
 const DEFAULT_MAX_JSON_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_SSE_FRAME_BYTES = 1024 * 1024;
 const MAX_SSE_SEPARATOR_BYTES = 4;
@@ -18,6 +25,8 @@ export interface AnthropicResponseUsageProjectionOptions {
   readonly contentType?: string | null;
   /** Real provider window mapped onto Claude Code's 200k or `[1m]` 1M coordinate. */
   readonly contextWindow?: number;
+  /** Compact-timing policy. Absent is Auto (window − 16k). */
+  readonly compactCeiling?: CompactCeiling | null;
   /**
    * Client-requested model id to echo back in place of the provider's wire id.
    * Anthropic passthrough relays the upstream body untouched, so without this the
@@ -82,6 +91,7 @@ export function projectClaudeContextInputTokens(
   inputTokens: number,
   advertisedContextWindow: number | undefined,
   upstreamContextWindow: number | undefined = advertisedContextWindow,
+  compactCeiling?: CompactCeiling | null,
 ): number {
   if (!Number.isFinite(inputTokens) || inputTokens < 0) return inputTokens;
   const advertisedWindow = positiveContextWindow(advertisedContextWindow);
@@ -91,12 +101,46 @@ export function projectClaudeContextInputTokens(
     ? CLAUDE_COMPAT_CONTEXT_WINDOW
     : CLAUDE_DEFAULT_CONTEXT_WINDOW;
   const claudeCompactThreshold = coordinate - CLAUDE_COMPACT_RESERVE;
-  const providerCompactThreshold = projectionWindow - PROVIDER_COMPACT_RESERVE;
+  const providerCompactThreshold = compactThresholdTokens(projectionWindow, compactCeiling);
   if (providerCompactThreshold <= 0) return Math.min(coordinate, inputTokens);
   return Math.min(
     coordinate,
     Math.ceil(inputTokens * claudeCompactThreshold / providerCompactThreshold),
   );
+}
+
+/** Tokens of the real provider window at which Claude Code should compact. */
+export function compactThresholdTokens(
+  window: number,
+  compactCeiling?: CompactCeiling | null,
+): number {
+  if (!Number.isFinite(window) || window <= 0) return window;
+  const percent = compactCeilingPercent(compactCeiling);
+  if (percent === undefined) return window - PROVIDER_COMPACT_RESERVE;
+  return Math.floor(window * percent / 100);
+}
+
+export function compactCeilingPercent(
+  compactCeiling?: CompactCeiling | null,
+): number | undefined {
+  if (compactCeiling === "early") return COMPACT_CEILING_EARLY_PERCENT;
+  if (compactCeiling === "late") return COMPACT_CEILING_LATE_PERCENT;
+  if (typeof compactCeiling === "number" && Number.isInteger(compactCeiling)
+    && compactCeiling >= COMPACT_CEILING_CUSTOM_MIN
+    && compactCeiling <= COMPACT_CEILING_CUSTOM_MAX) {
+    return compactCeiling;
+  }
+  return undefined;
+}
+
+export function normalizeCompactCeiling(value: unknown): CompactCeiling | undefined {
+  if (value === "early" || value === "late") return value;
+  if (typeof value === "number" && Number.isInteger(value)
+    && value >= COMPACT_CEILING_CUSTOM_MIN
+    && value <= COMPACT_CEILING_CUSTOM_MAX) {
+    return value;
+  }
+  return undefined;
 }
 
 /**
@@ -125,6 +169,7 @@ export async function* projectAnthropicResponseUsage(
       contextWindow,
       responseModel,
       positiveLimit(options.maxSseFrameBytes, DEFAULT_MAX_SSE_FRAME_BYTES),
+      options.compactCeiling,
     );
     return;
   }
@@ -134,6 +179,7 @@ export async function* projectAnthropicResponseUsage(
       contextWindow,
       responseModel,
       positiveLimit(options.maxJsonBytes, DEFAULT_MAX_JSON_BYTES),
+      options.compactCeiling,
     );
     return;
   }
@@ -145,6 +191,7 @@ async function* projectJsonUsage(
   contextWindow: number | undefined,
   responseModel: string | undefined,
   maxBytes: number,
+  compactCeiling?: CompactCeiling | null,
 ): AsyncGenerator<Uint8Array> {
   const buffered: Uint8Array[] = [];
   let bufferedBytes = 0;
@@ -167,7 +214,7 @@ async function* projectJsonUsage(
 
   if (passthrough || bufferedBytes === 0) return;
   const original = concatChunks(buffered, bufferedBytes);
-  const projected = projectJsonBytes(original, contextWindow, responseModel);
+  const projected = projectJsonBytes(original, contextWindow, responseModel, compactCeiling);
   yield projected ?? original;
 }
 
@@ -176,6 +223,7 @@ async function* projectSseUsage(
   contextWindow: number | undefined,
   responseModel: string | undefined,
   maxFrameBytes: number,
+  compactCeiling?: CompactCeiling | null,
 ): AsyncGenerator<Uint8Array> {
   let buffered: Uint8Array = new Uint8Array(0);
   let oversizedFrame = false;
@@ -208,7 +256,7 @@ async function* projectSseUsage(
       const originalFrame = buffered.slice(0, separator.index + separator.length);
       const projectedFrame = frame.byteLength > maxFrameBytes
         ? undefined
-        : projectSseFrame(frame, contextWindow, responseModel);
+        : projectSseFrame(frame, contextWindow, responseModel, compactCeiling);
       yield projectedFrame === undefined
         ? originalFrame
         : concatBytes(projectedFrame, separatorBytes);
@@ -231,6 +279,7 @@ function projectJsonBytes(
   bytes: Uint8Array,
   contextWindow: number | undefined,
   responseModel: string | undefined,
+  compactCeiling?: CompactCeiling | null,
 ): Uint8Array | undefined {
   let parsed: unknown;
   try {
@@ -238,7 +287,7 @@ function projectJsonBytes(
   } catch {
     return undefined;
   }
-  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel);
+  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel, compactCeiling);
   return projected.changed
     ? new TextEncoder().encode(JSON.stringify(projected.value))
     : undefined;
@@ -248,6 +297,7 @@ function projectSseFrame(
   frame: Uint8Array,
   contextWindow: number | undefined,
   responseModel: string | undefined,
+  compactCeiling?: CompactCeiling | null,
 ): Uint8Array | undefined {
   let text: string;
   try {
@@ -276,7 +326,7 @@ function projectSseFrame(
   } catch {
     return undefined;
   }
-  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel);
+  const projected = projectAnthropicUsageEnvelope(parsed, contextWindow, responseModel, compactCeiling);
   if (!projected.changed) return undefined;
 
   const firstDataIndex = dataIndexes[0];
@@ -296,13 +346,14 @@ function projectAnthropicUsageEnvelope(
   value: unknown,
   contextWindow: number | undefined,
   responseModel: string | undefined,
+  compactCeiling?: CompactCeiling | null,
 ): Projection<unknown> {
   if (!isRecord(value)) return { changed: false, value };
 
   let projectedValue = value;
   let changed = false;
   if (contextWindow !== undefined) {
-    const topLevelUsage = projectUsageProperty(projectedValue, "usage", contextWindow);
+    const topLevelUsage = projectUsageProperty(projectedValue, "usage", contextWindow, compactCeiling);
     if (topLevelUsage.changed) {
       projectedValue = topLevelUsage.value;
       changed = true;
@@ -310,7 +361,7 @@ function projectAnthropicUsageEnvelope(
 
     const message = projectedValue.message;
     if (isRecord(message)) {
-      const messageUsage = projectUsageProperty(message, "usage", contextWindow);
+      const messageUsage = projectUsageProperty(message, "usage", contextWindow, compactCeiling);
       if (messageUsage.changed) {
         projectedValue = { ...projectedValue, message: messageUsage.value };
         changed = true;
@@ -338,6 +389,7 @@ function projectUsageProperty(
   container: Record<string, unknown>,
   property: string,
   contextWindow: number,
+  compactCeiling?: CompactCeiling | null,
 ): Projection<Record<string, unknown>> {
   const usage = container[property];
   if (!isRecord(usage)) return { changed: false, value: container };
@@ -353,7 +405,7 @@ function projectUsageProperty(
   if (coordinates.length === 0) return { changed: false, value: container };
 
   const total = coordinates.reduce((sum, entry) => sum + entry.tokens, 0);
-  const projectedTotal = projectClaudeContextInputTokens(total, contextWindow);
+  const projectedTotal = projectClaudeContextInputTokens(total, contextWindow, contextWindow, compactCeiling);
   if (projectedTotal === total) return { changed: false, value: container };
 
   const projectedUsage = { ...usage };

@@ -72,6 +72,30 @@ describe("ai-gateway settings store", () => {
     expect(store.read()).toEqual({ version: 1 });
   });
 
+  it("persists compactCeiling independently of models", () => {
+    const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
+    store.write({ models: [{ id: "kimi--k3" }] });
+    store.writeCompactCeiling("early");
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      compactCeiling: "early",
+    });
+    store.write({ models: [{ id: "cursor--auto" }] });
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+      compactCeiling: "early",
+    });
+    store.writeCompactCeiling(94);
+    expect(store.read()?.compactCeiling).toBe(94);
+    store.writeCompactCeiling(undefined);
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+    });
+  });
+
   it("keeps each setting axis independent across writes", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 

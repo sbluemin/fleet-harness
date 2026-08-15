@@ -1078,6 +1078,13 @@ describe("model catalog", () => {
     expect(projectClaudeContextInputTokens(1_032_576, 1_048_576)).toBe(968_000);
   });
 
+  it("scales compact threshold from a percent ceiling", () => {
+    expect(projectClaudeContextInputTokens(239_360, 272_000, 272_000, "early")).toBe(168_000);
+    expect(projectClaudeContextInputTokens(263_840, 272_000, 272_000, "late")).toBe(168_000);
+    expect(projectClaudeContextInputTokens(255_680, 272_000, 272_000, 94)).toBe(168_000);
+    expect(projectClaudeContextInputTokens(256_000, 272_000, 272_000, "early")).toBe(179_680);
+  });
+
   it("uses a runtime-reported window while capping usage at Claude's coordinate", () => {
     expect(projectClaudeContextInputTokens(184_000, 256_000, 200_000)).toBe(168_000);
     expect(projectClaudeContextInputTokens(256_000, 256_000, 272_000)).toBe(168_000);

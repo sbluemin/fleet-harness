@@ -6,11 +6,13 @@ import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
 import {
   buildAiGatewayCatalog,
+  normalizeCompactCeiling,
   parseAiGatewayUpdate,
   type AiGatewayCatalog,
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
+  type CompactCeiling,
 } from "@dotobokuri/core-ai-gateway";
 
 interface TerminalSettingsRouteDeps {
@@ -28,6 +30,7 @@ interface TerminalSettingsBody {
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
+  readonly compactCeiling?: unknown;
 }
 
 type TerminalSettingsUpdate =
@@ -35,7 +38,8 @@ type TerminalSettingsUpdate =
   | { readonly claudeGatewaySystemPromptMode: ClaudeGatewaySystemPromptMode }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
-  | { readonly wireLogEnabled: boolean };
+  | { readonly wireLogEnabled: boolean }
+  | { readonly compactCeiling: CompactCeiling | undefined };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
@@ -46,6 +50,7 @@ export interface TerminalSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  readonly compactCeiling: CompactCeiling | null;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -115,6 +120,13 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         ));
         return true;
       }
+      if ("compactCeiling" in update) {
+        const stored = deps.aiGatewayStore.writeCompactCeiling(update.compactCeiling);
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
       const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         updated, deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
@@ -150,6 +162,7 @@ export function toTerminalSettingsState(
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
+    compactCeiling: aiGateway.compactCeiling ?? null,
   };
 }
 
@@ -188,6 +201,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     return typeof body.wireLogEnabled === "boolean"
       ? { wireLogEnabled: body.wireLogEnabled }
       : null;
+  }
+  if (keys[0] === "compactCeiling") {
+    if (body.compactCeiling === null) return { compactCeiling: undefined };
+    const ceiling = normalizeCompactCeiling(body.compactCeiling);
+    return ceiling === undefined ? null : { compactCeiling: ceiling };
   }
   return null;
 }

@@ -3,6 +3,7 @@ import * as path from "node:path";
 
 import { createDurableJsonStore, getFleetDataDir } from "@dotobokuri/core-infra";
 
+import type { CompactCeiling } from "../anthropic/claude-context.js";
 import {
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
@@ -29,6 +30,8 @@ export interface AiGatewaySettingsStore {
   readonly writeCursorDiagnosticsEnabled: (enabled: boolean) => AiGatewayStoredSettings;
   /** `undefined`는 wireLogEnabled 키를 제거해 env 폴백으로 돌아간다. */
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
+  /** `undefined`는 Auto(키 제거). models 선별은 보존한다. */
+  readonly writeCompactCeiling: (ceiling: CompactCeiling | undefined) => AiGatewayStoredSettings;
 }
 
 export interface CreateAiGatewaySettingsStoreDeps {
@@ -132,6 +135,7 @@ export function createAiGatewaySettingsStore(
       // 우선순위는 이 update 계약이 나르지 않는 별도 표면의 설정이다. 이월하지 않으면
       // 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
+      ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
       ...(value ?? {}),
     })),
     writeCursorDiagnosticsEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
@@ -147,6 +151,16 @@ export function createAiGatewaySettingsStore(
       const withoutWireLog = { ...next } as { wireLogEnabled?: boolean };
       delete withoutWireLog.wireLogEnabled;
       return withoutWireLog as AiGatewayStoredSettings;
+    }),
+    writeCompactCeiling: (ceiling) => update((current) => {
+      const next = normalizeAiGatewaySettings({
+        ...current,
+        ...(ceiling === undefined ? {} : { compactCeiling: ceiling }),
+      });
+      if (ceiling !== undefined) return next;
+      const withoutCeiling = { ...next } as { compactCeiling?: CompactCeiling };
+      delete withoutCeiling.compactCeiling;
+      return withoutCeiling as AiGatewayStoredSettings;
     }),
   };
 }
@@ -197,5 +211,7 @@ function readLegacySettings(legacyPath: string): LegacyProbe {
 function hasStoredValue(settings: AiGatewayStoredSettings): boolean {
   return (settings.models?.length ?? 0) > 0
     || settings.cursorDiagnosticsEnabled !== undefined
-    || settings.wireLogEnabled !== undefined;
+    || settings.wireLogEnabled !== undefined
+    || settings.providerPriority !== undefined
+    || settings.compactCeiling !== undefined;
 }
