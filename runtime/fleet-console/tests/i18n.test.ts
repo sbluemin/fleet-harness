@@ -40,6 +40,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Operation {title}{groupContext}",
   // Quick Launch 멘션 행선지 태그 — mono 대문자 계기 표기라 두 로케일에서 같은 모양으로 읽는다.
   "Operation · {theater}",
+  // 플러그인 행선지 태그는 낱말이 없는 순수 조판이다 — 두 값 모두 플러그인이 로케일에 맞춰 채운다.
+  "{category} · {name}",
   "Companion {title}",
   "Map",
   "Activity Rail",
