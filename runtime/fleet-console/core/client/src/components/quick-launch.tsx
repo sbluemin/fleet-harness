@@ -402,14 +402,17 @@ export function QuickLaunch() {
 
   // 접힌 동안 입력은 inert라 포커스를 받지 못한다. 먼저 펼침을 커밋하고, inert가 걷힌 다음 틱에
   // 포커스를 넣는다 — 같은 틱에 부르면 focus()가 조용히 실패해 바가 열리지 않은 것처럼 보인다.
-  const expandAndFocus = useCallback(() => {
+  // 포커스 멘션은 invoke에서만 붙인다. 핀 전환·거절 초안 복원은 이미 열린 자리를 이어 쓰는
+  // 것이라 주소하지 않는다 — 비운 멘션을 핀이 도로 심거나, 방금 켠 옵트인이 현재 문면을 덮지 않는다.
+  const expandAndFocus = useCallback((input: { readonly addressFocused?: boolean } = {}) => {
     setCollapsed(false);
     // 물러남(focus-out)이 비운 커맨드 상태를 유지된 문면에서 되살린다 — 접힘/펼침 왕복이
     // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
     setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
     setCommandActiveIndex(0);
     if (
-      shouldApplyFocusedMention({
+      input.addressFocused === true
+      && shouldApplyFocusedMention({
         prefOn: mentionFocusedRef.current,
         leftoverDraft: false,
         mentionAlreadySet: mentionTargetRef.current !== null,
@@ -438,7 +441,7 @@ export function QuickLaunch() {
     if (focusToggle === lastFocusToggleRef.current) return;
     lastFocusToggleRef.current = focusToggle;
     if (!pinned) return;
-    if (collapsed) expandAndFocus();
+    if (collapsed) expandAndFocus({ addressFocused: true });
     else blurWithin(cardRef.current);
   }, [collapsed, expandAndFocus, focusToggle, pinned]);
 
@@ -449,7 +452,7 @@ export function QuickLaunch() {
   useEffect(() => {
     if (expandRequest === lastExpandRequestRef.current) return;
     lastExpandRequestRef.current = expandRequest;
-    if (pinned) expandAndFocus();
+    if (pinned) expandAndFocus({ addressFocused: true });
   }, [expandAndFocus, expandRequest, pinned]);
 
   // 거절이 초안과 함께 돌아왔을 때, 고정 상태에는 "열림 전이"가 없어 초안 복원 경로가 없다.
@@ -1207,7 +1210,7 @@ export function QuickLaunch() {
           <button
             type="button"
             className="quick-launch-strip"
-            onClick={expandAndFocus}
+            onClick={() => expandAndFocus({ addressFocused: true })}
             aria-label={t("chrome.quickLaunch.expand")}
           >
             <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterInitials(activeTheater.label) : "—"}</span>
