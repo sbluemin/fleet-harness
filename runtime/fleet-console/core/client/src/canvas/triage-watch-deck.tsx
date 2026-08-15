@@ -809,14 +809,9 @@ export function TriageWatchDeck({
   // 덱 위에서만 발화하므로 조작 내내 포인터는 어떤 칸 위에 있다: 이 충돌은 예외가 아니라 밀도
   // 조작의 기본값이다. 확대를 걷고, 포인터가 실제로 움직이기 전까지는 다시 무장하지 않는다 —
   // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니라 판이 흘려보낸 칸이다.
-  const zoomSuppressRef = useRef(false);
-  const releaseForDensityChange = () => {
-    zoomSuppressRef.current = true;
-    dismissQuicklook();
-  };
   // 칸 크기가 실제로 달라진 모든 전환을 이 구독이 받는다 — 표시값이 움직이지 않는 작은 델타까지.
-  const releaseRef = useRef(releaseForDensityChange);
-  releaseRef.current = releaseForDensityChange;
+  const releaseRef = useRef(dismissQuicklook);
+  releaseRef.current = dismissQuicklook;
   useEffect(() => subscribeDeckDensity(() => { releaseRef.current(); }), []);
   // 표시값 경로도 함께 둔다 — 줌 컨트롤러가 아직 어떤 요소도 소유하지 않은 구간(덱 마운트 전
   // 프리셋 순환)에서는 CSS 변수 쓰기가 일어나지 않아 위 신호가 울리지 않는다.
@@ -827,7 +822,7 @@ export function TriageWatchDeck({
     // 진입까지 확대가 열리지 않는다. 실제로 값이 움직인 전환에만 반응한다.
     if (previousZoomRef.current === deckZoomLive) return;
     previousZoomRef.current = deckZoomLive;
-    releaseForDensityChange();
+    dismissQuicklook();
   }, [deckZoomLive]);
 
   // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
@@ -896,18 +891,6 @@ export function TriageWatchDeck({
     if (!grid || !visible) return;
     const cellOf = (node: EventTarget | null): HTMLElement | null =>
       node instanceof Element ? node.closest<HTMLElement>("[data-triage-deck-card]") : null;
-    const onPointerOver = (event: PointerEvent) => {
-      if (event.pointerType === "touch") return;
-      const cell = cellOf(event.target);
-      // 같은 칸 안의 이동(본문 → 캡션 → 컨트롤)은 진입이 아니다.
-      if (!cell || cellOf(event.relatedTarget) === cell) return;
-      const operationId = cell.dataset.triageDeckCard;
-      if (!operationId || deckPointerRef.current.arriving === operationId) return;
-      // 밀도를 막 바꾼 직후의 진입은 포인터가 아니라 판이 움직여 생긴 것이다 — 겨눔은 다음
-      // pointermove가 증명한다.
-      if (zoomSuppressRef.current) return;
-      deckPointerRef.current.arm(operationId, cell, true);
-    };
     // 확대를 붙들 자격 — 포인터가 그 칸 안에 있거나, 키보드 포커스가 그 칸을 잡고 있어야 한다.
     // 포커스 예외가 없으면 키보드로 연 확대가 무관한 포인터 이동 한 번에 걷힌다.
     const holds = (node: EventTarget | null, operationId: string): boolean =>
@@ -931,16 +914,18 @@ export function TriageWatchDeck({
     };
     // out은 도착지(relatedTarget)가, move는 현재 지점(target)이 자격을 답한다.
     const onPointerOut = (event: PointerEvent) => { releaseUnless(event.relatedTarget); };
-    // 덱을 떠나지 않은 채 칸만 포인터 밑에서 빠져나간 경우는 out이 오지 않는다 — 다음 이동에서
-    // 현재 지점을 다시 물어 확대의 주인을 확인한다. 밀도 전환으로 무장을 막아 둔 동안에는, 이
-    // 이동이 곧 "사용자가 이 칸을 겨눴다"는 증명이므로 여기서 무장을 되살린다(같은 칸에 머무르면
-    // pointerover는 다시 오지 않아 확대가 영영 열리지 않는다).
+    // 확대를 여는 근거는 "포인터가 그 칸으로 옮겨 왔다"는 사실이고, 그것을 증명하는 것은 이동뿐이다.
+    // pointerover는 증명하지 못한다 — 커서가 멈춰 있어도 칸이 그 밑으로 들어오면(덱 진입, 밀도
+    // 전환, 열 수 변화, 사이드바 리사이즈) 브라우저는 똑같이 진입으로 보고한다. 그렇게 열린 확대는
+    // 사용자가 겨눈 적 없는 칸을 1.95배로 키워 이웃을 덮은 채 남고, 커서가 그 위에 있으니 해제 신호도
+    // 오지 않는다. 그래서 무장은 pointermove가 지고, pointerover는 아무것도 열지 않는다.
     const onPointerMove = (event: PointerEvent) => {
-      releaseUnless(event.target);
-      if (!zoomSuppressRef.current || event.pointerType === "touch") return;
-      zoomSuppressRef.current = false;
+      if (event.pointerType === "touch") return;
       const cell = cellOf(event.target);
-      const operationId = cell?.dataset.triageDeckCard;
+      const operationId = cell?.dataset.triageDeckCard ?? null;
+      // 같은 칸 안의 이동(본문 → 캡션 → 창 컨트롤)은 무장을 새로 걸 일도, 걷을 일도 아니다.
+      if (armedQuicklookRef.current !== null && armedQuicklookRef.current === operationId) return;
+      releaseUnless(event.target);
       if (!cell || !operationId || deckPointerRef.current.arriving === operationId) return;
       deckPointerRef.current.arm(operationId, cell, true);
     };
@@ -950,12 +935,10 @@ export function TriageWatchDeck({
       if (!cell || !operationId) return;
       deckPointerRef.current.openMenu(operationId, event, cell);
     };
-    grid.addEventListener("pointerover", onPointerOver);
     grid.addEventListener("pointerout", onPointerOut);
     grid.addEventListener("pointermove", onPointerMove, { passive: true });
     grid.addEventListener("contextmenu", onContextMenu);
     return () => {
-      grid.removeEventListener("pointerover", onPointerOver);
       grid.removeEventListener("pointerout", onPointerOut);
       grid.removeEventListener("pointermove", onPointerMove);
       grid.removeEventListener("contextmenu", onContextMenu);

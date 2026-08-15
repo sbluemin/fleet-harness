@@ -92,8 +92,10 @@ describe("War Room deck Quick-Look release", () => {
   const cellFor = (operationId: string) =>
     container!.querySelector<HTMLElement>(`[data-triage-deck-card="${operationId}"]`)!;
 
+  // 확대를 여는 것은 이동이다 — pointerover는 커서가 멈춰 있어도 칸이 그 밑으로 들어오면 오므로
+  // 겨눔을 증명하지 못한다. 제품이 무장에 쓰는 신호 그대로 민다.
   const hover = (cell: HTMLElement) => {
-    act(() => cell.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
     act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
   };
 
@@ -155,9 +157,11 @@ describe("War Room deck Quick-Look release", () => {
     hover(from);
     expect(expanded()).toEqual([OPERATION.id]);
 
-    // 브라우저는 out(도착지=새 칸) → over(새 칸) 순으로 보낸다. 두 칸이 동시에 확대되면 안 된다.
+    // 브라우저는 칸을 건너는 이동에서 out(도착지=새 칸) → over(새 칸) → move를 함께 보낸다.
+    // 두 칸이 동시에 확대되면 안 된다.
     act(() => from.dispatchEvent(new PointerEvent("pointerout", { bubbles: true, pointerType: "mouse", relatedTarget: to })));
     act(() => to.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse", relatedTarget: from })));
+    act(() => to.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
     act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
     expect(expanded()).toEqual([OPERATION_B.id]);
   });
@@ -265,14 +269,20 @@ describe("War Room deck Quick-Look release", () => {
     expect(expanded()).toEqual([]);
   });
 
-  it("does not re-arm on the entry the density change itself produced", () => {
+  // 이번 결함의 핵심 계약 — 커서가 멈춰 있는데 칸이 그 밑으로 들어온 경우(덱 진입, 밀도 전환,
+  // 열 수 변화, 사이드바 리사이즈)에도 브라우저는 진입을 보고한다. 그것으로 확대를 열면 사용자가
+  // 겨눈 적 없는 칸이 1.95배로 이웃을 덮고, 커서가 그 위에 있으니 해제 신호도 오지 않는다.
+  it("never arms from an entry alone, whatever produced it", () => {
     enterDeck();
     const cell = cellFor(OPERATION.id);
-    act(() => setTriageDeckZoomLive(0.6));
 
-    // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니다 — 브라우저는 포인터가 멈춰
-    // 있어도 그 진입을 boundary 이벤트로 보고하므로, 그것만으로 확대를 열면 밀도를 바꿀 때마다
-    // 아무 칸이나 커진다.
+    // 덱에 막 들어온 직후: 칸이 커서 밑에 나타난 것이지 커서가 칸으로 간 것이 아니다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded()).toEqual([]);
+
+    // 밀도가 판을 다시 짜며 칸이 커서 밑으로 옮겨 온 경우도 같다.
+    act(() => setTriageDeckZoomLive(0.6));
     act(() => cell.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
     act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
     expect(expanded()).toEqual([]);
@@ -292,14 +302,28 @@ describe("War Room deck Quick-Look release", () => {
 
   it("cancels an armed dwell that never became an expansion", () => {
     const grid = enterDeck();
-    // 드웰 중(아직 확대 전)에 포인터가 칸을 떠나면 확대는 열리지 않아야 한다. 확대 상태만 보고
-    // 판정하면 이 구간이 비어 있어, 떠난 뒤에 확대가 뒤늦게 열린다.
-    act(() => cellFor(OPERATION.id).dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
-    act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
+    const cell = cellFor(OPERATION.id);
+    const leave = () => act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
       bubbles: true,
       pointerType: "mouse",
       relatedTarget: document.body,
     })));
+
+    // 먼저 이 시퀀스가 실제로 드웰을 무장한다는 것을 대조로 보인다 — 무장되지 않는 시퀀스로 취소를
+    // 재면, 취소가 망가져도 이 케이스는 초록으로 남는다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded(), "the setup must actually arm, or the cancellation below proves nothing")
+      .toEqual([OPERATION.id]);
+    leave();
+    expect(expanded()).toEqual([]);
+
+    // 같은 무장을 다시 걸고, 이번엔 드웰이 끝나기 전에 떠난다. 확대는 뒤늦게라도 열리면 안 된다 —
+    // 확대 상태만 보고 해제를 판정하면 이 구간이 비어 있어 떠난 뒤에 열린다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS - 50); });
+    expect(expanded()).toEqual([]);
+    leave();
     act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
     expect(expanded()).toEqual([]);
   });
