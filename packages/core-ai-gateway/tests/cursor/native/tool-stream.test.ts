@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import http2 from "node:http2";
+import { deflateRawSync, inflateRawSync } from "node:zlib";
 
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
@@ -508,10 +509,11 @@ describe("Cursor client tool suspension", () => {
       call: { name: "Bash", toolCallId: "native-grep-shell-5" },
     });
     const grepShellCommand = JSON.parse(grepShell?.call.arguments ?? "{}").command as string;
-    expect(grepShellCommand).toContain("process.argv.splice(1,1)");
+    expect(grepShellCommand).toContain("inflateRawSync");
     const encodedScript = grepShellCommand.split(" ").at(-2);
     expect(encodedScript).toBeDefined();
-    const grepShellScript = Buffer.from(encodedScript ?? "", "base64url").toString("utf8");
+    const grepShellScript = inflateRawSync(Buffer.from(encodedScript ?? "", "base64url")).toString("utf8");
+    expect(grepShellCommand.length).toBeLessThan(2_600);
     expect(grepShellScript).toContain('"--sort","path","--max-columns",String(maxContentBytes)');
     expect(grepShellScript).toContain("maxRecordBytes=64*1024");
     expect(grepShellScript).not.toContain("new Map()");
@@ -587,7 +589,7 @@ describe("Cursor client tool suspension", () => {
   });
 
   it("accepts only complete caller Bash receipts as native Grep success", () => {
-    const receipt = `FLEET_CURSOR_GREP_V1:${Buffer.from(JSON.stringify({
+    const receipt = `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.from(JSON.stringify({
       ok: true,
       outputMode: "content",
       files: [],
@@ -604,7 +606,7 @@ describe("Cursor client tool suspension", () => {
       totalMatchedLines: 1,
       totalMatches: 1,
       clientTruncated: false,
-    }), "utf8").toString("base64url")}`;
+    }), "utf8")).toString("base64url")}`;
     const success = cursorNativeRedirectResultReplies(
       {
         messageId: 2,
@@ -641,7 +643,7 @@ describe("Cursor client tool suspension", () => {
         nativeResultType: "grepShellResult",
         nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
       },
-      "FLEET_CURSOR_GREP_V1:truncated",
+      "FLEET_CURSOR_GREP_V2:truncated",
       false,
     );
     expect(incomplete).toContainEqual(expect.objectContaining({
@@ -649,7 +651,23 @@ describe("Cursor client tool suspension", () => {
         grepResult: { error: { error: expect.stringContaining("invalid Fleet Grep receipt") } },
       }),
     }));
-    for (const reply of [...success, ...incomplete]) {
+
+    const oversized = cursorNativeRedirectResultReplies(
+      {
+        messageId: 4,
+        execId: "grep-shell-4",
+        nativeResultType: "grepShellResult",
+        nativeArgs: { pattern: "Fleet", path: "packages", outputMode: "content" },
+      },
+      `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.alloc(128 * 1024 + 1)).toString("base64url")}`,
+      false,
+    );
+    expect(oversized).toContainEqual(expect.objectContaining({
+      execClientMessage: expect.objectContaining({
+        grepResult: { error: { error: expect.stringContaining("invalid Fleet Grep receipt") } },
+      }),
+    }));
+    for (const reply of [...success, ...incomplete, ...oversized]) {
       expect(() => fromJson(AgentClientMessageSchema, reply as JsonValue)).not.toThrow();
     }
   });

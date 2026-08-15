@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import http2 from "node:http2";
+import { deflateRawSync } from "node:zlib";
 
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
 import { ValueSchema } from "@bufbuild/protobuf/wkt";
@@ -1809,7 +1810,7 @@ function cursorCall(callId: string, messageId: number): CursorCallSpec {
 }
 
 function cursorGrepReceipt(value: unknown): string {
-  return `FLEET_CURSOR_GREP_V1:${Buffer.from(JSON.stringify(value), "utf8").toString("base64url")}`;
+  return `FLEET_CURSOR_GREP_V2:${deflateRawSync(Buffer.from(JSON.stringify(value), "utf8")).toString("base64url")}`;
 }
 
 function cursorResult(

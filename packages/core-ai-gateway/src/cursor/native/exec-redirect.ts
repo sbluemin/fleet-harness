@@ -1,3 +1,5 @@
+import { deflateRawSync, inflateRawSync } from "node:zlib";
+
 type ExecMessage = Record<string, unknown>;
 
 export type CursorNativeRedirectResultType =
@@ -385,18 +387,19 @@ function grepShellArguments(
   ) {
     return null;
   }
-  const script = Buffer.from(CURSOR_GREP_RECEIPT_SCRIPT, "utf8").toString("base64url");
   const payload = Buffer.from(JSON.stringify(input), "utf8").toString("base64url");
-  const bootstrap = `eval(Buffer.from(process.argv.splice(1,1)[0],'base64url').toString('utf8'))`;
-  const command = `node -e "${bootstrap}" ${script} ${payload}`;
+  const bootstrap = `eval(require('node:zlib').inflateRawSync(Buffer.from(process.argv.splice(1,1)[0],'base64url')).toString('utf8'))`;
+  const command = `node -e "${bootstrap}" ${CURSOR_GREP_RECEIPT_SCRIPT_BASE64} ${payload}`;
   return shellArguments(schema, command, undefined, undefined);
 }
 
-const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V1:";
+const CURSOR_GREP_RECEIPT_PREFIX = "FLEET_CURSOR_GREP_V2:";
+const CURSOR_GREP_RECEIPT_MAX_BYTES = 128 * 1024;
 const CURSOR_GREP_RECEIPT_SCRIPT = String.raw`
 const {spawn}=require("node:child_process");
 const {TextDecoder}=require("node:util");
-const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.from(JSON.stringify(value)).toString("base64url"));
+const {deflateRawSync}=require("node:zlib");
+const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+deflateRawSync(Buffer.from(JSON.stringify(value))).toString("base64url"));
 (async()=>{try {
   const input=JSON.parse(Buffer.from(process.argv[1],"base64url").toString("utf8"));
   const matchSeparator=30;
@@ -482,6 +485,7 @@ const emit=(value)=>process.stdout.write("${CURSOR_GREP_RECEIPT_PREFIX}"+Buffer.
   emit({ok:true,outputMode:input.outputMode,files,counts,matches,totalFiles,totalLines,totalMatchedLines,clientTruncated});
 }catch(error){emit({ok:false,error:error instanceof Error?error.message:String(error)});}})();
 `.trim();
+const CURSOR_GREP_RECEIPT_SCRIPT_BASE64 = deflateRawSync(CURSOR_GREP_RECEIPT_SCRIPT).toString("base64url");
 
 function shellArguments(
   schema: Record<string, unknown>,
@@ -533,10 +537,13 @@ function parseGrepShellReceipt(
     return { ok: false, error: "The caller Bash result did not contain a complete Fleet Grep receipt." };
   }
   try {
-    const decoded = JSON.parse(Buffer.from(
+    const compressed = Buffer.from(
       output.slice(CURSOR_GREP_RECEIPT_PREFIX.length).trim(),
       "base64url",
-    ).toString("utf8")) as unknown;
+    );
+    const decoded = JSON.parse(inflateRawSync(compressed, {
+      maxOutputLength: CURSOR_GREP_RECEIPT_MAX_BYTES,
+    }).toString("utf8")) as unknown;
     if (!isRecord(decoded)) throw new Error("receipt is not an object");
     if (decoded.ok === false && typeof decoded.error === "string") {
       return { ok: false, error: decoded.error };
