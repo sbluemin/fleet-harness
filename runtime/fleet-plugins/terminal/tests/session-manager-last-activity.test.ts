@@ -36,6 +36,12 @@ describe("session-manager lastActivityAt", () => {
     expect(manager.getSessionLastActivityAt("agent-a")).toBe(3_000);
     expect(ptys.get("agent-a")?.resized.at(-1)).toEqual({ cols: 120, rows: 40 });
 
+    // 같은 격자를 다시 보내면 PTY를 건드리지 않는다 — 크기가 같아도 pty.resize는 SIGWINCH를 보내고
+    // 전체 화면 TUI는 그 신호마다 프레임 전체를 다시 그리므로, 바뀐 것이 없으면 깜빡임만 남는다.
+    const resizeCountBefore = ptys.get("agent-a")?.resized.length ?? 0;
+    socket.emitMessage(Buffer.from(JSON.stringify({ type: "resize", cols: 120, rows: 40 }), "utf8"), false);
+    expect(ptys.get("agent-a")?.resized.length).toBe(resizeCountBefore);
+
     // 서버 주입 입력(reminder·rename)도 활동으로 갱신한다.
     clock = 5_000;
     expect(manager.writeToSession("agent-a", "injected-reminder")).toBe(true);

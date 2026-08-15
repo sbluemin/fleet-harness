@@ -4391,6 +4391,17 @@
   transition: none;
 }
 
+/* 사이드바 접기/펼치기 중에는 같은 이유로 geometry 글라이드를 끊는다. 사이드바의 200ms width가
+   중앙 트랙을 매 프레임 리플로우시키면 이 프레임의 360ms 글라이드는 매 프레임 타깃이 새로 잡혀
+   사이드바가 멈춘 뒤에도 계속 이징한다. 그동안 xterm은 옛 cols/rows로 남아 잘리거나 빈 띠를 남기고,
+   refit은 상자가 완전히 멈춘 뒤에야 걸린다(실측 664ms). 글라이드를 끊으면 프레임이 스테이지를 즉시
+   따라가 그 구간이 사이드바 전환 길이로 줄어든다 — 패널은 사이드바와 함께 부드럽게 움직인다.
+   플래그는 사이드바의 width 전환 이벤트가 소유한다(side-bar-motion.ts): 드래그는 전환 자체가
+   꺼져 있어 이 경로를 타지 않고, reduced-motion은 전환이 없어 플래그가 서지 않는다. */
+body[data-side-bar-animating="true"] .canvas-operation {
+  transition: none;
+}
+
 /* Formation 슬롯은 계산값이 규약이다 — 320×200 CSS 최소값이 슬롯을 이기면 좁은 캔버스·다패널에서 겹침이 생긴다. */
 .operations-canvas.is-formation-view .canvas-operation,
 .operations-canvas.is-companion-layout .canvas-operation {

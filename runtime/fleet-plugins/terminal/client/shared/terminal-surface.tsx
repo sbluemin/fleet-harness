@@ -422,18 +422,21 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       });
       connectionRef.current = connection;
 
-      const fitResizeAndRefresh = () => {
+      // 여기에 terminal.refresh(0, rows-1)를 두지 않는다. 격자가 바뀌었으면 xterm이 resize 경로에서
+      // 이미 전체 refresh를 예약했고(RenderService가 bufferService.onResize와 handleResize 양쪽에서),
+      // 바뀌지 않았으면 다시 그릴 내용이 없다. 어느 쪽이든 이 호출은 같은 rAF로 합쳐지는 낭비이고,
+      // WebGL 경로에서는 커서 blink 애니메이션까지 되감는다. 스크롤 복원은 아래 wrapper가 소유한다.
+      const fitAndResize = () => {
         scrollFollow.preserveAfterGeometryChange(() => {
           fitAddon.fit();
           connection.resize(terminal.cols, terminal.rows);
-          terminal.refresh(0, terminal.rows - 1);
         });
       };
       const scheduleFitAndResize = () => {
         if (resizeDebounce) clearTimeout(resizeDebounce);
         resizeDebounce = setTimeout(() => {
           resizeDebounce = null;
-          if (!disposed) fitResizeAndRefresh();
+          if (!disposed) fitAndResize();
         }, RESIZE_DEBOUNCE_MS);
       };
 
@@ -442,7 +445,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         // 폰트 로딩 대기 중 세션이 전환되면(effect cleanup) 이미 dispose된 터미널에
         // fit/start를 호출하지 않는다 — 그렇지 않으면 빈 화면이나 잘못된 크기로 이어진다.
         if (disposed) return;
-        fitResizeAndRefresh();
+        fitAndResize();
         connection.start();
         setInputReadyEpoch((epoch) => epoch + 1);
         // 마운트(셸 열기·세션 전환) 직후 xterm에 포커스를 줘 마우스 클릭 없이 바로 입력되게 한다.
