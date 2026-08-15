@@ -371,9 +371,11 @@
 /* 회신 버튼 — 본문 우하단에 떠 있는 말풍선 하나. 상단 전환 칩과 달리 라벨을 달지 않는다:
    글리프가 곧 이름인 표적이라 문구가 붙으면 두 칩이 같은 무게로 읽히고, 로그를 가리는 면적이
    그만큼 늘어난다. 이름은 aria-label과 title이 진다.
-   원형은 컨트롤에서 금지된 모양이 아니다 — Quick Launch 고정 버튼이 같은 32px 원형 아이콘
-   버튼이다. --radius-pill이 도트·비콘 전용인 것과 별개로, 여기 50%는 크기가 지름을 정하는
-   아이콘 버튼의 모양이다. brass는 위치·포커스 채널이므로 hover/focus에만 오른다. */
+   원형은 컨트롤에서 금지된 모양이 아니다 — Quick Launch 고정 버튼이 같은 원형 아이콘 버튼이다.
+   --radius-pill이 도트·비콘 전용인 것과 별개로, 여기 50%는 크기가 지름을 정하는 아이콘 버튼의
+   모양이다. brass는 위치·포커스 채널이므로 hover/focus에만 오른다.
+   지름은 고정 버튼(32px)보다 크다: 라벨이 없는 표적이라 글리프 자체가 이름을 져야 하고,
+   로그 위에 떠 있으므로 크롬 줄에 앉은 버튼보다 한 단 커야 같은 무게로 읽힌다. */
 .agent-chat-reply {
   position: absolute;
   right: var(--space-3);
@@ -382,8 +384,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   padding: 0;
   border-radius: 50%;
   background: var(--surface-panel-raised);
@@ -395,8 +397,8 @@
 }
 
 .agent-chat-reply svg {
-  width: 17px;
-  height: 17px;
+  width: 24px;
+  height: 24px;
 }
 
 .agent-chat-reply:hover,
