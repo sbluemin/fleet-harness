@@ -511,10 +511,18 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [refreshOperations, runMutation]);
 
   const handleCreateGroup = useCallback((theaterId: string, name: string, operationId?: string) => {
+    // 재시도가 POST를 다시 치면 서버가 새 id를 발급해 그룹이 쌓인다 — 첫 성공 id를 붙잡아
+    // 거절된 배정·새로고침만 다시 한다.
+    let createdGroupId: string | null = null;
     runMutation(
-      () => createGroup({ theaterId, name, color: "blue" })
-        .then((group) => operationId ? patchOperation(operationId, { groupId: group.id }).then(() => undefined) : undefined)
-        .then(refreshOperationsAndGroups),
+      async () => {
+        const group = createdGroupId
+          ? { id: createdGroupId }
+          : await createGroup({ theaterId, name, color: "blue" });
+        createdGroupId = group.id;
+        if (operationId) await patchOperation(operationId, { groupId: group.id });
+        await refreshOperationsAndGroups();
+      },
       refreshOperationsAndGroups,
     );
   }, [refreshOperationsAndGroups, runMutation]);
@@ -556,32 +564,31 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [refreshGroups, runMutation]);
 
   const handleReorderGroups = useCallback((orderedGroupIds: readonly string[]) => {
-    const groupById = new Map(stateRef.current.groups.map((group) => [group.id, group]));
-    const patches = orderedGroupIds.flatMap((groupId, order) => {
-      const group = groupById.get(groupId);
-      if (!group || group.order === order) return [];
-      return [updateGroup(groupId, { order })];
-    });
-    if (patches.length === 0) return;
-    // 일부 PATCH가 실패해도 항상 서버 실제 순서로 재동기화한다 — Promise.all은 첫 실패에서 reject되어
-    // refetch를 건너뛰므로, 성공/실패가 섞이면 낙관적 순서가 서버와 어긋난 채 UI에 남는다.
-    // allSettled 자체는 절대 reject하지 않으므로, 거절이 하나라도 있으면 여기서 던져 Try again을 연다.
+    // 재시도마다 PATCH를 새로 만든다 — 바깥에서 만든 Promise를 다시 넘기면 이미 거절된
+    // 결과만 보고 네트워크를 다시 타지 않는다.
     runMutation(
-      () => settleReorderPatches(patches).then(refreshGroups),
+      () => {
+        const groupById = new Map(stateRef.current.groups.map((group) => [group.id, group]));
+        return settleReorderPatches(orderedGroupIds.flatMap((groupId, order) => {
+          const group = groupById.get(groupId);
+          if (!group || group.order === order) return [];
+          return [updateGroup(groupId, { order })];
+        })).then(refreshGroups);
+      },
       refreshGroups,
     );
   }, [refreshGroups, runMutation]);
 
   const handleReorderTheaters = useCallback((orderedTheaterIds: readonly string[]) => {
-    const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
-    const patches = orderedTheaterIds.flatMap((theaterId, order) => {
-      const theater = theaterById.get(theaterId);
-      if (!theater || theater.order === order) return [];
-      return [patchTheaterOrder(theaterId, order)];
-    });
-    if (patches.length === 0) return;
     runMutation(
-      () => settleReorderPatches(patches).then(refreshTheaters),
+      () => {
+        const theaterById = new Map(stateRef.current.theaters.map((theater) => [theater.id, theater]));
+        return settleReorderPatches(orderedTheaterIds.flatMap((theaterId, order) => {
+          const theater = theaterById.get(theaterId);
+          if (!theater || theater.order === order) return [];
+          return [patchTheaterOrder(theaterId, order)];
+        })).then(refreshTheaters);
+      },
       refreshTheaters,
     );
   }, [refreshTheaters, runMutation]);
