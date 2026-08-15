@@ -1636,6 +1636,16 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
     // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
     expect(terminalAnalysisCss).toContain("color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised))");
+    // 아티팩트는 드로어 안의 모드다 — 모드 세그먼트가 있고, 세로 핸들과 두 번째 컴패니언은 되살아나면 안 된다.
+    const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const terminalAgentEntry = externalSource(TERMINAL_AGENT_PATH);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__modechip \{/);
+    expect(terminalAnalysisCss).not.toContain(".session-analyst-handle");
+    // Analyst 진입은 뷰 칩 클러스터의 일원이다 — 채팅 전환 칩과 같은 줄·같은 문법.
+    expect(terminalChatCss).toMatch(/\.agent-view-chip-row \{/);
+    expect(terminalChatCss).toContain(".agent-view-chip-row .agent-chat-mode-chip");
+    expect(terminalAgentEntry).toContain('className="agent-chat-mode-chip agent-analyst-chip"');
+    expect(terminalAgentEntry).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
   });
 
   it("keeps the retired carrier identity grammar out of the product", () => {

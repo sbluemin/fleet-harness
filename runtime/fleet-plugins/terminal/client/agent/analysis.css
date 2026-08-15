@@ -31,7 +31,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 /* 카운트 배지 — 기존 세로 핸들의 aurora 배지 톤을 승계한다. */
 .session-analyst__chip-count { display: grid; place-items: center; min-width: 15px; min-height: 15px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 16%, transparent); color: var(--aurora-ink); font-weight: var(--weight-bold); font-size: 9.5px; line-height: 1; }
 .session-analyst__chip-count.is-pulsing { animation: analyst-artifact-count-pulse var(--duration-slow) var(--ease-glide); }
-.session-analyst__chip--artifacts.is-authoring .session-analyst__chip-count { border: 1px dashed var(--aurora); background: transparent; animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
+.session-analyst__modechip button.is-authoring .session-analyst__chip-count { border: 1px dashed var(--aurora); background: transparent; animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 
 .session-analyst__workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; overflow: hidden; background: transparent; }
 .session-analyst__chat-pane.is-initial .session-analyst__workspace { display: flex; flex-direction: column; justify-content: center; overflow: auto; padding: calc(var(--space-3) + 34px) 18px 22px; }
