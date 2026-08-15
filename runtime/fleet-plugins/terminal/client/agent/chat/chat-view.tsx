@@ -3,7 +3,6 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
-import type { SessionInfo } from "../types.js";
 import { useAgentChatStream } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatTurn, type AgentChatTurnItem } from "./chat-events.js";
 import "@fleet-console/markdown/styles.css";
@@ -19,12 +18,10 @@ import "./chat.css";
  */
 export function AgentChatView({
   context,
-  session,
   onOpenTerminal,
   tourAnchors,
 }: {
   readonly context: OperationRenderContext;
-  readonly session: SessionInfo;
   readonly onOpenTerminal: () => Promise<void>;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
@@ -35,9 +32,6 @@ export function AgentChatView({
   const [terminalError, setTerminalError] = React.useState(false);
   const logRef = React.useRef<HTMLDivElement>(null);
   const nearBottomRef = React.useRef(true);
-
-  const model = readPayloadString(context.operation.payload, "launchModel");
-  const effort = readPayloadString(context.operation.payload, "launchEffort");
 
   const handleOpenTerminal = React.useCallback(async () => {
     setTerminalPending(true);
@@ -75,29 +69,24 @@ export function AgentChatView({
 
   return (
     <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
-      <div className="agent-chat-head">
-        <span className="agent-chat-sess">
-          <b>{session.cliLabel ?? "Claude"}</b>
-          {model ? <span className="agent-chat-sess-model">{model}</span> : null}
-          {effort ? <span className="agent-chat-sess-effort">{effort.toUpperCase()}</span> : null}
-        </span>
-        {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
-            사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
-            콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
-        <span className="agent-chat-cap" {...(tourAnchors ? { "data-chat-tour": "badge" } : {})}>{t("terminal.chat.badge")}</span>
-        <button
-          type="button"
-          className="agent-chat-to-term"
-          {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
-          disabled={terminalPending}
-          aria-label={t("terminal.chat.openTerminalAria")}
-          onClick={() => { void handleOpenTerminal(); }}
-        >
-          {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
-        </button>
-      </div>
+      {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
+          자리·같은 모양의 떠 있는 칩으로 가리켜, 전환이 한 쌍의 동작으로 읽힌다.
+          띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다. */}
+      <button
+        type="button"
+        className="agent-chat-mode-chip"
+        {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
+        disabled={terminalPending}
+        aria-label={t("terminal.chat.openTerminalAria")}
+        onClick={() => { void handleOpenTerminal(); }}
+      >
+        <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
+      </button>
 
-      <div className="agent-chat-log" ref={logRef} onScroll={handleScroll}>
+      {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
+          사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
+          콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
+      <div className="agent-chat-log" ref={logRef} onScroll={handleScroll} {...(tourAnchors ? { "data-chat-tour": "log" } : {})}>
         {state.connection === "connecting" && state.turns.length === 0
           ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
           : null}
@@ -324,9 +313,4 @@ function formatDuration(durationMs: number): string {
   const seconds = durationMs / 1_000;
   if (seconds < 90) return `${seconds.toFixed(1)}s`;
   return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`;
-}
-
-function readPayloadString(payload: Record<string, unknown>, key: string): string {
-  const value = payload[key];
-  return typeof value === "string" ? value : "";
 }
