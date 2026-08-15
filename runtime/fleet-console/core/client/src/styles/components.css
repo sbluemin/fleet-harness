@@ -8575,7 +8575,11 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-3);
-  background: var(--surface-glass);
+  /* 이 기본 규칙의 소비처는 레일 Shell 하나다(캔버스 Operation은 아래에서 transparent로 덮는다).
+     카드 면은 그 안의 xterm과 같은 --surface-panel이어야 한다 — 유리(--surface-glass)는 뒤에
+     오는 것에 따라 유효색이 흔들리는데 xterm 배경은 불투명 한 값이라 맞출 수가 없고, Maritime
+     5.3%p·Carbon 6.6%p의 계단으로 남는다. 카드의 정체는 테두리가 지고 면은 터미널에 넘긴다. */
+  background: var(--surface-panel);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xl);
   box-shadow: var(--shadow-soft);

@@ -1246,6 +1246,10 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).toContain("background: var(--surface-panel);");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
     expect(panelBodyBlock).toContain("background: var(--surface-panel);");
+    // 레일 Shell 카드도 같은 면이다 — 이 기본 규칙의 소비처는 레일 하나뿐이고, 유리로 되돌리면
+    // 카드가 자기 안의 xterm과 갈린다(불투명 xterm 배경은 반투명 유리를 따라갈 수 없다).
+    const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
+    expect(terminalShellBlock).toContain("background: var(--surface-panel);");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
