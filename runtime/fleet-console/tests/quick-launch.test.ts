@@ -692,7 +692,7 @@ describe("resolveFocusedMention", () => {
         makeOperation("op-shell", { type: "shell" }),
         makeOperation("op-await", { id: "op-await" }),
       ],
-      operationStatus: { "op-await": "awaiting" as const },
+      operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
       operationsViewActive: true,
       activeTheaterId: "th-a",
       activeOperationId: "op-live",
@@ -746,7 +746,7 @@ describe("resolveMentionEntry", () => {
       makeOperation("op-await", { id: "op-await" }),
       makeOperation("op-far", { theaterId: "th-b" }),
     ],
-    operationStatus: { "op-await": "awaiting" as const },
+    operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
     activeTheaterId: "th-a",
   };
 
