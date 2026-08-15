@@ -308,14 +308,24 @@ export function useTriageDeckZoomControl(): {
     zoomRef.current = zoom;
     const owner = ownerRef.current;
     if (owner) {
-      const cardMin = `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`;
-      // 칸 크기가 실제로 달라진 프레임에만 밀도 신호를 울린다. 최초 부착(이전 값이 비어 있는
-      // 상태)은 전환이 아니라 초기화이므로 울리지 않는다.
-      const previousCardMin = owner.style.getPropertyValue("--triage-card-min");
-      owner.style.setProperty("--triage-card-min", cardMin);
-      owner.style.setProperty("--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`);
-      owner.style.setProperty("--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`);
-      if (previousCardMin !== "" && previousCardMin !== cardMin) emitDeckDensityChange();
+      // 칸 크기를 정하는 값 중 하나라도 실제로 달라진 프레임에만 밀도 신호를 울린다. 폭만 비교하면
+      // 같은 폭 구간 안에서 행 높이만 넘어가는 델타(예: 1.0020 → 1.0030은 폭을 261px로 둔 채 행
+      // 상한을 210px → 211px로 옮긴다)를 놓쳐, 칸이 바뀌는데 확대가 살아남는다. 최초 부착(이전 값이
+      // 비어 있는 상태)은 전환이 아니라 초기화이므로 울리지 않는다.
+      const sizing: readonly (readonly [string, string])[] = [
+        ["--triage-card-min", `${Math.round(TRIAGE_DECK_CARD_BASE_MIN_PX * zoom)}px`],
+        ["--triage-row-min", `${Math.max(84, Math.round(150 * zoom))}px`],
+        ["--triage-row-max", `${Math.max(84, Math.round(210 * zoom))}px`],
+      ];
+      let initialised = true;
+      let resized = false;
+      for (const [name, value] of sizing) {
+        const previous = owner.style.getPropertyValue(name);
+        if (previous === "") initialised = false;
+        else if (previous !== value) resized = true;
+        owner.style.setProperty(name, value);
+      }
+      if (initialised && resized) emitDeckDensityChange();
     }
     // 지도 판정은 프레임 정확도로 반영한다 — tween이 임계를 가로지르는 중간에도
     // 카드↔지도 전환이 정확한 프레임에 일어나야 한다.

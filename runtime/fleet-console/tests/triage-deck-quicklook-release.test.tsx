@@ -21,7 +21,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
-import { getTriageDeckZoomLive, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoomLive } from "../core/client/src/canvas/triage-store.js";
+import { getTriageDeckZoomLive, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom, setTriageDeckZoomLive } from "../core/client/src/canvas/triage-store.js";
 import { TRIAGE_DECK_QUICKLOOK_DWELL_MS } from "../core/client/src/canvas/triage-watch-deck.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -238,6 +238,30 @@ describe("War Room deck Quick-Look release", () => {
     act(() => cell.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: 9, deltaMode: 0 })));
     expect(getTriageDeckZoomLive(), "the displayed zoom must not move, or this case is not the one under test")
       .toBe(displayedBefore);
+    expect(expanded()).toEqual([]);
+  });
+
+  // 폭 구간 안에서 행 높이만 넘어가는 델타 — 1.0020 → 1.0030은 폭을 261px로 둔 채 행 상한을
+  // 210px → 211px로 옮긴다. 폭만 비교하면 이 전환이 신호를 만들지 못해 칸이 바뀌는데 확대가 남는다.
+  it("releases the expansion when only the row size crosses a boundary", () => {
+    act(() => setTriageDeckZoom(1.002));
+    const grid = enterDeck();
+    const owner = container!.querySelector<HTMLElement>(".operations-canvas")!;
+    const read = () => ["--triage-card-min", "--triage-row-min", "--triage-row-max"]
+      .map((name) => owner.style.getPropertyValue(name));
+    const before = read();
+    // 초기 배율을 세우는 tween이 이미 한 번 판을 다시 짰으므로, 무장은 포인터 이동이 증명한다.
+    const cell = cellFor(OPERATION.id);
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded()).toEqual([OPERATION.id]);
+
+    const displayedBefore = getTriageDeckZoomLive();
+    act(() => grid.dispatchEvent(new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -0.4534, deltaMode: 0 })));
+    const after = read();
+    expect(after[0], "the card width must stay put, or this case is not the one under test").toBe(before[0]);
+    expect(after[2], "the row cap must be the value that moved").not.toBe(before[2]);
+    expect(getTriageDeckZoomLive()).toBe(displayedBefore);
     expect(expanded()).toEqual([]);
   });
 
