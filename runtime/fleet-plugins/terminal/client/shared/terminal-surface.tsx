@@ -139,7 +139,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
 // 종이·잉크·흑백 rung은 whites의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
 // 의미색이므로 대기 이동과 무관하게 유지한다(cursor=aurora·selection=brass 채널 역할도 불변).
 const WHITES_TERMINAL_THEME: ITheme = {
-  background: "oklch(95.5% 0.005 100)",
+  background: "oklch(98.2% 0.004 100)",
   foreground: "oklch(24% 0.012 95)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",

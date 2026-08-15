@@ -129,6 +129,10 @@
      한 칸과 일치하지 않기 때문이다 — ink-mid를 직접 밝히면 호버·칩 등 45개 소비처가
      함께 움직이므로 패널 면만 분리한다. 패널 위에 얹히는 칩·카드는 계속 ink-mid를 쓴다. */
   --surface-panel: var(--ink-deep);
+  /* 패널 면 위에 얹히는 표면(채팅 헤드·카드·버블·스트립) 티어 — 패널 면에서 한 칸 물러난 값이다.
+     다크 3종은 패널 면이 ink-deep 근방이므로 ink-mid가 그 한 칸이고, 라이트는 방향이 반대라
+     Whites가 자기 값을 따로 잡는다. 패널 면과 같은 값이 되면 로그 위계가 통째로 사라진다. */
+  --surface-panel-raised: var(--ink-mid);
   --surface-glass-strong: var(--ink-mid);
   --surface-pillar: var(--ink-veil);
   --surface-rim: var(--hairline);
@@ -417,9 +421,15 @@
 
   --surface-glass: oklch(98% 0.004 100 / 70%);
   --surface-chrome: oklch(96% 0.004 100);
-  /* 라이트에서 패널이 떠오르는 방향은 아래다 — 캔버스(canvas-abyss 97.8%)보다 어두운 면이
-     창으로 읽힌다. 다크 3종처럼 캔버스보다 밝게 가면 종이 위 종이가 되어 경계가 사라진다. */
-  --surface-panel: var(--ink-deep);
+  /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.
+     캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하며 패널 둘레에서
+     L 94.9~96.6으로 실측된다. 그래서 프레임 톤(ink-deep 95.5%)으로 통일하면 패널이 책상과
+     같은 밝기가 되어 창이 배경에 녹는다 — 캔버스 base(--canvas-abyss 97.8%)만 보고 2.4 차가
+     남는다고 읽으면 안 된다. 종이 톤을 유지해 둘레 대비 +2.8을 확보한다. */
+  --surface-panel: oklch(98.2% 0.004 100);
+  /* 라이트는 얹히는 면이 아래로 물러난다 — 종이(98.2%) 위에서 ink-deep이 한 칸이고,
+     ink-mid까지 내려가면 카드가 종이 위에 뚫린 구멍처럼 무거워진다. */
+  --surface-panel-raised: var(--ink-deep);
   --surface-glass-strong: oklch(96.5% 0.005 100 / 82%);
   --surface-pillar: oklch(98.5% 0.003 100 / 90%);
   --surface-rim: oklch(38% 0.02 95 / 18%);

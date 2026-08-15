@@ -1443,14 +1443,23 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
     expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
-    // Operation 패널 면 티어 — 네 테마 모두가 값을 가진다. 다크 3종은 캔버스보다 밝은 쪽,
-    // 라이트(Whites)는 어두운 쪽(ink-deep 별칭)에 서서 패널이 캔버스 위로 떠오른다.
-    // Maritime·Carbon은 ink 스케일의 한 칸과 일치하지 않으므로 별칭이 아닌 리터럴이다.
+    // Operation 패널 면 티어 — 네 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
+    // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
+    // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
+    // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
     expect(base).toContain("--surface-panel: var(--ink-deep);");
     expect(theme.match(/--surface-panel:/g)).toHaveLength(4);
     expect(theme).toContain("--surface-panel: oklch(23% 0.03 248);");
     expect(theme).toContain("--surface-panel: oklch(19% 0.008 252);");
-    expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(2);
+    expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");
+    expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(1);
+    // 라이트 종이는 크롬보다 밝다 — 이 부등호가 뒤집히면 시선이 크롬으로 끌리는 극성 역전이다.
+    const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    // 얹히는 면은 패널 면에서 한 칸 물러난다 — 다크는 위(ink-mid), 라이트는 아래(ink-deep).
+    expect(base).toContain("--surface-panel-raised: var(--ink-mid);");
+    expect(whitesBlock).toContain("--surface-panel-raised: var(--ink-deep);");
+    expect(theme.match(/--surface-panel-raised:/g)).toHaveLength(2);
     expect(theme).not.toContain("--surface-frame");
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
@@ -1482,14 +1491,16 @@ describe("Instrument core design contract", () => {
     expect(fallbackOf("INSTRUMENT_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
     expect(fallbackOf("MARITIME_TERMINAL_THEME")).toBe("oklch(23% 0.03 248)");
     expect(fallbackOf("CARBON_TERMINAL_THEME")).toBe("oklch(19% 0.008 252)");
-    expect(fallbackOf("WHITES_TERMINAL_THEME")).toBe(inkDeepOf(themeBlockOf(':root[data-theme="whites"]')));
+    expect(fallbackOf("WHITES_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
     expect(chatRootBlock).toContain("background: var(--surface-panel);");
-    // 로그 위에 얹히는 헤드·카드·칩은 한 티어 위(ink-mid)에 선다 — ink-deep으로 내려오면
-    // Instrument에서 패널 면과 같은 값이 되어 위계가 사라진다.
+    // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
+    // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
+    // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
     expect(chat).not.toContain("var(--ink-deep)");
+    expect(chat.match(/var\(--ink-abyss\)/g) ?? []).toHaveLength(1);
   });
 
   it("pins the access-link QR colors outside every theme", () => {
