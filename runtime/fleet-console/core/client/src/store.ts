@@ -529,6 +529,22 @@ export function nextOperationId(order: readonly string[], currentId: string | nu
   return order[nextIndex] ?? null;
 }
 
+// 그룹은 Operation과 같은 Theater일 때만 그 Operation에 적용된다.
+// 활성 Theater가 아니라 Operation 자신의 Theater를 기준 삼는 것이 핵심이다 — 선별 무대는 활성
+// Theater 밖 Operation도 올리므로 활성 기준으로 거르면 그 무대의 그룹이 사라진다.
+// 서버 PATCH는 groupId가 문자열인지만 보고 Theater 소속을 검사하지 않으므로(operations-domain.ts),
+// API로 타 Theater 그룹이 붙은 Operation이 존재할 수 있다. 사이드바는 그 조합을 미분류로 읽으므로,
+// 이 검사가 없으면 캡션만 홀로 그룹 이름을 주장해 두 면이 서로를 부정한다.
+export function resolveOperationGroup(
+  operation: OperationNode,
+  groupById: ReadonlyMap<string, OperationGroup>,
+): OperationGroup | null {
+  if (!operation.groupId) return null;
+  const group = groupById.get(operation.groupId);
+  if (!group || group.theaterId !== operation.theaterId) return null;
+  return group;
+}
+
 // GROUP 축 SideBar 표시 순서와 Alt+←/→ 순환 순서가 갈라지지 않도록 Operation 정렬을 이 한 함수로 단일화한다.
 // operationOrder(드래그 재정렬 SSoT)에 있는 항목은 그 순서를 따르고, 없는 항목은 createdAt 순으로 뒤에 붙인다.
 export function sortOperationsByOrder(

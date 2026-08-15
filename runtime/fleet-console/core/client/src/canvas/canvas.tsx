@@ -10,7 +10,7 @@ import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { blurActiveElement } from "../active-operation-surface.js";
-import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
+import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
@@ -729,8 +729,8 @@ export function OperationsCanvas({
     }, 1_500);
     return () => clearTimeout(timer);
   }, [companionOperationId, currentPanelCompanion]);
-  // 캡션 그룹 라벨의 조회는 Theater로 거르지 않는다 — 선별 무대는 활성 Theater 밖 Operation도
-  // 올리고, group id는 전역 유일하므로 필터가 라벨을 조용히 비우기만 한다.
+  // 캡션 그룹 라벨의 조회는 활성 Theater로 좁히지 않는다 — 선별 무대는 활성 Theater 밖 Operation도
+  // 올린다. 소속 판정은 resolveOperationGroup이 Operation 자신의 Theater 기준으로 내린다.
   const groupById = new Map(state.groups.map((group) => [group.id, group]));
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,
@@ -863,7 +863,7 @@ export function OperationsCanvas({
           const operationMaximized = panelMaximized === operation.id;
           const operationCompanion = panelCompanion === operation.id;
           const operationTriageStage = triageStageId === operation.id;
-          const operationGroup = operation.groupId ? groupById.get(operation.groupId) ?? null : null;
+          const operationGroup = resolveOperationGroup(operation, groupById);
           // 색을 못 푸는 그룹은 라벨 자체를 내지 않는다 — 도트 없는 이름만 남으면 그것이 그룹이라는
           // 사실을 캡션에서 읽을 수 없다.
           const operationGroupColor = operationGroup ? resolveAccentColor(operationGroup.color) : null;
