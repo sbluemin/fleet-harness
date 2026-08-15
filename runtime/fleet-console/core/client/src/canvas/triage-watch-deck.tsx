@@ -774,6 +774,23 @@ export function TriageWatchDeck({
     dismissQuicklook();
   }, [visible, stagedOperationId, mapMode]);
 
+  // 밀도 전환은 한 칸을 들여다보는 조작이 아니라 판 전체를 다시 짜는 조작이다 — 그동안 한 칸만
+  // 확대된 채로 두면 그 칸이 이웃을 덮어, 사용자가 방금 바꾼 밀도를 읽을 수 없다. 그리고 덱 줌은
+  // 덱 위에서만 발화하므로 조작 내내 포인터는 어떤 칸 위에 있다: 이 충돌은 예외가 아니라 밀도
+  // 조작의 기본값이다. 확대를 걷고, 포인터가 실제로 움직이기 전까지는 다시 무장하지 않는다 —
+  // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니라 판이 흘려보낸 칸이다.
+  const deckZoomLive = useSyncExternalStore(subscribeTriage, getTriageDeckZoomLive, () => TRIAGE_DECK_ZOOM_DEFAULT);
+  const zoomSuppressRef = useRef(false);
+  const previousZoomRef = useRef(deckZoomLive);
+  useEffect(() => {
+    // 마운트는 밀도 전환이 아니다 — 여기서 억제를 걸면 덱에 처음 들어와 칸에 커서를 얹는 평범한
+    // 진입까지 확대가 열리지 않는다. 실제로 값이 움직인 전환에만 반응한다.
+    if (previousZoomRef.current === deckZoomLive) return;
+    previousZoomRef.current = deckZoomLive;
+    zoomSuppressRef.current = true;
+    dismissQuicklook();
+  }, [deckZoomLive]);
+
   // 열린 지도 확대창의 좌표는 발동 시점 스냅샷이다 — 판이 리사이즈되면(사이드바 토글·창 변경)
   // 점은 %로 재배치되는데 확대창만 옛 px에 남으므로, 재계산 대신 해제해 유령 창을 만들지 않는다.
   useEffect(() => {
@@ -847,6 +864,9 @@ export function TriageWatchDeck({
       if (!cell || cellOf(event.relatedTarget) === cell) return;
       const operationId = cell.dataset.triageDeckCard;
       if (!operationId || deckPointerRef.current.arriving === operationId) return;
+      // 밀도를 막 바꾼 직후의 진입은 포인터가 아니라 판이 움직여 생긴 것이다 — 겨눔은 다음
+      // pointermove가 증명한다.
+      if (zoomSuppressRef.current) return;
       deckPointerRef.current.arm(operationId, cell, true);
     };
     // 확대를 붙들 자격 — 포인터가 그 칸 안에 있거나, 키보드 포커스가 그 칸을 잡고 있어야 한다.
@@ -873,8 +893,18 @@ export function TriageWatchDeck({
     // out은 도착지(relatedTarget)가, move는 현재 지점(target)이 자격을 답한다.
     const onPointerOut = (event: PointerEvent) => { releaseUnless(event.relatedTarget); };
     // 덱을 떠나지 않은 채 칸만 포인터 밑에서 빠져나간 경우는 out이 오지 않는다 — 다음 이동에서
-    // 현재 지점을 다시 물어 확대의 주인을 확인한다.
-    const onPointerMove = (event: PointerEvent) => { releaseUnless(event.target); };
+    // 현재 지점을 다시 물어 확대의 주인을 확인한다. 밀도 전환으로 무장을 막아 둔 동안에는, 이
+    // 이동이 곧 "사용자가 이 칸을 겨눴다"는 증명이므로 여기서 무장을 되살린다(같은 칸에 머무르면
+    // pointerover는 다시 오지 않아 확대가 영영 열리지 않는다).
+    const onPointerMove = (event: PointerEvent) => {
+      releaseUnless(event.target);
+      if (!zoomSuppressRef.current || event.pointerType === "touch") return;
+      zoomSuppressRef.current = false;
+      const cell = cellOf(event.target);
+      const operationId = cell?.dataset.triageDeckCard;
+      if (!cell || !operationId || deckPointerRef.current.arriving === operationId) return;
+      deckPointerRef.current.arm(operationId, cell, true);
+    };
     const onContextMenu = (event: MouseEvent) => {
       const cell = cellOf(event.target);
       const operationId = cell?.dataset.triageDeckCard;

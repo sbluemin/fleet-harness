@@ -21,7 +21,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
-import { resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
+import { resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoomLive } from "../core/client/src/canvas/triage-store.js";
 import { TRIAGE_DECK_QUICKLOOK_DWELL_MS } from "../core/client/src/canvas/triage-watch-deck.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
@@ -209,6 +209,42 @@ describe("War Room deck Quick-Look release", () => {
       act(() => grid.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
       expect(expanded()).toEqual([OPERATION.id]);
     });
+  });
+
+  // 덱 줌은 덱 위에서만 발화하므로, 밀도를 바꾸는 내내 포인터는 어떤 칸 위에 있다. 확대를 그대로
+  // 두면 그 칸이 1.95배로 이웃을 덮은 채 밀도가 바뀌어, 사용자가 방금 조절한 판을 읽을 수 없다.
+  it("releases the expansion when the deck density changes", () => {
+    enterDeck();
+    hover(cellFor(OPERATION.id));
+    expect(expanded()).toEqual([OPERATION.id]);
+
+    act(() => setTriageDeckZoomLive(0.6));
+    expect(expanded()).toEqual([]);
+  });
+
+  it("does not re-arm on the entry the density change itself produced", () => {
+    enterDeck();
+    const cell = cellFor(OPERATION.id);
+    act(() => setTriageDeckZoomLive(0.6));
+
+    // 재배치되며 커서 밑으로 들어온 칸은 사용자가 겨눈 칸이 아니다 — 브라우저는 포인터가 멈춰
+    // 있어도 그 진입을 boundary 이벤트로 보고하므로, 그것만으로 확대를 열면 밀도를 바꿀 때마다
+    // 아무 칸이나 커진다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded()).toEqual([]);
+  });
+
+  it("re-arms once the pointer actually moves after a density change", () => {
+    enterDeck();
+    const cell = cellFor(OPERATION.id);
+    act(() => setTriageDeckZoomLive(0.6));
+
+    // 이동이 곧 겨눔의 증명이다. 같은 칸에 머무르면 pointerover는 다시 오지 않으므로, 되살리는
+    // 책임은 이동 쪽에 있어야 확대가 영영 닫히는 일이 없다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded()).toEqual([OPERATION.id]);
   });
 
   it("cancels an armed dwell that never became an expansion", () => {
