@@ -110,7 +110,7 @@ describe("Session Analyst readiness handle", () => {
 
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
     expect(getAnalysisStore(OPERATION_ID, api)).toBe(store);
-    expect(store.getSnapshot().entries).toEqual([
+    expect(store.getSnapshot().entries).toMatchObject([
       { role: "user", text: "Remember this conversation" },
       { role: "analyst", text: "Retained answer" },
     ]);

@@ -55,8 +55,8 @@ describe("Session Analyst Artifacts chip", () => {
     expect(chip.getAttribute("aria-pressed")).toBe("false");
     expect(chip.getAttribute("aria-disabled")).toBe("true");
     expect(chip.tabIndex).toBe(-1);
-    expect(chip.querySelector(".session-analyst-handle__chev")?.textContent).toBe("»");
-    expect(chip.querySelector(".session-analyst-handle__count")).toBeNull();
+    expect(chip.querySelector(".session-analyst__chip-chev")?.textContent).toBe("»");
+    expect(chip.querySelector(".session-analyst__chip-count")).toBeNull();
     expect(setVisible).not.toHaveBeenCalled();
     supported.unmount();
   });
@@ -72,7 +72,7 @@ describe("Session Analyst Artifacts chip", () => {
     mounted.render(contextWithVisibility([], setVisible));
     const visibleChip = mounted.container.querySelector<HTMLButtonElement>('[aria-label="Hide Artifacts"]')!;
     expect(visibleChip.getAttribute("aria-pressed")).toBe("true");
-    expect(visibleChip.querySelector(".session-analyst-handle__chev")?.textContent).toBe("«");
+    expect(visibleChip.querySelector(".session-analyst__chip-chev")?.textContent).toBe("«");
     act(() => visibleChip.click());
     expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, false);
     expect(storeState.artifactsAutoOpenArmed).toBe(false);
@@ -82,7 +82,7 @@ describe("Session Analyst Artifacts chip", () => {
     storeState = withArtifacts(2);
     mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
     expect(setVisible).not.toHaveBeenCalled();
-    const count = mounted.container.querySelector(".session-analyst-handle__count")!;
+    const count = mounted.container.querySelector(".session-analyst__chip-count")!;
     expect(count.textContent).toBe("2");
     expect(count.classList.contains("is-pulsing")).toBe(true);
     mounted.unmount();
@@ -100,7 +100,7 @@ describe("Session Analyst Artifacts chip", () => {
     setVisible.mockClear();
     const returned = mountPanel(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
     expect(setVisible).not.toHaveBeenCalled();
-    expect(returned.container.querySelector(".session-analyst-handle__count")?.textContent).toBe("1");
+    expect(returned.container.querySelector(".session-analyst__chip-count")?.textContent).toBe("1");
     returned.unmount();
   });
 

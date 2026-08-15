@@ -16,7 +16,7 @@ describe("Session Analyst contract", () => {
     const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
     expect(chat).toContain("terminal.analyst.suggestion.walkthrough");
     expect(messages).toContain('"Walk me through how this session unfolded"');
-    expect(messages).toContain('"Read-only intelligence for this operation"');
+    expect(messages).toContain('"Answered in {elapsed}"');
     expect(messages).toContain('"Review, explain, and summarize this session — without affecting the host agent."');
     expect(chat).not.toContain("host agent&apos;s transcript");
     expect(chat).toContain("terminal.analyst.activity.starting");
@@ -44,7 +44,10 @@ describe("Session Analyst contract", () => {
     expect(css).toContain(".session-analyst__chat > ol {");
     expect(css).not.toMatch(/\.session-analyst__chat ol\s*\{/);
     expect(css).not.toContain(".session-analyst__chat ol.is-dimmed");
-    expect(css).toContain("var(--surface-glass-strong)");
+    // 면 계약 — 드로어는 companion 프레임의 창 면을 그대로 잇는다. pillar로 되돌아가면 안 된다.
+    expect(css).toContain("var(--surface-window, var(--surface-panel))");
+    expect(css).not.toContain("var(--surface-pillar)");
+    expect(css).toContain("var(--surface-panel-raised)");
     expect(css).not.toContain("background: color-mix(in oklch, var(--ink-mid) 60%, black)");
     expect(css).not.toContain(".session-analyst__chat-pane textarea:focus-visible");
     expect(css).not.toContain(".session-analyst__chat-pane select:focus-visible");

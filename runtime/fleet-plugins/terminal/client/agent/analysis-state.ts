@@ -3,7 +3,7 @@ import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent, AnalysisSelectio
 // Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
 export const MAX_ANALYSIS_ARTIFACTS = 32;
 
-export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; }
+export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; readonly at?: number; }
 export type AnalysisPhase = "idle" | "starting" | "reasoning" | "tool" | "writing" | "complete" | "stopped" | "error";
 export type AnalysisActivity =
   | { readonly kind: "starting"; readonly connected: boolean }
@@ -116,7 +116,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     tools: [],
     artifactAuthoring: null,
     artifactPublished: null,
-    entries: [...state.entries, { role: "user", text: action.text }],
+    entries: [...state.entries, { role: "user", text: action.text, at: action.now }],
   };
   if (action.type === "error") return endWithError(state, action.message, action.now);
   if (action.type === "session-lost") return { ...endWithError(state, "Analysis session ended — send again to restart.", action.now), started: false };
@@ -142,7 +142,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (event.type === "connected") {
     return state.phase === "starting" ? { ...state, latestActivity: { kind: "starting", connected: true } } : state;
   }
-  if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text) };
+  if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text, action.now) };
   // Thought content is deliberately neither stored nor rendered; only the observed event advances the phase.
   if (event.type === "thought") return { ...state, phase: "reasoning", latestActivity: { kind: "reasoning" } };
   if (event.type === "tool") {
@@ -207,7 +207,7 @@ function endWithError(state: AnalysisState, message: string, now: number): Analy
   return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message };
 }
 
-function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string): readonly AnalysisEntry[] {
+function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string, now: number): readonly AnalysisEntry[] {
   const last = entries.at(-1);
-  return last?.role === "analyst" ? [...entries.slice(0, -1), { role: "analyst", text: last.text + text }] : [...entries, { role: "analyst", text }];
+  return last?.role === "analyst" ? [...entries.slice(0, -1), { ...last, text: last.text + text }] : [...entries, { role: "analyst", text, at: now }];
 }
