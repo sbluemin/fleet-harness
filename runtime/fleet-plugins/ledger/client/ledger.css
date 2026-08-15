@@ -418,6 +418,18 @@
   color: var(--provider-cursor);
 }
 
+.ledger-operation--opencode .ledger-operation-mark {
+  color: var(--provider-opencode);
+}
+
+.ledger-operation--xai .ledger-operation-mark {
+  color: var(--provider-xai);
+}
+
+.ledger-operation--claude-gateway .ledger-operation-mark {
+  color: var(--provider-claude);
+}
+
 .ledger-operation-copy {
   min-width: 0;
   padding-left: var(--space-3);
@@ -651,6 +663,48 @@
 .ledger-client-row--cursor .ledger-client-mark {
   color: var(--provider-cursor);
 }
+
+.ledger-client-row--opencode .ledger-client-mark {
+  color: var(--provider-opencode);
+}
+
+.ledger-client-row--xai .ledger-client-mark {
+  color: var(--provider-xai);
+}
+
+.ledger-models-heading {
+  margin-top: var(--space-4);
+}
+
+.ledger-detail-models {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ledger-detail-model {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr);
+  gap: var(--space-2);
+  align-items: center;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+/* 목록 행 마크는 카드 안쪽 여백을 margin-left로 잡는다. 상세 그리드는 이미 16px 칸을
+   주므로 그 여백을 물려받으면 글리프가 이름 위로 밀린다. */
+.ledger-detail-model .ledger-operation-mark {
+  margin-left: 0;
+}
+
+.ledger-detail-model--claude .ledger-operation-mark { color: var(--provider-claude); }
+.ledger-detail-model--cursor .ledger-operation-mark { color: var(--provider-cursor); }
+.ledger-detail-model--codex .ledger-operation-mark { color: var(--provider-codex); }
+.ledger-detail-model--kimi .ledger-operation-mark { color: var(--provider-kimi); }
+.ledger-detail-model--opencode .ledger-operation-mark { color: var(--provider-opencode); }
+.ledger-detail-model--xai .ledger-operation-mark { color: var(--provider-xai); }
 
 .ledger-source p,
 .ledger-state p,

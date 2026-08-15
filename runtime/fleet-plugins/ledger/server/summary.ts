@@ -1,7 +1,19 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
 
-import { TOKSCALE_VERSION } from "./cli.js";
-import type { LedgerClientDto, LedgerDailyPoint, LedgerOperationDto, LedgerSourceStatus, LedgerSummaryDto, LedgerUsage, LedgerWindow, TokscaleSession } from "./types.js";
+import { normalizeModelKey, parseModelIdentity, readLaunchProvider, type LedgerLaunchProvider } from "./identity.js";
+import type {
+  LedgerClientDto,
+  LedgerDailyPoint,
+  LedgerModelRowDto,
+  LedgerOperationDto,
+  LedgerSourceStatus,
+  LedgerSummaryDto,
+  LedgerSupplierDto,
+  LedgerUsage,
+  LedgerWindow,
+  TokscaleModelEntry,
+  TokscaleSession,
+} from "./types.js";
 
 interface OperationClaim {
   readonly operation: OperationNode;
@@ -9,7 +21,20 @@ interface OperationClaim {
   readonly provider: "claude" | "codex";
   readonly cliId: string;
   readonly cliLabel: string;
+  readonly launchProvider: LedgerLaunchProvider | null;
 }
+
+export interface ModelBreakdown {
+  readonly entries: readonly TokscaleModelEntry[];
+  readonly status: LedgerSourceStatus;
+  readonly skippedEntries: number;
+}
+
+export const EMPTY_MODEL_BREAKDOWN: ModelBreakdown = {
+  entries: [],
+  status: "ok",
+  skippedEntries: 0,
+};
 
 interface Accumulator {
   input: number;
@@ -111,6 +136,7 @@ function readClaim(operation: OperationNode): OperationClaim | null {
     provider: candidate.provider,
     cliId: stringField(operation.payload, "cliId"),
     cliLabel: stringField(operation.payload, "cliLabel"),
+    launchProvider: readLaunchProvider(operation.payload),
   };
 }
 
@@ -126,6 +152,18 @@ export function nativeSessionId(session: TokscaleSession): string | null {
   return match?.[1]?.toLowerCase() ?? null;
 }
 
+function emptyModelFields(status: LedgerSourceStatus = "ok", skippedEntries = 0): Pick<
+  LedgerSummaryDto,
+  "suppliers" | "modelRows" | "modelTotals" | "modelSource"
+> {
+  return {
+    suppliers: [],
+    modelRows: [],
+    modelTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, models: 0 },
+    modelSource: { status, skippedEntries },
+  };
+}
+
 export function buildSummary(
   sessions: readonly TokscaleSession[],
   operations: readonly OperationNode[],
@@ -133,9 +171,10 @@ export function buildSummary(
   status: LedgerSourceStatus = "ok",
   generatedAtMs = Date.now(),
   skippedSessions = 0,
+  modelBreakdown: ModelBreakdown = EMPTY_MODEL_BREAKDOWN,
 ): LedgerSummaryDto {
   try {
-    return buildSummaryUnchecked(sessions, operations, scope, status, generatedAtMs, skippedSessions);
+    return buildSummaryUnchecked(sessions, operations, scope, status, generatedAtMs, skippedSessions, modelBreakdown);
   } catch (error) {
     if (!(error instanceof AggregateOverflowError)) throw error;
     return {
@@ -149,6 +188,7 @@ export function buildSummary(
       otherTheaterTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
       deviceTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 },
       clients: [],
+      ...emptyModelFields("unreadable", modelBreakdown.skippedEntries + modelBreakdown.entries.length),
       daily: [],
       dailyAttributed: [],
       source: {
@@ -166,6 +206,7 @@ function buildSummaryUnchecked(
   status: LedgerSourceStatus,
   generatedAtMs: number,
   skippedSessions: number,
+  modelBreakdown: ModelBreakdown,
 ): LedgerSummaryDto {
   const operationClaims = operations
     .map(readClaim)
@@ -211,6 +252,7 @@ function buildSummaryUnchecked(
         title: claim.operation.title,
         cliId: claim.cliId,
         cliLabel: claim.cliLabel,
+        launchProvider: claim.launchProvider,
         client: claimed[0]?.client ?? claim.provider,
         messages: totals.messages,
         usage: usageOf(totals),
@@ -232,6 +274,7 @@ function buildSummaryUnchecked(
       title: claim.operation.title,
       cliId: claim.cliId,
       cliLabel: claim.cliLabel,
+      launchProvider: claim.launchProvider,
       lastActivityAtMs: claim.operation.ts.updatedAt,
     }));
   const unmatched = unmatchedAll.slice(0, MAX_UNMATCHED);
@@ -287,8 +330,90 @@ function buildSummaryUnchecked(
     otherTheaterTotals: { ...usageOf(otherTheaterValues), costUsd: otherTheaterValues.costUsd, messages: otherTheaterValues.messages },
     deviceTotals: { ...usageOf(deviceValues), costUsd: deviceValues.costUsd, messages: deviceValues.messages, sessions: deviceSessions },
     clients,
+    ...buildModelFields(modelBreakdown),
     daily,
     dailyAttributed,
     source: { status, skippedSessions },
   };
+}
+
+/** 모델 행 직렬화 상한 — 전체 수는 modelTotals.models가 별도로 싣는다. */
+const MAX_MODEL_ROWS = 80;
+
+function buildModelFields(modelBreakdown: ModelBreakdown): Pick<
+  LedgerSummaryDto,
+  "suppliers" | "modelRows" | "modelTotals" | "modelSource"
+> {
+  if (modelBreakdown.status === "unavailable" || modelBreakdown.status === "unreadable" || modelBreakdown.status === "bootstrapping") {
+    return emptyModelFields(modelBreakdown.status, modelBreakdown.skippedEntries);
+  }
+  try {
+    return buildModelFieldsUnchecked(modelBreakdown);
+  } catch (error) {
+    if (!(error instanceof AggregateOverflowError)) throw error;
+    return emptyModelFields("unreadable", modelBreakdown.skippedEntries + modelBreakdown.entries.length);
+  }
+}
+
+function buildModelFieldsUnchecked(modelBreakdown: ModelBreakdown): Pick<
+  LedgerSummaryDto,
+  "suppliers" | "modelRows" | "modelTotals" | "modelSource"
+> {
+  const modelMap = new Map<string, { identity: ReturnType<typeof parseModelIdentity>; totals: Accumulator }>();
+  const supplierMap = new Map<string, { models: Set<string>; totals: Accumulator }>();
+  const grand = emptyAccumulator();
+  for (const entry of modelBreakdown.entries) {
+    const identity = parseModelIdentity(entry.modelId);
+    const key = `${identity.supplier}:${normalizeModelKey(entry.modelId)}`;
+    const model = modelMap.get(key) ?? { identity, totals: emptyAccumulator() };
+    addModelEntry(model.totals, entry);
+    modelMap.set(key, model);
+    const supplier = supplierMap.get(identity.supplier) ?? { models: new Set<string>(), totals: emptyAccumulator() };
+    supplier.models.add(key);
+    addModelEntry(supplier.totals, entry);
+    supplierMap.set(identity.supplier, supplier);
+    addModelEntry(grand, entry);
+  }
+  const modelRows: LedgerModelRowDto[] = [...modelMap.values()]
+    .map(({ identity, totals }) => ({
+      modelId: identity.modelId,
+      label: identity.label,
+      supplier: identity.supplier,
+      usage: usageOf(totals),
+      costUsd: totals.costUsd,
+      messages: totals.messages,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd || b.messages - a.messages || (a.label < b.label ? -1 : 1))
+    .slice(0, MAX_MODEL_ROWS);
+  const suppliers: LedgerSupplierDto[] = [...supplierMap.entries()]
+    .map(([supplier, value]) => ({
+      supplier,
+      models: value.models.size,
+      usage: usageOf(value.totals),
+      costUsd: value.totals.costUsd,
+      messages: value.totals.messages,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd || (a.supplier < b.supplier ? -1 : 1));
+  return {
+    suppliers,
+    modelRows,
+    modelTotals: {
+      ...usageOf(grand),
+      costUsd: grand.costUsd,
+      messages: grand.messages,
+      models: modelMap.size,
+    },
+    modelSource: {
+      status: modelBreakdown.status,
+      skippedEntries: modelBreakdown.skippedEntries,
+    },
+  };
+}
+
+function addModelEntry(target: Accumulator, entry: TokscaleModelEntry): void {
+  target.input = addFinite(target.input, entry.input);
+  target.output = addFinite(target.output, entry.output);
+  target.cacheRead = addFinite(target.cacheRead, entry.cacheRead);
+  target.costUsd = addFinite(target.costUsd, entry.costUsd);
+  target.messages = addFinite(target.messages, entry.messages);
 }
