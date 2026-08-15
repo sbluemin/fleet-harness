@@ -565,8 +565,9 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     if (patches.length === 0) return;
     // 일부 PATCH가 실패해도 항상 서버 실제 순서로 재동기화한다 — Promise.all은 첫 실패에서 reject되어
     // refetch를 건너뛰므로, 성공/실패가 섞이면 낙관적 순서가 서버와 어긋난 채 UI에 남는다.
+    // allSettled 자체는 절대 reject하지 않으므로, 거절이 하나라도 있으면 여기서 던져 Try again을 연다.
     runMutation(
-      () => Promise.allSettled(patches).then(refreshGroups),
+      () => settleReorderPatches(patches).then(refreshGroups),
       refreshGroups,
     );
   }, [refreshGroups, runMutation]);
@@ -580,7 +581,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     });
     if (patches.length === 0) return;
     runMutation(
-      () => Promise.allSettled(patches).then(refreshTheaters),
+      () => settleReorderPatches(patches).then(refreshTheaters),
       refreshTheaters,
     );
   }, [refreshTheaters, runMutation]);
@@ -829,6 +830,12 @@ async function routeOperationFocus(operationId: string, operationKinds: readonly
   }
   focusMap();
   requestOperationKeyboardFocus(operationId);
+}
+
+function settleReorderPatches(patches: readonly Promise<unknown>[]): Promise<void> {
+  return Promise.allSettled(patches).then((results) => {
+    if (results.some((result) => result.status === "rejected")) throw new Error("reorder_partial_failure");
+  });
 }
 
 // 거절 에러에 붙어 온 "줄여야 할 글자 수". 플러그인의 에러 클래스를 import하면 core가 플러그인

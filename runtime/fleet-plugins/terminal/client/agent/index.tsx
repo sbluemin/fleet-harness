@@ -34,7 +34,7 @@ import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
 import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings, CompactCeiling } from "./settings.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
-import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
+import { applySessionUpdate, getAgentState, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
 
 interface SettingToggleRowProps {
@@ -159,9 +159,10 @@ export const agentPlugin = definePlugin({
     }
   },
   resumeOperation: async (operationId) => {
-    // 팔레트 등 프레임 밖 resume 진입점. 실패 알림은 프레임 내 카드가 못 잡는 경로이므로 여기서도 emit한다.
+    // 팔레트·사이드바 등 프레임 밖 resume 진입점. 패널의 Start fresh 판정과 같은 근거를 쓴다 —
+    // 재개 마커가 없으면 서버가 409 resume_unavailable 로 거절하므로 fresh 로 보낸다.
     try {
-      await resumeSession(operationId);
+      await resumeSession(operationId, { fresh: await shouldResumeFresh(operationId) });
       installedNotifications?.dismiss(operationId);
     } catch (error) {
       installedNotifications?.emit({
@@ -1800,6 +1801,24 @@ function AgentCliRow({
 async function resumeSession(sessionId: string, options?: { readonly fresh?: boolean }): Promise<void> {
   applySessionUpdate(await resumeAgentSession(sessionId, options));
   selectSession(sessionId);
+}
+
+// 패널 DormantOperationView 의 freshOnly(!session.resumeAvailable) 와 같은 판정.
+// 세션 스냅샷이 아직 없으면 호스트 DTO 의 파생 마커를 읽는다. 조회가 실패하면
+// fresh 를 추측하지 않는다 — 재개 가능한 Claude 세션을 지울 수 있다.
+async function shouldResumeFresh(operationId: string): Promise<boolean> {
+  const session = getAgentState().sessions[operationId];
+  if (session) return !session.resumeAvailable;
+  try {
+    const response = await fetch(`/api/v1/operations/${encodeURIComponent(operationId)}`);
+    if (!response.ok) return false;
+    const payload = await response.json() as {
+      readonly operation?: { readonly payload?: { readonly resumeAvailable?: unknown } };
+    };
+    return payload.operation?.payload?.resumeAvailable !== true;
+  } catch {
+    return false;
+  }
 }
 
 // dormant 프레임의 resume 상태기계. 실패는 프레임 내 에러 카드(Try again / Start fresh)와
