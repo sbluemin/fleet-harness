@@ -28,6 +28,8 @@ export class FolderBrowserError extends Error {
 }
 
 const DIRECTORY_ENTRY_CAP = 500;
+/** 심링크 분류 동시성 — 직렬 realpath/stat가 큰 폴더 펼침을 막지 않게 한다. */
+const CLASSIFY_CONCURRENCY = 16;
 
 /** 버전 관리 날것 디렉터리 — 목록·필터·검색에서 항상 제외하고, 제외 사실은 hiddenVcsInternals로 알린다. */
 export const VCS_INTERNAL_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg"]);
@@ -102,29 +104,103 @@ async function collectContentsEntries(
 ): Promise<boolean> {
   const directory = await openDirectory(targetPath, opendir);
   try {
+    const pending: fs.Dirent[] = [];
+    let truncated = false;
+
+    const accept = (entry: FolderEntry | VcsInternalMarker | null): boolean => {
+      if (entry === null) return false;
+      if ("vcsInternal" in entry) {
+        hiddenVcs.push(entry.vcsInternal);
+        return false;
+      }
+      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
+      entries.push(entry);
+      return false;
+    };
+
+    const flushPending = async (): Promise<boolean> => {
+      while (pending.length > 0) {
+        if (entries.length >= DIRECTORY_ENTRY_CAP) {
+          pending.length = 0;
+          return true;
+        }
+        const remaining = DIRECTORY_ENTRY_CAP - entries.length;
+        const batch = pending.splice(0, Math.min(CLASSIFY_CONCURRENCY, remaining));
+        const classified = await Promise.all(
+          batch.map((item) => toContentsEntry(targetPath, theaterPath, item, stat)),
+        );
+        let overflowed = false;
+        for (const entry of classified) {
+          if (overflowed) {
+            if (entry && "vcsInternal" in entry) hiddenVcs.push(entry.vcsInternal);
+            continue;
+          }
+          if (accept(entry)) overflowed = true;
+        }
+        if (overflowed) {
+          pending.length = 0;
+          return true;
+        }
+      }
+      return false;
+    };
+
+    // 상한 이후에는 이름만 보고 VCS 날것을 기록한다. 심링크 실해석은 하지 않고,
+    // 표시에서 빠진 일반 항목을 하나라도 보면 즉시 멈춘다.
+    const finishCheapTail = async (first: fs.Dirent | null): Promise<boolean> => {
+      pending.length = 0;
+      let current = first;
+      let omitted = false;
+      while (current !== null) {
+        if (VCS_INTERNAL_NAMES.has(current.name)) hiddenVcs.push(current.name);
+        else {
+          omitted = true;
+          break;
+        }
+        current = await directory.read();
+      }
+      return omitted;
+    };
+
     let dirent = await directory.read();
     while (dirent !== null) {
-      // 분류(이름 + 심링크 실해석)가 cap 판정보다 먼저다 — 상한은 "표시 가능한" 항목만 센다.
       if (VCS_INTERNAL_NAMES.has(dirent.name)) {
         hiddenVcs.push(dirent.name);
         dirent = await directory.read();
         continue;
       }
-      const entry = await toContentsEntry(targetPath, theaterPath, dirent, stat);
-      if (entry === null) {
-        dirent = await directory.read();
-        continue;
+      if (entries.length >= DIRECTORY_ENTRY_CAP) {
+        truncated = await finishCheapTail(dirent);
+        dirent = null;
+        break;
       }
-      if ("vcsInternal" in entry) {
-        hiddenVcs.push(entry.vcsInternal);
-        dirent = await directory.read();
-        continue;
+      if (dirent.isDirectory() || dirent.isFile()) {
+        if (pending.length > 0 && await flushPending()) {
+          truncated = true;
+          await finishCheapTail(dirent);
+          dirent = null;
+          break;
+        }
+        const rel = path.relative(theaterPath, path.join(targetPath, dirent.name));
+        if (accept({ name: dirent.name, relativePath: rel, kind: dirent.isDirectory() ? "dir" : "file" })) {
+          truncated = true;
+          await finishCheapTail(await directory.read());
+          dirent = null;
+          break;
+        }
+      } else {
+        pending.push(dirent);
+        if (pending.length >= CLASSIFY_CONCURRENCY && await flushPending()) {
+          truncated = true;
+          await finishCheapTail(await directory.read());
+          dirent = null;
+          break;
+        }
       }
-      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
-      entries.push(entry);
       dirent = await directory.read();
     }
-    return false;
+    if (!truncated && await flushPending()) truncated = true;
+    return truncated;
   } catch (error) {
     throw mapFolderBrowserFsError(error);
   } finally {
@@ -579,7 +655,8 @@ export async function handleFilesList(
 
   try {
     const result = await listTheaterContents(theaterPath, relPath);
-    await watcherRegistry.trackDirectory(rawTheaterId, theaterPath, relPath);
+    // 감시 등록은 응답을 막지 않는다. Linux 첫 펼침의 중복 realpath/stat를 목록 지연에서 뺀다.
+    void watcherRegistry.trackDirectory(rawTheaterId, theaterPath, relPath).catch(() => {});
     ctx.host.http.writeJson(res, 200, result);
   } catch (error) {
     if (error instanceof FolderBrowserError) {

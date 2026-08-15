@@ -144,6 +144,25 @@ export function isCurrentContextRequest(requestContextKey: string, currentContex
   return requestContextKey === currentContextKey;
 }
 
+export type FolderExpandFetch = "none" | "foreground" | "background";
+
+export interface FolderExpandPlan {
+  readonly nextExpanded: boolean;
+  readonly fetch: FolderExpandFetch;
+}
+
+/** 접힘→펼침은 캐시가 있으면 즉시 그리고, 진행 중 요청은 합류한다. */
+export function planFolderExpand(
+  isCurrentlyExpanded: boolean,
+  hasCachedResult: boolean,
+  isInFlight: boolean,
+): FolderExpandPlan {
+  if (isCurrentlyExpanded) return { nextExpanded: false, fetch: "none" };
+  if (isInFlight) return { nextExpanded: true, fetch: "none" };
+  if (hasCachedResult) return { nextExpanded: true, fetch: "background" };
+  return { nextExpanded: true, fetch: "foreground" };
+}
+
 // 탭 복귀 시 git 배지를 다시 읽을지 판정한다 — 외부 터미널의 add/commit 같은
 // git 메타데이터 전용 변경은 fs.watch가 감지하지 못하므로 focus 복귀가 갱신 기회다.
 export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boolean {
@@ -367,6 +386,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   contextKeyRef.current = contextKey;
   const childResultsRef = useRef<Map<string, FolderListResult>>(childResults);
   childResultsRef.current = childResults;
+  const inFlightFoldersRef = useRef(new Map<string, Promise<void>>());
   const filterRequestRef = useRef(0);
   const isFiltering = Boolean(filterText);
 
@@ -399,6 +419,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setCurrentPath("");
     setExpandedDirs(new Set());
     setChildResults(new Map());
+    inFlightFoldersRef.current.clear();
     setFilterText("");
     setFilterCollapsedDirs(new Set());
     setScrollTop(0);
@@ -607,28 +628,44 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const handleDirClick = useCallback((entry: FolderEntry) => {
     const relPath = entry.relativePath;
-    // 현재 펼침 상태를 읽어 펼치는 동작인지 판단
-    const isExpanding = !expandedDirs.has(relPath);
+    const plan = planFolderExpand(
+      expandedDirsRef.current.has(relPath),
+      childResultsRef.current.has(relPath),
+      inFlightFoldersRef.current.has(relPath),
+    );
     setExpandedDirs((prev) => {
       const next = new Set(prev);
-      if (next.has(relPath)) { next.delete(relPath); return next; }
-      next.add(relPath);
+      if (plan.nextExpanded) next.add(relPath);
+      else next.delete(relPath);
+      expandedDirsRef.current = next;
       return next;
     });
-    // 폴더를 펼 때마다 항상 서버에서 재조회 (영구 캐시 제거)
-    if (isExpanding) {
-      const requestContextKey = contextKey;
-      setLoadingDirs((prev) => new Set(prev).add(relPath));
-      files.listFolder(relPath).then((r) => {
-        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-        setChildResults((prev) => new Map(prev).set(relPath, r));
-        setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
-      }).catch(() => {
-        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-        setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
+    if (plan.fetch === "none") return;
+    const requestContextKey = contextKey;
+    const showSpinner = plan.fetch === "foreground";
+    if (showSpinner) setLoadingDirs((prev) => new Set(prev).add(relPath));
+    const request = files.listFolder(relPath).then((r) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setChildResults((prev) => new Map(prev).set(relPath, r));
+    }).catch(() => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      // 캐시가 없는 첫 펼침 실패는 빈 폴더로 남기지 않고 접는다.
+      if (childResultsRef.current.has(relPath)) return;
+      setExpandedDirs((prev) => {
+        if (!prev.has(relPath)) return prev;
+        const next = new Set(prev);
+        next.delete(relPath);
+        expandedDirsRef.current = next;
+        return next;
       });
-    }
-  }, [contextKey, files, expandedDirs]);
+    }).finally(() => {
+      inFlightFoldersRef.current.delete(relPath);
+      if (!showSpinner) return;
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setLoadingDirs((prev) => { const s = new Set(prev); s.delete(relPath); return s; });
+    });
+    inFlightFoldersRef.current.set(relPath, request);
+  }, [contextKey, files]);
 
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     setScrollTop((e.currentTarget as HTMLDivElement).scrollTop);

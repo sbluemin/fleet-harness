@@ -330,7 +330,15 @@ describe("createWatcherRegistry", () => {
     try {
       const unsub = registry.subscribe("t1", tempRoot, onChange, () => {});
       await registry.trackDirectory("t1", tempRoot, "src");
+      vi.advanceTimersByTime(100);
+      // 첫 등록은 스냅샷–감시 공백을 메우려고 한 번 알린다.
+      expect(onChange).toHaveBeenCalledOnce();
+      expect(onChange).toHaveBeenCalledWith("src");
+      onChange.mockClear();
+
       await registry.trackDirectory("t1", tempRoot, "src");
+      vi.advanceTimersByTime(100);
+      expect(onChange).not.toHaveBeenCalled();
 
       expect(mockFactory).toHaveBeenCalledTimes(2);
       expect(mockFactory).toHaveBeenLastCalledWith(

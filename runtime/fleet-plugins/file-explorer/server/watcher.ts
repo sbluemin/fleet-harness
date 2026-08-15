@@ -309,6 +309,9 @@ export function createWatcherRegistry(
     try {
       startWatcher(theaterId, entry, relativePath, target.path, target.identity);
       entry.pendingDirectories.delete(relativePath);
+      // 목록 응답은 등록을 기다리지 않으므로, 스냅샷과 watcher 사이 공백을
+      // 등록 직후 한 번 더 알려 클라이언트가 다시 읽게 한다.
+      scheduleChange(entry, relativePath);
     } catch {
       for (const notify of entry.stateSubscribers) notify("degraded");
     }
