@@ -283,6 +283,21 @@ describe("summarizeToolResult", () => {
     expect(summarizeToolResult("mkdir '/a/b/My Dir/c.txt' failed")).toBe("mkdir '…/My Dir/c.txt' failed");
   });
 
+  // 조각의 첫 글자를 열거하면 비ASCII 경로가 통째로 빠져나간다 — 경로는 경계로 잡는다.
+  it("folds paths whose components are not ASCII", () => {
+    expect(summarizeToolResult("failed /équipe/alice/key.txt")).toBe("failed …/alice/key.txt");
+    expect(summarizeToolResult("failed /사용자/마스터/비밀.txt")).toBe("failed …/마스터/비밀.txt");
+    expect(summarizeToolResult("open C:\\사용자\\alice\\key.txt")).toBe("open …/alice/key.txt");
+  });
+
+  // 경계 규칙이 산문 속 슬래시까지 먹으면 요약이 못 쓰게 된다 — 경로만 잡는다.
+  it("leaves prose slashes, URLs and already-folded paths alone", () => {
+    expect(summarizeToolResult("저장 읽기/쓰기를 옮김")).toBe("저장 읽기/쓰기를 옮김");
+    expect(summarizeToolResult("pass and/or fail")).toBe("pass and/or fail");
+    expect(summarizeToolResult("see https://example.com/a/b/c")).toBe("see https://example.com/a/b/c");
+    expect(summarizeToolResult("already …/b/c.txt")).toBe("already …/b/c.txt");
+  });
+
   it("masks obvious credential shapes", () => {
     expect(summarizeToolResult("token=sk-abcdefghijklmnopqrstuvwxyz")).toBe("token=sk-…");
     expect(summarizeToolResult("ghp_abcdefghijklmnopqrstuvwxyz0123")).toBe("ghp_…");

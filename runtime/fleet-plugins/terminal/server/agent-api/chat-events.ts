@@ -335,8 +335,16 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
  * 식별 정보는 남지 않는다. URL(`scheme://…`)과 이미 정규화된 `./`·`~/`, 그리고 이미 접힌
  * `…/`는 어느 벌에서도 다시 잡지 않는다.
  */
+/**
+ * 맨 경로는 "무엇으로 시작하는가"가 아니라 "어디서 시작하는가"로 잡는다. 조각의 첫 글자를
+ * 열거하면 `/équipe/…`나 `/사용자/…` 같은 비ASCII 경로가 통째로 빠져나가고, 문자 클래스를
+ * 넓히는 싸움은 끝나지 않는다. 대신 경로는 경계에서만 시작할 수 있게 한다 — 문자열 처음,
+ * 공백, 따옴표, 여는 괄호, `=` 뒤. 그러면 URL(`scheme://…`), 이미 접힌 `…/`, 정규화된
+ * `./`·`~/`, 그리고 `읽기/쓰기`·`and/or` 같은 산문 속 슬래시는 어느 것도 경계가 아니라
+ * 저절로 걸러진다.
+ */
 const QUOTED_ABSOLUTE_PATH = /(['"`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^'"`\n]*)\1/g;
-const BARE_ABSOLUTE_PATH = /(?<![\w:~./\\…])(?:[A-Za-z]:[\\/]|\\\\|\/)[A-Za-z0-9._@+~-][^\s'"`,;:()[\]]*/g;
+const BARE_ABSOLUTE_PATH = /(?<![^\s'"`([{=])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'"`,;:()[\]]+/g;
 
 function abbreviateAbsolutePaths(value: string): string {
   return value
