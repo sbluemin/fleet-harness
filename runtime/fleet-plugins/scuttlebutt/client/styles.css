@@ -316,6 +316,11 @@
   animation-duration: 0.22s;
 }
 
+.scuttlebutt-bird.is-alert .scuttlebutt-qk[data-morph="bori"] .scuttlebutt-qk-wing-l,
+.scuttlebutt-bird.is-alert .scuttlebutt-qk[data-morph="bori"] .scuttlebutt-qk-wing-r {
+  animation: none;
+}
+
 .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {
   opacity: 1;
 }

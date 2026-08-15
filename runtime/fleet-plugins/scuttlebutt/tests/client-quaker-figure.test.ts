@@ -96,6 +96,9 @@ describe("Quaker admiral figures", () => {
       /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk:not\(\[data-morph="bori"\]\) \.scuttlebutt-qk-wing-l/,
     );
     expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk\[data-morph="bori"\] \.scuttlebutt-qk-wing-l[\s\S]*?animation: none;/,
+    );
+    expect(styles).toMatch(
       /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk-mark\s*\{\s*opacity: 1;/,
     );
     expect(styles).toMatch(
