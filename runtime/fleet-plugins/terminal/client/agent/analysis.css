@@ -20,10 +20,10 @@
 .session-analyst-handle:focus-visible, .session-analyst__chat-pane button:focus-visible, .session-analyst__artifacts button:focus-visible { outline: 2px solid var(--aurora); outline-offset: 2px; }
 
 /* ── Session Analyst 드로어 — 채팅 뷰와 같은 문법의 companion 본문 ─────────────────
-   바닥은 companion 프레임(.canvas-operation)이 칠하는 --surface-window 한 장을 그대로 잇고,
+   바닥은 companion 프레임(.canvas-operation)과 같은 --surface-panel 한 장을 그대로 잇고,
    얹히는 것(칩·카드·버블·컴포저)만 --surface-panel-raised로 한 칸 물러난다(라이트는 방향이
    반대라 토큰이 진다). 상단 밴드는 없다 — 정체성·상태·아티팩트 진입은 떠 있는 칩이 진다. */
-.session-analyst__chat-pane { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text-primary); overflow: hidden; background: var(--surface-window, var(--surface-panel)); transition: background var(--duration-base) var(--ease-spring); }
+.session-analyst__chat-pane { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text-primary); overflow: hidden; background: var(--surface-panel); }
 
 /* 떠 있는 칩 줄 — 채팅 뷰 전환 칩(agent-chat-mode-chip)과 같은 자리·같은 문법. */
 .session-analyst__chips { position: absolute; z-index: 3; top: var(--space-3); right: var(--space-3); left: var(--space-3); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); pointer-events: none; }
@@ -98,7 +98,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__message--analyst { display: grid; grid-template-columns: 14px minmax(0, 1fr); gap: var(--space-3); animation: analyst-answer-rise var(--duration-base) var(--ease-glide) both; }
 .session-analyst__turn-spine { position: relative; }
 .session-analyst__turn-spine::before { content: ""; position: absolute; left: 5px; top: 22px; bottom: 2px; width: 2px; border-radius: var(--radius-pill); background: var(--hairline); }
-.session-analyst__turn-node { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; border-radius: var(--radius-pill); border: 2px solid var(--positive); /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 창 면을 그대로 따라가야 링으로 읽힌다. */ background: var(--surface-window, var(--surface-panel)); transition: background var(--duration-base) var(--ease-spring); }
+.session-analyst__turn-node { position: absolute; left: 0; top: 4px; width: 12px; height: 12px; border-radius: var(--radius-pill); border: 2px solid var(--positive); /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */ background: var(--surface-panel); }
 .session-analyst__message--analyst.is-working .session-analyst__turn-node { border-color: var(--aurora); animation: analyst-node-pulse 1.6s ease-in-out infinite; }
 .session-analyst__message--analyst.is-working .session-analyst__turn-spine::before { background: color-mix(in oklch, var(--aurora) 40%, var(--hairline)); }
 .session-analyst__message--analyst.is-error .session-analyst__turn-node { border-color: var(--coral); }
@@ -224,7 +224,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ── Artifacts 컴패니언 — 같은 창 면 + 슬림 툴바(72px 밴드 폐기). ── */
-.session-analyst__artifacts { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; color: var(--text-primary); background: var(--surface-window, var(--surface-panel)); transition: background var(--duration-base) var(--ease-spring); }
+.session-analyst__artifacts { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; overflow: hidden; color: var(--text-primary); background: var(--surface-panel); }
 .session-analyst__panel-head--artifacts { position: relative; z-index: 2; display: flex; align-items: center; gap: var(--space-2); min-height: 44px; flex: none; border-bottom: 1px solid var(--hairline); background: transparent; padding: 6px 12px; }
 .session-analyst__panel-mark--artifact { flex: none; color: var(--positive-ink); font-size: 13px; line-height: 1; }
 .session-analyst__panel-copy { display: grid; min-width: 0; gap: 2px; }
