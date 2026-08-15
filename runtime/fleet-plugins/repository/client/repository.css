@@ -1123,10 +1123,21 @@
 .repository-sync-button { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; padding: 4px 7px; border: 1px solid transparent; border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); cursor: pointer; flex: none; font: inherit; font-size: 12px; }
 .repository-sync-button:hover:not(:disabled) { border-color: var(--surface-rim); background: color-mix(in oklch, var(--ink-fog) 9%, transparent); color: var(--text-primary); }
 .repository-sync-button:disabled { cursor: default; opacity: .7; }
-.repository-identity .repository-sync-icon { display: inline-block; min-width: auto; overflow: visible; color: inherit; flex: none; font: inherit; font-size: 13px; line-height: 1; }
+/* 아이콘은 ↻와 ✓를 같은 자리에 겹쳐 두는 13px 슬롯이다 — 글리프를 교체하면 버튼 폭이 흔들려
+   옆의 라벨이 밀린다. 회전은 계속 슬롯 자체에 걸어 두 글리프가 같은 축을 돈다. */
+.repository-identity .repository-sync-icon { position: relative; display: inline-block; width: 13px; height: 13px; min-width: auto; overflow: visible; color: inherit; flex: none; font: inherit; font-size: 13px; line-height: 1; }
+.repository-identity .repository-sync-glyph { position: absolute; inset: 0; display: grid; min-width: auto; overflow: visible; place-items: center; color: inherit; font: inherit; font-size: 13px; line-height: 1; opacity: 0; transform: scale(.72); transition: opacity 150ms ease, transform 190ms cubic-bezier(.2, 1.5, .4, 1); }
+/* ✓는 "가져올 것이 없었다"는 상태이므로 positive 신호 채널을 쓴다 — brass(위치·포커스)를 쓰면 채널이 섞인다. */
+.repository-identity .repository-sync-glyph-settled { color: var(--positive-ink); }
+.repository-sync-icon:not(.is-settled) .repository-sync-glyph-idle,
+.repository-sync-icon.is-settled .repository-sync-glyph-settled { opacity: 1; transform: none; }
 .repository-sync-button.is-syncing .repository-sync-icon { animation: repository-sync-spin 800ms linear infinite; }
 @keyframes repository-sync-spin { to { transform: rotate(360deg); } }
-@media (prefers-reduced-motion: reduce) { .repository-sync-button.is-syncing .repository-sync-icon { animation: none; } }
+@media (prefers-reduced-motion: reduce) {
+  .repository-sync-button.is-syncing .repository-sync-icon { animation: none; }
+  /* 상태 전이 자체는 남기고 전이 연출만 걷는다 — ✓가 아예 뜨지 않으면 결과를 잃는다. */
+  .repository-identity .repository-sync-glyph { transition-duration: 1ms; }
+}
 /* 숨김-마운트 래퍼가 높이 문맥을 끊으면 history-root의 height:100%가 내용 높이로 풀려 내부 스크롤이 죽는다 */
 .repository-source-fill { height: 100%; min-width: 0; min-height: 0; }
 .repository-discovery { display: flex; align-items: center; gap: 8px; flex: none; padding: 6px 10px; border-bottom: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--surface-band) 55%, transparent); }
@@ -1657,6 +1668,52 @@
   margin-left: auto;
 }
 .repository-sync-button { position: relative; }
+/* 말풍선은 버튼 아래로만 열린다 — 레일 패널 body가 overflow:hidden이라 위쪽은 잘리고,
+   버튼 오른쪽 끝이 패널 오른쪽 끝에 붙어 있어 right:0 정렬이 아니면 밖으로 나간다.
+   너비를 max-content로 잡지 않으면 좁은 버튼이 containing block이라 한 마디가 두 줄로 접힌다. */
+.repository-sync-hint {
+  position: absolute;
+  z-index: 3;
+  top: calc(100% + 6px);
+  right: 0;
+  width: max-content;
+  max-width: 220px;
+  min-width: auto;
+  overflow: visible;
+  padding: 4px 7px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--ink-veil);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.4;
+  white-space: normal;
+  text-align: left;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity 160ms ease, transform 160ms ease;
+  pointer-events: none;
+}
+.repository-sync-hint::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  right: 11px;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border-top: 1px solid var(--hairline-strong);
+  border-left: 1px solid var(--hairline-strong);
+  background: var(--ink-veil);
+}
+/* 자동 노출이 물러난 뒤에도 다음 동기화까지 hover·포커스로 같은 한 마디를 다시 열 수 있다. */
+.repository-sync-hint.is-open,
+.repository-sync-button:hover .repository-sync-hint,
+.repository-sync-button:focus-visible .repository-sync-hint { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .repository-sync-hint { transition-duration: 1ms; }
+}
 .repository-sync-dot {
   position: absolute;
   top: -3px;

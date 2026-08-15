@@ -61,6 +61,34 @@ function blockOf(selector: string): string {
   return blocksOf(selector)[0]!;
 }
 
+// prefers-reduced-motion 블록들의 본문만 모은다 — 파일 뒤쪽에 같은 선언이 있으면 통과해 버리는
+// slice(indexOf(...)) 방식은 "미디어 블록 안에 있음"을 증명하지 못한다.
+function reducedMotionBodies(): string {
+  const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
+  const bodies: string[] = [];
+  const prelude = "@media (prefers-reduced-motion: reduce)";
+  let from = 0;
+  for (;;) {
+    const start = stripped.indexOf(prelude, from);
+    if (start === -1) break;
+    const open = stripped.indexOf("{", start);
+    if (open === -1) break;
+    let depth = 0;
+    let index = open;
+    for (; index < stripped.length; index += 1) {
+      if (stripped[index] === "{") depth += 1;
+      else if (stripped[index] === "}") {
+        depth -= 1;
+        if (depth === 0) break;
+      }
+    }
+    bodies.push(stripped.slice(open + 1, index));
+    from = index + 1;
+  }
+  if (bodies.length === 0) throw new Error("Missing prefers-reduced-motion block");
+  return bodies.join("\n");
+}
+
 describe("Repository design grammar", () => {
   it("reserves brass for location while selections use neutral ink", () => {
     expect(blockOf(".repository-ref-row.is-current")).toContain("var(--text-primary)");
@@ -112,6 +140,31 @@ describe("Repository design grammar", () => {
   it("keeps the sync button spin animation reducible and omits the status strip", () => {
     expect(css).not.toContain(".repository-sync-status");
     expect(blocksOf(".repository-sync-button.is-syncing .repository-sync-icon").some((body) => body.includes("animation: none"))).toBe(true);
+  });
+
+  // 2026-08-15 재가 — "이미 최신 상태"는 배너를 쓰지 않는다. 아이콘 슬롯과 말풍선이 그 결과를 진다.
+  it("keeps the up-to-date result on the icon slot and hint, with motion reducible but state intact", () => {
+    // 글리프 교체가 아니라 겹친 슬롯이어야 버튼 폭이 흔들리지 않는다.
+    const iconSlot = blockOf(".repository-identity .repository-sync-icon");
+    expect(iconSlot).toContain("position: relative");
+    expect(iconSlot).toContain("width: 13px");
+    const glyph = blockOf(".repository-identity .repository-sync-glyph");
+    expect(glyph).toContain("position: absolute");
+    expect(glyph).toContain("opacity: 0");
+    // 말풍선은 아래로만, 오른쪽 정렬로, 접히지 않는 너비로 열린다.
+    const hint = blockOf(".repository-sync-hint");
+    expect(hint).toContain("top: calc(100% + 6px)");
+    expect(hint).toContain("right: 0");
+    expect(hint).toContain("width: max-content");
+    expect(hint).toContain("pointer-events: none");
+    // 자동 노출이 끝난 뒤에도 hover·포커스로 다시 열려야 한다.
+    expect(css).toContain(".repository-sync-button:hover .repository-sync-hint");
+    expect(css).toContain(".repository-sync-button:focus-visible .repository-sync-hint");
+    // 동작 줄이기에서는 전이 연출만 걷고 상태는 남긴다 — opacity/transform 규칙을 지우면 안 된다.
+    const reduced = reducedMotionBodies();
+    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }");
+    expect(reduced).toContain(".repository-sync-hint { transition-duration: 1ms; }");
+    expect(glyph).toContain("transition:");
   });
 
   // 2026-08-05 재가 — in-history compare 앵커와 수동 Sync 표면화의 신호 채널 문법.

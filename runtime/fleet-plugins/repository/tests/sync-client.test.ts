@@ -16,6 +16,36 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).toContain("git_failed");
   });
 
+  // 2026-08-15 재가 — 가져온 것이 없는 결과는 배너를 쓰지 않는다. 아이콘 ✓ 체류와 말풍선이 그 결과를 지고,
+  // 갱신·실패만 배너로 남는다. 세 카운트가 0인 분기가 showSyncNotice로 되돌아가면 본문 이동이 부활한다.
+  it("answers an up-to-date manual sync on the button instead of the banner", () => {
+    expect(railPanelSource).toContain("if (newRefs === 0 && updatedRefs === 0 && pruned === 0) showSyncSettled();");
+    expect(railPanelSource).toContain("else showSyncNotice({ kind: \"success\", newRefs, updatedRefs, pruned });");
+    expect(railPanelSource).not.toContain("successClean");
+    expect(railPanelSource).not.toContain("repository.sync.summaryClean");
+  });
+
+  it("clears the previous settled result before the next manual attempt", () => {
+    expect(railPanelSource).toContain("if (isManual) clearSyncSettled();");
+  });
+
+  it("keeps the up-to-date result announced and re-openable", () => {
+    expect(railPanelSource).toContain("className=\"repository-sr-only\" role=\"status\"");
+    expect(railPanelSource).toContain("repository.sync.upToDate");
+    expect(railPanelSource).toContain("syncHintAvailable");
+  });
+
+  it("clears every sync surfacing timer on unmount and on repository transition", () => {
+    for (const timer of ["syncNoticeTimerRef", "syncSettledTimerRef", "syncHintTimerRef"]) {
+      const unmountStart = railPanelSource.indexOf("useEffect(() => () => {");
+      const unmountEnd = railPanelSource.indexOf("}, []);", unmountStart);
+      expect(railPanelSource.slice(unmountStart, unmountEnd), timer).toContain(timer);
+      const transitionStart = railPanelSource.indexOf("const transitionRepository");
+      const transitionEnd = railPanelSource.indexOf("setChangedFiles({ kind: \"loading\" })", transitionStart);
+      expect(railPanelSource.slice(transitionStart, transitionEnd), timer).toContain(timer);
+    }
+  });
+
   it("keeps throttle skips as a silent early return", () => {
     expect(railPanelSource).toContain('if ("skipped" in payload) return');
   });

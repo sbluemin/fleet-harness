@@ -40,6 +40,10 @@ const SCAN_DEPTH_MAX = 8;
 const SCAN_DEPTH_DEFAULT = 3;
 const LIST_PANE_DEFAULT_WIDTH = 248;
 const LIST_PANE_MIN_WIDTH = 220;
+// ✓ 체류는 클릭했다는 사실이 눈에 남을 만큼만, 말풍선은 짧은 한 마디를 읽을 만큼만.
+// 원격 왕복이 수백 ms라 요청 자체는 거의 보이지 않으므로, 결과 쪽 체류가 피드백을 진다.
+const SYNC_SETTLED_MS = 1400;
+const SYNC_HINT_MS = 2200;
 
 function readViewMode(): ViewMode {
   try {
@@ -180,11 +184,19 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [inspectRequest, setInspectRequest] = useState<{ fullHash: string; seq: number } | null>(null);
   type SyncNotice =
     | { kind: "error"; code: "auth_failed" | "network" | "timeout" | "no_remote" | "git_failed" }
-    | { kind: "success"; newRefs: number; updatedRefs: number; pruned: number }
-    | { kind: "successClean" };
+    | { kind: "success"; newRefs: number; updatedRefs: number; pruned: number };
   const [syncNotice, setSyncNotice] = useState<SyncNotice | null>(null);
   const [syncFailed, setSyncFailed] = useState(false);
   const syncNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // "이미 최신 상태"는 가져온 것이 없는 결과라 배너로 표면화하면 흐름 안의 블록이 패널 본문을
+  // 밀어낸다(등장·소멸 각 1회). 정보량 없는 결과는 버튼 자리에서만 답한다 — 아이콘이 잠깐 ✓로
+  // 바뀌고(settled), 말풍선이 짧게 안내한 뒤(hinting) 스스로 물러나며, 문면은 다음 동기화까지
+  // hover로 다시 열 수 있다(hintAvailable). 갱신·실패는 계속 배너를 쓴다.
+  const [syncSettled, setSyncSettled] = useState(false);
+  const [syncHinting, setSyncHinting] = useState(false);
+  const [syncHintAvailable, setSyncHintAvailable] = useState(false);
+  const syncSettledTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const syncHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [syncing, setSyncing] = useState(false);
   const syncRequestIdRef = useRef(0);
   const autoSyncTheaterRef = useRef<string | null>(null);
@@ -272,8 +284,19 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       clearTimeout(syncNoticeTimerRef.current);
       syncNoticeTimerRef.current = null;
     }
+    if (syncSettledTimerRef.current !== null) {
+      clearTimeout(syncSettledTimerRef.current);
+      syncSettledTimerRef.current = null;
+    }
+    if (syncHintTimerRef.current !== null) {
+      clearTimeout(syncHintTimerRef.current);
+      syncHintTimerRef.current = null;
+    }
     setSyncNotice(null);
     setSyncFailed(false);
+    setSyncSettled(false);
+    setSyncHinting(false);
+    setSyncHintAvailable(false);
     setChangedFiles({ kind: "loading" });
     setCompareRequest(null);
     setInspectRequest(null);
@@ -388,13 +411,45 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       setSyncNotice(null);
     }, 6000);
   }, []);
+  const showSyncSettled = useCallback(() => {
+    if (syncSettledTimerRef.current !== null) clearTimeout(syncSettledTimerRef.current);
+    if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current);
+    setSyncSettled(true);
+    setSyncHinting(true);
+    setSyncHintAvailable(true);
+    syncSettledTimerRef.current = setTimeout(() => {
+      syncSettledTimerRef.current = null;
+      setSyncSettled(false);
+    }, SYNC_SETTLED_MS);
+    syncHintTimerRef.current = setTimeout(() => {
+      syncHintTimerRef.current = null;
+      setSyncHinting(false);
+    }, SYNC_HINT_MS);
+  }, []);
+  const clearSyncSettled = useCallback(() => {
+    if (syncSettledTimerRef.current !== null) {
+      clearTimeout(syncSettledTimerRef.current);
+      syncSettledTimerRef.current = null;
+    }
+    if (syncHintTimerRef.current !== null) {
+      clearTimeout(syncHintTimerRef.current);
+      syncHintTimerRef.current = null;
+    }
+    setSyncSettled(false);
+    setSyncHinting(false);
+    setSyncHintAvailable(false);
+  }, []);
   useEffect(() => () => {
     if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
+    if (syncSettledTimerRef.current !== null) clearTimeout(syncSettledTimerRef.current);
+    if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current);
   }, []);
   const syncRepository = useCallback(async (mode?: "auto") => {
     if (!ctx.theaterId) return;
     const isManual = mode !== "auto";
     const requestId = ++syncRequestIdRef.current;
+    // 새 시도는 지난 결과의 표면을 먼저 걷는다 — ✓가 남은 채 다음 요청이 돌면 어느 시도의 결과인지 읽을 수 없다.
+    if (isManual) clearSyncSettled();
     setSyncing(true);
     let response: Response;
     try {
@@ -430,12 +485,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       const newRefs = "newRefs" in payload ? payload.newRefs : 0;
       const updatedRefs = "updatedRefs" in payload ? payload.updatedRefs : 0;
       const pruned = "pruned" in payload ? payload.pruned : 0;
-      showSyncNotice(newRefs === 0 && updatedRefs === 0 && pruned === 0
-        ? { kind: "successClean" }
-        : { kind: "success", newRefs, updatedRefs, pruned });
+      if (newRefs === 0 && updatedRefs === 0 && pruned === 0) showSyncSettled();
+      else showSyncNotice({ kind: "success", newRefs, updatedRefs, pruned });
     }
     refreshRepositoryData();
-  }, [ctx.theaterId, refreshRepositoryData, repoRel, showSyncNotice]);
+  }, [clearSyncSettled, ctx.theaterId, refreshRepositoryData, repoRel, showSyncNotice, showSyncSettled]);
   useEffect(() => {
     if (!ctx.theaterId) return;
     const contextKey = `${ctx.theaterId}:${repoRel}`;
@@ -574,15 +628,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         : syncNotice.code === "timeout" ? "repository.sync.failedTimeout"
         : syncNotice.code === "no_remote" ? "repository.sync.failedNoRemote"
         : "repository.sync.failedGit")
-      : syncNotice.kind === "successClean"
-        ? t("repository.sync.summaryClean")
-        : t("repository.sync.summary", { newRefs: syncNotice.newRefs, updatedRefs: syncNotice.updatedRefs, pruned: syncNotice.pruned });
+      : t("repository.sync.summary", { newRefs: syncNotice.newRefs, updatedRefs: syncNotice.updatedRefs, pruned: syncNotice.pruned });
   // Changes만 hidden으로 상시 마운트해 섹션 전환에도 내부 상태를 보존한다.
   const workspaceMainVisible = source === "changes";
   const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className="repository-sync-icon" aria-hidden="true">↻</span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}</button></div>
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button></div>
+      <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
       {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} />
