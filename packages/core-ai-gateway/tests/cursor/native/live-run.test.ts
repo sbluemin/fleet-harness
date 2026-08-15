@@ -1651,6 +1651,71 @@ describe("Cursor live client-tool Run bridge", () => {
     }
   });
 
+  it("keeps a parked Run when native Read races past the seal", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const first = cursorCall("call-native-read-race-first", 153);
+    const late = cursorCall("call-native-read-race-late", 154);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([first]),
+      cursorCompletionFrames("continued after native Read policy"),
+      2,
+    );
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-read-race", "composer-2.5"),
+      tools: [
+        ...(cursorRequest("unused", "composer-2.5").tools ?? []),
+        {
+          type: "function",
+          name: "Read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { file_path: { type: "string" } },
+            required: ["file_path"],
+            additionalProperties: false,
+          },
+        },
+      ],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      await stream.emitFrames([{
+        execServerMessage: {
+          id: late.messageId,
+          execId: late.execId,
+          readArgs: { path: "README.md", toolCallId: late.callId },
+        },
+      }]);
+      expect(stream.closed).toBe(false);
+
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [first], [cursorResult(first, "first result")]),
+      );
+
+      expect(canonicalText(events)).toBe("continued after native Read policy");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          readResult: expect.objectContaining({
+            error: expect.objectContaining({ error: expect.stringContaining("cc_read_") }),
+          }),
+        }),
+      }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({ event: "bridge.defer" }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.attach",
+        outcome: "deferred_replay",
+      }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it.each<[string, (call: CursorCallSpec) => unknown[]]>([
     ["token accounting", () => [{ interactionUpdate: { tokenDelta: { tokens: 3 } } }]],
     ["the parked call's own tool update", (call) => [cursorToolCompletedFrame(call)]],

@@ -3476,13 +3476,11 @@ function isCursorClientToolFrame(
   if (call?.providerIdentifier === CURSOR_TOOL_PROVIDER_IDENTIFIER) return true;
   return cursorNativeExecRedirect(
     exec,
-    redirectTools
-      .filter((tool) => isCursorNativeRedirectToolName(tool.clientName))
-      .map((tool) => ({
-        clientName: tool.clientName,
-        wireName: tool.toolName,
-        inputSchemaValue: tool.inputSchemaValue,
-      })),
+    redirectTools.map((tool) => ({
+      clientName: tool.clientName,
+      wireName: tool.toolName,
+      inputSchemaValue: tool.inputSchemaValue,
+    })),
     CURSOR_TOOL_PROVIDER_IDENTIFIER,
   ) !== null;
 }
