@@ -440,6 +440,20 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
+    // 모드 프레임은 최대화 아래에서만 물러난다 — 최대화 geometry는 캔버스 전체라 프레임의 10px
+    // 인셋을 네 변 모두 넘고, 프레임은 z-index 76이라 패널 위에 브래킷을 찍는다. companion은
+    // 프레임이 뜨는 두 모드에서 18px 인셋 슬롯에 머무르므로 경계를 지울 이유가 없다.
+    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-mode-frame {");
+    expect(components).not.toContain(".operations-canvas.is-companion-layout .canvas-mode-frame");
+    // 물러남은 즉시, 복귀는 패널 geometry가 슬롯으로 돌아온 뒤다 — display 토글로 되돌리면
+    // 복원 전환 동안 브래킷이 다시 패널 위에 찍힌다.
+    const modeFrameBlock = components.match(/\.canvas-mode-frame \{[^}]*\}/)?.[0] ?? "";
+    expect(modeFrameBlock).toContain("transition: opacity var(--duration-base) var(--ease-glide) var(--duration-slow);");
+    expect(modeFrameBlock).not.toContain("display:");
+    const maximizedFrameBlock = components.match(/\.operations-canvas\.is-panel-maximized \.canvas-mode-frame \{[^}]*\}/)?.[0] ?? "";
+    expect(maximizedFrameBlock).toContain("opacity: 0;");
+    expect(maximizedFrameBlock).toContain("transition-delay: 0s;");
+    expect(maximizedFrameBlock).not.toContain("display: none;");
     for (const sharedModeClass of [
       "canvas-mode-frame",
       "canvas-mode-bracket",
