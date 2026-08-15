@@ -2,7 +2,6 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { claimChatActivityAxis, releaseChatActivityAxis } from "../connection.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatTurn, type AgentChatTurnItem } from "./chat-events.js";
@@ -32,10 +31,22 @@ export function AgentChatView({
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId);
+  // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
+  // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
+  // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
+  const runtime = context.runtimeState;
+  const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   const [terminalPending, setTerminalPending] = React.useState(false);
   const [terminalError, setTerminalError] = React.useState(false);
   const logRef = React.useRef<HTMLDivElement>(null);
+  // 스크롤 팔로우는 터미널과 같은 문법이다(terminal-scroll-follow): 바닥을 따라가는 중인지, 아니면
+  // 사용자가 세워 둔 위치가 있는지. 후자는 "바닥까지의 거리"로 기억해야 패널 크기가 변해도 같은
+  // 내용이 보인다 — 절대 scrollTop 은 높이가 바뀌는 순간 다른 곳을 가리킨다.
   const nearBottomRef = React.useRef(true);
+  const bottomDistanceRef = React.useRef<number | null>(null);
+  // 프로그램적 복원이 낳은 scroll 이벤트는 사용자 의도가 아니다. 이것을 걸러내지 않으면 복원 자체가
+  // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
+  const suppressScrollRef = React.useRef(0);
 
   const handleOpenTerminal = React.useCallback(async () => {
     setTerminalPending(true);
@@ -54,48 +65,47 @@ export function AgentChatView({
     (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
     0,
   );
-  React.useLayoutEffect(() => {
+  // 지금 팔로우 중이면 바닥으로, 아니면 기억해 둔 바닥 거리로 되돌린다.
+  const restoreAnchor = React.useCallback(() => {
     const log = logRef.current;
-    if (!log || !nearBottomRef.current) return;
-    log.scrollTop = log.scrollHeight;
-  }, [scrollSignal, state.working, state.turns.length]);
+    if (!log) return;
+    const next = nearBottomRef.current
+      ? log.scrollHeight
+      : Math.max(0, log.scrollHeight - log.clientHeight - (bottomDistanceRef.current ?? 0));
+    if (log.scrollTop === next) return;
+    suppressScrollRef.current += 1;
+    log.scrollTop = next;
+    requestAnimationFrame(() => {
+      suppressScrollRef.current = Math.max(0, suppressScrollRef.current - 1);
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    restoreAnchor();
+  }, [restoreAnchor, scrollSignal, working, state.turns.length]);
+
+  // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
+  // 바뀐 높이 위에서 예전 scrollTop 을 그대로 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우처럼
+  // 높이가 0에서 자라면 그 값이 곧 맨 위다.
+  React.useEffect(() => {
+    const log = logRef.current;
+    if (!log || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => restoreAnchor());
+    observer.observe(log);
+    return () => observer.disconnect();
+  }, [restoreAnchor]);
 
   const handleScroll = React.useCallback(() => {
     const log = logRef.current;
     if (!log) return;
-    nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    if (suppressScrollRef.current > 0) return;
+    // 크기를 잃은 순간(패널이 접혔거나 아직 배치 전)의 값으로는 의도를 읽을 수 없다.
+    if (log.clientHeight === 0) return;
+    const distance = log.scrollHeight - log.scrollTop - log.clientHeight;
+    nearBottomRef.current = distance < 80;
+    bottomDistanceRef.current = nearBottomRef.current ? null : distance;
   }, []);
 
-  // Chat Mode 세션의 작동 여부는 이 스트림만 안다 — 전환 시 PTY가 접히면서 터미널 세션 레코드는
-  // dormant로 남고, 그 스냅샷을 그대로 두면 캡션이 턴이 도는 내내 휴면이라고 말한다. 그래서 뷰가
-  // 마운트되는 동안 활동축을 인수하고, 떠날 때 되돌려준다.
-  //
-  // 능력 객체는 의존성이 될 수 없다: 호스트가 렌더마다 새로 만들어 건네므로 의존성에 넣으면
-  // 매 렌더 정리가 돌아 방금 심은 상태를 도로 지운다(진행 중 턴의 1초 티커만으로도 깜빡인다).
-  // 동작 자체는 안정적이므로 ref로 들고, 의존성은 실제로 바뀌는 값만 진다.
-  const { operationId } = context;
-  const statusRef = React.useRef(context.status);
-  statusRef.current = context.status;
-  React.useEffect(() => {
-    claimChatActivityAxis(operationId);
-    return () => {
-      releaseChatActivityAxis(operationId);
-      statusRef.current.clear(operationId);
-    };
-  }, [operationId]);
-
-  // 스트림이 붙어 있을 때만 의견을 낸다. 연결 전·상실 구간에서 idle을 주장하면 아직 아무것도
-  // 관측하지 못한 상태를 "쉬는 중"이라고 말하는 셈이라, 무의견으로 남겨 복원 Operation의 기본
-  // 분류(dormant)가 그대로 서게 한다.
-  const connected = state.connection === "open";
-  const working = state.working;
-  React.useEffect(() => {
-    if (!connected) {
-      statusRef.current.clear(operationId);
-      return;
-    }
-    statusRef.current.set(operationId, working ? "running" : "idle");
-  }, [connected, working, operationId]);
 
   const timeFormat = React.useMemo(
     () => new Intl.DateTimeFormat(context.language === "ko" ? "ko" : "en", { hour: "2-digit", minute: "2-digit" }),

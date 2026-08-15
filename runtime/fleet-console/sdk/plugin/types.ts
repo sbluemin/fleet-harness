@@ -20,7 +20,40 @@ export interface LaunchContext {
 
 export type ConsoleTheme = "instrument" | "maritime" | "carbon" | "whites";
 
-export type OperationActivity = "idle" | "running" | "awaiting" | "dormant" | "background";
+/**
+ * Operation 런타임은 두 축이다 — 축을 섞으면 한쪽이 다른 쪽을 삼킨다.
+ *
+ * `lifecycle`은 실행 표면이 살아 있는지를 말하고(`dormant`는 살아 있는 생산자가 하나도 없고
+ * 재개 근거만 남은 상태), `activity`는 살아 있는 동안 무엇을 하는지를 말한다. 예전에는
+ * `dormant`가 활동 어휘에도 있어서 활동 해석의 첫 분기를 차지했고, 그래서 PTY를 접고 SDK로
+ * 이어 도는 세션(Chat Mode)의 진행 신호가 전부 그 분기에 삼켜졌다. 판별 유니온으로 갈라두면
+ * "dormant인데 running" 같은 상태를 타입이 만들 수 없다.
+ */
+export type OperationLifecycle = "live" | "dormant";
+
+export type OperationActivity = "idle" | "running" | "awaiting" | "background";
+
+export type OperationRuntimeState =
+  | {
+    readonly lifecycle: "live";
+    readonly activity: OperationActivity;
+    /**
+     * 이 Operation이 어느 실행 표면으로 도는지에 대한 플러그인의 짧은 라벨(예: "CHAT").
+     * 호스트는 뜻을 해석하지 않고 표식으로만 그린다 — 표면의 이름은 그 표면을 가진 플러그인만 안다.
+     * 신호 채널(색)을 쓰지 않는 이유는 색이 활동을 말하는 자리이기 때문이다.
+     */
+    readonly surface?: string;
+  }
+  | { readonly lifecycle: "dormant" };
+
+/**
+ * 호스트가 런타임 축을 아직 신뢰할 수 없는 구간.
+ *
+ * `pending`은 권위 스냅샷이 도착하기 전이고, `degraded`는 스냅샷/스트림 계약이 깨져 상태를 알 수
+ * 없는 구간이다. 어느 쪽도 유휴나 휴면으로 추정하지 않는다 — 이 결함의 실패 양상이 바로 "모르는
+ * 것을 조용히 유휴로 말하기"였다.
+ */
+export type OperationRuntimeHydration = "pending" | "ready" | "degraded";
 
 export interface TerminalTicket {
   readonly ticket: string;
@@ -77,7 +110,7 @@ export interface PluginInstallContext {
   readonly operations: ClientOperationsCapability;
   readonly preferences: ClientPreferencesCapability;
   readonly settings: ClientSettingsCapability;
-  readonly status: ClientOperationStatusCapability;
+  readonly runtime: ClientOperationRuntimeCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly composer: ClientComposerCapability;
 }
@@ -101,9 +134,14 @@ export interface ClientNotificationsCapability {
   dismiss(id: string): void;
 }
 
-export interface ClientOperationStatusCapability {
-  set(operationId: string, status: OperationActivity): void;
+export interface ClientOperationRuntimeCapability {
+  set(operationId: string, state: OperationRuntimeState): void;
   clear(operationId: string): void;
+  /**
+   * 이 플러그인이 소유한 Operation들의 런타임 축을 신뢰할 수 있는지 보고한다. `degraded`는
+   * 상태를 모른다는 뜻이지 유휴라는 뜻이 아니므로, 호스트는 이 구간에서 활동을 추정하지 않는다.
+   */
+  setHydration(state: OperationRuntimeHydration, error?: string): void;
 }
 
 export interface ClientOperationStatusDetailCapability {
@@ -221,9 +259,15 @@ export interface OperationRenderContext extends OperationContext {
   readonly operations: ClientOperationsCapability;
   readonly preferences: ClientPreferencesCapability;
   readonly settings: ClientSettingsCapability;
-  readonly status: ClientOperationStatusCapability;
+  readonly runtime: ClientOperationRuntimeCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
   readonly composer: ClientComposerCapability;
+  /**
+   * 호스트가 이 Operation에 대해 해소한 런타임 축. `null`은 권위 스냅샷 도착 전이거나 축이
+   * degraded라는 뜻이며, live/dormant 추정값이 아니다 — 패널 본문이 자기 진행 상태를 별도로
+   * 판단하지 않고 이 값 하나를 읽어야 사이드바와 본문이 갈라지지 않는다.
+   */
+  readonly runtimeState: OperationRuntimeState | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;

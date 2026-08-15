@@ -1,3 +1,4 @@
+import { runtimeStateOfVisual, type OperationActivityVisual } from "../core/client/src/operation-activity.js";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -133,7 +134,7 @@ describe("operation departure ledger", () => {
 
 function track(
   operation: OperationNode,
-  status: "idle" | "running",
+  status: OperationActivityVisual,
   active: {
     readonly activeTheaterId: string | null;
     readonly activeOperationId: string | null;
@@ -146,7 +147,7 @@ function track(
 ): void {
   trackOperationActivityTransitions({
     operations: [operation],
-    operationStatus: { [operation.id]: status },
+    operationRuntime: { [operation.id]: runtimeStateOfVisual(status) },
     ...active,
   });
 }

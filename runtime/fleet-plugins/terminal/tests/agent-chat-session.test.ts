@@ -68,6 +68,8 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     cwd: "/tmp/workspace",
     transcriptPath,
     onProviderSessionUpdate,
+    reportActivity: () => true,
+    canReportActivity: () => true,
   };
 }
 
@@ -226,6 +228,78 @@ describe("AgentChatRegistry", () => {
     session.send("second");
     await drainTurn(registry, "op-1");
     expect(startTurn).toHaveBeenCalledTimes(2);
+    await registry.disposeAll();
+  });
+
+  // 이 결함이 조용했던 이유는 턴이 도는데 활동축이 그것을 모르는 상태가 성립했기 때문이다.
+  // 축이 보고를 받지 못하면 일을 시작하지 않는 쪽을 고른다 — 그래야 실패가 시끄럽다.
+  it("refuses to start a turn when the activity axis cannot take the report", async () => {
+    const transcriptPath = writeTranscript("sid-activity", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => ({ ...seedFor(transcriptPath), reportActivity: () => false, canReportActivity: () => false }));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    expect(session.canReportActivity()).toBe(false);
+    session.send("first");
+    await drainTurn(registry, "op-1");
+
+    expect(startTurn).not.toHaveBeenCalled();
+    expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_activity_unavailable")).toBe(true);
+    expect(events.some((entry) => entry.event.kind === "turn-end" && entry.event.ok === false)).toBe(true);
+    await registry.disposeAll();
+  });
+
+  it("probes the activity axis without writing a transition", async () => {
+    const transcriptPath = writeTranscript("sid-probe", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+    ]);
+    const reported: boolean[] = [];
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => ({
+      ...seedFor(transcriptPath),
+      reportActivity: (working: boolean) => { reported.push(working); return true; },
+      canReportActivity: () => true,
+    }));
+
+    expect(session.canReportActivity()).toBe(true);
+    // 확인만으로는 축에 아무것도 쓰이지 않아야 한다 — 쓰면 진행 중인 턴이 유휴로 방송된다.
+    expect(reported).toEqual([]);
+    await registry.disposeAll();
+  });
+
+  it("reports working around the SDK turn and clears it on both success and failure", async () => {
+    const transcriptPath = writeTranscript("sid-pulse", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+      { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } }], failAfter: 1 },
+    ]);
+    const reported: boolean[] = [];
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => ({
+      ...seedFor(transcriptPath),
+      reportActivity: (working: boolean) => { reported.push(working); return true; },
+      canReportActivity: () => true,
+    }));
+
+    session.send("first");
+    await drainTurn(registry, "op-1");
+    expect(reported).toEqual([true, false]);
+
+    // 실패한 턴도 종료 pulse 를 남긴다 — 남기지 않으면 축이 영영 running 으로 굳는다.
+    session.send("second");
+    await drainTurn(registry, "op-1");
+    expect(reported).toEqual([true, false, true, false]);
     await registry.disposeAll();
   });
 

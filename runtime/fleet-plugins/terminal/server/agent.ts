@@ -678,6 +678,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
       delete cleared[CHAT_MODE_PAYLOAD_KEY];
       ctx.host.operations.patch(sessionId, { payload: cleared });
+      const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
+      if (releasedOnResume) observability.notifySessionUpdated(releasedOnResume);
       resumeNode = ctx.host.operations.get(sessionId) ?? node;
       if (!fresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
     }
@@ -846,6 +848,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       try {
         const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+        if (!chat.canReportActivity()) {
+          settleAttachments(false);
+          ctx.host.http.writeJson(res, 503, { error: "chat_activity_unavailable" });
+          return true;
+        }
         chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string);
       } catch {
         settleAttachments(false);
@@ -936,6 +943,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const cleared = { ...(ctx.host.operations.get(sessionId)?.payload ?? node.payload) };
       delete cleared[CHAT_MODE_PAYLOAD_KEY];
       ctx.host.operations.patch(sessionId, { payload: cleared });
+      const released = observability.setTerminalSessionChatActive(sessionId, false);
+      if (released) observability.notifySessionUpdated(released);
       ctx.host.http.writeJson(res, 200, { ok: true });
       return true;
     }
@@ -965,6 +974,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
     }
     ctx.host.operations.patch(sessionId, { payload: { ...node.payload, [CHAT_MODE_PAYLOAD_KEY]: true } });
+    const activated = observability.setTerminalSessionChatActive(sessionId, true);
+    if (activated) observability.notifySessionUpdated(activated);
     if (live) {
       terminalRuntime.invalidateTicketsForSession(sessionId);
       terminalRuntime.terminate(sessionId);
@@ -1062,6 +1073,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
           observability.updateTerminalSessionProviderSession(node.id, updated);
+        },
+        canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
+        reportActivity: (working) => {
+          const updated = observability.setTerminalSessionChatWorking(node.id, working);
+          // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.
+          if (!updated) return false;
+          observability.notifySessionUpdated(updated);
+          return true;
         },
       },
     };
@@ -1357,6 +1376,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const providerSession = readProviderSession(operation.payload);
       if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
       const dormant = injectOperation(operation);
+      // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
+      // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채
+      // 사이드바만 휴면이라고 말한다(이 결함의 재시작 판).
+      if (operation.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+        const adopted = observability.setTerminalSessionChatActive(operation.id, true);
+        if (adopted) observability.notifySessionUpdated(adopted);
+      }
       const cwd = readPayloadString(operation.payload, "cwd") || (ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "");
       ctx.host.operations.patch(operation.id, { payload: toOperationPayload(operation.payload, cwd, dormant, providerSession, observability.getDurableOperation(operation.id)?.providerTitle) });
     }

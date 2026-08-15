@@ -553,7 +553,7 @@ describe("Operations boot minimization", () => {
       // deck에도 순번에도 남지 않기 때문이다. 부팅 최소화를 먼저 되돌려야 무대에 세울 수 있다.
       // 이 테스트가 지키는 계약은 그것과 무관하다: 키를 누른 채로 두어도 두 번 누르기 확인이 통과되지 않는다.
       restoreOperation("first");
-      setState({ operationStatus: { first: "awaiting" } });
+      setState({ operationRuntime: { first: { lifecycle: "live", activity: "awaiting" } } });
       setTriageActive(true);
       await Promise.resolve();
     });

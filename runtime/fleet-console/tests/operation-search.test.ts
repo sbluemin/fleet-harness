@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries } from "../core/client/src/operation-search.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "../core/client/src/types.js";
@@ -25,10 +25,12 @@ function makeOperation(id: string, theaterId: string, title: string, pluginId = 
 function makeState(
   operations: readonly OperationNode[],
   theaters: readonly TheaterInfo[] = [THEATER_ALPHA, THEATER_BETA],
-  operationStatus: Readonly<Record<string, OperationActivity>> = {},
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>> = {},
 ): ConsoleState {
   return {
     connection: "connecting",
+    operationRuntimeHydration: "ready",
+    operationRuntimeError: null,
     connectionLostAt: null,
     controlHolder: null,
     controlCurtainDismissed: false,
@@ -49,7 +51,7 @@ function makeState(
     activeTheaterId: "theater-alpha",
     activeOperationId: null,
     activeOperationAcknowledged: true,
-    operationStatus,
+    operationRuntime,
     addingTheater: false,
     theaterError: null,
     operationsViewActive: false,
@@ -115,7 +117,7 @@ describe("operation search", () => {
       makeOperation("op-live", "theater-alpha", "Live"),
       { ...makeOperation("op-restored", "theater-alpha", "Restored"), payload: { resumeAvailable: true } },
       makeOperation("op-plain", "theater-alpha", "Plain"),
-    ], undefined, { "op-live": "running", "op-restored": "awaiting" });
+    ], undefined, { "op-live": { lifecycle: "live", activity: "running" }, "op-restored": { lifecycle: "live", activity: "awaiting" } });
     const withStatus = buildOperationSearchEntries(state);
 
     expect(entries.map((entry) => [entry.operationId, entry.activity])).toEqual([

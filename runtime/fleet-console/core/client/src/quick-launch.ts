@@ -1,5 +1,5 @@
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationActivityVisual } from "./operation-activity.js";
 
 import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchEntry, type OperationSearchGroup } from "./operation-search.js";
 import type { ConsoleState } from "./types.js";
@@ -270,7 +270,7 @@ export function buildQuickLaunchEffortOptions(
  * awaiting은 CLI가 응답 입력을 기다리는 상태라 임의 텍스트가 프롬프트 응답을 오염시킨다 —
  * 목록에서 dim + 선택 불가 + 방향키 스킵(제품 결정). dormant는 선택 가능하며 서버가 재기동 후 전달한다.
  */
-export function isMentionSelectable(activity: OperationActivity): boolean {
+export function isMentionSelectable(activity: OperationActivityVisual): boolean {
   return activity !== "awaiting";
 }
 

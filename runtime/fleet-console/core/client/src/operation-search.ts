@@ -1,5 +1,6 @@
+import type { OperationActivityVisual } from "./operation-activity.js";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { launchProviderFromOperationPayload, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
@@ -15,7 +16,7 @@ export interface OperationSearchEntry {
   readonly operationName: string;
   readonly pluginId: string;
   readonly status: string;
-  readonly activity: OperationActivity;
+  readonly activity: OperationActivityVisual;
   /** 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이고 마크를 그리지 않는다. */
   readonly launchProvider: LaunchProviderGlyphId | null;
 }
@@ -97,7 +98,7 @@ export function buildOperationSearchEntries(current: ConsoleState): readonly Ope
   const entries: OperationSearchEntry[] = [];
   for (const operation of current.operations) {
     if (!operation.theaterId) continue;
-    entries.push(toOperationSearchEntry(operation, theaters.get(operation.theaterId), current.operationStatus));
+    entries.push(toOperationSearchEntry(operation, theaters.get(operation.theaterId), current.operationRuntime));
   }
   return entries;
 }
@@ -135,7 +136,7 @@ export function searchTokens(query: string): readonly string[] {
 function toOperationSearchEntry(
   operation: OperationNode,
   theater: TheaterInfo | undefined,
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
 ): OperationSearchEntry {
   return {
     operationId: operation.id,
@@ -144,7 +145,7 @@ function toOperationSearchEntry(
     operationName: operation.title,
     pluginId: operation.pluginId,
     status: "operation",
-    activity: resolveOperationActivity(operation, operationStatus),
+    activity: resolveOperationActivity(operation, operationRuntime),
     launchProvider: launchProviderFromOperationPayload(operation.payload),
   };
 }

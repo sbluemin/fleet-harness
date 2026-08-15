@@ -1,6 +1,7 @@
+import { pluginRuntimeState } from "../operation-activity.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ConsoleTheme, OperationActivity } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import type { OperationNode, OperationNotification } from "../types.js";
@@ -9,10 +10,11 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationStatus, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
+export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
+  readonly operationRuntimeHydration: OperationRuntimeHydration;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly theaterLabel: string | null;
   readonly theme: ConsoleTheme;
@@ -89,12 +91,13 @@ export function MobileShell({ operations, activeOperationId, operationStatus, op
         theme={theme}
         language={language}
         active={activeOperationId === selectedOperation.id}
+        runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
         onActivate={() => onSelectOperation(selectedOperation.id)}
         onClose={() => closeOperation(selectedOperation.id)}
       />
     );
   } else if (activeTab === "operations") {
-    content = <MobileOperationList operations={operations} operationStatus={operationStatus} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
+    content = <MobileOperationList operations={operations} operationRuntime={operationRuntime} notificationIds={notificationIds} theaterLabel={theaterLabel} onOpen={openOperation} />;
   } else {
     content = (
       <section className="mobile-simple-panel">

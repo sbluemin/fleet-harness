@@ -1,6 +1,7 @@
+import type { OperationActivityVisual } from "../operation-activity.js";
 import { useSyncExternalStore } from "react";
 
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
@@ -24,7 +25,7 @@ type Listener = () => void;
 
 export interface TriageQueueEntry {
   readonly operation: OperationNode;
-  readonly activity: OperationActivity;
+  readonly activity: OperationActivityVisual;
   readonly picked: boolean;
 }
 
@@ -106,7 +107,7 @@ export function resetTriageSpotlightForTests(): void {
   emitTriage();
 }
 
-const activityByOperation = new Map<string, OperationActivity>();
+const activityByOperation = new Map<string, OperationActivityVisual>();
 const operationTheater = new Map<string, string>();
 // focus layer만 Theater 단위로 유지한다 — 진입 시점 활성 Theater와 선별 중 자동 전환으로
 // 방문한 Theater 각각의 스냅샷을 저장해 종료 시 한 번에 복원한다.
@@ -682,15 +683,15 @@ export function restoreTriageSession(): boolean {
 }
 
 export function enterTriage(focusedOperationId: string | null): void {
-  const { operations, operationStatus } = getState();
+  const { operations, operationRuntime } = getState();
   const focusedOperation = focusedOperationId === null
     ? null
     : operations.find((operation) => operation.id === focusedOperationId) ?? null;
-  if (focusedOperation && isTriageWaitingOperation(focusedOperation, operationStatus)) {
+  if (focusedOperation && isTriageWaitingOperation(focusedOperation, operationRuntime)) {
     pickTriageOperation(focusedOperation.id);
   }
   setTriageActive(true);
-  if (resolveTriageQueue(operations, operationStatus).length > 0) return;
+  if (resolveTriageQueue(operations, operationRuntime).length > 0) return;
   setActiveOperation(null);
   const document = globalThis.document;
   const HTMLElementConstructor = document?.defaultView?.HTMLElement;
@@ -851,7 +852,7 @@ export function focusedTriageOperationId(activeElement: Element | null): string 
 
 export function recordTriageActivity(
   operations: readonly OperationNode[],
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
   now = Date.now(),
 ): void {
   let changed = false;
@@ -860,7 +861,7 @@ export function recordTriageActivity(
       operationTheater.set(operation.id, operation.theaterId);
       changed = true;
     }
-    const activity = resolveOperationActivity(operation, operationStatus);
+    const activity = resolveOperationActivity(operation, operationRuntime);
     if ((activity === "running" || activity === "background" || activity === "dormant") && deferredAt.delete(operation.id)) {
       changed = true;
     }
@@ -876,7 +877,7 @@ export function recordTriageActivity(
   const armedId = setAsideArmed?.operationId ?? null;
   if (armedId !== null) {
     const armedOperation = operations.find((operation) => operation.id === armedId) ?? null;
-    if (!armedOperation || !isTriageWaitingOperation(armedOperation, operationStatus)) {
+    if (!armedOperation || !isTriageWaitingOperation(armedOperation, operationRuntime)) {
       clearTriageSetAsideArm();
     }
   }
@@ -884,8 +885,8 @@ export function recordTriageActivity(
 }
 
 export function isTriageClearedTransition(
-  previous: OperationActivity | null,
-  current: OperationActivity,
+  previous: OperationActivityVisual | null,
+  current: OperationActivityVisual,
 ): boolean {
   return (previous === "awaiting" || previous === "idle")
     && (current === "running" || current === "background" || current === "dormant");
@@ -893,10 +894,10 @@ export function isTriageClearedTransition(
 
 export function isTriageWaitingOperation(
   operation: OperationNode,
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
 ): boolean {
   return resolveOperationDisplayActivity({
-    activity: resolveOperationActivity(operation, operationStatus),
+    activity: resolveOperationActivity(operation, operationRuntime),
     operationId: operation.id,
     idleArrivalIds: getIdleArrivalIds(),
   }) === "awaiting";
@@ -930,7 +931,7 @@ export function reconcileTriageStageCompanion(
 // seenAt→createdAt→id 타이브레이크는 기존 per-Theater 큐와 같은 규칙을 전 Theater에 걸쳐 적용한다.
 export function resolveTriageQueue(
   operations: readonly OperationNode[],
-  operationStatus: Readonly<Record<string, OperationActivity>>,
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
   now = Date.now(),
 ): readonly TriageQueueEntry[] {
   const candidates: Array<TriageQueueEntry & {
@@ -952,10 +953,10 @@ export function resolveTriageQueue(
 
   for (const operation of operations) {
     if (isMinimized(operation)) continue;
-    const activity = resolveOperationActivity(operation, operationStatus);
+    const activity = resolveOperationActivity(operation, operationRuntime);
     const picked = operation.id === pickedOperationId;
     if (!picked && dismissed.has(operation.id)) continue;
-    if (!picked && !isTriageWaitingOperation(operation, operationStatus)) continue;
+    if (!picked && !isTriageWaitingOperation(operation, operationRuntime)) continue;
     const lastCleared = lastClearedAt.get(operation.id) ?? Number.NEGATIVE_INFINITY;
     const delta = now - lastCleared;
     const returned = activity === "awaiting" && delta >= 0 && delta <= RETURN_WINDOW_MS;

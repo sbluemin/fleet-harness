@@ -197,7 +197,7 @@ function consoleState(activeOperationId: string): ConsoleState {
     activeTheaterId: THEATER,
     activeOperationId,
     activeOperationAcknowledged: true,
-    operationStatus: {},
+    operationRuntime: {},
     addingTheater: false,
     theaterError: null,
     operationsViewActive: true,

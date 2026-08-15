@@ -97,7 +97,7 @@ function renderTriageSideBar(): void {
   act(() => root?.render(createElement(TriageSideBar, {
     theaters: [{ id: THEATER.id, label: THEATER.label }],
     operations: [],
-    operationStatus: {},
+    operationRuntime: {},
     operationNotifications: {},
     catalog: [],
     plugins: [],

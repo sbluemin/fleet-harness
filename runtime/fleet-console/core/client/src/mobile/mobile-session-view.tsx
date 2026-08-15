@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ConsoleTheme } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
@@ -14,11 +14,12 @@ const CLOSE_ARM_DURATION_MS = 1500;
  * gesture, which this shell already answers. Close is a separate two-tap control on that
  * title row so the phone can dispose the Operation the same way the desktop frame does.
  */
-export function MobileSessionView({ operation, theme, language, active, onActivate, onClose }: {
+export function MobileSessionView({ operation, theme, language, active, runtimeState, onActivate, onClose }: {
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly active: boolean;
+  readonly runtimeState: OperationRuntimeState | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }) {
@@ -86,6 +87,7 @@ export function MobileSessionView({ operation, theme, language, active, onActiva
     active,
     geometry,
     operation,
+    runtimeState,
     theme,
     language,
     zoom: 1,

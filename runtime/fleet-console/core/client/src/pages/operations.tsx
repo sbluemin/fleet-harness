@@ -1,3 +1,4 @@
+import { pluginRuntimeState } from "../operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -93,8 +94,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [state.activeTheaterId]);
 
   useEffect(() => {
-    recordTriageActivity(state.operations, state.operationStatus);
-  }, [state.operationStatus, state.operations]);
+    recordTriageActivity(state.operations, state.operationRuntime);
+  }, [state.operationRuntime, state.operations]);
 
   useEffect(() => {
     if (!triageActive) setTriageOperationMenu(null);
@@ -203,7 +204,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         if (arrowAction === "triage-noop") return;
         const stageId = document.querySelector<HTMLElement>(".canvas-operation.is-triage-stage[data-operation-id]")?.dataset.operationId;
         if (!stageId) return;
-        const queue = resolveTriageQueue(snapshot.operations, snapshot.operationStatus);
+        const queue = resolveTriageQueue(snapshot.operations, snapshot.operationRuntime);
         if (!queue.some((entry) => entry.operation.id === stageId)) return;
         if (arrowAction === "triage-defer") {
           deferTriageOperation(stageId);
@@ -570,6 +571,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     active: state.activeOperationId === operation.id,
     geometry: operation.geometry ?? ensurePluginGeometry(operation),
     operation,
+    runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
     theme: state.activeTheme,
     language,
     zoom: 1,
@@ -594,7 +596,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     <MobileShell
       operations={theaterOperations}
       activeOperationId={state.activeOperationId}
-      operationStatus={state.operationStatus}
+      operationRuntime={state.operationRuntime}
+      operationRuntimeHydration={state.operationRuntimeHydration}
       operationNotifications={state.operationNotifications}
       theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
       theme={state.activeTheme}
@@ -608,7 +611,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         <TriageSideBar
           theaters={state.theaters}
           operations={state.operations}
-          operationStatus={state.operationStatus}
+          operationRuntime={state.operationRuntime}
           operationNotifications={state.operationNotifications}
           catalog={catalog}
           plugins={registry.plugins}

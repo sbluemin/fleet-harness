@@ -5296,6 +5296,26 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--ink-fog);
 }
 
+/* 실행 표면 표식(예: CHAT) — 모드를 말할 뿐 상태를 말하지 않는다. 그래서 신호 채널(aurora·warn·
+   coral·positive)도, 위치를 말하는 brass도 빌리지 않고 중성 잉크와 헤어라인만 쓴다. */
+.side-bar-chip-surface {
+  flex: none;
+  padding: 0 3px;
+  border: 1px solid var(--hairline);
+  border-radius: 3px;
+  color: var(--ink-muted);
+  font-family: var(--font-mono);
+  font-size: 8.5px;
+  line-height: 13px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+/* 상태 점이 auto 마진으로 오른쪽 끝을 잡고 있으므로, 표식이 함께 설 때는 그 끝을 표식에 넘긴다. */
+.side-bar-chip-status:has(+ .side-bar-chip-surface) {
+  margin-right: 4px;
+}
+
 .side-bar-chip-unseen {
   flex: none;
   width: 7px;

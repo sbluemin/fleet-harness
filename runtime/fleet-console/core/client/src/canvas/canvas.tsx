@@ -1,9 +1,10 @@
+import type { OperationActivityVisual } from "../operation-activity.js";
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
-import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationActivity, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
@@ -14,7 +15,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
-import { resolveOperationActivity } from "../operation-activity.js";
+import { pluginRuntimeState, resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -62,6 +63,7 @@ interface PluginOperationRendererProps {
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly viewportZoom: number;
+  readonly runtimeState: OperationRuntimeState | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
@@ -131,7 +133,7 @@ export function OperationsCanvas({
   const triageStageRectRef = useRef(new Map<string, DOMRect>());
   const triageStageActivityRef = useRef<{
     readonly operationId: string;
-    readonly activity: OperationActivity;
+    readonly activity: OperationActivityVisual;
   } | null>(null);
   const pendingTriageClearRef = useRef<{
     readonly operationId: string;
@@ -141,8 +143,8 @@ export function OperationsCanvas({
   const companionTriageStageRef = useRef<TriageStageIdentity | null>(null);
   const triageRuntimeRef = useRef<{
     readonly operations: readonly OperationNode[];
-    readonly operationStatus: Readonly<Record<string, OperationActivity>>;
-  }>({ operations: [], operationStatus: {} });
+    readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
+  }>({ operations: [], operationRuntime: {} });
 
   useEffect(() => {
     const element = canvasRef.current;
@@ -334,13 +336,13 @@ export function OperationsCanvas({
   const theaterOperations = (state.operations ?? []).filter((operation) => operation.theaterId === state.activeTheaterId);
   triageRuntimeRef.current = {
     operations: state.operations,
-    operationStatus: state.operationStatus,
+    operationRuntime: state.operationRuntime,
   };
   // 큐는 전역이다 — 활성 Theater와 무관하게 모든 대기 Operation을 처리 순서로 세운다.
-  const triageQueue = resolveTriageQueue(state.operations, state.operationStatus);
+  const triageQueue = resolveTriageQueue(state.operations, state.operationRuntime);
   const triageQueueIdSet = new Set(triageQueue.map((entry) => entry.operation.id));
   const triageIdleCount = state.operations.filter((operation) =>
-    resolveOperationActivity(operation, state.operationStatus) === "idle"
+    resolveOperationActivity(operation, state.operationRuntime) === "idle"
     && !triageQueueIdSet.has(operation.id)).length;
   const automaticTriageStage = triageQueue[0] ?? null;
   const previousTriageStageId = previousTriageStageRef.current;
@@ -356,10 +358,10 @@ export function OperationsCanvas({
     && previousTriageFrame.contains(document.activeElement)
     && !isTriageOperationDismissed(previousTriageStageId!);
   const previousTriageActivity = previousTriageStageOperation
-    ? resolveOperationActivity(previousTriageStageOperation, state.operationStatus)
+    ? resolveOperationActivity(previousTriageStageOperation, state.operationRuntime)
     : null;
   const previousTriageStillWaiting = previousTriageStageOperation !== null
-    && isTriageWaitingOperation(previousTriageStageOperation, state.operationStatus);
+    && isTriageWaitingOperation(previousTriageStageOperation, state.operationRuntime);
   const previousStageTransitioning = previousTriageStageOperation !== null
     && triageStageActivityRef.current?.operationId === previousTriageStageOperation.id
     && previousTriageActivity !== null
@@ -373,7 +375,7 @@ export function OperationsCanvas({
   const graceTriageEntry: TriageQueueEntry | null = graceTriageOperation
     ? {
         operation: graceTriageOperation,
-        activity: resolveOperationActivity(graceTriageOperation, state.operationStatus),
+        activity: resolveOperationActivity(graceTriageOperation, state.operationRuntime),
         picked: getTriagePick() === graceTriageOperation.id,
       }
     : null;
@@ -403,7 +405,7 @@ export function OperationsCanvas({
   // 최소화한 Operation도 싣지 않는다: War Room에서 최소화는 "이 판에서 내린다"는 뜻이므로 deck이
   // 곧 그 판이다. 내려간 항목은 사이드바 최소화 선반에서 되올린다.
   const triageDeckOperations = triageActive
-    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) !== "dormant"
+    ? state.operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) !== "dormant"
       && !triageMinimizedSet.has(operation.id))
     : theaterOperations;
   const triageDeckOperationIdSet = new Set(triageDeckOperations.map((operation) => operation.id));
@@ -479,6 +481,7 @@ export function OperationsCanvas({
         active: false,
         geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
         operation,
+        runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
         theme: state.activeTheme,
         language,
         zoom: 1,
@@ -611,7 +614,7 @@ export function OperationsCanvas({
       const pickedId = getTriagePick();
       const replacedByPick = pickedId !== null && pickedId !== pendingClear.operationId;
       if (!pendingOperation
-        || isTriageWaitingOperation(pendingOperation, state.operationStatus)
+        || isTriageWaitingOperation(pendingOperation, state.operationRuntime)
         || replacedByPick) {
         pendingClear.cancel();
         pendingTriageClearRef.current = null;
@@ -620,7 +623,7 @@ export function OperationsCanvas({
           triageStageActivityRef.current = triageStage
             ? {
                 operationId: triageStage.operation.id,
-                activity: resolveOperationActivity(triageStage.operation, state.operationStatus),
+                activity: resolveOperationActivity(triageStage.operation, state.operationRuntime),
               }
             : null;
           return;
@@ -634,7 +637,7 @@ export function OperationsCanvas({
     if (previousStage) {
       const previousOperation = state.operations.find((operation) => operation.id === previousStage.operationId);
       if (previousOperation && !isTriageOperationDismissed(previousStage.operationId)) {
-        const currentActivity = resolveOperationActivity(previousOperation, state.operationStatus);
+        const currentActivity = resolveOperationActivity(previousOperation, state.operationRuntime);
         if (isTriageClearedTransition(previousStage.activity, currentActivity)) {
           const operationId = previousStage.operationId;
           const cancel = scheduleTriageClear(
@@ -646,7 +649,7 @@ export function OperationsCanvas({
               return isTriageActive()
                 && liveOperation !== undefined
                 && !isTriageOperationDismissed(operationId)
-                && !isTriageWaitingOperation(liveOperation, runtime.operationStatus)
+                && !isTriageWaitingOperation(liveOperation, runtime.operationRuntime)
                 && (pickedId === null || pickedId === operationId);
             },
             () => {
@@ -665,10 +668,10 @@ export function OperationsCanvas({
     triageStageActivityRef.current = triageStage
       ? {
           operationId: triageStage.operation.id,
-          activity: resolveOperationActivity(triageStage.operation, state.operationStatus),
+          activity: resolveOperationActivity(triageStage.operation, state.operationRuntime),
         }
       : null;
-  }, [state.operations, state.operationStatus, triageActive, triageStage]);
+  }, [state.operations, state.operationRuntime, triageActive, triageStage]);
   useEffect(() => () => {
     pendingTriageClearRef.current?.cancel();
     pendingTriageClearRef.current = null;
@@ -900,10 +903,11 @@ export function OperationsCanvas({
             geometry: frameGeometry,
             topEdge,
             operationKindRegistry,
-            // 캡션 비콘은 사이드바 칩과 같은 원천을 읽어야 한다 — 활동 맵을 날로 조회하면 아직
-            // status를 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
+            // 캡션 비콘은 사이드바 칩과 같은 원천을 읽어야 한다 — 런타임 맵을 날로 조회하면 아직
+            // 런타임 축을 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
             // 같은 순간 사이드바는 휴면, 패널은 초록이라고 말한다.
-            status: resolveOperationActivity(operation, state.operationStatus),
+            status: resolveOperationActivity(operation, state.operationRuntime),
+            runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
             theme: state.activeTheme,
             language,
             viewportZoom: effectiveZoom,
@@ -1033,7 +1037,7 @@ export function OperationsCanvas({
         entering={triageEntering}
         theaters={state.theaters}
         operations={triageDeckOperations}
-        operationStatus={state.operationStatus}
+        operationRuntime={state.operationRuntime}
         operationAccent={canvas.operationAccent}
         arrivingOperationId={triageDeckArrivingOperationId}
         stagedOperationId={triageStageId}
@@ -1251,7 +1255,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly keyboardFocusRequestId: number;
   readonly geometry: OperationGeometry;
   readonly operationKindRegistry: readonly OperationKindDescriptor[];
-  readonly status?: OperationActivity;
+  readonly status?: OperationActivityVisual;
+  readonly runtimeState: OperationRuntimeState | null;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly viewportZoom: number;
@@ -1339,6 +1344,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               keyboardFocusRequestId: options.keyboardFocusRequestId,
               geometry,
               operation,
+              runtimeState: options.runtimeState,
               theme: options.theme,
               language: options.language,
               zoom: options.viewportZoom,
@@ -1363,6 +1369,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               theme={options.theme}
               language={options.language}
               viewportZoom={options.viewportZoom}
+              runtimeState={options.runtimeState}
               onActivate={options.onActivate}
               onClose={options.onClose}
               onGeometryChange={options.onGeometryChange}
@@ -1386,6 +1393,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               theme={options.theme}
               language={options.language}
               viewportZoom={options.viewportZoom}
+              runtimeState={options.runtimeState}
               onActivate={options.onActivate}
               onClose={options.onClose}
               onGeometryChange={options.onGeometryChange}
@@ -1411,6 +1419,7 @@ function PluginOperationRenderer({
   theme,
   language,
   viewportZoom,
+  runtimeState,
   onActivate,
   onClose,
   onGeometryChange,
@@ -1439,7 +1448,8 @@ function PluginOperationRenderer({
     operations: capabilities.operations,
     preferences: capabilities.preferences,
     settings: capabilities.settings,
-    status: capabilities.status,
+    runtime: capabilities.runtime,
+    runtimeState,
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     onActivate,

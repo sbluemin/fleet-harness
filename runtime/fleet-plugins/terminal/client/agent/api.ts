@@ -219,6 +219,10 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     modelActivity: payload.modelActivity === "working" || payload.modelActivity === "not-working" ? payload.modelActivity : undefined,
     attentionPending: typeof payload.attentionPending === "boolean" ? payload.attentionPending : undefined,
     backgroundPending: typeof payload.backgroundPending === "boolean" ? payload.backgroundPending : undefined,
+    // 이 함수는 화이트리스트 재구성이다 — 여기 없는 필드는 서버가 실어 보내도 소실된다.
+    // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
+    chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
+    chatWorking: typeof payload.chatWorking === "boolean" ? payload.chatWorking : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

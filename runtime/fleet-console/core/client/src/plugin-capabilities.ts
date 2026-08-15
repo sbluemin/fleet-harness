@@ -2,7 +2,7 @@ import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 
 import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-status-detail-store.js";
-import { clearOperationStatus, dismissNotificationsForOperation, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setOperationStatus } from "./store.js";
+import { clearOperationRuntime, dismissNotificationsForOperation, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {
   const base = createClientCapabilities(resync);
@@ -12,9 +12,10 @@ export function createHostCapabilities(resync: () => void = () => undefined): Pl
       emit: (notification) => raiseOperationNotification(notification),
       dismiss: (operationId) => dismissNotificationsForOperation(operationId),
     },
-    status: {
-      set: (operationId, status) => setOperationStatus(operationId, status),
-      clear: (operationId) => clearOperationStatus(operationId),
+    runtime: {
+      set: (operationId, runtimeState) => setOperationRuntime(operationId, runtimeState),
+      clear: (operationId) => clearOperationRuntime(operationId),
+      setHydration: (hydration, error) => setOperationRuntimeHydration(hydration, error),
     },
     statusDetail: {
       set: (operationId, detail) => setOperationStatusDetail(operationId, detail),

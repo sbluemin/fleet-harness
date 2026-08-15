@@ -157,7 +157,6 @@ describe("client/server event vocabulary parity", () => {
     { kind: "tool", name: "Read", detail: "a.ts" },
     { kind: "turn-end", ok: true, durationMs: 12 },
     { kind: "turn-end", ok: true, durationMs: 12, answer: "Final answer." },
-    { kind: "status", working: true },
     { kind: "error", code: "chat_turn_failed" },
   ];
 

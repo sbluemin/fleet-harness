@@ -43,7 +43,7 @@ export function MobileTheaterPage({ state }: { readonly state: ConsoleState }) {
           <p className="mobile-operation-empty">{t("mobile.theaters.empty")}</p>
         ) : state.theaters.map((theater) => {
           const operations = state.operations.filter((operation) => operation.theaterId === theater.id);
-          const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationStatus) === "awaiting").length;
+          const awaiting = operations.filter((operation) => resolveOperationActivity(operation, state.operationRuntime) === "awaiting").length;
           const here = theater.id === state.activeTheaterId;
           return (
             <button

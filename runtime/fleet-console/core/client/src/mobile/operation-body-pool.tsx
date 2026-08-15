@@ -2,7 +2,7 @@ import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useRe
 import { createPortal } from "react-dom";
 
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { useT } from "../i18n/index.js";
@@ -16,6 +16,7 @@ export interface OperationBodyConfig {
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly zoom: number;
+  readonly runtimeState: OperationRuntimeState | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
@@ -235,7 +236,8 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     operations: capabilities.operations,
     preferences: capabilities.preferences,
     settings: capabilities.settings,
-    status: capabilities.status,
+    runtime: capabilities.runtime,
+    runtimeState: current.runtimeState,
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     onActivate: () => configRef.current?.onActivate(),

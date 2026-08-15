@@ -1,4 +1,5 @@
-import type { OperationActivity } from "@fleet-console/sdk/plugin";
+import type { OperationActivityVisual } from "../operation-activity.js";
+import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { ViewModeToggle } from "../components/view-mode-toggle.js";
 import { useT } from "../i18n/index.js";
@@ -7,11 +8,11 @@ import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { openQuickLaunch } from "../store.js";
 import type { OperationNode } from "../types.js";
 
-const STATUS_ORDER: readonly OperationActivity[] = ["awaiting", "running", "background", "idle", "dormant"];
+const STATUS_ORDER: readonly OperationActivityVisual[] = ["awaiting", "running", "background", "idle", "dormant"];
 
-export function MobileOperationList({ operations, operationStatus, notificationIds, theaterLabel, onOpen }: {
+export function MobileOperationList({ operations, operationRuntime, notificationIds, theaterLabel, onOpen }: {
   readonly operations: readonly OperationNode[];
-  readonly operationStatus: Readonly<Record<string, OperationActivity>>;
+  readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
   readonly notificationIds: ReadonlySet<string>;
   readonly theaterLabel: string | null;
   readonly onOpen: (operationId: string) => void;
@@ -19,7 +20,7 @@ export function MobileOperationList({ operations, operationStatus, notificationI
   const t = useT();
   const sections = STATUS_ORDER.map((status) => ({
     status,
-    entries: operations.filter((operation) => resolveOperationActivity(operation, operationStatus) === status),
+    entries: operations.filter((operation) => resolveOperationActivity(operation, operationRuntime) === status),
   })).filter(({ entries }) => entries.length > 0);
   return (
     <section className="mobile-operation-list" aria-labelledby="mobile-operation-list-title">
@@ -79,7 +80,7 @@ export function MobileOperationList({ operations, operationStatus, notificationI
   );
 }
 
-function beaconClass(status: OperationActivity): string {
+function beaconClass(status: OperationActivityVisual): string {
   const visual = operationActivityVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";

@@ -661,7 +661,7 @@ describe("buildQuickLaunchMentionGroups", () => {
         makeOperation("op-shell", { type: "shell" }),
         makeOperation("op-foreign", { pluginId: "analyst" }),
       ],
-      operationStatus: { "op-live": "running" as const },
+      operationRuntime: { "op-live": { lifecycle: "live", activity: "running" } as const },
     };
     const groups = buildQuickLaunchMentionGroups(state, MESSAGEABLE, "");
     expect(groups.map((group) => group.theaterId)).toEqual(["th-a", "th-b"]);
@@ -675,7 +675,7 @@ describe("buildQuickLaunchMentionGroups", () => {
       ...getState(),
       theaters: [makeTheater("th-a")],
       operations: [makeOperation("gateway sweep", { title: "gateway sweep" }), makeOperation("docs run", { title: "docs run" })],
-      operationStatus: {},
+      operationRuntime: {},
     };
     const groups = buildQuickLaunchMentionGroups(state, MESSAGEABLE, "gate");
     expect(groups.flatMap((group) => group.entries.map((entry) => entry.operationName))).toEqual(["gateway sweep"]);
@@ -692,7 +692,7 @@ describe("resolveFocusedMention", () => {
         makeOperation("op-shell", { type: "shell" }),
         makeOperation("op-await", { id: "op-await" }),
       ],
-      operationStatus: { "op-await": "awaiting" as const },
+      operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
       operationsViewActive: true,
       activeTheaterId: "th-a",
       activeOperationId: "op-live",
@@ -746,7 +746,7 @@ describe("resolveMentionEntry", () => {
       makeOperation("op-await", { id: "op-await" }),
       makeOperation("op-far", { theaterId: "th-b" }),
     ],
-    operationStatus: { "op-await": "awaiting" as const },
+    operationRuntime: { "op-await": { lifecycle: "live", activity: "awaiting" } as const },
     activeTheaterId: "th-a",
   };
 

@@ -209,10 +209,13 @@ let installedNotifications: PluginInstallContext["notifications"] | null = null;
 
 function installAgentPlugin(ctx: PluginInstallContext): () => void {
   installedNotifications = ctx.notifications;
+  // 이 플러그인은 런타임 축의 권위를 가진다 — 첫 스냅샷이 도착하기 전까지는 그 축을 신뢰할 수 없다고
+  // 먼저 선언하고 시작한다.
+  ctx.runtime.setHydration("pending");
   const disposeConnection = startAgentConnection({
     operations: ctx.operations,
     notifications: ctx.notifications,
-    status: ctx.status,
+    runtime: ctx.runtime,
     refreshOperations: ctx.api.resync,
   });
   return () => {
