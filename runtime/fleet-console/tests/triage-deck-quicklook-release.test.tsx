@@ -302,14 +302,28 @@ describe("War Room deck Quick-Look release", () => {
 
   it("cancels an armed dwell that never became an expansion", () => {
     const grid = enterDeck();
-    // 드웰 중(아직 확대 전)에 포인터가 칸을 떠나면 확대는 열리지 않아야 한다. 확대 상태만 보고
-    // 판정하면 이 구간이 비어 있어, 떠난 뒤에 확대가 뒤늦게 열린다.
-    act(() => cellFor(OPERATION.id).dispatchEvent(new PointerEvent("pointerover", { bubbles: true, pointerType: "mouse" })));
-    act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
+    const cell = cellFor(OPERATION.id);
+    const leave = () => act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
       bubbles: true,
       pointerType: "mouse",
       relatedTarget: document.body,
     })));
+
+    // 먼저 이 시퀀스가 실제로 드웰을 무장한다는 것을 대조로 보인다 — 무장되지 않는 시퀀스로 취소를
+    // 재면, 취소가 망가져도 이 케이스는 초록으로 남는다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
+    expect(expanded(), "the setup must actually arm, or the cancellation below proves nothing")
+      .toEqual([OPERATION.id]);
+    leave();
+    expect(expanded()).toEqual([]);
+
+    // 같은 무장을 다시 걸고, 이번엔 드웰이 끝나기 전에 떠난다. 확대는 뒤늦게라도 열리면 안 된다 —
+    // 확대 상태만 보고 해제를 판정하면 이 구간이 비어 있어 떠난 뒤에 열린다.
+    act(() => cell.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+    act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS - 50); });
+    expect(expanded()).toEqual([]);
+    leave();
     act(() => { vi.advanceTimersByTime(TRIAGE_DECK_QUICKLOOK_DWELL_MS + 1); });
     expect(expanded()).toEqual([]);
   });
