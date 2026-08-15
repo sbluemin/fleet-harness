@@ -39,7 +39,14 @@ export function AgentChatView({
   const [terminalPending, setTerminalPending] = React.useState(false);
   const [terminalError, setTerminalError] = React.useState(false);
   const logRef = React.useRef<HTMLDivElement>(null);
+  // 스크롤 팔로우는 터미널과 같은 문법이다(terminal-scroll-follow): 바닥을 따라가는 중인지, 아니면
+  // 사용자가 세워 둔 위치가 있는지. 후자는 "바닥까지의 거리"로 기억해야 패널 크기가 변해도 같은
+  // 내용이 보인다 — 절대 scrollTop 은 높이가 바뀌는 순간 다른 곳을 가리킨다.
   const nearBottomRef = React.useRef(true);
+  const bottomDistanceRef = React.useRef<number | null>(null);
+  // 프로그램적 복원이 낳은 scroll 이벤트는 사용자 의도가 아니다. 이것을 걸러내지 않으면 복원 자체가
+  // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
+  const suppressScrollRef = React.useRef(0);
 
   const handleOpenTerminal = React.useCallback(async () => {
     setTerminalPending(true);
@@ -58,16 +65,45 @@ export function AgentChatView({
     (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
     0,
   );
-  React.useLayoutEffect(() => {
+  // 지금 팔로우 중이면 바닥으로, 아니면 기억해 둔 바닥 거리로 되돌린다.
+  const restoreAnchor = React.useCallback(() => {
     const log = logRef.current;
-    if (!log || !nearBottomRef.current) return;
-    log.scrollTop = log.scrollHeight;
-  }, [scrollSignal, working, state.turns.length]);
+    if (!log) return;
+    const next = nearBottomRef.current
+      ? log.scrollHeight
+      : Math.max(0, log.scrollHeight - log.clientHeight - (bottomDistanceRef.current ?? 0));
+    if (log.scrollTop === next) return;
+    suppressScrollRef.current += 1;
+    log.scrollTop = next;
+    requestAnimationFrame(() => {
+      suppressScrollRef.current = Math.max(0, suppressScrollRef.current - 1);
+    });
+  }, []);
+
+  React.useLayoutEffect(() => {
+    restoreAnchor();
+  }, [restoreAnchor, scrollSignal, working, state.turns.length]);
+
+  // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
+  // 바뀐 높이 위에서 예전 scrollTop 을 그대로 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우처럼
+  // 높이가 0에서 자라면 그 값이 곧 맨 위다.
+  React.useEffect(() => {
+    const log = logRef.current;
+    if (!log || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => restoreAnchor());
+    observer.observe(log);
+    return () => observer.disconnect();
+  }, [restoreAnchor]);
 
   const handleScroll = React.useCallback(() => {
     const log = logRef.current;
     if (!log) return;
-    nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
+    if (suppressScrollRef.current > 0) return;
+    // 크기를 잃은 순간(패널이 접혔거나 아직 배치 전)의 값으로는 의도를 읽을 수 없다.
+    if (log.clientHeight === 0) return;
+    const distance = log.scrollHeight - log.scrollTop - log.clientHeight;
+    nearBottomRef.current = distance < 80;
+    bottomDistanceRef.current = nearBottomRef.current ? null : distance;
   }, []);
 
 
