@@ -42,7 +42,9 @@ export const canvasEn = {
   "canvas.glance.defer": "Defer",
   "canvas.glance.setAside": "Set aside",
 
-  "canvas.frame.operationAria": "Operation {title}",
+  "canvas.frame.operationAria": "Operation {title}{groupContext}",
+  "canvas.frame.inGroup": " in group {name}",
+  "canvas.frame.groupTitle": "Group {name}",
   "canvas.frame.renameAria": "Rename operation {title}",
   "canvas.frame.renameTitle": "{title} — Drag to move. Double-click, Enter, or F2 to rename",
   "canvas.frame.setAccentAria": "Set accent for operation {title}",
@@ -248,7 +250,9 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.glance.defer": "뒤로 미루기",
   "canvas.glance.setAside": "치워두기",
 
-  "canvas.frame.operationAria": "Operation {title}",
+  "canvas.frame.operationAria": "Operation {title}{groupContext}",
+  "canvas.frame.inGroup": " · {name} 그룹",
+  "canvas.frame.groupTitle": "{name} 그룹",
   "canvas.frame.renameAria": "Operation {title} 이름 바꾸기",
   "canvas.frame.renameTitle": "{title} — 드래그로 이동. 더블클릭, Enter 또는 F2로 이름 변경",
   "canvas.frame.setAccentAria": "Operation {title} 액센트 설정",

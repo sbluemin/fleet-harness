@@ -576,11 +576,10 @@ describe("Instrument core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps user identity on the spine+mark grammar and off the state border channel", () => {
+  it("keeps user identity on the mark+wash grammar and off the state border channel", () => {
     const frame = source("canvas/operation-frame.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
-    const spineBlock = components.match(/\.canvas-operation-spine \{[^}]*\}/)?.[0] ?? "";
     const markBlock = components.match(/\.canvas-operation-id-mark \{[^}]*\}/)?.[0] ?? "";
     const washBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
     const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
@@ -588,15 +587,15 @@ describe("Instrument core design contract", () => {
     const accentSources = [frame, chip, components].join("\n");
 
     expect(frame).toContain('{ "--user-accent": accentColor }');
-    expect(frame).toContain('className="canvas-operation-spine"');
     expect(frame).toContain('className="canvas-operation-id-mark"');
     expect(chip).toContain('{ "--user-accent": accentValue }');
+    // Map의 좌측 스파인은 폐기됐다 — 패널 본문은 어떤 정체성 색도 지지 않고, 정체성은 전부
+    // 캡션 위(명판 마크·명판 워시)에서 말한다. 선택자·렌더·클래스 어느 쪽으로도 되살아나면
+    // 캡션이 유일한 정체성 면이라는 계약이 조용히 깨진다.
+    expect(components).not.toContain(".canvas-operation-spine");
+    expect(frame).not.toContain("canvas-operation-spine");
     // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
     expect(components).not.toContain("border-color: var(--user-accent)");
-    expect(spineBlock).toContain("width: 3px;");
-    expect(spineBlock).toContain("background: var(--user-accent);");
-    expect(spineBlock).toContain("pointer-events: none;");
-    expect(spineBlock).not.toMatch(/animation|box-shadow/);
     expect(markBlock).toContain("width: 8px;");
     expect(markBlock).toContain("height: 14px;");
     expect(markBlock).toContain("background: var(--user-accent);");
@@ -609,10 +608,45 @@ describe("Instrument core design contract", () => {
     expect(chipAccentBlock).toContain("pointer-events: none;");
     expect(chipAccentBlock).not.toMatch(/animation/);
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    // 6번째 소비처는 정체성 워시 위에 포커스 워시를 겹치는 결합 규칙이다 — 새 채널이 아니라
-    // 같은 워시를 포커스 상태에서 다시 적는 자리이므로 accent는 여전히 spine+mark+wash에 머문다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(6);
+    // 5개 소비처: 미니맵 도트 · 명판 마크 · 명판 워시 · 사이드바 칩 스파인 · 포커스 결합 워시.
+    // 마지막은 정체성 워시 위에 포커스 워시를 겹치는 결합 규칙이라 새 채널이 아니다 —
+    // Map에서 accent는 mark+wash에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
+  });
+
+  it("pins the caption group label — dot carries the only group colour, the name rides a neutral tier", () => {
+    const frame = source("canvas/operation-frame.tsx");
+    const components = source("styles/components.css");
+    const labelBlock = components.match(/\.canvas-operation-group-label \{[^}]*\}/)?.[0] ?? "";
+    const dotBlock = components.match(/\.canvas-operation-group-dot \{[^}]*\}/)?.[0] ?? "";
+
+    // 그룹 톤 주입은 --group-mark 하나다. --grp-color는 사이드바 존 표면 전용이라 캡션으로 넘어오지 않는다.
+    expect(frame).toContain('{ "--group-mark": groupColor }');
+    expect(frame).toContain('className="canvas-operation-group-label"');
+    expect(components).not.toMatch(/\.canvas-operation[^{}]*--grp-color/);
+    expect(dotBlock).toContain("background: var(--group-mark);");
+    expect(dotBlock).toContain("width: 7px;");
+    expect(dotBlock).toContain("height: 7px;");
+
+    // 색은 도트 하나만 진다 — 라벨에 테두리·채움·그룹색 글자를 얹으면 32px 캡션 안에서
+    // 아랫변 2px 상태 레일과 같은 굵기의 색선이 겹쳐 두 채널이 한 덩어리로 뭉친다(#699 실측).
+    expect(labelBlock).not.toMatch(/border|background/);
+    expect(labelBlock).toContain("color: var(--text-tertiary);");
+    expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-group-label {");
+    expect(components).toMatch(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-group-label \{\s*color: var\(--text-secondary\);/);
+
+    // 라벨은 제목보다 먼저 양보한다 — 최소 폭(320px)에서 긴 그룹 이름이 Operation 제목을 밀어내면
+    // 캡션의 1순위 정보가 뒤집힌다.
+    expect(labelBlock).toContain("flex: 0 6 auto;");
+    expect(labelBlock).toContain("max-width: min(34%, 15ch);");
+    expect(labelBlock).toContain("min-width: 0;");
+    expect(components).toMatch(/\.canvas-operation-group-name \{[^}]*text-overflow: ellipsis;/);
+
+    // 정체성 채널에는 애니메이션을 걸지 않는다. 포커스 색 전환만 두고, reduced-motion에서 단락한다.
+    expect(labelBlock).not.toMatch(/animation/);
+    const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotion).toContain(".canvas-operation-group-label,");
   });
 
   it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {

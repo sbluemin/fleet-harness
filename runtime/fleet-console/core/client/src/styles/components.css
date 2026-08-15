@@ -4660,20 +4660,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   --caption-rail: var(--positive);
 }
 
-/* Map에서 사용자 accent(정체성)는 좌측 스파인·명판 마크·명판 워시만 소유한다.
-   패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용으로 남는다. */
-.canvas-operation-spine {
-  position: absolute;
-  top: 10px;
-  bottom: 10px;
-  left: 0;
-  z-index: 5;
-  width: 3px;
-  border-radius: 0 3px 3px 0;
-  background: var(--user-accent);
-  pointer-events: none;
-}
-
+/* Map에서 사용자 accent(정체성)는 명판 마크·명판 워시만 소유한다 — 좌측 스파인은 폐기됐다.
+   패널 본문은 어떤 정체성 색도 지지 않고, 정체성은 전부 캡션 위에서 말한다.
+   패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용으로 남는다.
+   사이드바 칩의 3px accent 스파인은 레일 소속이라 그대로 남는다. */
 .canvas-operation-id-mark {
   flex: none;
   width: 8px;
@@ -4686,6 +4676,46 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
+}
+
+/* 그룹 소속 = 도트(정체성 mark 문법) + 중립 티어 이름. 색은 도트 하나만 지고, 이름은 캡션의
+   기존 중립 메타(Formation 슬롯 번호)와 같은 티어를 상속한다 — 테두리·채움·그룹색 글자는
+   쓰지 않는다. 32px 캡션 안에서 아랫변 2px 상태 레일과 같은 굵기의 색선이 겹치면 두 채널이
+   한 덩어리로 뭉친다(#699 실측). 포커스는 이름 티어 규칙을 그대로 타고 새 채널을 열지 않는다. */
+.canvas-operation-group-label {
+  /* 라벨은 제목보다 먼저 양보한다 — flex-shrink를 크게 잡아야 최소 폭(320px)에서
+     그룹 이름이 Operation 제목을 밀어내지 않는다. */
+  flex: 0 6 auto;
+  min-width: 0;
+  max-width: min(34%, 15ch);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-base) var(--ease-spring);
+}
+
+.canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-group-label {
+  color: var(--text-secondary);
+}
+
+.canvas-operation-group-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: var(--group-mark);
+}
+
+.canvas-operation-group-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
@@ -6457,6 +6487,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
   .canvas-operation-titlebar::after,
+  .canvas-operation-group-label,
   .canvas-operation-window-controls,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;

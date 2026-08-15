@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { flattenGroupedOrder } from "../core/client/src/store.js";
+import { flattenGroupedOrder, resolveOperationGroup } from "../core/client/src/store.js";
 import type { OperationGroup, OperationNode } from "../core/client/src/types.js";
 
 function makeOp(id: string, groupId: string | null = null, createdAt = 1): OperationNode {
@@ -113,5 +113,37 @@ describe("flattenGroupedOrder", () => {
     const groups = [makeGroup("g1", 1)];
     const result = flattenGroupedOrder(ops, groups, []);
     expect(result.map((o) => o.id)).toEqual(["op-a", "op-b"]);
+  });
+});
+
+describe("resolveOperationGroup", () => {
+  const groupById = (...groups: OperationGroup[]) => new Map(groups.map((group) => [group.id, group]));
+
+  it("같은 Theater의 그룹을 돌려준다", () => {
+    const group = makeGroup("g1", 1);
+    expect(resolveOperationGroup(makeOp("op-a", "g1"), groupById(group))).toBe(group);
+  });
+
+  it("groupId가 없으면 null이다", () => {
+    expect(resolveOperationGroup(makeOp("op-a", null), groupById(makeGroup("g1", 1)))).toBeNull();
+  });
+
+  it("존재하지 않는 groupId는 null이다", () => {
+    expect(resolveOperationGroup(makeOp("op-a", "missing"), groupById(makeGroup("g1", 1)))).toBeNull();
+  });
+
+  // 선별 무대는 활성 Theater 밖 Operation도 올린다. 판정 기준은 활성 Theater가 아니라
+  // Operation 자신의 Theater이므로, 외부 무대의 그룹은 그대로 살아 있어야 한다.
+  it("외부 Theater Operation도 자기 Theater 그룹이면 돌려준다", () => {
+    const foreignOp = { ...makeOp("op-far", "g-far"), theaterId: "t2" };
+    const foreignGroup = { ...makeGroup("g-far", 1), theaterId: "t2" };
+    expect(resolveOperationGroup(foreignOp, groupById(foreignGroup))).toBe(foreignGroup);
+  });
+
+  // 서버 PATCH는 groupId의 Theater 소속을 검사하지 않아 타 Theater 그룹이 붙을 수 있다.
+  // 사이드바는 그 조합을 미분류로 읽으므로 캡션도 같은 답을 내야 두 면이 서로를 부정하지 않는다.
+  it("Theater가 다른 그룹은 거부한다 — 사이드바의 미분류 판정과 같은 답", () => {
+    const crossTheaterGroup = { ...makeGroup("g-other", 1), theaterId: "t2" };
+    expect(resolveOperationGroup(makeOp("op-a", "g-other"), groupById(crossTheaterGroup))).toBeNull();
   });
 });
