@@ -440,6 +440,10 @@ describe("Instrument core design contract", () => {
     expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-minimap-fab,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap,");
     expect(components).toContain(".operations-canvas.is-companion-layout .canvas-minimap-fab {");
+    // 모드 프레임도 포커스 레이어 아래에서 물러난다 — 최대화 geometry는 캔버스 전체라 프레임의
+    // 10px 인셋을 네 변 모두 넘고, 프레임은 z-index 76이라 패널 위에 브래킷을 찍는다.
+    expect(components).toContain(".operations-canvas.is-panel-maximized .canvas-mode-frame,");
+    expect(components).toContain(".operations-canvas.is-companion-layout .canvas-mode-frame {");
     for (const sharedModeClass of [
       "canvas-mode-frame",
       "canvas-mode-bracket",

@@ -2861,6 +2861,14 @@
   border-radius: var(--radius-sm);
 }
 
+/* 모드 프레임은 격자 아레나의 경계다 — 포커스 레이어(최대화·companion)가 캔버스를 통째로 덮으면
+   그 아레나 자체가 없으므로 경계도 물러난다. 남겨두면 두 가지가 동시에 어긋난다: 최대화 geometry는
+   캔버스 전체라 10px 인셋을 네 변 모두 넘고, 프레임은 z-index 76이라 패널 위에 브래킷을 찍는다. */
+.operations-canvas.is-panel-maximized .canvas-mode-frame,
+.operations-canvas.is-companion-layout .canvas-mode-frame {
+  display: none;
+}
+
 .canvas-mode-bracket {
   position: absolute;
   width: 26px;
