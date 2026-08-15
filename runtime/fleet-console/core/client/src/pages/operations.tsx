@@ -256,7 +256,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
 
   // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
-  // 칩·브레드크럼·Map 표면은 가드가 유지하고, 칩 클릭의 onFocus가 그 Operation을 다시 켠다.
+  // 칩·브레드크럼·패널은 가드가 유지하고, 빈 바다 해제는 캔버스 onClick이 맡는다.
   useEffect(() => {
     if (viewMode.effective === "mobile") return;
     const onPointerDown = (event: PointerEvent) => {
