@@ -62,16 +62,18 @@ export function markKeyFromIdentity(launchProvider: string | null | undefined, c
 }
 
 export function humanizeBareModel(bare: string): string {
-  const million = /\[1m\]$/i.test(bare);
-  const stripped = bare.replace(/\[1m\]$/i, "");
-  const tokens = stripped.split(/[-_]/).filter(Boolean);
-  const words = tokens.map((token) => {
+  const bracketMillion = /\[1m\]$/i.test(bare);
+  const tokens = bare.replace(/\[1m\]$/i, "").split(/[-_]/).filter(Boolean);
+  // 카탈로그 별칭은 `claude-opus-5-1m[1m]`처럼 하이픈 토큰과 괄호 접미사를 같이 쓴다.
+  // 둘을 각각 살리면 "1m (1M)"이 겹친다 — 끝의 1m 토큰은 창 표식일 뿐 모델 이름 일부가 아니다.
+  const trailingMillion = tokens.at(-1)?.toLowerCase() === "1m";
+  const nameTokens = trailingMillion ? tokens.slice(0, -1) : tokens;
+  const words = nameTokens.map((token) => {
     if (/^\d/.test(token)) return token;
     const lower = token.toLowerCase();
     if (lower === "gpt") return "GPT";
-    if (lower === "1m") return "1M";
     return `${token.charAt(0).toUpperCase()}${token.slice(1)}`;
   });
   const joined = words.join(" ").replace(/\bGPT (\d) (\d)\b/g, "GPT $1.$2");
-  return million ? `${joined} (1M)` : joined;
+  return bracketMillion || trailingMillion ? `${joined} (1M)` : joined;
 }

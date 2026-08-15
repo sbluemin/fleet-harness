@@ -65,4 +65,10 @@ describe("humanizeBareModel", () => {
   it("keeps a 1M marker as a suffix", () => {
     expect(humanizeBareModel("claude-fable-5[1m]")).toBe("Claude Fable 5 (1M)");
   });
+
+  it("does not repeat the 1M window when the catalog alias already carries -1m", () => {
+    expect(humanizeBareModel("claude-opus-5-1m[1m]")).toBe("Claude Opus 5 (1M)");
+    expect(parseModelIdentity("claude-gateway--cursor--claude-opus-5-1m[1m]").label).toBe("Claude Opus 5 (1M)");
+    expect(humanizeBareModel("claude-opus-5-1m")).toBe("Claude Opus 5 (1M)");
+  });
 });

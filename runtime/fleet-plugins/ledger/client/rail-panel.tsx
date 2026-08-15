@@ -539,6 +539,8 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
             <p className="ledger-clients-description">{t("ledger.suppliers.explanation")}</p>
             {visibleData.modelSource.status === "unavailable" || visibleData.modelSource.status === "unreadable" ? (
               <p className="ledger-clients-description">{t(`ledger.models.${visibleData.modelSource.status}`)}</p>
+            ) : visibleData.modelSource.status === "degraded" ? (
+              <p className="ledger-clients-description">{t("ledger.models.degraded", { count: visibleData.modelSource.skippedEntries })}</p>
             ) : null}
             <div className="ledger-client-list">
               {visibleData.suppliers.map((entry) => {

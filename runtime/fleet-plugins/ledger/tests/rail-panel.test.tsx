@@ -643,6 +643,17 @@ describe("Ledger dual-source host and model rows", () => {
     expect(container.querySelector(".ledger-hero-cost")?.textContent).toBe("$12.34");
   });
 
+  it("warns when the models breakdown is only partial", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      modelSource: { status: "degraded", skippedEntries: 2 },
+    });
+    expect(container.querySelector(".ledger-hero-cost")?.textContent).toBe("$12.34");
+    expect(container.textContent).toContain("Some model records could not be read and were excluded (2).");
+    expect(container.textContent).toContain("By model · device-wide");
+  });
+
   it("keeps the session report when the models command is unavailable", async () => {
     const value = dto("ok");
     await renderWith({
