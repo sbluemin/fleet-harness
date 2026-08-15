@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection, writeUltracodeNoticeSeen } from "../core/client/src/quick-launch-preferences.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -687,5 +687,70 @@ describe("mention rejection messages", () => {
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
     }
+  });
+});
+
+describe("quick launch ultracode recognition", () => {
+  it("matches the word regardless of case", () => {
+    expect(readUltracodeTokens("ultracode")).toEqual([{ start: 0, end: 9 }]);
+    expect(readUltracodeTokens("ULTRACODE")).toEqual([{ start: 0, end: 9 }]);
+    expect(readUltracodeTokens("UltraCode")).toEqual([{ start: 0, end: 9 }]);
+  });
+
+  it("only matches on word boundaries", () => {
+    // 식별자 문자로 이어 붙은 것은 다른 단어다 — 프롬프트에 경로 하나 실었다고 무장하면 안 된다.
+    expect(readUltracodeTokens("ultracoder")).toEqual([]);
+    expect(readUltracodeTokens("myultracode")).toEqual([]);
+    expect(readUltracodeTokens("ultracode_notes")).toEqual([]);
+    // 하이픈·마침표·괄호는 경계다.
+    expect(readUltracodeTokens("run-ultracode.")).toEqual([{ start: 4, end: 13 }]);
+  });
+
+  it("finds every occurrence in the draft", () => {
+    expect(readUltracodeTokens("ultracode then ULTRACODE")).toEqual([
+      { start: 0, end: 9 },
+      { start: 15, end: 24 },
+    ]);
+  });
+
+  it("disarms only when the caret sits right after a recognized token", () => {
+    const draft = "do it ultracode now";
+    expect(isUltracodeDisarmCaret(draft, 15, 15)).toBe(true);
+    // 토큰 안, 토큰 앞, 문장 끝은 평범한 삭제다.
+    expect(isUltracodeDisarmCaret(draft, 14, 14)).toBe(false);
+    expect(isUltracodeDisarmCaret(draft, 6, 6)).toBe(false);
+    expect(isUltracodeDisarmCaret(draft, draft.length, draft.length)).toBe(false);
+    // 선택 구간이 있는 Backspace는 선택을 지우는 조작이지 해제가 아니다.
+    expect(isUltracodeDisarmCaret(draft, 6, 15)).toBe(false);
+  });
+
+  it("keeps the ignore flag until the word leaves the draft entirely", () => {
+    // 껐다는 사실이 편집마다 뒤집히면 그 스위치는 못 믿는다.
+    expect(nextUltracodeIgnored("do it ultracode", true)).toBe(true);
+    expect(nextUltracodeIgnored("do it ultracode now, please", true)).toBe(true);
+    // 단어가 전부 사라지면 해제도 만료한다 — 다시 친 단어는 새 의사표시다.
+    expect(nextUltracodeIgnored("do it", true)).toBe(false);
+    expect(nextUltracodeIgnored("do it ultracode", false)).toBe(false);
+  });
+
+  it("declares every ultracode key in both locales", () => {
+    const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
+    const keys = [
+      "chrome.quickLaunch.ultracodeNotice",
+      "chrome.quickLaunch.ultracodeNoticeHint",
+      "chrome.quickLaunch.ultracodeDismiss",
+    ];
+    for (const key of keys) {
+      expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
+    }
+  });
+
+  it("counts the teaching notice down to a fixed limit and stops", () => {
+    window.localStorage.clear();
+    expect(readUltracodeNoticeSeen()).toBe(0);
+    for (let seen = 0; seen < QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT; seen += 1) {
+      writeUltracodeNoticeSeen(seen + 1);
+    }
+    expect(readUltracodeNoticeSeen()).toBe(QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT);
   });
 });

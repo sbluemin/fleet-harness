@@ -185,6 +185,50 @@ export function readCommandInput(value: string, caretIndex: number): QuickLaunch
   return { kind: "values", command, query: value.slice(wordEnd + 1) };
 }
 
+/** 프롬프트 안에서 인식된 `ultracode` 한 건의 문면 구간. */
+export interface UltracodeToken {
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * 대소문자를 가리지 않고, 단어 경계로만 잡는다 — `ULTRACODE`·`UltraCode`는 인식하고
+ * `ultracoder`·`my-ultracode-notes`의 일부는 인식하지 않는다. `-`는 경계로 친다(식별자 문자만
+ * 붙임으로 본다): 하이픈으로 이어 붙인 파일명 안의 단어까지 잡으면 프롬프트에 경로 하나만 실어도
+ * 컴포저가 무장한다.
+ *
+ * 이 단어는 실행 좌표가 아니라 **프롬프트 원문의 일부**다. Console은 인식만 하고 문면은 손대지
+ * 않는다 — 하네스가 그 단어를 어떻게 읽을지는 하네스가 정한다.
+ */
+export function readUltracodeTokens(value: string): readonly UltracodeToken[] {
+  const pattern = /(?<![A-Za-z0-9_])ultracode(?![A-Za-z0-9_])/gi;
+  const tokens: UltracodeToken[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(value)) !== null) {
+    tokens.push({ start: match.index, end: match.index + match[0].length });
+  }
+  return tokens;
+}
+
+/**
+ * 해제(무시)는 **이 초안**에 붙는 상태다. 문면에서 단어가 전부 사라지면 해제도 함께 만료한다 —
+ * 그래야 지웠다 다시 친 단어가 새 의사표시로 읽힌다. 남아 있는 동안은 문장을 계속 고쳐도
+ * 다시 켜지지 않는다(한 번 껐다는 사실이 편집마다 뒤집히면 그 스위치는 못 믿는다).
+ */
+export function nextUltracodeIgnored(value: string, ignored: boolean): boolean {
+  return ignored && readUltracodeTokens(value).length > 0;
+}
+
+/**
+ * Backspace가 삭제 대신 해제를 맡는 자리: 선택이 접혀 있고 caret이 인식된 토큰의 **바로 뒤**일 때다.
+ * 그 밖의 모든 Backspace는 평소대로 글자를 지운다 — 이 키의 기본 뜻을 넓게 빼앗으면 컴포저가
+ * 지워지지 않는 입력이 된다.
+ */
+export function isUltracodeDisarmCaret(value: string, selectionStart: number, selectionEnd: number): boolean {
+  if (selectionStart !== selectionEnd) return false;
+  return readUltracodeTokens(value).some((token) => token.end === selectionStart);
+}
+
 export interface QuickLaunchEffortOption {
   readonly id: string | null;
   readonly label: string;

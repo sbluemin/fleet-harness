@@ -8,8 +8,8 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken } from "../quick-launch.js";
+import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -57,6 +57,26 @@ interface ComposerAttachment {
   readonly uploading: boolean;
 }
 
+/**
+ * 미러 레이어의 문면. 인식된 구간만 토큰으로 감싸고 나머지는 원문 그대로 둔다 — 미러는 읽히는
+ * 표면이 아니라 textarea 위에 정확히 겹치는 그림이라, 문면이 한 글자라도 달라지면 어긋난다.
+ * 끝에 zero-width space를 한 칸 붙이는 것은 마지막 줄이 개행으로 끝날 때 미러만 한 줄 짧아지는
+ * 것을 막기 위해서다.
+ */
+function renderUltracodeHighlight(value: string, tokens: readonly UltracodeToken[]): ReactNode {
+  const parts: ReactNode[] = [];
+  let at = 0;
+  tokens.forEach((token, index) => {
+    if (token.start > at) parts.push(value.slice(at, token.start));
+    parts.push(
+      <span key={`ultracode-${index}`} className="quick-launch-ultracode-token">{value.slice(token.start, token.end)}</span>,
+    );
+    at = token.end;
+  });
+  parts.push(`${value.slice(at)}\u200b`);
+  return parts;
+}
+
 export function QuickLaunch() {
   const state = useConsoleState();
   const t = useT();
@@ -66,6 +86,9 @@ export function QuickLaunch() {
 
   const cardRef = useRef<HTMLElement | null>(null);
   const inputRef = useRef<HTMLTextAreaElement | null>(null);
+  // `ultracode` 하이라이트를 그리는 미러 레이어. textarea가 스크롤하면 같은 만큼 따라가야 글자가
+  // 어긋나지 않는다(6줄 클램프 뒤로는 실제로 스크롤한다).
+  const highlightRef = useRef<HTMLDivElement | null>(null);
   const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const theaterChipRef = useRef<HTMLButtonElement | null>(null);
@@ -98,6 +121,9 @@ export function QuickLaunch() {
   // 이미지 첨부: 붙여넣기·드롭 즉시 업로드가 시작되고, 칩은 업로드가 끝나야 발사 가능해진다.
   const [attachments, setAttachments] = useState<readonly ComposerAttachment[]>([]);
   const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | null>(null);
+  // `ultracode` 인식은 단어의 존재에서 파생하고, 상태로 남는 것은 "이 초안에서 껐다"뿐이다 —
+  // 무장을 상태로 들면 문면과 어긋난 무장이 남는다.
+  const [ultracodeIgnored, setUltracodeIgnored] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   // 확대 보기 중인 칩의 key. 파생(zoomedAttachment)이 칩 소멸을 스스로 따라간다.
   const [zoomedKey, setZoomedKey] = useState<string | null>(null);
@@ -161,6 +187,71 @@ export function QuickLaunch() {
   // 행이 있는 덱만 Enter/Tab/제출을 가로챈다 — 매치가 없으면 "@3pm" 같은 프로즈 토큰이므로
   // Enter는 평소처럼 제출로 흐른다. 행이 있는 동안은 마우스 제출 버튼도 같은 계약으로 잠근다.
   const deckHasRows = mentionDeckOpen && mentionEntries.length > 0;
+
+  // ── `ultracode` 인식 ────────────────────────────────────────────────────────
+  // 무장은 문면에서 파생한다. 멘션 행선지가 있어도 그대로 성립한다 — 이 단어는 실행 좌표가 아니라
+  // 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
+  const ultracodeTokens = useMemo(() => readUltracodeTokens(prompt), [prompt]);
+  const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
+  // 해제는 단어가 문면에서 전부 사라질 때 만료한다. 프로그램 쓰기(초안 복원·커맨드 확정)도 같은
+  // 경로를 지나야 하므로 입력 핸들러가 아니라 문면 자체에 붙인다.
+  useEffect(() => {
+    setUltracodeIgnored((ignored) => nextUltracodeIgnored(prompt, ignored));
+  }, [prompt]);
+
+  // 고지 줄은 가르치는 표면이라 세 번 뒤 물러난다. 판정은 무장 전이에서 한 번만 하고 그 뒤로는
+  // 이 무장이 끝날 때까지 뒤집지 않는다 — 렌더마다 세면 보이던 줄이 같은 무장 중에 사라진다.
+  const [ultracodeNoticeOn, setUltracodeNoticeOn] = useState(false);
+  const wasUltracodeArmedRef = useRef(false);
+  useEffect(() => {
+    const wasArmed = wasUltracodeArmedRef.current;
+    wasUltracodeArmedRef.current = ultracodeArmed;
+    if (ultracodeArmed === wasArmed) return;
+    if (!ultracodeArmed) {
+      setUltracodeNoticeOn(false);
+      return;
+    }
+    const seen = readUltracodeNoticeSeen();
+    if (seen >= QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT) {
+      setUltracodeNoticeOn(false);
+      return;
+    }
+    writeUltracodeNoticeSeen(seen + 1);
+    setUltracodeNoticeOn(true);
+  }, [ultracodeArmed]);
+
+  const disarmUltracode = useCallback(() => {
+    setUltracodeIgnored(true);
+    inputRef.current?.focus();
+  }, []);
+
+  /**
+   * 미러를 textarea의 **client** 박스에 맞춘다. 테두리 박스로 맞추면 스크롤바가 서는 순간
+   * textarea만 줄바꿈 폭을 잃어 두 층이 다른 곳에서 접힌다. 스크롤 위치도 같은 값으로 끌고 간다.
+   */
+  const syncUltracodeHighlight = useCallback(() => {
+    const input = inputRef.current;
+    const highlight = highlightRef.current;
+    if (!input || !highlight) return;
+    highlight.style.width = `${input.clientWidth}px`;
+    highlight.style.height = `${input.clientHeight}px`;
+    highlight.scrollTop = input.scrollTop;
+  }, []);
+
+  // 문면·자동 높이가 바뀐 프레임에서 바로 맞춘다(그려진 뒤 맞추면 한 프레임 어긋난 채 보인다).
+  useLayoutEffect(() => {
+    syncUltracodeHighlight();
+  }, [prompt, syncUltracodeHighlight, ultracodeArmed]);
+
+  // 카드 폭은 첨부 트레이·뷰포트·멘션 칩으로도 바뀐다 — textarea 자신을 관찰하는 것이 유일하게
+  // 빠짐없는 기준이다.
+  useEffect(() => {
+    const input = inputRef.current;
+    if (!ultracodeArmed || !input || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => syncUltracodeHighlight());
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [syncUltracodeHighlight, ultracodeArmed]);
 
   // 열릴 때마다 카탈로그를 새로 읽는다. 설정에서 모델을 켜고 끈 직후 열어도 목록이 실제와 어긋나지 않는다.
   useEffect(() => {
@@ -971,6 +1062,18 @@ export function QuickLaunch() {
         return;
       }
     }
+    // caret이 인식된 `ultracode` 바로 뒤일 때의 **수식 없는** Backspace 한 번은 글자가 아니라 무장을
+    // 지운다 — 그 다음 Backspace는 평소대로 'e'를 지운다. 눌러 두어(repeat) 지우는 사람에게서는 이
+    // 한 번을 빼앗지 않는다: 삭제가 한 글자 늦게 시작되는 것으로 읽힌다.
+    // 수식 키가 붙은 Backspace는 OS의 단어 삭제(⌥/Ctrl)·줄 삭제(⌘)라 손대지 않는다. 가로채면 방금
+    // 친 단어를 지우려던 사람의 키가 아무것도 지우지 않는다(실측: ⌥+Backspace가 문면을 그대로 둠).
+    if (event.key === "Backspace" && !event.repeat && ultracodeArmed
+      && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+      && isUltracodeDisarmCaret(prompt, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
+      event.preventDefault();
+      setUltracodeIgnored(true);
+      return;
+    }
     if (event.key === "Backspace" && mentionTarget && prompt.length === 0) {
       // 입력이 빈 상태의 Backspace가 멘션 해제를 전담한다 — 닫기 버튼은 없다(제품 결정).
       event.preventDefault();
@@ -981,7 +1084,7 @@ export function QuickLaunch() {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
     submit();
-  }, [activeCommandRow, activeMention, applyCommandPrompt, clearMention, commandDeckHasRows, commandDeckOpen, commandInput, commandRowsFlat.length, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt.length, selectableMentions.length, submit]);
+  }, [activeCommandRow, activeMention, applyCommandPrompt, clearMention, commandDeckHasRows, commandDeckOpen, commandInput, commandRowsFlat.length, deckHasRows, mentionDeckOpen, mentionTarget, pickMention, prompt, selectableMentions.length, submit, ultracodeArmed]);
 
   if (!open) return null;
 
@@ -1021,7 +1124,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1161,6 +1264,18 @@ export function QuickLaunch() {
           </div>
         ) : null}
 
+        {/* 무장 중에 카드 외곽을 도는 apex 링(CSS)과 짝을 이루는 문장. 세 번 보인 뒤로는 칩만 남는다 —
+            문장은 가르치고 나면 소음이 되지만, 상태는 계속 어딘가에서 말해야 한다.
+            물러난 바(showStrip)에서는 내린다: 이 줄은 접히는 field·bar 밖에 있어, 남겨 두면 한 줄로
+            물러났다는 도킹이 그 위에 상태 줄 하나를 더 이고 선다(실측 45px 스트립 + 27px 고지). */}
+        {ultracodeArmed && ultracodeNoticeOn && !showStrip ? (
+          <p className="quick-launch-ultracode-notice" role="status">
+            <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
+            <span>{t("chrome.quickLaunch.ultracodeNotice")}</span>
+            <span className="quick-launch-ultracode-notice-hint">{t("chrome.quickLaunch.ultracodeNoticeHint")}</span>
+          </p>
+        ) : null}
+
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <div className="quick-launch-field" inert={showStrip || undefined}>
@@ -1174,6 +1289,14 @@ export function QuickLaunch() {
               <span className="quick-launch-mention-label">{mentionTarget.operationName}</span>
             </span>
           ) : null}
+          {/* textarea와 미러를 한 flex 아이템으로 묶는다 — 미러를 필드에 직접 붙이면 멘션 칩이 선
+              줄에서 시작점이 어긋난다. 묶으면 정렬 기준이 textarea의 박스 하나로 줄어든다. */}
+          <span className="quick-launch-input-wrap">
+            {ultracodeArmed ? (
+              <div className="quick-launch-highlight" ref={highlightRef} aria-hidden="true">
+                {renderUltracodeHighlight(prompt, ultracodeTokens)}
+              </div>
+            ) : null}
           <textarea
             ref={inputRef}
             className="quick-launch-input"
@@ -1182,6 +1305,7 @@ export function QuickLaunch() {
             onChange={(event) => updatePrompt(event.target.value, event.target)}
             onKeyDown={handleInputKeyDown}
             onPaste={handlePaste}
+            onScroll={syncUltracodeHighlight}
             placeholder={mentionTarget
               ? t("chrome.quickLaunch.mentionPlaceholder", { name: mentionTarget.operationName })
               : t("chrome.quickLaunch.placeholder")}
@@ -1190,6 +1314,7 @@ export function QuickLaunch() {
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
             spellCheck={false}
           />
+          </span>
           {attachments.length > 0 ? (
             <div className="quick-launch-attachments" role="group" aria-label={t("chrome.quickLaunch.attachments")}>
               {attachments.map((attachment) => (
@@ -1295,6 +1420,22 @@ export function QuickLaunch() {
             />
           ) : null}
           </span>
+
+          {/* 인식 칩은 런치 좌표 묶음(quick-launch-launch-sel) **밖**에 선다 — 그 묶음은 멘션 중
+              접히지만, 이 단어는 멘션으로 배달되는 프롬프트에도 그대로 실려 간다.
+              파선 테두리는 강도 값 AUTO의 파선 밑줄과 같은 말이다: 이건 사다리 위의 단이 아니다. */}
+          {ultracodeArmed ? (
+            <button
+              type="button"
+              className="quick-launch-ultracode"
+              onClick={disarmUltracode}
+              aria-label={t("chrome.quickLaunch.ultracodeDismiss")}
+              title={t("chrome.quickLaunch.ultracodeDismiss")}
+            >
+              <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
+              <span>ULTRACODE</span>
+            </button>
+          ) : null}
 
           {mentionTarget ? (
             <span className="quick-launch-target-tag">
