@@ -63,10 +63,27 @@ export interface WebSocketLike {
 /**
  * `viewer`는 붙어 있고 출력도 흐르지만 입력이 가지 않는 상태다. `live`와 갈라 두는 이유는
  * 화면이 그 차이를 말해야 하기 때문이다 — 반응 없는 키보드를 연결 문제로 읽게 두면 안 된다.
+ *
+ * `failed`도 같은 이유로 `connecting`과 갈라져 있다. 재연결 루프는 성공할 때까지 멈추지 않으므로
+ * 영원히 거절당하는 연결도 기술적으로는 "연결 중"이지만, 화면이 그렇게 말하면 사용자는 곧 될 일을
+ * 기다리게 된다 — 스스로 풀어야 하는 상황일 때가 있다.
  */
-export type TerminalConnectionStatus = "connecting" | "live" | "viewer" | "closed";
+export type TerminalConnectionStatus = "connecting" | "live" | "viewer" | "closed" | "failed";
+
+/**
+ * 서버가 거절 이유를 body에 실어 보내면 그 코드를 그대로 나른다. 상태 코드만 들고 오면
+ * 화면에 숫자만 남고, 사용자가 무엇을 해야 하는지는 어디에도 없다.
+ */
+export class TerminalTicketError extends Error {
+  constructor(readonly code: string, readonly status: number) {
+    super(code);
+    this.name = "TerminalTicketError";
+  }
+}
 
 const INITIAL_RECONNECT_DELAY_MS = 250;
+/** 이 횟수만큼 연달아 실패해야 화면이 실패를 말한다 — 한 번의 끊김은 재연결이 조용히 삼킨다. */
+const FAILURE_REPORT_THRESHOLD = 2;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 const OPEN_READY_STATE = 1;
 const TERMINAL_UNAVAILABLE_CLOSE_CODE = 1013;
@@ -91,6 +108,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
    * 되찾겠다고 하면 control로 되돌린다 — 재접속 루프가 매 회 이 값으로 티켓을 받는다.
    */
   let role: TerminalSocketRole = "control";
+  /** 연속 실패 횟수. 성공한 연결마다 0으로 돌아간다. */
+  let consecutiveFailures = 0;
 
   const disposeInput = () => {
     inputSubscription?.dispose();
@@ -111,7 +130,7 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
 
   const connectLoop = async (): Promise<void> => {
     while (!abort.signal.aborted) {
-      options.onStatus?.("connecting");
+      if (consecutiveFailures === 0) options.onStatus?.("connecting");
       try {
         const requested = role;
         const { ticket, role: granted } = await requestTerminalTicket(options.ticketPath, options.operationId, abort.signal, options.colorScheme, requested);
@@ -119,11 +138,16 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
         role = granted;
         options.onControlLockChange?.(requested === "control" && granted === "viewer" ? "locked" : "open");
+        consecutiveFailures = 0;
         await attachSocket(buildTerminalWsUrl(ticket, options.location, options.wsPath), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch (err) {
         if (abort.signal.aborted) return;
-        options.onStatus?.("connecting", err instanceof Error ? err.message : String(err));
+        consecutiveFailures += 1;
+        // 첫 실패는 곧 이어지는 재연결이 삼키는 흔한 경우라 화면을 바꾸지 않는다. 두 번째부터는
+        // 기다리면 풀릴 일이 아닐 수 있으므로 이유를 내보낸다 — 거절이 영구적인 경우가 이 경로다.
+        const code = err instanceof TerminalTicketError ? err.code : err instanceof Error ? err.message : String(err);
+        if (consecutiveFailures >= FAILURE_REPORT_THRESHOLD) options.onStatus?.("failed", code);
       }
       await delay(reconnectDelay, abort.signal);
       reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
@@ -246,13 +270,24 @@ async function requestTerminalTicket(ticketPath: string, operationId: string, si
     body: JSON.stringify({ operationId, ...(colorScheme ? { colorScheme } : {}), ...(role === "viewer" ? { role } : {}) }),
     signal,
   });
-  if (!response.ok) throw new Error(`Terminal ticket request failed: ${response.status}`);
+  if (!response.ok) throw new TerminalTicketError(await readTicketErrorCode(response), response.status);
   const payload = await response.json() as { readonly ticket?: unknown; readonly ttlMs?: unknown; readonly role?: unknown };
   if (typeof payload.ticket !== "string" || typeof payload.ttlMs !== "number") {
     throw new Error("Invalid terminal ticket response");
   }
   // 옛 서버는 등급을 싣지 않는다. 그때는 요청한 대로 받은 것으로 본다.
   return { ticket: payload.ticket, ttlMs: payload.ttlMs, role: payload.role === "viewer" ? "viewer" : (role ?? "control") };
+}
+
+async function readTicketErrorCode(response: Response): Promise<string> {
+  try {
+    const payload = await response.json() as { readonly error?: unknown };
+    if (typeof payload.error === "string" && payload.error) return payload.error;
+  } catch {
+    // body가 JSON이 아니면 상태 코드만 남는다 — 그래도 숫자를 코드 자리에 넣어 두어야
+    // 아래 매핑이 "모르는 이유"로 떨어질 수 있다.
+  }
+  return `http_${response.status}`;
 }
 
 function defaultWebSocketFactory(url: string): WebSocketLike {

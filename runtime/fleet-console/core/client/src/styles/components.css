@@ -8513,6 +8513,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--warn);
 }
 
+/* 실패는 상태 줄을 쓰지 않는다. 한 줄은 "무슨 일"까지만 실을 수 있어 왜와 할 일이 들어갈
+   자리가 없고, 그 자리를 기계 코드가 대신 차지해 왔다. 알림은 캔버스 위쪽에 두어 아래로
+   흐르던 출력을 가리지 않는다. */
+.terminal-failure {
+  flex: 0 0 auto;
+  padding: var(--space-2);
+  max-width: 560px;
+}
+
 /* 관전 배지는 상태 줄과 달리 화면을 대신하지 않는다 — 출력이 계속 흐르는 위에 얹혀
    "보이지만 칠 수 없다"만 말한다. 상태 줄을 재사용하면 살아 있는 터미널이 오류처럼 읽힌다. */
 .terminal-viewer-badge {
@@ -13435,4 +13444,54 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── 실패 알림(SDK `components/failure-notice`)의 호스트 외양 ──────────────────
+   형태는 SDK가, 외양은 호스트가 소유한다. 세 조각(무슨 일 · 왜 · 지금 할 일)이
+   시각적으로도 그 순서로 읽히도록 크기와 색을 계단으로 둔다. 기계 코드는 문장이
+   아니므로 mono·tertiary로 내려 문장 자리를 다투지 않게 한다. 색은 상태 채널만
+   탄다 — 되돌릴 수 있으면 warn, 진행이 막혔으면 coral. */
+.fc-failure {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
+  text-align: left;
+}
+.fc-failure--warn { border-color: color-mix(in oklch, var(--warn) 34%, var(--hairline)); }
+.fc-failure--coral { border-color: color-mix(in oklch, var(--coral) 34%, var(--hairline)); }
+.fc-failure__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px; font-weight: var(--weight-medium); line-height: 1.35;
+}
+.fc-failure__cause {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px; line-height: 1.5;
+}
+.fc-failure__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fc-failure__action {
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body); font-size: 12px; line-height: 1.2;
+  padding: 6px 12px; cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-glide);
+}
+.fc-failure__action:hover { border-color: var(--brass); }
+.fc-failure__action:focus-visible { outline: none; border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.fc-failure__action--primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--text-on-brass);
+  font-weight: var(--weight-medium);
+}
+.fc-failure__diagnostic {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1.5;
+  overflow-wrap: anywhere;
 }

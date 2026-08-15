@@ -94,6 +94,12 @@
       "types": "./i18n/translate.ts",
       "import": "./i18n/translate.ts",
       "default": "./i18n/translate.ts"
+    },
+    "./components/failure-notice": {
+      "types": "./components/failure-notice.tsx",
+      "browser": "./components/failure-notice.tsx",
+      "import": "./components/failure-notice.tsx",
+      "default": "./components/failure-notice.tsx"
     }
   },
   "scripts": {

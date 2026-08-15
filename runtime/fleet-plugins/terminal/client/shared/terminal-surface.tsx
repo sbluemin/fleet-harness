@@ -9,11 +9,13 @@ import { useCallback, useEffect, useRef, useState, type CSSProperties } from "re
 import { NO_LATCHED_MODIFIERS, TerminalKeyBar, type TerminalKeyBarModifiers } from "./terminal-key-bar.js";
 import { applyTerminalModifiers, terminalKeySequence, type TerminalKeyId } from "./terminal-key-sequences.js";
 import { createImeShiftEnterHandler } from "./ime-shift-enter.js";
-import { createTerminalConnection, type TerminalConnection } from "./terminal-connection.js";
+import { createTerminalConnection, type TerminalConnection, type TerminalConnectionStatus } from "./terminal-connection.js";
+import { describeTerminalFailure } from "./terminal-failure.js";
 import { createTerminalCopyOnSelect } from "./terminal-copy-on-select.js";
 import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
+import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
 import { getT } from "../i18n/index.js";
@@ -223,7 +225,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   // 마운트 effect는 prefs에 의존하지 않으므로(재실행하면 세션이 끊긴다) 최신 주기도 ref로 읽는다.
   const inactiveFlushMsRef = useRef(inactiveFlushMs);
   inactiveFlushMsRef.current = inactiveFlushMs;
-  const [status, setStatus] = useState("connecting");
+  // 상태와 이유를 한 문자열로 이어 붙이면 화면이 그 문자열을 그대로 그리게 된다 — 그러면
+  // 사용자는 기계 코드를 읽고, 이유를 사람 문장으로 옮길 자리가 사라진다. 둘은 갈라 둔다.
+  const [status, setStatus] = useState<{ readonly kind: TerminalConnectionStatus; readonly code?: string }>({ kind: "connecting" });
   // 서버가 등급을 잠갔으면 되찾기를 제안하지 않는다 — 눌러도 다시 관전으로 돌아오는 버튼은 거짓이다.
   const [controlLocked, setControlLocked] = useState(false);
   // 마운트 effect는 심볼 폰트 선대기 등 await 뒤에 ticket 연결을 만들고 테마 변경에 재실행되지 않으므로,
@@ -417,7 +421,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         onExit: () => onExitRef.current?.(),
         onControlLockChange: (lock) => { setControlLocked(lock === "locked"); },
         onStatus: (nextStatus, message) => {
-          setStatus(message ? `${nextStatus}: ${message}` : nextStatus);
+          setStatus({ kind: nextStatus, code: message });
         },
       });
       connectionRef.current = connection;
@@ -617,12 +621,17 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
 
   // 연결이 'live'면 상태 바를 숨겨 터미널 canvas가 카드를 가득 채우게 하고,
   // connecting/error 등 문제 상황에서만 상태를 노출한다.
-  const isLive = status.startsWith("live");
+  const isLive = status.kind === "live";
   /**
    * 관전 중에는 출력이 계속 흐르므로 화면을 가리지 않는다 — 상태 줄 대신 배지를 얹어
    * "보이지만 칠 수 없다"만 말한다. 이 구분이 없으면 반응 없는 키보드가 연결 장애로 읽힌다.
    */
-  const isViewing = status.startsWith("viewer");
+  const isViewing = status.kind === "viewer";
+  /**
+   * 실패는 상태 줄이 아니라 알림으로 나간다. 한 줄짜리 상태는 "무슨 일"까지만 실을 수 있어
+   * 왜와 할 일을 담을 자리가 없고, 그 자리를 기계 코드가 대신 차지해 왔다.
+   */
+  const failure = status.kind === "failed" ? describeTerminalFailure(status.code, t) : null;
   // 줌 보정: 마운트 단을 레이아웃상 zoom배로 키운 뒤 scale(1/zoom)으로 되돌려 부모 scale(zoom)과 net 1로 상쇄한다.
   // %는 position:relative인 .terminal-viewport 기준이라 별도 측정 없이 inner 크기에 정확히 맞춰진다. zoom=1이면
   // 기본 스타일(.terminal-canvas의 inset:0)을 그대로 써 캔버스 외 셸 패널 사용처에 영향이 없다.
@@ -636,12 +645,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       };
 
   return (
-    <section className="terminal-stage" aria-label="Terminal">
+    <section className="terminal-stage" aria-label={t("terminal.aria")}>
       <div className="terminal-shell">
-        {!isLive && !isViewing ? (
+        {failure ? (
+          <div className="terminal-failure">
+            <FailureNotice {...failure} />
+          </div>
+        ) : !isLive && !isViewing ? (
           <div className="terminal-status" aria-live="polite">
             <span className="terminal-status-dot" aria-hidden="true" />
-            {status}
+            {t(status.kind === "closed" ? "terminal.connection.closed" : "terminal.connection.connecting")}
           </div>
         ) : null}
         {isViewing ? (
