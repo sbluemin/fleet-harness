@@ -88,8 +88,8 @@ const UI = {
     en: "Eight built-in panels show history, worktrees, branches, token spend, and quota without leaving the Operation you are supervising. Plugins can contribute their own.",
   },
   railShotCap: {
-    ko: "실제 화면 — Repository 패널이 이 저장소의 커밋 그래프·워크트리 5개·브랜치·태그를 라이브 Operation 옆에 펼친 모습.",
-    en: "Real capture — the Repository panel with this repo's commit graph, five worktrees, branches, and tags beside live Operations.",
+    ko: "실제 화면 — Repository 패널이 이 저장소의 커밋 그래프·워크트리·브랜치·태그를 라이브 Operation 옆에 펼친 모습.",
+    en: "Real capture — the Repository panel with this repo's commit graph, worktrees, branches, and tags beside live Operations.",
   },
   analystT: { ko: "Session Analyst", en: "Session Analyst" },
   analystB: {
