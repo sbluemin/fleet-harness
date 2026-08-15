@@ -738,7 +738,7 @@ describe("quick launch ultracode recognition", () => {
     const keys = [
       "chrome.quickLaunch.ultracodeNotice",
       "chrome.quickLaunch.ultracodeNoticeHint",
-      "chrome.quickLaunch.ultracodeIgnore",
+      "chrome.quickLaunch.ultracodeDismiss",
     ];
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);

@@ -1913,6 +1913,9 @@ describe("Effort track interaction grammar", () => {
     // 무장은 문면과 해제 여부에서만 나온다 — 멘션 행선지는 이 판정에 들어가지 않는다.
     // 이 단어는 실행 좌표가 아니라 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
+    // 고지 줄은 접히는 field·bar 밖에 살기 때문에, 물러난 바에서는 컴포넌트가 직접 내려야 한다 —
+    // 남겨 두면 한 줄로 물러났다는 도킹이 상태 줄 하나를 더 이고 선다.
+    expect(composer).toContain("{ultracodeArmed && ultracodeNoticeOn && !showStrip ? (");
     // 칩이 런치 좌표 묶음 안으로 들어가면 멘션 중 inert가 되어 그 계약이 깨진다.
     expect(composer).not.toMatch(/quick-launch-launch-sel[\s\S]*?quick-launch-ultracode"[\s\S]*?<\/span>\n\n {10}\{mentionTarget/);
   });

@@ -1262,8 +1262,10 @@ export function QuickLaunch() {
         ) : null}
 
         {/* 무장 중에 카드 외곽을 도는 apex 링(CSS)과 짝을 이루는 문장. 세 번 보인 뒤로는 칩만 남는다 —
-            문장은 가르치고 나면 소음이 되지만, 상태는 계속 어딘가에서 말해야 한다. */}
-        {ultracodeArmed && ultracodeNoticeOn ? (
+            문장은 가르치고 나면 소음이 되지만, 상태는 계속 어딘가에서 말해야 한다.
+            물러난 바(showStrip)에서는 내린다: 이 줄은 접히는 field·bar 밖에 있어, 남겨 두면 한 줄로
+            물러났다는 도킹이 그 위에 상태 줄 하나를 더 이고 선다(실측 45px 스트립 + 27px 고지). */}
+        {ultracodeArmed && ultracodeNoticeOn && !showStrip ? (
           <p className="quick-launch-ultracode-notice" role="status">
             <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
             <span>{t("chrome.quickLaunch.ultracodeNotice")}</span>
@@ -1424,8 +1426,8 @@ export function QuickLaunch() {
               type="button"
               className="quick-launch-ultracode"
               onClick={disarmUltracode}
-              aria-label={t("chrome.quickLaunch.ultracodeIgnore")}
-              title={t("chrome.quickLaunch.ultracodeIgnore")}
+              aria-label={t("chrome.quickLaunch.ultracodeDismiss")}
+              title={t("chrome.quickLaunch.ultracodeDismiss")}
             >
               <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
               <span>ULTRACODE</span>
