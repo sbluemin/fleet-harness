@@ -81,6 +81,14 @@ Separate workload traffic from host auxiliary traffic by input shape and prompt,
 **Action:** inspect the final actionable input of every extra request and label its owner before optimizing.  
 **Why:** deleting a legitimate host auxiliary turn or treating it as provider-loop amplification changes product behavior while appearing to improve a graph.
 
+### Classify lifecycle outcomes before counting them
+
+**Symptom:** a probe reports provider failures on otherwise successful Cursor multi-tool trials.
+
+**Action:** classify each lifecycle outcome against the adapter contract before aggregating it; `client_tool_suspended` is the normal segment boundary that parks a Run while it waits for client tool results.
+
+**Why:** counting every non-success segment finish as a provider failure creates one false failure per park even though the Run attaches and completes normally.
+
 ### Baseline metric contract
 
 Report counts and denominators, not percentages alone:
