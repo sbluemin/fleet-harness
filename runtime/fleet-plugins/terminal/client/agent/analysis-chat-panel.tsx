@@ -4,7 +4,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 
-import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
+import type { AnalysisActivity, AnalysisEntry, AnalysisState } from "./analysis-state.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { decorateEvidenceHtml } from "./analysis-evidence.js";
@@ -215,13 +215,13 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   key={`analyst-${index}`}
                   state={state}
                   language={language}
-                  text={entry.text}
+                  entry={entry}
                   isLast={index === lastAnalystIndex && !pendingTurn}
                   decorateEvidence={decorateEvidence}
                 />
               ))}
               {pendingTurn ? (
-                <AnalystTurn state={state} language={language} text={null} isLast decorateEvidence={decorateEvidence} />
+                <AnalystTurn state={state} language={language} entry={null} isLast decorateEvidence={decorateEvidence} />
               ) : null}
             </ol>
           ) : (
@@ -408,31 +408,39 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
 }
 
 /* 분석가 턴 — 스파인 노드가 상태를, 헤드가 시간축을, 영수증이 과정을 말한다.
-   text=null이면 아직 chunk가 없는 진행/오류/중단의 합성 턴이다. */
-function AnalystTurn({ state, language, text, isLast, decorateEvidence }: {
+   entry=null이면 아직 chunk가 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
+   entry.receipt만으로 그린다 — 전역 상태는 다음 send에서 이미 초기화됐다. */
+function AnalystTurn({ state, language, entry, isLast, decorateEvidence }: {
   readonly state: AnalysisState;
   readonly language: ConsoleLocale;
-  readonly text: string | null;
+  readonly entry: AnalysisEntry | null;
   readonly isLast: boolean;
   readonly decorateEvidence: (html: string) => string;
 }) {
   const t = getT(language);
+  const receipt = entry?.receipt;
+  const liveElapsedMs = useElapsedMs(state);
   const working = isLast && state.busy;
-  const isError = isLast && state.phase === "error";
-  const isStopped = isLast && state.phase === "stopped";
-  const complete = isLast && state.phase === "complete" && !state.busy;
+  const liveError = isLast && state.phase === "error";
+  const liveStopped = isLast && state.phase === "stopped";
+  const isError = liveError || receipt?.outcome === "error";
+  const isStopped = liveStopped || receipt?.outcome === "stopped";
   return (
-    <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}`}>
+    <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}${!isError && isStopped ? " is-stopped" : ""}`}>
       <span className="session-analyst__turn-spine" aria-hidden="true"><span className="session-analyst__turn-node" /></span>
       <div className="session-analyst__turn-main">
-        {isLast ? <TurnHead state={state} language={language} working={working} complete={complete} /> : null}
-        {working || isError ? <TurnPulse state={state} language={language} /> : null}
-        {isStopped ? <StoppedReceipt state={state} language={language} /> : null}
-        {complete ? <TurnReceipt state={state} language={language} /> : null}
-        {text !== null ? (
+        {working ? <div className="session-analyst__turn-head">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</div> : null}
+        {!working && receipt?.outcome === "complete" ? <div className="session-analyst__turn-head">{t("terminal.analyst.turnAnswered", { elapsed: formatElapsed(receipt.durationMs) })}</div> : null}
+        {working || liveError ? <TurnPulse state={state} language={language} /> : null}
+        {liveStopped ? <StoppedReceipt state={state} language={language} /> : null}
+        {!liveStopped && !working && receipt?.outcome === "stopped" ? (
+          <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>
+        ) : null}
+        {!working && receipt?.outcome === "complete" ? <TurnReceipt language={language} durationMs={receipt.durationMs} tools={receipt.tools} /> : null}
+        {entry !== null ? (
           <div className="session-analyst__answer">
             <div className="session-analyst__answer-kicker" aria-hidden="true">{t("terminal.chat.answerLabel")}</div>
-            <StreamedMarkdown className="session-analyst__response markdown-body" text={text} streaming={working} language={language} transformHtml={decorateEvidence} />
+            <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={working} language={language} transformHtml={decorateEvidence} />
           </div>
         ) : null}
       </div>
@@ -440,13 +448,6 @@ function AnalystTurn({ state, language, text, isLast, decorateEvidence }: {
   );
 }
 
-function TurnHead({ state, language, working, complete }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly working: boolean; readonly complete: boolean }) {
-  const t = getT(language);
-  const elapsed = formatElapsed(useElapsedMs(state));
-  if (working) return <div className="session-analyst__turn-head">{t("terminal.chat.turnWorking", { elapsed })}</div>;
-  if (complete) return <div className="session-analyst__turn-head">{t("terminal.analyst.turnAnswered", { elapsed })}</div>;
-  return null;
-}
 
 /* 진행 펄스 행 — 마지막 확인 활동만 말한다는 정직성 마이크로카피가 함께 붙는다. */
 function TurnPulse({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
@@ -477,11 +478,12 @@ function StoppedReceipt({ state, language }: { readonly state: AnalysisState; re
   return <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
 }
 
-/* 완료 영수증 — 접힌 한 줄("✓ 12s · 3 steps"), 펼치면 이 턴이 밟은 도구 단계. */
-function TurnReceipt({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
+/* 완료 영수증 — 접힌 한 줄("✓ 12s · 3 steps"), 펼치면 이 턴이 밟은 도구 단계.
+   값은 봉인된 턴 메타데이터에서 온다 — 전역 상태는 다음 턴에서 초기화된다. */
+function TurnReceipt({ language, durationMs, tools }: { readonly language: ConsoleLocale; readonly durationMs: number; readonly tools: readonly { readonly title: string; readonly status: string }[] }) {
   const t = getT(language);
-  const elapsed = formatElapsed(useElapsedMs(state));
-  const steps = state.tools;
+  const elapsed = formatElapsed(durationMs);
+  const steps = tools;
   const stepsLabel = steps.length === 0 ? null : steps.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: steps.length });
   const summary = stepsLabel ? `${elapsed} · ${stepsLabel}` : elapsed;
   return (

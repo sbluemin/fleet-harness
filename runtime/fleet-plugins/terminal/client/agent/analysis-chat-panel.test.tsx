@@ -703,7 +703,7 @@ describe("Session Analyst Evidence Pulse", () => {
       latestActivity: { kind: "writing" },
       runStartedAt: 1_000,
       runEndedAt: 19_000,
-      entries: [{ role: "analyst", text: "Answer" }],
+      entries: [{ role: "analyst", text: "Answer", receipt: { outcome: "complete", durationMs: 18_000, tools: [{ title: "wiki_read", status: "complete" }] } }],
       tools: [{ title: "wiki_read", status: "complete" }],
     };
     const { container, root } = renderPanel();
@@ -718,7 +718,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelectorAll("select")).toHaveLength(0);
     expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
 
-    storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000 };
+    storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000, entries: [{ role: "analyst", text: "Answer", receipt: { outcome: "stopped", durationMs: 12_000, tools: [{ title: "wiki_read", status: "running" }] } }] };
     act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
     expect(container.querySelector(".session-analyst__stopped")?.textContent).toBe("Stopped · last confirmed: Using wiki_read (running) · 12s");
     expect(container.querySelector(".session-analyst__receipt")).toBeNull();
