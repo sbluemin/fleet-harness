@@ -7,6 +7,8 @@ export interface ClaudeCredentials {
   readonly accessToken: string;
   readonly expiresAt?: number;
   readonly subscriptionType?: string;
+  /** Login-snapshot extra-usage multiplier, e.g. `default_claude_max_20x`. */
+  readonly rateLimitTier?: string;
   readonly method: CredentialMethod;
 }
 
@@ -26,10 +28,12 @@ function parseClaudeCredentialJson(raw: string, method: CredentialMethod): Claud
     const oauth = credentialRecord(parsed.claudeAiOauth);
     const accessToken = optionalString(oauth?.accessToken ?? parsed.accessToken);
     if (!accessToken) return null;
+    const rateLimitTier = optionalString(oauth?.rateLimitTier ?? parsed.rateLimitTier);
     return {
       accessToken,
       expiresAt: optionalEpoch(oauth?.expiresAt ?? parsed.expiresAt),
       subscriptionType: optionalString(oauth?.subscriptionType ?? parsed.subscriptionType),
+      ...(rateLimitTier === undefined ? {} : { rateLimitTier }),
       method,
     };
   } catch {

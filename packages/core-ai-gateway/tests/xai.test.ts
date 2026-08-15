@@ -5,9 +5,11 @@ import {
   XAI_CLI_CREDITS_URL,
   XAI_CLI_REFRESH_URL,
   XAI_CLI_RESPONSES_URL,
+  XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
   fetchXaiUsage,
   parseXaiCredits,
+  parseXaiPlan,
   resolveXaiCliAuth,
   resolveXaiCliCredentials,
   xaiCliAuthFilePath,
@@ -155,6 +157,13 @@ const WEEKLY_PERIOD = {
 
 function creditsResponse(config: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify({ config }), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function settingsResponse(plan: string, status = 200): Response {
+  return new Response(JSON.stringify({ subscription_tier_display: plan }), {
     status,
     headers: { "content-type": "application/json" },
   });
@@ -321,6 +330,14 @@ describe("Grok quota", () => {
     expect(XAI_CLI_CREDITS_URL).toContain("billing?format=credits");
   });
 
+  it("reads the Grok settings display string as the plan badge", () => {
+    expect(parseXaiPlan({ subscription_tier_display: "SuperGrok" })).toBe("SuperGrok");
+    expect(parseXaiPlan({ subscription_tier_display: "SuperGrok Plus" })).toBe("SuperGrok Plus");
+    expect(parseXaiPlan({ subscription_tier_display: "SuperGrok Heavy" })).toBe("SuperGrok Heavy");
+    expect(parseXaiPlan({ subscription_tier_display: "Bearer abc123" })).toBeUndefined();
+    expect(XAI_CLI_SETTINGS_URL).toContain("/v1/settings");
+  });
+
   it("treats an omitted creditUsagePercent as a genuine 0%", () => {
     // proto3 JSON drops zeros. OpenUsage documents the same shape: absent means 0, not drift.
     expect(parseXaiCredits({ config: { currentPeriod: WEEKLY_PERIOD } })).toMatchObject({
@@ -337,10 +354,13 @@ describe("Grok quota", () => {
   });
 
   it("reads weekly credits with Grok CLI subscription headers", async () => {
-    const fetchMock = vi.fn<typeof fetch>(async () => creditsResponse({
-      creditUsagePercent: 42.4,
-      currentPeriod: WEEKLY_PERIOD,
-    }));
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (String(url) === XAI_CLI_SETTINGS_URL) return settingsResponse("SuperGrok Heavy");
+      return creditsResponse({
+        creditUsagePercent: 42.4,
+        currentPeriod: WEEKLY_PERIOD,
+      });
+    });
     const result = await fetchXaiUsage({
       credentials: deps(JSON.stringify({
         "https://auth.x.ai::profile": {
@@ -360,7 +380,12 @@ describe("Grok quota", () => {
     expect(headers.get("authorization")).toBe("Bearer access-token");
     expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
     expect(headers.get("x-userid")).toBe("user-1");
-    expect(result).toMatchObject({ status: "ok", windows: [{ id: "weekly", usedPercent: 42 }] });
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_SETTINGS_URL);
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: "SuperGrok Heavy",
+      windows: [{ id: "weekly", usedPercent: 42 }],
+    });
   });
 
   it("returns an empty weekly window when proto-JSON omitted the 0% field", async () => {
@@ -388,27 +413,50 @@ describe("Grok quota", () => {
         user_id: "user-1",
       },
     };
-    const fetchMock = vi.fn<typeof fetch>(async () => {
-      throw new Error("unexpected fetch");
-    });
-    fetchMock
-      .mockImplementationOnce(async () => new Response("unauthorized", { status: 401 }))
-      .mockImplementationOnce(async (url) => {
-        expect(String(url)).toBe(XAI_CLI_REFRESH_URL);
-        return refreshResponse("fresh-token");
-      })
-      .mockImplementationOnce(async (url, init) => {
-        expect(String(url)).toBe(XAI_CLI_CREDITS_URL);
+    let creditsCalls = 0;
+    const fetchMock = vi.fn<typeof fetch>(async (url, init) => {
+      const href = String(url);
+      if (href === XAI_CLI_CREDITS_URL) {
+        creditsCalls += 1;
+        if (creditsCalls === 1) return new Response("unauthorized", { status: 401 });
         expect(new Headers(init?.headers).get("authorization")).toBe("Bearer fresh-token");
         return creditsResponse({ creditUsagePercent: 7, currentPeriod: WEEKLY_PERIOD });
-      });
+      }
+      if (href === XAI_CLI_REFRESH_URL) return refreshResponse("fresh-token");
+      if (href === XAI_CLI_SETTINGS_URL) return settingsResponse("SuperGrok Plus");
+      throw new Error(`unexpected fetch ${href}`);
+    });
     const result = await fetchXaiUsage({
       credentials: deps(JSON.stringify(auth)),
       fetch: fetchMock,
       now: () => Date.parse("2026-08-14T00:00:00Z"),
     });
-    expect(result).toMatchObject({ status: "ok", windows: [{ usedPercent: 7 }] });
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(result).toMatchObject({
+      status: "ok",
+      plan: "SuperGrok Plus",
+      windows: [{ usedPercent: 7 }],
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps the usage snapshot when the settings plan call fails", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async (url) => {
+      if (String(url) === XAI_CLI_SETTINGS_URL) return new Response("not found", { status: 404 });
+      return creditsResponse({ creditUsagePercent: 11, currentPeriod: WEEKLY_PERIOD });
+    });
+    const result = await fetchXaiUsage({
+      credentials: deps(JSON.stringify({
+        "https://auth.x.ai::profile": {
+          key: "access-token",
+          oidc_issuer: "https://auth.x.ai",
+          expires_at: "2026-08-15T00:00:00Z",
+        },
+      })),
+      fetch: fetchMock,
+      now: () => Date.parse("2026-08-14T00:00:00Z"),
+    });
+    expect(result).toMatchObject({ status: "ok", windows: [{ usedPercent: 11 }] });
+    expect(result.status === "ok" ? result.plan : "missing").toBeUndefined();
   });
 });
 

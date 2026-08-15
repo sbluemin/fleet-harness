@@ -25,7 +25,12 @@ function deps(overrides: Partial<CredentialResolverDeps> = {}): CredentialResolv
 describe("credential resolvers", () => {
   it("uses the macOS keychain first and passes an argv array without a shell", async () => {
     const execFile = vi.fn(async () => JSON.stringify({
-      claudeAiOauth: { accessToken: "secret", expiresAt: 9_000, subscriptionType: "max" },
+      claudeAiOauth: {
+        accessToken: "secret",
+        expiresAt: 9_000,
+        subscriptionType: "max",
+        rateLimitTier: "default_claude_max_20x",
+      },
     }));
     const readBounded = vi.fn(async () => "");
     const result = await resolveClaudeCredentials(deps({ platform: "darwin", execFile, readBounded }));
@@ -35,7 +40,13 @@ describe("credential resolvers", () => {
       { timeout: 5_000 },
     );
     expect(readBounded).not.toHaveBeenCalled();
-    expect(result).toEqual({ accessToken: "secret", expiresAt: 9_000, subscriptionType: "max", method: "keychain" });
+    expect(result).toEqual({
+      accessToken: "secret",
+      expiresAt: 9_000,
+      subscriptionType: "max",
+      rateLimitTier: "default_claude_max_20x",
+      method: "keychain",
+    });
   });
 
   it("falls back to CLAUDE_CONFIG_DIR on macOS when keychain lookup fails", async () => {
