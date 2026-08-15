@@ -131,7 +131,12 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "session-lost") return { ...endWithError(state, "Analysis session ended — send again to restart.", action.now), started: false };
   if (action.type === "start-failed") return { ...endWithError(state, action.message, action.now), started: false };
   if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, artifactAuthoring: null, error: null, entries: sealLastAnalystEntry(state, "stopped", action.now) };
-  if (action.type === "stop-failed") return { ...endWithError(state, `Stop failed: ${action.message}`, action.now), started: false };
+  if (action.type === "stop-failed") {
+    // stop은 낙관적으로 stopped를 먼저 봉인한다 — 실패가 오면 그 봉인을 error로 승격해
+    // 역사 턴이 "정상 중단"으로 남지 않게 한다. durationMs·tools는 중단 시점 값을 유지한다.
+    const message = `Stop failed: ${action.message}`;
+    return { ...endWithError({ ...state, entries: upgradeStoppedReceipt(state.entries, message) }, message, action.now), started: false };
+  }
   if (action.type === "reset") {
     const catalog = state.catalog;
     return catalog
@@ -214,6 +219,12 @@ function resolvePersistedSelection(catalog: AnalysisCatalog, selection?: Analysi
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {
   return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message, entries: sealLastAnalystEntry(state, "error", now, message) };
+}
+
+function upgradeStoppedReceipt(entries: readonly AnalysisEntry[], error: string): readonly AnalysisEntry[] {
+  const last = entries.at(-1);
+  if (last?.role !== "analyst" || last.receipt?.outcome !== "stopped") return entries;
+  return [...entries.slice(0, -1), { ...last, receipt: { ...last.receipt, outcome: "error", error } }];
 }
 
 function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt["outcome"], now: number, error?: string): readonly AnalysisEntry[] {
