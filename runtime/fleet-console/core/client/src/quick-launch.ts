@@ -1,7 +1,7 @@
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
-import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchGroup } from "./operation-search.js";
+import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchEntry, type OperationSearchGroup } from "./operation-search.js";
 import type { ConsoleState } from "./types.js";
 
 /**
@@ -288,6 +288,46 @@ export function buildQuickLaunchMentionGroups(
   if (mentionable.length === 0) return [];
   const entries = buildOperationSearchEntries({ ...state, operations: mentionable });
   return groupOperationSearchEntries(filterOperationSearchEntries(entries, query));
+}
+
+/**
+ * 보고 있는 패널이 멘션 덱에 오를 수 있을 때만 행선지가 된다. 활성 없음·셸·다른 플러그인·
+ * awaiting·사라진 id는 전부 null — 덱이 고를 수 없는 것을 자동 확정도 고르지 않는다.
+ *
+ * "보고 있다"는 알림·브레드크럼과 같은 판정이다. Theater만 바꾸면 activeOperationId가 남고
+ * (/settings·모바일 비-Operations에서는 operationsViewActive가 꺼진다) 그 id를 그대로
+ * 확정하면 화면에 없는 패널로 보낸다.
+ *
+ * War Room 무대는 예외다. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
+ * (pickTriageOperation) 무대 Operation을 active로 세운다. 그 id는 leftover가 아니라
+ * 지금 보고 있는 패널이다 — visibleOperationId로만 허용한다.
+ */
+export function resolveFocusedMention(
+  state: ConsoleState,
+  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  visibleOperationId: string | null = null,
+): OperationSearchEntry | null {
+  const operationId = state.activeOperationId;
+  if (!state.operationsViewActive || !operationId) return null;
+  const entry = buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, "")
+    .flatMap((group) => group.entries)
+    .find((candidate) => candidate.operationId === operationId);
+  if (!entry || !isMentionSelectable(entry.activity)) return null;
+  if (entry.theaterId !== state.activeTheaterId && entry.operationId !== visibleOperationId) return null;
+  return entry;
+}
+
+/**
+ * 옵트인이 켜져 있고 컴포저가 비어 있을 때만 포커스 멘션을 확정한다. 초안·이미 붙은 멘션·
+ * 입력 중인 문면은 새 런치를 덮지 않는다.
+ */
+export function shouldApplyFocusedMention(input: {
+  readonly prefOn: boolean;
+  readonly leftoverDraft: boolean;
+  readonly mentionAlreadySet: boolean;
+  readonly promptOccupied: boolean;
+}): boolean {
+  return input.prefOn && !input.leftoverDraft && !input.mentionAlreadySet && !input.promptOccupied;
 }
 
 /**

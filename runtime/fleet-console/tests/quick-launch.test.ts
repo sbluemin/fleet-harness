@@ -7,8 +7,8 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection, writeUltracodeNoticeSeen } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveSelection, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection, writeUltracodeNoticeSeen } from "../core/client/src/quick-launch-preferences.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -155,12 +155,12 @@ describe("quick launch preferences", () => {
   });
 
   it("round-trips the last selection", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false });
   });
 
   it("updates model and effort without replacing the last launched Theater", () => {
-    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true });
+    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
 
     writeQuickLaunchModelEffort("codex--gpt-5.6-luna-fast", "max");
 
@@ -169,6 +169,7 @@ describe("quick launch preferences", () => {
       model: "codex--gpt-5.6-luna-fast",
       effort: "max",
       pinned: true,
+      mentionFocused: false,
     });
   });
 
@@ -177,32 +178,53 @@ describe("quick launch preferences", () => {
       "fleet-console.quickLaunch.selection",
       JSON.stringify({ theaterId: "t1", model: "opus", effort: "high" }),
     );
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false });
     expect(JSON.parse(window.localStorage.getItem("fleet-console.quickLaunch.selection")!)).toEqual({
       theaterId: "t1",
       model: "opus[1m]",
       effort: "high",
       pinned: false,
+      mentionFocused: false,
     });
   });
 
   it("reads an empty selection when nothing was stored", () => {
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false });
   });
 
   it("treats a corrupt entry as no memory rather than throwing", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", "{not json");
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false });
   });
 
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false, mentionFocused: false });
   });
 
   it("treats any non-true pin value as unpinned rather than trusting it", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ pinned: "yes" }));
     expect(readQuickLaunchSelection().pinned).toBe(false);
+  });
+
+  it("defaults mentionFocused off and only trusts a boolean true", () => {
+    expect(readQuickLaunchSelection().mentionFocused).toBe(false);
+    window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ mentionFocused: "yes" }));
+    expect(readQuickLaunchSelection().mentionFocused).toBe(false);
+    writeQuickLaunchMentionFocused(true);
+    expect(readQuickLaunchSelection()).toMatchObject({ mentionFocused: true, pinned: false });
+  });
+
+  it("remembers mentionFocused beside pin instead of replacing it", () => {
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
+    writeQuickLaunchMentionFocused(true);
+    expect(readQuickLaunchSelection()).toEqual({
+      theaterId: "t1",
+      model: "opus[1m]",
+      effort: "high",
+      pinned: true,
+      mentionFocused: true,
+    });
   });
 });
 
@@ -213,11 +235,11 @@ describe("quick launch pin", () => {
   });
 
   it("remembers the pin beside the launch coordinates instead of replacing them", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false });
 
     writeQuickLaunchPinned(true);
 
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
   });
 
   // 고정 중에는 여닫을 것이 없다 — 같은 키가 포커스를 왕복시킨다.
@@ -660,6 +682,70 @@ describe("buildQuickLaunchMentionGroups", () => {
   });
 });
 
+describe("resolveFocusedMention", () => {
+  it("returns the active mentionable Operation and skips the rest", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a")],
+      operations: [
+        makeOperation("op-live"),
+        makeOperation("op-shell", { type: "shell" }),
+        makeOperation("op-await", { id: "op-await" }),
+      ],
+      operationStatus: { "op-await": "awaiting" as const },
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
+      activeOperationId: "op-live",
+    };
+    expect(resolveFocusedMention(state, MESSAGEABLE)?.operationId).toBe("op-live");
+
+    expect(resolveFocusedMention({ ...state, activeOperationId: null }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeOperationId: "op-shell" }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeOperationId: "op-await" }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeOperationId: "op-missing" }, MESSAGEABLE)).toBeNull();
+  });
+
+  it("skips a leftover active id when Operations is not in view or Theater has moved", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a"), makeTheater("th-b")],
+      operations: [makeOperation("op-live"), makeOperation("op-other", { theaterId: "th-b" })],
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
+      activeOperationId: "op-live",
+    };
+    expect(resolveFocusedMention({ ...state, operationsViewActive: false }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeTheaterId: "th-b" }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeTheaterId: "th-b" }, MESSAGEABLE, "op-other")).toBeNull();
+  });
+
+  it("allows a foreign-Theater id when it is the live War Room stage", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a"), makeTheater("th-b")],
+      operations: [makeOperation("op-home"), makeOperation("op-stage", { theaterId: "th-b" })],
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
+      activeOperationId: "op-stage",
+    };
+    expect(resolveFocusedMention(state, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention(state, MESSAGEABLE, "op-home")).toBeNull();
+    expect(resolveFocusedMention(state, MESSAGEABLE, "op-stage")?.operationId).toBe("op-stage");
+  });
+});
+
+describe("shouldApplyFocusedMention", () => {
+  const on = { prefOn: true, leftoverDraft: false, mentionAlreadySet: false, promptOccupied: false };
+
+  it("applies only when the opt-in is on and the composer is empty", () => {
+    expect(shouldApplyFocusedMention(on)).toBe(true);
+    expect(shouldApplyFocusedMention({ ...on, prefOn: false })).toBe(false);
+    expect(shouldApplyFocusedMention({ ...on, leftoverDraft: true })).toBe(false);
+    expect(shouldApplyFocusedMention({ ...on, mentionAlreadySet: true })).toBe(false);
+    expect(shouldApplyFocusedMention({ ...on, promptOccupied: true })).toBe(false);
+  });
+});
+
 describe("mention rejection messages", () => {
   it("maps delivery codes onto message keys with a generic fallback", () => {
     expect(quickLaunchMentionErrorMessageKey("resume_unavailable")).toBe("chrome.quickLaunch.mentionErrorResumeUnavailable");
@@ -683,6 +769,8 @@ describe("mention rejection messages", () => {
       "chrome.quickLaunch.mentionErrorAwaiting",
       "chrome.quickLaunch.mentionErrorGone",
       "chrome.quickLaunch.mentionErrorDeliveryFailed",
+      "chrome.quickLaunch.mentionFocusOn",
+      "chrome.quickLaunch.mentionFocusOff",
     ];
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);

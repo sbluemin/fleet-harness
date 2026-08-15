@@ -5,7 +5,8 @@
  * 서버 durable state가 아니라 localStorage인 이유: 이 값은 "이 브라우저에서 방금 뭘 골랐나"라는
  * 화면 상태이지 Console이 소유한 작전 상태가 아니다. Codex cowork 인라인 컨트롤이 cli/model/effort
  * 3종 조합을 같은 방식으로 기억하고 있고(fleet.codex.cowork.settings), activeTheaterId도 같은 계층이다.
- * 고정(pinned)도 같은 이유로 여기 산다 — 컴포저가 이 화면에서 어디에 서 있느냐는 배치 상태다.
+ * 고정(pinned)과 포커스 멘션(mentionFocused)도 같은 이유로 여기 산다 — 컴포저가 이 화면에서
+ * 어디에 서 있느냐, 열릴 때 보고 있는 패널을 행선지로 삼느냐는 배치·습관 상태다.
  */
 
 const STORAGE_KEY = "fleet-console.quickLaunch.selection";
@@ -15,6 +16,7 @@ export interface QuickLaunchSelection {
   readonly model: string | null;
   readonly effort: string | null;
   readonly pinned: boolean;
+  readonly mentionFocused: boolean;
 }
 
 export const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
@@ -22,6 +24,7 @@ export const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
   model: null,
   effort: null,
   pinned: false,
+  mentionFocused: false,
 };
 
 export function readQuickLaunchSelection(): QuickLaunchSelection {
@@ -34,6 +37,7 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
       model: migrateRememberedModel(readNonEmptyString(parsed.model)),
       effort: readNonEmptyString(parsed.effort),
       pinned: parsed.pinned === true,
+      mentionFocused: parsed.mentionFocused === true,
     };
     // Canvas/Quick Launch native models now launch on their 1M coordinates. Rewrite a leftover bare
     // selection once so a reopen does not restore a retired catalog id into React state.
@@ -70,6 +74,11 @@ export function writeQuickLaunchModelEffort(model: string | null, effort: string
 export function writeQuickLaunchPinned(pinned: boolean): void {
   const remembered = readQuickLaunchSelection();
   writeQuickLaunchSelection({ ...remembered, pinned });
+}
+
+export function writeQuickLaunchMentionFocused(mentionFocused: boolean): void {
+  const remembered = readQuickLaunchSelection();
+  writeQuickLaunchSelection({ ...remembered, mentionFocused });
 }
 
 /**

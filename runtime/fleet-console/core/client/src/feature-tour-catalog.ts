@@ -53,6 +53,20 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     ],
   },
   {
+    id: "quick-launch-focused-mention",
+    // 핀과 같은 자리의 옵트인 — 버튼을 누를 수 있을 때만 렌더하므로 존재가 곧 판정이다.
+    // 핀 투어와 같은 마운트에서 연달아 뜨지 않게 한 박자 미룬다. 다음 방문에서 제 순서에 뜬다.
+    spotlight: null,
+    deferAfterAnotherTour: true,
+    walkthrough: [
+      {
+        anchor: ".quick-launch-mention-focus",
+        titleKey: "featureTour.quickLaunchFocusedMention.step1Title",
+        bodyKey: "featureTour.quickLaunchFocusedMention.step1Body",
+      },
+    ],
+  },
+  {
     id: "war-room",
     // 활성화 앵커(첫 non-null 앵커)는 두 조건을 동시에 만족해야 한다: War Room에서 항상 있을 것,
     // 그리고 War Room에서만 있을 것. 무대는 대기 건이, 덱은 살아 있는 Operation이 있어야 서고,

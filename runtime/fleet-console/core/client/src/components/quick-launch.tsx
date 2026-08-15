@@ -8,11 +8,12 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveSelection, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
+import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
+import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
@@ -21,6 +22,16 @@ import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 const CARD_WIDTH_FALLBACK = 760;
 const POPOVER_GAP = 8;
 const FOCUSABLE_SELECTOR = "a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex='-1'])";
+
+/**
+ * War Room 무대 id. 전 Theater가 마운트되므로 지목이 Theater를 바꾸지 않고
+ * (pickTriageOperation) 캔버스가 무대 Operation을 active로 세운다. 그 id는
+ * leftover가 아니라 지금 보고 있는 패널이다 — 헬퍼는 Theater 불일치여도
+ * 이 id만 허용한다.
+ */
+function visibleTriageStageOperationId(): string | null {
+  return isTriageActive() ? getState().activeOperationId : null;
+}
 
 type PopoverKind = "theater" | "model";
 
@@ -112,6 +123,7 @@ export function QuickLaunch() {
   // '@' 멘션: token은 덱이 열려 있는 동안의 조회 상태, target은 확정된 행선지(최대 1개).
   const [mentionToken, setMentionToken] = useState<QuickLaunchMentionToken | null>(null);
   const [mentionTarget, setMentionTarget] = useState<OperationSearchEntry | null>(null);
+  const [mentionFocused, setMentionFocused] = useState(() => readQuickLaunchSelection().mentionFocused);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [mentionErrorKey, setMentionErrorKey] = useState<string | null>(null);
   // '/' 커맨드 덱: 문면("/model sol")이 레벨의 원천이라 별도 레벨 상태가 없다 — 여기는 파싱
@@ -174,6 +186,12 @@ export function QuickLaunch() {
     }
     return map;
   }, [registry.plugins]);
+  const messageableTypesByPluginRef = useRef(messageableTypesByPlugin);
+  messageableTypesByPluginRef.current = messageableTypesByPlugin;
+  const mentionFocusedRef = useRef(mentionFocused);
+  mentionFocusedRef.current = mentionFocused;
+  const mentionTargetRef = useRef(mentionTarget);
+  mentionTargetRef.current = mentionTarget;
   const mentionGroups = useMemo(
     () => (mentionToken === null ? [] : buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, mentionToken.query)),
     [mentionToken, state, messageableTypesByPlugin],
@@ -301,6 +319,27 @@ export function QuickLaunch() {
     setMentionTarget(null);
     setMentionActiveIndex(0);
     setMentionErrorKey(null);
+    // 모달 열림만 여기서 주소한다. 도킹 첫 마운트·설정에서 돌아온 재마운트는 invoke가 아니다.
+    // 접힌 바에 칩을 미리 심으면 펼치기도 전에 행선지가 바뀐다. 도킹은 expandAndFocus가 맡는다.
+    const leftoverDraft = restoredPrompt.trim().length > 0
+      || (state.quickLaunchDraftAttachments?.length ?? 0) > 0
+      || carried.length > 0;
+    if (
+      !pinned
+      && shouldApplyFocusedMention({
+        prefOn: remembered.mentionFocused,
+        leftoverDraft,
+        mentionAlreadySet: false,
+        promptOccupied: false,
+      })
+    ) {
+      const focused = resolveFocusedMention(
+        getState(),
+        messageableTypesByPluginRef.current,
+        visibleTriageStageOperationId(),
+      );
+      if (focused) setMentionTarget(focused);
+    }
     // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
     // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
     setCommandInput(readCommandInput(restoredPrompt, restoredPrompt.length));
@@ -363,12 +402,34 @@ export function QuickLaunch() {
 
   // 접힌 동안 입력은 inert라 포커스를 받지 못한다. 먼저 펼침을 커밋하고, inert가 걷힌 다음 틱에
   // 포커스를 넣는다 — 같은 틱에 부르면 focus()가 조용히 실패해 바가 열리지 않은 것처럼 보인다.
-  const expandAndFocus = useCallback(() => {
+  // 포커스 멘션은 invoke에서만 붙인다. 핀 전환·거절 초안 복원은 이미 열린 자리를 이어 쓰는
+  // 것이라 주소하지 않는다 — 비운 멘션을 핀이 도로 심거나, 방금 켠 옵트인이 현재 문면을 덮지 않는다.
+  const expandAndFocus = useCallback((input: { readonly addressFocused?: boolean } = {}) => {
     setCollapsed(false);
     // 물러남(focus-out)이 비운 커맨드 상태를 유지된 문면에서 되살린다 — 접힘/펼침 왕복이
     // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
     setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
     setCommandActiveIndex(0);
+    if (
+      input.addressFocused === true
+      && shouldApplyFocusedMention({
+        prefOn: mentionFocusedRef.current,
+        leftoverDraft: false,
+        mentionAlreadySet: mentionTargetRef.current !== null,
+        promptOccupied: promptRef.current.trim().length > 0 || attachmentsRef.current.length > 0,
+      })
+    ) {
+      const focused = resolveFocusedMention(
+        getState(),
+        messageableTypesByPluginRef.current,
+        visibleTriageStageOperationId(),
+      );
+      if (focused) {
+        setMentionTarget(focused);
+        setMentionToken(null);
+        setMentionErrorKey(null);
+      }
+    }
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, []);
 
@@ -380,7 +441,7 @@ export function QuickLaunch() {
     if (focusToggle === lastFocusToggleRef.current) return;
     lastFocusToggleRef.current = focusToggle;
     if (!pinned) return;
-    if (collapsed) expandAndFocus();
+    if (collapsed) expandAndFocus({ addressFocused: true });
     else blurWithin(cardRef.current);
   }, [collapsed, expandAndFocus, focusToggle, pinned]);
 
@@ -391,7 +452,7 @@ export function QuickLaunch() {
   useEffect(() => {
     if (expandRequest === lastExpandRequestRef.current) return;
     lastExpandRequestRef.current = expandRequest;
-    if (pinned) expandAndFocus();
+    if (pinned) expandAndFocus({ addressFocused: true });
   }, [expandAndFocus, expandRequest, pinned]);
 
   // 거절이 초안과 함께 돌아왔을 때, 고정 상태에는 "열림 전이"가 없어 초안 복원 경로가 없다.
@@ -916,7 +977,7 @@ export function QuickLaunch() {
     if (launchedAttachments.length > 0) variant.attachments = launchedAttachments.map((attachment) => attachment.id).join(",");
     // 고정은 저장된 값을 그대로 다시 쓴다 — 화면별 실효값(설정에서는 접어 두므로 거짓)을 저장하면
     // 그 화면에서 한 번 실행한 것만으로 사용자의 고정 설정이 조용히 꺼진다.
-    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned });
+    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused });
     // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
     // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
     setActiveTheater(theaterId);
@@ -929,7 +990,7 @@ export function QuickLaunch() {
     });
     navigate("/operations");
     finishSubmission();
-  }, [attachments, commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
+  }, [attachments, commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionFocused, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -992,6 +1053,12 @@ export function QuickLaunch() {
     setQuickLaunchPinned(!pinned);
     expandAndFocus();
   }, [expandAndFocus, pinned]);
+
+  const toggleMentionFocused = useCallback(() => {
+    const next = !mentionFocused;
+    setMentionFocused(next);
+    writeQuickLaunchMentionFocused(next);
+  }, [mentionFocused]);
 
   // 고정을 풀면 접힘이라는 상태 자체가 없어진다(모달은 접히지 않는다). 판정은 실효값이 아니라
   // 저장된 고정값으로 한다 — 설정 화면의 일시 억제까지 해제로 읽으면, 잠시 접어 둔 바가 돌아올 때
@@ -1143,7 +1210,7 @@ export function QuickLaunch() {
           <button
             type="button"
             className="quick-launch-strip"
-            onClick={expandAndFocus}
+            onClick={() => expandAndFocus({ addressFocused: true })}
             aria-label={t("chrome.quickLaunch.expand")}
           >
             <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterInitials(activeTheater.label) : "—"}</span>
@@ -1502,16 +1569,28 @@ export function QuickLaunch() {
             </>
           ) : null}
           {dockSuppressed || showStrip ? null : (
-            <button
-              type="button"
-              className="quick-launch-pin"
-              aria-pressed={pinned}
-              onClick={togglePinned}
-              aria-label={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
-              title={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
-            >
-              <PinIcon />
-            </button>
+            <>
+              <button
+                type="button"
+                className="quick-launch-mention-focus"
+                aria-pressed={mentionFocused}
+                onClick={toggleMentionFocused}
+                aria-label={t(mentionFocused ? "chrome.quickLaunch.mentionFocusOff" : "chrome.quickLaunch.mentionFocusOn")}
+                title={t(mentionFocused ? "chrome.quickLaunch.mentionFocusOff" : "chrome.quickLaunch.mentionFocusOn")}
+              >
+                <MentionFocusIcon />
+              </button>
+              <button
+                type="button"
+                className="quick-launch-pin"
+                aria-pressed={pinned}
+                onClick={togglePinned}
+                aria-label={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
+                title={t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin")}
+              >
+                <PinIcon />
+              </button>
+            </>
           )}
           <button
             type="button"
@@ -1676,6 +1755,20 @@ function AttachImageIcon() {
       <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
       <circle cx="6" cy="6.6" r="1.1" fill="currentColor" />
       <path d="M3.2 11.6 6.8 8.4l2.4 2.1 1.9-1.7 1.7 1.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MentionFocusIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M10.6 10.2A3.4 3.4 0 1 1 8 4.6c.7 0 1.3.2 1.8.6v.4A1.6 1.6 0 0 0 13 7.2V8A5 5 0 1 0 8 13"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }
