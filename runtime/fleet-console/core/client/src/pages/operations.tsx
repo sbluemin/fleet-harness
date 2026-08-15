@@ -6,7 +6,7 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
-import { createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
+import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
@@ -594,8 +594,21 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [refreshTheaters, runMutation]);
 
   const handleUngroupAll = useCallback((groupId: string) => {
+    // DELETE가 이미 성공한 뒤 새로고침만 거절되면 재시도가 같은 id를 다시 지우려 한다 —
+    // 서버는 404 group_not_found 를 주고 배너가 안 내려간다. 첫 성공 뒤에는 새로고침만 다시 한다.
+    let deleted = false;
     runMutation(
-      () => deleteGroup(groupId).then(refreshOperationsAndGroups),
+      async () => {
+        if (!deleted) {
+          try {
+            await deleteGroup(groupId);
+          } catch (error) {
+            if (!(error instanceof ApiError && error.status === 404)) throw error;
+          }
+          deleted = true;
+        }
+        await refreshOperationsAndGroups();
+      },
       refreshOperationsAndGroups,
     );
   }, [refreshOperationsAndGroups, runMutation]);
