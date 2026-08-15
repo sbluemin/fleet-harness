@@ -209,3 +209,19 @@ describe("listTheaterContents VCS edge cases", () => {
     }
   });
 });
+
+describe("listTheaterContents resolved-target quarantine", () => {
+  it("요청된 폴터가 VCS 날것으로 실해석되면 수집을 거부한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-retarget-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main");
+    // 처음엔 정상 디렉터리를 가리키다가 .git으로 리타기팅된 별칭을 재현한다.
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+
+    try {
+      await expect(listTheaterContents(dir, "metadata")).rejects.toMatchObject({ code: "forbidden" });
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});

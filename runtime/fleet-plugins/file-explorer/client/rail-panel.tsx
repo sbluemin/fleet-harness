@@ -68,9 +68,9 @@ export const fileExplorerPanel: RailPanelDescriptor = {
     // 자리가 남으면 결과를 줄이지 않는다. 추가 매치 수는 실제로 유지되는 결과 기준으로 센다.
     const keep = Math.min(items.length, Math.max(0, limit - 1));
     const marker: RailSearchResult | null = result.walkCapped
-      ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined }
+      ? { id: "file-explorer.search-capped", title: t("fileExplorer.search.capped"), activate: () => undefined, kind: "info" }
       : result.totalMatches > result.files.length
-        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - keep }), activate: () => undefined }
+        ? { id: "file-explorer.search-more", title: t("fileExplorer.search.moreMatches", { count: result.totalMatches - keep }), activate: () => undefined, kind: "info" }
         : null;
     if (!marker) return items;
     return [...items.slice(0, keep), marker];

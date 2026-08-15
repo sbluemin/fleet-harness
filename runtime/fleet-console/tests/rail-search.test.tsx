@@ -137,6 +137,38 @@ describe("rail search fan-out", () => {
     expect(activate).toHaveBeenCalledOnce();
   });
 
+  it("renders info results as read-only metadata outside keyboard navigation", async () => {
+    const activateReal = vi.fn();
+    const activateInfo = vi.fn();
+    const provider = vi.fn<RailSearchProvider>(async () => [
+      result("file-a", "File A", activateReal),
+      { id: "cap-marker", title: "Search limit reached", activate: activateInfo, kind: "info" },
+    ]);
+    panels = [panel("files", "Files", provider)];
+    renderPalette();
+
+    setInput("needle");
+    await advanceDebounce();
+
+    // info 행은 읽기 전용 — option 역할도 "열기" 어포던스도 없다.
+    const marker = container.querySelector(".operation-search-panel-info");
+    expect(marker?.textContent).toContain("Search limit reached");
+    expect(marker?.getAttribute("role")).toBeNull();
+    const options = [...container.querySelectorAll<HTMLElement>('[role="option"]')];
+    expect(options.some((option) => option.textContent?.includes("Search limit reached"))).toBe(false);
+
+    // 키보드 날비는 info 행을 건어너뛰고 실결과에만 멈춘다.
+    const input = container.querySelector<HTMLInputElement>("#operation-search-input");
+    act(() => input!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+    expect(input?.getAttribute("aria-activedescendant")).toBe("operation-search-option-panel-files-file-a");
+    await act(async () => {
+      input!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true }));
+      await Promise.resolve();
+    });
+    expect(activateReal).toHaveBeenCalledOnce();
+    expect(activateInfo).not.toHaveBeenCalled();
+  });
+
   it("debounces providers and discards a response that arrives after abort via the generation fence", async () => {
     const requests = new Map<string, { readonly signal: AbortSignal; readonly resolve: (results: readonly RailSearchResult[]) => void }>();
     const provider = vi.fn<RailSearchProvider>(({ query, signal }) => new Promise((resolve) => {

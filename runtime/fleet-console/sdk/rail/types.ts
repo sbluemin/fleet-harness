@@ -36,6 +36,8 @@ export interface RailSearchResult {
   readonly title: string;
   readonly subtitle?: string;
   readonly activate: () => void | Promise<void>;
+  /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠지고 읽기 전용으로 렌더된다. */
+  readonly kind?: "info";
 }
 
 export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;

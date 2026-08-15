@@ -60,6 +60,8 @@ export async function listTheaterContents(
   if (realTargetAbs !== realRoot && !realTargetAbs.startsWith(realNormalizedRoot)) {
     throw new FolderBrowserError("forbidden");
   }
+  // 요청된 폴터 자체가 VCS 날것으로 실해석되면(리타기팅된 별칭 등) 수집을 거부한다.
+  if (vcsSegmentOf(realRoot, realTargetAbs)) throw new FolderBrowserError("forbidden");
 
   const targetStat = await statDirectory(realTargetAbs, stat);
   if (!targetStat.isDirectory()) throw new FolderBrowserError("invalid_path");

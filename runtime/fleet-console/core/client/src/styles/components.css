@@ -9568,6 +9568,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-transform: uppercase;
 }
 
+/* 상한 표식 같은 읽기 전용 메타데이터 행 — 선택·활성화 대상이 아니므로 option 문법을 쓰지 않는다. */
+.operation-search-panel-info {
+  cursor: default;
+  color: var(--text-tertiary);
+}
+
+.operation-search-panel-info strong {
+  font-weight: var(--weight-regular);
+}
+
 .operation-search-codex-section {
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 72%, transparent);
 }
