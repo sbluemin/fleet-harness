@@ -391,16 +391,22 @@ export function effortLadderPosition(row: OperationLaunchVariantRow, effort: str
 }
 
 /**
- * 게이트가 실제로 열 수 있는 단들의 이름. 문구가 열리지 않는 단을 약속하지 않게 한다 —
- * max만 내놓는 모델(Codex Luna 계열·Cursor Opus 5 계열·Kimi K3 등)에서 "MAX·ULTRACODE"라고
- * 말하면 열었을 때 한 단만 서고, 나머지 하나는 어디 갔는지 물을 자리가 없다.
- * 축에만 오른 단은 세지 않는다 — chips에 실린 것만 실제로 고를 수 있다.
+ * 게이트가 여는 단들의 이름. 문구가 열리지 않는 단을 약속하지 않게 한다 — max만 내놓는
+ * 모델(Codex Luna 계열·Cursor Opus 5 계열·Kimi K3 등)에서 "MAX·ULTRACODE"라고 말하면 열었을 때
+ * 한 단만 서고, 나머지 하나는 어디 갔는지 물을 자리가 없다.
+ *
+ * 기준은 트랙이 문을 세우는 기준과 같은 **사다리**다. chips만 세면, 축에만 오른 게이트 단을
+ * 실은 카탈로그 행(SDK가 그 형태를 보존한다)에서 토글은 서는데 이름이 빈 문자열이 되어
+ * "Show " 같은 빈 aria-label이 남는다. 이름 없는 단은 트랙이 스톱 라벨에 쓰는 것과 같은
+ * 폴백(id 대문자)으로 채운다.
  */
 export function gatedEffortNames(row: OperationLaunchVariantRow | null): string {
-  const gated = new Set(row?.gatedEfforts ?? []);
-  return (row?.chips ?? [])
-    .filter((chip) => gated.has(chip.id))
-    .map((chip) => chip.label)
+  if (!row) return "";
+  const gated = new Set(row.gatedEfforts ?? []);
+  const byId = new Map((row.chips ?? []).map((chip) => [chip.id, chip.label]));
+  return ladderRungs(row)
+    .filter((id) => gated.has(id))
+    .map((id) => byId.get(id) ?? id.toUpperCase())
     .join("·");
 }
 

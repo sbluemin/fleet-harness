@@ -12,5 +12,5 @@ branch: quick-launch-deck-refit
   ko: 추론 강도 사다리가 쓸 수 있는 폭 전체로 벌어져, 나란히 놓고 비교하지 않아도 이웃한 단이 한눈에 갈립니다.
 
 #### Added
-- Quick Launch `/effort` ends with a gate row that reveals MAX and ULTRACODE, and omits that row for models whose ladder stops earlier, so the list tells a hidden tier apart from an unavailable one.
-  ko: Quick Launch `/effort` 맨 아래에 MAX·ULTRACODE를 여는 문 행이 서고, 사다리가 그보다 낮은 모델에서는 그 행이 서지 않습니다 — 숨은 단과 없는 단이 목록에서 갈립니다.
+- Quick Launch `/effort` ends with a gate row that names and reveals the gated tiers the chosen model actually offers, and omits that row for a model that gates none, so the list tells a hidden tier apart from an unavailable one.
+  ko: Quick Launch `/effort` 맨 아래에 고른 모델이 실제로 내놓는 게이트 단만 이름 붙여 여는 문 행이 서고, 게이트 단이 없는 모델에서는 그 행이 서지 않습니다 — 숨은 단과 없는 단이 목록에서 갈립니다.

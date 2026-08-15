@@ -484,4 +484,12 @@ describe("gatedEffortNames", () => {
     expect(gatedEffortNames(row())).toBe("");
     expect(gatedEffortNames(null)).toBe("");
   });
+
+  it("falls back to the rung id for an axis-only gated tier so the toggle never announces an empty name", () => {
+    // 트랙은 사다리에서 문을 세우므로, chips에 없는 게이트 단만 실린 행에서도 토글이 뜬다.
+    // chips만 세면 그 토글의 이름이 빈 문자열이 되어 "Show " 같은 라벨이 남는다.
+    // 이 픽스처의 축은 low/medium/high/xhigh/max이고 chips는 low/high/max다 — xhigh가 축에만 있다.
+    expect(gatedEffortNames(row({ gatedEfforts: ["xhigh"] }))).toBe("XHIGH");
+    expect(gatedEffortNames(row({ gatedEfforts: ["xhigh", "max"] }))).toBe("XHIGH·MAX");
+  });
 });

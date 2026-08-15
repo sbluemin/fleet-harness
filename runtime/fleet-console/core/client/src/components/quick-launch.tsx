@@ -616,10 +616,13 @@ export function QuickLaunch() {
   // 게이트는 이 덱을 보는 동안만 열려 있다. `/effort` 값 레벨을 떠나면(명령 목록으로 돌아가든,
   // 다른 커맨드로 가든, 덱을 닫든) 접힌 상태로 복귀한다 — 트랙이 apex 아닌 단으로 내려오면
   // 스스로 접히는 것과 같은 계약이고, 다음 방문이 열린 채로 시작하는 놀라움을 없앤다.
+  // 컴포저가 닫히는 것도 떠나는 것이다: 컴포넌트는 언마운트되지 않고 렌더만 접으므로(`if (!open)
+  // return null`), 문면이 `/effort `인 채 보존된 초안으로 돌아오면 commandInput이 그대로라
+  // open을 조건에 넣지 않으면 게이트가 펼쳐진 채 되살아난다.
   useEffect(() => {
-    if (commandInput?.kind === "values" && commandInput.command === "effort") return;
+    if (open && commandInput?.kind === "values" && commandInput.command === "effort") return;
     setCommandGateOpen(false);
-  }, [commandInput]);
+  }, [commandInput, open]);
 
   // '/' 커맨드 덱의 목록. 문면이 레벨을 소유하므로(commandInput.kind) 여기는 그 레벨의 행만
   // 계산한다. 값 레벨은 기존 픽커·트랙과 같은 원천(theaters·카탈로그 groups·chips)과 같은

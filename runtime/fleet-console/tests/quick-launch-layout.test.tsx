@@ -182,6 +182,15 @@ describe("Quick Launch effort surface", () => {
     );
   });
 
+  it("folds the effort gate back when the composer closes, not only when the level changes", () => {
+    // 컴포저는 언마운트되지 않고 렌더만 접는다(`if (!open) return null`). 문면이 `/effort `인 채
+    // 보존된 초안으로 돌아오면 commandInput이 그대로라, open을 조건에 넣지 않으면 게이트가
+    // 펼쳐진 채 되살아난다 — "이번 방문에만 열린다"는 계약이 그 경로에서만 깨진다.
+    expect(quickLaunch).toMatch(
+      /if \(open && commandInput\?\.kind === "values" && commandInput\.command === "effort"\) return;\s*\n\s*setCommandGateOpen\(false\);\s*\n\s*\}, \[commandInput, open\]\);/u,
+    );
+  });
+
   it("stands the gate row only when the deck owns the whole list", () => {
     // 문 행이 질의 중에도 남으면 매치 0인 `/effort zebra`에서 덱이 비지 않아, 커맨드 덱 공통
     // 계약("일치 없으면 Enter는 문장을 그대로 보낸다")이 이 레벨에서만 깨진다.
