@@ -2388,6 +2388,14 @@ describe("War Room deck panel grammar", () => {
     expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell \{\s*transition: none;\s*\}/);
   });
 
+  it("keeps the deck tile's live body out of reach of both pointer and keyboard", () => {
+    // 승격 면은 포인터만 가로챈다 — 본문을 inert로 빼지 않으면 키보드는 그 면을 지나쳐 살아 있는
+    // 터미널 textarea·컴포저로 들어가고, 읽는 자리여야 할 칸에 실제 입력이 들어간다.
+    expect(frame).toContain('inert={deckTile ? true : undefined}');
+    // 캡션은 inert가 아니다 — 최소화·닫기는 키보드로도 닿아야 한다.
+    expect(frame).not.toMatch(/canvas-operation-titlebar"[^>]*inert/);
+  });
+
   it("gives the promotion surface the body and leaves the caption its own controls", () => {
     // 덱에서 패널의 본문은 읽는 것이지 조작하는 것이 아니다 — 본문 위를 덮는 면이 클릭 한 번을
     // 승격으로 받고, 캡션은 그 위에 남아 창 컨트롤이 자기 클릭을 지킨다.
