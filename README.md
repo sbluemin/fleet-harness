@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Fleet Console running four operations side by side — Claude, Codex GPT-5.6, and Cursor Grok sessions with a live shell" width="100%" />
 
-<p align="center"><sub>One Theater, four live Operations: Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.5 answering side by side, next to a plain shell. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
+<p align="center"><sub>One Theater, four live Operations: Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 answering side by side, next to a plain shell. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
 
 Working with one AI coding agent is a workflow. Working with five is a mess of terminal tabs — until you give them a deck to land on. Fleet turns every agent session into an **Operation**: a real PTY owned by a local server, laid out on an infinite canvas, observable from any device you trust.
 

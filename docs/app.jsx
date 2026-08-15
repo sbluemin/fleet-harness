@@ -37,8 +37,8 @@ const UI = {
   metaScreensV: { ko: "브라우저 · 데스크톱 · Android", en: "Browser · Desktop · Android" },
   bootTitle: { ko: "fleet — zsh", en: "fleet — zsh" },
   heroCap: {
-    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.5가 나란히 도는 Tactical 캔버스.",
-    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.5 running side by side on the Tactical canvas, on this very repository.",
+    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 나란히 도는 Tactical 캔버스.",
+    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 running side by side on the Tactical canvas, on this very repository.",
   },
 
   thesis1: { ko: "서버가 세션을 소유하면, ", en: "When the server owns the session, " },

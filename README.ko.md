@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Claude, Codex GPT-5.6, Cursor Grok 세션과 라이브 셸이 나란히 도는 Fleet Console" width="100%" />
 
-<p align="center"><sub>하나의 Theater, 네 개의 라이브 Operation: Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.5가 셸 옆에서 나란히 답하고 있습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
+<p align="center"><sub>하나의 Theater, 네 개의 라이브 Operation: Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 셸 옆에서 나란히 답하고 있습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
 
 AI 코딩 에이전트 하나와 일하는 것은 워크플로우지만, 다섯과 일하는 것은 터미널 탭의 아수라장입니다 — 내려앉을 갑판을 주기 전까지는. Fleet는 모든 에이전트 세션을 **Operation**으로 만듭니다: 로컬 서버가 소유한 진짜 PTY이며, 무한 캔버스 위에 배치되고, 신뢰하는 어떤 기기에서든 관찰할 수 있습니다.
 
