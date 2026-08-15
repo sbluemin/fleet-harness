@@ -78,6 +78,12 @@ const CONTENT_RESULT_TOOLS = new Set([
   "Read", "NotebookRead", "Glob", "Grep", "WebFetch", "WebSearch", "Task", "Agent",
 ]);
 
+/**
+ * 좌표가 파일을 가리키는 입력 필드. NotebookEdit만 `notebook_path`를 쓰므로 이 목록에서 빠지면
+ * 노트북 편집은 대상도 변경 장부도 Theater 밖 표식도 없이 지나간다.
+ */
+const PATH_KEYS = ["file_path", "path", "notebook_path"];
+
 interface TranscriptContentBlock {
   readonly type?: unknown;
   readonly text?: unknown;
@@ -286,11 +292,11 @@ function normalizeDispatchText(text: string): string | null {
 export function summarizeToolInput(input: unknown, options: ChatEventMapOptions = {}): string {
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const record = input as Record<string, unknown>;
-  for (const key of ["file_path", "path", "command", "pattern", "url", "query", "description", "prompt", "subject"]) {
+  for (const key of PATH_KEYS.concat(["command", "pattern", "url", "query", "description", "prompt", "subject"])) {
     const value = record[key];
     if (typeof value === "string" && value.trim().length > 0) {
       const flat = value.replace(/\s+/g, " ").trim();
-      const shown = key === "file_path" || key === "path"
+      const shown = PATH_KEYS.includes(key)
         ? displayPath(flat, options.cwd)
         : normalizePathTokens(flat, options.cwd);
       return shown.length > MAX_TOOL_DETAIL_CHARS ? `${shown.slice(0, MAX_TOOL_DETAIL_CHARS - 1)}…` : shown;
@@ -310,8 +316,21 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
   const first = text.split("\n").map((line) => line.trim()).find((line) => line.length > 0);
   if (first === undefined) return "";
   const flat = normalizePathTokens(first.replace(/\s+/g, " ").trim(), options.cwd);
-  const masked = maskSecrets(flat);
+  const masked = maskSecrets(abbreviateAbsolutePaths(flat));
   return masked.length > MAX_TOOL_RESULT_CHARS ? `${masked.slice(0, MAX_TOOL_RESULT_CHARS - 1)}…` : masked;
+}
+
+/**
+ * cwd·홈 정규화를 지나고도 남은 절대 경로를 표시형으로 접는다. 도구 결과는 실행 출력이 그대로
+ * 흐르는 경로라 우리 두 접두 밖의 절대 경로가 원문으로 나갈 수 있다 — 실측에서 실패한 쓰기의
+ * EACCES 메시지가 다른 사용자의 홈 경로를 실어 왔다. 원장의 경로 필드가 이미 쓰는 규칙과 같게
+ * 마지막 두 조각만 남긴다. URL(`scheme://…`)과 이미 정규화된 `./`·`~/`는 건드리지 않는다.
+ */
+function abbreviateAbsolutePaths(value: string): string {
+  return value.replace(/(?<![\w:~./])(?:\/[A-Za-z0-9._@+-]+){2,}/g, (match) => {
+    const segments = match.split("/").filter((segment) => segment.length > 0);
+    return `…/${segments.slice(-2).join("/")}`;
+  });
 }
 
 function readResultText(content: unknown): string | null {
@@ -345,9 +364,9 @@ export function changeFromToolInput(name: string, input: unknown, options: ChatE
   if (!WRITE_TOOLS.has(name)) return null;
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const record = input as Record<string, unknown>;
-  const raw = typeof record.file_path === "string" && record.file_path.trim().length > 0
-    ? record.file_path
-    : typeof record.path === "string" && record.path.trim().length > 0 ? record.path : null;
+  const raw = PATH_KEYS
+    .map((key) => record[key])
+    .find((value): value is string => typeof value === "string" && value.trim().length > 0) ?? null;
   if (raw === null) return null;
   const file = displayPath(raw.trim(), options.cwd);
   if (name === "Write") {
@@ -381,7 +400,7 @@ function lineCount(value: unknown): number {
 export function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boolean {
   if (!cwd || !input || typeof input !== "object" || Array.isArray(input)) return false;
   const record = input as Record<string, unknown>;
-  for (const key of ["file_path", "path"]) {
+  for (const key of PATH_KEYS) {
     const value = record[key];
     if (typeof value !== "string" || value.trim().length === 0) continue;
     const normalized = value.trim().replace(/\\/g, "/");

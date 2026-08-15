@@ -5,8 +5,11 @@ import { getT } from "../../i18n/index.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
+  agentChatToolFamily,
+  groupAgentChatLedger,
   splitAgentChatTurn,
   type AgentChatChange,
+  type AgentChatStepGroup,
   type AgentChatTurn,
   type AgentChatTurnItem,
 } from "./chat-events.js";
@@ -352,12 +355,15 @@ function Ledger({
   readonly pending?: boolean;
 }) {
   const t = getT(language);
+  const view = groupAgentChatLedger(items);
   if (items.length === 0 && !pending) return null;
   return (
     <div className="agent-chat-ledger">
-      {items.map((item, index) => item.type === "text"
+      {view.inline.map((item, index) => item.type === "text"
         ? <div key={index} className="agent-chat-ledger-note">{item.text}</div>
         : <Step key={index} item={item} language={language} />)}
+      <Tally groups={view.groups} language={language} />
+      {view.running.map((item, index) => <Step key={`run-${index}`} item={item} language={language} />)}
       {pending ? (
         <div className="agent-chat-step is-running">
           <span className="agent-chat-step-orbit" aria-hidden="true" />
@@ -366,6 +372,38 @@ function Ledger({
       ) : null}
     </div>
   );
+}
+
+/**
+ * 끝난 평범한 스텝의 한 줄 집계 — "파일 2개 읽음 · 셸 1회 실행". 도구를 하나하나 세우면 긴 턴이
+ * 읽히지 않으므로 일상은 여기로 접히고, 예외(진행 중·실패·Theater 밖)만 자기 줄을 지킨다.
+ */
+function Tally({
+  groups,
+  language,
+}: {
+  readonly groups: readonly AgentChatStepGroup[];
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  if (groups.length === 0) return null;
+  return (
+    <div className="agent-chat-tally">
+      {groups.map((group, index) => (
+        <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
+          {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
+          <span>{groupLabel(group, t)}</span>
+        </React.Fragment>
+      ))}
+    </div>
+  );
+}
+
+/** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
+function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
+  const plural = group.count === 1 ? "one" : "other";
+  const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
+  return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
 }
 
 /** 스텝 한 줄 — 동사·좌표·결과. 진행 중인 줄만 라이브 리전으로 읽힌다. */
@@ -440,36 +478,19 @@ function WorkFold({
   );
 }
 
-/** 도구 이름을 동사로 옮긴다 — 모르는 이름은 이름 그대로가 곧 동사다. */
-const TOOL_VERBS: Readonly<Record<string, string>> = {
-  Read: "read",
-  Write: "write",
-  Edit: "edit",
-  MultiEdit: "edit",
-  NotebookEdit: "edit",
-  Bash: "run",
-  BashOutput: "run",
-  Glob: "search",
-  Grep: "search",
-  WebFetch: "fetch",
-  WebSearch: "search",
-  Task: "delegate",
-  Agent: "delegate",
-  TodoWrite: "plan",
-};
-
+/** 동사는 계열이 정한다 — 집계 줄과 스텝 줄이 같은 어휘를 쓰도록 한 축에서 온다. */
 function runningVerb(name: string, language: "en" | "ko"): string {
   const t = getT(language);
-  const key = TOOL_VERBS[name];
-  return key
-    ? t(`terminal.chat.verb.${key}.now` as Parameters<typeof t>[0])
-    : t("terminal.chat.activityUsing", { name });
+  const family = agentChatToolFamily(name);
+  return family === "other"
+    ? t("terminal.chat.activityUsing", { name })
+    : t(`terminal.chat.verb.${family}.now` as Parameters<typeof t>[0]);
 }
 
 function pastVerb(name: string, language: "en" | "ko"): string {
   const t = getT(language);
-  const key = TOOL_VERBS[name];
-  return key ? t(`terminal.chat.verb.${key}.past` as Parameters<typeof t>[0]) : name;
+  const family = agentChatToolFamily(name);
+  return family === "other" ? name : t(`terminal.chat.verb.${family}.past` as Parameters<typeof t>[0]);
 }
 
 function formatChange(change: AgentChatChange): string {

@@ -323,6 +323,77 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   return { ledger: turn.items, answer: null, streamingText: null, changes, failed };
 }
 
+/**
+ * 도구 이름을 계열로 접는다. 원장이 스텝을 하나하나 세는 대신 "무엇을 몇 번 했는가"로 읽히려면
+ * 집계 축이 이름이 아니라 계열이어야 한다 — Read와 NotebookRead는 사용자에게 같은 일이다.
+ */
+const TOOL_FAMILIES: Readonly<Record<string, string>> = {
+  Read: "read",
+  NotebookRead: "read",
+  Write: "write",
+  Edit: "edit",
+  MultiEdit: "edit",
+  NotebookEdit: "edit",
+  Bash: "run",
+  BashOutput: "run",
+  Glob: "search",
+  Grep: "search",
+  WebSearch: "search",
+  WebFetch: "fetch",
+  Task: "delegate",
+  Agent: "delegate",
+  TodoWrite: "plan",
+};
+
+export function agentChatToolFamily(name: string | undefined): string {
+  return (name !== undefined ? TOOL_FAMILIES[name] : undefined) ?? "other";
+}
+
+/** 집계 한 덩어리 — 계열과 그 계열로 끝난 스텝 수. `other`는 도구 이름별로 따로 센다. */
+export interface AgentChatStepGroup {
+  readonly family: string;
+  /** `other` 계열의 표시 이름. 알려진 계열에서는 비어 있다. */
+  readonly name?: string;
+  readonly count: number;
+}
+
+export interface AgentChatLedgerView {
+  /** 순서대로 자기 줄을 지키는 것 — 문장, 실패한 스텝, Theater 밖 스텝. */
+  readonly inline: readonly AgentChatTurnItem[];
+  /** 한 줄 집계로 접힌 평범한 완료 스텝. */
+  readonly groups: readonly AgentChatStepGroup[];
+  /** 지금 도는 스텝 — 집계에 접지 않는다. "지금 무엇을 하는가"가 이 뷰의 값이다. */
+  readonly running: readonly AgentChatTurnItem[];
+}
+
+/**
+ * 원장을 "집계 + 예외"로 가른다. 도구를 하나하나 나열하면 긴 턴에서 읽을 수 없고, 전부 집계하면
+ * 지금 무엇을 하는지와 무엇이 잘못됐는지를 잃는다. 그래서 일상은 세고, 예외만 줄을 지킨다:
+ * 진행 중인 스텝, 실패한 스텝, Theater 밖을 가리킨 스텝, 그리고 모델이 남긴 문장.
+ */
+export function groupAgentChatLedger(items: readonly AgentChatTurnItem[]): AgentChatLedgerView {
+  const inline: AgentChatTurnItem[] = [];
+  const running: AgentChatTurnItem[] = [];
+  const groups: AgentChatStepGroup[] = [];
+  const index = new Map<string, number>();
+  for (const item of items) {
+    if (item.type === "text") { inline.push(item); continue; }
+    if (item.state === "running") { running.push(item); continue; }
+    if (item.state === "fail" || item.outside === true) { inline.push(item); continue; }
+    const family = agentChatToolFamily(item.name);
+    const key = family === "other" ? `other:${item.name ?? ""}` : family;
+    const at = index.get(key);
+    if (at === undefined) {
+      index.set(key, groups.length);
+      groups.push({ family, count: 1, ...(family === "other" ? { name: item.name ?? "" } : {}) });
+    } else {
+      const current = groups[at];
+      if (current) groups[at] = { ...current, count: current.count + 1 };
+    }
+  }
+  return { inline, groups, running };
+}
+
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */
 function collectChanges(items: readonly AgentChatTurnItem[]): readonly AgentChatChange[] {
   const byFile = new Map<string, { file: string; added: number; removed: number }>();

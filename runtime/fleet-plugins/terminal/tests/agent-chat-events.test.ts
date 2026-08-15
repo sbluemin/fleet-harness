@@ -100,6 +100,28 @@ describe("chat transcript mapping", () => {
     ]);
   });
 
+  // NotebookEdit만 notebook_path를 쓴다 — 좌표 목록에서 빠지면 대상도 변경 장부도 없이 지나가고,
+  // 쓰기 계열의 성공 결과는 싣지 않으므로 노트북 편집이 원장에서 사실상 보이지 않게 된다.
+  it("reads NotebookEdit's notebook_path as its coordinate", () => {
+    const events = chatEventsFromTranscriptLine(JSON.stringify({
+      type: "assistant",
+      message: {
+        content: [{ type: "tool_use", id: "t1", name: "NotebookEdit", input: { notebook_path: "/repo/analysis.ipynb", new_source: "print(1)" } }],
+      },
+    }), { cwd: "/repo" });
+    expect(events).toEqual([
+      { kind: "tool", name: "NotebookEdit", detail: "analysis.ipynb", id: "t1", change: { file: "analysis.ipynb", added: 0, removed: 0 } },
+    ]);
+  });
+
+  it("marks a NotebookEdit that lands outside the Theater", () => {
+    const events = chatEventsFromTranscriptLine(JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "t1", name: "NotebookEdit", input: { notebook_path: "/elsewhere/x.ipynb" } }] },
+    }), { cwd: "/repo" });
+    expect(events[0]).toMatchObject({ outside: true, detail: "…/elsewhere/x.ipynb" });
+  });
+
   it("puts no change on a read-only tool", () => {
     const events = chatEventsFromTranscriptLine(JSON.stringify({
       type: "assistant",
@@ -236,6 +258,18 @@ describe("summarizeToolResult", () => {
 
   // 도구 결과는 모델이 고른 문장이 아니라 실행 출력이 그대로 흐르는 경로다 — 가장 흔한
   // 자격 증명 모양은 원문으로 남기지 않는다.
+  // cwd·홈 밖의 절대 경로는 두 접두 정규화를 그냥 통과한다 — 실측에서 실패한 쓰기의 EACCES가
+  // 다른 사용자의 홈을 실어 왔다. 원장 경로 필드와 같은 규칙(마지막 두 조각)으로 접는다.
+  it("abbreviates absolute paths that belong to neither the workspace nor this home", () => {
+    expect(summarizeToolResult("EACCES: permission denied, mkdir '/Users/someone-else/Documents/CATE'", { cwd: "/repo" }))
+      .toBe("EACCES: permission denied, mkdir '…/Documents/CATE'");
+    expect(summarizeToolResult("/srv/private/project/file.ts: syntax error", { cwd: "/repo" }))
+      .toBe("…/project/file.ts: syntax error");
+    // 이미 정규화된 표기와 URL은 건드리지 않는다.
+    expect(summarizeToolResult("wrote ./src/a.ts", { cwd: "/repo" })).toBe("wrote ./src/a.ts");
+    expect(summarizeToolResult("fetched https://example.com/a/b/c")).toBe("fetched https://example.com/a/b/c");
+  });
+
   it("masks obvious credential shapes", () => {
     expect(summarizeToolResult("token=sk-abcdefghijklmnopqrstuvwxyz")).toBe("token=sk-…");
     expect(summarizeToolResult("ghp_abcdefghijklmnopqrstuvwxyz0123")).toBe("ghp_…");

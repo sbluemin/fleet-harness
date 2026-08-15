@@ -1,11 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  groupAgentChatLedger,
   initialAgentChatLogState,
   reduceAgentChatLog,
   splitAgentChatTurn,
   type AgentChatLogState,
   type AgentChatStreamEvent,
+  type AgentChatTurnItem,
 } from "../client/agent/chat/chat-events.js";
 
 function fold(events: readonly AgentChatStreamEvent[], from: AgentChatLogState = initialAgentChatLogState): AgentChatLogState {
@@ -191,6 +193,45 @@ describe("chat log steps", () => {
       { kind: "tool-result", id: "orphan", ok: false, summary: "nope" },
     ]);
     expect(state.turns.at(-1)?.items).toEqual([]);
+  });
+});
+
+// 원장 집계 — 일상은 세고, 예외만 줄을 지킨다.
+describe("groupAgentChatLedger", () => {
+  const tool = (name: string, extra: Partial<AgentChatTurnItem> = {}): AgentChatTurnItem =>
+    ({ type: "tool", name, detail: "", state: "ok", ...extra });
+
+  it("folds routine finished steps into one count per family", () => {
+    const view = groupAgentChatLedger([
+      tool("Read"), tool("NotebookRead"), tool("Write"), tool("Edit"), tool("Bash"), tool("Bash"),
+    ]);
+    expect(view.groups).toEqual([
+      { family: "read", count: 2 },
+      { family: "write", count: 1 },
+      { family: "edit", count: 1 },
+      { family: "run", count: 2 },
+    ]);
+    expect(view.inline).toEqual([]);
+    expect(view.running).toEqual([]);
+  });
+
+  it("keeps the running step, the failure and the outside write on their own rows", () => {
+    const failed = tool("Bash", { state: "fail", result: "exit 2" });
+    const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
+    const live = tool("Read", { state: "running" });
+    const note: AgentChatTurnItem = { type: "text", text: "먼저 읽겠습니다." };
+    const view = groupAgentChatLedger([note, tool("Read"), failed, outside, tool("Read"), live]);
+    expect(view.inline).toEqual([note, failed, outside]);
+    expect(view.groups).toEqual([{ family: "read", count: 2 }]);
+    expect(view.running).toEqual([live]);
+  });
+
+  it("counts an unknown tool under its own name", () => {
+    const view = groupAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
+    expect(view.groups).toEqual([
+      { family: "other", name: "SomeMcpTool", count: 2 },
+      { family: "other", name: "Other", count: 1 },
+    ]);
   });
 });
 
