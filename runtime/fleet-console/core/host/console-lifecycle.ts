@@ -8,7 +8,7 @@ import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
 
 import type { ConsoleLockPayload } from "./console-contract-types.js";
 import { openBrowser, type BrowserOpenResult, type OpenBrowserDeps } from "./browser.js";
-import { describeDaemonStartFailure } from "./failure-notice.js";
+import { describeConsoleLaunch, describeDaemonStartFailure } from "./failure-notice.js";
 import { createConsoleHealthClient } from "./health.js";
 import {
   ASCII_FLEET_BANNER,
@@ -388,13 +388,15 @@ export async function main(): Promise<void> {
     process.stdout.write(`${await runConsoleStop()}\n`);
     return;
   }
+  // 두 published bin은 같은 사실을 말해야 한다 — 이 진입점이 결과를 버리면 `fleet console`은
+  // 주소를 건네는데 `fleet-console`은 열렸다고만 하는 모순이 남는다.
   if (mode === "restart") {
-    await runConsoleRestart();
-    process.stdout.write(`Fleet Console restarted.\n${await runConsoleStatus()}\n`);
+    const restarted = await runConsoleRestart();
+    process.stdout.write(`${describeConsoleLaunch("Fleet Console restarted.", restarted)}\n${await runConsoleStatus()}\n`);
     return;
   }
-  await openFleetConsole();
-  process.stdout.write(`Fleet Console opened.\n${await runConsoleStatus()}\n`);
+  const opened = await openFleetConsole();
+  process.stdout.write(`${describeConsoleLaunch("Fleet Console opened.", opened)}\n${await runConsoleStatus()}\n`);
 }
 
 function resolveDefaultServerModulePath(): string {

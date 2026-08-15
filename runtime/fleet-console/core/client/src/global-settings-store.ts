@@ -46,6 +46,9 @@ export function getGlobalSettingsStoreState(): GlobalSettingsStoreState {
 }
 
 export function hydrateGlobalSettings(state: GlobalSettingsState): void {
+  // 서버가 권위 있는 상태를 다시 준 순간, 그 전의 저장 실패는 더 이상 화면이 말할 사실이
+  // 아니다. 여기서 거두지 않으면 다음에 성공하는 저장이 이미 사라진 경고를 되살린다.
+  failedFields.clear();
   setSnapshot({ loadStatus: "ready", loading: false, state, error: null });
 }
 
@@ -71,6 +74,7 @@ export async function loadGlobalSettings(signal?: AbortSignal): Promise<void> {
   setSnapshot({ loading: true, error: null });
   try {
     const state = await fetchGlobalSettingsState(signal);
+    failedFields.clear();
     setSnapshot({ loadStatus: "ready", loading: false, state, error: null });
   } catch (error) {
     if (signal?.aborted) return;

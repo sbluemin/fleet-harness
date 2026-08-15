@@ -54,6 +54,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   // 실패한 제거의 대상 Theater까지 들고 있어야 한다. Theater를 바꾼 뒤 재시도를 누르면
   // 지금 보고 있는 Theater에서 같은 이름의 스킬을 지우게 되기 때문이다.
   const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string; readonly theaterId: string | null } | null>(null);
+  // 나간 요청을 세어 그 번호로 완료를 맞춰 본다. Theater를 옮기는 동안 날아가던 요청이
+  // 뒤늦게 실패로 돌아오면, 그 실패는 지금 화면의 사실이 아니다.
+  const removeRequestRef = useRef(0);
 
   const loadList = useCallback((tid: string | null) => {
     const requestContextKey = skillsContextKey(tid);
@@ -88,6 +91,8 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     if (removeScope === "project" && targetTheaterId) {
       body["theaterId"] = targetTheaterId;
     }
+    const requestId = removeRequestRef.current + 1;
+    removeRequestRef.current = requestId;
     lastRemoveRef.current = { name, scope: removeScope, theaterId: targetTheaterId };
     setRemoveFailed(false);
 
@@ -102,7 +107,12 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
         if (!response.ok) throw new Error(String(response.status));
         loadList(targetTheaterId);
       })
-      .catch(() => setRemoveFailed(true));
+      .catch(() => {
+        // 이 요청이 더 이상 화면이 기다리는 요청이 아니면(Theater 전환이나 새 제거가 뒤이었다면)
+        // 그 실패는 지금 보이는 목록의 사실이 아니다 — 재시도할 대상도 이미 사라졌다.
+        if (removeRequestRef.current !== requestId) return;
+        setRemoveFailed(true);
+      });
   }, [loadList]);
 
   const handleRemove = useCallback((name: string, removeScope: string) => {
@@ -116,8 +126,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   }, [removeSkill]);
 
   // Theater를 옮기면 앞선 실패의 맥락이 화면에서 사라진다. 남은 재시도 카드가 다른 Theater의
-  // 목록 위에 떠 있지 않도록 함께 거둔다.
+  // 목록 위에 떠 있지 않도록 함께 거두고, 아직 날아가는 요청의 번호도 무효로 만든다.
   useEffect(() => {
+    removeRequestRef.current += 1;
     setRemoveFailed(false);
     lastRemoveRef.current = null;
   }, [theaterId]);

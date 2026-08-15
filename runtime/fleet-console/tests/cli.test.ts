@@ -19,7 +19,7 @@ import {
   runConsoleStatus,
   runConsoleStop,
 } from "../core/host/cli.js";
-import { openBrowser } from "../core/host/browser.js";
+import { defaultSpawnBrowser, openBrowser } from "../core/host/browser.js";
 import { describeConsoleLaunch, describeDaemonStartFailure, formatFailureNotice } from "../core/host/failure-notice.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsolePaths } from "../core/host/paths.js";
@@ -332,6 +332,18 @@ describe("fleet console CLI", () => {
       expect(failed).toContain("xdg-open is not on PATH");
       expect(failed).toContain("Open this address yourself: http://127.0.0.1:37283/console/");
       expect(failed).not.toBe("Fleet Console opened.");
+    });
+
+    it("treats a launcher that exits nonzero as a failure, not a success", async () => {
+      // xdg-open은 필요한 도구가 없으면 3, 동작이 실패하면 4로 끝낸다 — 'error' 이벤트가 아니라
+      // 종료 코드로 온다. 이것을 보지 않으면 브라우저가 뜨지 않았는데도 열렸다고 말하게 된다.
+      const options = { detached: true, stdio: "ignore", windowsHide: true } as const;
+      const failed = await defaultSpawnBrowser(process.execPath, ["-e", "process.exit(3)"], options);
+      expect(failed.opened).toBe(false);
+      expect(failed.reason).toContain("status 3");
+
+      const succeeded = await defaultSpawnBrowser(process.execPath, ["-e", "process.exit(0)"], options);
+      expect(succeeded.opened).toBe(true);
     });
 
     it("reports a browser launcher that is missing instead of claiming success", async () => {

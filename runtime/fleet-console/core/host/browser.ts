@@ -38,7 +38,8 @@ async function normalize(result: void | Promise<BrowserOpenResult>): Promise<Bro
   return resolved ?? { opened: true };
 }
 
-function defaultSpawnBrowser(
+/** 기본 실행기. 종료 코드까지 판정에 넣으므로 테스트가 직접 호출한다. */
+export function defaultSpawnBrowser(
   command: string,
   args: readonly string[],
   options: { readonly detached: true; readonly stdio: "ignore"; readonly windowsHide: true },
@@ -62,6 +63,15 @@ function defaultSpawnBrowser(
       clearTimeout(timer);
       child.unref();
       resolve({ opened: false, reason: describe(error, command) });
+    });
+    // 런처가 뜨기는 했으나 할 일을 못한 경우는 'error'가 아니라 종료 코드로 온다 — xdg-open은
+    // 필요한 도구가 없으면 3, 동작이 실패하면 4로 끝낸다. 그것을 보지 않으면 브라우저가 뜨지
+    // 않았는데도 열렸다고 말하게 된다. macOS `open`과 `cmd /c start`는 성공 시 0으로 끝난다.
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      child.unref();
+      if (code === null || code === 0) resolve({ opened: true });
+      else resolve({ opened: false, reason: `${command} exited with status ${code}` });
     });
   });
 }

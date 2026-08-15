@@ -70,6 +70,26 @@ describe("overlapping global settings saves", () => {
     expect(store.getGlobalSettingsStoreState().error).toBeNull();
   });
 
+  it("drops field failures once an authoritative reload replaces the state", async () => {
+    const store = await import("../core/client/src/global-settings-store.js");
+    store.hydrateGlobalSettings(BASE);
+
+    const failing = store.setGlobalSettingsField("theme", "carbon");
+    deferred.get("theme")!.reject(new Error("theme write refused"));
+    await failing;
+    expect(store.getGlobalSettingsStoreState().error).toBe("theme write refused");
+
+    // 설정 화면을 떠났다 돌아오면 서버가 권위 있는 상태를 다시 준다. 그 순간 이전 실패는
+    // 화면이 말할 사실이 아니게 되므로, 뒤이은 다른 필드의 성공이 그것을 되살리면 안 된다.
+    store.hydrateGlobalSettings(BASE);
+    expect(store.getGlobalSettingsStoreState().error).toBeNull();
+
+    const succeeding = store.setGlobalSettingsField("language", "ko");
+    deferred.get("language")!.resolve({ state: { ...BASE, language: "ko" } });
+    await expect(succeeding).resolves.toBe(true);
+    expect(store.getGlobalSettingsStoreState().error).toBeNull();
+  });
+
   it("still refuses a second write to the same field while one is in flight", async () => {
     const store = await import("../core/client/src/global-settings-store.js");
     store.hydrateGlobalSettings(BASE);
