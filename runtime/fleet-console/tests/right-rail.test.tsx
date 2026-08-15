@@ -394,6 +394,89 @@ describe("Right Rail panel width", () => {
   });
 });
 
+describe("Right Rail hover-reveal header", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("keeps the header hidden until a delayed pointer approach, then hides immediately on leave", () => {
+    renderRail();
+    const reveal = panelHeadReveal();
+    expect(reveal.classList.contains("is-revealed")).toBe(false);
+    expect(container.querySelector(".right-rail-panel-peek")).not.toBeNull();
+
+    dispatchSlotPointer("pointermove", { clientY: 104 });
+    expect(reveal.classList.contains("is-revealed")).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(119);
+    });
+    expect(reveal.classList.contains("is-revealed")).toBe(false);
+
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(reveal.classList.contains("is-revealed")).toBe(true);
+
+    dispatchSlotPointer("pointermove", { clientY: 180 });
+    expect(reveal.classList.contains("is-revealed")).toBe(false);
+  });
+
+  it("does not start a reveal from a touch pointermove", () => {
+    renderRail();
+    dispatchSlotPointer("pointermove", { clientY: 104, pointerType: "touch" });
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
+  });
+
+  it("reveals from a touch on the top edge and hides when the body is tapped", () => {
+    renderRail();
+    dispatchSlotPointer("pointerdown", { clientY: 120, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    dispatchSlotPointer("pointerdown", { clientY: 240, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
+  });
+
+  it("keeps a touch reveal open through the lift so a second tap can reach the chrome", () => {
+    renderRail();
+    dispatchSlotPointer("pointerdown", { clientY: 120, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    dispatchSlotPointer("pointerleave", { clientY: 120, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    act(() => {
+      panelHeadReveal().dispatchEvent(new PointerEvent("pointerleave", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 980,
+        clientY: 110,
+        pointerType: "touch",
+      }));
+    });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+  });
+
+  it("resets the reveal when the active panel changes", () => {
+    renderRail();
+    dispatchSlotPointer("pointermove", { clientY: 104 });
+    act(() => {
+      vi.advanceTimersByTime(120);
+    });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    act(() => setActiveRailPanel("codex"));
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
+  });
+});
+
 function renderRail(): void {
   act(() => {
     root.render(<RightRail theaterId={null} api={{} as never} />);
@@ -404,6 +487,39 @@ function panelSlot(): HTMLDivElement {
   const slot = container.querySelector<HTMLDivElement>(".right-rail-panel-slot");
   expect(slot).not.toBeNull();
   return slot!;
+}
+
+function panelHeadReveal(): HTMLDivElement {
+  const reveal = container.querySelector<HTMLDivElement>(".right-rail-panel-head-reveal");
+  expect(reveal).not.toBeNull();
+  return reveal!;
+}
+
+function dispatchSlotPointer(
+  type: "pointermove" | "pointerdown" | "pointerleave",
+  init: { readonly clientY: number; readonly pointerType?: string },
+): void {
+  const slot = panelSlot();
+  vi.spyOn(slot, "getBoundingClientRect").mockReturnValue({
+    x: 800,
+    y: 100,
+    top: 100,
+    left: 800,
+    right: 1160,
+    bottom: 700,
+    width: 360,
+    height: 600,
+    toJSON: () => ({}),
+  });
+  act(() => {
+    slot.dispatchEvent(new PointerEvent(type, {
+      bubbles: true,
+      cancelable: true,
+      clientX: 980,
+      clientY: init.clientY,
+      pointerType: init.pointerType ?? "mouse",
+    }));
+  });
 }
 
 function panelBody(): HTMLDivElement {
