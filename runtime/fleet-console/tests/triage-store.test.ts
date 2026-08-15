@@ -928,6 +928,20 @@ describe("triage store", () => {
     }
   });
 
+  it("keeps the deck tile's own track from growing past the slot it stands in", () => {
+    // 칸이 곧 패널이자 PTY 크기라는 계약은 두 축 모두에 최소값 0을 적어야 성립한다. 열 트랙을
+    // 비워 두면 암시적 `auto` 열의 최소값이 본문의 min-content가 되고(xterm은 실측 288px),
+    // 패널은 overflow:visible이라 그만큼이 옆 칸 위에 그려진다 — 밀도를 낮출수록 항상 재현된다.
+    const css = readFileSync("core/client/src/styles/components.css", "utf8");
+    const rule = /\.canvas-operation\.is-deck-tile\s*\{([^}]*)\}/.exec(css)?.[1];
+    expect(rule, "is-deck-tile rule is gone").toBeDefined();
+    for (const axis of ["columns", "rows"]) {
+      const track = new RegExp(`grid-template-${axis}:([^;]*);`).exec(rule!)?.[1];
+      expect(track, `is-deck-tile declares no grid-template-${axis}`).toBeDefined();
+      expect(track, `is-deck-tile ${axis} track can outgrow its slot`).toContain("minmax(0,");
+    }
+  });
+
   it("routes deck-slot, map-dot, and owned empty-region context menus without guessing bare space", () => {
     const container = document.createElement("div");
     document.body.append(container);
