@@ -11,9 +11,8 @@ interface GlobalSettingsStoreState {
   readonly state: GlobalSettingsState | null;
   /** 지금 저장 중인 필드 중 하나. 아무것도 저장 중이 아니면 null. */
   readonly savingField: GlobalSettingsField | null;
+  /** 아직 해소되지 않은 저장 실패 중 가장 최근 것. 해소되면 사라진다. */
   readonly error: string | null;
-  /** 마지막 저장이 실패한 필드. 화면이 어느 설정이 되돌아갔는지 말할 수 있게 한다. */
-  readonly failedField: GlobalSettingsField | null;
 }
 
 type Listener = () => void;
@@ -25,13 +24,17 @@ const listeners = new Set<Listener>();
  * 뒤엣것이 조용히 유실되는 경로다.
  */
 const savingFields = new Set<GlobalSettingsField>();
+/**
+ * 아직 해소되지 않은 필드별 저장 실패. 필드마다 따로 들고 있어야, 겹쳐 나간 다른 필드의
+ * 성공이 남의 실패 메시지를 지우고 그 되돌림을 다시 무음으로 만드는 일이 없다.
+ */
+const failedFields = new Map<GlobalSettingsField, string>();
 let snapshot: GlobalSettingsStoreState = {
   loadStatus: "pending",
   loading: false,
   state: null,
   savingField: null,
   error: null,
-  failedField: null,
 };
 
 export function useGlobalSettingsStore(): GlobalSettingsStoreState {
@@ -82,7 +85,9 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
   const previousValue = snapshot.state ? snapshot.state[field] : undefined;
   const optimisticState = snapshot.state ? { ...snapshot.state, [field]: value } as GlobalSettingsState : null;
   savingFields.add(field);
-  setSnapshot({ state: optimisticState, savingField: field, error: null, failedField: null });
+  // 이 필드를 다시 시도하는 것이므로 이 필드의 지난 실패만 거둔다.
+  failedFields.delete(field);
+  setSnapshot({ state: optimisticState, savingField: field, error: currentError() });
   try {
     const result = await updateGlobalSettings({ [field]: value });
     savingFields.delete(field);
@@ -91,7 +96,8 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
     const merged = snapshot.state
       ? { ...snapshot.state, [field]: result.state[field] } as GlobalSettingsState
       : result.state;
-    setSnapshot({ state: merged, savingField: anySavingField(), error: null });
+    failedFields.delete(field);
+    setSnapshot({ state: merged, savingField: anySavingField(), error: currentError() });
     return true;
   } catch (error) {
     savingFields.delete(field);
@@ -99,7 +105,8 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
     const reverted = snapshot.state && previousValue !== undefined
       ? { ...snapshot.state, [field]: previousValue } as GlobalSettingsState
       : snapshot.state;
-    setSnapshot({ state: reverted, savingField: anySavingField(), error: toErrorMessage(error), failedField: field });
+    failedFields.set(field, toErrorMessage(error));
+    setSnapshot({ state: reverted, savingField: anySavingField(), error: currentError() });
     return false;
   }
 }
@@ -107,6 +114,13 @@ export async function setGlobalSettingsField<Field extends GlobalSettingsField>(
 function anySavingField(): GlobalSettingsField | null {
   for (const field of savingFields) return field;
   return null;
+}
+
+/** 해소되지 않은 실패 중 가장 최근 것. 하나도 없으면 null이라 화면이 조용해진다. */
+function currentError(): string | null {
+  let latest: string | null = null;
+  for (const message of failedFields.values()) latest = message;
+  return latest;
 }
 
 function setSnapshot(patch: Partial<GlobalSettingsStoreState>): void {

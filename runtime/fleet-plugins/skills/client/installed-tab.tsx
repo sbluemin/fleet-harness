@@ -51,7 +51,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
   const [removeFailed, setRemoveFailed] = useState(false);
-  const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string } | null>(null);
+  // 실패한 제거의 대상 Theater까지 들고 있어야 한다. Theater를 바꾼 뒤 재시도를 누르면
+  // 지금 보고 있는 Theater에서 같은 이름의 스킬을 지우게 되기 때문이다.
+  const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string; readonly theaterId: string | null } | null>(null);
 
   const loadList = useCallback((tid: string | null) => {
     const requestContextKey = skillsContextKey(tid);
@@ -81,12 +83,12 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     updateLog.start("/plugins/skills/update", body);
   }, [theaterId, updateLog]);
 
-  const handleRemove = useCallback((name: string, removeScope: string) => {
+  const removeSkill = useCallback((name: string, removeScope: string, targetTheaterId: string | null) => {
     const body: Record<string, unknown> = { scope: removeScope, skill: name };
-    if (removeScope === "project" && theaterId) {
-      body["theaterId"] = theaterId;
+    if (removeScope === "project" && targetTheaterId) {
+      body["theaterId"] = targetTheaterId;
     }
-    lastRemoveRef.current = { name, scope: removeScope };
+    lastRemoveRef.current = { name, scope: removeScope, theaterId: targetTheaterId };
     setRemoveFailed(false);
 
     void fetch("/plugins/skills/remove", {
@@ -98,15 +100,27 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
         // fetch는 4xx·5xx에도 resolve한다. ok를 보지 않으면 서버가 거절한 제거가 성공으로
         // 처리되고, 목록만 다시 불러와 아무 일도 없던 것처럼 보인다 — 스킬은 그대로 남는다.
         if (!response.ok) throw new Error(String(response.status));
-        loadList(theaterId);
+        loadList(targetTheaterId);
       })
       .catch(() => setRemoveFailed(true));
-  }, [theaterId, loadList]);
+  }, [loadList]);
+
+  const handleRemove = useCallback((name: string, removeScope: string) => {
+    removeSkill(name, removeScope, theaterId);
+  }, [removeSkill, theaterId]);
 
   const retryRemove = useCallback(() => {
     const last = lastRemoveRef.current;
-    if (last) handleRemove(last.name, last.scope);
-  }, [handleRemove]);
+    // 실패했던 그 Theater를 다시 겨눈다 — 지금 보고 있는 Theater가 아니다.
+    if (last) removeSkill(last.name, last.scope, last.theaterId);
+  }, [removeSkill]);
+
+  // Theater를 옮기면 앞선 실패의 맥락이 화면에서 사라진다. 남은 재시도 카드가 다른 Theater의
+  // 목록 위에 떠 있지 않도록 함께 거둔다.
+  useEffect(() => {
+    setRemoveFailed(false);
+    lastRemoveRef.current = null;
+  }, [theaterId]);
 
   const handleRetry = useCallback(() => {
     if (updateScopeRef.current) handleUpdate(updateScopeRef.current);

@@ -5,6 +5,7 @@ import * as sdkSettingsBrowser from "@fleet-console/sdk/settings/browser";
 import * as sdkOperationsBrowser from "@fleet-console/sdk/operations/browser";
 import * as sdkNotificationsBrowser from "@fleet-console/sdk/notifications/browser";
 import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
+import * as sdkComponentsFailureNotice from "@fleet-console/sdk/components/failure-notice";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
@@ -38,6 +39,7 @@ interface FleetConsoleRuntime {
   readonly "@fleet-console/sdk/operations/browser": typeof sdkOperationsBrowser;
   readonly "@fleet-console/sdk/notifications/browser": typeof sdkNotificationsBrowser;
   readonly "@fleet-console/sdk/react/browser": typeof sdkReactBrowser;
+  readonly "@fleet-console/sdk/components/failure-notice": typeof sdkComponentsFailureNotice;
 }
 
 declare global {
@@ -52,6 +54,9 @@ globalThis.__fleetConsoleRuntime__ = {
   "@fleet-console/sdk/operations/browser": sdkOperationsBrowser,
   "@fleet-console/sdk/notifications/browser": sdkNotificationsBrowser,
   "@fleet-console/sdk/react/browser": sdkReactBrowser,
+  // shim은 이 네임스페이스에서 실제 모듈을 읽는다 — 정의만 등록하고 여기를 비워 두면
+  // 외부 플러그인이 로드되는 순간 "runtime shim unavailable"로 죽는다.
+  "@fleet-console/sdk/components/failure-notice": sdkComponentsFailureNotice,
 };
 
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.

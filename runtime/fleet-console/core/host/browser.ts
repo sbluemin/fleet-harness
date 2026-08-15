@@ -51,14 +51,16 @@ function defaultSpawnBrowser(
       resolve({ opened: false, reason: describe(error, command) });
       return;
     }
+    // 타이머는 ref된 채로 둔다. `open`이나 `xdg-open`은 브라우저를 띄우고 곧바로 끝나므로,
+    // 이 타이머까지 unref하면 자식이 사라진 순간 이벤트 루프가 비고 — 이 promise를 기다리는
+    // top-level await가 미해결인 채 프로세스가 종료된다(exit 13). 자식은 판정이 끝난 뒤 놓는다.
     const timer = setTimeout(() => {
       child.unref();
       resolve({ opened: true });
     }, SPAWN_GRACE_MS);
-    // 타이머가 살아 있으면 CLI 프로세스가 그만큼 늦게 끝난다 — 판정만 하고 이벤트 루프는 붙잡지 않는다.
-    timer.unref?.();
     child.once("error", (error) => {
       clearTimeout(timer);
+      child.unref();
       resolve({ opened: false, reason: describe(error, command) });
     });
   });
