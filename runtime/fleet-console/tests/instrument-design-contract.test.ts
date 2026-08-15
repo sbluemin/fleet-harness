@@ -1009,23 +1009,23 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain("right-rail-alpha-slider");
     expect(rightRail).toContain("is-switching");
     expect(railStore).toContain("fleet-console.rail.panelBehavior");
-    // Doctrine: the panel head is a 32px caption attached above the slot. It does
-    // not take a body row and does not hover-reveal. The body keeps the full slot
-    // height; PTY/plugin geometry is unaware of the caption.
-    expect(rail).toContain(".right-rail-panel-head {");
-    expect(rail).toContain("grid-template-rows: 32px minmax(0, 1fr);");
-    expect(rail).not.toContain("height: calc(100% + 32px);");
+    // Doctrine: Operation panels keep a 32px attached caption. The Activity Rail
+    // does not — its head is hover-reveal chrome so the body uses the full slot.
+    // Hide with opacity+transform only (never display/visibility) so keyboard
+    // focus can still enter and reveal it; reveal entry stays pointermove-gated
+    // with an intent delay so scroll-under-pointer never triggers it.
+    expect(rail).toContain(".right-rail-panel-head-reveal");
+    expect(rail).toMatch(/\.right-rail-panel-head-reveal \{[^}]*pointer-events:\s*none/);
+    expect(rail).toMatch(/\.right-rail-panel-head-reveal\.is-revealed \{[^}]*pointer-events:\s*auto/);
+    expect(rail).toMatch(/@media \(prefers-reduced-motion: reduce\) \{[^{]*\.right-rail-panel-head-reveal/);
+    expect(rail).toContain(".right-rail-panel-peek");
+    expect(rail).not.toContain("grid-template-rows: 32px minmax(0, 1fr);");
+    expect(rightRail).toContain("HEAD_REVEAL_INTENT_DELAY_MS");
+    expect(rightRail).not.toMatch(/onPointerEnter=\{(?:handleSlotPointerMove|holdHeadOpen)/);
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-titlebar");
     expect(source("styles/components.css")).toContain(".canvas-operation.is-top-edge .canvas-operation-resize--n");
     expect(source("canvas/operation-frame.tsx")).toContain("DRAG_THRESHOLD_PX");
     expect(source("canvas/operation-frame.tsx")).toContain("capturing: false");
-    const railHead = rail.match(/^\.right-rail-panel-head \{[^}]*\}/m)?.[0] ?? "";
-    expect(railHead).toContain("height: 32px;");
-    expect(railHead).toContain("min-height: 32px;");
-    expect(rail).not.toContain(".right-rail-panel-head-reveal");
-    expect(rail).not.toContain(".right-rail-panel-peek");
-    expect(rightRail).not.toContain("HEAD_REVEAL_INTENT_DELAY_MS");
-    expect(rightRail).not.toMatch(/onPointerEnter=\{(?:handleSlotPointerMove|holdHeadOpen)/);
   });
 
   it("pins the popup opacity underlay contract", () => {
