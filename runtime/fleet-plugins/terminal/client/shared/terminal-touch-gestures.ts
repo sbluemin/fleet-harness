@@ -17,8 +17,12 @@ export interface TerminalTouchGestureHost {
    * output. The terminal already decides what scrolling means for what is running: its own
    * scrollback, the keys a full-screen program expects, or the wheel report a program that asked
    * for mouse tracking reads. Deciding that here would answer differently than the wheel does.
+   *
+   * `origin` is the finger that produced this step. A wheel report encodes a cell, so the
+   * surface must know where the finger is — inventing a coordinate-less wheel is how `NaN`
+   * used to reach the session.
    */
-  scrollByPixels(deltaY: number): void;
+  scrollByPixels(deltaY: number, origin?: { readonly clientX: number; readonly clientY: number }): void;
 }
 
 export interface TerminalTouchGestureOptions {
@@ -97,11 +101,12 @@ export function createTerminalTouchGestures(
       return;
     }
     event.preventDefault();
-    const travelled = event.touches[0]!.clientY - panAnchorY;
-    panAnchorY = event.touches[0]!.clientY;
+    const finger = event.touches[0]!;
+    const travelled = finger.clientY - panAnchorY;
+    panAnchorY = finger.clientY;
     if (travelled === 0) return;
     // Dragging down reveals older output, the direction a scrollbar would move under the finger.
-    terminal.scrollByPixels(-travelled);
+    terminal.scrollByPixels(-travelled, { clientX: finger.clientX, clientY: finger.clientY });
   };
 
   const onTouchEnd = (event: TouchEvent) => {
