@@ -161,6 +161,56 @@ describe("War Room deck Quick-Look release", () => {
     expect(expanded()).toEqual([OPERATION_B.id]);
   });
 
+  // 확대된 칸의 캡션 컨트롤을 포인터로 누르면 그 컨트롤이 activeElement로 남는다 — 닫기 첫 클릭은
+  // 확인만 무장하고 칸이 그대로 살아 있으므로 실제로 일어나는 상태다. 포커스가 확대를 붙들 자격은
+  // 키보드로 옮겨온 포커스(:focus-visible)뿐이라, 그 두 경우가 갈리는지를 함께 잰다.
+  // jsdom의 `:focus-visible`은 포커스가 있으면 무조건 참이라 포커스의 유래를 구분하지 못한다 —
+  // 제품이 읽는 바로 그 술어만 이 테스트가 통제해, 두 방향을 모두 실제 계약으로 검증한다.
+  const withFocusVisible = (visible: boolean, run: () => void) => {
+    const original = Element.prototype.matches;
+    Element.prototype.matches = function matchesWithFocusVisible(this: Element, selector: string): boolean {
+      if (selector === ":focus-visible") return visible && this.ownerDocument.activeElement === this;
+      return original.call(this, selector);
+    };
+    try { run(); } finally { Element.prototype.matches = original; }
+  };
+
+  it("does not let pointer-borne focus hold the expansion", () => {
+    const grid = enterDeck();
+    const cell = cellFor(OPERATION.id);
+    hover(cell);
+    expect(expanded()).toEqual([OPERATION.id]);
+
+    withFocusVisible(false, () => {
+      act(() => cell.querySelector<HTMLElement>(".canvas-triage-deck-pick")!.focus());
+      expect(cell.contains(document.activeElement)).toBe(true);
+      act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
+        bubbles: true,
+        pointerType: "mouse",
+        relatedTarget: document.body,
+      })));
+    });
+    expect(expanded()).toEqual([]);
+  });
+
+  it("lets keyboard focus hold the expansion after the pointer leaves", () => {
+    const grid = enterDeck();
+    const cell = cellFor(OPERATION.id);
+
+    withFocusVisible(true, () => {
+      // 키보드 사용자는 포인터 없이 확대를 연다 — 포인터 이벤트가 그 확대를 걷어내면 안 된다.
+      act(() => cell.querySelector<HTMLElement>(".canvas-triage-deck-pick")!.focus());
+      expect(expanded()).toEqual([OPERATION.id]);
+      act(() => grid.dispatchEvent(new PointerEvent("pointerout", {
+        bubbles: true,
+        pointerType: "mouse",
+        relatedTarget: document.body,
+      })));
+      act(() => grid.dispatchEvent(new PointerEvent("pointermove", { bubbles: true, pointerType: "mouse" })));
+      expect(expanded()).toEqual([OPERATION.id]);
+    });
+  });
+
   it("cancels an armed dwell that never became an expansion", () => {
     const grid = enterDeck();
     // 드웰 중(아직 확대 전)에 포인터가 칸을 떠나면 확대는 열리지 않아야 한다. 확대 상태만 보고

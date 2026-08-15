@@ -853,8 +853,14 @@ export function TriageWatchDeck({
     // 포커스 예외가 없으면 키보드로 연 확대가 무관한 포인터 이동 한 번에 걷힌다.
     const holds = (node: EventTarget | null, operationId: string): boolean =>
       cellOf(node)?.dataset.triageDeckCard === operationId;
-    const keyboardHolds = (operationId: string): boolean =>
-      holds(grid.ownerDocument.activeElement, operationId);
+    // 포커스가 확대를 붙들 수 있는 것은 키보드로 옮겨온 포커스뿐이다 — 무장 경로(onFocus)와 같은
+    // :focus-visible 술어를 쓴다. 포인터가 남긴 포커스까지 인정하면, 확대된 칸의 캡션 컨트롤을
+    // 누른 뒤(닫기 첫 클릭은 확인만 무장하고 칸이 그대로 남는다) 포인터를 치워도 해제가 막혀
+    // 이 변경이 없애려는 고착이 그대로 되살아난다.
+    const keyboardHolds = (operationId: string): boolean => {
+      const active = grid.ownerDocument.activeElement;
+      return active instanceof Element && active.matches(":focus-visible") && holds(active, operationId);
+    };
     // 이탈 판정은 "떠나는 칸"이 아니라 "붙들고 있는 칸"을 기준으로 한다. 칸에서 발화한 out만
     // 보면, 칸이 재정렬·재마운트로 포인터 밑을 빠져나간 뒤의 이탈은 영영 오지 않아 확대가
     // 주인 없이 남는다 — 포인터를 치워도 풀리지 않고 이웃 칸을 덮은 채 굳는 경로다.
