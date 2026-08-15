@@ -88,6 +88,24 @@ describe("Quaker admiral figures", () => {
     expect(qkPalette).not.toMatch(/var\(--(?:ink|id|brass)(?:-[a-z-]+)?\)/);
   });
 
+  it("holds Bori's alert on the mark without hop or mark-pop", () => {
+    expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk:not\(\[data-morph="bori"\]\)\s*\{\s*animation: scuttlebutt-qk-hop/,
+    );
+    expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk:not\(\[data-morph="bori"\]\) \.scuttlebutt-qk-wing-l/,
+    );
+    expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk\[data-morph="bori"\] \.scuttlebutt-qk-wing-l[\s\S]*?animation: none;/,
+    );
+    expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk-mark\s*\{\s*opacity: 1;/,
+    );
+    expect(styles).toMatch(
+      /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk:not\(\[data-morph="bori"\]\) \.scuttlebutt-qk-mark\s*\{\s*animation: scuttlebutt-qk-markpop/,
+    );
+  });
+
   it("preserves the four reduced-motion pose fallbacks", () => {
     const reducedMotion = styles.slice(
       styles.indexOf("@media (prefers-reduced-motion: reduce)"),
