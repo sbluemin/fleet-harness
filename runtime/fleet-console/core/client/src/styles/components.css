@@ -9778,12 +9778,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   cursor: not-allowed;
 }
 
-.directory-browser-error {
+/* 예전에는 이 자리가 mono·coral 한 줄이었다 — 서버 코드를 그대로 싣기에 알맞은 모양이었고,
+   실제로 `forbidden` 같은 글자가 그대로 나왔다. 이제 세 조각짜리 알림이 들어온다. */
+.directory-browser-failure {
   flex: none;
-  margin: 0;
-  color: var(--coral-ink);
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 /* sector 리스트 — 단일 컬럼 스캔형 + 옅은 해도(chart) 좌표 그리드 텍스처. */

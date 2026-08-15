@@ -641,7 +641,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
         launchAttachments.unreserve(launchOptions.attachmentIds);
       }
-      ctx.host.http.writeJson(res, 409, { error: "agent_cli_unavailable" });
+      // 설치되지 않은 것과 로그인되지 않은 것은 사용자가 할 일이 서로 다르다. 여기서 이미
+      // 둘을 구분해 알고 있으므로, 하나의 코드로 뭉개면 그 구분이 화면에서 사라진다.
+      ctx.host.http.writeJson(res, 409, { error: meta && !meta.available ? "agent_cli_not_installed" : "agent_cli_signed_out" });
       return;
     }
     const sessionId = crypto.randomUUID();
@@ -734,7 +736,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       }
       pendingRuntimeSessions.delete(sessionId);
       observability.updateTerminalSessionStatus(sessionId, "error");
-      ctx.host.http.writeJson(res, 503, { error: "terminal_unavailable" });
+      // 실패의 종류만 내보낸다. spawn 오류 메시지에는 실행 파일의 절대 경로가 실려 있어
+      // 그대로 실으면 경로가 브라우저 DTO로 새어 나간다 — errno는 경로를 담지 않는다.
+      ctx.host.http.writeJson(res, 503, { error: classifyLaunchSpawnFailure(error) });
     }
   }
 
@@ -1676,3 +1680,17 @@ function readHookPrompt(value: unknown): string | undefined {
   }
 }
 
+
+/**
+ * spawn 실패를 브라우저가 문장으로 옮길 수 있는 코드로 분류한다.
+ *
+ * 원본 메시지를 그대로 실으면 실행 파일의 절대 경로가 따라 나가므로 errno만 읽는다.
+ * 분류되지 않는 실패는 예전과 같은 `terminal_unavailable`로 남는다 — 새 어휘를 추측으로
+ * 넓히면 화면이 사실이 아닌 원인을 말하게 된다.
+ */
+function classifyLaunchSpawnFailure(error: unknown): string {
+  const code = (error as NodeJS.ErrnoException | undefined)?.code;
+  if (code === "ENOENT") return "agent_cli_binary_missing";
+  if (code === "EACCES" || code === "EPERM") return "agent_cli_not_executable";
+  return "terminal_unavailable";
+}
