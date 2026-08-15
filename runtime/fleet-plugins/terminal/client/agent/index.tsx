@@ -450,7 +450,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         {handles}
-        <AgentChatView context={context} session={session} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} />
+        <AgentChatView context={context} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} />
       </div>
     );
   }

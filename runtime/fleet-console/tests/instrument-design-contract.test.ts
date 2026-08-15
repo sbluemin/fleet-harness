@@ -40,6 +40,7 @@ const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/i
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
 const TERMINAL_SURFACE_PATH = new URL("../../fleet-plugins/terminal/client/shared/terminal-surface.tsx", import.meta.url);
+const TERMINAL_CHAT_VIEW_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat-view.tsx", import.meta.url);
 const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
@@ -1505,6 +1506,17 @@ describe("Instrument core design contract", () => {
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
     expect(chatRootBlock).toContain("background: var(--surface-panel);");
+    // 채팅 뷰의 지속 크롬(하단 스트립)도 같은 면에 앉는다 — 구분은 hairline이 맡는다.
+    // 상단 세션 띠바는 폐기됐다: 패널 면 위에 다른 면을 하나 더 얹어 창을 두 장으로 갈랐다.
+    const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStripBlock).toContain("background: var(--surface-panel);");
+    expect(chatStripBlock).toContain("border-top: 1px solid var(--hairline);");
+    expect(chat).not.toContain(".agent-chat-head");
+    // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
+    const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
+    expect(chatView).toContain('className="agent-chat-mode-chip"');
+    expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.

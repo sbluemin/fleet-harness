@@ -30,70 +30,15 @@
   cursor: pointer;
 }
 
-.agent-chat-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  padding: var(--space-2) var(--space-3);
-  border-bottom: 1px solid var(--hairline);
-  background: var(--surface-panel-raised);
-}
-
-.agent-chat-sess {
-  display: inline-flex;
-  align-items: baseline;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.agent-chat-sess b {
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
-}
-
-.agent-chat-sess-effort {
-  letter-spacing: 0.08em;
-}
-
-.agent-chat-cap {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  color: var(--aurora-ink);
-  border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent);
-  border-radius: var(--radius-pill);
-  padding: 1px 9px;
-}
-
-.agent-chat-to-term {
-  margin-left: auto;
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid transparent;
-  transition: color var(--duration-fast), border-color var(--duration-fast);
-}
-
-.agent-chat-to-term:hover:not(:disabled) {
-  color: var(--text-secondary);
-  border-color: var(--hairline-strong);
-}
-
-.agent-chat-to-term:disabled {
-  color: var(--text-tertiary);
-  cursor: default;
-}
-
+/* 상단 세션 띠바는 없다 — 로그가 패널 상단까지 올라와 캡션 바로 아래에서 시작한다.
+   띠바는 패널 면과 다른 면을 하나 더 얹어 창을 두 장으로 갈랐고, 그 안의 세션 표기는
+   캡션·CLI 배너와 겹쳤다. 뷰 전환은 떠 있는 칩이 지고, 진행 상태는 하단 스트립이 진다. */
 .agent-chat-log {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-5) clamp(var(--space-4), 4vw, var(--space-8)) var(--space-4);
+  /* 상단 여백은 떠 있는 전환 칩(32px + space-3 오프셋)을 피해 첫 줄이 칩 아래에서 시작하게 한다. */
+  padding: calc(var(--space-3) + 34px) clamp(var(--space-4), 4vw, var(--space-8)) var(--space-4);
 }
 
 /* 모든 로그 항목은 패널 중앙의 한 컬럼을 공유한다 — 에이전트 턴은 컬럼 전폭을 쓰고,
@@ -429,7 +374,9 @@
   align-items: center;
   gap: var(--space-3);
   border-top: 1px solid var(--hairline);
-  background: var(--surface-panel-raised);
+  /* 스트립은 패널 안의 다른 면이 아니라 같은 면 위의 마지막 줄이다 — 구분은 윗변 hairline이
+     맡는다. 채움을 한 티어 올리면 채팅 뷰만 터미널 패널과 다른 배경으로 읽힌다. */
+  background: var(--surface-panel);
   padding: var(--space-2) var(--space-3);
 }
 
@@ -474,7 +421,8 @@
   background: var(--ink-mid);
 }
 
-/* 터미널 뷰 우상단의 전환 칩 — brass는 위치·포커스 채널이므로 hover에만 오른다. */
+/* 뷰 전환 칩 — 터미널 뷰의 "채팅 뷰"와 채팅 뷰의 "터미널 열기"가 같은 클래스를 공유해
+   같은 자리·같은 모양으로 서로를 가리킨다. brass는 위치·포커스 채널이므로 hover에만 오른다. */
 .agent-chat-mode-chip {
   position: absolute;
   top: var(--space-3);
@@ -494,10 +442,16 @@
   transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
-.agent-chat-mode-chip:hover {
+.agent-chat-mode-chip:hover:not(:disabled) {
   border-color: var(--brass);
   color: var(--brass-ink);
   box-shadow: 0 0 14px var(--brass-glow);
+}
+
+/* 전환 요청 중 — 칩은 자리에 남고 판독만 낮춘다(사라지면 어디를 눌렀는지 잃는다). */
+.agent-chat-mode-chip:disabled {
+  color: var(--text-tertiary);
+  cursor: default;
 }
 
 /* 전환 확인 — 패널 내부 오버레이. */

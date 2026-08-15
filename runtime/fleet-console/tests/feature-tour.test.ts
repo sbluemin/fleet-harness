@@ -78,7 +78,7 @@ describe("feature tour", () => {
     const chatMode = FEATURE_TOURS.find((tour) => tour.id === "chat-mode");
     expect(chatMode?.spotlight).toBeNull();
     expect(chatMode?.walkthrough.map((step) => step.anchor)).toEqual([
-      '[data-chat-tour="badge"]',
+      '[data-chat-tour="log"]',
       '[data-chat-tour="composer"]',
       '[data-chat-tour="terminal"]',
     ]);
@@ -87,7 +87,7 @@ describe("feature tour", () => {
   // 앵커가 세워지면(=사용자가 채팅 뷰를 직접 연 마운트) 다른 화면의 투어 없이도 chat-mode가 바로 뜬다.
   it("starts the chat-mode walkthrough when the chat anchors are raised", () => {
     document.body.innerHTML = [
-      '<span data-chat-tour="badge"></span>',
+      '<div data-chat-tour="log"></div>',
       '<span data-chat-tour="composer"></span>',
       '<button data-chat-tour="terminal"></button>',
     ].join("");
