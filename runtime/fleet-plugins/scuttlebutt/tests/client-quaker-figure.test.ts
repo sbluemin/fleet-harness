@@ -7,7 +7,9 @@ const styles = readFileSync(new URL("../client/styles.css", import.meta.url), "u
 
 describe("Quaker admiral figures", () => {
   it("keeps the approved inline SVG accessibility and part contract", () => {
-    expect(figure).toContain('viewBox="0 0 260 300"');
+    // 전신 좌표계는 기본값으로 남는다 — 작은 마크만 머리 창으로 잘라 쓴다.
+    expect(figure).toContain('viewBox={viewBox ?? "0 0 260 300"}');
+    expect(figure).toContain('QUAKER_HEAD_VIEW_BOX = "56 34 148 148"');
     expect(figure).toContain('aria-hidden="true"');
     expect(figure).not.toMatch(/role="img"|aria-label=/);
 

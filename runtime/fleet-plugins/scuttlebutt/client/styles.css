@@ -435,6 +435,140 @@
   color: var(--text-primary);
 }
 
+/* ── Quick Launch 답변 말풍선 ────────────────────────────────────────────────
+   봉투는 도착 알림의 것을 그대로 입는다(최대 360px·줄바꿈·닫기 버튼·좌표 추적). 지저귐
+   말풍선은 nowrap 한 줄이라 문단을 담지 못해 재사용할 수 없다.
+   색만 다르다: 도착의 positive는 "끝났다"는 상태를 말하는 신호 채널이고, 답변은 상태가 아니다.
+   그래서 지저귐과 같은 brass 테두리를 쓴다 — "새가 말하고 있다"는 어휘 그대로다. */
+.scuttlebutt-answer-bubble {
+  position: fixed;
+  z-index: 2;
+  pointer-events: auto;
+  /* 첫 프레임에 좌표를 재기 전까지는 숨긴다 — 이후 추적 루프가 인라인으로 되살린다. */
+  visibility: hidden;
+  display: grid;
+  max-width: min(360px, calc(100vw - var(--space-6)));
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  overflow: hidden;
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+  color: var(--text-primary);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: left;
+  animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
+}
+
+.scuttlebutt-answer-body {
+  display: grid;
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 3px;
+}
+
+.scuttlebutt-answer-who {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  color: var(--brass);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* 능력 문구는 상태가 아니다 — 신호 토큰을 쓰지 않고 3티어 텍스트로 물러선다(덱의 행 배지와 같다). */
+.scuttlebutt-answer-capability {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+/* 말풍선은 앞부분과 입구다 — 넘치는 분량은 자르고 전문은 카드가 받는다. */
+.scuttlebutt-answer-text {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 7;
+  line-clamp: 7;
+  overflow: hidden;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.scuttlebutt-answer-working {
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* 본문 액션은 표면 위의 텍스트 행이다 — 버튼 크롬을 벗기고 밑줄로만 누를 곳임을 알린다
+   (도착 알림의 열기 행과 같은 계약). */
+.scuttlebutt-answer-expand {
+  justify-self: start;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--brass);
+  cursor: pointer;
+  font: inherit;
+  font-size: 11px;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.scuttlebutt-answer-expand:hover {
+  color: var(--brass-bright);
+}
+
+.scuttlebutt-answer-dismiss {
+  align-self: start;
+  display: inline-flex;
+  min-width: 24px;
+  min-height: 24px;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font: inherit;
+  font-weight: var(--weight-regular);
+}
+
+.scuttlebutt-answer-dismiss:hover {
+  background: var(--ink-veil);
+  color: var(--text-primary);
+}
+
+/* 진행 중 신호 — 무한 애니메이션이 허용되는 유일한 자리다(응답이 실제로 도는 동안만 산다). */
+.scuttlebutt-answer-wait {
+  grid-column: 1 / -1;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--brass) 70%, transparent),
+    transparent
+  );
+  background-size: 40% 100%;
+  background-repeat: no-repeat;
+  animation: scuttlebutt-answer-wait 1.4s var(--ease-glide) infinite;
+}
+
+@keyframes scuttlebutt-answer-wait {
+  from { background-position: -40% 0; }
+  to { background-position: 140% 0; }
+}
+
 .scuttlebutt-arrival-more {
   color: var(--text-tertiary);
 }
@@ -1055,6 +1189,8 @@
   .scuttlebutt-qk *,
   .scuttlebutt-arrival-bubble,
   .scuttlebutt-departure-bubble,
+  .scuttlebutt-answer-bubble,
+  .scuttlebutt-answer-wait,
   .scuttlebutt-thinking i,
   .scuttlebutt-chat-card {
     animation: none !important;

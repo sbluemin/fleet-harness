@@ -285,19 +285,20 @@ describe("ChatSession", () => {
 
   it("defines three distinct admiral identities over the shared safety contract", () => {
     const { tori, bori, dori } = ADMIRAL_SYSTEM_PROMPTS;
-    expect(tori).toContain("Admiral Tori");
+    expect(tori).toContain("Aide Tori");
     expect(tori).toContain("speak of yourself as he");
-    expect(bori).toContain("Admiral Bori");
+    expect(bori).toContain("Aide Bori");
     expect(bori).toContain("speak of yourself as she");
-    expect(dori).toContain("Admiral Dori");
+    expect(dori).toContain("Aide Dori");
     expect(dori).toContain("speak of yourself as she");
     expect(new Set([tori, bori, dori])).toHaveLength(3);
     for (const prompt of [tori, bori, dori]) {
       expect(prompt).toContain("# Who you are talking to");
       expect(prompt).toContain("Admiral of the Navy");
-      // 제독은 새들 자신의 계급이라, 사용자를 그렇게 부르면 상하가 사라진다.
+      // 부관은 새들 자신의 계급이라, 사용자를 그렇게 부르면 상하가 사라진다. 제독은 이제
+      // 호스트 에이전트 한 곳만 가리키므로 이 문장에서 빠졌다.
       expect(prompt).toContain("call them 대원수");
-      expect(prompt).toContain("제독, which is your own rank");
+      expect(prompt).toContain("부관, which is your own rank");
       expect(prompt).toContain("Never read, write, edit, list, or execute anything on this machine");
       expect(prompt).toContain("file and shell work belongs to an Operation in a Theater");
       expect(prompt).toContain("Answer in the language the user wrote in.");

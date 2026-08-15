@@ -1,11 +1,13 @@
 import type { FloatingWidgetContext } from "@fleet-console/sdk/floating";
 import { React, usePluginApi, useStoreSnapshot } from "@fleet-console/sdk/plugin/browser";
 
+import { AnswerBubble } from "./answer-bubble.js";
 import { ArrivalBubble } from "./arrival-bubble.js";
 import { birdVisual } from "./bird-state.js";
 import { ChatCard } from "./chat-card.js";
 import { createChatSession, type AdmiralId } from "./chat-session.js";
 import { DepartureBubble } from "./departure-bubble.js";
+import { connectScuttlebuttMentions } from "./mention-bridge.js";
 import { getT, type ScuttlebuttMessageKey } from "./scuttlebutt-catalog.js";
 import { QuakerFigure } from "./quaker-figure.js";
 import {
@@ -129,13 +131,17 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [lines, setLines] = React.useState<readonly string[]>(["", "", ""]);
   const [saying, setSaying] = React.useState<readonly boolean[]>([false, false, false]);
   const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
+  // Quick Launch에서 물은 답이 떠 있는 부관. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
+  const [answering, setAnswering] = React.useState<AdmiralId | null>(null);
+  // 답을 세우려고 우리가 정박시킨 부관들. 사용자가 직접 세운 정박과 구분해야 되돌릴 때 남의 것을 내리지 않는다.
+  const mentionMooredRef = React.useRef(new Set<AdmiralId>());
   // 정박은 이 세션 동안만 산다 — 설정에도 preferences에도 남기지 않는다.
   const [moored, setMoored] = React.useState<readonly boolean[]>([false, false, false]);
   const [positionRevision, setPositionRevision] = React.useState(0);
 
-  const toggleMoored = React.useCallback((index: number) => {
+  const applyMoored = React.useCallback((index: number, resolve: (current: boolean) => boolean) => {
     setMoored((current) => {
-      const next = replaceAt(current, index, !current[index]);
+      const next = replaceAt(current, index, resolve(current[index] ?? false));
       const body = bodiesRef.current?.[index];
       if (body) {
         body.moored = next[index] ?? false;
@@ -150,6 +156,62 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
       return next;
     });
   }, []);
+
+  const toggleMoored = React.useCallback((index: number) => {
+    applyMoored(index, (current) => !current);
+  }, [applyMoored]);
+
+  /**
+   * Quick Launch에서 온 질문 하나.
+   *
+   * 답하는 동안 정박시킨다 — 말풍선은 새 좌표를 매 프레임 따라가므로, 순항하는 새 위의 360px
+   * 상자를 읽게 두면 멘션이 없앤 추격을 읽기 단계에서 되살린다. 정박은 이미 있는 상태를 그대로
+   * 쓰고(카드의 "제자리에 두기"와 같은 값), 말풍선을 닫을 때 함께 풀린다.
+   */
+  const askFromMention = React.useCallback(async (admiral: AdmiralId, text: string) => {
+    const index = MORPHS.indexOf(admiral);
+    if (index < 0) throw new Error("mention_target_gone");
+    applyMoored(index, (current) => {
+      // 사용자가 이미 세워 둔 정박은 우리 것이 아니다 — 답을 거두며 그 스위치를 대신 내리면
+      // 사용자가 켠 설정이 조용히 꺼진다.
+      if (!current) mentionMooredRef.current.add(admiral);
+      return true;
+    });
+    setAnswering(admiral);
+    // 카드가 열려 있으면 답은 그 카드가 받는다 — 같은 답을 두 표면이 동시에 그리지 않는다.
+    await sessions[index]!.ask(text);
+  }, [applyMoored, sessions]);
+
+  /**
+   * 답을 읽으라고 세운 정박을 되돌린다. 말풍선을 닫든 카드로 넘기든, 그 답을 위해 세운 것이
+   * 끝나면 함께 풀린다 — 풀지 않으면 멘션 한 번이 새를 영구히 붙박아 둔다.
+   */
+  const releaseMentionMoor = React.useCallback((admiral: AdmiralId) => {
+    if (!mentionMooredRef.current.delete(admiral)) return;
+    applyMoored(MORPHS.indexOf(admiral), () => false);
+  }, [applyMoored]);
+
+  const askFromMentionRef = React.useRef(askFromMention);
+  askFromMentionRef.current = askFromMention;
+  const settingsRef = React.useRef(settings);
+  settingsRef.current = settings;
+
+  // 답이 떠 있는 부관을 설정에서 끄면 말풍선이 사라진 새 위에 남는다 — 함께 거둔다.
+  React.useEffect(() => {
+    setAnswering((current) => {
+      if (current === null || settings[current]) return current;
+      mentionMooredRef.current.delete(current);
+      return null;
+    });
+  }, [settings]);
+
+  // 다리는 마운트 동안 한 번만 건다 — 매 렌더 재연결하면 싱글턴이 프레임마다 갈린다.
+  React.useEffect(() => connectScuttlebuttMentions({
+    onDuty: () => MORPHS.filter((morph) => settingsRef.current[morph]),
+    label: (admiral) => getT(localeRef.current)(`bird.${admiral}`),
+    locale: () => localeRef.current,
+    ask: (admiral, text) => askFromMentionRef.current(admiral, text),
+  }), []);
 
   const clearTimer = React.useCallback((timers: React.MutableRefObject<Array<number | null>>, index: number) => {
     const timer = timers.current[index];
@@ -485,6 +547,31 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           quiet={!openAdmiral && !phases.some((phase) => phase === "starting" || phase === "thinking")}
           positionRevision={positionRevision}
           onShow={saluteAll}
+        />
+      ) : null}
+      {/* Quick Launch 답변. 카드가 열리면 카드가 전문을 맡으므로 말풍선은 물러난다. */}
+      {answering && answering !== openAdmiral ? (
+        <AnswerBubble
+          admiral={answering}
+          state={chats[MORPHS.indexOf(answering)]!.state}
+          mascot={{ current: birdRefs.current[MORPHS.indexOf(answering)] ?? null }}
+          locale={context.language}
+          positionRevision={positionRevision}
+          onExpand={() => {
+            const admiral = answering;
+            setAnswering(null);
+            // 카드는 자기 "제자리에 두기" 스위치로 정박을 소유한다 — 말풍선이 세운 것을 그대로
+            // 넘기면 사용자가 켜지 않은 스위치가 켜진 채 남는다.
+            releaseMentionMoor(admiral);
+            setOpenAdmiral(admiral);
+          }}
+          onDismiss={() => {
+            const admiral = answering;
+            setAnswering(null);
+            // 정박은 이 답을 읽으라고 세운 것이다 — 답을 닫으면 함께 풀려 다시 순항한다.
+            releaseMentionMoor(admiral);
+            focusAdmiral(admiral);
+          }}
         />
       ) : null}
       {openAdmiral ? (
