@@ -59,12 +59,12 @@ const LEDGER_SUPPLIER_KEYS = new Set([
   "kimi",
   "opencode",
   "xai",
-  "native",
 ]);
 
 function supplierLabel(supplier: string, t: T): string {
-  return LEDGER_SUPPLIER_KEYS.has(supplier)
-    ? t(`ledger.supplier.${supplier}` as LedgerMessageKey)
+  const key = supplier === "native" ? "claude" : supplier;
+  return LEDGER_SUPPLIER_KEYS.has(key)
+    ? t(`ledger.supplier.${key}` as LedgerMessageKey)
     : supplier;
 }
 

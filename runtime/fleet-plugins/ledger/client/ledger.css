@@ -693,6 +693,12 @@
   font-size: 12px;
 }
 
+/* 목록 행 마크는 카드 안쪽 여백을 margin-left로 잡는다. 상세 그리드는 이미 16px 칸을
+   주므로 그 여백을 물려받으면 글리프가 이름 위로 밀린다. */
+.ledger-detail-model .ledger-operation-mark {
+  margin-left: 0;
+}
+
 .ledger-detail-model--claude .ledger-operation-mark { color: var(--provider-claude); }
 .ledger-detail-model--cursor .ledger-operation-mark { color: var(--provider-cursor); }
 .ledger-detail-model--codex .ledger-operation-mark { color: var(--provider-codex); }

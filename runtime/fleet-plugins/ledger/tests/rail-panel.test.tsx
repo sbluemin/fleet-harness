@@ -595,6 +595,19 @@ describe("Ledger trend scale and attributed layer", () => {
 });
 
 describe("Ledger dual-source host and model rows", () => {
+  it("names a native model row Claude, not Direct", async () => {
+    await renderWith(dto("ok"));
+    const native = [...container.querySelectorAll(".ledger-client-row")].find((row) => (
+      row.textContent?.includes("Claude Sonnet 4")
+    ));
+    expect(native?.textContent).toContain("Claude");
+    expect(native?.textContent).not.toContain("Direct");
+    const operation = container.querySelector<HTMLButtonElement>(".ledger-operation");
+    await act(async () => operation!.click());
+    expect(container.querySelector(".ledger-detail-model")?.textContent).toContain("Claude · Claude Sonnet 4");
+    expect(container.textContent).not.toContain("Direct");
+  });
+
   it("names a Gateway host as the supplier", async () => {
     const value = dto("ok");
     await renderWith({
