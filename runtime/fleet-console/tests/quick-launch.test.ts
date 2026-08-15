@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, mentionTargetName, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -876,11 +876,14 @@ describe("mention rejection messages", () => {
     expect(quickLaunchMentionErrorMessageKey("session_not_found")).toBe("chrome.quickLaunch.mentionErrorGone");
     expect(quickLaunchMentionErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
     expect(quickLaunchMentionErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
+    // 답하는 중인 행선지의 거절은 일반 전달 실패로 뭉개면 안 된다 — 기다리면 되는 상황이다.
+    expect(quickLaunchMentionErrorMessageKey("destination_busy")).toBe("chrome.quickLaunch.mentionErrorBusy");
     expect(quickLaunchMentionErrorMessageKey("terminal_unavailable")).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
     expect(quickLaunchMentionErrorMessageKey(null)).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
   });
 
   it("declares every mention key in both locales", () => {
+    // 새 키가 한쪽 로케일에만 들어가면 다른 언어에서 키 문자열이 그대로 화면에 뜬다.
     const chrome = readFileSync(resolve(process.cwd(), "core/client/src/i18n/messages/chrome.ts"), "utf8");
     const keys = [
       "chrome.quickLaunch.mentionDeck",
@@ -888,6 +891,10 @@ describe("mention rejection messages", () => {
       "chrome.quickLaunch.mentionNoMatch",
       "chrome.quickLaunch.mentionPlaceholder",
       "chrome.quickLaunch.mentionTarget",
+      "chrome.quickLaunch.mentionPlaceholderOther",
+      "chrome.quickLaunch.mentionTargetOther",
+      "chrome.quickLaunch.errorMentionAttachments",
+      "chrome.quickLaunch.mentionErrorBusy",
       "chrome.quickLaunch.mentionErrorResumeUnavailable",
       "chrome.quickLaunch.mentionErrorAwaiting",
       "chrome.quickLaunch.mentionErrorGone",
@@ -955,5 +962,71 @@ describe("quick launch ultracode recognition", () => {
     }
     // 칩을 바에서 빼면 칩용 dismiss 문구도 같이 사라진다 — 고지 줄이 상태를 말한다.
     expect(chrome).not.toContain("chrome.quickLaunch.ultracodeDismiss");
+  });
+});
+
+describe("plugin mention targets", () => {
+  const aides = {
+    id: "scuttlebutt",
+    mentionTargets: () => [
+      { id: "tori", label: "토리 부관", categoryLabel: "부관", capabilityLabel: "웹 전용", description: "웹 전용" },
+      { id: "bori", label: "보리 부관", categoryLabel: "부관", capabilityLabel: "웹 전용" },
+    ],
+    messageMentionTarget: async () => {},
+  };
+
+  it("groups a plugin's targets under its own category and namespaces the option id", () => {
+    const [category] = buildPluginMentionCategories([aides], "");
+    expect(category?.label).toBe("부관");
+    expect(category?.capabilityLabel).toBe("웹 전용");
+    expect(category?.rows.map((row) => row.optionId)).toEqual(["scuttlebutt:tori", "scuttlebutt:bori"]);
+    expect(category?.rows[0]?.targetId).toBe("tori");
+  });
+
+  it("filters by the same tokens the Operation rows use", () => {
+    expect(buildPluginMentionCategories([aides], "보리")[0]?.rows).toHaveLength(1);
+    expect(buildPluginMentionCategories([aides], "없는이름")).toEqual([]);
+  });
+
+  // 목록에만 서고 받지 못하는 행선지는 고르는 순간 막다른 길이 된다 — Operation 쪽 짝 조건과 같다.
+  it("ignores a plugin that declares only one half of the contract", () => {
+    expect(buildPluginMentionCategories([{ id: "half", mentionTargets: aides.mentionTargets }], "")).toEqual([]);
+    expect(buildPluginMentionCategories([{ id: "half", messageMentionTarget: async () => {} }], "")).toEqual([]);
+  });
+
+  // 로스터를 읽다 던지는 플러그인 하나가 덱 전체를 무너뜨리면 Operation 멘션까지 함께 죽는다.
+  it("drops a plugin whose roster read throws and keeps the rest", () => {
+    const broken = {
+      id: "broken",
+      mentionTargets: () => { throw new Error("boom"); },
+      messageMentionTarget: async () => {},
+    };
+    const categories = buildPluginMentionCategories([broken, aides], "");
+    expect(categories.map((category) => category.label)).toEqual(["부관"]);
+  });
+
+  it("keeps two plugins apart even when they choose the same category text", () => {
+    const twin = { ...aides, id: "twin" };
+    const categories = buildPluginMentionCategories([aides, twin], "");
+    expect(categories).toHaveLength(2);
+    expect(categories.map((category) => category.rows[0]?.pluginId)).toEqual(["scuttlebutt", "twin"]);
+  });
+
+  it("names either destination kind through one helper", () => {
+    const [category] = buildPluginMentionCategories([aides], "");
+    expect(mentionTargetName({ kind: "plugin", row: category!.rows[0]! })).toBe("토리 부관");
+    expect(mentionTargetName({
+      kind: "operation",
+      entry: {
+        operationId: "op1",
+        theaterId: "t1",
+        theaterLabel: "t1",
+        operationName: "refactor deck",
+        pluginId: "terminal",
+        status: "operation",
+        activity: "idle",
+        launchProvider: null,
+      },
+    })).toBe("refactor deck");
   });
 });

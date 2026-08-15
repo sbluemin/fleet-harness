@@ -12699,6 +12699,45 @@ body[data-codex-reading="true"] .operations-side-bar {
   color: var(--text-primary);
 }
 
+/* 카테고리 머리 옆의 능력 문구. 밴드는 brass(위치 채널)를 쓰지만 능력은 위치가 아니므로
+   3티어 텍스트로 물러선다 — 같은 줄에서 두 색이 같은 세기로 서면 밴드가 무엇을 말하는지 흐려진다. */
+.quick-launch-mention-category-note {
+  color: var(--text-tertiary);
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+/* 플러그인 기여 행의 정체성 마크. Operation 행의 Theater 이니셜과 같은 자리·같은 크기다. */
+.quick-launch-mention-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 17px;
+  height: 17px;
+}
+
+.quick-launch-mention-mark svg {
+  width: 100%;
+  height: 100%;
+}
+
+/* 능력 문구는 상태가 아니다 — 신호 토큰(aurora/warn/coral/positive)도, 상태 배지의 테두리 크롬도
+   쓰지 않는다. 활동 배지 옆에 나란히 서도 "이건 상태가 아니다"가 모양만으로 읽혀야 한다. */
+.quick-launch-mention-capability,
+.quick-launch-target-capability {
+  flex: none;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+
+.quick-launch-target-capability {
+  text-transform: none;
+}
+
 .quick-launch-mention-empty {
   margin: 0;
   padding: var(--space-2);

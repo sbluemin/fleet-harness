@@ -60,6 +60,32 @@ export interface TerminalTicket {
   readonly ttlMs: number;
 }
 
+/**
+ * Operation이 아닌 Quick Launch 행선지 하나.
+ *
+ * '@' 덱은 Operation 카테고리 아래에 이 기여를 `categoryLabel`별로 세운다. 호스트는 라벨의 뜻을
+ * 해석하지 않는다 — 어느 플러그인의 무엇인지만 알고, 이름과 능력 문구는 그 표면을 가진 플러그인만
+ * 안다(런타임 `surface` 라벨과 같은 계약).
+ *
+ * Operation 행선지와 달리 Theater도 활동 상태도 없다. 그래서 행은 상태 배지를 달지 않고,
+ * 대신 `capabilityLabel`이 **고르기 전에** 무엇을 할 수 있는 대상인지 말한다 — 바로 윗줄의
+ * Operation은 파일을 읽고 이 대상은 못 읽을 수 있어, 능력 차이를 선택 후에 알리면 늦다.
+ */
+export interface MentionTargetDescriptor {
+  /** 플러그인 안에서 고유한 id. 호스트는 `${pluginId}:${id}`로 이름공간을 나눠 쓴다. */
+  readonly id: string;
+  /** 행에 보이는 이름. 사용자가 '@' 뒤에 타이핑해 거르는 값이기도 하다. */
+  readonly label: string;
+  /** 카테고리 밴드 문구. 같은 값을 가진 행끼리 한 카테고리로 묶인다. */
+  readonly categoryLabel: string;
+  /** 카테고리 머리와 행 배지에 함께 서는 짧은 능력 문구(예: "웹 전용"). */
+  readonly capabilityLabel?: string;
+  /** 보조 기술에 읽히는 긴 설명. 능력 한계를 여기서 완전한 문장으로 말한다. */
+  readonly description?: string;
+  /** 행 머리의 정체성 마크. Operation 행의 Theater 이니셜 자리와 같다. */
+  readonly renderMark?: () => ReactNode;
+}
+
 export interface FleetClientPlugin {
   readonly id: string;
   readonly operationKinds?: readonly OperationKindDescriptor[];
@@ -89,6 +115,19 @@ export interface FleetClientPlugin {
    * the server rejection code when one is available.
    */
   readonly messageOperation?: (operationId: string, text: string, attachmentIds?: readonly string[]) => Promise<void>;
+  /**
+   * 지금 행선지가 될 수 있는 비-Operation 대상들. 덱이 열릴 때마다 다시 읽히므로 설정으로
+   * 켜고 끈 결과가 그대로 반영된다 — 정적 배열로 두면 로스터가 마운트 시점에 굳는다.
+   * 이 함수와 `messageMentionTarget`을 **함께** 선언한 플러그인의 대상만 덱에 오른다.
+   */
+  readonly mentionTargets?: () => readonly MentionTargetDescriptor[];
+  /**
+   * Host→plugin request to deliver user text to a non-Operation mention target.
+   * `targetId` is the plugin-local `MentionTargetDescriptor.id`. Attachments are not
+   * forwarded — the host refuses that combination before calling. Rejects with an Error
+   * whose `message` is the server rejection code when one is available.
+   */
+  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
   /**
    * Host→plugin upload of a Quick Launch image attachment. The plugin stores the bytes
    * server-side and returns an opaque id only — absolute storage paths never enter the

@@ -36,9 +36,9 @@ describe("Scuttlebutt translations", () => {
       en("settings.section.roster"),
       en("settings.section.rosterHint"),
     ]).toEqual([
-      "Admiral Tori",
-      "Admiral Bori",
-      "Admiral Dori",
+      "Aide Tori",
+      "Aide Bori",
+      "Aide Dori",
       "Tuck away",
       "Ask Tori anything…",
       "Ask Bori anything…",
@@ -60,10 +60,10 @@ describe("Scuttlebutt translations", () => {
       "Open operation",
       "2 operations",
       "Dismiss",
-      "Quaker Admirals",
+      "Quaker Aides",
       "Experimental",
-      "Admirals on duty",
-      "Each admiral keeps their own chat.",
+      "Aides on duty",
+      "Each aide keeps their own chat.",
     ]);
     expect([
       ko("chat.label.tori"),
@@ -95,9 +95,9 @@ describe("Scuttlebutt translations", () => {
       ko("settings.section.roster"),
       ko("settings.section.rosterHint"),
     ]).toEqual([
-      "토리 제독",
-      "보리 제독",
-      "도리 제독",
+      "토리 부관",
+      "보리 부관",
+      "도리 부관",
       "치워두기",
       "토리에게 무엇이든 물어보세요…",
       "보리에게 무엇이든 물어보세요…",
@@ -119,10 +119,10 @@ describe("Scuttlebutt translations", () => {
       "Operation 열기",
       "Operation 2건",
       "닫기",
-      "퀘이커 제독단",
+      "퀘이커 부관단",
       "실험 기능",
-      "출근 중인 제독",
-      "제독마다 대화가 따로 유지됩니다.",
+      "출근 중인 부관",
+      "부관마다 대화가 따로 유지됩니다.",
     ]);
   });
 

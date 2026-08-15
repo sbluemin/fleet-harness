@@ -1,11 +1,20 @@
 export type QuakerMorph = "tori" | "bori" | "dori";
 
-export function QuakerFigure({ morph }: { readonly morph: QuakerMorph }) {
+/**
+ * 머리와 모자만 남기는 창. 전신은 260×300에 꼬리·다리까지 담고 있어 17px 마크로 줄이면
+ * 실루엣이 뭉개진다 — 멘션 덱의 행 마크처럼 작은 자리에서는 얼굴만 남겨야 누구인지 읽힌다.
+ */
+export const QUAKER_HEAD_VIEW_BOX = "56 34 148 148";
+
+export function QuakerFigure({ morph, viewBox }: {
+  readonly morph: QuakerMorph;
+  readonly viewBox?: string;
+}) {
   return (
     <svg
       className="scuttlebutt-qk"
       data-morph={morph}
-      viewBox="0 0 260 300"
+      viewBox={viewBox ?? "0 0 260 300"}
       aria-hidden="true"
     >
       {/* 상태 애니메이션의 회전축을 보존하려고 파트를 독립 그룹으로 둔다. */}

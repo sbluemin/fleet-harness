@@ -1,7 +1,9 @@
+import type { ReactNode } from "react";
 import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchVariantGroup, OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
+import type { MentionTargetDescriptor } from "@fleet-console/sdk/plugin";
 import type { OperationActivityVisual } from "./operation-activity.js";
 
-import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, type OperationSearchEntry, type OperationSearchGroup } from "./operation-search.js";
+import { buildOperationSearchEntries, filterOperationSearchEntries, groupOperationSearchEntries, searchTokens, type OperationSearchEntry, type OperationSearchGroup } from "./operation-search.js";
 import type { ConsoleState } from "./types.js";
 
 /**
@@ -346,6 +348,107 @@ export function buildQuickLaunchMentionGroups(
 }
 
 /**
+ * 플러그인이 기여한 비-Operation 행선지 한 줄. 호스트가 쓰는 모양으로 눕힌 것이라 descriptor를
+ * 그대로 들고 다니지 않는다 — `optionId`가 이름공간을 나눈 유일한 신원이고, DOM id도 이 값이다.
+ */
+export interface QuickLaunchPluginMentionRow {
+  readonly pluginId: string;
+  readonly targetId: string;
+  readonly optionId: string;
+  readonly label: string;
+  readonly categoryLabel: string;
+  readonly capabilityLabel: string | null;
+  readonly description: string | null;
+  readonly renderMark: (() => ReactNode) | null;
+}
+
+/** 덱에서 한 카테고리 밴드 아래 서는 행 묶음. */
+export interface QuickLaunchMentionCategory {
+  readonly key: string;
+  readonly label: string;
+  readonly capabilityLabel: string | null;
+  readonly rows: readonly QuickLaunchPluginMentionRow[];
+}
+
+/** 덱이 읽는 플러그인의 최소 모양. 컴포넌트가 레지스트리 전체를 넘기지 않아도 단위 테스트가 돈다. */
+export interface QuickLaunchMentionSource {
+  readonly id: string;
+  readonly mentionTargets?: () => readonly MentionTargetDescriptor[];
+  readonly messageMentionTarget?: (targetId: string, text: string) => Promise<void>;
+}
+
+/** 확정된 행선지. Operation과 플러그인 대상은 전달 경로도 태그도 달라서 판별 유니온으로 둔다. */
+export type QuickLaunchMentionTarget =
+  | { readonly kind: "operation"; readonly entry: OperationSearchEntry }
+  | { readonly kind: "plugin"; readonly row: QuickLaunchPluginMentionRow };
+
+/** 행선지의 이름 — 안내문·칩·거절 문구가 공유하는 한 값. */
+export function mentionTargetName(target: QuickLaunchMentionTarget): string {
+  return target.kind === "operation" ? target.entry.operationName : target.row.label;
+}
+
+/**
+ * 플러그인 기여 행선지의 카테고리 목록.
+ *
+ * `mentionTargets`와 `messageMentionTarget`을 **함께** 선언한 플러그인만 읽는다 — 목록에만 서고
+ * 받지 못하는 행선지는 고르는 순간 막다른 길이 된다(Operation 쪽 `messageOperation` 짝 조건과 같다).
+ * 로스터를 읽다 던지는 플러그인은 그 플러그인만 빠지고 덱은 계속 선다.
+ */
+export function buildPluginMentionCategories(
+  plugins: readonly QuickLaunchMentionSource[],
+  query: string,
+): readonly QuickLaunchMentionCategory[] {
+  const tokens = searchTokens(query);
+  const categories: QuickLaunchMentionCategory[] = [];
+  const categoryIndexes = new Map<string, number>();
+  const seen = new Set<string>();
+  for (const plugin of plugins) {
+    if (!plugin.mentionTargets || !plugin.messageMentionTarget) continue;
+    let descriptors: readonly MentionTargetDescriptor[];
+    try {
+      descriptors = plugin.mentionTargets();
+    } catch {
+      continue;
+    }
+    for (const descriptor of descriptors) {
+      if (!descriptor.id || !descriptor.label || !descriptor.categoryLabel) continue;
+      const optionId = `${plugin.id}:${descriptor.id}`;
+      if (seen.has(optionId)) continue;
+      seen.add(optionId);
+      const haystack = [descriptor.label, descriptor.categoryLabel, plugin.id].join(" ").toLocaleLowerCase();
+      if (!tokens.every((token) => haystack.includes(token))) continue;
+      const row: QuickLaunchPluginMentionRow = {
+        pluginId: plugin.id,
+        targetId: descriptor.id,
+        optionId,
+        label: descriptor.label,
+        categoryLabel: descriptor.categoryLabel,
+        capabilityLabel: descriptor.capabilityLabel ?? null,
+        description: descriptor.description ?? null,
+        renderMark: descriptor.renderMark ?? null,
+      };
+      // 카테고리는 플러그인 안에서만 묶는다 — 두 플러그인이 우연히 같은 문구를 써도 한 밴드로
+      // 뭉치면 그 밴드의 주인이 사라진다.
+      const key = `${plugin.id}\u0000${descriptor.categoryLabel}`;
+      const index = categoryIndexes.get(key);
+      if (index === undefined) {
+        categoryIndexes.set(key, categories.length);
+        categories.push({
+          key,
+          label: descriptor.categoryLabel,
+          capabilityLabel: row.capabilityLabel,
+          rows: [row],
+        });
+        continue;
+      }
+      const existing = categories[index]!;
+      categories[index] = { ...existing, rows: [...existing.rows, row] };
+    }
+  }
+  return categories;
+}
+
+/**
  * 보고 있는 패널이 멘션 덱에 오를 수 있을 때만 행선지가 된다. 활성 없음·셸·다른 플러그인·
  * awaiting·사라진 id는 전부 null — 덱이 고를 수 없는 것을 자동 확정도 고르지 않는다.
  *
@@ -412,6 +515,8 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
   switch (code) {
     case "resume_unavailable": return "chrome.quickLaunch.mentionErrorResumeUnavailable";
     case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
+    // 비-Operation 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
+    case "destination_busy": return "chrome.quickLaunch.mentionErrorBusy";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
     // 첨부가 만료·소실된 전달 거절 — 칩은 남았지만 그 서버 파일은 이미 없다(런치 거절과 같은 문구).

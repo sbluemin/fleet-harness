@@ -234,7 +234,9 @@ describe("Quick Launch picker keyboard grammar", () => {
     // 따라가지 않으면 /model·/effort·@ 목록에서 하이라이트가 화면 밖으로 걷는다.
     expect(quickLaunch).toMatch(/scrollIntoView\(\{\s*block:\s*"nearest"\s*\}\)/u);
     expect(quickLaunch).toMatch(/quick-launch-command-\$\{activeCommandRow\.id\}/u);
-    expect(quickLaunch).toMatch(/quick-launch-mention-\$\{activeMention\.operationId\}/u);
+    // 두 행선지 종류가 한 id 규칙을 공유해야 스크롤·aria-activedescendant가 카테고리 경계를
+    // 넘어서도 같은 행을 가리킨다.
+    expect(quickLaunch).toMatch(/quick-launch-mention-\$\{activeMention\.kind === "operation" \? activeMention\.entry\.operationId : activeMention\.row\.optionId\}/u);
   });
 
   it("gives every picker item a roving tabIndex and a typeahead label", () => {
