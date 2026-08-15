@@ -32,7 +32,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("Session Analyst readiness handle", () => {
+describe("Session Analyst entry chip readiness", () => {
   it("keeps ANALYZE disabled with preventive guidance before a transcript is ready", async () => {
     const fetch = analysisFetch(false);
     await renderLiveOperation(fetch);
@@ -41,7 +41,6 @@ describe("Session Analyst readiness handle", () => {
     expect(handle.disabled).toBe(true);
     expect(handle.getAttribute("aria-disabled")).toBe("true");
     expect(handle.title).toBe("Send a message in this session first");
-    expect(handle.classList.contains("is-waiting")).toBe(true);
     expect(readyCalls(fetch)).toHaveLength(1);
   });
 
@@ -57,7 +56,6 @@ describe("Session Analyst readiness handle", () => {
     expect(handle.disabled).toBe(false);
     expect(handle.getAttribute("aria-disabled")).toBe("false");
     expect(handle.hasAttribute("title")).toBe(false);
-    expect(handle.classList.contains("is-waiting")).toBe(false);
     expect(readyCalls(fetch)).toHaveLength(2);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
@@ -75,7 +73,7 @@ describe("Session Analyst readiness handle", () => {
     const handle = analystHandle();
     expect(resume?.textContent).toContain("Resume");
     expect(handle.disabled).toBe(false);
-    expect(handle.textContent).toContain("ANALYZE");
+    expect(handle.textContent).toContain("Analyst");
 
     act(() => handle.click());
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
@@ -94,18 +92,18 @@ describe("Session Analyst readiness handle", () => {
     store.dispatch({ type: "event", event: { type: "chunk", text: "Retained answer" }, now: 2 });
     store.dispatch({ type: "event", event: { type: "complete" }, now: 3 });
     const onRequestCompanions = vi.fn();
-    await renderOperation(fetch, "live", onRequestCompanions, true, ["session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, true, []);
 
-    expect(analystHandle().textContent).toContain("EXIT");
+    expect(analystHandle().getAttribute("aria-pressed")).toBe("true");
     act(() => analystHandle().click());
 
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
     expect(fetch.mock.calls.some((call) => call[1] === `analysis/${OPERATION_ID}/stop`)).toBe(false);
 
     onRequestCompanions.mockClear();
-    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat", "session-analyst-artifacts"]);
+    await renderOperation(fetch, "live", onRequestCompanions, false, ["session-analyst-chat"]);
     await vi.waitFor(() => expect(analystHandle().disabled).toBe(false));
-    expect(analystHandle().textContent).toContain("ANALYZE");
+    expect(analystHandle().getAttribute("aria-pressed")).toBe("false");
     act(() => analystHandle().click());
 
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
@@ -166,7 +164,6 @@ describe("Session Analyst readiness handle", () => {
 
     expect(onSetCompanionPanelVisible.mock.calls).toEqual([
       ["session-analyst-chat", false],
-      ["session-analyst-artifacts", false],
     ]);
     expect(onRequestCompanions).toHaveBeenCalledOnce();
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
@@ -181,7 +178,7 @@ describe("Session Analyst readiness handle", () => {
       "live",
       onRequestCompanions,
       false,
-      ["session-analyst-chat", "session-analyst-artifacts"],
+      ["session-analyst-chat"],
       onSetCompanionPanelVisible,
     );
 
@@ -200,8 +197,8 @@ async function renderOperation(
   onRequestCompanions = vi.fn(),
   companionsOpen = false,
   hiddenCompanionPanelIds = companionsOpen
-    ? ["session-analyst-artifacts"]
-    : ["session-analyst-chat", "session-analyst-artifacts"],
+    ? []
+    : ["session-analyst-chat"],
   onSetCompanionPanelVisible = vi.fn(),
 ): Promise<void> {
   if (!container) {
@@ -281,7 +278,7 @@ function readyResponse(ready: boolean): Response {
 }
 
 function analystHandle(): HTMLButtonElement {
-  const handle = container?.querySelector<HTMLButtonElement>(".session-analyst-handle--analyst");
+  const handle = container?.querySelector<HTMLButtonElement>(".agent-analyst-chip");
   if (!handle) throw new Error("Session Analyst handle must render.");
   return handle;
 }

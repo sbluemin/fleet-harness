@@ -57,22 +57,17 @@ describe("Session Analyst contract", () => {
     expect(css).toContain(".agent-stream-host .terminal-stage { z-index: 0; }");
     expect(css).not.toContain("agent-stream-host--analyst");
   });
-  it("keeps both Analyst panels hidden by default", () => {
+  it("keeps the single Analyst companion hidden by default", () => {
     const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
     const visibility = readFileSync(new URL("./analysis-visibility.ts", import.meta.url), "utf8");
     expect(source).toContain('id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true');
-    expect(source).toContain('id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true');
-    expect(visibility).toContain('export const ANALYST_ARTIFACTS_COMPANION_ID = "session-analyst-artifacts";');
-    expect(source.match(/hideCaption: true/g)).toHaveLength(2);
-    expect(source.match(/defaultHidden: true/g)).toHaveLength(2);
+    // 아티팩트는 드로어 안의 모드다 — 두 번째 컴패니언이 되살아나면 안 된다.
+    expect(source).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
+    expect(visibility).not.toContain("session-analyst-artifacts");
+    expect(source.match(/hideCaption: true/g)).toHaveLength(1);
+    expect(source.match(/defaultHidden: true/g)).toHaveLength(1);
     expect(source).toContain('shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }');
-    expect(source).not.toMatch(/id: ANALYST_ARTIFACTS_COMPANION_ID[^\n]*shortcut:/);
     expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS)");
-    expect(source).toContain("previousCompanionsOpenRef");
-    // dispose 경합에서 orphan store를 만들지 않도록 re-arm은 조회 전용 API만 사용한다.
-    expect(source).toContain("rearmAnalysisArtifacts(context.operationId)");
     expect(source).not.toContain("getAnalysisStore");
-    const storeSource = readFileSync(new URL("./analysis-store.ts", import.meta.url), "utf8");
-    expect(storeSource).toContain('stores.get(operationId)?.dispatch({ type: "artifacts-chip-rearm" });');
   });
 });

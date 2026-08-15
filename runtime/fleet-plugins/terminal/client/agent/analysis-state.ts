@@ -38,7 +38,6 @@ export interface AnalysisState {
   readonly artifacts: readonly AnalysisArtifact[];
   readonly artifactAuthoring: { readonly startedAt: number } | null;
   readonly artifactPublished: { readonly artifact: AnalysisArtifact; readonly durationMs: number | null } | null;
-  readonly artifactsAutoOpenArmed: boolean;
   readonly selectionLocked: boolean;
   readonly selectionSaved: boolean;
   readonly error: string | null;
@@ -62,7 +61,6 @@ export const initialAnalysisState: AnalysisState = {
   artifacts: [],
   artifactAuthoring: null,
   artifactPublished: null,
-  artifactsAutoOpenArmed: true,
   selectionLocked: false,
   selectionSaved: false,
   error: null,
@@ -88,9 +86,7 @@ export type AnalysisAction =
   | { readonly type: "selection-lock"; readonly locked: boolean }
   | { readonly type: "selection-saved" }
   | { readonly type: "selection-saved-clear" }
-  | { readonly type: "clear-artifacts" }
-  | { readonly type: "artifacts-chip-disarm" }
-  | { readonly type: "artifacts-chip-rearm" };
+  | { readonly type: "clear-artifacts" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
@@ -147,9 +143,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "selection-saved") return { ...state, selectionSaved: true };
   if (action.type === "selection-saved-clear") return state.selectionSaved ? { ...state, selectionSaved: false } : state;
   // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
-  if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null, artifactsAutoOpenArmed: true };
-  if (action.type === "artifacts-chip-disarm") return state.artifactsAutoOpenArmed ? { ...state, artifactsAutoOpenArmed: false } : state;
-  if (action.type === "artifacts-chip-rearm") return state.artifactsAutoOpenArmed ? state : { ...state, artifactsAutoOpenArmed: true };
+  if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null };
   if (action.type !== "event") return state;
 
   const event = action.event;

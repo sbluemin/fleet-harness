@@ -21,11 +21,14 @@ export function AgentChatView({
   context,
   onOpenTerminal,
   tourAnchors,
+  leadingChip,
 }: {
   readonly context: OperationRenderContext;
   readonly onOpenTerminal: () => Promise<void>;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
+  /** 칩 줄의 선행 칩(Analyst 진입) — 뷰 전환 칩과 같은 줄에 나란히 선다. */
+  readonly leadingChip?: React.ReactNode;
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId);
@@ -103,17 +106,21 @@ export function AgentChatView({
     <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
       {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
           자리·같은 모양의 떠 있는 칩으로 가리켜, 전환이 한 쌍의 동작으로 읽힌다.
-          띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다. */}
-      <button
-        type="button"
-        className="agent-chat-mode-chip"
-        {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
-        disabled={terminalPending}
-        aria-label={t("terminal.chat.openTerminalAria")}
-        onClick={() => { void handleOpenTerminal(); }}
-      >
-        <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
-      </button>
+          띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다.
+          Analyst 진입 칩이 선행하면 같은 줄에 나란히 선다. */}
+      <div className="agent-view-chip-row">
+        {leadingChip}
+        <button
+          type="button"
+          className="agent-chat-mode-chip"
+          {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
+          disabled={terminalPending}
+          aria-label={t("terminal.chat.openTerminalAria")}
+          onClick={() => { void handleOpenTerminal(); }}
+        >
+          <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
+        </button>
+      </div>
 
       {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
           사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이

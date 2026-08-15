@@ -413,6 +413,36 @@
   outline: none;
 }
 
+/* 뷰 칩 줄 — Analyst 진입 칩과 뷰 전환 칩이 같은 자리(우상단)에 나란히 선다.
+   줄이 위치를 지므로 칩 자체는 흐름에 남는다. */
+.agent-view-chip-row {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 3;
+  display: flex;
+  gap: var(--space-2);
+}
+
+.agent-view-chip-row .agent-chat-mode-chip {
+  position: static;
+}
+
+/* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
+.agent-analyst-chip-live {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  align-self: center;
+  border-radius: var(--radius-pill);
+  background: var(--aurora);
+  box-shadow: 0 0 8px var(--aurora-glow);
+}
+
+.agent-analyst-chip:disabled {
+  opacity: 0.55;
+}
+
 /* 뷰 전환 칩 — 터미널 뷰의 "채팅 뷰"와 채팅 뷰의 "터미널 열기"가 같은 클래스를 공유해
    같은 자리·같은 모양으로 서로를 가리킨다. brass는 위치·포커스 채널이므로 hover에만 오른다. */
 .agent-chat-mode-chip {

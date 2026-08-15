@@ -11,20 +11,17 @@ import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
 import { getTerminalPrefsSnapshot, useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
 import type { TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
-import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import {
-  ANALYST_ARTIFACTS_COMPANION_ID,
   ANALYST_CHAT_COMPANION_ID,
   ANALYST_COMPANION_IDS,
   closeAnalystCompanionPanels,
-  countRemainingVisibleCompanionPanels,
   isCompanionPanelVisible,
 } from "./analysis-visibility.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
-import { disposeAnalysisStore, rearmAnalysisArtifacts, useAnalysisStore } from "./analysis-store.js";
+import { disposeAnalysisStore, useAnalysisStore } from "./analysis-store.js";
 import "./analysis.css";
 import "./agent-cli.css";
 
@@ -100,8 +97,8 @@ export const agentOperationKind = defineOperationKind({
   previewBottomChrome: () => AGENT_PREVIEW_CHROME_ROWS * getTerminalPrefsSnapshot().font.size,
   canOpenCompanions: () => true,
   companions: [
+    // 아티팩트는 Analyst 드로어 안의 모드다 — 컴패니언은 하나만 등록한다.
     { id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true, shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }, render: (context) => <AnalystChatPanel context={context} /> },
-    { id: ANALYST_ARTIFACTS_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.artifacts"), hideCaption: true, defaultHidden: true, render: (context) => <AnalystArtifactsPanel context={context} /> },
   ],
 });
 
@@ -351,13 +348,13 @@ function toggleCompanionPanel(
     context.onSetCompanionPanelVisible(companionId, true);
     return;
   }
-  // Artifacts는 Chat 안의 chip으로만 여닫히므로 Chat만 닫으면 닫을 수단이 사라진다.
   for (const id of clusterIds) context.onSetCompanionPanelVisible(id, false);
-  const remainingVisibleCount = countRemainingVisibleCompanionPanels(context, clusterIds);
-  if (remainingVisibleCount === 0) context.onRequestCompanions?.(false);
+  context.onRequestCompanions?.(false);
 }
 
-function SessionAnalystHandle({
+/** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
+    드로어를 여닫는다. 세로 ANALYZE/EXIT 핸들의 후계다. */
+function AnalystEntryChip({
   context,
   ready,
   working,
@@ -372,7 +369,7 @@ function SessionAnalystHandle({
   return (
     <button
       type="button"
-      className={`session-analyst-handle session-analyst-handle--analyst${ready ? "" : " is-waiting"}${working ? " is-live" : ""}`}
+      className="agent-chat-mode-chip agent-analyst-chip"
       aria-label={t(open ? "terminal.analyst.exit" : "terminal.analyst.open")}
       aria-pressed={open}
       aria-disabled={!ready}
@@ -380,9 +377,8 @@ function SessionAnalystHandle({
       title={ready ? undefined : t("terminal.analyst.sendMessageFirst")}
       onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
     >
-      {working ? <span className="session-analyst-handle__live" aria-hidden="true" /> : null}
-      <span className="session-analyst-handle__chev" aria-hidden="true">{open ? "«" : "»"}</span>
-      <span className="session-analyst-handle__label">{t(open ? "terminal.handle.exit" : "terminal.handle.analyze")}</span>
+      {working ? <span className="agent-analyst-chip-live" aria-hidden="true" /> : null}
+      <span aria-hidden="true">✳</span> {t("terminal.analyst.chipTitle")}
     </button>
   );
 }
@@ -394,16 +390,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
-  // 초기값 true: 닫힘 상태로 마운트해도 첫 effect가 re-arm한다(force-drop과 동시 언마운트로
-  // EXIT 전이를 관찰하지 못한 경우 복구). Theater 복귀는 companionsOpen=true 마운트라 disarm이 보존된다.
-  const previousCompanionsOpenRef = React.useRef(true);
-  React.useEffect(() => {
-    const companionsOpen = context.companionsOpen ?? false;
-    const wasOpen = previousCompanionsOpenRef.current;
-    previousCompanionsOpenRef.current = companionsOpen;
-    if (wasOpen && !companionsOpen) rearmAnalysisArtifacts(context.operationId);
-  }, [context.companionsOpen, context.operationId]);
-
   React.useEffect(() => {
     if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
     // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
@@ -416,13 +402,12 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     context.onSetCompanionPanelVisible,
   ]);
 
-  // A host that cannot open companions gets no handle for them — the mobile layout hands the
+  // A host that cannot open companions gets no entry chip for them — the mobile layout hands the
   // whole surface to the session and leaves this callback out, so the chip would open nothing.
-  const handles = context.onRequestCompanions === undefined ? null : (
-    <div className="session-analyst-handle-stack">
-      <SessionAnalystHandle context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
-    </div>
+  const analystChip = context.onRequestCompanions === undefined ? null : (
+    <AnalystEntryChip context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
   );
+  const [chatConfirmOpen, setChatConfirmOpen] = React.useState(false);
 
   const chatMode = context.operation.payload.chatMode === true;
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
@@ -449,8 +434,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   if (chatMode) {
     return (
       <div className="agent-stream-host">
-        {handles}
-        <AgentChatView context={context} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} />
+        <AgentChatView context={context} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} leadingChip={analystChip} />
       </div>
     );
   }
@@ -458,7 +442,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
-        {handles}
+        {analystChip ? <div className="agent-view-chip-row">{analystChip}</div> : null}
         {session.resumeAvailable || isSupportedAgentOperationCliId(session.cliId)
           ? <DormantOperationView context={context} session={session} />
           : <div className="canvas-operation-dormant"><span className="canvas-operation-dormant-status">{getT(context.language ?? "en")("terminal.dormant.status")}</span></div>}
@@ -471,7 +455,22 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   return (
     <div className="agent-stream-host">
-      {handles}
+      {analystChip || isSupportedAgentOperationCliId(session.cliId) ? (
+        <div className="agent-view-chip-row">
+          {analystChip}
+          {isSupportedAgentOperationCliId(session.cliId) ? (
+            <button
+              type="button"
+              className="agent-chat-mode-chip"
+              aria-label={getT(context.language ?? "en")("terminal.chat.openAria")}
+              onClick={() => setChatConfirmOpen(true)}
+            >
+              <span aria-hidden="true">≣</span> {getT(context.language ?? "en")("terminal.chat.open")}
+            </button>
+          ) : null}
+        </div>
+      ) : null}
+      {chatConfirmOpen ? <ChatModeInterstitial context={context} onClose={() => setChatConfirmOpen(false)} /> : null}
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}
@@ -483,15 +482,13 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />
-      {isSupportedAgentOperationCliId(session.cliId) ? <ChatModeEntry context={context} /> : null}
     </div>
   );
 }
 
-/** 터미널 뷰 우상단의 Chat view 전환 진입 — 확인 오버레이를 거쳐 서버 전환을 요청한다. */
-function ChatModeEntry({ context }: { readonly context: OperationRenderContext }) {
+/** Chat view 전환 확인 오버레이 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
+function ChatModeInterstitial({ context, onClose }: { readonly context: OperationRenderContext; readonly onClose: () => void }) {
   const t = getT(context.language ?? "en");
-  const [open, setOpen] = React.useState(false);
   const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
   const titleId = `agent-chat-inter-${context.operationId}`;
   const convert = React.useCallback(async () => {
@@ -499,24 +496,13 @@ function ChatModeEntry({ context }: { readonly context: OperationRenderContext }
     try {
       await convertAgentSessionToChat(context.operationId);
       // payload.chatMode 반영이 뷰를 전환한다 — 여기서는 오버레이만 닫는다.
-      setOpen(false);
-      setState("idle");
+      onClose();
     } catch (error) {
       setState(error instanceof AgentApiError && error.message === "chat_convert_busy" ? "busy" : "error");
     }
-  }, [context.operationId]);
+  }, [context.operationId, onClose]);
   return (
-    <>
-      <button
-        type="button"
-        className="agent-chat-mode-chip"
-        aria-label={t("terminal.chat.openAria")}
-        onClick={() => { setState("idle"); setOpen(true); }}
-      >
-        <span aria-hidden="true">≣</span> {t("terminal.chat.open")}
-      </button>
-      {open ? (
-        <div className="agent-chat-interstitial" onKeyDown={(event) => { if (event.key === "Escape") setOpen(false); }}>
+    <div className="agent-chat-interstitial" onKeyDown={(event) => { if (event.key === "Escape") onClose(); }}>
           <div className="agent-chat-inter-card" role="dialog" aria-modal="true" aria-labelledby={titleId}>
             <h4 id={titleId}>{t("terminal.chat.confirmTitle")}</h4>
             <p>{t("terminal.chat.confirmBody")}</p>
@@ -524,7 +510,7 @@ function ChatModeEntry({ context }: { readonly context: OperationRenderContext }
             {state === "busy" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertBusy")}</p> : null}
             {state === "error" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertFailed")}</p> : null}
             <div className="agent-chat-inter-actions">
-              <button type="button" className="agent-chat-inter-button" autoFocus onClick={() => setOpen(false)}>
+              <button type="button" className="agent-chat-inter-button" autoFocus onClick={onClose}>
                 {t("terminal.chat.confirmKeep")}
               </button>
               <button
@@ -537,9 +523,7 @@ function ChatModeEntry({ context }: { readonly context: OperationRenderContext }
               </button>
             </div>
           </div>
-        </div>
-      ) : null}
-    </>
+    </div>
   );
 }
 
