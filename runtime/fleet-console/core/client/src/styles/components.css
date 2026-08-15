@@ -2861,11 +2861,14 @@
   border-radius: var(--radius-sm);
 }
 
-/* 모드 프레임은 격자 아레나의 경계다 — 포커스 레이어(최대화·companion)가 캔버스를 통째로 덮으면
-   그 아레나 자체가 없으므로 경계도 물러난다. 남겨두면 두 가지가 동시에 어긋난다: 최대화 geometry는
-   캔버스 전체라 10px 인셋을 네 변 모두 넘고, 프레임은 z-index 76이라 패널 위에 브래킷을 찍는다. */
-.operations-canvas.is-panel-maximized .canvas-mode-frame,
-.operations-canvas.is-companion-layout .canvas-mode-frame {
+/* 모드 프레임은 격자 아레나의 경계다 — 최대화 패널이 그 아레나를 통째로 덮으면 경계도 물러난다.
+   남겨두면 두 가지가 동시에 어긋난다: 최대화 geometry는 캔버스 전체라 10px 인셋을 네 변 모두 넘고,
+   프레임은 z-index 76이라 패널 위에 브래킷을 찍는다.
+   companion은 여기 없다 — 프레임이 뜨는 두 모드에서 companion은 캔버스를 덮지 않는다.
+   Tactical은 formationSlotArea(18px 인셋), Triage는 triageStageGeometryFor(역시 18px)로 배치되어
+   프레임 안쪽에 머문다. 캔버스를 꽉 채우는 companionGeometryFor는 Cruise 전용이고 거기엔 프레임이
+   없다(canvas.tsx의 frameGeometry 분기). */
+.operations-canvas.is-panel-maximized .canvas-mode-frame {
   display: none;
 }
 
