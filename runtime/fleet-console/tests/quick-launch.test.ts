@@ -876,6 +876,8 @@ describe("mention rejection messages", () => {
     expect(quickLaunchMentionErrorMessageKey("session_not_found")).toBe("chrome.quickLaunch.mentionErrorGone");
     expect(quickLaunchMentionErrorMessageKey("prompt_too_long")).toBe("chrome.quickLaunch.errorTooLong");
     expect(quickLaunchMentionErrorMessageKey("gateway_model_not_enabled")).toBe("chrome.quickLaunch.errorModelOff");
+    // 답하는 중인 행선지의 거절은 일반 전달 실패로 뭉개면 안 된다 — 기다리면 되는 상황이다.
+    expect(quickLaunchMentionErrorMessageKey("destination_busy")).toBe("chrome.quickLaunch.mentionErrorBusy");
     expect(quickLaunchMentionErrorMessageKey("terminal_unavailable")).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
     expect(quickLaunchMentionErrorMessageKey(null)).toBe("chrome.quickLaunch.mentionErrorDeliveryFailed");
   });
@@ -892,6 +894,7 @@ describe("mention rejection messages", () => {
       "chrome.quickLaunch.mentionPlaceholderOther",
       "chrome.quickLaunch.mentionTargetOther",
       "chrome.quickLaunch.errorMentionAttachments",
+      "chrome.quickLaunch.mentionErrorBusy",
       "chrome.quickLaunch.mentionErrorResumeUnavailable",
       "chrome.quickLaunch.mentionErrorAwaiting",
       "chrome.quickLaunch.mentionErrorGone",

@@ -131,8 +131,9 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [lines, setLines] = React.useState<readonly string[]>(["", "", ""]);
   const [saying, setSaying] = React.useState<readonly boolean[]>([false, false, false]);
   const [openAdmiral, setOpenAdmiral] = React.useState<AdmiralId | null>(null);
-  // Quick Launch에서 물은 답이 떠 있는 부관. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
-  const [answering, setAnswering] = React.useState<AdmiralId | null>(null);
+  // Quick Launch에서 물은 답이 떠 있는 부관들. 카드와 달리 이 말풍선은 시간으로 사라지지 않는다.
+  // 한 자리로 두면 뒤에 물은 부관이 앞 부관의 답을 덮어써, 도착한 답이 어디에도 서지 못한다.
+  const [answering, setAnswering] = React.useState<readonly AdmiralId[]>([]);
   // 답을 세우려고 우리가 정박시킨 부관들. 사용자가 직접 세운 정박과 구분해야 되돌릴 때 남의 것을 내리지 않는다.
   const mentionMooredRef = React.useRef(new Set<AdmiralId>());
   // 정박은 이 세션 동안만 산다 — 설정에도 preferences에도 남기지 않는다.
@@ -171,15 +172,21 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const askFromMention = React.useCallback(async (admiral: AdmiralId, text: string) => {
     const index = MORPHS.indexOf(admiral);
     if (index < 0) throw new Error("mention_target_gone");
+    // 앞 질문에 답하는 중인 부관은 새 질문을 **버린다**(ChatSession.ask가 그 단계에서 그냥 돌아온다).
+    // 그대로 성공으로 넘기면 컴포저가 초안을 지워 사용자의 문장이 사라진다 — 거절해서 초안을 지킨다.
+    const phase = sessions[index]!.snapshot().state.phase;
+    if (phase === "starting" || phase === "thinking") throw new Error("destination_busy");
     applyMoored(index, (current) => {
       // 사용자가 이미 세워 둔 정박은 우리 것이 아니다 — 답을 거두며 그 스위치를 대신 내리면
       // 사용자가 켠 설정이 조용히 꺼진다.
       if (!current) mentionMooredRef.current.add(admiral);
       return true;
     });
-    setAnswering(admiral);
-    // 카드가 열려 있으면 답은 그 카드가 받는다 — 같은 답을 두 표면이 동시에 그리지 않는다.
-    await sessions[index]!.ask(text);
+    setAnswering((current) => (current.includes(admiral) ? current : [...current, admiral]));
+    // 답의 도착은 말풍선이 말한다 — 여기서 기다리면 닫히는 컴포저가 스트림을 소유하게 되고,
+    // SSE 연결이 끝내 열리지 않는 회차에서는 그 약속이 영영 정착하지 않아 바가 잠긴 채 남는다.
+    // 전달의 의미는 "이 부관이 질문을 맡았다"까지다.
+    void sessions[index]!.ask(text);
   }, [applyMoored, sessions]);
 
   /**
@@ -191,19 +198,26 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     applyMoored(MORPHS.indexOf(admiral), () => false);
   }, [applyMoored]);
 
+  const closeAnswer = React.useCallback((admiral: AdmiralId) => {
+    setAnswering((current) => current.filter((candidate) => candidate !== admiral));
+    releaseMentionMoor(admiral);
+  }, [releaseMentionMoor]);
+
   const askFromMentionRef = React.useRef(askFromMention);
   askFromMentionRef.current = askFromMention;
   const settingsRef = React.useRef(settings);
   settingsRef.current = settings;
 
-  // 답이 떠 있는 부관을 설정에서 끄면 말풍선이 사라진 새 위에 남는다 — 함께 거둔다.
+  // 답이 떠 있는 부관을 설정에서 끄면 말풍선이 사라진 새 위에 남는다 — 함께 거둔다. 정박도 같이
+  // 푼다: 소유 기록만 지우면 다시 켰을 때 그 새가 영문 없이 붙박여 있다.
   React.useEffect(() => {
     setAnswering((current) => {
-      if (current === null || settings[current]) return current;
-      mentionMooredRef.current.delete(current);
-      return null;
+      const kept = current.filter((admiral) => settings[admiral]);
+      if (kept.length === current.length) return current;
+      for (const admiral of current) if (!settings[admiral]) releaseMentionMoor(admiral);
+      return kept;
     });
-  }, [settings]);
+  }, [releaseMentionMoor, settings]);
 
   // 다리는 마운트 동안 한 번만 건다 — 매 렌더 재연결하면 싱글턴이 프레임마다 갈린다.
   React.useEffect(() => connectScuttlebuttMentions({
@@ -549,31 +563,28 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
           onShow={saluteAll}
         />
       ) : null}
-      {/* Quick Launch 답변. 카드가 열리면 카드가 전문을 맡으므로 말풍선은 물러난다. */}
-      {answering && answering !== openAdmiral ? (
+      {/* Quick Launch 답변. 카드가 열리면 카드가 전문을 맡으므로 그 부관의 말풍선만 물러난다. */}
+      {answering.filter((admiral) => admiral !== openAdmiral).map((admiral) => (
         <AnswerBubble
-          admiral={answering}
-          state={chats[MORPHS.indexOf(answering)]!.state}
-          mascot={{ current: birdRefs.current[MORPHS.indexOf(answering)] ?? null }}
+          key={admiral}
+          admiral={admiral}
+          state={chats[MORPHS.indexOf(admiral)]!.state}
+          mascot={{ current: birdRefs.current[MORPHS.indexOf(admiral)] ?? null }}
           locale={context.language}
           positionRevision={positionRevision}
           onExpand={() => {
-            const admiral = answering;
-            setAnswering(null);
             // 카드는 자기 "제자리에 두기" 스위치로 정박을 소유한다 — 말풍선이 세운 것을 그대로
             // 넘기면 사용자가 켜지 않은 스위치가 켜진 채 남는다.
-            releaseMentionMoor(admiral);
+            closeAnswer(admiral);
             setOpenAdmiral(admiral);
           }}
           onDismiss={() => {
-            const admiral = answering;
-            setAnswering(null);
             // 정박은 이 답을 읽으라고 세운 것이다 — 답을 닫으면 함께 풀려 다시 순항한다.
-            releaseMentionMoor(admiral);
+            closeAnswer(admiral);
             focusAdmiral(admiral);
           }}
         />
-      ) : null}
+      ))}
       {openAdmiral ? (
         <ChatCard
           admiral={openAdmiral}

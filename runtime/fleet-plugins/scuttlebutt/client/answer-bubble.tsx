@@ -93,11 +93,16 @@ export function AnswerBubble({
     <div
       ref={bubbleRef}
       className="scuttlebutt-answer-bubble"
-      role="status"
-      aria-live="polite"
+      role="group"
       aria-label={name}
       onPointerDown={(event) => event.preventDefault()}
     >
+      {/* 답은 한 글자씩 스트리밍된다 — 보이는 문단을 라이브 영역으로 두면 청크마다 전체가 다시
+          읽힌다. 상시 존재하는 이 영역은 턴이 정착한 뒤에만 내용을 갖고, 그래서 한 번만 읽힌다
+          (라이브 영역은 내용이 바뀌기 전에 이미 마운트돼 있어야 알림이 나간다). */}
+      <span className="scuttlebutt-answer-announce" aria-live="polite" aria-atomic="true">
+        {working ? "" : answer ?? ""}
+      </span>
       <div className="scuttlebutt-answer-body">
         <span className="scuttlebutt-answer-who">
           {name}

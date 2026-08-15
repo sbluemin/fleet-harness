@@ -515,6 +515,8 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
   switch (code) {
     case "resume_unavailable": return "chrome.quickLaunch.mentionErrorResumeUnavailable";
     case "session_awaiting_input": return "chrome.quickLaunch.mentionErrorAwaiting";
+    // 비-Operation 행선지가 아직 앞 질문에 답하는 중 — 조용히 삼키면 사용자의 문장이 사라진다.
+    case "destination_busy": return "chrome.quickLaunch.mentionErrorBusy";
     case "session_not_found": return "chrome.quickLaunch.mentionErrorGone";
     case "prompt_too_long": return "chrome.quickLaunch.errorTooLong";
     // 첨부가 만료·소실된 전달 거절 — 칩은 남았지만 그 서버 파일은 이미 없다(런치 거절과 같은 문구).

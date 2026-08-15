@@ -463,6 +463,19 @@
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
 }
 
+/* 보조 기술 전용 알림 자리. 보이는 문단과 분리해 두어야 스트리밍 중 매 청크가 다시 읽히지 않는다. */
+.scuttlebutt-answer-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .scuttlebutt-answer-body {
   display: grid;
   min-width: 0;
