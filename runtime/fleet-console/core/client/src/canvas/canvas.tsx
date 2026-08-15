@@ -845,7 +845,10 @@ export function OperationsCanvas({
           const operationTriageStage = triageStageId === operation.id;
           // 덱 칸이 잡혀 있으면 그 자리가 이 패널의 자리다 — 캔버스 좌표 대신 칸 안으로 들어가
           // 칸 크기를 그대로 입는다(PTY도 그 크기로 맞춰진다).
-          const deckSlot = operationTriageStage ? null : triageDeckSlots.get(operation.id) ?? null;
+          // companion을 연 패널은 칸에 담기지 않는다 — 그 레이아웃은 캔버스를 나눠 쓰는 모드이고,
+          // 렌더는 프레임과 companion 프레임을 한 벌로 내놓는다. 칸으로 들여보내면 캔버스 좌표를
+          // 지닌 companion들이 타일 안으로 함께 딸려 들어간다. 덱 칸은 그때 이름만 남기고 비운다.
+          const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? null;
           const operationGroup = resolveOperationGroup(operation, groupById);
           // 색을 못 푸는 그룹은 라벨 자체를 내지 않는다 — 도트 없는 이름만 남으면 그것이 그룹이라는
           // 사실을 캡션에서 읽을 수 없다.

@@ -2356,6 +2356,9 @@ describe("War Room deck panel grammar", () => {
     // 패널은 끝까지 캔버스 소유다 — portal은 DOM 부모만 바꾸므로 상태·이벤트·pool 배선이 유지된다.
     expect(canvas).toContain("createPortal(frame, options.deckSlot, operation.id)");
     expect(canvas).toContain("deckTile={options.deckSlot !== null}");
+    // 무대와 companion은 칸을 쓰지 않는다 — 렌더가 프레임과 companion 프레임을 한 벌로 내놓으므로,
+    // companion을 연 패널을 칸으로 들여보내면 캔버스 좌표를 지닌 companion까지 타일 안에 갇힌다.
+    expect(canvas).toContain("const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? null;");
   });
 
   it("keeps the deck tile off the canvas coordinate system", () => {
