@@ -6,6 +6,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
+import { operationActivityLabel } from "../operation-activity.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
@@ -1409,7 +1410,7 @@ export function QuickLaunch() {
                       ) : null}
                       <span className="quick-launch-mention-name">{entry.operationName}</span>
                       {entry.activity !== "idle" ? (
-                        <span className={`operation-search-status operation-search-status--${entry.activity}`}>{entry.activity}</span>
+                        <span className={`operation-search-status operation-search-status--${entry.activity}`}>{operationActivityLabel(entry.activity)}</span>
                       ) : null}
                     </button>
                   );

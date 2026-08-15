@@ -765,6 +765,12 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   overflow: hidden;
 }
 
+/* 저장 거절 배너는 사이드바·스테이지·레일 위에 한 줄로 깐다 — 칸을 안 주면
+   암시적 행에 끼어 세 열이 한 칸씩 밀린다. */
+.console-body.is-canvas > .operations-mutation-error {
+  grid-column: 1 / -1;
+}
+
 /* 명시적 열 고정 — 접힌 크롬이 display:none으로 슬롯을 비워도(auto-placement 시프트)
    캔버스가 1열로, 레일이 1fr로 밀리지 않게 한다. */
 .console-body.is-canvas > .operations-side-bar {

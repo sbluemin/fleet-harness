@@ -583,7 +583,7 @@ function beaconStatusClass(status: OperationActivityVisual | undefined): string 
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";
   if (visual === "awaiting") return "tenant-beacon is-awaiting";
-  if (visual === "dormant") return "tenant-beacon is-dormant";
+  if (visual === "ended") return "tenant-beacon is-ended";
   return "tenant-beacon is-idle";
 }
 

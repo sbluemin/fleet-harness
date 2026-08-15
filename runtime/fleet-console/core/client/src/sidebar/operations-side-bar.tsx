@@ -214,7 +214,7 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
     { status: "running", label: t("sidebar.status.running") },
     { status: "background", label: t("sidebar.status.background") },
     { status: "idle", label: t("sidebar.status.idle") },
-    { status: "dormant", label: t("sidebar.status.dormant") },
+    { status: "ended", label: t("sidebar.status.ended") },
   ];
 }
 
@@ -278,7 +278,7 @@ function StatusRecoveryShelves({
   readonly minimizedSection: StatusSection;
   readonly minimizedUnseenCount: number;
   readonly dormantSection: StatusSection;
-  readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "dormant") => ReactNode;
+  readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "ended") => ReactNode;
 }) {
   const t = useT();
   return (
@@ -295,7 +295,7 @@ function StatusRecoveryShelves({
         <p className="triage-side-bar-caption">{t("sidebar.status.dormantShelf")}</p>
         <ol className="triage-side-bar-dormant-list" aria-label={t("sidebar.status.dormantShelf")}>
           <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
-            {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "dormant"))}
+            {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
           </StatusSectionSlot>
         </ol>
       </footer>
@@ -435,13 +435,13 @@ export function OperationsSideBar({
   const renderActiveStatusEntry = (
     entry: SideBarEntry,
     index: number,
-    recovery?: "minimized" | "dormant",
+    recovery?: "minimized" | "ended",
   ) => {
     const globalIndex = entryIndexById.get(entry.operation.id) ?? index;
     const accentKey = canvas.operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
     const groupMark = entry.operation.groupId ? groupMarkByGroupId.get(entry.operation.groupId) ?? null : null;
-    const dormant = recovery === "dormant";
+    const ended = recovery === "ended";
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
@@ -451,12 +451,12 @@ export function OperationsSideBar({
         accentValue={accentValue}
         groupMark={groupMark}
         statusAxis
-        idleUnseen={recovery !== "dormant" && isIdleUnseen(entry.operation.id)}
-        statusLanded={recovery !== "dormant" && statusLandingIds.has(entry.operation.id)}
+        idleUnseen={recovery !== "ended" && isIdleUnseen(entry.operation.id)}
+        statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
         minimizeEnabled={!recovery}
         menuEnabled={!recovery}
-        resumeOnActivate={dormant}
+        resumeOnActivate={ended}
         dragging={false}
         dragOffsetY={0}
         dropTarget={false}
@@ -464,7 +464,7 @@ export function OperationsSideBar({
         onDisarmClose={disarmClose}
         onClose={onClose}
         onMinimize={onMinimize}
-        onFocus={dormant ? onResume : onFocus}
+        onFocus={ended ? onResume : onFocus}
         onKeyboardMove={keyboardMove}
         onPointerDragStart={beginPointerDrag}
         onOpenAccent={(operationId, anchor, returnFocus, requestedAction) => {
@@ -1259,7 +1259,7 @@ export function groupTheaterStatusEntries(
   readonly dormant: StatusSection;
 } {
   const dormantEntries = entries
-    .filter((entry) => entry.status === "dormant")
+    .filter((entry) => entry.status === "ended")
     .map((entry) => entry.minimized ? { ...entry, minimized: false } : entry);
   const dormantIds = new Set(dormantEntries.map((entry) => entry.operation.id));
   const minimizedEntries = entries.filter((entry) =>
@@ -1274,15 +1274,15 @@ export function groupTheaterStatusEntries(
     t,
   );
   return {
-    living: sections.filter((section) => section.status !== "dormant"),
+    living: sections.filter((section) => section.status !== "ended"),
     minimized: {
       status: "minimized",
       label: t("triageSidebar.minimized"),
       entries: minimizedEntries,
     },
     dormant: {
-      status: "dormant",
-      label: t("sidebar.status.dormant"),
+      status: "ended",
+      label: t("sidebar.status.ended"),
       entries: dormantEntries,
     },
   };
@@ -1544,11 +1544,11 @@ function TheaterInactiveSection({
   const renderInactiveStatusEntry = (
     entry: SideBarEntry,
     index: number,
-    recovery?: "minimized" | "dormant",
+    recovery?: "minimized" | "ended",
   ) => {
     const accentKey = operationAccent[entry.operation.id] ?? operationAccentFromNode(entry.operation);
     const accentValue = accentKey ? resolveAccentColor(accentKey) : null;
-    const dormant = recovery === "dormant";
+    const ended = recovery === "ended";
     return (
       <OperationsSideBarChip
         key={entry.operation.id}
@@ -1558,12 +1558,12 @@ function TheaterInactiveSection({
         accentValue={accentValue}
         groupMark={resolveEntryGroupMark(entry, groups)}
         statusAxis
-        idleUnseen={recovery !== "dormant" && idleUnseenIds.has(entry.operation.id)}
-        statusLanded={recovery !== "dormant" && statusLandingIds.has(entry.operation.id)}
+        idleUnseen={recovery !== "ended" && idleUnseenIds.has(entry.operation.id)}
+        statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
         minimizeEnabled={false}
         menuEnabled={false}
-        resumeOnActivate={dormant}
+        resumeOnActivate={ended}
         dragging={false}
         dragOffsetY={0}
         dropTarget={false}
@@ -1572,7 +1572,7 @@ function TheaterInactiveSection({
         onDisarmClose={() => {}}
         onClose={() => {}}
         onMinimize={() => {}}
-        onFocus={dormant ? onResume : onFocus}
+        onFocus={ended ? onResume : onFocus}
         onKeyboardMove={() => {}}
         onPointerDragStart={() => {}}
         onOpenAccent={() => {}}

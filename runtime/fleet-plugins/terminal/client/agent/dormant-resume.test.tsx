@@ -30,13 +30,18 @@ afterEach(() => {
 });
 
 describe("dormant resume feedback", () => {
-  it("keeps a preserved removed-provider Operation dormant without offering Resume or Start fresh", async () => {
-    const fetch = vi.fn();
+  it("offers Start fresh for a restored Codex Operation without captured resume metadata", async () => {
+    const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
     await renderOperation(fetch, { cliId: "codex" });
 
-    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Dormant");
-    expect(container?.querySelector("button.canvas-operation-dormant")).toBeNull();
-    expect(fetch).not.toHaveBeenCalled();
+    expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Ended");
+    const button = dormantButton();
+    expect(button.textContent).toContain("Start fresh");
+    await act(async () => { button.click(); });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const init = fetch.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
   });
 
   it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
@@ -139,6 +144,17 @@ describe("dormant resume feedback", () => {
   });
 
   it("uses launch-option feedback for host-triggered resumes", async () => {
+    applySessionUpdate({
+      sessionId: OPERATION_ID,
+      terminalSessionId: OPERATION_ID,
+      cwdLabel: "Workspace",
+      label: "Dormant test",
+      status: "dormant",
+      turnState: "none",
+      createdAt: 1,
+      theaterId: "theater",
+      resumeAvailable: true,
+    });
     const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {
         return Promise.resolve(new Response(JSON.stringify({ error: "gateway_model_not_enabled" }), {
@@ -159,10 +175,43 @@ describe("dormant resume feedback", () => {
 
     await expect(agentPlugin.resumeOperation?.(OPERATION_ID)).rejects.toThrow("gateway_model_not_enabled");
 
+    expect((fetch.mock.calls[0]?.[1] as RequestInit | undefined)?.body).toBeUndefined();
     expect(notifications.emit).toHaveBeenCalledWith(expect.objectContaining({
       operationId: OPERATION_ID,
       message: "Resume failed — the saved model or effort is unavailable.",
     }));
+    dispose?.();
+  });
+
+  it("sends { fresh: true } for a host-triggered resume without captured resume metadata", async () => {
+    const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
+      if (String(input).includes(`/api/v1/operations/${OPERATION_ID}`)) {
+        return Promise.resolve(new Response(JSON.stringify({
+          operation: { payload: { cliId: "codex", restoredDormant: true } },
+        }), { status: 200, headers: { "Content-Type": "application/json" } }));
+      }
+      if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {
+        return Promise.resolve(sessionResponse("live"));
+      }
+      return new Promise<Response>(() => {});
+    });
+    vi.stubGlobal("fetch", fetch);
+    const notifications = { emit: vi.fn(), dismiss: vi.fn() };
+    const dispose = agentPlugin.install?.({
+      api: { resync: vi.fn() },
+      notifications,
+      operations: {},
+      runtime: { set: vi.fn(), clear: vi.fn(), setHydration: vi.fn() },
+    } as unknown as PluginInstallContext);
+
+    await agentPlugin.resumeOperation?.(OPERATION_ID);
+
+    expect(fetch).toHaveBeenCalledWith(
+      `/plugins/terminal/agent/sessions/${OPERATION_ID}/resume`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    const init = fetch.mock.calls.find((call) => String(call[0]).includes("/resume"))?.[1] as RequestInit;
+    expect(JSON.parse(String(init.body))).toEqual({ fresh: true });
     dispose?.();
   });
 

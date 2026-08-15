@@ -38,7 +38,11 @@ export const terminalPlugin = definePlugin({
     } catch {
       operation = null;
     }
-    if (operation?.type === "shell") return;
+    if (operation?.type === "shell") {
+      const response = await fetch(`/plugins/terminal/shell/sessions/${encodeURIComponent(operationId)}/relaunch`, { method: "POST" });
+      if (!response.ok) throw new Error("shell_relaunch_failed");
+      return;
+    }
     await agentPlugin.resumeOperation?.(operationId);
   },
   // Quick Launch 멘션 전달. 대상 자체가 messageableOperationTypes로 agent 타입에 한정되므로
