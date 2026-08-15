@@ -98,7 +98,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       restoreIdentityFocusRef.current = true;
     },
   });
-  // 사용자 accent(정체성)는 명판 마크와 명판 워시만 소유한다.
+  // 사용자 accent(정체성)는 명판 마크만 소유한다. 캡션 채움은 액센트가 없을 때와 같다.
   // 패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용이다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
   // 그룹 소속은 개인 accent와 다른 축이므로 자기 마크(도트)와 중립 티어 이름으로 따로 선다 —

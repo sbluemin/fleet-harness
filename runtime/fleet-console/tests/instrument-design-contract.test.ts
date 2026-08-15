@@ -576,12 +576,11 @@ describe("Instrument core design contract", () => {
     expect(violations).toEqual([]);
   });
 
-  it("keeps user identity on the mark+wash grammar and off the state border channel", () => {
+  it("keeps user identity on the mark grammar and off the caption fill and state border channel", () => {
     const frame = source("canvas/operation-frame.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
     const markBlock = components.match(/\.canvas-operation-id-mark \{[^}]*\}/)?.[0] ?? "";
-    const washBlock = components.match(/\.canvas-operation\[style\*="--user-accent"\] \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
     const chipAccentBlock = components.match(/\.side-bar-chip\[style\*="--user-accent"\]::before \{[^}]*\}/)?.[0] ?? "";
     const minimapDotBlock = components.match(/\.canvas-minimap-operation\[style\*="--user-accent"\]::after \{[^}]*\}/)?.[0] ?? "";
     const accentSources = [frame, chip, components].join("\n");
@@ -589,18 +588,19 @@ describe("Instrument core design contract", () => {
     expect(frame).toContain('{ "--user-accent": accentColor }');
     expect(frame).toContain('className="canvas-operation-id-mark"');
     expect(chip).toContain('{ "--user-accent": accentValue }');
-    // Map의 좌측 스파인은 폐기됐다 — 패널 본문은 어떤 정체성 색도 지지 않고, 정체성은 전부
-    // 캡션 위(명판 마크·명판 워시)에서 말한다. 선택자·렌더·클래스 어느 쪽으로도 되살아나면
-    // 캡션이 유일한 정체성 면이라는 계약이 조용히 깨진다.
+    // Map의 좌측 스파인과 캡션 워시는 폐기됐다 — 패널 본문과 언포커스 캡션은 어떤 정체성
+    // 색도 지지 않고, 정체성은 캡션 위 마크에서 말한다. 선택자·렌더·클래스 어느 쪽으로도
+    // 되살아나면 캡션이 패널과 한 면이라는 계약이 조용히 깨진다.
     expect(components).not.toContain(".canvas-operation-spine");
     expect(frame).not.toContain("canvas-operation-spine");
+    expect(components).not.toContain('.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {');
+    expect(components).not.toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
+    expect(components).not.toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
     // 정체성은 보더 채널을 소유하지 않는다 — 보더는 상태(brass/aurora/coral) 전용.
     expect(components).not.toContain("border-color: var(--user-accent)");
     expect(markBlock).toContain("width: 8px;");
     expect(markBlock).toContain("height: 14px;");
     expect(markBlock).toContain("background: var(--user-accent);");
-    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
-    expect(washBlock).toContain("background-clip: padding-box");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
     expect(chipAccentBlock).toContain("bottom: 7px;");
@@ -608,10 +608,9 @@ describe("Instrument core design contract", () => {
     expect(chipAccentBlock).toContain("pointer-events: none;");
     expect(chipAccentBlock).not.toMatch(/animation/);
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    // 5개 소비처: 미니맵 도트 · 명판 마크 · 명판 워시 · 사이드바 칩 스파인 · 포커스 결합 워시.
-    // 마지막은 정체성 워시 위에 포커스 워시를 겹치는 결합 규칙이라 새 채널이 아니다 —
-    // Map에서 accent는 mark+wash에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
+    // 3개 소비처: 미니맵 도트 · 명판 마크 · 사이드바 칩 스파인.
+    // Map에서 accent는 마크에만 머물고, 3px 스파인은 레일(사이드바 칩)에만 남는다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(3);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
@@ -1912,11 +1911,11 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{\n\s*animation: caption-rail-arrive/);
     expect(operationFrame).toContain('arrivalFlash ? "is-unseen-arriving" : ""');
     expect(operationFrame).toContain("previousUnseenRef");
-    // 정체성 워시와 포커스 워시는 같은 표면을 다투지 않는다 — 결합 규칙이 둘을 겹쳐 칠한다.
-    // 둘 다 캡션만 진다. 창 면 변수로 올리면 채팅 본문까지 따라간다.
-    expect(components).toContain('.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {');
-    expect(components).toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)))");
+    // 정체성은 캡션 채움을 소유하지 않는다 — 언포커스는 --surface-panel, 포커스는 brass
+    // 워시 하나만. 창 면 변수로 올리면 채팅 본문까지 따라간다.
+    expect(components).not.toContain('.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {');
+    expect(components).not.toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
+    expect(components).not.toContain("color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)))");
     expect(components).not.toContain('.canvas-operation[style*="--user-accent"]:not(.is-active) .canvas-operation-titlebar {');
     // oklch 믹스는 hue를 극좌표 호로 보간한다 — brass(78)+ink-rim(245) 62%는 hue 141(초록)에
     // 착지해 위치 채널이 신호 채널 positive(160) 옆에 앉았다. 캡션 워시는 oklab으로 섞는다.
