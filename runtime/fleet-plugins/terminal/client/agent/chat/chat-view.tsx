@@ -2,6 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
+import { claimChatActivityAxis, releaseChatActivityAxis } from "../connection.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import { splitAgentChatTurn, type AgentChatTurn, type AgentChatTurnItem } from "./chat-events.js";
@@ -62,6 +63,37 @@ export function AgentChatView({
     nearBottomRef.current = log.scrollHeight - log.scrollTop - log.clientHeight < 80;
   }, []);
 
+  // Chat Mode 세션의 작동 여부는 이 스트림만 안다 — 전환 시 PTY가 접히면서 터미널 세션 레코드는
+  // dormant로 남고, 그 스냅샷을 그대로 두면 캡션이 턴이 도는 내내 휴면이라고 말한다. 그래서 뷰가
+  // 마운트되는 동안 활동축을 인수하고, 떠날 때 되돌려준다.
+  //
+  // 능력 객체는 의존성이 될 수 없다: 호스트가 렌더마다 새로 만들어 건네므로 의존성에 넣으면
+  // 매 렌더 정리가 돌아 방금 심은 상태를 도로 지운다(진행 중 턴의 1초 티커만으로도 깜빡인다).
+  // 동작 자체는 안정적이므로 ref로 들고, 의존성은 실제로 바뀌는 값만 진다.
+  const { operationId } = context;
+  const statusRef = React.useRef(context.status);
+  statusRef.current = context.status;
+  React.useEffect(() => {
+    claimChatActivityAxis(operationId);
+    return () => {
+      releaseChatActivityAxis(operationId);
+      statusRef.current.clear(operationId);
+    };
+  }, [operationId]);
+
+  // 스트림이 붙어 있을 때만 의견을 낸다. 연결 전·상실 구간에서 idle을 주장하면 아직 아무것도
+  // 관측하지 못한 상태를 "쉬는 중"이라고 말하는 셈이라, 무의견으로 남겨 복원 Operation의 기본
+  // 분류(dormant)가 그대로 서게 한다.
+  const connected = state.connection === "open";
+  const working = state.working;
+  React.useEffect(() => {
+    if (!connected) {
+      statusRef.current.clear(operationId);
+      return;
+    }
+    statusRef.current.set(operationId, working ? "running" : "idle");
+  }, [connected, working, operationId]);
+
   const timeFormat = React.useMemo(
     () => new Intl.DateTimeFormat(context.language === "ko" ? "ko" : "en", { hour: "2-digit", minute: "2-digit" }),
     [context.language],
@@ -119,17 +151,35 @@ export function AgentChatView({
           : null}
       </div>
 
-      <div className={`agent-chat-strip${state.working ? " is-working" : ""}`}>
-        <span className="agent-chat-strip-state">
-          <span className="agent-chat-strip-dot" aria-hidden="true" />
-          {state.working ? t("terminal.chat.working") : t("terminal.chat.idle")}
-        </span>
-        <span className="agent-chat-strip-hint" {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}>
-          {t("terminal.chat.replyHint")}
-          <kbd className="agent-chat-kbd">⌃Space</kbd>
-        </span>
-      </div>
+      {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
+          호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
+          가는 문이다(이 뷰에 입력창을 두지 않는다는 결정은 그대로다). */}
+      <button
+        type="button"
+        className="agent-chat-reply"
+        {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}
+        aria-label={t("terminal.chat.replyAria")}
+        title={t("terminal.chat.replyTitle")}
+        onClick={() => { context.composer.open({ mentionOperationId: context.operationId }); }}
+      >
+        <ReplyBubbleIcon />
+      </button>
     </section>
+  );
+}
+
+/** 회신 버튼의 말풍선 — 꼬리는 왼쪽 아래로, 몸통은 둥근 모서리 하나로 읽히게. */
+function ReplyBubbleIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
+      <path
+        d="M6.4 15.6H6a3 3 0 0 1-3-3V7.6a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H9.6l-3.2 2.6z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

@@ -64,6 +64,7 @@ function makeState(patch: Partial<ConsoleState> = {}): ConsoleState {
     quickLaunchPinned: false,
     quickLaunchFocusToggle: 0,
     quickLaunchExpandRequest: 0,
+    quickLaunchMentionSeed: null,
     quickLaunchDockSuppressed: false,
     quickLaunchDraft: null,
   quickLaunchDraftAttachments: null,

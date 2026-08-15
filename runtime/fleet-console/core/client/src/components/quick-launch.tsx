@@ -9,12 +9,12 @@ import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
-import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
+import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, resolveRowEffort } from "./effort-track.js";
 
@@ -206,6 +206,37 @@ export function QuickLaunch() {
   // Enter는 평소처럼 제출로 흐른다. 행이 있는 동안은 마우스 제출 버튼도 같은 계약으로 잠근다.
   const deckHasRows = mentionDeckOpen && mentionEntries.length > 0;
 
+  // 컴포저가 열리는 순간의 행선지를 한 곳에서 정한다. 진입점은 둘이고 우선순위가 있다:
+  // 명시 행선지(패널 회신 버튼이 store에 건넨 시드)가 먼저고, 없을 때만 바의 포커스 옵트인이
+  // 말한다 — 그 패널의 버튼을 직접 누른 지시가 상시 규칙보다 구체적이다. 시드는 옵트인 여부를
+  // 묻지 않는다(버튼이 곧 그 회차의 동의다). 다만 남은 초안·이미 붙은 멘션·쓰고 있던 문면은
+  // 두 경로가 똑같이 지킨다 — 빈 컴포저가 주소를 못 받는 것보다 쓰다 만 문장이 다른 곳으로
+  // 실려 가는 것이 나쁘다. 시드는 읽는 즉시 비운다: 남기면 다음 열림이 지난 행선지를 되쓴다.
+  const mentionSeedRef = useRef(state.quickLaunchMentionSeed);
+  mentionSeedRef.current = state.quickLaunchMentionSeed;
+  const resolveOpeningMention = useCallback((input: {
+    readonly addressFocused: boolean;
+    readonly leftoverDraft: boolean;
+    readonly mentionAlreadySet: boolean;
+    readonly promptOccupied: boolean;
+  }): OperationSearchEntry | null => {
+    const seed = mentionSeedRef.current;
+    if (seed !== null) consumeQuickLaunchMentionSeed();
+    const guard = {
+      leftoverDraft: input.leftoverDraft,
+      mentionAlreadySet: input.mentionAlreadySet,
+      promptOccupied: input.promptOccupied,
+    };
+    if (seed !== null && shouldApplyFocusedMention({ prefOn: true, ...guard })) {
+      const addressed = resolveMentionEntry(getState(), messageableTypesByPluginRef.current, seed);
+      if (addressed) return addressed;
+    }
+    if (input.addressFocused && shouldApplyFocusedMention({ prefOn: mentionFocusedRef.current, ...guard })) {
+      return resolveFocusedMention(getState(), messageableTypesByPluginRef.current, visibleTriageStageOperationId());
+    }
+    return null;
+  }, []);
+
   // ── `ultracode` 인식 ────────────────────────────────────────────────────────
   // 무장은 문면에서 파생한다. 멘션 행선지가 있어도 그대로 성립한다 — 이 단어는 실행 좌표가 아니라
   // 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
@@ -316,7 +347,6 @@ export function QuickLaunch() {
     setPopover(null);
     setSubmitting(false);
     setMentionToken(null);
-    setMentionTarget(null);
     setMentionActiveIndex(0);
     setMentionErrorKey(null);
     // 모달 열림만 여기서 주소한다. 도킹 첫 마운트·설정에서 돌아온 재마운트는 invoke가 아니다.
@@ -324,22 +354,12 @@ export function QuickLaunch() {
     const leftoverDraft = restoredPrompt.trim().length > 0
       || (state.quickLaunchDraftAttachments?.length ?? 0) > 0
       || carried.length > 0;
-    if (
-      !pinned
-      && shouldApplyFocusedMention({
-        prefOn: remembered.mentionFocused,
-        leftoverDraft,
-        mentionAlreadySet: false,
-        promptOccupied: false,
-      })
-    ) {
-      const focused = resolveFocusedMention(
-        getState(),
-        messageableTypesByPluginRef.current,
-        visibleTriageStageOperationId(),
-      );
-      if (focused) setMentionTarget(focused);
-    }
+    setMentionTarget(pinned ? null : resolveOpeningMention({
+      addressFocused: true,
+      leftoverDraft,
+      mentionAlreadySet: false,
+      promptOccupied: false,
+    }));
     // Escape가 보존한 미완의 커맨드("/model")도 초안이다 — 비운 채 되열면 덱 없는 문면에 Enter가
     // 프로즈 발사로 흘러, 보존이 명령을 프롬프트로 둔갑시킨다. 복원 문면을 그대로 재파싱한다.
     setCommandInput(readCommandInput(restoredPrompt, restoredPrompt.length));
@@ -410,28 +430,21 @@ export function QuickLaunch() {
     // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
     setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
     setCommandActiveIndex(0);
-    if (
-      input.addressFocused === true
-      && shouldApplyFocusedMention({
-        prefOn: mentionFocusedRef.current,
+    if (input.addressFocused === true) {
+      const addressed = resolveOpeningMention({
+        addressFocused: true,
         leftoverDraft: false,
         mentionAlreadySet: mentionTargetRef.current !== null,
         promptOccupied: promptRef.current.trim().length > 0 || attachmentsRef.current.length > 0,
-      })
-    ) {
-      const focused = resolveFocusedMention(
-        getState(),
-        messageableTypesByPluginRef.current,
-        visibleTriageStageOperationId(),
-      );
-      if (focused) {
-        setMentionTarget(focused);
+      });
+      if (addressed) {
+        setMentionTarget(addressed);
         setMentionToken(null);
         setMentionErrorKey(null);
       }
     }
     window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
+  }, [resolveOpeningMention]);
 
   // 고정 중 Mod+J: 접혀 있으면 펼쳐 포커스하고, 펼쳐져 있으면 물러난다. 접힘 자체는 포커스에서
   // 파생되므로 여기서는 포커스만 움직인다(에포크 0은 최초 마운트라 아무 일도 하지 않는다).

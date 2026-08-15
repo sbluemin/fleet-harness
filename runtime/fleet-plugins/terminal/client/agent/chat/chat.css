@@ -368,58 +368,43 @@
   margin-top: var(--space-3);
 }
 
-/* 하단 커맨드 스트립 — 입력창이 아니라 입력 경로 안내. */
-.agent-chat-strip {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  border-top: 1px solid var(--hairline);
-  /* 스트립은 패널 안의 다른 면이 아니라 같은 면 위의 마지막 줄이다 — 구분은 윗변 hairline이
-     맡는다. 패널 면을 따라가며, 포커스 워시는 따라가지 않는다. */
-  background: var(--surface-panel);
-  padding: var(--space-2) var(--space-3);
-}
-
-.agent-chat-strip-state {
+/* 회신 버튼 — 본문 우하단에 떠 있는 말풍선 하나. 상단 전환 칩과 달리 라벨을 달지 않는다:
+   글리프가 곧 이름인 표적이라 문구가 붙으면 두 칩이 같은 무게로 읽히고, 로그를 가리는 면적이
+   그만큼 늘어난다. 이름은 aria-label과 title이 진다.
+   원형은 컨트롤에서 금지된 모양이 아니다 — Quick Launch 고정 버튼이 같은 32px 원형 아이콘
+   버튼이다. --radius-pill이 도트·비콘 전용인 것과 별개로, 여기 50%는 크기가 지름을 정하는
+   아이콘 버튼의 모양이다. brass는 위치·포커스 채널이므로 hover/focus에만 오른다. */
+.agent-chat-reply {
+  position: absolute;
+  right: var(--space-3);
+  bottom: var(--space-3);
+  z-index: 3;
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-}
-
-.agent-chat-strip-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: var(--radius-pill);
-  background: var(--positive);
-}
-
-.agent-chat-strip.is-working .agent-chat-strip-dot {
-  background: var(--aurora);
-  animation: agent-chat-node-pulse 1.6s ease-in-out infinite;
-}
-
-.agent-chat-strip-hint {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-size: 12px;
-  color: var(--text-tertiary);
-}
-
-.agent-chat-kbd {
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  color: var(--text-secondary);
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  background: var(--surface-panel-raised);
   border: 1px solid var(--hairline-strong);
-  border-bottom-width: 2px;
-  border-radius: 4px;
-  padding: 0 6px;
-  background: var(--ink-mid);
+  color: var(--text-secondary);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.agent-chat-reply svg {
+  width: 17px;
+  height: 17px;
+}
+
+.agent-chat-reply:hover,
+.agent-chat-reply:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+  outline: none;
 }
 
 /* 뷰 전환 칩 — 터미널 뷰의 "채팅 뷰"와 채팅 뷰의 "터미널 열기"가 같은 클래스를 공유해
@@ -554,7 +539,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
-  .agent-chat-strip.is-working .agent-chat-strip-dot,
   .agent-chat-pulse-orbit {
     animation: none;
   }

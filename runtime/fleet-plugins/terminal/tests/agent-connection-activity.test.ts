@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { applyActivity, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
+import { applyActivity, claimChatActivityAxis, releaseChatActivityAxis, sessionActivity, type AgentConnectionOptions } from "../client/agent/connection.js";
 import { extractStatusDetail } from "../client/shared/status-detail.js";
 import { assertSessionInfo } from "../client/agent/api.js";
 import type { SessionInfo } from "../client/agent/types.js";
@@ -96,6 +96,50 @@ describe("Agent connection activity state machine", () => {
     expect(extractStatusDetail("x".repeat(180))).toHaveLength(120);
   });
 
+});
+
+describe("Chat Mode activity axis ownership", () => {
+  // Chat Mode 전환은 PTY를 접지만 터미널 세션 레코드는 dormant로 남아 스냅샷에 계속 실린다.
+  // 채팅 스트림이 축을 인수하지 않으면 resync가 매 주기마다 진행 중인 턴을 휴면으로 덮어쓴다.
+  it("stops terminal snapshots from claiming an Operation the chat stream owns", () => {
+    const { options, statusSet } = createOptions();
+    applyActivity(options, "op-chat", "idle");
+    expect(statusSet).toHaveBeenCalledWith("op-chat", "idle");
+
+    statusSet.mockClear();
+    claimChatActivityAxis("op-chat");
+    applyActivity(options, "op-chat", "dormant");
+    applyActivity(options, "op-chat", "idle");
+    expect(statusSet).not.toHaveBeenCalled();
+
+    // 다른 Operation은 영향을 받지 않는다 — 주장은 id 단위다.
+    applyActivity(options, "op-terminal", "running");
+    expect(statusSet).toHaveBeenCalledExactlyOnceWith("op-terminal", "running");
+  });
+
+  it("hands the axis back on release so the next frame reports the real state", () => {
+    const { options, statusSet } = createOptions();
+    claimChatActivityAxis("op-chat");
+    releaseChatActivityAxis("op-chat");
+    applyActivity(options, "op-chat", "dormant");
+    expect(statusSet).toHaveBeenCalledWith("op-chat", "dormant");
+  });
+
+  it("forgets the last reported activity on release so a repeat is not swallowed as a no-change", () => {
+    const { notifications, options } = createOptions();
+    applyActivity(options, "op-chat", "running");
+    applyActivity(options, "op-chat", "idle");
+    expect(notifications).toHaveBeenCalledTimes(1);
+
+    notifications.mockClear();
+    claimChatActivityAxis("op-chat");
+    releaseChatActivityAxis("op-chat");
+    // 되돌려받은 축은 이전 관측이 없는 상태다. running -> idle을 다시 관측하면 턴 완료 알림도
+    // 다시 나가야 한다 — lastActivity를 남겨 두면 두 번째 턴의 종료가 조용히 삼켜진다.
+    applyActivity(options, "op-chat", "running");
+    applyActivity(options, "op-chat", "idle");
+    expect(notifications).toHaveBeenCalledTimes(1);
+  });
 });
 
 function makeSession(overrides: Partial<SessionInfo> = {}): SessionInfo {

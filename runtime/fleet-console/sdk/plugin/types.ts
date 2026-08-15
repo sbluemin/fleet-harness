@@ -79,6 +79,7 @@ export interface PluginInstallContext {
   readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
+  readonly composer: ClientComposerCapability;
 }
 
 export interface ClientApiCapability {
@@ -108,6 +109,19 @@ export interface ClientOperationStatusCapability {
 export interface ClientOperationStatusDetailCapability {
   set(operationId: string, detail: string): void;
   clear(operationId: string): void;
+}
+
+export interface ClientComposerCapability {
+  /**
+   * Brings up the host composer and puts the caret in it. Whether that is the modal or the docked
+   * bar is the host's business, not the plugin's.
+   *
+   * `mentionOperationId` addresses the composer at that Operation, exactly as typing an `@` mention
+   * does. The host still applies its own addressing rules — an Operation that cannot be messaged,
+   * or is waiting on its own prompt, is left unaddressed — and an existing address is never
+   * replaced, so a request that arrives while the author is mid-sentence cannot redirect it.
+   */
+  open(options?: { readonly mentionOperationId?: string }): void;
 }
 
 export interface ClientOperationsCapability {
@@ -209,6 +223,7 @@ export interface OperationRenderContext extends OperationContext {
   readonly settings: ClientSettingsCapability;
   readonly status: ClientOperationStatusCapability;
   readonly statusDetail: ClientOperationStatusDetailCapability;
+  readonly composer: ClientComposerCapability;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;

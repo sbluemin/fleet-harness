@@ -900,7 +900,10 @@ export function OperationsCanvas({
             geometry: frameGeometry,
             topEdge,
             operationKindRegistry,
-            status: state.operationStatus[operation.id],
+            // 캡션 비콘은 사이드바 칩과 같은 원천을 읽어야 한다 — 활동 맵을 날로 조회하면 아직
+            // status를 심지 않은 복원 Operation이 doctrine상 dormant인데도 캡션에서만 idle로 서서,
+            // 같은 순간 사이드바는 휴면, 패널은 초록이라고 말한다.
+            status: resolveOperationActivity(operation, state.operationStatus),
             theme: state.activeTheme,
             language,
             viewportZoom: effectiveZoom,
@@ -1436,6 +1439,7 @@ function PluginOperationRenderer({
     settings: capabilities.settings,
     status: capabilities.status,
     statusDetail: capabilities.statusDetail,
+    composer: capabilities.composer,
     onActivate,
     onClose,
     onGeometryChange,

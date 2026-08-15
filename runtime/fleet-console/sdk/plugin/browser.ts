@@ -80,6 +80,9 @@ export function createClientCapabilities(resync: () => void = () => undefined): 
       emit: () => undefined,
       dismiss: () => undefined,
     },
+    composer: {
+      open: () => undefined,
+    },
     operations: {
       create: async (input) => {
         const response = await fetch("/api/v1/operations", {
