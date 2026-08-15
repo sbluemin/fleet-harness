@@ -80,6 +80,18 @@ describe("buildFlatRows signal rows", () => {
     expect(rowKinds(rows)).toEqual(["entry", "cap"]);
   });
 
+  it("propagates nested truncation as a potential ancestor match in filter mode", () => {
+    // parent/child 구조에서 child가 잘렸다면 parent를 걸러낼 근거가 없다 — 캡 행까지 살아야 한다.
+    const root = [entry("parent", "parent", "dir")];
+    const results = new Map<string, FolderListResult>([
+      ["parent", folderResult("parent", [entry("child", "parent/child", "dir")])],
+      ["parent/child", folderResult("parent/child", [entry("other.txt", "parent/child/other.txt", "file")], { truncated: true, cap: 500 })],
+    ]);
+    const rows = buildFlatRows(root, 0, null, new Set(), new Set(), results, "zzz", false);
+
+    expect(rowKinds(rows)).toEqual(["entry", "entry", "cap"]);
+  });
+
   it("keeps cap rows visible while filtering", () => {
     const root = [entry("many", "many", "dir")];
     const many = folderResult("many", [entry("match.txt", "many/match.txt", "file")], { truncated: true, cap: 500 });

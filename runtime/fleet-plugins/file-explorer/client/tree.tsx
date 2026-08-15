@@ -1026,6 +1026,8 @@ function hasFilterMatch(
     if (e.kind === "dir") {
       const result = childResults.get(e.relativePath);
       if (result && !visitedFolders.has(result.relativePath)) {
+        // 잘린 목록은 비표시 꼬리에 매치가 숨어 있을 수 있다 — 조상 사슬을 유지한다.
+        if (result.truncated) return true;
         const nextVisitedFolders = new Set(visitedFolders);
         nextVisitedFolders.add(result.relativePath);
         if (hasFilterMatch(result.entries, childResults, low, showHidden, nextVisitedFolders)) return true;
