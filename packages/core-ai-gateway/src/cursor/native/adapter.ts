@@ -392,23 +392,43 @@ interface CursorRootEntry {
   readonly text?: string;
 }
 
-export function buildCursorRunPlan(
+interface CursorRunPreflight {
+  readonly tools: readonly CursorWireTool[];
+  readonly redirectTools: readonly CursorWireTool[];
+  readonly wireModelId: string;
+  readonly estimatedInputTokens: number;
+}
+
+interface CursorRunRequestContext {
+  readonly toolBudget: CursorToolBudget;
+  readonly redirectTools: readonly CursorWireTool[];
+  readonly nativeTools: readonly CanonicalNativeTool[];
+  readonly roots: readonly CursorRootEntry[];
+  readonly replayRoots: readonly CursorRootEntry[];
+  readonly activeIndex: number;
+  readonly activeMessage: CanonicalInputItem | undefined;
+  readonly isToolContinuation: boolean;
+}
+
+interface CursorRunPreparation {
+  readonly preflight: CursorRunPreflight;
+  readonly context: CursorRunRequestContext;
+  readonly maxMode: boolean;
+}
+
+function prepareCursorRun(
   request: CanonicalResponseRequest,
-  conversationId: string,
   options: { readonly maxMode?: boolean } = {},
-): CursorRunPlan {
+): CursorRunPreparation {
   const modelSelection = resolveCursorModelSelection(request.model, request.reasoning?.effort);
   const wireModelId = modelSelection.upstreamModelId;
-  const maxMode = options.maxMode ?? modelSelection.maxMode;
-  const blobs = new BlobStore();
   const redirectTools = cursorRedirectTools(request);
   const toolBudget = applyCursorToolBudget(request);
-  const limitNote = cursorToolLimitNote(toolBudget);
   const nativeTools = request.native_tools ?? [];
   const instructions = [
     request.instructions?.trim(),
     cursorNativeToolGuidance(nativeTools),
-    limitNote,
+    cursorToolLimitNote(toolBudget),
   ]
     .filter((part): part is string => Boolean(part))
     .join("\n\n");
@@ -438,11 +458,7 @@ export function buildCursorRunPlan(
   const activeMessage = activeIndex >= 0 ? request.input[activeIndex] : undefined;
   const activeReplayRoot = activeMessage ? historyRoot(activeMessage, toolNames) : null;
   const replayRoots = activeReplayRoot ? [...roots, activeReplayRoot] : roots;
-  const rootIds = roots.map((entry) => blobs.putSerialized(entry.serialized));
-  const turnIds = buildCursorConversationTurns(request, blobs, activeIndex, toolBudget.tools);
-
   const activeText = messageText(activeMessage);
-  const activeImages = messageImages(activeMessage);
   const estimatedInputTokens = estimateTokens(
     [
       ...roots.map((entry) => entry.serialized),
@@ -450,14 +466,57 @@ export function buildCursorRunPlan(
     ].join("\n"),
     wireModelId,
   );
+
+  return {
+    preflight: {
+      tools: toolBudget.tools,
+      redirectTools,
+      wireModelId,
+      estimatedInputTokens,
+    },
+    context: {
+      toolBudget,
+      redirectTools,
+      nativeTools,
+      roots,
+      replayRoots,
+      activeIndex,
+      activeMessage,
+      isToolContinuation,
+    },
+    maxMode: options.maxMode ?? modelSelection.maxMode,
+  };
+}
+
+function buildPreparedCursorRunPlan(
+  request: CanonicalResponseRequest,
+  conversationId: string,
+  preparation: CursorRunPreparation,
+): CursorRunPlan {
+  const { context, maxMode, preflight } = preparation;
+  const blobs = new BlobStore();
+  const rootIds = context.roots.map((entry) => blobs.putSerialized(entry.serialized));
+  const turnIds = buildCursorConversationTurns(
+    request,
+    blobs,
+    context.activeIndex,
+    context.toolBudget.tools,
+  );
+  const activeText = messageText(context.activeMessage);
+  const activeImages = messageImages(context.activeMessage);
   const requestContext = {
     env: { timeZone: runtimeTimeZone() },
     // Measured: Claude Code's title-generation turn hits the gateway with tools:[] but still embeds
     // the full user prompt. Cursor then picks native tools and every one is rejected. A rule has to
     // ride even on an empty catalog — the only lever that reaches the model where it chooses.
-    rules: cursorClientToolRules(toolBudget.tools, redirectTools, nativeTools),
+    rules: cursorClientToolRules(
+      context.toolBudget.tools,
+      context.redirectTools,
+      context.nativeTools,
+    ),
   };
-  const action = isToolContinuation || (activeText.trim().length === 0 && activeImages.length === 0)
+  const action = context.isToolContinuation
+    || (activeText.trim().length === 0 && activeImages.length === 0)
     ? { resumeAction: { requestContext } }
     : {
       userMessageAction: {
@@ -471,28 +530,37 @@ export function buildCursorRunPlan(
     conversationState: { rootPromptMessagesJson: rootIds, turns: turnIds },
     action,
     modelDetails: {
-      modelId: wireModelId,
-      displayModelId: wireModelId,
-      displayName: wireModelId,
-      displayNameShort: wireModelId,
+      modelId: preflight.wireModelId,
+      displayModelId: preflight.wireModelId,
+      displayName: preflight.wireModelId,
+      displayNameShort: preflight.wireModelId,
       ...(maxMode ? { maxMode: true } : {}),
     },
   };
-  if (toolBudget.tools.length > 0) {
+  if (context.toolBudget.tools.length > 0) {
     runRequest.mcpTools = {
-      mcpTools: toolBudget.tools.map(cursorWireToolDefinition),
+      mcpTools: context.toolBudget.tools.map(cursorWireToolDefinition),
     };
   }
   return {
     payload: { runRequest },
     blobs,
-    tools: toolBudget.tools,
-    redirectTools,
-    wireModelId,
-    estimatedInputTokens,
-    replayRootCount: replayRoots.length,
-    replayBytes: rootBytes(replayRoots),
+    ...preflight,
+    replayRootCount: context.replayRoots.length,
+    replayBytes: rootBytes(context.replayRoots),
   };
+}
+
+export function buildCursorRunPlan(
+  request: CanonicalResponseRequest,
+  conversationId: string,
+  options: { readonly maxMode?: boolean } = {},
+): CursorRunPlan {
+  return buildPreparedCursorRunPlan(
+    request,
+    conversationId,
+    prepareCursorRun(request, options),
+  );
 }
 
 function lastUserIndex(input: readonly CanonicalInputItem[]): number {
@@ -1277,11 +1345,9 @@ export class CursorAdapter implements AiGatewayAdapter {
       identity.conversationId,
     );
     const results = trailingCursorToolResults(request.input);
-    let plan: CursorRunPlan;
+    let preparation: CursorRunPreparation;
     try {
-      plan = buildCursorRunPlan(request, identity.conversationId, {
-        maxMode: this.maxMode,
-      });
+      preparation = prepareCursorRun(request, { maxMode: this.maxMode });
     } catch (error) {
       const pending = this.pendingLiveRuns.get(conversationStateKey);
       if (pending && this.claimPendingLiveRun(pending)) {
@@ -1293,17 +1359,15 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
       throw error;
     }
-    // Cursor rewrites and caps the declared catalog before it reaches the wire; this is the
-    // post-rewrite tool set plus the resolved model coordinate.
-    wireLog("cursor.wire.plan", plan);
+    const { preflight } = preparation;
     // 모든 진입 경로가 이 판정을 지나야 한다. bridge를 지원하는 모델은 tool 결과가
     // parked Run에 붙어 cold Run 경로를 건너뛰므로, 판정을 그 뒤에 두면 tool을 쓰는
     // 세션만 포화된 계기로 계속 달리게 된다.
     const contextRecall = recallCursorContextCheckpoint(
       identity.conversationId,
-      plan.wireModelId,
+      preflight.wireModelId,
       credentialFingerprint,
-      plan.estimatedInputTokens,
+      preflight.estimatedInputTokens,
     );
     const contextRefusal = cursorContextWindowRefusal(
       contextRecall.checkpoint,
@@ -1331,33 +1395,27 @@ export class CursorAdapter implements AiGatewayAdapter {
       sessionId: identity.sessionId,
       credentialFingerprint,
       requestModel: request.model,
-      wireModelId: plan.wireModelId,
+      wireModelId: preflight.wireModelId,
       ...(request.reasoning?.effort === undefined ? {} : { effort: request.reasoning.effort }),
-      toolCatalogFingerprint: cursorToolCatalogFingerprint(request.tools ?? [], plan.tools),
+      toolCatalogFingerprint: cursorToolCatalogFingerprint(request.tools ?? [], preflight.tools),
     };
     const pending = this.pendingLiveRuns.get(conversationStateKey);
     if (pending) {
       const descriptorMismatch = cursorLiveRunDescriptorMismatch(pending, descriptor);
-      // Claude Code can issue auxiliary requests (for example title generation) under the same
-      // session identity while a tool batch is still executing. Those requests carry a different
-      // model or tool catalog and must not steal the parked Run from its eventual continuation.
-      if (!results && descriptorMismatch) {
-        return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
-      }
       const mismatch = cursorLiveRunMismatch(pending, descriptor, results, request.input);
       if (mismatch === undefined && results && this.claimPendingLiveRun(pending)) {
         rememberCursorWireModel(
           identity.conversationId,
           descriptor.credentialFingerprint,
-          plan.wireModelId,
+          preflight.wireModelId,
         );
         pending.run.report("turn.start", {
           model: cursorDiagnosticLabel(request.model),
-          wireModel: cursorDiagnosticLabel(plan.wireModelId),
+          wireModel: cursorDiagnosticLabel(preflight.wireModelId),
           requestedEffort: request.reasoning?.effort,
           turn: "tool-continuation",
-          toolCount: plan.tools.length,
-          estimatedInputTokens: plan.estimatedInputTokens,
+          toolCount: preflight.tools.length,
+          estimatedInputTokens: preflight.estimatedInputTokens,
         });
         pending.run.report("bridge.attach", {
           model: cursorDiagnosticLabel(request.model),
@@ -1367,8 +1425,16 @@ export class CursorAdapter implements AiGatewayAdapter {
         return cursorSuccessfulResponse(pending.run.attach(
           results,
           options.signal,
-          plan.estimatedInputTokens,
+          preflight.estimatedInputTokens,
         ));
+      }
+      // Claude Code can issue auxiliary requests (for example title generation) under the same
+      // session identity while a tool batch is still executing. Those requests carry a different
+      // model or tool catalog and must not steal the parked Run from its eventual continuation.
+      if (!results && descriptorMismatch) {
+        const plan = buildPreparedCursorRunPlan(request, identity.conversationId, preparation);
+        wireLog("cursor.wire.plan", plan);
+        return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
       }
       if (this.claimPendingLiveRun(pending)) {
         pending.run.report("bridge.mismatch", {
@@ -1379,6 +1445,11 @@ export class CursorAdapter implements AiGatewayAdapter {
       }
     }
 
+    const plan = buildPreparedCursorRunPlan(request, identity.conversationId, preparation);
+    // Cursor rewrites and caps the declared catalog before it reaches the wire; this is the
+    // post-rewrite tool set plus the resolved model coordinate. Exact bridge attaches never send
+    // this payload, so build and log it only after that path is ruled out.
+    wireLog("cursor.wire.plan", plan);
     return this.openRun(request, options, identity, plan, descriptor, contextRecall.checkpoint);
   }
 
