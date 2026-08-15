@@ -6,11 +6,13 @@ import {
   object,
   percent,
   safeTimestamp,
+  titleCase,
   type ProviderDeps,
 } from "../quota/windows.js";
 import { resolveXaiCliAuth, type XaiCliCredentials } from "./credentials.js";
 
 export const XAI_CLI_CREDITS_URL = "https://cli-chat-proxy.grok.com/v1/billing?format=credits";
+export const XAI_CLI_SETTINGS_URL = "https://cli-chat-proxy.grok.com/v1/settings";
 const WEEKLY_PERIOD = "USAGE_PERIOD_TYPE_WEEKLY";
 
 export type ParsedXaiCredits =
@@ -55,6 +57,11 @@ export function parseXaiCredits(payload: unknown): ParsedXaiCredits | null {
       },
     },
   };
+}
+
+/** OpenUsage reads the display string Grok already localizes for the CLI. */
+export function parseXaiPlan(payload: unknown): string | undefined {
+  return titleCase(object(payload)?.subscription_tier_display);
 }
 
 function creditsHeaders(credentials: XaiCliCredentials): Record<string, string> {
@@ -104,8 +111,16 @@ export async function fetchXaiUsage(deps: ProviderDeps = {}): Promise<ProviderRe
     }
     const parsed = parseXaiCredits(payload);
     if (!parsed) throw new Error("Grok returned an unsupported quota response");
+    let plan: string | undefined;
+    try {
+      plan = parseXaiPlan(await getJson(fetchImpl, XAI_CLI_SETTINGS_URL, creditsHeaders(credentials)));
+    } catch {
+      // Plan metadata is display-only; its failure must not sink the usage snapshot.
+      plan = undefined;
+    }
     return {
       status: "ok",
+      ...(plan ? { plan } : {}),
       windows: parsed.status === "weekly" ? [parsed.window] : [],
       fetchedAt: now(),
     };

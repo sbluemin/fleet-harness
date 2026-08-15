@@ -26,6 +26,21 @@ import { resolveClaudeCredentials } from "./credentials.js";
 // `durationBasis: "catalog"` — visibly an assumption that can go stale.
 export const CLAUDE_SESSION_MS = 5 * HOUR_MS;
 
+/**
+ * OpenUsage reads `subscriptionType` plus a `\d+x` suffix from `rateLimitTier`.
+ * Only Max carries that extra-usage multiplier; Pro/Team/Free stay the product name.
+ */
+export function formatClaudePlan(
+  subscriptionType: unknown,
+  rateLimitTier?: unknown,
+): string | undefined {
+  const base = titleCase(subscriptionType);
+  if (!base) return undefined;
+  if (base.toLowerCase() !== "max" || typeof rateLimitTier !== "string") return base;
+  const match = /\d+x/i.exec(rateLimitTier.trim());
+  return match ? titleCase(`${base} ${match[0].toLowerCase()}`) : base;
+}
+
 function firstClaudePercent(row: Record<string, unknown>): number | undefined {
   for (const key of ["percent", "used_percentage", "utilization"] as const) {
     const value = row[key];
@@ -121,7 +136,7 @@ export async function fetchClaudeUsage(deps: ProviderDeps = {}): Promise<Provide
     return {
       status: "ok",
       method: credentials.method,
-      plan: titleCase(credentials.subscriptionType),
+      plan: formatClaudePlan(credentials.subscriptionType, credentials.rateLimitTier),
       windows: parsed.windows,
       fetchedAt: (deps.now ?? Date.now)(),
     };

@@ -1,15 +1,21 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { CredentialResolverDeps } from "../../src/transport/credentials.js";
-import { fetchClaudeUsage, parseClaudeUsage } from "../../src/anthropic/quota.js";
+import { fetchClaudeUsage, formatClaudePlan, parseClaudeUsage } from "../../src/anthropic/quota.js";
 import { parseCodexUsage, parseResetCredits } from "../../src/codex/quota.js";
 
-function claudeCredentials(subscriptionType = "max"): CredentialResolverDeps {
+function claudeCredentials(subscriptionType = "max", rateLimitTier?: string): CredentialResolverDeps {
   return {
     platform: "linux",
     homedir: () => "/users/operator",
     env: {},
-    readBounded: async () => JSON.stringify({ claudeAiOauth: { accessToken: "secret", subscriptionType } }),
+    readBounded: async () => JSON.stringify({
+      claudeAiOauth: {
+        accessToken: "secret",
+        subscriptionType,
+        ...(rateLimitTier === undefined ? {} : { rateLimitTier }),
+      },
+    }),
     execFile: async () => "",
   };
 }
@@ -147,8 +153,24 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
       .toEqual({ available: 150_000, nextExpiresAt: 2_000_000_000_000 });
   });
 
+  it("appends a Max extra-usage multiplier from the login snapshot", async () => {
+    expect(formatClaudePlan("max", "default_claude_max_5x")).toBe("Max 5x");
+    expect(formatClaudePlan("max", "claude_max_subscription_20x")).toBe("Max 20x");
+    expect(formatClaudePlan("pro", "default_claude_max_20x")).toBe("Pro");
+    expect(formatClaudePlan("max")).toBe("Max");
+
+    const max20 = await fetchClaudeUsage({
+      credentials: claudeCredentials("max", "default_claude_max_20x"),
+      fetch: (async () => jsonResponse({})) as typeof fetch,
+      now: () => 1,
+    });
+    expect(max20.status === "ok" ? max20.plan : undefined).toBe("Max 20x");
+  });
+
   it("shape-validates plans and model labels without an enumerated allowlist", async () => {
-    expect(parseCodexUsage({ plan_type: "pro" }).plan).toBe("Pro");
+    expect(parseCodexUsage({ plan_type: "pro" }).plan).toBe("Pro 20x");
+    expect(parseCodexUsage({ plan_type: "prolite" }).plan).toBe("Pro 5x");
+    expect(parseCodexUsage({ plan_type: "plus" }).plan).toBe("Plus");
     expect(parseClaudeUsage({
       limits: [{
         kind: "weekly_scoped",
@@ -196,7 +218,7 @@ function jsonResponse(payload: unknown, init: ResponseInit = {}): Response {
       }).windows[0]?.label, value).toBe("Model");
     }
 
-    for (const value of ["max", "pro", "Sonnet 4.5", "Fable", "Max 20x"]) {
+    for (const value of ["max", "plus", "Sonnet 4.5", "Fable", "Max 20x"]) {
       expect(parseCodexUsage({ plan_type: value }).plan, value)
         .toBe(`${value[0]?.toUpperCase() ?? ""}${value.slice(1)}`);
       expect(parseClaudeUsage({

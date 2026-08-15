@@ -35,6 +35,22 @@ function codexWindow(source: unknown, fallbackId: "session" | "weekly"): QuotaWi
   };
 }
 
+/**
+ * Codex `plan_type` is a product slug. OpenUsage maps the two Pro extra-usage
+ * SKUs to the public 5x/20x labels; every other slug stays a title-cased name.
+ */
+export function formatCodexPlan(value: unknown): string | undefined {
+  if (typeof value !== "string") return titleCase(value);
+  switch (value.trim().toLowerCase()) {
+    case "prolite":
+      return "Pro 5x";
+    case "pro":
+      return "Pro 20x";
+    default:
+      return titleCase(value);
+  }
+}
+
 export function parseCodexUsage(payload: unknown): { readonly windows: readonly QuotaWindow[]; readonly plan?: string } {
   const root = object(payload) ?? {};
   const rateLimit = object(root.rate_limit) ?? {};
@@ -43,7 +59,7 @@ export function parseCodexUsage(payload: unknown): { readonly windows: readonly 
       codexWindow(rateLimit.primary_window, "session"),
       codexWindow(rateLimit.secondary_window, "weekly"),
     ].filter((row): row is QuotaWindow => row !== null),
-    plan: titleCase(root.plan_type),
+    plan: formatCodexPlan(root.plan_type),
   };
 }
 

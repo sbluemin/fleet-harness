@@ -34,7 +34,7 @@ describe("Codex response parsing", () => {
         secondary_window: { used_percent: -3, limit_window_seconds: 10_080 * 60, reset_at: 2_000_000_000_000 },
       },
     })).toEqual({
-      plan: "Pro",
+      plan: "Pro 20x",
       windows: [
         {
           id: "session",
