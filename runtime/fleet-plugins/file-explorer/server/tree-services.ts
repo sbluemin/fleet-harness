@@ -102,14 +102,12 @@ async function collectContentsEntries(
   try {
     let dirent = await directory.read();
     while (dirent !== null) {
-      // VCS 날것은 cap 판정보다 먼저 분류한다 — 상한 직후에 읽혀도 마커 정보가 남고,
-      // 표시 가능 항목이 정확히 상한과 같을 때 거짓 truncated를 내지 않는다.
+      // 분류(이름 + 심링크 실해석)가 cap 판정보다 먼저다 — 상한은 "표시 가능한" 항목만 센다.
       if (VCS_INTERNAL_NAMES.has(dirent.name)) {
         hiddenVcs.push(dirent.name);
         dirent = await directory.read();
         continue;
       }
-      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
       const entry = await toContentsEntry(targetPath, theaterPath, dirent, stat);
       if (entry === null) {
         dirent = await directory.read();
@@ -120,6 +118,7 @@ async function collectContentsEntries(
         dirent = await directory.read();
         continue;
       }
+      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
       entries.push(entry);
       dirent = await directory.read();
     }

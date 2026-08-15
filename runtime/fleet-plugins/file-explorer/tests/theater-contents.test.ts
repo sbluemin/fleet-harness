@@ -173,4 +173,39 @@ describe("listTheaterContents VCS edge cases", () => {
       fs.rmSync(dir, { recursive: true, force: true });
     }
   });
+
+  it("500개 항목 뒤의 .git 별칭 심링크도 cap 판정 전에 실해석으로 분류한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-aliascap-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+    // 순서 통제: 표시 가능 파일 500개를 먼저, 별칭 심링크를 마지막에 낸다.
+    const dirents = [
+      ...Array.from({ length: 500 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      {
+        name: "metadata",
+        isDirectory: () => false,
+        isFile: () => false,
+        isSymbolicLink: () => true,
+      },
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).not.toHaveProperty("truncated");
+      expect(result.hiddenVcsInternals).toEqual([".git"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
 });
