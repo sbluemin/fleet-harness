@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater, writeUltracodeNoticeSeen } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
 import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts-catalog.js";
@@ -261,31 +261,6 @@ export function QuickLaunch() {
     setUltracodeIgnored((ignored) => nextUltracodeIgnored(prompt, ignored));
   }, [prompt]);
 
-  // 고지 줄은 가르치는 표면이라 세 번 뒤 물러난다. 판정은 무장 전이에서 한 번만 하고 그 뒤로는
-  // 이 무장이 끝날 때까지 뒤집지 않는다 — 렌더마다 세면 보이던 줄이 같은 무장 중에 사라진다.
-  const [ultracodeNoticeOn, setUltracodeNoticeOn] = useState(false);
-  const wasUltracodeArmedRef = useRef(false);
-  useEffect(() => {
-    const wasArmed = wasUltracodeArmedRef.current;
-    wasUltracodeArmedRef.current = ultracodeArmed;
-    if (ultracodeArmed === wasArmed) return;
-    if (!ultracodeArmed) {
-      setUltracodeNoticeOn(false);
-      return;
-    }
-    const seen = readUltracodeNoticeSeen();
-    if (seen >= QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT) {
-      setUltracodeNoticeOn(false);
-      return;
-    }
-    writeUltracodeNoticeSeen(seen + 1);
-    setUltracodeNoticeOn(true);
-  }, [ultracodeArmed]);
-
-  const disarmUltracode = useCallback(() => {
-    setUltracodeIgnored(true);
-    inputRef.current?.focus();
-  }, []);
 
   /**
    * 미러를 textarea의 **client** 박스에 맞춘다. 테두리 박스로 맞추면 스크롤바가 서는 순간
@@ -1365,11 +1340,11 @@ export function QuickLaunch() {
           </div>
         ) : null}
 
-        {/* 무장 중에 카드 외곽을 도는 apex 링(CSS)과 짝을 이루는 문장. 세 번 보인 뒤로는 칩만 남는다 —
-            문장은 가르치고 나면 소음이 되지만, 상태는 계속 어딘가에서 말해야 한다.
+        {/* 무장 중에 카드 외곽을 도는 apex 링(CSS)과 짝을 이루는 문장. 바에는 칩을 두지 않는다 —
+            칩이 실행 버튼을 둘째 줄로 떨어뜨렸고, 상태는 이 줄과 단어 하이라이트가 말한다.
             물러난 바(showStrip)에서는 내린다: 이 줄은 접히는 field·bar 밖에 있어, 남겨 두면 한 줄로
             물러났다는 도킹이 그 위에 상태 줄 하나를 더 이고 선다(실측 45px 스트립 + 27px 고지). */}
-        {ultracodeArmed && ultracodeNoticeOn && !showStrip ? (
+        {ultracodeArmed && !showStrip ? (
           <p className="quick-launch-ultracode-notice" role="status">
             <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
             <span>{t("chrome.quickLaunch.ultracodeNotice")}</span>
@@ -1521,22 +1496,6 @@ export function QuickLaunch() {
             />
           ) : null}
           </span>
-
-          {/* 인식 칩은 런치 좌표 묶음(quick-launch-launch-sel) **밖**에 선다 — 그 묶음은 멘션 중
-              접히지만, 이 단어는 멘션으로 배달되는 프롬프트에도 그대로 실려 간다.
-              파선 테두리는 강도 값 AUTO의 파선 밑줄과 같은 말이다: 이건 사다리 위의 단이 아니다. */}
-          {ultracodeArmed ? (
-            <button
-              type="button"
-              className="quick-launch-ultracode"
-              onClick={disarmUltracode}
-              aria-label={t("chrome.quickLaunch.ultracodeDismiss")}
-              title={t("chrome.quickLaunch.ultracodeDismiss")}
-            >
-              <span className="quick-launch-ultracode-glyph" aria-hidden="true">✦</span>
-              <span>ULTRACODE</span>
-            </button>
-          ) : null}
 
           {mentionTarget ? (
             <span className="quick-launch-target-tag">

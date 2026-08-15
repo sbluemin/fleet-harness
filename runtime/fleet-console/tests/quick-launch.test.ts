@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
-import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection, writeUltracodeNoticeSeen } from "../core/client/src/quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
@@ -862,19 +862,11 @@ describe("quick launch ultracode recognition", () => {
     const keys = [
       "chrome.quickLaunch.ultracodeNotice",
       "chrome.quickLaunch.ultracodeNoticeHint",
-      "chrome.quickLaunch.ultracodeDismiss",
     ];
     for (const key of keys) {
       expect(chrome.split(`"${key}":`).length - 1, key).toBe(2);
     }
-  });
-
-  it("counts the teaching notice down to a fixed limit and stops", () => {
-    window.localStorage.clear();
-    expect(readUltracodeNoticeSeen()).toBe(0);
-    for (let seen = 0; seen < QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT; seen += 1) {
-      writeUltracodeNoticeSeen(seen + 1);
-    }
-    expect(readUltracodeNoticeSeen()).toBe(QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT);
+    // 칩을 바에서 빼면 칩용 dismiss 문구도 같이 사라진다 — 고지 줄이 상태를 말한다.
+    expect(chrome).not.toContain("chrome.quickLaunch.ultracodeDismiss");
   });
 });

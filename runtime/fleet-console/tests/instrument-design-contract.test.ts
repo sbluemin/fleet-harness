@@ -2055,13 +2055,17 @@ describe("Effort track interaction grammar", () => {
     const components = source("styles/components.css");
     const composer = source("components/quick-launch.tsx");
 
+    // 바에는 인식 칩을 두지 않는다 — 90px 알약이 실행 버튼을 둘째 줄로 떨어뜨렸다.
+    // 상태는 고지 줄·단어 하이라이트·테두리 링이 말한다.
+    expect(components).not.toMatch(/\.quick-launch-ultracode \{/);
+    expect(composer).not.toContain('className="quick-launch-ultracode"');
+
     // 인식은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치 채널(brass)도
-    // 빌리지 않는다. 프롬프트 속 단어는 강도 사다리의 단이 아니므로 칩 테두리는 파선이다
-    // (강도 값 AUTO의 파선 밑줄과 같은 말).
-    const chipRule = components.slice(components.indexOf(".quick-launch-ultracode {"));
-    expect(chipRule.slice(0, chipRule.indexOf("}"))).toMatch(/border: 1px dashed color-mix\(in oklch, var\(--apex\)/);
+    // 빌리지 않는다. 점화·순항 호와 고지 줄이 그 채널을 쓴다.
+    const rimRule = components.slice(components.indexOf(".quick-launch-card.is-ultracode {"));
+    const rimBlock = rimRule.slice(0, rimRule.indexOf("@keyframes quick-launch-ultracode-rim"));
     for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
-      expect(chipRule.slice(0, chipRule.indexOf("}")), signal).not.toContain(signal);
+      expect(rimBlock, signal).not.toContain(signal);
     }
 
     // 단어 하이라이트는 강도 트랙 ULTRACODE 값과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
@@ -2073,15 +2077,22 @@ describe("Effort track interaction grammar", () => {
       expect(tokenBlock, metric).not.toContain(`${metric}:`);
     }
 
-    // 도는 호는 @property로 등록된 각도를 쓴다(미등록이면 커스텀 속성이 계단으로 튄다).
+    // 도는 호는 @property로 등록된 각도와 폭을 쓴다(미등록이면 커스텀 속성이 계단으로 튄다).
     expect(components).toContain("@property --quick-launch-rim-angle");
+    expect(components).toContain("@property --quick-launch-rim-spread");
+    expect(components).toContain("@keyframes quick-launch-ultracode-ignite");
+    expect(components).toContain("@keyframes quick-launch-ultracode-bead");
     expect(components).toMatch(/@keyframes quick-launch-ultracode-rim \{\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/);
+    // 점화가 끝난 뒤에야 순항에 올라탄다 — 완성된 호가 갑자기 붙으면 이질감이 난다.
+    expect(components).toMatch(/quick-launch-ultracode-ignite 900ms[\s\S]*quick-launch-ultracode-rim 2\.8s linear 900ms infinite/);
     // 무한 애니메이션은 규약의 예외이므로 근거가 규칙 옆에 남아 있어야 한다.
     expect(components).toContain("[doctrine]");
 
-    // 감속 모션: 모션은 세우되 상태는 남긴다 — 정지한 링과 단색 apex 단어.
+    // 감속 모션: 점화·구슬·순항은 세우되 상태는 남긴다 — 정지한 링과 단색 apex 단어.
     const quickLaunchReduced = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce) {\n  .quick-launch-overlay {"));
+    expect(quickLaunchReduced).toContain(".quick-launch-card.is-ultracode::before,");
     expect(quickLaunchReduced).toContain(".quick-launch-card.is-ultracode::after,");
+    expect(quickLaunchReduced).toMatch(/\.quick-launch-card\.is-ultracode::before \{\s*content: none;\s*\}/);
     expect(quickLaunchReduced).toMatch(/\.quick-launch-ultracode-token \{\s*background-image: none;\s*color: var\(--apex-ink\);\s*\}/);
 
     // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
@@ -2091,11 +2102,9 @@ describe("Effort track interaction grammar", () => {
     // 무장은 문면과 해제 여부에서만 나온다 — 멘션 행선지는 이 판정에 들어가지 않는다.
     // 이 단어는 실행 좌표가 아니라 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
-    // 고지 줄은 접히는 field·bar 밖에 살기 때문에, 물러난 바에서는 컴포넌트가 직접 내려야 한다 —
-    // 남겨 두면 한 줄로 물러났다는 도킹이 상태 줄 하나를 더 이고 선다.
-    expect(composer).toContain("{ultracodeArmed && ultracodeNoticeOn && !showStrip ? (");
-    // 칩이 런치 좌표 묶음 안으로 들어가면 멘션 중 inert가 되어 그 계약이 깨진다.
-    expect(composer).not.toMatch(/quick-launch-launch-sel[\s\S]*?quick-launch-ultracode"[\s\S]*?<\/span>\n\n {10}\{mentionTarget/);
+    // 고지 줄은 무장 동안 상주한다. 접히는 field·bar 밖에 살기 때문에, 물러난 바에서는
+    // 컴포넌트가 직접 내려야 한다 — 남겨 두면 한 줄로 물러났다는 도킹이 상태 줄 하나를 더 이고 선다.
+    expect(composer).toContain("{ultracodeArmed && !showStrip ? (");
   });
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {

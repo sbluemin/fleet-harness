@@ -11947,14 +11947,22 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* ── `ultracode` 무장 외곽 ───────────────────────────────────────────
-   프롬프트 안의 단어가 인식되면 카드 테두리를 apex 호(arc)가 한 방향으로 돈다. 각도를 @property로
-   등록해야 커스텀 속성이 이산 점프 없이 보간된다(등록 없이는 각도가 계단으로 튄다).
+   프롬프트 안의 단어가 인식되면 카드 테두리를 apex 호(arc)가 한 방향으로 돈다. 각도와 호의 폭을
+   @property로 등록해야 커스텀 속성이 이산 점프 없이 보간된다(등록 없이는 각도가 계단으로 튄다).
+   무장이 켜지는 순간에는 완성된 호가 붙지 않는다 — 구슬이 테두리를 한 바퀴 그리고, 호가 열린 뒤에야
+   2.8s 순항에 올라탄다. 다시 무장하면 클래스가 붙으며 점화가 한 번 더 재생된다.
    [doctrine] 이 저장소의 모션 규약에서 무한 애니메이션은 "진행 중 신호"에만 허용된다. 여기서의
-   신호는 발사 전 무장 상태다 — 사용자가 직접 켰고, Backspace 한 번이나 칩 클릭으로 즉시 꺼진다.
-   감속 모션에서는 아래 봉인 블록이 호를 세우고 정지한 링만 남긴다. */
+   신호는 발사 전 무장 상태다 — 사용자가 직접 켰고, Backspace 한 번으로 즉시 꺼진다.
+   감속 모션에서는 아래 봉인 블록이 점화·구슬·순항을 세우고 정지한 링만 남긴다. */
 @property --quick-launch-rim-angle {
   syntax: "<angle>";
   initial-value: 0deg;
+  inherits: false;
+}
+
+@property --quick-launch-rim-spread {
+  syntax: "<angle>";
+  initial-value: 108deg;
   inherits: false;
 }
 
@@ -11963,6 +11971,23 @@ body[data-codex-reading="true"] .operations-side-bar {
     var(--shadow-floating),
     0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
     0 0 26px -6px var(--apex-glow);
+  animation: quick-launch-ultracode-glow 900ms var(--ease-glide) both;
+}
+
+.quick-launch-card.is-ultracode::before {
+  content: "";
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  margin: -5px;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 2;
+  background: radial-gradient(circle, color-mix(in oklch, var(--apex) 70%, var(--ink-pearl)) 0 28%, transparent 70%);
+  filter: drop-shadow(0 0 6px var(--apex-glow));
+  offset-path: inset(-1px round calc(var(--radius-lg) + 1px));
+  offset-anchor: center;
+  animation: quick-launch-ultracode-bead 900ms var(--ease-glide) both;
 }
 
 .quick-launch-card.is-ultracode::after {
@@ -11975,9 +12000,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   background: conic-gradient(
     from var(--quick-launch-rim-angle),
     transparent 0deg,
-    color-mix(in oklch, var(--apex) 88%, transparent) 34deg,
-    color-mix(in oklch, var(--apex) 40%, transparent) 66deg,
-    transparent 108deg,
+    color-mix(in oklch, var(--apex) 88%, transparent) calc(var(--quick-launch-rim-spread) * 0.31),
+    color-mix(in oklch, var(--apex) 40%, transparent) calc(var(--quick-launch-rim-spread) * 0.61),
+    transparent var(--quick-launch-rim-spread),
     transparent 360deg
   );
   /* 테두리 1px만 남기는 mask 합성 — 안쪽(content-box)을 도려내 링만 칠한다.
@@ -11987,7 +12012,53 @@ body[data-codex-reading="true"] .operations-side-bar {
   -webkit-mask-composite: xor;
   mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
   mask-composite: exclude;
-  animation: quick-launch-ultracode-rim 2.8s linear infinite;
+  animation:
+    quick-launch-ultracode-ignite 900ms var(--ease-glide) both,
+    quick-launch-ultracode-rim 2.8s linear 900ms infinite;
+}
+
+@keyframes quick-launch-ultracode-ignite {
+  0% {
+    --quick-launch-rim-angle: -20deg;
+    --quick-launch-rim-spread: 8deg;
+    opacity: 0;
+  }
+  18% {
+    opacity: 1;
+    --quick-launch-rim-spread: 28deg;
+  }
+  72% {
+    --quick-launch-rim-angle: 340deg;
+    --quick-launch-rim-spread: 156deg;
+  }
+  100% {
+    --quick-launch-rim-angle: 360deg;
+    --quick-launch-rim-spread: 108deg;
+    opacity: 1;
+  }
+}
+
+@keyframes quick-launch-ultracode-bead {
+  0% { offset-distance: 0%; opacity: 0; }
+  12% { opacity: 1; }
+  86% { opacity: 1; }
+  100% { offset-distance: 100%; opacity: 0; }
+}
+
+@keyframes quick-launch-ultracode-glow {
+  0% { box-shadow: var(--shadow-floating); }
+  40% {
+    box-shadow:
+      var(--shadow-floating),
+      0 0 0 1px color-mix(in oklch, var(--apex) 38%, transparent),
+      0 0 36px -4px var(--apex-glow);
+  }
+  100% {
+    box-shadow:
+      var(--shadow-floating),
+      0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+      0 0 26px -6px var(--apex-glow);
+  }
 }
 
 @keyframes quick-launch-ultracode-rim {
@@ -11996,8 +12067,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 /* ── 고지 줄 ─────────────────────────────────────────────────────────
    바의 상태 슬롯은 거절·상한 초과가 role="alert"로 쓰고 있다. 정보 메시지를 그 자리에 얹으면
-   경고 채널이 흐려지므로 입력 **위**의 자기 줄에 선다. 세 번 보인 뒤에는 컴포넌트가 렌더하지
-   않는다 — 문장은 가르치고 나면 소음이고, 상태는 칩이 계속 말한다. */
+   경고 채널이 흐려지므로 입력 **위**의 자기 줄에 선다. 무장 동안 유지한다 — 바의 칩을 빼었으므로
+   이 줄이 상태를 읽는 문장이다. */
 .quick-launch-ultracode-notice {
   display: flex;
   align-items: center;
@@ -12722,38 +12793,6 @@ body[data-codex-reading="true"] .operations-side-bar {
   color: var(--text-primary);
 }
 
-/* ── `ultracode` 인식 칩 ─────────────────────────────────────────────
-   런치 좌표 칩(theater·model)과 같은 알약이되 테두리가 파선이다. 그 파선은 이 제품이 이미 쓰는
-   말이다 — 강도 값 AUTO의 파선 밑줄이 "이 값은 사다리 위의 단이 아니다"를 뜻한다. 프롬프트 속
-   단어도 같은 뜻이라(강도는 그대로다) 같은 문법을 빌린다. 누르면 이 초안에서 해제된다. */
-.quick-launch-ultracode {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  /* 바는 이미 빠듯하다 — 이 칩이 넓어질수록 강도 트랙이 줄을 넘긴다. 알약 문법은 지키되
-     여백·자간은 런치 칩(6px 11px)보다 좁게 잡는다. */
-  padding: 4px 9px;
-  border: 1px dashed color-mix(in oklch, var(--apex) 58%, transparent);
-  border-radius: 999px;
-  background: color-mix(in oklch, var(--apex) 9%, transparent);
-  color: var(--apex-ink);
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.05em;
-  white-space: nowrap;
-  cursor: pointer;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    border-color var(--duration-fast) var(--ease-spring);
-}
-
-.quick-launch-ultracode:hover {
-  border-color: color-mix(in oklch, var(--apex) 80%, transparent);
-  background: color-mix(in oklch, var(--apex) 16%, transparent);
-}
-
-
 .quick-launch-chip:disabled {
   opacity: 0.45;
 }
@@ -12996,11 +13035,17 @@ body[data-codex-reading="true"] .operations-side-bar {
     animation: none;
   }
 
-  /* `ultracode` 무장: 도는 호와 흐르는 물결을 세우되 **상태는 남긴다** — 정지한 apex 링,
-     파선 칩, 단색 apex 단어. 모션이 유일한 전달 수단이면 감속 모드에서 상태 자체가 사라진다. */
+  /* `ultracode` 무장: 점화·구슬·순항·물결을 세우되 **상태는 남긴다** — 정지한 apex 링과
+     단색 apex 단어. 모션이 유일한 전달 수단이면 감속 모드에서 상태 자체가 사라진다. */
+  .quick-launch-card.is-ultracode,
+  .quick-launch-card.is-ultracode::before,
   .quick-launch-card.is-ultracode::after,
   .quick-launch-ultracode-token {
     animation: none;
+  }
+
+  .quick-launch-card.is-ultracode::before {
+    content: none;
   }
 
   .quick-launch-card.is-ultracode::after {
@@ -13012,7 +13057,6 @@ body[data-codex-reading="true"] .operations-side-bar {
     color: var(--apex-ink);
   }
 
-  .quick-launch-ultracode,
   .quick-launch-chip,
   .quick-launch-submit,
   .effort-track-apex-seam,
