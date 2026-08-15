@@ -30,7 +30,7 @@ import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
-import { modeSlotGeometryFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
+import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
 import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
@@ -832,24 +832,27 @@ export function OperationsCanvas({
         }}
         className="operations-canvas-world"
       >
-        {formationView ? formationGuideSlots.map((geometry, index) => (
-          <div
-            key={`formation-guide-${formationOperationIds.length + index + 1}`}
-            className="canvas-formation-guide"
-            style={{
-              left: Math.round(geometry.x),
-              top: Math.round(geometry.y),
-              width: Math.round(geometry.width),
-              height: Math.round(geometry.height),
-              "--gi": index,
-            } as CSSProperties}
-            aria-label={t("canvas.formation.slotAria", { index: formationOperationIds.length + index + 1 })}
-          >
-            <span className="canvas-formation-guide-index">
-              {String(formationOperationIds.length + index + 1).padStart(2, "0")}
-            </span>
-          </div>
-        )) : null}
+        {formationView ? formationGuideSlots.map((geometry, index) => {
+          const frame = operationWindowFrameFor(geometry);
+          return (
+            <div
+              key={`formation-guide-${formationOperationIds.length + index + 1}`}
+              className="canvas-formation-guide"
+              style={{
+                left: Math.round(frame.x),
+                top: Math.round(frame.y),
+                width: Math.round(frame.width),
+                height: Math.round(frame.height),
+                "--gi": index,
+              } as CSSProperties}
+              aria-label={t("canvas.formation.slotAria", { index: formationOperationIds.length + index + 1 })}
+            >
+              <span className="canvas-formation-guide-index">
+                {String(formationOperationIds.length + index + 1).padStart(2, "0")}
+              </span>
+            </div>
+          );
+        }) : null}
         {pluginOperations.map((operation) => {
           const baseGeometry = canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation);
           const operationMaximized = panelMaximized === operation.id;

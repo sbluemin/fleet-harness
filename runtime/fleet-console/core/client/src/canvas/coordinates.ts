@@ -55,6 +55,17 @@ export interface ModeGeometryRect {
   readonly height: number;
 }
 
+/** 본문 geometry에 창 캡션(top:-32px)을 더한 시각 프레임.
+ *  Tactical 빈칸 가이드가 점유 패널과 같은 상자를 그리게 한다. */
+export function operationWindowFrameFor(body: CanvasRect): CanvasRect {
+  return {
+    x: body.x,
+    y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT,
+    width: body.width,
+    height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT,
+  };
+}
+
 export function modeSlotGeometryFor(
   rect: ModeGeometryRect,
   slotIndex: number,

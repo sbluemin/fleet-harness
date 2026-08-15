@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { CanvasMinimap } from "../core/client/src/canvas/canvas-minimap.js";
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, setCanvasViewportSize, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, consumePendingFitAllOperations, fitAllOperations, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, loadForTheater, minimizeOperation, OPERATION_WINDOW_CAPTION_HEIGHT, requestFitAllOperations, resetCanvasViewportSize, setCanvasViewportSize, setMaximizedOperationId, setState, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
@@ -228,6 +228,13 @@ describe("CanvasMinimap collapse behavior", () => {
       expect(document.querySelector(".canvas-mode-hud")).toBeNull();
       expect([...document.querySelectorAll(".canvas-operation-formation-slot")].map((element) => element.textContent)).toEqual(["01", "02", "03"]);
       expect(document.querySelector(".canvas-formation-guide-index")?.textContent).toBe("04");
+      const occupied = document.querySelector<HTMLElement>('[data-operation-id="formation-3"]');
+      const guide = document.querySelector<HTMLElement>(".canvas-formation-guide");
+      expect(occupied).not.toBeNull();
+      expect(guide).not.toBeNull();
+      expect(Number.parseFloat(guide!.style.height)).toBe(Number.parseFloat(occupied!.style.height) + OPERATION_WINDOW_CAPTION_HEIGHT);
+      expect(Number.parseFloat(guide!.style.top)).toBe(Number.parseFloat(occupied!.style.top) - OPERATION_WINDOW_CAPTION_HEIGHT);
+      expect(Number.parseFloat(guide!.style.width)).toBe(Number.parseFloat(occupied!.style.width));
       expect(document.querySelector(".canvas-formation-curtain")).not.toBeNull();
 
       act(() => vi.advanceTimersByTime(1_950));

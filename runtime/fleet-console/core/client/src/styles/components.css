@@ -2989,6 +2989,7 @@
   position: absolute;
   z-index: 0;
   pointer-events: none;
+  /* 크기는 JS가 본문 슬롯에 캡션 높이를 더해 점유 창과 맞춘다. */
   border: 1px dashed color-mix(in oklch, var(--brass) 34%, transparent);
   border-radius: var(--radius-md);
 }
