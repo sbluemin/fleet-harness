@@ -11875,6 +11875,77 @@ body[data-codex-reading="true"] .operations-side-bar {
   outline: none;
 }
 
+/* ── `ultracode` 무장 외곽 ───────────────────────────────────────────
+   프롬프트 안의 단어가 인식되면 카드 테두리를 apex 호(arc)가 한 방향으로 돈다. 각도를 @property로
+   등록해야 커스텀 속성이 이산 점프 없이 보간된다(등록 없이는 각도가 계단으로 튄다).
+   [doctrine] 이 저장소의 모션 규약에서 무한 애니메이션은 "진행 중 신호"에만 허용된다. 여기서의
+   신호는 발사 전 무장 상태다 — 사용자가 직접 켰고, Backspace 한 번이나 칩 클릭으로 즉시 꺼진다.
+   감속 모션에서는 아래 봉인 블록이 호를 세우고 정지한 링만 남긴다. */
+@property --quick-launch-rim-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+
+.quick-launch-card.is-ultracode {
+  box-shadow:
+    var(--shadow-floating),
+    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+    0 0 26px -6px var(--apex-glow);
+}
+
+.quick-launch-card.is-ultracode::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: calc(var(--radius-lg) + 1px);
+  padding: 1px;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--quick-launch-rim-angle),
+    transparent 0deg,
+    color-mix(in oklch, var(--apex) 88%, transparent) 34deg,
+    color-mix(in oklch, var(--apex) 40%, transparent) 66deg,
+    transparent 108deg,
+    transparent 360deg
+  );
+  /* 테두리 1px만 남기는 mask 합성 — 안쪽(content-box)을 도려내 링만 칠한다.
+     [doctrine] `black`은 칠이 아니라 스텐실이다(알파 1만 쓴다). 색 채널을 타지 않으므로
+     테마 토큰으로 올리지 않는다 — 토큰으로 만들면 테마마다 마스크가 뚫린다. */
+  -webkit-mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(black 0 0) content-box, linear-gradient(black 0 0);
+  mask-composite: exclude;
+  animation: quick-launch-ultracode-rim 2.8s linear infinite;
+}
+
+@keyframes quick-launch-ultracode-rim {
+  to { --quick-launch-rim-angle: 360deg; }
+}
+
+/* ── 고지 줄 ─────────────────────────────────────────────────────────
+   바의 상태 슬롯은 거절·상한 초과가 role="alert"로 쓰고 있다. 정보 메시지를 그 자리에 얹으면
+   경고 채널이 흐려지므로 입력 **위**의 자기 줄에 선다. 세 번 보인 뒤에는 컴포넌트가 렌더하지
+   않는다 — 문장은 가르치고 나면 소음이고, 상태는 칩이 계속 말한다. */
+.quick-launch-ultracode-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: 12.5px;
+  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+}
+
+.quick-launch-ultracode-notice-hint {
+  color: var(--text-tertiary);
+}
+
+.quick-launch-ultracode-glyph {
+  font-size: 11px;
+  line-height: 1;
+}
+
 /* ── 고정(도킹) ────────────────────────────────────────────────────────
    옵트인 고정은 컴포저를 화면 하단에 상주시켜 실행 화면과 공존하게 한다. 이동은 카드 자신의
    transform으로 그린다 — 오버레이의 place-items를 바꾸면 보간되지 않아 카드가 튄다.
@@ -12015,9 +12086,18 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-.quick-launch-input {
+/* textarea와 하이라이트 미러를 묶는 flex 아이템. flex:1·min-width:0은 여기로 올라왔다 —
+   미러가 겹칠 기준 박스가 하나여야 멘션 칩이 선 줄에서도 글자가 어긋나지 않는다. */
+.quick-launch-input-wrap {
+  position: relative;
   flex: 1;
   min-width: 0;
+  display: block;
+}
+
+.quick-launch-input {
+  display: block;
+  width: 100%;
   min-height: 46px;
   /* 6줄까지 자라고 그 뒤로는 스크롤한다 — Analyst 컴포저와 같은 clamp 정책. */
   max-height: calc(1.55em * 6 + var(--space-2));
@@ -12030,6 +12110,65 @@ body[data-codex-reading="true"] .operations-side-bar {
   line-height: 1.55;
   resize: none;
   overflow-y: auto;
+}
+
+/* ── `ultracode` 하이라이트 미러 ─────────────────────────────────────
+   textarea는 자기 글자 일부만 다르게 칠할 수 없다. 그래서 무장 중에만 같은 문면을 같은 메트릭으로
+   그린 레이어를 뒤에 깔고 textarea의 글자를 투명하게 만든다. 캐럿·선택·IME는 여전히 textarea의
+   것이므로 caret-color만 되살린다. 미러는 그림이라 aria-hidden이고, 문면이 한 글자라도 달라지면
+   즉시 어긋나므로 원문을 그대로 복제한다. */
+.quick-launch-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  /* 폭·높이는 JS가 textarea의 **client** 박스로 맞춘다 — inset:0으로 두면 스크롤바가 선 순간
+     textarea의 줄바꿈 폭만 좁아져 미러가 다른 곳에서 접힌다(실브라우저에서 10px 차이 실측). */
+  overflow: hidden;
+  pointer-events: none;
+  padding: 0;
+  border: 0;
+  font-family: inherit;
+  font-size: 16.5px;
+  line-height: 1.55;
+  /* textarea는 UA 기본값이라 조상의 자간을 물려받지 않는다. 미러만 물려받으면 긴 줄에서
+     글자가 조금씩 밀린다(-0.07px 실측). 같은 기준으로 눕힌다. */
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-transform: none;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 8;
+}
+
+.quick-launch-card.is-ultracode .quick-launch-input {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text-primary);
+}
+
+/* 인식된 단어는 강도 트랙의 ULTRACODE 값과 **같은** 결로 흐른다 — 이 제품에서 apex 물결은
+   이미 ultracode를 뜻하고, 두 문(단어·사다리 단)이 같은 능력을 가리키므로 어휘를 나누지 않는다. */
+.quick-launch-ultracode-token {
+  font-weight: var(--weight-medium);
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: effort-ultracode-wave 2.6s linear infinite;
 }
 
 /* ── 이미지 첨부 트레이 ──────────────────────────────────────────────
@@ -12372,6 +12511,10 @@ body[data-codex-reading="true"] .operations-side-bar {
   padding: 5px;
   margin: -5px;
   max-width: min(640px, 100%);
+  /* inline-flex의 auto 최소폭은 min-content라, 줄이 빠듯해지면 이 묶음이 자리를 내주는 대신
+     바 전체를 밀어 Run 버튼을 아랫줄 왼쪽으로 떨어뜨린다(ULTRACODE 칩이 설 때 실측).
+     0으로 눌러, 모자라는 폭은 이미 그 경우를 위해 설계된 **묶음 안쪽 줄바꿈**이 흡수하게 한다. */
+  min-width: 0;
   opacity: 1;
   transition:
     max-width var(--duration-slow) var(--ease-glide),
@@ -12441,6 +12584,11 @@ body[data-codex-reading="true"] .operations-side-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  /* 줄이 넘치면 뒤쪽 아이콘 무리(첨부·고정·Run)가 다음 줄로 함께 내려간다. 기본 정렬로 두면
+     그 무리가 아랫줄 **왼쪽**에 서서 Run이 자리를 옮긴 것처럼 읽힌다 — spacer가 첫 줄에 남기
+     때문이다. 넘친 줄에서도 오른쪽 끝을 지키게 한다(첫 줄은 flex:1 spacer가 이미 다 먹어
+     이 정렬이 아무것도 바꾸지 않는다). */
+  justify-content: flex-end;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
   border-top: 1px solid var(--surface-rim);
@@ -12479,6 +12627,38 @@ body[data-codex-reading="true"] .operations-side-bar {
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
   color: var(--text-primary);
 }
+
+/* ── `ultracode` 인식 칩 ─────────────────────────────────────────────
+   런치 좌표 칩(theater·model)과 같은 알약이되 테두리가 파선이다. 그 파선은 이 제품이 이미 쓰는
+   말이다 — 강도 값 AUTO의 파선 밑줄이 "이 값은 사다리 위의 단이 아니다"를 뜻한다. 프롬프트 속
+   단어도 같은 뜻이라(강도는 그대로다) 같은 문법을 빌린다. 누르면 이 초안에서 해제된다. */
+.quick-launch-ultracode {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  /* 바는 이미 빠듯하다 — 이 칩이 넓어질수록 강도 트랙이 줄을 넘긴다. 알약 문법은 지키되
+     여백·자간은 런치 칩(6px 11px)보다 좁게 잡는다. */
+  padding: 4px 9px;
+  border: 1px dashed color-mix(in oklch, var(--apex) 58%, transparent);
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--apex) 9%, transparent);
+  color: var(--apex-ink);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring);
+}
+
+.quick-launch-ultracode:hover {
+  border-color: color-mix(in oklch, var(--apex) 80%, transparent);
+  background: color-mix(in oklch, var(--apex) 16%, transparent);
+}
+
 
 .quick-launch-chip:disabled {
   opacity: 0.45;
@@ -12722,6 +12902,23 @@ body[data-codex-reading="true"] .operations-side-bar {
     animation: none;
   }
 
+  /* `ultracode` 무장: 도는 호와 흐르는 물결을 세우되 **상태는 남긴다** — 정지한 apex 링,
+     파선 칩, 단색 apex 단어. 모션이 유일한 전달 수단이면 감속 모드에서 상태 자체가 사라진다. */
+  .quick-launch-card.is-ultracode::after,
+  .quick-launch-ultracode-token {
+    animation: none;
+  }
+
+  .quick-launch-card.is-ultracode::after {
+    background: color-mix(in oklch, var(--apex) 46%, transparent);
+  }
+
+  .quick-launch-ultracode-token {
+    background-image: none;
+    color: var(--apex-ink);
+  }
+
+  .quick-launch-ultracode,
   .quick-launch-chip,
   .quick-launch-submit,
   .effort-track-apex-seam,

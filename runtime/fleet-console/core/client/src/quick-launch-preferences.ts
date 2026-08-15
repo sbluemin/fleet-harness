@@ -84,3 +84,29 @@ export function writeQuickLaunchTheater(theaterId: string | null): void {
 function readNonEmptyString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
+
+/**
+ * `ultracode` 고지 줄을 몇 번 보였는지. 문장으로 가르치는 표면은 배우고 나면 소음이 되므로
+ * 세 번 뒤에는 물러나고 칩만 남는다 — 상태 자체는 칩이 계속 말한다.
+ */
+const ULTRACODE_NOTICE_KEY = "fleet-console.quickLaunch.ultracodeNoticeSeen";
+export const QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT = 3;
+
+export function readUltracodeNoticeSeen(): number {
+  try {
+    const raw = window.localStorage.getItem(ULTRACODE_NOTICE_KEY);
+    const parsed = raw === null ? 0 : Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+  } catch {
+    // 스토리지가 막혀 있으면 "아직 못 봤다"로 읽는다 — 가르치는 쪽으로 기운다.
+    return 0;
+  }
+}
+
+export function writeUltracodeNoticeSeen(seen: number): void {
+  try {
+    window.localStorage.setItem(ULTRACODE_NOTICE_KEY, String(seen));
+  } catch {
+    // 기억에 실패해도 인식 자체는 막지 않는다.
+  }
+}
