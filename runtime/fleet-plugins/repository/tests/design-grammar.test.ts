@@ -152,18 +152,24 @@ describe("Repository design grammar", () => {
     expect(glyph).toContain("position: absolute");
     expect(glyph).toContain("opacity: 0");
     // 말풍선은 아래로만, 오른쪽 정렬로, 접히지 않는 너비로 열린다.
-    const hint = blockOf(".repository-sync-hint");
+    // `.repository-identity span`(0,1,1)이 자손 span 전부에 brass·mono·ellipsis를 걸어 두므로
+    // 상태 문면 규칙은 반드시 같은 스코프로 선언해야 한다 — 클래스 하나면 위치 채널로 칠해진다.
+    const hint = blockOf(".repository-identity .repository-sync-hint");
     expect(hint).toContain("top: calc(100% + 6px)");
     expect(hint).toContain("right: 0");
     expect(hint).toContain("width: max-content");
     expect(hint).toContain("pointer-events: none");
+    expect(hint).toContain("color: var(--text-primary)");
+    expect(hint).toContain("overflow: visible");
+    expect(hint).toContain("font-family: inherit");
+    expect(hint).toContain("white-space: normal");
     // 자동 노출이 끝난 뒤에도 hover·포커스로 다시 열려야 한다.
     expect(css).toContain(".repository-sync-button:hover .repository-sync-hint");
     expect(css).toContain(".repository-sync-button:focus-visible .repository-sync-hint");
     // 동작 줄이기에서는 전이 연출만 걷고 상태는 남긴다 — opacity/transform 규칙을 지우면 안 된다.
     const reduced = reducedMotionBodies();
     expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }");
-    expect(reduced).toContain(".repository-sync-hint { transition-duration: 1ms; }");
+    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }");
     expect(glyph).toContain("transition:");
   });
 

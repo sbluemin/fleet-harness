@@ -1670,8 +1670,11 @@
 .repository-sync-button { position: relative; }
 /* 말풍선은 버튼 아래로만 열린다 — 레일 패널 body가 overflow:hidden이라 위쪽은 잘리고,
    버튼 오른쪽 끝이 패널 오른쪽 끝에 붙어 있어 right:0 정렬이 아니면 밖으로 나간다.
-   너비를 max-content로 잡지 않으면 좁은 버튼이 containing block이라 한 마디가 두 줄로 접힌다. */
-.repository-sync-hint {
+   너비를 max-content로 잡지 않으면 좁은 버튼이 containing block이라 한 마디가 두 줄로 접힌다.
+   `.repository-identity`로 스코프하는 것이 필수다 — `.repository-identity span`(0,1,1)이 브랜치용
+   brass·mono·ellipsis를 모든 자손 span에 걸어 두므로, 클래스 하나(0,1,0)로는 상태 문면이 위치
+   채널(brass)로 칠해지고 10px mono로 접힌다. */
+.repository-identity .repository-sync-hint {
   position: absolute;
   z-index: 3;
   top: calc(100% + 6px);
@@ -1712,7 +1715,8 @@
 .repository-sync-button:hover .repository-sync-hint,
 .repository-sync-button:focus-visible .repository-sync-hint { opacity: 1; transform: none; }
 @media (prefers-reduced-motion: reduce) {
-  .repository-sync-hint { transition-duration: 1ms; }
+  /* 기본 규칙과 같은 스코프여야 한다 — 클래스 하나로는 위 (0,2,0) 규칙의 transition을 못 이긴다. */
+  .repository-identity .repository-sync-hint { transition-duration: 1ms; }
 }
 .repository-sync-dot {
   position: absolute;
