@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../core/client/src/plugin-registry.js", () => ({
-  usePluginRegistry: () => ({ plugins: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }),
+  usePluginRegistry: () => ({ plugins: [], failures: [], operationKinds: [], settingsSections: [], notificationKinds: [], railPanels: [] }),
 }));
 
 import { useGlanceHold } from "../core/client/src/canvas/canvas.js";

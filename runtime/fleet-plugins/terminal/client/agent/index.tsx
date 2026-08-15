@@ -491,6 +491,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
         keyboardFocusRequestId={context.keyboardFocusRequestId}
         zoom={context.zoom}
         theme={context.theme}
+        locale={context.language}
         onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
         onExit={() => removeSession(session.sessionId)}
       />

@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
+import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
+
 import { ApiError, listTheaterFolders, type TheaterFolderListResponse } from "../api.js";
+import { describeTheaterFolderFailure } from "../failure-notices.js";
 import { useT } from "../i18n/index.js";
 
 interface DirectoryBrowserModalProps {
@@ -22,7 +25,9 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
   const t = useT();
   const [listing, setListing] = useState<TheaterFolderListResponse | null>(null);
   const [loadingPath, setLoadingPath] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // 서버가 보낸 거절 코드를 그대로 담는다. 화면에 나가기 전에 문장으로 옮겨지므로, 여기에
+  // 표시용 문자열을 넣으면 그 번역 자리가 사라진다.
+  const [failureCode, setFailureCode] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [jumpPath, setJumpPath] = useState("");
   const [highlight, setHighlight] = useState(0);
@@ -32,7 +37,7 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
   // 디렉터리 한 레벨을 정찰해 목록으로 받는다. 진입/상위이동/breadcrumb 점프가 모두 이 경로를 탄다.
   const loadPath = async (path: string | null, signal?: AbortSignal) => {
     setLoadingPath(path);
-    setError(null);
+    setFailureCode(null);
     setQuery("");
     setHighlight(0);
     try {
@@ -40,7 +45,9 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
       setListing(next);
     } catch (loadError) {
       if (loadError instanceof DOMException && loadError.name === "AbortError") return;
-      setError(loadError instanceof ApiError ? loadError.message : String(loadError));
+      // ApiError.message는 서버가 실어 보낸 거절 코드다. 코드가 아닌 예외는 이 매핑이
+      // 아는 어휘가 아니므로 일반 문장으로 떨어뜨린다.
+      setFailureCode(loadError instanceof ApiError ? loadError.message : "");
     } finally {
       setLoadingPath(null);
     }
@@ -261,7 +268,9 @@ export function DirectoryBrowserModal({ open, onCancel, onConfirm }: DirectoryBr
           </button>
         </div>
 
-        {error ? <p className="directory-browser-error" role="alert">{error}</p> : null}
+        {failureCode !== null ? (
+          <FailureNotice {...describeTheaterFolderFailure(failureCode, t)} className="directory-browser-failure" />
+        ) : null}
 
         <div
           className="directory-browser-list"

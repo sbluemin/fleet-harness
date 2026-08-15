@@ -1400,21 +1400,17 @@ function TheaterSectionHeader({
     onContextMenu(event.currentTarget.getBoundingClientRect());
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    // 중첩 행 컨트롤(status/+ /caret)에서 버블된 Enter/Space를 가로채면 버튼 키보드 활성화가 죽는다.
-    if (event.target !== event.currentTarget) return;
-    if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
-      event.preventDefault();
-      onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget);
-      return;
-    }
-    if (event.key !== "Enter" && event.key !== " ") return;
+  const handleKeyDown = (event: KeyboardEvent<HTMLButtonElement>) => {
+    // Enter/Space는 버튼의 기본 동작이 onClick으로 흘려보낸다 — 여기서 다시 처리하면 두 번 발화한다.
+    if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
     event.preventDefault();
-    activateOrToggle();
+    onContextMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget);
   };
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
-    if (event.target instanceof Element && event.target.closest("button")) return;
+    // 행 컨트롤(정렬·새 Operation·액션)에서 시작한 포인터는 드래그가 아니다. 활성화 버튼은
+    // 행의 본문이므로 배제하지 않는다 — 배제하면 행을 잡아 옮길 수 없다.
+    if (event.target instanceof Element && event.target.closest(".side-bar-theater-row-controls")) return;
     onPointerDragStart(event, theater.id);
   };
 
@@ -1442,24 +1438,30 @@ function TheaterSectionHeader({
   };
 
   return (
+    // 행 자체가 role="button"이면서 상태 정렬·새 Operation·액션 버튼을 품고 있어, 활성화
+    // 대상이 둘로 갈리는 중첩 인터랙션이었다(버블된 Enter/Space를 손으로 걸러내던 자리가 그
+    // 증거다). 활성화를 형제 버튼으로 꺼내면 행은 컨테이너가 되고 키보드 처리는 버튼이 맡는다.
     <div
-      role="button"
-      tabIndex={0}
-      aria-haspopup="menu"
       className={headerClassName}
       style={headerStyle}
-      onClick={select}
-      onKeyDown={handleKeyDown}
       onContextMenu={handleContextMenu}
       onPointerDown={handlePointerDown}
       onPointerUp={handlePointerUp}
-      aria-current={active ? "true" : undefined}
-      aria-expanded={!collapsed}
-      title={active ? (collapsed ? t("sidebar.theater.expand", { theater: theater.label }) : t("sidebar.theater.collapse", { theater: theater.label })) : t("sidebar.theater.switchTo", { theater: theater.label })}
     >
-      <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
-      <span className="side-bar-theater-name">{theater.label}</span>
-      <ChevronIcon collapsed={collapsed} />
+      <button
+        type="button"
+        className="side-bar-theater-activate"
+        aria-haspopup="menu"
+        onClick={select}
+        onKeyDown={handleKeyDown}
+        aria-current={active ? "true" : undefined}
+        aria-expanded={!collapsed}
+        title={active ? (collapsed ? t("sidebar.theater.expand", { theater: theater.label }) : t("sidebar.theater.collapse", { theater: theater.label })) : t("sidebar.theater.switchTo", { theater: theater.label })}
+      >
+        <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
+        <span className="side-bar-theater-name">{theater.label}</span>
+        <ChevronIcon collapsed={collapsed} />
+      </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
         <button
           type="button"

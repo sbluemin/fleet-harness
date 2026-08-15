@@ -65,6 +65,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
         ],
       },
     ],
+    failures: [],
     settingsSections: [],
     notificationKinds: [],
     railPanels: [],

@@ -524,6 +524,12 @@ export function quickLaunchMentionErrorMessageKey(code: string | null): string {
     case "attachment_limit": return "chrome.quickLaunch.errorAttachmentLimit";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
+    case "agent_cli_not_installed": return "chrome.quickLaunch.errorCliNotInstalled";
+    case "agent_cli_signed_out": return "chrome.quickLaunch.errorCliSignedOut";
+    // preflight를 통과한 뒤 spawn 단계에서 죽은 경우 — 설정된 실행 파일 자체의 문제다.
+    case "agent_cli_binary_missing": return "chrome.quickLaunch.errorCliBinaryMissing";
+    case "agent_cli_not_executable": return "chrome.quickLaunch.errorCliNotExecutable";
+    // 옛 서버는 두 원인을 이 하나로 보냈다. 그 조합에서도 문장이 나와야 하므로 어휘를 남긴다.
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
     default: return "chrome.quickLaunch.mentionErrorDeliveryFailed";
   }
@@ -548,6 +554,12 @@ export function quickLaunchErrorMessageKey(code: string | null, shortenByChars: 
     case "launch_command_line_too_long": return "chrome.quickLaunch.errorLaunchCommandLineTooLong";
     case "gateway_model_not_enabled": return "chrome.quickLaunch.errorModelOff";
     case "invalid_effort": return "chrome.quickLaunch.errorEffortOff";
+    case "agent_cli_not_installed": return "chrome.quickLaunch.errorCliNotInstalled";
+    case "agent_cli_signed_out": return "chrome.quickLaunch.errorCliSignedOut";
+    // preflight를 통과한 뒤 spawn 단계에서 죽은 경우 — 설정된 실행 파일 자체의 문제다.
+    case "agent_cli_binary_missing": return "chrome.quickLaunch.errorCliBinaryMissing";
+    case "agent_cli_not_executable": return "chrome.quickLaunch.errorCliNotExecutable";
+    // 옛 서버는 두 원인을 이 하나로 보냈다. 그 조합에서도 문장이 나와야 하므로 어휘를 남긴다.
     case "agent_cli_unavailable": return "chrome.quickLaunch.errorCliUnavailable";
     // 첨부가 만료·소실된 실행 거절 — 초안과 칩은 돌아오지만, 그 칩의 서버 파일은 이미 없다.
     case "attachment_not_found": return "chrome.quickLaunch.errorAttachmentGone";

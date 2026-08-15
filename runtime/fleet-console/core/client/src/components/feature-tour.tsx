@@ -147,8 +147,8 @@ export function FeatureTourOverlay() {
     setStepIndex(0);
     // 시청 기록 저장이 끝나기 전에 락을 풀면 뒤따르는 투어(예: claude-operations 직후의
     // Classic 폐지 안내)가 같은 seenFeatureTours 필드에 대한 동시 저장을 시작해, 뒤쪽 저장이
-    // savingField 가드에 밀려나 '사용자당 1회' 기록이 조용히 유실된다. 저장을 먼저 마치고
-    // 락을 풀어 연속 재생되는 투어의 시청 기록이 안전하게 직렬화되도록 한다.
+    // 같은-필드 가드에 밀려나 '사용자당 1회' 기록이 유실된다. 저장을 먼저 마치고 락을 풀어
+    // 연속 재생되는 투어의 시청 기록이 안전하게 직렬화되도록 한다.
     await persistFeatureTourSeen(completionBase, key, (next) => setGlobalSettingsField("seenFeatureTours", next));
     setLockedTour(null);
   }, [resolved, seen]);

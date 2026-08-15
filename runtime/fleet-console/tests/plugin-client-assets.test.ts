@@ -47,6 +47,22 @@ describe("plugin client assets", () => {
     });
   });
 
+  it("externalizes every SDK subpath an external plugin may import", async () => {
+    // SDK exports에 subpath를 더해 놓고 shim 목록에 올리지 않으면, 그 export는 내장 플러그인
+    // 에서만 동작하고 외부 플러그인은 준비 단계에서 통째로 탈락한다 — 광고만 하고 못 쓰는 상태다.
+    const plugin = writeClientPlugin("notice", "index.tsx", [
+      'import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";',
+      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <FailureNotice title="t" /> }] };',
+    ].join("\n"));
+    const assets = createPluginClientAssets({ plugins: [plugin] });
+
+    await assets.prepare();
+
+    const source = assets.getClient("notice") ?? "";
+    expect(source).toContain("/plugin-runtime/shim/sdk-components-failure-notice.mjs");
+    expect(assets.manifest().skipped ?? []).toEqual([]);
+  });
+
   it("rejects browser client bundles that import Node builtins", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const plugin = writeClientPlugin("bad", "index.ts", [
@@ -58,7 +74,12 @@ describe("plugin client assets", () => {
     await assets.prepare();
 
     expect(assets.getClient("bad")).toBeNull();
-    expect(assets.manifest()).toEqual({ plugins: [] });
+    // 빠진 플러그인은 목록에서 사라지되 그 사실 자체는 남는다 — 예전에는 서버 로그에만 남아
+    // 운영자에게는 패널이 그냥 없는 것으로 보였다.
+    expect(assets.manifest()).toEqual({
+      plugins: [],
+      skipped: [{ id: "bad", name: "bad", reason: "client_build_failed" }],
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Node builtin import is not allowed"));
   });
 
@@ -88,7 +109,10 @@ describe("plugin client assets", () => {
     await assets.prepare();
 
     expect(assets.getClient("escape")).toBeNull();
-    expect(assets.manifest()).toEqual({ plugins: [] });
+    expect(assets.manifest()).toEqual({
+      plugins: [],
+      skipped: [{ id: "escape", name: "escape", reason: "client_build_failed" }],
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("plugin client import escapes plugin root"));
   });
 

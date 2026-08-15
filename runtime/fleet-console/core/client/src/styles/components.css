@@ -4694,6 +4694,30 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: transparent;
 }
 
+/* 행 안의 활성화 버튼. 예전에는 행 자체가 버튼 역할을 겸하면서 컨트롤 버튼들을 품고 있었다 —
+   남은 자리를 채워 클릭 영역은 그대로 두고, 활성화 대상만 하나로 되돌린다. */
+.side-bar-theater-activate {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  gap: 8px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-align: left;
+  text-transform: inherit;
+  cursor: inherit;
+}
+
+.side-bar-theater-activate:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
 .side-bar-theater-header {
   display: flex;
   align-items: center;
@@ -6452,6 +6476,21 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background: transparent;
   box-shadow: none;
+}
+
+/* 재기동이 거절되면 카드가 알림으로 갈린다 — 같은 자리, 같은 정렬을 쓰되 안쪽은 버튼이
+   아니라 세 조각짜리 설명이다. */
+.canvas-operation-dormant-failure {
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  width: 100%;
+  height: 100%;
+  padding: var(--space-3);
+}
+
+.canvas-operation-dormant-failure .fc-failure {
+  max-width: 420px;
 }
 
 .canvas-operation-dormant {
@@ -8513,6 +8552,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--warn);
 }
 
+/* 실패는 상태 줄을 쓰지 않는다. 한 줄은 "무슨 일"까지만 실을 수 있어 왜와 할 일이 들어갈
+   자리가 없고, 그 자리를 기계 코드가 대신 차지해 왔다. 알림은 캔버스 위쪽에 두어 아래로
+   흐르던 출력을 가리지 않는다. */
+.terminal-failure {
+  flex: 0 0 auto;
+  padding: var(--space-2);
+  max-width: 560px;
+}
+
 /* 관전 배지는 상태 줄과 달리 화면을 대신하지 않는다 — 출력이 계속 흐르는 위에 얹혀
    "보이지만 칠 수 없다"만 말한다. 상태 줄을 재사용하면 살아 있는 터미널이 오류처럼 읽힌다. */
 .terminal-viewer-badge {
@@ -9769,12 +9817,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   cursor: not-allowed;
 }
 
-.directory-browser-error {
+/* 예전에는 이 자리가 mono·coral 한 줄이었다 — 서버 코드를 그대로 싣기에 알맞은 모양이었고,
+   실제로 `forbidden` 같은 글자가 그대로 나왔다. 이제 세 조각짜리 알림이 들어온다. */
+.directory-browser-failure {
   flex: none;
-  margin: 0;
-  color: var(--coral-ink);
-  font-family: var(--font-mono);
-  font-size: 11px;
 }
 
 /* sector 리스트 — 단일 컬럼 스캔형 + 옅은 해도(chart) 좌표 그리드 텍스처. */
@@ -13435,4 +13481,54 @@ body[data-codex-reading="true"] .operations-side-bar {
   font-size: 12px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* ── 실패 알림(SDK `components/failure-notice`)의 호스트 외양 ──────────────────
+   형태는 SDK가, 외양은 호스트가 소유한다. 세 조각(무슨 일 · 왜 · 지금 할 일)이
+   시각적으로도 그 순서로 읽히도록 크기와 색을 계단으로 둔다. 기계 코드는 문장이
+   아니므로 mono·tertiary로 내려 문장 자리를 다투지 않게 한다. 색은 상태 채널만
+   탄다 — 되돌릴 수 있으면 warn, 진행이 막혔으면 coral. */
+.fc-failure {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--ink-mid) 48%, transparent);
+  text-align: left;
+}
+.fc-failure--warn { border-color: color-mix(in oklch, var(--warn) 34%, var(--hairline)); }
+.fc-failure--coral { border-color: color-mix(in oklch, var(--coral) 34%, var(--hairline)); }
+.fc-failure__title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 13px; font-weight: var(--weight-medium); line-height: 1.35;
+}
+.fc-failure__cause {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 12.5px; line-height: 1.5;
+}
+.fc-failure__actions { display: flex; flex-wrap: wrap; gap: var(--space-2); }
+.fc-failure__action {
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: var(--font-body); font-size: 12px; line-height: 1.2;
+  padding: 6px 12px; cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-glide);
+}
+.fc-failure__action:hover { border-color: var(--brass); }
+.fc-failure__action:focus-visible { outline: none; border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.fc-failure__action--primary {
+  background: var(--brass);
+  border-color: var(--brass);
+  color: var(--text-on-brass);
+  font-weight: var(--weight-medium);
+}
+.fc-failure__diagnostic {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono); font-size: 10.5px; line-height: 1.5;
+  overflow-wrap: anywhere;
 }

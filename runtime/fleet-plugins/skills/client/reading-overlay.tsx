@@ -147,10 +147,12 @@ export function ReadingOverlay({
   const metaText = skill.displayPath || skill.source || null;
 
   return createPortal(
+    // 백드롭에 aria-hidden을 두면 그 안의 다이얼로그까지 접근성 트리에서 사라진다 — 시각적으로
+    // 열려 있는 창의 닫기·복사 버튼이 보조기술에는 존재하지 않게 된다. 배경은 클릭 대상일 뿐이라
+    // 숨길 것이 없다.
     <div
       className="skills-overlay-backdrop"
       onClick={onClose}
-      aria-hidden="true"
     >
       <div
         ref={dialogRef}

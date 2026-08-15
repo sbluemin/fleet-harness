@@ -58,7 +58,7 @@ export function SkillCard({ skill, onReadMore, onUpdate, onRemove, isUpdating, t
           {skill.name}
         </button>
         <span className={`skills-card-scope-badge skills-card-scope-badge--${skill.scope}`}>
-          {skill.scope}
+          {skill.scope === "project" ? t("skills.scope.project") : t("skills.scope.global")}
         </span>
       </div>
       {skill.source && (

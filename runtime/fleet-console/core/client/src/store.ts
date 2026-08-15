@@ -790,6 +790,12 @@ export function resolveOnboardingOnBootstrap(): void {
   const commissioningSeen = settings.state.seenFeatureTours.includes(COMMISSIONING_SEEN_KEY)
     || readStoredCommissioningSeen();
   const shouldOpen = state.theaters.length === 0 && !commissioningSeen;
+  // 커미셔닝을 여는 순간이 곧 "이 사람에게 이 제품은 처음"이라는 판정이다. 같은 자리에서
+  // 릴리스 워터마크를 찍어 두면, 릴리스 노트가 언제 도착하든 지난 묶음이 첫 화면에 따라
+  // 붙지 않는다 — 처음 설치한 사람에게 "새 소식"은 성립하지 않는다.
+  if (shouldOpen && state.version && readStoredWhatsNewSeenVersion() === null) {
+    writeStoredWhatsNewSeenVersion(state.version);
+  }
   setState({ bootstrapped: true, onboardingOpen: shouldOpen ? true : state.onboardingOpen });
 }
 
@@ -908,12 +914,21 @@ function mapNotificationKind(kind: string): NotificationKind {
 function evaluateAutomaticWhatsNew(current: ConsoleState): Pick<ConsoleState, "whatsNewOpen" | "automaticWhatsNewVersion" | "selectedReleaseNoteKey"> {
   const firstRealIndex = current.releaseNotes.findIndex((note) => note.version !== "Unreleased");
   const firstReal = firstRealIndex >= 0 ? current.releaseNotes[firstRealIndex] : undefined;
+  const unchanged = {
+    whatsNewOpen: current.whatsNewOpen,
+    automaticWhatsNewVersion: current.automaticWhatsNewVersion,
+    selectedReleaseNoteKey: current.selectedReleaseNoteKey,
+  };
   if (!firstReal || !current.version || firstReal.version !== current.version || readStoredWhatsNewSeenVersion() === firstReal.version) {
-    return {
-      whatsNewOpen: current.whatsNewOpen,
-      automaticWhatsNewVersion: current.automaticWhatsNewVersion,
-      selectedReleaseNoteKey: current.selectedReleaseNoteKey,
-    };
+    return unchanged;
+  }
+  // 처음 설치한 사람에게는 "새 소식"이 성립하지 않는다 — 그들에게는 전부가 처음이라, 지난
+  // 릴리스 묶음을 펼쳐 봤자 아직 본 적 없는 제품의 변경 이력일 뿐이다. 본 기록이 없고
+  // Theater도 아직 없으면 첫 실행으로 보고, 현재 버전을 읽은 것으로 표시해 다음 릴리스부터
+  // 알린다. Theater가 있으면 이 브라우저가 처음일 뿐인 기존 사용자이므로 평소대로 연다.
+  if (readStoredWhatsNewSeenVersion() === null && current.bootstrapped && current.theaters.length === 0) {
+    writeStoredWhatsNewSeenVersion(firstReal.version);
+    return unchanged;
   }
   return {
     whatsNewOpen: true,
