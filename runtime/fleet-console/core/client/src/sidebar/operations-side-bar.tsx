@@ -11,8 +11,8 @@ import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo 
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
-import { launchProviderFromOperationPayload, launchProviderGlyph, type LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { resolveOperationMark } from "../operation-mark.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
@@ -41,7 +41,6 @@ import {
   useSideBarStatusSectionCollapsed,
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
-import { resolveOperationLaunchKind } from "./interaction.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
 
 interface OperationsSideBarProps {
@@ -1363,22 +1362,6 @@ export function buildTheaterEntries({
     status: resolveOperationActivity(operation, operationStatus),
     ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
-}
-
-/**
- * 칩이 쓸 마크. 실행된 공급자가 기록된 Operation은 그 공급자의 글리프가 실행 종류 아이콘을
- * 대신한다 — 같은 실행 종류라도 어느 공급자의 모델이 돌았는지가 목록에서 먼저 읽혀야 한다.
- * 공급자를 기록하지 않는 플러그인은 그대로 자기 아이콘을 그린다.
- */
-function resolveOperationMark(
-  operation: OperationNode,
-  catalog: readonly OperationCatalogPlugin[],
-  renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode,
-): { readonly icon: ReactNode; readonly launchProvider: LaunchProviderGlyphId | null } {
-  const launchProvider = launchProviderFromOperationPayload(operation.payload);
-  if (launchProvider) return { icon: launchProviderGlyph(launchProvider), launchProvider };
-  const kind = resolveOperationLaunchKind(catalog, operation);
-  return { icon: kind ? renderKindIcon(operation.pluginId, kind) : null, launchProvider: null };
 }
 
 function TheaterSectionHeader({

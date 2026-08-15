@@ -1,9 +1,11 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent } from "react";
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode } from "react";
+import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { OperationActivity } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import { getIdleArrivalIds } from "../operation-idle-arrival.js";
 import { OperationBodySlot, useOperationBodyPoolAvailable, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
+import { resolveOperationMark } from "../operation-mark.js";
 import { operationActivityLabel, operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
 import { getOperationStatusDetailSnapshot, useOperationStatusDetails } from "../operation-status-detail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -82,6 +84,14 @@ interface TriageWatchDeckProps {
       상태 변경은 canvas가 단일 소유하므로 deck는 의도만 올려보낸다. */
   readonly onMinimizeOperation?: (operationId: string) => void;
   readonly onCloseOperation?: (operationId: string) => void;
+  /** 사이드바와 같은 Operation 마크를 제목 왼쪽에 그리기 위한 재료. 없으면 마크를 생략한다. */
+  readonly catalog?: readonly OperationCatalogPlugin[];
+  readonly renderKindIcon?: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
+}
+
+const EMPTY_OPERATION_CATALOG: readonly OperationCatalogPlugin[] = [];
+function renderMissingKindIcon(_pluginId: string, _kind: OperationLaunchKind): ReactNode {
+  return null;
 }
 
 export interface TriageDeckArrivalDwell {
@@ -514,6 +524,8 @@ export function TriageWatchDeck({
   onTheaterContextMenu,
   onMinimizeOperation,
   onCloseOperation,
+  catalog = EMPTY_OPERATION_CATALOG,
+  renderKindIcon = renderMissingKindIcon,
 }: TriageWatchDeckProps) {
   const t = useT();
   const gridRef = useRef<HTMLDivElement | null>(null);
@@ -1116,8 +1128,9 @@ export function TriageWatchDeck({
                         onClick={(event) => pick(operation.id, event.currentTarget)}
                       >
                         <TriageDeckCardFace
-                          operationId={operation.id}
-                          title={operation.title}
+                          operation={operation}
+                          catalog={catalog}
+                          renderKindIcon={renderKindIcon}
                           label={label}
                           detail={statusDetail.detail}
                           accentColor={accentColor}
@@ -1247,8 +1260,9 @@ export function TriageWatchDeck({
             aria-hidden="true"
           >
             <TriageDeckCardFace
-              operationId={mapQuicklookOperation.operation.id}
-              title={mapQuicklookOperation.operation.title}
+              operation={mapQuicklookOperation.operation}
+              catalog={catalog}
+              renderKindIcon={renderKindIcon}
               label={mapQuicklookOperation.label}
               detail={mapQuicklookOperation.detail}
               accentColor={mapQuicklookOperation.accentColor}
@@ -1416,10 +1430,12 @@ function renderTriageMapDots(
 }
 
 // 카드 얼굴 — 덱 카드와 지도 점의 확대창이 같은 조각(스파인·상태줄·제목·프리뷰/tail)을 공유한다.
-// 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다.
-function TriageDeckCardFace({ operationId, title, label, detail, accentColor, preview, surfaceScale = 0 }: {
-  readonly operationId: string;
-  readonly title: string;
+// 두 표면이 각자 얼굴을 조립하면 같은 Operation이 밀도에 따라 다르게 읽힌다. 제목 왼쪽 마크도
+// 이 얼굴이 해석한다 — 사이드바와 같은 resolveOperationMark라 밀도만 달라도 같은 Operation으로 읽힌다.
+function TriageDeckCardFace({ operation, catalog, renderKindIcon, label, detail, accentColor, preview, surfaceScale = 0 }: {
+  readonly operation: OperationNode;
+  readonly catalog: readonly OperationCatalogPlugin[];
+  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
   readonly label: string;
   readonly detail: string | null | undefined;
   readonly accentColor: string | null;
@@ -1427,6 +1443,7 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
   /** 이 얼굴을 담은 표면의 화면상 확대 배율 — 확대창만 넘긴다(기본 0 = 확대창 아님). */
   readonly surfaceScale?: number;
 }) {
+  const { icon, launchProvider } = resolveOperationMark(operation, catalog, renderKindIcon);
   return (
     <>
       {accentColor ? <span className="canvas-triage-deck-card-spine" style={{ backgroundColor: accentColor } as CSSProperties} aria-hidden="true" /> : null}
@@ -1434,12 +1451,22 @@ function TriageDeckCardFace({ operationId, title, label, detail, accentColor, pr
         <span className="canvas-triage-deck-card-dot" aria-hidden="true" />
         <span>{label}</span>
       </span>
-      <strong title={title}>{title}</strong>
+      <span className="canvas-triage-deck-card-title">
+        {icon ? (
+          <span
+            className={`canvas-triage-deck-card-mark${launchProvider ? ` operation-provider-mark is-${launchProvider}` : ""}`}
+            aria-hidden="true"
+          >
+            {icon}
+          </span>
+        ) : null}
+        <strong title={operation.title}>{operation.title}</strong>
+      </span>
       {preview ? (
         <TriageDeckCardPreview
           config={preview.config}
           bottomChrome={preview.bottomChrome}
-          operationId={operationId}
+          operationId={operation.id}
           surfaceScale={surfaceScale}
         />
       ) : (

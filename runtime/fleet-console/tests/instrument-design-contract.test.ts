@@ -648,8 +648,8 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the Operation provider mark grammar — one tone table, ink only, no state repaint", () => {
-    // 사이드바 칩·커맨드 밴드·팔레트는 같은 Operation을 세 곳에서 센다. 세 표면이 각자 톤을
-    // 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
+    // 사이드바 칩·커맨드 밴드·팔레트·War Room 카드는 같은 Operation을 네 곳에서 센다. 표면이
+    // 각자 톤을 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
     // .operation-provider-mark 한 곳에만 있어야 하고, 표면 클래스는 치수만 소유한다.
     const css = source("styles/components.css");
     for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
@@ -665,10 +665,31 @@ describe("Instrument core design contract", () => {
     // 달리, 공급자 마크는 어느 상태에서도 같은 톤을 유지해야 같은 Operation으로 읽힌다.
     expect(css).not.toMatch(/\.is-active[^{}]*\.operation-provider-mark/);
 
-    // 세 표면 모두 공용 마크 클래스를 통해 톤을 받는다 — 하나라도 자기 색을 적으면 대조표가 갈라진다.
+    // 네 표면 모두 공용 마크 클래스를 통해 톤을 받는다 — 하나라도 자기 색을 적으면 대조표가 갈라진다.
     expect(source("sidebar/operations-side-bar-chip.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
     expect(source("components/command-band.tsx")).toContain("operation-provider-mark is-${activeLaunchProvider}");
     expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
+    expect(source("canvas/triage-watch-deck.tsx")).toContain("operation-provider-mark is-${launchProvider}");
+    // 해석은 한 함수 — 카드가 사이드바와 다른 규칙을 적으면 같은 Operation이 두 마크를 갖는다.
+    expect(source("canvas/triage-watch-deck.tsx")).toContain('from "../operation-mark.js"');
+    expect(source("sidebar/operations-side-bar.tsx")).toContain('from "../operation-mark.js"');
+  });
+
+  it("pins the War Room card title mark — chip-sized slot, inverse-scaled with the title", () => {
+    const css = source("styles/components.css");
+    const mark = css.match(/\.canvas-triage-deck-card-mark \{[^}]*\}/)?.[0] ?? "";
+    expect(mark).toContain("width: 16px;");
+    expect(mark).toContain("height: 16px;");
+    const svg = css.match(/\.canvas-triage-deck-card-mark svg \{[^}]*\}/)?.[0] ?? "";
+    expect(svg).toContain("width: 14px;");
+    expect(svg).toContain("height: 14px;");
+    // 확대창에서 제목만 되돌리고 마크를 빼면 마크가 카드와 함께 커진다.
+    expect(css).toContain(".canvas-triage-deck-card.is-quicklook .canvas-triage-deck-card-title");
+    expect(css).not.toContain(".canvas-triage-deck-card.is-quicklook > strong");
+    // 상태 점은 활동 채널 — 마크가 점을 다시 칠하는 선택자를 두지 않는다.
+    const dot = css.match(/\.canvas-triage-deck-card-dot \{[^}]*\}/)?.[0] ?? "";
+    expect(dot).toContain("background: var(--activity-color);");
+    expect(css).not.toMatch(/\.canvas-triage-deck-card-dot[^{]*operation-provider-mark/);
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {

@@ -846,6 +846,43 @@ describe("triage store", () => {
     expect(getTriagePick()).toBe("next");
   });
 
+  it("puts the sidebar Operation mark to the left of the card title", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    const claude = { ...operation("claude-op", 1), payload: { launchProvider: "claude" } };
+    const shell = operation("shell-op", 2);
+    const unknown = { ...operation("unknown-op", 3), pluginId: "missing", type: "other" };
+
+    act(() => {
+      triagePlateRoot?.render(createElement(TriageWatchDeck, {
+        active: true,
+        entering: false,
+        theaters: THEATERS,
+        operations: [claude, shell, unknown],
+        operationStatus: { "claude-op": "running" },
+        operationAccent: {},
+        catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
+        renderKindIcon: () => createElement("span", { "data-kind-icon": "shell" }),
+      }));
+    });
+
+    const claudeCard = container.querySelector('[data-triage-deck-card="claude-op"]');
+    const claudeMark = claudeCard?.querySelector(".canvas-triage-deck-card-mark");
+    expect(claudeMark?.classList.contains("operation-provider-mark")).toBe(true);
+    expect(claudeMark?.classList.contains("is-claude")).toBe(true);
+    expect(claudeMark?.querySelector("svg")).not.toBeNull();
+    expect(claudeCard?.querySelector(".canvas-triage-deck-card-title")?.textContent).toBe("claude-op");
+
+    const shellMark = container.querySelector('[data-triage-deck-card="shell-op"] .canvas-triage-deck-card-mark');
+    expect(shellMark?.classList.contains("operation-provider-mark")).toBe(false);
+    expect(shellMark?.querySelector("[data-kind-icon=\"shell\"]")).not.toBeNull();
+
+    expect(container.querySelector('[data-triage-deck-card="unknown-op"] .canvas-triage-deck-card-mark')).toBeNull();
+    // 정체성 마크는 상태 점을 다시 칠하지 않는다 — 점은 활동 채널만 쓴다.
+    expect(claudeCard?.querySelector(".canvas-triage-deck-card-dot")?.className).toBe("canvas-triage-deck-card-dot");
+  });
+
   it("routes card, map-dot, and owned empty-region context menus without guessing bare space", () => {
     const container = document.createElement("div");
     document.body.append(container);
