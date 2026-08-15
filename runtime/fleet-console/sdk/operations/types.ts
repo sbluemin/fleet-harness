@@ -71,6 +71,12 @@ export interface OperationLaunchVariantGroup {
   readonly rows: readonly OperationLaunchVariantRow[];
 }
 
+/**
+ * Operation이 태어날 수 있는 표면. `terminal`은 PTY가 뜨는 지금까지의 유일한 길이고,
+ * `chat`은 PTY 없이 채팅 세션으로 곧장 태어나는 길이다.
+ */
+export type OperationLaunchView = "terminal" | "chat";
+
 export interface OperationLaunchKind {
   readonly id: string;
   readonly type: string;
@@ -78,6 +84,12 @@ export interface OperationLaunchKind {
   readonly disabled?: boolean;
   readonly disabledReason?: string;
   readonly variants?: readonly OperationLaunchVariantGroup[];
+  /**
+   * 이 실행 종류가 지원하는 시작 표면. 생략은 "터미널뿐"이라는 뜻이며, 그것이 기존 모든
+   * 실행 종류의 사실이다 — 코어가 어느 플러그인이 채팅을 아는지 알 필요가 없도록,
+   * 시작 뷰 선택은 이 선언이 있는 종류에서만 선다.
+   */
+  readonly launchViews?: readonly OperationLaunchView[];
 }
 
 export interface OperationCatalogPlugin {

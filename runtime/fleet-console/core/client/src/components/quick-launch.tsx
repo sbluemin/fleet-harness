@@ -8,7 +8,7 @@ import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchTheater } from "../quick-launch-preferences.js";
+import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
 import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts-catalog.js";
@@ -137,6 +137,9 @@ export function QuickLaunch() {
   const [mentionToken, setMentionToken] = useState<QuickLaunchMentionToken | null>(null);
   const [mentionTarget, setMentionTarget] = useState<OperationSearchEntry | null>(null);
   const [mentionFocused, setMentionFocused] = useState(() => readQuickLaunchSelection().mentionFocused);
+  // 시작 표면. 모델·강도와 같은 "고르면 기억" 계층에서 초기값을 읽는다 — 무장이 안내줄과
+  // 카드 외곽선으로 상시 보이므로 기억이 숨은 모드를 만들지 않는다.
+  const [startView, setStartView] = useState<QuickLaunchStartView>(() => readQuickLaunchSelection().view);
   const [mentionActiveIndex, setMentionActiveIndex] = useState(0);
   const [mentionErrorKey, setMentionErrorKey] = useState<string | null>(null);
   // '/' 커맨드 덱: 문면("/model sol")이 레벨의 원천이라 별도 레벨 상태가 없다 — 여기는 파싱
@@ -184,6 +187,11 @@ export function QuickLaunch() {
   const theaters = state.theaters ?? [];
   const target = useMemo(() => findVariantLaunchKind(catalog), [catalog]);
   const groups = target?.kind.variants ?? [];
+  // 시작 뷰 선택은 실행 종류가 스스로 채팅을 지원한다고 선언했을 때만 선다 — core는 어느
+  // 플러그인이 채팅을 아는지 몰라야 한다. 능력이 없으면 기억이 무엇이라 말하든 무장은
+  // 성립하지 않고 발사는 터미널로 정규화된다(카탈로그가 늦게 오는 첫 프레임도 같은 계약).
+  const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;
+  const chatStart = chatStartAvailable && startView === "chat";
 
   const activeTheater = theaters.find((candidate) => candidate.id === theaterId) ?? null;
   const rows = useMemo(() => groups.flatMap((group) => group.rows), [groups]);
@@ -358,6 +366,9 @@ export function QuickLaunch() {
     setTheaterId(rememberedTheater ?? state.activeTheaterId ?? theaters[0]?.id ?? null);
     setModel(remembered.model ?? QUICK_LAUNCH_DEFAULT_MODEL);
     setEffort(remembered.effort);
+    // 모델·강도와 같은 계층이므로 열림마다 기억에서 되읽는다 — 마운트 초기값만 읽으면 다른 표면이
+    // 바꾼 값이 이 컴포저에만 반영되지 않는다.
+    setStartView(remembered.view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, state.activeTheaterId, theaters]);
 
@@ -617,6 +628,12 @@ export function QuickLaunch() {
       if (selectedRow && (selectedRow.chips?.length ?? 0) > 0) {
         push("effort", "/effort", t("chrome.quickLaunch.commandEffort"), <EffortCommandIcon />, effortLabel, () => applyCommandPrompt("/effort "));
       }
+      // 실행 종류가 채팅으로 태어날 수 있다고 선언했을 때만 선다.
+      if (chatStartAvailable) {
+        push("view", "/view", t("chrome.quickLaunch.commandStartView"), <ChatBubbleIcon />,
+          t(chatStart ? "chrome.quickLaunch.startViewChat" : "chrome.quickLaunch.startViewTerminal"),
+          () => applyCommandPrompt("/view "));
+      }
       // 고정 버튼과 같은 조건으로만 선다 — 도킹이 접힌 화면에서 고정 커맨드는 설 자리가 없다.
       if (!dockSuppressed) {
         push("pin", "/pin", t(pinned ? "chrome.quickLaunch.unpin" : "chrome.quickLaunch.pin"), <PinIcon />, undefined, () => {
@@ -682,6 +699,30 @@ export function QuickLaunch() {
         })
         .filter((section) => section.rows.length > 0);
     }
+    if (commandInput.command === "view") {
+      // 능력이 사라진 뒤 남은 문면("/view ")은 빈 덱이 된다 — 매치 없는 덱이 Enter를 막지 않는
+      // 계약이 회복을 보장하므로 여기서 따로 되돌리지 않는다.
+      if (!chatStartAvailable) return [];
+      const rows = ([
+        { id: "terminal", label: t("chrome.quickLaunch.startViewTerminal"), hint: t("chrome.quickLaunch.startViewTerminalHint") },
+        { id: "chat", label: t("chrome.quickLaunch.startViewChat"), hint: t("chrome.quickLaunch.startViewChatHint") },
+      ] as const)
+        .filter((option) => option.label.toLowerCase().includes(query) || option.id.startsWith(query))
+        .map<QuickLaunchCommandRow>((option) => ({
+          id: `view-${option.id}`,
+          label: option.label,
+          value: option.hint,
+          lead: <span className="quick-launch-command-icon" aria-hidden="true">{option.id === "chat" ? <ChatBubbleIcon /> : <TerminalViewIcon />}</span>,
+          checked: option.id === (chatStart ? "chat" : "terminal"),
+          pick: () => {
+            setStartView(option.id);
+            // 칩 픽커와 같은 "고르면 기억" 계층.
+            writeQuickLaunchStartView(option.id);
+            finishCommand();
+          },
+        }));
+      return rows.length === 0 ? [] : [{ key: "views", band: null, rows }];
+    }
     // 게이트된 apex 단은 트랙의 ✦ 펼침 계약을 미러링해 명시적 타이핑으로만 드러난다(헬퍼 주석 참조).
     const rows = buildQuickLaunchEffortOptions(selectedRow, effort, t("launchVariants.effort.auto"), commandInput.query)
       .map<QuickLaunchCommandRow>((chip) => ({
@@ -695,7 +736,7 @@ export function QuickLaunch() {
         },
       }));
     return rows.length === 0 ? [] : [{ key: "efforts", band: null, rows }];
-  }, [activeTheater, applyCommandPrompt, commandInput, dockSuppressed, effort, expandAndFocus, finishCommand, groups, model, pinned, selectedRow, t, theaterId, theaters]);
+  }, [activeTheater, applyCommandPrompt, chatStart, chatStartAvailable, commandInput, dockSuppressed, effort, expandAndFocus, finishCommand, groups, model, pinned, selectedRow, t, theaterId, theaters]);
 
   const commandRowsFlat = useMemo(() => commandSections.flatMap((section) => section.rows), [commandSections]);
   const commandDeckOpen = commandInput !== null;
@@ -970,6 +1011,8 @@ export function QuickLaunch() {
     const variant: Record<string, string> = { prompt: text };
     if (model) variant.model = model;
     if (effort) variant.effort = effort;
+    // 터미널은 키를 생략한다 — 기본이 곧 계약이라, 이 키를 모르는 구버전 플러그인도 같은 길을 탄다.
+    if (chatStart) variant.viewMode = "chat";
     // 첨부는 서버가 만든 불투명 id의 CSV로 실린다(variant는 flat string 레코드 계약).
     // 이름·미리보기는 거절 복원용 자취로 실행 의도에 따로 실린다 — 경로는 어느 쪽에도 없다.
     const launchedAttachments: QuickLaunchDraftAttachment[] = attachments
@@ -978,7 +1021,8 @@ export function QuickLaunch() {
     if (launchedAttachments.length > 0) variant.attachments = launchedAttachments.map((attachment) => attachment.id).join(",");
     // 고정은 저장된 값을 그대로 다시 쓴다 — 화면별 실효값(설정에서는 접어 두므로 거짓)을 저장하면
     // 그 화면에서 한 번 실행한 것만으로 사용자의 고정 설정이 조용히 꺼진다.
-    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused });
+    // 시작 표면도 같은 전체 되쓰기에 실린다 — 한 필드라도 빠지면 그 옵트인이 조용히 꺼진다.
+    writeQuickLaunchSelection({ theaterId, model, effort, pinned: state.quickLaunchPinned, mentionFocused, view: startView });
     // 대상 Theater로 전환한 뒤 Operations로 이동한다. 실행은 그 화면이 자기 지오메트리·포커스 규율로
     // 수행한다(pendingOperationFocus와 같은 request/consume 계약) — 컴포저는 의도만 넘긴다.
     setActiveTheater(theaterId);
@@ -991,7 +1035,7 @@ export function QuickLaunch() {
     });
     navigate("/operations");
     finishSubmission();
-  }, [attachments, commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionFocused, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, state.quickLaunchPinned, submitting, target, theaterId]);
+  }, [attachments, chatStart, commandDeckHasRows, deckHasRows, effort, finishSubmission, mentionFocused, mentionTarget, model, navigate, prompt, registry.plugins, selectedRow, startView, state.quickLaunchPinned, submitting, target, theaterId]);
 
   const handleKeyDown = useCallback((event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.key === "Escape") {
@@ -1193,7 +1237,7 @@ export function QuickLaunch() {
           읽지 않고, 뒤 화면의 단축키가 살아 있는 채로 공존한다(그것이 고정의 목적이다). */}
       <section
         ref={cardRef}
-        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}`}
+        className={`quick-launch-card${pinned ? " is-pinned" : ""}${showStrip ? " is-collapsed" : ""}${popover || zoomedAttachment ? " has-popover" : ""}${dragOver ? " is-dragover" : ""}${ultracodeArmed ? " is-ultracode" : ""}${chatStart ? " is-chat-start" : ""}`}
         role={pinned ? "region" : "dialog"}
         aria-modal={pinned ? undefined : true}
         aria-label={t(pinned ? "chrome.quickLaunch.dockedRegion" : "chrome.quickLaunch.dialog")}
@@ -1293,7 +1337,9 @@ export function QuickLaunch() {
                     ? t("chrome.quickLaunch.theaterMenu")
                     : commandInput?.command === "model"
                       ? t("chrome.quickLaunch.modelMenu")
-                      : t("launchVariants.effort.track")}
+                      : commandInput?.command === "view"
+                        ? t("chrome.quickLaunch.startViewMenu")
+                        : t("launchVariants.effort.track")}
               </span>
               <span className="quick-launch-mention-category-rule" aria-hidden="true" />
             </p>
@@ -1352,6 +1398,26 @@ export function QuickLaunch() {
           </p>
         ) : null}
 
+        {/* 시작 표면 무장 줄. `ultracode` 고지와 달리 횟수로 물러나지 않는다 — 저건 한 번 배우면
+            칩이 대신 말하는 문장이지만, 이 상태에는 바에 설 칩이 없다(바 첫 줄 여유가 0이라 배지를
+            두지 않기로 한 결정). 이 줄과 카드 외곽선이 무장의 **유일한** 표식이므로, 기억된 선택이
+            숨은 모드가 되지 않으려면 무장한 동안 항상 서 있어야 한다.
+            멘션 중에도 남는다: 행선지가 있으면 발사 좌표는 접히지만, 그때는 이 값이 실려 가지
+            않으므로 문구 자체가 "이번엔 적용되지 않는다"고 말한다. */}
+        {chatStart && !showStrip ? (
+          <p className="quick-launch-start-view-notice" role="status">
+            <span className="quick-launch-start-view-glyph" aria-hidden="true"><ChatBubbleIcon /></span>
+            <span>{t(mentionTarget ? "chrome.quickLaunch.startViewNoticeMuted" : "chrome.quickLaunch.startViewNotice")}</span>
+            <button
+              type="button"
+              className="quick-launch-start-view-undo"
+              onClick={() => { setStartView("terminal"); writeQuickLaunchStartView("terminal"); expandAndFocus(); }}
+            >
+              {t("chrome.quickLaunch.startViewUndo")}
+            </button>
+          </p>
+        ) : null}
+
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
         <div className="quick-launch-field" inert={showStrip || undefined}>
@@ -1384,7 +1450,9 @@ export function QuickLaunch() {
             onScroll={syncUltracodeHighlight}
             placeholder={mentionTarget
               ? t("chrome.quickLaunch.mentionPlaceholder", { name: mentionTarget.operationName })
-              : t("chrome.quickLaunch.placeholder")}
+              : chatStart
+                ? t("chrome.quickLaunch.startViewChatPlaceholder")
+                : t("chrome.quickLaunch.placeholder")}
             aria-label={t("chrome.quickLaunch.promptLabel")}
             aria-controls={mentionDeckOpen ? "quick-launch-mention-deck" : commandDeckOpen ? "quick-launch-command-deck" : undefined}
             aria-activedescendant={activeMentionOptionId ?? activeCommandOptionId}
@@ -1590,9 +1658,11 @@ export function QuickLaunch() {
             className="quick-launch-submit"
             disabled={!canSubmit}
             onClick={submit}
-            // 시각 레이블이 없으므로 이름과 단축키를 여기서 싣는다.
-            aria-label={t("chrome.quickLaunch.runWithKey")}
-            title={t("chrome.quickLaunch.runWithKey")}
+            // 시각 레이블이 없으므로 이름과 단축키를 여기서 싣는다. 무장 중에는 이 버튼이 무엇을
+            // 하는지가 달라지므로 이름도 함께 바뀐다 — 안내줄을 못 읽는 사람에게는 여기가 유일한
+            // 결과 재확인이다(멘션 중에는 이 값이 실려 가지 않으므로 평소 이름으로 돌아간다).
+            aria-label={t(chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
+            title={t(chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
           >
             <SubmitArrowIcon />
           </button>
@@ -1738,6 +1808,41 @@ function EffortCommandIcon() {
       <path d="M2.5 8h11" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
       <circle cx="5" cy="8" r="1.4" fill="currentColor" />
       <circle cx="11" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/**
+ * 채팅 표식의 말풍선. 채팅 패널의 회신 버튼(terminal 플러그인 `ReplyBubbleIcon`)과 **같은 형상**이다
+ * — 한 제품에서 채팅을 가리키는 그림은 하나여야 한다. 그쪽은 viewBox 20이고 여기는 커맨드 아이콘
+ * 격자(16)라 좌표만 옮겨 앉혔다: 꼬리는 왼쪽 아래로, 몸통은 둥근 모서리 하나로 읽히게.
+ */
+function ChatBubbleIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M5.1 12.5h-.3a2.4 2.4 0 0 1-2.4-2.4V6.1a2.4 2.4 0 0 1 2.4-2.4h6.4a2.4 2.4 0 0 1 2.4 2.4v4a2.4 2.4 0 0 1-2.4 2.4H7.7l-2.6 2.1z"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** 터미널 시작. 셸 프롬프트의 갈매기 하나 — 채팅 말풍선과 같은 격자·같은 굵기로 마주 세운다. */
+function TerminalViewIcon() {
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path
+        d="M4 5.2 7 8l-3 2.8M8.6 11.2h3.6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.4"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }

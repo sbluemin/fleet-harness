@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import { readLaunchVariantGroups } from "./launch-variants.js";
-import type { OperationCatalogPlugin, OperationLaunchKind, OperationNode } from "./types.js";
+import type { OperationCatalogPlugin, OperationLaunchKind, OperationLaunchView, OperationNode } from "./types.js";
 
 export interface OperationBodyProps {
   readonly children: React.ReactNode;
@@ -67,6 +67,7 @@ function readCatalogPlugin(value: unknown): OperationCatalogPlugin | null {
 function readLaunchKind(value: unknown): OperationLaunchKind | null {
   if (!isRecord(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
   const variants = readLaunchVariantGroups(value.variants);
+  const launchViews = readLaunchViews(value.launchViews);
   return {
     id: value.id,
     type: value.type,
@@ -74,7 +75,21 @@ function readLaunchKind(value: unknown): OperationLaunchKind | null {
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
     ...(variants.length > 0 ? { variants } : {}),
+    ...(launchViews.length > 0 ? { launchViews } : {}),
   };
+}
+
+/**
+ * 모르는 표면 이름은 버린다 — 코어는 자기가 그릴 수 있는 표면만 목록에 올린다. `terminal` 하나만
+ * 남는 선언은 선택지가 아니므로 생략과 같게 접는다(호출부가 길이로 판정한다).
+ */
+function readLaunchViews(value: unknown): readonly OperationLaunchView[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<OperationLaunchView>();
+  for (const entry of value) {
+    if (entry === "terminal" || entry === "chat") seen.add(entry);
+  }
+  return seen.has("chat") ? [...seen] : [];
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

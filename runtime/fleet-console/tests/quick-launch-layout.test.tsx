@@ -42,7 +42,10 @@ describe("Quick Launch composer layout", () => {
   it("names the send control for assistive tech, since it carries no visible label", () => {
     const button = /className="quick-launch-submit"[\s\S]*?<\/button>/u.exec(quickLaunch);
     if (!button) throw new Error("Expected the submit button markup");
-    expect(button[0]).toMatch(/aria-label=\{t\("chrome\.quickLaunch\.runWithKey"\)\}/u);
+    expect(button[0]).toMatch(/aria-label=\{t\([\s\S]*?"chrome\.quickLaunch\.runWithKey"\)\}/u);
+    // 시작 표면이 채팅으로 무장하면 이 버튼이 하는 일이 달라진다 — 안내줄을 읽지 못하는 사용자에게는
+    // 여기가 유일한 결과 재확인이므로, 이름도 함께 바뀌는 것을 계약으로 고정한다.
+    expect(button[0]).toMatch(/"chrome\.quickLaunch\.runChatWithKey"/u);
   });
 
   it("lets the label claim the row so a starred model keeps the list's left edge", () => {

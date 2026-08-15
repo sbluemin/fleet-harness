@@ -24,6 +24,7 @@ export type {
   OperationCatalogPlugin,
   OperationLaunchCatalogProvider,
   OperationLaunchKind,
+  OperationLaunchView,
 } from "@fleet-console/sdk/plugin";
 import type { ApiCatalogEntry, FleetPluginHostCapabilities, FleetPluginManifest, FleetPluginRouteModule, FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 

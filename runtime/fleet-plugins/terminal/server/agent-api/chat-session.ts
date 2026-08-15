@@ -20,12 +20,25 @@ import type { AgentProviderSession } from "./types.js";
  * Session Analyst가 전부 그 원본 경로 하나를 계속 권위로 삼게 하기 위해서다.
  */
 
+/**
+ * 이 세션이 어디서 시작하는가. 두 길은 대칭이 아니다 — `resume`은 이미 있는 트랜스크립트가
+ * 세션 id와 projects 디렉터리 이름을 **둘 다** 말해 주지만, `fresh`는 아직 아무것도 없어서
+ * 그 둘을 SDK가 첫 턴에 만들어 준 뒤에야 알 수 있다.
+ *
+ * `fresh`가 아는 것은 되쓸 뿌리 하나뿐이다. cwd → projects 디렉터리 이름의 인코딩 규칙은
+ * 여기서도 재구현하지 않는다: SDK가 자기 격리 dir 안에 만든 디렉터리 이름을 그대로 읽어
+ * 같은 이름으로 뿌리 아래에 내려놓는다(resume이 원 경로의 부모 이름을 그대로 쓰는 것과 같은 규율).
+ */
+export type AgentChatSessionOrigin =
+  | { readonly kind: "resume"; readonly transcriptPath: string }
+  | { readonly kind: "fresh"; readonly transcriptRoot: string };
+
 export interface AgentChatSessionSeed {
   readonly baseUrl: string;
   readonly model: string;
   readonly effort?: ClaudeGatewayEffort;
   readonly cwd: string;
-  readonly transcriptPath: string;
+  readonly origin: AgentChatSessionOrigin;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
@@ -55,8 +68,11 @@ class AgentChatSession {
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
-  /** resume 좌표는 트랜스크립트 파일명이 말하는 세션 id다 — 캡처 id는 드리프트할 수 있다. */
-  private latestSessionId: string;
+  /**
+   * resume 좌표는 트랜스크립트 파일명이 말하는 세션 id다 — 캡처 id는 드리프트할 수 있다.
+   * `fresh`는 아직 세션이 없으므로 null로 출발하고, 첫 SDK 메시지의 session_id가 이 자리를 채운다.
+   */
+  private latestSessionId: string | null;
   private journal: AgentChatJournalEvent[] = [];
   private seq = 0;
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
@@ -68,7 +84,9 @@ class AgentChatSession {
     this.operationId = operationId;
     this.seed = seed;
     this.createSdk = createSdk;
-    this.latestSessionId = path.basename(seed.transcriptPath, ".jsonl");
+    this.latestSessionId = seed.origin.kind === "resume"
+      ? path.basename(seed.origin.transcriptPath, ".jsonl")
+      : null;
   }
 
   get busy(): boolean {
@@ -76,10 +94,14 @@ class AgentChatSession {
   }
 
   async replayTranscript(): Promise<void> {
+    // 채팅으로 태어난 세션에는 되돌려줄 과거가 없다 — 빈 리플레이는 "읽지 못했다"와 다르므로
+    // 오류 이벤트도 내지 않고, 로그는 첫 턴부터 자란다.
+    if (this.seed.origin.kind === "fresh") return;
+    const transcriptPath = this.seed.origin.transcriptPath;
     this.push({ kind: "replay-start" });
     let turns = 0;
     try {
-      const raw = await fs.readFile(this.seed.transcriptPath, "utf8");
+      const raw = await fs.readFile(transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
         for (const event of chatEventsFromTranscriptLine(line, { cwd: this.seed.cwd })) {
@@ -182,12 +204,14 @@ class AgentChatSession {
   /**
    * 원 트랜스크립트를 격리 config dir의 같은 projects/<인코딩된 cwd>/ 아래로 복사한다.
    * 인코딩 규칙을 재구현하지 않는다 — 원 경로의 부모 디렉터리 이름이 곧 그 인코딩이다.
+   * 채팅으로 태어난 세션에는 복사할 원본이 없다 — SDK가 자기 dir 안에 스스로 만든다.
    */
   private async copyTranscriptIntoConfigDir(configDir: string): Promise<void> {
-    const projectDirName = path.basename(path.dirname(this.seed.transcriptPath));
+    if (this.seed.origin.kind === "fresh") return;
+    const projectDirName = path.basename(path.dirname(this.seed.origin.transcriptPath));
     const dest = path.join(configDir, "projects", projectDirName, `${this.latestSessionId}.jsonl`);
     await fs.mkdir(path.dirname(dest), { recursive: true, mode: 0o700 });
-    await fs.copyFile(this.seed.transcriptPath, dest);
+    await fs.copyFile(this.seed.origin.transcriptPath, dest);
   }
 
   private async runTurn(text: string): Promise<void> {
@@ -209,7 +233,9 @@ class AgentChatSession {
         model: this.seed.model,
         ...(this.seed.effort ? { effort: this.seed.effort } : {}),
         cwd: this.seed.cwd,
-        resume: this.latestSessionId,
+        // 채팅으로 태어난 세션의 첫 턴에는 이어붙일 좌표가 없다 — resume 없이 시작하고,
+        // SDK가 돌려주는 session_id가 그 자리를 채운다(그다음 턴부터는 resume이 선다).
+        ...(this.latestSessionId ? { resume: this.latestSessionId } : {}),
         permissionMode: "bypassPermissions",
         // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
         includePartialMessages: true,
@@ -245,17 +271,27 @@ class AgentChatSession {
    */
   private async writeBackTranscript(): Promise<void> {
     const sdk = this.sdk;
-    if (!sdk) return;
-    const projectDirName = path.basename(path.dirname(this.seed.transcriptPath));
-    const source = path.join(sdk.configDir, "projects", projectDirName, `${this.latestSessionId}.jsonl`);
+    // 세션 id가 없으면 되쓸 파일 이름조차 없다 — 첫 턴이 session_id 없이 끝난 경우다.
+    if (!sdk || !this.latestSessionId) return;
+    const sessionId = this.latestSessionId;
+    const projectDirName = await this.resolveProjectDirName(sdk.configDir);
+    if (!projectDirName) return;
+    const source = path.join(sdk.configDir, "projects", projectDirName, `${sessionId}.jsonl`);
     const sourceStat = await fs.stat(source).catch(() => null);
     if (!sourceStat?.isFile()) return;
-    const dest = path.join(path.dirname(this.seed.transcriptPath), `${this.latestSessionId}.jsonl`);
+    const destDir = this.seed.origin.kind === "resume"
+      ? path.dirname(this.seed.origin.transcriptPath)
+      : path.join(this.seed.origin.transcriptRoot, projectDirName);
+    const dest = path.join(destDir, `${sessionId}.jsonl`);
     const destStat = await fs.stat(dest).catch(() => null);
     if (destStat?.isFile() && destStat.size > sourceStat.size) return;
     // 복사가 실패하면 providerSession을 갱신하지 않는다 — 존재하지 않는 파일을 durable 권위로
     // 가리키면 터미널 복귀·재시작·Analyst가 조용히 턴을 잃는다. 실패는 저널로 표면화한다.
     try {
+      // 채팅으로 태어난 세션은 이 디렉터리를 처음 만든다. resume 경로에서는 만들지 않는다 —
+      // 그쪽에서 목적지가 사라졌다면 원본이 밖에서 치워진 것이고, 되살려 쓰는 것은 그 삭제를
+      // 조용히 되돌리는 일이다. 실패를 저널로 표면화하는 기존 계약을 그대로 둔다.
+      if (this.seed.origin.kind === "fresh") await fs.mkdir(destDir, { recursive: true, mode: 0o700 });
       await fs.copyFile(source, dest);
     } catch {
       this.push({ kind: "error", code: "chat_writeback_failed" });
@@ -263,11 +299,25 @@ class AgentChatSession {
     }
     this.seed.onProviderSessionUpdate({
       provider: "claude",
-      sessionId: this.latestSessionId,
+      sessionId,
       transcriptPath: dest,
       source: "chat-mode",
       capturedAt: new Date().toISOString(),
     });
+  }
+
+  /**
+   * 이 세션의 트랜스크립트가 앉은 projects 디렉터리 이름. resume은 원 경로가 이미 말해 주고,
+   * fresh는 SDK가 자기 dir 안에 만든 이름을 읽는다 — cwd 인코딩 규칙을 재구현하지 않기 위해서다.
+   * 격리 dir은 이 세션 전용이라 그 아래 projects 항목은 하나뿐이며, 여럿이면 무엇이 우리 것인지
+   * 말할 수 없으므로 되쓰지 않는다(잘못된 뿌리에 남의 세션을 심는 것보다 낫다).
+   */
+  private async resolveProjectDirName(configDir: string): Promise<string | null> {
+    if (this.seed.origin.kind === "resume") return path.basename(path.dirname(this.seed.origin.transcriptPath));
+    const entries = await fs.readdir(path.join(configDir, "projects"), { withFileTypes: true }).catch(() => null);
+    if (!entries) return null;
+    const dirs = entries.filter((entry) => entry.isDirectory());
+    return dirs.length === 1 ? dirs[0]?.name ?? null : null;
   }
 }
 

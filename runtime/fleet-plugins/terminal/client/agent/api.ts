@@ -79,7 +79,14 @@ export async function fetchOperationsSnapshot(signal?: AbortSignal): Promise<Ope
 export async function createAgentSession(
   theaterId: string,
   cliId: string,
-  options?: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[] },
+  options?: {
+    readonly model?: string;
+    readonly effort?: string;
+    readonly prompt?: string;
+    readonly attachmentIds?: readonly string[];
+    /** 생략은 터미널이다 — 기본이 곧 계약이라 이 키를 모르는 호출부도 같은 길을 탄다. */
+    readonly viewMode?: "chat";
+  },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
   const model = typeof options?.model === "string" && options.model.length > 0 ? options.model : undefined;
@@ -87,10 +94,11 @@ export async function createAgentSession(
   // 요청 body에는 prompt를 실을 수 있지만, 응답 DTO에는 절대 오면 안 된다 — FORBIDDEN_BROWSER_PAYLOAD_KEYS의 "prompt"는 응답 가드이므로 지우지 않는다.
   const prompt = typeof options?.prompt === "string" && options.prompt.length > 0 ? options.prompt : undefined;
   const attachmentIds = options?.attachmentIds?.length ? options.attachmentIds : undefined;
+  const viewMode = options?.viewMode === "chat" ? "chat" : undefined;
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}) }),
+    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}), ...(viewMode ? { viewMode } : {}) }),
     signal,
   });
   // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지

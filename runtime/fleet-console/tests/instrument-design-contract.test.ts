@@ -2141,6 +2141,39 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain("{ultracodeArmed && !showStrip ? (");
   });
 
+  it("pins the chat start-view arming grammar", () => {
+    const components = source("styles/components.css");
+    const composer = source("components/quick-launch.tsx");
+
+    // 바 첫 줄의 여유가 0이라 이 상태는 **칩을 두지 않는다** — 칩 하나가 서면 바가 두 줄로 접힌다.
+    // 무장은 카드 외곽선과 입력 위 안내줄이 함께 진다.
+    expect(composer).not.toMatch(/quick-launch-start-view-chip/);
+    expect(composer).toContain('${chatStart ? " is-chat-start" : ""}');
+    expect(composer).toContain('<p className="quick-launch-start-view-notice" role="status">');
+
+    // 채널은 ultracode와 같은 apex다 — 둘 다 신호(상태)도 위치(brass)도 아닌 "기본 밖의 선택"이다.
+    // 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링, 여기는 정지한 테두리.
+    const armed = components.slice(components.indexOf(".quick-launch-card.is-chat-start {"));
+    const armedBlock = armed.slice(0, armed.indexOf("}"));
+    expect(armedBlock).toMatch(/border-color: color-mix\(in oklch, var\(--apex\)/);
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
+      expect(armedBlock, signal).not.toContain(signal);
+    }
+    expect(armedBlock).not.toContain("animation:");
+
+    // 되돌리기는 문장의 일부다 — 알약으로 세우면 두지 않기로 한 배지가 안내줄로 옮겨 앉는다.
+    const undo = components.slice(components.indexOf(".quick-launch-start-view-undo {"));
+    const undoBlock = undo.slice(0, undo.indexOf("}"));
+    expect(undoBlock).toContain("background: none;");
+    expect(undoBlock).toContain("border: 0;");
+    expect(undoBlock).not.toContain("border-radius: 999px;");
+
+    // 시작 뷰 선택은 실행 종류가 스스로 선언했을 때만 선다 — core가 어느 플러그인이 채팅을
+    // 아는지 알면 안 된다.
+    expect(composer).toContain('const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;');
+    expect(composer).not.toMatch(/pluginId === "terminal"/);
+  });
+
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
     const trackSource = source("components/effort-track.tsx");

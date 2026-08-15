@@ -12119,6 +12119,61 @@ body[data-codex-reading="true"] .operations-side-bar {
   line-height: 1;
 }
 
+/* ── 시작 표면(채팅뷰) 무장 ────────────────────────────────────────────
+   바 첫 줄의 여유가 0이라(런치 좌표 묶음 + 우측 컨트롤이 폭을 다 쓴다) 이 상태는 바에 칩을
+   두지 않는다 — 칩 하나가 서면 바가 두 줄로 접힌다. 대신 카드 외곽선과 입력 위 안내줄이 함께
+   말한다. 두 표식이 이 상태의 전부이므로 `ultracode` 고지처럼 횟수로 물러나지 않는다: 기억된
+   선택이 숨은 모드가 되지 않으려면 무장한 동안 표식이 항상 서 있어야 한다.
+   [doctrine] 채널은 `ultracode`와 같은 apex를 쓴다 — 둘 다 신호(상태)도 위치도 아닌 "기본 밖의
+   선택"이라 같은 채널이 맞다. 구별은 색이 아니라 모션이 진다: ultracode는 도는 conic 링,
+   여기는 정지한 테두리. 동시 무장이면 도는 링이 바깥을 잇고 이 줄이 자기 몫을 계속 말한다. */
+.quick-launch-card.is-chat-start {
+  border-color: color-mix(in oklch, var(--apex) 52%, var(--hairline-strong));
+}
+
+.quick-launch-start-view-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: 12.5px;
+  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+}
+
+.quick-launch-start-view-glyph {
+  display: inline-flex;
+  line-height: 1;
+}
+
+.quick-launch-start-view-glyph svg {
+  width: 13px;
+  height: 13px;
+}
+
+/* 되돌리기는 문장의 일부다 — 알약으로 세우면 바에 두지 않기로 한 배지가 안내줄로 옮겨 앉는다. */
+.quick-launch-start-view-undo {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-tertiary);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-spring);
+}
+
+.quick-launch-start-view-undo:hover {
+  color: var(--text-primary);
+}
+
+.quick-launch-start-view-undo:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
+}
+
 /* ── 고정(도킹) ────────────────────────────────────────────────────────
    옵트인 고정은 컴포저를 화면 하단에 상주시켜 실행 화면과 공존하게 한다. 이동은 카드 자신의
    transform으로 그린다 — 오버레이의 place-items를 바꾸면 보간되지 않아 카드가 튄다.

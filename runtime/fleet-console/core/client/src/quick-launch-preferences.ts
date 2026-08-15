@@ -17,7 +17,15 @@ export interface QuickLaunchSelection {
   readonly effort: string | null;
   readonly pinned: boolean;
   readonly mentionFocused: boolean;
+  /**
+   * 다음 Operation이 태어날 표면. 모델·강도와 같은 "고르면 기억" 계층에 산다 — 대화로 하는 작업은
+   * 한 번으로 끝나지 않기 때문이다. 기억해도 숨은 모드가 되지 않는 근거는 무장이 문면 위 안내줄과
+   * 카드 외곽선으로 **상시** 보인다는 것이다. 덱을 열어야만 보이는 값이었다면 기억해선 안 된다.
+   */
+  readonly view: QuickLaunchStartView;
 }
+
+export type QuickLaunchStartView = "terminal" | "chat";
 
 export const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
   theaterId: null,
@@ -25,6 +33,7 @@ export const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
   effort: null,
   pinned: false,
   mentionFocused: false,
+  view: "terminal",
 };
 
 export function readQuickLaunchSelection(): QuickLaunchSelection {
@@ -38,6 +47,8 @@ export function readQuickLaunchSelection(): QuickLaunchSelection {
       effort: readNonEmptyString(parsed.effort),
       pinned: parsed.pinned === true,
       mentionFocused: parsed.mentionFocused === true,
+      // 모르는 값·없는 값은 모두 터미널이다 — 시작 표면의 기본은 기억이 아니라 계약이 정한다.
+      view: parsed.view === "chat" ? "chat" as const : "terminal" as const,
     };
     // Canvas/Quick Launch native models now launch on their 1M coordinates. Rewrite a leftover bare
     // selection once so a reopen does not restore a retired catalog id into React state.
@@ -74,6 +85,12 @@ export function writeQuickLaunchModelEffort(model: string | null, effort: string
 export function writeQuickLaunchPinned(pinned: boolean): void {
   const remembered = readQuickLaunchSelection();
   writeQuickLaunchSelection({ ...remembered, pinned });
+}
+
+/** 시작 표면도 모델·강도와 같은 "고르면 기억" 계층이다. */
+export function writeQuickLaunchStartView(view: QuickLaunchStartView): void {
+  const remembered = readQuickLaunchSelection();
+  writeQuickLaunchSelection({ ...remembered, view });
 }
 
 export function writeQuickLaunchMentionFocused(mentionFocused: boolean): void {
