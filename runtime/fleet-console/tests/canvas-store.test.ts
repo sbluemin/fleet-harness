@@ -675,6 +675,15 @@ describe("canvas store", () => {
 describe("station keeping", () => {
   const rect = (x: number, y: number, width = 100, height = 100): OperationGeometry => ({ x, y, width, height, zIndex: 0 });
 
+  function windowFrame(body: OperationGeometry): { x: number; y: number; width: number; height: number } {
+    return {
+      x: body.x,
+      y: body.y - OPERATION_WINDOW_CAPTION_HEIGHT,
+      width: body.width,
+      height: body.height + OPERATION_WINDOW_CAPTION_HEIGHT,
+    };
+  }
+
   function expectAllVisibleClear(): void {
     const snapshot = getSnapshot();
     const visible = Object.entries(snapshot.operations)
@@ -682,11 +691,11 @@ describe("station keeping", () => {
       .map(([, geometry]) => geometry);
     for (let i = 0; i < visible.length; i += 1) {
       for (let j = i + 1; j < visible.length; j += 1) {
-        const a = visible[i]!;
-        const b = visible[j]!;
+        const a = windowFrame(visible[i]!);
+        const b = windowFrame(visible[j]!);
         const clear = a.x + a.width + STATION_KEEPING_GAP <= b.x || b.x + b.width + STATION_KEEPING_GAP <= a.x
           || a.y + a.height + STATION_KEEPING_GAP <= b.y || b.y + b.height + STATION_KEEPING_GAP <= a.y;
-        expect(clear, `panels ${i} and ${j} overlap: ${JSON.stringify([a, b])}`).toBe(true);
+        expect(clear, `panels ${i} and ${j} overlap: ${JSON.stringify([visible[i], visible[j]])}`).toBe(true);
       }
     }
   }
@@ -700,6 +709,21 @@ describe("station keeping", () => {
     const spot = resolveClearPosition(rect(0, 0), [rect(0, 0)]);
     const distance = Math.sqrt((spot.x - 0) ** 2 + (spot.y - 0) ** 2);
     expect(distance).toBeCloseTo(100 + STATION_KEEPING_GAP, 10);
+  });
+
+  it("spreads a vertical stack whose bodies are clear but whose caption sits on the panel above", () => {
+    // 본문은 정확히 gap만큼 떨어졌고, 아래 패널 캡션(top:-32px)만 위 본문을 침범한다.
+    setOperationGeometry("op-a", rect(0, 0, 640, 400));
+    setOperationGeometry("op-b", rect(0, 400 + STATION_KEEPING_GAP, 640, 400));
+
+    setStationKeeping(true);
+
+    expectAllVisibleClear();
+    const upper = getSnapshot().operations["op-a"]!;
+    const lower = getSnapshot().operations["op-b"]!;
+    expect(lower.y).toBeGreaterThanOrEqual(
+      upper.y + upper.height + STATION_KEEPING_GAP + OPERATION_WINDOW_CAPTION_HEIGHT,
+    );
   });
 
   it("enabling spreads overlapping panels and leaves them clear", () => {
@@ -753,6 +777,22 @@ describe("station keeping", () => {
     expect({ x: settled.x, y: settled.y }).toEqual({ x: anchor.x, y: anchor.y });
   });
 
+  it("settleOperationGeometry clears a caption that sits on the panel above", () => {
+    setOperationGeometry("op-a", rect(0, 0, 640, 400));
+    setOperationGeometry("op-b", rect(800, 0, 640, 400));
+    setStationKeeping(true);
+    const anchor = getSnapshot().operations["op-a"]!;
+
+    setOperationGeometry("op-b", { ...getSnapshot().operations["op-b"]!, x: 0, y: 400 + STATION_KEEPING_GAP });
+    settleOperationGeometry("op-b");
+
+    expectAllVisibleClear();
+    expect(getSnapshot().operations["op-a"]).toMatchObject({ x: anchor.x, y: anchor.y });
+    expect(getSnapshot().operations["op-b"]!.y).toBeGreaterThanOrEqual(
+      anchor.y + anchor.height + STATION_KEEPING_GAP + OPERATION_WINDOW_CAPTION_HEIGHT,
+    );
+  });
+
   it("settleOperationGeometry is a no-op while disabled", () => {
     setOperationGeometry("op-a", rect(0, 0));
     setOperationGeometry("op-b", rect(10, 10));
@@ -783,6 +823,21 @@ describe("station keeping", () => {
     expectAllVisibleClear();
   });
 
+  it("restoreOperation settles when only the restored caption overlaps the occupant", () => {
+    setOperationGeometry("op-a", rect(0, 400 + STATION_KEEPING_GAP, 640, 400));
+    setStationKeeping(true);
+    minimizeOperation("op-a");
+    setOperationGeometry("op-b", rect(0, 0, 640, 400));
+
+    restoreOperation("op-a");
+
+    expectAllVisibleClear();
+    const occupant = getSnapshot().operations["op-b"]!;
+    expect(getSnapshot().operations["op-a"]!.y).toBeGreaterThanOrEqual(
+      occupant.y + occupant.height + STATION_KEEPING_GAP + OPERATION_WINDOW_CAPTION_HEIGHT,
+    );
+  });
+
   it("resolveLaunchGeometry settles launch coordinates while enabled and passes them through while disabled", () => {
     setOperationGeometry("op-a", rect(0, 0));
     const launch = rect(10, 10);
@@ -791,9 +846,32 @@ describe("station keeping", () => {
 
     setStationKeeping(true);
     const settled = resolveLaunchGeometry("theater-a", launch);
-    const clear = settled.x >= 100 + STATION_KEEPING_GAP || settled.y >= 100 + STATION_KEEPING_GAP
-      || settled.x + settled.width + STATION_KEEPING_GAP <= 0 || settled.y + settled.height + STATION_KEEPING_GAP <= 0;
+    const launchFrame = windowFrame(settled);
+    const obstacleFrame = windowFrame(rect(0, 0));
+    const clear = launchFrame.x >= obstacleFrame.x + obstacleFrame.width + STATION_KEEPING_GAP
+      || launchFrame.y >= obstacleFrame.y + obstacleFrame.height + STATION_KEEPING_GAP
+      || launchFrame.x + launchFrame.width + STATION_KEEPING_GAP <= obstacleFrame.x
+      || launchFrame.y + launchFrame.height + STATION_KEEPING_GAP <= obstacleFrame.y;
     expect(clear).toBe(true);
+  });
+
+  it("resolveLaunchGeometry treats a caption-only stack as occupied", () => {
+    setOperationGeometry("op-a", rect(0, 0, 640, 400));
+    setStationKeeping(true);
+    const launch = rect(0, 400 + STATION_KEEPING_GAP, 640, 400);
+
+    const settled = resolveLaunchGeometry("theater-a", launch);
+
+    const occupant = getSnapshot().operations["op-a"]!;
+    expect(settled.y).toBeGreaterThanOrEqual(
+      occupant.y + occupant.height + STATION_KEEPING_GAP + OPERATION_WINDOW_CAPTION_HEIGHT,
+    );
+    const settledFrame = windowFrame(settled);
+    const occupantFrame = windowFrame(occupant);
+    expect(
+      settledFrame.y >= occupantFrame.y + occupantFrame.height + STATION_KEEPING_GAP
+        || occupantFrame.y >= settledFrame.y + settledFrame.height + STATION_KEEPING_GAP,
+    ).toBe(true);
   });
 
   it("persists the flag per theater and round-trips through storage", () => {
@@ -830,6 +908,27 @@ describe("station keeping", () => {
 
     expect(getStationKeeping()).toBe(true);
     expectAllVisibleClear();
+  });
+
+  it("loadForTheater restores the invariant when only captions overlap stored bodies", () => {
+    window.localStorage.setItem("fleet-console.canvas.theater-caption-drift", JSON.stringify({
+      viewport: { x: 0, y: 0, zoom: 1 },
+      operations: {
+        "op-a": rect(0, 0, 640, 400),
+        "op-b": rect(0, 400 + STATION_KEEPING_GAP, 640, 400),
+      },
+      stationKeeping: true,
+    }));
+
+    loadForTheater("theater-caption-drift");
+
+    expect(getStationKeeping()).toBe(true);
+    expectAllVisibleClear();
+    const upper = getSnapshot().operations["op-a"]!;
+    const lower = getSnapshot().operations["op-b"]!;
+    expect(lower.y).toBeGreaterThanOrEqual(
+      upper.y + upper.height + STATION_KEEPING_GAP + OPERATION_WINDOW_CAPTION_HEIGHT,
+    );
   });
 });
 
