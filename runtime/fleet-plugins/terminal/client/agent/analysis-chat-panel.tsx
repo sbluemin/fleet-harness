@@ -9,10 +9,9 @@ import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { decorateEvidenceHtml } from "./analysis-evidence.js";
 import { useAnalysisStore } from "./analysis-store.js";
-import { ANALYST_ARTIFACTS_COMPANION_ID, closeAnalystCompanionPanels } from "./analysis-visibility.js";
+import { closeAnalystCompanionPanels } from "./analysis-visibility.js";
+import { AnalystArtifactsPanel } from "./analysis-artifacts-panel.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
-
-export { ANALYST_ARTIFACTS_COMPANION_ID };
 
 const SUGGESTIONS = [
   { icon: "◈", tone: "aurora", textKey: "terminal.analyst.suggestion.walkthrough" },
@@ -58,11 +57,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const model = cli?.models.find((item) => item.id === state.model);
   const hasInteracted = state.entries.length > 0;
   const artifactCount = state.artifacts.length;
-  const hiddenCompanionPanelIds = context.hiddenCompanionPanelIds;
-  const setCompanionPanelVisible = context.onSetCompanionPanelVisible;
-  const supportsCompanionVisibility = hiddenCompanionPanelIds !== undefined && setCompanionPanelVisible !== undefined;
-  const artifactsHidden = hiddenCompanionPanelIds?.includes(ANALYST_ARTIFACTS_COMPANION_ID) ?? false;
-  const artifactsVisible = artifactCount > 0 && !artifactsHidden;
+  // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 이 패널의 지역 상태가 화면을 가른다.
+  const [mode, setMode] = React.useState<"chat" | "artifacts">("chat");
   const artifactAuthoring = state.artifactAuthoring !== null && artifactCount === 0;
   const previousArtifactCountRef = React.useRef(0);
   const [countPulseRevision, setCountPulseRevision] = React.useState(0);
@@ -90,43 +86,42 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
-  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished]);
+  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     resizeAnalysisTextarea(textarea);
-  }, [state.draft]);
+  }, [state.draft, mode]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => resizeAnalysisTextarea(textarea));
     observer.observe(textarea);
     return () => observer.disconnect();
-  }, []);
+  }, [mode]);
   React.useEffect(() => {
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
-  }, [language]);
+  }, [language, mode]);
   React.useEffect(() => {
     const previousCount = previousArtifactCountRef.current;
     previousArtifactCountRef.current = artifactCount;
-    if (!supportsCompanionVisibility || !setCompanionPanelVisible) return;
     if (artifactCount === 0) {
-      if (!state.artifactsAutoOpenArmed) dispatch({ type: "artifacts-chip-rearm" });
-      if (!artifactsHidden) {
-        const returnFocusToChip = document.activeElement instanceof Element
-          && document.activeElement.closest(".session-analyst__artifacts") !== null;
-        setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, false);
-        if (returnFocusToChip) window.requestAnimationFrame(() => artifactsChipRef.current?.focus());
+      // 전량 삭제되면 볼 것이 없다 — 대화로 복귀하고, 포커스가 아티팩트 안이었다면 모드 칩으로 되돌린다.
+      if (mode === "artifacts" && state.artifactAuthoring === null) {
+        // 비우기는 아티팩트 화면 안에서 일어난다 — 그 서브트리가 사라지며 포커스가 body로
+        // 떨어지고, 아티팩트 세그먼트도 비활성이 된다. 활성 세그먼트(Chat)로 되돌린다.
+        setMode("chat");
+        window.requestAnimationFrame(() => {
+          artifactsChipRef.current?.closest(".session-analyst__modechip")
+            ?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+        });
       }
       return;
     }
-    if (previousCount === 0 && artifactsHidden && state.artifactsAutoOpenArmed) {
-      setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, true);
-      return;
-    }
-    if (artifactCount > previousCount && artifactsHidden) setCountPulseRevision((revision) => revision + 1);
-  }, [artifactCount, artifactsHidden, dispatch, setCompanionPanelVisible, state.artifactsAutoOpenArmed, supportsCompanionVisibility]);
+    // 발행이 대화를 끌어내리지 않는다 — 인라인 발행 카드가 진입로, 배지 펄스가 신호를 진다.
+    if (artifactCount > previousCount && mode === "chat") setCountPulseRevision((revision) => revision + 1);
+  }, [artifactCount, mode, state.artifactAuthoring]);
   const submit = async (text: string, clearDraft: boolean) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -176,30 +171,25 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             onClick={() => { void reset().catch(() => {}); }}
             disabled={!canReset}
           >{t("terminal.analyst.reset")}</button>
-          {supportsCompanionVisibility ? (
+          <span className="session-analyst__modechip" role="group" aria-label={t("terminal.analyst.viewMode")}>
+            <button type="button" aria-pressed={mode === "chat"} onClick={() => setMode("chat")}>{t("terminal.analyst.mode.chat")}</button>
             <button
               ref={artifactsChipRef}
               type="button"
-              className={`session-analyst__chip session-analyst__chip--artifacts${artifactCount === 0 ? " is-waiting" : ""}${artifactAuthoring ? " is-authoring" : ""}`}
-              aria-label={t(artifactsVisible ? "terminal.analyst.hideArtifacts" : "terminal.analyst.openArtifacts")}
-              aria-pressed={artifactsVisible}
-              aria-disabled={artifactCount === 0}
-              tabIndex={artifactCount === 0 ? -1 : undefined}
+              className={artifactAuthoring ? "is-authoring" : undefined}
+              aria-pressed={mode === "artifacts"}
+              disabled={artifactCount === 0 && !artifactAuthoring}
               title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
-              onClick={() => {
-                if (!setCompanionPanelVisible || artifactCount === 0) return;
-                if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
-                setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, !artifactsVisible);
-              }}
+              onClick={() => setMode("artifacts")}
             >
-              <span className="session-analyst__chip-chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
               {t("terminal.analyst.artifactsHandle")}
               {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst__chip-count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
               {artifactAuthoring ? <span className="session-analyst__chip-count">…</span> : null}
             </button>
-          ) : null}
+          </span>
         </span>
       </div>
+      {mode === "artifacts" ? <AnalystArtifactsPanel context={context} /> : (
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
           {hasInteracted ? (
@@ -249,9 +239,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             <ArtifactAuthorCard
               state={state}
               language={language}
-              onOpen={supportsCompanionVisibility && setCompanionPanelVisible
-                ? () => setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, true)
-                : undefined}
+              onOpen={() => setMode("artifacts")}
             />
           ) : null}
         </section>
@@ -407,6 +395,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
           {state.busy ? <div className="session-analyst__composer-hint">{t("terminal.analyst.queueHint")}</div> : null}
         </form>
       </div>
+      )}
     </section>
   );
 }

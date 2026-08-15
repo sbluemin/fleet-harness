@@ -24,134 +24,91 @@ vi.mock("./analysis-store.js", () => ({
   }),
 }));
 
-import { ANALYST_ARTIFACTS_COMPANION_ID, AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystChatPanel } from "./analysis-chat-panel.js";
 
-describe("Session Analyst Artifacts chip", () => {
+describe("Session Analyst artifacts mode", () => {
   beforeEach(() => {
     storeState = initialAnalysisState;
     dispatch.mockClear();
   });
 
-  it("re-arms the analysis store when artifacts are cleared or the session resets", () => {
-    const disarmed = { ...withArtifacts(1), artifactsAutoOpenArmed: false };
-    expect(analysisReducer(disarmed, { type: "clear-artifacts" })).toMatchObject({
+  it("clears artifacts together with the completion card", () => {
+    expect(analysisReducer(withArtifacts(2), { type: "clear-artifacts" })).toMatchObject({
       artifacts: [],
-      artifactsAutoOpenArmed: true,
+      artifactPublished: null,
     });
-    expect(analysisReducer(disarmed, { type: "reset" }).artifactsAutoOpenArmed).toBe(true);
   });
 
-  it("stays absent on older hosts and renders the waiting contract on supporting hosts", () => {
-    const legacy = mountPanel({ operationId: "op-a" } as OperationRenderContext);
-    expect(legacy.container.querySelector('[aria-label="Open Artifacts"]')).toBeNull();
-    legacy.unmount();
-
-    const setVisible = vi.fn();
-    const supported = mountPanel(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    const chip = supported.container.querySelector<HTMLButtonElement>('[aria-label="Open Artifacts"]')!;
-    expect(chip.disabled).toBe(false);
-    expect(chip.classList.contains("is-waiting")).toBe(true);
-    expect(chip.title).toBe("Artifacts the analyst publishes appear here");
-    expect(chip.getAttribute("aria-pressed")).toBe("false");
-    expect(chip.getAttribute("aria-disabled")).toBe("true");
-    expect(chip.tabIndex).toBe(-1);
-    expect(chip.querySelector(".session-analyst__chip-chev")?.textContent).toBe("»");
-    expect(chip.querySelector(".session-analyst__chip-count")).toBeNull();
-    expect(setVisible).not.toHaveBeenCalled();
-    supported.unmount();
-  });
-
-  it("auto-opens on the first artifact, then disarms after a user hide and pulses later counts", () => {
-    const setVisible = vi.fn();
-    const mounted = mountPanel(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
+  it("keeps the artifacts segment disabled until an artifact exists, then shows the count badge", () => {
+    const mounted = mountPanel(baseContext());
+    const segment = artifactsSegment(mounted.container);
+    expect(segment.disabled).toBe(true);
+    expect(segment.getAttribute("aria-pressed")).toBe("false");
+    expect(segment.title).toBe("Artifacts the analyst publishes appear here");
+    expect(mounted.container.querySelector(".session-analyst__chip-count")).toBeNull();
+    expect(mounted.container.querySelector(".session-analyst__artifacts")).toBeNull();
 
     storeState = withArtifacts(1);
-    mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, true);
+    mounted.render(baseContext());
+    const enabled = artifactsSegment(mounted.container);
+    expect(enabled.disabled).toBe(false);
+    expect(enabled.querySelector(".session-analyst__chip-count")?.textContent).toBe("1");
+    mounted.unmount();
+  });
 
-    mounted.render(contextWithVisibility([], setVisible));
-    const visibleChip = mounted.container.querySelector<HTMLButtonElement>('[aria-label="Hide Artifacts"]')!;
-    expect(visibleChip.getAttribute("aria-pressed")).toBe("true");
-    expect(visibleChip.querySelector(".session-analyst__chip-chev")?.textContent).toBe("«");
-    act(() => visibleChip.click());
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, false);
-    expect(storeState.artifactsAutoOpenArmed).toBe(false);
+  it("switches between the chat and artifacts modes inside the single drawer", () => {
+    storeState = withArtifacts(1);
+    const mounted = mountPanel(baseContext());
+    expect(mounted.container.querySelector(".session-analyst__workspace")).not.toBeNull();
 
-    setVisible.mockClear();
-    mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
+    act(() => artifactsSegment(mounted.container).click());
+    expect(mounted.container.querySelector(".session-analyst__artifacts")).not.toBeNull();
+    expect(mounted.container.querySelector(".session-analyst__workspace")).toBeNull();
+    expect(artifactsSegment(mounted.container).getAttribute("aria-pressed")).toBe("true");
+
+    const chatSegment = mounted.container.querySelector<HTMLButtonElement>('.session-analyst__modechip button')!;
+    act(() => chatSegment.click());
+    expect(mounted.container.querySelector(".session-analyst__workspace")).not.toBeNull();
+    expect(mounted.container.querySelector(".session-analyst__artifacts")).toBeNull();
+    mounted.unmount();
+  });
+
+  it("pulses the count badge for later artifacts while staying in the chat mode", () => {
+    storeState = withArtifacts(1);
+    const mounted = mountPanel(baseContext());
     storeState = withArtifacts(2);
-    mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    expect(setVisible).not.toHaveBeenCalled();
+    mounted.render(baseContext());
     const count = mounted.container.querySelector(".session-analyst__chip-count")!;
     expect(count.textContent).toBe("2");
     expect(count.classList.contains("is-pulsing")).toBe(true);
+    expect(mounted.container.querySelector(".session-analyst__artifacts")).toBeNull();
     mounted.unmount();
   });
 
-  it("preserves a user disarm across a chat-panel remount", () => {
-    const setVisible = vi.fn();
-    storeState = withArtifacts(1);
-    const mounted = mountPanel(contextWithVisibility([], setVisible));
-    const visibleChip = mounted.container.querySelector<HTMLButtonElement>('[aria-label="Hide Artifacts"]')!;
-    act(() => visibleChip.click());
-    expect(storeState.artifactsAutoOpenArmed).toBe(false);
-    mounted.unmount();
-
-    setVisible.mockClear();
-    const returned = mountPanel(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    expect(setVisible).not.toHaveBeenCalled();
-    expect(returned.container.querySelector(".session-analyst__chip-count")?.textContent).toBe("1");
-    returned.unmount();
-  });
-
-  it("closes and re-arms at zero, and opens immediately when remounted with stored artifacts", () => {
-    const setVisible = vi.fn();
-    storeState = { ...withArtifacts(1), artifactsAutoOpenArmed: false };
-    const mounted = mountPanel(contextWithVisibility([], setVisible));
-
-    storeState = { ...initialAnalysisState, artifactsAutoOpenArmed: false };
-    mounted.render(contextWithVisibility([], setVisible));
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, false);
-    expect(storeState.artifactsAutoOpenArmed).toBe(true);
-
-    setVisible.mockClear();
-    mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    storeState = withArtifacts(1);
-    mounted.render(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, true);
-    mounted.unmount();
-
-    setVisible.mockClear();
-    const reopened = mountPanel(contextWithVisibility([ANALYST_ARTIFACTS_COMPANION_ID], setVisible));
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, true);
-    reopened.unmount();
-  });
-
-  it("returns focus from a cleared Artifacts pane to the waiting chip", () => {
+  it("returns to the chat mode and refocuses the segment when artifacts are cleared", () => {
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       callback(0);
       return 1;
     });
-    const setVisible = vi.fn();
     storeState = withArtifacts(1);
-    const mounted = mountPanel(contextWithVisibility([], setVisible));
-    const artifactsPane = document.createElement("section");
-    artifactsPane.className = "session-analyst__artifacts";
-    const focusedControl = document.createElement("button");
-    artifactsPane.append(focusedControl);
-    document.body.append(artifactsPane);
-    focusedControl.focus();
+    const mounted = mountPanel(baseContext());
+    act(() => artifactsSegment(mounted.container).click());
+    const inside = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__artifacts button")!;
+    act(() => inside.focus());
 
     storeState = initialAnalysisState;
-    mounted.render(contextWithVisibility([], setVisible));
-
-    expect(setVisible).toHaveBeenLastCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, false);
-    expect(document.activeElement).toBe(mounted.container.querySelector('[aria-label="Open Artifacts"]'));
-    artifactsPane.remove();
+    mounted.render(baseContext());
+    expect(mounted.container.querySelector(".session-analyst__workspace")).not.toBeNull();
+    expect(document.activeElement).toBe(mounted.container.querySelector(".session-analyst__modechip button"));
     mounted.unmount();
     vi.unstubAllGlobals();
   });
 });
+
+function artifactsSegment(container: HTMLElement): HTMLButtonElement {
+  const buttons = container.querySelectorAll<HTMLButtonElement>(".session-analyst__modechip button");
+  return buttons[buttons.length - 1]!;
+}
 
 function withArtifacts(count: number): AnalysisState {
   return {
@@ -165,8 +122,8 @@ function withArtifacts(count: number): AnalysisState {
   };
 }
 
-function contextWithVisibility(hiddenCompanionPanelIds: readonly string[], onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void): OperationRenderContext {
-  return { operationId: "op-a", hiddenCompanionPanelIds, onSetCompanionPanelVisible } as OperationRenderContext;
+function baseContext(): OperationRenderContext {
+  return { operationId: "op-a", theme: "instrument" } as unknown as OperationRenderContext;
 }
 
 function mountPanel(initialContext: OperationRenderContext): {

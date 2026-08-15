@@ -39,7 +39,6 @@ vi.mock("./analysis-store.js", () => ({
 
 import { AnalystChatPanel } from "./analysis-chat-panel.js";
 import {
-  ANALYST_ARTIFACTS_COMPANION_ID,
   ANALYST_CHAT_COMPANION_ID,
 } from "./analysis-visibility.js";
 
@@ -188,12 +187,7 @@ describe("Session Analyst Evidence Pulse", () => {
   it("shows live artifact authoring, publishes the completion card, and opens Artifacts", () => {
     vi.useFakeTimers();
     vi.setSystemTime(10_000);
-    const setCompanionPanelVisible = vi.fn();
-    const context = {
-      operationId: "chat-test",
-      hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
-      onSetCompanionPanelVisible: setCompanionPanelVisible,
-    } as unknown as OperationRenderContext;
+    const context = { operationId: "chat-test", theme: "instrument" } as unknown as OperationRenderContext;
     storeState = analysisReducer(initialAnalysisState, { type: "sending", started: true, text: "Publish this", now: Date.now() });
     const { container, root } = renderPanel(context);
 
@@ -204,10 +198,11 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(authoring.textContent).toContain("The analyst is authoring artifact content. It opens in Artifacts when it lands.");
     expect(authoring.previousElementSibling?.classList.contains("session-analyst__transcript")).toBe(true);
     expect(container.querySelector(".session-analyst__transcript .session-analyst__pulse")).not.toBeNull();
-    const handle = container.querySelector<HTMLButtonElement>(".session-analyst__chip--artifacts")!;
-    expect(handle.classList.contains("is-authoring")).toBe(true);
-    expect(handle.querySelector(".session-analyst__chip-count")?.textContent).toBe("…");
-    expect(handle.title).toBe("The analyst is authoring an artifact…");
+    const segments = container.querySelectorAll<HTMLButtonElement>(".session-analyst__modechip button");
+    const artifactsSegment = segments[segments.length - 1]!;
+    expect(artifactsSegment.classList.contains("is-authoring")).toBe(true);
+    expect(artifactsSegment.querySelector(".session-analyst__chip-count")?.textContent).toBe("…");
+    expect(artifactsSegment.title).toBe("The analyst is authoring an artifact…");
 
     act(() => vi.advanceTimersByTime(2_100));
     expect(authoring.querySelector(".session-analyst__author-time")?.textContent).toBe("2s");
@@ -219,9 +214,9 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(done.querySelector(".session-analyst__author-sub")).toBeNull();
     expect(done.querySelector(".session-analyst__author-track")).toBeNull();
 
-    setCompanionPanelVisible.mockClear();
     act(() => (done.querySelector(".session-analyst__author-open") as HTMLButtonElement).click());
-    expect(setCompanionPanelVisible).toHaveBeenCalledWith(ANALYST_ARTIFACTS_COMPANION_ID, true);
+    expect(container.querySelector(".session-analyst__artifacts")).not.toBeNull();
+    expect(container.querySelector(".session-analyst__workspace")).toBeNull();
 
     act(() => root.unmount());
     container.remove();
@@ -535,7 +530,7 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel({
       operationId: "chat-test",
       companionsOpen: true,
-      hiddenCompanionPanelIds: [ANALYST_ARTIFACTS_COMPANION_ID],
+      hiddenCompanionPanelIds: [],
       onRequestCompanions,
       onSetCompanionPanelVisible,
     } as unknown as OperationRenderContext);
@@ -551,7 +546,7 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
-  it("closes both Analyst companions and the empty companion layer on Escape", () => {
+  it("closes the Analyst companion and the companion layer on Escape", () => {
     const onRequestCompanions = vi.fn();
     const onSetCompanionPanelVisible = vi.fn();
     storeState = {
@@ -570,7 +565,6 @@ describe("Session Analyst Evidence Pulse", () => {
     act(() => textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
     expect(onSetCompanionPanelVisible.mock.calls).toEqual([
       [ANALYST_CHAT_COMPANION_ID, false],
-      [ANALYST_ARTIFACTS_COMPANION_ID, false],
     ]);
     expect(onRequestCompanions).toHaveBeenCalledOnce();
     expect(onRequestCompanions).toHaveBeenCalledWith(false);
