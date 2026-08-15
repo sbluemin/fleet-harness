@@ -624,14 +624,6 @@ a {
   }
 }
 
-/* 진행 중 Operation 패널/최소화 Dock 외곽의 "진행광(running light)" — conic 하이라이트 호(arc)가 테두리
-   링을 따라 한 방향으로 순환한다. 각도(--uw-angle)는 @property로 등록해야 커스텀 속성이 부드럽게
-   보간된다(미등록 시 이산 점프). 색(--uw-tint)은 인디케이터를 따른다. 작업 중 신호가 있는 동안만,
-   prefers-reduced-motion에선 정적 림으로 단락 — AGENTS.md 모션 규약의 sanctioned 예외(작업 중 신호). */
-
-
-
-
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

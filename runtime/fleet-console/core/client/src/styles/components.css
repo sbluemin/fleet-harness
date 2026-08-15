@@ -4569,50 +4569,31 @@
   overflow: auto;
 }
 
-/* 포커스는 단일 location accent로만 표시한다. 캡션과 본문이 같은 보더 선을 잇는다. */
-.canvas-operation.is-active {
-  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));
-  box-shadow: var(--shadow-soft);
-}
-
-/* Running state remains a static semantic indicator. */
-.canvas-operation.is-running {
-  box-shadow: var(--shadow-soft);
-}
-
-/* 인디케이터 색 추종 — turn: warn/amber(에이전트 턴 진행 또는 캐리어 스트리밍) */
-.canvas-operation.is-running--turn {
-  --uw-tint: var(--warn);
-  --uw-glow: var(--warn-glow);
-}
-
-/* 인디케이터 색 추종 — background: 턴은 끝났지만 백그라운드 작업 진행 중 */
-.canvas-operation.is-running--background {
-  --uw-tint: var(--warn);
-  --uw-glow: var(--warn-glow);
-}
-
-/* 인디케이터 색 추종 — awaiting: aurora(청록, 운영자 입력 대기) */
-.canvas-operation.is-running--awaiting {
-  --uw-tint: var(--aurora);
-  --uw-glow: var(--aurora-glow);
-  border-color: var(--aurora);
-}
-
-/* Selection retains the location accent while a status is active. */
-.canvas-operation.is-running.is-active {
-  border-color: var(--brass);
-}
-
-/* 미확인 완료 — 사이드바 칩과 같은 테두리 문법. 포커스는 항상 brass가 이긴다. */
+/* 패널 아웃라인은 어떤 상태에서도 중립 rim을 지킨다 — 위치도 상태도 캡션이 말한다.
+   한 선이 두 채널을 나르면 우선순위 규칙이 필요해지고 그 규칙이 상태를 지웠다: 포커스한 패널은
+   자기가 입력을 기다리는 중임을 알릴 수 없었고, 비포커스 패널의 진행은 0픽셀이었다.
+   위치(brass)는 캡션 윗변, 상태(신호 토큰)는 캡션 아랫변으로 갈라 서로를 덮지 않는다. */
+.canvas-operation.is-active,
+.canvas-operation.is-running,
 .canvas-operation.is-unseen {
-  border-color: var(--positive);
-  box-shadow: var(--shadow-soft), 0 0 0 1px color-mix(in oklch, var(--positive) 28%, transparent), 0 0 22px -4px var(--positive-glow);
+  border-color: var(--surface-rim);
+  box-shadow: var(--shadow-soft);
 }
 
-.canvas-operation.is-unseen.is-active {
-  border-color: var(--brass);
-  box-shadow: var(--shadow-soft);
+/* 상태 레일 색 — OperationActivity 매핑 축(.tenant-beacon 선언)과 같은 토큰을 쓴다.
+   turn/background: warn(에이전트 턴·백그라운드 작업) · awaiting: aurora(운영자 입력 대기)
+   · unseen: positive(미확인 완료). idle·dormant는 레일을 켜지 않는다. */
+.canvas-operation.is-running--turn,
+.canvas-operation.is-running--background {
+  --caption-rail: var(--warn);
+}
+
+.canvas-operation.is-running--awaiting {
+  --caption-rail: var(--aurora);
+}
+
+.canvas-operation.is-unseen {
+  --caption-rail: var(--positive);
 }
 
 /* Map에서 사용자 accent(정체성)는 좌측 스파인·명판 마크·명판 워시만 소유한다.
@@ -5866,6 +5847,128 @@
   border-top-style: none;
 }
 
+/* 포커스 = 캡션 채움 워시 + 보더 + 이름 티어. 본문 아웃라인이 상태를 놓았으므로 캡션 brass는
+   더 이상 아웃라인의 중복이 아니라 위치 채널의 유일한 운반체다.
+   믹스는 oklab이다 — oklch는 hue를 극좌표 호로 보간해 brass(78)와 ink-rim(245)의 62% 믹스가
+   hue 141(초록)에 착지했고, 위치 채널이 신호 채널 positive(160) 옆에 앉았다. */
+.canvas-operation.is-active > .canvas-operation-titlebar {
+  border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
+  background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));
+  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+  background-clip: padding-box;
+}
+
+/* 정체성(--user-accent)은 캡션 채움을 계속 소유한다 — 포커스 워시는 그 위에 얹혀 두 채널이
+   같은 표면을 다투지 않는다. 이 결합 규칙이 없으면 accent가 있는 패널만 포커스를 잃는다. */
+.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {
+  background: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame)));
+  background-clip: padding-box;
+}
+
+.canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-identity-name {
+  color: var(--text-primary);
+}
+
+/* 캡션 윗변 = 위치 채널, 아랫변 = 상태 채널. 서로 다른 기하라 어느 쪽도 상대를 덮지 않는다. */
+.canvas-operation-titlebar::before,
+.canvas-operation-titlebar::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  right: -1px;
+  height: 2px;
+  pointer-events: none;
+}
+
+.canvas-operation-titlebar::before {
+  top: -1px;
+  /* 최대화 캡션은 라운드가 달라진다 — inherit이 두 모드를 한 선언으로 잇는다. */
+  border-radius: inherit;
+  background: transparent;
+  transition: background var(--duration-base) var(--ease-spring);
+}
+
+.canvas-operation.is-active > .canvas-operation-titlebar::before {
+  background: var(--brass);
+}
+
+.canvas-operation-titlebar::after {
+  bottom: 0;
+  background: var(--caption-rail, transparent);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-spring);
+}
+
+.canvas-operation.is-running > .canvas-operation-titlebar::after,
+.canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+  opacity: 1;
+}
+
+/* turn은 진행을 색이 아니라 운동으로 말한다 — 한 방향 트래블. 작업 중 신호가 있는 동안만 도는
+   AGENTS.md 모션 규약의 sanctioned 예외이며, reduced-motion에서 정적 채움으로 단락한다. */
+.canvas-operation.is-running--turn > .canvas-operation-titlebar::after {
+  background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
+  background-size: 55% 100%;
+  background-repeat: no-repeat;
+  animation: caption-rail-travel 1.9s var(--ease-glide) infinite;
+}
+
+/* background는 턴이 끝나고 작업만 남은 상태 — 같은 warn을 낮은 광량의 정적 레일로 낮춘다. */
+.canvas-operation.is-running--background > .canvas-operation-titlebar::after {
+  opacity: 0.45;
+}
+
+/* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. */
+.canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after {
+  animation: caption-rail-pulse 2s var(--ease-glide) infinite;
+}
+
+/* 미확인 완료는 도착 순간 1회 플래시로 시선을 부르고 그 뒤 상시 레일로 남는다 —
+   상시 aura(22px glow)를 순간 운동으로 교환한 자리다. */
+.canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+  animation: caption-rail-arrive var(--duration-slow) var(--ease-spring) 1;
+}
+
+/* 접힌 캡션(Cruise 상단 클리핑)은 아래에 자기 rim 보더를 갖는다 — 레일이 그 선을 삼켜야
+   한 줄로 읽힌다. */
+.canvas-operation.is-top-edge > .canvas-operation-titlebar::after {
+  bottom: -1px;
+}
+
+@keyframes caption-rail-travel {
+  from {
+    background-position: -60% 0;
+  }
+  to {
+    background-position: 160% 0;
+  }
+}
+
+@keyframes caption-rail-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.34;
+  }
+}
+
+@keyframes caption-rail-arrive {
+  0% {
+    opacity: 0;
+    box-shadow: none;
+  }
+  40% {
+    opacity: 1;
+    box-shadow: 0 0 12px 1px var(--positive-glow);
+  }
+  100% {
+    opacity: 1;
+    box-shadow: none;
+  }
+}
+
 .canvas-operation-identity-name,
 .canvas-operation-identity-input {
   min-width: 0;
@@ -6276,6 +6379,8 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
+  .canvas-operation-titlebar::before,
+  .canvas-operation-titlebar::after,
   .canvas-operation-window-controls,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;
@@ -6283,6 +6388,16 @@
 
   .canvas-operation-icon-button.is-armed-close {
     animation: none;
+  }
+
+  /* 상태 레일은 색면으로 단락한다 — 트래블 그라디언트는 균일 채움으로 되돌리고, 도착 플래시는
+     즉시 정착한 레일로 대체한다. 상태 자체는 계속 읽혀야 하므로 레일을 끄지는 않는다. */
+  .canvas-operation.is-running--turn > .canvas-operation-titlebar::after,
+  .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after,
+  .canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+    animation: none;
+    background: var(--caption-rail);
+    box-shadow: none;
   }
 }
 
