@@ -5850,11 +5850,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   min-height: 32px;
   height: 32px;
   padding: 0 10px;
-  /* 보더는 패널 아웃라인을 잇는다 — inherit은 단축 전체가 아니라 색만 받는다. */
-  border-width: 1px;
-  border-style: solid;
-  border-color: inherit;
-  border-bottom: none;
+  /* 보더는 본문과 같은 중립 rim이다. inherit는 부모의 계산색을 받는데, 본문 윗변을
+     비운 뒤에도 캡션 선이 빠지거나 currentColor로 갈라지는 경로가 남는다.
+     포커스·상태는 채움과 아랫변 레일이 나르므로 이 선은 구조만 진다. */
+  border: 1px solid var(--surface-rim);
+  border-bottom-width: 0;
+  border-bottom-style: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
   background: var(--surface-panel);
@@ -5872,8 +5873,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* 캡션이 본문 위에 붙는 Operation만 상단 보더를 비운다 — 1px 이음새가 두 장의 창처럼 읽힌다.
    companion은 자체 캡션이라 상단 보더를 유지한다.
-   단축 border-top: none은 색까지 currentColor로 리셋한다. 캡션이 inherit하는
-   상태 아웃라인(brass/aurora/positive)의 윗변을 텍스트색으로 가른다. */
+   단축 border-top: none은 색까지 currentColor로 리셋하므로 width/style만 비운다. */
 .canvas-operation:has(> .canvas-operation-titlebar) {
   border-top-width: 0;
   border-top-style: none;

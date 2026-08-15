@@ -1250,6 +1250,13 @@ describe("Instrument core design contract", () => {
     expect(operationBlock).toContain("background: var(--surface-panel);");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--surface-panel);");
+    // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
+    // 계산색이 갈라져 캡션만 선이 빠진다.
+    expect(titlebarBlock).toContain("border: 1px solid var(--surface-rim);");
+    expect(titlebarBlock).toContain("border-bottom-width: 0;");
+    expect(titlebarBlock).toContain("border-bottom-style: none;");
+    expect(titlebarBlock).not.toContain("border-color: inherit;");
+    expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
     expect(panelBodyBlock).toContain("background: var(--surface-panel);");
     // 레일 Shell 카드도 같은 면이다 — 이 기본 규칙의 소비처는 레일 하나뿐이고, 유리로 되돌리면
@@ -1777,10 +1784,9 @@ describe("Instrument core design contract", () => {
     expect(captionSeamBlock).not.toContain("border-top: none;");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("color: var(--text-secondary);");
-    // inherit은 단축 전체가 아니라 border-color만 받는다. 1px solid inherit은 선언이 버려진다.
-    expect(components).toContain("border-width: 1px;");
-    expect(components).toContain("border-style: solid;");
-    expect(components).toContain("border-color: inherit;");
+    // 캡션 구조 선은 본문과 같은 --surface-rim을 직접 칠한다. inherit와
+    // 1px solid inherit 단축은 선언이 버려지거나 계산색이 갈라진다.
+    expect(components).not.toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
     // 패널 아웃라인은 상태를 놓았다 — 포커스는 캡션 채움 워시, 상태는 캡션 아랫변 레일이 나른다.
     // 포커스는 선을 쓰지 않는다: 상태 레일과 같은 굵기의 brass 선이 캡션 위아래에 겹치면
