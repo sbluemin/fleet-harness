@@ -1,5 +1,6 @@
 import type { OperationActivityVisual } from "../operation-activity.js";
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
@@ -26,7 +27,7 @@ import { CanvasContextMenu } from "./canvas-context-menu.js";
 import { CanvasMinimap } from "./canvas-minimap.js";
 import { resolveAccentColor } from "./operation-accent.js";
 import { CanvasGrid, RubberBand, TriageClearPlate } from "./canvas-overlays.js";
-import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell, type TriagePreviewSource } from "./triage-watch-deck.js";
+import { flashTriageDeckCard, getTriageDeckCardRect, resolveTriageDeckPromotion, takeTriageDeckDepartureRect, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckArrivalDwell } from "./triage-watch-deck.js";
 import { resolveGlanceHudModel, type GlanceHudModel } from "./glance-hud.js";
 import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
@@ -454,53 +455,19 @@ export function OperationsCanvas({
     // 스포트라이트 토글은 dwell ref를 후보 변경 없이 갱신한다(OFF=해제, ON 복귀=새 deadline) —
     // deps에 없으면 ON 복귀 시 새 deadline을 깨울 타이머가 스케줄되지 않아 등단이 멈춘다.
   }, [candidateTriageStage?.operation.id, candidateTriageStage?.picked, triageSpotlightEnabled, triageStageId]);
-  // deck는 무대가 떠 있어도 mount를 유지한다(visibility 은닉) — 비무대 body의 거처를 카드
-  // 슬롯 하나로 고정해 무대 전환마다 전 세션에 PTY 리사이즈가 퍼지는 churn을 막는다.
-  const triageDeckMounted = triageActive && !triageEntering && triageDeckOperations.length > 0;
-  // 프리뷰 config의 핸들러는 최신 상태를 ref로 참조한다 — config 객체 identity가 렌더마다 바뀌면
-  // pool publish가 매 렌더 revision을 올려 재렌더 루프가 되므로, memo 수명 동안 identity를 고정한다.
-  const triagePreviewHandlersRef = useRef({ activate: (_operationId: string) => {}, close: (_operationId: string) => {} });
-  triagePreviewHandlersRef.current = {
-    activate: (operationId) => {
-      pickTriageOperation(operationId);
-    },
-    close: (operationId) => {
-      dismissTriageOperation(operationId);
-      if (state.activeOperationId === operationId) setActiveOperation(null);
-      onClose(operationId);
-    },
-  };
-  const triagePreviewSourceFor = useMemo(() => {
-    if (!triageActive) return undefined;
-    const handlers = triagePreviewHandlersRef;
-    const sources = new Map<string, TriagePreviewSource>();
-    // 선별 중에는 전 Theater가 마운트된다 — 모든 카드가 라이브 프리뷰를 받는다.
-    for (const operation of state.operations) {
-      // render가 없는 kind는 pool이 body를 만들지 못한다 — 빈 프리뷰 박스 대신 tail 폴백으로 내린다.
-      const descriptor = registry.operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
-      if (!descriptor?.render) continue;
-      const config: OperationBodyConfig = {
-        active: false,
-        geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
-        operation,
-        runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
-        theme: state.activeTheme,
-        language,
-        zoom: 1,
-        onActivate: () => handlers.current.activate(operation.id),
-        onClose: () => handlers.current.close(operation.id),
-        onGeometryChange: () => {},
-        onRequestCompanions: () => {},
-        companionsOpen: false,
-        hiddenCompanionPanelIds: EMPTY_HIDDEN_COMPANION_IDS,
-        onSetCompanionPanelVisible: () => {},
-      };
-      // 바닥 크롬 높이는 body 소유자인 kind가 선언한다 — 미선언 body(순정 셸·문서형 패널)는
-      // 바닥까지 출력이 흐르므로 0이고, 프리뷰는 최신 행을 잘라내지 않는다.
-      sources.set(operation.id, { config, bottomChrome: descriptor.previewBottomChrome?.() ?? 0 });
-    }
-    return (operation: OperationNode) => sources.get(operation.id) ?? null;
-  }, [canvas.operations, language, registry.operationKinds, state.activeTheme, state.operations, triageActive]);
+  // 덱의 칸은 그 Operation의 실제 패널이 서는 자리다 — 칸이 마운트되면 그 element를 기억하고,
+  // 프레임 렌더가 거기로 portal한다. 화면 밖(무대·비선별)에서는 자리가 없으므로 프레임은 캔버스
+  // 좌표에 그대로 선다. element identity가 바뀔 때만 state를 올려 렌더 루프를 만들지 않는다.
+  const triageDeckSlotsRef = useRef(new Map<string, HTMLElement>());
+  const [triageDeckSlots, setTriageDeckSlots] = useState<ReadonlyMap<string, HTMLElement>>(() => new Map());
+  const registerTriageDeckSlot = useCallback((operationId: string, element: HTMLElement | null) => {
+    const slots = triageDeckSlotsRef.current;
+    if (element) {
+      if (slots.get(operationId) === element) return;
+      slots.set(operationId, element);
+    } else if (!slots.delete(operationId)) return;
+    setTriageDeckSlots(new Map(slots));
+  }, []);
   const setAsideArmedId = getTriageSetAsideArmedId();
   // 덱 줌 wheel은 React 합성 onWheel 밖에서 부착한다 — React는 root wheel을 passive로
   // 묶어 preventDefault(브라우저 페이지 줌 차단)가 무용해진다. wheel 문법: bare wheel은
@@ -711,11 +678,24 @@ export function OperationsCanvas({
   const foreignCompanionOperation = companionOperation && !theaterOperations.some((operation) => operation.id === companionOperation.id)
     ? companionOperation
     : null;
-  const pluginOperations = foreignStageOperation || foreignCompanionOperation
+  // 선별 중에는 덱이 전 Theater를 올리고, 그 칸마다 실제 패널이 선다 — 활성 Theater 것만
+  // 프레임으로 만들면 다른 Theater의 칸은 영영 빈 자리로 남는다. 외부 무대·companion을 합류시키던
+  // 기존 방식을 덱 전체로 넓힌다.
+  const foreignDeckOperations = triageActive
+    ? triageDeckOperations.filter((operation) => !theaterOperations.some((candidate) => candidate.id === operation.id))
+    : [];
+  const pluginOperations = foreignStageOperation || foreignCompanionOperation || foreignDeckOperations.length > 0
     ? [
         ...theaterOperations,
-        ...(foreignCompanionOperation ? [foreignCompanionOperation] : []),
-        ...(foreignStageOperation && foreignStageOperation.id !== foreignCompanionOperation?.id ? [foreignStageOperation] : []),
+        ...foreignDeckOperations,
+        ...(foreignCompanionOperation && !foreignDeckOperations.some((operation) => operation.id === foreignCompanionOperation.id)
+          ? [foreignCompanionOperation]
+          : []),
+        ...(foreignStageOperation
+          && foreignStageOperation.id !== foreignCompanionOperation?.id
+          && !foreignDeckOperations.some((operation) => operation.id === foreignStageOperation.id)
+          ? [foreignStageOperation]
+          : []),
       ]
     : theaterOperations;
   const hasContent = triageActive ? triageStage !== null : hasVisibleCanvasContent(pluginOperations, minimizedSet);
@@ -863,13 +843,20 @@ export function OperationsCanvas({
           const operationMaximized = panelMaximized === operation.id;
           const operationCompanion = panelCompanion === operation.id;
           const operationTriageStage = triageStageId === operation.id;
+          // 덱 칸이 잡혀 있으면 그 자리가 이 패널의 자리다 — 캔버스 좌표 대신 칸 안으로 들어가
+          // 칸 크기를 그대로 입는다(PTY도 그 크기로 맞춰진다).
+          // companion을 연 패널은 칸에 담기지 않는다 — 그 레이아웃은 캔버스를 나눠 쓰는 모드이고,
+          // 렌더는 프레임과 companion 프레임을 한 벌로 내놓는다. 칸으로 들여보내면 캔버스 좌표를
+          // 지닌 companion들이 타일 안으로 함께 딸려 들어간다. 덱 칸은 그때 이름만 남기고 비운다.
+          const deckSlot = operationTriageStage || operationCompanion ? null : triageDeckSlots.get(operation.id) ?? null;
           const operationGroup = resolveOperationGroup(operation, groupById);
           // 색을 못 푸는 그룹은 라벨 자체를 내지 않는다 — 도트 없는 이름만 남으면 그것이 그룹이라는
           // 사실을 캡션에서 읽을 수 없다.
           const operationGroupColor = operationGroup ? resolveAccentColor(operationGroup.color) : null;
           // focus layer는 peer를 실제 최소화하지 않고, mount를 보존한 채 렌더만 감춘다.
+          // 선별 중 무대 밖 패널은 감추는 대상이 아니다 — 덱 칸에 자기 자리를 갖고 거기 서 있다.
           const focusLayerHidden = triageActive
-            ? !operationTriageStage
+            ? !operationTriageStage && !deckSlot
             : (panelMaximized !== null || panelCompanion !== null) && !operationMaximized && !operationCompanion;
           const formationSlot = formationSlotByOperationId.get(operation.id);
           const glanceHud = resolveGlanceHudModel(triageActive
@@ -904,7 +891,7 @@ export function OperationsCanvas({
             : formationSlot ? { ...baseGeometry, ...formationSlot } : baseGeometry;
           // 보더 위 캡션(top: -32px)이 캔버스 상단 클립에 잘리는 뷰포트-상대 위치.
           // Tactical/War Room/최대화는 슬롯을 32px 내려 캡션을 밖에 둔다. 본문·PTY geometry는 그대로다.
-          const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot
+          const topEdge = !operationTriageStage && !operationMaximized && !operationCompanion && !formationSlot && !deckSlot
             && canvas.viewport.y + frameGeometry.y * effectiveZoom < TITLEBAR_OUTSET_PX * effectiveZoom;
           return renderPluginOperation(operation, {
             active: activePluginOperationId === operation.id,
@@ -923,7 +910,9 @@ export function OperationsCanvas({
             theme: state.activeTheme,
             language,
             viewportZoom: effectiveZoom,
-            minimized: triageActive ? !operationTriageStage : minimizedSet.has(operation.id),
+            // 선별 중 무대 밖 패널은 덱 칸으로 간다 — 자리가 있으면 그 자리에 실물로 서므로
+            // 숨기지 않고, 자리가 아직 없을 때만(입장 연출·지도 전환 직전) 접어 둔다.
+            minimized: triageActive ? !operationTriageStage && !deckSlot : minimizedSet.has(operation.id),
             maximized: operationMaximized,
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
@@ -942,7 +931,7 @@ export function OperationsCanvas({
             formation: formationView || triageActive,
             focusLayerHidden,
             operationBodyPoolAvailable,
-            bodyYieldedToDeck: triageDeckMounted && triageDeckOperationIdSet.has(operation.id) && !operationTriageStage,
+            deckSlot,
             onRenderHiddenFocus: () => {
               const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
               if (focusTarget) {
@@ -1059,32 +1048,15 @@ export function OperationsCanvas({
         mapGeometryFor={(operation) => operation.theaterId === state.activeTheaterId
           ? canvas.operations[operation.id] ?? operation.geometry ?? null
           : getTheaterCanvasSnapshot(operation.theaterId).operations[operation.id] ?? operation.geometry ?? null}
-        previewSourceFor={triagePreviewSourceFor}
+        onPanelSlotRef={registerTriageDeckSlot}
         freshOperationIds={freshDeckOperationIds}
         onMapMarkerMove={(operationId, theaterId, geometry) => {
           // 지도에서 옮긴 자리는 캔버스의 자리다 — 라이브 좌표를 먼저 세우고 durable에도 남긴다.
           setTheaterOperationGeometry(theaterId, operationId, geometry);
           void updatePluginOperationGeometry(operationId, geometry);
         }}
-        onMinimizeOperation={(operationId) => {
-          // deck 카드의 최소화도 무대의 그것과 같은 동작이다 — 판에서 내리고 지목을 거둔다.
-          const operation = state.operations.find((candidate) => candidate.id === operationId);
-          if (!operation) return;
-          if (state.activeOperationId === operationId) setActiveOperation(null);
-          forgetTriageOperation(operationId);
-          setTheaterOperationMinimized(operation.theaterId, operationId, true);
-        }}
-        onCloseOperation={(operationId) => {
-          if (state.activeOperationId === operationId) setActiveOperation(null);
-          dismissTriageOperation(operationId);
-          if (panelMaximized === operationId) clearMaximizedOperationId();
-          if (panelCompanion === operationId) forceDropCompanionOperationId();
-          onClose(operationId);
-        }}
         onOperationContextMenu={onOpenOperationMenu}
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
-        catalog={catalog}
-        renderKindIcon={renderKindIcon}
       />
       {cruiseEntering ? (
         <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
@@ -1279,8 +1251,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly formation: boolean;
   readonly focusLayerHidden: boolean;
   readonly operationBodyPoolAvailable: boolean;
-  /** Watch Deck가 이 Operation의 body를 카드 프리뷰 슬롯으로 끌어간 동안 프레임은 슬롯을 양보한다. */
-  readonly bodyYieldedToDeck: boolean;
+  /** War Room 덱이 이 Operation에게 내준 자리 — 있으면 프레임이 캔버스가 아니라 그 칸 안에 선다. */
+  readonly deckSlot: HTMLElement | null;
   readonly onRenderHiddenFocus: () => void;
   readonly topEdge: boolean;
   readonly accentKey: string | null;
@@ -1310,7 +1282,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   const onSetCompanionPanelVisible = (companionPanelId: string, visible: boolean) => {
     setCompanionPanelVisible(operation.id, companionPanelId, visible);
   };
-  return (
+  const frame = (
     <Fragment key={operation.id}>
       <OperationFrame
         operation={operation}
@@ -1323,12 +1295,13 @@ function renderPluginOperation(operation: OperationNode, options: {
         maximized={options.maximized}
         triageStage={options.triageStage}
         triagePicked={options.triagePicked}
+        deckTile={options.deckSlot !== null}
         glanceHud={options.glanceHud}
         formationSlotIndex={options.formationSlotIndex}
         topEdge={options.topEdge}
         renderHidden={options.focusLayerHidden}
         focusLayerTarget={options.maximized || options.companion}
-        interactionDisabled={options.formation || options.companion || options.focusLayerHidden || options.triageStage}
+        interactionDisabled={options.formation || options.companion || options.focusLayerHidden || options.triageStage || options.deckSlot !== null}
         accentKey={options.accentKey}
         groupName={options.groupName}
         groupColor={options.groupColor}
@@ -1343,9 +1316,6 @@ function renderPluginOperation(operation: OperationNode, options: {
         onRenderHiddenFocus={options.onRenderHiddenFocus}
       >
         {options.operationBodyPoolAvailable ? (
-          // Deck 프리뷰가 body를 점유한 동안 프레임 슬롯을 비운다 — 슬롯은 op당 하나만 살아 있어야
-          // pool 중재 없이도 결정적으로 이동한다. 프레임 자체는 rect/모션을 위해 mount를 유지한다.
-          options.bodyYieldedToDeck ? null : (
           <OperationBodySlot
             operationId={operation.id}
             className="canvas-operation-body-slot"
@@ -1367,7 +1337,6 @@ function renderPluginOperation(operation: OperationNode, options: {
               onSetCompanionPanelVisible,
             } satisfies OperationBodyConfig}
           />
-          )
         ) : (
           <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.operationFailed" />}>
             <PluginOperationRenderer
@@ -1418,6 +1387,9 @@ function renderPluginOperation(operation: OperationNode, options: {
       ))}
     </Fragment>
   );
+  // 덱 칸이 있으면 그 자리로 들여보낸다 — React 트리는 그대로라 상태·이벤트·pool 배선이 모두
+  // 유지되고, 바뀌는 것은 DOM 상의 부모뿐이다. 자리가 사라지면 프레임은 캔버스로 되돌아온다.
+  return options.deckSlot ? createPortal(frame, options.deckSlot, operation.id) : frame;
 }
 
 function PluginOperationRenderer({

@@ -24,6 +24,8 @@ interface OperationFrameProps {
   readonly interactionDisabled?: boolean;
   readonly triageStage?: boolean;
   readonly triagePicked?: boolean;
+  /** War Room 덱의 한 칸에 선 패널 — 자리와 크기를 칸이 정하므로 캔버스 좌표를 쓰지 않는다. */
+  readonly deckTile?: boolean;
   readonly glanceHud: GlanceHudModel;
   readonly formationSlotIndex?: number;
   readonly accentKey?: string | null;
@@ -69,7 +71,7 @@ const DRAG_THRESHOLD_PX = 3;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, formationSlotIndex, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -112,6 +114,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
     triageStage ? "is-triage-stage" : "",
+    deckTile ? "is-deck-tile" : "",
     topEdge ? "is-top-edge" : "",
     dragging ? "is-dragging" : "",
     frameStatusClass(status),
@@ -368,7 +371,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const effectiveGeometry = minimized ? lastVisibleGeometryRef.current : geometry;
 
   // 패널 좌표·크기를 정수 픽셀로 스냅해 패널·내부 xterm 캔버스 원점을 정수 픽셀에 정렬한다(서브픽셀 번짐 제거).
-  const frameStyle = {
+  // 덱 칸에 선 패널은 자리도 크기도 칸이 정한다 — 캔버스 좌표를 인라인으로 실으면 grid 칸 안에서
+  // 그 값이 그대로 살아나 패널이 칸을 넘치거나 어긋난 자리에 선다.
+  const frameStyle = deckTile ? {
+    ...(renderHidden ? { visibility: "hidden", pointerEvents: "none" } : {}),
+    ...(accentColor ? { "--user-accent": accentColor } : {}),
+  } as CSSProperties : {
     left: Math.round(effectiveGeometry.x),
     top: Math.round(effectiveGeometry.y),
     width: Math.round(effectiveGeometry.width),
@@ -471,7 +479,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
             <MinimizeIcon />
           </button>
-          {!triageStage && onMaximize ? (
+          {!triageStage && !deckTile && onMaximize ? (
             <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized} title={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
               {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
             </button>
@@ -497,7 +505,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </div>
         ) : null}
       </div>
-      <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker>
+      {/* 덱 칸에 선 패널의 본문은 읽는 자리다 — 승격 면이 포인터를 가로채는 것만으로는 절반이고,
+          키보드는 그 면을 지나쳐 살아 있는 body(터미널 textarea·에이전트 컴포저)로 바로 들어간다.
+          본문만 inert로 빼면 캡션의 창 컨트롤과 승격 면은 탭 순서에 그대로 남는다. */}
+      <div ref={terminalRef} className="canvas-operation-terminal" onPointerDown={stopOperationPointer} onWheel={stopOperationWheel} data-canvas-blocker inert={deckTile ? true : undefined}>
         {children}
       </div>
       {/* 최대화 상태에서는 리사이즈가 차단되므로 핸들 자체를 렌더하지 않는다 —

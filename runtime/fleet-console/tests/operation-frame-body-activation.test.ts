@@ -103,6 +103,48 @@ describe("OperationFrame body activation", () => {
     expect(document.querySelector(".canvas-operation-glance-hud-name")?.textContent).toContain("01");
     expect(document.querySelector(".canvas-operation-glance-hud-keys")).toBeNull();
   });
+
+  // War Room 덱의 칸에서 본문은 읽는 자리다. 승격 면이 포인터를 가로채는 것만으로는 절반이라,
+  // 키보드는 그 면을 지나쳐 살아 있는 body(터미널 textarea·컴포저)로 들어가 실제 입력을 보낸다.
+  it("takes the deck tile's body out of the tab order while the caption keeps its controls", () => {
+    const frameProps = (deckTile: boolean) => ({
+      operation: {
+        id: "operation-deck-tile",
+        theaterId: "theater-body-activation",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Deck Tile Operation",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      },
+      active: false,
+      unseen: false,
+      glanceHud: { index: "01", hints: [] },
+      interactionDisabled: true,
+      deckTile,
+      geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
+      zoom: 1,
+      onActivate: () => {},
+      onClose: () => {},
+      onMinimize: () => {},
+      onRename: () => {},
+      onGeometryChange: () => {},
+      onGeometryCommit: () => {},
+      children: createElement("textarea", { "data-test-body-input": true }),
+    });
+
+    act(() => root!.render(createElement(OperationFrame, frameProps(true))));
+    const deckBody = document.querySelector<HTMLElement>(".canvas-operation-terminal")!;
+    expect(deckBody.hasAttribute("inert")).toBe(true);
+    // 캡션은 살아 있다 — 최소화·닫기는 키보드로도 닿아야 한다.
+    expect(document.querySelector(".canvas-operation-titlebar")?.hasAttribute("inert")).toBe(false);
+    expect(document.querySelectorAll(".canvas-operation-window-controls button").length).toBeGreaterThan(0);
+
+    // 캔버스에 선 같은 패널은 그대로 조작 대상이다.
+    act(() => root!.render(createElement(OperationFrame, frameProps(false))));
+    expect(document.querySelector<HTMLElement>(".canvas-operation-terminal")!.hasAttribute("inert")).toBe(false);
+  });
 });
 
 function PortaledOperationBody() {
