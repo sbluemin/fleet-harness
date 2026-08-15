@@ -8,6 +8,7 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
+import { clearActiveOperation } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -246,7 +247,7 @@ export function OperationsCanvas({
     },
     consumePointerDown: contextMenu !== null,
     onConsumePointerDown: () => { setContextMenu(null); },
-    onClick: clearTerminalFocus,
+    onClick: clearActiveOperation,
   });
 
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
@@ -1134,14 +1135,6 @@ function viewportBoundsFor(element: HTMLElement | null): { readonly width: numbe
   if (!element) return undefined;
   const rect = element.getBoundingClientRect();
   return { width: rect.width, height: rect.height };
-}
-
-function clearTerminalFocus(): void {
-  if (typeof document !== "undefined") {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement) active.blur();
-  }
-  setActiveOperation(null);
 }
 
 function rectToGeometry(rect: CanvasRect): OperationGeometry {

@@ -104,7 +104,7 @@ export function AccentPopover({ anchor, accentKey, onSelect, onClose }: AccentPo
   };
 
   return createPortal(
-    <div className="accent-popover-overlay" role="presentation" onPointerDown={onClose}>
+    <div className="accent-popover-overlay" data-keep-operation-active role="presentation" onPointerDown={onClose}>
       {style ? (
         <div className="accent-popover-card" role="menu" aria-label={t("canvas.accent.menuAria")} style={style} onPointerDown={(event) => event.stopPropagation()}>
           <AccentToneList accentKey={accentKey} includeNone onSelect={choose} />

@@ -5,6 +5,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 
 import { createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, ApiError, type DeferredDeletionReceipt } from "../api.js";
+import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
@@ -252,6 +253,20 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     window.addEventListener("keydown", handler, true);
     return () => window.removeEventListener("keydown", handler, true);
   }, [companionOperationId, formationView, maximizedOperationId, registry.operationKinds, viewMode.effective]);
+
+  // Map이 아닌 곳(좌·우 사이드바, 레일, 커맨드 밴드 크롬 등)을 누르면 패널 활성화를 푼다.
+  // 칩·브레드크럼·Map 표면은 가드가 유지하고, 칩 클릭의 onFocus가 그 Operation을 다시 켠다.
+  useEffect(() => {
+    if (viewMode.effective === "mobile") return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 0) return;
+      if (stateRef.current.activeOperationId === null) return;
+      if (!shouldReleaseActiveOperation(event.target)) return;
+      clearActiveOperation();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () => document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [viewMode.effective]);
 
   useEffect(() => {
     const resumeBootProtection = resumeBootProtectionRef.current?.theaterId === state.activeTheaterId

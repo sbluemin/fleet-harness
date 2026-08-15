@@ -70,7 +70,7 @@ export function GroupContextMenu(props: GroupContextMenuProps) {
   }, [onClose]);
 
   return createPortal(
-    <div className="group-context-menu-overlay" role="presentation" onPointerDown={onClose}>
+    <div className="group-context-menu-overlay" data-keep-operation-active role="presentation" onPointerDown={onClose}>
       {style ? (
         <div
           className="group-context-menu-card"
