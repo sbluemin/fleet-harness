@@ -242,6 +242,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   </button>
                 ))}
               </div>
+              {state.phase === "error" ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
             </div>
           )}
           {state.artifactAuthoring || state.artifactPublished ? (
@@ -438,6 +439,9 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
         {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {!liveStopped && !working && receipt?.outcome === "stopped" ? (
           <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>
+        ) : null}
+        {!liveError && !working && receipt?.outcome === "error" ? (
+          <div className="session-analyst__stopped is-error" role="status">{`${receipt.error ? translateServerMessage(language, receipt.error) : t("terminal.analyst.state.needsAttention")} · ${formatElapsed(receipt.durationMs)}`}</div>
         ) : null}
         {!working && receipt?.outcome === "complete" ? <TurnReceipt language={language} durationMs={receipt.durationMs} tools={receipt.tools} /> : null}
         {entry !== null && entry.text !== "" ? (

@@ -9,6 +9,8 @@ export interface AnalysisTurnReceipt {
   readonly outcome: "complete" | "stopped" | "error";
   readonly durationMs: number;
   readonly tools: readonly { readonly title: string; readonly status: string }[];
+  /* 실패 턴의 사유 — 전역 error는 다음 send가 지우므로 역사 턴은 이 값만 말할 수 있다. */
+  readonly error?: string;
 }
 export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; readonly at?: number; readonly receipt?: AnalysisTurnReceipt; }
 export type AnalysisPhase = "idle" | "starting" | "reasoning" | "tool" | "writing" | "complete" | "stopped" | "error";
@@ -211,14 +213,14 @@ function resolvePersistedSelection(catalog: AnalysisCatalog, selection?: Analysi
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {
-  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message, entries: sealLastAnalystEntry(state, "error", now) };
+  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message, entries: sealLastAnalystEntry(state, "error", now, message) };
 }
 
-function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt["outcome"], now: number): readonly AnalysisEntry[] {
+function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt["outcome"], now: number, error?: string): readonly AnalysisEntry[] {
   const last = state.entries.at(-1);
   if (last?.role === "analyst" && last.receipt) return state.entries;
   const durationMs = state.runStartedAt === null ? 0 : Math.max(0, now - state.runStartedAt);
-  const receipt: AnalysisTurnReceipt = { outcome, durationMs, tools: state.tools };
+  const receipt: AnalysisTurnReceipt = { outcome, durationMs, tools: state.tools, ...(error !== undefined ? { error } : {}) };
   // chunk 없이 끝난 턴(시작 실패·조기 중단·도구 전용 런)도 빈 분석가 엔트리로 봉인한다 —
   // 봉인하지 않으면 다음 send가 전역 상태를 초기화한 뒤 그 턴 전체가 역사에서 사라진다.
   if (last?.role !== "analyst") {
