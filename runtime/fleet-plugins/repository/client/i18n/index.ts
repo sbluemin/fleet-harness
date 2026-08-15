@@ -139,7 +139,7 @@ export const repositoryEn = {
   "repository.sync.failedNoRemote": "Sync failed — no remote is configured.",
   "repository.sync.failedGit": "Sync failed — git error.",
   "repository.sync.summary": "Synced — {newRefs} new · {updatedRefs} updated · {pruned} pruned",
-  "repository.sync.summaryClean": "Synced — already up to date",
+  "repository.sync.upToDate": "Already up to date",
   "repository.sync.dismiss": "Dismiss",
   "repository.sync.lastFailed": "Last sync failed",
 
@@ -269,7 +269,7 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.sync.failedNoRemote": "동기화 실패 — 설정된 remote가 없습니다.",
   "repository.sync.failedGit": "동기화 실패 — git 오류.",
   "repository.sync.summary": "동기화 완료 — 신규 {newRefs} · 갱신 {updatedRefs} · 정리 {pruned}",
-  "repository.sync.summaryClean": "동기화 완료 — 이미 최신 상태",
+  "repository.sync.upToDate": "이미 최신 상태",
   "repository.sync.dismiss": "닫기",
   "repository.sync.lastFailed": "마지막 동기화 실패",
 

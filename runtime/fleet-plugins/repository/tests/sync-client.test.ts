@@ -16,6 +16,47 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).toContain("git_failed");
   });
 
+  // 2026-08-15 재가 — 가져온 것이 없는 결과는 배너를 쓰지 않는다. 아이콘 ✓ 체류와 말풍선이 그 결과를 지고,
+  // 갱신·실패만 배너로 남는다. 세 카운트가 0인 분기가 showSyncNotice로 되돌아가면 본문 이동이 부활한다.
+  it("answers an up-to-date manual sync on the button instead of the banner", () => {
+    expect(railPanelSource).toContain("if (newRefs === 0 && updatedRefs === 0 && pruned === 0) showSyncSettled();");
+    expect(railPanelSource).toContain("else showSyncNotice({ kind: \"success\", newRefs, updatedRefs, pruned });");
+    expect(railPanelSource).not.toContain("successClean");
+    expect(railPanelSource).not.toContain("repository.sync.summaryClean");
+  });
+
+  // 한 시도의 답은 배너·✓·말풍선 세 표면에 나뉘어 앉는다. 새 시도가 셋을 함께 걷지 않으면 앞 시도의
+  // 배너가 자기 6초를 사는 동안 뒤 시도의 ✓가 겹쳐 실패 배너와 "이미 최신 상태"가 동시에 뜬다.
+  it("clears every per-attempt surface before the next manual attempt", () => {
+    expect(railPanelSource).toContain("if (isManual) clearSyncSurfacing();");
+    const start = railPanelSource.indexOf("const clearSyncSurfacing");
+    const end = railPanelSource.indexOf("}, []);", start);
+    const body = railPanelSource.slice(start, end);
+    expect(body).toContain("syncNoticeTimerRef");
+    expect(body).toContain("setSyncNotice(null)");
+    expect(body).toContain("setSyncSettled(false)");
+    expect(body).toContain("setSyncHintAvailable(false)");
+    // 지속 실패 점은 시도별 알림이 아니라 "마지막 결과" 표식이므로 여기서 해제하지 않는다.
+    expect(body).not.toContain("setSyncFailed");
+  });
+
+  it("keeps the up-to-date result announced and re-openable", () => {
+    expect(railPanelSource).toContain("className=\"repository-sr-only\" role=\"status\"");
+    expect(railPanelSource).toContain("repository.sync.upToDate");
+    expect(railPanelSource).toContain("syncHintAvailable");
+  });
+
+  it("clears every sync surfacing timer on unmount and on repository transition", () => {
+    for (const timer of ["syncNoticeTimerRef", "syncSettledTimerRef", "syncHintTimerRef"]) {
+      const unmountStart = railPanelSource.indexOf("useEffect(() => () => {");
+      const unmountEnd = railPanelSource.indexOf("}, []);", unmountStart);
+      expect(railPanelSource.slice(unmountStart, unmountEnd), timer).toContain(timer);
+      const transitionStart = railPanelSource.indexOf("const transitionRepository");
+      const transitionEnd = railPanelSource.indexOf("setChangedFiles({ kind: \"loading\" })", transitionStart);
+      expect(railPanelSource.slice(transitionStart, transitionEnd), timer).toContain(timer);
+    }
+  });
+
   it("keeps throttle skips as a silent early return", () => {
     expect(railPanelSource).toContain('if ("skipped" in payload) return');
   });
