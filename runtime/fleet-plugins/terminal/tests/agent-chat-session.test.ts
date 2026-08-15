@@ -179,6 +179,45 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // 재생 턴에는 SDK result가 없다 — 소요 시간은 트랜스크립트 줄의 시각에서 나온다.
+  // 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃고 "작업함"으로 주저앉는다.
+  it("derives each replayed turn's duration from its transcript timestamps", async () => {
+    const transcriptPath = writeTranscript("sid-dur", [
+      { type: "user", timestamp: "2026-08-15T01:00:00.000Z", message: { role: "user", content: "first order" } },
+      { type: "assistant", timestamp: "2026-08-15T01:00:12.500Z", message: { content: [{ type: "text", text: "done" }] } },
+      { type: "user", timestamp: "2026-08-15T01:05:00.000Z", message: { role: "user", content: "second order" } },
+      { type: "assistant", timestamp: "2026-08-15T01:05:03.000Z", message: { content: [{ type: "text", text: "done again" }] } },
+    ]);
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-dur", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const ends = events.map((entry) => entry.event).filter((event) => event.kind === "turn-end");
+    expect(ends).toEqual([
+      { kind: "turn-end", ok: true, durationMs: 12_500 },
+      { kind: "turn-end", ok: true, durationMs: 3_000 },
+    ]);
+    await registry.disposeAll();
+  });
+
+  // 시각이 없는 트랜스크립트에서 0초짜리 턴을 지어내지 않는다.
+  it("stays silent about duration when the transcript carries no timestamps", async () => {
+    const transcriptPath = writeTranscript("sid-nodur", [
+      { type: "user", message: { role: "user", content: "first order" } },
+      { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+    ]);
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-nodur", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(kinds(events)).not.toContain("turn-end");
+    await registry.disposeAll();
+  });
+
   it("copies the transcript into the sdk config dir and resumes with the file's session id", async () => {
     const transcriptPath = writeTranscript("sid-2", [
       { type: "user", message: { role: "user", content: "first order" } },

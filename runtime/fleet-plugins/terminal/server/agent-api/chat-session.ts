@@ -8,7 +8,7 @@ import {
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
 
-import { chatEventsFromSdkMessage, chatEventsFromTranscriptLine, type AgentChatJournalEvent, type AgentChatStreamEvent } from "./chat-events.js";
+import { chatEventsFromSdkMessage, chatReplayFromTranscriptLine, type AgentChatJournalEvent, type AgentChatStreamEvent } from "./chat-events.js";
 import type { AgentProviderSession } from "./types.js";
 
 /**
@@ -61,6 +61,7 @@ export type CreateChatSdk = (options: {
 }) => Promise<ClaudeGatewaySdk>;
 
 const JOURNAL_CAP = 2_000;
+const TOOL_NAME_CAP = 500;
 
 class AgentChatSession {
   readonly operationId: string;
@@ -79,6 +80,12 @@ class AgentChatSession {
   private turnFlight: Promise<void> = Promise.resolve();
   private pendingTurns = 0;
   private disposed = false;
+  /**
+   * tool_use id → 도구 이름. 결과 블록은 자기가 어떤 도구의 결말인지 모르는데, 무엇을 요약해도
+   * 되는지는 도구가 정한다(읽기·쓰기 계열의 성공 결과는 내용이라 싣지 않는다). 긴 세션에서
+   * 무한히 자라지 않게 상한을 두고 오래된 것부터 버린다 — 결과는 호출 직후에 오므로 잃을 게 없다.
+   */
+  private readonly toolNames = new Map<string, string>();
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -100,15 +107,34 @@ class AgentChatSession {
     const transcriptPath = this.seed.origin.transcriptPath;
     this.push({ kind: "replay-start" });
     let turns = 0;
+    // 재생 턴의 소요 시간은 트랜스크립트가 이미 들고 있다 — 디스패치 줄과 그 턴 마지막 줄의
+    // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
+    let turnAt: number | null = null;
+    let lastAt: number | null = null;
+    const closeReplayedTurn = (): void => {
+      if (turnAt !== null && lastAt !== null && lastAt > turnAt) {
+        this.push({ kind: "turn-end", ok: true, durationMs: lastAt - turnAt });
+      }
+      turnAt = null;
+      lastAt = null;
+    };
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
-        for (const event of chatEventsFromTranscriptLine(line, { cwd: this.seed.cwd })) {
-          if (event.kind === "dispatch") turns += 1;
+        const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames });
+        for (const event of mapped.events) {
+          if (event.kind === "dispatch") {
+            closeReplayedTurn();
+            turns += 1;
+            turnAt = mapped.at ?? null;
+          }
+          this.rememberTool(event);
           this.push(event);
         }
+        if (mapped.events.length > 0 && mapped.at !== undefined) lastAt = mapped.at;
       }
+      closeReplayedTurn();
     } catch {
       // 트랜스크립트를 읽지 못해도 세션은 계속된다 — 로그가 비어 보일 뿐 새 턴은 돌 수 있다.
       this.push({ kind: "error", code: "chat_replay_unavailable" });
@@ -158,6 +184,17 @@ class AgentChatSession {
     if (sdk) await sdk.dispose().catch(() => undefined);
     await this.turnFlight.catch(() => undefined);
     this.listeners.clear();
+  }
+
+  /** 도구 이벤트가 지나갈 때 id→이름을 적어 둔다. 결과 요약 정책이 이 축 위에서 결정된다. */
+  private rememberTool(event: AgentChatStreamEvent): void {
+    if (event.kind !== "tool" && event.kind !== "tool-start") return;
+    if (event.id === undefined) return;
+    this.toolNames.set(event.id, event.name);
+    if (this.toolNames.size > TOOL_NAME_CAP) {
+      const oldest = this.toolNames.keys().next();
+      if (!oldest.done) this.toolNames.delete(oldest.value);
+    }
   }
 
   private push(event: AgentChatStreamEvent): void {
@@ -245,8 +282,9 @@ class AgentChatSession {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
             this.latestSessionId = message.session_id;
           }
-          for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd })) {
+          for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
             if (event.kind === "turn-end") sawResult = true;
+            this.rememberTool(event);
             // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
             // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
             if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);

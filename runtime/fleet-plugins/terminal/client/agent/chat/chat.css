@@ -280,8 +280,8 @@
 }
 
 .agent-chat-step.is-fail .agent-chat-step-mark { color: var(--coral); }
-/* 결과 없이 턴이 닫힌 스텝 — 성공을 주장하지 않는다. */
-.agent-chat-step.is-done .agent-chat-step-mark { color: var(--ink-fog); }
+/* 결과 없이 턴이 닫힌 스텝 — 성공을 주장하지 않으므로 신호색을 벗고 줄의 잉크를 따른다. */
+.agent-chat-step.is-done .agent-chat-step-mark { color: var(--text-tertiary); }
 
 .agent-chat-step-verb {
   color: var(--text-secondary);

@@ -60,6 +60,16 @@ const MAX_TEXT_CHARS = 60_000;
 /** 쓰기 계열 — 이 도구들만 변경 장부에 오른다. */
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
 
+/**
+ * 성공했을 때의 결과가 곧 내용인 도구들. 이쪽 결과의 첫 줄은 파일 본문·검색 히트·가져온
+ * 페이지의 첫 줄이라, 요약으로 실으면 스텝 칩이 내용 유출 경로가 된다. 쓰기 계열도 같은
+ * 이유로 비운다 — 그쪽은 변경 줄 수가 이미 결말을 말한다. 실패는 예외다: 무엇이 잘못됐는지는
+ * 내용이 아니라 판단에 필요한 사실이므로 첫 줄을 그대로 싣는다.
+ */
+const CONTENT_RESULT_TOOLS = new Set([
+  "Read", "NotebookRead", "Glob", "Grep", "WebFetch", "WebSearch", "Task", "Agent",
+]);
+
 interface TranscriptContentBlock {
   readonly type?: unknown;
   readonly text?: unknown;
@@ -86,6 +96,11 @@ interface TranscriptLine {
 /** 경로 표시를 cwd 기준으로 상대화하기 위한 매퍼 옵션. */
 export interface ChatEventMapOptions {
   readonly cwd?: string;
+  /**
+   * tool_use id → 도구 이름. 결과 블록은 자기가 어떤 도구의 결말인지 모르므로, 무엇을 요약해도
+   * 되는지 판단하려면 이 축이 필요하다. 세션이 소유하고 매퍼는 읽기만 한다.
+   */
+  readonly toolNames?: ReadonlyMap<string, string>;
 }
 
 /**
@@ -93,12 +108,30 @@ export interface ChatEventMapOptions {
  * meta 줄, sidechain(서브에이전트) 줄은 빈 목록이다.
  */
 export function chatEventsFromTranscriptLine(raw: string, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
+  return chatReplayFromTranscriptLine(raw, options).events;
+}
+
+/**
+ * 재생이 쓰는 형태 — 이벤트와 함께 그 줄의 시각을 돌려준다. 재생 턴에는 turn-end가 없어
+ * 소요 시간을 말할 수 없는데, 트랜스크립트가 이미 그 값을 들고 있다: 디스패치 줄의 시각과
+ * 그 턴 마지막 줄의 시각 차이다. 한 번의 파싱으로 둘 다 얻으려고 매핑과 같은 문을 쓴다.
+ */
+export function chatReplayFromTranscriptLine(
+  raw: string,
+  options: ChatEventMapOptions = {},
+): { readonly at?: number; readonly events: readonly AgentChatStreamEvent[] } {
   let line: TranscriptLine;
   try {
     line = JSON.parse(raw) as TranscriptLine;
   } catch {
-    return [];
+    return { events: [] };
   }
+  const parsedAt = typeof line.timestamp === "string" ? Date.parse(line.timestamp) : Number.NaN;
+  const events = eventsFromTranscriptLine(line, options);
+  return Number.isFinite(parsedAt) ? { at: parsedAt, events } : { events };
+}
+
+function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   // auto-compact가 남긴 이어짐 요약은 런타임 메타다 — 사람이 친 지시처럼 재생하면
   // "전환이 세션을 summarize했다"로 읽힌다. isMeta가 없는 별도 플래그라 따로 거른다.
   if (line.isMeta === true || line.isSidechain === true || line.isCompactSummary === true) return [];
@@ -204,11 +237,14 @@ function toolResultsFrom(content: unknown, options: ChatEventMapOptions): readon
   for (const block of content as readonly TranscriptContentBlock[]) {
     if (!block || typeof block !== "object" || block.type !== "tool_result") continue;
     if (typeof block.tool_use_id !== "string" || block.tool_use_id.length === 0) continue;
+    const ok = block.is_error !== true;
+    const tool = options.toolNames?.get(block.tool_use_id);
+    const quiet = ok && tool !== undefined && (CONTENT_RESULT_TOOLS.has(tool) || WRITE_TOOLS.has(tool));
     events.push({
       kind: "tool-result",
       id: block.tool_use_id,
-      ok: block.is_error !== true,
-      summary: summarizeToolResult(block.content, options),
+      ok,
+      summary: quiet ? "" : summarizeToolResult(block.content, options),
     });
   }
   return events;

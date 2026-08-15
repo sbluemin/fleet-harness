@@ -192,6 +192,30 @@ describe("chat sdk message mapping", () => {
     })).toEqual([{ kind: "tool-result", id: "t1", ok: true, summary: "ok" }]);
   });
 
+  /**
+   * Read·Grep·WebFetch의 성공 결과는 곧 내용이고, 쓰기의 성공 결과는 변경 줄 수가 이미 말한다 —
+   * 그 첫 줄을 칩으로 실으면 스텝 줄이 파일 본문 유출 경로가 된다. 실패는 예외다.
+   */
+  it("keeps content-shaped success results off the wire, but never an error", () => {
+    const toolNames = new Map([["t1", "Read"], ["t2", "Write"], ["t3", "Bash"], ["t4", "Read"]]);
+    expect(chatEventsFromSdkMessage({
+      type: "user",
+      message: {
+        content: [
+          { type: "tool_result", tool_use_id: "t1", content: "     1  #!/usr/bin/env python3" },
+          { type: "tool_result", tool_use_id: "t2", content: "File created successfully" },
+          { type: "tool_result", tool_use_id: "t3", content: "2 tests, OK" },
+          { type: "tool_result", tool_use_id: "t4", is_error: true, content: "ENOENT: no such file" },
+        ],
+      },
+    }, { toolNames })).toEqual([
+      { kind: "tool-result", id: "t1", ok: true, summary: "" },
+      { kind: "tool-result", id: "t2", ok: true, summary: "" },
+      { kind: "tool-result", id: "t3", ok: true, summary: "2 tests, OK" },
+      { kind: "tool-result", id: "t4", ok: false, summary: "ENOENT: no such file" },
+    ]);
+  });
+
   it("ignores stream noise", () => {
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", session_id: "abc" })).toEqual([]);
   });
