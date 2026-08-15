@@ -2260,7 +2260,13 @@ describe("Effort track interaction grammar", () => {
       expect(surface).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
       expect(surface).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
     }
-    expect(composer).toMatch(/const tiers = gatedEffortNames\(selectedRow\);/u);
+
+    // 두 표면은 여는 것이 다르므로 이름의 원천도 다르다. 트랙은 사다리에서 문을 세우니 사다리
+    // 기준(gatedEffortNames)을, 덱은 chips에 실린 단만 행으로 내니 자기 판정과 같은 원천
+    // (deck.gatedNames)을 쓴다. 한쪽 기준을 다른 쪽에 빌려 주면 열리지 않는 단이 이름에 실린다.
+    expect(composer).toMatch(/\{ tiers: deck\.gatedNames \}/u);
+    expect(composer).not.toMatch(/const tiers = gatedEffortNames\(selectedRow\);/u);
+    expect(source("quick-launch.ts")).toMatch(/gatedNames: offeredGated\.map\(\(chip\) => chip\.label\)\.join\("·"\),/u);
 
     // 문 행은 listbox 안에 산다. option role이 지원하지 않는 aria-expanded를 달면 무시되거나
     // 무효로 읽히므로, 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔ "… 접기").

@@ -694,6 +694,26 @@ describe("buildQuickLaunchEffortDeck", () => {
     expect(buildQuickLaunchEffortDeck(axisOnly, null, "AUTO", "", false).hasGate).toBe(false);
   });
 
+  it("names the gate from what this deck opens, never from the track's ladder", () => {
+    // 이 덱은 chips에 실린 단만 행으로 낸다. 축에만 오른 게이트 단까지 이름에 실으면
+    // "XHIGH·MAX 펼치기"라 해 놓고 열었을 때 MAX만 서는, 문구가 거짓이 되는 상태가 된다.
+    expect(buildQuickLaunchEffortDeck(row, null, "AUTO", "", false).gatedNames).toBe("MAX·ULTRACODE");
+    const axisOnlyRung = {
+      ...plainRow,
+      effortAxis: ["low", "medium", "high", "xhigh", "max"],
+      gatedEfforts: ["xhigh", "max"],
+      chips: [
+        { id: "low", label: "LOW", launch: { model: "cursor--grok-4.6-fast", effort: "low" } },
+        { id: "max", label: "MAX", launch: { model: "cursor--grok-4.6-fast", effort: "max" } },
+      ],
+    } as const;
+    const deck = buildQuickLaunchEffortDeck(axisOnlyRung, null, "AUTO", "", true);
+    expect(deck.gatedNames).toBe("MAX");
+    expect(ids(deck)).toEqual([null, "low", "max"]);
+    // 게이트가 없는 행은 이름도 비어 있다 — 문 행 자체가 서지 않으므로 쓰이지 않는다.
+    expect(buildQuickLaunchEffortDeck(plainRow, null, "AUTO", "", false).gatedNames).toBe("");
+  });
+
   it("marks the checked option and survives a missing row", () => {
     const deck = buildQuickLaunchEffortDeck(row, "high", "AUTO", "", false);
     expect(deck.options.find((option) => option.id === "high")?.checked).toBe(true);
@@ -703,6 +723,7 @@ describe("buildQuickLaunchEffortDeck", () => {
       gateOpen: false,
       gateHeldByValue: false,
       showGateRow: false,
+      gatedNames: "",
     });
   });
 });

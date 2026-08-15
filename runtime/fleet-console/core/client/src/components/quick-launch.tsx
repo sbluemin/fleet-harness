@@ -758,10 +758,14 @@ export function QuickLaunch() {
     // 트랙이 그 자리에 남아 있는 것과 같다. 게이트 단을 하나도 내놓지 않는 모델에서는 서지 않아,
     // "이 모델엔 없다"가 "접혀 있다"와 처음으로 갈린다.
     if (deck.showGateRow) {
-      const tiers = gatedEffortNames(selectedRow);
+      // 이름은 이 덱이 실제로 열 단에서만 나온다(deck.gatedNames). 트랙의 사다리 기준을 빌려 오면
+      // 축에만 오른 단까지 이름에 실려, 열었을 때 없는 단을 약속하게 된다.
       rows.push({
         id: "effort-gate",
-        label: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle", { tiers }),
+        label: t(
+          deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle",
+          { tiers: deck.gatedNames },
+        ),
         lead: <span className="quick-launch-command-gate-glyph" aria-hidden="true">{deck.gateOpen ? "‹" : "✦"}</span>,
         gate: true,
         pick: () => {

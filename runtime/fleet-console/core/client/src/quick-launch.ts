@@ -259,6 +259,13 @@ export interface QuickLaunchEffortDeck {
    * 이미 같은 문을 맡고 있고, 좁힌 목록 위의 "펼치기"는 필터와도 모순된다.
    */
   readonly showGateRow: boolean;
+  /**
+   * 문 행이 말할 단들의 이름. 문 행을 세우는 판정(`hasGate`)과 **같은 원천**에서 나온다 —
+   * 이 덱은 chips에 실린 단만 행으로 내므로, 축에만 오른 단까지 세는 트랙의 사다리 기준을
+   * 빌려 오면 열리지 않는 단을 이름에 싣는다. 두 표면은 여는 것이 서로 다르고, 그래서 이름도
+   * 각자 자기가 열 것에서 뽑는다(트랙 쪽은 `gatedEffortNames`).
+   */
+  readonly gatedNames: string;
 }
 
 /**
@@ -310,6 +317,7 @@ export function buildQuickLaunchEffortDeck(
     gateOpen,
     gateHeldByValue,
     showGateRow: hasGate && !gateHeldByValue && trimmed.length === 0,
+    gatedNames: offeredGated.map((chip) => chip.label).join("·"),
   };
 }
 
