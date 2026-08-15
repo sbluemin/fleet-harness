@@ -67,11 +67,11 @@ export function markKeyFromOperation(launchProvider: string | null | undefined, 
 }
 
 export function supplierMarkKey(supplier: string): string {
-  return markKeyFromIdentity(supplier === "native" ? "claude" : supplier, supplier);
+  return markKeyFromIdentity(supplier, supplier);
 }
 
 export function cliGlyph(client: string): ReactNode {
-  const key = markKeyFromIdentity(client === "native" ? "claude" : client, client);
+  const key = markKeyFromIdentity(client, client);
   if (key === "claude" || key === "claude-gateway") return <ClaudeGlyph />;
   if (key === "codex") return <CodexGlyph />;
   if (key === "kimi") return <KimiGlyph />;

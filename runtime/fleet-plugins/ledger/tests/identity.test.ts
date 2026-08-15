@@ -18,11 +18,29 @@ describe("parseModelIdentity", () => {
     });
   });
 
-  it("keeps a non-gateway id in the direct bucket", () => {
+  it("names an unprefixed Claude id as Claude", () => {
     expect(parseModelIdentity("claude-opus-5")).toMatchObject({
-      supplier: "native",
+      supplier: "claude",
       bare: "claude-opus-5",
       label: "Claude Opus 5",
+    });
+  });
+
+  it("names unprefixed report ids by supplier instead of collapsing them onto Claude", () => {
+    expect(parseModelIdentity("gpt-5")).toMatchObject({
+      supplier: "codex",
+      bare: "gpt-5",
+      label: "GPT 5",
+    });
+    expect(parseModelIdentity("opencode/big-pickle")).toMatchObject({
+      supplier: "opencode",
+      bare: "big-pickle",
+      label: "Big Pickle",
+    });
+    expect(parseModelIdentity("mystery-model")).toMatchObject({
+      supplier: "native",
+      bare: "mystery-model",
+      label: "Mystery Model",
     });
   });
 
@@ -58,6 +76,7 @@ describe("markKeyFromIdentity", () => {
     expect(markKeyFromIdentity("cursor", "claude-gateway")).toBe("cursor");
     expect(markKeyFromIdentity(null, "claude-gateway")).toBe("claude");
     expect(markKeyFromIdentity(null, "codex")).toBe("codex");
+    expect(markKeyFromIdentity(null, "native")).toBe("native");
   });
 });
 

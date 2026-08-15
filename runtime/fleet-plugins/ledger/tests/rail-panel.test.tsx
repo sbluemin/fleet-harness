@@ -77,7 +77,7 @@ function dto(
     modelRows: costUsd === 0 ? [] : [{
       modelId: "claude-sonnet-4",
       label: "Claude Sonnet 4",
-      supplier: "native",
+      supplier: "claude",
       usage: { input: 1_000, output: 200, cacheRead: 300 },
       costUsd,
       messages: 4,
@@ -606,6 +606,35 @@ describe("Ledger dual-source host and model rows", () => {
     await act(async () => operation!.click());
     expect(container.querySelector(".ledger-detail-model")?.textContent).toContain("Claude · Claude Sonnet 4");
     expect(container.textContent).not.toContain("Direct");
+  });
+
+  it("does not paint unprefixed Codex or OpenCode models as Claude", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      operations: [{
+        ...value.operations[0]!,
+        cliId: "codex",
+        cliLabel: "Codex",
+        launchProvider: "codex",
+        client: "codex",
+        models: ["gpt-5", "opencode/big-pickle"],
+      }],
+    });
+    const operation = container.querySelector<HTMLButtonElement>(".ledger-operation");
+    await act(async () => operation!.click());
+    const labels = [...container.querySelectorAll(".ledger-detail-model")].map((row) => row.textContent);
+    expect(labels).toEqual(["Codex · GPT 5", "OpenCode · Big Pickle"]);
+    expect(container.querySelector(".ledger-detail")?.textContent).not.toContain("Claude");
+  });
+
+  it("names omitted model rows when the serialized list is shorter than the total", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      modelTotals: { ...value.modelTotals, models: 81 },
+    });
+    expect(container.textContent).toContain("+80 more models");
   });
 
   it("names a Gateway host as the supplier", async () => {

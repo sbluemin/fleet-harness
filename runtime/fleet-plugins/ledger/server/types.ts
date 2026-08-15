@@ -110,9 +110,9 @@ export interface LedgerSummaryDto {
   readonly clients: LedgerClientDto[];
   /** tokscale `models` 명령의 기기 전체 공급자 합이다. deviceTotals와 더하지 않는다. */
   readonly suppliers: readonly LedgerSupplierDto[];
-  /** tokscale `models` 명령의 기기 전체 모델 행이다. 세션 비용을 모델로 나눈 값이 아니다. */
+  /** tokscale `models` 명령의 기기 전체 모델 행이다. 세션 비용을 모델로 나눈 값이 아니다. 최대 80건으로 자르고 전체 수는 modelTotals.models가 든다. */
   readonly modelRows: readonly LedgerModelRowDto[];
-  /** suppliers·modelRows와 같은 출처의 합이다. 히어로(totals)와 다른 숫자일 수 있다. */
+  /** suppliers·modelRows와 같은 출처의 합이다. 히어로(totals)와 다른 숫자일 수 있다. models는 직렬화 상한 이전의 전체 행 수다. */
   readonly modelTotals: LedgerUsage & { readonly costUsd: number; readonly messages: number; readonly models: number };
   readonly modelSource: {
     readonly status: LedgerSourceStatus;

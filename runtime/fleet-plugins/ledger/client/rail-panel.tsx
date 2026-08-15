@@ -62,10 +62,9 @@ const LEDGER_SUPPLIER_KEYS = new Set([
 ]);
 
 function supplierLabel(supplier: string, t: T): string {
-  const key = supplier === "native" ? "claude" : supplier;
-  return LEDGER_SUPPLIER_KEYS.has(key)
-    ? t(`ledger.supplier.${key}` as LedgerMessageKey)
-    : supplier;
+  return LEDGER_SUPPLIER_KEYS.has(supplier)
+    ? t(`ledger.supplier.${supplier}` as LedgerMessageKey)
+    : t("ledger.value.unknownCli");
 }
 
 function operationHostLabel(
@@ -586,6 +585,9 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
                 );
               })}
             </div>
+            {visibleData.modelTotals.models > visibleData.modelRows.length ? (
+              <div className="ledger-coverage-more">{t("ledger.models.more", { count: visibleData.modelTotals.models - visibleData.modelRows.length })}</div>
+            ) : null}
             {visibleData.modelTotals.models > 0 ? (
               <div className="ledger-bridge-total">
                 <span>{t("ledger.models.total")}</span>

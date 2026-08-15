@@ -35,6 +35,10 @@ export function parseModelIdentity(modelId: string): ModelIdentity {
         rest = rest.slice(separator + 2);
       }
     }
+  } else {
+    const inferred = inferUnprefixedSupplier(rest);
+    supplier = inferred.supplier;
+    rest = inferred.bare;
   }
   return {
     modelId,
@@ -42,6 +46,27 @@ export function parseModelIdentity(modelId: string): ModelIdentity {
     bare: rest,
     label: humanizeBareModel(rest),
   };
+}
+
+/**
+ * tokscale report `models_used` and some models-command rows omit the Gateway prefix.
+ * Claude-shaped ids stay Claude; slash-prefixed and well-known bare ids name their supplier.
+ * Leftovers stay `native` — the client must not paint that bucket as Claude.
+ */
+function inferUnprefixedSupplier(modelId: string): { supplier: string; bare: string } {
+  const slash = modelId.indexOf("/");
+  if (slash > 0) {
+    const candidate = modelId.slice(0, slash).toLowerCase();
+    if (PROVIDER_SET.has(candidate)) {
+      return { supplier: candidate, bare: modelId.slice(slash + 1) };
+    }
+  }
+  const lower = modelId.toLowerCase();
+  if (lower.startsWith("claude")) return { supplier: "claude", bare: modelId };
+  if (lower.startsWith("gpt-")) return { supplier: "codex", bare: modelId };
+  if (lower.startsWith("grok")) return { supplier: "xai", bare: modelId };
+  if (lower.startsWith("kimi")) return { supplier: "kimi", bare: modelId };
+  return { supplier: NATIVE_SUPPLIER, bare: modelId };
 }
 
 /**
@@ -57,7 +82,6 @@ export function normalizeModelKey(modelId: string): string {
 export function markKeyFromIdentity(launchProvider: string | null | undefined, cliId: string): string {
   if (isLaunchProvider(launchProvider)) return launchProvider;
   if (cliId === "claude-gateway") return "claude";
-  if (cliId === NATIVE_SUPPLIER) return "claude";
   return cliId;
 }
 

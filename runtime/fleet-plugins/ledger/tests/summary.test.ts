@@ -533,7 +533,7 @@ describe("buildSummary launchProvider and models command", () => {
     expect(dto.totals.costUsd).toBe(2.25);
     expect(dto.modelTotals.costUsd).toBe(70);
     expect(dto.modelTotals.costUsd + dto.totals.costUsd).not.toBe(dto.deviceTotals.costUsd);
-    expect(dto.suppliers.map((entry) => entry.supplier)).toEqual(["cursor", "native", "xai"]);
+    expect(dto.suppliers.map((entry) => entry.supplier)).toEqual(["cursor", "claude", "xai"]);
     expect(dto.modelRows.find((row) => row.supplier === "xai")).toMatchObject({
       costUsd: 0,
       messages: 292,
@@ -568,5 +568,24 @@ describe("buildSummary launchProvider and models command", () => {
     expect(dto.modelSource.status).toBe("unreadable");
     expect(dto.modelRows).toEqual([]);
     expect(dto.suppliers).toEqual([]);
+  });
+
+  it("caps serialized model rows while modelTotals.models keeps the full count", () => {
+    const entries = Array.from({ length: 81 }, (_, index) => ({
+      modelId: `claude-gateway--cursor--model-${index}`,
+      input: 1,
+      output: 1,
+      cacheRead: 0,
+      costUsd: 81 - index,
+      messages: 1,
+    }));
+    const dto = buildSummary([], [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
+      entries,
+      status: "ok",
+      skippedEntries: 0,
+    });
+    expect(dto.modelRows).toHaveLength(80);
+    expect(dto.modelTotals.models).toBe(81);
+    expect(dto.modelRows[0]?.label).toBe("Model 0");
   });
 });

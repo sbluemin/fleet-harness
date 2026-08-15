@@ -337,6 +337,7 @@ function buildSummaryUnchecked(
   };
 }
 
+/** 모델 행 직렬화 상한 — 전체 수는 modelTotals.models가 별도로 싣는다. */
 const MAX_MODEL_ROWS = 80;
 
 function buildModelFields(modelBreakdown: ModelBreakdown): Pick<
