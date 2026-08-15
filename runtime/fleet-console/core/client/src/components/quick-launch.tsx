@@ -736,13 +736,9 @@ export function QuickLaunch() {
       return rows.length === 0 ? [] : [{ key: "views", band: null, rows }];
     }
     // 게이트된 apex 단은 트랙의 ✦ 계약을 미러링한다 — 덱에서는 맨 아래 문 행이 그 토글이다.
-    const deck = buildQuickLaunchEffortDeck(
-      selectedRow,
-      effort,
-      t("launchVariants.effort.auto"),
-      commandInput.query,
-      commandGateOpen,
-    );
+    const effortQuery = commandInput.query;
+    const autoLabel = t("launchVariants.effort.auto");
+    const deck = buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, effortQuery, commandGateOpen);
     const rows = deck.options.map<QuickLaunchCommandRow>((chip) => ({
       id: `effort-${chip.id ?? "auto"}`,
       label: chip.label,
@@ -758,13 +754,23 @@ export function QuickLaunch() {
     // 문 행은 값이 아니라 문이다. 골라도 덱은 열려 있고 문면도 그대로 — 트랙의 ✦을 눌렀을 때
     // 트랙이 그 자리에 남아 있는 것과 같다. 게이트 단을 하나도 내놓지 않는 모델에서는 서지 않아,
     // "이 모델엔 없다"가 "접혀 있다"와 처음으로 갈린다.
-    if (deck.hasGate && !deck.gateHeldByValue) {
+    if (deck.showGateRow) {
       rows.push({
         id: "effort-gate",
         label: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle"),
         lead: <span className="quick-launch-command-gate-glyph" aria-hidden="true">{deck.gateOpen ? "‹" : "✦"}</span>,
         gate: true,
-        pick: () => setCommandGateOpen(!deck.gateOpen),
+        pick: () => {
+          const nextOpen = !deck.gateOpen;
+          // 문 행은 늘 목록의 마지막이다. 게이트를 열면 단 둘이 그 앞에 끼어드는데 활성 인덱스를
+          // 그대로 두면 같은 자리가 MAX를 가리켜, 접으려고 누른 두 번째 Enter가 MAX를 확정하고
+          // 저장까지 한다 — 게이트가 막으려던 바로 그 실수다. 다음 목록에서 문 행이 설 자리로
+          // 옮겨 둔다(값 행 뒤가 언제나 그 자리다).
+          setCommandActiveIndex(
+            buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, effortQuery, nextOpen).options.length,
+          );
+          setCommandGateOpen(nextOpen);
+        },
       });
     }
     return rows.length === 0 ? [] : [{ key: "efforts", band: null, rows }];

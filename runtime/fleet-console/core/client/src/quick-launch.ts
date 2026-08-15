@@ -252,6 +252,13 @@ export interface QuickLaunchEffortDeck {
    * 실행 강도를 조용히 바꾸는 부작용이 된다(트랙은 손잡이가 눈앞에서 움직여 그 대가를 보여준다).
    */
   readonly gateHeldByValue: boolean;
+  /**
+   * 문 행을 세울지. 질의를 치는 동안에는 서지 않는다 — 문 행이 남으면 매치 0인 질의에서도 덱이
+   * 비지 않아, "일치 없으면 Enter는 문장을 그대로 보낸다"는 커맨드 덱 공통 계약이 이 레벨에서만
+   * 깨진다(`/effort zebra`가 제출 대신 게이트를 여닫는다). 질의 중에는 접두 타이핑 게이트가
+   * 이미 같은 문을 맡고 있고, 좁힌 목록 위의 "펼치기"는 필터와도 모순된다.
+   */
+  readonly showGateRow: boolean;
 }
 
 /**
@@ -297,7 +304,13 @@ export function buildQuickLaunchEffortDeck(
       checked: chip.id === effort,
       apex: chip.id !== null && gated.has(chip.id),
     }));
-  return { options, hasGate, gateOpen, gateHeldByValue };
+  return {
+    options,
+    hasGate,
+    gateOpen,
+    gateHeldByValue,
+    showGateRow: hasGate && !gateHeldByValue && trimmed.length === 0,
+  };
 }
 
 /**

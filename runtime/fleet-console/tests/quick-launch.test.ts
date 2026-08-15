@@ -660,6 +660,21 @@ describe("buildQuickLaunchEffortDeck", () => {
     expect(deck.gateHeldByValue).toBe(false);
   });
 
+  it("drops the gate row while a query is typed — an unmatched query must stay submittable prose", () => {
+    // 문 행이 남으면 매치 0인 질의에서도 덱이 비지 않아, Enter가 제출 대신 게이트를 여닫는다.
+    expect(buildQuickLaunchEffortDeck(row, null, "AUTO", "", false).showGateRow).toBe(true);
+    expect(buildQuickLaunchEffortDeck(row, null, "AUTO", "zebra", false).showGateRow).toBe(false);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "zebra", false))).toEqual([]);
+    // 공백만 친 질의는 아직 질의가 아니다.
+    expect(buildQuickLaunchEffortDeck(row, null, "AUTO", "  ", false).showGateRow).toBe(true);
+    // 게이트가 열려 있어도 질의 중에는 서지 않는다 — 좁힌 목록 위의 "펼치기"는 필터와 모순된다.
+    expect(buildQuickLaunchEffortDeck(row, null, "AUTO", "ma", true).showGateRow).toBe(false);
+  });
+
+  it("hides the gate row while the selected value holds the gate open", () => {
+    expect(buildQuickLaunchEffortDeck(row, "max", "AUTO", "", false).showGateRow).toBe(false);
+  });
+
   it("marks gated tiers as apex so the deck can split MAX's ember from a plain max", () => {
     const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
     expect(deck.options.filter((option) => option.apex).map((option) => option.id)).toEqual(["max", "ultracode"]);
@@ -687,6 +702,7 @@ describe("buildQuickLaunchEffortDeck", () => {
       hasGate: false,
       gateOpen: false,
       gateHeldByValue: false,
+      showGateRow: false,
     });
   });
 });
