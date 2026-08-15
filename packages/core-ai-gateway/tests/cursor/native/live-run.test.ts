@@ -1,5 +1,8 @@
 import { EventEmitter } from "node:events";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import http2 from "node:http2";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { deflateRawSync } from "node:zlib";
 
 import { fromBinary, fromJson, toBinary, toJson, type JsonValue } from "@bufbuild/protobuf";
@@ -14,6 +17,7 @@ import {
   decodeConnectFrames,
   encodeConnectFrame,
   resetCursorWireModelMemory,
+  setWireLogTarget,
 } from "../../../src/index.js";
 import type {
   CanonicalFunctionTool,
@@ -28,10 +32,34 @@ import {
   AgentServerMessageSchema,
 } from "../../../src/cursor/native/generated/cursor-agent-protobuf.js";
 
+const temporaryWireLogDirectories: string[] = [];
+
 afterEach(() => {
   vi.useRealTimers();
   resetCursorWireModelMemory();
+  setWireLogTarget(undefined);
+  for (const directory of temporaryWireLogDirectories.splice(0)) {
+    rmSync(directory, { recursive: true, force: true });
+  }
 });
+
+function wireLogFile(): string {
+  const directory = mkdtempSync(path.join(tmpdir(), "fleet-cursor-wire-log-"));
+  temporaryWireLogDirectories.push(directory);
+  const filePath = path.join(directory, "wire-log.jsonl");
+  setWireLogTarget({ path: filePath });
+  return filePath;
+}
+
+function cursorWirePlanCount(filePath: string): number {
+  return readFileSync(filePath, "utf8")
+    .trim()
+    .split("\n")
+    .filter((line) => line.length > 0)
+    .map((line) => JSON.parse(line) as { readonly event?: unknown })
+    .filter((entry) => entry.event === "cursor.wire.plan")
+    .length;
+}
 
 describe("Cursor live client-tool Run bridge", () => {
   it.each([
@@ -53,6 +81,7 @@ describe("Cursor live client-tool Run bridge", () => {
       );
       const harness = cursorHarness([stream]);
       const initial = cursorRequest("session-single", model);
+      const wireLogPath = model === "composer-2.5" ? wireLogFile() : undefined;
 
       try {
         const firstEvents = await collectCursorResponse(harness.adapter, initial);
@@ -76,6 +105,7 @@ describe("Cursor live client-tool Run bridge", () => {
           }),
         ]);
         expect(stream.closeCode).not.toBe(http2.constants.NGHTTP2_CANCEL);
+        if (wireLogPath) expect(cursorWirePlanCount(wireLogPath)).toBe(1);
       } finally {
         harness.adapter.dispose();
       }
@@ -1091,6 +1121,7 @@ describe("Cursor live client-tool Run bridge", () => {
       const harness = cursorHarness([parked, fallback]);
       const initial = cursorRequest(`session-${kind}`, "grok-4.5");
       const exact = calls.map((call) => cursorResult(call, `${call.callId} result`));
+      const wireLogPath = wireLogFile();
       const results = kind === "partial"
         ? exact.slice(0, 1)
         : kind === "extra"
@@ -1110,6 +1141,7 @@ describe("Cursor live client-tool Run bridge", () => {
         expect(cursorMcpResultWrites(parked)).toHaveLength(0);
         expect(parked.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
         expect(harness.openedStreams).toBe(2);
+        expect(cursorWirePlanCount(wireLogPath)).toBe(2);
         expect(cursorClientWrites(fallback)[0]).toMatchObject({
           runRequest: { action: { resumeAction: {} } },
         });
@@ -1126,6 +1158,7 @@ describe("Cursor live client-tool Run bridge", () => {
       const parked = new BridgeCursorStream(cursorToolFrames([call]));
       const fallback = new BridgeCursorStream(cursorCompletionFrames("separate fallback"));
       const harness = cursorHarness([parked, fallback]);
+      const wireLogPath = wireLogFile();
       const initial = cursorRequest(
         `session-separation-${partition}`,
         partition === "effort" ? "grok-4.5-fast" : "grok-4.5",
@@ -1150,6 +1183,7 @@ describe("Cursor live client-tool Run bridge", () => {
         expect(cursorMcpResultWrites(parked)).toHaveLength(0);
         expect(parked.closeCode).toBe(http2.constants.NGHTTP2_CANCEL);
         expect(harness.openedStreams).toBe(2);
+        expect(cursorWirePlanCount(wireLogPath)).toBe(2);
       } finally {
         harness.adapter.dispose();
       }
