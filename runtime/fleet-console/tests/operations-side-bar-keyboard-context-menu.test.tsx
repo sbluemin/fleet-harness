@@ -219,6 +219,21 @@ describe("sidebar context menu keyboard path", () => {
     expect(document.querySelector(".canvas-context-menu")).toBeNull();
   });
 
+  it("closes an already-open launch overlay when the last Theater disappears", () => {
+    renderSideBar();
+    const sideBar = required<HTMLElement>(".operations-side-bar");
+    act(() => sideBar.dispatchEvent(new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 120,
+      clientY: 80,
+    })));
+    expect(document.querySelector(".canvas-context-menu")).not.toBeNull();
+
+    renderSideBar([], vi.fn(), { theaters: [], activeTheaterId: null, operations: [], groups: [], activeOperationId: null });
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+  });
+
 });
 
 function renderSideBar(

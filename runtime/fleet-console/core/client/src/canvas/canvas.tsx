@@ -249,6 +249,12 @@ export function OperationsCanvas({
     onClick: clearTerminalFocus,
   });
 
+  // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는
+  // 목록이 비워져도 그대로 남으므로, 그 전환에서 걷는다.
+  useEffect(() => {
+    if (state.theaters.length === 0) setContextMenu(null);
+  }, [state.theaters.length]);
+
   const handleContextMenuLaunchKind = (
     pluginId: string,
     kind: OperationLaunchKind,

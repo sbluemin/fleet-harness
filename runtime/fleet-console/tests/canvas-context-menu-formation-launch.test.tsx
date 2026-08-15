@@ -123,6 +123,19 @@ describe("canvas controls launch parity across canvas modes", () => {
     expect(menu.defaultPrevented).toBe(true);
     expect(container!.querySelector(".canvas-context-menu")).toBeNull();
   });
+
+  it("closes an already-open launcher when the last Theater disappears", () => {
+    renderCanvas();
+    const canvas = container!.querySelector<HTMLElement>("main.operations-canvas")!;
+    act(() => canvas.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 240 })));
+    expect(container!.querySelector(".canvas-context-menu")).not.toBeNull();
+
+    renderCanvas({
+      state: { ...STATE, theaters: [], operations: [], activeTheaterId: null, activeOperationId: null },
+      canLaunch: false,
+    });
+    expect(container!.querySelector(".canvas-context-menu")).toBeNull();
+  });
 });
 
 function renderCanvas(overrides: Partial<Parameters<typeof OperationsCanvas>[0]> = {}) {
