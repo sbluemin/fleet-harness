@@ -73,7 +73,7 @@ Operation은 무한 캔버스 위에 살고, 커맨드 밴드의 스위치가 �
 
 ## 터미널 옆의 프로젝트 전체
 
-<img src=".github/console-repository.png" alt="Repository 패널: 활성 Theater의 커밋 그래프, 워크트리, 브랜치, 태그가 라이브 Operation 옆에" width="100%" />
+<img src=".github/console-repository.png" alt="Repository 패널: 활성 Theater의 커밋 그래프, 워크트리, 브랜치가 라이브 Operation 옆에" width="100%" />
 
 Activity Rail에는 여덟 개의 내장 패널이 실려 있습니다 — **알림, Codex, Shell, 파일, 저장소, 스킬, 원장, 사용 한도** — 그리고 설치한 플러그인이 자기 패널을 더할 수 있습니다. 저장소 패널 하나만으로 활성 Theater의 히스토리, 작업 변경, 비교, 워크트리, 브랜치, 태그, 스태시를 감독 중인 Operation을 떠나지 않고 봅니다. 원장과 사용 한도는 토큰 지출과 프로바이더 쿼터를 같은 레일에 두어, 윈도우가 차오르는 것을 런이 멈추기 전에 알아차리게 합니다.
 

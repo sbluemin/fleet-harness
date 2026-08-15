@@ -73,7 +73,7 @@ War Room is the one to reach for when several agents are waiting on you: it stag
 
 ## The whole project, beside the terminal
 
-<img src=".github/console-repository.png" alt="The Repository panel: commit graph, worktrees, branches, and tags of the active Theater beside live operations" width="100%" />
+<img src=".github/console-repository.png" alt="The Repository panel: commit graph, worktrees, and branches of the active Theater beside live operations" width="100%" />
 
 The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, Files, Repository, Skills, Ledger,** and **Usage limits** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater without leaving the operation you are supervising. Ledger and Usage limits keep token spend and provider quota in the same rail, so you notice a window filling up before a run stops.
 
