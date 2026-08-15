@@ -200,7 +200,10 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     if (y > HEAD_HIDE_BOUNDARY_PX) releaseHead();
   }, [cancelRevealIntent, releaseHead]);
 
-  const handleSlotPointerLeave = useCallback(() => {
+  const handleSlotPointerLeave = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    // 터치 탭은 pointerup 뒤에 pointerleave가 따라온다. 그걸 숨김으로 받으면
+    // 방금 연 헤더가 접혀 두 번째 탭(플로팅·닫기)이 닿지 않는다.
+    if (event.pointerType === "touch") return;
     releaseHead();
   }, [releaseHead]);
 
@@ -433,6 +436,11 @@ function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha, revealed
     onHoldOpen();
   };
 
+  const handlePointerLeave = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "touch") return;
+    onRelease();
+  };
+
   const handleBlur = (event: React.FocusEvent<HTMLDivElement>) => {
     if (event.relatedTarget instanceof Node && event.currentTarget.contains(event.relatedTarget)) return;
     onRelease();
@@ -449,7 +457,7 @@ function RailPanelHead({ activePanelTitle, panelBehavior, overlayAlpha, revealed
     <div
       className={`right-rail-panel-head-reveal${revealed ? " is-revealed" : ""}`}
       onPointerMove={handlePointerMove}
-      onPointerLeave={onRelease}
+      onPointerLeave={handlePointerLeave}
       onFocusCapture={onHoldOpen}
       onBlurCapture={handleBlur}
       onKeyDown={handleKeyDown}

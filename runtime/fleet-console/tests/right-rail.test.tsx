@@ -444,6 +444,26 @@ describe("Right Rail hover-reveal header", () => {
     expect(panelHeadReveal().classList.contains("is-revealed")).toBe(false);
   });
 
+  it("keeps a touch reveal open through the lift so a second tap can reach the chrome", () => {
+    renderRail();
+    dispatchSlotPointer("pointerdown", { clientY: 120, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    dispatchSlotPointer("pointerleave", { clientY: 120, pointerType: "touch" });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+
+    act(() => {
+      panelHeadReveal().dispatchEvent(new PointerEvent("pointerleave", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 980,
+        clientY: 110,
+        pointerType: "touch",
+      }));
+    });
+    expect(panelHeadReveal().classList.contains("is-revealed")).toBe(true);
+  });
+
   it("resets the reveal when the active panel changes", () => {
     renderRail();
     dispatchSlotPointer("pointermove", { clientY: 104 });
