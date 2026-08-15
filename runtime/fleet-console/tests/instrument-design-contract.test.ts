@@ -592,7 +592,9 @@ describe("Instrument core design contract", () => {
     expect(chipAccentBlock).toContain("pointer-events: none;");
     expect(chipAccentBlock).not.toMatch(/animation/);
     expect(minimapDotBlock).toContain("background: var(--user-accent);");
-    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(5);
+    // 6번째 소비처는 정체성 워시 위에 포커스 워시를 겹치는 결합 규칙이다 — 새 채널이 아니라
+    // 같은 워시를 포커스 상태에서 다시 적는 자리이므로 accent는 여전히 spine+mark+wash에 머문다.
+    expect(components.match(/var\(--user-accent\)/g)).toHaveLength(6);
     expect(accentSources).not.toMatch(/--op-accent|--chip-accent/);
   });
 
@@ -967,8 +969,9 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("background: var(--group-mark);");
     expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toMatch(/\.side-bar-chip--unseen \{[^}]*border-color:\s*color-mix\(in oklch, var\(--positive\)/);
-    expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*border-color:\s*var\(--positive\)/);
-    expect(components).toContain(".canvas-operation.is-unseen.is-active {");
+    // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
+    expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
+    expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
     expect(components).toMatch(/\.side-bar-status-header__unseen::before \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toContain(".side-bar-status-axis-live-tick,");
     expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
@@ -1679,16 +1682,35 @@ describe("Instrument core design contract", () => {
     expect(captionSeamBlock).not.toContain("border-top: none;");
     expect(components).toContain("border-radius: 999px;");
     expect(components).toContain("color: var(--text-secondary);");
-    // 활성은 패널 아웃라인만 말한다 — 캡션 brass 틴트와 이름 재채색은 같은 신호를 중복한다.
     // inherit은 단축 전체가 아니라 border-color만 받는다. 1px solid inherit은 선언이 버려진다.
     expect(components).toContain("border-width: 1px;");
     expect(components).toContain("border-style: solid;");
     expect(components).toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
-    expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-titlebar");
-    expect(components).not.toContain(".canvas-operation.is-active .canvas-operation-identity-name");
-    expect(components).not.toContain("color-mix(in oklch, var(--brass) 7%, var(--surface-frame))");
-    expect(components).toContain(".canvas-operation.is-active {\n  border-color: color-mix(in oklch, var(--brass) 62%, var(--ink-rim));");
+    // 패널 아웃라인은 상태를 놓았다 — 포커스는 캡션 채움 워시, 상태는 캡션 아랫변 레일이 나른다.
+    // 포커스는 선을 쓰지 않는다: 상태 레일과 같은 굵기의 brass 선이 캡션 위아래에 겹치면
+    // warn과 brass가 한 덩어리 금색으로 읽힌다.
+    expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
+    expect(components).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));");
+    expect(components).not.toContain(".canvas-operation-titlebar::before");
+    expect(components).toContain("background: var(--caption-rail, transparent);");
+    // 도착 플래시는 지속 상태(is-unseen)가 아니라 전이를 표시하는 일시 클래스에만 건다 —
+    // is-unseen에 걸면 Theater 재진입 리마운트마다 다시 돈다.
+    expect(components).toContain(".canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {");
+    expect(components).not.toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{\n\s*animation: caption-rail-arrive/);
+    expect(operationFrame).toContain('arrivalFlash ? "is-unseen-arriving" : ""');
+    expect(operationFrame).toContain("previousUnseenRef");
+    // 정체성 워시와 포커스 워시는 같은 표면을 다투지 않는다 — 결합 규칙이 둘을 겹쳐 칠한다.
+    expect(components).toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
+    // oklch 믹스는 hue를 극좌표 호로 보간한다 — brass(78)+ink-rim(245) 62%는 hue 141(초록)에
+    // 착지해 위치 채널이 신호 채널 positive(160) 옆에 앉았다. 캡션 워시는 oklab으로 섞는다.
+    expect(components).not.toContain("color-mix(in oklch, var(--brass) 62%, var(--ink-rim))");
+    // 소비처가 사라진 진행광(running light) 변수는 함께 회수했다.
+    expect(components).not.toContain("--uw-tint");
+    expect(components).not.toContain("--uw-glow");
+    expect(source("styles/theme.css")).not.toContain("--uw-angle");
+    // 포커스가 상태를 덮던 우선순위 규칙은 채널이 갈린 뒤로 존재 이유가 없다.
+    expect(components).not.toContain(".canvas-operation.is-running.is-active {");
     expect(components).toContain(".canvas-operation-window-controls {");
     const windowControlsBlock = components.match(/\.canvas-operation-window-controls \{[^}]*\}/)?.[0] ?? "";
     expect(windowControlsBlock).toContain("margin-left: auto;");
