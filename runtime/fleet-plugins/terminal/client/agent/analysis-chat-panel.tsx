@@ -86,23 +86,23 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (!chat || !hasInteracted) return;
     chat.scrollTop = chat.scrollHeight;
-  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished]);
+  }, [hasInteracted, latestEntry?.text, state.entries.length, state.latestActivity, state.phase, state.artifactAuthoring, state.artifactPublished, mode]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea) return;
     resizeAnalysisTextarea(textarea);
-  }, [state.draft]);
+  }, [state.draft, mode]);
   React.useLayoutEffect(() => {
     const textarea = textareaRef.current;
     if (!textarea || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => resizeAnalysisTextarea(textarea));
     observer.observe(textarea);
     return () => observer.disconnect();
-  }, []);
+  }, [mode]);
   React.useEffect(() => {
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
-  }, [language]);
+  }, [language, mode]);
   React.useEffect(() => {
     const previousCount = previousArtifactCountRef.current;
     previousArtifactCountRef.current = artifactCount;
