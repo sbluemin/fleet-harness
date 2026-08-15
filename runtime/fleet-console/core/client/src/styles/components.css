@@ -4369,11 +4369,7 @@
   border: 1px solid var(--surface-rim);
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  /* 패널의 유일한 면은 --surface-panel — 캡션·본문·채팅 로그가 같은 값을 칠해 창 하나로 읽힌다.
-     --surface-window는 그 면의 현재 채움이다. 포커스 워시는 캡션에만 두면 채팅처럼
-     넓은 민낯 본문과 이음새가 생기므로, 채팅 뷰는 이 변수를 그대로 소비한다. 터미널 xterm은
-     불투명 셀이라 워시를 따라갈 수 없어 --surface-panel에 남는다. */
-  --surface-window: var(--surface-panel);
+  /* 패널의 유일한 면은 --surface-panel — 캡션·본문·채팅 로그가 같은 값을 칠해 창 하나로 읽힌다. */
   background: var(--surface-panel);
   box-shadow: var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
@@ -4654,9 +4650,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--user-accent);
 }
 
-/* 비포커스에서만 캡션에 정체성 워시를 직접 칠한다. 포커스면 --surface-window가
-   brass+accent를 이미 지고, 이 규칙이 남으면 캡션만 accent로 되돌아가 채팅과 갈린다. */
-.canvas-operation[style*="--user-accent"]:not(.is-active) .canvas-operation-titlebar {
+.canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
   background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
@@ -5864,7 +5858,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-style: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
-  background: var(--surface-window);
+  background: var(--surface-panel);
   background-clip: padding-box;
   cursor: grab;
   touch-action: none;
@@ -5885,19 +5879,23 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-top-style: none;
 }
 
-/* 포커스 = 창 면 워시 + 이름 티어. 선(윗변 라인·캡션 아웃라인)은 쓰지 않는다 — 상태 레일과
+/* 포커스 = 캡션 워시 + 이름 티어. 선(윗변 라인·캡션 아웃라인)은 쓰지 않는다 — 상태 레일과
    같은 굵기의 선이 캡션 위아래에 겹치면 warn과 brass가 한 덩어리 금색으로 읽힌다.
    믹스는 oklab이다 — oklch는 hue를 극좌표 호로 보간해 brass(78)와 ink-rim(245)의 62% 믹스가
    hue 141(초록)에 착지했고, 위치 채널이 신호 채널 positive(160) 옆에 앉았다.
-   워시는 캡션 전용이 아니다 — 채팅 본문이 같은 --surface-window를 써야 창이 한 장이다. */
-.canvas-operation.is-active {
-  --surface-window: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
+   워시는 캡션만 진다. 채팅·터미널 본문은 --surface-panel에 남아, 포커스가 로그 전체를
+   다른 면으로 다시 칠하지 않는다. */
+.canvas-operation.is-active > .canvas-operation-titlebar {
+  background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
+  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+  background-clip: padding-box;
 }
 
 /* 정체성(--user-accent)은 캡션 채움을 계속 소유한다 — 포커스 워시는 그 위에 얹혀 두 채널이
    같은 표면을 다투지 않는다. 이 결합 규칙이 없으면 accent가 있는 패널만 포커스를 잃는다. */
-.canvas-operation[style*="--user-accent"].is-active {
-  --surface-window: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)));
+.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {
+  background: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)));
+  background-clip: padding-box;
 }
 
 .canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-identity-name {
