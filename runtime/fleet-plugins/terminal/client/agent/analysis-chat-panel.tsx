@@ -142,12 +142,24 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     window.requestAnimationFrame(() => textareaRef.current?.focus());
   };
   const handleTranscriptClick = React.useCallback((event: React.MouseEvent<HTMLOListElement>) => {
-    const button = (event.target as HTMLElement).closest<HTMLElement>('[data-action="copy-code"]');
+    const target = event.target as HTMLElement;
+    // 증거 칩 — 클릭은 점프가 아니라 질문이다: 분석가의 session_read가 근거를 맥락과 함께
+    // 보여주도록 컴포저에 프리필한다(전송은 사용자 몫 — 메시지 한 건의 비용을 사용자가 쥔다).
+    const evidence = target.closest<HTMLElement>("[data-analysis-evidence]");
+    if (evidence) {
+      const ref = evidence.getAttribute("data-analysis-evidence");
+      if (ref) {
+        dispatch({ type: "set-draft", draft: t("terminal.analyst.evidencePrompt", { ref }) });
+        window.requestAnimationFrame(() => textareaRef.current?.focus());
+      }
+      return;
+    }
+    const button = target.closest<HTMLElement>('[data-action="copy-code"]');
     if (!button) return;
     const code = button.closest("pre")?.getAttribute("data-code");
     if (!code) return;
     copyCodeToClipboard(button, code, language);
-  }, [language]);
+  }, [dispatch, language, t]);
 
   const lastAnalystIndex = state.entries.reduce((last, entry, index) => entry.role === "analyst" ? index : last, -1);
   // 아직 분석가 chunk가 없는 진행/오류/중단은 합성 턴이 상태를 실어 나른다.

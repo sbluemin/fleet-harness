@@ -159,9 +159,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__response.markdown-body .code-block code { padding: var(--space-3); }
 .session-analyst__response .code-block code { display: block; max-width: 100%; overflow-x: auto; }
 
-/* 증거 인용 칩 — [eN]을 시각 어휘로 승격한다. P1은 표시 전용(발췌·점프는 후속 단계),
-   상호작용을 약속하지 않도록 button이 아니라 span이다. */
-.session-analyst__ev { display: inline-grid; place-items: center; min-width: 20px; height: 15px; padding: 0 4px; margin: 0 1px; vertical-align: 2px; border: 1px solid color-mix(in oklch, var(--aurora) 40%, var(--hairline)); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--aurora-ink); font-family: var(--font-mono); font-weight: var(--weight-medium); font-size: 9px; line-height: 1; cursor: help; }
+/* 증거 인용 칩 — [eN]을 시각 어휘로 승격한다. 클릭은 점프가 아니라 질문이다:
+   컴포저에 근거 질문을 프리필해 분석가의 session_read 경로로 맥락을 보여준다. */
+.session-analyst__ev { display: inline-grid; place-items: center; min-width: 20px; height: 15px; padding: 0 4px; margin: 0 1px; vertical-align: 2px; border: 1px solid color-mix(in oklch, var(--aurora) 40%, var(--hairline)); border-radius: var(--radius-sm); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--aurora-ink); font-family: var(--font-mono); font-weight: var(--weight-medium); font-size: 9px; line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
+.session-analyst__ev:hover { border-color: color-mix(in oklch, var(--aurora) 70%, var(--hairline)); background: color-mix(in oklch, var(--aurora) 14%, transparent); }
 
 /* 아티팩트 저작/발행 카드 — 스파인 열에 맞춘 인라인 카드. */
 .session-analyst__author-card { min-width: 0; flex: none; margin: var(--space-4) 0 0 26px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: var(--space-3); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }
