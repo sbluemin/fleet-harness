@@ -121,10 +121,14 @@
      라이트(Whites)만 종이 표면(카드·터미널)보다 어두운 자체 리터럴로 분화한다(신호 ink 티어와 동형 구조).
      라이트에서 크롬이 종이보다 밝아지면 시선이 크롬으로 끌리는 극성 역전이 재발한다. */
   --surface-chrome: var(--surface-glass);
-  /* Operation 창 프레임(본체·타이틀바) 전용 티어 — 다크 3종은 ink-mid 별칭으로 기존 렌더를 유지하고,
-     라이트(Whites)는 ink-deep 별칭으로 GNB(밴드)와 같은 크롬 패밀리에 정렬한다. ink-mid 리터럴을 직접
-     밝히면 호버·칩 등 45개 소비처가 함께 움직여 어포던스가 희석되므로 프레임만 분리한다. */
-  --surface-frame: var(--ink-mid);
+  /* Operation 패널의 유일한 면 — 캡션·프레임·본문 거터·채팅 로그가 전부 이 하나를 칠한다.
+     패널 안에서 색이 갈리면 창 하나가 여러 장으로 읽히므로 티어를 나누지 않는다.
+     값은 터미널 필드 톤이다(terminal-surface.tsx가 xterm 배경으로 이 토큰을 읽어 간다) —
+     다크 3종은 캔버스보다 밝은 쪽, 라이트(Whites)는 어두운 쪽에 서서 어느 테마에서도
+     패널이 캔버스 위로 떠오른다. ink 티어 별칭이 아닌 이유는 그 방향이 ink 스케일의
+     한 칸과 일치하지 않기 때문이다 — ink-mid를 직접 밝히면 호버·칩 등 45개 소비처가
+     함께 움직이므로 패널 면만 분리한다. 패널 위에 얹히는 칩·카드는 계속 ink-mid를 쓴다. */
+  --surface-panel: var(--ink-deep);
   --surface-glass-strong: var(--ink-mid);
   --surface-pillar: var(--ink-veil);
   --surface-rim: var(--hairline);
@@ -245,6 +249,8 @@
   --canvas-sea-far: oklch(6% 0.012 250);
 
   --surface-glass: oklch(28% 0.04 248 / 60%);
+  /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(20%)과 veil(36%) 사이의 터미널 필드 톤이다. */
+  --surface-panel: oklch(23% 0.03 248);
   --surface-glass-strong: oklch(32% 0.04 248 / 78%);
   --surface-pillar: oklch(22% 0.05 248 / 86%);
   --surface-rim: oklch(64% 0.04 248 / 24%);
@@ -303,6 +309,8 @@
   --canvas-sea-far: oklch(6% 0.005 258);
 
   --surface-glass: oklch(25% 0.006 252 / 62%);
+  /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(18%)과 mid(25%) 사이의 터미널 필드 톤이다. */
+  --surface-panel: oklch(19% 0.008 252);
   --surface-glass-strong: oklch(29% 0.007 252 / 80%);
   --surface-pillar: oklch(20% 0.008 252 / 88%);
   --surface-rim: oklch(62% 0.006 252 / 22%);
@@ -409,7 +417,9 @@
 
   --surface-glass: oklch(98% 0.004 100 / 70%);
   --surface-chrome: oklch(96% 0.004 100);
-  --surface-frame: var(--ink-deep);
+  /* 라이트에서 패널이 떠오르는 방향은 아래다 — 캔버스(canvas-abyss 97.8%)보다 어두운 면이
+     창으로 읽힌다. 다크 3종처럼 캔버스보다 밝게 가면 종이 위 종이가 되어 경계가 사라진다. */
+  --surface-panel: var(--ink-deep);
   --surface-glass-strong: oklch(96.5% 0.005 100 / 82%);
   --surface-pillar: oklch(98.5% 0.003 100 / 90%);
   --surface-rim: oklch(38% 0.02 95 / 18%);

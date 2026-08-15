@@ -139,7 +139,7 @@ const CARBON_TERMINAL_THEME: ITheme = {
 // 종이·잉크·흑백 rung은 whites의 오트밀 대기(hue 95~100)를 따르고, 유채 ANSI 6색은 CLI 콘텐츠의
 // 의미색이므로 대기 이동과 무관하게 유지한다(cursor=aurora·selection=brass 채널 역할도 불변).
 const WHITES_TERMINAL_THEME: ITheme = {
-  background: "oklch(98.2% 0.004 100)",
+  background: "oklch(95.5% 0.005 100)",
   foreground: "oklch(24% 0.012 95)",
   cursor: "oklch(50% 0.1 210)",
   selectionBackground: "oklch(56% 0.125 82 / 20%)",
@@ -673,13 +673,28 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   );
 }
 
-function terminalThemeFor(theme: TerminalThemeId): ITheme {
+function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
   switch (theme) {
     case "instrument": return INSTRUMENT_TERMINAL_THEME;
     case "maritime": return MARITIME_TERMINAL_THEME;
     case "carbon": return CARBON_TERMINAL_THEME;
     case "whites": return WHITES_TERMINAL_THEME;
   }
+}
+
+/* 패널 면은 theme.css의 --surface-panel 하나가 소유한다 — 캡션·거터·터미널 필드가 같은 값이라야
+   창 하나로 읽힌다. xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의
+   background 리터럴은 그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 —
+   두 값이 갈라지지 않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
+export function resolvePanelSurface(fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--surface-panel").trim();
+  return resolved || fallback;
+}
+
+function terminalThemeFor(theme: TerminalThemeId): ITheme {
+  const base = baseTerminalThemeFor(theme);
+  return { ...base, background: resolvePanelSurface(base.background ?? "") };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

@@ -3947,9 +3947,11 @@
 }
 
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다.
+   포커스·정체성 워시와 같은 문법이다: 패널 면 위에 얹는 틴트이지 다른 면이 아니므로
+   베이스는 반드시 --surface-panel이다(반투명 잉크 티어를 깔면 셸 패널만 이음새가 되살아난다).
    background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
 .canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, color-mix(in oklch, var(--ink-deep) 28%, transparent));
+  background: color-mix(in oklch, var(--aurora) 9%, var(--surface-panel));
   background-clip: padding-box;
 }
 
@@ -4367,8 +4369,8 @@
   border: 1px solid var(--surface-rim);
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
-  /* 창 프레임은 --surface-frame — 라이트에서 최암면이 되지 않도록 밴드와 같은 크롬 패밀리를 탄다. */
-  background: var(--surface-frame);
+  /* 패널의 유일한 면은 --surface-panel — 캡션·본문·채팅 로그가 같은 값을 칠해 창 하나로 읽힌다. */
+  background: var(--surface-panel);
   box-shadow: var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
@@ -4638,7 +4640,7 @@
 }
 
 .canvas-operation[style*="--user-accent"] .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame));
+  background: color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -5844,7 +5846,7 @@
   border-bottom: none;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
   overflow: visible;
-  background: var(--surface-frame);
+  background: var(--surface-panel);
   background-clip: padding-box;
   cursor: grab;
   touch-action: none;
@@ -5871,7 +5873,7 @@
    믹스는 oklab이다 — oklch는 hue를 극좌표 호로 보간해 brass(78)와 ink-rim(245)의 62% 믹스가
    hue 141(초록)에 착지했고, 위치 채널이 신호 채널 positive(160) 옆에 앉았다. */
 .canvas-operation.is-active > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));
+  background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -5879,7 +5881,7 @@
 /* 정체성(--user-accent)은 캡션 채움을 계속 소유한다 — 포커스 워시는 그 위에 얹혀 두 채널이
    같은 표면을 다투지 않는다. 이 결합 규칙이 없으면 accent가 있는 패널만 포커스를 잃는다. */
 .canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame)));
+  background: color-mix(in oklab, var(--brass) 10%, color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel)));
   background-clip: padding-box;
 }
 
@@ -6515,7 +6517,9 @@
   min-height: 0;
   overflow: hidden;
   border-radius: 0 0 calc(var(--radius-lg) - 1px) calc(var(--radius-lg) - 1px);
-  background: color-mix(in oklch, var(--ink-deep) 64%, var(--surface-pillar));
+  /* terminal-shell의 8px 패딩이 xterm 뷰포트를 사방에서 감싸므로 이 면은 실제로 보이는 띠다 —
+     캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. 패널 면 하나를 그대로 쓴다. */
+  background: var(--surface-panel);
 }
 
 .canvas-operation-terminal .terminal-stage,
@@ -6555,18 +6559,16 @@
   width: 100%;
   height: 100%;
   border: 0;
-  background:
-    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%),
-    color-mix(in oklch, var(--ink-deep) 74%, transparent);
+  /* 휴면은 패널 면 위의 상태이지 다른 면이 아니다 — 톤을 낮추지 않고 brass 헤일로만 얹는다
+     (brass는 위치·포커스 채널이므로 어포던스는 헤일로와 커서가 진다). */
+  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 34%);
   color: var(--text-primary);
   cursor: pointer;
 }
 
 .canvas-operation-dormant:hover,
 .canvas-operation-dormant:focus-visible {
-  background:
-    radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 16%, transparent), transparent 38%),
-    color-mix(in oklch, var(--ink-deep) 68%, transparent);
+  background: radial-gradient(circle at 50% 42%, color-mix(in oklch, var(--brass) 16%, transparent), transparent 38%);
 }
 
 .canvas-operation-dormant-status {
