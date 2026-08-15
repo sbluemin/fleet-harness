@@ -2249,6 +2249,23 @@ describe("Effort track interaction grammar", () => {
       /\.quick-launch-command-row\[data-effort-level="auto"\] \.quick-launch-mention-name \{[^}]*text-decoration: underline dashed;/,
     );
 
+    // 문구는 실제로 열리는 단에서 유도한다 — max만 내놓는 모델(Codex Luna 계열·Kimi K3 등)에서
+    // 고정 문구는 열리지 않는 단을 약속한다. 세 표면(덱 문 행·바 트랙·캔버스 트랙)이 같은 유도를
+    // 쓰므로 문구가 갈라지지 않는다.
+    const common = source("i18n/messages/common.ts");
+    const canvasMenu = source("canvas/canvas-context-menu.tsx");
+    expect(common).toContain('"launchVariants.effort.apexToggle": "Show {tiers}"');
+    expect(common).toContain('"launchVariants.effort.apexCollapse": "Hide {tiers}"');
+    for (const surface of [composer, canvasMenu]) {
+      expect(surface).toMatch(/apexToggleLabel=\{t\("launchVariants\.effort\.apexToggle", \{ tiers: gatedEffortNames\(/u);
+      expect(surface).toMatch(/apexCollapseLabel=\{t\("launchVariants\.effort\.apexCollapse", \{ tiers: gatedEffortNames\(/u);
+    }
+    expect(composer).toMatch(/const tiers = gatedEffortNames\(selectedRow\);/u);
+
+    // 문 행은 listbox 안에 산다. option role이 지원하지 않는 aria-expanded를 달면 무시되거나
+    // 무효로 읽히므로, 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔ "… 접기").
+    expect(composer).not.toContain("aria-expanded={row.gate");
+
     // 문 행은 apex 채널로만 말한다(트랙의 ✦ 토글과 같은 어휘). 신호 토큰도 위치 채널도 빌리지 않는다.
     const gateRule = components.match(/\.quick-launch-command-row\.is-gate \.quick-launch-mention-name \{[^}]*\}/)?.[0] ?? "";
     const gateGlyph = components.match(/\.quick-launch-command-gate-glyph \{[^}]*\}/)?.[0] ?? "";

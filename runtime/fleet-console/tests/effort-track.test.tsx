@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import { EffortTrack, effortLadderPosition, resolveRowEffort } from "../core/client/src/components/effort-track.js";
+import { EffortTrack, effortLadderPosition, gatedEffortNames, resolveRowEffort } from "../core/client/src/components/effort-track.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -462,5 +462,26 @@ describe("resolveRowEffort", () => {
     expect(resolveRowEffort(row(), "medium")).toBeNull();
     expect(resolveRowEffort(row({ chips: [] }), "high")).toBeNull();
     expect(resolveRowEffort(null, "high")).toBeNull();
+  });
+});
+
+describe("gatedEffortNames", () => {
+  it("names only the gated tiers the model actually offers", () => {
+    // K3-1M은 max만 내놓는다 — 게이트 문구가 "MAX·ULTRACODE"라고 말하면 열었을 때 한 단만 서고,
+    // 나머지 하나는 어디 갔는지 물을 자리가 없다.
+    expect(gatedEffortNames(row({ gatedEfforts: ["max", "ultra"] }))).toBe("MAX");
+    expect(gatedEffortNames(row({
+      gatedEfforts: ["max", "ultra"],
+      chips: ["low", "max", "ultra"].map((id) => ({
+        id,
+        label: id === "ultra" ? "ULTRACODE" : id.toUpperCase(),
+        launch: { model: "kimi--k3", effort: id },
+      })),
+    }))).toBe("MAX·ULTRACODE");
+  });
+
+  it("names nothing when the row gates no rung", () => {
+    expect(gatedEffortNames(row())).toBe("");
+    expect(gatedEffortNames(null)).toBe("");
   });
 });

@@ -5,7 +5,7 @@ import { FEATURE_TOUR_BOUNDARY_ATTRIBUTE, FEATURE_TOUR_LAYER_SELECTOR } from "..
 import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { resolveLaunchKindAnnotation } from "../launch-kind-annotations.js";
-import { EffortGaugeGlyph, EffortTrack, effortLadderPosition } from "../components/effort-track.js";
+import { EffortGaugeGlyph, EffortTrack, effortLadderPosition, gatedEffortNames } from "../components/effort-track.js";
 import { appendSeenFeatureTour, EFFORT_CONFIRM_TIP_SEEN_KEY } from "../components/feature-tour.js";
 import { launchEtcGlyph, launchProviderFromGroupId, launchProviderGlyph } from "../components/launch-provider-glyphs.js";
 
@@ -800,8 +800,8 @@ export function CanvasContextMenu({ anchor, viewportBounds, placement = "cursor"
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
-              apexToggleLabel={t("launchVariants.effort.apexToggle")}
-              apexCollapseLabel={t("launchVariants.effort.apexCollapse")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle", { tiers: gatedEffortNames(effortTargetRow) })}
+              apexCollapseLabel={t("launchVariants.effort.apexCollapse", { tiers: gatedEffortNames(effortTargetRow) })}
             />
             {showEffortConfirmTip ? (
               <p className="operation-launch-effort-confirm-tip" role="status">

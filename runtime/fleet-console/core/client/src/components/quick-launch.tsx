@@ -17,7 +17,7 @@ import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
-import { EffortTrack, resolveRowEffort } from "./effort-track.js";
+import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -755,9 +755,10 @@ export function QuickLaunch() {
     // 트랙이 그 자리에 남아 있는 것과 같다. 게이트 단을 하나도 내놓지 않는 모델에서는 서지 않아,
     // "이 모델엔 없다"가 "접혀 있다"와 처음으로 갈린다.
     if (deck.showGateRow) {
+      const tiers = gatedEffortNames(selectedRow);
       rows.push({
         id: "effort-gate",
-        label: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle"),
+        label: t(deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle", { tiers }),
         lead: <span className="quick-launch-command-gate-glyph" aria-hidden="true">{deck.gateOpen ? "‹" : "✦"}</span>,
         gate: true,
         pick: () => {
@@ -1407,9 +1408,10 @@ export function QuickLaunch() {
                       className={`quick-launch-mention-row quick-launch-command-row${active ? " is-active" : ""}${row.gate ? " is-gate" : ""}`}
                       role="option"
                       aria-selected={active}
-                      // 문 행은 값을 고르는 자리가 아니라 목록을 여닫는 자리다 — 스크린리더에도
-                      // 그 상태로 말한다(트랙 ✦ 토글의 aria-expanded와 같은 계약).
-                      aria-expanded={row.gate ? commandGateOpen : undefined}
+                      // 문 행에 aria-expanded를 달지 않는다 — option role이 지원하는 상태가 아니라
+                      // 무시되거나 무효로 읽힌다. 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔
+                      // "… 접기"). 이 행을 listbox 밖으로 빼면 유효한 토글 role을 쓸 수 있지만,
+                      // aria-activedescendant 순회에서 빠져 키보드 문법이 값 행과 갈라진다.
                       tabIndex={-1}
                       data-effort-level={row.effortLevel}
                       data-apex={row.apex ? true : undefined}
@@ -1603,8 +1605,8 @@ export function QuickLaunch() {
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
-              apexToggleLabel={t("launchVariants.effort.apexToggle")}
-              apexCollapseLabel={t("launchVariants.effort.apexCollapse")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle", { tiers: gatedEffortNames(selectedRow) })}
+              apexCollapseLabel={t("launchVariants.effort.apexCollapse", { tiers: gatedEffortNames(selectedRow) })}
               className="quick-launch-effort-track"
             />
           ) : null}

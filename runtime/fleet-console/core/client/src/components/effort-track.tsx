@@ -390,6 +390,20 @@ export function effortLadderPosition(row: OperationLaunchVariantRow, effort: str
   return { rung: effort === null ? 0 : rungs.indexOf(effort) + 1, total: rungs.length };
 }
 
+/**
+ * 게이트가 실제로 열 수 있는 단들의 이름. 문구가 열리지 않는 단을 약속하지 않게 한다 —
+ * max만 내놓는 모델(Codex Luna 계열·Cursor Opus 5 계열·Kimi K3 등)에서 "MAX·ULTRACODE"라고
+ * 말하면 열었을 때 한 단만 서고, 나머지 하나는 어디 갔는지 물을 자리가 없다.
+ * 축에만 오른 단은 세지 않는다 — chips에 실린 것만 실제로 고를 수 있다.
+ */
+export function gatedEffortNames(row: OperationLaunchVariantRow | null): string {
+  const gated = new Set(row?.gatedEfforts ?? []);
+  return (row?.chips ?? [])
+    .filter((chip) => gated.has(chip.id))
+    .map((chip) => chip.label)
+    .join("·");
+}
+
 /** 기억해 둔 강도가 이 모델 사다리에 없으면 비운 상태로 떨어진다. */
 export function resolveRowEffort(row: OperationLaunchVariantRow | null, effort: string | null): string | null {
   if (!row || effort === null) return null;
