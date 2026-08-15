@@ -26,9 +26,17 @@ export type AgentChatStreamEvent =
   /** 라이브 전용 글자 단위 델타 — 저널에는 싣지 않는다. 완성 text 이벤트가 정정 앵커다. */
   | { readonly kind: "text-delta"; readonly text: string }
   /**
-   * 도구 이름이 인자보다 먼저 온다. 프로바이더는 이름을 올린 뒤 인자 JSON을 몇 초에 걸쳐
-   * 흘리고(실측 8.5s), 게이트웨이는 그 자리에서 content_block_start를 낸다. 라이브 전용이다 —
-   * 재생 때는 완성 tool 이벤트가 같은 스텝을 세우므로 저널에 두 번 남길 이유가 없다.
+   * 도구 이름이 인자보다 먼저 알려지는 경로. 프로바이더는 이름을 올린 뒤 인자 JSON을 몇 초에
+   * 걸쳐 흘리고(실측 8.5s), 게이트웨이는 그 자리에서 content_block_start를 낸다
+   * (core-ai-gateway anthropic/protocol.ts).
+   *
+   * 다만 **오늘 이 이벤트는 실제로 도착하지 않는다**: Agent SDK 0.3.212의 `stream_event`는
+   * 타입상 BetaRawMessageStreamEvent 전부를 실을 수 있지만, 실측(2026-08-16, 34초짜리 Write
+   * 한 건)에서 tool_use 블록의 시작은 한 번도 넘어오지 않았고 완성 assistant 메시지가 올 때에야
+   * 스텝이 섰다. 매핑을 남겨 두는 이유는 그 경로가 열리는 즉시 8.5초가 회수되기 때문이고,
+   * 그때까지 그 공백은 원장 꼬리의 "생각 중" 한 줄이 진다.
+   *
+   * 라이브 전용이다 — 재생 때는 완성 tool 이벤트가 같은 스텝을 세운다.
    */
   | { readonly kind: "tool-start"; readonly id: string; readonly name: string }
   | {

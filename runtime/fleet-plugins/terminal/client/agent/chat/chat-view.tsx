@@ -252,7 +252,14 @@ function ChatTurn({
             {working ? (
               <>
                 <ChangeStrip changes={view.changes} language={language} />
-                <Ledger items={view.ledger} language={language} />
+                {/* 아무 스텝도 돌지 않고 글자도 흐르지 않는 구간이 실제로 길다(실측 34초) —
+                    모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
+                    읽히므로, 원장 꼬리에 살아 있다는 사실 하나를 남긴다(내용은 싣지 않는다). */}
+                <Ledger
+                  items={view.ledger}
+                  language={language}
+                  pending={view.streamingText === null && !view.ledger.some((item) => item.state === "running")}
+                />
               </>
             ) : view.ledger.length > 0 || view.changes.length > 0 ? (
               <WorkFold
@@ -337,16 +344,26 @@ function ChangeStrip({
 function Ledger({
   items,
   language,
+  pending = false,
 }: {
   readonly items: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
+  /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
+  readonly pending?: boolean;
 }) {
-  if (items.length === 0) return null;
+  const t = getT(language);
+  if (items.length === 0 && !pending) return null;
   return (
     <div className="agent-chat-ledger">
       {items.map((item, index) => item.type === "text"
         ? <div key={index} className="agent-chat-ledger-note">{item.text}</div>
         : <Step key={index} item={item} language={language} />)}
+      {pending ? (
+        <div className="agent-chat-step is-running">
+          <span className="agent-chat-step-orbit" aria-hidden="true" />
+          <span className="agent-chat-step-verb" role="status">{t("terminal.chat.stepThinking")}</span>
+        </div>
+      ) : null}
     </div>
   );
 }
