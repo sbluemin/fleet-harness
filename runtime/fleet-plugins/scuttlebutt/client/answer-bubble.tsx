@@ -195,17 +195,30 @@ export interface LanePlacement {
  */
 export function laneOffset(input: LanePlacement): number {
   const { bubble, siblings, left, width, height, placeAbove, anchorTop, anchorBottom, gap } = input;
-  let lane = 0;
-  for (const sibling of siblings) {
-    if (sibling === bubble) break;
+  const blockers: readonly DOMRect[] = siblings
+    .slice(0, Math.max(0, siblings.indexOf(bubble) === -1 ? siblings.length : siblings.indexOf(bubble)))
     // 아직 좌표를 못 잰 형제(첫 프레임)는 건너뛴다 — 0,0에 있는 상자로 레인을 계산하면 튄다.
-    if (sibling.style.visibility !== "visible") continue;
-    const rect = sibling.getBoundingClientRect();
-    if (rect.left >= left + width || left >= rect.left + rect.width) continue;
-    const top = placeAbove ? anchorTop - gap - lane - height : anchorBottom + gap + lane;
-    if (top >= rect.bottom || rect.top >= top + height) continue;
-    // 겹치는 형제의 바깥 변 너머로 물러선다. 앞선 형제가 이미 더 큰 레인을 요구했으면 그것을 지킨다.
-    lane = Math.max(lane, placeAbove ? anchorTop - rect.top : rect.bottom - anchorBottom);
+    .filter((sibling) => sibling.style.visibility === "visible")
+    .map((sibling) => sibling.getBoundingClientRect())
+    .filter((rect) => rect.left < left + width && left < rect.left + rect.width);
+
+  let lane = 0;
+  // 한 번 훑는 것으로는 부족하다 — 마스코트 높이가 제각각이면 뒤쪽 형제를 피해 물러난 자리가 앞서
+  // 지나쳤던 형제 위로 되돌아갈 수 있다(세 부관이 겹칠 때 실측 재현). 자리가 더 움직이지 않을 때까지
+  // 다시 훑는다. 형제 수만큼만 돌므로(부관은 셋) 끝나지 않는 일은 없다.
+  for (let pass = 0; pass <= blockers.length; pass += 1) {
+    let moved = false;
+    for (const rect of blockers) {
+      const top = placeAbove ? anchorTop - gap - lane - height : anchorBottom + gap + lane;
+      if (top >= rect.bottom || rect.top >= top + height) continue;
+      // 겹치는 형제의 바깥 변 너머로 물러선다. 앞선 형제가 이미 더 큰 레인을 요구했으면 그것을 지킨다.
+      const next = Math.max(lane, placeAbove ? anchorTop - rect.top : rect.bottom - anchorBottom);
+      if (next > lane) {
+        lane = next;
+        moved = true;
+      }
+    }
+    if (!moved) break;
   }
   return lane;
 }

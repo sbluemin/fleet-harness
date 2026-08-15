@@ -85,6 +85,18 @@ describe("answer bubble lanes", () => {
     expect(laneOffset(placement({ bubble: mine, siblings: [high, mine] }))).toBe(0);
   });
 
+  it("rescans earlier bubbles after a retreat moves it back onto one", () => {
+    // 세 부관이 가로로 겹치고 마스코트 높이가 제각각이면, 뒤쪽 형제를 피해 물러난 자리가 앞서
+    // 지나쳤던 형제 위로 되돌아간다. 한 번만 훑으면 그 겹침이 매 프레임 그대로 남는다.
+    const above = bubble({ top: 100, left: 1000, width: 360, height: 100 });
+    const below = bubble({ top: 220, left: 1000, width: 360, height: 100 });
+    const mine = bubble({ top: 0, left: 1000, width: 360, height: 100 });
+    // 후보는 [250,350]에서 시작한다: anchorTop 358 - gap 8 - lane 0 - height 100.
+    const lane = laneOffset(placement({ bubble: mine, siblings: [above, below, mine], anchorTop: 358 }));
+    const top = 358 - 8 - lane - 100;
+    expect(top + 100).toBeLessThanOrEqual(100);
+  });
+
   it("ignores a sibling that has not been placed yet", () => {
     // 첫 프레임의 형제는 0,0 상자를 돌려주므로 레인 계산에 넣으면 위치가 튄다.
     const unplaced = bubble(null);
