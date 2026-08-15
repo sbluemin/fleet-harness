@@ -19,6 +19,8 @@ import {
   runConsoleStatus,
   runConsoleStop,
 } from "../core/host/cli.js";
+import { openBrowser } from "../core/host/browser.js";
+import { describeConsoleLaunch, describeDaemonStartFailure, formatFailureNotice } from "../core/host/failure-notice.js";
 import { createConsoleLock } from "../core/host/lock.js";
 import { createConsolePaths } from "../core/host/paths.js";
 
@@ -244,7 +246,7 @@ describe("fleet console CLI", () => {
       health: { probe: async () => ({ healthy: false, lock: null, error: "lock missing" }) },
     });
 
-    await expect(lifecycle.ensureDaemon()).rejects.toThrow("Fleet Console server did not become healthy");
+    await expect(lifecycle.ensureDaemon()).rejects.toThrow("Fleet Console server did not start.");
 
     expect(spawnDetached).toHaveBeenCalledTimes(1);
     expect(spawnDetached.mock.calls[0]?.[2]).toEqual({
@@ -279,6 +281,81 @@ describe("fleet console CLI", () => {
     expect(opened).toEqual(["http://127.0.0.1:37283/console/"]);
     expect(result.url).toBe(opened[0]);
     expect(opened[0]).not.toContain("#");
+  });
+
+  // 실패 화법 계약: 사용자에게 도달하는 실패는 무슨 일 · 왜 · 지금 할 일 세 조각을 갖는다.
+  // 기계 코드만 던지던 예전 문구로 되돌리면 아래 세 건이 모두 깨진다.
+  describe("failure notices", () => {
+    it("tells a daemon start failure apart by whether the process ever spawned", () => {
+      const spawnFailed = describeDaemonStartFailure({
+        spawnError: "spawn /node ENOENT",
+        probeError: null,
+        dataDir: "/tmp/fleet",
+      });
+      expect(spawnFailed).toContain("Fleet Console server did not start.");
+      expect(spawnFailed).toContain("the server process could not be spawned — spawn /node ENOENT");
+      expect(spawnFailed).toContain("node --version");
+
+      const neverAnswered = describeDaemonStartFailure({
+        spawnError: null,
+        probeError: "lock missing",
+        dataDir: "/tmp/fleet",
+      });
+      expect(neverAnswered).toContain("never answered a health check — lock missing");
+      // 원인이 무엇이든 사용자가 지금 확인할 수 있는 자리를 준다.
+      expect(neverAnswered).toContain("/tmp/fleet");
+      expect(neverAnswered).toContain("fleet console status");
+    });
+
+    it("keeps every notice in the what/why/next shape", () => {
+      const text = formatFailureNotice({ what: "It broke.", why: "a reason", next: ["do this", "then that"] });
+      expect(text.split("\n")).toEqual([
+        "It broke.",
+        "  Why   a reason",
+        "  Next  do this",
+        "        then that",
+      ]);
+    });
+
+    it("hands the address over when the console runs but no browser opened", () => {
+      expect(describeConsoleLaunch("Fleet Console opened.", {
+        url: "http://127.0.0.1:37283/console/",
+        browserOpened: true,
+      })).toBe("Fleet Console opened.");
+
+      const failed = describeConsoleLaunch("Fleet Console opened.", {
+        url: "http://127.0.0.1:37283/console/",
+        browserOpened: false,
+        browserError: "xdg-open is not on PATH",
+      });
+      expect(failed).toContain("Fleet Console is running, but no browser opened");
+      expect(failed).toContain("xdg-open is not on PATH");
+      expect(failed).toContain("Open this address yourself: http://127.0.0.1:37283/console/");
+      expect(failed).not.toBe("Fleet Console opened.");
+    });
+
+    it("reports a browser launcher that is missing instead of claiming success", async () => {
+      const result = await openBrowser("http://127.0.0.1:37283/console/", {
+        platform: "linux",
+        spawnBrowser: () => Promise.resolve({ opened: false, reason: "xdg-open is not on PATH" }),
+      });
+      expect(result).toEqual({ opened: false, reason: "xdg-open is not on PATH" });
+    });
+
+    it("carries a failed browser launch out of openFleetConsole", async () => {
+      const result = await openFleetConsole({
+        lifecycle: {
+          ensureDaemon: async () => LOCK.endpoint,
+          probe: async () => ({ healthy: true, lock: LOCK, buildStale: false }),
+        },
+        openBrowser: async () => ({ opened: false, reason: "open is not executable" }),
+      });
+      expect(result).toEqual({
+        url: "http://127.0.0.1:37283/console/",
+        browserOpened: false,
+        browserError: "open is not executable",
+      });
+    });
   });
 
   it("fails when the console is not healthy after ensure", async () => {

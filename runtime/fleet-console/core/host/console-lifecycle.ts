@@ -7,7 +7,8 @@ import { fileURLToPath } from "node:url";
 import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
 
 import type { ConsoleLockPayload } from "./console-contract-types.js";
-import { openBrowser, type OpenBrowserDeps } from "./browser.js";
+import { openBrowser, type BrowserOpenResult, type OpenBrowserDeps } from "./browser.js";
+import { describeDaemonStartFailure } from "./failure-notice.js";
 import { createConsoleHealthClient } from "./health.js";
 import {
   ASCII_FLEET_BANNER,
@@ -39,11 +40,14 @@ export interface ConsoleDaemonLifecycleDeps {
 
 export interface OpenFleetConsoleDeps {
   readonly lifecycle?: Pick<ReturnType<typeof createConsoleDaemonLifecycle>, "ensureDaemon" | "probe">;
-  readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void;
+  readonly openBrowser?: (url: string, deps?: OpenBrowserDeps) => void | Promise<BrowserOpenResult>;
 }
 
 export interface OpenFleetConsoleResult {
   readonly url: string;
+  /** 브라우저 실행기가 실제로 떴는지. 거짓이면 호출자가 주소를 사용자에게 직접 건네야 한다. */
+  readonly browserOpened: boolean;
+  readonly browserError?: string;
 }
 
 export interface ConsoleStatusDeps {
@@ -167,10 +171,14 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
   const childEnv = env.FLEET_CONSOLE_NO_SYSTEM_CA === "1" ? env : withNodeSystemCa(env);
   const execPath = deps.execPath ?? process.execPath;
   const serverModulePath = deps.serverModulePath ?? resolveDefaultServerModulePath();
+  // 데몬은 stdio를 버리고 뜨므로 자식의 stderr는 어디에도 보이지 않는다. spawn 오류를 여기서
+  // 기억해 두지 않으면 시작 실패의 원인이 영영 사라지고 "healthy 하지 않다"는 결과만 남는다.
+  let lastSpawnError: string | null = null;
   const spawnDetached = deps.spawnDetached ?? ((bin, args, options) => {
     const child = spawn(bin, [...args], options);
-    // 데몬 spawn 실패는 이후 health probe 단계에서 처리하므로 여기서는 uncaught 'error'만 막는다.
-    child.once("error", () => {});
+    child.once("error", (error) => {
+      lastSpawnError = error instanceof Error ? error.message : String(error);
+    });
     child.unref();
   });
   const sleep = deps.sleep ?? ((ms) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
@@ -224,13 +232,20 @@ export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = 
       if (typeof probeResult.health?.workspaceCount === "number" && probeResult.health.workspaceCount > 0) return current.endpoint;
     }
     if (current) await stop();
+    lastSpawnError = null;
     spawnDetached(execPath, [serverModulePath, "serve"], withHidden({ detached: true, env: childEnv, stdio: "ignore" as const }));
+    let lastProbeError: string | null = null;
     for (let i = 0; i < 30; i += 1) {
       await sleep(100);
       const next = await probe();
       if (next.healthy && next.lock) return next.lock.endpoint;
+      if (next.error) lastProbeError = next.error;
     }
-    throw new Error("Fleet Console server did not become healthy");
+    throw new Error(describeDaemonStartFailure({
+      spawnError: lastSpawnError,
+      probeError: lastProbeError,
+      dataDir: paths.dir,
+    }));
   }
 
   return { ensureDaemon, probe, runServer, stop };
@@ -263,8 +278,11 @@ export async function openFleetConsole(deps: OpenFleetConsoleDeps = {}): Promise
     throw new Error("Fleet Console server is not healthy after ensure");
   }
   const url = `${status.lock.endpoint}console/`;
-  (deps.openBrowser ?? openBrowser)(url);
-  return { url };
+  // 실행기가 뜨지 않아도 서버는 살아 있다 — 실패를 삼키는 대신 결과로 올려 호출자가
+  // "열었다" 대신 주소를 건네게 한다.
+  const browser = await (deps.openBrowser ?? openBrowser)(url);
+  const result = browser ?? { opened: true };
+  return result.opened ? { url, browserOpened: true } : { url, browserOpened: false, browserError: result.reason };
 }
 
 export async function runConsoleStatus(deps: ConsoleStatusDeps = {}): Promise<string> {
