@@ -526,6 +526,10 @@ export interface ConsoleState {
   // 고정 중 "열어 달라"는 명시 요청(모바일 새 Operation 버튼 등). 단축키의 왕복과 달리 언제나
   // 펼쳐 포커스한다 — 펼쳐진 바에서 열기를 누른 사용자를 물러나게 하면 버튼이 거꾸로 동작한다.
   readonly quickLaunchExpandRequest: number;
+  // 컴포저를 열면서 함께 건네는 행선지(Operation id). 패널 본문의 회신 버튼처럼 "이 Operation에게"
+  // 라는 의도를 이미 들고 오는 진입점이 쓴다. 초안과 같은 request/consume 계약이라 컴포저가 열림
+  // 전이(모달)·펼침(도킹)에서 한 번 읽고 비운다 — 남겨 두면 다음 열림이 지난 행선지를 되쓴다.
+  readonly quickLaunchMentionSeed: string | null;
   // 고정을 잠시 접어 두는 화면(설정처럼 실행이 할 일이 아닌 표면). 고정 자체는 유지되므로 화면을
   // 벗어나면 도킹이 그대로 돌아오고, 그동안 컴포저는 예전처럼 모달로만 열린다.
   readonly quickLaunchDockSuppressed: boolean;

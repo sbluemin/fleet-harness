@@ -309,11 +309,30 @@ export function resolveFocusedMention(
 ): OperationSearchEntry | null {
   const operationId = state.activeOperationId;
   if (!state.operationsViewActive || !operationId) return null;
+  const entry = resolveMentionEntry(state, messageableTypesByPlugin, operationId);
+  if (!entry) return null;
+  if (entry.theaterId !== state.activeTheaterId && entry.operationId !== visibleOperationId) return null;
+  return entry;
+}
+
+/**
+ * Operation 하나를 멘션 행선지로 해소한다. 덱과 같은 원천을 빈 질의로 읽어 "메시지를 받는 타입인가"를
+ * 확인하고, 입력 대기 중인 대상은 덱과 같은 이유로 거른다(임의 텍스트가 CLI 프롬프트 응답을 오염시킨다).
+ *
+ * 포커스 옵트인(resolveFocusedMention)과 명시 행선지(패널 회신 버튼이 건네는 시드)가 공유하는 판정이다 —
+ * 두 진입점이 서로 다른 기준으로 대상을 고르면 같은 패널이 경로에 따라 다르게 주소된다. 두 경로의
+ * 유일한 차이는 Theater 가드로, 포커스 쪽만 진다: 시드는 그 패널의 버튼을 직접 누른 지시라
+ * 어느 Theater의 패널인지가 의도를 바꾸지 않는다.
+ */
+export function resolveMentionEntry(
+  state: ConsoleState,
+  messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
+  operationId: string,
+): OperationSearchEntry | null {
   const entry = buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, "")
     .flatMap((group) => group.entries)
     .find((candidate) => candidate.operationId === operationId);
   if (!entry || !isMentionSelectable(entry.activity)) return null;
-  if (entry.theaterId !== state.activeTheaterId && entry.operationId !== visibleOperationId) return null;
   return entry;
 }
 

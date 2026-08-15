@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { QUICK_LAUNCH_ULTRACODE_NOTICE_LIMIT, readQuickLaunchSelection, readUltracodeNoticeSeen, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection, writeUltracodeNoticeSeen } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -731,6 +731,42 @@ describe("resolveFocusedMention", () => {
     expect(resolveFocusedMention(state, MESSAGEABLE)).toBeNull();
     expect(resolveFocusedMention(state, MESSAGEABLE, "op-home")).toBeNull();
     expect(resolveFocusedMention(state, MESSAGEABLE, "op-stage")?.operationId).toBe("op-stage");
+  });
+});
+
+describe("resolveMentionEntry", () => {
+  // 패널 회신 버튼이 건네는 명시 행선지의 해소. 포커스 옵트인과 같은 판정을 쓰되 Theater 가드만
+  // 지지 않는다 — 그 패널의 버튼을 직접 누른 지시라 어느 Theater인지가 의도를 바꾸지 않는다.
+  const state = {
+    ...getState(),
+    theaters: [makeTheater("th-a"), makeTheater("th-b")],
+    operations: [
+      makeOperation("op-live"),
+      makeOperation("op-shell", { type: "shell" }),
+      makeOperation("op-await", { id: "op-await" }),
+      makeOperation("op-far", { theaterId: "th-b" }),
+    ],
+    operationStatus: { "op-await": "awaiting" as const },
+    activeTheaterId: "th-a",
+  };
+
+  it("resolves a messageable Operation by id", () => {
+    expect(resolveMentionEntry(state, MESSAGEABLE, "op-live")?.operationId).toBe("op-live");
+  });
+
+  it("refuses a type that takes no messages, an Operation waiting on its own prompt, and an unknown id", () => {
+    expect(resolveMentionEntry(state, MESSAGEABLE, "op-shell")).toBeNull();
+    expect(resolveMentionEntry(state, MESSAGEABLE, "op-await")).toBeNull();
+    expect(resolveMentionEntry(state, MESSAGEABLE, "op-missing")).toBeNull();
+  });
+
+  it("keeps addressing an Operation outside the active Theater", () => {
+    expect(resolveMentionEntry(state, MESSAGEABLE, "op-far")?.operationId).toBe("op-far");
+    // 같은 대상을 포커스 경로로 읽으면 Theater 가드에 걸린다 — 두 경로의 유일한 차이다.
+    expect(resolveFocusedMention(
+      { ...state, operationsViewActive: true, activeOperationId: "op-far" },
+      MESSAGEABLE,
+    )).toBeNull();
   });
 });
 

@@ -237,6 +237,7 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     settings: capabilities.settings,
     status: capabilities.status,
     statusDetail: capabilities.statusDetail,
+    composer: capabilities.composer,
     onActivate: () => configRef.current?.onActivate(),
     onClose: () => configRef.current?.onClose(),
     onGeometryChange: (geometry: OperationGeometry) => configRef.current?.onGeometryChange(geometry),

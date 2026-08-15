@@ -18,6 +18,22 @@ const INITIAL_RECONNECT_DELAY_MS = 250;
 const MAX_RECONNECT_DELAY_MS = 5_000;
 // 세션별 직전 보고 activity. idle/awaiting 전이를 감지해 중복 없이 notification을 보내기 위함.
 const lastActivity = new Map<string, OperationActivity>();
+// Chat Mode로 넘어간 Operation의 활동축은 채팅 스트림이 진다 — 축마다 권위는 하나다.
+// 전환 시 PTY는 접히지만 터미널 세션 레코드는 dormant로 남아 스냅샷에 계속 실리므로, 이 주장이
+// 없으면 resync가 매 주기마다 채팅이 심은 running을 dormant로 덮어쓴다. 같은 플러그인 번들 안의
+// 모듈 상태다(호스트-플러그인 경계를 넘지 않는다).
+const chatOwnedAxis = new Set<string>();
+
+/** 채팅 뷰가 이 Operation의 활동축을 인수한다. 해제될 때까지 터미널 스냅샷은 축을 주장하지 않는다. */
+export function claimChatActivityAxis(operationId: string): void {
+  chatOwnedAxis.add(operationId);
+}
+
+/** 축을 터미널 스냅샷에 되돌린다. 다음 세션 프레임·resync가 곧바로 실제 상태를 다시 심는다. */
+export function releaseChatActivityAxis(operationId: string): void {
+  chatOwnedAxis.delete(operationId);
+  lastActivity.delete(operationId);
+}
 
 export function startAgentConnection(options: AgentConnectionOptions): () => void {
   const abort = new AbortController();
@@ -103,6 +119,7 @@ function backgroundOrIdle(session: SessionInfo): OperationActivity {
 // 같은 상태 반복은 알리지 않는다. idle 종료 알림은 실제 턴 완료(running/awaiting/background -> idle)에서만 보내며,
 // dormant -> idle(세션 재개)이나 초기 관측(undefined -> idle)은 턴 완료가 아니므로 제외한다.
 export function applyActivity(options: AgentConnectionOptions, sessionId: string, activity: OperationActivity): void {
+  if (chatOwnedAxis.has(sessionId)) return;
   const previous = lastActivity.get(sessionId);
   options.status.set(sessionId, activity);
   lastActivity.set(sessionId, activity);

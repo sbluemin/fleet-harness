@@ -1518,21 +1518,39 @@ describe("Instrument core design contract", () => {
     expect(chatRootBlock).toContain("background: var(--surface-panel);");
     expect(chatRootBlock).not.toContain("--surface-window");
     expect(chatRootBlock).not.toContain("transition: background");
-    // 채팅 뷰의 지속 크롬(하단 스트립)도 같은 면에 앉는다 — 구분은 hairline이 맡는다.
-    // 상단 세션 띠바는 폐기됐다: 패널 면 위에 다른 면을 하나 더 얹어 창을 두 장으로 갈랐다.
-    const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatStripBlock).toContain("background: var(--surface-panel);");
-    expect(chatStripBlock).not.toContain("--surface-window");
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
     expect(chatNodeBlock).toContain("background: var(--surface-panel);");
     expect(chatNodeBlock).not.toContain("--surface-window");
-    expect(chatStripBlock).toContain("border-top: 1px solid var(--hairline);");
+    // 상단 세션 띠바와 하단 스트립은 둘 다 폐기됐다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이
+    // 하나도 없었다. 로그는 캡션부터 패널 바닥까지 이어지고, 그 자리는 떠 있는 회신 버튼이 대신한다.
     expect(chat).not.toContain(".agent-chat-head");
+    expect(chat).not.toContain(".agent-chat-strip");
     // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
     expect(chatView).toContain('className="agent-chat-mode-chip"');
     expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
+    // 회신 버튼은 로그 위에 떠 있는 컨트롤이라 신호 채널을 쓰지 않는다 — brass(위치·포커스)만
+    // hover/focus에 오르고, 쉬는 상태는 패널 위 한 칸 물러난 면과 hairline이 진다.
+    const chatReplyBlock = chat.match(/^\.agent-chat-reply \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatReplyBlock).toContain("background: var(--surface-panel-raised);");
+    expect(chatReplyBlock).toContain("border: 1px solid var(--hairline-strong);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatReplyBlock).not.toContain(signal);
+    }
+    const chatReplyHoverBlock = chat.match(/^\.agent-chat-reply:hover,\n\.agent-chat-reply:focus-visible \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatReplyHoverBlock).toContain("border-color: var(--brass);");
+    expect(chatReplyHoverBlock).toContain("outline: none;");
+    // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
+    // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
+    // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 회신 버튼 40px)을 넘어서는지 함께 고정한다.
+    const chatLogBlock = chat.match(/^\.agent-chat-log \{[^}]*\}/m)?.[0] ?? "";
+    const chatLogPadding = chatLogBlock.match(/padding: ([^;]+);/)?.[1] ?? "";
+    expect(chatLogPadding).toContain("calc(var(--space-3) + 34px)");
+    expect(chatLogPadding).toContain("calc(var(--space-3) + 45px)");
+    const replySize = Number(chatReplyBlock.match(/height: (\d+)px;/)?.[1]);
+    const logBottom = Number(chatLogPadding.match(/calc\(var\(--space-3\) \+ (\d+)px\)\s*$/)?.[1]);
+    expect(logBottom).toBeGreaterThan(replySize);
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.

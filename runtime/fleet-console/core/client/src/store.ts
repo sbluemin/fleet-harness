@@ -85,6 +85,7 @@ let state: ConsoleState = {
   quickLaunchPinned: readQuickLaunchSelection().pinned,
   quickLaunchFocusToggle: 0,
   quickLaunchExpandRequest: 0,
+  quickLaunchMentionSeed: null,
   quickLaunchDockSuppressed: false,
   quickLaunchDraft: null,
   quickLaunchDraftAttachments: null,
@@ -603,6 +604,21 @@ export function openQuickLaunch(): void {
     return;
   }
   setState({ quickLaunchOpen: true, quickLaunchError: null, quickLaunchErrorShortenBy: null });
+}
+
+/**
+ * 행선지를 들고 컴포저를 연다 — 패널 본문의 회신 버튼처럼 "이 Operation에게"라는 의도가 이미
+ * 정해진 진입점이 쓴다. 시드는 의도일 뿐 결정이 아니다: 멘션 가능 여부·중복 부착 판정은
+ * 컴포저가 자기 규칙으로 내리므로, 여기서는 보내려는 대상만 남기고 openQuickLaunch에 위임한다.
+ */
+export function openQuickLaunchForOperation(operationId: string): void {
+  setState({ quickLaunchMentionSeed: operationId });
+  openQuickLaunch();
+}
+
+export function consumeQuickLaunchMentionSeed(): void {
+  if (state.quickLaunchMentionSeed === null) return;
+  setState({ quickLaunchMentionSeed: null });
 }
 
 // 실행이 실패했을 때 초안과 사유를 함께 들고 컴포저를 되연다.
