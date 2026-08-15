@@ -601,7 +601,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
         </div> : null}
       </div> : null}
       {centerBreadcrumbVisible ? <div className="command-band-center">
-        {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" onBlur={handleSwitcherFocusOut}>
+        {operationsViewVisible && activeTheater ? <div ref={switcherRef} className="command-band-switcher" data-keep-operation-active onBlur={handleSwitcherFocusOut}>
           <div className="command-band-theater-cluster" aria-label={t("chrome.commandBand.activeTheater", { label: activeTheater.label })}>
             <button
               ref={theaterTriggerRef}
