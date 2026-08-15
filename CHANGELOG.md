@@ -5,6 +5,45 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.59.0] - 2026-08-15
+
+### fleet-cli
+
+#### Added
+- Offer Cursor Opus 5 and Fable 5 through the AI Gateway, including Max Mode 1M variants billed against the Cursor API pool.
+
+#### Fixed
+- Let Cursor models page through the caller Read tool instead of repeatedly replaying whole files through failed native reads, reducing context growth and compaction during long gateway sessions.
+
+### fleet-console
+
+#### Added
+- Offer Cursor Opus 5 and Fable 5 in AI Gateway model selection, including Max Mode 1M variants billed against the Cursor API pool.
+- Claude Gateway operations can switch from the terminal to a chat view that continues the same session through the Claude Agent SDK, replays earlier turns, and takes replies only through Quick Launch; while a turn runs, an activity card shows the current step with a live elapsed timer and the reply streams in character by character, and when it finishes the work collapses into an expandable receipt while the final answer stays rendered with the Console markdown component. The terminal reopens on demand with the full history intact.
+- Quick Launch understands slash commands: typing `/` as the first character opens a command deck that changes the Theater, model, reasoning effort, or bottom dock without leaving the keyboard, with model choices carrying their provider marks.
+- Toggle Quick Launch with Ctrl+Space on every platform, including macOS, while keeping Mod+J.
+- Attach images in the Quick Launch composer by pasting, dropping, or the attach button: images appear as thumbnail chips with click-to-enlarge preview and per-chip removal, ride new launches and '@' mentions to running or dormant Operations alike, and the agent reads them from disk alongside the message.
+- Quick Launch recognizes `ultracode` in a prompt: the word lights up as you type it, an apex arc travels the edge of the composer, and a dashed `ULTRACODE` chip stands beside the reasoning-effort track to say that this turn requests a dynamic workflow while the reasoning effort stays exactly where you set it. The match ignores letter case. Pressing Backspace right after the word, or selecting the chip, hides the mark and nothing else - your prompt is delivered exactly as you typed it, so the agent still reads the word. It all works the same way when the prompt is addressed to a mentioned Operation.
+
+#### Changed
+- The chat view now sits on the same surface as the terminal panel in every theme. Its session strip at the top is gone and the log starts right under the window caption, so the panel reads as one window instead of a header bar over a separate sheet. Returning to the terminal moved into a floating chip in the top-right corner, matching the chip the terminal view uses to switch into chat.
+- Reduced the repeated command and result payloads used when Cursor searches run through caller-approved shell tools, while preserving bounded search results and permission checks.
+- An Operation panel is now one surface. The caption, the border around the terminal, the terminal field, and the chat log all take a single color per theme, so a panel reads as one window instead of three stacked sheets, and Maritime loses the darker ring that used to frame its terminal. That one color is the work surface's own tone, so the panel still stands clear of the canvas and, in Whites, stays the brightest tier the eye lands on. Focus, identity accent, and the status rail keep working as before, now against a single fill.
+- Operation panel state now reads on the window caption instead of the panel outline. A focused panel lifts its caption fill and title, and a status rail runs along the caption's lower edge, so a focused panel still shows whether it is running or waiting for you, and a panel working in the background finally shows anything at all. The panel outline stays a neutral rim in every state, and the unseen-completion glow becomes an arrival flash on that rail.
+- Operation panels now carry a 32px window caption above the existing body, so the PTY keeps its previous size. The caption draws the same rim as the panel body so the two read as one outlined window. Tactical packs each row with that 32px caption in the stride so stacked captions stay in their cells. War Room and maximize keep the caption outside the body by shifting the slot down. Dragging uses the whole caption, including the title; rename stays on double-click. The Activity Rail keeps its hover-reveal header so the panel body uses the full slot.
+
+#### Fixed
+- Let Cursor models page through the caller Read tool instead of repeatedly replaying whole files through failed native reads, reducing context growth and compaction during long gateway Operations.
+- Maximizing a panel in Tactical no longer leaves the mode boundary drawn over it. The boundary marks the grid arena, and a maximized panel covers that arena entirely, so the frame and its corner brackets now step aside instead of sitting on top of the panel while it overhangs them.
+- The rail Shell panel now sits on the same surface as the terminal inside it, so the framed step around that terminal is gone in every theme.
+- A staged War Room panel now fills the canvas down to the same 18px inset Tactical already uses. The old bottom waiting rail is gone, but the stage still reserved that band, so activating one panel left an empty strip under the frame.
+- Stop the terminal from flashing blank for a frame when its panel is resized, such as when the side bar is collapsed or expanded.
+- Let the terminal catch up to its panel as soon as the side bar finishes moving, instead of staying clipped for roughly half a second afterwards.
+- Stop asking the shell to redraw its whole screen when a resize leaves the character grid unchanged, such as a drag smaller than one cell.
+
+#### Removed
+- Usage limits no longer shows an OpenCode Go card. OpenCode has no supported quota API, so the local-log approximation is gone; OpenCode models remain launchable.
+
 ## [1.58.1] - 2026-08-14
 
 ### fleet-cli
