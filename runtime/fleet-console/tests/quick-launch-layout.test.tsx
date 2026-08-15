@@ -132,6 +132,8 @@ describe("Quick Launch docking", () => {
     expect(quickLaunch).toMatch(/QUICK_LAUNCH_TOGGLE_COMBOS\.map/u);
     expect(quickLaunch).toMatch(/formatShortcutCombo\(combo, modLabel\)/u);
     expect(ruleFor(".quick-launch-strip-keys")).toMatch(/white-space:\s*nowrap;/u);
+    // flex 아이템은 번역문 앞 공백을 버리므로, 대안 사이 간격은 gap이 맡는다.
+    expect(ruleFor(".quick-launch-strip-keys")).toMatch(/gap:\s*var\(--space-1\);/u);
     // 펼친 동안에는 접근성 트리와 탭 순서 어디에도 없어야 한다.
     expect(ruleFor(".quick-launch-strip")).toMatch(/display:\s*none;/u);
     expect(ruleFor(".quick-launch-card.is-collapsed .quick-launch-strip")).toMatch(/display:\s*flex;/u);
