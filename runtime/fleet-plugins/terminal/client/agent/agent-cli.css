@@ -665,3 +665,144 @@
   opacity: 0.45;
   cursor: not-allowed;
 }
+
+.compact-timing-preview {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.compact-timing-preview-label {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compact-timing-track-wrap {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.compact-timing-track {
+  position: relative;
+  height: 28px;
+  touch-action: none;
+}
+
+.compact-timing-track.is-live {
+  cursor: ew-resize;
+}
+
+.compact-timing-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 11px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: color-mix(in oklch, var(--ink-rim) 55%, transparent);
+}
+
+.compact-timing-fill {
+  width: 0;
+  height: 100%;
+  background: color-mix(in oklch, var(--ink-pearl) 18%, var(--ink-mid));
+}
+
+.compact-timing-track.is-warn .compact-timing-fill {
+  background: color-mix(in oklch, var(--warn) 42%, var(--ink-mid));
+}
+
+.compact-timing-thumb {
+  position: absolute;
+  top: 4px;
+  width: 20px;
+  height: 20px;
+  margin-left: -10px;
+  border: 2px solid var(--brass);
+  border-radius: 999px;
+  background: var(--ink-deep);
+  box-shadow: 0 0 0 4px var(--brass-glow);
+  pointer-events: none;
+}
+
+.compact-timing-track:not(.is-live) .compact-timing-thumb {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--ink-rim));
+  box-shadow: none;
+}
+
+.compact-timing-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.compact-timing-ticks {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-timing-readout {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+@media (max-width: 767px) {
+  .compact-timing-readout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.compact-timing-stat {
+  padding: 10px 12px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+}
+
+.compact-timing-stat strong {
+  display: block;
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+.compact-timing-stat span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.compact-timing-note {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in oklch, var(--positive) 40%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklch, var(--positive) 8%, transparent);
+  color: var(--positive-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.compact-timing-note.is-warn {
+  border-color: color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
+  background: color-mix(in oklch, var(--warn) 10%, transparent);
+  color: var(--warn-ink);
+}
+

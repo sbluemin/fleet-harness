@@ -32,7 +32,7 @@ import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
 import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
-import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings } from "./settings.js";
+import type { AiGatewayCapabilityClass, AiGatewayCatalogModel, AiGatewayCatalogProvider, AiGatewayProviderId, AiGatewaySettings, CompactCeiling } from "./settings.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
 import { applySessionUpdate, hydrateAgentClis, removeSession, selectSession, useAgentState } from "./store.js";
 import type { AgentCliDiagnosticsEntry, AgentCliStatus, SessionInfo } from "./types.js";
@@ -747,6 +747,7 @@ function AgentCliSection() {
       </section>
       <ModelAuthBlock />
       <AiGatewayModelsCard />
+      <AiGatewayCompactTimingCard />
       <AiGatewayDiagnosticsCard />
     </>
   );
@@ -771,6 +772,262 @@ const AI_GATEWAY_PROVIDER_SUB_KEYS = {
 function formatAiGatewayContextWindow(contextWindow: number | null): string | null {
   if (contextWindow === null) return null;
   return contextWindow >= 1_000_000 ? "1M" : `${Math.round(contextWindow / 1000)}K`;
+}
+
+const COMPACT_CEILING_EARLY = 88;
+const COMPACT_CEILING_LATE = 97;
+const COMPACT_CEILING_CUSTOM_MIN = 70;
+const COMPACT_CEILING_CUSTOM_MAX = 99;
+const PROVIDER_COMPACT_RESERVE = 16_000;
+const COMPACT_CROWD_RESERVE = 8_000;
+
+function compactPolicyFromCeiling(ceiling: CompactCeiling | null): "auto" | "early" | "late" | "custom" {
+  if (ceiling === null) return "auto";
+  if (ceiling === "early") return "early";
+  if (ceiling === "late") return "late";
+  return "custom";
+}
+
+function compactPercent(ceiling: CompactCeiling | null): number | undefined {
+  if (ceiling === "early") return COMPACT_CEILING_EARLY;
+  if (ceiling === "late") return COMPACT_CEILING_LATE;
+  if (typeof ceiling === "number") return ceiling;
+  return undefined;
+}
+
+function compactAtTokens(window: number, ceiling: CompactCeiling | null): number {
+  const percent = compactPercent(ceiling);
+  if (percent === undefined) return window - PROVIDER_COMPACT_RESERVE;
+  return Math.floor(window * percent / 100);
+}
+
+/** Map a 70–99 compact percent onto the custom track (left = 70, right = 99). */
+export function compactTrackFillPercent(windowPercent: number): number {
+  const clamped = Math.min(
+    COMPACT_CEILING_CUSTOM_MAX,
+    Math.max(COMPACT_CEILING_CUSTOM_MIN, windowPercent),
+  );
+  return (clamped - COMPACT_CEILING_CUSTOM_MIN)
+    / (COMPACT_CEILING_CUSTOM_MAX - COMPACT_CEILING_CUSTOM_MIN)
+    * 100;
+}
+
+export function compactPercentFromTrackRatio(ratio: number): number {
+  const next = COMPACT_CEILING_CUSTOM_MIN
+    + ratio * (COMPACT_CEILING_CUSTOM_MAX - COMPACT_CEILING_CUSTOM_MIN);
+  return Math.min(
+    COMPACT_CEILING_CUSTOM_MAX,
+    Math.max(COMPACT_CEILING_CUSTOM_MIN, Math.round(next)),
+  );
+}
+
+function formatCompactTokens(n: number): string {
+  if (n >= 1_000_000) {
+    const m = n / 1_000_000;
+    return `${Number.isInteger(m) ? String(m) : m.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}M`;
+  }
+  return `${Math.round(n / 1000)}K`;
+}
+
+function AiGatewayCompactTimingCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+  const [previewId, setPreviewId] = React.useState<string>("");
+  const [dragPercent, setDragPercent] = React.useState<number | null>(null);
+  const trackRef = React.useRef<HTMLDivElement | null>(null);
+  const draggingRef = React.useRef(false);
+  const dragPercentRef = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.compactTiming")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.compactTiming")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
+  const ceiling = state.compactCeiling;
+  const policy = compactPolicyFromCeiling(ceiling);
+  const previewModels = state.aiGatewayCatalog.providers.flatMap((provider) => provider.models)
+    .filter((model) => typeof model.contextWindow === "number" && model.contextWindow > 0);
+  const preview = previewModels.find((model) => model.id === previewId) ?? previewModels[0];
+  const previewWindow = preview?.contextWindow ?? 272_000;
+  const liveCeiling: CompactCeiling | null = policy === "custom" && dragPercent !== null
+    ? dragPercent
+    : ceiling;
+  const at = compactAtTokens(previewWindow, liveCeiling);
+  const shownPercent = Math.round(at * 100 / previewWindow);
+  const trackFill = compactTrackFillPercent(shownPercent);
+  const crowded = at >= previewWindow - COMPACT_CROWD_RESERVE || shownPercent >= 99;
+  const lateBeforeAuto = compactAtTokens(previewWindow, "late") < compactAtTokens(previewWindow, null)
+    && (liveCeiling === "late" || (typeof liveCeiling === "number" && liveCeiling === COMPACT_CEILING_LATE));
+
+  const savePolicy = (next: "auto" | "early" | "late" | "custom"): void => {
+    if (next === "auto") {
+      void setSystemPromptSettingsField("compactCeiling", null);
+      return;
+    }
+    if (next === "early" || next === "late") {
+      void setSystemPromptSettingsField("compactCeiling", next);
+      return;
+    }
+    const seed = typeof ceiling === "number"
+      ? ceiling
+      : ceiling === "early"
+        ? COMPACT_CEILING_EARLY
+        : ceiling === "late"
+          ? COMPACT_CEILING_LATE
+          : 94;
+    void setSystemPromptSettingsField("compactCeiling", seed);
+  };
+
+  const saveCustom = (percent: number): void => {
+    const clamped = Math.min(COMPACT_CEILING_CUSTOM_MAX, Math.max(COMPACT_CEILING_CUSTOM_MIN, Math.round(percent)));
+    void setSystemPromptSettingsField("compactCeiling", clamped);
+  };
+
+  const setCustomFromClientX = (clientX: number): void => {
+    const bar = trackRef.current?.getBoundingClientRect();
+    if (!bar || bar.width <= 0) return;
+    const next = compactPercentFromTrackRatio((clientX - bar.left) / bar.width);
+    dragPercentRef.current = next;
+    setDragPercent(next);
+  };
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.compactTiming")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title" id="compact-timing-label">{t("terminal.settings.compactTiming")}</p>
+          <p className="global-settings-help">{t("terminal.settings.compactTimingHelp")}</p>
+        </div>
+        <div className="segmented" role="group" aria-labelledby="compact-timing-label">
+          <button type="button" className={`segmented-option${policy === "auto" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("auto")}>
+            {t("terminal.settings.compactTimingAuto")}
+          </button>
+          <button type="button" className={`segmented-option${policy === "early" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("early")}>
+            {t("terminal.settings.compactTimingEarly")}
+          </button>
+          <button type="button" className={`segmented-option${policy === "late" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("late")}>
+            {t("terminal.settings.compactTimingLate")}
+          </button>
+          <button type="button" className={`segmented-option${policy === "custom" ? " is-active" : ""}`} disabled={saving} onClick={() => savePolicy("custom")}>
+            {t("terminal.settings.compactTimingCustom")}
+          </button>
+        </div>
+      </div>
+      {previewModels.length > 0 ? (
+        <div className="compact-timing-preview">
+          <label className="compact-timing-preview-label" htmlFor="compact-timing-preview">
+            {t("terminal.settings.compactTimingPreview")}
+          </label>
+          <Select
+            id="compact-timing-preview"
+            value={preview?.id ?? ""}
+            options={previewModels.map((model) => ({
+              value: model.id,
+              label: `${model.name} — ${formatAiGatewayContextWindow(model.contextWindow)}`,
+            }))}
+            onChange={(id) => setPreviewId(id)}
+            disabled={saving}
+          />
+          <p className="global-settings-help">{t("terminal.settings.compactTimingPreviewHelp")}</p>
+        </div>
+      ) : null}
+      <div className="compact-timing-track-wrap">
+        <div
+          ref={trackRef}
+          className={`compact-timing-track${policy === "custom" && !saving ? " is-live" : ""}${crowded ? " is-warn" : ""}`}
+          onPointerDown={(event) => {
+            if (policy !== "custom" || saving) return;
+            draggingRef.current = true;
+            (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
+            setCustomFromClientX(event.clientX);
+          }}
+          onPointerMove={(event) => {
+            if (!draggingRef.current) return;
+            setCustomFromClientX(event.clientX);
+          }}
+          onPointerUp={() => {
+            if (!draggingRef.current) return;
+            draggingRef.current = false;
+            const next = dragPercentRef.current;
+            dragPercentRef.current = null;
+            setDragPercent(null);
+            if (next !== null) saveCustom(next);
+          }}
+          onPointerCancel={() => {
+            draggingRef.current = false;
+            dragPercentRef.current = null;
+            setDragPercent(null);
+          }}
+        >
+          <div className="compact-timing-bar">
+            <div className="compact-timing-fill" style={{ width: `${trackFill}%` }} />
+          </div>
+          <div className="compact-timing-thumb" style={{ left: `${trackFill}%` }} />
+          <input
+            className="compact-timing-sr"
+            type="range"
+            min={COMPACT_CEILING_CUSTOM_MIN}
+            max={COMPACT_CEILING_CUSTOM_MAX}
+            step={1}
+            value={typeof liveCeiling === "number" ? liveCeiling : shownPercent}
+            disabled={policy !== "custom" || saving}
+            aria-label={t("terminal.settings.compactTimingCustomAria")}
+            onChange={(event) => saveCustom(Number(event.target.value))}
+          />
+        </div>
+        <div className="compact-timing-ticks">
+          <span>70%</span>
+          <span>{shownPercent}%</span>
+          <span>{t("terminal.settings.compactTimingWindow")}</span>
+        </div>
+      </div>
+      <div className="compact-timing-readout">
+        <div className="compact-timing-stat">
+          <span>{t("terminal.settings.compactTimingAt")}</span>
+          <strong>{formatCompactTokens(at)}</strong>
+        </div>
+        <div className="compact-timing-stat">
+          <span>{t("terminal.settings.compactTimingOfWindow")}</span>
+          <strong>{shownPercent}%</strong>
+        </div>
+        <div className="compact-timing-stat">
+          <span>{t("terminal.settings.compactTimingCatalog")}</span>
+          <strong>{formatAiGatewayContextWindow(previewWindow)}</strong>
+        </div>
+      </div>
+      <p className={`compact-timing-note${crowded || lateBeforeAuto ? " is-warn" : ""}`}>
+        {crowded
+          ? t("terminal.settings.compactTimingCrowd")
+          : lateBeforeAuto
+            ? t("terminal.settings.compactTimingLateBeforeAuto", {
+              late: formatCompactTokens(at),
+              auto: formatCompactTokens(compactAtTokens(previewWindow, null)),
+            })
+            : policy === "auto"
+              ? t("terminal.settings.compactTimingAutoNote", {
+                at: formatCompactTokens(at),
+                window: formatAiGatewayContextWindow(previewWindow) ?? "",
+              })
+              : policy === "custom"
+                ? t("terminal.settings.compactTimingCustomNote", { percent: String(typeof liveCeiling === "number" ? liveCeiling : shownPercent) })
+                : t(policy === "early" ? "terminal.settings.compactTimingEarlyNote" : "terminal.settings.compactTimingLateNote")}
+      </p>
+      <p className="global-settings-foot">{t("terminal.settings.compactTimingFoot")}</p>
+    </section>
+  );
 }
 
 function AiGatewayDiagnosticsCard() {

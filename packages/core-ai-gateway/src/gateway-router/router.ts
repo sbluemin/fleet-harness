@@ -38,6 +38,7 @@ import {
 import type { GatewayModel } from "../models.js";
 import { resolveAiGatewaySelection } from "../settings/index.js";
 import type { AiGatewayStoredSettings } from "../settings/index.js";
+import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
 
 import {
@@ -187,6 +188,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return false;
     }
   };
+  const compactCeiling = (): CompactCeiling | undefined => {
+    try {
+      return gatewaySettings()?.compactCeiling;
+    } catch {
+      return undefined;
+    }
+  };
 
   const handle: GatewayHttpHandler = async ({ req, res, pathname }) => {
     // Claude Code는 base URL 뒤에 자기 경로를 붙인다. 연결 프로브는 /api/hello다.
@@ -332,6 +340,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // compatibility seam removes only the capacity above Claude's chosen coordinate,
       // so each model reaches its real window minus Claude's own compaction reserve.
       const claudeContextWindow = target.contextWindow;
+      const ceiling = compactCeiling();
       if (target.provider === "kimi") {
         await proxyToKimi(
           req.headers,
@@ -339,6 +348,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           body,
           upstreamModelId(target),
           claudeContextWindow,
+          ceiling,
           credential,
           fetchImpl,
           controller.signal,
@@ -352,6 +362,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           body,
           upstreamModelId(target),
           claudeContextWindow,
+          ceiling,
           credential,
           fetchImpl,
           controller.signal,
@@ -379,6 +390,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       const upstream = await gateway.stream(body, {
         apiKey: credential,
         ...(claudeContextWindow ? { contextWindow: claudeContextWindow } : {}),
+        ...(ceiling === undefined ? {} : { compactCeiling: ceiling }),
         ...(modelContextWindow === undefined ? {} : { modelContextWindow }),
         ...(diagnosticsEnabled === undefined ? {} : { diagnosticsEnabled }),
         signal: controller.signal,
@@ -454,6 +466,7 @@ async function proxyToKimi(
   body: AnthropicMessagesRequest,
   model: string,
   contextWindow: number | undefined,
+  compactCeiling: CompactCeiling | undefined,
   apiKey: string,
   fetchImpl: typeof fetch,
   signal: AbortSignal,
@@ -464,6 +477,7 @@ async function proxyToKimi(
   const responseModel = typeof body.model === "string" ? body.model : undefined;
   await proxyAnthropicMessages(res, kimiRequestBody(body, model), {
     contextWindow,
+    compactCeiling,
     responseModel,
     keepAlive: true,
     fetchImpl,

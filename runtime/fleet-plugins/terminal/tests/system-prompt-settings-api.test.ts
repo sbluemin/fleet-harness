@@ -36,6 +36,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -45,6 +46,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
@@ -59,6 +61,7 @@ describe("system prompt settings api", () => {
         aiGatewayCatalog: EMPTY_CATALOG,
         cursorDiagnosticsEnabled: false,
         wireLogEnabled: false,
+        compactCeiling: null,
         claudeGatewaySystemPromptMode: mode,
       }));
       vi.stubGlobal("fetch", fetchMock);
@@ -81,6 +84,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "invalid",
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
@@ -93,6 +97,7 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -123,6 +128,7 @@ describe("system prompt settings api", () => {
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
@@ -143,6 +149,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -167,6 +174,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
@@ -195,12 +203,14 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
@@ -218,6 +228,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: true,
+      compactCeiling: null,
       claudeGatewaySystemPromptMode: "append",
     }));
     vi.stubGlobal("fetch", fetchMock);
