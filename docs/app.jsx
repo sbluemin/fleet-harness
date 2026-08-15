@@ -63,8 +63,8 @@ const UI = {
     en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and the deepest expose <b>MAX</b> and <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) behind an apex gate.",
   },
   gwShotCap: {
-    ko: "실제 화면 — 캔버스 우클릭 한 번에 열리는 런치 메뉴. Claude, Codex, Cursor, Kimi, OpenCode가 한 목록에.",
-    en: "Real capture — the launch menu on one right-click: Claude, Codex, Cursor, Kimi, and OpenCode in a single list.",
+    ko: "실제 화면 — 캔버스 우클릭으로 열리는 런치 메뉴. Claude·Codex·Cursor 행이 라이브 패널 위에 떠 있다.",
+    en: "Real capture — the launch menu on one right-click, with Claude, Codex, and Cursor rows over the live canvas.",
   },
 
   modesEy: { ko: "Canvas modes", en: "Canvas modes" },
@@ -76,8 +76,8 @@ const UI = {
   },
   modesAria: { ko: "캔버스 모드", en: "Canvas modes" },
   modesShotCap: {
-    ko: "실제 화면 — War Room이 Operation 하나를 스테이지에 올리고, 사이드바는 상태순, 하단 레일은 다음 순서를 쥐고 있다.",
-    en: "Real capture — War Room stages one Operation, the sidebar sorts by status, and the bottom rail holds what's up next.",
+    ko: "실제 화면 — War Room이 Operation 하나를 스테이지에 올리고, 사이드바가 나머지를 상태순으로 쥐고 있다.",
+    en: "Real capture — War Room stages one Operation, and the sidebar holds the rest sorted by status.",
   },
 
   railEy: { ko: "Activity Rail", en: "Activity Rail" },

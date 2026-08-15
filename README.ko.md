@@ -44,7 +44,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 
 ## 런치 메뉴 하나 뒤의 모든 프런티어 모델
 
-<img src=".github/console-launch-menu.png" alt="런치 메뉴: Claude, Codex, Cursor, Kimi, OpenCode 모델이 라이브 캔버스 위 우클릭 메뉴 하나에" width="100%" />
+<img src=".github/console-launch-menu.png" alt="런치 메뉴: Claude, Codex, Cursor 모델이 라이브 캔버스 위 우클릭 메뉴 하나에" width="100%" />
 
 캔버스를 우클릭하고, 켜 둔 어떤 모델로든 Claude Code를 띄우세요 — 내장 Claude 모델이든, Console이 대신 쥔 자격증명 위를 달리는 게이트웨이 모델이든. 게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다: 네이티브 에이전트 루프, 도구 문법, 인증이 그대로 보존되고, 비-Anthropic 자격증명은 에이전트 프로세스에 결코 들어가지 않습니다.
 
@@ -59,7 +59,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 
 ## 에이전트 하나에서 함대까지 늘어나는 캔버스
 
-<img src=".github/console-war-room.png" alt="War Room 모드: 스테이지에 올라온 하나의 Operation, 상태 정렬 사이드바, 다음 대기열" width="100%" />
+<img src=".github/console-war-room.png" alt="War Room 모드: 스테이지에 올라온 하나의 Operation과 상태 정렬 사이드바" width="100%" />
 
 Operation은 무한 캔버스 위에 살고, 커맨드 밴드의 스위치가 배치를 얼마나 직접 할지 정합니다:
 

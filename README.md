@@ -44,7 +44,7 @@ A **Theater** is a project folder. Register as many as you work in — every pan
 
 ## Every frontier model behind one launch menu
 
-<img src=".github/console-launch-menu.png" alt="The launch menu: Claude, Codex, Cursor, Kimi, and OpenCode models in one right-click menu over the live canvas" width="100%" />
+<img src=".github/console-launch-menu.png" alt="The launch menu: Claude, Codex, and Cursor models in one right-click menu over the live canvas" width="100%" />
 
 Right-click the canvas and launch Claude Code on any model you have enabled — its built-in Claude models, or gateway models that ride credentials the Console holds for you. The gateway is a local Claude Code endpoint, not an API proxy: the native agent loop, tool grammar, and authentication are preserved, and non-Anthropic credentials never enter the agent process.
 
@@ -59,7 +59,7 @@ Enable exactly the roster you want under **Settings → AI Gateway** — only th
 
 ## A canvas that scales from one agent to a fleet
 
-<img src=".github/console-war-room.png" alt="War Room mode: one staged operation, a status-sorted sidebar, and an up-next queue" width="100%" />
+<img src=".github/console-war-room.png" alt="War Room mode: one staged operation and a status-sorted sidebar" width="100%" />
 
 Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself:
 
