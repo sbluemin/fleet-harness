@@ -11,7 +11,10 @@
   inset: 0;
   display: flex;
   flex-direction: column;
-  background: var(--ink-abyss);
+  /* 채팅 로그는 Operation 본문이지 그 안의 다른 면이 아니다 — 터미널 뷰와 같은 --surface-panel을
+     칠해 캡션부터 로그까지 한 덩어리로 읽힌다. 이 위에 얹히는 헤드·카드·버블·스트립은
+     --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다). */
+  background: var(--surface-panel);
   /* 캔버스·패널 조상이 pan용 손 커서와 user-select: none을 상속시킨다 — 채팅은 읽고
      복사하는 표면이므로 서브트리에서 텍스트 커서와 선택을 되살린다. */
   cursor: auto;
@@ -34,7 +37,7 @@
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--hairline);
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
 }
 
 .agent-chat-sess {
@@ -156,7 +159,7 @@
 
 .agent-chat-dispatch-bubble {
   max-width: 64ch;
-  background: color-mix(in oklch, var(--id-cerulean) 10%, var(--ink-deep));
+  background: color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised));
   border: 1px solid color-mix(in oklch, var(--id-cerulean) 18%, var(--hairline));
   border-radius: 14px 14px 5px 14px;
   padding: var(--space-2) var(--space-3);
@@ -197,7 +200,8 @@
   height: 12px;
   border-radius: var(--radius-pill);
   border: 2px solid var(--positive);
-  background: var(--ink-abyss);
+  /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */
+  background: var(--surface-panel);
 }
 
 .agent-chat-turn.is-working .agent-chat-turn-node {
@@ -239,7 +243,7 @@
   gap: var(--space-3);
   border: 1px solid color-mix(in oklch, var(--aurora) 24%, var(--hairline));
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--aurora) 4%, var(--ink-deep));
+  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
   padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
   font-size: 11px;
@@ -297,7 +301,7 @@
   padding: 4px var(--space-3);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
   transition: color var(--duration-fast), border-color var(--duration-fast);
 }
 
@@ -355,7 +359,7 @@
   font-size: 11.5px;
   color: var(--text-tertiary);
   padding: 5px var(--space-3);
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
 }
@@ -425,7 +429,7 @@
   align-items: center;
   gap: var(--space-3);
   border-top: 1px solid var(--hairline);
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
   padding: var(--space-2) var(--space-3);
 }
 
@@ -509,7 +513,7 @@
 
 .agent-chat-inter-card {
   width: min(420px, calc(100% - 48px));
-  background: var(--ink-deep);
+  background: var(--surface-panel-raised);
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-floating);
@@ -583,7 +587,7 @@
   padding: 5px var(--space-3);
   border-radius: var(--radius-sm);
   border: 1px solid var(--hairline-strong);
-  background: color-mix(in oklch, var(--ink-deep) 80%, transparent);
+  background: color-mix(in oklch, var(--surface-panel-raised) 80%, transparent);
   color: var(--text-tertiary);
   transition: border-color var(--duration-fast), color var(--duration-fast);
 }

@@ -673,13 +673,28 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
   );
 }
 
-function terminalThemeFor(theme: TerminalThemeId): ITheme {
+function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
   switch (theme) {
     case "instrument": return INSTRUMENT_TERMINAL_THEME;
     case "maritime": return MARITIME_TERMINAL_THEME;
     case "carbon": return CARBON_TERMINAL_THEME;
     case "whites": return WHITES_TERMINAL_THEME;
   }
+}
+
+/* 패널 면은 theme.css의 --surface-panel 하나가 소유한다 — 캡션·거터·터미널 필드가 같은 값이라야
+   창 하나로 읽힌다. xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의
+   background 리터럴은 그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 —
+   두 값이 갈라지지 않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
+export function resolvePanelSurface(fallback: string): string {
+  if (typeof document === "undefined") return fallback;
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--surface-panel").trim();
+  return resolved || fallback;
+}
+
+function terminalThemeFor(theme: TerminalThemeId): ITheme {
+  const base = baseTerminalThemeFor(theme);
+  return { ...base, background: resolvePanelSurface(base.background ?? "") };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

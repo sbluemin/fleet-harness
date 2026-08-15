@@ -39,6 +39,8 @@ const SKILLS_CSS_PATH = new URL("../../fleet-plugins/skills/client/skills.css", 
 const TERMINAL_AGENT_PATH = new URL("../../fleet-plugins/terminal/client/agent/index.tsx", import.meta.url);
 const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/analysis.css", import.meta.url);
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
+const TERMINAL_SURFACE_PATH = new URL("../../fleet-plugins/terminal/client/shared/terminal-surface.tsx", import.meta.url);
+const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
@@ -597,7 +599,7 @@ describe("Instrument core design contract", () => {
     expect(markBlock).toContain("width: 8px;");
     expect(markBlock).toContain("height: 14px;");
     expect(markBlock).toContain("background: var(--user-accent);");
-    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-frame))");
+    expect(washBlock).toContain("color-mix(in oklch, var(--user-accent) 10%, var(--surface-panel))");
     expect(washBlock).toContain("background-clip: padding-box");
     expect(chipAccentBlock).toContain("width: 3px;");
     expect(chipAccentBlock).toContain("top: 7px;");
@@ -1236,11 +1238,18 @@ describe("Instrument core design contract", () => {
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     expect(sideBarBlock).toContain("background: var(--surface-chrome);");
-    // Operation 창 본체·타이틀바는 --surface-frame을 소비한다 — ink-mid 재결합은 라이트 최암면 회귀다.
+    // 패널은 하나의 면이다 — 본체·캡션·본문 거터가 모두 --surface-panel을 소비해야 창 하나로 읽힌다.
+    // 셋 중 하나라도 다른 값을 잡으면 캡션 이음새나 터미널 둘레 액자 테가 되살아난다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    expect(operationBlock).toContain("background: var(--surface-frame);");
+    expect(operationBlock).toContain("background: var(--surface-panel);");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--surface-frame);");
+    expect(titlebarBlock).toContain("background: var(--surface-panel);");
+    const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
+    expect(panelBodyBlock).toContain("background: var(--surface-panel);");
+    // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
+    const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
+    expect(dormantBlock).toContain("background: radial-gradient(");
+    expect(dormantBlock).not.toContain("var(--ink-deep)");
     // 캡이 실재하는 상태로 한정한다 — 자동 은닉 풀스크린은 밴드가 fixed로 흐름에서 빠져 캡이
     // 없고, 사이드바가 뷰포트 최상단에 닿는다. 무조건 해제하면 그 화면에서 마감이 사라진다.
     // 도킹한 풀스크린은 밴드가 흐름으로 돌아와 다시 캡이 되므로 같은 해제를 받아야 한다.
@@ -1434,13 +1443,64 @@ describe("Instrument core design contract", () => {
     expect(base).toContain("--text-on-brass: var(--ink-abyss);");
     expect(theme.match(/--text-on-brass:/g)).toHaveLength(2);
     expect(theme).toContain("--text-on-brass: oklch(99.5% 0.004 95);");
-    // Operation 창 프레임 티어 — 다크는 ink-mid 별칭(기존 렌더 유지), 라이트는 ink-deep 별칭으로
-    // GNB(밴드)와 같은 크롬 패밀리에 정렬해 프레임이 라이트 최암면이 되는 것을 막는다.
-    expect(base).toContain("--surface-frame: var(--ink-mid);");
-    expect(theme.match(/--surface-frame:/g)).toHaveLength(2);
-    expect(theme.match(/--surface-frame: var\(--ink-deep\);/g)).toHaveLength(1);
+    // Operation 패널 면 티어 — 네 테마 모두가 값을 가지며 전부 작업면(터미널 필드) 톤이다.
+    // Whites는 종이가 최명면이어야 한다: 크롬(96%)보다도, 패널 둘레에서 실측되는 sea 그라디언트
+    // (L 94.9~96.6)보다도 밝아야 창이 책상에 녹지 않는다. 프레임 톤(ink-deep 95.5%)으로 내리면
+    // 둘레 대비가 0.05까지 무너진 것이 실측으로 확인됐다.
+    expect(base).toContain("--surface-panel: var(--ink-deep);");
+    expect(theme.match(/--surface-panel:/g)).toHaveLength(4);
+    expect(theme).toContain("--surface-panel: oklch(23% 0.03 248);");
+    expect(theme).toContain("--surface-panel: oklch(19% 0.008 252);");
+    expect(theme).toContain("--surface-panel: oklch(98.2% 0.004 100);");
+    expect(theme.match(/--surface-panel: var\(--ink-deep\);/g)).toHaveLength(1);
+    // 라이트 종이는 크롬보다 밝다 — 이 부등호가 뒤집히면 시선이 크롬으로 끌리는 극성 역전이다.
+    const whitesBlock = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+    expect(whitesBlock).toContain("--surface-chrome: oklch(96% 0.004 100);");
+    // 얹히는 면은 패널 면에서 한 칸 물러난다 — 다크는 위(ink-mid), 라이트는 아래(ink-deep).
+    expect(base).toContain("--surface-panel-raised: var(--ink-mid);");
+    expect(whitesBlock).toContain("--surface-panel-raised: var(--ink-deep);");
+    expect(theme.match(/--surface-panel-raised:/g)).toHaveLength(2);
+    expect(theme).not.toContain("--surface-frame");
     expect(theme).not.toMatch(/#fff(?:fff)?\b/i);
     expect(theme).not.toMatch(/body::(?:before|after)/);
+  });
+
+  it("keeps every Operation panel body on the one panel surface", () => {
+    const theme = source("styles/theme.css");
+    const surface = fs.readFileSync(fileURLToPath(TERMINAL_SURFACE_PATH), "utf8");
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+
+    // xterm은 CSS 변수를 못 받으므로 계산값을 읽어 넘긴다 — 이 경로가 사라지면 터미널 필드가
+    // 토큰과 갈라져 캡션 이음새가 되살아난다.
+    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--surface-panel")');
+    expect(surface).toContain("...base, background: resolvePanelSurface(");
+
+    // ITheme의 background 리터럴은 토큰을 못 읽는 환경의 폴백일 뿐이다 — 테마별로 theme.css의
+    // --surface-panel과 같은 값이어야 폴백이 다른 면을 그리지 않는다.
+    const themeBlockOf = (selector: string) => {
+      const start = theme.indexOf(selector);
+      return start < 0 ? "" : theme.slice(start, theme.indexOf("\n}", start));
+    };
+    const fallbackOf = (constName: string) => {
+      const start = surface.indexOf(`const ${constName}: ITheme = {`);
+      const block = start < 0 ? "" : surface.slice(start, surface.indexOf("\n};", start));
+      return block.match(/background: "([^"]+)"/)?.[1] ?? "";
+    };
+    const baseTheme = theme.slice(0, theme.indexOf(':root[data-theme="'));
+    const inkDeepOf = (block: string) => block.match(/--ink-deep: (oklch\([^)]*\));/)?.[1] ?? "";
+    expect(fallbackOf("INSTRUMENT_TERMINAL_THEME")).toBe(inkDeepOf(baseTheme));
+    expect(fallbackOf("MARITIME_TERMINAL_THEME")).toBe("oklch(23% 0.03 248)");
+    expect(fallbackOf("CARBON_TERMINAL_THEME")).toBe("oklch(19% 0.008 252)");
+    expect(fallbackOf("WHITES_TERMINAL_THEME")).toBe("oklch(98.2% 0.004 100)");
+
+    // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
+    const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatRootBlock).toContain("background: var(--surface-panel);");
+    // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
+    // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
+    // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
+    expect(chat).not.toContain("var(--ink-deep)");
+    expect(chat.match(/var\(--ink-abyss\)/g) ?? []).toHaveLength(1);
   });
 
   it("pins the access-link QR colors outside every theme", () => {
@@ -1705,7 +1765,7 @@ describe("Instrument core design contract", () => {
     // 포커스는 선을 쓰지 않는다: 상태 레일과 같은 굵기의 brass 선이 캡션 위아래에 겹치면
     // warn과 brass가 한 덩어리 금색으로 읽힌다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));");
+    expect(components).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
     // 도착 플래시는 지속 상태(is-unseen)가 아니라 전이를 표시하는 일시 클래스에만 건다 —
