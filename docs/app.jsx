@@ -37,8 +37,8 @@ const UI = {
   metaScreensV: { ko: "브라우저 · 데스크톱 · Android", en: "Browser · Desktop · Android" },
   bootTitle: { ko: "fleet — zsh", en: "fleet — zsh" },
   heroCap: {
-    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.5가 나란히 도는 Tactical 캔버스.",
-    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.5 running side by side on the Tactical canvas, on this very repository.",
+    ko: "실제 화면 — 이 저장소 위에서 Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 나란히 도는 Tactical 캔버스.",
+    en: "Real capture — Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 running side by side on the Tactical canvas, on this very repository.",
   },
 
   thesis1: { ko: "서버가 세션을 소유하면, ", en: "When the server owns the session, " },
@@ -63,8 +63,8 @@ const UI = {
     en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and the deepest expose <b>MAX</b> and <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) behind an apex gate.",
   },
   gwShotCap: {
-    ko: "실제 화면 — 캔버스 우클릭 한 번에 열리는 런치 메뉴. Claude, Codex, Cursor, Kimi, OpenCode가 한 목록에.",
-    en: "Real capture — the launch menu on one right-click: Claude, Codex, Cursor, Kimi, and OpenCode in a single list.",
+    ko: "실제 화면 — 캔버스 우클릭으로 열리는 런치 메뉴. Claude·Codex·Cursor 행이 라이브 패널 위에 떠 있다.",
+    en: "Real capture — the launch menu on one right-click, with Claude, Codex, and Cursor rows over the live canvas.",
   },
 
   modesEy: { ko: "Canvas modes", en: "Canvas modes" },
@@ -76,8 +76,8 @@ const UI = {
   },
   modesAria: { ko: "캔버스 모드", en: "Canvas modes" },
   modesShotCap: {
-    ko: "실제 화면 — War Room이 Operation 하나를 스테이지에 올리고, 사이드바는 상태순, 하단 레일은 다음 순서를 쥐고 있다.",
-    en: "Real capture — War Room stages one Operation, the sidebar sorts by status, and the bottom rail holds what's up next.",
+    ko: "실제 화면 — War Room이 Operation 하나를 스테이지에 올리고, 사이드바가 나머지를 상태순으로 쥐고 있다.",
+    en: "Real capture — War Room stages one Operation, and the sidebar holds the rest sorted by status.",
   },
 
   railEy: { ko: "Activity Rail", en: "Activity Rail" },
@@ -88,8 +88,8 @@ const UI = {
     en: "Eight built-in panels show history, worktrees, branches, token spend, and quota without leaving the Operation you are supervising. Plugins can contribute their own.",
   },
   railShotCap: {
-    ko: "실제 화면 — Repository 패널이 이 저장소의 커밋 그래프·워크트리 5개·브랜치·태그를 라이브 Operation 옆에 펼친 모습.",
-    en: "Real capture — the Repository panel with this repo's commit graph, five worktrees, branches, and tags beside live Operations.",
+    ko: "실제 화면 — Repository 패널이 이 저장소의 커밋 그래프·워크트리·브랜치를 라이브 Operation 옆에 펼친 모습.",
+    en: "Real capture — the Repository panel with this repo's commit graph, worktrees, and branches beside live Operations.",
   },
   analystT: { ko: "Session Analyst", en: "Session Analyst" },
   analystB: {

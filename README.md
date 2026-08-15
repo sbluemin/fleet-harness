@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Fleet Console running four operations side by side — Claude, Codex GPT-5.6, and Cursor Grok sessions with a live shell" width="100%" />
 
-<p align="center"><sub>One Theater, four live Operations: Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.5 answering side by side, next to a plain shell. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
+<p align="center"><sub>One Theater, four live Operations: Claude Fable 5, Codex GPT-5.6 Sol, and Cursor Grok 4.6 answering side by side, next to a plain shell. Every screenshot in this README is a real capture of Fleet running this repository.</sub></p>
 
 Working with one AI coding agent is a workflow. Working with five is a mess of terminal tabs — until you give them a deck to land on. Fleet turns every agent session into an **Operation**: a real PTY owned by a local server, laid out on an infinite canvas, observable from any device you trust.
 
@@ -44,7 +44,7 @@ A **Theater** is a project folder. Register as many as you work in — every pan
 
 ## Every frontier model behind one launch menu
 
-<img src=".github/console-launch-menu.png" alt="The launch menu: Claude, Codex, Cursor, Kimi, and OpenCode models in one right-click menu over the live canvas" width="100%" />
+<img src=".github/console-launch-menu.png" alt="The launch menu: Claude, Codex, and Cursor models in one right-click menu over the live canvas" width="100%" />
 
 Right-click the canvas and launch Claude Code on any model you have enabled — its built-in Claude models, or gateway models that ride credentials the Console holds for you. The gateway is a local Claude Code endpoint, not an API proxy: the native agent loop, tool grammar, and authentication are preserved, and non-Anthropic credentials never enter the agent process.
 
@@ -59,7 +59,7 @@ Enable exactly the roster you want under **Settings → AI Gateway** — only th
 
 ## A canvas that scales from one agent to a fleet
 
-<img src=".github/console-war-room.png" alt="War Room mode: one staged operation, a status-sorted sidebar, and an up-next queue" width="100%" />
+<img src=".github/console-war-room.png" alt="War Room mode: one staged operation and a status-sorted sidebar" width="100%" />
 
 Operations live on an infinite canvas, and a switch in the command band decides how much of the arranging you do yourself:
 
@@ -73,7 +73,7 @@ War Room is the one to reach for when several agents are waiting on you: it stag
 
 ## The whole project, beside the terminal
 
-<img src=".github/console-repository.png" alt="The Repository panel: commit graph, worktrees, branches, and tags of the active Theater beside live operations" width="100%" />
+<img src=".github/console-repository.png" alt="The Repository panel: commit graph, worktrees, and branches of the active Theater beside live operations" width="100%" />
 
 The Activity Rail ships with eight built-in panels — **Alerts, Codex, Shell, Files, Repository, Skills, Ledger,** and **Usage limits** — and installed plugins can contribute their own. The Repository panel alone gives you history, working changes, compare, worktrees, branches, tags, and stashes for the active Theater without leaving the operation you are supervising. Ledger and Usage limits keep token spend and provider quota in the same rail, so you notice a window filling up before a run stops.
 

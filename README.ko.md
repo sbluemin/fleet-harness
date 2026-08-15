@@ -18,7 +18,7 @@
 
 <img src=".github/console-canvas.png" alt="Claude, Codex GPT-5.6, Cursor Grok 세션과 라이브 셸이 나란히 도는 Fleet Console" width="100%" />
 
-<p align="center"><sub>하나의 Theater, 네 개의 라이브 Operation: Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.5가 셸 옆에서 나란히 답하고 있습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
+<p align="center"><sub>하나의 Theater, 네 개의 라이브 Operation: Claude Fable 5, Codex GPT-5.6 Sol, Cursor Grok 4.6이 셸 옆에서 나란히 답하고 있습니다. 이 README의 모든 스크린샷은 이 저장소 위에서 Fleet를 실제로 돌려 캡처한 것입니다.</sub></p>
 
 AI 코딩 에이전트 하나와 일하는 것은 워크플로우지만, 다섯과 일하는 것은 터미널 탭의 아수라장입니다 — 내려앉을 갑판을 주기 전까지는. Fleet는 모든 에이전트 세션을 **Operation**으로 만듭니다: 로컬 서버가 소유한 진짜 PTY이며, 무한 캔버스 위에 배치되고, 신뢰하는 어떤 기기에서든 관찰할 수 있습니다.
 
@@ -44,7 +44,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 
 ## 런치 메뉴 하나 뒤의 모든 프런티어 모델
 
-<img src=".github/console-launch-menu.png" alt="런치 메뉴: Claude, Codex, Cursor, Kimi, OpenCode 모델이 라이브 캔버스 위 우클릭 메뉴 하나에" width="100%" />
+<img src=".github/console-launch-menu.png" alt="런치 메뉴: Claude, Codex, Cursor 모델이 라이브 캔버스 위 우클릭 메뉴 하나에" width="100%" />
 
 캔버스를 우클릭하고, 켜 둔 어떤 모델로든 Claude Code를 띄우세요 — 내장 Claude 모델이든, Console이 대신 쥔 자격증명 위를 달리는 게이트웨이 모델이든. 게이트웨이는 API 프록시가 아니라 로컬 Claude Code 엔드포인트입니다: 네이티브 에이전트 루프, 도구 문법, 인증이 그대로 보존되고, 비-Anthropic 자격증명은 에이전트 프로세스에 결코 들어가지 않습니다.
 
@@ -59,7 +59,7 @@ Operation의 주인은 브라우저가 아니라 로컬 Fleet Console 서버입�
 
 ## 에이전트 하나에서 함대까지 늘어나는 캔버스
 
-<img src=".github/console-war-room.png" alt="War Room 모드: 스테이지에 올라온 하나의 Operation, 상태 정렬 사이드바, 다음 대기열" width="100%" />
+<img src=".github/console-war-room.png" alt="War Room 모드: 스테이지에 올라온 하나의 Operation과 상태 정렬 사이드바" width="100%" />
 
 Operation은 무한 캔버스 위에 살고, 커맨드 밴드의 스위치가 배치를 얼마나 직접 할지 정합니다:
 
@@ -73,7 +73,7 @@ Operation은 무한 캔버스 위에 살고, 커맨드 밴드의 스위치가 �
 
 ## 터미널 옆의 프로젝트 전체
 
-<img src=".github/console-repository.png" alt="Repository 패널: 활성 Theater의 커밋 그래프, 워크트리, 브랜치, 태그가 라이브 Operation 옆에" width="100%" />
+<img src=".github/console-repository.png" alt="Repository 패널: 활성 Theater의 커밋 그래프, 워크트리, 브랜치가 라이브 Operation 옆에" width="100%" />
 
 Activity Rail에는 여덟 개의 내장 패널이 실려 있습니다 — **알림, Codex, Shell, 파일, 저장소, 스킬, 원장, 사용 한도** — 그리고 설치한 플러그인이 자기 패널을 더할 수 있습니다. 저장소 패널 하나만으로 활성 Theater의 히스토리, 작업 변경, 비교, 워크트리, 브랜치, 태그, 스태시를 감독 중인 Operation을 떠나지 않고 봅니다. 원장과 사용 한도는 토큰 지출과 프로바이더 쿼터를 같은 레일에 두어, 윈도우가 차오르는 것을 런이 멈추기 전에 알아차리게 합니다.
 
