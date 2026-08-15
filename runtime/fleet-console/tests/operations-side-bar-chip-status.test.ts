@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import type { OperationActivityVisual } from "../core/client/src/operation-activity.js";
+import { pluginRuntimeState, type OperationActivityVisual } from "../core/client/src/operation-activity.js";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it } from "vitest";
@@ -47,6 +47,25 @@ describe("OperationsSideBarChip activity status", () => {
   it("omits the surface mark when the plugin supplies none", () => {
     renderChip("running");
     expect(container?.querySelector(".side-bar-chip-surface")).toBeNull();
+  });
+});
+
+// degraded 는 "모른다"는 뜻이다 — 마지막으로 알던 값을 지금의 사실처럼 패널에 넘기면,
+// 본문은 끊긴 축 위에서 계속 작업 중이라고 말한다.
+describe("plugin runtime state under degraded hydration", () => {
+  const runtime = { "op-1": { lifecycle: "live", activity: "running" } } as const;
+
+  it("hands the last known state to the panel while the axis is trusted", () => {
+    expect(pluginRuntimeState(runtime, "ready", "op-1")).toEqual({ lifecycle: "live", activity: "running" });
+    expect(pluginRuntimeState(runtime, "pending", "op-1")).toEqual({ lifecycle: "live", activity: "running" });
+  });
+
+  it("withholds a stale state once the axis is degraded", () => {
+    expect(pluginRuntimeState(runtime, "degraded", "op-1")).toBeNull();
+  });
+
+  it("reports an unobserved Operation as unknown rather than idle", () => {
+    expect(pluginRuntimeState(runtime, "ready", "missing")).toBeNull();
   });
 });
 

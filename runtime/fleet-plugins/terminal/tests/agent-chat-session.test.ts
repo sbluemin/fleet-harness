@@ -69,6 +69,7 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     transcriptPath,
     onProviderSessionUpdate,
     reportActivity: () => true,
+    canReportActivity: () => true,
   };
 }
 
@@ -240,7 +241,7 @@ describe("AgentChatRegistry", () => {
       { messages: [{ type: "result", subtype: "success", is_error: false }] },
     ]);
     const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-1", () => ({ ...seedFor(transcriptPath), reportActivity: () => false }));
+    const session = await registry.ensure("op-1", () => ({ ...seedFor(transcriptPath), reportActivity: () => false, canReportActivity: () => false }));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
 
@@ -251,6 +252,27 @@ describe("AgentChatRegistry", () => {
     expect(startTurn).not.toHaveBeenCalled();
     expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_activity_unavailable")).toBe(true);
     expect(events.some((entry) => entry.event.kind === "turn-end" && entry.event.ok === false)).toBe(true);
+    await registry.disposeAll();
+  });
+
+  it("probes the activity axis without writing a transition", async () => {
+    const transcriptPath = writeTranscript("sid-probe", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+    ]);
+    const reported: boolean[] = [];
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => ({
+      ...seedFor(transcriptPath),
+      reportActivity: (working: boolean) => { reported.push(working); return true; },
+      canReportActivity: () => true,
+    }));
+
+    expect(session.canReportActivity()).toBe(true);
+    // 확인만으로는 축에 아무것도 쓰이지 않아야 한다 — 쓰면 진행 중인 턴이 유휴로 방송된다.
+    expect(reported).toEqual([]);
     await registry.disposeAll();
   });
 
@@ -267,6 +289,7 @@ describe("AgentChatRegistry", () => {
     const session = await registry.ensure("op-1", () => ({
       ...seedFor(transcriptPath),
       reportActivity: (working: boolean) => { reported.push(working); return true; },
+      canReportActivity: () => true,
     }));
 
     session.send("first");

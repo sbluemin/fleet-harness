@@ -1,3 +1,4 @@
+import { pluginRuntimeState } from "../operation-activity.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console/sdk/operations";
@@ -570,7 +571,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     active: state.activeOperationId === operation.id,
     geometry: operation.geometry ?? ensurePluginGeometry(operation),
     operation,
-    runtimeState: state.operationRuntime[operation.id] ?? null,
+    runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
     theme: state.activeTheme,
     language,
     zoom: 1,
@@ -596,6 +597,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       operations={theaterOperations}
       activeOperationId={state.activeOperationId}
       operationRuntime={state.operationRuntime}
+      operationRuntimeHydration={state.operationRuntimeHydration}
       operationNotifications={state.operationNotifications}
       theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
       theme={state.activeTheme}

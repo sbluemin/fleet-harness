@@ -1074,6 +1074,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
+        canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
         reportActivity: (working) => {
           const updated = observability.setTerminalSessionChatWorking(node.id, working);
           // null은 이 세션이 채팅으로 인수되지 않았다는 뜻이다 — 축이 이 보고를 받을 자리가 없다.

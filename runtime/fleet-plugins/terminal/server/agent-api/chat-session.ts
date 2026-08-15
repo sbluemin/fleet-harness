@@ -33,6 +33,12 @@ export interface AgentChatSessionSeed {
    * 그 조용한 거짓말이 이 계약이 존재하는 이유다.
    */
   readonly reportActivity: (working: boolean) => boolean;
+  /**
+   * 활동축이 이 세션의 보고를 받을 수 있는지 묻기만 한다 — 아무것도 쓰지 않는다.
+   * 쓰는 프로브는 진행 중 턴을 유휴로 뒤집고 그 전이를 방송해, 첫 턴이 도는 중에 들어온
+   * 두 번째 메시지가 조기 턴 종료 신호를 만든다.
+   */
+  readonly canReportActivity: () => boolean;
 }
 
 /** 테스트가 실 SDK 스폰 없이 레지스트리를 돌리기 위한 주입점. */
@@ -106,7 +112,7 @@ class AgentChatSession {
    * 떠났으므로, 거절은 요청 경계에서만 시끄러울 수 있다.
    */
   canReportActivity(): boolean {
-    return this.seed.reportActivity(false);
+    return this.seed.canReportActivity();
   }
 
   send(text: string): void {

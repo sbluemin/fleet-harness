@@ -1,4 +1,4 @@
-import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { getT } from "./i18n/index.js";
@@ -38,6 +38,18 @@ export function operationRuntimeVisual(state: OperationRuntimeState | undefined)
 // 플러그인이 실은 실행 표면 표식. 휴면 상태에는 표면이 없다.
 export function operationRuntimeSurface(state: OperationRuntimeState | undefined): string | undefined {
   return state?.lifecycle === "live" ? state.surface : undefined;
+}
+
+// 플러그인 본문에 넘기는 런타임 축. degraded 는 "모른다"는 뜻이므로 마지막으로 알던 값을 지금의
+// 사실처럼 넘기지 않는다 — 그러면 패널은 끊긴 축 위에서 계속 작업 중이라고 말한다.
+// 칩 쪽은 재가된 대로 배너 하나로만 말하고 마지막 표시를 유지한다(여기와 다른 결정, 다른 표면).
+export function pluginRuntimeState(
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
+  hydration: OperationRuntimeHydration,
+  operationId: string,
+): OperationRuntimeState | null {
+  if (hydration === "degraded") return null;
+  return operationRuntime[operationId] ?? null;
 }
 
 // 표시 어휘 하나에서 런타임 상태를 되짚는다. 표시 축은 두 축이 합류한 뒤라 일반적으로 역함수가

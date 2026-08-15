@@ -481,7 +481,7 @@ export function OperationsCanvas({
         active: false,
         geometry: canvas.operations[operation.id] ?? operation.geometry ?? ensurePluginGeometry(operation),
         operation,
-        runtimeState: state.operationRuntime[operation.id] ?? null,
+        runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
         theme: state.activeTheme,
         language,
         zoom: 1,

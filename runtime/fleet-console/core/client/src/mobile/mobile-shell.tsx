@@ -1,6 +1,7 @@
+import { pluginRuntimeState } from "../operation-activity.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ConsoleTheme, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
 import type { OperationNode, OperationNotification } from "../types.js";
@@ -9,10 +10,11 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationRuntime, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
+export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
+  readonly operationRuntimeHydration: OperationRuntimeHydration;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly theaterLabel: string | null;
   readonly theme: ConsoleTheme;
@@ -89,7 +91,7 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
         theme={theme}
         language={language}
         active={activeOperationId === selectedOperation.id}
-        runtimeState={operationRuntime[selectedOperation.id] ?? null}
+        runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
         onActivate={() => onSelectOperation(selectedOperation.id)}
         onClose={() => closeOperation(selectedOperation.id)}
       />
