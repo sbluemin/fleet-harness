@@ -56,13 +56,17 @@ export function AnswerBubble({
     // 여러 부관이 동시에 답하면 말풍선끼리 겹친다 — 감속 모션에서 무리가 한 줄로 정박하면 새 사이가
     // 92px인데 말풍선은 360px까지 벌어지므로, 뒤 말풍선이 앞 답을 거의 다 덮는다. 가로로 실제
     // 겹치는 앞 말풍선만큼만 세로로 비켜선다 — 멀리 떨어진 말풍선까지 밀어내면 이유 없이 떠오른다.
-    const lane = laneOffset(
+    const lane = laneOffset({
       bubble,
-      Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble")),
+      siblings: Array.from(document.querySelectorAll<HTMLElement>(".scuttlebutt-answer-bubble")),
       left,
-      bubbleRect.width,
+      width: bubbleRect.width,
+      height: bubbleRect.height,
+      placeAbove,
+      anchorTop: mascotRect.top,
+      anchorBottom: mascotRect.bottom,
       gap,
-    );
+    });
     // 좌표를 상태로 돌리면 프레임마다 리렌더가 돈다 — 따라붙는 값은 DOM에 직접 쓴다(도착 알림과 같다).
     bubble.style.left = `${left}px`;
     if (placeAbove) {
@@ -166,23 +170,44 @@ function readAnswerText(state: ChatState): string | null {
  * DOM 순서를 레인 순서로 쓴다 — 무리가 답변 목록 순서대로 렌더하므로 먼저 물은 답이 마스코트에
  * 가장 가깝게 남고, 뒤에 온 답만 바깥으로 쌓인다.
  */
-export function laneOffset(
-  bubble: HTMLElement,
-  siblings: readonly HTMLElement[],
-  left: number,
-  width: number,
-  gap: number,
-): number {
-  let offset = 0;
+export interface LanePlacement {
+  readonly bubble: HTMLElement;
+  readonly siblings: readonly HTMLElement[];
+  readonly left: number;
+  readonly width: number;
+  readonly height: number;
+  /** 마스코트 위로 열리는가. 아래로 열리면 레인은 반대 방향으로 자란다. */
+  readonly placeAbove: boolean;
+  readonly anchorTop: number;
+  readonly anchorBottom: number;
+  readonly gap: number;
+}
+
+/**
+ * 앞선 말풍선을 피해 마스코트에서 멀어지는 거리.
+ *
+ * 높이를 더하는 것으로는 부족하다 — 마스코트마다 세로 위치가 다르면 한 칸 밀어도 그만큼 어긋난
+ * 만큼 다시 겹친다(정상 모션에서 47px 어긋난 두 부관으로 75×77px 겹침 실측). 그래서 **놓일 자리의
+ * 실제 사각형**으로 판정하고, 겹치는 형제의 바깥 변까지만 정확히 물러선다.
+ *
+ * DOM 순서를 레인 순서로 쓴다 — 무리가 답변 목록 순서대로 렌더하므로 먼저 물은 답이 마스코트에
+ * 가장 가깝게 남고, 뒤에 온 답만 바깥으로 쌓인다.
+ */
+export function laneOffset(input: LanePlacement): number {
+  const { bubble, siblings, left, width, height, placeAbove, anchorTop, anchorBottom, gap } = input;
+  let lane = 0;
   for (const sibling of siblings) {
     if (sibling === bubble) break;
     // 아직 좌표를 못 잰 형제(첫 프레임)는 건너뛴다 — 0,0에 있는 상자로 레인을 계산하면 튄다.
     if (sibling.style.visibility !== "visible") continue;
     const rect = sibling.getBoundingClientRect();
-    const overlaps = rect.left < left + width && left < rect.left + rect.width;
-    if (overlaps) offset += rect.height + gap;
+    if (rect.left >= left + width || left >= rect.left + rect.width) continue;
+    const top = placeAbove ? anchorTop - gap - lane - height : anchorBottom + gap + lane;
+    if (top >= rect.bottom || rect.top >= top + height) continue;
+    // 겹치는 형제의 바깥 변 너머로 물러선다. 앞선 형제가 이미 더 큰 레인을 요구했으면 그것을 지킨다.
+    lane = Math.max(lane, placeAbove ? anchorTop - rect.top : rect.bottom - anchorBottom);
   }
-  return offset;
+  return lane;
 }
 
 function clamp(value: number, min: number, max: number): number {
