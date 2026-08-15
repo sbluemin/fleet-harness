@@ -6,8 +6,17 @@ import type { RailPanelDescriptor } from "@fleet-console/sdk/rail";
 import type { SettingsSectionDescriptor } from "@fleet-console/sdk/settings";
 import { plugins as builtInPlugins } from "virtual:fleet-plugins";
 
+/** 발견됐지만 패널을 세우지 못한 플러그인. 화면이 "왜 없는지"를 말할 수 있게 남긴다. */
+export interface PluginLoadFailure {
+  readonly id: string;
+  readonly name?: string;
+  readonly reason: "unsupported_client_entry" | "client_build_failed" | "duplicate_id" | "invalid_client_module" | "client_load_failed";
+}
+
 export interface PluginRegistry {
   readonly plugins: readonly FleetClientPlugin[];
+  /** 이 부팅에서 빠진 플러그인. 비어 있으면 전부 올라왔다는 뜻이다. */
+  readonly failures: readonly PluginLoadFailure[];
   readonly operationKinds: readonly OperationKindDescriptor[];
   readonly settingsSections: readonly SettingsSectionDescriptor[];
   readonly notificationKinds: readonly NotificationKindDescriptor[];
@@ -17,6 +26,7 @@ export interface PluginRegistry {
 
 interface PluginRuntimeManifest {
   readonly plugins?: readonly PluginRuntimeManifestEntry[];
+  readonly skipped?: readonly PluginLoadFailure[];
 }
 
 interface PluginRuntimeManifestEntry {
@@ -40,60 +50,68 @@ export const PluginRegistryProvider = PluginRegistryContext.Provider;
 export async function loadPluginRegistry(): Promise<PluginRegistry> {
   const plugins = [...builtInPlugins];
   const pluginIds = new Set(plugins.map((plugin) => plugin.id));
-  const entries = await loadPluginRuntimeManifestEntries();
+  const { entries, skipped } = await loadPluginRuntimeManifest();
+  const failures: PluginLoadFailure[] = [...skipped];
   for (const entry of entries) {
     if (pluginIds.has(entry.id)) {
       console.warn(`Skipping external plugin with duplicate id: ${entry.id}`);
+      failures.push({ id: entry.id, ...(entry.name ? { name: entry.name } : {}), reason: "duplicate_id" });
       continue;
     }
-    const plugin = await loadExternalPlugin(entry);
-    if (!plugin) continue;
-    if (pluginIds.has(plugin.id)) {
-      console.warn(`Skipping external plugin with duplicate id: ${plugin.id}`);
+    const outcome = await loadExternalPlugin(entry);
+    if (!outcome.plugin) {
+      failures.push({ id: entry.id, ...(entry.name ? { name: entry.name } : {}), reason: outcome.reason });
       continue;
     }
-    pluginIds.add(plugin.id);
-    plugins.push(plugin);
+    if (pluginIds.has(outcome.plugin.id)) {
+      console.warn(`Skipping external plugin with duplicate id: ${outcome.plugin.id}`);
+      failures.push({ id: outcome.plugin.id, reason: "duplicate_id" });
+      continue;
+    }
+    pluginIds.add(outcome.plugin.id);
+    plugins.push(outcome.plugin);
   }
-  return createPluginRegistry(plugins);
+  return createPluginRegistry(plugins, failures);
 }
 
 export function usePluginRegistry(): PluginRegistry {
   return useContext(PluginRegistryContext);
 }
 
-async function loadPluginRuntimeManifestEntries(): Promise<readonly PluginRuntimeManifestEntry[]> {
+async function loadPluginRuntimeManifest(): Promise<{ entries: readonly PluginRuntimeManifestEntry[]; skipped: readonly PluginLoadFailure[] }> {
   try {
     const response = await fetch("/plugin-runtime/manifest");
     if (!response.ok) {
       console.warn(`Plugin runtime manifest unavailable: ${response.status}`);
-      return [];
+      return { entries: [], skipped: [] };
     }
     const payload = await response.json() as PluginRuntimeManifest;
-    if (!Array.isArray(payload.plugins)) return [];
-    return payload.plugins.filter(isPluginRuntimeManifestEntry);
+    // 서버가 준비 단계에서 떨군 플러그인은 목록에 아예 없다 — 그 사실은 skipped로만 온다.
+    const skipped = Array.isArray(payload.skipped) ? payload.skipped : [];
+    if (!Array.isArray(payload.plugins)) return { entries: [], skipped };
+    return { entries: payload.plugins.filter(isPluginRuntimeManifestEntry), skipped };
   } catch (error) {
     console.warn("Plugin runtime manifest failed to load.", error);
-    return [];
+    return { entries: [], skipped: [] };
   }
 }
 
-async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<FleetClientPlugin | null> {
+async function loadExternalPlugin(entry: PluginRuntimeManifestEntry): Promise<{ plugin: FleetClientPlugin | null; reason: PluginLoadFailure["reason"] }> {
   try {
     const mod = await import(/* @vite-ignore */ entry.clientUrl) as PluginClientModule;
     const plugin = mod.default ?? mod.plugin;
     if (!isFleetClientPlugin(plugin)) {
       console.warn(`Skipping external plugin with invalid client module: ${entry.id}`);
-      return null;
+      return { plugin: null, reason: "invalid_client_module" };
     }
-    return plugin;
+    return { plugin, reason: "client_load_failed" };
   } catch (error) {
     console.warn(`Skipping external plugin after client load failure: ${entry.id}`, error);
-    return null;
+    return { plugin: null, reason: "client_load_failed" };
   }
 }
 
-function createPluginRegistry(plugins: readonly FleetClientPlugin[]): PluginRegistry {
+function createPluginRegistry(plugins: readonly FleetClientPlugin[], failures: readonly PluginLoadFailure[] = []): PluginRegistry {
   const railPanelIds = new Set<string>();
   const railPanels: RailPanelDescriptor[] = [];
   for (const plugin of plugins) {
@@ -108,6 +126,7 @@ function createPluginRegistry(plugins: readonly FleetClientPlugin[]): PluginRegi
   }
   return {
     plugins,
+    failures,
     operationKinds: plugins.flatMap((plugin) => plugin.operationKinds ?? []),
     settingsSections: plugins.flatMap((plugin) => plugin.settingsSections ?? []),
     notificationKinds: plugins.flatMap((plugin) => plugin.notificationKinds ?? []),

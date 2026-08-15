@@ -58,7 +58,12 @@ describe("plugin client assets", () => {
     await assets.prepare();
 
     expect(assets.getClient("bad")).toBeNull();
-    expect(assets.manifest()).toEqual({ plugins: [] });
+    // 빠진 플러그인은 목록에서 사라지되 그 사실 자체는 남는다 — 예전에는 서버 로그에만 남아
+    // 운영자에게는 패널이 그냥 없는 것으로 보였다.
+    expect(assets.manifest()).toEqual({
+      plugins: [],
+      skipped: [{ id: "bad", name: "bad", reason: "client_build_failed" }],
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("Node builtin import is not allowed"));
   });
 
@@ -88,7 +93,10 @@ describe("plugin client assets", () => {
     await assets.prepare();
 
     expect(assets.getClient("escape")).toBeNull();
-    expect(assets.manifest()).toEqual({ plugins: [] });
+    expect(assets.manifest()).toEqual({
+      plugins: [],
+      skipped: [{ id: "escape", name: "escape", reason: "client_build_failed" }],
+    });
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("plugin client import escapes plugin root"));
   });
 

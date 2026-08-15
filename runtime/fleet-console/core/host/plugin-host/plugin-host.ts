@@ -190,6 +190,18 @@ export interface PluginClientAssetsDeps {
 
 export interface PluginClientManifestDto {
   readonly plugins: readonly PluginClientManifestEntryDto[];
+  /**
+   * 발견됐지만 브라우저 표면을 세우지 못한 플러그인. 예전에는 이 사실이 서버 로그에만 남아,
+   * 운영자에게는 패널이 그냥 없는 것으로 보였다. 이유는 분류 코드로만 싣는다 — 번들러 오류
+   * 원문에는 플러그인 루트의 절대 경로가 들어 있다.
+   */
+  readonly skipped?: readonly PluginClientSkippedDto[];
+}
+
+export interface PluginClientSkippedDto {
+  readonly id: string;
+  readonly name?: string;
+  readonly reason: "unsupported_client_entry" | "client_build_failed";
 }
 
 export interface PluginClientManifestEntryDto {
@@ -232,10 +244,12 @@ const NODE_BUILTINS = new Set([
 export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginClientAssets {
   const clientSources = new Map<string, string>();
   const preparedPlugins = new Set<string>();
+  const skippedPlugins = new Map<string, PluginClientSkippedDto>();
 
   async function prepare(): Promise<void> {
     clientSources.clear();
     preparedPlugins.clear();
+    skippedPlugins.clear();
     for (const plugin of deps.plugins) {
       if (!plugin.external || !plugin.clientEntry) continue;
       try {
@@ -244,11 +258,17 @@ export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginCl
         preparedPlugins.add(plugin.manifest.id);
       } catch (error) {
         console.warn(`[fleet-console] Plugin ${plugin.manifest.id} client skipped: ${error instanceof Error ? error.message : String(error)}`);
+        skippedPlugins.set(plugin.manifest.id, {
+          id: plugin.manifest.id,
+          ...(plugin.manifest.name ? { name: plugin.manifest.name } : {}),
+          reason: (error as Error | undefined)?.message === "unsupported_client_entry" ? "unsupported_client_entry" : "client_build_failed",
+        });
       }
     }
   }
 
   function manifest(): PluginClientManifestDto {
+    const skipped = [...skippedPlugins.values()];
     return {
       plugins: deps.plugins.filter((plugin) => plugin.external && !!plugin.clientEntry && preparedPlugins.has(plugin.manifest.id)).map((plugin) => ({
         id: plugin.manifest.id,
@@ -256,6 +276,7 @@ export function createPluginClientAssets(deps: PluginClientAssetsDeps): PluginCl
         clientUrl: `/plugin-runtime/client/${plugin.manifest.id}.mjs`,
         apiVersion: plugin.manifest.apiVersion ?? SDK_API_VERSION,
       })),
+      ...(skipped.length > 0 ? { skipped } : {}),
     };
   }
 

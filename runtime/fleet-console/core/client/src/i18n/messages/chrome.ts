@@ -326,6 +326,8 @@ export const chromeEn = {
 
   // 실패 화법: 무슨 일(title) · 왜와 지금 할 일(cause). 서버가 보내는 기계 코드는 문장
   // 자리를 차지하지 않고 진단으로만 남는다.
+  "chrome.toast.pluginSkipped_one": "{count} plugin has no panel in this Console",
+  "chrome.toast.pluginSkipped_other": "{count} plugins have no panel in this Console",
   "chrome.failure.folder.invalidPath.title": "That path cannot be opened",
   "chrome.failure.folder.invalidPath.cause": "It is not a full folder path. Pick a folder from the list, or type one that starts at a drive or root.",
   "chrome.failure.folder.notFound.title": "That folder no longer exists",
@@ -655,6 +657,8 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.codexReading.closeAria": "읽기 닫기",
   "chrome.codexReading.onThisPage": "이 페이지",
 
+  "chrome.toast.pluginSkipped_one": "플러그인 {count}개가 이 Console에 패널을 세우지 못했습니다",
+  "chrome.toast.pluginSkipped_other": "플러그인 {count}개가 이 Console에 패널을 세우지 못했습니다",
   "chrome.failure.folder.invalidPath.title": "그 경로는 열 수 없습니다",
   "chrome.failure.folder.invalidPath.cause": "전체 폴더 경로가 아닙니다. 목록에서 폴더를 고르거나, 드라이브나 루트에서 시작하는 경로를 입력하세요.",
   "chrome.failure.folder.notFound.title": "그 폴더는 더 이상 없습니다",

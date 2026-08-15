@@ -22,6 +22,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
         { id: "artifacts", title: "Artifacts", hideCaption: true, render: ({ companionsOpen, keyboardFocusRequestId }: { readonly companionsOpen?: boolean; readonly keyboardFocusRequestId?: number }) => createElement("div", { "data-test-companion": "artifacts", "data-companions-open": String(companionsOpen), "data-keyboard-focus-request": keyboardFocusRequestId }) },
       ],
     }],
+    failures: [],
     settingsSections: [],
     notificationKinds: [],
     railPanels: [],
