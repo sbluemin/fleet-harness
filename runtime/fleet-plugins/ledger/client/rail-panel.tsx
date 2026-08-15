@@ -3,8 +3,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
+import { parseModelIdentity } from "../server/identity.js";
 import type { LedgerOperationDto, LedgerSummaryDto, LedgerUnmatchedOperationDto, LedgerWindow } from "../server/types.js";
-import { cliDisplayName, cliGlyph, markKeyFromCliId } from "./cli-glyphs.js";
+import { cliGlyph, markKeyFromOperation, supplierMarkKey } from "./cli-glyphs.js";
 import {
   costValueTier,
   formatCost,
@@ -49,6 +50,32 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
 
 function totalTokens(usage: { readonly input: number; readonly output: number; readonly cacheRead: number }): number {
   return usage.input + usage.output + usage.cacheRead;
+}
+
+const LEDGER_SUPPLIER_KEYS = new Set([
+  "claude",
+  "codex",
+  "cursor",
+  "kimi",
+  "opencode",
+  "xai",
+  "native",
+]);
+
+function supplierLabel(supplier: string, t: T): string {
+  return LEDGER_SUPPLIER_KEYS.has(supplier)
+    ? t(`ledger.supplier.${supplier}` as LedgerMessageKey)
+    : supplier;
+}
+
+function operationHostLabel(
+  operation: { readonly launchProvider: string | null; readonly cliLabel: string },
+  t: T,
+): string {
+  if (operation.launchProvider && operation.launchProvider !== "claude") {
+    return t("ledger.operation.host", { supplier: supplierLabel(operation.launchProvider, t) });
+  }
+  return operation.cliLabel || t("ledger.value.unknownCli");
 }
 
 function ValueAmount({ parts, tier, className = "" }: {
@@ -296,7 +323,21 @@ function DetailView({ operation, t, back }: { readonly operation: LedgerOperatio
       </div>
       <section className="ledger-detail-section">
         <h3>{t("ledger.detail.models")}</h3>
-        <p>{operation.models.length > 0 ? operation.models.join(", ") : t("ledger.value.noModels")}</p>
+        {operation.models.length === 0 ? <p>{t("ledger.value.noModels")}</p> : (
+          <ul className="ledger-detail-models">
+            {operation.models.map((modelId) => {
+              const identity = parseModelIdentity(modelId);
+              const mark = supplierMarkKey(identity.supplier);
+              return (
+                <li className={`ledger-detail-model ledger-detail-model--${mark}`} key={modelId}>
+                  <span className="ledger-operation-mark">{cliGlyph(mark)}</span>
+                  <span>{supplierLabel(identity.supplier, t)} · {identity.label}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        {operation.models.length > 1 ? <p>{t("ledger.detail.modelsUnsplit")}</p> : null}
       </section>
       <section className="ledger-detail-section">
         <h3>{t("ledger.detail.lastActivity")}</h3>
@@ -463,11 +504,11 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
               <div className="ledger-inline-empty"><strong>{t("ledger.empty.title")}</strong><p>{t("ledger.empty.body")}</p></div>
             ) : null}
             {displayRowsCapped.map((row) => row.kind === "matched" ? (
-              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromCliId(row.operation.cliId)}`} key={row.operation.operationId} onClick={() => openDetail(row.operation.operationId)}>
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(row.operation.cliId))}</span>
+              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromOperation(row.operation.launchProvider, row.operation.cliId)}`} key={row.operation.operationId} onClick={() => openDetail(row.operation.operationId)}>
+                <span className="ledger-operation-mark">{cliGlyph(markKeyFromOperation(row.operation.launchProvider, row.operation.cliId))}</span>
                 <span className="ledger-operation-copy">
                   <strong>{row.operation.title}</strong>
-                  <small>{t("ledger.operation.messages", { cliLabel: row.operation.cliLabel || t("ledger.value.unknownCli"), count: row.operation.messages })}</small>
+                  <small>{t("ledger.operation.messages", { cliLabel: operationHostLabel(row.operation, t), count: row.operation.messages })}</small>
                 </span>
                 <span className="ledger-operation-values">
                   <ValueAmount parts={formatCostParts(row.operation.costUsd)} tier={costValueTier(row.operation.costUsd)} />
@@ -477,13 +518,13 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
               </button>
             ) : (
               <div
-                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromCliId(row.operation.cliId)}`}
+                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromOperation(row.operation.launchProvider, row.operation.cliId)}`}
                 key={row.operation.operationId}
               >
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromCliId(row.operation.cliId))}</span>
+                <span className="ledger-operation-mark">{cliGlyph(markKeyFromOperation(row.operation.launchProvider, row.operation.cliId))}</span>
                 <span className="ledger-operation-copy">
                   <strong>{row.operation.title}</strong>
-                  <small>{t("ledger.operation.unmatched", { cliLabel: row.operation.cliLabel || t("ledger.value.unknownCli") })}</small>
+                  <small>{t("ledger.operation.unmatched", { cliLabel: operationHostLabel(row.operation, t) })}</small>
                 </span>
               </div>
             ))}
@@ -494,17 +535,21 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
 
           <section className="ledger-clients">
             {visibleData.daily.length >= 2 ? <TrendSection daily={visibleData.daily} dailyAttributed={visibleData.dailyAttributed} language={ctx.language} t={t} /> : null}
-            <h3>{t("ledger.section.clients")}</h3>
-            <p className="ledger-clients-description">{t("ledger.clients.explanation")}</p>
+            <h3>{t("ledger.section.suppliers")}</h3>
+            <p className="ledger-clients-description">{t("ledger.suppliers.explanation")}</p>
+            {visibleData.modelSource.status === "unavailable" || visibleData.modelSource.status === "unreadable" ? (
+              <p className="ledger-clients-description">{t(`ledger.models.${visibleData.modelSource.status}`)}</p>
+            ) : null}
             <div className="ledger-client-list">
-              {visibleData.clients.map((entry) => {
+              {visibleData.suppliers.map((entry) => {
+                const mark = supplierMarkKey(entry.supplier);
                 const tokens = totalTokens(entry.usage);
                 return (
-                  <div className={`ledger-client-row ledger-client-row--${entry.client}`} key={entry.client}>
-                    <span className="ledger-client-mark">{cliGlyph(entry.client)}</span>
+                  <div className={`ledger-client-row ledger-client-row--${mark}`} key={entry.supplier}>
+                    <span className="ledger-client-mark">{cliGlyph(mark)}</span>
                     <span className="ledger-client-copy">
-                      <strong>{cliDisplayName(entry.client)}</strong>
-                      <small>{t("ledger.clients.sessions", { count: entry.sessions })}</small>
+                      <strong>{supplierLabel(entry.supplier, t)}</strong>
+                      <small>{t("ledger.suppliers.models", { count: entry.models })}</small>
                     </span>
                     <span className="ledger-client-values">
                       <ValueAmount parts={formatCostParts(entry.costUsd)} tier={costValueTier(entry.costUsd)} />
@@ -514,6 +559,37 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
                 );
               })}
             </div>
+            <h3 className="ledger-models-heading">{t("ledger.section.models")}</h3>
+            <p className="ledger-clients-description">{t("ledger.models.explanation")}</p>
+            <div className="ledger-client-list">
+              {visibleData.modelRows.map((entry) => {
+                const mark = supplierMarkKey(entry.supplier);
+                const tokens = totalTokens(entry.usage);
+                const unpriced = entry.costUsd === 0 && entry.messages > 0;
+                return (
+                  <div className={`ledger-client-row ledger-client-row--${mark}`} key={entry.modelId}>
+                    <span className="ledger-client-mark">{cliGlyph(mark)}</span>
+                    <span className="ledger-client-copy">
+                      <strong>{entry.label}</strong>
+                      <small>
+                        {supplierLabel(entry.supplier, t)}
+                        {unpriced ? ` · ${t("ledger.models.unpriced")}` : ""}
+                      </small>
+                    </span>
+                    <span className="ledger-client-values">
+                      <ValueAmount parts={formatCostParts(entry.costUsd)} tier={costValueTier(entry.costUsd)} />
+                      <ValueAmount parts={formatTokenParts(tokens)} tier={tokenValueTier(tokens)} />
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            {visibleData.modelTotals.models > 0 ? (
+              <div className="ledger-bridge-total">
+                <span>{t("ledger.models.total")}</span>
+                <strong>{formatCost(visibleData.modelTotals.costUsd)}</strong>
+              </div>
+            ) : null}
           </section>
 
           {visibleData.source.status === "degraded" ? <SourceSection data={visibleData} t={t} /> : null}

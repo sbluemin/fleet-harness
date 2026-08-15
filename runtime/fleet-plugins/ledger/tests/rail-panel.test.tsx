@@ -42,6 +42,7 @@ function dto(
       title: "Operation A",
       cliId: "claude",
       cliLabel: "Claude Code",
+      launchProvider: null,
       client: "claude",
       messages: 4,
       usage: { input: 1_000, output: 200, cacheRead: 300 },
@@ -66,6 +67,30 @@ function dto(
       usage: { input: 1_000, output: 200, cacheRead: 300 },
       costUsd,
     }],
+    suppliers: costUsd === 0 ? [] : [{
+      supplier: "claude",
+      models: 1,
+      usage: { input: 1_000, output: 200, cacheRead: 300 },
+      costUsd,
+      messages: 4,
+    }],
+    modelRows: costUsd === 0 ? [] : [{
+      modelId: "claude-sonnet-4",
+      label: "Claude Sonnet 4",
+      supplier: "native",
+      usage: { input: 1_000, output: 200, cacheRead: 300 },
+      costUsd,
+      messages: 4,
+    }],
+    modelTotals: {
+      costUsd,
+      input: 1_000,
+      output: 200,
+      cacheRead: 300,
+      messages: 4,
+      models: costUsd === 0 ? 0 : 1,
+    },
+    modelSource: { status: "ok", skippedEntries: 0 },
     daily,
     dailyAttributed: daily.map((point) => ({ day: point.day, costUsd: 0 })),
     source: { status, skippedSessions },
@@ -96,7 +121,7 @@ describe("Ledger rail status rendering", () => {
     expect(container.textContent).toContain("Total tokens");
     expect(container.querySelector(".ledger-operation-values")?.textContent).toContain("2k");
     expect(container.querySelector(".ledger-client-values")?.textContent).toContain("2k");
-    expect(container.textContent).toContain("By CLI · device-wide");
+    expect(container.textContent).toContain("By supplier · device-wide");
     expect(container.textContent).not.toContain("Source");
     expect(container.textContent).not.toContain("tokscale 4.7.0");
 
@@ -315,6 +340,7 @@ describe("Ledger attribution bridge and coverage", () => {
         title: "Ghost Operation",
         cliId: "codex",
         cliLabel: "Codex",
+        launchProvider: null,
         lastActivityAtMs: Date.now() - 1_000,
       }],
       unmatchedTotal: 1,
@@ -338,6 +364,7 @@ describe("Ledger attribution bridge and coverage", () => {
         title: "Ghost Operation",
         cliId: "codex",
         cliLabel: "Codex",
+        launchProvider: null,
         lastActivityAtMs: Date.now() - 1_000,
       }],
       unmatchedTotal: 1,
@@ -456,6 +483,7 @@ describe("Ledger unmatched capping and sort interleave", () => {
       title: `Ghost ${index}`,
       cliId: "codex",
       cliLabel: "Codex",
+      launchProvider: null,
       lastActivityAtMs,
     };
   }
@@ -563,5 +591,56 @@ describe("Ledger trend scale and attributed layer", () => {
     await act(async () => sqrtAgain!.click());
     const bars = [...container.querySelectorAll(".ledger-trend-bar")];
     expect(bars[1]!.getAttribute("aria-label")).toBe("Aug 14 · $1.00 · attributed $0.50 · Square root scale");
+  });
+});
+
+describe("Ledger dual-source host and model rows", () => {
+  it("names a Gateway host as the supplier via Claude Code", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      operations: [{ ...value.operations[0]!, launchProvider: "cursor", cliLabel: "Claude Code" }],
+    });
+    expect(container.querySelector(".ledger-operation-copy small")?.textContent)
+      .toBe("Cursor via Claude Code · 4 messages");
+  });
+
+  it("keeps an unpriced model row visible and does not add models-command cost to the hero", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      modelRows: [
+        ...value.modelRows,
+        {
+          modelId: "claude-gateway--xai--grok-4.6",
+          label: "Grok 4.6",
+          supplier: "xai",
+          usage: { input: 1, output: 1, cacheRead: 0 },
+          costUsd: 0,
+          messages: 292,
+        },
+      ],
+      modelTotals: { ...value.modelTotals, costUsd: 99, models: 2 },
+    });
+    expect(container.textContent).toContain("By model · device-wide");
+    expect(container.textContent).toContain("Grok 4.6");
+    expect(container.textContent).toContain("Unpriced");
+    expect(container.textContent).toContain("Models-command total");
+    expect(container.textContent).toContain("$99.00");
+    expect(container.querySelector(".ledger-hero-cost")?.textContent).toBe("$12.34");
+  });
+
+  it("keeps the session report when the models command is unavailable", async () => {
+    const value = dto("ok");
+    await renderWith({
+      ...value,
+      suppliers: [],
+      modelRows: [],
+      modelTotals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, models: 0 },
+      modelSource: { status: "unavailable", skippedEntries: 0 },
+    });
+    expect(container.querySelector(".ledger-hero-cost")?.textContent).toBe("$12.34");
+    expect(container.textContent).toContain("Model breakdown unavailable. Operation totals above still come from the session report.");
+    expect(container.textContent).not.toContain("Models-command total");
   });
 });

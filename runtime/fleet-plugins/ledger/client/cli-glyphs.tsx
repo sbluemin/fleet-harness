@@ -1,7 +1,9 @@
 import type { ReactNode } from "react";
 
-// Built-in plugins cannot import another plugin's client source. These official
-// Claude, Codex, and Kimi paths therefore mirror terminal/client/agent/index.tsx.
+import { markKeyFromIdentity } from "../server/identity.js";
+
+// Built-in plugins cannot import Console chrome. These marks mirror
+// launch-provider-glyphs.tsx so Ledger and the rest of the product share one face.
 function ClaudeGlyph() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -18,6 +20,14 @@ function CodexGlyph() {
   );
 }
 
+function CursorGlyph() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+      <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23" fill="currentColor" />
+    </svg>
+  );
+}
+
 function KimiGlyph() {
   return (
     <svg viewBox="0 0 1024 1024" width="16" height="16" aria-hidden="true">
@@ -26,10 +36,20 @@ function KimiGlyph() {
   );
 }
 
-function CursorGlyph() {
+function OpencodeGlyph() {
   return (
-    <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true">
-      <path d="M3 2.25v10.9l2.9-2.55 1.8 3.15 1.7-.95-1.8-3.1 3.75-.75Z" />
+    <svg viewBox="0 0 240 300" width="16" height="16" aria-hidden="true">
+      <path fillRule="evenodd" d="M240 0H0v300h240V0ZM180 60H60v180h120V60Z" fill="currentColor" />
+      <path d="M60 120h120v120H60V120Z" fill="currentColor" opacity="0.45" />
+    </svg>
+  );
+}
+
+function GrokGlyph() {
+  return (
+    <svg viewBox="0 0 512 512" width="16" height="16" aria-hidden="true">
+      <path d="M210.484 312.759 343.465 210.383c6.519-5.019 15.837-3.061 18.943 4.734 16.35 41.114 9.046 90.523-23.483 124.446-32.528 33.924-77.788 41.364-119.157 24.42l-45.191 21.82c64.817 46.205 143.527 34.778 192.712-16.552 39.014-40.687 51.097-96.147 39.799-146.16 4.184-42.914 18.276-77.775 48.912-121.784L456 56l-55.022 57.382v-.178L210.45 312.794" fill="currentColor" />
+      <path d="M183.042 337.641c-46.523-46.347-38.502-118.074 1.194-159.438 29.354-30.613 77.447-43.107 119.43-24.739l45.089-21.714c-8.123-6.123-18.534-12.708-30.48-17.336-53.998-23.173-118.645-11.64-162.54 34.102-42.222 44.033-55.499 111.738-32.699 169.511 17.033 43.179-10.888 73.721-39.013 104.548C74.056 433.503 64.055 444.431 56 456l127.007-118.323" fill="currentColor" />
     </svg>
   );
 }
@@ -42,25 +62,21 @@ function DefaultGlyph() {
   );
 }
 
-export function markKeyFromCliId(cliId: string): string {
-  return cliId;
+export function markKeyFromOperation(launchProvider: string | null | undefined, cliId: string): string {
+  return markKeyFromIdentity(launchProvider, cliId);
+}
+
+export function supplierMarkKey(supplier: string): string {
+  return markKeyFromIdentity(supplier === "native" ? "claude" : supplier, supplier);
 }
 
 export function cliGlyph(client: string): ReactNode {
-  if (client === "claude" || client === "claude-gateway") return <ClaudeGlyph />;
-  if (client === "codex") return <CodexGlyph />;
-  if (client === "kimi") return <KimiGlyph />;
-  if (client === "cursor") return <CursorGlyph />;
+  const key = markKeyFromIdentity(client === "native" ? "claude" : client, client);
+  if (key === "claude" || key === "claude-gateway") return <ClaudeGlyph />;
+  if (key === "codex") return <CodexGlyph />;
+  if (key === "kimi") return <KimiGlyph />;
+  if (key === "cursor") return <CursorGlyph />;
+  if (key === "opencode") return <OpencodeGlyph />;
+  if (key === "xai") return <GrokGlyph />;
   return <DefaultGlyph />;
-}
-
-export function cliDisplayName(client: string): string {
-  const names: Readonly<Record<string, string>> = {
-    claude: "Claude",
-    codex: "Codex",
-    kimi: "Kimi",
-    cursor: "Cursor",
-    gemini: "Gemini",
-  };
-  return names[client] ?? client;
 }

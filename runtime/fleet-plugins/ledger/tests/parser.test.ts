@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
 
-import { parseTokscaleOutput } from "../server/parser.js";
+import { parseTokscaleModelsOutput, parseTokscaleOutput } from "../server/parser.js";
 
-const fixturePath = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "tokscale-report.json");
-const fixture = fs.readFileSync(fixturePath, "utf8");
+const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+const fixture = fs.readFileSync(path.join(fixturesDir, "tokscale-report.json"), "utf8");
+const modelsFixture = fs.readFileSync(path.join(fixturesDir, "tokscale-models.json"), "utf8");
 
 describe("parseTokscaleOutput", () => {
   it("validates the measured tokscale session shape", () => {
@@ -120,5 +121,63 @@ describe("parseTokscaleOutput", () => {
     ];
     const result = parseTokscaleOutput(JSON.stringify([row]));
     expect(result.sessions[0]?.models).toEqual(["gpt-5", "openai/gpt-5"]);
+  });
+});
+
+describe("parseTokscaleModelsOutput", () => {
+  it("reads the measured models-command object shape", () => {
+    const result = parseTokscaleModelsOutput(modelsFixture);
+    expect(result.status).toBe("ok");
+    expect(result.entries).toEqual([
+      { modelId: "claude-gateway--cursor--claude-opus-5", input: 10, output: 2, cacheRead: 0, costUsd: 5.5, messages: 3 },
+      { modelId: "claude-opus-5", input: 4, output: 1, cacheRead: 2, costUsd: 1.25, messages: 8 },
+      { modelId: "claude-gateway--xai--grok-4.6", input: 1, output: 1, cacheRead: 0, costUsd: 0, messages: 292 },
+    ]);
+  });
+
+  it("keeps a 1M context-window marker on a model id", () => {
+    const result = parseTokscaleModelsOutput(JSON.stringify({
+      entries: [{
+        model: "claude-gateway--opencode--gpt-5.6-luna[1m]",
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cost: 1,
+        messageCount: 1,
+      }],
+    }));
+    expect(result.status).toBe("ok");
+    expect(result.entries[0]?.modelId).toBe("claude-gateway--opencode--gpt-5.6-luna[1m]");
+  });
+
+  it("keeps a zero-cost entry", () => {
+    const result = parseTokscaleModelsOutput(JSON.stringify({
+      entries: [{
+        model: "claude-gateway--xai--grok-4.6",
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cost: 0,
+        messageCount: 292,
+      }],
+    }));
+    expect(result.status).toBe("ok");
+    expect(result.entries[0]).toMatchObject({ costUsd: 0, messages: 292 });
+  });
+
+  it("rejects a report array as unreadable", () => {
+    expect(parseTokscaleModelsOutput(fixture).status).toBe("unreadable");
+  });
+
+  it("degrades when one entry is unsafe and keeps the rest", () => {
+    const result = parseTokscaleModelsOutput(JSON.stringify({
+      entries: [
+        { model: "/Users/private/model", input: 1, output: 1, cacheRead: 0, cost: 1, messageCount: 1 },
+        { model: "claude-opus-5", input: 1, output: 1, cacheRead: 0, cost: 1, messageCount: 1 },
+      ],
+    }));
+    expect(result.status).toBe("degraded");
+    expect(result.entries).toHaveLength(1);
+    expect(result.skippedEntries).toBe(1);
   });
 });

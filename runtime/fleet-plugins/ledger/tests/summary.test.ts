@@ -7,6 +7,7 @@ import { describe, expect, it } from "vitest";
 
 import { parseTokscaleOutput } from "../server/parser.js";
 import { buildSummary, localDayKey } from "../server/summary.js";
+import type { TokscaleModelEntry } from "../server/types.js";
 
 const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "tokscale-report.json"), "utf8");
 const sessions = parseTokscaleOutput(fixture).sessions;
@@ -33,6 +34,7 @@ function operation(
     payload: {
       cliId: provider,
       cliLabel: provider === "claude" ? "Claude Code" : "Codex",
+      launchProvider: provider,
       providerSession: { provider, sessionId, capturedAt: "2026-07-26T00:00:00Z" },
     },
     geometry: null,
@@ -384,6 +386,7 @@ describe("buildSummary coverage", () => {
       title: "Operation ghost",
       cliId: "claude",
       cliLabel: "Claude Code",
+      launchProvider: "claude",
       lastActivityAtMs: 200,
     }]);
     expect(dto.unmatchedTotal).toBe(1);
@@ -479,5 +482,91 @@ describe("buildSummary dailyAttributed", () => {
       { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
     ], [], { theaterId: null, window: "today" }, "ok", lastActive);
     expect(overflow.dailyAttributed).toEqual([]);
+  });
+});
+
+describe("buildSummary launchProvider and models command", () => {
+  const modelEntries: TokscaleModelEntry[] = [
+    {
+      modelId: "claude-gateway--cursor--claude-opus-5",
+      input: 10,
+      output: 2,
+      cacheRead: 0,
+      costUsd: 50,
+      messages: 4,
+    },
+    {
+      modelId: "claude-gateway--xai--grok-4.6",
+      input: 3,
+      output: 1,
+      cacheRead: 0,
+      costUsd: 0,
+      messages: 292,
+    },
+    {
+      modelId: "claude-opus-5",
+      input: 8,
+      output: 1,
+      cacheRead: 2,
+      costUsd: 20,
+      messages: 10,
+    },
+  ];
+
+  it("copies launchProvider from the Operation payload onto the DTO", () => {
+    const gateway = operation("gw", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 10);
+    const dto = buildSummary([sessions[0]!], [{
+      ...gateway,
+      payload: { ...gateway.payload, launchProvider: "cursor" },
+    }], { theaterId: null, window: "week" });
+    expect(dto.operations[0]?.launchProvider).toBe("cursor");
+  });
+
+  it("keeps models-command totals off the report hero and preserves unpriced rows", () => {
+    const dto = buildSummary(sessions, [
+      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
+    ], { theaterId: "theater-a", window: "week" }, "ok", Date.now(), 0, {
+      entries: modelEntries,
+      status: "ok",
+      skippedEntries: 0,
+    });
+    expect(dto.totals.costUsd).toBe(2.25);
+    expect(dto.modelTotals.costUsd).toBe(70);
+    expect(dto.modelTotals.costUsd + dto.totals.costUsd).not.toBe(dto.deviceTotals.costUsd);
+    expect(dto.suppliers.map((entry) => entry.supplier)).toEqual(["cursor", "native", "xai"]);
+    expect(dto.modelRows.find((row) => row.supplier === "xai")).toMatchObject({
+      costUsd: 0,
+      messages: 292,
+      label: "Grok 4.6",
+    });
+  });
+
+  it("joins hyphenated and dotted GPT ids into one model row", () => {
+    const dto = buildSummary([], [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
+      entries: [
+        { modelId: "claude-gateway--codex--gpt-5.6-sol-fast", input: 1, output: 1, cacheRead: 0, costUsd: 1, messages: 2 },
+        { modelId: "claude-gateway--codex--gpt-5-6-sol-fast", input: 1, output: 1, cacheRead: 0, costUsd: 2, messages: 3 },
+      ],
+      status: "ok",
+      skippedEntries: 0,
+    });
+    expect(dto.modelRows).toHaveLength(1);
+    expect(dto.modelRows[0]).toMatchObject({ costUsd: 3, messages: 5, supplier: "codex", label: "GPT 5.6 Sol Fast" });
+    expect(dto.suppliers).toEqual([expect.objectContaining({ supplier: "codex", models: 1 })]);
+  });
+
+  it("isolates a models-command overflow from the report totals", () => {
+    const dto = buildSummary(sessions, [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
+      entries: [
+        { ...modelEntries[0]!, costUsd: Number.MAX_VALUE },
+        { ...modelEntries[2]!, costUsd: Number.MAX_VALUE },
+      ],
+      status: "ok",
+      skippedEntries: 0,
+    });
+    expect(dto.deviceTotals.costUsd).toBe(4.05);
+    expect(dto.modelSource.status).toBe("unreadable");
+    expect(dto.modelRows).toEqual([]);
+    expect(dto.suppliers).toEqual([]);
   });
 });

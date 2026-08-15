@@ -1,11 +1,15 @@
-import type { TokscaleSession } from "./types.js";
+import type { TokscaleModelEntry, TokscaleSession } from "./types.js";
 
 export type ParseResult =
   | { readonly status: "ok" | "degraded"; readonly sessions: TokscaleSession[]; readonly skippedSessions: number }
   | { readonly status: "unreadable"; readonly sessions: []; readonly skippedSessions: number };
 
+export type ModelsParseResult =
+  | { readonly status: "ok" | "degraded"; readonly entries: TokscaleModelEntry[]; readonly skippedEntries: number }
+  | { readonly status: "unreadable"; readonly entries: []; readonly skippedEntries: number };
+
 const CLIENT_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
-const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}$/;
+const MODEL_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,63}(?:\[1[mM]\])?$/;
 const UUID_FRAGMENT_RE = /(?:^|[^0-9a-f])[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?:$|[^0-9a-f])/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -102,4 +106,45 @@ export function parseTokscaleOutput(stdout: string): ParseResult {
   const skippedSessions = parsed.length - sessions.length;
   if (parsed.length > 0 && sessions.length === 0) return { status: "unreadable", sessions: [], skippedSessions };
   return { status: skippedSessions > 0 ? "degraded" : "ok", sessions, skippedSessions };
+}
+
+function parseModelEntry(value: unknown): TokscaleModelEntry | null {
+  if (!isRecord(value)) return null;
+  const models = sanitizeModels(typeof value.model === "string" ? [value.model] : []);
+  if (
+    models.length !== 1
+    || !isNonNegativeSafeInteger(value.input)
+    || !isNonNegativeSafeInteger(value.output)
+    || !isNonNegativeSafeInteger(value.cacheRead)
+    || !isNonNegativeFinite(value.cost)
+    || !isNonNegativeSafeInteger(value.messageCount)
+  ) return null;
+  return {
+    modelId: models[0]!,
+    input: value.input,
+    output: value.output,
+    cacheRead: value.cacheRead,
+    costUsd: value.cost,
+    messages: value.messageCount,
+  };
+}
+
+export function parseTokscaleModelsOutput(stdout: string): ModelsParseResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stdout);
+  } catch {
+    return { status: "unreadable", entries: [], skippedEntries: 0 };
+  }
+  if (!isRecord(parsed) || !Array.isArray(parsed.entries)) {
+    return { status: "unreadable", entries: [], skippedEntries: 0 };
+  }
+  const entries = parsed.entries
+    .map(parseModelEntry)
+    .filter((entry): entry is TokscaleModelEntry => entry !== null);
+  const skippedEntries = parsed.entries.length - entries.length;
+  if (parsed.entries.length > 0 && entries.length === 0) {
+    return { status: "unreadable", entries: [], skippedEntries };
+  }
+  return { status: skippedEntries > 0 ? "degraded" : "ok", entries, skippedEntries };
 }
