@@ -4275,6 +4275,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   min-height: 0;
   width: auto;
   height: auto;
+  /* 열 트랙을 적지 않으면 암시적 `auto` 열의 최소값이 본문의 min-content가 되고, 그 값(xterm은
+     실측 288px)이 칸보다 크면 패널 상자는 칸에 맞은 채 자식만 밖으로 그려진다 — 패널은
+     overflow:visible이라 캡션·본문이 옆 칸 위를 덮는다. 밀도를 낮출수록 칸이 좁아져
+     War Room의 최소 카드 폭(140px)에서 항상 재현된다. 칸이 곧 패널이자 PTY 크기라는 계약은
+     행처럼 열에도 최소값 0을 명시해야 성립한다. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   border-top-width: 1px;
   border-top-style: solid;
