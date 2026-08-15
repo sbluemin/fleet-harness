@@ -22,10 +22,13 @@ export function shouldReleaseActiveOperation(target: EventTarget | null, documen
   return target.closest(KEEP_ACTIVE_SELECTOR) === null;
 }
 
+export function blurActiveElement(): void {
+  if (typeof document === "undefined") return;
+  const active = document.activeElement;
+  if (active instanceof HTMLElement) active.blur();
+}
+
 export function clearActiveOperation(): void {
-  if (typeof document !== "undefined") {
-    const active = document.activeElement;
-    if (active instanceof HTMLElement) active.blur();
-  }
+  blurActiveElement();
   setActiveOperation(null);
 }

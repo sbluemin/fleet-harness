@@ -8,7 +8,7 @@ import type { CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, Operati
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
-import { clearActiveOperation } from "../active-operation-surface.js";
+import { blurActiveElement } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -247,7 +247,8 @@ export function OperationsCanvas({
     },
     consumePointerDown: contextMenu !== null,
     onConsumePointerDown: () => { setContextMenu(null); },
-    onClick: clearActiveOperation,
+    // 빈 바다 클릭은 Map 안이다 — 터미널 키보드는 거두되 패널 활성화는 유지한다.
+    onClick: blurActiveElement,
   });
 
   // 우클릭 가드는 다음 우클릭에서만 돈다. 마지막 Theater를 잊는 동안 이미 열린 상자는

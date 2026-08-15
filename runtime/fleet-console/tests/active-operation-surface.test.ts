@@ -74,3 +74,12 @@ describe("operations page wires Map-outside release", () => {
     expect(source).toContain("document.addEventListener(\"pointerdown\", onPointerDown, true)");
   });
 });
+
+describe("empty Map click keeps activation", () => {
+  const source = readFileSync(resolve(process.cwd(), "core/client/src/canvas/canvas.tsx"), "utf8");
+
+  it("blurs the terminal without clearing the active Operation", () => {
+    expect(source).toContain("onClick: blurActiveElement");
+    expect(source).not.toContain("onClick: clearActiveOperation");
+  });
+});
