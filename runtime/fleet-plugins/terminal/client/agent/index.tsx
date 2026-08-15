@@ -408,6 +408,13 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     <AnalystEntryChip context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
   );
   const [chatConfirmOpen, setChatConfirmOpen] = React.useState(false);
+  const sessionStatus = session.status;
+  React.useEffect(() => {
+    // 확인 오버레이는 라이브 터미널 분기 전용이다 — PTY 종료·채팅 전환으로 분기를 떠나면
+    // 상태를 걷어 재개 시 낡은 다이얼로그가 되살아나지 않게 한다(이전 ChatModeEntry의
+    // 언마운트-폐기와 등가).
+    if (sessionStatus === "dormant" || chatMode) setChatConfirmOpen(false);
+  }, [sessionStatus, chatMode]);
 
   const chatMode = context.operation.payload.chatMode === true;
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
