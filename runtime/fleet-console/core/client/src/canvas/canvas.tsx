@@ -729,6 +729,9 @@ export function OperationsCanvas({
     }, 1_500);
     return () => clearTimeout(timer);
   }, [companionOperationId, currentPanelCompanion]);
+  // 캡션 그룹 라벨의 조회는 Theater로 거르지 않는다 — 선별 무대는 활성 Theater 밖 Operation도
+  // 올리고, group id는 전역 유일하므로 필터가 라벨을 조용히 비우기만 한다.
+  const groupById = new Map(state.groups.map((group) => [group.id, group]));
   const formationOperationIds = flattenGroupedOrder(
     theaterOperations,
     state.groups.filter((group) => group.theaterId === state.activeTheaterId),
@@ -860,6 +863,10 @@ export function OperationsCanvas({
           const operationMaximized = panelMaximized === operation.id;
           const operationCompanion = panelCompanion === operation.id;
           const operationTriageStage = triageStageId === operation.id;
+          const operationGroup = operation.groupId ? groupById.get(operation.groupId) ?? null : null;
+          // 색을 못 푸는 그룹은 라벨 자체를 내지 않는다 — 도트 없는 이름만 남으면 그것이 그룹이라는
+          // 사실을 캡션에서 읽을 수 없다.
+          const operationGroupColor = operationGroup ? resolveAccentColor(operationGroup.color) : null;
           // focus layer는 peer를 실제 최소화하지 않고, mount를 보존한 채 렌더만 감춘다.
           const focusLayerHidden = triageActive
             ? !operationTriageStage
@@ -945,6 +952,8 @@ export function OperationsCanvas({
               canvasRef.current?.focus();
             },
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
+            groupName: operationGroup?.name ?? null,
+            groupColor: operationGroupColor,
             onActivate: () => {
               setActiveOperation(operation.id);
               // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
@@ -1275,6 +1284,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onRenderHiddenFocus: () => void;
   readonly topEdge: boolean;
   readonly accentKey: string | null;
+  readonly groupName: string | null;
+  readonly groupColor: string | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
@@ -1319,6 +1330,8 @@ function renderPluginOperation(operation: OperationNode, options: {
         focusLayerTarget={options.maximized || options.companion}
         interactionDisabled={options.formation || options.companion || options.focusLayerHidden || options.triageStage}
         accentKey={options.accentKey}
+        groupName={options.groupName}
+        groupColor={options.groupColor}
         onActivate={options.onActivate}
         onClose={options.onClose}
         onMinimize={options.onMinimize}

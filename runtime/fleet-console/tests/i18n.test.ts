@@ -37,7 +37,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Cruise",
   "Tactical",
   "War Room",
-  "Operation {title}",
+  "Operation {title}{groupContext}",
   // Quick Launch 멘션 행선지 태그 — mono 대문자 계기 표기라 두 로케일에서 같은 모양으로 읽는다.
   "Operation · {theater}",
   "Companion {title}",

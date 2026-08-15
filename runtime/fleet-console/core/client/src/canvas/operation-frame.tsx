@@ -27,6 +27,8 @@ interface OperationFrameProps {
   readonly glanceHud: GlanceHudModel;
   readonly formationSlotIndex?: number;
   readonly accentKey?: string | null;
+  readonly groupName?: string | null;
+  readonly groupColor?: string | null;
   readonly children: ReactNode;
   readonly onActivate: () => void;
   readonly onClose: () => void;
@@ -67,7 +69,7 @@ const DRAG_THRESHOLD_PX = 3;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -96,9 +98,12 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       restoreIdentityFocusRef.current = true;
     },
   });
-  // 사용자 accent(정체성)는 좌측 스파인과 명판 마크만 소유한다.
+  // 사용자 accent(정체성)는 명판 마크와 명판 워시만 소유한다.
   // 패널 보더/글로우/비콘은 상태 채널(brass 포커스·aurora 대기·coral 위험) 전용이다.
   const accentColor = accentKey ? resolveAccentColor(accentKey) : null;
+  // 그룹 소속은 개인 accent와 다른 축이므로 자기 마크(도트)와 중립 티어 이름으로 따로 선다 —
+  // 색은 도트만 지고 이름은 캡션의 기존 중립 메타 티어를 그대로 상속한다.
+  const groupLabelVisible = Boolean(groupName && groupColor);
   const className = [
     "canvas-operation",
     unseen ? "is-unseen" : "",
@@ -383,12 +388,14 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       data-canvas-operation
       data-operation-id={operation.id}
       data-focus-layer-target={focusLayerTarget ? "true" : undefined}
-      aria-label={t("canvas.frame.operationAria", { title: displayTitle })}
+      aria-label={t("canvas.frame.operationAria", {
+        title: displayTitle,
+        groupContext: groupLabelVisible ? t("canvas.frame.inGroup", { name: groupName ?? "" }) : "",
+      })}
       aria-hidden={renderHidden || undefined}
       tabIndex={focusLayerTarget ? -1 : undefined}
       inert={minimized || renderHidden ? true : undefined}
     >
-      {accentColor ? <span className="canvas-operation-spine" aria-hidden="true" /> : null}
       <div
         className="canvas-operation-titlebar"
         onPointerDown={beginDrag}
@@ -398,6 +405,17 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         onLostPointerCapture={abortPointerManipulation}
         data-canvas-blocker
       >
+        {groupLabelVisible ? (
+          <span
+            className="canvas-operation-group-label"
+            style={{ "--group-mark": groupColor } as CSSProperties}
+            title={t("canvas.frame.groupTitle", { name: groupName ?? "" })}
+            aria-hidden="true"
+          >
+            <span className="canvas-operation-group-dot" />
+            <span className="canvas-operation-group-name">{groupName}</span>
+          </span>
+        ) : null}
         {accentColor ? <span className="canvas-operation-id-mark" aria-hidden="true" /> : null}
         {rename.renaming ? (
           <input
