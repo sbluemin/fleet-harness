@@ -1895,7 +1895,13 @@ describe("Effort track interaction grammar", () => {
     }
 
     // 단어 하이라이트는 강도 트랙 ULTRACODE 값과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
-    expect(components).toMatch(/\.quick-launch-ultracode-token \{[\s\S]*animation: effort-ultracode-wave 2\.6s linear infinite;/);
+    const tokenRule = components.slice(components.indexOf(".quick-launch-ultracode-token {"));
+    const tokenBlock = tokenRule.slice(0, tokenRule.indexOf("}"));
+    expect(tokenBlock).toContain("animation: effort-ultracode-wave 2.6s linear infinite;");
+    // 미러 층이라 자족 폭을 바꾸는 속성은 못 쓴다 — 쓰면 보이는 글자와 캐럿이 어긋난다.
+    for (const metric of ["font-weight", "letter-spacing", "word-spacing", "font-size", "font-stretch", "text-transform"]) {
+      expect(tokenBlock, metric).not.toContain(`${metric}:`);
+    }
 
     // 도는 호는 @property로 등록된 각도를 쓴다(미등록이면 커스텀 속성이 계단으로 튄다).
     expect(components).toContain("@property --quick-launch-rim-angle");
@@ -1908,8 +1914,10 @@ describe("Effort track interaction grammar", () => {
     expect(quickLaunchReduced).toContain(".quick-launch-card.is-ultracode::after,");
     expect(quickLaunchReduced).toMatch(/\.quick-launch-ultracode-token \{\s*background-image: none;\s*color: var\(--apex-ink\);\s*\}/);
 
-    // Backspace 해제는 키 반복을 먹지 않는다 — 눌러 두어 지우는 사람에게서 한 글자를 훔치지 않는다.
+    // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
+    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다.
     expect(composer).toContain('event.key === "Backspace" && !event.repeat && ultracodeArmed');
+    expect(composer).toContain("&& !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey");
     // 무장은 문면과 해제 여부에서만 나온다 — 멘션 행선지는 이 판정에 들어가지 않는다.
     // 이 단어는 실행 좌표가 아니라 프롬프트가 실려 가는 곳이면 어디든 함께 가는 원문의 일부다.
     expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");

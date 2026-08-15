@@ -1062,10 +1062,13 @@ export function QuickLaunch() {
         return;
       }
     }
-    // caret이 인식된 `ultracode` 바로 뒤일 때의 Backspace 한 번은 글자가 아니라 무장을 지운다 —
-    // 그 다음 Backspace는 평소대로 'e'를 지운다. 눌러 두어(repeat) 지우는 사람에게서는 이 한 번을
-    // 빼앗지 않는다: 삭제가 한 글자 늦게 시작되는 것으로 읽힌다.
+    // caret이 인식된 `ultracode` 바로 뒤일 때의 **수식 없는** Backspace 한 번은 글자가 아니라 무장을
+    // 지운다 — 그 다음 Backspace는 평소대로 'e'를 지운다. 눌러 두어(repeat) 지우는 사람에게서는 이
+    // 한 번을 빼앗지 않는다: 삭제가 한 글자 늦게 시작되는 것으로 읽힌다.
+    // 수식 키가 붙은 Backspace는 OS의 단어 삭제(⌥/Ctrl)·줄 삭제(⌘)라 손대지 않는다. 가로채면 방금
+    // 친 단어를 지우려던 사람의 키가 아무것도 지우지 않는다(실측: ⌥+Backspace가 문면을 그대로 둠).
     if (event.key === "Backspace" && !event.repeat && ultracodeArmed
+      && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
       && isUltracodeDisarmCaret(prompt, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
       event.preventDefault();
       setUltracodeIgnored(true);

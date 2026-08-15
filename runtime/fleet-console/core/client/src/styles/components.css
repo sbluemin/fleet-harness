@@ -12151,9 +12151,11 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 /* 인식된 단어는 강도 트랙의 ULTRACODE 값과 **같은** 결로 흐른다 — 이 제품에서 apex 물결은
-   이미 ultracode를 뜻하고, 두 문(단어·사다리 단)이 같은 능력을 가리키므로 어휘를 나누지 않는다. */
+   이미 ultracode를 뜻하고, 두 문(단어·사다리 단)이 같은 능력을 가리키므로 어휘를 나누지 않는다.
+   다만 트랙의 값 라벨과 달리 여기서는 굵기를 올리지 않는다: 이 층은 textarea 위에 겹치는 미러라
+   자간·굵기처럼 **자족 폭을 바꾸는 속성**을 쓰면 뒤따르는 글자가 밀려, 눈에 보이는 글자와
+   textarea가 그리는 캐럿·선택이 어긋난다(weight 600에서 2.95px 밀림 실측). 신호는 색이 싣는다. */
 .quick-launch-ultracode-token {
-  font-weight: var(--weight-medium);
   background-image: linear-gradient(
     105deg,
     var(--apex-ink) 0%,
