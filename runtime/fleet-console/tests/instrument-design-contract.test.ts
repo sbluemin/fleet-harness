@@ -1687,12 +1687,19 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("border-style: solid;");
     expect(components).toContain("border-color: inherit;");
     expect(components).not.toContain("border: 1px solid inherit;");
-    // 패널 아웃라인은 상태를 놓았다 — 위치는 캡션 윗변(brass), 상태는 캡션 아랫변(신호 토큰)이
-    // 나른다. 캡션 brass는 더 이상 아웃라인의 중복이 아니라 위치 채널의 유일한 운반체다.
+    // 패널 아웃라인은 상태를 놓았다 — 포커스는 캡션 채움 워시, 상태는 캡션 아랫변 레일이 나른다.
+    // 포커스는 선을 쓰지 않는다: 상태 레일과 같은 굵기의 brass 선이 캡션 위아래에 겹치면
+    // warn과 brass가 한 덩어리 금색으로 읽힌다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
     expect(components).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));");
-    expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar::before {");
+    expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
+    // 도착 플래시는 지속 상태(is-unseen)가 아니라 전이를 표시하는 일시 클래스에만 건다 —
+    // is-unseen에 걸면 Theater 재진입 리마운트마다 다시 돈다.
+    expect(components).toContain(".canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {");
+    expect(components).not.toMatch(/\.canvas-operation\.is-unseen > \.canvas-operation-titlebar::after \{\n\s*animation: caption-rail-arrive/);
+    expect(operationFrame).toContain('arrivalFlash ? "is-unseen-arriving" : ""');
+    expect(operationFrame).toContain("previousUnseenRef");
     // 정체성 워시와 포커스 워시는 같은 표면을 다투지 않는다 — 결합 규칙이 둘을 겹쳐 칠한다.
     expect(components).toContain('.canvas-operation[style*="--user-accent"].is-active > .canvas-operation-titlebar {');
     // oklch 믹스는 hue를 극좌표 호로 보간한다 — brass(78)+ink-rim(245) 62%는 hue 141(초록)에

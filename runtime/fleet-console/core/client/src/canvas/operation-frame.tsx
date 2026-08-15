@@ -65,6 +65,8 @@ const MIN_OPERATION_WIDTH = 320;
 const MIN_OPERATION_HEIGHT = 200;
 const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 3;
+// 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
+const ARRIVAL_FLASH_DURATION_MS = 360;
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, glanceHud, formationSlotIndex, accentKey = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
@@ -74,10 +76,15 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const dragRef = useRef<DragState | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const closeArmTimeoutRef = useRef<number | null>(null);
+  const arrivalFlashTimeoutRef = useRef<number | null>(null);
+  // 마운트 시점의 unseen을 이전 값으로 삼는다 — 이미 미확인인 채로 되살아난 프레임(Theater 재진입 등)은
+  // 새 도착이 아니므로 플래시하지 않는다.
+  const previousUnseenRef = useRef(unseen);
   const lastVisibleGeometryRef = useRef(geometry);
   const restoreIdentityFocusRef = useRef(false);
   const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
+  const [arrivalFlash, setArrivalFlash] = useState(false);
   const [dragging, setDragging] = useState(false);
   const displayTitle = operation.title;
   const rename = useInlineRename({
@@ -96,6 +103,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const className = [
     "canvas-operation",
     unseen ? "is-unseen" : "",
+    arrivalFlash ? "is-unseen-arriving" : "",
     active ? "is-active" : "",
     minimized ? "is-minimized" : "",
     maximized ? "is-maximized" : "",
@@ -107,7 +115,21 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
 
   useEffect(() => () => {
     if (closeArmTimeoutRef.current !== null) window.clearTimeout(closeArmTimeoutRef.current);
+    if (arrivalFlashTimeoutRef.current !== null) window.clearTimeout(arrivalFlashTimeoutRef.current);
   }, []);
+
+  // 도착은 상태의 전이이지 상태의 존재가 아니다 — false → true로 넘어가는 순간에만 플래시한다.
+  useEffect(() => {
+    const previous = previousUnseenRef.current;
+    previousUnseenRef.current = unseen;
+    if (previous || !unseen) return;
+    if (arrivalFlashTimeoutRef.current !== null) window.clearTimeout(arrivalFlashTimeoutRef.current);
+    setArrivalFlash(true);
+    arrivalFlashTimeoutRef.current = window.setTimeout(() => {
+      arrivalFlashTimeoutRef.current = null;
+      setArrivalFlash(false);
+    }, ARRIVAL_FLASH_DURATION_MS);
+  }, [unseen]);
 
   useEffect(() => {
     if (rename.renaming || !restoreIdentityFocusRef.current) return;

@@ -5847,12 +5847,11 @@
   border-top-style: none;
 }
 
-/* 포커스 = 캡션 채움 워시 + 보더 + 이름 티어. 본문 아웃라인이 상태를 놓았으므로 캡션 brass는
-   더 이상 아웃라인의 중복이 아니라 위치 채널의 유일한 운반체다.
+/* 포커스 = 캡션 채움 워시 + 이름 티어. 선(윗변 라인·캡션 아웃라인)은 쓰지 않는다 — 상태 레일과
+   같은 굵기의 선이 캡션 위아래에 겹치면 warn과 brass가 한 덩어리 금색으로 읽힌다.
    믹스는 oklab이다 — oklch는 hue를 극좌표 호로 보간해 brass(78)와 ink-rim(245)의 62% 믹스가
    hue 141(초록)에 착지했고, 위치 채널이 신호 채널 positive(160) 옆에 앉았다. */
 .canvas-operation.is-active > .canvas-operation-titlebar {
-  border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklab, var(--brass) 10%, var(--surface-frame));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
@@ -5869,8 +5868,7 @@
   color: var(--text-primary);
 }
 
-/* 캡션 윗변 = 위치 채널, 아랫변 = 상태 채널. 서로 다른 기하라 어느 쪽도 상대를 덮지 않는다. */
-.canvas-operation-titlebar::before,
+/* 캡션 아랫변 = 상태 채널. 포커스는 채움이 말하므로 선은 상태 하나만 소유한다. */
 .canvas-operation-titlebar::after {
   content: "";
   position: absolute;
@@ -5878,21 +5876,6 @@
   right: -1px;
   height: 2px;
   pointer-events: none;
-}
-
-.canvas-operation-titlebar::before {
-  top: -1px;
-  /* 최대화 캡션은 라운드가 달라진다 — inherit이 두 모드를 한 선언으로 잇는다. */
-  border-radius: inherit;
-  background: transparent;
-  transition: background var(--duration-base) var(--ease-spring);
-}
-
-.canvas-operation.is-active > .canvas-operation-titlebar::before {
-  background: var(--brass);
-}
-
-.canvas-operation-titlebar::after {
   bottom: 0;
   background: var(--caption-rail, transparent);
   opacity: 0;
@@ -5904,13 +5887,15 @@
   opacity: 1;
 }
 
-/* turn은 진행을 색이 아니라 운동으로 말한다 — 한 방향 트래블. 작업 중 신호가 있는 동안만 도는
-   AGENTS.md 모션 규약의 sanctioned 예외이며, reduced-motion에서 정적 채움으로 단락한다. */
+/* turn은 진행을 색이 아니라 운동으로 말한다 — 좌우를 오가는 왕복 트래블. 한 방향 순환은 끝에서
+   되감기며 튀지만, 왕복은 양 끝에서 감속해 되돌아온다(그래서 ease-in-out을 두 구간에 건다).
+   작업 중 신호가 있는 동안만 도는 AGENTS.md 모션 규약의 sanctioned 예외이며,
+   reduced-motion에서 정적 채움으로 단락한다. */
 .canvas-operation.is-running--turn > .canvas-operation-titlebar::after {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
   background-size: 55% 100%;
   background-repeat: no-repeat;
-  animation: caption-rail-travel 1.9s var(--ease-glide) infinite;
+  animation: caption-rail-travel 3.8s ease-in-out infinite;
 }
 
 /* background는 턴이 끝나고 작업만 남은 상태 — 같은 warn을 낮은 광량의 정적 레일로 낮춘다. */
@@ -5924,8 +5909,11 @@
 }
 
 /* 미확인 완료는 도착 순간 1회 플래시로 시선을 부르고 그 뒤 상시 레일로 남는다 —
-   상시 aura(22px glow)를 순간 운동으로 교환한 자리다. */
-.canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+   상시 aura(22px glow)를 순간 운동으로 교환한 자리다.
+   플래시를 is-unseen이 아니라 별도의 일시 클래스에 건다: is-unseen은 확인 전까지 계속 참이라
+   Theater를 오가며 프레임이 리마운트될 때마다 애니메이션이 다시 돈다. 도착은 상태의 전이이지
+   상태의 존재가 아니다. */
+.canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {
   animation: caption-rail-arrive var(--duration-slow) var(--ease-spring) 1;
 }
 
@@ -5936,11 +5924,14 @@
 }
 
 @keyframes caption-rail-travel {
-  from {
+  0% {
     background-position: -60% 0;
   }
-  to {
+  50% {
     background-position: 160% 0;
+  }
+  100% {
+    background-position: -60% 0;
   }
 }
 
@@ -6379,7 +6370,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
-  .canvas-operation-titlebar::before,
   .canvas-operation-titlebar::after,
   .canvas-operation-window-controls,
   .canvas-operation-icon-button {
@@ -6394,7 +6384,7 @@
      즉시 정착한 레일로 대체한다. 상태 자체는 계속 읽혀야 하므로 레일을 끄지는 않는다. */
   .canvas-operation.is-running--turn > .canvas-operation-titlebar::after,
   .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after,
-  .canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+  .canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {
     animation: none;
     background: var(--caption-rail);
     box-shadow: none;
