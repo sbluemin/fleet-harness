@@ -31,6 +31,7 @@ import {
   cursorNativeExecRedirect,
   cursorNativeRedirectResultReplies,
   isCursorHotPathToolName,
+  isCursorNativeRedirectToolName,
 } from "../../../src/cursor/native/exec-redirect.js";
 
 afterEach(() => resetCursorWireModelMemory());
@@ -725,8 +726,13 @@ describe("Cursor client tool suspension", () => {
     }
   });
 
-  it("keeps hot-path tools eager under ToolSearch deferral", () => {
+  it("keeps hot-path tools eager while only redirecting search and shell", () => {
     expect(isCursorHotPathToolName("Read")).toBe(true);
+    expect(isCursorNativeRedirectToolName("Read")).toBe(false);
+    expect(isCursorNativeRedirectToolName("Grep")).toBe(true);
+    expect(isCursorNativeRedirectToolName("Bash")).toBe(true);
+    expect(isCursorNativeRedirectToolName("shell_command")).toBe(true);
+    expect(isCursorNativeRedirectToolName("exec_command")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__ToolSearch")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__wiki_read")).toBe(false);
   });

@@ -82,7 +82,7 @@ describe("Cursor live client-tool Run bridge", () => {
     },
   );
 
-  it("redirects native read through caller Read without inventing whole-file metadata", async () => {
+  it("rejects native Read with the advertised caller Read alias on the same Run", async () => {
     const call = cursorCall("native-read-redirect", 24);
     const stream = new BridgeCursorStream(
       [{
@@ -116,42 +116,40 @@ describe("Cursor live client-tool Run bridge", () => {
 
     try {
       const firstEvents = await collectCursorResponse(harness.adapter, initial);
-      expect(firstEvents).toContainEqual(expect.objectContaining({
+      expect(firstEvents).not.toContainEqual(expect.objectContaining({
         type: "response.output_item.done",
-        item: expect.objectContaining({
-          call_id: call.callId,
-          name: "Read",
-          arguments: JSON.stringify({ file_path: "README.md" }),
+        item: expect.objectContaining({ name: "Read" }),
+      }));
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          readResult: expect.objectContaining({
+            error: expect.objectContaining({
+              error: expect.stringContaining("cc_read_"),
+            }),
+          }),
         }),
       }));
-      const events = await collectCursorResponse(
-        harness.adapter,
-        cursorContinuation(initial, [{ ...call, name: "Read" }], [{
-          call_id: call.callId,
-          output: "1→first line\n2→second line",
-        }]),
-      );
-
-      expect(canonicalText(events)).toBe("native read continued");
-      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
-        execClientMessage: {
-          id: call.messageId,
-          execId: call.execId,
-          readResult: {
-            error: {
-              path: "README.md",
-              error: expect.stringContaining("Caller output:\n1→first line\n2→second line"),
-            },
-          },
-        },
+      expect(cursorClientWrites(stream)).not.toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({ readResult: expect.objectContaining({ output: expect.anything() }) }),
       }));
-      expect(diagnostics).toEqual(expect.arrayContaining([
-        expect.objectContaining({ event: "exec.redirect.selected", adapter: "read-direct" }),
-        expect.objectContaining({ event: "exec.redirect.attached", adapter: "read-direct" }),
-        expect.objectContaining({ event: "exec.redirect.result_written", adapter: "read-direct" }),
-        expect.objectContaining({ event: "bridge.attach", outcome: "exact_match" }),
-      ]));
+      expect(canonicalText(firstEvents)).toBe("native read continued");
       expect(harness.openedStreams).toBe(1);
+      expect(diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "exec.redirect.selected", adapter: "read-direct" }),
+      ]));
+      expect(diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "exec.redirect.attached", adapter: "read-direct" }),
+      ]));
+      expect(diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "bridge.park" }),
+      ]));
+      expect(diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "bridge.attach" }),
+      ]));
+      expect(diagnostics).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ event: "exec.redirect.result_written", adapter: "read-direct" }),
+      ]));
+      expect(stream.closeCode).not.toBe(http2.constants.NGHTTP2_CANCEL);
     } finally {
       harness.adapter.dispose();
     }
@@ -1649,6 +1647,71 @@ describe("Cursor live client-tool Run bridge", () => {
       expect(harness.openedStreams).toBe(1);
       expect(cursorMcpResultWrites(stream)).toHaveLength(2);
       expect(diagnostics).toContainEqual(expect.objectContaining({ event: "bridge.defer" }));
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
+  it("keeps a parked Run when native Read races past the seal", async () => {
+    const diagnostics: CursorDiagnosticEvent[] = [];
+    const first = cursorCall("call-native-read-race-first", 153);
+    const late = cursorCall("call-native-read-race-late", 154);
+    const stream = new BridgeCursorStream(
+      cursorToolFrames([first]),
+      cursorCompletionFrames("continued after native Read policy"),
+      2,
+    );
+    const harness = cursorHarness([stream], {
+      diagnostics: (event) => diagnostics.push(event),
+    });
+    const initial: CanonicalResponseRequest = {
+      ...cursorRequest("session-native-read-race", "composer-2.5"),
+      tools: [
+        ...(cursorRequest("unused", "composer-2.5").tools ?? []),
+        {
+          type: "function",
+          name: "Read",
+          description: "Read a file",
+          parameters: {
+            type: "object",
+            properties: { file_path: { type: "string" } },
+            required: ["file_path"],
+            additionalProperties: false,
+          },
+        },
+      ],
+    };
+
+    try {
+      await collectCursorResponse(harness.adapter, initial);
+      await stream.emitFrames([{
+        execServerMessage: {
+          id: late.messageId,
+          execId: late.execId,
+          readArgs: { path: "README.md", toolCallId: late.callId },
+        },
+      }]);
+      expect(stream.closed).toBe(false);
+
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorContinuation(initial, [first], [cursorResult(first, "first result")]),
+      );
+
+      expect(canonicalText(events)).toBe("continued after native Read policy");
+      expect(harness.openedStreams).toBe(1);
+      expect(cursorClientWrites(stream)).toContainEqual(expect.objectContaining({
+        execClientMessage: expect.objectContaining({
+          readResult: expect.objectContaining({
+            error: expect.objectContaining({ error: expect.stringContaining("cc_read_") }),
+          }),
+        }),
+      }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({ event: "bridge.defer" }));
+      expect(diagnostics).toContainEqual(expect.objectContaining({
+        event: "bridge.attach",
+        outcome: "deferred_replay",
+      }));
     } finally {
       harness.adapter.dispose();
     }

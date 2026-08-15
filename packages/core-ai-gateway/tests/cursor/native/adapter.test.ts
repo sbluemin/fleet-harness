@@ -172,7 +172,8 @@ describe("Cursor request budgets", () => {
 
     for (const context of [prompt.action?.userMessageAction?.requestContext, resume.action?.resumeAction?.requestContext]) {
       const rule = context?.rules?.[0];
-      expect(rule?.content).toContain("Native read, search, shell requests are routed through the caller's tools and permissions");
+      expect(rule?.content).toContain("Native search, shell requests are routed through the caller's tools and permissions");
+      expect(rule?.content).not.toContain("Native read requests are routed through the caller's tools");
       expect(rule?.content).not.toContain("cannot preserve partial-file metadata");
       expect(rule?.content).toContain("Native mutation, fetch");
       expect(rule?.content).not.toContain("Do not invoke Cursor-native tools");
@@ -212,9 +213,26 @@ describe("Cursor request budgets", () => {
     }), "conversation-tool-alias");
     const wireTools = runRequest(plan).mcpTools?.mcpTools ?? [];
 
-    expect(wireTools.map((entry) => entry.toolName)).toEqual(["read_file"]);
+    expect(wireTools.map((entry) => entry.toolName)).toEqual([
+      expect.stringMatching(/^cc_read_[a-f0-9]{8}$/),
+      "read_file",
+    ]);
     expect(plan.redirectTools.find((tool) => tool.clientName === "Read")?.toolName)
       .toMatch(/^cc_read_[a-f0-9]{8}$/);
+  });
+
+  it("advertises Read directly without routing it as native, while routing Grep and Bash", () => {
+    const plan = buildCursorRunPlan(request({
+      tools: [tool("Read"), tool("Grep"), tool("Bash")],
+    }), "conversation-guidance-eligibility");
+    const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+    const guidance = encodedRunRequest(plan).action?.userMessageAction?.requestContext?.rules?.[0]?.content ?? "";
+
+    expect(names).toContain(plan.redirectTools.find((tool) => tool.clientName === "Read")?.toolName);
+    expect(names).not.toContain(plan.redirectTools.find((tool) => tool.clientName === "Grep")?.toolName);
+    expect(names).not.toContain(plan.redirectTools.find((tool) => tool.clientName === "Bash")?.toolName);
+    expect(guidance).not.toContain("Native read requests are routed");
+    expect(guidance).toContain("Native search, shell requests are routed");
   });
 
   it("loads only ToolSearch-selected deferred tools into the next Cursor catalog", () => {
@@ -230,8 +248,8 @@ describe("Cursor request budgets", () => {
     const toolSearchWireName = initialNames.find((name) => name.startsWith("cc_tool_search_"));
 
     expect(toolSearchWireName).toMatch(/^cc_tool_search_[a-f0-9]{8}$/);
-    expect(initialNames).toHaveLength(1);
-    expect(initialNames.some((name) => name.startsWith("cc_read_"))).toBe(false);
+    expect(initialNames).toHaveLength(2);
+    expect(initialNames.some((name) => name.startsWith("cc_read_"))).toBe(true);
     expect(initialNames).not.toContain("mcp__fleet__wiki_read");
     const initialRule = encodedRunRequest(initialPlan).action?.userMessageAction?.requestContext?.rules?.[0]?.content;
     expect(initialRule).toContain(`Use \`${toolSearchWireName}\` for deferred tools.`);
@@ -329,8 +347,9 @@ describe("Cursor request budgets", () => {
     // The pre-flight sizing view must agree with the payload, not the declaration.
     expect(new CursorAdapter().wireTools(canonical).map((entry) => entry.name)).toEqual([
       "ToolSearch",
+      "Read",
     ]);
-    expect(runRequest(plan).mcpTools?.mcpTools).toHaveLength(1);
+    expect(runRequest(plan).mcpTools?.mcpTools).toHaveLength(2);
   });
 
   it("reports the capped survivors when the declared catalog overruns the byte budget", () => {
