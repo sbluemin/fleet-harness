@@ -693,6 +693,8 @@ describe("resolveFocusedMention", () => {
         makeOperation("op-await", { id: "op-await" }),
       ],
       operationStatus: { "op-await": "awaiting" as const },
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
       activeOperationId: "op-live",
     };
     expect(resolveFocusedMention(state, MESSAGEABLE)?.operationId).toBe("op-live");
@@ -701,6 +703,19 @@ describe("resolveFocusedMention", () => {
     expect(resolveFocusedMention({ ...state, activeOperationId: "op-shell" }, MESSAGEABLE)).toBeNull();
     expect(resolveFocusedMention({ ...state, activeOperationId: "op-await" }, MESSAGEABLE)).toBeNull();
     expect(resolveFocusedMention({ ...state, activeOperationId: "op-missing" }, MESSAGEABLE)).toBeNull();
+  });
+
+  it("skips a leftover active id when Operations is not in view or Theater has moved", () => {
+    const state = {
+      ...getState(),
+      theaters: [makeTheater("th-a"), makeTheater("th-b")],
+      operations: [makeOperation("op-live"), makeOperation("op-other", { theaterId: "th-b" })],
+      operationsViewActive: true,
+      activeTheaterId: "th-a",
+      activeOperationId: "op-live",
+    };
+    expect(resolveFocusedMention({ ...state, operationsViewActive: false }, MESSAGEABLE)).toBeNull();
+    expect(resolveFocusedMention({ ...state, activeTheaterId: "th-b" }, MESSAGEABLE)).toBeNull();
   });
 });
 

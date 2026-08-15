@@ -293,17 +293,22 @@ export function buildQuickLaunchMentionGroups(
 /**
  * 보고 있는 패널이 멘션 덱에 오를 수 있을 때만 행선지가 된다. 활성 없음·셸·다른 플러그인·
  * awaiting·사라진 id는 전부 null — 덱이 고를 수 없는 것을 자동 확정도 고르지 않는다.
+ *
+ * "보고 있다"는 알림·브레드크럼과 같은 판정이다. Theater만 바꾸면 activeOperationId가 남고
+ * (/settings·모바일 비-Operations에서는 operationsViewActive가 꺼진다) 그 id를 그대로
+ * 확정하면 화면에 없는 패널로 보낸다.
  */
 export function resolveFocusedMention(
   state: ConsoleState,
   messageableTypesByPlugin: ReadonlyMap<string, ReadonlySet<string>>,
 ): OperationSearchEntry | null {
   const operationId = state.activeOperationId;
-  if (!operationId) return null;
+  if (!state.operationsViewActive || !operationId) return null;
   const entry = buildQuickLaunchMentionGroups(state, messageableTypesByPlugin, "")
     .flatMap((group) => group.entries)
     .find((candidate) => candidate.operationId === operationId);
   if (!entry || !isMentionSelectable(entry.activity)) return null;
+  if (entry.theaterId !== state.activeTheaterId) return null;
   return entry;
 }
 
