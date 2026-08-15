@@ -41,6 +41,14 @@ describe("mention delivery ownership", () => {
     expect(flock).toMatch(/if \(!mentionMooredRef\.current\.delete\(admiral\)\) return;/u);
   });
 
+  it("returns focus to the aide only when the answer was closed from the keyboard", () => {
+    // 마우스로 닫고도 포커스를 되돌리면 :focus-visible 링이 새를 감싼 채 남는다 — 포인터
+    // 사용자는 그것을 부른 적이 없어 다른 곳을 눌러야 지워진다.
+    expect(bubble).toMatch(/onClick=\{\(event\) => onDismiss\(event\.detail === 0\)\}/u);
+    expect(bubble).toMatch(/onDismiss\(true\);/u);
+    expect(flock).toMatch(/if \(restoreFocus\) focusAdmiral\(admiral\);/u);
+  });
+
   it("announces the settled answer once instead of every streamed chunk", () => {
     // 보이는 문단이 라이브 영역이면 청크마다 전체가 다시 읽힌다.
     expect(bubble).not.toMatch(/className="scuttlebutt-answer-bubble"[\s\S]{0,200}aria-live/u);

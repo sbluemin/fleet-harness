@@ -31,7 +31,12 @@ export function AnswerBubble({
   readonly locale?: ConsoleLocale;
   readonly positionRevision: number;
   readonly onExpand: () => void;
-  readonly onDismiss: () => void;
+  /**
+   * `restoreFocus`는 키보드로 닫았을 때만 참이다. 마우스로 닫고도 새에 포커스를 되돌리면
+   * `:focus-visible` 링이 새를 감싸고 다른 곳을 누를 때까지 남는다 — 누른 적 없는 곳에 뜬 테두리는
+   * 사용자가 지울 방법을 모른다. 키보드로 닫은 사람에게는 반대로 그 링이 지금 어디에 서 있는지다.
+   */
+  readonly onDismiss: (restoreFocus: boolean) => void;
 }) {
   const bubbleRef = React.useRef<HTMLDivElement | null>(null);
   const t = getT(locale);
@@ -78,7 +83,7 @@ export function AnswerBubble({
       // (도착 알림과 같은 계약).
       window.setTimeout(() => {
         if (event.defaultPrevented) return;
-        onDismiss();
+        onDismiss(true);
       }, 0);
     };
     window.addEventListener("keydown", onKeyDown);
@@ -120,7 +125,9 @@ export function AnswerBubble({
         type="button"
         className="scuttlebutt-answer-dismiss"
         aria-label={t("answer.dismiss")}
-        onClick={onDismiss}
+        // detail === 0은 키보드 활성화다(새 버튼의 onClick이 쓰는 판별과 같다). 마우스 클릭은
+        // 포인터가 이미 자리를 말했으므로 포커스를 옮기지 않는다.
+        onClick={(event) => onDismiss(event.detail === 0)}
       >
         ✕
       </button>
