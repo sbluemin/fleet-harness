@@ -12056,8 +12056,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   letter-spacing: 0.08em;
 }
 
-/* 고정 토글 — 켜지면 brass로 자기 상태를 말한다(위치 채널). */
-.quick-launch-pin {
+/* 고정·포커스 멘션 토글 — 켜지면 brass로 자기 상태를 말한다(위치/행선지 채널). */
+.quick-launch-pin,
+.quick-launch-mention-focus {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -12073,16 +12074,19 @@ body[data-codex-reading="true"] .operations-side-bar {
     color var(--duration-fast) var(--ease-spring);
 }
 
-.quick-launch-pin svg {
+.quick-launch-pin svg,
+.quick-launch-mention-focus svg {
   width: 15px;
   height: 15px;
 }
 
-.quick-launch-pin:hover {
+.quick-launch-pin:hover,
+.quick-launch-mention-focus:hover {
   color: var(--text-secondary);
 }
 
-.quick-launch-pin[aria-pressed="true"] {
+.quick-launch-pin[aria-pressed="true"],
+.quick-launch-mention-focus[aria-pressed="true"] {
   border-color: color-mix(in oklch, var(--brass) 55%, transparent);
   color: var(--brass);
 }

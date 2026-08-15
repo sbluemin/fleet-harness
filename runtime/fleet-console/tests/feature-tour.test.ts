@@ -55,6 +55,7 @@ describe("feature tour", () => {
     expect(FEATURE_TOURS.map((tour) => tour.id)).toEqual([
       "canvas-modes",
       "quick-launch-pin",
+      "quick-launch-focused-mention",
       "war-room",
       "war-room-sidebar",
       "claude-operations",
@@ -204,6 +205,28 @@ describe("feature tour", () => {
       '</section>',
     ].join("");
     expect(resolveNextFeatureTour(FEATURE_TOURS, ["canvas-modes.walkthrough"], document)?.tour.id).toBe("quick-launch-pin");
+  });
+
+  it("gates the focused-mention tour on the button existing, after the pin tour has been seen", () => {
+    const step = FEATURE_TOURS.find((tour) => tour.id === "quick-launch-focused-mention")?.walkthrough[0];
+    expect(step?.anchor).toBe(".quick-launch-mention-focus");
+    expect(FEATURE_TOURS.find((tour) => tour.id === "quick-launch-focused-mention")?.deferAfterAnotherTour).toBe(true);
+
+    document.body.innerHTML = [
+      '<section class="quick-launch-card">',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document)).toBeNull();
+
+    document.body.innerHTML = [
+      '<section class="quick-launch-card">',
+      '  <button class="quick-launch-mention-focus"></button>',
+      '  <button class="quick-launch-pin"></button>',
+      '</section>',
+    ].join("");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document)?.tour.id).toBe("quick-launch-focused-mention");
+    expect(resolveNextFeatureTour(FEATURE_TOURS, ["quick-launch-pin.walkthrough"], document, true)).toBeNull();
   });
 
   it("anchors the War Room walkthrough on its own tool tray, so an empty screen still teaches the mode", () => {
