@@ -16,6 +16,7 @@ import {
   statSync,
 } from "node:fs";
 import { dirname } from "node:path";
+import { nextEventBoundaryBytes, parseSseFrameFields } from "./upstream-sse.js";
 
 export interface WireLogTarget {
   readonly path: string;
@@ -152,4 +153,141 @@ export async function* logCanonicalEvents<T>(
     wireLog(event, item);
     yield item;
   }
+}
+
+/**
+ * Raw provider event payload. `data` is the `JSON.parse` result verbatim — before
+ * event-name type fallback, canonical filtering, or tool assembly — and `event` is the SSE
+ * `event:` field when the frame carried one. `event` is omitted entirely when absent.
+ */
+export interface RawWireEventPayload {
+  readonly event?: string;
+  readonly data: unknown;
+}
+
+/** Log one raw provider event under the caller-owned label. Inert when no target is set. */
+export function logRawWireEvent(label: string, eventName: string | undefined, data: unknown): void {
+  if (!wireLogEnabled()) return;
+  wireLog(label, {
+    ...(eventName === undefined ? {} : { event: eventName }),
+    data,
+  } satisfies RawWireEventPayload);
+}
+
+// 진단 파싱 상한. wire log 타깃이 켜져 있을 때만 도달하고, 본문이 상한을 넘어도 원본 바이트는
+// 그대로 통과한다 — 기록 항목만 빠질 뿐이다.
+const RAW_EVENT_MAX_FRAME_BYTES = 1024 * 1024;
+const RAW_EVENT_MAX_JSON_BYTES = 16 * 1024 * 1024;
+
+/**
+ * Observation tap for passthrough responses. Records each JSON payload exactly as parsed from
+ * the upstream body — before projection/model rewrite — then passes the original bytes through
+ * unchanged. Unsupported media types, malformed frames, and oversized diagnostics never fail
+ * or alter the request, only the diagnostic line is skipped. When no wire log target is set the
+ * tap is a pure pass-through with no buffering or parsing.
+ */
+export async function* logRawPassthroughBody(
+  chunks: AsyncIterable<Uint8Array>,
+  options: { readonly label: string; readonly contentType?: string | null },
+): AsyncGenerator<Uint8Array> {
+  if (!wireLogEnabled()) {
+    yield* chunks;
+    return;
+  }
+  const mediaType = options.contentType?.split(";", 1)[0]?.trim().toLowerCase();
+  if (mediaType === "text/event-stream") {
+    yield* tapPassthroughSse(chunks, options.label);
+    return;
+  }
+  if (mediaType === "application/json" || mediaType?.endsWith("+json")) {
+    yield* tapPassthroughJson(chunks, options.label);
+    return;
+  }
+  yield* chunks;
+}
+
+async function* tapPassthroughSse(
+  chunks: AsyncIterable<Uint8Array>,
+  label: string,
+): AsyncGenerator<Uint8Array> {
+  let pending: Uint8Array = new Uint8Array(0);
+  let oversizedFrame = false;
+  for await (const chunk of chunks) {
+    pending = concatBytes(pending, chunk);
+    let boundary = nextEventBoundaryBytes(pending);
+    while (boundary !== undefined) {
+      const frame = pending.slice(0, boundary.index);
+      pending = pending.slice(boundary.index + boundary.length);
+      if (!oversizedFrame && frame.byteLength <= RAW_EVENT_MAX_FRAME_BYTES) {
+        tapPassthroughFrameBytes(label, frame);
+      }
+      oversizedFrame = false;
+      boundary = nextEventBoundaryBytes(pending);
+    }
+    if (pending.byteLength > RAW_EVENT_MAX_FRAME_BYTES) {
+      // 상한을 넘긴 프레임은 진단만 skip한다. 경계가 청크에 걸쳐 나뉠 수 있으니 separator
+      // 길이만큼의 꼬리를 남겨 다음 청크에서 경계를 다시 찾고, 그 뒤 정상 프레임은 계속 기록한다.
+      pending = pending.slice(Math.max(0, pending.byteLength - 3));
+      oversizedFrame = true;
+    }
+    yield chunk;
+  }
+  if (!oversizedFrame && pending.byteLength > 0) {
+    tapPassthroughFrameBytes(label, pending);
+  }
+}
+
+function tapPassthroughFrameBytes(label: string, frameBytes: Uint8Array): void {
+  let frame: string;
+  try {
+    frame = new TextDecoder("utf-8", { fatal: true }).decode(frameBytes);
+  } catch {
+    return;
+  }
+  const { event: eventName, data } = parseSseFrameFields(frame);
+  if (data.length === 0 || data === "[DONE]") return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch {
+    // Malformed payloads flow through unchanged; only the diagnostic line is skipped.
+    return;
+  }
+  logRawWireEvent(label, eventName, parsed);
+}
+
+async function* tapPassthroughJson(
+  chunks: AsyncIterable<Uint8Array>,
+  label: string,
+): AsyncGenerator<Uint8Array> {
+  let pending: Uint8Array = new Uint8Array(0);
+  let oversized = false;
+  for await (const chunk of chunks) {
+    if (!oversized) {
+      if (pending.byteLength + chunk.byteLength > RAW_EVENT_MAX_JSON_BYTES) {
+        oversized = true;
+        pending = new Uint8Array(0);
+      } else {
+        pending = concatBytes(pending, chunk);
+      }
+    }
+    yield chunk;
+  }
+  if (oversized || pending.byteLength === 0) return;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(pending));
+  } catch {
+    return;
+  }
+  logRawWireEvent(label, undefined, parsed);
+}
+
+function concatBytes(left: Uint8Array, right: Uint8Array): Uint8Array {
+  if (left.byteLength === 0) return right;
+  if (right.byteLength === 0) return left;
+  const combined = new Uint8Array(left.byteLength + right.byteLength);
+  combined.set(left, 0);
+  combined.set(right, left.byteLength);
+  return combined;
 }

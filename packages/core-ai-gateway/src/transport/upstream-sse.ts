@@ -195,6 +195,27 @@ export function nextEventBoundary(buffer: string): { index: number; length: numb
   return match === null ? undefined : { index: match.index, length: match[0].length };
 }
 
+/**
+ * Byte-level twin of `nextEventBoundary`. SSE separators are pure ASCII, so scanning the raw
+ * bytes is exact without decoding — a boundary never splits a multibyte sequence.
+ */
+export function nextEventBoundaryBytes(
+  buffer: Uint8Array,
+): { index: number; length: number } | undefined {
+  for (let index = 0; index < buffer.byteLength; index += 1) {
+    const first = buffer[index];
+    if (first === 10) {
+      if (buffer[index + 1] === 10) return { index, length: 2 };
+      continue;
+    }
+    if (first !== 13) continue;
+    if (buffer[index + 1] === 13) return { index, length: 2 };
+    if (buffer[index + 1] !== 10) continue;
+    if (buffer[index + 2] === 13 && buffer[index + 3] === 10) return { index, length: 4 };
+  }
+  return undefined;
+}
+
 export interface SseFrameFields {
   readonly event?: string;
   /** Joined `data:` lines. Comment-only or empty frames yield an empty string. */

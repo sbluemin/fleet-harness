@@ -40,7 +40,7 @@ import {
   isCursorNativeRedirectToolName,
   type CursorNativeRedirectResultType,
 } from "./exec-redirect.js";
-import { wireLog } from "../../transport/wire-log.js";
+import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
 import {
   AgentClientMessageSchema,
   AgentServerMessageSchema,
@@ -3093,6 +3093,8 @@ function createCursorLiveRun(options: CursorLiveRunOptions): CursorLiveRun {
           continue;
         }
         const decodedFrame = decodeCursorServerMessage(frame.payload);
+        // Raw provider frame before heartbeat filtering and canonical assembly.
+        logRawWireEvent("cursor.wire.event", undefined, decodedFrame);
         if (!isCursorHeartbeatFrame(decodedFrame)) noteSemanticProgress();
         handleFrame(decodedFrame);
       }

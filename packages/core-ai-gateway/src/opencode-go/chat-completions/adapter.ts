@@ -22,7 +22,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
-import { wireLog } from "../../transport/wire-log.js";
+import { logRawWireEvent, wireLog, type RawWireEventPayload } from "../../transport/wire-log.js";
 
 /** OpenCode Go 구독이 노출하는 Chat Completions 네임스페이스 엔드포인트. */
 export const OPENCODE_GO_CHAT_COMPLETIONS_URL = "https://opencode.ai/zen/go/v1/chat/completions";
@@ -712,18 +712,21 @@ async function* translateChatCompletionsStream(
       while (boundary !== undefined) {
         const frame = buffer.slice(0, boundary.index);
         buffer = buffer.slice(boundary.index + boundary.length);
-        const data = chatFrameData(frame);
-        if (data !== undefined) {
-          yield* consumeChunk(data);
+        const frameData = chatFrameData(frame);
+        if (frameData !== undefined) {
+          // Raw provider payload before canonical consumeChunk assembly.
+          logRawWireEvent("openai-chat.wire.event", frameData.event, frameData.data);
+          yield* consumeChunk(frameData.data);
         }
         boundary = nextEventBoundary(buffer);
       }
     }
 
     if (buffer.trim().length > 0) {
-      const data = chatFrameData(buffer);
-      if (data !== undefined) {
-        yield* consumeChunk(data);
+      const frameData = chatFrameData(buffer);
+      if (frameData !== undefined) {
+        logRawWireEvent("openai-chat.wire.event", frameData.event, frameData.data);
+        yield* consumeChunk(frameData.data);
       }
     }
     yield* finish();
@@ -733,13 +736,16 @@ async function* translateChatCompletionsStream(
   }
 }
 
-function chatFrameData(frame: string): unknown | undefined {
-  const { data } = parseSseFrameFields(frame);
+function chatFrameData(frame: string): RawWireEventPayload | undefined {
+  const { event: eventName, data } = parseSseFrameFields(frame);
   if (data.length === 0 || data === "[DONE]") {
     return undefined;
   }
   try {
-    return JSON.parse(data);
+    return {
+      ...(eventName === undefined ? {} : { event: eventName }),
+      data: JSON.parse(data) as unknown,
+    };
   } catch (error) {
     throw new UpstreamProtocolError(
       `Chat Completions SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`

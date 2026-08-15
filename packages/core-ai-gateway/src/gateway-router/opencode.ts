@@ -62,5 +62,6 @@ export async function proxyToOpencode(
     headers,
     signal,
     url: OPENCODE_GO_MESSAGES_URL,
+    wireEventLabel: "opencode-go-anthropic.wire.event",
   });
 }

@@ -2,6 +2,7 @@ import { projectAnthropicResponseUsage } from "../anthropic/claude-context.js";
 import { eagerAnthropicRequestBody } from "../anthropic/passthrough.js";
 import { withSseKeepAlive } from "../transport/sse-keepalive.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
+import { logRawPassthroughBody } from "../transport/wire-log.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 
 // 도구 eager 정규화는 core-ai-gateway 소유로 이전됐다. 기존 런타임 소비자(ai-gateway-routes)를
@@ -33,6 +34,8 @@ export interface AnthropicProxyOptions {
   readonly responseModel?: string;
   /** Provider가 Anthropic 이벤트를 내지 않는 동안에도 gateway alias의 downstream 생존성을 유지한다. */
   readonly keepAlive?: boolean;
+  /** Raw response event label. Caller-owned so this shared proxy stays provider-neutral. */
+  readonly wireEventLabel?: string;
   readonly fetchImpl: typeof fetch;
   readonly headers: Readonly<Record<string, string>>;
   readonly signal: AbortSignal;
@@ -73,11 +76,19 @@ export async function proxyAnthropicMessages(
     return;
   }
   const rawBody = readResponseBody(upstream.body);
-  // contextWindow이 없어도 responseModel이 있으면 재작성이 필요하므로 변환기를 탄다.
   const contentType = upstream.headers.get("content-type");
-  const projectedBody = options.contextWindow === undefined && options.responseModel === undefined
+  // Observation tap: records provider response payloads before projection while passing the
+  // upstream bytes through unchanged. The label is caller-owned so this proxy stays neutral.
+  const observedBody = options.wireEventLabel === undefined
     ? rawBody
-    : projectAnthropicResponseUsage(rawBody, {
+    : logRawPassthroughBody(rawBody, {
+        label: options.wireEventLabel,
+        contentType,
+      });
+  // contextWindow이 없어도 responseModel이 있으면 재작성이 필요하므로 변환기를 탄다.
+  const projectedBody = options.contextWindow === undefined && options.responseModel === undefined
+    ? observedBody
+    : projectAnthropicResponseUsage(observedBody, {
         contentType,
         contextWindow: options.contextWindow,
         responseModel: options.responseModel,

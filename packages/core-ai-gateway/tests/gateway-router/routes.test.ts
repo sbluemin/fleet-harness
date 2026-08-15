@@ -23,6 +23,7 @@ import {
   errorMessage,
 } from "../../src/index.js";
 import type { AiGatewayRouteDeps } from "../../src/index.js";
+import { wireLogFixture } from "../helpers/wire-log.js";
 
 function aiGatewaySettingsStub(settings: AiGatewayStoredSettings): () => AiGatewayStoredSettings {
   return () => settings;
@@ -700,6 +701,39 @@ describe("mid-stream failure", () => {
 });
 
 describe("OpenCode Go passthrough", () => {
+  it("records raw OpenCode Anthropic events without credentials", async () => {
+    const wireLog = wireLogFixture("fleet-opencode-anthropic-wire-log-");
+    try {
+      const upstream = 'event: message_stop\ndata: {"type":"message_stop"}\n\n';
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+        upstream,
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ));
+      const router = createAiGatewayRouter({
+        fetch: fetchMock,
+        readAuth,
+        readOpencodeApiKey: async () => "opencode-secret",
+      });
+      const res = response();
+
+      await router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: "claude-gateway--opencode--minimax-m3[1m]",
+      }));
+
+      expect(res.body).toBe(upstream);
+      const raw = wireLog.read().filter((entry) => entry.event === "opencode-go-anthropic.wire.event");
+      expect(raw).toEqual([expect.objectContaining({
+        payload: { event: "message_stop", data: { type: "message_stop" } },
+      })]);
+      expect(JSON.stringify(raw)).not.toContain("opencode-secret");
+      expect(JSON.stringify(raw)).not.toContain(ANTHROPIC_CRED);
+    } finally {
+      wireLog.cleanup();
+    }
+  });
+
   it("rewrites the model, swaps in the stored key, and strips the unadvertised effort", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "event: message_stop\n\n",
@@ -914,6 +948,50 @@ describe("Grok CLI Responses", () => {
 });
 
 describe("Kimi passthrough", () => {
+  it("records raw Kimi Anthropic events before model projection", async () => {
+    const wireLog = wireLogFixture("fleet-kimi-anthropic-wire-log-");
+    try {
+      const upstream = [
+        "event: message_start\n",
+        `data: ${JSON.stringify({
+          type: "message_start",
+          message: { id: "msg-kimi-raw", model: "k3", usage: { input_tokens: 1, output_tokens: 0 } },
+        })}\n\n`,
+      ].join("");
+      const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+        upstream,
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      ));
+      const router = createAiGatewayRouter({
+        fetch: fetchMock,
+        readAuth,
+        readKimiApiKey: async () => "kimi-secret",
+      });
+      const res = response();
+
+      await router.handle(ctx({
+        res,
+        token: ANTHROPIC_CRED,
+        model: "claude-gateway--kimi--k3[1m]",
+      }));
+
+      expect(res.body).toContain('"model":"claude-gateway--kimi--k3[1m]"');
+      const raw = wireLog.read().filter((entry) => entry.event === "kimi-anthropic.wire.event");
+      expect(raw).toEqual([expect.objectContaining({
+        payload: {
+          event: "message_start",
+          data: {
+            type: "message_start",
+            message: { id: "msg-kimi-raw", model: "k3", usage: { input_tokens: 1, output_tokens: 0 } },
+          },
+        },
+      })]);
+      expect(JSON.stringify(raw)).not.toContain("kimi-secret");
+    } finally {
+      wireLog.cleanup();
+    }
+  });
+
   it("keeps Claude Code's downstream stream alive while the provider is silent", async () => {
     vi.useFakeTimers();
     try {
@@ -1298,6 +1376,30 @@ describe("Kimi passthrough", () => {
 });
 
 describe("anthropic passthrough", () => {
+  it("records raw native Anthropic events without caller credentials", async () => {
+    const wireLog = wireLogFixture("fleet-native-anthropic-wire-log-");
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    try {
+      await router.handle(ctx({
+        res: response(),
+        token: ANTHROPIC_CRED,
+        model: "claude-sonnet-4-6",
+      }));
+
+      const raw = wireLog.read().filter((entry) => entry.event === "anthropic.wire.event");
+      expect(raw).toEqual([expect.objectContaining({
+        payload: { event: "message_stop", data: { type: "message_stop" } },
+      })]);
+      expect(JSON.stringify(raw)).not.toContain(ANTHROPIC_CRED);
+    } finally {
+      wireLog.cleanup();
+    }
+  });
+
   it("keeps Claude Code's downstream stream alive while Anthropic is silent", async () => {
     vi.useFakeTimers();
     try {
