@@ -1065,6 +1065,8 @@ export function OperationsCanvas({
         }}
         onOperationContextMenu={onOpenOperationMenu}
         onTheaterContextMenu={openTriageTheaterLaunchMenu}
+        catalog={catalog}
+        renderKindIcon={renderKindIcon}
       />
       {cruiseEntering ? (
         <div className="canvas-mode-curtain canvas-cruise-curtain" aria-hidden="true">
