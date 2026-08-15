@@ -233,25 +233,53 @@ export interface QuickLaunchEffortOption {
   readonly id: string | null;
   readonly label: string;
   readonly checked: boolean;
+  /**
+   * 게이트 뒤 티어인가. 색 채널을 가르는 데 쓴다 — 트랙과 같은 계약으로, 게이트 없는 모델의
+   * 최고 단(max)은 같은 단 이름이라도 이글거리지 않고 정적 글로우에 머문다.
+   */
+  readonly apex: boolean;
+}
+
+export interface QuickLaunchEffortDeck {
+  readonly options: readonly QuickLaunchEffortOption[];
+  /** 이 모델이 게이트 뒤 티어를 내놓는가 — 문 행을 세울지 가른다. */
+  readonly hasGate: boolean;
+  /** 게이트가 열려 있는가. 열려 있으면 문 행은 접힘 행이 된다. */
+  readonly gateOpen: boolean;
+  /**
+   * 지금 고른 값 자체가 게이트 단이라 게이트가 닫힐 수 없는 상태. 이때 문 행은 서지 않는다 —
+   * 접어도 접히지 않는 컨트롤이 되고, 트랙처럼 "접으면 일상 단으로 내려" 해결하면 접힘 클릭이
+   * 실행 강도를 조용히 바꾸는 부작용이 된다(트랙은 손잡이가 눈앞에서 움직여 그 대가를 보여준다).
+   */
+  readonly gateHeldByValue: boolean;
 }
 
 /**
  * `/effort` 값 목록. EffortTrack의 apex 게이트를 미러링한다 — 게이트된 단(MAX·ULTRACODE)은
- * 기본 목록에 서지 않고, 그 단의 이름을 앞에서부터 명시적으로 타이핑했을 때만 나타난다(트랙의
- * ✦ 펼침에 상응하는 명시 동작). 현재 값이 이미 게이트된 단이면 트랙이 게이트를 열어 두는 것과
- * 같이 전부 보인다. includes가 아니라 startsWith로 가르는 이유: "l" 같은 우연한 부분 일치가
- * 고비용 단을 조용히 드러내면 게이트가 없는 것과 같다.
+ * 기본 목록에 서지 않고, 덱 맨 아래 문 행(트랙의 ✦ 토글에 상응)을 열거나 그 단의 이름을
+ * 앞에서부터 명시적으로 타이핑했을 때만 나타난다. 현재 값이 이미 게이트된 단이면 트랙이
+ * 게이트를 열어 두는 것과 같이 전부 보인다. 타이핑 경로를 includes가 아니라 startsWith로
+ * 가르는 이유: "l" 같은 우연한 부분 일치가 고비용 단을 조용히 드러내면 게이트가 없는 것과 같다.
+ *
+ * 문 행은 트랙의 ✦이 없는 모델에서 서지 않는다 — 그래야 "이 모델엔 그 단이 없다"와
+ * "있는데 접혀 있다"가 처음으로 갈린다. 두 상태가 같은 5행으로 보이던 것이 이 덱의 결함이었다.
  */
-export function buildQuickLaunchEffortOptions(
+export function buildQuickLaunchEffortDeck(
   row: OperationLaunchVariantRow | null,
   effort: string | null,
   autoLabel: string,
   query: string,
-): readonly QuickLaunchEffortOption[] {
+  opened: boolean,
+): QuickLaunchEffortDeck {
   const trimmed = query.trim().toLowerCase();
   const gated = new Set(row?.gatedEfforts ?? []);
-  const gateOpen = effort !== null && gated.has(effort);
-  return [
+  // 모델이 축에만 올리고 실제로 내놓지 않은 게이트 단은 문을 열어도 고를 것이 없다 —
+  // chips에 실린 것만 게이트가 있다고 센다(트랙의 ✦ 출현 조건과 같다).
+  const offeredGated = (row?.chips ?? []).filter((chip) => gated.has(chip.id));
+  const hasGate = offeredGated.length > 0;
+  const gateHeldByValue = hasGate && effort !== null && gated.has(effort);
+  const gateOpen = hasGate && (opened || gateHeldByValue);
+  const options = [
     { id: null as string | null, label: autoLabel },
     ...(row?.chips ?? []).map((chip) => ({ id: chip.id as string | null, label: chip.label })),
   ]
@@ -263,7 +291,13 @@ export function buildQuickLaunchEffortOptions(
       if (gateOpen) return true;
       return trimmed.length > 0 && (label.startsWith(trimmed) || id.startsWith(trimmed));
     })
-    .map((chip) => ({ id: chip.id, label: chip.label, checked: chip.id === effort }));
+    .map((chip) => ({
+      id: chip.id,
+      label: chip.label,
+      checked: chip.id === effort,
+      apex: chip.id !== null && gated.has(chip.id),
+    }));
+  return { options, hasGate, gateOpen, gateHeldByValue };
 }
 
 /**

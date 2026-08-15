@@ -8,7 +8,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet-console/sdk/operations";
 
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
+import { buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
 import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
@@ -605,7 +605,7 @@ describe("readCommandInput", () => {
   });
 });
 
-describe("buildQuickLaunchEffortOptions", () => {
+describe("buildQuickLaunchEffortDeck", () => {
   const row = {
     id: "fable",
     label: "Fable",
@@ -620,27 +620,74 @@ describe("buildQuickLaunchEffortOptions", () => {
     ],
   } as const;
 
+  /** 게이트 단을 하나도 내놓지 않는 모델 — 트랙에 ✦이 서지 않는 그 상태. */
+  const plainRow = {
+    id: "grok",
+    label: "Grok",
+    launch: { model: "cursor--grok-4.6-fast" },
+    effortAxis: ["low", "medium", "high", "xhigh"],
+    chips: [
+      { id: "low", label: "LOW", launch: { model: "cursor--grok-4.6-fast", effort: "low" } },
+      { id: "xhigh", label: "XHIGH", launch: { model: "cursor--grok-4.6-fast", effort: "xhigh" } },
+    ],
+  } as const;
+
+  const ids = (deck: ReturnType<typeof buildQuickLaunchEffortDeck>) => deck.options.map((option) => option.id);
+
   it("hides gated apex tiers from the default list — the track's gate is mirrored", () => {
-    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "").map((option) => option.id))
-      .toEqual([null, "low", "high"]);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "", false))).toEqual([null, "low", "high"]);
   });
 
   it("reveals a gated tier only when its name is typed from the start", () => {
-    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "ma").map((option) => option.id)).toEqual(["max"]);
-    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "ultra").map((option) => option.id)).toEqual(["ultracode"]);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "ma", false))).toEqual(["max"]);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "ultra", false))).toEqual(["ultracode"]);
     // 우연한 부분 일치("l" ⊂ ULTRACODE)는 게이트를 열지 않는다.
-    expect(buildQuickLaunchEffortOptions(row, null, "AUTO", "l").map((option) => option.id)).toEqual(["low"]);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "l", false))).toEqual(["low"]);
   });
 
   it("keeps the gate open while the current effort is a gated tier", () => {
-    expect(buildQuickLaunchEffortOptions(row, "max", "AUTO", "").map((option) => option.id))
-      .toEqual([null, "low", "high", "max", "ultracode"]);
-    expect(buildQuickLaunchEffortOptions(row, "max", "AUTO", "").find((option) => option.id === "max")?.checked).toBe(true);
+    const deck = buildQuickLaunchEffortDeck(row, "max", "AUTO", "", false);
+    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultracode"]);
+    expect(deck.options.find((option) => option.id === "max")?.checked).toBe(true);
+    // 고른 값이 게이트를 붙들고 있으면 문 행은 서지 않는다 — 접어도 접히지 않을 컨트롤이다.
+    expect(deck.gateHeldByValue).toBe(true);
+  });
+
+  it("opens every gated tier when the gate row is opened", () => {
+    const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
+    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultracode"]);
+    expect(deck.gateOpen).toBe(true);
+    expect(deck.gateHeldByValue).toBe(false);
+  });
+
+  it("marks gated tiers as apex so the deck can split MAX's ember from a plain max", () => {
+    const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
+    expect(deck.options.filter((option) => option.apex).map((option) => option.id)).toEqual(["max", "ultracode"]);
+  });
+
+  it("reports no gate when the model offers no gated tier — 'absent' must not look like 'collapsed'", () => {
+    const deck = buildQuickLaunchEffortDeck(plainRow, null, "AUTO", "", false);
+    expect(deck.hasGate).toBe(false);
+    expect(deck.gateOpen).toBe(false);
+    expect(ids(deck)).toEqual([null, "low", "xhigh"]);
+    // 열어 달라고 해도 열 문이 없다.
+    expect(buildQuickLaunchEffortDeck(plainRow, null, "AUTO", "", true).hasGate).toBe(false);
+  });
+
+  it("counts only offered gated tiers — an axis-only rung raises no door", () => {
+    const axisOnly = { ...plainRow, gatedEfforts: ["max", "ultracode"] } as const;
+    expect(buildQuickLaunchEffortDeck(axisOnly, null, "AUTO", "", false).hasGate).toBe(false);
   });
 
   it("marks the checked option and survives a missing row", () => {
-    expect(buildQuickLaunchEffortOptions(row, "high", "AUTO", "").find((option) => option.id === "high")?.checked).toBe(true);
-    expect(buildQuickLaunchEffortOptions(null, null, "AUTO", "")).toEqual([{ id: null, label: "AUTO", checked: true }]);
+    const deck = buildQuickLaunchEffortDeck(row, "high", "AUTO", "", false);
+    expect(deck.options.find((option) => option.id === "high")?.checked).toBe(true);
+    expect(buildQuickLaunchEffortDeck(null, null, "AUTO", "", false)).toEqual({
+      options: [{ id: null, label: "AUTO", checked: true, apex: false }],
+      hasGate: false,
+      gateOpen: false,
+      gateHeldByValue: false,
+    });
   });
 });
 

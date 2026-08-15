@@ -8029,13 +8029,19 @@ body[data-side-bar-animating="true"] .canvas-operation {
    채도가 0에 가까워도 hue를 하나 들고 있어(다크 3종은 245~250) oklch로 섞으면 중간 단이 그 hue와
    brass(78) 사이 호를 따라간다 — instrument의 medium이 초록(174), carbon의 high가 붉은색(0)으로
    서서, 상태 채널인 positive·coral을 강도 라벨이 흉내 내게 된다. oklab은 직선으로 섞어 hue를
-   brass 쪽에 두고 채도만 떨어뜨린다. */
+   brass 쪽에 두고 채도만 떨어뜨린다.
+
+   간격은 램프가 쓸 수 있는 구간 전체를 쓴다. 예전 20/42/64/84는 양 끝을 안쪽으로 접어 두어
+   가용 폭의 3분의 2만 썼고, 한 번에 한 값만 보이는 트랙에서는 단이 바뀌어도 색이 바뀌지 않는
+   것처럼 읽혔다(instrument 실측 L 0.672→0.774). 최고 일상 단을 brass 그 자체에 두고 최저 단만
+   하한에서 살짝 띄우면 같은 채널 안에서 폭이 L 0.656→0.800으로 넓어진다. 더 벌릴 곳은 없다 —
+   위로는 warn(hue 90)과 crest(48)가, 아래로는 판독 하한이 구간을 닫는다. */
 [data-effort-level] { --effort-tone: var(--text-secondary); }
 [data-effort-level="auto"] { --effort-tone: var(--text-tertiary); }
-[data-effort-level="low"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 20%, var(--text-tertiary)); }
-[data-effort-level="medium"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 42%, var(--text-tertiary)); }
-[data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 64%, var(--text-tertiary)); }
-[data-effort-level="xhigh"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 84%, var(--text-tertiary)); }
+[data-effort-level="low"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 10%, var(--text-tertiary)); }
+[data-effort-level="medium"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 40%, var(--text-tertiary)); }
+[data-effort-level="high"] { --effort-tone: color-mix(in oklab, var(--brass-ink) 70%, var(--text-tertiary)); }
+[data-effort-level="xhigh"] { --effort-tone: var(--brass-ink); }
 [data-effort-level="max"] { --effort-tone: var(--crest-ink); }
 [data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }
 
@@ -12744,6 +12750,138 @@ body[data-codex-reading="true"] .operations-side-bar {
 
 .quick-launch-command-row.is-active .quick-launch-command-token {
   color: var(--brass);
+}
+
+/* 프로바이더 밴드는 이 덱에서만 스크롤을 따라 붙는다. 덱은 340px에서 스크롤을 시작하는데
+   6모델 선별이면 내용이 480px에 이르러, 붙지 않으면 밴드가 시야 밖으로 나간 채 모델 이름만
+   남는다 — 그 공백을 행마다 반복된 공급자 마크가 메우고 있었다. 밴드를 고정하면 마크는
+   순수한 중복이 되어 걷어낼 수 있다. 배경은 덱의 것을 다시 칠한다(투명이면 행이 밑으로 비친다). */
+.quick-launch-command-deck .quick-launch-pop-band {
+  position: sticky;
+  /* 덱 패딩(--space-1)만큼 위로 물려 스크롤 상단에 빈틈이 생기지 않게 한다. */
+  top: calc(var(--space-1) * -1);
+  z-index: 1;
+  background:
+    linear-gradient(
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
+      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+    ),
+    var(--ink-deep);
+}
+
+/* 밴드가 선 섹션의 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에 맞춰 들어간다.
+   행이 밴드보다 바깥에서 시작하면 항목이 자기 머리글 앞에 서서 소속이 역전돼 읽힌다. */
+.quick-launch-command-group.is-banded .quick-launch-command-row {
+  padding-left: calc(var(--space-2) + 22px);
+}
+
+/* `/effort` 게이트의 문. 트랙 우측 ✦ 토글과 같은 어휘를 목록 문법으로 옮긴 것이라, 값 행과
+   달리 apex 채널로 말하고 고딕이 아닌 계기 글꼴을 쓴다 — 값이 아니라는 표시. */
+.quick-launch-command-row.is-gate .quick-launch-mention-name {
+  color: var(--apex-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.quick-launch-command-gate-glyph {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--apex-ink);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.quick-launch-command-row.is-gate.is-active .quick-launch-mention-name,
+.quick-launch-command-row.is-gate.is-active .quick-launch-command-gate-glyph {
+  color: var(--brass);
+}
+
+/* 강도 행은 트랙과 같은 톤 사다리를 입는다 — 같은 축을 한 표면은 색으로, 다른 표면은 흑백으로
+   말하던 어긋남을 없앤다. 활성 행만 brass로 덮는다: brass는 위치 채널이라, 값 톤이 그 자리를
+   침범하면 "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다. */
+.quick-launch-command-row[data-effort-level]:not(.is-active) .quick-launch-mention-name {
+  color: var(--effort-tone);
+}
+
+/* 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 그대로 쓴다. */
+.quick-launch-command-row[data-effort-level="auto"] .quick-launch-mention-name {
+  text-decoration: underline dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
+}
+
+.quick-launch-command-row[data-effort-level="max"] .quick-launch-mention-name,
+.quick-launch-command-row[data-effort-level="ultra"] .quick-launch-mention-name {
+  font-weight: var(--weight-medium);
+}
+
+/* 게이트 뒤 MAX·ULTRACODE는 트랙의 모션을 그대로 쓴다. 조건도 같다 — data-apex 없는 max
+   (게이트 없는 모델의 최고 단)는 정적 crest 글로우에 머문다. 덱은 트랙과 달리 여러 행이
+   동시에 보이므로, 일렁이는 것은 이 두 단으로 끝난다. */
+.quick-launch-command-row[data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
+  text-shadow: 0 0 12px var(--crest-glow);
+}
+
+.quick-launch-command-row[data-apex="true"][data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
+  background-image: linear-gradient(
+    100deg,
+    var(--crest-ink) 0%,
+    color-mix(in oklch, var(--crest) 45%, white) 14%,
+    var(--crest-ink) 30%,
+    color-mix(in oklch, var(--crest) 60%, var(--brass)) 52%,
+    color-mix(in oklch, var(--crest) 40%, white) 72%,
+    var(--crest-ink) 100%
+  );
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: none;
+  animation:
+    effort-max-ember-wave 2.1s linear infinite,
+    effort-max-ember-flicker 1.7s linear infinite;
+}
+
+.quick-launch-command-row[data-effort-level="ultra"]:not(.is-active) .quick-launch-mention-name {
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: effort-ultracode-wave 2.6s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quick-launch-command-row[data-apex="true"][data-effort-level="max"]:not(.is-active) .quick-launch-mention-name {
+    animation: none;
+    background-image: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--crest-ink);
+    text-shadow: 0 0 12px var(--crest-glow);
+  }
+
+  .quick-launch-command-row[data-effort-level="ultra"]:not(.is-active) .quick-launch-mention-name {
+    animation: none;
+    background-image: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--apex-ink);
+  }
 }
 
 /* 멘션 확정 시 런치 3종은 접히고(가로 접힘 + 페이드) 행선지 태그가 나타난다. 접힌 컨트롤은
