@@ -153,8 +153,8 @@ export function stripMentionToken(value: string, token: QuickLaunchMentionToken)
 }
 
 /** 값 레벨을 가지는 커맨드. `/pin`은 액션이라 1레벨에서 끝난다. */
-export type QuickLaunchCommandId = "theater" | "model" | "effort" | "pin";
-const COMMAND_VALUE_TOKENS: readonly Exclude<QuickLaunchCommandId, "pin">[] = ["theater", "model", "effort"];
+export type QuickLaunchCommandId = "theater" | "model" | "effort" | "view" | "pin";
+const COMMAND_VALUE_TOKENS: readonly Exclude<QuickLaunchCommandId, "pin">[] = ["theater", "model", "effort", "view"];
 
 export type QuickLaunchCommandInput =
   | { readonly kind: "commands"; readonly query: string }

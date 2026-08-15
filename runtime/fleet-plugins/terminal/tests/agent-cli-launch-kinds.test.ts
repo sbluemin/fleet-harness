@@ -37,6 +37,9 @@ describe("buildAgentCliLaunchKinds", () => {
         type: "agent",
         title: "Claude (Gateway)",
         variants: [builtinVariants],
+        // 채팅으로 태어나는 길은 SDK 인수 계약 위에 서므로 이 종류에서만 선언된다 —
+        // 컴포저의 시작 뷰 선택이 이 선언 하나에 매여 있다.
+        launchViews: ["terminal", "chat"],
       },
     ]);
   });

@@ -52,7 +52,7 @@ import { probeRemoteIdentity } from "./remote-probe.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "./plugin-host/plugin-host.js";
-import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind } from "./plugin-host/plugin-host.js";
+import type { FleetPluginHostCapabilities, OperationCatalogPlugin, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView } from "./plugin-host/plugin-host.js";
 import { readFleetConsoleRelease, type FleetConsoleRelease } from "./release.js";
 import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } from "./release-notes/release-notes.js";
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
@@ -2806,6 +2806,7 @@ function isValidConsoleStaticPort(value: unknown): value is number {
 function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
   if (!isPlainObject(value) || typeof value.id !== "string" || typeof value.type !== "string" || typeof value.title !== "string") return null;
   const variants = readLaunchVariantGroups(value.variants);
+  const launchViews = readLaunchViews(value.launchViews);
   return {
     id: value.id,
     type: value.type,
@@ -2813,7 +2814,21 @@ function sanitizeLaunchKind(value: unknown): OperationLaunchKind | null {
     ...(typeof value.disabled === "boolean" ? { disabled: value.disabled } : {}),
     ...(typeof value.disabledReason === "string" ? { disabledReason: value.disabledReason } : {}),
     ...(variants.length > 0 ? { variants } : {}),
+    ...(launchViews.length > 0 ? { launchViews } : {}),
   };
+}
+
+/**
+ * 이 실행 종류가 태어날 수 있는 표면. SDK의 브라우저 sanitizer와 같은 규칙이다 — 모르는 이름은
+ * 버리고, `terminal` 하나만 남는 선언은 선택지가 아니므로 생략과 같게 접는다.
+ */
+function readLaunchViews(value: unknown): readonly OperationLaunchView[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<OperationLaunchView>();
+  for (const entry of value) {
+    if (entry === "terminal" || entry === "chat") seen.add(entry);
+  }
+  return seen.has("chat") ? [...seen] : [];
 }
 
 function requestHasBody(req: http.IncomingMessage): boolean {

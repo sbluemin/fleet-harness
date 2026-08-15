@@ -136,9 +136,14 @@ export function AgentChatView({
           사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
           콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
       <div className="agent-chat-log" ref={logRef} onScroll={handleScroll} {...(tourAnchors ? { "data-chat-tour": "log" } : {})}>
-        {state.connection === "connecting" && state.turns.length === 0
-          ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
-          : null}
+        {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
+            않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
+            상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
+        {state.errorCode === "chat_transcript_missing"
+          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.transcriptMissing")}</div>
+          : state.connection === "connecting" && state.turns.length === 0
+            ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
+            : null}
         {state.replayedTurns > 0
           ? <div className="agent-chat-sys">{t("terminal.chat.replayed", { count: state.replayedTurns })}</div>
           : null}

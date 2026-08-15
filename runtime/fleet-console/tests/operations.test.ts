@@ -442,6 +442,10 @@ describe("operations platform", () => {
               }],
             }],
           }],
+          // 시작 뷰 선언은 이 sanitizer를 지나야 컴포저에 닿는다 — 여기서 떨어지면 소스 테스트가
+          // 전부 green인 채로 `/view`만 조용히 사라진다(실제로 그렇게 한 번 놓쳤다).
+          // 모르는 표면 이름은 버린다.
+          launchViews: ["terminal", "chat"],
         },
       ],
     });
@@ -481,6 +485,7 @@ describe("operations platform", () => {
           }],
         }],
       }],
+      launchViews: ["terminal", "chat"],
     });
   });
 
@@ -562,6 +567,7 @@ async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
     "    { id: 'agent', type: 'agent', title: 'Agent CLI' },",
     "    {",
     "      id: 'claude-gateway', type: 'agent', title: 'Claude (Gateway)', ignored: 'drop-me',",
+    "      launchViews: ['terminal', 'chat', 'bogus-surface'],",
     "      variants: [{",
     "        id: 'native', label: 'Claude', rows: [{",
     "          id: 'fable', label: 'Fable', launch: { model: 'fable', invalid: false },",

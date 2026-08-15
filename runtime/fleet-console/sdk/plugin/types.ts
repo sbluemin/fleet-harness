@@ -4,7 +4,7 @@ import type { ReactNode } from "react";
 import type { FloatingWidgetDescriptor } from "../floating/types.js";
 import type { LocalizedText } from "../i18n/types.js";
 import type { ClientNotification } from "../notifications/types.js";
-import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
+import type { OperationCatalogPlugin, OperationCreateInput, OperationLaunchCatalogProvider, OperationLaunchKind, OperationLaunchView, OperationNode, OperationPatchInput, OperationGeometry } from "../operations/types.js";
 import type { RailPanelDescriptor } from "../rail/types.js";
 import type { RouteHandler, UpgradeHandler } from "../routing/types.js";
 import type { NotificationKindDescriptor } from "../notifications/types.js";
@@ -420,6 +420,7 @@ export type {
   OperationCreateInput,
   OperationLaunchCatalogProvider,
   OperationLaunchKind,
+  OperationLaunchView,
   OperationNode,
   OperationPatchInput,
   RailPanelDescriptor,

@@ -66,7 +66,21 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     model: "opus[1m]",
     effort: "high",
     cwd: "/tmp/workspace",
-    transcriptPath,
+    origin: { kind: "resume", transcriptPath },
+    onProviderSessionUpdate,
+    reportActivity: () => true,
+    canReportActivity: () => true,
+  };
+}
+
+/** 채팅으로 태어난 세션의 시드 — 이어붙일 트랜스크립트가 없고 되쓸 뿌리만 안다. */
+function freshSeedFor(transcriptRoot: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
+  return {
+    baseUrl: "http://127.0.0.1:9/gateway",
+    model: "opus[1m]",
+    effort: "high",
+    cwd: "/tmp/workspace",
+    origin: { kind: "fresh", transcriptRoot },
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
@@ -82,6 +96,72 @@ async function drainTurn(registry: AgentChatRegistry, operationId: string): Prom
 function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
   return events.map((entry) => entry.event.kind);
 }
+
+describe("AgentChatRegistry — chat-born sessions", () => {
+  it("starts the first turn without a resume coordinate and replays nothing", async () => {
+    const root = path.join(tempDir("chat-root-"), "projects");
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-1", () => freshSeedFor(root));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    // 되돌려줄 과거가 없다는 것은 "읽지 못했다"와 다르다 — replay 이벤트도 오류도 내지 않는다.
+    expect(kinds(events)).toEqual([]);
+
+    session.send("let us talk about the render path");
+    await drainTurn(registry, "op-1");
+
+    const turn = startTurn.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(turn.prompt).toBe("let us talk about the render path");
+    expect("resume" in turn).toBe(false);
+    await registry.disposeAll();
+  });
+
+  it("writes the sdk-born transcript back under the real projects root and publishes the session", async () => {
+    const root = path.join(tempDir("chat-root-"), "projects");
+    const updates: unknown[] = [];
+    const { factory, configDir } = createFakeSdkFactory([]);
+    // SDK가 첫 턴에 세션 id를 알려주고 자기 격리 dir 안에 트랜스크립트를 만든다.
+    const startTurn = vi.fn(async () => {
+      const projectDir = path.join(configDir, "projects", "-tmp-workspace");
+      mkdirSync(projectDir, { recursive: true });
+      writeFileSync(path.join(projectDir, "born-1.jsonl"), JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }));
+      const messages = [
+        { type: "system", subtype: "init", session_id: "born-1" },
+        { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+      ];
+      let index = 0;
+      return {
+        close: () => {},
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              if (index >= messages.length) return { done: true as const, value: undefined };
+              return { done: false as const, value: messages[index++] };
+            },
+          };
+        },
+      };
+    });
+    const bornFactory = (vi.fn(async () => ({ configDir, startTurn, dispose: async () => {} })) as never);
+    const registry = new AgentChatRegistry(bornFactory);
+    const session = await registry.ensure("op-1", () => freshSeedFor(root, (providerSession) => updates.push(providerSession)));
+    session.send("hello");
+    await drainTurn(registry, "op-1");
+
+    // cwd 인코딩을 재구현하지 않는다 — SDK가 만든 디렉터리 이름을 그대로 뿌리 아래로 옮긴다.
+    expect(readFileSync(path.join(root, "-tmp-workspace", "born-1.jsonl"), "utf8")).toContain("hello");
+    expect(updates).toEqual([expect.objectContaining({
+      provider: "claude",
+      sessionId: "born-1",
+      transcriptPath: path.join(root, "-tmp-workspace", "born-1.jsonl"),
+      source: "chat-mode",
+    })]);
+    await registry.disposeAll();
+  });
+});
 
 describe("AgentChatRegistry", () => {
   it("replays the origin transcript into the journal on ensure", async () => {

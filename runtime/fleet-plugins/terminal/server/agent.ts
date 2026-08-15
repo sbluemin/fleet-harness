@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
@@ -31,13 +32,13 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
-import { AgentChatRegistry, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
+import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -69,8 +70,29 @@ const OPERATION_PURGED_EVENT_CHANNEL = "operation:purged";
 const TERMINAL_PLUGIN_ID = "terminal";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
+/**
+ * 이 Operation이 **채팅으로 태어났다**는 표식. `chatMode`와 갈라 두는 이유는 transcript 부재의
+ * 뜻이 정반대이기 때문이다: 터미널에서 전환된 Operation에 transcript가 없으면 과거를 잃은 것이라
+ * 시끄럽게 거절해야 하고, 채팅으로 태어난 Operation에 없으면 아직 첫 턴을 돌지 않은 것뿐이라
+ * 정상 상태다. 이 표식이 없으면 첫 턴 전에 Console이 죽은 세션이 영영 열리지 않는 패널이 된다.
+ */
+const CHAT_BORN_PAYLOAD_KEY = "chatBorn";
 /** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
 const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
+
+/**
+ * Claude Code가 트랜스크립트를 두는 실제 뿌리. 채팅으로 태어난 세션의 되쓰기 목적지이자,
+ * 그 세션이 나중에 터미널 `--resume`으로 이어질 수 있게 하는 좌표다.
+ *
+ * 규칙은 자격증명 해석(core-ai-gateway `anthropic/credentials.ts`)과 같다 — 여기서 다르게 읽으면
+ * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다. SDK의 격리 config dir과는 무관하다:
+ * 그쪽은 이 세션 전용 임시 dir이고, 이쪽은 사용자의 정본이다.
+ */
+function resolveClaudeProjectsRoot(): string {
+  const configured = process.env.CLAUDE_CONFIG_DIR;
+  const configDir = configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
+  return path.join(configDir, "projects");
+}
 
 export async function registerAgentRoutes(
   ctx: FleetPluginServerContext,
@@ -433,6 +455,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const prompt = typeof body?.prompt === "string" ? sanitizeLaunchPrompt(body.prompt) : undefined;
     const attachmentIds = readAttachmentIds(body?.attachmentIds, res);
     if (attachmentIds === false) return true;
+    // 시작 표면. 생략은 터미널이고, 모르는 값은 조용히 접지 않고 거절한다 — 오타가 터미널로
+    // 떨어지면 사용자는 자기가 채팅을 골랐다고 믿은 채 다른 것을 받는다.
+    if (body?.viewMode !== undefined && body.viewMode !== "terminal" && body.viewMode !== "chat") {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_view_mode" });
+      return true;
+    }
+    const chatBorn = body?.viewMode === "chat";
+    if (chatBorn && cliId !== CHAT_SUPPORTED_CLI_ID) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_unsupported" });
+      return true;
+    }
     const cwd = ctx.host.paths.resolveTheaterPath(theaterId);
     if (!cwd) {
       ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
@@ -457,6 +490,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ...launchOptions,
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
+        ...(chatBorn ? { chatBorn: true as const } : {}),
       });
     } catch (error) {
       // createSession이 스스로 처리하지 못한 throw까지 예약을 되돌린다 — bind 후에는 no-op이라 안전.
@@ -541,12 +575,62 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return methodNotAllowed(res);
   }
 
+  /**
+   * 채팅으로 태어난 Operation을 세운다. PTY는 스폰하지 않는다 — 첫 프롬프트가 argv가 아니라
+   * 첫 SDK 턴이 된다.
+   *
+   * 여기서 첫 턴의 **완주를 기다리지 않는다**. 응답이 모델을 기다리면 발사가 몇 분씩 멈추고,
+   * 그동안 패널은 뜨지도 못한다. 대신 세션 등록과 첫 턴 큐잉까지만 확인하고 200을 돌려준 뒤,
+   * 진행·실패는 채팅 저널이 스트림으로 말한다(전환 경로와 같은 계약).
+   *
+   * durable 고아를 막는 것은 응답 시점이 아니라 chatBorn 표식이다: 첫 되쓰기 전에 Console이
+   * 죽어도 그 Operation은 "아직 시작하지 않은 채팅"으로 정상 복원되고, 다음 메시지가 첫 턴이 된다.
+   */
+  async function startChatBornSession(
+    sessionId: string,
+    res: Parameters<typeof handle>[0]["res"],
+    launchOptions: { readonly prompt?: string; readonly attachmentIds?: readonly string[] },
+  ): Promise<void> {
+    const rollback = (status: number, error: string) => {
+      if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+        launchAttachments.unreserve(launchOptions.attachmentIds);
+      }
+      // 빈 채팅 패널을 남기지 않는다 — 첫 턴을 걸지 못한 Operation은 존재하지 않는 편이 낫다.
+      ctx.host.operations.delete(sessionId);
+      observability.removeTerminalSession(sessionId);
+      ctx.host.http.writeJson(res, status, { error });
+    };
+    const node = ctx.host.operations.get(sessionId);
+    if (!node) return rollback(500, "session_not_found");
+    // PTY가 없으므로 "스폰 중"이 아니다. 전환된 채팅이 PTY 종료 뒤 도달하는 상태(dormant +
+    // chatActive)와 같은 자리에 세워, 활동축·복원 경로가 두 출신을 구별하지 않게 한다.
+    observability.updateTerminalSessionStatus(sessionId, "dormant");
+    const activated = observability.setTerminalSessionChatActive(sessionId, true);
+    if (activated) observability.notifySessionUpdated(activated);
+    const seed = await resolveChatSeed(node);
+    if (!seed.ok) return rollback(seed.status, seed.error);
+    let chat;
+    try {
+      chat = await chatRegistry.ensure(sessionId, () => seed.seed);
+    } catch {
+      return rollback(503, "chat_unavailable");
+    }
+    if (launchOptions.prompt) chat.send(launchOptions.prompt);
+    if (launchOptions.attachmentIds && launchOptions.attachmentIds.length > 0) {
+      launchAttachments.bind(sessionId, launchOptions.attachmentIds);
+      if (!ctx.host.operations.get(sessionId)) launchAttachments.releaseSession(sessionId);
+    }
+    const created = observability.getTerminalSessionInfo(sessionId);
+    if (created) observability.notifySessionUpdated(created);
+    ctx.host.http.writeJson(res, 200, created ?? { sessionId });
+  }
+
   async function createSession(
     cwd: string,
     theaterId: string,
     cliId: AgentCliId,
     res: Parameters<typeof handle>[0]["res"],
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[] } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -583,9 +667,16 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // 최초 선택을 Operation에 남겨 dormant·Console 재시작 뒤에도 같은 인자로 재개한다.
         ...(launchOptions.model ? { launchModel: launchOptions.model } : {}),
         ...(launchOptions.effort ? { launchEffort: launchOptions.effort } : {}),
+        // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
+        // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
+        ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
       },
       createdAt: session.createdAt,
     });
+    if (launchOptions.chatBorn) {
+      await startChatBornSession(sessionId, res, launchOptions);
+      return;
+    }
     try {
       await terminalRuntime.attach({
         cwd,
@@ -1051,9 +1142,23 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return { ok: false, status: 409, error: "chat_unsupported" };
     }
     const providerSession = readProviderSession(node.payload);
-    if (!providerSession?.transcriptPath) return { ok: false, status: 409, error: "chat_transcript_missing" };
-    const transcriptPath = await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt);
-    if (!transcriptPath) return { ok: false, status: 409, error: "chat_transcript_missing" };
+    const transcriptPath = providerSession?.transcriptPath
+      ? await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt)
+      : null;
+    // 채팅으로 태어난 Operation에게 transcript 부재는 결함이 아니라 "아직 첫 턴 전"이다 —
+    // 첫 턴이 세션을 만들고 되쓰기가 좌표를 심는다. 전환된 Operation에서는 같은 부재가 과거의
+    // 상실이므로 지금까지처럼 거절한다(두 상태를 가르는 것이 chatBorn 표식의 존재 이유다).
+    //
+    // 다만 그 예외는 **첫 좌표가 생기기 전까지만** 산다. providerSession이 한 번 심리면 "아직
+    // 시작 전"은 거짓이 되므로, 그 뒤의 transcript 부재는 chatBorn Operation에서도 상실이다.
+    // 표식만 보고 fresh로 떨어뜨리면 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고,
+    // 그 세션의 되쓰기가 이전 정체성을 덮어쓴다 — 바로 그 상실을 막으려고 이 거절이 있다.
+    const chatBorn = node.payload[CHAT_BORN_PAYLOAD_KEY] === true;
+    const neverStarted = chatBorn && !providerSession;
+    if (!transcriptPath && !neverStarted) return { ok: false, status: 409, error: "chat_transcript_missing" };
+    const sessionOrigin: AgentChatSessionOrigin = transcriptPath
+      ? { kind: "resume", transcriptPath }
+      : { kind: "fresh", transcriptRoot: resolveClaudeProjectsRoot() };
     const origin = ctx.host.server.origin();
     if (!origin) return { ok: false, status: 503, error: "chat_gateway_unavailable" };
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -1068,7 +1173,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         model,
         ...(effort ? { effort } : {}),
         cwd,
-        transcriptPath,
+        origin: sessionOrigin,
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
@@ -1374,7 +1479,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     for (const operation of ctx.host.operations.list()) {
       if (operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) continue;
       const providerSession = readProviderSession(operation.payload);
-      if (!providerSession || observability.getTerminalSessionInfo(operation.id)) continue;
+      // 채팅으로 태어난 Operation은 첫 턴 전에는 providerSession이 없다 — 그래도 복원 대상이다.
+      // 여기서 걸러 내면 그 Operation은 관측 세션 없이 남아 활동 보고를 받을 자리가 사라지고,
+      // 첫 메시지가 chat_activity_unavailable로 거절된다(영영 시작하지 못하는 패널).
+      const chatBorn = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true;
+      if ((!providerSession && !chatBorn) || observability.getTerminalSessionInfo(operation.id)) continue;
       const dormant = injectOperation(operation);
       // 채팅이 인수한 Operation은 재시작을 건너서도 채팅이 인수한 상태다 — 마커는 payload에 남아
       // 있고 패널도 채팅 뷰로 복원되므로, 여기서 축을 되세우지 않으면 화면은 채팅을 띄운 채

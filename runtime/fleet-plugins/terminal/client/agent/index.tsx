@@ -189,6 +189,9 @@ export const agentPlugin = definePlugin({
       effort: variant?.effort,
       prompt: variant?.prompt,
       ...(attachmentIds?.length ? { attachmentIds } : {}),
+      // 모르는 값은 실어 보내지 않는다 — 서버가 최종 판정자지만, 오타가 400으로 왕복하며
+      // 초안을 잃게 하는 것보다 여기서 터미널로 접는 편이 낫다(기본이 곧 계약이다).
+      ...(variant?.viewMode === "chat" ? { viewMode: "chat" as const } : {}),
     });
     applySessionUpdate(session);
     selectSession(session.sessionId);

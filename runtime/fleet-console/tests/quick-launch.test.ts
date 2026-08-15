@@ -155,12 +155,12 @@ describe("quick launch preferences", () => {
   });
 
   it("round-trips the last selection", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false });
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false, view: "terminal" });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "xhigh", pinned: false, mentionFocused: false, view: "terminal" });
   });
 
   it("updates model and effort without replacing the last launched Theater", () => {
-    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
+    writeQuickLaunchSelection({ theaterId: "launched", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false, view: "terminal" });
 
     writeQuickLaunchModelEffort("codex--gpt-5.6-luna-fast", "max");
 
@@ -170,6 +170,7 @@ describe("quick launch preferences", () => {
       effort: "max",
       pinned: true,
       mentionFocused: false,
+      view: "terminal",
     });
   });
 
@@ -178,28 +179,29 @@ describe("quick launch preferences", () => {
       "fleet-console.quickLaunch.selection",
       JSON.stringify({ theaterId: "t1", model: "opus", effort: "high" }),
     );
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false, view: "terminal" });
     expect(JSON.parse(window.localStorage.getItem("fleet-console.quickLaunch.selection")!)).toEqual({
       theaterId: "t1",
       model: "opus[1m]",
       effort: "high",
       pinned: false,
       mentionFocused: false,
+      view: "terminal",
     });
   });
 
   it("reads an empty selection when nothing was stored", () => {
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false, view: "terminal" });
   });
 
   it("treats a corrupt entry as no memory rather than throwing", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", "{not json");
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: null, pinned: false, mentionFocused: false, view: "terminal" });
   });
 
   it("drops non-string fields instead of trusting them", () => {
     window.localStorage.setItem("fleet-console.quickLaunch.selection", JSON.stringify({ theaterId: 7, model: "", effort: "high" }));
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: null, model: null, effort: "high", pinned: false, mentionFocused: false, view: "terminal" });
   });
 
   it("treats any non-true pin value as unpinned rather than trusting it", () => {
@@ -216,7 +218,7 @@ describe("quick launch preferences", () => {
   });
 
   it("remembers mentionFocused beside pin instead of replacing it", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false, view: "terminal" });
     writeQuickLaunchMentionFocused(true);
     expect(readQuickLaunchSelection()).toEqual({
       theaterId: "t1",
@@ -224,6 +226,7 @@ describe("quick launch preferences", () => {
       effort: "high",
       pinned: true,
       mentionFocused: true,
+      view: "terminal",
     });
   });
 });
@@ -235,11 +238,11 @@ describe("quick launch pin", () => {
   });
 
   it("remembers the pin beside the launch coordinates instead of replacing them", () => {
-    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false });
+    writeQuickLaunchSelection({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: false, mentionFocused: false, view: "terminal" });
 
     writeQuickLaunchPinned(true);
 
-    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false });
+    expect(readQuickLaunchSelection()).toEqual({ theaterId: "t1", model: "opus[1m]", effort: "high", pinned: true, mentionFocused: false, view: "terminal" });
   });
 
   // 고정 중에는 여닫을 것이 없다 — 같은 키가 포커스를 왕복시킨다.
