@@ -429,7 +429,10 @@ function foldSegment(
   const seen = new Map<string, number>();
   steps.forEach((step, at) => {
     if (step.state === "running") { running.push(step); return; }
-    if (step.state === "fail" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
+    // 과거형 집계는 결과가 ok로 돌아온 스텝만 센다. 결과 없이 닫힌 스텝(`done`)을 "씀"으로
+    // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
+    // 두 표면이 서로 다른 사실을 말하게 된다. 확인되지 않은 것은 예외로 줄을 지킨다.
+    if (step.state !== "ok" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;
     const found = seen.get(key);

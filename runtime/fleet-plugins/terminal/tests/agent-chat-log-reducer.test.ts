@@ -255,6 +255,15 @@ describe("segmentAgentChatLedger", () => {
     ]);
   });
 
+  // 결과 없이 닫힌 스텝을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 쓰기를 원장이
+  // 다시 "씀"이라고 말한다 — 두 표면이 어긋난다. 확인되지 않은 것은 줄을 지킨다.
+  it("never counts a result-less step in the past-tense tally", () => {
+    const unconfirmed = tool("Write", { state: "done" });
+    const segments = segmentAgentChatLedger([note("쓰겠습니다."), tool("Read"), unconfirmed]);
+    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
+    expect(segments[0]?.inline).toEqual([unconfirmed]);
+  });
+
   it("counts an unknown tool under its own name", () => {
     const segments = segmentAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
     expect(segments[0]?.groups).toEqual([
