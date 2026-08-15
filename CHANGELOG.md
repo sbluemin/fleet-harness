@@ -5,6 +5,58 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.60.0] - 2026-08-15
+
+### fleet-cli
+
+#### Added
+- The AI Gateway honors Compact timing from Settings so Claude Code auto-compacts at Auto (window minus 16k), Early (88%), Late (97%), or a Custom 70-99 percent of each model window.
+
+### fleet-console
+
+#### Added
+- Settings > AI Gateway now has Compact timing (Auto / Early / Late / Custom) so a gateway session auto-compacts at a chosen share of each model's catalog window.
+- Clicking Console chrome outside the Map, including the left sidebar and right rail, or empty sea on the Map, now clears the active panel. Clicks on a panel, sidebar chip, or Map-owned menu keep it.
+- Show an Operation's group on its panel caption as a coloured dot and the group name, so membership reads without opening the sidebar.
+- Quick Launch can mention the focused Operation when opened, from an opt-in control next to pin.
+- Quick Launch `@` now lists the Quaker aides on duty beside your Operations, so a quick web question goes out from the composer instead of chasing a roaming mascot; the aide moors, answers in its own speech bubble, and "Open the full answer" hands the rest to its chat card.
+- Quick Launch `/effort` ends with a gate row that names and reveals the gated tiers the chosen model actually offers, and omits that row for a model that gates none, so the list tells a hidden tier apart from an unavailable one.
+- Quick Launch can start an Operation directly in chat view. Type `/view` and pick Chat view: no terminal opens, and your first message becomes the session's first turn. The choice is remembered, and while it is on the composer says so above the input and draws its own outline, so the launch bar keeps its single row. Switch back any time with "Use terminal view" or `/view`.
+- War Room cards show the same Operation mark as the sidebar, to the left of the title.
+
+#### Changed
+- Redesigned the Session Analyst drawer in the chat-view grammar: it now shares the operation panel surface, replaces the header band with floating identity and Artifacts chips, renders questions as identity-washed bubbles with turn spines, adds a collapsible work receipt per answer, promotes evidence citations to inline chips, and enlarges answer typography.
+- Merged the Session Analyst into a single panel with a Chat/Artifacts mode switch: published briefs open inline via the mode segment or the publish card, and the vertical ANALYZE/EXIT and ARTIFACTS edge handles are replaced by an Analyst chip that joins the view-chip cluster next to the chat-view switch.
+- Session Analyst evidence citations are now clickable: selecting an [eN] chip prefills the composer with a question that asks the analyst to show that evidence in context.
+- A chat Operation replies from a bubble button in the panel, which opens Quick Launch already addressed to that session; the status strip along the bottom of the chat view is gone and the log now runs to the panel edge.
+- Right-click no longer opens the operation launcher when no Theater is registered.
+- File Explorer marks every limit it used to hide: a folder listing cut at 500 entries shows a marker row, the file filter reports live scan progress and warns when its folder cap skips matches, palette search flags capped results, and an oversized git status notes hidden badges.
+- Version-control internals (.git, .svn, .hg) no longer appear in File Explorer listings, filters, or searches; with hidden files shown, a named muted row records what was withheld.
+- Ledger now reads a second local models breakdown so the rail can name suppliers and models instead of collapsing spend into CLI client rows.
+- Quick Launch no longer puts an ULTRACODE chip in the bar when the prompt contains `ultracode`. The notice above the field stays for the whole request, and the outline ignites before it cruises.
+- The Quaker mascots are now aides rather than admirals, so "Admiral" names only the host agent that plans and delegates.
+- Quick Launch `/model` pins each provider band to the top of the list while you scroll and indents model names under it, so a supplier is named once instead of on every row.
+- Quick Launch `/effort` paints each rung in the same tone ladder the effort track uses, with MAX and ULTRACODE carrying their own molten-copper and aurora treatments.
+- The reasoning-effort ladder spreads across its full available range, so neighbouring rungs read apart at a glance instead of only under direct comparison.
+- Quota cards now show Claude Max 5x/20x, Codex Pro 5x/20x, and xAI SuperGrok plan names.
+- A repository sync that finds nothing new now answers on the Sync button itself: the refresh icon settles into a check and returns, with a short hint beside it, instead of opening a notice that shifts the panel.
+- War Room now puts the real panel in every deck tile, so a shell rewraps to the tile it stands in instead of being a shrunken picture of itself; band layout, density, and the map dots are unchanged.
+- Admiral Bori still shows the alert mark, but no longer hops or flaps through a warning.
+
+#### Fixed
+- A chat Operation's panel caption now shows whether it is working, and a restored Operation reads as dormant there instead of idle.
+- Focusing a chat no longer retints the whole log. Caption and chat use the same fills as the terminal view: the panel face, with the focus wash on the caption only.
+- An Operation running in the chat view no longer reads as dormant. Closing the terminal ended the panel's only source of activity, so the sidebar said the session was asleep while the chat strip said it was working. Chat now reports its own turns, and the sidebar shows the same running, waiting, or idle signal the terminal view shows, and each chip now names the surface its Operation runs on with a small CLI or CHAT mark.
+- The Console no longer presents a guess as an activity state. When it cannot reach the source of that signal it says so in a banner and leaves the chips as they were, instead of quietly showing every Operation as idle.
+- A chat log no longer jumps to the top when the panel changes size, as it does when an Operation is promoted to the War Room stage. A log that was following the newest turn keeps following it, and a log you had scrolled up to read keeps showing the same place instead of being pulled to either end.
+- The docked Quick Launch bar now shows Ctrl+Space next to Mod+J, matching the shortcut that already opens it.
+- A chat Operation whose transcript is missing now says so instead of waiting on a connecting message forever, and the terminal button beside it is the way out.
+- Tactical Grid empty-slot boxes now match the occupied window, including the 32px caption, instead of drawing only the body.
+- The War Room deck reaches the bottom of the canvas, reclaiming a reserved strip that held nothing.
+
+#### Removed
+- Drop the accent stripe down a panel's left edge; identity now speaks only through the caption's nameplate mark, so an unfocused caption stays on the same surface as the panel.
+
 ## [1.59.0] - 2026-08-15
 
 ### fleet-cli
