@@ -8,5 +8,5 @@ branch: panel-group-caption-label
   ko: Operation의 그룹을 패널 캡션에 색 도트와 그룹 이름으로 표시해, 사이드바를 열지 않아도 소속이 읽힙니다.
 
 #### Removed
-- Drop the accent stripe down a panel's left edge; identity now speaks only through the caption's nameplate mark and wash.
-  ko: 패널 왼쪽 가장자리의 accent 띠를 걷어내고, 정체성은 캡션의 명판 마크와 워시로만 말합니다.
+- Drop the accent stripe down a panel's left edge; identity now speaks only through the caption's nameplate mark, so an unfocused caption stays on the same surface as the panel.
+  ko: 패널 왼쪽 가장자리의 accent 띠를 걷어내고, 정체성은 캡션의 명판 마크로만 말해 포커스가 없는 캡션이 패널과 한 면으로 남습니다.
