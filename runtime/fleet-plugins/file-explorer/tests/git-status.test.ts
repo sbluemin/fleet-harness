@@ -172,3 +172,34 @@ describe("handleFilesGitStatus", () => {
     }
   });
 });
+
+describe("readTheaterGitStatus truncation marker", () => {
+  it("exposes the cap when statuses exceed the 10,000-entry limit", async () => {
+    const record = " M file-\0";
+    const statusOutput = record.repeat(10_001);
+    const execGit = vi.fn(async (args: readonly string[]) => args.includes("status") ? statusOutput : "");
+
+    const result = await readTheaterGitStatus("/theater", {
+      environment: { PATH: "/usr/bin" },
+      execGit,
+      realpath: async () => "/real/theater",
+    });
+
+    expect(result.truncated).toBe(true);
+    expect(result.cap).toBe(10_000);
+    expect(result.statuses).toHaveLength(10_000);
+  });
+
+  it("omits the cap fields when under the limit", async () => {
+    const execGit = vi.fn(async (args: readonly string[]) => args.includes("status") ? " M a.ts\0" : "");
+
+    const result = await readTheaterGitStatus("/theater", {
+      environment: { PATH: "/usr/bin" },
+      execGit,
+      realpath: async () => "/real/theater",
+    });
+
+    expect(result.truncated).toBeUndefined();
+    expect(result.cap).toBeUndefined();
+  });
+});

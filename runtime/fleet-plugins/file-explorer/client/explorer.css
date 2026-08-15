@@ -256,13 +256,44 @@
   overflow: hidden;
 }
 
+/* 필터 바 + 스캔/캡/git 표식을 하나의 auto 행으로 묶는다 — 트리의 1fr 행을 지키기 위함. */
+.fexp-head {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
 .fexp-filter {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
   padding: 5px 8px;
-  border-bottom: 1px solid var(--surface-rim);
+}
+
+.fexp-filter-scan {
+  padding: 0 12px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.fexp-filter-cap {
+  margin: 0 10px 8px;
+  padding: 4px 8px;
+  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in oklch, var(--warn) 9%, transparent);
+  color: var(--warn-ink);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.fexp-git-note {
+  padding: 0 12px 6px;
+  font-size: 11px;
+  color: var(--warn-ink);
 }
 
 .fexp-filter-input {
@@ -390,6 +421,37 @@
   font-size: 11px;
   color: var(--text-tertiary);
   animation: none;
+}
+
+/* 목록 상한 표식 행 — 트리 행과 동일한 30px를 지켜 가상화 높이 계산을 보존한다. */
+.fexp-tree-cap {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 8%, transparent);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* VCS 날것 숨김 표식 행 — 비활성, 포커스 불가. */
+.fexp-tree-vcs {
+  display: flex;
+  align-items: center;
+  height: 30px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: 12px;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: default;
 }
 
 .fexp-git-badge {

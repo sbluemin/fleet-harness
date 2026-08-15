@@ -27,6 +27,8 @@ export interface RailSearchRequest {
   readonly theaterId: string;
   readonly limit: number;
   readonly signal: AbortSignal;
+  /** 결과 문자열을 로컬라이즈할 로케일 — 코어가 주입한다. */
+  readonly language?: ConsoleLocale;
 }
 
 export interface RailSearchResult {
@@ -34,6 +36,8 @@ export interface RailSearchResult {
   readonly title: string;
   readonly subtitle?: string;
   readonly activate: () => void | Promise<void>;
+  /** "info"는 선택 불가 메타데이터 행 — 키보드 이동과 활성화에서 빠지고 읽기 전용으로 렌더된다. */
+  readonly kind?: "info";
 }
 
 export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;

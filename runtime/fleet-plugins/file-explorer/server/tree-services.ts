@@ -29,6 +29,9 @@ export class FolderBrowserError extends Error {
 
 const DIRECTORY_ENTRY_CAP = 500;
 
+/** 버전 관리 날것 디렉터리 — 목록·필터·검색에서 항상 제외하고, 제외 사실은 hiddenVcsInternals로 알린다. */
+export const VCS_INTERNAL_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg"]);
+
 export async function listTheaterContents(
   theaterPath: string,
   relativePath: string,
@@ -57,12 +60,15 @@ export async function listTheaterContents(
   if (realTargetAbs !== realRoot && !realTargetAbs.startsWith(realNormalizedRoot)) {
     throw new FolderBrowserError("forbidden");
   }
+  // 요청된 폴터 자체가 VCS 날것으로 실해석되면(리타기팅된 별칭 등) 수집을 거부한다.
+  if (vcsSegmentOf(realRoot, realTargetAbs)) throw new FolderBrowserError("forbidden");
 
   const targetStat = await statDirectory(realTargetAbs, stat);
   if (!targetStat.isDirectory()) throw new FolderBrowserError("invalid_path");
 
   const entries: FolderEntry[] = [];
-  const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries);
+  const hiddenVcs: string[] = [];
+  const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries, hiddenVcs);
   entries.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -73,7 +79,8 @@ export async function listTheaterContents(
     relativePath: rel,
     parentRelativePath: parentRel === "" ? null : (parentRel ?? null),
     entries,
-    ...(truncated ? { truncated: true as const } : {}),
+    ...(truncated ? { truncated: true as const, cap: DIRECTORY_ENTRY_CAP } : {}),
+    ...(hiddenVcs.length > 0 ? { hiddenVcsInternals: [...new Set(hiddenVcs)].sort() } : {}),
   };
 }
 
@@ -91,14 +98,30 @@ async function collectContentsEntries(
   opendir: typeof fs.promises.opendir,
   stat: typeof fs.promises.stat,
   entries: FolderEntry[],
+  hiddenVcs: string[],
 ): Promise<boolean> {
   const directory = await openDirectory(targetPath, opendir);
   try {
     let dirent = await directory.read();
     while (dirent !== null) {
-      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
+      // 분류(이름 + 심링크 실해석)가 cap 판정보다 먼저다 — 상한은 "표시 가능한" 항목만 센다.
+      if (VCS_INTERNAL_NAMES.has(dirent.name)) {
+        hiddenVcs.push(dirent.name);
+        dirent = await directory.read();
+        continue;
+      }
       const entry = await toContentsEntry(targetPath, theaterPath, dirent, stat);
-      if (entry !== null) entries.push(entry);
+      if (entry === null) {
+        dirent = await directory.read();
+        continue;
+      }
+      if ("vcsInternal" in entry) {
+        hiddenVcs.push(entry.vcsInternal);
+        dirent = await directory.read();
+        continue;
+      }
+      if (entries.length >= DIRECTORY_ENTRY_CAP) return true;
+      entries.push(entry);
       dirent = await directory.read();
     }
     return false;
@@ -117,12 +140,27 @@ async function openDirectory(targetPath: string, opendir: typeof fs.promises.ope
   }
 }
 
+/** 심링크 별칭이 VCS 날것으로 확인된 경우의 표식 — 목록에서 빼고 이름을 기록한다. */
+interface VcsInternalMarker {
+  readonly vcsInternal: string;
+}
+
+/** 실해석 경로가 Theater 루트 아래의 VCS 날것(.git 등) 안에 있으면 그 세그먼트 이름을 반환한다. */
+function vcsSegmentOf(realRoot: string, realPath: string): string | null {
+  const rel = path.relative(realRoot, realPath);
+  if (!rel) return null;
+  for (const segment of rel.split(path.sep)) {
+    if (VCS_INTERNAL_NAMES.has(segment)) return segment;
+  }
+  return null;
+}
+
 async function toContentsEntry(
   targetPath: string,
   theaterPath: string,
   dirent: fs.Dirent,
   stat: typeof fs.promises.stat,
-): Promise<FolderEntry | null> {
+): Promise<FolderEntry | VcsInternalMarker | null> {
   const entryPath = path.join(targetPath, dirent.name);
   const rel = path.relative(theaterPath, entryPath);
   if (dirent.isDirectory()) return { name: dirent.name, relativePath: rel, kind: "dir" };
@@ -134,6 +172,9 @@ async function toContentsEntry(
       const realEntryPath = await fs.promises.realpath(entryPath);
       const realNormalizedRoot = theaterPath.endsWith(path.sep) ? theaterPath : theaterPath + path.sep;
       if (realEntryPath !== theaterPath && !realEntryPath.startsWith(realNormalizedRoot)) return null;
+      // 이름 우회 별칭(metadata -> .git)도 실해석 경로의 세그먼트로 VCS 날것을 판별한다.
+      const vcsSegment = vcsSegmentOf(theaterPath, realEntryPath);
+      if (vcsSegment) return { vcsInternal: vcsSegment };
       const s = await stat(realEntryPath);
       if (s.isDirectory()) return { name: dirent.name, relativePath: rel, kind: "dir" };
       if (s.isFile()) return { name: dirent.name, relativePath: rel, kind: "file" };
@@ -165,6 +206,8 @@ export interface GitStatusResult {
   readonly gitAvailable: boolean;
   readonly statuses: readonly GitStatusEntry[];
   readonly truncated?: true;
+  /** truncated일 때의 상한 값 */
+  readonly cap?: number;
 }
 
 export type GitStatusPathErrorCode = "invalid_path" | "not_found" | "forbidden";
@@ -241,7 +284,7 @@ export async function readTheaterGitStatus(
       ok: true,
       gitAvailable: true,
       statuses: statuses.slice(0, GIT_STATUS_CAP),
-      ...(truncated ? { truncated: true as const } : {}),
+      ...(truncated ? { truncated: true as const, cap: GIT_STATUS_CAP } : {}),
     };
   } catch {
     return { ok: true, gitAvailable: false, statuses: [] };
@@ -364,7 +407,13 @@ function mapGitStatusFsError(error: unknown): GitStatusPathError {
 const SEARCH_DIRECTORY_CAP = 500;
 const SEARCH_ENTRY_CAP = 25_000;
 
-export async function searchTheaterFiles(theaterPath: string, query: string, limit: number): Promise<FileSearchItem[]> {
+export interface TheaterFileSearchOutcome {
+  readonly files: readonly FileSearchItem[];
+  readonly totalMatches: number;
+  readonly walkCapped?: true;
+}
+
+export async function searchTheaterFiles(theaterPath: string, query: string, limit: number): Promise<TheaterFileSearchOutcome> {
   const realRoot = await fsp.realpath(theaterPath);
   const tokens = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
   const pending: Array<{ readonly absolutePath: string; readonly relativePath: string }> = [{ absolutePath: realRoot, relativePath: "" }];
@@ -372,8 +421,14 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
   const matches: FileSearchItem[] = [];
   let directoryCount = 0;
   let entryCount = 0;
+  let walkCapped = false;
 
-  while (pending.length > 0 && directoryCount < SEARCH_DIRECTORY_CAP && entryCount < SEARCH_ENTRY_CAP) {
+  while (pending.length > 0) {
+    if (directoryCount >= SEARCH_DIRECTORY_CAP || entryCount >= SEARCH_ENTRY_CAP) {
+      // 상한 도달은 조용히 끝내지 않고 호출자에게 알린다 — 클라이언트가 표식을 띄운다.
+      walkCapped = true;
+      break;
+    }
     const directory = pending.shift();
     if (!directory || visited.has(directory.absolutePath)) continue;
     visited.add(directory.absolutePath);
@@ -388,8 +443,10 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
     entries.sort((left, right) => left.name.localeCompare(right.name));
 
     for (const entry of entries) {
-      if (entryCount >= SEARCH_ENTRY_CAP) break;
+      if (entryCount >= SEARCH_ENTRY_CAP) { walkCapped = true; break; }
       entryCount += 1;
+      // VCS 날것은 검색 대상에서 항상 제외한다.
+      if (VCS_INTERNAL_NAMES.has(entry.name)) continue;
       const relativePath = directory.relativePath ? `${directory.relativePath}/${entry.name}` : entry.name;
       const absolutePath = path.join(directory.absolutePath, entry.name);
       let kind: "dir" | "file" | null = entry.isDirectory() ? "dir" : entry.isFile() ? "file" : null;
@@ -398,6 +455,8 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
         try {
           realPath = await fsp.realpath(absolutePath);
           if (!isContained(realRoot, realPath)) continue;
+          // 별칭 심링크가 가리키는 VCS 날것도 검색 대상에서 제외한다.
+          if (vcsSegmentOf(realRoot, realPath)) continue;
           const stat = await fsp.stat(realPath);
           kind = stat.isDirectory() ? "dir" : stat.isFile() ? "file" : null;
         } catch {
@@ -412,11 +471,16 @@ export async function searchTheaterFiles(theaterPath: string, query: string, lim
       const low = relativePath.toLocaleLowerCase();
       if (tokens.every((token) => low.includes(token))) matches.push({ relativePath });
     }
+    if (walkCapped) break;
   }
 
-  return matches
-    .sort((left, right) => compareFileSearchItem(left, right, query))
-    .slice(0, limit);
+  const sorted = matches
+    .sort((left, right) => compareFileSearchItem(left, right, query));
+  return {
+    files: sorted.slice(0, limit),
+    totalMatches: sorted.length,
+    ...(walkCapped ? { walkCapped: true as const } : {}),
+  };
 }
 
 export async function handleFilesSearch(
@@ -446,8 +510,11 @@ export async function handleFilesSearch(
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   try {
+    const outcome = await searchTheaterFiles(theaterPath, body.query, body.limit as number);
     ctx.host.http.writeJson(res, 200, {
-      files: await searchTheaterFiles(theaterPath, body.query, body.limit as number),
+      files: outcome.files,
+      totalMatches: outcome.totalMatches,
+      ...(outcome.walkCapped ? { walkCapped: true } : {}),
     });
   } catch {
     ctx.host.http.writeJson(res, 500, { error: "search_failed" });

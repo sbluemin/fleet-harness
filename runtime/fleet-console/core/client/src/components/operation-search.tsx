@@ -110,7 +110,8 @@ export function OperationSearch({
   );
   const tokens = useMemo(() => searchTokens(commandMode ? commandModeQuery(query) : query), [commandMode, query]);
   const railSearchEntries = useMemo(
-    () => railSearchGroups.flatMap((group) => group.results.map((result) => ({ group, result }))),
+    // info 행(상한 표식 등)은 표시만 하고 키보드 이동·활성화 대상에서는 뺀다.
+    () => railSearchGroups.flatMap((group) => group.results.filter((result) => result.kind !== "info").map((result) => ({ group, result }))),
     [railSearchGroups],
   );
   const primaryResultCount = commandMode
@@ -606,6 +607,20 @@ export function OperationSearch({
                       const index = matchedCommands.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
                       const active = index === clampedSelectedIndex;
                       const resultKey = railResultKey(group.panelId, result.id);
+                      if (result.kind === "info") {
+                        // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
+                        return (
+                          <div
+                            key={result.id}
+                            className="operation-search-result operation-search-panel-info"
+                          >
+                            <span className="operation-search-result-text">
+                              <strong>{highlightText(result.title, tokens)}</strong>
+                              {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                            </span>
+                          </div>
+                        );
+                      }
                       return (
                         <button
                           id={resultOptionId(resultKey)}
@@ -688,6 +703,20 @@ export function OperationSearch({
                       const index = filteredEntries.length + railSearchEntries.findIndex((entry) => entry.group.panelId === group.panelId && entry.result === result);
                       const active = index === clampedSelectedIndex;
                       const resultKey = railResultKey(group.panelId, result.id);
+                      if (result.kind === "info") {
+                        // 읽기 전용 표식 행 — option 역할·활성화·"열기" 어포던스를 모두 붙이지 않는다.
+                        return (
+                          <div
+                            key={result.id}
+                            className="operation-search-result operation-search-panel-info"
+                          >
+                            <span className="operation-search-result-text">
+                              <strong>{highlightText(result.title, tokens)}</strong>
+                              {result.subtitle ? <small>{highlightText(result.subtitle, tokens)}</small> : null}
+                            </span>
+                          </div>
+                        );
+                      }
                       return (
                         <button
                           id={resultOptionId(resultKey)}

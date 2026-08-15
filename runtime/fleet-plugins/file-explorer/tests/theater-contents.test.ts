@@ -57,10 +57,169 @@ describe("listTheaterContents", () => {
       expect(opendir).toHaveBeenCalledWith(fs.realpathSync(dir), { bufferSize: 501 });
       expect(result.entries).toHaveLength(expectedLength);
       if (truncated) {
-        expect(result).toMatchObject({ truncated: true });
+        expect(result).toMatchObject({ truncated: true, cap: 500 });
       } else {
         expect(result).not.toHaveProperty("truncated");
       }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("VCS 날것(.git/.svn/.hg)은 목록에서 빼고 hiddenVcsInternals로 알린다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-vcs-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.mkdirSync(path.join(dir, ".svn"));
+    fs.mkdirSync(path.join(dir, ".hg"));
+    fs.writeFileSync(path.join(dir, ".env"), "SECRET=1");
+    fs.mkdirSync(path.join(dir, "src"));
+
+    try {
+      const result = await listTheaterContents(dir, "");
+      const names = result.entries.map((e) => e.name);
+
+      expect(names).not.toContain(".git");
+      expect(names).not.toContain(".svn");
+      expect(names).not.toContain(".hg");
+      expect(names).toContain(".env");
+      expect(names).toContain("src");
+      expect(result.hiddenVcsInternals).toEqual([".git", ".hg", ".svn"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("VCS 날것이 없으면 hiddenVcsInternals를 생략한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-novcs-"));
+    fs.mkdirSync(path.join(dir, "src"));
+
+    try {
+      const result = await listTheaterContents(dir, "");
+
+      expect(result).not.toHaveProperty("hiddenVcsInternals");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("VCS 날것은 항목 상한 카운트에 포함하지 않는다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-vcscap-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    for (let index = 0; index < 500; index++) {
+      fs.writeFileSync(path.join(dir, `file-${String(index).padStart(3, "0")}.txt`), "");
+    }
+
+    try {
+      const result = await listTheaterContents(dir, "");
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).not.toHaveProperty("truncated");
+      expect(result.hiddenVcsInternals).toEqual([".git"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("listTheaterContents VCS edge cases", () => {
+  it(".git을 가리키는 심링크 별칭도 VCS 날것으로 분류해 숨긴다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-alias-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main");
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+
+    try {
+      const result = await listTheaterContents(dir, "");
+      const names = result.entries.map((e) => e.name);
+
+      expect(names).not.toContain("metadata");
+      expect(result.hiddenVcsInternals).toContain(".git");
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("500개 항목 뒤에 오는 .git도 cap 판정 전에 기록한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-order-"));
+    // readdir 순서를 통제하기 위해 opendir을 스텁한다: 파일 500개를 먼저, .git을 마지막에 낸다.
+    const dirents = [
+      ...Array.from({ length: 500 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      {
+        name: ".git",
+        isDirectory: () => true,
+        isFile: () => false,
+        isSymbolicLink: () => false,
+      },
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+
+      // 표시 가능한 항목은 정확히 500개 — 잘린 것이 없으므로 truncated가 아니어야 하고,
+      // .git은 cap 판정 전에 분류되어 마커 정보가 남아야 한다.
+      expect(result.entries).toHaveLength(500);
+      expect(result).not.toHaveProperty("truncated");
+      expect(result.hiddenVcsInternals).toEqual([".git"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("500개 항목 뒤의 .git 별칭 심링크도 cap 판정 전에 실해석으로 분류한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-aliascap-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+    // 순서 통제: 표시 가능 파일 500개를 먼저, 별칭 심링크를 마지막에 낸다.
+    const dirents = [
+      ...Array.from({ length: 500 }, (_, i) => ({
+        name: `file-${String(i).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      })),
+      {
+        name: "metadata",
+        isDirectory: () => false,
+        isFile: () => false,
+        isSymbolicLink: () => true,
+      },
+    ];
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).not.toHaveProperty("truncated");
+      expect(result.hiddenVcsInternals).toEqual([".git"]);
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("listTheaterContents resolved-target quarantine", () => {
+  it("요청된 폴터가 VCS 날것으로 실해석되면 수집을 거부한다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-retarget-"));
+    fs.mkdirSync(path.join(dir, ".git"));
+    fs.writeFileSync(path.join(dir, ".git", "HEAD"), "ref: refs/heads/main");
+    // 처음엔 정상 디렉터리를 가리키다가 .git으로 리타기팅된 별칭을 재현한다.
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+
+    try {
+      await expect(listTheaterContents(dir, "metadata")).rejects.toMatchObject({ code: "forbidden" });
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

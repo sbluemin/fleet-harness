@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { buildFlatRows, resolveTreeNavigation } from "../client/tree.js";
+import { buildFlatRows, isEntryRow, resolveTreeNavigation, type EntryRow } from "../client/tree.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
 describe("FileTree keyboard navigation", () => {
@@ -72,14 +72,15 @@ function createHarness(
   const tree = document.createElement("div");
   tree.setAttribute("role", "tree");
   document.body.replaceChildren(tree);
-  let cursorPath = getRows()[0]?.entry.relativePath ?? null;
+  let cursorPath = getRows().find(isEntryRow)?.entry.relativePath ?? null;
 
   const render = () => {
     const currentRows = getRows();
-    if (!currentRows.some((row) => row.entry.relativePath === cursorPath)) {
-      cursorPath = currentRows[0]?.entry.relativePath ?? null;
+    if (!currentRows.some((row) => isEntryRow(row) && row.entry.relativePath === cursorPath)) {
+      cursorPath = currentRows.find(isEntryRow)?.entry.relativePath ?? null;
     }
-    tree.replaceChildren(...currentRows.map((row, index) => {
+    tree.replaceChildren(...currentRows.flatMap((row, index) => {
+      if (!isEntryRow(row)) return [];
       const button = document.createElement("button");
       button.dataset.path = row.entry.relativePath;
       button.tabIndex = row.entry.relativePath === cursorPath ? 0 : -1;
@@ -95,7 +96,8 @@ function createHarness(
         }
         event.preventDefault();
         if (action.kind === "focus") {
-          cursorPath = currentRows[action.index]?.entry.relativePath ?? cursorPath;
+          const target = currentRows[action.index];
+          cursorPath = target && isEntryRow(target) ? target.entry.relativePath : cursorPath;
           render();
           focusCursor();
           return;
@@ -106,12 +108,12 @@ function createHarness(
         render();
         focusCursor();
       });
-      return button;
+      return [button];
     }));
     focusCursor();
   };
 
-  const activate = (row: ReturnType<typeof buildFlatRows>[number]) => {
+  const activate = (row: EntryRow) => {
     activated(row.entry.relativePath);
     if (row.entry.kind !== "dir") return;
     if (expanded.has(row.entry.relativePath)) expanded.delete(row.entry.relativePath);
