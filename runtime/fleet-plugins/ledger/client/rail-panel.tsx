@@ -73,7 +73,7 @@ function operationHostLabel(
   t: T,
 ): string {
   if (operation.launchProvider && operation.launchProvider !== "claude") {
-    return t("ledger.operation.host", { supplier: supplierLabel(operation.launchProvider, t) });
+    return supplierLabel(operation.launchProvider, t);
   }
   return operation.cliLabel || t("ledger.value.unknownCli");
 }

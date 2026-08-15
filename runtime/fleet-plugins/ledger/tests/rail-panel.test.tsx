@@ -595,14 +595,14 @@ describe("Ledger trend scale and attributed layer", () => {
 });
 
 describe("Ledger dual-source host and model rows", () => {
-  it("names a Gateway host as the supplier via Claude Code", async () => {
+  it("names a Gateway host as the supplier", async () => {
     const value = dto("ok");
     await renderWith({
       ...value,
       operations: [{ ...value.operations[0]!, launchProvider: "cursor", cliLabel: "Claude Code" }],
     });
     expect(container.querySelector(".ledger-operation-copy small")?.textContent)
-      .toBe("Cursor via Claude Code · 4 messages");
+      .toBe("Cursor · 4 messages");
   });
 
   it("keeps an unpriced model row visible and does not add models-command cost to the hero", async () => {
