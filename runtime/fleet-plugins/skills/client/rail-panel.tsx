@@ -110,7 +110,9 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         <button
           type="button"
           role="tab"
+          id="skills-tab-installed"
           aria-selected={activeTab === "installed"}
+          aria-controls="skills-tabpanel"
           className={`skills-tab-btn${activeTab === "installed" ? " is-active" : ""}`}
           onClick={() => setActiveTab("installed")}
         >
@@ -119,7 +121,9 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         <button
           type="button"
           role="tab"
+          id="skills-tab-find"
           aria-selected={activeTab === "find"}
+          aria-controls="skills-tabpanel"
           className={`skills-tab-btn${activeTab === "find" ? " is-active" : ""}`}
           onClick={() => setActiveTab("find")}
         >
@@ -127,22 +131,31 @@ function SkillsPanelBody({ ctx }: SkillsPanelProps) {
         </button>
       </div>
 
-      {activeTab === "installed" ? (
-        <InstalledTab
-          theaterId={theaterId}
-          onReadMore={handleReadMoreInstalled}
-          refreshKey={installedRefreshKey}
-          t={t}
-          language={ctx.language}
-        />
-      ) : (
-        <FindTab
-          theaterId={theaterId}
-          onReadMore={handleReadMoreFind}
-          onInstallSuccess={handleInstallSuccess}
-          t={t}
-        />
-      )}
+      {/* 탭이 선택 상태를 읽어 주어도 그 내용과 이어져 있지 않으면 보조기술은 무엇이 바뀌었는지
+          알 수 없다. 두 탭은 같은 자리를 갈아 끼우므로 패널도 하나다. */}
+      <div
+        role="tabpanel"
+        id="skills-tabpanel"
+        aria-labelledby={activeTab === "installed" ? "skills-tab-installed" : "skills-tab-find"}
+        className="skills-tabpanel"
+      >
+        {activeTab === "installed" ? (
+          <InstalledTab
+            theaterId={theaterId}
+            onReadMore={handleReadMoreInstalled}
+            refreshKey={installedRefreshKey}
+            t={t}
+            language={ctx.language}
+          />
+        ) : (
+          <FindTab
+            theaterId={theaterId}
+            onReadMore={handleReadMoreFind}
+            onInstallSuccess={handleInstallSuccess}
+            t={t}
+          />
+        )}
+      </div>
 
       <Toast message={toastMessage} onDismiss={() => setToastMessage(null)} />
 

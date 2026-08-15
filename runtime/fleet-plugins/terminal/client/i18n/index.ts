@@ -362,6 +362,9 @@ export const terminalEn = {
   "terminal.failure.unauthorized.cause": "The Console rejected the request. Reload the page to get a fresh authorization.",
   "terminal.failure.generic.title": "Cannot reach this terminal",
   "terminal.failure.generic.cause": "The Console rejected the connection and it keeps retrying. If this stays, reload the page.",
+  "terminal.failure.relaunch.title": "This Shell did not restart",
+  "terminal.failure.relaunch.cause": "The Console refused to relaunch it. Try again, or close this Operation and start a new Shell.",
+  "terminal.failure.relaunch.retry": "Try again",
 } as const;
 
 export const terminalKo: Record<keyof typeof terminalEn, string> = {
@@ -720,6 +723,9 @@ export const terminalKo: Record<keyof typeof terminalEn, string> = {
   "terminal.failure.unauthorized.cause": "Console이 요청을 거절했습니다. 페이지를 새로고침하면 새 권한을 받습니다.",
   "terminal.failure.generic.title": "이 터미널에 연결할 수 없습니다",
   "terminal.failure.generic.cause": "Console이 연결을 거절했고 계속 다시 시도하고 있습니다. 그대로면 페이지를 새로고침하세요.",
+  "terminal.failure.relaunch.title": "이 Shell이 다시 시작되지 않았습니다",
+  "terminal.failure.relaunch.cause": "Console이 재기동을 거절했습니다. 다시 시도하거나, 이 Operation을 닫고 새 Shell을 시작하세요.",
+  "terminal.failure.relaunch.retry": "다시 시도",
 };
 
 export const TERMINAL_MESSAGES = { en: terminalEn, ko: terminalKo } as const;

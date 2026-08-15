@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
+import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { SkillListItem } from "../server/skill-types.js";
@@ -49,6 +50,8 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   const installedLoading = hasInstalledStateForContext(state, contextKey) && state.installedLoading;
   const updateLog = useJobLog();
   const updateScopeRef = useRef<Scope | null>(null);
+  const [removeFailed, setRemoveFailed] = useState(false);
+  const lastRemoveRef = useRef<{ readonly name: string; readonly scope: string } | null>(null);
 
   const loadList = useCallback((tid: string | null) => {
     const requestContextKey = skillsContextKey(tid);
@@ -83,15 +86,27 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     if (removeScope === "project" && theaterId) {
       body["theaterId"] = theaterId;
     }
+    lastRemoveRef.current = { name, scope: removeScope };
+    setRemoveFailed(false);
 
     void fetch("/plugins/skills/remove", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     })
-      .then(() => loadList(theaterId))
-      .catch(() => null);
+      .then((response) => {
+        // fetch는 4xx·5xx에도 resolve한다. ok를 보지 않으면 서버가 거절한 제거가 성공으로
+        // 처리되고, 목록만 다시 불러와 아무 일도 없던 것처럼 보인다 — 스킬은 그대로 남는다.
+        if (!response.ok) throw new Error(String(response.status));
+        loadList(theaterId);
+      })
+      .catch(() => setRemoveFailed(true));
   }, [theaterId, loadList]);
+
+  const retryRemove = useCallback(() => {
+    const last = lastRemoveRef.current;
+    if (last) handleRemove(last.name, last.scope);
+  }, [handleRemove]);
 
   const handleRetry = useCallback(() => {
     if (updateScopeRef.current) handleUpdate(updateScopeRef.current);
@@ -167,6 +182,16 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
           ))}
         </div>
       </div>
+
+      {removeFailed ? (
+        <FailureNotice
+          title={t("skills.failure.remove.title")}
+          cause={t("skills.failure.remove.cause")}
+          actions={[{ label: t("skills.failure.remove.retry"), onSelect: retryRemove, primary: true }]}
+          tone="coral"
+          className="skills-remove-failure"
+        />
+      ) : null}
 
       <JobStatusDock
         status={updateLog.status}

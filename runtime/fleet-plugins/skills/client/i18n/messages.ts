@@ -50,6 +50,9 @@ export const skillsEn = {
   "skills.markdown.copy": "Copy",
   "skills.markdown.copyCodeAria": "Copy {language} code",
   "skills.markdown.copied": "Copied",
+  "skills.failure.remove.title": "That skill could not be removed",
+  "skills.failure.remove.cause": "The Console rejected the request, so the skill is still installed. Try again, or reload the page.",
+  "skills.failure.remove.retry": "Try again",
 } as const;
 
 export const skillsKo: Record<keyof typeof skillsEn, string> = {
@@ -104,6 +107,9 @@ export const skillsKo: Record<keyof typeof skillsEn, string> = {
   "skills.markdown.copy": "복사",
   "skills.markdown.copyCodeAria": "{language} 코드 복사",
   "skills.markdown.copied": "복사됨",
+  "skills.failure.remove.title": "그 스킬을 제거하지 못했습니다",
+  "skills.failure.remove.cause": "Console이 요청을 거절해 스킬이 그대로 남아 있습니다. 다시 시도하거나 페이지를 새로고침하세요.",
+  "skills.failure.remove.retry": "다시 시도",
 };
 
 export const SKILLS_MESSAGES = { en: skillsEn, ko: skillsKo } as const;
