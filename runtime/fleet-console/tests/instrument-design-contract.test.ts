@@ -2197,6 +2197,121 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(/data-effort-level="ultra"\] \.effort-track-fill::before,[\s\S]{0,120}::after \{[^}]*content: "✦"/);
   });
 
+  it("pins the effort tone ramp between the reading floor and brass, with no signal channel borrowed", () => {
+    const components = source("styles/components.css");
+    // 끝 앵커는 줄머리로 잡는다 — `.effort-track-shell {`는 앞선 `.operation-launch-effort-menu
+    // .effort-track-shell {`에도 부분 문자열로 걸려, 그대로 쓰면 램프 앞을 가리켜 빈 슬라이스가 된다.
+    const ramp = components.slice(
+      components.indexOf('[data-effort-level] { --effort-tone:'),
+      components.indexOf("\n.effort-track-shell {"),
+    );
+    expect(ramp).not.toBe("");
+
+    // 램프는 판독 하한(--text-tertiary)에서 출발해 --brass-ink에서 끝난다. 양 끝을 안쪽으로
+    // 접어 두면 구간이 좁아져, 한 번에 한 값만 보이는 트랙에서 단이 바뀌어도 색이 그대로인
+    // 것처럼 읽힌다 — 최고 일상 단은 brass 그 자체이고, 최저 단만 하한에서 살짝 띄운다.
+    expect(ramp).toContain('[data-effort-level="auto"] { --effort-tone: var(--text-tertiary); }');
+    expect(ramp).toContain('[data-effort-level="xhigh"] { --effort-tone: var(--brass-ink); }');
+    expect(ramp).toMatch(/\[data-effort-level="low"\] \{ --effort-tone: color-mix\(in oklab, var\(--brass-ink\) 10%/);
+
+    // 보간은 oklab이다. oklch로 섞으면 중간 단이 tertiary의 hue와 brass 사이 호를 따라가
+    // positive·coral 같은 상태 채널을 강도 라벨이 흉내 낸다.
+    for (const rung of ["low", "medium", "high"]) {
+      expect(ramp, rung).toContain(`[data-effort-level="${rung}"] { --effort-tone: color-mix(in oklab, var(--brass-ink)`);
+    }
+
+    // 일상 단은 brass 한 채널 안에서만 논다 — 게이트 뒤 두 단만 자기 채널로 갈라진다.
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive"]) {
+      expect(ramp, signal).not.toContain(signal);
+    }
+    expect(ramp).toContain('[data-effort-level="max"] { --effort-tone: var(--crest-ink); }');
+    expect(ramp).toContain('[data-effort-level="ultra"] { --effort-tone: var(--apex-ink); }');
+  });
+
+  it("pins the Quick Launch effort row grammar — value tone yields to the location channel", () => {
+    const components = source("styles/components.css");
+    const composer = source("components/quick-launch.tsx");
+
+    // 덱 행은 트랙과 같은 좌표(data-effort-level)로 색을 읽는다 — 라벨 문자열은 번역·모델마다
+    // 달라 색의 기준이 될 수 없다.
+    expect(composer).toContain("data-effort-level={row.effortLevel}");
+    expect(composer).toContain("data-apex={row.apex ? true : undefined}");
+
+    // 값 톤은 활성 행에 올라가지 않는다. brass는 위치·초점 채널이라, 값 톤이 그 자리를 침범하면
+    // "지금 보고 있는 행"과 "높은 단"이 서로를 흉내 낸다.
+    expect(components).toMatch(
+      /\.quick-launch-command-row\[data-effort-level\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*color: var\(--effort-tone\);/,
+    );
+    expect(components).toMatch(/\.quick-launch-mention-row\.is-active \.quick-launch-mention-name \{\s*color: var\(--brass\);/);
+
+    // 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다 — 트랙의 파선 어휘를 공유한다.
+    expect(components).toMatch(
+      /\.quick-launch-command-row\[data-effort-level="auto"\] \.quick-launch-mention-name \{[^}]*text-decoration: underline dashed;/,
+    );
+
+    // 문 행은 apex 채널로만 말한다(트랙의 ✦ 토글과 같은 어휘). 신호 토큰도 위치 채널도 빌리지 않는다.
+    const gateRule = components.match(/\.quick-launch-command-row\.is-gate \.quick-launch-mention-name \{[^}]*\}/)?.[0] ?? "";
+    const gateGlyph = components.match(/\.quick-launch-command-gate-glyph \{[^}]*\}/)?.[0] ?? "";
+    expect(gateRule).toContain("var(--apex-ink)");
+    expect(gateGlyph).toContain("var(--apex-ink)");
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass)"]) {
+      expect(gateRule, signal).not.toContain(signal);
+      expect(gateGlyph, signal).not.toContain(signal);
+    }
+  });
+
+  it("holds the deck's apex motion to the track's condition and reduced-motion cutoff", () => {
+    const components = source("styles/components.css");
+
+    // 덱은 트랙과 같은 키프레임을 쓴다 — 같은 능력이면 같은 어휘다. MAX의 이글거림은 트랙과
+    // 똑같이 data-apex(게이트 뒤 티어)에만 붙어, 게이트 없는 모델의 max는 정적 글로우에 머문다.
+    expect(components).toMatch(
+      /\.quick-launch-command-row\[data-apex="true"\]\[data-effort-level="max"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation:\s*\n?\s*effort-max-ember-wave 2\.1s linear infinite,\s*\n?\s*effort-max-ember-flicker 1\.7s linear infinite;/,
+    );
+    expect(components).toMatch(
+      /\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation: effort-ultracode-wave 2\.6s linear infinite;/,
+    );
+
+    // 덱은 트랙과 달리 여러 행이 동시에 보인다 — 모션은 게이트 뒤 두 단으로 끝나고, 일상 5단은
+    // 정적 톤만 가진다. 여섯 줄이 동시에 일렁이면 목록이 아니라 배경이 된다.
+    for (const rung of ["low", "medium", "high", "xhigh", "auto"]) {
+      expect(components, rung).not.toMatch(
+        new RegExp(`\\.quick-launch-command-row\\[data-effort-level="${rung}"\\][^{]*\\{[^}]*animation:`),
+      );
+    }
+
+    // 감속 모션에서는 트랙과 같은 자리로 돌아간다 — MAX는 정적 crest 글로우, ULTRACODE는 apex ink.
+    const reduced = components.slice(components.indexOf(".quick-launch-command-row[data-effort-level]"));
+    expect(reduced).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.quick-launch-command-row\[data-apex="true"\]\[data-effort-level="max"\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*animation: none;[\s\S]*?color: var\(--crest-ink\);/,
+    );
+    expect(reduced).toMatch(
+      /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{\s*animation: none;[\s\S]*?color: var\(--apex-ink\);/,
+    );
+  });
+
+  it("pins the provider band as the sole supplier mark in the command deck", () => {
+    const components = source("styles/components.css");
+    const composer = source("components/quick-launch.tsx");
+
+    // 밴드가 스크롤을 따라 붙기 때문에 행 마크를 걷어낼 수 있다. 두 규칙은 한 쌍이다 —
+    // sticky를 잃으면 스크롤한 목록에서 모델 이름만 남고 공급자를 잃는다.
+    const bandRule = components.match(/\.quick-launch-command-deck \.quick-launch-pop-band \{[^}]*\}/)?.[0] ?? "";
+    expect(bandRule).toContain("position: sticky");
+    expect(bandRule).toContain("var(--ink-deep)");
+    expect(composer).not.toMatch(/id: `model-\$\{row\.id\}`,[\s\S]{0,200}?quick-launch-kind-icon/);
+
+    // 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에서 시작한다 — 항목이 자기 머리글보다
+    // 바깥에서 시작하면 소속이 역전돼 읽힌다.
+    expect(components).toMatch(
+      /\.quick-launch-command-group\.is-banded \.quick-launch-command-row \{\s*padding-left: calc\(var\(--space-2\) \+ 22px\);/,
+    );
+
+    // '@' 멘션 덱의 행 마크는 남는다 — 그쪽 밴드는 Theater 이름이라 공급자를 말하지 않고,
+    // 행 글리프가 유일한 출처 표식이다. 모델 덱과 같은 이유로 지우면 그쪽이 회귀한다.
+    expect(composer).toContain("launchProviderGlyph(entry.launchProvider)");
+  });
+
   it("pins the shared effort track's pointer preview motion", () => {
     const components = source("styles/components.css");
     const quickLaunch = source("components/quick-launch.tsx");
