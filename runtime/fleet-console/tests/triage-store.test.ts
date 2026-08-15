@@ -753,9 +753,9 @@ describe("triage store", () => {
 
     for (const geometry of geometries) {
       expect(geometry.x).toBeGreaterThanOrEqual(18);
-      expect(geometry.y).toBeGreaterThanOrEqual(46);
+      expect(geometry.y).toBeGreaterThanOrEqual(18 + 32);
       expect(geometry.x + geometry.width).toBeLessThanOrEqual(canvasSize.width - 18);
-      expect(geometry.y + geometry.height).toBeLessThanOrEqual(canvasSize.height - 66);
+      expect(geometry.y + geometry.height).toBe(canvasSize.height - 18);
     }
     expect(geometries[0]!.x + geometries[0]!.width).toBeLessThan(geometries[1]!.x);
     expect(geometries[1]!.x + geometries[1]!.width).toBeLessThan(geometries[2]!.x);
