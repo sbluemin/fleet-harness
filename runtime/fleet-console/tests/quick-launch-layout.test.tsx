@@ -173,6 +173,31 @@ describe("Quick Launch effort surface", () => {
     expect(quickLaunch).toMatch(/&& !submitting && !deckHasRows/u);
   });
 
+  it("keeps the keyboard on the gate row after it toggles", () => {
+    // 게이트를 열면 MAX·ULTRACODE가 문 행 **앞에** 끼어든다. 활성 인덱스를 그대로 두면 같은
+    // 자리가 MAX를 가리켜, 접으려고 누른 두 번째 Enter가 MAX를 확정하고 저장까지 한다 —
+    // 게이트가 막으려던 실수를 게이트 자신이 만든다. 다음 목록의 값 행 개수가 문 행의 자리다.
+    expect(quickLaunch).toMatch(
+      /const nextOpen = !deck\.gateOpen;[\s\S]{0,400}?setCommandActiveIndex\([\s\S]{0,200}?buildQuickLaunchEffortDeck\(selectedRow, effort, autoLabel, effortQuery, nextOpen\)\.options\.length,?[\s\S]{0,40}?\);[\s\S]{0,80}?setCommandGateOpen\(nextOpen\);/u,
+    );
+  });
+
+  it("folds the effort gate back when the composer closes, not only when the level changes", () => {
+    // 컴포저는 언마운트되지 않고 렌더만 접는다(`if (!open) return null`). 문면이 `/effort `인 채
+    // 보존된 초안으로 돌아오면 commandInput이 그대로라, open을 조건에 넣지 않으면 게이트가
+    // 펼쳐진 채 되살아난다 — "이번 방문에만 열린다"는 계약이 그 경로에서만 깨진다.
+    expect(quickLaunch).toMatch(
+      /if \(open && commandInput\?\.kind === "values" && commandInput\.command === "effort"\) return;\s*\n\s*setCommandGateOpen\(false\);\s*\n\s*\}, \[commandInput, open\]\);/u,
+    );
+  });
+
+  it("stands the gate row only when the deck owns the whole list", () => {
+    // 문 행이 질의 중에도 남으면 매치 0인 `/effort zebra`에서 덱이 비지 않아, 커맨드 덱 공통
+    // 계약("일치 없으면 Enter는 문장을 그대로 보낸다")이 이 레벨에서만 깨진다.
+    expect(quickLaunch).toMatch(/if \(deck\.showGateRow\) \{/u);
+    expect(quickLaunch).not.toMatch(/if \(deck\.hasGate && !deck\.gateHeldByValue\) \{/u);
+  });
+
   it("gives the track a fixed berth instead of letting it compete with the spacer", () => {
     // 셸은 max-content, 트랙 폭은 캔버스 추론강도와 같은 116px 비례 규칙을 쓴다.
     const rule = ruleFor(".quick-launch-effort-track");

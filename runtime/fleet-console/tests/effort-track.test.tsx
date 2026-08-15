@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 
-import { EffortTrack, effortLadderPosition, resolveRowEffort } from "../core/client/src/components/effort-track.js";
+import { EffortTrack, effortLadderPosition, gatedEffortNames, resolveRowEffort } from "../core/client/src/components/effort-track.js";
 
 let container: HTMLDivElement;
 let root: Root;
@@ -462,5 +462,34 @@ describe("resolveRowEffort", () => {
     expect(resolveRowEffort(row(), "medium")).toBeNull();
     expect(resolveRowEffort(row({ chips: [] }), "high")).toBeNull();
     expect(resolveRowEffort(null, "high")).toBeNull();
+  });
+});
+
+describe("gatedEffortNames", () => {
+  it("names only the gated tiers the model actually offers", () => {
+    // K3-1M은 max만 내놓는다 — 게이트 문구가 "MAX·ULTRACODE"라고 말하면 열었을 때 한 단만 서고,
+    // 나머지 하나는 어디 갔는지 물을 자리가 없다.
+    expect(gatedEffortNames(row({ gatedEfforts: ["max", "ultra"] }))).toBe("MAX");
+    expect(gatedEffortNames(row({
+      gatedEfforts: ["max", "ultra"],
+      chips: ["low", "max", "ultra"].map((id) => ({
+        id,
+        label: id === "ultra" ? "ULTRACODE" : id.toUpperCase(),
+        launch: { model: "kimi--k3", effort: id },
+      })),
+    }))).toBe("MAX·ULTRACODE");
+  });
+
+  it("names nothing when the row gates no rung", () => {
+    expect(gatedEffortNames(row())).toBe("");
+    expect(gatedEffortNames(null)).toBe("");
+  });
+
+  it("falls back to the rung id for an axis-only gated tier so the toggle never announces an empty name", () => {
+    // 트랙은 사다리에서 문을 세우므로, chips에 없는 게이트 단만 실린 행에서도 토글이 뜬다.
+    // chips만 세면 그 토글의 이름이 빈 문자열이 되어 "Show " 같은 라벨이 남는다.
+    // 이 픽스처의 축은 low/medium/high/xhigh/max이고 chips는 low/high/max다 — xhigh가 축에만 있다.
+    expect(gatedEffortNames(row({ gatedEfforts: ["xhigh"] }))).toBe("XHIGH");
+    expect(gatedEffortNames(row({ gatedEfforts: ["xhigh", "max"] }))).toBe("XHIGH·MAX");
   });
 });

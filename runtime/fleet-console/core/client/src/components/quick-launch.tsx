@@ -9,7 +9,7 @@ import { useT } from "../i18n/index.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
-import { buildQuickLaunchEffortOptions, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
+import { buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts-catalog.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
@@ -17,7 +17,7 @@ import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
-import { EffortTrack, resolveRowEffort } from "./effort-track.js";
+import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -58,6 +58,12 @@ interface QuickLaunchCommandRow {
   readonly value?: string;
   /** 1레벨 명령 행의 타이핑 별칭(`/theater`) — 오른쪽 끝에서 문법을 가르친다. */
   readonly token?: string;
+  /** 강도 행의 단계 톤 좌표. CSS가 이 속성 하나로 색을 읽는다(트랙과 같은 계약). */
+  readonly effortLevel?: string;
+  /** 게이트 뒤 티어인가 — MAX의 이글거림을 트랙과 같은 조건으로 가른다. */
+  readonly apex?: boolean;
+  /** 값이 아니라 게이트를 여닫는 행. 선택해도 덱이 닫히지 않는다. */
+  readonly gate?: boolean;
   readonly pick: () => void;
 }
 
@@ -146,6 +152,9 @@ export function QuickLaunch() {
   // 결과와 키보드 활성 행만 산다. '@' 덱과는 한 번에 하나만 선다(updatePrompt가 강제).
   const [commandInput, setCommandInput] = useState<QuickLaunchCommandInput | null>(null);
   const [commandActiveIndex, setCommandActiveIndex] = useState(0);
+  // `/effort` 게이트의 열림. 트랙의 ✦ 토글과 같은 자리를 덱에서는 문 행이 맡는다. 덱을 떠나면
+  // 접힌 상태로 돌아간다 — 게이트는 "이번에 열었다"이지 기억되는 설정이 아니다(트랙도 그렇다).
+  const [commandGateOpen, setCommandGateOpen] = useState(false);
   // 이미지 첨부: 붙여넣기·드롭 즉시 업로드가 시작되고, 칩은 업로드가 끝나야 발사 가능해진다.
   const [attachments, setAttachments] = useState<readonly ComposerAttachment[]>([]);
   const [attachmentErrorKey, setAttachmentErrorKey] = useState<string | null>(null);
@@ -604,6 +613,17 @@ export function QuickLaunch() {
     }
   }, []);
 
+  // 게이트는 이 덱을 보는 동안만 열려 있다. `/effort` 값 레벨을 떠나면(명령 목록으로 돌아가든,
+  // 다른 커맨드로 가든, 덱을 닫든) 접힌 상태로 복귀한다 — 트랙이 apex 아닌 단으로 내려오면
+  // 스스로 접히는 것과 같은 계약이고, 다음 방문이 열린 채로 시작하는 놀라움을 없앤다.
+  // 컴포저가 닫히는 것도 떠나는 것이다: 컴포넌트는 언마운트되지 않고 렌더만 접으므로(`if (!open)
+  // return null`), 문면이 `/effort `인 채 보존된 초안으로 돌아오면 commandInput이 그대로라
+  // open을 조건에 넣지 않으면 게이트가 펼쳐진 채 되살아난다.
+  useEffect(() => {
+    if (open && commandInput?.kind === "values" && commandInput.command === "effort") return;
+    setCommandGateOpen(false);
+  }, [commandInput, open]);
+
   // '/' 커맨드 덱의 목록. 문면이 레벨을 소유하므로(commandInput.kind) 여기는 그 레벨의 행만
   // 계산한다. 값 레벨은 기존 픽커·트랙과 같은 원천(theaters·카탈로그 groups·chips)과 같은
   // 저장 계층(고르면 즉시 기억)을 쓴다 — 커맨드는 지름길이지 두 번째 진실이 아니다.
@@ -672,17 +692,12 @@ export function QuickLaunch() {
               .filter((row) => row.label.toLowerCase().includes(query))
               .map<QuickLaunchCommandRow>((row) => {
                 const rowModel = row.launch.model ?? null;
-                // 밴드가 프로바이더를 말하지 못하는 그룹에서도 행은 자기 공급자 마크를 단다 —
-                // 필터로 밴드가 성기어질수록 행 스스로 출처를 말해야 한다.
-                const rowProvider = provider ?? launchProviderFromModelId(rowModel ?? row.id);
+                // 행은 공급자 마크를 달지 않는다. 섹션은 행이 남을 때만 렌더되므로(아래 filter)
+                // 밴드 없는 행은 존재할 수 없고, 밴드가 스크롤을 따라 붙어 있어(CSS sticky)
+                // 좁힌 목록에서도 출처가 사라지지 않는다 — 행 마크는 순전한 중복이었다.
                 return {
                   id: `model-${row.id}`,
                   label: row.label,
-                  lead: rowProvider === null ? null : (
-                    <span className={`quick-launch-kind-icon is-${rowProvider}`} aria-hidden="true">
-                      {launchProviderGlyph(rowProvider)}
-                    </span>
-                  ),
                   starred: row.starred === true,
                   checked: rowModel === model,
                   pick: () => {
@@ -723,20 +738,51 @@ export function QuickLaunch() {
         }));
       return rows.length === 0 ? [] : [{ key: "views", band: null, rows }];
     }
-    // 게이트된 apex 단은 트랙의 ✦ 펼침 계약을 미러링해 명시적 타이핑으로만 드러난다(헬퍼 주석 참조).
-    const rows = buildQuickLaunchEffortOptions(selectedRow, effort, t("launchVariants.effort.auto"), commandInput.query)
-      .map<QuickLaunchCommandRow>((chip) => ({
-        id: `effort-${chip.id ?? "auto"}`,
-        label: chip.label,
-        checked: chip.checked,
+    // 게이트된 apex 단은 트랙의 ✦ 계약을 미러링한다 — 덱에서는 맨 아래 문 행이 그 토글이다.
+    const effortQuery = commandInput.query;
+    const autoLabel = t("launchVariants.effort.auto");
+    const deck = buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, effortQuery, commandGateOpen);
+    const rows = deck.options.map<QuickLaunchCommandRow>((chip) => ({
+      id: `effort-${chip.id ?? "auto"}`,
+      label: chip.label,
+      checked: chip.checked,
+      effortLevel: chip.id ?? "auto",
+      apex: chip.apex,
+      pick: () => {
+        setEffort(chip.id);
+        writeQuickLaunchModelEffort(model, chip.id);
+        finishCommand();
+      },
+    }));
+    // 문 행은 값이 아니라 문이다. 골라도 덱은 열려 있고 문면도 그대로 — 트랙의 ✦을 눌렀을 때
+    // 트랙이 그 자리에 남아 있는 것과 같다. 게이트 단을 하나도 내놓지 않는 모델에서는 서지 않아,
+    // "이 모델엔 없다"가 "접혀 있다"와 처음으로 갈린다.
+    if (deck.showGateRow) {
+      // 이름은 이 덱이 실제로 열 단에서만 나온다(deck.gatedNames). 트랙의 사다리 기준을 빌려 오면
+      // 축에만 오른 단까지 이름에 실려, 열었을 때 없는 단을 약속하게 된다.
+      rows.push({
+        id: "effort-gate",
+        label: t(
+          deck.gateOpen ? "launchVariants.effort.apexCollapse" : "launchVariants.effort.apexToggle",
+          { tiers: deck.gatedNames },
+        ),
+        lead: <span className="quick-launch-command-gate-glyph" aria-hidden="true">{deck.gateOpen ? "‹" : "✦"}</span>,
+        gate: true,
         pick: () => {
-          setEffort(chip.id);
-          writeQuickLaunchModelEffort(model, chip.id);
-          finishCommand();
+          const nextOpen = !deck.gateOpen;
+          // 문 행은 늘 목록의 마지막이다. 게이트를 열면 단 둘이 그 앞에 끼어드는데 활성 인덱스를
+          // 그대로 두면 같은 자리가 MAX를 가리켜, 접으려고 누른 두 번째 Enter가 MAX를 확정하고
+          // 저장까지 한다 — 게이트가 막으려던 바로 그 실수다. 다음 목록에서 문 행이 설 자리로
+          // 옮겨 둔다(값 행 뒤가 언제나 그 자리다).
+          setCommandActiveIndex(
+            buildQuickLaunchEffortDeck(selectedRow, effort, autoLabel, effortQuery, nextOpen).options.length,
+          );
+          setCommandGateOpen(nextOpen);
         },
-      }));
+      });
+    }
     return rows.length === 0 ? [] : [{ key: "efforts", band: null, rows }];
-  }, [activeTheater, applyCommandPrompt, chatStart, chatStartAvailable, commandInput, dockSuppressed, effort, expandAndFocus, finishCommand, groups, model, pinned, selectedRow, t, theaterId, theaters]);
+  }, [activeTheater, applyCommandPrompt, chatStart, chatStartAvailable, commandGateOpen, commandInput, dockSuppressed, effort, expandAndFocus, finishCommand, groups, model, pinned, selectedRow, t, theaterId, theaters]);
 
   const commandRowsFlat = useMemo(() => commandSections.flatMap((section) => section.rows), [commandSections]);
   const commandDeckOpen = commandInput !== null;
@@ -1346,7 +1392,9 @@ export function QuickLaunch() {
             {commandRowsFlat.length === 0 ? (
               <p className="quick-launch-mention-empty">{t("chrome.quickLaunch.commandNoMatch")}</p>
             ) : commandSections.map((section) => (
-              <div key={section.key}>
+              // 밴드가 선 섹션의 행은 밴드 라벨 자리까지 들여쓴다(CSS). 행이 밴드보다 바깥에서
+              // 시작하면 항목이 자기 머리글보다 앞에 서서 소속이 역전돼 읽힌다.
+              <div key={section.key} className={section.band ? "quick-launch-command-group is-banded" : "quick-launch-command-group"}>
                 {section.band ? (
                   <p className={`quick-launch-pop-band${section.band.provider ? ` is-${section.band.provider}` : ""}`}>
                     {section.band.provider ? (
@@ -1364,10 +1412,16 @@ export function QuickLaunch() {
                       key={row.id}
                       id={`quick-launch-command-${row.id}`}
                       type="button"
-                      className={`quick-launch-mention-row quick-launch-command-row${active ? " is-active" : ""}`}
+                      className={`quick-launch-mention-row quick-launch-command-row${active ? " is-active" : ""}${row.gate ? " is-gate" : ""}`}
                       role="option"
                       aria-selected={active}
+                      // 문 행에 aria-expanded를 달지 않는다 — option role이 지원하는 상태가 아니라
+                      // 무시되거나 무효로 읽힌다. 여는지 접는지는 라벨 자체가 말한다("… 펼치기" ↔
+                      // "… 접기"). 이 행을 listbox 밖으로 빼면 유효한 토글 role을 쓸 수 있지만,
+                      // aria-activedescendant 순회에서 빠져 키보드 문법이 값 행과 갈라진다.
                       tabIndex={-1}
+                      data-effort-level={row.effortLevel}
+                      data-apex={row.apex ? true : undefined}
                       // 클릭이 textarea 포커스를 뺏지 않아야 선택 직후 바로 타이핑이 이어진다.
                       onMouseDown={(event) => event.preventDefault()}
                       onClick={row.pick}
@@ -1558,8 +1612,8 @@ export function QuickLaunch() {
               autoLabel={t("launchVariants.effort.auto")}
               ariaLabel={t("launchVariants.effort.track")}
               autoValueText={t("launchVariants.effort.autoValue")}
-              apexToggleLabel={t("launchVariants.effort.apexToggle")}
-              apexCollapseLabel={t("launchVariants.effort.apexCollapse")}
+              apexToggleLabel={t("launchVariants.effort.apexToggle", { tiers: gatedEffortNames(selectedRow) })}
+              apexCollapseLabel={t("launchVariants.effort.apexCollapse", { tiers: gatedEffortNames(selectedRow) })}
               className="quick-launch-effort-track"
             />
           ) : null}
