@@ -408,6 +408,8 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     <AnalystEntryChip context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
   );
   const [chatConfirmOpen, setChatConfirmOpen] = React.useState(false);
+
+  const chatMode = context.operation.payload.chatMode === true;
   const sessionStatus = session.status;
   React.useEffect(() => {
     // 확인 오버레이는 라이브 터미널 분기 전용이다 — PTY 종료·채팅 전환으로 분기를 떠나면
@@ -415,8 +417,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     // 언마운트-폐기와 등가).
     if (sessionStatus === "dormant" || chatMode) setChatConfirmOpen(false);
   }, [sessionStatus, chatMode]);
-
-  const chatMode = context.operation.payload.chatMode === true;
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
   // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
   // 떠버린다. "직접 연 순간에만"은 quick-launch-pin 투어와 같은 판정이다.
