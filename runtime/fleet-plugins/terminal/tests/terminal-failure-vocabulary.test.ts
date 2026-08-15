@@ -80,6 +80,43 @@ describe("terminal failure vocabulary", () => {
     expect(seen.find((entry) => entry.status === "failed")?.code).toBe("http_502");
   });
 
+  it("reports a socket that never opens, not only a ticket that is refused", async () => {
+    // 티켓은 매번 나오는데 업그레이드만 막히는 환경 — 중간 장비가 WebSocket을 끊는 경우다.
+    // 리셋이 티켓 발급 시점에 있으면 카운터가 0과 1을 오가며 임계값에 닿지 못하고, 화면은
+    // 영영 "연결 중"에 머문다.
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "t", ttlMs: 10_000 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const seen: Array<{ status: TerminalConnectionStatus; code?: string }> = [];
+    const connection = createTerminalConnection({
+      operationId: "session-a",
+      terminal: { onData: () => ({ dispose: () => {} }), write: () => {}, drain: (cb) => cb() },
+      ticketPath: "/ticket",
+      wsPath: "/ws",
+      location: { host: "console.test", protocol: "http:" },
+      onStatus: (status, code) => { seen.push({ status, code }); },
+      webSocketFactory: () => {
+        const socket = {
+          binaryType: "arraybuffer" as BinaryType,
+          readyState: 0,
+          send: () => {},
+          close: () => {},
+          onopen: null as (() => void) | null,
+          onmessage: null,
+          onclose: null as (() => void) | null,
+          onerror: null as (() => void) | null,
+        };
+        // 열리지 않고 곧바로 끊긴다.
+        queueMicrotask(() => { socket.onerror?.(); socket.onclose?.(); });
+        return socket as never;
+      },
+    });
+    connection.start();
+    await vi.waitFor(() => expect(seen.some((entry) => entry.status === "failed")).toBe(true), { timeout: 4_000 });
+    connection.dispose();
+  });
+
   it("names the ticket error with its code so callers do not parse prose", () => {
     const error = new TerminalTicketError("operation_dormant", 409);
     expect(error.code).toBe("operation_dormant");

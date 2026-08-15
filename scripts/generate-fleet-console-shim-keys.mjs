@@ -24,7 +24,7 @@ const outputPath = path.join(
 const requireFromConsole = createRequire(path.join(fleetConsoleDir, "package.json"));
 const { build } = requireFromConsole("esbuild");
 
-// 7개 specifier → 실제 진입 파일 경로 (null = npm 패키지, 래퍼 방식으로 처리)
+// specifier → 실제 진입 파일 경로 (null = npm 패키지, 래퍼 방식으로 처리)
 const SPECIFIER_ENTRIES = [
   ["react", null],
   ["react/jsx-runtime", null],
@@ -33,6 +33,7 @@ const SPECIFIER_ENTRIES = [
   ["@fleet-console/sdk/operations/browser", path.join(sdkRoot, "operations", "browser.tsx")],
   ["@fleet-console/sdk/notifications/browser", path.join(sdkRoot, "notifications", "browser.ts")],
   ["@fleet-console/sdk/react/browser", path.join(sdkRoot, "react", "browser.tsx")],
+  ["@fleet-console/sdk/components/failure-notice", path.join(sdkRoot, "components", "failure-notice.tsx")],
 ];
 
 const tmpDir = mkdtempSync(path.join(os.tmpdir(), "fleet-console-shim-keys-"));

@@ -55,6 +55,9 @@ jobs:
       # postinstall이 워크스페이스 빌드를 수행하므로 --ignore-scripts를 쓰지 않는다.
       # 타입체크와 테스트 모두 dist를 참조하는 경로가 있어 빌드가 선행되어야 한다.
       - run: pnpm install --frozen-lockfile
+      # 게이트는 검증 안에서 돌아야 게이트다 — 정의만 해 두면 새 위반이 그대로 통과한다.
+      - name: Check localized user-facing attributes
+        run: pnpm check:localized-attributes
       - name: Typecheck every workspace package
         run: pnpm typecheck
       - name: Test every workspace package

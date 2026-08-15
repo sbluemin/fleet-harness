@@ -233,6 +233,7 @@ const SHIM_DEFINITIONS: readonly ShimDefinition[] = [
   { name: "sdk-operations-browser", specifier: "@fleet-console/sdk/operations/browser", globalKey: "@fleet-console/sdk/operations/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/operations/browser"] ?? [] },
   { name: "sdk-notifications-browser", specifier: "@fleet-console/sdk/notifications/browser", globalKey: "@fleet-console/sdk/notifications/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/notifications/browser"] ?? [] },
   { name: "sdk-react-browser", specifier: "@fleet-console/sdk/react/browser", globalKey: "@fleet-console/sdk/react/browser", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/react/browser"] ?? [] },
+  { name: "sdk-components-failure-notice", specifier: "@fleet-console/sdk/components/failure-notice", globalKey: "@fleet-console/sdk/components/failure-notice", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/failure-notice"] ?? [] },
 ];
 const SHIM_URL_BY_SPECIFIER = new Map(SHIM_DEFINITIONS.map((definition) => [definition.specifier, `/plugin-runtime/shim/${definition.name}.mjs`]));
 const SHIM_BY_NAME = new Map(SHIM_DEFINITIONS.map((definition) => [definition.name, definition]));

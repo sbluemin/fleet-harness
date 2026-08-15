@@ -47,6 +47,22 @@ describe("plugin client assets", () => {
     });
   });
 
+  it("externalizes every SDK subpath an external plugin may import", async () => {
+    // SDK exports에 subpath를 더해 놓고 shim 목록에 올리지 않으면, 그 export는 내장 플러그인
+    // 에서만 동작하고 외부 플러그인은 준비 단계에서 통째로 탈락한다 — 광고만 하고 못 쓰는 상태다.
+    const plugin = writeClientPlugin("notice", "index.tsx", [
+      'import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";',
+      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <FailureNotice title="t" /> }] };',
+    ].join("\n"));
+    const assets = createPluginClientAssets({ plugins: [plugin] });
+
+    await assets.prepare();
+
+    const source = assets.getClient("notice") ?? "";
+    expect(source).toContain("/plugin-runtime/shim/sdk-components-failure-notice.mjs");
+    expect(assets.manifest().skipped ?? []).toEqual([]);
+  });
+
   it("rejects browser client bundles that import Node builtins", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const plugin = writeClientPlugin("bad", "index.ts", [

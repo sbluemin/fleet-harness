@@ -138,7 +138,6 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
         // 요청한 등급과 받은 등급이 갈리면 서버가 내려보낸 것이다 — 그 상태에서는 되찾기를 제안하지 않는다.
         role = granted;
         options.onControlLockChange?.(requested === "control" && granted === "viewer" ? "locked" : "open");
-        consecutiveFailures = 0;
         await attachSocket(buildTerminalWsUrl(ticket, options.location, options.wsPath), options);
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
       } catch (err) {
@@ -162,6 +161,10 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       socket = ws;
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
+        // 티켓 발급이 아니라 소켓이 열린 것이 "연결 성공"이다. 발급 시점에 되돌리면, 티켓은
+        // 매번 나오는데 업그레이드만 막히는 환경에서 카운터가 0과 1을 오가며 임계값에 닿지
+        // 못해 화면이 영영 연결 중에 머문다.
+        consecutiveFailures = 0;
         connectionOptions.onStatus?.(role === "viewer" ? "viewer" : "live");
         // 새 소켓은 크기 이력을 물려받지 않는다 — 비워야 아래 협상이 dedupe에 걸리지 않는다.
         lastSentSize = null;
