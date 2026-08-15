@@ -1603,6 +1603,23 @@ describe("Instrument core design contract", () => {
     expect(skillsCss).not.toMatch(/color-mix\([^)]*\b(?:black|white)\b/);
   });
 
+  it("pins the Session Analyst chat-grammar surfaces", () => {
+    const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
+    // 드로어 바닥은 오퍼레이션 패널과 같은 --surface-panel 한 장이다. pillar로 되돌아가면 안 되고,
+    // 포커스 워시(--surface-window)는 캡션 전용이므로 본문이 따라가서도 안 된다.
+    expect(terminalAnalysisCss).toContain("background: var(--surface-panel);");
+    expect(terminalAnalysisCss).not.toContain("surface-pillar");
+    expect(terminalAnalysisCss).not.toContain("surface-window");
+    // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
+    expect(terminalAnalysisCss).toContain("var(--surface-panel-raised)");
+    // 상단 밴드 대신 떠 있는 칩 줄 + 채팅 뷰의 턴 스파인 문법을 쓴다.
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__chips \{/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__turn-node \{/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
+    // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
+    expect(terminalAnalysisCss).toContain("color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised))");
+  });
+
   it("keeps the retired carrier identity grammar out of the product", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const terminalAgent = externalSource(TERMINAL_AGENT_PATH);

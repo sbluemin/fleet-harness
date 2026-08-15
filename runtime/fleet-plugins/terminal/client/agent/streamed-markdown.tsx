@@ -19,21 +19,35 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
   streaming,
   className,
   language = "en",
+  transformHtml,
 }: {
   readonly text: string;
   readonly streaming: boolean;
   readonly className?: string;
   readonly language?: ConsoleLocale;
+  /* sanitize 이후의 HTML 후처리 훅(예: 증거 인용 칩). 호출자는 참조가 안정된 함수를 넘겨야
+     memo 이득이 유지된다. */
+  readonly transformHtml?: (html: string) => string;
 }) {
   const latestText = React.useRef(text);
   const renderedText = React.useRef(streaming ? text : "");
   const renderTimer = React.useRef<number | null>(null);
-  const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? renderMarkdown(text, markdownCopyOptions(language)).html : "");
+  const transform = React.useRef(transformHtml);
+  transform.current = transformHtml;
+  const render = (value: string) => {
+    const html = renderMarkdown(value, markdownCopyOptions(language)).html;
+    return transform.current ? transform.current(html) : html;
+  };
+  const [streamedHtml, setStreamedHtml] = React.useState(() => streaming ? render(text) : "");
   latestText.current = text;
 
   const completedHtml = React.useMemo(
-    () => streaming ? null : renderMarkdown(text, markdownCopyOptions(language)).html,
-    [streaming, text, language],
+    () => {
+      if (streaming) return null;
+      const html = renderMarkdown(text, markdownCopyOptions(language)).html;
+      return transformHtml ? transformHtml(html) : html;
+    },
+    [streaming, text, language, transformHtml],
   );
 
   React.useEffect(() => {
@@ -48,7 +62,7 @@ export const StreamedMarkdown = React.memo(function StreamedMarkdown({
       const nextText = latestText.current;
       if (nextText === renderedText.current) return;
       renderedText.current = nextText;
-      setStreamedHtml(renderMarkdown(nextText, markdownCopyOptions(language)).html);
+      setStreamedHtml(render(nextText));
     }, STREAM_RENDER_DELAY_MS);
   }, [streaming, text, language]);
 

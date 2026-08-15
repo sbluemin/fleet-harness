@@ -4,9 +4,10 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import "@fleet-console/markdown/styles.css";
 
-import type { AnalysisActivity, AnalysisState } from "./analysis-state.js";
+import type { AnalysisActivity, AnalysisEntry, AnalysisState } from "./analysis-state.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
+import { decorateEvidenceHtml } from "./analysis-evidence.js";
 import { useAnalysisStore } from "./analysis-store.js";
 import { ANALYST_ARTIFACTS_COMPANION_ID, closeAnalystCompanionPanels } from "./analysis-visibility.js";
 import { StreamedMarkdown } from "./streamed-markdown.js";
@@ -76,6 +77,11 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const slashListboxId = `analysis-${context.operationId}-slash-listbox`;
   const slashOptionId = (command: string) => `analysis-${context.operationId}-slash-${command.slice(1)}`;
   const activeSlashOption = slashOpen ? slashMatches[Math.min(slashSelection, slashMatches.length - 1)] : undefined;
+  const evidenceTitle = t("terminal.analyst.evidenceCited");
+  // 1Hz 티커는 이 패널에 단 하나 — 역사 턴마다 타이머가 쌓이지 않게 여기서 한 번 계산해 내려보낸다.
+  const liveElapsedMs = useElapsedMs(state);
+  const decorateEvidence = React.useCallback((html: string) => decorateEvidenceHtml(html, evidenceTitle), [evidenceTitle]);
+  const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
   // 유지하면 뒤따르는 connected/chunk 렌더가 진행 중인 CSS 애니메이션을 끊지 않는다.
   const interactedAtMount = React.useRef(hasInteracted).current;
@@ -148,42 +154,78 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     copyCodeToClipboard(button, code, language);
   }, [language]);
 
+  const lastAnalystIndex = state.entries.reduce((last, entry, index) => entry.role === "analyst" ? index : last, -1);
+  // 아직 분석가 chunk가 없는 진행/오류/중단은 합성 턴이 상태를 실어 나른다.
+  const pendingTurn = state.phase !== "idle" && latestEntry?.role === "user"
+    && (state.busy || state.phase === "error" || state.phase === "stopped");
+
   return (
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
-      {supportsCompanionVisibility ? (
-        <button
-          ref={artifactsChipRef}
-          type="button"
-          className={`session-analyst-handle session-analyst-handle--artifacts${artifactCount === 0 ? " is-waiting" : ""}${artifactAuthoring ? " is-authoring" : ""}`}
-          aria-label={t(artifactsVisible ? "terminal.analyst.hideArtifacts" : "terminal.analyst.openArtifacts")}
-          aria-pressed={artifactsVisible}
-          aria-disabled={artifactCount === 0}
-          tabIndex={artifactCount === 0 ? -1 : undefined}
-          title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
-          onClick={() => {
-            if (!setCompanionPanelVisible || artifactCount === 0) return;
-            if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
-            setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, !artifactsVisible);
-          }}
-        >
-          <span className="session-analyst-handle__chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
-          {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst-handle__count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
-          {artifactAuthoring ? <span className="session-analyst-handle__count">…</span> : null}
-          <span className="session-analyst-handle__label">{t("terminal.analyst.artifactsHandle")}</span>
-        </button>
-      ) : null}
-      <PanelHeader state={state} language={language} onReset={() => { void reset().catch(() => {}); }} />
+      <div className="session-analyst__chips">
+        <span className="session-analyst__chip session-analyst__chip--id">
+          <i className="session-analyst__chip-dot" aria-hidden="true" />
+          <span aria-hidden="true">✳</span>
+          {t("terminal.analyst.chipTitle")}
+          <span className="session-analyst__chip-state">· {stateLabel(state, language)}</span>
+        </span>
+        <span className="session-analyst__chip-cluster">
+          <button
+            type="button"
+            className="session-analyst__chip"
+            aria-label={t("terminal.analyst.resetAria")}
+            onClick={() => { void reset().catch(() => {}); }}
+            disabled={!canReset}
+          >{t("terminal.analyst.reset")}</button>
+          {supportsCompanionVisibility ? (
+            <button
+              ref={artifactsChipRef}
+              type="button"
+              className={`session-analyst__chip session-analyst__chip--artifacts${artifactCount === 0 ? " is-waiting" : ""}${artifactAuthoring ? " is-authoring" : ""}`}
+              aria-label={t(artifactsVisible ? "terminal.analyst.hideArtifacts" : "terminal.analyst.openArtifacts")}
+              aria-pressed={artifactsVisible}
+              aria-disabled={artifactCount === 0}
+              tabIndex={artifactCount === 0 ? -1 : undefined}
+              title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
+              onClick={() => {
+                if (!setCompanionPanelVisible || artifactCount === 0) return;
+                if (artifactsVisible) dispatch({ type: "artifacts-chip-disarm" });
+                setCompanionPanelVisible(ANALYST_ARTIFACTS_COMPANION_ID, !artifactsVisible);
+              }}
+            >
+              <span className="session-analyst__chip-chev" aria-hidden="true">{artifactsVisible ? "«" : "»"}</span>
+              {t("terminal.analyst.artifactsHandle")}
+              {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst__chip-count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
+              {artifactAuthoring ? <span className="session-analyst__chip-count">…</span> : null}
+            </button>
+          ) : null}
+        </span>
+      </div>
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
           {hasInteracted ? (
             <ol className="session-analyst__transcript" onClick={handleTranscriptClick}>
-              {state.entries.map((entry, index) => (
-                <li className={`session-analyst__message session-analyst__message--${entry.role}`} key={`${entry.role}-${index}`}>
-                  {entry.role === "analyst"
-                    ? <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={state.busy && index === state.entries.length - 1} language={language} />
-                    : entry.text}
+              {state.entries.map((entry, index) => entry.role === "user" ? (
+                <li className="session-analyst__message session-analyst__message--user" key={`user-${index}`}>
+                  <span className="session-analyst__ask-meta">
+                    <span className="session-analyst__ask-who">{t("terminal.analyst.you")}</span>
+                    {entry.at !== undefined ? <span>{formatClock(entry.at, language)}</span> : null}
+                  </span>
+                  <div className="session-analyst__ask-bubble">{entry.text}</div>
                 </li>
+              ) : (
+                <AnalystTurn
+                  key={`analyst-${index}`}
+                  state={state}
+                  language={language}
+                  entry={entry}
+                  isLast={index === lastAnalystIndex && !pendingTurn}
+                  liveElapsedMs={liveElapsedMs}
+                  decorateEvidence={decorateEvidence}
+                />
               ))}
+              {pendingTurn ? (
+                <AnalystTurn state={state} language={language} entry={null} isLast liveElapsedMs={liveElapsedMs} decorateEvidence={decorateEvidence} />
+              ) : null}
             </ol>
           ) : (
             <div className="session-analyst__hero-wrap">
@@ -200,9 +242,9 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   </button>
                 ))}
               </div>
+              {state.phase === "error" ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
             </div>
           )}
-          {/* 기존 EvidencePulse가 진행 상태를 낭독하므로 카드에는 별도 live region을 두지 않는다. */}
           {state.artifactAuthoring || state.artifactPublished ? (
             <ArtifactAuthorCard
               state={state}
@@ -212,7 +254,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 : undefined}
             />
           ) : null}
-          {state.phase !== "idle" ? <EvidencePulse state={state} language={language} /> : null}
         </section>
         {state.queue.length > 0 ? (
           <div className="session-analyst__queue" aria-live="polite">
@@ -370,6 +411,109 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   );
 }
 
+/* 분석가 턴 — 스파인 노드가 상태를, 헤드가 시간축을, 영수증이 과정을 말한다.
+   entry=null이면 아직 chunk가 없는 진행/오류/중단의 합성 턴이다. 역사 턴은 봉인된
+   entry.receipt만으로 그린다 — 전역 상태는 다음 send에서 이미 초기화됐다. */
+function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEvidence }: {
+  readonly state: AnalysisState;
+  readonly language: ConsoleLocale;
+  readonly entry: AnalysisEntry | null;
+  readonly isLast: boolean;
+  readonly liveElapsedMs: number;
+  readonly decorateEvidence: (html: string) => string;
+}) {
+  const t = getT(language);
+  const receipt = entry?.receipt;
+  const working = isLast && state.busy;
+  const liveError = isLast && state.phase === "error";
+  const liveStopped = isLast && state.phase === "stopped";
+  const isError = liveError || receipt?.outcome === "error";
+  const isStopped = liveStopped || receipt?.outcome === "stopped";
+  return (
+    <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}${!isError && isStopped ? " is-stopped" : ""}`}>
+      <span className="session-analyst__turn-spine" aria-hidden="true"><span className="session-analyst__turn-node" /></span>
+      <div className="session-analyst__turn-main">
+        {working ? <div className="session-analyst__turn-head">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</div> : null}
+        {!working && receipt?.outcome === "complete" ? <div className="session-analyst__turn-head">{t("terminal.analyst.turnAnswered", { elapsed: formatElapsed(receipt.durationMs) })}</div> : null}
+        {working || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
+        {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
+        {!liveStopped && !working && receipt?.outcome === "stopped" ? (
+          <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedAt", { elapsed: formatElapsed(receipt.durationMs) })}</div>
+        ) : null}
+        {!liveError && !working && receipt?.outcome === "error" ? (
+          <div className="session-analyst__stopped is-error" role="status">{`${receipt.error ? translateServerMessage(language, receipt.error) : t("terminal.analyst.state.needsAttention")} · ${formatElapsed(receipt.durationMs)}`}</div>
+        ) : null}
+        {!working && receipt?.outcome === "complete" ? <TurnReceipt language={language} durationMs={receipt.durationMs} tools={receipt.tools} /> : null}
+        {entry !== null && entry.text !== "" ? (
+          <div className="session-analyst__answer">
+            <div className="session-analyst__answer-kicker" aria-hidden="true">{t("terminal.chat.answerLabel")}</div>
+            <StreamedMarkdown className="session-analyst__response markdown-body" text={entry.text} streaming={working} language={language} transformHtml={decorateEvidence} />
+          </div>
+        ) : null}
+      </div>
+    </li>
+  );
+}
+
+
+/* 진행 펄스 행 — 마지막 확인 활동만 말한다는 정직성 마이크로카피가 함께 붙는다. */
+function TurnPulse({ state, language, elapsedMs }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly elapsedMs: number }) {
+  const t = getT(language);
+  const elapsed = formatElapsed(elapsedMs);
+  const activity = activityLabel(state.latestActivity, language);
+  const isError = state.phase === "error";
+  const current = currentActivity(state.latestActivity, language);
+  return (
+    <>
+      <div className={`session-analyst__pulse${isError ? " is-error" : ""}`} role={isError ? "alert" : "status"} aria-live={isError ? undefined : "polite"}>
+        <span className="session-analyst__pulse-orbit" aria-hidden="true" />
+        <span className="session-analyst__pulse-copy">
+          <strong key={`${state.phase}-${current.label}`}>{isError ? translateServerMessage(language, state.error ?? "") : current.label}</strong>
+          <small>{isError ? language === "ko" ? activity : `Last confirmed activity: ${activity}` : current.note}</small>
+        </span>
+        <time>{elapsed}</time>
+      </div>
+      {!isError ? <span className="session-analyst__truth-mark">{t("terminal.analyst.lastConfirmedOnly")}</span> : null}
+    </>
+  );
+}
+
+function StoppedReceipt({ state, language, elapsedMs }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly elapsedMs: number }) {
+  const t = getT(language);
+  const elapsed = formatElapsed(elapsedMs);
+  const activity = activityLabel(state.latestActivity, language);
+  return <div className="session-analyst__stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
+}
+
+/* 완료 영수증 — 접힌 한 줄("✓ 12s · 3 steps"), 펼치면 이 턴이 밟은 도구 단계.
+   값은 봉인된 턴 메타데이터에서 온다 — 전역 상태는 다음 턴에서 초기화된다. */
+function TurnReceipt({ language, durationMs, tools }: { readonly language: ConsoleLocale; readonly durationMs: number; readonly tools: readonly { readonly title: string; readonly status: string }[] }) {
+  const t = getT(language);
+  const elapsed = formatElapsed(durationMs);
+  const steps = tools;
+  const stepsLabel = steps.length === 0 ? null : steps.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: steps.length });
+  const summary = stepsLabel ? `${elapsed} · ${stepsLabel}` : elapsed;
+  return (
+    <details className="session-analyst__receipt">
+      <summary aria-label={t("terminal.chat.receiptAria")}>
+        <span className="session-analyst__receipt-mark" aria-hidden="true">✓</span>
+        {summary}
+        <span className="session-analyst__receipt-chev" aria-hidden="true">❯</span>
+      </summary>
+      {steps.length > 0 ? (
+        <div className="session-analyst__receipt-body">
+          {steps.map((tool) => (
+            <div className="session-analyst__receipt-step" key={tool.title}>
+              <strong>{tool.title}</strong>
+              <small>{tool.status}</small>
+            </div>
+          ))}
+        </div>
+      ) : null}
+    </details>
+  );
+}
+
 function resizeAnalysisTextarea(textarea: HTMLTextAreaElement): void {
   textarea.style.height = "auto";
   const style = window.getComputedStyle(textarea);
@@ -393,19 +537,6 @@ function copyCodeToClipboard(button: HTMLElement, code: string, language: Consol
     button.textContent = t("terminal.analyst.copied");
     window.setTimeout(() => { if (button.isConnected) button.textContent = original; }, 1_200);
   }).catch(() => undefined);
-}
-
-function PanelHeader({ state, language, onReset }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly onReset: () => void }) {
-  const t = getT(language);
-  const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
-  return (
-    <header className="session-analyst__panel-head">
-      <span className="session-analyst__panel-mark" aria-hidden="true">✳</span>
-      <span className="session-analyst__panel-copy"><strong>{t("terminal.companion.sessionAnalyst")}</strong><small>{t("terminal.analyst.subtitle")}</small></span>
-      <button type="button" className="session-analyst__reset" aria-label={t("terminal.analyst.resetAria")} onClick={onReset} disabled={!canReset}>{t("terminal.analyst.reset")}</button>
-      <span className="session-analyst__panel-state"><i aria-hidden="true" />{headerState(state, language)}</span>
-    </header>
-  );
 }
 
 function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: AnalysisState; readonly language: ConsoleLocale; readonly onOpen?: () => void }) {
@@ -438,30 +569,6 @@ function ArtifactAuthorCard({ state, language, onOpen }: { readonly state: Analy
   );
 }
 
-function EvidencePulse({ state, language }: { readonly state: AnalysisState; readonly language: ConsoleLocale }) {
-  const t = getT(language);
-  const elapsedMs = useElapsedMs(state);
-  const elapsed = formatElapsed(elapsedMs);
-  const activity = activityLabel(state.latestActivity, language);
-  if (state.phase === "complete") return null;
-  if (state.phase === "stopped") {
-    return <div className="session-analyst__receipt is-stopped" role="status">{t("terminal.analyst.stoppedReceipt", { activity, elapsed })}</div>;
-  }
-  const isError = state.phase === "error";
-  const current = currentActivity(state.latestActivity, language);
-  return (
-    <div className={`session-analyst__pulse${isError ? " is-error" : ""}`} role={isError ? "alert" : "status"} aria-live={isError ? undefined : "polite"}>
-      {!isError ? <span className="session-analyst__pulse-scan" aria-hidden="true" /> : null}
-      <div className="session-analyst__pulse-main">
-        <span className="session-analyst__pulse-orbit" aria-hidden="true" />
-        <span className="session-analyst__pulse-copy"><strong key={`${state.phase}-${current.label}`}>{isError ? translateServerMessage(language, state.error ?? "") : current.label}</strong><small>{isError ? language === "ko" ? activity : `Last confirmed activity: ${activity}` : current.note}</small></span>
-        <time>{elapsed}</time>
-      </div>
-      <span className="session-analyst__truth-mark">{t("terminal.analyst.lastConfirmedOnly")}</span>
-    </div>
-  );
-}
-
 function currentActivity(activity: AnalysisActivity | null, language: ConsoleLocale): { readonly label: string; readonly note: string } {
   const t = getT(language);
   if (!activity || activity.kind === "starting") return {
@@ -481,13 +588,19 @@ function activityLabel(activity: AnalysisActivity | null, language: ConsoleLocal
   return t("terminal.analyst.activity.writing");
 }
 
-function headerState(state: AnalysisState, language: ConsoleLocale): string {
+function stateLabel(state: AnalysisState, language: ConsoleLocale): string {
   const t = getT(language);
   if (state.phase === "error") return t("terminal.analyst.state.needsAttention");
   if (state.busy) return t("terminal.analyst.state.analyzing");
   if (state.phase === "complete") return t("terminal.analyst.state.complete");
   if (state.phase === "stopped") return t("terminal.analyst.state.stopped");
   return t("terminal.analyst.state.ready");
+}
+
+function formatClock(at: number, language: ConsoleLocale): string {
+  const date = new Date(at);
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleTimeString(language === "ko" ? "ko-KR" : "en", { hour: "2-digit", minute: "2-digit" });
 }
 
 function useElapsedMs(state: AnalysisState): number {

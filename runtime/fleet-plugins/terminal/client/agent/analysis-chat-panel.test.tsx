@@ -167,7 +167,7 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
 
-    expect(container.querySelector(".session-analyst__panel-state")?.textContent).toBe("Analyzing");
+    expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Analyzing");
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Using wiki_read");
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Tool status: running");
     expect(container.querySelector(".session-analyst__chat ol")?.classList.contains("is-dimmed")).toBe(false);
@@ -203,10 +203,10 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(authoring.textContent).toContain("Publishing an artifact");
     expect(authoring.textContent).toContain("The analyst is authoring artifact content. It opens in Artifacts when it lands.");
     expect(authoring.previousElementSibling?.classList.contains("session-analyst__transcript")).toBe(true);
-    expect(authoring.nextElementSibling?.classList.contains("session-analyst__pulse")).toBe(true);
-    const handle = container.querySelector<HTMLButtonElement>(".session-analyst-handle--artifacts")!;
+    expect(container.querySelector(".session-analyst__transcript .session-analyst__pulse")).not.toBeNull();
+    const handle = container.querySelector<HTMLButtonElement>(".session-analyst__chip--artifacts")!;
     expect(handle.classList.contains("is-authoring")).toBe(true);
-    expect(handle.querySelector(".session-analyst-handle__count")?.textContent).toBe("…");
+    expect(handle.querySelector(".session-analyst__chip-count")?.textContent).toBe("…");
     expect(handle.title).toBe("The analyst is authoring an artifact…");
 
     act(() => vi.advanceTimersByTime(2_100));
@@ -241,7 +241,7 @@ describe("Session Analyst Evidence Pulse", () => {
       ],
     };
     const { container, root } = renderPanel();
-    const user = container.querySelector<HTMLElement>(".session-analyst__message--user")!;
+    const user = container.querySelector<HTMLElement>(".session-analyst__ask-bubble")!;
     const response = container.querySelector<HTMLElement>(".session-analyst__response.markdown-body")!;
 
     expect(user.textContent).toBe("Keep **this prompt** <em>verbatim</em>");
@@ -695,7 +695,7 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
-  it("omits completion receipts while keeping truthful stopped receipts", () => {
+  it("renders a collapsible completion receipt and truthful stopped receipts", () => {
     storeState = {
       ...initialAnalysisState,
       phase: "complete",
@@ -703,21 +703,26 @@ describe("Session Analyst Evidence Pulse", () => {
       latestActivity: { kind: "writing" },
       runStartedAt: 1_000,
       runEndedAt: 19_000,
-      entries: [{ role: "analyst", text: "Answer" }],
+      entries: [{ role: "analyst", text: "Answer", receipt: { outcome: "complete", durationMs: 18_000, tools: [{ title: "wiki_read", status: "complete" }] } }],
       tools: [{ title: "wiki_read", status: "complete" }],
     };
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
-    expect(container.querySelector(".session-analyst__receipt")).toBeNull();
-    expect(container.querySelector(".session-analyst__panel-state")?.textContent).toBe("Complete");
+    const receipt = container.querySelector(".session-analyst__receipt")!;
+    expect(receipt.querySelector("summary")?.textContent).toContain("18s · 1 step");
+    expect(receipt.querySelector(".session-analyst__receipt-step")?.textContent).toContain("wiki_read");
+    expect(container.querySelector(".session-analyst__stopped")).toBeNull();
+    expect(container.querySelector(".session-analyst__turn-head")?.textContent).toBe("Answered in 18s");
+    expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Complete");
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
     expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
 
-    storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000 };
+    storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000, entries: [{ role: "analyst", text: "Answer", receipt: { outcome: "stopped", durationMs: 12_000, tools: [{ title: "wiki_read", status: "running" }] } }] };
     act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
-    expect(container.querySelector(".session-analyst__receipt")?.textContent).toBe("Stopped · last confirmed: Using wiki_read (running) · 12s");
-    expect(container.querySelector(".session-analyst__panel-state")?.textContent).toBe("Stopped");
+    expect(container.querySelector(".session-analyst__stopped")?.textContent).toBe("Stopped · last confirmed: Using wiki_read (running) · 12s");
+    expect(container.querySelector(".session-analyst__receipt")).toBeNull();
+    expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Stopped");
     expect(container.querySelector(".session-analyst__composer")).toBe(composer);
     expect(container.querySelector(".session-analyst__composer")?.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);

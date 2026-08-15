@@ -16,7 +16,7 @@ describe("Session Analyst contract", () => {
     const css = readFileSync(new URL("./analysis.css", import.meta.url), "utf8");
     expect(chat).toContain("terminal.analyst.suggestion.walkthrough");
     expect(messages).toContain('"Walk me through how this session unfolded"');
-    expect(messages).toContain('"Read-only intelligence for this operation"');
+    expect(messages).toContain('"Answered in {elapsed}"');
     expect(messages).toContain('"Review, explain, and summarize this session — without affecting the host agent."');
     expect(chat).not.toContain("host agent&apos;s transcript");
     expect(chat).toContain("terminal.analyst.activity.starting");
@@ -44,7 +44,12 @@ describe("Session Analyst contract", () => {
     expect(css).toContain(".session-analyst__chat > ol {");
     expect(css).not.toMatch(/\.session-analyst__chat ol\s*\{/);
     expect(css).not.toContain(".session-analyst__chat ol.is-dimmed");
-    expect(css).toContain("var(--surface-glass-strong)");
+    // 면 계약 — 드로어는 companion 프레임과 같은 패널 면 한 장을 잇는다. pillar로 되돌아가면 안 되고,
+    // 포커스 워시(--surface-window)는 캡션 전용이라 본문이 따라가서도 안 된다(PR#711 결정).
+    expect(css).toContain("background: var(--surface-panel);");
+    expect(css).not.toContain("var(--surface-pillar)");
+    expect(css).not.toContain("surface-window");
+    expect(css).toContain("var(--surface-panel-raised)");
     expect(css).not.toContain("background: color-mix(in oklch, var(--ink-mid) 60%, black)");
     expect(css).not.toContain(".session-analyst__chat-pane textarea:focus-visible");
     expect(css).not.toContain(".session-analyst__chat-pane select:focus-visible");

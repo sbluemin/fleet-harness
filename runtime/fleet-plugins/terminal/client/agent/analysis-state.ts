@@ -3,7 +3,16 @@ import type { AnalysisArtifact, AnalysisCatalog, AnalysisEvent, AnalysisSelectio
 // Must match the server's MAX_ANALYSIS_ARTIFACTS per-operation cap.
 export const MAX_ANALYSIS_ARTIFACTS = 32;
 
-export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; }
+/* 턴이 끝나는 순간 그 턴의 결과를 엔트리에 봉인한다 — 전역 상태는 다음 send에서 초기화되므로,
+   역사 턴의 헤드·영수증·노드 상태는 이 메타데이터만이 정직하게 말할 수 있다. */
+export interface AnalysisTurnReceipt {
+  readonly outcome: "complete" | "stopped" | "error";
+  readonly durationMs: number;
+  readonly tools: readonly { readonly title: string; readonly status: string }[];
+  /* 실패 턴의 사유 — 전역 error는 다음 send가 지우므로 역사 턴은 이 값만 말할 수 있다. */
+  readonly error?: string;
+}
+export interface AnalysisEntry { readonly role: "user" | "analyst"; readonly text: string; readonly at?: number; readonly receipt?: AnalysisTurnReceipt; }
 export type AnalysisPhase = "idle" | "starting" | "reasoning" | "tool" | "writing" | "complete" | "stopped" | "error";
 export type AnalysisActivity =
   | { readonly kind: "starting"; readonly connected: boolean }
@@ -116,13 +125,18 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     tools: [],
     artifactAuthoring: null,
     artifactPublished: null,
-    entries: [...state.entries, { role: "user", text: action.text }],
+    entries: [...state.entries, { role: "user", text: action.text, at: action.now }],
   };
   if (action.type === "error") return endWithError(state, action.message, action.now);
   if (action.type === "session-lost") return { ...endWithError(state, "Analysis session ended — send again to restart.", action.now), started: false };
   if (action.type === "start-failed") return { ...endWithError(state, action.message, action.now), started: false };
-  if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, artifactAuthoring: null, error: null };
-  if (action.type === "stop-failed") return { ...endWithError(state, `Stop failed: ${action.message}`, action.now), started: false };
+  if (action.type === "stopped") return { ...state, queue: [], started: false, busy: false, phase: "stopped", runEndedAt: action.now, artifactAuthoring: null, error: null, entries: sealLastAnalystEntry(state, "stopped", action.now) };
+  if (action.type === "stop-failed") {
+    // stop은 낙관적으로 stopped를 먼저 봉인한다 — 실패가 오면 그 봉인을 error로 승격해
+    // 역사 턴이 "정상 중단"으로 남지 않게 한다. durationMs·tools는 중단 시점 값을 유지한다.
+    const message = `Stop failed: ${action.message}`;
+    return { ...endWithError({ ...state, entries: upgradeStoppedReceipt(state.entries, message) }, message, action.now), started: false };
+  }
   if (action.type === "reset") {
     const catalog = state.catalog;
     return catalog
@@ -142,7 +156,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (event.type === "connected") {
     return state.phase === "starting" ? { ...state, latestActivity: { kind: "starting", connected: true } } : state;
   }
-  if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text) };
+  if (event.type === "chunk") return { ...state, phase: "writing", latestActivity: { kind: "writing" }, entries: appendAnalystChunk(state.entries, event.text, action.now) };
   // Thought content is deliberately neither stored nor rendered; only the observed event advances the phase.
   if (event.type === "thought") return { ...state, phase: "reasoning", latestActivity: { kind: "reasoning" } };
   if (event.type === "tool") {
@@ -163,7 +177,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
     artifactAuthoring: null,
   };
   // artifact 이벤트 없이 턴이 끝나면(툴 거부·실패) 저작 카드가 영구히 남지 않도록 함께 종료한다.
-  if (event.type === "complete") return { ...state, busy: false, phase: "complete", runEndedAt: action.now, artifactAuthoring: null, error: null };
+  if (event.type === "complete") return { ...state, busy: false, phase: "complete", runEndedAt: action.now, artifactAuthoring: null, error: null, entries: sealLastAnalystEntry(state, "complete", action.now) };
   return endWithError(state, event.error.message, action.now);
 }
 
@@ -204,10 +218,30 @@ function resolvePersistedSelection(catalog: AnalysisCatalog, selection?: Analysi
 }
 
 function endWithError(state: AnalysisState, message: string, now: number): AnalysisState {
-  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message };
+  return { ...state, queue: [], busy: false, phase: "error", runEndedAt: now, artifactAuthoring: null, error: message, entries: sealLastAnalystEntry(state, "error", now, message) };
 }
 
-function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string): readonly AnalysisEntry[] {
+function upgradeStoppedReceipt(entries: readonly AnalysisEntry[], error: string): readonly AnalysisEntry[] {
   const last = entries.at(-1);
-  return last?.role === "analyst" ? [...entries.slice(0, -1), { role: "analyst", text: last.text + text }] : [...entries, { role: "analyst", text }];
+  if (last?.role !== "analyst" || last.receipt?.outcome !== "stopped") return entries;
+  return [...entries.slice(0, -1), { ...last, receipt: { ...last.receipt, outcome: "error", error } }];
+}
+
+function sealLastAnalystEntry(state: AnalysisState, outcome: AnalysisTurnReceipt["outcome"], now: number, error?: string): readonly AnalysisEntry[] {
+  const last = state.entries.at(-1);
+  if (last?.role === "analyst" && last.receipt) return state.entries;
+  const durationMs = state.runStartedAt === null ? 0 : Math.max(0, now - state.runStartedAt);
+  const receipt: AnalysisTurnReceipt = { outcome, durationMs, tools: state.tools, ...(error !== undefined ? { error } : {}) };
+  // chunk 없이 끝난 턴(시작 실패·조기 중단·도구 전용 런)도 빈 분석가 엔트리로 봉인한다 —
+  // 봉인하지 않으면 다음 send가 전역 상태를 초기화한 뒤 그 턴 전체가 역사에서 사라진다.
+  if (last?.role !== "analyst") {
+    if (last?.role !== "user") return state.entries;
+    return [...state.entries, { role: "analyst", text: "", at: now, receipt }];
+  }
+  return [...state.entries.slice(0, -1), { ...last, receipt }];
+}
+
+function appendAnalystChunk(entries: readonly AnalysisEntry[], text: string, now: number): readonly AnalysisEntry[] {
+  const last = entries.at(-1);
+  return last?.role === "analyst" ? [...entries.slice(0, -1), { ...last, text: last.text + text }] : [...entries, { role: "analyst", text, at: now }];
 }
