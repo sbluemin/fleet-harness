@@ -283,6 +283,12 @@ export function OperationsCanvas({
     }
     if (target?.closest("[data-canvas-blocker]")) return;
     event.preventDefault();
+    // 등록된 Theater가 없으면 실행할 대상이 없다 — 메뉴를 띄워도 고를 자리가 없으니
+    // 브라우저 메뉴만 막고 우리 상자는 열지 않는다. War Room은 위에서 같은 이유로 막는다.
+    if (state.theaters.length === 0) {
+      setContextMenu(null);
+      return;
+    }
     const rect = canvasRef.current?.getBoundingClientRect();
     const anchor = rect ? { x: event.clientX - rect.left, y: event.clientY - rect.top } : null;
     if (!anchor) return;

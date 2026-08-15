@@ -203,11 +203,28 @@ describe("sidebar context menu keyboard path", () => {
     expect(document.activeElement).toBe(chip);
   });
 
+  it("does not open the launch overlay when no Theater is registered", () => {
+    renderSideBar([], vi.fn(), { theaters: [], activeTheaterId: null, operations: [], groups: [], activeOperationId: null });
+    const sideBar = required<HTMLElement>(".operations-side-bar");
+    const menu = new MouseEvent("contextmenu", {
+      bubbles: true,
+      cancelable: true,
+      clientX: 120,
+      clientY: 80,
+    });
+
+    act(() => sideBar.dispatchEvent(menu));
+
+    expect(menu.defaultPrevented).toBe(true);
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+  });
+
 });
 
 function renderSideBar(
   catalog: readonly OperationCatalogPlugin[] = [],
   onLaunchKind = vi.fn(),
+  overrides: Partial<Parameters<typeof OperationsSideBar>[0]> = {},
 ): void {
   act(() => root?.render(createElement(MemoryRouter, null, createElement(OperationsSideBar, {
     theaters: [THEATER],
@@ -240,6 +257,7 @@ function renderSideBar(
     onAddTheater: vi.fn(),
     onCancelAddTheater: vi.fn(),
     onForgetTheater: vi.fn(),
+    ...overrides,
   }))));
 }
 

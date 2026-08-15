@@ -1467,6 +1467,34 @@ describe("triage store", () => {
     expect(document.querySelector(".canvas-context-menu")).toBeNull();
   });
 
+  it("opens nothing from bare sidebar space when no Theater is registered", () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    triagePlateRoot = createRoot(container);
+    setTriageActive(true);
+
+    act(() => triagePlateRoot?.render(createElement(TriageSideBar, {
+      theaters: [],
+      operations: [],
+      operationStatus: {},
+      operationNotifications: {},
+      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "shell", type: "shell", title: "Shell" }] }],
+      plugins: [],
+      renderKindIcon: () => null,
+      canLaunch: false,
+      onLaunchKind: () => {},
+      onPick: () => {},
+      onClose: () => {},
+      onRename: () => {},
+    })));
+
+    const aside = container.querySelector<HTMLElement>(".triage-side-bar")!;
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 24, clientY: 48 });
+    act(() => aside.dispatchEvent(menu));
+    expect(menu.defaultPrevented).toBe(true);
+    expect(document.querySelector(".canvas-context-menu")).toBeNull();
+  });
+
   it("renders live previews only for active-Theater cards and the detail fallback for foreign ones", () => {
     const container = document.createElement("div");
     document.body.append(container);

@@ -107,6 +107,22 @@ describe("canvas controls launch parity across canvas modes", () => {
     expect(item!.disabled).toBe(true);
     act(() => { window.dispatchEvent(new Event("canvas-context-menu-close")); });
   });
+
+  it("opens nothing when no Theater is registered", () => {
+    // 실행 대상이 없으면 메뉴를 띄워도 고를 자리가 없다 — 브라우저 메뉴만 막고 상자는 열지 않는다.
+    // canLaunch:false + Theater가 있는 위 경우와 반대: 거기는 항목을 회색으로 남기고, 여기는 상자 자체다.
+    renderCanvas({
+      state: { ...STATE, theaters: [], operations: [], activeTheaterId: null, activeOperationId: null },
+      canLaunch: false,
+    });
+
+    const canvas = container!.querySelector<HTMLElement>("main.operations-canvas")!;
+    const menu = new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: 120, clientY: 240 });
+    act(() => canvas.dispatchEvent(menu));
+
+    expect(menu.defaultPrevented).toBe(true);
+    expect(container!.querySelector(".canvas-context-menu")).toBeNull();
+  });
 });
 
 function renderCanvas(overrides: Partial<Parameters<typeof OperationsCanvas>[0]> = {}) {
