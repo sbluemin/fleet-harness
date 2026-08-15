@@ -344,7 +344,7 @@ export function summarizeToolResult(content: unknown, options: ChatEventMapOptio
  * 저절로 걸러진다.
  */
 const QUOTED_ABSOLUTE_PATH = /(['"`])((?:[A-Za-z]:[\\/]|\\\\|\/)[^'"`\n]*)\1/g;
-const BARE_ABSOLUTE_PATH = /(?<![^\s'"`([{=])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'"`,;:()[\]]+/g;
+const BARE_ABSOLUTE_PATH = /(?<![^\s'"`([{=<])(?:[A-Za-z]:[\\/]|\\\\|\/)[^\s'"`,;:()[\]<>]+/g;
 
 function abbreviateAbsolutePaths(value: string): string {
   return value
@@ -428,13 +428,36 @@ export function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boole
   for (const key of PATH_KEYS) {
     const value = record[key];
     if (typeof value !== "string" || value.trim().length === 0) continue;
-    const normalized = value.trim().replace(/\\/g, "/");
+    const normalized = resolveDotSegments(value.trim().replace(/\\/g, "/"));
     if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return false;
-    const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+    const root = resolveDotSegments(cwd.replace(/\\/g, "/")).replace(/\/+$/, "");
     if (root.length <= 1) return false;
     return normalized !== root && !normalized.startsWith(`${root}/`);
   }
   return false;
+}
+
+/**
+ * `.`·`..`를 접은 뒤에 경로를 비교한다. 문자열 접두만 보면 `/repo/../etc/passwd`가 `/repo/`로
+ * 시작한다는 이유로 Theater 안쪽이 되는데, 도구는 밖에 쓴다 — 경계 표식이 지켜야 할 바로 그
+ * 경우에 침묵하게 된다. 표시형(displayPath)과 판정(pathIsOutsideCwd)이 같은 함수를 써야
+ * 원장의 경로와 그 표식이 서로 다른 사실을 말하지 않는다.
+ */
+function resolveDotSegments(path: string): string {
+  if (!path.includes("./") && !path.endsWith("/.") && !path.endsWith("/..")) return path;
+  const parts = path.split("/");
+  const out: string[] = [];
+  for (const part of parts) {
+    if (part === ".") continue;
+    if (part === "..") {
+      // 루트를 나타내는 선두의 빈 조각은 남긴다 — 그것이 절대 경로라는 사실이다.
+      if (out.length > 1 || (out.length === 1 && out[0] !== "")) out.pop();
+      continue;
+    }
+    out.push(part);
+  }
+  const joined = out.join("/");
+  return joined.length > 0 ? joined : "/";
 }
 
 /**
@@ -458,10 +481,10 @@ function normalizePathTokens(value: string, cwd: string | undefined): string {
  * 조각만 남긴 축약형이다. 상대 경로는 이미 안전하므로 그대로 둔다.
  */
 function displayPath(value: string, cwd: string | undefined): string {
-  const normalized = value.replace(/\\/g, "/");
+  const normalized = resolveDotSegments(value.replace(/\\/g, "/"));
   if (!normalized.startsWith("/") && !/^[A-Za-z]:\//.test(normalized)) return value;
   if (cwd) {
-    const root = cwd.replace(/\\/g, "/").replace(/\/+$/, "");
+    const root = resolveDotSegments(cwd.replace(/\\/g, "/")).replace(/\/+$/, "");
     if (normalized === root) return ".";
     if (normalized.startsWith(`${root}/`)) return normalized.slice(root.length + 1);
   }

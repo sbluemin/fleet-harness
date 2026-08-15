@@ -114,6 +114,15 @@ describe("chat transcript mapping", () => {
     ]);
   });
 
+  // 문자열 접두만 보면 `/repo/../etc/passwd`가 Theater 안쪽이 된다 — 표식이 지켜야 할 바로 그 경우다.
+  it("resolves dot segments before judging Theater containment", () => {
+    const events = chatEventsFromTranscriptLine(JSON.stringify({
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: "t1", name: "Write", input: { file_path: "/repo/../etc/passwd", content: "x" } }] },
+    }), { cwd: "/repo" });
+    expect(events[0]).toMatchObject({ outside: true, detail: "…/etc/passwd" });
+  });
+
   it("marks a NotebookEdit that lands outside the Theater", () => {
     const events = chatEventsFromTranscriptLine(JSON.stringify({
       type: "assistant",
@@ -288,6 +297,12 @@ describe("summarizeToolResult", () => {
     expect(summarizeToolResult("failed /équipe/alice/key.txt")).toBe("failed …/alice/key.txt");
     expect(summarizeToolResult("failed /사용자/마스터/비밀.txt")).toBe("failed …/마스터/비밀.txt");
     expect(summarizeToolResult("open C:\\사용자\\alice\\key.txt")).toBe("open …/alice/key.txt");
+  });
+
+  // 여는 꺾쇠도 경계다 — 규칙이 "여는 구분자 뒤"인데 이것만 빠져 있었다.
+  it("treats an angle bracket as a path boundary", () => {
+    expect(summarizeToolResult("Bash output: </srv/private/key.txt>"))
+      .toBe("Bash output: <…/private/key.txt>");
   });
 
   // 경계 규칙이 산문 속 슬래시까지 먹으면 요약이 못 쓰게 된다 — 경로만 잡는다.

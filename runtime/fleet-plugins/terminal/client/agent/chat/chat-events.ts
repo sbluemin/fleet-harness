@@ -357,69 +357,101 @@ export interface AgentChatStepGroup {
   readonly count: number;
 }
 
-export interface AgentChatLedgerView {
-  /** 순서대로 자기 줄을 지키는 것 — 문장, 실패한 스텝, Theater 밖 스텝. */
-  readonly inline: readonly AgentChatTurnItem[];
-  /** 한 줄 집계로 접힌 평범한 완료 스텝. */
+/**
+ * 원장의 한 구간 — 모델이 남긴 문장 하나와, 그 문장 뒤에 이어진 스텝들.
+ *
+ * 턴 전체를 하나로 집계하면 숫자가 끝없이 커지기만 하고("셸 7회 실행 · 파일 19개 읽음"),
+ * 무엇을 하려고 그 도구들을 썼는지가 사라진다. 구간을 가르는 것은 모델 자신의 문장이다:
+ * 문장이 의도를 말하고 바로 아래 한 줄이 그 의도로 한 일을 말한다.
+ */
+export interface AgentChatLedgerSegment {
+  /** 이 구간을 여는 문장. 첫 도구가 문장보다 먼저 오면 없다. */
+  readonly note?: string;
+  /** 이 구간에서 한 줄로 접힌 평범한 완료 스텝. */
   readonly groups: readonly AgentChatStepGroup[];
-  /** 지금 도는 스텝 — 집계에 접지 않는다. "지금 무엇을 하는가"가 이 뷰의 값이다. */
+  /** 접지 않고 줄을 지키는 것 — 실패한 스텝, Theater 밖 스텝, 그리고 열린 구간의 최근 스텝. */
+  readonly inline: readonly AgentChatTurnItem[];
+  /** 지금 도는 스텝. */
   readonly running: readonly AgentChatTurnItem[];
 }
 
 /**
- * 원장을 "집계 + 예외"로 가른다. 예외는 언제나 줄을 지킨다 — 진행 중인 스텝, 실패한 스텝,
- * Theater 밖을 가리킨 스텝, 그리고 모델이 남긴 문장.
+ * 원장을 구간으로 가른다. 구간의 경계는 모델의 문장이고, 각 구간은 그 문장 뒤에 이어진
+ * 스텝들을 한 줄로 접는다 — 한 턴이 여러 번 "문장 → 한 일" 쌍으로 읽힌다.
  *
- * 평범한 완료 스텝을 언제 접는지는 국면이 정한다. 턴이 도는 동안에는 방금 무엇을 했는지가
- * 곧 "개발 중"이라는 감각이므로 최근 것들은 순서대로 남기고(`recentLimit`), 그보다 오래된
- * 것만 앞머리 한 줄로 접는다. 턴이 끝나면 남길 이유가 없다 — 전부 집계로 접히고, 결론이
- * 화면을 차지한다(`recentLimit: 0`).
+ * 마지막 구간만 예외다. 턴이 도는 동안 그 구간은 열려 있어서, 최근 스텝(`recentLimit`)을
+ * 순서대로 세워 둔다 — 방금 무엇을 했는지가 곧 "일하는 중"이라는 감각이다. 다음 문장이
+ * 도착하거나 턴이 끝나면 그 구간도 닫히고 한 줄로 접힌다.
+ *
+ * 실패한 스텝과 Theater 밖을 가리킨 스텝은 어느 구간에서도 접지 않는다.
  */
-export function groupAgentChatLedger(
+export function segmentAgentChatLedger(
   items: readonly AgentChatTurnItem[],
   recentLimit = 0,
-): AgentChatLedgerView {
-  // 뒤에서부터 세어, 인라인으로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
-  let keep = recentLimit;
-  const inlineRoutine = new Set<number>();
-  if (keep > 0) {
-    for (let index = items.length - 1; index >= 0 && keep > 0; index -= 1) {
-      const item = items[index];
-      if (!item || item.type !== "tool") continue;
-      if (item.state === "running" || item.state === "fail" || item.outside === true) continue;
-      inlineRoutine.add(index);
-      keep -= 1;
+): readonly AgentChatLedgerSegment[] {
+  const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
+  for (const item of items) {
+    if (item.type === "text") {
+      buckets.push({ ...(item.text !== undefined ? { note: item.text } : {}), steps: [] });
+      continue;
     }
+    const last = buckets.at(-1);
+    if (last) last.steps.push(item);
+    else buckets.push({ steps: [item] });
+  }
+  if (buckets.length === 0) return [];
+
+  return buckets.map((bucket, index) => {
+    const open = recentLimit > 0 && index === buckets.length - 1;
+    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0);
+  });
+}
+
+function foldSegment(
+  note: string | undefined,
+  steps: readonly AgentChatTurnItem[],
+  recentLimit: number,
+): AgentChatLedgerSegment {
+  // 열린 구간에서는 뒤에서부터 세어 순서대로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
+  const keepInline = new Set<number>();
+  let keep = recentLimit;
+  for (let index = steps.length - 1; index >= 0 && keep > 0; index -= 1) {
+    const step = steps[index];
+    if (!step) continue;
+    if (step.state === "running" || step.state === "fail" || step.outside === true) continue;
+    keepInline.add(index);
+    keep -= 1;
   }
 
   const inline: AgentChatTurnItem[] = [];
   const running: AgentChatTurnItem[] = [];
   const groups: AgentChatStepGroup[] = [];
-  const index = new Map<string, number>();
-  items.forEach((item, at) => {
-    if (item.type === "text") { inline.push(item); return; }
-    if (item.state === "running") { running.push(item); return; }
-    if (item.state === "fail" || item.outside === true || inlineRoutine.has(at)) { inline.push(item); return; }
-    const family = agentChatToolFamily(item.name);
-    const key = family === "other" ? `other:${item.name ?? ""}` : family;
-    const seen = index.get(key);
-    if (seen === undefined) {
-      index.set(key, groups.length);
-      groups.push({ family, count: 1, ...(family === "other" ? { name: item.name ?? "" } : {}) });
+  const seen = new Map<string, number>();
+  steps.forEach((step, at) => {
+    if (step.state === "running") { running.push(step); return; }
+    if (step.state === "fail" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
+    const family = agentChatToolFamily(step.name);
+    const key = family === "other" ? `other:${step.name ?? ""}` : family;
+    const found = seen.get(key);
+    if (found === undefined) {
+      seen.set(key, groups.length);
+      groups.push({ family, count: 1, ...(family === "other" ? { name: step.name ?? "" } : {}) });
     } else {
-      const current = groups[seen];
-      if (current) groups[seen] = { ...current, count: current.count + 1 };
+      const current = groups[found];
+      if (current) groups[found] = { ...current, count: current.count + 1 };
     }
   });
-  return { inline, groups, running };
+  return { ...(note !== undefined ? { note } : {}), groups, inline, running };
 }
 
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */
 function collectChanges(items: readonly AgentChatTurnItem[]): readonly AgentChatChange[] {
   const byFile = new Map<string, { file: string; added: number; removed: number }>();
   for (const item of items) {
-    // 실패한 쓰기는 장부에 오르지 않는다 — 남지 않은 변경이다.
-    if (!item.change || item.state === "fail") continue;
+    // 결과가 ok로 돌아온 쓰기만 장부에 오른다. 실패한 쓰기는 남지 않은 변경이고, 결과 없이
+    // 끝난 쓰기(턴이 중간에 닫혀 done으로 가라앉은 스텝)는 일어났는지 자체를 모른다 —
+    // 모르는 것을 "바뀌었다"로 세우면 이 원장이 고치려던 거짓말을 다시 하는 셈이다.
+    if (!item.change || item.state !== "ok") continue;
     const entry = byFile.get(item.change.file);
     if (entry) {
       entry.added += item.change.added;

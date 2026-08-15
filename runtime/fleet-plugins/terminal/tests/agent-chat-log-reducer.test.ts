@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  groupAgentChatLedger,
+  segmentAgentChatLedger,
   initialAgentChatLogState,
   reduceAgentChatLog,
   splitAgentChatTurn,
@@ -196,59 +196,68 @@ describe("chat log steps", () => {
   });
 });
 
-// 원장 집계 — 일상은 세고, 예외만 줄을 지킨다.
-describe("groupAgentChatLedger", () => {
+// 원장 구간 — 모델의 문장이 구간을 가르고, 각 구간이 자기가 한 일을 한 줄로 접는다.
+describe("segmentAgentChatLedger", () => {
   const tool = (name: string, extra: Partial<AgentChatTurnItem> = {}): AgentChatTurnItem =>
     ({ type: "tool", name, detail: "", state: "ok", ...extra });
+  const note = (text: string): AgentChatTurnItem => ({ type: "text", text });
 
-  it("folds routine finished steps into one count per family", () => {
-    const view = groupAgentChatLedger([
-      tool("Read"), tool("NotebookRead"), tool("Write"), tool("Edit"), tool("Bash"), tool("Bash"),
+  // 턴 전체를 하나로 세면 숫자만 커지고 무엇을 하려던 건지가 사라진다.
+  it("splits one turn into a segment per note, each folding only its own steps", () => {
+    const segments = segmentAgentChatLedger([
+      note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
+      note("이제 고치고 돌리겠습니다."), tool("Edit"), tool("Bash"), tool("Bash"),
     ]);
-    expect(view.groups).toEqual([
-      { family: "read", count: 2 },
-      { family: "write", count: 1 },
-      { family: "edit", count: 1 },
-      { family: "run", count: 2 },
+    expect(segments).toEqual([
+      { note: "먼저 읽겠습니다.", groups: [{ family: "read", count: 2 }], inline: [], running: [] },
+      {
+        note: "이제 고치고 돌리겠습니다.",
+        groups: [{ family: "edit", count: 1 }, { family: "run", count: 2 }],
+        inline: [],
+        running: [],
+      },
     ]);
-    expect(view.inline).toEqual([]);
-    expect(view.running).toEqual([]);
   });
 
-  it("keeps the running step, the failure and the outside write on their own rows", () => {
+  it("opens a leading segment when tools arrive before any note", () => {
+    const segments = segmentAgentChatLedger([tool("Read"), note("읽었습니다."), tool("Bash")]);
+    expect(segments[0]).toEqual({ groups: [{ family: "read", count: 1 }], inline: [], running: [] });
+    expect(segments[1]?.note).toBe("읽었습니다.");
+  });
+
+  it("keeps the failure and the outside write on their own rows inside their segment", () => {
     const failed = tool("Bash", { state: "fail", result: "exit 2" });
     const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
-    const live = tool("Read", { state: "running" });
-    const note: AgentChatTurnItem = { type: "text", text: "먼저 읽겠습니다." };
-    const view = groupAgentChatLedger([note, tool("Read"), failed, outside, tool("Read"), live]);
-    expect(view.inline).toEqual([note, failed, outside]);
-    expect(view.groups).toEqual([{ family: "read", count: 2 }]);
-    expect(view.running).toEqual([live]);
+    const segments = segmentAgentChatLedger([note("해보겠습니다."), tool("Read"), failed, outside]);
+    expect(segments[0]?.inline).toEqual([failed, outside]);
+    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
   });
 
-  // 진행 중에는 방금 무엇을 했는지가 보여야 한다 — 끝난 스텝이 곧바로 사라지면 화면에
-  // 남는 것은 집계 한 줄과 "생각 중"뿐이고, 그건 일하는 화면이 아니다.
-  it("keeps the most recent finished steps in order while the turn runs", () => {
-    const items = [tool("Read"), tool("Read"), tool("Bash"), tool("Write")];
-    const live = groupAgentChatLedger(items, 2);
-    expect(live.inline).toEqual([items[2], items[3]]);
-    expect(live.groups).toEqual([{ family: "read", count: 2 }]);
+  // 진행 중에는 마지막 구간만 열려 있다 — 방금 무엇을 했는지가 곧 "일하는 중"이다.
+  it("leaves only the last segment open while the turn runs", () => {
+    const items = [
+      note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
+      note("이제 돌리겠습니다."), tool("Bash"), tool("Write"), tool("Read", { state: "running" }),
+    ];
+    const segments = segmentAgentChatLedger(items, 4);
+    expect(segments[0]).toEqual({ note: "먼저 읽겠습니다.", groups: [{ family: "read", count: 2 }], inline: [], running: [] });
+    expect(segments[1]?.groups).toEqual([]);
+    expect(segments[1]?.inline).toEqual([items[4], items[5]]);
+    expect(segments[1]?.running).toEqual([items[6]]);
   });
 
-  it("folds every routine step once the turn is done", () => {
-    const items = [tool("Read"), tool("Read"), tool("Bash"), tool("Write")];
-    const settled = groupAgentChatLedger(items, 0);
-    expect(settled.inline).toEqual([]);
-    expect(settled.groups).toEqual([
-      { family: "read", count: 2 },
+  it("folds the last segment too once the turn is done", () => {
+    const items = [note("돌리겠습니다."), tool("Bash"), tool("Write")];
+    expect(segmentAgentChatLedger(items, 0)[0]?.inline).toEqual([]);
+    expect(segmentAgentChatLedger(items, 0)[0]?.groups).toEqual([
       { family: "run", count: 1 },
       { family: "write", count: 1 },
     ]);
   });
 
   it("counts an unknown tool under its own name", () => {
-    const view = groupAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
-    expect(view.groups).toEqual([
+    const segments = segmentAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
+    expect(segments[0]?.groups).toEqual([
       { family: "other", name: "SomeMcpTool", count: 2 },
       { family: "other", name: "Other", count: 1 },
     ]);
@@ -337,6 +346,22 @@ describe("splitAgentChatTurn", () => {
     expect(view.failed).toBe(1);
     expect(view.changes).toEqual([{ file: "a.ts", added: 13, removed: 1 }]);
     expect(view.ledger.at(-1)).toMatchObject({ name: "Bash", state: "fail", result: "1 test failed" });
+  });
+
+  // 턴이 결과를 못 받고 닫히면 그 쓰기가 실행됐는지 자체를 모른다 — 모르는 것을 "바뀌었다"로
+  // 세우면 이 원장이 고치려던 거짓말(✓로 접히던 실패)을 형태만 바꿔 되풀이하는 것이다.
+  it("keeps a write that never reported a result out of the change ledger", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "replay-end", turns: 0 },
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "tool", name: "Write", detail: "a.ts", id: "t1", change: { file: "a.ts", added: 10, removed: 0 } },
+      { kind: "turn-end", ok: false },
+    ]);
+    const view = splitAgentChatTurn(state.turns.at(-1)!);
+    expect(state.turns.at(-1)?.items.at(-1)).toMatchObject({ state: "done" });
+    expect(view.changes).toEqual([]);
   });
 
   it("keeps a failed write out of the change ledger", () => {

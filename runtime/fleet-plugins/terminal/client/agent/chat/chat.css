@@ -225,6 +225,17 @@
   gap: var(--space-1);
 }
 
+/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 구간 사이가 구간 안보다 넓어야 쌍으로 읽힌다. */
+.agent-chat-segment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.agent-chat-segment + .agent-chat-segment {
+  margin-top: var(--space-3);
+}
+
 .agent-chat-ledger-note {
   font-size: 12.5px;
   font-style: italic;

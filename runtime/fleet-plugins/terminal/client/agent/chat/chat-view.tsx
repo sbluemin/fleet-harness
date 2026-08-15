@@ -6,7 +6,7 @@ import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
   agentChatToolFamily,
-  groupAgentChatLedger,
+  segmentAgentChatLedger,
   splitAgentChatTurn,
   type AgentChatChange,
   type AgentChatStepGroup,
@@ -360,22 +360,24 @@ function Ledger({
 }: {
   readonly items: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
-  /** 진행 중인 턴인가 — 최근 스텝을 순서대로 남길지, 전부 집계로 접을지를 가른다. */
+  /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
   readonly working?: boolean;
   /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
   readonly pending?: boolean;
 }) {
   const t = getT(language);
-  const view = groupAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0);
-  if (items.length === 0 && !pending) return null;
+  const segments = segmentAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0);
+  if (segments.length === 0 && !pending) return null;
   return (
     <div className="agent-chat-ledger">
-      {/* 접힌 옛 스텝은 앞머리에 선다 — 시간순으로 이것들이 먼저 있었다. */}
-      <Tally groups={view.groups} language={language} />
-      {view.inline.map((item, index) => item.type === "text"
-        ? <div key={index} className="agent-chat-ledger-note">{item.text}</div>
-        : <Step key={index} item={item} language={language} />)}
-      {view.running.map((item, index) => <Step key={`run-${index}`} item={item} language={language} />)}
+      {segments.map((segment, index) => (
+        <div className="agent-chat-segment" key={index}>
+          {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
+          <Tally groups={segment.groups} language={language} />
+          {segment.inline.map((item, at) => <Step key={`in-${at}`} item={item} language={language} />)}
+          {segment.running.map((item, at) => <Step key={`run-${at}`} item={item} language={language} />)}
+        </div>
+      ))}
       {pending ? (
         <div className="agent-chat-step is-running">
           <span className="agent-chat-step-orbit" aria-hidden="true" />
