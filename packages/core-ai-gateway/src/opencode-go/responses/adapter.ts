@@ -23,7 +23,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
-import { wireLog } from "../../transport/wire-log.js";
+import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
 
 /** OpenCode Go 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
 export const OPENCODE_GO_RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
@@ -287,6 +287,8 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
       `OpenCode Go SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+  // Raw provider payload before the event-name type fallback and canonical filtering.
+  logRawWireEvent("opencode-go-responses.wire.event", eventName, parsed);
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
     parsed = { ...parsed, type: eventName };
   }

@@ -11,6 +11,7 @@ import {
   opencodeGoWire,
 } from "../../../src/index.js";
 import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../src/index.js";
+import { wireLogFixture } from "../../helpers/wire-log.js";
 
 const CHAT_URL = "https://chat.example/v1/chat/completions";
 
@@ -495,6 +496,31 @@ describe("chat completions request translation", () => {
 });
 
 describe("chat completions stream translation", () => {
+  it("records each raw chat chunk before canonical translation", async () => {
+    const wireLog = wireLogFixture("fleet-opencode-chat-wire-log-");
+    try {
+      const rawChunk = {
+        id: "chat-raw",
+        model: "deepseek-v4-flash",
+        choices: [{ index: 0, delta: { reasoning_content: "checking" } }],
+      };
+      const fetchMock = vi.fn<typeof fetch>(async () => sse(
+        `event: chat.completion.chunk\ndata: ${JSON.stringify(rawChunk)}\n\n`,
+      ));
+      const response = await adapter(fetchMock).stream(request(), { apiKey: "opencode-secret" });
+      if (!response.ok) throw new Error("expected ok");
+      await collect(response.events);
+
+      const raw = wireLog.read().filter((entry) => entry.event === "openai-chat.wire.event");
+      expect(raw).toEqual([expect.objectContaining({
+        payload: { event: "chat.completion.chunk", data: rawChunk },
+      })]);
+      expect(JSON.stringify(raw)).not.toContain("opencode-secret");
+    } finally {
+      wireLog.cleanup();
+    }
+  });
+
   it("translates reasoning_content into canonical reasoning events", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse(
       chunk({ id: "c-reason", model: "deepseek-v4-flash", choices: [{ index: 0, delta: { reasoning_content: "Inspecting " } }] }),

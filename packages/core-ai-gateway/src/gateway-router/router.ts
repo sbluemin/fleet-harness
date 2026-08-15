@@ -444,6 +444,7 @@ async function proxyToAnthropic(
     headers,
     signal,
     url: ANTHROPIC_MESSAGES_URL,
+    wireEventLabel: "anthropic.wire.event",
   });
 }
 
@@ -469,6 +470,7 @@ async function proxyToKimi(
     headers,
     signal,
     url: KIMI_MESSAGES_URL,
+    wireEventLabel: "kimi-anthropic.wire.event",
   });
 }
 

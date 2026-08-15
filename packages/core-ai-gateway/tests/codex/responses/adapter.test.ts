@@ -786,6 +786,33 @@ describe("codex responses adapter", () => {
     });
   });
 
+  it("records the raw provider event before canonical type normalization", async () => {
+    const filePath = wireLogFile();
+    const fetchMock = vi.fn<typeof fetch>(async () => sse(
+      'event: response.reasoning_text.delta\ndata: {"item_id":"reasoning-raw","output_index":0,"delta":"checking"}\n\n',
+    ));
+
+    const response = await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected success");
+    const events: CanonicalResponseEvent[] = [];
+    for await (const event of response.events) events.push(event);
+
+    expect(events).toEqual([{
+      type: "response.reasoning_summary_text.delta",
+      item_id: "reasoning-raw",
+      output_index: 0,
+      delta: "checking",
+    }]);
+    const raw = readWireLogLines(filePath).filter((entry) => entry.event === "openai.wire.event");
+    expect(raw).toEqual([expect.objectContaining({
+      payload: {
+        event: "response.reasoning_text.delta",
+        data: { item_id: "reasoning-raw", output_index: 0, delta: "checking" },
+      },
+    })]);
+    expect(JSON.stringify(raw)).not.toContain("sk-codex");
+  });
+
   it("preserves discarded failure evidence before the gateway canonical-event wrapper", async () => {
     const filePath = wireLogFile();
     const failed = 'data: {"type":"response.failed","response":{"id":"r1","model":"gpt-5.6-luna","error":{"code":"server_error","message":"An error occurred while processing your request. Please include request ID req-1."}}}\n\n';

@@ -25,7 +25,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
-import { wireLog } from "../../transport/wire-log.js";
+import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
 
 // 전송 계층은 upstream-sse.ts와 공유한다. 기존 배럴 소비자를 위해 그대로 재수출한다.
 export { UpstreamBodyLimitError, UpstreamIdleTimeoutError, UpstreamProtocolError };
@@ -687,6 +687,8 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
       `OpenAI SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+  // Raw provider payload before the event-name type fallback and canonical filtering.
+  logRawWireEvent("openai.wire.event", eventName, parsed);
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
     parsed = { ...parsed, type: eventName };
   }

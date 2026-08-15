@@ -17,6 +17,7 @@ import type {
   CanonicalResponseRequest,
   CredentialResolverDeps,
 } from "../src/index.js";
+import { wireLogFixture } from "./helpers/wire-log.js";
 
 function xaiRequest(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
   return {
@@ -633,6 +634,37 @@ describe("Grok Responses tool loading", () => {
 });
 
 describe("Grok Responses adapter", () => {
+  it("records the raw xAI event before canonical reasoning normalization", async () => {
+    const wireLog = wireLogFixture("fleet-xai-wire-log-");
+    try {
+      const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+        'event: response.reasoning_text.delta\ndata: {"item_id":"reasoning-xai","output_index":0,"delta":"checking"}\n\n',
+      ));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), {
+        apiKey: "xai-secret",
+      });
+      if (!response.ok) throw new Error("expected success");
+      const events = await collectXaiEvents(response.events);
+
+      expect(events).toEqual([{
+        type: "response.reasoning_summary_text.delta",
+        item_id: "reasoning-xai",
+        output_index: 0,
+        delta: "checking",
+      }]);
+      const raw = wireLog.read().filter((entry) => entry.event === "xai-responses.wire.event");
+      expect(raw).toEqual([expect.objectContaining({
+        payload: {
+          event: "response.reasoning_text.delta",
+          data: { item_id: "reasoning-xai", output_index: 0, delta: "checking" },
+        },
+      })]);
+      expect(JSON.stringify(raw)).not.toContain("xai-secret");
+    } finally {
+      wireLog.cleanup();
+    }
+  });
+
   it("uses the CLI proxy with subscription and model headers", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response("data: [DONE]\n\n", { status: 200 }));
     const request: CanonicalResponseRequest = {

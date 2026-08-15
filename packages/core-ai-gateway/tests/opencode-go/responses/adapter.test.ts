@@ -6,6 +6,7 @@ import {
   createOpencodeGoAdapter,
 } from "../../../src/index.js";
 import type { CanonicalResponseEvent, CanonicalResponseRequest } from "../../../src/index.js";
+import { wireLogFixture } from "../../helpers/wire-log.js";
 
 function request(overrides: Partial<CanonicalResponseRequest> = {}): CanonicalResponseRequest {
   return {
@@ -59,6 +60,30 @@ describe("opencode go responses adapter", () => {
     expect(body.metadata).toEqual({ session: "s" });
     // No ChatGPT store:false coercion either.
     expect(body).not.toHaveProperty("store");
+  });
+
+  it("records raw response events that canonical translation drops", async () => {
+    const wireLog = wireLogFixture("fleet-opencode-responses-wire-log-");
+    try {
+      const rawDelta = {
+        type: "response.function_call_arguments.delta",
+        item_id: "call-raw",
+        output_index: 0,
+        delta: "{\"path\"",
+      };
+      const fetchMock = vi.fn<typeof fetch>(async () => sse(chunk(rawDelta)));
+      const response = await new OpencodeGoResponsesAdapter({ fetch: fetchMock }).stream(request(), {
+        apiKey: "opencode-secret",
+      });
+      if (!response.ok) throw new Error("expected ok");
+
+      expect(await collect(response.events)).toEqual([]);
+      const raw = wireLog.read().filter((entry) => entry.event === "opencode-go-responses.wire.event");
+      expect(raw).toEqual([expect.objectContaining({ payload: { data: rawDelta } })]);
+      expect(JSON.stringify(raw)).not.toContain("opencode-secret");
+    } finally {
+      wireLog.cleanup();
+    }
   });
 
   it("translates streamed output text into canonical events", async () => {

@@ -19,7 +19,7 @@ import {
   type FetchLike,
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
-import { wireLog } from "../../transport/wire-log.js";
+import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
 
 /** Grok CLI 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
 export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/responses";
@@ -384,6 +384,8 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
       `Grok CLI SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
     );
   }
+  // Raw provider payload before the event-name type fallback and canonical filtering.
+  logRawWireEvent("xai-responses.wire.event", eventName, parsed);
   if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
     parsed = { ...parsed, type: eventName };
   }

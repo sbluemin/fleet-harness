@@ -51,17 +51,43 @@ function wireLogFile(): string {
   return filePath;
 }
 
-function cursorWirePlanCount(filePath: string): number {
+function cursorWireEntries(filePath: string): Array<Record<string, unknown>> {
   return readFileSync(filePath, "utf8")
     .trim()
     .split("\n")
     .filter((line) => line.length > 0)
-    .map((line) => JSON.parse(line) as { readonly event?: unknown })
-    .filter((entry) => entry.event === "cursor.wire.plan")
-    .length;
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+}
+
+function cursorWirePlanCount(filePath: string): number {
+  return cursorWireEntries(filePath).filter((entry) => entry.event === "cursor.wire.plan").length;
 }
 
 describe("Cursor live client-tool Run bridge", () => {
+  it("records decoded Cursor server messages before canonical handling", async () => {
+    const wireLogPath = wireLogFile();
+    const stream = new BridgeCursorStream(cursorCompletionFrames("raw cursor event"));
+    const harness = cursorHarness([stream]);
+
+    try {
+      const events = await collectCursorResponse(
+        harness.adapter,
+        cursorRequest("session-raw-wire-event", "composer-2.5"),
+        "cursor-secret",
+      );
+
+      expect(canonicalText(events)).toBe("raw cursor event");
+      const raw = cursorWireEntries(wireLogPath).filter((entry) => entry.event === "cursor.wire.event");
+      expect(raw).toHaveLength(3);
+      expect(raw[0]?.payload).toEqual({
+        data: { interactionUpdate: { textDelta: { text: "raw cursor event" } } },
+      });
+      expect(JSON.stringify(raw)).not.toContain("cursor-secret");
+    } finally {
+      harness.adapter.dispose();
+    }
+  });
+
   it.each([
     "grok-4.5",
     "grok-4.5-fast",
