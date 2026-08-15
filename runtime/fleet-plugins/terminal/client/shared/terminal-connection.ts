@@ -82,6 +82,9 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   let socket: WebSocketLike | null = null;
   let inputSubscription: { readonly dispose: () => void } | null = null;
   let pendingSize: { readonly cols: number; readonly rows: number } | null = null;
+  // 실제로 이 소켓으로 나간 마지막 격자. 연결마다 비워 (재)연결이 항상 한 번은 크기를 협상하게 한다 —
+  // 새 소켓 너머의 세션이 어떤 크기를 알고 있는지는 클라이언트가 가정할 수 없다.
+  let lastSentSize: { readonly cols: number; readonly rows: number } | null = null;
   let started = false;
   /**
    * 이 연결이 지금 요구하는 역할. 밀려나면(4000) control에서 viewer로 내려가고, 사용자가
@@ -97,9 +100,13 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
   const sendResize = (cols: number, rows: number) => {
     pendingSize = { cols, rows };
     if (role === "viewer") return;
-    if (socket?.readyState === OPEN_READY_STATE) {
-      socket.send(JSON.stringify({ type: "resize", cols, rows }));
-    }
+    if (socket?.readyState !== OPEN_READY_STATE) return;
+    // 같은 격자를 다시 보내지 않는다. 서버는 프레임을 그대로 pty.resize로 넘기고, 그 SIGWINCH는
+    // 전체 화면 TUI의 프레임 전체 재렌더를 부른다 — 격자가 그대로면 그 재도색은 순수 낭비이자
+    // 눈에 보이는 깜빡임이다. 상자가 한 셀보다 작게 움직이는 미세 드래그·창 크기 조정이 이 경로다.
+    if (lastSentSize && lastSentSize.cols === cols && lastSentSize.rows === rows) return;
+    lastSentSize = { cols, rows };
+    socket.send(JSON.stringify({ type: "resize", cols, rows }));
   };
 
   const connectLoop = async (): Promise<void> => {
@@ -132,6 +139,8 @@ export function createTerminalConnection(options: TerminalConnectionOptions): Te
       ws.binaryType = "arraybuffer";
       ws.onopen = () => {
         connectionOptions.onStatus?.(role === "viewer" ? "viewer" : "live");
+        // 새 소켓은 크기 이력을 물려받지 않는다 — 비워야 아래 협상이 dedupe에 걸리지 않는다.
+        lastSentSize = null;
         // 관전자는 PTY 크기를 협상하지 않는다 — 보는 사람의 창이 모는 사람의 터미널을 흔들면 안 된다.
         if (role !== "viewer" && pendingSize) sendResize(pendingSize.cols, pendingSize.rows);
       };

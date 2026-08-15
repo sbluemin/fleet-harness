@@ -350,6 +350,10 @@ export function createTerminalSessionManager(deps: TerminalSessionManagerDeps): 
       return;
     }
     if (!isResizeFrame(frame)) return;
+    // 격자가 그대로면 PTY를 건드리지 않는다. pty.resize는 크기가 같아도 SIGWINCH를 보내고,
+    // 전체 화면 TUI는 그 신호마다 프레임 전체를 다시 그린다 — 바뀐 것이 없을 때 그 재도색은
+    // 사용자 눈에 깜빡임으로만 남는다. 클라이언트도 같은 판정을 하지만 서버가 마지막 방어선이다.
+    if (session.cols === frame.cols && session.rows === frame.rows) return;
     session.cols = frame.cols;
     session.rows = frame.rows;
     session.pty.resize(frame.cols, frame.rows);

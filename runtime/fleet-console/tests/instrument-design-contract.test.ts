@@ -809,6 +809,11 @@ describe("Instrument core design contract", () => {
     // (b) 드래그·리사이즈 조작 중에는 공통 transition을 통째로 끊는다.
     const draggingBlock = components.match(/\.canvas-operation\.is-dragging \{[^}]*\}/)?.[0] ?? "";
     expect(draggingBlock).toContain("transition: none;");
+    // (b') 사이드바 접기/펼치기도 같은 억제를 받는다. 사이드바의 width 전환이 중앙 트랙을 매 프레임
+    // 리플로우시키는 동안 이 프레임이 자기 글라이드로 뒤따르면 상자가 사이드바보다 오래 움직이고,
+    // 그동안 터미널은 옛 격자로 남는다. 플래그 소유자는 side-bar-motion.ts의 width 전환 이벤트다.
+    const sideBarAnimatingBlock = components.match(/body\[data-side-bar-animating="true"\] \.canvas-operation \{[^}]*\}/)?.[0] ?? "";
+    expect(sideBarAnimatingBlock).toContain("transition: none;");
     // (c) components.css의 reduced-motion 통합 블록이 캔버스 패널·companion 프레임을 커버한다.
     // is-minimized(0,2,0)는 .canvas-operation(0,1,0)을 이기므로 반드시 블록 안에 함께 명시된다.
     const reducedMotionBlock = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));

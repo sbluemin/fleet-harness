@@ -53,6 +53,51 @@ describe("terminal connection replay input gate", () => {
     connection.dispose();
   });
 
+  it("sends a resize frame only when the grid actually changed, and renegotiates on every reconnect", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "ticket-d", ttlMs: 10_000 }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    })));
+    const terminal = new FakeTerminal();
+    const sockets: FakeWebSocket[] = [];
+    const connection = createTerminalConnection({
+      operationId: "session-d",
+      terminal,
+      ticketPath: "/ticket",
+      wsPath: "/ws",
+      location: { host: "console.test", protocol: "http:" },
+      webSocketFactory: () => {
+        const socket = new FakeWebSocket();
+        sockets.push(socket);
+        return socket;
+      },
+    });
+    connection.resize(120, 40);
+    connection.start();
+    await vi.waitFor(() => expect(sockets).toHaveLength(1));
+    sockets[0]!.open();
+    expect(sockets[0]!.sent).toEqual([JSON.stringify({ type: "resize", cols: 120, rows: 40 })]);
+
+    // The panel box moved by less than a cell, so fit lands on the same grid. Re-sending it would
+    // cost a SIGWINCH and a full-screen TUI redraw for a screen that did not change.
+    connection.resize(120, 40);
+    expect(sockets[0]!.sent).toHaveLength(1);
+
+    // A real grid change still goes out.
+    connection.resize(118, 40);
+    expect(sockets[0]!.sent).toHaveLength(2);
+    expect(sockets[0]!.sent[1]).toBe(JSON.stringify({ type: "resize", cols: 118, rows: 40 }));
+
+    // A new socket inherits no size history: the client cannot assume what the session behind it
+    // knows, so every reconnect negotiates the grid once even though nothing changed locally.
+    sockets[0]!.close();
+    await vi.waitFor(() => expect(sockets).toHaveLength(2), { timeout: 2_000 });
+    sockets[1]!.open();
+    expect(sockets[1]!.sent).toEqual([JSON.stringify({ type: "resize", cols: 118, rows: 40 })]);
+
+    connection.dispose();
+  });
+
   it("reports the replay window on every attach so replayed side effects stay suppressed", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ticket: "ticket-b", ttlMs: 10_000 }), {
       status: 200,

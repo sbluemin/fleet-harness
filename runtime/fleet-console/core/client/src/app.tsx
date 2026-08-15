@@ -34,6 +34,7 @@ import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
 import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
+import { observeSideBarCollapseMotion } from "./sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "./mobile/mobile-store.js";
 import { MobileTabBar } from "./mobile/mobile-tab-bar.js";
 import { MobileSettingsPage } from "./mobile/mobile-settings-page.js";
@@ -166,6 +167,8 @@ export function App() {
   }, [operationsViewVisible]);
 
   useEffect(() => subscribeOperationActivityTracking(), []);
+
+  useEffect(() => observeSideBarCollapseMotion(), []);
 
   useEffect(() => {
     const abort = new AbortController();
