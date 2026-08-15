@@ -947,9 +947,9 @@ function AiGatewayCompactTimingCard() {
       <div className="compact-timing-track-wrap">
         <div
           ref={trackRef}
-          className={`compact-timing-track${policy === "custom" ? " is-live" : ""}${crowded ? " is-warn" : ""}`}
+          className={`compact-timing-track${policy === "custom" && !saving ? " is-live" : ""}${crowded ? " is-warn" : ""}`}
           onPointerDown={(event) => {
-            if (policy !== "custom") return;
+            if (policy !== "custom" || saving) return;
             draggingRef.current = true;
             (event.currentTarget as HTMLDivElement).setPointerCapture(event.pointerId);
             setCustomFromClientX(event.clientX);
