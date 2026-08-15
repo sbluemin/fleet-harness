@@ -2859,6 +2859,13 @@
   pointer-events: none;
   border: 1px solid color-mix(in oklch, var(--brass) 16%, transparent);
   border-radius: var(--radius-sm);
+  /* 물러남은 즉시, 복귀는 패널이 슬롯에 안착한 뒤다. 복원은 geometry를 --duration-slow 동안
+     되돌리므로 경계선이 먼저 돌아오면 줄어드는 패널 위에 브래킷이 찍힌다 — 아래 규칙이 없애는
+     겹침이 매 복원마다 잠깐 재현된다(실측: 복원 직후 캡션이 프레임 윗변보다 10px 위, ~140ms 지속).
+     display를 쓰지 않는 이유가 이것이다. 지연은 opacity 전환에만 걸리므로 모드 진입처럼 프레임이
+     새로 마운트되는 경로는 전환 자체가 없어 브래킷 등장 연출을 그대로 유지한다. */
+  opacity: 1;
+  transition: opacity var(--duration-base) var(--ease-glide) var(--duration-slow);
 }
 
 /* 모드 프레임은 격자 아레나의 경계다 — 최대화 패널이 그 아레나를 통째로 덮으면 경계도 물러난다.
@@ -2869,7 +2876,8 @@
    프레임 안쪽에 머문다. 캔버스를 꽉 채우는 companionGeometryFor는 Cruise 전용이고 거기엔 프레임이
    없다(canvas.tsx의 frameGeometry 분기). */
 .operations-canvas.is-panel-maximized .canvas-mode-frame {
-  display: none;
+  opacity: 0;
+  transition-delay: 0s;
 }
 
 .canvas-mode-bracket {
