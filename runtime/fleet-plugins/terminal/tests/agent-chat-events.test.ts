@@ -164,6 +164,44 @@ describe("chat sdk message mapping", () => {
     })).toEqual([{ kind: "text", text: "hi" }]);
   });
 
+  /**
+   * 서브에이전트 프레임은 메인 원장이 아니다. SDK는 parent_tool_use_id를 달고 부모 스트림에
+   * 흘리므로, 여기서 거르지 않으면 서브에이전트가 읽은 파일과 쓴 글이 호스트 턴에 한 번 더 선다.
+   * 재생이 isSidechain을 버리는 것과 같은 문이다. 빈 문자열·null은 호스트 프레임이다.
+   */
+  it("keeps nested subagent frames off the host transcript", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "assistant",
+      parent_tool_use_id: "task-1",
+      message: { content: [{ type: "text", text: "subagent report" }] },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({
+      type: "assistant",
+      parent_tool_use_id: "task-1",
+      message: { content: [{ type: "tool_use", id: "s1", name: "Read", input: { file_path: "src/a.ts" } }] },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({
+      type: "user",
+      parent_tool_use_id: "task-1",
+      message: { content: [{ type: "tool_result", tool_use_id: "s1", content: "file body" }] },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({
+      type: "stream_event",
+      parent_tool_use_id: "task-1",
+      event: { type: "content_block_delta", delta: { type: "text_delta", text: "nested" } },
+    })).toEqual([]);
+    expect(chatEventsFromSdkMessage({
+      type: "assistant",
+      parent_tool_use_id: null,
+      message: { content: [{ type: "text", text: "host" }] },
+    })).toEqual([{ kind: "text", text: "host" }]);
+    expect(chatEventsFromSdkMessage({
+      type: "assistant",
+      parent_tool_use_id: "",
+      message: { content: [{ type: "text", text: "host" }] },
+    })).toEqual([{ kind: "text", text: "host" }]);
+  });
+
   it("maps a result into turn-end with duration", () => {
     expect(chatEventsFromSdkMessage({ type: "result", subtype: "success", is_error: false, duration_ms: 1200 }))
       .toEqual([{ kind: "turn-end", ok: true, durationMs: 1200 }]);

@@ -780,6 +780,43 @@ describe("AgentChatRegistry — background follow-up turns", () => {
     await registry.disposeAll();
   });
 
+  it("does not open a turn for nested subagent frames that arrive after the turn closed", async () => {
+    // 서브에이전트 도구·텍스트는 부모 스트림에 parent_tool_use_id를 달고 온다. 턴이 닫힌 뒤에
+    // 그것이 오면 opensChatTurn이 새 턴을 열고, 서브에이전트 보고가 메인 Answer처럼 선다.
+    const transcriptPath = writeTranscript("sid-follow-nested", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "result", subtype: "success", is_error: false, duration_ms: 10, result: "launched" },
+          {
+            type: "assistant",
+            parent_tool_use_id: "task-1",
+            message: { role: "assistant", content: [{ type: "text", text: "the subagent finished" }] },
+          },
+          {
+            type: "assistant",
+            parent_tool_use_id: "task-1",
+            message: { role: "assistant", content: [{ type: "tool_use", id: "s1", name: "Read", input: { file_path: "src/a.ts" } }] },
+          },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-follow-nested", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("go");
+    await drainTurn(registry, "op-follow-nested");
+
+    const live = kinds(events).slice(kinds(events).indexOf("dispatch"));
+    expect(live).toEqual(["dispatch", "turn-start", "turn-end"]);
+    expect(events.map((entry) => entry.event)).not.toContainEqual(
+      expect.objectContaining({ kind: "text", text: "the subagent finished" }),
+    );
+    await registry.disposeAll();
+  });
+
   it("does not open a turn for background pulses that arrive after the turn closed", async () => {
     // 맥박은 턴이 닫힌 뒤에도 계속 흐르는 것이 정상이다 — 그것으로 턴을 열면 빈 턴이 선다.
     const transcriptPath = writeTranscript("sid-follow-4", []);
