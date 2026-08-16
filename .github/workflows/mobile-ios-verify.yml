@@ -1,0 +1,111 @@
+name: Mobile iOS Verify
+
+# iOS 포팅의 검증 레일. 개발 호스트(Windows)에서는 Swift를 빌드할 수 없으므로, 순수 로직
+# Swift 테스트(SPM)와 서명 없는 시뮬레이터 빌드를 macOS 러너에서 돌린다. 이식이 끝나기
+# 전의 실행은 조용히 통과하는 대신 어느 단계가 아직 없는지 notice로 명시한다 — 침묵 스킵은
+# 커버리지가 있는 척을 만든다.
+#
+# push 트리거는 iOS 포팅 브랜치 전용이다: PR이 열리기 전까지 푸시마다 자동 검증을 돌리기
+# 위한 것으로, PR을 열 때 pull_request 트리거만 남기고 제거한다.
+on:
+  push:
+    branches:
+      - feat/fleet-mobile-ios
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 검증할 git ref (미지정 시 이벤트 ref)
+        required: false
+        type: string
+  pull_request:
+    branches:
+      - canary
+    paths:
+      - 'runtime/fleet-mobile/**'
+      - '.github/workflows/mobile-ios-verify.yml'
+
+permissions:
+  contents: read
+
+# 같은 브랜치에 새 커밋이 오르면 앞선 실행은 이미 답이 아니다 — 취소해 러너를 비운다.
+concurrency:
+  group: mobile-ios-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-tests:
+    name: Swift unit tests (SPM)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      # Package.swift는 순수 로직 포팅 태스크가 추가한다. 그 전에는 없음을 알리고 통과한다.
+      - name: Run swift test over the pure-logic targets
+        run: |
+          if [ ! -f runtime/fleet-mobile/modules/fleet-console-view/Package.swift ]; then
+            echo "::notice::Package.swift not present yet (pure-logic port pending) — nothing to test"
+            exit 0
+          fi
+          swift test --package-path runtime/fleet-mobile/modules/fleet-console-view
+
+  simulator-build:
+    name: Simulator build (unsigned)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Check whether the iOS platform is configured
+        id: platform
+        run: |
+          if node -e "const c=require('./runtime/fleet-mobile/modules/fleet-console-view/expo-module.config.json'); process.exit(c.platforms.includes('ios')?0:1)"; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::iOS platform not configured yet — skipping the simulator build"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Expo prebuild (ios)
+        if: steps.platform.outputs.configured == 'true'
+        run: pnpm --dir runtime/fleet-mobile exec expo prebuild --platform ios --clean --no-install --non-interactive
+      - name: Pod install
+        if: steps.platform.outputs.configured == 'true'
+        working-directory: runtime/fleet-mobile/ios
+        run: pod install
+      # 서명 없는 시뮬레이터 빌드가 이 레일이 기기 없이 증명할 수 있는 최대치다. 기기 전용
+      # 검증(핀 TLS 실기, WSS 릴레이, 콜드 런치)은 TRANSPORT_BLOCKERS.md의 목록을 따른다.
+      - name: Build for the simulator without signing
+        if: steps.platform.outputs.configured == 'true'
+        working-directory: runtime/fleet-mobile/ios
+        run: |
+          workspace=$(ls -d *.xcworkspace | head -n 1)
+          if [ -z "$workspace" ]; then
+            echo "::error::Expo prebuild produced no .xcworkspace" >&2
+            exit 1
+          fi
+          scheme="${workspace%.xcworkspace}"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO build
+
+  js-contract:
+    name: fleet-mobile typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dotobokuri/fleet-mobile typecheck
+      - run: pnpm --filter @dotobokuri/fleet-mobile test
