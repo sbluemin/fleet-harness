@@ -1,5 +1,10 @@
 # Fleet Mobile tester distribution
 
+Two platforms, two channels: **Android** ships a release-signed APK to **Firebase App Distribution**
+(below); **iOS** ships a release-signed IPA to **TestFlight** (see [iOS / TestFlight](#ios--testflight)).
+Both build and sign in CI on a push to `main`, only when `runtime/fleet-mobile` changed, and only
+when the platform's distribution flag is enabled.
+
 The promoted debug APK is for the machine that built it. Handing the app to other people uses a
 release-signed APK and Firebase App Distribution. Nobody on the receiving end needs USB debugging or
 developer options — that is only how `adb install` works.
@@ -137,3 +142,59 @@ neither can a release signed by a different keystore. Both cases require uninsta
 `dist/fleet-mobile-release.manifest.json` records the signing certificate digest as `signerSha256`,
 and verification fails if the APK no longer matches it. Comparing that field between two promoted
 manifests is how a rotated or wrong keystore is caught before testers are asked to uninstall.
+
+## iOS / TestFlight
+
+iOS testers install through **TestFlight**, not a sideloaded file: no Mac and no device registration
+on the receiving end — testers accept a TestFlight invitation with an Apple ID and install from the
+TestFlight app. Uploads are keyed by `CFBundleVersion` (`expo.ios.buildNumber`), so that integer moves
+on every distributed build in lockstep with the Android `versionCode` (both bumped by
+`scripts/set-app-version.mjs`).
+
+Release signing is opt-in and fails closed: without the Apple certificate variables,
+`pnpm ios:build:release` stops before `xcodebuild`, and the promoted IPA is rejected unless it is
+signed with an **Apple Distribution** identity (never a development identity) and carries no
+`get-task-allow` (debuggable) entitlement.
+
+### One-time Apple setup (the repo owner does this; CI cannot)
+
+1. **App ID** — in the Apple Developer portal, register bundle id `com.dotobokuri.fleet.mobile` (no
+   extra capabilities; the app uses no special entitlements).
+2. **Distribution certificate** — create an Apple Distribution certificate, export it as a `.p12`
+   with a password. Keep it outside the repository and outside `~/.fleet`.
+3. **Provisioning profile** — create an **App Store** distribution profile for that App ID and
+   certificate; download the `.mobileprovision`.
+4. **App Store Connect** — create the app record (name Fleet, the bundle id) and a TestFlight internal
+   tester group (internal testers need no beta review and install immediately).
+5. **ASC API key** — App Store Connect → Integrations → App Store Connect API → generate a key with
+   the App Manager role; download `AuthKey_<KEY_ID>.p8` (it cannot be re-downloaded — store it safely).
+6. **GitHub secrets** (the CI reads these names verbatim):
+   - `FLEET_IOS_CERTIFICATE_BASE64` = `base64 -i dist.p12`, and `FLEET_IOS_CERTIFICATE_PASSWORD`
+   - `FLEET_IOS_PROFILE_BASE64` = `base64 -i profile.mobileprovision`
+   - `FLEET_ASC_KEY_ID`, `FLEET_ASC_ISSUER_ID`, `FLEET_ASC_KEY_BASE64` = `base64 -i AuthKey_*.p8`
+7. **Repository variable** — set `FLEET_MOBILE_IOS_DISTRIBUTION` to `true` to arm the lane. Until it
+   is set, the iOS distribution job is skipped, so the branch is never blocked on the Apple setup.
+
+Gitignore already excludes `*.p12`, `*.mobileprovision`, and `AuthKey_*.p8`; never commit them.
+
+### Running it
+
+The iOS distribution job lives in `.github/workflows/mobile-release.yml` (`distribute-ios`). It runs
+on `macos-15`, selects an Expo-compatible Xcode (26.x / Swift 6.2, which the
+`patches/expo-modules-jsi@57.0.4.patch` makes buildable), materializes the certificate into a
+throwaway keychain and the profile into place, runs `ios:build:release` then `ios:distribute`, and
+wipes the signing material on exit. Trigger it manually via **workflow_dispatch** for the first
+TestFlight upload, or let Stable Release call it on a mobile-changed release once the variable is set.
+
+### Manual version bump
+
+Run `node scripts/set-app-version.mjs --bump patch` (or `minor`). It moves `expo.version`,
+`expo.android.versionCode`, and `expo.ios.buildNumber` together and prints `version=`, `versionCode=`,
+and `buildNumber=`. Reusing a build number makes App Store Connect reject the upload.
+
+### Switching Apple identities
+
+A build signed by a different Apple team or distribution certificate cannot upgrade an install in
+place; testers uninstall first. `dist/fleet-mobile-release.manifest.json` records the codesign
+authority as `signerAuthority`, and verification fails if the IPA no longer matches the fixed iOS
+contract — the same guard the APK manifest provides on Android.
