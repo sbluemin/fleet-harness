@@ -58,23 +58,24 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
-      # Expo SDK 57 / RN 0.86의 창은 Xcode 16.x다: RN은 >= 16.1을 요구하지만 Xcode 26.x의
-      # 새 Swift 컴파일러는 expo-modules-jsi를 깨뜨린다(type-inference ambiguity). 설치된
-      # 가장 높은 16.x를 고르고, 없을 때만 최신으로 폴백한다.
-      - name: Select an Expo-compatible Xcode (16.x, >= 16.1)
+      # Expo SDK 57의 SwiftPM 'apple' 패키지는 Swift tools 6.2.0(= Xcode 26.x)을 요구한다.
+      # 그러나 Xcode 26.3의 최신 Swift 컴파일러는 expo-modules-jsi를 깨뜨린다(type-inference
+      # ambiguity). 그래서 6.2를 제공하면서도 그 회귀를 피하도록 가장 낮은 26.x를 고른다.
+      # (16.x는 'apple' 패키지의 6.2 요구를 만족하지 못한다.)
+      - name: Select an Expo-compatible Xcode (lowest 26.x, Swift 6.2)
         run: |
           echo "Available Xcodes:"; ls -d /Applications/Xcode_*.app 2>/dev/null || true
-          newest=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
-          if [ -z "$newest" ]; then
-            echo "::warning::No Xcode 16.x found; falling back to the newest available"
-            newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          target=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | head -1)
+          if [ -z "$target" ]; then
+            echo "::warning::No Xcode 26.x found; falling back to the newest available"
+            target=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
           fi
-          if [ -z "$newest" ]; then
+          if [ -z "$target" ]; then
             echo "::error::No Xcode found on the runner" >&2
             exit 1
           fi
-          echo "Selecting $newest"
-          sudo xcode-select -s "$newest/Contents/Developer"
+          echo "Selecting $target"
+          sudo xcode-select -s "$target/Contents/Developer"
           xcodebuild -version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
