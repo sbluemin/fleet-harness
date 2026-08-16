@@ -47,6 +47,8 @@ interface OperationsCanvasProps {
   readonly onFocus: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  /** 그 Operation의 패널이 focus layer 뒤로 숨었다 — 그 패널이 주인인 메뉴가 열려 있으면 거둔다. */
+  readonly onDismissOperationMenu?: (operationId: string) => void;
 }
 
 interface ContextMenuRequest {
@@ -97,6 +99,7 @@ export function OperationsCanvas({
   onFocus,
   onRename,
   onOpenOperationMenu,
+  onDismissOperationMenu,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const t = useT();
@@ -989,6 +992,9 @@ export function OperationsCanvas({
             onOpenMenu: (anchor, returnFocus) => {
               onOpenOperationMenu?.(operation.id, anchor, returnFocus);
             },
+            onRenderHiddenDismissMenu: () => {
+              onDismissOperationMenu?.(operation.id);
+            },
             onGeometryChange: (geometry) => {
               if (!operationMaximized && !operationCompanion && !formationView && !triageActive) setOperationGeometry(operation.id, geometry);
             },
@@ -1270,6 +1276,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onMaximize: () => void;
   readonly onRename: (title: string) => void;
   readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
 }) {
@@ -1316,6 +1323,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         onMaximize={options.onMaximize}
         onRename={options.onRename}
         onOpenMenu={options.onOpenMenu}
+        onRenderHiddenDismissMenu={options.onRenderHiddenDismissMenu}
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}

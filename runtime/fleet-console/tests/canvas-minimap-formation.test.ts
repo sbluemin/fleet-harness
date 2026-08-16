@@ -496,6 +496,18 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')?.contains(document.activeElement)).toBe(false);
   });
 
+  // 메뉴는 페이지가 소유하고 프레임은 자기가 숨는 것만 안다 — 숨는 순간 그 사실을 주인 id와 함께
+  // 올려야, 보이지 않는 패널의 메뉴가 화면에 남아 조작 가능한 채로 버티지 않는다.
+  it("reports its own id when a hidden peer's menu owner leaves the focus layer", () => {
+    const dismissed: string[] = [];
+    renderOperationsCanvas(CANVAS_STATE, { onDismissOperationMenu: (id) => dismissed.push(id) });
+
+    act(() => setMaximizedOperationId("operation"));
+
+    expect(dismissed).toContain("peer");
+    expect(dismissed).not.toContain("operation");
+  });
+
   it("moves the canvas viewport when the mounted minimap receives pointer navigation", () => {
     renderOperationsCanvas();
     const inner = document.querySelector<HTMLDivElement>(".canvas-minimap-inner");
@@ -597,7 +609,10 @@ const CANVAS_STATE: ConsoleState = {
   codexReaderExpanded: false,
 };
 
-function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
+function renderOperationsCanvas(
+  state: ConsoleState = CANVAS_STATE,
+  overrides: { readonly onDismissOperationMenu?: (operationId: string) => void } = {},
+) {
   act(() => root!.render(createElement(OperationsCanvas, {
     state,
     catalog: [],
@@ -609,6 +624,8 @@ function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
     onFocus: () => {},
     onRename: () => {},
     onOpenOperationMenu: () => {},
+    onDismissOperationMenu: () => {},
+    ...overrides,
   })));
 }
 

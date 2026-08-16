@@ -37,6 +37,11 @@ interface OperationFrameProps {
   readonly onRename: (title: string) => void;
   /** 캡션 More 버튼이 여는 Operation 메뉴 — 사이드바 우클릭과 같은 메뉴를 부모가 소유한다. */
   readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  /**
+   * 이 프레임이 focus layer 뒤로 숨을 때의 통지. 메뉴는 부모 소유이고 프레임은 자기가 숨는 것만
+   * 아므로, 보이지 않는 패널의 메뉴가 화면에 남지 않도록 부모가 이 신호로 자기 메뉴를 거둔다.
+   */
+  readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
   readonly onRenderHiddenFocus?: () => void;
@@ -70,7 +75,7 @@ const DRAG_THRESHOLD_PX = 3;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -159,10 +164,13 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   }, [onActivate]);
 
   // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame(없으면 Canvas)으로 옮긴다.
+  // 메뉴 회수를 포커스 이관보다 먼저 한다 — 뒤에 두면 부모가 메뉴를 닫으며 되돌리는 포커스가
+  // 방금 inert가 된 이 프레임의 트리거를 향한다.
   useLayoutEffect(() => {
     if (!renderHidden || typeof document === "undefined") return;
+    onRenderHiddenDismissMenu?.();
     if (operationRef.current?.contains(document.activeElement)) onRenderHiddenFocus?.();
-  }, [renderHidden, onRenderHiddenFocus]);
+  }, [renderHidden, onRenderHiddenDismissMenu, onRenderHiddenFocus]);
 
   const clearCloseArmTimer = () => {
     if (closeArmTimeoutRef.current === null) return;

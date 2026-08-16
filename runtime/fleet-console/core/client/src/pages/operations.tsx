@@ -541,6 +541,12 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     operationMenuReturnFocusRef.current?.focus();
     setOperationMenu(null);
   }, []);
+  // 주인 패널이 focus layer 뒤로 숨었을 때의 회수. 보이지 않는 패널의 메뉴가 조작 가능한 채로
+  // 남지 않도록 거두되, 포커스는 되돌리지 않는다 — 되돌릴 트리거가 방금 inert가 된 그 패널 안에
+  // 있고, 포커스 이관은 프레임이 이어서 전면 패널로 수행한다.
+  const dismissOperationMenu = useCallback((operationId: string) => {
+    setOperationMenu((current) => current?.operationId === operationId ? null : current);
+  }, []);
   const menuOperation = operationMenu
     ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
@@ -748,6 +754,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onFocus={handleFocus}
           onRename={handleRename}
           onOpenOperationMenu={openOperationMenu}
+          onDismissOperationMenu={dismissOperationMenu}
         />
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
