@@ -137,18 +137,11 @@ function DailyDetail({ detail, language, t }: {
   );
 }
 
-function currentLocalDay(data: LedgerSummaryDto): string {
-  const date = new Date(data.generatedAtMs);
-  const year = String(date.getFullYear()).padStart(4, "0");
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 function detailDays(data: LedgerSummaryDto): readonly string[] {
   if (data.scope.window !== "today") return [];
-  const today = currentLocalDay(data);
-  return data.dailyDetails.filter((detail) => detail.day === today).map((detail) => detail.day);
+  return data.dailyDetails
+    .filter((detail) => detail.day === data.currentDay)
+    .map((detail) => detail.day);
 }
 
 function defaultSelectedDay(data: LedgerSummaryDto): string | null {

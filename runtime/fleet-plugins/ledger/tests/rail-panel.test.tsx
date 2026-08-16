@@ -49,6 +49,7 @@ function dto(
     schemaVersion: 2,
     scope: { window },
     generatedAtMs: Date.now(),
+    currentDay: "2026-08-14",
     totals: { costUsd, input: 1_000, output: 200, cacheRead: 300, messages: 4 },
     modelRows: rows,
     modelCount: rows.length,
@@ -193,6 +194,18 @@ describe("Ledger daily model detail", () => {
 
   it("keeps today's detail available in the Today window", async () => {
     await renderTodayWith(trendDto("today"));
+    const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
+    expect(bars[1]?.getAttribute("aria-disabled")).toBe("false");
+    expect(container.textContent).toContain("Aug 14 model detail");
+  });
+
+  it("uses the Console host day instead of the browser-local generated date", async () => {
+    const value = trendDto("today");
+    await renderTodayWith({
+      ...value,
+      generatedAtMs: new Date(2026, 7, 13, 12).getTime(),
+      currentDay: "2026-08-14",
+    });
     const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
     expect(bars[1]?.getAttribute("aria-disabled")).toBe("false");
     expect(container.textContent).toContain("Aug 14 model detail");

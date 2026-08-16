@@ -53,6 +53,8 @@ export interface LedgerSummaryDto {
   readonly schemaVersion: 2;
   readonly scope: { readonly window: LedgerWindow };
   readonly generatedAtMs: number;
+  /** Console 호스트의 현지 날짜다. 클라이언트 시간대로 generatedAtMs를 재해석하지 않는다. */
+  readonly currentDay: string;
   /** Claude Code model-ledger rows are the single source of every total. */
   readonly totals: LedgerUsage & { readonly costUsd: number; readonly messages: number };
   /** Window-wide native Anthropic and Gateway-provider model rows. Maximum 80 rows; modelCount is uncapped. */
