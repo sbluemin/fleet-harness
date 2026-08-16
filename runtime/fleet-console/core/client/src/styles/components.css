@@ -10876,7 +10876,9 @@ body[data-codex-side="true"] .command-card {
   margin: 0;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: clamp(20px, 2vw, 28px);
+  /* 반응형 제목의 하한은 사다리 최상단(--t-xl)이다 — 좁은 화면에서만 서는 값이라고 사다리
+     밖에 두면, 그 화면에서는 제목만 어휘를 벗어난 크기로 선다. 상한은 디스플레이 영역이다. */
+  font-size: clamp(var(--t-xl), 2vw, 28px);
   font-weight: var(--weight-medium);
   letter-spacing: 0;
   line-height: 1.05;

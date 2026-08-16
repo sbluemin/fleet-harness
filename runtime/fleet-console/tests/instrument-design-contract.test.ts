@@ -75,6 +75,14 @@ const ACHROMATIC_CHROMA_CEILING = 0.03;
 const ACHROMATIC_CHANNEL_SPREAD = 12;
 // hsl 표기는 채도를 직접 적으므로 그 값으로 같은 경계를 판정한다.
 const ACHROMATIC_SATURATION_CEILING_PERCENT = 10;
+// rem은 root 기준이고 이 셸은 root 크기를 재정의하지 않으므로 브라우저 기본값이 환산 기준이다.
+const ROOT_FONT_SIZE_PX = 16;
+// 색을 싣는 속성만 검사한다 — font-family 등에 낱말이 스쳐도 색 리터럴이 아니다.
+const COLOR_BEARING_PROPERTY_PATTERN =
+  "color|background|background-color|border-color|border|outline-color|outline|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|column-rule-color";
+// 무채색 낱말(black/white/gray/transparent/currentColor)은 깊이 리터럴과 같은 이유로 통과시킨다.
+const CHROMATIC_COLOR_KEYWORDS =
+  /\b(?:red|blue|green|yellow|orange|purple|pink|brown|cyan|magenta|teal|olive|navy|maroon|lime|aqua|fuchsia|gold|coral|salmon|crimson|indigo|violet|khaki|plum|orchid|tomato|turquoise|rebeccapurple|firebrick|forestgreen|goldenrod|hotpink|lavender|peru|sienna|skyblue|tan|thistle|wheat|chocolate|darkred|darkblue|darkgreen|lightblue|lightgreen|steelblue|seagreen|slateblue|springgreen|deeppink|deepskyblue|dodgerblue|mediumpurple|palegreen|royalblue|tomato)\b/i;
 // font-size가 텍스트가 아니라 도형을 재는 자리들 — 글리프 문자('×' '✦' '↻' 꺾쇠)의 크기이거나,
 // 치수가 박힌 상자(아바타·숫자 배지·이니셜 마크) 안이라 사다리로 올리면 넘치거나 잘린다.
 const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
@@ -91,6 +99,7 @@ const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
   ".directory-browser-close",
   ".directory-browser-sector-advance",
   ".whatsnew-close",
+  ".skills-overlay-close",
   ".quick-launch-mark",
   ".alerts-icon-badge",
   ".fexp-refresh-btn",
@@ -645,20 +654,32 @@ describe("Instrument core design contract", () => {
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskFontFaceBlocks(css);
       const record = (index: number, value: string) => {
-        if (Number(value) >= DISPLAY_SIZE_FLOOR_PX) return;
         const line = lineAt(css, index);
         const selector = selectorAt(masked, index);
         if (RAW_FONT_SIZE_EXEMPT_SELECTORS.some((exempt) => selector.includes(exempt))) return;
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
       };
+      // 단위는 px 하나가 아니다 — rem은 root 기준의 절대값이라 px와 등가이고, 그대로 두면 한
+      // 플러그인만 다른 단위 체계에 남는다. em/%/ch는 부모 상대라는 다른 축이므로 사다리가
+      // 관여하지 않고, 계산 함수는 그 안의 px만 본다.
+      const offLadder = (value: string): boolean => {
+        if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
+        if (/var\(\s*--font-body-size\s*\)/.test(value)) return false;
+        // 절대 크기가 하나라도 적혀 있으면 그 값이 판정을 진다. 상대 단위가 섞인 계산 함수
+        // (clamp(11px, 2vw, 15px))를 상대 축으로 놓아 주면 그 안의 절대 하한이 게이트를 빠져나간다.
+        const sizes = [...value.matchAll(/([0-9.]+)(px|rem)\b/g)].map(([, amount, unit]) =>
+          unit === "rem" ? Number(amount) * ROOT_FONT_SIZE_PX : Number(amount),
+        );
+        // 절대 크기가 없으면 부모 상대(em·%·ch) 축이다 — 사다리가 관여하지 않는다.
+        if (sizes.length === 0) return false;
+        return Math.min(...sizes) < DISPLAY_SIZE_FLOOR_PX;
+      };
       for (const declaration of cssDeclarations(masked, "font-size")) {
-        const match = /^([0-9.]+)px/.exec(declaration.value);
-        if (match) record(declaration.index, match[1]!);
+        if (offLadder(declaration.value)) record(declaration.index, declaration.value);
       }
       // font 단축 표기도 같은 축이다 — 여기로 새면 게이트가 절반만 지킨다.
       for (const declaration of cssDeclarations(masked, "font")) {
-        const match = /([0-9.]+)px/.exec(declaration.value.split("/", 1)[0]!);
-        if (match) record(declaration.index, match[1]!);
+        if (offLadder(declaration.value.split("/", 1)[0]!)) record(declaration.index, declaration.value);
       }
     }
     expect(violations).toEqual([]);
@@ -717,6 +738,14 @@ describe("Instrument core design contract", () => {
       }
       for (const match of masked.matchAll(/\b(?:color|lab|lch|hwb)\(/g)) {
         report(match.index, match[0]);
+      }
+      // 명명색도 리터럴이다. 단 토큰 이름 자체가 색 낱말을 품고 있으므로(--coral·--id-plum·
+      // --id-teal), var() 참조를 먼저 지운 값에서만 낱말을 찾는다 — 지우지 않으면 정상 토큰
+      // 소비가 통째로 위반으로 잡힌다.
+      for (const declaration of cssDeclarations(masked, COLOR_BEARING_PROPERTY_PATTERN)) {
+        const stripped = declaration.value.replace(/var\(\s*--[A-Za-z0-9_-]+/g, " ");
+        const named = CHROMATIC_COLOR_KEYWORDS.exec(stripped);
+        if (named) report(declaration.index, named[0]);
       }
     }
     expect(violations).toEqual([]);
