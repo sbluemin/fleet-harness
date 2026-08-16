@@ -519,11 +519,14 @@
 
 .agent-chat-ask-option:disabled { opacity: 0.55; cursor: default; }
 
+/* 라벨은 사용자가 고르면 그대로 답이 되는 문자열이라 서버가 자르지 않는다 — 길면 여기서
+   접는다. 자르는 쪽을 택하면 보이는 것과 보내는 것이 갈라진다. */
 .agent-chat-ask-option-label {
   font-size: 13.5px;
   font-weight: var(--weight-medium);
   color: var(--text-primary);
   line-height: 1.45;
+  overflow-wrap: anywhere;
   transition: color var(--duration-fast);
 }
 

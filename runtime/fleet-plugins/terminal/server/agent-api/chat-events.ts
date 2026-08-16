@@ -108,7 +108,8 @@ const MAX_TOOL_RESULT_CHARS = 120;
 const MAX_TEXT_CHARS = 60_000;
 /** 질문 본문의 상한. 모델이 쓴 문장이라 실어도 되지만, 카드가 패널을 삼키지 않을 만큼만 싣는다. */
 const MAX_QUESTION_CHARS = 400;
-const MAX_OPTION_LABEL_CHARS = 120;
+/** header 전용 상한. 옵션 라벨은 자르지 않는다 — 아래 주석 참조. */
+const MAX_HEADER_CHARS = 120;
 const MAX_OPTION_DESC_CHARS = 400;
 const MAX_PLAN_CHARS = 8_000;
 const MAX_QUESTIONS = 4;
@@ -391,7 +392,10 @@ export function agentChatAskFromToolInput(
         const label = typeof option.label === "string" ? option.label.trim() : "";
         if (label.length === 0) continue;
         options.push({
-          label: cap(label, MAX_OPTION_LABEL_CHARS),
+          // 라벨은 사용자가 고르면 그대로 답이 되어 도구로 돌아간다 — 표시용으로 자르면
+          // 보이는 것과 보내는 것이 갈라져, 고른 것과 다른 값이 모델에게 간다. 길이는
+          // 카드 CSS가 접는다. description은 답이 되지 않으므로 상한을 그대로 둔다.
+          label,
           description: cap(typeof option.description === "string" ? option.description.trim() : "", MAX_OPTION_DESC_CHARS),
         });
       }
@@ -399,7 +403,7 @@ export function agentChatAskFromToolInput(
     // 선택지가 없는 질문은 자유 입력 하나만 남는데, 그 모양은 도구 계약이 아니다.
     if (options.length === 0) continue;
     questions.push({
-      header: cap(header, MAX_OPTION_LABEL_CHARS),
+      header: cap(header, MAX_HEADER_CHARS),
       question: cap(question, MAX_QUESTION_CHARS),
       multiSelect: entry.multiSelect === true,
       options,

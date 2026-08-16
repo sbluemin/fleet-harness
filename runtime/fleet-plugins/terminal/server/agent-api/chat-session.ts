@@ -353,6 +353,13 @@ class AgentChatSession {
     const ask = parsed.event;
     if (this.disposed) return { behavior: "deny", message: "The chat session is closing." };
 
+    // 이미 끊긴 턴에는 카드를 세우지 않는다. AbortSignal은 지나간 abort를 재생하지 않으므로,
+    // 등록 전에 끊겼다면 아래 리스너는 영영 불리지 않는다 — 턴 종료의 abandonAsks가 결국
+    // 거두긴 하지만, 그 사이 이미 끝난 턴의 질문이 화면에 서고 사이드바가 대기라고 말한다.
+    if (context.signal.aborted) {
+      return { behavior: "deny", message: "The turn ended before the question was answered." };
+    }
+
     return new Promise((resolve) => {
       let settled = false;
       const settle = (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }): void => {

@@ -74,6 +74,11 @@ function createPausedSdkFactory() {
       if (!canUseTool) throw new Error("the turn has not started yet");
       return canUseTool(name, input, { toolUseId, signal: new AbortController().signal });
     },
+    /** 신호를 직접 건네는 갈래 — 이미 끊긴 턴을 재현할 때 쓴다. */
+    askWith: (name: string, input: Record<string, unknown>, toolUseId: string, signal: AbortSignal) => {
+      if (!canUseTool) throw new Error("the turn has not started yet");
+      return canUseTool(name, input, { toolUseId, signal });
+    },
     finish: () => { release?.(); },
   };
 }
@@ -146,6 +151,16 @@ describe("agentChatAskFromToolInput", () => {
     const shown = parsed?.event.questions?.[0]?.question ?? "";
     expect(shown.length).toBeLessThanOrEqual(400);
     expect(shown).not.toBe(raw);
+  });
+
+  it("never shortens an option label, because the label is what gets submitted", () => {
+    // 라벨은 고르면 그대로 답이 되어 도구로 돌아간다 — 표시용으로 자르면 사용자가 고른 것과
+    // 다른 값이 모델에게 간다. 길이는 카드가 접는다.
+    const long = `${"아주 긴 선택지 라벨 ".repeat(20)}끝`;
+    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-opt", {
+      questions: [{ question: "어느 쪽?", header: "Pick", multiSelect: false, options: [{ label: long, description: "x" }, { label: "B", description: "" }] }],
+    });
+    expect(parsed?.event.questions?.[0]?.options[0]?.label).toBe(long);
   });
 
   it("reads a plan as its own form", () => {
@@ -291,6 +306,25 @@ describe("AgentChatRegistry — interactive tools", () => {
     // 형태를 읽지 못한 대화형 도구도 막지 않는다.
     await expect(sdk.ask("AskUserQuestion", { questions: [] })).resolves.toEqual({ behavior: "allow" });
     expect(session.awaiting).toBe(false);
+
+    sdk.finish();
+    await registry.disposeAll();
+  });
+
+  it("denies immediately when the turn was already aborted before the card could be raised", async () => {
+    const sdk = createPausedSdkFactory();
+    const registry = new AgentChatRegistry(sdk.factory);
+    const awaitingLog: boolean[] = [];
+    const { session } = await startSession(registry, sdk, awaitingLog);
+
+    // AbortSignal은 지나간 abort를 재생하지 않는다 — 이미 끊긴 턴에 카드를 세우면 그 카드는
+    // 리스너가 아니라 턴 종료 정리에 기대야 하고, 그 사이 화면은 끝난 턴을 대기로 보인다.
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(sdk.askWith("AskUserQuestion", QUESTION_INPUT, "tool-dead", aborted.signal))
+      .resolves.toEqual({ behavior: "deny", message: "The turn ended before the question was answered." });
+    expect(session.awaiting).toBe(false);
+    expect(awaitingLog).toEqual([]);
 
     sdk.finish();
     await registry.disposeAll();
