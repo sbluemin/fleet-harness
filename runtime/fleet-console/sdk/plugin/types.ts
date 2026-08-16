@@ -267,6 +267,12 @@ export interface CompanionPanelDescriptor {
    * so plugin-side visibility checks stay correct.
    */
   readonly available?: (operation: OperationNode) => boolean;
+  /**
+   * Fills the caption band. The band itself stays host-owned — its geometry, surface, rim, and the frame's
+   * top corners — exactly as the body slot is host-owned and plugin-filled; omitted renders the host's
+   * dot and localized title. Ignored when `hideCaption` is set, which leaves the frame headless.
+   */
+  readonly caption?: (context: OperationRenderContext) => unknown;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 

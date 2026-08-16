@@ -47,7 +47,7 @@ const SLASH_COMMANDS = [
 }[];
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
-  const { state, dispatch, send, stop, reset } = useAnalysisStore(context);
+  const { state, dispatch, send, stop, refreshCatalog } = useAnalysisStore(context);
   const language = context.language ?? "en";
   const t = getT(language);
   const reducedMotion = usePrefersReducedMotion();
@@ -56,13 +56,8 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   const cli = state.catalog?.clis.find((item) => item.cliId === state.cliId);
   const model = cli?.models.find((item) => item.id === state.model);
   const hasInteracted = state.entries.length > 0;
-  const artifactCount = state.artifacts.length;
-  // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 이 패널의 지역 상태가 화면을 가른다.
-  const [mode, setMode] = React.useState<"chat" | "artifacts">("chat");
-  const artifactAuthoring = state.artifactAuthoring !== null && artifactCount === 0;
-  const previousArtifactCountRef = React.useRef(0);
-  const [countPulseRevision, setCountPulseRevision] = React.useState(0);
-  const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
+  // 아티팩트는 드로어 안의 모드다 — 별도 컴패니언이 아니라 캡션 세그먼트가 이 본문을 가른다.
+  const mode = state.viewMode;
   const chatRef = React.useRef<HTMLElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const latestEntry = state.entries.at(-1);
@@ -77,7 +72,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
   // 1Hz 티커는 이 패널에 단 하나 — 역사 턴마다 타이머가 쌓이지 않게 여기서 한 번 계산해 내려보낸다.
   const liveElapsedMs = useElapsedMs(state);
   const decorateEvidence = React.useCallback((html: string) => decorateEvidenceHtml(html, evidenceTitle), [evidenceTitle]);
-  const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
   // 첫 상호작용이 이 마운트에서 발생했을 때만 도킹 모션을 붙인다. 클래스를 계속
   // 유지하면 뒤따르는 connected/chunk 렌더가 진행 중인 CSS 애니메이션을 끊지 않는다.
   const interactedAtMount = React.useRef(hasInteracted).current;
@@ -103,25 +97,10 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
   }, [language, mode]);
-  React.useEffect(() => {
-    const previousCount = previousArtifactCountRef.current;
-    previousArtifactCountRef.current = artifactCount;
-    if (artifactCount === 0) {
-      // 전량 삭제되면 볼 것이 없다 — 대화로 복귀하고, 포커스가 아티팩트 안이었다면 모드 칩으로 되돌린다.
-      if (mode === "artifacts" && state.artifactAuthoring === null) {
-        // 비우기는 아티팩트 화면 안에서 일어난다 — 그 서브트리가 사라지며 포커스가 body로
-        // 떨어지고, 아티팩트 세그먼트도 비활성이 된다. 활성 세그먼트(Chat)로 되돌린다.
-        setMode("chat");
-        window.requestAnimationFrame(() => {
-          artifactsChipRef.current?.closest(".session-analyst__modechip")
-            ?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
-        });
-      }
-      return;
-    }
-    // 발행이 대화를 끌어내리지 않는다 — 인라인 발행 카드가 진입로, 배지 펄스가 신호를 진다.
-    if (artifactCount > previousCount && mode === "chat") setCountPulseRevision((revision) => revision + 1);
-  }, [artifactCount, mode, state.artifactAuthoring]);
+  // 설정은 라우트라 다녀오면 이 패널은 다시 마운트되지만 store는 Operation 수명으로 살아 있다 —
+  // 여는 시점에 한 번 읽어야 방금 추가한 게이트웨이 모델이 목록에 들어온다. 캡션도 같은 store를
+  // 구독하므로 호출은 본문 한 곳에서만 한다(두 곳이면 열 때마다 두 번 읽는다).
+  React.useEffect(() => { refreshCatalog(); }, [refreshCatalog]);
   const submit = async (text: string, clearDraft: boolean) => {
     const trimmed = text.trim();
     if (!trimmed) return;
@@ -161,6 +140,20 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     copyCodeToClipboard(button, code, language);
   }, [dispatch, language, t]);
 
+  // 중단·전송은 초기 툴 줄과 도킹된 줄에서 같은 버튼이다 — 두 벌로 갈라 두면 한쪽만 고쳐지는 자리가 된다.
+  const actions = (
+    <>
+      {state.busy ? (
+        <button type="button" className="session-analyst__send session-analyst__stop" aria-label={t("terminal.analyst.stop")} onClick={() => void stop()}>
+          <span aria-hidden="true" />
+        </button>
+      ) : null}
+      <button type="submit" className="session-analyst__send" aria-label={t(state.busy ? "terminal.analyst.queueQuestion" : "terminal.analyst.send")} disabled={!state.draft.trim()}>
+        <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
+      </button>
+    </>
+  );
+
   const lastAnalystIndex = state.entries.reduce((last, entry, index) => entry.role === "analyst" ? index : last, -1);
   // 아직 분석가 chunk가 없는 진행/오류/중단은 합성 턴이 상태를 실어 나른다.
   const pendingTurn = state.phase !== "idle" && latestEntry?.role === "user"
@@ -168,39 +161,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
 
   return (
     <section className={`session-analyst__chat-pane ${hasInteracted ? "has-interacted" : "is-initial"}`} aria-label={t("terminal.analyst.chatAria")} data-phase={state.phase}>
-      <div className="session-analyst__chips">
-        <span className="session-analyst__chip session-analyst__chip--id">
-          <i className="session-analyst__chip-dot" aria-hidden="true" />
-          <span aria-hidden="true">✳</span>
-          {t("terminal.analyst.chipTitle")}
-          <span className="session-analyst__chip-state">· {stateLabel(state, language)}</span>
-        </span>
-        <span className="session-analyst__chip-cluster">
-          <button
-            type="button"
-            className="session-analyst__chip"
-            aria-label={t("terminal.analyst.resetAria")}
-            onClick={() => { void reset().catch(() => {}); }}
-            disabled={!canReset}
-          >{t("terminal.analyst.reset")}</button>
-          <span className="session-analyst__modechip" role="group" aria-label={t("terminal.analyst.viewMode")}>
-            <button type="button" aria-pressed={mode === "chat"} onClick={() => setMode("chat")}>{t("terminal.analyst.mode.chat")}</button>
-            <button
-              ref={artifactsChipRef}
-              type="button"
-              className={artifactAuthoring ? "is-authoring" : undefined}
-              aria-pressed={mode === "artifacts"}
-              disabled={artifactCount === 0 && !artifactAuthoring}
-              title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
-              onClick={() => setMode("artifacts")}
-            >
-              {t("terminal.analyst.artifactsHandle")}
-              {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst__chip-count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
-              {artifactAuthoring ? <span className="session-analyst__chip-count">…</span> : null}
-            </button>
-          </span>
-        </span>
-      </div>
       {mode === "artifacts" ? <AnalystArtifactsPanel context={context} /> : (
       <div className="session-analyst__workspace">
         <section ref={chatRef} className="session-analyst__chat" aria-live="polite" aria-busy={state.busy}>
@@ -251,7 +211,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
             <ArtifactAuthorCard
               state={state}
               language={language}
-              onOpen={() => setMode("artifacts")}
+              onOpen={() => dispatch({ type: "view-mode", mode: "artifacts" })}
             />
           ) : null}
         </section>
@@ -300,50 +260,6 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
               ))}
             </div>
           ) : null}
-          {!hasInteracted ? <div className="session-analyst__selector-strip" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
-            <span className="session-analyst__select">
-              <Select
-                compact
-                label={t("terminal.analyst.cli")}
-                value={state.cliId}
-                disabled={state.started || state.selectionLocked || !state.catalog}
-                options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
-                onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
-              />
-            </span>
-            <span className="session-analyst__select">
-              <Select
-                compact
-                label={t("terminal.analyst.model")}
-                value={state.model}
-                disabled={state.started || state.selectionLocked || !model}
-                options={cli?.models.map((item) => ({ value: item.id, label: item.label })) ?? []}
-                onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
-              />
-            </span>
-            <span className="session-analyst__select">
-              <Select
-                compact
-                label={t("terminal.analyst.effort")}
-                value={state.effort}
-                disabled={state.started || state.selectionLocked || !model || !model.effortLevels.length}
-                options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: t("terminal.analyst.na") }]}
-                onChange={(effort) => dispatch({ type: "select-effort", effort })}
-              />
-            </span>
-            <span
-              aria-live="polite"
-              aria-atomic="true"
-              style={{
-                display: "inline-block",
-                inlineSize: "5em",
-                flex: "none",
-                opacity: state.selectionSaved ? 1 : 0,
-                textAlign: "center",
-                transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
-              }}
-            >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
-          </div> : null}
           <div className="session-analyst__composer-surface">
             <label className="session-analyst__sr-only" htmlFor={`analysis-${context.operationId}`}>{t("terminal.analyst.askAboutSession")}</label>
             <textarea
@@ -395,20 +311,151 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                 void submit(state.draft, true);
               }}
             />
-            {state.busy ? (
-              <button type="button" className="session-analyst__send session-analyst__stop" aria-label={t("terminal.analyst.stop")} onClick={() => void stop()}>
-                <span aria-hidden="true" />
-              </button>
-            ) : null}
-            <button type="submit" className="session-analyst__send" aria-label={t(state.busy ? "terminal.analyst.queueQuestion" : "terminal.analyst.send")} disabled={!state.draft.trim()}>
-              <svg width="14" height="14" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M6 10 V2 M2.5 5.5 L6 2 l3.5 3.5" /></svg>
-            </button>
+            {hasInteracted ? actions : (
+              /* 첫 질문 전에는 선택 컨트롤이 같은 면 안 하단 줄에 선다 — 별도 테두리 상자로
+                 띄우면 컴포저가 두 장으로 갈리고, 그 두 장이 서로 다른 면처럼 읽힌다. */
+              <div className="session-analyst__composer-tools" aria-label={t("terminal.analyst.initialSettings")} onFocusCapture={() => setSlashDismissed(true)}>
+                {/* 공급자 축은 고를 것이 둘 이상일 때만 컨트롤이 된다 — 항상 한 줄만 뜨는 메뉴는
+                    자리를 차지하면서 아무것도 바꾸지 못한다. 값은 계속 선택에 실린다. */}
+                {(state.catalog?.clis.length ?? 0) > 1 ? (
+                  <span className="session-analyst__select">
+                    <Select
+                      compact
+                      label={t("terminal.analyst.cli")}
+                      value={state.cliId}
+                      disabled={state.started || state.selectionLocked || !state.catalog}
+                      options={state.catalog?.clis.map((item) => ({ value: item.cliId, label: item.label, disabled: !item.available })) ?? []}
+                      onChange={(cliId) => dispatch({ type: "select-cli", cliId })}
+                    />
+                  </span>
+                ) : null}
+                <span className="session-analyst__select">
+                  <Select
+                    compact
+                    label={t("terminal.analyst.model")}
+                    value={state.model}
+                    disabled={state.started || state.selectionLocked || !model}
+                    options={cli?.models.map((item) => ({ value: item.id, label: item.label })) ?? []}
+                    onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
+                  />
+                </span>
+                <span className="session-analyst__select" data-effort-level={state.effort || "auto"}>
+                  <Select
+                    compact
+                    label={t("terminal.analyst.effort")}
+                    value={state.effort}
+                    disabled={state.started || state.selectionLocked || !model || !model.effortLevels.length}
+                    options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: t("terminal.analyst.na") }]}
+                    onChange={(effort) => dispatch({ type: "select-effort", effort })}
+                  />
+                </span>
+                {/* 슬래시 목록은 placeholder 문구에만 있었다 — 읽고 지나가면 다시 만날 길이 없다. */}
+                <button
+                  type="button"
+                  className="session-analyst__slash-hint"
+                  aria-label={t("terminal.analyst.commands")}
+                  onClick={() => {
+                    dispatch({ type: "set-draft", draft: "/" });
+                    setSlashDismissed(false);
+                    setSlashSelection(0);
+                    window.requestAnimationFrame(() => textareaRef.current?.focus());
+                  }}
+                >{t("terminal.analyst.slashHint")}</button>
+                <span
+                  className="session-analyst__saved"
+                  aria-live="polite"
+                  aria-atomic="true"
+                  style={{
+                    opacity: state.selectionSaved ? 1 : 0,
+                    transition: reducedMotion ? "none" : "opacity var(--duration-base) var(--ease-glide)",
+                  }}
+                >{state.selectionSaved ? t("terminal.analyst.saved") : ""}</span>
+                {actions}
+              </div>
+            )}
           </div>
           {state.busy ? <div className="session-analyst__composer-hint">{t("terminal.analyst.queueHint")}</div> : null}
         </form>
       </div>
       )}
     </section>
+  );
+}
+
+/* 캡션 밴드의 내용 — 정체·상태가 왼쪽, 초기화와 모드 세그먼트가 오른쪽.
+   이 줄은 본문 위에 떠 있던 칩 줄을 대신한다: 떠 있는 줄은 첫 문단을 가리므로 본문이 그만큼의
+   상단 패딩을 늘 비워 둬야 했고, 그 예약분은 캡션 높이보다 컸다. 호스트가 이미 캡션 높이만큼의
+   자리를 비워 두므로, 여기로 옮기면 겹침도 예약분도 함께 사라진다. */
+export function AnalystCaption({ context }: { readonly context: OperationRenderContext }) {
+  const { state, dispatch, reset } = useAnalysisStore(context);
+  const language = context.language ?? "en";
+  const t = getT(language);
+  const artifactCount = state.artifacts.length;
+  const artifactAuthoring = state.artifactAuthoring !== null && artifactCount === 0;
+  const mode = state.viewMode;
+  const canReset = state.started || state.phase !== "idle" || state.draft.length > 0 || state.queue.length > 0 || state.entries.length > 0 || state.artifacts.length > 0;
+  const previousArtifactCountRef = React.useRef(0);
+  const [countPulseRevision, setCountPulseRevision] = React.useState(0);
+  const artifactsChipRef = React.useRef<HTMLButtonElement>(null);
+  const returnFocusRef = React.useRef(false);
+  React.useEffect(() => {
+    const previousCount = previousArtifactCountRef.current;
+    previousArtifactCountRef.current = artifactCount;
+    if (artifactCount === 0) {
+      // 전량 삭제되면 볼 것이 없다 — 대화로 복귀하고, 포커스가 아티팩트 안이었다면 모드 칩으로 되돌린다.
+      if (mode === "artifacts" && state.artifactAuthoring === null) {
+        returnFocusRef.current = true;
+        dispatch({ type: "view-mode", mode: "chat" });
+      }
+      return;
+    }
+    // 발행이 대화를 끌어내리지 않는다 — 인라인 발행 카드가 진입로, 배지 펄스가 신호를 진다.
+    if (artifactCount > previousCount && mode === "chat") setCountPulseRevision((revision) => revision + 1);
+  }, [artifactCount, dispatch, mode, state.artifactAuthoring]);
+  // 비우기는 아티팩트 화면 안에서 일어난다 — 그 서브트리가 사라지며 포커스가 body로 떨어지고,
+  // 아티팩트 세그먼트도 비활성이 된다. 활성 세그먼트(Chat)로 되돌린다. 되돌리는 시점은 모드가
+  // 실제로 바뀐 렌더 이후여야 한다 — 같은 턴에서 프레임 콜백으로 넘기면 그 사이에 일어나는
+  // 재렌더가 방금 준 포커스를 도로 걷어간다.
+  React.useEffect(() => {
+    if (!returnFocusRef.current || mode !== "chat") return;
+    returnFocusRef.current = false;
+    artifactsChipRef.current?.closest(".session-analyst__modechip")
+      ?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus();
+  }, [mode]);
+  return (
+    <div className="session-analyst__chips" data-phase={state.phase}>
+      <span className="session-analyst__chip session-analyst__chip--id">
+        <i className="session-analyst__chip-dot" aria-hidden="true" />
+        <span aria-hidden="true">✳</span>
+        {t("terminal.analyst.chipTitle")}
+        <span className="session-analyst__chip-state">· {stateLabel(state, language)}</span>
+      </span>
+      <span className="session-analyst__chip-cluster">
+        <button
+          type="button"
+          className="session-analyst__chip"
+          aria-label={t("terminal.analyst.resetAria")}
+          onClick={() => { void reset().catch(() => {}); }}
+          disabled={!canReset}
+        >{t("terminal.analyst.reset")}</button>
+        <span className="session-analyst__modechip" role="group" aria-label={t("terminal.analyst.viewMode")}>
+          <button type="button" aria-pressed={mode === "chat"} onClick={() => dispatch({ type: "view-mode", mode: "chat" })}>{t("terminal.analyst.mode.chat")}</button>
+          <button
+            ref={artifactsChipRef}
+            type="button"
+            className={artifactAuthoring ? "is-authoring" : undefined}
+            aria-pressed={mode === "artifacts"}
+            disabled={artifactCount === 0 && !artifactAuthoring}
+            title={artifactAuthoring ? t("terminal.analyst.authoringTooltip") : artifactCount === 0 ? t("terminal.analyst.artifactsEmptyTooltip") : undefined}
+            onClick={() => dispatch({ type: "view-mode", mode: "artifacts" })}
+          >
+            {t("terminal.analyst.artifactsHandle")}
+            {artifactCount > 0 ? <span key={countPulseRevision} className={`session-analyst__chip-count${countPulseRevision > 0 ? " is-pulsing" : ""}`}>{artifactCount}</span> : null}
+            {artifactAuthoring ? <span className="session-analyst__chip-count">…</span> : null}
+          </button>
+        </span>
+      </span>
+    </div>
   );
 }
 
