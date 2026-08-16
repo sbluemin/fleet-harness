@@ -23,9 +23,12 @@ describe("Fleet Mobile Android build contract", () => {
     expect(rootPackage.scripts.postinstall).not.toContain("gradle");
   });
 
-  it("registers the fail-closed Android plugin after the native module", () => {
+  // 하드닝 플러그인은 마지막에 서야 뒤의 플러그인이 정책을 되돌릴 수 없다. iOS 플러그인이
+  // 추가된 뒤에도 그 불변식은 "마지막 두 자리가 fleet 플랫폼 플러그인"으로 유지된다.
+  it("registers the fail-closed platform plugins after the native module", () => {
     const app = JSON.parse(read("runtime/fleet-mobile/app.json"));
-    expect(app.expo.plugins.at(-1)).toBe("./plugins/withFleetAndroid.ts");
+    expect(app.expo.plugins.at(-2)).toBe("./plugins/withFleetAndroid.ts");
+    expect(app.expo.plugins.at(-1)).toBe("./plugins/withFleetIos.ts");
   });
 
   it("applies the same hardening to both build types", () => {

@@ -15,6 +15,10 @@
         "backgroundColor": "#0D1B2A"
       }
     },
+    "ios": {
+      "bundleIdentifier": "com.dotobokuri.fleet.mobile",
+      "buildNumber": "2"
+    },
     "plugins": [
       [
         "expo-build-properties",
@@ -36,7 +40,8 @@
         }
       ],
       "./modules/fleet-console-view",
-      "./plugins/withFleetAndroid.ts"
+      "./plugins/withFleetAndroid.ts",
+      "./plugins/withFleetIos.ts"
     ]
   }
 }

@@ -65,7 +65,7 @@ jobs:
       - name: Check whether the iOS platform is configured
         id: platform
         run: |
-          if node -e "const c=require('./runtime/fleet-mobile/modules/fleet-console-view/expo-module.config.json'); process.exit(c.platforms.includes('ios')?0:1)"; then
+          if node -e "const c=require('./runtime/fleet-mobile/modules/fleet-console-view/expo-module.config.json'); process.exit(c.platforms.includes('apple')||c.platforms.includes('ios')?0:1)"; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "::notice::iOS platform not configured yet — skipping the simulator build"
@@ -78,6 +78,10 @@ jobs:
         if: steps.platform.outputs.configured == 'true'
         working-directory: runtime/fleet-mobile/ios
         run: pod install
+      # 오토링킹이 로컬 모듈을 놓치면 빌드는 성공하고 앱은 런타임에야 죽는다 — 여기서 크게 실패시킨다.
+      - name: Assert the fleet-console-view pod was autolinked
+        if: steps.platform.outputs.configured == 'true'
+        run: grep -q "FleetConsoleView" runtime/fleet-mobile/ios/Podfile.lock
       # 서명 없는 시뮬레이터 빌드가 이 레일이 기기 없이 증명할 수 있는 최대치다. 기기 전용
       # 검증(핀 TLS 실기, WSS 릴레이, 콜드 런치)은 TRANSPORT_BLOCKERS.md의 목록을 따른다.
       - name: Build for the simulator without signing
