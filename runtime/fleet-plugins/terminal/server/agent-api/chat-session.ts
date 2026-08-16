@@ -7,6 +7,8 @@ import {
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
   type ClaudeGatewaySdk,
+  type ClaudeGatewayServedMcpServer,
+  type ClaudeGatewaySystemPrompt,
 } from "@dotobokuri/core-agent/claude";
 
 import {
@@ -52,6 +54,24 @@ export interface AgentChatSessionSeed {
   readonly effort?: ClaudeGatewayEffort;
   readonly cwd: string;
   readonly origin: AgentChatSessionOrigin;
+  /**
+   * Fleet Admiral 지시. 같은 Operation을 터미널에서 열면 CLI가 `--append-system-prompt`로 받는
+   * 그 문서이며, Chat Mode가 없으면 doctrine 없이 도는 맨 Claude 세션이 된다 — 표면만 다른
+   * 같은 세션이 표면에 따라 다른 규율로 답하는 것이 이 필드가 있는 이유다.
+   *
+   * `undefined`는 결함이 아니라 사용자의 prompt 모드 설정(`off`)이다.
+   */
+  readonly systemPrompt?: ClaudeGatewaySystemPrompt;
+  /**
+   * Fleet MCP 좌표를 이 세션 수명에 맞춰 발급한다. 값이 아니라 함수인 이유는 발급물이 세션
+   * 토큰이기 때문이다 — seed를 만드는 쪽은 세션이 실제로 생겼는지 모르므로, 여기서 발급하면
+   * 이미 살아 있는 세션에 대해 발급된 토큰이 주인 없이 남는다.
+   *
+   * 세션당 한 번만 불리고, 결과는 SDK와 같은 자리에 캐시된다.
+   */
+  readonly resolveFleetMcpServers?: () => Promise<readonly ClaudeGatewayServedMcpServer[]>;
+  /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
+  readonly releaseFleetMcpServers?: () => void;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
@@ -183,6 +203,12 @@ class AgentChatSession {
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
+  /**
+   * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
+   * 토큰이 턴 수만큼 쌓인다.
+   */
+  private fleetMcpServers: readonly ClaudeGatewayServedMcpServer[] | null = null;
+  private fleetMcpFlight: Promise<readonly ClaudeGatewayServedMcpServer[]> | null = null;
   /**
    * resume 좌표는 트랜스크립트 파일명이 말하는 세션 id다 — 캡처 id는 드리프트할 수 있다.
    * `fresh`는 아직 세션이 없으므로 null로 출발하고, 첫 SDK 메시지의 session_id가 이 자리를 채운다.
@@ -441,6 +467,10 @@ class AgentChatSession {
     this.sdk = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
     await this.turnFlight.catch(() => undefined);
+    // 발급이 아직 날고 있으면 그것부터 착지시킨다 — 먼저 반납하면 뒤늦게 도착한 토큰이 주인
+    // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
+    if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
+    this.seed.releaseFleetMcpServers?.();
     this.listeners.clear();
   }
 
@@ -645,6 +675,26 @@ class AgentChatSession {
   }
 
   /**
+   * Fleet MCP 좌표를 세션당 한 번 발급해 캐시한다. 발급자가 없는 seed(테스트·구세대 배선)는
+   * 빈 목록으로 내려가고, 그 세션은 Fleet 도구 없이 돈다.
+   */
+  private async ensureFleetMcpServers(): Promise<readonly ClaudeGatewayServedMcpServer[]> {
+    if (this.fleetMcpServers) return this.fleetMcpServers;
+    const resolve = this.seed.resolveFleetMcpServers;
+    if (!resolve) return [];
+    if (!this.fleetMcpFlight) {
+      this.fleetMcpFlight = (async () => {
+        const servers = await resolve();
+        this.fleetMcpServers = servers;
+        return servers;
+      })().finally(() => {
+        this.fleetMcpFlight = null;
+      });
+    }
+    return this.fleetMcpFlight;
+  }
+
+  /**
    * 원 트랜스크립트를 격리 config dir의 같은 projects/<인코딩된 cwd>/ 아래로 복사한다.
    * 인코딩 규칙을 재구현하지 않는다 — 원 경로의 부모 디렉터리 이름이 곧 그 인코딩이다.
    * 채팅으로 태어난 세션에는 복사할 원본이 없다 — SDK가 자기 dir 안에 스스로 만든다.
@@ -684,10 +734,18 @@ class AgentChatSession {
     let turnClosed = false;
     try {
       const sdk = await this.ensureSdk();
+      // Fleet 도구를 못 붙이는 것은 세션을 죽일 사유가 아니지만 조용히 넘길 사유도 아니다 —
+      // 도구 없이 도는 턴은 게이트웨이 로스터를 읽지 못한 채 위임을 판단한다.
+      const fleetMcpServers = await this.ensureFleetMcpServers().catch(() => {
+        this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
+        return [] as readonly ClaudeGatewayServedMcpServer[];
+      });
       const run = await sdk.startTurn({
         prompt: text,
         model: this.seed.model,
         ...(this.seed.effort ? { effort: this.seed.effort } : {}),
+        ...(this.seed.systemPrompt ? { systemPrompt: this.seed.systemPrompt } : {}),
+        ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
         cwd: this.seed.cwd,
         // 채팅으로 태어난 세션의 첫 턴에는 이어붙일 좌표가 없다 — resume 없이 시작하고,
         // SDK가 돌려주는 session_id가 그 자리를 채운다(그다음 턴부터는 resume이 선다).

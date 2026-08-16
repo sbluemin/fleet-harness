@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -1298,6 +1298,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
     const model = readPayloadString(node.payload, "launchModel") || "opus[1m]";
     const effort = chatEffortFromLaunchEffort(readPayloadString(node.payload, "launchEffort"));
+    // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
+    // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
+    const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
+    const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
+    const systemPrompt = systemPromptMode === "off"
+      ? undefined
+      : { mode: systemPromptMode, text: createSystemPromptBuilder().build() } as const;
+    const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
       seed: {
@@ -1306,6 +1314,26 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ...(effort ? { effort } : {}),
         cwd,
         origin: sessionOrigin,
+        ...(systemPrompt ? { systemPrompt } : {}),
+        resolveFleetMcpServers: async () => {
+          const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
+          const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
+            cwd,
+            // PTY 주입과 같은 필터다. doctrine이 호스트 세션에 허용한 도구만 실린다.
+            includeTool: (toolId) => isHostSessionToolAllowed(toolId, chatDoctrine),
+            label: mcpTokenLabel,
+          });
+          return endpoint.servers.map((server) => {
+            const token = tokens.find((entry) => entry.name === server.name)?.token;
+            if (!token) throw new Error(`Dedicated MCP token missing for ${server.name}`);
+            return {
+              name: server.name,
+              url: server.url,
+              headers: [{ name: "Authorization", value: `Bearer ${token}` }],
+            };
+          });
+        },
+        releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
