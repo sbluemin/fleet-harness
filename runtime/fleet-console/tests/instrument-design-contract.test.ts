@@ -1585,17 +1585,21 @@ describe("Instrument core design contract", () => {
     expect(chatStripBlock).toContain("cursor: pointer;");
     const chatView0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     expect(chatView0).toContain('className="agent-chat-strip"');
-    // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스트립이 선 동안 로그 바닥은 회신
-    // 버튼 몫 위로 스트립 높이만큼 더 비워 둔다. 없으면 마지막 줄이 스트립 뒤에 갇힌다.
-    const chatLogStripBlock = chat.match(/^\.agent-chat-log\.has-strip \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatLogStripBlock).toContain("calc(var(--space-3) + 45px + 38px)");
-    expect(chatView0).toContain("has-strip");
+    // 떠 있는 두 줄의 순서: 아래가 작업 스트립("지금 누를 것"의 행 — 회신·중지와 같은 층),
+    // 위가 Follow다. 스트립이 이 아래 행에 사는 동안 그 높이는 로그의 기본 바닥 여백(회신 버튼
+    // 몫) 안에 들어오므로 스트립 전용 여백은 두지 않는다 — 두면 그만큼이 죽은 띠로 남는다.
+    const chatFollowBottom = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0].match(/bottom: ([^;]+);/)?.[1] ?? "";
+    expect(chatStripBlock).toContain("bottom: var(--space-3);");
+    expect(chatFollowBottom).toContain("46px");
+    expect(chat).not.toContain(".agent-chat-log.has-strip");
+    expect(chatView0).not.toContain("has-strip");
+    // 같은 행을 쓰는 이상 스트립은 양쪽에서 같은 폭을 비워 회신·중지 버튼을 침범하지 않는다 —
+    // 한쪽만 비우면 가운데 정렬을 잃고, 안 비우면 좁은 패널에서 잡 이름이 버튼 아래로 들어간다.
+    expect(chatStripBlock).toContain("40px + var(--space-2) + 72px");
     // 잡이 하나도 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
     // 스트립은 두 형태로 서고(도는 중 · 다 끝남), 둘 다 잡이 있을 때만 선다.
     expect(chatView0).toContain("!workOpen && openJobs.length > 0 ? (");
     expect(chatView0).toContain("!workOpen && hasJobs && openJobs.length === 0 ? (");
-    // 그리고 두 형태 모두 로그 바닥 여백을 함께 가진다 — 한쪽만 빼면 마지막 줄이 알약 뒤에 갇힌다.
-    expect(chatView0).toContain("agent-chat-log${!workOpen && hasJobs ? \" has-strip\" : \"\"}");
     // 탭은 폐기됐다. 두 면을 갈아 끼우면 대화가 통째로 사라지는데, 백그라운드 작업은 대화를
     // 대신하는 것이 아니라 대화 **옆에서** 동시에 돈다 — 하나를 고르게 만들면 무엇이 도는지
     // 보려고 무엇을 물었는지를 잃는다. 스트립 하나가 유일한 문이고, 문은 면을 나란히 연다.

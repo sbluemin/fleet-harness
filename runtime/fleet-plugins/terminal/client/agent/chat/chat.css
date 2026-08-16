@@ -881,10 +881,12 @@
 /* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
    상태 신호다. brass는 hover/focus의 위치 채널이다. 회신 말풍선은 우하단을 지키고,
    이 칩은 그 왼쪽 중앙에 따로 선다. 안 읽은 수는 Wave 2. */
+/* 두 떠 있는 줄의 순서: 위가 Follow, 아래가 작업 스트립이다. 아래 줄은 회신·중지 버튼과 같은
+   행이라 "지금 누를 것"의 자리이고, Follow는 그 위 한 층에서 읽던 자리로 돌아가는 문이다. */
 .agent-chat-follow {
   position: absolute;
   left: 50%;
-  bottom: var(--space-3);
+  bottom: calc(var(--space-3) + 46px);
   z-index: 3;
   transform: translateX(-50%);
   display: inline-flex;
@@ -1126,12 +1128,10 @@
   flex-direction: column;
 }
 
-/* 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다. 스트립은 회신 버튼 위에 한 층 더 서므로
-   그 높이(30px + 간격)만큼 바닥 여백이 더 필요하다 — 없으면 바닥까지 내린 마지막 줄이 스트립
-   뒤에 갇혀 스크롤로도 빠져나오지 못한다(실측으로 확인했다). */
-.agent-chat-log.has-strip {
-  padding-bottom: calc(var(--space-3) + 45px + 38px);
-}
+/* 스트립 전용 바닥 여백은 없다. 스트립이 회신 버튼과 같은 행으로 내려오면서 그 높이가 로그의
+   기본 바닥 여백(회신 버튼 몫) 안에 들어왔기 때문이다 — 한 층 더 비우면 그만큼이 죽은 띠로 남는다.
+   위층으로 올라간 Follow는 여백을 요구하지 않는다: 그 칩은 바닥에서 떨어져 있을 때만 서고,
+   바닥으로 돌아오는 순간 사라지므로 마지막 줄을 가둘 수 없다. */
 
 /* 두 면의 경계이자 손잡이. 얇지만 잡히는 폭을 따로 갖는다 — 1px 선은 눈에는 보여도 손에는 없다. */
 .agent-chat-grip {
@@ -1306,7 +1306,7 @@
 .agent-chat-strip {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--space-3) + 46px);
+  bottom: var(--space-3);
   transform: translateX(-50%);
   z-index: 2;
   appearance: none;
@@ -1314,7 +1314,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-4)));
+  /* 이 줄은 회신·중지 버튼과 같은 행에 산다. 가운데 정렬을 지키면서 그 두 버튼을 침범하지 않으려면
+     양쪽에서 같은 폭을 비워야 한다 — 오른쪽 묶음(회신 40px + 간격 + 중지 ~72px + 가장자리 여백)이
+     그 값이다. 한쪽만 비우면 스트립이 가운데를 잃고, 아무것도 안 비우면 좁은 패널에서 잡 이름이
+     회신 버튼 아래로 들어간다. */
+  max-width: min(var(--agent-chat-measure), calc(100% - 2 * (var(--space-3) + 40px + var(--space-2) + 72px)));
   padding: 6px var(--space-3);
   font-family: var(--font-mono);
   font-size: 11px;

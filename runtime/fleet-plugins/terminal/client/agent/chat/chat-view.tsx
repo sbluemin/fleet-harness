@@ -282,10 +282,7 @@ export function AgentChatView({
               사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
               콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
           <div
-            // 여백은 스트립이 **서 있는 동안** 필요하다. 도는 잡이 있든(aurora) 다 끝났든(쉬는 형태)
-            // 같은 자리에 같은 높이로 서므로 조건도 같아야 한다 — 쉬는 형태에만 여백을 빼면 마지막
-            // 줄이 그 알약 뒤에 갇혀 스크롤로도 빠져나오지 못한다(원래 이 규칙을 만든 그 결함이다).
-            className={`agent-chat-log${!workOpen && hasJobs ? " has-strip" : ""}`}
+            className="agent-chat-log"
             ref={logRef}
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}

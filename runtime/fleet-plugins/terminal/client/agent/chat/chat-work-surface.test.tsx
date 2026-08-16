@@ -163,13 +163,13 @@ describe("chat work surface — floating controls", () => {
 });
 
 describe("chat work surface — log padding", () => {
-  it("reserves the strip's room whichever form the strip is in", () => {
-    // 도는 잡이 있든 다 끝났든 스트립은 같은 자리에 같은 높이로 선다. 쉬는 형태에만 여백을 빼면
-    // 마지막 줄이 그 알약 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
+  it("gives the log one bottom margin, whatever the strip is doing", () => {
+    // 스트립이 회신 버튼과 같은 행으로 내려오면서 그 높이는 로그의 기본 바닥 여백 안에 들어왔다.
+    // 잡의 유무로 여백이 달라지면 그만큼이 죽은 띠로 남고, 잡이 끝나는 순간 로그가 한 번 튄다.
     for (const settled of [false, true]) {
       logState = stateWith([job(settled ? { open: false, status: "completed" } : {})]);
       mount();
-      expect(container?.querySelector(".agent-chat-log")?.className).toContain("has-strip");
+      expect(container?.querySelector(".agent-chat-log")?.className).toBe("agent-chat-log");
       act(() => root?.unmount());
       container?.remove();
       root = null;
