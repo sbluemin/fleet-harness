@@ -73,6 +73,7 @@ interface PluginOperationRendererProps {
   readonly companionsOpen: boolean;
   readonly hiddenCompanionPanelIds: readonly string[];
   readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
+  readonly bodyLive?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
@@ -1334,6 +1335,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               geometry,
               operation,
               runtimeState: options.runtimeState,
+              bodyLive: !options.minimized && !options.focusLayerHidden && options.deckSlot === null,
               theme: options.theme,
               language: options.language,
               zoom: options.viewportZoom,
@@ -1365,6 +1367,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               companionsOpen={options.companion}
               hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
               onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+              bodyLive={!options.minimized && !options.focusLayerHidden && options.deckSlot === null}
               render={descriptor.render}
             />
           </PluginErrorBoundary>
@@ -1447,6 +1450,7 @@ function PluginOperationRenderer({
   companionsOpen,
   hiddenCompanionPanelIds,
   onSetCompanionPanelVisible,
+  bodyLive,
   render,
 }: PluginOperationRendererProps) {
   return render({
@@ -1470,6 +1474,7 @@ function PluginOperationRenderer({
     settings: capabilities.settings,
     runtime: capabilities.runtime,
     runtimeState,
+    ...(bodyLive === undefined ? {} : { bodyLive }),
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     onActivate,

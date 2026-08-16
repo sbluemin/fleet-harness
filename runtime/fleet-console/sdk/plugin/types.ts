@@ -313,6 +313,12 @@ export interface OperationRenderContext extends OperationContext {
    * 판단하지 않고 이 값 하나를 읽어야 사이드바와 본문이 갈라지지 않는다.
    */
   readonly runtimeState: OperationRuntimeState | null;
+  /**
+   * Whether this body is on a surface the user can read. `undefined` is an older
+   * host and must be treated as live. `false` is a parked, minimized, hidden, or
+   * deck-tile body: the plugin must not hold a dedicated HTTP stream for it.
+   */
+  readonly bodyLive?: boolean;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
