@@ -46,6 +46,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   private var activeView: WKWebView?
   private var activeGateway: LoopbackGateway?
   private var staging: StagedLoad?
+  // 커밋된 로드도 붙들어 둔다. WKWebView의 델리게이트는 self 하나이므로, 커밋 이후에도
+  // 어느 타깃/게이트웨이의 뷰인지 되찾을 수 있어야 한다 — Android는 WebViewClient가 staged를
+  // 캡처해 그 역할을 하지만, 여기서는 뷰 identity로 찾으므로 활성 로드를 따로 들고 있어야 한다.
+  private var activeLoad: StagedLoad?
   private var detached = false
 
   public required init(appContext: AppContext? = nil) {
@@ -172,6 +176,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
         if wasActive {
           if let view = self.activeView { view.removeFromSuperview(); view.destroySafely() }
           self.activeView = nil
+          self.activeLoad = nil
           self.activeGateway?.close(); self.activeGateway = nil
           self.activeTarget = nil
         }
@@ -225,6 +230,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     attempt.increment()
     destroyStaging()
     activeView?.destroySafely(); activeView = nil
+    activeLoad = nil
     activeGateway?.close(); activeGateway = nil
   }
 
@@ -344,7 +350,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - WKNavigationDelegate
 
   public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
-    guard let staged = staging ?? activeStaged(for: webView), let url = navigationAction.request.url else {
+    guard let staged = contextFor(webView), let url = navigationAction.request.url else {
       decisionHandler(.cancel); return
     }
     let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? false
@@ -367,16 +373,18 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   public func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse, decisionHandler: @escaping (WKNavigationResponsePolicy) -> Void) {
-    guard let staged = stagedFor(webView) else { decisionHandler(.cancel); return }
-    if let http = navigationResponse.response as? HTTPURLResponse, navigationResponse.isForMainFrame {
-      if http.statusCode == 401 { decisionHandler(.cancel); failStaged(staged, "remote_host_session_expired"); return }
-      if http.statusCode >= 400 { decisionHandler(.cancel); failStaged(staged, "remote_host_unavailable"); return }
+    guard let load = contextFor(webView) else { decisionHandler(.cancel); return }
+    // 커밋 전 메인프레임 오류만 시도를 실패시킨다. 커밋 뒤에는 콘솔이 스스로 오류를 그리게 두고
+    // 셸이 세션을 무너뜨리지 않는다(Android의 onReceivedHttpError가 no-op이 되는 것과 같다).
+    if isStaging(load), let http = navigationResponse.response as? HTTPURLResponse, navigationResponse.isForMainFrame {
+      if http.statusCode == 401 { decisionHandler(.cancel); failStaged(load, "remote_host_session_expired"); return }
+      if http.statusCode >= 400 { decisionHandler(.cancel); failStaged(load, "remote_host_unavailable"); return }
     }
     decisionHandler(.allow)
   }
 
   public func webView(_ webView: WKWebView, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-    guard let staged = stagedFor(webView), challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+    guard let staged = contextFor(webView), challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
           let trust = challenge.protectionSpace.serverTrust else {
       completionHandler(.cancelAuthenticationChallenge, nil); return
     }
@@ -393,8 +401,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-    guard let staged = stagedFor(webView), let url = webView.url, isAllowedLocalMainFrame(url, staged.gateway) else {
-      if let staged = stagedFor(webView) { failStaged(staged, "navigation_denied") }
+    guard let staged = contextFor(webView), let url = webView.url, isAllowedLocalMainFrame(url, staged.gateway) else {
+      if let staged = contextFor(webView) { failStaged(staged, "navigation_denied") }
       return
     }
     if !staged.localCertificateObserved { failStaged(staged, "remote_link_pin_not_observed"); return }
@@ -404,11 +412,11 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-    if let staged = stagedFor(webView) { failStaged(staged, "remote_host_unavailable") }
+    if let staged = contextFor(webView) { failStaged(staged, "remote_host_unavailable") }
   }
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-    if let staged = stagedFor(webView) { failStaged(staged, "remote_host_unavailable") }
+    if let staged = contextFor(webView) { failStaged(staged, "remote_host_unavailable") }
   }
 
   // MARK: - WKUIDelegate (deny windows/media/file)
@@ -444,6 +452,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     activeTarget = staged.target
     activeGateway = staged.gateway
     activeView = staged.view
+    activeLoad = staged
     staging = nil
     staged.view.isHidden = false
     layoutWebViews()
@@ -497,8 +506,18 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // MARK: - helpers
 
   private func isCurrent(_ id: Int64) -> Bool { !detached && attempt.get() == id }
-  private func stagedFor(_ webView: WKWebView) -> StagedLoad? { staging?.view === webView ? staging : nil }
-  private func activeStaged(for webView: WKWebView) -> StagedLoad? { stagedFor(webView) }
+
+  /// 이 WebView가 속한 로드 — 스테이징 중이든 이미 커밋됐든. 커밋 이후를 못 찾으면 살아 있는
+  /// 콘솔의 내비게이션과 TLS 챌린지가 전부 거부된다.
+  private func contextFor(_ webView: WKWebView) -> StagedLoad? {
+    if let staging, staging.view === webView { return staging }
+    if let activeLoad, activeLoad.view === webView { return activeLoad }
+    return nil
+  }
+
+  /// 아직 커밋 전인가. 실패 처리(failStaged)는 스테이징에만 의미가 있고, 커밋 뒤에는 무시된다
+  /// — Android에서 staging이 null이 되어 failStaged가 no-op이 되는 것과 같은 동작이다.
+  private func isStaging(_ load: StagedLoad) -> Bool { staging === load }
 
   private func isAllowedLocalMainFrame(_ url: URL, _ gateway: LoopbackGateway) -> Bool {
     guard isLocalOrigin(url, gateway), url.user == nil, url.fragment == nil else { return false }
