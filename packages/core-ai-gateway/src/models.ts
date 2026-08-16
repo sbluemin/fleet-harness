@@ -58,7 +58,6 @@ export const GATEWAY_REASONING_EFFORTS = [
   "high",
   "xhigh",
   "max",
-  "ultra",
 ] as const;
 export type GatewayReasoningEffort = typeof GATEWAY_REASONING_EFFORTS[number];
 
@@ -864,17 +863,17 @@ function registerLookupId(lookupIds: Set<string>, id: string, owner: string): vo
   lookupIds.add(id);
 }
 
-// 이 집합은 두 곳을 먹인다 — 콘솔 실행 행의 기본 노출 사다리(exposableEffortLadder 경유)와
-// fleet-admiral의 위임 신원 로스터(constraints.effortLadder 경유). ultra를 추가하면 카탈로그가
-// ultra를 낸 모델(Codex Sol/Terra 계열)에 -ultra 위임 신원이 기본 노출로 늘어난다; 노출 폭은
-// 사용자의 effort exposure 설정이 그대로 상한을 쥔다.
+// 이 집합은 Anthropic wire가 살려내는 사다리다 — model constraints의 effortLadder를 만들고,
+// 그 constraints가 설정 DTO의 노출 사다리(exposableEffortLadder)와 fleet-admiral의 위임 신원
+// 로스터를 먹인다; discovery(`/v1/models`)의 effort capability도 같은 집합으로 좁힌다.
+// 카탈로그 사다리는 max에서 끝난다 — ultracode는 모델의 단이 아니라 Claude Code 하네스가
+// launch `--effort ultracode`로 받는 세션 능력이라 모델 메타데이터는 싣지 않는다.
 const ANTHROPIC_EFFORT_RUNGS = new Set<GatewayReasoningEffort>([
   "low",
   "medium",
   "high",
   "xhigh",
   "max",
-  "ultra",
 ]);
 
 function freezeGatewayModelEffort(

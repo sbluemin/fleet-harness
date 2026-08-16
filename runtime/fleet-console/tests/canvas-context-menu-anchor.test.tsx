@@ -497,6 +497,50 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "fable", effort: "max" });
   });
 
+  it("launches a MAX-less gateway row's ultra chip with the ultra effort payload", () => {
+    // max를 내지 않는 gateway 모델도 마지막 칩은 ULTRACODE다 — 게이트를 열어 End로 골라
+    // 확정하면 칩이 실은 그대로 { model, effort: "ultra" }로 출격한다.
+    const onLaunchKind = vi.fn();
+    const catalog: readonly OperationCatalogPlugin[] = [{
+      id: "terminal",
+      title: "Terminal",
+      kinds: [{
+        id: "claude-gateway",
+        type: "agent",
+        title: "Claude (Gateway)",
+        variants: [{
+          id: "gateway:cursor",
+          label: "Cursor",
+          rows: [{
+            id: "cursor--grok-4.6-fast",
+            label: "Grok-4.6-Fast",
+            launch: { model: "cursor--grok-4.6-fast" },
+            effortAxis: ["low", "medium", "high", "xhigh", "ultra"],
+            gatedEfforts: ["ultra"],
+            chips: [
+              { id: "low", label: "LOW", launch: { model: "cursor--grok-4.6-fast", effort: "low" } },
+              { id: "ultra", label: "ULTRACODE", launch: { model: "cursor--grok-4.6-fast", effort: "ultra" } },
+            ],
+          }],
+        }],
+      }],
+    }];
+    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, catalog, vi.fn(), false, onLaunchKind);
+
+    act(() => effortHandle("cursor--grok-4.6-fast").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
+    const track = document.querySelector<HTMLElement>(".effort-track")!;
+    // 닫힌 트랙의 End는 일상 마지막 단(low)에 선다 — ultra는 게이트 뒤다.
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "cursor--grok-4.6-fast", effort: "low" });
+
+    act(() => document.querySelector<HTMLButtonElement>(".effort-track-apex-toggle")!.click());
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(effortHandle("cursor--grok-4.6-fast").dataset.effortLevel).toBe("ultra");
+    act(() => track.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+    expect(onLaunchKind).toHaveBeenLastCalledWith("terminal", catalog[0]!.kinds[0], { model: "cursor--grok-4.6-fast", effort: "ultra" });
+  });
+
   it("drops the description aside when the pointer reaches a model row, even while focus sits on an annotated row", () => {
     // 두 채널을 합치는 `hoverKey ?? focusKey`는 포인터 쪽을 비우면 포커스가 짚던 행으로 되돌아간다.
     // 모델 행은 자기 키로 덮어야 "설명 없는 자리"가 되고, 포인터가 메뉴를 벗어나면 다시 포커스가 드러난다.

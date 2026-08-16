@@ -419,6 +419,51 @@ describe("EffortTrack", () => {
     expect(onChange).toHaveBeenLastCalledWith("high");
   });
 
+  it("gates ultra alone on a MAX-less row", () => {
+    // MAX를 건너뛰는 gateway 행 — 축의 max 자리는 비고, 게이트 뒤에는 ultra만 선다.
+    const maxLessRow = row({
+      effortAxis: ["low", "medium", "high", "xhigh", "ultra"],
+      chips: ["low", "high", "ultra"].map((id) => ({
+        id,
+        label: id === "ultra" ? "ULTRACODE" : id.toUpperCase(),
+        launch: { model: "kimi--k3", effort: id },
+      })),
+      gatedEfforts: ["ultra"],
+    });
+    const onChange = render(maxLessRow, "high");
+
+    expect(stops()).toHaveLength(5);
+    expect(document.querySelector("[data-apex-rung=true]")).toBeNull();
+
+    act(() => required(".effort-track-apex-toggle").click());
+    expect(document.querySelectorAll("[data-apex-rung=true]")).toHaveLength(1);
+    // 열린 뒤 End는 ultra에 선다 — max 자리를 건너뛰어도 끝 단은 하네스 능력이다.
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("ultra");
+  });
+
+  it("selects, ends, and collapses to null on an ultra-only row", () => {
+    // 강도 미지원 모델의 ULTRACODE 단독 행 — 일상 사다리가 없으므로 접힘 폴백은 null이다.
+    const ultraOnlyRow = row({
+      effortAxis: ["ultra"],
+      chips: [{ id: "ultra", label: "ULTRACODE", launch: { model: "cursor--auto", effort: "ultra" } }],
+      gatedEfforts: ["ultra"],
+    });
+    const onChange = render(ultraOnlyRow, null);
+
+    act(() => required(".effort-track-apex-toggle").click());
+    act(() => track().dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
+    expect(onChange).toHaveBeenLastCalledWith("ultra");
+
+    render(ultraOnlyRow, "ultra", onChange);
+    expect(track().dataset.apex).toBe("true");
+
+    onChange.mockClear();
+    act(() => required(".effort-track-apex-toggle").click());
+    // 내려갈 일상 단이 없으니 접힘은 값을 비운다 — 숨은 apex 제출 모순을 만들지 않는다.
+    expect(onChange).toHaveBeenLastCalledWith(null);
+  });
+
   it("places the apex seam between ordinary and gated stops when only max is gated", () => {
     render(row({ gatedEfforts: ["max"] }), "xhigh");
     act(() => required(".effort-track-apex-toggle").click());

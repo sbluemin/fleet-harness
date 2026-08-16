@@ -4,6 +4,7 @@ import {
   AnthropicMessagesGateway,
   GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS,
+  GATEWAY_REASONING_EFFORTS,
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
@@ -18,6 +19,7 @@ import {
   validateBenchmarkCoverage,
   projectAnthropicResponseUsage,
   resolveCursorUpstreamModelId,
+  resolveCursorModelSelection,
   resolveGatewayModel,
   projectClaudeContextInputTokens,
   toClaudeGatewayModelId,
@@ -262,7 +264,7 @@ describe("Anthropic request translation", () => {
     },
   );
 
-  it("keeps Sol ultra but clamps Luna ultra to its max rung", () => {
+  it("clamps an inbound Sol or Luna ultra request to each model's max rung", () => {
     const sol = findGatewayModel("codex--gpt-5.6-sol");
     const luna = findGatewayModel("codex--gpt-5.6-luna");
     if (!sol?.effort.supported || !luna?.effort.supported) {
@@ -274,9 +276,11 @@ describe("Anthropic request translation", () => {
       output_config: { effort: "ultra" },
     };
 
+    // 카탈로그 사다리는 max에서 끝난다 — inbound protocol의 ultra 요청은 두 모델 모두
+    // 자기 최상단으로 하향 클램프된다.
     expect(translateAnthropicRequest(request, {
       reasoningEfforts: sol.effort.levels,
-    }).reasoning).toEqual({ summary: "auto", effort: "ultra" });
+    }).reasoning).toEqual({ summary: "auto", effort: "max" });
     expect(translateAnthropicRequest(request, {
       reasoningEfforts: luna.effort.levels,
     }).reasoning).toEqual({ summary: "auto", effort: "max" });
@@ -628,10 +632,10 @@ describe("model catalog", () => {
       if (!model) throw new Error(`missing catalog model: ${id}`);
       return buildGatewayModelConstraints(model);
     };
-    // `ultra` is advertised by discovery since codex-cli 0.147.0 (measured 2026-08-11:
-    // sol/sol-wm/terra advertise it, luna stops at max) — the ladder follows the catalog.
+    // 카탈로그 사다리는 max에서 끝난다 — ultracode는 모델의 단이 아니라 Console이 launch
+    // `--effort ultracode`로 넘기는 하네스 능력이라, 모델 메타데이터에는 서지 않는다.
     const codex = constraintsFor("codex--gpt-5.6-sol");
-    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(codex.effortSupported).toBe(true);
     // Kimi's ladder has no `medium`; assuming one would be clamped without notice.
     expect(constraintsFor("kimi--k3").effortLadder).toEqual(["low", "high", "max"]);
@@ -907,11 +911,11 @@ describe("model catalog", () => {
 
     expect(efforts["codex--gpt-5.6-sol"]).toEqual({
       supported: true,
-      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      levels: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(efforts["codex--gpt-5.6-terra"]).toEqual({
       supported: true,
-      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      levels: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(efforts["codex--gpt-5.6-luna"]).toEqual({
       supported: true,
@@ -964,6 +968,17 @@ describe("model catalog", () => {
     expect(efforts["cursor--composer-2.5"]).toEqual({ supported: false });
   });
 
+  it("keeps the ultra launch sentinel out of the model catalog and constraints", () => {
+    // ultracode는 Claude Code 하네스가 launch `--effort ultracode`로 받는 세션 능력이다 —
+    // 모델 메타데이터의 단이 아니므로 사다리 어휘·카탈로그·constraints 어디에도 서지 않는다
+    // (Console 실행 행이 마지막 칩으로 따로 합성한다).
+    expect(GATEWAY_REASONING_EFFORTS).not.toContain("ultra");
+    for (const model of GATEWAY_MODELS) {
+      if (model.effort.supported) expect(model.effort.levels).not.toContain("ultra");
+      expect(buildGatewayModelConstraints(model).effortLadder).not.toContain("ultra");
+    }
+  });
+
   it.each([
     ["grok-4.5", "low", "cursor-grok-4.5-low"],
     ["grok-4.5", "medium", "cursor-grok-4.5-medium"],
@@ -990,6 +1005,14 @@ describe("model catalog", () => {
   it("never raises a requested effort while clamping a sparse ladder", () => {
     expect(clampReasoningEffort("xhigh", ["low", "medium", "high", "max"])).toBe("high");
     expect(resolveCursorUpstreamModelId("grok-4.5", "medium")).toBe("cursor-grok-4.5-medium");
+  });
+
+  it("keeps Cursor Auto's upstream selection unchanged when canonical ultra arrives", () => {
+    // Auto는 강도를 지원하지 않는다 — ultra는 canonical protocol 어휘로 남아 있으므로, effort
+    // 미지원 모델은 clamp 없이 upstream id를 그대로 골라야 한다(실패하면 launch sentinel이
+    // 게이트웨이를 통과하지 못한다).
+    expect(resolveCursorModelSelection("auto", "ultra")).toEqual({ upstreamModelId: "default", maxMode: false });
+    expect(resolveCursorUpstreamModelId("auto", "ultra")).toBe("default");
   });
 
   it("resolves a compatibility alias to its provider wire id", () => {
