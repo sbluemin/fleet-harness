@@ -2182,6 +2182,49 @@ describe("Effort track interaction grammar", () => {
     expect(composer).not.toMatch(/pluginId === "terminal"/);
   });
 
+  it("pins the chat question-card grammar — aurora carries the wait, brass stays on location", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 카드는 대기를 말한다 — 그 채널은 코어 활동축이 awaiting에 쓰는 aurora와 같아야 한다.
+    // 다른 신호 토큰이 섞이면 같은 사실이 두 색으로 갈라진다.
+    const card = block(".agent-chat-ask");
+    expect(card).toContain("color-mix(in oklch, var(--aurora)");
+    for (const signal of ["--warn", "--coral", "--positive", "--brass"]) {
+      expect(card, signal).not.toContain(signal);
+    }
+    expect(block(".agent-chat-ask-badge")).toContain("color: var(--aurora);");
+
+    // 선택지는 중립으로 서고 brass는 hover·focus에서만 오른다(위치·포커스 채널).
+    const option = block(".agent-chat-ask-option");
+    expect(option).toContain("border: 1px solid var(--hairline);");
+    expect(option).not.toContain("--brass");
+    expect(chat).toContain(".agent-chat-ask-option:hover:not(:disabled),");
+    expect(chat).toMatch(/\.agent-chat-ask-option\[aria-pressed="true"\] \{/);
+
+    // 자유 입력은 대화 입력창이 아니라 그 질문에만 사는 칸이다 — 파선이 그 임시성을 지고,
+    // 포커스에서만 실선이 된다.
+    expect(block(".agent-chat-ask-input")).toContain("border: 1px dashed var(--hairline-strong);");
+    expect(chat).toContain("border-style: solid;");
+
+    // 주 동작만 brass를 채운다. 보조 동작은 채움을 양보하고 테두리로 남는다.
+    expect(block(".agent-chat-ask-send")).toContain("background: var(--brass);");
+    expect(block(".agent-chat-ask-send.is-quiet")).toContain("background: transparent;");
+
+    // 답한 줄은 스텝 문법에 합류한다 — 성공은 positive, 답하지 않은 채 끝난 것은 coral.
+    expect(block(".agent-chat-ask-settled")).toContain("background: var(--surface-panel-raised);");
+    expect(chat).toContain(".agent-chat-ask-settled-mark { flex: none; color: var(--positive); }");
+    expect(chat).toMatch(/\.agent-chat-ask-settled\.is-open \.agent-chat-ask-settled-mark[\s\S]{0,120}color: var\(--coral-ink\);/);
+
+    // 기다림의 맥동은 모션이므로 reduced-motion에서 멈춘다.
+    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toContain(".agent-chat-ask-dot");
+  });
+
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
     const trackSource = source("components/effort-track.tsx");

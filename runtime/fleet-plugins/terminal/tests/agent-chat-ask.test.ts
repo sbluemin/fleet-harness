@@ -114,26 +114,46 @@ async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof 
 
 describe("agentChatAskFromToolInput", () => {
   it("reads a question with its options", () => {
-    const ask = agentChatAskFromToolInput("AskUserQuestion", "id-1", QUESTION_INPUT);
-    expect(ask).toEqual({
-      kind: "ask",
-      id: "id-1",
-      form: "question",
-      questions: [{
-        header: "Log format",
-        question: "Should logs be JSON or plain text?",
-        multiSelect: false,
-        options: [
-          { label: "JSON", description: "Structured logs" },
-          { label: "Plain text", description: "Human-readable logs" },
-        ],
-      }],
+    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-1", QUESTION_INPUT);
+    expect(parsed).toEqual({
+      event: {
+        kind: "ask",
+        id: "id-1",
+        form: "question",
+        questions: [{
+          header: "Log format",
+          question: "Should logs be JSON or plain text?",
+          multiSelect: false,
+          options: [
+            { label: "JSON", description: "Structured logs" },
+            { label: "Plain text", description: "Human-readable logs" },
+          ],
+        }],
+      },
+      answerKeys: ["Should logs be JSON or plain text?"],
     });
   });
 
+  it("keeps the original question text as the answer key while the card shows the bounded one", () => {
+    // 도구는 **원문** 질문 텍스트로 답을 맞춘다. 표시용은 trim과 400자 상한을 지나므로,
+    // 그 결과를 키로 쓰면 긴 질문에서 키가 어긋나 모델이 답을 받지 못한다(조용한 실패).
+    const long = `${"왜 ".repeat(260)}이 방향으로 갈까요?`;
+    const raw = `  ${long}  `;
+    const parsed = agentChatAskFromToolInput("AskUserQuestion", "id-long", {
+      questions: [{ question: raw, header: "Direction", multiSelect: false, options: [{ label: "A", description: "" }, { label: "B", description: "" }] }],
+    });
+    expect(parsed?.answerKeys).toEqual([raw]);
+    const shown = parsed?.event.questions?.[0]?.question ?? "";
+    expect(shown.length).toBeLessThanOrEqual(400);
+    expect(shown).not.toBe(raw);
+  });
+
   it("reads a plan as its own form", () => {
-    const ask = agentChatAskFromToolInput("ExitPlanMode", "id-2", { plan: "1. do this\n2. then that", planFilePath: "/tmp/p.md" });
-    expect(ask).toEqual({ kind: "ask", id: "id-2", form: "plan", plan: "1. do this\n2. then that" });
+    const parsed = agentChatAskFromToolInput("ExitPlanMode", "id-2", { plan: "1. do this\n2. then that", planFilePath: "/tmp/p.md" });
+    expect(parsed).toEqual({
+      event: { kind: "ask", id: "id-2", form: "plan", plan: "1. do this\n2. then that" },
+      answerKeys: [],
+    });
   });
 
   it("returns null for a shape it cannot draw", () => {
@@ -173,6 +193,28 @@ describe("AgentChatRegistry — interactive tools", () => {
       id: "tool-1",
       outcome: "answered",
       answers: [{ header: "Log format", value: "JSON" }],
+    });
+
+    sdk.finish();
+    await registry.disposeAll();
+  });
+
+  it("answers a bounded question under its original key so the resumed tool finds it", async () => {
+    const sdk = createPausedSdkFactory();
+    const registry = new AgentChatRegistry(sdk.factory);
+    const { session } = await startSession(registry, sdk, []);
+
+    const raw = `  ${"왜 ".repeat(260)}이 방향으로 갈까요?  `;
+    const input = {
+      questions: [{ question: raw, header: "Direction", multiSelect: false, options: [{ label: "A", description: "" }, { label: "B", description: "" }] }],
+    };
+    const decision = sdk.ask("AskUserQuestion", input);
+    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
+    expect(session.answer("tool-1", { answers: ["A"] })).toEqual({ ok: true, outcome: "answered" });
+    // 키는 카드가 보여 준 축약본이 아니라 도구가 받은 원문이다.
+    await expect(decision).resolves.toEqual({
+      behavior: "allow",
+      updatedInput: { ...input, answers: { [raw]: "A" } },
     });
 
     sdk.finish();

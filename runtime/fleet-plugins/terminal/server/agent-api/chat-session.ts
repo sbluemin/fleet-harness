@@ -89,6 +89,12 @@ interface PendingAsk {
   readonly form: "question" | "plan";
   readonly input: Readonly<Record<string, unknown>>;
   readonly questions: readonly AgentChatQuestion[];
+  /**
+   * 답을 실을 키 — 도구가 받은 **원본** 질문 텍스트다. 카드가 보여 주는 questions[].question은
+   * 상한과 trim을 지난 표시용이라, 그것을 키로 쓰면 400자를 넘거나 앞뒤 공백이 있는 질문에서
+   * 키가 어긋난다. 그때 라우트는 200을 돌려주고 카드는 접히는데 모델은 답을 못 받는다.
+   */
+  readonly answerKeys: readonly string[];
   readonly settle: (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }) => void;
 }
 
@@ -267,8 +273,8 @@ class AgentChatSession {
       return { ok: false, error: "invalid_answer" };
     }
     const answers: Record<string, string> = {};
-    pending.questions.forEach((question, index) => {
-      answers[question.question] = values[index] ?? "";
+    pending.answerKeys.forEach((key, index) => {
+      answers[key] = values[index] ?? "";
     });
     this.pendingAsks.delete(id);
     pending.settle({ behavior: "allow", updatedInput: { ...pending.input, answers } });
@@ -342,8 +348,9 @@ class AgentChatSession {
   ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> {
     if (!AGENT_CHAT_ASK_TOOLS.has(name)) return { behavior: "allow" };
     const id = context.toolUseId.length > 0 ? context.toolUseId : `ask-${this.seq + 1}`;
-    const ask = agentChatAskFromToolInput(name, id, input);
-    if (!ask) return { behavior: "allow" };
+    const parsed = agentChatAskFromToolInput(name, id, input);
+    if (!parsed) return { behavior: "allow" };
+    const ask = parsed.event;
     if (this.disposed) return { behavior: "deny", message: "The chat session is closing." };
 
     return new Promise((resolve) => {
@@ -364,6 +371,7 @@ class AgentChatSession {
         form: ask.form,
         input,
         questions: ask.questions ?? [],
+        answerKeys: parsed.answerKeys,
         settle: (permission) => {
           settle(permission);
           this.pendingAsks.delete(id);

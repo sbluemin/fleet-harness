@@ -340,6 +340,18 @@ function normalizeDispatchText(text: string): string | null {
 }
 
 /**
+ * 파서의 결과. 이벤트와 답변 키가 갈라져 있는 이유는 둘의 수신자가 다르기 때문이다 —
+ * 이벤트는 브라우저가 그릴 것이라 상한과 trim을 지나지만, 답변 키는 도구가 답을 맞춰 볼
+ * 좌표라 **원문 그대로**여야 한다. 표시용으로 가공한 문자열을 키로 쓰면 400자를 넘거나
+ * 앞뒤 공백이 있는 질문에서 키가 어긋나, 라우트는 200을 돌려주는데 모델은 답을 받지 못한다.
+ */
+export interface AgentChatAskParse {
+  readonly event: Extract<AgentChatStreamEvent, { kind: "ask" }>;
+  /** 질문 순서대로의 원본 질문 텍스트. 이벤트의 questions와 길이·순서가 같다. */
+  readonly answerKeys: readonly string[];
+}
+
+/**
  * 대화형 도구의 입력을 카드가 읽을 이벤트로 옮긴다. 모양이 계약과 다르면 null을 돌려준다 —
  * 그때 세션은 카드를 세우지 않고 도구를 그냥 통과시킨다. 반쯤 읽은 질문을 세우는 것보다,
  * 모델이 답 없이 계속하는 편이 정직하다.
@@ -348,21 +360,25 @@ export function agentChatAskFromToolInput(
   name: string,
   id: string,
   input: unknown,
-): Extract<AgentChatStreamEvent, { kind: "ask" }> | null {
+): AgentChatAskParse | null {
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const record = input as Record<string, unknown>;
   if (name === "ExitPlanMode") {
     const plan = typeof record.plan === "string" ? record.plan.trim() : "";
     if (plan.length === 0) return null;
-    return { kind: "ask", id, form: "plan", plan: cap(plan, MAX_PLAN_CHARS) };
+    return { event: { kind: "ask", id, form: "plan", plan: cap(plan, MAX_PLAN_CHARS) }, answerKeys: [] };
   }
   if (name !== "AskUserQuestion") return null;
   if (!Array.isArray(record.questions)) return null;
   const questions: AgentChatQuestion[] = [];
+  // 건너뛴 질문이 있으면 인덱스가 어긋나므로, 키는 실제로 실린 질문과 같은 걸음으로 쌓는다.
+  const answerKeys: string[] = [];
   for (const raw of record.questions.slice(0, MAX_QUESTIONS)) {
     if (!raw || typeof raw !== "object") continue;
     const entry = raw as Record<string, unknown>;
-    const question = typeof entry.question === "string" ? entry.question.trim() : "";
+    // 원문은 도구가 답을 맞춰 볼 키다 — trim도 상한도 표시용에만 건다.
+    const rawQuestion = typeof entry.question === "string" ? entry.question : "";
+    const question = rawQuestion.trim();
     if (question.length === 0) continue;
     const header = typeof entry.header === "string" && entry.header.trim().length > 0
       ? entry.header.trim()
@@ -388,9 +404,10 @@ export function agentChatAskFromToolInput(
       multiSelect: entry.multiSelect === true,
       options,
     });
+    answerKeys.push(rawQuestion);
   }
   if (questions.length === 0) return null;
-  return { kind: "ask", id, form: "question", questions };
+  return { event: { kind: "ask", id, form: "question", questions }, answerKeys };
 }
 
 function cap(value: string, limit: number): string {

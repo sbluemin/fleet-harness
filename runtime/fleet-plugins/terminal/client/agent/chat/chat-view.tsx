@@ -708,7 +708,9 @@ function AskQuestion({
               type="button"
               className="agent-chat-ask-option"
               disabled={disabled}
-              {...(question.multiSelect ? { "aria-pressed": chosen } : {})}
+              // 단일 선택도 고른 상태를 말해야 한다. 질문이 둘 이상이면 전부 채워야 전송되므로,
+              // 그 사이 고른 답이 화면에도 스크린 리더에도 남지 않으면 무엇을 골랐는지 잃는다.
+              aria-pressed={chosen}
               onClick={() => { onChoose(option.label); }}
             >
               <span className="agent-chat-ask-option-label">{option.label}</span>
