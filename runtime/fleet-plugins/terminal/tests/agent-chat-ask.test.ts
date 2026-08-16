@@ -288,6 +288,29 @@ describe("AgentChatRegistry — interactive tools", () => {
     await registry.disposeAll();
   });
 
+  it("refuses to approve a plan it could not show, on the server rather than in the card", async () => {
+    const sdk = createPausedSdkFactory();
+    const registry = new AgentChatRegistry(sdk.factory);
+    const { session } = await startSession(registry, sdk, []);
+
+    const plan = "가".repeat(60_050);
+    const revised = sdk.ask("ExitPlanMode", { plan }, "plan-huge");
+    await vi.waitFor(() => { expect(session.awaiting).toBe(true); });
+
+    // 카드가 버튼을 감추는 것만으로는 규칙이 되지 않는다 — 리로드하지 않은 옛 번들은 그 플래그를
+    // 모른 채 승인을 보낸다. 거절은 그 요청이 닿는 자리에 있어야 한다.
+    expect(session.answer("plan-huge", { approve: true })).toEqual({ ok: false, error: "plan_truncated" });
+    // 거절이 대기를 풀어 버리면 사용자는 답할 자리를 잃는다.
+    expect(session.awaiting).toBe(true);
+
+    // 수정 요청은 열려 있다 — 더 짧은 계획을 받아 오는 길이다.
+    expect(session.answer("plan-huge", { message: "짧게 다시 주세요" })).toEqual({ ok: true, outcome: "revised" });
+    await expect(revised).resolves.toEqual({ behavior: "deny", message: "짧게 다시 주세요" });
+
+    sdk.finish();
+    await registry.disposeAll();
+  });
+
   it("keeps the question parked when the answer does not match the questions", async () => {
     const sdk = createPausedSdkFactory();
     const registry = new AgentChatRegistry(sdk.factory);

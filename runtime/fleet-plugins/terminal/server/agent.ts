@@ -1131,7 +1131,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ...(typeof body?.message === "string" ? { message: body.message.slice(0, MAX_CHAT_ANSWER_MESSAGE_CHARS) } : {}),
     });
     if (!result.ok) {
-      ctx.host.http.writeJson(res, result.error === "ask_not_found" ? 404 : 400, { error: result.error });
+      // 잘린 계획의 승인 거절은 409다 — 요청이 잘못된 것이 아니라, 보여 주지 못한 것을 승인할 수
+      // 없다는 세션의 상태가 거절한다. 옛 번들이 이 문을 두드렸을 때 그 구별이 화면에 도움이 된다.
+      const status = result.error === "ask_not_found" ? 404 : result.error === "plan_truncated" ? 409 : 400;
+      ctx.host.http.writeJson(res, status, { error: result.error });
       return true;
     }
     ctx.host.http.writeJson(res, 200, { ok: true, outcome: result.outcome });

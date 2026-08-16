@@ -82,7 +82,7 @@ export interface AgentChatAnswerInput {
 
 export type AgentChatAnswerResult =
   | { readonly ok: true; readonly outcome: "answered" | "dismissed" | "approved" | "revised" }
-  | { readonly ok: false; readonly error: "ask_not_found" | "invalid_answer" };
+  | { readonly ok: false; readonly error: "ask_not_found" | "invalid_answer" | "plan_truncated" };
 
 /** 답을 기다리며 붙들고 있는 도구 호출 하나. */
 interface PendingAsk {
@@ -95,6 +95,12 @@ interface PendingAsk {
    * 키가 어긋난다. 그때 라우트는 200을 돌려주고 카드는 접히는데 모델은 답을 못 받는다.
    */
   readonly answerKeys: readonly string[];
+  /**
+   * 계획이 상한에 잘렸다. 승인 거절은 카드가 아니라 여기서 진다 — 버튼을 감추는 것은 화면의
+   * 예의일 뿐이고, 리로드하지 않은 옛 번들은 그 사실을 모른 채 승인을 보낼 수 있다.
+   * 보지 못한 것을 승인할 수 없다는 규칙은 그 요청이 닿는 자리에 있어야 규칙이 된다.
+   */
+  readonly truncated: boolean;
   readonly settle: (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }) => void;
 }
 
@@ -242,6 +248,9 @@ class AgentChatSession {
     const message = typeof input.message === "string" ? input.message.trim() : "";
 
     if (pending.form === "plan") {
+      // 잘린 계획은 승인만 막는다. 수정 요청은 그대로 열려 있어 더 짧은 계획을 받을 수 있고,
+      // 대기도 유지된다 — 여기서 대기를 풀면 사용자는 답할 자리를 잃는다.
+      if (pending.truncated && input.approve === true) return { ok: false, error: "plan_truncated" };
       this.pendingAsks.delete(id);
       if (input.approve === true) {
         pending.settle({ behavior: "allow", updatedInput: { ...pending.input } });
@@ -379,6 +388,7 @@ class AgentChatSession {
         input,
         questions: ask.questions ?? [],
         answerKeys: parsed.answerKeys,
+        truncated: ask.truncated === true,
         settle: (permission) => {
           settle(permission);
           this.pendingAsks.delete(id);
