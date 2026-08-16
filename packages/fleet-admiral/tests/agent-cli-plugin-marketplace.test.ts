@@ -215,14 +215,21 @@ describe("agent CLI plugin marketplace rendering", () => {
     for (const skill of [
       "workflow",
       "workflow-architecting",
-      "workflow-implementing",
       "workflow-review",
       "workflow-research",
     ]) {
       expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(true);
     }
     // 구명 디렉터리가 되살아나면 스킬이 두 벌 렌더되어 어느 쪽이 로드될지 갈라진다.
-    for (const retired of ["architecture-review", "implementation-run", "quality-review", "codebase-research"]) {
+    // workflow-implementing은 퇴역했다 — 되살아나면 파일을 쓰는 실행이 다시 스켈레톤을 갖고,
+    // 그 규율이 workflow 스킬의 "When the run writes files"와 두 벌로 갈라진다.
+    for (const retired of [
+      "architecture-review",
+      "implementation-run",
+      "quality-review",
+      "codebase-research",
+      "workflow-implementing",
+    ]) {
       expect(existsSync(path.join(skillsRoot, retired)), retired).toBe(false);
     }
     // 모델·effort 배정은 workflow 스킬이 흡수했으므로 별도 스킬로 렌더되지 않는다.

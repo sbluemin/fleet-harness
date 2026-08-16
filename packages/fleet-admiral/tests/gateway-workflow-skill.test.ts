@@ -39,7 +39,6 @@ describe("gateway workflow skill asset", () => {
     for (const relativePath of [
       "gateway/workflow-architecting/SKILL.md",
       "gateway/workflow-research/SKILL.md",
-      "gateway/workflow-implementing/SKILL.md",
       "gateway/workflow-review/SKILL.md",
     ]) {
       const asset = EMBEDDED_AGENT_CLI_SKILL_ASSETS.find(
@@ -49,6 +48,9 @@ describe("gateway workflow skill asset", () => {
       expect(asset?.content, relativePath).toContain(
         "model and effort assignment — belongs to `workflow`",
       );
+      // 퇴역한 스킬로 라우팅하면 호스트가 없는 스킬을 부르려다 스켈레톤 없이
+      // 즉흥 실행으로 폴백한다 — 구조화된 실행보다 드리프트가 크다.
+      expect(asset?.content, relativePath).not.toContain("workflow-implementing");
     }
   });
 
@@ -207,6 +209,25 @@ describe("gateway workflow skill asset", () => {
     expect(content).toContain("quality parity is the prior on closed roles");
     expect(content).toContain("Both measurements were closed tasks");
     expect(content).toContain("a model that spends less there may be answering less");
+  });
+
+  // workflow-implementing 퇴역 후, 파일을 쓰는 실행의 규율은 이 스킬이 단독으로 진다.
+  // 대응하는 스켈레톤이 없으므로 이 문언이 사라지면 되살릴 다른 문서가 없다 — 리터럴
+  // 배리어가 빠지는 순간 각 분기가 자기 값을 지어내고, 그것이 퇴역을 부른 실패 그대로다.
+  it("carries the writing-run rules that no skeleton covers", () => {
+    const content = skillContent();
+
+    expect(content).toContain("### When the run writes files");
+    expect(content).toContain("Writing work has no stage skeleton of its own");
+    expect(content).toContain("Fix every literal on the host first.");
+    expect(content).toContain("Isolate every writing branch.");
+    expect(content).toContain("Inspect artifacts, never narratives.");
+    expect(content).toContain("A site needing a new decision stops.");
+    expect(content).toContain("Reject rather than patch.");
+    // 측정 범위 한정이 빠지면 sweeping·cross-package 실행이 측정된 것처럼 읽힌다.
+    expect(content).toContain("Only local, well-precedented edits were measured.");
+    // 퇴역한 스킬 이름이 남으면 호스트가 존재하지 않는 스킬을 로드하려 한다.
+    expect(content).not.toContain("workflow-implementing");
   });
 
   // 표면 선택은 Standing Order 에서 이 스킬로 이관됐다. Gate 1 이 세 표면을 모두 들고
