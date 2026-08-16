@@ -81,13 +81,27 @@ async function describeClaudeBinary(
   runVersion: (bin: string, args: readonly string[]) => Promise<string>,
 ): Promise<string> {
   if (!resolved) return `${CLAUDE_COMMAND} (not on PATH)`;
+  const displayPath = displayBinaryPath(resolved);
   try {
     const output = await runVersion(resolved.bin, [...resolved.prefixArgs, "--version"]);
     const version = output.match(SEMVER_PATTERN)?.[1];
-    return version ? `${resolved.bin} ${version}` : `${resolved.bin} (version unknown)`;
+    return version ? `${displayPath} ${version}` : `${displayPath} (version unknown)`;
   } catch {
-    return `${resolved.bin} (version unknown)`;
+    return `${displayPath} (version unknown)`;
   }
+}
+
+// Windows npm shim은 bin이 cmd.exe이고 실제 .cmd는 prefixArgs에 있다.
+// 실행은 wrap 그대로 두고, 진단 줄만 그 shim 경로를 말한다.
+function displayBinaryPath(resolved: ResolvedBinary): string {
+  const shim = [...resolved.prefixArgs]
+    .reverse()
+    .map((arg) => arg.trim())
+    .find((arg) => {
+      const lower = arg.toLowerCase();
+      return lower.endsWith(".cmd") || lower.endsWith(".bat");
+    });
+  return shim ?? resolved.bin;
 }
 
 function execFileVersion(bin: string, args: readonly string[]): Promise<string> {

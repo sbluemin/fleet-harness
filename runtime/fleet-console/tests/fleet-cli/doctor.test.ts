@@ -38,6 +38,21 @@ describe("fleet doctor", () => {
     expect(text).toContain("binary    /usr/bin/claude (version unknown)");
     expect(text).not.toContain("/Users/sbluemin");
   });
+
+  it("reports the Windows npm shim path while still probing through cmd.exe", async () => {
+    const deps = createDeps();
+    deps.resolveBinary = vi.fn(() => ({
+      bin: "C:\\Windows\\System32\\cmd.exe",
+      prefixArgs: ["/d", "/s", "/c", "call", "C:\\npm\\claude.cmd "],
+    }));
+    const text = await buildFleetDoctorText(deps);
+    expect(text).toContain("binary    C:\\npm\\claude.cmd 2.1.233");
+    expect(text).not.toContain("cmd.exe");
+    expect(deps.runVersion).toHaveBeenCalledWith(
+      "C:\\Windows\\System32\\cmd.exe",
+      ["/d", "/s", "/c", "call", "C:\\npm\\claude.cmd ", "--version"],
+    );
+  });
 });
 
 function createIo() {
