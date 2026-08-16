@@ -5,7 +5,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it } from "vitest";
 
-import { isMapActivationSurface, shouldReleaseActiveOperation } from "../core/client/src/active-operation-surface.js";
+import { isMapActivationSurface, isWarRoomEmptyReleaseTarget, shouldReleaseActiveOperation } from "../core/client/src/active-operation-surface.js";
 
 function el(html: string): HTMLElement {
   const host = document.createElement("div");
@@ -81,5 +81,57 @@ describe("empty Map click clears activation", () => {
   it("clears the active Operation and blurs the terminal", () => {
     expect(source).toContain("onClick: clearActiveOperation");
     expect(source).not.toContain("onClick: blurActiveElement");
+  });
+
+  it("clears a focused War Room deck panel from the canvas pointerdown on empty space", () => {
+    expect(source).toContain("isWarRoomEmptyReleaseTarget(event.target)");
+    expect(source).toContain("clearActiveOperation()");
+  });
+});
+
+describe("isWarRoomEmptyReleaseTarget", () => {
+  it("releases on the War Room deck and its empty grid, not on a card or staged panel", () => {
+    const canvas = el(`<main class="operations-canvas is-triage">
+      <section class="canvas-triage-deck">
+        <div class="canvas-triage-deck-caption">Watching</div>
+        <div class="canvas-triage-deck-grid">
+          <div data-triage-deck-card="op-1">
+            <article class="canvas-operation is-deck-tile" data-canvas-operation data-operation-id="op-1"></article>
+            <button class="canvas-triage-deck-pick" type="button">Stage</button>
+          </div>
+        </div>
+      </section>
+      <article class="canvas-operation is-triage-stage" data-canvas-operation data-operation-id="op-2"></article>
+    </main>`);
+    document.body.append(canvas);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".canvas-triage-deck-grid"))).toBe(true);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".canvas-triage-deck-caption"))).toBe(true);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector("[data-triage-deck-card]"))).toBe(false);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".canvas-triage-deck-pick"))).toBe(false);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector("[data-canvas-operation]"))).toBe(false);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".is-triage-stage"))).toBe(false);
+    canvas.remove();
+  });
+
+  it("releases on an empty War Room map field, not on a map marker", () => {
+    const canvas = el(`<main class="operations-canvas is-triage">
+      <section class="canvas-triage-deck is-map-mode">
+        <div class="canvas-triage-map">
+          <button type="button" data-triage-map-dot="op-1">Alpha</button>
+        </div>
+      </section>
+    </main>`);
+    document.body.append(canvas);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".canvas-triage-map"))).toBe(true);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector("[data-triage-map-dot]"))).toBe(false);
+    canvas.remove();
+  });
+
+  it("does not treat Cruise empty sea as a War Room empty release", () => {
+    const canvas = el(`<main class="operations-canvas"><div class="operations-canvas-world"></div></main>`);
+    document.body.append(canvas);
+    expect(isWarRoomEmptyReleaseTarget(canvas.querySelector(".operations-canvas-world"))).toBe(false);
+    expect(isWarRoomEmptyReleaseTarget(canvas)).toBe(false);
+    canvas.remove();
   });
 });

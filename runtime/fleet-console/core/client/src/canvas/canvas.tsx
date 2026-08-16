@@ -10,7 +10,7 @@ import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, Fle
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
-import { clearActiveOperation } from "../active-operation-surface.js";
+import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -794,6 +794,11 @@ export function OperationsCanvas({
           // 캔버스 제어 메뉴가 어느 소유자(사이드바 포털/이 컴포넌트)로부터 열었든 Map 클릭으로 닫는다 —
           // pan의 preventDefault+포인터 캡처가 mousedown 합성을 끊어 포털의 외부-클릭 닫기가 못 잡는다.
           window.dispatchEvent(new Event("canvas-context-menu-close"));
+        }
+        // War Room은 제스처 훅을 끄므로 Cruise onClick 해제가 닿지 않는다. 덱이 덮은 빈
+        // 자리는 카드·점·패널이 아닌 곳에서 활성만 푼다 — 무대 지목은 그대로다.
+        if (triageActive && event.button === 0 && isWarRoomEmptyReleaseTarget(event.target)) {
+          clearActiveOperation();
         }
         interaction.onPointerDown(event as Parameters<typeof interaction.onPointerDown>[0]);
       }}
