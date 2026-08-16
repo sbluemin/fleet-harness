@@ -12,3 +12,5 @@ branch: chat-view-table-and-spacing
   ko: 채팅 워크플로 단계 표에서 게이트웨이 모델을 모든 행이 반복하던 라우팅 별칭 없이 자기 이름으로 보여줍니다.
 - Stop a long agent turn from stretching with blank space by trimming the padding a model wraps its sentences in and dropping ledger segments that say nothing.
   ko: 모델이 문장에 달고 오는 공백을 정리하고 아무것도 말하지 않는 원장 구간을 세우지 않아, 긴 에이전트 턴이 빈 여백으로 늘어나지 않습니다.
+- Tighten the ledger rhythm so a folded tool line sits with its own sentence instead of leaving a blank line under it.
+  ko: 원장의 간격을 좁혀, 접힌 도구 줄이 아래에 빈 줄을 남기는 대신 자기 문장에 붙어 읽힙니다.
