@@ -23,6 +23,10 @@ permissions:
 jobs:
   distribute:
     name: Build and distribute Android
+    # iOS 잡과 대칭인 게이트. 릴리스 경로(stable-release)는 이 변수가 true일 때만 여기까지
+    # 오므로 no-op이고, 수동 dispatch로 iOS만 시험할 때 Android 잡이 키스토어 없이 돌다가
+    # 런 전체를 빨갛게 만드는 것을 막는다.
+    if: ${{ vars.FLEET_MOBILE_DISTRIBUTION == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -165,6 +169,7 @@ jobs:
           FLEET_IOS_CERTIFICATE_BASE64: ${{ secrets.FLEET_IOS_CERTIFICATE_BASE64 }}
           FLEET_IOS_CERTIFICATE_PASSWORD: ${{ secrets.FLEET_IOS_CERTIFICATE_PASSWORD }}
           FLEET_IOS_PROFILE_BASE64: ${{ secrets.FLEET_IOS_PROFILE_BASE64 }}
+          FLEET_IOS_PROFILE_PATH: ${{ runner.temp }}/profile.mobileprovision
         run: pnpm --filter @dotobokuri/fleet-mobile ios:build:release
 
       - name: Distribute to TestFlight

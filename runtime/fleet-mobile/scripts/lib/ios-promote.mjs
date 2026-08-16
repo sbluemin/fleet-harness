@@ -72,13 +72,20 @@ export function buildPromotedIpa(buildType) {
   const archivePath = path.join(iosRoot, "build", "Fleet.xcarchive");
   const exportPath = path.join(iosRoot, "build", "export");
 
+  // 수동 서명은 팀·프로파일·아이덴티티를 모두 명시해야 한다. 셋 다 제공된 프로파일에서
+  // 읽으므로 CI 시크릿 외에 별도 설정이 없다.
+  const profile = readProvisioningProfile();
   run("xcodebuild", [
     "-workspace", workspace, "-scheme", scheme, "-configuration", "Release",
     "-destination", "generic/platform=iOS", "-archivePath", archivePath,
-    "archive", "CODE_SIGN_STYLE=Manual",
+    "archive",
+    "CODE_SIGN_STYLE=Manual",
+    `DEVELOPMENT_TEAM=${profile.teamId}`,
+    `PROVISIONING_PROFILE_SPECIFIER=${profile.uuid}`,
+    "CODE_SIGN_IDENTITY=Apple Distribution",
   ], { cwd: iosRoot });
 
-  const optionsPlist = writeExportOptions(iosRoot);
+  const optionsPlist = writeExportOptions(iosRoot, profile);
   run("xcodebuild", [
     "-exportArchive", "-archivePath", archivePath,
     "-exportPath", exportPath, "-exportOptionsPlist", optionsPlist,
@@ -166,7 +173,7 @@ function firstIpa(exportPath) {
   return path.join(exportPath, ipa);
 }
 
-function writeExportOptions(iosRoot) {
+function writeExportOptions(iosRoot, profile) {
   const optionsPath = path.join(iosRoot, "build", "ExportOptions.plist");
   mkdirSync(path.dirname(optionsPath), { recursive: true });
   writeFileSync(optionsPath, `<?xml version="1.0" encoding="UTF-8"?>
@@ -176,6 +183,10 @@ function writeExportOptions(iosRoot) {
   <key>destination</key><string>export</string>
   <key>signingStyle</key><string>manual</string>
   <key>stripSwiftSymbols</key><true/>
+  <key>teamID</key><string>${profile.teamId}</string>
+  <key>provisioningProfiles</key><dict>
+    <key>${BUNDLE_ID}</key><string>${profile.uuid}</string>
+  </dict>
 </dict></plist>
 `);
   return optionsPath;
@@ -209,4 +220,34 @@ function describeSigner(exportPath, ipa) {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * 배포 프로파일에서 팀 id와 프로파일 UUID를 읽는다. 수동 서명의 archive/export 양쪽이
+ * 이 값을 요구하며, 프로파일이 이 앱의 번들 id를 위한 것인지도 여기서 확인한다 —
+ * 다른 앱의 프로파일로 서명한 IPA가 업로드 단계에서야 거절되는 것을 막는다.
+ */
+export function readProvisioningProfile(env = process.env) {
+  const file = env.FLEET_IOS_PROFILE_PATH;
+  if (!file || !existsSync(file)) {
+    fail("FLEET_IOS_PROFILE_PATH must point to the .mobileprovision used for signing");
+  }
+  const decoded = run("security", ["cms", "-D", "-i", file], { capture: true });
+  const scratch = path.join(packageRoot, "dist", ".profile.plist");
+  mkdirSync(path.dirname(scratch), { recursive: true });
+  writeFileSync(scratch, decoded);
+  let plist;
+  try {
+    plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", scratch], { capture: true }));
+  } finally {
+    rmSync(scratch, { force: true });
+  }
+  const applicationIdentifier = plist.Entitlements?.["application-identifier"] ?? "";
+  const teamId = applicationIdentifier.split(".")[0];
+  const bundleId = applicationIdentifier.slice(teamId.length + 1);
+  if (!teamId || bundleId !== BUNDLE_ID) {
+    fail(`Provisioning profile is for ${bundleId || "an unknown app"}; expected ${BUNDLE_ID}`);
+  }
+  if (!plist.UUID) fail("Provisioning profile has no UUID");
+  return { teamId, uuid: plist.UUID, name: plist.Name };
 }
