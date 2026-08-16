@@ -95,6 +95,10 @@ export function AgentChatView({
     }
   }, [onOpenTerminal]);
 
+  // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
+  // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
+  const awaitingFirstTurn = state.turns.length === 0 && !state.replaying && state.connection === "open";
+
   // 델타가 흐르는 동안에도 바닥 추적이 이어지도록 draft 길이를 스크롤 신호에 합산한다.
   const scrollSignal = state.turns.reduce(
     (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
@@ -314,9 +318,6 @@ export function AgentChatView({
             onOpenJob={showJob}
           />
         ))}
-        {state.turns.length === 0 && !state.replaying && state.connection === "open"
-          ? <div className="agent-chat-empty">{t("terminal.chat.emptyHint")}</div>
-          : null}
         {state.errorCode === "chat_turn_failed"
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
           : null}
@@ -404,15 +405,22 @@ export function AgentChatView({
             </button>
           ) : null}
 
+          {/* 아직 아무 턴도 없는 세션에서는 이 문이 곧 유일한 다음 행동이다. 본문 한가운데의
+              안내 문장 대신 그 문 자체를 초대 상태로 세운다 — 읽고 나서 어디를 눌러야 하는지
+              다시 찾게 만들지 않기 위해서다. 닫는 수단은 두지 않는다: 첫 턴이 시작되면 상태가
+              스스로 지나가고, 그전까지는 계속 참인 안내다. */}
+          {awaitingFirstTurn ? (
+            <p className="agent-chat-invite" aria-hidden="true">{t("terminal.chat.emptyInvite")}</p>
+          ) : null}
           {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
               호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
               가는 문이다(이 뷰에 입력창을 두지 않는다는 결정은 그대로다). */}
           <button
             type="button"
-            className="agent-chat-reply"
+            className={awaitingFirstTurn ? "agent-chat-reply agent-chat-reply--inviting" : "agent-chat-reply"}
             {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}
-            aria-label={t("terminal.chat.replyAria")}
-            title={t("terminal.chat.replyTitle")}
+            aria-label={t(awaitingFirstTurn ? "terminal.chat.emptyInviteAria" : "terminal.chat.replyAria")}
+            title={t(awaitingFirstTurn ? "terminal.chat.emptyInvite" : "terminal.chat.replyTitle")}
             onClick={() => { context.composer.open({ mentionOperationId: context.operationId }); }}
           >
             <ReplyBubbleIcon />
