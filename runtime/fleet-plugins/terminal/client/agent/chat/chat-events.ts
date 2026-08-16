@@ -881,7 +881,7 @@ export function segmentAgentChatLedger(
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
     if (item.type === "text") {
-      const note = item.text !== undefined ? tidyNote(item.text) : undefined;
+      const note = item.text !== undefined ? spokenNote(item.text) : undefined;
       buckets.push({ ...(note !== undefined ? { note } : {}), steps: [] });
       continue;
     }
@@ -905,14 +905,14 @@ export function segmentAgentChatLedger(
 }
 
 /**
- * 구간을 여는 문장의 표시형. 문장은 공유 마크다운이 그리므로 문단 사이 빈 줄과 줄 끝 공백은
- * 손대지 않는다 — 전자는 문단을, 후자는 줄바꿈을 뜻하는 문법이고, 지우면 모델이 쓴 형식이
- * 사라진다. 여기서 거르는 것은 공백뿐인 문장 하나다: 그것은 구간을 열 자격이 없는데도 빈
- * 블록과 구간 여백을 그대로 받아, 긴 턴일수록 아무것도 말하지 않는 여백만 쌓는다.
+ * 구간을 여는 문장. 내용은 한 글자도 손대지 않는다 — 문장은 공유 마크다운이 그리고, 그
+ * 문법은 공백으로 쓰인다: 첫 줄의 네 칸은 코드 블록이고, 줄 끝 두 칸은 줄바꿈이며, 문단
+ * 사이 빈 줄은 파서가 알아서 흡수한다. 다듬는 순간 모델이 쓴 형식이 표시 직전에 사라진다.
+ * 여기서 가리는 것은 하나뿐이다: 공백밖에 없는 문장은 구간을 열 자격이 없는데도 빈 블록과
+ * 구간 여백을 그대로 받아, 긴 턴일수록 아무것도 말하지 않는 여백만 쌓는다.
  */
-function tidyNote(text: string): string | undefined {
-  const tidy = text.trim();
-  return tidy.length > 0 ? tidy : undefined;
+function spokenNote(text: string): string | undefined {
+  return text.trim().length > 0 ? text : undefined;
 }
 
 function foldSegment(
