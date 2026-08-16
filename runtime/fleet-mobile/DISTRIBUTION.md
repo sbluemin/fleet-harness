@@ -159,7 +159,9 @@ signed with an **Apple Distribution** identity (never a development identity) an
 ### One-time Apple setup (the repo owner does this; CI cannot)
 
 1. **App ID** — in the Apple Developer portal, register bundle id `com.dotobokuri.fleet.mobile` (no
-   extra capabilities; the app uses no special entitlements).
+   extra capabilities; the app uses no special entitlements). Bundle ids are unique across all Apple
+   developer accounts, so do this first: if another account already holds it, every later step is
+   built on an id you cannot sign for.
 2. **Distribution certificate** — create an Apple Distribution certificate, export it as a `.p12`
    with a password. Keep it outside the repository and outside `~/.fleet`.
 3. **Provisioning profile** — create an **App Store** distribution profile for that App ID and
@@ -205,10 +207,11 @@ install it. Three things still gate the iPhone:
 
 - **Processing.** The build appears in TestFlight as *Processing* for roughly 5–15 minutes. It cannot
   be assigned to a group until that finishes.
-- **Export compliance.** A processed build usually lands on *Missing Compliance* and is not
-  distributable until the encryption question is answered (TestFlight tab → the build → Manage).
-  Fleet speaks only standard HTTPS/TLS, which is normally exempt; answering once per build clears it,
-  and setting `ITSAppUsesNonExemptEncryption` in the Info.plist would stop the prompt entirely.
+- **Export compliance.** Answered in the Info.plist: `withFleetIos` sets
+  `ITSAppUsesNonExemptEncryption` to `false`, because Fleet's only cryptography is the standard TLS
+  the OS provides (Network.framework for the remote link, Security.framework for the loopback
+  certificate, WKWebView for the console). Without that key a processed build lands on *Missing
+  Compliance* and reaches nobody until a human answers the same question again, once per build.
 - **Tester access.** The Apple ID signed into the iPhone must be a user on the App Store Connect
   team and a member of the internal testing group, and the processed build has to be assigned to
   that group. Adding the group is not enough on its own; check the build is listed under it.

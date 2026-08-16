@@ -27,6 +27,8 @@ describe("Fleet Mobile iOS build contract", () => {
     expect(plugin).toContain('"fleet"');
     // LAN 콘솔 페어링은 이 키 없이는 실기기에서 프롬프트도 뜨지 않고 막힌다.
     expect(plugin).toContain("NSLocalNetworkUsageDescription");
+    // 이 선언이 없으면 업로드된 빌드가 Missing Compliance로 멈춰 테스터에게 가지 않는다.
+    expect(plugin).toContain("ITSAppUsesNonExemptEncryption = false");
   });
 
   it("exposes the iOS build/verify/distribute scripts", () => {

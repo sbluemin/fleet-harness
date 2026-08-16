@@ -19,6 +19,7 @@ const goodPlist = JSON.stringify({
   CFBundleURLTypes: [{ CFBundleURLName: "com.dotobokuri.fleet.mobile.join", CFBundleURLSchemes: ["fleet"] }],
   NSCameraUsageDescription: "Fleet uses the camera only to read a Console access link from a QR code.",
   NSLocalNetworkUsageDescription: "Fleet connects to the Console running on your local network.",
+  ITSAppUsesNonExemptEncryption: false,
 });
 
 describe("iOS Info.plist contract", () => {
@@ -62,6 +63,15 @@ describe("iOS Info.plist contract", () => {
     delete plist.NSLocalNetworkUsageDescription;
     expect(() => verifyReleaseInfoPlist(inspectInfoPlist(JSON.stringify(plist)))).toThrow(
       /NSLocalNetworkUsageDescription/,
+    );
+  });
+
+  // 빠지면 업로드는 성공하고 빌드는 Missing Compliance로 멈춘다 — 워크플로는 초록불인 채로.
+  it("rejects a plist that does not settle export compliance", () => {
+    const plist = JSON.parse(goodPlist);
+    delete plist.ITSAppUsesNonExemptEncryption;
+    expect(() => verifyReleaseInfoPlist(inspectInfoPlist(JSON.stringify(plist)))).toThrow(
+      /ITSAppUsesNonExemptEncryption/,
     );
   });
 

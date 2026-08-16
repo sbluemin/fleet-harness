@@ -34,6 +34,13 @@ export const withFleetIos: ConfigPlugin = (config) => {
     plist.NSLocalNetworkUsageDescription =
       "Fleet connects to the Console running on your local network.";
 
+    // 수출 규정 준수 선언. Fleet의 암호화는 전부 OS가 제공하는 표준 TLS다 — 원격은
+    // Network.framework, 로컬 게이트웨이는 Security.framework의 P-256 키와 자체서명 인증서,
+    // WebView는 WKWebView. 독자 암호화 알고리즘은 없으므로 5D992 면제에 해당한다.
+    // 이 키가 없으면 업로드된 빌드가 App Store Connect에서 Missing Compliance로 멈춰
+    // 매 빌드마다 사람이 같은 질문에 답해야 하고, 그때까지 테스터에게 배포되지 않는다.
+    plist.ITSAppUsesNonExemptEncryption = false;
+
     return mod;
   });
 

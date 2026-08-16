@@ -92,6 +92,7 @@ export function inspectInfoPlist(json) {
     urlSchemes: [...new Set(schemes)],
     // Fleet은 카메라만 쓴다. 마이크·위치 등 추가 사용 설명 키가 있으면 초과로 본다.
     usageDescriptionKeys: Object.keys(plist).filter((key) => /UsageDescription$/.test(key)).sort(),
+    usesNonExemptEncryption: plist.ITSAppUsesNonExemptEncryption,
     backgroundModes: Array.isArray(plist.UIBackgroundModes) ? plist.UIBackgroundModes : [],
   };
 }
@@ -130,6 +131,11 @@ export function verifyReleaseInfoPlist(fields) {
     fail("Info.plist must declare NSLocalNetworkUsageDescription — LAN console pairing is blocked without it");
   }
   if (fields.backgroundModes.length > 0) fail(`Unexpected iOS background modes: ${fields.backgroundModes.join(", ")}`);
+  // 이 선언이 없으면 App Store Connect가 빌드를 Missing Compliance로 잡아 두고, 사람이 매
+  // 빌드마다 같은 질문에 답할 때까지 테스터에게 배포되지 않는다. Fleet은 OS 표준 TLS만 쓴다.
+  if (fields.usesNonExemptEncryption !== false) {
+    fail("Info.plist must set ITSAppUsesNonExemptEncryption to false — otherwise every upload stalls on export compliance");
+  }
 }
 
 export function verifyReleaseSigning(codesign) {
