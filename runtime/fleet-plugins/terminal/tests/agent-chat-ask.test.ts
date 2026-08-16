@@ -171,6 +171,15 @@ describe("agentChatAskFromToolInput", () => {
     });
   });
 
+  it("marks a plan the card could not show in full", () => {
+    // 승인은 본 것에 동의한다는 뜻이다 — 잘린 계획은 그 사실을 이벤트가 말해야 카드가 승인을 닫는다.
+    const short = agentChatAskFromToolInput("ExitPlanMode", "p1", { plan: "1. do this" });
+    expect(short?.event.truncated).toBeUndefined();
+    const huge = agentChatAskFromToolInput("ExitPlanMode", "p2", { plan: "가".repeat(60_001) });
+    expect(huge?.event.truncated).toBe(true);
+    expect((huge?.event.plan ?? "").length).toBeLessThanOrEqual(60_000);
+  });
+
   it("returns null for a shape it cannot draw", () => {
     // 선택지 없는 질문, 빈 계획, 다른 도구 — 반쯤 읽은 카드를 세우느니 도구를 그냥 통과시킨다.
     expect(agentChatAskFromToolInput("AskUserQuestion", "x", { questions: [{ question: "q", header: "h", options: [] }] })).toBeNull();

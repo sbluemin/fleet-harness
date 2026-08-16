@@ -84,6 +84,11 @@ export type AgentChatStreamEvent =
       readonly questions?: readonly AgentChatQuestion[];
       /** form="plan"일 때의 계획 본문(마크다운). */
       readonly plan?: string;
+      /**
+       * 계획이 상한에 잘렸다. 승인은 "본 것에 동의한다"는 뜻이라, 보여 주지 못한 단계가 있으면
+       * 카드는 승인을 열지 않는다 — 잘린 앞부분만 보고 누른 승인은 전문을 통과시킨다.
+       */
+      readonly truncated?: true;
     }
   /** 그 대기의 결말. answered/dismissed는 질문, approved/revised는 계획이 쓴다. */
   | {
@@ -111,7 +116,8 @@ const MAX_QUESTION_CHARS = 400;
 /** header 전용 상한. 옵션 라벨은 자르지 않는다 — 아래 주석 참조. */
 const MAX_HEADER_CHARS = 120;
 const MAX_OPTION_DESC_CHARS = 400;
-const MAX_PLAN_CHARS = 8_000;
+/** 계획 본문 상한 — 텍스트 이벤트와 같다. 넘으면 잘린 사실을 이벤트가 함께 말한다. */
+const MAX_PLAN_CHARS = 60_000;
 const MAX_QUESTIONS = 4;
 const MAX_OPTIONS = 4;
 
@@ -367,7 +373,13 @@ export function agentChatAskFromToolInput(
   if (name === "ExitPlanMode") {
     const plan = typeof record.plan === "string" ? record.plan.trim() : "";
     if (plan.length === 0) return null;
-    return { event: { kind: "ask", id, form: "plan", plan: cap(plan, MAX_PLAN_CHARS) }, answerKeys: [] };
+    // 상한은 텍스트 이벤트와 같은 자리에 둔다 — 계획도 모델이 사람에게 읽히려고 쓴 문서다.
+    // 그래도 넘는 계획은 잘리는데, 그때는 승인을 열지 않는다는 사실을 함께 싣는다.
+    const truncated = plan.length > MAX_PLAN_CHARS;
+    return {
+      event: { kind: "ask", id, form: "plan", plan: cap(plan, MAX_PLAN_CHARS), ...(truncated ? { truncated: true } : {}) },
+      answerKeys: [],
+    };
   }
   if (name !== "AskUserQuestion") return null;
   if (!Array.isArray(record.questions)) return null;

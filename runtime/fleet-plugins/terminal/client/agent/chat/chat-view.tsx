@@ -578,15 +578,20 @@ function AskCard({
           </button>
         </div>
         <div className="agent-chat-ask-foot">
+          {/* 승인은 "본 것에 동의한다"는 뜻이다. 계획이 잘려 보여 주지 못한 단계가 있으면 그 문을
+              열지 않는다 — 앞부분만 보고 누른 승인이 전문을 통과시키기 때문이다. 대신 수정 요청은
+              열려 있어, 더 짧은 계획을 받아 볼 수 있다. */}
           <button
             type="button"
             className="agent-chat-ask-send"
-            disabled={pending}
+            disabled={pending || ask.truncated === true}
             onClick={() => { void send({ askId: ask.id, approve: true }); }}
           >
             {t("terminal.chat.ask.approve")}
           </button>
-          <span className="agent-chat-ask-hint">{t("terminal.chat.ask.approveHint")}</span>
+          <span className="agent-chat-ask-hint">
+            {ask.truncated === true ? t("terminal.chat.ask.planTruncated") : t("terminal.chat.ask.approveHint")}
+          </span>
         </div>
         {failed ? <div className="agent-chat-ask-error">{t("terminal.chat.ask.failed")}</div> : null}
       </div>

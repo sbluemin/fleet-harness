@@ -34,6 +34,8 @@ export interface AgentChatAsk {
   readonly form: AgentChatAskForm;
   readonly questions: readonly AgentChatQuestion[];
   readonly plan?: string;
+  /** 계획이 잘렸다 — 보여 주지 못한 단계가 있으므로 카드는 승인을 열지 않는다. */
+  readonly truncated?: true;
   readonly outcome?: AgentChatAskOutcome;
   readonly answers?: readonly { readonly header: string; readonly value: string }[];
 }
@@ -64,6 +66,7 @@ export type AgentChatStreamEvent =
       readonly form: AgentChatAskForm;
       readonly questions?: readonly AgentChatQuestion[];
       readonly plan?: string;
+      readonly truncated?: true;
     }
   | {
       readonly kind: "ask-settled";
@@ -139,6 +142,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           form: event.form,
           ...(questions.length > 0 ? { questions } : {}),
           ...(plan !== undefined ? { plan } : {}),
+          ...(event.truncated === true ? { truncated: true } : {}),
         },
       };
     }
@@ -349,6 +353,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
           form: event.form,
           questions: event.questions ?? [],
           ...(event.plan !== undefined ? { plan: event.plan } : {}),
+          ...(event.truncated === true ? { truncated: true } : {}),
         },
       });
     case "ask-settled": {
