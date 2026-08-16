@@ -10,6 +10,7 @@ import {
   EXPIRED_KEY,
   formatCountdown,
   formatPace,
+  formatResetInstant,
   isLatestRequestGeneration,
   meterSeverity,
   movedProviderOrder,
@@ -38,6 +39,37 @@ describe("quota countdown", () => {
     const newestRequest = beginRequestGeneration(generation);
     expect(isLatestRequestGeneration(generation, staleRequest)).toBe(false);
     expect(isLatestRequestGeneration(generation, newestRequest)).toBe(true);
+  });
+});
+
+describe("quota reset instant", () => {
+  const now = new Date(2026, 7, 16, 12, 0, 0).getTime();
+
+  it("names the calendar date once the reset is more than a day away", () => {
+    const wednesday = new Date(2026, 7, 19, 23, 0, 0).getTime();
+    expect(formatResetInstant(wednesday, now, "ko")).toBe("8월 19일 (수) 23시");
+    expect(formatResetInstant(wednesday, now, "en")).toBe("Aug 19 (Wed) 23:00");
+  });
+
+  it("names the local 24-hour clock when the reset is a day or less away", () => {
+    const tonight = new Date(2026, 7, 16, 23, 0, 0).getTime();
+    const tomorrowMorning = new Date(2026, 7, 17, 0, 30, 0).getTime();
+    expect(formatResetInstant(tonight, now, "ko")).toBe("23:00");
+    expect(formatResetInstant(tonight, now, "en")).toBe("23:00");
+    expect(formatResetInstant(tomorrowMorning, now, "ko")).toBe("00:30");
+  });
+
+  it("switches from clock to date at the day boundary", () => {
+    const atBoundary = now + 86_400_000;
+    const justOver = now + 86_400_000 + 1;
+    expect(formatResetInstant(atBoundary, now, "ko")).toBe("12:00");
+    expect(formatResetInstant(justOver, now, "ko")).toBe("8월 17일 (월) 12시");
+  });
+
+  it("returns null when the timestamp is not a real instant", () => {
+    expect(formatResetInstant(undefined, now, "ko")).toBeNull();
+    expect(formatResetInstant(Number.NaN, now, "ko")).toBeNull();
+    expect(formatResetInstant(Number.POSITIVE_INFINITY, now, "en")).toBeNull();
   });
 });
 
