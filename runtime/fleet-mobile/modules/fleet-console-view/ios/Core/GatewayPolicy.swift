@@ -99,11 +99,17 @@ public enum GatewayPolicy {
   public static func rewriteLocation(_ value: String, _ remoteOrigin: String, _ localOrigin: String) throws -> String {
     if value.hasPrefix("/") && !value.hasPrefix("//") { return localOrigin + value }
     guard let uri = LocationUri.parse(value) else { throw PolicyError("invalid_location") }
-    if uri.isAbsolute, let origin = try? originOf(uri), origin == remoteOrigin {
-      var suffix = uri.rawPath.isEmpty ? "/" : uri.rawPath
-      if let q = uri.rawQuery { suffix += "?" + q }
-      if let f = uri.rawFragment { suffix += "#" + f }
-      return localOrigin + suffix
+    // Kotlin은 `uri.isAbsolute && originOf(uri) == remoteOrigin`를 평가하며, originOf가
+    // 던지면(비-https/userInfo/무호스트) invalid_location이 그대로 전파된다. try?로 삼키지
+    // 않고 동일하게 전파한다.
+    if uri.isAbsolute {
+      let origin = try originOf(uri)
+      if origin == remoteOrigin {
+        var suffix = uri.rawPath.isEmpty ? "/" : uri.rawPath
+        if let q = uri.rawQuery { suffix += "?" + q }
+        if let f = uri.rawFragment { suffix += "#" + f }
+        return localOrigin + suffix
+      }
     }
     throw PolicyError("foreign_location")
   }
@@ -152,6 +158,13 @@ struct LocationUri {
   var isAbsolute: Bool { scheme != nil }
 
   static func parse(_ value: String) -> LocationUri? {
+    // java.net.URI(String)이 거부하는 문자를 동일하게 거부한다: 제어문자·공백·DEL과
+    // "<>{}|\^` (RFC 2396 비허용). 이 검사가 없으면 Swift가 Kotlin보다 느슨해져 크래프트된
+    // Location이 로컬 오리진으로 재작성될 수 있다.
+    for s in value.unicodeScalars {
+      if s.value <= 0x20 || s.value == 0x7f { return nil }
+      if "\"<>{}|\\^`".unicodeScalars.contains(s) { return nil }
+    }
     var scheme: String?
     var rest = Substring(value)
     if let schemeRange = value.range(of: "://") {
@@ -197,19 +210,31 @@ struct LocationUri {
     }
     var host: String?
     var port = -1
+    // 포트는 ASCII 숫자만(Java와 동일). 빈 포트는 -1(기본), 그 외 비숫자/오버플로는 실패(nil).
+    // 이렇게 해서 Swift Int()가 허용하는 +N/-N를 막는다.
+    func parsePort(_ text: Substring) -> Int? {
+      if text.isEmpty { return -1 }
+      guard text.unicodeScalars.allSatisfy({ $0.value >= 0x30 && $0.value <= 0x39 }), let n = Int(text) else { return nil }
+      return n
+    }
     if hostPort.hasPrefix("[") {
       guard let close = hostPort.firstIndex(of: "]") else { return nil }
       host = String(hostPort[hostPort.startIndex...close])
       let after = hostPort[hostPort.index(after: close)...]
       if after.hasPrefix(":") {
-        port = Int(after.dropFirst()) ?? -2
+        guard let p = parsePort(after.dropFirst()) else { return nil }
+        port = p
       } else if !after.isEmpty {
         return nil
       }
     } else if !hostPort.isEmpty {
       if let colon = hostPort.lastIndex(of: ":") {
-        host = String(hostPort[hostPort.startIndex..<colon])
-        port = Int(hostPort[hostPort.index(after: colon)...]) ?? -2
+        let hostPart = String(hostPort[hostPort.startIndex..<colon])
+        // 브래킷 없는 다중 콜론(예: ::1:7443)은 Java에서 host=null → 무효.
+        if hostPart.contains(":") { return nil }
+        guard let p = parsePort(hostPort[hostPort.index(after: colon)...]) else { return nil }
+        host = hostPart
+        port = p
       } else {
         host = String(hostPort)
       }

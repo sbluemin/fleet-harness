@@ -70,4 +70,27 @@ final class GatewayPolicyTests: XCTestCase {
     let loc = try GatewayPolicy.rewriteLocation("/console/?x=1", "https://fleet.example:7443", "http://127.0.0.1:4312")
     XCTAssertEqual(loc, "http://127.0.0.1:4312/console/?x=1")
   }
+
+  // java.net.URI가 거부하는 것을 Swift도 거부해야 한다(느슨하면 크래프트된 Location이 로컬로
+  // 재작성됨). 어느 경우든 throw여야 하고 절대 로컬 오리진으로 재작성되면 안 된다.
+  func testRewriteLocationRejectsWhatJavaUriRejects() {
+    let remote = "https://fleet.example:7443"
+    let local = "http://127.0.0.1:4312"
+    for bad in [
+      "https://fleet.example:7443/foo bar",   // 공백
+      "https://fleet.example:7443/a<b",        // 불법문자
+      "https://fleet.example:+443/path",       // + 접두 포트
+      "https://fleet.example:-1/path",         // 음수 포트
+      "https://::1:7443/path",                 // 브래킷 없는 IPv6
+      "https://fleet.example:7443/a`b",         // 백틱
+    ] {
+      XCTAssertThrowsError(try GatewayPolicy.rewriteLocation(bad, remote, local), bad)
+    }
+  }
+
+  func testRewriteLocationAcceptsBracketedIpv6SameOrigin() throws {
+    let loc = try GatewayPolicy.rewriteLocation(
+      "https://[fd00::1]:7443/console/", "https://[fd00::1]:7443", "http://127.0.0.1:4312")
+    XCTAssertEqual(loc, "http://127.0.0.1:4312/console/")
+  }
 }
