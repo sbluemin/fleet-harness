@@ -1252,6 +1252,48 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
+  // 세션을 여는 동안(자식 spawn·플러그인·MCP 발급은 몇 초가 걸린다) 중지하면 그 턴은 자식이
+  // 존재조차 모른 채 닫힌다. 그때 결말을 기다리기 시작하면 오지 않을 것을 기다리며 세션이 막힌다.
+  it("does not wait for a settlement when the stopped turn never reached the child", async () => {
+    const transcriptPath = writeTranscript("sess-stop-early", []);
+    const configDir = tempDir("chat-sdk-");
+    let releaseOpen: () => void = () => {};
+    const opening = new Promise<void>((resolve) => { releaseOpen = resolve; });
+    const sends: string[] = [];
+    let opened = 0;
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      // 첫 세션은 문이 열릴 때까지 준비 중이다 — 사용자가 그 사이에 중지한다.
+      openSession: async () => {
+        if (opened++ === 0) await opening;
+        return fakeSession([
+          { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+        ], { onSend: (text) => sends.push(text) });
+      },
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-early", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+    expect(session.stopTurn()).toBe(true);
+    releaseOpen();
+    await drainTurn(registry, "op-stop-early");
+    // 자식에 닿은 적이 없으므로 그 프롬프트는 전달되지 않았다.
+    expect(sends).toEqual([]);
+
+    // 다음 메시지는 오지 않을 결말을 기다리지 않는다.
+    session.send("second");
+    await drainTurn(registry, "op-stop-early");
+    expect(sends).toEqual(["second"]);
+    expect(seen.map((entry) => entry.event)).toContainEqual({ kind: "turn-end", ok: true, durationMs: 4 });
+    await registry.disposeAll();
+  });
+
   it("refuses when there is no turn to stop", async () => {
     // 끊을 것이 없는데 성공을 돌려주면 화면이 멈춤을 그리고 아무 일도 일어나지 않는다.
     const transcriptPath = writeTranscript("sess-stop-idle", []);

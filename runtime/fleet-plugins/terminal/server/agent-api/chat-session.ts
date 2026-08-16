@@ -290,6 +290,14 @@ class AgentChatSession {
    */
   private settlingStoppedTurn = false;
   /**
+   * 지금 열린 턴의 프롬프트가 자식에 실제로 닿았는가.
+   *
+   * 닿지 않은 턴에는 자식이 낼 결말도 없다 — 세션을 여는 동안(자식 spawn·플러그인·MCP 발급은
+   * 몇 초가 걸린다) 사용자가 중지하면 그 턴은 자식이 존재조차 모른 채 닫힌다. 그때 결말을
+   * 기다리기 시작하면 오지 않을 것을 기다리며 세션이 영구히 막힌다.
+   */
+  private turnReachedChild = false;
+  /**
    * 지금 살아 있다고 알려진 잡. 세션이 끊기면 이 잡들은 자식과 함께 사라지므로, 원장에 "도는 중"
    * 으로 남겨 두지 않고 거둬진 것으로 닫는다 — 화면이 없는 작업을 기다리게 두지 않기 위해서다.
    */
@@ -440,7 +448,10 @@ class AgentChatSession {
     void this.session?.interrupt().catch(() => undefined);
     // 자식은 이 턴의 결말을 곧 낸다. 화면은 지금 닫지만, 그 한 건이 다음 턴의 결말로 읽히지
     // 않도록 표시해 둔다 — 중지 직후의 새 메시지가 그것에 실려 나가는 것이 그 결함이다.
-    if (this.turnOpen) this.settlingStoppedTurn = true;
+    //
+    // 프롬프트가 아직 자식에 닿지 않았다면 기다릴 결말도 없다. 그때 표시를 세우면 오지 않을
+    // 것을 기다리며 이후 모든 메시지가 막힌다.
+    if (this.turnOpen && this.turnReachedChild) this.settlingStoppedTurn = true;
     this.closeTurn({ stopped: true });
     return true;
   }
@@ -1018,6 +1029,8 @@ class AgentChatSession {
   private openTurn(options: { readonly dispatched: boolean }): void {
     if (this.turnOpen) return;
     this.turnOpen = true;
+    // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
+    this.turnReachedChild = !options.dispatched;
     this.push({ kind: "turn-start", at: Date.now() });
     // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
     if (!options.dispatched) this.seed.reportActivity(true);
@@ -1032,6 +1045,7 @@ class AgentChatSession {
   private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string }): void {
     if (!this.turnOpen) return;
     this.turnOpen = false;
+    this.turnReachedChild = false;
     this.push({
       kind: "turn-end",
       ok: end.ok ?? end.stopped !== true,
@@ -1137,6 +1151,8 @@ class AgentChatSession {
       // 문맥 스냅숏은 보내기 **직전**이다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
       this.snapshotContextAtTurnStart(session);
       session.send(text);
+      // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
+      this.turnReachedChild = true;
       await settled;
     } catch {
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
