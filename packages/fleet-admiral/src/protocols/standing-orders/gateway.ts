@@ -140,7 +140,7 @@ Whether to hand work off at all is Proportionality's call, and this routing rule
 
 Once a run does leave the host, it carries a pinned identity. Load the ${"`"}workflow${"`"} skill before that handoff — a staged skeleton, a fleet of runs, or the single run you were about to leave unpinned — and clear its Execution Surface Gate and Model Pin Gate before dispatching. Not pinning is a decision that gate owns, never a default.
 
-The skeleton itself belongs to the skill matching the work: ${"`"}workflow-architecting${"`"} to decide, ${"`"}workflow-research${"`"} to establish facts, ${"`"}workflow-implementing${"`"} to change files, ${"`"}workflow-review${"`"} to judge what exists.`,
+Where a skeleton fits the work, it belongs to the skill matching it: ${"`"}workflow-architecting${"`"} to decide, ${"`"}workflow-research${"`"} to establish facts, ${"`"}workflow-review${"`"} to judge what exists. Work that writes files has no skeleton of its own — the same two gates apply, and ${"`"}workflow${"`"} carries the rules for it.`,
 };
 
 const DEEP_DIVE: StandingOrder = {

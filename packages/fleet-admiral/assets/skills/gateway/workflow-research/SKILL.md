@@ -12,7 +12,7 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 ## When Not To Use
 
 - A fact one grep or one file read settles. Fanning out costs more than the answer is worth.
-- Work that will change files. Use `workflow-implementing`.
+- Work that will change files. Writing has no skeleton of its own — see `workflow`.
 - Judging code that already exists against a standard. Use `workflow-review`.
 
 ## Stage Skeleton

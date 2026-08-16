@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from workflow-architecting, workflow-research, workflow-implementing, or workflow-review. Skip only when the work stays on the host.
+description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from workflow-architecting, workflow-research, or workflow-review. A run that writes files has no skeleton of its own and loads this skill directly. Skip only when the work stays on the host.
 ---
 
 # Workflow
@@ -79,7 +79,7 @@ Every gateway skeleton is a table of `Stage | Role | Fan | Returns`.
 
 **Pipeline unless stage N+1 genuinely needs the whole set at once** — deduplicating before expensive downstream work, deciding literals every branch shares, early-exit on zero, or comparing one result against the others.
 
-A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers a skeleton already names — `workflow-implementing`'s Decide, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
+A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers this doctrine already names — the host-side literal fix before any writing fan below, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
 
 ## Failures Must Be Loud
 
@@ -164,6 +164,17 @@ The roster now carries a second body of evidence beside these: third-party `benc
 ## Handing Work to a Different Model
 
 Decisions must travel as literal values, not descriptions: name the exact token, path, setting key, or constant, and never write "match the existing style". On return, check the artifacts against the literals you sent — an equivalent-looking substitution is a defect, not a variation.
+
+### When the run writes files
+
+Writing work has no stage skeleton of its own; these rules are the whole of it. Its risk is not failure — a failed edit is visible — but convergence: several branches each producing something reasonable that together do not match the codebase.
+
+- **Fix every literal on the host first.** Ask of each choice: must the run name a concrete value, and does it lack the convention context to justify one? Both yes means you choose it and pass it verbatim — design tokens, API paths, setting keys, names, error text, thresholds, constants. This barrier is load-bearing; skip it and each branch invents its own answer.
+- **Isolate every writing branch.** Parallel edits to a shared tree corrupt each other. Pay the worktree isolation cost whenever more than one branch writes.
+- **Inspect artifacts, never narratives.** Read the actual diff per site. A run's summary is evidence of what it believed, not of what it wrote — a branch that could not find its target still reports the intent as done.
+- **A site needing a new decision stops.** When a run meets a case your literals did not cover, it returns that fact instead of choosing. Resolve it on the host and restart that branch with the value; do not let one branch set precedent for the rest.
+- **Reject rather than patch.** A drifted branch is re-run with a sharper prompt. Hand-fixing its output hides that the prompt was insufficient, and the next site drifts the same way.
+- **Only local, well-precedented edits were measured.** Nothing establishes this for sweeping or cross-package work, where each branch sees one slice and convention drift compounds. Keep groups small, and keep a structural change on the host.
 
 ## Gotchas
 
