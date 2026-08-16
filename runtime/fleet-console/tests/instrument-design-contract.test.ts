@@ -2450,7 +2450,13 @@ describe("Effort track interaction grammar", () => {
     expect(components).toContain("@property --quick-launch-rim-spread");
     expect(components).toContain("@keyframes quick-launch-ultracode-ignite");
     expect(components).toContain("@keyframes quick-launch-ultracode-bead");
-    expect(components).toMatch(/@keyframes quick-launch-ultracode-rim \{\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/);
+    // 순항 키프레임은 시작 각도를 스스로 적어야 한다. `to`만 두면 시작점을 밑에 깔린 값에서
+    // 빌리는데, 앞 순번 점화가 `both`로 채워 둔 끝값 360deg가 거기 앉아 있어 순항이 360deg에서
+    // 360deg로 돌았다 — 재생은 running인 채 링만 정지했다. 조성만 고정하던 이 계약이 그 정지를
+    // 초록으로 통과시켰으므로, 여기서는 시작점 자체를 고정한다.
+    expect(components).toMatch(
+      /@keyframes quick-launch-ultracode-rim \{\s*from \{ --quick-launch-rim-angle: 0deg; \}\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/,
+    );
     // 점화가 끝난 뒤에야 순항에 올라탄다 — 완성된 호가 갑자기 붙으면 이질감이 난다.
     expect(components).toMatch(/quick-launch-ultracode-ignite 900ms[\s\S]*quick-launch-ultracode-rim 2\.8s linear 900ms infinite/);
     // 무한 애니메이션은 규약의 예외이므로 근거가 규칙 옆에 남아 있어야 한다.

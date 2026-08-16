@@ -11998,7 +11998,13 @@ body[data-codex-reading="true"] .operations-side-bar {
   }
 }
 
+/* 순항은 시작점을 스스로 말해야 한다. `to`만 두면 시작 각도를 **밑에 깔린 값**에서 빌리는데,
+   그 자리에는 앞 순번 점화가 `both`로 앞으로 채워 둔 끝값 360deg가 앉아 있다 — 그러면 순항은
+   360deg에서 360deg로 돌아 재생만 되고 링은 정지한다(실측: 4.0s 동안 360deg 고정, 그동안
+   animation은 running이었다). 360deg와 0deg는 conic에서 같은 자리라 점화→순항 인계는 이음매가
+   없다. 뒤에 어떤 전이가 더 붙어도 이 키프레임은 자기 시작점을 잃지 않는다. */
 @keyframes quick-launch-ultracode-rim {
+  from { --quick-launch-rim-angle: 0deg; }
   to { --quick-launch-rim-angle: 360deg; }
 }
 
