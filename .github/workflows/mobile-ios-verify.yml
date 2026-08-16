@@ -51,11 +51,23 @@ jobs:
 
   simulator-build:
     name: Simulator build (unsigned)
-    runs-on: macos-14
+    # React Native 0.86은 Xcode >= 16.1을 요구한다. macos-14 이미지의 기본 Xcode(15.4)로는
+    # pod install이 거부되므로 최신 이미지를 쓰고 설치된 가장 높은 Xcode를 선택한다.
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
+      - name: Select the newest installed Xcode
+        run: |
+          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$newest" ]; then
+            echo "::error::No Xcode found on the runner" >&2
+            exit 1
+          fi
+          echo "Selecting $newest"
+          sudo xcode-select -s "$newest/Contents/Developer"
+          xcodebuild -version
       - uses: pnpm/action-setup@v4
       - uses: actions/setup-node@v4
         with:
