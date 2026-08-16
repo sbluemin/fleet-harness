@@ -1,20 +1,13 @@
 name: Workspace Verify
 
-# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. canary를 겨눈 PR과 canary push
-# 양쪽에서 발화하고, stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을
-# 재사용한다 — 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
-# PR에서 먼저 도는 것이 핵심이다: 머지 뒤 canary에서야 실패를 발견하면 그 실패는 이미
-# 다른 작업의 기준선이 되어 있다.
-# 문서·마크다운 변경만 있는 이벤트는 검증이 필요 없으므로 건너뛴다. 단 fleet-admiral이
+# 워크스페이스 전체의 타입체크와 테스트를 한 잡에서 돌린다. canary push에서 발화하고,
+# stable-release가 릴리스 커밋을 만들기 전에 workflow_call로 같은 잡을 재사용한다 —
+# 배포 파이프라인이 검증하는 기준과 개발 중 보는 기준을 하나로 묶기 위한 것이다.
+# PR에서는 돌리지 않는다: 워크스페이스 전체 스위트는 머지 후 canary에서, 배포 직전
+# 릴리스 파이프라인에서만 게이트로 쓴다.
+# 문서·마크다운 변경만 있는 push는 검증이 필요 없으므로 건너뛴다. 단 fleet-admiral이
 # postinstall에서 내장 자산으로 임베드하는 assets 하위의 SKILL.md·hook은 제외한다.
 on:
-  pull_request:
-    branches:
-      - canary
-    paths-ignore:
-      - 'docs/**'
-      - '**/*.md'
-      - '!packages/fleet-admiral/assets/**'
   push:
     branches:
       - canary
@@ -31,12 +24,6 @@ on:
 
 permissions:
   contents: read
-
-# PR에 새 커밋이 오르면 앞선 실행은 이미 답이 아니다 — 취소해 러너를 비운다. 릴리스가
-# workflow_call로 부르는 실행은 취소 대상이 아니다: 그쪽은 게이트이지 미리보기가 아니다.
-concurrency:
-  group: workspace-verify-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   verify:
