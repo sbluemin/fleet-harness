@@ -547,6 +547,13 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const dismissOperationMenu = useCallback((operationId: string) => {
     setOperationMenu((current) => current?.operationId === operationId ? null : current);
   }, []);
+  // 메뉴는 페이지가 소유하므로 주인 패널이 언마운트돼도 저 혼자 살아남는다. Theater 전환과
+  // War Room 토글은 무대의 패널 구성을 통째로 갈아치우니, 그 전환 자체를 회수 신호로 삼는다
+  // (팔레트의 switch-theater처럼 메뉴를 닫지 않는 경로로도 전환이 들어온다). 여기서도 포커스는
+  // 되돌리지 않는다 — 되돌릴 트리거가 방금 사라진 패널 안에 있다.
+  useEffect(() => {
+    setOperationMenu(null);
+  }, [state.activeTheaterId, triageActive]);
   const menuOperation = operationMenu
     ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
