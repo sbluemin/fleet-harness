@@ -493,6 +493,7 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
         const visual = birdVisual({
           grabbed: grabbed[index] ?? false,
           oneShot: oneShots[index] ?? null,
+          // 보리는 입력 대기·단절만 경보로 든다. 완료 도착은 onShow 만세 뒤 idle로 돌아간다.
           alert: phase === "error"
             || (index === 1 && (fleetSignals.awaiting > 0 || fleetSignals.disconnected)),
           thinking: phase === "starting" || phase === "thinking"

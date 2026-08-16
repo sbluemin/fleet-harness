@@ -195,15 +195,14 @@ interface ManagedSignalsCapability {
 
 function readFleetSignals(): FloatingWidgetFleetSignals {
   const state = getState();
-  const idleArrivals = getIdleArrivalIds();
   let running = 0;
   let awaiting = 0;
   for (const operation of state.operations) {
     const activity = resolveOperationActivity(operation, state.operationRuntime);
     if (activity === "running") running += 1;
-    // 사이드바 STATUS 축과 같은 기준을 쓴다 — 확인하지 않은 도착도 사용자를 기다리는 상태다.
-    // 원시 status만 세면 콘솔이 AWAITING이라 표시한 Operation의 절반을 위젯이 놓친다.
-    else if (activity === "awaiting" || (activity === "idle" && idleArrivals.has(operation.id))) awaiting += 1;
+    // 확인하지 않은 완료 도착은 arrivals 채널과 만세 연출이 맡는다.
+    // 사이드바 STATUS 축처럼 awaiting에 섞으면 보리가 경보 포즈에 남아 idle로 돌아가지 않는다.
+    else if (activity === "awaiting") awaiting += 1;
   }
   return {
     running,
@@ -220,8 +219,8 @@ function signalsEqual(left: FloatingWidgetFleetSignals, right: FloatingWidgetFle
     && left.reducedMotion === right.reducedMotion;
 }
 
-// 함대 신호는 서로 다른 세 곳에서 바뀐다 — Operation 스토어, 도착 확인 채널, OS 모션 환경.
-// 셋을 한 구독으로 합쳐 위젯이 출처를 알 필요가 없게 한다.
+// 함대 신호는 Operation 스토어와 OS 모션 환경에서 바뀐다.
+// 완료 도착은 arrivals 채널이 따로 전하므로 여기 집계에 섞지 않는다.
 function createManagedSignalsCapability(): ManagedSignalsCapability {
   const activeSubscriptions = new Set<() => void>();
 
@@ -241,14 +240,11 @@ function createManagedSignalsCapability(): ManagedSignalsCapability {
       : null;
     motionQuery?.addEventListener("change", notifyIfChanged);
     const unsubscribeStore = subscribeStore(notifyIfChanged);
-    // 도착 확인 여부는 스토어 밖 채널이라 따로 구독해야 awaiting 집계가 갱신된다.
-    const unsubscribeIdleArrival = subscribeIdleArrival(notifyIfChanged);
     const unsubscribe = () => {
       if (!active) return;
       active = false;
       motionQuery?.removeEventListener("change", notifyIfChanged);
       unsubscribeStore();
-      unsubscribeIdleArrival();
       activeSubscriptions.delete(unsubscribe);
     };
 
