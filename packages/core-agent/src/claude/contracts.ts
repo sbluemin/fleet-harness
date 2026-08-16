@@ -191,6 +191,13 @@ export interface ClaudeGatewaySdkOptions {
    */
   readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
   /**
+   * 세션 설정 `ultracode`. CLI의 `--effort ultracode`가 켜는 것과 같은 자리 — `xhigh` 강도와
+   * standing dynamic-workflow orchestration. `Options.effort` 단이 아니라 settings 플래그다.
+   *
+   * `true`만 연다. `false`를 실으면 사용자·프로젝트 설정의 켠 값을 flag 소스가 덮어 끈다.
+   */
+  readonly ultracode?: true;
+  /**
    * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
    *
    * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트

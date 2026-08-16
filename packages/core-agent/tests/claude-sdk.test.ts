@@ -168,6 +168,28 @@ describe("turn assembly", () => {
     await sdk.dispose();
   });
 
+  it("merges ultracode into flag settings without opening the rest of settings", async () => {
+    const sdk = await createClaudeGatewaySdk({
+      baseUrl: BASE_URL,
+      models: [LUNA],
+      ultracode: true,
+      skillOverrides: { Explore: "off" },
+    });
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA, effort: "xhigh" }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options.effort).toBe("xhigh");
+    expect(options.settings).toEqual({ ultracode: true, skillOverrides: { Explore: "off" } });
+    await sdk.dispose();
+  });
+
+  it("omits settings entirely when neither ultracode nor skillOverrides is set", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options).not.toHaveProperty("settings");
+    await sdk.dispose();
+  });
+
   it("omits an unset optional instead of forwarding undefined", async () => {
     const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));

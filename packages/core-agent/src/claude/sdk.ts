@@ -101,9 +101,8 @@ export async function createClaudeGatewaySdk(
             ? { plugins: options.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, skipMcpDiscovery: true })) }
             : {}),
           // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
-          ...(options.skillOverrides && Object.keys(options.skillOverrides).length > 0
-            ? { settings: { skillOverrides: { ...options.skillOverrides } } }
-            : {}),
+          // skillOverrides와 ultracode만 연다 — settings 전체를 열면 호출자가 쓰지 않은 지시가 들어온다.
+          ...vendorFlagSettings(options),
           ...(turn.effort === undefined ? {} : { effort: turn.effort }),
           ...(turn.cwd === undefined ? {} : { cwd: turn.cwd }),
           ...(turn.resume === undefined ? {} : { resume: turn.resume }),
@@ -269,6 +268,19 @@ function vendorCanUseTool(
       return { behavior: "deny", message: error instanceof Error ? error.message : String(error) };
     }
   };
+}
+
+/**
+ * 호출자가 고른 flag 설정만 모은다. 빈 객체는 키 자체를 생략한다 — `{}`를 넘기면 vendor가
+ * 빈 설정으로 병합해 호출자가 쓰지 않은 기본값을 심을 수 있다.
+ */
+function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settings: Record<string, unknown> } | Record<string, never> {
+  const settings: Record<string, unknown> = {};
+  if (options.skillOverrides && Object.keys(options.skillOverrides).length > 0) {
+    settings.skillOverrides = { ...options.skillOverrides };
+  }
+  if (options.ultracode === true) settings.ultracode = true;
+  return Object.keys(settings).length > 0 ? { settings } : {};
 }
 
 /** 호출자가 고른 모드를 vendor가 아는 모양으로 옮긴다. 텍스트는 이 패키지가 만들지 않는다. */

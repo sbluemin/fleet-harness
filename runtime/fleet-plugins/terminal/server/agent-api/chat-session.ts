@@ -54,6 +54,11 @@ export interface AgentChatSessionSeed {
   readonly baseUrl: string;
   readonly model: string;
   readonly effort?: ClaudeGatewayEffort;
+  /**
+   * 세션 설정 `ultracode`. 퀵런치 트랙의 ULTRACODE가 채팅으로 태어날 때 CLI `--effort ultracode`와
+   * 같은 자리로 옮긴다. `effort`와 별개다 — SDK는 강도를 `xhigh`로 받고, 오케스트레이션은 이 플래그가 켠다.
+   */
+  readonly ultracode?: true;
   readonly cwd: string;
   /**
    * 사용자의 실제 Claude 홈(`CLAUDE_CONFIG_DIR` 또는 `~/.claude`). 터미널로 띄운 CLI가 쓰는
@@ -776,6 +781,7 @@ class AgentChatSession {
           settingSources: ["user", "project", "local"],
           allowAmbientMcpServers: true,
           ...(this.seed.skillOverrides ? { skillOverrides: this.seed.skillOverrides } : {}),
+          ...(this.seed.ultracode ? { ultracode: true } : {}),
           // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
           // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
           env: chatChildEnv(process.env),
