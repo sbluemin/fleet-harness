@@ -97,7 +97,7 @@
 .fc-font-browser__preview { display: grid; align-content: start; gap: var(--space-3, 12px); }
 .fc-font-browser__preview-head,
 .fc-font-browser__size-control { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2, 8px); }
-.fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: 999px; color: var(--text-secondary); }
+.fc-font-browser__availability { padding: 0.1em 0.55em; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-pill); color: var(--text-secondary); }
 .fc-font-browser__availability--unavailable { color: var(--warn-ink); }
 .fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
 .fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--text-primary); }

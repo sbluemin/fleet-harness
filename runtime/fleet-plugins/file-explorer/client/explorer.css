@@ -118,12 +118,12 @@
   width: 100%;
   padding: 6px 9px;
   border: 1px solid transparent;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-secondary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--t-sm);
   text-align: left;
   white-space: nowrap;
 }
@@ -163,7 +163,7 @@
     var(--ink-deep);
   box-shadow: var(--shadow-anchor);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   pointer-events: none;
   text-align: center;
   animation: fexp-toast-enter var(--duration-fast) var(--ease-spring);
@@ -205,7 +205,7 @@
 .fexp-viewer-filename {
   flex: 1;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-secondary);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -218,10 +218,10 @@
   border: none;
   cursor: pointer;
   color: var(--text-tertiary);
-  font-size: 14px;
+  font-size: var(--t-base);
   line-height: 1;
   padding: 4px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   transition: color 0.12s;
 }
 
@@ -238,7 +238,7 @@
 .fexp-viewer-error {
   padding: 16px;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
@@ -275,7 +275,7 @@
 .fexp-filter-scan {
   padding: 0 12px 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
 
@@ -283,16 +283,16 @@
   margin: 0 10px 8px;
   padding: 4px 8px;
   border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--warn) 9%, transparent);
   color: var(--warn-ink);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .fexp-git-note {
   padding: 0 12px 6px;
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--warn-ink);
 }
 
@@ -304,7 +304,7 @@
   border-radius: var(--radius-xs);
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   padding: 3px 8px;
   outline: none;
   transition: border-color 140ms;
@@ -320,7 +320,7 @@
   border: none;
   cursor: pointer;
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   line-height: 1;
@@ -347,7 +347,7 @@
   cursor: pointer;
   text-align: left;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
@@ -366,7 +366,7 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--text-secondary);
   transition: background 0.1s;
 }
@@ -391,7 +391,7 @@
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
   width: 16px;
   height: 16px;
@@ -413,12 +413,12 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--t-sm);
 }
 
 .fexp-tree-spin {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
   animation: none;
 }
@@ -431,7 +431,7 @@
   padding-top: 0;
   padding-bottom: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 8%, transparent);
   white-space: nowrap;
@@ -446,7 +446,7 @@
   height: 30px;
   padding-top: 0;
   padding-bottom: 0;
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -458,7 +458,7 @@
   flex: 0 0 12px;
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   line-height: 1;
   text-align: center;
@@ -472,7 +472,7 @@
 .fexp-tree-loading,
 .fexp-tree-error {
   padding: 16px 12px;
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
@@ -489,7 +489,7 @@
 .fexp-truncated-badge {
   flex-shrink: 0;
   padding: 4px 12px;
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--warn-ink);
   background: color-mix(in oklch, var(--warn) 12%, transparent);
   border-bottom: 1px solid var(--surface-rim);
@@ -504,7 +504,7 @@
   border-collapse: collapse;
   width: 100%;
   font-family: var(--font-mono);
-  font-size: 12.5px;
+  font-size: var(--t-md);
   line-height: 1.6;
 }
 
@@ -526,14 +526,17 @@
 }
 
 /* 구문강조 토큰 팔레트 */
-.syn-key  { color: var(--brass-bright, var(--brass)); font-weight: var(--weight-medium); }
-.syn-str  { color: var(--positive-ink); }
-.syn-num  { color: var(--warn-ink); }
-.syn-com  { color: var(--text-tertiary); font-style: italic; }
-.syn-fn   { color: var(--aurora-ink); }
-.syn-tag  { color: var(--coral-ink); }
-.syn-attr { color: var(--brass-ink); }
-.syn-punct { color: var(--text-tertiary); }
+/* 신택스 역할색은 --syntax-* 채널이 진다 — 문자열이 "완료"를, 숫자가 "진행 중"을 뜻하지
+   않으므로 신호 토큰(positive/warn/coral/aurora)도, 위치를 말하는 brass도 빌리지 않는다.
+   채널 정의와 톤 배정은 theme.css 한 곳이며 네 테마가 함께 재조율된다. */
+.syn-key  { color: var(--syntax-key); font-weight: var(--weight-medium); }
+.syn-str  { color: var(--syntax-string); }
+.syn-num  { color: var(--syntax-number); }
+.syn-com  { color: var(--syntax-comment); font-style: italic; }
+.syn-fn   { color: var(--syntax-function); }
+.syn-tag  { color: var(--syntax-tag); }
+.syn-attr { color: var(--syntax-attr); }
+.syn-punct { color: var(--syntax-punct); }
 
 /* ── 마크다운 뷰어 ── */
 .fexp-md-wrap {
@@ -555,10 +558,10 @@
   min-height: 24px;
   padding: 3px 8px;
   border: 1px dashed color-mix(in oklch, var(--ink-fog) 48%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   line-height: 1.4;
   vertical-align: middle;
 }
@@ -583,7 +586,7 @@
     color-mix(in oklch, var(--ink-fog) 15%, transparent) 0% 25%,
     transparent 0% 50%
   ) 0 0 / 16px 16px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   overflow: hidden;
   width: 100%;
   max-height: 360px;
@@ -598,7 +601,7 @@
 
 .fexp-img-caption {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
   text-align: center;
 }
@@ -622,14 +625,14 @@
 
 .fexp-bin-name {
   font-family: var(--font-mono);
-  font-size: 13px;
+  font-size: var(--t-sm);
   color: var(--text-secondary);
   margin: 0;
 }
 
 .fexp-bin-meta,
 .fexp-bin-hint {
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
   margin: 0;
 }

@@ -44,7 +44,7 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
   background: var(--coral-glow);
   color: var(--coral-ink);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
 }
 
@@ -203,24 +203,27 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-brand-wordmark {
   font-family: var(--font-display);
-  font-size: 13px;
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
 }
 
 /* 환경 표시는 상태가 아니라 정보다 — warn 신호·글로우 금지, 중립 잉크 필로 침묵한다. */
+/* 밴드 컨트롤은 24px 한 단에 선다 — 고정 높이가 없으면 높이를 내용이 정하고, 그 값은
+   같은 줄 이웃과 어긋난 소수점(실측 28.6px)으로 착지한다. 세로 패딩 대신 높이로 세운다. */
 .command-band-local-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
   flex: none;
-  padding: 4px 7px;
+  height: 24px;
+  padding: 0 7px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--surface-glass);
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   letter-spacing: 0.01em;
 }
@@ -244,9 +247,9 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   flex: none;
   padding: 4px 7px;
   border: 1px solid currentColor;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-bold);
   line-height: 1;
   white-space: nowrap;
@@ -292,14 +295,14 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   background: var(--surface-band);
   box-shadow: 0 12px 30px color-mix(in oklch, var(--ink-deep) 70%, transparent);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .command-band-environment-title {
   margin-bottom: var(--space-2);
   color: var(--text-primary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -320,7 +323,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--text-secondary); font-weight: var(--weight-regular); font-size: inherit; line-height: inherit; font-family: inherit; cursor: pointer; }
 .command-band-environment-row button:hover,
 .command-band-environment-row button:focus-visible { border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim)); outline: none; }
-.command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: 10px; }
+.command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: var(--t-2xs); }
 
 /* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
    앵커 대신 viewport gutter에 고정해 전체 행이 항상 화면 안에 남게 한다. */
@@ -447,7 +450,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   color: var(--text-tertiary);
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-bold);
 }
 
@@ -505,7 +508,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 
 .command-band-mode-tool.is-valued span {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
 }
@@ -537,9 +540,10 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   align-items: center;
   gap: 6px;
   min-width: 0;
+  height: 24px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .command-band-theater-mark {
@@ -547,7 +551,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   border-radius: var(--radius-xs);
   background: var(--brass-glow);
   color: var(--brass-ink);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.06em;
 }
 
@@ -559,7 +563,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   color: var(--text-primary);
   line-height: inherit;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -575,7 +579,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   color: var(--text-primary);
   line-height: inherit;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
 }
 
@@ -625,9 +629,12 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 .command-band-trigger-caret svg { display: block; width: 10px; height: 10px; }
 
 .command-band-operation-placeholder {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .command-band-menu {
@@ -641,7 +648,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   overflow-y: auto;
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(components.css whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
@@ -658,10 +665,10 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   letter-spacing: 0.04em;
   text-align: left;
   transition:
@@ -719,7 +726,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   padding-left: var(--space-2);
   flex: none;
   color: var(--text-tertiary);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
@@ -735,7 +742,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   padding: var(--space-2);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--t-xs);
   letter-spacing: 0.04em;
 }
 

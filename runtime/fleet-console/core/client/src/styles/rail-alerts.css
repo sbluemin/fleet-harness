@@ -28,7 +28,7 @@
 
 .alerts-panel-tally-empty {
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
 
@@ -38,7 +38,7 @@
   justify-content: center;
   width: 24px;
   height: 24px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   transition: background var(--duration-fast) var(--ease-glide),
     color var(--duration-fast) var(--ease-glide);
@@ -70,7 +70,7 @@
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-family: var(--font-mono);
   font-size: 9px;
   font-weight: var(--weight-bold);
@@ -109,9 +109,9 @@
   min-width: 22px;
   height: 19px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   line-height: 1;
 }
@@ -120,7 +120,7 @@
   content: "";
   width: 5px;
   height: 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: currentColor;
 }
 
@@ -141,7 +141,7 @@
   margin: 0;
   padding: var(--space-6) 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   text-transform: uppercase;
   letter-spacing: 0.12em;
   color: var(--text-tertiary);
@@ -180,7 +180,7 @@
   flex: 1;
   min-width: 0;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.09em;
@@ -197,9 +197,9 @@
   min-width: 18px;
   height: 18px;
   padding: 0 6px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   color: var(--text-secondary);
   background: color-mix(in oklch, var(--ink-fog) 15%, transparent);
@@ -232,7 +232,7 @@
 .notification-row-beacon {
   width: 9px;
   height: 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   flex-shrink: 0;
 }
 
@@ -256,7 +256,7 @@
 
 .notification-row-op {
   font-family: var(--font-body);
-  font-size: 13px;
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
   color: var(--text-primary);
   white-space: nowrap;
@@ -266,7 +266,7 @@
 
 .notification-row-state {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.11em;
@@ -285,7 +285,7 @@
   padding: 4px 11px;
   border-radius: var(--radius-xs);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   letter-spacing: 0.01em;
   color: var(--text-tertiary);
@@ -316,7 +316,7 @@
 .notification-cluster-settings-eyebrow {
   margin: var(--space-1) 0 2px;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   text-transform: uppercase;
   letter-spacing: 0.12em;
@@ -329,7 +329,7 @@
   gap: var(--space-2);
   padding: var(--space-1);
   border-radius: var(--radius-xs);
-  font-size: 13px;
+  font-size: var(--t-md);
   color: var(--text-secondary);
   cursor: pointer;
   transition: background var(--duration-fast) var(--ease-glide);

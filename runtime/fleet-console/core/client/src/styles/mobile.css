@@ -76,7 +76,7 @@
   min-width: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: var(--t-lg);
   font-weight: var(--weight-bold);
   text-align: center;
   text-overflow: ellipsis;
@@ -114,7 +114,7 @@
   border: 1px solid color-mix(in oklch, var(--coral) 50%, transparent);
   background: color-mix(in oklch, var(--coral) 20%, transparent);
   color: var(--coral-ink);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-bold);
   animation: chip-close-arm 1.5s linear forwards;
 }
@@ -140,7 +140,7 @@
 .mobile-simple-panel h1 {
   margin: 0;
   color: var(--text-primary);
-  font-size: 18px;
+  font-size: var(--t-xl);
   font-weight: var(--weight-bold);
 }
 
@@ -152,7 +152,7 @@
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  font-size: 16px;
+  font-size: var(--t-lg);
 }
 
 .mobile-list-theater-label {
@@ -166,7 +166,7 @@
   padding: 1px 4px;
   color: var(--brass-ink);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.06em;
   background: var(--brass-glow);
   border-radius: var(--radius-xs);
@@ -219,7 +219,7 @@
   min-height: 40px;
   padding: 0;
   color: var(--brass);
-  font-size: 22px;
+  font-size: var(--t-xl);
   font-weight: var(--weight-medium);
   background: color-mix(in srgb, var(--brass) 12%, transparent);
   border: 1px solid color-mix(in srgb, var(--brass) 40%, var(--hairline));
@@ -248,7 +248,7 @@
 
 .mobile-status-section h2 {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--t-md);
   font-weight: var(--weight-bold);
 }
 
@@ -307,7 +307,7 @@
 
 .mobile-operation-card-copy span {
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .mobile-operation-alert-mark {
@@ -376,7 +376,7 @@
 .mobile-theater-copy strong {
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: var(--t-lg);
   font-weight: var(--weight-medium);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -387,7 +387,7 @@
   gap: var(--space-3);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 /* Waiting is a state, so it speaks on the signal channel — not on brass, which carries location. */
@@ -398,7 +398,7 @@
 .mobile-theater-here {
   color: var(--brass-ink);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.08em;
 }
 
@@ -409,7 +409,7 @@
   min-height: 48px;
   padding: var(--space-3);
   color: var(--brass-ink);
-  font-size: 14px;
+  font-size: var(--t-base);
   text-align: left;
   background: transparent;
   border: 1px dashed var(--hairline-strong);
@@ -424,7 +424,7 @@
 .mobile-theater-error {
   margin: 0;
   color: var(--coral-ink);
-  font-size: 13px;
+  font-size: var(--t-md);
 }
 
 .mobile-tab-bar {
@@ -443,11 +443,11 @@
   min-width: 40px;
   min-height: 48px;
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   background: transparent;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 .mobile-tab.is-active {
@@ -495,7 +495,7 @@
   text-align: left;
   background: var(--ink-deep);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 /* ===== Settings — 목록 화면과 상세 화면 ===== */
@@ -568,7 +568,7 @@
   flex: none;
   color: var(--aurora-ink);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -591,7 +591,7 @@
   padding: 0 var(--space-1);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.16em;
   text-transform: uppercase;
@@ -661,7 +661,7 @@
 .mobile-settings-row-copy span {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 /*
@@ -815,12 +815,12 @@
   }
 
   .mobile-session-title {
-    font-size: 14px;
+    font-size: var(--t-base);
   }
 
   .mobile-list-header h1,
   .mobile-simple-panel h1 {
-    font-size: 16px;
+    font-size: var(--t-lg);
   }
 
   .mobile-total-count {

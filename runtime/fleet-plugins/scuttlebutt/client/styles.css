@@ -39,7 +39,7 @@
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: 1px var(--space-2);
   white-space: nowrap;
@@ -66,7 +66,7 @@
   border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
   white-space: nowrap;
@@ -388,7 +388,7 @@
     var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   line-height: 1.35;
   text-align: left;
@@ -408,7 +408,7 @@
   min-width: 0;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -429,7 +429,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -467,7 +467,7 @@
     var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   line-height: 1.45;
   text-align: left;
   animation: scuttlebutt-arrival-in var(--duration-base) var(--ease-spring);
@@ -499,7 +499,7 @@
   gap: var(--space-2);
   color: var(--brass);
   font-family: var(--font-mono);
-  font-size: 9.5px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
@@ -527,7 +527,7 @@
 .scuttlebutt-answer-working {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   letter-spacing: 0.04em;
 }
 
@@ -541,7 +541,7 @@
   color: var(--brass);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--t-xs);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -559,7 +559,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -599,7 +599,7 @@
 .scuttlebutt-arrival-label {
   color: color-mix(in oklch, var(--positive) 72%, var(--text-secondary));
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
   line-height: 1.2;
@@ -648,7 +648,7 @@
     var(--ink-deep);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   line-height: 1.35;
   text-align: left;
@@ -667,7 +667,7 @@
   min-width: 0;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -688,7 +688,7 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -708,7 +708,7 @@
 .scuttlebutt-departure-label {
   color: var(--warn-ink);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.1em;
   line-height: 1.2;
@@ -742,7 +742,7 @@
   flex-direction: column;
   overflow: hidden;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
@@ -769,14 +769,14 @@
   border-radius: var(--radius-pill);
   background: var(--brass-glow);
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: var(--t-sm);
 }
 
 .scuttlebutt-chat-who {
   flex: 1;
   min-width: 0;
   color: var(--text-primary);
-  font-size: 13px;
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
 }
 
@@ -793,7 +793,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   white-space: nowrap;
 }
@@ -849,7 +849,7 @@
 .scuttlebutt-chat-tuck {
   padding: 2px var(--space-1);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
@@ -875,7 +875,7 @@
   overflow-y: auto;
   padding: var(--space-4);
   color: var(--text-secondary);
-  font-size: 13px;
+  font-size: var(--t-md);
 }
 
 .scuttlebutt-message-user {
@@ -915,14 +915,14 @@
 .scuttlebutt-status-row {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-regular);
 }
 
 .scuttlebutt-status-row.is-error {
   padding: var(--space-1) var(--space-2);
   border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--coral) 8%, transparent);
   color: color-mix(in oklch, var(--coral) 72%, var(--text-secondary));
 }
@@ -934,7 +934,7 @@
   gap: var(--space-2);
   padding: 0 var(--space-4) var(--space-3);
   color: var(--text-tertiary);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-regular);
 }
 
@@ -970,11 +970,11 @@
   flex: 1 1 auto;
   padding: var(--space-2) var(--space-3);
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--ink-abyss);
   color: var(--text-primary);
   font: inherit;
-  font-size: 13px;
+  font-size: var(--t-md);
   font-weight: var(--weight-regular);
 }
 
@@ -987,12 +987,12 @@
 .scuttlebutt-send {
   padding: var(--space-2) var(--space-4);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--brass);
   color: var(--text-on-brass);
   cursor: pointer;
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--t-md);
   font-weight: var(--weight-medium);
 }
 
