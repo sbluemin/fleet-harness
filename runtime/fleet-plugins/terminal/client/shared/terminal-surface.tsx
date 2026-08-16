@@ -16,6 +16,7 @@ import { createTerminalOsc52Clipboard } from "./terminal-osc52-clipboard.js";
 import { TERMINAL_OPTIONS } from "./terminal-options.js";
 import { dispatchSyntheticTerminalWheel } from "./terminal-synthetic-wheel.js";
 import { createTerminalTouchGestures, MIN_FONT_SCALE } from "./terminal-touch-gestures.js";
+import { createXtermGestureOriginGuard } from "./terminal-xterm-gesture-origin.js";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
@@ -318,6 +319,11 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       terminal.loadAddon(fitAddon);
       terminal.open(container);
       syncTerminalViewportBackground(container, terminalTheme);
+      const xtermScreen = container.querySelector<HTMLElement>(".xterm-screen");
+      // xterm's own touch inertia emits gesture changes without a client point. Under mouse tracking
+      // it serializes those missing coordinates as `NaN` and sends them to the PTY. Guard the private
+      // event at the public DOM boundary rather than patching or deep-importing xterm internals.
+      const xtermGestureOriginGuard = xtermScreen ? createXtermGestureOriginGuard(xtermScreen) : null;
       const copyOnSelect = createTerminalCopyOnSelect({
         terminal,
         selectionTarget: container,
@@ -479,6 +485,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         osc52Clipboard.dispose();
         scrollGesture.dispose();
         touchGestures.dispose();
+        xtermGestureOriginGuard?.dispose();
         outputScheduler.dispose();
         statusDetailReporter.dispose();
         scrollFollow.dispose();
