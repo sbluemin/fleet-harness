@@ -27,6 +27,7 @@ interface Accumulator {
   input: number;
   output: number;
   cacheRead: number;
+  cacheWrite: number;
   costUsd: number;
   messages: number;
 }
@@ -37,7 +38,7 @@ const MAX_DAILY_DAYS = 366;
 const MAX_MODEL_ROWS = 80;
 
 function emptyAccumulator(): Accumulator {
-  return { input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 };
+  return { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 };
 }
 
 function addFinite(left: number, right: number): number {
@@ -56,12 +57,18 @@ function addModelEntry(target: Accumulator, entry: TokscaleModelEntry): void {
   target.input = addSafeCount(target.input, entry.input);
   target.output = addSafeCount(target.output, entry.output);
   target.cacheRead = addSafeCount(target.cacheRead, entry.cacheRead);
+  target.cacheWrite = addSafeCount(target.cacheWrite, entry.cacheWrite);
   target.costUsd = addFinite(target.costUsd, entry.costUsd);
   target.messages = addSafeCount(target.messages, entry.messages);
 }
 
 function usageOf(value: Accumulator): LedgerUsage {
-  return { input: value.input, output: value.output, cacheRead: value.cacheRead };
+  return {
+    input: value.input,
+    output: value.output,
+    cacheRead: value.cacheRead,
+    cacheWrite: value.cacheWrite,
+  };
 }
 
 export function localDayKey(atMs: number): string {

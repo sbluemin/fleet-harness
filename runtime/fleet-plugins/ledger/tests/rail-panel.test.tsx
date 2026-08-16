@@ -6,6 +6,7 @@ import { createRoot, type Root } from "react-dom/client";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ledgerEn, ledgerKo } from "../client/i18n/messages.js";
 import { ledgerPanel } from "../client/rail-panel.js";
 import type { LedgerSourceStatus, LedgerSummaryDto, LedgerWindow } from "../server/types.js";
 
@@ -30,7 +31,7 @@ const modelRow = {
   modelId: "claude-opus-5",
   provider: "anthropic",
   label: "Claude Opus 5",
-  usage: { input: 1_000, output: 200, cacheRead: 300 },
+  usage: { input: 1_000, output: 200, cacheRead: 300, cacheWrite: 0 },
   costUsd: 12.34,
   messages: 4,
 } as const;
@@ -50,14 +51,14 @@ function dto(
     scope: { window },
     generatedAtMs: Date.now(),
     currentDay: "2026-08-14",
-    totals: { costUsd, input: 1_000, output: 200, cacheRead: 300, messages: 4 },
+    totals: { costUsd, input: 1_000, output: 200, cacheRead: 300, cacheWrite: 0, messages: 4 },
     modelRows: rows,
     modelCount: rows.length,
     daily,
     dailyDetails: daily.filter((point) => point.costUsd > 0).map((point) => ({
       day: point.day,
       costUsd: point.costUsd,
-      usage: { input: 1_000, output: 200, cacheRead: 300 },
+      usage: { input: 1_000, output: 200, cacheRead: 300, cacheWrite: 0 },
       messages: 4,
       models: [{ ...modelRow, costUsd: point.costUsd }],
       modelCount: 1,
@@ -156,6 +157,20 @@ describe("Ledger Claude Code provider presentation", () => {
     expect(container.querySelector(".ledger-client-copy small")?.textContent).toBe("OpenCode");
   });
 
+  it("includes cache-write tokens in displayed token totals", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, cacheWrite: 500 },
+      modelRows: [{
+        ...modelRow,
+        usage: { ...modelRow.usage, cacheWrite: 500 },
+      }],
+    });
+    expect(container.querySelector(".ledger-total-token")?.textContent).toContain("2k");
+    expect(container.querySelector(".ledger-client-values")?.textContent).toContain("2k");
+  });
+
   it("reports omitted model rows from the uncapped count", async () => {
     const value = dto();
     await renderWith({ ...value, modelCount: 81 });
@@ -164,6 +179,15 @@ describe("Ledger Claude Code provider presentation", () => {
 });
 
 describe("Ledger daily model detail", () => {
+  it("explains last-active-day attribution in both languages", () => {
+    expect(ledgerEn["ledger.trend.explanation"]).toBe(
+      "Each session-model row counts in full on its last-active local day, so a session spanning midnight lands entirely on the later day.",
+    );
+    expect(ledgerKo["ledger.trend.explanation"]).toBe(
+      "각 세션-모델 기록은 마지막으로 활동한 현지 날짜에 전액 반영되므로, 자정을 넘긴 세션은 전부 다음 날에 반영됩니다.",
+    );
+  });
+
   it("renders selectable button marks with labels, tooltip, and the latest nonzero day selected", async () => {
     await renderTodayWith(trendDto("today"));
     const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];

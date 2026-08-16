@@ -23,6 +23,7 @@ export interface LedgerUsage {
   readonly input: number;
   readonly output: number;
   readonly cacheRead: number;
+  readonly cacheWrite: number;
 }
 
 export interface LedgerModelRowDto {

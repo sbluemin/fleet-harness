@@ -58,7 +58,14 @@ describe("Claude Code provider attribution", () => {
       ]),
     );
 
-    expect(dto.totals).toEqual({ input: 3_010, output: 6, cacheRead: 9, costUsd: 188.25, messages: 12 });
+    expect(dto.totals).toEqual({
+      input: 3_010,
+      output: 6,
+      cacheRead: 9,
+      cacheWrite: 0,
+      costUsd: 188.25,
+      messages: 12,
+    });
     expect(dto.modelRows.map((row) => ({ modelId: row.modelId, provider: row.provider, costUsd: row.costUsd }))).toEqual([
       { modelId: "claude-gateway--cursor--claude-opus-5", provider: "cursor", costUsd: 99 },
       { modelId: "gpt-5", provider: "unknown", costUsd: 88 },
@@ -66,6 +73,23 @@ describe("Claude Code provider attribution", () => {
     ]);
     expect(dto.daily).toEqual([{ day: "2026-08-14", costUsd: 188.25 }]);
     expect(dto.dailyDetails[0]?.models).toEqual(dto.modelRows);
+  });
+
+  it("preserves cache-write tokens in every usage aggregate", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary(
+      [session(sessionA, at)],
+      { window: "today" },
+      "ok",
+      at,
+      0,
+      breakdown([entry({ cacheWrite: 7 })]),
+    );
+
+    expect(dto.totals.cacheWrite).toBe(7);
+    expect(dto.modelRows[0]?.usage.cacheWrite).toBe(7);
+    expect(dto.dailyDetails[0]?.usage.cacheWrite).toBe(7);
+    expect(dto.dailyDetails[0]?.models[0]?.usage.cacheWrite).toBe(7);
   });
 
   it("splits a mixed native and Gateway session into provider-attributed rows without estimation", () => {
@@ -109,7 +133,7 @@ describe("Claude Code provider attribution", () => {
         modelId: "claude-gateway--cursor--claude-opus-5",
         provider: "cursor",
         label: "Claude Opus 5",
-        usage: { input: 15, output: 4, cacheRead: 6 },
+        usage: { input: 15, output: 4, cacheRead: 6, cacheWrite: 0 },
         costUsd: 10,
         messages: 5,
       },
@@ -117,7 +141,7 @@ describe("Claude Code provider attribution", () => {
         modelId: "claude-opus-5",
         provider: "anthropic",
         label: "Claude Opus 5",
-        usage: { input: 17, output: 4, cacheRead: 6 },
+        usage: { input: 17, output: 4, cacheRead: 6, cacheWrite: 0 },
         costUsd: 5,
         messages: 6,
       },
@@ -244,7 +268,7 @@ describe("source integrity and DTO boundaries", () => {
     "fails closed when the canonical model ledger is %s",
     (modelsStatus) => {
       const dto = buildSummary([], { window: "week" }, "ok", 123, 0, breakdown([entry()], modelsStatus));
-      expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+      expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 });
       expect(dto.modelRows).toEqual([]);
       expect(dto.daily).toEqual([]);
       expect(dto.source.status).toBe(modelsStatus);
@@ -268,7 +292,7 @@ describe("source integrity and DTO boundaries", () => {
       entry({ costUsd: Number.MAX_VALUE }),
       entry({ sessionId: sessionB, costUsd: Number.MAX_VALUE }),
     ]));
-    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 });
     expect(dto.source).toMatchObject({ status: "unreadable", models: "unreadable", skippedEntries: 2 });
     expect(JSON.stringify(dto)).not.toContain('"costUsd":null');
   });
@@ -278,7 +302,7 @@ describe("source integrity and DTO boundaries", () => {
       entry({ input: Number.MAX_SAFE_INTEGER }),
       entry({ sessionId: sessionB, input: 1 }),
     ]));
-    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, cacheWrite: 0, costUsd: 0, messages: 0 });
     expect(dto.source).toMatchObject({ status: "unreadable", models: "unreadable", skippedEntries: 2 });
   });
 

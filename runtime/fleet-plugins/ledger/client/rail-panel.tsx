@@ -39,8 +39,13 @@ function Metric({ label, value }: { readonly label: string; readonly value: stri
   return <div className="ledger-metric"><span>{label}</span><strong>{value}</strong></div>;
 }
 
-function totalTokens(usage: { readonly input: number; readonly output: number; readonly cacheRead: number }): number {
-  return usage.input + usage.output + usage.cacheRead;
+function totalTokens(usage: {
+  readonly input: number;
+  readonly output: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+}): number {
+  return usage.input + usage.output + usage.cacheRead + usage.cacheWrite;
 }
 
 function ValueAmount({ parts, tier, className = "" }: {
