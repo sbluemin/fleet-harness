@@ -26,7 +26,8 @@ public enum CertificatePolicy {
     if fingerprint(certificate) != target.fingerprint { throw CertificateError("certificate_pin_mismatch") }
   }
 
-  public static func hasExactSubjectAlternativeName(_ fields: CertFields, _ hostname: String) -> Bool {
+  // internal: 파라미터 CertFields가 internal이므로 public일 수 없다. verifyLeaf가 내부에서 쓴다.
+  static func hasExactSubjectAlternativeName(_ fields: CertFields, _ hostname: String) -> Bool {
     if isIpLiteral(hostname) {
       guard let ip = LocalTlsIdentity.ipAddressBytes(hostname) else { return false }
       return fields.ipSans.contains(ip)
