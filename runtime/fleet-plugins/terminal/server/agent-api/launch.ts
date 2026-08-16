@@ -9,6 +9,7 @@ import { resolvePathBinary } from "@dotobokuri/core-process";
 import { exposableEffortLadder, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
 import {
+  createAgentCliPlugin,
   createSessionCaptureHookExec,
   createSystemPromptBuilder,
   injectAgentCliProfile,
@@ -101,21 +102,68 @@ const CONSOLE_ENTRY_PATH = fileURLToPath(import.meta.url);
 const HOOK_ENTRY_EXTENSIONS = new Set([".cjs", ".cts", ".js", ".mjs", ".mts", ".ts", ".tsx"]);
 const require = createRequire(import.meta.url);
 
+/**
+ * Console CLI를 가리키는 훅 진입점. 세션별 값이 하나도 구워지지 않는다 — 그래서 모든 세션이
+ * 렌더한 `hooks.json`이 서로 같고, PTY와 Chat Mode가 한 플러그인 디렉터리를 공유할 수 있다.
+ */
+function buildConsoleHookEntry(deps: TerminalLaunchResolverDeps): ConsoleHookCommandEntry {
+  const entryPath = resolveHookEntryPath(deps.entryPath ?? process.argv[1]);
+  const execPath = deps.execPath ?? process.execPath;
+  const tsxLoaderPath = deps.tsxLoaderPath ?? resolveOptionalPackage("tsx");
+  return { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
+}
+
+/**
+ * Chat Mode 세션이 SDK에 넘길 Fleet 플러그인 루트를 렌더한다.
+ *
+ * PTY 런치와 **같은 자리에 같은 옵션으로** 쓴다. 옵션이 갈리면 나중에 렌더한 쪽이 앞선 쪽의
+ * 훅을 지우므로, 여기서 훅 exec를 빼는 것은 "Chat에는 상태 훅을 걸지 않는다"가 아니라
+ * "터미널 세션의 상태 훅을 지운다"가 된다. 두 표면의 신호 차이는 이 파일이 아니라 호스트가
+ * 그 신호를 읽는 자리에서 가른다.
+ */
+export async function renderFleetPluginRootsForChat(
+  deps: TerminalLaunchResolverDeps & { readonly cwd: string },
+): Promise<readonly string[]> {
+  const hookEntry = buildConsoleHookEntry(deps);
+  const dataDir = deps.dataDir ?? getFleetDataDir();
+  const gatewaySelection = deps.readAiGatewaySettings
+    ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
+    : undefined;
+  const plugin = await createAgentCliPlugin({
+    cliId: CHAT_PLUGIN_CLI_ID,
+    cwd: deps.cwd,
+    dataDir,
+    captureSessionHookExec: buildConsoleCaptureHookCommand(hookEntry, CHAT_PLUGIN_CLI_ID, createSessionCaptureHookExec),
+    turnStartHookExec: buildConsoleTurnHookCommand(hookEntry, "start"),
+    turnEndHookExec: buildConsoleTurnHookCommand(hookEntry, "end"),
+    backgroundReportHookExec: buildConsoleBackgroundHookCommand(hookEntry),
+    inputWaitingHookExec: buildConsoleAttentionHookCommand(hookEntry),
+    autoNameHookExec: buildConsoleAutoNameHookCommand(hookEntry),
+    withMarketplaceLock: withConsoleMarketplaceLock,
+    ...(gatewaySelection
+      ? {
+        gatewayDelegationModels: gatewaySelection.delegationModels,
+        gatewayEffortExposure: gatewaySelection.effortExposure,
+      }
+      : {}),
+  });
+  return plugin.pluginRoots;
+}
+
+const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude-gateway";
+
 export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
   const env = deps.env ?? process.env;
-  const execPath = deps.execPath ?? process.execPath;
   const homedir = deps.homedir ?? DEFAULT_TERMINAL_CWD_FALLBACK;
   const platform = deps.platform ?? process.platform;
-  const entryPath = resolveHookEntryPath(deps.entryPath ?? process.argv[1]);
-  const tsxLoaderPath = deps.tsxLoaderPath ?? resolveOptionalPackage("tsx");
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const infraServices = deps.infraServices ?? createInfraServices();
   const agentRuntime = deps.agentRuntime;
   const injectProfile = deps.injectProfile ?? injectAgentCliProfile;
   const resolveProfile = deps.resolveProfile ?? resolveAgentCliProfile;
   const resolveSessionIdentityResolver = deps.createSessionIdentityResolver ?? createSessionIdentityResolver;
-  const hookEntry: ConsoleHookCommandEntry = { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
+  const hookEntry = buildConsoleHookEntry(deps);
 
   return async (selectedCwd, context) => {
     const cwd = selectedCwd || baseCwd || homedir();

@@ -25,7 +25,7 @@ import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, renderFleetPluginRootsForChat, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
 import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromCliId, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
@@ -1349,6 +1349,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
+        // 터미널 런치와 같은 자리에 같은 옵션으로 렌더한다 — 두 표면이 한 플러그인을 공유한다.
+        resolveFleetPluginRoots: () => renderFleetPluginRootsForChat({
+          cwd,
+          dataDir: ctx.host.paths.fleetDataDir,
+          ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+        }),
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });

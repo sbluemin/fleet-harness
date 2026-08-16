@@ -75,6 +75,11 @@ export interface AgentChatSessionSeed {
    * 세션당 한 번만 불리고, 결과는 SDK와 같은 자리에 캐시된다.
    */
   readonly resolveFleetMcpServers?: () => Promise<readonly ClaudeGatewayServedMcpServer[]>;
+  /**
+   * Fleet 플러그인 루트를 렌더하고 그 경로를 돌려준다. 스킬·게이트웨이 정체성·정책 훅이 전부
+   * 이 디렉터리 한 벌로 실린다 — 터미널 세션이 `--plugin-dir`로 받는 것과 같은 것이다.
+   */
+  readonly resolveFleetPluginRoots?: () => Promise<readonly string[]>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
@@ -666,11 +671,24 @@ class AgentChatSession {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
       this.sdkFlight = (async () => {
-        // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
+        // 플러그인을 못 실으면 스킬도 게이트웨이 정체성도 정책 훅도 없는 세션이 된다. 세션을
+        // 죽일 사유는 아니지만 조용히 넘길 사유도 아니다 — 같은 Operation을 터미널로 열었을
+        // 때와 다른 능력을 갖게 되고, 그 차이는 화면 어디에도 드러나지 않는다.
+        const pluginRoots = await (this.seed.resolveFleetPluginRoots?.() ?? Promise.resolve([]))
+          .catch(() => {
+            this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
+            return [] as readonly string[];
+          });
         const sdk = await this.createSdk({
           baseUrl: this.seed.baseUrl,
           models: [this.seed.model],
+          // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
           home: { kind: "shared", configDir: this.seed.claudeConfigDir },
+          // Chat Mode는 같은 세션의 다른 얼굴이다. 터미널로 열었을 때 CLI가 읽는 층을 그대로
+          // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
+          settingSources: ["user", "project", "local"],
+          allowAmbientMcpServers: true,
+          ...(pluginRoots.length > 0 ? { plugins: pluginRoots.map((root) => ({ path: root })) } : {}),
         });
         if (this.disposed) {
           await sdk.dispose().catch(() => undefined);

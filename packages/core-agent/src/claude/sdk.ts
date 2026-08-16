@@ -86,12 +86,16 @@ export async function createClaudeGatewaySdk(
           ...(turn.systemPrompt === undefined
             ? {}
             : { systemPrompt: vendorSystemPrompt(turn.systemPrompt) }),
-          // 패키지가 스스로 지어내는 지시는 없다. 위 systemPrompt는 호출자가 쓴 것을 그대로 옮긴
-          // 것뿐이고, 주지 않으면 아무것도 붙지 않는다. `settingSources: []`는 사용자·프로젝트 설정과
-          // CLAUDE.md를 끄고, `strictMcpConfig`는 그와 별개인 ambient .mcp.json을 막는다 — 둘 다
-          // 세워야 호출자가 쓰지 않은 지시가 새지 않는다.
-          settingSources: [],
-          strictMcpConfig: true,
+          // 패키지가 스스로 지어내는 지시는 없다 — 여기 실리는 것은 전부 호출자가 고른 것이고,
+          // 고르지 않으면 아무것도 붙지 않는다. 두 기본값이 그 규율을 구조로 만든다:
+          // `settingSources: []`가 사용자·프로젝트 설정과 CLAUDE.md를 끄고, `strictMcpConfig`가
+          // 그와 별개인 ambient .mcp.json·플러그인 MCP를 막는다.
+          settingSources: options.settingSources ? [...options.settingSources] : [],
+          strictMcpConfig: options.allowAmbientMcpServers !== true,
+          // 플러그인의 MCP 선언은 읽지 않는다 — 좌표는 호출자가 이미 소유한다.
+          ...(options.plugins && options.plugins.length > 0
+            ? { plugins: options.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, skipMcpDiscovery: true })) }
+            : {}),
           ...(turn.effort === undefined ? {} : { effort: turn.effort }),
           ...(turn.cwd === undefined ? {} : { cwd: turn.cwd }),
           ...(turn.resume === undefined ? {} : { resume: turn.resume }),

@@ -108,6 +108,13 @@ export {
   type InjectAgentCliProfileOptions,
 } from "./agent-cli/injection.js";
 
+// PTY 주입은 위 injection이 플러그인 렌더까지 함께 하지만, SDK 세션은 렌더된 경로만 필요하다.
+export {
+  createAgentCliPlugin,
+  type AgentCliPlugin,
+  type CreateAgentCliPluginOptions,
+} from "./agent-cli/plugin/index.js";
+
 export {
   FLEET_PLUGIN_NAME,
   GENERAL_PURPOSE_AGENT_PROMPT,

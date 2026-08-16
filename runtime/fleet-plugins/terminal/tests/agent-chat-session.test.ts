@@ -185,6 +185,51 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     }));
     await registry.disposeAll();
   });
+
+  // 스킬·게이트웨이 정체성·정책 훅은 플러그인 한 벌로 실린다. 설정 층까지 같아야 같은 세션을
+  // 터미널로 열었을 때와 능력이 갈리지 않는다.
+  it("loads the Fleet plugin and reads the same setting layers the terminal reads", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-plugin", () => ({
+      ...freshSeedFor(home),
+      resolveFleetPluginRoots: async () => ["/fleet/marketplace/plugins/fleet-gateway"],
+    }));
+    session.send("go");
+    await drainTurn(registry, "op-plugin");
+
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+      plugins: [{ path: "/fleet/marketplace/plugins/fleet-gateway" }],
+      settingSources: ["user", "project", "local"],
+      allowAmbientMcpServers: true,
+    }));
+    await registry.disposeAll();
+  });
+
+  // 플러그인을 못 실은 세션은 터미널로 열었을 때와 능력이 다르다. 그 차이는 화면 어디에도
+  // 드러나지 않으므로 저널이 말해야 한다.
+  it("surfaces an error and still starts the turn when the Fleet plugin cannot be rendered", async () => {
+    const home = tempDir("chat-home-");
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-plugin-fail", () => ({
+      ...freshSeedFor(home),
+      resolveFleetPluginRoots: async () => { throw new Error("render failed"); },
+    }));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-plugin-fail");
+
+    expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_fleet_plugin_unavailable")).toBe(true);
+    expect(startTurn).toHaveBeenCalled();
+    await registry.disposeAll();
+  });
 });
 
 describe("AgentChatRegistry", () => {
