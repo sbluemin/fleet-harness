@@ -388,6 +388,7 @@
 }
 
 .quota-meter__percent,
+.quota-meter__forecast,
 .quota-meter__reset {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -444,6 +445,7 @@
 
 .quota-meter__foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
@@ -470,11 +472,17 @@
   font-size: 11.5px;
 }
 
-.quota-meter--warning .quota-meter__percent {
+.quota-meter__foot .quota-meter__percent {
+  font-size: 11.5px;
+}
+
+.quota-meter--warning .quota-meter__percent,
+.quota-meter--warning .quota-meter__forecast {
   color: var(--warn-ink);
 }
 
-.quota-meter--critical .quota-meter__percent {
+.quota-meter--critical .quota-meter__percent,
+.quota-meter--critical .quota-meter__forecast {
   color: var(--coral-ink);
 }
 
