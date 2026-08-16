@@ -275,6 +275,13 @@ class AgentChatSession {
   /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
   private awaitingTurn: (() => void) | null = null;
   /**
+   * 열린 턴이 닫히기를 기다리는 디스패치들.
+   *
+   * 자식이 백그라운드 완료로 스스로 깨어나 연 턴은 아무도 기다리지 않는다. 그 창에 사용자
+   * 메시지가 들어오면 자기 턴을 세우지 못한 채 남의 결말에 실려 나가므로, 여기서 줄을 세운다.
+   */
+  private readonly turnCloseWaiters = new Set<() => void>();
+  /**
    * 지금 살아 있다고 알려진 잡. 세션이 끊기면 이 잡들은 자식과 함께 사라지므로, 원장에 "도는 중"
    * 으로 남겨 두지 않고 거둬진 것으로 닫는다 — 화면이 없는 작업을 기다리게 두지 않기 위해서다.
    */
@@ -551,6 +558,9 @@ class AgentChatSession {
     this.sdk = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
     if (this.readerDone) await this.readerDone.catch(() => undefined);
+    // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
+    // 남겨 두면 turnFlight가 영영 착지하지 않아 dispose가 그 자리에서 멈춘다.
+    this.releaseTurnCloseWaiters();
     await this.turnFlight.catch(() => undefined);
     // 날고 있는 좌표 심기를 착지시킨다 — 끝난 세션이 뒤늦게 Operation을 고쳐 쓰지 않게.
     if (this.syncFlight) await this.syncFlight.catch(() => undefined);
@@ -1017,6 +1027,29 @@ class AgentChatSession {
     const awaiting = this.awaitingTurn;
     this.awaitingTurn = null;
     awaiting?.();
+    this.releaseTurnCloseWaiters();
+  }
+
+  /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */
+  private releaseTurnCloseWaiters(): void {
+    if (this.turnCloseWaiters.size === 0) return;
+    const waiters = [...this.turnCloseWaiters];
+    this.turnCloseWaiters.clear();
+    for (const wake of waiters) wake();
+  }
+
+  /**
+   * 열린 턴이 닫힐 때까지 기다린다.
+   *
+   * 억제가 아니라 대기여야 하는 이유: 열린 턴에 그냥 올라타면 그 턴의 `result`가 이 디스패치를
+   * 풀어 버린다. 사용자의 프롬프트는 아직 자식 안에서 도는데 원장은 끝났다고 말하고, 큐의 다음
+   * 메시지가 그 위에서 조기에 시작한다.
+   */
+  private async awaitTurnClose(): Promise<void> {
+    if (!this.turnOpen) return;
+    await new Promise<void>((resolve) => {
+      this.turnCloseWaiters.add(resolve);
+    });
   }
 
   /**
@@ -1029,6 +1062,14 @@ class AgentChatSession {
   private retireSession(session: ClaudeGatewaySession): void {
     if (this.session === session) this.session = null;
     this.readerDone = null;
+    // 스트림이 끝났다고 슬롯이 돌아오지는 않는다 — SDK 인스턴스는 `close()`를 받아야 자리를
+    // 비운다. 부르지 않으면 다음 메시지의 openSession이 "이미 세션이 돈다"로 거절되고, 그때부터
+    // 이 Operation은 dispose될 때까지 한 마디도 받지 못한다.
+    try {
+      session.close();
+    } catch {
+      // 이미 접힌 세션을 다시 닫는 것은 무해하다(계약상 멱등).
+    }
     for (const id of [...this.liveJobs]) this.push({ kind: "job-end", id, status: "stopped" });
     this.liveJobs.clear();
     this.closeTurn({ ok: false });
@@ -1046,6 +1087,11 @@ class AgentChatSession {
     // "실패가 아니라 중지"라는 판정이다.
     const epoch = this.stopEpoch;
     const stopped = (): boolean => epoch !== this.stopEpoch;
+    // 자식이 스스로 깨어나 연 턴이 아직 돌고 있으면 그것이 닫힌 뒤에 선다. 그 턴에 올라타면
+    // 남의 결말이 이 디스패치를 풀어, 아직 답하지도 않은 프롬프트가 끝난 것으로 그려진다.
+    await this.awaitTurnClose();
+    // 기다리는 동안 세션이 접혔거나 중지가 눌렸다면 이 턴은 시작하지 않는다.
+    if (this.disposed || stopped()) return;
     this.push({ kind: "dispatch", text, at: Date.now() });
     // 활동 보고가 먼저다. 실패하면 자식을 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
     // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.

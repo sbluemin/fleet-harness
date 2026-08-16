@@ -66,6 +66,11 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
       if (script.failAfter !== undefined) failing = true;
       wake();
     },
+    /** 자식이 스스로 내는 프레임 — 백그라운드 완료로 모델이 다시 깨어난 자리를 재현한다. */
+    emit(...messages: Record<string, unknown>[]): void {
+      queue.push(...messages);
+      wake();
+    },
     interrupt: async (): Promise<void> => { hooks.onInterrupt?.(); },
     stopTask: async (taskId: string): Promise<void> => { hooks.onStopTask?.(taskId); },
     backgroundTasks: async (): Promise<boolean> => true,
@@ -97,8 +102,24 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
 function createFakeSdkFactory(turns: FakeTurn[]) {
   const configDir = tempDir("chat-sdk-");
   const sends: string[] = [];
-  const openSession = vi.fn(async (_request: unknown) => fakeSession(turns, { onSend: (text) => sends.push(text) }));
-  const dispose = vi.fn(async () => {});
+  // 실 SDK와 같이 슬롯은 하나다. `close()`가 불려야 자리가 돌아오며, 그전의 openSession은
+  // 거절된다 — 스트림이 끝난 것과 슬롯이 반납된 것은 다른 사건이다.
+  let occupied = false;
+  let live: ReturnType<typeof fakeSession> | null = null;
+  const openSession = vi.fn(async (_request: unknown) => {
+    if (occupied) throw new Error("A turn or session is already running on this instance.");
+    occupied = true;
+    const session = fakeSession(turns, { onSend: (text) => sends.push(text) });
+    live = session;
+    return {
+      ...session,
+      close: () => {
+        occupied = false;
+        session.close();
+      },
+    };
+  });
+  const dispose = vi.fn(async () => { occupied = false; });
   const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true }) => ({
     configDir,
     models: options.models,
@@ -106,7 +127,7 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
     openSession,
     dispose,
   }));
-  return { factory: factory as never, openSession, sends, dispose, configDir };
+  return { factory: factory as never, openSession, sends, dispose, configDir, liveSession: () => live };
 }
 
 function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
@@ -945,18 +966,13 @@ describe("AgentChatRegistry — background jobs on a live session", () => {
     await registry.disposeAll();
   });
 
-  // 자식은 자기 큐를 갖고 있어 도는 중에도 메시지를 받는다. 그때 두 번째 turn-start를 세우면
-  // 원장에 닫히지 않는 턴이 겹쳐 남는다 — 결말은 하나뿐이기 때문이다.
-  it("does not open a second turn while a background-woken turn is still open", async () => {
+  // 자식이 스스로 깨어나 연 턴은 아무도 기다리지 않는다. 그 창에 들어온 사용자 메시지가 그
+  // 턴에 올라타면, 남의 `result`가 그 디스패치를 풀어 아직 답하지도 않은 프롬프트를 끝난 것으로
+  // 그리고, 큐의 다음 메시지가 그 위에서 조기에 시작한다.
+  it("waits for a background-woken turn to close before dispatching the next message", async () => {
     const transcriptPath = writeTranscript("sid-turn-overlap", []);
-    const { factory } = createFakeSdkFactory([
-      {
-        messages: [
-          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
-          // 백그라운드가 끝나 모델이 다시 깨어났다 — 디스패치 없는 턴이 열린다.
-          { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "the workflow finished" }] } },
-        ],
-      },
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -966,15 +982,51 @@ describe("AgentChatRegistry — background jobs on a live session", () => {
 
     session.send("first");
     await drainTurn(registry, "op-turn-overlap");
+
+    // 백그라운드가 끝나 모델이 다시 깨어났다 — 디스패치 없는 턴이 열리고, 아직 닫히지 않았다.
+    liveSession()?.emit({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "the workflow finished" }] } });
     await vi.waitFor(() => { expect(kinds(events)).toContain("text"); });
 
-    // 후속 턴이 열려 있는 채로 두 번째 메시지가 들어온다.
     session.send("second");
+    // 그 턴이 닫히기 전에는 두 번째 프롬프트가 자식에 닿지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sends).toEqual(["first"]);
+    expect(kinds(events).filter((kind) => kind === "dispatch")).toHaveLength(1);
+
+    // 후속 턴이 자기 결말을 내면 그때 자리가 난다.
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 3 });
     await drainTurn(registry, "op-turn-overlap");
 
+    expect(sends).toEqual(["first", "second"]);
     const starts = kinds(events).filter((kind) => kind === "turn-start").length;
     const ends = kinds(events).filter((kind) => kind === "turn-end").length;
     expect(starts).toBe(ends);
+    await registry.disposeAll();
+  });
+
+  // 스트림이 끝난 것과 슬롯이 반납된 것은 다른 사건이다. 닫지 않고 버리면 다음 메시지의
+  // openSession이 거절되고, 그 Operation은 dispose될 때까지 한 마디도 받지 못한다.
+  it("closes the retired session so the next message can open a new one", async () => {
+    const transcriptPath = writeTranscript("sid-slot", []);
+    const { factory, openSession, sends } = createFakeSdkFactory([
+      { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } }], failAfter: 1 },
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-slot", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-slot");
+
+    session.send("second");
+    await drainTurn(registry, "op-slot");
+
+    expect(openSession).toHaveBeenCalledTimes(2);
+    expect(sends).toEqual(["first", "second"]);
+    // 두 번째 턴은 정상으로 닫힌다 — 슬롯이 막혀 있었다면 여기서 chat_turn_failed가 선다.
+    expect(events.filter((entry) => entry.event.kind === "error" && entry.event.code === "chat_turn_failed")).toHaveLength(0);
     await registry.disposeAll();
   });
 });
