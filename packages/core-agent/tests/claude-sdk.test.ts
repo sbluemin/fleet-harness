@@ -188,6 +188,17 @@ describe("turn assembly", () => {
 });
 
 describe("fail-closed refusals", () => {
+  // 상대 경로는 자식(턴 cwd)과 이 프로세스(자기 cwd)가 서로 다르게 푼다. 그대로 두면 자식이
+  // 트랜스크립트를 제대로 쓰고도 호출자가 그 파일을 못 찾아 좌표를 심지 못하고, 재시작 뒤 그
+  // 세션은 시작한 적 없는 것으로 읽힌다 — 조용한 어긋남이라 생성 시점에 끝낸다.
+  it("rejects a relative shared home instead of resolving it against two different cwds", async () => {
+    await expect(createClaudeGatewaySdk({
+      baseUrl: BASE_URL,
+      models: [LUNA],
+      home: { kind: "shared", configDir: ".claude" },
+    })).rejects.toThrow(/absolute/);
+  });
+
   it("rejects a turn option that is not on the allowlist", async () => {
     const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
     // TypeScript는 변수를 거쳐 들어온 객체의 초과 속성을 잡지 못하고, JS 호출자는 아예 잡지 못한다.

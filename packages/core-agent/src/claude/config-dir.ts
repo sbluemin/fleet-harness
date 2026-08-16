@@ -43,7 +43,11 @@ export interface ClaudeConfigHome {
  * 호스트가 소유한 홈을 그대로 쓴다. 만들지도 지우지도 않고, 캐시도 건드리지 않는다.
  */
 export function createSharedClaudeConfigHome(configDir: string): ClaudeConfigHome {
-  if (typeof configDir !== "string" || configDir.length === 0) {
+  // 상대 경로는 두 쪽이 서로 다른 기준으로 푼다: 자식은 자기 턴의 cwd에서, 이 프로세스는 자기
+  // cwd에서. 그러면 자식이 트랜스크립트를 제대로 쓰고도 호출자는 그 파일을 못 찾아 좌표를 심지
+  // 못하고, 재시작 뒤 그 세션은 "시작한 적 없음"으로 읽혀 다른 대화가 시작된다. 절대 경로만 받아
+  // 그 어긋남을 생성 시점에 끝낸다.
+  if (typeof configDir !== "string" || !path.isAbsolute(configDir)) {
     throw new TypeError("A shared Claude config home requires an absolute config directory path.");
   }
   return {
