@@ -11,7 +11,17 @@ import type { AgentChatJob, AgentChatLogState } from "./chat-events.js";
 // 스트림 상태는 이 테스트가 직접 쥔다 — 재접속으로 원장이 되감기는 순간을 만들어야 하기 때문이다.
 let logState: AgentChatLogState;
 
+const detailCalls: string[] = [];
+
 vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
+vi.mock("../api.js", () => ({
+  answerAgentChatAsk: async () => {},
+  stopAgentChatTurn: async () => {},
+  readAgentChatJobDetail: async (_op: string, jobId: string) => {
+    detailCalls.push(jobId);
+    return null;
+  },
+}));
 vi.mock("@fleet-console/markdown/styles.css", () => ({}));
 vi.mock("./chat.css", () => ({}));
 
@@ -33,6 +43,7 @@ function stateWith(jobs: readonly AgentChatJob[]): AgentChatLogState {
 }
 
 beforeEach(() => {
+  detailCalls.length = 0;
   logState = stateWith([]);
   vi.stubGlobal("ResizeObserver", class {
     observe() { /* noop */ }
@@ -164,5 +175,28 @@ describe("chat work surface — log padding", () => {
       root = null;
       container = null;
     }
+  });
+});
+
+describe("chat work surface — job detail timing", () => {
+  it("asks again when the outcome lands after the job already closed", async () => {
+    // 백그라운드 셸은 task_updated(killed)가 먼저 닫고, 출력 파일의 좌표는 그 뒤 task_notification이
+    // 들고 온다(실측 순서). 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다 먼저 도착해 빈손으로
+    // 돌아오는데, 다시 묻지 않으면 "기록 없음"이 영영 굳는다.
+    const closed = { id: "b1", kind: "shell" as const, title: "loop", open: false, status: "stopped" as const, stages: [] };
+    logState = { ...stateWith([closed]), jobs: [closed] };
+    mount();
+    act(() => { strip()?.click(); });
+    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-work .agent-chat-job")?.click(); });
+    await act(async () => { await Promise.resolve(); });
+    const first = detailCalls.length;
+    expect(first).toBeGreaterThan(0);
+
+    // 결말 보고가 도착한다 — 잡은 이미 닫혀 있었고 id도 그대로다.
+    const reported = { ...closed, summary: "exit code 0", durationMs: 5_000 };
+    logState = { ...stateWith([reported]), jobs: [reported] };
+    render();
+    await act(async () => { await Promise.resolve(); });
+    expect(detailCalls.length).toBeGreaterThan(first);
   });
 });

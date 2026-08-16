@@ -650,6 +650,17 @@ describe("chat job detail", () => {
     expect(lines[0]).toBe("line 60");
   });
 
+  it("cuts the character cap from the end, so a tail stays a tail", () => {
+    // 긴 JSON 한 줄을 찍는 명령에서 바로 걸린다. 앞에서 자르면 마지막 200줄 중 가장 오래된
+    // 부분만 남는데, 화면은 그동안 "마지막 부분만 표시합니다"라고 말한다.
+    const line = (mark: string) => mark + "x".repeat(4_000);
+    const raw = [line("OLDEST-"), line("MID-"), line("A-"), line("B-"), line("C-"), line("D-"), line("NEWEST-")].join("\n");
+    const tail = chatShellTailFromOutput(raw);
+    expect(tail.truncated).toBe(true);
+    expect(tail.tail).toContain("NEWEST-");
+    expect(tail.tail).not.toContain("OLDEST-");
+  });
+
   it("masks credentials and abbreviates paths in shell output", () => {
     const raw = "/tmp/workspace/src/app.ts:1\nAUTHORIZATION: Bearer sk-abcdefghijklmnopqrstuvwxyz012345";
     const tail = chatShellTailFromOutput(raw, { cwd: "/tmp/workspace" });

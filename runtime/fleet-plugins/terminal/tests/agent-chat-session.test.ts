@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, promises as nodeFs, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -874,6 +874,58 @@ describe("AgentChatRegistry — job detail", () => {
     const session = await registry.ensure("op-detail-2", () => seedFor(transcriptPath));
     expect(await session.readJobDetail("../../etc/passwd")).toBeNull();
     expect(await session.readJobDetail("never-issued")).toBeNull();
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 큰 출력 파일.
+ *
+ * 돌려주는 값이 작아도 파일 전체를 문자열로 올리면 그 순간의 메모리와 이벤트 루프는 파일
+ * 크기만큼을 진다 — 실측에서 백그라운드 셸 출력은 이미 438KB까지 자랐고, 빌드를 백그라운드로
+ * 돌리면 수십 MB가 정상 범위다.
+ */
+describe("AgentChatRegistry — large shell output", () => {
+  it("reads only the end of the file", async () => {
+    const transcriptPath = writeTranscript("sess-big", []);
+    const outputRoot = tempDir("chat-task-big-");
+    const outputFile = path.join(outputRoot, "b9huge.output");
+    // 읽기 창(256KB)보다 확실히 큰 파일. 창 밖의 표식은 결과 어디에도 나타나지 않아야 한다 —
+    // 나타난다면 파일 전체가 메모리에 올라왔다는 뜻이다.
+    const filler = Array.from({ length: 40_000 }, (_, i) => `noise ${i} ${"y".repeat(40)}`).join("\n");
+    writeFileSync(outputFile, `HEAD-MARKER\n${filler}\nTAIL-MARKER\n`);
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b9huge", description: "big", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b9huge", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-big-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-big-1");
+
+    // 내용만으로는 전체 읽기와 구별되지 않는다 — 200줄 컷이 같은 결과를 내기 때문이다.
+    // 그래서 "파일 전체를 문자열로 올리지 않았다"를 직접 못 박는다.
+    const readFile = vi.spyOn(nodeFs, "readFile");
+    const open = vi.spyOn(nodeFs, "open");
+    try {
+      const detail = await session.readJobDetail("b9huge");
+      expect(detail?.kind).toBe("shell");
+      const tail = detail?.kind === "shell" ? detail.tail : "";
+      expect(tail).toContain("TAIL-MARKER");
+      expect(tail).not.toContain("HEAD-MARKER");
+      expect(detail?.truncated).toBe(true);
+      expect(open.mock.calls.some(([target]) => target === outputFile)).toBe(true);
+      expect(readFile.mock.calls.some(([target]) => target === outputFile)).toBe(false);
+    } finally {
+      readFile.mockRestore();
+      open.mockRestore();
+    }
     await registry.disposeAll();
   });
 });

@@ -1415,6 +1415,14 @@ function JobExtra({
  * 워크플로는 요청하지 않는다 — 단계 트리가 이미 맥박으로 흐르고 그것이 곧 상세다. 도는 잡도
  * 요청하지 않는다: 전사록과 출력 파일은 작업이 끝난 뒤에야 완결되므로, 도는 중에 읽으면 반쪽을
  * 보여 주고 그게 전부인 것처럼 굳는다.
+ *
+ * 그런데 "닫혔다"와 "결말이 보고됐다"는 같은 순간이 아니다. 백그라운드 셸은 `task_updated`가
+ * `killed`로 먼저 닫고, 출력 파일의 좌표는 그 뒤에 오는 `task_notification`이 들고 온다(실측
+ * 순서이며 매퍼에도 그렇게 적혀 있다). 그래서 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다
+ * 먼저 도착해 404를 받고, 좌표가 도착해도 다시 묻지 않아 "기록 없음"이 영영 굳는다.
+ *
+ * 알림이 실어 오는 값(보고·소요 시간)을 의존성에 함께 두어, 결말이 도착한 그 렌더에서 한 번 더
+ * 묻게 한다. 아무것도 도착하지 않으면 여전히 "없다"고 말하는데, 그때는 그것이 사실이다.
  */
 function useAgentChatJobDetail(
   operationId: string,
@@ -1424,6 +1432,8 @@ function useAgentChatJobDetail(
   const [result, setResult] = React.useState<{ readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null }>(
     { state: "idle", value: null },
   );
+  const reported = job.summary ?? "";
+  const settledMs = job.durationMs ?? -1;
   React.useEffect(() => {
     if (!wanted) {
       setResult({ state: "idle", value: null });
@@ -1439,7 +1449,7 @@ function useAgentChatJobDetail(
       live = false;
       controller.abort();
     };
-  }, [operationId, job.id, wanted]);
+  }, [operationId, job.id, wanted, reported, settledMs]);
   return result;
 }
 

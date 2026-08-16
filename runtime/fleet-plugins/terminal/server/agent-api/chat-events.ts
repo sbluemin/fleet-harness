@@ -478,15 +478,22 @@ export function chatSubagentTrailFromTranscript(
  *
  * 원시 명령 출력이므로 잡 본문과 같은 문(경로 정규화·축약·자격증명 마스킹)을 지나되, 줄 구조는
  * 지킨다 — 로그는 줄이 곧 의미라 여기서 접으면 읽을 수 없는 한 문단이 된다.
+ *
+ * 글자 상한도 **끝에서** 자른다. 앞에서 자르면 마지막 200줄 중 가장 오래된 부분만 남는데,
+ * 그것은 꼬리가 아니라 머리다 — 화면이 "마지막 부분만 표시합니다"라고 말하는 동안 정반대를
+ * 보이게 된다(긴 JSON 한 줄을 찍는 명령에서 바로 걸린다).
  */
 export function chatShellTailFromOutput(raw: string, options: ChatEventMapOptions = {}): { readonly tail: string; readonly truncated: boolean } {
   const lines = raw.replace(/\r\n?/g, "\n").split("\n");
   // 파일 끝의 개행 하나가 만든 빈 줄은 출력이 아니다.
   while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
-  const truncated = lines.length > MAX_JOB_TAIL_LINES;
-  const kept = truncated ? lines.slice(-MAX_JOB_TAIL_LINES) : lines;
-  const text = safeJobBody(kept.join("\n"), options, MAX_JOB_TAIL_CHARS);
-  return { tail: text, truncated: truncated || text.length >= MAX_JOB_TAIL_CHARS };
+  const cutLines = lines.length > MAX_JOB_TAIL_LINES;
+  const joined = (cutLines ? lines.slice(-MAX_JOB_TAIL_LINES) : lines).join("\n");
+  const cutChars = joined.length > MAX_JOB_TAIL_CHARS;
+  // 정화는 길이를 늘리지 않는다(경로 축약·마스킹 모두 줄인다) — 그래서 먼저 끝에서 자르면
+  // safeJobBody의 앞자르기 상한에 다시 걸리지 않는다.
+  const text = safeJobBody(cutChars ? joined.slice(-MAX_JOB_TAIL_CHARS) : joined, options, MAX_JOB_TAIL_CHARS);
+  return { tail: text, truncated: cutLines || cutChars };
 }
 
 /**

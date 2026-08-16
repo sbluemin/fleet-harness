@@ -119,6 +119,11 @@ const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
 /** 잡 id→종류. 상세 라우트의 첫 문이라 상한이 필요하지만, 잡은 도구 호출보다 훨씬 드물다. */
 const JOB_KIND_CAP = 200;
+/**
+ * 출력 파일에서 실제로 읽어 올리는 바이트. 꼬리 상한(200줄 · 24k자)을 넉넉히 덮으면서, 몇십 MB
+ * 짜리 빌드 로그가 카드 한 번 여는 것으로 서버 메모리에 통째로 올라오지 않게 막는 창이다.
+ */
+const JOB_TAIL_READ_BYTES = 256 * 1024;
 
 /**
  * 닫힌 턴 뒤에 이 이벤트가 오면 모델이 다시 말하기 시작한 것이다. 잡 이벤트는 여기 들지 않는다 —
@@ -461,9 +466,7 @@ class AgentChatSession {
     if (kind === "shell") {
       const file = this.jobOutputs.get(jobId);
       if (file === undefined) return null;
-      const raw = await fs.readFile(file, "utf8").catch(() => null);
-      if (raw === null) return null;
-      return { kind: "shell", ...chatShellTailFromOutput(raw, { cwd: this.seed.cwd }) };
+      return await this.readShellTail(file);
     }
     const dir = await this.resolveJobSessionDir();
     if (dir === null) return null;
@@ -471,6 +474,41 @@ class AgentChatSession {
     if (raw === null) return null;
     const trail = chatSubagentTrailFromTranscript(raw, { cwd: this.seed.cwd });
     return { kind: "agent", steps: trail.steps, truncated: trail.truncated };
+  }
+
+  /**
+   * 출력 파일의 **끝에서만** 읽는다.
+   *
+   * 파일 전체를 문자열로 올린 뒤 200줄로 줄이면, 돌려주는 값이 작아도 그 순간의 메모리와 이벤트
+   * 루프는 파일 크기만큼을 진다. 실측에서 백그라운드 셸 출력은 이미 438KB까지 자랐고, 빌드나
+   * 테스트를 백그라운드로 돌리면 수십 MB가 정상 범위다 — 그때 사용자가 카드를 한 번 여는 것이
+   * Console 서버를 멈춰 세운다.
+   *
+   * 창 밖에서 시작하면 첫 줄은 잘린 줄이자 잘린 UTF-8 문자일 수 있으므로, 첫 개행까지를 통째로
+   * 버리고 "앞이 잘렸다"를 함께 돌려준다.
+   */
+  private async readShellTail(file: string): Promise<AgentChatJobDetail | null> {
+    const handle = await fs.open(file, "r").catch(() => null);
+    if (handle === null) return null;
+    try {
+      const stat = await handle.stat();
+      const start = Math.max(0, stat.size - JOB_TAIL_READ_BYTES);
+      const length = stat.size - start;
+      if (length <= 0) return { kind: "shell", tail: "", truncated: false };
+      const buffer = Buffer.alloc(length);
+      const read = await handle.read(buffer, 0, length, start);
+      let raw = buffer.subarray(0, read.bytesRead).toString("utf8");
+      if (start > 0) {
+        const firstBreak = raw.indexOf("\n");
+        raw = firstBreak >= 0 ? raw.slice(firstBreak + 1) : "";
+      }
+      const tail = chatShellTailFromOutput(raw, { cwd: this.seed.cwd });
+      return { kind: "shell", tail: tail.tail, truncated: tail.truncated || start > 0 };
+    } catch {
+      return null;
+    } finally {
+      await handle.close().catch(() => undefined);
+    }
   }
 
   /** 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리. */
