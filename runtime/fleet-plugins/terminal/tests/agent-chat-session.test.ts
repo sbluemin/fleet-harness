@@ -1090,7 +1090,8 @@ describe("AgentChatRegistry — one line larger than the read window", () => {
     const session = await registry.ensure("op-trail-1", () => seedFor(transcriptPath));
 
     // 창(4MB)보다 큰 전사록. 앞쪽 표식은 결과에 나타나면 안 된다.
-    const subagentDir = path.join(configDir, "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
+    // 부산물은 트랜스크립트와 같은 홈에 앉는다 — 공유 홈에서는 SDK의 config dir이 곧 그 홈이다.
+    const subagentDir = path.join(homeOf(transcriptPath), "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
     mkdirSync(subagentDir, { recursive: true });
     const line = (name: string) => JSON.stringify({
       isSidechain: true,

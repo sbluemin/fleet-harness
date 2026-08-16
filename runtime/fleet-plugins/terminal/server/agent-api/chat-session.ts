@@ -31,10 +31,10 @@ import type { AgentProviderSession } from "./types.js";
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
  *
- * PTY가 없다 — 같은 Claude 세션을 core-agent SDK가 격리 config dir에서 이어받아 돌린다.
- * 원 세션의 트랜스크립트는 생성 시 격리 dir로 복사돼 resume의 근거가 되고(스파이크로 실증),
- * 매 턴이 끝나면 원 projects 디렉터리로 되쓴다 — Console 재시작·터미널 복귀(--resume)·
- * Session Analyst가 전부 그 원본 경로 하나를 계속 권위로 삼게 하기 위해서다.
+ * PTY가 없다 — 같은 Claude 세션을 core-agent SDK가 **사용자의 실제 Claude 홈에서** 이어받아
+ * 돌린다. 트랜스크립트는 터미널이 쓰던 그 파일 하나이고, 이 세션은 그것을 옮기지 않고 그대로
+ * 키운다 — Console 재시작·터미널 복귀(--resume)·Session Analyst가 전부 같은 경로 하나를
+ * 권위로 삼게 하기 위해서다. 매 턴이 끝나면 좌표만 다시 확정한다.
  */
 
 /**
