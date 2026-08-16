@@ -63,7 +63,7 @@ export async function buildFleetDoctorText(deps: DoctorDeps): Promise<string> {
 
   const signedIn = new Set(await deps.authService.listProviderIds());
   const binary = await describeClaudeBinary(resolveBinary(CLAUDE_COMMAND, env), runVersion);
-  const consoleLine = firstLine(await readConsoleStatus());
+  const consoleLine = await readConsoleStatusLine(readConsoleStatus);
 
   return [
     formatRow("package", `@dotobokuri/fleet-console ${release.version} (${release.channel})`),
@@ -118,6 +118,17 @@ function execFileVersion(bin: string, args: readonly string[]): Promise<string> 
 
 function formatRow(key: string, value: string): string {
   return `${key.padEnd(10)}${value}`;
+}
+
+async function readConsoleStatusLine(
+  readConsoleStatus: () => Promise<string>,
+): Promise<string> {
+  try {
+    return firstLine(await readConsoleStatus());
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return `unreadable (${firstLine(reason)})`;
+  }
 }
 
 function firstLine(text: string): string {

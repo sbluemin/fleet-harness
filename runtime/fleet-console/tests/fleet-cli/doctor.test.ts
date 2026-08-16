@@ -39,6 +39,18 @@ describe("fleet doctor", () => {
     expect(text).not.toContain("/Users/sbluemin");
   });
 
+  it("keeps the rest of the report when console status cannot be read", async () => {
+    const deps = createDeps();
+    deps.readConsoleStatus = vi.fn(async () => {
+      throw new Error("Refusing symbolic console lock: /tmp/console.lock");
+    });
+    const text = await buildFleetDoctorText(deps);
+    expect(text).toContain("package   @dotobokuri/fleet-console 1.62.0 (local)");
+    expect(text).toContain("binary    /usr/bin/claude 2.1.233");
+    expect(text).toContain("console   unreadable (Refusing symbolic console lock: /tmp/console.lock)");
+    expect(text).toContain("lock      /tmp/console.lock");
+  });
+
   it("reports the Windows npm shim path while still probing through cmd.exe", async () => {
     const deps = createDeps();
     deps.resolveBinary = vi.fn(() => ({
