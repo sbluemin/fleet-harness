@@ -65,8 +65,37 @@ export interface AgentChatJobStage {
   readonly agents: readonly AgentChatJobAgent[];
 }
 
+/** 문맥 창을 나눠 쓰는 한 덩어리. */
+export interface AgentChatContextSlice {
+  readonly name: string;
+  readonly tokens: number;
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
+  /**
+   * 이 턴이 **시작될 때까지의** 문맥 창 내역.
+   *
+   * 종료 시점이 아닌 이유는 실측이다: 자식은 턴이 시작되면 control 채널을 닫아, 턴이 시작하는
+   * 그 순간의 요청만 답을 받는다(+0ms 성공, +250ms부터 턴이 끝날 때까지 전부 거절). 그래서 방금
+   * 끝난 턴이 더한 몫은 다음 턴이 시작될 때 비로소 드러나고, 화면은 그 지연을 감추지 않는다.
+   *
+   * 저널에 남는 이유는 두 가지다: 재접속한 브라우저가 지금 총량을 되찾고, 지나간 턴이 각자
+   * 자기 시작 시점의 총량을 간직해 턴별 증가분이 재생에서도 같은 값으로 읽힌다.
+   */
+  | {
+      readonly kind: "context";
+      /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
+      readonly total: number;
+      readonly max: number;
+      /** 자동 압축을 위해 미리 비워 둔 자리. 쓴 것이 아니지만 쓸 수도 없다. */
+      readonly reserved?: number;
+      /** 자동 압축이 걸리는 지점. 꺼져 있으면 생략한다 — 없는 임계선을 그리지 않기 위해서다. */
+      readonly compactAt?: number;
+      readonly slices: readonly AgentChatContextSlice[];
+      readonly memoryFiles?: readonly AgentChatContextSlice[];
+      readonly mcpTools?: readonly AgentChatContextSlice[];
+    }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }

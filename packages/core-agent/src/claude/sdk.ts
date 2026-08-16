@@ -147,6 +147,7 @@ export async function createClaudeGatewaySdk(
             release();
           }
         },
+        getContextUsage: () => run.getContextUsage(),
       };
       active = tracked;
       return tracked;

@@ -34,7 +34,12 @@ function homeOf(transcriptPath: string): string {
   return path.dirname(path.dirname(path.dirname(transcriptPath)));
 }
 
-type FakeTurn = { readonly messages: readonly Record<string, unknown>[]; readonly failAfter?: number };
+type FakeTurn = {
+  readonly messages: readonly Record<string, unknown>[];
+  readonly failAfter?: number;
+  /** 이 턴이 시작할 때 자식이 돌려줄 문맥 내역. 없으면 답하지 않는 자식이다. */
+  readonly context?: unknown;
+};
 
 function createFakeSdkFactory(turns: FakeTurn[]) {
   const configDir = tempDir("chat-sdk-");
@@ -44,6 +49,7 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
     let index = 0;
     return {
       close,
+      getContextUsage: async () => script.context ?? null,
       [Symbol.asyncIterator]() {
         return {
           async next() {
@@ -144,6 +150,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       let index = 0;
       return {
         close: () => {},
+        getContextUsage: async () => null,
         [Symbol.asyncIterator]() {
           return {
             async next() {
@@ -409,6 +416,7 @@ describe("AgentChatRegistry", () => {
         let index = 0;
         return {
           close: () => {},
+          getContextUsage: async () => null,
           [Symbol.asyncIterator]() {
             return {
               async next() {
@@ -549,6 +557,7 @@ describe("AgentChatRegistry", () => {
         let index = 0;
         return {
           close: () => {},
+          getContextUsage: async () => null,
           [Symbol.asyncIterator]() {
             return {
               async next() {
@@ -607,6 +616,7 @@ describe("AgentChatRegistry", () => {
         closed = true;
         wake();
       },
+      getContextUsage: async () => null,
       [Symbol.asyncIterator]() {
         return {
           async next() {
@@ -673,6 +683,7 @@ describe("AgentChatRegistry", () => {
       models: ["opus[1m]"],
       startTurn: async () => ({
         close: () => {},
+        getContextUsage: async () => null,
         [Symbol.asyncIterator]() {
           let done = false;
           return {
@@ -795,6 +806,78 @@ describe("AgentChatRegistry — background follow-up turns", () => {
   });
 });
 
+describe("AgentChatRegistry — context window", () => {
+  const usage = {
+    total: 24_948,
+    max: 200_000,
+    model: "claude-gateway--cursor--auto",
+    compactAt: 167_000,
+    categories: [
+      { name: "System prompt", tokens: 99_014, deferred: false },
+      { name: "Memory files", tokens: 20_614, deferred: false },
+      { name: "Messages", tokens: 195, deferred: false },
+      { name: "Autocompact buffer", tokens: 33_000, deferred: false },
+      { name: "Free space", tokens: 47_177, deferred: false },
+      { name: "MCP tools (deferred)", tokens: 9_000, deferred: true },
+    ],
+    memoryFiles: [{ path: "/repo/CLAUDE.md", tokens: 848 }],
+    mcpTools: [{ name: "wiki_read", server: "fleet", tokens: 240 }],
+  };
+
+  it("recounts the total from the spent categories and sets the reserve aside", async () => {
+    // vendor의 total(24,948)은 게이트웨이가 실제로 읽은 토큰이고, 카테고리는 CLI가 센 로컬
+    // 배분이라 둘이 어긋난다(실측). 화면은 내역과 총량을 나란히 세우므로 내역이 곧 총량이어야
+    // 한다 — 그리고 예약분과 남은 자리는 쓴 것이 아니다.
+    const transcriptPath = writeTranscript("sid-ctx-1", []);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }], context: usage },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx");
+    await vi.waitFor(() => {
+      expect(events.some((entry) => entry.event.kind === "context")).toBe(true);
+    });
+
+    const context = events.find((entry) => entry.event.kind === "context")?.event;
+    expect(context).toMatchObject({
+      kind: "context",
+      // 99,014 + 20,614 + 195 — deferred·예약·남은 자리는 빠진다.
+      total: 119_823,
+      max: 200_000,
+      reserved: 33_000,
+      compactAt: 167_000,
+    });
+    expect(context && "slices" in context ? context.slices.map((slice) => slice.name) : []).toEqual([
+      "System prompt",
+      "Memory files",
+      "Messages",
+    ]);
+    await registry.disposeAll();
+  });
+
+  it("says nothing when the child does not answer", async () => {
+    // 자식은 턴이 시작되면 control 채널을 닫는다(실측). 답이 없는 턴에 0짜리 미터를 세우면
+    // 화면이 "문맥이 비었다"고 말하게 된다 — 그것은 빈 사실이 아니라 틀린 사실이다.
+    const transcriptPath = writeTranscript("sid-ctx-2", []);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-2", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-2");
+
+    expect(kinds(events)).not.toContain("context");
+    await registry.disposeAll();
+  });
+});
+
 describe("AgentChatRegistry — journal weight", () => {
   it("keeps only the latest progress snapshot per job in the replayed journal", async () => {
     // 맥박은 스냅숏이다 — 겹겹이 쌓으면 재접속이 이미 지나간 단계 트리를 되재생하고, 상한에
@@ -856,6 +939,7 @@ describe("AgentChatRegistry — stopping a turn", () => {
           closes.push(index);
           release?.();
         },
+        getContextUsage: async () => null,
         [Symbol.asyncIterator]() {
           return {
             async next() {

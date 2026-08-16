@@ -284,9 +284,45 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "stderr",
 ]);
 
+/** 문맥 창을 나눠 쓰는 한 덩어리. `tokens`는 그 덩어리가 지금 차지한 몫이다. */
+export interface ClaudeGatewayContextCategory {
+  readonly name: string;
+  readonly tokens: number;
+  /** 아직 문맥에 실리지 않고 필요할 때 불러오는 몫. 총량에 더해지지 않는다. */
+  readonly deferred: boolean;
+}
+
+/**
+ * 자식이 지금 쓰고 있는 문맥 창의 내역.
+ *
+ * `total`은 창에 실제로 들어앉은 토큰이고 `max`는 그 창의 크기다. `compactAt`은 자동 압축이
+ * 걸리는 지점이며, 켜져 있지 않으면 `null`이다 — 임계가 없는데 임계선을 그리면 오지 않을 사건을
+ * 예고하게 된다.
+ */
+export interface ClaudeGatewayContextUsage {
+  readonly total: number;
+  readonly max: number;
+  readonly model: string;
+  readonly compactAt: number | null;
+  readonly categories: readonly ClaudeGatewayContextCategory[];
+  readonly memoryFiles: readonly { readonly path: string; readonly tokens: number }[];
+  readonly mcpTools: readonly { readonly name: string; readonly server: string; readonly tokens: number }[];
+}
+
 export interface ClaudeGatewayRun extends AsyncIterable<ClaudeGatewayMessage> {
   /** 진행 중인 턴을 끊는다. 이미 끝난 턴에 호출해도 안전하다. */
   close(): void;
+  /**
+   * 자식에게 지금 문맥 내역을 묻는다. **살아 있는 턴에만** 답이 온다.
+   *
+   * 던지지 않고 `null`로 접는 이유는 실패가 예외 상황이 아니기 때문이다(실측): 턴이 끝나 가면
+   * 자식이 먼저 닫히므로, 마지막 몇 번의 호출은 정상 경로에서 반드시 실패한다. 호출자가 매번
+   * try/catch로 그 정상 실패를 감싸야 한다면 계약이 잘못된 것이다.
+   *
+   * 스트림 소비를 막고 부르면 안 된다(실측): 이터레이션 루프 안에서 이 응답을 기다리면 세 번째
+   * 호출쯤에서 자식이 조기에 닫힌다. 소비와 나란히, 소비를 세우지 않는 자리에서 부른다.
+   */
+  getContextUsage(): Promise<ClaudeGatewayContextUsage | null>;
 }
 
 export interface ClaudeGatewaySdk {

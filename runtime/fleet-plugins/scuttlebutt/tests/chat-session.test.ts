@@ -421,6 +421,7 @@ function immediateRun(
 ): ClaudeGatewayRun {
   return {
     close() {},
+    getContextUsage: async () => null,
     async *[Symbol.asyncIterator]() {
       for (const message of messages) yield message;
       if (iterateError !== undefined) throw iterateError;
@@ -436,6 +437,7 @@ function hangingRun(options: { throwOnClose?: boolean } = {}): ClaudeGatewayRun 
   const started = deferred<void>();
   return {
     started: started.promise,
+    getContextUsage: async () => null,
     close() {
       closed = true;
       gate.resolve();
