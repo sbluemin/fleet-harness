@@ -555,6 +555,21 @@
   position: static;
 }
 
+/* War Room 카드의 본문은 읽는 자리다 — 승격 면이 클릭을 가로채고 본문은 inert라
+   Analyst·채팅 뷰 칩은 눌러도 동작하지 않는다. 무대에 오른 패널은 is-deck-tile이
+   아니므로 칩이 기존처럼 보인다. 휴면 카드의 채팅 진입 고스트도 같은 줄이 아니라
+   본문 안에 있으므로 함께 숨긴다. */
+.canvas-operation.is-deck-tile .agent-view-chip-row,
+.canvas-operation.is-deck-tile .agent-chat-mode-chip,
+.canvas-operation.is-deck-tile .agent-chat-dormant-open {
+  display: none;
+}
+
+/* 칩이 없으면 로그가 그 자리를 되찾는다. 하단 45px는 회신 버튼 몫이라 건드리지 않는다. */
+.canvas-operation.is-deck-tile .agent-chat-log {
+  padding-top: var(--space-3);
+}
+
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
 .agent-analyst-chip-live {
   width: 6px;
