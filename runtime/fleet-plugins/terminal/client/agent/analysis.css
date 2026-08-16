@@ -3,28 +3,33 @@
 /* ── Session Analyst 드로어 — 채팅 뷰와 같은 문법의 companion 본문 ─────────────────
    바닥은 companion 프레임(.canvas-operation)과 같은 --surface-panel 한 장을 그대로 잇고,
    얹히는 것(칩·카드·버블·컴포저)만 --surface-panel-raised로 한 칸 물러난다(라이트는 방향이
-   반대라 토큰이 진다). 상단 밴드는 없다 — 정체성·상태·아티팩트 진입은 떠 있는 칩이 진다. */
+   반대라 토큰이 진다). 정체성·상태·아티팩트 진입은 호스트 캡션 밴드가 진다 — 본문 위에 뜨지 않는다. */
 .session-analyst__chat-pane { container-type: inline-size; position: relative; box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr); width: 100%; height: 100%; min-width: 0; min-height: 0; color: var(--text-primary); overflow: hidden; background: var(--surface-panel); }
 
-/* 떠 있는 칩 줄 — 채팅 뷰 전환 칩(agent-chat-mode-chip)과 같은 자리·같은 문법. */
-.session-analyst__chips { position: absolute; z-index: 3; top: var(--space-3); right: var(--space-3); left: var(--space-3); display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-2); pointer-events: none; }
-.session-analyst__chips > * { pointer-events: auto; }
-.session-analyst__chip { display: inline-flex; align-items: center; gap: var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ink-mid); color: var(--text-secondary); padding: 6px 12px; font-family: var(--font-mono); font-size: 11px; line-height: 1; letter-spacing: .06em; white-space: nowrap; transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast); }
-.session-analyst__chip-cluster { display: inline-flex; gap: var(--space-2); }
-.session-analyst__chip--id { color: var(--text-secondary); }
+/* 캡션 줄 — 호스트가 비워 둔 캡션 밴드를 채운다. 밴드가 이미 창의 머리이므로 자기 면을 칠하지 않는다.
+   본문 컨테이너 밖이라 좁은 폭 대응은 이 줄이 자기 컨테이너가 되어 직접 진다. */
+.session-analyst__chips { container-type: inline-size; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); width: 100%; min-width: 0; }
+@container (max-width: 24rem) {
+  .session-analyst__chip { padding: 5px 8px; }
+  .session-analyst__chip-state { display: none; }
+}
+.session-analyst__chip { display: inline-flex; align-items: center; gap: var(--space-2); border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ink-mid); color: var(--text-secondary); padding: 5px 10px; font-family: var(--font-mono); font-size: 11px; line-height: 1; letter-spacing: .06em; white-space: nowrap; transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast); }
+.session-analyst__chip-cluster { display: inline-flex; gap: var(--space-2); flex: none; }
+/* 정체성은 캡션 밴드의 이름줄이다 — 밴드 안에서 다시 상자를 두르면 머리 안에 머리가 하나 더 생긴다. */
+.session-analyst__chip--id { min-width: 0; overflow: hidden; border-color: transparent; background: transparent; padding: 0; color: var(--text-secondary); white-space: nowrap; text-overflow: ellipsis; }
 .session-analyst__chip-dot { width: 7px; height: 7px; flex: none; border-radius: var(--radius-pill); background: var(--text-tertiary); }
-.session-analyst__chat-pane[data-phase="starting"] .session-analyst__chip-dot,
-.session-analyst__chat-pane[data-phase="reasoning"] .session-analyst__chip-dot,
-.session-analyst__chat-pane[data-phase="tool"] .session-analyst__chip-dot,
-.session-analyst__chat-pane[data-phase="writing"] .session-analyst__chip-dot { background: var(--aurora); animation: analyst-chip-dot-pulse 1.6s ease-in-out infinite; }
-.session-analyst__chat-pane[data-phase="complete"] .session-analyst__chip-dot { background: var(--positive); }
-.session-analyst__chat-pane[data-phase="error"] .session-analyst__chip-dot { background: var(--coral); }
+.session-analyst__chips[data-phase="starting"] .session-analyst__chip-dot,
+.session-analyst__chips[data-phase="reasoning"] .session-analyst__chip-dot,
+.session-analyst__chips[data-phase="tool"] .session-analyst__chip-dot,
+.session-analyst__chips[data-phase="writing"] .session-analyst__chip-dot { background: var(--aurora); animation: analyst-chip-dot-pulse 1.6s ease-in-out infinite; }
+.session-analyst__chips[data-phase="complete"] .session-analyst__chip-dot { background: var(--positive); }
+.session-analyst__chips[data-phase="error"] .session-analyst__chip-dot { background: var(--coral); }
 button.session-analyst__chip { cursor: pointer; }
 button.session-analyst__chip:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-ink); box-shadow: 0 0 14px var(--brass-glow); }
 button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: default; }
 /* 모드 세그먼트 — [Chat | Artifacts·n]. 선택 표시는 brass(위치 채널)만 쓴다. */
 .session-analyst__modechip { display: inline-flex; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ink-mid); font-family: var(--font-mono); font-size: 11px; letter-spacing: .06em; }
-.session-analyst__modechip button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-tertiary); padding: 6px 10px; font: inherit; letter-spacing: inherit; line-height: 1; cursor: pointer; }
+.session-analyst__modechip button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-tertiary); padding: 5px 9px; font: inherit; letter-spacing: inherit; line-height: 1; cursor: pointer; }
 .session-analyst__modechip button + button { border-left: 1px solid var(--hairline); }
 .session-analyst__modechip button[aria-pressed="true"] { background: var(--brass-glow); color: var(--brass-ink); }
 .session-analyst__modechip button:disabled { color: var(--text-tertiary); opacity: .5; cursor: default; }
@@ -34,9 +39,9 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__modechip button.is-authoring .session-analyst__chip-count { border: 1px dashed var(--aurora); background: transparent; animation: analyst-authoring-breathe 1.4s var(--ease-glide) infinite; }
 
 .session-analyst__workspace { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; overflow: hidden; background: transparent; }
-.session-analyst__chat-pane.is-initial .session-analyst__workspace { display: flex; flex-direction: column; justify-content: center; overflow: auto; padding: calc(var(--space-3) + 34px) 18px 22px; }
-/* 상단 여백은 떠 있는 칩 줄(32px + space-3 오프셋)을 피해 첫 줄이 칩 아래에서 시작하게 한다. */
-.session-analyst__chat { overflow-x: hidden; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; padding: calc(var(--space-3) + 34px) 18px 16px; background: transparent; }
+.session-analyst__chat-pane.is-initial .session-analyst__workspace { display: flex; flex-direction: column; justify-content: center; overflow: auto; padding: var(--space-3) 18px 22px; }
+/* 캡션 밴드가 머리를 지므로 본문은 상단을 비워 둘 이유가 없다 — 첫 줄이 곧바로 시작한다. */
+.session-analyst__chat { overflow-x: hidden; overflow-y: auto; min-height: 0; display: flex; flex-direction: column; padding: var(--space-3) 18px 16px; background: transparent; }
 .session-analyst__chat-pane.is-initial .session-analyst__chat { flex: none; overflow: visible; padding: 0; }
 .session-analyst__hero-wrap { margin: auto 0; display: grid; gap: var(--space-4); }
 .session-analyst__chat-pane.is-initial .session-analyst__hero-wrap { margin: 0; }
@@ -182,10 +187,17 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 
 /* ── 컴포저 — radius-pill은 컨트롤 금지 관례라 radius-md 면으로 정렬한다. ── */
 .session-analyst__composer { position: relative; min-width: 0; background: transparent; }
-.session-analyst__composer.is-initial { display: flex; align-items: center; gap: var(--space-2); flex: none; margin-top: 12px; padding: 0; }
+.session-analyst__composer.is-initial { flex: none; margin-top: 12px; padding: 0; }
 .session-analyst__composer.is-docked { padding: 10px 14px 14px; }
 .session-analyst__composer.is-docking { animation: analyst-composer-dock var(--duration-slow) var(--ease-glide) both; }
 .session-analyst__composer-surface { position: relative; display: flex; align-items: flex-end; gap: 7px; min-width: 0; min-height: 44px; flex: 1; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: 5px 6px 5px 10px; transition: border-color var(--duration-base) var(--ease-glide), background var(--duration-base) var(--ease-glide); }
+/* 첫 질문 전에는 입력과 선택이 한 면 안에 위아래로 앉는다 — 테두리 하나, 포커스 링 하나. */
+.session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column; align-items: stretch; gap: 6px; padding: 8px 8px 7px; }
+.session-analyst__composer-tools { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+/* 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다. */
+.session-analyst__saved { flex: none; inline-size: 4.5em; text-align: center; color: var(--text-tertiary); font-family: var(--font-mono); font-size: 10px; line-height: 1; }
+.session-analyst__slash-hint { flex: none; border: 1px dashed var(--hairline); border-radius: var(--radius-sm); background: transparent; color: var(--text-tertiary); padding: 5px 8px; font-family: var(--font-mono); font-size: 10px; line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
+.session-analyst__slash-hint:hover { border-color: var(--hairline-strong); color: var(--text-secondary); }
 .session-analyst__composer-surface:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
 .session-analyst__composer textarea { display: block; box-sizing: border-box; width: auto; min-width: 3rem; min-height: 36px; height: 36px; max-height: calc(1.5em * 6 + 16px); flex: 1 1 auto; resize: none; overflow-x: hidden; overflow-y: hidden; white-space: pre-wrap; border: 0; outline: 0; background: transparent; color: var(--text-primary); padding: 8px 6px; font-weight: var(--weight-regular); font-size: 13px; line-height: 1.5; font-family: var(--font-body); transition: opacity var(--duration-base) var(--ease-glide); }
 .session-analyst__composer textarea::placeholder { color: var(--text-tertiary); }
@@ -196,20 +208,22 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__slash button small { color: var(--text-tertiary); font-size: 10.5px; }
 .session-analyst__slash button:is(.is-selected, :hover) { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
 .session-analyst__composer-hint { padding: 6px 4px 0; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: 10px; line-height: 1.4; font-family: var(--font-mono); }
-/* 초기 셀렉터 스트립 — 컴포저 위의 모노 모드라인. */
-.session-analyst__selector-strip { display: flex; align-items: center; min-width: 0; flex: 0 1 auto; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--surface-panel-raised); transition: opacity var(--duration-base) var(--ease-glide), border-color var(--duration-base) var(--ease-glide); }
-/* 스트립이 composer-surface 밖으로 나온 뒤에도 키보드 포커스 큐가 유지되도록 동일한 focus-within 보더 문법을 적용한다. */
-.session-analyst__selector-strip:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
-.session-analyst__select { position: relative; display: inline-flex; min-width: 0; }
-.session-analyst__select + .session-analyst__select::before { content: ""; position: absolute; inset: 9px auto 9px 0; width: 1px; background: var(--hairline); }
+/* 선택 컨트롤 — 컴포저 면 안의 칩이다. 파이프 구분선은 상자 안에 있을 때의 문법이라 걷는다. */
+.session-analyst__select { position: relative; display: inline-flex; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-sm); background: var(--surface-panel); transition: border-color var(--duration-base) var(--ease-glide); }
+.session-analyst__select:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
+/* 강도는 제품 공용 톤 사다리를 탄다 — Quick Launch 덱과 같은 언어로 읽히게 한다. */
+.session-analyst__select[data-effort-level]:not([data-effort-level="auto"]) { --fc-select-compact-tone: var(--effort-tone, var(--text-secondary)); border-color: color-mix(in oklch, var(--effort-tone, var(--text-secondary)) 32%, var(--hairline)); }
 .session-analyst__send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; margin-left: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-sm); background: var(--ink-mid); color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
-.session-analyst__send:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-ink); }
+.session-analyst__send:not(:disabled) { border-color: var(--brass); background: var(--brass); color: var(--text-on-brass); }
+.session-analyst__send:hover:not(:disabled) { box-shadow: 0 0 14px var(--brass-glow); }
 .session-analyst__send:disabled { opacity: .42; cursor: default; }
+/* 중단은 진행 상태 신호다 — 위치 채널(brass)을 빌리지 않는다. */
+.session-analyst__stop:not(:disabled) { border-color: var(--hairline-strong); background: var(--ink-mid); color: var(--text-secondary); }
 .session-analyst__stop span { width: 8px; height: 8px; border-radius: 2px; background: currentColor; }
 .session-analyst__composer.is-working .session-analyst__composer-surface { border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline-strong)); background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised)); }
 .session-analyst__composer.is-working textarea { opacity: 1; color: var(--text-primary); -webkit-text-fill-color: var(--text-primary); }
 .session-analyst__composer.is-working textarea::placeholder { color: var(--text-tertiary); -webkit-text-fill-color: var(--text-tertiary); }
-.session-analyst__composer.is-working .session-analyst__selector-strip { opacity: .34; }
+.session-analyst__composer.is-working .session-analyst__composer-tools { opacity: .34; }
 .session-analyst__sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
 
 /* ── Artifacts 컴패니언 — 같은 창 면 + 슬림 툴바(72px 밴드 폐기). ── */
@@ -269,19 +283,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 @keyframes analyst-author-slide { from { transform: translateX(-100%); } to { transform: translateX(294%); } }
 @keyframes analyst-authoring-breathe { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 
-/* 스트립+입력 나란히 배치는 셀렉터 3종(≈271px)과 최소 입력 폭을 함께 수용할 때만 유효 — 좁으면 스트립을 위로 쌓는다. */
-@container (max-width: 33rem) {
-  .session-analyst__composer.is-initial { flex-wrap: wrap; }
-  .session-analyst__composer.is-initial .session-analyst__composer-surface { flex-basis: 100%; }
-}
-
 @container (max-width: 24rem) {
   .session-analyst__suggestions { grid-template-columns: 1fr; }
-  .session-analyst__chips { top: var(--space-2); right: var(--space-2); left: var(--space-2); }
-  .session-analyst__chip { padding: 6px 9px; }
-  .session-analyst__chip--id .session-analyst__chip-state { display: none; }
-  .session-analyst__chat { padding: calc(var(--space-2) + 34px) 12px 12px; }
-  .session-analyst__chat-pane.is-initial .session-analyst__workspace { padding: calc(var(--space-2) + 34px) 12px 16px; }
+  .session-analyst__chat { padding: var(--space-2) 12px 12px; }
+  .session-analyst__chat-pane.is-initial .session-analyst__workspace { padding: var(--space-2) 12px 16px; }
   .session-analyst__composer.is-docked { padding: 8px 10px 10px; }
   .session-analyst__queue, .session-analyst__followups { padding-right: 10px; padding-left: 10px; }
   .session-analyst__slash { right: 10px; left: 10px; }
@@ -290,7 +295,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__selector-strip, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
+  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
 }

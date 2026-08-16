@@ -1367,7 +1367,36 @@ function renderPluginOperation(operation: OperationNode, options: {
         )}
       </OperationFrame>
       {options.companions.map((companion, index) => (
-        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} language={options.language}>
+        <CompanionFrame
+          key={companion.id}
+          descriptor={companion}
+          geometry={options.companionGeometries[index]!}
+          language={options.language}
+          caption={companion.caption === undefined ? null : (
+            // 캡션 내용도 본문과 같은 context로 그린다 — 두 슬롯이 서로 다른 컨텍스트를 받으면
+            // 정체·상태가 본문과 어긋난 프레임이 나온다.
+            <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.companionFailed" />}>
+              <PluginOperationRenderer
+                active={options.active}
+                capabilities={capabilities}
+                geometry={geometry}
+                operation={operation}
+                theme={options.theme}
+                language={options.language}
+                viewportZoom={options.viewportZoom}
+                runtimeState={options.runtimeState}
+                onActivate={options.onActivate}
+                onClose={options.onClose}
+                onGeometryChange={options.onGeometryChange}
+                onRequestCompanions={onRequestCompanions}
+                companionsOpen={options.companion}
+                hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+                onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+                render={companion.caption}
+              />
+            </PluginErrorBoundary>
+          )}
+        >
           <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.companionFailed" />}>
             <PluginOperationRenderer
               active={options.active}
@@ -1454,10 +1483,11 @@ function PluginRenderError({ messageKey }: { readonly messageKey: "canvas.plugin
   return <div className="fc-plugin-error">{t(messageKey)}</div>;
 }
 
-function CompanionFrame({ descriptor, geometry, language, children }: {
+function CompanionFrame({ descriptor, geometry, language, caption, children }: {
   readonly descriptor: CompanionPanelDescriptor;
   readonly geometry: OperationGeometry;
   readonly language: ConsoleLocale;
+  readonly caption: ReactNode;
   readonly children: ReactNode;
 }) {
   const t = useT();
@@ -1473,8 +1503,12 @@ function CompanionFrame({ descriptor, geometry, language, children }: {
     <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={t("canvas.companion.aria", { title })}>
       {descriptor.hideCaption ? null : (
         <header className="canvas-companion-caption" data-canvas-blocker>
-          <span className="canvas-companion-caption-dot" aria-hidden="true" />
-          <span className="canvas-companion-caption-title">{title}</span>
+          {caption ?? (
+            <>
+              <span className="canvas-companion-caption-dot" aria-hidden="true" />
+              <span className="canvas-companion-caption-title">{title}</span>
+            </>
+          )}
         </header>
       )}
       <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>

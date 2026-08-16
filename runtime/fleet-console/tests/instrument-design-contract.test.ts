@@ -565,10 +565,14 @@ describe("Instrument core design contract", () => {
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
       const defined = new Set([...globallyDefined, ...customPropertyDefinitions(css)]);
-      const reference = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+      // 대체값을 함께 적은 참조는 이 게이트가 막으려는 위험이 아니다 — 정의가 없으면 조용히 상속되는 게
+      // 아니라 적어 둔 값으로 떨어진다. 호출부가 채우는 훅(--fc-select-compact-tone)과 다른 시트가 여는
+      // 채널(--effort-tone)이 이 형태를 쓴다.
+      const reference = /var\(\s*(--[A-Za-z0-9_-]+)\s*(,?)/g;
       let match: RegExpExecArray | null;
       while ((match = reference.exec(masked)) !== null) {
         const name = match[1]!;
+        if (match[2] === ",") continue;
         if (defined.has(name) || RUNTIME_CUSTOM_PROPERTY_ALLOWLIST.has(name)) continue;
         const line = lineAt(css, match.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${name}`);
@@ -1690,8 +1694,9 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).not.toContain("surface-window");
     // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
     expect(terminalAnalysisCss).toContain("var(--surface-panel-raised)");
-    // 상단 밴드 대신 떠 있는 칩 줄 + 채팅 뷰의 턴 스파인 문법을 쓴다.
+    // 정체·상태·모드는 호스트 캡션 밴드가 진다 — 본문 위에 떠서 첫 문단을 가리지 않는다.
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__chips \{/);
+    expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__chips \{[^}]*position: absolute/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__turn-node \{/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
     // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
@@ -1705,6 +1710,9 @@ describe("Instrument core design contract", () => {
     expect(terminalChatCss).toMatch(/\.agent-view-chip-row \{/);
     expect(terminalChatCss).toContain(".agent-view-chip-row .agent-chat-mode-chip");
     expect(terminalAgentEntry).toContain('className="agent-chat-mode-chip agent-analyst-chip"');
+    // 캡션 밴드는 호스트가 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 프레임의 위 모서리가 각진다.
+    expect(terminalAgentEntry).toContain("caption: (context) => <AnalystCaption context={context} />");
+    expect(terminalAgentEntry).not.toContain("hideCaption");
     expect(terminalAgentEntry).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
   });
 
@@ -2017,10 +2025,13 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
+    // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
     expect(selectBlock).toContain(
-      "font-weight: var(--weight-regular);\n  font-size: 9px;\n  line-height: 1;\n  font-family: var(--font-mono);",
+      "font-weight: var(--weight-regular);\n  font-size: 11px;\n  line-height: 1;\n  font-family: var(--font-mono);",
     );
-    expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
+    // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
+    expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
+    expect(selectBlock).toContain("padding: 7px 16px 7px 10px;");
     expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 

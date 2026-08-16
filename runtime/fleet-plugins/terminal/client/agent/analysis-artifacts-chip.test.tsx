@@ -11,8 +11,12 @@ vi.mock("@fleet-console/markdown/core", () => ({ renderMarkdown: (text: string) 
 vi.mock("@fleet-console/markdown/mermaid", () => ({ installDiagramHydrator: vi.fn() }));
 
 let storeState: AnalysisState;
+// 캡션과 본문은 같은 store를 구독하는 두 서브트리다 — 목 store도 dispatch 뒤 두 트리를 함께 다시 그려야
+// 실제 호스트와 같은 갱신이 된다.
+let rerenderStore = () => {};
 const dispatch = vi.fn((action: AnalysisAction) => {
   storeState = analysisReducer(storeState, action);
+  rerenderStore();
 });
 vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({
@@ -24,7 +28,7 @@ vi.mock("./analysis-store.js", () => ({
   }),
 }));
 
-import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
 
 describe("Session Analyst artifacts mode", () => {
   beforeEach(() => {
@@ -96,7 +100,8 @@ describe("Session Analyst artifacts mode", () => {
     const inside = mounted.container.querySelector<HTMLButtonElement>(".session-analyst__artifacts button")!;
     act(() => inside.focus());
 
-    storeState = initialAnalysisState;
+    // 아티팩트 화면을 보는 중에 전량 삭제된 상태 — 모드는 아직 artifacts다.
+    storeState = { ...initialAnalysisState, viewMode: "artifacts" };
     mounted.render(baseContext());
     expect(mounted.container.querySelector(".session-analyst__workspace")).not.toBeNull();
     expect(document.activeElement).toBe(mounted.container.querySelector(".session-analyst__modechip button"));
@@ -135,7 +140,14 @@ function mountPanel(initialContext: OperationRenderContext): {
   document.body.append(container);
   const root: Root = createRoot(container);
   const render = (context: OperationRenderContext) => {
-    act(() => root.render(createElement(AnalystChatPanel, { context })));
+    // CompanionFrame과 같은 배치 — 캡션 슬롯과 본문 슬롯이 한 프레임 안에 함께 선다.
+    rerenderStore = () => root.render(createElement(
+      "div",
+      null,
+      createElement(AnalystCaption, { context, key: "caption" }),
+      createElement(AnalystChatPanel, { context, key: "body" }),
+    ));
+    act(() => rerenderStore());
   };
   render(initialContext);
   return {

@@ -40,6 +40,9 @@ export interface AnalysisState {
   readonly artifactPublished: { readonly artifact: AnalysisArtifact; readonly durationMs: number | null } | null;
   readonly selectionLocked: boolean;
   readonly selectionSaved: boolean;
+  /* 모드는 캡션의 세그먼트가 바꾸고 본문이 따른다 — 두 슬롯이 서로 다른 React 서브트리라
+     지역 상태로는 공유되지 않는다. */
+  readonly viewMode: "chat" | "artifacts";
   readonly error: string | null;
 }
 
@@ -63,6 +66,7 @@ export const initialAnalysisState: AnalysisState = {
   artifactPublished: null,
   selectionLocked: false,
   selectionSaved: false,
+  viewMode: "chat",
   error: null,
 };
 
@@ -86,7 +90,8 @@ export type AnalysisAction =
   | { readonly type: "selection-lock"; readonly locked: boolean }
   | { readonly type: "selection-saved" }
   | { readonly type: "selection-saved-clear" }
-  | { readonly type: "clear-artifacts" };
+  | { readonly type: "clear-artifacts" }
+  | { readonly type: "view-mode"; readonly mode: "chat" | "artifacts" };
 
 export function analysisReducer(state: AnalysisState, action: AnalysisAction): AnalysisState {
   if (action.type === "catalog") {
@@ -144,6 +149,7 @@ export function analysisReducer(state: AnalysisState, action: AnalysisAction): A
   if (action.type === "selection-saved-clear") return state.selectionSaved ? { ...state, selectionSaved: false } : state;
   // Clear는 완료 카드도 함께 걷는다 — 삭제된 artifact를 여는 CTA가 남으면 안 된다.
   if (action.type === "clear-artifacts") return { ...state, artifacts: [], artifactPublished: null };
+  if (action.type === "view-mode") return state.viewMode === action.mode ? state : { ...state, viewMode: action.mode };
   if (action.type !== "event") return state;
 
   const event = action.event;
