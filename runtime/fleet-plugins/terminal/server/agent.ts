@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -1067,15 +1067,24 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // PTY 스폰이 in-flight인 세션(starting)은 activity가 아직 null이라 non-live로 읽힌다 —
     // 이때 전환하면 launch가 완주해 PTY와 SDK가 같은 provider 세션의 이중 필자가 된다.
     if (info?.status === "starting") {
-      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: "starting" });
       return true;
     }
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (live) {
       // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기·턴 종료 후에도 살아 있는 백그라운드
       // 작업(backgroundPending) 중의 PTY를 접으면 그 작업을 잃는다(활동축 불변식과 같은 판정).
-      if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working" || info?.backgroundPending === true) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+      //
+      // 사유는 뭉뚱그리지 않는다. "지금은 안 됩니다"만 돌려주면 사용자가 무엇이 끝나기를
+      // 기다려야 하는지 알 수 없고, 기다림의 대상이 셋(턴·내 답·백그라운드 작업)이라 그 차이가
+      // 곧 다음 행동의 차이다. 우선순위는 활동축 해석과 같게 대기를 작업보다 앞세운다.
+      const busyReason = info?.attentionPending === true
+        ? "awaiting"
+        : (info?.turnState === "running" || info?.modelActivity === "working")
+          ? "turn"
+          : info?.backgroundPending === true ? "background" : null;
+      if (busyReason) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: busyReason });
         return true;
       }
     }
@@ -1315,6 +1324,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
     }
     const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
+    const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
     const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
     const systemPrompt = systemPromptMode === "off"
       ? undefined
@@ -1349,6 +1359,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
+        // 터미널이 `--settings`로 강제하는 것과 같은 값이다. 없으면 같은 프롬프트가 표면에
+        // 따라 다른 내장 스킬을 깨운다.
+        ...(chatSkillOverrides ? { skillOverrides: chatSkillOverrides } : {}),
         // 터미널 런치와 같은 자리에 같은 옵션으로 렌더한다 — 두 표면이 한 플러그인을 공유한다.
         resolveFleetPluginRoots: () => renderFleetPluginRootsForChat({
           cwd,

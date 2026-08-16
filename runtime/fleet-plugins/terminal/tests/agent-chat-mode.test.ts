@@ -66,7 +66,7 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "turn" } });
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     expect(harness.terminate).not.toHaveBeenCalled();
   });
@@ -81,7 +81,7 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "background" } });
     expect(harness.terminate).not.toHaveBeenCalled();
   });
 
@@ -99,7 +99,7 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "starting" } });
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     releaseAttach();
     await delivery;

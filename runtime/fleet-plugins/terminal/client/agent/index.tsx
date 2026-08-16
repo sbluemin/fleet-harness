@@ -500,10 +500,33 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   );
 }
 
+/**
+ * 전환이 막힌 사유 → 문구 키. 서버가 사유를 못 실어 보냈으면 뭉뚱그린 문구로 내려간다 —
+ * 모르는 사유를 아는 척 이름 붙이는 것보다 낫다.
+ */
+type ChatConvertBusyKey =
+  | "terminal.chat.convertBusy"
+  | "terminal.chat.convertBusyTurn"
+  | "terminal.chat.convertBusyAwaiting"
+  | "terminal.chat.convertBusyBackground"
+  | "terminal.chat.convertBusyStarting";
+
+function chatConvertBusyKey(reason: string | null): ChatConvertBusyKey {
+  switch (reason) {
+    case "turn": return "terminal.chat.convertBusyTurn";
+    case "awaiting": return "terminal.chat.convertBusyAwaiting";
+    case "background": return "terminal.chat.convertBusyBackground";
+    case "starting": return "terminal.chat.convertBusyStarting";
+    default: return "terminal.chat.convertBusy";
+  }
+}
+
 /** Chat view 전환 확인 오버레이 — 칩은 뷰 칩 줄이 소유하고, 여기는 확인과 서버 전환만 진다. */
 function ChatModeInterstitial({ context, onClose }: { readonly context: OperationRenderContext; readonly onClose: () => void }) {
   const t = getT(context.language ?? "en");
   const [state, setState] = React.useState<"idle" | "converting" | "busy" | "error">("idle");
+  // 무엇이 끝나야 전환되는지 — 서버가 구분해 보내 준 사유. 알 수 없으면 뭉뚱그린 문구로 내려간다.
+  const [busyReason, setBusyReason] = React.useState<string | null>(null);
   const titleId = `agent-chat-inter-${context.operationId}`;
   const convert = React.useCallback(async () => {
     setState("converting");
@@ -512,7 +535,9 @@ function ChatModeInterstitial({ context, onClose }: { readonly context: Operatio
       // payload.chatMode 반영이 뷰를 전환한다 — 여기서는 오버레이만 닫는다.
       onClose();
     } catch (error) {
-      setState(error instanceof AgentApiError && error.message === "chat_convert_busy" ? "busy" : "error");
+      const busy = error instanceof AgentApiError && error.message === "chat_convert_busy";
+      setBusyReason(busy && error instanceof AgentApiError ? error.reason ?? null : null);
+      setState(busy ? "busy" : "error");
     }
   }, [context.operationId, onClose]);
   return (
@@ -521,8 +546,18 @@ function ChatModeInterstitial({ context, onClose }: { readonly context: Operatio
             <h4 id={titleId}>{t("terminal.chat.confirmTitle")}</h4>
             <p>{t("terminal.chat.confirmBody")}</p>
             <p className="agent-chat-inter-fine">{t("terminal.chat.confirmFine")}</p>
-            {state === "busy" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertBusy")}</p> : null}
-            {state === "error" ? <p className="agent-chat-inter-error">{t("terminal.chat.convertFailed")}</p> : null}
+            {state === "busy" ? (
+              <p className="agent-chat-inter-error" role="alert">
+                <span className="agent-chat-inter-error-mark" aria-hidden="true">⚠</span>
+                <span>{t(chatConvertBusyKey(busyReason))}</span>
+              </p>
+            ) : null}
+            {state === "error" ? (
+              <p className="agent-chat-inter-error" role="alert">
+                <span className="agent-chat-inter-error-mark" aria-hidden="true">✕</span>
+                <span>{t("terminal.chat.convertFailed")}</span>
+              </p>
+            ) : null}
             <div className="agent-chat-inter-actions">
               <button type="button" className="agent-chat-inter-button" autoFocus onClick={onClose}>
                 {t("terminal.chat.confirmKeep")}

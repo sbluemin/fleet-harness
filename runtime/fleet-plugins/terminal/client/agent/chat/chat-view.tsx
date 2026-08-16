@@ -2,7 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { answerAgentChatAsk, readAgentChatJobDetail, stopAgentChatTurn } from "../api.js";
+import { AgentApiError, answerAgentChatAsk, readAgentChatJobDetail, stopAgentChatTurn } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
@@ -58,7 +58,7 @@ export function AgentChatView({
   const runtime = context.runtimeState;
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   const [terminalPending, setTerminalPending] = React.useState(false);
-  const [terminalError, setTerminalError] = React.useState(false);
+  const [terminalError, setTerminalError] = React.useState<"none" | "busy" | "failed">("none");
   const [stopping, setStopping] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
@@ -84,11 +84,12 @@ export function AgentChatView({
 
   const handleOpenTerminal = React.useCallback(async () => {
     setTerminalPending(true);
-    setTerminalError(false);
+    setTerminalError("none");
     try {
       await onOpenTerminal();
-    } catch {
-      setTerminalError(true);
+    } catch (error) {
+      // 왜 안 되는지가 다음 행동을 가른다 — 진행 중인 턴은 기다리면 풀리고, 그 밖의 실패는 아니다.
+      setTerminalError(error instanceof AgentApiError && error.message === "chat_busy" ? "busy" : "failed");
     } finally {
       setTerminalPending(false);
     }
@@ -322,8 +323,13 @@ export function AgentChatView({
         {state.connection === "lost"
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
           : null}
-        {terminalError
-          ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.openTerminalFailed")}</div>
+        {terminalError !== "none"
+          ? (
+            <div className="agent-chat-sys agent-chat-sys--error" role="alert">
+              <span aria-hidden="true">{terminalError === "busy" ? "⚠" : "✕"}</span>{" "}
+              {t(terminalError === "busy" ? "terminal.chat.openTerminalBusy" : "terminal.chat.openTerminalFailed")}
+            </div>
+          )
           : null}
           </div>
 

@@ -1030,8 +1030,17 @@
 }
 
 .agent-chat-inter-error {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: 12px;
   color: var(--coral-ink);
+}
+
+/* 막힌 이유는 본문과 같은 무게로 흐르면 읽히지 않는다 — 글머리 표식이 그 줄을 결과로 만든다. */
+.agent-chat-inter-error-mark {
+  flex: 0 0 auto;
+  font-weight: var(--weight-medium);
 }
 
 .agent-chat-inter-actions {
