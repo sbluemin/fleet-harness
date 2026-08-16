@@ -2554,26 +2554,38 @@ describe("War Room deck panel grammar", () => {
     expect(frame).not.toMatch(/canvas-operation-titlebar"[^>]*inert/);
   });
 
-  it("hides Analyst and Chat-view chips on a deck tile and keeps them on the stage", () => {
-    // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 칩은 눌러도 동작하지 않는다.
-    // 무대에 오른 패널은 is-deck-tile이 아니므로 칩이 기존처럼 보인다.
+  it("hides Analyst, Chat-view, stop, and reply chrome on a deck tile and keeps them on the stage", () => {
+    // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 컨트롤은 눌러도 동작하지 않는다.
+    // 무대에 오른 패널은 is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다.
     const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-view-chip-row");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-mode-chip");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow \{[^}]*\}/)?.[0] ?? "";
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-stop");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-invite");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-stop,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-reply,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-invite \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
     // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.
     expect(hide).not.toContain("is-active");
     expect(hide).not.toContain("is-quicklook");
-    // 회신 버튼은 칩 줄이 아니다 — 별도 규칙으로 숨기면 이 계약이 깨져야 한다.
-    expect(terminalChatCss).not.toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
-    // 칩을 숨긴 카드에서는 그 자리를 피하던 상단 여백만 거둔다. 하단은 회신 버튼이 쓴다.
+    // 칩을 숨긴 카드에서는 그 자리를 피하던 상단 여백만 거둔다. 하단 45px는 작업 스트립이 쓰므로
+    // 타일 규칙은 padding-top만 적는다 — padding-bottom/padding 단축을 쓰면 베이스의 45px가 죽는다.
     const logOnTile = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-log \{[^}]*\}/)?.[0] ?? "";
     expect(logOnTile).toContain("padding-top: var(--space-3);");
     expect(logOnTile).not.toContain("45px");
+    expect(logOnTile).not.toContain("padding-bottom");
+    expect(logOnTile).not.toMatch(/(?:^|[^-])padding:/);
+    // 회신·중지가 없으면 스트립이 그 폭을 비우지 않는다. 스트립 자체는 숨기지 않는다.
+    const stripOnTile = [...terminalChatCss.matchAll(/\.canvas-operation\.is-deck-tile \.agent-chat-strip \{[^}]*\}/g)].map((match) => match[0]);
+    expect(stripOnTile).toHaveLength(1);
+    expect(stripOnTile[0]).toContain("max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));");
+    expect(stripOnTile[0]).not.toContain("40px");
+    expect(stripOnTile[0]).not.toContain("72px");
+    expect(stripOnTile[0]).not.toContain("display: none");
+    expect(hide).not.toContain("agent-chat-strip");
   });
 
   it("gives the promotion surface the body and leaves the caption its own controls", () => {
