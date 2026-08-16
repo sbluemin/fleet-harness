@@ -111,6 +111,25 @@ jobs:
         if: steps.platform.outputs.configured == 'true'
         working-directory: runtime/fleet-mobile/ios
         run: pod install
+      # withFleetIos는 AppDelegate에서 fleet:// 페어링 크리덴셜을 지운다 — Android의
+      # FleetLinkActivity가 주는 보장을 iOS에서 만드는 유일한 자리다. 플러그인은 앵커를 못
+      # 찾으면 예외를 던지지만, 그건 "prebuild가 안 죽었다"는 간접 증거일 뿐이다. Expo가
+      # 템플릿을 바꿔 정규식이 엉뚱한 곳을 맞추면 빌드는 통과하고 크리덴셜만 새므로,
+      # 생성된 파일에 실제로 들어갔는지 여기서 직접 확인한다.
+      - name: Assert the pairing credential is stripped in AppDelegate
+        if: steps.platform.outputs.configured == 'true'
+        run: |
+          delegate=$(ls runtime/fleet-mobile/ios/*/AppDelegate.swift 2>/dev/null | head -n 1)
+          if [ -z "$delegate" ]; then
+            echo "::error::prebuild produced no AppDelegate.swift to check" >&2
+            exit 1
+          fi
+          if ! grep -q "fleetSanitizedLaunchOptions" "$delegate"; then
+            echo "::error::$delegate does not strip the fleet:// launch URL — Linking.getInitialURL() would hand the pairing token to JS" >&2
+            sed -n '1,80p' "$delegate" >&2
+            exit 1
+          fi
+          grep -n "fleetSanitizedLaunchOptions" "$delegate"
       # 오토링킹이 로컬 모듈을 놓치면 빌드는 성공하고 앱은 런타임에야 죽는다 — 여기서 크게 실패시킨다.
       - name: Assert the fleet-console-view pod was autolinked
         if: steps.platform.outputs.configured == 'true'
