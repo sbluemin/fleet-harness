@@ -69,6 +69,13 @@ public struct PersistedTarget: Equatable, Codable, Sendable {
   public var consoleUrl: String { "\(origin)/console/" }
   public var joinUrl: String { "\(origin)/api/v1/join" }
   public var readinessUrl: String { "\(origin)/api/v1/status" }
+
+  /// LoopbackGateway.kt PersistedTarget.authority의 이식 — Host 헤더용 authority.
+  /// IPv6는 브래킷, 443은 생략.
+  public var authority: String {
+    let host = hostname.contains(":") ? "[\(hostname)]" : hostname
+    return port == 443 ? host : "\(host):\(port)"
+  }
 }
 
 /// RemoteConnection.kt ConnectionFailure의 이식. 네이티브→JS 에러 계약은 HTTP 상태가 아니라
