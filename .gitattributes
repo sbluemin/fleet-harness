@@ -9,3 +9,6 @@
 *.tsx      text eol=lf
 *.json     text eol=lf
 *.gitignore text eol=lf
+# pnpm은 패치 파일을 바이트 해시로 검증한다 — 어떤 플랫폼 체크아웃에서도 LF를 보존해야
+# 락파일의 해시와 일치한다.
+*.patch    text eol=lf
