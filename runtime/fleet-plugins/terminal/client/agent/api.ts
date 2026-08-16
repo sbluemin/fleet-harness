@@ -190,11 +190,30 @@ export async function answerAgentChatAsk(
 /**
  * 도는 턴을 끊는다.
  *
- * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살고, 잡 표면이 그것을 그대로
- * 말한다 — 잡 하나만 멈추는 제어 경로는 SDK에 없다(0.3.212 확인).
+ * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살며, 그것을 멈추는 문은
+ * `stopAgentChatJob`이 따로 연다.
  */
 export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+/**
+ * 백그라운드 작업 하나를 멈춘다.
+ *
+ * 성공은 "자식이 중단 요청을 받았다"까지다 — 잡 줄이 닫히는 것은 자식이 보내는 결말 알림이
+ * 하는 일이므로, 호출부가 낙관적으로 상태를 고쳐 쓰지 않는다.
+ */
+export async function stopAgentChatJob(sessionId: string, jobId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-job-stop`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jobId }),
+    signal,
+  });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);

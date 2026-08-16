@@ -6,10 +6,10 @@ import {
   type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
   type ClaudeGatewayMessage,
-  type ClaudeGatewayRun,
   type ClaudeGatewaySdk,
   type ClaudeGatewaySdkOptions,
   type ClaudeGatewayServedMcpServer,
+  type ClaudeGatewaySession,
   type ClaudeGatewaySystemPrompt,
 } from "@dotobokuri/core-agent/claude";
 
@@ -247,6 +247,10 @@ class AgentChatSession {
   private latestSessionId: string | null;
   /** 이미 Operation에 심은 세션 id. 같은 좌표를 매 턴 다시 심지 않기 위한 축이다. */
   private reportedSessionId: string | null = null;
+  /** 날고 있는 좌표 심기. 리더가 메시지마다 이 자리를 지나므로 겹치지 않게 붙든다. */
+  private syncFlight: Promise<void> | null = null;
+  /** 그 비행 중에 들어온 요청이 있었다. 착지 후 좌표가 아직 남아 있으면 한 번 더 간다. */
+  private syncDirty = false;
   private journal: AgentChatJournalEvent[] = [];
   private seq = 0;
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
@@ -254,11 +258,52 @@ class AgentChatSession {
   private pendingTurns = 0;
   private disposed = false;
   /**
-   * 지금 도는 턴의 런. `runTurn`의 지역 변수로 두면 밖에서 닿을 수 없어 중지가 불가능하다 —
-   * 이 필드가 곧 중지 레버이며, 턴이 끝나면 반드시 null로 돌아간다(스스로 close된 런을 들고
-   * 있으면 다음 중지가 이미 죽은 런을 닫고 성공했다고 답한다).
+   * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
+   * 살아 있으며, 그 수명이 곧 백그라운드 작업의 수명이다 — 턴 단위 실행은 vendor가 single-turn으로
+   * 보고 자식의 입력을 닫아, Claude Code의 wind-down이 백그라운드 셸을 유예 뒤 kill한다.
    */
-  private activeRun: ClaudeGatewayRun | null = null;
+  private session: ClaudeGatewaySession | null = null;
+  private sessionFlight: Promise<ClaudeGatewaySession> | null = null;
+  /** 세션 스트림을 소진하는 리더. dispose가 착지를 기다리는 자리다. */
+  private readerDone: Promise<void> | null = null;
+  /**
+   * 지금 화면에 열려 있는 턴이 있는가.
+   *
+   * 스트림이 턴마다 끝나지 않으므로 이 축이 필요하다. 여는 자리는 둘 — 사용자가 보낸 디스패치와,
+   * 백그라운드 작업이 끝나 자식이 모델을 다시 깨운 뒤 흐르기 시작한 내용이다. 닫는 자리는 `result`
+   * 하나이고, 중지도 여기를 닫는다.
+   */
+  private turnOpen = false;
+  /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
+  private awaitingTurn: (() => void) | null = null;
+  /**
+   * 열린 턴이 닫히기를 기다리는 디스패치들.
+   *
+   * 자식이 백그라운드 완료로 스스로 깨어나 연 턴은 아무도 기다리지 않는다. 그 창에 사용자
+   * 메시지가 들어오면 자기 턴을 세우지 못한 채 남의 결말에 실려 나가므로, 여기서 줄을 세운다.
+   */
+  private readonly turnCloseWaiters = new Set<() => void>();
+  /**
+   * 중지한 턴이 아직 자기 `result`를 내지 않았다.
+   *
+   * 자식은 중단을 받아도 그 턴의 결말을 **반드시** 낸다(실측: `interrupt()` 뒤 2ms에
+   * `error_during_execution`). 그것은 이미 닫은 턴의 것이므로 새 턴의 결말로 읽으면 안 되고,
+   * 그 사이에 들어온 디스패치는 그 한 건이 지나갈 때까지 기다린다.
+   */
+  private settlingStoppedTurn = false;
+  /**
+   * 지금 열린 턴의 프롬프트가 자식에 실제로 닿았는가.
+   *
+   * 닿지 않은 턴에는 자식이 낼 결말도 없다 — 세션을 여는 동안(자식 spawn·플러그인·MCP 발급은
+   * 몇 초가 걸린다) 사용자가 중지하면 그 턴은 자식이 존재조차 모른 채 닫힌다. 그때 결말을
+   * 기다리기 시작하면 오지 않을 것을 기다리며 세션이 영구히 막힌다.
+   */
+  private turnReachedChild = false;
+  /**
+   * 지금 살아 있다고 알려진 잡. 세션이 끊기면 이 잡들은 자식과 함께 사라지므로, 원장에 "도는 중"
+   * 으로 남겨 두지 않고 거둬진 것으로 닫는다 — 화면이 없는 작업을 기다리게 두지 않기 위해서다.
+   */
+  private readonly liveJobs = new Set<string>();
   /**
    * 중지 세대. 중지는 도는 턴 하나가 아니라 **그 시점의 큐 전체**를 끊어야 한다 — 큐에 밀려
    * 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다. 각 턴은
@@ -376,7 +421,7 @@ class AgentChatSession {
     this.turnFlight = this.turnFlight
       // 큐에서 기다리는 동안 중지가 눌렸다면 이 턴은 시작하지 않는다. 시작한 뒤 끊으면 모델을
       // 한 번 깨우고 그 대가를 치른 다음 버리는 셈이라, 사용자가 멈춘 것을 그대로 실행한 것이 된다.
-      .then(() => (epoch === this.stopEpoch ? this.runTurn(text) : undefined))
+      .then(() => (epoch === this.stopEpoch ? this.dispatch(text) : undefined))
       .catch(() => undefined)
       .finally(() => {
         this.pendingTurns -= 1;
@@ -386,25 +431,52 @@ class AgentChatSession {
   /**
    * 도는 턴을 사용자가 끊는다.
    *
-   * 이 자리가 여는 문은 **턴 하나**다. 잡 하나만 멈추는 길은 `TaskStop`뿐인데 그것은 모델이
-   * 부르는 도구이고 호스트에게는 그 제어 경로가 없다(SDK 0.3.212 실측). 그래서 여기서 잡을
-   * 멈추는 척하지 않는다 — 턴을 끊어도 이미 태어난 백그라운드 작업은 계속 살고, 원장의 잡
-   * 표면이 그것을 그대로 말한다.
+   * 이 자리가 여는 문은 **턴 하나**다. 자식은 죽지 않으며, 이미 태어난 백그라운드 작업도 계속
+   * 산다 — 그것을 멈추는 문은 `stopJob`이 따로 연다. 턴만 끊는 것이 CLI의 Esc와 같은 자리다.
    *
    * 돌려주는 값은 "끊을 것이 있었는가"다. 없는데 true를 돌려주면 화면이 멈춤을 그리고 아무 일도
    * 일어나지 않는다.
    */
   stopTurn(): boolean {
     if (this.disposed) return false;
-    if (this.pendingTurns === 0) return false;
+    if (this.pendingTurns === 0 && !this.turnOpen) return false;
     this.stopEpoch += 1;
-    const run = this.activeRun;
-    this.activeRun = null;
-    // 붙들린 권한 응답을 먼저 푼다. 남겨 두면 close된 스트림을 기다리는 promise 하나가 남아
-    // 다음 턴이 영영 시작하지 못한다 — 턴 종료 경로가 비우는 그 맵을 여기서도 비워야 한다.
+    // 붙들린 권한 응답을 먼저 푼다. 남겨 두면 응답을 기다리는 promise 하나가 남아 자식이 그
+    // 도구 호출에서 영영 멈춘다 — 턴 종료 경로가 비우는 그 맵을 여기서도 비워야 한다.
     this.abandonAsks("The turn was stopped before the question was answered.");
-    run?.close();
+    // 자식에게 중단을 알린다. 응답을 기다리지 않는 이유는 이 자리가 HTTP 요청 경계이기 때문이고,
+    // 실패해도 아래에서 턴은 이미 닫힌 것으로 그린다 — 그 뒤 도착하는 result는 닫힌 턴에 붙지
+    // 않는다(turnOpen이 false다).
+    void this.session?.interrupt().catch(() => undefined);
+    // 자식은 이 턴의 결말을 곧 낸다. 화면은 지금 닫지만, 그 한 건이 다음 턴의 결말로 읽히지
+    // 않도록 표시해 둔다 — 중지 직후의 새 메시지가 그것에 실려 나가는 것이 그 결함이다.
+    //
+    // 프롬프트가 아직 자식에 닿지 않았다면 기다릴 결말도 없다. 그때 표시를 세우면 오지 않을
+    // 것을 기다리며 이후 모든 메시지가 막힌다.
+    if (this.turnOpen && this.turnReachedChild) this.settlingStoppedTurn = true;
+    this.closeTurn({ stopped: true });
     return true;
+  }
+
+  /**
+   * 백그라운드 작업 하나를 사용자가 멈춘다.
+   *
+   * 좌표는 SDK가 발급한 `task_id`이며, 우리가 그 잡을 실제로 본 적이 있어야 한다(`jobKinds`가
+   * 그 문이다) — 브라우저가 지어낸 id는 자식에 닿지 않는다. 결말은 자식이 내는 `stopped` 알림이
+   * 말하므로, 여기서 원장을 미리 고쳐 쓰지 않는다.
+   */
+  async stopJob(jobId: string): Promise<boolean> {
+    if (this.disposed) return false;
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(jobId)) return false;
+    if (!this.jobKinds.has(jobId)) return false;
+    const session = this.session;
+    if (!session) return false;
+    try {
+      await session.stopTask(jobId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
   /** 지금 답을 기다리는 도구 호출이 있는가. 라우트가 대기 유무를 묻는 자리. */
@@ -499,12 +571,23 @@ class AgentChatSession {
     if (this.disposed) return;
     this.disposed = true;
     this.abandonAsks("The chat session closed before the question was answered.");
-    // SDK를 먼저 접는다 — dispose가 활성 런을 close해 진행 중 턴을 끊는다. 순서를 뒤집어
-    // 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을 무기한 막는다.
+    // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
+    // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을
+    // 무기한 막는다. 살아 있던 백그라운드 작업도 자식과 함께 거둬진다 — 터미널 세션을 닫는 것과
+    // 같은 결말이며, 원장은 아래 리더 종료 경로가 정직하게 닫는다.
+    const session = this.session;
+    this.session = null;
+    session?.close();
     const sdk = this.sdk;
     this.sdk = null;
     if (sdk) await sdk.dispose().catch(() => undefined);
+    if (this.readerDone) await this.readerDone.catch(() => undefined);
+    // 줄 서 있던 디스패치를 깨운다. 닫을 턴이 없어 closeTurn이 그냥 돌아가는 경로에서도 이들을
+    // 남겨 두면 turnFlight가 영영 착지하지 않아 dispose가 그 자리에서 멈춘다.
+    this.releaseTurnCloseWaiters();
     await this.turnFlight.catch(() => undefined);
+    // 날고 있는 좌표 심기를 착지시킨다 — 끝난 세션이 뒤늦게 Operation을 고쳐 쓰지 않게.
+    if (this.syncFlight) await this.syncFlight.catch(() => undefined);
     // 발급이 아직 날고 있으면 그것부터 착지시킨다 — 먼저 반납하면 뒤늦게 도착한 토큰이 주인
     // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
     if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
@@ -681,7 +764,7 @@ class AgentChatSession {
    * 응답을 기다리지 않는 이유는 스트림 때문이다: 여기서 await하면 첫 메시지 소비가 그만큼 늦다.
    * 늦게 도착한 답도 같은 턴의 시작 시점 값이므로, 그때 실어도 뜻이 달라지지 않는다.
    */
-  private snapshotContextAtTurnStart(run: ClaudeGatewayRun): void {
+  private snapshotContextAtTurnStart(session: ClaudeGatewaySession): void {
     // 응답은 이 턴이 **끝난 뒤에** 도착한다(실측: turn-end → context). 그래서 어느 턴의 값인지를
     // 세대로 붙들어 둔다 — 다음 턴이 이미 시작했다면 이 값은 그 턴의 것이 아니고, 그대로 실으면
     // 리듀서가 남의 턴에 붙여 증가분을 한 턴씩 밀어 버린다. 새 턴은 자기 스냅숏을 따로 받는다.
@@ -690,7 +773,7 @@ class AgentChatSession {
     // 던지는 런이 오면 그 예외는 턴 루프까지 올라가 대화 전체를 실패로 닫는다(실측: 계약을
     // 따르지 않는 대역 하나가 세션 테스트 10건을 그렇게 무너뜨렸다).
     try {
-      void run.getContextUsage().then((usage) => {
+      void session.getContextUsage().then((usage) => {
         if (usage && generation === this.contextGeneration) this.pushContext(usage);
       }, () => undefined);
     } catch {
@@ -820,115 +903,273 @@ class AgentChatSession {
     return this.fleetMcpFlight;
   }
 
-  private async runTurn(text: string): Promise<void> {
+  /**
+   * 자식 하나를 열고, 그 스트림을 끝까지 소진하는 리더를 세운다. 세션당 한 번이다.
+   *
+   * 턴이 아니라 세션이 실행 정책을 소유한다 — 모델·강도·doctrine·도구 좌표·cwd는 자식이 사는
+   * 동안 바뀌지 않고, 바뀌어야 한다면 그것은 이 세션을 접고 새로 여는 사건이다.
+   */
+  private async ensureSession(): Promise<ClaudeGatewaySession> {
+    if (this.session) return this.session;
+    if (!this.sessionFlight) {
+      this.sessionFlight = (async () => {
+        const sdk = await this.ensureSdk();
+        // Fleet 도구를 못 붙이는 것은 세션을 죽일 사유가 아니지만 조용히 넘길 사유도 아니다 —
+        // 도구 없이 도는 세션은 게이트웨이 로스터를 읽지 못한 채 위임을 판단한다.
+        const fleetMcpServers = await this.ensureFleetMcpServers().catch(() => {
+          this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
+          return [] as readonly ClaudeGatewayServedMcpServer[];
+        });
+        const session = await sdk.openSession({
+          model: this.seed.model,
+          ...(this.seed.effort ? { effort: this.seed.effort } : {}),
+          ...(this.seed.systemPrompt ? { systemPrompt: this.seed.systemPrompt } : {}),
+          ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
+          cwd: this.seed.cwd,
+          // 이어붙일 좌표는 세션을 열 때 한 번 선다. 채팅으로 태어난 세션에는 그것이 없고,
+          // SDK가 돌려주는 session_id가 그 자리를 채운다 — 자식이 사는 동안은 그 세션이 계속
+          // 자라므로 매 턴 다시 이어붙일 일이 없다.
+          ...(this.latestSessionId ? { resume: this.latestSessionId } : {}),
+          permissionMode: "bypassPermissions",
+          // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
+          // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
+          canUseTool: (name, input, context) => this.askUser(name, input, context),
+          // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
+          includePartialMessages: true,
+        });
+        if (this.disposed) {
+          session.close();
+          throw new Error("chat session disposed");
+        }
+        this.session = session;
+        this.readerDone = this.readSession(session);
+        return session;
+      })().finally(() => {
+        this.sessionFlight = null;
+      });
+    }
+    return this.sessionFlight;
+  }
+
+  /**
+   * 세션 스트림을 끝까지 읽는다. 이 루프가 사는 동안 자식은 "사용자가 아직 있다"고 보므로,
+   * 백그라운드 작업이 턴을 넘어 살고 그 결말 알림도 받을 자리가 있다.
+   *
+   * 여기서 끝나는 것은 턴이 아니라 세션이다 — 자식이 죽거나 우리가 접었을 때만 빠져나온다.
+   */
+  private async readSession(session: ClaudeGatewaySession): Promise<void> {
+    try {
+      for await (const message of session as AsyncIterable<ClaudeGatewayMessage>) {
+        if (typeof message.session_id === "string" && message.session_id.length > 0) {
+          this.latestSessionId = message.session_id;
+          // 아직 심지 않은 좌표가 있으면 심는다. 판정을 "id가 바뀌었는가"로 두면 이어받은 세션의
+          // **첫** 좌표가 영영 심기지 않는다 — 그 id는 처음부터 알고 있었으므로 바뀌지 않는다.
+          if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
+        }
+        this.rememberJobOutput(message);
+        for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
+          this.ingest(event);
+        }
+      }
+    } catch {
+      // 자식이 끊겼다. 다음 디스패치가 새 자식을 세우고 마지막 좌표로 이어붙인다.
+      if (!this.disposed) this.push({ kind: "error", code: "chat_session_lost" });
+    } finally {
+      this.retireSession(session);
+    }
+  }
+
+  /**
+   * 리더가 만든 이벤트 하나를 원장에 반영한다. 턴 경계도 여기서 결정된다.
+   *
+   * 스트림이 턴마다 끝나지 않으므로 경계는 내용이 말한다: `result`가 열린 턴을 닫고, 닫힌 뒤에
+   * 다시 흐르기 시작한 내용이 새 턴을 연다. 후자가 백그라운드 작업이 끝나 자식이 모델을 다시
+   * 깨운 자리이며, 그것을 앞 턴에 이어 붙이면 사용자가 읽은 답이 갈아치워진다.
+   */
+  private ingest(event: AgentChatStreamEvent): void {
+    if (event.kind === "turn-end") {
+      // 중지가 표시해 둔 결말은 여기서 소진된다. 열린 턴이 있으면 그 턴이 이 결말의 주인이고,
+      // 없으면 이미 닫은 턴의 것이므로 그리지 않고 줄 서 있던 디스패치만 깨운다.
+      const settling = this.settlingStoppedTurn;
+      this.settlingStoppedTurn = false;
+      if (this.turnOpen) {
+        this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }) });
+      } else if (settling) {
+        this.releaseTurnCloseWaiters();
+      }
+      return;
+    }
+    if (!this.turnOpen && opensChatTurn(event)) this.openTurn({ dispatched: false });
+    this.rememberTool(event);
+    this.trackJob(event);
+    // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
+    // 한 줄을 더 세우면 같은 사건이 두 번 읽힌다. 결과 줄은 짝을 못 찾아 스스로 버려진다.
+    if ((event.kind === "tool" || event.kind === "tool-start") && AGENT_CHAT_ASK_TOOLS.has(event.name)) return;
+    // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
+    // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
+    if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);
+    else this.push(event);
+  }
+
+  /** 살아 있는 잡의 집합을 이벤트대로 따라간다. `jobs`는 세는 것이 아니라 통째로 갈아 끼운다. */
+  private trackJob(event: AgentChatStreamEvent): void {
+    if (event.kind === "job") this.liveJobs.add(event.id);
+    else if (event.kind === "job-end") this.liveJobs.delete(event.id);
+    else if (event.kind === "jobs") {
+      this.liveJobs.clear();
+      for (const id of event.ids) this.liveJobs.add(id);
+    }
+  }
+
+  /**
+   * 턴 하나를 연다. 화면의 스피너와 활동축이 같은 순간에 켜지는 자리다.
+   *
+   * 이미 열려 있으면 다시 열지 않는다. 자식은 자기 큐를 갖고 있어 도는 중에도 메시지를 받는데
+   * (백그라운드가 끝나 모델이 다시 깨어난 턴이 그 상태다), 그때 두 번째 `turn-start`를 세우면
+   * 원장에 닫히지 않는 턴이 겹쳐 남는다 — 결말은 하나뿐이기 때문이다.
+   */
+  private openTurn(options: { readonly dispatched: boolean }): void {
+    if (this.turnOpen) return;
+    this.turnOpen = true;
+    // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
+    this.turnReachedChild = !options.dispatched;
+    this.push({ kind: "turn-start", at: Date.now() });
+    // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
+    if (!options.dispatched) this.seed.reportActivity(true);
+  }
+
+  /**
+   * 열린 턴을 닫는다. 부르는 자리는 셋 — 자식의 `result`, 사용자의 중지, 세션의 소멸.
+   *
+   * 대기 중인 디스패치를 여기서 푼다. 그것이 풀려야 큐에 있던 다음 메시지가 시작하고, 풀리지
+   * 않으면 세션은 조용히 멈춘 채 사용자의 다음 문장을 영영 받지 않는다.
+   */
+  private closeTurn(end: { readonly ok?: boolean; readonly stopped?: boolean; readonly durationMs?: number; readonly answer?: string }): void {
+    if (!this.turnOpen) return;
+    this.turnOpen = false;
+    this.turnReachedChild = false;
+    this.push({
+      kind: "turn-end",
+      ok: end.ok ?? end.stopped !== true,
+      ...(end.stopped === true ? { stopped: true } : {}),
+      ...(end.durationMs === undefined ? {} : { durationMs: end.durationMs }),
+      ...(end.answer === undefined ? {} : { answer: end.answer }),
+    });
+    // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
+    this.abandonAsks("The turn ended before the question was answered.");
+    this.seed.reportActivity(false);
+    const awaiting = this.awaitingTurn;
+    this.awaitingTurn = null;
+    awaiting?.();
+    this.releaseTurnCloseWaiters();
+  }
+
+  /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */
+  private releaseTurnCloseWaiters(): void {
+    if (this.turnCloseWaiters.size === 0) return;
+    const waiters = [...this.turnCloseWaiters];
+    this.turnCloseWaiters.clear();
+    for (const wake of waiters) wake();
+  }
+
+  /**
+   * 열린 턴이 닫힐 때까지 기다린다.
+   *
+   * 억제가 아니라 대기여야 하는 이유: 열린 턴에 그냥 올라타면 그 턴의 `result`가 이 디스패치를
+   * 풀어 버린다. 사용자의 프롬프트는 아직 자식 안에서 도는데 원장은 끝났다고 말하고, 큐의 다음
+   * 메시지가 그 위에서 조기에 시작한다.
+   */
+  private async awaitTurnClose(): Promise<void> {
+    if (!this.turnOpen && !this.settlingStoppedTurn) return;
+    await new Promise<void>((resolve) => {
+      this.turnCloseWaiters.add(resolve);
+    });
+  }
+
+  /**
+   * 자식이 사라졌다. 열린 턴과 살아 있던 잡을 정직하게 닫고, 다음 디스패치가 새 자식을 세우도록
+   * 자리를 비운다.
+   *
+   * 잡을 `stopped`로 닫는 이유: 그 작업들은 자식과 함께 사라졌다. 원장에 "도는 중"으로 남겨 두면
+   * 화면은 오지 않을 결말을 기다리고, 그 조용한 거짓말이 이 원장이 고치려던 바로 그것이다.
+   */
+  private retireSession(session: ClaudeGatewaySession): void {
+    if (this.session === session) this.session = null;
+    this.readerDone = null;
+    // 스트림이 끝났다고 슬롯이 돌아오지는 않는다 — SDK 인스턴스는 `close()`를 받아야 자리를
+    // 비운다. 부르지 않으면 다음 메시지의 openSession이 "이미 세션이 돈다"로 거절되고, 그때부터
+    // 이 Operation은 dispose될 때까지 한 마디도 받지 못한다.
+    try {
+      session.close();
+    } catch {
+      // 이미 접힌 세션을 다시 닫는 것은 무해하다(계약상 멱등).
+    }
+    for (const id of [...this.liveJobs]) this.push({ kind: "job-end", id, status: "stopped" });
+    this.liveJobs.clear();
+    // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
+    // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
+    this.settlingStoppedTurn = false;
+    this.closeTurn({ ok: false });
+    this.releaseTurnCloseWaiters();
+  }
+
+  /**
+   * 사용자의 메시지 하나를 자식에게 보내고 그 턴이 닫힐 때까지 기다린다.
+   *
+   * 기다리는 이유는 자식의 사정이 아니라 화면의 사정이다 — 자식은 자기 큐를 갖고 있어 턴 중에
+   * 받아도 잃지 않지만, 원장은 턴 하나씩 그리므로 앞 턴이 닫힌 뒤 다음 디스패치를 세운다.
+   */
+  private async dispatch(text: string): Promise<void> {
     if (this.disposed) return;
     // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
-    // "실패가 아니라 중지"라는 판정이다 — close된 스트림은 조용히 끝날 수도, 던질 수도 있어서
-    // 예외 유무로는 두 결말을 가를 수 없다.
+    // "실패가 아니라 중지"라는 판정이다.
     const epoch = this.stopEpoch;
     const stopped = (): boolean => epoch !== this.stopEpoch;
+    // 자식이 스스로 깨어나 연 턴이 아직 돌고 있으면 그것이 닫힌 뒤에 선다. 그 턴에 올라타면
+    // 남의 결말이 이 디스패치를 풀어, 아직 답하지도 않은 프롬프트가 끝난 것으로 그려진다.
+    await this.awaitTurnClose();
+    // 기다리는 동안 세션이 접혔거나 중지가 눌렸다면 이 턴은 시작하지 않는다.
+    if (this.disposed || stopped()) return;
     this.push({ kind: "dispatch", text, at: Date.now() });
-    this.push({ kind: "turn-start", at: Date.now() });
-    // 활동 보고가 먼저다. 실패하면 SDK를 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
+    // 활동 보고가 먼저다. 실패하면 자식을 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
     // 상태를 만들지 않기 위해, 여기서는 일을 시작하지 않는 쪽을 고른다.
     if (!this.seed.reportActivity(true)) {
       this.push({ kind: "error", code: "chat_activity_unavailable" });
       this.push({ kind: "turn-end", ok: false });
       return;
     }
-    // 하나의 startTurn이 result를 여러 번 낸다. 백그라운드 작업이 끝나면 SDK가 새 system/init과
-    // 함께 모델을 다시 깨우고, 그 응답이 두 번째 result로 닫힌다(2026-08-16 실측). 닫힌 턴에
-    // 그 응답을 이어 붙이면 앞 턴의 Answer가 갈아치워지므로, 내용이 다시 흐르기 시작하면
-    // 디스패치 없는 새 턴을 연다.
-    //
-    // 그래서 이 축은 "result를 본 적 있는가"가 아니라 "지금 열려 있는 턴이 닫혔는가"다. 전자로
-    // 정리 경로를 판단하면, 후속 턴이 열린 뒤 스트림이 두 번째 result 없이 끝나거나 던질 때
-    // 아무도 그 턴을 닫지 않아 원장에 영원히 도는 스피너가 남는다.
-    let turnClosed = false;
+    this.openTurn({ dispatched: true });
     try {
-      const sdk = await this.ensureSdk();
-      // Fleet 도구를 못 붙이는 것은 세션을 죽일 사유가 아니지만 조용히 넘길 사유도 아니다 —
-      // 도구 없이 도는 턴은 게이트웨이 로스터를 읽지 못한 채 위임을 판단한다.
-      const fleetMcpServers = await this.ensureFleetMcpServers().catch(() => {
-        this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
-        return [] as readonly ClaudeGatewayServedMcpServer[];
-      });
-      const run = await sdk.startTurn({
-        prompt: text,
-        model: this.seed.model,
-        ...(this.seed.effort ? { effort: this.seed.effort } : {}),
-        ...(this.seed.systemPrompt ? { systemPrompt: this.seed.systemPrompt } : {}),
-        ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
-        cwd: this.seed.cwd,
-        // 채팅으로 태어난 세션의 첫 턴에는 이어붙일 좌표가 없다 — resume 없이 시작하고,
-        // SDK가 돌려주는 session_id가 그 자리를 채운다(그다음 턴부터는 resume이 선다).
-        ...(this.latestSessionId ? { resume: this.latestSessionId } : {}),
-        permissionMode: "bypassPermissions",
-        // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
-        // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
-        canUseTool: (name, input, context) => this.askUser(name, input, context),
-        // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
-        includePartialMessages: true,
-      });
-      // 중지 레버를 여기서 건다. startTurn을 기다리는 동안 중지가 눌렸다면 이 런은 이미 아무도
-      // 기다리지 않는 턴의 것이므로, 붙잡아 두지 않고 곧바로 접는다.
+      const session = await this.ensureSession();
+      // 세션을 여는 동안 중지가 눌렸다면 이 턴은 이미 아무도 기다리지 않는다. 자식은 그대로 두고
+      // 턴만 접는다 — 세션은 다음 메시지의 것이다.
       if (stopped()) {
-        run.close();
-        this.push({ kind: "turn-end", ok: false, stopped: true });
+        this.closeTurn({ stopped: true });
         return;
       }
-      this.activeRun = run;
-      this.snapshotContextAtTurnStart(run);
-      try {
-        for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
-          if (typeof message.session_id === "string" && message.session_id.length > 0) {
-            this.latestSessionId = message.session_id;
-          }
-          this.rememberJobOutput(message);
-          for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
-            if (event.kind === "turn-end") {
-              turnClosed = true;
-            } else if (turnClosed && opensChatTurn(event)) {
-              this.push({ kind: "turn-start", at: Date.now() });
-              turnClosed = false;
-            }
-            this.rememberTool(event);
-            // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
-            // 한 줄을 더 세우면 같은 사건이 두 번 읽힌다. 결과 줄은 짝을 못 찾아 스스로 버려진다.
-            if ((event.kind === "tool" || event.kind === "tool-start") && AGENT_CHAT_ASK_TOOLS.has(event.name)) continue;
-            // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
-            // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
-            if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);
-            else this.push(event);
-          }
-        }
-      } finally {
-        // 정상 소진이면 no-op, 도중 이탈이면 슬롯 반납 — 없으면 다음 턴이 영영 막힌다.
-        this.activeRun = null;
-        run.close();
+      // 세션을 얻은 뒤 이 자리에 닿기까지 자식이 죽었을 수 있다(startup 실패는 리더를 곧바로
+      // 끝낸다). 폐기된 세션의 `send()`는 조용히 버려지므로 기다릴 결말도 생기지 않는다 —
+      // 그 자리에 대기를 걸면 이 세션의 큐 전체가 영영 풀리지 않는다.
+      if (this.session !== session) {
+        this.closeTurn({ ok: false });
+        return;
       }
-      // 끊긴 스트림은 던지지 않고 조용히 끝나기도 한다 — 그래서 성공 경로에서도 세대를 본다.
-      if (!turnClosed) {
-        if (stopped()) this.push({ kind: "turn-end", ok: false, stopped: true });
-        else this.push({ kind: "turn-end", ok: true });
-      }
-      // 중지된 턴에서도 좌표를 심는다. 그때까지 실제로 오간 대화는 파일에 남았고, 좌표를 심지
-      // 않으면 다음 턴의 resume이 사용자가 본 것보다 짧은 과거 위에 선다.
-      await this.syncProviderSession();
+      const settled = new Promise<void>((resolve) => {
+        this.awaitingTurn = resolve;
+      });
+      // 문맥 스냅숏은 보내기 **직전**이다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
+      this.snapshotContextAtTurnStart(session);
+      session.send(text);
+      // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
+      this.turnReachedChild = true;
+      await settled;
     } catch {
-      this.activeRun = null;
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
-      if (stopped()) {
-        if (!turnClosed) this.push({ kind: "turn-end", ok: false, stopped: true });
-        await this.syncProviderSession().catch(() => undefined);
-      } else {
+      if (stopped()) this.closeTurn({ stopped: true });
+      else {
         this.push({ kind: "error", code: "chat_turn_failed" });
-        if (!turnClosed) this.push({ kind: "turn-end", ok: false });
+        this.closeTurn({ ok: false });
       }
-    } finally {
-      // 정상 경로에서는 이미 비어 있다(답이 풀려야 스트림이 끝난다). 중단된 턴에서만 일이 있다.
-      this.abandonAsks("The turn ended before the question was answered.");
-      this.seed.reportActivity(false);
     }
   }
 
@@ -939,6 +1180,32 @@ class AgentChatSession {
    * 좌표를 확정하는 것뿐이며, 세션 id가 바뀌지 않는 한 다시 할 일도 없다(resume이 새 id를 낳는
    * 경우에만 다시 확정한다).
    */
+  /**
+   * 좌표 심기를 한 번에 하나만 날린다.
+   *
+   * 리더는 메시지마다 이 자리를 지난다. 첫 시도가 파일을 못 찾아 실패하는 것은 정상이므로
+   * (자식이 아직 트랜스크립트를 만들지 않았다) 다음 메시지가 다시 시도해야 하는데, 가드가 없으면
+   * 그 사이 도착한 메시지들이 같은 좌표를 겹쳐 심어 Operation write-back이 여러 번 인다.
+   */
+  private syncProviderSessionOnce(): void {
+    // 날고 있는 동안 들어온 요청은 버리지 않고 기억한다. 첫 조회가 파일을 못 찾는 것은 정상
+    // 경로이고(자식이 아직 트랜스크립트를 만들지 않았다), 그 재시도를 삼키면 마지막 프레임에서
+    // 요청된 좌표가 영영 심기지 않는다.
+    if (this.syncFlight) {
+      this.syncDirty = true;
+      return;
+    }
+    this.syncDirty = false;
+    this.syncFlight = this.syncProviderSession()
+      .catch(() => undefined)
+      .finally(() => {
+        this.syncFlight = null;
+        // 아직 심지 못한 좌표가 남아 있을 때만 한 번 더 간다 — 심었다면 다시 갈 이유가 없다.
+        if (this.disposed || !this.syncDirty) return;
+        if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
+      });
+  }
+
   private async syncProviderSession(): Promise<void> {
     const sessionId = this.latestSessionId;
     if (!sessionId || sessionId === this.reportedSessionId) return;

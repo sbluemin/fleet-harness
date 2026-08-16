@@ -1544,6 +1544,44 @@
   outline-offset: 2px;
 }
 
+/* 중단은 되돌릴 수 없는 문이라 돌아가기와 같은 무게로 두지 않는다 — 평소에는 조용하고,
+   가리켰을 때만 경고 색을 든다. 자리는 머리줄 오른쪽 끝이다. */
+.agent-chat-detail-stop {
+  appearance: none;
+  cursor: pointer;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-detail-stop:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: color-mix(in oklch, var(--warn) 40%, var(--hairline));
+}
+
+.agent-chat-detail-stop:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-detail-stop:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.agent-chat-detail-stop-error {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--coral);
+}
+
 .agent-chat-detail-title {
   font-size: var(--t-md);
   color: var(--text-primary);

@@ -41,34 +41,93 @@ type FakeTurn = {
   readonly context?: unknown;
 };
 
+/**
+ * 실 세션처럼 **close 전까지 끝나지 않는** 스트림 하나를 흉내 낸다.
+ *
+ * 턴 스크립트는 그대로 유지하되 소비 시점이 바뀐다: 세션은 한 번 열리고, `send()`가 불릴 때마다
+ * 다음 스크립트의 메시지가 그 스트림으로 흘러든다 — 자식 하나가 여러 턴을 사는 실제 모양이다.
+ */
+function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string) => void; readonly onInterrupt?: () => void; readonly onStopTask?: (taskId: string) => void } = {}) {
+  const queue: Record<string, unknown>[] = [];
+  let waiting: (() => void) | null = null;
+  let closed = false;
+  let failing = false;
+  const wake = (): void => {
+    const resume = waiting;
+    waiting = null;
+    resume?.();
+  };
+  return {
+    send(text: string): void {
+      hooks.onSend?.(text);
+      const script = turns.shift() ?? { messages: [] };
+      const upTo = script.failAfter ?? script.messages.length;
+      queue.push(...script.messages.slice(0, upTo));
+      if (script.failAfter !== undefined) failing = true;
+      wake();
+    },
+    /** 자식이 스스로 내는 프레임 — 백그라운드 완료로 모델이 다시 깨어난 자리를 재현한다. */
+    emit(...messages: Record<string, unknown>[]): void {
+      queue.push(...messages);
+      wake();
+    },
+    interrupt: async (): Promise<void> => { hooks.onInterrupt?.(); },
+    stopTask: async (taskId: string): Promise<void> => { hooks.onStopTask?.(taskId); },
+    backgroundTasks: async (): Promise<boolean> => true,
+    // 스냅숏은 보내기 직전에 찍힌다 — 답할 값은 아직 소비되지 않은 다음 턴의 것이다.
+    getContextUsage: async () => turns[0]?.context ?? null,
+    close(): void {
+      closed = true;
+      wake();
+    },
+    [Symbol.asyncIterator]() {
+      return {
+        async next(): Promise<IteratorResult<Record<string, unknown>>> {
+          for (;;) {
+            const next = queue.shift();
+            if (next !== undefined) return { done: false, value: next };
+            if (failing) {
+              failing = false;
+              throw new Error("provider exploded");
+            }
+            if (closed) return { done: true, value: undefined };
+            await new Promise<void>((resolve) => { waiting = resolve; });
+          }
+        },
+      };
+    },
+  };
+}
+
 function createFakeSdkFactory(turns: FakeTurn[]) {
   const configDir = tempDir("chat-sdk-");
-  const startTurn = vi.fn(async (_turn: unknown) => {
-    const script = turns.shift() ?? { messages: [] };
-    const close = vi.fn();
-    let index = 0;
+  const sends: string[] = [];
+  // 실 SDK와 같이 슬롯은 하나다. `close()`가 불려야 자리가 돌아오며, 그전의 openSession은
+  // 거절된다 — 스트림이 끝난 것과 슬롯이 반납된 것은 다른 사건이다.
+  let occupied = false;
+  let live: ReturnType<typeof fakeSession> | null = null;
+  const openSession = vi.fn(async (_request: unknown) => {
+    if (occupied) throw new Error("A turn or session is already running on this instance.");
+    occupied = true;
+    const session = fakeSession(turns, { onSend: (text) => sends.push(text) });
+    live = session;
     return {
-      close,
-      getContextUsage: async () => script.context ?? null,
-      [Symbol.asyncIterator]() {
-        return {
-          async next() {
-            if (script.failAfter !== undefined && index >= script.failAfter) throw new Error("provider exploded");
-            if (index >= script.messages.length) return { done: true as const, value: undefined };
-            return { done: false as const, value: script.messages[index++] };
-          },
-        };
+      ...session,
+      close: () => {
+        occupied = false;
+        session.close();
       },
     };
   });
-  const dispose = vi.fn(async () => {});
+  const dispose = vi.fn(async () => { occupied = false; });
   const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true }) => ({
     configDir,
     models: options.models,
-    startTurn,
+    startTurn: async () => { throw new Error("Chat Mode must run on a session, not a single turn."); },
+    openSession,
     dispose,
   }));
-  return { factory: factory as never, startTurn, dispose, configDir };
+  return { factory: factory as never, openSession, sends, dispose, configDir, liveSession: () => live };
 }
 
 function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
@@ -115,7 +174,7 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate and replays nothing", async () => {
     const home = tempDir("chat-home-");
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession, sends } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -128,9 +187,9 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     session.send("let us talk about the render path");
     await drainTurn(registry, "op-1");
 
-    const turn = startTurn.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(turn.prompt).toBe("let us talk about the render path");
-    expect("resume" in turn).toBe(false);
+    expect(sends).toEqual(["let us talk about the render path"]);
+    const request = openSession.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect("resume" in request).toBe(false);
     await registry.disposeAll();
   });
 
@@ -139,29 +198,21 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     const updates: unknown[] = [];
     const { configDir } = createFakeSdkFactory([]);
     // 실제 SDK처럼 공유 홈 안에 트랜스크립트를 만든다 — 옮겨 올 사본이 없고, 좌표만 확정된다.
-    const startTurn = vi.fn(async () => {
-      const projectDir = path.join(home, "projects", "-tmp-workspace");
-      mkdirSync(projectDir, { recursive: true });
-      writeFileSync(path.join(projectDir, "born-1.jsonl"), JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }));
-      const messages = [
-        { type: "system", subtype: "init", session_id: "born-1" },
-        { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
-      ];
-      let index = 0;
-      return {
-        close: () => {},
-        getContextUsage: async () => null,
-        [Symbol.asyncIterator]() {
-          return {
-            async next() {
-              if (index >= messages.length) return { done: true as const, value: undefined };
-              return { done: false as const, value: messages[index++] };
-            },
-          };
-        },
-      };
-    });
-    const bornFactory = (vi.fn(async () => ({ configDir, startTurn, dispose: async () => {} })) as never);
+    const openSession = vi.fn(async () => fakeSession([
+      {
+        messages: [
+          { type: "system", subtype: "init", session_id: "born-1" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ], {
+      onSend: () => {
+        const projectDir = path.join(home, "projects", "-tmp-workspace");
+        mkdirSync(projectDir, { recursive: true });
+        writeFileSync(path.join(projectDir, "born-1.jsonl"), JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }));
+      },
+    }));
+    const bornFactory = (vi.fn(async () => ({ configDir, openSession, dispose: async () => {} })) as never);
     const registry = new AgentChatRegistry(bornFactory);
     const session = await registry.ensure("op-1", () => freshSeedFor(home, (providerSession) => updates.push(providerSession)));
     session.send("hello");
@@ -219,9 +270,9 @@ describe("AgentChatRegistry — chat-born sessions", () => {
   // doctrine 주입은 모델에게 물어서 확인할 수 없다 — 같은 지시를 `--append-system-prompt`로
   // 받는 터미널 세션조차 "그런 문자열은 없다"고 답한다(2026-08-16 실측, cursor-auto). 그래서
   // 전달 자체를 여기서 고정한다.
-  it("passes the Admiral doctrine through to the turn", async () => {
+  it("passes the Admiral doctrine through to the session", async () => {
     const home = tempDir("chat-home-");
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -232,7 +283,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     session.send("go");
     await drainTurn(registry, "op-doctrine");
 
-    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({
+    expect(openSession).toHaveBeenCalledWith(expect.objectContaining({
       systemPrompt: { mode: "append", text: "## Mission Anchor Standing Order" },
     }));
     await registry.disposeAll();
@@ -267,7 +318,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
   // 드러나지 않으므로 저널이 말해야 한다.
   it("surfaces an error and still starts the turn when the Fleet plugin cannot be rendered", async () => {
     const home = tempDir("chat-home-");
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -281,7 +332,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await drainTurn(registry, "op-plugin-fail");
 
     expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_fleet_plugin_unavailable")).toBe(true);
-    expect(startTurn).toHaveBeenCalled();
+    expect(openSession).toHaveBeenCalled();
     await registry.disposeAll();
   });
 });
@@ -345,7 +396,7 @@ describe("AgentChatRegistry", () => {
     const transcriptPath = writeTranscript("sid-2", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession, sends } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -353,8 +404,9 @@ describe("AgentChatRegistry", () => {
     session.send("continue");
     await drainTurn(registry, "op-1");
 
-    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({
-      prompt: "continue",
+    // 프롬프트는 세션 옵션이 아니라 `send()`가 싣는다 — 세션 하나가 여러 프롬프트를 받는다.
+    expect(sends).toEqual(["continue"]);
+    expect(openSession).toHaveBeenCalledWith(expect.objectContaining({
       resume: "sid-2",
       model: "opus[1m]",
       effort: "high",
@@ -363,6 +415,7 @@ describe("AgentChatRegistry", () => {
       // 글자 단위 스트리밍의 전제 — text_delta는 부분 메시지에만 실린다.
       includePartialMessages: true,
     }));
+    expect(openSession.mock.calls[0]?.[0]).not.toHaveProperty("prompt");
     await registry.disposeAll();
   });
 
@@ -370,7 +423,7 @@ describe("AgentChatRegistry", () => {
     const transcriptPath = writeTranscript("sid-ultra", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -383,8 +436,8 @@ describe("AgentChatRegistry", () => {
     await drainTurn(registry, "op-ultra");
 
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({ ultracode: true }));
-    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: "xhigh" }));
-    expect(startTurn.mock.calls[0]?.[0]).not.toHaveProperty("ultracode");
+    expect(openSession).toHaveBeenCalledWith(expect.objectContaining({ effort: "xhigh" }));
+    expect(openSession.mock.calls[0]?.[0]).not.toHaveProperty("ultracode");
     await registry.disposeAll();
   });
 
@@ -429,26 +482,18 @@ describe("AgentChatRegistry", () => {
     const factory = (async () => ({
       configDir: homeOf(transcriptPath),
       models: ["opus[1m]"],
-      startTurn: async () => {
-        writeFileSync(transcriptPath, `${readFileSync(transcriptPath, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
-        const messages = [
-          { type: "system", subtype: "init", session_id: "sid-3" },
-          { type: "result", subtype: "success", is_error: false },
-        ];
-        let index = 0;
-        return {
-          close: () => {},
-          getContextUsage: async () => null,
-          [Symbol.asyncIterator]() {
-            return {
-              async next() {
-                if (index >= messages.length) return { done: true as const, value: undefined };
-                return { done: false as const, value: messages[index++] };
-              },
-            };
-          },
-        };
-      },
+      openSession: async () => fakeSession([
+        {
+          messages: [
+            { type: "system", subtype: "init", session_id: "sid-3" },
+            { type: "result", subtype: "success", is_error: false },
+          ],
+        },
+      ], {
+        onSend: () => {
+          writeFileSync(transcriptPath, `${readFileSync(transcriptPath, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
+        },
+      }),
       dispose: async () => {},
     })) as never;
     const registry = new AgentChatRegistry(factory);
@@ -467,11 +512,13 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
-  it("releases the turn slot on provider failure and keeps accepting sends", async () => {
+  // 자식이 죽으면 그 세션도 죽는다. 다음 메시지는 새 자식을 세우고 마지막 좌표로 이어붙인다 —
+  // 죽은 세션을 붙들고 있으면 사용자는 다시 말할 수 없다.
+  it("opens a fresh session after the child dies and keeps accepting sends", async () => {
     const transcriptPath = writeTranscript("sid-4", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession } = createFakeSdkFactory([
       { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } }], failAfter: 1 },
       { messages: [{ type: "result", subtype: "success", is_error: false }] },
     ]);
@@ -487,7 +534,7 @@ describe("AgentChatRegistry", () => {
 
     session.send("second");
     await drainTurn(registry, "op-1");
-    expect(startTurn).toHaveBeenCalledTimes(2);
+    expect(openSession).toHaveBeenCalledTimes(2);
     await registry.disposeAll();
   });
 
@@ -497,7 +544,7 @@ describe("AgentChatRegistry", () => {
     const transcriptPath = writeTranscript("sid-activity", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    const { factory, startTurn } = createFakeSdkFactory([
+    const { factory, openSession } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -509,7 +556,7 @@ describe("AgentChatRegistry", () => {
     session.send("first");
     await drainTurn(registry, "op-1");
 
-    expect(startTurn).not.toHaveBeenCalled();
+    expect(openSession).not.toHaveBeenCalled();
     expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_activity_unavailable")).toBe(true);
     expect(events.some((entry) => entry.event.kind === "turn-end" && entry.event.ok === false)).toBe(true);
     await registry.disposeAll();
@@ -563,6 +610,45 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // 좌표 조회는 파일을 읽으므로 한 턴의 프레임 여러 개가 같은 비행에 겹친다. 그 사이에 세션
+  // id가 바뀌면(자식이 이어붙이며 새 id를 낳는다) 삼켜진 요청이 나르던 것이 바로 최신 좌표다 —
+  // 그 프레임이 마지막이면 Operation은 옛 좌표를 durable 권위로 들고 남는다.
+  it("retries the coordinate lookup that arrived while the first one was in flight", async () => {
+    const home = tempDir("chat-home-");
+    const updates: Array<{ readonly sessionId: string }> = [];
+    const configDir = tempDir("chat-sdk-");
+    const projectDir = path.join(home, "projects", "-tmp-workspace");
+    mkdirSync(projectDir, { recursive: true });
+    for (const id of ["sid-first", "sid-latest"]) {
+      writeFileSync(path.join(projectDir, `${id}.jsonl`), JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }));
+    }
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => fakeSession([
+        {
+          messages: [
+            // 첫 조회가 여기서 뜬다.
+            { type: "system", subtype: "init", session_id: "sid-first" },
+            // 그 비행 중에 새 id가 도착한다. 삼켜지면 이 좌표는 다시 요청되지 않는다.
+            { type: "result", subtype: "success", is_error: false, duration_ms: 3, session_id: "sid-latest" },
+          ],
+        },
+      ]),
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-sync-retry", () => freshSeedFor(home, (providerSession) => updates.push(providerSession as { sessionId: string })));
+
+    session.send("go");
+    await drainTurn(registry, "op-sync-retry");
+
+    await vi.waitFor(() => {
+      expect(updates.at(-1)?.sessionId).toBe("sid-latest");
+    });
+    await registry.disposeAll();
+  });
+
   it("skips the provider session update when no transcript carries the session id", async () => {
     const transcriptPath = writeTranscript("sid-6", [
       { type: "user", message: { role: "user", content: "first order" } },
@@ -571,25 +657,15 @@ describe("AgentChatRegistry", () => {
     const factory = (async () => ({
       configDir: homeOf(transcriptPath),
       models: ["opus[1m]"],
-      startTurn: async () => {
-        // 턴은 돌았지만 그 세션의 파일이 홈 어디에도 없다 — 밖에서 치워진 상황이다. 없는 파일을
-        // durable 권위로 심으면 터미널 복귀와 Analyst가 조용히 세션을 잃는다.
-        rmSync(path.dirname(transcriptPath), { recursive: true, force: true });
-        const messages = [{ type: "result", subtype: "success", is_error: false }];
-        let index = 0;
-        return {
-          close: () => {},
-          getContextUsage: async () => null,
-          [Symbol.asyncIterator]() {
-            return {
-              async next() {
-                if (index >= messages.length) return { done: true as const, value: undefined };
-                return { done: false as const, value: messages[index++] };
-              },
-            };
-          },
-        };
-      },
+      openSession: async () => fakeSession([
+        { messages: [{ type: "result", subtype: "success", is_error: false }] },
+      ], {
+        onSend: () => {
+          // 턴은 돌았지만 그 세션의 파일이 홈 어디에도 없다 — 밖에서 치워진 상황이다. 없는 파일을
+          // durable 권위로 심으면 터미널 복귀와 Analyst가 조용히 세션을 잃는다.
+          rmSync(path.dirname(transcriptPath), { recursive: true, force: true });
+        },
+      }),
       dispose: async () => {},
     })) as never;
     const registry = new AgentChatRegistry(factory);
@@ -613,7 +689,7 @@ describe("AgentChatRegistry", () => {
     const factory = (async () => ({
       configDir: tempDir("chat-sdk-"),
       models: ["opus[1m]"],
-      startTurn: async () => { throw new Error("unused"); },
+      openSession: async () => { throw new Error("unused"); },
       dispose: sdkDispose,
     })) as never;
     const registry = new AgentChatRegistry(factory);
@@ -630,29 +706,14 @@ describe("AgentChatRegistry", () => {
     const transcriptPath = writeTranscript("sid-8", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    // 닫히기 전에는 영원히 다음 메시지를 내지 않는 런 — close()가 유일한 탈출구다(실 SDK 계약).
-    let closed = false;
-    let wake: () => void = () => {};
-    const run = {
-      close: () => {
-        closed = true;
-        wake();
-      },
-      getContextUsage: async () => null,
-      [Symbol.asyncIterator]() {
-        return {
-          async next() {
-            if (!closed) await new Promise<void>((resolve) => { wake = resolve; });
-            return { done: true as const, value: undefined };
-          },
-        };
-      },
-    };
+    // 아무것도 돌려주지 않는 자식 — 세션 스트림은 close 전까지 끝나지 않으므로 그것이 유일한
+    // 탈출구다(실 SDK 계약과 같다).
+    const stalled = fakeSession([{ messages: [] }]);
     const factory = (async () => ({
       configDir: tempDir("chat-sdk-"),
       models: ["opus[1m]"],
-      startTurn: async () => run,
-      dispose: async () => { run.close(); },
+      openSession: async () => stalled,
+      dispose: async () => { stalled.close(); },
     })) as never;
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-1", () => seedFor(transcriptPath));
@@ -674,7 +735,7 @@ describe("AgentChatRegistry", () => {
     const factory = (async () => ({
       configDir: tempDir("chat-sdk-"),
       models: ["opus[1m]"],
-      startTurn: async () => { throw new Error("unused"); },
+      openSession: async () => { throw new Error("unused"); },
       dispose: async () => new Promise<void>((resolve) => { releaseDispose = resolve; }),
     })) as never;
     const registry = new AgentChatRegistry(factory);
@@ -703,21 +764,11 @@ describe("AgentChatRegistry", () => {
     const factory = (async () => ({
       configDir,
       models: ["opus[1m]"],
-      startTurn: async () => ({
-        close: () => {},
-        getContextUsage: async () => null,
-        [Symbol.asyncIterator]() {
-          let done = false;
-          return {
-            async next() {
-              if (done) return { done: true as const, value: undefined };
-              await gate;
-              done = true;
-              return { done: false as const, value: { type: "result", subtype: "success", is_error: false } };
-            },
-          };
-        },
-      }),
+      // 문이 열릴 때까지 자식이 아무 말도 하지 않는다 — 그동안 세션은 busy여야 한다.
+      openSession: async () => {
+        const gated = fakeSession([{ messages: [{ type: "result", subtype: "success", is_error: false }] }]);
+        return { ...gated, send: (text: string) => { void gate.then(() => gated.send(text)); } };
+      },
       dispose: async () => {},
     })) as never;
     const registry = new AgentChatRegistry(factory);
@@ -733,8 +784,8 @@ describe("AgentChatRegistry", () => {
 });
 
 describe("AgentChatRegistry — background follow-up turns", () => {
-  it("closes the follow-up turn when the stream ends without a second result", async () => {
-    // 백그라운드 작업이 끝나 모델이 다시 말하기 시작했지만, 두 번째 result가 오기 전에 스트림이
+  it("closes the follow-up turn when the session ends without a second result", async () => {
+    // 백그라운드 작업이 끝나 모델이 다시 말하기 시작했지만, 두 번째 result가 오기 전에 세션이
     // 끝난다. 이때 아무도 그 턴을 닫지 않으면 원장에 영원히 도는 스피너가 남는다.
     const transcriptPath = writeTranscript("sid-follow-1", []);
     const { factory } = createFakeSdkFactory([
@@ -752,10 +803,13 @@ describe("AgentChatRegistry — background follow-up turns", () => {
 
     session.send("go");
     await drainTurn(registry, "op-follow-1");
+    // 후속 턴은 디스패치 없이 열린다 — 그것이 백그라운드가 끝나 모델이 다시 깨어난 자리다.
+    await vi.waitFor(() => { expect(kinds(events)).toContain("text"); });
+    // 세션이 접히는 것이 그 턴의 결말이다. 자식이 사라졌는데 스피너를 남겨 두지 않는다.
+    await registry.disposeAll();
 
     const live = kinds(events).slice(kinds(events).indexOf("dispatch"));
     expect(live).toEqual(["dispatch", "turn-start", "turn-end", "turn-start", "text", "turn-end"]);
-    await registry.disposeAll();
   });
 
   it("closes the follow-up turn when the stream throws after it opened", async () => {
@@ -861,6 +915,197 @@ describe("AgentChatRegistry — background follow-up turns", () => {
 
     const live = kinds(events).slice(kinds(events).indexOf("dispatch"));
     expect(live).toEqual(["dispatch", "turn-start", "turn-end", "job-progress", "job-end"]);
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 백그라운드 작업이 세션의 것이 되면서 생긴 계약들.
+ *
+ * 요점은 수명이다 — 자식이 사는 동안 잡도 살고, 자식이 사라지면 잡도 사라진다. 원장은 그
+ * 두 사실을 모두 말해야 하며, 어느 쪽도 지어내지 않아야 한다.
+ */
+describe("AgentChatRegistry — background jobs on a live session", () => {
+  it("leaves a background job running after the turn that started it closes", async () => {
+    const transcriptPath = writeTranscript("sid-job-live", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "sh1", description: "poll", task_type: "local_bash" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-live", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-live");
+
+    // 턴은 닫혔고, 잡은 결말을 받지 않았다 — 그것이 백그라운드 작업의 정의다.
+    expect(events.some((entry) => entry.event.kind === "turn-end")).toBe(true);
+    expect(kinds(events)).not.toContain("job-end");
+    await registry.disposeAll();
+  });
+
+  it("closes still-running jobs as stopped when the session goes away", async () => {
+    // 자식과 함께 사라진 작업을 "도는 중"으로 남겨 두면 화면은 오지 않을 결말을 기다린다.
+    const transcriptPath = writeTranscript("sid-job-retire", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "sh2", description: "poll", task_type: "local_bash" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-retire", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-retire");
+    await registry.disposeAll();
+
+    expect(events.map((entry) => entry.event)).toContainEqual({ kind: "job-end", id: "sh2", status: "stopped" });
+  });
+
+  // 자식이 startup에서 죽으면 리더는 `ensureSession()`이 해소된 직후에 끝난다. 그 사이에 낀
+  // 디스패치가 폐기된 세션에 프롬프트를 보내면 그것은 조용히 버려지고, 대기를 건 큐는 오지 않을
+  // 결말을 영영 기다린다.
+  it("does not arm a waiter on a session that was retired while it was being opened", async () => {
+    const transcriptPath = writeTranscript("sid-race-retire", []);
+    const configDir = tempDir("chat-sdk-");
+    const sends: string[] = [];
+    let opened = 0;
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => {
+        const session = fakeSession(
+          opened++ === 0
+            ? []
+            : [{ messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] }],
+          { onSend: (text) => sends.push(text) },
+        );
+        // 첫 자식은 열리자마자 죽는다 — 리더는 곧바로 스트림 끝을 본다.
+        if (opened === 1) session.close();
+        return session;
+      },
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-race-retire", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-race-retire");
+    expect(events.some((entry) => entry.event.kind === "turn-end" && entry.event.ok === false)).toBe(true);
+
+    // 큐가 막히지 않았다 — 다음 메시지가 새 자식 위에서 정상으로 돈다.
+    session.send("second");
+    await drainTurn(registry, "op-race-retire");
+    expect(sends).toEqual(["second"]);
+    await registry.disposeAll();
+  });
+
+  it("routes a job stop to the child and refuses a coordinate it never issued", async () => {
+    const transcriptPath = writeTranscript("sid-job-stop", []);
+    const stopped: string[] = [];
+    const configDir = tempDir("chat-sdk-");
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => fakeSession([
+        {
+          messages: [
+            { type: "system", subtype: "task_started", task_id: "sh3", description: "poll", task_type: "local_bash" },
+            { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          ],
+        },
+      ], { onStopTask: (taskId) => stopped.push(taskId) }),
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-stop", () => seedFor(transcriptPath));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-stop");
+
+    expect(await session.stopJob("sh3")).toBe(true);
+    expect(stopped).toEqual(["sh3"]);
+    // 브라우저가 건네는 유일한 값이다 — 발급된 적 없는 좌표는 자식에 닿지 않는다.
+    expect(await session.stopJob("never-issued")).toBe(false);
+    expect(await session.stopJob("../../etc/passwd")).toBe(false);
+    expect(stopped).toEqual(["sh3"]);
+    await registry.disposeAll();
+  });
+
+  // 자식이 스스로 깨어나 연 턴은 아무도 기다리지 않는다. 그 창에 들어온 사용자 메시지가 그
+  // 턴에 올라타면, 남의 `result`가 그 디스패치를 풀어 아직 답하지도 않은 프롬프트를 끝난 것으로
+  // 그리고, 큐의 다음 메시지가 그 위에서 조기에 시작한다.
+  it("waits for a background-woken turn to close before dispatching the next message", async () => {
+    const transcriptPath = writeTranscript("sid-turn-overlap", []);
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-turn-overlap", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-turn-overlap");
+
+    // 백그라운드가 끝나 모델이 다시 깨어났다 — 디스패치 없는 턴이 열리고, 아직 닫히지 않았다.
+    liveSession()?.emit({ type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "the workflow finished" }] } });
+    await vi.waitFor(() => { expect(kinds(events)).toContain("text"); });
+
+    session.send("second");
+    // 그 턴이 닫히기 전에는 두 번째 프롬프트가 자식에 닿지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sends).toEqual(["first"]);
+    expect(kinds(events).filter((kind) => kind === "dispatch")).toHaveLength(1);
+
+    // 후속 턴이 자기 결말을 내면 그때 자리가 난다.
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 3 });
+    await drainTurn(registry, "op-turn-overlap");
+
+    expect(sends).toEqual(["first", "second"]);
+    const starts = kinds(events).filter((kind) => kind === "turn-start").length;
+    const ends = kinds(events).filter((kind) => kind === "turn-end").length;
+    expect(starts).toBe(ends);
+    await registry.disposeAll();
+  });
+
+  // 스트림이 끝난 것과 슬롯이 반납된 것은 다른 사건이다. 닫지 않고 버리면 다음 메시지의
+  // openSession이 거절되고, 그 Operation은 dispose될 때까지 한 마디도 받지 못한다.
+  it("closes the retired session so the next message can open a new one", async () => {
+    const transcriptPath = writeTranscript("sid-slot", []);
+    const { factory, openSession, sends } = createFakeSdkFactory([
+      { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "partial" }] } }], failAfter: 1 },
+      { messages: [{ type: "result", subtype: "success", is_error: false }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-slot", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-slot");
+
+    session.send("second");
+    await drainTurn(registry, "op-slot");
+
+    expect(openSession).toHaveBeenCalledTimes(2);
+    expect(sends).toEqual(["first", "second"]);
+    // 두 번째 턴은 정상으로 닫힌다 — 슬롯이 막혀 있었다면 여기서 chat_turn_failed가 선다.
+    expect(events.filter((entry) => entry.event.kind === "error" && entry.event.code === "chat_turn_failed")).toHaveLength(0);
     await registry.disposeAll();
   });
 });
@@ -984,43 +1229,27 @@ describe("AgentChatRegistry — journal weight", () => {
  * 자기가 누른 버튼의 결과를 고장으로 읽는다.
  */
 describe("AgentChatRegistry — stopping a turn", () => {
-  /** 스스로 끝나지 않는 턴. close()가 이터레이터를 풀어 주는 실제 런의 동작을 그대로 흉내 낸다. */
+  /** 스스로 아무 말도 하지 않는 자식. 중지가 유일한 탈출구인 상태를 그대로 만든다. */
   function createHangingSdkFactory() {
     const configDir = tempDir("chat-stop-");
-    const closes: number[] = [];
-    let started = 0;
-    const startTurn = vi.fn(async () => {
-      const index = started++;
-      let release: (() => void) | null = null;
-      const gate = new Promise<void>((resolve) => { release = resolve; });
-      return {
-        close: () => {
-          closes.push(index);
-          release?.();
-        },
-        getContextUsage: async () => null,
-        [Symbol.asyncIterator]() {
-          return {
-            async next() {
-              await gate;
-              return { done: true as const, value: undefined };
-            },
-          };
-        },
-      };
-    });
+    const interrupts: string[] = [];
+    const sends: string[] = [];
+    const openSession = vi.fn(async () => fakeSession([], {
+      onSend: (text) => sends.push(text),
+      onInterrupt: () => interrupts.push("interrupt"),
+    }));
     const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
       configDir,
       models,
-      startTurn,
+      openSession,
       dispose: vi.fn(async () => {}),
     }));
-    return { factory: factory as never, startTurn, closes, startedCount: () => started };
+    return { factory: factory as never, openSession, interrupts, sends };
   }
 
-  it("closes the run and closes the turn as stopped, not failed", async () => {
+  it("interrupts the child and closes the turn as stopped, not failed", async () => {
     const transcriptPath = writeTranscript("sess-stop", []);
-    const { factory, closes } = createHangingSdkFactory();
+    const { factory, interrupts } = createHangingSdkFactory();
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-stop-1", () => seedFor(transcriptPath));
 
@@ -1033,9 +1262,8 @@ describe("AgentChatRegistry — stopping a turn", () => {
     expect(session.stopTurn()).toBe(true);
     await drainTurn(registry, "op-stop-1");
 
-    // 중지 경로와 턴 종료의 finally가 각각 close한다. 계약상 두 번 불러도 안전하고, 둘 중
-    // 어느 쪽만 남아도 슬롯이 반납되어야 하므로 이 중복은 의도된 것이다 — 세는 것은 "끊겼는가"다.
-    expect(closes.length).toBeGreaterThanOrEqual(1);
+    // 중지는 턴만 끊는다 — 자식은 살아 있고, 그래서 이미 태어난 백그라운드 작업도 산다.
+    await vi.waitFor(() => { expect(interrupts).toHaveLength(1); });
     const end = seen.map((entry) => entry.event).find((event) => event.kind === "turn-end");
     expect(end).toEqual({ kind: "turn-end", ok: false, stopped: true });
     // 중지는 오류 줄을 세우지 않는다 — 사용자가 스스로 한 일에 고장 표식을 붙이지 않는다.
@@ -1046,7 +1274,7 @@ describe("AgentChatRegistry — stopping a turn", () => {
   it("drops turns that were queued behind the stopped one", async () => {
     // 큐에 밀려 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다.
     const transcriptPath = writeTranscript("sess-stop-queue", []);
-    const { factory, startedCount } = createHangingSdkFactory();
+    const { factory, sends } = createHangingSdkFactory();
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-stop-2", () => seedFor(transcriptPath));
 
@@ -1060,9 +1288,88 @@ describe("AgentChatRegistry — stopping a turn", () => {
     expect(session.stopTurn()).toBe(true);
     await drainTurn(registry, "op-stop-2");
 
-    expect(startedCount()).toBe(1);
+    // 큐에 밀려 있던 두 번째 메시지는 자식에게 닿지 않는다.
+    expect(sends).toEqual(["first"]);
     const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
     expect(dispatches).toHaveLength(1);
+    await registry.disposeAll();
+  });
+
+  // 자식은 중단을 받아도 그 턴의 result를 반드시 낸다(실측: interrupt 뒤 2ms). 중지 직후의 새
+  // 메시지가 그 결말에 실려 나가면, 답하지도 않은 프롬프트가 끝난 것으로 그려진다.
+  it("keeps a new send behind the interrupted turn's result", async () => {
+    const transcriptPath = writeTranscript("sess-stop-settle", []);
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-settle", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    expect(session.stopTurn()).toBe(true);
+
+    session.send("second");
+    // 중단된 턴의 result가 아직 오지 않았다 — 그동안 두 번째 프롬프트는 자식에 닿지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sends).toEqual(["first"]);
+
+    // 자식이 뒤늦게 그 턴의 결말을 낸다. 그것은 이미 닫은 턴의 것이므로 원장에 서지 않는다.
+    liveSession()?.emit({ type: "result", subtype: "error_during_execution", is_error: true });
+    await drainTurn(registry, "op-stop-settle");
+
+    expect(sends).toEqual(["first", "second"]);
+    const ends = seen.map((entry) => entry.event).filter((event) => event.kind === "turn-end");
+    // 중지 하나 + 두 번째 턴의 정상 결말 하나. 중단 result가 세 번째 결말로 서지 않는다.
+    expect(ends).toEqual([
+      { kind: "turn-end", ok: false, stopped: true },
+      { kind: "turn-end", ok: true, durationMs: 4 },
+    ]);
+    await registry.disposeAll();
+  });
+
+  // 세션을 여는 동안(자식 spawn·플러그인·MCP 발급은 몇 초가 걸린다) 중지하면 그 턴은 자식이
+  // 존재조차 모른 채 닫힌다. 그때 결말을 기다리기 시작하면 오지 않을 것을 기다리며 세션이 막힌다.
+  it("does not wait for a settlement when the stopped turn never reached the child", async () => {
+    const transcriptPath = writeTranscript("sess-stop-early", []);
+    const configDir = tempDir("chat-sdk-");
+    let releaseOpen: () => void = () => {};
+    const opening = new Promise<void>((resolve) => { releaseOpen = resolve; });
+    const sends: string[] = [];
+    let opened = 0;
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      // 첫 세션은 문이 열릴 때까지 준비 중이다 — 사용자가 그 사이에 중지한다.
+      openSession: async () => {
+        if (opened++ === 0) await opening;
+        return fakeSession([
+          { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+        ], { onSend: (text) => sends.push(text) });
+      },
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-early", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+    expect(session.stopTurn()).toBe(true);
+    releaseOpen();
+    await drainTurn(registry, "op-stop-early");
+    // 자식에 닿은 적이 없으므로 그 프롬프트는 전달되지 않았다.
+    expect(sends).toEqual([]);
+
+    // 다음 메시지는 오지 않을 결말을 기다리지 않는다.
+    session.send("second");
+    await drainTurn(registry, "op-stop-early");
+    expect(sends).toEqual(["second"]);
+    expect(seen.map((entry) => entry.event)).toContainEqual({ kind: "turn-end", ok: true, durationMs: 4 });
     await registry.disposeAll();
   });
 

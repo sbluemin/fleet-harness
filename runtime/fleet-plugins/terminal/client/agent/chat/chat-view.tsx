@@ -2,7 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { AgentApiError, readAgentChatJobDetail } from "../api.js";
+import { AgentApiError, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
@@ -1353,6 +1353,7 @@ function JobDetail({
 }) {
   const t = getT(language);
   const detail = useAgentChatJobDetail(operationId, job);
+  const stop = useAgentChatJobStop(operationId, job);
   return (
     <>
       <div className="agent-chat-detail-head">
@@ -1362,7 +1363,21 @@ function JobDetail({
         <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
         <span className="agent-chat-detail-title">{job.title}</span>
         <span className={`agent-chat-job-outcome ${jobStateClass(job)}`}>{jobOutcome(job, language)}</span>
+        {/* 도는 잡에만 선다. 끝난 잡 위의 중단 버튼은 누를 수 없는 문이고, 그 자리에 있는 것만으로
+            결말이 아직 열려 있다고 말한다. */}
+        {job.open ? (
+          <button
+            type="button"
+            className="agent-chat-detail-stop"
+            aria-label={t("terminal.chat.jobStopAria")}
+            disabled={stop.state === "stopping"}
+            onClick={stop.request}
+          >
+            {stop.state === "stopping" ? t("terminal.chat.jobStopping") : t("terminal.chat.jobStop")}
+          </button>
+        ) : null}
       </div>
+      {stop.state === "failed" ? <div className="agent-chat-detail-stop-error">{t("terminal.chat.jobStopFailed")}</div> : null}
       <div className="agent-chat-detail-meta">{jobMetaParts(job, language).join(" · ")}</div>
       <div className="agent-chat-detail-body">
         {job.kind === "workflow" ? (
@@ -1498,6 +1513,31 @@ function useAgentChatJobDetail(
     };
   }, [operationId, job.id, wanted, job.ends]);
   return result;
+}
+
+/**
+ * 잡 하나를 멈추는 자리.
+ *
+ * 성공을 낙관적으로 그리지 않는다 — 요청이 닿았다는 것과 그 작업이 실제로 끝났다는 것은 다르고,
+ * 후자는 자식이 보내는 결말 알림만 말할 수 있다. 그래서 이 훅은 요청 중과 실패만 안다.
+ * 잡이 닫히면 카드가 스스로 결말을 그리므로, `job.open`이 꺼지는 것이 곧 성공 표시다.
+ */
+function useAgentChatJobStop(
+  operationId: string,
+  job: AgentChatJob,
+): { readonly state: "idle" | "stopping" | "failed"; readonly request: () => void } {
+  const [state, setState] = React.useState<"idle" | "stopping" | "failed">("idle");
+  // 다른 잡으로 옮겨 가면 앞 잡의 실패 표시를 들고 가지 않는다.
+  React.useEffect(() => {
+    setState("idle");
+  }, [job.id]);
+  const request = React.useCallback(() => {
+    setState("stopping");
+    void stopAgentChatJob(operationId, job.id)
+      .then(() => setState("idle"))
+      .catch(() => setState("failed"));
+  }, [operationId, job.id]);
+  return { state, request };
 }
 
 /** 워크플로 한 단계 — 에이전트별로 어떤 신원이 얼마를 썼는지가 이 표의 요점이다. */

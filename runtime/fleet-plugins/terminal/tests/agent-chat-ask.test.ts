@@ -41,19 +41,27 @@ type CanUseTool = (
 function createPausedSdkFactory() {
   const configDir = tempDir("chat-ask-sdk-");
   let canUseTool: CanUseTool | null = null;
-  let release: (() => void) | null = null;
-  const startTurn = vi.fn(async (turn: Record<string, unknown>) => {
-    canUseTool = turn.canUseTool as CanUseTool;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
+  let settle: (() => void) | null = null;
+  let closed = false;
+  const openSession = vi.fn(async (request: Record<string, unknown>) => {
+    canUseTool = request.canUseTool as CanUseTool;
+    const gate = new Promise<void>((resolve) => { settle = resolve; });
+    let delivered = false;
     return {
-      close: vi.fn(() => { release?.(); }),
+      send: vi.fn(),
+      interrupt: vi.fn(async () => { settle?.(); }),
+      stopTask: vi.fn(async () => {}),
+      backgroundTasks: vi.fn(async () => true),
+      getContextUsage: async () => null,
+      close: vi.fn(() => { closed = true; settle?.(); }),
       [Symbol.asyncIterator]() {
-        let done = false;
         return {
           async next() {
-            if (done) return { done: true as const, value: undefined };
+            // 문이 열리기 전에는 아무 말도 하지 않는다. 열리면 result 하나를 내고, 그 뒤로는
+            // 세션이 접힐 때까지 다시 조용하다 — 실 세션의 수명 그대로다.
             await gate;
-            done = true;
+            if (delivered || closed) return { done: true as const, value: undefined };
+            delivered = true;
             return { done: false as const, value: { type: "result", subtype: "success", is_error: false, duration_ms: 5 } };
           },
         };
@@ -64,12 +72,12 @@ function createPausedSdkFactory() {
     factory: (async ({ models }: { readonly models: readonly string[] }) => ({
       configDir,
       models,
-      startTurn,
-      // 실제 SDK의 dispose는 활성 런을 끊는다. 그것을 흉내 내지 않으면 스트림이 끝나지 않아
+      openSession,
+      // 실제 SDK의 dispose는 활성 세션을 끊는다. 그것을 흉내 내지 않으면 스트림이 끝나지 않아
       // 테스트가 제품 코드 대신 픽스처에서 매달린다.
-      dispose: vi.fn(async () => { release?.(); }),
+      dispose: vi.fn(async () => { closed = true; settle?.(); }),
     })) as never,
-    startTurn,
+    openSession,
     ask: (name: string, input: Record<string, unknown>, toolUseId = "tool-1") => {
       if (!canUseTool) throw new Error("the turn has not started yet");
       return canUseTool(name, input, { toolUseId, signal: new AbortController().signal });
@@ -79,7 +87,7 @@ function createPausedSdkFactory() {
       if (!canUseTool) throw new Error("the turn has not started yet");
       return canUseTool(name, input, { toolUseId, signal });
     },
-    finish: () => { release?.(); },
+    finish: () => { settle?.(); },
   };
 }
 
@@ -114,7 +122,7 @@ async function startSession(registry: AgentChatRegistry, sdk: ReturnType<typeof 
   const events: AgentChatJournalEvent[] = [];
   session.subscribe((entry) => events.push(entry));
   session.send("decide the log format");
-  await vi.waitFor(() => { expect(sdk.startTurn).toHaveBeenCalled(); });
+  await vi.waitFor(() => { expect(sdk.openSession).toHaveBeenCalled(); });
   return { session, events };
 }
 
