@@ -324,6 +324,10 @@
   color: var(--provider-kimi);
 }
 
+.quota-provider__mark--opencode {
+  color: var(--provider-opencode);
+}
+
 .quota-plan {
   margin-left: auto;
   border: 1px solid var(--hairline);

@@ -42,9 +42,10 @@ export interface ProviderDeps {
   readonly fetch?: typeof fetch;
   readonly now?: () => number;
   /**
-   * Kimi is reached with the key Fleet itself stores, not another CLI's
-   * credential file, so it reads through core-infra's auth surface — which owns
-   * the file's shape and its symlink-guarded read — instead of parsing the file here.
+   * Kimi and OpenCode Go are reached with keys Fleet itself stores, not another
+   * CLI's credential file, so they read through core-infra's auth surface — which
+   * owns the file's shape and its symlink-guarded read — instead of parsing the
+   * file here.
    */
   readonly authService?: AuthService;
 }
@@ -199,6 +200,11 @@ export function expired(error: unknown): ProviderDto | null {
   return error instanceof ProviderHttpError && (error.statusCode === 401 || error.statusCode === 403)
     ? { status: "expired" }
     : null;
+}
+
+/** Status of a bounded provider GET/POST that failed as `ProviderHttpError`. */
+export function providerHttpStatus(error: unknown): number | undefined {
+  return error instanceof ProviderHttpError ? error.statusCode : undefined;
 }
 
 export function sanitizeProviderError(error: unknown): string {

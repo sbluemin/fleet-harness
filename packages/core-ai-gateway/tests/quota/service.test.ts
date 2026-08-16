@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { KIMI_AUTH_PROVIDER_ID } from "../../src/models.js";
+import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/opencode-go/index.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {
@@ -19,6 +20,7 @@ describe("quota service", () => {
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     expect((await service.getSummary()).providers.claude).toEqual({ status: "not_connected", method: "keychain" });
     expect(fetchClaude).not.toHaveBeenCalled();
@@ -34,6 +36,7 @@ describe("quota service", () => {
       fetchClaude: async () => ({ status: "signed_out" }),
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor,
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     expect((await service.getSummary()).providers.cursor)
       .toEqual({ status: "not_connected", method: "keychain" });
@@ -52,6 +55,7 @@ describe("quota service", () => {
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     const first = service.getSummary();
     const second = service.getSummary();
@@ -86,6 +90,7 @@ describe("quota service", () => {
       fetchClaude,
       fetchCodex,
       fetchCursor,
+      fetchOpencode: async () => ({ status: "signed_out" }),
       fetchXai,
     });
     const cached = await service.getSummary();
@@ -100,15 +105,23 @@ describe("quota service", () => {
     expect(refreshed.providers.xai.windows?.[0]?.usedPercent).toBe(42);
   });
 
-  it("collectors read Kimi keys only through the injected auth service", async () => {
+  it("collectors read Kimi and OpenCode keys only through the injected auth service", async () => {
     const authService = {
-      getApiKey: vi.fn(async (providerId: string) => providerId === KIMI_AUTH_PROVIDER_ID ? "kimi-key" : undefined),
+      getApiKey: vi.fn(async (providerId: string) => providerId === KIMI_AUTH_PROVIDER_ID ? "kimi-key" : "opencode-key"),
       setApiKey: async () => undefined,
       deleteApiKey: async () => false,
       listProviderIds: async () => [],
     };
     const fetchImpl = vi.fn(async (url: string | URL | Request) => new Response(
-      String(url).includes("kimi") ? JSON.stringify({ usage: { limit: "100", used: "4" } }) : "{}",
+      String(url).includes("kimi")
+        ? JSON.stringify({ usage: { limit: "100", used: "4" } })
+        : JSON.stringify({
+          usage: {
+            rolling: { percent: 1, resetsAt: "2026-07-12T17:00:00.000Z" },
+            weekly: { percent: 2, resetsAt: "2026-07-13T00:00:00.000Z" },
+            monthly: { percent: 3, resetsAt: "2026-08-04T00:00:00.000Z" },
+          },
+        }),
       { status: 200, headers: { "Content-Type": "application/json" } },
     ));
     const collectors = createAiGatewayQuotaCollectors({
@@ -117,7 +130,9 @@ describe("quota service", () => {
     });
 
     await expect(collectors.fetchKimi()).resolves.toMatchObject({ status: "ok" });
-    expect(authService.getApiKey).toHaveBeenCalledWith(KIMI_AUTH_PROVIDER_ID);
+    await expect(collectors.fetchOpencode()).resolves.toMatchObject({ status: "ok", plan: "Go" });
+    expect(authService.getApiKey).toHaveBeenNthCalledWith(1, KIMI_AUTH_PROVIDER_ID);
+    expect(authService.getApiKey).toHaveBeenNthCalledWith(2, OPENCODE_AUTH_PROVIDER_ID);
   });
 
   it("serves last-good data as stale for 30 minutes, then returns sanitized error", async () => {
@@ -133,6 +148,7 @@ describe("quota service", () => {
       fetchClaude,
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     await service.getSummary();
     now += 1_799_999;
