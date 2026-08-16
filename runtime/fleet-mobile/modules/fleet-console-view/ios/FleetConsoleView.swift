@@ -275,17 +275,24 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     }
     do {
       guard isCurrent(id) else { return }
+      FleetLog.stage("preflight")
       try connection.preflight(candidate)
       guard isCurrent(id) else { return }
+      FleetLog.stage("cookie-snapshot")
       cookieSnapshot = try cookies.snapshot(candidate.origin, candidate.port)
       candidateTouchedCookies = true
+      FleetLog.stage("join")
       try connection.join(candidate, token: token, deviceName: deviceName())
       guard isCurrent(id) else { restore(); return }
+      FleetLog.stage("verify-reachable")
       try connection.verifyReachable(candidate)
       guard isCurrent(id) else { restore(); return }
+      FleetLog.stage("gateway-identity")
       let started = try LoopbackGateway(target: candidate, remote: connection, cookies: cookies)
+      FleetLog.stage("gateway-listen")
       try started.start()
       gateway = started
+      FleetLog.stage("gateway-ready")
       guard isCurrent(id) else { started.close(); restore(); return }
       guard let snap = cookieSnapshot else { throw ConnectionFailure("cookie_snapshot_missing") }
       main {
@@ -293,9 +300,13 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
         else { started.close(); self.worker.async { try? self.cookies.restore(candidate.origin, candidate.port, snap) } }
       }
     } catch let failure as ConnectionFailure {
+      FleetLog.failed("pipeline", failure.code)
       gateway?.close(); restore()
       failIfCurrent(id, failure.code, candidate.label, candidate.origin, failure.retryAfterSeconds)
     } catch {
+      // 여기로 오는 것은 ConnectionFailure가 아닌 모든 오류다(게이트웨이 기동, 키체인 identity,
+      // 쿠키 저장 등). 사용자에게는 Android와 같은 코드를 주되, 실제 원인은 로그에 남긴다.
+      FleetLog.failed("pipeline", "(error)")
       gateway?.close(); restore()
       failIfCurrent(id, "remote_link_unreachable", candidate.label, candidate.origin, nil)
     }
@@ -313,6 +324,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     prefs.allowsContentJavaScript = true
     config.defaultWebpagePreferences = prefs
 
+    FleetLog.stage("stage-webview")
     let webView = WKWebView(frame: bounds, configuration: config)
     webView.navigationDelegate = self
     webView.uiDelegate = self
@@ -462,6 +474,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func commitStaged(_ staged: StagedLoad) {
     guard staging === staged, isCurrent(staged.attemptId) else { return }
+    FleetLog.stage("commit")
     guard targetStore.upsert(staged.target) else { failStaged(staged, "remote_target_persist_failed"); return }
     let previousView = activeView
     let previousGateway = activeGateway
@@ -479,6 +492,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func failStaged(_ staged: StagedLoad, _ code: String) {
     guard staging === staged, isCurrent(staged.attemptId) else { return }
+    FleetLog.failed("staged-webview", code)
     staging = nil
     staged.view.removeFromSuperview()
     staged.view.destroySafely()

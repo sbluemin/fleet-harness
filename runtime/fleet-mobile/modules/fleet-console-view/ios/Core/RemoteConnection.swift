@@ -268,10 +268,12 @@ public final class PinnedSocket: ByteInput, ByteOutput {
     connection.start(queue: queue)
     if ready.wait(timeout: .now() + .milliseconds(RemoteConnection.timeoutMs)) == .timedOut {
       connection.cancel()
+      FleetLog.failed("pinned-tls", "handshake timed out after (RemoteConnection.timeoutMs)ms")
       throw ConnectionFailure("remote_link_unreachable")
     }
     if let failure = state.get() {
       connection.cancel()
+      FleetLog.failed("pinned-tls", failure.code)
       if failure.code == "__transport__" { throw ConnectionFailure("remote_link_unreachable") }
       throw RemoteConnection.mappedTlsFailure(failure)
     }

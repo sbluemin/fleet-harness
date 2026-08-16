@@ -51,7 +51,9 @@ public final class LoopbackGateway {
 
   public func start() throws {
     guard running.compareAndSet(expected: false, new: true) else { return }
+    FleetLog.stage("gateway: keychain identity")
     let identity = try localTls.secIdentity()
+    FleetLog.stage("gateway: bind (host):(port)")
     let tls = NWProtocolTLS.Options()
     let opts = tls.securityProtocolOptions
     sec_protocol_options_set_local_identity(opts, sec_identity_create(identity)!)
