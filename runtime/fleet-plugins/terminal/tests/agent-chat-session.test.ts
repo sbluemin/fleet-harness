@@ -687,3 +687,43 @@ describe("AgentChatRegistry — background follow-up turns", () => {
     await registry.disposeAll();
   });
 });
+
+describe("AgentChatRegistry — journal weight", () => {
+  it("keeps only the latest progress snapshot per job in the replayed journal", async () => {
+    // 맥박은 스냅숏이다 — 겹겹이 쌓으면 재접속이 이미 지나간 단계 트리를 되재생하고, 상한에
+    // 걸린 세션에서는 그 무게가 되돌릴 수 없는 이력을 앞에서부터 밀어낸다.
+    const transcriptPath = writeTranscript("sid-pulse-1", []);
+    const pulse = (id: string, tokens: number) => ({
+      type: "system", subtype: "task_progress", task_id: id,
+      usage: { total_tokens: tokens, tool_uses: 0, duration_ms: tokens },
+    });
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "w1", description: "one", task_type: "local_workflow" },
+          { type: "system", subtype: "task_started", task_id: "w2", description: "two", task_type: "local_workflow" },
+          pulse("w1", 1), pulse("w1", 2), pulse("w2", 10), pulse("w1", 3), pulse("w2", 20),
+          { type: "result", subtype: "success", is_error: false, duration_ms: 10 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-pulse-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-pulse-1");
+
+    // 재접속이 받는 것은 저널 전체다.
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    const progress = replayed
+      .map((entry) => entry.event)
+      .filter((event): event is Extract<typeof event, { kind: "job-progress" }> => event.kind === "job-progress");
+    expect(progress).toEqual([
+      { kind: "job-progress", id: "w1", tokens: 3, tools: 0, durationMs: 3 },
+      { kind: "job-progress", id: "w2", tokens: 20, tools: 0, durationMs: 20 },
+    ]);
+    // 되돌릴 수 없는 이력은 그대로 남는다.
+    expect(kinds(replayed).filter((kind) => kind === "job")).toHaveLength(2);
+    await registry.disposeAll();
+  });
+});

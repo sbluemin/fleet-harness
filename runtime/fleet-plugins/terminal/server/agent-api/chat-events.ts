@@ -156,11 +156,15 @@ export type AgentChatStreamEvent =
       readonly lastTool?: string;
       readonly stages?: readonly AgentChatJobStage[];
     }
-  /** 잡의 결말. `stopped`는 실패가 아니라 끝나기 전에 거둬진 것이다. */
+  /**
+   * 잡의 결말. `stopped`는 실패가 아니라 끝나기 전에 거둬진 것이다.
+   * `status`가 없으면 **끝났다는 사실만** 아는 것이다 — 알아보지 못한 결말에 성공을 적는 것이
+   * 이 원장이 고치려는 바로 그 거짓말이므로, 모르면 비워 둔다.
+   */
   | {
       readonly kind: "job-end";
       readonly id: string;
-      readonly status: AgentChatJobStatus;
+      readonly status?: AgentChatJobStatus;
       readonly summary?: string;
       readonly tokens?: number;
       readonly tools?: number;
@@ -416,7 +420,9 @@ function safeJobText(raw: string, options: ChatEventMapOptions, max: number): st
  * 접으면 마크다운 보고가 통째로 한 문단이 되어, 제목·목록·코드 블록이 전부 원문 기호로 남는다.
  */
 function safeJobBody(raw: string, options: ChatEventMapOptions, max: number): string {
-  const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((line) => line.replace(/[^\S\n]+/g, " ").trimEnd());
+  // 줄 끝 공백과 줄바꿈 표기만 고른다. 줄 안의 공백은 건드리지 않는다 — 여기서 접으면 중첩
+  // 목록의 들여쓰기, 들여쓴 코드 블록, 펜스 안의 Python·YAML이 전부 무너진 채 렌더러에 닿는다.
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((line) => line.trimEnd());
   const normalized = normalizePathTokens(lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(), options.cwd);
   return capTo(maskSecrets(abbreviateAbsolutePaths(normalized)), max);
 }
@@ -480,8 +486,11 @@ function jobUpdatedEvent(message: Readonly<Record<string, unknown>>): readonly A
 function jobEndEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   const id = readString(message.task_id);
   if (id === undefined) return [];
+  // 아는 세 값만 결말로 옮긴다. 값이 없거나 처음 보는 값이면 결말을 주장하지 않는다 —
+  // 기본값을 completed로 두면 SDK가 새 상태를 하나 추가하는 날 원장이 조용히 거짓 완료를 그린다.
   const raw = message.status;
-  const status: AgentChatJobStatus = raw === "failed" ? "failed" : raw === "stopped" ? "stopped" : "completed";
+  const status: AgentChatJobStatus | undefined =
+    raw === "completed" ? "completed" : raw === "failed" ? "failed" : raw === "stopped" ? "stopped" : undefined;
   const usage = message.usage as { readonly total_tokens?: unknown; readonly tool_uses?: unknown; readonly duration_ms?: unknown } | undefined;
   // 서브에이전트의 summary는 그 에이전트가 돌려준 보고 그 자체다 — 실행 출력이 그대로 흐르는
   // 경로이므로 도구 결과와 같은 문을 지난다.
@@ -489,7 +498,7 @@ function jobEndEvent(message: Readonly<Record<string, unknown>>, options: ChatEv
   return [{
     kind: "job-end",
     id,
-    status,
+    ...(status !== undefined ? { status } : {}),
     ...(summary !== undefined ? { summary: safeJobBody(summary, options, MAX_JOB_SUMMARY_CHARS) } : {}),
     ...(readCount(usage?.total_tokens) !== undefined ? { tokens: readCount(usage?.total_tokens) as number } : {}),
     ...(readCount(usage?.tool_uses) !== undefined ? { tools: readCount(usage?.tool_uses) as number } : {}),

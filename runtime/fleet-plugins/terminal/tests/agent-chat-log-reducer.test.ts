@@ -465,6 +465,24 @@ describe("background job ledger", () => {
     expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, status: "stopped", durationMs: 28000 }));
   });
 
+  it("does not erase a known outcome when a later report cannot be recognized", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "w" },
+      { kind: "job-end", id: "w1", status: "completed", summary: "done" },
+      { kind: "job-end", id: "w1", tokens: 99 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, status: "completed", tokens: 99 }));
+  });
+
+  it("records an unrecognized outcome as ended without a verdict", () => {
+    const state = fold([
+      { kind: "job", id: "w2", jobKind: "workflow", title: "w" },
+      { kind: "job-end", id: "w2", tokens: 5 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, tokens: 5 }));
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
   it("seeds a job whose start was missed so a late result is not thrown away", () => {
     const state = fold([{ kind: "job-end", id: "ghost", status: "completed", summary: "OK" }]);
     expect(state.jobs).toEqual([expect.objectContaining({ id: "ghost", kind: "other", open: false, status: "completed", summary: "OK" })]);

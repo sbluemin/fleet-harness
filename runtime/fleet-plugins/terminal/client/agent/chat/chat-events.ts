@@ -119,7 +119,8 @@ export type AgentChatStreamEvent =
   | {
       readonly kind: "job-end";
       readonly id: string;
-      readonly status: AgentChatJobStatus;
+      /** 없으면 끝났다는 사실만 아는 것이다 — 알아보지 못한 결말에 성공을 적지 않는다. */
+      readonly status?: AgentChatJobStatus;
       readonly summary?: string;
       readonly tokens?: number;
       readonly tools?: number;
@@ -273,7 +274,9 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         event: {
           kind: "job-end",
           id: event.id,
-          status: event.status === "failed" ? "failed" : event.status === "stopped" ? "stopped" : "completed",
+          ...(event.status === "completed" || event.status === "failed" || event.status === "stopped"
+            ? { status: event.status }
+            : {}),
           ...(typeof event.summary === "string" && event.summary.length > 0 ? { summary: event.summary } : {}),
           ...countField("tokens", event.tokens),
           ...countField("tools", event.tools),
@@ -604,7 +607,9 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       return mergeJob(state, event.id, (job) => ({
         ...job,
         open: false,
-        status: event.status,
+        // 결말을 알아보지 못한 보고는 이미 세워 둔 결말을 지우지 않는다 — 근거 없는 값으로
+        // 근거 있는 값을 덮는 셈이 된다.
+        ...(event.status !== undefined ? { status: event.status } : {}),
         ...(event.summary !== undefined ? { summary: event.summary } : {}),
         ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
         ...(event.tools !== undefined ? { tools: event.tools } : {}),

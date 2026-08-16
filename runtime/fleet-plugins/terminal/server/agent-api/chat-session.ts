@@ -410,6 +410,14 @@ class AgentChatSession {
 
   private push(event: AgentChatStreamEvent): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
+    // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
+    // 리듀서도 통째로 갈아 끼운다. 저널에 겹겹이 쌓으면 재접속이 이미 지나간 트리를 수십 번
+    // 되재생하고, 상한(JOURNAL_CAP)에 걸린 세션에서는 그 무게가 디스패치·응답·잡 시작 같은
+    // 되돌릴 수 없는 이력을 앞에서부터 밀어낸다. 같은 잡의 이전 맥박은 자리를 비켜 준다.
+    if (event.kind === "job-progress") {
+      const at = this.journal.findIndex((held) => held.event.kind === "job-progress" && held.event.id === event.id);
+      if (at >= 0) this.journal.splice(at, 1);
+    }
     this.journal.push(entry);
     if (this.journal.length > JOURNAL_CAP) this.journal.splice(0, this.journal.length - JOURNAL_CAP);
     for (const listener of this.listeners) listener(entry);

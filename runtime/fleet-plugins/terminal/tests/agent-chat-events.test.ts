@@ -464,6 +464,26 @@ describe("background job mapping", () => {
       .toEqual([{ kind: "jobs", ids: [] }]);
   });
 
+  it("refuses to call an unrecognized outcome a success", () => {
+    // 결말을 알아보지 못한 보고에 완료를 적으면, 이 원장이 고치려던 거짓 완료를 원장 자신이 그린다.
+    for (const raw of [undefined, "cancelled", "", 7]) {
+      const [event] = chatEventsFromSdkMessage({
+        type: "system", subtype: "task_notification", task_id: "u1", ...(raw === undefined ? {} : { status: raw }),
+        usage: { total_tokens: 12, tool_uses: 1, duration_ms: 900 },
+      }) as readonly AgentChatStreamEvent[];
+      // 끝났다는 사실과 비용은 남기되 결말은 주장하지 않는다.
+      expect(event).toEqual({ kind: "job-end", id: "u1", tokens: 12, tools: 1, durationMs: 900 });
+      expect("status" in (event as object)).toBe(false);
+    }
+  });
+
+  it("still maps the three outcomes it does recognize", () => {
+    for (const status of ["completed", "failed", "stopped"] as const) {
+      expect(chatEventsFromSdkMessage({ type: "system", subtype: "task_notification", task_id: "k1", status }))
+        .toEqual([{ kind: "job-end", id: "k1", status }]);
+    }
+  });
+
   it("stays silent on system subtypes it does not own", () => {
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "thinking_tokens", estimated_tokens: 5 })).toEqual([]);
     expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", tools: ["Bash"] })).toEqual([]);
@@ -536,6 +556,24 @@ describe("background job text passes the same gate as tool results", () => {
     expect(event).toEqual(expect.objectContaining({
       summary: "line one\nkey sk-…\npath …/secret/notes.md",
     }));
+  });
+
+  it("keeps indentation so nested lists and fenced code survive", () => {
+    const report = [
+      "## Findings",
+      "",
+      "- top",
+      "    - nested",
+      "",
+      "```python",
+      "def main():",
+      "    return 1",
+      "```",
+    ].join("\n");
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a3", status: "completed", summary: report,
+    }) as readonly AgentChatStreamEvent[];
+    expect((event as { readonly summary?: string }).summary).toBe(report);
   });
 
   it("falls back to the task id when no description arrives", () => {
