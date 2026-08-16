@@ -51,7 +51,7 @@ export function AgentChatView({
   readonly leadingChip?: React.ReactNode;
 }) {
   const t = getT(context.language ?? "en");
-  const state = useAgentChatStream(context.operationId);
+  const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).

@@ -88,6 +88,7 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
     geometry,
     operation,
     runtimeState,
+    bodyLive: true,
     theme,
     language,
     zoom: 1,
