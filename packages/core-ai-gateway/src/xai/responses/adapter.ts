@@ -27,6 +27,7 @@ export const XAI_CLI_CLIENT_VERSION = "1.0.3";
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
+const XAI_RETRY_DELAY_MS = 200;
 
 /**
  * Grok CLI's Responses wire accepts the canonical OpenAI-shaped request after
@@ -55,6 +56,7 @@ export interface XaiResponsesAdapterOptions {
 export class XaiResponsesAdapter implements AiGatewayAdapter {
   readonly capabilities = {} as const;
   private readonly fetchImpl: FetchLike;
+  private readonly isMarkedFetchFailure: (error: unknown) => boolean;
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
   private readonly functionCallTimeoutMs: number;
@@ -66,7 +68,9 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     // 오버라이드는 provider 어댑터를 다시 범용화하므로 옵션으로 노출하지 않는다.
     this.url = XAI_CLI_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
-    this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+    const fetchTracker = createXaiFetchFailureTracker(options.fetch ?? globalThis.fetch.bind(globalThis));
+    this.fetchImpl = fetchTracker.fetch;
+    this.isMarkedFetchFailure = fetchTracker.isMarkedFailure;
     this.maxBodyBytes = positiveInteger(
       options.maxBodyBytes ?? DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES,
       "maxBodyBytes"
@@ -89,53 +93,91 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       throw new TypeError("apiKey must not be empty");
     }
 
+    // 호출자 signal과 초기/retry fetch 및 stream read를 하나의 per-call controller로 묶는다.
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const payload = forXaiResponsesBackend(request, xaiWireTools(request));
-    // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
-    wireLog("xai-responses.wire.request", { url: this.url, payload });
-    let response: Response;
+    let retryAvailable = true;
+    let response: AdapterResponse;
 
     try {
-      response = await this.fetchImpl(this.url, {
-        method: "POST",
-        headers: {
-          accept: "text/event-stream",
-          authorization: `Bearer ${options.apiKey}`,
-          "content-type": "application/json",
-          "x-xai-token-auth": "xai-grok-cli",
-          "x-grok-client-version": XAI_CLI_CLIENT_VERSION,
-          "x-grok-model-override": request.model,
-          ...this.extraHeaders
-        },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
+      response = await this.fetchResponse(request, options.apiKey, payload, controller);
     } catch (error) {
-      unlinkAbort();
-      throw error;
+      if (!isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)) {
+        unlinkAbort();
+        throw error;
+      }
+      retryAvailable = false;
+      wireLog("xai-responses.retry.discarded", {
+        reason: "socket_termination",
+        phase: "fetch",
+      });
+      try {
+        await abortableXaiDelay(XAI_RETRY_DELAY_MS, controller.signal);
+        response = await this.fetchResponse(request, options.apiKey, payload, controller);
+      } catch (retryError) {
+        unlinkAbort();
+        throw retryError;
+      }
     }
+
+    if (!response.ok) {
+      unlinkAbort();
+      return response;
+    }
+
+    return {
+      ...response,
+      events: retryXaiEvents(response.events, async (signal) => {
+        await abortableXaiDelay(XAI_RETRY_DELAY_MS, signal);
+        const retried = await this.fetchResponse(request, options.apiKey, payload, controller);
+        if (!retried.ok) {
+          throw new UpstreamProtocolError(`xAI retry failed with status ${retried.status}`);
+        }
+        return retried.events;
+      }, controller, unlinkAbort, retryAvailable),
+    };
+  }
+
+  private async fetchResponse(
+    request: CanonicalResponseRequest,
+    apiKey: string,
+    payload: XaiResponsesWireRequest,
+    controller: AbortController,
+  ): Promise<AdapterResponse> {
+    // Exact JSON body sent on each attempt, including every tool's parameters and strict flag.
+    wireLog("xai-responses.wire.request", { url: this.url, payload });
+    const response = await this.fetchImpl(this.url, {
+      method: "POST",
+      headers: {
+        accept: "text/event-stream",
+        authorization: `Bearer ${apiKey}`,
+        "content-type": "application/json",
+        "x-xai-token-auth": "xai-grok-cli",
+        "x-grok-client-version": XAI_CLI_CLIENT_VERSION,
+        "x-grok-model-override": request.model,
+        ...this.extraHeaders
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
 
     if (!response.ok) {
       if (process.env.FLEET_AI_GATEWAY_DEBUG === "1") {
         const roles = payload.input.map((item) => ("role" in item ? item.role : item.type));
         console.error(`[ai-gateway] upstream ${response.status} input roles=${JSON.stringify(roles)} keys=${JSON.stringify(Object.keys(payload))}`);
       }
-      try {
-        const body = await readBoundedBody(response.body, {
-          controller,
-          idleTimeoutMs: this.idleTimeoutMs,
-          maxBodyBytes: this.maxBodyBytes
-        });
-        return {
-          ok: false,
-          status: response.status,
-          headers: response.headers,
-          body
-        };
-      } finally {
-        unlinkAbort();
-      }
+      const body = await readBoundedBody(response.body, {
+        controller,
+        idleTimeoutMs: this.idleTimeoutMs,
+        maxBodyBytes: this.maxBodyBytes
+      });
+      return {
+        ok: false,
+        status: response.status,
+        headers: response.headers,
+        body
+      };
     }
 
     return {
@@ -146,7 +188,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         controller,
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
-        onClose: unlinkAbort
+        onClose: () => undefined
       }, this.functionCallTimeoutMs)
     };
   }
@@ -209,6 +251,212 @@ function toolNameMatches(declaredName: string, selectedName: string): boolean {
 }
 
 type ReadOptions = UpstreamReadOptions;
+
+function retryXaiEvents(
+  events: AsyncIterable<CanonicalResponseEvent>,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  controller: AbortController,
+  unlinkAbort: () => void,
+  retryAvailable: boolean,
+): AsyncIterable<CanonicalResponseEvent> {
+  return {
+    [Symbol.asyncIterator]() {
+      const source = events[Symbol.asyncIterator]();
+      const iterator = generateXaiRetryEvents(source, retry, controller, unlinkAbort, retryAvailable);
+      return {
+        next: () => iterator.next(),
+        return: async () => {
+          controller.abort();
+          return iterator.return(undefined);
+        },
+        throw: async (error?: unknown) => {
+          controller.abort(error);
+          return iterator.throw(error);
+        },
+      };
+    },
+  };
+}
+
+async function* generateXaiRetryEvents(
+  source: AsyncIterator<CanonicalResponseEvent>,
+  retry: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent>>,
+  controller: AbortController,
+  unlinkAbort: () => void,
+  retryAvailable: boolean,
+): AsyncGenerator<CanonicalResponseEvent> {
+  // Anthropic 변환이 message_start/thinking을 즉시 발화하므로 commit 전 lead만 보류한다.
+  const lead: CanonicalResponseEvent[] = [];
+  let committed = false;
+  let normalCompletion = false;
+  let pendingError: Extract<CanonicalResponseEvent, { type: "error" }> | undefined;
+
+  try {
+    while (true) {
+      let result: IteratorResult<CanonicalResponseEvent>;
+      try {
+        result = await source.next();
+      } catch (error) {
+        if (committed || controller.signal.aborted || !isUndiciSocketTermination(error)) {
+          throw error;
+        }
+        if (!retryAvailable) {
+          yield* lead;
+          throw error;
+        }
+        wireLog("xai-responses.retry.discarded", {
+          reason: "socket_termination",
+          phase: "pre_commit",
+        });
+        await source.return?.();
+        lead.length = 0;
+        yield* await retry(controller.signal);
+        return;
+      }
+
+      if (result.done) {
+        yield* lead;
+        if (pendingError !== undefined) {
+          yield pendingError;
+        }
+        normalCompletion = true;
+        return;
+      }
+
+      const event = result.value;
+      if (retryAvailable && !committed && isRetryableXaiFailure(event)) {
+        if (event.type === "response.failed") {
+          const errorTypes = pendingError === undefined
+            ? [event.response.error.type]
+            : [pendingError.error.type, event.response.error.type];
+          wireLog("xai-responses.retry.discarded", pendingError === undefined
+            ? { reason: "response.failed", errorTypes }
+            : { reason: "error_failed_pair", errorTypes });
+          await source.return?.();
+          lead.length = 0;
+          yield* await retry(controller.signal);
+          return;
+        }
+        pendingError = event;
+        continue;
+      }
+
+      if (pendingError !== undefined) {
+        yield* lead;
+        lead.length = 0;
+        yield pendingError;
+        pendingError = undefined;
+        committed = true;
+      }
+
+      if (commitsXaiOutput(event)) {
+        yield* lead;
+        lead.length = 0;
+        committed = true;
+        yield event;
+      } else {
+        lead.push(event);
+      }
+    }
+  } finally {
+    if (!normalCompletion && !controller.signal.aborted) {
+      controller.abort();
+    }
+    unlinkAbort();
+    await source.return?.();
+  }
+}
+
+function isRetryableXaiFailure(event: CanonicalResponseEvent): event is
+  Extract<CanonicalResponseEvent, { type: "response.failed" | "error" }> {
+  return (event.type === "response.failed" && isRetryableXaiErrorType(event.response.error.type))
+    || (event.type === "error" && isRetryableXaiErrorType(event.error.type));
+}
+
+function isRetryableXaiErrorType(type: string): boolean {
+  return type === "server_error"
+    || type === "server_is_overloaded"
+    || type === "service_unavailable_error";
+}
+
+function commitsXaiOutput(event: CanonicalResponseEvent): boolean {
+  if (event.type === "response.created" || event.type === "response.reasoning_summary_text.delta") {
+    return false;
+  }
+  if (event.type === "response.output_item.added" && event.item.type === "message") {
+    return false;
+  }
+  return true;
+}
+
+function createXaiFetchFailureTracker(fetchImpl: FetchLike): {
+  fetch: FetchLike;
+  isMarkedFailure: (error: unknown) => boolean;
+} {
+  const failures = new WeakSet<object>();
+  return {
+    fetch: async (input, init) => {
+      try {
+        return await fetchImpl(input, init);
+      } catch (error) {
+        if (error !== null && typeof error === "object") {
+          failures.add(error);
+        }
+        throw error;
+      }
+    },
+    isMarkedFailure: (error) => error !== null && typeof error === "object" && failures.has(error),
+  };
+}
+
+function isRetryableXaiFetchSocket(
+  error: unknown,
+  signal: AbortSignal,
+  isMarkedFailure: (error: unknown) => boolean,
+): boolean {
+  return !signal.aborted && isMarkedFailure(error) && isUndiciSocketTermination(error);
+}
+
+function isUndiciSocketTermination(error: unknown): boolean {
+  const seen = new Set<object>();
+  let current: unknown = error;
+  for (let depth = 0; depth <= 4; depth += 1) {
+    if (current === null || typeof current !== "object" || seen.has(current)) {
+      return false;
+    }
+    seen.add(current);
+    if ((current as { code?: unknown }).code === "UND_ERR_SOCKET") {
+      return true;
+    }
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+async function abortableXaiDelay(delayMs: number, signal: AbortSignal): Promise<void> {
+  if (signal.aborted) {
+    throw signal.reason;
+  }
+  await new Promise<void>((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(onResolve, delayMs);
+    const onAbort = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      reject(signal.reason);
+    };
+    function onResolve(): void {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 function parseXaiEventStream(
   body: ReadableStream<Uint8Array> | null,
@@ -299,13 +547,9 @@ async function* assembleXaiFunctionCalls(
       yield event;
     }
   } finally {
-    // A normal source completion must retain the existing lifecycle: the caller's
-    // signal is not aborted just because the response ended successfully. On an
-    // error or early consumer return, abort first so any pending upstream read is
-    // released before returning the iterator.
-    if (!completedNormally && !controller.signal.aborted) {
-      controller.abort();
-    }
+    // The outer retry seam owns per-call cancellation. Closing this attempt must release
+    // only its source: a retry closes attempt one before reusing the same controller for
+    // attempt two, while outer return/throw and terminal errors abort the controller.
     const returned = iterator.return?.();
     if (returned !== undefined) {
       await returned.catch(() => undefined);
