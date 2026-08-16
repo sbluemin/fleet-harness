@@ -120,6 +120,21 @@ describe("agent chat mode routes", () => {
     await delivery;
   });
 
+  // 터미널 복귀는 chat 마커를 먼저 걷고 resume을 부른다. 그래서 resume 시점에는 이 세션이 방금
+  // 채팅에 있었다는 사실이 payload에 남지 않고, 남은 단서는 좌표가 없다는 것뿐이다 — 그것을
+  // 거절하면 첫 턴 전에 표면을 바꾼 세션이 돌아올 길을 잃는다.
+  it("resumes a session that never recorded a coordinate as a fresh start", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    await harness.post(sessionId, "chat");
+    await harness.del(sessionId, "chat");
+
+    await harness.post(sessionId, "resume");
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+  });
+
   // 좌표가 한 번 심긴 뒤의 부재는 "아직 시작 전"이 아니라 과거의 상실이다. fresh로 떨어뜨리면
   // 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다.
   it("rejects conversion when a captured transcript went missing", async () => {

@@ -71,10 +71,11 @@ const TERMINAL_PLUGIN_ID = "terminal";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
 /**
- * 이 Operation이 **채팅으로 태어났다**는 표식. `chatMode`와 갈라 두는 이유는 transcript 부재의
- * 뜻이 정반대이기 때문이다: 터미널에서 전환된 Operation에 transcript가 없으면 과거를 잃은 것이라
- * 시끄럽게 거절해야 하고, 채팅으로 태어난 Operation에 없으면 아직 첫 턴을 돌지 않은 것뿐이라
- * 정상 상태다. 이 표식이 없으면 첫 턴 전에 Console이 죽은 세션이 영영 열리지 않는 패널이 된다.
+ * 이 Operation이 **채팅으로 태어났다**는 표식 — 터미널을 한 번도 띄우지 않았다는 뜻이고,
+ * Quick Launch가 그 자리에서 첫 메시지를 받는 근거다.
+ *
+ * transcript 부재의 뜻을 가르는 데는 쓰지 않는다. 그것은 태생이 아니라 좌표가 한 번이라도
+ * 심겼는지가 정하며(`resolveChatSeed`), 첫 턴 전이라면 어느 표면에서 태어났든 부재가 정상이다.
  */
 const CHAT_BORN_PAYLOAD_KEY = "chatBorn";
 /** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
@@ -766,7 +767,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
     if (cliId === false) return true;
     const providerSession = readProviderSession(payload);
-    if (!node || !cliId || (!fresh && !providerSession)) {
+    // 이어붙일 좌표가 없으면 재개는 정의상 **새 시작**이고, `fresh`와 같은 경로다 — 저장된
+    // 세션을 버리는 것이 아니라 애초에 없었으므로 지울 stale 상태도 없다. 여기서 거절하면 첫 턴
+    // 전에 표면을 바꾼 세션이 터미널로 돌아올 길을 잃는다. chat 여부로는 판단할 수 없다: 그
+    // 복귀는 chat 마커를 먼저 걷고 이 라우트를 부르므로 이 시점의 payload에는 이미 없다.
+    const startsFresh = fresh || !providerSession;
+    if (!node || !cliId) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
@@ -787,9 +793,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
       if (releasedOnResume) observability.notifySessionUpdated(releasedOnResume);
       resumeNode = ctx.host.operations.get(sessionId) ?? node;
-      if (!fresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
+      if (!startsFresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
     }
-    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh, providerSession: resumeProviderSession });
+    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
     if (!result.ok) {
       ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
@@ -1561,6 +1567,18 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           },
         });
       }
+    } else if (ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+      // 채팅이 인수한 세션의 PTY 종료는 재개 불가 종료가 아니라 **표면 전환**이다. 첫 턴 전에
+      // 넘어왔다면 좌표가 아직 없을 뿐이고, 여기서 아래 정리로 떨어뜨리면 방금 전환한 Operation이
+      // 그 자리에서 사라진다 — 스트림은 session_not_found를 받고 터미널로 돌아갈 곳도 없어진다.
+      //
+      // 관측 세션은 지우지 않고 dormant로 세운다. 지우면 활동축이 사라져 첫 메시지가 보고할
+      // 자리를 잃고 chat_activity_unavailable로 거절된다.
+      const parked = observability.updateTerminalSessionStatus(operationId, "dormant");
+      if (parked) {
+        terminalRuntime.invalidateTicketsForSession(operationId);
+        observability.notifySessionUpdated(parked);
+      }
     } else {
       observability.removeTerminalSession(operationId);
       // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
@@ -1683,12 +1701,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     for (const operation of ctx.host.operations.list()) {
       if (operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) continue;
       const providerSession = readProviderSession(operation.payload);
-      // 채팅으로 태어난 Operation은 첫 턴 전에는 providerSession이 없다 — 그래도 복원 대상이다.
-      // 여기서 걸러 내면 그 Operation은 관측 세션 없이 남아 활동 보고를 받을 자리가 사라지고,
-      // 첫 메시지가 chat_activity_unavailable로 거절된다(영영 시작하지 못하는 패널).
-      const chatBorn = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true;
+      // 채팅 표면에 있는 Operation은 첫 턴 전에는 providerSession이 없다 — 채팅으로 태어났든
+      // 첫 턴 전에 터미널에서 넘어왔든 마찬가지다. 여기서 걸러 내면 그 Operation은 관측 세션
+      // 없이 남아 활동 보고를 받을 자리가 사라지고, 첫 메시지가 chat_activity_unavailable로
+      // 거절된다(영영 시작하지 못하는 패널).
+      const onChatSurface = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true
+        || operation.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       if (observability.getTerminalSessionInfo(operation.id)) continue;
-      if (!providerSession && !chatBorn) {
+      if (!providerSession && !onChatSurface) {
         ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, restoredDormant: true } });
         continue;
       }
