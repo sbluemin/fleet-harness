@@ -1284,16 +1284,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const transcriptPath = providerSession?.transcriptPath
       ? await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt)
       : null;
-    // 채팅으로 태어난 Operation에게 transcript 부재는 결함이 아니라 "아직 첫 턴 전"이다 —
-    // 첫 턴이 세션을 만들고 되쓰기가 좌표를 심는다. 전환된 Operation에서는 같은 부재가 과거의
-    // 상실이므로 지금까지처럼 거절한다(두 상태를 가르는 것이 chatBorn 표식의 존재 이유다).
+    // transcript 부재는 두 가지 뜻일 수 있고, 그것을 가르는 것은 태생이 아니라 **좌표가 한 번
+    // 이라도 심겼는지**다.
     //
-    // 다만 그 예외는 **첫 좌표가 생기기 전까지만** 산다. providerSession이 한 번 심리면 "아직
-    // 시작 전"은 거짓이 되므로, 그 뒤의 transcript 부재는 chatBorn Operation에서도 상실이다.
-    // 표식만 보고 fresh로 떨어뜨리면 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고,
-    // 그 세션의 되쓰기가 이전 정체성을 덮어쓴다 — 바로 그 상실을 막으려고 이 거절이 있다.
-    const chatBorn = node.payload[CHAT_BORN_PAYLOAD_KEY] === true;
-    const neverStarted = chatBorn && !providerSession;
+    // providerSession이 아직 없다면 이 세션은 첫 턴을 돌지 않았다. 부재가 정상이고, 잃을 과거도
+    // 없다. 터미널로 열어 놓고 아무것도 시키지 않은 Operation이 정확히 그 상태다 — 여기서
+    // 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을 새로 만들어야 한다.
+    //
+    // providerSession이 한 번 심린 뒤의 부재는 과거의 상실이다. 그때 fresh로 떨어뜨리면 지워진
+    // 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다 —
+    // 바로 그 상실을 막으려고 이 거절이 있다.
+    const neverStarted = !providerSession;
     if (!transcriptPath && !neverStarted) return { ok: false, status: 409, error: "chat_transcript_missing" };
     const sessionOrigin: AgentChatSessionOrigin = transcriptPath
       ? { kind: "resume", transcriptPath }
