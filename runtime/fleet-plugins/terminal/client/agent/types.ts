@@ -56,6 +56,8 @@ export interface SessionInfo {
   readonly chatActive?: boolean;
   /** Chat Mode의 SDK 턴이 진행 중인지. */
   readonly chatWorking?: boolean;
+  /** Chat Mode가 사용자의 답을 기다리는지. 기다림에 만료가 없으므로 밖에서도 보여야 한다. */
+  readonly chatAwaiting?: boolean;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

@@ -17,6 +17,25 @@ export interface AgentChatChange {
   readonly removed: number;
 }
 
+export interface AgentChatQuestionOption {
+  readonly label: string;
+  readonly description: string;
+}
+
+/**
+ * 모델이 사용자에게 내민 질문 하나. 다른 도구 입력과 달리 본문을 그대로 싣는다 — 이 문장들은
+ * 모델이 **사용자에게 보여주려고** 쓴 것이라, 실행 결과가 새는 경로가 아니다. 대신 상한은 진다.
+ */
+export interface AgentChatQuestion {
+  readonly header: string;
+  readonly question: string;
+  readonly multiSelect: boolean;
+  readonly options: readonly AgentChatQuestionOption[];
+}
+
+/** 답을 기다리는 두 형태. 통로(canUseTool)는 하나지만 화면에서 하는 말이 다르다. */
+export type AgentChatAskForm = "question" | "plan";
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   | { readonly kind: "replay-end"; readonly turns: number }
@@ -51,6 +70,34 @@ export type AgentChatStreamEvent =
     }
   /** 스텝의 결말. ok는 도구가 돌려준 사실이지 턴의 성패가 아니다. */
   | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
+  /**
+   * 모델이 멈춰 서서 사용자를 기다린다. 저널에 남는 이벤트여야 하는 이유는 만료가 없기 때문이다 —
+   * 재접속한 브라우저가 이 이벤트로 같은 카드를 다시 세우지 못하면, 대기는 영영 보이지 않는 채로
+   * 세션 하나를 붙든다.
+   */
+  | {
+      readonly kind: "ask";
+      /** tool_use id. 답변 라우트가 이 좌표로 대기 중인 질문을 찾는다. */
+      readonly id: string;
+      readonly form: AgentChatAskForm;
+      /** form="question"일 때의 질문들. */
+      readonly questions?: readonly AgentChatQuestion[];
+      /** form="plan"일 때의 계획 본문(마크다운). */
+      readonly plan?: string;
+      /**
+       * 계획이 상한에 잘렸다. 승인은 "본 것에 동의한다"는 뜻이라, 보여 주지 못한 단계가 있으면
+       * 카드는 승인을 열지 않는다 — 잘린 앞부분만 보고 누른 승인은 전문을 통과시킨다.
+       */
+      readonly truncated?: true;
+    }
+  /** 그 대기의 결말. answered/dismissed는 질문, approved/revised는 계획이 쓴다. */
+  | {
+      readonly kind: "ask-settled";
+      readonly id: string;
+      readonly outcome: "answered" | "dismissed" | "approved" | "revised";
+      /** 접힌 줄이 보일 값 — header → 사용자가 고른 것. */
+      readonly answers?: readonly { readonly header: string; readonly value: string }[];
+    }
   /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
   | { readonly kind: "error"; readonly code: string };
@@ -64,6 +111,21 @@ export interface AgentChatJournalEvent {
 const MAX_TOOL_DETAIL_CHARS = 160;
 const MAX_TOOL_RESULT_CHARS = 120;
 const MAX_TEXT_CHARS = 60_000;
+/** 질문 본문의 상한. 모델이 쓴 문장이라 실어도 되지만, 카드가 패널을 삼키지 않을 만큼만 싣는다. */
+const MAX_QUESTION_CHARS = 400;
+/** header 전용 상한. 옵션 라벨은 자르지 않는다 — 아래 주석 참조. */
+const MAX_HEADER_CHARS = 120;
+const MAX_OPTION_DESC_CHARS = 400;
+/** 계획 본문 상한 — 텍스트 이벤트와 같다. 넘으면 잘린 사실을 이벤트가 함께 말한다. */
+const MAX_PLAN_CHARS = 60_000;
+const MAX_QUESTIONS = 4;
+const MAX_OPTIONS = 4;
+
+/**
+ * 답을 기다리며 멈추는 두 도구. 통로는 `canUseTool` 하나이고, 이 집합 밖의 도구는 그 콜백을
+ * 그냥 통과한다 — 채팅 세션은 권한 게이트를 새로 세우지 않는다(모드는 그대로 bypass다).
+ */
+export const AGENT_CHAT_ASK_TOOLS: ReadonlySet<string> = new Set(["AskUserQuestion", "ExitPlanMode"]);
 
 /** 쓰기 계열 — 이 도구들만 변경 장부에 오른다. */
 const WRITE_TOOLS = new Set(["Write", "Edit", "MultiEdit", "NotebookEdit"]);
@@ -282,6 +344,90 @@ function normalizeDispatchText(text: string): string | null {
   // 훅·시스템 리마인더 운반 줄은 지휘 로그에 올리지 않는다.
   if (trimmed.startsWith("<system-reminder>") || trimmed.startsWith("<command-name>")) return null;
   return capText(trimmed);
+}
+
+/**
+ * 파서의 결과. 이벤트와 답변 키가 갈라져 있는 이유는 둘의 수신자가 다르기 때문이다 —
+ * 이벤트는 브라우저가 그릴 것이라 상한과 trim을 지나지만, 답변 키는 도구가 답을 맞춰 볼
+ * 좌표라 **원문 그대로**여야 한다. 표시용으로 가공한 문자열을 키로 쓰면 400자를 넘거나
+ * 앞뒤 공백이 있는 질문에서 키가 어긋나, 라우트는 200을 돌려주는데 모델은 답을 받지 못한다.
+ */
+export interface AgentChatAskParse {
+  readonly event: Extract<AgentChatStreamEvent, { kind: "ask" }>;
+  /** 질문 순서대로의 원본 질문 텍스트. 이벤트의 questions와 길이·순서가 같다. */
+  readonly answerKeys: readonly string[];
+}
+
+/**
+ * 대화형 도구의 입력을 카드가 읽을 이벤트로 옮긴다. 모양이 계약과 다르면 null을 돌려준다 —
+ * 그때 세션은 카드를 세우지 않고 도구를 그냥 통과시킨다. 반쯤 읽은 질문을 세우는 것보다,
+ * 모델이 답 없이 계속하는 편이 정직하다.
+ */
+export function agentChatAskFromToolInput(
+  name: string,
+  id: string,
+  input: unknown,
+): AgentChatAskParse | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const record = input as Record<string, unknown>;
+  if (name === "ExitPlanMode") {
+    const plan = typeof record.plan === "string" ? record.plan.trim() : "";
+    if (plan.length === 0) return null;
+    // 상한은 텍스트 이벤트와 같은 자리에 둔다 — 계획도 모델이 사람에게 읽히려고 쓴 문서다.
+    // 그래도 넘는 계획은 잘리는데, 그때는 승인을 열지 않는다는 사실을 함께 싣는다.
+    const truncated = plan.length > MAX_PLAN_CHARS;
+    return {
+      event: { kind: "ask", id, form: "plan", plan: cap(plan, MAX_PLAN_CHARS), ...(truncated ? { truncated: true } : {}) },
+      answerKeys: [],
+    };
+  }
+  if (name !== "AskUserQuestion") return null;
+  if (!Array.isArray(record.questions)) return null;
+  const questions: AgentChatQuestion[] = [];
+  // 건너뛴 질문이 있으면 인덱스가 어긋나므로, 키는 실제로 실린 질문과 같은 걸음으로 쌓는다.
+  const answerKeys: string[] = [];
+  for (const raw of record.questions.slice(0, MAX_QUESTIONS)) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    // 원문은 도구가 답을 맞춰 볼 키다 — trim도 상한도 표시용에만 건다.
+    const rawQuestion = typeof entry.question === "string" ? entry.question : "";
+    const question = rawQuestion.trim();
+    if (question.length === 0) continue;
+    const header = typeof entry.header === "string" && entry.header.trim().length > 0
+      ? entry.header.trim()
+      : question;
+    const options: AgentChatQuestionOption[] = [];
+    if (Array.isArray(entry.options)) {
+      for (const rawOption of entry.options.slice(0, MAX_OPTIONS)) {
+        if (!rawOption || typeof rawOption !== "object") continue;
+        const option = rawOption as Record<string, unknown>;
+        const label = typeof option.label === "string" ? option.label.trim() : "";
+        if (label.length === 0) continue;
+        options.push({
+          // 라벨은 사용자가 고르면 그대로 답이 되어 도구로 돌아간다 — 표시용으로 자르면
+          // 보이는 것과 보내는 것이 갈라져, 고른 것과 다른 값이 모델에게 간다. 길이는
+          // 카드 CSS가 접는다. description은 답이 되지 않으므로 상한을 그대로 둔다.
+          label,
+          description: cap(typeof option.description === "string" ? option.description.trim() : "", MAX_OPTION_DESC_CHARS),
+        });
+      }
+    }
+    // 선택지가 없는 질문은 자유 입력 하나만 남는데, 그 모양은 도구 계약이 아니다.
+    if (options.length === 0) continue;
+    questions.push({
+      header: cap(header, MAX_HEADER_CHARS),
+      question: cap(question, MAX_QUESTION_CHARS),
+      multiSelect: entry.multiSelect === true,
+      options,
+    });
+    answerKeys.push(rawQuestion);
+  }
+  if (questions.length === 0) return null;
+  return { event: { kind: "ask", id, form: "question", questions }, answerKeys };
+}
+
+function cap(value: string, limit: number): string {
+  return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 }
 
 /**

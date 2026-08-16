@@ -61,6 +61,11 @@ export interface AgentTerminalSessionInfo {
   readonly chatActive?: boolean;
   /** Chat Mode의 SDK 턴이 진행 중인지. runTurn 의 시작과 finally 가 이 값의 유일한 필자다. */
   readonly chatWorking?: boolean;
+  /**
+   * Chat Mode가 사용자의 답을 기다리는지. 기다림에는 만료가 없으므로 이 값이 없으면 대기는
+   * 패널을 연 사람에게만 보이고, 사이드바는 그동안 "작업 중"이라고 말한다.
+   */
+  readonly chatAwaiting?: boolean;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;

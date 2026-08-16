@@ -7,6 +7,7 @@ import {
 
 import {
   CLAUDE_GATEWAY_TURN_KEYS,
+  type ClaudeGatewayCanUseTool,
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
   type ClaudeGatewayServedMcpServer,
@@ -98,6 +99,7 @@ export async function createClaudeGatewaySdk(
           ...(turn.allowedTools === undefined ? {} : { allowedTools: [...turn.allowedTools] }),
           ...(turn.disallowedTools === undefined ? {} : { disallowedTools: [...turn.disallowedTools] }),
           ...(turn.permissionMode === undefined ? {} : { permissionMode: turn.permissionMode }),
+          ...(turn.canUseTool === undefined ? {} : { canUseTool: vendorCanUseTool(turn.canUseTool) }),
           ...(turn.mcpServers === undefined && turn.servedMcpServers === undefined
             ? {}
             : { mcpServers: { ...turn.mcpServers, ...vendorServedMcpServers(turn.servedMcpServers) } }),
@@ -223,6 +225,35 @@ function resolveTurnModel(requested: string, accepted: readonly AcceptedModel[])
     );
   }
   return entry.id;
+}
+
+/**
+ * 호출자의 콜백을 vendor가 부르는 모양으로 옮긴다. vendor는 옵션 객체 하나로 여러 필드를 주지만
+ * 이 패키지의 공개 어휘는 그 중 둘만 통과시킨다 — 나머지(권한 제안·차단 경로·요청 봉투 id)는
+ * 권한 UI를 짓는 소비처의 것이지, 사용자에게 물어보는 이 통로의 것이 아니다.
+ *
+ * 콜백이 던지면 거부로 접는다. 예외를 그대로 올리면 vendor가 응답을 쓰지 못해 도구가 무기한
+ * 막히는데(권한 요청에는 park deadline이 없다), 그 정지는 호출자에게 아무 신호도 남기지 않는다.
+ */
+function vendorCanUseTool(
+  canUseTool: ClaudeGatewayCanUseTool,
+): (toolName: string, input: Record<string, unknown>, options: Record<string, unknown>) => Promise<unknown> {
+  return async (toolName, input, options) => {
+    try {
+      const decision = await canUseTool(toolName, input, {
+        toolUseId: typeof options.toolUseID === "string" ? options.toolUseID : "",
+        signal: options.signal instanceof AbortSignal ? options.signal : new AbortController().signal,
+      });
+      if (decision.behavior === "allow") {
+        return decision.updatedInput === undefined
+          ? { behavior: "allow", updatedInput: input }
+          : { behavior: "allow", updatedInput: { ...decision.updatedInput } };
+      }
+      return { behavior: "deny", message: decision.message };
+    } catch (error) {
+      return { behavior: "deny", message: error instanceof Error ? error.message : String(error) };
+    }
+  };
 }
 
 /** 호출자가 고른 모드를 vendor가 아는 모양으로 옮긴다. 텍스트는 이 패키지가 만들지 않는다. */

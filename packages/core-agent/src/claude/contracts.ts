@@ -101,6 +101,38 @@ export type ClaudeGatewaySystemPrompt =
   | { readonly mode: "replace"; readonly text: string }
   | { readonly mode: "append"; readonly text: string };
 
+/**
+ * 자식이 도구를 쓰기 전에 호스트에게 묻는 자리. 호출자가 이 콜백을 주면 vendor가 대화형 도구
+ * (`AskUserQuestion`·`ExitPlanMode`)를 자식의 도구 목록에 싣는다 — 실측: 콜백이 없으면 29개,
+ * 있으면 32개이고 그 셋이 함께 들어온다.
+ *
+ * `permissionMode: "bypassPermissions"`는 평범한 도구를 콜백 앞에서 자동 승인하지만, 이 두
+ * 대화형 도구는 그 모드에서도 여기까지 온다(실측). 그래서 이 콜백은 권한 게이트가 아니라
+ * **사용자에게 물어보는 통로**로 쓰인다.
+ */
+export interface ClaudeGatewayToolPermissionContext {
+  /** 이 도구 호출의 식별자. 같은 assistant 메시지의 도구 호출끼리 서로 다르다. */
+  readonly toolUseId: string;
+  /** 턴이 끊기면 신호가 온다. 대기 중인 질문을 정리하는 근거다. */
+  readonly signal: AbortSignal;
+}
+
+/**
+ * 호스트의 답. `allow`의 `updatedInput`이 답변을 싣는 자리다 — `AskUserQuestion`은 그 안의
+ * `answers`(질문 텍스트 → 답)를 사용자의 선택으로 읽고, `ExitPlanMode`는 allow 자체를 계획
+ * 승인으로 읽는다. `deny`의 `message`는 자식에게 오류 결과로 전달되며, 계획 쪽에서는 그것이
+ * 곧 수정 요청이 되어 모델이 계획을 고쳐 다시 낸다.
+ */
+export type ClaudeGatewayToolPermission =
+  | { readonly behavior: "allow"; readonly updatedInput?: Readonly<Record<string, unknown>> }
+  | { readonly behavior: "deny"; readonly message: string };
+
+export type ClaudeGatewayCanUseTool = (
+  toolName: string,
+  input: Readonly<Record<string, unknown>>,
+  context: ClaudeGatewayToolPermissionContext,
+) => Promise<ClaudeGatewayToolPermission>;
+
 export interface ClaudeGatewaySdkOptions {
   /**
    * Anthropic 호환 `/v1` endpoint의 절대 URL. 호스트가 `createAiGatewayRouter`를 서빙한 주소를
@@ -167,6 +199,13 @@ export interface ClaudeGatewayTurn {
    */
   readonly disallowedTools?: readonly string[];
   readonly permissionMode?: ClaudeGatewayPermissionMode;
+  /**
+   * 도구 사용 전에 호스트에게 묻는 콜백. 이 키가 allowlist에 있는 이유는 `hooks`와 성격이 다르기
+   * 때문이다 — hooks는 그 출력이 `additionalContext`·`appendSystemPrompt`를 실어 호출자가 쓰지
+   * 않은 **지시**를 자식에게 주입하는 통로인 반면, 이 콜백은 지시를 싣지 않고 자식이 물은 것에
+   * 호스트가 답만 돌려준다. 주면 대화형 도구가 자식의 도구 목록에 실린다.
+   */
+  readonly canUseTool?: ClaudeGatewayCanUseTool;
   readonly mcpServers?: Readonly<Record<string, ClaudeGatewayMcpServer>>;
   /** 자식이 접속할 HTTP MCP 엔드포인트. 호스트가 이미 서빙 중이어야 한다. */
   readonly servedMcpServers?: readonly ClaudeGatewayServedMcpServer[];
@@ -189,6 +228,7 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "allowedTools",
   "disallowedTools",
   "permissionMode",
+  "canUseTool",
   "mcpServers",
   "servedMcpServers",
   "includePartialMessages",

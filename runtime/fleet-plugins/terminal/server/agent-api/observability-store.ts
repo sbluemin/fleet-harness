@@ -69,6 +69,7 @@ interface PendingTerminalSessionState {
   backgroundPending?: boolean;
   chatActive?: boolean;
   chatWorking?: boolean;
+  chatAwaiting?: boolean;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
@@ -356,6 +357,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     else {
       delete session.chatActive;
       delete session.chatWorking;
+      delete session.chatAwaiting;
     }
     return toTerminalSessionInfo(session);
   }
@@ -367,6 +369,21 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     if ((session.chatWorking === true) === working) return toTerminalSessionInfo(session);
     if (working) session.chatWorking = true;
     else delete session.chatWorking;
+    // 턴이 끝나면 기다리던 것도 함께 끝난다 — 대기를 남겨 두면 유휴 세션이 영영 대기로 읽힌다.
+    if (!working) delete session.chatAwaiting;
+    return toTerminalSessionInfo(session);
+  }
+
+  /**
+   * 사용자의 답을 기다리는 구간. 진행 중 턴 안에서만 서므로 chatWorking을 끄지 않는다 —
+   * 두 값의 조합을 읽는 쪽(sessionRuntime)이 대기를 작업보다 앞세운다.
+   */
+  function setTerminalSessionChatAwaiting(sessionId: string, awaiting: boolean): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session || session.chatActive !== true) return null;
+    if ((session.chatAwaiting === true) === awaiting) return toTerminalSessionInfo(session);
+    if (awaiting) session.chatAwaiting = true;
+    else delete session.chatAwaiting;
     return toTerminalSessionInfo(session);
   }
 
@@ -505,6 +522,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     setTerminalSessionModelActivity,
     setTerminalSessionChatActive,
     setTerminalSessionChatWorking,
+    setTerminalSessionChatAwaiting,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -532,6 +550,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
     ...(state.chatActive === true ? { chatActive: true } : {}),
     ...(state.chatWorking === true ? { chatWorking: true } : {}),
+    ...(state.chatAwaiting === true ? { chatAwaiting: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,
