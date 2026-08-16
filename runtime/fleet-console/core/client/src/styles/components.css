@@ -5410,35 +5410,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transform: rotate(-90deg);
 }
 
-/* 섹션 머리글 마크도 활동 축이다 — 행의 마크와 같은 둥근 네모를 쓴다(원형 폐지). */
-.side-bar-status-header__dot {
-  display: block;
-  flex: none;
-  width: 7px;
-  height: 7px;
-  border-radius: 2px;
-  background: var(--status-color);
-}
-
-.side-bar-status-section--background .side-bar-status-header__dot {
-  background: none;
-  border: 1.5px solid var(--activity-color);
-  box-sizing: border-box;
-}
-
-.side-bar-status-section--empty .side-bar-status-header__dot {
-  opacity: 0.4;
-}
-
-.side-bar-status-header--awaiting .side-bar-status-header__dot {
-  animation: aurora-pulse 1.8s infinite;
-}
-
-/* 빈 섹션은 주의 신호를 낼 상태가 없으므로 awaiting pulse도 끈다 — count 0에서
-   맥동하는 dot은 "대기 입력이 있다"는 거짓 신호가 된다(명시도 우위로 pulse 규칙을 덮는다). */
-.side-bar-status-section--empty .side-bar-status-header--awaiting .side-bar-status-header__dot {
-  animation: none;
-}
+/* 상태 그룹 헤더는 라벨·카운트·왼쪽 스트라이프로 버킷을 말한다. 둥근 네모 마크는
+   칩과 패널이 이미 그리므로 머리글에 반복하지 않는다. */
 
 .side-bar-status-header__count {
   flex: none;
@@ -5618,8 +5591,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     transition: none;
   }
 
-  .side-bar-status-axis-live-tick,
-  .side-bar-status-header--awaiting .side-bar-status-header__dot {
+  .side-bar-status-axis-live-tick {
     animation: none;
   }
 

@@ -250,7 +250,6 @@ export function StatusSectionSlot({
         >
           <StatusSectionCollapseArrow collapsed={collapsed} />
         </button>
-        <span className="side-bar-status-header__dot" aria-hidden="true" />
         <span className="side-bar-status-header__label">{section.label}</span>
         {unseenCount > 0 ? <span className="side-bar-status-header__unseen">{unseenCount}</span> : null}
         <span className="side-bar-status-header__count">{section.entries.length}</span>
