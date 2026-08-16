@@ -2432,6 +2432,10 @@ describe("War Room deck panel grammar", () => {
     expect(hide).not.toContain("is-quicklook");
     // 회신 버튼은 칩 줄이 아니다 — 별도 규칙으로 숨기면 이 계약이 깨져야 한다.
     expect(terminalChatCss).not.toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
+    // 칩을 숨긴 카드에서는 그 자리를 피하던 상단 여백만 거둔다. 하단은 회신 버튼이 쓴다.
+    const logOnTile = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-log \{[^}]*\}/)?.[0] ?? "";
+    expect(logOnTile).toContain("padding-top: var(--space-3);");
+    expect(logOnTile).not.toContain("45px");
   });
 
   it("gives the promotion surface the body and leaves the caption its own controls", () => {

@@ -565,6 +565,11 @@
   display: none;
 }
 
+/* 칩이 없으면 로그가 그 자리를 되찾는다. 하단 45px는 회신 버튼 몫이라 건드리지 않는다. */
+.canvas-operation.is-deck-tile .agent-chat-log {
+  padding-top: var(--space-3);
+}
+
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
 .agent-analyst-chip-live {
   width: 6px;
