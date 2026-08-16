@@ -18,6 +18,7 @@ const dispatch = vi.fn((action: AnalysisAction) => {
   storeState = analysisReducer(storeState, action);
   rerenderStore();
 });
+const refreshCatalog = vi.fn();
 vi.mock("./analysis-store.js", () => ({
   useAnalysisStore: () => ({
     state: storeState,
@@ -25,6 +26,7 @@ vi.mock("./analysis-store.js", () => ({
     send: vi.fn(async () => undefined),
     stop: vi.fn(async () => undefined),
     reset: vi.fn(async () => undefined),
+    refreshCatalog,
   }),
 }));
 

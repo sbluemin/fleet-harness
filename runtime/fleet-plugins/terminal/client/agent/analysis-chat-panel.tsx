@@ -47,7 +47,7 @@ const SLASH_COMMANDS = [
 }[];
 
 export function AnalystChatPanel({ context }: { readonly context: OperationRenderContext }) {
-  const { state, dispatch, send, stop } = useAnalysisStore(context);
+  const { state, dispatch, send, stop, refreshCatalog } = useAnalysisStore(context);
   const language = context.language ?? "en";
   const t = getT(language);
   const reducedMotion = usePrefersReducedMotion();
@@ -97,6 +97,10 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
     const chat = chatRef.current;
     if (chat) installDiagramHydrator(chat, diagramHydratorLabels(language));
   }, [language, mode]);
+  // 설정은 라우트라 다녀오면 이 패널은 다시 마운트되지만 store는 Operation 수명으로 살아 있다 —
+  // 여는 시점에 한 번 읽어야 방금 추가한 게이트웨이 모델이 목록에 들어온다. 캡션도 같은 store를
+  // 구독하므로 호출은 본문 한 곳에서만 한다(두 곳이면 열 때마다 두 번 읽는다).
+  React.useEffect(() => { refreshCatalog(); }, [refreshCatalog]);
   const submit = async (text: string, clearDraft: boolean) => {
     const trimmed = text.trim();
     if (!trimmed) return;

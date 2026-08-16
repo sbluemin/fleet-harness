@@ -9,6 +9,10 @@ branch: analyst-panel-caption-composer
 - Rebuild the Session Analyst composer as one surface: the model, effort, and slash-command controls now sit inside the prompt box instead of a separate strip above it, control labels are large enough to read, and effort uses the same colour ladder as Quick Launch.
   ko: Session Analyst 컴포저를 한 장의 면으로 다시 만들었습니다. 모델·강도·슬래시 명령 컨트롤이 입력 상자 위 별도 스트립이 아니라 그 안에 자리하고, 컨트롤 글자가 읽을 수 있는 크기로 커지며, 강도는 Quick Launch와 같은 색 사다리를 씁니다.
 
+#### Fixed
+- Show a gateway model in the Session Analyst model list right after you add it in Settings. The list was read once per Operation and never again, so a model added later stayed missing until the page was reloaded.
+  ko: Settings에서 게이트웨이 모델을 추가하면 Session Analyst 모델 목록에 곧바로 나타납니다. 목록을 Operation당 한 번만 읽어, 뒤에 추가한 모델은 페이지를 새로 고치기 전까지 계속 보이지 않았습니다.
+
 #### Removed
 - Drop the Analyst composer's provider control while only one provider is offered. It listed a single unchangeable entry, and the model menu already covers every native and gateway model.
   ko: 공급자가 하나뿐인 동안에는 Analyst 컴포저의 공급자 컨트롤을 두지 않습니다. 바꿀 수 없는 항목 하나만 보여 주던 자리이고, 네이티브·게이트웨이 모델은 이미 모델 메뉴가 모두 담고 있습니다.

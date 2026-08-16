@@ -13,6 +13,7 @@ export interface AnalysisStore {
   readonly send: (text: string) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
+  readonly refreshCatalog: () => void;
   readonly dispose: () => void;
   readonly updateContext: (settings: ClientSettingsCapability | undefined, language: "en" | "ko" | undefined) => void;
 }
@@ -23,6 +24,7 @@ interface AnalysisStoreBinding {
   readonly send: (text: string) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly reset: () => Promise<void>;
+  readonly refreshCatalog: () => void;
 }
 
 const stores = new Map<string, AnalysisStore>();
@@ -31,7 +33,7 @@ const disposalFlights = new Map<string, Promise<void>>();
 export function useAnalysisStore(context: OperationRenderContext): AnalysisStoreBinding {
   const store = getAnalysisStore(context.operationId, context.api, context.settings, context.language);
   const state = React.useSyncExternalStore(store.subscribe, store.getSnapshot, store.getSnapshot);
-  return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset };
+  return { state, dispatch: store.dispatch, send: store.send, stop: store.stop, reset: store.reset, refreshCatalog: store.refreshCatalog };
 }
 
 export function getAnalysisStore(operationId: string, api: ClientApiCapability, settings?: ClientSettingsCapability, language?: "en" | "ko"): AnalysisStore {
@@ -62,6 +64,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
   let disposed = false;
   let unsubscribe: (() => void) | null = null;
   let watchdog: ReturnType<typeof setTimeout> | null = null;
+  let catalogFlight: Promise<void> | null = null;
   let startFlight: Promise<void> | null = null;
   let startController: AbortController | null = null;
   let stopFlight: Promise<void> | null = null;
@@ -292,6 +295,22 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
         if (resetFlight === flight) resetFlight = null;
         dispatch({ type: "selection-lock", locked: false });
       }
+    },
+    // 카탈로그는 AI Gateway 선별에서 나오고 그 선별은 Console 설정에서 바뀐다 — 설정을 다녀오는 동안
+    // 이 store는 살아 있으므로(Operation 단위 수명), 다시 열 때 읽지 않으면 방금 추가한 모델이
+    // 목록에 영원히 없다. 선택이 잠긴 뒤(started)에는 읽지 않는다 — 진행 중 세션의 표시 선택을
+    // 뒤에서 갈아끼우게 된다. 현재 선택을 그대로 넘겨 아직 고를 수 있는 값이면 사용자의 선택이 산다.
+    refreshCatalog: () => {
+      if (state.started || catalogFlight) return;
+      catalogFlight = fetchAnalysisCatalog(api)
+        .then((catalog) => {
+          if (disposed || state.started) return;
+          dispatch({ type: "catalog", catalog, selection: { cliId: state.cliId, model: state.model, effort: state.effort } });
+        })
+        // 목록 갱신 실패는 조용히 지나간다 — 이미 들고 있는 카탈로그로 계속 쓸 수 있고,
+        // 여기서 오류 문구를 띄우면 아직 아무것도 요청하지 않은 화면이 실패한 것처럼 읽힌다.
+        .catch(() => undefined)
+        .finally(() => { catalogFlight = null; });
     },
     dispose,
     updateContext: (settings, nextLanguage) => {

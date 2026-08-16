@@ -33,8 +33,11 @@ const dispatch = vi.fn((action: AnalysisAction) => {
   storeState = analysisReducer(storeState, action);
   rerenderStore();
 });
+// 패널이 열릴 때 카탈로그를 다시 읽으므로 목도 같은 자리를 제공한다. 함수 정체성은 고정한다 —
+// 매 렌더 새 함수를 주면 그 효과가 매 렌더 다시 돈다.
+const refreshCatalog = vi.fn();
 vi.mock("./analysis-store.js", () => ({
-  useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset }),
+  useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset, refreshCatalog }),
 }));
 
 import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";

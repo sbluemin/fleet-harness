@@ -151,6 +151,34 @@ describe("per-operation analysis store", () => {
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
   });
 
+  it("re-reads the catalog on refresh, keeps the current selection, and stops once the session started", async () => {
+    // 설정에서 모델을 추가한 뒤 돌아온 상황 — 두 번째 읽기부터 새 모델이 실린다.
+    let models = [{ id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" }];
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(
+        JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+      : null);
+    const operationId = "operation-store-catalog-refresh";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(1));
+
+    models = [...models, { id: "claude-gateway--cursor--auto", label: "Cursor-Auto", effortLevels: ["low"], defaultEffort: "low" }];
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(2));
+    // 갱신이 사용자의 현재 선택을 갈아끼우지 않는다.
+    expect(store.getSnapshot()).toMatchObject({ cliId: "claude-gateway", model: "sonnet", effort: "low" });
+
+    const readsBeforeStart = harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog").length;
+    store.dispatch({ type: "sending", started: true, text: "go", now: Date.now() });
+    store.refreshCatalog();
+    await Promise.resolve();
+    // 선택이 잠긴 뒤에는 읽지 않는다 — 진행 중 세션의 표시 선택을 뒤에서 갈아끼우게 된다.
+    expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(readsBeforeStart);
+    disposeAnalysisStore(operationId);
+  });
+
   it("migrates a persisted bare Fable selection before catalog hydration", async () => {
     const catalogBody = JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
       { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" },
