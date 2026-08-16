@@ -62,9 +62,9 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
     };
   });
   const dispose = vi.fn(async () => {});
-  const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+  const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true }) => ({
     configDir,
-    models,
+    models: options.models,
     startTurn,
     dispose,
   }));
@@ -363,6 +363,28 @@ describe("AgentChatRegistry", () => {
       // 글자 단위 스트리밍의 전제 — text_delta는 부분 메시지에만 실린다.
       includePartialMessages: true,
     }));
+    await registry.disposeAll();
+  });
+
+  it("forwards session ultracode into the SDK factory, not as a turn effort rung", async () => {
+    const transcriptPath = writeTranscript("sid-ultra", [
+      { type: "user", message: { role: "user", content: "first order" } },
+    ]);
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ultra", () => ({
+      ...seedFor(transcriptPath),
+      effort: "xhigh",
+      ultracode: true,
+    }));
+    session.send("continue");
+    await drainTurn(registry, "op-ultra");
+
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({ ultracode: true }));
+    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({ effort: "xhigh" }));
+    expect(startTurn.mock.calls[0]?.[0]).not.toHaveProperty("ultracode");
     await registry.disposeAll();
   });
 
