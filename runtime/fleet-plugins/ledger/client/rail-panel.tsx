@@ -1,11 +1,10 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import { parseModelIdentity } from "../server/identity.js";
-import type { LedgerOperationDto, LedgerSummaryDto, LedgerUnmatchedOperationDto, LedgerWindow } from "../server/types.js";
-import { cliGlyph, markKeyFromOperation, supplierMarkKey } from "./cli-glyphs.js";
+import type { LedgerDailyDetailDto, LedgerModelRowDto, LedgerSummaryDto, LedgerWindow } from "../server/types.js";
+import { providerGlyph } from "./cli-glyphs.js";
 import {
   costValueTier,
   formatCost,
@@ -20,20 +19,12 @@ import {
 import { getT, type LedgerMessageKey } from "./i18n/index.js";
 import "./ledger.css";
 
-type T = Translate<LedgerMessageKey>;
-type ScopeMode = "theater" | "all";
-type SortMode = "activity" | "cost";
-
-type DisplayRow =
-  | { readonly kind: "matched"; readonly operation: LedgerOperationDto }
-  | { readonly kind: "unmatched"; readonly operation: LedgerUnmatchedOperationDto };
-
-/** 유령 행은 시각 홍수를 막기 위해 5개까지 — 전체 수는 커버리지 라인과 롤업이 전한다. */
-const MAX_GHOST_ROWS = 5;
-
 interface LedgerPanelProps {
   readonly ctx: RailPanelContext;
 }
+
+type T = Translate<LedgerMessageKey>;
+type TrendScale = "linear" | "sqrt";
 
 function relativeTime(atMs: number, nowMs: number, t: T): string {
   const minutes = Math.max(0, Math.floor((nowMs - atMs) / 60_000));
@@ -52,31 +43,6 @@ function totalTokens(usage: { readonly input: number; readonly output: number; r
   return usage.input + usage.output + usage.cacheRead;
 }
 
-const LEDGER_SUPPLIER_KEYS = new Set([
-  "claude",
-  "codex",
-  "cursor",
-  "kimi",
-  "opencode",
-  "xai",
-]);
-
-function supplierLabel(supplier: string, t: T): string {
-  return LEDGER_SUPPLIER_KEYS.has(supplier)
-    ? t(`ledger.supplier.${supplier}` as LedgerMessageKey)
-    : t("ledger.value.unknownCli");
-}
-
-function operationHostLabel(
-  operation: { readonly launchProvider: string | null; readonly cliLabel: string },
-  t: T,
-): string {
-  if (operation.launchProvider && operation.launchProvider !== "claude") {
-    return supplierLabel(operation.launchProvider, t);
-  }
-  return operation.cliLabel || t("ledger.value.unknownCli");
-}
-
 function ValueAmount({ parts, tier, className = "" }: {
   readonly parts: FormattedValueParts;
   readonly tier: ValueTier;
@@ -89,6 +55,41 @@ function ValueAmount({ parts, tier, className = "" }: {
       <span className={`ledger-value-part ledger-value--${tier}`}>{parts.number}</span>
       {parts.suffix ? <span className={`ledger-value-part ledger-value--${unitTier}`}>{parts.suffix}</span> : null}
     </span>
+  );
+}
+
+const PROVIDER_LABELS: Readonly<Record<string, string>> = {
+  anthropic: "Anthropic",
+  claude: "Anthropic",
+  codex: "Codex",
+  cursor: "Cursor",
+  kimi: "Kimi",
+  opencode: "OpenCode",
+  xai: "xAI",
+};
+
+function providerLabel(provider: string): string {
+  return PROVIDER_LABELS[provider] ?? provider;
+}
+
+function providerClass(provider: string): string {
+  return /^[a-z0-9-]+$/.test(provider) ? provider : "unknown";
+}
+
+function ModelRow({ row }: { readonly row: LedgerModelRowDto }) {
+  const tokens = totalTokens(row.usage);
+  return (
+    <div className="ledger-client-row">
+      <span className={`ledger-client-mark is-${providerClass(row.provider)}`}>{providerGlyph(row.provider)}</span>
+      <span className="ledger-client-copy">
+        <strong>{row.label}</strong>
+        <small>{providerLabel(row.provider)}</small>
+      </span>
+      <span className="ledger-client-values">
+        <ValueAmount parts={formatCostParts(row.costUsd)} tier={costValueTier(row.costUsd)} />
+        <ValueAmount parts={formatTokenParts(tokens)} tier={tokenValueTier(tokens)} />
+      </span>
+    </div>
   );
 }
 
@@ -114,159 +115,128 @@ function TrendSummaryText({ t, message, day, cost }: {
   );
 }
 
-type TrendScale = "linear" | "sqrt";
+function DailyDetail({ detail, language, t }: {
+  readonly detail: LedgerDailyDetailDto;
+  readonly language: RailPanelContext["language"];
+  readonly t: T;
+}) {
+  const day = new Intl.DateTimeFormat(language, { month: "short", day: "numeric" })
+    .format(new Date(`${detail.day}T12:00:00`));
+  return (
+    <section className="ledger-daily-detail">
+      <h3>{t("ledger.daily.detail", { day })}</h3>
+      <div className="ledger-client-list">
+        {detail.models.map((row) => <ModelRow key={row.modelId} row={row} />)}
+      </div>
+      {detail.modelCount > detail.models.length ? (
+        <div className="ledger-coverage-more">
+          {t("ledger.models.more", { count: detail.modelCount - detail.models.length })}
+        </div>
+      ) : null}
+    </section>
+  );
+}
 
-function TrendSection({ daily, dailyAttributed, language, t }: {
-  readonly daily: LedgerSummaryDto["daily"];
-  readonly dailyAttributed: LedgerSummaryDto["dailyAttributed"];
+function currentLocalDay(data: LedgerSummaryDto): string {
+  const date = new Date(data.generatedAtMs);
+  const year = String(date.getFullYear()).padStart(4, "0");
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function detailDays(data: LedgerSummaryDto): readonly string[] {
+  if (data.scope.window !== "today") return [];
+  const today = currentLocalDay(data);
+  return data.dailyDetails.filter((detail) => detail.day === today).map((detail) => detail.day);
+}
+
+function defaultSelectedDay(data: LedgerSummaryDto): string | null {
+  const available = new Set(detailDays(data));
+  return data.daily.filter((point) => available.has(point.day) && point.costUsd > 0).at(-1)?.day
+    ?? data.daily.filter((point) => available.has(point.day)).at(-1)?.day
+    ?? null;
+}
+
+function TrendSection({ data, language, t }: {
+  readonly data: LedgerSummaryDto;
   readonly language: RailPanelContext["language"];
   readonly t: T;
 }) {
   const [scale, setScale] = useState<TrendScale>("linear");
-  // Intl 포매터 생성은 비싸므로 스케일 토글 같은 무관한 리렌더에서 재생성하지 않는다.
+  const [selectedDay, setSelectedDay] = useState<string | null>(() => defaultSelectedDay(data));
+  const fallbackDay = defaultSelectedDay(data);
+  const availableDetailDays = new Set(detailDays(data));
+  const selected = selectedDay && availableDetailDays.has(selectedDay)
+    ? selectedDay
+    : fallbackDay;
+  const detail = selected ? data.dailyDetails.find((entry) => entry.day === selected) : undefined;
   const dayFormatter = useMemo(
     () => new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }),
     [language],
   );
-  const formatDay = (day: string) => dayFormatter.format(new Date(day + "T12:00:00"));
-  // 스케일은 값에 적용하는 함수다 — 막대 전체와 귀속 레이어에 같은 함수를 써야
-  // sqrt 모드에서도 "높이 ∝ 변환(값)" 해석이 모든 세그먼트에 일관되게 성립한다.
+  const formatDay = (day: string) => dayFormatter.format(new Date(`${day}T12:00:00`));
   const transform = (value: number) => scale === "sqrt" ? Math.sqrt(value) : value;
-  const maxCost = Math.max(...daily.map((point) => point.costUsd));
+  const maxCost = Math.max(...data.daily.map((point) => point.costUsd));
   const maxTransformed = transform(maxCost);
-  const peak = daily.reduce((current, point) => point.costUsd > current.costUsd ? point : current);
-  const average = daily.reduce((total, point) => total + point.costUsd / daily.length, 0);
+  const peak = data.daily.reduce((current, point) => point.costUsd > current.costUsd ? point : current);
+  const average = data.daily.reduce((total, point) => total + point.costUsd / data.daily.length, 0);
   const averageCost = formatCost(Number.isFinite(average) ? average : 0);
   const scaleLabel = t(scale === "sqrt" ? "ledger.trend.scale.sqrt" : "ledger.trend.scale.linear");
-  // 인덱스 상관 대신 day 키로 정렬 — 서버는 축 동일을 보장하지만, 키 조회는 미래 회귀에 대한
-  // 저항을 추가 비용 없이 준다(맵 구축 1회).
-  const attributedByDay = useMemo(
-    () => new Map(dailyAttributed.map((point) => [point.day, point.costUsd])),
-    [dailyAttributed],
-  );
 
   return (
     <div className="ledger-trend">
       <div className="ledger-trend-header">
         <h3>{t("ledger.trend.title")}</h3>
         <div className="ledger-segment ledger-segment--compact" role="group" aria-label={t("ledger.trend.scale.aria")}>
-          <button type="button" aria-pressed={scale === "linear"} onClick={() => setScale("linear")}>{t("ledger.trend.scale.linear")}</button>
-          <button type="button" aria-pressed={scale === "sqrt"} onClick={() => setScale("sqrt")}>{t("ledger.trend.scale.sqrt")}</button>
+          <button type="button" aria-pressed={scale === "linear"} onClick={() => setScale("linear")}>
+            {t("ledger.trend.scale.linear")}
+          </button>
+          <button type="button" aria-pressed={scale === "sqrt"} onClick={() => setScale("sqrt")}>
+            {t("ledger.trend.scale.sqrt")}
+          </button>
         </div>
       </div>
       <p className="ledger-trend-description">{t("ledger.trend.explanation")}</p>
-      <p className="ledger-trend-attributed-note">{t("ledger.trend.attributedNote")}</p>
       <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
-        {daily.map((point, index) => {
+        {data.daily.map((point, index) => {
           const day = formatDay(point.day);
-          const cost = formatCost(point.costUsd);
-          const attributed = attributedByDay.get(point.day) ?? 0;
-          const label = attributed > 0
-            ? t("ledger.trend.dayAttributed", { day, cost, attributed: formatCost(attributed), scale: scaleLabel })
-            : t("ledger.trend.day", { day, cost, scale: scaleLabel });
+          const label = t("ledger.trend.day", {
+            day,
+            cost: formatCost(point.costUsd),
+            scale: scaleLabel,
+          });
           const height = `${Math.max(3, maxTransformed > 0 ? (transform(point.costUsd) / maxTransformed) * 100 : 0)}%`;
-          const attributedHeight = point.costUsd > 0 && attributed > 0
-            ? `${Math.min(100, (transform(attributed) / transform(point.costUsd)) * 100)}%`
-            : null;
           return (
-            <span
+            <button
+              type="button"
               key={point.day}
               className="ledger-trend-bar"
-              style={{ height, ["--ledger-bar-pos" as string]: String(index / (daily.length - 1)) }}
-              tabIndex={0}
-              role="img"
               aria-label={label}
+              aria-pressed={selected === point.day}
+              aria-disabled={!availableDetailDays.has(point.day)}
+              style={{ height, ["--ledger-bar-pos" as string]: String(index / Math.max(1, data.daily.length - 1)) }}
+              onClick={() => {
+                if (availableDetailDays.has(point.day)) setSelectedDay(point.day);
+              }}
             >
-              {attributedHeight ? <span className="ledger-trend-bar-attributed" style={{ height: attributedHeight }} /> : null}
               <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>
-            </span>
+            </button>
           );
         })}
       </div>
       <div className="ledger-trend-axis">
-        <span>{formatDay(daily[0]!.day)}</span>
-        <span>{formatDay(daily[daily.length - 1]!.day)}</span>
+        <span>{formatDay(data.daily[0]!.day)}</span>
+        <span>{formatDay(data.daily[data.daily.length - 1]!.day)}</span>
       </div>
       <div className="ledger-trend-summary">
         <TrendSummaryText t={t} message="ledger.trend.peak" day={formatDay(peak.day)} cost={formatCost(peak.costUsd)} />
         <TrendSummaryText t={t} message="ledger.trend.average" cost={averageCost} />
       </div>
-      <p className="ledger-trend-scale-note">{t(scale === "sqrt" ? "ledger.trend.scaleNoteSqrt" : "ledger.trend.scaleNoteLinear")}</p>
-    </div>
-  );
-}
-
-function attributionShare(attributed: number, deviceWide: number): number {
-  if (deviceWide <= 0 || attributed <= 0) return 0;
-  return Math.min(1, attributed / deviceWide);
-}
-
-function formatShare(share: number): string {
-  const percent = share * 100;
-  if (percent <= 0) return "0%";
-  if (share >= 1) return "100%";
-  // 반올림이 정확한 범례 수치와 모순되는 극단은 부등호로 표기한다(0.04%→"0.0%", 99.96%→"100%" 방지).
-  if (percent < 0.05) return "<0.1%";
-  if (percent > 99.95) return ">99.9%";
-  if (percent >= 9.95) return `${Math.min(99, Math.round(percent))}%`;
-  return `${percent.toFixed(1)}%`;
-}
-
-/** 귀속분(totals)과 기기 전체(deviceTotals)의 관계를 한눈에 잇는 브릿지 — 두 숫자가
-    같은 window의 서로 다른 모집단이라는 사실을 패널의 첫 문장으로 올린다.
-    Theater 스코프에서는 다른 Theater의 Console 귀속분을 별도 버킷으로 분리해
-    "기타 로컬 세션"이 Console 바깥 사용량만 뜻하도록 정직하게 나눈다. */
-function BridgeSection({ data, t }: { readonly data: LedgerSummaryDto; readonly t: T }) {
-  const attributed = data.totals.costUsd;
-  const deviceWide = data.deviceTotals.costUsd;
-  if (deviceWide <= 0) return null;
-  const otherTheater = data.scope.theaterId !== null ? data.otherTheaterTotals.costUsd : 0;
-  const share = attributionShare(attributed, deviceWide);
-  const otherTheaterShare = attributionShare(otherTheater, deviceWide);
-  const other = Math.max(0, deviceWide - attributed - otherTheater);
-  // ARIA 라벨도 시각 범례와 같은 버킷으로 말한다 — otherTheater를 "기타 로컬 세션"에 합산하면
-  // 스크린리더 사용자에게 모순된 2버킷 설명이 된다.
-  const aria = otherTheater > 0
-    ? t("ledger.bridge.ariaTheater", {
-      attributed: formatCost(attributed),
-      share: formatShare(share),
-      otherTheater: formatCost(otherTheater),
-      other: formatCost(other),
-    })
-    : t("ledger.bridge.aria", {
-      attributed: formatCost(attributed),
-      share: formatShare(share),
-      other: formatCost(other),
-    });
-  return (
-    <div className="ledger-bridge">
-      <div className="ledger-bridge-bar" role="img" aria-label={aria}>
-        {share > 0 ? <span className="ledger-bridge-attributed" style={{ width: `${share * 100}%` }} /> : null}
-        {otherTheaterShare > 0 ? <span className="ledger-bridge-other-theater" style={{ width: `${otherTheaterShare * 100}%` }} /> : null}
-      </div>
-      <div className="ledger-bridge-legend">
-        <span className="ledger-bridge-row">
-          <span className="ledger-bridge-swatch ledger-bridge-swatch--attributed" aria-hidden="true" />
-          <span>{data.scope.theaterId !== null ? t("ledger.bridge.attributedTheater") : t("ledger.bridge.attributed")}</span>
-          <strong>{formatCost(attributed)} · {formatShare(share)}</strong>
-        </span>
-        {otherTheater > 0 ? (
-          <span className="ledger-bridge-row">
-            <span className="ledger-bridge-swatch ledger-bridge-swatch--other-theater" aria-hidden="true" />
-            <span>{t("ledger.bridge.otherTheaters")}</span>
-            <strong>{formatCost(otherTheater)}</strong>
-          </span>
-        ) : null}
-        <span className="ledger-bridge-row">
-          <span className="ledger-bridge-swatch ledger-bridge-swatch--other" aria-hidden="true" />
-          <span>{t("ledger.bridge.other")}</span>
-          <strong>{formatCost(other)}</strong>
-        </span>
-      </div>
-      <div className="ledger-bridge-total">
-        <span>{t("ledger.bridge.deviceTotal")}</span>
-        <strong>{formatCost(deviceWide)}</strong>
-      </div>
+      <p className="ledger-trend-scale-note">
+        {t(scale === "sqrt" ? "ledger.trend.scaleNoteSqrt" : "ledger.trend.scaleNoteLinear")}
+      </p>
+      {detail ? <DailyDetail detail={detail} language={language} t={t} /> : null}
     </div>
   );
 }
@@ -292,7 +262,11 @@ function ErrorState({ t, retry }: { readonly t: T; readonly retry: () => void })
   );
 }
 
-function SourceFailureState({ data, t, retry }: { readonly data: LedgerSummaryDto; readonly t: T; readonly retry: () => void }) {
+function SourceFailureState({ data, t, retry }: {
+  readonly data: LedgerSummaryDto;
+  readonly t: T;
+  readonly retry: () => void;
+}) {
   const status = data.source.status === "unreadable" ? "unreadable" : "unavailable";
   return (
     <div className="ledger-state ledger-source-notice" data-ledger-source-status={status}>
@@ -304,96 +278,34 @@ function SourceFailureState({ data, t, retry }: { readonly data: LedgerSummaryDt
   );
 }
 
-function DetailView({ operation, t, back }: { readonly operation: LedgerOperationDto; readonly t: T; readonly back: () => void }) {
-  return (
-    <div className="ledger-detail">
-      <button type="button" className="ledger-back" onClick={back}>{t("ledger.action.back")}</button>
-      <h2>{operation.title}</h2>
-      <div className="ledger-hero-cost">{formatCost(operation.costUsd)}</div>
-      <div className="ledger-total-token">
-        <span>{t("ledger.metric.totalTokens")}</span>
-        <ValueAmount parts={formatTokenParts(totalTokens(operation.usage))} tier={tokenValueTier(totalTokens(operation.usage))} />
-      </div>
-      <div className="ledger-metrics">
-        <Metric label={t("ledger.metric.input")} value={formatTokens(operation.usage.input)} />
-        <Metric label={t("ledger.metric.output")} value={formatTokens(operation.usage.output)} />
-        <Metric label={t("ledger.metric.cacheRead")} value={formatTokens(operation.usage.cacheRead)} />
-        <Metric label={t("ledger.metric.messages")} value={formatTokens(operation.messages)} />
-      </div>
-      <section className="ledger-detail-section">
-        <h3>{t("ledger.detail.models")}</h3>
-        {operation.models.length === 0 ? <p>{t("ledger.value.noModels")}</p> : (
-          <ul className="ledger-detail-models">
-            {operation.models.map((modelId) => {
-              const identity = parseModelIdentity(modelId);
-              const mark = supplierMarkKey(identity.supplier);
-              return (
-                <li className={`ledger-detail-model ledger-detail-model--${mark}`} key={modelId}>
-                  <span className="ledger-operation-mark">{cliGlyph(mark)}</span>
-                  <span>{supplierLabel(identity.supplier, t)} · {identity.label}</span>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        {operation.models.length > 1 ? <p>{t("ledger.detail.modelsUnsplit")}</p> : null}
-      </section>
-      <section className="ledger-detail-section">
-        <h3>{t("ledger.detail.lastActivity")}</h3>
-        <p>{relativeTime(operation.lastActivityAtMs, Date.now(), t)}</p>
-      </section>
-    </div>
-  );
-}
-
 function SourceSection({ data, t }: { readonly data: LedgerSummaryDto; readonly t: T }) {
-  const statusKey = `ledger.source.${data.source.status}` as LedgerMessageKey;
-  const detail = data.source.status === "degraded"
-    ? t("ledger.source.degradedDetail", { count: data.source.skippedSessions })
-    : t(`${statusKey}Detail` as LedgerMessageKey);
+  const skipped = data.source.skippedEntries + data.source.skippedSessions;
+  const reportUnavailable = data.source.report === "unavailable" || data.source.report === "unreadable";
   return (
-    <section className="ledger-source ledger-source-notice" data-ledger-source-status={data.source.status}>
+    <section className="ledger-source ledger-source-notice" data-ledger-source-status="degraded">
       <div>
         <h3>{t("ledger.section.source")}</h3>
-        <span className={`ledger-source-status ledger-source-status--${data.source.status}`}>{t(statusKey)}</span>
+        <span className="ledger-source-status ledger-source-status--degraded">{t("ledger.source.degraded")}</span>
       </div>
-      {detail ? <p>{detail}</p> : null}
+      {skipped > 0 ? <p>{t("ledger.source.degradedRecords", { count: skipped })}</p> : null}
+      {reportUnavailable ? <p>{t("ledger.daily.unavailable")}</p> : null}
+      {data.dailySource.unmatchedEntries > 0 ? (
+        <p>{t("ledger.daily.unmatched", { count: data.dailySource.unmatchedEntries })}</p>
+      ) : null}
     </section>
   );
 }
 
-function LedgerPanel({ ctx }: LedgerPanelProps) {
-  return <LedgerPanelBody key={ctx.theaterId ?? "all"} ctx={ctx} />;
-}
-
 function LedgerPanelBody({ ctx }: LedgerPanelProps) {
   const t = getT(ctx.language);
-  const [scope, setScope] = useState<ScopeMode>(ctx.theaterId ? "theater" : "all");
   const [window, setWindow] = useState<LedgerWindow>("week");
-  const [sort, setSort] = useState<SortMode>("activity");
   const [data, setData] = useState<LedgerSummaryDto | null>(null);
   const [error, setError] = useState(false);
   const [refreshEpoch, setRefreshEpoch] = useState(0);
-  const [forceRefresh, setForceRefresh] = useState(false);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const rootRef = useRef<HTMLDivElement | null>(null);
-  const listScrollRef = useRef(0);
-
-  const openDetail = useCallback((operationId: string) => {
-    listScrollRef.current = rootRef.current?.scrollTop ?? 0;
-    setSelectedId(operationId);
-  }, []);
-
-  // 목록과 상세는 같은 .ledger-root DOM을 재사용하므로 scrollTop이 그대로 이어진다 —
-  // 상세 진입 시 맨 위로, 복귀 시 목록 위치 복원을 레이아웃 단계에서 처리해 깜빡임을 막는다.
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    if (!root) return;
-    root.scrollTop = selectedId ? 0 : listScrollRef.current;
-  }, [selectedId]);
+  const forceRefresh = useRef(false);
 
   const refresh = useCallback(() => {
-    setForceRefresh(true);
+    forceRefresh.current = true;
     setRefreshEpoch((value) => value + 1);
   }, []);
 
@@ -402,14 +314,13 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
     let timer: ReturnType<typeof setTimeout> | null = null;
     setError(false);
     const params = new URLSearchParams({ window });
-    if (scope === "theater" && ctx.theaterId) params.set("theaterId", ctx.theaterId);
-    if (forceRefresh) params.set("refresh", "1");
+    if (forceRefresh.current) params.set("refresh", "1");
+    forceRefresh.current = false;
     ctx.api.fetch("ledger", `summary?${params.toString()}`)
       .then((response) => response.json() as Promise<LedgerSummaryDto>)
       .then((result) => {
         if (cancelled) return;
         setData(result);
-        setForceRefresh(false);
         if (result.source.status === "bootstrapping") {
           timer = setTimeout(() => setRefreshEpoch((value) => value + 1), 1500);
         }
@@ -421,37 +332,13 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
       cancelled = true;
       if (timer) clearTimeout(timer);
     };
-  }, [ctx.api, ctx.theaterId, forceRefresh, refreshEpoch, scope, window]);
+  }, [ctx.api, refreshEpoch, window]);
 
-  const expectedTheaterId = scope === "theater" ? ctx.theaterId : null;
-  const visibleData = data?.scope.window === window && data.scope.theaterId === expectedTheaterId ? data : null;
-  // 서버는 matched를 최근 활동순으로 보낸다. activity 모드는 유령 행을 lastActivityAtMs
-  // (미귀속은 Operation 갱신 시각)로 인터리브하고, cost 모드는 비용을 알 수 없는 유령을 뒤에 묶는다.
-  const displayRows = useMemo<DisplayRow[]>(() => {
-    if (!visibleData) return [];
-    const matched = visibleData.operations.map((operation) => ({ kind: "matched" as const, operation }));
-    const ghosts = visibleData.unmatched.map((operation) => ({ kind: "unmatched" as const, operation }));
-    if (sort === "cost") {
-      matched.sort((a, b) => b.operation.costUsd - a.operation.costUsd || b.operation.lastActivityAtMs - a.operation.lastActivityAtMs);
-      return [...matched, ...ghosts];
-    }
-    return [...matched, ...ghosts].sort((a, b) => b.operation.lastActivityAtMs - a.operation.lastActivityAtMs);
-  }, [visibleData, sort]);
-  const displayRowsCapped = useMemo(() => {
-    let ghosts = 0;
-    return displayRows.filter((row) => row.kind === "matched" || ++ghosts <= MAX_GHOST_ROWS);
-  }, [displayRows]);
-  const ghostsRendered = Math.min(visibleData?.unmatched.length ?? 0, MAX_GHOST_ROWS);
-  const selected = visibleData?.operations.find((operation) => operation.operationId === selectedId) ?? null;
-  if (selected) return <div className="ledger-root" ref={rootRef}><DetailView operation={selected} t={t} back={() => setSelectedId(null)} /></div>;
-
+  // Keep a previous response cached for back-and-forth controls, but never paint it under a new window label.
+  const visibleData = data?.scope.window === window ? data : null;
   return (
-    <div className="ledger-root" ref={rootRef}>
+    <div className="ledger-root">
       <div className="ledger-controls">
-        <div className="ledger-segment" role="group" aria-label={t("ledger.scope.aria")}>
-          <button type="button" aria-pressed={scope === "theater"} disabled={!ctx.theaterId} onClick={() => setScope("theater")}>{t("ledger.scope.theater")}</button>
-          <button type="button" aria-pressed={scope === "all"} onClick={() => setScope("all")}>{t("ledger.scope.all")}</button>
-        </div>
         <div className="ledger-segment" role="group" aria-label={t("ledger.window.aria")}>
           {(["today", "week", "month"] as const).map((value) => (
             <button key={value} type="button" aria-pressed={window === value} onClick={() => setWindow(value)}>
@@ -469,10 +356,13 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
         <>
           <section className="ledger-summary">
             <div className="ledger-hero-cost">{formatCost(visibleData.totals.costUsd)}</div>
-            <p>{t("ledger.summary.operations", { count: visibleData.operations.length })}</p>
+            <p>{t("ledger.summary.scope", { count: visibleData.modelCount })}</p>
             <div className="ledger-total-token">
               <span>{t("ledger.metric.totalTokens")}</span>
-              <ValueAmount parts={formatTokenParts(totalTokens(visibleData.totals))} tier={tokenValueTier(totalTokens(visibleData.totals))} />
+              <ValueAmount
+                parts={formatTokenParts(totalTokens(visibleData.totals))}
+                tier={tokenValueTier(totalTokens(visibleData.totals))}
+              />
             </div>
             <div className="ledger-metrics">
               <Metric label={t("ledger.metric.input")} value={formatTokens(visibleData.totals.input)} />
@@ -480,123 +370,39 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
               <Metric label={t("ledger.metric.cacheRead")} value={formatTokens(visibleData.totals.cacheRead)} />
               <Metric label={t("ledger.metric.messages")} value={formatTokens(visibleData.totals.messages)} />
             </div>
-            <BridgeSection data={visibleData} t={t} />
-          </section>
-
-          <section className="ledger-list">
-            <div className="ledger-list-header">
-              <h3>{t("ledger.section.operations")}</h3>
-              <div className="ledger-segment ledger-segment--compact" role="group" aria-label={t("ledger.sort.aria")}>
-                <button type="button" aria-pressed={sort === "activity"} onClick={() => setSort("activity")}>{t("ledger.sort.activity")}</button>
-                <button type="button" aria-pressed={sort === "cost"} onClick={() => setSort("cost")}>{t("ledger.sort.cost")}</button>
-              </div>
-            </div>
-            {visibleData.unmatchedTotal > 0 ? (
-              <div className="ledger-coverage">
-                <span>{t("ledger.coverage.count", { count: visibleData.operations.length + visibleData.unmatchedTotal })}</span>
-                <span className="ledger-coverage-match">
-                  {t("ledger.coverage.matched", { matched: visibleData.operations.length, unmatched: visibleData.unmatchedTotal })}
-                </span>
-              </div>
-            ) : null}
-            {displayRows.length === 0 ? (
-              <div className="ledger-inline-empty"><strong>{t("ledger.empty.title")}</strong><p>{t("ledger.empty.body")}</p></div>
-            ) : null}
-            {displayRowsCapped.map((row) => row.kind === "matched" ? (
-              <button type="button" className={`ledger-operation ledger-operation--${markKeyFromOperation(row.operation.launchProvider, row.operation.cliId)}`} key={row.operation.operationId} onClick={() => openDetail(row.operation.operationId)}>
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromOperation(row.operation.launchProvider, row.operation.cliId))}</span>
-                <span className="ledger-operation-copy">
-                  <strong>{row.operation.title}</strong>
-                  <small>{t("ledger.operation.messages", { cliLabel: operationHostLabel(row.operation, t), count: row.operation.messages })}</small>
-                </span>
-                <span className="ledger-operation-values">
-                  <ValueAmount parts={formatCostParts(row.operation.costUsd)} tier={costValueTier(row.operation.costUsd)} />
-                  <ValueAmount parts={formatTokenParts(totalTokens(row.operation.usage))} tier={tokenValueTier(totalTokens(row.operation.usage))} />
-                </span>
-                <span className="ledger-chevron">›</span>
-              </button>
-            ) : (
-              <div
-                className={`ledger-operation ledger-operation--unmatched ledger-operation--${markKeyFromOperation(row.operation.launchProvider, row.operation.cliId)}`}
-                key={row.operation.operationId}
-              >
-                <span className="ledger-operation-mark">{cliGlyph(markKeyFromOperation(row.operation.launchProvider, row.operation.cliId))}</span>
-                <span className="ledger-operation-copy">
-                  <strong>{row.operation.title}</strong>
-                  <small>{t("ledger.operation.unmatched", { cliLabel: operationHostLabel(row.operation, t) })}</small>
-                </span>
-              </div>
-            ))}
-            {visibleData.unmatchedTotal > ghostsRendered ? (
-              <div className="ledger-coverage-more">{t("ledger.coverage.more", { count: visibleData.unmatchedTotal - ghostsRendered })}</div>
-            ) : null}
           </section>
 
           <section className="ledger-clients">
-            {visibleData.daily.length >= 2 ? <TrendSection daily={visibleData.daily} dailyAttributed={visibleData.dailyAttributed} language={ctx.language} t={t} /> : null}
-            <h3>{t("ledger.section.suppliers")}</h3>
-            <p className="ledger-clients-description">{t("ledger.suppliers.explanation")}</p>
-            {visibleData.modelSource.status === "unavailable" || visibleData.modelSource.status === "unreadable" ? (
-              <p className="ledger-clients-description">{t(`ledger.models.${visibleData.modelSource.status}`)}</p>
-            ) : visibleData.modelSource.status === "degraded" ? (
-              <p className="ledger-clients-description">{t("ledger.models.degraded", { count: visibleData.modelSource.skippedEntries })}</p>
+            {visibleData.daily.length > 0 ? (
+              <TrendSection
+                key={`${visibleData.scope.window}:${visibleData.generatedAtMs}`}
+                data={visibleData}
+                language={ctx.language}
+                t={t}
+              />
             ) : null}
-            <div className="ledger-client-list">
-              {visibleData.suppliers.map((entry) => {
-                const mark = supplierMarkKey(entry.supplier);
-                const tokens = totalTokens(entry.usage);
-                return (
-                  <div className={`ledger-client-row ledger-client-row--${mark}`} key={entry.supplier}>
-                    <span className="ledger-client-mark">{cliGlyph(mark)}</span>
-                    <span className="ledger-client-copy">
-                      <strong>{supplierLabel(entry.supplier, t)}</strong>
-                      <small>{t("ledger.suppliers.models", { count: entry.models })}</small>
-                    </span>
-                    <span className="ledger-client-values">
-                      <ValueAmount parts={formatCostParts(entry.costUsd)} tier={costValueTier(entry.costUsd)} />
-                      <ValueAmount parts={formatTokenParts(tokens)} tier={tokenValueTier(tokens)} />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <h3 className="ledger-models-heading">{t("ledger.section.models")}</h3>
+            <h3>{t("ledger.section.models")}</h3>
             <p className="ledger-clients-description">{t("ledger.models.explanation")}</p>
-            <div className="ledger-client-list">
-              {visibleData.modelRows.map((entry) => {
-                const mark = supplierMarkKey(entry.supplier);
-                const tokens = totalTokens(entry.usage);
-                const unpriced = entry.costUsd === 0 && entry.messages > 0;
-                return (
-                  <div className={`ledger-client-row ledger-client-row--${mark}`} key={entry.modelId}>
-                    <span className="ledger-client-mark">{cliGlyph(mark)}</span>
-                    <span className="ledger-client-copy">
-                      <strong>{entry.label}</strong>
-                      <small>
-                        {supplierLabel(entry.supplier, t)}
-                        {unpriced ? ` · ${t("ledger.models.unpriced")}` : ""}
-                      </small>
-                    </span>
-                    <span className="ledger-client-values">
-                      <ValueAmount parts={formatCostParts(entry.costUsd)} tier={costValueTier(entry.costUsd)} />
-                      <ValueAmount parts={formatTokenParts(tokens)} tier={tokenValueTier(tokens)} />
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            {visibleData.modelTotals.models > visibleData.modelRows.length ? (
-              <div className="ledger-coverage-more">{t("ledger.models.more", { count: visibleData.modelTotals.models - visibleData.modelRows.length })}</div>
-            ) : null}
-            {visibleData.modelTotals.models > 0 ? (
-              <div className="ledger-bridge-total">
-                <span>{t("ledger.models.total")}</span>
-                <strong>{formatCost(visibleData.modelTotals.costUsd)}</strong>
+            {visibleData.modelRows.length === 0 ? (
+              <div className="ledger-inline-empty">
+                <strong>{t("ledger.empty.title")}</strong>
+                <p>{t("ledger.empty.body")}</p>
+              </div>
+            ) : (
+              <div className="ledger-client-list">
+                {visibleData.modelRows.map((row) => <ModelRow key={row.modelId} row={row} />)}
+              </div>
+            )}
+            {visibleData.modelCount > visibleData.modelRows.length ? (
+              <div className="ledger-coverage-more">
+                {t("ledger.models.more", { count: visibleData.modelCount - visibleData.modelRows.length })}
               </div>
             ) : null}
           </section>
 
-          {visibleData.source.status === "degraded" ? <SourceSection data={visibleData} t={t} /> : null}
+          {visibleData.source.status === "degraded" || visibleData.dailySource.unmatchedEntries > 0 ? (
+            <SourceSection data={visibleData} t={t} />
+          ) : null}
           <footer className="ledger-footer">
             <span>{t("ledger.footer.generated", { time: relativeTime(visibleData.generatedAtMs, Date.now(), t) })}</span>
             <button type="button" className="ledger-button" onClick={refresh}>{t("ledger.action.refresh")}</button>
@@ -620,5 +426,5 @@ export const ledgerPanel: RailPanelDescriptor = {
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
   defaultWidth: 392,
-  render: (ctx) => <LedgerPanel ctx={ctx} />,
+  render: (ctx) => <LedgerPanelBody ctx={ctx} />,
 };

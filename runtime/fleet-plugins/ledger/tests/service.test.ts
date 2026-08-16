@@ -3,126 +3,83 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import type { OperationNode } from "@fleet-console/sdk/operations";
 import { describe, expect, it, vi } from "vitest";
 
 import { createLedgerService } from "../server/service.js";
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
-const fixture = fs.readFileSync(path.join(fixturesDir, "tokscale-report.json"), "utf8");
-const EMPTY_MODELS = JSON.stringify({
-  groupBy: "model",
-  entries: [],
-  totalCost: 0,
-  totalMessages: 0,
-  totalInput: 0,
-  totalOutput: 0,
-  totalCacheRead: 0,
-  totalCacheWrite: 0,
-});
+const reportFixture = fs.readFileSync(path.join(fixturesDir, "tokscale-report.json"), "utf8");
+const modelsFixture = fs.readFileSync(path.join(fixturesDir, "tokscale-models.json"), "utf8");
+const EMPTY_MODELS = JSON.stringify({ groupBy: "client,session,model", entries: [] });
+const commandResult = (stdout: string, exitCode = 0) => ({ stdout, stderr: "", exitCode });
 
-function executorFor(report: { stdout: string; stderr?: string; exitCode?: number }) {
-  return vi.fn(async (args: readonly string[]) => {
-    if (args[0] === "models") return { stdout: EMPTY_MODELS, stderr: "", exitCode: 0 };
-    return { stdout: report.stdout, stderr: report.stderr ?? "", exitCode: report.exitCode ?? 0 };
-  });
-}
-
-function operation(
-  id: string,
-  theaterId: string,
-  provider: "claude" | "codex",
-  sessionId: string,
-): OperationNode {
-  return {
-    id,
-    theaterId,
-    pluginId: "terminal",
-    type: "agent",
-    title: id,
-    payload: {
-      cliId: provider,
-      cliLabel: provider,
-      providerSession: { provider, sessionId },
-    },
-    geometry: null,
-    ts: { createdAt: 1, updatedAt: 1 },
-  };
+function executorFor(report = reportFixture, models = modelsFixture) {
+  return vi.fn(async (args: readonly string[]) => (
+    args[0] === "models" ? commandResult(models) : commandResult(report)
+  ));
 }
 
 describe("Ledger service command contract", () => {
-  it("runs the device-wide report and models commands with no workspace filter", async () => {
-    const executor = executorFor({ stdout: "[]", stderr: "progress" });
+  it("runs Claude Code report and session-model ledger commands in parallel with exact filters", async () => {
+    let started = 0;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const executor = vi.fn(async (args: readonly string[]) => {
+      started += 1;
+      if (started === 2) release();
+      await gate;
+      return commandResult(args[0] === "models" ? EMPTY_MODELS : "[]");
+    });
     const service = createLedgerService({
       cliHome: "/plugin/cli",
       executor,
       isInstalled: async () => true,
       now: () => 123,
     });
-    const result = await service.getSummary({
-      theaterId: "theater-a",
-      window: "today",
-      refresh: false,
-      operations: [] as OperationNode[],
-    });
+
+    const pending = service.getSummary({ window: "today", refresh: false });
+    await vi.waitFor(() => expect(started).toBe(2));
+    await pending;
+
     expect(executor).toHaveBeenCalledWith(
-      ["report", "--json", "--no-summarize", "--today"],
+      ["report", "--json", "--no-summarize", "--client", "claude", "--today"],
       expect.objectContaining({ cwd: os.homedir(), timeout: 60_000 }),
     );
     expect(executor).toHaveBeenCalledWith(
-      ["models", "--json", "--no-spinner", "--group-by", "model", "--today"],
+      ["models", "--json", "--no-spinner", "-c", "claude", "--group-by", "client,session,model", "--today"],
       expect.objectContaining({ cwd: os.homedir(), timeout: 60_000 }),
     );
-    expect(executor).toHaveBeenCalledTimes(2);
     const invoked = executor.mock.calls.flat().join(" ");
     expect(invoked).not.toContain("--workspace");
-    expect(invoked).not.toContain("--hide-zero");
-    expect(result.source.status).toBe("ok");
-    expect(result.modelSource.status).toBe("ok");
     expect(invoked).not.toMatch(/\b(login|logout|submit|autosubmit|whoami|delete-submitted-data)\b/);
   });
 
-  it("reuses one window report across scopes and reapplies the Operation theater filter", async () => {
-    const executor = executorFor({ stdout: fixture });
+  it("builds cost from every Claude Code model row rather than report total_cost", async () => {
+    const executor = executorFor();
     const service = createLedgerService({
       cliHome: "/plugin/cli",
       executor,
       isInstalled: async () => true,
-      now: () => 123,
+      now: () => 1_750_000_300_000,
     });
-    const operations = [
-      operation("claude-a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103"),
-      operation("codex-b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc"),
-    ];
-
-    const scoped = await service.getSummary({
-      theaterId: "theater-a",
-      window: "week",
-      refresh: false,
-      operations,
-    });
-    const all = await service.getSummary({
-      theaterId: null,
-      window: "week",
-      refresh: false,
-      operations,
-    });
-
-    expect(executor).toHaveBeenCalledTimes(2);
-    expect(scoped.operations.map((entry) => entry.operationId)).toEqual(["claude-a"]);
-    expect(all.operations.map((entry) => entry.operationId).sort()).toEqual(["claude-a", "codex-b"]);
+    const result = await service.getSummary({ window: "today", refresh: false });
+    expect(result.totals.costUsd).toBe(1.250108);
+    expect(result.modelRows.map((row) => ({ modelId: row.modelId, provider: row.provider }))).toEqual([
+      { modelId: "claude-opus-5", provider: "anthropic" },
+      { modelId: "claude-gateway--cursor--claude-opus-5", provider: "cursor" },
+      { modelId: "claude-gateway--xai--grok-4.6", provider: "xai" },
+    ]);
+    expect(result.daily).toEqual([{ day: expect.any(String), costUsd: 1.2501 }]);
+    expect(result.source).toMatchObject({ models: "ok", report: "degraded" });
   });
+});
 
-  it("expires cache entries exactly at the TTL boundary", async () => {
+describe("Ledger service cache and concurrency", () => {
+  it("expires cache entries exactly at the 15-second TTL boundary", async () => {
     let now = 0;
-    const executor = executorFor({ stdout: "[]" });
-    const service = createLedgerService({
-      cliHome: "/plugin/cli",
-      executor,
-      isInstalled: async () => true,
-      now: () => now,
-    });
-    const request = { theaterId: null, window: "week" as const, refresh: false, operations: [] };
+    const executor = executorFor("[]", EMPTY_MODELS);
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true, now: () => now });
+    const request = { window: "week" as const, refresh: false };
     await service.getSummary(request);
     now = 14_999;
     await service.getSummary(request);
@@ -132,66 +89,65 @@ describe("Ledger service command contract", () => {
     expect(executor).toHaveBeenCalledTimes(4);
   });
 
-  it("refresh bypasses cache but shares an existing in-flight window pair", async () => {
-    let resolveReport!: (value: { stdout: string; stderr: string; exitCode: number }) => void;
-    let reportCalls = 0;
-    const executor = vi.fn((args: readonly string[]) => {
-      if (args[0] === "models") return Promise.resolve({ stdout: EMPTY_MODELS, stderr: "", exitCode: 0 });
-      reportCalls += 1;
-      if (reportCalls > 1) return Promise.resolve({ stdout: "[]", stderr: "", exitCode: 0 });
-      return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-        resolveReport = resolve;
-      });
+  it("coalesces concurrent requests for the same window into one report-and-model pair", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const executor = vi.fn(async (args: readonly string[]) => {
+      await gate;
+      return commandResult(args[0] === "models" ? EMPTY_MODELS : "[]");
     });
-    const service = createLedgerService({
-      cliHome: "/plugin/cli",
-      executor,
-      isInstalled: async () => true,
-    });
-    const request = { theaterId: null, window: "week" as const, operations: [] };
-    const first = service.getSummary({ ...request, refresh: false });
-    const refreshed = service.getSummary({ ...request, refresh: true });
-    await vi.waitFor(() => expect(reportCalls).toBe(1));
-    resolveReport({ stdout: "[]", stderr: "", exitCode: 0 });
-    await expect(Promise.all([first, refreshed])).resolves.toHaveLength(2);
-    await service.getSummary({ ...request, refresh: true });
-    expect(reportCalls).toBe(2);
-    expect(executor).toHaveBeenCalledTimes(4);
-  });
-
-  it("coalesces concurrent requests for the same window into one report-and-models pair", async () => {
-    let resolveReport!: (value: { stdout: string; stderr: string; exitCode: number }) => void;
-    const executor = vi.fn((args: readonly string[]) => {
-      if (args[0] === "models") return Promise.resolve({ stdout: EMPTY_MODELS, stderr: "", exitCode: 0 });
-      return new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-        resolveReport = resolve;
-      });
-    });
-    const service = createLedgerService({
-      cliHome: "/plugin/cli",
-      executor,
-      isInstalled: async () => true,
-    });
-    const request = { theaterId: null, window: "month" as const, refresh: false, operations: [] };
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true });
+    const request = { window: "month" as const, refresh: false };
     const first = service.getSummary(request);
     const second = service.getSummary(request);
     await vi.waitFor(() => expect(executor).toHaveBeenCalledTimes(2));
-    resolveReport({ stdout: "[]", stderr: "", exitCode: 0 });
+    release();
     await Promise.all([first, second]);
     expect(executor).toHaveBeenCalledTimes(2);
   });
 
-  it("does not cache bootstrap failure and retries on the next request", async () => {
-    const bootstrap = vi.fn(async () => {
-      throw new Error("temporary install failure");
+  it("refresh bypasses cache but shares an already-running window pair", async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    let blocked = true;
+    const executor = vi.fn(async (args: readonly string[]) => {
+      if (blocked) await gate;
+      return commandResult(args[0] === "models" ? EMPTY_MODELS : "[]");
     });
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true });
+    const first = service.getSummary({ window: "week", refresh: false });
+    const refreshed = service.getSummary({ window: "week", refresh: true });
+    await vi.waitFor(() => expect(executor).toHaveBeenCalledTimes(2));
+    blocked = false;
+    release();
+    await Promise.all([first, refreshed]);
+    await service.getSummary({ window: "week", refresh: true });
+    expect(executor).toHaveBeenCalledTimes(4);
+  });
+
+  it("keeps separate cache and in-flight pairs per window", async () => {
+    const executor = executorFor("[]", EMPTY_MODELS);
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true });
+    await Promise.all([
+      service.getSummary({ window: "today", refresh: false }),
+      service.getSummary({ window: "week", refresh: false }),
+    ]);
+    expect(executor).toHaveBeenCalledTimes(4);
+    expect(executor.mock.calls.flatMap(([args]) => args).filter((value) => value === "--today")).toHaveLength(2);
+    expect(executor.mock.calls.flatMap(([args]) => args).filter((value) => value === "--week")).toHaveLength(2);
+  });
+});
+
+describe("Ledger service source failures", () => {
+  it("does not cache bootstrap failure and retries on the next request", async () => {
+    const bootstrap = vi.fn(async () => { throw new Error("temporary install failure"); });
     const service = createLedgerService({
       cliHome: "/plugin/cli",
       executor: vi.fn(),
       isInstalled: async () => false,
       bootstrap,
     });
-    const request = { theaterId: null, window: "week" as const, refresh: false, operations: [] };
+    const request = { window: "week" as const, refresh: false };
     expect((await service.getSummary(request)).source.status).toBe("bootstrapping");
     await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(1));
     await new Promise<void>((resolve) => setImmediate(resolve));
@@ -199,49 +155,53 @@ describe("Ledger service command contract", () => {
     await vi.waitFor(() => expect(bootstrap).toHaveBeenCalledTimes(2));
   });
 
-  it("reports unavailable, unreadable, and degraded distinctly", async () => {
-    const partial = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    delete partial[0]?.total_cost;
-    const executor = vi.fn(async (args: readonly string[]) => {
-      if (args[0] === "models") return { stdout: EMPTY_MODELS, stderr: "", exitCode: 0 };
-      if (args.includes("--today")) return { stdout: "", stderr: "", exitCode: 1 };
-      if (args.includes("--week")) return { stdout: "{broken", stderr: "", exitCode: 0 };
-      return { stdout: JSON.stringify(partial), stderr: "", exitCode: 0 };
-    });
-    const service = createLedgerService({
-      cliHome: "/plugin/cli",
-      executor,
-      isInstalled: async () => true,
-    });
-    const base = { theaterId: null, refresh: false, operations: [] };
-    const unavailable = await service.getSummary({ ...base, window: "today" });
-    expect(unavailable.source.status).toBe("unavailable");
-    expect(unavailable.modelSource.status).toBe("ok");
-    expect((await service.getSummary({ ...base, window: "week" })).source.status).toBe("unreadable");
-    const degraded = await service.getSummary({ ...base, window: "month" });
-    expect(degraded.source).toMatchObject({ status: "degraded", skippedSessions: 1 });
+  it("keeps model totals but removes daily detail when report metadata fails", async () => {
+    const executor = vi.fn(async (args: readonly string[]) => (
+      args[0] === "models" ? commandResult(modelsFixture) : commandResult("", 1)
+    ));
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true, now: () => 123 });
+    const result = await service.getSummary({ window: "week", refresh: false });
+    expect(result.totals.costUsd).toBe(1.250108);
+    expect(result.modelRows).toHaveLength(3);
+    expect(result.daily).toEqual([]);
+    expect(result.source).toMatchObject({ status: "degraded", models: "ok", report: "unavailable" });
   });
 
-  it("keeps the report when the models command fails", async () => {
-    const executor = vi.fn(async (args: readonly string[]) => {
-      if (args[0] === "models") return { stdout: "", stderr: "fail", exitCode: 1 };
-      return { stdout: fixture, stderr: "", exitCode: 0 };
-    });
-    const service = createLedgerService({
-      cliHome: "/plugin/cli",
-      executor,
-      isInstalled: async () => true,
-    });
-    const result = await service.getSummary({
-      theaterId: null,
-      window: "week",
-      refresh: false,
-      operations: [],
-    });
-    expect(result.source.status).toBe("ok");
-    expect(result.deviceTotals.sessions).toBe(3);
-    expect(result.modelSource.status).toBe("unavailable");
+  it.each([
+    ["unavailable", "", 1],
+    ["unreadable", "{broken", 0],
+  ] as const)("fails closed when the canonical model ledger is %s", async (status, stdout, exitCode) => {
+    const executor = vi.fn(async (args: readonly string[]) => (
+      args[0] === "models" ? commandResult(stdout, exitCode) : commandResult(reportFixture)
+    ));
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor, isInstalled: async () => true, now: () => 123 });
+    const result = await service.getSummary({ window: "week", refresh: false });
+    expect(result.totals.costUsd).toBe(0);
     expect(result.modelRows).toEqual([]);
-    expect(result.suppliers).toEqual([]);
+    expect(result.daily).toEqual([]);
+    expect(result.source).toMatchObject({ status, models: status });
+  });
+
+  it("retains valid rows and reports parser degradation from either source", async () => {
+    const report = JSON.stringify([
+      { session_id: "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", last_active: 1_750_000_300_000 },
+      { session_id: "bad", last_active: 1_750_000_300_000 },
+    ]);
+    const models = JSON.stringify({
+      entries: [
+        { client: "claude", sessionId: "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", model: "claude-opus-5", input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 2, messageCount: 1 },
+        { client: "codex", sessionId: "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", model: "gpt-5", input: 1, output: 1, cacheRead: 0, cacheWrite: 0, cost: 3, messageCount: 1 },
+      ],
+    });
+    const service = createLedgerService({ cliHome: "/plugin/cli", executor: executorFor(report, models), isInstalled: async () => true, now: () => 1_750_000_300_000 });
+    const result = await service.getSummary({ window: "today", refresh: false });
+    expect(result.totals.costUsd).toBe(2);
+    expect(result.source).toEqual({
+      status: "degraded",
+      models: "degraded",
+      report: "degraded",
+      skippedEntries: 1,
+      skippedSessions: 1,
+    });
   });
 });

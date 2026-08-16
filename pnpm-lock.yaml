@@ -477,6 +477,9 @@ importers:
 
   runtime/fleet-plugins/ledger:
     dependencies:
+      '@dotobokuri/core-ai-gateway':
+        specifier: workspace:*
+        version: link:../../../packages/core-ai-gateway
       '@dotobokuri/core-process':
         specifier: workspace:*
         version: link:../../../packages/core-process

@@ -1,16 +1,14 @@
-import fs from "node:fs";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-
-import type { OperationNode } from "@fleet-console/sdk/operations";
 import { describe, expect, it } from "vitest";
 
-import { parseTokscaleOutput } from "../server/parser.js";
 import { buildSummary, localDayKey } from "../server/summary.js";
-import type { TokscaleModelEntry } from "../server/types.js";
+import type { LedgerSourceStatus, TokscaleModelEntry, TokscaleSession } from "../server/types.js";
 
-const fixture = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures", "tokscale-report.json"), "utf8");
-const sessions = parseTokscaleOutput(fixture).sessions;
+const sessionA = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
+const sessionB = "40bf2ab7-5a5d-4a8c-8aaa-730a40ecf104";
+
+function localTime(year: number, month: number, day: number, hour = 12): number {
+  return new Date(year, month - 1, day, hour).getTime();
+}
 
 function shiftLocalDate(atMs: number, days: number): number {
   const date = new Date(atMs);
@@ -18,574 +16,299 @@ function shiftLocalDate(atMs: number, days: number): number {
   return date.getTime();
 }
 
-function operation(
-  id: string,
-  theaterId: string,
-  provider: "claude" | "codex",
-  sessionId: string,
-  updatedAt: number,
-): OperationNode {
+function session(sessionId: string, lastActive: number): TokscaleSession {
+  return { sessionId, lastActive };
+}
+
+function entry(overrides: Partial<TokscaleModelEntry> = {}): TokscaleModelEntry {
   return {
-    id,
-    theaterId,
-    pluginId: "terminal",
-    type: "agent",
-    title: `Operation ${id}`,
-    payload: {
-      cliId: provider,
-      cliLabel: provider === "claude" ? "Claude Code" : "Codex",
-      launchProvider: provider,
-      providerSession: { provider, sessionId, capturedAt: "2026-07-26T00:00:00Z" },
-    },
-    geometry: null,
-    ts: { createdAt: updatedAt - 1, updatedAt },
+    sessionId: sessionA,
+    modelId: "claude-opus-5",
+    input: 10,
+    output: 2,
+    cacheRead: 3,
+    cacheWrite: 0,
+    costUsd: 1.25,
+    messages: 4,
+    ...overrides,
   };
 }
 
-describe("buildSummary matching", () => {
-  it("matches claude directly and extracts the UUID suffix from codex rollouts", () => {
-    const dto = buildSummary(sessions, [
-      operation("claude-op", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 10),
-      operation("codex-op", "theater-a", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 20),
-    ], { theaterId: null, window: "week" });
-    expect(dto.operations.map((entry) => entry.operationId).sort()).toEqual(["claude-op", "codex-op"]);
-    expect(dto.clients).toHaveLength(3);
-    expect(dto.clients.find((entry) => entry.client === "opencode")).toEqual({
-      client: "opencode",
-      sessions: 1,
-      usage: { input: 1_000, output: 200, cacheRead: 0 },
-      costUsd: 0.05,
-    });
+function breakdown(
+  entries: readonly TokscaleModelEntry[],
+  status: LedgerSourceStatus = "ok",
+  skippedEntries = 0,
+) {
+  return { entries, status, skippedEntries };
+}
+
+describe("Claude Code provider attribution", () => {
+  it("uses every Claude Code model-ledger row as the single source of every total", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary(
+      [session(sessionA, at)],
+      { window: "today" },
+      "ok",
+      at,
+      0,
+      breakdown([
+        entry(),
+        entry({ modelId: "claude-gateway--cursor--claude-opus-5", input: 1_000, costUsd: 99 }),
+        entry({ modelId: "gpt-5", input: 2_000, costUsd: 88 }),
+      ]),
+    );
+
+    expect(dto.totals).toEqual({ input: 3_010, output: 6, cacheRead: 9, costUsd: 188.25, messages: 12 });
+    expect(dto.modelRows.map((row) => ({ modelId: row.modelId, provider: row.provider, costUsd: row.costUsd }))).toEqual([
+      { modelId: "claude-gateway--cursor--claude-opus-5", provider: "cursor", costUsd: 99 },
+      { modelId: "gpt-5", provider: "unknown", costUsd: 88 },
+      { modelId: "claude-opus-5", provider: "anthropic", costUsd: 1.25 },
+    ]);
+    expect(dto.daily).toEqual([{ day: "2026-08-14", costUsd: 188.25 }]);
+    expect(dto.dailyDetails[0]?.models).toEqual(dto.modelRows);
   });
 
-  it("includes every session in device-wide client totals without requiring an Operation claim", () => {
-    const dto = buildSummary(sessions, [], { theaterId: null, window: "week" });
-    expect(dto.operations).toEqual([]);
-    expect(dto.clients.map((entry) => entry.client)).toEqual(["claude", "codex", "opencode"]);
+  it("splits a mixed native and Gateway session into provider-attributed rows without estimation", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary(
+      [session(sessionA, at)],
+      { window: "today" },
+      "ok",
+      at,
+      0,
+      breakdown([
+        entry({ modelId: "claude-opus-5", costUsd: 2 }),
+        entry({ modelId: "claude-gateway--xai--grok-4.6", costUsd: 30 }),
+      ]),
+    );
+    expect(dto.totals.costUsd).toBe(32);
+    expect(dto.dailyDetails[0]?.costUsd).toBe(32);
+    expect(dto.modelRows.map((row) => ({ provider: row.provider, label: row.label }))).toEqual([
+      { provider: "xai", label: "Grok 4.6" },
+      { provider: "anthropic", label: "Claude Opus 5" },
+    ]);
   });
 
-  it("merges session costs from the same local day into one daily point", () => {
-    const morning = new Date(2026, 6, 15, 8).getTime();
-    const evening = new Date(2026, 6, 15, 20).getTime();
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: morning, costUsd: 1.25 },
-      { ...sessions[1]!, lastActive: evening, costUsd: 2.75 },
-    ], [], { theaterId: null, window: "today" }, "ok", evening);
+  it("aggregates repeated and Fast rows only within the same provider and base model", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary(
+      [session(sessionA, at), session(sessionB, at)],
+      { window: "today" },
+      "ok",
+      at,
+      0,
+      breakdown([
+        entry({ sessionId: sessionA, modelId: "claude-opus-5", costUsd: 2 }),
+        entry({ sessionId: sessionB, modelId: "claude-opus-5", input: 7, costUsd: 3, messages: 2 }),
+        entry({ sessionId: sessionB, modelId: "claude-gateway--cursor--claude-opus-5", costUsd: 4 }),
+        entry({ sessionId: sessionA, modelId: "claude-gateway--cursor--claude-opus-5-fast", input: 5, costUsd: 6, messages: 1 }),
+      ]),
+    );
+    expect(dto.modelRows).toEqual([
+      {
+        modelId: "claude-gateway--cursor--claude-opus-5",
+        provider: "cursor",
+        label: "Claude Opus 5",
+        usage: { input: 15, output: 4, cacheRead: 6 },
+        costUsd: 10,
+        messages: 5,
+      },
+      {
+        modelId: "claude-opus-5",
+        provider: "anthropic",
+        label: "Claude Opus 5",
+        usage: { input: 17, output: 4, cacheRead: 6 },
+        costUsd: 5,
+        messages: 6,
+      },
+    ]);
+    expect(dto.dailyDetails[0]).toMatchObject({ costUsd: 15, modelCount: 2, messages: 11 });
+  });
+});
 
-    expect(localDayKey(morning)).toBe("2026-07-15");
-    expect(dto.daily).toEqual([{ day: localDayKey(evening), costUsd: 4 }]);
+describe("model-ledger daily join", () => {
+  it("joins each session-model row to report lastActive and groups models by local day", () => {
+    const first = localTime(2026, 8, 13, 8);
+    const second = localTime(2026, 8, 14, 20);
+    const dto = buildSummary(
+      [session(sessionA, first), session(sessionB, second)],
+      { window: "today" },
+      "ok",
+      second,
+      0,
+      breakdown([
+        entry({ sessionId: sessionA, modelId: "claude-opus-5", costUsd: 2 }),
+        entry({ sessionId: sessionB, modelId: "claude-sonnet-5", costUsd: 3 }),
+      ]),
+    );
+
+    expect(dto.daily).toEqual([
+      { day: "2026-08-13", costUsd: 2 },
+      { day: "2026-08-14", costUsd: 3 },
+    ]);
+    expect(dto.dailyDetails.map((detail) => ({
+      day: detail.day,
+      models: detail.models.map((model) => model.modelId),
+    }))).toEqual([
+      { day: "2026-08-13", models: ["claude-opus-5"] },
+      { day: "2026-08-14", models: ["claude-sonnet-5"] },
+    ]);
   });
 
-  it("fills a week through its final generated day when only that day has a session", () => {
-    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
-    const firstDay = shiftLocalDate(generatedAtMs, -6);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: generatedAtMs, costUsd: 7 },
-    ], [], { theaterId: null, window: "week" }, "ok", generatedAtMs);
-
-    expect(dto.daily).toEqual(Array.from({ length: 7 }, (_, index) => ({
-      day: localDayKey(shiftLocalDate(firstDay, index)),
-      costUsd: index === 6 ? 7 : 0,
-    })));
+  it("keeps unmatched Claude Code rows in totals but excludes them from daily detail", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary(
+      [session(sessionA, at)],
+      { window: "today" },
+      "ok",
+      at,
+      0,
+      breakdown([
+        entry({ sessionId: sessionA, costUsd: 2 }),
+        entry({ sessionId: sessionB, modelId: "claude-sonnet-5", costUsd: 3 }),
+        entry({ sessionId: sessionB, modelId: "claude-gateway--xai--grok-4.6", costUsd: 100 }),
+      ]),
+    );
+    expect(dto.totals.costUsd).toBe(105);
+    expect(dto.daily).toEqual([{ day: "2026-08-14", costUsd: 2 }]);
+    expect(dto.dailySource.unmatchedEntries).toBe(2);
   });
 
-  it("fills a month from its first local day through the generated day", () => {
-    const generatedAtMs = new Date(2026, 6, 15, 12).getTime();
-    const firstDay = new Date(generatedAtMs);
-    firstDay.setDate(1);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: generatedAtMs, costUsd: 5 },
-    ], [], { theaterId: null, window: "month" }, "ok", generatedAtMs);
-
-    expect(dto.daily).toEqual(Array.from({ length: 15 }, (_, index) => ({
-      day: localDayKey(shiftLocalDate(firstDay.getTime(), index)),
-      costUsd: index === 14 ? 5 : 0,
-    })));
-  });
-
-  it("preserves an observed day earlier than the derived window start", () => {
-    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
+  it("fills the requested local-day axis while retaining an earlier observed day", () => {
+    const generatedAtMs = localTime(2026, 8, 14);
     const observedAtMs = shiftLocalDate(generatedAtMs, -8);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: observedAtMs, costUsd: 4 },
-    ], [], { theaterId: null, window: "week" }, "ok", generatedAtMs);
-
-    expect(dto.daily).toEqual(Array.from({ length: 9 }, (_, index) => ({
-      day: localDayKey(shiftLocalDate(observedAtMs, index)),
-      costUsd: index === 0 ? 4 : 0,
-    })));
+    const dto = buildSummary(
+      [session(sessionA, observedAtMs), session(sessionB, generatedAtMs)],
+      { window: "week" },
+      "ok",
+      generatedAtMs,
+      0,
+      breakdown([
+        entry({ sessionId: sessionA, costUsd: 2 }),
+        entry({ sessionId: sessionB, costUsd: 3 }),
+      ]),
+    );
+    expect(dto.daily).toHaveLength(9);
+    expect(dto.daily[0]).toEqual({ day: localDayKey(observedAtMs), costUsd: 2 });
+    expect(dto.daily.at(-1)).toEqual({ day: localDayKey(generatedAtMs), costUsd: 3 });
+    expect(dto.daily[1]?.costUsd).toBe(0);
   });
 
-  it("fills an interior local-day gap with a zero-cost point in ascending order", () => {
-    const earlier = new Date(2026, 6, 14, 12).getTime();
-    const middle = shiftLocalDate(earlier, 1);
-    const later = shiftLocalDate(earlier, 2);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: later, costUsd: 3 },
-      { ...sessions[1]!, lastActive: earlier, costUsd: 1 },
-    ], [], { theaterId: null, window: "today" }, "ok", later);
-
-    expect(dto.daily).toEqual([
-      { day: localDayKey(earlier), costUsd: 1 },
-      { day: localDayKey(middle), costUsd: 0 },
-      { day: localDayKey(later), costUsd: 3 },
-    ]);
-  });
-
-  it("keeps adjacent local days without inserting extra points", () => {
-    const first = new Date(2026, 6, 14, 12).getTime();
-    const second = shiftLocalDate(first, 1);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: second, costUsd: 3 },
-      { ...sessions[1]!, lastActive: first, costUsd: 1 },
-    ], [], { theaterId: null, window: "today" }, "ok", second);
-
-    expect(dto.daily).toEqual([
-      { day: localDayKey(first), costUsd: 1 },
-      { day: localDayKey(second), costUsd: 3 },
-    ]);
-  });
-
-  it("clips spans over 366 local days before filling the most recent contiguous run", () => {
-    const latest = new Date(2026, 6, 15, 12).getTime();
+  it("caps malformed or stale daily spans to the most recent 366 local days", () => {
+    const latest = localTime(2026, 8, 14);
     const cutoff = shiftLocalDate(latest, -365);
     const stale = shiftLocalDate(latest, -400);
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive: stale, costUsd: 1 },
-      { ...sessions[1]!, lastActive: cutoff, costUsd: 2 },
-      { ...sessions[2]!, lastActive: latest, costUsd: 3 },
-    ], [], { theaterId: null, window: "today" }, "ok", latest);
-
+    const dto = buildSummary(
+      [session(sessionA, stale), session(sessionB, cutoff)],
+      { window: "today" },
+      "ok",
+      latest,
+      0,
+      breakdown([
+        entry({ sessionId: sessionA, costUsd: 1 }),
+        entry({ sessionId: sessionB, costUsd: 2 }),
+        entry({ sessionId: "50bf2ab7-5a5d-4a8c-8aaa-730a40ecf105", costUsd: 3 }),
+      ]),
+    );
     expect(dto.daily).toHaveLength(366);
     expect(dto.daily[0]).toEqual({ day: localDayKey(cutoff), costUsd: 2 });
-    expect(dto.daily[1]).toEqual({ day: localDayKey(shiftLocalDate(cutoff, 1)), costUsd: 0 });
-    expect(dto.daily.at(-1)).toEqual({ day: localDayKey(latest), costUsd: 3 });
+    expect(dto.daily.at(-1)).toEqual({ day: localDayKey(latest), costUsd: 0 });
     expect(dto.daily.some((point) => point.day === localDayKey(stale))).toBe(false);
+    expect(dto.dailySource.unmatchedEntries).toBe(1);
   });
 
-  it("returns no daily points for an empty session set instead of a derived all-zero window", () => {
-    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
-    expect(buildSummary([], [], { theaterId: null, window: "week" }, "ok", generatedAtMs).daily).toEqual([]);
-  });
-
-  it("fails closed when daily cost accumulation overflows", () => {
-    const lastActive = new Date(2026, 6, 15, 12).getTime();
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
-      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
-    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
-
-    expect(dto).toMatchObject({
-      totals: { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 },
-      operations: [],
-      clients: [],
-      daily: [],
-      source: { status: "unreadable", skippedSessions: 2 },
-    });
-  });
-
-  it("aggregates linked and unclaimed sessions together in the same client total", () => {
-    const unclaimed = {
-      ...sessions[0]!,
-      sessionId: "not-a-canonical-uuid",
-      input: 10,
-      output: 20,
-      cacheRead: 30,
-      costUsd: 0.25,
-    };
-    const dto = buildSummary([sessions[0]!, unclaimed], [
-      operation("claimed", "theater-a", "claude", sessions[0]!.sessionId, 1),
-    ], { theaterId: "theater-a", window: "week" });
-    expect(dto.operations).toHaveLength(1);
-    expect(dto.clients).toEqual([{
-      client: "claude",
-      sessions: 2,
-      usage: { input: 1_200_010, output: 42_020, cacheRead: 900_030 },
-      costUsd: 2.5,
-    }]);
-  });
-
-  it("assigns a duplicated claim only to the most recently active Operation", () => {
-    const sessionId = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
-    const dto = buildSummary([sessions[0]!], [
-      operation("older", "theater-a", "claude", sessionId, 100),
-      operation("newer", "theater-a", "claude", sessionId, 200),
-    ], { theaterId: null, window: "week" });
-    expect(dto.operations).toHaveLength(1);
-    expect(dto.operations[0]?.operationId).toBe("newer");
-    expect(dto.totals.costUsd).toBe(2.25);
-  });
-
-  it("filters claim candidates by theater when theaterId is present", () => {
-    const operations = [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ];
-    expect(buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" }).operations.map((entry) => entry.operationId)).toEqual(["a"]);
-    expect(buildSummary(sessions, operations, { theaterId: null, window: "week" }).operations.map((entry) => entry.operationId).sort()).toEqual(["a", "b"]);
-  });
-
-  it("keeps all-session client totals device-wide when operations are filtered to one theater", () => {
-    const operations = [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ];
-    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
-    const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" }, "ok", generatedAtMs);
-    const all = buildSummary(sessions, operations, { theaterId: null, window: "week" }, "ok", generatedAtMs);
-    expect(scoped.clients).toEqual(all.clients);
-    expect(scoped.daily).toEqual(all.daily);
-    expect(scoped.clients).toEqual([
-      { client: "claude", sessions: 1, usage: { input: 1_200_000, output: 42_000, cacheRead: 900_000 }, costUsd: 2.25 },
-      { client: "codex", sessions: 1, usage: { input: 800_000, output: 30_000, cacheRead: 100_000 }, costUsd: 1.75 },
-      { client: "opencode", sessions: 1, usage: { input: 1_000, output: 200, cacheRead: 0 }, costUsd: 0.05 },
-    ]);
-  });
-
-  it("makes totals exactly equal the sum of the response operations", () => {
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ], { theaterId: null, window: "week" });
-    const summed = dto.operations.reduce((total, operationDto) => ({
-      costUsd: total.costUsd + operationDto.costUsd,
-      input: total.input + operationDto.usage.input,
-      output: total.output + operationDto.usage.output,
-      cacheRead: total.cacheRead + operationDto.usage.cacheRead,
-      messages: total.messages + operationDto.messages,
-    }), { costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
-    expect(dto.totals).toEqual(summed);
-    expect(dto.operations.map((entry) => entry.usage.input + entry.usage.output + entry.usage.cacheRead).sort((a, b) => b - a))
-      .toEqual([2_142_000, 930_000]);
-  });
-
-  it("limits totals to the selected Theater operations without adding device-wide client usage", () => {
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ], { theaterId: "theater-a", window: "week" });
-    expect(dto.totals).toEqual({
-      costUsd: 2.25,
-      input: 1_200_000,
-      output: 42_000,
-      cacheRead: 900_000,
-      messages: 12,
-    });
-    expect(dto.clients.reduce((cost, entry) => cost + entry.costUsd, 0)).toBe(4.05);
-  });
-
-  it("keeps zero Operation totals and populated device-wide client data when no operations match", () => {
-    const dto = buildSummary(sessions, [], { theaterId: "theater-a", window: "week" });
-    expect(dto.operations).toEqual([]);
-    expect(dto.totals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
-    expect(dto.clients).toHaveLength(3);
-    expect(dto.clients.reduce((totals, entry) => ({
-      sessions: totals.sessions + entry.sessions,
-      costUsd: totals.costUsd + entry.costUsd,
-      tokens: totals.tokens + entry.usage.input + entry.usage.output + entry.usage.cacheRead,
-    }), { sessions: 0, costUsd: 0, tokens: 0 })).toEqual({
-      sessions: 3,
-      costUsd: 4.05,
-      tokens: 3_073_200,
-    });
-  });
-
-  it("does not match malformed claude or codex session ids", () => {
-    const malformed = [
-      { ...sessions[0]!, sessionId: "not-a-canonical-uuid" },
-      { ...sessions[1]!, sessionId: "garbage-prefix-019f9ab4-7d11-7000-8000-123456789abc" },
-    ];
-    const dto = buildSummary(malformed, [
-      operation("claude", "theater-a", "claude", "not-a-canonical-uuid", 1),
-      operation("codex", "theater-a", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 1),
-    ], { theaterId: null, window: "week" });
-    expect(dto.operations).toEqual([]);
-    expect(dto.clients.reduce((count, entry) => count + entry.sessions, 0)).toBe(2);
-  });
-
-  it("matches canonical UUIDs case-insensitively", () => {
-    const dto = buildSummary([{ ...sessions[0]!, sessionId: "30BF2AB7-5A5D-4A8C-8AAA-730A40ECF103" }], [
-      operation("claude", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 1),
-    ], { theaterId: null, window: "week" });
-    expect(dto.operations[0]?.operationId).toBe("claude");
-  });
-
-  it("breaks equal updatedAt claims deterministically by Operation id", () => {
-    const sessionId = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
-    const claims = [
-      operation("z-operation", "theater-a", "claude", sessionId, 100),
-      operation("a-operation", "theater-a", "claude", sessionId, 100),
-    ];
-    expect(buildSummary([sessions[0]!], claims, { theaterId: null, window: "week" }).operations[0]?.operationId).toBe("a-operation");
-    expect(buildSummary([sessions[0]!], [...claims].reverse(), { theaterId: null, window: "week" }).operations[0]?.operationId).toBe("a-operation");
-  });
-
-  it("ignores Operations without a providerSession", () => {
-    const withoutProvider = {
-      ...operation("missing", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 1),
-      payload: { cliId: "claude", cliLabel: "Claude Code" },
-    };
-    const dto = buildSummary([sessions[0]!], [withoutProvider], { theaterId: null, window: "week" });
-    expect(dto.operations).toEqual([]);
-    expect(dto.clients[0]?.sessions).toBe(1);
-  });
-
-  it("fails closed when aggregate cost overflows", () => {
-    const secondSessionId = "40bf2ab7-5a5d-4a8c-8aaa-730a40ecf104";
-    const overflowSessions = [
-      { ...sessions[0]!, costUsd: Number.MAX_VALUE },
-      { ...sessions[0]!, sessionId: secondSessionId, costUsd: Number.MAX_VALUE },
-    ];
-    const dto = buildSummary(overflowSessions, [
-      operation("first", "theater-a", "claude", sessions[0]!.sessionId, 1),
-      operation("second", "theater-a", "claude", secondSessionId, 1),
-    ], { theaterId: null, window: "week" }, "ok", Math.max(...overflowSessions.map((session) => session.lastActive)));
-    expect(dto.source).toMatchObject({ status: "unreadable", skippedSessions: 2 });
-    expect(dto.totals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
+  it("returns no derived all-zero axis when no model row has date metadata", () => {
+    const at = localTime(2026, 8, 14);
+    const dto = buildSummary([], { window: "week" }, "ok", at, 0, breakdown([entry()]));
+    expect(dto.totals.costUsd).toBe(1.25);
     expect(dto.daily).toEqual([]);
+    expect(dto.dailyDetails).toEqual([]);
+    expect(dto.dailySource.unmatchedEntries).toBe(1);
+  });
+});
+
+describe("source integrity and DTO boundaries", () => {
+  it.each(["unavailable", "unreadable"] as const)(
+    "retains model totals but omits daily detail when report metadata is %s",
+    (reportStatus) => {
+      const dto = buildSummary([], { window: "week" }, reportStatus, 123, 0, breakdown([entry()]));
+      expect(dto.totals.costUsd).toBe(1.25);
+      expect(dto.modelRows).toHaveLength(1);
+      expect(dto.daily).toEqual([]);
+      expect(dto.dailyDetails).toEqual([]);
+      expect(dto.source).toMatchObject({ status: "degraded", models: "ok", report: reportStatus });
+    },
+  );
+
+  it.each(["bootstrapping", "unavailable", "unreadable"] as const)(
+    "fails closed when the canonical model ledger is %s",
+    (modelsStatus) => {
+      const dto = buildSummary([], { window: "week" }, "ok", 123, 0, breakdown([entry()], modelsStatus));
+      expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+      expect(dto.modelRows).toEqual([]);
+      expect(dto.daily).toEqual([]);
+      expect(dto.source.status).toBe(modelsStatus);
+    },
+  );
+
+  it("reports partial parser coverage without dropping valid model totals", () => {
+    const dto = buildSummary([], { window: "week" }, "degraded", 123, 2, breakdown([entry()], "degraded", 3));
+    expect(dto.totals.costUsd).toBe(1.25);
+    expect(dto.source).toEqual({
+      status: "degraded",
+      models: "degraded",
+      report: "degraded",
+      skippedEntries: 3,
+      skippedSessions: 2,
+    });
+  });
+
+  it("fails closed on aggregate overflow without serializing non-finite cost", () => {
+    const dto = buildSummary([], { window: "week" }, "ok", 123, 0, breakdown([
+      entry({ costUsd: Number.MAX_VALUE }),
+      entry({ sessionId: sessionB, costUsd: Number.MAX_VALUE }),
+    ]));
+    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+    expect(dto.source).toMatchObject({ status: "unreadable", models: "unreadable", skippedEntries: 2 });
     expect(JSON.stringify(dto)).not.toContain('"costUsd":null');
   });
 
-  it("allowlists the DTO and never serializes native session ids or paths", () => {
-    const dto = buildSummary(sessions, [
-      operation("claude-op", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 10),
-    ], { theaterId: null, window: "week" });
-    const serialized = JSON.stringify(dto);
-    expect(serialized).not.toContain("session_id");
-    expect(serialized).not.toContain("sessionId");
-    expect(serialized).not.toContain("/Users/example/project");
-    expect(serialized).not.toContain("workspace_label");
-  });
-});
-
-describe("buildSummary coverage", () => {
-  it("reports device-wide totals across every session regardless of operation claims or theater scope", () => {
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-    ], { theaterId: "theater-a", window: "week" });
-    expect(dto.totals.costUsd).toBe(2.25);
-    expect(dto.deviceTotals).toEqual({
-      input: 2_001_000,
-      output: 72_200,
-      cacheRead: 1_000_000,
-      costUsd: 4.05,
-      messages: 22,
-      sessions: 3,
-    });
+  it("fails closed when aggregated token or message counts stop being safe integers", () => {
+    const dto = buildSummary([], { window: "week" }, "ok", 123, 0, breakdown([
+      entry({ input: Number.MAX_SAFE_INTEGER }),
+      entry({ sessionId: sessionB, input: 1 }),
+    ]));
+    expect(dto.totals).toEqual({ input: 0, output: 0, cacheRead: 0, costUsd: 0, messages: 0 });
+    expect(dto.source).toMatchObject({ status: "unreadable", models: "unreadable", skippedEntries: 2 });
   });
 
-  it("lists claimed operations with no matched session as unmatched, scoped by theater", () => {
-    const dto = buildSummary(sessions, [
-      operation("matched", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("ghost", "theater-a", "claude", "00000000-0000-4000-8000-000000000000", 200),
-      operation("other-theater", "theater-b", "claude", "11111111-1111-4111-8111-111111111111", 300),
-    ], { theaterId: "theater-a", window: "week" });
-    expect(dto.operations.map((entry) => entry.operationId)).toEqual(["matched"]);
-    expect(dto.unmatched).toEqual([{
-      operationId: "ghost",
-      title: "Operation ghost",
-      cliId: "claude",
-      cliLabel: "Claude Code",
-      launchProvider: "claude",
-      lastActivityAtMs: 200,
-    }]);
-    expect(dto.unmatchedTotal).toBe(1);
-  });
-
-  it("caps the serialized unmatched list while unmatchedTotal keeps the full count", () => {
-    const ghosts = Array.from({ length: 60 }, (_, index) => operation(
-      `ghost-${index}`,
-      "theater-a",
-      "claude",
-      `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
-      index,
-    ));
-    const dto = buildSummary([], ghosts, { theaterId: "theater-a", window: "week" });
-    expect(dto.unmatched).toHaveLength(50);
-    expect(dto.unmatchedTotal).toBe(60);
-    expect(dto.unmatched[0]?.operationId).toBe("ghost-59");
-  });
-
-  it("keeps other-theater Console attribution out of both operations and unmatched but counts it in otherTheaterTotals", () => {
-    const operations = [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ];
-    const scoped = buildSummary(sessions, operations, { theaterId: "theater-a", window: "week" });
-    expect(scoped.operations.map((entry) => entry.operationId)).toEqual(["a"]);
-    expect(scoped.unmatched).toEqual([]);
-    expect(scoped.otherTheaterTotals).toEqual({ costUsd: 1.75, input: 800_000, output: 30_000, cacheRead: 100_000, messages: 8 });
-    expect(scoped.deviceTotals.costUsd).toBe(4.05);
-
-    const all = buildSummary(sessions, operations, { theaterId: null, window: "week" });
-    expect(all.otherTheaterTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
-  });
-
-  it("excludes operations without a claim and losing duplicate claims from unmatched", () => {
-    const withoutSession: OperationNode = {
-      ...operation("no-session", "theater-a", "claude", "ignored", 100),
-      payload: { cliId: "claude", cliLabel: "Claude Code" },
-    };
-    const sessionId = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
-    const dto = buildSummary([sessions[0]!], [
-      operation("older", "theater-a", "claude", sessionId, 100),
-      operation("newer", "theater-a", "claude", sessionId, 200),
-      withoutSession,
-    ], { theaterId: null, window: "week" });
-    expect(dto.operations.map((entry) => entry.operationId)).toEqual(["newer"]);
-    expect(dto.unmatched).toEqual([]);
-  });
-
-  it("keeps unmatched empty and deviceTotals zeroed in the overflow fallback", () => {
-    const lastActive = new Date(2026, 6, 15, 12).getTime();
-    const dto = buildSummary([
-      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
-      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
-    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
-    expect(dto.unmatched).toEqual([]);
-    expect(dto.unmatchedTotal).toBe(0);
-    expect(dto.otherTheaterTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0 });
-    expect(dto.deviceTotals).toEqual({ costUsd: 0, input: 0, output: 0, cacheRead: 0, messages: 0, sessions: 0 });
-  });
-});
-
-describe("buildSummary dailyAttributed", () => {
-  it("splits scope-attributed cost onto the same day axis as daily", () => {
-    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ], { theaterId: "theater-a", window: "week" }, "ok", generatedAtMs);
-    expect(dto.dailyAttributed).toHaveLength(dto.daily.length);
-    expect(dto.dailyAttributed.map((point) => point.day)).toEqual(dto.daily.map((point) => point.day));
-    // claude(theater-a 귀속 $2.25)만 레이어에 오르고 codex(theater-b)·opencode(미귀속)는 오르지 않는다.
-    expect(dto.dailyAttributed.reduce((sum, point) => sum + point.costUsd, 0)).toBe(2.25);
-    const claudeDay = localDayKey(sessions[0]!.lastActive);
-    expect(dto.dailyAttributed.find((point) => point.day === claudeDay)?.costUsd).toBe(2.25);
-  });
-
-  it("counts every theater's claims in the all-theaters scope", () => {
-    const generatedAtMs = Math.max(...sessions.map((session) => session.lastActive));
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-      operation("b", "theater-b", "codex", "019f9ab4-7d11-7000-8000-123456789abc", 200),
-    ], { theaterId: null, window: "week" }, "ok", generatedAtMs);
-    expect(dto.dailyAttributed.reduce((sum, point) => sum + point.costUsd, 0)).toBe(4);
-  });
-
-  it("stays empty in the overflow fallback and when no sessions exist", () => {
-    const generatedAtMs = new Date(2026, 6, 31, 12).getTime();
-    expect(buildSummary([], [], { theaterId: null, window: "week" }, "ok", generatedAtMs).dailyAttributed).toEqual([]);
-    const lastActive = new Date(2026, 6, 15, 12).getTime();
-    const overflow = buildSummary([
-      { ...sessions[0]!, lastActive, costUsd: Number.MAX_VALUE },
-      { ...sessions[1]!, lastActive, costUsd: Number.MAX_VALUE },
-    ], [], { theaterId: null, window: "today" }, "ok", lastActive);
-    expect(overflow.dailyAttributed).toEqual([]);
-  });
-});
-
-describe("buildSummary launchProvider and models command", () => {
-  const modelEntries: TokscaleModelEntry[] = [
-    {
-      modelId: "claude-gateway--cursor--claude-opus-5",
-      input: 10,
-      output: 2,
-      cacheRead: 0,
-      costUsd: 50,
-      messages: 4,
-    },
-    {
-      modelId: "claude-gateway--xai--grok-4.6",
-      input: 3,
-      output: 1,
-      cacheRead: 0,
-      costUsd: 0,
-      messages: 292,
-    },
-    {
-      modelId: "claude-opus-5",
-      input: 8,
-      output: 1,
-      cacheRead: 2,
-      costUsd: 20,
-      messages: 10,
-    },
-  ];
-
-  it("copies launchProvider from the Operation payload onto the DTO", () => {
-    const gateway = operation("gw", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 10);
-    const dto = buildSummary([sessions[0]!], [{
-      ...gateway,
-      payload: { ...gateway.payload, launchProvider: "cursor" },
-    }], { theaterId: null, window: "week" });
-    expect(dto.operations[0]?.launchProvider).toBe("cursor");
-  });
-
-  it("keeps models-command totals off the report hero and preserves unpriced rows", () => {
-    const dto = buildSummary(sessions, [
-      operation("a", "theater-a", "claude", "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103", 100),
-    ], { theaterId: "theater-a", window: "week" }, "ok", Date.now(), 0, {
-      entries: modelEntries,
-      status: "ok",
-      skippedEntries: 0,
-    });
-    expect(dto.totals.costUsd).toBe(2.25);
-    expect(dto.modelTotals.costUsd).toBe(70);
-    expect(dto.modelTotals.costUsd + dto.totals.costUsd).not.toBe(dto.deviceTotals.costUsd);
-    expect(dto.suppliers.map((entry) => entry.supplier)).toEqual(["cursor", "claude", "xai"]);
-    expect(dto.modelRows.find((row) => row.supplier === "xai")).toMatchObject({
-      costUsd: 0,
-      messages: 292,
-      label: "Grok 4.6",
-    });
-  });
-
-  it("joins hyphenated and dotted GPT ids into one model row", () => {
-    const dto = buildSummary([], [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
-      entries: [
-        { modelId: "claude-gateway--codex--gpt-5.6-sol-fast", input: 1, output: 1, cacheRead: 0, costUsd: 1, messages: 2 },
-        { modelId: "claude-gateway--codex--gpt-5-6-sol-fast", input: 1, output: 1, cacheRead: 0, costUsd: 2, messages: 3 },
-      ],
-      status: "ok",
-      skippedEntries: 0,
-    });
-    expect(dto.modelRows).toHaveLength(1);
-    expect(dto.modelRows[0]).toMatchObject({ costUsd: 3, messages: 5, supplier: "codex", label: "GPT 5.6 Sol Fast" });
-    expect(dto.suppliers).toEqual([expect.objectContaining({ supplier: "codex", models: 1 })]);
-  });
-
-  it("isolates a models-command overflow from the report totals", () => {
-    const dto = buildSummary(sessions, [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
-      entries: [
-        { ...modelEntries[0]!, costUsd: Number.MAX_VALUE },
-        { ...modelEntries[2]!, costUsd: Number.MAX_VALUE },
-      ],
-      status: "ok",
-      skippedEntries: 0,
-    });
-    expect(dto.deviceTotals.costUsd).toBe(4.05);
-    expect(dto.modelSource.status).toBe("unreadable");
-    expect(dto.modelRows).toEqual([]);
-    expect(dto.suppliers).toEqual([]);
-  });
-
-  it("caps serialized model rows while modelTotals.models keeps the full count", () => {
-    const entries = Array.from({ length: 81 }, (_, index) => ({
-      modelId: `claude-gateway--cursor--model-${index}`,
-      input: 1,
-      output: 1,
-      cacheRead: 0,
+  it("caps serialized model rows while preserving the uncapped model count", () => {
+    const entries = Array.from({ length: 81 }, (_, index) => entry({
+      modelId: `claude-model-${index}`,
       costUsd: 81 - index,
-      messages: 1,
     }));
-    const dto = buildSummary([], [], { theaterId: null, window: "week" }, "ok", Date.now(), 0, {
-      entries,
-      status: "ok",
-      skippedEntries: 0,
-    });
+    const dto = buildSummary([], { window: "week" }, "unavailable", 123, 0, breakdown(entries));
     expect(dto.modelRows).toHaveLength(80);
-    expect(dto.modelTotals.models).toBe(81);
-    expect(dto.modelRows[0]?.label).toBe("Model 0");
+    expect(dto.modelCount).toBe(81);
+    expect(dto.modelRows[0]?.modelId).toBe("claude-model-0");
+  });
+
+  it("allowlists schema version 2 without session identity or filesystem metadata", () => {
+    const dto = buildSummary(
+      [session(sessionA, localTime(2026, 8, 14))],
+      { window: "week" },
+      "ok",
+      localTime(2026, 8, 14),
+      0,
+      breakdown([entry()]),
+    );
+    const serialized = JSON.stringify(dto);
+    expect(dto.schemaVersion).toBe(2);
+    expect(dto.scope).toEqual({ window: "week" });
+    expect(serialized).not.toContain("sessionId");
+    expect(serialized).not.toContain(sessionA);
+    expect(serialized).not.toContain("workspace");
+    expect(serialized).not.toContain("operation");
+    expect(serialized).not.toContain("theater");
   });
 });
