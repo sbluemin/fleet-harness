@@ -209,6 +209,31 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await registry.disposeAll();
   });
 
+  // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면
+  // 자식의 훅이 남의 세션 축에 턴을 보고한다.
+  it("keeps the inherited terminal session id out of the sdk child", async () => {
+    const home = tempDir("chat-home-");
+    const previous = process.env.FLEET_CONSOLE_SESSION_ID;
+    process.env.FLEET_CONSOLE_SESSION_ID = "someone-elses-session";
+    try {
+      const { factory } = createFakeSdkFactory([
+        { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+      ]);
+      const registry = new AgentChatRegistry(factory);
+      const session = await registry.ensure("op-env", () => freshSeedFor(home));
+      session.send("go");
+      await drainTurn(registry, "op-env");
+
+      expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+        env: expect.not.objectContaining({ FLEET_CONSOLE_SESSION_ID: expect.anything() }),
+      }));
+      await registry.disposeAll();
+    } finally {
+      if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
+      else process.env.FLEET_CONSOLE_SESSION_ID = previous;
+    }
+  });
+
   // 플러그인을 못 실은 세션은 터미널로 열었을 때와 능력이 다르다. 그 차이는 화면 어디에도
   // 드러나지 않으므로 저널이 말해야 한다.
   it("surfaces an error and still starts the turn when the Fleet plugin cannot be rendered", async () => {

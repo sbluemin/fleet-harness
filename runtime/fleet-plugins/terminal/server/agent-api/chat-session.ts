@@ -25,6 +25,7 @@ import {
   type AgentChatQuestion,
   type AgentChatStreamEvent,
 } from "./chat-events.js";
+import { chatChildEnv } from "../shared/launch-env.js";
 import type { AgentProviderSession } from "./types.js";
 
 /**
@@ -688,6 +689,9 @@ class AgentChatSession {
           // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
           settingSources: ["user", "project", "local"],
           allowAmbientMcpServers: true,
+          // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
+          // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
+          env: chatChildEnv(process.env),
           ...(pluginRoots.length > 0 ? { plugins: pluginRoots.map((root) => ({ path: root })) } : {}),
         });
         if (this.disposed) {
