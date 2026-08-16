@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -86,17 +86,15 @@ const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 
 /**
- * Claude Code가 트랜스크립트를 두는 실제 뿌리. 채팅으로 태어난 세션의 되쓰기 목적지이자,
- * 그 세션이 나중에 터미널 `--resume`으로 이어질 수 있게 하는 좌표다.
+ * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
+ * 그래서 한 세션을 어느 표면으로 열든 같은 트랜스크립트가 자란다.
  *
  * 규칙은 자격증명 해석(core-ai-gateway `anthropic/credentials.ts`)과 같다 — 여기서 다르게 읽으면
- * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다. SDK의 격리 config dir과는 무관하다:
- * 그쪽은 이 세션 전용 임시 dir이고, 이쪽은 사용자의 정본이다.
+ * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다.
  */
-function resolveClaudeProjectsRoot(): string {
+function resolveClaudeConfigDir(): string {
   const configured = process.env.CLAUDE_CONFIG_DIR;
-  const configDir = configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
-  return path.join(configDir, "projects");
+  return configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
 }
 
 export async function registerAgentRoutes(
@@ -1290,7 +1288,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (!transcriptPath && !neverStarted) return { ok: false, status: 409, error: "chat_transcript_missing" };
     const sessionOrigin: AgentChatSessionOrigin = transcriptPath
       ? { kind: "resume", transcriptPath }
-      : { kind: "fresh", transcriptRoot: resolveClaudeProjectsRoot() };
+      : { kind: "fresh" };
     const origin = ctx.host.server.origin();
     if (!origin) return { ok: false, status: 503, error: "chat_gateway_unavailable" };
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -1300,6 +1298,22 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const effort = chatEffortFromLaunchEffort(readPayloadString(node.payload, "launchEffort"));
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
+    const claudeConfigDir = resolveClaudeConfigDir();
+    const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
+    // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
+    // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
+    try {
+      const gatewaySelection = deps.readAiGatewaySettings
+        ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
+        : undefined;
+      writeGatewayModelCacheForHome({
+        baseUrl: gatewayBaseUrl,
+        configDir: claudeConfigDir,
+        ...(gatewaySelection ? { models: gatewaySelection.models } : {}),
+      });
+    } catch {
+      // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
+    }
     const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
     const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
     const systemPrompt = systemPromptMode === "off"
@@ -1309,10 +1323,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return {
       ok: true,
       seed: {
-        baseUrl: resolveAnalysisGatewayBaseUrl(origin),
+        baseUrl: gatewayBaseUrl,
         model,
         ...(effort ? { effort } : {}),
         cwd,
+        claudeConfigDir,
         origin: sessionOrigin,
         ...(systemPrompt ? { systemPrompt } : {}),
         resolveFleetMcpServers: async () => {

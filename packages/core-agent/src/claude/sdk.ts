@@ -17,7 +17,7 @@ import {
   type ClaudeGatewayTurn,
 } from "./contracts.js";
 
-import { createIsolatedClaudeConfigDir } from "./config-dir.js";
+import { createIsolatedClaudeConfigDir, createSharedClaudeConfigHome } from "./config-dir.js";
 import { claudeGatewayLaunchEnv } from "./launch-env.js";
 import { runVendorQuery } from "./vendor-sdk.js";
 
@@ -53,7 +53,9 @@ export async function createClaudeGatewaySdk(
     .map((entry) => entry.model);
   const inherited = options.env ?? process.env;
 
-  const configDir = await createIsolatedClaudeConfigDir(options.tempRoot);
+  const configDir = options.home?.kind === "shared"
+    ? createSharedClaudeConfigHome(options.home.configDir)
+    : await createIsolatedClaudeConfigDir(options.tempRoot);
   let disposed = false;
   let active: ClaudeGatewayRun | null = null;
 

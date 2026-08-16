@@ -52,6 +52,7 @@ export {
 export type { AuthKeyValidationResult } from "./ai-gateway/auth.js";
 export {
   prepareAiGatewayLaunchProfile,
+  writeGatewayModelCacheForHome,
   type AiGatewayLaunchEnvOptions,
 } from "./ai-gateway/launch-env.js";
 

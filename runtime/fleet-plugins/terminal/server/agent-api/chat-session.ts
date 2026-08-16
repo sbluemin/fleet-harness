@@ -7,6 +7,7 @@ import {
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
   type ClaudeGatewaySdk,
+  type ClaudeGatewaySdkOptions,
   type ClaudeGatewayServedMcpServer,
   type ClaudeGatewaySystemPrompt,
 } from "@dotobokuri/core-agent/claude";
@@ -36,23 +37,27 @@ import type { AgentProviderSession } from "./types.js";
  */
 
 /**
- * 이 세션이 어디서 시작하는가. 두 길은 대칭이 아니다 — `resume`은 이미 있는 트랜스크립트가
- * 세션 id와 projects 디렉터리 이름을 **둘 다** 말해 주지만, `fresh`는 아직 아무것도 없어서
- * 그 둘을 SDK가 첫 턴에 만들어 준 뒤에야 알 수 있다.
+ * 이 세션이 어디서 시작하는가. `resume`은 이미 있는 트랜스크립트가 세션 id를 말해 주고,
+ * `fresh`는 SDK가 첫 턴에 만들어 준 뒤에야 그것을 안다.
  *
- * `fresh`가 아는 것은 되쓸 뿌리 하나뿐이다. cwd → projects 디렉터리 이름의 인코딩 규칙은
- * 여기서도 재구현하지 않는다: SDK가 자기 격리 dir 안에 만든 디렉터리 이름을 그대로 읽어
- * 같은 이름으로 뿌리 아래에 내려놓는다(resume이 원 경로의 부모 이름을 그대로 쓰는 것과 같은 규율).
+ * 둘 다 **같은 파일**을 키운다. Chat Mode와 터미널은 한 세션의 두 얼굴이므로 트랜스크립트도
+ * 하나여야 하고, 그래서 SDK는 사용자의 실제 Claude 홈을 그대로 쓴다 — 사본을 따로 키우다
+ * 되쓰는 왕복은 원본을 덮어쓸 위험만 남기고 아무것도 사지 못했다.
  */
 export type AgentChatSessionOrigin =
   | { readonly kind: "resume"; readonly transcriptPath: string }
-  | { readonly kind: "fresh"; readonly transcriptRoot: string };
+  | { readonly kind: "fresh" };
 
 export interface AgentChatSessionSeed {
   readonly baseUrl: string;
   readonly model: string;
   readonly effort?: ClaudeGatewayEffort;
   readonly cwd: string;
+  /**
+   * 사용자의 실제 Claude 홈(`CLAUDE_CONFIG_DIR` 또는 `~/.claude`). 터미널로 띄운 CLI가 쓰는
+   * 바로 그 홈이며, 트랜스크립트가 한 자리에서 자라는 근거다.
+   */
+  readonly claudeConfigDir: string;
   readonly origin: AgentChatSessionOrigin;
   /**
    * Fleet Admiral 지시. 같은 Operation을 터미널에서 열면 CLI가 `--append-system-prompt`로 받는
@@ -129,11 +134,11 @@ interface PendingAsk {
   readonly settle: (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }) => void;
 }
 
-/** 테스트가 실 SDK 스폰 없이 레지스트리를 돌리기 위한 주입점. */
-export type CreateChatSdk = (options: {
-  readonly baseUrl: string;
-  readonly models: readonly string[];
-}) => Promise<ClaudeGatewaySdk>;
+/**
+ * 테스트가 실 SDK 스폰 없이 레지스트리를 돌리기 위한 주입점. 옵션은 실제 팩토리의 계약을 그대로
+ * 쓴다 — 좁혀 두면 홈 정책처럼 뒤에 붙는 옵션이 주입점을 통과하지 못한다.
+ */
+export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<ClaudeGatewaySdk>;
 
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
@@ -214,6 +219,8 @@ class AgentChatSession {
    * `fresh`는 아직 세션이 없으므로 null로 출발하고, 첫 SDK 메시지의 session_id가 이 자리를 채운다.
    */
   private latestSessionId: string | null;
+  /** 이미 Operation에 심은 세션 id. 같은 좌표를 매 턴 다시 심지 않기 위한 축이다. */
+  private reportedSessionId: string | null = null;
   private journal: AgentChatJournalEvent[] = [];
   private seq = 0;
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
@@ -559,13 +566,18 @@ class AgentChatSession {
     return { kind: "shell", tail: tail.tail, truncated: tail.truncated || window.headCut };
   }
 
-  /** 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리. */
+  /**
+   * 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리.
+   *
+   * 트랜스크립트가 앉은 자리를 그대로 따라간다 — 공유 홈에는 남의 세션도 함께 살아서
+   * "projects 아래 디렉터리가 하나뿐"이라는 지름길이 성립하지 않기 때문이다.
+   */
   private async resolveJobSessionDir(): Promise<string | null> {
-    const sdk = this.sdk;
-    if (!sdk || !this.latestSessionId) return null;
-    const projectDirName = await this.resolveProjectDirName(sdk.configDir);
-    if (projectDirName === null) return null;
-    return path.join(sdk.configDir, "projects", projectDirName, this.latestSessionId);
+    const sessionId = this.latestSessionId;
+    if (!sessionId) return null;
+    const transcriptPath = await this.locateTranscript(sessionId);
+    if (!transcriptPath) return null;
+    return path.join(path.dirname(transcriptPath), sessionId);
   }
 
   /**
@@ -654,13 +666,12 @@ class AgentChatSession {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
       this.sdkFlight = (async () => {
-        const sdk = await this.createSdk({ baseUrl: this.seed.baseUrl, models: [this.seed.model] });
-        try {
-          await this.copyTranscriptIntoConfigDir(sdk.configDir);
-        } catch (error) {
-          await sdk.dispose().catch(() => undefined);
-          throw error;
-        }
+        // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
+        const sdk = await this.createSdk({
+          baseUrl: this.seed.baseUrl,
+          models: [this.seed.model],
+          home: { kind: "shared", configDir: this.seed.claudeConfigDir },
+        });
         if (this.disposed) {
           await sdk.dispose().catch(() => undefined);
           throw new Error("chat session disposed");
@@ -692,19 +703,6 @@ class AgentChatSession {
       });
     }
     return this.fleetMcpFlight;
-  }
-
-  /**
-   * 원 트랜스크립트를 격리 config dir의 같은 projects/<인코딩된 cwd>/ 아래로 복사한다.
-   * 인코딩 규칙을 재구현하지 않는다 — 원 경로의 부모 디렉터리 이름이 곧 그 인코딩이다.
-   * 채팅으로 태어난 세션에는 복사할 원본이 없다 — SDK가 자기 dir 안에 스스로 만든다.
-   */
-  private async copyTranscriptIntoConfigDir(configDir: string): Promise<void> {
-    if (this.seed.origin.kind === "fresh") return;
-    const projectDirName = path.basename(path.dirname(this.seed.origin.transcriptPath));
-    const dest = path.join(configDir, "projects", projectDirName, `${this.latestSessionId}.jsonl`);
-    await fs.mkdir(path.dirname(dest), { recursive: true, mode: 0o700 });
-    await fs.copyFile(this.seed.origin.transcriptPath, dest);
   }
 
   private async runTurn(text: string): Promise<void> {
@@ -798,15 +796,15 @@ class AgentChatSession {
         if (stopped()) this.push({ kind: "turn-end", ok: false, stopped: true });
         else this.push({ kind: "turn-end", ok: true });
       }
-      // 중지된 턴도 되쓴다. 그때까지 실제로 오간 대화는 남았고, 그것을 버리면 다음 턴의 resume이
-      // 사용자가 본 것보다 짧은 과거 위에 선다.
-      await this.writeBackTranscript();
+      // 중지된 턴에서도 좌표를 심는다. 그때까지 실제로 오간 대화는 파일에 남았고, 좌표를 심지
+      // 않으면 다음 턴의 resume이 사용자가 본 것보다 짧은 과거 위에 선다.
+      await this.syncProviderSession();
     } catch {
       this.activeRun = null;
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
       if (stopped()) {
         if (!turnClosed) this.push({ kind: "turn-end", ok: false, stopped: true });
-        await this.writeBackTranscript().catch(() => undefined);
+        await this.syncProviderSession().catch(() => undefined);
       } else {
         this.push({ kind: "error", code: "chat_turn_failed" });
         if (!turnClosed) this.push({ kind: "turn-end", ok: false });
@@ -819,59 +817,57 @@ class AgentChatSession {
   }
 
   /**
-   * 격리 dir에서 자란 트랜스크립트를 원 projects 디렉터리로 되쓴다. 우리 사본은 원본에서
-   * 출발했으므로 길이가 원본 이상일 때만 덮어쓴다 — 외부에서 자란 원본을 지우지 않는 경계다.
+   * 이 세션의 트랜스크립트 좌표를 Operation에 심는다.
+   *
+   * 공유 홈에서는 옮길 파일이 없다 — 트랜스크립트는 이미 정본 자리에서 자라고 있다. 남는 일은
+   * 좌표를 확정하는 것뿐이며, 세션 id가 바뀌지 않는 한 다시 할 일도 없다(resume이 새 id를 낳는
+   * 경우에만 다시 확정한다).
    */
-  private async writeBackTranscript(): Promise<void> {
-    const sdk = this.sdk;
-    // 세션 id가 없으면 되쓸 파일 이름조차 없다 — 첫 턴이 session_id 없이 끝난 경우다.
-    if (!sdk || !this.latestSessionId) return;
+  private async syncProviderSession(): Promise<void> {
     const sessionId = this.latestSessionId;
-    const projectDirName = await this.resolveProjectDirName(sdk.configDir);
-    if (!projectDirName) return;
-    const source = path.join(sdk.configDir, "projects", projectDirName, `${sessionId}.jsonl`);
-    const sourceStat = await fs.stat(source).catch(() => null);
-    if (!sourceStat?.isFile()) return;
-    const destDir = this.seed.origin.kind === "resume"
-      ? path.dirname(this.seed.origin.transcriptPath)
-      : path.join(this.seed.origin.transcriptRoot, projectDirName);
-    const dest = path.join(destDir, `${sessionId}.jsonl`);
-    const destStat = await fs.stat(dest).catch(() => null);
-    if (destStat?.isFile() && destStat.size > sourceStat.size) return;
-    // 복사가 실패하면 providerSession을 갱신하지 않는다 — 존재하지 않는 파일을 durable 권위로
-    // 가리키면 터미널 복귀·재시작·Analyst가 조용히 턴을 잃는다. 실패는 저널로 표면화한다.
-    try {
-      // 채팅으로 태어난 세션은 이 디렉터리를 처음 만든다. resume 경로에서는 만들지 않는다 —
-      // 그쪽에서 목적지가 사라졌다면 원본이 밖에서 치워진 것이고, 되살려 쓰는 것은 그 삭제를
-      // 조용히 되돌리는 일이다. 실패를 저널로 표면화하는 기존 계약을 그대로 둔다.
-      if (this.seed.origin.kind === "fresh") await fs.mkdir(destDir, { recursive: true, mode: 0o700 });
-      await fs.copyFile(source, dest);
-    } catch {
-      this.push({ kind: "error", code: "chat_writeback_failed" });
-      return;
-    }
+    if (!sessionId || sessionId === this.reportedSessionId) return;
+    const transcriptPath = await this.locateTranscript(sessionId);
+    // 좌표를 못 찾으면 심지 않는다 — 없는 파일을 durable 권위로 가리키면 터미널 복귀·재시작·
+    // Analyst가 조용히 세션을 잃는다. 다음 턴이 다시 시도한다.
+    if (!transcriptPath) return;
+    this.reportedSessionId = sessionId;
     this.seed.onProviderSessionUpdate({
       provider: "claude",
       sessionId,
-      transcriptPath: dest,
+      transcriptPath,
       source: "chat-mode",
       capturedAt: new Date().toISOString(),
     });
   }
 
   /**
-   * 이 세션의 트랜스크립트가 앉은 projects 디렉터리 이름. resume은 원 경로가 이미 말해 주고,
-   * fresh는 SDK가 자기 dir 안에 만든 이름을 읽는다 — cwd 인코딩 규칙을 재구현하지 않기 위해서다.
-   * 격리 dir은 이 세션 전용이라 그 아래 projects 항목은 하나뿐이며, 여럿이면 무엇이 우리 것인지
-   * 말할 수 없으므로 되쓰지 않는다(잘못된 뿌리에 남의 세션을 심는 것보다 낫다).
+   * 세션 id가 앉은 트랜스크립트 파일. resume은 원 경로의 이웃을 먼저 보고, 없으면 projects
+   * 아래를 훑는다 — cwd → 디렉터리 이름 인코딩 규칙을 재구현하지 않기 위해서이고, 세션 id가
+   * 고유하므로 훑어서 찾은 것은 우리 것이 맞다.
+   *
+   * 공유 홈에는 남의 세션도 함께 산다. 격리 dir 시절의 "디렉터리가 하나뿐"이라는 지름길은
+   * 여기서 성립하지 않는다.
    */
-  private async resolveProjectDirName(configDir: string): Promise<string | null> {
-    if (this.seed.origin.kind === "resume") return path.basename(path.dirname(this.seed.origin.transcriptPath));
-    const entries = await fs.readdir(path.join(configDir, "projects"), { withFileTypes: true }).catch(() => null);
+  private async locateTranscript(sessionId: string): Promise<string | null> {
+    if (this.seed.origin.kind === "resume") {
+      const sibling = path.join(path.dirname(this.seed.origin.transcriptPath), `${sessionId}.jsonl`);
+      if (await isExistingFile(sibling)) return sibling;
+    }
+    const projectsRoot = path.join(this.seed.claudeConfigDir, "projects");
+    const entries = await fs.readdir(projectsRoot, { withFileTypes: true }).catch(() => null);
     if (!entries) return null;
-    const dirs = entries.filter((entry) => entry.isDirectory());
-    return dirs.length === 1 ? dirs[0]?.name ?? null : null;
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const candidate = path.join(projectsRoot, entry.name, `${sessionId}.jsonl`);
+      if (await isExistingFile(candidate)) return candidate;
+    }
+    return null;
   }
+}
+
+async function isExistingFile(candidate: string): Promise<boolean> {
+  const stat = await fs.stat(candidate).catch(() => null);
+  return stat?.isFile() === true;
 }
 
 export class AgentChatRegistry {

@@ -154,8 +154,18 @@ export interface ClaudeGatewaySdkOptions {
    * 당긴다.
    */
   readonly models: readonly string[];
-  /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. */
+  /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
+  /**
+   * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
+   *
+   * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트
+   * 위치가 반대이고, 그 반대가 호출부에서 읽혀야 한다. 공유 홈이 무엇을 호스트에게 넘기는지는
+   * `ClaudeConfigHome`에 적혀 있다.
+   */
+  readonly home?:
+    | { readonly kind: "isolated" }
+    | { readonly kind: "shared"; readonly configDir: string };
   /** 자식이 상속할 기본 환경. 기본값은 이 프로세스의 `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }

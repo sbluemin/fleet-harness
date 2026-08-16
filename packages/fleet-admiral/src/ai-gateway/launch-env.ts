@@ -6,6 +6,7 @@ import {
 	GATEWAY_MODELS,
 	buildAnthropicModelList,
 	type AiGatewaySelection,
+	type GatewayModel,
 } from "@dotobokuri/core-ai-gateway";
 import { writeAtomicSync } from "@dotobokuri/core-infra";
 
@@ -60,6 +61,23 @@ function writeClaudeGatewayModelCache(
 	const configDir = env.CLAUDE_CONFIG_DIR && env.CLAUDE_CONFIG_DIR.length > 0
 		? env.CLAUDE_CONFIG_DIR
 		: path.join(homeDir, ".claude");
+	return writeGatewayModelCacheForHome({ baseUrl, configDir, models: exposedModels });
+}
+
+/**
+ * 한 Claude 홈의 discovery 캐시를 노출 모델 전체로 세운다.
+ *
+ * PTY 런처만의 일이 아니다 — 같은 홈을 쓰는 SDK 세션도 게이트웨이 별칭을 인정받으려면 이 캐시가
+ * 서 있어야 하고, 홈이 공유이므로 **쓰는 쪽은 언제나 노출 목록 전체**를 써야 한다. 자기 세션의
+ * 모델 하나로 좁혀 쓰면 같은 홈의 다른 자식이 나머지 별칭을 잃는다.
+ */
+export function writeGatewayModelCacheForHome(options: {
+	readonly baseUrl: string;
+	readonly configDir: string;
+	readonly models?: readonly GatewayModel[];
+}): string {
+	const { baseUrl, configDir } = options;
+	const exposedModels = options.models ?? GATEWAY_MODELS;
 	const cacheDir = path.join(configDir, "cache");
 	const cachePath = path.join(cacheDir, "gateway-models.json");
 	const models = buildAnthropicModelList(exposedModels).data
