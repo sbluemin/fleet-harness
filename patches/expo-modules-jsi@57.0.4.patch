@@ -1,5 +1,5 @@
 diff --git a/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift b/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
-index eb1cc942ba5ec3ff7e359be3b0a3822b24685fe9..55381e5dd3f76eb726108229afc16dcdb77948dc 100644
+index eb1cc942ba5ec3ff7e359be3b0a3822b24685fe9..3849b4d822174faad7594f8f0df12e85916b9c51 100644
 --- a/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
 +++ b/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
 @@ -50,7 +50,8 @@ let maxJavaScriptDateMilliseconds: Double = 8_640_000_000_000_000
@@ -7,7 +7,7 @@ index eb1cc942ba5ec3ff7e359be3b0a3822b24685fe9..55381e5dd3f76eb726108229afc16dcd
  @usableFromInline
  func dateFromMilliseconds(_ milliseconds: Double) throws -> Date {
 -  guard milliseconds.isFinite, abs(milliseconds) <= maxJavaScriptDateMilliseconds else {
-+  let magnitude: Double = abs(milliseconds)
++  let magnitude: Double = milliseconds.magnitude
 +  guard milliseconds.isFinite, magnitude <= maxJavaScriptDateMilliseconds else {
      throw InvalidDateException()
    }
