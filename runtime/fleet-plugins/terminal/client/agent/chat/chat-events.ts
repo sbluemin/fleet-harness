@@ -618,8 +618,20 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
     case "jobs": {
       // REPLACE 시맨틱: 목록이 곧 살아 있는 전량이다. 여기서 빠진 잡은 더 이상 돌지 않지만,
       // 그것이 어떻게 끝났는지는 이 이벤트가 말하지 않는다 — status는 job-end만 세운다.
+      //
+      // 목록이 아는 잡을 원장이 모를 수도 있다. 상한에 걸린 저널이 그 잡의 시작을 앞에서
+      // 밀어냈는데 이 스냅숏만 남은 재접속이 그렇고, 셸은 맥박을 하나도 내지 않으므로 되살릴
+      // 근거가 이 목록 말고는 없다. 모르는 좌표를 버리면 목록이 살아 있다고 말하는 작업이
+      // 탭에서도 배지에서도 스트립에서도 사라진다 — 맥박·결말이 이미 하는 대로 자리를 세운다.
       const live = new Set(event.ids);
-      return { ...state, jobs: state.jobs.map((job) => ({ ...job, open: live.has(job.id) })) };
+      const known = new Set(state.jobs.map((job) => job.id));
+      const seeded: readonly AgentChatJob[] = event.ids
+        .filter((id) => !known.has(id))
+        .map((id) => ({ id, kind: "other", title: id, open: true, stages: [] }));
+      return {
+        ...state,
+        jobs: [...state.jobs.map((job) => ({ ...job, open: live.has(job.id) })), ...seeded],
+      };
     }
     case "error":
       return { ...state, errorCode: event.code };

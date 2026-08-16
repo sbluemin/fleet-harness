@@ -456,6 +456,28 @@ describe("background job ledger", () => {
     expect(state.jobs.map((job) => [job.id, job.open])).toEqual([["a1", false], ["a2", true]]);
   });
 
+  it("seeds a live job the ledger never saw start", () => {
+    // 상한에 걸린 저널이 잡의 시작을 밀어낸 재접속. 셸은 맥박을 내지 않으므로 이 스냅숏이
+    // 그 작업이 살아 있다는 유일한 근거다 — 버리면 탭·배지·스트립에서 통째로 사라진다.
+    const state = fold([
+      { kind: "job", id: "a1", jobKind: "agent", title: "known" },
+      { kind: "jobs", ids: ["a1", "b-shell"] },
+    ]);
+    expect(state.jobs.map((job) => [job.id, job.open, job.kind])).toEqual([
+      ["a1", true, "agent"],
+      ["b-shell", true, "other"],
+    ]);
+  });
+
+  it("lets the real start event fill in a seeded placeholder", () => {
+    const state = fold([
+      { kind: "jobs", ids: ["b1"] },
+      { kind: "job", id: "b1", jobKind: "shell", title: "sleep 60", toolUseId: "c1" },
+    ]);
+    expect(state.jobs).toHaveLength(1);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ id: "b1", kind: "shell", title: "sleep 60", open: true, toolUseId: "c1" }));
+  });
+
   it("records a stopped job as stopped", () => {
     const state = fold([
       { kind: "job", id: "b1", jobKind: "shell", title: "sleep 45" },
