@@ -219,7 +219,9 @@ struct LocationUri {
     }
     if hostPort.hasPrefix("[") {
       guard let close = hostPort.firstIndex(of: "]") else { return nil }
-      host = String(hostPort[hostPort.startIndex...close])
+      // java.net.URI.host는 브래킷을 벗긴 값을 주고 originOf가 다시 씌운다. 여기서 벗기지
+      // 않으면 [[fd00::1]]로 이중 브래킷이 되어 same-origin 비교가 깨진다.
+      host = String(hostPort[hostPort.index(after: hostPort.startIndex)..<close])
       let after = hostPort[hostPort.index(after: close)...]
       if after.hasPrefix(":") {
         guard let p = parsePort(after.dropFirst()) else { return nil }
