@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type FocusEvent, type ReactElement } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore, type CSSProperties, type FocusEvent, type ReactElement } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
 import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
@@ -13,7 +13,8 @@ import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { OperationStatusIcon } from "./operation-status-icon.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { resolveOperationActivity } from "../operation-activity.js";
+import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -124,12 +125,22 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   };
   const activeTheater = state.theaters.find((theater) => theater.id === state.activeTheaterId) ?? null;
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
   // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
   // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
+  // 도착 승격까지 사이드바·덱과 같은 표시 활동으로 읽는다 — War Room이 도착 항목을 무대에 올릴 때는
+  // 확인 처리를 미루므로(acknowledged: false), raw 활동만 보면 목록은 대기라는 그 패널을 밴드만 유휴라 부른다.
   const activeOperationStatusMark = activeOperation
-    ? <OperationStatusIcon status={resolveOperationActivity(activeOperation, state.operationRuntime)} className="command-band-operation-status" />
+    ? <OperationStatusIcon
+        status={resolveOperationDisplayActivity({
+          activity: resolveOperationActivity(activeOperation, state.operationRuntime),
+          operationId: activeOperation.id,
+          idleArrivalIds,
+        })}
+        className="command-band-operation-status"
+      />
     : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);

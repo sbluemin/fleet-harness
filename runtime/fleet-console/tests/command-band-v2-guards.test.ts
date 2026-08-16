@@ -81,7 +81,11 @@ describe("Command Band switcher disclosure", () => {
     const styles = readFileSync(resolve(process.cwd(), "core/client/src/styles/layout.css"), "utf8");
 
     // 이름 왼쪽 슬롯은 활동 상태가 소유한다 — 공급자 글리프는 이 표면에서 물러났다.
-    expect(source).toContain("<OperationStatusIcon status={resolveOperationActivity(activeOperation, state.operationRuntime)}");
+    // 사이드바·덱과 같은 표시 활동을 읽어야 한다: raw 활동만 보면 War Room이 무대에 올린 도착 항목을
+    // 목록은 대기라 하고 밴드만 유휴라 부른다(무대 승격이 acknowledged: false로 확인을 미루기 때문).
+    expect(source).toContain("resolveOperationDisplayActivity({");
+    expect(source).toContain("activity: resolveOperationActivity(activeOperation, state.operationRuntime),");
+    expect(source).toContain("idleArrivalIds,");
     expect(source).toContain("{activeOperationStatusMark}");
     expect(source).not.toContain("operation-provider-mark");
     expect(source).not.toContain("command-band-operation-attribute");
