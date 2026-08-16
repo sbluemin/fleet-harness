@@ -13,10 +13,15 @@ let logState: AgentChatLogState;
 
 const detailCalls: string[] = [];
 
-vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
+vi.mock("./chat-store.js", () => ({
+  useAgentChatStream: () => ({
+    ...logState,
+    connection: "open",
+    stopTurn: async () => {},
+    answerAsk: async () => {},
+  }),
+}));
 vi.mock("../api.js", () => ({
-  answerAgentChatAsk: async () => {},
-  stopAgentChatTurn: async () => {},
   readAgentChatJobDetail: async (_op: string, jobId: string) => {
     detailCalls.push(jobId);
     return null;

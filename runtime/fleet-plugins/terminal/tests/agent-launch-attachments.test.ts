@@ -376,6 +376,7 @@ async function createHarness(options: { readonly attachError?: Error } = {}) {
     onExit: () => () => {},
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
+    bindChatAttach: () => () => {},
     stop: async () => {},
   };
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-attachments-"));

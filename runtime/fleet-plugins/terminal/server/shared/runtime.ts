@@ -5,7 +5,7 @@ import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 import { createShellTerminalLaunchResolver, startTerminalShell, type TerminalLaunchResolver } from "./pty.js";
 import { createTerminalSessionManager } from "./session-manager.js";
 import { createPluginTerminalTicketRegistry } from "./tickets.js";
-import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalTitleListener } from "./terminal-types.js";
+import type { TerminalTicket, TerminalTicketContext, TerminalLaunchContext, TerminalLaunchSpec, TerminalSocket, TerminalTitleListener } from "./terminal-types.js";
 import { createPluginTerminalUpgradeHandler } from "./ws.js";
 
 export interface TerminalRuntime {
@@ -25,6 +25,11 @@ export interface TerminalRuntime {
   onExit(callback: (operationId: string) => void | Promise<void>): () => void;
   onTitle(operationType: string, callback: TerminalTitleListener): () => void;
   registerLaunchResolver(operationType: string, resolver: TerminalLaunchResolver): () => void;
+  /**
+   * 채팅 티켓이 소켓을 연 뒤 저널을 붙일 자리. 플러그인 라우트가 등록한다.
+   * 등록 전 채팅 업그레이드는 소켓을 거절한다.
+   */
+  bindChatAttach(attach: (socket: TerminalSocket, context: TerminalTicketContext) => void): () => void;
   stop(): Promise<void>;
 }
 
@@ -34,6 +39,7 @@ const SHELL_OPERATION_TYPE = "shell";
 
 export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRuntime {
   const tickets = createPluginTerminalTicketRegistry();
+  let chatAttach: ((socket: TerminalSocket, context: TerminalTicketContext) => void) | null = null;
   const terminalExitListeners = new Set<(operationId: string) => void | Promise<void>>();
   const terminalTitleListeners = new Map<string, Set<TerminalTitleListener>>();
   const terminalLaunchResolvers = new Map<string, TerminalLaunchResolver>();
@@ -57,6 +63,13 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
     tickets,
     sessions,
     isAuthorized: ctx.host.security.isTerminalAuthorized,
+    attachChat: (socket, context) => {
+      if (!chatAttach) {
+        socket.close(1013, "chat_unavailable");
+        return;
+      }
+      chatAttach(socket, context);
+    },
   });
 
   return {
@@ -93,7 +106,14 @@ export function createTerminalRuntime(ctx: FleetPluginServerContext): TerminalRu
         if (terminalLaunchResolvers.get(operationType) === resolver) terminalLaunchResolvers.delete(operationType);
       };
     },
+    bindChatAttach: (attach) => {
+      chatAttach = attach;
+      return () => {
+        if (chatAttach === attach) chatAttach = null;
+      };
+    },
     stop: async () => {
+      chatAttach = null;
       upgrade.close();
       await sessions.stop();
       terminalExitListeners.clear();

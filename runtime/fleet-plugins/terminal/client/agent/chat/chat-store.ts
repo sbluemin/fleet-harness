@@ -1,53 +1,244 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 
+import { TerminalTicketError, buildTerminalWsUrl } from "../../shared/terminal-connection.js";
 import { initialAgentChatLogState, readChatJournalEvent, reduceAgentChatLog, type AgentChatLogState } from "./chat-events.js";
 
 export type AgentChatConnection = "connecting" | "open" | "lost" | "idle";
 
-export interface AgentChatViewState extends AgentChatLogState {
-  readonly connection: AgentChatConnection;
+export interface AgentChatAnswerCommand {
+  readonly askId: string;
+  readonly answers?: readonly string[];
+  readonly approve?: boolean;
+  readonly message?: string;
 }
 
+export interface AgentChatViewState extends AgentChatLogState {
+  readonly connection: AgentChatConnection;
+  readonly stopTurn: () => Promise<void>;
+  readonly answerAsk: (body: AgentChatAnswerCommand) => Promise<void>;
+}
+
+const CHAT_TICKET_PATH = "/plugins/terminal/agent/ticket";
+const CHAT_WS_PATH = "/plugins/terminal/ws";
+const INITIAL_RECONNECT_DELAY_MS = 250;
+const MAX_RECONNECT_DELAY_MS = 5_000;
+const OPEN_READY_STATE = 1;
+const COMMAND_WAIT_MS = 8_000;
+
 /**
- * Operation 하나의 chat-stream 구독.
+ * Operation 하나의 채팅 소켓.
  *
- * 서버는 접속(재접속 포함)마다 저널 전체를 되쓴다 — 저널의 첫 이벤트는 언제나 replay-start라
- * reducer가 스스로 초기화하지만, 저널이 상한으로 앞이 잘린 재접속에서도 상태가 겹으로 쌓이지
- * 않도록 open 시점에 로그 상태를 초기화한다. EventSource의 자동 재접속을 그대로 쓴다.
- *
+ * PTY와 같은 수명이다: 티켓 POST → `/plugins/terminal/ws` upgrade → 저널 리플레이.
  * `live`가 false면 소켓을 열지 않는다. 본문 풀이 주차·최소화·숨김 본문을 살려 두므로,
- * 그때도 구독하면 화면 밖 패널마다 HTTP/1.1 슬롯을 하나씩 점유한다. 덱 타일은 본문이
+ * 그때도 구독하면 화면 밖 패널마다 소켓을 하나씩 점유한다. 덱 타일은 본문이
  * 그려지므로 live로 남긴다.
  */
 export function useAgentChatStream(operationId: string, live = true): AgentChatViewState {
   const [connection, setConnection] = React.useState<AgentChatConnection>(live ? "connecting" : "idle");
   const [log, setLog] = React.useState<AgentChatLogState>(initialAgentChatLogState);
+  const sessionRef = React.useRef<ChatSocketSession | null>(null);
 
   React.useEffect(() => {
     if (!live) {
       setConnection("idle");
+      sessionRef.current = null;
       return;
     }
     setConnection("connecting");
     setLog(initialAgentChatLogState);
-    const source = new EventSource(`/plugins/terminal/agent/sessions/${encodeURIComponent(operationId)}/chat-stream`);
-    source.onopen = () => {
-      setConnection("open");
-      setLog(initialAgentChatLogState);
-    };
-    source.onerror = () => {
-      // EventSource가 스스로 재시도한다. CLOSED로 굳었을 때만 상실로 읽는다.
-      setConnection(source.readyState === EventSource.CLOSED ? "lost" : "connecting");
-    };
-    source.onmessage = (message: MessageEvent<string>) => {
-      const entry = readChatJournalEvent(message.data);
-      if (!entry) return;
-      setLog((current) => reduceAgentChatLog(current, entry.event));
-    };
+    const session = createChatSocketSession({
+      operationId,
+      onConnection: (next) => {
+        // 서버는 접속마다 보유 저널을 처음부터 되쓴다. 채팅 출생은 replay-start를 남기지
+        // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
+        // 재접속 리플레이가 남은 턴·잡·질문 카드 위에 겹친다(옛 EventSource onopen과 같은 자리).
+        if (next === "open") setLog(() => initialAgentChatLogState);
+        setConnection(next);
+      },
+      onEvent: (raw) => {
+        const entry = readChatJournalEvent(raw);
+        if (!entry) return;
+        setLog((current) => reduceAgentChatLog(current, entry.event));
+      },
+    });
+    sessionRef.current = session;
+    session.start();
     return () => {
-      source.close();
+      session.dispose();
+      if (sessionRef.current === session) sessionRef.current = null;
     };
   }, [operationId, live]);
 
-  return React.useMemo(() => ({ ...log, connection }), [log, connection]);
+  const stopTurn = React.useCallback(async () => {
+    await sessionRef.current?.send({ type: "stop" });
+  }, []);
+  const answerAsk = React.useCallback(async (body: AgentChatAnswerCommand) => {
+    await sessionRef.current?.send({ type: "answer", ...body });
+  }, []);
+
+  return React.useMemo(() => ({ ...log, connection, stopTurn, answerAsk }), [log, connection, stopTurn, answerAsk]);
+}
+
+interface ChatSocketSession {
+  start(): void;
+  send(command: ChatOutboundCommand): Promise<void>;
+  dispose(): void;
+}
+
+type ChatOutboundCommand =
+  | { readonly type: "stop" }
+  | { readonly type: "answer"; readonly askId: string; readonly answers?: readonly string[]; readonly approve?: boolean; readonly message?: string };
+
+interface ChatSocketSessionOptions {
+  readonly operationId: string;
+  readonly onConnection: (connection: AgentChatConnection) => void;
+  readonly onEvent: (raw: string) => void;
+  readonly location?: Pick<Location, "host" | "protocol">;
+  readonly webSocketFactory?: (url: string) => ChatWebSocketLike;
+  readonly fetchImpl?: typeof fetch;
+}
+
+export interface ChatWebSocketLike {
+  readonly readyState: number;
+  readonly send: (data: string) => void;
+  readonly close: () => void;
+  onopen: (() => void) | null;
+  onmessage: ((event: { readonly data: string | ArrayBuffer }) => void) | null;
+  onclose: (() => void) | null;
+  onerror: (() => void) | null;
+}
+
+export function createChatSocketSession(options: ChatSocketSessionOptions): ChatSocketSession {
+  const abort = new AbortController();
+  const fetchImpl = options.fetchImpl ?? fetch;
+  let reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+  let socket: ChatWebSocketLike | null = null;
+  let commandSeq = 0;
+  const pending = new Map<string, { readonly resolve: () => void; readonly reject: (error: Error) => void; readonly timer: ReturnType<typeof setTimeout> }>();
+
+  const rejectPending = (error: Error): void => {
+    for (const wait of pending.values()) {
+      clearTimeout(wait.timer);
+      wait.reject(error);
+    }
+    pending.clear();
+  };
+
+  const attach = async (url: string): Promise<void> => {
+    await new Promise<void>((resolve, reject) => {
+      const ws = (options.webSocketFactory ?? defaultChatWebSocketFactory)(url);
+      socket = ws;
+      let opened = false;
+      ws.onopen = () => {
+        opened = true;
+        options.onConnection("open");
+      };
+      ws.onmessage = (event) => {
+        if (typeof event.data !== "string") return;
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(event.data);
+        } catch {
+          return;
+        }
+        if (parsed && typeof parsed === "object" && "type" in parsed) {
+          const frame = parsed as { readonly type?: unknown; readonly id?: unknown; readonly error?: unknown };
+          if ((frame.type === "ok" || frame.type === "nack") && typeof frame.id === "string") {
+            const wait = pending.get(frame.id);
+            if (!wait) return;
+            pending.delete(frame.id);
+            clearTimeout(wait.timer);
+            if (frame.type === "ok") wait.resolve();
+            else wait.reject(new Error(typeof frame.error === "string" ? frame.error : "chat_command_failed"));
+            return;
+          }
+        }
+        options.onEvent(event.data);
+      };
+      ws.onerror = () => {
+        if (!opened) reject(new Error("chat_socket_error"));
+      };
+      ws.onclose = () => {
+        if (socket === ws) socket = null;
+        rejectPending(new Error("chat_socket_closed"));
+        if (opened) resolve();
+        else reject(new Error("chat_socket_closed"));
+      };
+    });
+  };
+
+  const connectLoop = async (): Promise<void> => {
+    while (!abort.signal.aborted) {
+      options.onConnection("connecting");
+      try {
+        const ticket = await requestChatTicket(options.operationId, abort.signal, fetchImpl);
+        if (abort.signal.aborted) return;
+        await attach(buildTerminalWsUrl(ticket, options.location, CHAT_WS_PATH));
+        reconnectDelay = INITIAL_RECONNECT_DELAY_MS;
+      } catch {
+        if (abort.signal.aborted) return;
+        options.onConnection("lost");
+      }
+      if (abort.signal.aborted) return;
+      await delay(reconnectDelay, abort.signal);
+      reconnectDelay = Math.min(reconnectDelay * 2, MAX_RECONNECT_DELAY_MS);
+    }
+  };
+
+  return {
+    start: () => {
+      void connectLoop();
+    },
+    send: (command) => {
+      const ws = socket;
+      if (!ws || ws.readyState !== OPEN_READY_STATE) return Promise.reject(new Error("chat_not_connected"));
+      const id = `c${++commandSeq}`;
+      return new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(() => {
+          pending.delete(id);
+          reject(new Error("chat_command_timeout"));
+        }, COMMAND_WAIT_MS);
+        pending.set(id, { resolve, reject, timer });
+        ws.send(JSON.stringify({ id, ...command }));
+      });
+    },
+    dispose: () => {
+      abort.abort();
+      rejectPending(new Error("chat_socket_closed"));
+      socket?.close();
+      socket = null;
+    },
+  };
+}
+
+async function requestChatTicket(operationId: string, signal: AbortSignal, fetchImpl: typeof fetch): Promise<string> {
+  const response = await fetchImpl(CHAT_TICKET_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operationId, channel: "chat" }),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new TerminalTicketError(typeof payload?.error === "string" ? payload.error : `http_${response.status}`, response.status);
+  }
+  const payload = await response.json() as { readonly ticket?: unknown };
+  if (typeof payload.ticket !== "string") throw new Error("Invalid chat ticket response");
+  return payload.ticket;
+}
+
+function defaultChatWebSocketFactory(url: string): ChatWebSocketLike {
+  return new WebSocket(url) as unknown as ChatWebSocketLike;
+}
+
+async function delay(ms: number, signal: AbortSignal): Promise<void> {
+  await new Promise<void>((resolve) => {
+    const finish = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", finish);
+      resolve();
+    };
+    const timer = setTimeout(finish, ms);
+    signal.addEventListener("abort", finish);
+  });
 }
