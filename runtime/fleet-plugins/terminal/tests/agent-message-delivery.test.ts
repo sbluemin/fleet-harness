@@ -156,6 +156,7 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     onExit: () => () => {},
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
+    bindChatAttach: () => () => {},
     stop: async () => {},
   };
   const ctx = {

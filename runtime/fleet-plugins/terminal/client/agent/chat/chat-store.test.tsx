@@ -4,31 +4,44 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
+import { useAgentChatStream, type AgentChatViewState, type ChatWebSocketLike } from "./chat-store.js";
 
-class FakeEventSource {
-  static instances: FakeEventSource[] = [];
+class FakeWebSocket implements ChatWebSocketLike {
+  static instances: FakeWebSocket[] = [];
   readonly url: string;
   readyState = 0;
   onopen: (() => void) | null = null;
+  onmessage: ((event: { readonly data: string | ArrayBuffer }) => void) | null = null;
+  onclose: (() => void) | null = null;
   onerror: (() => void) | null = null;
-  onmessage: ((message: MessageEvent<string>) => void) | null = null;
   closed = false;
+  sent: string[] = [];
 
   constructor(url: string) {
     this.url = url;
-    FakeEventSource.instances.push(this);
+    FakeWebSocket.instances.push(this);
+  }
+
+  send(data: string): void {
+    this.sent.push(data);
   }
 
   close(): void {
     this.closed = true;
-    this.readyState = 2;
+    this.readyState = 3;
+    this.onclose?.();
+  }
+
+  open(): void {
+    this.readyState = 1;
+    this.onopen?.();
   }
 }
 
 let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 let latest: AgentChatViewState | null = null;
+const ticketFetches: Array<{ readonly url: string; readonly body: unknown }> = [];
 
 function Probe({ operationId, live }: { readonly operationId: string; readonly live: boolean }) {
   latest = useAgentChatStream(operationId, live);
@@ -45,9 +58,19 @@ function mount(operationId: string, live: boolean): void {
 }
 
 beforeEach(() => {
-  FakeEventSource.instances = [];
+  FakeWebSocket.instances = [];
+  ticketFetches.length = 0;
   latest = null;
-  vi.stubGlobal("EventSource", FakeEventSource);
+  vi.stubGlobal("WebSocket", FakeWebSocket);
+  vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    ticketFetches.push({ url, body });
+    return {
+      ok: true,
+      json: async () => ({ ticket: `ticket-for-${body?.operationId ?? "unknown"}`, ttlMs: 10_000, role: "control" }),
+    } as Response;
+  });
 });
 
 afterEach(() => {
@@ -60,41 +83,53 @@ afterEach(() => {
 });
 
 describe("useAgentChatStream", () => {
-  it("opens one EventSource while the body is live", () => {
+  it("requests a chat ticket and opens one WebSocket while the body is live", async () => {
     mount("op-live", true);
-    expect(FakeEventSource.instances).toHaveLength(1);
-    expect(FakeEventSource.instances[0]?.url).toBe("/plugins/terminal/agent/sessions/op-live/chat-stream");
-    expect(FakeEventSource.instances[0]?.closed).toBe(false);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(ticketFetches).toHaveLength(1);
+    expect(ticketFetches[0]?.url).toBe("/plugins/terminal/agent/ticket");
+    expect(ticketFetches[0]?.body).toEqual({ operationId: "op-live", channel: "chat" });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeWebSocket.instances[0]?.url).toContain("/plugins/terminal/ws?ticket=ticket-for-op-live");
+    expect(FakeWebSocket.instances[0]?.closed).toBe(false);
     expect(latest?.connection).toBe("connecting");
   });
 
-  it("does not open an EventSource while the body is parked", () => {
+  it("does not open a WebSocket while the body is parked", () => {
     mount("op-parked", false);
-    expect(FakeEventSource.instances).toHaveLength(0);
+    expect(ticketFetches).toHaveLength(0);
+    expect(FakeWebSocket.instances).toHaveLength(0);
     expect(latest?.connection).toBe("idle");
   });
 
-  it("closes the EventSource when the body leaves the live surface", () => {
+  it("closes the WebSocket when the body leaves the live surface", async () => {
     mount("op-toggle", true);
-    const source = FakeEventSource.instances[0];
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const source = FakeWebSocket.instances[0];
     expect(source?.closed).toBe(false);
     act(() => {
       root!.render(createElement(Probe, { operationId: "op-toggle", live: false }));
     });
     expect(source?.closed).toBe(true);
-    expect(FakeEventSource.instances).toHaveLength(1);
-    // 화면 밖에서도 마지막 로그를 지키므로 lost로 뒤집지 않는다 — 다시 보이면 재접속이 저널을 되쓴다.
+    expect(FakeWebSocket.instances).toHaveLength(1);
     expect(latest?.connection).toBe("idle");
   });
 
-  it("opens a new EventSource when a parked body becomes live", () => {
+  it("opens a new WebSocket when a parked body becomes live", async () => {
     mount("op-return", false);
-    expect(FakeEventSource.instances).toHaveLength(0);
+    expect(FakeWebSocket.instances).toHaveLength(0);
     act(() => {
       root!.render(createElement(Probe, { operationId: "op-return", live: true }));
     });
-    expect(FakeEventSource.instances).toHaveLength(1);
-    expect(FakeEventSource.instances[0]?.url).toBe("/plugins/terminal/agent/sessions/op-return/chat-stream");
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(FakeWebSocket.instances).toHaveLength(1);
+    expect(FakeWebSocket.instances[0]?.url).toContain("/plugins/terminal/ws?ticket=ticket-for-op-return");
     expect(latest?.connection).toBe("connecting");
   });
 });
