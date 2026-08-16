@@ -405,6 +405,273 @@
   border-style: dashed;
 }
 
+/* ── 질문·계획 카드 ─────────────────────────────────────────────────────────
+   모델이 멈춰 서서 기다리는 자리. 상태 채널은 aurora가 진다 — 코어 활동축에서 awaiting이
+   쓰는 색과 같고, 그 대기와 이 카드는 같은 사실을 말한다. 진행 중 스텝도 aurora를 쓰지만
+   둘은 동시에 서지 않는다(질문이 서면 턴은 멈춘다). 형태로도 갈린다: 스텝은 한 줄, 카드는
+   선택지를 가진 블록이고 진행 링이 없다.
+   brass는 위치·포커스 채널이므로 hover·focus와 주 동작 버튼에만 오른다. */
+.agent-chat-ask {
+  margin: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--aurora) 42%, var(--hairline));
+  background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised));
+}
+
+.agent-chat-ask-question + .agent-chat-ask-question {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--hairline);
+}
+
+.agent-chat-ask-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.agent-chat-ask-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aurora);
+  border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+}
+
+.agent-chat-ask-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  animation: agent-chat-ask-wait 2s ease-in-out infinite;
+}
+
+@keyframes agent-chat-ask-wait {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.agent-chat-ask-counter {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-ask-text {
+  margin: 0 0 var(--space-3);
+  font-size: 14.5px;
+  line-height: 1.55;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.agent-chat-ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.agent-chat-ask-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
+}
+
+.agent-chat-ask-option:hover:not(:disabled),
+.agent-chat-ask-option:focus-visible {
+  border-color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 7%, var(--surface-panel));
+  outline: none;
+}
+
+.agent-chat-ask-option:hover:not(:disabled) .agent-chat-ask-option-label,
+.agent-chat-ask-option:focus-visible .agent-chat-ask-option-label {
+  color: var(--brass-ink);
+}
+
+.agent-chat-ask-option[aria-pressed="true"] {
+  border-color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-panel));
+}
+
+.agent-chat-ask-option:disabled { opacity: 0.55; cursor: default; }
+
+.agent-chat-ask-option-label {
+  font-size: 13.5px;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  line-height: 1.45;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-ask-option-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+/* 자유 입력 — 대화 입력창이 아니라 이 질문에만 사는 답변 칸이다. 파선 테두리가 그 임시성을
+   말하고, 포커스에서 실선이 되어 지금 쓰는 중임을 보인다. */
+.agent-chat-ask-free {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.agent-chat-ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 13px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--hairline-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+
+.agent-chat-ask-input::placeholder { color: var(--text-tertiary); }
+
+.agent-chat-ask-input:focus {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+  border-style: solid;
+}
+
+.agent-chat-ask-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.agent-chat-ask-send {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  padding: 7px var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  cursor: pointer;
+}
+
+.agent-chat-ask-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.agent-chat-ask-send:disabled { opacity: 0.45; cursor: default; }
+
+/* 보조 동작 — 승인이 주 동작이므로 채움을 양보한다. */
+.agent-chat-ask-send.is-quiet {
+  background: transparent;
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.agent-chat-ask-send.is-quiet:hover:not(:disabled) {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+}
+
+.agent-chat-ask-mini {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-ask-mini:hover:not(:disabled),
+.agent-chat-ask-mini:focus-visible {
+  color: var(--brass-ink);
+  border-color: var(--brass);
+  outline: none;
+}
+
+.agent-chat-ask-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-ask-error {
+  font-size: 12px;
+  color: var(--coral-ink);
+}
+
+/* 계획 본문은 공유 마크다운 컴포넌트가 렌더한다 — 카드 안에서만 밀도를 낮추고 높이를 가둔다. */
+.agent-chat-ask-plan {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+}
+
+.agent-chat .agent-chat-ask-plan.markdown-body {
+  --font-size-body: 13.5px;
+  line-height: 1.65;
+}
+
+/* 답한 뒤의 한 줄 — 스텝 문법에 합류한다. */
+.agent-chat-ask-settled {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 5px var(--space-3);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-ask-settled-mark { flex: none; color: var(--positive); }
+.agent-chat-ask-settled-head { flex: none; color: var(--text-secondary); }
+
+.agent-chat-ask-settled-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--brass-ink);
+}
+
+/* 답하지 않고 끝난 카드 — 성공이 아니므로 positive를 벗는다. */
+.agent-chat-ask-settled.is-open .agent-chat-ask-settled-mark,
+.agent-chat-ask-settled.is-open .agent-chat-ask-settled-value {
+  color: var(--coral-ink);
+}
 /* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다. */
 .agent-chat-fold {
   margin-top: var(--space-2);
@@ -751,6 +1018,7 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
+  .agent-chat-ask-dot,
   .agent-chat-step-orbit {
     animation: none;
   }

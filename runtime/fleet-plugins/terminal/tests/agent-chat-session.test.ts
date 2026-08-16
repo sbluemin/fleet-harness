@@ -70,6 +70,7 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
+    reportAwaiting: () => {},
   };
 }
 
@@ -84,6 +85,7 @@ function freshSeedFor(transcriptRoot: string, onProviderSessionUpdate: AgentChat
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
+    reportAwaiting: () => {},
   };
 }
 

@@ -106,6 +106,60 @@ describe("turn assembly", () => {
     await sdk.dispose();
   });
 
+  it("forwards a caller's tool-permission callback and narrows the vendor context to what it may read", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    const seen: unknown[] = [];
+    await drain(await sdk.startTurn({
+      prompt: "hi",
+      model: LUNA,
+      canUseTool: async (name, input, context) => {
+        seen.push({ name, input, context: { ...context, signal: context.signal instanceof AbortSignal } });
+        return { behavior: "allow", updatedInput: { ...input, answers: { q: "a" } } };
+      },
+    }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    const vendorCallback = options.canUseTool as (
+      name: string,
+      input: Record<string, unknown>,
+      extras: Record<string, unknown>,
+    ) => Promise<unknown>;
+    expect(typeof vendorCallback).toBe("function");
+
+    const decision = await vendorCallback("AskUserQuestion", { questions: [] }, {
+      toolUseID: "tool-9",
+      signal: new AbortController().signal,
+      // vendor는 권한 UI를 짓는 소비처를 위한 필드를 함께 준다. 이 통로는 그것들을 옮기지 않는다.
+      suggestions: [{ type: "addRules" }],
+      requestId: "req-1",
+    });
+    expect(decision).toEqual({ behavior: "allow", updatedInput: { questions: [], answers: { q: "a" } } });
+    expect(seen).toEqual([{
+      name: "AskUserQuestion",
+      input: { questions: [] },
+      context: { toolUseId: "tool-9", signal: true },
+    }]);
+    await sdk.dispose();
+  });
+
+  it("folds a throwing permission callback into a denial so the tool is never left parked", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    await drain(await sdk.startTurn({
+      prompt: "hi",
+      model: LUNA,
+      canUseTool: async () => { throw new Error("host blew up"); },
+    }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    const vendorCallback = options.canUseTool as (
+      name: string,
+      input: Record<string, unknown>,
+      extras: Record<string, unknown>,
+    ) => Promise<unknown>;
+    // 예외를 그대로 올리면 vendor가 응답을 쓰지 못해 도구가 무기한 막힌다(park deadline 없음).
+    await expect(vendorCallback("Bash", {}, { toolUseID: "t", signal: new AbortController().signal }))
+      .resolves.toEqual({ behavior: "deny", message: "host blew up" });
+    await sdk.dispose();
+  });
+
   it("forwards effort so the gateway effort ladder is reachable", async () => {
     const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA, effort: "low" }));

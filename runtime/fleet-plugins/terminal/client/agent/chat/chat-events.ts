@@ -13,6 +13,31 @@ export interface AgentChatChange {
   readonly removed: number;
 }
 
+export interface AgentChatQuestionOption {
+  readonly label: string;
+  readonly description: string;
+}
+
+export interface AgentChatQuestion {
+  readonly header: string;
+  readonly question: string;
+  readonly multiSelect: boolean;
+  readonly options: readonly AgentChatQuestionOption[];
+}
+
+export type AgentChatAskForm = "question" | "plan";
+export type AgentChatAskOutcome = "answered" | "dismissed" | "approved" | "revised";
+
+/** 원장에 선 카드 하나. settled가 붙으면 접힌 줄로 바뀐다. */
+export interface AgentChatAsk {
+  readonly id: string;
+  readonly form: AgentChatAskForm;
+  readonly questions: readonly AgentChatQuestion[];
+  readonly plan?: string;
+  readonly outcome?: AgentChatAskOutcome;
+  readonly answers?: readonly { readonly header: string; readonly value: string }[];
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   | { readonly kind: "replay-end"; readonly turns: number }
@@ -32,6 +57,20 @@ export type AgentChatStreamEvent =
       readonly change?: AgentChatChange;
     }
   | { readonly kind: "tool-result"; readonly id: string; readonly ok: boolean; readonly summary: string }
+  /** 모델이 멈춰 서서 사용자를 기다린다. 저널에 남으므로 재접속해도 같은 카드가 다시 선다. */
+  | {
+      readonly kind: "ask";
+      readonly id: string;
+      readonly form: AgentChatAskForm;
+      readonly questions?: readonly AgentChatQuestion[];
+      readonly plan?: string;
+    }
+  | {
+      readonly kind: "ask-settled";
+      readonly id: string;
+      readonly outcome: AgentChatAskOutcome;
+      readonly answers?: readonly { readonly header: string; readonly value: string }[];
+    }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
   | { readonly kind: "error"; readonly code: string };
@@ -85,6 +124,41 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ...(readChange(event.change) ? { change: readChange(event.change) as AgentChatChange } : {}),
         },
       };
+    case "ask": {
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      if (event.form !== "question" && event.form !== "plan") return null;
+      const questions = readQuestions(event.questions);
+      const plan = typeof event.plan === "string" && event.plan.length > 0 ? event.plan : undefined;
+      // 형태가 비면 카드가 아무것도 못 그린다 — 빈 카드를 세우느니 이벤트를 버린다.
+      if (event.form === "question" ? questions.length === 0 : plan === undefined) return null;
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "ask",
+          id: event.id,
+          form: event.form,
+          ...(questions.length > 0 ? { questions } : {}),
+          ...(plan !== undefined ? { plan } : {}),
+        },
+      };
+    }
+    case "ask-settled": {
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      const outcome = event.outcome;
+      if (outcome !== "answered" && outcome !== "dismissed" && outcome !== "approved" && outcome !== "revised") return null;
+      const answers = Array.isArray(event.answers)
+        ? event.answers.flatMap((raw) => {
+          if (!raw || typeof raw !== "object") return [];
+          const row = raw as { readonly header?: unknown; readonly value?: unknown };
+          if (typeof row.header !== "string" || typeof row.value !== "string") return [];
+          return [{ header: row.header, value: row.value }];
+        })
+        : [];
+      return {
+        seq: entry.seq,
+        event: { kind: "ask-settled", id: event.id, outcome, ...(answers.length > 0 ? { answers } : {}) },
+      };
+    }
     case "tool-result":
       if (typeof event.id !== "string" || event.id.length === 0) return null;
       return {
@@ -114,6 +188,37 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
   }
 }
 
+function readQuestions(value: unknown): readonly AgentChatQuestion[] {
+  if (!Array.isArray(value)) return [];
+  const questions: AgentChatQuestion[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const entry = raw as Record<string, unknown>;
+    if (typeof entry.question !== "string" || entry.question.length === 0) continue;
+    if (typeof entry.header !== "string" || entry.header.length === 0) continue;
+    const options: AgentChatQuestionOption[] = [];
+    if (Array.isArray(entry.options)) {
+      for (const rawOption of entry.options) {
+        if (!rawOption || typeof rawOption !== "object") continue;
+        const option = rawOption as Record<string, unknown>;
+        if (typeof option.label !== "string" || option.label.length === 0) continue;
+        options.push({
+          label: option.label,
+          description: typeof option.description === "string" ? option.description : "",
+        });
+      }
+    }
+    if (options.length === 0) continue;
+    questions.push({
+      header: entry.header,
+      question: entry.question,
+      multiSelect: entry.multiSelect === true,
+      options,
+    });
+  }
+  return questions;
+}
+
 function readChange(value: unknown): AgentChatChange | null {
   if (!value || typeof value !== "object") return null;
   const change = value as { readonly file?: unknown; readonly added?: unknown; readonly removed?: unknown };
@@ -135,7 +240,9 @@ function numberOr(value: unknown, fallback: number): number {
 export type AgentChatStepState = "running" | "ok" | "fail" | "done";
 
 export interface AgentChatTurnItem {
-  readonly type: "text" | "tool";
+  readonly type: "text" | "tool" | "ask";
+  /** type="ask"일 때의 카드. 대기 중이면 누를 수 있고, 결말이 붙으면 한 줄로 접힌다. */
+  readonly ask?: AgentChatAsk;
   readonly text?: string;
   readonly name?: string;
   readonly detail?: string;
@@ -234,6 +341,25 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         : null;
       return merged ?? appendItem(state, filled);
     }
+    case "ask":
+      return appendItem(state, {
+        type: "ask",
+        ask: {
+          id: event.id,
+          form: event.form,
+          questions: event.questions ?? [],
+          ...(event.plan !== undefined ? { plan: event.plan } : {}),
+        },
+      });
+    case "ask-settled": {
+      // 재생 구간에서는 여러 턴이 한꺼번에 쌓이므로 마지막 턴만 보면 짝을 놓친다.
+      const merged = mergeAskById(state, event.id, (ask) => ({
+        ...ask,
+        outcome: event.outcome,
+        ...(event.answers ? { answers: event.answers } : {}),
+      }));
+      return merged ?? state;
+    }
     case "tool-result": {
       const merged = mergeItemById(state, event.id, (item) => ({
         ...item,
@@ -282,6 +408,8 @@ export interface AgentChatTurnView {
   readonly changes: readonly AgentChatChange[];
   /** 결과가 실패로 돌아온 스텝 수. 접힌 줄이 이 값을 말한다. */
   readonly failed: number;
+  /** 아직 답하지 않은 카드가 있는가 — 이 턴은 일하는 중이 아니라 기다리는 중이다. */
+  readonly awaiting: boolean;
 }
 
 /**
@@ -294,6 +422,7 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   const trailingText = last?.type === "text" ? last.text ?? "" : null;
   const changes = collectChanges(turn.items);
   const failed = turn.items.reduce((count, item) => count + (item.state === "fail" ? 1 : 0), 0);
+  const awaiting = turn.items.some((item) => item.type === "ask" && item.ask?.outcome === undefined);
   if (turn.state === "working") {
     const streaming = (trailingText ?? "") + turn.draft;
     return {
@@ -302,10 +431,11 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
       streamingText: streaming.length > 0 ? streaming : null,
       changes,
       failed,
+      awaiting,
     };
   }
   if (turn.state === "error") {
-    return { ledger: turn.items, answer: null, streamingText: null, changes, failed };
+    return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
   }
   if (turn.answer !== undefined) {
     const promoted = trailingText !== null && trailingText.trim() === turn.answer.trim();
@@ -315,12 +445,13 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
       streamingText: null,
       changes,
       failed,
+      awaiting,
     };
   }
   if (trailingText !== null && trailingText.length > 0) {
-    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null, changes, failed };
+    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null, changes, failed, awaiting };
   }
-  return { ledger: turn.items, answer: null, streamingText: null, changes, failed };
+  return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
 }
 
 /**
@@ -343,6 +474,9 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   Task: "delegate",
   Agent: "delegate",
   TodoWrite: "plan",
+  // 재생 구간에서만 이 이름들이 스텝으로 온다 — 라이브에서는 카드가 그 자리를 대신한다.
+  AskUserQuestion: "ask",
+  ExitPlanMode: "propose",
 };
 
 export function agentChatToolFamily(name: string | undefined): string {
@@ -420,6 +554,7 @@ function foldSegment(
   for (let index = steps.length - 1; index >= 0 && keep > 0; index -= 1) {
     const step = steps[index];
     if (!step) continue;
+    if (step.type === "ask") continue;
     if (step.state === "running" || step.state === "fail" || step.outside === true) continue;
     keepInline.add(index);
     keep -= 1;
@@ -431,6 +566,9 @@ function foldSegment(
   const groups: AgentChatStepGroup[] = [];
   const seen = new Map<string, number>();
   steps.forEach((step, at) => {
+    // 카드는 접지 않는다 — 접힌 질문은 답할 수 없고, 답한 뒤의 한 줄도 그 턴이 무엇으로
+    // 갈렸는지 말하는 증거라 집계에 삼켜지면 안 된다.
+    if (step.type === "ask") { inline.push(step); return; }
     if (step.state === "running") { running.push(step); return; }
     // 과거형 집계는 결과가 ok로 돌아온 스텝만 센다. 결과 없이 닫힌 스텝(`done`)을 "씀"으로
     // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
@@ -503,6 +641,28 @@ function mergeItemById(
     if (!current) continue;
     const items = [...turn.items];
     items[itemIndex] = update(current);
+    const turns = [...state.turns];
+    turns[turnIndex] = { ...turn, items };
+    return { ...state, turns };
+  }
+  return null;
+}
+
+/** 마지막 턴부터 거슬러 올라가며 같은 id의 카드를 찾아 갱신한다. 없으면 null. */
+function mergeAskById(
+  state: AgentChatLogState,
+  id: string,
+  update: (ask: AgentChatAsk) => AgentChatAsk,
+): AgentChatLogState | null {
+  for (let turnIndex = state.turns.length - 1; turnIndex >= 0; turnIndex -= 1) {
+    const turn = state.turns[turnIndex];
+    if (!turn) continue;
+    const itemIndex = turn.items.findIndex((item) => item.type === "ask" && item.ask?.id === id);
+    if (itemIndex < 0) continue;
+    const current = turn.items[itemIndex];
+    if (!current?.ask) continue;
+    const items = [...turn.items];
+    items[itemIndex] = { ...current, ask: update(current.ask) };
     const turns = [...state.turns];
     turns[turnIndex] = { ...turn, items };
     return { ...state, turns };

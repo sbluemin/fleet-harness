@@ -79,6 +79,11 @@ const CHAT_MODE_PAYLOAD_KEY = "chatMode";
 const CHAT_BORN_PAYLOAD_KEY = "chatBorn";
 /** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
 const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
+/**
+ * 답변에 딸려 오는 자유 문장의 상한. 질문의 물리기 사유와 계획의 수정 요청이 같은 자리를 쓰며,
+ * 그 문장은 자식에게 오류 결과로 전달된다 — 새 지시를 보내는 통로가 아니므로 길 필요가 없다.
+ */
+const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 
 /**
  * Claude Code가 트랜스크립트를 두는 실제 뿌리. 채팅으로 태어난 세션의 되쓰기 목적지이자,
@@ -119,6 +124,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/chat", summary: "Switch an Agent session to chat mode.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Leave chat mode for an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Stream Agent chat events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
@@ -565,6 +571,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "message") return handleMessage(req, res, sessionId);
     if (action === "chat") return handleChat(req, res, sessionId);
     if (action === "chat-stream") return handleChatStream(req, res, sessionId);
+    if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -1081,6 +1088,56 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     return true;
   }
 
+  /**
+   * 대기 중인 질문에 답한다.
+   *
+   * 기존 message 라우트를 쓰지 않는 이유는 그쪽이 **새 턴을 큐에 넣는** 자리이기 때문이다.
+   * 이 답은 진행 중 턴 안으로 들어가야 하므로, 붙들려 있는 권한 응답을 푸는 별도의 문이 필요하다.
+   */
+  async function handleChatAnswer(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{
+      readonly askId?: unknown;
+      readonly answers?: unknown;
+      readonly approve?: unknown;
+      readonly message?: unknown;
+    }>(req);
+    const askId = typeof body?.askId === "string" ? body.askId : "";
+    if (askId.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_ask_id" });
+      return true;
+    }
+    const answers = Array.isArray(body?.answers)
+      ? body.answers.filter((value): value is string => typeof value === "string")
+      : undefined;
+    if (Array.isArray(body?.answers) && answers?.length !== body.answers.length) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_answer" });
+      return true;
+    }
+    const result = chat.answer(askId, {
+      ...(answers ? { answers } : {}),
+      ...(body?.approve === true ? { approve: true } : {}),
+      ...(typeof body?.message === "string" ? { message: body.message.slice(0, MAX_CHAT_ANSWER_MESSAGE_CHARS) } : {}),
+    });
+    if (!result.ok) {
+      ctx.host.http.writeJson(res, result.error === "ask_not_found" ? 404 : 400, { error: result.error });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true, outcome: result.outcome });
+    return true;
+  }
+
   function handleChatStream(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): boolean {
     if (req.method !== "GET") return methodNotAllowed(res);
     if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
@@ -1192,6 +1249,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           if (!updated) return false;
           observability.notifySessionUpdated(updated);
           return true;
+        },
+        reportAwaiting: (awaiting) => {
+          const updated = observability.setTerminalSessionChatAwaiting(node.id, awaiting);
+          if (updated) observability.notifySessionUpdated(updated);
         },
       },
     };

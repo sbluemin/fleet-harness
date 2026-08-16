@@ -8,7 +8,15 @@ import {
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
 
-import { chatEventsFromSdkMessage, chatReplayFromTranscriptLine, type AgentChatJournalEvent, type AgentChatStreamEvent } from "./chat-events.js";
+import {
+  AGENT_CHAT_ASK_TOOLS,
+  agentChatAskFromToolInput,
+  chatEventsFromSdkMessage,
+  chatReplayFromTranscriptLine,
+  type AgentChatJournalEvent,
+  type AgentChatQuestion,
+  type AgentChatStreamEvent,
+} from "./chat-events.js";
 import type { AgentProviderSession } from "./types.js";
 
 /**
@@ -52,6 +60,36 @@ export interface AgentChatSessionSeed {
    * 두 번째 메시지가 조기 턴 종료 신호를 만든다.
    */
   readonly canReportActivity: () => boolean;
+  /**
+   * 사용자의 답을 기다리는 구간을 활동축에 보고한다. 진행 중 턴 안에서만 서므로 working 보고를
+   * 끄지 않는다 — 이 값을 읽는 쪽이 대기를 작업보다 앞세운다.
+   */
+  readonly reportAwaiting: (awaiting: boolean) => void;
+}
+
+/**
+ * 사용자에게 건넨 답변. 한 질문에 하나씩이며, 값은 고른 라벨(다중 선택은 콤마로 이어 붙인 것)
+ * 이거나 사용자가 직접 쓴 문장이다 — 도구는 목록 밖 문자열도 그대로 받아들인다(실측).
+ */
+export interface AgentChatAnswerInput {
+  /** 질문 카드: 질문 순서대로의 답. 빈 문자열은 "그 질문은 건너뛴다"가 아니라 거절 사유가 된다. */
+  readonly answers?: readonly string[];
+  /** 계획 카드: 승인. */
+  readonly approve?: boolean;
+  /** 질문의 물리기와 계획의 수정 요청이 함께 쓰는 자리 — 자식에게 오류 결과로 전달된다. */
+  readonly message?: string;
+}
+
+export type AgentChatAnswerResult =
+  | { readonly ok: true; readonly outcome: "answered" | "dismissed" | "approved" | "revised" }
+  | { readonly ok: false; readonly error: "ask_not_found" | "invalid_answer" };
+
+/** 답을 기다리며 붙들고 있는 도구 호출 하나. */
+interface PendingAsk {
+  readonly form: "question" | "plan";
+  readonly input: Readonly<Record<string, unknown>>;
+  readonly questions: readonly AgentChatQuestion[];
+  readonly settle: (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }) => void;
 }
 
 /** 테스트가 실 SDK 스폰 없이 레지스트리를 돌리기 위한 주입점. */
@@ -86,6 +124,12 @@ class AgentChatSession {
    * 무한히 자라지 않게 상한을 두고 오래된 것부터 버린다 — 결과는 호출 직후에 오므로 잃을 게 없다.
    */
   private readonly toolNames = new Map<string, string>();
+  /**
+   * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
+   * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
+   * dispose(). 어느 경로로도 비워지지 않으면 SDK는 무기한 멈춘다(권한 요청에 park deadline이 없다).
+   */
+  private readonly pendingAsks = new Map<string, PendingAsk>();
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -174,9 +218,95 @@ class AgentChatSession {
       });
   }
 
+  /** 지금 답을 기다리는 도구 호출이 있는가. 라우트가 대기 유무를 묻는 자리. */
+  get awaiting(): boolean {
+    return this.pendingAsks.size > 0;
+  }
+
+  /**
+   * 대기 중인 질문 하나를 사용자의 답으로 푼다.
+   *
+   * 답변이 자식에게 닿는 통로는 권한 응답 하나다: 질문은 `updatedInput.answers`(질문 텍스트 → 답)로,
+   * 계획은 allow 자체가 승인이 되고, 거절 메시지는 계획 쪽에서 곧 수정 요청이 되어 모델이 계획을
+   * 고쳐 다시 낸다(실측).
+   */
+  answer(id: string, input: AgentChatAnswerInput): AgentChatAnswerResult {
+    const pending = this.pendingAsks.get(id);
+    if (!pending) return { ok: false, error: "ask_not_found" };
+    const message = typeof input.message === "string" ? input.message.trim() : "";
+
+    if (pending.form === "plan") {
+      this.pendingAsks.delete(id);
+      if (input.approve === true) {
+        pending.settle({ behavior: "allow", updatedInput: { ...pending.input } });
+        this.settleAsk(id, "approved");
+        return { ok: true, outcome: "approved" };
+      }
+      if (message.length === 0) {
+        this.pendingAsks.set(id, pending);
+        return { ok: false, error: "invalid_answer" };
+      }
+      pending.settle({ behavior: "deny", message });
+      this.settleAsk(id, "revised");
+      return { ok: true, outcome: "revised" };
+    }
+
+    // 물리기 — 답을 주지 않고 나간다. 07번 실측대로 턴은 깨지지 않고 모델이 그 사실을 알고 계속한다.
+    if (!Array.isArray(input.answers)) {
+      this.pendingAsks.delete(id);
+      pending.settle({
+        behavior: "deny",
+        message: message.length > 0 ? message : "The user dismissed the question without answering.",
+      });
+      this.settleAsk(id, "dismissed");
+      return { ok: true, outcome: "dismissed" };
+    }
+
+    const values = input.answers.map((value) => (typeof value === "string" ? value.trim() : ""));
+    if (values.length !== pending.questions.length || values.some((value) => value.length === 0)) {
+      return { ok: false, error: "invalid_answer" };
+    }
+    const answers: Record<string, string> = {};
+    pending.questions.forEach((question, index) => {
+      answers[question.question] = values[index] ?? "";
+    });
+    this.pendingAsks.delete(id);
+    pending.settle({ behavior: "allow", updatedInput: { ...pending.input, answers } });
+    this.settleAsk(id, "answered", pending.questions.map((question, index) => ({
+      header: question.header,
+      value: values[index] ?? "",
+    })));
+    return { ok: true, outcome: "answered" };
+  }
+
+  /** 결말을 저널에 남기고, 남은 대기가 없으면 활동축의 대기 표시를 거둔다. */
+  private settleAsk(
+    id: string,
+    outcome: "answered" | "dismissed" | "approved" | "revised",
+    answers?: readonly { readonly header: string; readonly value: string }[],
+  ): void {
+    this.push({ kind: "ask-settled", id, outcome, ...(answers ? { answers } : {}) });
+    if (this.pendingAsks.size === 0) this.seed.reportAwaiting(false);
+  }
+
+  /**
+   * 남은 대기를 전부 거절로 접는다. 턴이 끊기거나 세션이 사라지는 자리에서 부른다 — 풀리지 않은
+   * promise 하나가 SDK 스트림을 영원히 붙들기 때문이다.
+   */
+  private abandonAsks(reason: string): void {
+    if (this.pendingAsks.size === 0) return;
+    for (const [id, pending] of this.pendingAsks) {
+      this.pendingAsks.delete(id);
+      pending.settle({ behavior: "deny", message: reason });
+      this.push({ kind: "ask-settled", id, outcome: "dismissed" });
+    }
+    this.seed.reportAwaiting(false);
+  }
+
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    this.abandonAsks("The chat session closed before the question was answered.");
     // SDK를 먼저 접는다 — dispose가 활성 런을 close해 진행 중 턴을 끊는다. 순서를 뒤집어
     // 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을 무기한 막는다.
     const sdk = this.sdk;
@@ -195,6 +325,53 @@ class AgentChatSession {
       const oldest = this.toolNames.keys().next();
       if (!oldest.done) this.toolNames.delete(oldest.value);
     }
+  }
+
+  /**
+   * 자식이 도구를 쓰기 전에 부르는 자리. 대화형 도구 둘만 여기서 멈춰 사용자를 기다리고,
+   * 나머지는 즉시 통과한다.
+   *
+   * 반환 promise는 answer()가 풀 때까지 열려 있고, 그동안 SDK 스트림도 함께 멈춘다 — 그것이
+   * 이 기능의 작동 방식이자 위험이다. 그래서 푸는 자리를 셋으로 못 박고(answer·중단·dispose),
+   * 형태를 못 읽은 입력은 카드를 세우지 않고 그냥 통과시킨다.
+   */
+  private async askUser(
+    name: string,
+    input: Readonly<Record<string, unknown>>,
+    context: { readonly toolUseId: string; readonly signal: AbortSignal },
+  ): Promise<{ behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }> {
+    if (!AGENT_CHAT_ASK_TOOLS.has(name)) return { behavior: "allow" };
+    const id = context.toolUseId.length > 0 ? context.toolUseId : `ask-${this.seq + 1}`;
+    const ask = agentChatAskFromToolInput(name, id, input);
+    if (!ask) return { behavior: "allow" };
+    if (this.disposed) return { behavior: "deny", message: "The chat session is closing." };
+
+    return new Promise((resolve) => {
+      let settled = false;
+      const settle = (permission: { behavior: "allow"; updatedInput?: Record<string, unknown> } | { behavior: "deny"; message: string }): void => {
+        if (settled) return;
+        settled = true;
+        context.signal.removeEventListener("abort", onAbort);
+        resolve(permission);
+      };
+      function onAbort(): void {
+        settle({ behavior: "deny", message: "The turn ended before the question was answered." });
+      }
+      // 턴이 끊기면 카드도 끝난다. 이 배선이 없으면 중단된 턴의 질문이 맵에 남아, 다음 턴이
+      // 시작될 때까지 사이드바가 대기라고 말한다.
+      context.signal.addEventListener("abort", onAbort, { once: true });
+      this.pendingAsks.set(id, {
+        form: ask.form,
+        input,
+        questions: ask.questions ?? [],
+        settle: (permission) => {
+          settle(permission);
+          this.pendingAsks.delete(id);
+        },
+      });
+      this.push(ask);
+      this.seed.reportAwaiting(true);
+    });
   }
 
   private push(event: AgentChatStreamEvent): void {
@@ -274,6 +451,9 @@ class AgentChatSession {
         // SDK가 돌려주는 session_id가 그 자리를 채운다(그다음 턴부터는 resume이 선다).
         ...(this.latestSessionId ? { resume: this.latestSessionId } : {}),
         permissionMode: "bypassPermissions",
+        // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
+        // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
+        canUseTool: (name, input, context) => this.askUser(name, input, context),
         // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
         includePartialMessages: true,
       });
@@ -285,6 +465,9 @@ class AgentChatSession {
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
             if (event.kind === "turn-end") sawResult = true;
             this.rememberTool(event);
+            // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
+            // 한 줄을 더 세우면 같은 사건이 두 번 읽힌다. 결과 줄은 짝을 못 찾아 스스로 버려진다.
+            if ((event.kind === "tool" || event.kind === "tool-start") && AGENT_CHAT_ASK_TOOLS.has(event.name)) continue;
             // tool-start는 완성 tool 이벤트가 같은 스텝을 다시 세우므로 저널에 남기지 않는다 —
             // 남기면 재접속 리플레이에서 좌표 없는 빈 스텝이 한 줄 더 선다.
             if (event.kind === "text-delta" || event.kind === "tool-start") this.pushEphemeral(event);
@@ -301,6 +484,8 @@ class AgentChatSession {
       this.push({ kind: "error", code: "chat_turn_failed" });
       if (!sawResult) this.push({ kind: "turn-end", ok: false });
     } finally {
+      // 정상 경로에서는 이미 비어 있다(답이 풀려야 스트림이 끝난다). 중단된 턴에서만 일이 있다.
+      this.abandonAsks("The turn ended before the question was answered.");
       this.seed.reportActivity(false);
     }
   }

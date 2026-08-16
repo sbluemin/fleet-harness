@@ -154,6 +154,32 @@ export async function messageAgentSession(sessionId: string, text: string, attac
   }
 }
 
+/**
+ * 대기 중인 질문에 답한다. message 라우트가 아닌 이유는 그쪽이 새 턴을 큐에 넣기 때문이다 —
+ * 이 답은 진행 중 턴 안으로 들어간다.
+ */
+export async function answerAgentChatAsk(
+  sessionId: string,
+  body: {
+    readonly askId: string;
+    readonly answers?: readonly string[];
+    readonly approve?: boolean;
+    readonly message?: string;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
 export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
   if (!response.ok) {
@@ -231,6 +257,7 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
     chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
     chatWorking: typeof payload.chatWorking === "boolean" ? payload.chatWorking : undefined,
+    chatAwaiting: typeof payload.chatAwaiting === "boolean" ? payload.chatAwaiting : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

@@ -2,13 +2,16 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
+import { answerAgentChatAsk } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
   agentChatToolFamily,
   segmentAgentChatLedger,
   splitAgentChatTurn,
+  type AgentChatAsk,
   type AgentChatChange,
+  type AgentChatQuestion,
   type AgentChatStepGroup,
   type AgentChatTurn,
   type AgentChatTurnItem,
@@ -17,9 +20,12 @@ import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
 /**
- * Chat Mode의 Operation 본문 — 읽기 전용 지휘 로그.
+ * Chat Mode의 Operation 본문 — 지휘 로그.
  *
- * 입력창은 의도적으로 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정).
+ * 대화 입력창은 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정). 다만 모델이 멈춰 서서
+ * 물으면 그 자리에 카드가 서고, 카드 안에서 답한다 — 이 패널은 터미널을 대신하는 에이전트 실행
+ * 환경이고, 에이전트가 물었을 때 답하는 것은 그 환경의 기본 기능이다. 카드의 입력은 새 턴을
+ * 만들지 않고 지금 그 질문에만 살며, 답하면 사라진다.
  *
  * 턴의 표현 문법은 두 국면이다. 진행 중에는 **라이브 원장**이 선다 — 이 턴이 건드린 파일이
  * 맨 위에 스트립으로 서고, 그 아래로 스텝이 쌓이며, 각 스텝은 이름·좌표·결과를 차례로
@@ -196,6 +202,7 @@ export function AgentChatView({
         {state.turns.map((turn, index) => (
           <ChatTurn
             key={index}
+            operationId={context.operationId}
             turn={turn}
             language={context.language ?? "en"}
             timeFormat={timeFormat}
@@ -262,11 +269,13 @@ function ReplyBubbleIcon() {
 }
 
 function ChatTurn({
+  operationId,
   turn,
   language,
   timeFormat,
   streaming,
 }: {
+  readonly operationId: string;
   readonly turn: AgentChatTurn;
   readonly language: "en" | "ko";
   readonly timeFormat: Intl.DateTimeFormat;
@@ -304,10 +313,15 @@ function ChatTurn({
                     모델이 다음 도구 호출을 짓는 동안이다. 그 사이 원장이 비면 패널은 멈춘 것처럼
                     읽히므로, 원장 꼬리에 살아 있다는 사실 하나를 남긴다(내용은 싣지 않는다). */}
                 <Ledger
+                  operationId={operationId}
                   items={view.ledger}
                   language={language}
                   working
-                  pending={view.streamingText === null && !view.ledger.some((item) => item.state === "running")}
+                  pending={view.streamingText === null
+                    && !view.ledger.some((item) => item.state === "running")
+                    // 답을 기다리는 동안에는 아무도 생각하지 않는다 — 카드 아래에서 링이 계속 돌면
+                    // 화면이 두 사실을 동시에 말하고, 사용자는 자기 차례인지 알 수 없다.
+                    && !view.awaiting}
                 />
               </>
             ) : view.ledger.length > 0 || view.changes.length > 0 ? (
@@ -318,7 +332,7 @@ function ChatTurn({
                 language={language}
               >
                 <ChangeStrip changes={view.changes} language={language} />
-                <Ledger items={view.ledger} language={language} />
+                <Ledger operationId={operationId} items={view.ledger} language={language} />
               </WorkFold>
             ) : null}
             {working && view.streamingText !== null ? (
@@ -398,11 +412,13 @@ function ChangeStrip({
 const LIVE_STEP_WINDOW = 8;
 
 function Ledger({
+  operationId,
   items,
   language,
   working = false,
   pending = false,
 }: {
+  readonly operationId: string;
   readonly items: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
   /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
@@ -419,7 +435,9 @@ function Ledger({
         <div className="agent-chat-segment" key={index}>
           {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
           <Tally groups={segment.groups} folded={segment.folded} language={language} />
-          {segment.inline.map((item, at) => <Step key={`in-${at}`} item={item} language={language} />)}
+          {segment.inline.map((item, at) => (item.type === "ask" && item.ask
+            ? <AskCard key={`ask-${item.ask.id}`} operationId={operationId} ask={item.ask} language={language} />
+            : <Step key={`in-${at}`} item={item} language={language} />))}
           {segment.running.map((item, at) => <Step key={`run-${at}`} item={item} language={language} />)}
         </div>
       ))}
@@ -478,6 +496,270 @@ function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): stri
   const plural = group.count === 1 ? "one" : "other";
   const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];
   return t(key, { count: group.count, ...(group.name !== undefined ? { name: group.name } : {}) });
+}
+
+/**
+ * 모델이 멈춰 서서 물은 자리.
+ *
+ * 이 카드의 입력은 대화 입력창이 아니다 — 새 턴을 만들지 않고, 지금 이 질문에만 살며, 답하면
+ * 사라진다. 지시를 보내는 경로는 그대로 Quick Launch 하나다.
+ *
+ * 대기에는 만료가 없다(제품 결정). 그래서 나가는 문이 언제나 하나 있어야 한다: 질문에는
+ * "답하지 않기", 계획에는 "수정 요청". 후자는 되돌림이 아니라 되묻기라, 모델이 계획을 고쳐 다시 낸다.
+ */
+function AskCard({
+  operationId,
+  ask,
+  language,
+}: {
+  readonly operationId: string;
+  readonly ask: AgentChatAsk;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const [picks, setPicks] = React.useState<readonly (readonly string[])[]>(() => ask.questions.map(() => []));
+  const [free, setFree] = React.useState<readonly string[]>(() => ask.questions.map(() => ""));
+  const [note, setNote] = React.useState("");
+  const [pending, setPending] = React.useState(false);
+  const [failed, setFailed] = React.useState(false);
+
+  if (ask.outcome !== undefined) return <AskSettled ask={ask} language={language} />;
+
+  const send = async (body: Parameters<typeof answerAgentChatAsk>[1]): Promise<void> => {
+    setPending(true);
+    setFailed(false);
+    try {
+      await answerAgentChatAsk(operationId, body);
+    } catch {
+      // 카드는 자리에 남는다 — 실패로 카드를 걷으면 대기는 계속되는데 답할 방법이 사라진다.
+      setFailed(true);
+    } finally {
+      setPending(false);
+    }
+  };
+
+  if (ask.form === "plan") {
+    return (
+      <div className="agent-chat-ask is-plan">
+        <div className="agent-chat-ask-head">
+          <span className="agent-chat-ask-badge">
+            <span className="agent-chat-ask-dot" aria-hidden="true" />
+            {t("terminal.chat.ask.planBadge")}
+          </span>
+        </div>
+        <StreamedMarkdown
+          className="agent-chat-ask-plan markdown-body"
+          text={ask.plan ?? ""}
+          streaming={false}
+          language={language}
+        />
+        <div className="agent-chat-ask-free">
+          <input
+            className="agent-chat-ask-input"
+            type="text"
+            value={note}
+            disabled={pending}
+            placeholder={t("terminal.chat.ask.revisePlaceholder")}
+            aria-label={t("terminal.chat.ask.reviseAria")}
+            onChange={(event) => { setNote(event.target.value); }}
+            onKeyDown={(event) => {
+              if (event.key !== "Enter" || note.trim().length === 0) return;
+              event.preventDefault();
+              void send({ askId: ask.id, message: note.trim() });
+            }}
+          />
+          <button
+            type="button"
+            className="agent-chat-ask-send is-quiet"
+            disabled={pending || note.trim().length === 0}
+            onClick={() => { void send({ askId: ask.id, message: note.trim() }); }}
+          >
+            {t("terminal.chat.ask.revise")}
+          </button>
+        </div>
+        <div className="agent-chat-ask-foot">
+          <button
+            type="button"
+            className="agent-chat-ask-send"
+            disabled={pending}
+            onClick={() => { void send({ askId: ask.id, approve: true }); }}
+          >
+            {t("terminal.chat.ask.approve")}
+          </button>
+          <span className="agent-chat-ask-hint">{t("terminal.chat.ask.approveHint")}</span>
+        </div>
+        {failed ? <div className="agent-chat-ask-error">{t("terminal.chat.ask.failed")}</div> : null}
+      </div>
+    );
+  }
+
+  const values = ask.questions.map((question, index) => {
+    const typed = (free[index] ?? "").trim();
+    if (typed.length > 0) return typed;
+    return (picks[index] ?? []).join(", ");
+  });
+  const complete = values.every((value) => value.length > 0);
+  // 다중 선택은 값이 생긴 뒤에도 더 고를 수 있어야 하므로 자동 전송에서 뺀다.
+  const autoSend = !ask.questions.some((question) => question.multiSelect);
+
+  const submit = (next: readonly string[]): void => {
+    void send({ askId: ask.id, answers: [...next] });
+  };
+
+  const choose = (index: number, label: string, multi: boolean): void => {
+    const current = picks[index] ?? [];
+    const nextPicks = picks.map((entry, at) => {
+      if (at !== index) return entry;
+      if (!multi) return [label];
+      return current.includes(label) ? current.filter((value) => value !== label) : [...current, label];
+    });
+    setPicks(nextPicks);
+    if (!autoSend) return;
+    const nextValues = ask.questions.map((question, at) => {
+      const typed = (free[at] ?? "").trim();
+      if (typed.length > 0) return typed;
+      return (nextPicks[at] ?? []).join(", ");
+    });
+    if (nextValues.every((value) => value.length > 0)) submit(nextValues);
+  };
+
+  return (
+    <div className="agent-chat-ask">
+      {ask.questions.map((question, index) => (
+        <AskQuestion
+          key={index}
+          question={question}
+          index={index}
+          total={ask.questions.length}
+          picks={picks[index] ?? []}
+          free={free[index] ?? ""}
+          disabled={pending}
+          language={language}
+          onChoose={(label) => { choose(index, label, question.multiSelect); }}
+          onType={(value) => { setFree(free.map((entry, at) => (at === index ? value : entry))); }}
+        />
+      ))}
+      <div className="agent-chat-ask-foot">
+        <button
+          type="button"
+          className="agent-chat-ask-mini"
+          disabled={pending}
+          onClick={() => { void send({ askId: ask.id }); }}
+        >
+          {t("terminal.chat.ask.dismiss")}
+        </button>
+        {!autoSend || values.some((value, index) => (free[index] ?? "").trim().length > 0) ? (
+          <button
+            type="button"
+            className="agent-chat-ask-send"
+            disabled={pending || !complete}
+            onClick={() => { submit(values); }}
+          >
+            {t("terminal.chat.ask.send")}
+          </button>
+        ) : null}
+        <span className="agent-chat-ask-hint">{t("terminal.chat.ask.hint")}</span>
+      </div>
+      {failed ? <div className="agent-chat-ask-error">{t("terminal.chat.ask.failed")}</div> : null}
+    </div>
+  );
+}
+
+function AskQuestion({
+  question,
+  index,
+  total,
+  picks,
+  free,
+  disabled,
+  language,
+  onChoose,
+  onType,
+}: {
+  readonly question: AgentChatQuestion;
+  readonly index: number;
+  readonly total: number;
+  readonly picks: readonly string[];
+  readonly free: string;
+  readonly disabled: boolean;
+  readonly language: "en" | "ko";
+  readonly onChoose: (label: string) => void;
+  readonly onType: (value: string) => void;
+}) {
+  const t = getT(language);
+  return (
+    <div className="agent-chat-ask-question">
+      <div className="agent-chat-ask-head">
+        <span className="agent-chat-ask-badge">
+          <span className="agent-chat-ask-dot" aria-hidden="true" />
+          {question.header}
+        </span>
+        {total > 1 ? (
+          <span className="agent-chat-ask-counter">{t("terminal.chat.ask.counter", { index: index + 1, total })}</span>
+        ) : null}
+      </div>
+      <p className="agent-chat-ask-text">{question.question}</p>
+      <div className="agent-chat-ask-options">
+        {question.options.map((option) => {
+          const chosen = picks.includes(option.label);
+          return (
+            <button
+              key={option.label}
+              type="button"
+              className="agent-chat-ask-option"
+              disabled={disabled}
+              {...(question.multiSelect ? { "aria-pressed": chosen } : {})}
+              onClick={() => { onChoose(option.label); }}
+            >
+              <span className="agent-chat-ask-option-label">{option.label}</span>
+              {option.description ? <span className="agent-chat-ask-option-desc">{option.description}</span> : null}
+            </button>
+          );
+        })}
+      </div>
+      <div className="agent-chat-ask-free">
+        <input
+          className="agent-chat-ask-input"
+          type="text"
+          value={free}
+          disabled={disabled}
+          placeholder={t("terminal.chat.ask.freePlaceholder")}
+          aria-label={t("terminal.chat.ask.freeAria")}
+          onChange={(event) => { onType(event.target.value); }}
+        />
+      </div>
+    </div>
+  );
+}
+
+/** 답한 뒤의 한 줄 — 스텝 문법에 합류한다. 무엇으로 갈렸는지가 이 턴의 증거로 남는다. */
+function AskSettled({
+  ask,
+  language,
+}: {
+  readonly ask: AgentChatAsk;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const settled = ask.outcome === "answered" || ask.outcome === "approved";
+  const rows = ask.answers && ask.answers.length > 0
+    ? ask.answers
+    : [{
+      header: ask.form === "plan" ? t("terminal.chat.ask.planBadge") : t("terminal.chat.ask.questionBadge"),
+      value: t(`terminal.chat.ask.outcome.${ask.outcome ?? "dismissed"}` as Parameters<typeof t>[0]),
+    }];
+  return (
+    <>
+      {rows.map((row, index) => (
+        <div key={index} className={`agent-chat-ask-settled${settled ? "" : " is-open"}`}>
+          <span className="agent-chat-ask-settled-mark" aria-hidden="true">{settled ? "✓" : "✕"}</span>
+          <span className="agent-chat-ask-settled-head">{row.header}</span>
+          <span aria-hidden="true">→</span>
+          <span className="agent-chat-ask-settled-value">{row.value}</span>
+        </div>
+      ))}
+    </>
+  );
 }
 
 /** 스텝 한 줄 — 동사·좌표·결과. 진행 중인 줄만 라이브 리전으로 읽힌다. */
