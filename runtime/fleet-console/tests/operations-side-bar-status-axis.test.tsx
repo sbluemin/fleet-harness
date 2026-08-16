@@ -102,8 +102,10 @@ describe("OperationsSideBar STATUS axis", () => {
       .toBe("Focus operation awaiting in group Alpha crew");
     expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark')).toBeNull();
     // 상태 마크는 축과 무관하게 이름 왼쪽에 선다 — STATUS 축에서도 행이 자기 상태를 말한다.
+    // 그룹 헤더는 그 마크를 반복하지 않는다. 버킷은 라벨·카운트·왼쪽 스트라이프로 읽는다.
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-status').className)
       .toContain("tenant-beacon is-awaiting");
+    expect(container?.querySelector(".side-bar-status-header__dot")).toBeNull();
     expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-pill')).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });

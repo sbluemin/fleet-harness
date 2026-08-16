@@ -1250,8 +1250,9 @@ describe("Instrument core design contract", () => {
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 
-    // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
+    // Doctrine: status-section border/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
+    // The group header does not repeat the rounded activity mark; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
@@ -1265,7 +1266,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).toMatch(/\.side-bar-status-section--background \{[^}]*border-left-style:\s*dashed/);
-    expect(components).toMatch(/\.side-bar-status-section--background \.side-bar-status-header__dot \{[^}]*background:\s*none;[^}]*border:\s*1\.5px solid var\(--activity-color\)/);
+    expect(sidebar).not.toContain("side-bar-status-header__dot");
+    expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
     expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toMatch(/\.side-bar-chip--unseen \{[^}]*border-color:\s*color-mix\(in oklch, var\(--positive\)/);
@@ -1273,8 +1275,7 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
     expect(components).toMatch(/\.side-bar-status-header__unseen::before \{[^}]*background:\s*var\(--positive\)/);
-    expect(components).toContain(".side-bar-status-axis-live-tick,");
-    expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
+    expect(components).toContain(".side-bar-status-axis-live-tick {");
   });
 
   it("pins the selectable Right Rail panel behavior contract", () => {
