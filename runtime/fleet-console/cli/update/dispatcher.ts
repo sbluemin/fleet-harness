@@ -4,6 +4,7 @@ const UPDATE_HELP_TEXT = `fleet update — Update Fleet
 
 Usage:
   fleet update
+  fleet update --check
 `;
 
 export async function dispatchUpdateCommand(
@@ -15,6 +16,15 @@ export async function dispatchUpdateCommand(
   if (command === "--help" || command === "-h") {
     io.stdout.write(UPDATE_HELP_TEXT);
     return 0;
+  }
+  if (command === "--check") {
+    if (argv[2] !== undefined) {
+      io.stderr.write(`Unknown fleet update option: ${argv[2]}\n`);
+      io.stdout.write(UPDATE_HELP_TEXT);
+      return 1;
+    }
+    const { runFleetUpdateCheck } = await import("./check-report.js");
+    return runFleetUpdateCheck(io);
   }
   if (command !== undefined) {
     io.stderr.write(`Unknown fleet update command: ${command}\n`);

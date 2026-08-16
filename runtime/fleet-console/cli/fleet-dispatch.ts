@@ -2,7 +2,9 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
-import { buildFleetHelpText } from "./cli-args.js";
+import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
+import { dispatchDoctorCommand } from "./doctor.js";
+import { readFleetCliRelease } from "./release.js";
 import {
   buildConsoleHelpText,
   openFleetConsole,
@@ -19,7 +21,9 @@ export type FleetDispatch =
   | { readonly kind: "update"; readonly argv: readonly string[] }
   | { readonly kind: "auth"; readonly argv: readonly string[] }
   | { readonly kind: "console"; readonly consoleArgv: readonly string[] }
+  | { readonly kind: "doctor"; readonly argv: readonly string[] }
   | { readonly kind: "help"; readonly passthroughArgs: readonly string[] }
+  | { readonly kind: "version" }
   | { readonly kind: "passthrough"; readonly passthroughArgs: readonly string[] };
 
 export interface FleetDispatchOptions {
@@ -39,18 +43,24 @@ export interface FleetDispatchOptions {
 }
 
 /**
- * Exact fleet.mjs precedence: update > auth > console > cli > help > Claude passthrough.
- * `cli` is stripped before help/passthrough classification.
+ * Exact fleet.mjs precedence: update > auth > console > doctor > status > cli > help > version > Claude passthrough.
+ * `cli` is stripped before help/passthrough classification. Reserved words after `cli`
+ * stay Claude passthrough so `fleet cli status` still asks Claude Code.
  */
 export function classifyFleetArgv(argv: readonly string[]): FleetDispatch {
   const command = argv[0];
   if (command === "update") return { kind: "update", argv };
   if (command === "auth") return { kind: "auth", argv };
   if (command === "console") return { kind: "console", consoleArgv: argv.slice(1) };
+  if (command === "doctor") return { kind: "doctor", argv };
+  if (command === "status") return { kind: "console", consoleArgv: ["status", ...argv.slice(1)] };
 
   const passthroughArgv = command === "cli" ? argv.slice(1) : argv;
   if (passthroughArgv[0] === "--help" || passthroughArgv[0] === "-h") {
     return { kind: "help", passthroughArgs: passthroughArgv.slice(1) };
+  }
+  if (command !== "cli" && isFleetVersionArg(passthroughArgv[0])) {
+    return { kind: "version" };
   }
   return { kind: "passthrough", passthroughArgs: [...passthroughArgv] };
 }
@@ -78,11 +88,16 @@ export async function dispatchFleetArgv(
     return await auth(dispatch.argv, io, createInfra());
   }
 
+  if (dispatch.kind === "doctor") {
+    return await dispatchDoctorCommand(dispatch.argv, io, { env, authService: createInfra().authService });
+  }
+
   if (dispatch.kind === "console") {
     try {
       const mode = parseConsoleCliMode(dispatch.consoleArgv);
       if (mode === "help") {
-        io.stdout.write(`${buildConsoleHelpText({ env, isTTY: io.stdout.isTTY })}\n`);
+        const release = readFleetCliRelease();
+        io.stdout.write(`${buildConsoleHelpText({ env, isTTY: io.stdout.isTTY, release: `${release.version} · ${release.channel}` })}\n`);
         return 0;
       }
       if (mode === "status") {
@@ -109,6 +124,11 @@ export async function dispatchFleetArgv(
 
   if (dispatch.kind === "help") {
     io.stdout.write(buildFleetHelpText({ env, isTTY: io.stdout.isTTY }));
+    return 0;
+  }
+
+  if (dispatch.kind === "version") {
+    io.stdout.write(buildFleetVersionText());
     return 0;
   }
 

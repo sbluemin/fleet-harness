@@ -226,6 +226,7 @@ describe("fleet console CLI", () => {
     expect(helpText).toContain("stop");
     expect(helpText).toContain("restart");
     expect(helpText).toContain("status");
+    expect(helpText).toMatch(/Fleet Console · .+ · (local|stable)/);
     expect(helpText).not.toContain("Gateway");
   });
 

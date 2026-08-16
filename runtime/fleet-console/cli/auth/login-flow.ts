@@ -43,9 +43,11 @@ export async function runAuthLoginFlow(
   io: AuthCommandIo,
   deps: AuthCommandDeps,
 ): Promise<number> {
-  const selectedCli = parseAuthCliId(argv[0]) ?? await promptForCli();
-  if (!selectedCli) return cancelAuthCommand();
-  const definition = AUTH_CLI_DEFINITIONS[selectedCli];
+  const selectedCli = resolveAuthCliId(argv[0], io);
+  if (selectedCli === "invalid") return 1;
+  const chosen = selectedCli ?? await promptForCli();
+  if (!chosen) return cancelAuthCommand();
+  const definition = AUTH_CLI_DEFINITIONS[chosen];
 
   const apiKey = await password({
     message: `Enter the ${definition.shortName} API key`,
@@ -72,6 +74,17 @@ export function getAuthCliOptions(): readonly AuthCliId[] {
 
 export function parseAuthCliId(value: string | undefined): AuthCliId | undefined {
   return value !== undefined && value in AUTH_CLI_DEFINITIONS ? value as AuthCliId : undefined;
+}
+
+export function resolveAuthCliId(
+  value: string | undefined,
+  io: AuthCommandIo,
+): AuthCliId | "invalid" | undefined {
+  if (value === undefined) return undefined;
+  const parsed = parseAuthCliId(value);
+  if (parsed) return parsed;
+  io.stderr.write(`Unknown fleet auth provider: ${value}\nUse kimi or opencode.\n`);
+  return "invalid";
 }
 
 async function promptForCli(): Promise<AuthCliId | undefined> {

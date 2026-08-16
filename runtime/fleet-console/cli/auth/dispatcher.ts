@@ -1,6 +1,6 @@
 import { cancel, isCancel, select } from "@clack/prompts";
 
-import { AUTH_CLI_DEFINITIONS, getAuthCliOptions, parseAuthCliId, runAuthLoginFlow } from "./login-flow.js";
+import { AUTH_CLI_DEFINITIONS, getAuthCliOptions, parseAuthCliId, resolveAuthCliId, runAuthLoginFlow } from "./login-flow.js";
 import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
 
 const AUTH_HELP_TEXT = `fleet auth — Authentication
@@ -45,12 +45,14 @@ async function logoutAuthProvider(
   io: AuthCommandIo,
   deps: AuthCommandDeps,
 ): Promise<number> {
-  const selectedCli = parseAuthCliId(argv[0]) ?? await promptForLogoutCli();
-  if (!selectedCli) {
+  const selectedCli = resolveAuthCliId(argv[0], io);
+  if (selectedCli === "invalid") return 1;
+  const chosen = selectedCli ?? await promptForLogoutCli();
+  if (!chosen) {
     cancel("Authentication cancelled.");
     return 1;
   }
-  const definition = AUTH_CLI_DEFINITIONS[selectedCli];
+  const definition = AUTH_CLI_DEFINITIONS[chosen];
   await deps.authService.deleteApiKey(definition.providerId);
   io.stdout.write(`${definition.label} signed out.\n`);
   return 0;
