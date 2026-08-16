@@ -322,7 +322,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     ].compactMapValues { $0 })
     let store = staged.view.configuration.websiteDataStore.httpCookieStore
     if let cookie = secretCookie {
-      store.setCookie(cookie) { main { then() } }
+      store.setCookie(cookie) { self.main { then() } }
     } else {
       failStaged(staged, "navigation_denied")
     }
@@ -347,7 +347,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     guard let staged = staging ?? activeStaged(for: webView), let url = navigationAction.request.url else {
       decisionHandler(.cancel); return
     }
-    if !navigationAction.targetFrame.map(\.isMainFrame).contains(true) {
+    let isMainFrame = navigationAction.targetFrame?.isMainFrame ?? false
+    if !isMainFrame {
       // 서브리소스: 로컬 오리진만 허용(그 외는 CSP/게이트웨이가 이미 막지만 방어적으로 취소).
       decisionHandler(isLocalOrigin(url, staged.gateway) ? .allow : .cancel); return
     }
