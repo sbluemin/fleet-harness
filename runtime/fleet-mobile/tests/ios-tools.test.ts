@@ -18,6 +18,7 @@ const goodPlist = JSON.stringify({
   NSAppTransportSecurity: { NSAllowsArbitraryLoads: false, NSAllowsLocalNetworking: true },
   CFBundleURLTypes: [{ CFBundleURLName: "com.dotobokuri.fleet.mobile.join", CFBundleURLSchemes: ["fleet"] }],
   NSCameraUsageDescription: "Fleet uses the camera only to read a Console access link from a QR code.",
+  NSLocalNetworkUsageDescription: "Fleet connects to the Console running on your local network.",
 });
 
 describe("iOS Info.plist contract", () => {
@@ -27,7 +28,10 @@ describe("iOS Info.plist contract", () => {
     expect(fields.buildNumber).toBe("2");
     expect(fields.allowsArbitraryLoads).toBe(false);
     expect(fields.urlSchemes).toEqual(["fleet"]);
-    expect(fields.usageDescriptionKeys).toEqual(["NSCameraUsageDescription"]);
+    expect(fields.usageDescriptionKeys).toEqual([
+      "NSCameraUsageDescription",
+      "NSLocalNetworkUsageDescription",
+    ]);
   });
 
   it("accepts a hardened plist", () => {
@@ -50,6 +54,15 @@ describe("iOS Info.plist contract", () => {
     const plist = JSON.parse(goodPlist);
     plist.NSMicrophoneUsageDescription = "why";
     expect(() => verifyReleaseInfoPlist(inspectInfoPlist(JSON.stringify(plist)))).toThrow(/usage descriptions/);
+  });
+
+  // 없으면 iOS 14+ 실기기에서 LAN 콘솔 연결이 조용히 막힌다 — 시뮬레이터에서는 드러나지 않는다.
+  it("rejects a plist without the local network usage description", () => {
+    const plist = JSON.parse(goodPlist);
+    delete plist.NSLocalNetworkUsageDescription;
+    expect(() => verifyReleaseInfoPlist(inspectInfoPlist(JSON.stringify(plist)))).toThrow(
+      /NSLocalNetworkUsageDescription/,
+    );
   });
 
   it("rejects a wrong bundle id", () => {

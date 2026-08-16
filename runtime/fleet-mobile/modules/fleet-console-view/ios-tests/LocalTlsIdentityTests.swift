@@ -1,4 +1,5 @@
 import Foundation
+import Security
 import XCTest
 @testable import FleetConsoleCore
 
@@ -33,5 +34,22 @@ final class LocalTlsIdentityTests: XCTestCase {
     XCTAssertNotNil(fields.notBefore)
     XCTAssertNotNil(fields.notAfter)
     XCTAssertTrue(fields.ipSans.contains([127, 44, 2, 9]))
+  }
+
+  // 게이트웨이가 NWListener에 넘길 identity가 키체인 없이 만들어지는지 — 키를 키체인에
+  // 저장하던 이전 구현이 엔타이틀먼트 없는 빌드에서 -34018로 죽던 바로 그 지점이다.
+  // identity가 들고 있는 인증서/키가 실제로 우리가 만든 그 쌍인지까지 확인한다.
+  func testSecIdentityPairsTheKeyWithoutTouchingTheKeychain() throws {
+    let identity = try LocalTlsIdentity.create("127.0.0.1")
+    let secIdentity = try identity.secIdentity()
+
+    var certificate: SecCertificate?
+    XCTAssertEqual(SecIdentityCopyCertificate(secIdentity, &certificate), errSecSuccess)
+    let paired = try XCTUnwrap(certificate)
+    XCTAssertEqual(SecCertificateCopyData(paired) as Data, identity.certificateDer)
+
+    var key: SecKey?
+    XCTAssertEqual(SecIdentityCopyPrivateKey(secIdentity, &key), errSecSuccess)
+    XCTAssertNotNil(key)
   }
 }

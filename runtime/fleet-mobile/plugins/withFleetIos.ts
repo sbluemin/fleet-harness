@@ -27,6 +27,13 @@ export const withFleetIos: ConfigPlugin = (config) => {
       NSAllowsLocalNetworking: true,
     };
 
+    // 콘솔은 보통 같은 LAN의 다른 기기(192.168.x.x 등)에서 돌아간다. iOS 14+는 로컬 네트워크
+    // 접근에 사용자 동의를 요구하고, 이 문자열이 없으면 시스템이 프롬프트를 띄우지 못해 연결이
+    // 조용히 막힌다. 시뮬레이터는 이 정책을 강제하지 않으므로 누락이 시뮬레이터 테스트에서는
+    // 드러나지 않는다 — 실기기 페어링에서만 터진다.
+    plist.NSLocalNetworkUsageDescription =
+      "Fleet connects to the Console running on your local network.";
+
     return mod;
   });
 

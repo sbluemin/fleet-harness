@@ -119,9 +119,16 @@ export function verifyReleaseInfoPlist(fields) {
   if (JSON.stringify(schemes) !== JSON.stringify(["fleet"])) {
     fail(`Unexpected iOS URL schemes: ${schemes.join(", ") || "none"}`);
   }
-  // 카메라 외 사용 설명 키가 없어야 한다(마이크 등 초과 권한 차단).
-  const unexpected = fields.usageDescriptionKeys.filter((key) => key !== "NSCameraUsageDescription");
+  // 카메라(QR 스캔)와 로컬 네트워크(LAN 콘솔) 외 사용 설명 키가 없어야 한다 —
+  // 마이크·위치 등 초과 권한 차단.
+  const allowedUsageDescriptions = ["NSCameraUsageDescription", "NSLocalNetworkUsageDescription"];
+  const unexpected = fields.usageDescriptionKeys.filter((key) => !allowedUsageDescriptions.includes(key));
   if (unexpected.length > 0) fail(`Unexpected iOS usage descriptions: ${unexpected.join(", ")}`);
+  // 이 키가 없으면 iOS 14+ 실기기에서 LAN 콘솔 연결이 프롬프트조차 뜨지 않고 막힌다.
+  // 시뮬레이터는 강제하지 않으므로 여기서 막지 않으면 실기기에서만 터진다.
+  if (!fields.usageDescriptionKeys.includes("NSLocalNetworkUsageDescription")) {
+    fail("Info.plist must declare NSLocalNetworkUsageDescription — LAN console pairing is blocked without it");
+  }
   if (fields.backgroundModes.length > 0) fail(`Unexpected iOS background modes: ${fields.backgroundModes.join(", ")}`);
 }
 

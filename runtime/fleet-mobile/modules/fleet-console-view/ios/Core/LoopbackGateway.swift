@@ -213,7 +213,6 @@ public final class LoopbackGateway {
     guard running.compareAndSet(expected: true, new: false) else { return }
     listener?.cancel()
     active.closeAll()
-    localTls.removeFromKeychain()
   }
 
   private static func randomSecret() -> String {

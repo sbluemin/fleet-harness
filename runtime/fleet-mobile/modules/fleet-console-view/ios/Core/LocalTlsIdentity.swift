@@ -8,32 +8,28 @@ import Security
 // SHA256withECDSA 서명. iOS 추가: KeyUsage digitalSignature(critical) — iPadOS 18.4가
 // digitalSignature 없는 로컬 인증서를 WKWebView에서 거부한 회귀 대응.
 //
+// identity는 키체인을 거치지 않는다. 키는 메모리에만 있고(SecKeyCreateRandomKey, 비영구)
+// SecIdentityCreate가 그 키와 인증서를 짝지어 준다 — Android가 인메모리 KeyStore로 SSLContext를
+// 만드는 것과 같은 구조다. 키체인에 쓰려던 이전 구현은 application-identifier 엔타이틀먼트가
+// 없는 빌드에서 errSecMissingEntitlement(-34018)로 죽었고, 애초에 이 단명 신원을 시스템
+// 키체인에 남길 이유도 없다(24시간짜리 루프백 인증서다).
+//
 // matches는 iOS에서 SecCertificateCopyValues가 없으므로 DER을 직접 파싱해 SAN/유효기간/leaf를
-// 확인한다. 이 파일의 런타임 TLS 동작(실제 서버 identity, 핀 검증)은 기기에서만 검증된다
+// 확인한다. 런타임 TLS 동작(실제 서버 identity, 핀 검증)은 기기에서만 검증된다
 // [Unverified-on-device]; CI는 encode+parse 왕복(matches 테스트)만 증명한다.
 
 public struct LocalTlsIdentity {
   public let certificate: SecCertificate
   public let privateKey: SecKey
   public let certificateDer: Data
-  /// 이 identity의 개인 키를 키체인에서 지목하는 태그. 게이트웨이가 닫힐 때 그 키만 지운다.
-  let keyTag: Data
 
   public enum CreateError: Error { case keyGeneration(String); case signing(String); case encoding(String) }
 
   public static func create(_ host: String, now: Date = Date()) throws -> LocalTlsIdentity {
-    // 키는 처음부터 키체인에 영구로 만든다. iOS에는 SecIdentityCreateWithCertificate가 없고,
-    // identity는 키체인이 인증서의 public key hash와 개인 키의 application label이 일치할 때만
-    // 합성해 준다. 임시 키를 만들고 나중에 SecItemAdd로 넣는 경로로는 그 짝이 형성되지 않는다.
-    let tag = Data("com.dotobokuri.fleet.mobile.loopback.\(UUID().uuidString)".utf8)
+    // 비영구 키다. 키체인에 넣지 않으므로 엔타이틀먼트가 필요 없고 정리할 것도 남지 않는다.
     let attributes: [String: Any] = [
       kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
       kSecAttrKeySizeInBits as String: 256,
-      kSecPrivateKeyAttrs as String: [
-        kSecAttrIsPermanent as String: true,
-        kSecAttrApplicationTag as String: tag,
-        kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
-      ],
     ]
     var error: Unmanaged<CFError>?
     guard let privateKey = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else {
@@ -59,8 +55,7 @@ public struct LocalTlsIdentity {
     guard let certificate = SecCertificateCreateWithData(nil, Data(certDer) as CFData) else {
       throw CreateError.encoding("SecCertificateCreateWithData rejected the DER")
     }
-    return LocalTlsIdentity(
-      certificate: certificate, privateKey: privateKey, certificateDer: Data(certDer), keyTag: tag)
+    return LocalTlsIdentity(certificate: certificate, privateKey: privateKey, certificateDer: Data(certDer))
   }
 
   private static func buildTbsCertificate(host: String, now: Date, publicKeyPoint: [UInt8]) throws -> [UInt8] {
@@ -87,79 +82,12 @@ public struct LocalTlsIdentity {
     return bytes
   }
 
-  /// TLS 서버 identity. 개인 키는 create()에서 이미 키체인에 있으므로 인증서를 넣고, 그
-  /// 인증서로 한정해 identity 하나를 조회한다. kSecMatchLimitAll + [SecIdentity] 캐스트는
-  /// 상태가 성공이어도 nil이 되는 브리징 함정이라 쓰지 않는다.
+  /// NWListener에 넘길 TLS 서버 identity. 키체인을 거치지 않고 메모리의 키와 인증서를 묶는다.
   public func secIdentity() throws -> SecIdentity {
-    let certAdd: [String: Any] = [
-      kSecClass as String: kSecClassCertificate,
-      kSecValueRef as String: certificate,
-    ]
-    let certStatus = SecItemAdd(certAdd as CFDictionary, nil)
-    guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
-      throw CreateError.encoding("keychain cert add failed: \(Self.describe(certStatus))")
-    }
-
-    let query: [String: Any] = [
-      kSecClass as String: kSecClassIdentity,
-      kSecMatchItemList as String: [certificate],
-      kSecMatchLimit as String: kSecMatchLimitOne,
-      kSecReturnRef as String: true,
-    ]
-    var result: CFTypeRef?
-    let status = SecItemCopyMatching(query as CFDictionary, &result)
-    guard status == errSecSuccess, let found = result else {
-      throw CreateError.encoding("keychain identity query failed: \(Self.describe(status))")
-    }
-    guard CFGetTypeID(found) == SecIdentityGetTypeID() else {
-      throw CreateError.encoding("keychain returned \(CFCopyTypeIDDescription(CFGetTypeID(found)) as String? ?? "an unexpected type") instead of an identity")
-    }
-    // 위 타입 검사를 통과했으므로 안전한 캐스트다.
-    let identity = found as! SecIdentity
-
-    // 조회된 identity가 정말 우리 인증서의 것인지 확인한다 — 다른 항목이 섞여 오면 서버가
-    // 엉뚱한 신원으로 뜨고, 그건 WebView 쪽 핀 검사에서야 드러난다.
-    var boundCertificate: SecCertificate?
-    guard SecIdentityCopyCertificate(identity, &boundCertificate) == errSecSuccess,
-          let boundCertificate,
-          (SecCertificateCopyData(boundCertificate) as Data) == certificateDer else {
-      throw CreateError.encoding("keychain identity does not carry the loopback certificate")
+    guard let identity = SecIdentityCreate(nil, certificate, privateKey) else {
+      throw CreateError.encoding("SecIdentityCreate could not pair the loopback certificate with its key")
     }
     return identity
-  }
-
-  /// 게이트웨이 종료 시 임시 키체인 항목을 지운다(베스트 에포트).
-  public func removeFromKeychain() {
-    let certDelete: [String: Any] = [
-      kSecClass as String: kSecClassCertificate,
-      kSecValueRef as String: certificate,
-    ]
-    SecItemDelete(certDelete as CFDictionary)
-    let keyDelete: [String: Any] = [
-      kSecClass as String: kSecClassKey,
-      kSecAttrApplicationTag as String: keyTag,
-    ]
-    SecItemDelete(keyDelete as CFDictionary)
-  }
-
-  /// 키체인 오류는 숫자만으로는 읽히지 않는다. 자주 나오는 것들에 이름을 붙여 로그에서 바로
-  /// 원인을 알 수 있게 한다(-34018은 서명/엔타이틀먼트가 없는 빌드에서 나는 대표적 실패다).
-  static func describe(_ status: OSStatus) -> String {
-    switch status {
-    case errSecMissingEntitlement:
-      return "errSecMissingEntitlement(-34018): the build carries no keychain entitlement"
-    case errSecItemNotFound:
-      return "errSecItemNotFound(-25300): the keychain did not pair the certificate with its key"
-    case errSecDuplicateItem:
-      return "errSecDuplicateItem(-25299)"
-    case errSecParam:
-      return "errSecParam(-50): the keychain rejected the item attributes"
-    default:
-      if let message = SecCopyErrorMessageString(status, nil) as String? {
-        return "\(message) (\(status))"
-      }
-      return "OSStatus \(status)"
-    }
   }
 
   // IPv4 점표기 → 4바이트, IPv6 → 16바이트. 아니면 nil.

@@ -25,6 +25,8 @@ describe("Fleet Mobile iOS build contract", () => {
     expect(plugin).toContain("NSAllowsArbitraryLoads: false");
     expect(plugin).toContain("CFBundleURLSchemes");
     expect(plugin).toContain('"fleet"');
+    // LAN 콘솔 페어링은 이 키 없이는 실기기에서 프롬프트도 뜨지 않고 막힌다.
+    expect(plugin).toContain("NSLocalNetworkUsageDescription");
   });
 
   it("exposes the iOS build/verify/distribute scripts", () => {
