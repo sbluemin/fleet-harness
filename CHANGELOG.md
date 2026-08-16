@@ -5,6 +5,45 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.61.0] - 2026-08-16
+
+### fleet-cli
+
+#### Fixed
+- A Console server that fails to start now names what stopped it and what to check, and a browser that never opened hands you the address instead of reporting success.
+
+### fleet-console
+
+#### Changed
+- Chat view now shows the agent's work as it happens: steps stack up as a live ledger with a verb and its target, each one carrying its outcome (exit status, lines written, or the first line of an error), and the files a turn changed stand above them.
+- One turn reads as a sequence of what the agent said it would do and what it then did. Each sentence the model writes opens a segment, and the routine steps under it settle into a single tally line such as "read 3 files, ran 2 shell commands" once that segment closes. Clicking a tally line unfolds the steps it counted. Failed steps and writes outside the Theater never fold into a tally.
+- A finished turn folds its whole process into one line that reads how long the agent worked, with an expander beside it. A turn that had a failed step says so on that line instead of hiding it behind a checkmark.
+- Writes that land outside the Theater folder are marked in the ledger instead of reading like any other path.
+- A brand new install no longer opens What's New. Its release backlog is not news to someone seeing the product for the first time, so the next release is the first one it announces.
+- Restored sessions after a Console restart now share one Ended signal and a start-again path from the panel, sidebar, and palette, instead of painting a dead process as idle.
+- A rejected rename, accent, group, or reorder edit rolls the panel back to the server value and offers Try again, instead of looking saved.
+
+#### Fixed
+- Failures now say what happened, why, and what to do. A terminal that cannot connect, a folder that cannot become a Theater, and an Agent CLI that is missing or signed out each explain themselves instead of showing a status code or a machine name.
+- Saving one setting no longer blocks another. Two settings changed in quick succession both persist, and a failed save reverts only its own field.
+- Removing a skill, relaunching a dormant Shell, and opening a remote host now report a refusal instead of looking like nothing happened.
+- The terminal panel and the Skills list now follow the console language, and the Skills preview dialog, its tabs, and the Theater row are reachable with a screen reader.
+- A plugin that comes up without its panel now says so, instead of leaving an empty spot in the rail with no explanation.
+- Scrolling a full-screen agent on a phone no longer types `NaN` into the CLI prompt.
+- Keep the Quaker aides' speech bubbles and full-answer card opaque in the Carbon, Maritime, and Whites themes, so the Map and panels behind them no longer show through the words.
+- Restored Codex and other Agent CLI sessions no longer inherit a Claude supplier mark when the launch record was missing.
+- Station Keeping now keeps window captions out of neighboring panels, not just the panel bodies.
+- Station Keeping now settles a panel when a drag is interrupted without pointerup, so captions do not stay overlapped.
+- Drop a War Room panel's hover magnification the moment the deck density changes, so adjusting density no longer leaves one panel enlarged across its neighbours.
+- Release a War Room panel's hover magnification as soon as the pointer leaves it, so a magnified panel no longer stays enlarged over its neighbour and close the gap between deck tiles.
+- Keep a War Room panel's caption and body inside the tile it stands in, so lowering the deck density - or narrowing the deck until it adds a column - no longer paints one panel's text across its neighbours.
+- Open a War Room panel's hover magnification only when the pointer moves onto it, so a tile that slides under a still cursor - on entering the deck, changing density, or resizing the sidebar - no longer enlarges itself across its neighbours.
+
+### fleet-desktop
+
+#### Fixed
+- A startup that cannot proceed now explains what stopped it and where the diagnostic log is, instead of quitting with no window and no message.
+
 ## [1.60.0] - 2026-08-15
 
 ### fleet-cli
