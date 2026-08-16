@@ -36,6 +36,35 @@ export interface AgentChatQuestion {
 /** 답을 기다리는 두 형태. 통로(canUseTool)는 하나지만 화면에서 하는 말이 다르다. */
 export type AgentChatAskForm = "question" | "plan";
 
+/**
+ * 턴보다 오래 사는 작업의 종류. SDK의 `task_type`을 제품 어휘로 접는다 —
+ * `local_agent`/`local_bash`/`local_workflow`가 오늘 실제로 도착하는 값이고,
+ * 새 종류는 `other`로 떨어져 조용히 사라지지 않는다.
+ */
+export type AgentChatJobKind = "agent" | "shell" | "workflow" | "other";
+
+/** 잡의 결말. SDK `task_notification.status`를 그대로 옮긴 축이다. */
+export type AgentChatJobStatus = "completed" | "failed" | "stopped";
+
+/** 워크플로 한 단계 안에서 돈 에이전트 하나. 값은 전부 `task_progress`가 실어 온다. */
+export interface AgentChatJobAgent {
+  readonly label: string;
+  /** 이 에이전트가 핀된 신원. Fleet이 이 표면을 만드는 이유다. */
+  readonly model?: string;
+  readonly state: string;
+  readonly tokens?: number;
+  readonly tools?: number;
+  readonly durationMs?: number;
+  /** 에이전트가 돌려준 값의 첫 줄 — 도구 결과와 같은 문(캡·마스킹·경로 정규화)을 지난다. */
+  readonly result?: string;
+}
+
+/** 워크플로 단계 하나와 그 아래에서 돈 에이전트들. */
+export interface AgentChatJobStage {
+  readonly title: string;
+  readonly agents: readonly AgentChatJobAgent[];
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   | { readonly kind: "replay-end"; readonly turns: number }
@@ -100,6 +129,48 @@ export type AgentChatStreamEvent =
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
+  /**
+   * 턴보다 오래 사는 작업 하나가 등록됐다. 이 축이 원장의 턴 시계와 별개로 존재해야 하는
+   * 이유는 단순하다 — 백그라운드 작업은 정의상 턴을 넘겨서 살고, 턴 시계 하나로는 그것을
+   * 참되게 말할 수 없다. `id`는 SDK의 `task_id`이며 잡의 유일한 좌표다.
+   */
+  | {
+      readonly kind: "job";
+      readonly id: string;
+      readonly jobKind: AgentChatJobKind;
+      readonly title: string;
+      /** 이 잡을 낳은 도구 스텝. 원장의 그 줄과 잡을 잇는다. */
+      readonly toolUseId?: string;
+      /** 서브에이전트 유형 또는 워크플로 이름 — "누구의 작업인가"의 답. */
+      readonly who?: string;
+      readonly at?: number;
+    }
+  /** 도는 동안의 맥박. 값이 없는 필드는 싣지 않는다(0과 미상은 다르다). */
+  | {
+      readonly kind: "job-progress";
+      readonly id: string;
+      readonly note?: string;
+      readonly tokens?: number;
+      readonly tools?: number;
+      readonly durationMs?: number;
+      readonly lastTool?: string;
+      readonly stages?: readonly AgentChatJobStage[];
+    }
+  /** 잡의 결말. `stopped`는 실패가 아니라 끝나기 전에 거둬진 것이다. */
+  | {
+      readonly kind: "job-end";
+      readonly id: string;
+      readonly status: AgentChatJobStatus;
+      readonly summary?: string;
+      readonly tokens?: number;
+      readonly tools?: number;
+      readonly durationMs?: number;
+    }
+  /**
+   * 지금 살아 있는 잡의 전량. REPLACE 시맨틱이다 — 세는 것이 아니라 통째로 갈아 끼운다.
+   * 워크플로 1건은 spawn 1회에 stop N회를 내므로 가감산 카운터는 반드시 어긋난다.
+   */
+  | { readonly kind: "jobs"; readonly ids: readonly string[] }
   | { readonly kind: "error"; readonly code: string };
 
 /** 저널에 실리는 형태 — seq는 재접속 클라이언트가 중복 반영을 걸러내는 단조 축이다. */
@@ -259,6 +330,24 @@ export function chatEventsFromSdkMessage(message: {
     }
     return [];
   }
+  // 백그라운드 작업 축. 이 다섯 subtype은 오늘도 도착하고 있었고(2026-08-16 실측), 여기서
+  // 집어내지 않으면 아래 `return []`로 조용히 사라진다 — 턴 시계가 유일한 시계가 되는 지점이다.
+  if (message.type === "system") {
+    switch (message.subtype) {
+      case "task_started":
+        return jobStartedEvent(message);
+      case "task_progress":
+        return jobProgressEvent(message, options);
+      case "task_updated":
+        return jobUpdatedEvent(message);
+      case "task_notification":
+        return jobEndEvent(message, options);
+      case "background_tasks_changed":
+        return jobsChangedEvent(message);
+      default:
+        return [];
+    }
+  }
   if (message.type === "assistant") {
     const body = (message as { readonly message?: { readonly content?: unknown } }).message;
     return eventsFromAssistantContent(body?.content, options);
@@ -279,6 +368,171 @@ export function chatEventsFromSdkMessage(message: {
     }];
   }
   return [];
+}
+
+// ── 백그라운드 잡 매핑 ────────────────────────────────────────────────────────
+
+const MAX_JOB_TITLE_CHARS = 120;
+const MAX_JOB_SUMMARY_CHARS = 400;
+const MAX_JOB_AGENT_LABEL_CHARS = 80;
+const MAX_JOB_STAGES = 24;
+const MAX_JOB_AGENTS_PER_STAGE = 64;
+
+/**
+ * SDK `task_type`을 제품 어휘로 접는다. 모르는 값은 `other`로 남긴다 — 새 종류가 생겼을 때
+ * 목록에서 조용히 빠지는 것보다, 이름 없는 잡으로 서서 눈에 띄는 쪽이 낫다.
+ */
+function readJobKind(value: unknown): AgentChatJobKind {
+  if (value === "local_agent") return "agent";
+  if (value === "local_bash") return "shell";
+  if (value === "local_workflow") return "workflow";
+  return "other";
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function readCount(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : undefined;
+}
+
+function capTo(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+/** 잡 표면의 자유 텍스트는 도구 결과와 같은 문을 지난다 — 경로 정규화·축약·자격증명 마스킹. */
+function safeJobText(raw: string, options: ChatEventMapOptions, max: number): string {
+  const flat = normalizePathTokens(raw.replace(/\s+/g, " ").trim(), options.cwd);
+  return capTo(maskSecrets(abbreviateAbsolutePaths(flat)), max);
+}
+
+function jobStartedEvent(message: Readonly<Record<string, unknown>>): readonly AgentChatStreamEvent[] {
+  const id = readString(message.task_id);
+  if (id === undefined) return [];
+  // 서브에이전트는 유형이, 워크플로는 이름이 "누구의 작업인가"를 말한다. 셸에는 둘 다 없다.
+  const who = readString(message.subagent_type) ?? readString(message.workflow_name);
+  return [{
+    kind: "job",
+    id,
+    jobKind: readJobKind(message.task_type),
+    title: capTo(String(readString(message.description) ?? id).replace(/\s+/g, " ").trim(), MAX_JOB_TITLE_CHARS),
+    ...(readString(message.tool_use_id) !== undefined ? { toolUseId: readString(message.tool_use_id) as string } : {}),
+    ...(who !== undefined ? { who: capTo(who, MAX_JOB_TITLE_CHARS) } : {}),
+    at: Date.now(),
+  }];
+}
+
+function jobProgressEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+  const id = readString(message.task_id);
+  if (id === undefined) return [];
+  const usage = message.usage as { readonly total_tokens?: unknown; readonly tool_uses?: unknown; readonly duration_ms?: unknown } | undefined;
+  const stages = readWorkflowStages(message.workflow_progress, options);
+  const note = readString(message.description);
+  const lastTool = readString(message.last_tool_name);
+  return [{
+    kind: "job-progress",
+    id,
+    ...(note !== undefined ? { note: safeJobText(note, options, MAX_JOB_TITLE_CHARS) } : {}),
+    ...(readCount(usage?.total_tokens) !== undefined ? { tokens: readCount(usage?.total_tokens) as number } : {}),
+    ...(readCount(usage?.tool_uses) !== undefined ? { tools: readCount(usage?.tool_uses) as number } : {}),
+    ...(readCount(usage?.duration_ms) !== undefined ? { durationMs: readCount(usage?.duration_ms) as number } : {}),
+    ...(lastTool !== undefined ? { lastTool: safeJobText(lastTool, options, MAX_JOB_AGENT_LABEL_CHARS) } : {}),
+    ...(stages.length > 0 ? { stages } : {}),
+  }];
+}
+
+/**
+ * 상태 패치. 결말의 권위는 `task_notification`이지만, 그것이 오기 전에 `killed`가 먼저 도착하는
+ * 경우가 있다(실측: 셸 백그라운드는 턴 종료 직후 killed → stopped 순서). 여기서는 종결 상태만
+ * 옮기고, 진행 중 상태 변화는 맥박이 이미 말하므로 싣지 않는다.
+ */
+function jobUpdatedEvent(message: Readonly<Record<string, unknown>>): readonly AgentChatStreamEvent[] {
+  const id = readString(message.task_id);
+  if (id === undefined) return [];
+  const patch = message.patch as { readonly status?: unknown } | undefined;
+  const status = patch?.status;
+  if (status === "completed") return [{ kind: "job-end", id, status: "completed" }];
+  if (status === "failed") return [{ kind: "job-end", id, status: "failed" }];
+  if (status === "killed") return [{ kind: "job-end", id, status: "stopped" }];
+  return [];
+}
+
+function jobEndEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
+  const id = readString(message.task_id);
+  if (id === undefined) return [];
+  const raw = message.status;
+  const status: AgentChatJobStatus = raw === "failed" ? "failed" : raw === "stopped" ? "stopped" : "completed";
+  const usage = message.usage as { readonly total_tokens?: unknown; readonly tool_uses?: unknown; readonly duration_ms?: unknown } | undefined;
+  // 서브에이전트의 summary는 그 에이전트가 돌려준 보고 그 자체다 — 실행 출력이 그대로 흐르는
+  // 경로이므로 도구 결과와 같은 문을 지난다.
+  const summary = readString(message.summary);
+  return [{
+    kind: "job-end",
+    id,
+    status,
+    ...(summary !== undefined ? { summary: safeJobText(summary, options, MAX_JOB_SUMMARY_CHARS) } : {}),
+    ...(readCount(usage?.total_tokens) !== undefined ? { tokens: readCount(usage?.total_tokens) as number } : {}),
+    ...(readCount(usage?.tool_uses) !== undefined ? { tools: readCount(usage?.tool_uses) as number } : {}),
+    ...(readCount(usage?.duration_ms) !== undefined ? { durationMs: readCount(usage?.duration_ms) as number } : {}),
+  }];
+}
+
+function jobsChangedEvent(message: Readonly<Record<string, unknown>>): readonly AgentChatStreamEvent[] {
+  const tasks = message.tasks;
+  if (!Array.isArray(tasks)) return [];
+  const ids: string[] = [];
+  for (const task of tasks) {
+    if (!task || typeof task !== "object") continue;
+    const id = readString((task as { readonly task_id?: unknown }).task_id);
+    if (id !== undefined) ids.push(id);
+  }
+  return [{ kind: "jobs", ids }];
+}
+
+/**
+ * `task_progress.workflow_progress`를 단계 트리로 접는다. 이 배열은 SDK 타입 선언에는 없고
+ * 전선에서만 관측된다(2026-08-16 실측) — 그래서 읽어낸 만큼만 쓰고, 못 읽으면 빈 배열을 돌려
+ * 워크플로 카드가 단계 없이도 완결되게 둔다. 여기서 던지면 맥박 하나가 통째로 사라진다.
+ */
+function readWorkflowStages(value: unknown, options: ChatEventMapOptions): readonly AgentChatJobStage[] {
+  if (!Array.isArray(value)) return [];
+  const order: string[] = [];
+  const byTitle = new Map<string, AgentChatJobAgent[]>();
+  const ensure = (title: string): AgentChatJobAgent[] => {
+    let bucket = byTitle.get(title);
+    if (!bucket) {
+      bucket = [];
+      byTitle.set(title, bucket);
+      order.push(title);
+    }
+    return bucket;
+  };
+  for (const entry of value) {
+    if (!entry || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    if (row.type === "workflow_phase") {
+      const title = readString(row.title);
+      if (title !== undefined) ensure(capTo(title, MAX_JOB_AGENT_LABEL_CHARS));
+      continue;
+    }
+    if (row.type !== "workflow_agent") continue;
+    const title = capTo(readString(row.phaseTitle) ?? "", MAX_JOB_AGENT_LABEL_CHARS);
+    const bucket = ensure(title);
+    if (bucket.length >= MAX_JOB_AGENTS_PER_STAGE) continue;
+    const label = readString(row.label);
+    const result = readString(row.resultPreview);
+    bucket.push({
+      label: label === undefined ? "" : safeJobText(label, options, MAX_JOB_AGENT_LABEL_CHARS),
+      ...(readString(row.model) !== undefined ? { model: capTo(readString(row.model) as string, MAX_JOB_AGENT_LABEL_CHARS) } : {}),
+      state: readString(row.state) ?? "unknown",
+      ...(readCount(row.tokens) !== undefined ? { tokens: readCount(row.tokens) as number } : {}),
+      ...(readCount(row.toolCalls) !== undefined ? { tools: readCount(row.toolCalls) as number } : {}),
+      ...(readCount(row.durationMs) !== undefined ? { durationMs: readCount(row.durationMs) as number } : {}),
+      ...(result !== undefined ? { result: safeJobText(result, options, MAX_TOOL_RESULT_CHARS) } : {}),
+    });
+  }
+  return order.slice(0, MAX_JOB_STAGES).map((title) => ({ title, agents: byTitle.get(title) ?? [] }));
 }
 
 function eventsFromAssistantContent(content: unknown, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {

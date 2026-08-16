@@ -7,10 +7,13 @@ import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
   agentChatToolFamily,
+  openAgentChatJobs,
   segmentAgentChatLedger,
   splitAgentChatTurn,
   type AgentChatAsk,
   type AgentChatChange,
+  type AgentChatJob,
+  type AgentChatJobKind,
   type AgentChatQuestion,
   type AgentChatStepGroup,
   type AgentChatTurn,
@@ -58,6 +61,10 @@ export function AgentChatView({
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
   const [following, setFollowing] = React.useState(true);
+  // 두 번째 목적지. 대화를 읽던 자리를 잃지 않으려면 전환이지 이동이 아니어야 하므로,
+  // 로그의 스크롤 앵커는 이 상태와 무관하게 유지된다(같은 노드가 계속 마운트돼 있다).
+  const [view, setView] = React.useState<"chat" | "work">("chat");
+  const [openJobId, setOpenJobId] = React.useState<string | null>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -87,7 +94,12 @@ export function AgentChatView({
   );
   const applyScrollTop = React.useCallback((next: number) => {
     const log = logRef.current;
-    if (!log || log.scrollTop === next) return;
+    if (!log) return;
+    // Work 탭이 서 있는 동안 로그는 숨어 있다(높이 0). 그 크기로 계산한 좌표를 쓰면 복귀했을 때
+    // 맨 위를 가리키게 된다 — 크기를 잃은 순간의 값으로는 의도를 읽을 수 없다는, handleScroll과
+    // 성장 효과가 이미 지키는 같은 규율을 유일한 쓰기 지점에서도 지킨다.
+    if (log.clientHeight === 0) return;
+    if (log.scrollTop === next) return;
     suppressScrollRef.current += 1;
     log.scrollTop = next;
     requestAnimationFrame(() => {
@@ -161,6 +173,25 @@ export function AgentChatView({
     [context.language],
   );
 
+  const openJobs = openAgentChatJobs(state);
+  // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
+  const jobsByToolUse = React.useMemo(() => {
+    const map = new Map<string, AgentChatJob>();
+    for (const job of state.jobs) {
+      if (job.toolUseId !== undefined) map.set(job.toolUseId, job);
+    }
+    return map;
+  }, [state.jobs]);
+  const selectedJob = openJobId === null ? null : state.jobs.find((job) => job.id === openJobId) ?? null;
+  const language = context.language ?? "en";
+
+  const showJob = React.useCallback((id: string) => {
+    setOpenJobId(id);
+    setView("work");
+  }, []);
+  // 탭과 패널을 잇는 좌표. 한 화면에 채팅 패널이 여럿 열릴 수 있으므로 마운트마다 고유해야 한다.
+  const tabsId = React.useId();
+
   return (
     <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
       {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
@@ -181,10 +212,61 @@ export function AgentChatView({
         </button>
       </div>
 
+      {/* 탭은 보여 줄 것이 생겼을 때만 선다. 백그라운드 작업을 한 번도 하지 않은 세션에서
+          이 줄은 아무 목적지도 없는 크롬이므로, 잡이 하나라도 등록된 뒤에 나타난다. */}
+      {state.jobs.length > 0 ? (
+        <div className="agent-chat-tabs" role="tablist" aria-label={t("terminal.chat.tabsAria")}>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "chat"}
+            aria-controls={`${tabsId}-chat`}
+            id={`${tabsId}-chat-tab`}
+            className={`agent-chat-tab${view === "chat" ? " is-on" : ""}`}
+            onClick={() => setView("chat")}
+          >
+            {t("terminal.chat.tabConversation")}
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={view === "work"}
+            aria-controls={`${tabsId}-work`}
+            id={`${tabsId}-work-tab`}
+            className={`agent-chat-tab${view === "work" ? " is-on" : ""}`}
+            onClick={() => setView("work")}
+          >
+            {t("terminal.chat.tabWork")}
+            {openJobs.length > 0 ? <span className="agent-chat-tab-badge">{openJobs.length}</span> : null}
+          </button>
+        </div>
+      ) : null}
+
+      {view === "work" ? (
+        <WorkPanel
+          id={`${tabsId}-work`}
+          labelledBy={`${tabsId}-work-tab`}
+          jobs={state.jobs}
+          job={selectedJob}
+          language={language}
+          onOpen={setOpenJobId}
+          onBack={() => setOpenJobId(null)}
+        />
+      ) : null}
+
       {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
           사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
-          콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
-      <div className="agent-chat-log" ref={logRef} onScroll={handleScroll} {...(tourAnchors ? { "data-chat-tour": "log" } : {})}>
+          콘솔 로드 화면에서 투어를 발화시키지 않게 한다.
+          Work 탭이 선 동안에도 언마운트하지 않는다 — 로그를 버리면 스크롤 위치와 함께
+          "읽던 자리"가 사라지고, 전환이 이동이 되어 버린다. */}
+      <div
+        className={`agent-chat-log${view === "chat" && openJobs.length > 0 ? " has-strip" : ""}`}
+        ref={logRef}
+        onScroll={handleScroll}
+        {...(state.jobs.length > 0 ? { role: "tabpanel", id: `${tabsId}-chat`, "aria-labelledby": `${tabsId}-chat-tab` } : {})}
+        {...(view === "work" ? { hidden: true } : {})}
+        {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
+      >
         {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
             않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
             상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
@@ -204,9 +286,11 @@ export function AgentChatView({
             key={index}
             operationId={context.operationId}
             turn={turn}
-            language={context.language ?? "en"}
+            language={language}
             timeFormat={timeFormat}
             streaming={index === state.turns.length - 1 && turn.state === "working"}
+            jobsByToolUse={jobsByToolUse}
+            onOpenJob={showJob}
           />
         ))}
         {state.turns.length === 0 && !state.replaying && state.connection === "open"
@@ -233,6 +317,25 @@ export function AgentChatView({
           onClick={handleFollow}
         >
           {t("terminal.chat.follow")}
+        </button>
+      ) : null}
+
+      {/* 살아 있는 잡이 있는 동안만 서는 한 줄. 읽는 자리가 어디든 "지금 나를 위해 도는 일이
+          있다"를 말하고, 그 자체가 Work 탭으로 가는 문이다 — 읽고 끝나는 표시가 아니다.
+          Follow 칩과 같은 하단 중앙을 쓰므로 한 층 위에 선다(CSS가 두 높이를 가른다). */}
+      {view === "chat" && openJobs.length > 0 ? (
+        <button
+          type="button"
+          className="agent-chat-strip"
+          aria-label={t("terminal.chat.stripAria")}
+          onClick={() => { setOpenJobId(null); setView("work"); }}
+        >
+          <span className="agent-chat-strip-orbit" aria-hidden="true" />
+          <span className="agent-chat-strip-count">{t("terminal.chat.stripRunning", { count: openJobs.length })}</span>
+          <span className="agent-chat-strip-names">
+            {openJobs.map((job) => `${jobGlyph(job.kind)} ${job.who ?? job.title}`).join("  ·  ")}
+          </span>
+          <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
         </button>
       ) : null}
 
@@ -274,16 +377,26 @@ function ChatTurn({
   language,
   timeFormat,
   streaming,
+  jobsByToolUse,
+  onOpenJob,
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
   readonly language: "en" | "ko";
   readonly timeFormat: Intl.DateTimeFormat;
   readonly streaming: boolean;
+  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
+  readonly onOpenJob: (id: string) => void;
 }) {
   const t = getT(language);
   const view = splitAgentChatTurn(turn);
   const working = turn.state === "working";
+  // 이 턴이 낳은 잡 중 아직 도는 것. 접힘 줄이 이 수를 말하지 않으면, 접힘이 "다 끝났다"를
+  // 뜻하게 되고 그것이 이 표면을 만든 이유인 거짓말이다.
+  const stillRunning = turn.items.reduce((count, item) => {
+    const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
+    return count + (job?.open === true ? 1 : 0);
+  }, 0);
   return (
     <>
       {turn.dispatch ? (
@@ -316,6 +429,8 @@ function ChatTurn({
                   operationId={operationId}
                   items={view.ledger}
                   language={language}
+                  jobsByToolUse={jobsByToolUse}
+                  onOpenJob={onOpenJob}
                   working
                   pending={view.streamingText === null
                     && !view.ledger.some((item) => item.state === "running")
@@ -328,11 +443,12 @@ function ChatTurn({
               <WorkFold
                 durationMs={turn.durationMs}
                 failed={view.failed}
+                running={stillRunning}
                 error={turn.state === "error"}
                 language={language}
               >
                 <ChangeStrip changes={view.changes} language={language} />
-                <Ledger operationId={operationId} items={view.ledger} language={language} />
+                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
               </WorkFold>
             ) : null}
             {working && view.streamingText !== null ? (
@@ -415,30 +531,41 @@ function Ledger({
   operationId,
   items,
   language,
+  jobsByToolUse,
+  onOpenJob,
   working = false,
   pending = false,
 }: {
   readonly operationId: string;
   readonly items: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
+  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
+  readonly onOpenJob: (id: string) => void;
   /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
   readonly working?: boolean;
   /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
   readonly pending?: boolean;
 }) {
   const t = getT(language);
-  const segments = segmentAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0);
-  if (segments.length === 0 && !pending) return null;
+  // 잡을 낳은 스텝은 집계에 넘기지 않는다 — "위임 1건"으로 접히면 그 잡으로 가는 문이 사라진다.
+  const jobItems = items.filter((item) => item.id !== undefined && jobsByToolUse.has(item.id));
+  const rest = items.filter((item) => !(item.id !== undefined && jobsByToolUse.has(item.id)));
+  const segments = segmentAgentChatLedger(rest, working ? LIVE_STEP_WINDOW : 0);
+  if (segments.length === 0 && jobItems.length === 0 && !pending) return null;
+  const step = (item: AgentChatTurnItem, key: string): React.ReactNode => (
+    <Step key={key} item={item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
+  );
   return (
     <div className="agent-chat-ledger">
+      {jobItems.map((item, at) => step(item, `job-${at}`))}
       {segments.map((segment, index) => (
         <div className="agent-chat-segment" key={index}>
           {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
-          <Tally groups={segment.groups} folded={segment.folded} language={language} />
+          <Tally groups={segment.groups} folded={segment.folded} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
           {segment.inline.map((item, at) => (item.type === "ask" && item.ask
             ? <AskCard key={`ask-${item.ask.id}`} operationId={operationId} ask={item.ask} language={language} />
-            : <Step key={`in-${at}`} item={item} language={language} />))}
-          {segment.running.map((item, at) => <Step key={`run-${at}`} item={item} language={language} />)}
+            : step(item, `in-${at}`)))}
+          {segment.running.map((item, at) => step(item, `run-${at}`))}
         </div>
       ))}
       {pending ? (
@@ -463,10 +590,14 @@ function Tally({
   groups,
   folded,
   language,
+  jobsByToolUse,
+  onOpenJob,
 }: {
   readonly groups: readonly AgentChatStepGroup[];
   readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
+  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
+  readonly onOpenJob: (id: string) => void;
 }) {
   const t = getT(language);
   if (groups.length === 0) return null;
@@ -485,7 +616,9 @@ function Tally({
         <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="agent-chat-tally-body">
-        {folded.map((item, index) => <Step key={index} item={item} language={language} />)}
+        {folded.map((item, index) => (
+          <Step key={index} item={item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
+        ))}
       </div>
     </details>
   );
@@ -773,11 +906,19 @@ function AskSettled({
 function Step({
   item,
   language,
+  jobsByToolUse,
+  onOpenJob,
 }: {
   readonly item: AgentChatTurnItem;
   readonly language: "en" | "ko";
+  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
+  readonly onOpenJob: (id: string) => void;
 }) {
   const t = getT(language);
+  const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
+  // 잡을 낳은 호출은 한 줄이 아니라 카드로 선다. 한 줄은 "그 호출이 성공했다"까지만 말할 수
+  // 있는데, 사용자가 알아야 하는 것은 그 뒤에 도는 일이다.
+  if (job !== undefined) return <JobCard job={job} language={language} onOpen={onOpenJob} />;
   const running = item.state === "running";
   const failed = item.state === "fail";
   // 결과를 못 받고 닫힌 스텝은 성공도 실패도 아니다 — 시제도 체크 표시도 붙이지 않는다.
@@ -824,12 +965,15 @@ function Step({
 function WorkFold({
   durationMs,
   failed,
+  running,
   error,
   language,
   children,
 }: {
   readonly durationMs: number | undefined;
   readonly failed: number;
+  /** 이 턴이 낳은 잡 중 아직 도는 것의 수. 접힘이 이것을 삼키면 접힘이 곧 거짓말이 된다. */
+  readonly running: number;
   readonly error: boolean;
   readonly language: "en" | "ko";
   readonly children: React.ReactNode;
@@ -839,9 +983,10 @@ function WorkFold({
     ? t("terminal.chat.workedFor", { duration: formatDuration(durationMs) })
     : t("terminal.chat.workedLabel");
   return (
-    <details className="agent-chat-fold">
+    <details className="agent-chat-fold" {...(running > 0 ? { open: true } : {})}>
       <summary aria-label={t("terminal.chat.foldAria")}>
         <span className="agent-chat-fold-label">{label}</span>
+        {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}
         {failed > 0 ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldFailed", { count: failed })}</span> : null}
         {failed === 0 && error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
         <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
@@ -849,6 +994,252 @@ function WorkFold({
       <div className="agent-chat-fold-body">{children}</div>
     </details>
   );
+}
+
+// ── 백그라운드 잡 표면 ────────────────────────────────────────────────────────
+
+/**
+ * 종류는 상태가 아니다 — 글리프와 모노 라벨이 가르고, 색은 쓰지 않는다. 신호 토큰은 상태만
+ * 나르고 식별 색조는 마크로만 칠한다는 Console 채널 규칙이 여기서도 그대로 선다.
+ */
+function jobGlyph(kind: AgentChatJobKind): string {
+  if (kind === "agent") return "◆";
+  if (kind === "shell") return "❯";
+  if (kind === "workflow") return "⣿";
+  return "▪";
+}
+
+function jobKindLabel(kind: AgentChatJobKind, language: "en" | "ko"): string {
+  return getT(language)(`terminal.chat.jobKind.${kind}` as Parameters<ReturnType<typeof getT>>[0]);
+}
+
+/**
+ * 결말 한 줄. 열려 있으면 실행 중, 닫혔는데 결말 보고가 없으면 **미상**이다 — 그 자리에
+ * 완료를 적는 것이 이 표면 전체가 고치려는 거짓말이다.
+ */
+function jobOutcome(job: AgentChatJob, language: "en" | "ko"): string {
+  const t = getT(language);
+  if (job.open) return t("terminal.chat.jobOpen");
+  if (job.status === "completed") return t("terminal.chat.jobCompleted");
+  if (job.status === "failed") return t("terminal.chat.jobFailed");
+  if (job.status === "stopped") return t("terminal.chat.jobStopped");
+  return t("terminal.chat.jobUnknown");
+}
+
+function jobStateClass(job: AgentChatJob): string {
+  if (job.open) return "is-open";
+  if (job.status === "completed") return "is-done";
+  if (job.status === "failed") return "is-fail";
+  if (job.status === "stopped") return "is-stopped";
+  return "is-unknown";
+}
+
+function jobMetaParts(job: AgentChatJob, language: "en" | "ko"): readonly string[] {
+  const t = getT(language);
+  const parts: string[] = [jobKindLabel(job.kind, language)];
+  if (job.who !== undefined) parts.push(job.who);
+  if (job.tokens !== undefined && job.tokens > 0) parts.push(t("terminal.chat.jobTokens", { count: formatCount(job.tokens) }));
+  if (job.tools !== undefined && job.tools > 0) parts.push(t("terminal.chat.jobTools", { count: job.tools }));
+  if (job.durationMs !== undefined && job.durationMs > 0) parts.push(formatDuration(job.durationMs));
+  return parts;
+}
+
+/** 원장 안에 서는 잡 카드. 누르면 Work 탭의 그 잡으로 간다. */
+function JobCard({
+  job,
+  language,
+  onOpen,
+}: {
+  readonly job: AgentChatJob;
+  readonly language: "en" | "ko";
+  readonly onOpen: (id: string) => void;
+}) {
+  const t = getT(language);
+  return (
+    <button
+      type="button"
+      className={`agent-chat-job ${jobStateClass(job)}`}
+      aria-label={t("terminal.chat.workOpenAria")}
+      onClick={() => onOpen(job.id)}
+    >
+      <span className="agent-chat-job-head">
+        {job.open
+          ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+          : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
+        <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+        <span className="agent-chat-job-title">{job.title}</span>
+        <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
+        <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+      </span>
+      <span className="agent-chat-job-meta">
+        {jobMetaParts(job, language).map((part, index) => (
+          <React.Fragment key={index}>
+            {index > 0 ? <span aria-hidden="true">·</span> : null}
+            <span>{part}</span>
+          </React.Fragment>
+        ))}
+        {job.kind === "workflow" && job.stages.length > 0 ? <StageDots stages={job.stages} /> : null}
+      </span>
+    </button>
+  );
+}
+
+/** 워크플로 카드의 단계 점 — 몇 개가 끝났는지가 한눈에 읽힌다. */
+function StageDots({ stages }: { readonly stages: readonly AgentChatJob["stages"][number][] }) {
+  return (
+    <span className="agent-chat-job-dots" aria-hidden="true">
+      {stages.map((stage, index) => (
+        <React.Fragment key={index}>
+          {index > 0 ? <span className="agent-chat-job-dot-gap" /> : null}
+          {stage.agents.map((agent, at) => (
+            <span key={at} className={`agent-chat-job-dot${agent.state === "done" ? " is-done" : agent.state === "running" ? " is-live" : ""}`} />
+          ))}
+        </React.Fragment>
+      ))}
+    </span>
+  );
+}
+
+/** Work 탭 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다. */
+function WorkPanel({
+  id,
+  labelledBy,
+  jobs,
+  job,
+  language,
+  onOpen,
+  onBack,
+}: {
+  readonly id: string;
+  readonly labelledBy: string;
+  readonly jobs: readonly AgentChatJob[];
+  readonly job: AgentChatJob | null;
+  readonly language: "en" | "ko";
+  readonly onOpen: (id: string) => void;
+  readonly onBack: () => void;
+}) {
+  const t = getT(language);
+  const frame = { id, role: "tabpanel" as const, "aria-labelledby": labelledBy };
+  if (job !== null) return <JobDetail frame={frame} job={job} language={language} onBack={onBack} />;
+  const open = jobs.filter((entry) => entry.open);
+  const settled = jobs.filter((entry) => !entry.open);
+  if (jobs.length === 0) {
+    return <div className="agent-chat-work" {...frame}><div className="agent-chat-work-empty">{t("terminal.chat.workEmpty")}</div></div>;
+  }
+  return (
+    <div className="agent-chat-work" {...frame}>
+      {open.length > 0 ? (
+        <>
+          <div className="agent-chat-work-sec">{t("terminal.chat.workRunning")} {open.length}</div>
+          {open.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
+        </>
+      ) : null}
+      {settled.length > 0 ? (
+        <>
+          <div className="agent-chat-work-sec">{t("terminal.chat.workSettled")} {settled.length}</div>
+          {settled.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * 잡 하나의 실제 내용. 종류마다 어휘가 다르므로 본문도 다르다 — 워크플로는 단계 트리,
+ * 나머지는 그 작업이 돌려준 보고.
+ */
+function JobDetail({
+  frame,
+  job,
+  language,
+  onBack,
+}: {
+  readonly frame: Readonly<Record<string, string>>;
+  readonly job: AgentChatJob;
+  readonly language: "en" | "ko";
+  readonly onBack: () => void;
+}) {
+  const t = getT(language);
+  return (
+    <div className="agent-chat-work" {...frame}>
+      <div className="agent-chat-detail-head">
+        <button type="button" className="agent-chat-detail-back" aria-label={t("terminal.chat.workBackAria")} onClick={onBack}>
+          ‹ {t("terminal.chat.workBack")}
+        </button>
+        <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+        <span className="agent-chat-detail-title">{job.title}</span>
+        <span className={`agent-chat-job-outcome ${jobStateClass(job)}`}>{jobOutcome(job, language)}</span>
+      </div>
+      <div className="agent-chat-detail-meta">{jobMetaParts(job, language).join(" · ")}</div>
+      <div className="agent-chat-detail-body">
+        {job.kind === "workflow" ? (
+          job.stages.length > 0
+            ? job.stages.map((stage, index) => <Stage key={index} stage={stage} language={language} />)
+            // 단계 트리는 전선에서만 관측되는 값이라 없을 수 있다. 없으면 그 사실을 말한다 —
+            // 빈 트리는 "단계가 없다"로 읽히고, 도는 스피너는 영영 돌기 때문이다.
+            : <div className="agent-chat-work-empty">{t("terminal.chat.stagesUnavailable")}</div>
+        ) : null}
+        {job.summary !== undefined ? (
+          <>
+            <div className="agent-chat-kicker">{t("terminal.chat.jobReport")}</div>
+            <p className="agent-chat-detail-report">{job.summary}</p>
+          </>
+        ) : job.kind !== "workflow" && !job.open ? (
+          <div className="agent-chat-work-empty">{t("terminal.chat.jobNoReport")}</div>
+        ) : null}
+        {job.open && job.note !== undefined ? <p className="agent-chat-detail-note">{job.note}</p> : null}
+      </div>
+    </div>
+  );
+}
+
+/** 워크플로 한 단계 — 에이전트별로 어떤 신원이 얼마를 썼는지가 이 표의 요점이다. */
+function Stage({
+  stage,
+  language,
+}: {
+  readonly stage: AgentChatJob["stages"][number];
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const done = stage.agents.filter((agent) => agent.state === "done").length;
+  return (
+    <div className="agent-chat-stage">
+      <div className="agent-chat-stage-head">
+        <span>{stage.title}</span>
+        <span className="agent-chat-stage-count">{done}/{stage.agents.length}</span>
+      </div>
+      <div className="agent-chat-stage-rows" role="table">
+        <div className="agent-chat-stage-row is-head" role="row">
+          <span role="columnheader" />
+          <span role="columnheader">{t("terminal.chat.stageAgent")}</span>
+          <span role="columnheader">{t("terminal.chat.stageModel")}</span>
+          <span role="columnheader" className="is-num">{t("terminal.chat.stageTokens")}</span>
+          <span role="columnheader" className="is-num">{t("terminal.chat.stageTools")}</span>
+          <span role="columnheader" className="is-num">{t("terminal.chat.stageTime")}</span>
+        </div>
+        {stage.agents.map((agent, index) => (
+          <div className={`agent-chat-stage-row${agent.state === "done" ? "" : " is-pending"}`} role="row" key={index}>
+            <span role="cell" className="is-mark" aria-hidden="true">
+              {agent.state === "done" ? "✓" : agent.state === "running" ? "◐" : "·"}
+            </span>
+            <span role="cell" className="is-name" title={agent.result ?? agent.label}>{agent.label}</span>
+            <span role="cell" className="is-model">{agent.model ?? "—"}</span>
+            <span role="cell" className="is-num">{agent.tokens !== undefined ? formatCount(agent.tokens) : "—"}</span>
+            <span role="cell" className="is-num">{agent.tools !== undefined ? agent.tools : "—"}</span>
+            <span role="cell" className="is-num">{agent.durationMs !== undefined ? formatDuration(agent.durationMs) : "—"}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 토큰 수는 자릿수가 커서 그대로 쓰면 표가 흔들린다 — 천 단위로 접는다. */
+function formatCount(value: number): string {
+  if (value < 1_000) return String(value);
+  if (value < 1_000_000) return `${(value / 1_000).toFixed(1)}k`;
+  return `${(value / 1_000_000).toFixed(1)}M`;
 }
 
 /** 동사는 계열이 정한다 — 집계 줄과 스텝 줄이 같은 어휘를 쓰도록 한 축에서 온다. */

@@ -113,6 +113,15 @@ export type CreateChatSdk = (options: {
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
 
+/**
+ * 닫힌 턴 뒤에 이 이벤트가 오면 모델이 다시 말하기 시작한 것이다. 잡 이벤트는 여기 들지 않는다 —
+ * 백그라운드 맥박은 턴이 닫힌 뒤에도 계속 흐르는 것이 정상이고, 그것으로 턴을 열면 아무 말도
+ * 없는 빈 턴이 선다.
+ */
+function opensChatTurn(event: AgentChatStreamEvent): boolean {
+  return event.kind === "text" || event.kind === "text-delta" || event.kind === "tool" || event.kind === "tool-start";
+}
+
 class AgentChatSession {
   readonly operationId: string;
   private readonly seed: AgentChatSessionSeed;
@@ -482,13 +491,24 @@ class AgentChatSession {
         // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
         includePartialMessages: true,
       });
+      // 하나의 startTurn이 result를 여러 번 낸다. 백그라운드 작업이 끝나면 SDK가 새 system/init과
+      // 함께 모델을 다시 깨우고, 그 응답이 두 번째 result로 닫힌다(2026-08-16 실측). 닫힌 턴에
+      // 그 응답을 이어 붙이면 앞 턴의 Answer가 갈아치워지므로, 내용이 다시 흐르기 시작하면
+      // 디스패치 없는 새 턴을 연다.
+      let turnClosed = false;
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
             this.latestSessionId = message.session_id;
           }
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
-            if (event.kind === "turn-end") sawResult = true;
+            if (event.kind === "turn-end") {
+              sawResult = true;
+              turnClosed = true;
+            } else if (turnClosed && opensChatTurn(event)) {
+              this.push({ kind: "turn-start", at: Date.now() });
+              turnClosed = false;
+            }
             this.rememberTool(event);
             // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
             // 한 줄을 더 세우면 같은 사건이 두 번 읽힌다. 결과 줄은 짝을 못 찾아 스스로 버려진다.

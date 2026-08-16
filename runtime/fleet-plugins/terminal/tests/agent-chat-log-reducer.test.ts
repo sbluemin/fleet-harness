@@ -427,3 +427,73 @@ describe("splitAgentChatTurn", () => {
     expect(view.ledger).toEqual([{ type: "text", text: "partial" }]);
   });
 });
+
+describe("background job ledger", () => {
+  it("keeps a job open until a live list or a result says otherwise", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "two-step", toolUseId: "c1", who: "two-step" },
+      { kind: "job-progress", id: "w1", tokens: 1646, tools: 0 },
+    ]);
+    expect(state.jobs).toEqual([expect.objectContaining({ id: "w1", open: true, tokens: 1646 })]);
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
+  it("closes a job that left the live list but refuses to call it complete", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "two-step" },
+      { kind: "jobs", ids: [] },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false }));
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
+  it("takes the live list as an absolute value, not a tally", () => {
+    const state = fold([
+      { kind: "job", id: "a1", jobKind: "agent", title: "one" },
+      { kind: "job", id: "a2", jobKind: "agent", title: "two" },
+      { kind: "jobs", ids: ["a2"] },
+    ]);
+    expect(state.jobs.map((job) => [job.id, job.open])).toEqual([["a1", false], ["a2", true]]);
+  });
+
+  it("records a stopped job as stopped", () => {
+    const state = fold([
+      { kind: "job", id: "b1", jobKind: "shell", title: "sleep 45" },
+      { kind: "jobs", ids: [] },
+      { kind: "job-end", id: "b1", status: "stopped", durationMs: 28000 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, status: "stopped", durationMs: 28000 }));
+  });
+
+  it("seeds a job whose start was missed so a late result is not thrown away", () => {
+    const state = fold([{ kind: "job-end", id: "ghost", status: "completed", summary: "OK" }]);
+    expect(state.jobs).toEqual([expect.objectContaining({ id: "ghost", kind: "other", open: false, status: "completed", summary: "OK" })]);
+  });
+
+  it("replaces the stage tree instead of merging it", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "w" },
+      { kind: "job-progress", id: "w1", stages: [{ title: "Alpha", agents: [{ label: "a", state: "running" }] }] },
+      { kind: "job-progress", id: "w1", stages: [{ title: "Alpha", agents: [{ label: "a", state: "done" }] }] },
+    ]);
+    expect(state.jobs[0]?.stages).toEqual([{ title: "Alpha", agents: [{ label: "a", state: "done" }] }]);
+  });
+
+  it("opens a fresh turn when the model wakes up after a background result", () => {
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "text", text: "launched" },
+      { kind: "turn-end", ok: true, answer: "launched" },
+      // 백그라운드가 끝나 모델이 다시 말한다 — 세션이 turn-start를 앞세운다.
+      { kind: "turn-start" },
+      { kind: "text", text: "the workflow finished" },
+      { kind: "turn-end", ok: true, answer: "the workflow finished" },
+    ]);
+    expect(state.turns).toHaveLength(2);
+    expect(state.turns[0]?.dispatch).toEqual({ text: "go" });
+    expect(splitAgentChatTurn(state.turns[0] as AgentChatLogState["turns"][number]).answer).toBe("launched");
+    expect(state.turns[1]?.dispatch).toBeNull();
+    expect(splitAgentChatTurn(state.turns[1] as AgentChatLogState["turns"][number]).answer).toBe("the workflow finished");
+  });
+});
