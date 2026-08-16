@@ -1293,13 +1293,18 @@ export function groupOperationsByStatus(
     label,
     // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
     // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
+    // 칸을 정한 표시 활동을 엔트리에도 실어 보낸다 — 도착으로 AWAITING에 오른 행이 원래의
+    // idle을 그대로 들고 가면 섹션과 행의 마크가 같은 화면에서 서로 다른 상태를 말한다.
     entries: entries
-      .filter((entry) =>
-        resolveOperationDisplayActivity({
+      .flatMap((entry) => {
+        const display = resolveOperationDisplayActivity({
           activity: entry.status ?? "idle",
           operationId: entry.operation.id,
           idleArrivalIds,
-        }) === status)
+        });
+        if (display !== status) return [];
+        return [entry.status === display ? entry : { ...entry, status: display }];
+      })
       .sort((left, right) => {
         const leftTick = getTick?.(left.operation.id);
         const rightTick = getTick?.(right.operation.id);

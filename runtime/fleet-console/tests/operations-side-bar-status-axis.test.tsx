@@ -158,6 +158,22 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(getSideBarStatusSectionCollapsed(THEATER.id, "idle", true)).toBe(true);
   });
 
+  // 도착으로 AWAITING에 오른 행은 그 승격을 마크로도 말해야 한다 — 섹션은 대기라고 하는데
+  // 마크만 유휴로 남으면 같은 행이 한 화면에서 두 상태를 말한다.
+  it("marks an idle arrival promoted into AWAITING as awaiting, not idle", () => {
+    const operation = makeOperation("arrived", null);
+    setConsoleState({ operationRuntime: { arrived: { lifecycle: "live", activity: "idle" } } });
+    markIdleArrival(operation.id);
+    setSideBarStatusAxis(true);
+    renderSideBar([operation]);
+
+    const chip = required<HTMLElement>('.side-bar-status-section--awaiting [data-side-bar-chip-id="arrived"]');
+    const mark = required<HTMLElement>('.side-bar-status-section--awaiting [data-side-bar-chip-id="arrived"] .side-bar-chip-status');
+    expect(chip).not.toBeNull();
+    expect(mark.className).toContain("is-awaiting");
+    expect(mark.getAttribute("aria-label")).toBe("Awaiting input");
+  });
+
   it("continues to reveal an ordinary idle Operation from the IDLE section", () => {
     const operation = makeOperation("idle", null);
     setConsoleState({ operationRuntime: { idle: { lifecycle: "live", activity: "idle" } } });
