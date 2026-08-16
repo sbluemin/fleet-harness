@@ -81,6 +81,15 @@ Every gateway skeleton is a table of `Stage | Role | Fan | Returns`.
 
 A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers this doctrine already names — the host-side literal fix before any writing fan below, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
 
+## While the Run Is in Flight
+
+Some surfaces hand the result back at once. The staged surface does not — it returns a receipt and comes back to you when the run finishes. Between those two moments the host has exactly one job: not to answer.
+
+- **A receipt is not a result.** A run id says work started. It carries no finding, no verdict, no coverage. Nothing in the shape of the returned value marks which of the two you are holding — only the surface does.
+- **The dispatching turn ends in one line.** Which surface, how many stages, what you are waiting for. No conclusion, no review, no recommendation, and no forecast of what the run will probably find — a reading written before the result is indistinguishable from the result to whoever reads it, and it stays on the page after the real one arrives.
+- **Report once, in the turn the result lands.** The dispatching turn already spent its line. Saying it there and again on arrival turns one run into two answers, which is how a reader learns to distrust both.
+- **Asked while it runs, say it is still running.** That is the entire answer. Do not fill the wait with an interim reading.
+
 ## Failures Must Be Loud
 
 A fan-out helper turns a failed branch into an empty result, so a run that lost three of eight branches reads as a thorough run over a quiet subject.
@@ -193,6 +202,10 @@ Writing work has no stage skeleton of its own; these rules are the whole of it. 
 - **Symptom:** A provider looked like it had room, but its requests began failing.
   **Action:** Read the window whose `scope` matches the model's `quotaScope`, not the provider's combined figure.
   **Why:** One subscription can bill through separate pools; the sum can read comfortable while the pool a given model draws from is nearly spent.
+
+- **Symptom:** A review of the run landed before the run finished, and when the result actually arrived the same ground was covered a second time.
+  **Action:** Treat the value the dispatch returned as a receipt. The dispatching turn gets one status line; the finding waits for the turn the result lands in.
+  **Why:** Both a receipt and a result come back through the same return, so the value itself never says which one it is. Reading the receipt as a result costs twice — once for the invented finding, once for the duplicate that follows it.
 
 - **Symptom:** A workflow dispatch is blocked before it runs with `[workflow-guard] opts.model 값이 올바르지 않습니다`.
   **Action:** Re-read `gateway_models` and copy the `modelId` verbatim — the value dropped the `claude-gateway--` prefix (or an alias wrongly carries it). The guard also blocks any script containing `agentType:`.

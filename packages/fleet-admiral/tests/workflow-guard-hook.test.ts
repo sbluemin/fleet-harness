@@ -26,6 +26,14 @@ function runGuard(toolInput: unknown): { readonly status: number; readonly stder
   return { status: result.status ?? -1, stderr: result.stderr };
 }
 
+function runGuardEvent(payload: Record<string, unknown>): { readonly status: number; readonly stdout: string } {
+  const result = spawnSync(process.execPath, [GUARD_SCRIPT], {
+    input: JSON.stringify(payload),
+    encoding: "utf8",
+  });
+  return { status: result.status ?? -1, stdout: result.stdout };
+}
+
 describe("workflow-guard hook", () => {
   it("passes a full gateway modelId", () => {
     const { status } = runGuard({
@@ -51,6 +59,37 @@ describe("workflow-guard hook", () => {
     const { status, stderr } = runGuard({ script: `agent("x", { model: "claude-gateway--fable" })` });
     expect(status).toBe(2);
     expect(stderr).toContain("prefix");
+  });
+
+  // 디스패치 직후의 계약. 차단이 아니라 문맥 추가이므로 통과 상태로 끝나야 하고, 툴 출력을
+  // 바꾸지 않는다 — run id는 그대로 모델에게 간다.
+  it("tells the model the dispatch returned a receipt, without touching the tool output", () => {
+    const { status, stdout } = runGuardEvent({
+      hook_event_name: "PostToolUse",
+      tool_name: "Workflow",
+      tool_input: { script: `agent("x", { model: "opus" })` },
+      tool_response: { runId: "wf_abc123" },
+    });
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string; updatedToolOutput?: unknown };
+    };
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("receipt, not a result");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("one status line");
+    expect("updatedToolOutput" in parsed.hookSpecificOutput).toBe(false);
+  });
+
+  // PostToolUse 분기가 스크립트 검증보다 앞에 서야 한다 — 뒤에 서면 이미 통과한 디스패치의
+  // 스크립트를 한 번 더 검사하다 실패해 turn 이 오류로 물든다.
+  it("adds the in-flight context even for a dispatch that carried no inspectable script", () => {
+    const { status, stdout } = runGuardEvent({
+      hook_event_name: "PostToolUse",
+      tool_name: "Workflow",
+      tool_input: { name: "saved-workflow" },
+    });
+    expect(status).toBe(0);
+    expect(stdout).toContain("still in flight");
   });
 
   it("blocks agentType usage in a dynamic workflow", () => {
