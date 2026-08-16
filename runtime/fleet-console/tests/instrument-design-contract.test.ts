@@ -80,9 +80,37 @@ const ROOT_FONT_SIZE_PX = 16;
 // 색을 싣는 속성만 검사한다 — font-family 등에 낱말이 스쳐도 색 리터럴이 아니다.
 const COLOR_BEARING_PROPERTY_PATTERN =
   "color|background|background-color|border-color|border|outline-color|outline|fill|stroke|box-shadow|text-shadow|caret-color|accent-color|column-rule-color";
-// 무채색 낱말(black/white/gray/transparent/currentColor)은 깊이 리터럴과 같은 이유로 통과시킨다.
-const CHROMATIC_COLOR_KEYWORDS =
-  /\b(?:red|blue|green|yellow|orange|purple|pink|brown|cyan|magenta|teal|olive|navy|maroon|lime|aqua|fuchsia|gold|coral|salmon|crimson|indigo|violet|khaki|plum|orchid|tomato|turquoise|rebeccapurple|firebrick|forestgreen|goldenrod|hotpink|lavender|peru|sienna|skyblue|tan|thistle|wheat|chocolate|darkred|darkblue|darkgreen|lightblue|lightgreen|steelblue|seagreen|slateblue|springgreen|deeppink|deepskyblue|dodgerblue|mediumpurple|palegreen|royalblue|tomato)\b/i;
+// CSS 명명색 전체 집합. 손으로 고른 일부만 적으면 빠뜨린 낱말(chartreuse·cornflowerblue…)이
+// 그대로 통과해 게이트가 지키는 척만 한다 — 목록은 전수여야 판정에 쓸 수 있다.
+const CSS_NAMED_COLORS = new Set([
+  "aliceblue", "antiquewhite", "aqua", "aquamarine", "azure", "beige", "bisque", "black",
+  "blanchedalmond", "blue", "blueviolet", "brown", "burlywood", "cadetblue", "chartreuse",
+  "chocolate", "coral", "cornflowerblue", "cornsilk", "crimson", "cyan", "darkblue", "darkcyan",
+  "darkgoldenrod", "darkgray", "darkgreen", "darkgrey", "darkkhaki", "darkmagenta",
+  "darkolivegreen", "darkorange", "darkorchid", "darkred", "darksalmon", "darkseagreen",
+  "darkslateblue", "darkslategray", "darkslategrey", "darkturquoise", "darkviolet", "deeppink",
+  "deepskyblue", "dimgray", "dimgrey", "dodgerblue", "firebrick", "floralwhite", "forestgreen",
+  "fuchsia", "gainsboro", "ghostwhite", "gold", "goldenrod", "gray", "green", "greenyellow",
+  "grey", "honeydew", "hotpink", "indianred", "indigo", "ivory", "khaki", "lavender",
+  "lavenderblush", "lawngreen", "lemonchiffon", "lightblue", "lightcoral", "lightcyan",
+  "lightgoldenrodyellow", "lightgray", "lightgreen", "lightgrey", "lightpink", "lightsalmon",
+  "lightseagreen", "lightskyblue", "lightslategray", "lightslategrey", "lightsteelblue",
+  "lightyellow", "lime", "limegreen", "linen", "magenta", "maroon", "mediumaquamarine",
+  "mediumblue", "mediumorchid", "mediumpurple", "mediumseagreen", "mediumslateblue",
+  "mediumspringgreen", "mediumturquoise", "mediumvioletred", "midnightblue", "mintcream",
+  "mistyrose", "moccasin", "navajowhite", "navy", "oldlace", "olive", "olivedrab", "orange",
+  "orangered", "orchid", "palegoldenrod", "palegreen", "paleturquoise", "palevioletred",
+  "papayawhip", "peachpuff", "peru", "pink", "plum", "powderblue", "purple", "rebeccapurple",
+  "red", "rosybrown", "royalblue", "saddlebrown", "salmon", "sandybrown", "seagreen", "seashell",
+  "sienna", "silver", "skyblue", "slateblue", "slategray", "slategrey", "snow", "springgreen",
+  "steelblue", "tan", "teal", "thistle", "tomato", "turquoise", "violet", "wheat", "white",
+  "whitesmoke", "yellow", "yellowgreen",
+]);
+// 세 채널이 같은(또는 거의 같은) 명명색은 깊이 리터럴과 같은 이유로 통과시킨다.
+const ACHROMATIC_NAMED_COLORS = new Set([
+  "black", "white", "gray", "grey", "darkgray", "darkgrey", "dimgray", "dimgrey",
+  "lightgray", "lightgrey", "silver", "gainsboro", "whitesmoke", "snow",
+]);
 // font-size가 텍스트가 아니라 도형을 재는 자리들 — 글리프 문자('×' '✦' '↻' 꺾쇠)의 크기이거나,
 // 치수가 박힌 상자(아바타·숫자 배지·이니셜 마크) 안이라 사다리로 올리면 넘치거나 잘린다.
 const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
@@ -665,6 +693,14 @@ describe("Instrument core design contract", () => {
       const offLadder = (value: string): boolean => {
         if (/var\(\s*--t-(?:2xs|xs|sm|md|base|lg|xl)\s*\)/.test(value)) return false;
         if (/var\(\s*--font-body-size\s*\)/.test(value)) return false;
+        // Codex 서브앱이 자기 --font-size-* 스케일을 갖고 있고, 공유 마크다운과 코어 일부가
+        // 그 토큰을 함께 소비한다(총 113곳). 두 어휘를 합칠지는 이 사다리와 별개의 결정이라
+        // 아직 내려지지 않았으므로 여기 이름으로 적어 둔다 — 조용한 통과가 아니라 선언된
+        // 미결 사항으로 남기고, 합치기로 하면 이 한 줄이 사라진다.
+        if (/var\(\s*--font-size-[a-z0-9-]+\s*\)/.test(value)) return false;
+        // 그 밖의 커스텀 프로퍼티는 새 어휘를 여는 통로다 — 별칭 하나가 자기 스케일을 열면
+        // 사다리는 이름만 남는다. 값을 읽을 수 없으므로 참조 자체를 거부한다.
+        if (/var\(\s*--/.test(value)) return true;
         // 절대 크기가 하나라도 적혀 있으면 그 값이 판정을 진다. 상대 단위가 섞인 계산 함수
         // (clamp(11px, 2vw, 15px))를 상대 축으로 놓아 주면 그 안의 절대 하한이 게이트를 빠져나간다.
         const sizes = [...value.matchAll(/([0-9.]+)(px|rem)\b/g)].map(([, amount, unit]) =>
@@ -744,8 +780,12 @@ describe("Instrument core design contract", () => {
       // 소비가 통째로 위반으로 잡힌다.
       for (const declaration of cssDeclarations(masked, COLOR_BEARING_PROPERTY_PATTERN)) {
         const stripped = declaration.value.replace(/var\(\s*--[A-Za-z0-9_-]+/g, " ");
-        const named = CHROMATIC_COLOR_KEYWORDS.exec(stripped);
-        if (named) report(declaration.index, named[0]);
+        for (const word of stripped.matchAll(/[A-Za-z]{3,}/g)) {
+          const name = word[0]!.toLowerCase();
+          if (!CSS_NAMED_COLORS.has(name) || ACHROMATIC_NAMED_COLORS.has(name)) continue;
+          report(declaration.index, name);
+          break;
+        }
       }
     }
     expect(violations).toEqual([]);
