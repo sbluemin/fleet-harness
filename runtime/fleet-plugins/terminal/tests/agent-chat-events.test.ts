@@ -516,6 +516,28 @@ describe("background job text passes the same gate as tool results", () => {
     expect(progress).toEqual({ kind: "job-progress", id: "w1", stages: [{ title: "scan …/someone/secret", agents: [] }] });
   });
 
+  it("keeps the report's line structure so markdown survives to the view", () => {
+    // 보고는 칩이 아니라 본문이다 — 공백을 한 칸으로 접으면 제목·목록·코드 블록이 전부
+    // 한 문단으로 뭉개져 마크다운 기호가 원문 그대로 남는다.
+    const report = "## Findings\n\n- **one**: `/repo/src/a.ts`\n- two\n\n\n\nDone.";
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a1", status: "completed", summary: report,
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      summary: "## Findings\n\n- **one**: `./src/a.ts`\n- two\n\nDone.",
+    }));
+  });
+
+  it("still masks and abbreviates inside a multi-line report", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a2", status: "completed",
+      summary: "line one\nkey sk-abcdefghijklmnopqrst\npath /Users/someone/secret/notes.md",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      summary: "line one\nkey sk-…\npath …/secret/notes.md",
+    }));
+  });
+
   it("falls back to the task id when no description arrives", () => {
     expect(chatEventsFromSdkMessage({
       type: "system", subtype: "task_started", task_id: "b3", task_type: "local_bash",

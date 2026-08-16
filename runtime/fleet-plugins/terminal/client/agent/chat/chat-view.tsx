@@ -1191,7 +1191,14 @@ function JobDetail({
         {job.summary !== undefined ? (
           <>
             <div className="agent-chat-kicker">{t("terminal.chat.jobReport")}</div>
-            <p className="agent-chat-detail-report">{job.summary}</p>
+            {/* 보고는 에이전트가 쓴 마크다운이다 — Answer와 같은 공유 컴포넌트로 렌더한다.
+                원문을 그대로 세우면 제목·목록·코드 블록이 전부 기호로 남는다. */}
+            <StreamedMarkdown
+              className="agent-chat-detail-report markdown-body"
+              text={job.summary}
+              streaming={false}
+              language={language}
+            />
           </>
         ) : job.kind !== "workflow" && !job.open ? (
           <div className="agent-chat-work-empty">{t("terminal.chat.jobNoReport")}</div>

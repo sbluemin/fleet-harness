@@ -373,7 +373,11 @@ export function chatEventsFromSdkMessage(message: {
 // ── 백그라운드 잡 매핑 ────────────────────────────────────────────────────────
 
 const MAX_JOB_TITLE_CHARS = 120;
-const MAX_JOB_SUMMARY_CHARS = 400;
+/**
+ * 서브에이전트의 보고는 칩이 아니라 본문이다 — 마크다운 구조를 지닌 채 상세 화면에 펼쳐지므로
+ * 한 줄짜리 상한으로는 문단이 잘린다. 저널 한 항목이 지는 무게로는 넉넉하되 무한하지는 않게 둔다.
+ */
+const MAX_JOB_SUMMARY_CHARS = 8_000;
 const MAX_JOB_AGENT_LABEL_CHARS = 80;
 const MAX_JOB_STAGES = 24;
 const MAX_JOB_AGENTS_PER_STAGE = 64;
@@ -401,10 +405,20 @@ function capTo(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
-/** 잡 표면의 자유 텍스트는 도구 결과와 같은 문을 지난다 — 경로 정규화·축약·자격증명 마스킹. */
+/** 잡 표면의 한 줄 텍스트는 도구 결과와 같은 문을 지난다 — 경로 정규화·축약·자격증명 마스킹. */
 function safeJobText(raw: string, options: ChatEventMapOptions, max: number): string {
   const flat = normalizePathTokens(raw.replace(/\s+/g, " ").trim(), options.cwd);
   return capTo(maskSecrets(abbreviateAbsolutePaths(flat)), max);
+}
+
+/**
+ * 본문으로 펼쳐지는 잡 텍스트. 같은 문을 지나되 줄 구조는 지킨다 — 여기서 공백을 한 칸으로
+ * 접으면 마크다운 보고가 통째로 한 문단이 되어, 제목·목록·코드 블록이 전부 원문 기호로 남는다.
+ */
+function safeJobBody(raw: string, options: ChatEventMapOptions, max: number): string {
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n").map((line) => line.replace(/[^\S\n]+/g, " ").trimEnd());
+  const normalized = normalizePathTokens(lines.join("\n").replace(/\n{3,}/g, "\n\n").trim(), options.cwd);
+  return capTo(maskSecrets(abbreviateAbsolutePaths(normalized)), max);
 }
 
 function jobStartedEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
@@ -476,7 +490,7 @@ function jobEndEvent(message: Readonly<Record<string, unknown>>, options: ChatEv
     kind: "job-end",
     id,
     status,
-    ...(summary !== undefined ? { summary: safeJobText(summary, options, MAX_JOB_SUMMARY_CHARS) } : {}),
+    ...(summary !== undefined ? { summary: safeJobBody(summary, options, MAX_JOB_SUMMARY_CHARS) } : {}),
     ...(readCount(usage?.total_tokens) !== undefined ? { tokens: readCount(usage?.total_tokens) as number } : {}),
     ...(readCount(usage?.tool_uses) !== undefined ? { tools: readCount(usage?.tool_uses) as number } : {}),
     ...(readCount(usage?.duration_ms) !== undefined ? { durationMs: readCount(usage?.duration_ms) as number } : {}),

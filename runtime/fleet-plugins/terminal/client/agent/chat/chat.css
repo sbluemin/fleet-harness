@@ -1351,12 +1351,12 @@
   gap: var(--space-2);
 }
 
-.agent-chat-detail-report {
-  margin: 0;
-  font-size: 12.5px;
-  line-height: 1.6;
+/* 보고는 공유 .markdown-body가 그린다 — 여기서는 챗 밀도만 한 칸 더 좁힌다. 폰트 크기·줄간·
+   줄바꿈 정책은 마크다운 컴포넌트가 소유하므로 다시 선언하지 않는다(선언하면 코드 블록과
+   목록이 본문 규칙을 덮어쓴 채로 그려진다). */
+.agent-chat .agent-chat-detail-report.markdown-body {
+  --font-size-body: 13px;
   color: var(--text-primary);
-  white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
 
