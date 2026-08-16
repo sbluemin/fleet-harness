@@ -1246,6 +1246,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
     });
+    // 헤더를 쓰는 것만으로는 소켓이 흐르지 않는다. 재생할 과거가 없는 세션 — 첫 턴 전에 표면을
+    // 바꾼 경우 — 은 그다음 프레임이 30초 뒤 keepalive라, 브라우저의 `onopen`이 그때까지 뜨지
+    // 않고 화면은 "연결하는 중"에 머문다. 이벤트를 만들지 않는 주석 한 줄을 즉시 흘려 연결
+    // 확립을 그 자리에서 알린다(과거가 있는 세션에서는 replay가 이 역할을 우연히 해 왔다).
+    write(": open\n\n");
     const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
     req.on("close", () => {
       closed = true;
