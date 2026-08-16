@@ -35,6 +35,7 @@
         "expo-camera",
         {
           "cameraPermission": "Fleet uses the camera only to read a Console access link from a QR code.",
+          "microphonePermission": false,
           "recordAudioAndroid": false,
           "barcodeScannerEnabled": true
         }

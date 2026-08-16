@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { fail, run } from "./android-tools.mjs";
@@ -22,6 +23,25 @@ export const ASC_ENV = Object.freeze({
   issuerId: "FLEET_ASC_ISSUER_ID",
   keyBase64: "FLEET_ASC_KEY_BASE64",
 });
+
+/**
+ * codesign은 사람이 읽는 출력(Authority=, TeamIdentifier=)을 stdout이 아니라 stderr로 낸다.
+ * run()은 stdout만 돌려주므로 그대로 쓰면 검사기가 빈 문자열을 보고 올바르게 서명된 IPA를
+ * 거부한다. 두 스트림을 합쳐서 돌려준다.
+ */
+export function runCombined(command, args, options = {}) {
+  const result = spawnSync(command, args, {
+    cwd: options.cwd,
+    env: options.env ?? process.env,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.error) fail(`Could not run ${command}: ${result.error.message}`);
+  const combined = `${result.stdout ?? ""}${result.stderr ?? ""}`;
+  if (result.status !== 0) fail(`${command} exited with status ${result.status}
+${combined}`.trimEnd());
+  return combined;
+}
 
 export function requireXcode(env = process.env, platform = process.platform) {
   if (platform !== "darwin") fail("iOS release builds require macOS with Xcode");

@@ -10,12 +10,11 @@ on:
         description: 빌드할 릴리스 커밋의 git ref/sha (app.json 버전이 이미 bump된 상태)
         required: true
         type: string
+  # 수동 실행에는 ref 입력을 두지 않는다. GitHub은 "Use workflow from"에서 고른 브랜치의
+  # 워크플로 파일을 실행하므로, ref만 채우고 드롭다운을 기본 브랜치로 두면 그 브랜치의
+  # 워크플로(= iOS 잡이 없는 버전)가 돌아 아무것도 배포되지 않는다. 입력을 없애면
+  # "Use workflow from"이 유일한 선택지가 되고 체크아웃도 그 브랜치를 따른다.
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 빌드할 git ref (미지정 시 기본 브랜치)
-        required: false
-        type: string
 
 permissions:
   contents: read

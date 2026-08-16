@@ -13,14 +13,10 @@ export const withFleetIos: ConfigPlugin = (config) => {
   config = withInfoPlist(config, (mod) => {
     const plist = mod.modResults as Record<string, unknown>;
 
-    // fleet:// 딥링크 URL 타입 — 우리가 정확히 한 번 소유한다(중복 제거 후 추가).
-    const existing = Array.isArray(plist.CFBundleURLTypes) ? (plist.CFBundleURLTypes as Array<Record<string, unknown>>) : [];
-    const filtered = existing.filter((entry) => {
-      const schemes = Array.isArray(entry.CFBundleURLSchemes) ? (entry.CFBundleURLSchemes as string[]) : [];
-      return !schemes.includes(FLEET_SCHEME);
-    });
-    filtered.push({ CFBundleURLName: URL_NAME, CFBundleURLSchemes: [FLEET_SCHEME] });
-    plist.CFBundleURLTypes = filtered;
+    // fleet:// 딥링크 URL 타입만 남긴다. Expo는 번들 id(및 exp+slug) 스킴을 스스로 주입하는데,
+    // 그것들은 이 앱이 쓰지 않는 추가 진입점이고 릴리스 검사기도 정확히 ["fleet"]만 허용한다.
+    // 걸러서 덧붙이는 대신 통째로 교체해야 그 주입분이 남지 않는다.
+    plist.CFBundleURLTypes = [{ CFBundleURLName: URL_NAME, CFBundleURLSchemes: [FLEET_SCHEME] }];
 
     // ATS: 임의 로드 금지. WKWebView는 로컬 게이트웨이의 자체서명 인증서를 ServerTrust 챌린지
     // (LocalCertificatePolicy)로만 신뢰하고, RemoteConnection은 NWConnection verify 블록으로

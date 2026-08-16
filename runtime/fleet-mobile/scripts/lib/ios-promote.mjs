@@ -9,6 +9,7 @@ import {
   DEPLOYMENT_TARGET,
   requireXcode,
   requireReleaseSigning,
+  runCombined,
   inspectInfoPlist,
   inspectCodesign,
   verifyReleaseInfoPlist,
@@ -72,17 +73,15 @@ export function buildPromotedIpa(buildType) {
   const archivePath = path.join(iosRoot, "build", "Fleet.xcarchive");
   const exportPath = path.join(iosRoot, "build", "export");
 
-  // 수동 서명은 팀·프로파일·아이덴티티를 모두 명시해야 한다. 셋 다 제공된 프로파일에서
-  // 읽으므로 CI 시크릿 외에 별도 설정이 없다.
+  // 아카이브는 서명하지 않는다. xcodebuild의 CLI 설정은 워크스페이스의 모든 타깃에 적용되는데,
+  // 앱의 App Store 프로파일은 CocoaPods 타깃의 번들 id를 서명할 수 없어 Xcode 26이 하드 실패한다
+  // (시뮬레이터 CI는 CODE_SIGNING_ALLOWED=NO라 이 함정을 만나지 않는다). 서명은 exportArchive가
+  // 앱 타깃에만 프로파일을 매핑해서 수행한다.
   const profile = readProvisioningProfile();
   run("xcodebuild", [
     "-workspace", workspace, "-scheme", scheme, "-configuration", "Release",
     "-destination", "generic/platform=iOS", "-archivePath", archivePath,
-    "archive",
-    "CODE_SIGN_STYLE=Manual",
-    `DEVELOPMENT_TEAM=${profile.teamId}`,
-    `PROVISIONING_PROFILE_SPECIFIER=${profile.uuid}`,
-    "CODE_SIGN_IDENTITY=Apple Distribution",
+    "archive", "CODE_SIGNING_ALLOWED=NO",
   ], { cwd: iosRoot });
 
   const optionsPlist = writeExportOptions(iosRoot, profile);
@@ -128,11 +127,7 @@ export function verifyPromotedIpa(buildType, artifact) {
   const fields = inspectInfoPlist(plistJson);
   verifyReleaseInfoPlist(fields);
 
-  const codesign = inspectCodesign({
-    entitlementsPlistJson: run("codesign", ["-d", "--entitlements", ":-", "--xml", appDir], { capture: true }),
-    verboseOutput: run("codesign", ["-dvv", appDir], { capture: true }),
-  });
-  verifyReleaseSigning(codesign);
+  verifyReleaseSigning(inspectCodesign(readCodesign(appDir)));
 
   const entries = run("unzip", ["-Z1", paths.ipa], { capture: true }).split(/\r?\n/).filter(Boolean);
   verifyEmbeddedBundle(entries);
@@ -212,11 +207,7 @@ function describeSigner(exportPath, ipa) {
   try {
     const workDir = extractApp(ipa);
     const appDir = firstAppDir(workDir);
-    const codesign = inspectCodesign({
-      entitlementsPlistJson: run("codesign", ["-d", "--entitlements", ":-", "--xml", appDir], { capture: true }),
-      verboseOutput: run("codesign", ["-dvv", appDir], { capture: true }),
-    });
-    return verifyReleaseSigning(codesign);
+    return verifyReleaseSigning(inspectCodesign(readCodesign(appDir)));
   } catch {
     return undefined;
   }
@@ -250,4 +241,25 @@ export function readProvisioningProfile(env = process.env) {
   }
   if (!plist.UUID) fail("Provisioning profile has no UUID");
   return { teamId, uuid: plist.UUID, name: plist.Name };
+}
+
+/**
+ * codesign의 두 출력을 검사기가 읽을 수 있는 형태로 모은다. 엔타이틀먼트는 JSON이 아니라
+ * XML plist이므로 plutil로 변환하고, 서명 상세(Authority=)는 stderr에 있으므로 합쳐서 캡처한다.
+ */
+function readCodesign(appDir) {
+  const xml = runCombined("codesign", ["-d", "--entitlements", ":-", "--xml", appDir]);
+  const scratch = path.join(packageRoot, "dist", ".entitlements.plist");
+  mkdirSync(path.dirname(scratch), { recursive: true });
+  writeFileSync(scratch, xml.slice(xml.indexOf("<?xml")));
+  let entitlementsPlistJson;
+  try {
+    entitlementsPlistJson = run("plutil", ["-convert", "json", "-o", "-", scratch], { capture: true });
+  } finally {
+    rmSync(scratch, { force: true });
+  }
+  return {
+    entitlementsPlistJson,
+    verboseOutput: runCombined("codesign", ["-dvv", appDir]),
+  };
 }

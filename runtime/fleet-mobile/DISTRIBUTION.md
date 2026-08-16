@@ -165,7 +165,8 @@ signed with an **Apple Distribution** identity (never a development identity) an
 3. **Provisioning profile** — create an **App Store** distribution profile for that App ID and
    certificate; download the `.mobileprovision`.
 4. **App Store Connect** — create the app record (name Fleet, the bundle id) and a TestFlight internal
-   tester group (internal testers need no beta review and install immediately).
+   tester group. Internal testing skips beta review, but a green workflow does **not** mean the app
+   is installable yet — see "After the upload" below.
 5. **ASC API key** — App Store Connect → Integrations → App Store Connect API → generate a key with
    the App Manager role; download `AuthKey_<KEY_ID>.p8` (it cannot be re-downloaded — store it safely).
 6. **GitHub secrets** (the CI reads these names verbatim):
@@ -183,8 +184,36 @@ The iOS distribution job lives in `.github/workflows/mobile-release.yml` (`distr
 on `macos-15`, selects an Expo-compatible Xcode (26.x / Swift 6.2, which the
 `patches/expo-modules-jsi@57.0.4.patch` makes buildable), materializes the certificate into a
 throwaway keychain and the profile into place, runs `ios:build:release` then `ios:distribute`, and
-wipes the signing material on exit. Trigger it manually via **workflow_dispatch** for the first
-TestFlight upload, or let Stable Release call it on a mobile-changed release once the variable is set.
+wipes the signing material on exit.
+
+For the first upload, run it by hand — and note which control actually selects the workflow:
+
+1. **Actions → Mobile Release → Run workflow.**
+2. Set **"Use workflow from"** to the branch that carries the iOS job. GitHub executes the workflow
+   file from *that* branch, not from the branch you check out; leaving it on the default branch runs
+   a `mobile-release.yml` with no `distribute-ios` job, so the run goes green and uploads nothing.
+   (`gh workflow run mobile-release.yml --ref <branch>` does the same thing.)
+3. Confirm the job **"Build and distribute iOS (TestFlight)"** appears in the run. If it is missing,
+   either the branch is wrong or `FLEET_MOBILE_IOS_DISTRIBUTION` is not `true`.
+
+Once the variable is set, Stable Release also calls this workflow on a mobile-changed release.
+
+### After the upload
+
+A successful `ios:distribute` means App Store Connect accepted the binary, not that anyone can
+install it. Three things still gate the iPhone:
+
+- **Processing.** The build appears in TestFlight as *Processing* for roughly 5–15 minutes. It cannot
+  be assigned to a group until that finishes.
+- **Export compliance.** A processed build usually lands on *Missing Compliance* and is not
+  distributable until the encryption question is answered (TestFlight tab → the build → Manage).
+  Fleet speaks only standard HTTPS/TLS, which is normally exempt; answering once per build clears it,
+  and setting `ITSAppUsesNonExemptEncryption` in the Info.plist would stop the prompt entirely.
+- **Tester access.** The Apple ID signed into the iPhone must be a user on the App Store Connect
+  team and a member of the internal testing group, and the processed build has to be assigned to
+  that group. Adding the group is not enough on its own; check the build is listed under it.
+
+Then install the TestFlight app on the iPhone, sign in with that Apple ID, and the build appears.
 
 ### Manual version bump
 
