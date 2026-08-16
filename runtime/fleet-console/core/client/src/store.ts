@@ -646,11 +646,27 @@ export function openQuickLaunch(): void {
 /**
  * 행선지를 들고 컴포저를 연다 — 패널 본문의 회신 버튼처럼 "이 Operation에게"라는 의도가 이미
  * 정해진 진입점이 쓴다. 시드는 의도일 뿐 결정이 아니다: 멘션 가능 여부·중복 부착 판정은
- * 컴포저가 자기 규칙으로 내리므로, 여기서는 보내려는 대상만 남기고 openQuickLaunch에 위임한다.
+ * 컴포저가 자기 규칙으로 내린다. 남은 초안은 이 회차의 주소가 아니다 — 컴포저가 시드를 읽는
+ * 순간 버리고 행선지만 심는다. 시드와 열림은 한 번의 전이다.
  */
 export function openQuickLaunchForOperation(operationId: string): void {
-  setState({ quickLaunchMentionSeed: operationId });
-  openQuickLaunch();
+  // 시드와 열림을 한 번에 올린다. 두 번 emit하면 시드만 있는 중간 렌더가 생기고, 이미 열린
+  // 컴포저에서는 열림 전이가 없어 시드가 소비되지 않은 채 남을 수 있다.
+  if (isQuickLaunchDocked()) {
+    setState({
+      quickLaunchMentionSeed: operationId,
+      quickLaunchExpandRequest: state.quickLaunchExpandRequest + 1,
+      quickLaunchError: null,
+      quickLaunchErrorShortenBy: null,
+    });
+    return;
+  }
+  setState({
+    quickLaunchMentionSeed: operationId,
+    quickLaunchOpen: true,
+    quickLaunchError: null,
+    quickLaunchErrorShortenBy: null,
+  });
 }
 
 export function consumeQuickLaunchMentionSeed(): void {

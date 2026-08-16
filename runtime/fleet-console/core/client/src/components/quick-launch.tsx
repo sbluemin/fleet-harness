@@ -256,11 +256,40 @@ export function QuickLaunch() {
   // 컴포저가 열리는 순간의 행선지를 한 곳에서 정한다. 진입점은 둘이고 우선순위가 있다:
   // 명시 행선지(패널 회신 버튼이 store에 건넨 시드)가 먼저고, 없을 때만 바의 포커스 옵트인이
   // 말한다 — 그 패널의 버튼을 직접 누른 지시가 상시 규칙보다 구체적이다. 시드는 옵트인 여부를
-  // 묻지 않는다(버튼이 곧 그 회차의 동의다). 다만 남은 초안·이미 붙은 멘션·쓰고 있던 문면은
-  // 두 경로가 똑같이 지킨다 — 빈 컴포저가 주소를 못 받는 것보다 쓰다 만 문장이 다른 곳으로
-  // 실려 가는 것이 나쁘다. 시드는 읽는 즉시 비운다: 남기면 다음 열림이 지난 행선지를 되쓴다.
+  // 묻지 않는다(버튼이 곧 그 회차의 동의다). 시드는 남은 초안을 지키지 않는다 — 회신 버튼은
+  // 이전 문장을 이어 쓰는 자리가 아니라 그 Operation에게 새로 보내는 자리다. 이미 붙은
+  // 멘션·쓰고 있던 문면 가드는 포커스 옵트인에만 산다. 시드는 읽는 즉시 비운다: 남기면
+  // 다음 열림이 지난 행선지를 되쓴다.
   const mentionSeedRef = useRef(state.quickLaunchMentionSeed);
   mentionSeedRef.current = state.quickLaunchMentionSeed;
+  // 회신 시드가 열면 남은 초안·첨부를 거둔다. 미리보기 URL과 서버 미발사분은 슬롯을 비우기
+  // 전에 회수한다 — store에서 먼저 지우면 회수할 자취가 사라진다.
+  const discardComposerContents = useCallback(() => {
+    const slot = getState().quickLaunchDraftAttachments ?? [];
+    const discarded: readonly ComposerAttachment[] = [
+      ...slot.map((attachment) => ({
+        key: attachment.id,
+        id: attachment.id,
+        name: attachment.name,
+        previewUrl: attachment.previewUrl,
+        uploading: false,
+      })),
+      ...attachmentsRef.current.filter((attachment) => !slot.some((kept) => kept.previewUrl === attachment.previewUrl)),
+    ];
+    for (const attachment of discarded) {
+      URL.revokeObjectURL(attachment.previewUrl);
+      if (attachment.id !== null) void attachmentPluginRef.current?.discardLaunchAttachment?.(attachment.id).catch(() => {});
+      else canceledUploadKeysRef.current.add(attachment.key);
+    }
+    attachmentsRef.current = [];
+    promptRef.current = "";
+    setAttachments([]);
+    setPrompt("");
+    consumeQuickLaunchDraft();
+    // 시드 오픈은 새 회차다 — 이전 전달의 성공 콜백이 방금 비운 자리를 finishSubmission으로
+    // 닫지 못하게 에포크를 올린다(모달 열림 전이·거절 복원과 같은 계약).
+    composerEpochRef.current += 1;
+  }, []);
   const resolveOpeningMention = useCallback((input: {
     readonly addressFocused: boolean;
     readonly leftoverDraft: boolean;
@@ -268,21 +297,22 @@ export function QuickLaunch() {
     readonly promptOccupied: boolean;
   }): OperationSearchEntry | null => {
     const seed = mentionSeedRef.current;
-    if (seed !== null) consumeQuickLaunchMentionSeed();
-    const guard = {
+    if (seed !== null) {
+      mentionSeedRef.current = null;
+      consumeQuickLaunchMentionSeed();
+      discardComposerContents();
+      return resolveMentionEntry(getState(), messageableTypesByPluginRef.current, seed);
+    }
+    if (input.addressFocused && shouldApplyFocusedMention({
+      prefOn: mentionFocusedRef.current,
       leftoverDraft: input.leftoverDraft,
       mentionAlreadySet: input.mentionAlreadySet,
       promptOccupied: input.promptOccupied,
-    };
-    if (seed !== null && shouldApplyFocusedMention({ prefOn: true, ...guard })) {
-      const addressed = resolveMentionEntry(getState(), messageableTypesByPluginRef.current, seed);
-      if (addressed) return addressed;
-    }
-    if (input.addressFocused && shouldApplyFocusedMention({ prefOn: mentionFocusedRef.current, ...guard })) {
+    })) {
       return resolveFocusedMention(getState(), messageableTypesByPluginRef.current, visibleTriageStageOperationId());
     }
     return null;
-  }, []);
+  }, [discardComposerContents]);
 
   // ── `ultracode` 인식 ────────────────────────────────────────────────────────
   // 무장은 문면에서 파생한다. 멘션 행선지가 있어도 그대로 성립한다 — 이 단어는 실행 좌표가 아니라
@@ -345,17 +375,21 @@ export function QuickLaunch() {
     const rememberedTheater = remembered.theaterId !== null && theaters.some((candidate) => candidate.id === remembered.theaterId)
       ? remembered.theaterId
       : null;
-    // 거절된 실행이 남긴 초안이 있으면 그것으로 되살린다(store가 되열 때 실어 준다).
-    const restoredPrompt = state.quickLaunchDraft ?? "";
+    // 회신 말풍선이 행선지를 들고 오면 남은 초안은 이 회차의 문면이 아니다 — 복원하면 시드가
+    // 주소를 못 받고, 이전 문장이 다른 Operation으로 실려 간다. 일반 재오픈만 초안을 되살린다.
+    // 폐기는 resolveOpeningMention이 시드를 읽는 자리에서 한다. 여기서 복원하면 그 폐기가
+    // 방금 살린 문장을 다시 거둔다.
+    const discardDraft = mentionSeedRef.current !== null;
+    const restoredPrompt = discardDraft ? "" : (state.quickLaunchDraft ?? "");
     setPrompt(restoredPrompt);
     // 지난 세션이 남긴 칩 중 초안 슬롯으로 돌아오지 않는 것을 먼저 거둔다 — 미리보기 URL과
     // 첨부 칩은 초안 슬롯의 보존분과, 컴포저가 닫힌 동안에도 상태에 남아 있던 미보존분(닫힘
     // 시점에 업로드 중이던 칩과 그 뒤 완료된 칩)을 병합해 되살린다 — 텍스트 초안은 살아남는데
     // 늦게 끝난 이미지만 조용히 사라지면 보존 계약이 반쪽이 된다. 제출은 finishSubmission이
-    // 상태를 비우므로 여기로 이월되지 않는다.
-    const restoredPreviews = new Set((state.quickLaunchDraftAttachments ?? []).map((attachment) => attachment.previewUrl));
-    const carried = attachmentsRef.current.filter((attachment) => !restoredPreviews.has(attachment.previewUrl));
-    setAttachments([
+    // 상태를 비우므로 여기로 이월되지 않는다. 시드 오픈은 복원하지 않는다.
+    const restoredPreviews = new Set((discardDraft ? [] : (state.quickLaunchDraftAttachments ?? [])).map((attachment) => attachment.previewUrl));
+    const carried = discardDraft ? [] : attachmentsRef.current.filter((attachment) => !restoredPreviews.has(attachment.previewUrl));
+    setAttachments(discardDraft ? [] : [
       ...(state.quickLaunchDraftAttachments ?? []).map((attachment) => ({
         key: attachment.id,
         id: attachment.id,
@@ -365,7 +399,7 @@ export function QuickLaunch() {
       })),
       ...carried,
     ]);
-    consumeQuickLaunchDraft();
+    if (!discardDraft) consumeQuickLaunchDraft();
     setPopover(null);
     setSubmitting(false);
     setMentionToken(null);
@@ -374,7 +408,7 @@ export function QuickLaunch() {
     // 모달 열림만 여기서 주소한다. 도킹 첫 마운트·설정에서 돌아온 재마운트는 invoke가 아니다.
     // 접힌 바에 칩을 미리 심으면 펼치기도 전에 행선지가 바뀐다. 도킹은 expandAndFocus가 맡는다.
     const leftoverDraft = restoredPrompt.trim().length > 0
-      || (state.quickLaunchDraftAttachments?.length ?? 0) > 0
+      || (discardDraft ? 0 : (state.quickLaunchDraftAttachments?.length ?? 0)) > 0
       || carried.length > 0;
     const openingMention = pinned ? null : resolveOpeningMention({
       addressFocused: true,
@@ -398,6 +432,25 @@ export function QuickLaunch() {
     setStartView(remembered.view);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, state.activeTheaterId, theaters]);
+
+  // 이미 열린 모달에 시드가 도착하면 열림 전이가 없다. 회신 버튼은 그 회차의 주소이므로
+  // 쓰고 있던 문면도 버리고 행선지를 심는다. 시드는 resolveOpeningMention이 읽는 즉시
+  // 비우므로, 열림 전이가 같은 틱에 소비한 뒤에는 여기가 다시 주소하지 않는다.
+  // 도킹은 접힌 바에 칩을 미리 심지 않는다 — expandAndFocus가 펼침에서 맡는다.
+  useEffect(() => {
+    if (!open || pinned || !wasOpenRef.current || mentionSeedRef.current === null) return;
+    const addressed = resolveOpeningMention({
+      addressFocused: true,
+      leftoverDraft: false,
+      mentionAlreadySet: false,
+      promptOccupied: false,
+    });
+    setMentionTarget(addressed === null ? null : { kind: "operation", entry: addressed });
+    setMentionToken(null);
+    setMentionErrorKey(null);
+    setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandActiveIndex(0);
+  }, [open, pinned, resolveOpeningMention, state.quickLaunchMentionSeed]);
 
   // 닫힘 전이에서 발사되지 않은 초안을 store에 남긴다. 경로별(Escape·오버레이·Mod+J·고정 해제)로
   // 저장을 심으면 하나가 빠질 때마다 초안이 새므로, 전이 한 곳이 모든 닫힘을 대표한다.
@@ -452,23 +505,26 @@ export function QuickLaunch() {
   // 것이라 주소하지 않는다 — 비운 멘션을 핀이 도로 심거나, 방금 켠 옵트인이 현재 문면을 덮지 않는다.
   const expandAndFocus = useCallback((input: { readonly addressFocused?: boolean } = {}) => {
     setCollapsed(false);
-    // 물러남(focus-out)이 비운 커맨드 상태를 유지된 문면에서 되살린다 — 접힘/펼침 왕복이
-    // "/model"을 프로즈로 둔갑시키지 않는다(열림 전이의 초안 재파싱과 같은 계약).
-    setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
-    setCommandActiveIndex(0);
+    const seeded = mentionSeedRef.current !== null;
     if (input.addressFocused === true) {
       const addressed = resolveOpeningMention({
         addressFocused: true,
         leftoverDraft: false,
-        mentionAlreadySet: mentionTargetRef.current !== null,
-        promptOccupied: promptRef.current.trim().length > 0 || attachmentsRef.current.length > 0,
+        mentionAlreadySet: seeded ? false : mentionTargetRef.current !== null,
+        promptOccupied: seeded ? false : (promptRef.current.trim().length > 0 || attachmentsRef.current.length > 0),
       });
       if (addressed) {
         setMentionTarget({ kind: "operation", entry: addressed });
         setMentionToken(null);
         setMentionErrorKey(null);
+      } else if (seeded) {
+        setMentionTarget(null);
       }
     }
+    // 시드가 초안을 비운 뒤에는 빈 문면을 재파싱한다. 접힘/펼침 왕복은 유지된 문면에서
+    // 커맨드를 되살린다 — "/model"을 프로즈로 둔갑시키지 않는다.
+    setCommandInput(readCommandInput(promptRef.current, promptRef.current.length));
+    setCommandActiveIndex(0);
     window.setTimeout(() => inputRef.current?.focus(), 0);
   }, [resolveOpeningMention]);
 

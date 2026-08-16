@@ -195,8 +195,8 @@ export interface ClientComposerCapability {
    *
    * `mentionOperationId` addresses the composer at that Operation, exactly as typing an `@` mention
    * does. The host still applies its own addressing rules — an Operation that cannot be messaged,
-   * or is waiting on its own prompt, is left unaddressed — and an existing address is never
-   * replaced, so a request that arrives while the author is mid-sentence cannot redirect it.
+   * or is waiting on its own prompt, is left unaddressed. A mention seed starts a fresh address:
+   * leftover unsent draft from a previous close is discarded, not preserved across this open.
    */
   open(options?: { readonly mentionOperationId?: string }): void;
 }
