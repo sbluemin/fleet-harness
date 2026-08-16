@@ -162,6 +162,25 @@ describe("chat log scroll anchor", () => {
     expect(log.scrollTop).toBe(200);
   });
 
+  // 성장 뒤 바닥 거리가 남으면 War Room 승격처럼 패널이 커질 때 restorePlace 가
+  // 성장 전 거리로 scrollTop 을 꼬리 쪽으로 끌어올린다(200 → 800).
+  it("refreshes the resize distance after unpinned stream growth", () => {
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 400 });
+    growDraft("x".repeat(80));
+    expect(log.scrollTop).toBe(200);
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 600 });
+    act(() => { resizeCallbacks.forEach((fire) => fire()); });
+
+    expect(log.scrollTop).toBe(0);
+    expect(log.scrollTop).not.toBe(800);
+  });
+
   it("follows the bottom when the stream grows while pinned", () => {
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });

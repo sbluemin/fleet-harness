@@ -108,8 +108,13 @@ export function AgentChatView({
   }, [restoreFollow, restorePlace]);
 
   // 스트림 성장은 팔로우일 때만 바닥으로 간다. 언핀이면 scrollTop 을 그대로 둔다.
+  // 다만 그때의 바닥 거리를 갱신하지 않으면, 이후 리사이즈가 성장 전 거리로
+  // restorePlace 를 돌려 읽던 줄을 꼬리 쪽으로 끌어올린다.
   React.useLayoutEffect(() => {
     restoreFollow();
+    const log = logRef.current;
+    if (!log || nearBottomRef.current || log.clientHeight === 0) return;
+    bottomDistanceRef.current = Math.max(0, log.scrollHeight - log.scrollTop - log.clientHeight);
   }, [restoreFollow, scrollSignal, working, state.turns.length]);
 
   // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
