@@ -5,6 +5,47 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-08-16
+
+### fleet-cli
+
+#### Fixed
+- Retry transient Grok server and socket failures before any caller-visible output instead of ending the model turn with an incomplete-response API error.
+
+### fleet-console
+
+#### Added
+- Answer the agent inside the chat view. When the model stops to ask which way to go, the question stands as a card where it was asked, so you can pick an option or type an answer of your own, and the turn continues from your choice. A plan the model submits for review arrives the same way: approve it, or ask for a change and it comes back revised.
+- Show a waiting operation as waiting. While the chat view holds a question, the sidebar chip, War Room tile, and map dot read it as awaiting input rather than working, so a question you have not opened still finds you. The session waits until you answer or skip it, and never times out on its own.
+- Chat Mode now tracks background work (subagents, dynamic workflows and background shells) on its own clock. A backgrounded call keeps its own card instead of folding away, and a strip above the reply control counts what is still running. Clicking that strip opens the work surface beside the conversation rather than in place of it: a column on a wide panel, a drawer on a narrow one, resizable either way. A dynamic workflow opens into its stage tree, one row per agent with the identity it was pinned to. A subagent opens into the report it returned plus the trail of tools it actually called, and a background shell opens into the tail of what it printed.
+- Chat Mode can stop a turn that is going the wrong way. The control stands next to the reply button while a turn is in flight, and the turn it closes reads as stopped rather than failed, keeping whatever the model had already written. Background work that was already started keeps running, and the work surface still reports it.
+- Chat Mode now runs under the same Fleet instructions, skills, and gateway tools a terminal Operation gets, so a session answers the same way on either surface.
+- Keep your place in a streaming chat log, and jump back to the live tail with a Follow chip.
+- Usage limits shows OpenCode Go again, reading account-wide session, weekly, and monthly percents from OpenCode's official usage API.
+
+#### Changed
+- Give the Session Analyst panel its own caption bar, so it lines up with the panel beside it instead of leaving an empty strip above it and squared-off top corners. Its identity, state, Reset, and the Chat/Artifacts switch move into that bar and stop covering the first line of the conversation.
+- Rebuild the Session Analyst composer as one surface: the model, effort, and slash-command controls now sit inside the prompt box instead of a separate strip above it, control labels are large enough to read, and effort uses the same colour ladder as Quick Launch.
+- Switching an Operation between the terminal and Chat Mode now continues one conversation file instead of copying it back and forth, so neither surface can overwrite what the other wrote.
+- Refocus Ledger on Claude Code model usage with native Anthropic and Gateway-provider attribution, static OpenRouter cost estimates, merged Fast variants, and model detail reserved for the Today window.
+- Show the Codex reset credits as a compact chip, and hide the line entirely when no credit is held.
+- Hide the Analyst and Chat view chips on a War Room card, and let a chat-mode card use the space those chips leave. They return on the staged panel, where they can be used.
+
+#### Fixed
+- Show a gateway model in the Session Analyst model list right after you add it in Settings. The list was read once per Operation and never again, so a model added later stayed missing until the page was reloaded.
+- A turn that left work running no longer closes with a check mark on it. The fold now says how many jobs are still running, and a job that was cut short before finishing says so instead of reading as completed.
+- A collapsed row of tool calls now looks like something you can open before you hover it. The tool's name reads a step brighter than the words around it, and the chevron that opens the row is large enough to see at rest.
+- When background work finishes and the model answers again, that answer opens its own turn instead of replacing the answer of the turn that started the work.
+- Chat Mode no longer holds a live stream for a parked, minimized, or hidden panel. Only a body the user can read keeps its EventSource, so close and Resume requests are not starved behind off-screen chat subscriptions. War Room deck tiles stay subscribed because their bodies are painted.
+- Aide Bori cheers when a panel finishes, then returns to idle instead of freezing mid-pose.
+- Keep inertial phone scrolling from typing malformed mouse coordinates into terminal prompts.
+- Retry transient Grok server and socket failures before any caller-visible output instead of ending the model turn with an incomplete-response API error.
+- In War Room, a focused deck panel that starts waiting now comes up on stage without a pick.
+- Clicking empty space in War Room now unfocuses a focused panel that is not on stage, the same way an empty Cruise map click does.
+
+#### Removed
+- Drop the Analyst composer's provider control while only one provider is offered. It listed a single unchangeable entry, and the model menu already covers every native and gateway model.
+
 ## [1.61.0] - 2026-08-16
 
 ### fleet-cli
