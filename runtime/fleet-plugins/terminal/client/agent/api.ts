@@ -1,4 +1,5 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
+import { readAgentChatJobDetailPayload, type AgentChatJobDetail } from "./chat/chat-events.js";
 import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
@@ -178,6 +179,42 @@ export async function answerAgentChatAsk(
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
   }
+}
+
+/**
+ * 도는 턴을 끊는다.
+ *
+ * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살고, 잡 표면이 그것을 그대로
+ * 말한다 — 잡 하나만 멈추는 제어 경로는 SDK에 없다(0.3.212 확인).
+ */
+export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+/**
+ * 잡 하나의 상세 — 서브에이전트의 도구 발자국, 또는 셸 출력의 꼬리.
+ *
+ * 스트림이 아니라 요청인 이유는 크기다. 사용자가 그 잡을 연 그때만 한 번 읽는다.
+ * 404는 "아직/이미 없음"이며 오류가 아니다 — 호출부가 빈 상태를 그리게 null을 돌려준다.
+ */
+export async function readAgentChatJobDetail(
+  sessionId: string,
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<AgentChatJobDetail | null> {
+  const query = `?jobId=${encodeURIComponent(jobId)}`;
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-job${query}`, { signal });
+  if (response.status === 404 || response.status === 409) return null;
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  return readAgentChatJobDetailPayload(payload);
 }
 
 export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {

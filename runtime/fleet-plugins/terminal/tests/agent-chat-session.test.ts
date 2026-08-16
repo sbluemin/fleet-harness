@@ -727,3 +727,153 @@ describe("AgentChatRegistry — journal weight", () => {
     await registry.disposeAll();
   });
 });
+
+/**
+ * 사용자가 도는 턴을 끊는 자리.
+ *
+ * 이 축의 요점은 결말의 이름이다 — 중지는 실패가 아니다. 원장이 둘을 같은 자리에 두면 사용자가
+ * 자기가 누른 버튼의 결과를 고장으로 읽는다.
+ */
+describe("AgentChatRegistry — stopping a turn", () => {
+  /** 스스로 끝나지 않는 턴. close()가 이터레이터를 풀어 주는 실제 런의 동작을 그대로 흉내 낸다. */
+  function createHangingSdkFactory() {
+    const configDir = tempDir("chat-stop-");
+    const closes: number[] = [];
+    let started = 0;
+    const startTurn = vi.fn(async () => {
+      const index = started++;
+      let release: (() => void) | null = null;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      return {
+        close: () => {
+          closes.push(index);
+          release?.();
+        },
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              await gate;
+              return { done: true as const, value: undefined };
+            },
+          };
+        },
+      };
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      startTurn,
+      dispose: vi.fn(async () => {}),
+    }));
+    return { factory: factory as never, startTurn, closes, startedCount: () => started };
+  }
+
+  it("closes the run and closes the turn as stopped, not failed", async () => {
+    const transcriptPath = writeTranscript("sess-stop", []);
+    const { factory, closes } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-1", () => seedFor(transcriptPath));
+
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("go");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+
+    expect(session.stopTurn()).toBe(true);
+    await drainTurn(registry, "op-stop-1");
+
+    // 중지 경로와 턴 종료의 finally가 각각 close한다. 계약상 두 번 불러도 안전하고, 둘 중
+    // 어느 쪽만 남아도 슬롯이 반납되어야 하므로 이 중복은 의도된 것이다 — 세는 것은 "끊겼는가"다.
+    expect(closes.length).toBeGreaterThanOrEqual(1);
+    const end = seen.map((entry) => entry.event).find((event) => event.kind === "turn-end");
+    expect(end).toEqual({ kind: "turn-end", ok: false, stopped: true });
+    // 중지는 오류 줄을 세우지 않는다 — 사용자가 스스로 한 일에 고장 표식을 붙이지 않는다.
+    expect(kinds(seen)).not.toContain("error");
+    await registry.disposeAll();
+  });
+
+  it("drops turns that were queued behind the stopped one", async () => {
+    // 큐에 밀려 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다.
+    const transcriptPath = writeTranscript("sess-stop-queue", []);
+    const { factory, startedCount } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-2", () => seedFor(transcriptPath));
+
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    session.send("second");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+
+    expect(session.stopTurn()).toBe(true);
+    await drainTurn(registry, "op-stop-2");
+
+    expect(startedCount()).toBe(1);
+    const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
+    expect(dispatches).toHaveLength(1);
+    await registry.disposeAll();
+  });
+
+  it("refuses when there is no turn to stop", async () => {
+    // 끊을 것이 없는데 성공을 돌려주면 화면이 멈춤을 그리고 아무 일도 일어나지 않는다.
+    const transcriptPath = writeTranscript("sess-stop-idle", []);
+    const { factory } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-3", () => seedFor(transcriptPath));
+    expect(session.stopTurn()).toBe(false);
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 잡 상세를 읽는 자리.
+ *
+ * 셸 출력의 좌표는 우리가 재구성할 수 없다 — 실측에서 그 파일은 격리 config dir이 아니라 CLI가
+ * 고른 **별개의 임시 뿌리** 아래 앉았다. `task_notification.output_file`이 알려 주는 경로가
+ * 유일한 권위이고, 그 경로는 호스트 절대 경로라 브라우저로 나가서는 안 된다.
+ */
+describe("AgentChatRegistry — job detail", () => {
+  it("reads a shell tail from the path the notification announced, not a reconstructed one", async () => {
+    const transcriptPath = writeTranscript("sess-detail", []);
+    // 알림이 가리키는 파일을 config dir 바깥에 둔다 — 재구성한 경로로는 절대 닿을 수 없는 자리다.
+    const outputRoot = tempDir("chat-task-out-");
+    const outputFile = path.join(outputRoot, "b7chatty.output");
+    writeFileSync(outputFile, "tick 1\ntick 2\ntick 3\n");
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b7chatty", description: "loop", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b7chatty", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-detail-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-detail-1");
+
+    const detail = await session.readJobDetail("b7chatty");
+    expect(detail).toEqual({ kind: "shell", tail: "tick 1\ntick 2\ntick 3", truncated: false });
+
+    // 저널 어디에도 그 절대 경로가 실리지 않는다 — 브라우저로 나가는 것은 저널이다.
+    const journal: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => journal.push(entry));
+    expect(JSON.stringify(journal)).not.toContain(outputRoot);
+    await registry.disposeAll();
+  });
+
+  it("refuses a job coordinate the session never issued", async () => {
+    // 브라우저가 건네는 유일한 값이다. SDK가 발급한 적 없는 좌표는 파일 시스템에 닿기 전에 막힌다.
+    const transcriptPath = writeTranscript("sess-detail-guard", []);
+    const { factory } = createFakeSdkFactory([{ messages: [] }]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-detail-2", () => seedFor(transcriptPath));
+    expect(await session.readJobDetail("../../etc/passwd")).toBeNull();
+    expect(await session.readJobDetail("never-issued")).toBeNull();
+    await registry.disposeAll();
+  });
+});

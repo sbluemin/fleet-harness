@@ -1590,18 +1590,57 @@ describe("Instrument core design contract", () => {
     const chatLogStripBlock = chat.match(/^\.agent-chat-log\.has-strip \{[^}]*\}/m)?.[0] ?? "";
     expect(chatLogStripBlock).toContain("calc(var(--space-3) + 45px + 38px)");
     expect(chatView0).toContain("has-strip");
-    // 살아 있는 잡이 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
-    expect(chatView0).toContain("openJobs.length > 0 ? (");
-    // 탭의 활성은 위치 채널(brass)이고, 살아 있는 개수는 상태 채널(aurora)이다. 두 축을 섞으면
-    // "어디에 있는가"와 "무엇이 도는가"가 같은 색으로 말하게 된다.
-    const chatTabOnBlock = chat.match(/^\.agent-chat-tab\.is-on \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatTabOnBlock).toContain("--brass");
-    for (const signal of ["--aurora", "--positive", "--warn", "--coral"]) {
-      expect(chatTabOnBlock).not.toContain(signal);
+    // 잡이 하나도 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
+    // 스트립은 두 형태로 서고(도는 중 · 다 끝남), 둘 다 잡이 있을 때만 선다.
+    expect(chatView0).toContain("!workOpen && openJobs.length > 0 ? (");
+    expect(chatView0).toContain("!workOpen && hasJobs && openJobs.length === 0 ? (");
+    // 그리고 두 형태 모두 로그 바닥 여백을 함께 가진다 — 한쪽만 빼면 마지막 줄이 알약 뒤에 갇힌다.
+    expect(chatView0).toContain("agent-chat-log${!workOpen && hasJobs ? \" has-strip\" : \"\"}");
+    // 탭은 폐기됐다. 두 면을 갈아 끼우면 대화가 통째로 사라지는데, 백그라운드 작업은 대화를
+    // 대신하는 것이 아니라 대화 **옆에서** 동시에 돈다 — 하나를 고르게 만들면 무엇이 도는지
+    // 보려고 무엇을 물었는지를 잃는다. 스트립 하나가 유일한 문이고, 문은 면을 나란히 연다.
+    expect(chat).not.toContain(".agent-chat-tab");
+    expect(chatView0).not.toContain('role="tablist"');
+    // 대화 면은 어떤 경로로도 숨지 않는다. 이 표면 전체가 존재하는 이유가 그것이다.
+    expect(chatView0).not.toContain("agent-chat-log${view");
+    const chatSplitBlock = chat.match(/^\.agent-chat-split \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatSplitBlock).toContain("flex-direction: row;");
+    // 컬럼이 서랍으로 접히는 기준은 **패널 폭**이다. 뷰포트로 가르면 넓은 창 안의 좁은 덱
+    // 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다.
+    expect(chatRootBlock).toContain("container-type: inline-size;");
+    expect(chat).toContain("@container (max-width: 719px)");
+    // 쉬는 스트립은 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 쉬는 상태에는 그 사실이 없다.
+    const chatStripRestBlock = chat.match(/^\.agent-chat-strip\.is-rest \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStripRestBlock).toContain("color: var(--text-tertiary);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatStripRestBlock).not.toContain(signal);
     }
-    const chatTabBadgeBlock = chat.match(/^\.agent-chat-tab-badge \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatTabBadgeBlock).toContain("color: var(--aurora);");
-    expect(chatTabBadgeBlock).not.toContain("--brass");
+    // 중지 버튼은 행동을 제안하는 컨트롤이지 상태 보고가 아니다. coral을 쓰면 "무언가 잘못됐다"로
+    // 읽히는데, 이 버튼이 서 있다는 것은 정상적으로 일이 돌고 있다는 뜻이다.
+    const chatStopBlock = chat.match(/^\.agent-chat-stop \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStopBlock).toContain("position: absolute;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatStopBlock).not.toContain(signal);
+    }
+    // 중지는 실패가 아니다 — 사용자가 스스로 끊은 결말에 coral을 붙이면 자기가 누른 버튼의
+    // 결과를 고장으로 읽는다. 성공도 아니므로 positive도 아니고, 남는 것은 중립 잉크다.
+    const chatFoldStoppedBlock = chat.match(/^\.agent-chat-fold-stopped \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFoldStoppedBlock).toContain("var(--text-secondary)");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatFoldStoppedBlock).not.toContain(signal);
+    }
+    // 눌리는 집계 줄은 쉬는 상태에서도 눌린다고 말해야 한다. 이전에는 9px --hairline-strong이라
+    // 안 눌리는 줄과 사실상 구별되지 않았다(두 줄이 같은 클래스·같은 활자·같은 색이고 차이는
+    // 이 글리프 하나뿐이다). 어포던스는 꺾쇠가, 가독성은 이름이 각각 진다 — 섞으면 "진한 이름 =
+    // 눌림"이라는 거짓 규칙이 생기고, 이름 있는 정적 줄이 거짓 어포던스를 갖는다.
+    const chatTallyChevBlock = chat.match(/^\.agent-chat-tally-chev \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyChevBlock).toContain("color: var(--text-tertiary);");
+    expect(chatTallyChevBlock).not.toContain("--hairline-strong");
+    const chatTallyNameBlock = chat.match(/^\.agent-chat-tally-name \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyNameBlock).toContain("color: var(--text-secondary);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatTallyNameBlock).not.toContain(signal);
+    }
     // 잡의 종류는 상태가 아니다 — 글리프와 모노 라벨이 가르고, 어떤 신호 토큰도 쓰지 않는다.
     const chatJobGlyphBlock = chat.match(/^\.agent-chat-job-glyph \{[^}]*\}/m)?.[0] ?? "";
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {

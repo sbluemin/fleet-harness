@@ -4,8 +4,8 @@ branch: chat-background-work
 
 ### fleet-console
 #### Added
-- Chat Mode now tracks background work (subagents, dynamic workflows and background shells) on its own clock. A backgrounded call keeps its own card instead of folding away, a strip above the reply control counts what is still running, and a Work tab lists every job with the model, tokens and duration behind it. A dynamic workflow opens into its stage tree, one row per agent with the identity it was pinned to, and a subagent opens into the report it returned.
-  ko: 채팅 모드가 백그라운드 작업(서브에이전트·다이나믹 워크플로·백그라운드 셸)을 자기 시계로 추적합니다. 백그라운드로 넘어간 호출은 접히지 않고 자기 카드를 지키고, 회신 컨트롤 위의 줄이 아직 도는 작업 수를 세며, 작업 탭이 모델·토큰·소요 시간과 함께 전체 목록을 보여 줍니다. 다이나믹 워크플로는 단계 트리로 펼쳐져 에이전트마다 핀된 신원을 보이고, 서브에이전트는 자신이 돌려준 보고를 펼칩니다.
+- Chat Mode now tracks background work (subagents, dynamic workflows and background shells) on its own clock. A backgrounded call keeps its own card instead of folding away, and a strip above the reply control counts what is still running. Clicking that strip opens the work surface beside the conversation rather than in place of it: a column on a wide panel, a drawer on a narrow one, resizable either way. A dynamic workflow opens into its stage tree, one row per agent with the identity it was pinned to. A subagent opens into the report it returned plus the trail of tools it actually called, and a background shell opens into the tail of what it printed.
+  ko: 채팅 모드가 백그라운드 작업(서브에이전트·다이나믹 워크플로·백그라운드 셸)을 자기 시계로 추적합니다. 백그라운드로 넘어간 호출은 접히지 않고 자기 카드를 지키고, 회신 컨트롤 위의 줄이 아직 도는 작업 수를 셉니다. 그 줄을 누르면 작업 면이 대화를 대신하지 않고 대화 옆에 섭니다 — 넓은 패널에서는 오른쪽 컬럼, 좁은 패널에서는 아래 서랍이며 양쪽 모두 크기를 조절할 수 있습니다. 다이나믹 워크플로는 단계 트리로 펼쳐져 에이전트마다 핀된 신원을 보이고, 서브에이전트는 자신이 돌려준 보고와 함께 실제로 부른 도구의 발자국을 펼치며, 백그라운드 셸은 자신이 찍은 출력의 꼬리를 펼칩니다.
 
 #### Fixed
 - A turn that left work running no longer closes with a check mark on it. The fold now says how many jobs are still running, and a job that was cut short before finishing says so instead of reading as completed.

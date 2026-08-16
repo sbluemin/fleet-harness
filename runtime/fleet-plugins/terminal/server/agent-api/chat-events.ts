@@ -128,7 +128,11 @@ export type AgentChatStreamEvent =
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트다 — 클라이언트가 마지막 text를 Answer로 승격할 때의 서버 권위. */
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
+  /**
+   * `stopped`는 사용자가 끊은 턴이다 — 실패와 같은 자리에 두지 않는 이유는 결말이 다르기 때문이다.
+   * 실패는 "하려던 일이 안 됐다"이고 중지는 "하려던 일을 그만두게 했다"이며, 후자에는 고칠 것이 없다.
+   */
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean }
   /**
    * 턴보다 오래 사는 작업 하나가 등록됐다. 이 축이 원장의 턴 시계와 별개로 존재해야 하는
    * 이유는 단순하다 — 백그라운드 작업은 정의상 턴을 넘겨서 살고, 턴 시계 하나로는 그것을
@@ -385,6 +389,105 @@ const MAX_JOB_SUMMARY_CHARS = 8_000;
 const MAX_JOB_AGENT_LABEL_CHARS = 80;
 const MAX_JOB_STAGES = 24;
 const MAX_JOB_AGENTS_PER_STAGE = 64;
+/** 발자국은 "일했는가"에 답하는 목록이지 읽을거리가 아니다 — 넘치면 앞을 잘라 최근을 남긴다. */
+const MAX_JOB_TRAIL_STEPS = 200;
+/** 셸 출력은 실측 438KB까지 자란다. 꼬리만 싣고, 전체가 필요하면 터미널이 제 집이다. */
+const MAX_JOB_TAIL_LINES = 200;
+const MAX_JOB_TAIL_CHARS = 24_000;
+
+/** 잡 하나의 스텝 한 줄. 원장의 스텝과 같은 어휘를 쓴다 — 같은 것을 두 번 발명하지 않는다. */
+export interface AgentChatJobStep {
+  readonly name: string;
+  readonly detail?: string;
+  readonly failed?: boolean;
+  readonly outcome?: string;
+}
+
+/**
+ * 잡을 열었을 때 한 번 읽어 오는 상세.
+ *
+ * 저널에 싣지 않는 이유는 크기다. 전사록과 명령 출력은 잡 하나당 수백 KB까지 자라고, 저널에
+ * 들어가면 재접속마다 전량이 다시 흐른다. 사용자가 그 잡을 연 그때만 잘라서 읽는다.
+ */
+export type AgentChatJobDetail =
+  | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
+  | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/**
+ * 서브에이전트 전사록에서 도구 발자국을 뽑는다.
+ *
+ * 전문이 아니라 발자국인 이유는, 사용자가 카드 앞에서 묻는 것이 "무엇을 읽었나"가 아니라
+ * **"정말 일했나"**이기 때문이다. 도구 이름과 좌표 한 줄이면 3초 안에 답이 나오고, 원문이
+ * 브라우저로 흐르지 않으니 정화기가 지켜야 할 문도 좁다.
+ *
+ * 재생 경로(`chatReplayFromTranscriptLine`)를 그대로 쓸 수 없다: 그쪽은 `isSidechain`을 버리는데
+ * 서브에이전트 전사록은 **전부** 사이드체인이다. 그것이 이 함수가 따로 있는 유일한 이유다.
+ */
+export function chatSubagentTrailFromTranscript(
+  raw: string,
+  options: ChatEventMapOptions = {},
+): { readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean } {
+  const toolNames = new Map<string, string>();
+  const steps: AgentChatJobStep[] = [];
+  const indexById = new Map<string, number>();
+  for (const line of raw.split("\n")) {
+    if (line.trim().length === 0) continue;
+    let parsed: TranscriptLine;
+    try {
+      parsed = JSON.parse(line) as TranscriptLine;
+    } catch {
+      continue;
+    }
+    if (parsed.type === "assistant") {
+      for (const event of eventsFromAssistantContent(parsed.message?.content, { ...options, toolNames })) {
+        if (event.kind !== "tool") continue;
+        if (event.id !== undefined) {
+          toolNames.set(event.id, event.name);
+          indexById.set(event.id, steps.length);
+        }
+        steps.push({
+          name: event.name,
+          ...(event.detail !== undefined && event.detail.length > 0 ? { detail: event.detail } : {}),
+        });
+      }
+      continue;
+    }
+    if (parsed.type !== "user") continue;
+    for (const event of toolResultsFrom(parsed.message?.content, { ...options, toolNames })) {
+      if (event.kind !== "tool-result" || event.id === undefined) continue;
+      const at = indexById.get(event.id);
+      // 짝 없는 결말은 버린다 — 좌표 없는 결말은 어느 줄의 결말인지 말할 수 없다.
+      if (at === undefined) continue;
+      const step = steps[at];
+      if (step === undefined) continue;
+      steps[at] = {
+        ...step,
+        ...(event.ok ? {} : { failed: true }),
+        ...(event.summary.length > 0 ? { outcome: event.summary } : {}),
+      };
+    }
+  }
+  // 넘치면 **앞을** 자른다. 뒤를 자르면 그 에이전트가 마지막에 무엇을 했는지가 사라지는데,
+  // 발자국을 여는 사람이 보려는 것은 대개 결말 쪽이다.
+  const truncated = steps.length > MAX_JOB_TRAIL_STEPS;
+  return { steps: truncated ? steps.slice(-MAX_JOB_TRAIL_STEPS) : steps, truncated };
+}
+
+/**
+ * 셸이 남긴 출력의 꼬리.
+ *
+ * 원시 명령 출력이므로 잡 본문과 같은 문(경로 정규화·축약·자격증명 마스킹)을 지나되, 줄 구조는
+ * 지킨다 — 로그는 줄이 곧 의미라 여기서 접으면 읽을 수 없는 한 문단이 된다.
+ */
+export function chatShellTailFromOutput(raw: string, options: ChatEventMapOptions = {}): { readonly tail: string; readonly truncated: boolean } {
+  const lines = raw.replace(/\r\n?/g, "\n").split("\n");
+  // 파일 끝의 개행 하나가 만든 빈 줄은 출력이 아니다.
+  while (lines.length > 0 && lines[lines.length - 1] === "") lines.pop();
+  const truncated = lines.length > MAX_JOB_TAIL_LINES;
+  const kept = truncated ? lines.slice(-MAX_JOB_TAIL_LINES) : lines;
+  const text = safeJobBody(kept.join("\n"), options, MAX_JOB_TAIL_CHARS);
+  return { tail: text, truncated: truncated || text.length >= MAX_JOB_TAIL_CHARS };
+}
 
 /**
  * SDK `task_type`을 제품 어휘로 접는다. 모르는 값은 `other`로 남긴다 — 새 종류가 생겼을 때

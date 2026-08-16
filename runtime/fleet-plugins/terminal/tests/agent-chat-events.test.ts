@@ -3,6 +3,8 @@ import { describe, expect, it } from "vitest";
 import {
   chatEventsFromSdkMessage,
   chatEventsFromTranscriptLine,
+  chatShellTailFromOutput,
+  chatSubagentTrailFromTranscript,
   summarizeToolInput,
   summarizeToolResult,
   type AgentChatStreamEvent,
@@ -580,5 +582,83 @@ describe("background job text passes the same gate as tool results", () => {
     expect(chatEventsFromSdkMessage({
       type: "system", subtype: "task_started", task_id: "b3", task_type: "local_bash",
     })).toEqual([expect.objectContaining({ kind: "job", id: "b3", title: "b3" })]);
+  });
+});
+
+/**
+ * 잡 하나를 열었을 때 읽어 오는 상세.
+ *
+ * 서브에이전트는 자기가 **말하기로 고른** 보고만 원장에 남긴다 — 발자국은 그 옆에서 실제로
+ * 한 일을 말한다. 셸에는 아예 보고랄 것이 없고 출력이 곧 산출물이다.
+ */
+describe("chat job detail", () => {
+  function subagentLine(entry: Record<string, unknown>): string {
+    // 서브에이전트 전사록은 **전부** 사이드체인이다. 재생 경로가 이것을 버리기 때문에
+    // 발자국 파서가 따로 존재한다 — 그 사실 자체가 이 테스트의 요점이다.
+    return JSON.stringify({ isSidechain: true, agentId: "a1", ...entry });
+  }
+
+  it("reads a tool trail out of a sidechain transcript", () => {
+    const raw = [
+      subagentLine({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "t1", name: "Read", input: { file_path: "/tmp/workspace/a.ts" } }] },
+      }),
+      subagentLine({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] },
+      }),
+      subagentLine({
+        type: "assistant",
+        message: { content: [{ type: "tool_use", id: "t2", name: "Bash", input: { command: "ls" } }] },
+      }),
+      subagentLine({
+        type: "user",
+        message: { content: [{ type: "tool_result", tool_use_id: "t2", is_error: true, content: "boom" }] },
+      }),
+    ].join("\n");
+
+    const trail = chatSubagentTrailFromTranscript(raw, { cwd: "/tmp/workspace" });
+    expect(trail.truncated).toBe(false);
+    expect(trail.steps.map((step) => step.name)).toEqual(["Read", "Bash"]);
+    expect(trail.steps[0]?.failed).toBeUndefined();
+    expect(trail.steps[1]?.failed).toBe(true);
+  });
+
+  it("keeps a subagent that used no tool distinguishable from one it could not read", () => {
+    // 빈 발자국과 못 읽은 것은 다른 사실이다 — 한 문장으로 뭉치면 거짓이 된다.
+    const raw = subagentLine({ type: "assistant", message: { content: [{ type: "text", text: "done" }] } });
+    expect(chatSubagentTrailFromTranscript(raw).steps).toEqual([]);
+  });
+
+  it("drops a result whose call it never saw", () => {
+    const raw = subagentLine({
+      type: "user",
+      message: { content: [{ type: "tool_result", tool_use_id: "ghost", content: "x" }] },
+    });
+    expect(chatSubagentTrailFromTranscript(raw).steps).toEqual([]);
+  });
+
+  it("tails shell output from the end, keeping line structure", () => {
+    // 로그는 줄이 곧 의미다. 여기서 접으면 읽을 수 없는 한 문단이 된다.
+    const raw = Array.from({ length: 260 }, (_, index) => `line ${index}`).join("\n");
+    const tail = chatShellTailFromOutput(raw);
+    const lines = tail.tail.split("\n");
+    expect(tail.truncated).toBe(true);
+    expect(lines).toHaveLength(200);
+    expect(lines.at(-1)).toBe("line 259");
+    expect(lines[0]).toBe("line 60");
+  });
+
+  it("masks credentials and abbreviates paths in shell output", () => {
+    const raw = "/tmp/workspace/src/app.ts:1\nAUTHORIZATION: Bearer sk-abcdefghijklmnopqrstuvwxyz012345";
+    const tail = chatShellTailFromOutput(raw, { cwd: "/tmp/workspace" });
+    expect(tail.tail).not.toContain("sk-abcdefghijklmnopqrstuvwxyz012345");
+    // 지웠다는 사실을 긍정으로도 못 박는다 — not.toContain 하나는 정화기가 통째로 죽어도 통과한다.
+    // `sk-` 규칙이 Bearer 규칙보다 먼저 걸려 토큰 본문만 남기고 잘린다: 어느 규칙이 무는지가
+    // 아니라 비밀이 살아남지 못한다는 것이 이 줄의 계약이다.
+    expect(tail.tail).toContain("Bearer sk-…");
+    expect(tail.tail).toContain("./src/app.ts");
+    expect(tail.tail.split("\n")).toHaveLength(2);
   });
 });

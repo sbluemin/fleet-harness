@@ -5,6 +5,7 @@ import {
   createClaudeGatewaySdk,
   type ClaudeGatewayEffort,
   type ClaudeGatewayMessage,
+  type ClaudeGatewayRun,
   type ClaudeGatewaySdk,
 } from "@dotobokuri/core-agent/claude";
 
@@ -13,6 +14,10 @@ import {
   agentChatAskFromToolInput,
   chatEventsFromSdkMessage,
   chatReplayFromTranscriptLine,
+  chatShellTailFromOutput,
+  chatSubagentTrailFromTranscript,
+  type AgentChatJobDetail,
+  type AgentChatJobKind,
   type AgentChatJournalEvent,
   type AgentChatQuestion,
   type AgentChatStreamEvent,
@@ -112,6 +117,8 @@ export type CreateChatSdk = (options: {
 
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
+/** 잡 id→종류. 상세 라우트의 첫 문이라 상한이 필요하지만, 잡은 도구 호출보다 훨씬 드물다. */
+const JOB_KIND_CAP = 200;
 
 /**
  * 닫힌 턴 뒤에 이 이벤트가 오면 모델이 다시 말하기 시작한 것이다. 잡 이벤트는 여기 들지 않는다 —
@@ -140,11 +147,33 @@ class AgentChatSession {
   private pendingTurns = 0;
   private disposed = false;
   /**
+   * 지금 도는 턴의 런. `runTurn`의 지역 변수로 두면 밖에서 닿을 수 없어 중지가 불가능하다 —
+   * 이 필드가 곧 중지 레버이며, 턴이 끝나면 반드시 null로 돌아간다(스스로 close된 런을 들고
+   * 있으면 다음 중지가 이미 죽은 런을 닫고 성공했다고 답한다).
+   */
+  private activeRun: ClaudeGatewayRun | null = null;
+  /**
+   * 중지 세대. 중지는 도는 턴 하나가 아니라 **그 시점의 큐 전체**를 끊어야 한다 — 큐에 밀려
+   * 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다. 각 턴은
+   * 자기가 큐에 들어간 세대를 기억하고, 세대가 어긋나면 시작하지 않거나 중지된 것으로 닫힌다.
+   */
+  private stopEpoch = 0;
+  /**
    * tool_use id → 도구 이름. 결과 블록은 자기가 어떤 도구의 결말인지 모르는데, 무엇을 요약해도
    * 되는지는 도구가 정한다(읽기·쓰기 계열의 성공 결과는 내용이라 싣지 않는다). 긴 세션에서
    * 무한히 자라지 않게 상한을 두고 오래된 것부터 버린다 — 결과는 호출 직후에 오므로 잃을 게 없다.
    */
   private readonly toolNames = new Map<string, string>();
+  /** 잡 id → 종류. 상세를 어디서 읽을지 정하고, 동시에 상세 라우트가 받는 좌표의 화이트리스트다. */
+  private readonly jobKinds = new Map<string, AgentChatJobKind>();
+  /**
+   * 잡 id → 그 작업이 출력을 남긴 파일. `task_notification.output_file`이 알려 주는 절대 경로다.
+   *
+   * 이벤트에 싣지 않고 여기 두는 이유는 두 가지다. 하나는 보안 — 호스트 절대 경로는 브라우저
+   * DTO에 실리지 않는다. 다른 하나는 정확성 — 이 경로는 세션마다 다른 임시 뿌리 아래에 있어
+   * (실측: config dir이 아니라 CLI의 temp 뿌리) 우리가 재구성할 수 있는 값이 아니다.
+   */
+  private readonly jobOutputs = new Map<string, string>();
   /**
    * 답을 기다리는 도구 호출들. 만료는 두지 않는다(제품 결정) — 사용자가 답하거나 물릴 때까지,
    * 아니면 턴이 끊길 때까지 산다. 그래서 이 맵을 비우는 자리는 셋뿐이다: answer(), 턴 중단,
@@ -230,13 +259,40 @@ class AgentChatSession {
 
   send(text: string): void {
     if (this.disposed) return;
+    const epoch = this.stopEpoch;
     this.pendingTurns += 1;
     this.turnFlight = this.turnFlight
-      .then(() => this.runTurn(text))
+      // 큐에서 기다리는 동안 중지가 눌렸다면 이 턴은 시작하지 않는다. 시작한 뒤 끊으면 모델을
+      // 한 번 깨우고 그 대가를 치른 다음 버리는 셈이라, 사용자가 멈춘 것을 그대로 실행한 것이 된다.
+      .then(() => (epoch === this.stopEpoch ? this.runTurn(text) : undefined))
       .catch(() => undefined)
       .finally(() => {
         this.pendingTurns -= 1;
       });
+  }
+
+  /**
+   * 도는 턴을 사용자가 끊는다.
+   *
+   * 이 자리가 여는 문은 **턴 하나**다. 잡 하나만 멈추는 길은 `TaskStop`뿐인데 그것은 모델이
+   * 부르는 도구이고 호스트에게는 그 제어 경로가 없다(SDK 0.3.212 실측). 그래서 여기서 잡을
+   * 멈추는 척하지 않는다 — 턴을 끊어도 이미 태어난 백그라운드 작업은 계속 살고, 원장의 잡
+   * 표면이 그것을 그대로 말한다.
+   *
+   * 돌려주는 값은 "끊을 것이 있었는가"다. 없는데 true를 돌려주면 화면이 멈춤을 그리고 아무 일도
+   * 일어나지 않는다.
+   */
+  stopTurn(): boolean {
+    if (this.disposed) return false;
+    if (this.pendingTurns === 0) return false;
+    this.stopEpoch += 1;
+    const run = this.activeRun;
+    this.activeRun = null;
+    // 붙들린 권한 응답을 먼저 푼다. 남겨 두면 close된 스트림을 기다리는 promise 하나가 남아
+    // 다음 턴이 영영 시작하지 못한다 — 턴 종료 경로가 비우는 그 맵을 여기서도 비워야 한다.
+    this.abandonAsks("The turn was stopped before the question was answered.");
+    run?.close();
+    return true;
   }
 
   /** 지금 답을 기다리는 도구 호출이 있는가. 라우트가 대기 유무를 묻는 자리. */
@@ -342,6 +398,17 @@ class AgentChatSession {
 
   /** 도구 이벤트가 지나갈 때 id→이름을 적어 둔다. 결과 요약 정책이 이 축 위에서 결정된다. */
   private rememberTool(event: AgentChatStreamEvent): void {
+    // 잡의 종류는 상세를 어디서 읽어야 하는지를 정한다 — 서브에이전트는 전사록, 셸은 출력 파일.
+    // 그리고 이 맵이 곧 상세 라우트의 첫 번째 문이다: 여기 없는 id는 파일 시스템에 닿기 전에
+    // 거절된다. task_id는 SDK만 발급하므로 브라우저가 지어낸 좌표는 이 문을 통과할 수 없다.
+    if (event.kind === "job") {
+      this.jobKinds.set(event.id, event.jobKind);
+      if (this.jobKinds.size > JOB_KIND_CAP) {
+        const oldest = this.jobKinds.keys().next();
+        if (!oldest.done) this.jobKinds.delete(oldest.value);
+      }
+      return;
+    }
     if (event.kind !== "tool" && event.kind !== "tool-start") return;
     if (event.id === undefined) return;
     this.toolNames.set(event.id, event.name);
@@ -349,6 +416,70 @@ class AgentChatSession {
       const oldest = this.toolNames.keys().next();
       if (!oldest.done) this.toolNames.delete(oldest.value);
     }
+  }
+
+  /**
+   * 결말 알림이 알려 준 출력 파일 경로를 적어 둔다.
+   *
+   * 이 경로를 우리가 재구성하지 않는 이유는 실측이다: 셸 출력은 격리 config dir이 아니라 CLI가
+   * 고른 **별개의 임시 뿌리** 아래 `<slug>/<sessionId>/tasks/<taskId>.output`에 앉는다. 그 뿌리는
+   * 우리가 정하지도, 알 수도 없다 — SDK가 말해 주는 좌표가 유일한 권위다.
+   */
+  private rememberJobOutput(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "task_notification") return;
+    const id = (message as { readonly task_id?: unknown }).task_id;
+    const file = (message as { readonly output_file?: unknown }).output_file;
+    if (typeof id !== "string" || id.length === 0) return;
+    if (typeof file !== "string" || !path.isAbsolute(file)) return;
+    this.jobOutputs.set(id, file);
+    if (this.jobOutputs.size > JOB_KIND_CAP) {
+      const oldest = this.jobOutputs.keys().next();
+      if (!oldest.done) this.jobOutputs.delete(oldest.value);
+    }
+  }
+
+  /**
+   * 잡 하나의 상세를 읽는다 — 서브에이전트의 도구 발자국, 또는 셸 출력의 꼬리.
+   *
+   * 워크플로는 여기서 답하지 않는다: 단계 트리가 이미 맥박으로 흐르고 있어 그것이 곧 상세다.
+   *
+   * 두 좌표의 출처가 다르다. 셸 출력은 **SDK가 알려 준 경로**를 그대로 쓴다(재구성 불가 — 위 참조).
+   * 서브에이전트 전사록은 이 세션의 격리 config dir 아래 부모 트랜스크립트와 나란한 자리에서
+   * 읽는다. SDK의 `getSubagentMessages`를 쓸 수 없어서다: 그 함수는 config dir을 인자로 받지 않고
+   * 프로세스 환경에서 찾는데(0.3.212 확인) Chat Mode 세션은 저마다 격리된 dir을 쓰므로, Console
+   * 프로세스에서 부르면 언제나 남의 뿌리를 뒤진다.
+   *
+   * 어느 쪽도 못 찾으면 null을 돌려 화면이 "없다"고 말하게 둔다 — 배치가 바뀌는 날 조용히 틀린
+   * 것을 보이는 것보다 낫다.
+   */
+  async readJobDetail(jobId: string): Promise<AgentChatJobDetail | null> {
+    if (this.disposed) return null;
+    // 파일 이름의 일부가 될 값이다. 맵 조회가 이미 막지만, 경로를 짓는 자리에서 한 번 더 본다.
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(jobId)) return null;
+    const kind = this.jobKinds.get(jobId);
+    if (kind !== "agent" && kind !== "shell") return null;
+    if (kind === "shell") {
+      const file = this.jobOutputs.get(jobId);
+      if (file === undefined) return null;
+      const raw = await fs.readFile(file, "utf8").catch(() => null);
+      if (raw === null) return null;
+      return { kind: "shell", ...chatShellTailFromOutput(raw, { cwd: this.seed.cwd }) };
+    }
+    const dir = await this.resolveJobSessionDir();
+    if (dir === null) return null;
+    const raw = await fs.readFile(path.join(dir, "subagents", `agent-${jobId}.jsonl`), "utf8").catch(() => null);
+    if (raw === null) return null;
+    const trail = chatSubagentTrailFromTranscript(raw, { cwd: this.seed.cwd });
+    return { kind: "agent", steps: trail.steps, truncated: trail.truncated };
+  }
+
+  /** 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리. */
+  private async resolveJobSessionDir(): Promise<string | null> {
+    const sdk = this.sdk;
+    if (!sdk || !this.latestSessionId) return null;
+    const projectDirName = await this.resolveProjectDirName(sdk.configDir);
+    if (projectDirName === null) return null;
+    return path.join(sdk.configDir, "projects", projectDirName, this.latestSessionId);
   }
 
   /**
@@ -472,6 +603,11 @@ class AgentChatSession {
 
   private async runTurn(text: string): Promise<void> {
     if (this.disposed) return;
+    // 이 턴이 자기 세대를 기억한다. 도중에 중지가 눌리면 세대가 어긋나고, 그 어긋남이 곧
+    // "실패가 아니라 중지"라는 판정이다 — close된 스트림은 조용히 끝날 수도, 던질 수도 있어서
+    // 예외 유무로는 두 결말을 가를 수 없다.
+    const epoch = this.stopEpoch;
+    const stopped = (): boolean => epoch !== this.stopEpoch;
     this.push({ kind: "dispatch", text, at: Date.now() });
     this.push({ kind: "turn-start", at: Date.now() });
     // 활동 보고가 먼저다. 실패하면 SDK를 부르지 않는다 — 턴이 도는데 축이 휴면이라고 말하는
@@ -507,11 +643,20 @@ class AgentChatSession {
         // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
         includePartialMessages: true,
       });
+      // 중지 레버를 여기서 건다. startTurn을 기다리는 동안 중지가 눌렸다면 이 런은 이미 아무도
+      // 기다리지 않는 턴의 것이므로, 붙잡아 두지 않고 곧바로 접는다.
+      if (stopped()) {
+        run.close();
+        this.push({ kind: "turn-end", ok: false, stopped: true });
+        return;
+      }
+      this.activeRun = run;
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
             this.latestSessionId = message.session_id;
           }
+          this.rememberJobOutput(message);
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
             if (event.kind === "turn-end") {
               turnClosed = true;
@@ -531,13 +676,27 @@ class AgentChatSession {
         }
       } finally {
         // 정상 소진이면 no-op, 도중 이탈이면 슬롯 반납 — 없으면 다음 턴이 영영 막힌다.
+        this.activeRun = null;
         run.close();
       }
-      if (!turnClosed) this.push({ kind: "turn-end", ok: true });
+      // 끊긴 스트림은 던지지 않고 조용히 끝나기도 한다 — 그래서 성공 경로에서도 세대를 본다.
+      if (!turnClosed) {
+        if (stopped()) this.push({ kind: "turn-end", ok: false, stopped: true });
+        else this.push({ kind: "turn-end", ok: true });
+      }
+      // 중지된 턴도 되쓴다. 그때까지 실제로 오간 대화는 남았고, 그것을 버리면 다음 턴의 resume이
+      // 사용자가 본 것보다 짧은 과거 위에 선다.
       await this.writeBackTranscript();
     } catch {
-      this.push({ kind: "error", code: "chat_turn_failed" });
-      if (!turnClosed) this.push({ kind: "turn-end", ok: false });
+      this.activeRun = null;
+      // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
+      if (stopped()) {
+        if (!turnClosed) this.push({ kind: "turn-end", ok: false, stopped: true });
+        await this.writeBackTranscript().catch(() => undefined);
+      } else {
+        this.push({ kind: "error", code: "chat_turn_failed" });
+        if (!turnClosed) this.push({ kind: "turn-end", ok: false });
+      }
     } finally {
       // 정상 경로에서는 이미 비어 있다(답이 풀려야 스트림이 끝난다). 중단된 턴에서만 일이 있다.
       this.abandonAsks("The turn ended before the question was answered.");

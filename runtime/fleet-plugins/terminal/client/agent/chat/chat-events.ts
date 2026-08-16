@@ -96,7 +96,7 @@ export type AgentChatStreamEvent =
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean }
   | {
       readonly kind: "job";
       readonly id: string;
@@ -233,6 +233,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ok: event.ok === true,
           ...(typeof event.durationMs === "number" && Number.isFinite(event.durationMs) ? { durationMs: event.durationMs } : {}),
           ...(typeof event.answer === "string" && event.answer.length > 0 ? { answer: event.answer } : {}),
+          ...(event.stopped === true ? { stopped: true } : {}),
         },
       };
     case "job": {
@@ -403,7 +404,12 @@ export interface AgentChatTurnItem {
 export interface AgentChatTurn {
   readonly dispatch: { readonly text: string; readonly at?: number } | null;
   readonly items: readonly AgentChatTurnItem[];
-  readonly state: "done" | "working" | "error";
+  /**
+   * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
+   * 것이고 중지는 사용자가 그만두게 한 것이며, 후자에는 고칠 것이 없다 — 같은 자리에 두면
+   * 자기가 누른 버튼의 결과를 고장으로 읽게 된다.
+   */
+  readonly state: "done" | "working" | "error" | "stopped";
   readonly durationMs?: number;
   readonly toolCount: number;
   /** 라이브 델타 누적 버퍼 — 완성 text 이벤트가 도착하면 비워지고 아이템으로 확정된다. */
@@ -436,6 +442,46 @@ export interface AgentChatJob {
   readonly tools?: number;
   readonly durationMs?: number;
   readonly stages: readonly AgentChatJobStage[];
+}
+
+/** 잡 상세의 스텝 한 줄 — 원장의 스텝과 같은 어휘를 쓴다. */
+export interface AgentChatJobStep {
+  readonly name: string;
+  readonly detail?: string;
+  readonly failed?: boolean;
+  readonly outcome?: string;
+}
+
+/**
+ * 잡을 열었을 때 한 번 요청해 오는 상세. 저널이 아니라 요청인 이유는 크기다 — 전사록과 명령
+ * 출력은 잡 하나당 수백 KB까지 자란다.
+ */
+export type AgentChatJobDetail =
+  | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
+  | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/** 서버 payload를 상세로 읽는다. 모양이 어긋나면 null — 화면은 "없다"를 그린다. */
+export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDetail | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  const truncated = value.truncated === true;
+  if (value.kind === "shell") {
+    return typeof value.tail === "string" ? { kind: "shell", tail: value.tail, truncated } : null;
+  }
+  if (value.kind !== "agent" || !Array.isArray(value.steps)) return null;
+  const steps: AgentChatJobStep[] = [];
+  for (const entry of value.steps) {
+    if (!entry || typeof entry !== "object") continue;
+    const step = entry as Record<string, unknown>;
+    if (typeof step.name !== "string" || step.name.length === 0) continue;
+    steps.push({
+      name: step.name,
+      ...(typeof step.detail === "string" && step.detail.length > 0 ? { detail: step.detail } : {}),
+      ...(step.failed === true ? { failed: true } : {}),
+      ...(typeof step.outcome === "string" && step.outcome.length > 0 ? { outcome: step.outcome } : {}),
+    });
+  }
+  return { kind: "agent", steps, truncated };
 }
 
 export interface AgentChatLogState {
@@ -567,7 +613,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(turn.draft.length > 0
           ? { items: [...settleRunningSteps(turn.items), { type: "text" as const, text: turn.draft }], draft: "" }
           : { items: settleRunningSteps(turn.items), draft: "" }),
-        state: event.ok ? "done" : "error",
+        state: event.stopped === true ? "stopped" : event.ok ? "done" : "error",
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
@@ -707,6 +753,19 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   }
   if (turn.state === "error") {
     return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
+  }
+  // 중지된 턴에서 흐르던 글은 Answer가 아니다 — 끝까지 쓰이지 않았으므로 그 이름을 줄 수 없다.
+  // 그렇다고 접힘 속에 넣지도 않는다: 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이고,
+  // 접어 두면 자기가 무엇을 멈췄는지 확인하려고 한 번 더 눌러야 한다.
+  if (turn.state === "stopped") {
+    return {
+      ledger: trailingText !== null ? turn.items.slice(0, -1) : turn.items,
+      answer: null,
+      streamingText: trailingText !== null && trailingText.length > 0 ? trailingText : null,
+      changes,
+      failed,
+      awaiting,
+    };
   }
   if (turn.answer !== undefined) {
     const promoted = trailingText !== null && trailingText.trim() === turn.answer.trim();
