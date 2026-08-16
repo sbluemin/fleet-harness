@@ -48,6 +48,7 @@ import {
   enterTriage,
   focusedTriageOperationId,
   forgetTriageOperation,
+  getActiveAwaitingClaimId,
   getTriageDeckZoom,
   getTriagePick,
   getTriageSetAsideArmedId,
@@ -55,6 +56,7 @@ import {
   isTriageClearedTransition,
   isTriageDeckMapMode,
   isTriageDeckMapModeActive,
+  isTriageOperationDeferred,
   isTriageOperationDismissed,
   isTriageSpotlightEnabled,
   markTriageCleared,
@@ -63,9 +65,11 @@ import {
   recordTriageActivity,
   recordTriageStageTheater,
   reconcileTriageStageCompanion,
+  releaseInactiveActiveAwaitingClaim,
   resetTriageDeckZoomForTests,
   resetTriageSpotlightForTests,
   resetTriageTheater,
+  resolveActiveAwaitingTriageEntry,
   resolveTriageFleetZoneLayout,
   resolveTriageMapMarkerLayout,
   resolveTriageQueue,
@@ -320,6 +324,225 @@ describe("triage store", () => {
     expect(getTriagePick()).toBe(arrived.id);
     expect(resolveTriageQueue([arrived], operationRuntime)[0]?.operation.id)
       .toBe(arrived.id);
+  });
+
+  it("claims an already-active deck panel when it starts waiting, without picking it", () => {
+    const focused = operation("focused", 1);
+    const staged = operation("staged", 2);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+      staged: { lifecycle: "live", activity: "awaiting" },
+    };
+    setConsoleState({
+      operations: [focused, staged],
+      activeOperationId: focused.id,
+      operationRuntime,
+    });
+    setTriageActive(true);
+    recordTriageActivity([focused, staged], operationRuntime, 1_000);
+
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(getTriagePick()).toBeNull();
+
+    const nextRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      staged: { lifecycle: "live", activity: "awaiting" },
+    };
+    recordTriageActivity([focused, staged], nextRuntime, 2_000);
+
+    expect(getActiveAwaitingClaimId()).toBe(focused.id);
+    expect(getTriagePick()).toBeNull();
+    expect(isTriageOperationDeferred(focused.id)).toBe(false);
+    const claimed = resolveActiveAwaitingTriageEntry([focused, staged], nextRuntime);
+    expect(claimed?.operation.id).toBe(focused.id);
+    expect(claimed?.picked).toBe(false);
+    // 큐 선두는 먼저 대기에 들어선 staged다 — 클레임은 pick이 아니라서 우선순위를 바꾸지 않는다.
+    expect(resolveTriageQueue([focused, staged], nextRuntime, 2_000).map((entry) => entry.operation.id))
+      .toEqual([staged.id, focused.id]);
+  });
+
+  it("does not claim a waiting transition on a panel that is not active", () => {
+    const idle = operation("idle", 1);
+    const focused = operation("focused", 2);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      idle: { lifecycle: "live", activity: "running" },
+      focused: { lifecycle: "live", activity: "running" },
+    };
+    setConsoleState({
+      operations: [idle, focused],
+      activeOperationId: focused.id,
+      operationRuntime,
+    });
+    setTriageActive(true);
+    recordTriageActivity([idle, focused], operationRuntime);
+    recordTriageActivity([idle, focused], {
+      idle: { lifecycle: "live", activity: "awaiting" },
+      focused: { lifecycle: "live", activity: "running" },
+    });
+
+    expect(getActiveAwaitingClaimId()).toBeNull();
+  });
+
+  it("releases an active-awaiting claim when the panel loses activation", () => {
+    const focused = operation("focused", 1);
+    const staged = operation("staged", 2);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+      staged: { lifecycle: "live", activity: "awaiting" },
+    };
+    setConsoleState({
+      operations: [focused, staged],
+      activeOperationId: focused.id,
+      operationRuntime,
+    });
+    setTriageActive(true);
+    recordTriageActivity([focused, staged], operationRuntime);
+    recordTriageActivity([focused, staged], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      staged: { lifecycle: "live", activity: "awaiting" },
+    });
+    expect(getActiveAwaitingClaimId()).toBe(focused.id);
+
+    setActiveOperation(null);
+    releaseInactiveActiveAwaitingClaim();
+
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(resolveActiveAwaitingTriageEntry([focused, staged], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      staged: { lifecycle: "live", activity: "awaiting" },
+    })).toBeNull();
+  });
+
+  it("still claims after leaving and re-entering War Room", () => {
+    const focused = operation("focused", 1);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+    };
+    setConsoleState({ operations: [focused], activeOperationId: focused.id, operationRuntime });
+    setTriageActive(true);
+    recordTriageActivity([focused], operationRuntime);
+    setTriageActive(false);
+    setTriageActive(true);
+    recordTriageActivity([focused], { focused: { lifecycle: "live", activity: "awaiting" } });
+
+    expect(getActiveAwaitingClaimId()).toBe(focused.id);
+    expect(getTriagePick()).toBeNull();
+  });
+
+  it("does not claim a dismissed or deferred panel that starts waiting", () => {
+    const focused = operation("focused", 1);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+    };
+    setConsoleState({ operations: [focused], activeOperationId: focused.id, operationRuntime });
+    setTriageActive(true);
+    recordTriageActivity([focused], operationRuntime);
+    dismissTriageOperation(focused.id);
+    recordTriageActivity([focused], { focused: { lifecycle: "live", activity: "awaiting" } });
+    expect(getActiveAwaitingClaimId()).toBeNull();
+
+    setTriageActive(false);
+    setTriageActive(true);
+    recordTriageActivity([focused], { focused: { lifecycle: "live", activity: "running" } });
+    deferTriageOperation(focused.id);
+    recordTriageActivity([focused], { focused: { lifecycle: "live", activity: "awaiting" } });
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(resolveActiveAwaitingTriageEntry([focused], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+    })).toBeNull();
+  });
+
+  it("does not claim a caption-only activation of a panel that is already waiting", () => {
+    const waiting = operation("waiting", 1);
+    const operationRuntime: Readonly<Record<string, OperationRuntimeState>> = {
+      waiting: { lifecycle: "live", activity: "awaiting" },
+    };
+    setConsoleState({ operations: [waiting], operationRuntime });
+    setTriageActive(true);
+    recordTriageActivity([waiting], operationRuntime);
+    setActiveOperation(waiting.id);
+    recordTriageActivity([waiting], operationRuntime);
+
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(getTriagePick()).toBeNull();
+  });
+
+  it("does not claim an active awaiting transition outside War Room", () => {
+    const focused = operation("focused", 1);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+    };
+    setConsoleState({ operations: [focused], activeOperationId: focused.id, operationRuntime });
+    recordTriageActivity([focused], operationRuntime);
+    recordTriageActivity([focused], { focused: { lifecycle: "live", activity: "awaiting" } });
+
+    expect(isTriageActive()).toBe(false);
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(getTriagePick()).toBeNull();
+  });
+
+  it("claims an active idle panel when it becomes an idle arrival", () => {
+    const focused = operation("focused", 1);
+    const operationRuntime: Readonly<Record<string, OperationRuntimeState>> = {
+      focused: { lifecycle: "live", activity: "idle" },
+    };
+    setConsoleState({ operations: [focused], activeOperationId: focused.id, operationRuntime });
+    setTriageActive(true);
+    recordTriageActivity([focused], operationRuntime);
+    markIdleArrival(focused.id);
+    recordTriageActivity([focused], operationRuntime);
+
+    expect(getActiveAwaitingClaimId()).toBe(focused.id);
+    expect(getTriagePick()).toBeNull();
+    expect(resolveActiveAwaitingTriageEntry([focused], operationRuntime)?.operation.id).toBe(focused.id);
+  });
+
+  it("drops an active-awaiting claim when the panel is deferred or another Operation is picked", () => {
+    const focused = operation("focused", 1);
+    const other = operation("other", 2);
+    const operationRuntime: Record<string, OperationRuntimeState> = {
+      focused: { lifecycle: "live", activity: "running" },
+      other: { lifecycle: "live", activity: "awaiting" },
+    };
+    setConsoleState({
+      operations: [focused, other],
+      activeOperationId: focused.id,
+      operationRuntime,
+    });
+    setTriageActive(true);
+    recordTriageActivity([focused, other], operationRuntime);
+    recordTriageActivity([focused, other], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      other: { lifecycle: "live", activity: "awaiting" },
+    });
+    expect(getActiveAwaitingClaimId()).toBe(focused.id);
+
+    deferTriageOperation(focused.id);
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(resolveActiveAwaitingTriageEntry([focused, other], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      other: { lifecycle: "live", activity: "awaiting" },
+    })).toBeNull();
+
+    setConsoleState({
+      operations: [focused, other],
+      activeOperationId: focused.id,
+      operationRuntime: {
+        focused: { lifecycle: "live", activity: "running" },
+        other: { lifecycle: "live", activity: "awaiting" },
+      },
+    });
+    recordTriageActivity([focused, other], {
+      focused: { lifecycle: "live", activity: "running" },
+      other: { lifecycle: "live", activity: "awaiting" },
+    });
+    recordTriageActivity([focused, other], {
+      focused: { lifecycle: "live", activity: "awaiting" },
+      other: { lifecycle: "live", activity: "awaiting" },
+    });
+    pickTriageOperation(other.id);
+    expect(getActiveAwaitingClaimId()).toBeNull();
+    expect(getTriagePick()).toBe(other.id);
   });
 
   it("does not let a focused non-waiting Operation displace another waiting Operation on entry", () => {
@@ -926,6 +1149,12 @@ describe("triage store", () => {
         expect(panel.matches(selector), `${selector} never matches the portaled panel`).toBe(true);
       }
     }
+  });
+
+  it("wires an active-awaiting claim behind grace and protected stage retention", () => {
+    const source = readFileSync("core/client/src/canvas/canvas.tsx", "utf8");
+    expect(source).toContain("resolveActiveAwaitingTriageEntry(state.operations, state.operationRuntime)");
+    expect(source).toContain("graceTriageEntry ?? protectedTriageEntry ?? activeAwaitingTriageEntry");
   });
 
   it("keeps the deck tile's own track from growing past the slot it stands in", () => {

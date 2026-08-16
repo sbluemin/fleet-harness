@@ -18,7 +18,7 @@ import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode } from "../canvas/operation-accent.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -100,6 +100,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     recordTriageActivity(state.operations, state.operationRuntime);
   }, [state.operationRuntime, state.operations]);
+
+  useEffect(() => {
+    releaseInactiveActiveAwaitingClaim();
+  }, [state.activeOperationId]);
 
   useEffect(() => {
     if (!triageActive) setTriageOperationMenu(null);
