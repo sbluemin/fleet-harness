@@ -178,7 +178,7 @@ describe("upstream credential", () => {
       contextWindow: 272_000,
       model: "gpt-5.6-sol",
       serviceTier: "priority",
-      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
     }));
   });
 
@@ -258,6 +258,27 @@ describe("upstream credential", () => {
       contextWindow: 272_000,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clamps an explicit Sol ultra request to the model's max rung", async () => {
+    let canonical: CanonicalResponseRequest | undefined;
+    const router = createAiGatewayRouter({
+      gateway: stubGateway((request) => {
+        canonical = request;
+      }),
+      readAuth,
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "ultra" },
+    }));
+
+    expect(canonical?.model).toBe("gpt-5.6-sol");
+    expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "max" });
   });
 
   it("clamps an explicit Luna ultra request to the model's max rung", async () => {

@@ -129,8 +129,8 @@ describe("claude-gateway custom agents", () => {
   });
 
   it("never registers an ultra identity — ultracode is a launch --effort, not a roster rung", () => {
-    // codex--gpt-5.6-sol의 카탈로그 사다리는 ultra까지 닿지만, 커스텀 Agent frontmatter
-    // 일상 사다리에는 올리지 않는다. ultracode는 Operation launch의 --effort ultracode 경로다.
+    // 카탈로그 사다리는 max에서 끝나므로 위임 신원에도 ultra가 서지 않는다. ultracode는
+    // Operation launch의 --effort ultracode 경로다.
     const model = requireGatewayModel("codex--gpt-5.6-sol");
     const agents = buildGatewayCustomAgents([model]);
     const names = Object.keys(agents);

@@ -55,17 +55,25 @@ describe("agent launch variants", () => {
     expect(harness.attach).not.toHaveBeenCalled();
   });
 
-  it("accepts ultra when the gateway model catalog includes it", () => {
-    const selection = resolveAiGatewaySelection({
+  it("accepts the ultra launch sentinel for any enabled gateway model", () => {
+    // ultra는 카탈로그 사다리 밖의 하네스 능력이다 — MAX가 없는 모델과 강도를 아예 지원하지
+    // 않는 모델에서도 사다리·노출 검증 없이 허용된다.
+    const maxLess = resolveAiGatewaySelection({
       version: 1,
-      models: [{ id: "codex--gpt-5.6-sol-fast" }],
+      models: [{ id: "cursor--grok-4.6-fast" }],
     });
-    const model = selection.models[0]!;
+    expect(isGatewayLaunchEffortAllowed(maxLess, maxLess.models[0]!, "ultra")).toBe(true);
 
-    expect(isGatewayLaunchEffortAllowed({
-      ...selection,
-      effortExposure: { [model.id]: ["ultra"] },
-    }, model, "ultra")).toBe(true);
+    const noEffort = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+    });
+    expect(isGatewayLaunchEffortAllowed(noEffort, noEffort.models[0]!, "ultra")).toBe(true);
+
+    // 일상 단은 여전히 어휘와 모델 노출 검증을 받는다.
+    expect(isGatewayLaunchEffortAllowed(maxLess, maxLess.models[0]!, "max")).toBe(false);
+    expect(isGatewayLaunchEffortAllowed(noEffort, noEffort.models[0]!, "high")).toBe(false);
+    expect(isGatewayLaunchEffortAllowed(maxLess, maxLess.models[0]!, "minimal")).toBe(false);
   });
 
   it("threads a valid scoped gateway model and effort into attach", async () => {
