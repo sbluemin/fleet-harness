@@ -1574,10 +1574,39 @@ describe("Instrument core design contract", () => {
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
     expect(chatNodeBlock).toContain("background: var(--surface-panel);");
     expect(chatNodeBlock).not.toContain("--surface-window");
-    // 상단 세션 띠바와 하단 스트립은 둘 다 폐기됐다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이
-    // 하나도 없었다. 로그는 캡션부터 패널 바닥까지 이어지고, 그 자리는 떠 있는 회신 버튼이 대신한다.
+    // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
-    expect(chat).not.toContain(".agent-chat-strip");
+    // 하단 스트립 금지는 좁혀졌다. 폐기 사유는 "지속 크롬인데 누를 것이 없다"였고, 백그라운드
+    // 작업 스트립은 그 두 조건을 모두 뒤집는다: 살아 있는 잡이 있는 동안에만 서고(지속이 아니다),
+    // 눌러서 Work 탭으로 가는 문이다(누를 것이 있다). 대신 원래의 걱정 — 패널 높이를 잡아먹는 것 —
+    // 은 계약으로 남는다: 떠 있어야 하고 로그 흐름에서 자리를 차지하면 안 된다.
+    const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStripBlock).toContain("position: absolute;");
+    expect(chatStripBlock).toContain("cursor: pointer;");
+    const chatView0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    expect(chatView0).toContain('className="agent-chat-strip"');
+    // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스트립이 선 동안 로그 바닥은 회신
+    // 버튼 몫 위로 스트립 높이만큼 더 비워 둔다. 없으면 마지막 줄이 스트립 뒤에 갇힌다.
+    const chatLogStripBlock = chat.match(/^\.agent-chat-log\.has-strip \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatLogStripBlock).toContain("calc(var(--space-3) + 45px + 38px)");
+    expect(chatView0).toContain("has-strip");
+    // 살아 있는 잡이 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
+    expect(chatView0).toContain("openJobs.length > 0 ? (");
+    // 탭의 활성은 위치 채널(brass)이고, 살아 있는 개수는 상태 채널(aurora)이다. 두 축을 섞으면
+    // "어디에 있는가"와 "무엇이 도는가"가 같은 색으로 말하게 된다.
+    const chatTabOnBlock = chat.match(/^\.agent-chat-tab\.is-on \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTabOnBlock).toContain("--brass");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral"]) {
+      expect(chatTabOnBlock).not.toContain(signal);
+    }
+    const chatTabBadgeBlock = chat.match(/^\.agent-chat-tab-badge \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTabBadgeBlock).toContain("color: var(--aurora);");
+    expect(chatTabBadgeBlock).not.toContain("--brass");
+    // 잡의 종류는 상태가 아니다 — 글리프와 모노 라벨이 가르고, 어떤 신호 토큰도 쓰지 않는다.
+    const chatJobGlyphBlock = chat.match(/^\.agent-chat-job-glyph \{[^}]*\}/m)?.[0] ?? "";
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatJobGlyphBlock).not.toContain(signal);
+    }
     // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");

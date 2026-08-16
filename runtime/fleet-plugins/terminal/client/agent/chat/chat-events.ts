@@ -40,6 +40,27 @@ export interface AgentChatAsk {
   readonly answers?: readonly { readonly header: string; readonly value: string }[];
 }
 
+/** 턴보다 오래 사는 작업의 종류. 서버 모듈의 같은 이름과 한 벌이다. */
+export type AgentChatJobKind = "agent" | "shell" | "workflow" | "other";
+
+/** 잡의 결말. `stopped`는 실패가 아니라 끝나기 전에 거둬진 것이다. */
+export type AgentChatJobStatus = "completed" | "failed" | "stopped";
+
+export interface AgentChatJobAgent {
+  readonly label: string;
+  readonly model?: string;
+  readonly state: string;
+  readonly tokens?: number;
+  readonly tools?: number;
+  readonly durationMs?: number;
+  readonly result?: string;
+}
+
+export interface AgentChatJobStage {
+  readonly title: string;
+  readonly agents: readonly AgentChatJobAgent[];
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   | { readonly kind: "replay-end"; readonly turns: number }
@@ -76,6 +97,36 @@ export type AgentChatStreamEvent =
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
   | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
+  | {
+      readonly kind: "job";
+      readonly id: string;
+      readonly jobKind: AgentChatJobKind;
+      readonly title: string;
+      readonly toolUseId?: string;
+      readonly who?: string;
+      readonly at?: number;
+    }
+  | {
+      readonly kind: "job-progress";
+      readonly id: string;
+      readonly note?: string;
+      readonly tokens?: number;
+      readonly tools?: number;
+      readonly durationMs?: number;
+      readonly lastTool?: string;
+      readonly stages?: readonly AgentChatJobStage[];
+    }
+  | {
+      readonly kind: "job-end";
+      readonly id: string;
+      /** 없으면 끝났다는 사실만 아는 것이다 — 알아보지 못한 결말에 성공을 적지 않는다. */
+      readonly status?: AgentChatJobStatus;
+      readonly summary?: string;
+      readonly tokens?: number;
+      readonly tools?: number;
+      readonly durationMs?: number;
+    }
+  | { readonly kind: "jobs"; readonly ids: readonly string[] }
   | { readonly kind: "error"; readonly code: string };
 
 export interface AgentChatJournalEvent {
@@ -184,6 +235,62 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ...(typeof event.answer === "string" && event.answer.length > 0 ? { answer: event.answer } : {}),
         },
       };
+    case "job": {
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      if (typeof event.title !== "string") return null;
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "job",
+          id: event.id,
+          jobKind: readJobKind(event.jobKind),
+          title: event.title,
+          ...(typeof event.toolUseId === "string" && event.toolUseId.length > 0 ? { toolUseId: event.toolUseId } : {}),
+          ...(typeof event.who === "string" && event.who.length > 0 ? { who: event.who } : {}),
+          ...atField(event.at),
+        },
+      };
+    }
+    case "job-progress": {
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "job-progress",
+          id: event.id,
+          ...(typeof event.note === "string" && event.note.length > 0 ? { note: event.note } : {}),
+          ...countField("tokens", event.tokens),
+          ...countField("tools", event.tools),
+          ...countField("durationMs", event.durationMs),
+          ...(typeof event.lastTool === "string" && event.lastTool.length > 0 ? { lastTool: event.lastTool } : {}),
+          ...(Array.isArray(event.stages) ? { stages: readStages(event.stages) } : {}),
+        },
+      };
+    }
+    case "job-end": {
+      if (typeof event.id !== "string" || event.id.length === 0) return null;
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "job-end",
+          id: event.id,
+          ...(event.status === "completed" || event.status === "failed" || event.status === "stopped"
+            ? { status: event.status }
+            : {}),
+          ...(typeof event.summary === "string" && event.summary.length > 0 ? { summary: event.summary } : {}),
+          ...countField("tokens", event.tokens),
+          ...countField("tools", event.tools),
+          ...countField("durationMs", event.durationMs),
+        },
+      };
+    }
+    case "jobs": {
+      if (!Array.isArray(event.ids)) return null;
+      return {
+        seq: entry.seq,
+        event: { kind: "jobs", ids: event.ids.filter((id): id is string => typeof id === "string" && id.length > 0) },
+      };
+    }
     case "error":
       if (typeof event.code !== "string") return null;
       return { seq: entry.seq, event: { kind: "error", code: event.code } };
@@ -221,6 +328,42 @@ function readQuestions(value: unknown): readonly AgentChatQuestion[] {
     });
   }
   return questions;
+}
+
+function readJobKind(value: unknown): AgentChatJobKind {
+  return value === "agent" || value === "shell" || value === "workflow" ? value : "other";
+}
+
+function countField<K extends string>(key: K, value: unknown): Record<K, number> | Record<string, never> {
+  return typeof value === "number" && Number.isFinite(value) ? ({ [key]: value } as Record<K, number>) : {};
+}
+
+function readStages(value: readonly unknown[]): readonly AgentChatJobStage[] {
+  const stages: AgentChatJobStage[] = [];
+  for (const raw of value) {
+    if (!raw || typeof raw !== "object") continue;
+    const stage = raw as { readonly title?: unknown; readonly agents?: unknown };
+    if (typeof stage.title !== "string") continue;
+    const agents: AgentChatJobAgent[] = [];
+    if (Array.isArray(stage.agents)) {
+      for (const rawAgent of stage.agents) {
+        if (!rawAgent || typeof rawAgent !== "object") continue;
+        const agent = rawAgent as Record<string, unknown>;
+        if (typeof agent.label !== "string") continue;
+        agents.push({
+          label: agent.label,
+          ...(typeof agent.model === "string" && agent.model.length > 0 ? { model: agent.model } : {}),
+          state: typeof agent.state === "string" ? agent.state : "unknown",
+          ...countField("tokens", agent.tokens),
+          ...countField("tools", agent.tools),
+          ...countField("durationMs", agent.durationMs),
+          ...(typeof agent.result === "string" && agent.result.length > 0 ? { result: agent.result } : {}),
+        });
+      }
+    }
+    stages.push({ title: stage.title, agents });
+  }
+  return stages;
 }
 
 function readChange(value: unknown): AgentChatChange | null {
@@ -271,11 +414,37 @@ export interface AgentChatTurn {
   readonly startedAt?: number;
 }
 
+/**
+ * 턴보다 오래 사는 작업 하나. 원장의 턴 시계와 나란히 도는 두 번째 시계이며, 잡의 좌표는
+ * `id`(SDK task_id) 하나다. `open`은 살아 있는지, `status`는 어떻게 끝났는지 — 둘은 다른
+ * 축이다: 목록에서 빠졌는데 결말 보고가 오지 않은 잡은 끝났지만 **어떻게 끝났는지 모르는** 것이고,
+ * 그 상태에 성공 표식을 붙이는 것이 이 표면이 고치려는 바로 그 거짓말이다.
+ */
+export interface AgentChatJob {
+  readonly id: string;
+  readonly kind: AgentChatJobKind;
+  readonly title: string;
+  readonly who?: string;
+  readonly toolUseId?: string;
+  readonly startedAt?: number;
+  readonly open: boolean;
+  readonly status?: AgentChatJobStatus;
+  readonly summary?: string;
+  readonly note?: string;
+  readonly lastTool?: string;
+  readonly tokens?: number;
+  readonly tools?: number;
+  readonly durationMs?: number;
+  readonly stages: readonly AgentChatJobStage[];
+}
+
 export interface AgentChatLogState {
   readonly turns: readonly AgentChatTurn[];
   readonly replaying: boolean;
   readonly replayedTurns: number;
   readonly errorCode: string | null;
+  /** 도착 순서를 지키는 잡 원장. 살아 있는 것과 끝난 것이 한 목록에 함께 산다. */
+  readonly jobs: readonly AgentChatJob[];
 }
 
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
@@ -286,6 +455,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   replaying: false,
   replayedTurns: 0,
   errorCode: null,
+  jobs: [],
 };
 
 /**
@@ -308,12 +478,28 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       };
       return { ...state, turns: [...settleLastTurn(state), turn] };
     }
-    case "turn-start":
+    case "turn-start": {
+      // 백그라운드 작업이 끝나면 SDK가 모델을 다시 깨워 두 번째 응답을 낸다(실측: 하나의
+      // startTurn이 result를 두 번 낸다). 그 응답을 이미 닫힌 턴에 이어 붙이면 앞 턴의 Answer가
+      // 뒤 응답으로 갈아치워진다 — 디스패치 없는 새 턴으로 세운다.
+      const last = state.turns.at(-1);
+      if (!last || last.state !== "working") {
+        const turn: AgentChatTurn = {
+          dispatch: null,
+          items: [],
+          state: "working",
+          toolCount: 0,
+          draft: "",
+          ...(event.at !== undefined ? { startedAt: event.at } : {}),
+        };
+        return { ...state, turns: [...state.turns, turn] };
+      }
       return withLastTurn(state, (turn) => ({
         ...turn,
         state: "working",
         ...(event.at !== undefined ? { startedAt: event.at } : {}),
       }));
+    }
     case "text":
       // 완성 text는 흘러온 델타의 정정 앵커다 — 버퍼를 비우고 확정 아이템으로 치환한다.
       return withLastTurn(appendItem(state, { type: "text", text: event.text }), (turn) => ({ ...turn, draft: "" }));
@@ -385,11 +571,91 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
+    case "job": {
+      const existing = state.jobs.find((job) => job.id === event.id);
+      const next: AgentChatJob = {
+        id: event.id,
+        kind: event.jobKind,
+        title: event.title,
+        ...(event.who !== undefined ? { who: event.who } : {}),
+        ...(event.toolUseId !== undefined ? { toolUseId: event.toolUseId } : {}),
+        ...(event.at !== undefined ? { startedAt: event.at } : {}),
+        open: true,
+        stages: existing?.stages ?? [],
+      };
+      return {
+        ...state,
+        jobs: existing
+          ? state.jobs.map((job) => (job.id === event.id ? { ...job, ...next } : job))
+          : [...state.jobs, next],
+      };
+    }
+    case "job-progress":
+      return mergeJob(state, event.id, (job) => ({
+        ...job,
+        // 맥박이 도착했다는 것 자체가 살아 있다는 사실이다.
+        open: job.status === undefined ? true : job.open,
+        ...(event.note !== undefined ? { note: event.note } : {}),
+        ...(event.lastTool !== undefined ? { lastTool: event.lastTool } : {}),
+        ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
+        ...(event.tools !== undefined ? { tools: event.tools } : {}),
+        ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+        // 단계 트리는 전량 교체다 — 병합하면 사라진 에이전트가 영원히 남는다.
+        ...(event.stages !== undefined ? { stages: event.stages } : {}),
+      }));
+    case "job-end":
+      return mergeJob(state, event.id, (job) => ({
+        ...job,
+        open: false,
+        // 결말을 알아보지 못한 보고는 이미 세워 둔 결말을 지우지 않는다 — 근거 없는 값으로
+        // 근거 있는 값을 덮는 셈이 된다.
+        ...(event.status !== undefined ? { status: event.status } : {}),
+        ...(event.summary !== undefined ? { summary: event.summary } : {}),
+        ...(event.tokens !== undefined ? { tokens: event.tokens } : {}),
+        ...(event.tools !== undefined ? { tools: event.tools } : {}),
+        ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
+      }));
+    case "jobs": {
+      // REPLACE 시맨틱: 목록이 곧 살아 있는 전량이다. 여기서 빠진 잡은 더 이상 돌지 않지만,
+      // 그것이 어떻게 끝났는지는 이 이벤트가 말하지 않는다 — status는 job-end만 세운다.
+      //
+      // 목록이 아는 잡을 원장이 모를 수도 있다. 상한에 걸린 저널이 그 잡의 시작을 앞에서
+      // 밀어냈는데 이 스냅숏만 남은 재접속이 그렇고, 셸은 맥박을 하나도 내지 않으므로 되살릴
+      // 근거가 이 목록 말고는 없다. 모르는 좌표를 버리면 목록이 살아 있다고 말하는 작업이
+      // 탭에서도 배지에서도 스트립에서도 사라진다 — 맥박·결말이 이미 하는 대로 자리를 세운다.
+      const live = new Set(event.ids);
+      const known = new Set(state.jobs.map((job) => job.id));
+      const seeded: readonly AgentChatJob[] = event.ids
+        .filter((id) => !known.has(id))
+        .map((id) => ({ id, kind: "other", title: id, open: true, stages: [] }));
+      return {
+        ...state,
+        jobs: [...state.jobs.map((job) => ({ ...job, open: live.has(job.id) })), ...seeded],
+      };
+    }
     case "error":
       return { ...state, errorCode: event.code };
     default:
       return state;
   }
+}
+
+function mergeJob(
+  state: AgentChatLogState,
+  id: string,
+  update: (job: AgentChatJob) => AgentChatJob,
+): AgentChatLogState {
+  if (!state.jobs.some((job) => job.id === id)) {
+    // 시작을 못 본 잡의 맥박·결말이 먼저 올 수 있다(재접속 직후). 좌표만으로 세운다.
+    const seeded: AgentChatJob = { id, kind: "other", title: id, open: true, stages: [] };
+    return { ...state, jobs: [...state.jobs, update(seeded)] };
+  }
+  return { ...state, jobs: state.jobs.map((job) => (job.id === id ? update(job) : job)) };
+}
+
+/** 지금 돌고 있는 잡. 스트립과 탭 배지가 세는 것이 이것이다. */
+export function openAgentChatJobs(state: AgentChatLogState): readonly AgentChatJob[] {
+  return state.jobs.filter((job) => job.open);
 }
 
 /**
@@ -471,13 +737,19 @@ const TOOL_FAMILIES: Readonly<Record<string, string>> = {
   MultiEdit: "edit",
   NotebookEdit: "edit",
   Bash: "run",
-  BashOutput: "run",
+  // 백그라운드 잡을 들여다보는 호출은 "실행"이 아니다 — 같은 계열에 두면 셸을 새로 돌린 것과
+  // 구별되지 않고, 실제로 그렇게 읽혔다(실측: bash_id만 실은 BashOutput이 "셸 1회 실행"으로 접힘).
+  BashOutput: "inspect",
+  TaskOutput: "inspect",
   Glob: "search",
   Grep: "search",
   WebSearch: "search",
   WebFetch: "fetch",
   Task: "delegate",
   Agent: "delegate",
+  Workflow: "workflow",
+  TaskStop: "stop",
+  KillShell: "stop",
   TodoWrite: "plan",
   // 재생 구간에서만 이 이름들이 스텝으로 온다 — 라이브에서는 카드가 그 자리를 대신한다.
   AskUserQuestion: "ask",
@@ -529,6 +801,11 @@ export interface AgentChatLedgerSegment {
 export function segmentAgentChatLedger(
   items: readonly AgentChatTurnItem[],
   recentLimit = 0,
+  /**
+   * 접지 않고 자기 구간에 줄을 지켜야 하는 스텝. 잡을 낳은 호출이 여기 든다 — 집계로 접히면
+   * 그 잡으로 가는 문이 사라지고, 구간 밖으로 꺼내면 자기를 부른 문장보다 위에 서게 된다.
+   */
+  pinned?: (item: AgentChatTurnItem) => boolean,
 ): readonly AgentChatLedgerSegment[] {
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
@@ -544,7 +821,7 @@ export function segmentAgentChatLedger(
 
   return buckets.map((bucket, index) => {
     const open = recentLimit > 0 && index === buckets.length - 1;
-    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0);
+    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
   });
 }
 
@@ -552,6 +829,7 @@ function foldSegment(
   note: string | undefined,
   steps: readonly AgentChatTurnItem[],
   recentLimit: number,
+  pinned?: (item: AgentChatTurnItem) => boolean,
 ): AgentChatLedgerSegment {
   // 열린 구간에서는 뒤에서부터 세어 순서대로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
   const keepInline = new Set<number>();
@@ -561,6 +839,9 @@ function foldSegment(
     if (!step) continue;
     if (step.type === "ask") continue;
     if (step.state === "running" || step.state === "fail" || step.outside === true) continue;
+    // 이미 줄을 지키는 스텝은 최근 창의 자리를 쓰지 않는다 — 쓰면 접히지 않을 것 하나가
+    // 접히지 않을 것 하나를 더 밀어낸다.
+    if (pinned?.(step) === true) continue;
     keepInline.add(index);
     keep -= 1;
   }
@@ -578,7 +859,7 @@ function foldSegment(
     // 과거형 집계는 결과가 ok로 돌아온 스텝만 센다. 결과 없이 닫힌 스텝(`done`)을 "씀"으로
     // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
     // 두 표면이 서로 다른 사실을 말하게 된다. 확인되지 않은 것은 예외로 줄을 지킨다.
-    if (step.state !== "ok" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
+    if (step.state !== "ok" || step.outside === true || keepInline.has(at) || pinned?.(step) === true) { inline.push(step); return; }
     folded.push(step);
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;

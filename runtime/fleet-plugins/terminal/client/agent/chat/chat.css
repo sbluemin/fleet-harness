@@ -1030,3 +1030,446 @@
     transition: none;
   }
 }
+
+/* ── 백그라운드 작업 ─────────────────────────────────────────────────────────
+   턴 시계와 나란히 도는 두 번째 시계의 표면. 색 규칙은 본문과 같다: 상태만 신호 토큰이 나르고,
+   종류(서브에이전트·워크플로·셸)는 글리프와 모노 라벨이 가른다 — 종류를 색으로 가르면 신호
+   채널이 뒤집힌다. 탭의 활성은 --brass(위치 채널), 살아 있는 개수는 --aurora(상태 채널)다. */
+
+.agent-chat-tabs {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  /* 로그가 지는 상단 여백(전환 칩 자리)을 이 줄이 대신 진다. */
+  margin: calc(var(--space-3) + 34px) auto 0;
+  padding: 0 clamp(var(--space-4), 4vw, var(--space-8));
+  width: 100%;
+  max-width: calc(var(--agent-chat-measure) + 2 * clamp(var(--space-4), 4vw, var(--space-8)));
+}
+
+/* 탭이 선 동안 로그는 자기 상단 여백을 내려놓는다 — 두 번 주면 첫 줄이 저 아래에서 시작한다. */
+.agent-chat-tabs ~ .agent-chat-log {
+  padding-top: var(--space-3);
+}
+
+/* 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다. 스트립은 회신 버튼 위에 한 층 더 서므로
+   그 높이(30px + 간격)만큼 바닥 여백이 더 필요하다 — 없으면 바닥까지 내린 마지막 줄이 스트립
+   뒤에 갇혀 스크롤로도 빠져나오지 못한다(실측으로 확인했다). */
+.agent-chat-log.has-strip {
+  padding-bottom: calc(var(--space-3) + 45px + 38px);
+}
+
+.agent-chat-tab {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-pill);
+  padding: 4px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-tab:hover { color: var(--text-secondary); }
+
+.agent-chat-tab.is-on {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 38%, var(--hairline));
+  background: color-mix(in oklch, var(--brass) 7%, transparent);
+}
+
+.agent-chat-tab:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-tab-badge {
+  color: var(--aurora);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 잡 카드 ───────────────────────────────────────────────────────────────── */
+
+.agent-chat-job {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  transition: border-color var(--duration-fast);
+}
+
+.agent-chat-job:hover { border-color: var(--hairline-strong); }
+
+.agent-chat-job:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-job.is-open { border-color: color-mix(in oklch, var(--aurora) 32%, var(--hairline)); }
+.agent-chat-job.is-fail { border-color: color-mix(in oklch, var(--coral) 32%, var(--hairline)); }
+.agent-chat-job.is-stopped { border-color: color-mix(in oklch, var(--warn) 30%, var(--hairline)); }
+
+.agent-chat-job-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+.agent-chat-job-mark { flex: none; width: 9px; text-align: center; color: var(--text-tertiary); }
+.agent-chat-job.is-done .agent-chat-job-mark { color: var(--positive); }
+.agent-chat-job.is-fail .agent-chat-job-mark { color: var(--coral); }
+
+.agent-chat-job-glyph { flex: none; color: var(--text-tertiary); }
+
+.agent-chat-job-title {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-job-outcome {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-job.is-open .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-open {
+  color: var(--aurora-ink);
+  border-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
+}
+
+.agent-chat-job.is-done .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-done { color: var(--positive); }
+
+.agent-chat-job.is-fail .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-fail { color: var(--coral-ink); }
+
+.agent-chat-job.is-stopped .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-stopped { color: var(--warn-ink); }
+
+.agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
+
+.agent-chat-job-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  padding-left: 17px;
+}
+
+.agent-chat-job-dots { display: inline-flex; align-items: center; gap: 3px; }
+.agent-chat-job-dot-gap { width: 6px; }
+
+.agent-chat-job-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+}
+
+.agent-chat-job-dot.is-done { background: var(--positive); }
+.agent-chat-job-dot.is-live { background: var(--aurora); }
+
+/* ── 접힘 줄의 "아직 도는 중" ─────────────────────────────────────────────── */
+
+.agent-chat-fold-running { color: var(--aurora-ink); }
+
+/* ── 고정 스트립 ─────────────────────────────────────────────────────────────
+   doctrine: 하단 스트립은 한 번 폐기됐다. 사유는 "지속 크롬으로 패널 높이를 쓰면서 누를 것이
+   하나도 없다"였다. 이 스트립은 그 두 조건을 모두 뒤집기 때문에 되살아났다 — 살아 있는 잡이
+   있는 동안에만 서고, 눌러서 Work 탭으로 가는 문이다. 원래의 걱정은 계약으로 남겼다:
+   position: absolute로 떠서 로그 흐름의 높이를 한 픽셀도 가져가지 않는다
+   (tests/instrument-design-contract.test.ts가 이 두 가지를 못 박는다). */
+
+.agent-chat-strip {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space-3) + 46px);
+  transform: translateX(-50%);
+  z-index: 2;
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-4)));
+  padding: 6px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel-raised));
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--duration-fast);
+}
+
+.agent-chat-strip:hover { border-color: color-mix(in oklch, var(--aurora) 55%, var(--hairline)); }
+
+.agent-chat-strip:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 3px;
+}
+
+.agent-chat-strip-orbit {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  animation: agent-chat-orbit 0.9s linear infinite;
+}
+
+.agent-chat-strip-count { flex: none; color: var(--aurora-ink); }
+
+.agent-chat-strip-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-strip-chev { flex: none; color: var(--text-tertiary); }
+
+/* ── Work 탭 본문 ─────────────────────────────────────────────────────────── */
+
+.agent-chat-work {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) clamp(var(--space-4), 4vw, var(--space-8)) calc(var(--space-3) + 45px);
+  width: 100%;
+  max-width: calc(var(--agent-chat-measure) + 2 * clamp(var(--space-4), 4vw, var(--space-8)));
+  margin-inline: auto;
+}
+
+.agent-chat-work-sec {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+.agent-chat-work-sec:first-child { margin-top: 0; }
+
+.agent-chat-work-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  padding: var(--space-2) 0;
+}
+
+.agent-chat-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+}
+
+.agent-chat-detail-back {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-detail-back:hover {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+}
+
+.agent-chat-detail-back:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-detail-title {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-detail-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 보고는 공유 .markdown-body가 그린다 — 여기서는 챗 밀도만 한 칸 더 좁힌다. 폰트 크기·줄간·
+   줄바꿈 정책은 마크다운 컴포넌트가 소유하므로 다시 선언하지 않는다(선언하면 코드 블록과
+   목록이 본문 규칙을 덮어쓴 채로 그려진다). */
+.agent-chat .agent-chat-detail-report.markdown-body {
+  --font-size-body: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-detail-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+/* ── 워크플로 단계 트리 ───────────────────────────────────────────────────── */
+
+.agent-chat-stage {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.agent-chat-stage-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-3);
+  background: var(--surface-panel-raised);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.agent-chat-stage-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 표는 가로로 흐를 수 있다 — 좁은 패널에서 열이 뭉개지는 대신 자기 상자 안에서 스크롤한다. */
+.agent-chat-stage-rows {
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.agent-chat-stage-row {
+  display: grid;
+  /* 이름과 모델이 남는 폭을 나눠 갖는다. 이름에만 1fr을 주면 짧은 라벨("A")에서 두 열 사이가
+     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다. */
+  grid-template-columns: 14px minmax(0, 1.1fr) minmax(0, 1fr) 58px 42px 58px;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 3px var(--space-3);
+  min-width: max-content;
+  color: var(--text-secondary);
+  border-top: 1px solid color-mix(in oklch, var(--hairline) 50%, transparent);
+}
+
+.agent-chat-stage-row.is-head {
+  border-top: 0;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-stage-row.is-pending { color: var(--text-tertiary); }
+
+.agent-chat-stage-row .is-mark { color: var(--positive); text-align: center; }
+.agent-chat-stage-row.is-pending .is-mark { color: var(--text-tertiary); }
+
+.agent-chat-stage-row .is-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-stage-row.is-pending .is-name { color: var(--text-tertiary); }
+
+/* 핀된 신원은 위치가 아니라 값이므로 잉크는 brass를 빌리지 않는다. */
+.agent-chat-stage-row .is-model {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-stage-row .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-strip-orbit { animation: none; }
+  .agent-chat-tab,
+  .agent-chat-job,
+  .agent-chat-detail-back { transition: none; }
+}

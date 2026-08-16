@@ -427,3 +427,156 @@ describe("splitAgentChatTurn", () => {
     expect(view.ledger).toEqual([{ type: "text", text: "partial" }]);
   });
 });
+
+describe("background job ledger", () => {
+  it("keeps a job open until a live list or a result says otherwise", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "two-step", toolUseId: "c1", who: "two-step" },
+      { kind: "job-progress", id: "w1", tokens: 1646, tools: 0 },
+    ]);
+    expect(state.jobs).toEqual([expect.objectContaining({ id: "w1", open: true, tokens: 1646 })]);
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
+  it("closes a job that left the live list but refuses to call it complete", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "two-step" },
+      { kind: "jobs", ids: [] },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false }));
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
+  it("takes the live list as an absolute value, not a tally", () => {
+    const state = fold([
+      { kind: "job", id: "a1", jobKind: "agent", title: "one" },
+      { kind: "job", id: "a2", jobKind: "agent", title: "two" },
+      { kind: "jobs", ids: ["a2"] },
+    ]);
+    expect(state.jobs.map((job) => [job.id, job.open])).toEqual([["a1", false], ["a2", true]]);
+  });
+
+  it("seeds a live job the ledger never saw start", () => {
+    // 상한에 걸린 저널이 잡의 시작을 밀어낸 재접속. 셸은 맥박을 내지 않으므로 이 스냅숏이
+    // 그 작업이 살아 있다는 유일한 근거다 — 버리면 탭·배지·스트립에서 통째로 사라진다.
+    const state = fold([
+      { kind: "job", id: "a1", jobKind: "agent", title: "known" },
+      { kind: "jobs", ids: ["a1", "b-shell"] },
+    ]);
+    expect(state.jobs.map((job) => [job.id, job.open, job.kind])).toEqual([
+      ["a1", true, "agent"],
+      ["b-shell", true, "other"],
+    ]);
+  });
+
+  it("lets the real start event fill in a seeded placeholder", () => {
+    const state = fold([
+      { kind: "jobs", ids: ["b1"] },
+      { kind: "job", id: "b1", jobKind: "shell", title: "sleep 60", toolUseId: "c1" },
+    ]);
+    expect(state.jobs).toHaveLength(1);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ id: "b1", kind: "shell", title: "sleep 60", open: true, toolUseId: "c1" }));
+  });
+
+  it("records a stopped job as stopped", () => {
+    const state = fold([
+      { kind: "job", id: "b1", jobKind: "shell", title: "sleep 45" },
+      { kind: "jobs", ids: [] },
+      { kind: "job-end", id: "b1", status: "stopped", durationMs: 28000 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, status: "stopped", durationMs: 28000 }));
+  });
+
+  it("does not erase a known outcome when a later report cannot be recognized", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "w" },
+      { kind: "job-end", id: "w1", status: "completed", summary: "done" },
+      { kind: "job-end", id: "w1", tokens: 99 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, status: "completed", tokens: 99 }));
+  });
+
+  it("records an unrecognized outcome as ended without a verdict", () => {
+    const state = fold([
+      { kind: "job", id: "w2", jobKind: "workflow", title: "w" },
+      { kind: "job-end", id: "w2", tokens: 5 },
+    ]);
+    expect(state.jobs[0]).toEqual(expect.objectContaining({ open: false, tokens: 5 }));
+    expect(state.jobs[0]?.status).toBeUndefined();
+  });
+
+  it("seeds a job whose start was missed so a late result is not thrown away", () => {
+    const state = fold([{ kind: "job-end", id: "ghost", status: "completed", summary: "OK" }]);
+    expect(state.jobs).toEqual([expect.objectContaining({ id: "ghost", kind: "other", open: false, status: "completed", summary: "OK" })]);
+  });
+
+  it("replaces the stage tree instead of merging it", () => {
+    const state = fold([
+      { kind: "job", id: "w1", jobKind: "workflow", title: "w" },
+      { kind: "job-progress", id: "w1", stages: [{ title: "Alpha", agents: [{ label: "a", state: "running" }] }] },
+      { kind: "job-progress", id: "w1", stages: [{ title: "Alpha", agents: [{ label: "a", state: "done" }] }] },
+    ]);
+    expect(state.jobs[0]?.stages).toEqual([{ title: "Alpha", agents: [{ label: "a", state: "done" }] }]);
+  });
+
+  it("opens a fresh turn when the model wakes up after a background result", () => {
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "text", text: "launched" },
+      { kind: "turn-end", ok: true, answer: "launched" },
+      // 백그라운드가 끝나 모델이 다시 말한다 — 세션이 turn-start를 앞세운다.
+      { kind: "turn-start" },
+      { kind: "text", text: "the workflow finished" },
+      { kind: "turn-end", ok: true, answer: "the workflow finished" },
+    ]);
+    expect(state.turns).toHaveLength(2);
+    expect(state.turns[0]?.dispatch).toEqual({ text: "go" });
+    expect(splitAgentChatTurn(state.turns[0] as AgentChatLogState["turns"][number]).answer).toBe("launched");
+    expect(state.turns[1]?.dispatch).toBeNull();
+    expect(splitAgentChatTurn(state.turns[1] as AgentChatLogState["turns"][number]).answer).toBe("the workflow finished");
+  });
+});
+
+describe("ledger segmentation — pinned steps", () => {
+  const items: readonly AgentChatTurnItem[] = [
+    { type: "text", text: "First I will look around." },
+    { type: "tool", name: "Read", detail: "a.ts", id: "t1", state: "ok" },
+    { type: "text", text: "Now I will delegate the audit." },
+    { type: "tool", name: "Read", detail: "b.ts", id: "t2", state: "ok" },
+    { type: "tool", name: "Workflow", detail: "audit", id: "job-call", state: "ok" },
+    { type: "tool", name: "Read", detail: "c.ts", id: "t3", state: "ok" },
+  ];
+  const pinned = (item: AgentChatTurnItem): boolean => item.id === "job-call";
+
+  it("keeps a pinned step in the segment its note opened", () => {
+    const segments = segmentAgentChatLedger(items, 0, pinned);
+    expect(segments).toHaveLength(2);
+    expect(segments[0]?.note).toBe("First I will look around.");
+    expect(segments[0]?.inline).toEqual([]);
+    // 잡을 낳은 호출은 그것을 부른 문장의 구간에 남는다 — 앞 문장 위로 올라가지 않는다.
+    expect(segments[1]?.note).toBe("Now I will delegate the audit.");
+    expect(segments[1]?.inline.map((item) => item.id)).toEqual(["job-call"]);
+  });
+
+  it("never folds a pinned step into the tally", () => {
+    const segments = segmentAgentChatLedger(items, 0, pinned);
+    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "t3"]);
+    expect(segments[1]?.groups).toEqual([{ family: "read", count: 2 }]);
+  });
+
+  it("folds the same step when nothing pins it", () => {
+    const segments = segmentAgentChatLedger(items, 0);
+    expect(segments[1]?.inline).toEqual([]);
+    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "job-call", "t3"]);
+  });
+
+  it("does not spend a live-window slot on a pinned step", () => {
+    // 열린 구간의 최근 창은 접힐 수 있었던 스텝을 위한 자리다. 이미 줄을 지키는 스텝이 그 자리를
+    // 쓰면 접히지 않을 것 하나가 접히지 않을 것 하나를 더 밀어낸다.
+    const segments = segmentAgentChatLedger(items, 1, pinned);
+    const last = segments[1];
+    expect(last?.inline.map((item) => item.id)).toEqual(["job-call", "t3"]);
+    expect(last?.folded.map((item) => item.id)).toEqual(["t2"]);
+  });
+});

@@ -113,6 +113,15 @@ export type CreateChatSdk = (options: {
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
 
+/**
+ * 닫힌 턴 뒤에 이 이벤트가 오면 모델이 다시 말하기 시작한 것이다. 잡 이벤트는 여기 들지 않는다 —
+ * 백그라운드 맥박은 턴이 닫힌 뒤에도 계속 흐르는 것이 정상이고, 그것으로 턴을 열면 아무 말도
+ * 없는 빈 턴이 선다.
+ */
+function opensChatTurn(event: AgentChatStreamEvent): boolean {
+  return event.kind === "text" || event.kind === "text-delta" || event.kind === "tool" || event.kind === "tool-start";
+}
+
 class AgentChatSession {
   readonly operationId: string;
   private readonly seed: AgentChatSessionSeed;
@@ -401,6 +410,14 @@ class AgentChatSession {
 
   private push(event: AgentChatStreamEvent): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
+    // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
+    // 리듀서도 통째로 갈아 끼운다. 저널에 겹겹이 쌓으면 재접속이 이미 지나간 트리를 수십 번
+    // 되재생하고, 상한(JOURNAL_CAP)에 걸린 세션에서는 그 무게가 디스패치·응답·잡 시작 같은
+    // 되돌릴 수 없는 이력을 앞에서부터 밀어낸다. 같은 잡의 이전 맥박은 자리를 비켜 준다.
+    if (event.kind === "job-progress") {
+      const at = this.journal.findIndex((held) => held.event.kind === "job-progress" && held.event.id === event.id);
+      if (at >= 0) this.journal.splice(at, 1);
+    }
     this.journal.push(entry);
     if (this.journal.length > JOURNAL_CAP) this.journal.splice(0, this.journal.length - JOURNAL_CAP);
     for (const listener of this.listeners) listener(entry);
@@ -464,7 +481,15 @@ class AgentChatSession {
       this.push({ kind: "turn-end", ok: false });
       return;
     }
-    let sawResult = false;
+    // 하나의 startTurn이 result를 여러 번 낸다. 백그라운드 작업이 끝나면 SDK가 새 system/init과
+    // 함께 모델을 다시 깨우고, 그 응답이 두 번째 result로 닫힌다(2026-08-16 실측). 닫힌 턴에
+    // 그 응답을 이어 붙이면 앞 턴의 Answer가 갈아치워지므로, 내용이 다시 흐르기 시작하면
+    // 디스패치 없는 새 턴을 연다.
+    //
+    // 그래서 이 축은 "result를 본 적 있는가"가 아니라 "지금 열려 있는 턴이 닫혔는가"다. 전자로
+    // 정리 경로를 판단하면, 후속 턴이 열린 뒤 스트림이 두 번째 result 없이 끝나거나 던질 때
+    // 아무도 그 턴을 닫지 않아 원장에 영원히 도는 스피너가 남는다.
+    let turnClosed = false;
     try {
       const sdk = await this.ensureSdk();
       const run = await sdk.startTurn({
@@ -488,7 +513,12 @@ class AgentChatSession {
             this.latestSessionId = message.session_id;
           }
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
-            if (event.kind === "turn-end") sawResult = true;
+            if (event.kind === "turn-end") {
+              turnClosed = true;
+            } else if (turnClosed && opensChatTurn(event)) {
+              this.push({ kind: "turn-start", at: Date.now() });
+              turnClosed = false;
+            }
             this.rememberTool(event);
             // 대화형 도구는 스텝을 세우지 않는다 — 카드가 이미 그 자리에 서 있고, 그 옆에 "질문함"
             // 한 줄을 더 세우면 같은 사건이 두 번 읽힌다. 결과 줄은 짝을 못 찾아 스스로 버려진다.
@@ -503,11 +533,11 @@ class AgentChatSession {
         // 정상 소진이면 no-op, 도중 이탈이면 슬롯 반납 — 없으면 다음 턴이 영영 막힌다.
         run.close();
       }
-      if (!sawResult) this.push({ kind: "turn-end", ok: true });
+      if (!turnClosed) this.push({ kind: "turn-end", ok: true });
       await this.writeBackTranscript();
     } catch {
       this.push({ kind: "error", code: "chat_turn_failed" });
-      if (!sawResult) this.push({ kind: "turn-end", ok: false });
+      if (!turnClosed) this.push({ kind: "turn-end", ok: false });
     } finally {
       // 정상 경로에서는 이미 비어 있다(답이 풀려야 스트림이 끝난다). 중단된 턴에서만 일이 있다.
       this.abandonAsks("The turn ended before the question was answered.");

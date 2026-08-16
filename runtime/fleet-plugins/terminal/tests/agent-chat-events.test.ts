@@ -374,3 +374,211 @@ describe("client/server event vocabulary parity", () => {
     expect(parsed).toEqual({ seq: 7, event });
   });
 });
+
+describe("background job mapping", () => {
+  it("maps task_started for each of the three kinds", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "b1", tool_use_id: "call-1", description: "Sleep then echo", task_type: "local_bash",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "b1", jobKind: "shell", title: "Sleep then echo", toolUseId: "call-1" })]);
+
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "a1", description: "ping", task_type: "local_agent", subagent_type: "general-purpose",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "a1", jobKind: "agent", who: "general-purpose" })]);
+
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started",
+      task_id: "w1", description: "two tiny phases", task_type: "local_workflow", workflow_name: "two-step",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "w1", jobKind: "workflow", who: "two-step" })]);
+  });
+
+  it("keeps an unknown task_type visible instead of dropping it", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "x1", description: "?", task_type: "remote_thing",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "x1", jobKind: "other" })]);
+  });
+
+  it("folds workflow_progress into a stage tree carrying each agent's pinned model", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_progress", task_id: "w1",
+      usage: { total_tokens: 11299, tool_uses: 0, duration_ms: 74303 },
+      last_tool_name: "StructuredOutput",
+      workflow_progress: [
+        { type: "workflow_phase", index: 1, title: "Alpha" },
+        { type: "workflow_phase", index: 2, title: "Beta" },
+        { type: "workflow_agent", index: 1, label: "scan", phaseTitle: "Alpha", model: "claude-gateway--cursor--auto", state: "done", tokens: 1646, toolCalls: 0, durationMs: 28041, resultPreview: "A" },
+        { type: "workflow_agent", index: 2, label: "verify", phaseTitle: "Beta", model: "claude-gateway--cursor--auto", state: "running" },
+      ],
+    }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      kind: "job-progress", id: "w1", tokens: 11299, tools: 0, durationMs: 74303, lastTool: "StructuredOutput",
+      stages: [
+        { title: "Alpha", agents: [{ label: "scan", model: "claude-gateway--cursor--auto", state: "done", tokens: 1646, tools: 0, durationMs: 28041, result: "A" }] },
+        { title: "Beta", agents: [{ label: "verify", model: "claude-gateway--cursor--auto", state: "running" }] },
+      ],
+    }));
+  });
+
+  it("keeps a stage with no agents so an empty phase is not mistaken for a missing one", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_progress", task_id: "w2",
+      workflow_progress: [{ type: "workflow_phase", index: 1, title: "Alpha" }],
+    }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual({ kind: "job-progress", id: "w2", stages: [{ title: "Alpha", agents: [] }] });
+  });
+
+  it("says nothing about stages when the run reports none", () => {
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "task_progress", task_id: "w3" }))
+      .toEqual([{ kind: "job-progress", id: "w3" }]);
+  });
+
+  it("maps a stopped task to stopped, never to completed", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "b1", status: "stopped",
+      summary: "Killed", usage: { total_tokens: 0, tool_uses: 0, duration_ms: 45000 },
+    })).toEqual([{ kind: "job-end", id: "b1", status: "stopped", summary: "Killed", tokens: 0, tools: 0, durationMs: 45000 }]);
+
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_updated", task_id: "b1", patch: { status: "killed", end_time: 1 },
+    })).toEqual([{ kind: "job-end", id: "b1", status: "stopped" }]);
+  });
+
+  it("carries the subagent's own report through the tool-result gate", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a1", status: "completed",
+      summary: "Read /Users/someone/secret/notes.md and found sk-abcdefghijklmnopqrst",
+    }, { cwd: "/repo" })).toEqual([expect.objectContaining({
+      kind: "job-end", id: "a1", status: "completed",
+      summary: "Read …/secret/notes.md and found sk-…",
+    })]);
+  });
+
+  it("replaces the live set from background_tasks_changed rather than counting it", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "background_tasks_changed",
+      tasks: [{ task_id: "a1", task_type: "local_agent", description: "x" }, { task_id: "w1" }],
+    })).toEqual([{ kind: "jobs", ids: ["a1", "w1"] }]);
+
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "background_tasks_changed", tasks: [] }))
+      .toEqual([{ kind: "jobs", ids: [] }]);
+  });
+
+  it("refuses to call an unrecognized outcome a success", () => {
+    // 결말을 알아보지 못한 보고에 완료를 적으면, 이 원장이 고치려던 거짓 완료를 원장 자신이 그린다.
+    for (const raw of [undefined, "cancelled", "", 7]) {
+      const [event] = chatEventsFromSdkMessage({
+        type: "system", subtype: "task_notification", task_id: "u1", ...(raw === undefined ? {} : { status: raw }),
+        usage: { total_tokens: 12, tool_uses: 1, duration_ms: 900 },
+      }) as readonly AgentChatStreamEvent[];
+      // 끝났다는 사실과 비용은 남기되 결말은 주장하지 않는다.
+      expect(event).toEqual({ kind: "job-end", id: "u1", tokens: 12, tools: 1, durationMs: 900 });
+      expect("status" in (event as object)).toBe(false);
+    }
+  });
+
+  it("still maps the three outcomes it does recognize", () => {
+    for (const status of ["completed", "failed", "stopped"] as const) {
+      expect(chatEventsFromSdkMessage({ type: "system", subtype: "task_notification", task_id: "k1", status }))
+        .toEqual([{ kind: "job-end", id: "k1", status }]);
+    }
+  });
+
+  it("stays silent on system subtypes it does not own", () => {
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "thinking_tokens", estimated_tokens: 5 })).toEqual([]);
+    expect(chatEventsFromSdkMessage({ type: "system", subtype: "init", tools: ["Bash"] })).toEqual([]);
+  });
+
+  it("round-trips every job event through the journal reader", () => {
+    const events: readonly AgentChatStreamEvent[] = [
+      { kind: "job", id: "w1", jobKind: "workflow", title: "two-step", toolUseId: "c1", who: "two-step", at: 1786858148878 },
+      { kind: "job-progress", id: "w1", tokens: 10, tools: 2, durationMs: 30, lastTool: "Read", note: "Beta", stages: [{ title: "Alpha", agents: [{ label: "scan", model: "m", state: "done", tokens: 1, tools: 0, durationMs: 2, result: "A" }] }] },
+      { kind: "job-end", id: "w1", status: "completed", summary: "done", tokens: 11, tools: 2, durationMs: 31 },
+      { kind: "jobs", ids: ["w1"] },
+    ];
+    for (const event of events) {
+      expect(readChatJournalEvent(JSON.stringify({ seq: 1, event }))).toEqual({ seq: 1, event });
+    }
+  });
+});
+
+describe("background job text passes the same gate as tool results", () => {
+  it("normalizes and masks the task title, not just its length", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b1", task_type: "local_bash",
+      description: "Deploy from /Users/someone/secret/keys with token sk-abcdefghijklmnopqrst",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      kind: "job",
+      title: "Deploy from …/secret/keys with token sk-…",
+    }));
+  });
+
+  it("relativizes a title that points inside the Operation folder", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b2", task_type: "local_bash",
+      description: "Run tests under /repo/packages/core",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({ title: "Run tests under ./packages/core" }));
+  });
+
+  it("passes the workflow name and its phase titles through the same gate", () => {
+    const [started] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "w1", task_type: "local_workflow",
+      description: "audit", workflow_name: "audit /Users/someone/secret/plan",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(started).toEqual(expect.objectContaining({ who: "audit …/secret/plan" }));
+
+    const [progress] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_progress", task_id: "w1",
+      workflow_progress: [{ type: "workflow_phase", index: 1, title: "scan /Users/someone/secret" }],
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(progress).toEqual({ kind: "job-progress", id: "w1", stages: [{ title: "scan …/someone/secret", agents: [] }] });
+  });
+
+  it("keeps the report's line structure so markdown survives to the view", () => {
+    // 보고는 칩이 아니라 본문이다 — 공백을 한 칸으로 접으면 제목·목록·코드 블록이 전부
+    // 한 문단으로 뭉개져 마크다운 기호가 원문 그대로 남는다.
+    const report = "## Findings\n\n- **one**: `/repo/src/a.ts`\n- two\n\n\n\nDone.";
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a1", status: "completed", summary: report,
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      summary: "## Findings\n\n- **one**: `./src/a.ts`\n- two\n\nDone.",
+    }));
+  });
+
+  it("still masks and abbreviates inside a multi-line report", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a2", status: "completed",
+      summary: "line one\nkey sk-abcdefghijklmnopqrst\npath /Users/someone/secret/notes.md",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      summary: "line one\nkey sk-…\npath …/secret/notes.md",
+    }));
+  });
+
+  it("keeps indentation so nested lists and fenced code survive", () => {
+    const report = [
+      "## Findings",
+      "",
+      "- top",
+      "    - nested",
+      "",
+      "```python",
+      "def main():",
+      "    return 1",
+      "```",
+    ].join("\n");
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_notification", task_id: "a3", status: "completed", summary: report,
+    }) as readonly AgentChatStreamEvent[];
+    expect((event as { readonly summary?: string }).summary).toBe(report);
+  });
+
+  it("falls back to the task id when no description arrives", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b3", task_type: "local_bash",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "b3", title: "b3" })]);
+  });
+});
