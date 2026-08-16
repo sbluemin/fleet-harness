@@ -71,6 +71,10 @@ const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_
 const DISPLAY_SIZE_FLOOR_PX = 24;
 // 스켈레톤은 C≈0.012~0.02의 저채도 대역에 산다. 그 위의 유채색은 theme.css에서만 정의된다.
 const ACHROMATIC_CHROMA_CEILING = 0.03;
+// sRGB 표기(hex·rgb)에서 같은 경계 — 세 채널의 폭이 이보다 좁으면 색이 아니라 깊이를 나른다.
+const ACHROMATIC_CHANNEL_SPREAD = 12;
+// hsl 표기는 채도를 직접 적으므로 그 값으로 같은 경계를 판정한다.
+const ACHROMATIC_SATURATION_CEILING_PERCENT = 10;
 // font-size가 텍스트가 아니라 도형을 재는 자리들 — 글리프 문자('×' '✦' '↻' 꺾쇠)의 크기이거나,
 // 치수가 박힌 상자(아바타·숫자 배지·이니셜 마크) 안이라 사다리로 올리면 넘치거나 잘린다.
 const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
@@ -303,6 +307,45 @@ function cssDeclarations(css: string, property: string): Array<{ index: number; 
 
 function lineAt(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
+}
+
+// 깊이 리터럴은 채널이 서로 같다(검정·흰색 계열). 색을 띠기 시작하면 채널이 갈라지므로,
+// 세 채널의 최대-최소 폭으로 무채색 여부를 가른다 — oklch의 chroma 상한과 같은 역할이다.
+function isAchromaticChannels(channels: number[]): boolean {
+  if (channels.length < 3 || channels.some((value) => !Number.isFinite(value))) return false;
+  const [red, green, blue] = channels as [number, number, number];
+  return Math.max(red, green, blue) - Math.min(red, green, blue) <= ACHROMATIC_CHANNEL_SPREAD;
+}
+
+function isAchromaticHex(digits: string): boolean {
+  const expand = (value: string) => Number.parseInt(value.length === 1 ? value.repeat(2) : value, 16);
+  if (digits.length === 3 || digits.length === 4) {
+    return isAchromaticChannels([...digits.slice(0, 3)].map(expand));
+  }
+  if (digits.length === 6 || digits.length === 8) {
+    return isAchromaticChannels([0, 2, 4].map((offset) => expand(digits.slice(offset, offset + 2))));
+  }
+  return false;
+}
+
+function isAchromaticRgb(args: string): boolean {
+  const channels = args
+    .split("/", 1)[0]!
+    .split(/[\s,]+/)
+    .filter((token) => token.length > 0)
+    .slice(0, 3)
+    .map((token) => (token.endsWith("%") ? (Number.parseFloat(token) * 255) / 100 : Number.parseFloat(token)));
+  return isAchromaticChannels(channels);
+}
+
+function isAchromaticHsl(args: string): boolean {
+  const saturation = args
+    .split("/", 1)[0]!
+    .split(/[\s,]+/)
+    .filter((token) => token.length > 0)[1];
+  if (saturation === undefined) return false;
+  const value = Number.parseFloat(saturation);
+  return Number.isFinite(value) && value <= ACHROMATIC_SATURATION_CEILING_PERCENT;
 }
 
 // 선언이 속한 규칙의 선택자. 예외를 파일:줄로 적으면 그 위에 한 줄만 들어와도 조용히 빗나가므로,
@@ -642,15 +685,38 @@ describe("Instrument core design contract", () => {
 
   // 유채색 raw 리터럴은 두 규칙을 한 번에 깬다 — 스켈레톤의 채도 봉투를 넘고, 테마별 재조율을 받지 못한다.
   // 깊이를 나르는 근사 무채색(그림자·스크림·시트)은 console CLAUDE.md가 명시한 예외라 통과시킨다.
+  // 문법은 oklch 하나가 아니다 — hex·rgb·hsl로 적은 유채색도 같은 두 규칙을 깨므로 함께 막고,
+  // 채널을 해석할 수 없는 함수형(color()/lab()/lch())은 통과시키지 않는다.
   it("keeps chromatic color literals inside theme.css", () => {
     const violations: string[] = [];
     for (const file of listProductCssFiles()) {
       if (CSS_THEME_SOURCES.some((theme) => fileURLToPath(theme) === file)) continue;
+      // markdown/styles.css는 vendored highlight.js 팔레트(github-dark ↔ github) 전체가 파일 상단
+      // doctrine 주석으로 예외 선언된 표면이다. 신택스 역할색은 --syntax-* 채널이 따로 지고 있다.
+      if (file === fileURLToPath(new URL("markdown/styles.css", CONSOLE_ROOT))) continue;
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
+      const report = (index: number, snippet: string) => {
+        violations.push(`${consoleRelativePath(file)}:${lineAt(css, index)} ${snippet}`);
+      };
       for (const match of masked.matchAll(/oklch\(\s*[0-9.]+%?\s+([0-9.]+)\s/g)) {
         if (Number(match[1]) < ACHROMATIC_CHROMA_CEILING) continue;
-        violations.push(`${consoleRelativePath(file)}:${lineAt(css, match.index)} ${match[0].trim()}`);
+        report(match.index, match[0].trim());
+      }
+      for (const match of masked.matchAll(/#([0-9a-fA-F]{3,8})\b/g)) {
+        if (isAchromaticHex(match[1]!)) continue;
+        report(match.index, match[0]);
+      }
+      for (const match of masked.matchAll(/\brgba?\(([^)]*)\)/g)) {
+        if (isAchromaticRgb(match[1]!)) continue;
+        report(match.index, match[0]);
+      }
+      for (const match of masked.matchAll(/\bhsla?\(([^)]*)\)/g)) {
+        if (isAchromaticHsl(match[1]!)) continue;
+        report(match.index, match[0]);
+      }
+      for (const match of masked.matchAll(/\b(?:color|lab|lch|hwb)\(/g)) {
+        report(match.index, match[0]);
       }
     }
     expect(violations).toEqual([]);
