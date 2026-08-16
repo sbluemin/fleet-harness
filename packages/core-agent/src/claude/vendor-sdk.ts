@@ -18,6 +18,7 @@ import type {
   ClaudeGatewayMcpServer,
   ClaudeGatewayMessage,
   ClaudeGatewayRun,
+  ClaudeGatewaySession,
   ClaudeGatewayTool,
   ClaudeGatewayToolExtras,
   ClaudeGatewayToolResult,
@@ -26,6 +27,11 @@ import type {
 /** 이미 조립이 끝난 vendor `query()` 인자. 조립 책임은 `./sdk.ts`에 있다. */
 export interface VendorQueryInput {
   readonly prompt: string;
+  readonly options: Readonly<Record<string, unknown>>;
+}
+
+/** 세션용 vendor `query()` 인자. 프롬프트는 이 모듈이 만든 입력 스트림이 대신한다. */
+export interface VendorSessionInput {
   readonly options: Readonly<Record<string, unknown>>;
 }
 
@@ -116,6 +122,143 @@ export function runVendorQuery(input: VendorQueryInput): ClaudeGatewayRun {
         if (closing !== undefined) void closing.catch(() => undefined);
       } catch {
         // return() 호출 자체의 동기 throw도 같은 cleanup 실패다.
+      }
+    },
+  };
+}
+
+/**
+ * 자식에게 밀어 넣을 사용자 메시지의 대기열.
+ *
+ * vendor는 `prompt`가 문자열이면 single-turn으로 보고 첫 `result`에 자식의 stdin을 닫지만,
+ * AsyncIterable이면 **그 이터레이터가 끝날 때까지** 열어 둔다. 이 큐가 스스로 끝나지 않는 것이
+ * 곧 "사용자가 아직 있다"는 신호이고, 백그라운드 작업이 턴을 넘어 사는 유일한 근거다.
+ */
+class VendorInputQueue implements AsyncIterable<unknown> {
+  private readonly pending: unknown[] = [];
+  private waiting: ((result: IteratorResult<unknown>) => void) | null = null;
+  private closed = false;
+
+  push(message: unknown): void {
+    if (this.closed) return;
+    const waiting = this.waiting;
+    if (waiting) {
+      this.waiting = null;
+      waiting({ done: false, value: message });
+      return;
+    }
+    this.pending.push(message);
+  }
+
+  close(): void {
+    if (this.closed) return;
+    this.closed = true;
+    const waiting = this.waiting;
+    if (waiting) {
+      this.waiting = null;
+      waiting({ done: true, value: undefined });
+    }
+  }
+
+  [Symbol.asyncIterator](): AsyncIterator<unknown> {
+    return {
+      next: async (): Promise<IteratorResult<unknown>> => {
+        if (this.pending.length > 0) return { done: false, value: this.pending.shift() };
+        if (this.closed) return { done: true, value: undefined };
+        // 대기자는 하나다 — vendor의 `streamInput`이 이 이터레이터를 직렬로 소비한다.
+        return await new Promise<IteratorResult<unknown>>((resolve) => {
+          this.waiting = resolve;
+        });
+      },
+    };
+  }
+}
+
+/**
+ * 사용자 메시지 하나. 모양은 vendor가 **문자열 프롬프트에 대해 스스로 만드는 것**을 그대로 옮긴
+ * 것이다(0.3.212 확인): `session_id`는 빈 문자열이고 본문은 text 블록 하나다. 지어내지 않고
+ * 베낀 이유는, 이 모양이 어긋나면 자식이 조용히 프롬프트를 잃기 때문이다.
+ */
+function vendorUserMessage(text: string): Record<string, unknown> {
+  return {
+    type: "user",
+    session_id: "",
+    message: { role: "user", content: [{ type: "text", text }] },
+    parent_tool_use_id: null,
+  };
+}
+
+export function runVendorSession(input: VendorSessionInput): ClaudeGatewaySession {
+  const queue = new VendorInputQueue();
+  const run = vendorQuery({
+    prompt: queue,
+    options: input.options,
+  } as never) as AsyncGenerator<unknown, void> & {
+    close?: () => void;
+    return?: (value?: unknown) => Promise<unknown>;
+    getContextUsage?: () => Promise<unknown>;
+    interrupt?: () => Promise<unknown>;
+    stopTask?: (taskId: string) => Promise<void>;
+    backgroundTasks?: (toolUseId?: string) => Promise<boolean>;
+  };
+
+  let closed = false;
+  return {
+    send(text: string): void {
+      if (closed) return;
+      queue.push(vendorUserMessage(text));
+    },
+    async interrupt(): Promise<void> {
+      if (closed || typeof run.interrupt !== "function") return;
+      await run.interrupt();
+    },
+    async stopTask(taskId: string): Promise<void> {
+      if (closed) return;
+      if (typeof run.stopTask !== "function") {
+        throw new TypeError("This Claude Agent SDK build has no stopTask control request.");
+      }
+      await run.stopTask(taskId);
+    },
+    async backgroundTasks(toolUseId?: string): Promise<boolean> {
+      if (closed) return false;
+      if (typeof run.backgroundTasks !== "function") {
+        throw new TypeError("This Claude Agent SDK build has no background_tasks control request.");
+      }
+      return await run.backgroundTasks(toolUseId);
+    },
+    async getContextUsage(): Promise<ClaudeGatewayContextUsage | null> {
+      if (closed || typeof run.getContextUsage !== "function") return null;
+      try {
+        return readVendorContextUsage(await run.getContextUsage());
+      } catch {
+        // 턴이 도는 동안 자식은 control 채널을 닫아 둔다 — 정상 경로의 실패다.
+        return null;
+      }
+    },
+    [Symbol.asyncIterator](): AsyncIterator<ClaudeGatewayMessage> {
+      const iterator = run[Symbol.asyncIterator]();
+      return {
+        async next(): Promise<IteratorResult<ClaudeGatewayMessage>> {
+          const result = await iterator.next();
+          return result.done === true
+            ? { done: true, value: undefined }
+            : { done: false, value: result.value as ClaudeGatewayMessage };
+        },
+      };
+    },
+    close(): void {
+      if (closed) return;
+      closed = true;
+      // 입력을 먼저 닫는다 — 자식이 정상 종료 신호를 먼저 보고, 그다음 프로세스가 접힌다.
+      queue.close();
+      try {
+        if (typeof run.close === "function") run.close();
+        else {
+          const closing = run.return?.(undefined);
+          if (closing !== undefined) void closing.catch(() => undefined);
+        }
+      } catch {
+        // cleanup 실패는 결과·프로세스 종점을 바꾸지 않는다.
       }
     },
   };

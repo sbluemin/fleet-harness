@@ -614,6 +614,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
+    if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -1219,6 +1220,39 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     if (!chat.stopTurn()) {
       ctx.host.http.writeJson(res, 409, { error: "chat_idle" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  /**
+   * 백그라운드 작업 하나를 사용자가 멈춘다 — 터미널에서 그 셸을 kill하는 것과 같은 자리다.
+   *
+   * 200은 "자식이 중단 요청을 받았다"까지다. 실제 결말은 자식이 내는 `stopped` 알림이 말하며,
+   * 그 알림이 원장의 잡 줄을 닫는다 — 여기서 미리 닫으면 멈추지 않은 작업을 멈췄다고 그린다.
+   */
+  async function handleChatJobStop(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{ readonly jobId?: unknown }>(req);
+    const jobId = typeof body?.jobId === "string" ? body.jobId : "";
+    if (jobId.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_job_id" });
+      return true;
+    }
+    if (!await chat.stopJob(jobId)) {
+      ctx.host.http.writeJson(res, 409, { error: "job_stop_unavailable" });
       return true;
     }
     ctx.host.http.writeJson(res, 200, { ok: true });

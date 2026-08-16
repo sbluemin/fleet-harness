@@ -22,6 +22,8 @@ export type {
   ClaudeGatewayRun,
   ClaudeGatewaySdk,
   ClaudeGatewaySdkOptions,
+  ClaudeGatewaySession,
+  ClaudeGatewaySessionRequest,
   ClaudeGatewaySystemPrompt,
   ClaudeGatewayTool,
   ClaudeGatewayToolExtras,
