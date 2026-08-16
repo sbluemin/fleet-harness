@@ -40,6 +40,9 @@ describe("Session Analyst contract", () => {
     expect(css).toContain(".session-analyst__composer.is-working .session-analyst__composer-surface");
     // 컴포저는 한 장이다 — 선택 줄은 같은 면 안 하단 줄이지, 자기 테두리를 가진 두 번째 상자가 아니다.
     expect(css).not.toContain("session-analyst__selector-strip");
+    // 떠 있던 칩 줄이 캡션으로 옮겨간 뒤 본문은 어느 모드에서도 그 자리를 비워 두지 않는다 —
+    // 한 경로만 남으면 그 화면만 빈 띠를 이고 미리보기 높이를 잃는다.
+    expect(css).not.toMatch(/padding(-top)?: calc\(var\(--space-\d\) \+ 34px\)/);
     expect(css).toContain(".session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column;");
     // 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다.
     expect(css).toMatch(/\.session-analyst__saved \{[^}]*inline-size: [\d.]+em;/);
