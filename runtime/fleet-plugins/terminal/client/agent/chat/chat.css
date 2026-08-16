@@ -1,7 +1,7 @@
 /* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
    색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, 사용자 식별은
    --id-cerulean 워시 문법만 쓴다(단일 화자 표면이라 spine 띠는 두지 않는다 — 우측 정렬이
-   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer는 공유
+   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer와 구간 문장은 공유
    마크다운 컴포넌트(.markdown-body)로 렌더하고 여기서는 챗 밀도 스케일만 오버라이드한다. */
 
 .agent-chat {
@@ -233,13 +233,26 @@
   margin-top: var(--space-3);
 }
 
-.agent-chat-ledger-note {
-  font-size: 12.5px;
-  font-style: italic;
-  color: var(--text-tertiary);
-  white-space: pre-wrap;
+/* 구간의 문장은 공유 마크다운이 그린다. italic은 문법(*강조*)이 질 몫이지 과정 문장
+   전체에 씌우는 가죽이 아니다 — 강제하면 `**굵게**`가 별표 그대로 남고 문장만 기울어진다.
+   답변보다 한 단 작고 단락 잉크만 한 단 옅게 두어, 과정과 결론이 같은 무게로 읽히지 않게 한다. */
+.agent-chat .agent-chat-ledger-note.markdown-body {
+  --font-size-body: 12.5px;
   overflow-wrap: anywhere;
   padding: var(--space-1) 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body p,
+.agent-chat .agent-chat-ledger-note.markdown-body li {
+  color: var(--text-tertiary);
 }
 
 /* 끝난 일상 스텝의 한 줄 집계 — 도구를 세우지 않고 "무엇을 몇 번 했는가"만 남긴다.

@@ -1654,6 +1654,11 @@ describe("Instrument core design contract", () => {
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
     expect(chatView).toContain('className="agent-chat-mode-chip"');
+    // 구간 문장은 답변과 같은 마크다운 경로다. italic을 통째로 씌우면 `**굵게**`가 별표로 남고
+    // 문장만 기울어진다 — 기울임은 문법(*강조*)이 질 몫이다.
+    expect(chatView).toContain('className="agent-chat-ledger-note markdown-body"');
+    expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
+    expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
     expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
     // 회신 버튼은 로그 위에 떠 있는 컨트롤이라 신호 채널을 쓰지 않는다 — brass(위치·포커스)만
     // hover/focus에 오르고, 쉬는 상태는 패널 위 한 칸 물러난 면과 hairline이 진다.
