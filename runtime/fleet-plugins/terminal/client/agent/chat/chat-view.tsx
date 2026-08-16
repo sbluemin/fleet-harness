@@ -667,7 +667,14 @@ function Ledger({
     <div className="agent-chat-ledger">
       {segments.map((segment, index) => (
         <div className="agent-chat-segment" key={index}>
-          {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}
+          {segment.note !== undefined ? (
+            <StreamedMarkdown
+              className="agent-chat-ledger-note markdown-body"
+              text={segment.note}
+              streaming={false}
+              language={language}
+            />
+          ) : null}
           <Tally groups={segment.groups} folded={segment.folded} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
           {segment.inline.map((item, at) => (item.type === "ask" && item.ask
             ? <AskCard key={`ask-${item.ask.id}`} operationId={operationId} ask={item.ask} language={language} />
