@@ -1507,7 +1507,7 @@ function Stage({
               {agent.state === "done" ? "✓" : agent.state === "running" ? "◐" : "·"}
             </span>
             <span role="cell" className="is-name" title={agent.result ?? agent.label}>{agent.label}</span>
-            <span role="cell" className="is-model">{agent.model ?? "—"}</span>
+            <span role="cell" className="is-model" title={agent.model}>{agent.model !== undefined ? modelLabel(agent.model) : "—"}</span>
             <span role="cell" className="is-num">{agent.tokens !== undefined ? formatCount(agent.tokens) : "—"}</span>
             <span role="cell" className="is-num">{agent.tools !== undefined ? agent.tools : "—"}</span>
             <span role="cell" className="is-num">{agent.durationMs !== undefined ? formatDuration(agent.durationMs) : "—"}</span>
@@ -1516,6 +1516,17 @@ function Stage({
       </div>
     </div>
   );
+}
+
+/**
+ * 게이트웨이 신원의 표시형. `claude-gateway--`는 이 모델이 어디로 실려 갔는지를 말할 뿐
+ * 어느 모델인지는 말하지 않는데, 모든 행의 앞자리를 같은 문자열로 채워 정작 다른 부분이
+ * 먼저 말줄임에 잘린다. 원본은 셀의 `title`이 계속 진다.
+ */
+const GATEWAY_MODEL_PREFIX = "claude-gateway--";
+
+function modelLabel(model: string): string {
+  return model.startsWith(GATEWAY_MODEL_PREFIX) ? model.slice(GATEWAY_MODEL_PREFIX.length) : model;
 }
 
 /** 토큰 수는 자릿수가 커서 그대로 쓰면 표가 흔들린다 — 천 단위로 접는다. */

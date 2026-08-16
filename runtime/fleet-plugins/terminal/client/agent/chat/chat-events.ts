@@ -881,7 +881,8 @@ export function segmentAgentChatLedger(
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
     if (item.type === "text") {
-      buckets.push({ ...(item.text !== undefined ? { note: item.text } : {}), steps: [] });
+      const note = item.text !== undefined ? spokenNote(item.text) : undefined;
+      buckets.push({ ...(note !== undefined ? { note } : {}), steps: [] });
       continue;
     }
     const last = buckets.at(-1);
@@ -890,10 +891,28 @@ export function segmentAgentChatLedger(
   }
   if (buckets.length === 0) return [];
 
-  return buckets.map((bucket, index) => {
-    const open = recentLimit > 0 && index === buckets.length - 1;
-    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
-  });
+  return buckets
+    .map((bucket, index) => {
+      const open = recentLimit > 0 && index === buckets.length - 1;
+      return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
+    })
+    // 문장도 스텝도 남지 않은 구간은 그리지 않는다 — 빈 구간도 구간 사이 간격은 그대로 받아서,
+    // 긴 턴일수록 아무것도 말하지 않는 여백만 쌓인다.
+    .filter((segment) => segment.note !== undefined
+      || segment.groups.length > 0
+      || segment.inline.length > 0
+      || segment.running.length > 0);
+}
+
+/**
+ * 구간을 여는 문장. 내용은 한 글자도 손대지 않는다 — 문장은 공유 마크다운이 그리고, 그
+ * 문법은 공백으로 쓰인다: 첫 줄의 네 칸은 코드 블록이고, 줄 끝 두 칸은 줄바꿈이며, 문단
+ * 사이 빈 줄은 파서가 알아서 흡수한다. 다듬는 순간 모델이 쓴 형식이 표시 직전에 사라진다.
+ * 여기서 가리는 것은 하나뿐이다: 공백밖에 없는 문장은 구간을 열 자격이 없는데도 빈 블록과
+ * 구간 여백을 그대로 받아, 긴 턴일수록 아무것도 말하지 않는 여백만 쌓는다.
+ */
+function spokenNote(text: string): string | undefined {
+  return text.trim().length > 0 ? text : undefined;
 }
 
 function foldSegment(

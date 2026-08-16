@@ -229,17 +229,21 @@
   gap: var(--space-1);
 }
 
+/* 구간 사이는 구간 안보다 넓기만 하면 된다. 한 단 더 벌리면 집계 줄 아래에만 본문 한 줄
+   높이의 띠가 생겨, 접힌 줄이 펼칠 자리를 미리 비워 둔 것처럼 읽힌다(실측: 집계 줄 위 4px
+   대 아래 16px). 쌍으로 읽히는 데 필요한 차이만 남긴다 — 위 4px 대 아래 12px. */
 .agent-chat-segment + .agent-chat-segment {
-  margin-top: var(--space-3);
+  margin-top: var(--space-2);
 }
 
 /* 구간의 문장은 공유 마크다운이 그린다. italic은 문법(*강조*)이 질 몫이지 과정 문장
    전체에 씌우는 가죽이 아니다 — 강제하면 `**굵게**`가 별표 그대로 남고 문장만 기울어진다.
-   답변보다 한 단 작고 단락 잉크만 한 단 옅게 두어, 과정과 결론이 같은 무게로 읽히지 않게 한다. */
+   답변보다 한 단 작고 단락 잉크만 한 단 옅게 두어, 과정과 결론이 같은 무게로 읽히지 않게 한다.
+   문장 둘레의 간격은 여기서 주지 않는다 — 구간이 이미 gap과 구간 사이 여백으로 같은 호흡을
+   주므로, 한 번 더 주면 두 겹으로 쌓여 집계 줄과 다음 문장 사이가 빈 줄 하나로 읽힌다. */
 .agent-chat .agent-chat-ledger-note.markdown-body {
   --font-size-body: 12.5px;
   overflow-wrap: anywhere;
-  padding: var(--space-1) 0;
 }
 
 .agent-chat .agent-chat-ledger-note.markdown-body > :first-child {
@@ -1658,7 +1662,11 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 표는 가로로 흐를 수 있다 — 좁은 패널에서 열이 뭉개지는 대신 자기 상자 안에서 스크롤한다. */
+/* 표의 폭은 패널이 정한다 — 행마다 자기 내용만큼 부풀면 같은 열이 행마다 다른 자리에 서고,
+   머리글과도 어긋난다. 넘치는 값은 스크롤이 아니라 자기 칸 안에서 말줄임으로 접힌다.
+   스크롤은 그래도 남긴다: 고정 열만 236px이라 작업 면을 최소(18%)까지 좁히면 그 폭조차
+   나오지 않고, 그때 숫자 열은 말줄임이 아니라 잘려 나가 닿을 방법이 없어진다(실측: 폭
+   192px에서 scrollWidth 224px). 행 폭은 모두 같으므로 스크롤이 서도 열은 어긋나지 않는다. */
 .agent-chat-stage-rows {
   overflow-x: auto;
   font-family: var(--font-mono);
@@ -1668,12 +1676,12 @@
 .agent-chat-stage-row {
   display: grid;
   /* 이름과 모델이 남는 폭을 나눠 갖는다. 이름에만 1fr을 주면 짧은 라벨("A")에서 두 열 사이가
-     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다. */
+     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다.
+     두 열 모두 minmax(0, ·)이라 폭이 줄면 fr이 그대로 줄어든다 — 그래야 말줄임이 발동한다. */
   grid-template-columns: 14px minmax(0, 1.1fr) minmax(0, 1fr) 58px 42px 58px;
   gap: var(--space-2);
   align-items: baseline;
   padding: 3px var(--space-3);
-  min-width: max-content;
   color: var(--text-secondary);
   border-top: 1px solid color-mix(in oklch, var(--hairline) 50%, transparent);
 }
@@ -1684,6 +1692,13 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
+}
+
+/* 머리글도 값과 같은 규칙을 따른다 — 머리글만 줄바꿈하면 그 행 하나가 두 줄이 되어 표가 어긋난다. */
+.agent-chat-stage-row.is-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-chat-stage-row.is-pending { color: var(--text-tertiary); }
@@ -1707,6 +1722,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .agent-chat-stage-row .is-num {

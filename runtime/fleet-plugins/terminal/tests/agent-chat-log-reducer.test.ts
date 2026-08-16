@@ -298,6 +298,22 @@ describe("segmentAgentChatLedger", () => {
       { family: "other", name: "Other", count: 1 },
     ]);
   });
+
+  // 문장은 마크다운으로 그려지고 그 문법은 공백으로 쓰인다 — 첫 줄의 네 칸은 코드 블록,
+  // 줄 끝 두 칸은 줄바꿈이다. 다듬으면 모델이 쓴 형식이 표시 직전에 사라지므로 그대로 넘긴다.
+  it("hands the sentence over untouched so its markdown survives", () => {
+    const raw = "    const cap = 1_000;\n\n읽겠습니다.  \n계속합니다.\n\n";
+    const segments = segmentAgentChatLedger([note(raw), tool("Read")]);
+    expect(segments[0]?.note).toBe(raw);
+  });
+
+  // 공백만 남은 문장은 구간을 열 자격이 없다 — 그리면 아무것도 말하지 않는 여백만 선다.
+  it("drops a segment whose sentence and steps are both empty", () => {
+    expect(segmentAgentChatLedger([note("\n \n")])).toEqual([]);
+    expect(segmentAgentChatLedger([note("  "), note("고치겠습니다."), tool("Edit")])).toEqual([
+      { note: "고치겠습니다.", groups: [{ family: "edit", count: 1 }], folded: [expect.anything()], inline: [], running: [] },
+    ]);
+  });
 });
 
 // 뷰 파생 — 원장(과정)과 Answer(결론)의 분리 규칙을 못 박는다.
