@@ -670,4 +670,31 @@ describe("job end arrivals", () => {
     const state = reduceAgentChatLog(initialAgentChatLogState, start);
     expect(state.jobs.find((entry) => entry.id === "b2")?.ends).toBe(0);
   });
+
+  it("keeps each turn's context total so growth survives a replay", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "dispatch", text: "first" },
+      { kind: "context", total: 30_000, max: 200_000, slices: [{ name: "Messages", tokens: 12_000 }] },
+      { kind: "dispatch", text: "second" },
+      { kind: "context", total: 42_000, max: 200_000, slices: [{ name: "Messages", tokens: 24_000 }] },
+      { kind: "replay-end", turns: 2 },
+    ]);
+    // 지나간 턴은 자기 시점의 총량을 그대로 간직한다 — 증가분은 그 차이지, 지금 값에서 되짚는
+    // 추정이 아니다.
+    expect(state.turns.map((turn) => turn.contextTotal)).toEqual([30_000, 42_000]);
+    // 전역 값은 언제나 마지막 스냅숏이다.
+    expect(state.context?.total).toBe(42_000);
+    expect(state.context?.max).toBe(200_000);
+  });
+
+  it("holds a context snapshot that arrives before any turn", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "context", total: 18_000, max: 200_000, compactAt: 174_000, slices: [] },
+    ]);
+    expect(state.turns).toHaveLength(0);
+    expect(state.context?.total).toBe(18_000);
+    expect(state.context?.compactAt).toBe(174_000);
+  });
 });

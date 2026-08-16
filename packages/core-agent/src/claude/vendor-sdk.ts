@@ -14,6 +14,7 @@ import {
 } from "@anthropic-ai/claude-agent-sdk";
 
 import type {
+  ClaudeGatewayContextUsage,
   ClaudeGatewayMcpServer,
   ClaudeGatewayMessage,
   ClaudeGatewayRun,
@@ -28,14 +29,72 @@ export interface VendorQueryInput {
   readonly options: Readonly<Record<string, unknown>>;
 }
 
+/** vendor 응답에서 이 패키지의 어휘만 꺼낸다. 모양이 어긋나면 값이 아니라 `null`이다. */
+function readVendorContextUsage(response: unknown): ClaudeGatewayContextUsage | null {
+  if (typeof response !== "object" || response === null) return null;
+  const usage = response as {
+    totalTokens?: unknown;
+    maxTokens?: unknown;
+    model?: unknown;
+    isAutoCompactEnabled?: unknown;
+    autoCompactThreshold?: unknown;
+    categories?: unknown;
+    memoryFiles?: unknown;
+    mcpTools?: unknown;
+  };
+  if (typeof usage.totalTokens !== "number" || typeof usage.maxTokens !== "number") return null;
+  const rows = Array.isArray(usage.categories) ? usage.categories : [];
+  const memory = Array.isArray(usage.memoryFiles) ? usage.memoryFiles : [];
+  const mcp = Array.isArray(usage.mcpTools) ? usage.mcpTools : [];
+  return {
+    total: usage.totalTokens,
+    max: usage.maxTokens,
+    model: typeof usage.model === "string" ? usage.model : "",
+    compactAt: usage.isAutoCompactEnabled === true && typeof usage.autoCompactThreshold === "number"
+      ? usage.autoCompactThreshold
+      : null,
+    categories: rows.flatMap((row: unknown) => {
+      const entry = row as { name?: unknown; tokens?: unknown; isDeferred?: unknown };
+      return typeof entry?.name === "string" && typeof entry.tokens === "number"
+        ? [{ name: entry.name, tokens: entry.tokens, deferred: entry.isDeferred === true }]
+        : [];
+    }),
+    memoryFiles: memory.flatMap((row: unknown) => {
+      const entry = row as { path?: unknown; tokens?: unknown };
+      return typeof entry?.path === "string" && typeof entry.tokens === "number"
+        ? [{ path: entry.path, tokens: entry.tokens }]
+        : [];
+    }),
+    mcpTools: mcp.flatMap((row: unknown) => {
+      const entry = row as { name?: unknown; serverName?: unknown; tokens?: unknown };
+      return typeof entry?.name === "string" && typeof entry.tokens === "number"
+        ? [{ name: entry.name, server: typeof entry.serverName === "string" ? entry.serverName : "", tokens: entry.tokens }]
+        : [];
+    }),
+  };
+}
+
 export function runVendorQuery(input: VendorQueryInput): ClaudeGatewayRun {
   const run = vendorQuery({
     prompt: input.prompt,
     options: input.options,
-  } as never) as AsyncGenerator<unknown, void> & { return?: (value?: unknown) => Promise<unknown> };
+  } as never) as AsyncGenerator<unknown, void> & {
+    return?: (value?: unknown) => Promise<unknown>;
+    getContextUsage?: () => Promise<unknown>;
+  };
 
   let closed = false;
   return {
+    async getContextUsage(): Promise<ClaudeGatewayContextUsage | null> {
+      // 닫힌 뒤의 호출은 물어볼 상대가 없다. transport 오류를 기다리느니 여기서 접는다.
+      if (closed || typeof run.getContextUsage !== "function") return null;
+      try {
+        return readVendorContextUsage(await run.getContextUsage());
+      } catch {
+        // 턴이 끝나 가면 자식이 먼저 닫힌다 — 정상 경로의 실패다.
+        return null;
+      }
+    },
     [Symbol.asyncIterator](): AsyncIterator<ClaudeGatewayMessage> {
       const iterator = run[Symbol.asyncIterator]();
       return {

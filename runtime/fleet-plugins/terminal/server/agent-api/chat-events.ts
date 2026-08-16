@@ -65,8 +65,34 @@ export interface AgentChatJobStage {
   readonly agents: readonly AgentChatJobAgent[];
 }
 
+/** 문맥 창을 나눠 쓰는 한 덩어리. */
+export interface AgentChatContextSlice {
+  readonly name: string;
+  readonly tokens: number;
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
+  /**
+   * 이 턴이 끝난 시점의 문맥 창 내역.
+   *
+   * 값은 턴이 **도는 중에** 찍은 마지막 스냅숏이다 — 자식은 턴이 끝나기 전에 먼저 닫히므로
+   * 종료 시점에는 물어볼 상대가 없다(실측). 그래서 마지막 답변 문장 몇 백 토큰이 빠질 수 있고,
+   * 화면은 그 값을 "마지막 턴 기준"이라고 말해야 한다.
+   *
+   * 저널에 남는 이유는 두 가지다: 재접속한 브라우저가 지금 총량을 되찾고, 지나간 턴이 각자
+   * 자기 시점의 총량을 그대로 간직해 턴별 증가분이 재생에서도 같은 값으로 읽힌다.
+   */
+  | {
+      readonly kind: "context";
+      readonly total: number;
+      readonly max: number;
+      /** 자동 압축이 걸리는 지점. 꺼져 있으면 생략한다 — 없는 임계선을 그리지 않기 위해서다. */
+      readonly compactAt?: number;
+      readonly slices: readonly AgentChatContextSlice[];
+      readonly memoryFiles?: readonly AgentChatContextSlice[];
+      readonly mcpTools?: readonly AgentChatContextSlice[];
+    }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }

@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   createClaudeGatewaySdk,
+  type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
@@ -153,6 +154,13 @@ export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<Claude
 
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
+/**
+ * 문맥 스냅숏을 다시 묻는 간격.
+ *
+ * 짧은 턴에서도 최소 한 번은 잡히도록 촘촘해야 하지만, 자식이 매번 문맥 전체를 세어 답하므로
+ * 무한히 촘촘할 수는 없다. 실측(1.5s 간격)에서 도구를 두 번 쓰는 턴에 표본이 여러 개 잡혔다.
+ */
+const CONTEXT_SAMPLE_MS = 1_500;
 /** 잡 id→종류. 상세 라우트의 첫 문이라 상한이 필요하지만, 잡은 도구 호출보다 훨씬 드물다. */
 const JOB_KIND_CAP = 200;
 /**
@@ -272,6 +280,14 @@ class AgentChatSession {
    * dispose(). 어느 경로로도 비워지지 않으면 SDK는 무기한 멈춘다(권한 요청에 park deadline이 없다).
    */
   private readonly pendingAsks = new Map<string, PendingAsk>();
+  /**
+   * 이 턴에서 마지막으로 성공한 문맥 스냅숏.
+   *
+   * 턴이 끝난 뒤에는 자식이 이미 닫혀 물어볼 수 없으므로(실측), 도는 동안 주기적으로 찍어 두고
+   * 그중 마지막 것을 종료 시점의 값으로 삼는다. 한 번도 못 찍었으면 null이고, 그때는 아무것도
+   * 싣지 않는다 — 없는 값을 0으로 실으면 화면이 "문맥이 비었다"고 말하게 된다.
+   */
+  private turnContext: ClaudeGatewayContextUsage | null = null;
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -648,6 +664,52 @@ class AgentChatSession {
     });
   }
 
+  /**
+   * 도는 턴에게 주기적으로 문맥 내역을 묻는다.
+   *
+   * 응답을 **기다리지 않는** 것이 이 함수의 전부다(실측): 이터레이션 루프 안에서 기다리면 소비가
+   * 서고, 세 번째 호출쯤에서 자식이 조기에 닫힌다. 여기서는 소비와 나란히 돌고 결과만 주워 담는다.
+   *
+   * 실패는 세지 않는다 — 턴이 끝나 가면 자식이 먼저 닫혀 마지막 몇 번은 반드시 실패하며, 그것은
+   * 정상 경로다. 마지막으로 성공한 값이 그 턴의 값으로 남는다.
+   */
+  private sampleContext(run: ClaudeGatewayRun): ReturnType<typeof setInterval> {
+    const timer = setInterval(() => {
+      void run.getContextUsage().then((usage) => {
+        if (usage) this.turnContext = usage;
+      });
+    }, CONTEXT_SAMPLE_MS);
+    return timer;
+  }
+
+  /** 이 턴의 마지막 스냅숏을 저널에 심는다. 한 번도 못 찍었으면 아무것도 심지 않는다. */
+  private pushContext(): void {
+    const usage = this.turnContext;
+    this.turnContext = null;
+    if (!usage) return;
+    this.push({
+      kind: "context",
+      total: usage.total,
+      max: usage.max,
+      ...(usage.compactAt === null ? {} : { compactAt: usage.compactAt }),
+      // deferred 몫은 총량에 들어 있지 않다 — 같은 목록에 섞으면 합이 총량을 넘는다.
+      slices: usage.categories
+        .filter((category) => !category.deferred && category.tokens > 0)
+        .map((category) => ({ name: category.name, tokens: category.tokens })),
+      ...(usage.memoryFiles.length > 0
+        ? { memoryFiles: usage.memoryFiles.map((file) => ({ name: file.path, tokens: file.tokens })) }
+        : {}),
+      ...(usage.mcpTools.length > 0
+        ? {
+            mcpTools: usage.mcpTools.map((tool) => ({
+              name: tool.server ? `${tool.server} · ${tool.name}` : tool.name,
+              tokens: tool.tokens,
+            })),
+          }
+        : {}),
+    });
+  }
+
   private push(event: AgentChatStreamEvent): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
     // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
@@ -791,6 +853,8 @@ class AgentChatSession {
         return;
       }
       this.activeRun = run;
+      this.turnContext = null;
+      const sampler = this.sampleContext(run);
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
@@ -816,9 +880,13 @@ class AgentChatSession {
         }
       } finally {
         // 정상 소진이면 no-op, 도중 이탈이면 슬롯 반납 — 없으면 다음 턴이 영영 막힌다.
+        clearInterval(sampler);
         this.activeRun = null;
         run.close();
       }
+      // 문맥 스냅숏은 turn-end보다 **먼저** 서야 한다. 리듀서가 이 값을 방금 끝난 턴에 귀속시키는데,
+      // turn-end가 이미 그 턴을 닫은 뒤에 오면 다음 턴의 첫 이벤트로 읽힌다.
+      this.pushContext();
       // 끊긴 스트림은 던지지 않고 조용히 끝나기도 한다 — 그래서 성공 경로에서도 세대를 본다.
       if (!turnClosed) {
         if (stopped()) this.push({ kind: "turn-end", ok: false, stopped: true });
@@ -829,6 +897,9 @@ class AgentChatSession {
       await this.syncProviderSession();
     } catch {
       this.activeRun = null;
+      // 끊긴 턴도 문맥은 자란 채로 끝난다. 그 자람을 싣지 않으면 다음 턴의 증가분이 두 턴 몫을
+      // 혼자 뒤집어쓰고, 사용자는 자기가 멈춘 턴이 공짜였다고 읽는다.
+      this.pushContext();
       // 중지는 실패가 아니다 — 오류 줄을 세우면 사용자가 스스로 한 일을 고장으로 읽는다.
       if (stopped()) {
         if (!turnClosed) this.push({ kind: "turn-end", ok: false, stopped: true });

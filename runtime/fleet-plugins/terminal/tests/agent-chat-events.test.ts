@@ -502,6 +502,33 @@ describe("background job mapping", () => {
       expect(readChatJournalEvent(JSON.stringify({ seq: 1, event }))).toEqual({ seq: 1, event });
     }
   });
+
+  it("round-trips a context snapshot through the journal reader", () => {
+    const event: AgentChatStreamEvent = {
+      kind: "context",
+      total: 69_000,
+      max: 200_000,
+      compactAt: 174_000,
+      slices: [{ name: "Messages", tokens: 41_000 }, { name: "System tools", tokens: 18_400 }],
+      memoryFiles: [{ name: "/repo/CLAUDE.md", tokens: 1_300 }],
+      mcpTools: [{ name: "fleet · wiki_read", tokens: 240 }],
+    };
+    expect(readChatJournalEvent(JSON.stringify({ seq: 3, event }))).toEqual({ seq: 3, event });
+  });
+
+  it("drops a context snapshot that cannot name a window", () => {
+    // 창 크기가 없으면 백분율이 없고, 0짜리 미터는 빈 사실이 아니라 틀린 사실이다.
+    expect(readChatJournalEvent(JSON.stringify({ seq: 4, event: { kind: "context", total: 10, max: 0, slices: [] } }))).toBeNull();
+    expect(readChatJournalEvent(JSON.stringify({ seq: 5, event: { kind: "context", max: 200_000, slices: [] } }))).toBeNull();
+  });
+
+  it("keeps only named slices in a context snapshot", () => {
+    const parsed = readChatJournalEvent(JSON.stringify({
+      seq: 6,
+      event: { kind: "context", total: 100, max: 1_000, slices: [{ name: "Messages", tokens: 60 }, { tokens: 40 }, { name: "", tokens: 5 }] },
+    }));
+    expect(parsed?.event).toEqual({ kind: "context", total: 100, max: 1_000, slices: [{ name: "Messages", tokens: 60 }] });
+  });
 });
 
 describe("background job text passes the same gate as tool results", () => {

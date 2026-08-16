@@ -376,6 +376,7 @@ function immediateRun(
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     async *[Symbol.asyncIterator]() {
       for (const message of messages) yield message;
       if (iterateError !== undefined) throw iterateError;
@@ -396,6 +397,7 @@ function hangingRun(options: { throwOnClose?: boolean } = {}): ClaudeGatewayRun 
   });
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     async *[Symbol.asyncIterator]() {
       started.resolve();
