@@ -213,7 +213,7 @@ code.hljs {
   top: 0.35em;
   bottom: 0.3em;
   width: var(--space-hair);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(180deg, var(--brass) 30%, var(--brass-deep));
   box-shadow: 0 0 8px var(--brass-glow);
 }
@@ -502,7 +502,7 @@ code.hljs {
   max-width: none;
   margin: var(--space-6) 0;
   padding: clamp(40px, 5vw, 56px) clamp(20px, 3vw, 32px) clamp(20px, 3vw, 28px);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
@@ -533,7 +533,7 @@ code.hljs {
   z-index: 2;
   color: var(--brass-bright);
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.22em;
   text-transform: uppercase;
@@ -690,7 +690,7 @@ code.hljs {
   grid-template-rows: auto minmax(0, 1fr);
   width: min(1600px, 96vw);
   height: min(920px, 92dvh);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim-strong);
   background: var(--surface-pillar);
   box-shadow: var(--shadow-floating);
@@ -772,7 +772,7 @@ code.hljs {
   min-width: 44px;
   min-height: 44px;
   padding: 0 var(--space-4);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 1px solid color-mix(in oklch, var(--brass) 42%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   color: var(--brass-bright);

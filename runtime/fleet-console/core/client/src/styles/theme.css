@@ -154,11 +154,11 @@
   --scrollbar-thumb-hover: oklch(70% 0.05 248 / 50%);
   --scrollbar-thumb-classic: oklch(50% 0.04 248 / 45%);
 
+  /* 라운드 어휘는 세 개뿐이다 — 컨트롤(xs)·면(md)·캡슐(pill). 이름이 값보다 많으면
+     새 규칙이 어느 이름을 골라야 하는지 규칙이 없어지고, 나중에 카드 라운드만 재조율하려
+     할 때 어느 이름을 움직여야 하는지도 알 수 없다(구 sm=xs, lg=xl=md 중복은 그렇게 생겼다). */
   --radius-xs: 6px;
-  --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 10px;
-  --radius-xl: 10px;
   /* 999px는 도트·비콘·상태 캡슐 전용 — 컨트롤(버튼/칩)에는 쓰지 않는다. */
   --radius-pill: 999px;
 
@@ -178,6 +178,34 @@
   --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --font-body-size: 14px;
+
+  /* 크기도 굵기와 같은 이유로 사다리 하나만 쓴다 — 굵기를 3티어로 묶어 놓고 크기를 raw px로
+     열어 두면, 표면마다 자기 스케일을 발명해 같은 역할(칩·버튼·라벨)이 화면마다 다른 크기로
+     선다. 실측에서 그 분산은 크기 32종·반픽셀 151회였고, 같은 Rail 슬롯을 공유하는 패널들의
+     본문이 10.5~13px로 갈려 패널을 바꾸는 일이 "다른 앱으로 건너가는" 것처럼 읽혔다.
+     단은 실측 주력값에서 유도했다 — 새 단을 늘리기 전에 기존 단으로 표현되는지 먼저 볼 것.
+     사다리 밖(24px 이상 디스플레이)과 도형 크기 지정은 계약 테스트의 명시적 예외 목록이 진다. */
+  --t-2xs: 10px;
+  --t-xs: 11px;
+  --t-sm: 12px;
+  --t-md: 13px;
+  --t-base: 14px;
+  --t-lg: 17px;
+  --t-xl: 22px;
+
+  /* 신택스 역할색은 상태도 위치도 아니다 — 문자열은 "완료"가 아니고 숫자는 "진행 중"이
+     아니므로 신호 채널(positive/warn/coral/aurora)을 빌리면 채널 침범이다. 그렇다고 자기
+     리터럴을 들면 테마를 따라오지 못하므로, 이미 테마별로 재조율되는 정체성 8톤(--id-*)에서
+     톤만 빌려 자기 채널 이름으로 감싼다. base에만 정의해 네 테마가 자동으로 따라온다.
+     markdown/styles.css의 hljs 팔레트는 별도 독트린 예외이며 이 채널과 무관하다. */
+  --syntax-key: var(--id-amber);
+  --syntax-string: var(--id-moss);
+  --syntax-number: var(--id-plum);
+  --syntax-function: var(--id-cerulean);
+  --syntax-tag: var(--id-crimson);
+  --syntax-attr: var(--id-teal);
+  --syntax-comment: var(--text-tertiary);
+  --syntax-punct: var(--text-tertiary);
 
   /* 굵기는 3티어만 쓴다 — 가변 서체가 임의 축값을 허용한다고 해서 위계가 늘어나지는 않는다.
      regular=본문, medium=강조·컨트롤 라벨, bold=제목·주요 액션. 세 티어 밖의 값은
@@ -538,7 +566,7 @@ a {
 ::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb);
   border: 2px solid transparent;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background-clip: padding-box;
 }
 

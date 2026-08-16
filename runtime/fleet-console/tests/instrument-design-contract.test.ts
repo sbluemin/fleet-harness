@@ -66,6 +66,35 @@ const OWNED_SOURCES = [
 ] as const;
 
 const FORBIDDEN_DECORATION = /radar-sweep|operations-radar|BACKGROUND_ANIMATION_STORAGE_KEY|PERIMETER_ANIMATION_STORAGE_KEY|Panel pulse|perimeter-orbit|notification-wake-pulse|AnchorIcon/;
+// 활자 사다리의 최대 단은 --t-xl(22px)이다. 그 위는 브랜드 워드마크·빈 상태 일러스트처럼
+// 소비처가 한 곳뿐이고 서로 다른 이유로 존재하는 디스플레이 크기라 사다리 밖에 둔다.
+const DISPLAY_SIZE_FLOOR_PX = 24;
+// 스켈레톤은 C≈0.012~0.02의 저채도 대역에 산다. 그 위의 유채색은 theme.css에서만 정의된다.
+const ACHROMATIC_CHROMA_CEILING = 0.03;
+// font-size가 텍스트가 아니라 도형을 재는 자리들 — 글리프 문자('×' '✦' '↻' 꺾쇠)의 크기이거나,
+// 치수가 박힌 상자(아바타·숫자 배지·이니셜 마크) 안이라 사다리로 올리면 넘치거나 잘린다.
+const RAW_FONT_SIZE_EXEMPT_SELECTORS = [
+  ".add-host-close",
+  ".pair-close",
+  ".settings-disclosure-toggle::after",
+  ".canvas-shortcuts-or",
+  ".thought-chevron",
+  ".tool-chip-glyph",
+  ".timeline-chevron",
+  ".effort-track-fill::after",
+  ".effort-track-fill::before",
+  ".app-toast-close",
+  ".directory-browser-close",
+  ".directory-browser-sector-advance",
+  ".whatsnew-close",
+  ".quick-launch-mark",
+  ".alerts-icon-badge",
+  ".fexp-refresh-btn",
+  ".history-commit-avatar",
+  ".session-analyst__receipt-chev",
+  ".session-analyst__ev",
+  ".agent-chat-fold-chev",
+] as const;
 const RAW_TEXT_INK_TOKENS = /var\(\s*--ink-(?:fog|rim|spectral|pearl)\b/;
 const NUMERIC_FONT_WEIGHT = /^(?:[1-9]\d{0,2}|1000)\b/;
 const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
@@ -274,6 +303,15 @@ function cssDeclarations(css: string, property: string): Array<{ index: number; 
 
 function lineAt(text: string, index: number): number {
   return text.slice(0, index).split("\n").length;
+}
+
+// 선언이 속한 규칙의 선택자. 예외를 파일:줄로 적으면 그 위에 한 줄만 들어와도 조용히 빗나가므로,
+// 무엇을 면제했는지가 이름으로 남는 선택자를 기준으로 삼는다.
+function selectorAt(masked: string, index: number): string {
+  const blockStart = masked.lastIndexOf("{", index);
+  if (blockStart === -1) return "";
+  const selectorStart = Math.max(masked.lastIndexOf("}", blockStart), masked.lastIndexOf("{", blockStart - 1)) + 1;
+  return masked.slice(selectorStart, blockStart).trim();
 }
 
 function customPropertyDefinitions(css: string): Set<string> {
@@ -550,6 +588,69 @@ describe("Instrument core design contract", () => {
         if (!/(?:^|\s)(?:[1-9]\d{0,2}|1000)(?=\s|$)/.test(beforeLineHeight)) continue;
         const line = lineAt(css, declaration.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 굵기를 3티어로 묶어 놓고 크기를 raw px로 열어 두면, 표면마다 자기 스케일을 발명해 같은
+  // 역할이 화면마다 다른 크기로 선다(실측 32종·반픽셀 151회, 같은 Rail 슬롯 본문이 10.5~13px).
+  // 사다리 최대가 22px이므로 24px 이상은 디스플레이 영역으로 사다리 밖에 둔다.
+  it("keeps product font size on the type-scale token ladder", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskFontFaceBlocks(css);
+      const record = (index: number, value: string) => {
+        if (Number(value) >= DISPLAY_SIZE_FLOOR_PX) return;
+        const line = lineAt(css, index);
+        const selector = selectorAt(masked, index);
+        if (RAW_FONT_SIZE_EXEMPT_SELECTORS.some((exempt) => selector.includes(exempt))) return;
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      };
+      for (const declaration of cssDeclarations(masked, "font-size")) {
+        const match = /^([0-9.]+)px/.exec(declaration.value);
+        if (match) record(declaration.index, match[1]!);
+      }
+      // font 단축 표기도 같은 축이다 — 여기로 새면 게이트가 절반만 지킨다.
+      for (const declaration of cssDeclarations(masked, "font")) {
+        const match = /([0-9.]+)px/.exec(declaration.value.split("/", 1)[0]!);
+        if (match) record(declaration.index, match[1]!);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 라운드 어휘는 xs·md·pill 셋뿐이다. raw 999px가 살아 있으면 같은 캡슐을 두 이름으로 부르게 되고,
+  // 퇴역한 sm·lg·xl이 되살아나면 이름이 다시 값보다 많아진다.
+  it("keeps border radius on the three-name vocabulary", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      for (const declaration of cssDeclarations(masked, "border-radius")) {
+        if (!/999px|--radius-(?:sm|lg|xl)\b/.test(declaration.value)) continue;
+        const line = lineAt(css, declaration.index);
+        violations.push(`${consoleRelativePath(file)}:${line} ${css.split("\n")[line - 1]!.trim()}`);
+      }
+      for (const match of masked.matchAll(/var\(\s*--radius-(?:sm|lg|xl)\b/g)) {
+        violations.push(`${consoleRelativePath(file)}:${lineAt(css, match.index)} retired radius token`);
+      }
+    }
+    expect(violations).toEqual([]);
+  });
+
+  // 유채색 raw 리터럴은 두 규칙을 한 번에 깬다 — 스켈레톤의 채도 봉투를 넘고, 테마별 재조율을 받지 못한다.
+  // 깊이를 나르는 근사 무채색(그림자·스크림·시트)은 console CLAUDE.md가 명시한 예외라 통과시킨다.
+  it("keeps chromatic color literals inside theme.css", () => {
+    const violations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      if (CSS_THEME_SOURCES.some((theme) => fileURLToPath(theme) === file)) continue;
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      for (const match of masked.matchAll(/oklch\(\s*[0-9.]+%?\s+([0-9.]+)\s/g)) {
+        if (Number(match[1]) < ACHROMATIC_CHROMA_CEILING) continue;
+        violations.push(`${consoleRelativePath(file)}:${lineAt(css, match.index)} ${match[0].trim()}`);
       }
     }
     expect(violations).toEqual([]);
@@ -1332,7 +1433,7 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/^\.operations-side-bar\.is-expanded \{/m);
     expect(layout).toContain(".command-band.is-fullscreen {");
     // 접거나 풀스크린이면 상단 캡이 없으므로 부유 카드 문법이 그대로 남는다.
-    expect(components).toContain("border-radius: 0 var(--radius-xl) 0 0;");
+    expect(components).toContain("border-radius: 0 var(--radius-md) 0 0;");
     expect(layout).toContain(".command-band-left.is-collapsed {");
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
@@ -1981,7 +2082,7 @@ describe("Instrument core design contract", () => {
     expect(captionSeamBlock).toContain("border-top-width: 0;");
     expect(captionSeamBlock).toContain("border-top-style: none;");
     expect(captionSeamBlock).not.toContain("border-top: none;");
-    expect(components).toContain("border-radius: 999px;");
+    expect(components).toContain("border-radius: var(--radius-pill);");
     expect(components).toContain("color: var(--text-secondary);");
     // 캡션 구조 선은 본문과 같은 --surface-rim을 직접 칠한다. inherit와
     // 1px solid inherit 단축은 선언이 버려지거나 계산색이 갈라진다.
@@ -2094,7 +2195,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("border: 1px solid var(--surface-rim);");
     expect(selectBlock).toContain("background: color-mix(in oklch, var(--ink-mid) 48%, transparent);");
     expect(selectBlock).toContain("color: var(--text-primary);");
-    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: 13px; line-height: 1.2; font-family: var(--font-body);");
+    expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
     expect(selectBlock).toContain("border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));");
@@ -2104,7 +2205,7 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
     // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
     expect(selectBlock).toContain(
-      "font-weight: var(--weight-regular);\n  font-size: 11px;\n  line-height: 1;\n  font-family: var(--font-mono);",
+      "font-weight: var(--weight-regular);\n  font-size: var(--t-xs);\n  line-height: 1;\n  font-family: var(--font-mono);",
     );
     // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
     expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
@@ -2262,7 +2363,7 @@ describe("Effort track interaction grammar", () => {
     const undoBlock = undo.slice(0, undo.indexOf("}"));
     expect(undoBlock).toContain("background: none;");
     expect(undoBlock).toContain("border: 0;");
-    expect(undoBlock).not.toContain("border-radius: 999px;");
+    expect(undoBlock).not.toContain("border-radius: var(--radius-pill);");
 
     // 시작 뷰 선택은 실행 종류가 스스로 선언했을 때만 선다 — core가 어느 플러그인이 채팅을
     // 아는지 알면 안 된다.

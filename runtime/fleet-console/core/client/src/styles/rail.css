@@ -18,7 +18,7 @@
      우상단 brass 코너 조명 + glass 본체, 부유 그림자, 단일 blur 레이어.
      자식(panel-slot·icons)은 표면을 갖지 않고 이 카드 위에 투명하게 얹힌다.
      우측 가장자리·하단 Global Navigation에 밀착 — 바깥(오른쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
-  border-radius: var(--radius-lg) 0 0 0;
+  border-radius: var(--radius-md) 0 0 0;
   border: 1px solid var(--surface-rim);
   border-right: none;
   border-bottom: none;
@@ -71,7 +71,7 @@
   border-left: 1px solid var(--surface-rim);
   /* Near-achromatic depth shadow is a sanctioned raw-literal exception. */
   box-shadow: -24px 0 48px -24px oklch(0% 0 0 / 70%);
-  border-radius: var(--radius-lg) 0 0 var(--radius-lg);
+  border-radius: var(--radius-md) 0 0 var(--radius-md);
 }
 
 .right-rail.is-overlay .right-rail-panel-slot::before {
@@ -160,7 +160,7 @@
   flex: 0 1 auto;
   max-width: 50%;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-tertiary);
@@ -176,7 +176,7 @@
   display: inline-grid;
   place-items: center;
   padding: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 1px solid var(--surface-rim-strong);
   background: transparent;
   color: var(--text-tertiary);
@@ -215,7 +215,7 @@
   align-items: center;
   gap: 6px;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   padding: 0 6px;
   height: 20px;
 }
@@ -292,7 +292,7 @@
 .right-rail-alpha-value {
   flex: none;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   color: var(--brass-ink);
   width: 30px;
   text-align: right;
@@ -305,7 +305,7 @@
   flex: none;
   display: inline-grid;
   place-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: none;
   border: 1px solid transparent;
   color: var(--text-tertiary);
@@ -365,12 +365,12 @@
 }
 
 .right-rail-stale-veil strong {
-  font-size: 13px;
+  font-size: var(--t-md);
 }
 
 .right-rail-stale-veil span {
   color: var(--text-secondary);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 /* ── 아이콘 레일 ────────────────────────────────────────────────── */
@@ -404,7 +404,7 @@
   color: var(--text-tertiary);
   cursor: pointer;
   position: relative;
-  font-size: 14px;
+  font-size: var(--t-base);
   transition:
     color var(--duration-fast) var(--ease-glide),
     background var(--duration-fast) var(--ease-glide),

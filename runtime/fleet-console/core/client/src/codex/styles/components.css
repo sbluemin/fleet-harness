@@ -81,7 +81,7 @@ kbd {
   align-items: center;
   gap: var(--space-1);
   padding: var(--space-1) 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   color: var(--text-tertiary);
@@ -121,7 +121,7 @@ kbd {
 
 .nav-tab {
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-body);
@@ -185,7 +185,7 @@ kbd {
   width: 100%;
   padding: 10px 11px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
   font-family: inherit;
@@ -223,7 +223,7 @@ kbd {
   color: var(--text-tertiary);
   background: color-mix(in oklch, var(--ink-mid) 70%, transparent);
   border: 1px solid var(--surface-rim);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   padding: 2px 7px;
 }
 
@@ -241,7 +241,7 @@ kbd {
   gap: var(--space-2);
   min-width: 0;
   padding: 9px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-size: var(--font-size-md);
   letter-spacing: -0.005em;
@@ -395,7 +395,7 @@ kbd {
 .workspace-path {
   margin: 0;
   padding: 6px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-deep) 60%, transparent);
   color: var(--text-secondary);
@@ -498,7 +498,7 @@ kbd {
   width: 6px;
   height: 6px;
   margin-right: var(--space-2);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--brass);
   box-shadow: 0 0 10px var(--brass-glow);
   vertical-align: 0.08em;
@@ -576,7 +576,7 @@ kbd {
 .manifest-card,
 .toc-panel {
   padding: var(--space-6);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
@@ -648,7 +648,7 @@ kbd {
   height: 18px;
   flex: 0 0 auto;
   margin-top: 2px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
   background: color-mix(in oklch, var(--ink-deep) 64%, transparent);
 }
@@ -660,7 +660,7 @@ kbd {
   inset: 50% auto auto 50%;
   width: 8px;
   height: 1px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--brass-bright);
   transform: translate(-50%, -50%);
 }
@@ -822,7 +822,7 @@ kbd {
 .command-card {
   width: min(1080px, 100%);
   padding: var(--space-3);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   border: 1px solid var(--surface-rim-strong);
   background: var(--surface-pillar);
   box-shadow: var(--shadow-floating);
@@ -1099,14 +1099,14 @@ kbd {
 .raw-divider {
   height: 2px;
   width: 96px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: linear-gradient(90deg, var(--brass) 0, var(--aurora) 60%, transparent);
 }
 
 .raw-document {
   position: relative;
   padding: clamp(28px, 4vw, 48px);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
@@ -1158,7 +1158,7 @@ kbd {
   justify-content: center;
   width: 32px;
   height: 32px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   border: 1px solid var(--surface-rim);
   background: color-mix(in oklch, var(--ink-deep) 70%, transparent);
   color: var(--text-tertiary);
@@ -1192,7 +1192,7 @@ kbd {
   align-items: center;
   gap: var(--space-2);
   padding: 9px 10px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-size: var(--font-size-md);
   letter-spacing: -0.005em;
@@ -1252,7 +1252,7 @@ kbd {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--brass) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-bright);
@@ -1270,7 +1270,7 @@ kbd {
   align-items: center;
   gap: 5px;
   padding: 4px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 35%, transparent);
   color: var(--brass-bright);
@@ -1342,7 +1342,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   padding: 7px 14px;
   color: var(--text-tertiary);
   font-family: var(--font-body);
@@ -1373,7 +1373,7 @@ kbd {
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--brass) 18%, transparent);
   border: 1px solid color-mix(in oklch, var(--brass) 40%, transparent);
   color: var(--brass-bright);
@@ -1483,7 +1483,7 @@ kbd {
   display: grid;
   gap: var(--space-3);
   padding: var(--space-4) var(--space-5);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid transparent;
   box-shadow: var(--shadow-soft);
@@ -1649,7 +1649,7 @@ kbd {
   flex-direction: column;
   gap: var(--space-4);
   padding: var(--space-5);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
@@ -2086,7 +2086,7 @@ kbd {
 .conflict-section {
   margin-top: var(--space-5);
   padding: var(--space-5);
-  border-radius: var(--radius-xl);
+  border-radius: var(--radius-md);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
   box-shadow: var(--shadow-soft);
@@ -2170,7 +2170,7 @@ kbd {
   outline: none;
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--t-sm);
   padding: 0;
 }
 
@@ -2192,10 +2192,10 @@ kbd {
   padding: var(--space-1) var(--space-2);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--t-xs);
   cursor: pointer;
   transition: background var(--duration-base) var(--ease-spring);
 }
@@ -2215,7 +2215,7 @@ kbd {
   background: color-mix(in oklch, var(--brass) 20%, transparent);
   border-radius: 8px;
   color: var(--brass-bright);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   line-height: 1;
 }
@@ -2231,7 +2231,7 @@ kbd {
   background: color-mix(in oklch, var(--warn) 5%, transparent);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   line-height: 1.35;
 }
 
@@ -2243,7 +2243,7 @@ kbd {
   width: 6px;
   height: 6px;
   flex: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--warn);
   box-shadow: 0 0 8px color-mix(in oklch, var(--warn) 45%, transparent);
 }
@@ -2334,7 +2334,7 @@ kbd {
 
 .codex-nav-list-eyebrow {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   font-weight: var(--weight-medium);
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -2349,7 +2349,7 @@ kbd {
   gap: 2px;
   padding: 2px;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--surface-glass);
 }
 
@@ -2360,7 +2360,7 @@ kbd {
   background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   cursor: pointer;
 }
 
@@ -2421,7 +2421,7 @@ kbd {
   background: transparent;
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--t-sm);
   text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2439,7 +2439,7 @@ kbd {
   overflow: hidden;
   color: var(--text-tertiary);
   font-family: var(--font-body);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   line-height: 1.4;
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
@@ -2448,7 +2448,7 @@ kbd {
 
 .codex-nav-entry .meta {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   color: var(--text-tertiary);
   white-space: nowrap;
   overflow: hidden;
@@ -2468,10 +2468,10 @@ kbd {
   padding: 1px var(--space-1);
   background: transparent;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 9px;
+  font-size: var(--t-2xs);
   letter-spacing: 0.04em;
   cursor: pointer;
 }
@@ -2497,7 +2497,7 @@ kbd {
 .codex-nav-empty {
   padding: var(--space-4) var(--space-3);
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--text-tertiary);
   text-align: center;
 }
@@ -2530,10 +2530,10 @@ kbd {
 .cowork-ghost,
 .cowork-solid {
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
@@ -2563,13 +2563,13 @@ kbd {
   align-items: center;
   gap: var(--space-1);
   border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-veil) 96%, var(--brass));
   box-shadow: 0 2px 6px color-mix(in oklch, var(--ink-abyss) 45%, transparent), 0 12px 32px -8px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
   color: var(--text-primary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-3);
   user-select: none;
@@ -2585,7 +2585,7 @@ kbd {
   gap: var(--space-2);
   width: min(340px, 86%);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
   box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   padding: var(--space-3);
@@ -2637,7 +2637,7 @@ kbd {
   width: min(560px, 100%);
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--aurora) 34%, var(--surface-rim));
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-veil) 94%, var(--ink-deep));
   box-shadow: 0 22px 46px -24px color-mix(in oklch, var(--ink-abyss) 88%, transparent);
 }
@@ -2692,12 +2692,12 @@ kbd {
 .cowork-revision-output.markdown-body p { margin-bottom: var(--space-3); }
 .cowork-revision-output.markdown-body :is(ul, ol) { margin-bottom: var(--space-3); padding-left: var(--space-5); }
 .cowork-revision-output.markdown-body li + li { margin-top: var(--space-1); }
-.cowork-revision-output.markdown-body table { margin-block: var(--space-3); font-size: 10px; }
+.cowork-revision-output.markdown-body table { margin-block: var(--space-3); font-size: var(--t-2xs); }
 .cowork-revision-output.markdown-body table :is(th, td) { padding: var(--space-2) var(--space-3); }
 .cowork-revision-output.markdown-body :is(blockquote, .code-block, .diagram-block) { margin-block: var(--space-3); }
 .cowork-revision-output.markdown-body blockquote { padding: var(--space-2) var(--space-3); }
 .cowork-revision-output.markdown-body .code-block code { padding: var(--space-3); }
-.cowork-revision-output.markdown-body .copy-code { font-size: 12px; }
+.cowork-revision-output.markdown-body .copy-code { font-size: var(--t-sm); }
 .cowork-revision-output::before { content: "✳"; position: absolute; left: 1px; top: 1px; color: var(--aurora-ink); }
 .cowork-revision-status { display: flex; align-items: center; gap: var(--space-2); border-top: 1px solid var(--surface-rim); background: color-mix(in oklch, var(--aurora) 5%, var(--ink-deep)); padding: var(--space-2) var(--space-3); }
 .cowork-revision-status i { position: relative; width: 16px; height: 16px; flex: none; border: 1px solid var(--aurora); border-radius: 50%; animation: cowork-revision-pulse 1.4s var(--ease-glide) infinite; }
@@ -2713,7 +2713,7 @@ kbd {
   gap: var(--space-1);
   width: min(560px, 100%);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
   box-shadow: 0 2px 8px color-mix(in oklch, var(--ink-abyss) 50%, transparent), 0 20px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   overflow: hidden;
@@ -2738,12 +2738,12 @@ kbd {
   align-items: center;
   gap: var(--space-1);
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
   font-family: var(--font-body);
-  font-size: 11px;
+  font-size: var(--t-xs);
   font-weight: var(--weight-medium);
   padding: var(--space-1) var(--space-2);
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
@@ -2773,7 +2773,7 @@ kbd {
   display: grid;
   place-items: center;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--brass);
   color: var(--text-on-brass);
   cursor: pointer;
@@ -2792,11 +2792,11 @@ kbd {
   align-items: center;
   gap: var(--space-2);
   border: 1px solid color-mix(in oklch, var(--brass) 35%, var(--surface-rim));
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in oklch, var(--ink-veil) 94%, var(--brass));
   box-shadow: 0 12px 32px -10px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
   color: var(--text-primary);
-  font-size: 11px;
+  font-size: var(--t-xs);
   padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
 }
 .cowork-review-count { display: inline-flex; align-items: center; gap: var(--space-1); font-weight: var(--weight-medium); }
@@ -2810,7 +2810,7 @@ kbd {
   max-height: 320px;
   overflow: auto;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
   box-shadow: 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   padding: var(--space-2);
@@ -2839,7 +2839,7 @@ kbd {
 }
 .cowork-card textarea {
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 78%, transparent);
   color: var(--text-primary);
   font: inherit;
@@ -2867,7 +2867,7 @@ kbd {
   gap: var(--space-2);
   min-width: 224px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-primary);
   cursor: pointer;
@@ -2903,7 +2903,7 @@ kbd {
   left: calc(100% + var(--space-2));
   width: max-content;
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-veil) 97%, var(--ink-deep));
   box-shadow: 0 24px 48px -12px color-mix(in oklch, var(--ink-abyss) 85%, transparent);
   padding: var(--space-2) var(--space-3);
@@ -2922,7 +2922,7 @@ kbd {
   gap: var(--space-2);
   width: min(560px, 100%);
   border: 1px solid color-mix(in oklch, var(--aurora) 28%, var(--surface-rim));
-  border-radius: var(--radius-lg);
+  border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--ink-veil) 96%, var(--aurora));
   box-shadow: 0 16px 40px -12px color-mix(in oklch, var(--ink-abyss) 80%, transparent);
   color: var(--text-primary);

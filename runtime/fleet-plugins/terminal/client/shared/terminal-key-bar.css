@@ -36,12 +36,12 @@
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   white-space: nowrap;
   background: var(--surface-glass-strong);
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   cursor: pointer;
   user-select: none;
   -webkit-user-select: none;
