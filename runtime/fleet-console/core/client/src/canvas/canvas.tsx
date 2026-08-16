@@ -46,8 +46,9 @@ interface OperationsCanvasProps {
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
   readonly onRename: (operationId: string, title: string) => void;
-  readonly onSetAccent: (operationId: string, accentKey: string | null) => void;
   readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
+  /** 그 Operation의 패널이 focus layer 뒤로 숨었다 — 그 패널이 주인인 메뉴가 열려 있으면 거둔다. */
+  readonly onDismissOperationMenu?: (operationId: string) => void;
 }
 
 interface ContextMenuRequest {
@@ -97,8 +98,8 @@ export function OperationsCanvas({
   onClose,
   onFocus,
   onRename,
-  onSetAccent,
   onOpenOperationMenu,
+  onDismissOperationMenu,
 }: OperationsCanvasProps) {
   const canvasRef = useRef<HTMLElement | null>(null);
   const t = useT();
@@ -927,7 +928,6 @@ export function OperationsCanvas({
             triageStage: operationTriageStage,
             triagePicked: operationTriageStage && triageStage?.picked === true,
             glanceHud,
-            formationSlotIndex: formationView ? formationSlotIndexByOperationId.get(operation.id) : undefined,
             companion: operationCompanion,
             companions: operationCompanion ? visibleCompanionPanels : [],
             companionGeometries: operationCompanion
@@ -989,8 +989,11 @@ export function OperationsCanvas({
             onRename: (title) => {
               onRename(operation.id, title);
             },
-            onSetAccent: (accentKey) => {
-              onSetAccent(operation.id, accentKey);
+            onOpenMenu: (anchor, returnFocus) => {
+              onOpenOperationMenu?.(operation.id, anchor, returnFocus);
+            },
+            onRenderHiddenDismissMenu: () => {
+              onDismissOperationMenu?.(operation.id);
             },
             onGeometryChange: (geometry) => {
               if (!operationMaximized && !operationCompanion && !formationView && !triageActive) setOperationGeometry(operation.id, geometry);
@@ -1253,7 +1256,6 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly triageStage: boolean;
   readonly triagePicked: boolean;
   readonly glanceHud: GlanceHudModel;
-  readonly formationSlotIndex?: number;
   readonly companion: boolean;
   readonly companions: readonly CompanionPanelDescriptor[];
   readonly companionGeometries: readonly OperationGeometry[];
@@ -1273,7 +1275,8 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly onMinimize: () => void;
   readonly onMaximize: () => void;
   readonly onRename: (title: string) => void;
-  readonly onSetAccent: (accentKey: string | null) => void;
+  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
 }) {
@@ -1307,7 +1310,6 @@ function renderPluginOperation(operation: OperationNode, options: {
         triagePicked={options.triagePicked}
         deckTile={options.deckSlot !== null}
         glanceHud={options.glanceHud}
-        formationSlotIndex={options.formationSlotIndex}
         topEdge={options.topEdge}
         renderHidden={options.focusLayerHidden}
         focusLayerTarget={options.maximized || options.companion}
@@ -1320,7 +1322,8 @@ function renderPluginOperation(operation: OperationNode, options: {
         onMinimize={options.onMinimize}
         onMaximize={options.onMaximize}
         onRename={options.onRename}
-        onSetAccent={options.onSetAccent}
+        onOpenMenu={options.onOpenMenu}
+        onRenderHiddenDismissMenu={options.onRenderHiddenDismissMenu}
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}

@@ -180,6 +180,5 @@ function renderCanvas() {
     onClose: () => {},
     onFocus: () => {},
     onRename: () => {},
-    onSetAccent: () => {},
   })));
 }

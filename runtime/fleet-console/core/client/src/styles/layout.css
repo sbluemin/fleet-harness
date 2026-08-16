@@ -583,8 +583,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   font-weight: var(--weight-medium);
 }
 
-.command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }
-.command-band-operation-kind svg { display: block; width: 13px; height: 13px; }
+.command-band-operation-status { margin-right: 2px; }
 
 /* ===== Command Band 세그먼트 드롭다운 전환기 — 메뉴 문법은 components.css .theater-menu 계열의 밴드 스코프 미러 ===== */
 .command-band-switcher {

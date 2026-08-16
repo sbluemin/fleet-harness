@@ -134,8 +134,6 @@ export function TriageSideBar({
     activeOperationId: stagedOperationId,
     operationNotifications,
     operationRuntime,
-    catalog,
-    renderKindIcon,
   }));
   // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
   // 표시 선택이므로 대기·실행 중·백그라운드·유휴 중 어디에도 새 칸을 만들지 않는다.

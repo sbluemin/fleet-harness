@@ -5,7 +5,6 @@ import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operat
 import { useT } from "../i18n/index.js";
 import { operationActivityVisual, type OperationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
-import { AccentPopover } from "./accent-popover.js";
 import type { GlanceHudModel } from "./glance-hud.js";
 import { resolveAccentColor } from "./operation-accent.js";
 
@@ -27,7 +26,6 @@ interface OperationFrameProps {
   /** War Room 덱의 한 칸에 선 패널 — 자리와 크기를 칸이 정하므로 캔버스 좌표를 쓰지 않는다. */
   readonly deckTile?: boolean;
   readonly glanceHud: GlanceHudModel;
-  readonly formationSlotIndex?: number;
   readonly accentKey?: string | null;
   readonly groupName?: string | null;
   readonly groupColor?: string | null;
@@ -37,7 +35,13 @@ interface OperationFrameProps {
   readonly onMinimize: () => void;
   readonly onMaximize?: () => void;
   readonly onRename: (title: string) => void;
-  readonly onSetAccent?: (accentKey: string | null) => void;
+  /** 캡션 More 버튼이 여는 Operation 메뉴 — 사이드바 우클릭과 같은 메뉴를 부모가 소유한다. */
+  readonly onOpenMenu?: (anchor: DOMRect, returnFocus: HTMLElement | null) => void;
+  /**
+   * 이 프레임이 focus layer 뒤로 숨을 때의 통지. 메뉴는 부모 소유이고 프레임은 자기가 숨는 것만
+   * 아므로, 보이지 않는 패널의 메뉴가 화면에 남지 않도록 부모가 이 신호로 자기 메뉴를 거둔다.
+   */
+  readonly onRenderHiddenDismissMenu?: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
   readonly onGeometryCommit: (geometry: OperationGeometry) => void;
   readonly onRenderHiddenFocus?: () => void;
@@ -71,7 +75,7 @@ const DRAG_THRESHOLD_PX = 3;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, formationSlotIndex, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onSetAccent, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -85,7 +89,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   const previousUnseenRef = useRef(unseen);
   const lastVisibleGeometryRef = useRef(geometry);
   const restoreIdentityFocusRef = useRef(false);
-  const [accentAnchor, setAccentAnchor] = useState<DOMRect | null>(null);
   const [isCloseArmed, setIsCloseArmed] = useState(false);
   const [arrivalFlash, setArrivalFlash] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -161,14 +164,13 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   }, [onActivate]);
 
   // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame(없으면 Canvas)으로 옮긴다.
+  // 메뉴 회수를 포커스 이관보다 먼저 한다 — 뒤에 두면 부모가 메뉴를 닫으며 되돌리는 포커스가
+  // 방금 inert가 된 이 프레임의 트리거를 향한다.
   useLayoutEffect(() => {
     if (!renderHidden || typeof document === "undefined") return;
-    // AccentPopover는 document.body에 포털되지만 frame이 소유한다. 열린 peer는 포커스 위치와 무관하게
-    // 먼저 닫고, 메뉴 내부에 있던 포커스도 전면 frame/Canvas로 명시적으로 넘긴다.
-    const hadAccentPopover = accentAnchor !== null;
-    if (hadAccentPopover) setAccentAnchor(null);
-    if (hadAccentPopover || operationRef.current?.contains(document.activeElement)) onRenderHiddenFocus?.();
-  }, [accentAnchor, renderHidden, onRenderHiddenFocus]);
+    onRenderHiddenDismissMenu?.();
+    if (operationRef.current?.contains(document.activeElement)) onRenderHiddenFocus?.();
+  }, [renderHidden, onRenderHiddenDismissMenu, onRenderHiddenFocus]);
 
   const clearCloseArmTimer = () => {
     if (closeArmTimeoutRef.current === null) return;
@@ -335,16 +337,10 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     onMaximize?.();
   };
 
-  const openAccentPopover = (anchor: DOMRect) => {
+  const openOperationMenu = (anchor: DOMRect, returnFocus: HTMLElement | null) => {
     disarmClose();
     onActivate();
-    setAccentAnchor(anchor);
-  };
-
-  const activateBeacon = (event: ReactPointerEvent<HTMLSpanElement>) => {
-    event.stopPropagation();
-    disarmClose();
-    onActivate();
+    onOpenMenu?.(anchor, returnFocus);
   };
 
   const close = () => {
@@ -460,26 +456,22 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           </button>
         )}
         {triagePicked ? <span className="canvas-operation-triage-picked">{t("canvas.triage.picked")}</span> : null}
-        {formationSlotIndex !== undefined ? (
-          <span className="canvas-operation-formation-slot" aria-label={t("canvas.formation.slotAria", { index: formationSlotIndex })}>
-            {String(formationSlotIndex).padStart(2, "0")}
-          </span>
-        ) : null}
-        {onSetAccent ? (
+        {/* 캡션은 상태를 말하지 않는다 — 패널 자신의 보더·글로우가 이미 상태 채널을 지고 있고,
+            목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
+            여는 문(사이드바 우클릭과 같은 메뉴)이 가져간다. */}
+        {onOpenMenu ? (
           <button
             type="button"
-            className="canvas-operation-beacon-button"
+            className="canvas-operation-more-button"
             onPointerDown={stopButtonPointer}
-            onClick={(event) => openAccentPopover(event.currentTarget.getBoundingClientRect())}
-            aria-label={t("canvas.frame.setAccentAria", { title: displayTitle })}
+            onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
+            aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
             aria-haspopup="menu"
-            title={t("canvas.frame.setAccentTitle")}
+            title={t("canvas.frame.openMenuTitle")}
           >
-            <span className={beaconStatusClass(status)} aria-hidden="true" />
+            <MoreIcon />
           </button>
-        ) : (
-          <span className={beaconStatusClass(status)} onPointerDown={activateBeacon} aria-hidden="true" />
-        )}
+        ) : null}
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
           {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
@@ -535,14 +527,6 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
           aria-hidden="true"
         />
       ))}
-      {accentAnchor && onSetAccent ? (
-        <AccentPopover
-          anchor={accentAnchor}
-          accentKey={accentKey}
-          onSelect={onSetAccent}
-          onClose={() => setAccentAnchor(null)}
-        />
-      ) : null}
     </article>
   );
 }
@@ -578,13 +562,15 @@ function frameStatusClass(status: OperationActivityVisual | undefined): string {
   return "";
 }
 
-function beaconStatusClass(status: OperationActivityVisual | undefined): string {
-  const visual = operationActivityVisual(status);
-  if (visual === "running") return "tenant-beacon is-turn-running";
-  if (visual === "background") return "tenant-beacon is-background";
-  if (visual === "awaiting") return "tenant-beacon is-awaiting";
-  if (visual === "ended") return "tenant-beacon is-ended";
-  return "tenant-beacon is-idle";
+function MoreIcon() {
+  // 가로 3점 — 이 Operation에 대한 나머지 동작이 메뉴로 열린다는 표준 문법.
+  return (
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <circle cx="4" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="8" cy="8" r="1.2" fill="currentColor" />
+      <circle cx="12" cy="8" r="1.2" fill="currentColor" />
+    </svg>
+  );
 }
 
 export function MinimizeIcon() {

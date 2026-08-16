@@ -2576,13 +2576,24 @@
   --activity-glow: var(--warn-glow);
 }
 
-.status-dot,
-.tenant-beacon {
+.status-dot {
   /* accent-immune: beacon dots are system status signals, never user accent fill. */
   width: 8px;
   height: 8px;
   flex: none;
   border-radius: var(--radius-pill);
+  background: var(--ink-rim);
+}
+
+/* Operation 활동 마크는 조형이 하나다 — 둥근 네모. 원형은 이 축에서 폐지되었고, 상태는
+   색과 채움·중공·발광·맥동으로만 갈린다. 조형이 상태마다 갈리면 같은 축의 다섯 값이
+   서로 다른 종류의 사물로 읽힌다. */
+.tenant-beacon {
+  /* accent-immune: beacon marks are system status signals, never user accent fill. */
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 2px;
   background: var(--ink-rim);
 }
 
@@ -2608,7 +2619,6 @@
 /* Agent CLI 턴 진행 중(캐리어 스트리밍 포함) — 노랑(--warn). aurora(awaiting 대기)와 구별한다. */
 .tenant-beacon.is-turn-running {
   background: var(--activity-color);
-  border-radius: 2px;
   box-shadow: 0 0 10px var(--activity-glow);
 }
 
@@ -2616,7 +2626,6 @@
 .tenant-beacon.is-background {
   background: none;
   border: 1.5px solid var(--activity-color);
-  border-radius: 2px;
   box-sizing: border-box;
   box-shadow: 0 0 8px var(--activity-glow);
 }
@@ -3279,13 +3288,15 @@
   inset: 13%;
 }
 
+/* 지도 마커도 같은 활동 축을 읽는다 — 조형은 행·캡션과 같은 둥근 네모다(원형 폐지).
+   지도 축척이라 반경만 치수에 맞춰 3px로 든다. */
 .canvas-triage-map-dot {
   position: absolute;
   width: 14px;
   height: 14px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: var(--radius-pill);
+  border-radius: 3px;
   background: var(--activity-color);
   opacity: 0.75;
   cursor: pointer;
@@ -4332,15 +4343,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   letter-spacing: 0.08em;
 }
 
-.canvas-operation-formation-slot {
-  flex: none;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-}
-
 /* 커튼(1400ms)이 걷힌 뒤에 타일이 오른다 — Triage의 커튼:등단 비율(1500:1260)을 그대로 따른다.
    stagger는 40ms로 좁혀 마지막 타일까지 진입 연출(1950ms) 안에 끝나게 한다. */
 .operations-canvas.is-formation-entering .canvas-operation {
@@ -5063,7 +5065,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--ink-muted);
 }
 
-.side-bar-chip--minimized .side-bar-chip-op-icon {
+.side-bar-chip--minimized .side-bar-chip-status {
   opacity: 0.62;
 }
 
@@ -5101,47 +5103,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   pointer-events: none;
 }
 
-/* Beacon button (accent picker trigger) — Operation 아이콘을 primary로, status beacon을 우하 코너 점으로 담는 복합 버튼 */
+/* 이름 왼쪽 상태 슬롯 — 조작 표면이 아니라 마크를 담는 자리다(칩 본체가 클릭을 소유한다). */
 .side-bar-chip-beacon-button {
-  position: relative;
   display: grid;
   place-items: center;
   flex: none;
   width: 24px;
   height: 24px;
-  padding: 0;
-  cursor: pointer;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
 }
-
-.side-bar-chip-beacon-button:hover,
-.side-bar-chip-beacon-button:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  outline: none;
-}
-
-/* Operation 아이콘 슬롯 */
-.side-bar-chip-op-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  color: var(--text-secondary);
-}
-
-.side-bar-chip-op-icon svg {
-  width: 14px;
-  height: 14px;
-  flex: none;
-}
-
 
 .side-bar-chip-name {
   flex: 1;
@@ -5177,26 +5146,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
     0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-.side-bar-chip-count {
-  flex: none;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  color: var(--text-tertiary);
-  min-width: 16px;
-  text-align: right;
-}
-
-
-.side-bar-chip-status {
-  flex: none;
-  width: 6px;
-  height: 6px;
-  margin-left: auto;
-  border-radius: 50%;
-  background: var(--ink-fog);
-}
-
 /* 실행 표면 표식(예: CHAT) — 모드를 말할 뿐 상태를 말하지 않는다. 그래서 신호 채널(aurora·warn·
    coral·positive)도, 위치를 말하는 brass도 빌리지 않고 중성 잉크와 헤어라인만 쓴다. */
 .side-bar-chip-surface {
@@ -5212,17 +5161,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   white-space: nowrap;
 }
 
-/* 상태 점이 auto 마진으로 오른쪽 끝을 잡고 있으므로, 표식이 함께 설 때는 그 끝을 표식에 넘긴다. */
-.side-bar-chip-status:has(+ .side-bar-chip-surface) {
-  margin-right: 4px;
-}
-
+/* 미확인 도착 표식 — 활동 상태와 다른 축이지만 같은 마크 어휘(둥근 네모)를 쓴다.
+   상태 마크가 이름 왼쪽으로 옮겨간 뒤 이 표식이 오른쪽 끝을 잡는다. */
 .side-bar-chip-unseen {
   flex: none;
   width: 7px;
   height: 7px;
   margin-left: auto;
-  border-radius: var(--radius-pill);
+  border-radius: 2px;
   background: var(--positive);
   box-shadow: 0 0 7px var(--positive-glow);
 }
@@ -5281,22 +5227,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 @keyframes side-bar-status-land {
   from { background: var(--aurora-glow); }
   to { background: transparent; }
-}
-
-.side-bar-chip-status.is-live {
-  background: var(--aurora);
-  box-shadow: 0 0 7px var(--aurora-glow);
-  animation: side-bar-chip-status-pulse 1.6s ease-in-out infinite;
-}
-
-.side-bar-chip-status.is-attention {
-  background: var(--coral);
-  box-shadow: 0 0 6px var(--coral-glow);
-}
-
-@keyframes side-bar-chip-status-pulse {
-  0%, 100% { opacity: 0.55; }
-  50% { opacity: 1; }
 }
 
 .side-bar-chip-close,
@@ -5406,10 +5336,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
     animation: none;
   }
 
-  .side-bar-chip-status.is-live {
-    animation: none;
-  }
-
   .side-bar-chip--status-landed {
     animation: none;
   }
@@ -5484,12 +5410,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transform: rotate(-90deg);
 }
 
+/* 섹션 머리글 마크도 활동 축이다 — 행의 마크와 같은 둥근 네모를 쓴다(원형 폐지). */
 .side-bar-status-header__dot {
   display: block;
   flex: none;
   width: 7px;
   height: 7px;
-  border-radius: var(--radius-pill);
+  border-radius: 2px;
   background: var(--status-color);
 }
 
@@ -5986,9 +5913,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
 }
 
-/* 좌측 상태 인디케이터(beacon)를 감싼 클릭 어포던스 — 누르면 accent 설정 모달을 연다.
-   accent-immune: 도트 fill은 상태색 단독 소유이고, 버튼 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
-.canvas-operation-beacon-button {
+/* 캡션 More 버튼 — 사이드바 우클릭과 같은 Operation 메뉴를 여는 문.
+   accent-immune: 테두리/배경은 중립 ink만 쓴다(사용자 accent 누출 금지). */
+.canvas-operation-more-button {
   position: static;
   display: grid;
   place-items: center;
@@ -6001,15 +5928,24 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
+  color: var(--text-tertiary);
   transition:
     border-color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
+    background var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
 }
 
-.canvas-operation-beacon-button:hover,
-.canvas-operation-beacon-button:focus-visible {
+.canvas-operation-more-button svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.canvas-operation-more-button:hover,
+.canvas-operation-more-button:focus-visible {
   border-color: color-mix(in oklch, var(--ink-fog) 32%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
+  color: var(--text-secondary);
   outline: none;
 }
 
@@ -6156,36 +6092,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 1px;
   margin: 4px 0;
   background: var(--surface-rim);
-}
-
-/* ── Accent Popover ─────────────────────────────────────────────────────────────── */
-
-.accent-popover-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 60;
-}
-
-.accent-popover-card {
-  position: fixed;
-  z-index: 1;
-  display: flex;
-  /* 8톤을 "플래그 + 이름" 세로 리스트로 — 색이 아니라 이름으로도 고를 수 있다. */
-  flex-direction: column;
-  gap: 2px;
-  min-width: 176px;
-  padding: 6px;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
-     glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
-  background:
-    linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
-    ),
-    var(--ink-deep);
-  box-shadow: var(--shadow-anchor);
 }
 
 /* 정체성 톤 행 — 팝오버·칩 메뉴·그룹 메뉴가 공유하는 단일 피커 문법. */
@@ -6345,7 +6251,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   outline: none;
 }
 
-/* 캡션은 name → beacon → 상시 컨트롤 순서다. 창 컨트롤은 패널 속성이라 호버 전개하지 않는다. */
+/* 캡션은 name → More → 상시 컨트롤 순서다. 창 컨트롤은 패널 속성이라 호버 전개하지 않는다. */
 
 @media (prefers-reduced-motion: reduce) {
   .canvas-operation-titlebar,
