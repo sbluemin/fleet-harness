@@ -306,7 +306,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     } catch {
       // 여기로 오는 것은 ConnectionFailure가 아닌 모든 오류다(게이트웨이 기동, 키체인 identity,
       // 쿠키 저장 등). 사용자에게는 Android와 같은 코드를 주되, 실제 원인은 로그에 남긴다.
-      FleetLog.failed("pipeline", "(error)")
+      FleetLog.failed("pipeline", String(describing: error))
       gateway?.close(); restore()
       failIfCurrent(id, "remote_link_unreachable", candidate.label, candidate.origin, nil)
     }

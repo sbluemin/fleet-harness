@@ -64,7 +64,9 @@ public final class LoopbackGateway {
     params.requiredLocalEndpoint = .hostPort(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: UInt16(port))!)
     params.allowLocalEndpointReuse = true
 
-    let listener = try NWListener(using: params, on: NWEndpoint.Port(rawValue: UInt16(port))!)
+    // 포트는 requiredLocalEndpoint가 이미 정한다. on:으로 한 번 더 주면 주소+포트와 와일드카드
+    // 포트를 동시에 요구하는 셈이라 Network.framework가 EINVAL로 던진다.
+    let listener = try NWListener(using: params)
     self.listener = listener
     listener.newConnectionHandler = { [weak self] connection in
       self?.accept(connection)
