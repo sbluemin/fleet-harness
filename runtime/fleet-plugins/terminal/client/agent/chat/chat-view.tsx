@@ -273,7 +273,7 @@ export function AgentChatView({
               순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
           <div className="agent-view-chip-row">
             {leadingChip}
-            <ContextMeterChip context={state.context} working={working} language={language} />
+            <ContextMeterChip context={state.context} language={language} />
             <button
               type="button"
               className="agent-chat-mode-chip"
@@ -314,7 +314,7 @@ export function AgentChatView({
             key={index}
             operationId={context.operationId}
             turn={turn}
-            previousContextTotal={state.turns[index - 1]?.contextTotal}
+            nextContextBefore={state.turns[index + 1]?.contextBefore}
             language={language}
             timeFormat={timeFormat}
             streaming={index === state.turns.length - 1 && turn.state === "working"}
@@ -479,7 +479,7 @@ function ReplyBubbleIcon() {
 function ChatTurn({
   operationId,
   turn,
-  previousContextTotal,
+  nextContextBefore,
   language,
   timeFormat,
   streaming,
@@ -489,8 +489,8 @@ function ChatTurn({
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
-  /** 바로 앞 턴이 끝났을 때의 문맥 총량. 이 턴의 증가분은 그것과의 차이다. */
-  readonly previousContextTotal: number | undefined;
+  /** 바로 다음 턴이 시작될 때의 문맥 총량. 이 턴이 더한 몫은 그것과의 차이다. */
+  readonly nextContextBefore: number | undefined;
   readonly language: "en" | "ko";
   readonly timeFormat: Intl.DateTimeFormat;
   readonly streaming: boolean;
@@ -507,10 +507,11 @@ function ChatTurn({
     const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
     return count + (job?.open === true ? 1 : 0);
   }, 0);
-  // 앞뒤 어느 한쪽이라도 스냅숏이 없으면 증가분을 짓지 않는다 — 그 사이에 다른 턴의 몫이 섞이고,
-  // 섞인 값은 "이 턴이 이만큼 먹었다"는 이 줄의 유일한 주장을 거짓으로 만든다.
-  const contextGrew = turn.contextTotal !== undefined && previousContextTotal !== undefined
-    ? turn.contextTotal - previousContextTotal
+  // 이 턴이 더한 몫은 **다음 턴이 시작될 때** 비로소 알 수 있다(자식은 턴 중에 답하지 않는다).
+  // 그래서 마지막 턴에는 증가분이 서지 않고, 다음 지시를 보내면 그때 채워진다 — 어느 한쪽이
+  // 없는데 값을 지어내면 "이 턴이 이만큼 먹었다"는 이 줄의 유일한 주장이 거짓이 된다.
+  const contextGrew = turn.contextBefore !== undefined && nextContextBefore !== undefined
+    ? nextContextBefore - turn.contextBefore
     : undefined;
   return (
     <>
@@ -1636,17 +1637,16 @@ function contextTone(context: AgentChatContext): "" | " is-warn" | " is-critical
 /**
  * 문맥 미터 칩과 그 내역.
  *
- * 값은 **마지막으로 끝난 턴**의 것이다. 자식은 턴이 끝나기 전에 닫히므로 유휴 상태에서 다시 물을
- * 상대가 없고(실측), 도는 턴 안에서는 아직 자라는 중이다. 그래서 진행 중에는 숫자를 새 사실인 척
- * 세우지 않고 흐려 둔다 — 그 자리에 옛 숫자를 또렷하게 두면 방금 붙인 큰 파일이 공짜로 보인다.
+ * 값은 **마지막 지시가 시작될 때**의 것이다. 자식은 턴이 시작되면 control 채널을 닫으므로 그
+ * 한 순간이 물어볼 수 있는 유일한 시점이고(실측), 그래서 방금 끝난 턴이 더한 몫은 다음 지시를
+ * 보낼 때 드러난다. 각주가 그 사실을 항상 말한다 — 숫자만 두면 사용자가 이것을 지금 값으로 읽고,
+ * 방금 붙인 큰 파일이 공짜로 보인다.
  */
 function ContextMeterChip({
   context,
-  working,
   language,
 }: {
   readonly context: AgentChatContext | null;
-  readonly working: boolean;
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
@@ -1683,16 +1683,16 @@ function ContextMeterChip({
     <div className={`agent-chat-ctx${contextTone(context)}`} ref={wrapRef}>
       <button
         type="button"
-        className={`agent-chat-mode-chip agent-chat-ctx-chip${working ? " is-stale" : ""}`}
+        className="agent-chat-mode-chip agent-chat-ctx-chip"
         aria-expanded={open}
         aria-label={t("terminal.chat.contextAria", { percent: String(percent), summary })}
-        title={working ? t("terminal.chat.contextWorking") : t("terminal.chat.contextAt", { summary })}
+        title={t("terminal.chat.contextAt", { summary })}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
         <ContextArc ratio={context.total / context.max} />
-        <span className="agent-chat-ctx-pct">{working ? "···" : `${percent}%`}</span>
+        <span className="agent-chat-ctx-pct">{percent}%</span>
       </button>
-      {open ? <ContextBreakdown context={context} working={working} language={language} /> : null}
+      {open ? <ContextBreakdown context={context} language={language} /> : null}
     </div>
   );
 }
@@ -1725,16 +1725,17 @@ function ContextArc({ ratio }: { readonly ratio: number }) {
  */
 function ContextBreakdown({
   context,
-  working,
   language,
 }: {
   readonly context: AgentChatContext;
-  readonly working: boolean;
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
   const rows = [...context.slices].sort((left, right) => right.tokens - left.tokens);
-  const free = Math.max(0, context.max - context.total);
+  const reserved = context.reserved ?? 0;
+  // 남은 자리는 창에서 쓴 몫과 예약분을 뺀 나머지다. 예약분을 빼지 않으면 실제로 쓸 수 없는
+  // 자리를 여유로 세어, 압축이 시작될 때 사용자가 아직 여유가 있다고 읽는다.
+  const free = Math.max(0, context.max - context.total - reserved);
   const percent = Math.round((context.total / context.max) * 100);
   return (
     <div className="agent-chat-ctx-pop" role="dialog" aria-label={t("terminal.chat.contextTitle")}>
@@ -1769,6 +1770,14 @@ function ContextBreakdown({
             <span className="agent-chat-ctx-share">{((slice.tokens / context.max) * 100).toFixed(1)}%</span>
           </li>
         ))}
+        {reserved > 0 ? (
+          <li className="agent-chat-ctx-free">
+            <span className="agent-chat-ctx-swatch is-free" aria-hidden="true" />
+            <span className="agent-chat-ctx-name">{t("terminal.chat.contextReserved")}</span>
+            <span className="agent-chat-ctx-tokens">{formatTokens(reserved)}</span>
+            <span className="agent-chat-ctx-share">{((reserved / context.max) * 100).toFixed(1)}%</span>
+          </li>
+        ) : null}
         <li className="agent-chat-ctx-free">
           <span className="agent-chat-ctx-swatch is-free" aria-hidden="true" />
           <span className="agent-chat-ctx-name">{t("terminal.chat.contextFree")}</span>
@@ -1778,9 +1787,7 @@ function ContextBreakdown({
       </ul>
       <ContextDetail label={t("terminal.chat.contextMemoryFiles")} rows={context.memoryFiles} />
       <ContextDetail label={t("terminal.chat.contextMcpTools")} rows={context.mcpTools} />
-      <p className="agent-chat-ctx-foot">
-        {working ? t("terminal.chat.contextWorking") : t("terminal.chat.contextAge")}
-      </p>
+      <p className="agent-chat-ctx-foot">{t("terminal.chat.contextAge")}</p>
     </div>
   );
 }
@@ -1793,13 +1800,16 @@ function ContextDetail({
   readonly label: string;
   readonly rows: readonly AgentChatContextSlice[];
 }) {
-  if (rows.length === 0) return null;
+  const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+  // 아직 문맥에 실리지 않은 항목은 0토큰으로 온다(실측: MCP 도구 14개, 합계 0). 그 줄은 창을
+  // 나눠 갖는 몫이 아니라 목록일 뿐이라, 문맥 내역에 자리를 차지할 이유가 없다.
+  if (rows.length === 0 || total === 0) return null;
   const sorted = [...rows].sort((left, right) => right.tokens - left.tokens);
   return (
     <details className="agent-chat-ctx-detail">
       <summary>
         <span className="agent-chat-ctx-name">{label}</span>
-        <span className="agent-chat-ctx-tokens">{formatTokens(sorted.reduce((sum, row) => sum + row.tokens, 0))}</span>
+        <span className="agent-chat-ctx-tokens">{formatTokens(total)}</span>
         <span className="agent-chat-ctx-count">{sorted.length}</span>
       </summary>
       <ul className="agent-chat-ctx-rows">

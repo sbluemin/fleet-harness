@@ -671,7 +671,7 @@ describe("job end arrivals", () => {
     expect(state.jobs.find((entry) => entry.id === "b2")?.ends).toBe(0);
   });
 
-  it("keeps each turn's context total so growth survives a replay", () => {
+  it("keeps each turn's starting context so growth survives a replay", () => {
     const state = fold([
       { kind: "replay-start" },
       { kind: "dispatch", text: "first" },
@@ -680,9 +680,9 @@ describe("job end arrivals", () => {
       { kind: "context", total: 42_000, max: 200_000, slices: [{ name: "Messages", tokens: 24_000 }] },
       { kind: "replay-end", turns: 2 },
     ]);
-    // 지나간 턴은 자기 시점의 총량을 그대로 간직한다 — 증가분은 그 차이지, 지금 값에서 되짚는
-    // 추정이 아니다.
-    expect(state.turns.map((turn) => turn.contextTotal)).toEqual([30_000, 42_000]);
+    // 각 턴은 자기가 **시작될 때**의 총량을 간직한다. 첫 턴이 더한 몫(12k)은 둘째 턴의 값에서
+    // 드러나며, 마지막 턴은 아직 다음 좌표가 없어 증가분을 말하지 못한다.
+    expect(state.turns.map((turn) => turn.contextBefore)).toEqual([30_000, 42_000]);
     // 전역 값은 언제나 마지막 스냅숏이다.
     expect(state.context?.total).toBe(42_000);
     expect(state.context?.max).toBe(200_000);

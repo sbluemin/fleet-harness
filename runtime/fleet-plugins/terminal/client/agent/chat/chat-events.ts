@@ -69,11 +69,14 @@ export interface AgentChatContextSlice {
 
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
-  /** 이 턴이 끝난 시점의 문맥 창 내역. 값은 턴이 도는 중에 찍은 마지막 스냅숏이다. */
+  /** 이 턴이 **시작될 때까지의** 문맥 창 내역. 자식은 턴이 시작되면 control 채널을 닫는다(실측). */
   | {
       readonly kind: "context";
+      /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
       readonly total: number;
       readonly max: number;
+      /** 자동 압축을 위해 미리 비워 둔 자리. 쓴 것이 아니지만 쓸 수도 없다. */
+      readonly reserved?: number;
       readonly compactAt?: number;
       readonly slices: readonly AgentChatContextSlice[];
       readonly memoryFiles?: readonly AgentChatContextSlice[];
@@ -173,6 +176,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           kind: "context",
           total: event.total,
           max: event.max,
+          ...(typeof event.reserved === "number" ? { reserved: event.reserved } : {}),
           ...(typeof event.compactAt === "number" ? { compactAt: event.compactAt } : {}),
           slices: readContextSlices(event.slices),
           ...(Array.isArray(event.memoryFiles) ? { memoryFiles: readContextSlices(event.memoryFiles) } : {}),
@@ -462,19 +466,22 @@ export interface AgentChatTurn {
   /** turn-start 시각 — 진행 중 elapsed 티커의 기준. */
   readonly startedAt?: number;
   /**
-   * 이 턴이 끝난 시점의 문맥 총량. 접힘 줄의 증가분은 앞 턴의 이 값과의 차이다.
+   * 이 턴이 **시작될 때**의 문맥 총량. 이 턴이 더한 몫은 다음 턴의 같은 값과의 차이다.
    *
-   * 지나간 턴에도 남는 이유는 그 값이 그 시점의 사실이기 때문이다 — 지금 총량 하나로는 어느
-   * 턴이 문맥을 태웠는지 영영 알 수 없다. 스냅숏을 한 번도 못 찍은 턴은 이 값이 없고, 그때는
-   * 증가분을 지어내지 않고 빈칸으로 둔다.
+   * 턴마다 남는 이유는 그 값이 그 시점의 사실이기 때문이다 — 지금 총량 하나로는 어느 턴이
+   * 문맥을 태웠는지 영영 알 수 없다. 스냅숏을 못 받은 턴은 이 값이 없고, 그때는 증가분을
+   * 지어내지 않고 빈칸으로 둔다.
    */
-  readonly contextTotal?: number;
+  readonly contextBefore?: number;
 }
 
 /** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
 export interface AgentChatContext {
+  /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
   readonly total: number;
   readonly max: number;
+  /** 자동 압축을 위해 미리 비워 둔 자리. */
+  readonly reserved?: number;
   readonly compactAt?: number;
   readonly slices: readonly AgentChatContextSlice[];
   readonly memoryFiles: readonly AgentChatContextSlice[];
@@ -591,17 +598,19 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       const context: AgentChatContext = {
         total: event.total,
         max: event.max,
+        ...(event.reserved !== undefined ? { reserved: event.reserved } : {}),
         ...(event.compactAt !== undefined ? { compactAt: event.compactAt } : {}),
         slices: event.slices,
         memoryFiles: event.memoryFiles ?? [],
         mcpTools: event.mcpTools ?? [],
       };
-      // 그 시점의 총량은 그 턴의 것이다 — 재생에서도 같은 턴에 같은 값이 붙어야 증가분이 흔들리지
-      // 않는다. 아직 턴이 하나도 없으면 전역 값만 갱신한다(재생 첫머리가 그렇다).
+      // 이 값은 방금 시작한 턴의 **시작 시점** 총량이다. 그 턴에 붙여 두면 재생에서도 같은 턴이
+      // 같은 값을 지녀, 증가분(다음 턴과의 차이)이 흔들리지 않는다. 아직 턴이 하나도 없으면
+      // 전역 값만 갱신한다(재생 첫머리가 그렇다).
       const held = { ...state, context };
       return state.turns.length === 0
         ? held
-        : withLastTurn(held, (turn) => ({ ...turn, contextTotal: event.total }));
+        : withLastTurn(held, (turn) => ({ ...turn, contextBefore: event.total }));
     }
     case "dispatch": {
       const turn: AgentChatTurn = {
