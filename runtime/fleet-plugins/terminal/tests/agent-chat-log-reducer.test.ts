@@ -298,6 +298,21 @@ describe("segmentAgentChatLedger", () => {
       { family: "other", name: "Other", count: 1 },
     ]);
   });
+
+  // 문장은 `pre-wrap`으로 그려진다 — 모델이 달고 온 빈 줄이 그대로 높이가 되어, 긴 턴일수록
+  // 문장마다 여백이 쌓인다. 문단 구분은 한 줄까지만 남기고 나머지 공백은 문장에서 뗀다.
+  it("strips the blank lines a model wraps its sentence in", () => {
+    const segments = segmentAgentChatLedger([note("\n\n읽겠습니다.  \n\n\n그다음 고치겠습니다.\n\n\n\n"), tool("Read")]);
+    expect(segments[0]?.note).toBe("읽겠습니다.\n\n그다음 고치겠습니다.");
+  });
+
+  // 공백만 남은 문장은 구간을 열 자격이 없다 — 그리면 아무것도 말하지 않는 여백만 선다.
+  it("drops a segment whose sentence and steps are both empty", () => {
+    expect(segmentAgentChatLedger([note("\n \n")])).toEqual([]);
+    expect(segmentAgentChatLedger([note("  "), note("고치겠습니다."), tool("Edit")])).toEqual([
+      { note: "고치겠습니다.", groups: [{ family: "edit", count: 1 }], folded: [expect.anything()], inline: [], running: [] },
+    ]);
+  });
 });
 
 // 뷰 파생 — 원장(과정)과 Answer(결론)의 분리 규칙을 못 박는다.

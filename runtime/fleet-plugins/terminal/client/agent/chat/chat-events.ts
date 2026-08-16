@@ -881,7 +881,8 @@ export function segmentAgentChatLedger(
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
     if (item.type === "text") {
-      buckets.push({ ...(item.text !== undefined ? { note: item.text } : {}), steps: [] });
+      const note = item.text !== undefined ? tidyNote(item.text) : undefined;
+      buckets.push({ ...(note !== undefined ? { note } : {}), steps: [] });
       continue;
     }
     const last = buckets.at(-1);
@@ -890,10 +891,27 @@ export function segmentAgentChatLedger(
   }
   if (buckets.length === 0) return [];
 
-  return buckets.map((bucket, index) => {
-    const open = recentLimit > 0 && index === buckets.length - 1;
-    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
-  });
+  return buckets
+    .map((bucket, index) => {
+      const open = recentLimit > 0 && index === buckets.length - 1;
+      return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
+    })
+    // 문장도 스텝도 남지 않은 구간은 그리지 않는다 — 빈 구간도 구간 사이 간격은 그대로 받아서,
+    // 긴 턴일수록 아무것도 말하지 않는 여백만 쌓인다.
+    .filter((segment) => segment.note !== undefined
+      || segment.groups.length > 0
+      || segment.inline.length > 0
+      || segment.running.length > 0);
+}
+
+/**
+ * 구간을 여는 문장의 표시형. 모델의 텍스트 블록은 앞뒤로 빈 줄을 달고 오고 문단 사이도 넉넉히
+ * 띄우는데, 이 문장은 `pre-wrap`으로 그려지므로 그 공백이 그대로 높이가 된다 — 긴 턴에서는
+ * 문장 하나마다 빈 줄 몇 개가 쌓여 원장이 여백으로 늘어난다. 문단 구분은 한 줄까지만 남긴다.
+ */
+function tidyNote(text: string): string | undefined {
+  const tidy = text.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  return tidy.length > 0 ? tidy : undefined;
 }
 
 function foldSegment(

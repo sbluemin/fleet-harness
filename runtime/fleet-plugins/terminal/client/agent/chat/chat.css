@@ -1658,9 +1658,10 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 표는 가로로 흐를 수 있다 — 좁은 패널에서 열이 뭉개지는 대신 자기 상자 안에서 스크롤한다. */
+/* 표의 폭은 패널이 정한다 — 행마다 자기 내용만큼 부풀면 같은 열이 행마다 다른 자리에 서고,
+   머리글과도 어긋난다. 넘치는 값은 스크롤이 아니라 자기 칸 안에서 말줄임으로 접힌다. */
 .agent-chat-stage-rows {
-  overflow-x: auto;
+  overflow-x: hidden;
   font-family: var(--font-mono);
   font-size: 10.5px;
 }
@@ -1668,12 +1669,12 @@
 .agent-chat-stage-row {
   display: grid;
   /* 이름과 모델이 남는 폭을 나눠 갖는다. 이름에만 1fr을 주면 짧은 라벨("A")에서 두 열 사이가
-     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다. */
+     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다.
+     두 열 모두 minmax(0, ·)이라 폭이 줄면 fr이 그대로 줄어든다 — 그래야 말줄임이 발동한다. */
   grid-template-columns: 14px minmax(0, 1.1fr) minmax(0, 1fr) 58px 42px 58px;
   gap: var(--space-2);
   align-items: baseline;
   padding: 3px var(--space-3);
-  min-width: max-content;
   color: var(--text-secondary);
   border-top: 1px solid color-mix(in oklch, var(--hairline) 50%, transparent);
 }
@@ -1684,6 +1685,13 @@
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-tertiary);
+}
+
+/* 머리글도 값과 같은 규칙을 따른다 — 머리글만 줄바꿈하면 그 행 하나가 두 줄이 되어 표가 어긋난다. */
+.agent-chat-stage-row.is-head > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .agent-chat-stage-row.is-pending { color: var(--text-tertiary); }
@@ -1707,6 +1715,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .agent-chat-stage-row .is-num {
