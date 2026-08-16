@@ -1,9 +1,22 @@
 import ExpoModulesCore
 
-// iOS 이식의 스캐폴드. JS가 해석하는 모듈 이름(FleetConsoleView)의 자리만 잡는다 —
-// 뷰·이벤트·핸들 함수는 콘솔 뷰 이식 태스크가 채우며, 이 스텁 상태로는 머지하지 않는다.
+// FleetMobileModule.kt의 iOS 이식. JS가 requireNativeModule/requireNativeViewManager로 찾는
+// 이름은 "FleetConsoleView"이고, 뷰는 onFleetEvent를 발생시키며 7개 명령을 노출한다 —
+// JS 셸(FleetConsoleView.tsx)이 Android와 동일 계약으로 동작하도록.
 public final class FleetMobileModule: Module {
   public func definition() -> ModuleDefinition {
     Name("FleetConsoleView")
+
+    View(FleetConsoleView.self) {
+      Events("onFleetEvent")
+
+      AsyncFunction("retry") { (view: FleetConsoleView) in view.retry() }
+      AsyncFunction("resume") { (view: FleetConsoleView) in view.resume() }
+      AsyncFunction("submitAccessLink") { (view: FleetConsoleView, link: String) in view.submitAccessLink(link) }
+      AsyncFunction("connectTo") { (view: FleetConsoleView, origin: String) in view.connectTo(origin) }
+      AsyncFunction("removeTarget") { (view: FleetConsoleView, origin: String) in view.removeTarget(origin) }
+      AsyncFunction("listTargets") { (view: FleetConsoleView) -> [[String: Any]] in view.listTargets() }
+      AsyncFunction("navigateBack") { (view: FleetConsoleView) -> Bool in view.navigateBack() }
+    }
   }
 }

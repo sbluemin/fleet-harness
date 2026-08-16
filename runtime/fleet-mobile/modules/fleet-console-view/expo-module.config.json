@@ -4,6 +4,7 @@
     "modules": ["com.dotobokuri.fleet.mobile.FleetMobileModule"]
   },
   "apple": {
-    "modules": ["FleetMobileModule"]
+    "modules": ["FleetMobileModule"],
+    "appDelegateSubscribers": ["FleetLinkAppDelegateSubscriber"]
   }
 }
