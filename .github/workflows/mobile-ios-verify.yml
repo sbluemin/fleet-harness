@@ -105,6 +105,12 @@ jobs:
         run: grep -q "FleetConsoleView" runtime/fleet-mobile/ios/Podfile.lock
       # Expo 57의 Swift 6.2 비호환은 patches/expo-modules-jsi@57.0.4.patch가 해결하므로
       # 전체 앱 빌드는 다시 하드 게이트다 — 이 스텝이 깨지면 앱은 어디서도 빌드되지 않는다.
+      #
+      # 서명을 끄지 않고 ad-hoc(-)으로 서명한다. CODE_SIGNING_ALLOWED=NO로 만든 앱은
+      # 엔타이틀먼트가 전혀 없어 application-identifier가 빠지고, 그러면 키체인 접근이
+      # errSecMissingEntitlement(-34018)로 거부된다 — 로컬 TLS identity를 만들지 못해
+      # 페어링이 게이트웨이 단계에서 죽는다. 시뮬레이터는 프로파일이 필요 없으므로 ad-hoc
+      # 서명만으로 실제 기기 빌드와 같은 엔타이틀먼트 구조를 얻는다.
       - name: Build for the simulator without signing
         if: steps.platform.outputs.configured == 'true'
         working-directory: runtime/fleet-mobile/ios
@@ -117,7 +123,9 @@ jobs:
           scheme="${workspace%.xcworkspace}"
           xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY=- CODE_SIGNING_REQUIRED=YES CODE_SIGNING_ALLOWED=YES \
+            build
 
       # 빌드된 시뮬레이터 앱을 그대로 내려받을 수 있게 올린다. Xcode 26 툴체인을 설치할 수
       # 없는 Mac(회사/공용 기기)에서도 `xcrun simctl install`로 실행해 볼 수 있는 경로다 —
@@ -134,6 +142,12 @@ jobs:
           fi
           if [ ! -f "$app/main.jsbundle" ]; then
             echo "::error::the packaged app has no embedded main.jsbundle — it would need Metro to run" >&2
+            exit 1
+          fi
+          # 엔타이틀먼트가 없으면 앱은 실행되지만 키체인 접근이 -34018로 거부되고, 페어링이
+          # 게이트웨이 단계에서 죽는다. 실행 가능해 보이는 무용지물을 올리지 않도록 검사한다.
+          if ! codesign -d --entitlements :- --xml "$app" 2>/dev/null | grep -q "application-identifier"; then
+            echo "::error::the packaged app carries no application-identifier entitlement — keychain access would fail at runtime" >&2
             exit 1
           fi
           ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/fleet-simulator-app.zip"
