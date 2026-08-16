@@ -58,9 +58,17 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref || github.ref }}
-      - name: Select the newest installed Xcode
+      # Expo SDK 57 / RN 0.86의 창은 Xcode 16.x다: RN은 >= 16.1을 요구하지만 Xcode 26.x의
+      # 새 Swift 컴파일러는 expo-modules-jsi를 깨뜨린다(type-inference ambiguity). 설치된
+      # 가장 높은 16.x를 고르고, 없을 때만 최신으로 폴백한다.
+      - name: Select an Expo-compatible Xcode (16.x, >= 16.1)
         run: |
-          newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          echo "Available Xcodes:"; ls -d /Applications/Xcode_*.app 2>/dev/null || true
+          newest=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -z "$newest" ]; then
+            echo "::warning::No Xcode 16.x found; falling back to the newest available"
+            newest=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          fi
           if [ -z "$newest" ]; then
             echo "::error::No Xcode found on the runner" >&2
             exit 1
