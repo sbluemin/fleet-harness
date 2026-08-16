@@ -905,12 +905,13 @@ export function segmentAgentChatLedger(
 }
 
 /**
- * 구간을 여는 문장의 표시형. 모델의 텍스트 블록은 앞뒤로 빈 줄을 달고 오고 문단 사이도 넉넉히
- * 띄우는데, 이 문장은 `pre-wrap`으로 그려지므로 그 공백이 그대로 높이가 된다 — 긴 턴에서는
- * 문장 하나마다 빈 줄 몇 개가 쌓여 원장이 여백으로 늘어난다. 문단 구분은 한 줄까지만 남긴다.
+ * 구간을 여는 문장의 표시형. 문장은 공유 마크다운이 그리므로 문단 사이 빈 줄과 줄 끝 공백은
+ * 손대지 않는다 — 전자는 문단을, 후자는 줄바꿈을 뜻하는 문법이고, 지우면 모델이 쓴 형식이
+ * 사라진다. 여기서 거르는 것은 공백뿐인 문장 하나다: 그것은 구간을 열 자격이 없는데도 빈
+ * 블록과 구간 여백을 그대로 받아, 긴 턴일수록 아무것도 말하지 않는 여백만 쌓는다.
  */
 function tidyNote(text: string): string | undefined {
-  const tidy = text.replace(/[ \t]+$/gm, "").replace(/\n{3,}/g, "\n\n").trim();
+  const tidy = text.trim();
   return tidy.length > 0 ? tidy : undefined;
 }
 

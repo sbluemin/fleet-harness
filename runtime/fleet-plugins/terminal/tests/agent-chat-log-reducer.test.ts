@@ -299,11 +299,11 @@ describe("segmentAgentChatLedger", () => {
     ]);
   });
 
-  // 문장은 `pre-wrap`으로 그려진다 — 모델이 달고 온 빈 줄이 그대로 높이가 되어, 긴 턴일수록
-  // 문장마다 여백이 쌓인다. 문단 구분은 한 줄까지만 남기고 나머지 공백은 문장에서 뗀다.
-  it("strips the blank lines a model wraps its sentence in", () => {
+  // 문장 둘레의 빈 줄은 뗀다. 안쪽은 마크다운 문법이므로 손대지 않는다 — 문단 사이 빈 줄과
+  // 줄 끝 두 칸(줄바꿈)을 지우면 모델이 쓴 형식이 표시 직전에 사라진다.
+  it("strips the blank lines around a sentence but keeps its markdown intact", () => {
     const segments = segmentAgentChatLedger([note("\n\n읽겠습니다.  \n\n\n그다음 고치겠습니다.\n\n\n\n"), tool("Read")]);
-    expect(segments[0]?.note).toBe("읽겠습니다.\n\n그다음 고치겠습니다.");
+    expect(segments[0]?.note).toBe("읽겠습니다.  \n\n\n그다음 고치겠습니다.");
   });
 
   // 공백만 남은 문장은 구간을 열 자격이 없다 — 그리면 아무것도 말하지 않는 여백만 선다.
