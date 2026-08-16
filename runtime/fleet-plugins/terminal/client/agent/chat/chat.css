@@ -1730,6 +1730,204 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ── 문맥 창 미터 ──────────────────────────────────────────────────────────
+   미터의 세 계단은 quota 레일이 이미 쓰는 것과 같다 — 같은 제품 안의 같은 모양이 다른 임계로
+   물들면 사용자가 색을 두 번 배워야 한다. 평시는 신호가 아니므로 색을 쓰지 않는다. */
+.agent-chat-ctx {
+  --agent-chat-ctx-ink: var(--ink-fog);
+  position: relative;
+  display: inline-flex;
+}
+
+.agent-chat-ctx.is-warn { --agent-chat-ctx-ink: var(--warn); }
+.agent-chat-ctx.is-critical { --agent-chat-ctx-ink: var(--coral); }
+
+.agent-chat-ctx-chip {
+  position: static;
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-ctx-pct { color: var(--agent-chat-ctx-ink); }
+
+/* 진행 중에는 옛 값이 새 사실인 척하지 않는다. 자리는 지키되 판독만 낮춘다 — 사라지면
+   사용자가 방금 무엇을 눌렀는지 잃는다(전환 칩의 disabled와 같은 규율). */
+.agent-chat-ctx-chip.is-stale { opacity: 0.55; }
+
+.agent-chat-ctx-arc {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  transform: rotate(-90deg);
+}
+
+.agent-chat-ctx-arc circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.agent-chat-ctx-arc-track { stroke: var(--ink-veil); }
+
+.agent-chat-ctx-arc-fill {
+  stroke: var(--agent-chat-ctx-ink);
+  transition: stroke-dasharray var(--duration-fast), stroke var(--duration-fast);
+}
+
+/* 내역은 열렸을 때만 세로를 쓴다 — 패널은 640×400에서 시작하고, 상시 표면 하나가 그 예산을
+   갉으면 대화가 먼저 밀린다. 오른쪽 끝을 칩에 맞춰 세워 패널 밖으로 넘지 않게 한다. */
+.agent-chat-ctx-pop {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  right: 0;
+  z-index: 6;
+  width: 320px;
+  max-width: calc(100cqw - var(--space-6));
+  padding: var(--space-3);
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel-raised);
+  box-shadow: var(--shadow-floating);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-ctx-pop-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+}
+
+.agent-chat-ctx-pop-title {
+  font-size: 11.5px;
+  color: var(--text-primary);
+}
+
+.agent-chat-ctx-pop-total {
+  font-size: 11px;
+  color: var(--agent-chat-ctx-ink);
+}
+
+/* 카테고리는 색이 아니라 명도로 갈린다 — Console 채널 규칙에서 색은 상태만 나른다. 계단은
+   큰 몫부터 밝고, 여섯 칸에서 멈춘다(그 아래는 서로 구분되지 않는다). */
+.agent-chat-ctx-stack {
+  display: flex;
+  height: 8px;
+  overflow: hidden;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--ink-veil);
+}
+
+.agent-chat-ctx-stack > i {
+  display: block;
+  height: 100%;
+  background: color-mix(
+    in oklab,
+    var(--ink-spectral) calc(100% - var(--agent-chat-ctx-step) * 15%),
+    var(--ink-veil)
+  );
+  transition: width var(--duration-fast);
+}
+
+.agent-chat-ctx-rows {
+  margin: var(--space-2) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.agent-chat-ctx-rows li {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 2px 0;
+  font-size: 11px;
+}
+
+.agent-chat-ctx-swatch {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 2px;
+  background: color-mix(
+    in oklab,
+    var(--ink-spectral) calc(100% - var(--agent-chat-ctx-step) * 15%),
+    var(--ink-veil)
+  );
+}
+
+.agent-chat-ctx-swatch.is-free {
+  background: transparent;
+  border: 1px dashed var(--hairline-strong);
+}
+
+.agent-chat-ctx-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+}
+
+.agent-chat-ctx-tokens { color: var(--text-tertiary); }
+
+.agent-chat-ctx-share {
+  width: 44px;
+  text-align: right;
+  color: var(--ink-fog);
+}
+
+.agent-chat-ctx-count {
+  min-width: 20px;
+  text-align: right;
+  color: var(--ink-fog);
+}
+
+/* 남은 자리는 쓴 몫이 아니다 — 같은 잉크로 두면 목록이 "이만큼 먹었다"를 한 줄 더 말한다. */
+.agent-chat-ctx-free .agent-chat-ctx-name,
+.agent-chat-ctx-free .agent-chat-ctx-tokens { color: var(--ink-fog); }
+
+.agent-chat-ctx-detail { margin-top: var(--space-2); }
+
+.agent-chat-ctx-detail > summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-ctx-detail > summary::-webkit-details-marker { display: none; }
+.agent-chat-ctx-detail > summary:hover .agent-chat-ctx-name { color: var(--text-secondary); }
+
+.agent-chat-ctx-detail > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* 값이 언제 잰 것인지 말하지 않으면 이 표면은 조용한 거짓말이 된다 — 자식은 턴이 끝나기 전에
+   닫히므로 이 숫자는 언제나 마지막 턴의 것이다. */
+.agent-chat-ctx-foot {
+  margin: var(--space-2) 0 0;
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--hairline);
+  font-size: 10px;
+  color: var(--ink-fog);
+}
+
+/* 접힘 줄의 증가분. 실패·중지 배지와 같은 줄에 서지만 상태가 아니라 크기이므로 신호 잉크를
+   빌리지 않는다. */
+.agent-chat-fold-context {
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-strip-orbit { animation: none; }
   .agent-chat-work-cap,
@@ -1737,4 +1935,6 @@
   .agent-chat-stop,
   .agent-chat-job,
   .agent-chat-detail-back { transition: none; }
+  .agent-chat-ctx-arc-fill,
+  .agent-chat-ctx-stack > i { transition: none; }
 }

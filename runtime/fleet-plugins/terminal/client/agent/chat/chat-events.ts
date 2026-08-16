@@ -61,8 +61,27 @@ export interface AgentChatJobStage {
   readonly agents: readonly AgentChatJobAgent[];
 }
 
+/** 문맥 창을 나눠 쓰는 한 덩어리. */
+export interface AgentChatContextSlice {
+  readonly name: string;
+  readonly tokens: number;
+}
+
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
+  /** 이 턴이 **시작될 때까지의** 문맥 창 내역. 자식은 턴이 시작되면 control 채널을 닫는다(실측). */
+  | {
+      readonly kind: "context";
+      /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
+      readonly total: number;
+      readonly max: number;
+      /** 자동 압축을 위해 미리 비워 둔 자리. 쓴 것이 아니지만 쓸 수도 없다. */
+      readonly reserved?: number;
+      readonly compactAt?: number;
+      readonly slices: readonly AgentChatContextSlice[];
+      readonly memoryFiles?: readonly AgentChatContextSlice[];
+      readonly mcpTools?: readonly AgentChatContextSlice[];
+    }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
@@ -148,6 +167,23 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
   switch (event.kind) {
     case "replay-start":
       return { seq: entry.seq, event: { kind: "replay-start" } };
+    case "context": {
+      // 총량과 창 크기가 없으면 그릴 수 있는 것이 없다. 0짜리 미터는 사실이 아니라 빈칸이다.
+      if (typeof event.total !== "number" || typeof event.max !== "number" || event.max <= 0) return null;
+      return {
+        seq: entry.seq,
+        event: {
+          kind: "context",
+          total: event.total,
+          max: event.max,
+          ...(typeof event.reserved === "number" ? { reserved: event.reserved } : {}),
+          ...(typeof event.compactAt === "number" ? { compactAt: event.compactAt } : {}),
+          slices: readContextSlices(event.slices),
+          ...(Array.isArray(event.memoryFiles) ? { memoryFiles: readContextSlices(event.memoryFiles) } : {}),
+          ...(Array.isArray(event.mcpTools) ? { mcpTools: readContextSlices(event.mcpTools) } : {}),
+        },
+      };
+    }
     case "replay-end":
       return { seq: entry.seq, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
     case "dispatch":
@@ -374,6 +410,17 @@ function readChange(value: unknown): AgentChatChange | null {
   return { file: change.file, added: numberOr(change.added, 0), removed: numberOr(change.removed, 0) };
 }
 
+/** 이름과 토큰 수가 갖춰진 항목만 남긴다. 이름 없는 조각은 미터에 자리를 차지할 자격이 없다. */
+function readContextSlices(value: unknown): readonly AgentChatContextSlice[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((row: unknown) => {
+    const slice = row as { readonly name?: unknown; readonly tokens?: unknown };
+    return typeof slice?.name === "string" && slice.name.length > 0 && typeof slice.tokens === "number"
+      ? [{ name: slice.name, tokens: slice.tokens }]
+      : [];
+  });
+}
+
 function atField(value: unknown): { readonly at?: number } {
   return typeof value === "number" && Number.isFinite(value) ? { at: value } : {};
 }
@@ -418,6 +465,27 @@ export interface AgentChatTurn {
   readonly answer?: string;
   /** turn-start 시각 — 진행 중 elapsed 티커의 기준. */
   readonly startedAt?: number;
+  /**
+   * 이 턴이 **시작될 때**의 문맥 총량. 이 턴이 더한 몫은 다음 턴의 같은 값과의 차이다.
+   *
+   * 턴마다 남는 이유는 그 값이 그 시점의 사실이기 때문이다 — 지금 총량 하나로는 어느 턴이
+   * 문맥을 태웠는지 영영 알 수 없다. 스냅숏을 못 받은 턴은 이 값이 없고, 그때는 증가분을
+   * 지어내지 않고 빈칸으로 둔다.
+   */
+  readonly contextBefore?: number;
+}
+
+/** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
+export interface AgentChatContext {
+  /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
+  readonly total: number;
+  readonly max: number;
+  /** 자동 압축을 위해 미리 비워 둔 자리. */
+  readonly reserved?: number;
+  readonly compactAt?: number;
+  readonly slices: readonly AgentChatContextSlice[];
+  readonly memoryFiles: readonly AgentChatContextSlice[];
+  readonly mcpTools: readonly AgentChatContextSlice[];
 }
 
 /**
@@ -500,6 +568,8 @@ export interface AgentChatLogState {
   readonly errorCode: string | null;
   /** 도착 순서를 지키는 잡 원장. 살아 있는 것과 끝난 것이 한 목록에 함께 산다. */
   readonly jobs: readonly AgentChatJob[];
+  /** 마지막으로 끝난 턴 시점의 문맥 창. 아직 한 턴도 끝나지 않았으면 null이다. */
+  readonly context: AgentChatContext | null;
 }
 
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
@@ -511,6 +581,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   replayedTurns: 0,
   errorCode: null,
   jobs: [],
+  context: null,
 };
 
 /**
@@ -523,6 +594,24 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       return { ...initialAgentChatLogState, replaying: true };
     case "replay-end":
       return { ...state, replaying: false, replayedTurns: event.turns };
+    case "context": {
+      const context: AgentChatContext = {
+        total: event.total,
+        max: event.max,
+        ...(event.reserved !== undefined ? { reserved: event.reserved } : {}),
+        ...(event.compactAt !== undefined ? { compactAt: event.compactAt } : {}),
+        slices: event.slices,
+        memoryFiles: event.memoryFiles ?? [],
+        mcpTools: event.mcpTools ?? [],
+      };
+      // 이 값은 방금 시작한 턴의 **시작 시점** 총량이다. 그 턴에 붙여 두면 재생에서도 같은 턴이
+      // 같은 값을 지녀, 증가분(다음 턴과의 차이)이 흔들리지 않는다. 아직 턴이 하나도 없으면
+      // 전역 값만 갱신한다(재생 첫머리가 그렇다).
+      const held = { ...state, context };
+      return state.turns.length === 0
+        ? held
+        : withLastTurn(held, (turn) => ({ ...turn, contextBefore: event.total }));
+    }
     case "dispatch": {
       const turn: AgentChatTurn = {
         dispatch: { text: event.text, ...(event.at !== undefined ? { at: event.at } : {}) },

@@ -11,6 +11,8 @@ export { createClaudeExecutionLoop } from "./execution-loop.js";
 export { defineTool, createEmbeddedMcpServer } from "../mcp/embedded/server.js";
 export type {
   ClaudeGatewayCanUseTool,
+  ClaudeGatewayContextCategory,
+  ClaudeGatewayContextUsage,
   ClaudeGatewayEffort,
   ClaudeGatewayMcpServer,
   ClaudeGatewayMcpServerOptions,

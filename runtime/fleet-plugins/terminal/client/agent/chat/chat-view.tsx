@@ -12,6 +12,8 @@ import {
   splitAgentChatTurn,
   type AgentChatAsk,
   type AgentChatChange,
+  type AgentChatContext,
+  type AgentChatContextSlice,
   type AgentChatJob,
   type AgentChatJobDetail,
   type AgentChatJobKind,
@@ -271,6 +273,7 @@ export function AgentChatView({
               순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
           <div className="agent-view-chip-row">
             {leadingChip}
+            <ContextMeterChip context={state.context} language={language} />
             <button
               type="button"
               className="agent-chat-mode-chip"
@@ -311,6 +314,7 @@ export function AgentChatView({
             key={index}
             operationId={context.operationId}
             turn={turn}
+            nextContextBefore={state.turns[index + 1]?.contextBefore}
             language={language}
             timeFormat={timeFormat}
             streaming={index === state.turns.length - 1 && turn.state === "working"}
@@ -475,6 +479,7 @@ function ReplyBubbleIcon() {
 function ChatTurn({
   operationId,
   turn,
+  nextContextBefore,
   language,
   timeFormat,
   streaming,
@@ -484,6 +489,8 @@ function ChatTurn({
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
+  /** 바로 다음 턴이 시작될 때의 문맥 총량. 이 턴이 더한 몫은 그것과의 차이다. */
+  readonly nextContextBefore: number | undefined;
   readonly language: "en" | "ko";
   readonly timeFormat: Intl.DateTimeFormat;
   readonly streaming: boolean;
@@ -500,6 +507,12 @@ function ChatTurn({
     const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
     return count + (job?.open === true ? 1 : 0);
   }, 0);
+  // 이 턴이 더한 몫은 **다음 턴이 시작될 때** 비로소 알 수 있다(자식은 턴 중에 답하지 않는다).
+  // 그래서 마지막 턴에는 증가분이 서지 않고, 다음 지시를 보내면 그때 채워진다 — 어느 한쪽이
+  // 없는데 값을 지어내면 "이 턴이 이만큼 먹었다"는 이 줄의 유일한 주장이 거짓이 된다.
+  const contextGrew = turn.contextBefore !== undefined && nextContextBefore !== undefined
+    ? nextContextBefore - turn.contextBefore
+    : undefined;
   return (
     <>
       {turn.dispatch ? (
@@ -550,6 +563,7 @@ function ChatTurn({
                 running={stillRunning}
                 error={turn.state === "error"}
                 stopped={turn.state === "stopped"}
+                contextGrew={contextGrew}
                 language={language}
               >
                 <ChangeStrip changes={view.changes} language={language} />
@@ -1101,6 +1115,7 @@ function WorkFold({
   running,
   error,
   stopped,
+  contextGrew,
   language,
   children,
 }: {
@@ -1111,6 +1126,8 @@ function WorkFold({
   readonly error: boolean;
   /** 사용자가 끊은 턴. 실패와 같은 잉크를 쓰지 않는다 — 고칠 것이 없는 결말이다. */
   readonly stopped: boolean;
+  /** 이 턴이 문맥 창에 더한 토큰. 앞 턴의 좌표가 없으면 undefined이고, 그때는 서지 않는다. */
+  readonly contextGrew: number | undefined;
   readonly language: "en" | "ko";
   readonly children: React.ReactNode;
 }) {
@@ -1126,6 +1143,13 @@ function WorkFold({
         {failed > 0 ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldFailed", { count: failed })}</span> : null}
         {stopped ? <span className="agent-chat-fold-stopped">{t("terminal.chat.foldTurnStopped")}</span> : null}
         {failed === 0 && error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
+        {/* 이 턴이 문맥에 더한 몫. 총량은 위 칩이 말하고, 이 줄은 그 총량이 어디서 왔는지만 말한다.
+            줄어든 턴(압축이 끼어든 경우)도 그대로 부호를 지고 선다 — 압축은 사건이지 오류가 아니다. */}
+        {contextGrew !== undefined && contextGrew !== 0 ? (
+          <span className="agent-chat-fold-context">
+            {contextGrew > 0 ? "+" : "−"}{formatTokens(Math.abs(contextGrew))}
+          </span>
+        ) : null}
         <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="agent-chat-fold-body">{children}</div>
@@ -1581,4 +1605,221 @@ function formatDuration(durationMs: number): string {
   const seconds = durationMs / 1_000;
   if (seconds < 90) return `${seconds.toFixed(1)}s`;
   return `${Math.round(seconds / 60)}m ${Math.round(seconds % 60)}s`;
+}
+
+// ── 문맥 창 ──────────────────────────────────────────────────────────────────
+
+/**
+ * 토큰 수를 사람이 읽는 크기로. 정확한 자릿수가 아니라 **규모**를 읽히는 것이 이 표면의 일이라
+ * 천 단위에서 접는다 — 69,432를 그대로 두면 옆의 백분율보다 먼저 눈에 들어온다.
+ */
+function formatTokens(tokens: number): string {
+  if (tokens < 1_000) return String(Math.round(tokens));
+  const thousands = tokens / 1_000;
+  return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
+/**
+ * 미터가 어느 계단에 서는지. quota 레일이 쓰는 세 단계를 그대로 물려받는다 — 같은 제품 안에서
+ * 같은 모양의 미터가 다른 임계로 물들면 사용자가 색을 두 번 배워야 한다.
+ *
+ * 자동 압축이 켜져 있으면 임계선이 곧 위험선이다. 꺼져 있으면 창을 다 쓰는 것 자체가 한계이므로
+ * 고정 비율로 돌아간다.
+ */
+function contextTone(context: AgentChatContext): "" | " is-warn" | " is-critical" {
+  const ratio = context.total / context.max;
+  const limit = context.compactAt !== undefined ? context.compactAt / context.max : 1;
+  if (ratio >= limit * 0.97) return " is-critical";
+  if (ratio >= limit * 0.75) return " is-warn";
+  return "";
+}
+
+/**
+ * 문맥 미터 칩과 그 내역.
+ *
+ * 값은 **마지막 지시가 시작될 때**의 것이다. 자식은 턴이 시작되면 control 채널을 닫으므로 그
+ * 한 순간이 물어볼 수 있는 유일한 시점이고(실측), 그래서 방금 끝난 턴이 더한 몫은 다음 지시를
+ * 보낼 때 드러난다. 각주가 그 사실을 항상 말한다 — 숫자만 두면 사용자가 이것을 지금 값으로 읽고,
+ * 방금 붙인 큰 파일이 공짜로 보인다.
+ */
+function ContextMeterChip({
+  context,
+  language,
+}: {
+  readonly context: AgentChatContext | null;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const [open, setOpen] = React.useState(false);
+  const wrapRef = React.useRef<HTMLDivElement | null>(null);
+
+  // 열려 있는 동안에만 문서에 손을 댄다. 채팅 패널은 한 화면에 여럿 살 수 있어, 닫힌 칩까지
+  // 리스너를 걸면 패널 수만큼 같은 핸들러가 매 클릭을 받는다.
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (!wrapRef.current?.contains(event.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.stopPropagation();
+        setOpen(false);
+      }
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
+
+  // 한 턴도 끝나지 않았으면 말할 수 있는 것이 없다. 0%짜리 미터는 빈 사실이 아니라 틀린 사실이다.
+  if (!context) return null;
+
+  const percent = Math.round((context.total / context.max) * 100);
+  const summary = `${formatTokens(context.total)} / ${formatTokens(context.max)}`;
+  return (
+    <div className={`agent-chat-ctx${contextTone(context)}`} ref={wrapRef}>
+      <button
+        type="button"
+        className="agent-chat-mode-chip agent-chat-ctx-chip"
+        aria-expanded={open}
+        aria-label={t("terminal.chat.contextAria", { percent: String(percent), summary })}
+        title={t("terminal.chat.contextAt", { summary })}
+        onClick={() => setOpen((wasOpen) => !wasOpen)}
+      >
+        <ContextArc ratio={context.total / context.max} />
+        <span className="agent-chat-ctx-pct">{percent}%</span>
+      </button>
+      {open ? <ContextBreakdown context={context} language={language} /> : null}
+    </div>
+  );
+}
+
+/** 칩 안의 작은 원호. 숫자 옆에서 규모를 한눈에 세우는 몫이라 눈금도 라벨도 갖지 않는다. */
+function ContextArc({ ratio }: { readonly ratio: number }) {
+  const radius = 6;
+  const circumference = 2 * Math.PI * radius;
+  const filled = Math.max(0, Math.min(1, ratio)) * circumference;
+  return (
+    <svg className="agent-chat-ctx-arc" viewBox="0 0 16 16" aria-hidden="true">
+      <circle className="agent-chat-ctx-arc-track" cx="8" cy="8" r={radius} />
+      <circle
+        className="agent-chat-ctx-arc-fill"
+        cx="8"
+        cy="8"
+        r={radius}
+        strokeDasharray={`${filled.toFixed(2)} ${circumference.toFixed(2)}`}
+      />
+    </svg>
+  );
+}
+
+/**
+ * 무엇이 창을 먹고 있는지.
+ *
+ * 카테고리를 색으로 가르지 않는 이유는 Console 채널 규칙이다 — 색은 상태만 나른다. 여기서는
+ * 명도 계단이 순서를 지고, 그 순서는 큰 것부터다. SDK가 제 팔레트를 함께 보내지만 그것은 CLI의
+ * 것이지 이 제품의 것이 아니다.
+ */
+function ContextBreakdown({
+  context,
+  language,
+}: {
+  readonly context: AgentChatContext;
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  const rows = [...context.slices].sort((left, right) => right.tokens - left.tokens);
+  const reserved = context.reserved ?? 0;
+  // 남은 자리는 창에서 쓴 몫과 예약분을 뺀 나머지다. 예약분을 빼지 않으면 실제로 쓸 수 없는
+  // 자리를 여유로 세어, 압축이 시작될 때 사용자가 아직 여유가 있다고 읽는다.
+  const free = Math.max(0, context.max - context.total - reserved);
+  const percent = Math.round((context.total / context.max) * 100);
+  return (
+    <div className="agent-chat-ctx-pop" role="dialog" aria-label={t("terminal.chat.contextTitle")}>
+      <div className="agent-chat-ctx-pop-head">
+        <span className="agent-chat-ctx-pop-title">{t("terminal.chat.contextTitle")}</span>
+        <span className="agent-chat-ctx-pop-total">
+          {formatTokens(context.total)} / {formatTokens(context.max)} · {percent}%
+        </span>
+      </div>
+      <div className="agent-chat-ctx-stack">
+        {rows.map((slice, index) => (
+          <i
+            key={slice.name}
+            // 명도 계단은 순서를 나르는 인덱스다 — 여섯 칸을 넘어가면 더 어두워지지 않고 멈춘다.
+            style={{
+              width: `${(slice.tokens / context.max) * 100}%`,
+              "--agent-chat-ctx-step": String(Math.min(index, 5)),
+            } as React.CSSProperties}
+          />
+        ))}
+      </div>
+      <ul className="agent-chat-ctx-rows">
+        {rows.map((slice, index) => (
+          <li key={slice.name}>
+            <span
+              className="agent-chat-ctx-swatch"
+              style={{ "--agent-chat-ctx-step": String(Math.min(index, 5)) } as React.CSSProperties}
+              aria-hidden="true"
+            />
+            <span className="agent-chat-ctx-name">{slice.name}</span>
+            <span className="agent-chat-ctx-tokens">{formatTokens(slice.tokens)}</span>
+            <span className="agent-chat-ctx-share">{((slice.tokens / context.max) * 100).toFixed(1)}%</span>
+          </li>
+        ))}
+        {reserved > 0 ? (
+          <li className="agent-chat-ctx-free">
+            <span className="agent-chat-ctx-swatch is-free" aria-hidden="true" />
+            <span className="agent-chat-ctx-name">{t("terminal.chat.contextReserved")}</span>
+            <span className="agent-chat-ctx-tokens">{formatTokens(reserved)}</span>
+            <span className="agent-chat-ctx-share">{((reserved / context.max) * 100).toFixed(1)}%</span>
+          </li>
+        ) : null}
+        <li className="agent-chat-ctx-free">
+          <span className="agent-chat-ctx-swatch is-free" aria-hidden="true" />
+          <span className="agent-chat-ctx-name">{t("terminal.chat.contextFree")}</span>
+          <span className="agent-chat-ctx-tokens">{formatTokens(free)}</span>
+          <span className="agent-chat-ctx-share">{((free / context.max) * 100).toFixed(1)}%</span>
+        </li>
+      </ul>
+      <ContextDetail label={t("terminal.chat.contextMemoryFiles")} rows={context.memoryFiles} />
+      <ContextDetail label={t("terminal.chat.contextMcpTools")} rows={context.mcpTools} />
+      <p className="agent-chat-ctx-foot">{t("terminal.chat.contextAge")}</p>
+    </div>
+  );
+}
+
+/** 카테고리 하나를 이루는 항목들. 접혀 있고, 실을 것이 없으면 아예 서지 않는다. */
+function ContextDetail({
+  label,
+  rows,
+}: {
+  readonly label: string;
+  readonly rows: readonly AgentChatContextSlice[];
+}) {
+  const total = rows.reduce((sum, row) => sum + row.tokens, 0);
+  // 아직 문맥에 실리지 않은 항목은 0토큰으로 온다(실측: MCP 도구 14개, 합계 0). 그 줄은 창을
+  // 나눠 갖는 몫이 아니라 목록일 뿐이라, 문맥 내역에 자리를 차지할 이유가 없다.
+  if (rows.length === 0 || total === 0) return null;
+  const sorted = [...rows].sort((left, right) => right.tokens - left.tokens);
+  return (
+    <details className="agent-chat-ctx-detail">
+      <summary>
+        <span className="agent-chat-ctx-name">{label}</span>
+        <span className="agent-chat-ctx-tokens">{formatTokens(total)}</span>
+        <span className="agent-chat-ctx-count">{sorted.length}</span>
+      </summary>
+      <ul className="agent-chat-ctx-rows">
+        {sorted.map((row) => (
+          <li key={row.name}>
+            <span className="agent-chat-ctx-name" title={row.name}>{row.name}</span>
+            <span className="agent-chat-ctx-tokens">{formatTokens(row.tokens)}</span>
+          </li>
+        ))}
+      </ul>
+    </details>
+  );
 }

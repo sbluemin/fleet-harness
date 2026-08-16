@@ -79,7 +79,7 @@ function createDeps() {
     authService: {
       listProviderIds: vi.fn(async () => ["Claude Code with Moonshot Kimi"]),
     },
-    resolveBinary: vi.fn(() => ({ bin: "/usr/bin/claude", prefixArgs: [] })),
+    resolveBinary: vi.fn(() => ({ bin: "/usr/bin/claude", prefixArgs: [] as string[] })),
     runVersion: vi.fn(async () => "2.1.233 (Claude Code)\n"),
     readConsoleStatus: vi.fn(async () => "Fleet Console server: running (pid 12)\n  endpoint   http://127.0.0.1:9/"),
     dataDir: "/tmp/fleet-root",

@@ -15,6 +15,7 @@ function makeLogState(): AgentChatLogState {
     replayedTurns: 1,
     errorCode: null,
     jobs: [],
+    context: null,
   };
 }
 

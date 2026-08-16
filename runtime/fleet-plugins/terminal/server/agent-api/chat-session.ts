@@ -3,6 +3,7 @@ import path from "node:path";
 
 import {
   createClaudeGatewaySdk,
+  type ClaudeGatewayContextUsage,
   type ClaudeGatewayEffort,
   type ClaudeGatewayMessage,
   type ClaudeGatewayRun,
@@ -153,6 +154,15 @@ export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<Claude
 
 const JOURNAL_CAP = 2_000;
 const TOOL_NAME_CAP = 500;
+/**
+ * 문맥 카테고리 중 **쓴 것이 아닌** 자리의 이름. vendor가 영어 고정으로 붙인다(실측).
+ *
+ * 이름으로 가르는 것이 취약하다는 것은 안다. 다만 vendor는 이 둘을 구조적으로 구분해 주지
+ * 않으며(`isDeferred`는 다른 축이다), 매칭이 어긋나면 미터가 늘 100%를 가리켜 곧바로 눈에
+ * 띈다 — 조용히 틀리는 실패가 아니다.
+ */
+const CONTEXT_RESERVED_NAME = "Autocompact buffer";
+const CONTEXT_UNSPENT: ReadonlySet<string> = new Set([CONTEXT_RESERVED_NAME, "Free space"]);
 /** 잡 id→종류. 상세 라우트의 첫 문이라 상한이 필요하지만, 잡은 도구 호출보다 훨씬 드물다. */
 const JOB_KIND_CAP = 200;
 /**
@@ -272,6 +282,11 @@ class AgentChatSession {
    * dispose(). 어느 경로로도 비워지지 않으면 SDK는 무기한 멈춘다(권한 요청에 park deadline이 없다).
    */
   private readonly pendingAsks = new Map<string, PendingAsk>();
+  /**
+   * 문맥 스냅숏의 세대. 턴마다 하나씩 오르며, 늦게 도착한 응답이 자기 턴의 것인지 가른다 —
+   * 답은 턴이 끝난 뒤에 오므로(실측), 그 사이 새 턴이 시작했다면 그 값은 남의 턴 자리에 앉는다.
+   */
+  private contextGeneration = 0;
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -648,6 +663,72 @@ class AgentChatSession {
     });
   }
 
+  /**
+   * 턴이 시작하는 순간 자식에게 문맥 내역을 묻고, 답이 오면 그대로 저널에 싣는다.
+   *
+   * **이 한 번이 유일한 기회다**(실측). 자식은 턴이 시작되면 control 채널을 닫아, +0ms의 요청만
+   * 답을 받고 그 뒤의 요청은 턴이 10초를 돌든 전부 "Query closed before response received"로
+   * 끝난다. 주기적으로 물어 최신값을 좇는 설계는 이 자식에서 성립하지 않는다.
+   *
+   * 그래서 값은 **이 턴이 시작될 때까지의** 문맥이다 — 방금 끝난 턴이 더한 몫은 다음 턴이
+   * 시작될 때 비로소 드러난다. 화면은 그 지연을 감추지 않는다.
+   *
+   * 응답을 기다리지 않는 이유는 스트림 때문이다: 여기서 await하면 첫 메시지 소비가 그만큼 늦다.
+   * 늦게 도착한 답도 같은 턴의 시작 시점 값이므로, 그때 실어도 뜻이 달라지지 않는다.
+   */
+  private snapshotContextAtTurnStart(run: ClaudeGatewayRun): void {
+    // 응답은 이 턴이 **끝난 뒤에** 도착한다(실측: turn-end → context). 그래서 어느 턴의 값인지를
+    // 세대로 붙들어 둔다 — 다음 턴이 이미 시작했다면 이 값은 그 턴의 것이 아니고, 그대로 실으면
+    // 리듀서가 남의 턴에 붙여 증가분을 한 턴씩 밀어 버린다. 새 턴은 자기 스냅숏을 따로 받는다.
+    const generation = ++this.contextGeneration;
+    // 이 표시 하나 때문에 턴이 죽어서는 안 된다. 계약상 이 메서드는 있어야 하지만, 없거나 동기로
+    // 던지는 런이 오면 그 예외는 턴 루프까지 올라가 대화 전체를 실패로 닫는다(실측: 계약을
+    // 따르지 않는 대역 하나가 세션 테스트 10건을 그렇게 무너뜨렸다).
+    try {
+      void run.getContextUsage().then((usage) => {
+        if (usage && generation === this.contextGeneration) this.pushContext(usage);
+      }, () => undefined);
+    } catch {
+      // 문맥 표시가 없는 턴은 여전히 온전한 턴이다.
+    }
+  }
+
+  /**
+   * 턴 시작 시점의 문맥을 저널에 심는다.
+   *
+   * 총량을 vendor의 `total`이 아니라 **카테고리 합으로 다시 세는** 이유는 실측이다: 게이트웨이
+   * 세션에서 그 값(24,948)은 카테고리 합(129,670)과 크게 어긋났다 — 전자는 게이트웨이가 실제로
+   * 읽은 토큰이고 후자는 CLI가 센 로컬 배분이다. 화면은 내역과 총량을 나란히 세우므로 둘이
+   * 다른 셈을 쓰면 사용자가 보는 자리에서 모순이 드러난다. 내역이 곧 총량이어야 한다.
+   *
+   * 예약분(자동 압축 여유)과 남은 자리는 **쓴 것이 아니다**. 같은 목록에 두면 합이 언제나 창
+   * 전체가 되어 미터가 항상 100%를 가리킨다.
+   */
+  private pushContext(usage: ClaudeGatewayContextUsage): void {
+    const spent = usage.categories.filter((category) =>
+      !category.deferred && category.tokens > 0 && !CONTEXT_UNSPENT.has(category.name));
+    const reserved = usage.categories.find((category) => category.name === CONTEXT_RESERVED_NAME);
+    this.push({
+      kind: "context",
+      total: spent.reduce((sum, category) => sum + category.tokens, 0),
+      max: usage.max,
+      ...(reserved && reserved.tokens > 0 ? { reserved: reserved.tokens } : {}),
+      ...(usage.compactAt === null ? {} : { compactAt: usage.compactAt }),
+      slices: spent.map((category) => ({ name: category.name, tokens: category.tokens })),
+      ...(usage.memoryFiles.length > 0
+        ? { memoryFiles: usage.memoryFiles.map((file) => ({ name: file.path, tokens: file.tokens })) }
+        : {}),
+      ...(usage.mcpTools.length > 0
+        ? {
+            mcpTools: usage.mcpTools.map((tool) => ({
+              name: tool.server ? `${tool.server} · ${tool.name}` : tool.name,
+              tokens: tool.tokens,
+            })),
+          }
+        : {}),
+    });
+  }
+
   private push(event: AgentChatStreamEvent): void {
     const entry: AgentChatJournalEvent = { seq: ++this.seq, event };
     // 잡의 맥박은 누적이 아니라 스냅숏이다 — 매번 그 잡의 단계 트리 전체를 다시 실어 오고,
@@ -791,6 +872,7 @@ class AgentChatSession {
         return;
       }
       this.activeRun = run;
+      this.snapshotContextAtTurnStart(run);
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {

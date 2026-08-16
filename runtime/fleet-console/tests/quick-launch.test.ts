@@ -9,7 +9,7 @@ import type { OperationCatalogPlugin, OperationLaunchVariantGroup } from "@fleet
 
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchPinned, writeQuickLaunchSelection } from "../core/client/src/quick-launch-preferences.js";
 import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, mentionTargetName, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken } from "../core/client/src/quick-launch.js";
-import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
+import { clearQuickLaunchRejection, consumeQuickLaunchDraft, getState, isQuickLaunchDocked, openQuickLaunch, openQuickLaunchForOperation, preserveQuickLaunchDraft, removeTheater, reopenQuickLaunchWithDraft, setQuickLaunchDockSuppressed, setQuickLaunchPinned, setState, toggleQuickLaunch } from "../core/client/src/store.js";
 import type { OperationNode, TheaterInfo } from "../core/client/src/types.js";
 
 function makeTheater(id: string): TheaterInfo {
@@ -866,6 +866,42 @@ describe("shouldApplyFocusedMention", () => {
     expect(shouldApplyFocusedMention({ ...on, leftoverDraft: true })).toBe(false);
     expect(shouldApplyFocusedMention({ ...on, mentionAlreadySet: true })).toBe(false);
     expect(shouldApplyFocusedMention({ ...on, promptOccupied: true })).toBe(false);
+  });
+});
+
+describe("openQuickLaunchForOperation", () => {
+  beforeEach(() => {
+    setState({
+      quickLaunchOpen: false,
+      quickLaunchPinned: false,
+      quickLaunchFocusToggle: 0,
+      quickLaunchExpandRequest: 0,
+      quickLaunchDockSuppressed: false,
+      quickLaunchError: null,
+      quickLaunchErrorShortenBy: null,
+      quickLaunchDraft: "leftover from last close",
+      quickLaunchDraftAttachments: null,
+      quickLaunchMentionSeed: null,
+    });
+  });
+
+  it("opens the modal with the mention seed in one transition", () => {
+    openQuickLaunchForOperation("op-chat");
+
+    expect(getState().quickLaunchOpen).toBe(true);
+    expect(getState().quickLaunchMentionSeed).toBe("op-chat");
+    expect(getState().quickLaunchExpandRequest).toBe(0);
+  });
+
+  it("routes a seeded open to the dock instead of raising the modal-open flag", () => {
+    setQuickLaunchPinned(true);
+    const before = getState().quickLaunchExpandRequest;
+
+    openQuickLaunchForOperation("op-chat");
+
+    expect(getState().quickLaunchOpen).toBe(false);
+    expect(getState().quickLaunchMentionSeed).toBe("op-chat");
+    expect(getState().quickLaunchExpandRequest).toBe(before + 1);
   });
 });
 

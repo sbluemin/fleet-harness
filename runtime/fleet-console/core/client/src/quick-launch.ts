@@ -496,7 +496,8 @@ export function resolveMentionEntry(
 
 /**
  * 옵트인이 켜져 있고 컴포저가 비어 있을 때만 포커스 멘션을 확정한다. 초안·이미 붙은 멘션·
- * 입력 중인 문면은 새 런치를 덮지 않는다.
+ * 입력 중인 문면은 새 런치를 덮지 않는다. 회신 말풍선이 건네는 명시 시드는 이 가드를
+ * 쓰지 않는다 — 그 버튼은 남은 초안을 이어 쓰지 않는 새 주소다.
  */
 export function shouldApplyFocusedMention(input: {
   readonly prefOn: boolean;
