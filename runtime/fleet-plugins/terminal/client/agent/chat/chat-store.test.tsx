@@ -132,4 +132,35 @@ describe("useAgentChatStream", () => {
     expect(FakeWebSocket.instances[0]?.url).toContain("/plugins/terminal/ws?ticket=ticket-for-op-return");
     expect(latest?.connection).toBe("connecting");
   });
+
+  it("resets the journal when a socket reconnects so replay does not duplicate turns", async () => {
+    mount("op-replay", true);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    const first = FakeWebSocket.instances[0];
+    expect(first).toBeTruthy();
+    const replay = { seq: 1, event: { kind: "dispatch", text: "hello" } };
+    act(() => {
+      first!.open();
+      first!.onmessage?.({ data: JSON.stringify(replay) });
+    });
+    expect(latest?.turns).toHaveLength(1);
+    expect(latest?.turns[0]?.dispatch?.text).toBe("hello");
+
+    act(() => {
+      first!.close();
+    });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    });
+    const second = FakeWebSocket.instances[1];
+    expect(second).toBeTruthy();
+    act(() => {
+      second!.open();
+      second!.onmessage?.({ data: JSON.stringify(replay) });
+    });
+    expect(latest?.turns).toHaveLength(1);
+    expect(latest?.connection).toBe("open");
+  });
 });

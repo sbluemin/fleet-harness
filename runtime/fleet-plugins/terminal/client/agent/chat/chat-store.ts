@@ -48,7 +48,13 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
     setLog(initialAgentChatLogState);
     const session = createChatSocketSession({
       operationId,
-      onConnection: setConnection,
+      onConnection: (next) => {
+        // 서버는 접속마다 보유 저널을 처음부터 되쓴다. 채팅 출생은 replay-start를 남기지
+        // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
+        // 재접속 리플레이가 남은 턴·잡·질문 카드 위에 겹친다(옛 EventSource onopen과 같은 자리).
+        if (next === "open") setLog(() => initialAgentChatLogState);
+        setConnection(next);
+      },
       onEvent: (raw) => {
         const entry = readChatJournalEvent(raw);
         if (!entry) return;
