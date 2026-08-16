@@ -29,7 +29,7 @@ import {
 } from "../palette-commands.js";
 import { stashKeyboardShortcutsReturnFocus } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
-import { forgetTheaterCompletely } from "../theater-forget.js";
+import { forgetTheaterCompletely } from "../theater-crud.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";

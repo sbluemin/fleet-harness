@@ -17,7 +17,7 @@ import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus, resolveUpdateChannel } from "./check.js";
 import { resolveSiblingConsoleCliPath, stopRunningConsoleBeforeUpdate } from "./stop-console.js";
 import type { UpdateChannel } from "./registry.js";
-import type { UpdateCommandIo } from "./types.js";
+import type { UpdateCommandIo } from "./dispatcher.js";
 
 type PackageManagerInstall = GlobalPackageManagerInstall;
 

@@ -3,7 +3,7 @@ import type http from "node:http";
 import path from "node:path";
 
 import type { ConsoleThemeId } from "./settings/settings-domain.js";
-import { withSecurityHeaders } from "./security-headers.js";
+import { withSecurityHeaders } from "./http-infra.js";
 
 const MIME_TYPES: Readonly<Record<string, string>> = {
   ".css": "text/css; charset=utf-8",

@@ -6,7 +6,7 @@ import { GLOBAL_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { OPERATIONS_API_CATALOG } from "./operations/operations-domain.js";
 import { SERVER_API_CATALOG } from "./server.js";
-import { SYSTEM_FONTS_API_CATALOG } from "./system-fonts-routes.js";
+import { SYSTEM_FONTS_API_CATALOG } from "./system-fonts.js";
 
 export type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 

@@ -1,7 +1,14 @@
 import { cancel, isCancel, select } from "@clack/prompts";
 
-import { AUTH_CLI_DEFINITIONS, getAuthCliOptions, parseAuthCliId, resolveAuthCliId, runAuthLoginFlow } from "./login-flow.js";
-import type { AuthCommandDeps, AuthCommandIo } from "./types.js";
+import {
+  AUTH_CLI_DEFINITIONS,
+  getAuthCliOptions,
+  parseAuthCliId,
+  resolveAuthCliId,
+  runAuthLoginFlow,
+  type AuthCommandDeps,
+  type AuthCommandIo,
+} from "./login-flow.js";
 
 const AUTH_HELP_TEXT = `fleet auth — Authentication
 

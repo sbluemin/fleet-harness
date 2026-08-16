@@ -7,7 +7,7 @@ import { resolvePathBinary } from "@dotobokuri/core-process";
 import { readFleetCliRelease } from "../../cli/release.js";
 import { checkUpdateStatus } from "../../cli/update/check.js";
 import { __installerTestHooks, runFleetUpdate } from "../../cli/update/installer.js";
-import type { UpdateCommandIo } from "../../cli/update/types.js";
+import type { UpdateCommandIo } from "../../cli/update/dispatcher.js";
 
 interface StringWriter {
   write(chunk: string): boolean;

@@ -27,8 +27,7 @@ import { createDeferredDeletionCoordinator, DeferredDeletionError, type Deferred
 import { createConsoleDurableStateStore, emptyDurableConsoleState, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./settings/settings-domain.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
-import { createSystemFontsRouter } from "./system-fonts-routes.js";
-import { createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
+import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
 import { createConsoleLock, type ConsoleLockHandle } from "./lock.js";
 import { readDesktopProtocolEnvironment } from "./desktop-protocol.js";
 import { createOperationsRouter } from "./operations/operations-domain.js";
@@ -58,8 +57,7 @@ import { createConsoleReleaseNotesService, type ConsoleReleaseNotesService } fro
 import { ConsoleReleaseNotesUnavailableError, type ReleaseNotesLocale } from "./release-notes/release-notes.js";
 import { RouteRegistry } from "./route-registry/registry.js";
 import { UpgradeRegistry } from "./route-registry/registry.js";
-import { withSecurityHeaders } from "./security-headers.js";
-import { encodeSseData, startSseKeepaliveLifecycle } from "./sse.js";
+import { encodeSseData, startSseKeepaliveLifecycle, withSecurityHeaders } from "./http-infra.js";
 import { createStaticConsoleHandler } from "./static-console.js";
 import { listTheaterFolders, TheaterFolderListError } from "./theaters/theater-domain.js";
 import { createFolderGrantStore } from "./theaters/theater-domain.js";
