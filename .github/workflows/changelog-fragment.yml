@@ -32,7 +32,7 @@ jobs:
           PR_BODY: ${{ github.event.pull_request.body }}
         run: |
           merge_base=$(git merge-base "$BASE_REF" "$HEAD_REF")
-          # AGENTS.md/CLAUDE.md live in .changelog.d/ but are doctrine, not fragments.
+          # CLAUDE.md (and a leftover AGENTS.md) live in .changelog.d/ but are doctrine, not fragments.
           fragment_filter() { grep -E '^\.changelog\.d/[^/]+\.md$' | grep -vE '^\.changelog\.d/(AGENTS|CLAUDE)\.md$' || true; }
           fragment_files=$(git diff --name-only --diff-filter=A "$merge_base" "$HEAD_REF" | fragment_filter)
           if node -e "const labels = JSON.parse(process.env.LABELS_JSON); process.exit(labels.some((label) => label.name === 'no-changelog') ? 0 : 1);"; then
@@ -41,7 +41,7 @@ jobs:
             has_no_changelog=false
           fi
           # Doctrine requires a correction to an unreleased change to be folded into that change's pending
-          # fragment (.changelog.d/AGENTS.md, Release Baseline). Blanket protection would make that impossible,
+          # fragment (.changelog.d/CLAUDE.md, Release Baseline). Blanket protection would make that impossible,
           # so an amendment is allowed when it is declared twice over: the label states the intent, and one
           # Changelog-Amend line per fragment names exactly which note is being rewritten. An accidental edit
           # still fails, because it names nothing.

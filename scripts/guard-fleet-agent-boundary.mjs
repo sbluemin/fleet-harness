@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const root = path.dirname(scriptDir);
 const packageRoot = path.join(root, "runtime", "fleet-console");
-const scanRoots = ["cli", "package.json", "AGENTS.md", "README.md", "CLAUDE.md"].map((entry) => path.join(packageRoot, entry));
+const scanRoots = ["cli", "package.json", "README.md", "CLAUDE.md"].map((entry) => path.join(packageRoot, entry));
 const forbidden = [
   /@dotobokuri\/fleet-harness/,
   /@dotobokuri\/fleet-ai/,
@@ -34,7 +34,7 @@ for (const file of listFiles(scanRoots)) {
       return;
     }
 
-    if ((file.endsWith("AGENTS.md") || file.endsWith("README.md") || file.endsWith("CLAUDE.md")) && allowedDocPhrases.some((phrase) => line.includes(phrase))) {
+    if ((file.endsWith("README.md") || file.endsWith("CLAUDE.md")) && allowedDocPhrases.some((phrase) => line.includes(phrase))) {
       return;
     }
 

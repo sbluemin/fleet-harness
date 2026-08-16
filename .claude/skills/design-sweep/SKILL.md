@@ -15,7 +15,7 @@ Living sources — always re-read these in Phase 1; the numbers below are exampl
 
 - `runtime/fleet-console/core/client/src/styles/theme.css` — token vocabulary and per-theme envelopes.
 - `runtime/fleet-console/tests/instrument-design-contract.test.ts` — the machine-readable charter: what is already pinned and enforced.
-- `runtime/fleet-console/AGENTS.md` + doctrine comments inside `components.css` — approved exceptions and channel rules.
+- `runtime/fleet-console/CLAUDE.md` + doctrine comments inside `components.css` — approved exceptions and channel rules.
 
 **Three-channel color charter.** Every color speaks on exactly one channel:
 
@@ -25,7 +25,7 @@ Living sources — always re-read these in Phase 1; the numbers below are exampl
 
 **Control grammar.** The dominant control pattern is mono 10px 700 uppercase · min-height 34px · `--radius-xs` · brass-mix hover. Heights snap to {24, 28, 34, 44}; radius vocabulary is {`--radius-xs`, `--radius-md`, `--radius-pill` for dots/pills only}. Raw px radii and off-snap heights are drift.
 
-**Envelopes.** The skeleton sits at very low chroma (C≈0.012–0.02); identity tones live in a per-theme chroma envelope (instrument≈0.06 / maritime≈0.085 / carbon≈0.05). Any chromatic raw literal outside `theme.css` breaks two rules at once: it jumps the envelope and it cannot retune per theme; near-achromatic shadow/scrim/sheen depth literals are the sanctioned exception (console AGENTS.md Design invariants).
+**Envelopes.** The skeleton sits at very low chroma (C≈0.012–0.02); identity tones live in a per-theme chroma envelope (instrument≈0.06 / maritime≈0.085 / carbon≈0.05). Any chromatic raw literal outside `theme.css` breaks two rules at once: it jumps the envelope and it cannot retune per theme; near-achromatic shadow/scrim/sheen depth literals are the sanctioned exception (console CLAUDE.md Design invariants).
 
 **Defect taxonomy** — classify every finding as one of:
 
@@ -57,7 +57,7 @@ Re-read the living sources above. The contract test tells you what is **already 
 
 Run the detectors over `<scope>` — for `full` depth, sweep each surface family (in parallel when useful); for `quick`, run directly:
 
-- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console AGENTS.md Design invariants) — classify them out instead of reporting them. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
+- **Raw color literals**: `oklch\([0-9]` and hex literals in any CSS outside `theme.css` token definitions. Near-achromatic shadow/scrim/sheen literals are doctrine-sanctioned depth effects (console CLAUDE.md Design invariants) — classify them out instead of reporting them. Plugins (`runtime/fleet-plugins/*`) are the historical drift reservoir — always include them.
 - **Signal misuse**: `warn|aurora|positive|coral` tokens on non-state surfaces (badges, chips, avatars, identity marks, version labels).
 - **Brass misuse**: brass on permanently-lit ornaments or identity roles (its only roles: location, focus, hover).
 - **Identity leaks**: `--user-accent` placements — count them and compare against the contract test's pinned count; any `border-color`/glow usage is a violation.

@@ -7,7 +7,7 @@ description: From a PO/PD lens, take a fleet-console product-improvement or new-
 
 Turn a vague product ask into a decision-ready proposal for the **fleet-console** product. The value is NOT in calling `console-e2e` and `frontend-design` — it is the **judgment wedged between them**: measure before claiming, solve the problem rather than the named fix, and let the decider touch the options before committing a line of code.
 
-This skill **orchestrates two existing skills** — `console-e2e` (real-browser measurement; lives in this repo's `.agents/skills`) and `frontend-design` (the interactive mock; an Anthropic plugin skill, not vendored in this repo — the same way `console-e2e` itself depends on the external `playwriter` skill) — and adds the PO/PD reasoning that connects them. Read each skill's full docs when you reach its phase, and **invoke them as skills — do not inline or duplicate their procedures** (one home per procedure; SSoT). If `frontend-design` is unavailable in the environment, that is a missing-dependency condition to report, not a reason to vendor a copy of its workflow here. This skill only adds the connective judgment on top.
+This skill **orchestrates two existing skills** — `console-e2e` (real-browser measurement; lives in this repo's `.claude/skills`) and `frontend-design` (the interactive mock; an Anthropic plugin skill, not vendored in this repo — the same way `console-e2e` itself depends on the external `playwriter` skill) — and adds the PO/PD reasoning that connects them. Read each skill's full docs when you reach its phase, and **invoke them as skills — do not inline or duplicate their procedures** (one home per procedure; SSoT). If `frontend-design` is unavailable in the environment, that is a missing-dependency condition to report, not a reason to vendor a copy of its workflow here. This skill only adds the connective judgment on top.
 
 ## When to use
 
@@ -51,7 +51,7 @@ These are the reason the skill exists. Without them it degrades into "a guide fo
 - Split **surface vs essence**: what the user named vs the root cause of the pain (Job-to-be-done).
 - Derive UX options from a pattern catalogue — prevention / confirm dialog / undo toast / recover-bin / settings toggle / two-step arming / … — picking what fits, not all of them.
 - Score every option on **fixed trade-off axes**: friction · discoverability · accessibility · implementation cost · product consistency · recovery guarantee.
-- **Pre-check each option against product design doctrine** (`runtime/fleet-console/AGENTS.md` — token color roles, motion bans, `prefers-reduced-motion` short-circuit, "no user-accent in signal channels", etc.) so a recommended option is never doctrine-illegal.
+- **Pre-check each option against product design doctrine** (`runtime/fleet-console/CLAUDE.md` — token color roles, motion bans, `prefers-reduced-motion` short-circuit, "no user-accent in signal channels", etc.) so a recommended option is never doctrine-illegal.
 
 ### Phase 4 — Build the mock (frontend-design)
 

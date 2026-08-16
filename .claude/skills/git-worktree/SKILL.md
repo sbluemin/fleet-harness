@@ -38,7 +38,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - `echo "SHELL=$SHELL"`
    - `git --version`
 
-2. **AGENTS.md check** — Read the repository root `AGENTS.md` before planning or work. If the workflow later references a subdirectory with its own `AGENTS.md`, read that file too and let child rules override parent rules within that scope.
+2. **CLAUDE.md check** — Read the repository root `CLAUDE.md` before planning or work. If the workflow later references a subdirectory with its own `CLAUDE.md`, read that file too and let child rules override parent rules within that scope.
 
 3. **Repository root resolution**:
    - `repo_root="$(git rev-parse --show-toplevel)"`
@@ -83,7 +83,7 @@ Create or remove a Fleet git worktree safely, without mutating unrelated files, 
    - `echo "SHELL=$SHELL"`
    - `git --version`
 
-2. **AGENTS.md check** — Read the repository root `AGENTS.md` before planning or work. If the active worktree contains additional applicable `AGENTS.md` files for referenced paths, read them too.
+2. **CLAUDE.md check** — Read the repository root `CLAUDE.md` before planning or work. If the active worktree contains additional applicable `CLAUDE.md` files for referenced paths, read them too.
 
 3. **Determine the currently active worktree**:
    - `current_top="$(git rev-parse --show-toplevel)"`

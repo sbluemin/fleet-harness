@@ -35,7 +35,7 @@ Use a unique CDP port and agent-browser session. CDP grants full renderer contro
 
 ## Preflight and ownership
 
-1. Read root and `runtime/fleet-desktop/AGENTS.md`.
+1. Read root and `runtime/fleet-desktop/CLAUDE.md`.
 2. Record OS/architecture, source commit, Electron version, and whether the target is dev, unpacked, unsigned, or signed release.
 3. Inspect running Fleet Desktop/Console processes and locks. Do not quit the installed user app, delete a lock, or signal a process you did not launch.
 4. Build Console and Desktop from the target checkout. Ensure the package manager binary is also on `PATH` because nested package scripts invoke it by name.

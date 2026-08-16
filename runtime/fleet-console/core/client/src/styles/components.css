@@ -5841,7 +5841,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* turn은 진행을 색이 아니라 운동으로 말한다 — 좌우를 오가는 왕복 트래블. 한 방향 순환은 끝에서
    되감기며 튀지만, 왕복은 양 끝에서 감속해 되돌아온다(그래서 ease-in-out을 두 구간에 건다).
-   작업 중 신호가 있는 동안만 도는 AGENTS.md 모션 규약의 sanctioned 예외이며,
+   작업 중 신호가 있는 동안만 도는 CLAUDE.md 모션 규약의 sanctioned 예외이며,
    reduced-motion에서 정적 채움으로 단락한다. */
 .canvas-operation.is-running--turn > .canvas-operation-titlebar::after {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);

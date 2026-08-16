@@ -85,16 +85,17 @@ test('sorts canary before branch fragments and branch fragments by name', () => 
 test('ignores local agent doctrine files in the fragments directory', () => {
   const fixture = createFixture();
   writeFragment(fixture, '### fleet-console\n#### Added\n- Add one.\n  ko: 하나를 추가합니다.');
-  fs.writeFileSync(path.join(fixture, '.changelog.d', 'AGENTS.md'), '# Changelog Fragments\n');
   const claudePath = path.join(fixture, '.changelog.d', 'CLAUDE.md');
-  const supportsSymlinks = process.platform !== 'win32';
-  if (supportsSymlinks) fs.symlinkSync('AGENTS.md', claudePath);
+  const leftoverAgentsPath = path.join(fixture, '.changelog.d', 'AGENTS.md');
+  fs.writeFileSync(claudePath, '# Changelog Fragments\n');
+  fs.writeFileSync(leftoverAgentsPath, '# leftover Agents doctrine\n');
 
   const result = run(fixture, '--check');
 
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /OK: 1 changelog fragment entry validated\./);
-  if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
+  assert.equal(fs.readFileSync(claudePath, 'utf8'), '# Changelog Fragments\n');
+  assert.equal(fs.readFileSync(leftoverAgentsPath, 'utf8'), '# leftover Agents doctrine\n');
 });
 
 test('rejects fragment filenames outside the branch-derived shape', () => {
@@ -205,11 +206,10 @@ test('prints the derived filename for an explicit branch argument', () => {
 test('writes both custom targets before deleting fragments', () => {
   const fixture = createFixture();
   writeBranchFragment(fixture, 'topic-branch', '### fleet-console\n#### Added\n- Add one.\n  ko: 하나를 추가합니다.');
-  const agentsPath = path.join(fixture, '.changelog.d', 'AGENTS.md');
+  const leftoverAgentsPath = path.join(fixture, '.changelog.d', 'AGENTS.md');
   const claudePath = path.join(fixture, '.changelog.d', 'CLAUDE.md');
-  fs.writeFileSync(agentsPath, '# Changelog Fragments\n');
-  const supportsSymlinks = process.platform !== 'win32';
-  if (supportsSymlinks) fs.symlinkSync('AGENTS.md', claudePath);
+  fs.writeFileSync(claudePath, '# Changelog Fragments\n');
+  fs.writeFileSync(leftoverAgentsPath, '# leftover Agents doctrine\n');
   const en = path.join(fixture, 'english.md');
   const ko = path.join(fixture, 'korean.md');
   fs.writeFileSync(en, EMPTY_CHANGELOG);
@@ -219,8 +219,8 @@ test('writes both custom targets before deleting fragments', () => {
   assert.match(fs.readFileSync(en, 'utf8'), /Add one\./);
   assert.match(fs.readFileSync(ko, 'utf8'), /하나를 추가합니다\./);
   assert.equal(fs.existsSync(path.join(fixture, '.changelog.d', 'topic-branch.md')), false);
-  assert.equal(fs.existsSync(agentsPath), true);
-  if (supportsSymlinks) assert.equal(fs.readlinkSync(claudePath), 'AGENTS.md');
+  assert.equal(fs.existsSync(claudePath), true);
+  assert.equal(fs.existsSync(leftoverAgentsPath), true);
 });
 
 test('preserves historical changelog suffixes byte-for-byte when writing a release', () => {
