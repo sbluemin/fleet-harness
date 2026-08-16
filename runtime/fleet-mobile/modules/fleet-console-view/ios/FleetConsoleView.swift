@@ -204,8 +204,24 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   /// true면 WKWebView가 back을 소비, false면 JS가 landing으로 나가야 한다.
   public func navigateBack() -> Bool {
+    // WKWebView(url/canGoBack/goBack)는 메인 스레드 전용이고 이 함수는 JS에서 임의의 큐로
+    // 불린다. Android가 latch로 하는 것과 같이 메인으로 넘기고 기다리되, 2초를 넘기면
+    // JS를 붙잡아 두지 않고 false(= landing으로 나가기)로 답한다.
+    if Thread.isMainThread { return navigateBackOnMain() }
+    var consumed = false
+    let done = DispatchSemaphore(value: 0)
+    DispatchQueue.main.async {
+      consumed = self.navigateBackOnMain()
+      done.signal()
+    }
+    if done.wait(timeout: .now() + .seconds(2)) == .timedOut { return false }
+    return consumed
+  }
+
+  private func navigateBackOnMain() -> Bool {
     guard let view = activeView else { return false }
-    // 오퍼레이션이 열려 있을 때만 콘솔 내부 히스토리가 back을 답한다.
+    // 오퍼레이션이 열려 있을 때만 콘솔 내부 히스토리가 back을 답한다. 그 규칙이 없으면 콘솔의
+    // 페이지 히스토리가 먼저 답해서, 여기로 돌아오는 대신 콘솔 화면들 사이를 걸어다닌다.
     guard isOperationOpen(view), view.canGoBack else { return false }
     view.goBack()
     return true
