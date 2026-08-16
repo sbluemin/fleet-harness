@@ -52,6 +52,7 @@ Codex/Fleet Wiki routes preserve the migrated wiki security boundary: Host allow
 ```bash
 fleet console
 fleet console status
+fleet console restart
 fleet console stop
 
 # transitional alias

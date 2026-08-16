@@ -45,6 +45,14 @@ describe("Kimi auth login flow", () => {
     expect(mocks.setApiKey).not.toHaveBeenCalled();
     expect(io.stderr.output).toContain("rejected");
   });
+
+  it("rejects an unknown provider argument instead of opening a picker", async () => {
+    const io = createIo();
+    await expect(runAuthLoginFlow(["bogus"], io, createDeps())).resolves.toBe(1);
+    expect(mocks.password).not.toHaveBeenCalled();
+    expect(mocks.setApiKey).not.toHaveBeenCalled();
+    expect(io.stderr.output).toBe("Unknown fleet auth provider: bogus\nUse kimi or opencode.\n");
+  });
 });
 
 function createIo() {
