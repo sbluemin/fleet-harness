@@ -1421,8 +1421,9 @@ function JobExtra({
  * 순서이며 매퍼에도 그렇게 적혀 있다). 그래서 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다
  * 먼저 도착해 404를 받고, 좌표가 도착해도 다시 묻지 않아 "기록 없음"이 영영 굳는다.
  *
- * 알림이 실어 오는 값(보고·소요 시간)을 의존성에 함께 두어, 결말이 도착한 그 렌더에서 한 번 더
- * 묻게 한다. 아무것도 도착하지 않으면 여전히 "없다"고 말하는데, 그때는 그것이 사실이다.
+ * 그래서 결말 보고가 **도착한 횟수**를 의존성에 둔다. 보고의 내용(요약·소요 시간)으로 도착을
+ * 추론하면, status만 실은 알림에서는 아무 필드도 바뀌지 않아 상세가 "기록 없음"에 굳는다 —
+ * 매퍼가 허용하는 형태이고 테스트도 그 형태를 덮고 있다. 세는 것이 추론보다 정확하다.
  */
 function useAgentChatJobDetail(
   operationId: string,
@@ -1432,8 +1433,6 @@ function useAgentChatJobDetail(
   const [result, setResult] = React.useState<{ readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null }>(
     { state: "idle", value: null },
   );
-  const reported = job.summary ?? "";
-  const settledMs = job.durationMs ?? -1;
   React.useEffect(() => {
     if (!wanted) {
       setResult({ state: "idle", value: null });
@@ -1449,7 +1448,7 @@ function useAgentChatJobDetail(
       live = false;
       controller.abort();
     };
-  }, [operationId, job.id, wanted, reported, settledMs]);
+  }, [operationId, job.id, wanted, job.ends]);
   return result;
 }
 

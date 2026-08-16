@@ -29,7 +29,7 @@ let root: Root | null = null;
 let container: HTMLDivElement | null = null;
 
 function job(overrides: Partial<AgentChatJob> = {}): AgentChatJob {
-  return { id: "w1", kind: "workflow", title: "two-step", open: true, stages: [], ...overrides };
+  return { id: "w1", kind: "workflow", title: "two-step", open: true, stages: [], ends: 0, ...overrides };
 }
 
 function stateWith(jobs: readonly AgentChatJob[]): AgentChatLogState {
@@ -183,7 +183,10 @@ describe("chat work surface — job detail timing", () => {
     // 백그라운드 셸은 task_updated(killed)가 먼저 닫고, 출력 파일의 좌표는 그 뒤 task_notification이
     // 들고 온다(실측 순서). 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다 먼저 도착해 빈손으로
     // 돌아오는데, 다시 묻지 않으면 "기록 없음"이 영영 굳는다.
-    const closed = { id: "b1", kind: "shell" as const, title: "loop", open: false, status: "stopped" as const, stages: [] };
+    //
+    // 그 알림은 **status만** 실어 올 수 있다(매퍼가 허용하는 형태다). 그래서 여기서도 요약도
+    // 소요 시간도 더하지 않고 도착 횟수만 올린다 — 내용으로 도착을 추론하는 구현은 여기서 죽는다.
+    const closed = { id: "b1", kind: "shell" as const, title: "loop", open: false, status: "stopped" as const, stages: [], ends: 1 };
     logState = { ...stateWith([closed]), jobs: [closed] };
     mount();
     act(() => { strip()?.click(); });
@@ -193,7 +196,7 @@ describe("chat work surface — job detail timing", () => {
     expect(first).toBeGreaterThan(0);
 
     // 결말 보고가 도착한다 — 잡은 이미 닫혀 있었고 id도 그대로다.
-    const reported = { ...closed, summary: "exit code 0", durationMs: 5_000 };
+    const reported = { ...closed, ends: closed.ends + 1 };
     logState = { ...stateWith([reported]), jobs: [reported] };
     render();
     await act(async () => { await Promise.resolve(); });

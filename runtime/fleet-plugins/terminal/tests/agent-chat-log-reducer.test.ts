@@ -626,3 +626,32 @@ describe("stopped turn", () => {
     expect(state.turns.at(-1)?.state).toBe("error");
   });
 });
+
+/**
+ * 결말 보고의 **도착**을 세는 축.
+ *
+ * 백그라운드 셸은 `task_updated(killed)`가 먼저 닫고 출력 파일의 좌표는 뒤따르는
+ * `task_notification`이 들고 온다. 그 알림이 status만 실어 오면 잡 레코드의 다른 필드는 하나도
+ * 움직이지 않으므로, 내용으로 도착을 추론하는 화면은 두 번째 보고를 못 본다.
+ */
+describe("job end arrivals", () => {
+  it("counts every end report, even one that carries nothing but a status", () => {
+    const events: readonly AgentChatStreamEvent[] = [
+      { kind: "job", id: "b1", jobKind: "shell", title: "loop" },
+      { kind: "job-end", id: "b1", status: "stopped" },
+      { kind: "job-end", id: "b1", status: "stopped" },
+    ];
+    const state = events.reduce(reduceAgentChatLog, initialAgentChatLogState);
+    const job = state.jobs.find((entry) => entry.id === "b1");
+    expect(job?.ends).toBe(2);
+    // 두 보고가 같은 내용이라 다른 필드로는 두 번째 도착을 알아볼 수 없다.
+    expect(job?.summary).toBeUndefined();
+    expect(job?.durationMs).toBeUndefined();
+  });
+
+  it("starts a job at zero arrivals", () => {
+    const start: AgentChatStreamEvent = { kind: "job", id: "b2", jobKind: "shell", title: "loop" };
+    const state = reduceAgentChatLog(initialAgentChatLogState, start);
+    expect(state.jobs.find((entry) => entry.id === "b2")?.ends).toBe(0);
+  });
+});

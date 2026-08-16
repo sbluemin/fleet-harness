@@ -442,6 +442,15 @@ export interface AgentChatJob {
   readonly tools?: number;
   readonly durationMs?: number;
   readonly stages: readonly AgentChatJobStage[];
+  /**
+   * 이 잡에 대해 결말 보고가 도착한 횟수.
+   *
+   * 값 자체를 읽는 화면은 없다 — 이것은 **"보고가 하나 더 왔다"는 사실 자체**를 나르는 축이다.
+   * 백그라운드 셸은 `task_updated`가 먼저 닫고 출력 파일의 좌표는 뒤따르는 `task_notification`이
+   * 들고 오는데, 그 알림이 status만 싣고 오면(매퍼가 허용하는 형태다) 다른 필드는 하나도 바뀌지
+   * 않는다. 보고의 내용에서 도착을 추론하면 그때 상세가 "기록 없음"에 굳는다.
+   */
+  readonly ends: number;
 }
 
 /** 잡 상세의 스텝 한 줄 — 원장의 스텝과 같은 어휘를 쓴다. */
@@ -628,6 +637,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.at !== undefined ? { startedAt: event.at } : {}),
         open: true,
         stages: existing?.stages ?? [],
+        ends: existing?.ends ?? 0,
       };
       return {
         ...state,
@@ -653,6 +663,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       return mergeJob(state, event.id, (job) => ({
         ...job,
         open: false,
+        // 내용이 아니라 도착을 센다 — status만 실은 알림도 이 값을 움직여야 상세가 다시 묻는다.
+        ends: job.ends + 1,
         // 결말을 알아보지 못한 보고는 이미 세워 둔 결말을 지우지 않는다 — 근거 없는 값으로
         // 근거 있는 값을 덮는 셈이 된다.
         ...(event.status !== undefined ? { status: event.status } : {}),
@@ -673,7 +685,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       const known = new Set(state.jobs.map((job) => job.id));
       const seeded: readonly AgentChatJob[] = event.ids
         .filter((id) => !known.has(id))
-        .map((id) => ({ id, kind: "other", title: id, open: true, stages: [] }));
+        .map((id) => ({ id, kind: "other" as const, title: id, open: true, stages: [], ends: 0 }));
       return {
         ...state,
         jobs: [...state.jobs.map((job) => ({ ...job, open: live.has(job.id) })), ...seeded],
@@ -693,7 +705,7 @@ function mergeJob(
 ): AgentChatLogState {
   if (!state.jobs.some((job) => job.id === id)) {
     // 시작을 못 본 잡의 맥박·결말이 먼저 올 수 있다(재접속 직후). 좌표만으로 세운다.
-    const seeded: AgentChatJob = { id, kind: "other", title: id, open: true, stages: [] };
+    const seeded: AgentChatJob = { id, kind: "other", title: id, open: true, stages: [], ends: 0 };
     return { ...state, jobs: [...state.jobs, update(seeded)] };
   }
   return { ...state, jobs: state.jobs.map((job) => (job.id === id ? update(job) : job)) };
