@@ -99,13 +99,9 @@ export function sessionRuntime(session: SessionInfo): OperationRuntimeState {
   // 채팅이 인수했으면 PTY의 죽음은 수명주기의 죽음이 아니다. 활동은 SDK 턴 경계가 말하고,
   // 표면 라벨은 호스트가 뜻을 모른 채 표식으로만 그린다.
   if (session.chatActive === true) {
-    // 대기가 작업을 이긴다. 답을 기다리는 동안에도 턴은 열려 있어 chatWorking이 켜져 있는데,
-    // 그것을 먼저 읽으면 사이드바가 "작업 중"이라고 말하는 동안 실제로는 아무도 일하지 않는다.
-    // 이 우선순위는 CLI 표면의 attentionPending이 modelActivity를 앞서는 것과 같은 규율이다.
-    const activity = session.chatAwaiting === true
-      ? "awaiting"
-      : session.chatWorking === true ? "running" : "idle";
-    return { lifecycle: "live", activity, surface: CHAT_SURFACE_LABEL };
+    // 활동 해석은 표면과 무관하다 — 두 어댑터가 같은 필드에 쓰므로 같은 함수가 읽는다.
+    // 여기서 갈리는 것은 수명(PTY의 죽음이 수명의 죽음이 아니다)과 표면 표식뿐이다.
+    return { lifecycle: "live", activity: sessionActivity(session), surface: CHAT_SURFACE_LABEL };
   }
   if (session.status === "dormant") return { lifecycle: "dormant" };
   return { lifecycle: "live", activity: sessionActivity(session), surface: CLI_SURFACE_LABEL };
