@@ -918,6 +918,7 @@ function throwingIteratorFactory(error: unknown): FakeRun {
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     [Symbol.asyncIterator](): AsyncIterator<ClaudeGatewayMessage> {
       throw error;
     },
@@ -930,6 +931,7 @@ function resultThenThrowOnClose(error: unknown = new Error("close failed")): Fak
   });
   return {
     close,
+    getContextUsage: async () => null,
     async *[Symbol.asyncIterator]() {
       yield resultMessage();
     },
@@ -943,6 +945,7 @@ function immediateRun(
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     async *[Symbol.asyncIterator]() {
       for (const message of messages) yield message;
       if (iterateError !== undefined) throw iterateError;
@@ -961,6 +964,7 @@ function hangFirstNext(): ClaudeGatewayRun & {
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     releaseNext(message) {
       nextGate.resolve(message);
@@ -996,6 +1000,7 @@ function hangUntilReleasedThenMessages(
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     release() {
       gate.resolve();
@@ -1012,6 +1017,7 @@ function resultThenHang(): ClaudeGatewayRun & { readonly close: ReturnType<typeo
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     async *[Symbol.asyncIterator]() {
       yield resultMessage();
       // close()가 이터레이터를 끝내지 않는다. 메시지 종점 뒤에 EOF를 기다리면 run()이 멈춘다.
@@ -1033,6 +1039,7 @@ function resultThenHangReturn(): ClaudeGatewayRun & {
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     releaseReturn() {
       returnGate.resolve();
     },
@@ -1066,6 +1073,7 @@ function neverUnblockOnClose(options: { throwFromClose?: boolean } = {}): Claude
   });
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     [Symbol.asyncIterator]() {
       return {
@@ -1091,6 +1099,7 @@ function hangPastClose(): ClaudeGatewayRun & {
   const close = vi.fn();
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     async *[Symbol.asyncIterator]() {
       started.resolve();
@@ -1113,6 +1122,7 @@ function hangingRun(options: { throwOnClose?: boolean } = {}): ClaudeGatewayRun 
   });
   return {
     close,
+    getContextUsage: async () => null,
     started: started.promise,
     async *[Symbol.asyncIterator]() {
       started.resolve();
