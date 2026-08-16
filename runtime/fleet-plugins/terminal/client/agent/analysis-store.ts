@@ -200,6 +200,26 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     });
   };
 
+  // 카탈로그는 AI Gateway 선별에서 나오고 그 선별은 Console 설정에서 바뀐다 — 설정을 다녀오는 동안
+  // 이 store는 살아 있으므로(Operation 단위 수명), 다시 열 때 읽지 않으면 방금 추가한 모델이 목록에
+  // 영원히 없다. 선택이 잠긴 뒤(started)에는 읽지 않는다 — 진행 중 세션의 표시 선택을 뒤에서
+  // 갈아끼우게 된다. 그 잠금은 reset이 푸는 자리이므로 reset도 이 읽기를 함께 돌린다: 한 번이라도
+  // 돌린 세션은 started가 complete 뒤에도 참이라, 여기서 읽지 않으면 초기화해도 새 모델이 없다.
+  // 현재 선택을 그대로 넘겨 아직 고를 수 있는 값이면 사용자의 선택이 산다. 이미 읽는 중이면
+  // (첫 마운트의 하이드레이션 포함) 그 결과를 기다린다 — 아래 하이드레이션 주석 참조.
+  const refreshCatalogNow = (): void => {
+    if (state.started || catalogFlight) return;
+    catalogFlight = fetchAnalysisCatalog(api)
+      .then((catalog) => {
+        if (disposed || state.started) return;
+        dispatch({ type: "catalog", catalog, selection: { cliId: state.cliId, model: state.model, effort: state.effort } });
+      })
+      // 목록 갱신 실패는 조용히 지나간다 — 이미 들고 있는 카탈로그로 계속 쓸 수 있고,
+      // 여기서 오류 문구를 띄우면 아직 아무것도 요청하지 않은 화면이 실패한 것처럼 읽힌다.
+      .catch(() => undefined)
+      .finally(() => { catalogFlight = null; });
+  };
+
   const store: AnalysisStore = {
     getSnapshot: () => state,
     subscribe: (listener) => {
@@ -284,6 +304,8 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
         if (shouldStopServer) await stopAnalysis(api, operationId);
         await clearAnalysisArtifacts(api, operationId).catch(() => {});
         dispatch({ type: "reset", selection: persistedSelection });
+        // reset이 started를 푼 직후가 목록을 다시 읽을 수 있게 되는 첫 시점이다.
+        refreshCatalogNow();
       })().catch((error: unknown) => {
         dispatch({ type: "error", message: `Reset failed: ${failureMessage(error)}`, now: Date.now() });
         throw error;
@@ -296,23 +318,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
         dispatch({ type: "selection-lock", locked: false });
       }
     },
-    // 카탈로그는 AI Gateway 선별에서 나오고 그 선별은 Console 설정에서 바뀐다 — 설정을 다녀오는 동안
-    // 이 store는 살아 있으므로(Operation 단위 수명), 다시 열 때 읽지 않으면 방금 추가한 모델이
-    // 목록에 영원히 없다. 선택이 잠긴 뒤(started)에는 읽지 않는다 — 진행 중 세션의 표시 선택을
-    // 뒤에서 갈아끼우게 된다. 현재 선택을 그대로 넘겨 아직 고를 수 있는 값이면 사용자의 선택이 산다.
-    // 이미 읽는 중이면(첫 마운트의 하이드레이션 포함) 그 결과를 기다린다 — 아래 주석 참조.
-    refreshCatalog: () => {
-      if (state.started || catalogFlight) return;
-      catalogFlight = fetchAnalysisCatalog(api)
-        .then((catalog) => {
-          if (disposed || state.started) return;
-          dispatch({ type: "catalog", catalog, selection: { cliId: state.cliId, model: state.model, effort: state.effort } });
-        })
-        // 목록 갱신 실패는 조용히 지나간다 — 이미 들고 있는 카탈로그로 계속 쓸 수 있고,
-        // 여기서 오류 문구를 띄우면 아직 아무것도 요청하지 않은 화면이 실패한 것처럼 읽힌다.
-        .catch(() => undefined)
-        .finally(() => { catalogFlight = null; });
-    },
+    refreshCatalog: refreshCatalogNow,
     dispose,
     updateContext: (settings, nextLanguage) => {
       if (settings) settingsCapability = settings;
