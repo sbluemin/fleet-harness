@@ -84,6 +84,7 @@ struct CertFields {
   let notAfter: Date?
   let isLeaf: Bool
   let ipSans: [[UInt8]]
+  let dnsSans: [String]
 
   private struct TLV { let tag: UInt8; let content: [UInt8]; let end: Int }
 
@@ -136,6 +137,7 @@ struct CertFields {
     let (notBefore, notAfter) = parseValidity(validity)
     var isLeaf = true
     var ipSans: [[UInt8]] = []
+    var dnsSans: [String] = []
     if let extensionsField, let extSeq = read(extensionsField.content, 0), extSeq.tag == 0x30 {
       for ext in children(extSeq.content) where ext.tag == 0x30 {
         let parts = children(ext.content)
@@ -145,11 +147,13 @@ struct CertFields {
         if oid.content == Array(Der.OID.basicConstraints.dropFirst(2)) {
           isLeaf = !basicConstraintsIsCA(octet.content)
         } else if oid.content == Array(Der.OID.subjectAltName.dropFirst(2)) {
-          ipSans.append(contentsOf: parseIpSans(octet.content))
+          let (ips, dns) = parseSans(octet.content)
+          ipSans.append(contentsOf: ips)
+          dnsSans.append(contentsOf: dns)
         }
       }
     }
-    return CertFields(notBefore: notBefore, notAfter: notAfter, isLeaf: isLeaf, ipSans: ipSans)
+    return CertFields(notBefore: notBefore, notAfter: notAfter, isLeaf: isLeaf, ipSans: ipSans, dnsSans: dnsSans)
   }
 
   private static func parseValidity(_ validity: TLV) -> (Date?, Date?) {
@@ -183,9 +187,16 @@ struct CertFields {
     return false
   }
 
-  // SAN extnValue(OCTET STRING content) = SEQUENCE OF GeneralName; iPAddress = [7] primitive(0x87).
-  private static func parseIpSans(_ octetContent: [UInt8]) -> [[UInt8]] {
-    guard let seq = read(octetContent, 0), seq.tag == 0x30 else { return [] }
-    return children(seq.content).filter { $0.tag == 0x87 }.map { $0.content }
+  // SAN extnValue(OCTET STRING content) = SEQUENCE OF GeneralName.
+  // iPAddress = [7] primitive(0x87), dNSName = [2] primitive(0x82, IA5String content).
+  private static func parseSans(_ octetContent: [UInt8]) -> (ip: [[UInt8]], dns: [String]) {
+    guard let seq = read(octetContent, 0), seq.tag == 0x30 else { return ([], []) }
+    var ip: [[UInt8]] = []
+    var dns: [String] = []
+    for name in children(seq.content) {
+      if name.tag == 0x87 { ip.append(name.content) }
+      else if name.tag == 0x82, let s = String(bytes: name.content, encoding: .ascii) { dns.append(s) }
+    }
+    return (ip, dns)
   }
 }
