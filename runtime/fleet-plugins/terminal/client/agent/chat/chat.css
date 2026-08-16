@@ -27,6 +27,7 @@
 .agent-chat-to-term:not(:disabled),
 .agent-chat-inter-button,
 .agent-chat-mode-chip,
+.agent-chat-follow,
 .agent-chat-dormant-open:not(:disabled) {
   cursor: pointer;
 }
@@ -540,6 +541,38 @@
   outline: none;
 }
 
+/* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
+   상태 신호다. brass는 hover/focus의 위치 채널이다. 회신 말풍선은 우하단을 지키고,
+   이 칩은 그 왼쪽 중앙에 따로 선다. 안 읽은 수는 Wave 2. */
+.agent-chat-follow {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  z-index: 3;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-raised);
+  border: 1px solid color-mix(in oklch, var(--aurora) 45%, var(--hairline-strong));
+  color: var(--aurora-ink);
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.agent-chat-follow:hover,
+.agent-chat-follow:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+  outline: none;
+}
+
 /* 뷰 칩 줄 — Analyst 진입 칩과 뷰 전환 칩이 같은 자리(우상단)에 나란히 선다.
    줄이 위치를 지므로 칩 자체는 흐름에 남는다. */
 .agent-view-chip-row {
@@ -561,7 +594,8 @@
    본문 안에 있으므로 함께 숨긴다. */
 .canvas-operation.is-deck-tile .agent-view-chip-row,
 .canvas-operation.is-deck-tile .agent-chat-mode-chip,
-.canvas-operation.is-deck-tile .agent-chat-dormant-open {
+.canvas-operation.is-deck-tile .agent-chat-dormant-open,
+.canvas-operation.is-deck-tile .agent-chat-follow {
   display: none;
 }
 

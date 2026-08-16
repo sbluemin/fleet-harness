@@ -8,13 +8,17 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { AgentChatView } from "./chat-view.js";
 import type { AgentChatLogState } from "./chat-events.js";
 
-// 로그 상태는 이 테스트의 관심사가 아니다 — 스크롤 앵커만 본다.
-const logState: AgentChatLogState = {
-  turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
-  replaying: false,
-  replayedTurns: 1,
-  errorCode: null,
-};
+function makeLogState(): AgentChatLogState {
+  return {
+    turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
+    replaying: false,
+    replayedTurns: 1,
+    errorCode: null,
+  };
+}
+
+// 로그 상태는 이 테스트의 관심사가 아니다 — 스크롤 앵커와 Follow 칩만 본다.
+let logState: AgentChatLogState = makeLogState();
 
 vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
 vi.mock("@fleet-console/markdown/styles.css", () => ({}));
@@ -25,6 +29,7 @@ let container: HTMLDivElement | null = null;
 let resizeCallbacks: Array<() => void> = [];
 
 beforeEach(() => {
+  logState = makeLogState();
   resizeCallbacks = [];
   // jsdom 에는 ResizeObserver 가 없다. 발화 시점을 이 테스트가 직접 쥔다.
   vi.stubGlobal("ResizeObserver", class {
@@ -49,10 +54,7 @@ function stubMetrics(log: HTMLElement, { scrollHeight, clientHeight }: { scrollH
   Object.defineProperty(log, "clientHeight", { value: clientHeight, configurable: true });
 }
 
-function renderView() {
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
+function viewProps() {
   const context = {
     operationId: "op-1",
     theaterId: "theater-1",
@@ -61,21 +63,37 @@ function renderView() {
     language: "en",
     runtimeState: { lifecycle: "live", activity: "idle" },
   } as unknown as OperationRenderContext;
-  act(() => root?.render(createElement(AgentChatView, {
+  return {
     context,
     onOpenTerminal: async () => {},
     tourAnchors: false,
-  })));
+  };
+}
+
+function mountView() {
+  if (!container) {
+    container = document.createElement("div");
+    document.body.append(container);
+  }
+  if (!root) root = createRoot(container);
+  act(() => root?.render(createElement(AgentChatView, viewProps())));
   const log = container.querySelector<HTMLElement>(".agent-chat-log");
   if (!log) throw new Error("Missing chat log element");
   return log;
+}
+
+function growDraft(draft: string) {
+  const [turn] = logState.turns;
+  if (!turn) throw new Error("Missing seeded turn");
+  logState = { ...logState, turns: [{ ...turn, draft }] };
+  return mountView();
 }
 
 describe("chat log scroll anchor", () => {
   // War Room 스테이지 승격은 패널 높이를 바꾼다. 그 순간 앵커를 지키지 않으면 로그는 바뀐 높이 위에서
   // 예전 scrollTop 을 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우 그 값이 곧 맨 위다.
   it("returns to the bottom when the panel is resized while following", () => {
-    const log = renderView();
+    const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 0;
 
@@ -85,7 +103,7 @@ describe("chat log scroll anchor", () => {
   });
 
   it("keeps the reader's place instead of snapping to the bottom", () => {
-    const log = renderView();
+    const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
 
     // 사용자가 위로 올려 읽는 중 — 바닥까지 400px 남았다.
@@ -102,7 +120,7 @@ describe("chat log scroll anchor", () => {
 
   // 복원 자체가 낳은 scroll 이벤트를 사용자 의도로 읽으면, 한 번 튄 스크롤이 영영 바닥으로 못 돌아온다.
   it("does not let its own restore turn following off", () => {
-    const log = renderView();
+    const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 0;
 
@@ -119,7 +137,7 @@ describe("chat log scroll anchor", () => {
 
   // 접힌 패널(높이 0)의 값으로는 의도를 읽을 수 없다.
   it("ignores a scroll event measured while the panel has no height", () => {
-    const log = renderView();
+    const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 0 });
     log.scrollTop = 0;
     act(() => { log.dispatchEvent(new Event("scroll")); });
@@ -128,5 +146,66 @@ describe("chat log scroll anchor", () => {
     act(() => { resizeCallbacks.forEach((fire) => fire()); });
 
     expect(log.scrollTop).toBe(1000);
+  });
+
+  // 언핀 상태에서 스트림이 자라면 예전 restoreAnchor 는 바닥 거리를 고정해 scrollTop 을
+  // 끌어올린다(120 → 920). 성장 경로는 scrollTop 을 그대로 둬야 읽던 줄이 남는다.
+  it("keeps scrollTop when the stream grows while the reader is unpinned", () => {
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 400 });
+    growDraft("x".repeat(80));
+
+    expect(log.scrollTop).toBe(200);
+  });
+
+  // 성장 뒤 바닥 거리가 남으면 War Room 승격처럼 패널이 커질 때 restorePlace 가
+  // 성장 전 거리로 scrollTop 을 꼬리 쪽으로 끌어올린다(200 → 800).
+  it("refreshes the resize distance after unpinned stream growth", () => {
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 400 });
+    growDraft("x".repeat(80));
+    expect(log.scrollTop).toBe(200);
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 600 });
+    act(() => { resizeCallbacks.forEach((fire) => fire()); });
+
+    expect(log.scrollTop).toBe(0);
+    expect(log.scrollTop).not.toBe(800);
+  });
+
+  it("follows the bottom when the stream grows while pinned", () => {
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 0;
+
+    stubMetrics(log, { scrollHeight: 1800, clientHeight: 400 });
+    growDraft("x".repeat(80));
+
+    expect(log.scrollTop).toBe(1800);
+  });
+
+  it("shows Follow after the reader leaves the bottom and returns on click", () => {
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    expect(container?.querySelector(".agent-chat-follow")).toBeNull();
+
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    const chip = container?.querySelector<HTMLButtonElement>(".agent-chat-follow");
+    expect(chip).not.toBeNull();
+    expect(chip?.textContent).toBe("Follow");
+
+    act(() => { chip?.click(); });
+    expect(log.scrollTop).toBe(1000);
+    expect(container?.querySelector(".agent-chat-follow")).toBeNull();
   });
 });
