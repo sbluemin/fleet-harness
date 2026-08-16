@@ -28,21 +28,21 @@ describe("claudeGatewayLaunchEnv", () => {
     expect(env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe("");
   });
 
-  // 같은 보정이 공유 홈에서는 반대로 작동한다. 기본값이 아닌 홈의 keychain 접미사는 그 경로에서
-  // 파생된 값이라, 여기서 지우면 자식만 기본 항목을 찾아 터미널로는 열리는 세션이 이쪽에서만
-  // `Not logged in`이 된다.
-  it("keeps the inherited keychain selection when the home is shared", () => {
+  it("touches neither home variable when the home is shared", () => {
+    // 같은 경로라도 다시 세우면 자식이 그것을 옮겨진 홈으로 읽어 keychain 접미사를 파생시킨다 —
+    // 터미널로는 열리는 세션이 이쪽에서만 로그인되지 않은 것으로 죽는다(실측).
+    const env = claudeGatewayLaunchEnv({}, { baseUrl: BASE_URL, configDir: CONFIG_DIR, homeKind: "shared" });
+    expect(env).not.toHaveProperty("CLAUDE_CONFIG_DIR");
+    expect(env).not.toHaveProperty("CLAUDE_SECURESTORAGE_CONFIG_DIR");
+  });
+
+  it("passes an inherited home through untouched when the home is shared", () => {
     const env = claudeGatewayLaunchEnv(
-      { CLAUDE_SECURESTORAGE_CONFIG_DIR: "/Users/someone/.claude-work" },
+      { CLAUDE_CONFIG_DIR: "/Users/someone/.claude-work", CLAUDE_SECURESTORAGE_CONFIG_DIR: "/Users/someone/.claude-work" },
       { baseUrl: BASE_URL, configDir: "/Users/someone/.claude-work", homeKind: "shared" },
     );
     expect(env.CLAUDE_CONFIG_DIR).toBe("/Users/someone/.claude-work");
     expect(env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe("/Users/someone/.claude-work");
-  });
-
-  it("leaves the keychain selection unset on a shared home that never carried one", () => {
-    const env = claudeGatewayLaunchEnv({}, { baseUrl: BASE_URL, configDir: CONFIG_DIR, homeKind: "shared" });
-    expect(env).not.toHaveProperty("CLAUDE_SECURESTORAGE_CONFIG_DIR");
   });
 
   it("strips inherited credentials so the subscription OAuth bearer reaches the gateway", () => {
