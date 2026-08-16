@@ -56,7 +56,7 @@ describe("Operations Canvas empty state", () => {
     expect(onNewOperation).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the two most recently updated standby Operations and opens the selected one", () => {
+  it("shows every standby Operation in recency order and opens the selected one", () => {
     const onOpenOperation = vi.fn();
     renderEmptyState({
       activeTheaterId: "theater-a",
@@ -70,15 +70,88 @@ describe("Operations Canvas empty state", () => {
 
     expect(container?.querySelector(".operations-canvas-empty-ghost")?.textContent).toBe("3 operations standing by");
     const chips = Array.from(container?.querySelectorAll<HTMLButtonElement>(".operations-canvas-empty-standby-chip") ?? []);
-    expect(chips).toHaveLength(2);
+    expect(chips).toHaveLength(3);
     expect(chips.map((chip) => chip.getAttribute("aria-label"))).toEqual([
       "Open operation Newest watch",
       "Open operation Middle watch",
+      "Open operation Old watch",
     ]);
-    expect(chips.map((chip) => chip.querySelector(".operations-canvas-empty-standby-open")?.textContent)).toEqual(["OPEN", "OPEN"]);
+    expect(chips.map((chip) => chip.querySelector(".operations-canvas-empty-standby-open")?.textContent)).toEqual(["OPEN", "OPEN", "OPEN"]);
 
     act(() => chips[1]?.click());
     expect(onOpenOperation).toHaveBeenCalledWith("middle");
+  });
+
+  it("renders a relative last-activity time on each standby chip", () => {
+    renderEmptyState({
+      activeTheaterId: "theater-a",
+      operations: [operation("recent", "Recent watch", Date.now() - 12 * 60_000)],
+    });
+
+    const time = container?.querySelector(".operations-canvas-empty-standby-time");
+    expect(time?.textContent).toBe("12 minutes ago");
+  });
+
+  it("caps the standby list with the scroll modifier beyond four Operations", () => {
+    const five = [1, 2, 3, 4, 5].map((index) => operation(`op-${index}`, `Watch ${index}`, index));
+    const four = five.slice(0, 4);
+
+    renderEmptyState({ activeTheaterId: "theater-a", operations: five });
+    expect(container?.querySelector(".operations-canvas-empty-standby--scroll")).not.toBeNull();
+
+    renderEmptyState({ activeTheaterId: "theater-a", operations: four });
+    expect(container?.querySelector(".operations-canvas-empty-standby--scroll")).toBeNull();
+  });
+
+  it("opens all standby Operations at once without arming at or under the confirm threshold", () => {
+    const onOpenAll = vi.fn();
+    renderEmptyState({
+      activeTheaterId: "theater-a",
+      operations: [
+        operation("old", "Old watch", 10),
+        operation("newest", "Newest watch", 30),
+        operation("middle", "Middle watch", 20),
+      ],
+      onOpenAll,
+    });
+
+    const openAll = container?.querySelector<HTMLButtonElement>(".operations-canvas-empty-open-all");
+    expect(openAll?.textContent).toBe("Open all in Tactical");
+    act(() => openAll?.click());
+    expect(onOpenAll).toHaveBeenCalledWith(["newest", "middle", "old"]);
+  });
+
+  it("hides the bulk action for a single standby Operation", () => {
+    renderEmptyState({
+      activeTheaterId: "theater-a",
+      operations: [operation("solo", "Solo", 1)],
+    });
+
+    expect(container?.querySelector(".operations-canvas-empty-open-all")).toBeNull();
+  });
+
+  it("arms the bulk action beyond the confirm threshold and fires on the second click", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpenAll = vi.fn();
+      const nine = Array.from({ length: 9 }, (_, index) => operation(`op-${index}`, `Watch ${index}`, index));
+      renderEmptyState({ activeTheaterId: "theater-a", operations: nine, onOpenAll });
+
+      const openAll = container?.querySelector<HTMLButtonElement>(".operations-canvas-empty-open-all");
+      act(() => openAll?.click());
+      expect(onOpenAll).not.toHaveBeenCalled();
+      expect(container?.querySelector(".operations-canvas-empty-open-all.is-armed")?.textContent).toBe("Open 9?");
+
+      act(() => { vi.advanceTimersByTime(1600); });
+      expect(container?.querySelector(".operations-canvas-empty-open-all.is-armed")).toBeNull();
+
+      act(() => openAll?.click());
+      act(() => openAll?.click());
+      expect(onOpenAll).toHaveBeenCalledTimes(1);
+      expect(onOpenAll.mock.calls[0]?.[0]).toHaveLength(9);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("uses the singular standby copy for one Operation", () => {
@@ -95,11 +168,13 @@ function renderEmptyState({
   activeTheaterId,
   operations,
   onOpenOperation = vi.fn(),
+  onOpenAll = vi.fn(),
   onNewOperation = vi.fn(),
 }: {
   readonly activeTheaterId: string | null;
   readonly operations: readonly OperationNode[];
   readonly onOpenOperation?: (operationId: string) => void;
+  readonly onOpenAll?: (operationIds: readonly string[]) => void;
   readonly onNewOperation?: () => void;
 }): void {
   act(() => root?.render(createElement(OperationsCanvasEmptyState, {
@@ -108,6 +183,7 @@ function renderEmptyState({
     operations,
     canLaunch: true,
     onOpenOperation,
+    onOpenAll,
     onNewOperation,
   })));
 }

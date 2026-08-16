@@ -445,6 +445,16 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void routeOperationFocus(operationId, registry.operationKinds, STABLE_RAIL_API, focusRequestEpochRef, () => focusMapOperation(operationId));
   }, [focusMapOperation, registry.operationKinds]);
 
+  // 빈 캔버스의 일괄 열기 — 대기 전원을 복원하고 Tactical로 정렬해 스택 대신 그리드에 착지시킨다.
+  // 목록 순서(updatedAt 내림차순)의 첫 항목을 활성으로 둔다. 비행 연출은 N개분이라 생략하고
+  // formation 진입 전이가 그 역할을 대신한다.
+  const handleOpenAll = useCallback((operationIds: readonly string[]) => {
+    if (operationIds.length === 0) return;
+    for (const operationId of operationIds) restoreOperation(operationId);
+    setActiveOperation(operationIds[0] ?? null);
+    if (!getFormationView()) toggleFormationView();
+  }, []);
+
   const handleMinimize = useCallback((operationId: string) => {
     if (stateRef.current.activeOperationId === operationId) setActiveOperation(null);
     playMinimizeFlight(operationId);
@@ -758,6 +768,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onRefreshCatalog={refreshCatalog}
           onClose={handleClose}
           onFocus={handleFocus}
+          onOpenAll={handleOpenAll}
           onRename={handleRename}
           onOpenOperationMenu={openOperationMenu}
           onDismissOperationMenu={dismissOperationMenu}

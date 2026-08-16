@@ -622,6 +622,7 @@ function renderOperationsCanvas(
     onLaunchAtGeometry: () => {},
     onClose: () => {},
     onFocus: () => {},
+    onOpenAll: () => {},
     onRename: () => {},
     onOpenOperationMenu: () => {},
     onDismissOperationMenu: () => {},

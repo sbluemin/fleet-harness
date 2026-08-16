@@ -5,6 +5,10 @@ export const canvasEn = {
   "canvas.empty.standingBy_other": "{count} operations standing by",
   "canvas.empty.openOperation": "Open operation {title}",
   "canvas.empty.open": "OPEN",
+  "canvas.empty.openAll": "Open all in Tactical",
+  "canvas.empty.openAllAria": "Open all {count} operations in Tactical",
+  "canvas.empty.openAllArmed": "Open {count}?",
+  "canvas.empty.openAllArmedAria": "Confirm opening {count} operations",
   "canvas.empty.headline": "Launch your first operation",
   "canvas.empty.newOperationAria": "New Operation in {theater}",
   "canvas.empty.newOperation": "+ New Operation",
@@ -208,10 +212,16 @@ export const canvasEn = {
 
 export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "canvas.empty.noTheater": "사이드바에서 Theater를 추가해 Operation을 시작하세요.",
-  "canvas.empty.standingBy_one": "대기 중인 Operation {count}개",
-  "canvas.empty.standingBy_other": "대기 중인 Operation {count}개",
+  // standby(꺼둠)는 War Room의 대기(awaiting)와 다른 상태다 — 같은 "대기"로 쓰면 빈 캔버스 "대기 6"과
+  // War Room "대기 0"이 같은 세션에서 모순된다.
+  "canvas.empty.standingBy_one": "꺼둔 Operation {count}개",
+  "canvas.empty.standingBy_other": "꺼둔 Operation {count}개",
   "canvas.empty.openOperation": "Operation {title} 열기",
   "canvas.empty.open": "열기",
+  "canvas.empty.openAll": "모두 Tactical로 열기",
+  "canvas.empty.openAllAria": "{count}개 Operation을 모두 Tactical로 열기",
+  "canvas.empty.openAllArmed": "{count}개를 열까요?",
+  "canvas.empty.openAllArmedAria": "{count}개 Operation 열기 확인",
   "canvas.empty.headline": "첫 Operation을 시작하세요",
   "canvas.empty.newOperationAria": "{theater}에서 새 Operation",
   "canvas.empty.newOperation": "+ 새 Operation",

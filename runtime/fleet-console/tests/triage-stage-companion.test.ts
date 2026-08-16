@@ -179,6 +179,7 @@ function renderCanvas() {
     onLaunchAtGeometry: () => {},
     onClose: () => {},
     onFocus: () => {},
+    onOpenAll: () => {},
     onRename: () => {},
   })));
 }
