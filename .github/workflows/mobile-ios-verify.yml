@@ -117,7 +117,28 @@ jobs:
           scheme="${workspace%.xcworkspace}"
           xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Debug \
             -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
-            CODE_SIGNING_ALLOWED=NO build
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO build
+
+      # 빌드된 시뮬레이터 앱을 그대로 내려받을 수 있게 올린다. Xcode 26 툴체인을 설치할 수
+      # 없는 Mac(회사/공용 기기)에서도 `xcrun simctl install`로 실행해 볼 수 있는 경로다 —
+      # 배포 타깃이 iOS 15.1이라 최신 시뮬레이터 런타임이 없어도 돈다.
+      - name: Package the simulator app for download
+        if: steps.platform.outputs.configured == 'true'
+        working-directory: runtime/fleet-mobile/ios
+        run: |
+          app=$(ls -d build/Build/Products/Debug-iphonesimulator/*.app 2>/dev/null | head -n 1)
+          if [ -z "$app" ]; then
+            echo "::error::simulator build produced no .app" >&2
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/fleet-simulator-app.zip"
+          echo "packaged $app"
+      - uses: actions/upload-artifact@v4
+        if: steps.platform.outputs.configured == 'true'
+        with:
+          name: fleet-ios-simulator-app
+          path: ${{ runner.temp }}/fleet-simulator-app.zip
+          retention-days: 14
 
   js-contract:
     name: fleet-mobile typecheck and tests
