@@ -183,6 +183,14 @@ export interface ClaudeGatewaySdkOptions {
    */
   readonly allowAmbientMcpServers?: boolean;
   /**
+   * 스킬 이름별 노출 오버라이드. 이 패키지는 어떤 스킬을 끌지 알지 못한다 — 그 판단은 도메인이고,
+   * 여기는 호출자가 고른 값을 자식의 설정으로 옮기기만 한다.
+   *
+   * `settings` 전체가 아니라 이 한 갈래만 여는 이유: 전체를 열면 호출자가 쓰지 않은 지시가
+   * 설정 파일 모양으로 들어오는 통로가 다시 생긴다.
+   */
+  readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  /**
    * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
    *
    * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트

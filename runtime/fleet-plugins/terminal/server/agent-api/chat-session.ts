@@ -81,6 +81,11 @@ export interface AgentChatSessionSeed {
    * 이 디렉터리 한 벌로 실린다 — 터미널 세션이 `--plugin-dir`로 받는 것과 같은 것이다.
    */
   readonly resolveFleetPluginRoots?: () => Promise<readonly string[]>;
+  /**
+   * 내장 스킬 중 이 doctrine이 끄는 것들. 터미널 세션이 `--settings`로 받는 것과 같은 값이며,
+   * 없으면 같은 프롬프트가 표면에 따라 다른 스킬을 깨운다.
+   */
+  readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
@@ -689,6 +694,7 @@ class AgentChatSession {
           // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
           settingSources: ["user", "project", "local"],
           allowAmbientMcpServers: true,
+          ...(this.seed.skillOverrides ? { skillOverrides: this.seed.skillOverrides } : {}),
           // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
           // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
           env: chatChildEnv(process.env),

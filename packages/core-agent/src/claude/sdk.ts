@@ -100,6 +100,10 @@ export async function createClaudeGatewaySdk(
           ...(options.plugins && options.plugins.length > 0
             ? { plugins: options.plugins.map((plugin) => ({ type: "local" as const, path: plugin.path, skipMcpDiscovery: true })) }
             : {}),
+          // `--settings`와 같은 자리다. flag 소스로 병합되므로 사용자·프로젝트 설정을 대체하지 않는다.
+          ...(options.skillOverrides && Object.keys(options.skillOverrides).length > 0
+            ? { settings: { skillOverrides: { ...options.skillOverrides } } }
+            : {}),
           ...(turn.effort === undefined ? {} : { effort: turn.effort }),
           ...(turn.cwd === undefined ? {} : { cwd: turn.cwd }),
           ...(turn.resume === undefined ? {} : { resume: turn.resume }),
