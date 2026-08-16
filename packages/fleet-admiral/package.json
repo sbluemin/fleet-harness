@@ -11,7 +11,7 @@
   "type": "module",
   "files": [
     "dist",
-    "AGENTS.md"
+    "CLAUDE.md"
   ],
   "engines": {
     "node": ">=18.0.0"

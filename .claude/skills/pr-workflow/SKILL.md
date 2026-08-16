@@ -34,7 +34,7 @@ Publish a PR authored by the authenticated user's GitHub account, carry it throu
 
 ## Changelog Fragment (autonomous)
 
-Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. The PR template does not force a changelog checklist, and CI does not require a `no-changelog` declaration when you omit a fragment. See `.changelog.d/AGENTS.md` for the inclusion criterion and authoring contract.
+Decide autonomously whether the change is a product-visible feature-level delta a user would notice in a shipped runtime. The PR template does not force a changelog checklist, and CI does not require a `no-changelog` declaration when you omit a fragment. See `.changelog.d/CLAUDE.md` for the inclusion criterion and authoring contract.
 
 When a fragment is warranted, use one of two mutually exclusive paths. A new feature-level change adds exactly one fragment named after its own branch. A correction to behavior whose fragment is still unreleased in `.changelog.d/` rewrites that existing fragment instead, applies the `changelog-amend` label, and adds one exact `Changelog-Amend: <file-name>.md` line to the PR body per rewritten fragment; it adds no branch fragment. Inspect pending fragments and the public release baseline before choosing the path. The branch already exists when the work starts, so a new fragment is staged and committed **together with the change it describes** — there is no second commit and nothing to wait for. Read a new fragment's filename from `node scripts/compile-changelog-fragments.mjs --name-for-branch`; never derive it by hand.
 
@@ -79,13 +79,13 @@ If resuming after review fixes and this record or a trustworthy pre-fix `REVIEW_
 ### Phase 0 — Environment & doctrine (always first)
 
 1. Confirm the environment in parallel: `pwd`; OS info (`uname -a`); shell (`echo "SHELL=$SHELL"`); `gh auth status`; `gh repo view --json nameWithOwner` (must equal `sbluemin/fleet-harness`).
-2. Read the repository root `AGENTS.md`. For each subdirectory the change touches, read its `AGENTS.md` too — child rules override parent rules within their scope.
+2. Read the repository root `CLAUDE.md`. For each subdirectory the change touches, read its `CLAUDE.md` too — child rules override parent rules within their scope.
 3. Decide autonomously whether a feature-level changelog fragment is warranted. If yes, classify it as a new release note or an amendment to an existing unreleased note, and record which runtimes a user notices it in. Inspect `.changelog.d/` and the public release baseline: a correction to still-unreleased behavior amends its pending fragment rather than adding a standalone `Fixed` or `Changed` entry. If no, omit the fragment with no declaration.
 
 ### Phase 1 — Commit
 
 1. Inspect: `git status --short --branch`; `git branch --show-current`.
-2. When warranted, write the branch-named fragment now. For a correction to still-unreleased behavior, rewrite the existing pending fragment instead and record its filename for the Phase 2 `changelog-amend` declaration. Author either path per `.changelog.d/AGENTS.md` and validate the set with `node scripts/compile-changelog-fragments.mjs --check`. Otherwise write no fragment.
+2. When warranted, write the branch-named fragment now. For a correction to still-unreleased behavior, rewrite the existing pending fragment instead and record its filename for the Phase 2 `changelog-amend` declaration. Author either path per `.changelog.d/CLAUDE.md` and validate the set with `node scripts/compile-changelog-fragments.mjs --check`. Otherwise write no fragment.
 3. Stage only the files belonging to this change, including any new or amended fragment: `git add <file> [<file> ...]`. Do not use `git add -A` / `git add .` unless every pending change belongs to this commit.
 4. Write the commit message in English using Conventional Commits (allowed types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `build`, `ci`, `chore`, `revert`). Subject `<commit_subject>` or inferred; body `<commit_body>` or addressed-change bullets.
 5. Pre-commit self-check: re-read `git diff --cached` once and confirm the subject/body match what is staged — nothing more, nothing less.

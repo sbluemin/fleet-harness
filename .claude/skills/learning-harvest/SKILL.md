@@ -1,6 +1,6 @@
 ---
 name: learning-harvest
-description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (an AGENTS.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the user's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill that produces other skills and assets, not product code.
+description: After substantive work, run a compounding-engineering learning-harvest loop — retrospect the task, extract reusable learnings under a three-condition gate (recurrence, cost, generality), route each to its single best persistent home (a CLAUDE.md rule, a new or edited skill, a test, a wiki-history ADR, persistent memory, or a skill's gotchas), encode it as "symptom -> action -> why", and prune weak or stale rules. Propose candidates for the user's approval and encode only approved ones, so the next task starts from a higher baseline. Use at the end of substantive work, when friction is detected, or on a periodic pruning pass. This is a meta-skill that produces other skills and assets, not product code.
 ---
 
 # Learning Harvest (compounding engineering)
@@ -39,8 +39,8 @@ Route each kept learning to its single best home:
 
 | Learning type | Fleet home (SSoT) | Retrieved when |
 |---|---|---|
-| Unchanging rule for a scope | `AGENTS.md` / `CLAUDE.md` in that scope | working in that scope |
-| "How to do X" procedure | a **new skill** (`.agents/skills/<name>/SKILL.md`) or a section in an existing skill | X is invoked |
+| Unchanging rule for a scope | `CLAUDE.md` in that scope | working in that scope |
+| "How to do X" procedure | a **new skill** (`.claude/skills/<name>/SKILL.md`) or a section in an existing skill | X is invoked |
 | Reusable gotcha for an existing procedure | that skill's **Gotchas** section | running that skill |
 | Specific bug / regression | a **test** | every build |
 | Decision rationale (the "why") | `wiki-history` skill / Fleet Wiki ADR | reversing the decision |
@@ -79,7 +79,7 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 4. **Pruning is mandatory** - encoding and deletion are a pair.
 5. **Preserve the reasoning chain** - always the "why", not just the rule.
 6. **Mechanism > procedure > note** - prefer the most-actionable layer: a test (auto-checked) > a script/hook (auto-run) > a skill procedure > a prose note. If a lower layer is impossible, say why.
-7. **Overfitting is the main risk** - the three-condition gate plus propose-approve exist to stop a single incident from becoming a false general rule. Prompt / doctrine / `AGENTS.md` edits carry the highest overfitting risk; weigh them hardest.
+7. **Overfitting is the main risk** - the three-condition gate plus propose-approve exist to stop a single incident from becoming a false general rule. Prompt / doctrine / `CLAUDE.md` edits carry the highest overfitting risk; weigh them hardest.
 
 ## Workflow
 
@@ -88,7 +88,7 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 3. **Route** - assign each survivor a single home (Stage 2 table); check for an existing duplicate first.
 4. **Draft encodings** - write each as `symptom -> action -> why` at the most-actionable layer.
 5. **Propose** - present candidates as: one-line summary - extraction judgment (the three conditions) - home + why - encoding phrasing - any duplicate found. Await user approval.
-6. **Encode approved** - apply each to its home (edit a skill / `AGENTS.md`, add a test, write a memory, register a `wiki-history` ADR). A new procedure skill or a multi-file change routes through the normal pipeline (worktree -> implement -> `pr-workflow`).
+6. **Encode approved** - apply each to its home (edit a skill / `CLAUDE.md`, add a test, write a memory, register a `wiki-history` ADR). A new procedure skill or a multi-file change routes through the normal pipeline (worktree -> implement -> `pr-workflow`).
 7. **Prune (optional)** - if a touched surface is crowded, flag weak or stale items for removal.
 
 ## Must not
@@ -100,6 +100,6 @@ Both paths obey the same guards: propose-then-approve, validate-before-encode, a
 
 ## Relationship to other assets
 
-- **Persistent memory** is one home in the residency table, not a competitor - this skill decides *whether* a learning belongs in memory vs a skill vs a test vs `AGENTS.md`.
+- **Persistent memory** is one home in the residency table, not a competitor - this skill decides *whether* a learning belongs in memory vs a skill vs a test vs `CLAUDE.md`.
 - **`product-proposal`** is a domain skill this meta-skill can *produce* - it was harvested from the issue-#108 session.
 - **`wiki-history`** is the home for decision rationale (ADRs); **`clean-code`** / pruning passes are where Stage 4 deletions happen.

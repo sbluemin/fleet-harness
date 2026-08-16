@@ -27,7 +27,7 @@
 - [ ] `extensions/metaphor`
 - [ ] `packages/unified-agent`
 - [ ] `bin/` or root tooling
-- [ ] Documentation (README / SETUP / AGENTS.md)
+- [ ] Documentation (README / SETUP / CLAUDE.md)
 
 ## Test Plan
 

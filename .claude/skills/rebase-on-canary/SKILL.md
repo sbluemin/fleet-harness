@@ -34,7 +34,7 @@ Rebase the topic branch in `<worktree_path>` onto `<remote>/<base>` (mirrored in
    - `git -C <worktree_path> rev-parse --abbrev-ref HEAD` (record as `<topic>`)
    - `git worktree list` (record which worktree holds `<base>`)
 
-2. **AGENTS.md check** — Read the repository root `AGENTS.md` once. No subdirectory rules apply because the rebase does not modify file content beyond the target worktree's branch.
+2. **CLAUDE.md check** — Read the repository root `CLAUDE.md` once. No subdirectory rules apply because the rebase does not modify file content beyond the target worktree's branch.
 
 3. **Working tree inspection** (target worktree):
    - `git -C <worktree_path> status --short --branch`

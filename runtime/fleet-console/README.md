@@ -81,4 +81,4 @@ pnpm --filter @dotobokuri/fleet-console build
 
 `build` emits `dist/fleet.mjs`, `dist/cli.mjs`, `dist/client/`, and `dist/fleet-plugins/terminal/routes.mjs`. There is no external embed step.
 
-See `AGENTS.md` for ownership, token-boundary, and streaming invariants.
+See `CLAUDE.md` for ownership, token-boundary, and streaming invariants.

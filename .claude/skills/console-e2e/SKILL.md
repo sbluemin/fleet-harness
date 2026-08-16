@@ -130,7 +130,7 @@ ab --session fleet-console-e2e-20260725-a7c3 console --clear
 ab --session fleet-console-e2e-20260725-a7c3 reload
 ab --session fleet-console-e2e-20260725-a7c3 wait --load domcontentloaded
 ab --session fleet-console-e2e-20260725-a7c3 screenshot /tmp/fleet-console-e2e.png
-node .agents/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
+node .claude/skills/console-e2e/scripts/close-owned-session.mjs fleet-console-e2e-20260725-a7c3
 FLEET_CONSOLE_DATA_DIR="$E2E_DIR" node runtime/fleet-console/dist/cli.mjs stop
 ```
 

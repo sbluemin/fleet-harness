@@ -35,7 +35,7 @@ A user-supplied version number is **not** an input. CI computes patch vs minor f
 ### Phase 0 — Environment and doctrine
 
 1. Confirm in parallel: `pwd`; `uname -a`; `echo "SHELL=$SHELL"`; `git --version`; `gh auth status`; `gh repo view --json nameWithOwner` (must be `sbluemin/fleet-harness`).
-2. Read the repository root `AGENTS.md`.
+2. Read the repository root `CLAUDE.md`.
 
 ### Phase 1 — Operate on canary, not a topic branch
 
@@ -76,7 +76,7 @@ Re-fetch once before concluding. Then:
 **Non-empty range.** Summarize:
 
 - Commits waiting on `main`.
-- Pending fragments: `.changelog.d/*.md` except `AGENTS.md`, `CLAUDE.md`, `.gitkeep`.
+- Pending fragments: `.changelog.d/*.md` except `CLAUDE.md`, leftover `AGENTS.md`, `.gitkeep`.
 - Commits since the last `chore(release):` that added no fragment (informational; CI compiles with `--allow-empty` and does not block).
 - Expected CI bump: run the same grep Stable Release uses. `git log --format=%B origin/main..origin/canary` matching `^[[:space:]]*feat(\([^)]+\))?!?:` is `minor`; otherwise `patch`. That includes `feat!:` / `feat(scope)!:` and a `feat:` line in a commit body, not only a conventional subject. Record the inference. Do not write it into the tree. If the user demanded a version that would disagree with that result, stop and ask.
 
