@@ -2417,6 +2417,23 @@ describe("War Room deck panel grammar", () => {
     expect(frame).not.toMatch(/canvas-operation-titlebar"[^>]*inert/);
   });
 
+  it("hides Analyst and Chat-view chips on a deck tile and keeps them on the stage", () => {
+    // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 칩은 눌러도 동작하지 않는다.
+    // 무대에 오른 패널은 is-deck-tile이 아니므로 칩이 기존처럼 보인다.
+    const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-view-chip-row");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-mode-chip");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open \{[^}]*\}/)?.[0] ?? "";
+    expect(hide).toContain("display: none;");
+    // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
+    // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.
+    expect(hide).not.toContain("is-active");
+    expect(hide).not.toContain("is-quicklook");
+    // 회신 버튼은 칩 줄이 아니다 — 별도 규칙으로 숨기면 이 계약이 깨져야 한다.
+    expect(terminalChatCss).not.toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
+  });
+
   it("gives the promotion surface the body and leaves the caption its own controls", () => {
     // 덱에서 패널의 본문은 읽는 것이지 조작하는 것이 아니다 — 본문 위를 덮는 면이 클릭 한 번을
     // 승격으로 받고, 캡션은 그 위에 남아 창 컨트롤이 자기 클릭을 지킨다.
