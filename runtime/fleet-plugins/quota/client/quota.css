@@ -472,8 +472,10 @@
   font-size: var(--t-sm);
 }
 
+/* 바닥 행의 퍼센트는 기본(--t-sm)보다 한 단 작다 — 반 픽셀 차이는 보이지 않아 규칙이
+   있으나 마나였고, 한 단 내려야 "여기서는 작게"라는 의도가 실제로 읽힌다. */
 .quota-meter__foot .quota-meter__percent {
-  font-size: 11.5px;
+  font-size: var(--t-xs);
 }
 
 .quota-meter--warning .quota-meter__percent,
