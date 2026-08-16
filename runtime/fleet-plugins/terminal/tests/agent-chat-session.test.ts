@@ -1216,6 +1216,42 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
+  // 자식은 중단을 받아도 그 턴의 result를 반드시 낸다(실측: interrupt 뒤 2ms). 중지 직후의 새
+  // 메시지가 그 결말에 실려 나가면, 답하지도 않은 프롬프트가 끝난 것으로 그려진다.
+  it("keeps a new send behind the interrupted turn's result", async () => {
+    const transcriptPath = writeTranscript("sess-stop-settle", []);
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-settle", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    expect(session.stopTurn()).toBe(true);
+
+    session.send("second");
+    // 중단된 턴의 result가 아직 오지 않았다 — 그동안 두 번째 프롬프트는 자식에 닿지 않는다.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(sends).toEqual(["first"]);
+
+    // 자식이 뒤늦게 그 턴의 결말을 낸다. 그것은 이미 닫은 턴의 것이므로 원장에 서지 않는다.
+    liveSession()?.emit({ type: "result", subtype: "error_during_execution", is_error: true });
+    await drainTurn(registry, "op-stop-settle");
+
+    expect(sends).toEqual(["first", "second"]);
+    const ends = seen.map((entry) => entry.event).filter((event) => event.kind === "turn-end");
+    // 중지 하나 + 두 번째 턴의 정상 결말 하나. 중단 result가 세 번째 결말로 서지 않는다.
+    expect(ends).toEqual([
+      { kind: "turn-end", ok: false, stopped: true },
+      { kind: "turn-end", ok: true, durationMs: 4 },
+    ]);
+    await registry.disposeAll();
+  });
+
   it("refuses when there is no turn to stop", async () => {
     // 끊을 것이 없는데 성공을 돌려주면 화면이 멈춤을 그리고 아무 일도 일어나지 않는다.
     const transcriptPath = writeTranscript("sess-stop-idle", []);

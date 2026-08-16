@@ -282,6 +282,14 @@ class AgentChatSession {
    */
   private readonly turnCloseWaiters = new Set<() => void>();
   /**
+   * 중지한 턴이 아직 자기 `result`를 내지 않았다.
+   *
+   * 자식은 중단을 받아도 그 턴의 결말을 **반드시** 낸다(실측: `interrupt()` 뒤 2ms에
+   * `error_during_execution`). 그것은 이미 닫은 턴의 것이므로 새 턴의 결말로 읽으면 안 되고,
+   * 그 사이에 들어온 디스패치는 그 한 건이 지나갈 때까지 기다린다.
+   */
+  private settlingStoppedTurn = false;
+  /**
    * 지금 살아 있다고 알려진 잡. 세션이 끊기면 이 잡들은 자식과 함께 사라지므로, 원장에 "도는 중"
    * 으로 남겨 두지 않고 거둬진 것으로 닫는다 — 화면이 없는 작업을 기다리게 두지 않기 위해서다.
    */
@@ -430,6 +438,9 @@ class AgentChatSession {
     // 실패해도 아래에서 턴은 이미 닫힌 것으로 그린다 — 그 뒤 도착하는 result는 닫힌 턴에 붙지
     // 않는다(turnOpen이 false다).
     void this.session?.interrupt().catch(() => undefined);
+    // 자식은 이 턴의 결말을 곧 낸다. 화면은 지금 닫지만, 그 한 건이 다음 턴의 결말로 읽히지
+    // 않도록 표시해 둔다 — 중지 직후의 새 메시지가 그것에 실려 나가는 것이 그 결함이다.
+    if (this.turnOpen) this.settlingStoppedTurn = true;
     this.closeTurn({ stopped: true });
     return true;
   }
@@ -964,8 +975,15 @@ class AgentChatSession {
    */
   private ingest(event: AgentChatStreamEvent): void {
     if (event.kind === "turn-end") {
-      // 열린 턴이 없으면 그릴 결말도 없다 — 중지가 이미 닫은 턴의 result가 여기로 온다.
-      if (this.turnOpen) this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }) });
+      // 중지가 표시해 둔 결말은 여기서 소진된다. 열린 턴이 있으면 그 턴이 이 결말의 주인이고,
+      // 없으면 이미 닫은 턴의 것이므로 그리지 않고 줄 서 있던 디스패치만 깨운다.
+      const settling = this.settlingStoppedTurn;
+      this.settlingStoppedTurn = false;
+      if (this.turnOpen) {
+        this.closeTurn({ ok: event.ok, ...(event.durationMs === undefined ? {} : { durationMs: event.durationMs }), ...(event.answer === undefined ? {} : { answer: event.answer }) });
+      } else if (settling) {
+        this.releaseTurnCloseWaiters();
+      }
       return;
     }
     if (!this.turnOpen && opensChatTurn(event)) this.openTurn({ dispatched: false });
@@ -1046,7 +1064,7 @@ class AgentChatSession {
    * 메시지가 그 위에서 조기에 시작한다.
    */
   private async awaitTurnClose(): Promise<void> {
-    if (!this.turnOpen) return;
+    if (!this.turnOpen && !this.settlingStoppedTurn) return;
     await new Promise<void>((resolve) => {
       this.turnCloseWaiters.add(resolve);
     });
@@ -1072,7 +1090,11 @@ class AgentChatSession {
     }
     for (const id of [...this.liveJobs]) this.push({ kind: "job-end", id, status: "stopped" });
     this.liveJobs.clear();
+    // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
+    // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
+    this.settlingStoppedTurn = false;
     this.closeTurn({ ok: false });
+    this.releaseTurnCloseWaiters();
   }
 
   /**

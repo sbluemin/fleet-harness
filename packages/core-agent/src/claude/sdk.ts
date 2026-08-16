@@ -65,6 +65,28 @@ export async function createClaudeGatewaySdk(
   let active: { close(): void } | null = null;
 
   /**
+   * 자식을 세우기 **전에** 슬롯을 잡는다.
+   *
+   * 검사와 예약 사이에 `await`가 있으면 배타는 없는 것과 같다: 두 호출자가 나란히 빈 슬롯을 보고
+   * 둘 다 준비 단계에서 양보한 뒤, 같은 config dir 위에 자식을 하나씩 세운다. 나중 대입이 앞의
+   * 것을 가려 `dispose()`도 그것을 접지 못한다. 그래서 자리표시자를 먼저 앉히고, 실제 핸들이
+   * 생기면 갈아 끼운다 — 실패하면 앉힌 자리를 돌려준다.
+   */
+  const reserveSlot = (kind: "turn" | "session"): { close(): void } => {
+    if (disposed) throw new Error("This Claude gateway SDK instance has been disposed.");
+    if (active) {
+      throw new Error(kind === "turn"
+        ? "A turn is already running on this instance. Await it, or create another instance."
+        : "A turn or session is already running on this instance. Close it, or create another instance.");
+    }
+    // 이 자리표시자가 접히는 경우는 예약과 자식 생성 사이의 dispose 하나뿐이다. 접을 자식이
+    // 아직 없으므로 하는 일도 없지만, 슬롯의 계약(닫을 수 있음)은 그 창에서도 성립해야 한다.
+    const reservation = { close: (): void => undefined };
+    active = reservation;
+    return reservation;
+  };
+
+  /**
    * spawn 직전 준비. discovery 캐시를 다시 쓰고 자식 환경을 만든다 — 턴과 세션이 같은 준비를
    * 거쳐야 두 경로가 같은 자식을 얻는다.
    */
@@ -129,78 +151,93 @@ export async function createClaudeGatewaySdk(
     models: Object.freeze(accepted.map((entry) => entry.id)),
 
     async startTurn(turn: ClaudeGatewayTurn): Promise<ClaudeGatewayRun> {
-      if (disposed) throw new Error("This Claude gateway SDK instance has been disposed.");
       // 한 격리 config dir을 두 자식이 동시에 쓰면 세션 상태가 서로를 덮는다. 병렬 턴이 필요하면
       // 인스턴스를 따로 만든다 — 그쪽은 디렉터리도 따로 갖는다.
-      if (active) throw new Error("A turn is already running on this instance. Await it, or create another instance.");
+      const reservation = reserveSlot("turn");
+      try {
+        assertKnownTurnKeys(turn);
+        if (typeof turn.prompt !== "string" || turn.prompt.length === 0) {
+          throw new TypeError("turn.prompt must be a non-empty string.");
+        }
+        const model = resolveTurnModel(turn.model, accepted);
+        const env = await prepareLaunch();
+        const run = runVendorQuery({
+          prompt: turn.prompt,
+          options: vendorRunOptions(turn, model, env),
+        });
 
-      assertKnownTurnKeys(turn);
-      if (typeof turn.prompt !== "string" || turn.prompt.length === 0) {
-        throw new TypeError("turn.prompt must be a non-empty string.");
+        // 슬롯은 close()로도, 스트림이 끝까지 소진되어도 돌아온다. 후자가 정상 경로다.
+        const release = (): void => {
+          if (active === tracked) active = null;
+        };
+        const tracked: ClaudeGatewayRun = {
+          [Symbol.asyncIterator](): AsyncIterator<ClaudeGatewayMessage> {
+            const iterator = run[Symbol.asyncIterator]();
+            return {
+              async next(): Promise<IteratorResult<ClaudeGatewayMessage>> {
+                const result = await iterator.next();
+                if (result.done === true) release();
+                return result;
+              },
+            };
+          },
+          close(): void {
+            try {
+              run.close();
+            } finally {
+              release();
+            }
+          },
+          getContextUsage: () => run.getContextUsage(),
+        };
+        // 준비 중에 dispose가 자리표시자를 걷어 갔다면 그 판정을 존중한다 — 자식은 여기서 접는다.
+        if (active !== reservation) {
+          run.close();
+          throw new Error("This Claude gateway SDK instance has been disposed.");
+        }
+        active = tracked;
+        return tracked;
+      } catch (error) {
+        if (active === reservation) active = null;
+        throw error;
       }
-      const model = resolveTurnModel(turn.model, accepted);
-      const env = await prepareLaunch();
-      const run = runVendorQuery({
-        prompt: turn.prompt,
-        options: vendorRunOptions(turn, model, env),
-      });
-
-      // 슬롯은 close()로도, 스트림이 끝까지 소진되어도 돌아온다. 후자가 정상 경로다.
-      const release = (): void => {
-        if (active === tracked) active = null;
-      };
-      const tracked: ClaudeGatewayRun = {
-        [Symbol.asyncIterator](): AsyncIterator<ClaudeGatewayMessage> {
-          const iterator = run[Symbol.asyncIterator]();
-          return {
-            async next(): Promise<IteratorResult<ClaudeGatewayMessage>> {
-              const result = await iterator.next();
-              if (result.done === true) release();
-              return result;
-            },
-          };
-        },
-        close(): void {
-          try {
-            run.close();
-          } finally {
-            release();
-          }
-        },
-        getContextUsage: () => run.getContextUsage(),
-      };
-      active = tracked;
-      return tracked;
     },
 
     async openSession(request: ClaudeGatewaySessionRequest): Promise<ClaudeGatewaySession> {
-      if (disposed) throw new Error("This Claude gateway SDK instance has been disposed.");
-      if (active) throw new Error("A turn or session is already running on this instance. Close it, or create another instance.");
+      const reservation = reserveSlot("session");
+      try {
+        assertKnownSessionKeys(request);
+        const model = resolveTurnModel(request.model, accepted);
+        const env = await prepareLaunch();
+        const session = runVendorSession({ options: vendorRunOptions(request, model, env) });
 
-      assertKnownSessionKeys(request);
-      const model = resolveTurnModel(request.model, accepted);
-      const env = await prepareLaunch();
-      const session = runVendorSession({ options: vendorRunOptions(request, model, env) });
-
-      // 세션의 슬롯은 `close()`로만 돌아온다. 턴과 달리 스트림이 스스로 끝나지 않기 때문이며,
-      // 자식이 먼저 죽어 스트림이 끝나는 경우에도 소유자가 close를 부르는 것이 정상 경로다.
-      const tracked: ClaudeGatewaySession = {
-        send: (text) => session.send(text),
-        interrupt: () => session.interrupt(),
-        stopTask: (taskId) => session.stopTask(taskId),
-        backgroundTasks: (toolUseId) => session.backgroundTasks(toolUseId),
-        getContextUsage: () => session.getContextUsage(),
-        [Symbol.asyncIterator]: () => session[Symbol.asyncIterator](),
-        close(): void {
-          try {
-            session.close();
-          } finally {
-            if (active === tracked) active = null;
-          }
-        },
-      };
-      active = tracked;
-      return tracked;
+        // 세션의 슬롯은 `close()`로만 돌아온다. 턴과 달리 스트림이 스스로 끝나지 않기 때문이며,
+        // 자식이 먼저 죽어 스트림이 끝나는 경우에도 소유자가 close를 부르는 것이 정상 경로다.
+        const tracked: ClaudeGatewaySession = {
+          send: (text) => session.send(text),
+          interrupt: () => session.interrupt(),
+          stopTask: (taskId) => session.stopTask(taskId),
+          backgroundTasks: (toolUseId) => session.backgroundTasks(toolUseId),
+          getContextUsage: () => session.getContextUsage(),
+          [Symbol.asyncIterator]: () => session[Symbol.asyncIterator](),
+          close(): void {
+            try {
+              session.close();
+            } finally {
+              if (active === tracked) active = null;
+            }
+          },
+        };
+        if (active !== reservation) {
+          session.close();
+          throw new Error("This Claude gateway SDK instance has been disposed.");
+        }
+        active = tracked;
+        return tracked;
+      } catch (error) {
+        if (active === reservation) active = null;
+        throw error;
+      }
     },
 
     async dispose(): Promise<void> {
