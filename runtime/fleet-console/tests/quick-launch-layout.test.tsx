@@ -264,6 +264,14 @@ describe("Quick Launch picker keyboard grammar", () => {
     expect(hidden).toMatch(/margin-inline:\s*0;/u);
   });
 
+  it("discards leftover draft when a mention seed opens the composer", () => {
+    // 회신 말풍선은 이전 초안을 이어 쓰지 않는다 — leftover 가드가 시드에도 걸리면 멘션이 빠진다.
+    expect(quickLaunch).toMatch(/시드는 남은 초안을 지키지 않는다/u);
+    expect(quickLaunch).toMatch(/discardComposerContents\(\);/u);
+    expect(quickLaunch).toMatch(/const discardDraft = mentionSeedRef\.current !== null;/u);
+    expect(quickLaunch).not.toMatch(/shouldApplyFocusedMention\(\{ prefOn: true/u);
+  });
+
   it("preserves an unfired draft across every close path, except submission", () => {
     // 경로별 저장은 하나가 빠질 때마다 초안이 샌다 — 닫힘 전이 한 곳이 모든 닫힘을 대표한다.
     // 초안은 텍스트와 첨부 자취가 함께 보존된다 — 텍스트만 지키면 붙여넣은 이미지가 닫힘에 사라진다.
