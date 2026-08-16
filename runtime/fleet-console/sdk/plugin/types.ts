@@ -315,8 +315,9 @@ export interface OperationRenderContext extends OperationContext {
   readonly runtimeState: OperationRuntimeState | null;
   /**
    * Whether this body is on a surface the user can read. `undefined` is an older
-   * host and must be treated as live. `false` is a parked, minimized, hidden, or
-   * deck-tile body: the plugin must not hold a dedicated HTTP stream for it.
+   * host and must be treated as live. `false` is a parked, minimized, or hidden
+   * body: the plugin must not hold a dedicated HTTP stream for it. A War Room
+   * deck tile stays live — its body is painted, even while inert.
    */
   readonly bodyLive?: boolean;
   readonly onActivate: () => void;

@@ -1335,7 +1335,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               geometry,
               operation,
               runtimeState: options.runtimeState,
-              bodyLive: !options.minimized && !options.focusLayerHidden && options.deckSlot === null,
+              bodyLive: !options.minimized && !options.focusLayerHidden,
               theme: options.theme,
               language: options.language,
               zoom: options.viewportZoom,
@@ -1367,7 +1367,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               companionsOpen={options.companion}
               hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
               onSetCompanionPanelVisible={onSetCompanionPanelVisible}
-              bodyLive={!options.minimized && !options.focusLayerHidden && options.deckSlot === null}
+              bodyLive={!options.minimized && !options.focusLayerHidden}
               render={descriptor.render}
             />
           </PluginErrorBoundary>
