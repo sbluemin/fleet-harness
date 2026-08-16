@@ -929,3 +929,85 @@ describe("AgentChatRegistry — large shell output", () => {
     await registry.disposeAll();
   });
 });
+
+/**
+ * 창보다 큰 줄 하나.
+ *
+ * 앞선 경계-읽기 수정이 만든 결함이다: 줄 경계에 맞추려고 첫 개행까지를 버리는데, 마지막 한
+ * 줄이 창보다 크면 개행이 창의 맨 끝에만 있거나 아예 없어서 버퍼 전체가 사라진다. 화면은 그때
+ * 빈 꼬리를 보인다 — 잘린 줄 하나가 빈 화면보다 정직하다.
+ */
+describe("AgentChatRegistry — one line larger than the read window", () => {
+  it("keeps the newest bytes instead of returning an empty tail", async () => {
+    const transcriptPath = writeTranscript("sess-longline", []);
+    const outputRoot = tempDir("chat-task-line-");
+    const outputFile = path.join(outputRoot, "b1line.output");
+    // 한 줄이 512KB — 창(256KB)보다 크고, 줄 끝에만 개행이 있다.
+    writeFileSync(outputFile, `${"j".repeat(512 * 1024)}NEWEST-END\n`);
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b1line", description: "json", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b1line", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-line-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-line-1");
+
+    const detail = await session.readJobDetail("b1line");
+    const tail = detail?.kind === "shell" ? detail.tail : null;
+    expect(tail).not.toBe("");
+    expect(tail).toContain("NEWEST-END");
+    expect(detail?.truncated).toBe(true);
+    await registry.disposeAll();
+  });
+
+  it("bounds the subagent transcript read the same way", async () => {
+    const transcriptPath = writeTranscript("sess-bigtrail", []);
+    const { factory, configDir } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-bigtrail" },
+          { type: "system", subtype: "task_started", task_id: "atrail1", description: "recon", task_type: "local_agent" },
+          { type: "system", subtype: "task_notification", task_id: "atrail1", status: "completed", summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-trail-1", () => seedFor(transcriptPath));
+
+    // 창(4MB)보다 큰 전사록. 앞쪽 표식은 결과에 나타나면 안 된다.
+    const subagentDir = path.join(configDir, "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
+    mkdirSync(subagentDir, { recursive: true });
+    const line = (name: string) => JSON.stringify({
+      isSidechain: true,
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: name, name, input: { command: "x".repeat(600) } }] },
+    });
+    const filler = Array.from({ length: 7_000 }, (_, i) => line(`Filler${i}`)).join("\n");
+    writeFileSync(path.join(subagentDir, "agent-atrail1.jsonl"), `${line("HeadMarker")}\n${filler}\n${line("TailMarker")}\n`);
+
+    session.send("go");
+    await drainTurn(registry, "op-trail-1");
+
+    const readFile = vi.spyOn(nodeFs, "readFile");
+    try {
+      const detail = await session.readJobDetail("atrail1");
+      expect(detail?.kind).toBe("agent");
+      const names = detail?.kind === "agent" ? detail.steps.map((step) => step.name) : [];
+      expect(names).toContain("TailMarker");
+      expect(names).not.toContain("HeadMarker");
+      expect(detail?.truncated).toBe(true);
+      expect(readFile.mock.calls.some(([target]) => String(target).includes("agent-atrail1"))).toBe(false);
+    } finally {
+      readFile.mockRestore();
+    }
+    await registry.disposeAll();
+  });
+});

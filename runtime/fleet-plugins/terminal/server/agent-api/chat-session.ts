@@ -124,6 +124,49 @@ const JOB_KIND_CAP = 200;
  * 짜리 빌드 로그가 카드 한 번 여는 것으로 서버 메모리에 통째로 올라오지 않게 막는 창이다.
  */
 const JOB_TAIL_READ_BYTES = 256 * 1024;
+/**
+ * 서브에이전트 전사록의 창. 같은 이유로 두되 훨씬 넉넉하다 — JSONL 한 줄이 도구 결과를 통째로
+ * 실어 셸 출력 한 줄보다 몇 배 무겁고(실측 표본 19줄 126KB), 창이 좁으면 발자국이 200스텝
+ * 상한이 아니라 창 때문에 조용히 짧아진다.
+ */
+const JOB_TRANSCRIPT_READ_BYTES = 4 * 1024 * 1024;
+
+/**
+ * 파일의 마지막 `windowBytes`만 읽는다.
+ *
+ * 창이 파일 중간에서 시작하면 앞머리는 두 가지 의미로 깨져 있다: 줄이 잘렸고, 그 첫 바이트가
+ * UTF-8 시퀀스 한가운데일 수 있다. 그래서 **바이트 수준에서** 이어짐 바이트(`10xxxxxx`)를 먼저
+ * 걷어내고, 그다음 줄 경계에 맞춘다.
+ *
+ * 줄 맞춤에는 단서가 하나 붙는다 — 맞춰서 아무것도 남지 않으면 맞추지 않는다. 마지막 한 줄이
+ * 창보다 큰 경우(큰 JSON 레코드 하나를 찍는 명령)에 개행이 창의 맨 끝에만 있거나 아예 없어서,
+ * 그대로 잘라내면 화면이 **빈 꼬리**를 보인다. 잘린 줄 하나가 빈 화면보다 정직하다.
+ */
+async function readFileTail(file: string, windowBytes: number): Promise<{ readonly text: string; readonly headCut: boolean } | null> {
+  const handle = await fs.open(file, "r").catch(() => null);
+  if (handle === null) return null;
+  try {
+    const stat = await handle.stat();
+    const start = Math.max(0, stat.size - windowBytes);
+    const length = stat.size - start;
+    if (length <= 0) return { text: "", headCut: false };
+    const buffer = Buffer.alloc(length);
+    const read = await handle.read(buffer, 0, length, start);
+    let slice = buffer.subarray(0, read.bytesRead);
+    if (start > 0) {
+      let at = 0;
+      while (at < slice.length && (slice[at]! & 0xC0) === 0x80) at += 1;
+      slice = slice.subarray(at);
+      const firstBreak = slice.indexOf(0x0A);
+      if (firstBreak >= 0 && firstBreak + 1 < slice.length) slice = slice.subarray(firstBreak + 1);
+    }
+    return { text: slice.toString("utf8"), headCut: start > 0 };
+  } catch {
+    return null;
+  } finally {
+    await handle.close().catch(() => undefined);
+  }
+}
 
 /**
  * 닫힌 턴 뒤에 이 이벤트가 오면 모델이 다시 말하기 시작한 것이다. 잡 이벤트는 여기 들지 않는다 —
@@ -470,45 +513,20 @@ class AgentChatSession {
     }
     const dir = await this.resolveJobSessionDir();
     if (dir === null) return null;
-    const raw = await fs.readFile(path.join(dir, "subagents", `agent-${jobId}.jsonl`), "utf8").catch(() => null);
-    if (raw === null) return null;
-    const trail = chatSubagentTrailFromTranscript(raw, { cwd: this.seed.cwd });
-    return { kind: "agent", steps: trail.steps, truncated: trail.truncated };
+    // 전사록도 같은 이유로 창을 둔다 — 도구 결과가 큰 에이전트의 전사록은 작업 길이에 비례해
+    // 자라고, 발자국이 최근 200스텝만 남기는 것과 무관하게 파일 전체가 메모리에 올라온다.
+    // 창을 셸보다 넉넉히 잡는 이유는 한 줄이 훨씬 무겁기 때문이다(실측 표본 19줄 126KB).
+    const window = await readFileTail(path.join(dir, "subagents", `agent-${jobId}.jsonl`), JOB_TRANSCRIPT_READ_BYTES);
+    if (window === null) return null;
+    const trail = chatSubagentTrailFromTranscript(window.text, { cwd: this.seed.cwd });
+    return { kind: "agent", steps: trail.steps, truncated: trail.truncated || window.headCut };
   }
 
-  /**
-   * 출력 파일의 **끝에서만** 읽는다.
-   *
-   * 파일 전체를 문자열로 올린 뒤 200줄로 줄이면, 돌려주는 값이 작아도 그 순간의 메모리와 이벤트
-   * 루프는 파일 크기만큼을 진다. 실측에서 백그라운드 셸 출력은 이미 438KB까지 자랐고, 빌드나
-   * 테스트를 백그라운드로 돌리면 수십 MB가 정상 범위다 — 그때 사용자가 카드를 한 번 여는 것이
-   * Console 서버를 멈춰 세운다.
-   *
-   * 창 밖에서 시작하면 첫 줄은 잘린 줄이자 잘린 UTF-8 문자일 수 있으므로, 첫 개행까지를 통째로
-   * 버리고 "앞이 잘렸다"를 함께 돌려준다.
-   */
   private async readShellTail(file: string): Promise<AgentChatJobDetail | null> {
-    const handle = await fs.open(file, "r").catch(() => null);
-    if (handle === null) return null;
-    try {
-      const stat = await handle.stat();
-      const start = Math.max(0, stat.size - JOB_TAIL_READ_BYTES);
-      const length = stat.size - start;
-      if (length <= 0) return { kind: "shell", tail: "", truncated: false };
-      const buffer = Buffer.alloc(length);
-      const read = await handle.read(buffer, 0, length, start);
-      let raw = buffer.subarray(0, read.bytesRead).toString("utf8");
-      if (start > 0) {
-        const firstBreak = raw.indexOf("\n");
-        raw = firstBreak >= 0 ? raw.slice(firstBreak + 1) : "";
-      }
-      const tail = chatShellTailFromOutput(raw, { cwd: this.seed.cwd });
-      return { kind: "shell", tail: tail.tail, truncated: tail.truncated || start > 0 };
-    } catch {
-      return null;
-    } finally {
-      await handle.close().catch(() => undefined);
-    }
+    const window = await readFileTail(file, JOB_TAIL_READ_BYTES);
+    if (window === null) return null;
+    const tail = chatShellTailFromOutput(window.text, { cwd: this.seed.cwd });
+    return { kind: "shell", tail: tail.tail, truncated: tail.truncated || window.headCut };
   }
 
   /** 이 세션의 부산물(서브에이전트 전사록·도구 결과)이 앉은 디렉터리. */
