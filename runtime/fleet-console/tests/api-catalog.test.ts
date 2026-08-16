@@ -86,7 +86,7 @@ GET|/plugins/terminal/agent/agent-cli/diagnostics|http
 GET|/plugins/terminal/agent/agent-cli/state|http
 GET|/plugins/terminal/agent/events|sse
 GET|/plugins/terminal/agent/sessions/:sessionId/chat-job|http
-GET|/plugins/terminal/agent/sessions/:sessionId/chat-stream|sse
+GET|/plugins/terminal/agent/sessions/:sessionId/chat-stream|http
 GET|/plugins/terminal/agent/sessions|http
 GET|/plugins/terminal/agent/state|http
 GET|/plugins/terminal/analysis/:operationId/ready|http

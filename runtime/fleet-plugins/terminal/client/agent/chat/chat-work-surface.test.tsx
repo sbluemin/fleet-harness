@@ -13,10 +13,15 @@ let logState: AgentChatLogState;
 
 const detailCalls: string[] = [];
 
-vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
+vi.mock("./chat-store.js", () => ({
+  useAgentChatStream: () => ({
+    ...logState,
+    connection: "open",
+    stopTurn: async () => {},
+    answerAsk: async () => {},
+  }),
+}));
 vi.mock("../api.js", () => ({
-  answerAgentChatAsk: async () => {},
-  stopAgentChatTurn: async () => {},
   readAgentChatJobDetail: async (_op: string, jobId: string) => {
     detailCalls.push(jobId);
     return null;
@@ -175,6 +180,33 @@ describe("chat work surface — log padding", () => {
       root = null;
       container = null;
     }
+  });
+});
+
+describe("chat work surface — stage identities", () => {
+  it("shows a gateway model by its own name, keeping the routed id within reach", () => {
+    // 게이트웨이 별칭은 이 모델이 어디로 실려 갔는지만 말한다. 표의 모든 행이 같은 앞자리로
+    // 시작하면 좁은 칸에서 정작 다른 부분이 먼저 말줄임에 잘려, 어느 모델이었는지가 사라진다.
+    logState = stateWith([job({
+      open: false,
+      status: "completed",
+      ends: 1,
+      stages: [{
+        title: "Propose",
+        agents: [
+          { label: "propose:sol", model: "claude-gateway--codex--gpt-5.6-sol", state: "done" },
+          { label: "judge:opus", model: "claude-opus-5[1m]", state: "done" },
+        ],
+      }],
+    })]);
+    mount();
+    act(() => { strip()?.click(); });
+    act(() => { container?.querySelector<HTMLButtonElement>(".agent-chat-work .agent-chat-job")?.click(); });
+
+    const cells = [...(container?.querySelectorAll<HTMLElement>(".agent-chat-stage-row .is-model") ?? [])];
+    expect(cells.map((cell) => cell.textContent)).toEqual(["codex--gpt-5.6-sol", "claude-opus-5[1m]"]);
+    // 잘린 이름을 되찾을 자리는 남긴다 — 표시형이 원본을 지우지는 않는다.
+    expect(cells[0]?.getAttribute("title")).toBe("claude-gateway--codex--gpt-5.6-sol");
   });
 });
 

@@ -39,7 +39,7 @@
   background: transparent;
   font: inherit;
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--t-2xs);
   line-height: 1;
   cursor: pointer;
 }
@@ -64,7 +64,7 @@
   margin-left: auto;
   padding: 11px 13px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   background: var(--ink-mid);
   box-shadow: var(--shadow-floating);
   opacity: 0;
@@ -88,7 +88,7 @@
   gap: 8px;
   margin: 0 0 8px;
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: var(--t-sm);
   line-height: 1.45;
 }
 
@@ -103,7 +103,7 @@
   padding-top: 9px;
   border-top: 1px solid var(--hairline);
   color: var(--text-tertiary);
-  font-size: 11px;
+  font-size: var(--t-xs);
   line-height: 1.45;
 }
 
@@ -269,14 +269,14 @@
 
 .quota-state > strong {
   display: block;
-  font-size: 13.5px;
+  font-size: var(--t-base);
   font-weight: var(--weight-medium);
 }
 
 .quota-state > p {
   margin: 6px 0 0;
   color: var(--text-tertiary);
-  font-size: 12.5px;
+  font-size: var(--t-md);
   line-height: 1.5;
 }
 
@@ -292,7 +292,7 @@
 .quota-provider__header h3,
 .quota-connect-card h3 {
   margin: 0;
-  font-size: 13.5px;
+  font-size: var(--t-base);
   font-weight: var(--weight-medium);
 }
 
@@ -335,7 +335,7 @@
   padding: 2px 9px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 10.5px;
+  font-size: var(--t-xs);
   letter-spacing: 0.08em;
 }
 
@@ -346,7 +346,7 @@
   color: var(--text-tertiary);
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--t-xs);
   cursor: pointer;
 }
 
@@ -377,14 +377,14 @@
 
 .quota-meter__label {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: var(--t-md);
 }
 
 .quota-meter__window {
   margin-left: 5px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .quota-meter__percent,
@@ -392,7 +392,7 @@
 .quota-meter__reset {
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--t-sm);
 }
 
 .quota-meter--warning {
@@ -454,7 +454,7 @@
 
 .quota-meter__risk {
   color: var(--text-tertiary);
-  font-size: 11.5px;
+  font-size: var(--t-sm);
 }
 
 .quota-meter--warning .quota-meter__risk {
@@ -469,11 +469,13 @@
   margin-left: auto;
   color: var(--text-tertiary);
   text-align: right;
-  font-size: 11.5px;
+  font-size: var(--t-sm);
 }
 
+/* 바닥 행의 퍼센트는 기본(--t-sm)보다 한 단 작다 — 반 픽셀 차이는 보이지 않아 규칙이
+   있으나 마나였고, 한 단 내려야 "여기서는 작게"라는 의도가 실제로 읽힌다. */
 .quota-meter__foot .quota-meter__percent {
-  font-size: 11.5px;
+  font-size: var(--t-xs);
 }
 
 .quota-meter--warning .quota-meter__percent,
@@ -508,7 +510,7 @@
   padding: 2px 9px 2px 7px;
   color: var(--text-secondary);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
   letter-spacing: 0.02em;
   white-space: nowrap;
 }
@@ -516,7 +518,7 @@
 .quota-credits small {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--t-sm);
   white-space: nowrap;
 }
 
@@ -530,24 +532,24 @@
 .quota-connect-card p {
   margin: 7px 0 12px;
   color: var(--text-tertiary);
-  font-size: 12.5px;
+  font-size: var(--t-md);
   line-height: 1.5;
 }
 
 .quota-connect-card .quota-connect-card__hint {
   margin-top: -5px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .quota-button {
   padding: 6px 12px;
   border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-primary);
   background: var(--ink-veil);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--t-sm);
   font-weight: var(--weight-medium);
   cursor: pointer;
 }
@@ -567,9 +569,9 @@
   margin-top: 12px;
   padding: 8px 12px;
   border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: var(--t-sm);
 }
 
 .quota-strip--expired {
@@ -591,7 +593,7 @@
 .quota-signed-out {
   margin-top: 12px;
   color: var(--text-tertiary);
-  font-size: 12.5px;
+  font-size: var(--t-md);
 }
 
 .quota-error {
@@ -612,18 +614,18 @@
   gap: 10px;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: 11.5px;
+  font-size: var(--t-sm);
 }
 
 .quota-refresh {
   padding: 4px 6px;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
   color: var(--text-secondary);
   background: transparent;
   font: inherit;
   font-family: var(--font-body);
-  font-size: 12px;
+  font-size: var(--t-sm);
   cursor: pointer;
 }
 

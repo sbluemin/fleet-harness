@@ -9,8 +9,25 @@ import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { registerAgentRoutes } from "../server/agent.js";
-import type { TerminalRuntime } from "../server/shared/index.js";
+import type { TerminalRuntime, TerminalSocket } from "../server/shared/index.js";
 import { createPluginTerminalTicketRegistry } from "../server/shared/tickets.js";
+
+function createTestChatSocket(onSend: (raw: string) => void): TerminalSocket {
+  const closeListeners = new Set<() => void>();
+  return {
+    readyState: 1,
+    send(data: Buffer) {
+      onSend(data.toString("utf8"));
+    },
+    close() {
+      for (const listener of closeListeners) listener();
+    },
+    on() {},
+    once(event, listener) {
+      if (event === "close") closeListeners.add(listener);
+    },
+  };
+}
 
 type TestRequest = http.IncomingMessage & { __body?: Record<string, unknown> };
 
@@ -226,14 +243,30 @@ describe("agent chat mode routes", () => {
     }));
   });
 
-  it("streams the replayed journal over the chat stream", async () => {
+  it("issues a chat-channel ticket and refuses the retired SSE stream", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.attachProviderSession(sessionId);
     await harness.post(sessionId, "chat");
 
-    const frames = await harness.openChatStream(sessionId);
+    await harness.postTicket(sessionId, { channel: "chat" });
+    const issued = harness.responses.at(-1);
+    expect(issued?.status).toBe(200);
+    const ticket = (issued?.body as { readonly ticket?: string }).ticket;
+    expect(typeof ticket).toBe("string");
+    expect(harness.tickets.consume(ticket!)).toMatchObject({ sessionId, channel: "chat" });
 
+    await harness.get(sessionId, "chat-stream");
+    expect(harness.responses.at(-1)).toEqual({ status: 410, body: { error: "chat_stream_moved" } });
+  });
+
+  it("replays the journal onto a chat ticket socket", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.attachProviderSession(sessionId);
+    await harness.post(sessionId, "chat");
+
+    const frames = await harness.openChatSocket(sessionId);
     const kinds = frames.map((frame) => frame.event.kind);
     expect(kinds[0]).toBe("replay-start");
     expect(kinds).toContain("dispatch");
@@ -324,6 +357,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const liveSessions = new Set<string>();
   let route: RouteHandler | undefined;
   const tickets = createPluginTerminalTicketRegistry();
+  let chatAttach: Parameters<TerminalRuntime["bindChatAttach"]>[0] | null = null;
   const attach = vi.fn<TerminalRuntime["attach"]>(async () => {
     if (options.holdAttachAfterFirst && attach.mock.calls.length > 1) await options.holdAttachAfterFirst;
   });
@@ -350,6 +384,12 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     onExit: () => () => {},
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
+    bindChatAttach: (attachChat) => {
+      chatAttach = attachChat;
+      return () => {
+        if (chatAttach === attachChat) chatAttach = null;
+      };
+    },
     stop: async () => {},
   };
   const ctx = {
@@ -492,35 +532,36 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     post: (sessionId: string, action: string, body?: Record<string, unknown>) => dispatch("POST", sessionId, action, body),
     del: (sessionId: string, action: string) => dispatch("DELETE", sessionId, action),
     get: (sessionId: string, action: string) => dispatch("GET", sessionId, action),
-    postTicket: async (sessionId: string): Promise<void> => {
+    tickets,
+    postTicket: async (sessionId: string, extra: Record<string, unknown> = {}): Promise<void> => {
       if (!route) throw new Error("Agent route was not registered");
       await route({
-        req: { method: "POST", url: "/plugins/terminal/agent/ticket", __body: { operationId: sessionId } } as unknown as TestRequest,
+        req: { method: "POST", url: "/plugins/terminal/agent/ticket", __body: { operationId: sessionId, ...extra } } as unknown as TestRequest,
         res: {} as http.ServerResponse,
         pathname: "/plugins/terminal/agent/ticket",
       });
     },
-    openChatStream: async (sessionId: string): Promise<Array<{ seq: number; event: { kind: string } }>> => {
-      const chunks: string[] = [];
-      const res = {
-        writableEnded: false,
-        destroyed: false,
-        writeHead: () => res,
-        write: (data: string) => {
-          chunks.push(data);
-          return true;
-        },
-        end: () => {},
-      } as unknown as http.ServerResponse;
-      await dispatch("GET", sessionId, "chat-stream", undefined, res);
-      await vi.waitFor(() => {
-        expect(chunks.join("")).toContain("replay-end");
+    openChatSocket: async (sessionId: string): Promise<Array<{ seq: number; event: { kind: string } }>> => {
+      if (!route) throw new Error("Agent route was not registered");
+      await route({
+        req: { method: "POST", url: "/plugins/terminal/agent/ticket", __body: { operationId: sessionId, channel: "chat" } } as unknown as TestRequest,
+        res: {} as http.ServerResponse,
+        pathname: "/plugins/terminal/agent/ticket",
       });
-      return chunks
-        .join("")
-        .split("\n\n")
-        .filter((frame) => frame.startsWith("data: "))
-        .map((frame) => JSON.parse(frame.slice("data: ".length)) as { seq: number; event: { kind: string } });
+      const ticket = (responses.at(-1)?.body as { readonly ticket?: string } | undefined)?.ticket;
+      if (!ticket) throw new Error("Chat ticket was not issued");
+      const context = tickets.consume(ticket);
+      if (!context || !chatAttach) throw new Error("Chat attach was not bound");
+      const frames: Array<{ seq: number; event: { kind: string } }> = [];
+      const socket = createTestChatSocket((raw) => {
+        const parsed = JSON.parse(raw) as { seq?: number; event?: { kind: string } };
+        if (typeof parsed.seq === "number" && parsed.event) frames.push({ seq: parsed.seq, event: parsed.event });
+      });
+      chatAttach(socket, context);
+      await vi.waitFor(() => {
+        expect(frames.some((frame) => frame.event.kind === "replay-end")).toBe(true);
+      });
+      return frames;
     },
     setLive: (sessionId: string) => { liveSessions.add(sessionId); },
     overrideCliId: (sessionId: string, value: string) => {

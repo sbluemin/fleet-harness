@@ -2,9 +2,9 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { AgentApiError, answerAgentChatAsk, readAgentChatJobDetail, stopAgentChatTurn } from "../api.js";
+import { AgentApiError, readAgentChatJobDetail } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
-import { useAgentChatStream } from "./chat-store.js";
+import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
   agentChatToolFamily,
   openAgentChatJobs,
@@ -217,14 +217,14 @@ export function AgentChatView({
   const handleStop = React.useCallback(async (): Promise<void> => {
     setStopping(true);
     try {
-      await stopAgentChatTurn(context.operationId);
+      await state.stopTurn();
     } catch {
       // 실패해도 따로 말하지 않는다. 이 버튼이 실패하는 경우는 사실상 "이미 끝났다" 하나이고,
       // 그 사실은 턴이 스스로 닫히면서 화면에 말한다 — 오류 줄을 더하면 같은 사건이 두 번 읽힌다.
     } finally {
       setStopping(false);
     }
-  }, [context.operationId]);
+  }, [state.stopTurn]);
 
   // 손잡이 드래그. 가로(오른쪽 컬럼)와 세로(아래 서랍)가 같은 상태를 쓰고 축만 다르다 —
   // 좁은 패널에서 컬럼이 서랍으로 접히는 것이 별개의 기능이 아니라 같은 면의 다른 방향이기 때문이다.
@@ -316,6 +316,7 @@ export function AgentChatView({
             streaming={index === state.turns.length - 1 && turn.state === "working"}
             jobsByToolUse={jobsByToolUse}
             onOpenJob={showJob}
+            onAnswer={state.answerAsk}
           />
         ))}
         {state.errorCode === "chat_turn_failed"
@@ -479,6 +480,7 @@ function ChatTurn({
   streaming,
   jobsByToolUse,
   onOpenJob,
+  onAnswer,
 }: {
   readonly operationId: string;
   readonly turn: AgentChatTurn;
@@ -487,6 +489,7 @@ function ChatTurn({
   readonly streaming: boolean;
   readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
   readonly onOpenJob: (id: string) => void;
+  readonly onAnswer: AgentChatViewState["answerAsk"];
 }) {
   const t = getT(language);
   const view = splitAgentChatTurn(turn);
@@ -531,6 +534,7 @@ function ChatTurn({
                   language={language}
                   jobsByToolUse={jobsByToolUse}
                   onOpenJob={onOpenJob}
+                  onAnswer={onAnswer}
                   working
                   pending={view.streamingText === null
                     && !view.ledger.some((item) => item.state === "running")
@@ -549,7 +553,7 @@ function ChatTurn({
                 language={language}
               >
                 <ChangeStrip changes={view.changes} language={language} />
-                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
+                <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} />
               </WorkFold>
             ) : null}
             {/* 중지된 턴에서 흐르던 글도 여기 선다 — Answer가 아니므로 그 이름표를 달지 않고,
@@ -636,6 +640,7 @@ function Ledger({
   language,
   jobsByToolUse,
   onOpenJob,
+  onAnswer,
   working = false,
   pending = false,
 }: {
@@ -644,6 +649,7 @@ function Ledger({
   readonly language: "en" | "ko";
   readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
   readonly onOpenJob: (id: string) => void;
+  readonly onAnswer: AgentChatViewState["answerAsk"];
   /** 진행 중인 턴인가 — 마지막 구간을 열어 둘지, 전부 접을지를 가른다. */
   readonly working?: boolean;
   /** 원장 꼬리에 "아직 살아 있다" 한 줄을 세운다 — 도구도 글자도 없는 구간의 유일한 신호다. */
@@ -677,7 +683,7 @@ function Ledger({
           ) : null}
           <Tally groups={segment.groups} folded={segment.folded} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
           {segment.inline.map((item, at) => (item.type === "ask" && item.ask
-            ? <AskCard key={`ask-${item.ask.id}`} operationId={operationId} ask={item.ask} language={language} />
+            ? <AskCard key={`ask-${item.ask.id}`} ask={item.ask} language={language} onAnswer={onAnswer} />
             : step(item, `in-${at}`)))}
           {segment.running.map((item, at) => step(item, `run-${at}`))}
         </div>
@@ -768,13 +774,13 @@ function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): stri
  * "답하지 않기", 계획에는 "수정 요청". 후자는 되돌림이 아니라 되묻기라, 모델이 계획을 고쳐 다시 낸다.
  */
 function AskCard({
-  operationId,
   ask,
   language,
+  onAnswer,
 }: {
-  readonly operationId: string;
   readonly ask: AgentChatAsk;
   readonly language: "en" | "ko";
+  readonly onAnswer: AgentChatViewState["answerAsk"];
 }) {
   const t = getT(language);
   const [picks, setPicks] = React.useState<readonly (readonly string[])[]>(() => ask.questions.map(() => []));
@@ -785,11 +791,11 @@ function AskCard({
 
   if (ask.outcome !== undefined) return <AskSettled ask={ask} language={language} />;
 
-  const send = async (body: Parameters<typeof answerAgentChatAsk>[1]): Promise<void> => {
+  const send = async (body: Parameters<AgentChatViewState["answerAsk"]>[0]): Promise<void> => {
     setPending(true);
     setFailed(false);
     try {
-      await answerAgentChatAsk(operationId, body);
+      await onAnswer(body);
     } catch {
       // 카드는 자리에 남는다 — 실패로 카드를 걷으면 대기는 계속되는데 답할 방법이 사라진다.
       setFailed(true);
@@ -1501,7 +1507,7 @@ function Stage({
               {agent.state === "done" ? "✓" : agent.state === "running" ? "◐" : "·"}
             </span>
             <span role="cell" className="is-name" title={agent.result ?? agent.label}>{agent.label}</span>
-            <span role="cell" className="is-model">{agent.model ?? "—"}</span>
+            <span role="cell" className="is-model" title={agent.model}>{agent.model !== undefined ? modelLabel(agent.model) : "—"}</span>
             <span role="cell" className="is-num">{agent.tokens !== undefined ? formatCount(agent.tokens) : "—"}</span>
             <span role="cell" className="is-num">{agent.tools !== undefined ? agent.tools : "—"}</span>
             <span role="cell" className="is-num">{agent.durationMs !== undefined ? formatDuration(agent.durationMs) : "—"}</span>
@@ -1510,6 +1516,17 @@ function Stage({
       </div>
     </div>
   );
+}
+
+/**
+ * 게이트웨이 신원의 표시형. `claude-gateway--`는 이 모델이 어디로 실려 갔는지를 말할 뿐
+ * 어느 모델인지는 말하지 않는데, 모든 행의 앞자리를 같은 문자열로 채워 정작 다른 부분이
+ * 먼저 말줄임에 잘린다. 원본은 셀의 `title`이 계속 진다.
+ */
+const GATEWAY_MODEL_PREFIX = "claude-gateway--";
+
+function modelLabel(model: string): string {
+  return model.startsWith(GATEWAY_MODEL_PREFIX) ? model.slice(GATEWAY_MODEL_PREFIX.length) : model;
 }
 
 /** 토큰 수는 자릿수가 커서 그대로 쓰면 표가 흔들린다 — 천 단위로 접는다. */

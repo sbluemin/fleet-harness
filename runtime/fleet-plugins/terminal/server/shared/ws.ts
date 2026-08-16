@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import type { UpgradeHandler } from "@fleet-console/sdk/routing";
 
 import { resolveConsolePackageRequire } from "./console-require.js";
-import type { TerminalSessionManager, TerminalTicketContext } from "./terminal-types.js";
+import type { TerminalSessionManager, TerminalSocket, TerminalTicketContext } from "./terminal-types.js";
 
 export interface TerminalUpgradeHandlerDeps {
   readonly tickets: {
@@ -14,6 +14,11 @@ export interface TerminalUpgradeHandlerDeps {
   };
   readonly sessions: TerminalSessionManager;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  /**
+   * 채팅 티켓이 소켓을 연 뒤 저널을 붙인다. 없으면 채팅 티켓은 업그레이드에서 거절된다 —
+   * PTY attach로 떨어뜨리면 휴면 Chat Mode가 터미널을 되살린다.
+   */
+  readonly attachChat?: (socket: TerminalSocket, context: TerminalTicketContext) => void;
 }
 
 export interface TerminalUpgradeHandler {
@@ -35,7 +40,23 @@ export function createPluginTerminalUpgradeHandler(deps: TerminalUpgradeHandlerD
       return true;
     }
     const context = deps.tickets.consume(url.searchParams.get("ticket"));
-    if (!context || !deps.sessions.canAttach(context.sessionId)) {
+    if (!context) {
+      socket.destroy();
+      return true;
+    }
+    if (context.channel === "chat") {
+      const attachChat = deps.attachChat;
+      if (!attachChat) {
+        socket.destroy();
+        return true;
+      }
+      const server = getWebSocketServer();
+      server.handleUpgrade(req, socket, head, (ws) => {
+        attachChat(ws, context);
+      });
+      return true;
+    }
+    if (!deps.sessions.canAttach(context.sessionId)) {
       socket.destroy();
       return true;
     }

@@ -65,7 +65,16 @@ export interface TerminalTicketContext {
    * 보내지도 못한다.
    */
   readonly role?: TerminalSocketRole;
+  /**
+   * 이 티켓이 여는 관측 면. 생략하면 PTY다 — 지금까지 발급된 모든 티켓이 그것이었고,
+   * 기본값을 바꾸면 채팅 티켓이 살아 있는 PTY에 붙는다.
+   *
+   * `chat`은 저널 구독이다. PTY를 만들지도, canAttach를 묻지도 않는다.
+   */
+  readonly channel?: TerminalTicketChannel;
 }
+
+export type TerminalTicketChannel = "chat";
 
 export type TerminalSocketRole = "control" | "viewer";
 

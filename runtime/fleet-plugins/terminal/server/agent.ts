@@ -10,7 +10,7 @@ import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet
 import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
-import { readSocketRole } from "./shared/index.js";
+import { readSocketRole, readTicketChannel } from "./shared/index.js";
 import type { TerminalRuntime } from "./shared/index.js";
 
 import { createDefaultAgentCliDetector, validateAgentCliPathForSave, type AgentCliDetector } from "./agent-api/agent-cli-detect.js";
@@ -33,6 +33,7 @@ import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
+import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
@@ -122,7 +123,7 @@ export async function registerAgentRoutes(
     { method: "POST", path: "/sessions/:sessionId/message", summary: "Deliver a prompt to an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat", summary: "Switch an Agent session to chat mode.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Leave chat mode for an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
-    { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Stream Agent chat events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
+    { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Removed — Chat Mode observation uses the ticketed WebSocket.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
@@ -206,6 +207,27 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   // __fleetAgentCliDetector와 같은 자리의 테스트 훅 — 실 SDK 스폰 없이 chat 경로를 고정한다.
   const testChatSdkFactory = (globalThis as { __fleetAgentChatSdkFactory?: CreateChatSdk }).__fleetAgentChatSdkFactory;
   const chatRegistry = testChatSdkFactory ? new AgentChatRegistry(testChatSdkFactory) : new AgentChatRegistry();
+  const unbindChatAttach = terminalRuntime.bindChatAttach((socket, context) => {
+    const sessionId = context.sessionId;
+    attachAgentChatSocket(socket, async () => {
+      const node = ctx.host.operations.get(sessionId);
+      if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+        return { error: "session_not_found" };
+      }
+      if (node.payload[CHAT_MODE_PAYLOAD_KEY] !== true) return { error: "chat_not_active" };
+      const seed = await resolveChatSeed(node);
+      if (!seed.ok) return { error: seed.error };
+      if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+        return { error: "chat_not_active" };
+      }
+      try {
+        return await chatRegistry.ensure(sessionId, () => seed.seed);
+      } catch {
+        return { error: "chat_unavailable" };
+      }
+    });
+  });
+  ctx.host.lifecycle.registerCleanup(unbindChatAttach);
   const launchResolver = createAgentTerminalLaunchResolver({
     agentRuntime: runtime,
     ...(deps.aiGateway ? { aiGateway: deps.aiGateway } : {}),
@@ -347,7 +369,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
         return true;
       }
-      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown }>(req);
+      const body = await ctx.host.http.readJsonBody<{ readonly operationId?: unknown; readonly colorScheme?: unknown; readonly role?: unknown; readonly channel?: unknown }>(req);
       if (typeof body?.operationId !== "string") {
         ctx.host.http.writeJson(res, 400, { error: "terminal_session_not_found" });
         return true;
@@ -355,6 +377,23 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const operation = ctx.host.operations.get(body.operationId);
       if (!operation) {
         ctx.host.http.writeJson(res, 404, { error: "terminal_session_not_found" });
+        return true;
+      }
+      const channel = readTicketChannel(body?.channel);
+      if (channel === "chat") {
+        if (operation.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
+          ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+          return true;
+        }
+        ctx.host.http.writeJson(res, 200, terminalRuntime.issueTicket({
+          cwd: readPayloadString(operation.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(operation.theaterId) ?? "",
+          sessionId: operation.id,
+          operationId: operation.id,
+          operationType: operation.type,
+          pluginId: operation.pluginId,
+          theaterId: operation.theaterId,
+          channel: "chat",
+        }));
         return true;
       }
       // dormant 세션은 ticket 발급을 거부한다 — stale 클라이언트가 PTY를 재생성하지 못하게 한다.
@@ -1232,54 +1271,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
       return true;
     }
-    let closed = false;
-    let unsubscribe: (() => void) | null = null;
-    const write = (data: string) => {
-      if (!closed && !res.writableEnded && !res.destroyed) res.write(data);
-    };
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-store",
-      Connection: "keep-alive",
-      "Cross-Origin-Opener-Policy": "same-origin",
-      "Cross-Origin-Resource-Policy": "same-origin",
-      "Referrer-Policy": "no-referrer",
-      "X-Content-Type-Options": "nosniff",
-    });
-    // 헤더를 쓰는 것만으로는 소켓이 흐르지 않는다. 재생할 과거가 없는 세션 — 첫 턴 전에 표면을
-    // 바꾼 경우 — 은 그다음 프레임이 30초 뒤 keepalive라, 브라우저의 `onopen`이 그때까지 뜨지
-    // 않고 화면은 "연결하는 중"에 머문다. 이벤트를 만들지 않는 주석 한 줄을 즉시 흘려 연결
-    // 확립을 그 자리에서 알린다(과거가 있는 세션에서는 replay가 이 역할을 우연히 해 왔다).
-    write(": open\n\n");
-    const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
-    req.on("close", () => {
-      closed = true;
-      clearInterval(keepalive);
-      unsubscribe?.();
-    });
-    void (async () => {
-      const seed = await resolveChatSeed(node);
-      if (!seed.ok) {
-        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: seed.error } })}\n\n`);
-        res.end();
-        return;
-      }
-      // seed 해석의 await 동안 DELETE가 chat을 접었을 수 있다 — ensure와 같은 tick의 재검증이
-      // stale 스트림 요청의 새 세션 생성을 막는다(메시지 라우트와 같은 계약).
-      if (ctx.host.operations.get(sessionId)?.payload[CHAT_MODE_PAYLOAD_KEY] !== true) {
-        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: "chat_not_active" } })}\n\n`);
-        res.end();
-        return;
-      }
-      try {
-        const chat = await chatRegistry.ensure(sessionId, () => seed.seed);
-        if (closed) return;
-        unsubscribe = chat.subscribe((entry) => write(`data: ${JSON.stringify(entry)}\n\n`));
-      } catch {
-        write(`data: ${JSON.stringify({ seq: 0, event: { kind: "error", code: "chat_unavailable" } })}\n\n`);
-        res.end();
-      }
-    })();
+    ctx.host.http.writeJson(res, 410, { error: "chat_stream_moved" });
     return true;
   }
 

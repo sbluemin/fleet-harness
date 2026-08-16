@@ -381,6 +381,7 @@ async function createHarness(options: {
     },
     onTitle: () => () => {},
     registerLaunchResolver: () => () => {},
+    bindChatAttach: () => () => {},
     stop: async () => {},
   };
   const ctx = {

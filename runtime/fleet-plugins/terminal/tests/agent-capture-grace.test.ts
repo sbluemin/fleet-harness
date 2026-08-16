@@ -253,6 +253,7 @@ async function createHarness(body: Record<string, unknown>) {
       };
     },
     registerLaunchResolver: () => () => {},
+    bindChatAttach: () => () => {},
     stop: async () => {},
   };
   const ctx = {

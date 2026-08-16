@@ -229,10 +229,10 @@ describe("Repository design grammar", () => {
       expect(blocksOf(".history-badge").concat(blocksOf(".history-badge-mark")).some((body) => body.includes(`${property}:`) && body.includes("var(--badge-tone)")), property).toBe(true);
     }
     // 알약이 아니라 라운드 사각 + 볼드 sans — Fork가 뱃지를 라벨이 아닌 표식으로 읽히게 하는 축.
-    expect(badge).not.toContain("border-radius: 999px");
+    expect(badge).not.toContain("border-radius: var(--radius-pill)");
     expect(badge).toContain("border-radius: var(--radius-xs)");
     expect(badge).toContain("font-family: var(--font-body)");
-    expect(badge).toContain("font-size: 11px");
+    expect(badge).toContain("font-size: var(--t-xs)");
     expect(badge).toContain("font-weight: var(--weight-bold)");
     expect(badge).toContain("var(--badge-tone) 82%");
     expect(badge).toContain("var(--badge-tone) 22%");

@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 
-import type { TerminalSocketRole, TerminalTicket, TerminalTicketContext } from "./terminal-types.js";
+import type { TerminalSocketRole, TerminalTicket, TerminalTicketChannel, TerminalTicketContext } from "./terminal-types.js";
 
 /**
  * 티켓 요청이 밝힌 역할. `viewer`만 알아듣고 나머지는 전부 undefined로 떨어뜨린다 — 모르는
@@ -8,6 +8,14 @@ import type { TerminalSocketRole, TerminalTicket, TerminalTicketContext } from "
  */
 export function readSocketRole(value: unknown): TerminalSocketRole | undefined {
   return value === "viewer" ? "viewer" : undefined;
+}
+
+/**
+ * 티켓 요청이 밝힌 관측 면. `chat`만 알아듣고 나머지는 전부 undefined로 떨어뜨린다 —
+ * 모르는 값을 PTY로 승격시키면 오타 하나가 채팅 티켓을 터미널 attach에 실어 보낸다.
+ */
+export function readTicketChannel(value: unknown): TerminalTicketChannel | undefined {
+  return value === "chat" ? "chat" : undefined;
 }
 
 export interface TerminalTicketRegistryDeps {
