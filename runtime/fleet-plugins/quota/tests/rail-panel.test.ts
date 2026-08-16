@@ -19,6 +19,7 @@ import {
   riskNote,
   sanitizeProviderOrder,
   SIGNED_OUT_KEY,
+  visibleCredits,
 } from "../client/rail-panel.js";
 import { providerGlyph } from "../client/cli-glyphs.js";
 import { QUOTA_MESSAGES } from "../client/i18n/messages.js";
@@ -120,6 +121,23 @@ describe("meter risk", () => {
   it("says nothing when a calm window has no forecast to report", () => {
     expect(riskNote(window(44, { pressure: "ok", paceRatio: 0.4 }), 1_000_000, t)).toBeNull();
     expect(riskNote(window(44), 1_000_000, t)).toBeNull();
+  });
+});
+
+describe("reset credits", () => {
+  // Codex는 보유량 0에도 크레딧 객체를 준다. 그대로 그리면 카드가 상시로 "0" 한 줄을
+  // 차지하는데, 그 줄이 알리는 사실은 없다.
+  it("shows the row only when at least one credit is held", () => {
+    expect(visibleCredits({ available: 2 })).toEqual({ available: 2 });
+    expect(visibleCredits({ available: 0 })).toBeNull();
+    expect(visibleCredits({ available: 0, nextExpiresAt: 1_000 })).toBeNull();
+    expect(visibleCredits(undefined)).toBeNull();
+  });
+
+  // 문구가 API 용어를 그대로 노출하면 카드의 나머지 카피와 어긋난다.
+  it("names the credits in product language, not in the upstream endpoint's", () => {
+    expect(QUOTA_MESSAGES.en["quota.credits"]).not.toContain("rate-limit");
+    expect(QUOTA_MESSAGES.ko["quota.credits"]).not.toContain("rate-limit");
   });
 });
 

@@ -4,7 +4,7 @@ import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerE
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@dotobokuri/core-ai-gateway";
+import type { ProviderDto, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
 import {
   isProviderId,
   PROVIDER_ORDER_DEFAULT,
@@ -111,6 +111,15 @@ export function formatCountdown(target: number | undefined, now: number): string
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+/**
+ * Codex는 보유량이 0이어도 크레딧 응답을 준다. 0은 알릴 것이 없는 상태이지 알려야 할
+ * 사실이 아니므로, 이 자리에서 통째로 걷어 카드가 "0회 사용 가능" 한 줄을 상시로
+ * 차지하지 않게 한다. 공급자가 크레딧을 아예 보고하지 않는 경우와 같은 취급이다.
+ */
+export function visibleCredits(credits: ResetCredits | undefined): ResetCredits | null {
+  return credits !== undefined && credits.available > 0 ? credits : null;
 }
 
 /**
@@ -331,6 +340,26 @@ function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
   );
 }
 
+/** 크레딧 칩의 표식. 미터의 리셋 카운트다운과 달리 "내가 당길 수 있는 리셋"이라 회전 화살표를 쓴다. */
+function ResetGlyph() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.5 6a4.5 4.5 0 1 1-4.5-4.5c1.26 0 2.47.53 3.35 1.41L10.5 4" />
+      <path d="M10.5 1.5V4H8" />
+    </svg>
+  );
+}
+
 function ProviderCard({
   id,
   provider,
@@ -392,12 +421,19 @@ function ProviderCard({
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
         <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
       )) : null}
-      {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
-        <div className="quota-credits">
-          <span>{t("quota.credits", { n: provider.credits.available })}</span>
-          {provider.credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(provider.credits.nextExpiresAt, now) })}</small> : null}
-        </div>
-      ) : null}
+      {(provider.status === "ok" || provider.status === "stale") ? (() => {
+        const credits = visibleCredits(provider.credits);
+        if (!credits) return null;
+        return (
+          <div className="quota-credits">
+            <span className="quota-credits__chip">
+              <ResetGlyph />
+              {t("quota.credits", { n: credits.available })}
+            </span>
+            {credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(credits.nextExpiresAt, now) })}</small> : null}
+          </div>
+        );
+      })() : null}
       </div>
       </div>
     </section>
