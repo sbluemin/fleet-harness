@@ -193,6 +193,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--triage-drift-y1",
   "--triage-drift-x2",
   "--triage-drift-y2",
+  // Chat context popover TSX injects the category-stack luminance step (0–5).
+  "--agent-chat-ctx-step",
 ]);
 
 function source(path: string): string {

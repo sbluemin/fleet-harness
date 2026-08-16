@@ -1799,12 +1799,12 @@
 }
 
 .agent-chat-ctx-pop-title {
-  font-size: 11.5px;
+  font-size: var(--t-sm);
   color: var(--text-primary);
 }
 
 .agent-chat-ctx-pop-total {
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--agent-chat-ctx-ink);
 }
 
@@ -1841,7 +1841,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: 2px 0;
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .agent-chat-ctx-swatch {
@@ -1875,18 +1875,18 @@
 .agent-chat-ctx-share {
   width: 44px;
   text-align: right;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .agent-chat-ctx-count {
   min-width: 20px;
   text-align: right;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 /* 남은 자리는 쓴 몫이 아니다 — 같은 잉크로 두면 목록이 "이만큼 먹었다"를 한 줄 더 말한다. */
 .agent-chat-ctx-free .agent-chat-ctx-name,
-.agent-chat-ctx-free .agent-chat-ctx-tokens { color: var(--ink-fog); }
+.agent-chat-ctx-free .agent-chat-ctx-tokens { color: var(--text-tertiary); }
 
 .agent-chat-ctx-detail { margin-top: var(--space-2); }
 
@@ -1898,7 +1898,7 @@
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--hairline);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
 
@@ -1908,7 +1908,7 @@
 .agent-chat-ctx-detail > summary:focus-visible {
   outline: 2px solid var(--aurora);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 /* 값이 언제 잰 것인지 말하지 않으면 이 표면은 조용한 거짓말이 된다 — 자식은 턴이 끝나기 전에
@@ -1917,8 +1917,8 @@
   margin: var(--space-2) 0 0;
   padding-top: var(--space-2);
   border-top: 1px solid var(--hairline);
-  font-size: 10px;
-  color: var(--ink-fog);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
 }
 
 /* 접힘 줄의 증가분. 실패·중지 배지와 같은 줄에 서지만 상태가 아니라 크기이므로 신호 잉크를

@@ -30,7 +30,7 @@ describe("Quick Launch composer layout", () => {
 
   it("keeps the send control an icon-only circle", () => {
     const submit = ruleFor(".quick-launch-submit");
-    expect(submit).toMatch(/border-radius:\s*999px/u);
+    expect(submit).toMatch(/border-radius:\s*var\(--radius-pill\)/u);
     expect(submit).toMatch(/width:\s*32px/u);
     // 버튼 안에 또 배지를 얹으면 하나의 표면이 두 겹이 된다.
     expect(css).not.toMatch(/\.quick-launch-submit\s+kbd/u);
@@ -59,7 +59,7 @@ describe("Quick Launch composer layout", () => {
     const canvas = ruleFor(".operation-launch-variant-star");
     expect(canvas).toBe(ruleFor(".quick-launch-variant-star"));
     expect(canvas).toMatch(/font-family:\s*var\(--font-body\)/u);
-    expect(canvas).toMatch(/font-size:\s*10px/u);
+    expect(canvas).toMatch(/font-size:\s*var\(--t-2xs\)/u);
   });
 });
 
