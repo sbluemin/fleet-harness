@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, promises as nodeFs, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -724,6 +724,290 @@ describe("AgentChatRegistry — journal weight", () => {
     ]);
     // 되돌릴 수 없는 이력은 그대로 남는다.
     expect(kinds(replayed).filter((kind) => kind === "job")).toHaveLength(2);
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 사용자가 도는 턴을 끊는 자리.
+ *
+ * 이 축의 요점은 결말의 이름이다 — 중지는 실패가 아니다. 원장이 둘을 같은 자리에 두면 사용자가
+ * 자기가 누른 버튼의 결과를 고장으로 읽는다.
+ */
+describe("AgentChatRegistry — stopping a turn", () => {
+  /** 스스로 끝나지 않는 턴. close()가 이터레이터를 풀어 주는 실제 런의 동작을 그대로 흉내 낸다. */
+  function createHangingSdkFactory() {
+    const configDir = tempDir("chat-stop-");
+    const closes: number[] = [];
+    let started = 0;
+    const startTurn = vi.fn(async () => {
+      const index = started++;
+      let release: (() => void) | null = null;
+      const gate = new Promise<void>((resolve) => { release = resolve; });
+      return {
+        close: () => {
+          closes.push(index);
+          release?.();
+        },
+        [Symbol.asyncIterator]() {
+          return {
+            async next() {
+              await gate;
+              return { done: true as const, value: undefined };
+            },
+          };
+        },
+      };
+    });
+    const factory = vi.fn(async ({ models }: { readonly baseUrl: string; readonly models: readonly string[] }) => ({
+      configDir,
+      models,
+      startTurn,
+      dispose: vi.fn(async () => {}),
+    }));
+    return { factory: factory as never, startTurn, closes, startedCount: () => started };
+  }
+
+  it("closes the run and closes the turn as stopped, not failed", async () => {
+    const transcriptPath = writeTranscript("sess-stop", []);
+    const { factory, closes } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-1", () => seedFor(transcriptPath));
+
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("go");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+
+    expect(session.stopTurn()).toBe(true);
+    await drainTurn(registry, "op-stop-1");
+
+    // 중지 경로와 턴 종료의 finally가 각각 close한다. 계약상 두 번 불러도 안전하고, 둘 중
+    // 어느 쪽만 남아도 슬롯이 반납되어야 하므로 이 중복은 의도된 것이다 — 세는 것은 "끊겼는가"다.
+    expect(closes.length).toBeGreaterThanOrEqual(1);
+    const end = seen.map((entry) => entry.event).find((event) => event.kind === "turn-end");
+    expect(end).toEqual({ kind: "turn-end", ok: false, stopped: true });
+    // 중지는 오류 줄을 세우지 않는다 — 사용자가 스스로 한 일에 고장 표식을 붙이지 않는다.
+    expect(kinds(seen)).not.toContain("error");
+    await registry.disposeAll();
+  });
+
+  it("drops turns that were queued behind the stopped one", async () => {
+    // 큐에 밀려 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다.
+    const transcriptPath = writeTranscript("sess-stop-queue", []);
+    const { factory, startedCount } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-2", () => seedFor(transcriptPath));
+
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    session.send("second");
+    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+
+    expect(session.stopTurn()).toBe(true);
+    await drainTurn(registry, "op-stop-2");
+
+    expect(startedCount()).toBe(1);
+    const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
+    expect(dispatches).toHaveLength(1);
+    await registry.disposeAll();
+  });
+
+  it("refuses when there is no turn to stop", async () => {
+    // 끊을 것이 없는데 성공을 돌려주면 화면이 멈춤을 그리고 아무 일도 일어나지 않는다.
+    const transcriptPath = writeTranscript("sess-stop-idle", []);
+    const { factory } = createHangingSdkFactory();
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-stop-3", () => seedFor(transcriptPath));
+    expect(session.stopTurn()).toBe(false);
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 잡 상세를 읽는 자리.
+ *
+ * 셸 출력의 좌표는 우리가 재구성할 수 없다 — 실측에서 그 파일은 격리 config dir이 아니라 CLI가
+ * 고른 **별개의 임시 뿌리** 아래 앉았다. `task_notification.output_file`이 알려 주는 경로가
+ * 유일한 권위이고, 그 경로는 호스트 절대 경로라 브라우저로 나가서는 안 된다.
+ */
+describe("AgentChatRegistry — job detail", () => {
+  it("reads a shell tail from the path the notification announced, not a reconstructed one", async () => {
+    const transcriptPath = writeTranscript("sess-detail", []);
+    // 알림이 가리키는 파일을 config dir 바깥에 둔다 — 재구성한 경로로는 절대 닿을 수 없는 자리다.
+    const outputRoot = tempDir("chat-task-out-");
+    const outputFile = path.join(outputRoot, "b7chatty.output");
+    writeFileSync(outputFile, "tick 1\ntick 2\ntick 3\n");
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b7chatty", description: "loop", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b7chatty", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-detail-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-detail-1");
+
+    const detail = await session.readJobDetail("b7chatty");
+    expect(detail).toEqual({ kind: "shell", tail: "tick 1\ntick 2\ntick 3", truncated: false });
+
+    // 저널 어디에도 그 절대 경로가 실리지 않는다 — 브라우저로 나가는 것은 저널이다.
+    const journal: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => journal.push(entry));
+    expect(JSON.stringify(journal)).not.toContain(outputRoot);
+    await registry.disposeAll();
+  });
+
+  it("refuses a job coordinate the session never issued", async () => {
+    // 브라우저가 건네는 유일한 값이다. SDK가 발급한 적 없는 좌표는 파일 시스템에 닿기 전에 막힌다.
+    const transcriptPath = writeTranscript("sess-detail-guard", []);
+    const { factory } = createFakeSdkFactory([{ messages: [] }]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-detail-2", () => seedFor(transcriptPath));
+    expect(await session.readJobDetail("../../etc/passwd")).toBeNull();
+    expect(await session.readJobDetail("never-issued")).toBeNull();
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 큰 출력 파일.
+ *
+ * 돌려주는 값이 작아도 파일 전체를 문자열로 올리면 그 순간의 메모리와 이벤트 루프는 파일
+ * 크기만큼을 진다 — 실측에서 백그라운드 셸 출력은 이미 438KB까지 자랐고, 빌드를 백그라운드로
+ * 돌리면 수십 MB가 정상 범위다.
+ */
+describe("AgentChatRegistry — large shell output", () => {
+  it("reads only the end of the file", async () => {
+    const transcriptPath = writeTranscript("sess-big", []);
+    const outputRoot = tempDir("chat-task-big-");
+    const outputFile = path.join(outputRoot, "b9huge.output");
+    // 읽기 창(256KB)보다 확실히 큰 파일. 창 밖의 표식은 결과 어디에도 나타나지 않아야 한다 —
+    // 나타난다면 파일 전체가 메모리에 올라왔다는 뜻이다.
+    const filler = Array.from({ length: 40_000 }, (_, i) => `noise ${i} ${"y".repeat(40)}`).join("\n");
+    writeFileSync(outputFile, `HEAD-MARKER\n${filler}\nTAIL-MARKER\n`);
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b9huge", description: "big", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b9huge", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-big-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-big-1");
+
+    // 내용만으로는 전체 읽기와 구별되지 않는다 — 200줄 컷이 같은 결과를 내기 때문이다.
+    // 그래서 "파일 전체를 문자열로 올리지 않았다"를 직접 못 박는다.
+    const readFile = vi.spyOn(nodeFs, "readFile");
+    const open = vi.spyOn(nodeFs, "open");
+    try {
+      const detail = await session.readJobDetail("b9huge");
+      expect(detail?.kind).toBe("shell");
+      const tail = detail?.kind === "shell" ? detail.tail : "";
+      expect(tail).toContain("TAIL-MARKER");
+      expect(tail).not.toContain("HEAD-MARKER");
+      expect(detail?.truncated).toBe(true);
+      expect(open.mock.calls.some(([target]) => target === outputFile)).toBe(true);
+      expect(readFile.mock.calls.some(([target]) => target === outputFile)).toBe(false);
+    } finally {
+      readFile.mockRestore();
+      open.mockRestore();
+    }
+    await registry.disposeAll();
+  });
+});
+
+/**
+ * 창보다 큰 줄 하나.
+ *
+ * 앞선 경계-읽기 수정이 만든 결함이다: 줄 경계에 맞추려고 첫 개행까지를 버리는데, 마지막 한
+ * 줄이 창보다 크면 개행이 창의 맨 끝에만 있거나 아예 없어서 버퍼 전체가 사라진다. 화면은 그때
+ * 빈 꼬리를 보인다 — 잘린 줄 하나가 빈 화면보다 정직하다.
+ */
+describe("AgentChatRegistry — one line larger than the read window", () => {
+  it("keeps the newest bytes instead of returning an empty tail", async () => {
+    const transcriptPath = writeTranscript("sess-longline", []);
+    const outputRoot = tempDir("chat-task-line-");
+    const outputFile = path.join(outputRoot, "b1line.output");
+    // 한 줄이 512KB — 창(256KB)보다 크고, 줄 끝에만 개행이 있다.
+    writeFileSync(outputFile, `${"j".repeat(512 * 1024)}NEWEST-END\n`);
+
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "b1line", description: "json", task_type: "local_bash" },
+          { type: "system", subtype: "task_notification", task_id: "b1line", status: "completed", output_file: outputFile, summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-line-1", () => seedFor(transcriptPath));
+    session.send("go");
+    await drainTurn(registry, "op-line-1");
+
+    const detail = await session.readJobDetail("b1line");
+    const tail = detail?.kind === "shell" ? detail.tail : null;
+    expect(tail).not.toBe("");
+    expect(tail).toContain("NEWEST-END");
+    expect(detail?.truncated).toBe(true);
+    await registry.disposeAll();
+  });
+
+  it("bounds the subagent transcript read the same way", async () => {
+    const transcriptPath = writeTranscript("sess-bigtrail", []);
+    const { factory, configDir } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "init", session_id: "sess-bigtrail" },
+          { type: "system", subtype: "task_started", task_id: "atrail1", description: "recon", task_type: "local_agent" },
+          { type: "system", subtype: "task_notification", task_id: "atrail1", status: "completed", summary: "done" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-trail-1", () => seedFor(transcriptPath));
+
+    // 창(4MB)보다 큰 전사록. 앞쪽 표식은 결과에 나타나면 안 된다.
+    const subagentDir = path.join(configDir, "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
+    mkdirSync(subagentDir, { recursive: true });
+    const line = (name: string) => JSON.stringify({
+      isSidechain: true,
+      type: "assistant",
+      message: { content: [{ type: "tool_use", id: name, name, input: { command: "x".repeat(600) } }] },
+    });
+    const filler = Array.from({ length: 7_000 }, (_, i) => line(`Filler${i}`)).join("\n");
+    writeFileSync(path.join(subagentDir, "agent-atrail1.jsonl"), `${line("HeadMarker")}\n${filler}\n${line("TailMarker")}\n`);
+
+    session.send("go");
+    await drainTurn(registry, "op-trail-1");
+
+    const readFile = vi.spyOn(nodeFs, "readFile");
+    try {
+      const detail = await session.readJobDetail("atrail1");
+      expect(detail?.kind).toBe("agent");
+      const names = detail?.kind === "agent" ? detail.steps.map((step) => step.name) : [];
+      expect(names).toContain("TailMarker");
+      expect(names).not.toContain("HeadMarker");
+      expect(detail?.truncated).toBe(true);
+      expect(readFile.mock.calls.some(([target]) => String(target).includes("agent-atrail1"))).toBe(false);
+    } finally {
+      readFile.mockRestore();
+    }
     await registry.disposeAll();
   });
 });

@@ -16,6 +16,9 @@
      --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다).
      포커스 워시는 캡션만 진다. 여기 따라가면 활성 채팅 전체가 다른 면으로 바뀐다. */
   background: var(--surface-panel);
+  /* 작업 면이 컬럼으로 설지 서랍으로 접힐지는 **이 패널의 폭**이 정한다. 뷰포트로 가르면
+     넓은 창 안의 좁은 덱 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다. */
+  container-type: inline-size;
   /* 캔버스·패널 조상이 pan용 손 커서와 user-select: none을 상속시킨다 — 채팅은 읽고
      복사하는 표면이므로 서브트리에서 텍스트 커서와 선택을 되살린다. */
   cursor: auto;
@@ -264,6 +267,14 @@
   color: var(--hairline-strong);
 }
 
+/* 도구 이름은 이 줄에서 유일하게 훑히는 토큰이다. 나머지 문구와 같은 잉크를 쓰면 줄 전체가
+   한 덩어리 회색이 되어, 무엇을 했는지 읽으려면 멈춰서 읽어야 한다. 접히지 않은 스텝 줄의
+   동사(.agent-chat-step-verb)가 이미 이 잉크를 쓰므로, 여기서 맞추는 것이 두 줄을 하나의
+   문법으로 되돌린다. 이것은 가독성이지 어포던스가 아니다 — 안 눌리는 집계 줄도 이름을 갖는다. */
+.agent-chat-tally-name {
+  color: var(--text-secondary);
+}
+
 /* 집계 줄은 열쇠다 — 누르면 그 줄이 세고 있던 스텝이 펼쳐진다. 눌린다는 사실은 꺾쇠와
    hover 잉크가 말한다. brass는 위치·포커스 채널이므로 여기서는 쓰지 않는다. */
 .agent-chat-tally-fold > summary {
@@ -284,16 +295,20 @@
   border-radius: var(--radius-sm);
 }
 
+/* 어포던스는 오직 이 꺾쇠가 진다. 이전에는 9px에 --hairline-strong이라, 쉬는 상태에서 눌리는
+   줄과 안 눌리는 줄의 차이가 사실상 없었다(측정: 두 줄이 같은 클래스·같은 활자·같은 색이고
+   차이는 이 글리프 하나뿐). 크기와 잉크를 한 단씩 올려 쉬는 상태에서도 읽히게 하고, hover는
+   그 위 한 단으로 남긴다 — brass는 위치·포커스 채널이라 "눌린다"를 질 수 없다. */
 .agent-chat-tally-chev {
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
   align-self: center;
-  color: var(--hairline-strong);
+  color: var(--text-tertiary);
   transition: transform var(--duration-fast), color var(--duration-fast);
 }
 
 .agent-chat-tally-fold > summary:hover .agent-chat-tally-chev {
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
 }
 
 .agent-chat-tally-fold[open] .agent-chat-tally-chev {
@@ -706,6 +721,10 @@
 
 .agent-chat-fold-failed { color: var(--coral-ink); }
 
+/* 중지는 실패가 아니다 — 사용자가 스스로 끊은 결말에는 고칠 것이 없으므로 coral을 쓰지 않는다.
+   그렇다고 성공도 아니라 positive도 아니다. 남는 자리는 중립 잉크 한 단이다. */
+.agent-chat-fold-stopped { color: var(--text-secondary); }
+
 .agent-chat-fold-chev {
   display: inline-flex;
   align-items: center;
@@ -809,6 +828,54 @@
   color: var(--brass-ink);
   box-shadow: var(--brass-halo);
   outline: none;
+}
+
+/* 도는 턴을 끊는 문. 회신 버튼 왼쪽에 나란히 서서, 행동이 모이는 자리를 하나로 둔다.
+   turn head에 두지 않는 이유는 도달성이다 — 진행 중 턴의 머리는 원장이 자라면서 위로 밀려
+   화면 밖으로 나가고, 그때 멈출 방법이 사라진다. */
+.agent-chat-stop {
+  position: absolute;
+  right: calc(var(--space-3) + 40px + var(--space-2));
+  bottom: var(--space-3);
+  z-index: 3;
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-stop:hover:not(:disabled),
+.agent-chat-stop:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+  outline: none;
+}
+
+.agent-chat-stop:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 정지 표식은 사각형 하나다. 신호 토큰을 쓰지 않는다 — 이 버튼은 상태를 보고하는 것이 아니라
+   행동을 제안하는 것이고, coral을 여기 쓰면 "무언가 잘못됐다"로 읽힌다. */
+.agent-chat-stop-mark {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 2px;
+  background: currentColor;
 }
 
 /* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
@@ -1034,23 +1101,29 @@
 /* ── 백그라운드 작업 ─────────────────────────────────────────────────────────
    턴 시계와 나란히 도는 두 번째 시계의 표면. 색 규칙은 본문과 같다: 상태만 신호 토큰이 나르고,
    종류(서브에이전트·워크플로·셸)는 글리프와 모노 라벨이 가른다 — 종류를 색으로 가르면 신호
-   채널이 뒤집힌다. 탭의 활성은 --brass(위치 채널), 살아 있는 개수는 --aurora(상태 채널)다. */
+   채널이 뒤집힌다. 살아 있는 개수는 --aurora(상태 채널)다.
 
-.agent-chat-tabs {
+   두 면은 **나란히** 산다. 이전에는 탭이 갈아 끼웠는데, 그러면 무엇이 도는지 보려고 무엇을
+   물었는지를 잃는다 — 백그라운드 작업은 대화를 대신하는 것이 아니라 대화 옆에서 동시에 돈다. */
+
+.agent-chat-split {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
   display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex: none;
-  /* 로그가 지는 상단 여백(전환 칩 자리)을 이 줄이 대신 진다. */
-  margin: calc(var(--space-3) + 34px) auto 0;
-  padding: 0 clamp(var(--space-4), 4vw, var(--space-8));
-  width: 100%;
-  max-width: calc(var(--agent-chat-measure) + 2 * clamp(var(--space-4), 4vw, var(--space-8)));
+  /* 넓은 패널에서는 작업 면이 오른쪽 컬럼이다. 좁아지면 아래 서랍으로 접힌다(아래 @container). */
+  flex-direction: row;
 }
 
-/* 탭이 선 동안 로그는 자기 상단 여백을 내려놓는다 — 두 번 주면 첫 줄이 저 아래에서 시작한다. */
-.agent-chat-tabs ~ .agent-chat-log {
-  padding-top: var(--space-3);
+/* 대화 면. 떠 있는 컨트롤(Follow·스트립·중지·회신)의 위치 기준이 여기다 — 패널 전체에 걸면
+   작업 면이 열린 순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */
+.agent-chat-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 /* 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다. 스트립은 회신 버튼 위에 한 층 더 서므로
@@ -1060,39 +1133,59 @@
   padding-bottom: calc(var(--space-3) + 45px + 38px);
 }
 
-.agent-chat-tab {
-  appearance: none;
-  cursor: pointer;
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--radius-pill);
-  padding: 4px var(--space-3);
-  font-family: var(--font-mono);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
-  color: var(--text-tertiary);
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  transition: color var(--duration-fast), border-color var(--duration-fast);
+/* 두 면의 경계이자 손잡이. 얇지만 잡히는 폭을 따로 갖는다 — 1px 선은 눈에는 보여도 손에는 없다. */
+.agent-chat-grip {
+  flex: none;
+  width: 9px;
+  cursor: ew-resize;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+  border-left: 1px solid var(--hairline);
+  touch-action: none;
 }
 
-.agent-chat-tab:hover { color: var(--text-secondary); }
-
-.agent-chat-tab.is-on {
-  color: var(--brass);
-  border-color: color-mix(in oklch, var(--brass) 38%, var(--hairline));
-  background: color-mix(in oklch, var(--brass) 7%, transparent);
+.agent-chat-grip::after {
+  content: "";
+  width: 2px;
+  height: 26px;
+  border-radius: 2px;
+  background: var(--hairline-strong);
+  transition: background var(--duration-fast);
 }
 
-.agent-chat-tab:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+.agent-chat-grip:hover::after {
+  background: var(--text-tertiary);
 }
 
-.agent-chat-tab-badge {
-  color: var(--aurora);
-  font-variant-numeric: tabular-nums;
+/* 작업 면이 열려 있는 동안에도 좁은 패널에서는 세로로 쌓인다. 뷰포트가 아니라 이 패널의 폭이
+   가른다 — 채팅 패널은 덱 안에서 얼마든지 좁아지고, 그때 두 컬럼은 어느 쪽도 읽을 수 없다. */
+@container (max-width: 719px) {
+  .agent-chat-split {
+    flex-direction: column;
+  }
+
+  .agent-chat-grip {
+    width: auto;
+    height: 9px;
+    cursor: ns-resize;
+    border-left: none;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .agent-chat-grip::after {
+    width: 26px;
+    height: 2px;
+  }
+
+  /* 선택자를 한 단 올린다. @container는 특정성을 더하지 않으므로, 동률이면 소스 순서가 이긴다 —
+     `.agent-chat-work`의 기본 규칙은 이 블록보다 **뒤에** 있어서 폭이 되돌려진다(실측: 600px
+     컨테이너에서 서랍이 252px = 42%로 남았다). 규칙을 파일 끝으로 옮기는 대신 방향에 관한 규칙을
+     한자리에 모아 두고, 이기는 이유를 선택자에 적어 둔다. */
+  .agent-chat-split .agent-chat-work {
+    width: auto;
+    height: var(--agent-chat-work, 42%);
+  }
 }
 
 /* ── 잡 카드 ───────────────────────────────────────────────────────────────── */
@@ -1252,6 +1345,27 @@
 
 .agent-chat-strip-count { flex: none; color: var(--aurora-ink); }
 
+/* 도는 것이 없을 때의 스트립. 탭을 걷으면서 생긴 구멍을 이것이 메운다 — 스트립이 살아 있는
+   잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 화면에서 통째로 사라진다.
+   쉬는 상태는 신호 채널을 쓰지 않는다: aurora는 "지금 돈다"이고, 여기에는 그 사실이 없다. */
+.agent-chat-strip.is-rest {
+  color: var(--text-tertiary);
+  border-color: var(--hairline);
+  background: var(--surface-panel-raised);
+}
+
+.agent-chat-strip.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
+
+.agent-chat-strip-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--hairline-strong);
+}
+
+.agent-chat-work-cap.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
+
 .agent-chat-strip-names {
   min-width: 0;
   overflow: hidden;
@@ -1264,17 +1378,63 @@
 
 /* ── Work 탭 본문 ─────────────────────────────────────────────────────────── */
 
+/* 작업 면 — 대화 면의 형제다. 스스로 스크롤하지 않고, 안의 본문이 스크롤한다: 머리(스트립이
+   옮겨 앉은 자리)는 언제나 보여야 접는 문이 손 닿는 곳에 남는다. */
 .agent-chat-work {
+  flex: none;
+  min-height: 0;
+  min-width: 0;
+  width: var(--agent-chat-work, 42%);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  padding: var(--space-2) clamp(var(--space-3), 2.5cqi, var(--space-5)) var(--space-2);
+}
+
+.agent-chat-work-body {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3) clamp(var(--space-4), 4vw, var(--space-8)) calc(var(--space-3) + 45px);
+  padding-top: var(--space-2);
+}
+
+/* 면이 열리면 떠 있던 스트립이 이 자리로 옮겨 앉는다 — 알약으로 남으면 열린 면의 첫 줄을 덮고,
+   접는 문이 자란 것 밖에 서게 된다. 그래서 이 줄은 표시가 아니라 문이다. */
+.agent-chat-work-cap {
+  appearance: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   width: 100%;
-  max-width: calc(var(--agent-chat-measure) + 2 * clamp(var(--space-4), 4vw, var(--space-8)));
-  margin-inline: auto;
+  padding: 4px 0 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  text-align: left;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-work-cap:hover { color: var(--text-secondary); }
+
+.agent-chat-work-cap:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-work-cap-chev {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-tertiary);
 }
 
 .agent-chat-work-sec {
@@ -1386,6 +1546,41 @@
   background: var(--hairline);
 }
 
+/* ── 잡 상세의 추가 본문 ─────────────────────────────────────────────────────
+   보고 아래에 붙는 것: 서브에이전트의 도구 발자국, 셸 출력의 꼬리. 둘 다 그 잡을 연 그때만
+   한 번 읽어 온다 — 저널에 실으면 재접속마다 수백 KB가 다시 흐른다. */
+
+.agent-chat-detail-loading,
+.agent-chat-detail-cut {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-trail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 셸의 출력은 줄이 곧 의미다. 접히면 읽을 수 없으므로 줄을 지키고, 넘치는 폭은 자기 상자
+   안에서만 흐르게 둔다 — 패널 본문이 가로로 밀리면 대화 쪽까지 함께 밀린다. */
+.agent-chat-detail-tail {
+  margin: 0;
+  max-height: 42vh;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre;
+  tab-size: 2;
+}
+
 /* ── 워크플로 단계 트리 ───────────────────────────────────────────────────── */
 
 .agent-chat-stage {
@@ -1469,7 +1664,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-strip-orbit { animation: none; }
-  .agent-chat-tab,
+  .agent-chat-work-cap,
+  .agent-chat-grip::after,
+  .agent-chat-stop,
   .agent-chat-job,
   .agent-chat-detail-back { transition: none; }
 }

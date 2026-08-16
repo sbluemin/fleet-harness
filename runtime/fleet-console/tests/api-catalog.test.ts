@@ -85,6 +85,7 @@ GET|/plugins/skills/search|http
 GET|/plugins/terminal/agent/agent-cli/diagnostics|http
 GET|/plugins/terminal/agent/agent-cli/state|http
 GET|/plugins/terminal/agent/events|sse
+GET|/plugins/terminal/agent/sessions/:sessionId/chat-job|http
 GET|/plugins/terminal/agent/sessions/:sessionId/chat-stream|sse
 GET|/plugins/terminal/agent/sessions|http
 GET|/plugins/terminal/agent/state|http
@@ -150,6 +151,7 @@ POST|/plugins/terminal/agent/sessions/:sessionId/auto-name|http
 POST|/plugins/terminal/agent/sessions/:sessionId/background|http
 POST|/plugins/terminal/agent/sessions/:sessionId/capture|http
 POST|/plugins/terminal/agent/sessions/:sessionId/chat-answer|http
+POST|/plugins/terminal/agent/sessions/:sessionId/chat-stop|http
 POST|/plugins/terminal/agent/sessions/:sessionId/chat|http
 POST|/plugins/terminal/agent/sessions/:sessionId/message|http
 POST|/plugins/terminal/agent/sessions/:sessionId/resume|http
@@ -201,7 +203,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(131);
+    expect(body.routes).toHaveLength(133);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

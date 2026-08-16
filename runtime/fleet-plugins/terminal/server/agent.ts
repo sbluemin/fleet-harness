@@ -125,6 +125,8 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/sessions/:sessionId/chat", summary: "Leave chat mode for an Agent session.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "GET", path: "/sessions/:sessionId/chat-stream", summary: "Stream Agent chat events.", category: "Terminal Plugin", gate: "origin-write", transport: "sse" },
     { method: "POST", path: "/sessions/:sessionId/chat-answer", summary: "Answer a pending Agent chat question.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "POST", path: "/sessions/:sessionId/chat-stop", summary: "Stop the in-flight Agent chat turn.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
+    { method: "GET", path: "/sessions/:sessionId/chat-job", summary: "Read one Agent chat background job's detail.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/turn", summary: "Receive an Agent turn hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/background", summary: "Receive an Agent background-task hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
     { method: "POST", path: "/sessions/:sessionId/attention", summary: "Receive an Agent attention hook.", category: "Terminal Plugin", gate: "lock-token", transport: "http" },
@@ -572,6 +574,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "chat") return handleChat(req, res, sessionId);
     if (action === "chat-stream") return handleChatStream(req, res, sessionId);
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
+    if (action === "chat-stop") return handleChatStop(req, res, sessionId);
+    if (action === "chat-job") return handleChatJob(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -1138,6 +1142,68 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     ctx.host.http.writeJson(res, 200, { ok: true, outcome: result.outcome });
+    return true;
+  }
+
+  /**
+   * 도는 턴을 사용자가 끊는다.
+   *
+   * 끊을 것이 없으면 409다 — 200을 돌려주면 화면이 "멈췄다"를 그리는데 실제로는 아무것도
+   * 멈추지 않는다. 이 문은 턴만 닫는다: 이미 태어난 백그라운드 작업은 계속 살고, 그 사실은
+   * 잡 표면이 그대로 말한다.
+   */
+  async function handleChatStop(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    if (!chat.stopTurn()) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_idle" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  /**
+   * 잡 하나의 상세를 읽는다 — 서브에이전트의 도구 발자국, 또는 셸이 남긴 출력의 꼬리.
+   *
+   * 스트림에 싣지 않고 별도의 문을 두는 이유는 비용이다. 전사록과 명령 출력은 잡 하나당 수백
+   * KB까지 자라고(실측 438KB), 그것을 저널에 넣으면 재접속마다 전량이 다시 흐른다. 여기서는
+   * 사용자가 그 잡을 열어 본 그때만, 잘라서 한 번 읽는다.
+   */
+  async function handleChatJob(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "GET") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const jobId = new URL(req.url ?? "/", "http://127.0.0.1").searchParams.get("jobId");
+    if (jobId === null || jobId.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_job_id" });
+      return true;
+    }
+    const detail = await chat.readJobDetail(jobId);
+    if (!detail) {
+      ctx.host.http.writeJson(res, 404, { error: "job_detail_unavailable" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, detail);
     return true;
   }
 

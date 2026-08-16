@@ -580,3 +580,78 @@ describe("ledger segmentation — pinned steps", () => {
     expect(last?.folded.map((item) => item.id)).toEqual(["t2"]);
   });
 });
+
+/**
+ * 사용자가 끊은 턴.
+ *
+ * 실패와 같은 자리에 두면 자기가 누른 버튼의 결과를 고장으로 읽는다. 그리고 흐르던 글에
+ * Answer 이름표를 붙이면, 끝까지 쓰이지 않은 문장이 최종 답으로 굳는다.
+ */
+describe("stopped turn", () => {
+  function runStopped(events: readonly AgentChatStreamEvent[]): AgentChatLogState {
+    return events.reduce(reduceAgentChatLog, initialAgentChatLogState);
+  }
+
+  it("is neither done nor error", () => {
+    const state = runStopped([
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "text", text: "half a th" },
+      { kind: "turn-end", ok: false, stopped: true },
+    ]);
+    expect(state.turns.at(-1)?.state).toBe("stopped");
+  });
+
+  it("shows what it managed to say without calling it the answer", () => {
+    const state = runStopped([
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "tool", name: "Read", detail: "app.ts", id: "t1" },
+      { kind: "text", text: "half a th" },
+      { kind: "turn-end", ok: false, stopped: true },
+    ]);
+    const view = splitAgentChatTurn(state.turns.at(-1)!);
+    expect(view.answer).toBeNull();
+    expect(view.streamingText).toBe("half a th");
+    // 접힘에는 도구 줄만 남는다 — 방금 멈춘 사람이 보려는 글이 접힘 속으로 들어가면 안 된다.
+    expect(view.ledger.some((item) => item.type === "text")).toBe(false);
+  });
+
+  it("still reads as an ordinary failure when nothing was stopped", () => {
+    const state = runStopped([
+      { kind: "dispatch", text: "go" },
+      { kind: "turn-start" },
+      { kind: "turn-end", ok: false },
+    ]);
+    expect(state.turns.at(-1)?.state).toBe("error");
+  });
+});
+
+/**
+ * 결말 보고의 **도착**을 세는 축.
+ *
+ * 백그라운드 셸은 `task_updated(killed)`가 먼저 닫고 출력 파일의 좌표는 뒤따르는
+ * `task_notification`이 들고 온다. 그 알림이 status만 실어 오면 잡 레코드의 다른 필드는 하나도
+ * 움직이지 않으므로, 내용으로 도착을 추론하는 화면은 두 번째 보고를 못 본다.
+ */
+describe("job end arrivals", () => {
+  it("counts every end report, even one that carries nothing but a status", () => {
+    const events: readonly AgentChatStreamEvent[] = [
+      { kind: "job", id: "b1", jobKind: "shell", title: "loop" },
+      { kind: "job-end", id: "b1", status: "stopped" },
+      { kind: "job-end", id: "b1", status: "stopped" },
+    ];
+    const state = events.reduce(reduceAgentChatLog, initialAgentChatLogState);
+    const job = state.jobs.find((entry) => entry.id === "b1");
+    expect(job?.ends).toBe(2);
+    // 두 보고가 같은 내용이라 다른 필드로는 두 번째 도착을 알아볼 수 없다.
+    expect(job?.summary).toBeUndefined();
+    expect(job?.durationMs).toBeUndefined();
+  });
+
+  it("starts a job at zero arrivals", () => {
+    const start: AgentChatStreamEvent = { kind: "job", id: "b2", jobKind: "shell", title: "loop" };
+    const state = reduceAgentChatLog(initialAgentChatLogState, start);
+    expect(state.jobs.find((entry) => entry.id === "b2")?.ends).toBe(0);
+  });
+});

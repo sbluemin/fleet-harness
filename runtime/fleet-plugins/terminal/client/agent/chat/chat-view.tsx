@@ -2,7 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { answerAgentChatAsk } from "../api.js";
+import { answerAgentChatAsk, readAgentChatJobDetail, stopAgentChatTurn } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream } from "./chat-store.js";
 import {
@@ -13,6 +13,7 @@ import {
   type AgentChatAsk,
   type AgentChatChange,
   type AgentChatJob,
+  type AgentChatJobDetail,
   type AgentChatJobKind,
   type AgentChatQuestion,
   type AgentChatStepGroup,
@@ -58,13 +59,19 @@ export function AgentChatView({
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   const [terminalPending, setTerminalPending] = React.useState(false);
   const [terminalError, setTerminalError] = React.useState(false);
+  const [stopping, setStopping] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
   const [following, setFollowing] = React.useState(true);
-  // 두 번째 목적지. 대화를 읽던 자리를 잃지 않으려면 전환이지 이동이 아니어야 하므로,
-  // 로그의 스크롤 앵커는 이 상태와 무관하게 유지된다(같은 노드가 계속 마운트돼 있다).
-  const [view, setView] = React.useState<"chat" | "work">("chat");
+  // 두 번째 목적지는 **나란히** 선다. 탭 교체는 대화를 통째로 숨겼는데, 백그라운드 작업은
+  // 대화를 대신하는 것이 아니라 대화 옆에서 동시에 도는 것이다 — 동시에 일어나는 두 가지 앞에서
+  // 하나를 고르라고 요구하면, 무엇이 도는지 보려고 무엇을 물었는지를 잃는다.
+  const [workOpen, setWorkOpen] = React.useState(false);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
+  // 작업 면이 차지하는 비율. 마운트 안에서만 산다 — 패널마다 알맞은 비율이 다르고, 세션을
+  // 넘겨 기억할 만큼 무거운 결정이 아니다.
+  const [workRatio, setWorkRatio] = React.useState(0.42);
+  const splitRef = React.useRef<HTMLDivElement>(null);
   const logRef = React.useRef<HTMLDivElement>(null);
   // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
   // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
@@ -187,91 +194,102 @@ export function AgentChatView({
 
   const showJob = React.useCallback((id: string) => {
     setOpenJobId(id);
-    setView("work");
+    setWorkOpen(true);
   }, []);
-  // 탭과 패널을 잇는 좌표. 한 화면에 채팅 패널이 여럿 열릴 수 있으므로 마운트마다 고유해야 한다.
-  const tabsId = React.useId();
-  // 탭 줄과 패널의 ARIA 배선은 한 조건에서 나온다 — 갈라지면 탭 없이 tabpanel만 남는 상태가 생긴다.
-  const showTabs = state.jobs.length > 0 || view === "work";
+  // 스트립과 작업 면을 잇는 좌표. 한 화면에 채팅 패널이 여럿 열릴 수 있으므로 마운트마다 고유해야 한다.
+  const paneId = React.useId();
+  // 잡을 한 번이라도 낳은 세션에만 문이 선다. 하나도 없으면 스트립도 작업 면도 크롬일 뿐이다.
+  const hasJobs = state.jobs.length > 0;
+  // 마지막 턴이 도는가 — 중지 버튼의 권위. 호스트 런타임 축은 백그라운드 대기까지 working으로
+  // 읽으므로 여기서는 쓰지 않는다: 끊을 턴이 없는데 서 있는 중지 버튼은 눌러도 409를 받는다.
+  const turnRunning = state.turns.at(-1)?.state === "working";
+
+  const collapseWork = React.useCallback(() => {
+    setWorkOpen(false);
+    setOpenJobId(null);
+  }, []);
+
+  const handleStop = React.useCallback(async (): Promise<void> => {
+    setStopping(true);
+    try {
+      await stopAgentChatTurn(context.operationId);
+    } catch {
+      // 실패해도 따로 말하지 않는다. 이 버튼이 실패하는 경우는 사실상 "이미 끝났다" 하나이고,
+      // 그 사실은 턴이 스스로 닫히면서 화면에 말한다 — 오류 줄을 더하면 같은 사건이 두 번 읽힌다.
+    } finally {
+      setStopping(false);
+    }
+  }, [context.operationId]);
+
+  // 손잡이 드래그. 가로(오른쪽 컬럼)와 세로(아래 서랍)가 같은 상태를 쓰고 축만 다르다 —
+  // 좁은 패널에서 컬럼이 서랍으로 접히는 것이 별개의 기능이 아니라 같은 면의 다른 방향이기 때문이다.
+  const onGripDown = React.useCallback((event: React.PointerEvent<HTMLDivElement>) => {
+    const split = splitRef.current;
+    if (!split) return;
+    const grip = event.currentTarget;
+    grip.setPointerCapture(event.pointerId);
+    const column = getComputedStyle(split).flexDirection !== "column";
+    const move = (moved: PointerEvent): void => {
+      const box = split.getBoundingClientRect();
+      const raw = column
+        ? (box.right - moved.clientX) / box.width
+        : (box.bottom - moved.clientY) / box.height;
+      // 어느 쪽도 0으로 눌리지 않는다 — 사라진 면은 접힌 것과 구별되지 않는데, 접는 문은 따로 있다.
+      setWorkRatio(Math.min(0.78, Math.max(0.18, raw)));
+    };
+    const up = (): void => {
+      grip.removeEventListener("pointermove", move);
+      grip.removeEventListener("pointerup", up);
+      grip.removeEventListener("pointercancel", up);
+    };
+    grip.addEventListener("pointermove", move);
+    grip.addEventListener("pointerup", up);
+    grip.addEventListener("pointercancel", up);
+  }, []);
 
   return (
     <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
-      {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
-          자리·같은 모양의 떠 있는 칩으로 가리켜, 전환이 한 쌍의 동작으로 읽힌다.
-          띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다.
-          Analyst 진입 칩이 선행하면 같은 줄에 나란히 선다. */}
-      <div className="agent-view-chip-row">
-        {leadingChip}
-        <button
-          type="button"
-          className="agent-chat-mode-chip"
-          {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
-          disabled={terminalPending}
-          aria-label={t("terminal.chat.openTerminalAria")}
-          onClick={() => { void handleOpenTerminal(); }}
-        >
-          <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
-        </button>
-      </div>
-
-      {/* 탭은 보여 줄 것이 생겼을 때만 선다. 백그라운드 작업을 한 번도 하지 않은 세션에서
-          이 줄은 아무 목적지도 없는 크롬이므로, 잡이 하나라도 등록된 뒤에 나타난다.
-          다만 Work 탭에 서 있는 동안에는 원장이 비어도 줄을 거두지 않는다 — 재접속이 리듀서를
-          되감고 저널에 잡 이벤트가 남아 있지 않으면(세션 재시작·저널 상한 초과) 탭이 사라지면서
-          로그는 숨은 채로 남아, 대화로 돌아갈 컨트롤이 화면에서 통째로 없어진다. */}
-      {showTabs ? (
-        <div className="agent-chat-tabs" role="tablist" aria-label={t("terminal.chat.tabsAria")}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "chat"}
-            aria-controls={`${tabsId}-chat`}
-            id={`${tabsId}-chat-tab`}
-            className={`agent-chat-tab${view === "chat" ? " is-on" : ""}`}
-            onClick={() => setView("chat")}
-          >
-            {t("terminal.chat.tabConversation")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={view === "work"}
-            aria-controls={`${tabsId}-work`}
-            id={`${tabsId}-work-tab`}
-            className={`agent-chat-tab${view === "work" ? " is-on" : ""}`}
-            onClick={() => setView("work")}
-          >
-            {t("terminal.chat.tabWork")}
-            {openJobs.length > 0 ? <span className="agent-chat-tab-badge">{openJobs.length}</span> : null}
-          </button>
-        </div>
-      ) : null}
-
-      {view === "work" ? (
-        <WorkPanel
-          id={`${tabsId}-work`}
-          labelledBy={`${tabsId}-work-tab`}
-          jobs={state.jobs}
-          job={selectedJob}
-          language={language}
-          onOpen={setOpenJobId}
-          onBack={() => setOpenJobId(null)}
-        />
-      ) : null}
-
-      {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
-          사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
-          콘솔 로드 화면에서 투어를 발화시키지 않게 한다.
-          Work 탭이 선 동안에도 언마운트하지 않는다 — 로그를 버리면 스크롤 위치와 함께
-          "읽던 자리"가 사라지고, 전환이 이동이 되어 버린다. */}
+      {/* 대화 면과 작업 면이 나란히 산다. 넓은 패널에서는 작업 면이 오른쪽 컬럼이고, 좁아지면
+          같은 면이 아래 서랍으로 접힌다 — 별개의 기능이 아니라 한 면의 두 방향이며, 그 전환은
+          뷰포트가 아니라 이 패널의 폭이 정한다(패널은 덱 안에서 얼마든지 좁아진다). */}
       <div
-        className={`agent-chat-log${view === "chat" && openJobs.length > 0 ? " has-strip" : ""}`}
-        ref={logRef}
-        onScroll={handleScroll}
-        {...(showTabs ? { role: "tabpanel", id: `${tabsId}-chat`, "aria-labelledby": `${tabsId}-chat-tab` } : {})}
-        {...(view === "work" ? { hidden: true } : {})}
-        {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
+        className={`agent-chat-split${workOpen ? " is-open" : ""}`}
+        ref={splitRef}
+        style={workOpen ? ({ "--agent-chat-work": `${Math.round(workRatio * 1000) / 10}%` } as React.CSSProperties) : undefined}
       >
+        <div className="agent-chat-pane">
+          {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
+              자리·같은 모양의 떠 있는 칩으로 가리켜, 전환이 한 쌍의 동작으로 읽힌다.
+              띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다.
+              Analyst 진입 칩이 선행하면 같은 줄에 나란히 선다.
+              이 줄이 대화 면 **안에** 사는 이유는 실측이다: 패널 전체에 걸어 두면 작업 면이 열린
+              순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
+          <div className="agent-view-chip-row">
+            {leadingChip}
+            <button
+              type="button"
+              className="agent-chat-mode-chip"
+              {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
+              disabled={terminalPending}
+              aria-label={t("terminal.chat.openTerminalAria")}
+              onClick={() => { void handleOpenTerminal(); }}
+            >
+              <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
+            </button>
+          </div>
+
+          {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
+              사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
+              콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
+          <div
+            // 여백은 스트립이 **서 있는 동안** 필요하다. 도는 잡이 있든(aurora) 다 끝났든(쉬는 형태)
+            // 같은 자리에 같은 높이로 서므로 조건도 같아야 한다 — 쉬는 형태에만 여백을 빼면 마지막
+            // 줄이 그 알약 뒤에 갇혀 스크롤로도 빠져나오지 못한다(원래 이 규칙을 만든 그 결함이다).
+            className={`agent-chat-log${!workOpen && hasJobs ? " has-strip" : ""}`}
+            ref={logRef}
+            onScroll={handleScroll}
+            {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
+          >
         {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
             않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
             상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
@@ -310,53 +328,119 @@ export function AgentChatView({
         {terminalError
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.openTerminalFailed")}</div>
           : null}
+          </div>
+
+          {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
+              다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다.
+              떠 있는 컨트롤은 전부 대화 면 안에 산다 — 패널 전체에 걸어 두면 작업 면이 열린
+              순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */}
+          {!following ? (
+            <button
+              type="button"
+              className="agent-chat-follow"
+              aria-label={t("terminal.chat.followAria")}
+              onClick={handleFollow}
+            >
+              {t("terminal.chat.follow")}
+            </button>
+          ) : null}
+
+          {/* 살아 있는 잡이 있는 동안만 서는 한 줄. 읽는 자리가 어디든 "지금 나를 위해 도는 일이
+              있다"를 말하고, 그 자체가 작업 면을 여는 문이다 — 읽고 끝나는 표시가 아니다.
+              면이 열리면 이 줄은 사라지고 면의 머리가 같은 내용을 진다: 떠 있는 알약으로 남으면
+              열린 면의 첫 줄을 덮고, 접는 문이 자란 것 밖에 서게 된다.
+              Follow 칩과 같은 하단 중앙을 쓰므로 한 층 위에 선다(CSS가 두 높이를 가른다). */}
+          {!workOpen && openJobs.length > 0 ? (
+            <button
+              type="button"
+              className="agent-chat-strip"
+              aria-label={t("terminal.chat.stripAria")}
+              aria-expanded={false}
+              aria-controls={`${paneId}-work`}
+              onClick={() => { setOpenJobId(null); setWorkOpen(true); }}
+            >
+              <span className="agent-chat-strip-orbit" aria-hidden="true" />
+              <span className="agent-chat-strip-count">{t("terminal.chat.stripRunning", { count: openJobs.length })}</span>
+              <span className="agent-chat-strip-names">
+                {openJobs.map((job) => `${jobGlyph(job.kind)} ${job.who ?? job.title}`).join("  ·  ")}
+              </span>
+              <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
+            </button>
+          ) : null}
+
+          {/* 잡을 한 번이라도 낳았지만 지금 도는 것이 없을 때의 문. 스트립이 살아 있는 잡만
+              말하므로, 이것이 없으면 끝난 잡에 닿을 길이 사라진다(탭이 지던 몫이다). */}
+          {!workOpen && hasJobs && openJobs.length === 0 ? (
+            <button
+              type="button"
+              className="agent-chat-strip is-rest"
+              aria-label={t("terminal.chat.stripAria")}
+              aria-expanded={false}
+              aria-controls={`${paneId}-work`}
+              onClick={() => { setOpenJobId(null); setWorkOpen(true); }}
+            >
+              <span className="agent-chat-strip-dot" aria-hidden="true" />
+              <span className="agent-chat-strip-count">{settledLabel(state.jobs.length, t)}</span>
+              <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
+            </button>
+          ) : null}
+
+          {/* 도는 턴을 끊는 문. 이 문은 턴만 닫는다 — 이미 태어난 백그라운드 작업은 계속 살고
+              잡 표면이 그것을 그대로 말한다(잡 하나만 멈추는 제어 경로는 SDK에 없다). */}
+          {turnRunning ? (
+            <button
+              type="button"
+              className="agent-chat-stop"
+              aria-label={t("terminal.chat.stopAria")}
+              title={t("terminal.chat.stopTitle")}
+              disabled={stopping}
+              onClick={() => { void handleStop(); }}
+            >
+              <span className="agent-chat-stop-mark" aria-hidden="true" />
+              {t("terminal.chat.stop")}
+            </button>
+          ) : null}
+
+          {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
+              호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
+              가는 문이다(이 뷰에 입력창을 두지 않는다는 결정은 그대로다). */}
+          <button
+            type="button"
+            className="agent-chat-reply"
+            {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}
+            aria-label={t("terminal.chat.replyAria")}
+            title={t("terminal.chat.replyTitle")}
+            onClick={() => { context.composer.open({ mentionOperationId: context.operationId }); }}
+          >
+            <ReplyBubbleIcon />
+          </button>
+        </div>
+
+        {workOpen ? (
+          <>
+            {/* 두 면의 비율을 손으로 정한다. 방향은 CSS가 정하고 이 손잡이는 그 방향을 읽어
+                따른다 — 컬럼과 서랍이 서로 다른 컨트롤을 갖지 않게. */}
+            <div
+              className="agent-chat-grip"
+              role="separator"
+              aria-orientation="vertical"
+              aria-label={t("terminal.chat.gripAria")}
+              onPointerDown={onGripDown}
+            />
+            <WorkPanel
+              id={`${paneId}-work`}
+              jobs={state.jobs}
+              job={selectedJob}
+              openJobs={openJobs}
+              operationId={context.operationId}
+              language={language}
+              onOpen={setOpenJobId}
+              onBack={() => setOpenJobId(null)}
+              onCollapse={collapseWork}
+            />
+          </>
+        ) : null}
       </div>
-
-      {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
-          다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다. */}
-      {!following ? (
-        <button
-          type="button"
-          className="agent-chat-follow"
-          aria-label={t("terminal.chat.followAria")}
-          onClick={handleFollow}
-        >
-          {t("terminal.chat.follow")}
-        </button>
-      ) : null}
-
-      {/* 살아 있는 잡이 있는 동안만 서는 한 줄. 읽는 자리가 어디든 "지금 나를 위해 도는 일이
-          있다"를 말하고, 그 자체가 Work 탭으로 가는 문이다 — 읽고 끝나는 표시가 아니다.
-          Follow 칩과 같은 하단 중앙을 쓰므로 한 층 위에 선다(CSS가 두 높이를 가른다). */}
-      {view === "chat" && openJobs.length > 0 ? (
-        <button
-          type="button"
-          className="agent-chat-strip"
-          aria-label={t("terminal.chat.stripAria")}
-          onClick={() => { setOpenJobId(null); setView("work"); }}
-        >
-          <span className="agent-chat-strip-orbit" aria-hidden="true" />
-          <span className="agent-chat-strip-count">{t("terminal.chat.stripRunning", { count: openJobs.length })}</span>
-          <span className="agent-chat-strip-names">
-            {openJobs.map((job) => `${jobGlyph(job.kind)} ${job.who ?? job.title}`).join("  ·  ")}
-          </span>
-          <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
-        </button>
-      ) : null}
-
-      {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
-          호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
-          가는 문이다(이 뷰에 입력창을 두지 않는다는 결정은 그대로다). */}
-      <button
-        type="button"
-        className="agent-chat-reply"
-        {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}
-        aria-label={t("terminal.chat.replyAria")}
-        title={t("terminal.chat.replyTitle")}
-        onClick={() => { context.composer.open({ mentionOperationId: context.operationId }); }}
-      >
-        <ReplyBubbleIcon />
-      </button>
     </section>
   );
 }
@@ -450,17 +534,20 @@ function ChatTurn({
                 failed={view.failed}
                 running={stillRunning}
                 error={turn.state === "error"}
+                stopped={turn.state === "stopped"}
                 language={language}
               >
                 <ChangeStrip changes={view.changes} language={language} />
                 <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
               </WorkFold>
             ) : null}
-            {working && view.streamingText !== null ? (
+            {/* 중지된 턴에서 흐르던 글도 여기 선다 — Answer가 아니므로 그 이름표를 달지 않고,
+                접힘에 넣지도 않는다. 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이다. */}
+            {view.streamingText !== null ? (
               <StreamedMarkdown
                 className="agent-chat-stream markdown-body"
                 text={view.streamingText}
-                streaming={streaming}
+                streaming={working && streaming}
                 language={language}
               />
             ) : null}
@@ -613,6 +700,12 @@ function Tally({
   const clauses = groups.map((group, index) => (
     <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
+      {/* 알려진 계열은 문구 하나로 끝나지만, `other`는 도구 이름이 곧 주어다. 그 이름만 따로
+          그려 한 단 밝은 잉크를 지운다 — 접히지 않은 스텝 줄의 동사가 이미 그 잉크를 쓰므로,
+          이것은 새 문법이 아니라 두 줄을 같은 문법으로 되돌리는 것이다. */}
+      {group.family === "other" && group.name !== undefined
+        ? <span className="agent-chat-tally-name">{group.name}</span>
+        : null}
       <span>{groupLabel(group, t)}</span>
     </React.Fragment>
   ));
@@ -631,6 +724,13 @@ function Tally({
       </div>
     </details>
   );
+}
+
+/** 도는 것이 없을 때 스트립·머리가 다는 라벨. 복수형은 관례대로 호출부가 고른다. */
+function settledLabel(count: number, t: ReturnType<typeof getT>): string {
+  return count === 1
+    ? t("terminal.chat.stripSettled_one", { count })
+    : t("terminal.chat.stripSettled_other", { count });
 }
 
 /** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
@@ -976,6 +1076,7 @@ function WorkFold({
   failed,
   running,
   error,
+  stopped,
   language,
   children,
 }: {
@@ -984,6 +1085,8 @@ function WorkFold({
   /** 이 턴이 낳은 잡 중 아직 도는 것의 수. 접힘이 이것을 삼키면 접힘이 곧 거짓말이 된다. */
   readonly running: number;
   readonly error: boolean;
+  /** 사용자가 끊은 턴. 실패와 같은 잉크를 쓰지 않는다 — 고칠 것이 없는 결말이다. */
+  readonly stopped: boolean;
   readonly language: "en" | "ko";
   readonly children: React.ReactNode;
 }) {
@@ -997,6 +1100,7 @@ function WorkFold({
         <span className="agent-chat-fold-label">{label}</span>
         {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}
         {failed > 0 ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldFailed", { count: failed })}</span> : null}
+        {stopped ? <span className="agent-chat-fold-stopped">{t("terminal.chat.foldTurnStopped")}</span> : null}
         {failed === 0 && error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
         <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
       </summary>
@@ -1109,47 +1213,78 @@ function StageDots({ stages }: { readonly stages: readonly AgentChatJob["stages"
   );
 }
 
-/** Work 탭 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다. */
+/**
+ * 작업 면 — 잡 목록과 잡 하나의 상세. 둘은 같은 자리에서 갈아 끼워진다.
+ *
+ * 머리에는 스트립이 앉는다. 면이 열리면 떠 있던 알약이 이 자리로 옮겨 오고, 그것이 곧 접는
+ * 문이다 — 눌린 것이 자랐으므로 접는 문도 자란 것 안에 있어야 한다.
+ */
 function WorkPanel({
   id,
-  labelledBy,
   jobs,
   job,
+  openJobs,
+  operationId,
   language,
   onOpen,
   onBack,
+  onCollapse,
 }: {
   readonly id: string;
-  readonly labelledBy: string;
   readonly jobs: readonly AgentChatJob[];
   readonly job: AgentChatJob | null;
+  readonly openJobs: readonly AgentChatJob[];
+  readonly operationId: string;
   readonly language: "en" | "ko";
   readonly onOpen: (id: string) => void;
   readonly onBack: () => void;
+  readonly onCollapse: () => void;
 }) {
   const t = getT(language);
-  const frame = { id, role: "tabpanel" as const, "aria-labelledby": labelledBy };
-  if (job !== null) return <JobDetail frame={frame} job={job} language={language} onBack={onBack} />;
   const open = jobs.filter((entry) => entry.open);
   const settled = jobs.filter((entry) => !entry.open);
-  if (jobs.length === 0) {
-    return <div className="agent-chat-work" {...frame}><div className="agent-chat-work-empty">{t("terminal.chat.workEmpty")}</div></div>;
-  }
   return (
-    <div className="agent-chat-work" {...frame}>
-      {open.length > 0 ? (
-        <>
-          <div className="agent-chat-work-sec">{t("terminal.chat.workRunning")} {open.length}</div>
-          {open.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
-        </>
-      ) : null}
-      {settled.length > 0 ? (
-        <>
-          <div className="agent-chat-work-sec">{t("terminal.chat.workSettled")} {settled.length}</div>
-          {settled.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
-        </>
-      ) : null}
-    </div>
+    <section className="agent-chat-work" id={id} aria-label={t("terminal.chat.workAria")}>
+      <button
+        type="button"
+        className={`agent-chat-work-cap${openJobs.length === 0 ? " is-rest" : ""}`}
+        aria-expanded
+        aria-label={t("terminal.chat.workCollapseAria")}
+        onClick={onCollapse}
+      >
+        {openJobs.length > 0
+          ? <span className="agent-chat-strip-orbit" aria-hidden="true" />
+          : <span className="agent-chat-strip-dot" aria-hidden="true" />}
+        <span className="agent-chat-strip-count">
+          {openJobs.length > 0
+            ? t("terminal.chat.stripRunning", { count: openJobs.length })
+            : settledLabel(jobs.length, t)}
+        </span>
+        <span className="agent-chat-work-cap-chev" aria-hidden="true">⌄</span>
+      </button>
+      <div className="agent-chat-work-body">
+        {job !== null ? (
+          <JobDetail job={job} operationId={operationId} language={language} onBack={onBack} />
+        ) : jobs.length === 0 ? (
+          <div className="agent-chat-work-empty">{t("terminal.chat.workEmpty")}</div>
+        ) : (
+          <>
+            {open.length > 0 ? (
+              <>
+                <div className="agent-chat-work-sec">{t("terminal.chat.workRunning")} {open.length}</div>
+                {open.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
+              </>
+            ) : null}
+            {settled.length > 0 ? (
+              <>
+                <div className="agent-chat-work-sec">{t("terminal.chat.workSettled")} {settled.length}</div>
+                {settled.map((entry) => <JobCard key={entry.id} job={entry} language={language} onOpen={onOpen} />)}
+              </>
+            ) : null}
+          </>
+        )}
+      </div>
+    </section>
   );
 }
 
@@ -1158,19 +1293,20 @@ function WorkPanel({
  * 나머지는 그 작업이 돌려준 보고.
  */
 function JobDetail({
-  frame,
   job,
+  operationId,
   language,
   onBack,
 }: {
-  readonly frame: Readonly<Record<string, string>>;
   readonly job: AgentChatJob;
+  readonly operationId: string;
   readonly language: "en" | "ko";
   readonly onBack: () => void;
 }) {
   const t = getT(language);
+  const detail = useAgentChatJobDetail(operationId, job);
   return (
-    <div className="agent-chat-work" {...frame}>
+    <>
       <div className="agent-chat-detail-head">
         <button type="button" className="agent-chat-detail-back" aria-label={t("terminal.chat.workBackAria")} onClick={onBack}>
           ‹ {t("terminal.chat.workBack")}
@@ -1204,9 +1340,116 @@ function JobDetail({
           <div className="agent-chat-work-empty">{t("terminal.chat.jobNoReport")}</div>
         ) : null}
         {job.open && job.note !== undefined ? <p className="agent-chat-detail-note">{job.note}</p> : null}
+        <JobExtra detail={detail} language={language} />
       </div>
-    </div>
+    </>
   );
+}
+
+/**
+ * 보고 아래에 붙는 것 — 서브에이전트의 도구 발자국, 또는 셸 출력의 꼬리.
+ *
+ * 이 두 가지가 답하는 질문은 보고가 답하지 못하는 질문이다. 보고는 그 작업이 **말하기로 고른**
+ * 문장이고, 발자국은 실제로 **한 일**이다. 셸은 아예 보고랄 것이 없다 — 출력이 곧 산출물이다.
+ */
+function JobExtra({
+  detail,
+  language,
+}: {
+  readonly detail: { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null };
+  readonly language: "en" | "ko";
+}) {
+  const t = getT(language);
+  if (detail.state === "idle") return null;
+  if (detail.state === "loading") {
+    return <div className="agent-chat-detail-loading">{t("terminal.chat.jobDetailLoading")}</div>;
+  }
+  const value = detail.value;
+  // 못 읽었다는 것과 비어 있다는 것은 다르다. 전자는 좌표를 못 찾았거나 아직 안 쓰인 것이고,
+  // 후자는 그 작업이 정말 아무 도구도 쓰지 않은 것이다 — 둘을 한 문장으로 뭉치면 거짓이 된다.
+  if (value === null) {
+    return <div className="agent-chat-work-empty">{t("terminal.chat.jobDetailUnavailable")}</div>;
+  }
+  if (value.kind === "shell") {
+    return (
+      <>
+        <div className="agent-chat-kicker">{t("terminal.chat.jobOutput")}</div>
+        {value.truncated ? <div className="agent-chat-detail-cut">{t("terminal.chat.jobOutputCut")}</div> : null}
+        <pre className="agent-chat-detail-tail">{value.tail}</pre>
+      </>
+    );
+  }
+  if (value.steps.length === 0) {
+    return (
+      <>
+        <div className="agent-chat-kicker">{t("terminal.chat.jobTrail")}</div>
+        <div className="agent-chat-work-empty">{t("terminal.chat.jobTrailEmpty")}</div>
+      </>
+    );
+  }
+  return (
+    <>
+      <div className="agent-chat-kicker">{t("terminal.chat.jobTrail")} {value.steps.length}</div>
+      {value.truncated ? <div className="agent-chat-detail-cut">{t("terminal.chat.jobTrailCut")}</div> : null}
+      <div className="agent-chat-trail">
+        {value.steps.map((step, index) => (
+          // 원장의 스텝과 같은 클래스를 쓴다 — 서브에이전트가 한 일이 이 세션이 한 일과 같은
+          // 문법으로 읽혀야, 중첩된 것이 새 화면이 아니라 같은 화면의 한 겹으로 보인다.
+          <div key={index} className={`agent-chat-step is-${step.failed === true ? "fail" : "ok"}`}>
+            <span className="agent-chat-step-mark" aria-hidden="true">{step.failed === true ? "✕" : "✓"}</span>
+            <span className="agent-chat-step-verb">{step.name}</span>
+            {step.detail !== undefined ? <span className="agent-chat-step-object">{step.detail}</span> : null}
+            {step.outcome !== undefined ? (
+              <span className={`agent-chat-step-out${step.failed === true ? " is-error" : ""}`}>{step.outcome}</span>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+/**
+ * 잡 상세를 그 잡을 연 그때 한 번 읽는다.
+ *
+ * 워크플로는 요청하지 않는다 — 단계 트리가 이미 맥박으로 흐르고 그것이 곧 상세다. 도는 잡도
+ * 요청하지 않는다: 전사록과 출력 파일은 작업이 끝난 뒤에야 완결되므로, 도는 중에 읽으면 반쪽을
+ * 보여 주고 그게 전부인 것처럼 굳는다.
+ *
+ * 그런데 "닫혔다"와 "결말이 보고됐다"는 같은 순간이 아니다. 백그라운드 셸은 `task_updated`가
+ * `killed`로 먼저 닫고, 출력 파일의 좌표는 그 뒤에 오는 `task_notification`이 들고 온다(실측
+ * 순서이며 매퍼에도 그렇게 적혀 있다). 그래서 상세를 열어 둔 채 잡이 끝나면 첫 요청이 좌표보다
+ * 먼저 도착해 404를 받고, 좌표가 도착해도 다시 묻지 않아 "기록 없음"이 영영 굳는다.
+ *
+ * 그래서 결말 보고가 **도착한 횟수**를 의존성에 둔다. 보고의 내용(요약·소요 시간)으로 도착을
+ * 추론하면, status만 실은 알림에서는 아무 필드도 바뀌지 않아 상세가 "기록 없음"에 굳는다 —
+ * 매퍼가 허용하는 형태이고 테스트도 그 형태를 덮고 있다. 세는 것이 추론보다 정확하다.
+ */
+function useAgentChatJobDetail(
+  operationId: string,
+  job: AgentChatJob,
+): { readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null } {
+  const wanted = (job.kind === "agent" || job.kind === "shell") && !job.open;
+  const [result, setResult] = React.useState<{ readonly state: "idle" | "loading" | "ready"; readonly value: AgentChatJobDetail | null }>(
+    { state: "idle", value: null },
+  );
+  React.useEffect(() => {
+    if (!wanted) {
+      setResult({ state: "idle", value: null });
+      return;
+    }
+    let live = true;
+    setResult({ state: "loading", value: null });
+    const controller = new AbortController();
+    void readAgentChatJobDetail(operationId, job.id, controller.signal)
+      .then((value) => { if (live) setResult({ state: "ready", value }); })
+      .catch(() => { if (live) setResult({ state: "ready", value: null }); });
+    return () => {
+      live = false;
+      controller.abort();
+    };
+  }, [operationId, job.id, wanted, job.ends]);
+  return result;
 }
 
 /** 워크플로 한 단계 — 에이전트별로 어떤 신원이 얼마를 썼는지가 이 표의 요점이다. */

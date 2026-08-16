@@ -96,7 +96,7 @@ export type AgentChatStreamEvent =
       readonly answers?: readonly { readonly header: string; readonly value: string }[];
     }
   /** answer는 SDK result가 말한 최종 응답 텍스트 — 마지막 text의 Answer 승격에 대한 서버 권위. */
-  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string }
+  | { readonly kind: "turn-end"; readonly ok: boolean; readonly durationMs?: number; readonly answer?: string; readonly stopped?: boolean }
   | {
       readonly kind: "job";
       readonly id: string;
@@ -233,6 +233,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           ok: event.ok === true,
           ...(typeof event.durationMs === "number" && Number.isFinite(event.durationMs) ? { durationMs: event.durationMs } : {}),
           ...(typeof event.answer === "string" && event.answer.length > 0 ? { answer: event.answer } : {}),
+          ...(event.stopped === true ? { stopped: true } : {}),
         },
       };
     case "job": {
@@ -403,7 +404,12 @@ export interface AgentChatTurnItem {
 export interface AgentChatTurn {
   readonly dispatch: { readonly text: string; readonly at?: number } | null;
   readonly items: readonly AgentChatTurnItem[];
-  readonly state: "done" | "working" | "error";
+  /**
+   * `stopped`가 `error`와 따로 있는 이유는 결말이 다르기 때문이다. 실패는 하려던 일이 안 된
+   * 것이고 중지는 사용자가 그만두게 한 것이며, 후자에는 고칠 것이 없다 — 같은 자리에 두면
+   * 자기가 누른 버튼의 결과를 고장으로 읽게 된다.
+   */
+  readonly state: "done" | "working" | "error" | "stopped";
   readonly durationMs?: number;
   readonly toolCount: number;
   /** 라이브 델타 누적 버퍼 — 완성 text 이벤트가 도착하면 비워지고 아이템으로 확정된다. */
@@ -436,6 +442,55 @@ export interface AgentChatJob {
   readonly tools?: number;
   readonly durationMs?: number;
   readonly stages: readonly AgentChatJobStage[];
+  /**
+   * 이 잡에 대해 결말 보고가 도착한 횟수.
+   *
+   * 값 자체를 읽는 화면은 없다 — 이것은 **"보고가 하나 더 왔다"는 사실 자체**를 나르는 축이다.
+   * 백그라운드 셸은 `task_updated`가 먼저 닫고 출력 파일의 좌표는 뒤따르는 `task_notification`이
+   * 들고 오는데, 그 알림이 status만 싣고 오면(매퍼가 허용하는 형태다) 다른 필드는 하나도 바뀌지
+   * 않는다. 보고의 내용에서 도착을 추론하면 그때 상세가 "기록 없음"에 굳는다.
+   */
+  readonly ends: number;
+}
+
+/** 잡 상세의 스텝 한 줄 — 원장의 스텝과 같은 어휘를 쓴다. */
+export interface AgentChatJobStep {
+  readonly name: string;
+  readonly detail?: string;
+  readonly failed?: boolean;
+  readonly outcome?: string;
+}
+
+/**
+ * 잡을 열었을 때 한 번 요청해 오는 상세. 저널이 아니라 요청인 이유는 크기다 — 전사록과 명령
+ * 출력은 잡 하나당 수백 KB까지 자란다.
+ */
+export type AgentChatJobDetail =
+  | { readonly kind: "agent"; readonly steps: readonly AgentChatJobStep[]; readonly truncated: boolean }
+  | { readonly kind: "shell"; readonly tail: string; readonly truncated: boolean };
+
+/** 서버 payload를 상세로 읽는다. 모양이 어긋나면 null — 화면은 "없다"를 그린다. */
+export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDetail | null {
+  if (!payload || typeof payload !== "object") return null;
+  const value = payload as Record<string, unknown>;
+  const truncated = value.truncated === true;
+  if (value.kind === "shell") {
+    return typeof value.tail === "string" ? { kind: "shell", tail: value.tail, truncated } : null;
+  }
+  if (value.kind !== "agent" || !Array.isArray(value.steps)) return null;
+  const steps: AgentChatJobStep[] = [];
+  for (const entry of value.steps) {
+    if (!entry || typeof entry !== "object") continue;
+    const step = entry as Record<string, unknown>;
+    if (typeof step.name !== "string" || step.name.length === 0) continue;
+    steps.push({
+      name: step.name,
+      ...(typeof step.detail === "string" && step.detail.length > 0 ? { detail: step.detail } : {}),
+      ...(step.failed === true ? { failed: true } : {}),
+      ...(typeof step.outcome === "string" && step.outcome.length > 0 ? { outcome: step.outcome } : {}),
+    });
+  }
+  return { kind: "agent", steps, truncated };
 }
 
 export interface AgentChatLogState {
@@ -567,7 +622,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(turn.draft.length > 0
           ? { items: [...settleRunningSteps(turn.items), { type: "text" as const, text: turn.draft }], draft: "" }
           : { items: settleRunningSteps(turn.items), draft: "" }),
-        state: event.ok ? "done" : "error",
+        state: event.stopped === true ? "stopped" : event.ok ? "done" : "error",
         ...(event.durationMs !== undefined ? { durationMs: event.durationMs } : {}),
         ...(event.answer !== undefined ? { answer: event.answer } : {}),
       }));
@@ -582,6 +637,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         ...(event.at !== undefined ? { startedAt: event.at } : {}),
         open: true,
         stages: existing?.stages ?? [],
+        ends: existing?.ends ?? 0,
       };
       return {
         ...state,
@@ -607,6 +663,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       return mergeJob(state, event.id, (job) => ({
         ...job,
         open: false,
+        // 내용이 아니라 도착을 센다 — status만 실은 알림도 이 값을 움직여야 상세가 다시 묻는다.
+        ends: job.ends + 1,
         // 결말을 알아보지 못한 보고는 이미 세워 둔 결말을 지우지 않는다 — 근거 없는 값으로
         // 근거 있는 값을 덮는 셈이 된다.
         ...(event.status !== undefined ? { status: event.status } : {}),
@@ -627,7 +685,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       const known = new Set(state.jobs.map((job) => job.id));
       const seeded: readonly AgentChatJob[] = event.ids
         .filter((id) => !known.has(id))
-        .map((id) => ({ id, kind: "other", title: id, open: true, stages: [] }));
+        .map((id) => ({ id, kind: "other" as const, title: id, open: true, stages: [], ends: 0 }));
       return {
         ...state,
         jobs: [...state.jobs.map((job) => ({ ...job, open: live.has(job.id) })), ...seeded],
@@ -647,7 +705,7 @@ function mergeJob(
 ): AgentChatLogState {
   if (!state.jobs.some((job) => job.id === id)) {
     // 시작을 못 본 잡의 맥박·결말이 먼저 올 수 있다(재접속 직후). 좌표만으로 세운다.
-    const seeded: AgentChatJob = { id, kind: "other", title: id, open: true, stages: [] };
+    const seeded: AgentChatJob = { id, kind: "other", title: id, open: true, stages: [], ends: 0 };
     return { ...state, jobs: [...state.jobs, update(seeded)] };
   }
   return { ...state, jobs: state.jobs.map((job) => (job.id === id ? update(job) : job)) };
@@ -707,6 +765,19 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   }
   if (turn.state === "error") {
     return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
+  }
+  // 중지된 턴에서 흐르던 글은 Answer가 아니다 — 끝까지 쓰이지 않았으므로 그 이름을 줄 수 없다.
+  // 그렇다고 접힘 속에 넣지도 않는다: 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이고,
+  // 접어 두면 자기가 무엇을 멈췄는지 확인하려고 한 번 더 눌러야 한다.
+  if (turn.state === "stopped") {
+    return {
+      ledger: trailingText !== null ? turn.items.slice(0, -1) : turn.items,
+      answer: null,
+      streamingText: trailingText !== null && trailingText.length > 0 ? trailingText : null,
+      changes,
+      failed,
+      awaiting,
+    };
   }
   if (turn.answer !== undefined) {
     const promoted = trailingText !== null && trailingText.trim() === turn.answer.trim();
