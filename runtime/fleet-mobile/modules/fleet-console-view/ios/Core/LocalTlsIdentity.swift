@@ -75,6 +75,63 @@ public struct LocalTlsIdentity {
     return bytes
   }
 
+  /// TLS 서버 identity. SecIdentity는 키체인을 통해서만 얻을 수 있으므로 키·인증서를
+  /// 임시 태그로 등재해 조회하고, 게이트웨이 종료 시 removeFromKeychain으로 지운다.
+  /// 앱 프라이빗 키체인이며 단명 인증서(24h)라 잔존해도 위험은 낮지만 지운다.
+  public func secIdentity() throws -> SecIdentity {
+    let tag = Data("fleet-mobile-loopback-\(UUID().uuidString)".utf8)
+    let keyAdd: [String: Any] = [
+      kSecClass as String: kSecClassKey,
+      kSecValueRef as String: privateKey,
+      kSecAttrApplicationTag as String: tag,
+    ]
+    let keyStatus = SecItemAdd(keyAdd as CFDictionary, nil)
+    guard keyStatus == errSecSuccess || keyStatus == errSecDuplicateItem else {
+      throw CreateError.encoding("keychain key add failed: \(keyStatus)")
+    }
+    let certAdd: [String: Any] = [
+      kSecClass as String: kSecClassCertificate,
+      kSecValueRef as String: certificate,
+    ]
+    let certStatus = SecItemAdd(certAdd as CFDictionary, nil)
+    guard certStatus == errSecSuccess || certStatus == errSecDuplicateItem else {
+      throw CreateError.encoding("keychain cert add failed: \(certStatus)")
+    }
+    // 우리 인증서와 DER이 정확히 일치하는 identity를 찾는다.
+    let query: [String: Any] = [
+      kSecClass as String: kSecClassIdentity,
+      kSecReturnRef as String: true,
+      kSecMatchLimit as String: kSecMatchLimitAll,
+    ]
+    var result: CFTypeRef?
+    let status = SecItemCopyMatching(query as CFDictionary, &result)
+    guard status == errSecSuccess, let identities = result as? [SecIdentity] else {
+      throw CreateError.encoding("keychain identity query failed: \(status)")
+    }
+    for identity in identities {
+      var certRef: SecCertificate?
+      if SecIdentityCopyCertificate(identity, &certRef) == errSecSuccess,
+         let certRef, (SecCertificateCopyData(certRef) as Data) == certificateDer {
+        return identity
+      }
+    }
+    throw CreateError.encoding("keychain identity not found for the loopback certificate")
+  }
+
+  /// 게이트웨이 종료 시 임시 키체인 항목을 지운다(베스트 에포트).
+  public func removeFromKeychain() {
+    let certDelete: [String: Any] = [
+      kSecClass as String: kSecClassCertificate,
+      kSecValueRef as String: certificate,
+    ]
+    SecItemDelete(certDelete as CFDictionary)
+    let keyDelete: [String: Any] = [
+      kSecClass as String: kSecClassKey,
+      kSecValueRef as String: privateKey,
+    ]
+    SecItemDelete(keyDelete as CFDictionary)
+  }
+
   // IPv4 점표기 → 4바이트, IPv6 → 16바이트. 아니면 nil.
   static func ipAddressBytes(_ host: String) -> [UInt8]? {
     var v4 = in_addr()
