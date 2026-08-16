@@ -4,7 +4,7 @@ import type http from "node:http";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { SSE_KEEPALIVE_INTERVAL_MS, startSseKeepaliveLifecycle } from "../core/host/sse.js";
+import { SSE_KEEPALIVE_INTERVAL_MS, startSseKeepaliveLifecycle } from "../core/host/http-infra.js";
 
 class TestResponse extends EventEmitter {
   destroyed = false;

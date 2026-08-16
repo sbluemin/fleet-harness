@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
 
-import type { UpdateCommandIo } from "./types.js";
+import type { UpdateCommandIo } from "./dispatcher.js";
 
 const CONSOLE_BIN = "fleet-console";
 const STOP_TIMEOUT_MS = 15_000;

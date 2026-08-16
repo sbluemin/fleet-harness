@@ -2,7 +2,7 @@ import type http from "node:http";
 
 import { describe, expect, it } from "vitest";
 
-import { createSystemFontsRouter } from "../core/host/system-fonts-routes.js";
+import { createSystemFontsRouter } from "../core/host/system-fonts.js";
 
 interface Write {
   readonly status: number;

@@ -21,7 +21,7 @@ import {
   resolveColorEnabled,
   section,
   stripAnsi,
-} from "../../cli/styles/index.js";
+} from "../../cli/styles/tokens.js";
 import { readFleetCliRelease } from "../../cli/release.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";

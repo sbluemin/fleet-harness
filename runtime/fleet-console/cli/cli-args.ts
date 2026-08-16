@@ -9,7 +9,7 @@ import {
   resolveColorEnabled,
   section,
   stripAnsi,
-} from "./styles/index.js";
+} from "./styles/tokens.js";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";
 
 export interface FleetCliOptions {

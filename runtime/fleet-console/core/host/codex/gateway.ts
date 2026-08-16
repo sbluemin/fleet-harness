@@ -15,7 +15,7 @@ import type { ListenerIdentity } from "../auth.js";
 import type { AllowedAccessSets } from "./contracts.js";
 import { WorkspaceRegistry } from "./workspaces.js";
 import type { WorkspaceRegistration } from "./workspaces.js";
-import { withSecurityHeaders } from "../security-headers.js";
+import { withSecurityHeaders } from "../http-infra.js";
 
 interface CodexGatewayDeps {
   readonly cwd: string;

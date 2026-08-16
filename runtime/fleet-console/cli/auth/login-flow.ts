@@ -1,4 +1,5 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
+import type { AuthService } from "@dotobokuri/core-infra";
 import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
@@ -7,7 +8,16 @@ import {
   type AuthKeyValidationResult,
 } from "@dotobokuri/fleet-admiral";
 
-import type { AuthCliId, AuthCommandDeps, AuthCommandIo } from "./types.js";
+export interface AuthCommandDeps {
+  readonly authService: AuthService;
+}
+
+export interface AuthCommandIo {
+  readonly stdout: Pick<NodeJS.WriteStream, "write">;
+  readonly stderr: Pick<NodeJS.WriteStream, "write">;
+}
+
+export type AuthCliId = "kimi" | "opencode";
 
 interface AuthCliDefinition {
   readonly label: string;
