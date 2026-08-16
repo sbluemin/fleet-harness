@@ -249,6 +249,8 @@ class AgentChatSession {
   private reportedSessionId: string | null = null;
   /** 날고 있는 좌표 심기. 리더가 메시지마다 이 자리를 지나므로 겹치지 않게 붙든다. */
   private syncFlight: Promise<void> | null = null;
+  /** 그 비행 중에 들어온 요청이 있었다. 착지 후 좌표가 아직 남아 있으면 한 번 더 간다. */
+  private syncDirty = false;
   private journal: AgentChatJournalEvent[] = [];
   private seq = 0;
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
@@ -1145,6 +1147,13 @@ class AgentChatSession {
         this.closeTurn({ stopped: true });
         return;
       }
+      // 세션을 얻은 뒤 이 자리에 닿기까지 자식이 죽었을 수 있다(startup 실패는 리더를 곧바로
+      // 끝낸다). 폐기된 세션의 `send()`는 조용히 버려지므로 기다릴 결말도 생기지 않는다 —
+      // 그 자리에 대기를 걸면 이 세션의 큐 전체가 영영 풀리지 않는다.
+      if (this.session !== session) {
+        this.closeTurn({ ok: false });
+        return;
+      }
       const settled = new Promise<void>((resolve) => {
         this.awaitingTurn = resolve;
       });
@@ -1179,11 +1188,21 @@ class AgentChatSession {
    * 그 사이 도착한 메시지들이 같은 좌표를 겹쳐 심어 Operation write-back이 여러 번 인다.
    */
   private syncProviderSessionOnce(): void {
-    if (this.syncFlight) return;
+    // 날고 있는 동안 들어온 요청은 버리지 않고 기억한다. 첫 조회가 파일을 못 찾는 것은 정상
+    // 경로이고(자식이 아직 트랜스크립트를 만들지 않았다), 그 재시도를 삼키면 마지막 프레임에서
+    // 요청된 좌표가 영영 심기지 않는다.
+    if (this.syncFlight) {
+      this.syncDirty = true;
+      return;
+    }
+    this.syncDirty = false;
     this.syncFlight = this.syncProviderSession()
       .catch(() => undefined)
       .finally(() => {
         this.syncFlight = null;
+        // 아직 심지 못한 좌표가 남아 있을 때만 한 번 더 간다 — 심었다면 다시 갈 이유가 없다.
+        if (this.disposed || !this.syncDirty) return;
+        if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
       });
   }
 

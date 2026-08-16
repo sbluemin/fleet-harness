@@ -610,6 +610,45 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // 좌표 조회는 파일을 읽으므로 한 턴의 프레임 여러 개가 같은 비행에 겹친다. 그 사이에 세션
+  // id가 바뀌면(자식이 이어붙이며 새 id를 낳는다) 삼켜진 요청이 나르던 것이 바로 최신 좌표다 —
+  // 그 프레임이 마지막이면 Operation은 옛 좌표를 durable 권위로 들고 남는다.
+  it("retries the coordinate lookup that arrived while the first one was in flight", async () => {
+    const home = tempDir("chat-home-");
+    const updates: Array<{ readonly sessionId: string }> = [];
+    const configDir = tempDir("chat-sdk-");
+    const projectDir = path.join(home, "projects", "-tmp-workspace");
+    mkdirSync(projectDir, { recursive: true });
+    for (const id of ["sid-first", "sid-latest"]) {
+      writeFileSync(path.join(projectDir, `${id}.jsonl`), JSON.stringify({ type: "user", message: { role: "user", content: "hi" } }));
+    }
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => fakeSession([
+        {
+          messages: [
+            // 첫 조회가 여기서 뜬다.
+            { type: "system", subtype: "init", session_id: "sid-first" },
+            // 그 비행 중에 새 id가 도착한다. 삼켜지면 이 좌표는 다시 요청되지 않는다.
+            { type: "result", subtype: "success", is_error: false, duration_ms: 3, session_id: "sid-latest" },
+          ],
+        },
+      ]),
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-sync-retry", () => freshSeedFor(home, (providerSession) => updates.push(providerSession as { sessionId: string })));
+
+    session.send("go");
+    await drainTurn(registry, "op-sync-retry");
+
+    await vi.waitFor(() => {
+      expect(updates.at(-1)?.sessionId).toBe("sid-latest");
+    });
+    await registry.disposeAll();
+  });
+
   it("skips the provider session update when no transcript carries the session id", async () => {
     const transcriptPath = writeTranscript("sid-6", [
       { type: "user", message: { role: "user", content: "first order" } },
@@ -932,6 +971,46 @@ describe("AgentChatRegistry — background jobs on a live session", () => {
     await registry.disposeAll();
 
     expect(events.map((entry) => entry.event)).toContainEqual({ kind: "job-end", id: "sh2", status: "stopped" });
+  });
+
+  // 자식이 startup에서 죽으면 리더는 `ensureSession()`이 해소된 직후에 끝난다. 그 사이에 낀
+  // 디스패치가 폐기된 세션에 프롬프트를 보내면 그것은 조용히 버려지고, 대기를 건 큐는 오지 않을
+  // 결말을 영영 기다린다.
+  it("does not arm a waiter on a session that was retired while it was being opened", async () => {
+    const transcriptPath = writeTranscript("sid-race-retire", []);
+    const configDir = tempDir("chat-sdk-");
+    const sends: string[] = [];
+    let opened = 0;
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => {
+        const session = fakeSession(
+          opened++ === 0
+            ? []
+            : [{ messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] }],
+          { onSend: (text) => sends.push(text) },
+        );
+        // 첫 자식은 열리자마자 죽는다 — 리더는 곧바로 스트림 끝을 본다.
+        if (opened === 1) session.close();
+        return session;
+      },
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-race-retire", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-race-retire");
+    expect(events.some((entry) => entry.event.kind === "turn-end" && entry.event.ok === false)).toBe(true);
+
+    // 큐가 막히지 않았다 — 다음 메시지가 새 자식 위에서 정상으로 돈다.
+    session.send("second");
+    await drainTurn(registry, "op-race-retire");
+    expect(sends).toEqual(["second"]);
+    await registry.disposeAll();
   });
 
   it("routes a job stop to the child and refuses a coordinate it never issued", async () => {
