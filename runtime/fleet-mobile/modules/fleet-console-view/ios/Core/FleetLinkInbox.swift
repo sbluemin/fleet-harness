@@ -24,7 +24,9 @@ public enum FleetLinkInbox {
   // 접두사는 정확히 "fleet://join?code=" 이고 길이는 1..MAX.
   public static func isCandidate(_ value: String?) -> Bool {
     guard let value else { return false }
-    return value.count >= 1 && value.count <= maxInputLength && value.hasPrefix(prefix)
+    // 길이는 Kotlin String.length(UTF-16 코드 유닛) 기준.
+    let length = value.utf16.count
+    return length >= 1 && length <= maxInputLength && value.hasPrefix(prefix)
   }
 
   public static func offer(_ value: String) {
