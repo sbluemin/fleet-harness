@@ -191,6 +191,8 @@ export function AgentChatView({
   }, []);
   // 탭과 패널을 잇는 좌표. 한 화면에 채팅 패널이 여럿 열릴 수 있으므로 마운트마다 고유해야 한다.
   const tabsId = React.useId();
+  // 탭 줄과 패널의 ARIA 배선은 한 조건에서 나온다 — 갈라지면 탭 없이 tabpanel만 남는 상태가 생긴다.
+  const showTabs = state.jobs.length > 0 || view === "work";
 
   return (
     <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
@@ -213,8 +215,11 @@ export function AgentChatView({
       </div>
 
       {/* 탭은 보여 줄 것이 생겼을 때만 선다. 백그라운드 작업을 한 번도 하지 않은 세션에서
-          이 줄은 아무 목적지도 없는 크롬이므로, 잡이 하나라도 등록된 뒤에 나타난다. */}
-      {state.jobs.length > 0 ? (
+          이 줄은 아무 목적지도 없는 크롬이므로, 잡이 하나라도 등록된 뒤에 나타난다.
+          다만 Work 탭에 서 있는 동안에는 원장이 비어도 줄을 거두지 않는다 — 재접속이 리듀서를
+          되감고 저널에 잡 이벤트가 남아 있지 않으면(세션 재시작·저널 상한 초과) 탭이 사라지면서
+          로그는 숨은 채로 남아, 대화로 돌아갈 컨트롤이 화면에서 통째로 없어진다. */}
+      {showTabs ? (
         <div className="agent-chat-tabs" role="tablist" aria-label={t("terminal.chat.tabsAria")}>
           <button
             type="button"
@@ -263,7 +268,7 @@ export function AgentChatView({
         className={`agent-chat-log${view === "chat" && openJobs.length > 0 ? " has-strip" : ""}`}
         ref={logRef}
         onScroll={handleScroll}
-        {...(state.jobs.length > 0 ? { role: "tabpanel", id: `${tabsId}-chat`, "aria-labelledby": `${tabsId}-chat-tab` } : {})}
+        {...(showTabs ? { role: "tabpanel", id: `${tabsId}-chat`, "aria-labelledby": `${tabsId}-chat-tab` } : {})}
         {...(view === "work" ? { hidden: true } : {})}
         {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
       >
@@ -547,17 +552,21 @@ function Ledger({
   readonly pending?: boolean;
 }) {
   const t = getT(language);
-  // 잡을 낳은 스텝은 집계에 넘기지 않는다 — "위임 1건"으로 접히면 그 잡으로 가는 문이 사라진다.
-  const jobItems = items.filter((item) => item.id !== undefined && jobsByToolUse.has(item.id));
-  const rest = items.filter((item) => !(item.id !== undefined && jobsByToolUse.has(item.id)));
-  const segments = segmentAgentChatLedger(rest, working ? LIVE_STEP_WINDOW : 0);
-  if (segments.length === 0 && jobItems.length === 0 && !pending) return null;
+  // 잡을 낳은 스텝은 접지 않는다 — "위임 1건"으로 접히면 그 잡으로 가는 문이 사라진다. 다만
+  // 구간에서 꺼내지도 않는다: 원장의 구간을 가르는 것은 모델의 문장이고, 꺼내면 그 잡을 부른
+  // 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다. 실패·Theater 밖 스텝과 같은
+  // "줄을 지키는 예외"로 세그먼터에 넘긴다.
+  const pinned = React.useCallback(
+    (item: AgentChatTurnItem) => item.id !== undefined && jobsByToolUse.has(item.id),
+    [jobsByToolUse],
+  );
+  const segments = segmentAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0, pinned);
+  if (segments.length === 0 && !pending) return null;
   const step = (item: AgentChatTurnItem, key: string): React.ReactNode => (
     <Step key={key} item={item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
   );
   return (
     <div className="agent-chat-ledger">
-      {jobItems.map((item, at) => step(item, `job-${at}`))}
       {segments.map((segment, index) => (
         <div className="agent-chat-segment" key={index}>
           {segment.note !== undefined ? <div className="agent-chat-ledger-note">{segment.note}</div> : null}

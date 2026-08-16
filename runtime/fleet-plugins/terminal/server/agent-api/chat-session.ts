@@ -473,7 +473,15 @@ class AgentChatSession {
       this.push({ kind: "turn-end", ok: false });
       return;
     }
-    let sawResult = false;
+    // 하나의 startTurn이 result를 여러 번 낸다. 백그라운드 작업이 끝나면 SDK가 새 system/init과
+    // 함께 모델을 다시 깨우고, 그 응답이 두 번째 result로 닫힌다(2026-08-16 실측). 닫힌 턴에
+    // 그 응답을 이어 붙이면 앞 턴의 Answer가 갈아치워지므로, 내용이 다시 흐르기 시작하면
+    // 디스패치 없는 새 턴을 연다.
+    //
+    // 그래서 이 축은 "result를 본 적 있는가"가 아니라 "지금 열려 있는 턴이 닫혔는가"다. 전자로
+    // 정리 경로를 판단하면, 후속 턴이 열린 뒤 스트림이 두 번째 result 없이 끝나거나 던질 때
+    // 아무도 그 턴을 닫지 않아 원장에 영원히 도는 스피너가 남는다.
+    let turnClosed = false;
     try {
       const sdk = await this.ensureSdk();
       const run = await sdk.startTurn({
@@ -491,11 +499,6 @@ class AgentChatSession {
         // 스트리밍 감각의 근거 — 글자 단위 text_delta를 받으려면 부분 메시지가 필요하다.
         includePartialMessages: true,
       });
-      // 하나의 startTurn이 result를 여러 번 낸다. 백그라운드 작업이 끝나면 SDK가 새 system/init과
-      // 함께 모델을 다시 깨우고, 그 응답이 두 번째 result로 닫힌다(2026-08-16 실측). 닫힌 턴에
-      // 그 응답을 이어 붙이면 앞 턴의 Answer가 갈아치워지므로, 내용이 다시 흐르기 시작하면
-      // 디스패치 없는 새 턴을 연다.
-      let turnClosed = false;
       try {
         for await (const message of run as AsyncIterable<ClaudeGatewayMessage>) {
           if (typeof message.session_id === "string" && message.session_id.length > 0) {
@@ -503,7 +506,6 @@ class AgentChatSession {
           }
           for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
             if (event.kind === "turn-end") {
-              sawResult = true;
               turnClosed = true;
             } else if (turnClosed && opensChatTurn(event)) {
               this.push({ kind: "turn-start", at: Date.now() });
@@ -523,11 +525,11 @@ class AgentChatSession {
         // 정상 소진이면 no-op, 도중 이탈이면 슬롯 반납 — 없으면 다음 턴이 영영 막힌다.
         run.close();
       }
-      if (!sawResult) this.push({ kind: "turn-end", ok: true });
+      if (!turnClosed) this.push({ kind: "turn-end", ok: true });
       await this.writeBackTranscript();
     } catch {
       this.push({ kind: "error", code: "chat_turn_failed" });
-      if (!sawResult) this.push({ kind: "turn-end", ok: false });
+      if (!turnClosed) this.push({ kind: "turn-end", ok: false });
     } finally {
       // 정상 경로에서는 이미 비어 있다(답이 풀려야 스트림이 끝난다). 중단된 턴에서만 일이 있다.
       this.abandonAsks("The turn ended before the question was answered.");

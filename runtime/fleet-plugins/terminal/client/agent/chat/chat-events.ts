@@ -784,6 +784,11 @@ export interface AgentChatLedgerSegment {
 export function segmentAgentChatLedger(
   items: readonly AgentChatTurnItem[],
   recentLimit = 0,
+  /**
+   * 접지 않고 자기 구간에 줄을 지켜야 하는 스텝. 잡을 낳은 호출이 여기 든다 — 집계로 접히면
+   * 그 잡으로 가는 문이 사라지고, 구간 밖으로 꺼내면 자기를 부른 문장보다 위에 서게 된다.
+   */
+  pinned?: (item: AgentChatTurnItem) => boolean,
 ): readonly AgentChatLedgerSegment[] {
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
@@ -799,7 +804,7 @@ export function segmentAgentChatLedger(
 
   return buckets.map((bucket, index) => {
     const open = recentLimit > 0 && index === buckets.length - 1;
-    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0);
+    return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
   });
 }
 
@@ -807,6 +812,7 @@ function foldSegment(
   note: string | undefined,
   steps: readonly AgentChatTurnItem[],
   recentLimit: number,
+  pinned?: (item: AgentChatTurnItem) => boolean,
 ): AgentChatLedgerSegment {
   // 열린 구간에서는 뒤에서부터 세어 순서대로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
   const keepInline = new Set<number>();
@@ -816,6 +822,9 @@ function foldSegment(
     if (!step) continue;
     if (step.type === "ask") continue;
     if (step.state === "running" || step.state === "fail" || step.outside === true) continue;
+    // 이미 줄을 지키는 스텝은 최근 창의 자리를 쓰지 않는다 — 쓰면 접히지 않을 것 하나가
+    // 접히지 않을 것 하나를 더 밀어낸다.
+    if (pinned?.(step) === true) continue;
     keepInline.add(index);
     keep -= 1;
   }
@@ -833,7 +842,7 @@ function foldSegment(
     // 과거형 집계는 결과가 ok로 돌아온 스텝만 센다. 결과 없이 닫힌 스텝(`done`)을 "씀"으로
     // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
     // 두 표면이 서로 다른 사실을 말하게 된다. 확인되지 않은 것은 예외로 줄을 지킨다.
-    if (step.state !== "ok" || step.outside === true || keepInline.has(at)) { inline.push(step); return; }
+    if (step.state !== "ok" || step.outside === true || keepInline.has(at) || pinned?.(step) === true) { inline.push(step); return; }
     folded.push(step);
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;

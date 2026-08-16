@@ -497,3 +497,46 @@ describe("background job ledger", () => {
     expect(splitAgentChatTurn(state.turns[1] as AgentChatLogState["turns"][number]).answer).toBe("the workflow finished");
   });
 });
+
+describe("ledger segmentation — pinned steps", () => {
+  const items: readonly AgentChatTurnItem[] = [
+    { type: "text", text: "First I will look around." },
+    { type: "tool", name: "Read", detail: "a.ts", id: "t1", state: "ok" },
+    { type: "text", text: "Now I will delegate the audit." },
+    { type: "tool", name: "Read", detail: "b.ts", id: "t2", state: "ok" },
+    { type: "tool", name: "Workflow", detail: "audit", id: "job-call", state: "ok" },
+    { type: "tool", name: "Read", detail: "c.ts", id: "t3", state: "ok" },
+  ];
+  const pinned = (item: AgentChatTurnItem): boolean => item.id === "job-call";
+
+  it("keeps a pinned step in the segment its note opened", () => {
+    const segments = segmentAgentChatLedger(items, 0, pinned);
+    expect(segments).toHaveLength(2);
+    expect(segments[0]?.note).toBe("First I will look around.");
+    expect(segments[0]?.inline).toEqual([]);
+    // 잡을 낳은 호출은 그것을 부른 문장의 구간에 남는다 — 앞 문장 위로 올라가지 않는다.
+    expect(segments[1]?.note).toBe("Now I will delegate the audit.");
+    expect(segments[1]?.inline.map((item) => item.id)).toEqual(["job-call"]);
+  });
+
+  it("never folds a pinned step into the tally", () => {
+    const segments = segmentAgentChatLedger(items, 0, pinned);
+    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "t3"]);
+    expect(segments[1]?.groups).toEqual([{ family: "read", count: 2 }]);
+  });
+
+  it("folds the same step when nothing pins it", () => {
+    const segments = segmentAgentChatLedger(items, 0);
+    expect(segments[1]?.inline).toEqual([]);
+    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "job-call", "t3"]);
+  });
+
+  it("does not spend a live-window slot on a pinned step", () => {
+    // 열린 구간의 최근 창은 접힐 수 있었던 스텝을 위한 자리다. 이미 줄을 지키는 스텝이 그 자리를
+    // 쓰면 접히지 않을 것 하나가 접히지 않을 것 하나를 더 밀어낸다.
+    const segments = segmentAgentChatLedger(items, 1, pinned);
+    const last = segments[1];
+    expect(last?.inline.map((item) => item.id)).toEqual(["job-call", "t3"]);
+    expect(last?.folded.map((item) => item.id)).toEqual(["t2"]);
+  });
+});

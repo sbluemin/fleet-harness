@@ -335,7 +335,7 @@ export function chatEventsFromSdkMessage(message: {
   if (message.type === "system") {
     switch (message.subtype) {
       case "task_started":
-        return jobStartedEvent(message);
+        return jobStartedEvent(message, options);
       case "task_progress":
         return jobProgressEvent(message, options);
       case "task_updated":
@@ -407,18 +407,23 @@ function safeJobText(raw: string, options: ChatEventMapOptions, max: number): st
   return capTo(maskSecrets(abbreviateAbsolutePaths(flat)), max);
 }
 
-function jobStartedEvent(message: Readonly<Record<string, unknown>>): readonly AgentChatStreamEvent[] {
+function jobStartedEvent(message: Readonly<Record<string, unknown>>, options: ChatEventMapOptions): readonly AgentChatStreamEvent[] {
   const id = readString(message.task_id);
   if (id === undefined) return [];
   // 서브에이전트는 유형이, 워크플로는 이름이 "누구의 작업인가"를 말한다. 셸에는 둘 다 없다.
+  // 워크플로 이름은 모델이 쓴 스크립트의 meta.name이므로 자유 텍스트와 같은 문을 지나야 한다.
   const who = readString(message.subagent_type) ?? readString(message.workflow_name);
+  // 제목은 도구 입력의 description — 모델이 쓴 자유 텍스트다. 절대 경로나 자격증명 모양이
+  // 들어올 수 있고, 이 값은 저널에 실려 스트립·카드·상세 세 곳에 그대로 그려진다. 다른 잡
+  // 텍스트와 같은 문(경로 정규화·축약·마스킹)을 지나지 않으면 이 표면이 유출 경로가 된다.
+  const description = readString(message.description);
   return [{
     kind: "job",
     id,
     jobKind: readJobKind(message.task_type),
-    title: capTo(String(readString(message.description) ?? id).replace(/\s+/g, " ").trim(), MAX_JOB_TITLE_CHARS),
+    title: description === undefined ? id : safeJobText(description, options, MAX_JOB_TITLE_CHARS),
     ...(readString(message.tool_use_id) !== undefined ? { toolUseId: readString(message.tool_use_id) as string } : {}),
-    ...(who !== undefined ? { who: capTo(who, MAX_JOB_TITLE_CHARS) } : {}),
+    ...(who !== undefined ? { who: safeJobText(who, options, MAX_JOB_TITLE_CHARS) } : {}),
     at: Date.now(),
   }];
 }
@@ -513,11 +518,13 @@ function readWorkflowStages(value: unknown, options: ChatEventMapOptions): reado
     const row = entry as Record<string, unknown>;
     if (row.type === "workflow_phase") {
       const title = readString(row.title);
-      if (title !== undefined) ensure(capTo(title, MAX_JOB_AGENT_LABEL_CHARS));
+      // 단계 제목도 모델이 쓴 스크립트의 meta.phases[].title이다 — 제목과 같은 문을 지난다.
+      if (title !== undefined) ensure(safeJobText(title, options, MAX_JOB_AGENT_LABEL_CHARS));
       continue;
     }
     if (row.type !== "workflow_agent") continue;
-    const title = capTo(readString(row.phaseTitle) ?? "", MAX_JOB_AGENT_LABEL_CHARS);
+    const phaseTitle = readString(row.phaseTitle);
+    const title = phaseTitle === undefined ? "" : safeJobText(phaseTitle, options, MAX_JOB_AGENT_LABEL_CHARS);
     const bucket = ensure(title);
     if (bucket.length >= MAX_JOB_AGENTS_PER_STAGE) continue;
     const label = readString(row.label);

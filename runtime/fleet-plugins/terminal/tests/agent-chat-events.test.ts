@@ -481,3 +481,44 @@ describe("background job mapping", () => {
     }
   });
 });
+
+describe("background job text passes the same gate as tool results", () => {
+  it("normalizes and masks the task title, not just its length", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b1", task_type: "local_bash",
+      description: "Deploy from /Users/someone/secret/keys with token sk-abcdefghijklmnopqrst",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({
+      kind: "job",
+      title: "Deploy from …/secret/keys with token sk-…",
+    }));
+  });
+
+  it("relativizes a title that points inside the Operation folder", () => {
+    const [event] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b2", task_type: "local_bash",
+      description: "Run tests under /repo/packages/core",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(event).toEqual(expect.objectContaining({ title: "Run tests under ./packages/core" }));
+  });
+
+  it("passes the workflow name and its phase titles through the same gate", () => {
+    const [started] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "w1", task_type: "local_workflow",
+      description: "audit", workflow_name: "audit /Users/someone/secret/plan",
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(started).toEqual(expect.objectContaining({ who: "audit …/secret/plan" }));
+
+    const [progress] = chatEventsFromSdkMessage({
+      type: "system", subtype: "task_progress", task_id: "w1",
+      workflow_progress: [{ type: "workflow_phase", index: 1, title: "scan /Users/someone/secret" }],
+    }, { cwd: "/repo" }) as readonly AgentChatStreamEvent[];
+    expect(progress).toEqual({ kind: "job-progress", id: "w1", stages: [{ title: "scan …/someone/secret", agents: [] }] });
+  });
+
+  it("falls back to the task id when no description arrives", () => {
+    expect(chatEventsFromSdkMessage({
+      type: "system", subtype: "task_started", task_id: "b3", task_type: "local_bash",
+    })).toEqual([expect.objectContaining({ kind: "job", id: "b3", title: "b3" })]);
+  });
+});
