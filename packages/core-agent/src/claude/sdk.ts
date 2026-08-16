@@ -77,7 +77,11 @@ export async function createClaudeGatewaySdk(
 
       await configDir.writeModelCache({ baseUrl, models: catalogModels, fetchedAt: Date.now() });
 
-      const env = claudeGatewayLaunchEnv(inherited, { baseUrl, configDir: configDir.path });
+      const env = claudeGatewayLaunchEnv(inherited, {
+        baseUrl,
+        configDir: configDir.path,
+        homeKind: options.home?.kind === "shared" ? "shared" : "isolated",
+      });
       const run = runVendorQuery({
         prompt: turn.prompt,
         options: {

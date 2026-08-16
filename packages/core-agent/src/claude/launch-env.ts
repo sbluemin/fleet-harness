@@ -15,15 +15,24 @@ export const CLAUDE_GATEWAY_MODEL_CACHE_RELPATH = "cache/gateway-models.json";
 export interface ClaudeGatewayLaunchEnvOptions {
   readonly baseUrl: string;
   /**
-   * 격리 `CLAUDE_CONFIG_DIR`.
+   * 자식이 쓸 `CLAUDE_CONFIG_DIR`.
    *
-   * 이것만 옮기면 로그인이 끊긴다. Claude Code는 keychain service 이름을 config dir의
-   * sha256 앞 8자로 파생시키므로, 옮긴 config dir은 존재하지 않는 keychain 항목을 찾는다.
+   * 격리 홈에서는 이것만 옮기면 로그인이 끊긴다. Claude Code는 keychain service 이름을 config
+   * dir의 sha256 앞 8자로 파생시키므로, 옮긴 config dir은 존재하지 않는 keychain 항목을 찾는다.
    * `CLAUDE_SECURESTORAGE_CONFIG_DIR`을 빈 문자열로 두면 그 접미사가 사라져 기본
    * `Claude Code-credentials` 항목을 그대로 쓴다. 두 변수는 하나의 메커니즘이다 — 한쪽만 세우면
    * 자식이 `Not logged in`으로 죽는다.
    */
   readonly configDir: string;
+  /**
+   * 그 홈이 이 인스턴스가 만든 것인지, 호스트가 이미 쓰고 있던 것인지.
+   *
+   * 위의 보정은 **격리 홈에서만** 옳다. 공유 홈은 사용자가 이미 로그인해 둔 그 홈이고, 그
+   * 홈이 기본값이 아니면 keychain 접미사도 그 경로에서 파생된 값이다 — 거기서 접미사를 지우면
+   * 자식만 기본 항목을 찾아, 터미널로는 열리는 세션이 Chat Mode에서만 `Not logged in`이 된다.
+   * 그래서 공유 홈에서는 이 변수를 건드리지 않고 상속된 값을 그대로 물려준다.
+   */
+  readonly homeKind?: "isolated" | "shared";
 }
 
 /**
@@ -43,7 +52,9 @@ export function claudeGatewayLaunchEnv(
   // Claude Code가 이 뒤에 /v1/messages를 붙인다.
   env.ANTHROPIC_BASE_URL = options.baseUrl;
   env.CLAUDE_CONFIG_DIR = options.configDir;
-  env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "";
+  // 공유 홈에서는 상속된 선택을 그대로 둔다 — 지우면 터미널이 쓰는 keychain 항목 대신 기본
+  // 항목을 찾게 되고, 같은 세션이 표면에 따라 로그인 여부가 갈린다.
+  if (options.homeKind !== "shared") env.CLAUDE_SECURESTORAGE_CONFIG_DIR = "";
   // 이게 있어야 게이트웨이 별칭 모델이 유효한 것으로 인정된다.
   env.CLAUDE_CODE_ENABLE_GATEWAY_MODEL_DISCOVERY = "1";
   // Gateway가 tool_reference 계약을 보존한다.
