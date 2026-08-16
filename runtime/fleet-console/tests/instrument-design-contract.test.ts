@@ -1590,6 +1590,17 @@ describe("Instrument core design contract", () => {
     const chatReplyHoverBlock = chat.match(/^\.agent-chat-reply:hover,\n\.agent-chat-reply:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(chatReplyHoverBlock).toContain("border-color: var(--brass);");
     expect(chatReplyHoverBlock).toContain("outline: none;");
+    // Follow 칩은 "바닥을 놓쳤다"는 상태라 쉬는 면에 aurora를 진다. brass는 hover/focus만.
+    const chatFollowBlock = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFollowBlock).toContain("background: var(--surface-panel-raised);");
+    expect(chatFollowBlock).toContain("color: var(--aurora-ink);");
+    expect(chatFollowBlock).toContain("left: 50%");
+    for (const signal of ["--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatFollowBlock).not.toContain(signal);
+    }
+    const chatFollowHoverBlock = chat.match(/^\.agent-chat-follow:hover,\n\.agent-chat-follow:focus-visible \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFollowHoverBlock).toContain("border-color: var(--brass);");
+    expect(chatFollowHoverBlock).toContain("outline: none;");
     // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
     // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
     // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 회신 버튼 40px)을 넘어서는지 함께 고정한다.
@@ -2424,7 +2435,8 @@ describe("War Room deck panel grammar", () => {
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-view-chip-row");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-mode-chip");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open \{[^}]*\}/)?.[0] ?? "";
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
     // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.

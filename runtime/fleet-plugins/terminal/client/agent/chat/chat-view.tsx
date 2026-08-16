@@ -49,10 +49,13 @@ export function AgentChatView({
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
   const [terminalPending, setTerminalPending] = React.useState(false);
   const [terminalError, setTerminalError] = React.useState(false);
+  // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
+  // 그려져야 하므로 state 로도 둔다.
+  const [following, setFollowing] = React.useState(true);
   const logRef = React.useRef<HTMLDivElement>(null);
-  // 스크롤 팔로우는 터미널과 같은 문법이다(terminal-scroll-follow): 바닥을 따라가는 중인지, 아니면
-  // 사용자가 세워 둔 위치가 있는지. 후자는 "바닥까지의 거리"로 기억해야 패널 크기가 변해도 같은
-  // 내용이 보인다 — 절대 scrollTop 은 높이가 바뀌는 순간 다른 곳을 가리킨다.
+  // 팔로우는 두 축이다. 바닥을 따라가는 중이면 스트림이 자랄 때마다 바닥으로 간다. 자리를
+  // 세우면 그 자리의 scrollTop 을 지킨다 — 예전에 쓰던 "바닥까지의 거리"는 패널 리사이즈에만
+  // 쓴다. 스트림 성장에 거리를 고정하면 읽던 줄이 밑으로 끌려간다.
   const nearBottomRef = React.useRef(true);
   const bottomDistanceRef = React.useRef<number | null>(null);
   // 프로그램적 복원이 낳은 scroll 이벤트는 사용자 의도가 아니다. 이것을 걸러내지 않으면 복원 자체가
@@ -76,14 +79,9 @@ export function AgentChatView({
     (count, turn) => count + turn.items.length + (turn.dispatch ? 1 : 0) + turn.draft.length,
     0,
   );
-  // 지금 팔로우 중이면 바닥으로, 아니면 기억해 둔 바닥 거리로 되돌린다.
-  const restoreAnchor = React.useCallback(() => {
+  const applyScrollTop = React.useCallback((next: number) => {
     const log = logRef.current;
-    if (!log) return;
-    const next = nearBottomRef.current
-      ? log.scrollHeight
-      : Math.max(0, log.scrollHeight - log.clientHeight - (bottomDistanceRef.current ?? 0));
-    if (log.scrollTop === next) return;
+    if (!log || log.scrollTop === next) return;
     suppressScrollRef.current += 1;
     log.scrollTop = next;
     requestAnimationFrame(() => {
@@ -91,9 +89,28 @@ export function AgentChatView({
     });
   }, []);
 
+  const restoreFollow = React.useCallback(() => {
+    const log = logRef.current;
+    if (!log || !nearBottomRef.current) return;
+    applyScrollTop(log.scrollHeight);
+  }, [applyScrollTop]);
+
+  const restorePlace = React.useCallback(() => {
+    const log = logRef.current;
+    if (!log || nearBottomRef.current) return;
+    applyScrollTop(Math.max(0, log.scrollHeight - log.clientHeight - (bottomDistanceRef.current ?? 0)));
+  }, [applyScrollTop]);
+
+  // 패널 리사이즈 전용 — 팔로우면 바닥, 언핀이면 기억해 둔 바닥 거리.
+  const restoreAnchor = React.useCallback(() => {
+    if (nearBottomRef.current) restoreFollow();
+    else restorePlace();
+  }, [restoreFollow, restorePlace]);
+
+  // 스트림 성장은 팔로우일 때만 바닥으로 간다. 언핀이면 scrollTop 을 그대로 둔다.
   React.useLayoutEffect(() => {
-    restoreAnchor();
-  }, [restoreAnchor, scrollSignal, working, state.turns.length]);
+    restoreFollow();
+  }, [restoreFollow, scrollSignal, working, state.turns.length]);
 
   // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
   // 바뀐 높이 위에서 예전 scrollTop 을 그대로 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우처럼
@@ -113,9 +130,19 @@ export function AgentChatView({
     // 크기를 잃은 순간(패널이 접혔거나 아직 배치 전)의 값으로는 의도를 읽을 수 없다.
     if (log.clientHeight === 0) return;
     const distance = log.scrollHeight - log.scrollTop - log.clientHeight;
-    nearBottomRef.current = distance < 80;
-    bottomDistanceRef.current = nearBottomRef.current ? null : distance;
+    const atBottom = distance < 80;
+    nearBottomRef.current = atBottom;
+    bottomDistanceRef.current = atBottom ? null : distance;
+    setFollowing(atBottom);
   }, []);
+
+  const handleFollow = React.useCallback(() => {
+    nearBottomRef.current = true;
+    bottomDistanceRef.current = null;
+    setFollowing(true);
+    const log = logRef.current;
+    if (log) applyScrollTop(log.scrollHeight);
+  }, [applyScrollTop]);
 
 
   const timeFormat = React.useMemo(
@@ -183,6 +210,19 @@ export function AgentChatView({
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.openTerminalFailed")}</div>
           : null}
       </div>
+
+      {/* 자리를 세운 동안만 로그 하단 중앙에 선다. 라벨은 Follow — Analyst FOLLOW UP 과
+          다른 물건이고, 안 읽은 수는 Wave 2. 회신 말풍선은 우하단을 지킨다. */}
+      {!following ? (
+        <button
+          type="button"
+          className="agent-chat-follow"
+          aria-label={t("terminal.chat.followAria")}
+          onClick={handleFollow}
+        >
+          {t("terminal.chat.follow")}
+        </button>
+      ) : null}
 
       {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
           호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
