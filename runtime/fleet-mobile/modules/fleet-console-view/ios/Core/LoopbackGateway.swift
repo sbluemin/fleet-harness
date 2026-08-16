@@ -14,6 +14,9 @@ public final class LoopbackGateway {
   public static let cookieName = "fleet_mobile_gateway"
   public static let maxConnections = 16
   public static let socketTimeoutMs = 30_000
+  /// 루프백 bind가 .ready까지 갈 시간. 로컬 소켓이라 정상이면 밀리초 단위로 끝나므로,
+  /// 이 시간을 넘겼다는 것은 포트를 뺏겼거나 Network.framework이 응답하지 않는다는 뜻이다.
+  public static let bindTimeoutSeconds = 5
 
   private let target: PersistedTarget
   private let remote: RemoteConnection
@@ -51,9 +54,9 @@ public final class LoopbackGateway {
 
   public func start() throws {
     guard running.compareAndSet(expected: false, new: true) else { return }
-    FleetLog.stage("gateway: keychain identity")
+    FleetLog.stage("gateway: identity")
     let identity = try localTls.secIdentity()
-    FleetLog.stage("gateway: bind (host):(port)")
+    FleetLog.stage("gateway: bind \(host):\(port)")
     let tls = NWProtocolTLS.Options()
     let opts = tls.securityProtocolOptions
     sec_protocol_options_set_local_identity(opts, sec_identity_create(identity)!)
@@ -71,7 +74,47 @@ public final class LoopbackGateway {
     listener.newConnectionHandler = { [weak self] connection in
       self?.accept(connection)
     }
+
+    // Android의 bind()는 동기다 — 돌아온 시점에 소켓은 이미 듣고 있고, 실패는 곧바로 예외로
+    // 올라온다. NWListener는 비동기라 start()가 즉시 반환하므로, 여기서 .ready를 기다리지
+    // 않으면 두 가지가 조용히 깨진다: WKWebView가 아직 듣지 않는 포트로 콘솔을 로드하고,
+    // bind 실패는 아무도 모른 채 gateway-ready 로그만 찍힌다. 이 메서드는 연결 파이프라인의
+    // 워커 스레드에서만 호출되므로(FleetConsoleView.connect) 블로킹해도 UI는 멈추지 않는다.
+    let settled = DispatchSemaphore(value: 0)
+    let bindError = Atomic<String?>(nil)
+    listener.stateUpdateHandler = { state in
+      switch state {
+      case .ready:
+        settled.signal()
+      case .failed(let error):
+        _ = bindError.compareAndSet(expected: nil, new: "\(error)")
+        settled.signal()
+      case .cancelled:
+        _ = bindError.compareAndSet(expected: nil, new: "cancelled before ready")
+        settled.signal()
+      default:
+        break
+      }
+    }
     listener.start(queue: queue)
+
+    if settled.wait(timeout: .now() + .seconds(Self.bindTimeoutSeconds)) == .timedOut {
+      abortStart(listener)
+      throw ConnectionFailure("gateway_bind_timeout")
+    }
+    if let error = bindError.get() {
+      abortStart(listener)
+      FleetLog.failed("gateway-listen", error)
+      throw ConnectionFailure("gateway_bind_failed")
+    }
+  }
+
+  /// bind가 끝내 서지 못했을 때의 되감기. Android가 bind 실패에서 running을 되돌리고 예외를
+  /// 다시 던지는 것과 같은 자리다 — 여기서 되돌리지 않으면 다음 시도가 start()에서 조용히 반환한다.
+  private func abortStart(_ listener: NWListener) {
+    listener.cancel()
+    self.listener = nil
+    _ = running.compareAndSet(expected: true, new: false)
   }
 
   private func accept(_ connection: NWConnection) {

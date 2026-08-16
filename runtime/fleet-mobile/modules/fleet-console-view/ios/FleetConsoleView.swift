@@ -318,6 +318,11 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     let config = WKWebViewConfiguration()
     config.userContentController.add(self, name: Self.readinessObject)
     config.preferences.javaScriptCanOpenWindowsAutomatically = false
+    // 의도적으로 Android와 다르다. Android는 기본(영속) WebView 프로필에 DOM storage를 켜므로
+    // 콘솔의 localStorage가 재시작을 넘어 살아남는다. iOS는 시도마다 새 스토어를 쓴다 —
+    // 게이트웨이 시크릿 쿠키와 콘솔 세션 쿠키가 프로세스 밖으로 새어 나가지 않고, 커밋되지
+    // 못한 스테이징 WebView가 남긴 상태도 함께 사라진다. 대가는 콘솔의 UI 기호가 매번
+    // 초기화된다는 것이고, 그건 크리덴셜 격리와 바꿀 만하다.
     config.websiteDataStore = .nonPersistent()
     config.suppressesIncrementalRendering = false
     let prefs = WKWebpagePreferences()
@@ -347,13 +352,16 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   private func installLocalCookie(_ staged: StagedLoad, then: @escaping () -> Void) {
-    let secretCookie = HTTPCookie(properties: [
-      .name: LoopbackGateway.cookieName,
-      .value: staged.gateway.secret,
-      .domain: staged.gateway.host,
-      .path: "/",
-      .secure: "TRUE",
-    ].compactMapValues { $0 })
+    // Android(LoopbackGateway.installLocalCookie)가 CookieManager에 넘기는 것과 **같은**
+    // Set-Cookie 문자열을 파싱해 쓴다. 속성을 여기서 다시 손으로 나열하면 HttpOnly와
+    // SameSite가 빠지고(실제로 빠져 있었다) 콘솔 JS가 document.cookie로 게이트웨이 시크릿을
+    // 읽을 수 있게 된다 — Android에는 없는 구멍이다. 헤더 하나를 원천으로 두면 다시 갈라지지 않는다.
+    let secretCookie = URL(string: staged.gateway.origin).flatMap { origin in
+      HTTPCookie.cookies(
+        withResponseHeaderFields: ["Set-Cookie": staged.gateway.localCookieHeader],
+        for: origin
+      ).first
+    }
     let store = staged.view.configuration.websiteDataStore.httpCookieStore
     if let cookie = secretCookie {
       store.setCookie(cookie) { self.main { then() } }
