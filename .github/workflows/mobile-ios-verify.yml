@@ -140,6 +140,19 @@ jobs:
             echo "::error::simulator build produced no .app" >&2
             exit 1
           fi
+          # ad-hoc 서명만으로는 application-identifier가 붙지 않는다 — 그 엔타이틀먼트는
+          # 원래 프로비저닝 프로파일(기기)이나 팀 설정에서 나온다. 시뮬레이터는 프로파일을
+          # 검증하지 않으므로, 기기 빌드가 갖게 될 것과 같은 모양의 엔타이틀먼트를 주입해
+          # 앱 번들만 재서명한다. 이게 없으면 키체인이 -34018로 거부하고 페어링이 죽는다.
+          cat > "$RUNNER_TEMP/simulator.entitlements" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>application-identifier</key><string>SIMULATOR.com.dotobokuri.fleet.mobile</string>
+            <key>keychain-access-groups</key><array><string>SIMULATOR.com.dotobokuri.fleet.mobile</string></array>
+          </dict></plist>
+          PLIST
+          codesign --force --sign - --entitlements "$RUNNER_TEMP/simulator.entitlements" "$app"
           if [ ! -f "$app/main.jsbundle" ]; then
             echo "::error::the packaged app has no embedded main.jsbundle — it would need Metro to run" >&2
             exit 1
