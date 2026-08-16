@@ -154,8 +154,52 @@ export interface ClaudeGatewaySdkOptions {
    * 당긴다.
    */
   readonly models: readonly string[];
-  /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. */
+  /** 격리 config dir을 만들 부모 디렉터리. 기본값은 OS 임시 디렉터리. `home`이 공유면 무시된다. */
   readonly tempRoot?: string;
+  /**
+   * 자식이 실을 로컬 플러그인 디렉터리. 그 안의 스킬·훅·에이전트·커맨드가 함께 들어온다.
+   *
+   * 파일 경로이지만 ambient가 아니다 — 호출자가 이 목록을 직접 만들어 넘긴다. 자식이 스스로
+   * 찾아 읽는 것과 호출자가 지목한 것의 차이가 이 패키지의 경계이고, 후자는 `systemPrompt`와
+   * 같은 자격이다. 플러그인의 MCP 선언은 읽지 않는다(`skipMcpDiscovery`) — MCP 좌표는 호출자가
+   * `mcpServers`/`servedMcpServers`로 이미 소유한다.
+   */
+  readonly plugins?: readonly { readonly path: string }[];
+  /**
+   * 자식이 디스크에서 읽어도 되는 설정 층. 생략하면 아무것도 읽지 않는다.
+   *
+   * 이것과 `allowAmbientMcpServers`만이 ambient를 여는 자리다. 기본값이 "아무것도"인 이유는
+   * 소비자가 그것을 몰라서 켜지는 일이 없게 하기 위함이지, ambient가 언제나 틀려서가 아니다 —
+   * 같은 세션을 터미널 CLI로도 여는 호스트에서는 두 표면이 같은 `CLAUDE.md`와 설정을 읽어야
+   * 한 세션의 두 얼굴이 된다.
+   */
+  readonly settingSources?: readonly ("user" | "project" | "local")[];
+  /**
+   * 자식이 프로젝트 `.mcp.json`·사용자 설정·플러그인이 선언한 MCP 서버에 붙어도 되는가.
+   * 기본은 `false`이고, 그때는 호출자가 넘긴 좌표만 남는다.
+   *
+   * 여는 쪽을 골라도 이 패키지가 넘기는 내부 세션 토큰이 그 서버들로 새지는 않는다 — 헤더는
+   * 호출자가 지목한 좌표에만 실리고, 자식이 스스로 찾은 서버에는 이 패키지가 아무것도 주지 않는다.
+   */
+  readonly allowAmbientMcpServers?: boolean;
+  /**
+   * 스킬 이름별 노출 오버라이드. 이 패키지는 어떤 스킬을 끌지 알지 못한다 — 그 판단은 도메인이고,
+   * 여기는 호출자가 고른 값을 자식의 설정으로 옮기기만 한다.
+   *
+   * `settings` 전체가 아니라 이 한 갈래만 여는 이유: 전체를 열면 호출자가 쓰지 않은 지시가
+   * 설정 파일 모양으로 들어오는 통로가 다시 생긴다.
+   */
+  readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  /**
+   * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
+   *
+   * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트
+   * 위치가 반대이고, 그 반대가 호출부에서 읽혀야 한다. 공유 홈이 무엇을 호스트에게 넘기는지는
+   * `ClaudeConfigHome`에 적혀 있다.
+   */
+  readonly home?:
+    | { readonly kind: "isolated" }
+    | { readonly kind: "shared"; readonly configDir: string };
   /** 자식이 상속할 기본 환경. 기본값은 이 프로세스의 `process.env`. */
   readonly env?: Readonly<Record<string, string | undefined>>;
 }
@@ -163,11 +207,15 @@ export interface ClaudeGatewaySdkOptions {
 /**
  * 한 턴의 요청.
  *
- * 여기 없는 키는 런타임 allowlist가 spawn 전에 거부한다. `agent`, `agents`, `settingSources`,
- * `settings`, `managedSettings`, `plugins`, `skills`, `hooks`, `extraArgs`, `env`,
- * `pathToClaudeCodeExecutable`는 타입에도 런타임에도 존재하지 않는다. 이들은 전부 호출자가 쓰지
- * 않은 지시가 자식에게 들어가는 통로다 — `hooks`가 특히 그렇다. 그 출력이 `additionalContext`와
- * `appendSystemPrompt`를 싣는다. 반면 `systemPrompt`는 호출자가 직접 쓴 지시 하나이므로 열려 있다.
+ * 여기 없는 키는 런타임 allowlist가 spawn 전에 거부한다. `agent`, `agents`, `settings`,
+ * `managedSettings`, `skills`, `hooks`, `extraArgs`, `env`, `pathToClaudeCodeExecutable`는
+ * 타입에도 런타임에도 존재하지 않는다.
+ *
+ * 가르는 기준은 "지시를 싣느냐"가 아니라 **누가 그것을 골랐느냐, 그리고 언제 바뀌느냐**다.
+ * 턴마다 바뀌지 않는 실행 정책 — 어떤 플러그인을 실을지, 어떤 설정 층을 읽을지, 어느 홈을 쓸지 —
+ * 은 인스턴스가 소유하므로 `ClaudeGatewaySdkOptions`에서 호출자가 명시적으로 고른다. 위 키들은
+ * 턴 단위로 자식의 지시와 능력을 갈아 끼우는 통로여서 열지 않는다. `systemPrompt`는 호출자가
+ * 직접 쓴 지시 하나이므로 턴에서도 열려 있다.
  */
 export interface ClaudeGatewayTurn {
   readonly prompt: string;

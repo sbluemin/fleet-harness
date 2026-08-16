@@ -28,6 +28,23 @@ describe("claudeGatewayLaunchEnv", () => {
     expect(env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe("");
   });
 
+  it("touches neither home variable when the home is shared", () => {
+    // 같은 경로라도 다시 세우면 자식이 그것을 옮겨진 홈으로 읽어 keychain 접미사를 파생시킨다 —
+    // 터미널로는 열리는 세션이 이쪽에서만 로그인되지 않은 것으로 죽는다(실측).
+    const env = claudeGatewayLaunchEnv({}, { baseUrl: BASE_URL, configDir: CONFIG_DIR, homeKind: "shared" });
+    expect(env).not.toHaveProperty("CLAUDE_CONFIG_DIR");
+    expect(env).not.toHaveProperty("CLAUDE_SECURESTORAGE_CONFIG_DIR");
+  });
+
+  it("passes an inherited home through untouched when the home is shared", () => {
+    const env = claudeGatewayLaunchEnv(
+      { CLAUDE_CONFIG_DIR: "/Users/someone/.claude-work", CLAUDE_SECURESTORAGE_CONFIG_DIR: "/Users/someone/.claude-work" },
+      { baseUrl: BASE_URL, configDir: "/Users/someone/.claude-work", homeKind: "shared" },
+    );
+    expect(env.CLAUDE_CONFIG_DIR).toBe("/Users/someone/.claude-work");
+    expect(env.CLAUDE_SECURESTORAGE_CONFIG_DIR).toBe("/Users/someone/.claude-work");
+  });
+
   it("strips inherited credentials so the subscription OAuth bearer reaches the gateway", () => {
     const env = claudeGatewayLaunchEnv(
       { ANTHROPIC_API_KEY: "key", ANTHROPIC_AUTH_TOKEN: "token", PATH: "/usr/bin" },

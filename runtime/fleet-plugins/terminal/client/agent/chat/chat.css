@@ -82,13 +82,6 @@
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
 
-.agent-chat-empty {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-tertiary);
-  padding: var(--space-8) 0;
-}
-
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
 .agent-chat-dispatch {
@@ -817,6 +810,30 @@
   transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
+/* 첫 턴 전의 초대. 말풍선 왼쪽에 나란히 서서 그 문이 무엇인지 말한다 — 본문 한가운데의
+   안내와 달리, 읽은 자리에서 바로 누를 수 있다. 닫는 수단은 없다(상태가 지나가면 사라진다). */
+.agent-chat-invite {
+  position: absolute;
+  right: calc(var(--space-3) + 40px + var(--space-2));
+  bottom: calc(var(--space-3) + 10px);
+  z-index: 3;
+  margin: 0;
+  max-width: 60%;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  color: var(--brass-ink);
+  pointer-events: none;
+}
+
+/* hover 없이도 강조가 서 있어야 하므로 hover 상태의 표현을 그대로 상시로 세운다. 애니메이션은
+   두지 않는다 — 사라지지 않는 요소가 계속 움직이면 읽는 내내 시선을 빼앗는다. */
+.agent-chat-reply--inviting {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+}
+
 .agent-chat-reply svg {
   width: 24px;
   height: 24px;
@@ -1030,8 +1047,17 @@
 }
 
 .agent-chat-inter-error {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: 12px;
   color: var(--coral-ink);
+}
+
+/* 막힌 이유는 본문과 같은 무게로 흐르면 읽히지 않는다 — 글머리 표식이 그 줄을 결과로 만든다. */
+.agent-chat-inter-error-mark {
+  flex: 0 0 auto;
+  font-weight: var(--weight-medium);
 }
 
 .agent-chat-inter-actions {

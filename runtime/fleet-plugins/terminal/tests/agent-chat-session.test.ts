@@ -19,7 +19,7 @@ function tempDir(prefix: string): string {
   return dir;
 }
 
-/** 원 세션 트랜스크립트 픽스처 — projects/<인코딩 cwd>/<sid>.jsonl 모양 그대로. */
+/** 원 세션 트랜스크립트 픽스처 — <홈>/projects/<인코딩 cwd>/<sid>.jsonl 모양 그대로. */
 function writeTranscript(sessionId: string, lines: readonly unknown[]): string {
   const root = tempDir("chat-origin-");
   const projectDir = path.join(root, "projects", "-tmp-workspace");
@@ -27,6 +27,11 @@ function writeTranscript(sessionId: string, lines: readonly unknown[]): string {
   const transcriptPath = path.join(projectDir, `${sessionId}.jsonl`);
   writeFileSync(transcriptPath, lines.map((line) => JSON.stringify(line)).join("\n"));
   return transcriptPath;
+}
+
+/** 트랜스크립트가 앉은 Claude 홈. `<홈>/projects/<프로젝트>/<sid>.jsonl`을 세 번 되짚는다. */
+function homeOf(transcriptPath: string): string {
+  return path.dirname(path.dirname(path.dirname(transcriptPath)));
 }
 
 type FakeTurn = { readonly messages: readonly Record<string, unknown>[]; readonly failAfter?: number };
@@ -66,6 +71,7 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     model: "opus[1m]",
     effort: "high",
     cwd: "/tmp/workspace",
+    claudeConfigDir: homeOf(transcriptPath),
     origin: { kind: "resume", transcriptPath },
     onProviderSessionUpdate,
     reportActivity: () => true,
@@ -74,14 +80,15 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
   };
 }
 
-/** 채팅으로 태어난 세션의 시드 — 이어붙일 트랜스크립트가 없고 되쓸 뿌리만 안다. */
-function freshSeedFor(transcriptRoot: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
+/** 채팅으로 태어난 세션의 시드 — 이어붙일 트랜스크립트가 없고 홈만 안다. */
+function freshSeedFor(claudeConfigDir: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
   return {
     baseUrl: "http://127.0.0.1:9/gateway",
     model: "opus[1m]",
     effort: "high",
     cwd: "/tmp/workspace",
-    origin: { kind: "fresh", transcriptRoot },
+    claudeConfigDir,
+    origin: { kind: "fresh" },
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
@@ -101,12 +108,12 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate and replays nothing", async () => {
-    const root = path.join(tempDir("chat-root-"), "projects");
+    const home = tempDir("chat-home-");
     const { factory, startTurn } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-1", () => freshSeedFor(root));
+    const session = await registry.ensure("op-1", () => freshSeedFor(home));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
     // 되돌려줄 과거가 없다는 것은 "읽지 못했다"와 다르다 — replay 이벤트도 오류도 내지 않는다.
@@ -121,13 +128,13 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await registry.disposeAll();
   });
 
-  it("writes the sdk-born transcript back under the real projects root and publishes the session", async () => {
-    const root = path.join(tempDir("chat-root-"), "projects");
+  it("publishes the coordinate of the transcript the sdk grew in the shared home", async () => {
+    const home = tempDir("chat-home-");
     const updates: unknown[] = [];
-    const { factory, configDir } = createFakeSdkFactory([]);
-    // SDK가 첫 턴에 세션 id를 알려주고 자기 격리 dir 안에 트랜스크립트를 만든다.
+    const { configDir } = createFakeSdkFactory([]);
+    // 실제 SDK처럼 공유 홈 안에 트랜스크립트를 만든다 — 옮겨 올 사본이 없고, 좌표만 확정된다.
     const startTurn = vi.fn(async () => {
-      const projectDir = path.join(configDir, "projects", "-tmp-workspace");
+      const projectDir = path.join(home, "projects", "-tmp-workspace");
       mkdirSync(projectDir, { recursive: true });
       writeFileSync(path.join(projectDir, "born-1.jsonl"), JSON.stringify({ type: "user", message: { role: "user", content: "hello" } }));
       const messages = [
@@ -149,18 +156,125 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     });
     const bornFactory = (vi.fn(async () => ({ configDir, startTurn, dispose: async () => {} })) as never);
     const registry = new AgentChatRegistry(bornFactory);
-    const session = await registry.ensure("op-1", () => freshSeedFor(root, (providerSession) => updates.push(providerSession)));
+    const session = await registry.ensure("op-1", () => freshSeedFor(home, (providerSession) => updates.push(providerSession)));
     session.send("hello");
     await drainTurn(registry, "op-1");
 
-    // cwd 인코딩을 재구현하지 않는다 — SDK가 만든 디렉터리 이름을 그대로 뿌리 아래로 옮긴다.
-    expect(readFileSync(path.join(root, "-tmp-workspace", "born-1.jsonl"), "utf8")).toContain("hello");
+    // cwd 인코딩을 재구현하지 않는다 — 세션 id로 홈 안을 훑어 우리 파일을 찾는다.
     expect(updates).toEqual([expect.objectContaining({
       provider: "claude",
       sessionId: "born-1",
-      transcriptPath: path.join(root, "-tmp-workspace", "born-1.jsonl"),
+      transcriptPath: path.join(home, "projects", "-tmp-workspace", "born-1.jsonl"),
       source: "chat-mode",
     })]);
+    await registry.disposeAll();
+  });
+
+  it("hands the sdk the shared home so the transcript grows where the terminal reads it", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-home", () => freshSeedFor(home));
+    session.send("go");
+    await drainTurn(registry, "op-home");
+
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+      home: { kind: "shared", configDir: home },
+    }));
+    await registry.disposeAll();
+  });
+
+  // 스킬·게이트웨이 정체성·정책 훅은 플러그인 한 벌로 실린다. 설정 층까지 같아야 같은 세션을
+  // 터미널로 열었을 때와 능력이 갈리지 않는다.
+  it("loads the Fleet plugin and reads the same setting layers the terminal reads", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-plugin", () => ({
+      ...freshSeedFor(home),
+      resolveFleetPluginRoots: async () => ["/fleet/marketplace/plugins/fleet-gateway"],
+    }));
+    session.send("go");
+    await drainTurn(registry, "op-plugin");
+
+    expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+      plugins: [{ path: "/fleet/marketplace/plugins/fleet-gateway" }],
+      settingSources: ["user", "project", "local"],
+      allowAmbientMcpServers: true,
+    }));
+    await registry.disposeAll();
+  });
+
+  // doctrine 주입은 모델에게 물어서 확인할 수 없다 — 같은 지시를 `--append-system-prompt`로
+  // 받는 터미널 세션조차 "그런 문자열은 없다"고 답한다(2026-08-16 실측, cursor-auto). 그래서
+  // 전달 자체를 여기서 고정한다.
+  it("passes the Admiral doctrine through to the turn", async () => {
+    const home = tempDir("chat-home-");
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-doctrine", () => ({
+      ...freshSeedFor(home),
+      systemPrompt: { mode: "append", text: "## Mission Anchor Standing Order" },
+    }));
+    session.send("go");
+    await drainTurn(registry, "op-doctrine");
+
+    expect(startTurn).toHaveBeenCalledWith(expect.objectContaining({
+      systemPrompt: { mode: "append", text: "## Mission Anchor Standing Order" },
+    }));
+    await registry.disposeAll();
+  });
+
+  // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면
+  // 자식의 훅이 남의 세션 축에 턴을 보고한다.
+  it("keeps the inherited terminal session id out of the sdk child", async () => {
+    const home = tempDir("chat-home-");
+    const previous = process.env.FLEET_CONSOLE_SESSION_ID;
+    process.env.FLEET_CONSOLE_SESSION_ID = "someone-elses-session";
+    try {
+      const { factory } = createFakeSdkFactory([
+        { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+      ]);
+      const registry = new AgentChatRegistry(factory);
+      const session = await registry.ensure("op-env", () => freshSeedFor(home));
+      session.send("go");
+      await drainTurn(registry, "op-env");
+
+      expect(factory).toHaveBeenCalledWith(expect.objectContaining({
+        env: expect.not.objectContaining({ FLEET_CONSOLE_SESSION_ID: expect.anything() }),
+      }));
+      await registry.disposeAll();
+    } finally {
+      if (previous === undefined) delete process.env.FLEET_CONSOLE_SESSION_ID;
+      else process.env.FLEET_CONSOLE_SESSION_ID = previous;
+    }
+  });
+
+  // 플러그인을 못 실은 세션은 터미널로 열었을 때와 능력이 다르다. 그 차이는 화면 어디에도
+  // 드러나지 않으므로 저널이 말해야 한다.
+  it("surfaces an error and still starts the turn when the Fleet plugin cannot be rendered", async () => {
+    const home = tempDir("chat-home-");
+    const { factory, startTurn } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-plugin-fail", () => ({
+      ...freshSeedFor(home),
+      resolveFleetPluginRoots: async () => { throw new Error("render failed"); },
+    }));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-plugin-fail");
+
+    expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_fleet_plugin_unavailable")).toBe(true);
+    expect(startTurn).toHaveBeenCalled();
     await registry.disposeAll();
   });
 });
@@ -220,11 +334,11 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
-  it("copies the transcript into the sdk config dir and resumes with the file's session id", async () => {
+  it("resumes with the session id the origin transcript's file name carries", async () => {
     const transcriptPath = writeTranscript("sid-2", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
-    const { factory, startTurn, configDir } = createFakeSdkFactory([
+    const { factory, startTurn } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
@@ -242,8 +356,6 @@ describe("AgentChatRegistry", () => {
       // 글자 단위 스트리밍의 전제 — text_delta는 부분 메시지에만 실린다.
       includePartialMessages: true,
     }));
-    const copied = readFileSync(path.join(configDir, "projects", "-tmp-workspace", "sid-2.jsonl"), "utf8");
-    expect(copied).toContain("first order");
     await registry.disposeAll();
   });
 
@@ -279,20 +391,17 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
-  it("writes the grown transcript back to the origin dir and reports the provider session", async () => {
+  it("reports the provider session for the transcript the sdk grew in place", async () => {
     const transcriptPath = writeTranscript("sid-3", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
     const updates: unknown[] = [];
-    // 실제 SDK처럼 턴이 도는 동안 격리 config dir의 트랜스크립트가 자란다 — copy-in 이후에
-    // 자라야 하므로 startTurn 안에서 파일을 키운다.
-    const configDir = tempDir("chat-sdk-");
-    const grown = path.join(configDir, "projects", "-tmp-workspace", "sid-3.jsonl");
+    // 공유 홈에서는 SDK가 원본 파일을 그대로 키운다 — 복사해 들어갈 사본도, 되쓸 목적지도 없다.
     const factory = (async () => ({
-      configDir,
+      configDir: homeOf(transcriptPath),
       models: ["opus[1m]"],
       startTurn: async () => {
-        writeFileSync(grown, `${readFileSync(grown, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
+        writeFileSync(transcriptPath, `${readFileSync(transcriptPath, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
         const messages = [
           { type: "system", subtype: "init", session_id: "sid-3" },
           { type: "result", subtype: "success", is_error: false },
@@ -424,19 +533,17 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
-  it("skips the provider session update and surfaces an error when write-back fails", async () => {
+  it("skips the provider session update when no transcript carries the session id", async () => {
     const transcriptPath = writeTranscript("sid-6", [
       { type: "user", message: { role: "user", content: "first order" } },
     ]);
     const updates: unknown[] = [];
-    const configDir = tempDir("chat-sdk-");
-    const grown = path.join(configDir, "projects", "-tmp-workspace", "sid-6.jsonl");
     const factory = (async () => ({
-      configDir,
+      configDir: homeOf(transcriptPath),
       models: ["opus[1m]"],
       startTurn: async () => {
-        // SDK 트랜스크립트는 자랐지만, 원본 쪽 디렉터리가 사라져 write-back이 실패하는 상황.
-        writeFileSync(grown, `${readFileSync(grown, "utf8")}\n${JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "grown" }] } })}`);
+        // 턴은 돌았지만 그 세션의 파일이 홈 어디에도 없다 — 밖에서 치워진 상황이다. 없는 파일을
+        // durable 권위로 심으면 터미널 복귀와 Analyst가 조용히 세션을 잃는다.
         rmSync(path.dirname(transcriptPath), { recursive: true, force: true });
         const messages = [{ type: "result", subtype: "success", is_error: false }];
         let index = 0;
@@ -463,7 +570,7 @@ describe("AgentChatRegistry", () => {
     await drainTurn(registry, "op-1");
 
     expect(updates).toEqual([]);
-    expect(events.some((entry) => entry.event.kind === "error" && entry.event.code === "chat_writeback_failed")).toBe(true);
+    expect(events.some((entry) => entry.event.kind === "error")).toBe(false);
     await registry.disposeAll();
   });
 
@@ -983,7 +1090,8 @@ describe("AgentChatRegistry — one line larger than the read window", () => {
     const session = await registry.ensure("op-trail-1", () => seedFor(transcriptPath));
 
     // 창(4MB)보다 큰 전사록. 앞쪽 표식은 결과에 나타나면 안 된다.
-    const subagentDir = path.join(configDir, "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
+    // 부산물은 트랜스크립트와 같은 홈에 앉는다 — 공유 홈에서는 SDK의 config dir이 곧 그 홈이다.
+    const subagentDir = path.join(homeOf(transcriptPath), "projects", "-tmp-workspace", "sess-bigtrail", "subagents");
     mkdirSync(subagentDir, { recursive: true });
     const line = (name: string) => JSON.stringify({
       isSidechain: true,

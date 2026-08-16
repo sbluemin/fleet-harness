@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, getAgentCliIds, getAgentCliMetadata, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -25,7 +25,7 @@ import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, renderFleetPluginRootsForChat, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
 import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromCliId, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
@@ -71,10 +71,11 @@ const TERMINAL_PLUGIN_ID = "terminal";
 /** Chat Mode를 여는 payload 마커 — 브라우저 DTO에 그대로 흐르는 비민감 불리언이다. */
 const CHAT_MODE_PAYLOAD_KEY = "chatMode";
 /**
- * 이 Operation이 **채팅으로 태어났다**는 표식. `chatMode`와 갈라 두는 이유는 transcript 부재의
- * 뜻이 정반대이기 때문이다: 터미널에서 전환된 Operation에 transcript가 없으면 과거를 잃은 것이라
- * 시끄럽게 거절해야 하고, 채팅으로 태어난 Operation에 없으면 아직 첫 턴을 돌지 않은 것뿐이라
- * 정상 상태다. 이 표식이 없으면 첫 턴 전에 Console이 죽은 세션이 영영 열리지 않는 패널이 된다.
+ * 이 Operation이 **채팅으로 태어났다**는 표식 — 터미널을 한 번도 띄우지 않았다는 뜻이고,
+ * Quick Launch가 그 자리에서 첫 메시지를 받는 근거다.
+ *
+ * transcript 부재의 뜻을 가르는 데는 쓰지 않는다. 그것은 태생이 아니라 좌표가 한 번이라도
+ * 심겼는지가 정하며(`resolveChatSeed`), 첫 턴 전이라면 어느 표면에서 태어났든 부재가 정상이다.
  */
 const CHAT_BORN_PAYLOAD_KEY = "chatBorn";
 /** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
@@ -86,17 +87,15 @@ const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
 const MAX_CHAT_ANSWER_MESSAGE_CHARS = 2_000;
 
 /**
- * Claude Code가 트랜스크립트를 두는 실제 뿌리. 채팅으로 태어난 세션의 되쓰기 목적지이자,
- * 그 세션이 나중에 터미널 `--resume`으로 이어질 수 있게 하는 좌표다.
+ * 사용자의 실제 Claude 홈. 터미널로 띄운 CLI와 Chat Mode의 SDK가 **같이** 쓰는 한 곳이며,
+ * 그래서 한 세션을 어느 표면으로 열든 같은 트랜스크립트가 자란다.
  *
  * 규칙은 자격증명 해석(core-ai-gateway `anthropic/credentials.ts`)과 같다 — 여기서 다르게 읽으면
- * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다. SDK의 격리 config dir과는 무관하다:
- * 그쪽은 이 세션 전용 임시 dir이고, 이쪽은 사용자의 정본이다.
+ * 같은 사용자의 Claude 홈을 두 곳으로 갈라 보게 된다.
  */
-function resolveClaudeProjectsRoot(): string {
+function resolveClaudeConfigDir(): string {
   const configured = process.env.CLAUDE_CONFIG_DIR;
-  const configDir = configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
-  return path.join(configDir, "projects");
+  return configured && configured.length > 0 ? configured : path.join(os.homedir(), ".claude");
 }
 
 export async function registerAgentRoutes(
@@ -768,7 +767,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const cliId = readOptionalAgentCliId(payload?.cliId, res);
     if (cliId === false) return true;
     const providerSession = readProviderSession(payload);
-    if (!node || !cliId || (!fresh && !providerSession)) {
+    // 이어붙일 좌표가 없으면 재개는 정의상 **새 시작**이고, `fresh`와 같은 경로다 — 저장된
+    // 세션을 버리는 것이 아니라 애초에 없었으므로 지울 stale 상태도 없다. 여기서 거절하면 첫 턴
+    // 전에 표면을 바꾼 세션이 터미널로 돌아올 길을 잃는다. chat 여부로는 판단할 수 없다: 그
+    // 복귀는 chat 마커를 먼저 걷고 이 라우트를 부르므로 이 시점의 payload에는 이미 없다.
+    const startsFresh = fresh || !providerSession;
+    if (!node || !cliId) {
       ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
       return true;
     }
@@ -789,9 +793,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const releasedOnResume = observability.setTerminalSessionChatActive(sessionId, false);
       if (releasedOnResume) observability.notifySessionUpdated(releasedOnResume);
       resumeNode = ctx.host.operations.get(sessionId) ?? node;
-      if (!fresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
+      if (!startsFresh) resumeProviderSession = readProviderSession(resumeNode.payload) ?? providerSession;
     }
-    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh, providerSession: resumeProviderSession });
+    const result = await resumeAgentSessionCore(resumeNode, sessionId, cliId, { fresh: startsFresh, providerSession: resumeProviderSession });
     if (!result.ok) {
       ctx.host.http.writeJson(res, result.status, { error: result.error });
       return true;
@@ -1069,15 +1073,24 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // PTY 스폰이 in-flight인 세션(starting)은 activity가 아직 null이라 non-live로 읽힌다 —
     // 이때 전환하면 launch가 완주해 PTY와 SDK가 같은 provider 세션의 이중 필자가 된다.
     if (info?.status === "starting") {
-      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+      ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: "starting" });
       return true;
     }
     const live = terminalRuntime.getSessionLastActivityAt(sessionId) !== null;
     if (live) {
       // Phase 1은 유휴 세션만 전환한다 — 진행 중 턴·입력 대기·턴 종료 후에도 살아 있는 백그라운드
       // 작업(backgroundPending) 중의 PTY를 접으면 그 작업을 잃는다(활동축 불변식과 같은 판정).
-      if (info?.turnState === "running" || info?.attentionPending === true || info?.modelActivity === "working" || info?.backgroundPending === true) {
-        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy" });
+      //
+      // 사유는 뭉뚱그리지 않는다. "지금은 안 됩니다"만 돌려주면 사용자가 무엇이 끝나기를
+      // 기다려야 하는지 알 수 없고, 기다림의 대상이 셋(턴·내 답·백그라운드 작업)이라 그 차이가
+      // 곧 다음 행동의 차이다. 우선순위는 활동축 해석과 같게 대기를 작업보다 앞세운다.
+      const busyReason = info?.attentionPending === true
+        ? "awaiting"
+        : (info?.turnState === "running" || info?.modelActivity === "working")
+          ? "turn"
+          : info?.backgroundPending === true ? "background" : null;
+      if (busyReason) {
+        ctx.host.http.writeJson(res, 409, { error: "chat_convert_busy", reason: busyReason });
         return true;
       }
     }
@@ -1233,6 +1246,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       "Referrer-Policy": "no-referrer",
       "X-Content-Type-Options": "nosniff",
     });
+    // 헤더를 쓰는 것만으로는 소켓이 흐르지 않는다. 재생할 과거가 없는 세션 — 첫 턴 전에 표면을
+    // 바꾼 경우 — 은 그다음 프레임이 30초 뒤 keepalive라, 브라우저의 `onopen`이 그때까지 뜨지
+    // 않고 화면은 "연결하는 중"에 머문다. 이벤트를 만들지 않는 주석 한 줄을 즉시 흘려 연결
+    // 확립을 그 자리에서 알린다(과거가 있는 세션에서는 replay가 이 역할을 우연히 해 왔다).
+    write(": open\n\n");
     const keepalive = setInterval(() => write(": keepalive\n\n"), 30_000);
     req.on("close", () => {
       closed = true;
@@ -1277,20 +1295,21 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const transcriptPath = providerSession?.transcriptPath
       ? await resolveTranscriptPath(providerSession.transcriptPath, node.ts.createdAt)
       : null;
-    // 채팅으로 태어난 Operation에게 transcript 부재는 결함이 아니라 "아직 첫 턴 전"이다 —
-    // 첫 턴이 세션을 만들고 되쓰기가 좌표를 심는다. 전환된 Operation에서는 같은 부재가 과거의
-    // 상실이므로 지금까지처럼 거절한다(두 상태를 가르는 것이 chatBorn 표식의 존재 이유다).
+    // transcript 부재는 두 가지 뜻일 수 있고, 그것을 가르는 것은 태생이 아니라 **좌표가 한 번
+    // 이라도 심겼는지**다.
     //
-    // 다만 그 예외는 **첫 좌표가 생기기 전까지만** 산다. providerSession이 한 번 심리면 "아직
-    // 시작 전"은 거짓이 되므로, 그 뒤의 transcript 부재는 chatBorn Operation에서도 상실이다.
-    // 표식만 보고 fresh로 떨어뜨리면 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고,
-    // 그 세션의 되쓰기가 이전 정체성을 덮어쓴다 — 바로 그 상실을 막으려고 이 거절이 있다.
-    const chatBorn = node.payload[CHAT_BORN_PAYLOAD_KEY] === true;
-    const neverStarted = chatBorn && !providerSession;
+    // providerSession이 아직 없다면 이 세션은 첫 턴을 돌지 않았다. 부재가 정상이고, 잃을 과거도
+    // 없다. 터미널로 열어 놓고 아무것도 시키지 않은 Operation이 정확히 그 상태다 — 여기서
+    // 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을 새로 만들어야 한다.
+    //
+    // providerSession이 한 번 심린 뒤의 부재는 과거의 상실이다. 그때 fresh로 떨어뜨리면 지워진
+    // 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다 —
+    // 바로 그 상실을 막으려고 이 거절이 있다.
+    const neverStarted = !providerSession;
     if (!transcriptPath && !neverStarted) return { ok: false, status: 409, error: "chat_transcript_missing" };
     const sessionOrigin: AgentChatSessionOrigin = transcriptPath
       ? { kind: "resume", transcriptPath }
-      : { kind: "fresh", transcriptRoot: resolveClaudeProjectsRoot() };
+      : { kind: "fresh" };
     const origin = ctx.host.server.origin();
     if (!origin) return { ok: false, status: 503, error: "chat_gateway_unavailable" };
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -1298,14 +1317,69 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
     const model = readPayloadString(node.payload, "launchModel") || "opus[1m]";
     const effort = chatEffortFromLaunchEffort(readPayloadString(node.payload, "launchEffort"));
+    // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
+    // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
+    const claudeConfigDir = resolveClaudeConfigDir();
+    const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
+    // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
+    // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
+    try {
+      const gatewaySelection = deps.readAiGatewaySettings
+        ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
+        : undefined;
+      writeGatewayModelCacheForHome({
+        baseUrl: gatewayBaseUrl,
+        configDir: claudeConfigDir,
+        ...(gatewaySelection ? { models: gatewaySelection.models } : {}),
+      });
+    } catch {
+      // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
+    }
+    const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
+    const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
+    const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
+    const systemPrompt = systemPromptMode === "off"
+      ? undefined
+      : { mode: systemPromptMode, text: createSystemPromptBuilder().build() } as const;
+    const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
       seed: {
-        baseUrl: resolveAnalysisGatewayBaseUrl(origin),
+        baseUrl: gatewayBaseUrl,
         model,
         ...(effort ? { effort } : {}),
         cwd,
+        claudeConfigDir,
         origin: sessionOrigin,
+        ...(systemPrompt ? { systemPrompt } : {}),
+        resolveFleetMcpServers: async () => {
+          const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
+          const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
+            cwd,
+            // PTY 주입과 같은 필터다. doctrine이 호스트 세션에 허용한 도구만 실린다.
+            includeTool: (toolId) => isHostSessionToolAllowed(toolId, chatDoctrine),
+            label: mcpTokenLabel,
+          });
+          return endpoint.servers.map((server) => {
+            const token = tokens.find((entry) => entry.name === server.name)?.token;
+            if (!token) throw new Error(`Dedicated MCP token missing for ${server.name}`);
+            return {
+              name: server.name,
+              url: server.url,
+              headers: [{ name: "Authorization", value: `Bearer ${token}` }],
+            };
+          });
+        },
+        releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
+        // 터미널이 `--settings`로 강제하는 것과 같은 값이다. 없으면 같은 프롬프트가 표면에
+        // 따라 다른 내장 스킬을 깨운다.
+        ...(chatSkillOverrides ? { skillOverrides: chatSkillOverrides } : {}),
+        // 터미널 런치와 같은 자리에 같은 옵션으로 렌더한다 — 두 표면이 한 플러그인을 공유한다.
+        resolveFleetPluginRoots: () => renderFleetPluginRootsForChat({
+          cwd,
+          dataDir: ctx.host.paths.fleetDataDir,
+          ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
+        }),
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
           if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
@@ -1498,6 +1572,18 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           },
         });
       }
+    } else if (ctx.host.operations.get(operationId)?.payload[CHAT_MODE_PAYLOAD_KEY] === true) {
+      // 채팅이 인수한 세션의 PTY 종료는 재개 불가 종료가 아니라 **표면 전환**이다. 첫 턴 전에
+      // 넘어왔다면 좌표가 아직 없을 뿐이고, 여기서 아래 정리로 떨어뜨리면 방금 전환한 Operation이
+      // 그 자리에서 사라진다 — 스트림은 session_not_found를 받고 터미널로 돌아갈 곳도 없어진다.
+      //
+      // 관측 세션은 지우지 않고 dormant로 세운다. 지우면 활동축이 사라져 첫 메시지가 보고할
+      // 자리를 잃고 chat_activity_unavailable로 거절된다.
+      const parked = observability.updateTerminalSessionStatus(operationId, "dormant");
+      if (parked) {
+        terminalRuntime.invalidateTicketsForSession(operationId);
+        observability.notifySessionUpdated(parked);
+      }
     } else {
       observability.removeTerminalSession(operationId);
       // 재개 불가 종료는 Operation 삭제와 같은 결말이다 — 첨부의 수명이 Operation을 따르므로
@@ -1620,12 +1706,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     for (const operation of ctx.host.operations.list()) {
       if (operation.pluginId !== ctx.pluginId || operation.type !== AGENT_OPERATION_TYPE) continue;
       const providerSession = readProviderSession(operation.payload);
-      // 채팅으로 태어난 Operation은 첫 턴 전에는 providerSession이 없다 — 그래도 복원 대상이다.
-      // 여기서 걸러 내면 그 Operation은 관측 세션 없이 남아 활동 보고를 받을 자리가 사라지고,
-      // 첫 메시지가 chat_activity_unavailable로 거절된다(영영 시작하지 못하는 패널).
-      const chatBorn = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true;
+      // 채팅 표면에 있는 Operation은 첫 턴 전에는 providerSession이 없다 — 채팅으로 태어났든
+      // 첫 턴 전에 터미널에서 넘어왔든 마찬가지다. 여기서 걸러 내면 그 Operation은 관측 세션
+      // 없이 남아 활동 보고를 받을 자리가 사라지고, 첫 메시지가 chat_activity_unavailable로
+      // 거절된다(영영 시작하지 못하는 패널).
+      const onChatSurface = operation.payload[CHAT_BORN_PAYLOAD_KEY] === true
+        || operation.payload[CHAT_MODE_PAYLOAD_KEY] === true;
       if (observability.getTerminalSessionInfo(operation.id)) continue;
-      if (!providerSession && !chatBorn) {
+      if (!providerSession && !onChatSurface) {
         ctx.host.operations.patch(operation.id, { payload: { ...operation.payload, restoredDormant: true } });
         continue;
       }

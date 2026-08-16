@@ -15,12 +15,18 @@ export class AgentApiError extends Error {
    * argv 전체에 달려 있다) 브라우저가 되계산할 수 없어, 코드와 함께 실어 나른다.
    */
   readonly shortenByChars?: number;
+  /**
+   * 거절이 "지금은 안 된다"고만 말하지 않고 **무엇이 끝나야 되는지**를 함께 말할 때의 그 사유.
+   * 기다림의 대상이 여럿이면 사용자의 다음 행동도 갈리므로, 화면이 그 차이를 그릴 수 있어야 한다.
+   */
+  readonly reason?: string;
 
-  constructor(status: number, message: string, shortenByChars?: number) {
+  constructor(status: number, message: string, shortenByChars?: number, reason?: string) {
     super(message);
     this.name = "AgentApiError";
     this.status = status;
     if (shortenByChars !== undefined) this.shortenByChars = shortenByChars;
+    if (reason !== undefined) this.reason = reason;
   }
 }
 
@@ -220,8 +226,13 @@ export async function readAgentChatJobDetail(
 export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
   const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
   if (!response.ok) {
-    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
-    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown; readonly reason?: unknown } | null;
+    throw new AgentApiError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+      undefined,
+      typeof payload?.reason === "string" ? payload.reason : undefined,
+    );
   }
 }
 
@@ -293,8 +304,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     // 이 함수는 화이트리스트 재구성이다 — 여기 없는 필드는 서버가 실어 보내도 소실된다.
     // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
     chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
-    chatWorking: typeof payload.chatWorking === "boolean" ? payload.chatWorking : undefined,
-    chatAwaiting: typeof payload.chatAwaiting === "boolean" ? payload.chatAwaiting : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,
