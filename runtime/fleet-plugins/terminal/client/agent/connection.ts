@@ -99,7 +99,9 @@ export function sessionRuntime(session: SessionInfo): OperationRuntimeState {
   // 채팅이 인수했으면 PTY의 죽음은 수명주기의 죽음이 아니다. 활동은 SDK 턴 경계가 말하고,
   // 표면 라벨은 호스트가 뜻을 모른 채 표식으로만 그린다.
   if (session.chatActive === true) {
-    return { lifecycle: "live", activity: session.chatWorking === true ? "running" : "idle", surface: CHAT_SURFACE_LABEL };
+    // 활동 해석은 표면과 무관하다 — 두 어댑터가 같은 필드에 쓰므로 같은 함수가 읽는다.
+    // 여기서 갈리는 것은 수명(PTY의 죽음이 수명의 죽음이 아니다)과 표면 표식뿐이다.
+    return { lifecycle: "live", activity: sessionActivity(session), surface: CHAT_SURFACE_LABEL };
   }
   if (session.status === "dormant") return { lifecycle: "dormant" };
   return { lifecycle: "live", activity: sessionActivity(session), surface: CLI_SURFACE_LABEL };

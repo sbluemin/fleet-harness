@@ -67,8 +67,8 @@ interface PendingTerminalSessionState {
   modelActivity?: AgentModelActivity;
   attentionPending?: boolean;
   backgroundPending?: boolean;
+  /** 활동축을 Chat 어댑터가 채우는 중이라는 표시. 활동 자체는 위 두 필드가 진다. */
   chatActive?: boolean;
-  chatWorking?: boolean;
   backgroundPendingExpiry?: ReturnType<typeof setTimeout>;
   settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
@@ -348,25 +348,57 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
+  /**
+   * 이 세션의 활동축을 어느 어댑터가 채우는지 바꾼다.
+   *
+   * `chatActive`는 상태가 아니라 **소유권**이다. 활동 자체는 두 표면 모두 같은 필드
+   * (`modelActivity`·`attentionPending`)에 쓰고, 읽는 쪽은 그 한 벌만 해석한다 — 표면마다
+   * 평행한 필드를 두면 같은 개념이 두 이름으로 갈라지고, 읽는 쪽이 어느 쪽을 볼지 매번 고른다.
+   */
   function setTerminalSessionChatActive(sessionId: string, active: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     if ((session.chatActive === true) === active) return null;
     if (active) session.chatActive = true;
-    else {
-      delete session.chatActive;
-      delete session.chatWorking;
-    }
+    else delete session.chatActive;
+    // 표면이 바뀌면 앞 표면이 남긴 값은 더 이상 아무것도 말하지 않는다. 지우지 않으면 인수
+    // 직후 첫 프레임이 옛 표면의 마지막 상태로 그려진다.
+    delete session.modelActivity;
+    delete session.attentionPending;
+    delete session.turnState;
+    clearTerminalSessionBackgroundPending(session);
     return toTerminalSessionInfo(session);
   }
 
+  /**
+   * Chat 어댑터의 턴 경계 보고. PTY의 OSC 타이틀이 채우는 것과 같은 필드에 쓴다.
+   */
   function setTerminalSessionChatWorking(sessionId: string, working: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     // 인수하지 않은 세션에 턴 신호가 오면 그건 배선 오류다 — 조용히 만들어 내지 않고 실패로 돌린다.
     if (!session || session.chatActive !== true) return null;
-    if ((session.chatWorking === true) === working) return toTerminalSessionInfo(session);
-    if (working) session.chatWorking = true;
-    else delete session.chatWorking;
+    const next: AgentModelActivity = working ? "working" : "not-working";
+    // 턴이 끝나면 기다리던 것도 함께 끝난다 — 대기를 남겨 두면 유휴 세션이 영영 대기로 읽힌다.
+    // 반대로 turn 이 도는 동안의 working 보고는 대기를 지우지 않는다: Chat 의 대기는 열린 턴
+    // *안에서* 서므로, PTY 쪽 규칙(working 이 attention 을 지운다)을 그대로 옮기면 질문 카드가
+    // 뜬 순간 배지가 "작업 중"으로 되돌아간다.
+    const clearsAttention = !working && session.attentionPending === true;
+    if (session.modelActivity === next && !clearsAttention) return toTerminalSessionInfo(session);
+    session.modelActivity = next;
+    if (clearsAttention) delete session.attentionPending;
+    return toTerminalSessionInfo(session);
+  }
+
+  /**
+   * 사용자의 답을 기다리는 구간. 진행 중 턴 안에서만 서므로 작업 보고를 끄지 않는다 —
+   * 읽는 쪽이 대기를 작업보다 앞세운다.
+   */
+  function setTerminalSessionChatAwaiting(sessionId: string, awaiting: boolean): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session || session.chatActive !== true) return null;
+    if ((session.attentionPending === true) === awaiting) return toTerminalSessionInfo(session);
+    if (awaiting) session.attentionPending = true;
+    else delete session.attentionPending;
     return toTerminalSessionInfo(session);
   }
 
@@ -505,6 +537,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     setTerminalSessionModelActivity,
     setTerminalSessionChatActive,
     setTerminalSessionChatWorking,
+    setTerminalSessionChatAwaiting,
     transitionTerminalSessionToDormant,
     removeTerminalSession,
     registerTerminalRuntimeSession,
@@ -531,7 +564,6 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     ...(state.attentionPending === true ? { attentionPending: true } : {}),
     ...(state.backgroundPending === true ? { backgroundPending: true } : {}),
     ...(state.chatActive === true ? { chatActive: true } : {}),
-    ...(state.chatWorking === true ? { chatWorking: true } : {}),
     createdAt: state.createdAt,
     theaterId: state.theaterId,
     registrationId: state.registrationId,

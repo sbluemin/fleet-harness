@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-wiki",
-  "version": "1.60.0",
+  "version": "1.62.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
@@ -9,7 +9,7 @@
   "private": true,
   "author": "sbluemin",
   "type": "module",
-  "files": ["dist", "AGENTS.md"],
+  "files": ["dist", "CLAUDE.md"],
   "engines": {
     "node": ">=18.0.0"
   },

@@ -565,10 +565,14 @@ describe("Instrument core design contract", () => {
       const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
       const masked = maskCssCommentsAndStrings(css);
       const defined = new Set([...globallyDefined, ...customPropertyDefinitions(css)]);
-      const reference = /var\(\s*(--[A-Za-z0-9_-]+)/g;
+      // 대체값을 함께 적은 참조는 이 게이트가 막으려는 위험이 아니다 — 정의가 없으면 조용히 상속되는 게
+      // 아니라 적어 둔 값으로 떨어진다. 호출부가 채우는 훅(--fc-select-compact-tone)과 다른 시트가 여는
+      // 채널(--effort-tone)이 이 형태를 쓴다.
+      const reference = /var\(\s*(--[A-Za-z0-9_-]+)\s*(,?)/g;
       let match: RegExpExecArray | null;
       while ((match = reference.exec(masked)) !== null) {
         const name = match[1]!;
+        if (match[2] === ",") continue;
         if (defined.has(name) || RUNTIME_CUSTOM_PROPERTY_ALLOWLIST.has(name)) continue;
         const line = lineAt(css, match.index);
         violations.push(`${consoleRelativePath(file)}:${line} ${name}`);
@@ -1570,14 +1574,91 @@ describe("Instrument core design contract", () => {
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
     expect(chatNodeBlock).toContain("background: var(--surface-panel);");
     expect(chatNodeBlock).not.toContain("--surface-window");
-    // 상단 세션 띠바와 하단 스트립은 둘 다 폐기됐다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이
-    // 하나도 없었다. 로그는 캡션부터 패널 바닥까지 이어지고, 그 자리는 떠 있는 회신 버튼이 대신한다.
+    // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
-    expect(chat).not.toContain(".agent-chat-strip");
+    // 하단 스트립 금지는 좁혀졌다. 폐기 사유는 "지속 크롬인데 누를 것이 없다"였고, 백그라운드
+    // 작업 스트립은 그 두 조건을 모두 뒤집는다: 살아 있는 잡이 있는 동안에만 서고(지속이 아니다),
+    // 눌러서 Work 탭으로 가는 문이다(누를 것이 있다). 대신 원래의 걱정 — 패널 높이를 잡아먹는 것 —
+    // 은 계약으로 남는다: 떠 있어야 하고 로그 흐름에서 자리를 차지하면 안 된다.
+    const chatStripBlock = chat.match(/^\.agent-chat-strip \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStripBlock).toContain("position: absolute;");
+    expect(chatStripBlock).toContain("cursor: pointer;");
+    const chatView0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    expect(chatView0).toContain('className="agent-chat-strip"');
+    // 떠 있는 두 줄의 순서: 아래가 작업 스트립("지금 누를 것"의 행 — 회신·중지와 같은 층),
+    // 위가 Follow다. 스트립이 이 아래 행에 사는 동안 그 높이는 로그의 기본 바닥 여백(회신 버튼
+    // 몫) 안에 들어오므로 스트립 전용 여백은 두지 않는다 — 두면 그만큼이 죽은 띠로 남는다.
+    const chatFollowBottom = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0].match(/bottom: ([^;]+);/)?.[1] ?? "";
+    expect(chatStripBlock).toContain("bottom: var(--space-3);");
+    expect(chatFollowBottom).toContain("46px");
+    expect(chat).not.toContain(".agent-chat-log.has-strip");
+    expect(chatView0).not.toContain("has-strip");
+    // 같은 행을 쓰는 이상 스트립은 양쪽에서 같은 폭을 비워 회신·중지 버튼을 침범하지 않는다 —
+    // 한쪽만 비우면 가운데 정렬을 잃고, 안 비우면 좁은 패널에서 잡 이름이 버튼 아래로 들어간다.
+    expect(chatStripBlock).toContain("40px + var(--space-2) + 72px");
+    // 잡이 하나도 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
+    // 스트립은 두 형태로 서고(도는 중 · 다 끝남), 둘 다 잡이 있을 때만 선다.
+    expect(chatView0).toContain("!workOpen && openJobs.length > 0 ? (");
+    expect(chatView0).toContain("!workOpen && hasJobs && openJobs.length === 0 ? (");
+    // 탭은 폐기됐다. 두 면을 갈아 끼우면 대화가 통째로 사라지는데, 백그라운드 작업은 대화를
+    // 대신하는 것이 아니라 대화 **옆에서** 동시에 돈다 — 하나를 고르게 만들면 무엇이 도는지
+    // 보려고 무엇을 물었는지를 잃는다. 스트립 하나가 유일한 문이고, 문은 면을 나란히 연다.
+    expect(chat).not.toContain(".agent-chat-tab");
+    expect(chatView0).not.toContain('role="tablist"');
+    // 대화 면은 어떤 경로로도 숨지 않는다. 이 표면 전체가 존재하는 이유가 그것이다.
+    expect(chatView0).not.toContain("agent-chat-log${view");
+    const chatSplitBlock = chat.match(/^\.agent-chat-split \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatSplitBlock).toContain("flex-direction: row;");
+    // 컬럼이 서랍으로 접히는 기준은 **패널 폭**이다. 뷰포트로 가르면 넓은 창 안의 좁은 덱
+    // 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다.
+    expect(chatRootBlock).toContain("container-type: inline-size;");
+    expect(chat).toContain("@container (max-width: 719px)");
+    // 쉬는 스트립은 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 쉬는 상태에는 그 사실이 없다.
+    const chatStripRestBlock = chat.match(/^\.agent-chat-strip\.is-rest \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStripRestBlock).toContain("color: var(--text-tertiary);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatStripRestBlock).not.toContain(signal);
+    }
+    // 중지 버튼은 행동을 제안하는 컨트롤이지 상태 보고가 아니다. coral을 쓰면 "무언가 잘못됐다"로
+    // 읽히는데, 이 버튼이 서 있다는 것은 정상적으로 일이 돌고 있다는 뜻이다.
+    const chatStopBlock = chat.match(/^\.agent-chat-stop \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatStopBlock).toContain("position: absolute;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatStopBlock).not.toContain(signal);
+    }
+    // 중지는 실패가 아니다 — 사용자가 스스로 끊은 결말에 coral을 붙이면 자기가 누른 버튼의
+    // 결과를 고장으로 읽는다. 성공도 아니므로 positive도 아니고, 남는 것은 중립 잉크다.
+    const chatFoldStoppedBlock = chat.match(/^\.agent-chat-fold-stopped \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFoldStoppedBlock).toContain("var(--text-secondary)");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatFoldStoppedBlock).not.toContain(signal);
+    }
+    // 눌리는 집계 줄은 쉬는 상태에서도 눌린다고 말해야 한다. 이전에는 9px --hairline-strong이라
+    // 안 눌리는 줄과 사실상 구별되지 않았다(두 줄이 같은 클래스·같은 활자·같은 색이고 차이는
+    // 이 글리프 하나뿐이다). 어포던스는 꺾쇠가, 가독성은 이름이 각각 진다 — 섞으면 "진한 이름 =
+    // 눌림"이라는 거짓 규칙이 생기고, 이름 있는 정적 줄이 거짓 어포던스를 갖는다.
+    const chatTallyChevBlock = chat.match(/^\.agent-chat-tally-chev \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyChevBlock).toContain("color: var(--text-tertiary);");
+    expect(chatTallyChevBlock).not.toContain("--hairline-strong");
+    const chatTallyNameBlock = chat.match(/^\.agent-chat-tally-name \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyNameBlock).toContain("color: var(--text-secondary);");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatTallyNameBlock).not.toContain(signal);
+    }
+    // 잡의 종류는 상태가 아니다 — 글리프와 모노 라벨이 가르고, 어떤 신호 토큰도 쓰지 않는다.
+    const chatJobGlyphBlock = chat.match(/^\.agent-chat-job-glyph \{[^}]*\}/m)?.[0] ?? "";
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
+      expect(chatJobGlyphBlock).not.toContain(signal);
+    }
     // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
     expect(chatView).toContain('className="agent-chat-mode-chip"');
+    // 구간 문장은 답변과 같은 마크다운 경로다. italic을 통째로 씌우면 `**굵게**`가 별표로 남고
+    // 문장만 기울어진다 — 기울임은 문법(*강조*)이 질 몫이다.
+    expect(chatView).toContain('className="agent-chat-ledger-note markdown-body"');
+    expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
+    expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
     expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
     // 회신 버튼은 로그 위에 떠 있는 컨트롤이라 신호 채널을 쓰지 않는다 — brass(위치·포커스)만
     // hover/focus에 오르고, 쉬는 상태는 패널 위 한 칸 물러난 면과 hairline이 진다.
@@ -1590,6 +1671,17 @@ describe("Instrument core design contract", () => {
     const chatReplyHoverBlock = chat.match(/^\.agent-chat-reply:hover,\n\.agent-chat-reply:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(chatReplyHoverBlock).toContain("border-color: var(--brass);");
     expect(chatReplyHoverBlock).toContain("outline: none;");
+    // Follow 칩은 "바닥을 놓쳤다"는 상태라 쉬는 면에 aurora를 진다. brass는 hover/focus만.
+    const chatFollowBlock = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFollowBlock).toContain("background: var(--surface-panel-raised);");
+    expect(chatFollowBlock).toContain("color: var(--aurora-ink);");
+    expect(chatFollowBlock).toContain("left: 50%");
+    for (const signal of ["--positive", "--warn", "--coral", "--brass"]) {
+      expect(chatFollowBlock).not.toContain(signal);
+    }
+    const chatFollowHoverBlock = chat.match(/^\.agent-chat-follow:hover,\n\.agent-chat-follow:focus-visible \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatFollowHoverBlock).toContain("border-color: var(--brass);");
+    expect(chatFollowHoverBlock).toContain("outline: none;");
     // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
     // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
     // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 회신 버튼 40px)을 넘어서는지 함께 고정한다.
@@ -1679,8 +1771,9 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).not.toContain("surface-window");
     // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
     expect(terminalAnalysisCss).toContain("var(--surface-panel-raised)");
-    // 상단 밴드 대신 떠 있는 칩 줄 + 채팅 뷰의 턴 스파인 문법을 쓴다.
+    // 정체·상태·모드는 호스트 캡션 밴드가 진다 — 본문 위에 떠서 첫 문단을 가리지 않는다.
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__chips \{/);
+    expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__chips \{[^}]*position: absolute/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__turn-node \{/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
     // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
@@ -1694,6 +1787,9 @@ describe("Instrument core design contract", () => {
     expect(terminalChatCss).toMatch(/\.agent-view-chip-row \{/);
     expect(terminalChatCss).toContain(".agent-view-chip-row .agent-chat-mode-chip");
     expect(terminalAgentEntry).toContain('className="agent-chat-mode-chip agent-analyst-chip"');
+    // 캡션 밴드는 호스트가 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 프레임의 위 모서리가 각진다.
+    expect(terminalAgentEntry).toContain("caption: (context) => <AnalystCaption context={context} />");
+    expect(terminalAgentEntry).not.toContain("hideCaption");
     expect(terminalAgentEntry).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
   });
 
@@ -2006,10 +2102,13 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
+    // compact 트리거는 칩 문법의 모노 티어(11px)를 쓴다 — 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
     expect(selectBlock).toContain(
-      "font-weight: var(--weight-regular);\n  font-size: 9px;\n  line-height: 1;\n  font-family: var(--font-mono);",
+      "font-weight: var(--weight-regular);\n  font-size: 11px;\n  line-height: 1;\n  font-family: var(--font-mono);",
     );
-    expect(selectBlock).toContain("padding: 8px 16px 8px 10px;");
+    // 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로 — 미설정이면 기본 티어를 그대로 쓴다.
+    expect(selectBlock).toContain("color: var(--fc-select-compact-tone, var(--text-secondary));");
+    expect(selectBlock).toContain("padding: 7px 16px 7px 10px;");
     expect(selectBlock).toContain(".fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }");
     expect(selectBlock).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.fc-select__trigger,\s*\.fc-select__caret,\s*\.fc-select__popup,\s*\.fc-select__option \{\s*transition: none;\s*\}\s*\}/);
 
@@ -2169,6 +2268,49 @@ describe("Effort track interaction grammar", () => {
     // 아는지 알면 안 된다.
     expect(composer).toContain('const chatStartAvailable = target?.kind.launchViews?.includes("chat") === true;');
     expect(composer).not.toMatch(/pluginId === "terminal"/);
+  });
+
+  it("pins the chat question-card grammar — aurora carries the wait, brass stays on location", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 카드는 대기를 말한다 — 그 채널은 코어 활동축이 awaiting에 쓰는 aurora와 같아야 한다.
+    // 다른 신호 토큰이 섞이면 같은 사실이 두 색으로 갈라진다.
+    const card = block(".agent-chat-ask");
+    expect(card).toContain("color-mix(in oklch, var(--aurora)");
+    for (const signal of ["--warn", "--coral", "--positive", "--brass"]) {
+      expect(card, signal).not.toContain(signal);
+    }
+    expect(block(".agent-chat-ask-badge")).toContain("color: var(--aurora);");
+
+    // 선택지는 중립으로 서고 brass는 hover·focus에서만 오른다(위치·포커스 채널).
+    const option = block(".agent-chat-ask-option");
+    expect(option).toContain("border: 1px solid var(--hairline);");
+    expect(option).not.toContain("--brass");
+    expect(chat).toContain(".agent-chat-ask-option:hover:not(:disabled),");
+    expect(chat).toMatch(/\.agent-chat-ask-option\[aria-pressed="true"\] \{/);
+
+    // 자유 입력은 대화 입력창이 아니라 그 질문에만 사는 칸이다 — 파선이 그 임시성을 지고,
+    // 포커스에서만 실선이 된다.
+    expect(block(".agent-chat-ask-input")).toContain("border: 1px dashed var(--hairline-strong);");
+    expect(chat).toContain("border-style: solid;");
+
+    // 주 동작만 brass를 채운다. 보조 동작은 채움을 양보하고 테두리로 남는다.
+    expect(block(".agent-chat-ask-send")).toContain("background: var(--brass);");
+    expect(block(".agent-chat-ask-send.is-quiet")).toContain("background: transparent;");
+
+    // 답한 줄은 스텝 문법에 합류한다 — 성공은 positive, 답하지 않은 채 끝난 것은 coral.
+    expect(block(".agent-chat-ask-settled")).toContain("background: var(--surface-panel-raised);");
+    expect(chat).toContain(".agent-chat-ask-settled-mark { flex: none; color: var(--positive); }");
+    expect(chat).toMatch(/\.agent-chat-ask-settled\.is-open \.agent-chat-ask-settled-mark[\s\S]{0,120}color: var\(--coral-ink\);/);
+
+    // 기다림의 맥동은 모션이므로 reduced-motion에서 멈춘다.
+    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toContain(".agent-chat-ask-dot");
   });
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
@@ -2415,6 +2557,40 @@ describe("War Room deck panel grammar", () => {
     expect(frame).toContain('inert={deckTile ? true : undefined}');
     // 캡션은 inert가 아니다 — 최소화·닫기는 키보드로도 닿아야 한다.
     expect(frame).not.toMatch(/canvas-operation-titlebar"[^>]*inert/);
+  });
+
+  it("hides Analyst, Chat-view, stop, and reply chrome on a deck tile and keeps them on the stage", () => {
+    // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 컨트롤은 눌러도 동작하지 않는다.
+    // 무대에 오른 패널은 is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다.
+    const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-view-chip-row");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-mode-chip");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-stop");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-invite");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-stop,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-reply,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-invite \{[^}]*\}/)?.[0] ?? "";
+    expect(hide).toContain("display: none;");
+    // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
+    // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.
+    expect(hide).not.toContain("is-active");
+    expect(hide).not.toContain("is-quicklook");
+    // 칩을 숨긴 카드에서는 그 자리를 피하던 상단 여백만 거둔다. 하단 45px는 작업 스트립이 쓰므로
+    // 타일 규칙은 padding-top만 적는다 — padding-bottom/padding 단축을 쓰면 베이스의 45px가 죽는다.
+    const logOnTile = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-log \{[^}]*\}/)?.[0] ?? "";
+    expect(logOnTile).toContain("padding-top: var(--space-3);");
+    expect(logOnTile).not.toContain("45px");
+    expect(logOnTile).not.toContain("padding-bottom");
+    expect(logOnTile).not.toMatch(/(?:^|[^-])padding:/);
+    // 회신·중지가 없으면 스트립이 그 폭을 비우지 않는다. 스트립 자체는 숨기지 않는다.
+    const stripOnTile = [...terminalChatCss.matchAll(/\.canvas-operation\.is-deck-tile \.agent-chat-strip \{[^}]*\}/g)].map((match) => match[0]);
+    expect(stripOnTile).toHaveLength(1);
+    expect(stripOnTile[0]).toContain("max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));");
+    expect(stripOnTile[0]).not.toContain("40px");
+    expect(stripOnTile[0]).not.toContain("72px");
+    expect(stripOnTile[0]).not.toContain("display: none");
+    expect(hide).not.toContain("agent-chat-strip");
   });
 
   it("gives the promotion surface the body and leaves the caption its own controls", () => {

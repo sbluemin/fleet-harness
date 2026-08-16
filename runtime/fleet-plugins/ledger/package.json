@@ -1,6 +1,6 @@
 {
   "name": "@fleet-plugins/ledger",
-  "version": "1.60.0",
+  "version": "1.62.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
+    "@dotobokuri/core-ai-gateway": "workspace:*",
     "@dotobokuri/core-process": "workspace:*",
     "@fleet-console/sdk": "workspace:*",
     "react": "^19.2.3",

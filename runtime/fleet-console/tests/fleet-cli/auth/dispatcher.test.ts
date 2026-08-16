@@ -15,6 +15,12 @@ vi.mock("../../../cli/auth/login-flow.js", () => ({
   },
   getAuthCliOptions: () => ["kimi", "opencode"],
   parseAuthCliId: (value: string | undefined) => value === "kimi" || value === "opencode" ? value : undefined,
+  resolveAuthCliId: (value: string | undefined, io: { stderr: { write(chunk: string): boolean } }) => {
+    if (value === undefined) return undefined;
+    if (value === "kimi" || value === "opencode") return value;
+    io.stderr.write(`Unknown fleet auth provider: ${value}\nUse kimi or opencode.\n`);
+    return "invalid";
+  },
   runAuthLoginFlow: mocks.runAuthLoginFlow,
 }));
 
@@ -51,6 +57,14 @@ describe("auth dispatcher", () => {
     await expect(dispatchAuthCommand(["auth", "logout", "opencode"], io, createDeps())).resolves.toBe(0);
     expect(mocks.deleteApiKey).toHaveBeenCalledWith("Claude Code with OpenCode Go");
     expect(io.stdout.output).toContain("OpenCode Go for AI Gateway signed out");
+  });
+
+  it("rejects an unknown logout provider without prompting", async () => {
+    const io = createIo();
+    await expect(dispatchAuthCommand(["auth", "logout", "bogus"], io, createDeps())).resolves.toBe(1);
+    expect(mocks.deleteApiKey).not.toHaveBeenCalled();
+    expect(io.stderr.output).toContain("Unknown fleet auth provider: bogus");
+    expect(io.stderr.output).toContain("Use kimi or opencode.");
   });
 });
 

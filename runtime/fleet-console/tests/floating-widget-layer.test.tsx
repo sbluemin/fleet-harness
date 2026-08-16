@@ -223,6 +223,70 @@ describe("FloatingWidgetLayer", () => {
 
     expect(received).toHaveLength(updateCountAfterUnmount);
   });
+
+  it("keeps idle arrivals out of awaiting so Bori can leave the alert pose", () => {
+    const received: Array<{ awaiting: number; running: number }> = [];
+    setState({
+      operations: [
+        operation("idle-done", "Idle done"),
+        operation("waiting", "Waiting"),
+      ],
+      operationRuntime: {
+        waiting: { lifecycle: "live", activity: "awaiting" },
+      },
+    });
+    markIdleArrival("idle-done");
+
+    const plugin: FleetClientPlugin = {
+      id: "signals",
+      floatingWidgets: [{
+        id: "observer",
+        render: (context) => {
+          useEffect(
+            () => context.signals.subscribe((signals) => {
+              received.push({ awaiting: signals.awaiting, running: signals.running });
+            }),
+            [context.signals],
+          );
+          return createElement("span", null, "Signal observer");
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+
+    expect(received.at(-1)).toEqual({ awaiting: 1, running: 0 });
+
+    act(() => markIdleArrival("waiting"));
+
+    expect(received.at(-1)).toEqual({ awaiting: 1, running: 0 });
+  });
+
+  it("counts a finished idle arrival as zero awaiting", () => {
+    const received: number[] = [];
+    setState({ operations: [operation("idle-done", "Idle done")] });
+    markIdleArrival("idle-done");
+
+    const plugin: FleetClientPlugin = {
+      id: "signals-idle",
+      floatingWidgets: [{
+        id: "observer",
+        render: (context) => {
+          useEffect(
+            () => context.signals.subscribe((signals) => {
+              received.push(signals.awaiting);
+            }),
+            [context.signals],
+          );
+          return createElement("span", null, "Idle signal observer");
+        },
+      }],
+    };
+
+    renderLayer([plugin]);
+
+    expect(received.at(-1)).toBe(0);
+  });
 });
 
 let lastPathname = "";

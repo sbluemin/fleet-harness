@@ -80,6 +80,14 @@ function claudeHooks(options: CreateAgentCliPluginOptions, workflowGuardScriptPa
         }]
       : []),
   ];
+  // 같은 스크립트가 디스패치 직후에도 한 번 더 선다. 이쪽은 차단이 아니라 문맥 추가이고,
+  // 즉시 반환된 run id를 결과로 읽는 사고를 그 자리에서 막는다.
+  const postToolUse = workflowGuardScriptPath
+    ? [{
+        matcher: "Workflow",
+        hooks: [claudeCommandHook({ command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] })],
+      }]
+    : [];
   return {
     hooks: {
       ...(userPromptSubmitExecs.length > 0 ? {
@@ -93,6 +101,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, workflowGuardScriptPa
         }],
       } : {}),
       ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
+      ...(postToolUse.length > 0 ? { PostToolUse: postToolUse } : {}),
       ...(inputWaitingExec ? {
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",

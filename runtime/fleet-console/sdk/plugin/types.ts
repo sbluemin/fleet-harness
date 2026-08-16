@@ -267,6 +267,12 @@ export interface CompanionPanelDescriptor {
    * so plugin-side visibility checks stay correct.
    */
   readonly available?: (operation: OperationNode) => boolean;
+  /**
+   * Fills the caption band. The band itself stays host-owned — its geometry, surface, rim, and the frame's
+   * top corners — exactly as the body slot is host-owned and plugin-filled; omitted renders the host's
+   * dot and localized title. Ignored when `hideCaption` is set, which leaves the frame headless.
+   */
+  readonly caption?: (context: OperationRenderContext) => unknown;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
@@ -307,6 +313,13 @@ export interface OperationRenderContext extends OperationContext {
    * 판단하지 않고 이 값 하나를 읽어야 사이드바와 본문이 갈라지지 않는다.
    */
   readonly runtimeState: OperationRuntimeState | null;
+  /**
+   * Whether this body is on a surface the user can read. `undefined` is an older
+   * host and must be treated as live. `false` is a parked, minimized, or hidden
+   * body: the plugin must not hold a dedicated HTTP stream for it. A War Room
+   * deck tile stays live — its body is painted, even while inert.
+   */
+  readonly bodyLive?: boolean;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;

@@ -138,6 +138,10 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
     ]);
+    // 같은 스크립트가 디스패치 직후에도 선다 — 즉시 반환된 run id를 결과로 읽는 사고를 막는다.
+    expect(hooksJson.hooks.PostToolUse).toEqual([
+      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
+    ]);
     injected.cleanup?.();
   });
 

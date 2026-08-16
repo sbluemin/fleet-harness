@@ -17,6 +17,8 @@ export interface OperationBodyConfig {
   readonly language: "en" | "ko";
   readonly zoom: number;
   readonly runtimeState: OperationRuntimeState | null;
+  /** Absent means live. Parked bodies force this off even when a slot later claims otherwise. */
+  readonly bodyLive?: boolean;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onGeometryChange: (geometry: OperationGeometry) => void;
@@ -175,7 +177,8 @@ function sameBodyConfig(previous: OperationBodyConfig | undefined, next: Operati
     && previous.onRequestCompanions === next.onRequestCompanions
     && previous.companionsOpen === next.companionsOpen
     && previous.hiddenCompanionPanelIds === next.hiddenCompanionPanelIds
-    && previous.onSetCompanionPanelVisible === next.onSetCompanionPanelVisible;
+    && previous.onSetCompanionPanelVisible === next.onSetCompanionPanelVisible
+    && previous.bodyLive === next.bodyLive;
 }
 
 function PooledOperationBody({ operation, descriptor, config, capabilities, slot, parked, parkingSize }: {
@@ -238,6 +241,8 @@ function PooledOperationBody({ operation, descriptor, config, capabilities, slot
     settings: capabilities.settings,
     runtime: capabilities.runtime,
     runtimeState: current.runtimeState,
+    // 주차는 슬롯이 없다는 뜻이다. config가 live라고 말해도 화면 밖에 있으면 스트림을 열지 않는다.
+    bodyLive: parked ? false : current.bodyLive !== false,
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     onActivate: () => configRef.current?.onActivate(),

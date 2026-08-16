@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, PointerEvent as ReactPointerEvent } from "react";
 
-import type { Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { ProviderDto, QuotaSummaryDto, QuotaWindow } from "@dotobokuri/core-ai-gateway";
+import type { ProviderDto, QuotaSummaryDto, QuotaWindow, ResetCredits } from "@dotobokuri/core-ai-gateway";
 import {
   isProviderId,
   PROVIDER_ORDER_DEFAULT,
@@ -27,6 +27,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
   codex: "Codex",
   cursor: "Cursor",
   kimi: "Kimi",
+  opencode: "OpenCode Go",
   xai: "xAI",
 };
 
@@ -35,6 +36,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.codex.signedOut",
   cursor: "quota.cursor.signedOut",
   kimi: "quota.kimi.signedOut",
+  opencode: "quota.opencode.signedOut",
   xai: "quota.xai.signedOut",
 };
 
@@ -43,16 +45,18 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   codex: "quota.expired.codex",
   cursor: "quota.expired.cursor",
   kimi: "quota.expired.kimi",
+  opencode: "quota.expired.opencode",
   xai: "quota.expired.xai",
 };
 
-// Cursor와 Kimi만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다), 프로바이더별
-// 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
+// Cursor·Kimi·OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
+// 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
   cursor: "quota.noSubscription",
   kimi: "quota.kimi.noSubscription",
+  opencode: "quota.opencode.noSubscription",
   xai: "quota.noSubscription",
 };
 
@@ -109,6 +113,67 @@ export function formatCountdown(target: number | undefined, now: number): string
   return `${minutes}m`;
 }
 
+const DAY_MS = 86_400_000;
+
+function isFiniteTimestamp(value: number | undefined): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function part(parts: Intl.DateTimeFormatPart[], type: Intl.DateTimeFormatPartTypes): string {
+  return parts.find((entry) => entry.type === type)?.value ?? "";
+}
+
+/**
+ * Calendar instant of a reset, complementary to the remaining-time countdown.
+ * More than a day out names the date and local hour; a day or less names the clock.
+ */
+export function formatResetInstant(
+  target: number | undefined,
+  now: number,
+  locale: ConsoleLocale,
+): string | null {
+  if (!isFiniteTimestamp(target)) return null;
+  const instant = new Date(target);
+  if (Number.isNaN(instant.getTime())) return null;
+  const remaining = Math.max(0, target - now);
+  const clock = new Intl.DateTimeFormat(locale === "ko" ? "ko-KR" : "en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(instant);
+  if (remaining <= DAY_MS) return clock;
+  const intlLocale = locale === "ko" ? "ko-KR" : "en-US";
+  const parts = new Intl.DateTimeFormat(intlLocale, {
+    month: locale === "ko" ? "numeric" : "short",
+    day: "numeric",
+    weekday: "short",
+  }).formatToParts(instant);
+  const month = part(parts, "month");
+  const day = part(parts, "day");
+  const weekday = part(parts, "weekday");
+  const hour = String(instant.getHours()).padStart(2, "0");
+  return locale === "ko"
+    ? `${month}월 ${day}일 (${weekday}) ${hour}시`
+    : `${month} ${day} (${weekday}) ${clock}`;
+}
+
+function resetCaption(resetsAt: number, now: number, locale: ConsoleLocale, t: T): string {
+  const countdown = formatCountdown(resetsAt, now);
+  const at = formatResetInstant(resetsAt, now, locale);
+  return at === null
+    ? t("quota.meter.resets", { t: countdown })
+    : t("quota.meter.resets.at", { t: countdown, at });
+}
+
+/**
+ * Codex는 보유량이 0이어도 크레딧 응답을 준다. 0은 알릴 것이 없는 상태이지 알려야 할
+ * 사실이 아니므로, 이 자리에서 통째로 걷어 카드가 "0회 사용 가능" 한 줄을 상시로
+ * 차지하지 않게 한다. 공급자가 크레딧을 아예 보고하지 않는 경우와 같은 취급이다.
+ */
+export function visibleCredits(credits: ResetCredits | undefined): ResetCredits | null {
+  return credits !== undefined && credits.available > 0 ? credits : null;
+}
+
 /**
  * The gateway's own verdict decides the meter's severity. Re-deriving one from
  * `usedPercent` alone is what let a window read calm here while the roster a
@@ -163,15 +228,18 @@ export function formatPace(paceRatio: number): string {
   return `${Math.round(paceRatio * 10) / 10}`;
 }
 
+export function exhaustNote(window: QuotaWindow, now: number, t: T): string | null {
+  const projectedExhaustionAt = liveProjectionAt(window, now);
+  return projectedExhaustionAt === undefined
+    ? null
+    : t("quota.meter.exhausts", { t: formatCountdown(projectedExhaustionAt, now) });
+}
+
 export function riskNote(window: QuotaWindow, now: number, t: T): string | null {
   const risk = window.risk;
   if (!risk) return null;
-  // Past its target the countdown would clamp to "out in 0m" — a lapsed forecast
-  // dressed as a future one. The pace is what the same reading still supports.
-  const projectedExhaustionAt = liveProjectionAt(window, now);
-  if (projectedExhaustionAt !== undefined) {
-    return t("quota.meter.exhausts", { t: formatCountdown(projectedExhaustionAt, now) });
-  }
+  const exhaust = exhaustNote(window, now, t);
+  if (exhaust !== null) return exhaust;
   // Below the gateway's own elevated threshold a ratio is just noise on a bar.
   if (risk.paceRatio !== undefined && risk.pressure !== "ok") {
     return t("quota.meter.pace", { n: formatPace(risk.paceRatio) });
@@ -183,11 +251,13 @@ function Meter({
   window,
   cycleDays,
   now,
+  locale,
   t,
 }: {
   readonly window: QuotaWindow;
   readonly cycleDays?: number;
   readonly now: number;
+  readonly locale: ConsoleLocale;
   readonly t: T;
 }) {
   const severity = meterSeverity(window);
@@ -209,7 +279,7 @@ function Meter({
     <div className={`quota-meter quota-meter--${severity}`}>
       <div className="quota-meter__top">
         <span className="quota-meter__label">{label}{windowChip ? <span className="quota-meter__window">{windowChip}</span> : null}</span>
-        <span className="quota-meter__percent">{usedText}</span>
+        {note !== null ? <span className="quota-meter__forecast">{note}</span> : null}
       </div>
       <div
         className="quota-meter__bar"
@@ -236,12 +306,12 @@ function Meter({
           />
         ) : null}
       </div>
-      {note !== null || window.resetsAt !== undefined ? (
-        <div className="quota-meter__foot">
-          {note !== null ? <span className="quota-meter__risk">{note}</span> : null}
-          {window.resetsAt !== undefined ? <span className="quota-meter__reset">{t("quota.meter.resets", { t: formatCountdown(window.resetsAt, now) })}</span> : null}
-        </div>
-      ) : null}
+      <div className="quota-meter__foot">
+        <span className="quota-meter__percent">{usedText}</span>
+        {window.resetsAt !== undefined ? (
+          <span className="quota-meter__reset">{resetCaption(window.resetsAt, now, locale, t)}</span>
+        ) : null}
+      </div>
     </div>
   );
 }
@@ -327,10 +397,31 @@ function GripButton({ name, t }: { readonly name: string; readonly t: T }) {
   );
 }
 
+/** 크레딧 칩의 표식. 미터의 리셋 카운트다운과 달리 "내가 당길 수 있는 리셋"이라 회전 화살표를 쓴다. */
+function ResetGlyph() {
+  return (
+    <svg
+      width="10"
+      height="10"
+      viewBox="0 0 12 12"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M10.5 6a4.5 4.5 0 1 1-4.5-4.5c1.26 0 2.47.53 3.35 1.41L10.5 4" />
+      <path d="M10.5 1.5V4H8" />
+    </svg>
+  );
+}
+
 function ProviderCard({
   id,
   provider,
   now,
+  locale,
   t,
   connect,
   dragging,
@@ -338,6 +429,7 @@ function ProviderCard({
   readonly id: ProviderId;
   readonly provider: ProviderDto;
   readonly now: number;
+  readonly locale: ConsoleLocale;
   readonly t: T;
   readonly connect: (provider: ConnectableProviderId, connected: boolean) => void;
   readonly dragging: boolean;
@@ -386,14 +478,21 @@ function ProviderCard({
           : <div className="quota-error">{t("quota.error", { provider: name })}</div>;
       })() : null}
       {(provider.status === "ok" || provider.status === "stale") ? provider.windows?.map((window, index) => (
-        <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} t={t} />
+        <Meter key={`${window.id}-${window.label ?? index}`} window={window} cycleDays={provider.cycleDays} now={now} locale={locale} t={t} />
       )) : null}
-      {(provider.status === "ok" || provider.status === "stale") && provider.credits ? (
-        <div className="quota-credits">
-          <span>{t("quota.credits", { n: provider.credits.available })}</span>
-          {provider.credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(provider.credits.nextExpiresAt, now) })}</small> : null}
-        </div>
-      ) : null}
+      {(provider.status === "ok" || provider.status === "stale") ? (() => {
+        const credits = visibleCredits(provider.credits);
+        if (!credits) return null;
+        return (
+          <div className="quota-credits">
+            <span className="quota-credits__chip">
+              <ResetGlyph />
+              {t("quota.credits", { n: credits.available })}
+            </span>
+            {credits.nextExpiresAt !== undefined ? <small>{t("quota.credits.expiry", { t: formatCountdown(credits.nextExpiresAt, now) })}</small> : null}
+          </div>
+        );
+      })() : null}
       </div>
       </div>
     </section>
@@ -631,6 +730,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
     data?.providers.codex.fetchedAt ?? 0,
     data?.providers.cursor.fetchedAt ?? 0,
     data?.providers.kimi.fetchedAt ?? 0,
+    data?.providers.opencode.fetchedAt ?? 0,
     data?.providers.xai.fetchedAt ?? 0,
   );
   const updatedMinutes = Math.max(0, Math.floor((now - fetchedAt) / 60_000));
@@ -656,6 +756,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
             id={id}
             provider={data.providers[id]}
             now={now}
+            locale={ctx.language ?? "en"}
             t={t}
             connect={connect}
             dragging={draggingId === id}

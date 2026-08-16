@@ -5,6 +5,86 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.62.0] - 2026-08-16
+
+### fleet-cli
+
+#### Fixed
+- Retry transient Grok server and socket failures before any caller-visible output instead of ending the model turn with an incomplete-response API error.
+
+### fleet-console
+
+#### Added
+- Answer the agent inside the chat view. When the model stops to ask which way to go, the question stands as a card where it was asked, so you can pick an option or type an answer of your own, and the turn continues from your choice. A plan the model submits for review arrives the same way: approve it, or ask for a change and it comes back revised.
+- Show a waiting operation as waiting. While the chat view holds a question, the sidebar chip, War Room tile, and map dot read it as awaiting input rather than working, so a question you have not opened still finds you. The session waits until you answer or skip it, and never times out on its own.
+- Chat Mode now tracks background work (subagents, dynamic workflows and background shells) on its own clock. A backgrounded call keeps its own card instead of folding away, and a strip above the reply control counts what is still running. Clicking that strip opens the work surface beside the conversation rather than in place of it: a column on a wide panel, a drawer on a narrow one, resizable either way. A dynamic workflow opens into its stage tree, one row per agent with the identity it was pinned to. A subagent opens into the report it returned plus the trail of tools it actually called, and a background shell opens into the tail of what it printed.
+- Chat Mode can stop a turn that is going the wrong way. The control stands next to the reply button while a turn is in flight, and the turn it closes reads as stopped rather than failed, keeping whatever the model had already written. Background work that was already started keeps running, and the work surface still reports it.
+- Chat Mode now runs under the same Fleet instructions, skills, and gateway tools a terminal Operation gets, so a session answers the same way on either surface.
+- Keep your place in a streaming chat log, and jump back to the live tail with a Follow chip.
+- Usage limits shows OpenCode Go again, reading account-wide session, weekly, and monthly percents from OpenCode's official usage API.
+
+#### Changed
+- Give the Session Analyst panel its own caption bar, so it lines up with the panel beside it instead of leaving an empty strip above it and squared-off top corners. Its identity, state, Reset, and the Chat/Artifacts switch move into that bar and stop covering the first line of the conversation.
+- Rebuild the Session Analyst composer as one surface: the model, effort, and slash-command controls now sit inside the prompt box instead of a separate strip above it, control labels are large enough to read, and effort uses the same colour ladder as Quick Launch.
+- Switching an Operation between the terminal and Chat Mode now continues one conversation file instead of copying it back and forth, so neither surface can overwrite what the other wrote.
+- Refocus Ledger on Claude Code model usage with native Anthropic and Gateway-provider attribution, static OpenRouter cost estimates, merged Fast variants, and model detail reserved for the Today window.
+- Show the Codex reset credits as a compact chip, and hide the line entirely when no credit is held.
+- Hide the Analyst and Chat view chips on a War Room card, and let a chat-mode card use the space those chips leave. They return on the staged panel, where they can be used.
+
+#### Fixed
+- Show a gateway model in the Session Analyst model list right after you add it in Settings. The list was read once per Operation and never again, so a model added later stayed missing until the page was reloaded.
+- A turn that left work running no longer closes with a check mark on it. The fold now says how many jobs are still running, and a job that was cut short before finishing says so instead of reading as completed.
+- A collapsed row of tool calls now looks like something you can open before you hover it. The tool's name reads a step brighter than the words around it, and the chevron that opens the row is large enough to see at rest.
+- When background work finishes and the model answers again, that answer opens its own turn instead of replacing the answer of the turn that started the work.
+- Chat Mode no longer holds a live stream for a parked, minimized, or hidden panel. Only a body the user can read keeps its EventSource, so close and Resume requests are not starved behind off-screen chat subscriptions. War Room deck tiles stay subscribed because their bodies are painted.
+- Aide Bori cheers when a panel finishes, then returns to idle instead of freezing mid-pose.
+- Keep inertial phone scrolling from typing malformed mouse coordinates into terminal prompts.
+- Retry transient Grok server and socket failures before any caller-visible output instead of ending the model turn with an incomplete-response API error.
+- In War Room, a focused deck panel that starts waiting now comes up on stage without a pick.
+- Clicking empty space in War Room now unfocuses a focused panel that is not on stage, the same way an empty Cruise map click does.
+
+#### Removed
+- Drop the Analyst composer's provider control while only one provider is offered. It listed a single unchangeable entry, and the model menu already covers every native and gateway model.
+
+## [1.61.0] - 2026-08-16
+
+### fleet-cli
+
+#### Fixed
+- A Console server that fails to start now names what stopped it and what to check, and a browser that never opened hands you the address instead of reporting success.
+
+### fleet-console
+
+#### Changed
+- Chat view now shows the agent's work as it happens: steps stack up as a live ledger with a verb and its target, each one carrying its outcome (exit status, lines written, or the first line of an error), and the files a turn changed stand above them.
+- One turn reads as a sequence of what the agent said it would do and what it then did. Each sentence the model writes opens a segment, and the routine steps under it settle into a single tally line such as "read 3 files, ran 2 shell commands" once that segment closes. Clicking a tally line unfolds the steps it counted. Failed steps and writes outside the Theater never fold into a tally.
+- A finished turn folds its whole process into one line that reads how long the agent worked, with an expander beside it. A turn that had a failed step says so on that line instead of hiding it behind a checkmark.
+- Writes that land outside the Theater folder are marked in the ledger instead of reading like any other path.
+- A brand new install no longer opens What's New. Its release backlog is not news to someone seeing the product for the first time, so the next release is the first one it announces.
+- Restored sessions after a Console restart now share one Ended signal and a start-again path from the panel, sidebar, and palette, instead of painting a dead process as idle.
+- A rejected rename, accent, group, or reorder edit rolls the panel back to the server value and offers Try again, instead of looking saved.
+
+#### Fixed
+- Failures now say what happened, why, and what to do. A terminal that cannot connect, a folder that cannot become a Theater, and an Agent CLI that is missing or signed out each explain themselves instead of showing a status code or a machine name.
+- Saving one setting no longer blocks another. Two settings changed in quick succession both persist, and a failed save reverts only its own field.
+- Removing a skill, relaunching a dormant Shell, and opening a remote host now report a refusal instead of looking like nothing happened.
+- The terminal panel and the Skills list now follow the console language, and the Skills preview dialog, its tabs, and the Theater row are reachable with a screen reader.
+- A plugin that comes up without its panel now says so, instead of leaving an empty spot in the rail with no explanation.
+- Scrolling a full-screen agent on a phone no longer types `NaN` into the CLI prompt.
+- Keep the Quaker aides' speech bubbles and full-answer card opaque in the Carbon, Maritime, and Whites themes, so the Map and panels behind them no longer show through the words.
+- Restored Codex and other Agent CLI sessions no longer inherit a Claude supplier mark when the launch record was missing.
+- Station Keeping now keeps window captions out of neighboring panels, not just the panel bodies.
+- Station Keeping now settles a panel when a drag is interrupted without pointerup, so captions do not stay overlapped.
+- Drop a War Room panel's hover magnification the moment the deck density changes, so adjusting density no longer leaves one panel enlarged across its neighbours.
+- Release a War Room panel's hover magnification as soon as the pointer leaves it, so a magnified panel no longer stays enlarged over its neighbour and close the gap between deck tiles.
+- Keep a War Room panel's caption and body inside the tile it stands in, so lowering the deck density - or narrowing the deck until it adds a column - no longer paints one panel's text across its neighbours.
+- Open a War Room panel's hover magnification only when the pointer moves onto it, so a tile that slides under a still cursor - on entering the deck, changing density, or resizing the sidebar - no longer enlarges itself across its neighbours.
+
+### fleet-desktop
+
+#### Fixed
+- A startup that cannot proceed now explains what stopped it and where the diagnostic log is, instead of quitting with no window and no message.
+
 ## [1.60.0] - 2026-08-15
 
 ### fleet-cli

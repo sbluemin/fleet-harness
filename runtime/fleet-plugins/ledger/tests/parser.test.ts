@@ -7,177 +7,162 @@ import { describe, expect, it } from "vitest";
 import { parseTokscaleModelsOutput, parseTokscaleOutput } from "../server/parser.js";
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
-const fixture = fs.readFileSync(path.join(fixturesDir, "tokscale-report.json"), "utf8");
+const reportFixture = fs.readFileSync(path.join(fixturesDir, "tokscale-report.json"), "utf8");
 const modelsFixture = fs.readFileSync(path.join(fixturesDir, "tokscale-models.json"), "utf8");
+const sessionId = "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103";
+
+function modelEntry(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    client: "claude",
+    sessionId,
+    model: "claude-opus-5",
+    input: 10,
+    output: 2,
+    cacheRead: 3,
+    cacheWrite: 0,
+    cost: 1.25,
+    messageCount: 4,
+    ...overrides,
+  };
+}
 
 describe("parseTokscaleOutput", () => {
-  it("validates the measured tokscale session shape", () => {
-    const result = parseTokscaleOutput(fixture);
-    expect(result.status).toBe("ok");
-    expect(result.sessions).toHaveLength(3);
-    expect(result.sessions[0]).toMatchObject({
-      sessionId: "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103",
-      input: 1_200_000,
-      cacheRead: 900_000,
-      costUsd: 2.25,
+  it("reads only canonical session and date metadata", () => {
+    const result = parseTokscaleOutput(reportFixture);
+    expect(result).toEqual({
+      status: "degraded",
+      sessions: [{ sessionId, lastActive: 1_750_000_300_000 }],
+      skippedSessions: 2,
+    });
+    expect(JSON.stringify(result)).not.toContain("total_cost");
+    expect(JSON.stringify(result)).not.toContain("workspace");
+  });
+
+  it("canonicalizes uppercase UUIDs", () => {
+    const result = parseTokscaleOutput(JSON.stringify([{
+      session_id: sessionId.toUpperCase(),
+      last_active: 1_750_000_300_000,
+    }]));
+    expect(result).toEqual({
+      status: "ok",
+      sessions: [{ sessionId, lastActive: 1_750_000_300_000 }],
+      skippedSessions: 0,
     });
   });
 
-  it("drops an individual session when a required field is missing", () => {
-    const raw = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    delete raw[0]?.total_cost;
-    const result = parseTokscaleOutput(JSON.stringify(raw));
+  it.each([
+    ["malformed UUID", { session_id: "rollout-prefix", last_active: 1_750_000_300_000 }],
+    ["fractional timestamp", { session_id: sessionId, last_active: 1.5 }],
+    ["unsafe timestamp", { session_id: sessionId, last_active: Number.MAX_SAFE_INTEGER }],
+  ])("rejects %s", (_label, row) => {
+    expect(parseTokscaleOutput(JSON.stringify([row]))).toEqual({
+      status: "unreadable",
+      sessions: [],
+      skippedSessions: 1,
+    });
+  });
+
+  it("degrades one bad row while retaining valid metadata", () => {
+    const result = parseTokscaleOutput(JSON.stringify([
+      { session_id: sessionId, last_active: 1_750_000_300_000 },
+      { session_id: "bad", last_active: 1_750_000_300_000 },
+    ]));
     expect(result.status).toBe("degraded");
-    expect(result.sessions).toHaveLength(2);
+    expect(result.sessions).toEqual([{ sessionId, lastActive: 1_750_000_300_000 }]);
     expect(result.skippedSessions).toBe(1);
   });
 
-  it.each([
-    ["Number.MAX_SAFE_INTEGER", Number.MAX_SAFE_INTEGER],
-    ["a five-digit local year", new Date(10000, 0, 1, 12).getTime()],
-  ])("skips a session whose last_active is %s", (_label, lastActive) => {
-    const raw = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    raw[0]!.last_active = lastActive;
-    const result = parseTokscaleOutput(JSON.stringify(raw));
-    expect(result.status).toBe("degraded");
-    expect(result.sessions).toHaveLength(2);
-    expect(result.skippedSessions).toBe(1);
-  });
-
-  it("accepts a timestamp at the four-digit local-year boundary", () => {
-    const boundary = new Date(9999, 11, 31, 12).getTime();
-    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    row!.created_at = boundary;
-    row!.last_active = boundary;
-    const result = parseTokscaleOutput(JSON.stringify([row]));
-    expect(result.status).toBe("ok");
-    expect(result.sessions[0]).toMatchObject({ createdAt: boundary, lastActive: boundary });
-  });
-
-  // 실측: tokscale은 workspace를 판정하지 못한 세션(이 기기에서는 kimi 2건)에 null을 준다.
-  // Theater 스코프는 Operation.theaterId로 걸므로 이 필드는 쓰지 않는다 — 필수로 요구하면
-  // 콘솔이 실제로 기동하는 CLI의 사용량이 통째로 사라진다.
-  it("keeps sessions whose workspace tokscale could not resolve", () => {
-    const raw = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    raw[0]!.workspace = null;
-    raw[0]!.workspace_label = null;
-    const result = parseTokscaleOutput(JSON.stringify(raw));
-    expect(result.status).toBe("ok");
-    expect(result.skippedSessions).toBe(0);
-    expect(result.sessions).toHaveLength(3);
-    expect(result.sessions[0]).toMatchObject({ workspace: null, workspaceLabel: null, costUsd: 2.25 });
-  });
-
-  it("marks wholly incompatible output unreadable", () => {
-    const result = parseTokscaleOutput(JSON.stringify([{ session_id: "only-one-field" }]));
-    expect(result).toEqual({ status: "unreadable", sessions: [], skippedSessions: 1 });
-    expect(parseTokscaleOutput("{}").status).toBe("unreadable");
-  });
-
-  it.each([
-    ["negative token", "total_input_tokens", -3.5],
-    ["negative messages", "message_count", -1],
-    ["negative cost", "total_cost", -2],
-    ["huge token", "total_output_tokens", Number.MAX_VALUE],
-    ["unsafe integer", "total_cache_read", Number.MAX_SAFE_INTEGER + 1],
-    ["fractional epoch", "created_at", 1.5],
-  ])("rejects %s numeric values", (_label, field, value) => {
-    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    row![field] = value;
-    const result = parseTokscaleOutput(JSON.stringify([row]));
-    expect(result).toEqual({ status: "unreadable", sessions: [], skippedSessions: 1 });
-  });
-
-  it.each(["antigravity-cli", "pi", "grok"])("preserves safe client identifier %s", (client) => {
-    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    row!.client = client;
-    const result = parseTokscaleOutput(JSON.stringify([row]));
-    expect(result.status).toBe("ok");
-    expect(result.sessions[0]?.client).toBe(client);
-  });
-
-  it.each([
-    "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103",
-    "/Users/private/transcript",
-    "client name",
-  ])("folds unsafe client identifier %s into other without dropping the session", (client) => {
-    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    row!.client = client;
-    const result = parseTokscaleOutput(JSON.stringify([row]));
-    expect(result.status).toBe("ok");
-    expect(result.sessions[0]?.client).toBe("other");
-  });
-
-  it("drops unsafe model strings while retaining valid model identifiers", () => {
-    const [row] = JSON.parse(fixture) as Array<Record<string, unknown>>;
-    row!.models_used = [
-      "gpt-5",
-      "openai/gpt-5",
-      "/Users/private/model",
-      "../../transcript",
-      "30bf2ab7-5a5d-4a8c-8aaa-730a40ecf103",
-      "x".repeat(65),
-      "model name",
-    ];
-    const result = parseTokscaleOutput(JSON.stringify([row]));
-    expect(result.sessions[0]?.models).toEqual(["gpt-5", "openai/gpt-5"]);
+  it("marks malformed JSON and non-array output unreadable", () => {
+    expect(parseTokscaleOutput("{broken")).toEqual({ status: "unreadable", sessions: [], skippedSessions: 0 });
+    expect(parseTokscaleOutput("{}")).toEqual({ status: "unreadable", sessions: [], skippedSessions: 0 });
   });
 });
 
 describe("parseTokscaleModelsOutput", () => {
-  it("reads the measured models-command object shape", () => {
+  it("reads measured client,session,model rows and canonicalizes session ids", () => {
     const result = parseTokscaleModelsOutput(modelsFixture);
     expect(result.status).toBe("ok");
     expect(result.entries).toEqual([
-      { modelId: "claude-gateway--cursor--claude-opus-5", input: 10, output: 2, cacheRead: 0, costUsd: 5.5, messages: 3 },
-      { modelId: "claude-opus-5", input: 4, output: 1, cacheRead: 2, costUsd: 1.25, messages: 8 },
-      { modelId: "claude-gateway--xai--grok-4.6", input: 1, output: 1, cacheRead: 0, costUsd: 0, messages: 292 },
+      {
+        sessionId,
+        modelId: "claude-gateway--cursor--claude-opus-5",
+        input: 10,
+        output: 2,
+        cacheRead: 0,
+        cacheWrite: 0,
+        costUsd: 5.5,
+        messages: 3,
+      },
+      {
+        sessionId,
+        modelId: "claude-opus-5",
+        input: 4,
+        output: 1,
+        cacheRead: 2,
+        cacheWrite: 0,
+        costUsd: 1.25,
+        messages: 8,
+      },
+      {
+        sessionId: "40bf2ab7-5a5d-4a8c-8aaa-730a40ecf104",
+        modelId: "claude-gateway--xai--grok-4.6",
+        input: 1,
+        output: 1,
+        cacheRead: 0,
+        cacheWrite: 0,
+        costUsd: 0,
+        messages: 292,
+      },
     ]);
   });
 
-  it("keeps a 1M context-window marker on a model id", () => {
+  it("keeps valid gateway rows for semantic filtering without degrading the source", () => {
     const result = parseTokscaleModelsOutput(JSON.stringify({
-      entries: [{
-        model: "claude-gateway--opencode--gpt-5.6-luna[1m]",
-        input: 1,
-        output: 1,
-        cacheRead: 0,
-        cost: 1,
-        messageCount: 1,
-      }],
+      entries: [modelEntry({ model: "claude-gateway--codex--gpt-5.6-sol" })],
     }));
     expect(result.status).toBe("ok");
-    expect(result.entries[0]?.modelId).toBe("claude-gateway--opencode--gpt-5.6-luna[1m]");
+    expect(result.entries[0]?.modelId).toBe("claude-gateway--codex--gpt-5.6-sol");
   });
 
-  it("keeps a zero-cost entry", () => {
+  it("requires the measured Claude Code client on every row", () => {
     const result = parseTokscaleModelsOutput(JSON.stringify({
-      entries: [{
-        model: "claude-gateway--xai--grok-4.6",
-        input: 1,
-        output: 1,
-        cacheRead: 0,
-        cost: 0,
-        messageCount: 292,
-      }],
+      entries: [modelEntry({ client: undefined })],
+    }));
+    expect(result).toEqual({ status: "unreadable", entries: [], skippedEntries: 1 });
+  });
+
+  it("keeps zero-cost rows and a 1M context marker", () => {
+    const result = parseTokscaleModelsOutput(JSON.stringify({
+      entries: [modelEntry({ model: "claude-opus-5[1M]", cost: 0, messageCount: 12 })],
     }));
     expect(result.status).toBe("ok");
-    expect(result.entries[0]).toMatchObject({ costUsd: 0, messages: 292 });
+    expect(result.entries[0]).toMatchObject({ modelId: "claude-opus-5[1M]", costUsd: 0, messages: 12 });
   });
 
-  it("rejects a report array as unreadable", () => {
-    expect(parseTokscaleModelsOutput(fixture).status).toBe("unreadable");
-  });
-
-  it("degrades when one entry is unsafe and keeps the rest", () => {
+  it.each([
+    ["missing session", { sessionId: undefined }],
+    ["wrong source client", { client: "codex" }],
+    ["absolute model path", { model: "/Users/private/model" }],
+    ["traversal model", { model: "../../transcript" }],
+    ["UUID model", { model: sessionId }],
+    ["negative cost", { cost: -1 }],
+    ["fractional messages", { messageCount: 1.5 }],
+    ["unsafe token count", { input: Number.MAX_SAFE_INTEGER + 1 }],
+  ])("rejects %s", (_label, overrides) => {
     const result = parseTokscaleModelsOutput(JSON.stringify({
-      entries: [
-        { model: "/Users/private/model", input: 1, output: 1, cacheRead: 0, cost: 1, messageCount: 1 },
-        { model: "claude-opus-5", input: 1, output: 1, cacheRead: 0, cost: 1, messageCount: 1 },
-      ],
+      entries: [modelEntry(overrides), modelEntry({ model: "claude-sonnet-5" })],
     }));
     expect(result.status).toBe("degraded");
     expect(result.entries).toHaveLength(1);
     expect(result.skippedEntries).toBe(1);
+  });
+
+  it("marks a report array and wholly incompatible entries unreadable", () => {
+    expect(parseTokscaleModelsOutput(reportFixture).status).toBe("unreadable");
+    expect(parseTokscaleModelsOutput(JSON.stringify({ entries: [{ model: "only-one-field" }] }))).toEqual({
+      status: "unreadable",
+      entries: [],
+      skippedEntries: 1,
+    });
   });
 });

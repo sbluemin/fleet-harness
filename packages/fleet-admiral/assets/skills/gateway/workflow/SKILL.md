@@ -1,6 +1,6 @@
 ---
 name: workflow
-description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from workflow-architecting, workflow-research, workflow-implementing, or workflow-review. Skip only when the work stays on the host.
+description: Choose the surface a handoff runs on and pin the identity it runs as, then wire a staged run's stages to each other and keep its failures visible. Load before any run leaves the host — one Agent, a named teammate, or a staged workflow — and before executing a stage skeleton from workflow-architecting, workflow-research, or workflow-review. A run that writes files has no skeleton of its own and loads this skill directly. Skip only when the work stays on the host.
 ---
 
 # Workflow
@@ -79,7 +79,16 @@ Every gateway skeleton is a table of `Stage | Role | Fan | Returns`.
 
 **Pipeline unless stage N+1 genuinely needs the whole set at once** — deduplicating before expensive downstream work, deciding literals every branch shares, early-exit on zero, or comparing one result against the others.
 
-A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers a skeleton already names — `workflow-implementing`'s Decide, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
+A barrier is **not** justified by needing to flatten, map, or filter between stages (do that inside a stage), by stages feeling conceptually separate, or by the script reading cleaner. Each unjustified barrier costs the gap between slowest and fastest branch, on every item, for nothing. The barriers this doctrine already names — the host-side literal fix before any writing fan below, `workflow-review`'s Adjudicate — are load-bearing; do not optimize them away.
+
+## While the Run Is in Flight
+
+Some surfaces hand the result back at once. The staged surface does not — it returns a receipt and comes back to you when the run finishes. Between those two moments the host has exactly one job: not to answer.
+
+- **A receipt is not a result.** A run id says work started. It carries no finding, no verdict, no coverage. Nothing in the shape of the returned value marks which of the two you are holding — only the surface does.
+- **The dispatching turn ends in one line.** Which surface, how many stages, what you are waiting for. No conclusion, no review, no recommendation, and no forecast of what the run will probably find — a reading written before the result is indistinguishable from the result to whoever reads it, and it stays on the page after the real one arrives.
+- **Report once, in the turn the result lands.** The dispatching turn already spent its line. Saying it there and again on arrival turns one run into two answers, which is how a reader learns to distrust both.
+- **Asked while it runs, say it is still running.** That is the entire answer. Do not fill the wait with an interim reading.
 
 ## Failures Must Be Loud
 
@@ -165,6 +174,17 @@ The roster now carries a second body of evidence beside these: third-party `benc
 
 Decisions must travel as literal values, not descriptions: name the exact token, path, setting key, or constant, and never write "match the existing style". On return, check the artifacts against the literals you sent — an equivalent-looking substitution is a defect, not a variation.
 
+### When the run writes files
+
+Writing work has no stage skeleton of its own; these rules are the whole of it. Its risk is not failure — a failed edit is visible — but convergence: several branches each producing something reasonable that together do not match the codebase.
+
+- **Fix every literal on the host first.** Ask of each choice: must the run name a concrete value, and does it lack the convention context to justify one? Both yes means you choose it and pass it verbatim — design tokens, API paths, setting keys, names, error text, thresholds, constants. This barrier is load-bearing; skip it and each branch invents its own answer.
+- **Isolate every writing branch.** Parallel edits to a shared tree corrupt each other. Pay the worktree isolation cost whenever more than one branch writes.
+- **Inspect artifacts, never narratives.** Read the actual diff per site. A run's summary is evidence of what it believed, not of what it wrote — a branch that could not find its target still reports the intent as done.
+- **A site needing a new decision stops.** When a run meets a case your literals did not cover, it returns that fact instead of choosing. Resolve it on the host and restart that branch with the value; do not let one branch set precedent for the rest.
+- **Reject rather than patch.** A drifted branch is re-run with a sharper prompt. Hand-fixing its output hides that the prompt was insufficient, and the next site drifts the same way.
+- **Only local, well-precedented edits were measured.** Nothing establishes this for sweeping or cross-package work, where each branch sees one slice and convention drift compounds. Keep groups small, and keep a structural change on the host.
+
 ## Gotchas
 
 - **Symptom:** A run left the host on the session's own model and nothing in the report says why.
@@ -182,6 +202,10 @@ Decisions must travel as literal values, not descriptions: name the exact token,
 - **Symptom:** A provider looked like it had room, but its requests began failing.
   **Action:** Read the window whose `scope` matches the model's `quotaScope`, not the provider's combined figure.
   **Why:** One subscription can bill through separate pools; the sum can read comfortable while the pool a given model draws from is nearly spent.
+
+- **Symptom:** A review of the run landed before the run finished, and when the result actually arrived the same ground was covered a second time.
+  **Action:** Treat the value the dispatch returned as a receipt. The dispatching turn gets one status line; the finding waits for the turn the result lands in.
+  **Why:** Both a receipt and a result come back through the same return, so the value itself never says which one it is. Reading the receipt as a result costs twice — once for the invented finding, once for the duplicate that follows it.
 
 - **Symptom:** A workflow dispatch is blocked before it runs with `[workflow-guard] opts.model 값이 올바르지 않습니다`.
   **Action:** Re-read `gateway_models` and copy the `modelId` verbatim — the value dropped the `claude-gateway--` prefix (or an alias wrongly carries it). The guard also blocks any script containing `agentType:`.

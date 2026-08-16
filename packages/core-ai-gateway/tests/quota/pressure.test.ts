@@ -89,6 +89,7 @@ describe("quota summary risk", () => {
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor: async () => ({ status: "signed_out" }),
       fetchKimi: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     const window = (await service.getSummary()).providers.claude.windows?.[0];
     expect(window?.risk).toMatchObject({ pressure: "critical", paceRatio: 2.2, elapsedFraction: 0.2 });
@@ -111,6 +112,7 @@ describe("quota summary risk", () => {
       fetchCodex: async () => ({ status: "signed_out" }),
       fetchCursor: async () => ({ status: "signed_out" }),
       fetchKimi: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     const first = (await service.getSummary()).providers.claude.windows?.[0]?.risk;
     now += WEEK * 0.5;

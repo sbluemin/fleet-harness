@@ -49,6 +49,20 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ turnState: "ended" }))).toBe("idle");
   });
 
+  // 두 표면이 같은 필드에 쓰므로 해석도 한 벌이다. 표면에 따라 다른 규칙을 적용하면 같은
+  // 개념이 두 이름으로 갈라지고, 읽는 쪽이 어느 쪽을 볼지 매번 고르게 된다.
+  it("reads a chat-adopted session through the same activity rules as a CLI one", () => {
+    for (const activity of ["running", "awaiting", "idle", "background"] as const) {
+      const shape = activity === "running" ? { modelActivity: "working" as const }
+        : activity === "awaiting" ? { attentionPending: true }
+        : activity === "background" ? { backgroundPending: true, turnState: "ended" as const }
+        : { turnState: "ended" as const };
+      expect(sessionActivity(makeSession({ ...shape, chatActive: true })), activity).toBe(activity);
+      expect(sessionRuntime(makeSession({ ...shape, chatActive: true, status: "dormant" })), activity)
+        .toEqual({ lifecycle: "live", activity, surface: "CHAT" });
+    }
+  });
+
   it("maps background-pending ended and not-working sessions to background", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, turnState: "ended" }))).toBe("background");
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "not-working" }))).toBe("background");
@@ -76,13 +90,13 @@ describe("Agent connection activity state machine", () => {
       status: "dormant",
       turnState: "ended",
       chatActive: true,
-      chatWorking: true,
+      modelActivity: "working",
       createdAt: 1_000,
       resumeAvailable: true,
     }, 200);
 
     expect(dto.chatActive).toBe(true);
-    expect(dto.chatWorking).toBe(true);
+    expect(dto.modelActivity).toBe("working");
     expect(sessionRuntime(dto)).toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
 
     // 채팅이 인수하지 않은 같은 모양은 종전대로 휴면이다.
@@ -103,7 +117,7 @@ describe("Agent connection activity state machine", () => {
   it("keeps a chat-adopted session live while its PTY is gone", () => {
     expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true })))
       .toEqual({ lifecycle: "live", activity: "idle", surface: "CHAT" });
-    expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true, chatWorking: true })))
+    expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true, modelActivity: "working" })))
       .toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
     // 인수하지 않았으면 종전대로 휴면이다.
     expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });

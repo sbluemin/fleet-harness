@@ -10,7 +10,7 @@ import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, Fle
 import { fetchOperations } from "../api.js";
 import { availableCompanionPanels } from "../companion-shortcut.js";
 import { isBlockingDialogOpen } from "../focus-guards.js";
-import { clearActiveOperation } from "../active-operation-surface.js";
+import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
@@ -33,7 +33,7 @@ import { OperationFrame } from "./operation-frame.js";
 import { hasVisibleCanvasContent, OperationsCanvasEmptyState } from "./operations-canvas-empty-state.js";
 import { useCanvasInteraction } from "./use-canvas-interaction.js";
 import { modeSlotGeometryFor, operationWindowFrameFor, screenToCanvas, triageStageGeometryFor, type CanvasPoint, type CanvasRect } from "./coordinates.js";
-import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
+import { disarmTriageSetAside, dismissTriageOperation, forgetTriageOperation, getTriageEnteredAt, getTriagePick, getTriageSetAsideArmedId, getTriageSnapshot, isTriageActive, isTriageClearedTransition, isTriageOperationDeferred, isTriageOperationDismissed, isTriageWaitingOperation, pickTriageOperation, reconcileTriageStageCompanion, recordTriageStageTheater, resolveActiveAwaitingTriageEntry, resolveTriageQueue, scheduleTriageClear, subscribeTriage, useTriageActive, useTriageSpotlightEnabled, type TriageQueueEntry, type TriageStageIdentity } from "./triage-store.js";
 
 interface OperationsCanvasProps {
   readonly state: ConsoleState;
@@ -73,6 +73,7 @@ interface PluginOperationRendererProps {
   readonly companionsOpen: boolean;
   readonly hiddenCompanionPanelIds: readonly string[];
   readonly onSetCompanionPanelVisible: (companionPanelId: string, visible: boolean) => void;
+  readonly bodyLive?: boolean;
   readonly render: (context: OperationRenderContext) => unknown;
 }
 
@@ -390,11 +391,15 @@ export function OperationsCanvas({
         picked: false,
       }
     : null;
+  // 캡션으로만 활성화된 패널이 대기로 전이하면 무대 후보가 된다. pick이 아니라서 미룸·치워둠을
+  // 풀지 않고, 스포트라이트 OFF 자동 등단도 강제하지 않는다. 명시적 지목·전이 유예·직전 무대
+  // 포커스 고정이 이 클레임보다 앞선다.
+  const activeAwaitingTriageEntry = resolveActiveAwaitingTriageEntry(state.operations, state.operationRuntime);
   // 최소화한 Operation은 판에서 내려간 것이므로 어떤 유지 경로로도 무대에 되살아나지 않는다.
   // previousTriageHasFocus가 치워둔 항목을 같은 이유로 이미 제외하지만, 최소화는 무대의 손잡이로
   // 실행되어 그 손잡이가 이전 프레임 안에서 포커스를 쥔 채 남는다 — 걸러내지 않으면 무대와 최소화
   // 선반에 같은 Operation이 동시에 선다. grace(전이 유예) 경로도 같은 이유로 함께 막는다.
-  const retainedTriageCandidate = graceTriageEntry ?? protectedTriageEntry;
+  const retainedTriageCandidate = graceTriageEntry ?? protectedTriageEntry ?? activeAwaitingTriageEntry;
   const retainedTriageEntry = retainedTriageCandidate && triageMinimizedSet.has(retainedTriageCandidate.operation.id)
     ? null
     : retainedTriageCandidate;
@@ -794,6 +799,11 @@ export function OperationsCanvas({
           // 캔버스 제어 메뉴가 어느 소유자(사이드바 포털/이 컴포넌트)로부터 열었든 Map 클릭으로 닫는다 —
           // pan의 preventDefault+포인터 캡처가 mousedown 합성을 끊어 포털의 외부-클릭 닫기가 못 잡는다.
           window.dispatchEvent(new Event("canvas-context-menu-close"));
+        }
+        // War Room은 제스처 훅을 끄므로 Cruise onClick 해제가 닿지 않는다. 덱이 덮은 빈
+        // 자리는 카드·점·패널이 아닌 곳에서 활성만 푼다 — 무대 지목은 그대로다.
+        if (triageActive && event.button === 0 && isWarRoomEmptyReleaseTarget(event.target)) {
+          clearActiveOperation();
         }
         interaction.onPointerDown(event as Parameters<typeof interaction.onPointerDown>[0]);
       }}
@@ -1325,6 +1335,7 @@ function renderPluginOperation(operation: OperationNode, options: {
               geometry,
               operation,
               runtimeState: options.runtimeState,
+              bodyLive: !options.minimized && !options.focusLayerHidden,
               theme: options.theme,
               language: options.language,
               zoom: options.viewportZoom,
@@ -1356,13 +1367,43 @@ function renderPluginOperation(operation: OperationNode, options: {
               companionsOpen={options.companion}
               hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
               onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+              bodyLive={!options.minimized && !options.focusLayerHidden}
               render={descriptor.render}
             />
           </PluginErrorBoundary>
         )}
       </OperationFrame>
       {options.companions.map((companion, index) => (
-        <CompanionFrame key={companion.id} descriptor={companion} geometry={options.companionGeometries[index]!} language={options.language}>
+        <CompanionFrame
+          key={companion.id}
+          descriptor={companion}
+          geometry={options.companionGeometries[index]!}
+          language={options.language}
+          caption={companion.caption === undefined ? null : (
+            // 캡션 내용도 본문과 같은 context로 그린다 — 두 슬롯이 서로 다른 컨텍스트를 받으면
+            // 정체·상태가 본문과 어긋난 프레임이 나온다.
+            <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.companionFailed" />}>
+              <PluginOperationRenderer
+                active={options.active}
+                capabilities={capabilities}
+                geometry={geometry}
+                operation={operation}
+                theme={options.theme}
+                language={options.language}
+                viewportZoom={options.viewportZoom}
+                runtimeState={options.runtimeState}
+                onActivate={options.onActivate}
+                onClose={options.onClose}
+                onGeometryChange={options.onGeometryChange}
+                onRequestCompanions={onRequestCompanions}
+                companionsOpen={options.companion}
+                hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+                onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+                render={companion.caption}
+              />
+            </PluginErrorBoundary>
+          )}
+        >
           <PluginErrorBoundary fallback={<PluginRenderError messageKey="canvas.plugin.companionFailed" />}>
             <PluginOperationRenderer
               active={options.active}
@@ -1409,6 +1450,7 @@ function PluginOperationRenderer({
   companionsOpen,
   hiddenCompanionPanelIds,
   onSetCompanionPanelVisible,
+  bodyLive,
   render,
 }: PluginOperationRendererProps) {
   return render({
@@ -1432,6 +1474,7 @@ function PluginOperationRenderer({
     settings: capabilities.settings,
     runtime: capabilities.runtime,
     runtimeState,
+    ...(bodyLive === undefined ? {} : { bodyLive }),
     statusDetail: capabilities.statusDetail,
     composer: capabilities.composer,
     onActivate,
@@ -1449,10 +1492,11 @@ function PluginRenderError({ messageKey }: { readonly messageKey: "canvas.plugin
   return <div className="fc-plugin-error">{t(messageKey)}</div>;
 }
 
-function CompanionFrame({ descriptor, geometry, language, children }: {
+function CompanionFrame({ descriptor, geometry, language, caption, children }: {
   readonly descriptor: CompanionPanelDescriptor;
   readonly geometry: OperationGeometry;
   readonly language: ConsoleLocale;
+  readonly caption: ReactNode;
   readonly children: ReactNode;
 }) {
   const t = useT();
@@ -1468,8 +1512,12 @@ function CompanionFrame({ descriptor, geometry, language, children }: {
     <article className="canvas-operation canvas-companion-frame" style={frameStyle} data-canvas-operation aria-label={t("canvas.companion.aria", { title })}>
       {descriptor.hideCaption ? null : (
         <header className="canvas-companion-caption" data-canvas-blocker>
-          <span className="canvas-companion-caption-dot" aria-hidden="true" />
-          <span className="canvas-companion-caption-title">{title}</span>
+          {caption ?? (
+            <>
+              <span className="canvas-companion-caption-dot" aria-hidden="true" />
+              <span className="canvas-companion-caption-title">{title}</span>
+            </>
+          )}
         </header>
       )}
       <div className="canvas-operation-terminal canvas-companion-body" onPointerDown={(event) => event.stopPropagation()} onWheel={(event) => event.stopPropagation()} data-canvas-blocker>

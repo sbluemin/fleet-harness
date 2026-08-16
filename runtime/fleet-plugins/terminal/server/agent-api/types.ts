@@ -56,11 +56,12 @@ export interface AgentTerminalSessionInfo {
   readonly backgroundPending?: boolean;
   /**
    * Chat Mode가 이 세션을 인수했는지. PTY는 접혔지만 core-agent SDK가 같은 provider 세션을 이어
-   * 돌리므로 실행 표면은 살아 있다 — 활동 해석은 PTY의 유무가 아니라 이 값을 먼저 읽어야 한다.
+   * 돌리므로 실행 표면은 살아 있다 — 수명 해석은 PTY의 유무가 아니라 이 값을 먼저 읽어야 한다.
+   *
+   * 활동 자체는 여기 실리지 않는다. 두 표면 모두 위의 `modelActivity`·`attentionPending`에 쓰고,
+   * 이 값은 그것을 **누가 채웠는지**와 표면 표식만 정한다.
    */
   readonly chatActive?: boolean;
-  /** Chat Mode의 SDK 턴이 진행 중인지. runTurn 의 시작과 finally 가 이 값의 유일한 필자다. */
-  readonly chatWorking?: boolean;
   readonly createdAt: number;
   readonly theaterId: string;
   readonly registrationId?: string;

@@ -1,7 +1,7 @@
 /* Chat Mode — Operation 본문의 읽기 전용 지휘 로그.
    색은 전부 테마 토큰이다: 상태는 신호 토큰(aurora/warn/coral/positive)만, 사용자 식별은
    --id-cerulean 워시 문법만 쓴다(단일 화자 표면이라 spine 띠는 두지 않는다 — 우측 정렬이
-   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer는 공유
+   이미 화자를 말한다). 입력창은 없다 — 하단 스트립은 입력 경로 안내다. Answer와 구간 문장은 공유
    마크다운 컴포넌트(.markdown-body)로 렌더하고 여기서는 챗 밀도 스케일만 오버라이드한다. */
 
 .agent-chat {
@@ -16,6 +16,9 @@
      --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다).
      포커스 워시는 캡션만 진다. 여기 따라가면 활성 채팅 전체가 다른 면으로 바뀐다. */
   background: var(--surface-panel);
+  /* 작업 면이 컬럼으로 설지 서랍으로 접힐지는 **이 패널의 폭**이 정한다. 뷰포트로 가르면
+     넓은 창 안의 좁은 덱 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다. */
+  container-type: inline-size;
   /* 캔버스·패널 조상이 pan용 손 커서와 user-select: none을 상속시킨다 — 채팅은 읽고
      복사하는 표면이므로 서브트리에서 텍스트 커서와 선택을 되살린다. */
   cursor: auto;
@@ -27,6 +30,7 @@
 .agent-chat-to-term:not(:disabled),
 .agent-chat-inter-button,
 .agent-chat-mode-chip,
+.agent-chat-follow,
 .agent-chat-dormant-open:not(:disabled) {
   cursor: pointer;
 }
@@ -77,13 +81,6 @@
 
 .agent-chat-sys--warn { color: var(--warn-ink); }
 .agent-chat-sys--error { color: var(--coral-ink); }
-
-.agent-chat-empty {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-tertiary);
-  padding: var(--space-8) 0;
-}
 
 /* 디스패치 — Quick Launch에서 온 사용자 지시. 메타는 버블 밖 위, 버블 안에는 지시 본문만.
    우하단 radius를 조여 발화 원점(하단 Quick Launch)을 가리킨다. */
@@ -185,24 +182,179 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 진행 중 펄스 카드 — 현재 활동 + elapsed. Session Analyst의 진행 문법과 한 계열. */
-.agent-chat-pulse {
+/* 이 턴이 바꾼 파일 — 원장 맨 위. 추가·삭제는 상태 채널(positive/coral)이 진다. */
+.agent-chat-changes {
   margin-top: var(--space-2);
   display: flex;
-  align-items: center;
-  gap: var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--aurora) 24%, var(--hairline));
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
-  padding: var(--space-2) var(--space-3);
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.agent-chat-change {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+  max-width: 100%;
   font-family: var(--font-mono);
   font-size: 11px;
+  padding: 3px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-raised);
+  border: 1px solid color-mix(in oklch, var(--positive) 22%, var(--hairline));
   color: var(--text-secondary);
 }
 
-.agent-chat-pulse-orbit {
-  width: 10px;
-  height: 10px;
+.agent-chat-change-file {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-change-add { color: var(--positive); flex: none; }
+.agent-chat-change-del { color: var(--coral); flex: none; }
+
+/* 라이브 원장 — 스텝과 문장이 도착한 순서대로 쌓인다. 진행 중에도 완료 후에도 같은 문법이다. */
+.agent-chat-ledger {
+  margin-top: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+/* 구간 — 모델의 문장 하나와 그 문장으로 한 일. 구간 사이가 구간 안보다 넓어야 쌍으로 읽힌다. */
+.agent-chat-segment {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.agent-chat-segment + .agent-chat-segment {
+  margin-top: var(--space-3);
+}
+
+/* 구간의 문장은 공유 마크다운이 그린다. italic은 문법(*강조*)이 질 몫이지 과정 문장
+   전체에 씌우는 가죽이 아니다 — 강제하면 `**굵게**`가 별표 그대로 남고 문장만 기울어진다.
+   답변보다 한 단 작고 단락 잉크만 한 단 옅게 두어, 과정과 결론이 같은 무게로 읽히지 않게 한다. */
+.agent-chat .agent-chat-ledger-note.markdown-body {
+  --font-size-body: 12.5px;
+  overflow-wrap: anywhere;
+  padding: var(--space-1) 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body > :first-child {
+  margin-top: 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body > :last-child {
+  margin-bottom: 0;
+}
+
+.agent-chat .agent-chat-ledger-note.markdown-body p,
+.agent-chat .agent-chat-ledger-note.markdown-body li {
+  color: var(--text-tertiary);
+}
+
+/* 끝난 일상 스텝의 한 줄 집계 — 도구를 세우지 않고 "무엇을 몇 번 했는가"만 남긴다.
+   면도 테두리도 없다: 이 줄은 카드가 아니라 문장이고, 카드는 예외에게만 준다. */
+.agent-chat-tally {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 2px var(--space-1);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-tally-sep {
+  color: var(--hairline-strong);
+}
+
+/* 도구 이름은 이 줄에서 유일하게 훑히는 토큰이다. 나머지 문구와 같은 잉크를 쓰면 줄 전체가
+   한 덩어리 회색이 되어, 무엇을 했는지 읽으려면 멈춰서 읽어야 한다. 접히지 않은 스텝 줄의
+   동사(.agent-chat-step-verb)가 이미 이 잉크를 쓰므로, 여기서 맞추는 것이 두 줄을 하나의
+   문법으로 되돌린다. 이것은 가독성이지 어포던스가 아니다 — 안 눌리는 집계 줄도 이름을 갖는다. */
+.agent-chat-tally-name {
+  color: var(--text-secondary);
+}
+
+/* 집계 줄은 열쇠다 — 누르면 그 줄이 세고 있던 스텝이 펼쳐진다. 눌린다는 사실은 꺾쇠와
+   hover 잉크가 말한다. brass는 위치·포커스 채널이므로 여기서는 쓰지 않는다. */
+.agent-chat-tally-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary::-webkit-details-marker { display: none; }
+
+.agent-chat-tally-fold > summary:hover {
+  color: var(--text-secondary);
+}
+
+.agent-chat-tally-fold > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* 어포던스는 오직 이 꺾쇠가 진다. 이전에는 9px에 --hairline-strong이라, 쉬는 상태에서 눌리는
+   줄과 안 눌리는 줄의 차이가 사실상 없었다(측정: 두 줄이 같은 클래스·같은 활자·같은 색이고
+   차이는 이 글리프 하나뿐). 크기와 잉크를 한 단씩 올려 쉬는 상태에서도 읽히게 하고, hover는
+   그 위 한 단으로 남긴다 — brass는 위치·포커스 채널이라 "눌린다"를 질 수 없다. */
+.agent-chat-tally-chev {
+  font-size: 11px;
+  line-height: 1;
+  align-self: center;
+  color: var(--text-tertiary);
+  transition: transform var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-tally-fold > summary:hover .agent-chat-tally-chev {
+  color: var(--text-secondary);
+}
+
+.agent-chat-tally-fold[open] .agent-chat-tally-chev {
+  transform: rotate(180deg);
+}
+
+.agent-chat-tally-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin-top: var(--space-1);
+}
+
+.agent-chat-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  color: var(--text-tertiary);
+  padding: 5px var(--space-3);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+}
+
+/* 진행 중인 스텝 하나만 aurora를 진다 — 상태 채널이므로 완료된 줄은 중립으로 돌아간다. */
+.agent-chat-step.is-running {
+  border-color: color-mix(in oklch, var(--aurora) 30%, var(--hairline));
+  background: color-mix(in oklch, var(--aurora) 4%, var(--surface-panel-raised));
+}
+
+.agent-chat-step.is-fail {
+  border-color: color-mix(in oklch, var(--coral) 30%, var(--hairline));
+}
+
+.agent-chat-step-orbit {
+  width: 9px;
+  height: 9px;
   flex: none;
   border-radius: var(--radius-pill);
   border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
@@ -214,97 +366,311 @@
   to { transform: rotate(360deg); }
 }
 
-.agent-chat-pulse-copy {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-
-.agent-chat-pulse-copy strong {
-  font-weight: var(--weight-medium);
-}
-
-.agent-chat-pulse-copy small {
-  font-family: var(--font-body);
-  font-size: 11px;
-  color: var(--text-tertiary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 전 과정. */
-.agent-chat-receipt {
-  margin-top: var(--space-2);
-}
-
-.agent-chat-receipt > summary {
-  list-style: none;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-tertiary);
-  padding: 4px var(--space-3);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--surface-panel-raised);
-  transition: color var(--duration-fast), border-color var(--duration-fast);
-}
-
-.agent-chat-receipt > summary:hover {
-  color: var(--text-secondary);
-  border-color: var(--hairline-strong);
-}
-
-.agent-chat-receipt > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
-}
-
-.agent-chat-receipt > summary::-webkit-details-marker {
-  display: none;
-}
-
-.agent-chat-receipt-chev {
-  font-size: 9px;
-  transition: transform var(--duration-fast);
-}
-
-.agent-chat-receipt[open] .agent-chat-receipt-chev {
-  transform: rotate(90deg);
-}
-
-.agent-chat-receipt-mark {
+.agent-chat-step-mark {
+  flex: none;
+  width: 9px;
+  text-align: center;
   color: var(--positive);
 }
 
-.agent-chat-receipt-mark.is-error {
-  color: var(--coral);
+.agent-chat-step.is-fail .agent-chat-step-mark { color: var(--coral); }
+/* 결과 없이 턴이 닫힌 스텝 — 성공을 주장하지 않으므로 신호색을 벗고 줄의 잉크를 따른다. */
+.agent-chat-step.is-done .agent-chat-step-mark { color: var(--text-tertiary); }
+
+.agent-chat-step-verb {
+  color: var(--text-secondary);
+  flex: none;
 }
 
-.agent-chat-receipt-body {
-  padding: var(--space-1) 0 0 var(--space-3);
-}
-
-.agent-chat-receipt-note {
-  margin-top: var(--space-2);
-  font-size: 12.5px;
-  font-style: italic;
+.agent-chat-step-object {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-tertiary);
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
+  min-width: 0;
 }
 
-.agent-chat-tool {
+/* Theater 밖 좌표 — 표시형으로 접히면 안쪽과 구별되지 않으므로 표식이 대신 말한다. */
+.agent-chat-step-outside {
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  border: 1px solid color-mix(in oklch, var(--warn) 34%, transparent);
+  color: var(--warn-ink);
+}
+
+.agent-chat-step-out {
+  margin-left: auto;
+  flex: none;
+  max-width: 46%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-step-out.is-error {
+  border-color: color-mix(in oklch, var(--coral) 30%, transparent);
+  color: var(--coral-ink);
+}
+
+/* 결과를 못 받은 스텝 — 성공도 실패도 아니므로 신호색을 쓰지 않는다. */
+.agent-chat-step-out.is-unknown {
+  border-style: dashed;
+}
+
+/* ── 질문·계획 카드 ─────────────────────────────────────────────────────────
+   모델이 멈춰 서서 기다리는 자리. 상태 채널은 aurora가 진다 — 코어 활동축에서 awaiting이
+   쓰는 색과 같고, 그 대기와 이 카드는 같은 사실을 말한다. 진행 중 스텝도 aurora를 쓰지만
+   둘은 동시에 서지 않는다(질문이 서면 턴은 멈춘다). 형태로도 갈린다: 스텝은 한 줄, 카드는
+   선택지를 가진 블록이고 진행 링이 없다.
+   brass는 위치·포커스 채널이므로 hover·focus와 주 동작 버튼에만 오른다. */
+.agent-chat-ask {
+  margin: var(--space-1) 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in oklch, var(--aurora) 42%, var(--hairline));
+  background: color-mix(in oklch, var(--aurora) 5%, var(--surface-panel-raised));
+}
+
+.agent-chat-ask-question + .agent-chat-ask-question {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--hairline);
+}
+
+.agent-chat-ask-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  margin-bottom: var(--space-2);
+}
+
+.agent-chat-ask-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--aurora);
+  border: 1px solid color-mix(in oklch, var(--aurora) 40%, transparent);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+}
+
+.agent-chat-ask-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  animation: agent-chat-ask-wait 2s ease-in-out infinite;
+}
+
+@keyframes agent-chat-ask-wait {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.agent-chat-ask-counter {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-ask-text {
+  margin: 0 0 var(--space-3);
+  font-size: 14.5px;
+  line-height: 1.55;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+}
+
+.agent-chat-ask-options {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.agent-chat-ask-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
+}
+
+.agent-chat-ask-option:hover:not(:disabled),
+.agent-chat-ask-option:focus-visible {
+  border-color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 7%, var(--surface-panel));
+  outline: none;
+}
+
+.agent-chat-ask-option:hover:not(:disabled) .agent-chat-ask-option-label,
+.agent-chat-ask-option:focus-visible .agent-chat-ask-option-label {
+  color: var(--brass-ink);
+}
+
+.agent-chat-ask-option[aria-pressed="true"] {
+  border-color: var(--brass);
+  background: color-mix(in oklch, var(--brass) 12%, var(--surface-panel));
+}
+
+.agent-chat-ask-option:disabled { opacity: 0.55; cursor: default; }
+
+/* 라벨은 사용자가 고르면 그대로 답이 되는 문자열이라 서버가 자르지 않는다 — 길면 여기서
+   접는다. 자르는 쪽을 택하면 보이는 것과 보내는 것이 갈라진다. */
+.agent-chat-ask-option-label {
+  font-size: 13.5px;
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-ask-option-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text-tertiary);
+}
+
+/* 자유 입력 — 대화 입력창이 아니라 이 질문에만 사는 답변 칸이다. 파선 테두리가 그 임시성을
+   말하고, 포커스에서 실선이 되어 지금 쓰는 중임을 보인다. */
+.agent-chat-ask-free {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.agent-chat-ask-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 13px;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--hairline-strong);
+  background: var(--surface-panel);
+  color: var(--text-primary);
+}
+
+.agent-chat-ask-input::placeholder { color: var(--text-tertiary); }
+
+.agent-chat-ask-input:focus {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+  border-style: solid;
+}
+
+.agent-chat-ask-foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+.agent-chat-ask-send {
+  font-size: 13px;
+  font-weight: var(--weight-medium);
+  padding: 7px var(--space-4);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--brass);
+  background: var(--brass);
+  color: var(--text-on-brass);
+  cursor: pointer;
+}
+
+.agent-chat-ask-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.agent-chat-ask-send:disabled { opacity: 0.45; cursor: default; }
+
+/* 보조 동작 — 승인이 주 동작이므로 채움을 양보한다. */
+.agent-chat-ask-send.is-quiet {
+  background: transparent;
+  border-color: var(--hairline-strong);
+  color: var(--text-secondary);
+}
+
+.agent-chat-ask-send.is-quiet:hover:not(:disabled) {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+}
+
+.agent-chat-ask-mini {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-ask-mini:hover:not(:disabled),
+.agent-chat-ask-mini:focus-visible {
+  color: var(--brass-ink);
+  border-color: var(--brass);
+  outline: none;
+}
+
+.agent-chat-ask-hint {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-ask-error {
+  font-size: 12px;
+  color: var(--coral-ink);
+}
+
+/* 계획 본문은 공유 마크다운 컴포넌트가 렌더한다 — 카드 안에서만 밀도를 낮추고 높이를 가둔다. */
+.agent-chat-ask-plan {
+  max-height: 260px;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--hairline);
+  background: var(--surface-panel);
+}
+
+.agent-chat .agent-chat-ask-plan.markdown-body {
+  --font-size-body: 13.5px;
+  line-height: 1.65;
+}
+
+/* 답한 뒤의 한 줄 — 스텝 문법에 합류한다. */
+.agent-chat-ask-settled {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
-  margin-top: var(--space-2);
   font-family: var(--font-mono);
   font-size: 11.5px;
   color: var(--text-tertiary);
@@ -314,20 +680,77 @@
   border-radius: var(--radius-sm);
 }
 
-.agent-chat-tool + .agent-chat-tool {
-  margin-top: var(--space-1);
-}
+.agent-chat-ask-settled-mark { flex: none; color: var(--positive); }
+.agent-chat-ask-settled-head { flex: none; color: var(--text-secondary); }
 
-.agent-chat-tool-name {
-  color: var(--text-secondary);
-  flex: none;
-}
-
-.agent-chat-tool-detail {
+.agent-chat-ask-settled-value {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--brass-ink);
+}
+
+/* 답하지 않고 끝난 카드 — 성공이 아니므로 positive를 벗는다. */
+.agent-chat-ask-settled.is-open .agent-chat-ask-settled-mark,
+.agent-chat-ask-settled.is-open .agent-chat-ask-settled-value {
+  color: var(--coral-ink);
+}
+/* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다. */
+.agent-chat-fold {
+  margin-top: var(--space-2);
+}
+
+.agent-chat-fold > summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
   color: var(--text-tertiary);
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-fold > summary:hover { color: var(--text-secondary); }
+
+.agent-chat-fold > summary:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 3px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-fold > summary::-webkit-details-marker { display: none; }
+
+.agent-chat-fold-failed { color: var(--coral-ink); }
+
+/* 중지는 실패가 아니다 — 사용자가 스스로 끊은 결말에는 고칠 것이 없으므로 coral을 쓰지 않는다.
+   그렇다고 성공도 아니라 positive도 아니다. 남는 자리는 중립 잉크 한 단이다. */
+.agent-chat-fold-stopped { color: var(--text-secondary); }
+
+.agent-chat-fold-chev {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  font-size: 9px;
+  line-height: 1;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  transition: transform var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-fold > summary:hover .agent-chat-fold-chev { border-color: var(--hairline-strong); }
+
+.agent-chat-fold[open] .agent-chat-fold-chev { transform: rotate(180deg); }
+
+.agent-chat-fold-body {
+  margin-top: var(--space-1);
 }
 
 /* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
@@ -400,6 +823,30 @@
   transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
+/* 첫 턴 전의 초대. 말풍선 왼쪽에 나란히 서서 그 문이 무엇인지 말한다 — 본문 한가운데의
+   안내와 달리, 읽은 자리에서 바로 누를 수 있다. 닫는 수단은 없다(상태가 지나가면 사라진다). */
+.agent-chat-invite {
+  position: absolute;
+  right: calc(var(--space-3) + 40px + var(--space-2));
+  bottom: calc(var(--space-3) + 10px);
+  z-index: 3;
+  margin: 0;
+  max-width: 60%;
+  font-size: 12px;
+  line-height: 1.4;
+  text-align: right;
+  color: var(--brass-ink);
+  pointer-events: none;
+}
+
+/* hover 없이도 강조가 서 있어야 하므로 hover 상태의 표현을 그대로 상시로 세운다. 애니메이션은
+   두지 않는다 — 사라지지 않는 요소가 계속 움직이면 읽는 내내 시선을 빼앗는다. */
+.agent-chat-reply--inviting {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+}
+
 .agent-chat-reply svg {
   width: 24px;
   height: 24px;
@@ -407,6 +854,88 @@
 
 .agent-chat-reply:hover,
 .agent-chat-reply:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+  outline: none;
+}
+
+/* 도는 턴을 끊는 문. 회신 버튼 왼쪽에 나란히 서서, 행동이 모이는 자리를 하나로 둔다.
+   turn head에 두지 않는 이유는 도달성이다 — 진행 중 턴의 머리는 원장이 자라면서 위로 밀려
+   화면 밖으로 나가고, 그때 멈출 방법이 사라진다. */
+.agent-chat-stop {
+  position: absolute;
+  right: calc(var(--space-3) + 40px + var(--space-2));
+  bottom: var(--space-3);
+  z-index: 3;
+  appearance: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 40px;
+  padding: 0 var(--space-3);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline-strong);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-stop:hover:not(:disabled),
+.agent-chat-stop:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  box-shadow: var(--brass-halo);
+  outline: none;
+}
+
+.agent-chat-stop:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+/* 정지 표식은 사각형 하나다. 신호 토큰을 쓰지 않는다 — 이 버튼은 상태를 보고하는 것이 아니라
+   행동을 제안하는 것이고, coral을 여기 쓰면 "무언가 잘못됐다"로 읽힌다. */
+.agent-chat-stop-mark {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+/* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
+   상태 신호다. brass는 hover/focus의 위치 채널이다. 회신 말풍선은 우하단을 지키고,
+   이 칩은 그 왼쪽 중앙에 따로 선다. 안 읽은 수는 Wave 2. */
+/* 두 떠 있는 줄의 순서: 위가 Follow, 아래가 작업 스트립이다. 아래 줄은 회신·중지 버튼과 같은
+   행이라 "지금 누를 것"의 자리이고, Follow는 그 위 한 층에서 읽던 자리로 돌아가는 문이다. */
+.agent-chat-follow {
+  position: absolute;
+  left: 50%;
+  bottom: calc(var(--space-3) + 46px);
+  z-index: 3;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel-raised);
+  border: 1px solid color-mix(in oklch, var(--aurora) 45%, var(--hairline-strong));
+  color: var(--aurora-ink);
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.agent-chat-follow:hover,
+.agent-chat-follow:focus-visible {
   border-color: var(--brass);
   color: var(--brass-ink);
   box-shadow: var(--brass-halo);
@@ -426,6 +955,31 @@
 
 .agent-view-chip-row .agent-chat-mode-chip {
   position: static;
+}
+
+/* War Room 카드의 본문은 읽는 자리다 — 승격 면이 클릭을 가로채고 본문은 inert라
+   Analyst·채팅 뷰 칩과 중지·회신 버튼은 눌러도 동작하지 않는다. 무대에 오른 패널은
+   is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다. 휴면 카드의 채팅 진입 고스트와
+   첫 턴 초대 문구도 본문 안에 있으므로 함께 숨긴다. */
+.canvas-operation.is-deck-tile .agent-view-chip-row,
+.canvas-operation.is-deck-tile .agent-chat-mode-chip,
+.canvas-operation.is-deck-tile .agent-chat-dormant-open,
+.canvas-operation.is-deck-tile .agent-chat-follow,
+.canvas-operation.is-deck-tile .agent-chat-stop,
+.canvas-operation.is-deck-tile .agent-chat-reply,
+.canvas-operation.is-deck-tile .agent-chat-invite {
+  display: none;
+}
+
+/* 칩이 없으면 로그가 그 자리를 되찾는다. 하단 45px는 작업 스트립 몫이라 건드리지 않는다. */
+.canvas-operation.is-deck-tile .agent-chat-log {
+  padding-top: var(--space-3);
+}
+
+/* 회신·중지가 없으면 스트립이 그 폭을 비울 이유가 없다. 좁은 카드에서 잡 이름이
+   사라진 버튼 자리를 피해 잘린다. */
+.canvas-operation.is-deck-tile .agent-chat-strip {
+  max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));
 }
 
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
@@ -515,8 +1069,17 @@
 }
 
 .agent-chat-inter-error {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
   font-size: 12px;
   color: var(--coral-ink);
+}
+
+/* 막힌 이유는 본문과 같은 무게로 흐르면 읽히지 않는다 — 글머리 표식이 그 줄을 결과로 만든다. */
+.agent-chat-inter-error-mark {
+  flex: 0 0 auto;
+  font-weight: var(--weight-medium);
 }
 
 .agent-chat-inter-actions {
@@ -575,11 +1138,587 @@
 
 @media (prefers-reduced-motion: reduce) {
   .agent-chat-turn.is-working .agent-chat-turn-node,
-  .agent-chat-pulse-orbit {
+  .agent-chat-ask-dot,
+  .agent-chat-step-orbit {
     animation: none;
   }
 
-  .agent-chat-receipt-chev {
+  .agent-chat-fold-chev {
     transition: none;
   }
+}
+
+/* ── 백그라운드 작업 ─────────────────────────────────────────────────────────
+   턴 시계와 나란히 도는 두 번째 시계의 표면. 색 규칙은 본문과 같다: 상태만 신호 토큰이 나르고,
+   종류(서브에이전트·워크플로·셸)는 글리프와 모노 라벨이 가른다 — 종류를 색으로 가르면 신호
+   채널이 뒤집힌다. 살아 있는 개수는 --aurora(상태 채널)다.
+
+   두 면은 **나란히** 산다. 이전에는 탭이 갈아 끼웠는데, 그러면 무엇이 도는지 보려고 무엇을
+   물었는지를 잃는다 — 백그라운드 작업은 대화를 대신하는 것이 아니라 대화 옆에서 동시에 돈다. */
+
+.agent-chat-split {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  /* 넓은 패널에서는 작업 면이 오른쪽 컬럼이다. 좁아지면 아래 서랍으로 접힌다(아래 @container). */
+  flex-direction: row;
+}
+
+/* 대화 면. 떠 있는 컨트롤(Follow·스트립·중지·회신)의 위치 기준이 여기다 — 패널 전체에 걸면
+   작업 면이 열린 순간 그 위로 넘어가, 도구 표를 회신 버튼이 덮는다. */
+.agent-chat-pane {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 스트립 전용 바닥 여백은 없다. 스트립이 회신 버튼과 같은 행으로 내려오면서 그 높이가 로그의
+   기본 바닥 여백(회신 버튼 몫) 안에 들어왔기 때문이다 — 한 층 더 비우면 그만큼이 죽은 띠로 남는다.
+   위층으로 올라간 Follow는 여백을 요구하지 않는다: 그 칩은 바닥에서 떨어져 있을 때만 서고,
+   바닥으로 돌아오는 순간 사라지므로 마지막 줄을 가둘 수 없다. */
+
+/* 두 면의 경계이자 손잡이. 얇지만 잡히는 폭을 따로 갖는다 — 1px 선은 눈에는 보여도 손에는 없다. */
+.agent-chat-grip {
+  flex: none;
+  width: 9px;
+  cursor: ew-resize;
+  display: grid;
+  place-items: center;
+  background: var(--surface-panel);
+  border-left: 1px solid var(--hairline);
+  touch-action: none;
+}
+
+.agent-chat-grip::after {
+  content: "";
+  width: 2px;
+  height: 26px;
+  border-radius: 2px;
+  background: var(--hairline-strong);
+  transition: background var(--duration-fast);
+}
+
+.agent-chat-grip:hover::after {
+  background: var(--text-tertiary);
+}
+
+/* 작업 면이 열려 있는 동안에도 좁은 패널에서는 세로로 쌓인다. 뷰포트가 아니라 이 패널의 폭이
+   가른다 — 채팅 패널은 덱 안에서 얼마든지 좁아지고, 그때 두 컬럼은 어느 쪽도 읽을 수 없다. */
+@container (max-width: 719px) {
+  .agent-chat-split {
+    flex-direction: column;
+  }
+
+  .agent-chat-grip {
+    width: auto;
+    height: 9px;
+    cursor: ns-resize;
+    border-left: none;
+    border-top: 1px solid var(--hairline);
+  }
+
+  .agent-chat-grip::after {
+    width: 26px;
+    height: 2px;
+  }
+
+  /* 선택자를 한 단 올린다. @container는 특정성을 더하지 않으므로, 동률이면 소스 순서가 이긴다 —
+     `.agent-chat-work`의 기본 규칙은 이 블록보다 **뒤에** 있어서 폭이 되돌려진다(실측: 600px
+     컨테이너에서 서랍이 252px = 42%로 남았다). 규칙을 파일 끝으로 옮기는 대신 방향에 관한 규칙을
+     한자리에 모아 두고, 이기는 이유를 선택자에 적어 둔다. */
+  .agent-chat-split .agent-chat-work {
+    width: auto;
+    height: var(--agent-chat-work, 42%);
+  }
+}
+
+/* ── 잡 카드 ───────────────────────────────────────────────────────────────── */
+
+.agent-chat-job {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  transition: border-color var(--duration-fast);
+}
+
+.agent-chat-job:hover { border-color: var(--hairline-strong); }
+
+.agent-chat-job:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-job.is-open { border-color: color-mix(in oklch, var(--aurora) 32%, var(--hairline)); }
+.agent-chat-job.is-fail { border-color: color-mix(in oklch, var(--coral) 32%, var(--hairline)); }
+.agent-chat-job.is-stopped { border-color: color-mix(in oklch, var(--warn) 30%, var(--hairline)); }
+
+.agent-chat-job-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font-size: 11.5px;
+}
+
+.agent-chat-job-mark { flex: none; width: 9px; text-align: center; color: var(--text-tertiary); }
+.agent-chat-job.is-done .agent-chat-job-mark { color: var(--positive); }
+.agent-chat-job.is-fail .agent-chat-job-mark { color: var(--coral); }
+
+.agent-chat-job-glyph { flex: none; color: var(--text-tertiary); }
+
+.agent-chat-job-title {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-job-outcome {
+  margin-left: auto;
+  flex: none;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 1px 7px;
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--hairline);
+  color: var(--text-tertiary);
+}
+
+.agent-chat-job.is-open .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-open {
+  color: var(--aurora-ink);
+  border-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
+}
+
+.agent-chat-job.is-done .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-done { color: var(--positive); }
+
+.agent-chat-job.is-fail .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-fail { color: var(--coral-ink); }
+
+.agent-chat-job.is-stopped .agent-chat-job-outcome,
+.agent-chat-job-outcome.is-stopped { color: var(--warn-ink); }
+
+.agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
+
+.agent-chat-job-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  font-size: 10px;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+  padding-left: 17px;
+}
+
+.agent-chat-job-dots { display: inline-flex; align-items: center; gap: 3px; }
+.agent-chat-job-dot-gap { width: 6px; }
+
+.agent-chat-job-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--hairline-strong);
+}
+
+.agent-chat-job-dot.is-done { background: var(--positive); }
+.agent-chat-job-dot.is-live { background: var(--aurora); }
+
+/* ── 접힘 줄의 "아직 도는 중" ─────────────────────────────────────────────── */
+
+.agent-chat-fold-running { color: var(--aurora-ink); }
+
+/* ── 고정 스트립 ─────────────────────────────────────────────────────────────
+   doctrine: 하단 스트립은 한 번 폐기됐다. 사유는 "지속 크롬으로 패널 높이를 쓰면서 누를 것이
+   하나도 없다"였다. 이 스트립은 그 두 조건을 모두 뒤집기 때문에 되살아났다 — 살아 있는 잡이
+   있는 동안에만 서고, 눌러서 Work 탭으로 가는 문이다. 원래의 걱정은 계약으로 남겼다:
+   position: absolute로 떠서 로그 흐름의 높이를 한 픽셀도 가져가지 않는다
+   (tests/instrument-design-contract.test.ts가 이 두 가지를 못 박는다). */
+
+.agent-chat-strip {
+  position: absolute;
+  left: 50%;
+  bottom: var(--space-3);
+  transform: translateX(-50%);
+  z-index: 2;
+  appearance: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  /* 이 줄은 회신·중지 버튼과 같은 행에 산다. 가운데 정렬을 지키면서 그 두 버튼을 침범하지 않으려면
+     양쪽에서 같은 폭을 비워야 한다 — 오른쪽 묶음(회신 40px + 간격 + 중지 ~72px + 가장자리 여백)이
+     그 값이다. 한쪽만 비우면 스트립이 가운데를 잃고, 아무것도 안 비우면 좁은 패널에서 잡 이름이
+     회신 버튼 아래로 들어간다. */
+  max-width: min(var(--agent-chat-measure), calc(100% - 2 * (var(--space-3) + 40px + var(--space-2) + 72px)));
+  padding: 6px var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--hairline));
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel-raised));
+  box-shadow: var(--shadow-soft);
+  transition: border-color var(--duration-fast);
+}
+
+.agent-chat-strip:hover { border-color: color-mix(in oklch, var(--aurora) 55%, var(--hairline)); }
+
+.agent-chat-strip:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 3px;
+}
+
+.agent-chat-strip-orbit {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  animation: agent-chat-orbit 0.9s linear infinite;
+}
+
+.agent-chat-strip-count { flex: none; color: var(--aurora-ink); }
+
+/* 도는 것이 없을 때의 스트립. 탭을 걷으면서 생긴 구멍을 이것이 메운다 — 스트립이 살아 있는
+   잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 화면에서 통째로 사라진다.
+   쉬는 상태는 신호 채널을 쓰지 않는다: aurora는 "지금 돈다"이고, 여기에는 그 사실이 없다. */
+.agent-chat-strip.is-rest {
+  color: var(--text-tertiary);
+  border-color: var(--hairline);
+  background: var(--surface-panel-raised);
+}
+
+.agent-chat-strip.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
+
+.agent-chat-strip-dot {
+  width: 9px;
+  height: 9px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--hairline-strong);
+}
+
+.agent-chat-work-cap.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
+
+.agent-chat-strip-names {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-strip-chev { flex: none; color: var(--text-tertiary); }
+
+/* ── Work 탭 본문 ─────────────────────────────────────────────────────────── */
+
+/* 작업 면 — 대화 면의 형제다. 스스로 스크롤하지 않고, 안의 본문이 스크롤한다: 머리(스트립이
+   옮겨 앉은 자리)는 언제나 보여야 접는 문이 손 닿는 곳에 남는다. */
+.agent-chat-work {
+  flex: none;
+  min-height: 0;
+  min-width: 0;
+  width: var(--agent-chat-work, 42%);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-panel);
+  padding: var(--space-2) clamp(var(--space-3), 2.5cqi, var(--space-5)) var(--space-2);
+}
+
+.agent-chat-work-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+}
+
+/* 면이 열리면 떠 있던 스트립이 이 자리로 옮겨 앉는다 — 알약으로 남으면 열린 면의 첫 줄을 덮고,
+   접는 문이 자란 것 밖에 서게 된다. 그래서 이 줄은 표시가 아니라 문이다. */
+.agent-chat-work-cap {
+  appearance: none;
+  cursor: pointer;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 4px 0 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--hairline);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+  text-align: left;
+  transition: color var(--duration-fast);
+}
+
+.agent-chat-work-cap:hover { color: var(--text-secondary); }
+
+.agent-chat-work-cap:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+.agent-chat-work-cap-chev {
+  margin-left: auto;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-work-sec {
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-top: var(--space-2);
+}
+
+.agent-chat-work-sec:first-child { margin-top: 0; }
+
+.agent-chat-work-empty {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--text-tertiary);
+  padding: var(--space-2) 0;
+}
+
+.agent-chat-detail-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  font-family: var(--font-mono);
+}
+
+.agent-chat-detail-back {
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-detail-back:hover {
+  color: var(--brass);
+  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+}
+
+.agent-chat-detail-back:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-detail-title {
+  font-size: 12.5px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-detail-meta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-chat-detail-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* 보고는 공유 .markdown-body가 그린다 — 여기서는 챗 밀도만 한 칸 더 좁힌다. 폰트 크기·줄간·
+   줄바꿈 정책은 마크다운 컴포넌트가 소유하므로 다시 선언하지 않는다(선언하면 코드 블록과
+   목록이 본문 규칙을 덮어쓴 채로 그려진다). */
+.agent-chat .agent-chat-detail-report.markdown-body {
+  --font-size-body: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.agent-chat-detail-note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-kicker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-kicker::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--hairline);
+}
+
+/* ── 잡 상세의 추가 본문 ─────────────────────────────────────────────────────
+   보고 아래에 붙는 것: 서브에이전트의 도구 발자국, 셸 출력의 꼬리. 둘 다 그 잡을 연 그때만
+   한 번 읽어 온다 — 저널에 실으면 재접속마다 수백 KB가 다시 흐른다. */
+
+.agent-chat-detail-loading,
+.agent-chat-detail-cut {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-trail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* 셸의 출력은 줄이 곧 의미다. 접히면 읽을 수 없으므로 줄을 지키고, 넘치는 폭은 자기 상자
+   안에서만 흐르게 둔다 — 패널 본문이 가로로 밀리면 대화 쪽까지 함께 밀린다. */
+.agent-chat-detail-tail {
+  margin: 0;
+  max-height: 42vh;
+  overflow: auto;
+  padding: var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/* ── 워크플로 단계 트리 ───────────────────────────────────────────────────── */
+
+.agent-chat-stage {
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.agent-chat-stage-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 5px var(--space-3);
+  background: var(--surface-panel-raised);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-primary);
+}
+
+.agent-chat-stage-count {
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 표는 가로로 흐를 수 있다 — 좁은 패널에서 열이 뭉개지는 대신 자기 상자 안에서 스크롤한다. */
+.agent-chat-stage-rows {
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+
+.agent-chat-stage-row {
+  display: grid;
+  /* 이름과 모델이 남는 폭을 나눠 갖는다. 이름에만 1fr을 주면 짧은 라벨("A")에서 두 열 사이가
+     통째로 빈 채 모델이 숫자 열까지 밀려나, 같은 행의 두 값이 서로 떨어져 읽힌다. */
+  grid-template-columns: 14px minmax(0, 1.1fr) minmax(0, 1fr) 58px 42px 58px;
+  gap: var(--space-2);
+  align-items: baseline;
+  padding: 3px var(--space-3);
+  min-width: max-content;
+  color: var(--text-secondary);
+  border-top: 1px solid color-mix(in oklch, var(--hairline) 50%, transparent);
+}
+
+.agent-chat-stage-row.is-head {
+  border-top: 0;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-stage-row.is-pending { color: var(--text-tertiary); }
+
+.agent-chat-stage-row .is-mark { color: var(--positive); text-align: center; }
+.agent-chat-stage-row.is-pending .is-mark { color: var(--text-tertiary); }
+
+.agent-chat-stage-row .is-name {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.agent-chat-stage-row.is-pending .is-name { color: var(--text-tertiary); }
+
+/* 핀된 신원은 위치가 아니라 값이므로 잉크는 brass를 빌리지 않는다. */
+.agent-chat-stage-row .is-model {
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-stage-row .is-num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .agent-chat-strip-orbit { animation: none; }
+  .agent-chat-work-cap,
+  .agent-chat-grip::after,
+  .agent-chat-stop,
+  .agent-chat-job,
+  .agent-chat-detail-back { transition: none; }
 }

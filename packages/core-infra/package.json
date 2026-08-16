@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/core-infra",
-  "version": "1.60.0",
+  "version": "1.62.0",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
@@ -12,7 +12,7 @@
   "types": "./dist/index.d.ts",
   "files": [
     "dist",
-    "AGENTS.md"
+    "CLAUDE.md"
   ],
   "engines": {
     "node": ">=18.0.0"

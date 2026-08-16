@@ -497,6 +497,15 @@ describe("model catalog", () => {
     extraField.unexpected = true;
     expect(() => parseGatewayModelsRegistry(extraField)).toThrow();
 
+    const invalidPricing = minimalRegistry();
+    (invalidPricing.pricing.models as Record<string, unknown>)["openai/model"] = {
+      inputCostPerToken: -1,
+      outputCostPerToken: 1,
+      cacheReadInputTokenCost: 0,
+      aliases: ["model"],
+    };
+    expect(() => parseGatewayModelsRegistry(invalidPricing)).toThrow();
+
     const duplicate = minimalRegistry();
     duplicate.providers.cursor.models.push({ modelId: "auto", name: "Again" });
     expect(() => parseGatewayModelsRegistry(duplicate)).toThrow(/Duplicate gateway model id/);
@@ -579,6 +588,12 @@ describe("model catalog", () => {
     };
     invalidOverride.providers.cursor.defaultModel = "cursor-model";
     expect(() => parseGatewayModelsRegistry(invalidOverride)).toThrow(/override is not an advertised level/);
+  });
+
+  it("keeps static pricing outside Gateway model and routing constraints", () => {
+    const model = findGatewayModel("codex--gpt-5.6-sol");
+    expect(model).not.toHaveProperty("pricing");
+    expect(buildGatewayModelConstraints(model!)).not.toHaveProperty("pricing");
   });
 
   it("collapses service-tier siblings onto one identity without merging distinct upstreams", () => {
@@ -3849,6 +3864,11 @@ function minimalRegistry() {
       kimi: provider("Kimi", "k3"),
       opencode: provider("OpenCode", "minimax-m3"),
       xai: provider("Grok", "grok-4.6"),
+    },
+    pricing: {
+      source: "openrouter" as const,
+      observedAt: "2026-08-16T00:00:00Z",
+      models: {},
     },
   };
 }

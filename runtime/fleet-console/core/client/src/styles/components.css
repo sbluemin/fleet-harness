@@ -4275,6 +4275,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   min-height: 0;
   width: auto;
   height: auto;
+  /* 열 트랙을 적지 않으면 암시적 `auto` 열의 최소값이 본문의 min-content가 되고, 그 값(xterm은
+     실측 288px)이 칸보다 크면 패널 상자는 칸에 맞은 채 자식만 밖으로 그려진다 — 패널은
+     overflow:visible이라 캡션·본문이 옆 칸 위를 덮는다. 밀도를 낮출수록 칸이 좁아져
+     War Room의 최소 카드 폭(140px)에서 항상 재현된다. 칸이 곧 패널이자 PTY 크기라는 계약은
+     행처럼 열에도 최소값 0을 명시해야 성립한다. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   border-top-width: 1px;
   border-top-style: solid;
@@ -4356,7 +4362,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   cursor: default;
 }
 
-/* companion 프레임은 배지·창 컨트롤 없이 타이포 캡션으로만 정체를 표시한다 — 닫기는 EXIT 핸들 소유. */
+/* companion 프레임은 창 컨트롤 없이 캡션 밴드로만 정체를 표시한다 — 닫기는 EXIT 핸들 소유.
+   밴드의 내용은 플러그인이 채울 수 있고, 밴드 자체(사각형·면·rim·상단 라운드)는 호스트가 진다. */
 .canvas-companion-frame {
   display: flex;
   flex-direction: column;
@@ -4422,19 +4429,45 @@ body[data-side-bar-animating="true"] .canvas-operation {
   }
 }
 
+/* companion 캡션은 Operation 캡션과 같은 자리·같은 사각형이다. companion geometry는 이미 캡션 높이
+   (TITLEBAR_OUTSET_PX)만큼 아래에서 시작하므로 그 자리를 비워 두면 아무것도 없는 띠가 남고, 위 모서리를
+   이을 주체도 사라진다 — .canvas-operation은 상단 라운드를 캡션이 공급한다고 전제하기 때문이다.
+   캡션이 그 띠를 채우면 두 창의 실루엣이 맞고 본문은 겹침 없는 자기 높이를 온전히 갖는다.
+   드래그는 하지 않는다 — companion geometry는 호스트가 계산한다. */
 .canvas-companion-caption {
+  position: absolute;
+  top: -32px;
+  left: -1px;
+  right: -1px;
+  z-index: 7;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
-  flex: none;
-  padding: var(--space-3) var(--space-4) var(--space-1);
+  gap: 6px;
+  width: auto;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--surface-rim);
+  border-bottom-width: 0;
+  border-bottom-style: none;
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: var(--surface-panel);
+  background-clip: padding-box;
+  color: var(--text-tertiary);
+  cursor: default;
+  user-select: none;
+}
+
+.canvas-companion-caption-title {
   font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
-  color: var(--text-tertiary);
-  cursor: default;
-  user-select: none;
+}
+
+.canvas-companion-frame:has(> .canvas-companion-caption) {
+  border-top-width: 0;
+  border-top-style: none;
 }
 
 .canvas-companion-caption-dot {
@@ -5835,7 +5868,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* turn은 진행을 색이 아니라 운동으로 말한다 — 좌우를 오가는 왕복 트래블. 한 방향 순환은 끝에서
    되감기며 튀지만, 왕복은 양 끝에서 감속해 되돌아온다(그래서 ease-in-out을 두 구간에 건다).
-   작업 중 신호가 있는 동안만 도는 AGENTS.md 모션 규약의 sanctioned 예외이며,
+   작업 중 신호가 있는 동안만 도는 CLAUDE.md 모션 규약의 sanctioned 예외이며,
    reduced-motion에서 정적 채움으로 단락한다. */
 .canvas-operation.is-running--turn > .canvas-operation-titlebar::after {
   background: linear-gradient(90deg, transparent 0%, var(--warn) 30%, var(--warn) 70%, transparent 100%);
@@ -11669,12 +11702,15 @@ body[data-codex-reading="true"] .operations-side-bar {
 .fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; color: var(--text-tertiary); }
 
 .fc-select--compact { min-width: 0; }
+/* compact 트리거는 칩 문법의 모노 티어를 쓴다 — 콘솔 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.
+   --fc-select-compact-tone은 호출부가 트리거 글자색을 자기 채널로 넘겨받는 유일한 통로다(예: 강도 톤 사다리).
+   설정하지 않으면 기본 티어를 그대로 쓴다. */
 .fc-select--compact .fc-select__trigger {
   min-height: 0; border: 0; box-shadow: none; background: transparent;
   font-weight: var(--weight-regular);
-  font-size: 9px;
+  font-size: 11px;
   line-height: 1;
-  font-family: var(--font-mono); color: var(--text-secondary); padding: 8px 16px 8px 10px;
+  font-family: var(--font-mono); color: var(--fc-select-compact-tone, var(--text-secondary)); padding: 7px 16px 7px 10px;
 }
 .fc-select__popup--compact { min-width: min(160px, calc(100vw - 16px)); }
 

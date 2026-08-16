@@ -60,6 +60,7 @@ describe("provider response boundaries", () => {
       fetchCodex: async () => ({ status: "signed_out" }),
       isCursorConnected: async () => false,
       fetchCursor: async () => ({ status: "signed_out" }),
+      fetchOpencode: async () => ({ status: "signed_out" }),
     });
     const result = (await service.getSummary()).providers.claude;
     expect(result.status).not.toBe("ok");

@@ -22,6 +22,7 @@ import {
   section,
   stripAnsi,
 } from "../../cli/styles/index.js";
+import { readFleetCliRelease } from "../../cli/release.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
@@ -81,7 +82,6 @@ export interface BuildConsoleHelpTextOptions {
 
 const FIXED_HOST = "127.0.0.1";
 const HELP_BANNER_INDENT = "  ";
-const DEFAULT_HELP_RELEASE = "local";
 // background-spawn/background-stop은 더 이상 렌더되지 않지만, 업그레이드 시점에 이미 살아 있는 세션의
 // hooks.json이 여전히 그 이름으로 이 실행 파일을 호출한다(경로가 제자리 덮어써지므로 구 세션이 새 바이너리를 부른다).
 // 이름을 지우면 in-flight 세션의 hook이 예외로 죽으므로 계속 받아주고, 본문도 퇴역 당시 형식을 그대로 보낸다.
@@ -131,7 +131,8 @@ export function parseConsoleHookCommand(argv: readonly string[]): ConsoleHookCom
 
 export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}): string {
   const colorEnabled = resolveColorEnabled(options);
-  const subtitle = `Fleet Console · ${options.release ?? DEFAULT_HELP_RELEASE}`;
+  const release = options.release ?? formatConsoleHelpRelease();
+  const subtitle = `Fleet Console · ${release}`;
   const lines = [
     ...ASCII_FLEET_BANNER.map(
       (line, index) => `${HELP_BANNER_INDENT}${paint(GRADIENT_COLORS[index] ?? FLEET_COMMAND, line, colorEnabled)}`,
@@ -163,6 +164,11 @@ export function buildConsoleHelpText(options: BuildConsoleHelpTextOptions = {}):
   ];
   const text = lines.join("\n");
   return colorEnabled ? text : stripAnsi(text);
+}
+
+function formatConsoleHelpRelease(): string {
+  const release = readFleetCliRelease();
+  return `${release.version} · ${release.channel}`;
 }
 
 export function createConsoleDaemonLifecycle(deps: ConsoleDaemonLifecycleDeps = {}) {

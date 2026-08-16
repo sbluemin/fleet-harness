@@ -1,4 +1,5 @@
 import type { OperationNode } from "@fleet-console/sdk/operations";
+import { readAgentChatJobDetailPayload, type AgentChatJobDetail } from "./chat/chat-events.js";
 import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
 export interface OperationsSnapshot {
@@ -14,12 +15,18 @@ export class AgentApiError extends Error {
    * argv 전체에 달려 있다) 브라우저가 되계산할 수 없어, 코드와 함께 실어 나른다.
    */
   readonly shortenByChars?: number;
+  /**
+   * 거절이 "지금은 안 된다"고만 말하지 않고 **무엇이 끝나야 되는지**를 함께 말할 때의 그 사유.
+   * 기다림의 대상이 여럿이면 사용자의 다음 행동도 갈리므로, 화면이 그 차이를 그릴 수 있어야 한다.
+   */
+  readonly reason?: string;
 
-  constructor(status: number, message: string, shortenByChars?: number) {
+  constructor(status: number, message: string, shortenByChars?: number, reason?: string) {
     super(message);
     this.name = "AgentApiError";
     this.status = status;
     if (shortenByChars !== undefined) this.shortenByChars = shortenByChars;
+    if (reason !== undefined) this.reason = reason;
   }
 }
 
@@ -154,11 +161,78 @@ export async function messageAgentSession(sessionId: string, text: string, attac
   }
 }
 
-export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
-  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
+/**
+ * 대기 중인 질문에 답한다. message 라우트가 아닌 이유는 그쪽이 새 턴을 큐에 넣기 때문이다 —
+ * 이 답은 진행 중 턴 안으로 들어간다.
+ */
+export async function answerAgentChatAsk(
+  sessionId: string,
+  body: {
+    readonly askId: string;
+    readonly answers?: readonly string[];
+    readonly approve?: boolean;
+    readonly message?: string;
+  },
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-answer`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal,
+  });
   if (!response.ok) {
     const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
     throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+/**
+ * 도는 턴을 끊는다.
+ *
+ * 이 문은 **턴만** 닫는다. 이미 태어난 백그라운드 작업은 계속 살고, 잡 표면이 그것을 그대로
+ * 말한다 — 잡 하나만 멈추는 제어 경로는 SDK에 없다(0.3.212 확인).
+ */
+export async function stopAgentChatTurn(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-stop`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+}
+
+/**
+ * 잡 하나의 상세 — 서브에이전트의 도구 발자국, 또는 셸 출력의 꼬리.
+ *
+ * 스트림이 아니라 요청인 이유는 크기다. 사용자가 그 잡을 연 그때만 한 번 읽는다.
+ * 404는 "아직/이미 없음"이며 오류가 아니다 — 호출부가 빈 상태를 그리게 null을 돌려준다.
+ */
+export async function readAgentChatJobDetail(
+  sessionId: string,
+  jobId: string,
+  signal?: AbortSignal,
+): Promise<AgentChatJobDetail | null> {
+  const query = `?jobId=${encodeURIComponent(jobId)}`;
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat-job${query}`, { signal });
+  if (response.status === 404 || response.status === 409) return null;
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown } | null;
+    throw new AgentApiError(response.status, typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`);
+  }
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  return readAgentChatJobDetailPayload(payload);
+}
+
+export async function convertAgentSessionToChat(sessionId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(`/plugins/terminal/agent/sessions/${encodeURIComponent(sessionId)}/chat`, { method: "POST", signal });
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null) as { readonly error?: unknown; readonly reason?: unknown } | null;
+    throw new AgentApiError(
+      response.status,
+      typeof payload?.error === "string" ? payload.error : `Agent plugin request failed: ${response.status}`,
+      undefined,
+      typeof payload?.reason === "string" ? payload.reason : undefined,
+    );
   }
 }
 
@@ -230,7 +304,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     // 이 함수는 화이트리스트 재구성이다 — 여기 없는 필드는 서버가 실어 보내도 소실된다.
     // 활동축에 새 사실을 추가할 때는 반드시 이 목록도 함께 늘려야 한다.
     chatActive: typeof payload.chatActive === "boolean" ? payload.chatActive : undefined,
-    chatWorking: typeof payload.chatWorking === "boolean" ? payload.chatWorking : undefined,
     createdAt: payload.createdAt,
     theaterId: typeof payload.theaterId === "string" ? payload.theaterId : undefined,
     tenantId: typeof payload.tenantId === "string" ? payload.tenantId : undefined,

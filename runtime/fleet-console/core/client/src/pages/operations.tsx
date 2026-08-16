@@ -18,7 +18,7 @@ import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode } from "../canvas/operation-accent.js";
-import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
+import { armTriageSetAside, deferTriageOperation, disarmTriageSetAside, dismissTriageOperation, enterTriage, focusedTriageOperationId, forgetTriageOperation, getTriageSetAsideArmedId, isTriageActive, pickTriageOperation, recordTriageActivity, releaseInactiveActiveAwaitingClaim, resolveTriageQueue, restoreTriageSession, setTriageActive, useTriageActive } from "../canvas/triage-store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { RightRail } from "../rail/right-rail.js";
@@ -100,6 +100,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   useEffect(() => {
     recordTriageActivity(state.operations, state.operationRuntime);
   }, [state.operationRuntime, state.operations]);
+
+  useEffect(() => {
+    releaseInactiveActiveAwaitingClaim();
+  }, [state.activeOperationId]);
 
   useEffect(() => {
     if (!triageActive) setTriageOperationMenu(null);
@@ -636,6 +640,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     geometry: operation.geometry ?? ensurePluginGeometry(operation),
     operation,
     runtimeState: pluginRuntimeState(state.operationRuntime, state.operationRuntimeHydration, operation.id),
+    // 슬롯이 붙기 전 주차 본문. 보이는 프레임이 publish하면 그 값이 이 기본을 덮는다.
+    bodyLive: false,
     theme: state.activeTheme,
     language,
     zoom: 1,

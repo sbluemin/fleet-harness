@@ -498,5 +498,114 @@
         }
       ]
     }
+  },
+  "pricing": {
+    "source": "openrouter",
+    "observedAt": "2026-08-16T00:00:00Z",
+    "models": {
+      "openai/gpt-5.6-sol": {
+        "inputCostPerToken": 0.000005,
+        "outputCostPerToken": 0.00003,
+        "cacheReadInputTokenCost": 5e-7,
+        "cacheCreationInputTokenCost": 0.00000625,
+        "aliases": [
+          "gpt-5.6-sol"
+        ]
+      },
+      "openai/gpt-5.6-terra": {
+        "inputCostPerToken": 0.000001,
+        "outputCostPerToken": 0.000006,
+        "cacheReadInputTokenCost": 1e-7,
+        "cacheCreationInputTokenCost": 0.00000125,
+        "aliases": [
+          "gpt-5.6-terra"
+        ]
+      },
+      "openai/gpt-5.6-luna": {
+        "inputCostPerToken": 1e-7,
+        "outputCostPerToken": 6e-7,
+        "cacheReadInputTokenCost": 1e-8,
+        "cacheCreationInputTokenCost": 1.25e-7,
+        "aliases": [
+          "gpt-5.6-luna"
+        ]
+      },
+      "x-ai/grok-4.5": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.000006,
+        "cacheReadInputTokenCost": 3e-7,
+        "aliases": [
+          "grok-4.5"
+        ]
+      },
+      "x-ai/grok-4.6": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.000006,
+        "cacheReadInputTokenCost": 5e-7,
+        "aliases": [
+          "grok-4.6"
+        ]
+      },
+      "anthropic/claude-opus-5": {
+        "inputCostPerToken": 0.000005,
+        "outputCostPerToken": 0.000025,
+        "cacheReadInputTokenCost": 5e-7,
+        "cacheCreationInputTokenCost": 0.00000625,
+        "aliases": [
+          "claude-opus-5"
+        ]
+      },
+      "anthropic/claude-fable-5": {
+        "inputCostPerToken": 0.00001,
+        "outputCostPerToken": 0.00005,
+        "cacheReadInputTokenCost": 0.000001,
+        "cacheCreationInputTokenCost": 0.0000125,
+        "aliases": [
+          "claude-fable-5"
+        ]
+      },
+      "moonshotai/kimi-k3": {
+        "inputCostPerToken": 0.000003,
+        "outputCostPerToken": 0.000015,
+        "cacheReadInputTokenCost": 3e-7,
+        "aliases": [
+          "k3",
+          "kimi-k3"
+        ]
+      },
+      "qwen/qwen3.8-max": {
+        "inputCostPerToken": 0.000002,
+        "outputCostPerToken": 0.000006,
+        "cacheReadInputTokenCost": 2.5e-7,
+        "cacheCreationInputTokenCost": 0.0000025,
+        "aliases": [
+          "qwen3.8-max"
+        ]
+      },
+      "deepseek/deepseek-v4-flash": {
+        "inputCostPerToken": 1.4e-7,
+        "outputCostPerToken": 2.8e-7,
+        "cacheReadInputTokenCost": 2.8e-9,
+        "aliases": [
+          "deepseek-v4-flash"
+        ]
+      },
+      "deepseek/deepseek-v4-pro": {
+        "inputCostPerToken": 4.35e-7,
+        "outputCostPerToken": 8.7e-7,
+        "cacheReadInputTokenCost": 3.625e-9,
+        "aliases": [
+          "deepseek-v4-pro"
+        ]
+      },
+      "z-ai/glm-5.2": {
+        "inputCostPerToken": 0.0000014,
+        "outputCostPerToken": 0.0000044,
+        "cacheReadInputTokenCost": 2.6e-7,
+        "aliases": [
+          "glm-5.2"
+        ]
+      }
+    }
   }
 }

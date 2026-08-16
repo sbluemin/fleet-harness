@@ -7,6 +7,7 @@ import {
   XAI_CLI_RESPONSES_URL,
   XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
+  encodeAnthropicSse,
   fetchXaiUsage,
   parseXaiCredits,
   parseXaiPlan,
@@ -51,10 +52,35 @@ async function collectXaiEvents(events: AsyncIterable<CanonicalResponseEvent>): 
   return collected;
 }
 
+async function collectEncodedBody(body: AsyncIterable<Uint8Array>): Promise<string> {
+  const decoder = new TextDecoder();
+  let text = "";
+  for await (const chunk of body) {
+    text += decoder.decode(chunk, { stream: true });
+  }
+  return text + decoder.decode();
+}
+
+function parseEncodedSse(body: string): Array<{ event: string; data: Record<string, unknown> }> {
+  return body
+    .trim()
+    .split(/\r?\n\r?\n/)
+    .map((frameText) => {
+      const lines = frameText.split(/\r?\n/);
+      const event = lines.find((line) => line.startsWith("event: "))?.slice(7);
+      const data = lines.find((line) => line.startsWith("data: "))?.slice(6);
+      if (event === undefined || data === undefined) {
+        throw new Error(`Invalid SSE frame: ${frameText}`);
+      }
+      return { event, data: JSON.parse(data) as Record<string, unknown> };
+    });
+}
+
 function controlledXaiResponse(): {
   response: Response;
   push: (chunk: string) => void;
   close: () => void;
+  error: (reason: unknown) => void;
   wasCancelled: () => boolean;
 } {
   let streamController: ReadableStreamDefaultController<Uint8Array> | undefined;
@@ -75,6 +101,9 @@ function controlledXaiResponse(): {
     },
     close() {
       streamController?.close();
+    },
+    error(reason) {
+      streamController?.error(reason);
     },
     wasCancelled() {
       return cancelled;
@@ -98,12 +127,12 @@ function functionCallDone(id: string, outputIndex = 0, argumentsValue = "{}"): C
   };
 }
 
-function responseCompleted(): CanonicalResponseEvent {
-  return { type: "response.completed", response: xaiSnapshot() };
+function responseCompleted(id = "r1"): CanonicalResponseEvent {
+  return { type: "response.completed", response: xaiSnapshot(id) };
 }
 
-function responseCreated(): CanonicalResponseEvent {
-  return { type: "response.created", response: xaiSnapshot() };
+function responseCreated(id = "r1"): CanonicalResponseEvent {
+  return { type: "response.created", response: xaiSnapshot(id) };
 }
 
 function textDelta(delta: string): CanonicalResponseEvent {
@@ -592,6 +621,366 @@ describe("Grok Responses function-call assembly", () => {
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: 0 })).toThrow("functionCallTimeoutMs must be a positive integer");
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: -1 })).toThrow("functionCallTimeoutMs must be a positive integer");
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: 1.5 })).toThrow("functionCallTimeoutMs must be a positive integer");
+  });
+});
+
+describe("Grok Responses retry", () => {
+  function failed(type = "server_error", id = "r1"): CanonicalResponseEvent {
+    return {
+      type: "response.failed",
+      response: { ...xaiSnapshot(id), error: { type, message: "secret marker" } },
+    };
+  }
+
+  function messageAdded(id = "m1"): CanonicalResponseEvent {
+    return {
+      type: "response.output_item.added",
+      output_index: 0,
+      item: { type: "message", id, role: "assistant" },
+    };
+  }
+
+  function reasoning(delta = "thinking"): CanonicalResponseEvent {
+    return {
+      type: "response.reasoning_summary_text.delta",
+      item_id: "reasoning-1",
+      output_index: 0,
+      delta,
+    };
+  }
+
+  function socketTermination(): TypeError {
+    const socket = Object.assign(new Error("other side closed"), { code: "UND_ERR_SOCKET" });
+    return new TypeError("terminated", { cause: socket });
+  }
+
+  it("retries one fetch UND_ERR_SOCKET", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(socketTermination())
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r2")),
+        xaiFrame(textDelta("ok")),
+      ));
+
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      responseCreated("r2"),
+      textDelta("ok"),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries a stream UND_ERR_SOCKET while lead events are buffered", async () => {
+    const first = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(first.response)
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r2")),
+        xaiFrame(textDelta("ok")),
+      ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    const events = collectXaiEvents(response.events);
+    first.push(xaiFrame(responseCreated("r1")));
+    await flushXaiStream();
+    first.error(socketTermination());
+
+    await expect(events).resolves.toEqual([responseCreated("r2"), textDelta("ok")]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("closes the failed attempt before retrying a server_error", async () => {
+    const first = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(first.response)
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r2")),
+        xaiFrame(textDelta("terminal")),
+      ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    const events = collectXaiEvents(response.events);
+    first.push(xaiFrame(responseCreated("r1")));
+    first.push(xaiFrame(reasoning()));
+    first.push(xaiFrame(messageAdded()));
+    first.push(xaiFrame(failed()));
+
+    await expect(events).resolves.toEqual([responseCreated("r2"), textDelta("terminal")]);
+    expect(first.wasCancelled()).toBe(true);
+  });
+
+  it("exposes only the retry attempt through the Anthropic encoder", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r1")),
+        xaiFrame(reasoning("discarded reasoning")),
+        xaiFrame(messageAdded()),
+        xaiFrame(failed()),
+      ))
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r2")),
+        xaiFrame(textDelta("OK")),
+        xaiFrame(textDone("OK")),
+        xaiFrame(responseCompleted("r2")),
+      ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    const frames = parseEncodedSse(await collectEncodedBody(encodeAnthropicSse(response.events)));
+    expect(frames.map((frame) => frame.event)).toEqual([
+      "message_start",
+      "content_block_start",
+      "content_block_delta",
+      "content_block_stop",
+      "message_delta",
+      "message_stop",
+    ]);
+    expect(frames[0]?.data).toMatchObject({
+      type: "message_start",
+      message: { id: "r2", model: "grok-4.6" },
+    });
+    expect(frames[2]?.data).toMatchObject({ delta: { type: "text_delta", text: "OK" } });
+    expect(JSON.stringify(frames)).not.toContain("r1");
+    expect(JSON.stringify(frames)).not.toContain("discarded reasoning");
+  });
+
+  it("does not retry a near-match invalid_prompt failure", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(xaiFrame(failed("invalid_prompt"))));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([failed("invalid_prompt")]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry server_error after text output commits the attempt", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(textDelta("partial")),
+      xaiFrame(failed()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      responseCreated(),
+      textDelta("partial"),
+      failed(),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry server_error after a complete function call commits the attempt", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(functionCallAdded("call-1")),
+      xaiFrame(functionCallDone("call-1", 0, "{}")),
+      xaiFrame(failed()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      responseCreated(),
+      functionCallAdded("call-1"),
+      argumentsDone("call-1", 0, "{}"),
+      functionCallDone("call-1", 0, "{}"),
+      failed(),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("shares one two-call budget between fetch and stream retry", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(socketTermination())
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated()), xaiFrame(failed())));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([responseCreated(), failed()]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not retry caller aborts or unrelated transport errors", async () => {
+    const caller = new AbortController();
+    const callerError = new Error("caller abort");
+    caller.abort(callerError);
+    const fetchMock = vi.fn<typeof fetch>().mockRejectedValue(callerError);
+    await expect(new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), {
+      apiKey: "k",
+      signal: caller.signal,
+    })).rejects.toBe(callerError);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const transport = new Error("other transport");
+    const unrelated = vi.fn<typeof fetch>().mockRejectedValue(transport);
+    await expect(new XaiResponsesAdapter({ fetch: unrelated }).stream(xaiRequest(), { apiKey: "k" }))
+      .rejects.toBe(transport);
+    expect(unrelated).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["return", "throw"] as const)("cancels a pending retry delay on iterator %s", async (method) => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(xaiFrame(failed())));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const iterator = response.events[Symbol.asyncIterator]();
+    const pendingNext = iterator.next().catch((error: unknown) => error);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+
+    const closed = method === "return"
+      ? iterator.return?.().then(() => "closed" as const)
+      : iterator.throw?.(new Error("stop")).catch(() => "closed" as const);
+    await expect(Promise.race([
+      closed,
+      new Promise<"timeout">((resolve) => setTimeout(() => resolve("timeout"), 150)),
+    ])).resolves.toBe("closed");
+    await pendingNext;
+    await new Promise((resolve) => setTimeout(resolve, 225));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["return", "throw"] as const)("aborts an in-flight retry fetch on iterator %s", async (method) => {
+    let retryStarted: (() => void) | undefined;
+    const retryStart = new Promise<void>((resolve) => {
+      retryStarted = resolve;
+    });
+    let retryAborted = false;
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(failed())))
+      .mockImplementationOnce(async (_input, init) => {
+        retryStarted?.();
+        return await new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            retryAborted = true;
+            reject(init.signal?.reason);
+          }, { once: true });
+        });
+      });
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const iterator = response.events[Symbol.asyncIterator]();
+    const pendingNext = iterator.next().catch((error: unknown) => error);
+
+    await retryStart;
+    if (method === "return") {
+      await iterator.return?.();
+    } else {
+      await iterator.throw?.(new Error("stop")).catch(() => undefined);
+    }
+    await pendingNext;
+    expect(retryAborted).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(["return", "throw"] as const)("cancels a pending initial read on iterator %s", async (method) => {
+    const controlled = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(controlled.response);
+    const response = await new XaiResponsesAdapter({
+      fetch: fetchMock,
+      idleTimeoutMs: 300,
+    }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const iterator = response.events[Symbol.asyncIterator]();
+    const pendingNext = iterator.next().catch(() => undefined);
+    controlled.push(xaiFrame(responseCreated()));
+    await flushXaiStream();
+
+    const startedAt = Date.now();
+    if (method === "return") {
+      await iterator.return?.();
+    } else {
+      await iterator.throw?.(new Error("stop")).catch(() => undefined);
+    }
+    expect(Date.now() - startedAt).toBeLessThan(150);
+    await pendingNext;
+    expect(controlled.wasCancelled()).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not retry again when the stream retry fetch socket terminates", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(failed())))
+      .mockRejectedValueOnce(socketTermination());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).rejects.toThrow("terminated");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("aborts the upstream read when function-call assembly fails", async () => {
+    const controlled = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(controlled.response);
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = collectXaiEvents(response.events);
+    controlled.push(xaiFrame(functionCallAdded("call-1")));
+    controlled.push(xaiFrame(responseCompleted()));
+
+    await expect(events).rejects.toThrow("response.completed arrived before");
+    expect(controlled.wasCancelled()).toBe(true);
+  });
+
+  it("writes only payload-light retry discard fields", async () => {
+    const wire = wireLogFixture("fleet-xai-retry-");
+    try {
+      const fetchMock = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(xaiResponse(xaiFrame(failed("server_error", "secret-id"))))
+        .mockResolvedValueOnce(xaiResponse(xaiFrame(textDelta("terminal"))));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest({
+        input: [{ type: "message", role: "user", content: "secret prompt" }],
+      }), { apiKey: "secret-key" });
+      if (!response.ok) throw new Error("expected ok");
+      await collectXaiEvents(response.events);
+
+      const entries = wire.read().filter((entry) => entry.event === "xai-responses.retry.discarded");
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.payload).toEqual({ reason: "response.failed", errorTypes: ["server_error"] });
+      expect(JSON.stringify(entries)).not.toMatch(/secret|secret-id|prompt|raw|message|id|output/);
+    } finally {
+      wire.cleanup();
+    }
+  });
+
+  it("records one provider request for each retry attempt", async () => {
+    const wire = wireLogFixture("fleet-xai-retry-wire-");
+    try {
+      const fetchMock = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(xaiResponse(xaiFrame(failed())))
+        .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated("r2")), xaiFrame(responseCompleted("r2"))));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      await collectXaiEvents(response.events);
+
+      expect(wire.read().filter((entry) => entry.event === "xai-responses.wire.request")).toHaveLength(2);
+    } finally {
+      wire.cleanup();
+    }
+  });
+
+  it("preserves normal event order and successful lifecycle", async () => {
+    const events = [
+      responseCreated(),
+      reasoning(),
+      messageAdded(),
+      textDelta("x"),
+      textDone("x"),
+      responseCompleted(),
+    ];
+    const caller = new AbortController();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(...events.map(xaiFrame)));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), {
+      apiKey: "k",
+      signal: caller.signal,
+    });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual(events);
+    expect(caller.signal.aborted).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
 

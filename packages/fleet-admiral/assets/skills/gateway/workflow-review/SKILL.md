@@ -11,7 +11,7 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 
 ## When Not To Use
 
-- The defect is known and only the repair remains. Use `workflow-implementing`.
+- The defect is known and only the repair remains. Writing files has no skeleton of its own — see `workflow`.
 - Deciding between designs. Use `workflow-architecting`.
 - Establishing facts with no standard to judge against. Use `workflow-research`.
 

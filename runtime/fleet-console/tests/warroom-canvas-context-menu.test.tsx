@@ -23,6 +23,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
 import { loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
 import { isTriageDeckMapMode, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom } from "../core/client/src/canvas/triage-store.js";
+import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 type OperationsCanvasLaunchKind = Parameters<typeof OperationsCanvas>[0]["onLaunchKind"];
@@ -187,6 +188,114 @@ describe("War Room canvas controls reach", () => {
     // 터미널 안은 복사·붙여넣기가 있는 자리다 — 우리 메뉴가 그것을 빼앗지 않는다.
     expect(panelMenu.defaultPrevented).toBe(false);
     expect(container!.querySelector(".canvas-context-menu")).toBeNull();
+  });
+});
+
+describe("War Room empty space releases a focused deck panel", () => {
+  const idleState: ConsoleState = {
+    ...STATE,
+    operationRuntime: {
+      [OPERATION.id]: { lifecycle: "live", activity: "idle" },
+      [OPERATION_B.id]: { lifecycle: "live", activity: "idle" },
+    },
+  };
+
+  it("clears store activation from the deck grid without staging the focused panel", () => {
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
+        root!.render(createElement(OperationsCanvas, {
+          state: idleState,
+          catalog: CATALOG,
+          canLaunch: true,
+          renderKindIcon: () => null,
+          onLaunchKind: () => {},
+          onLaunchAtGeometry: () => {},
+          onClose: () => {},
+          onFocus: () => {},
+          onRename: () => {},
+          onSetAccent: () => {},
+        }));
+      });
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      expect(container!.querySelector(".canvas-operation.is-triage-stage")).toBeNull();
+      expect(getState().activeOperationId).toBe(OPERATION.id);
+
+      const grid = container!.querySelector<HTMLElement>(".canvas-triage-deck-grid");
+      expect(grid, "idle fleet must keep the deck mounted").not.toBeNull();
+      grid!.tabIndex = -1;
+      act(() => { grid!.focus(); });
+      expect(document.activeElement).toBe(grid);
+      act(() => grid!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })));
+      expect(getState().activeOperationId).toBeNull();
+      expect(document.activeElement === grid).toBe(false);
+      expect(container!.querySelector(".canvas-operation.is-triage-stage")).toBeNull();
+    } finally {
+      act(() => { setActiveOperation(null); });
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not clear activation when the pointer lands on a deck card", () => {
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
+        root!.render(createElement(OperationsCanvas, {
+          state: idleState,
+          catalog: CATALOG,
+          canLaunch: true,
+          renderKindIcon: () => null,
+          onLaunchKind: () => {},
+          onLaunchAtGeometry: () => {},
+          onClose: () => {},
+          onFocus: () => {},
+          onRename: () => {},
+          onSetAccent: () => {},
+        }));
+      });
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      const card = container!.querySelector<HTMLElement>(`[data-triage-deck-card="${OPERATION.id}"]`);
+      expect(card).not.toBeNull();
+      act(() => card!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0 })));
+      expect(getState().activeOperationId).toBe(OPERATION.id);
+    } finally {
+      act(() => { setActiveOperation(null); });
+      vi.useRealTimers();
+    }
+  });
+
+  it("does not clear activation on a non-primary empty-space click", () => {
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        setConsoleState({ activeOperationId: OPERATION.id, activeOperationAcknowledged: true });
+        root!.render(createElement(OperationsCanvas, {
+          state: idleState,
+          catalog: CATALOG,
+          canLaunch: true,
+          renderKindIcon: () => null,
+          onLaunchKind: () => {},
+          onLaunchAtGeometry: () => {},
+          onClose: () => {},
+          onFocus: () => {},
+          onRename: () => {},
+          onSetAccent: () => {},
+        }));
+      });
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      const grid = container!.querySelector<HTMLElement>(".canvas-triage-deck-grid");
+      expect(grid).not.toBeNull();
+      act(() => grid!.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 2 })));
+      expect(getState().activeOperationId).toBe(OPERATION.id);
+    } finally {
+      act(() => { setActiveOperation(null); });
+      vi.useRealTimers();
+    }
   });
 });
 

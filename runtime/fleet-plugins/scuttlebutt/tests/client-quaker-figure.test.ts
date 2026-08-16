@@ -97,7 +97,8 @@ describe("Quaker admiral figures", () => {
     expect(styles).toMatch(
       /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk:not\(\[data-morph="bori"\]\) \.scuttlebutt-qk-wing-l/,
     );
-    expect(styles).toMatch(
+    // 날개 animation:none 은 만세·유휴 퍼덕임을 중간 프레임에 고정한다 — 느낌표만 켜고 퍼덕임은 유지한다.
+    expect(styles).not.toMatch(
       /\.scuttlebutt-bird\.is-alert \.scuttlebutt-qk\[data-morph="bori"\] \.scuttlebutt-qk-wing-l[\s\S]*?animation: none;/,
     );
     expect(styles).toMatch(

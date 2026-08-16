@@ -79,7 +79,7 @@ test('stops for markdown that the build turns into a published artifact', () => 
   const patterns = workflowPatterns();
   assert.equal(areAllPathsIgnorable(['.changelog.d/durable-pairing.md'], patterns), false);
   assert.equal(areAllPathsIgnorable(['packages/fleet-admiral/assets/skills/gateway/workflow.md'], patterns), false);
-  assert.equal(areAllPathsIgnorable(['runtime/fleet-console/AGENTS.md'], patterns), false);
+  assert.equal(areAllPathsIgnorable(['runtime/fleet-console/CLAUDE.md'], patterns), false);
   assert.equal(areAllPathsIgnorable(['docs/a.md', '.changelog.d/canary.md'], patterns), false);
   assert.equal(consumesReleaseInput('.changelog.d/durable-pairing.md'), true);
   assert.equal(consumesReleaseInput('docs/changelog.d/notes.md'), false, 'prefix must anchor at the repository root');

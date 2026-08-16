@@ -1,93 +1,65 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  canonicalModelIdentity,
   humanizeBareModel,
-  markKeyFromIdentity,
   normalizeModelKey,
   parseModelIdentity,
-  readLaunchProvider,
 } from "../server/identity.js";
 
-describe("parseModelIdentity", () => {
-  it("reads a Gateway supplier and humanizes the bare model", () => {
-    expect(parseModelIdentity("claude-gateway--cursor--grok-4.6-fast")).toEqual({
-      modelId: "claude-gateway--cursor--grok-4.6-fast",
-      supplier: "cursor",
-      bare: "grok-4.6-fast",
-      label: "Grok 4.6 Fast",
-    });
-  });
-
-  it("names an unprefixed Claude id as Claude", () => {
-    expect(parseModelIdentity("claude-opus-5")).toMatchObject({
-      supplier: "claude",
+describe("model identity", () => {
+  it("attributes a native Claude model to Anthropic", () => {
+    expect(parseModelIdentity("claude-opus-5")).toEqual({
+      modelId: "claude-opus-5",
+      provider: "anthropic",
       bare: "claude-opus-5",
       label: "Claude Opus 5",
     });
   });
 
-  it("names unprefixed report ids by supplier instead of collapsing them onto Claude", () => {
-    expect(parseModelIdentity("gpt-5")).toMatchObject({
-      supplier: "codex",
-      bare: "gpt-5",
-      label: "GPT 5",
+  it("extracts each Gateway provider and bare model from its alias", () => {
+    expect(parseModelIdentity("claude-gateway--cursor--claude-opus-5")).toEqual({
+      modelId: "claude-gateway--cursor--claude-opus-5",
+      provider: "cursor",
+      bare: "claude-opus-5",
+      label: "Claude Opus 5",
     });
-    expect(parseModelIdentity("opencode/big-pickle")).toMatchObject({
-      supplier: "opencode",
-      bare: "big-pickle",
-      label: "Big Pickle",
-    });
-    expect(parseModelIdentity("mystery-model")).toMatchObject({
-      supplier: "native",
-      bare: "mystery-model",
-      label: "Mystery Model",
+    expect(parseModelIdentity("claude-gateway--xai--grok-4.6")).toMatchObject({
+      provider: "xai",
+      bare: "grok-4.6",
+      label: "Grok 4.6",
     });
   });
 
-  it("collapses models-command GPT hyphenation in the label", () => {
-    expect(parseModelIdentity("claude-gateway--codex--gpt-5-6-sol-fast").label).toBe("GPT 5.6 Sol Fast");
+  it("keeps unknown non-Gateway ids visible without claiming Anthropic", () => {
+    expect(parseModelIdentity("gpt-5")).toMatchObject({ provider: "unknown", bare: "gpt-5", label: "GPT 5" });
   });
-});
 
-describe("normalizeModelKey", () => {
-  it("joins a report id and a models-command id to the same key", () => {
+  it("keeps the same model on different providers distinct", () => {
+    expect(normalizeModelKey("claude-opus-5"))
+      .not.toBe(normalizeModelKey("claude-gateway--cursor--claude-opus-5"));
+  });
+
+  it("joins tokscale variants and Fast tiers only within one provider", () => {
     expect(normalizeModelKey("claude-gateway--codex--gpt-5.6-sol-fast"))
-      .toBe(normalizeModelKey("claude-gateway--codex--gpt-5-6-sol-fast"));
+      .toBe(normalizeModelKey("claude-gateway--codex--gpt-5-6-sol"));
+    expect(normalizeModelKey("claude-gateway--cursor--gpt-5.6-sol-fast"))
+      .not.toBe(normalizeModelKey("claude-gateway--codex--gpt-5-6-sol"));
+    expect(canonicalModelIdentity("claude-gateway--cursor--grok-4.6-fast")).toMatchObject({
+      bare: "grok-4.6",
+      label: "Grok 4.6",
+    });
   });
 
-  it("joins hyphenated and dotted 1M ids without merging the standard-window twin", () => {
-    expect(normalizeModelKey("claude-gateway--opencode--gpt-5-6-luna[1m]"))
-      .toBe(normalizeModelKey("claude-gateway--opencode--gpt-5.6-luna[1m]"));
-    expect(normalizeModelKey("claude-gateway--opencode--gpt-5.6-luna[1m]"))
-      .not.toBe(normalizeModelKey("claude-gateway--opencode--gpt-5.6-luna"));
+  it("restores tokscale's hyphenated numeric model versions", () => {
+    expect(humanizeBareModel("grok-4-6-fast")).toBe("Grok 4.6 Fast");
+    expect(humanizeBareModel("claude-opus-4-8")).toBe("Claude Opus 4.8");
+    expect(humanizeBareModel("composer-2-5")).toBe("Composer 2.5");
   });
-});
 
-describe("readLaunchProvider", () => {
-  it("accepts the chrome allowlist and rejects unknown values", () => {
-    expect(readLaunchProvider({ launchProvider: "xai" })).toBe("xai");
-    expect(readLaunchProvider({ launchProvider: "claude-gateway" })).toBeNull();
-    expect(readLaunchProvider({})).toBeNull();
-  });
-});
-
-describe("markKeyFromIdentity", () => {
-  it("prefers launchProvider and folds claude-gateway onto claude", () => {
-    expect(markKeyFromIdentity("cursor", "claude-gateway")).toBe("cursor");
-    expect(markKeyFromIdentity(null, "claude-gateway")).toBe("claude");
-    expect(markKeyFromIdentity(null, "codex")).toBe("codex");
-    expect(markKeyFromIdentity(null, "native")).toBe("native");
-  });
-});
-
-describe("humanizeBareModel", () => {
-  it("keeps a 1M marker as a suffix", () => {
+  it("keeps a 1M marker as one suffix", () => {
     expect(humanizeBareModel("claude-fable-5[1m]")).toBe("Claude Fable 5 (1M)");
-  });
-
-  it("does not repeat the 1M window when the catalog alias already carries -1m", () => {
     expect(humanizeBareModel("claude-opus-5-1m[1m]")).toBe("Claude Opus 5 (1M)");
-    expect(parseModelIdentity("claude-gateway--cursor--claude-opus-5-1m[1m]").label).toBe("Claude Opus 5 (1M)");
     expect(humanizeBareModel("claude-opus-5-1m")).toBe("Claude Opus 5 (1M)");
   });
 });

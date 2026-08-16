@@ -38,6 +38,16 @@ describe("Session Analyst contract", () => {
     expect(css).toContain("var(--coral)");
     expect(css).toContain(".session-analyst__composer-surface:focus-within");
     expect(css).toContain(".session-analyst__composer.is-working .session-analyst__composer-surface");
+    // 컴포저는 한 장이다 — 선택 줄은 같은 면 안 하단 줄이지, 자기 테두리를 가진 두 번째 상자가 아니다.
+    expect(css).not.toContain("session-analyst__selector-strip");
+    // 떠 있던 칩 줄이 캡션으로 옮겨간 뒤 본문은 어느 모드에서도 그 자리를 비워 두지 않는다 —
+    // 한 경로만 남으면 그 화면만 빈 띠를 이고 미리보기 높이를 잃는다.
+    expect(css).not.toMatch(/padding(-top)?: calc\(var\(--space-\d\) \+ 34px\)/);
+    expect(css).toContain(".session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column;");
+    // 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다.
+    expect(css).toMatch(/\.session-analyst__saved \{[^}]*inline-size: [\d.]+em;/);
+    // 강도는 제품 공용 톤 사다리를 탄다.
+    expect(css).toContain("--fc-select-compact-tone: var(--effort-tone, var(--text-secondary));");
     expect(css).toContain("user-select: text");
     expect(css).toContain(":is(button, select) { user-select: none; }");
     expect(css).not.toContain(":is(button, a)");
@@ -60,11 +70,13 @@ describe("Session Analyst contract", () => {
   it("keeps the single Analyst companion hidden by default", () => {
     const source = readFileSync(new URL("./index.tsx", import.meta.url), "utf8");
     const visibility = readFileSync(new URL("./analysis-visibility.ts", import.meta.url), "utf8");
-    expect(source).toContain('id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), hideCaption: true, defaultHidden: true');
+    expect(source).toContain('id: ANALYST_CHAT_COMPANION_ID, title: (locale) => getT(locale)("terminal.companion.sessionAnalyst"), defaultHidden: true');
+    // 캡션 밴드는 호스트가 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 위 모서리가 각진다.
+    expect(source).toContain('caption: (context) => <AnalystCaption context={context} />');
+    expect(source).not.toContain("hideCaption");
     // 아티팩트는 드로어 안의 모드다 — 두 번째 컴패니언이 되살아나면 안 된다.
     expect(source).not.toContain("ANALYST_ARTIFACTS_COMPANION_ID");
     expect(visibility).not.toContain("session-analyst-artifacts");
-    expect(source.match(/hideCaption: true/g)).toHaveLength(1);
     expect(source.match(/defaultHidden: true/g)).toHaveLength(1);
     expect(source).toContain('shortcut: { code: "KeyA", label: "A", clusterIds: ANALYST_COMPANION_IDS }');
     expect(source).toContain("toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS)");

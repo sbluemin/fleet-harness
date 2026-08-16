@@ -57,6 +57,21 @@ describe("agent chat mode routes", () => {
     expect(released?.chatActive).toBeUndefined();
   });
 
+  // 터미널로 열어 놓고 아직 아무것도 시키지 않은 세션. 트랜스크립트가 없는 것이 정상이고 잃을
+  // 과거도 없다 — 여기서 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을
+  // 새로 만들어야 한다. 부재의 뜻을 가르는 것은 태생이 아니라 좌표가 심겼는지다.
+  it("converts a terminal session that has not run its first turn yet", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+
+    await harness.post(sessionId, "chat");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
+    expect(harness.terminate).toHaveBeenCalledWith(sessionId);
+  });
+
   it("rejects conversion while the terminal turn is running", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
@@ -66,7 +81,7 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "turn" } });
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     expect(harness.terminate).not.toHaveBeenCalled();
   });
@@ -81,7 +96,7 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "background" } });
     expect(harness.terminate).not.toHaveBeenCalled();
   });
 
@@ -99,16 +114,36 @@ describe("agent chat mode routes", () => {
 
     await harness.post(sessionId, "chat");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy" } });
+    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_convert_busy", reason: "starting" } });
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
     releaseAttach();
     await delivery;
   });
 
-  it("rejects conversion without a captured transcript", async () => {
+  // 터미널 복귀는 chat 마커를 먼저 걷고 resume을 부른다. 그래서 resume 시점에는 이 세션이 방금
+  // 채팅에 있었다는 사실이 payload에 남지 않고, 남은 단서는 좌표가 없다는 것뿐이다 — 그것을
+  // 거절하면 첫 턴 전에 표면을 바꾼 세션이 돌아올 길을 잃는다.
+  it("resumes a session that never recorded a coordinate as a fresh start", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
+    await harness.post(sessionId, "chat");
+    await harness.del(sessionId, "chat");
+
+    await harness.post(sessionId, "resume");
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+  });
+
+  // 좌표가 한 번 심긴 뒤의 부재는 "아직 시작 전"이 아니라 과거의 상실이다. fresh로 떨어뜨리면
+  // 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다.
+  it("rejects conversion when a captured transcript went missing", async () => {
+    const harness = await createHarness();
+    const sessionId = await harness.createSession();
+    harness.setLive(sessionId);
+    harness.attachProviderSession(sessionId);
+    const payload = harness.operation(sessionId)?.payload as { providerSession?: Record<string, unknown> };
+    payload.providerSession = { ...payload.providerSession, transcriptPath: "/tmp/fleet-chat-never-written/absent.jsonl" };
 
     await harness.post(sessionId, "chat");
 

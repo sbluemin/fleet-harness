@@ -10,6 +10,7 @@ import {
   EXPIRED_KEY,
   formatCountdown,
   formatPace,
+  formatResetInstant,
   isLatestRequestGeneration,
   meterSeverity,
   movedProviderOrder,
@@ -19,6 +20,7 @@ import {
   riskNote,
   sanitizeProviderOrder,
   SIGNED_OUT_KEY,
+  visibleCredits,
 } from "../client/rail-panel.js";
 import { providerGlyph } from "../client/cli-glyphs.js";
 import { QUOTA_MESSAGES } from "../client/i18n/messages.js";
@@ -37,6 +39,37 @@ describe("quota countdown", () => {
     const newestRequest = beginRequestGeneration(generation);
     expect(isLatestRequestGeneration(generation, staleRequest)).toBe(false);
     expect(isLatestRequestGeneration(generation, newestRequest)).toBe(true);
+  });
+});
+
+describe("quota reset instant", () => {
+  const now = new Date(2026, 7, 16, 12, 0, 0).getTime();
+
+  it("names the calendar date once the reset is more than a day away", () => {
+    const wednesday = new Date(2026, 7, 19, 23, 0, 0).getTime();
+    expect(formatResetInstant(wednesday, now, "ko")).toBe("8월 19일 (수) 23시");
+    expect(formatResetInstant(wednesday, now, "en")).toBe("Aug 19 (Wed) 23:00");
+  });
+
+  it("names the local 24-hour clock when the reset is a day or less away", () => {
+    const tonight = new Date(2026, 7, 16, 23, 0, 0).getTime();
+    const tomorrowMorning = new Date(2026, 7, 17, 0, 30, 0).getTime();
+    expect(formatResetInstant(tonight, now, "ko")).toBe("23:00");
+    expect(formatResetInstant(tonight, now, "en")).toBe("23:00");
+    expect(formatResetInstant(tomorrowMorning, now, "ko")).toBe("00:30");
+  });
+
+  it("switches from clock to date at the day boundary", () => {
+    const atBoundary = now + 86_400_000;
+    const justOver = now + 86_400_000 + 1;
+    expect(formatResetInstant(atBoundary, now, "ko")).toBe("12:00");
+    expect(formatResetInstant(justOver, now, "ko")).toBe("8월 17일 (월) 12시");
+  });
+
+  it("returns null when the timestamp is not a real instant", () => {
+    expect(formatResetInstant(undefined, now, "ko")).toBeNull();
+    expect(formatResetInstant(Number.NaN, now, "ko")).toBeNull();
+    expect(formatResetInstant(Number.POSITIVE_INFINITY, now, "en")).toBeNull();
   });
 });
 
@@ -123,12 +156,37 @@ describe("meter risk", () => {
   });
 });
 
+describe("reset credits", () => {
+  // Codex는 보유량 0에도 크레딧 객체를 준다. 그대로 그리면 카드가 상시로 "0" 한 줄을
+  // 차지하는데, 그 줄이 알리는 사실은 없다.
+  it("shows the row only when at least one credit is held", () => {
+    expect(visibleCredits({ available: 2 })).toEqual({ available: 2 });
+    expect(visibleCredits({ available: 0 })).toBeNull();
+    expect(visibleCredits({ available: 0, nextExpiresAt: 1_000 })).toBeNull();
+    expect(visibleCredits(undefined)).toBeNull();
+  });
+
+  // 문구가 API 용어를 그대로 노출하면 카드의 나머지 카피와 어긋난다.
+  it("names the credits in product language, not in the upstream endpoint's", () => {
+    expect(QUOTA_MESSAGES.en["quota.credits"]).not.toContain("rate-limit");
+    expect(QUOTA_MESSAGES.ko["quota.credits"]).not.toContain("rate-limit");
+  });
+});
+
 describe("provider glyphs", () => {
   it("renders the Grok product mark at the quota header size", () => {
     const markup = renderToStaticMarkup(createElement("span", null, providerGlyph("xai")));
     expect(markup).toContain('viewBox="0 0 512 512"');
     expect(markup).toContain('width="16"');
     expect(markup).toContain('height="16"');
+  });
+
+  it("renders the previous OpenCode square mark at the quota header size", () => {
+    const markup = renderToStaticMarkup(createElement("span", null, providerGlyph("opencode")));
+    expect(markup).toContain('viewBox="0 0 240 300"');
+    expect(markup).toContain('width="13"');
+    expect(markup).toContain('height="16"');
+    expect(markup).toContain('opacity="0.45"');
   });
 });
 
@@ -142,6 +200,7 @@ describe("provider status copy", () => {
       codex: "Codex",
       cursor: "Cursor",
       kimi: "Kimi",
+      opencode: "OpenCode Go",
       xai: "Grok CLI",
     };
     for (const map of [SIGNED_OUT_KEY, EXPIRED_KEY]) {
@@ -153,6 +212,8 @@ describe("provider status copy", () => {
     expect(en[NO_SUBSCRIPTION_KEY.kimi]).toContain("Kimi");
     expect(en[NO_SUBSCRIPTION_KEY.kimi]).not.toContain("Cursor");
     expect(en[NO_SUBSCRIPTION_KEY.cursor]).toContain("Cursor");
+    expect(en[NO_SUBSCRIPTION_KEY.opencode]).toContain("OpenCode Go");
+    expect(en[NO_SUBSCRIPTION_KEY.opencode]).not.toContain("Cursor");
   });
 });
 
@@ -161,16 +222,16 @@ describe("provider order", () => {
   // 빠뜨린 순서라도 카드가 전부, 정확히 한 번씩 그려져야 한다.
   it("drops unknown ids, dedupes, and appends missing providers in default order", () => {
     expect(sanitizeProviderOrder(["opencode", "bogus", "claude", "opencode"]))
-      .toEqual(["claude", "codex", "xai", "cursor", "kimi"]);
+      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi"]);
     expect(sanitizeProviderOrder(undefined)).toEqual([...PROVIDER_ORDER_DEFAULT]);
     expect(sanitizeProviderOrder("claude")).toEqual([...PROVIDER_ORDER_DEFAULT]);
   });
 
   it("moves a provider one step and refuses to cross the list boundary", () => {
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", -1))
-      .toEqual(["claude", "codex", "cursor", "xai", "kimi"]);
+      .toEqual(["claude", "codex", "cursor", "xai", "opencode", "kimi"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", 1))
-      .toEqual(["claude", "codex", "xai", "kimi", "cursor"]);
+      .toEqual(["claude", "codex", "xai", "opencode", "cursor", "kimi"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toBeNull();
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "kimi", 1)).toBeNull();
   });

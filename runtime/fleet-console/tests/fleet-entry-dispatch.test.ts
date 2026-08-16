@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { dispatchFleetArgv } from "../cli/fleet-dispatch.js";
+import { classifyFleetArgv, dispatchFleetArgv } from "../cli/fleet-dispatch.js";
 
 function createIo() {
   let stdout = "";
@@ -109,6 +109,64 @@ describe("dual-entry dispatch", () => {
     });
     expect(passthrough).toBe(0);
     expect(runApp).toHaveBeenCalledWith({ passthroughArgs: ["--model", "sonnet"] });
+  });
+
+  it("prints the Fleet package version without Claude passthrough", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    for (const argv of [["--version"], ["-v"], ["version"]] as const) {
+      io.stdout.write("");
+      const status = await dispatchFleetArgv([...argv], {
+        stdout: io.stdout,
+        stderr: io.stderr,
+        env: {},
+        runApp: runApp as never,
+        createInfraServices: (() => ({})) as never,
+        dispatchAuthCommand: (async () => 0) as never,
+        dispatchUpdateCommand: (async () => 0) as never,
+      });
+      expect(status).toBe(0);
+    }
+    expect(io.stdout.toString()).toContain("@dotobokuri/fleet-console");
+    expect(io.stdout.toString()).toContain("Claude Code version: fleet cli --version");
+    expect(runApp).not.toHaveBeenCalled();
+  });
+
+  it("aliases fleet status to console status without Claude passthrough", async () => {
+    expect(classifyFleetArgv(["status"])).toEqual({ kind: "console", consoleArgv: ["status"] });
+    expect(classifyFleetArgv(["status", "--help"])).toEqual({ kind: "console", consoleArgv: ["status", "--help"] });
+    expect(classifyFleetArgv(["cli", "status"])).toEqual({
+      kind: "passthrough",
+      passthroughArgs: ["status"],
+    });
+  });
+
+  it("reserves fleet doctor without Claude passthrough", async () => {
+    expect(classifyFleetArgv(["doctor"])).toEqual({ kind: "doctor", argv: ["doctor"] });
+    expect(classifyFleetArgv(["cli", "doctor"])).toEqual({
+      kind: "passthrough",
+      passthroughArgs: ["doctor"],
+    });
+  });
+
+  it("keeps fleet cli --version as Claude passthrough", async () => {
+    expect(classifyFleetArgv(["cli", "--version"])).toEqual({
+      kind: "passthrough",
+      passthroughArgs: ["--version"],
+    });
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const status = await dispatchFleetArgv(["cli", "--version"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(status).toBe(0);
+    expect(runApp).toHaveBeenCalledWith({ passthroughArgs: ["--version"] });
   });
 
   it("keeps entry isolation: fleet entry never imports the direct-run-guarded Console entry", async () => {

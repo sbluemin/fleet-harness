@@ -29,23 +29,9 @@ export async function handleSummary(
     return;
   }
 
-  const hasTheaterId = url.searchParams.has("theaterId");
-  const theaterId = url.searchParams.get("theaterId");
-  if (hasTheaterId && theaterId === "") {
-    ctx.host.http.writeJson(res, 400, { error: "invalid_theater_id" });
-    return;
-  }
-  const theaterPath = theaterId ? ctx.host.paths.resolveTheaterPath(theaterId) : null;
-  if (theaterId && !theaterPath) {
-    ctx.host.http.writeJson(res, 404, { error: "theater_not_found" });
-    return;
-  }
-
   const dto = await service.getSummary({
-    theaterId,
     window: rawWindow as LedgerWindow,
     refresh: url.searchParams.get("refresh") === "1",
-    operations: ctx.host.operations.list(),
   });
   ctx.host.http.writeJson(res, 200, dto);
 }

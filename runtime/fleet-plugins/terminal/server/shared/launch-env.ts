@@ -17,3 +17,17 @@ export function stripConsoleInternalEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessE
   for (const key of CONSOLE_INTERNAL_ENV_KEYS) delete next[key];
   return next;
 }
+
+/**
+ * Chat Mode의 SDK 자식이 받을 환경.
+ *
+ * 위와 한 가지가 다르다: `FLEET_CONSOLE_SESSION_ID`까지 지운다. PTY 세션은 이 값을 세션별로
+ * 명시 주입하지만 SDK 자식에게는 주입할 값이 없고, Console 자신이 Fleet 터미널에서 떴다면
+ * **그 터미널 세션의 id를 상속하고 있다.** 그대로 따라가면 이 자식이 실은 훅들이 남의 세션
+ * 축에 턴 시작·종료·주의를 보고한다 — 조용히, 그리고 그 세션이 도는 내내.
+ */
+export function chatChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const next = stripConsoleInternalEnv(env);
+  delete next.FLEET_CONSOLE_SESSION_ID;
+  return next;
+}

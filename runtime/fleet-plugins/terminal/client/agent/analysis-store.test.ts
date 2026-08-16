@@ -151,6 +151,75 @@ describe("per-operation analysis store", () => {
     await vi.waitFor(() => expect(harness.fetch.mock.calls.some((call) => call[1] === "analysis/operation-store-share/stop")).toBe(true));
   });
 
+  it("re-reads the catalog on refresh, keeps the current selection, and stops once the session started", async () => {
+    // 설정에서 모델을 추가한 뒤 돌아온 상황 — 두 번째 읽기부터 새 모델이 실린다.
+    let models = [{ id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" }];
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(
+        JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+      : null);
+    const operationId = "operation-store-catalog-refresh";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(1));
+
+    models = [...models, { id: "claude-gateway--cursor--auto", label: "Cursor-Auto", effortLevels: ["low"], defaultEffort: "low" }];
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(2));
+    // 갱신이 사용자의 현재 선택을 갈아끼우지 않는다.
+    expect(store.getSnapshot()).toMatchObject({ cliId: "claude-gateway", model: "sonnet", effort: "low" });
+
+    const readsBeforeStart = harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog").length;
+    store.dispatch({ type: "sending", started: true, text: "go", now: Date.now() });
+    store.refreshCatalog();
+    await Promise.resolve();
+    // 선택이 잠긴 뒤에는 읽지 않는다 — 진행 중 세션의 표시 선택을 뒤에서 갈아끼우게 된다.
+    expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(readsBeforeStart);
+    disposeAnalysisStore(operationId);
+  });
+
+  it("folds a first-mount refresh into the initial hydration instead of racing it", async () => {
+    const harness = createHarness();
+    const operationId = "operation-store-catalog-first-mount";
+    const store = getAnalysisStore(operationId, harness.api);
+    // 첫 마운트의 효과는 하이드레이션이 아직 비행 중일 때 돈다 — 여기서 두 번째 읽기를 띄우면
+    // 늦게 도착한 하이드레이션이 그 사이 사용자가 고른 선택을 저장본으로 덮어쓴다.
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(store.getSnapshot().catalog).not.toBeNull());
+    expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(1);
+
+    // 하이드레이션이 끝난 뒤의 재마운트는 정상적으로 다시 읽는다.
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(2));
+    disposeAnalysisStore(operationId);
+  });
+
+  it("re-reads the catalog on reset so a started session picks up a newly added model", async () => {
+    // started는 complete 뒤에도 참이라 마운트 갱신이 막힌다 — 그 세션이 새 모델을 만나는 자리는 reset뿐이다.
+    let models = [{ id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" }];
+    const harness = createHarness((path) => path === "analysis/catalog"
+      ? new Response(
+        JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
+        { status: 200, headers: { "Content-Type": "application/json" } },
+      )
+      : null);
+    const operationId = "operation-store-catalog-reset";
+    const store = getAnalysisStore(operationId, harness.api);
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(1));
+
+    store.dispatch({ type: "sending", started: true, text: "go", now: Date.now() });
+    models = [...models, { id: "claude-gateway--cursor--auto", label: "Cursor-Auto", effortLevels: ["low"], defaultEffort: "low" }];
+    store.refreshCatalog();
+    await Promise.resolve();
+    expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(1);
+
+    await store.reset();
+    await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(2));
+    expect(store.getSnapshot().started).toBe(false);
+    disposeAnalysisStore(operationId);
+  });
+
   it("migrates a persisted bare Fable selection before catalog hydration", async () => {
     const catalogBody = JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
       { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" },

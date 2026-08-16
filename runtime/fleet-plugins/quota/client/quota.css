@@ -324,6 +324,10 @@
   color: var(--provider-kimi);
 }
 
+.quota-provider__mark--opencode {
+  color: var(--provider-opencode);
+}
+
 .quota-plan {
   margin-left: auto;
   border: 1px solid var(--hairline);
@@ -384,6 +388,7 @@
 }
 
 .quota-meter__percent,
+.quota-meter__forecast,
 .quota-meter__reset {
   color: var(--text-secondary);
   font-family: var(--font-mono);
@@ -440,6 +445,7 @@
 
 .quota-meter__foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
@@ -466,29 +472,52 @@
   font-size: 11.5px;
 }
 
-.quota-meter--warning .quota-meter__percent {
+.quota-meter__foot .quota-meter__percent {
+  font-size: 11.5px;
+}
+
+.quota-meter--warning .quota-meter__percent,
+.quota-meter--warning .quota-meter__forecast {
   color: var(--warn-ink);
 }
 
-.quota-meter--critical .quota-meter__percent {
+.quota-meter--critical .quota-meter__percent,
+.quota-meter--critical .quota-meter__forecast {
   color: var(--coral-ink);
 }
 
+/* 보유량이 있을 때만 나타나는 줄이라(visibleCredits) 문장이 아니라 칩으로 얹는다.
+   레일은 240px까지 좁아지므로 만료 문구는 접혀 내려가되 칩과 같은 줄을 먼저 시도한다. */
 .quota-credits {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
   margin-top: 12px;
   padding-top: 11px;
   border-top: 1px solid var(--hairline);
+}
+
+.quota-credits__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px 2px 7px;
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
 }
 
 .quota-credits small {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: 11.5px;
+  white-space: nowrap;
 }
 
 .quota-connect-card {

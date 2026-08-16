@@ -53,6 +53,9 @@ const lastClearedAt = new Map<string, number>();
 const deferredAt = new Map<string, number>();
 const dismissed = new Set<string>();
 const seenAt = new Map<string, number>();
+// 캡션으로만 활성화된 패널이 대기로 전이하면 무대 후보로 남을 자격이 생긴다.
+// pick이 아니다 — 미룸·치워둠·무장을 건드리지 않고, 스포트라이트 OFF 자동 등단도 강제하지 않는다.
+let activeAwaitingClaimId: string | null = null;
 
 const TRIAGE_SPOTLIGHT_STORAGE_KEY = "fleet-console-triage-spotlight";
 let triageSpotlightEnabled = readStoredTriageSpotlight();
@@ -108,6 +111,7 @@ export function resetTriageSpotlightForTests(): void {
 }
 
 const activityByOperation = new Map<string, OperationActivityVisual>();
+const waitingByOperation = new Map<string, boolean>();
 const operationTheater = new Map<string, string>();
 // focus layer만 Theater 단위로 유지한다 — 진입 시점 활성 Theater와 선별 중 자동 전환으로
 // 방문한 Theater 각각의 스냅샷을 저장해 종료 시 한 번에 복원한다.
@@ -630,6 +634,7 @@ export function setTriageActive(active: boolean): void {
   triageActive = false;
   rememberWarRoomActive(false);
   pickedOperationId = null;
+  activeAwaitingClaimId = null;
   enteredAt = null;
   // 미룸·치워둠 같은 transient 판정은 세션이 아니라 진입에 붙는다 — 껐다 다시 켜면 큐는
   // 미룸·치워둠 없이 처음 순서로 돌아와야 한다(기존 per-Theater 종료의 transient 초기화와 같은 계약).
@@ -638,6 +643,8 @@ export function setTriageActive(active: boolean): void {
   lastClearedAt.clear();
   seenAt.clear();
   activityByOperation.clear();
+  // waitingByOperation은 전이 판정용 baseline이다. recordTriageActivity가 선별 밖에서도
+  // 갱신하므로 여기서 지우면 재진입 직후 첫 대기가 previousWaiting===undefined로 침묵한다.
   clearPendingSideBarRequests();
   if (getLoadedTheaterId() !== null && getTheaterFocusLayerSnapshot(getLoadedTheaterId()!)?.mode === "companion") {
     forceDropCompanionOperationId();
@@ -737,8 +744,10 @@ export function pickTriageOperation(operationId: string): void {
   if (operation) operationTheater.set(operationId, operation.theaterId);
   dismissed.delete(operationId);
   const wasDeferred = deferredAt.delete(operationId);
+  const claimDropped = activeAwaitingClaimId !== null && activeAwaitingClaimId !== operationId;
+  if (claimDropped) activeAwaitingClaimId = null;
   if (pickedOperationId === operationId) {
-    if (wasDeferred) emitTriage();
+    if (wasDeferred || claimDropped) emitTriage();
     return;
   }
   pickedOperationId = operationId;
@@ -749,11 +758,46 @@ export function getTriagePick(): string | null {
   return pickedOperationId;
 }
 
+export function getActiveAwaitingClaimId(): string | null {
+  return activeAwaitingClaimId;
+}
+
+export function resolveActiveAwaitingTriageEntry(
+  operations: readonly OperationNode[],
+  operationRuntime: Readonly<Record<string, OperationRuntimeState>>,
+): TriageQueueEntry | null {
+  if (activeAwaitingClaimId === null) return null;
+  const operation = operations.find((candidate) => candidate.id === activeAwaitingClaimId) ?? null;
+  if (!operation
+    || getState().activeOperationId !== operation.id
+    || !isTriageWaitingOperation(operation, operationRuntime)
+    || dismissed.has(operation.id)
+    || deferredAt.has(operation.id)) {
+    return null;
+  }
+  return {
+    operation,
+    activity: resolveOperationActivity(operation, operationRuntime),
+    picked: false,
+  };
+}
+
+// 빈곳 해제는 operations/runtime을 바꾸지 않아 recordTriageActivity가 안 돈다.
+// 활성이 떠난 클레임을 여기서 거두지 않으면, 같은 패널을 다시 캡션만 눌러도
+// 전이가 없는데 무대 후보가 되살아난다.
+export function releaseInactiveActiveAwaitingClaim(): void {
+  if (activeAwaitingClaimId === null) return;
+  if (getState().activeOperationId === activeAwaitingClaimId) return;
+  activeAwaitingClaimId = null;
+  emitTriage();
+}
+
 export function markTriageCleared(operationId: string): void {
   clearTriageSetAsideArm();
   deferredAt.delete(operationId);
   lastClearedAt.set(operationId, Date.now());
   if (pickedOperationId === operationId) pickedOperationId = null;
+  if (activeAwaitingClaimId === operationId) activeAwaitingClaimId = null;
   emitTriage();
 }
 
@@ -763,6 +807,7 @@ export function dismissTriageOperation(operationId: string): void {
   dismissed.add(operationId);
   clearIdleArrival(operationId);
   if (pickedOperationId === operationId) pickedOperationId = null;
+  if (activeAwaitingClaimId === operationId) activeAwaitingClaimId = null;
   emitTriage();
 }
 
@@ -773,6 +818,9 @@ export function resetTriageTheater(theaterId: string): void {
   }
   if (pickedOperationId !== null && operationTheater.get(pickedOperationId) === theaterId) {
     pickedOperationId = null;
+  }
+  if (activeAwaitingClaimId !== null && operationTheater.get(activeAwaitingClaimId) === theaterId) {
+    activeAwaitingClaimId = null;
   }
   focusLayerBeforeTriage.delete(theaterId);
   clearTheaterTransientOperations(theaterId);
@@ -786,9 +834,11 @@ export function forgetTriageOperation(operationId: string): void {
   deferredAt.delete(operationId);
   seenAt.delete(operationId);
   activityByOperation.delete(operationId);
+  waitingByOperation.delete(operationId);
   clearOperationStatusDetail(operationId);
   operationTheater.delete(operationId);
   if (pickedOperationId === operationId) pickedOperationId = null;
+  if (activeAwaitingClaimId === operationId) activeAwaitingClaimId = null;
   for (const [snapshotTheaterId, focusLayer] of focusLayerBeforeTriage) {
     if (focusLayer?.operationId === operationId) focusLayerBeforeTriage.set(snapshotTheaterId, null);
   }
@@ -834,6 +884,7 @@ export function deferTriageOperation(operationId: string, now = Date.now()): voi
     latestDeferredAt = Math.max(latestDeferredAt, timestamp);
   }
   deferredAt.set(operationId, Math.max(now, latestDeferredAt + 1));
+  if (activeAwaitingClaimId === operationId) activeAwaitingClaimId = null;
   emitTriage();
 }
 
@@ -856,19 +907,43 @@ export function recordTriageActivity(
   now = Date.now(),
 ): void {
   let changed = false;
+  const { activeOperationId } = getState();
   for (const operation of operations) {
     if (operationTheater.get(operation.id) !== operation.theaterId) {
       operationTheater.set(operation.id, operation.theaterId);
       changed = true;
     }
     const activity = resolveOperationActivity(operation, operationRuntime);
+    const waiting = isTriageWaitingOperation(operation, operationRuntime);
     if ((activity === "running" || activity === "background" || activity === "ended") && deferredAt.delete(operation.id)) {
       changed = true;
     }
-    if (activityByOperation.get(operation.id) === activity) continue;
-    activityByOperation.set(operation.id, activity);
-    recordOperationActivityTransition(operation.id, activity, now);
-    seenAt.set(operation.id, now);
+    const previousWaiting = waitingByOperation.get(operation.id);
+    if (previousWaiting === waiting && activityByOperation.get(operation.id) === activity) continue;
+    // 선별 중 이미 활성인 패널이 대기로 들어설 때만 클레임을 남긴다. 캡션 클릭 자체는
+    // 여기 오지 않고, pick도 아니다 — 미룸·치워둠·무장을 그대로 둔다.
+    if (
+      triageActive
+      && previousWaiting === false
+      && waiting
+      && operation.id === activeOperationId
+      && !dismissed.has(operation.id)
+      && !deferredAt.has(operation.id)
+    ) {
+      activeAwaitingClaimId = operation.id;
+    } else if (activeAwaitingClaimId === operation.id && !waiting) {
+      activeAwaitingClaimId = null;
+    }
+    waitingByOperation.set(operation.id, waiting);
+    if (activityByOperation.get(operation.id) !== activity) {
+      activityByOperation.set(operation.id, activity);
+      recordOperationActivityTransition(operation.id, activity, now);
+      seenAt.set(operation.id, now);
+    }
+    changed = true;
+  }
+  if (activeAwaitingClaimId !== null && !operations.some((operation) => operation.id === activeAwaitingClaimId)) {
+    activeAwaitingClaimId = null;
     changed = true;
   }
   if (!changed) return;
@@ -1012,6 +1087,7 @@ function clearTheaterTransientOperations(theaterId: string): void {
     deferredAt.delete(operationId);
     seenAt.delete(operationId);
     activityByOperation.delete(operationId);
+    waitingByOperation.delete(operationId);
     operationTheater.delete(operationId);
   }
 }

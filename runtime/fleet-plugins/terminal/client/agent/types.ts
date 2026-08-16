@@ -52,10 +52,11 @@ export interface SessionInfo {
   readonly modelActivity?: ModelActivity;
   readonly attentionPending?: boolean;
   readonly backgroundPending?: boolean;
-  /** Chat Mode가 이 세션을 인수했는지 — PTY 없이도 실행 표면이 살아 있다. */
+  /**
+   * Chat Mode가 이 세션을 인수했는지 — PTY 없이도 실행 표면이 살아 있다. 활동은 위의
+   * `modelActivity`·`attentionPending`이 지고, 이 값은 수명과 표면 표식만 정한다.
+   */
   readonly chatActive?: boolean;
-  /** Chat Mode의 SDK 턴이 진행 중인지. */
-  readonly chatWorking?: boolean;
   readonly createdAt: number;
   readonly theaterId?: string;
   readonly tenantId?: string;

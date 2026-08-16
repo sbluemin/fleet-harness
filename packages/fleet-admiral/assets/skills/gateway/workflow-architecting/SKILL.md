@@ -11,7 +11,7 @@ Executing this skeleton — the surface it runs on, the wiring between stages, a
 
 ## When Not To Use
 
-- The approach is settled and only the work remains. Use `workflow-implementing`.
+- The approach is settled and only the work remains. Writing files has no skeleton of its own — see `workflow`.
 - Judging code that exists against a standard. Use `workflow-review`.
 - Gathering facts with no decision attached. Use `workflow-research`.
 

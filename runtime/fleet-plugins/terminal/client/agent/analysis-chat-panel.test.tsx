@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, createElement } from "react";
-import { createRoot } from "react-dom/client";
+import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import type { AnalysisEvent } from "./analysis-types.js";
@@ -33,11 +33,14 @@ const dispatch = vi.fn((action: AnalysisAction) => {
   storeState = analysisReducer(storeState, action);
   rerenderStore();
 });
+// 패널이 열릴 때 카탈로그를 다시 읽으므로 목도 같은 자리를 제공한다. 함수 정체성은 고정한다 —
+// 매 렌더 새 함수를 주면 그 효과가 매 렌더 다시 돈다.
+const refreshCatalog = vi.fn();
 vi.mock("./analysis-store.js", () => ({
-  useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset }),
+  useAnalysisStore: () => ({ state: storeState, dispatch, send, stop, reset, refreshCatalog }),
 }));
 
-import { AnalystChatPanel } from "./analysis-chat-panel.js";
+import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
 import {
   ANALYST_CHAT_COMPANION_ID,
 } from "./analysis-visibility.js";
@@ -59,7 +62,7 @@ describe("Session Analyst Evidence Pulse", () => {
     vi.unstubAllGlobals();
   });
 
-  it("renders the initial settings beside and outside the prompt surface", () => {
+  it("keeps the initial settings inside the one prompt surface", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
@@ -70,21 +73,36 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
     const surface = composer.querySelector(".session-analyst__composer-surface")!;
-    const selectorStrip = composer.querySelector(".session-analyst__selector-strip")!;
+    const tools = surface.querySelector(".session-analyst__composer-tools")!;
 
     expect(container.querySelector(".session-analyst__chat-pane")?.classList.contains("is-initial")).toBe(true);
     expect(composer.classList.contains("is-initial")).toBe(true);
-    expect(selectorStrip.parentElement).toBe(composer);
-    expect(selectorStrip.nextElementSibling).toBe(surface);
-    expect(surface.querySelector(".session-analyst__selector-strip")).toBeNull();
-    expect(selectorStrip.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
-    expect(selectorStrip.querySelector('[aria-label="Analysis CLI"]')).not.toBeNull();
-    expect(selectorStrip.querySelector('[aria-label="Analysis model"]')).not.toBeNull();
-    expect(selectorStrip.querySelector('[aria-label="Analysis effort"]')).not.toBeNull();
+    // 컴포저는 한 장이다 — 선택 줄이 자기 테두리 상자로 떨어져 나오면 창이 두 장으로 읽힌다.
+    expect(container.querySelector(".session-analyst__selector-strip")).toBeNull();
+    expect(tools.parentElement).toBe(surface);
+    // 공급자 축은 고를 것이 하나뿐이면 컨트롤이 되지 않는다.
+    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
+    expect(tools.querySelector('[aria-label="Analysis CLI"]')).toBeNull();
+    expect(tools.querySelector('[aria-label="Analysis model"]')).not.toBeNull();
+    expect(tools.querySelector('[aria-label="Analysis effort"]')).not.toBeNull();
+    expect(tools.querySelector(".session-analyst__slash-hint")).not.toBeNull();
     expect(surface.querySelector("textarea")?.rows).toBe(1);
-    expect(surface.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
+    expect(tools.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
     expect(container.querySelector(".session-analyst__composer-meta")).toBeNull();
     expect((container.querySelector('[aria-label="Reset Session Analyst"]') as HTMLButtonElement).disabled).toBe(true);
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
+  it("shows the provider control only when more than one CLI is offered", () => {
+    const twoClis = { clis: [catalog.clis[0]!, { ...catalog.clis[0]!, cliId: "other", label: "Other" }] };
+    storeState = { ...initialAnalysisState, catalog: twoClis, cliId: "claude", model: "gpt", effort: "medium" };
+    const { container, root } = renderPanel();
+    const tools = container.querySelector(".session-analyst__composer-tools")!;
+
+    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    expect(tools.querySelector('[aria-label="Analysis CLI"]')).not.toBeNull();
 
     act(() => root.unmount());
     container.remove();
@@ -105,11 +123,11 @@ describe("Session Analyst Evidence Pulse", () => {
 
     expect(container.querySelector('[aria-label="Session Analyst 채팅"]')).not.toBeNull();
     expect(container.querySelector(".session-analyst__hero h2")?.textContent).toBe("이 세션에 대해 물어보세요");
-    expect(container.querySelector('[aria-label="분석 CLI"]')).not.toBeNull();
+    expect(container.querySelector('[aria-label="분석 모델"]')).not.toBeNull();
     expect(container.querySelector("textarea")?.placeholder).toBe("세션에 대해 질문하기… (/ 명령)");
     expect(container.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("보내기");
     expect(saved.textContent).toBe("저장됨");
-    expect(saved.style.inlineSize).toBe("5em");
+    expect(saved.classList.contains("session-analyst__saved")).toBe(true);
     expect(saved.style.opacity).toBe("1");
     expect(saved.style.transition).toBe("opacity var(--duration-base) var(--ease-glide)");
 
@@ -118,7 +136,7 @@ describe("Session Analyst Evidence Pulse", () => {
     await act(async () => suggestion.click());
     expect(send).toHaveBeenCalledWith("에이전트가 지금 무엇을 하고 있어?");
 
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test", language: "en" } as OperationRenderContext })));
+    act(() => renderSlots(root, { operationId: "chat-test", language: "en" } as OperationRenderContext));
     expect(container.querySelector('[aria-label="Session Analyst chat"]')).not.toBeNull();
     expect(container.querySelector(".session-analyst__hero h2")?.textContent).toBe("Ask about this session");
 
@@ -136,9 +154,9 @@ describe("Session Analyst Evidence Pulse", () => {
       selectionLocked: true,
     };
     const { container, root } = renderPanel();
-    const selectionTriggers = () => [...container.querySelectorAll<HTMLButtonElement>(".session-analyst__selector-strip .fc-select__trigger")];
+    const selectionTriggers = () => [...container.querySelectorAll<HTMLButtonElement>(".session-analyst__composer-tools .fc-select__trigger")];
 
-    expect(selectionTriggers()).toHaveLength(3);
+    expect(selectionTriggers()).toHaveLength(2);
     expect(selectionTriggers().every((trigger) => trigger.disabled)).toBe(true);
 
     storeState = { ...storeState, selectionLocked: false };
@@ -172,7 +190,7 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__chat ol")?.classList.contains("is-dimmed")).toBe(false);
     expect(container.querySelector("textarea")?.disabled).toBe(false);
     expect(container.querySelectorAll("select")).toHaveLength(0);
-    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__composer-tools .fc-select__trigger")).toHaveLength(0);
     expect(container.querySelectorAll(".session-analyst__stop")).toHaveLength(1);
     expect(container.querySelectorAll(".session-analyst__send")).toHaveLength(2);
     expect(container.querySelector(".session-analyst__stop")?.getAttribute("aria-label")).toBe("Stop");
@@ -305,7 +323,7 @@ describe("Session Analyst Evidence Pulse", () => {
 
     for (let index = 0; index < 20; index += 1) {
       storeState = { ...storeState, entries: [storeState.entries[0]!, { role: "analyst", text: `Rapid start chunk-${index}` }] };
-      act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+      act(() => renderSlots(root, { operationId: "chat-test" } as never));
     }
     expect(responseRenderCount()).toBe(1);
     act(() => vi.advanceTimersByTime(32));
@@ -314,17 +332,17 @@ describe("Session Analyst Evidence Pulse", () => {
 
     for (let index = 20; index < 28; index += 1) {
       storeState = { ...storeState, entries: [storeState.entries[0]!, { role: "analyst", text: `Rapid start chunk-${index}` }] };
-      act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+      act(() => renderSlots(root, { operationId: "chat-test" } as never));
     }
     const finalText = "Rapid start chunk-27\n\n**Final output**";
     storeState = { ...storeState, busy: false, phase: "complete", entries: [storeState.entries[0]!, { role: "analyst", text: finalText }] };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
     expect(responseRenderCount()).toBe(3);
     expect(container.querySelector(".session-analyst__response strong")?.textContent).toBe("Final output");
 
     act(() => vi.advanceTimersByTime(100));
     storeState = { ...storeState, latestActivity: { kind: "reasoning" }, runEndedAt: 123 };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
     expect(responseRenderCount()).toBe(3);
 
     act(() => root.unmount());
@@ -484,7 +502,7 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
-  it("dismisses the slash listbox when focus enters the initial selector strip", () => {
+  it("dismisses the slash listbox when focus enters the composer tools", () => {
     storeState = {
       ...initialAnalysisState,
       catalog,
@@ -495,7 +513,7 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
     const textarea = container.querySelector("textarea")!;
-    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__selector-strip .fc-select__trigger")!;
+    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__composer-tools .fc-select__trigger")!;
 
     expect(container.querySelector('[role="listbox"]')).not.toBeNull();
     act(() => trigger.focus());
@@ -681,7 +699,7 @@ describe("Session Analyst Evidence Pulse", () => {
         { role: "analyst", text: "First chunk and a streamed follow-up" },
       ],
     };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
 
     expect(chat.scrollTop).toBe(640);
 
@@ -710,17 +728,17 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Complete");
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
-    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__composer-tools .fc-select__trigger")).toHaveLength(0);
 
     storeState = { ...storeState, phase: "stopped", started: false, latestActivity: { kind: "tool", title: "wiki_read", status: "running" }, runEndedAt: 13_000, entries: [{ role: "analyst", text: "Answer", receipt: { outcome: "stopped", durationMs: 12_000, tools: [{ title: "wiki_read", status: "running" }] } }] };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
     expect(container.querySelector(".session-analyst__stopped")?.textContent).toBe("Stopped · last confirmed: Using wiki_read (running) · 12s");
     expect(container.querySelector(".session-analyst__receipt")).toBeNull();
     expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Stopped");
     expect(container.querySelector(".session-analyst__composer")).toBe(composer);
     expect(container.querySelector(".session-analyst__composer")?.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
-    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__composer-tools .fc-select__trigger")).toHaveLength(0);
 
     act(() => root.unmount());
     container.remove();
@@ -736,7 +754,7 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
-    expect(container.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    expect(container.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
 
     storeState = {
       ...storeState,
@@ -747,18 +765,18 @@ describe("Session Analyst Evidence Pulse", () => {
       runStartedAt: 1_000,
       runEndedAt: 2_000,
     };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
 
     expect(container.querySelector(".session-analyst__composer")).toBe(composer);
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(composer.classList.contains("is-docking")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
-    expect(container.querySelectorAll(".session-analyst__selector-strip .fc-select__trigger")).toHaveLength(0);
+    expect(container.querySelectorAll(".session-analyst__composer-tools .fc-select__trigger")).toHaveLength(0);
     expect(container.querySelector("textarea")?.rows).toBe(1);
     expect(container.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
 
     storeState = { ...storeState, phase: "reasoning", busy: true, started: true, latestActivity: { kind: "reasoning" } };
-    act(() => root.render(createElement(AnalystChatPanel, { context: { operationId: "chat-test" } as never })));
+    act(() => renderSlots(root, { operationId: "chat-test" } as never));
     expect(composer.classList.contains("is-docking")).toBe(true);
 
     act(() => root.unmount());
@@ -770,9 +788,19 @@ function renderPanel(context: OperationRenderContext = { operationId: "chat-test
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
-  rerenderStore = () => root.render(createElement(AnalystChatPanel, { context }));
+  rerenderStore = () => renderSlots(root, context);
   act(() => rerenderStore());
   return { container, root };
+}
+
+// CompanionFrame과 같은 배치 — 캡션 슬롯과 본문 슬롯이 한 프레임 안에 함께 선다.
+function renderSlots(root: Root, context: OperationRenderContext): void {
+  root.render(createElement(
+    "div",
+    null,
+    createElement(AnalystCaption, { context, key: "caption" }),
+    createElement(AnalystChatPanel, { context, key: "body" }),
+  ));
 }
 
 function emit(event: AnalysisEvent): void {
