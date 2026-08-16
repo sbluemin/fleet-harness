@@ -300,6 +300,7 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     // 이 store는 살아 있으므로(Operation 단위 수명), 다시 열 때 읽지 않으면 방금 추가한 모델이
     // 목록에 영원히 없다. 선택이 잠긴 뒤(started)에는 읽지 않는다 — 진행 중 세션의 표시 선택을
     // 뒤에서 갈아끼우게 된다. 현재 선택을 그대로 넘겨 아직 고를 수 있는 값이면 사용자의 선택이 산다.
+    // 이미 읽는 중이면(첫 마운트의 하이드레이션 포함) 그 결과를 기다린다 — 아래 주석 참조.
     refreshCatalog: () => {
       if (state.started || catalogFlight) return;
       catalogFlight = fetchAnalysisCatalog(api)
@@ -319,14 +320,19 @@ function createAnalysisStore(operationId: string, api: ClientApiCapability, init
     },
   };
 
+  // 최초 하이드레이션도 카탈로그 읽기다 — 같은 catalogFlight에 실어야 첫 마운트의 refreshCatalog가
+  // 두 번째 요청을 띄우지 않는다. 둘이 겹치면 먼저 도착한 갱신이 목록을 열어 주고, 그 사이 사용자가
+  // 고른 모델을 뒤늦게 도착한 하이드레이션이 저장본으로 덮어쓴다.
   const previousDisposal = disposalFlights.get(operationId);
-  void (previousDisposal ?? Promise.resolve())
+  catalogFlight = (previousDisposal ?? Promise.resolve())
     .then(() => Promise.all([fetchAnalysisCatalog(api), readPersistedSelection(settingsCapability)]))
     .then(([catalog, selection]) => {
       persistedSelection = selection;
       dispatch({ type: "catalog", catalog, selection });
     })
-    .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }));
+    .catch((error: unknown) => dispatch({ type: "error", message: failureMessage(error), now: Date.now() }))
+    .finally(() => { catalogFlight = null; });
+  void catalogFlight;
 
   return store;
 }

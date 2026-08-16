@@ -179,6 +179,22 @@ describe("per-operation analysis store", () => {
     disposeAnalysisStore(operationId);
   });
 
+  it("folds a first-mount refresh into the initial hydration instead of racing it", async () => {
+    const harness = createHarness();
+    const operationId = "operation-store-catalog-first-mount";
+    const store = getAnalysisStore(operationId, harness.api);
+    // 첫 마운트의 효과는 하이드레이션이 아직 비행 중일 때 돈다 — 여기서 두 번째 읽기를 띄우면
+    // 늦게 도착한 하이드레이션이 그 사이 사용자가 고른 선택을 저장본으로 덮어쓴다.
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(store.getSnapshot().catalog).not.toBeNull());
+    expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(1);
+
+    // 하이드레이션이 끝난 뒤의 재마운트는 정상적으로 다시 읽는다.
+    store.refreshCatalog();
+    await vi.waitFor(() => expect(harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog")).toHaveLength(2));
+    disposeAnalysisStore(operationId);
+  });
+
   it("migrates a persisted bare Fable selection before catalog hydration", async () => {
     const catalogBody = JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
       { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" },
