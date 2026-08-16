@@ -859,6 +859,126 @@ describe("AgentChatRegistry — background follow-up turns", () => {
   });
 });
 
+/**
+ * 백그라운드 작업이 세션의 것이 되면서 생긴 계약들.
+ *
+ * 요점은 수명이다 — 자식이 사는 동안 잡도 살고, 자식이 사라지면 잡도 사라진다. 원장은 그
+ * 두 사실을 모두 말해야 하며, 어느 쪽도 지어내지 않아야 한다.
+ */
+describe("AgentChatRegistry — background jobs on a live session", () => {
+  it("leaves a background job running after the turn that started it closes", async () => {
+    const transcriptPath = writeTranscript("sid-job-live", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "sh1", description: "poll", task_type: "local_bash" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-live", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-live");
+
+    // 턴은 닫혔고, 잡은 결말을 받지 않았다 — 그것이 백그라운드 작업의 정의다.
+    expect(events.some((entry) => entry.event.kind === "turn-end")).toBe(true);
+    expect(kinds(events)).not.toContain("job-end");
+    await registry.disposeAll();
+  });
+
+  it("closes still-running jobs as stopped when the session goes away", async () => {
+    // 자식과 함께 사라진 작업을 "도는 중"으로 남겨 두면 화면은 오지 않을 결말을 기다린다.
+    const transcriptPath = writeTranscript("sid-job-retire", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "sh2", description: "poll", task_type: "local_bash" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-retire", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-retire");
+    await registry.disposeAll();
+
+    expect(events.map((entry) => entry.event)).toContainEqual({ kind: "job-end", id: "sh2", status: "stopped" });
+  });
+
+  it("routes a job stop to the child and refuses a coordinate it never issued", async () => {
+    const transcriptPath = writeTranscript("sid-job-stop", []);
+    const stopped: string[] = [];
+    const configDir = tempDir("chat-sdk-");
+    const factory = (async () => ({
+      configDir,
+      models: ["opus[1m]"],
+      openSession: async () => fakeSession([
+        {
+          messages: [
+            { type: "system", subtype: "task_started", task_id: "sh3", description: "poll", task_type: "local_bash" },
+            { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          ],
+        },
+      ], { onStopTask: (taskId) => stopped.push(taskId) }),
+      dispose: async () => {},
+    })) as never;
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-job-stop", () => seedFor(transcriptPath));
+
+    session.send("start the poll");
+    await drainTurn(registry, "op-job-stop");
+
+    expect(await session.stopJob("sh3")).toBe(true);
+    expect(stopped).toEqual(["sh3"]);
+    // 브라우저가 건네는 유일한 값이다 — 발급된 적 없는 좌표는 자식에 닿지 않는다.
+    expect(await session.stopJob("never-issued")).toBe(false);
+    expect(await session.stopJob("../../etc/passwd")).toBe(false);
+    expect(stopped).toEqual(["sh3"]);
+    await registry.disposeAll();
+  });
+
+  // 자식은 자기 큐를 갖고 있어 도는 중에도 메시지를 받는다. 그때 두 번째 turn-start를 세우면
+  // 원장에 닫히지 않는 턴이 겹쳐 남는다 — 결말은 하나뿐이기 때문이다.
+  it("does not open a second turn while a background-woken turn is still open", async () => {
+    const transcriptPath = writeTranscript("sid-turn-overlap", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          // 백그라운드가 끝나 모델이 다시 깨어났다 — 디스패치 없는 턴이 열린다.
+          { type: "assistant", message: { role: "assistant", content: [{ type: "text", text: "the workflow finished" }] } },
+        ],
+      },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 5 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-turn-overlap", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+
+    session.send("first");
+    await drainTurn(registry, "op-turn-overlap");
+    await vi.waitFor(() => { expect(kinds(events)).toContain("text"); });
+
+    // 후속 턴이 열려 있는 채로 두 번째 메시지가 들어온다.
+    session.send("second");
+    await drainTurn(registry, "op-turn-overlap");
+
+    const starts = kinds(events).filter((kind) => kind === "turn-start").length;
+    const ends = kinds(events).filter((kind) => kind === "turn-end").length;
+    expect(starts).toBe(ends);
+    await registry.disposeAll();
+  });
+});
+
 describe("AgentChatRegistry — context window", () => {
   const usage = {
     total: 24_948,

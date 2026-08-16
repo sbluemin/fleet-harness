@@ -980,8 +980,15 @@ class AgentChatSession {
     }
   }
 
-  /** 턴 하나를 연다. 화면의 스피너와 활동축이 같은 순간에 켜지는 자리다. */
+  /**
+   * 턴 하나를 연다. 화면의 스피너와 활동축이 같은 순간에 켜지는 자리다.
+   *
+   * 이미 열려 있으면 다시 열지 않는다. 자식은 자기 큐를 갖고 있어 도는 중에도 메시지를 받는데
+   * (백그라운드가 끝나 모델이 다시 깨어난 턴이 그 상태다), 그때 두 번째 `turn-start`를 세우면
+   * 원장에 닫히지 않는 턴이 겹쳐 남는다 — 결말은 하나뿐이기 때문이다.
+   */
   private openTurn(options: { readonly dispatched: boolean }): void {
+    if (this.turnOpen) return;
     this.turnOpen = true;
     this.push({ kind: "turn-start", at: Date.now() });
     // 디스패치 경로는 이미 축을 켜고 들어온다 — 실패하면 턴을 시작하지 않기 때문이다.
