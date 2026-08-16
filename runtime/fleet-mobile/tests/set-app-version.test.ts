@@ -22,4 +22,12 @@ describe("Fleet Mobile app version", () => {
     expect(Number.isInteger(app.expo.android.versionCode)).toBe(true);
     expect(app.expo.version).toMatch(/^\d+\.\d+\.\d+$/);
   });
+
+  // CFBundleVersion (expo.ios.buildNumber) is what TestFlight/App Store key a build by; it must be a
+  // numeric string that the bump moves in lockstep with versionCode.
+  it("declares a numeric-string iOS buildNumber alongside the version", () => {
+    const app = JSON.parse(readFileSync(path.join(packageRoot, "app.json"), "utf8"));
+    expect(app.expo.ios.buildNumber).toMatch(/^\d+$/);
+    expect(app.expo.ios.bundleIdentifier).toBe("com.dotobokuri.fleet.mobile");
+  });
 });

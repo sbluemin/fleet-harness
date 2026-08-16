@@ -37,13 +37,21 @@ function main(argv) {
   const currentVersionCode = config.expo?.android?.versionCode;
   if (typeof currentVersion !== "string") fail("app.json must set expo.version");
   if (!Number.isInteger(currentVersionCode)) fail("app.json must set an integer expo.android.versionCode");
+  // TestFlight/App Store key a build by CFBundleVersion (expo.ios.buildNumber); it is a string but
+  // must be an integer value that moves on every distributed build, in lockstep with versionCode.
+  const currentBuildNumber = config.expo?.ios?.buildNumber;
+  if (typeof currentBuildNumber !== "string" || !/^\d+$/.test(currentBuildNumber)) {
+    fail("app.json must set a numeric string expo.ios.buildNumber");
+  }
 
   const version = nextVersion(currentVersion, bump);
   const versionCode = currentVersionCode + 1;
+  const buildNumber = String(Number(currentBuildNumber) + 1);
 
   if (!dryRun) {
     config.expo.version = version;
     config.expo.android.versionCode = versionCode;
+    config.expo.ios.buildNumber = buildNumber;
     const updated = `${JSON.stringify(config, null, 2)}\n`;
     if (updated === raw) fail("app.json was not modified by the version bump");
     writeFileSync(appConfigPath, updated);
@@ -51,6 +59,7 @@ function main(argv) {
 
   console.log(`version=${version}`);
   console.log(`versionCode=${versionCode}`);
+  console.log(`buildNumber=${buildNumber}`);
 }
 
 // Importing this module must not bump anything — the tests exercise nextVersion() directly.
