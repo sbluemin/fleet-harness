@@ -92,6 +92,18 @@ jobs:
             echo "::notice::iOS platform not configured yet — skipping the simulator build"
             echo "configured=false" >> "$GITHUB_OUTPUT"
           fi
+      # 로컬 TLS identity는 키체인 대신 SecIdentityCreate로 만든다(엔타이틀먼트 없이도 동작).
+      # 그 심볼이 iOS SDK의 공개 헤더에 실제로 있는지 확인한다 — 모듈맵을 통해 비공개 헤더가
+      # 딸려온 것뿐이라면 컴파일은 되지만 TestFlight/App Store 심사에서 비공개 API 사용으로
+      # 걸릴 수 있고, 그건 사용자가 결제한 뒤에야 드러난다.
+      - name: Assert SecIdentityCreate is public iOS SDK API
+        run: |
+          headers="$(xcrun --sdk iphoneos --show-sdk-path)/System/Library/Frameworks/Security.framework/Headers"
+          if ! grep -rlw SecIdentityCreate "$headers" >/dev/null 2>&1; then
+            echo "::error::SecIdentityCreate is not declared in the public iOS SDK headers ($headers) — the loopback TLS identity would depend on private API" >&2
+            exit 1
+          fi
+          grep -rnw SecIdentityCreate "$headers"
       - name: Expo prebuild (ios)
         if: steps.platform.outputs.configured == 'true'
         run: pnpm --dir runtime/fleet-mobile exec expo prebuild --platform ios --clean --no-install --non-interactive

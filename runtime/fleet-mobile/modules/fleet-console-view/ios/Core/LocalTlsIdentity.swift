@@ -1,5 +1,8 @@
 import Foundation
 import Security
+#if !os(iOS)
+import Darwin
+#endif
 
 // LoopbackGateway.kt LocalTlsIdentity / LocalCertificatePolicy의 이식.
 // Android는 BouncyCastle로 자체서명 인증서를 만들지만 Security.framework에는 인증서 빌더가
@@ -84,11 +87,34 @@ public struct LocalTlsIdentity {
 
   /// NWListener에 넘길 TLS 서버 identity. 키체인을 거치지 않고 메모리의 키와 인증서를 묶는다.
   public func secIdentity() throws -> SecIdentity {
-    guard let identity = SecIdentityCreate(nil, certificate, privateKey) else {
+    guard let identity = Self.pairIdentity(certificate, privateKey) else {
       throw CreateError.encoding("SecIdentityCreate could not pair the loopback certificate with its key")
     }
     return identity
   }
+
+  #if os(iOS)
+  // 앱이 실제로 도는 경로. SecIdentityCreate는 iOS SDK가 공개 헤더로 노출하며,
+  // mobile-ios-verify가 그 사실을 빌드마다 검사한다 — 비공개 API를 TestFlight에 올리지 않기 위해.
+  private static func pairIdentity(_ certificate: SecCertificate, _ key: SecKey) -> SecIdentity? {
+    SecIdentityCreate(nil, certificate, key)
+  }
+  #else
+  // SPM 테스트는 macOS에서 도는데 macOS SDK는 같은 심볼을 헤더로 노출하지 않는다
+  // (공개 대체재인 SecIdentityCreateWithCertificate는 키가 키체인에 있어야 해서, 지금
+  // 없애려는 바로 그 경로다). 테스트가 iOS와 같은 함수를 실제로 호출하도록 동적으로 찾는다.
+  // 이 분기는 기기에 올라가는 바이너리에 들어가지 않는다.
+  private typealias SecIdentityCreateFn =
+    @convention(c) (CFAllocator?, SecCertificate, SecKey) -> Unmanaged<SecIdentity>?
+
+  private static func pairIdentity(_ certificate: SecCertificate, _ key: SecKey) -> SecIdentity? {
+    // RTLD_DEFAULT — 이미 로드된 Security.framework에서 찾는다.
+    guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "SecIdentityCreate") else { return nil }
+    let create = unsafeBitCast(symbol, to: SecIdentityCreateFn.self)
+    // Create 규칙(+1 반환)이므로 소유권을 넘겨받는다.
+    return create(nil, certificate, key)?.takeRetainedValue()
+  }
+  #endif
 
   // IPv4 점표기 → 4바이트, IPv6 → 16바이트. 아니면 nil.
   static func ipAddressBytes(_ host: String) -> [UInt8]? {
