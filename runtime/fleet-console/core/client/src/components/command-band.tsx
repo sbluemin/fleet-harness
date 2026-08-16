@@ -11,8 +11,9 @@ import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCent
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
-import { launchProviderFromOperationPayload, launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { OperationStatusIcon } from "./operation-status-icon.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { resolveOperationActivity } from "../operation-activity.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";
@@ -125,11 +126,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
-  // 사이드바 칩과 같은 규율: 실행된 공급자가 기록된 Operation은 그 마크를
-  // 이름 왼쪽에 붙인다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
-  const activeLaunchProvider = launchProviderFromOperationPayload(activeOperation?.payload);
-  const activeOperationProviderMark = activeLaunchProvider
-    ? <span className={`command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}`} aria-hidden="true">{launchProviderGlyph(activeLaunchProvider)}</span>
+  // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
+  // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
+  const activeOperationStatusMark = activeOperation
+    ? <OperationStatusIcon status={resolveOperationActivity(activeOperation, state.operationRuntime)} className="command-band-operation-status" />
     : null;
   const environmentTriggerRef = useRef<HTMLButtonElement>(null);
   const environmentPopoverRef = useRef<HTMLDivElement>(null);
@@ -622,7 +622,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
             <span className="command-band-theater-separator" aria-hidden="true">›</span>
             {activeOperation ? <>
               {rename.renaming ? <>
-                {activeOperationProviderMark}
+                {activeOperationStatusMark}
                 <input ref={rename.inputRef} className="command-band-rename-input" value={rename.draftTitle} aria-label={t("chrome.commandBand.renameOperationAria", { title: activeOperation.title })} onChange={(event) => rename.setDraftTitle(event.target.value)} onKeyDown={rename.handleKeyDown} onBlur={rename.handleBlur} />
               </> : <button
                 ref={operationTriggerRef}
@@ -634,7 +634,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
                 onClick={() => toggleSwitcherMenu("operation")}
                 onDoubleClick={beginRename}
               >
-                {activeOperationProviderMark}
+                {activeOperationStatusMark}
                 <span className="command-band-segment-label">{activeOperation.title}</span>
                 <CommandBandTriggerCaret />
               </button>}

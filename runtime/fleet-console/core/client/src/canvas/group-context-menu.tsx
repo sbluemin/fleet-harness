@@ -3,7 +3,7 @@ import { createPortal } from "react-dom";
 
 import { useT } from "../i18n/index.js";
 import type { OperationGroup, OperationNode } from "../types.js";
-import { AccentToneList } from "./accent-popover.js";
+import { AccentToneList } from "./accent-tone-list.js";
 import { resolveAccentColor } from "./operation-accent.js";
 
 export interface GroupContextMenuChipActions {

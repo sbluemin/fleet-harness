@@ -105,7 +105,6 @@ function renderChip(status: OperationActivityVisual | undefined, surface?: strin
       notificationCount: 0,
       status,
       ...(surface ? { surface } : {}),
-      icon: null,
     },
     index: 0,
     isCloseArmed: false,

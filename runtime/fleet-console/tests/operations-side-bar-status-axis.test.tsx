@@ -101,7 +101,9 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').getAttribute("aria-label"))
       .toBe("Focus operation awaiting in group Alpha crew");
     expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-group-mark')).toBeNull();
-    expect(container?.querySelector('[data-side-bar-chip-id="awaiting"] .side-bar-chip-status')).toBeNull();
+    // 상태 마크는 축과 무관하게 이름 왼쪽에 선다 — STATUS 축에서도 행이 자기 상태를 말한다.
+    expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"] .side-bar-chip-status').className)
+      .toContain("tenant-beacon is-awaiting");
     expect(container?.querySelector('[data-side-bar-chip-id="idle"] .side-bar-chip-group-pill')).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });
@@ -213,7 +215,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
   });
 
-  it("suppresses group pills and status beacons but shows idle unseen in inactive Theater preview chips", () => {
+  it("suppresses group pills but keeps the status mark and shows idle unseen in inactive Theater preview chips", () => {
     setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("preview", "group-a")], [GROUP_A], vi.fn(), "theater-other");
@@ -221,7 +223,8 @@ describe("OperationsSideBar STATUS axis", () => {
     const preview = required<HTMLElement>('[data-side-bar-chip-id="preview"]');
     expect(preview.querySelector(".side-bar-chip-group-pill")).toBeNull();
     expect(preview.querySelector(".side-bar-chip-group-mark")).toBeNull();
-    expect(preview.querySelector(".side-bar-chip-status")).toBeNull();
+    // preview 칩은 조작 어포던스만 접는다 — 상태는 미리보기에서도 읽혀야 한다.
+    expect(preview.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-turn-running");
 
     act(() => setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "idle" } } }));
 

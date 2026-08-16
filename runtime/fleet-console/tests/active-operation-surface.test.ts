@@ -49,7 +49,7 @@ describe("shouldReleaseActiveOperation", () => {
   });
 
   it("keeps activation on a Map-owned portal menu", () => {
-    const menu = el(`<div class="accent-popover-overlay" data-keep-operation-active><button type="button">Accent</button></div>`);
+    const menu = el(`<div class="group-context-menu-overlay" data-keep-operation-active><button type="button">Accent</button></div>`);
     document.body.append(menu);
     expect(shouldReleaseActiveOperation(menu.querySelector("button"))).toBe(false);
     menu.remove();

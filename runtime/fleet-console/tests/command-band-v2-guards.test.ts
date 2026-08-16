@@ -76,15 +76,18 @@ describe("Command Band switcher disclosure", () => {
     expect(styles).not.toContain(".command-band-segment-trigger:hover .command-band-trigger-caret");
   });
 
-  it("places the provider glyph on the Operation name and drops the trailing model chip", () => {
+  it("places the activity status mark on the Operation name and drops the provider glyph and model chip", () => {
     const source = readFileSync(resolve(process.cwd(), "core/client/src/components/command-band.tsx"), "utf8");
     const styles = readFileSync(resolve(process.cwd(), "core/client/src/styles/layout.css"), "utf8");
 
-    expect(source).toContain("command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}");
-    expect(source).toContain("{activeOperationProviderMark}");
+    // 이름 왼쪽 슬롯은 활동 상태가 소유한다 — 공급자 글리프는 이 표면에서 물러났다.
+    expect(source).toContain("<OperationStatusIcon status={resolveOperationActivity(activeOperation, state.operationRuntime)}");
+    expect(source).toContain("{activeOperationStatusMark}");
+    expect(source).not.toContain("operation-provider-mark");
     expect(source).not.toContain("command-band-operation-attribute");
     expect(styles).not.toContain(".command-band-operation-attribute");
-    expect(styles).toContain(".command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }");
+    expect(styles).not.toContain(".command-band-operation-kind");
+    expect(styles).toContain(".command-band-operation-status");
   });
 });
 

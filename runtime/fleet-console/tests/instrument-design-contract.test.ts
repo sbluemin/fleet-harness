@@ -607,7 +607,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
-    expect(components).toContain(".canvas-operation-formation-slot {");
+    // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
+    expect(components).not.toContain(".canvas-operation-formation-slot {");
     expect(contextMenu).not.toContain("canvas-context-menu-head");
     expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
     expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
@@ -924,9 +925,10 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the Operation provider mark grammar — one tone table, ink only, no state repaint", () => {
-    // 사이드바 칩·커맨드 밴드·팔레트·War Room 카드는 같은 Operation을 네 곳에서 센다. 표면이
-    // 각자 톤을 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
-    // .operation-provider-mark 한 곳에만 있어야 하고, 표면 클래스는 치수만 소유한다.
+    // 공급자 마크는 실행 표면(검색·Quick Launch·실행 메뉴)에만 남는다 — 사이드바 칩·커맨드 밴드의
+    // 이름 왼쪽 슬롯은 활동 상태가 가져갔다. 남은 표면이 각자 톤을 적으면 한 곳만 고쳐도 컴파일은
+    // 되고 같은 Operation이 두 색으로 보인다 — 대조표는 .operation-provider-mark 한 곳에만 있어야
+    // 하고, 표면 클래스는 치수만 소유한다.
     const css = source("styles/components.css");
     for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
       expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
@@ -941,12 +943,11 @@ describe("Instrument core design contract", () => {
     // 달리, 공급자 마크는 어느 상태에서도 같은 톤을 유지해야 같은 Operation으로 읽힌다.
     expect(css).not.toMatch(/\.is-active[^{}]*\.operation-provider-mark/);
 
-    // 네 표면 모두 공용 마크 클래스를 통해 톤을 받는다 — 하나라도 자기 색을 적으면 대조표가 갈라진다.
-    expect(source("sidebar/operations-side-bar-chip.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
-    expect(source("components/command-band.tsx")).toContain("operation-provider-mark is-${activeLaunchProvider}");
+    // 남은 표면은 공용 마크 클래스를 통해 톤을 받는다 — 자기 색을 적으면 대조표가 갈라진다.
     expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
-    // 해석은 한 함수 — 표면마다 다른 규칙을 적으면 같은 Operation이 두 마크를 갖는다.
-    expect(source("sidebar/operations-side-bar.tsx")).toContain('from "../operation-mark.js"');
+    // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
+    expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
+    expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {
@@ -1336,7 +1337,6 @@ describe("Instrument core design contract", () => {
       ".app-toast",
       ".command-band-system-menu",
       ".group-context-menu-card",
-      ".accent-popover-card",
       ".theater-menu",
       ".operation-search-card",
       ".quick-launch-card",
@@ -2151,6 +2151,7 @@ describe("Instrument core design contract", () => {
     const systemCluster = source("components/command-band-system-cluster.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const statusIcon = source("components/operation-status-icon.tsx");
     const minimap = source("canvas/canvas-minimap.tsx");
     const commandBand = source("components/command-band.tsx");
     const components = source("styles/components.css");
@@ -2167,12 +2168,14 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
-    expect(chip).toContain('if (visual === "background") return "tenant-beacon is-background"');
-    expect(chip).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
+    // 상태 마크 해석은 한 모듈이 소유한다 — 표면마다 매핑을 다시 적으면 같은 상태가 두 조형으로 갈라진다.
+    expect(chip).toContain('import { OperationStatusIcon } from "../components/operation-status-icon.js"');
+    expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
+    expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
-    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-op-icon {\n  opacity: 0.62;");
+    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-status {\n  opacity: 0.62;");
     expect(components).not.toMatch(/\.side-bar-chip--minimized \{[^}]*opacity/);
 
     expect(minimap).not.toContain("is-plugin");
@@ -2285,10 +2288,10 @@ describe("Instrument core design contract", () => {
     expect(source("canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
     expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
-    expect(components).toContain(".canvas-operation-beacon-button {");
+    expect(components).toContain(".canvas-operation-more-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
     expect(components).toContain("left: -1px;");
-    expect(components).toContain("name → beacon → 상시 컨트롤");
+    expect(components).toContain("name → More → 상시 컨트롤");
     const canvas = source("canvas/canvas.tsx");
     expect(canvas).toContain("export function useGlanceHold(): boolean");
     expect(canvas).toContain('event.code === "AltLeft" || event.code === "AltRight"');
@@ -2297,10 +2300,10 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain('glanceVisible ? "is-glance" : ""');
     expect(canvas).toContain('window.addEventListener("blur", clearGlance)');
     expect(canvas).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
-    expect(source("styles/layout.css")).toContain(".command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }");
+    expect(source("styles/layout.css")).toContain(".command-band-operation-status { margin-right: 2px; }");
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
     expect(commandBand).not.toContain("command-band-operation-attribute");
-    expect(commandBand).toContain("command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}");
+    expect(commandBand).toContain('className="command-band-operation-status"');
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
   });

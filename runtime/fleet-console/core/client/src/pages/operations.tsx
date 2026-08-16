@@ -64,7 +64,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   const t = useT();
   const [catalog, setCatalog] = useState<readonly OperationCatalogPlugin[]>([]);
   const [mutationError, setMutationError] = useState<{ readonly retry: () => void } | null>(null);
-  const [triageOperationMenu, setTriageOperationMenu] = useState<{
+  const [operationMenu, setOperationMenu] = useState<{
     readonly operationId: string;
     readonly anchor: DOMRect;
     readonly returnFocus?: HTMLElement | null;
@@ -77,7 +77,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     [state.operations, state.activeTheaterId],
   );
   const stateRef = useRef(state);
-  const triageMenuReturnFocusRef = useRef<HTMLElement | null>(null);
+  const operationMenuReturnFocusRef = useRef<HTMLElement | null>(null);
   const focusRequestEpochRef = useRef(0);
   const catalogRequestEpochRef = useRef(0);
   const resumeBootProtectionRef = useRef<{ readonly theaterId: string; readonly operationId: string } | null>(null);
@@ -106,7 +106,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, [state.activeOperationId]);
 
   useEffect(() => {
-    if (!triageActive) setTriageOperationMenu(null);
+    if (!triageActive) setOperationMenu(null);
   }, [triageActive]);
 
   useEffect(() => {
@@ -531,25 +531,25 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     );
   }, [refreshOperationsAndGroups, runMutation]);
 
-  const openTriageOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
+  const openOperationMenu = useCallback((operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => {
     if (!stateRef.current.operations.some((operation) => operation.id === operationId)) return;
-    setTriageOperationMenu({ operationId, anchor, returnFocus });
+    setOperationMenu({ operationId, anchor, returnFocus });
   }, []);
   // 포커스 복귀는 갱신 함수 밖에서 한다 — setState updater는 순수해야 하고, StrictMode의
   // 이중 호출에서 focus()가 두 번 실행된다.
-  const closeTriageOperationMenu = useCallback(() => {
-    triageMenuReturnFocusRef.current?.focus();
-    setTriageOperationMenu(null);
+  const closeOperationMenu = useCallback(() => {
+    operationMenuReturnFocusRef.current?.focus();
+    setOperationMenu(null);
   }, []);
-  const triageContextMenuOperation = triageOperationMenu
-    ? state.operations.find((operation) => operation.id === triageOperationMenu.operationId) ?? null
+  const menuOperation = operationMenu
+    ? state.operations.find((operation) => operation.id === operationMenu.operationId) ?? null
     : null;
-  triageMenuReturnFocusRef.current = triageOperationMenu?.returnFocus ?? null;
+  operationMenuReturnFocusRef.current = operationMenu?.returnFocus ?? null;
   useContextMenuKeyboard({
-    open: triageActive && triageContextMenuOperation !== null,
+    open: menuOperation !== null,
     menuSelector: '.group-context-menu-card[role="menu"]',
-    returnFocusRef: triageMenuReturnFocusRef,
-    onEscape: closeTriageOperationMenu,
+    returnFocusRef: operationMenuReturnFocusRef,
+    onEscape: closeOperationMenu,
   });
 
   const handleSetGroupColor = useCallback((groupId: string, color: string | null) => {
@@ -699,7 +699,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onPick={pickTriageOperation}
           onClose={handleClose}
           onRename={handleRename}
-          onOpenOperationMenu={openTriageOperationMenu}
+          onOpenOperationMenu={openOperationMenu}
         />
       ) : (
       <OperationsSideBar
@@ -747,25 +747,26 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onClose={handleClose}
           onFocus={handleFocus}
           onRename={handleRename}
-          onSetAccent={handleSetAccent}
-          onOpenOperationMenu={openTriageOperationMenu}
+          onOpenOperationMenu={openOperationMenu}
         />
       </div>
       <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
-      {triageActive && triageOperationMenu && triageContextMenuOperation ? (
+      {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
+          More 버튼이 모두 같은 메뉴를 연다. */}
+      {operationMenu && menuOperation ? (
         <GroupContextMenu
           kind="chip"
-          operation={triageContextMenuOperation}
-          groups={state.groups.filter((group) => group.theaterId === triageContextMenuOperation.theaterId)}
-          accentKey={getTheaterCanvasSnapshot(triageContextMenuOperation.theaterId).operationAccent[triageContextMenuOperation.id]
-            ?? operationAccentFromNode(triageContextMenuOperation)}
-          anchor={triageOperationMenu.anchor}
+          operation={menuOperation}
+          groups={state.groups.filter((group) => group.theaterId === menuOperation.theaterId)}
+          accentKey={getTheaterCanvasSnapshot(menuOperation.theaterId).operationAccent[menuOperation.id]
+            ?? operationAccentFromNode(menuOperation)}
+          anchor={operationMenu.anchor}
           actions={{
-            onSetAccent: (key) => handleSetAccent(triageContextMenuOperation.id, key),
-            onSetGroupId: (groupId) => handleSetGroupId(triageContextMenuOperation.id, groupId),
-            onCreateGroup: (name) => handleCreateGroup(triageContextMenuOperation.theaterId, name, triageContextMenuOperation.id),
+            onSetAccent: (key) => handleSetAccent(menuOperation.id, key),
+            onSetGroupId: (groupId) => handleSetGroupId(menuOperation.id, groupId),
+            onCreateGroup: (name) => handleCreateGroup(menuOperation.theaterId, name, menuOperation.id),
           }}
-          onClose={closeTriageOperationMenu}
+          onClose={closeOperationMenu}
         />
       ) : null}
       <CodexReadingSheet />

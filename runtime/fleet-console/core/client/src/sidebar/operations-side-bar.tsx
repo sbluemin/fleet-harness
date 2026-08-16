@@ -13,7 +13,6 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { resolveOperationMark } from "../operation-mark.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
@@ -138,8 +137,6 @@ interface TheaterEntryBuildInput {
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
-  readonly catalog: readonly OperationCatalogPlugin[];
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
 }
 
 interface TheaterSectionHeaderProps {
@@ -406,7 +403,6 @@ export function OperationsSideBar({
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
     status: resolveOperationActivity(operation, operationRuntime),
     ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-    ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
@@ -951,8 +947,6 @@ export function OperationsSideBar({
               activeOperationId: null,
               operationNotifications,
               operationRuntime,
-              catalog,
-              renderKindIcon,
             });
             return (
               <TheaterInactiveSection
@@ -1350,8 +1344,6 @@ export function buildTheaterEntries({
   activeOperationId,
   operationNotifications,
   operationRuntime,
-  catalog,
-  renderKindIcon,
 }: TheaterEntryBuildInput): SideBarEntry[] {
   return sortOperationsByOrder(
     operations.filter((operation) => operation.theaterId === theaterId),
@@ -1363,7 +1355,6 @@ export function buildTheaterEntries({
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
     status: resolveOperationActivity(operation, operationRuntime),
     ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-    ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
 }
 

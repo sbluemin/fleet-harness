@@ -227,7 +227,8 @@ describe("CanvasMinimap collapse behavior", () => {
       expect(document.querySelector(".canvas-mode-frame")).not.toBeNull();
       expect(document.querySelectorAll(".canvas-mode-bracket")).toHaveLength(4);
       expect(document.querySelector(".canvas-mode-hud")).toBeNull();
-      expect([...document.querySelectorAll(".canvas-operation-formation-slot")].map((element) => element.textContent)).toEqual(["01", "02", "03"]);
+      // 캡션은 순번을 싣지 않는다 — 빈 자리를 가리키는 가이드만 번호를 유지한다.
+      expect(document.querySelector(".canvas-operation-formation-slot")).toBeNull();
       expect(document.querySelector(".canvas-formation-guide-index")?.textContent).toBe("04");
       const occupied = document.querySelector<HTMLElement>('[data-operation-id="formation-3"]');
       const guide = document.querySelector<HTMLElement>(".canvas-formation-guide");
@@ -481,22 +482,15 @@ describe("CanvasMinimap collapse behavior", () => {
     }
   });
 
-  it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {
+  it("transfers focus out of a hidden peer to the front frame", () => {
     renderOperationsCanvas();
-    const peerAccent = document.querySelector<HTMLButtonElement>('[aria-label="Set accent for operation Peer"]');
-    expect(peerAccent).not.toBeNull();
-
-    act(() => peerAccent!.click());
-
-    const menuItem = document.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    expect(menuItem).not.toBeNull();
-    menuItem?.focus();
-    expect(document.activeElement).toBe(menuItem);
+    const peerControl = document.querySelector<HTMLButtonElement>('[aria-label="Open menu for operation Peer"]');
+    expect(peerControl).not.toBeNull();
+    peerControl!.focus();
+    expect(document.activeElement).toBe(peerControl);
 
     act(() => setMaximizedOperationId("operation"));
 
-    expect(document.querySelector('[role="menu"]')).toBeNull();
-    expect(document.querySelector(".accent-popover-overlay")).toBeNull();
     const focusedFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
     expect(document.activeElement).toBe(focusedFrame);
     expect(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')?.contains(document.activeElement)).toBe(false);
@@ -614,7 +608,7 @@ function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
     onClose: () => {},
     onFocus: () => {},
     onRename: () => {},
-    onSetAccent: () => {},
+    onOpenOperationMenu: () => {},
   })));
 }
 
