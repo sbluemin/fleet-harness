@@ -1,9 +1,5 @@
 import type { ReactNode } from "react";
 
-import { markKeyFromIdentity } from "../server/identity.js";
-
-// Built-in plugins cannot import Console chrome. These marks mirror
-// launch-provider-glyphs.tsx so Ledger and the rest of the product share one face.
 function ClaudeGlyph() {
   return (
     <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
@@ -62,21 +58,12 @@ function DefaultGlyph() {
   );
 }
 
-export function markKeyFromOperation(launchProvider: string | null | undefined, cliId: string): string {
-  return markKeyFromIdentity(launchProvider, cliId);
-}
-
-export function supplierMarkKey(supplier: string): string {
-  return markKeyFromIdentity(supplier, supplier);
-}
-
-export function cliGlyph(client: string): ReactNode {
-  const key = markKeyFromIdentity(client, client);
-  if (key === "claude" || key === "claude-gateway") return <ClaudeGlyph />;
-  if (key === "codex") return <CodexGlyph />;
-  if (key === "kimi") return <KimiGlyph />;
-  if (key === "cursor") return <CursorGlyph />;
-  if (key === "opencode") return <OpencodeGlyph />;
-  if (key === "xai") return <GrokGlyph />;
+export function providerGlyph(provider: string): ReactNode {
+  if (provider === "anthropic" || provider === "claude") return <ClaudeGlyph />;
+  if (provider === "codex") return <CodexGlyph />;
+  if (provider === "kimi") return <KimiGlyph />;
+  if (provider === "cursor") return <CursorGlyph />;
+  if (provider === "opencode") return <OpencodeGlyph />;
+  if (provider === "xai") return <GrokGlyph />;
   return <DefaultGlyph />;
 }

@@ -1,88 +1,58 @@
-export const LEDGER_LAUNCH_PROVIDERS = ["claude", "codex", "cursor", "kimi", "opencode", "xai"] as const;
-export type LedgerLaunchProvider = (typeof LEDGER_LAUNCH_PROVIDERS)[number];
-
 export const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-export const NATIVE_SUPPLIER = "native";
+export const ANTHROPIC_PROVIDER = "anthropic";
+export const UNKNOWN_PROVIDER = "unknown";
 
-const PROVIDER_SET = new Set<string>(LEDGER_LAUNCH_PROVIDERS);
-
-export function isLaunchProvider(value: unknown): value is LedgerLaunchProvider {
-  return typeof value === "string" && PROVIDER_SET.has(value);
-}
-
-export function readLaunchProvider(payload: Readonly<Record<string, unknown>>): LedgerLaunchProvider | null {
-  return isLaunchProvider(payload.launchProvider) ? payload.launchProvider : null;
-}
+const PROVIDER_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 
 export interface ModelIdentity {
   readonly modelId: string;
-  readonly supplier: string;
+  readonly provider: string;
   readonly bare: string;
   readonly label: string;
 }
 
-/** Strip the published Gateway alias and name the supplier + bare model. */
+/** Distinguish native Anthropic ids from the provider encoded in a Gateway alias. */
 export function parseModelIdentity(modelId: string): ModelIdentity {
-  let rest = modelId;
-  let supplier = NATIVE_SUPPLIER;
-  if (rest.startsWith(GATEWAY_MODEL_PREFIX)) {
-    rest = rest.slice(GATEWAY_MODEL_PREFIX.length);
-    const separator = rest.indexOf("--");
+  if (modelId.startsWith(GATEWAY_MODEL_PREFIX)) {
+    const gatewayIdentity = modelId.slice(GATEWAY_MODEL_PREFIX.length);
+    const separator = gatewayIdentity.indexOf("--");
     if (separator > 0) {
-      const candidate = rest.slice(0, separator);
-      if (PROVIDER_SET.has(candidate)) {
-        supplier = candidate;
-        rest = rest.slice(separator + 2);
+      const provider = gatewayIdentity.slice(0, separator).toLowerCase();
+      const bare = gatewayIdentity.slice(separator + 2);
+      if (PROVIDER_RE.test(provider) && bare.length > 0) {
+        return { modelId, provider, bare, label: humanizeBareModel(bare) };
       }
     }
-  } else {
-    const inferred = inferUnprefixedSupplier(rest);
-    supplier = inferred.supplier;
-    rest = inferred.bare;
   }
-  return {
-    modelId,
-    supplier,
-    bare: rest,
-    label: humanizeBareModel(rest),
-  };
+
+  const provider = modelId.startsWith("claude-") ? ANTHROPIC_PROVIDER : UNKNOWN_PROVIDER;
+  return { modelId, provider, bare: modelId, label: humanizeBareModel(modelId) };
 }
 
-/**
- * tokscale report `models_used` and some models-command rows omit the Gateway prefix.
- * Claude-shaped ids stay Claude; slash-prefixed and well-known bare ids name their supplier.
- * Leftovers stay `native` — the client must not paint that bucket as Claude.
- */
-function inferUnprefixedSupplier(modelId: string): { supplier: string; bare: string } {
-  const slash = modelId.indexOf("/");
-  if (slash > 0) {
-    const candidate = modelId.slice(0, slash).toLowerCase();
-    if (PROVIDER_SET.has(candidate)) {
-      return { supplier: candidate, bare: modelId.slice(slash + 1) };
-    }
-  }
-  const lower = modelId.toLowerCase();
-  if (lower.startsWith("claude")) return { supplier: "claude", bare: modelId };
-  if (lower.startsWith("gpt-")) return { supplier: "codex", bare: modelId };
-  if (lower.startsWith("grok")) return { supplier: "xai", bare: modelId };
-  if (lower.startsWith("kimi")) return { supplier: "kimi", bare: modelId };
-  return { supplier: NATIVE_SUPPLIER, bare: modelId };
-}
-
-/**
- * tokscale `models` hyphenates version dots (`gpt-5.6` → `gpt-5-6`).
- * Collapse that pair so a report id and a models id can share a key.
- */
-export function normalizeModelKey(modelId: string): string {
-  return parseModelIdentity(modelId).bare
+function canonicalBareModel(bare: string): string {
+  return bare
     .toLowerCase()
+    .replace(/-fast(?=\[1m\]$|$)/, "")
     .replace(/\bgpt-(\d)-(\d)\b/g, "gpt-$1.$2");
 }
 
-export function markKeyFromIdentity(launchProvider: string | null | undefined, cliId: string): string {
-  if (isLaunchProvider(launchProvider)) return launchProvider;
-  if (cliId === "claude-gateway") return "claude";
-  return cliId;
+/** Keep providers distinct while joining tokscale variants and each provider's Fast tier. */
+export function normalizeModelKey(modelId: string): string {
+  const identity = parseModelIdentity(modelId);
+  return `${identity.provider}\u0000${canonicalBareModel(identity.bare)}`;
+}
+
+/** Display a merged Fast tier under the base model name. */
+export function canonicalModelIdentity(modelId: string): ModelIdentity {
+  const identity = parseModelIdentity(modelId);
+  if (!/-fast(?:\[1m\])?$/i.test(identity.bare)) return identity;
+  const bare = identity.bare.replace(/-fast(?=\[1m\]$|$)/i, "");
+  return {
+    ...identity,
+    modelId: identity.modelId.replace(/-fast(?=\[1m\]$|$)/i, ""),
+    bare,
+    label: humanizeBareModel(bare),
+  };
 }
 
 export function humanizeBareModel(bare: string): string {
@@ -98,6 +68,6 @@ export function humanizeBareModel(bare: string): string {
     if (lower === "gpt") return "GPT";
     return `${token.charAt(0).toUpperCase()}${token.slice(1)}`;
   });
-  const joined = words.join(" ").replace(/\bGPT (\d) (\d)\b/g, "GPT $1.$2");
+  const joined = words.join(" ").replace(/\b(\d+) (\d+)\b/g, "$1.$2");
   return bracketMillion || trailingMillion ? `${joined} (1M)` : joined;
 }

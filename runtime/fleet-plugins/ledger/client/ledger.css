@@ -1,5 +1,4 @@
-/* rail 호스트는 고정 높이 + overflow: hidden만 제공하므로 스크롤은 패널이 자기 루트에서
-   소유한다 — 없으면 Operation이 많아질 때 아래 섹션(특히 clients)이 잘려 도달 불가. */
+/* Rail host provides a fixed-height clipped slot, so Ledger owns vertical scrolling. */
 .ledger-root {
   height: 100%;
   overflow-y: auto;
@@ -8,8 +7,6 @@
 }
 
 .ledger-controls {
-  display: grid;
-  gap: var(--space-2);
   padding: var(--space-3);
   border-bottom: 1px solid var(--hairline);
 }
@@ -20,14 +17,13 @@
   grid-auto-columns: 1fr;
   gap: 2px;
   padding: 2px;
-  background: var(--surface-glass);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-sm);
+  background: var(--surface-glass);
 }
 
 .ledger-segment button,
-.ledger-button,
-.ledger-back {
+.ledger-button {
   border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: transparent;
@@ -45,21 +41,14 @@
 }
 
 .ledger-segment button[aria-pressed="true"] {
-  color: var(--text-primary);
-  background: var(--brass-glow);
   border-color: color-mix(in oklch, var(--brass) 35%, transparent);
-}
-
-.ledger-segment button:disabled {
-  color: var(--text-tertiary);
-  cursor: default;
-  opacity: .55;
+  background: var(--brass-glow);
+  color: var(--text-primary);
 }
 
 .ledger-segment button:focus-visible,
 .ledger-button:focus-visible,
-.ledger-back:focus-visible,
-.ledger-operation:focus-visible {
+.ledger-trend-bar:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 1px;
 }
@@ -137,106 +126,24 @@
   font-weight: var(--weight-medium);
 }
 
-.ledger-list,
 .ledger-clients,
 .ledger-source {
   margin: var(--space-3);
 }
 
-/* 귀속 브릿지 — 데이터 채움은 정지 상태에서 무채색 잉크만 쓴다(신호 채널 침범 금지).
-   강조는 귀속분=--ink-pearl, 비귀속=--ink-rim의 명암 대비로만 표현한다. */
-.ledger-bridge {
-  margin-top: var(--space-3);
-  padding-top: var(--space-3);
-  border-top: 1px solid var(--hairline);
-}
-
-.ledger-bridge-bar {
-  display: flex;
-  height: 8px;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-pill);
-  background: var(--ink-rim);
-}
-
-.ledger-bridge-attributed {
-  min-width: 2px;
-  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
-  background: var(--ink-pearl);
-}
-
-/* 다른 Theater의 Console 귀속분 — 귀속(pearl)과 비귀속(rim) 사이의 중간 무채색. */
-.ledger-bridge-other-theater {
-  min-width: 2px;
-  background: var(--ink-fog);
-}
-
-.ledger-bridge-legend {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-top: var(--space-2);
-}
-
-.ledger-bridge-row {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.ledger-clients > h3,
+.ledger-trend-header > h3,
+.ledger-daily-detail > h3,
+.ledger-source h3 {
+  margin: 0 0 var(--space-2);
   color: var(--text-secondary);
   font-size: 11px;
+  font-weight: var(--weight-bold);
+  letter-spacing: .08em;
+  text-transform: uppercase;
 }
 
-.ledger-bridge-row strong {
-  margin-left: auto;
-  color: var(--text-primary);
-  font-weight: var(--weight-medium);
-}
-
-.ledger-bridge-swatch {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: var(--radius-xs);
-}
-
-.ledger-bridge-swatch--attributed {
-  background: var(--ink-pearl);
-}
-
-.ledger-bridge-swatch--other {
-  border: 1px solid var(--hairline-strong);
-  background: var(--ink-rim);
-}
-
-.ledger-bridge-swatch--other-theater {
-  background: var(--ink-fog);
-}
-
-.ledger-coverage-more {
-  margin-top: var(--space-1);
-  color: var(--text-tertiary);
-  font-size: 11px;
-  text-align: center;
-}
-
-.ledger-bridge-total {
-  display: flex;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-top: var(--space-2);
-  padding-top: var(--space-2);
-  border-top: 1px dashed var(--hairline);
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.ledger-bridge-total strong {
-  color: var(--text-secondary);
-  font-weight: var(--weight-medium);
-}
-
-.ledger-list-header {
+.ledger-trend-header {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -245,11 +152,14 @@
   margin-bottom: var(--space-2);
 }
 
+.ledger-trend-header > h3 {
+  margin-bottom: 0;
+}
+
 .ledger-segment--compact {
   flex: none;
   max-width: 100%;
   min-width: 0;
-  margin-bottom: 0;
 }
 
 .ledger-segment--compact button {
@@ -262,255 +172,16 @@
   white-space: nowrap;
 }
 
-.ledger-coverage {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--space-2);
-  margin-bottom: var(--space-2);
-  color: var(--text-tertiary);
-  font-size: 11px;
+.ledger-trend {
+  margin-bottom: var(--space-4);
 }
 
-.ledger-coverage-match {
-  color: var(--text-secondary);
-}
-
-.ledger-list > h3,
-.ledger-list-header > h3,
-.ledger-clients > h3,
-.ledger-trend > h3,
-.ledger-trend-header > h3,
-.ledger-source h3,
-.ledger-detail-section h3 {
-  margin: 0 0 var(--space-2);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: var(--weight-bold);
-  letter-spacing: .08em;
-  text-transform: uppercase;
-}
-
-/* 공유 헤딩 규칙(위)보다 뒤에 둬야 flex 헤더 안의 하단 여백 리셋이 산다. */
-.ledger-list-header > h3,
-.ledger-trend-header > h3 {
-  margin-bottom: 0;
-}
-
-.ledger-trend-header {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--space-1) var(--space-2);
-  margin-bottom: var(--space-2);
-}
-
-/* 귀속 레이어 스태킹 — 막대를 column-reverse flex로 바꿔 밝은 레이어가 하단에 쌓이게 한다.
-   툴팁은 absolute라 플로우 영향 없음(앵커는 .ledger-trend-bars). */
-.ledger-trend-bar {
-  display: flex;
-  flex-direction: column-reverse;
-}
-
-/* 귀속 레이어 — min-height 바닥을 두지 않는다. 부모 막대가 3%/3px로 클램프된 저비용일에
-   2px 바닥은 점유율을 수십 배 부풀리는 거짓이 된다(소수 px 렌더링에 맡긴다).
-   색은 "밝은"이 아니라 최대 대비 전경 — Whites 테마에서는 가장 어두운 톤이 되는 게 정상이다. */
-.ledger-trend-bar-attributed {
-  width: 100%;
-  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
-  background: var(--ink-pearl);
-}
-
-.ledger-trend-attributed-note {
+.ledger-trend-description,
+.ledger-clients-description {
   margin: calc(-1 * var(--space-1)) 0 var(--space-3);
   color: var(--text-tertiary);
   font-size: 11px;
   line-height: 1.5;
-}
-
-.ledger-trend-scale-note {
-  margin: var(--space-2) 0 0;
-  color: var(--text-tertiary);
-  font-size: 10px;
-}
-
-.ledger-operation {
-  position: relative;
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto 12px;
-  align-items: center;
-  width: 100%;
-  min-height: 58px;
-  margin-bottom: var(--space-1);
-  padding: 0 var(--space-3) 0 0;
-  overflow: hidden;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-sm);
-  background: var(--surface-glass);
-  color: var(--text-primary);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  transition: border-color 120ms ease, background 120ms ease;
-}
-
-.ledger-operation:hover {
-  border-color: color-mix(in oklch, var(--brass) 38%, var(--hairline));
-  background: color-mix(in oklch, var(--brass) 6%, var(--surface-glass));
-}
-
-/* 미귀속 Operation 유령 행 — 상호작용 불가 상태를 dashed hairline과 3차 텍스트로만
-   표현한다(opacity 통짜는 남은 텍스트까지 못 읽게 만들므로 채널별 톤 다운).
-   이중 클래스로 특정도를 올려 베이스/:hover/제공자 mark 규칙(뒤에 와도)을 항상 이긴다. */
-.ledger-operation.ledger-operation--unmatched {
-  grid-template-columns: auto minmax(0, 1fr);
-  min-height: 0;
-  border-style: dashed;
-  background: transparent;
-  cursor: default;
-}
-
-.ledger-operation.ledger-operation--unmatched:hover {
-  border-color: var(--hairline);
-  background: transparent;
-}
-
-.ledger-operation.ledger-operation--unmatched .ledger-operation-copy strong {
-  color: var(--text-tertiary);
-  font-weight: var(--weight-medium);
-}
-
-.ledger-operation.ledger-operation--unmatched .ledger-operation-mark {
-  color: var(--text-tertiary);
-}
-
-/* CLI 정체성은 mark(아이콘)로만 전한다 — 좌측 spine은 아이콘과 중복이라 걷어냈다. */
-.ledger-operation-mark {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  flex: 0 0 auto;
-  margin-left: var(--space-3);
-  color: var(--text-tertiary);
-}
-
-.ledger-operation-mark svg {
-  width: 100%;
-  height: 100%;
-}
-
-.ledger-operation--claude .ledger-operation-mark {
-  color: var(--provider-claude);
-}
-
-.ledger-operation--kimi .ledger-operation-mark {
-  color: var(--provider-kimi);
-}
-
-.ledger-operation--codex .ledger-operation-mark {
-  color: var(--provider-codex);
-}
-
-.ledger-operation--cursor .ledger-operation-mark {
-  color: var(--provider-cursor);
-}
-
-.ledger-operation--opencode .ledger-operation-mark {
-  color: var(--provider-opencode);
-}
-
-.ledger-operation--xai .ledger-operation-mark {
-  color: var(--provider-xai);
-}
-
-.ledger-operation--claude-gateway .ledger-operation-mark {
-  color: var(--provider-claude);
-}
-
-.ledger-operation-copy {
-  min-width: 0;
-  padding-left: var(--space-3);
-}
-
-.ledger-operation-copy strong,
-.ledger-operation-copy small {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.ledger-operation-copy strong {
-  font-size: 13px;
-  font-weight: var(--weight-medium);
-}
-
-.ledger-operation-copy small,
-.ledger-client-copy small {
-  margin-top: 2px;
-  color: var(--text-secondary);
-  font-size: 11px;
-}
-
-.ledger-operation-values,
-.ledger-client-values {
-  display: grid;
-  justify-items: end;
-  gap: 2px;
-  font-size: 12px;
-  font-weight: var(--weight-medium);
-  font-variant-numeric: tabular-nums;
-}
-
-.ledger-value {
-  white-space: nowrap;
-}
-
-.ledger-value-part {
-  color: var(--text-primary);
-}
-
-.ledger-value--primary {
-  color: var(--text-primary);
-}
-
-.ledger-value--secondary {
-  color: var(--text-secondary);
-}
-
-.ledger-value--tertiary {
-  color: var(--text-tertiary);
-}
-
-.ledger-chevron {
-  color: var(--text-tertiary);
-  font-size: 18px;
-}
-
-.ledger-inline-empty {
-  padding: var(--space-4);
-  border: 1px dashed var(--hairline);
-  border-radius: var(--radius-sm);
-  color: var(--text-secondary);
-  text-align: center;
-}
-
-.ledger-inline-empty strong {
-  font-size: 12px;
-  font-weight: var(--weight-medium);
-}
-
-.ledger-inline-empty p {
-  margin: var(--space-1) 0 0;
-  color: var(--text-tertiary);
-  font-size: 11px;
-}
-
-.ledger-trend {
-  margin-bottom: var(--space-4);
 }
 
 .ledger-trend-bars {
@@ -527,18 +198,22 @@
   flex: 1 1 0;
   min-width: 0;
   min-height: 3px;
+  padding: 0;
+  border: 0;
   border-radius: var(--radius-xs) var(--radius-xs) 0 0;
   background: var(--ink-fog);
+  font: inherit;
+  cursor: pointer;
+  transition: background 120ms ease, filter 120ms ease;
 }
 
-.ledger-trend-bar:hover,
-.ledger-trend-bar:focus-visible {
+.ledger-trend-bar:hover {
   background: var(--brass);
 }
 
-.ledger-trend-bar:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+.ledger-trend-bar[aria-pressed="true"] {
+  background: var(--ink-pearl);
+  filter: drop-shadow(0 0 3px var(--brass));
 }
 
 .ledger-trend-tooltip {
@@ -595,12 +270,16 @@
   font-weight: var(--weight-medium);
 }
 
-.ledger-trend-description,
-.ledger-clients-description {
-  margin: calc(-1 * var(--space-1)) 0 var(--space-3);
+.ledger-trend-scale-note {
+  margin: var(--space-2) 0 0;
   color: var(--text-tertiary);
-  font-size: 11px;
-  line-height: 1.5;
+  font-size: 10px;
+}
+
+.ledger-daily-detail {
+  margin-top: var(--space-4);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--hairline);
 }
 
 .ledger-client-list {
@@ -623,7 +302,32 @@
 .ledger-client-mark {
   display: grid;
   place-items: center;
-  color: var(--text-tertiary);
+  color: var(--text-secondary);
+}
+
+.ledger-client-mark.is-anthropic,
+.ledger-client-mark.is-claude {
+  color: var(--provider-claude);
+}
+
+.ledger-client-mark.is-codex {
+  color: var(--provider-codex);
+}
+
+.ledger-client-mark.is-cursor {
+  color: var(--provider-cursor);
+}
+
+.ledger-client-mark.is-kimi {
+  color: var(--provider-kimi);
+}
+
+.ledger-client-mark.is-opencode {
+  color: var(--provider-opencode);
+}
+
+.ledger-client-mark.is-xai {
+  color: var(--provider-xai);
 }
 
 .ledger-client-copy {
@@ -644,74 +348,63 @@
   font-weight: var(--weight-medium);
 }
 
-.ledger-client-values {
-  padding-right: var(--space-3);
-}
-
-.ledger-client-row--claude .ledger-client-mark {
-  color: var(--provider-claude);
-}
-
-.ledger-client-row--kimi .ledger-client-mark {
-  color: var(--provider-kimi);
-}
-
-.ledger-client-row--codex .ledger-client-mark {
-  color: var(--provider-codex);
-}
-
-.ledger-client-row--cursor .ledger-client-mark {
-  color: var(--provider-cursor);
-}
-
-.ledger-client-row--opencode .ledger-client-mark {
-  color: var(--provider-opencode);
-}
-
-.ledger-client-row--xai .ledger-client-mark {
-  color: var(--provider-xai);
-}
-
-.ledger-models-heading {
-  margin-top: var(--space-4);
-}
-
-.ledger-detail-models {
-  display: grid;
-  gap: var(--space-2);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.ledger-detail-model {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr);
-  gap: var(--space-2);
-  align-items: center;
-  color: var(--text-primary);
-  font-size: 12px;
-}
-
-/* 목록 행 마크는 카드 안쪽 여백을 margin-left로 잡는다. 상세 그리드는 이미 16px 칸을
-   주므로 그 여백을 물려받으면 글리프가 이름 위로 밀린다. */
-.ledger-detail-model .ledger-operation-mark {
-  margin-left: 0;
-}
-
-.ledger-detail-model--claude .ledger-operation-mark { color: var(--provider-claude); }
-.ledger-detail-model--cursor .ledger-operation-mark { color: var(--provider-cursor); }
-.ledger-detail-model--codex .ledger-operation-mark { color: var(--provider-codex); }
-.ledger-detail-model--kimi .ledger-operation-mark { color: var(--provider-kimi); }
-.ledger-detail-model--opencode .ledger-operation-mark { color: var(--provider-opencode); }
-.ledger-detail-model--xai .ledger-operation-mark { color: var(--provider-xai); }
-
-.ledger-source p,
-.ledger-state p,
-.ledger-detail-section p {
+.ledger-client-copy small {
+  margin-top: 2px;
   color: var(--text-secondary);
   font-size: 11px;
-  line-height: 1.55;
+}
+
+.ledger-client-values {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  padding-right: var(--space-3);
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-value {
+  white-space: nowrap;
+}
+
+.ledger-value-part,
+.ledger-value--primary {
+  color: var(--text-primary);
+}
+
+.ledger-value--secondary {
+  color: var(--text-secondary);
+}
+
+.ledger-value--tertiary {
+  color: var(--text-tertiary);
+}
+
+.ledger-coverage-more {
+  margin-top: var(--space-1);
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-align: center;
+}
+
+.ledger-inline-empty {
+  padding: var(--space-4);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.ledger-inline-empty strong {
+  font-size: 12px;
+  font-weight: var(--weight-medium);
+}
+
+.ledger-inline-empty p {
+  margin: var(--space-1) 0 0;
+  color: var(--text-tertiary);
+  font-size: 11px;
 }
 
 .ledger-source {
@@ -726,8 +419,8 @@
 
 .ledger-source > div {
   display: flex;
-  gap: var(--space-2);
   align-items: center;
+  gap: var(--space-2);
 }
 
 .ledger-source h3 {
@@ -737,23 +430,13 @@
 .ledger-source p {
   grid-column: 1 / -1;
   margin: var(--space-1) 0 0;
-}
-
-.ledger-source-status {
-  color: var(--positive-ink);
-}
-
-.ledger-source-status--bootstrapping {
-  color: var(--aurora-ink);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
 }
 
 .ledger-source-status--degraded {
   color: var(--warn-ink);
-}
-
-.ledger-source-status--unavailable,
-.ledger-source-status--unreadable {
-  color: var(--coral-ink);
 }
 
 .ledger-footer {
@@ -765,17 +448,15 @@
   font-size: 11px;
 }
 
-.ledger-button,
-.ledger-back {
+.ledger-button {
   min-height: 30px;
   padding: 0 var(--space-3);
   border-color: var(--hairline);
 }
 
-.ledger-button:hover,
-.ledger-back:hover {
-  color: var(--text-primary);
+.ledger-button:hover {
   border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  color: var(--text-primary);
 }
 
 .ledger-state {
@@ -791,6 +472,12 @@
   font-weight: var(--weight-medium);
 }
 
+.ledger-state p {
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
 .ledger-state-mark {
   display: block;
   width: 8px;
@@ -804,36 +491,10 @@
   background: var(--coral);
 }
 
-.ledger-detail {
-  padding: var(--space-4);
-}
-
-.ledger-detail h2 {
-  margin: var(--space-4) 0 var(--space-2);
-  color: var(--text-primary);
-  font-family: var(--font-display);
-  font-size: 20px;
-  font-weight: var(--weight-bold);
-}
-
-.ledger-detail > .ledger-metrics {
-  margin: var(--space-5) 0;
-}
-
-.ledger-detail-section {
-  padding: var(--space-3) 0;
-  border-top: 1px solid var(--hairline);
-}
-
-.ledger-detail-section p {
-  margin: 0;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .ledger-segment button,
   .ledger-button,
-  .ledger-back,
-  .ledger-operation {
+  .ledger-trend-bar {
     transition-duration: .01ms;
   }
 }

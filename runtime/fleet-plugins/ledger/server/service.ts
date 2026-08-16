@@ -1,7 +1,5 @@
 import os from "node:os";
 
-import type { OperationNode } from "@fleet-console/sdk/operations";
-
 import {
   type CliExecutor,
   ensureTokscaleBin,
@@ -9,14 +7,13 @@ import {
   TOKSCALE_TIMEOUT_MS,
 } from "./cli.js";
 import { parseTokscaleModelsOutput, parseTokscaleOutput } from "./parser.js";
+import { applyGatewayPricing } from "./pricing.js";
 import { buildSummary, EMPTY_MODEL_BREAKDOWN, type ModelBreakdown } from "./summary.js";
-import type { LedgerSummaryDto, LedgerWindow } from "./types.js";
+import type { LedgerSourceStatus, LedgerSummaryDto, LedgerWindow, TokscaleSession } from "./types.js";
 
 export interface SummaryRequest {
-  readonly theaterId: string | null;
   readonly window: LedgerWindow;
   readonly refresh: boolean;
-  readonly operations: readonly OperationNode[];
 }
 
 export interface LedgerService {
@@ -35,8 +32,8 @@ const CACHE_TTL_MS = 15_000;
 
 export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
   type ReportResult = {
-    readonly sessions: ReturnType<typeof parseTokscaleOutput>["sessions"];
-    readonly status: LedgerSummaryDto["source"]["status"];
+    readonly sessions: readonly TokscaleSession[];
+    readonly status: LedgerSourceStatus;
     readonly skippedSessions: number;
     readonly generatedAtMs: number;
   };
@@ -44,22 +41,23 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
     readonly report: ReportResult;
     readonly models: ModelBreakdown;
   };
+
   const cache = new Map<string, { readonly expiresAt: number; readonly window: WindowResult }>();
   const bootstrapPending = new Map<string, Promise<void>>();
-  const reportInFlight = new Map<string, Promise<WindowResult>>();
+  const windowInFlight = new Map<string, Promise<WindowResult>>();
   const isInstalled = deps.isInstalled ?? hasPinnedTokscale;
   const bootstrap = deps.bootstrap ?? ensureTokscaleBin;
   const now = deps.now ?? Date.now;
 
-  function cacheKey(request: SummaryRequest): string {
-    return request.window;
-  }
-
   function summaryFromWindow(request: SummaryRequest, window: WindowResult): LedgerSummaryDto {
-    return buildSummary(window.report.sessions, request.operations, {
-      theaterId: request.theaterId,
-      window: request.window,
-    }, window.report.status, window.report.generatedAtMs, window.report.skippedSessions, window.models);
+    return buildSummary(
+      window.report.sessions,
+      { window: request.window },
+      window.report.status,
+      window.report.generatedAtMs,
+      window.report.skippedSessions,
+      window.models,
+    );
   }
 
   function statusDto(request: SummaryRequest, status: "bootstrapping" | "unavailable"): LedgerSummaryDto {
@@ -70,13 +68,15 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
   }
 
   async function executeReport(window: LedgerWindow): Promise<ReportResult> {
-    const args = ["report", "--json", "--no-summarize", `--${window}`];
+    const args = ["report", "--json", "--no-summarize", "--client", "claude", `--${window}`];
     try {
       const result = await deps.executor(args, {
         cwd: os.homedir(),
         timeout: TOKSCALE_TIMEOUT_MS,
       });
-      if (result.exitCode !== 0) return { sessions: [], status: "unavailable", skippedSessions: 0, generatedAtMs: now() };
+      if (result.exitCode !== 0) {
+        return { sessions: [], status: "unavailable", skippedSessions: 0, generatedAtMs: now() };
+      }
       const parsed = parseTokscaleOutput(result.stdout);
       return {
         sessions: parsed.sessions,
@@ -90,7 +90,16 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
   }
 
   async function executeModels(window: LedgerWindow): Promise<ModelBreakdown> {
-    const args = ["models", "--json", "--no-spinner", "--group-by", "model", `--${window}`];
+    const args = [
+      "models",
+      "--json",
+      "--no-spinner",
+      "-c",
+      "claude",
+      "--group-by",
+      "client,session,model",
+      `--${window}`,
+    ];
     try {
       const result = await deps.executor(args, {
         cwd: os.homedir(),
@@ -99,7 +108,7 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
       if (result.exitCode !== 0) return { entries: [], status: "unavailable", skippedEntries: 0 };
       const parsed = parseTokscaleModelsOutput(result.stdout);
       return {
-        entries: parsed.entries,
+        entries: parsed.entries.map(applyGatewayPricing),
         status: parsed.status,
         skippedEntries: parsed.skippedEntries,
       };
@@ -113,23 +122,23 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
     return { report, models };
   }
 
-  function getOrStartReport(key: string, window: LedgerWindow): Promise<WindowResult> {
-    const existing = reportInFlight.get(key);
+  function getOrStartWindow(key: string, window: LedgerWindow): Promise<WindowResult> {
+    const existing = windowInFlight.get(key);
     if (existing) return existing;
     const task = executeWindow(window).finally(() => {
-      reportInFlight.delete(key);
+      windowInFlight.delete(key);
     });
-    reportInFlight.set(key, task);
+    windowInFlight.set(key, task);
     return task;
   }
 
-  function startBootstrapAndReport(key: string, request: SummaryRequest): void {
+  function startBootstrapAndWindow(key: string, request: SummaryRequest): void {
     const task = bootstrap(deps.cliHome)
-      .then(() => getOrStartReport(key, request.window))
+      .then(() => getOrStartWindow(key, request.window))
       .then((window) => {
         cache.set(key, { window, expiresAt: now() + CACHE_TTL_MS });
       })
-      // 설치 실패는 캐시하지 않는다. 다음 요청이 즉시 새 bootstrap을 시작해야 한다.
+      // A failed install is not cached; the next request immediately gets another attempt.
       .catch(() => {})
       .finally(() => {
         bootstrapPending.delete(key);
@@ -139,7 +148,7 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
 
   return {
     async getSummary(request) {
-      const key = cacheKey(request);
+      const key = request.window;
       if (request.refresh) cache.delete(key);
       const cached = cache.get(key);
       if (cached && cached.expiresAt > now()) return summaryFromWindow(request, cached.window);
@@ -148,11 +157,11 @@ export function createLedgerService(deps: LedgerServiceDeps): LedgerService {
 
       if (!await isInstalled(deps.cliHome)) {
         if (bootstrapPending.has(key)) return statusDto(request, "bootstrapping");
-        startBootstrapAndReport(key, request);
+        startBootstrapAndWindow(key, request);
         return statusDto(request, "bootstrapping");
       }
 
-      const window = await getOrStartReport(key, request.window);
+      const window = await getOrStartWindow(key, request.window);
       cache.set(key, { window, expiresAt: now() + CACHE_TTL_MS });
       return summaryFromWindow(request, window);
     },

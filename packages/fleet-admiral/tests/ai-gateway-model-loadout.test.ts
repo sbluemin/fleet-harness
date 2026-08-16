@@ -97,6 +97,13 @@ describe("gateway loadout agent type selectors", () => {
 });
 
 describe("gateway loadout quality signal", () => {
+  it("does not expose static Ledger pricing through gateway_models", () => {
+    const loadout = buildGatewayLoadout({ exposed: [model("codex--gpt-5.6-sol")] });
+    expect(model("codex--gpt-5.6-sol")).not.toHaveProperty("pricing");
+    expect(JSON.stringify(loadout)).not.toContain("pricing");
+    expect(JSON.stringify(loadout)).not.toContain("inputCostPerToken");
+  });
+
   it("carries no per-model measurement table alongside the class prior", () => {
     // roleFit 측정 테이블은 capabilityClass 로 대체·폐기됐다. 로스터에 되살아나면
     // 품질 어휘가 두 벌이 되어, 판단석 배정이 어느 축을 읽을지 갈라진다.
