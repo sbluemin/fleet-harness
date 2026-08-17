@@ -130,7 +130,8 @@ describe("iOS signing env", () => {
 
 // 진짜 App Store 프로파일에는 DeveloperCertificates 같은 <data>가 들어 있다. 예전 구현은 이
 // plist를 통째로 JSON으로 옮기려다 plutil이 거부해 배포 빌드가 첫 단계에서 죽었다.
-describe("provisioning profile fields", () => {
+// plutil은 macOS 전용이다. 이 스위트는 실제 릴리스 경로와 같은 호스트에서만 의미가 있다.
+describe.skipIf(process.platform !== "darwin")("provisioning profile fields", () => {
   function profilePlist(body: string): string {
     const root = mkdtempSync(path.join(tmpdir(), "ios-profile-"));
     const file = path.join(root, "profile.plist");

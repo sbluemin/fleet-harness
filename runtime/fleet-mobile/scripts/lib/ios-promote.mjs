@@ -246,8 +246,11 @@ export function readProfileFields(plistPath) {
   const extract = (keyPath) => {
     try {
       return run("plutil", ["-extract", keyPath, "raw", "-o", "-", plistPath], { capture: true }).trim();
-    } catch {
-      return "";
+    } catch (error) {
+      // 키가 없는 것과 plutil 자체가 실패한 것은 다른 이야기다. 뒤엣것까지 빈 값으로 뭉개면
+      // "다른 앱의 프로파일"이라는 엉뚱한 진단이 나온다.
+      if (/No value at that key path|does not exist/i.test(String(error?.message ?? ""))) return "";
+      throw error;
     }
   };
   const applicationIdentifier = extract("Entitlements.application-identifier");
