@@ -845,13 +845,14 @@ describe("model catalog", () => {
   });
 
   it("contains only the approved provider families", () => {
-    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(12);
+    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(18);
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("512k")).every((model) => model.contextWindow === 524_288)).toBe(true);
-    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.includes("512k")).every((model) => model.contextWindow === 1_000_000)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("-1m")).every((model) => model.contextWindow === 1_000_000)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.includes("512k") && !model.id.includes("-1m")).every((model) => model.contextWindow === 272_000)).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.map((model) => model.id.replace(/^codex--/, ""))).toEqual([
       "gpt-5.6-sol",
       "gpt-5.6-sol-fast",
@@ -865,6 +866,12 @@ describe("model catalog", () => {
       "gpt-5.6-luna-512k-fast",
       "gpt-5.6-terra-512k",
       "gpt-5.6-terra-512k-fast",
+      "gpt-5.6-sol-1m",
+      "gpt-5.6-sol-1m-fast",
+      "gpt-5.6-luna-1m",
+      "gpt-5.6-luna-1m-fast",
+      "gpt-5.6-terra-1m",
+      "gpt-5.6-terra-1m-fast",
     ]);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.endsWith("-fast")).every((model) => model.serviceTier === "priority")).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.endsWith("-fast")).every((model) => model.serviceTier === undefined)).toBe(true);
@@ -1070,28 +1077,52 @@ describe("model catalog", () => {
     );
     // Claude Code는 claude로 시작하지 않는 id를 discovery 결과에서 버린다.
     expect(list.data.every((entry) => entry.id.startsWith("claude"))).toBe(true);
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Sol (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-1M (1M Context)",
       max_input_tokens: 1_000_000,
     });
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-fast[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Sol-Fast (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-1M-Fast (1M Context)",
       max_input_tokens: 1_000_000,
     });
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Luna (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-1M (1M Context)",
       max_input_tokens: 1_000_000,
     });
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-fast[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Luna-Fast (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-1M-Fast (1M Context)",
       max_input_tokens: 1_000_000,
     });
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Terra (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-1M (1M Context)",
       max_input_tokens: 1_000_000,
     });
-    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-fast[1m]")).toMatchObject({
-      display_name: "Codex-GPT-5.6-Terra-Fast (1M Context)",
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-1M-Fast (1M Context)",
       max_input_tokens: 1_000_000,
     });
     expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-512k")).toMatchObject({
@@ -1193,8 +1224,8 @@ describe("model catalog", () => {
 
   it("advertises the official Anthropic effort capability per gateway model", () => {
     const entries = new Map(buildAnthropicModelList().data.map((entry) => [entry.id, entry]));
-    const sol = entries.get("claude-gateway--codex--gpt-5.6-sol[1m]");
-    const luna = entries.get("claude-gateway--codex--gpt-5.6-luna[1m]");
+    const sol = entries.get("claude-gateway--codex--gpt-5.6-sol");
+    const luna = entries.get("claude-gateway--codex--gpt-5.6-luna");
     const kimi = entries.get("claude-gateway--kimi--k3[1m]");
     const cursor = entries.get("claude-gateway--cursor--auto");
     const cursorGrok = entries.get("claude-gateway--cursor--grok-4.5");
@@ -1266,9 +1297,14 @@ describe("model catalog", () => {
     })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
     const sol512k = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k");
     const sol512kFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k-fast");
+    const sol1m = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m");
+    const sol1mFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m-fast");
     expect(sol512k).toMatchObject({ upstreamId: "gpt-5.6-sol" });
     expect(sol512k).not.toHaveProperty("serviceTier");
     expect(sol512kFast).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority" });
+    expect(sol1m).toMatchObject({ upstreamId: "gpt-5.6-sol", contextWindow: 1_000_000 });
+    expect(sol1m).not.toHaveProperty("serviceTier");
+    expect(sol1mFast).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority", contextWindow: 1_000_000 });
     expect(translateAnthropicRequest(baseRequest(), {
       model: sol512kFast?.upstreamId,
       serviceTier: sol512kFast?.serviceTier,
@@ -1278,17 +1314,27 @@ describe("model catalog", () => {
   it("accepts truthful marked ids and current unmarked aliases", () => {
     const model = findGatewayModel("claude-gateway--kimi--k3[1m]");
     expect(model).toMatchObject({ id: "kimi--k3", upstreamId: "k3" });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toMatchObject({
-      id: "codex--gpt-5.6-luna",
-      upstreamId: "gpt-5.6-luna",
-    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
       id: "codex--gpt-5.6-luna",
       upstreamId: "gpt-5.6-luna",
+      contextWindow: 272_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra[1m]")).toMatchObject({
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
+      id: "codex--gpt-5.6-luna-1m",
+      upstreamId: "gpt-5.6-luna",
+      contextWindow: 1_000_000,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra[1m]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
       id: "codex--gpt-5.6-terra",
       upstreamId: "gpt-5.6-terra",
+      contextWindow: 272_000,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
+      id: "codex--gpt-5.6-terra-1m",
+      upstreamId: "gpt-5.6-terra",
+      contextWindow: 1_000_000,
     });
     expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k")).toMatchObject({
       id: "codex--gpt-5.6-sol-512k",
@@ -1352,13 +1398,16 @@ describe("Claude context coordinate", () => {
     const sol = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol")!;
     const terra = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-terra")!;
     const sol512k = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol-512k")!;
-    expect(sol.contextWindow).toBe(1_000_000);
-    expect(terra.contextWindow).toBe(1_000_000);
+    const sol1m = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol-1m")!;
+    expect(sol.contextWindow).toBe(272_000);
+    expect(terra.contextWindow).toBe(272_000);
     expect(sol512k.contextWindow).toBe(524_288);
-    expect(toClaudeGatewayModelId(sol).endsWith("[1m]")).toBe(true);
-    expect(toClaudeGatewayModelId(terra).endsWith("[1m]")).toBe(true);
+    expect(sol1m.contextWindow).toBe(1_000_000);
+    expect(toClaudeGatewayModelId(sol).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(terra).endsWith("[1m]")).toBe(false);
     expect(toClaudeGatewayModelId(sol512k).endsWith("[1m]")).toBe(false);
     expect(toClaudeGatewayModelId(sol512k)).toBe("claude-gateway--codex--gpt-5.6-sol-512k");
+    expect(toClaudeGatewayModelId(sol1m)).toBe("claude-gateway--codex--gpt-5.6-sol-1m[1m]");
     expect(toClaudeGatewayModelId(model({ contextWindow: 1_000_000 })).endsWith("[1m]")).toBe(true);
   });
 

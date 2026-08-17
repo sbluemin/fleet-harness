@@ -175,7 +175,7 @@ describe("upstream credential", () => {
 
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
       apiKey: SUBSCRIPTION_TOKEN,
-      contextWindow: 1_000_000,
+      contextWindow: 272_000,
       model: "gpt-5.6-sol",
       serviceTier: "priority",
       reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
@@ -255,7 +255,7 @@ describe("upstream credential", () => {
 
     expect(res.status).toBe(200);
     expect(streamSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      contextWindow: 1_000_000,
+      contextWindow: 272_000,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
   });
@@ -514,9 +514,11 @@ describe("model context window", () => {
   it.each([
     // The guard and Claude-coordinate projection both take the model's real window.
     // Marker choice only selects Claude's 200k or 1M coordinate.
-    ["claude-gateway--codex--gpt-5.6-sol", 1_000_000],
-    ["claude-gateway--codex--gpt-5.6-terra", 1_000_000],
+    ["claude-gateway--codex--gpt-5.6-sol", 272_000],
+    ["claude-gateway--codex--gpt-5.6-terra", 272_000],
     ["claude-gateway--codex--gpt-5.6-sol-512k", 524_288],
+    ["claude-gateway--codex--gpt-5.6-sol-1m", 1_000_000],
+    ["claude-gateway--codex--gpt-5.6-terra-1m", 1_000_000],
     ["claude-gateway--cursor--grok-4.5-fast", 256_000],
     ["claude-gateway--cursor--composer-2.5", 200_000],
   ])("passes %s's real window to both context contracts", async (model, expected) => {
@@ -1791,7 +1793,7 @@ describe("route surface", () => {
       }));
 
       expect(JSON.parse(settingsResponse.body).data).toEqual([
-        expect.objectContaining({ id: "claude-gateway--codex--gpt-5.6-sol[1m]" }),
+        expect.objectContaining({ id: "claude-gateway--codex--gpt-5.6-sol" }),
       ]);
       expect(withoutReaderSpy).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
         model: "gpt-5.6-sol",
@@ -1826,22 +1828,28 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(37);
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol[1m]");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast[1m]");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna[1m]");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-fast[1m]");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra[1m]");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-fast[1m]");
+    expect(list.data).toHaveLength(43);
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m-fast[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m-fast[1m]");
     expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-512k[512k]");
-    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-terra");
-    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-terra-fast");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol[1m]");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m][1m]");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5-fast");
@@ -1920,8 +1928,8 @@ describe("route surface", () => {
     expect(res.status).toBe(200);
     const list = JSON.parse(res.body) as { data: Array<{ id: string }> };
     expect(list.data.map((entry) => entry.id)).toEqual([
-      "claude-gateway--codex--gpt-5.6-sol-fast[1m]",
-      "claude-gateway--codex--gpt-5.6-luna-fast[1m]",
+      "claude-gateway--codex--gpt-5.6-sol-fast",
+      "claude-gateway--codex--gpt-5.6-luna-fast",
       "claude-gateway--cursor--grok-4.5-fast",
       "claude-gateway--kimi--k3[1m]",
     ]);

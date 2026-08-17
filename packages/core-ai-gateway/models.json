@@ -5,13 +5,13 @@
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",
-      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observation: gpt-5.6-sol/luna/terra accepted 520,012 input tokens (HTTP 200) and gpt-5.6-terra accepted 900,012 input tokens (HTTP 200); official OpenAI model cards (observed 2026-08-17) list Sol/Luna/Terra native context 1,050,000 — unsuffixed and Fast ids advertise the explicit Claude [1m] coordinate (1,000,000); explicit *-512k ids advertise 524288",
+      "source": "codex app-server model/list (codex-cli 0.147.0, observed 2026-08-11) for model/effort/service-tier and the unsuffixed 272000 defaults; Fleet catalog effort ladders are capped at max because harness launch capabilities are not model rungs; 2026-08-17 production Codex live observations added explicit 512K (524288) and explicit 1M (1000000) variants on the same upstream bases",
       "models": [
         {
           "modelId": "gpt-5.6-sol",
           "name": "GPT-5.6-Sol",
           "capabilityClass": "flagship",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -33,7 +33,7 @@
           "capabilityClass": "flagship",
           "providerModelId": "gpt-5.6-sol",
           "serviceTier": "priority",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -53,7 +53,7 @@
           "modelId": "gpt-5.6-terra",
           "name": "GPT-5.6-Terra",
           "capabilityClass": "standard",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -75,7 +75,7 @@
           "capabilityClass": "standard",
           "providerModelId": "gpt-5.6-terra",
           "serviceTier": "priority",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -95,7 +95,7 @@
           "modelId": "gpt-5.6-luna",
           "name": "GPT-5.6-Luna",
           "capabilityClass": "light",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -117,7 +117,7 @@
           "capabilityClass": "light",
           "providerModelId": "gpt-5.6-luna",
           "serviceTier": "priority",
-          "contextWindow": 1000000,
+          "contextWindow": 272000,
           "effort": {
             "supported": true,
             "levels": [
@@ -259,6 +259,135 @@
           },
           "aliases": [
             "gpt-5.6-terra-512k-fast"
+          ],
+          "benchmarkKey": "gpt-5.6-terra"
+        },
+        {
+          "modelId": "gpt-5.6-sol-1m",
+          "name": "GPT-5.6-Sol-1M",
+          "capabilityClass": "flagship",
+          "providerModelId": "gpt-5.6-sol",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-sol-1m"
+          ],
+          "benchmarkKey": "gpt-5.6-sol"
+        },
+        {
+          "modelId": "gpt-5.6-sol-1m-fast",
+          "name": "GPT-5.6-Sol-1M-Fast",
+          "capabilityClass": "flagship",
+          "providerModelId": "gpt-5.6-sol",
+          "serviceTier": "priority",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-sol-1m-fast"
+          ],
+          "benchmarkKey": "gpt-5.6-sol"
+        },
+        {
+          "modelId": "gpt-5.6-luna-1m",
+          "name": "GPT-5.6-Luna-1M",
+          "capabilityClass": "light",
+          "providerModelId": "gpt-5.6-luna",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-luna-1m"
+          ],
+          "benchmarkKey": "gpt-5.6-luna"
+        },
+        {
+          "modelId": "gpt-5.6-luna-1m-fast",
+          "name": "GPT-5.6-Luna-1M-Fast",
+          "capabilityClass": "light",
+          "providerModelId": "gpt-5.6-luna",
+          "serviceTier": "priority",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-luna-1m-fast"
+          ],
+          "benchmarkKey": "gpt-5.6-luna"
+        },
+        {
+          "modelId": "gpt-5.6-terra-1m",
+          "name": "GPT-5.6-Terra-1M",
+          "capabilityClass": "standard",
+          "providerModelId": "gpt-5.6-terra",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-terra-1m"
+          ],
+          "benchmarkKey": "gpt-5.6-terra"
+        },
+        {
+          "modelId": "gpt-5.6-terra-1m-fast",
+          "name": "GPT-5.6-Terra-1M-Fast",
+          "capabilityClass": "standard",
+          "providerModelId": "gpt-5.6-terra",
+          "serviceTier": "priority",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "aliases": [
+            "gpt-5.6-terra-1m-fast"
           ],
           "benchmarkKey": "gpt-5.6-terra"
         }
