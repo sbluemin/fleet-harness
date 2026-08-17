@@ -33,6 +33,7 @@ jobs:
   macos:
     name: macOS arm64
     runs-on: macos-14
+    environment: macos-release
     permissions:
       contents: write
     steps:
@@ -52,36 +53,20 @@ jobs:
           pnpm --filter @dotobokuri/fleet-desktop build
       - name: Package shell installers (mac arm64)
         env:
-          MAC_CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
-          MAC_CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
-          MAC_APPLE_ID: ${{ secrets.APPLE_ID }}
-          MAC_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          MAC_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          FLEET_DESKTOP_TARGET: darwin-arm64
         run: |
-          configured=0
-          for secret in "$MAC_CSC_LINK" "$MAC_CSC_KEY_PASSWORD" "$MAC_APPLE_ID" "$MAC_APPLE_APP_SPECIFIC_PASSWORD" "$MAC_APPLE_TEAM_ID"; do
-            if [[ -n "$secret" ]]; then
-              configured=$((configured + 1))
-            fi
-          done
-
-          if [[ "$configured" -ne 0 && "$configured" -ne 5 ]]; then
-            echo "::error::Partial macOS signing configuration. Set all five MAC_CSC_LINK, MAC_CSC_KEY_PASSWORD, APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, and APPLE_TEAM_ID secrets, or remove all five." >&2
-            exit 1
-          fi
-
-          if [[ "$configured" -eq 5 ]]; then
-            CSC_LINK="$MAC_CSC_LINK" \
-            CSC_KEY_PASSWORD="$MAC_CSC_KEY_PASSWORD" \
-            APPLE_ID="$MAC_APPLE_ID" \
-            APPLE_APP_SPECIFIC_PASSWORD="$MAC_APPLE_APP_SPECIFIC_PASSWORD" \
-            APPLE_TEAM_ID="$MAC_APPLE_TEAM_ID" \
-              pnpm --filter @dotobokuri/fleet-desktop exec electron-builder --mac --arm64 --publish never
-          else
-            pnpm --filter @dotobokuri/fleet-desktop exec electron-builder --mac --arm64 --publish never
-          fi
+          FLEET_DESKTOP_RELEASE=1 pnpm --filter @dotobokuri/fleet-desktop run prepackage:release
+          pnpm --filter @dotobokuri/fleet-desktop exec electron-builder --mac --arm64 --publish never --config.forceCodeSigning=true --config.mac.notarize=true
       - name: Verify shell-only package
-        run: pnpm --filter @dotobokuri/fleet-desktop verify:package
+        env:
+          FLEET_DESKTOP_RELEASE: '1'
+          FLEET_DESKTOP_TARGET: darwin-arm64
+        run: pnpm --filter @dotobokuri/fleet-desktop run verify:package --release
       - name: Upload shell installers to the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
