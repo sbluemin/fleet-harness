@@ -2561,6 +2561,49 @@ describe("Effort track interaction grammar", () => {
     expect(reduced).toContain(".agent-chat-ask-dot");
   });
 
+  it("pins the chat session-coordinate grammar — neutral by default, apex only for ultracode", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const view = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 좌표는 상태(신호)도 위치(brass)도 정체성도 아니다 — 기본형은 어떤 채널도 타지 않는다.
+    const chip = block(".agent-chat-coord");
+    expect(chip).toContain("border: 1px solid var(--hairline);");
+    for (const channel of ["--aurora", "--warn", "--coral", "--positive", "--brass", "--id-"]) {
+      expect(chip, channel).not.toContain(channel);
+    }
+
+    // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest, ULTRACODE는 apex.
+    expect(block('.agent-chat-coord-effort[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
+    const ultra = block('.agent-chat-coord-effort[data-effort-level="ultra"]');
+    expect(ultra).toContain("var(--apex-ink)");
+    expect(ultra).toContain("animation: agent-chat-ultracode-wave 2.6s linear infinite;");
+
+    // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
+    // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
+    expect(block(".agent-chat-coord.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+    expect(block(".agent-chat-birth.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+
+    // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
+    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(
+      /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
+    );
+
+    // 최소 폭(320px) 패널에서 칩 줄은 패널 밖으로 나간다 — 그때 물러나는 것은 좌표 칩이고,
+    // 같은 사실은 폭을 다투지 않는 태생 기록이 잇는다. 뷰포트가 아니라 패널 폭이 가른다.
+    expect(chat).toMatch(/@container \(max-width: 379px\) \{\s*\.agent-chat-coord \{\s*display: none;/);
+
+    // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
+    // 누를 수 있게 그리면 거짓 약속이 된다.
+    expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
+    expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
+  });
+
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
     const trackSource = source("components/effort-track.tsx");

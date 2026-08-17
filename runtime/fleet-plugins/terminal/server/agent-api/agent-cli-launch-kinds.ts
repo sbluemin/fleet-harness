@@ -13,7 +13,8 @@ import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/
 
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 
-const EFFORT_LABELS: Readonly<Record<string, string>> = {
+/** 런치 메뉴의 강도 어휘 원본. 채팅 좌표 칩이 같은 어휘를 쓰도록 테스트가 두 표를 맞물린다. */
+export const EFFORT_LABELS: Readonly<Record<string, string>> = {
   low: "LOW",
   medium: "MED",
   high: "HIGH",
@@ -32,7 +33,8 @@ const APEX_EFFORTS = ["max", "ultra"] as const;
  */
 const ULTRACODE_LAUNCH_EFFORT = "ultra";
 
-const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
+/** 런치 메뉴의 모델 어휘 원본 — 같은 세션을 두 표면이 다른 이름으로 부르지 않게 하는 자리다. */
+export const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
   // Claude Code's 1M coordinates stay under their plain menu labels.
   "fable[1m]": "Fable",
   "opus[1m]": "Opus",
