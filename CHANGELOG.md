@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-08-17
+
+### fleet-cli
+
+#### Changed
+- Remove 512K variants from the Codex Sol, Luna, and Terra picker and keep the existing 272K and explicit 1M variants only.
+
+### fleet-console
+
+#### Changed
+- Remove 512K variants from the Codex Sol, Luna, and Terra picker and keep the existing 272K and explicit 1M variants only.
+- Chat Mode now folds failed steps and writes outside the Theater into the same per-sentence tally as ordinary tool calls.
+
 ## [1.64.0] - 2026-08-17
 
 ### fleet-cli

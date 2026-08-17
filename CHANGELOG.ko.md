@@ -5,6 +5,19 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-08-17
+
+### fleet-cli
+
+#### Changed
+- Codex Sol, Luna, Terra 선택기에서 512K 변형을 제거하고 기존 272K 및 명시적 1M 변형만 유지합니다.
+
+### fleet-console
+
+#### Changed
+- Codex Sol, Luna, Terra 선택기에서 512K 변형을 제거하고 기존 272K 및 명시적 1M 변형만 유지합니다.
+- Chat Mode가 실패한 스텝과 Theater 밖 쓰기도 문장별 집계에 일반 도구와 같이 접습니다.
+
 ## [1.64.0] - 2026-08-17
 
 ### fleet-cli
