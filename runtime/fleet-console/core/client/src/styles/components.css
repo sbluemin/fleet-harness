@@ -5041,13 +5041,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--brass-glow);
 }
 
-/* 미확인 완료 — 유휴로 막 전이됐지만 아직 확인하지 않은 Operation. 상태 채널(--positive)이
-   테두리를 쓰고 포커스(--brass)가 항상 우선한다. 좌측 3px 스파인은 정체성 소유라 침범하지 않는다. */
-.side-bar-chip--unseen {
-  background: color-mix(in oklch, var(--positive) 10%, transparent);
-  border-color: color-mix(in oklch, var(--positive) 40%, transparent);
-}
-
 /* active: brass highlight */
 .side-bar-chip--active {
   background: color-mix(in oklch, var(--brass) 14%, transparent);
@@ -5159,18 +5152,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   line-height: 13px;
   letter-spacing: 0.06em;
   white-space: nowrap;
-}
-
-/* 미확인 도착 표식 — 활동 상태와 다른 축이지만 같은 마크 어휘(둥근 네모)를 쓴다.
-   상태 마크가 이름 왼쪽으로 옮겨간 뒤 이 표식이 오른쪽 끝을 잡는다. */
-.side-bar-chip-unseen {
-  flex: none;
-  width: 7px;
-  height: 7px;
-  margin-left: auto;
-  border-radius: 2px;
-  background: var(--positive);
-  box-shadow: 0 0 7px var(--positive-glow);
 }
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
@@ -5420,29 +5401,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: color-mix(in oklch, var(--status-color) 65%, var(--text-primary));
   font-variant-numeric: tabular-nums;
   text-align: right;
-}
-
-.side-bar-status-header__unseen {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  /* 미확인 카운트는 전체 카운트와 함께 우측 끝에 묶는다 — 라벨 옆에 띄우면 두 숫자가 헤더 양端에 갈라진다. */
-  margin-left: auto;
-  color: var(--positive-ink);
-  font-variant-numeric: tabular-nums;
-}
-
-.side-bar-status-header__unseen + .side-bar-status-header__count {
-  margin-left: 6px;
-}
-
-.side-bar-status-header__unseen::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--positive);
-  box-shadow: 0 0 6px var(--positive-glow);
 }
 
 .side-bar-status-empty-hint {

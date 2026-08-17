@@ -1237,8 +1237,15 @@ describe("Instrument core design contract", () => {
     expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
     expect(sidebar).toContain("if (!statusAxis) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
-    expect(chip).toContain('className="side-bar-chip-unseen"');
-    expect(chip).not.toContain("statusAxis && idleUnseen");
+    // 미확인 도착은 상태 마크와 같은 사실이다(idle + idleArrival = 표시 활동 AWAITING). 칩은 그 사실을
+    // 마크 하나로만 말한다 — 우측 점·행 틴트·헤더 카운트 배지는 같은 화면에서의 중복 발화였다.
+    expect(chip).not.toContain("side-bar-chip-unseen");
+    expect(chip).not.toContain("idleUnseen");
+    expect(sidebar).not.toContain("idleUnseen");
+    expect(sidebar).not.toContain("side-bar-status-header__unseen");
+    // 사이드바 엔트리는 생성 시점부터 표시 활동을 싣는다 — 그룹축·복구 선반이 raw idle을 그리면
+    // 도착한 Operation이 축마다 다른 상태를 말한다.
+    expect(sidebar).toContain("status: resolveOperationDisplayActivity({");
     expect(sideBarStore).toContain("let statusAxis = false;");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
     expect(idleArrival).toContain("let idleArrivalIds = new Set<string>();");
@@ -1269,12 +1276,13 @@ describe("Instrument core design contract", () => {
     expect(sidebar).not.toContain("side-bar-status-header__dot");
     expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
-    expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
-    expect(components).toMatch(/\.side-bar-chip--unseen \{[^}]*border-color:\s*color-mix\(in oklch, var\(--positive\)/);
+    // 사이드바에는 미확인 도착 전용 표면이 없다 — 상태 마크(aurora AWAITING)가 그 사실을 혼자 나른다.
+    expect(components).not.toContain(".side-bar-chip-unseen");
+    expect(components).not.toContain(".side-bar-chip--unseen");
+    expect(components).not.toContain(".side-bar-status-header__unseen");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
-    expect(components).toMatch(/\.side-bar-status-header__unseen::before \{[^}]*background:\s*var\(--positive\)/);
     expect(components).toContain(".side-bar-status-axis-live-tick {");
   });
 

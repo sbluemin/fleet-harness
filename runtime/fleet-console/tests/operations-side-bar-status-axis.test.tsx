@@ -233,7 +233,7 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
   });
 
-  it("suppresses group pills but keeps the status mark and shows idle unseen in inactive Theater preview chips", () => {
+  it("suppresses group pills but keeps the status mark and promotes an idle arrival to AWAITING in inactive Theater preview chips", () => {
     setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("preview", "group-a")], [GROUP_A], vi.fn(), "theater-other");
@@ -246,7 +246,17 @@ describe("OperationsSideBar STATUS axis", () => {
 
     act(() => setConsoleState({ operationRuntime: { preview: { lifecycle: "live", activity: "idle" } } }));
 
-    expect(required<HTMLElement>('[data-side-bar-chip-id="preview"] .side-bar-chip-unseen')).not.toBeNull();
+    // 미확인 도착은 별도 표식이 아니라 표시 활동의 AWAITING이다 — peek 칩도 마크 하나로만 말한다.
+    const arrived = required<HTMLElement>('[data-side-bar-chip-id="preview"]');
+    expect(arrived.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-awaiting");
+    expect(arrived.querySelector(".side-bar-chip-unseen")).toBeNull();
+
+    // STATUS를 끄면 peek는 groupOperations만 거친다 — 이 경로엔 재작성이 없으므로 이 단언만이
+    // buildTheaterEntries의 승격을 고정한다. STATUS 켠 채로 두면 섹션 재작성에 가려 통과해버린다.
+    act(() => setSideBarStatusAxis(false));
+    const grouped = required<HTMLElement>('[data-side-bar-chip-id="preview"]');
+    expect(grouped.closest(".side-bar-status-section--awaiting")).toBeNull();
+    expect(grouped.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-awaiting");
   });
 
   it("keeps keyboard reordering disabled in STATUS and unchanged in GROUP", () => {
@@ -374,49 +384,56 @@ describe("OperationsSideBar STATUS axis", () => {
       (chip) => chip.dataset.sideBarChipId,
     )).toEqual(["recorded"]);
     const recordedChip = required<HTMLElement>('[data-side-bar-chip-id="recorded"]');
-    expect(recordedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    expect(recordedChip.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-awaiting");
     expect(recordedChip.className).not.toContain("side-bar-chip--status-landed");
-    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
+    expect(recordedChip.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__count").textContent).toBe("1");
   });
 
-  it("tracks idle unseen while STATUS is off, omits focused transitions, and clears on focus", () => {
+  it("promotes an idle arrival to AWAITING while STATUS is off, omits focused transitions, and clears on focus", () => {
     const operations = [makeOperation("unseen", null), makeOperation("focused", null)];
     setConsoleState({ operationRuntime: { unseen: { lifecycle: "live", activity: "running" }, focused: { lifecycle: "live", activity: "running" } } });
     renderSideBar(operations, [], vi.fn(), THEATER.id, [THEATER], "focused");
 
     act(() => setConsoleState({ operationRuntime: { unseen: { lifecycle: "live", activity: "idle" }, focused: { lifecycle: "live", activity: "idle" } } }));
-    expect(container?.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    // GROUP 축(STATUS off)도 표시 활동을 읽는다 — 예전에는 여기서만 raw idle을 그려, 우측 미확인 점이
+    // 유일한 대기 신호였고 같은 사실이 초록 마크와 초록 점으로 두 번 그려졌다.
+    expect(required<HTMLElement>('[data-side-bar-chip-id="unseen"] .side-bar-chip-status').className).toContain("tenant-beacon is-awaiting");
+    expect(required<HTMLElement>('[data-side-bar-chip-id="focused"] .side-bar-chip-status').className).toContain("tenant-beacon is-idle");
+    expect(container?.querySelector(".side-bar-chip-unseen")).toBeNull();
 
     act(() => setSideBarStatusAxis(true));
 
     const unseenChip = required<HTMLElement>('[data-side-bar-chip-id="unseen"]');
-    expect(unseenChip.querySelector(".side-bar-chip-unseen")?.getAttribute("title")).toBe("Finished — not opened yet");
-    expect(unseenChip.getAttribute("aria-label")).toContain(" (unseen since idle)");
-    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
-    expect(required<HTMLElement>('[data-side-bar-chip-id="focused"]').querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(unseenChip.querySelector(".side-bar-chip-status")?.getAttribute("aria-label")).toBe("Awaiting input");
+    // 접근성 이름에는 더 이상 미확인 접미가 붙지 않는다 — 상태는 마크의 이름이 진다.
+    expect(unseenChip.getAttribute("aria-label")).toBe("Focus operation unseen");
+    expect(unseenChip.closest(".side-bar-status-section--awaiting")).not.toBeNull();
+    expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
 
     act(() => setActiveOperation("unseen"));
     rerenderSideBar(operations, [], THEATER.id, [THEATER], "unseen");
 
-    expect(required<HTMLElement>('[data-side-bar-chip-id="unseen"]').querySelector(".side-bar-chip-unseen")).toBeNull();
-    expect(container?.querySelector(".side-bar-status-section--idle .side-bar-status-header__unseen")).toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="unseen"] .side-bar-chip-status').className).toContain("tenant-beacon is-idle");
     expect(getIdleArrivalIds().has("unseen")).toBe(false);
   });
 
-  it("removes idle unseen on exit and grants it again on a later idle episode", () => {
+  it("drops the AWAITING promotion on exit and grants it again on a later idle episode", () => {
     const operations = [makeOperation("repeat", null)];
     setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar(operations);
+    const mark = () => required<HTMLElement>('[data-side-bar-chip-id="repeat"] .side-bar-chip-status').className;
 
     act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "idle" } } }));
-    expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"] .side-bar-chip-unseen')).not.toBeNull();
+    expect(mark()).toContain("tenant-beacon is-awaiting");
 
     act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "running" } } }));
-    expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"]').querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(mark()).toContain("tenant-beacon is-turn-running");
 
     act(() => setConsoleState({ operationRuntime: { repeat: { lifecycle: "live", activity: "idle" } } }));
-    expect(required<HTMLElement>('[data-side-bar-chip-id="repeat"] .side-bar-chip-unseen')).not.toBeNull();
+    expect(mark()).toContain("tenant-beacon is-awaiting");
   });
 
   it("does not mark an Operation that is already idle on page load", () => {
@@ -424,7 +441,9 @@ describe("OperationsSideBar STATUS axis", () => {
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("initial", null)]);
 
-    expect(required<HTMLElement>('[data-side-bar-chip-id="initial"]').querySelector(".side-bar-chip-unseen")).toBeNull();
+    const initial = required<HTMLElement>('[data-side-bar-chip-id="initial"]');
+    expect(initial.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-idle");
+    expect(initial.closest(".side-bar-status-section--idle")).not.toBeNull();
     expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
   });
 
@@ -460,11 +479,12 @@ describe("OperationsSideBar STATUS axis", () => {
     const dormantShelf = required<HTMLElement>(".triage-side-bar-dormant-shelf");
     const minimizedChip = required<HTMLElement>('[data-side-bar-chip-id="minimized-unseen"]');
     const dormantChip = required<HTMLElement>('[data-side-bar-chip-id="dormant-unseen"]');
-    expect(minimizedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    // 최소화 선반도 표시 활동을 읽는다 — 예전에는 raw idle 마크 옆에 미확인 점이 따로 붙었다.
+    expect(minimizedChip.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-awaiting");
     expect(minimizedChip.className).toContain("side-bar-chip--status-landed");
-    expect(minimizedShelf.querySelector(".side-bar-status-header__unseen")?.textContent).toBe("1");
-    expect(dormantChip.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(dormantChip.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-ended");
     expect(dormantChip.className).not.toContain("side-bar-chip--status-landed");
+    expect(minimizedShelf.querySelector(".side-bar-status-header__unseen")).toBeNull();
     expect(dormantShelf.querySelector(".side-bar-status-header__unseen")).toBeNull();
   });
 
@@ -523,9 +543,9 @@ describe("OperationsSideBar STATUS axis", () => {
 
     const firstLiveChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
     expect(getStatusTransitionTick("restored")).toBeUndefined();
-    expect(firstLiveChip.querySelector(".side-bar-chip-unseen")).toBeNull();
+    expect(firstLiveChip.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-idle");
     expect(firstLiveChip.className).not.toContain("side-bar-chip--status-landed");
-    expect(container?.querySelector(".side-bar-status-section--idle .side-bar-status-header__unseen")).toBeNull();
+    expect(container?.querySelector(".side-bar-status-header__unseen")).toBeNull();
 
     act(() => setConsoleState({ operationRuntime: { restored: { lifecycle: "live", activity: "running" } } }));
     const runningTick = getStatusTransitionTick("restored");
@@ -535,9 +555,9 @@ describe("OperationsSideBar STATUS axis", () => {
 
     const transitionedChip = required<HTMLElement>('[data-side-bar-chip-id="restored"]');
     expect(getStatusTransitionTick("restored")).toBeGreaterThan(runningTick ?? 0);
-    expect(transitionedChip.querySelector(".side-bar-chip-unseen")).not.toBeNull();
+    expect(transitionedChip.querySelector(".side-bar-chip-status")?.className).toContain("tenant-beacon is-awaiting");
     expect(transitionedChip.className).toContain("side-bar-chip--status-landed");
-    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__unseen").textContent).toBe("1");
+    expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__count").textContent).toBe("1");
   });
 
   it("uses the Theater name row for persisted collapse and exposes the split control accessibility contract", () => {
