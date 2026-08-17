@@ -722,4 +722,57 @@ describe("job end arrivals", () => {
     expect(state.context?.total).toBe(18_000);
     expect(state.context?.compactAt).toBe(174_000);
   });
+
+  it("moves the live total without touching the measured breakdown", () => {
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "context", total: 30_000, max: 500_000, slices: [{ name: "Messages", tokens: 30_000 }] },
+      { kind: "context-live", total: 42_768, max: 500_000 },
+    ]);
+    expect(state.context?.liveTotal).toBe(42_768);
+    // 내역과 그 짝인 측정 총량은 그대로다 — 라이브는 카테고리를 모른다.
+    expect(state.context?.total).toBe(30_000);
+    expect(state.context?.slices).toEqual([{ name: "Messages", tokens: 30_000 }]);
+    // 턴별 증가분은 시작 시점 값으로만 센다. 라이브가 그 자리를 건드리면 이 턴이 더한 몫이
+    // 다음 턴의 증가분에서 두 번 세어진다.
+    expect(state.turns.at(-1)?.contextBefore).toBe(30_000);
+  });
+
+  it("stands a live total up on its own before any measurement has arrived", () => {
+    // 첫 스냅숏은 왕복 때문에 한참 뒤에 온다(실측 20~30초). 그동안 총량만 아는 것은 사실이고,
+    // 빈 내역이 그 사실을 말한다.
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "context-live", total: 12_000, max: 500_000 },
+    ]);
+    expect(state.context).toMatchObject({ total: 0, liveTotal: 12_000, max: 500_000, slices: [] });
+    expect(state.turns.at(-1)?.contextBefore).toBeUndefined();
+  });
+
+  it("does not let a late start-of-turn snapshot roll the number backwards", () => {
+    // 시작 스냅숏은 그 턴이 시작될 때의 값이고 턴이 한참 돈 뒤에 도착한다. 그때 라이브를 버리면
+    // 화면의 숫자가 뒤로 간다 — 내역만 받고 총량은 지킨다.
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "context-live", total: 42_768, max: 500_000 },
+      { kind: "context", total: 30_000, max: 500_000, slices: [{ name: "Messages", tokens: 30_000 }] },
+    ]);
+    expect(state.context?.liveTotal).toBe(42_768);
+    expect(state.context?.total).toBe(30_000);
+    expect(state.turns.at(-1)?.contextBefore).toBe(30_000);
+  });
+
+  it("lets the end-of-turn snapshot retire the live total", () => {
+    // 턴이 닫힌 뒤의 측정은 그 시점의 값이므로 라이브가 더 말할 것이 없다. 그리고 그 값은
+    // 턴별 증가분의 기준을 건드리지 않는다.
+    const state = fold([
+      { kind: "dispatch", text: "go" },
+      { kind: "context", total: 30_000, max: 500_000, slices: [{ name: "Messages", tokens: 30_000 }] },
+      { kind: "context-live", total: 42_768, max: 500_000 },
+      { kind: "context", asOf: "end", total: 45_476, max: 500_000, slices: [{ name: "Messages", tokens: 45_476 }] },
+    ]);
+    expect(state.context?.liveTotal).toBeUndefined();
+    expect(state.context?.total).toBe(45_476);
+    expect(state.turns.at(-1)?.contextBefore).toBe(30_000);
+  });
 });

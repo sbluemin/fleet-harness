@@ -14,6 +14,15 @@ import {
 } from "@dotobokuri/core-agent/claude";
 
 import {
+  CLAUDE_COMPAT_CONTEXT_WINDOW,
+  CLAUDE_DEFAULT_CONTEXT_WINDOW,
+  compactThresholdTokens,
+  hasClaudeOneMillionMarker,
+  unprojectClaudeContextInputTokens,
+  type CompactCeiling,
+} from "@dotobokuri/core-ai-gateway";
+
+import {
   AGENT_CHAT_ASK_TOOLS,
   agentChatAskFromToolInput,
   chatEventsFromSdkMessage,
@@ -53,6 +62,20 @@ export type AgentChatSessionOrigin =
 export interface AgentChatSessionSeed {
   readonly baseUrl: string;
   readonly model: string;
+  /**
+   * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 자식은 좌표가 둘뿐이라
+   * 500k 모델도 200k라고 답하고, 그 답을 그대로 그리면 화면이 남의 자를 인쇄한다.
+   *
+   * 부재는 두 가지 뜻이고 둘 다 "손대지 않는다"로 같다: 네이티브 Claude 모델(투영이 애초에 없다)과
+   * 카탈로그에 없는 id(무엇으로 되돌릴지 알 수 없다).
+   */
+  readonly contextWindow?: number;
+  /**
+   * 자동 압축 시점 정책. 게이트웨이가 usage를 투영할 때 쓴 값과 **같아야** 되돌릴 수 있으므로,
+   * 세션이 열릴 때 한 번 고정한다 — 도중에 바뀐 정책으로 이전 정책이 투영한 값을 되돌리면
+   * 그 세션의 남은 수명 내내 어긋난다.
+   */
+  readonly compactCeiling?: CompactCeiling | null;
   readonly effort?: ClaudeGatewayEffort;
   /**
    * 세션 설정 `ultracode`. 퀵런치 트랙의 ULTRACODE가 채팅으로 태어날 때 CLI `--effort ultracode`와
@@ -337,6 +360,18 @@ class AgentChatSession {
    * 답은 턴이 끝난 뒤에 오므로(실측), 그 사이 새 턴이 시작했다면 그 값은 남의 턴 자리에 앉는다.
    */
   private contextGeneration = 0;
+  /**
+   * control 요청이 하나 떠 있는가.
+   *
+   * 겹쳐 던지면 자식이 직렬로 처리한다 — 실측하면 요청 하나에 약 30초가 들고, 셋을 던진 마지막
+   * 답은 100초 뒤에 왔다. 그래서 앞선 요청이 살아 있는 동안에는 새로 던지지 않는다. 놓친 창은
+   * 다음 경계(턴 시작·턴 종료)가 다시 얻는다.
+   */
+  private contextInFlight = false;
+  /** 턴이 도는 동안 흘러간 라이브 총량. 턴 경계에서 비운다. */
+  private liveContextTotal: number | null = null;
+  /** 자식이 스냅숏에서 직접 말한 좌표. 도착하기 전에는 모델 id에서 유도한다. */
+  private observedClaudeCoordinate: number | null = null;
 
   constructor(operationId: string, seed: AgentChatSessionSeed, createSdk: CreateChatSdk) {
     this.operationId = operationId;
@@ -752,32 +787,42 @@ class AgentChatSession {
   }
 
   /**
-   * 턴이 시작하는 순간 자식에게 문맥 내역을 묻고, 답이 오면 그대로 저널에 싣는다.
+   * 자식에게 문맥 **내역**을 묻고, 답이 오면 저널에 싣는다. 두 경계에서 불린다 — 턴을 보내기
+   * 직전(`"start"`)과 턴이 닫힌 직후(`"end"`).
    *
-   * **이 한 번이 유일한 기회다**(실측). 자식은 턴이 시작되면 control 채널을 닫아, +0ms의 요청만
-   * 답을 받고 그 뒤의 요청은 턴이 10초를 돌든 전부 "Query closed before response received"로
-   * 끝난다. 주기적으로 물어 최신값을 좇는 설계는 이 자식에서 성립하지 않는다.
+   * 왕복이 느리다는 것이 이 배선의 전제다(실측 21~88초, 요청 하나에 약 30초, 직렬 큐). 그래서
+   * 총량은 이 채널에 맡기지 않고 `message_delta` usage가 진다. 여기서 얻는 것은 카테고리 분해 —
+   * 그것만은 control 채널이 유일한 출처다.
    *
-   * 그래서 값은 **이 턴이 시작될 때까지의** 문맥이다 — 방금 끝난 턴이 더한 몫은 다음 턴이
-   * 시작될 때 비로소 드러난다. 화면은 그 지연을 감추지 않는다.
+   * 턴 중에는 아예 묻지 않는다. 자식이 턴이 시작되면 control을 닫아 +0ms의 요청만 답을 받고
+   * 그 뒤는 전부 "Query closed before response received"로 끝난다(실측). 유휴 폴링도 하지 않는다 —
+   * 답은 오지만 요청마다 30초를 태우고 큐만 밀린다.
    *
    * 응답을 기다리지 않는 이유는 스트림 때문이다: 여기서 await하면 첫 메시지 소비가 그만큼 늦다.
-   * 늦게 도착한 답도 같은 턴의 시작 시점 값이므로, 그때 실어도 뜻이 달라지지 않는다.
    */
-  private snapshotContextAtTurnStart(session: ClaudeGatewaySession): void {
+  private requestContextSnapshot(session: ClaudeGatewaySession, asOf: "start" | "end"): void {
+    // 앞선 요청이 떠 있으면 던지지 않는다. 겹쳐 던진 만큼 자식이 직렬로 밀어내므로, 두 번째 답은
+    // 첫 번째보다 30초 늦게 오고 그 사이 경계는 이미 지나가 있다.
+    if (this.contextInFlight) return;
     // 응답은 이 턴이 **끝난 뒤에** 도착한다(실측: turn-end → context). 그래서 어느 턴의 값인지를
     // 세대로 붙들어 둔다 — 다음 턴이 이미 시작했다면 이 값은 그 턴의 것이 아니고, 그대로 실으면
     // 리듀서가 남의 턴에 붙여 증가분을 한 턴씩 밀어 버린다. 새 턴은 자기 스냅숏을 따로 받는다.
     const generation = ++this.contextGeneration;
+    this.contextInFlight = true;
+    const settle = (usage: ClaudeGatewayContextUsage | null): void => {
+      this.contextInFlight = false;
+      if (usage && generation === this.contextGeneration) this.pushContext(usage, asOf);
+    };
     // 이 표시 하나 때문에 턴이 죽어서는 안 된다. 계약상 이 메서드는 있어야 하지만, 없거나 동기로
     // 던지는 런이 오면 그 예외는 턴 루프까지 올라가 대화 전체를 실패로 닫는다(실측: 계약을
     // 따르지 않는 대역 하나가 세션 테스트 10건을 그렇게 무너뜨렸다).
     try {
-      void session.getContextUsage().then((usage) => {
-        if (usage && generation === this.contextGeneration) this.pushContext(usage);
-      }, () => undefined);
+      void session.getContextUsage().then(settle, () => {
+        this.contextInFlight = false;
+      });
     } catch {
       // 문맥 표시가 없는 턴은 여전히 온전한 턴이다.
+      this.contextInFlight = false;
     }
   }
 
@@ -792,29 +837,124 @@ class AgentChatSession {
    * 예약분(자동 압축 여유)과 남은 자리는 **쓴 것이 아니다**. 같은 목록에 두면 합이 언제나 창
    * 전체가 되어 미터가 항상 100%를 가리킨다.
    */
-  private pushContext(usage: ClaudeGatewayContextUsage): void {
+  private pushContext(usage: ClaudeGatewayContextUsage, asOf: "start" | "end"): void {
+    // 자식이 직접 말한 좌표가 유도값을 대신한다. 이 뒤의 라이브 총량은 같은 자를 쓴다.
+    this.observedClaudeCoordinate = usage.max;
     const spent = usage.categories.filter((category) =>
       !category.deferred && category.tokens > 0 && !CONTEXT_UNSPENT.has(category.name));
     const reserved = usage.categories.find((category) => category.name === CONTEXT_RESERVED_NAME);
+    const window = this.realWindow(usage.max);
+    const slices = spent.map((category) => ({
+      name: category.name,
+      tokens: window ? window.unproject(category.tokens) : category.tokens,
+    }));
     this.push({
       kind: "context",
-      total: spent.reduce((sum, category) => sum + category.tokens, 0),
-      max: usage.max,
-      ...(reserved && reserved.tokens > 0 ? { reserved: reserved.tokens } : {}),
-      ...(usage.compactAt === null ? {} : { compactAt: usage.compactAt }),
-      slices: spent.map((category) => ({ name: category.name, tokens: category.tokens })),
+      asOf,
+      total: slices.reduce((sum, slice) => sum + slice.tokens, 0),
+      max: window ? window.max : usage.max,
+      // 예약분은 되돌리지 않고 **갈아 끼운다**. 자식의 값은 자기 좌표의 여유(max − compactAt)이고
+      // 실제 여유는 정책이 정하는 다른 수다 — 같은 비율로 늘리면 있지도 않은 자리를 예약해 둔다.
+      ...(window
+        ? (window.max > window.compactAt ? { reserved: window.max - window.compactAt } : {})
+        : (reserved && reserved.tokens > 0 ? { reserved: reserved.tokens } : {})),
+      ...(window
+        ? (usage.compactAt === null ? {} : { compactAt: window.compactAt })
+        : (usage.compactAt === null ? {} : { compactAt: usage.compactAt })),
+      slices,
       ...(usage.memoryFiles.length > 0
-        ? { memoryFiles: usage.memoryFiles.map((file) => ({ name: file.path, tokens: file.tokens })) }
+        ? {
+            memoryFiles: usage.memoryFiles.map((file) => ({
+              name: file.path,
+              tokens: window ? window.unproject(file.tokens) : file.tokens,
+            })),
+          }
         : {}),
       ...(usage.mcpTools.length > 0
         ? {
             mcpTools: usage.mcpTools.map((tool) => ({
               name: tool.server ? `${tool.server} · ${tool.name}` : tool.name,
-              tokens: tool.tokens,
+              tokens: window ? window.unproject(tool.tokens) : tool.tokens,
             })),
           }
         : {}),
     });
+  }
+
+  /**
+   * 턴이 도는 동안 총량을 흘린다. 미터가 이 턴을 따라 움직이는 유일한 경로다.
+   *
+   * 읽는 것은 `message_delta`의 usage **하나뿐**이며, 그것은 소거로 남은 결과다(실측):
+   * `message_start`와 완성 `assistant`의 usage는 언제나 0으로 오고, `result.usage`는 그 턴의 모든
+   * 모델 호출을 **합산한** 값이어서 창 점유가 아니다 — 도구를 다섯 번 돈 턴에서 61,630이었고 같은
+   * 순간의 실제 점유는 15,785였다. 그것을 총량으로 쓰면 미터가 네 배로 뛴다.
+   *
+   * 서브에이전트의 usage도 제외한다. 그 창은 부모의 창이 아니다.
+   */
+  private trackLiveContext(message: ClaudeGatewayMessage): void {
+    if (message.type !== "stream_event") return;
+    if (typeof message.parent_tool_use_id === "string" && message.parent_tool_use_id.length > 0) return;
+    const event = message.event;
+    if (!isRecord(event) || event.type !== "message_delta") return;
+    const total = readClaudeOccupiedInputTokens(event.usage);
+    if (total === null) return;
+    // 자식 좌표의 총량이므로 스냅숏과 같은 자로 되돌린다.
+    const claudeCoordinate = this.claudeCoordinate();
+    const window = this.realWindow(claudeCoordinate);
+    const live = window ? window.unproject(total) : total;
+    // 같은 수를 다시 실으면 구독자가 같은 렌더를 한 번 더 한다. 델타는 모델 호출마다 오므로
+    // 도구 하나가 아무것도 더하지 않은 호출에서 그런 일이 실제로 생긴다.
+    if (this.liveContextTotal === live) return;
+    this.liveContextTotal = live;
+    this.pushEphemeral({
+      kind: "context-live",
+      total: live,
+      max: window ? window.max : claudeCoordinate,
+    });
+  }
+
+  /**
+   * 자식이 이 세션을 재는 좌표.
+   *
+   * 스냅숏이 한 번이라도 왔으면 자식이 직접 말한 값이 권위다. 그 전에는 유도한다 — 좌표를 정하는
+   * 것은 모델 id의 `[1m]` 마커이고, 그 마커를 붙이는 규칙이 곧 카탈로그 창이 1M에 닿는지 여부다.
+   * 유도가 필요한 이유는 라이브 총량이 첫 스냅숏(왕복 30초)을 기다릴 수 없기 때문이다.
+   */
+  private claudeCoordinate(): number {
+    if (this.observedClaudeCoordinate !== null) return this.observedClaudeCoordinate;
+    const window = this.seed.contextWindow;
+    const oneMillion = typeof window === "number" && Number.isFinite(window) && window > 0
+      ? window >= CLAUDE_COMPAT_CONTEXT_WINDOW
+      : hasClaudeOneMillionMarker(this.seed.model);
+    return oneMillion ? CLAUDE_COMPAT_CONTEXT_WINDOW : CLAUDE_DEFAULT_CONTEXT_WINDOW;
+  }
+
+  /**
+   * 자식이 보고한 좌표를 이 모델의 실제 창으로 되돌리는 자.
+   *
+   * `null`은 되돌릴 것이 없다는 뜻이며 세 경우가 여기로 온다: 시드에 카탈로그 창이 없는 세션
+   * (네이티브 Claude 모델·카탈로그 밖 id), 그리고 자식이 자기 두 좌표가 아닌 값을 말한 세션 —
+   * 후자는 역함수가 스스로 항등으로 접는다. 어느 경우든 오늘의 숫자가 그대로 나간다.
+   */
+  private realWindow(claudeCoordinate: number): {
+    readonly max: number;
+    readonly compactAt: number;
+    readonly unproject: (tokens: number) => number;
+  } | null {
+    const max = this.seed.contextWindow;
+    if (typeof max !== "number" || !Number.isFinite(max) || max <= 0) return null;
+    // 창만 바꿔 싣고 점유는 자식 좌표에 남겨 두는 것이 이 결함의 가장 나쁜 형태다 — 분모는 500k인데
+    // 분자는 200k 자의 값이어서 점유율이 실제의 1/3로 보인다. 되돌릴 수 없는 좌표면 둘 다 놓아둔다.
+    if (claudeCoordinate !== CLAUDE_DEFAULT_CONTEXT_WINDOW
+      && claudeCoordinate !== CLAUDE_COMPAT_CONTEXT_WINDOW) {
+      return null;
+    }
+    const ceiling = this.seed.compactCeiling ?? null;
+    return {
+      max,
+      compactAt: compactThresholdTokens(max, ceiling),
+      unproject: (tokens) => unprojectClaudeContextInputTokens(tokens, max, claudeCoordinate, ceiling),
+    };
   }
 
   private push(event: AgentChatStreamEvent): void {
@@ -967,6 +1107,7 @@ class AgentChatSession {
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
         this.rememberJobOutput(message);
+        this.trackLiveContext(message);
         for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
           this.ingest(event);
         }
@@ -1058,10 +1199,17 @@ class AgentChatSession {
     // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
     this.abandonAsks("The turn ended before the question was answered.");
     this.seed.reportActivity(false);
+    // 라이브 총량은 이 턴의 것이었다. 다음 턴의 첫 delta가 자기 값을 세울 때까지, 화면은 방금
+    // 실린 총량을 그대로 들고 있는다 — 여기서 비우면 턴이 끝나는 순간 미터가 뒤로 간다.
+    this.liveContextTotal = null;
     const awaiting = this.awaitingTurn;
     this.awaitingTurn = null;
     awaiting?.();
     this.releaseTurnCloseWaiters();
+    // 방금 끝난 턴이 더한 몫의 **내역**은 여기서만 얻는다. 총량은 이미 delta가 실어 주었고,
+    // 이 답은 30초쯤 뒤에 도착해 카테고리를 정정한다(실측). 세션이 없으면 물어볼 상대도 없다.
+    const session = this.session;
+    if (session) this.requestContextSnapshot(session, "end");
   }
 
   /** 자리가 비었음을 줄 서 있던 디스패치들에게 알린다. 결말 하나가 전부를 깨운다. */
@@ -1157,8 +1305,8 @@ class AgentChatSession {
       const settled = new Promise<void>((resolve) => {
         this.awaitingTurn = resolve;
       });
-      // 문맥 스냅숏은 보내기 **직전**이다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
-      this.snapshotContextAtTurnStart(session);
+      // 문맥 내역은 보내기 **직전**에 묻는다. 턴이 돌기 시작하면 자식이 control 채널을 닫는다.
+      this.requestContextSnapshot(session, "start");
       session.send(text);
       // 이제부터 이 턴은 자식의 것이기도 하다 — 중지해도 자식이 결말을 낸다.
       this.turnReachedChild = true;
@@ -1323,4 +1471,31 @@ export class AgentChatRegistry {
     const operationIds = new Set([...this.sessions.keys(), ...this.ensureFlights.keys()]);
     await Promise.all([...operationIds].map((operationId) => this.dispose(operationId)));
   }
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Anthropic usage에서 **창을 점유한** 입력 토큰을 읽는다.
+ *
+ * 세 자리를 더하는 이유는 캐시가 점유를 줄이지 않기 때문이다 — 캐시로 읽은 토큰도 창에는 그대로
+ * 앉아 있다. 실측하면 이 합이 자식이 세는 spent 총량과 같은 수였다(도구를 다섯 번 돈 턴에서
+ * 50+14,795 · 539+14,839 · 250+15,372 · 190+15,595, 마지막 값이 턴 종료 스냅숏과 일치).
+ *
+ * `output_tokens`는 더하지 않는다. 그것은 다음 호출의 입력이 되어 그때 위 세 자리에 나타난다.
+ * 한 자리도 못 읽으면 `null`이며, 그 프레임은 침묵한다 — 0은 사실이 아니라 빈칸이다.
+ */
+function readClaudeOccupiedInputTokens(usage: unknown): number | null {
+  if (!isRecord(usage)) return null;
+  let total = 0;
+  let found = false;
+  for (const field of ["input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens"]) {
+    const tokens = usage[field];
+    if (typeof tokens !== "number" || !Number.isFinite(tokens) || tokens < 0) continue;
+    total += tokens;
+    found = true;
+  }
+  return found ? total : null;
 }

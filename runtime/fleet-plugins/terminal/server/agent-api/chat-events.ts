@@ -95,7 +95,26 @@ export type AgentChatStreamEvent =
       readonly slices: readonly AgentChatContextSlice[];
       readonly memoryFiles?: readonly AgentChatContextSlice[];
       readonly mcpTools?: readonly AgentChatContextSlice[];
+      /**
+       * 이 내역이 언제의 것인가. 부재는 `"start"`이며 그것이 옛 저널의 뜻이기도 하다.
+       *
+       * 두 값이 갈리는 자리는 총량이다. `"start"`는 이 턴이 **시작될 때**의 값이라 턴이 도는 동안
+       * 흐른 라이브 총량보다 작을 수 있고, 그때 총량까지 갈아 끼우면 화면의 숫자가 뒤로 간다.
+       * `"end"`는 턴이 닫힌 뒤 다시 물어 받은 값이므로 무조건 권위다.
+       */
+      readonly asOf?: "start" | "end";
     }
+  /**
+   * 턴이 도는 동안의 총량. **라이브 전용이며 저널에 싣지 않는다.**
+   *
+   * control 채널로는 이 값을 얻을 수 없다 — 실측하면 그 왕복이 21~88초이고 요청이 직렬로 줄을
+   * 서므로, 턴 중에 물어 봐야 답은 턴이 끝난 뒤에 온다. 대신 SDK가 모델 호출마다 흘리는
+   * `message_delta`의 usage를 읽는다. 그 합(`input_tokens` + 캐시 읽기/쓰기)은 자식이 세는
+   * spent 총량과 **같은 수**였고(실측 5건 일대일), 그래서 이것은 추정이 아니라 측정이다.
+   *
+   * 내역은 실리지 않는다. 카테고리 분해는 control 채널만 알고, 그것은 턴이 닫힌 뒤에 온다.
+   */
+  | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }

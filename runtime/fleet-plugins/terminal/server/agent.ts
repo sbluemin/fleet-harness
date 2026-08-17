@@ -19,7 +19,7 @@ import { combineAgentCliLaunchMetadata, type AgentCliLaunchMetadata } from "./ag
 import { AGENT_CLI_COMMANDS, createAgentCliPathStore, resolveAgentCliBinary } from "./agent-api/agent-cli-paths.js";
 import type { AgentCliDiagnostics } from "./agent-api/agent-cli-types.js";
 import { readConsoleQuotaSnapshot } from "./agent-api/gateway-loadout.js";
-import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
+import { findGatewayModel, resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
@@ -1361,6 +1361,17 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     } catch {
       // 캐시를 세우지 못해도 네이티브 모델 세션은 뜬다. 게이트웨이 별칭 세션만 첫 턴에 드러난다.
     }
+    // 카탈로그가 이 좌표의 실제 창을 아는 유일한 자리다. 게이트웨이가 usage를 투영할 때 읽는
+    // 것과 같은 조회이므로 두 쪽이 같은 수를 쓴다.
+    const gatewayModel = findGatewayModel(model);
+    const gatewayContextWindow = typeof gatewayModel?.contextWindow === "number"
+      && Number.isFinite(gatewayModel.contextWindow)
+      && gatewayModel.contextWindow > 0
+      ? gatewayModel.contextWindow
+      : undefined;
+    const gatewayCompactCeiling = gatewayContextWindow === undefined
+      ? undefined
+      : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
     const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
     const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
     const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
@@ -1373,6 +1384,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       seed: {
         baseUrl: gatewayBaseUrl,
         model,
+        // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
+        // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.
+        // 네이티브 Claude 모델은 카탈로그에 없으므로 두 값 없이 지나가고 오늘의 숫자를 유지한다.
+        ...(gatewayContextWindow === undefined ? {} : { contextWindow: gatewayContextWindow }),
+        ...(gatewayCompactCeiling === undefined ? {} : { compactCeiling: gatewayCompactCeiling }),
         ...(launchEffort ? { effort: launchEffort.effort } : {}),
         cwd,
         claudeConfigDir,

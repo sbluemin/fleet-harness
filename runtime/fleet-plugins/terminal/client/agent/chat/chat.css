@@ -2054,6 +2054,19 @@
   border: 1px dashed var(--hairline-strong);
 }
 
+/*
+ * 아직 분해를 모르는 몫. 채움도(측정된 카테고리) 빈칸도(남은 자리) 아닌 셋째 상태이므로 셋째
+ * 무늬를 진다 — 사선은 "여기는 차 있지만 무엇으로 차 있는지는 아직 모른다"를 색 없이 말한다.
+ */
+.agent-chat-ctx-stack > i.is-pending,
+.agent-chat-ctx-swatch.is-pending {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklab, var(--ink-spectral) 55%, var(--ink-veil)) 0 2px,
+    var(--ink-veil) 2px 4px
+  );
+}
+
 .agent-chat-ctx-name {
   flex: 1;
   min-width: 0;

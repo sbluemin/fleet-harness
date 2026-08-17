@@ -281,7 +281,7 @@ export function AgentChatView({
           <div className="agent-view-chip-row">
             <SessionCoordinateChip coordinates={coordinates} t={t} />
             {leadingChip}
-            <ContextMeterChip context={state.context} language={language} />
+            <ContextMeterChip context={state.context} working={turnRunning} language={language} />
             <button
               type="button"
               className="agent-chat-mode-chip"
@@ -1727,8 +1727,29 @@ function formatDuration(durationMs: number): string {
  */
 function formatTokens(tokens: number): string {
   if (tokens < 1_000) return String(Math.round(tokens));
+  // 백만은 "1000k"가 아니라 "1M"이다. 게이트웨이 모델의 실제 창이 이 자리에 실리면서 분모가
+  // 백만대에 닿았고, 같은 값을 설정 화면은 이미 M으로 적는다 — 한 제품이 같은 수를 두 단위로
+  // 적으면 사용자가 두 번 읽어야 한다.
+  if (tokens >= 1_000_000) {
+    const millions = tokens / 1_000_000;
+    return millions < 10 ? `${trimTrailingZero(millions.toFixed(1))}M` : `${Math.round(millions)}M`;
+  }
   const thousands = tokens / 1_000;
   return thousands < 10 ? `${thousands.toFixed(1)}k` : `${Math.round(thousands)}k`;
+}
+
+function trimTrailingZero(text: string): string {
+  return text.endsWith(".0") ? text.slice(0, -2) : text;
+}
+
+/**
+ * 화면이 총량으로 읽어야 하는 수.
+ *
+ * 라이브 값이 있으면 그것이다 — 측정된 총량은 마지막 스냅숏 시점의 것이고, 라이브는 마지막 모델
+ * 호출 시점의 것이므로 언제나 같거나 더 새롭다. 둘은 같은 자로 잰 같은 계열이다(실측).
+ */
+function contextOccupied(context: AgentChatContext): number {
+  return context.liveTotal ?? context.total;
 }
 
 /**
@@ -1739,7 +1760,7 @@ function formatTokens(tokens: number): string {
  * 고정 비율로 돌아간다.
  */
 function contextTone(context: AgentChatContext): "" | " is-warn" | " is-critical" {
-  const ratio = context.total / context.max;
+  const ratio = contextOccupied(context) / context.max;
   const limit = context.compactAt !== undefined ? context.compactAt / context.max : 1;
   if (ratio >= limit * 0.97) return " is-critical";
   if (ratio >= limit * 0.75) return " is-warn";
@@ -1749,16 +1770,19 @@ function contextTone(context: AgentChatContext): "" | " is-warn" | " is-critical
 /**
  * 문맥 미터 칩과 그 내역.
  *
- * 값은 **마지막 지시가 시작될 때**의 것이다. 자식은 턴이 시작되면 control 채널을 닫으므로 그
- * 한 순간이 물어볼 수 있는 유일한 시점이고(실측), 그래서 방금 끝난 턴이 더한 몫은 다음 지시를
- * 보낼 때 드러난다. 각주가 그 사실을 항상 말한다 — 숫자만 두면 사용자가 이것을 지금 값으로 읽고,
- * 방금 붙인 큰 파일이 공짜로 보인다.
+ * 총량은 턴이 도는 동안 모델 호출마다 갱신된다 — SDK가 흘리는 `message_delta` usage가 자식이 세는
+ * 값과 같은 수이기 때문이다(실측 5건 일대일). 내역은 그보다 늦다: 카테고리 분해는 control 채널만
+ * 알고 그 왕복이 30초쯤 걸리므로, 팝오버의 총량과 내역 합이 벌어질 수 있고 그 차이는 "이 턴" 행이
+ * 드러낸다. 감추면 사용자가 방금 붙인 큰 파일을 공짜로 읽는다.
  */
 function ContextMeterChip({
   context,
+  working,
   language,
 }: {
   readonly context: AgentChatContext | null;
+  /** 턴이 도는 중인가. 라이브 값이 아직 없을 때만 낡음을 주장할 근거가 된다. */
+  readonly working: boolean;
   readonly language: "en" | "ko";
 }) {
   const t = getT(language);
@@ -1789,19 +1813,23 @@ function ContextMeterChip({
   // 한 턴도 끝나지 않았으면 말할 수 있는 것이 없다. 0%짜리 미터는 빈 사실이 아니라 틀린 사실이다.
   if (!context) return null;
 
-  const percent = Math.round((context.total / context.max) * 100);
-  const summary = `${formatTokens(context.total)} / ${formatTokens(context.max)}`;
+  const occupied = contextOccupied(context);
+  const percent = Math.round((occupied / context.max) * 100);
+  const summary = `${formatTokens(occupied)} / ${formatTokens(context.max)}`;
+  // 낡음을 주장할 수 있는 구간은 하나뿐이다: 턴이 시작됐고 아직 첫 delta가 오지 않은 사이.
+  // 그 뒤로는 값이 실시간이므로 흐리게 그리면 사실이 아니다.
+  const stale = working && context.liveTotal === undefined;
   return (
     <div className={`agent-chat-ctx${contextTone(context)}`} ref={wrapRef}>
       <button
         type="button"
-        className="agent-chat-mode-chip agent-chat-ctx-chip"
+        className={`agent-chat-mode-chip agent-chat-ctx-chip${stale ? " is-stale" : ""}`}
         aria-expanded={open}
         aria-label={t("terminal.chat.contextAria", { percent: String(percent), summary })}
         title={t("terminal.chat.contextAt", { summary })}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
-        <ContextArc ratio={context.total / context.max} />
+        <ContextArc ratio={occupied / context.max} />
         <span className="agent-chat-ctx-pct">{percent}%</span>
       </button>
       {open ? <ContextBreakdown context={context} language={language} /> : null}
@@ -1845,16 +1873,22 @@ function ContextBreakdown({
   const t = getT(language);
   const rows = [...context.slices].sort((left, right) => right.tokens - left.tokens);
   const reserved = context.reserved ?? 0;
+  const occupied = contextOccupied(context);
+  // 내역은 마지막 측정의 것이고 총량은 그보다 새롭다. 그 차이는 아직 분해를 모르는 몫이므로
+  // 한 행으로 세운다 — 빼고 그리면 행 합과 총량이 어긋난 팝오버가 되고, 총량에 녹이면 사용자가
+  // 측정된 내역과 아직 모르는 몫을 구분할 수 없다.
+  const measured = rows.reduce((sum, slice) => sum + slice.tokens, 0);
+  const pending = Math.max(0, occupied - measured);
   // 남은 자리는 창에서 쓴 몫과 예약분을 뺀 나머지다. 예약분을 빼지 않으면 실제로 쓸 수 없는
   // 자리를 여유로 세어, 압축이 시작될 때 사용자가 아직 여유가 있다고 읽는다.
-  const free = Math.max(0, context.max - context.total - reserved);
-  const percent = Math.round((context.total / context.max) * 100);
+  const free = Math.max(0, context.max - occupied - reserved);
+  const percent = Math.round((occupied / context.max) * 100);
   return (
     <div className="agent-chat-ctx-pop" role="dialog" aria-label={t("terminal.chat.contextTitle")}>
       <div className="agent-chat-ctx-pop-head">
         <span className="agent-chat-ctx-pop-title">{t("terminal.chat.contextTitle")}</span>
         <span className="agent-chat-ctx-pop-total">
-          {formatTokens(context.total)} / {formatTokens(context.max)} · {percent}%
+          {formatTokens(occupied)} / {formatTokens(context.max)} · {percent}%
         </span>
       </div>
       <div className="agent-chat-ctx-stack">
@@ -1868,6 +1902,12 @@ function ContextBreakdown({
             } as React.CSSProperties}
           />
         ))}
+        {pending > 0 ? (
+          <i
+            className="is-pending"
+            style={{ width: `${(pending / context.max) * 100}%` }}
+          />
+        ) : null}
       </div>
       <ul className="agent-chat-ctx-rows">
         {rows.map((slice, index) => (
@@ -1882,6 +1922,14 @@ function ContextBreakdown({
             <span className="agent-chat-ctx-share">{((slice.tokens / context.max) * 100).toFixed(1)}%</span>
           </li>
         ))}
+        {pending > 0 ? (
+          <li>
+            <span className="agent-chat-ctx-swatch is-pending" aria-hidden="true" />
+            <span className="agent-chat-ctx-name">{t("terminal.chat.contextPending")}</span>
+            <span className="agent-chat-ctx-tokens">{formatTokens(pending)}</span>
+            <span className="agent-chat-ctx-share">{((pending / context.max) * 100).toFixed(1)}%</span>
+          </li>
+        ) : null}
         {reserved > 0 ? (
           <li className="agent-chat-ctx-free">
             <span className="agent-chat-ctx-swatch is-free" aria-hidden="true" />
