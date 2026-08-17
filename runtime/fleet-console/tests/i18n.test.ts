@@ -82,6 +82,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Fleet CLI",
   "Fleet Console",
   "Fleet Desktop",
+  "Fleet Mobile",
   "Fleet Plugin",
   "Fleet Core",
   "CLI",
