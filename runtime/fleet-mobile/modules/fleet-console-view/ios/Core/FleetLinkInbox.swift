@@ -37,11 +37,14 @@ public enum FleetLinkInbox {
     drain()
   }
 
-  public static func attach(_ next: FleetLinkReceiver) {
+  // true면 대기 링크를 이 호출에서 동기 전달했다. 뷰는 이 값으로 영속 activeTarget 재연결을
+  // 건너뛴다 — 콜드 스타트 fleet:// 가 저장된 타깃보다 앞선다.
+  @discardableResult
+  public static func attach(_ next: FleetLinkReceiver) -> Bool {
     lock.lock()
     receiver = next
     lock.unlock()
-    drain()
+    return drain()
   }
 
   public static func detach(_ next: FleetLinkReceiver) {
@@ -59,12 +62,15 @@ public enum FleetLinkInbox {
     return value
   }
 
-  private static func drain() {
+  @discardableResult
+  private static func drain() -> Bool {
     lock.lock()
     let active = receiver
     lock.unlock()
-    guard let active else { return }
-    if let value = consume() { active.handle(value) }
+    guard let active else { return false }
+    guard let value = consume() else { return false }
+    active.handle(value)
+    return true
   }
 
   // 테스트 격리를 위한 리셋(프로덕션 경로에서는 호출하지 않는다).

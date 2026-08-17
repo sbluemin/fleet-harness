@@ -12,7 +12,7 @@ import Network
 // 대신 WKNavigationDelegate의 ServerTrust 챌린지에서 LocalCertificatePolicy로 확인한다.
 // 비로컬 서브리소스 차단은 shouldInterceptRequest가 없으므로 게이트웨이(로컬 오리진만 서빙)
 // 와 재작성된 CSP(connect-src 로컬 한정)가 담당한다.
-// 런타임 동작은 [Unverified-on-device].
+// Simulator와 물리 iPad에서 페어링부터 readiness 커밋까지 검증했다.
 
 public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegate, WKScriptMessageHandler {
   private static let readinessObject = "fleetReadiness"
@@ -60,10 +60,14 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     super.init(appContext: appContext)
 
     activeTarget = targetStore.active()
-    FleetLinkInbox.attach(linkReceiver)
+    // 콜드 스타트 fleet:// 가 동기 전달되면 영속 activeTarget 재연결보다 앞선다.
+    let deliveredPendingLink = FleetLinkInbox.attach(linkReceiver)
     NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillChangeFrameNotification, object: nil)
     NotificationCenter.default.addObserver(self, selector: #selector(keyboardChanged(_:)), name: UIResponder.keyboardWillHideNotification, object: nil)
 
+    if deliveredPendingLink {
+      return
+    }
     if let target = activeTarget {
       emit("connecting", label: target.label, origin: target.origin)
       beginAttempt(target, token: nil)
@@ -453,6 +457,30 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   public func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
     if let staged = contextFor(webView) { failStaged(staged, "remote_host_unavailable") }
+  }
+
+  // 커밋된 활성 WKWebView의 콘텐츠 프로세스가 죽으면 검은 연결 화면을 남기지 않는다.
+  // 죽은 스테이징 자원을 닫고 현재 활성 타깃으로 새 시도를 연다. 스테이징/비활성 뷰는 무시한다.
+  public func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+    guard let activeLoad, activeLoad.view === webView else { return }
+    recoverTerminatedActiveLoad(activeLoad, target: activeTarget)
+  }
+
+  private func recoverTerminatedActiveLoad(_ doomed: StagedLoad, target: PersistedTarget?) {
+    destroyStaging()
+    if let view = activeView {
+      view.removeFromSuperview()
+      view.destroySafely()
+    }
+    activeView = nil
+    activeLoad = nil
+    activeGateway?.close()
+    activeGateway = nil
+    guard let target else {
+      emit("error", code: "remote_host_unavailable")
+      return
+    }
+    beginAttempt(target, token: nil)
   }
 
   // MARK: - WKUIDelegate (deny windows/media/file)

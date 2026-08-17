@@ -66,4 +66,81 @@ final class RemoteConnectionTests: XCTestCase {
     }
     XCTAssertEqual(RemoteConnection.mappedTlsFailure(HttpCodecError("eof")).code, "remote_link_unreachable")
   }
+
+  func testReadBodyKeepsFixedAtTheDeclaredCap() throws {
+    let cap = RemoteConnection.maxResponseBodyBytes
+    let exact = [UInt8](repeating: 0x61, count: cap)
+    let body = try RemoteConnection.readBody(
+      CountingByteInput(exact),
+      HttpResponse(statusLine: "HTTP/1.1 200 OK", code: 200, headers: Headers(), bodyKind: .fixed(length: Int64(cap))))
+    XCTAssertEqual(body.count, cap)
+
+    let oversize = CountingByteInput([UInt8](repeating: 0x61, count: cap + 16))
+    XCTAssertThrowsError(try RemoteConnection.readBody(
+      oversize,
+      HttpResponse(statusLine: "HTTP/1.1 200 OK", code: 200, headers: Headers(), bodyKind: .fixed(length: Int64(cap + 1))))) { error in
+      XCTAssertEqual((error as? ConnectionFailure)?.code, "remote_host_unavailable")
+    }
+    // Content-Length가 캡을 넘으면 바디를 읽기 전에 거절한다.
+    XCTAssertEqual(oversize.consumed, 0)
+  }
+
+  func testReadBodyAbortsChunkedAtCapWithoutBufferingTheRest() {
+    let cap = RemoteConnection.maxResponseBodyBytes
+    let payload = [UInt8](repeating: 0x62, count: cap + (256 * 1024))
+    let input = CountingByteInput(Self.chunked(payload))
+    XCTAssertThrowsError(try RemoteConnection.readBody(
+      input,
+      HttpResponse(statusLine: "HTTP/1.1 200 OK", code: 200, headers: Headers(), bodyKind: .chunked))) { error in
+      XCTAssertEqual((error as? ConnectionFailure)?.code, "remote_host_unavailable")
+    }
+    XCTAssertGreaterThan(input.consumed, cap)
+    XCTAssertLessThan(input.consumed, payload.count, "chunked가 캡을 넘긴 뒤에도 나머지를 다 읽으면 안 된다")
+  }
+
+  func testReadBodyAbortsUntilCloseAtCapWithoutBufferingTheRest() {
+    let cap = RemoteConnection.maxResponseBodyBytes
+    let payload = [UInt8](repeating: 0x63, count: cap + (256 * 1024))
+    let input = CountingByteInput(payload)
+    XCTAssertThrowsError(try RemoteConnection.readBody(
+      input,
+      HttpResponse(statusLine: "HTTP/1.1 200 OK", code: 200, headers: Headers(), bodyKind: .untilClose))) { error in
+      XCTAssertEqual((error as? ConnectionFailure)?.code, "remote_host_unavailable")
+    }
+    XCTAssertGreaterThan(input.consumed, cap)
+    XCTAssertLessThan(input.consumed, payload.count, "untilClose가 캡을 넘긴 뒤에도 나머지를 다 읽으면 안 된다")
+  }
+
+  func testBoundedByteSinkThrowsOnTheWriteThatCrossesTheCap() throws {
+    let sink = BoundedByteSink(maxBytes: 8)
+    try sink.write([1, 2, 3, 4])
+    XCTAssertThrowsError(try sink.write([5, 6, 7, 8, 9])) { error in
+      XCTAssertEqual((error as? ConnectionFailure)?.code, "remote_host_unavailable")
+    }
+    XCTAssertEqual(sink.bytes, [1, 2, 3, 4])
+  }
+
+  private static func chunked(_ payload: [UInt8]) -> [UInt8] {
+    Array("\(String(payload.count, radix: 16))\r\n".utf8) + payload + Array("\r\n0\r\n\r\n".utf8)
+  }
+}
+
+// 소비 바이트를 세어, 캡 초과 시 나머지를 버퍼링하지 않았음을 증명한다.
+private final class CountingByteInput: ByteInput {
+  private let bytes: [UInt8]
+  private var offset = 0
+  private(set) var consumed = 0
+
+  init(_ bytes: [UInt8]) { self.bytes = bytes }
+
+  func read(_ maxLength: Int) throws -> [UInt8] {
+    if offset >= bytes.count || maxLength <= 0 { return [] }
+    let end = min(offset + maxLength, bytes.count)
+    let slice = Array(bytes[offset..<end])
+    offset = end
+    consumed += slice.count
+    return slice
+  }
+
+  func setReadTimeout(milliseconds: Int?) {}
 }

@@ -39,11 +39,34 @@ final class FleetLinkInboxTests: XCTestCase {
     var delivered: [String] = []
     let receiver = FleetLinkReceiver { delivered.append($0) }
     FleetLinkInbox.offer("fleet://join?code=abc")
-    FleetLinkInbox.attach(receiver)
+    XCTAssertTrue(FleetLinkInbox.attach(receiver))
     XCTAssertEqual(delivered, ["fleet://join?code=abc"])
     // 소비되었으므로 재전달 없음.
     XCTAssertNil(FleetLinkInbox.consume())
     FleetLinkInbox.detach(receiver)
+  }
+
+  func testAttachReturnsFalseWhenNoPendingLink() {
+    var delivered: [String] = []
+    let receiver = FleetLinkReceiver { delivered.append($0) }
+    XCTAssertFalse(FleetLinkInbox.attach(receiver))
+    XCTAssertTrue(delivered.isEmpty)
+    FleetLinkInbox.detach(receiver)
+  }
+
+  func testAttachOneShotDoesNotRedeliverAfterDetach() {
+    var first: [String] = []
+    let a = FleetLinkReceiver { first.append($0) }
+    FleetLinkInbox.offer("fleet://join?code=abc")
+    XCTAssertTrue(FleetLinkInbox.attach(a))
+    FleetLinkInbox.detach(a)
+
+    var second: [String] = []
+    let b = FleetLinkReceiver { second.append($0) }
+    XCTAssertFalse(FleetLinkInbox.attach(b))
+    XCTAssertEqual(first, ["fleet://join?code=abc"])
+    XCTAssertTrue(second.isEmpty)
+    FleetLinkInbox.detach(b)
   }
 
   func testDetachOnlyClearsMatchingReceiver() {

@@ -3,3 +3,6 @@
 /.expo/
 /dist/
 /node_modules/
+# `swift build`/`swift test`가 검증 레일을 돌릴 때 남기는 SPM 산출물.
+/modules/fleet-console-view/.build/
+/modules/fleet-console-view/.swiftpm/

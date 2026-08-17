@@ -7,8 +7,8 @@ import Security
 // 소켓으로 원격에 릴레이된다(헤더는 GatewayPolicy로 재작성, 원격 3xx 미전달, WS/SSE 스트리밍).
 //
 // iOS 분기: Android는 랜덤 127.x.y.z를 바인딩하지만 기기에선 127.0.0.1만 가능하므로 host는
-// 127.0.0.1, 격리는 OS 할당 포트가 담당한다. 실제 서버 동작은 [Unverified-on-device]; CI는
-// 컴파일과 순수 정책(GatewayPolicy/HttpCodec, 별도 테스트)만 증명한다.
+// 127.0.0.1, 격리는 OS 할당 포트가 담당한다. 실제 서버·WS 릴레이는 물리 iPad 페어링으로
+// 검증했고, CI는 컴파일과 순수 정책(GatewayPolicy/HttpCodec, 별도 테스트)을 증명한다.
 
 public final class LoopbackGateway {
   public static let cookieName = "fleet_mobile_gateway"

@@ -67,6 +67,15 @@ final class AccessLinkTests: XCTestCase {
     }
   }
 
+  func testRejectsEmbeddedNulAndUnitSeparatorInRawLink() {
+    // 주석의 \0-\x1f 표기는 텍스트일 뿐 — 런타임 문자셋은 그대로 C0를 거부한다.
+    for raw in ["fleet://join?code=\u{0000}abc", "fleet://join?code=abc\u{001f}"] {
+      XCTAssertThrowsError(try AccessLink.parse(raw), raw) { error in
+        XCTAssertEqual((error as? AccessLinkError)?.message, "pairing_target_invalid", raw)
+      }
+    }
+  }
+
   // AccessLinkTest.kt의 walk-up 탐색을 이식한다. swift test의 작업 디렉터리에 기대지 않고
   // 이 테스트 파일 위치(#filePath)를 기준으로 조상들을 훑어 공유 벡터를 찾는다.
   static func protocolVectorsURL() -> URL {

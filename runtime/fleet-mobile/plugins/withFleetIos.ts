@@ -18,28 +18,131 @@ const URL_NAME = "com.dotobokuri.fleet.mobile.join";
 // RN의 RCTLinkingManager.getInitialURL이 UIApplicationLaunchOptionsURLKey를 읽는다 —
 // 이것이 이 앱에서 크리덴셜이 JS에 닿는 유일한 경로다(warm start는 닿지 않는다: RN의
 // application:openURL:는 AppDelegate가 직접 호출해야 하는데 expo도 expo-modules-core도
-// 호출하지 않는다). 그래서 super로 넘기기 직전에 그 키만 지운다.
+// 호출하지 않는다).
 //
-// FleetLinkAppDelegateSubscriber는 이 소독보다 먼저 도는 willFinishLaunching에서 원본을
-// 받아 인박스에 넣으므로, 네이티브는 링크를 잃지 않는다.
+// Expo 템플릿은 factory.startReactNative(..., launchOptions: launchOptions)가
+// super.didFinish보다 먼저 원본을 넘긴다. super만 갈아끼우면 RN은 여전히 토큰을 본다.
+// 소독 사본은 startReactNative **앞**에서 만들고, 그 변수만 두 소비자에 넘긴다.
+// willFinish 구독자는 원본 launchOptions를 그대로 받아 인박스에 넣는다.
 const SANITIZED_VAR = "fleetSanitizedLaunchOptions";
 const LAUNCH_OPTIONS_MARKER = `var ${SANITIZED_VAR} = launchOptions`;
+// 계약의 본체. 이름과 순서만 보면 원본을 그대로 별칭한 사본도 통과하므로, 실제로 지우는
+// 이 줄까지 요구해야 "크리덴셜이 지워졌다"는 단언이 된다(CI 단언도 같은 줄을 본다).
+const STRIP_LAUNCH_URL = `${SANITIZED_VAR}?.removeValue(forKey: .url)`;
+const START_REACT_NATIVE = /^([ \t]*)factory\.startReactNative\s*\(/m;
+const SUPER_DID_FINISH_LAUNCHING =
+  /^([ \t]*)((?:return\s+)?)super\.application\(\s*([A-Za-z_]\w*)\s*,\s*didFinishLaunchingWithOptions:\s*(launchOptions|fleetSanitizedLaunchOptions)\s*\)/m;
+const PREVIOUS_SANITIZER =
+  /[ \t]*\/\/ fleet-mobile: keep the fleet:\/\/ pairing credential out of Linking\.getInitialURL\(\)\.\n[ \t]*var fleetSanitizedLaunchOptions = launchOptions\n[ \t]*if let fleetLink = launchOptions\?\[\.url\] as\? URL, fleetLink\.scheme == "fleet" \{\n[ \t]*fleetSanitizedLaunchOptions\?\.removeValue\(forKey: \.url\)\n[ \t]*\}\n?/;
 
 const launchOptionsSanitizer = (indent: string) =>
   [
     `// fleet-mobile: keep the fleet:// pairing credential out of Linking.getInitialURL().`,
     LAUNCH_OPTIONS_MARKER,
     `if let fleetLink = launchOptions?[.url] as? URL, fleetLink.scheme == "${FLEET_SCHEME}" {`,
-    `  ${SANITIZED_VAR}?.removeValue(forKey: .url)`,
+    `  ${STRIP_LAUNCH_URL}`,
     `}`,
   ]
     .map((line) => `${indent}${line}`)
     .join("\n");
 
-// `return super.application(application, didFinishLaunchingWithOptions: launchOptions)`
-// — return 유무와 인자 이름이 템플릿마다 다를 수 있어 둘 다 열어 둔다.
-const SUPER_DID_FINISH_LAUNCHING =
-  /^([ \t]*)(return\s+)?super\.application\(\s*([A-Za-z_]\w*)\s*,\s*didFinishLaunchingWithOptions:\s*launchOptions\s*\)/m;
+function matchingParenEnd(source: string, openParenIndex: number): number {
+  let depth = 0;
+  for (let i = openParenIndex; i < source.length; i += 1) {
+    const ch = source[i];
+    if (ch === "(") depth += 1;
+    else if (ch === ")") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return -1;
+}
+
+function findStartReactNative(contents: string): { index: number; indent: string; end: number } | null {
+  const match = contents.match(START_REACT_NATIVE);
+  if (match?.index == null || match[1] == null) return null;
+  const open = contents.indexOf("(", match.index);
+  const end = matchingParenEnd(contents, open);
+  if (open < 0 || end < 0) return null;
+  return { index: match.index, indent: match[1], end };
+}
+
+function launchOptionsContractHolds(contents: string): boolean {
+  const start = findStartReactNative(contents);
+  const superMatch = contents.match(SUPER_DID_FINISH_LAUNCHING);
+  const markerAt = contents.indexOf(LAUNCH_OPTIONS_MARKER);
+  const stripAt = contents.indexOf(STRIP_LAUNCH_URL);
+  if (!start || superMatch?.index == null || markerAt < 0) return false;
+  if (markerAt > start.index || start.index > superMatch.index) return false;
+  if (stripAt < markerAt || stripAt > start.index) return false;
+  const call = contents.slice(start.index, start.end);
+  if (!/launchOptions:\s*fleetSanitizedLaunchOptions/.test(call)) return false;
+  if (/launchOptions:\s*launchOptions/.test(call)) return false;
+  return /didFinishLaunchingWithOptions:\s*fleetSanitizedLaunchOptions/.test(superMatch[0]);
+}
+
+function stripPreviousSanitizer(contents: string): string {
+  return contents
+    .replace(PREVIOUS_SANITIZER, "")
+    // 블록이 통째로 남아 있지 않은(= 위 정규식이 못 지운) 잔재까지 걷어낸다. 이걸 남기면
+    // 아래 주입이 marker를 한 번 더 선언해 Swift가 중복 선언으로 죽는다.
+    .replace(/[ \t]*var fleetSanitizedLaunchOptions = launchOptions\n/, "")
+    .replace(/launchOptions:\s*fleetSanitizedLaunchOptions/g, "launchOptions: launchOptions")
+    .replace(
+      /didFinishLaunchingWithOptions:\s*fleetSanitizedLaunchOptions/g,
+      "didFinishLaunchingWithOptions: launchOptions",
+    );
+}
+
+function failClosed(reason: string, contents: string): never {
+  throw new Error(
+    `withFleetIos ${reason} in AppDelegate.swift, ` +
+      "so the fleet:// pairing credential would still reach JS Linking.getInitialURL(). " +
+      `Generated AppDelegate follows:\n${contents}`,
+  );
+}
+
+// 테스트가 플러그인 소스만이 아니라 실제 주입 결과의 순서를 검사하도록 순수 변환을 노출한다.
+export function sanitizeAppDelegateContents(contents: string): string {
+  if (launchOptionsContractHolds(contents)) return contents;
+
+  const prepared = stripPreviousSanitizer(contents);
+  const start = findStartReactNative(prepared);
+  const superMatch = prepared.match(SUPER_DID_FINISH_LAUNCHING);
+  if (!start) failClosed("could not find factory.startReactNative", prepared);
+  if (superMatch?.index == null || superMatch[2] == null || superMatch[3] == null) {
+    failClosed("could not find the didFinishLaunchingWithOptions super call", prepared);
+  }
+  if (start.index > superMatch.index) {
+    failClosed("could not keep factory.startReactNative before super.didFinishLaunchingWithOptions", prepared);
+  }
+
+  const originalCall = prepared.slice(start.index, start.end);
+  if (!/launchOptions:\s*launchOptions/.test(originalCall)) {
+    failClosed("could not find startReactNative launchOptions: launchOptions", prepared);
+  }
+  const sanitizedCall = originalCall.replace(/launchOptions:\s*launchOptions/g, `launchOptions: ${SANITIZED_VAR}`);
+  const withStart = prepared.slice(0, start.index) + sanitizedCall + prepared.slice(start.end);
+
+  const nextSuper = withStart.match(SUPER_DID_FINISH_LAUNCHING);
+  if (nextSuper?.index == null || nextSuper[1] == null || nextSuper[2] == null || nextSuper[3] == null) {
+    failClosed("could not find the didFinishLaunchingWithOptions super call", withStart);
+  }
+  const replacedSuper = withStart.replace(
+    SUPER_DID_FINISH_LAUNCHING,
+    `${nextSuper[1]}${nextSuper[2]}super.application(${nextSuper[3]}, didFinishLaunchingWithOptions: ${SANITIZED_VAR})`,
+  );
+
+  const injected = replacedSuper.replace(
+    START_REACT_NATIVE,
+    `${launchOptionsSanitizer(start.indent)}\n$&`,
+  );
+  if (!launchOptionsContractHolds(injected)) {
+    failClosed("could not inject sanitized launchOptions before factory.startReactNative", injected);
+  }
+  return injected;
+}
 
 export const withFleetIos: ConfigPlugin = (config) => {
   config = withInfoPlist(config, (mod) => {
@@ -82,26 +185,8 @@ export const withFleetIos: ConfigPlugin = (config) => {
         `withFleetIos needs a Swift AppDelegate to keep the pairing credential out of JS; found ${mod.modResults.language}.`,
       );
     }
-    if (mod.modResults.contents.includes(LAUNCH_OPTIONS_MARKER)) return mod;
-
-    const replaced = mod.modResults.contents.replace(
-      SUPER_DID_FINISH_LAUNCHING,
-      (_match, indent: string, ret: string | undefined, appVar: string) => {
-        const body = launchOptionsSanitizer(indent);
-        return `${body}\n${indent}${ret ?? ""}super.application(${appVar}, didFinishLaunchingWithOptions: ${SANITIZED_VAR})`;
-      },
-    );
-    if (replaced === mod.modResults.contents) {
-      // 실패를 조용히 넘기면 크리덴셜이 JS에 노출된 채로 앱이 빌드된다. 못 찾았으면 세우고,
-      // 어떤 파일을 보고 못 찾았는지 그대로 실어 보낸다 — Expo가 템플릿을 바꾸면 이 메시지가
-      // 다음 수정의 근거가 된다.
-      throw new Error(
-        "withFleetIos could not find the didFinishLaunchingWithOptions super call in AppDelegate.swift, " +
-          "so the fleet:// pairing credential would still reach JS Linking.getInitialURL(). " +
-          `Generated AppDelegate follows:\n${mod.modResults.contents}`,
-      );
-    }
-    mod.modResults.contents = replaced;
+    // 이미 올바른 순서면 재주입하지 않는다. 앵커/순서를 못 지키면 아래가 세운다.
+    mod.modResults.contents = sanitizeAppDelegateContents(mod.modResults.contents);
     return mod;
   });
 

@@ -8,8 +8,8 @@ import Security
 // 위에서 HttpCodec으로 HTTP/1.1을 직접 말한다 — TLS 경로가 하나로 유지되고 리다이렉트
 // 미추적·헤더 통제가 코드로 보장된다.
 //
-// 실제 네트워크 동작(핸드셰이크·검증 블록·릴레이)은 기기에서만 검증된다
-// [Unverified-on-device]; CI는 컴파일과 순수 로직(authority 검사·실패 매핑)만 증명한다.
+// 실제 핸드셰이크·검증 블록·릴레이는 물리 iPad 페어링으로 검증했다. CI는 컴파일과
+// 순수 로직(authority 검사·실패 매핑)을 별도로 증명한다.
 
 public final class RemoteConnection {
   public static let timeoutMs = 8_000
@@ -134,22 +134,22 @@ public final class RemoteConnection {
     }
   }
 
-  private static let maxResponseBodyBytes = 1 << 20 // join/status는 작은 JSON — 1MiB 캡
+  static let maxResponseBodyBytes = 1 << 20 // join/status는 작은 JSON — 1MiB 캡
 
-  private static func readBody(_ socket: PinnedSocket, _ response: HttpResponse) throws -> Data {
-    let sink = ByteArrayOutput()
+  // join/status만 캡을 건다. LoopbackGateway 스트리밍은 이 sink를 쓰지 않는다.
+  static func readBody(_ input: ByteInput, _ response: HttpResponse) throws -> Data {
+    let sink = BoundedByteSink(maxBytes: maxResponseBodyBytes)
     switch response.bodyKind {
     case .none:
       break
     case .fixed(let length):
       if length > Int64(maxResponseBodyBytes) { throw ConnectionFailure("remote_host_unavailable") }
-      try HttpCodec.copyExactly(socket, sink, length: length)
+      try HttpCodec.copyExactly(input, sink, length: length)
     case .chunked:
-      try HttpCodec.copyChunked(socket, sink, decode: true)
+      try HttpCodec.copyChunked(input, sink, decode: true)
     case .untilClose:
-      try HttpCodec.copyUntilEof(socket, sink, false)
+      try HttpCodec.copyUntilEof(input, sink, false)
     }
-    if sink.bytes.count > maxResponseBodyBytes { throw ConnectionFailure("remote_host_unavailable") }
     return Data(sink.bytes)
   }
 
@@ -332,4 +332,24 @@ public final class PinnedSocket: ByteInput, ByteOutput {
   public func close() {
     connection.cancel()
   }
+}
+
+// join/status 응답 전용. write가 캡을 넘는 순간 중단하므로 chunked/untilClose가
+// 전체를 버퍼링하지 않는다. HttpCodec과 LoopbackGateway는 이 타입을 모른다.
+final class BoundedByteSink: ByteOutput {
+  private(set) var bytes: [UInt8] = []
+  private let maxBytes: Int
+
+  init(maxBytes: Int) {
+    self.maxBytes = maxBytes
+  }
+
+  func write(_ incoming: [UInt8]) throws {
+    if bytes.count + incoming.count > maxBytes {
+      throw ConnectionFailure("remote_host_unavailable")
+    }
+    bytes.append(contentsOf: incoming)
+  }
+
+  func flush() throws {}
 }

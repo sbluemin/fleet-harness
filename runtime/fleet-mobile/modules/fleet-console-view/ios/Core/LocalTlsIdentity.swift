@@ -18,8 +18,8 @@ import Darwin
 // 키체인에 남길 이유도 없다(24시간짜리 루프백 인증서다).
 //
 // matches는 iOS에서 SecCertificateCopyValues가 없으므로 DER을 직접 파싱해 SAN/유효기간/leaf를
-// 확인한다. 런타임 TLS 동작(실제 서버 identity, 핀 검증)은 기기에서만 검증된다
-// [Unverified-on-device]; CI는 encode+parse 왕복(matches 테스트)만 증명한다.
+// 확인한다. 실제 서버 identity와 WKWebView 핀은 물리 iPad 페어링으로 검증했고, CI는
+// encode+parse 왕복(matches 테스트)을 별도로 증명한다.
 
 public struct LocalTlsIdentity {
   public let certificate: SecCertificate
