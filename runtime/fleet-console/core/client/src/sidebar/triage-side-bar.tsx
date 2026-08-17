@@ -26,7 +26,7 @@ const TRIAGE_SIDE_BAR_SECTION_KEY = "__triage__";
 const EMPTY_MINIMIZED: ReadonlySet<string> = new Set();
 
 // 전역 선별 목록도 Map 사이드바의 표현 문법(상태 섹션 헤더 + 칩)을 그대로 쓴다 — 모드가 바뀌어도
-// 왼쪽 열의 읽는 법이 바뀌지 않아야 한다. 네 living 섹션은 큐 문법을 공유하되, 휴면은 큐에 합류하지
+// 왼쪽 열의 읽는 법이 바뀌지 않아야 한다. 세 living 섹션은 큐 문법을 공유하되, 휴면은 큐에 합류하지
 // 않고 하단 선반에만 머문다. 대기 섹션은 전역 큐의 처리 순서를 따른다.
 export function resolveTriageSideBarSections(
   entries: readonly SideBarEntry[],
@@ -136,7 +136,7 @@ export function TriageSideBar({
     operationRuntime,
   }));
   // 최소화한 Operation은 상태 축에서 내려와 전용 선반으로 모인다 — 최소화는 활동 상태가 아니라
-  // 표시 선택이므로 대기·실행 중·백그라운드·유휴 중 어디에도 새 칸을 만들지 않는다.
+  // 표시 선택이므로 대기·실행 중·유휴 중 어디에도 새 칸을 만들지 않는다.
   // 휴면은 그대로 휴면 선반이 가져간다: 재개 대기는 사용자가 고른 상태가 아니라 세션의 상태다.
   const minimizedIds = new Set(getTheaterMinimizedIds(theaters.map((theater) => theater.id)));
   const isDormantEntry = (entry: SideBarEntry): boolean =>
@@ -203,7 +203,7 @@ export function TriageSideBar({
       aria-label={t("triageSidebar.aria")}
       onContextMenu={openLaunchMenuAtCursor}
     >
-      {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·백그라운드·유휴는 War Room이 읽는
+      {/* 상태 섹션은 비어 있어도 항상 선다 — 대기·실행 중·유휴는 War Room이 읽는
           축 자체라, 건수가 0이라고 축이 사라지면 좌측 열의 읽는 법이 상황에 따라 달라진다.
           "없음"은 빈 섹션의 자체 힌트가 말한다(전역 empty 문구는 이 계약으로 퇴역했다). */}
       <ol className="operations-side-bar-chips triage-side-bar-sections" aria-label={t("triageSidebar.aria")}>

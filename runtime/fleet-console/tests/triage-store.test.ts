@@ -963,7 +963,7 @@ describe("triage store", () => {
 
     const sections = resolveTriageSideBarSections(entries, queue);
 
-    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "background", "idle", "ended"]);
+    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "idle", "ended"]);
     const byStatus = new Map(sections.map((section) => [section.status, section.entries.map((entry) => entry.operation.id)]));
     expect(byStatus.get("awaiting")).toEqual(["beta-waiting", "alpha-waiting"]);
     expect(byStatus.get("running")).toEqual(["alpha-running"]);

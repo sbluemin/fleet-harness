@@ -1269,14 +1269,14 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.tenant-beacon\.is-unseen,\s*\.canvas-triage-map-dot\.is-idle,\s*\.canvas-triage-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
     expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-triage-map-dot.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
-    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
+    expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
     expect(components).toMatch(/\.canvas-triage-map-dot \{[^}]*background:\s*var\(--activity-color\)/);
     // War Room 덱은 자기 상태 축을 갖지 않는다 — 칸에 선 것이 패널이라 캡션 비콘이 이 선언을 그대로 받는다.
     expect(components).not.toContain(".canvas-triage-deck-card");
     expect(components).toMatch(/\.canvas-triage-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
-    expect(components).toMatch(/\.side-bar-status-section--background \{[^}]*border-left-style:\s*dashed/);
+    expect(components).not.toContain(".side-bar-status-section--background");
     expect(sidebar).not.toContain("side-bar-status-header__dot");
     expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");

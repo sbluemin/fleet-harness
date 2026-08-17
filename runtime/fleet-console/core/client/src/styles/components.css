@@ -2575,8 +2575,7 @@
 }
 
 .tenant-beacon.is-background,
-.canvas-triage-map-dot.is-background,
-.side-bar-status-section--background {
+.canvas-triage-map-dot.is-background {
   --activity-color: var(--warn);
   --activity-glow: var(--warn-glow);
 }
@@ -4685,7 +4684,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 /* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
-   상속한다. 네 living 섹션은 스크롤 큐를 소유하고, 휴면만 separator 아래의 접힌 선반과 중립
+   상속한다. 세 living 섹션은 스크롤 큐를 소유하고, 휴면만 separator 아래의 접힌 선반과 중립
    캡션을 갖는다: 휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. */
 .triage-side-bar-sections {
   padding-top: var(--space-1);
@@ -5389,12 +5388,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   margin-left: var(--space-1);
   margin-bottom: 6px;
   border-left: 3px solid var(--status-color);
-}
-
-/* background는 running과 같은 warn 축을 쓰되, 중공 beacon의 기하를 세로선에도 옮겨
-   채운 running과 혼동되지 않게 한다. */
-.side-bar-status-section--background {
-  border-left-style: dashed;
 }
 
 .side-bar-status-header {

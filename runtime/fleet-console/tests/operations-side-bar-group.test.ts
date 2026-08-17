@@ -332,7 +332,7 @@ describe("groupOperationsByStatus", () => {
 
     const sections = groupOperationsByStatus(entries);
     expect(sections[0]?.entries.map((entry) => entry.operation.id)).toEqual(["awaiting", "arrived"]);
-    expect(sections[3]?.entries.map((entry) => entry.operation.id)).toEqual(["idle"]);
+    expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle"]);
     expect(sections.flatMap((section) => section.entries)).toHaveLength(entries.length);
 
     const operations = entries.map((entry) => entry.operation);
@@ -355,11 +355,21 @@ describe("groupOperationsByStatus", () => {
     expect(sections.map((section) => [section.status, section.label])).toEqual([
       ["awaiting", "AWAITING"],
       ["running", "RUNNING"],
-      ["background", "BACKGROUND"],
       ["idle", "IDLE"],
       ["ended", "ENDED"],
     ]);
-    expect(sections[3]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
+    expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
+  });
+
+  it("places background activity in the running section without rewriting the row activity", () => {
+    const sections = groupOperationsByStatus([
+      makeEntry("running", null, "running"),
+      makeEntry("background", null, "background"),
+    ]);
+
+    expect(sections.map((section) => section.status)).toEqual(["awaiting", "running", "idle", "ended"]);
+    expect(sections.find((section) => section.status === "running")?.entries.map((entry) => [entry.operation.id, entry.status]))
+      .toEqual([["running", "running"], ["background", "background"]]);
   });
 
   it("preserves the incoming sortOperationsByOrder sequence inside each status section", () => {
