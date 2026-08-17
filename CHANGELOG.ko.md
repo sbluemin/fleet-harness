@@ -40,7 +40,7 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 #### Fixed
 - 채팅 모드 호스트 원장에서 중첩 서브에이전트 프레임을 빼, 도구와 보고가 작업 면에만 남게 합니다.
-- 퀵런치 강도 트랙에서 ULTRACODE를 고른 채 채팅으로 태어나면, 그 선택을 max 강도로 접지 않고 xhigh와 세션 ultracode 설정으로 다이나믹 워크플로우를 유지합니다.
+- 퀵런치 강도 트랙에서 ULTRACODE를 고른 채 채팅으로 태어나면, 그 선택을 max 강도로 접지 않고 `xhigh`와 세션 ultracode 설정으로 다이나믹 워크플로우를 유지합니다.
 
 ## [1.63.0] - 2026-08-16
 
