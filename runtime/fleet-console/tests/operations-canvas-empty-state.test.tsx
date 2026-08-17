@@ -154,6 +154,27 @@ describe("Operations Canvas empty state", () => {
     }
   });
 
+  it("drops the armed state when the standby set changes underneath it", () => {
+    vi.useFakeTimers();
+    try {
+      const onOpenAll = vi.fn();
+      const nine = Array.from({ length: 9 }, (_, index) => operation(`op-${index}`, `Watch ${index}`, index));
+      renderEmptyState({ activeTheaterId: "theater-a", operations: nine, onOpenAll });
+
+      act(() => container?.querySelector<HTMLButtonElement>(".operations-canvas-empty-open-all")?.click());
+      expect(container?.querySelector(".operations-canvas-empty-open-all.is-armed")).not.toBeNull();
+
+      const otherNine = Array.from({ length: 9 }, (_, index) => operation(`other-${index}`, `Other ${index}`, index));
+      renderEmptyState({ activeTheaterId: "theater-b", operations: otherNine, onOpenAll });
+      expect(container?.querySelector(".operations-canvas-empty-open-all.is-armed")).toBeNull();
+
+      act(() => container?.querySelector<HTMLButtonElement>(".operations-canvas-empty-open-all")?.click());
+      expect(onOpenAll).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("uses the singular standby copy for one Operation", () => {
     renderEmptyState({
       activeTheaterId: "theater-a",

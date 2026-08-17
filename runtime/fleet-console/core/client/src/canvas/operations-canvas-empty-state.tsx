@@ -41,6 +41,17 @@ export function OperationsCanvasEmptyState({
     if (openAllArmTimerRef.current !== null) window.clearTimeout(openAllArmTimerRef.current);
   }, []);
 
+  // 목록 정체성(Theater·대기 집합)이 바뀌면 암을 해제한다 — 확인은 그것을 본 집합에만 유효하다.
+  // 컴포넌트는 Theater 전환에도 언마운트되지 않으므로 useState가 다음 목록으로 새어 나갈 수 있다.
+  const standbySetKey = (activeTheaterId ?? "") + "|" + operations.map((operation) => operation.id).sort().join(",");
+  useEffect(() => {
+    if (openAllArmTimerRef.current !== null) {
+      window.clearTimeout(openAllArmTimerRef.current);
+      openAllArmTimerRef.current = null;
+    }
+    setOpenAllArmed(false);
+  }, [standbySetKey]);
+
   if (!activeTheaterId) {
     return (
       <div className="operations-canvas-empty" data-canvas-blocker>
