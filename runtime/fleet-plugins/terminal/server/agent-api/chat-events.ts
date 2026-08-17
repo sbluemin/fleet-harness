@@ -342,6 +342,14 @@ export function chatEventsFromSdkMessage(message: {
   readonly type: string;
   readonly [key: string]: unknown;
 }, options: ChatEventMapOptions = {}): readonly AgentChatStreamEvent[] {
+  // 중첩 서브에이전트 프레임. SDK는 기본값에서도 서브에이전트의 tool_use/tool_result를
+  // parent_tool_use_id와 함께 부모 스트림에 흘린다(forwardSubagentText는 텍스트·thinking까지
+  // 연다). 재생 경로가 isSidechain을 버리듯이, 라이브도 그 프레임을 메인 원장에 세우지 않는다 —
+  // 세우면 서브에이전트가 읽은 파일·쓴 글이 호스트 Answer·원장에 한 번 더 선다. 잡 원장
+  // (task_started 등)은 system 축이라 이 문에 닿지 않는다.
+  if (typeof message.parent_tool_use_id === "string" && message.parent_tool_use_id.length > 0) {
+    return [];
+  }
   if (message.type === "stream_event") {
     // 모양은 fleet-analyst가 실측으로 고정한 것과 동일하다. text_delta와 tool_use 블록의
     // 시작만 취한다 — thinking_delta는 공개 출력 금지 불변식에 따라 버리고, input_json_delta는

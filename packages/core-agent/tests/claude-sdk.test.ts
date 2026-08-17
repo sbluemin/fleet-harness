@@ -7,6 +7,7 @@ import { CLAUDE_GATEWAY_MODEL_CACHE_RELPATH } from "../src/claude/launch-env.js"
 
 // 자식 프로세스를 띄우지 않는다. 검증 대상은 spawn 직전까지의 조립과 거부다.
 const runVendorQuery = vi.fn();
+const runVendorSession = vi.fn();
 let vendorClose: () => void = () => {};
 vi.mock("../src/claude/vendor-sdk.js", () => ({
   runVendorQuery: (input: unknown) => {
@@ -15,6 +16,21 @@ vi.mock("../src/claude/vendor-sdk.js", () => ({
       [Symbol.asyncIterator]: async function* () {
         yield { type: "result", subtype: "success" };
       },
+      close: () => vendorClose(),
+    };
+  },
+  runVendorSession: (input: unknown) => {
+    runVendorSession(input);
+    return {
+      // 세션 스트림은 스스로 끝나지 않는다 — close가 유일한 종점이다.
+      [Symbol.asyncIterator]: async function* () {
+        await new Promise<void>(() => undefined);
+      },
+      send: vi.fn(),
+      interrupt: vi.fn(async () => {}),
+      stopTask: vi.fn(async () => {}),
+      backgroundTasks: vi.fn(async () => true),
+      getContextUsage: vi.fn(async () => null),
       close: () => vendorClose(),
     };
   },
@@ -35,6 +51,7 @@ async function drain(run: AsyncIterable<unknown>): Promise<void> {
 
 beforeEach(() => {
   runVendorQuery.mockClear();
+  runVendorSession.mockClear();
   vendorClose = () => {};
 });
 
@@ -168,6 +185,28 @@ describe("turn assembly", () => {
     await sdk.dispose();
   });
 
+  it("merges ultracode into flag settings without opening the rest of settings", async () => {
+    const sdk = await createClaudeGatewaySdk({
+      baseUrl: BASE_URL,
+      models: [LUNA],
+      ultracode: true,
+      skillOverrides: { Explore: "off" },
+    });
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA, effort: "xhigh" }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options.effort).toBe("xhigh");
+    expect(options.settings).toEqual({ ultracode: true, skillOverrides: { Explore: "off" } });
+    await sdk.dispose();
+  });
+
+  it("omits settings entirely when neither ultracode nor skillOverrides is set", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    expect(options).not.toHaveProperty("settings");
+    await sdk.dispose();
+  });
+
   it("omits an unset optional instead of forwarding undefined", async () => {
     const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
@@ -236,6 +275,43 @@ describe("fail-closed refusals", () => {
     await expect(sdk.startTurn({ prompt: "hi", model: LUNA })).rejects.toThrow(/already running/);
     await drain(first);
     // 슬롯은 스트림 소진으로 돌아온다.
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
+    await sdk.dispose();
+  });
+
+  // 검사와 예약 사이에 await가 있으면 배타는 없는 것과 같다 — 두 호출자가 나란히 빈 슬롯을 보고
+  // 같은 config dir 위에 자식을 하나씩 세운다. 나중 대입이 앞의 것을 가려 dispose도 못 접는다.
+  it("reserves the slot before awaiting launch preparation", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    const both = await Promise.allSettled([
+      sdk.startTurn({ prompt: "hi", model: LUNA }),
+      sdk.startTurn({ prompt: "hi", model: LUNA }),
+    ]);
+    expect(both.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+    expect(both.filter((entry) => entry.status === "rejected")).toHaveLength(1);
+    // 자식은 한 번만 세워진다.
+    expect(runVendorQuery).toHaveBeenCalledTimes(1);
+    for (const entry of both) if (entry.status === "fulfilled") await drain(entry.value);
+    await sdk.dispose();
+  });
+
+  it("keeps a session and a turn out of the same slot even when they race", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    const both = await Promise.allSettled([
+      sdk.startTurn({ prompt: "hi", model: LUNA }),
+      sdk.openSession({ model: LUNA }),
+    ]);
+    expect(both.filter((entry) => entry.status === "fulfilled")).toHaveLength(1);
+    expect(both.filter((entry) => entry.status === "rejected")).toHaveLength(1);
+    // 둘 중 하나만 자식을 세운다 — 어느 쪽이 이겼든 합은 1이다.
+    expect(runVendorQuery.mock.calls.length + runVendorSession.mock.calls.length).toBe(1);
+    await sdk.dispose();
+  });
+
+  it("releases the slot when preparation fails so the next call can take it", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    // 모델 판정은 준비 전에 던진다 — 그 실패가 슬롯을 붙든 채 끝나면 인스턴스가 영영 막힌다.
+    await expect(sdk.startTurn({ prompt: "hi", model: SOL })).rejects.toThrow();
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
     await sdk.dispose();
   });

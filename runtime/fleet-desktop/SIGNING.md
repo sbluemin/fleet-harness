@@ -20,15 +20,16 @@ The signed shell is a one-time download. It procures and updates Fleet Console a
 from the npm registry; the Console package's registry `shasum` integrity metadata, rather
 than the shell installer signature, is the trust basis for downloaded Console code.
 
-Signing is **conditional**: the workflow ships working (unsigned) shell installers today
-and automatically starts signing once the secrets/variables below are configured.
+Windows signing is **conditional**: that job ships a working unsigned installer until
+SignPath is configured. macOS release packaging is fail-closed — missing credentials
+fail the mac job; it does not publish an unsigned installer.
 
-## Current status (no certificates)
+## Current status
 
 | Platform | Signed? | Note |
 |---|---|---|
 | Windows x64 | ❌ (until SignPath configured) | SmartScreen warning on first install |
-| macOS arm64 | ❌ (until Apple cert configured) | dmg/zip download works; unsigned apps need right-click → Open on first launch |
+| macOS arm64 | Required (Developer ID Application + notarization) | Repository Actions secrets; job fails if any of the five is missing |
 
 ## Windows — SignPath (free for open-source)
 
@@ -63,19 +64,24 @@ Notes:
   can't reach inside NSIS — is a follow-up if you want the *installed* app fully signed;
   see the approach used by `stablyai/orca` (build `--dir` → batch-sign inner PEs → repackage).
 
-## macOS — deferred (paid Apple Developer)
+## macOS — Developer ID (fail-closed)
 
-An Apple Developer account ($99/yr) is required for a Developer ID signature and
-notarization. When you obtain it, add these secrets and the mac job signs + notarizes
-automatically (no workflow change):
+An Apple Developer account ($99/yr) is required. The mac job uses repository Actions
+secrets for **Developer ID Application** signing plus notarization. All five secrets are
+required; missing credentials fail the job. There is no unsigned public-release fallback.
+
+Add these under Settings → Secrets and variables → Actions → Repository secrets:
 
 | Kind | Name |
 |---|---|
-| Secret | `MAC_CSC_LINK` (base64 of the Developer ID `.p12`) |
+| Secret | `MAC_CSC_LINK` (base64 of the Developer ID Application `.p12`) |
 | Secret | `MAC_CSC_KEY_PASSWORD` |
 | Secret | `APPLE_ID` |
 | Secret | `APPLE_APP_SPECIFIC_PASSWORD` |
 | Secret | `APPLE_TEAM_ID` |
+
+The signed release path was verified by the v1.65.0 macOS job and its published DMG
+(Developer ID authority, notarization ticket, and Gatekeeper acceptance).
 
 ## Cross-building Windows x64 on an arm64 host
 
@@ -90,7 +96,5 @@ root `package.json` `pnpm.supportedArchitectures` config installs on any host.
 Each CI job runs `verify:package` after packaging. The gate requires a shell-only ASAR,
 secure Electron fuses, no embedded runtime payload or sidecar directory, no updater
 metadata, and an Electron binary whose architecture matches the artifact directory.
-
-Windows/macOS release runners and signing credentials are unavailable locally, so the
-first real release run remains **[Unverified]**: confirm that only the expected installers
-are attached to the draft release and that the conditional signing paths complete.
+The mac job additionally runs `verify:package --release` (Developer ID Application
+authority, stapler validate, and `spctl` assess).

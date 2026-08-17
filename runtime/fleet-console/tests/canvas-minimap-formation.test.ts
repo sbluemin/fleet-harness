@@ -227,7 +227,8 @@ describe("CanvasMinimap collapse behavior", () => {
       expect(document.querySelector(".canvas-mode-frame")).not.toBeNull();
       expect(document.querySelectorAll(".canvas-mode-bracket")).toHaveLength(4);
       expect(document.querySelector(".canvas-mode-hud")).toBeNull();
-      expect([...document.querySelectorAll(".canvas-operation-formation-slot")].map((element) => element.textContent)).toEqual(["01", "02", "03"]);
+      // 캡션은 순번을 싣지 않는다 — 빈 자리를 가리키는 가이드만 번호를 유지한다.
+      expect(document.querySelector(".canvas-operation-formation-slot")).toBeNull();
       expect(document.querySelector(".canvas-formation-guide-index")?.textContent).toBe("04");
       const occupied = document.querySelector<HTMLElement>('[data-operation-id="formation-3"]');
       const guide = document.querySelector<HTMLElement>(".canvas-formation-guide");
@@ -481,25 +482,30 @@ describe("CanvasMinimap collapse behavior", () => {
     }
   });
 
-  it("closes a hidden peer's portaled accent menu and transfers its menu focus", () => {
+  it("transfers focus out of a hidden peer to the front frame", () => {
     renderOperationsCanvas();
-    const peerAccent = document.querySelector<HTMLButtonElement>('[aria-label="Set accent for operation Peer"]');
-    expect(peerAccent).not.toBeNull();
-
-    act(() => peerAccent!.click());
-
-    const menuItem = document.querySelector<HTMLButtonElement>('[role="menuitem"]');
-    expect(menuItem).not.toBeNull();
-    menuItem?.focus();
-    expect(document.activeElement).toBe(menuItem);
+    const peerControl = document.querySelector<HTMLButtonElement>('[aria-label="Open menu for operation Peer"]');
+    expect(peerControl).not.toBeNull();
+    peerControl!.focus();
+    expect(document.activeElement).toBe(peerControl);
 
     act(() => setMaximizedOperationId("operation"));
 
-    expect(document.querySelector('[role="menu"]')).toBeNull();
-    expect(document.querySelector(".accent-popover-overlay")).toBeNull();
     const focusedFrame = document.querySelector<HTMLElement>('[aria-label="Operation Minimap boundary"]');
     expect(document.activeElement).toBe(focusedFrame);
     expect(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')?.contains(document.activeElement)).toBe(false);
+  });
+
+  // 메뉴는 페이지가 소유하고 프레임은 자기가 숨는 것만 안다 — 숨는 순간 그 사실을 주인 id와 함께
+  // 올려야, 보이지 않는 패널의 메뉴가 화면에 남아 조작 가능한 채로 버티지 않는다.
+  it("reports its own id when a hidden peer's menu owner leaves the focus layer", () => {
+    const dismissed: string[] = [];
+    renderOperationsCanvas(CANVAS_STATE, { onDismissOperationMenu: (id) => dismissed.push(id) });
+
+    act(() => setMaximizedOperationId("operation"));
+
+    expect(dismissed).toContain("peer");
+    expect(dismissed).not.toContain("operation");
   });
 
   it("moves the canvas viewport when the mounted minimap receives pointer navigation", () => {
@@ -603,7 +609,10 @@ const CANVAS_STATE: ConsoleState = {
   codexReaderExpanded: false,
 };
 
-function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
+function renderOperationsCanvas(
+  state: ConsoleState = CANVAS_STATE,
+  overrides: { readonly onDismissOperationMenu?: (operationId: string) => void } = {},
+) {
   act(() => root!.render(createElement(OperationsCanvas, {
     state,
     catalog: [],
@@ -613,8 +622,11 @@ function renderOperationsCanvas(state: ConsoleState = CANVAS_STATE) {
     onLaunchAtGeometry: () => {},
     onClose: () => {},
     onFocus: () => {},
+    onOpenAll: () => {},
     onRename: () => {},
-    onSetAccent: () => {},
+    onOpenOperationMenu: () => {},
+    onDismissOperationMenu: () => {},
+    ...overrides,
   })));
 }
 

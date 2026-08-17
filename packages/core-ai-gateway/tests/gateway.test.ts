@@ -4,6 +4,7 @@ import {
   AnthropicMessagesGateway,
   GATEWAY_BENCHMARKS_STAMP,
   GATEWAY_MODELS,
+  GATEWAY_REASONING_EFFORTS,
   CODEX_SUBSCRIPTION_MODELS,
   CURSOR_SUBSCRIPTION_MODELS,
   KIMI_SUBSCRIPTION_MODELS,
@@ -18,6 +19,7 @@ import {
   validateBenchmarkCoverage,
   projectAnthropicResponseUsage,
   resolveCursorUpstreamModelId,
+  resolveCursorModelSelection,
   resolveGatewayModel,
   projectClaudeContextInputTokens,
   toClaudeGatewayModelId,
@@ -262,7 +264,7 @@ describe("Anthropic request translation", () => {
     },
   );
 
-  it("keeps Sol ultra but clamps Luna ultra to its max rung", () => {
+  it("clamps an inbound Sol or Luna ultra request to each model's max rung", () => {
     const sol = findGatewayModel("codex--gpt-5.6-sol");
     const luna = findGatewayModel("codex--gpt-5.6-luna");
     if (!sol?.effort.supported || !luna?.effort.supported) {
@@ -274,9 +276,11 @@ describe("Anthropic request translation", () => {
       output_config: { effort: "ultra" },
     };
 
+    // 카탈로그 사다리는 max에서 끝난다 — inbound protocol의 ultra 요청은 두 모델 모두
+    // 자기 최상단으로 하향 클램프된다.
     expect(translateAnthropicRequest(request, {
       reasoningEfforts: sol.effort.levels,
-    }).reasoning).toEqual({ summary: "auto", effort: "ultra" });
+    }).reasoning).toEqual({ summary: "auto", effort: "max" });
     expect(translateAnthropicRequest(request, {
       reasoningEfforts: luna.effort.levels,
     }).reasoning).toEqual({ summary: "auto", effort: "max" });
@@ -628,10 +632,10 @@ describe("model catalog", () => {
       if (!model) throw new Error(`missing catalog model: ${id}`);
       return buildGatewayModelConstraints(model);
     };
-    // `ultra` is advertised by discovery since codex-cli 0.147.0 (measured 2026-08-11:
-    // sol/sol-wm/terra advertise it, luna stops at max) — the ladder follows the catalog.
+    // 카탈로그 사다리는 max에서 끝난다 — ultracode는 모델의 단이 아니라 Console이 launch
+    // `--effort ultracode`로 넘기는 하네스 능력이라, 모델 메타데이터에는 서지 않는다.
     const codex = constraintsFor("codex--gpt-5.6-sol");
-    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(codex.effortLadder).toEqual(["low", "medium", "high", "xhigh", "max"]);
     expect(codex.effortSupported).toBe(true);
     // Kimi's ladder has no `medium`; assuming one would be clamped without notice.
     expect(constraintsFor("kimi--k3").effortLadder).toEqual(["low", "high", "max"]);
@@ -841,12 +845,36 @@ describe("model catalog", () => {
   });
 
   it("contains only the approved provider families", () => {
-    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(6);
+    expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(18);
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
-    expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.contextWindow === 272_000)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("512k")).every((model) => model.contextWindow === 524_288)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("-1m")).every((model) => model.contextWindow === 1_000_000)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.includes("512k") && !model.id.includes("-1m")).every((model) => model.contextWindow === 272_000)).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.map((model) => model.id.replace(/^codex--/, ""))).toEqual([
+      "gpt-5.6-sol",
+      "gpt-5.6-sol-fast",
+      "gpt-5.6-terra",
+      "gpt-5.6-terra-fast",
+      "gpt-5.6-luna",
+      "gpt-5.6-luna-fast",
+      "gpt-5.6-sol-512k",
+      "gpt-5.6-sol-512k-fast",
+      "gpt-5.6-luna-512k",
+      "gpt-5.6-luna-512k-fast",
+      "gpt-5.6-terra-512k",
+      "gpt-5.6-terra-512k-fast",
+      "gpt-5.6-sol-1m",
+      "gpt-5.6-sol-1m-fast",
+      "gpt-5.6-luna-1m",
+      "gpt-5.6-luna-1m-fast",
+      "gpt-5.6-terra-1m",
+      "gpt-5.6-terra-1m-fast",
+    ]);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.endsWith("-fast")).every((model) => model.serviceTier === "priority")).toBe(true);
+    expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => !model.id.endsWith("-fast")).every((model) => model.serviceTier === undefined)).toBe(true);
     expect(CURSOR_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual([
       "default",
       "composer-2.5",
@@ -907,11 +935,11 @@ describe("model catalog", () => {
 
     expect(efforts["codex--gpt-5.6-sol"]).toEqual({
       supported: true,
-      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      levels: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(efforts["codex--gpt-5.6-terra"]).toEqual({
       supported: true,
-      levels: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      levels: ["low", "medium", "high", "xhigh", "max"],
     });
     expect(efforts["codex--gpt-5.6-luna"]).toEqual({
       supported: true,
@@ -964,6 +992,17 @@ describe("model catalog", () => {
     expect(efforts["cursor--composer-2.5"]).toEqual({ supported: false });
   });
 
+  it("keeps the ultra launch sentinel out of the model catalog and constraints", () => {
+    // ultracode는 Claude Code 하네스가 launch `--effort ultracode`로 받는 세션 능력이다 —
+    // 모델 메타데이터의 단이 아니므로 사다리 어휘·카탈로그·constraints 어디에도 서지 않는다
+    // (Console 실행 행이 마지막 칩으로 따로 합성한다).
+    expect(GATEWAY_REASONING_EFFORTS).not.toContain("ultra");
+    for (const model of GATEWAY_MODELS) {
+      if (model.effort.supported) expect(model.effort.levels).not.toContain("ultra");
+      expect(buildGatewayModelConstraints(model).effortLadder).not.toContain("ultra");
+    }
+  });
+
   it.each([
     ["grok-4.5", "low", "cursor-grok-4.5-low"],
     ["grok-4.5", "medium", "cursor-grok-4.5-medium"],
@@ -990,6 +1029,14 @@ describe("model catalog", () => {
   it("never raises a requested effort while clamping a sparse ladder", () => {
     expect(clampReasoningEffort("xhigh", ["low", "medium", "high", "max"])).toBe("high");
     expect(resolveCursorUpstreamModelId("grok-4.5", "medium")).toBe("cursor-grok-4.5-medium");
+  });
+
+  it("keeps Cursor Auto's upstream selection unchanged when canonical ultra arrives", () => {
+    // Auto는 강도를 지원하지 않는다 — ultra는 canonical protocol 어휘로 남아 있으므로, effort
+    // 미지원 모델은 clamp 없이 upstream id를 그대로 골라야 한다(실패하면 launch sentinel이
+    // 게이트웨이를 통과하지 못한다).
+    expect(resolveCursorModelSelection("auto", "ultra")).toEqual({ upstreamModelId: "default", maxMode: false });
+    expect(resolveCursorUpstreamModelId("auto", "ultra")).toBe("default");
   });
 
   it("resolves a compatibility alias to its provider wire id", () => {
@@ -1034,8 +1081,75 @@ describe("model catalog", () => {
       display_name: "Codex-GPT-5.6-Sol",
       max_input_tokens: 272_000,
     });
-    expect(list.data.some((entry) => entry.id.includes("--codex--") && entry.id.endsWith("[1m]")))
-      .toBe(false);
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-Fast",
+      max_input_tokens: 272_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-1M-Fast (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-1M-Fast (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-1M (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-1m-fast[1m]")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-1M-Fast (1M Context)",
+      max_input_tokens: 1_000_000,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-512k")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-512K",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-512k-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Sol-512K-Fast",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-512k")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-512K",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-luna-512k-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Luna-512K-Fast",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-512k")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-512K",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-terra-512k-fast")).toMatchObject({
+      display_name: "Codex-GPT-5.6-Terra-512K-Fast",
+      max_input_tokens: 524_288,
+    });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--codex--gpt-5.6-sol-512k[512k]")).toBeUndefined();
     expect(list.data.find((entry) => entry.id.endsWith("cursor--grok-4.5"))).toMatchObject({
       display_name: "Cursor-Grok-4.5",
       max_input_tokens: 256_000,
@@ -1181,16 +1295,54 @@ describe("model catalog", () => {
       model: model?.upstreamId,
       serviceTier: model?.serviceTier,
     })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
+    const sol512k = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k");
+    const sol512kFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k-fast");
+    const sol1m = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m");
+    const sol1mFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m-fast");
+    expect(sol512k).toMatchObject({ upstreamId: "gpt-5.6-sol", contextWindow: 524_288 });
+    expect(sol512k).not.toHaveProperty("serviceTier");
+    expect(sol512kFast).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority", contextWindow: 524_288 });
+    expect(sol1m).toMatchObject({ upstreamId: "gpt-5.6-sol", contextWindow: 1_000_000 });
+    expect(sol1m).not.toHaveProperty("serviceTier");
+    expect(sol1mFast).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority", contextWindow: 1_000_000 });
+    expect(translateAnthropicRequest(baseRequest(), {
+      model: sol1mFast?.upstreamId,
+      serviceTier: sol1mFast?.serviceTier,
+    })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
   });
 
   it("accepts truthful marked ids and current unmarked aliases", () => {
     const model = findGatewayModel("claude-gateway--kimi--k3[1m]");
     expect(model).toMatchObject({ id: "kimi--k3", upstreamId: "k3" });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
       id: "codex--gpt-5.6-luna",
       upstreamId: "gpt-5.6-luna",
+      contextWindow: 272_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
+      id: "codex--gpt-5.6-luna-1m",
+      upstreamId: "gpt-5.6-luna",
+      contextWindow: 1_000_000,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra[1m]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
+      id: "codex--gpt-5.6-terra",
+      upstreamId: "gpt-5.6-terra",
+      contextWindow: 272_000,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
+      id: "codex--gpt-5.6-terra-1m",
+      upstreamId: "gpt-5.6-terra",
+      contextWindow: 1_000_000,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k")).toMatchObject({
+      id: "codex--gpt-5.6-sol-512k",
+      upstreamId: "gpt-5.6-sol",
+      contextWindow: 524_288,
+    });
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k[512k]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-512k[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--kimi--k3")).toMatchObject({ id: "kimi--k3" });
     expect(findGatewayModel("claude-gateway--cursor--grok-4.5")).toMatchObject({
       id: "cursor--grok-4.5",
@@ -1244,9 +1396,19 @@ describe("Claude context coordinate", () => {
   } as GatewayModel);
 
   it("marks only a model whose real window reaches one million", () => {
-    const codex = CODEX_SUBSCRIPTION_MODELS[0]!;
-    expect(codex.contextWindow).toBe(272_000);
-    expect(toClaudeGatewayModelId(codex).endsWith("[1m]")).toBe(false);
+    const sol = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol")!;
+    const terra = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-terra")!;
+    const sol512k = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol-512k")!;
+    const sol1m = CODEX_SUBSCRIPTION_MODELS.find((entry) => entry.id === "codex--gpt-5.6-sol-1m")!;
+    expect(sol.contextWindow).toBe(272_000);
+    expect(terra.contextWindow).toBe(272_000);
+    expect(sol512k.contextWindow).toBe(524_288);
+    expect(sol1m.contextWindow).toBe(1_000_000);
+    expect(toClaudeGatewayModelId(sol).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(terra).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(sol512k).endsWith("[1m]")).toBe(false);
+    expect(toClaudeGatewayModelId(sol512k)).toBe("claude-gateway--codex--gpt-5.6-sol-512k");
+    expect(toClaudeGatewayModelId(sol1m)).toBe("claude-gateway--codex--gpt-5.6-sol-1m[1m]");
     expect(toClaudeGatewayModelId(model({ contextWindow: 1_000_000 })).endsWith("[1m]")).toBe(true);
   });
 

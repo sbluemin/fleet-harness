@@ -99,6 +99,16 @@ describe("nextOperationId — Alt+←/→ focus cycle", () => {
     expect(sideBarStoreImport?.[1]?.split(",").map((symbol) => symbol.trim())).toEqual(["toggleSideBarStatusAxis"]);
   });
 
+  // 캡션·칩이 여는 Operation 메뉴는 페이지가 소유하므로 주인 패널이 언마운트돼도 저 혼자 남는다.
+  // 무대를 통째로 갈아치우는 두 전환(Theater 전환·War Room 토글)이 회수 신호라는 것이 이 계약이다 —
+  // 팔레트의 switch-theater처럼 메뉴를 거치지 않는 경로로도 전환이 들어오기 때문이다.
+  it("무대를 갈아치우는 전환은 열린 Operation 메뉴를 회수한다", () => {
+    const source = fs.readFileSync(new URL("../core/client/src/pages/operations.tsx", import.meta.url), "utf8");
+    const dismissEffect = /useEffect\(\(\) => \{\s*setOperationMenu\(null\);\s*\}, \[([^\]]*)\]\);/.exec(source);
+    expect(dismissEffect).not.toBeNull();
+    expect(dismissEffect?.[1]?.split(",").map((dep) => dep.trim())).toEqual(["state.activeTheaterId", "triageActive"]);
+  });
+
 });
 
 describe("Operation keyboard focus requests", () => {

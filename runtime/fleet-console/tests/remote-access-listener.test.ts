@@ -1477,9 +1477,17 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
   const consoleDataDir = path.join(dataRoot, "console");
   if (options.remote) {
     fs.mkdirSync(consoleDataDir, { recursive: true });
+    let remoteAccess = options.remoteAccess;
+    if (!remoteAccess) {
+      const host = options.bindHost ?? BIND_HOST;
+      // Desktop이 :50000을 점유하면 고정 기본 포트가 custom_port_unavailable로 연쇄 실패한다.
+      // 바인드 가능한 호스트만 예약하고, 의도적 불가 주소(예: 203.0.113.9)는 기존 50_000을 유지한다.
+      const port = host === BIND_HOST ? await reservePort(BIND_HOST) : 50_000;
+      remoteAccess = remoteSettings(true, host, port);
+    }
     fs.writeFileSync(
       path.join(consoleDataDir, "settings.json"),
-      JSON.stringify({ version: 1, general: { remoteAccess: options.remoteAccess ?? remoteSettings(true, options.bindHost ?? BIND_HOST, 50_000) }, plugins: {} }),
+      JSON.stringify({ version: 1, general: { remoteAccess }, plugins: {} }),
     );
   }
   return bootFixture(dir, dataRoot, consoleDataDir, options.remote, options.remoteRandomInt);

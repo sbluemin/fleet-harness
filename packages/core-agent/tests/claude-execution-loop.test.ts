@@ -875,6 +875,10 @@ function fakeSdk(overrides: {
     configDir: "/tmp/fake",
     models: ["sonnet"],
     startTurn,
+    // 실행 루프는 턴 축만 쓴다 — 세션을 부르는 순간이 있다면 그것은 계약 위반이므로 던진다.
+    openSession: async () => {
+      throw new Error("the execution loop must not open a session");
+    },
     dispose,
   };
 }

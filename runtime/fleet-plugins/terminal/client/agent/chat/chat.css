@@ -986,6 +986,149 @@
   max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));
 }
 
+/* ── 세션 좌표 칩 ────────────────────────────────────────────────────────
+   이 세션이 무엇으로 도는가(모델 · 강도). 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리다.
+   [doctrine] 기본형은 어떤 채널도 타지 않는다 — hairline 테두리와 tertiary 글자뿐이다.
+   좌표는 상태(신호)도 위치(brass)도 정체성(--id-*)도 아니므로 그 채널들을 빌리면 안 된다.
+   색을 얻는 것은 강도 한 자리이며, 그 어휘는 런치 트랙의 것을 그대로 쓴다:
+   MAX는 crest, ULTRACODE는 apex, 미지정(auto)은 파선 밑줄.
+   컨트롤이 아니라 사실이므로 hover 반응도 두지 않는다. */
+.agent-chat-coord {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px var(--space-3);
+  border-radius: var(--radius-xs);
+  border: 1px solid var(--hairline);
+  background: var(--ink-mid);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.agent-chat-coord-mark {
+  flex: none;
+  font-size: var(--t-2xs);
+  line-height: 1;
+}
+
+/* 긴 게이트웨이 모델 이름 하나가 칩 줄 전체를 밀어낼 수 있다 — 이름만 잘리고 강도는 온전히 남는다. */
+.agent-chat-coord-model {
+  min-width: 0;
+  max-width: 14ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text-secondary);
+}
+
+.agent-chat-coord-sep {
+  color: var(--hairline-strong);
+}
+
+/* 미지정 강도는 사다리 위의 단이 아니라 모델에 맡긴 자리다 — 트랙의 파선 문법과 같은 말. */
+.agent-chat-coord-effort[data-effort-level="auto"] {
+  text-decoration: underline dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
+}
+
+/* MAX는 crest 채널을 색으로만 받는다 — 트랙의 잉걸불 명멸까지 옮기면 타자 치는 면에서
+   상시로 깜빡이는 것이 둘이 된다. 이 면의 상시 모션은 ultracode 하나로 족하다. */
+.agent-chat-coord-effort[data-effort-level="max"] {
+  color: var(--crest-ink);
+}
+
+/* ULTRACODE — 강도 트랙과 같은 apex 물결. 이 세션이 실제로 ultracode 오케스트레이션으로
+   돈다는 사실의 표식이며(시드가 SDK 옵션으로 켠다), 그래서 "요청"이 아니라 상태로 말한다.
+   [doctrine] 무한 애니메이션이지만 진행 신호가 아니라 티어 표식이다 — 강도 트랙의
+   `effort-ultracode-wave`가 이미 같은 자리에서 같은 예외를 진다. 감속 모션에서는 아래
+   봉인 블록이 물결을 세우고 단색 apex + 파선 밑줄로 티어를 남긴다. */
+.agent-chat-coord-effort[data-effort-level="ultra"] {
+  font-weight: var(--weight-medium);
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 240% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-chat-ultracode-wave 2.6s linear infinite;
+}
+
+@keyframes agent-chat-ultracode-wave {
+  from { background-position: 0 0; }
+  to { background-position: -240% 0; }
+}
+
+/* 무장한 세션의 칩만 apex 테두리를 얻는다.
+   [doctrine] apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 두 hue 사이 짧은 호를 지나므로,
+   라이트 테마(hairline hue 100)에서 apex(295)와의 혼합이 coral(신호 채널)을 관통한다. */
+.agent-chat-coord.is-ultracode {
+  border-color: color-mix(in oklab, var(--apex) 48%, var(--hairline-strong));
+}
+
+.agent-chat-coord.is-ultracode .agent-chat-coord-mark {
+  color: var(--apex-ink);
+}
+
+/* 칩 줄은 본문 위에 떠 있고 폭을 스스로 늘린다 — 좌표 칩까지 서면 최소 폭(320px) 패널에서
+   줄이 패널 왼쪽 밖으로 나간다(실측: 340px 줄 vs 296px 여유). 그때 물러나는 것은 좌표 칩이다:
+   같은 사실을 로그 첫 줄의 태생 기록이 이미 말하고 있고, 그 줄은 폭을 다투지 않는다.
+   가르는 것은 뷰포트가 아니라 이 패널의 폭이다 — 넓은 창 안에서도 패널은 얼마든지 좁아진다. */
+@container (max-width: 379px) {
+  .agent-chat-coord {
+    display: none;
+  }
+}
+
+/* ── 태생 기록 줄 ────────────────────────────────────────────────────────
+   로그의 첫 줄. 위 칩이 "지금 이 패널이 무엇인가"를 답하고, 이 줄은 전사록을 다시 읽을 때
+   "이 답이 무엇으로 나온 답인가"를 그 자리에서 답한다. 대화의 서사에 얹히는 기록이므로
+   크롬처럼 서지 않는다 — 규칙 하나와 낮은 티어의 글자뿐이다. */
+.agent-chat-birth {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-birth-mark {
+  flex: none;
+  line-height: 1;
+}
+
+.agent-chat-birth-text {
+  flex: none;
+}
+
+.agent-chat-birth-rule {
+  flex: 1 1 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--hairline), transparent);
+}
+
+.agent-chat-birth.is-ultracode {
+  color: color-mix(in oklab, var(--apex) 62%, var(--text-tertiary));
+}
+
+.agent-chat-birth.is-ultracode .agent-chat-birth-rule {
+  background: linear-gradient(90deg, color-mix(in oklch, var(--apex) 46%, transparent), transparent);
+}
+
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
 .agent-analyst-chip-live {
   width: 6px;
@@ -1149,6 +1292,18 @@
 
   .agent-chat-fold-chev {
     transition: none;
+  }
+
+  /* ULTRACODE 물결 봉인 — 모션만 죽이고 티어는 남긴다. 그라데이션을 지우면서 채움도 함께
+     되돌려야 한다: `color: transparent`가 남으면 글자가 통째로 사라진다. */
+  .agent-chat-coord-effort[data-effort-level="ultra"] {
+    animation: none;
+    background-image: none;
+    color: var(--apex-ink);
+    -webkit-text-fill-color: var(--apex-ink);
+    text-decoration: underline dashed;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
   }
 }
 
@@ -1544,6 +1699,44 @@
   outline-offset: 2px;
 }
 
+/* 중단은 되돌릴 수 없는 문이라 돌아가기와 같은 무게로 두지 않는다 — 평소에는 조용하고,
+   가리켰을 때만 경고 색을 든다. 자리는 머리줄 오른쪽 끝이다. */
+.agent-chat-detail-stop {
+  appearance: none;
+  cursor: pointer;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 2px 9px;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-fast), border-color var(--duration-fast);
+}
+
+.agent-chat-detail-stop:hover:not(:disabled) {
+  color: var(--warn);
+  border-color: color-mix(in oklch, var(--warn) 40%, var(--hairline));
+}
+
+.agent-chat-detail-stop:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 2px;
+}
+
+.agent-chat-detail-stop:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.agent-chat-detail-stop-error {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--coral);
+}
+
 .agent-chat-detail-title {
   font-size: var(--t-md);
   color: var(--text-primary);
@@ -1799,12 +1992,12 @@
 }
 
 .agent-chat-ctx-pop-title {
-  font-size: 11.5px;
+  font-size: var(--t-sm);
   color: var(--text-primary);
 }
 
 .agent-chat-ctx-pop-total {
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--agent-chat-ctx-ink);
 }
 
@@ -1841,7 +2034,7 @@
   align-items: center;
   gap: var(--space-2);
   padding: 2px 0;
-  font-size: 11px;
+  font-size: var(--t-xs);
 }
 
 .agent-chat-ctx-swatch {
@@ -1875,18 +2068,18 @@
 .agent-chat-ctx-share {
   width: 44px;
   text-align: right;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 .agent-chat-ctx-count {
   min-width: 20px;
   text-align: right;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
 }
 
 /* 남은 자리는 쓴 몫이 아니다 — 같은 잉크로 두면 목록이 "이만큼 먹었다"를 한 줄 더 말한다. */
 .agent-chat-ctx-free .agent-chat-ctx-name,
-.agent-chat-ctx-free .agent-chat-ctx-tokens { color: var(--ink-fog); }
+.agent-chat-ctx-free .agent-chat-ctx-tokens { color: var(--text-tertiary); }
 
 .agent-chat-ctx-detail { margin-top: var(--space-2); }
 
@@ -1898,7 +2091,7 @@
   gap: var(--space-2);
   padding-top: var(--space-2);
   border-top: 1px solid var(--hairline);
-  font-size: 11px;
+  font-size: var(--t-xs);
   color: var(--text-tertiary);
 }
 
@@ -1908,7 +2101,7 @@
 .agent-chat-ctx-detail > summary:focus-visible {
   outline: 2px solid var(--aurora);
   outline-offset: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-xs);
 }
 
 /* 값이 언제 잰 것인지 말하지 않으면 이 표면은 조용한 거짓말이 된다 — 자식은 턴이 끝나기 전에
@@ -1917,8 +2110,8 @@
   margin: var(--space-2) 0 0;
   padding-top: var(--space-2);
   border-top: 1px solid var(--hairline);
-  font-size: 10px;
-  color: var(--ink-fog);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
 }
 
 /* 접힘 줄의 증가분. 실패·중지 배지와 같은 줄에 서지만 상태가 아니라 크기이므로 신호 잉크를

@@ -45,6 +45,16 @@ describe("opencode go anthropic policy", () => {
     expect(next.output_config).toBeUndefined();
   });
 
+  it("strips an ultra effort like any other rung", () => {
+    // ultra는 canonical protocol 어휘에 남는다 — launch sentinel이 게이트웨이를 통과해도
+    // effort 필드 제거는 값과 무관하게 동작해 upstream으로 새지 않는다.
+    const next = opencodeRequestBody(
+      request({ output_config: { effort: "ultra" } }),
+      "minimax-m3",
+    );
+    expect(next.output_config).toBeUndefined();
+  });
+
   it("passes the body through untouched when there is no output_config", () => {
     const body = request();
     expect(opencodeRequestBody(body, "minimax-m3")).toEqual({ ...body, model: "minimax-m3" });

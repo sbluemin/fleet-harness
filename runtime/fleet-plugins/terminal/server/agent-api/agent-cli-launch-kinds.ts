@@ -13,7 +13,8 @@ import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/
 
 import type { AgentCliLaunchMetadata } from "./agent-cli-launch-metadata.js";
 
-const EFFORT_LABELS: Readonly<Record<string, string>> = {
+/** 런치 메뉴의 강도 어휘 원본. 채팅 좌표 칩이 같은 어휘를 쓰도록 테스트가 두 표를 맞물린다. */
+export const EFFORT_LABELS: Readonly<Record<string, string>> = {
   low: "LOW",
   medium: "MED",
   high: "HIGH",
@@ -25,7 +26,15 @@ const EFFORT_LABELS: Readonly<Record<string, string>> = {
 /** 게이트 뒤에 숨는 apex 티어 — 일상 다이얼은 xhigh에서 닫고, 이 단들은 트랙의 확장 제스처가 연다. */
 const APEX_EFFORTS = ["max", "ultra"] as const;
 
-const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
+/**
+ * Console launch 전용 sentinel — 카탈로그 사다리(GatewayReasoningEffort)의 단이 아니라 모든
+ * gateway 모델의 마지막 칩으로 무조건 서는 Claude Code 하네스 능력이다. launch payload에는
+ * 이 문자열이 그대로 실리고, spawn은 launch factory가 `--effort ultracode`로 전달한다.
+ */
+const ULTRACODE_LAUNCH_EFFORT = "ultra";
+
+/** 런치 메뉴의 모델 어휘 원본 — 같은 세션을 두 표면이 다른 이름으로 부르지 않게 하는 자리다. */
+export const NATIVE_MODEL_LABELS: Readonly<Record<(typeof NATIVE_CLAUDE_MODEL_ALIASES)[number], string>> = {
   // Claude Code's 1M coordinates stay under their plain menu labels.
   "fable[1m]": "Fable",
   "opus[1m]": "Opus",
@@ -98,36 +107,37 @@ export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection)
 }
 
 // 강도 축은 사다리 어휘를 아는 이쪽이 소유한다. 한 모델이 그 일부만 내놓아도(low/high/max)
-// 일상 단의 자리는 지키되, 게이트 티어(max/ultra)는 모델이 실제로 내놓은 것만 축에 올린다 —
+// 일상 단의 자리는 지키되, 게이트 티어(max/ultra)는 실제로 설 수 있는 것만 축에 올린다 —
 // 안 내놓은 apex를 축에 남겨 두면 + 없이도 빈 스톱이 일상 사다리 끝에 붙는다.
-const EFFORT_AXIS = [...NATIVE_CLAUDE_EFFORTS, "ultra"] as const;
+const EFFORT_AXIS = [...NATIVE_CLAUDE_EFFORTS, ULTRACODE_LAUNCH_EFFORT] as const;
 
 function providerGroupId(provider: GatewayProvider): string {
   return `gateway:${provider}`;
 }
 
 function toGatewayRow(model: GatewayModel, selection: AiGatewaySelection) {
-  const efforts = (selection.effortExposure[model.id] ?? exposableEffortLadder(model))
-    .filter((effort): effort is Extract<GatewayReasoningEffort, (typeof EFFORT_AXIS)[number]> =>
-      EFFORT_AXIS.includes(effort));
-  const gatedEfforts = APEX_EFFORTS.filter((effort) => efforts.includes(effort));
-  // apex는 게이트 뒤 전용이다. 노출되지 않은 max/ultra는 축에서도 빼, 닫힌 트랙에
-  // 유령 스톱이 서지 않게 한다. 일상 단(medium/xhigh 등)의 빈 자리는 그대로 둔다.
-  const effortAxis = EFFORT_AXIS.filter((effort) =>
-    !(APEX_EFFORTS as readonly string[]).includes(effort) || efforts.includes(effort));
+  // 일상 단은 노출/카탈로그 사다리만 따른다 — ultra는 이 어휘에 없으니 여기서는 절대 나오지
+  // 않고, Console launch sentinel로 마지막 칩에 따로 합성한다.
+  const ordinary: readonly GatewayReasoningEffort[] = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
+  const hasMax = ordinary.includes("max");
+  // apex는 게이트 뒤 전용이다. max는 모델이 실제로 내놓을 때만 축에 올리고, ultra는 하네스
+  // 능력이라 모델과 무관하게 끝에 선다. 강도를 아예 지원하지 않는 모델은 ULTRACODE 단독 행이다.
+  const effortAxis: readonly string[] = ordinary.length === 0
+    ? [ULTRACODE_LAUNCH_EFFORT]
+    : [...NATIVE_CLAUDE_EFFORTS.filter((effort) => effort !== "max" || hasMax), ULTRACODE_LAUNCH_EFFORT];
+  const gatedEfforts: readonly string[] = hasMax ? ["max", ULTRACODE_LAUNCH_EFFORT] : [ULTRACODE_LAUNCH_EFFORT];
+  const chips: readonly string[] = [...ordinary, ULTRACODE_LAUNCH_EFFORT];
   return {
     id: model.id,
     label: bareModelName(model),
     launch: { model: model.id },
-    ...(efforts.length > 0 ? {
-      effortAxis,
-      ...(gatedEfforts.length > 0 ? { gatedEfforts } : {}),
-      chips: efforts.map((effort) => ({
-        id: effort,
-        label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
-        launch: { model: model.id, effort },
-      })),
-    } : {}),
+    effortAxis,
+    gatedEfforts,
+    chips: chips.map((effort) => ({
+      id: effort,
+      label: EFFORT_LABELS[effort] ?? effort.toUpperCase(),
+      launch: { model: model.id, effort },
+    })),
   };
 }
 

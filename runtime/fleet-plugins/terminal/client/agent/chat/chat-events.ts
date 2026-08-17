@@ -938,11 +938,11 @@ export interface AgentChatStepGroup {
 export interface AgentChatLedgerSegment {
   /** 이 구간을 여는 문장. 첫 도구가 문장보다 먼저 오면 없다. */
   readonly note?: string;
-  /** 이 구간에서 한 줄로 접힌 평범한 완료 스텝의 집계. */
+  /** 이 구간에서 한 줄로 접힌 끝난 스텝의 집계. */
   readonly groups: readonly AgentChatStepGroup[];
   /** 그 집계 뒤에 실제로 있던 스텝들 — 집계 줄을 누르면 이것이 펼쳐진다. */
   readonly folded: readonly AgentChatTurnItem[];
-  /** 접지 않고 줄을 지키는 것 — 실패한 스텝, Theater 밖 스텝, 그리고 열린 구간의 최근 스텝. */
+  /** 접지 않고 줄을 지키는 것 — 확인되지 않은 스텝, 핀된 스텝, 그리고 열린 구간의 최근 스텝. */
   readonly inline: readonly AgentChatTurnItem[];
   /** 지금 도는 스텝. */
   readonly running: readonly AgentChatTurnItem[];
@@ -956,7 +956,8 @@ export interface AgentChatLedgerSegment {
  * 순서대로 세워 둔다 — 방금 무엇을 했는지가 곧 "일하는 중"이라는 감각이다. 다음 문장이
  * 도착하거나 턴이 끝나면 그 구간도 닫히고 한 줄로 접힌다.
  *
- * 실패한 스텝과 Theater 밖을 가리킨 스텝은 어느 구간에서도 접지 않는다.
+ * 결과가 온 스텝은 실패와 Theater 밖 표식을 포함해 같은 집계로 접힌다. 펼치면 표식은
+ * 그대로 있다. 결과 없이 닫힌 스텝만 줄을 지킨다 — 확인되지 않은 것을 과거형으로 세면 안 된다.
  */
 export function segmentAgentChatLedger(
   items: readonly AgentChatTurnItem[],
@@ -1017,9 +1018,10 @@ function foldSegment(
     const step = steps[index];
     if (!step) continue;
     if (step.type === "ask") continue;
-    if (step.state === "running" || step.state === "fail" || step.outside === true) continue;
+    if (step.state === "running") continue;
     // 이미 줄을 지키는 스텝은 최근 창의 자리를 쓰지 않는다 — 쓰면 접히지 않을 것 하나가
-    // 접히지 않을 것 하나를 더 밀어낸다.
+    // 접히지 않을 것 하나를 더 밀어낸다. 실패·Theater 밖은 이제 접힐 수 있으므로 자리를 쓴다.
+    if (step.state !== "ok" && step.state !== "fail") continue;
     if (pinned?.(step) === true) continue;
     keepInline.add(index);
     keep -= 1;
@@ -1035,10 +1037,11 @@ function foldSegment(
     // 갈렸는지 말하는 증거라 집계에 삼켜지면 안 된다.
     if (step.type === "ask") { inline.push(step); return; }
     if (step.state === "running") { running.push(step); return; }
-    // 과거형 집계는 결과가 ok로 돌아온 스텝만 센다. 결과 없이 닫힌 스텝(`done`)을 "씀"으로
-    // 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시 했다고 말하는 셈이다 —
-    // 두 표면이 서로 다른 사실을 말하게 된다. 확인되지 않은 것은 예외로 줄을 지킨다.
-    if (step.state !== "ok" || step.outside === true || keepInline.has(at) || pinned?.(step) === true) { inline.push(step); return; }
+    // 결과가 온 스텝은 실패와 Theater 밖 표식을 포함해 같은 집계로 접는다. 결과 없이 닫힌
+    // 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시
+    // 했다고 말하는 셈이다 — 확인되지 않은 것만 줄을 지킨다.
+    const foldable = step.state === "ok" || step.state === "fail";
+    if (!foldable || keepInline.has(at) || pinned?.(step) === true) { inline.push(step); return; }
     folded.push(step);
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;

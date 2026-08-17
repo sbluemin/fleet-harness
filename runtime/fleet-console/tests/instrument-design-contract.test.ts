@@ -193,6 +193,8 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--triage-drift-y1",
   "--triage-drift-x2",
   "--triage-drift-y2",
+  // Chat context popover TSX injects the category-stack luminance step (0–5).
+  "--agent-chat-ctx-step",
 ]);
 
 function source(path: string): string {
@@ -605,7 +607,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
-    expect(components).toContain(".canvas-operation-formation-slot {");
+    // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
+    expect(components).not.toContain(".canvas-operation-formation-slot {");
     expect(contextMenu).not.toContain("canvas-context-menu-head");
     expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
     expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
@@ -922,9 +925,10 @@ describe("Instrument core design contract", () => {
   });
 
   it("pins the Operation provider mark grammar — one tone table, ink only, no state repaint", () => {
-    // 사이드바 칩·커맨드 밴드·팔레트·War Room 카드는 같은 Operation을 네 곳에서 센다. 표면이
-    // 각자 톤을 적으면 한 곳만 고쳐도 컴파일은 되고 같은 Operation이 두 색으로 보인다 — 대조표는
-    // .operation-provider-mark 한 곳에만 있어야 하고, 표면 클래스는 치수만 소유한다.
+    // 공급자 마크는 실행 표면(검색·Quick Launch·실행 메뉴)에만 남는다 — 사이드바 칩·커맨드 밴드의
+    // 이름 왼쪽 슬롯은 활동 상태가 가져갔다. 남은 표면이 각자 톤을 적으면 한 곳만 고쳐도 컴파일은
+    // 되고 같은 Operation이 두 색으로 보인다 — 대조표는 .operation-provider-mark 한 곳에만 있어야
+    // 하고, 표면 클래스는 치수만 소유한다.
     const css = source("styles/components.css");
     for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
       expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
@@ -939,12 +943,11 @@ describe("Instrument core design contract", () => {
     // 달리, 공급자 마크는 어느 상태에서도 같은 톤을 유지해야 같은 Operation으로 읽힌다.
     expect(css).not.toMatch(/\.is-active[^{}]*\.operation-provider-mark/);
 
-    // 네 표면 모두 공용 마크 클래스를 통해 톤을 받는다 — 하나라도 자기 색을 적으면 대조표가 갈라진다.
-    expect(source("sidebar/operations-side-bar-chip.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
-    expect(source("components/command-band.tsx")).toContain("operation-provider-mark is-${activeLaunchProvider}");
+    // 남은 표면은 공용 마크 클래스를 통해 톤을 받는다 — 자기 색을 적으면 대조표가 갈라진다.
     expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
-    // 해석은 한 함수 — 표면마다 다른 규칙을 적으면 같은 Operation이 두 마크를 갖는다.
-    expect(source("sidebar/operations-side-bar.tsx")).toContain('from "../operation-mark.js"');
+    // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
+    expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
+    expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {
@@ -1234,8 +1237,15 @@ describe("Instrument core design contract", () => {
     expect(app).toContain("useEffect(() => subscribeOperationActivityTracking(), []);");
     expect(sidebar).toContain("if (!statusAxis) {");
     expect(chip).toContain("reorderEnabled && event.altKey && event.shiftKey");
-    expect(chip).toContain('className="side-bar-chip-unseen"');
-    expect(chip).not.toContain("statusAxis && idleUnseen");
+    // 미확인 도착은 상태 마크와 같은 사실이다(idle + idleArrival = 표시 활동 AWAITING). 칩은 그 사실을
+    // 마크 하나로만 말한다 — 우측 점·행 틴트·헤더 카운트 배지는 같은 화면에서의 중복 발화였다.
+    expect(chip).not.toContain("side-bar-chip-unseen");
+    expect(chip).not.toContain("idleUnseen");
+    expect(sidebar).not.toContain("idleUnseen");
+    expect(sidebar).not.toContain("side-bar-status-header__unseen");
+    // 사이드바 엔트리는 생성 시점부터 표시 활동을 싣는다 — 그룹축·복구 선반이 raw idle을 그리면
+    // 도착한 Operation이 축마다 다른 상태를 말한다.
+    expect(sidebar).toContain("status: resolveOperationDisplayActivity({");
     expect(sideBarStore).toContain("let statusAxis = false;");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
     expect(idleArrival).toContain("let idleArrivalIds = new Set<string>();");
@@ -1247,8 +1257,9 @@ describe("Instrument core design contract", () => {
     expect(sideBarStore).not.toContain("STORAGE_KEY_STATUS");
     expect(sideBarStore).not.toContain("fleet-console.operations.status");
 
-    // Doctrine: status-section border/dot/count are signal-owned, while the chip group mark
+    // Doctrine: status-section border/count are signal-owned, while the chip group mark
     // consumes only resolveAccentColor identity values and never repaints the status beacon.
+    // The group header does not repeat the rounded activity mark; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
     expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
@@ -1262,16 +1273,17 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
     expect(components).toMatch(/\.side-bar-status-section--background \{[^}]*border-left-style:\s*dashed/);
-    expect(components).toMatch(/\.side-bar-status-section--background \.side-bar-status-header__dot \{[^}]*background:\s*none;[^}]*border:\s*1\.5px solid var\(--activity-color\)/);
+    expect(sidebar).not.toContain("side-bar-status-header__dot");
+    expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
-    expect(components).toMatch(/\.side-bar-chip-unseen \{[^}]*background:\s*var\(--positive\)/);
-    expect(components).toMatch(/\.side-bar-chip--unseen \{[^}]*border-color:\s*color-mix\(in oklch, var\(--positive\)/);
+    // 사이드바에는 미확인 도착 전용 표면이 없다 — 상태 마크(aurora AWAITING)가 그 사실을 혼자 나른다.
+    expect(components).not.toContain(".side-bar-chip-unseen");
+    expect(components).not.toContain(".side-bar-chip--unseen");
+    expect(components).not.toContain(".side-bar-status-header__unseen");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
-    expect(components).toMatch(/\.side-bar-status-header__unseen::before \{[^}]*background:\s*var\(--positive\)/);
-    expect(components).toContain(".side-bar-status-axis-live-tick,");
-    expect(components).toContain(".side-bar-status-header--awaiting .side-bar-status-header__dot {");
+    expect(components).toContain(".side-bar-status-axis-live-tick {");
   });
 
   it("pins the selectable Right Rail panel behavior contract", () => {
@@ -1334,7 +1346,6 @@ describe("Instrument core design contract", () => {
       ".app-toast",
       ".command-band-system-menu",
       ".group-context-menu-card",
-      ".accent-popover-card",
       ".theater-menu",
       ".operation-search-card",
       ".quick-launch-card",
@@ -2149,6 +2160,7 @@ describe("Instrument core design contract", () => {
     const systemCluster = source("components/command-band-system-cluster.tsx");
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
+    const statusIcon = source("components/operation-status-icon.tsx");
     const minimap = source("canvas/canvas-minimap.tsx");
     const commandBand = source("components/command-band.tsx");
     const components = source("styles/components.css");
@@ -2165,12 +2177,14 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
-    expect(chip).toContain('if (visual === "background") return "tenant-beacon is-background"');
-    expect(chip).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
+    // 상태 마크 해석은 한 모듈이 소유한다 — 표면마다 매핑을 다시 적으면 같은 상태가 두 조형으로 갈라진다.
+    expect(chip).toContain('import { OperationStatusIcon } from "../components/operation-status-icon.js"');
+    expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
+    expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");
-    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-op-icon {\n  opacity: 0.62;");
+    expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-status {\n  opacity: 0.62;");
     expect(components).not.toMatch(/\.side-bar-chip--minimized \{[^}]*opacity/);
 
     expect(minimap).not.toContain("is-plugin");
@@ -2283,10 +2297,10 @@ describe("Instrument core design contract", () => {
     expect(source("canvas/canvas.tsx")).toContain("operationWindowFrameFor(geometry)");
     expect(source("canvas/operation-frame.tsx")).not.toContain("canvas-operation-drag-edge");
     expect(source("canvas/operation-frame.tsx")).not.toContain('className="canvas-operation-cli"');
-    expect(components).toContain(".canvas-operation-beacon-button {");
+    expect(components).toContain(".canvas-operation-more-button {");
     expect(components).toContain("border: 1px solid var(--surface-rim);");
     expect(components).toContain("left: -1px;");
-    expect(components).toContain("name → beacon → 상시 컨트롤");
+    expect(components).toContain("name → More → 상시 컨트롤");
     const canvas = source("canvas/canvas.tsx");
     expect(canvas).toContain("export function useGlanceHold(): boolean");
     expect(canvas).toContain('event.code === "AltLeft" || event.code === "AltRight"');
@@ -2295,10 +2309,10 @@ describe("Instrument core design contract", () => {
     expect(canvas).toContain('glanceVisible ? "is-glance" : ""');
     expect(canvas).toContain('window.addEventListener("blur", clearGlance)');
     expect(canvas).toContain('document.addEventListener("visibilitychange", handleVisibilityChange)');
-    expect(source("styles/layout.css")).toContain(".command-band-operation-kind { display: flex; align-items: center; flex: none; line-height: 0; }");
+    expect(source("styles/layout.css")).toContain(".command-band-operation-status { margin-right: 2px; }");
     expect(source("styles/layout.css")).not.toContain(".command-band-operation-attribute");
     expect(commandBand).not.toContain("command-band-operation-attribute");
-    expect(commandBand).toContain("command-band-operation-kind operation-provider-mark is-${activeLaunchProvider}");
+    expect(commandBand).toContain('className="command-band-operation-status"');
     expect(commandBand).toContain('<rect x="1.75" y="3" width="12.5" height="10" rx="2.4"');
     expect(rail).toContain("width: 44px");
   });
@@ -2448,7 +2462,13 @@ describe("Effort track interaction grammar", () => {
     expect(components).toContain("@property --quick-launch-rim-spread");
     expect(components).toContain("@keyframes quick-launch-ultracode-ignite");
     expect(components).toContain("@keyframes quick-launch-ultracode-bead");
-    expect(components).toMatch(/@keyframes quick-launch-ultracode-rim \{\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/);
+    // 순항 키프레임은 시작 각도를 스스로 적어야 한다. `to`만 두면 시작점을 밑에 깔린 값에서
+    // 빌리는데, 앞 순번 점화가 `both`로 채워 둔 끝값 360deg가 거기 앉아 있어 순항이 360deg에서
+    // 360deg로 돌았다 — 재생은 running인 채 링만 정지했다. 조성만 고정하던 이 계약이 그 정지를
+    // 초록으로 통과시켰으므로, 여기서는 시작점 자체를 고정한다.
+    expect(components).toMatch(
+      /@keyframes quick-launch-ultracode-rim \{\s*from \{ --quick-launch-rim-angle: 0deg; \}\s*to \{ --quick-launch-rim-angle: 360deg; \}\s*\}/,
+    );
     // 점화가 끝난 뒤에야 순항에 올라탄다 — 완성된 호가 갑자기 붙으면 이질감이 난다.
     expect(components).toMatch(/quick-launch-ultracode-ignite 900ms[\s\S]*quick-launch-ultracode-rim 2\.8s linear 900ms infinite/);
     // 무한 애니메이션은 규약의 예외이므로 근거가 규칙 옆에 남아 있어야 한다.
@@ -2547,6 +2567,49 @@ describe("Effort track interaction grammar", () => {
     // 기다림의 맥동은 모션이므로 reduced-motion에서 멈춘다.
     const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toContain(".agent-chat-ask-dot");
+  });
+
+  it("pins the chat session-coordinate grammar — neutral by default, apex only for ultracode", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const view = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 좌표는 상태(신호)도 위치(brass)도 정체성도 아니다 — 기본형은 어떤 채널도 타지 않는다.
+    const chip = block(".agent-chat-coord");
+    expect(chip).toContain("border: 1px solid var(--hairline);");
+    for (const channel of ["--aurora", "--warn", "--coral", "--positive", "--brass", "--id-"]) {
+      expect(chip, channel).not.toContain(channel);
+    }
+
+    // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest, ULTRACODE는 apex.
+    expect(block('.agent-chat-coord-effort[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
+    const ultra = block('.agent-chat-coord-effort[data-effort-level="ultra"]');
+    expect(ultra).toContain("var(--apex-ink)");
+    expect(ultra).toContain("animation: agent-chat-ultracode-wave 2.6s linear infinite;");
+
+    // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
+    // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
+    expect(block(".agent-chat-coord.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+    expect(block(".agent-chat-birth.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+
+    // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
+    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reduced).toMatch(
+      /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
+    );
+
+    // 최소 폭(320px) 패널에서 칩 줄은 패널 밖으로 나간다 — 그때 물러나는 것은 좌표 칩이고,
+    // 같은 사실은 폭을 다투지 않는 태생 기록이 잇는다. 뷰포트가 아니라 패널 폭이 가른다.
+    expect(chat).toMatch(/@container \(max-width: 379px\) \{\s*\.agent-chat-coord \{\s*display: none;/);
+
+    // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
+    // 누를 수 있게 그리면 거짓 약속이 된다.
+    expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
+    expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
   });
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {

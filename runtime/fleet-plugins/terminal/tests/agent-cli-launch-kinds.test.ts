@@ -8,7 +8,8 @@ import { buildAgentCliLaunchKinds } from "../server/agent-api/agent-cli-launch-k
 const EFFORT_AXIS = ["low", "medium", "high", "xhigh", "max", "ultra"];
 const EVERYDAY_AXIS = ["low", "medium", "high", "xhigh"];
 const APEX_EFFORTS = ["max", "ultra"];
-const MAX_ONLY_AXIS = [...EVERYDAY_AXIS, "max"];
+// max를 내지 않는 gateway 모델의 축 — max 자리는 건너뛰고, 하네스 능력인 ultra가 끝에 선다.
+const MAX_LESS_AXIS = [...EVERYDAY_AXIS, "ultra"];
 
 const builtinVariants = {
   id: "native",
@@ -52,18 +53,11 @@ describe("buildAgentCliLaunchKinds", () => {
         { id: "codex--gpt-5.6-sol-fast" },
       ],
     });
-    const selection = {
-      ...resolved,
-      effortExposure: {
-        ...resolved.effortExposure,
-        "codex--gpt-5.6-sol-fast": ["low", "medium", "high", "xhigh", "max", "ultra"] as const,
-      },
-    };
 
     const result = buildAgentCliLaunchKinds(
       [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
-      selection,
+      resolved,
     );
 
     expect(result[0]?.variants).toEqual([
@@ -97,17 +91,20 @@ describe("buildAgentCliLaunchKinds", () => {
             id: "kimi--k3",
             label: "K3-1M",
             launch: { model: "kimi--k3" },
-            // 노출은 MAX 한 단 — 축에서도 ultra를 빼 유령 스톱이 일상 사다리에 붙지 않게 한다.
-            effortAxis: MAX_ONLY_AXIS,
-            gatedEfforts: ["max"],
-            chips: [gatewayChip("kimi--k3", "max", "MAX")],
+            // 노출은 MAX 한 단이지만 ultra는 하네스 능력이라 사다리 밖에서 끝 칩으로 선다.
+            effortAxis: EFFORT_AXIS,
+            gatedEfforts: APEX_EFFORTS,
+            chips: [
+              gatewayChip("kimi--k3", "max", "MAX"),
+              gatewayChip("kimi--k3", "ultra", "ULTRACODE"),
+            ],
           },
         ],
       },
     ]);
   });
 
-  it("omits the apex expander when the model exposes neither max nor ultra", () => {
+  it("gates ultra alone when the model stops before max", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [{ id: "kimi--k3", efforts: ["low", "high"] }],
@@ -124,16 +121,18 @@ describe("buildAgentCliLaunchKinds", () => {
       id: "kimi--k3",
       label: "K3-1M",
       launch: { model: "kimi--k3" },
-      effortAxis: EVERYDAY_AXIS,
+      // max는 축에서도 건너뛰고 ultra만 게이트 뒤에 선다 — 닫힌 트랙에 유령 스톱이 서지 않게.
+      effortAxis: MAX_LESS_AXIS,
+      gatedEfforts: ["ultra"],
       chips: [
         gatewayChip("kimi--k3", "low", "LOW"),
         gatewayChip("kimi--k3", "high", "HIGH"),
+        gatewayChip("kimi--k3", "ultra", "ULTRACODE"),
       ],
     });
-    expect(row).not.toHaveProperty("gatedEfforts");
   });
 
-  it("gates max alone for models that stop before ultra", () => {
+  it("pairs an offered max with the synthesized ultra gate", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
       models: [{ id: "codex--gpt-5.6-luna-fast" }],
@@ -148,11 +147,63 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(row).toMatchObject({
       id: "codex--gpt-5.6-luna-fast",
-      effortAxis: MAX_ONLY_AXIS,
-      gatedEfforts: ["max"],
+      effortAxis: EFFORT_AXIS,
+      gatedEfforts: ["max", "ultra"],
     });
-    expect(row?.chips?.map((chip) => chip.id)).toEqual(["low", "medium", "high", "xhigh", "max"]);
-    expect(row?.chips?.some((chip) => chip.id === "ultra")).toBe(false);
+    expect(row?.chips?.map((chip) => chip.id)).toEqual(["low", "medium", "high", "xhigh", "max", "ultra"]);
+    expect(row?.chips?.at(-1)).toEqual(gatewayChip("codex--gpt-5.6-luna-fast", "ultra", "ULTRACODE"));
+  });
+
+  it("skips the max rung for a MAX-less model but still ends on ultra", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "cursor--grok-4.6-fast" }],
+    });
+
+    const result = buildAgentCliLaunchKinds(
+      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      "agent",
+      selection,
+    );
+    const row = result[0]?.variants?.find((group) => group.id === "gateway:cursor")?.rows[0];
+
+    expect(row).toEqual({
+      id: "cursor--grok-4.6-fast",
+      label: "Grok-4.6-Fast",
+      launch: { model: "cursor--grok-4.6-fast" },
+      effortAxis: MAX_LESS_AXIS,
+      gatedEfforts: ["ultra"],
+      chips: [
+        gatewayChip("cursor--grok-4.6-fast", "low", "LOW"),
+        gatewayChip("cursor--grok-4.6-fast", "medium", "MED"),
+        gatewayChip("cursor--grok-4.6-fast", "high", "HIGH"),
+        gatewayChip("cursor--grok-4.6-fast", "xhigh", "XHIGH"),
+        gatewayChip("cursor--grok-4.6-fast", "ultra", "ULTRACODE"),
+      ],
+    });
+  });
+
+  it("offers ULTRACODE alone for a model with no effort support", () => {
+    const selection = resolveAiGatewaySelection({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+    });
+
+    const result = buildAgentCliLaunchKinds(
+      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      "agent",
+      selection,
+    );
+    const row = result[0]?.variants?.find((group) => group.id === "gateway:cursor")?.rows[0];
+
+    expect(row).toEqual({
+      id: "cursor--auto",
+      label: "Auto",
+      launch: { model: "cursor--auto" },
+      effortAxis: ["ultra"],
+      gatedEfforts: ["ultra"],
+      chips: [gatewayChip("cursor--auto", "ultra", "ULTRACODE")],
+    });
   });
 
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {

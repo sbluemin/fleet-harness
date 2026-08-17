@@ -178,7 +178,7 @@ describe("upstream credential", () => {
       contextWindow: 272_000,
       model: "gpt-5.6-sol",
       serviceTier: "priority",
-      reasoningEfforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
+      reasoningEfforts: ["low", "medium", "high", "xhigh", "max"],
     }));
   });
 
@@ -258,6 +258,27 @@ describe("upstream credential", () => {
       contextWindow: 272_000,
     }));
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("clamps an explicit Sol ultra request to the model's max rung", async () => {
+    let canonical: CanonicalResponseRequest | undefined;
+    const router = createAiGatewayRouter({
+      gateway: stubGateway((request) => {
+        canonical = request;
+      }),
+      readAuth,
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol",
+      thinking: { type: "adaptive" },
+      outputConfig: { effort: "ultra" },
+    }));
+
+    expect(canonical?.model).toBe("gpt-5.6-sol");
+    expect(canonical?.reasoning).toEqual({ summary: "auto", effort: "max" });
   });
 
   it("clamps an explicit Luna ultra request to the model's max rung", async () => {
@@ -494,6 +515,10 @@ describe("model context window", () => {
     // The guard and Claude-coordinate projection both take the model's real window.
     // Marker choice only selects Claude's 200k or 1M coordinate.
     ["claude-gateway--codex--gpt-5.6-sol", 272_000],
+    ["claude-gateway--codex--gpt-5.6-terra", 272_000],
+    ["claude-gateway--codex--gpt-5.6-sol-512k", 524_288],
+    ["claude-gateway--codex--gpt-5.6-sol-1m", 1_000_000],
+    ["claude-gateway--codex--gpt-5.6-terra-1m", 1_000_000],
     ["claude-gateway--cursor--grok-4.5-fast", 256_000],
     ["claude-gateway--cursor--composer-2.5", 200_000],
   ])("passes %s's real window to both context contracts", async (model, expected) => {
@@ -522,9 +547,9 @@ describe("model context window", () => {
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol",
-      // 4 chars/token puts this at ~500_000 tokens against a 272_000 window.
-      messages: [{ role: "user", content: "x".repeat(2_000_000) }],
+      model: "claude-gateway--codex--gpt-5.6-terra",
+      // 4 chars/token puts this at ~750_000 tokens against the 272K Terra base model.
+      messages: [{ role: "user", content: "x".repeat(3_000_000) }],
     }));
 
     expect(res.status).toBe(413);
@@ -548,10 +573,10 @@ describe("oversized skill payloads", () => {
     "- claude-api: Reference for the Claude API / Anthropic SDK.",
     "TRIGGER — read BEFORE opening the target file.",
   ].join("\n");
-  // 4 chars/token puts this at 100_000 tokens, past the 27_200 one skill may take
+  // 4 chars/token puts this at 150_000 tokens, past the 54_400 one skill may take
   // from a 272_000-token window.
   const BODY = "Base directory for this skill: /tmp/bundled-skills/2.1.222/abc/claude-api\n\n"
-    + "x".repeat(400_000);
+    + "x".repeat(600_000);
 
   function sentText(request: AnthropicMessagesRequest | undefined, index: number): string {
     const content = request?.messages[index]?.content;
@@ -569,7 +594,7 @@ describe("oversized skill payloads", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol",
+      model: "claude-gateway--codex--gpt-5.6-terra",
       messages: [listingTurn, { role: "user", content: [{ type: "text", text: BODY }] }],
     }));
 
@@ -584,7 +609,7 @@ describe("oversized skill payloads", () => {
     await router.handle(ctx({
       res: response(),
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol",
+      model: "claude-gateway--codex--gpt-5.6-terra",
       messages: [listingTurn],
     }));
 
@@ -1803,8 +1828,28 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(31);
+    expect(list.data).toHaveLength(43);
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m-fast[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m[1m]");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m-fast[1m]");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-512k[512k]");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol[1m]");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m][1m]");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5-fast");
@@ -1821,7 +1866,6 @@ describe("route surface", () => {
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
-    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(false);
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--cursor--grok-4.5",
       display_name: "Cursor-Grok-4.5",
