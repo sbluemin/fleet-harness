@@ -567,6 +567,26 @@ describe("background job mapping", () => {
     }));
     expect(parsed?.event).toEqual({ kind: "context", total: 100, max: 1_000, slices: [{ name: "Messages", tokens: 60 }] });
   });
+
+  it("carries the end-of-turn marker and treats anything else as start", () => {
+    const read = (asOf: unknown): unknown => readChatJournalEvent(JSON.stringify({
+      seq: 7,
+      event: { kind: "context", total: 100, max: 1_000, slices: [], asOf },
+    }))?.event;
+    expect(read("end")).toMatchObject({ asOf: "end" });
+    // 부재·모르는 값은 시작으로 읽는다 — 그것이 옛 저널의 뜻이고, 총량을 권위로 삼는 쪽으로
+    // 오해되면 화면의 숫자가 뒤로 간다.
+    expect(read("start")).not.toHaveProperty("asOf");
+    expect(read(undefined)).not.toHaveProperty("asOf");
+    expect(read("later")).not.toHaveProperty("asOf");
+  });
+
+  it("round-trips a live context total and drops one that cannot name a window", () => {
+    const event: AgentChatStreamEvent = { kind: "context-live", total: 42_768, max: 500_000 };
+    expect(readChatJournalEvent(JSON.stringify({ seq: 8, event }))).toEqual({ seq: 8, event });
+    expect(readChatJournalEvent(JSON.stringify({ seq: 9, event: { kind: "context-live", total: 10, max: 0 } }))).toBeNull();
+    expect(readChatJournalEvent(JSON.stringify({ seq: 10, event: { kind: "context-live", max: 500_000 } }))).toBeNull();
+  });
 });
 
 describe("background job text passes the same gate as tool results", () => {

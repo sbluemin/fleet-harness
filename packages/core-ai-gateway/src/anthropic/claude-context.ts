@@ -109,6 +109,48 @@ export function projectClaudeContextInputTokens(
   );
 }
 
+/**
+ * Read a projected occupancy back onto the provider's real window.
+ *
+ * This is the inverse of the map above, and it exists because Claude Code reports its own
+ * coordinate — never the provider's — to anything that asks it how full the window is. A
+ * surface that prints those tokens verbatim states a 200k window for a 500k model, and the
+ * breakdown beside them partitions the same wrong total. Measured on xAI Grok 4.6: the child
+ * reported 15,785 of 200,000 while the provider had actually consumed 45,473 of 500,000, and
+ * this inverse recovers 45,478 of it — five tokens, invisible at the thousands granularity
+ * every caller displays.
+ *
+ * `claudeCoordinate` is what the child said its window is, and it is checked rather than
+ * trusted: only Claude's two real coordinates admit an inverse, so any other value (a host
+ * that moved the child's ceiling, a future release with a third coordinate) returns the input
+ * untouched instead of inventing a scale. The forward map's upstream-window narrowing has no
+ * inverse either — a caller holding only the catalog window cannot know which turn was served
+ * by a narrower alias — so the result is an occupancy on the advertised window, never a claim
+ * about which model served it.
+ */
+export function unprojectClaudeContextInputTokens(
+  projectedTokens: number,
+  advertisedContextWindow: number | undefined,
+  claudeCoordinate: number | undefined,
+  compactCeiling?: CompactCeiling | null,
+): number {
+  if (!Number.isFinite(projectedTokens) || projectedTokens < 0) return projectedTokens;
+  const advertisedWindow = positiveContextWindow(advertisedContextWindow);
+  if (advertisedWindow === undefined) return projectedTokens;
+  if (claudeCoordinate !== CLAUDE_DEFAULT_CONTEXT_WINDOW
+    && claudeCoordinate !== CLAUDE_COMPAT_CONTEXT_WINDOW) {
+    return projectedTokens;
+  }
+  const claudeCompactThreshold = claudeCoordinate - CLAUDE_COMPACT_RESERVE;
+  if (claudeCompactThreshold <= 0) return projectedTokens;
+  const providerCompactThreshold = compactThresholdTokens(advertisedWindow, compactCeiling);
+  if (providerCompactThreshold <= 0) return projectedTokens;
+  return Math.min(
+    advertisedWindow,
+    Math.round(projectedTokens * providerCompactThreshold / claudeCompactThreshold),
+  );
+}
+
 /** Tokens of the real provider window at which Claude Code should compact. */
 export function compactThresholdTokens(
   window: number,

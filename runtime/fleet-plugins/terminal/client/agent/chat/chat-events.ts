@@ -69,7 +69,10 @@ export interface AgentChatContextSlice {
 
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
-  /** 이 턴이 **시작될 때까지의** 문맥 창 내역. 자식은 턴이 시작되면 control 채널을 닫는다(실측). */
+  /**
+   * 측정된 문맥 창 내역. control 채널만이 카테고리 분해를 알고, 그 왕복은 30초쯤 걸린다(실측).
+   * `asOf`가 그 값이 언제의 것인지 말한다 — 부재는 `"start"`이며 옛 저널의 뜻이기도 하다.
+   */
   | {
       readonly kind: "context";
       /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
@@ -81,7 +84,10 @@ export type AgentChatStreamEvent =
       readonly slices: readonly AgentChatContextSlice[];
       readonly memoryFiles?: readonly AgentChatContextSlice[];
       readonly mcpTools?: readonly AgentChatContextSlice[];
+      readonly asOf?: "start" | "end";
     }
+  /** 라이브 전용 총량 — 저널에 실리지 않는다. 내역은 없다(control 채널만 그것을 안다). */
+  | { readonly kind: "context-live"; readonly total: number; readonly max: number }
   | { readonly kind: "replay-end"; readonly turns: number }
   | { readonly kind: "dispatch"; readonly text: string; readonly at?: number }
   | { readonly kind: "turn-start"; readonly at?: number }
@@ -181,8 +187,15 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
           slices: readContextSlices(event.slices),
           ...(Array.isArray(event.memoryFiles) ? { memoryFiles: readContextSlices(event.memoryFiles) } : {}),
           ...(Array.isArray(event.mcpTools) ? { mcpTools: readContextSlices(event.mcpTools) } : {}),
+          // 모르는 값은 부재와 같이 다룬다 — 그것이 옛 저널의 뜻이고, 새 값이 들어오더라도
+          // 총량을 권위로 삼는 쪽(`"end"`)으로 오해되지 않는다.
+          ...(event.asOf === "end" ? { asOf: "end" as const } : {}),
         },
       };
+    }
+    case "context-live": {
+      if (typeof event.total !== "number" || typeof event.max !== "number" || event.max <= 0) return null;
+      return { seq: entry.seq, event: { kind: "context-live", total: event.total, max: event.max } };
     }
     case "replay-end":
       return { seq: entry.seq, event: { kind: "replay-end", turns: numberOr(event.turns, 0) } };
@@ -477,9 +490,14 @@ export interface AgentChatTurn {
 
 /** 지금 문맥 창의 내역. 마지막으로 끝난 턴 시점의 값이다. */
 export interface AgentChatContext {
-  /** 실제로 쓰인 몫의 합. 예약분과 남은 자리는 여기 들어가지 않는다. */
+  /** 내역과 짝이 맞는 **측정된** 총량. 예약분과 남은 자리는 여기 들어가지 않는다. */
   readonly total: number;
   readonly max: number;
+  /**
+   * 지금 흐르고 있는 총량. 부재는 "이 턴이 아직 아무것도 더하지 않았다"가 아니라 "라이브 값이
+   * 없다"이며, 그때 화면은 `total`을 쓴다. 내역은 여기에 없다 — 있는 것은 총량 하나뿐이다.
+   */
+  readonly liveTotal?: number;
   /** 자동 압축을 위해 미리 비워 둔 자리. */
   readonly reserved?: number;
   readonly compactAt?: number;
@@ -595,22 +613,40 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
     case "replay-end":
       return { ...state, replaying: false, replayedTurns: event.turns };
     case "context": {
+      // 턴 종료 스냅숏은 무조건 권위다 — 그 시점의 측정이므로 라이브가 더 말할 것이 없다.
+      // 턴 시작 스냅숏은 왕복 때문에 턴이 한참 돈 뒤에 도착하고(실측 20~30초), 그 값은 이 턴이
+      // 시작될 때의 것이다. 그때 라이브를 버리면 화면의 숫자가 뒤로 간다 — 이미 흐른 총량이
+      // 더 크면 그것을 지키고 내역만 받는다.
+      const live = event.asOf === "end"
+        ? undefined
+        : (state.context?.liveTotal !== undefined && state.context.liveTotal > event.total
+          ? state.context.liveTotal
+          : undefined);
       const context: AgentChatContext = {
         total: event.total,
         max: event.max,
+        ...(live === undefined ? {} : { liveTotal: live }),
         ...(event.reserved !== undefined ? { reserved: event.reserved } : {}),
         ...(event.compactAt !== undefined ? { compactAt: event.compactAt } : {}),
         slices: event.slices,
         memoryFiles: event.memoryFiles ?? [],
         mcpTools: event.mcpTools ?? [],
       };
-      // 이 값은 방금 시작한 턴의 **시작 시점** 총량이다. 그 턴에 붙여 두면 재생에서도 같은 턴이
-      // 같은 값을 지녀, 증가분(다음 턴과의 차이)이 흔들리지 않는다. 아직 턴이 하나도 없으면
-      // 전역 값만 갱신한다(재생 첫머리가 그렇다).
+      // 턴별 증가분은 **시작 시점** 총량으로만 센다. 그 턴에 붙여 두면 재생에서도 같은 턴이 같은
+      // 값을 지녀 증가분이 흔들리지 않는다. 종료 스냅숏은 그 자리를 건드리지 않는다 — 덮으면
+      // 다음 턴과의 차이가 이 턴이 더한 몫을 두 번 세거나 아예 지운다.
       const held = { ...state, context };
-      return state.turns.length === 0
+      return state.turns.length === 0 || event.asOf === "end"
         ? held
         : withLastTurn(held, (turn) => ({ ...turn, contextBefore: event.total }));
+    }
+    case "context-live": {
+      // 내역은 건드리지 않는다. 아직 한 번도 측정이 오지 않았으면 총량만 아는 상태로 세운다 —
+      // 그것이 사실이고, 빈 내역은 "모른다"를 정직하게 말한다.
+      const context: AgentChatContext = state.context
+        ? { ...state.context, liveTotal: event.total }
+        : { total: 0, max: event.max, liveTotal: event.total, slices: [], memoryFiles: [], mcpTools: [] };
+      return { ...state, context };
     }
     case "dispatch": {
       const turn: AgentChatTurn = {

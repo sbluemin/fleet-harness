@@ -22,6 +22,7 @@ import {
   resolveCursorModelSelection,
   resolveGatewayModel,
   projectClaudeContextInputTokens,
+  unprojectClaudeContextInputTokens,
   toClaudeGatewayModelId,
   toGatewayModelAlias,
   DEFAULT_CODEX_MODEL,
@@ -1205,6 +1206,42 @@ describe("model catalog", () => {
     expect(projectClaudeContextInputTokens(484_000, 500_000)).toBe(168_000);
     expect(projectClaudeContextInputTokens(984_000, 1_000_000)).toBe(968_000);
     expect(projectClaudeContextInputTokens(1_032_576, 1_048_576)).toBe(968_000);
+  });
+
+  it("reads a projected occupancy back onto the real window", () => {
+    // Measured on xAI Grok 4.6 (2026-08-17): the child reported 15,785 of its 200k coordinate
+    // while the provider had consumed 45,473 of 500,000, and 14,812 against a real 42,670. The
+    // inverse lands within three tokens — invisible at the thousands granularity callers display.
+    expect(unprojectClaudeContextInputTokens(15_785, 500_000, 200_000)).toBe(45_476);
+    expect(unprojectClaudeContextInputTokens(14_812, 500_000, 200_000)).toBe(42_673);
+    // The forward map's own fixtures, read backwards.
+    expect(unprojectClaudeContextInputTokens(168_000, 500_000, 200_000)).toBe(484_000);
+    expect(unprojectClaudeContextInputTokens(168_000, 272_000, 200_000)).toBe(256_000);
+    expect(unprojectClaudeContextInputTokens(968_000, 1_000_000, 1_000_000)).toBe(984_000);
+    expect(unprojectClaudeContextInputTokens(84_000, 256_000, 200_000)).toBe(120_000);
+  });
+
+  it("refuses to unproject what it cannot place, instead of inventing a scale", () => {
+    // No catalog window: a native model, or an id the catalog does not know.
+    expect(unprojectClaudeContextInputTokens(15_785, undefined, 200_000)).toBe(15_785);
+    // A coordinate that is neither of Claude's two admits no inverse — a host that moved the
+    // child's ceiling, or a future release with a third coordinate.
+    expect(unprojectClaudeContextInputTokens(15_785, 500_000, 250_000)).toBe(15_785);
+    expect(unprojectClaudeContextInputTokens(15_785, 500_000, undefined)).toBe(15_785);
+    // Never above the real window, whatever the child reported.
+    expect(unprojectClaudeContextInputTokens(200_000, 500_000, 200_000)).toBe(500_000);
+  });
+
+  it("unprojects on the same compact ceiling the projection used", () => {
+    for (const ceiling of ["early", "late", 94] as const) {
+      const projected = projectClaudeContextInputTokens(300_000, 500_000, 500_000, ceiling);
+      expect(unprojectClaudeContextInputTokens(projected, 500_000, 200_000, ceiling))
+        .toBeCloseTo(300_000, -1);
+    }
+    // Read back under a different policy than it was projected under and the number moves —
+    // which is why the session freezes the ceiling for its lifetime instead of re-reading it.
+    const early = projectClaudeContextInputTokens(300_000, 500_000, 500_000, "early");
+    expect(unprojectClaudeContextInputTokens(early, 500_000, 200_000, "late")).not.toBe(300_000);
   });
 
   it("scales compact threshold from a percent ceiling", () => {

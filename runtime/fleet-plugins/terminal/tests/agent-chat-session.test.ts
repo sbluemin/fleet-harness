@@ -39,6 +39,14 @@ type FakeTurn = {
   readonly failAfter?: number;
   /** 이 턴이 시작할 때 자식이 돌려줄 문맥 내역. 없으면 답하지 않는 자식이다. */
   readonly context?: unknown;
+  /**
+   * 이 턴이 **닫힌 뒤** 자식이 돌려줄 문맥 내역. 부재는 시작 값 그대로다.
+   *
+   * 실물이 그렇게 답한다(실측 2026-08-17): 턴이 끝난 뒤의 요청도 거절되지 않고, 방금 끝난 턴을
+   * 포함한 값이 온다. 그것을 재현하지 않으면 턴후 스냅숏 경로가 답 없는 자식 위에서 조용히
+   * 초록으로 지나간다.
+   */
+  readonly contextAfter?: unknown;
 };
 
 /**
@@ -57,10 +65,12 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     waiting = null;
     resume?.();
   };
+  let lastConsumed: FakeTurn | null = null;
   return {
     send(text: string): void {
       hooks.onSend?.(text);
       const script = turns.shift() ?? { messages: [] };
+      lastConsumed = script;
       const upTo = script.failAfter ?? script.messages.length;
       queue.push(...script.messages.slice(0, upTo));
       if (script.failAfter !== undefined) failing = true;
@@ -74,8 +84,15 @@ function fakeSession(turns: FakeTurn[], hooks: { readonly onSend?: (text: string
     interrupt: async (): Promise<void> => { hooks.onInterrupt?.(); },
     stopTask: async (taskId: string): Promise<void> => { hooks.onStopTask?.(taskId); },
     backgroundTasks: async (): Promise<boolean> => true,
-    // 스냅숏은 보내기 직전에 찍힌다 — 답할 값은 아직 소비되지 않은 다음 턴의 것이다.
-    getContextUsage: async () => turns[0]?.context ?? null,
+    /**
+     * 실물은 턴 경계 **양쪽**에서 답한다(실측). 아직 아무것도 보내지 않았으면 다음 턴의 시작
+     * 값이고, 한 번이라도 보낸 뒤에는 방금 소비한 턴의 종료 값이다 — 다음 턴의 시작 값 또한
+     * 그것과 같은 순간이므로 같은 답이 옳다.
+     */
+    getContextUsage: async () => {
+      if (lastConsumed === null) return turns[0]?.context ?? null;
+      return lastConsumed.contextAfter ?? lastConsumed.context ?? null;
+    },
     close(): void {
       closed = true;
       wake();
@@ -1160,6 +1177,161 @@ describe("AgentChatRegistry — context window", () => {
       "Memory files",
       "Messages",
     ]);
+    await registry.disposeAll();
+  });
+
+  /** 게이트웨이 좌표 하나를 실창과 함께 실은 시드. 자식은 여전히 자기 200k 칸으로 답한다. */
+  function gatewaySeedFor(transcriptPath: string): AgentChatSessionSeed {
+    return {
+      ...seedFor(transcriptPath),
+      model: "claude-gateway--xai--grok-4.6",
+      contextWindow: 500_000,
+    };
+  }
+
+  it("reads the child's coordinate back onto the model's real window", async () => {
+    // 자식은 창이 500k인 모델도 자기 200k 칸으로 잰다. 분모만 바꾸면 점유율이 실제의 1/3로
+    // 보이므로 내역·예약·임계선까지 같은 자로 되돌린다.
+    const transcriptPath = writeTranscript("sid-ctx-real", []);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }], context: usage },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-real", () => gatewaySeedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-real");
+    await vi.waitFor(() => {
+      expect(events.some((entry) => entry.event.kind === "context")).toBe(true);
+    });
+
+    const context = events.find((entry) => entry.event.kind === "context")?.event;
+    expect(context).toMatchObject({
+      kind: "context",
+      max: 500_000,
+      // 99,014 + 20,614 + 195 을 **각각** 되돌린 합(285,255 + 59,387 + 563). 합을 먼저 되돌리지
+      // 않는 이유는 화면이 행과 총량을 나란히 세우기 때문이다 — 행 합이 곧 총량이어야 한다.
+      total: 345_205,
+      // 자식의 33,000이 아니라 정책이 정하는 실제 여유(Auto = 창 − 16k)다.
+      reserved: 16_000,
+      compactAt: 484_000,
+    });
+    // 되돌린 뒤에도 점유는 창을 넘지 않고, 예약분과 함께 창 안에 앉는다.
+    const spent = context && "total" in context ? context.total : 0;
+    expect(spent + 16_000).toBeLessThanOrEqual(500_000);
+    await registry.disposeAll();
+  });
+
+  it("leaves a native session's numbers alone", async () => {
+    // 네이티브 Claude 모델은 애초에 투영이 없다. 시드에 실창이 없으므로 자식의 좌표가 그대로
+    // 나가야 한다 — 되돌릴 것이 없는데 되돌리면 없던 거짓을 만든다.
+    const transcriptPath = writeTranscript("sid-ctx-native", []);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }], context: usage },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-native", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-native");
+    await vi.waitFor(() => {
+      expect(events.some((entry) => entry.event.kind === "context")).toBe(true);
+    });
+
+    expect(events.find((entry) => entry.event.kind === "context")?.event).toMatchObject({
+      total: 119_823,
+      max: 200_000,
+      reserved: 33_000,
+      compactAt: 167_000,
+    });
+    await registry.disposeAll();
+  });
+
+  it("asks again once the turn closes, and marks that answer as the authority", async () => {
+    // 방금 끝난 턴이 더한 몫의 **내역**은 이 요청만이 안다. 실물은 턴이 닫힌 뒤에도 답한다(실측).
+    const transcriptPath = writeTranscript("sid-ctx-end", []);
+    const after = { ...usage, categories: [...usage.categories.slice(0, 2), { name: "Messages", tokens: 1_195, deferred: false }, ...usage.categories.slice(3)] };
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }],
+        context: usage,
+        contextAfter: after,
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-end", () => seedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-end");
+    await vi.waitFor(() => {
+      expect(events.filter((entry) => entry.event.kind === "context")).toHaveLength(2);
+    });
+
+    const contexts = events
+      .filter((entry) => entry.event.kind === "context")
+      .map((entry) => entry.event as { readonly asOf?: string; readonly total: number });
+    expect(contexts[0]).toMatchObject({ asOf: "start", total: 119_823 });
+    // 종료 값은 그 턴이 더한 1,000을 포함하고, 스스로를 권위로 표시한다.
+    expect(contexts[1]).toMatchObject({ asOf: "end", total: 120_823 });
+    await registry.disposeAll();
+  });
+
+  it("streams the total from message_delta usage and ignores the other usage shapes", async () => {
+    // 쓸 수 있는 신호는 하나뿐이다(실측): message_start와 완성 assistant의 usage는 0으로 오고,
+    // result.usage는 그 턴의 모든 모델 호출을 합산한 값이라 창 점유가 아니다.
+    const transcriptPath = writeTranscript("sid-ctx-live", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "stream_event", event: { type: "message_start", message: { usage: { input_tokens: 0, cache_read_input_tokens: 0 } } } },
+          { type: "assistant", message: { usage: { input_tokens: 0, cache_read_input_tokens: 0 } } },
+          { type: "stream_event", event: { type: "message_delta", usage: { input_tokens: 50, cache_read_input_tokens: 14_795 } } },
+          // 서브에이전트의 창은 부모의 창이 아니다.
+          { type: "stream_event", parent_tool_use_id: "toolu_1", event: { type: "message_delta", usage: { input_tokens: 400_000, cache_read_input_tokens: 0 } } },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 4, usage: { input_tokens: 1_029, cache_read_input_tokens: 60_601 } },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-live", () => gatewaySeedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-live");
+
+    const live = events.filter((entry) => entry.event.kind === "context-live");
+    expect(live).toHaveLength(1);
+    // 50 + 14,795 = 14,845 을 실창으로 되돌린 값.
+    expect(live[0]?.event).toMatchObject({ kind: "context-live", total: 42_768, max: 500_000 });
+    await registry.disposeAll();
+  });
+
+  it("keeps the live total out of the journal", async () => {
+    // 라이브 총량은 모델 호출마다 흐른다. 저널(cap 2000)에 쌓으면 되돌릴 수 없는 이력을 앞에서부터
+    // 밀어내고, 재접속은 그 값을 복원할 필요도 없다 — 다음 경계가 측정을 다시 실어 준다.
+    const transcriptPath = writeTranscript("sid-ctx-live-journal", []);
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "stream_event", event: { type: "message_delta", usage: { input_tokens: 12_000 } } },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 4 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-ctx-live-journal", () => gatewaySeedFor(transcriptPath));
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    session.send("go");
+    await drainTurn(registry, "op-ctx-live-journal");
+    expect(events.some((entry) => entry.event.kind === "context-live")).toBe(true);
+
+    const replayed: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => replayed.push(entry));
+    expect(kinds(replayed)).not.toContain("context-live");
     await registry.disposeAll();
   });
 
