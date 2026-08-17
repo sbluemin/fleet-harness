@@ -61,8 +61,8 @@ Notes:
   the SignPath dashboard while the release job runs.
 - v1 signs the **installer** (clears the download SmartScreen prompt). Deep-signing the
   inner binaries (installed `Fleet Console.exe` + native `.node`/`.dll`) — which SignPath
-  can't reach inside NSIS — is a follow-up if you want the *installed* app fully signed;
-  see the approach used by `stablyai/orca` (build `--dir` → batch-sign inner PEs → repackage).
+  can't reach inside NSIS — is a follow-up if you want the *installed* app fully signed
+  (build `--dir` → batch-sign inner PEs → repackage).
 
 ## macOS — Developer ID (fail-closed)
 

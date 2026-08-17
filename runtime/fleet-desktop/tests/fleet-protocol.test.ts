@@ -17,7 +17,7 @@ describe("fleet protocol", () => {
 
   it.each([
     ["an empty value", ""],
-    ["another scheme", "orca://pair?code=abc"],
+    ["another scheme", "other://pair?code=abc"],
     ["a web url", "https://a.test:4310/console/"],
     ["a file path", "/Applications/Fleet Console.app"],
     ["a flag", "--enable-logging"],

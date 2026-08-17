@@ -43,7 +43,7 @@
   ],
   "negative": [
     { "name": "superseded-https-link", "link": "https://172.30.1.35:54240/join#t=abc&f=def" },
-    { "name": "foreign-scheme", "link": "orca://join?code=abc" },
+    { "name": "foreign-scheme", "link": "other://join?code=abc" },
     { "name": "another-action", "link": "fleet://pair?code=abc" },
     { "name": "action-host-port", "link": "fleet://join:8080?code=abc" },
     { "name": "action-path", "link": "fleet://join/path?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vMTcyLjMwLjEuMzU6NTQyNDAiLCJ0b2tlbiI6InNFUGF0eTlfWXpxLU40NkZqQ1VmbWU0X0RyQ1plWWxUaXRHY2JXZDhrTEEiLCJmaW5nZXJwcmludCI6IjhEM0ZCQjJBODU1MDUzMzA1QzMyMjgwQTJBQkI1NjZGRkY5QzVCMTRDMzUzQUUwNTI3MDkyRUQ0NzZDQkI3MEYiLCJsYWJlbCI6ImRldmJveCJ9" },
