@@ -144,13 +144,16 @@ export function TriageSideBar({
   const minimizedEntries = entries.filter((entry) => minimizedIds.has(entry.operation.id) && !isDormantEntry(entry));
   const minimizedSection: StatusSection = {
     status: "minimized",
-    label: t("triageSidebar.minimized"),
+    label: t("triageSidebar.minimizedShelf"),
     entries: minimizedEntries,
   };
   const shelvedIds = new Set(minimizedEntries.map((entry) => entry.operation.id));
   const sections = resolveTriageSideBarSections(entries.filter((entry) => !shelvedIds.has(entry.operation.id)), queue, t);
   const livingSections = sections.filter((section) => section.status !== "ended");
-  const dormantSection = sections.find((section) => section.status === "ended");
+  const endedSection = sections.find((section) => section.status === "ended");
+  const dormantSection = endedSection
+    ? { ...endedSection, label: t("triageSidebar.dormantShelf") }
+    : undefined;
   const renderChip = (entry: SideBarEntry, index: number, shelf: "none" | "ended" | "minimized" = "none") => {
     const dormant = shelf === "ended";
     const accentKey = getTheaterCanvasSnapshot(entry.operation.theaterId).operationAccent[entry.operation.id]
@@ -217,8 +220,7 @@ export function TriageSideBar({
           잠든 것보다 손에 가깝다. 휴면처럼 0건이어도 자리를 지킨다: 되찾을 곳이 상황에 따라 나타났다
           사라지면 어디를 봐야 하는지가 매번 달라진다. */}
       <section className="triage-side-bar-minimized-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <p className="triage-side-bar-caption">{t("triageSidebar.minimizedShelf")}</p>
-        <ol className="triage-side-bar-minimized-list" aria-label={t("triageSidebar.minimizedShelf")}>
+        <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
           <StatusSectionSlot theaterId={TRIAGE_SIDE_BAR_SECTION_KEY} section={minimizedSection}>
             {minimizedEntries.map((entry, index) => renderChip(entry, index, "minimized"))}
           </StatusSectionSlot>
@@ -229,8 +231,7 @@ export function TriageSideBar({
           아무것도 열지 않는다. menuEnabled=false는 핸들러를 떼기만 하므로 선반이 직접 막는다. */}
       {dormantSection ? (
         <footer className="triage-side-bar-dormant-shelf" onContextMenu={(event) => event.preventDefault()}>
-          <p className="triage-side-bar-caption">{t("triageSidebar.dormantShelf")}</p>
-          <ol className="triage-side-bar-dormant-list" aria-label={t("triageSidebar.dormantShelf")}>
+          <ol className="triage-side-bar-dormant-list" aria-label={dormantSection.label}>
             <StatusSectionSlot
               theaterId={TRIAGE_SIDE_BAR_SECTION_KEY}
               section={dormantSection}

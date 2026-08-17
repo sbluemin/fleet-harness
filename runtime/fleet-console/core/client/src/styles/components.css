@@ -4684,8 +4684,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 /* 선별 처리 전용 사이드바 — Map 사이드바(.operations-side-bar)의 표면·접힘 문법을 그대로
-   상속한다. 세 living 섹션은 스크롤 큐를 소유하고, 휴면만 separator 아래의 접힌 선반과 중립
-   캡션을 갖는다: 휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. */
+   상속한다. 세 living 섹션은 스크롤 큐를 소유하고, 휴면은 separator 아래 선반에만 선다:
+   휴면 수량은 보이되 큐·덱·지도 문법에는 합류시키지 않는다. 칸 이름은 StatusSectionSlot
+   한 줄이 말하므로 바깥 캡션은 두지 않는다. */
 .triage-side-bar-sections {
   padding-top: var(--space-1);
 }
@@ -4696,15 +4697,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding: var(--space-1) 0;
 }
 
-.triage-side-bar-caption {
-  margin: 0;
-  padding: var(--space-1) var(--space-3);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0.08em;
-}
+/* STATUS 캡션 줄 — 예전 바깥 <p> 문법을 슬롯 헤더가 흡수했다. 클래스 이름은 투어·계약이
+   복구 전용으로 읽지 않도록 슬롯에만 남긴다. */
 
 .triage-side-bar-dormant-list {
   list-style: none;
@@ -5378,8 +5372,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 /* ── Group Section Layout ──────────────────────────────────────────────────────── */
 
-/* STATUS 축의 3px border는 identity가 아니라 OperationActivity 신호 채널이다.
-   색 정본은 위 OperationActivity 축이며 --status-color는 기존 소비자를 위한 별칭이다. */
+/* STATUS 축의 3px stripe는 identity가 아니라 OperationActivity 신호 채널이다.
+   색 정본은 위 OperationActivity 축이며 --status-color는 기존 소비자를 위한 별칭이다.
+   스트라이프는 섹션 봉투가 아니라 캡션 줄에만 선다 — 봉투에 두면 열이 다시 색 그룹이 된다. */
 .side-bar-status-section {
   --status-color: var(--activity-color);
   list-style: none;
@@ -5387,20 +5382,21 @@ body[data-side-bar-animating="true"] .canvas-operation {
   flex-direction: column;
   margin-left: var(--space-1);
   margin-bottom: 6px;
-  border-left: 3px solid var(--status-color);
 }
 
 .side-bar-status-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 7px;
+  width: 100%;
   padding: 7px 12px 7px 8px;
-  background: color-mix(in oklch, var(--status-color) 8%, transparent);
+  background: transparent;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.12em;
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+  text-align: left;
 }
 
 .side-bar-status-section--empty .side-bar-status-header {
@@ -5408,29 +5404,31 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-status-header__toggle {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  background: transparent;
-  border: none;
   cursor: pointer;
-  color: var(--text-tertiary);
-  border-radius: var(--radius-xs);
+  border: none;
+  border-left: 3px solid var(--status-color);
+  border-radius: 0;
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .side-bar-status-header__toggle:hover,
 .side-bar-status-header__toggle:focus-visible {
   color: var(--text-secondary);
-  outline: none;
+  outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);
+  outline-offset: -1px;
+}
+
+.side-bar-status-header__label {
+  flex: 1;
+  min-width: 0;
+  text-wrap: balance;
 }
 
 .side-bar-status-header__arrow {
   width: 12px;
   height: 12px;
+  flex: none;
+  margin-top: 2px;
   transition: transform var(--duration-fast) var(--ease-spring);
 }
 

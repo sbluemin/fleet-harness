@@ -1159,7 +1159,8 @@ describe("Instrument core design contract", () => {
     const sidebar = source("sidebar/triage-side-bar.tsx");
     const components = source("styles/components.css");
     const shelf = components.match(/\.triage-side-bar-dormant-shelf \{[^}]*\}/)?.[0] ?? "";
-    const caption = components.match(/\.triage-side-bar-caption \{[^}]*\}/)?.[0] ?? "";
+    const caption = components.match(/\.side-bar-status-header \{[^}]*\}/)?.[0] ?? "";
+    const captionToggle = components.match(/\.side-bar-status-header__toggle \{[^}]*\}/)?.[0] ?? "";
 
     expect(sidebar).toContain('const livingSections = sections.filter((section) => section.status !== "ended")');
     expect(sidebar).toContain('className="operations-side-bar-chips triage-side-bar-sections"');
@@ -1175,6 +1176,8 @@ describe("Instrument core design contract", () => {
     expect(shelf).not.toMatch(/var\(--(?:brass|aurora|warn|coral|positive)/);
     expect(caption).toMatch(/color: var\(--text-(?:primary|secondary|tertiary|on-brass)\)/);
     expect(caption).toMatch(/font-weight: var\(--weight-(?:regular|medium|bold)\)/);
+    expect(caption).toContain("background: transparent;");
+    expect(captionToggle).toContain("border-left: 3px solid var(--status-color);");
   });
 
   it("collapses sidebar chip actions out of layout until hover or focus-within", () => {
@@ -1234,6 +1237,8 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("groupTheaterStatusEntries(");
     expect(sidebar).toContain("minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id)");
     expect(sidebar).toContain("<StatusRecoveryShelves");
+    expect(sidebar).not.toContain("triage-side-bar-caption");
+    expect(components).not.toContain(".triage-side-bar-caption");
     expect(components).toContain(".side-bar-status-section--minimized {");
     expect(sidebar).toContain("trackOperationActivityTransitions({");
     expect(sidebar).toContain("const landedIds = consumeStatusLandings();");
@@ -1276,6 +1281,8 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.canvas-triage-map-dot\.is-background \{[^}]*background:\s*none;[^}]*border-color:\s*var\(--activity-color\)/);
     expect(components).toContain("--status-color: var(--activity-color);");
     expect(components).toContain("border-left: 3px solid var(--status-color);");
+    expect(components).not.toMatch(/\.side-bar-status-section \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
+    expect(components).toMatch(/\.side-bar-status-header__toggle \{[^}]*border-left:\s*3px solid var\(--status-color\)/);
     expect(components).not.toContain(".side-bar-status-section--background");
     expect(sidebar).not.toContain("side-bar-status-header__dot");
     expect(components).not.toContain(".side-bar-status-header__dot");

@@ -114,7 +114,7 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
         bodyKey: "featureTour.warRoomSidebar.step1Body",
       },
       {
-        anchor: ".triage-side-bar:not(.is-closed) .triage-side-bar-caption",
+        anchor: ".triage-side-bar:not(.is-closed) .triage-side-bar-minimized-shelf .side-bar-status-header",
         titleKey: "featureTour.warRoomSidebar.step2Title",
         bodyKey: "featureTour.warRoomSidebar.step2Body",
       },

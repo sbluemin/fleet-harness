@@ -242,20 +242,18 @@ export function StatusSectionSlot({
         empty ? "side-bar-status-section--empty" : "",
       ].filter(Boolean).join(" ")}
     >
-      <div className={`side-bar-status-header side-bar-status-header--${section.status}`}>
-        <button
-          type="button"
-          className="side-bar-status-header__toggle"
-          onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed)}
-          aria-expanded={!collapsed}
-          aria-label={collapsed ? t("sidebar.status.expandSection", { label: section.label }) : t("sidebar.status.collapseSection", { label: section.label })}
-          title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
-        >
-          <StatusSectionCollapseArrow collapsed={collapsed} />
-        </button>
+      <button
+        type="button"
+        className={`side-bar-status-header side-bar-status-header--${section.status} side-bar-status-header__toggle`}
+        onClick={() => toggleSideBarStatusSectionCollapsed(theaterId, section.status, empty || defaultCollapsed)}
+        aria-expanded={!collapsed}
+        aria-label={collapsed ? t("sidebar.status.expandSection", { label: section.label }) : t("sidebar.status.collapseSection", { label: section.label })}
+        title={collapsed ? t("sidebar.status.expand") : t("sidebar.status.collapse")}
+      >
+        <StatusSectionCollapseArrow collapsed={collapsed} />
         <span className="side-bar-status-header__label">{section.label}</span>
         <span className="side-bar-status-header__count">{section.entries.length}</span>
-      </div>
+      </button>
       {!collapsed ? (
         <ol className="side-bar-group-chips" aria-label={t("sidebar.status.sectionOperations", { label: section.label })}>
           {empty ? <li className="side-bar-status-empty-hint">{t("sidebar.status.noOperations")}</li> : children}
@@ -276,20 +274,17 @@ function StatusRecoveryShelves({
   readonly dormantSection: StatusSection;
   readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "ended") => ReactNode;
 }) {
-  const t = useT();
   return (
     <li className="side-bar-status-recovery-shelves">
       <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <p className="triage-side-bar-caption">{t("sidebar.status.minimizedShelf")}</p>
-        <ol className="triage-side-bar-minimized-list" aria-label={t("sidebar.status.minimizedShelf")}>
+        <ol className="triage-side-bar-minimized-list" aria-label={minimizedSection.label}>
           <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
             {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
           </StatusSectionSlot>
         </ol>
       </section>
       <footer className="triage-side-bar-dormant-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
-        <p className="triage-side-bar-caption">{t("sidebar.status.dormantShelf")}</p>
-        <ol className="triage-side-bar-dormant-list" aria-label={t("sidebar.status.dormantShelf")}>
+        <ol className="triage-side-bar-dormant-list" aria-label={dormantSection.label}>
           <StatusSectionSlot theaterId={theaterId} section={dormantSection}>
             {dormantSection.entries.map((entry, index) => renderEntry(entry, index, "ended"))}
           </StatusSectionSlot>
@@ -1271,12 +1266,12 @@ export function groupTheaterStatusEntries(
     living: sections.filter((section) => section.status !== "ended"),
     minimized: {
       status: "minimized",
-      label: t("triageSidebar.minimized"),
+      label: t("sidebar.status.minimizedShelf"),
       entries: minimizedEntries,
     },
     dormant: {
       status: "ended",
-      label: t("sidebar.status.ended"),
+      label: t("sidebar.status.dormantShelf"),
       entries: dormantEntries,
     },
   };

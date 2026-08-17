@@ -272,7 +272,7 @@ describe("feature tour", () => {
   it("holds the sidebar walkthrough back until an item is actually waiting", () => {
     document.body.innerHTML = [
       '<aside class="triage-side-bar is-expanded">',
-      '<div class="triage-side-bar-caption"></div>',
+      '<section class="triage-side-bar-minimized-shelf"><button class="side-bar-status-header"></button></section>',
       '<li class="side-bar-status-section side-bar-status-section--awaiting side-bar-status-section--empty"></li>',
       "</aside>",
     ].join("");
@@ -285,7 +285,7 @@ describe("feature tour", () => {
     // 않으면 사용자가 본 적 없는 안내가 재생되고 시청 기록에 남는다.
     document.body.innerHTML = [
       '<aside class="triage-side-bar is-closed">',
-      '<div class="triage-side-bar-caption"></div>',
+      '<section class="triage-side-bar-minimized-shelf"><button class="side-bar-status-header"></button></section>',
       '<li class="side-bar-status-section side-bar-status-section--awaiting">',
       '<button class="side-bar-chip"></button>',
       "</li></aside>",
@@ -301,7 +301,7 @@ describe("feature tour", () => {
   it("defers the sidebar walkthrough while the visit that just played another tour continues", () => {
     document.body.innerHTML = [
       '<aside class="triage-side-bar is-expanded">',
-      '<div class="triage-side-bar-caption"></div>',
+      '<section class="triage-side-bar-minimized-shelf"><button class="side-bar-status-header"></button></section>',
       '<li class="side-bar-status-section side-bar-status-section--awaiting">',
       '<button class="side-bar-chip"></button>',
       "</li></aside>",
