@@ -118,8 +118,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
 
-      # 여섯 개 Apple 시크릿은 전부-또는-전무다. 부분 설정은 서명되지 않은/개발-서명 IPA를
+      # 일곱 개 Apple 시크릿은 전부-또는-전무다. 부분 설정은 서명되지 않은/개발-서명 IPA를
       # 만들지 않도록 하드 실패시킨다(desktop-release.yml의 all-or-none 서명 게이트와 동형).
+      # 테스터 그룹도 같은 묶음에 든다 — Android가 그룹 없는 업로드를 배포로 치지 않는 것과 같다.
       - name: Check the Apple signing secrets are complete
         env:
           CERT: ${{ secrets.FLEET_IOS_CERTIFICATE_BASE64 }}
@@ -128,13 +129,14 @@ jobs:
           ASC_KEY_ID: ${{ secrets.FLEET_ASC_KEY_ID }}
           ASC_ISSUER_ID: ${{ secrets.FLEET_ASC_ISSUER_ID }}
           ASC_KEY: ${{ secrets.FLEET_ASC_KEY_BASE64 }}
+          ASC_GROUPS: ${{ secrets.FLEET_ASC_BETA_GROUPS }}
         run: |
           missing=""
-          for v in CERT CERT_PW PROFILE ASC_KEY_ID ASC_ISSUER_ID ASC_KEY; do
+          for v in CERT CERT_PW PROFILE ASC_KEY_ID ASC_ISSUER_ID ASC_KEY ASC_GROUPS; do
             if [ -z "${!v}" ]; then missing="$missing $v"; fi
           done
           if [ -n "$missing" ]; then
-            echo "::error::FLEET_MOBILE_IOS_DISTRIBUTION is true but these Apple secrets are missing:$missing. Set all six (certificate, password, profile, ASC key id/issuer/key) or unset the variable." >&2
+            echo "::error::FLEET_MOBILE_IOS_DISTRIBUTION is true but these Apple secrets are missing:$missing. Set all seven (certificate, password, profile, ASC key id/issuer/key, TestFlight groups) or unset the variable." >&2
             exit 1
           fi
 
@@ -171,13 +173,19 @@ jobs:
           FLEET_IOS_PROFILE_PATH: ${{ runner.temp }}/profile.mobileprovision
         run: pnpm --filter @dotobokuri/fleet-mobile ios:build:release
 
+      # Android와 같은 노트를 싣는다: 릴리스 커밋의 제목 한 줄. 업로드 후 빌드가 처리될 때까지
+      # 기다렸다가 그룹에 배정하므로 이 스텝은 Android보다 오래 걸린다(처리 5~15분).
       - name: Distribute to TestFlight
         env:
           FLEET_ASC_KEY_ID: ${{ secrets.FLEET_ASC_KEY_ID }}
           FLEET_ASC_ISSUER_ID: ${{ secrets.FLEET_ASC_ISSUER_ID }}
           FLEET_ASC_KEY_BASE64: ${{ secrets.FLEET_ASC_KEY_BASE64 }}
           FLEET_ASC_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.FLEET_ASC_KEY_ID }}.p8
-        run: pnpm --filter @dotobokuri/fleet-mobile ios:distribute
+          FLEET_ASC_BETA_GROUPS: ${{ secrets.FLEET_ASC_BETA_GROUPS }}
+          RELEASE_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          pnpm --filter @dotobokuri/fleet-mobile ios:distribute -- \
+            --notes "$(git log -1 --format=%s "$RELEASE_SHA")"
 
       - name: Remove signing material
         if: always()

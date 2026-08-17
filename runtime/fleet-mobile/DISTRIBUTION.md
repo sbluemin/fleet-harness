@@ -170,14 +170,18 @@ signed with an **Apple Distribution** identity (never a development identity) an
 3. **Provisioning profile** — create an **App Store** distribution profile for that App ID and
    certificate; download the `.mobileprovision`.
 4. **App Store Connect** — create the app record (name Fleet, the bundle id) and a TestFlight internal
-   tester group. Internal testing skips beta review, but a green workflow does **not** mean the app
-   is installable yet — see "After the upload" below.
+   tester group. Note the group's exact name: it goes into `FLEET_ASC_BETA_GROUPS`, and the job
+   assigns each processed build to it. Internal testing skips beta review; external groups do not.
 5. **ASC API key** — App Store Connect → Integrations → App Store Connect API → generate a key with
    the App Manager role; download `AuthKey_<KEY_ID>.p8` (it cannot be re-downloaded — store it safely).
 6. **GitHub secrets** (the CI reads these names verbatim):
    - `FLEET_IOS_CERTIFICATE_BASE64` = `base64 -i dist.p12`, and `FLEET_IOS_CERTIFICATE_PASSWORD`
    - `FLEET_IOS_PROFILE_BASE64` = `base64 -i profile.mobileprovision`
    - `FLEET_ASC_KEY_ID`, `FLEET_ASC_ISSUER_ID`, `FLEET_ASC_KEY_BASE64` = `base64 -i AuthKey_*.p8`
+   - `FLEET_ASC_BETA_GROUPS` = the TestFlight group names that receive the build, comma separated
+     (`Internal` or `Internal,QA`). Names must match App Store Connect exactly; the job lists the
+     groups it did find when one is missing. Without it the lane fails closed — an upload nobody
+     receives is not a distribution, the same rule the Android lane applies to Firebase groups.
 7. **Repository variable** — set `FLEET_MOBILE_IOS_DISTRIBUTION` to `true` to arm the lane. Until it
    is set, the iOS distribution job is skipped, so the branch is never blocked on the Apple setup.
 
@@ -208,19 +212,25 @@ other lane.
 
 ### After the upload
 
-A successful `ios:distribute` means App Store Connect accepted the binary, not that anyone can
-install it. Three things still gate the iPhone:
+`ios:distribute` does what the Android lane does with Firebase: it uploads, waits for the build to
+finish processing, writes the release note as TestFlight's *What to Test*, and assigns the build to
+every group in `FLEET_ASC_BETA_GROUPS`. A green job therefore means testers can see it — with the
+caveats below. Re-running is safe: a build already in App Store Connect is not uploaded twice, so a
+run that failed at assignment finishes the assignment on the next attempt.
 
-- **Processing.** The build appears in TestFlight as *Processing* for roughly 5–15 minutes. It cannot
-  be assigned to a group until that finishes.
+- **Processing.** The build sits in *Processing* for roughly 5–15 minutes and cannot be assigned
+  until that finishes, so the distribute step waits it out (30 minutes, then it fails and says the
+  upload was already accepted).
 - **Export compliance.** Answered in the Info.plist: `withFleetIos` sets
   `ITSAppUsesNonExemptEncryption` to `false`, because Fleet's only cryptography is the standard TLS
   the OS provides (Network.framework for the remote link, Security.framework for the loopback
   certificate, WKWebView for the console). Without that key a processed build lands on *Missing
   Compliance* and reaches nobody until a human answers the same question again, once per build.
 - **Tester access.** The Apple ID signed into the iPhone must be a user on the App Store Connect
-  team and a member of the internal testing group, and the processed build has to be assigned to
-  that group. Adding the group is not enough on its own; check the build is listed under it.
+  team and a member of the group named in `FLEET_ASC_BETA_GROUPS`. The job assigns the build to the
+  group; it cannot add people to it.
+- **External groups.** Assignment works the same way, but Apple holds an external build for Beta App
+  Review before testers get it. Internal groups skip that.
 
 Then install the TestFlight app on the iPhone, sign in with that Apple ID, and the build appears.
 
