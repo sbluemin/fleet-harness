@@ -29,7 +29,7 @@ fail the mac job; it does not publish an unsigned installer.
 | Platform | Signed? | Note |
 |---|---|---|
 | Windows x64 | ❌ (until SignPath configured) | SmartScreen warning on first install |
-| macOS arm64 | Required (Developer ID Application + notarization) | `macos-release` environment secrets; job fails if any of the five is missing |
+| macOS arm64 | Required (Developer ID Application + notarization) | Repository Actions secrets; job fails if any of the five is missing |
 
 ## Windows — SignPath (free for open-source)
 
@@ -66,12 +66,11 @@ Notes:
 
 ## macOS — Developer ID (fail-closed)
 
-An Apple Developer account ($99/yr) is required. The mac job uses the `macos-release`
-GitHub Environment and **Developer ID Application** signing plus notarization. All five
-secrets are required; missing credentials fail the job. There is no unsigned public-release
-fallback.
+An Apple Developer account ($99/yr) is required. The mac job uses repository Actions
+secrets for **Developer ID Application** signing plus notarization. All five secrets are
+required; missing credentials fail the job. There is no unsigned public-release fallback.
 
-Add these to the `macos-release` environment (or repository secrets visible to it):
+Add these under Settings → Secrets and variables → Actions → Repository secrets:
 
 | Kind | Name |
 |---|---|
@@ -81,7 +80,8 @@ Add these to the `macos-release` environment (or repository secrets visible to i
 | Secret | `APPLE_APP_SPECIFIC_PASSWORD` |
 | Secret | `APPLE_TEAM_ID` |
 
-The first real signed release remains **[Unverified]** until that job has run.
+The signed release path was verified by the v1.65.0 macOS job and its published DMG
+(Developer ID authority, notarization ticket, and Gatekeeper acceptance).
 
 ## Cross-building Windows x64 on an arm64 host
 

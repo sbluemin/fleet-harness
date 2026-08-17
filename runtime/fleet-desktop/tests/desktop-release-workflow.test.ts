@@ -28,8 +28,9 @@ describe("desktop-release macOS fail-closed signing", () => {
   const verifyStep = namedStep(macos, "Verify shell-only package");
   const signingDoc = fs.readFileSync(signingDocPath, "utf8");
 
-  it("binds the mac job to the macos-release environment", () => {
-    expect(macos).toMatch(/^\s{4}environment: macos-release$/m);
+  it("uses repository secrets without creating a deployment environment", () => {
+    expect(macos).not.toMatch(/^\s{4}environment:/m);
+    expect(workflow).not.toContain("macos-release");
   });
 
   it("maps repository secrets onto electron-builder names without MAC_* intermediates", () => {
@@ -62,11 +63,12 @@ describe("desktop-release macOS fail-closed signing", () => {
   });
 
   it("documents fail-closed Developer ID release, not an unsigned public installer", () => {
-    expect(signingDoc).toContain("macos-release");
+    expect(signingDoc).toContain("Repository secrets");
+    expect(signingDoc).not.toContain("macos-release");
     expect(signingDoc).toContain("Developer ID Application");
     expect(signingDoc).toContain("fail the mac job");
     expect(signingDoc).toContain("There is no unsigned public-release");
-    expect(signingDoc).toContain("first real signed release remains **[Unverified]** until");
+    expect(signingDoc).toContain("verified by the v1.65.0 macOS job");
     expect(signingDoc).not.toMatch(/unsigned apps need right-click/);
     expect(signingDoc).not.toMatch(/automatically starts signing once the secrets/);
   });
