@@ -85,7 +85,6 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(Array.from(container?.querySelectorAll(".side-bar-status-header__label") ?? []).map((node) => node.textContent)).toEqual([
       "AWAITING",
       "RUNNING",
-      "BACKGROUND",
       "IDLE",
       "Minimized",
       "ENDED",
@@ -110,14 +109,14 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').dataset.reorderEnabled).toBe("false");
   });
 
-  it("pins four live sections plus both recovery shelves, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
+  it("pins three live sections plus both recovery shelves, defaults empty sections collapsed, and toggles empty and occupied sections independently", () => {
     setConsoleState({ operationRuntime: { only: { lifecycle: "live", activity: "running" } } });
     setSideBarStatusAxis(true);
     renderSideBar([makeOperation("only", null)]);
 
     const sections = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-section") ?? []);
-    expect(sections).toHaveLength(6);
-    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0", "0", "0"]);
+    expect(sections).toHaveLength(5);
+    expect(sections.map((section) => section.querySelector(".side-bar-status-header__count")?.textContent)).toEqual(["0", "1", "0", "0", "0"]);
     const recoveryShelves = Array.from(container?.querySelectorAll<HTMLElement>(".side-bar-status-recovery-shelf") ?? []);
     expect(recoveryShelves).toHaveLength(2);
     expect(recoveryShelves.map((shelf) => shelf.className)).toEqual([
@@ -143,6 +142,26 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).toBeNull();
     act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').click());
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).not.toBeNull();
+  });
+
+  it("keeps a background Operation in RUNNING with its hollow beacon", () => {
+    setConsoleState({
+      operationRuntime: {
+        turn: { lifecycle: "live", activity: "running" },
+        leftover: { lifecycle: "live", activity: "background" },
+      },
+    });
+    setSideBarStatusAxis(true);
+    renderSideBar([makeOperation("turn", null), makeOperation("leftover", null)]);
+
+    expect(container?.querySelector(".side-bar-status-section--background")).toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="turn"]').closest(".side-bar-status-section--running")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="leftover"]').closest(".side-bar-status-section--running")).not.toBeNull();
+    expect(required<HTMLElement>('[data-side-bar-chip-id="leftover"] .side-bar-chip-status').className)
+      .toContain("tenant-beacon is-background");
+    expect(required<HTMLElement>('[data-side-bar-chip-id="turn"] .side-bar-chip-status').className)
+      .toContain("tenant-beacon is-turn-running");
+    expect(required<HTMLElement>(".side-bar-status-section--running .side-bar-status-header__count").textContent).toBe("2");
   });
 
   it("reveals an idle arrival from the AWAITING section for a palette action", () => {

@@ -209,10 +209,15 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
   return [
     { status: "awaiting", label: t("sidebar.status.awaiting") },
     { status: "running", label: t("sidebar.status.running") },
-    { status: "background", label: t("sidebar.status.background") },
     { status: "idle", label: t("sidebar.status.idle") },
     { status: "ended", label: t("sidebar.status.ended") },
   ];
+}
+
+// 사이드바 STATUS 칸은 활동을 네 칸으로만 읽는다. background는 실행 중과 같은 칸에 앉히되,
+// 행 마크는 그대로 background다 — 칸 키로 활동을 덮으면 헤더와 비콘이 다른 상태를 말한다.
+export function statusSectionBucket(status: OperationActivityVisual | SideBarStatus): SideBarStatus {
+  return status === "background" ? "running" : status;
 }
 
 export function StatusSectionSlot({
@@ -507,11 +512,11 @@ export function OperationsSideBar({
     }
     // 상태축에서는 그룹 접힘이 배치에 영향을 주지 않는다 — 여기서 펼치면 사용자의 그룹축 설정만 조용히 바뀐다.
     if (statusAxis) {
-      const status = resolveOperationDisplayActivity({
+      const status = statusSectionBucket(resolveOperationDisplayActivity({
         activity: resolveOperationActivity(operation, operationRuntime),
         operationId: operation.id,
         idleArrivalIds,
-      });
+      }));
       if (getSideBarStatusSectionCollapsed(operation.theaterId, status, false)) {
         toggleSideBarStatusSectionCollapsed(operation.theaterId, status, false);
       }
@@ -1289,7 +1294,8 @@ export function groupOperationsByStatus(
     // 섹션 승격은 이 함수 하나가 소유한다 — 도착한 행을 AWAITING 칸에 세워 놓치지 않게 하는 것은
     // 배치의 결정이고, 그 행을 무슨 색으로 그릴지는 마크 축(entry.mark)의 결정이다. 둘을 한 값으로
     // 합치면 색이 칸을 따라가 "사람을 기다리는 중"과 "안 본 채 끝난 것"이 같은 파랑이 된다.
-    // 칸을 정한 값을 엔트리의 status에도 실어 보낸다: 섹션 헤더와 행이 같은 분류를 들고 있어야 한다.
+    // background는 실행 중 칸에 앉히되 status는 승격된 활동(background)을 유지한다. 칸 키로
+    // 덮으면 마크가 없는 입력에서 행이 채운 running으로 그려진다.
     // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
     entries: entries
       .flatMap((entry) => {
@@ -1298,7 +1304,7 @@ export function groupOperationsByStatus(
           operationId: entry.operation.id,
           idleArrivalIds,
         });
-        if (display !== status) return [];
+        if (statusSectionBucket(display) !== status) return [];
         return [entry.status === display ? entry : { ...entry, status: display }];
       })
       .sort((left, right) => {

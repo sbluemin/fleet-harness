@@ -46,6 +46,7 @@ let pendingStatusLandingIds = new Set<string>();
 // 앞의 다섯은 Operation의 활동 상태다. "minimized"는 활동이 아니라 사용자가 고른 표시 상태이며,
 // 그래서 buildStatusSectionOrder의 상태 축에는 들어가지 않는다 — 활동 축을 순회하는 곳은 이 값을
 // 만들지 않고, War Room의 최소화 선반만 같은 섹션 문법(접힘 키·카운트·빈 힌트)을 빌려 쓴다.
+// background 활동은 실행 중 칸에 합류한다. 칸 키는 running이고, 행 마크는 그대로 background다.
 export type SideBarStatus = "awaiting" | "running" | "background" | "idle" | "ended" | "minimized";
 
 export function useSideBarState(): SideBarState {
