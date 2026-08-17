@@ -4,5 +4,5 @@ branch: feat/fleet-mobile-ios
 
 ### fleet-mobile
 #### Added
-- Ship the first public iOS app, with secure pairing, native iPhone and iPad support, and TestFlight-ready distribution.
-  ko: 안전한 페어링, iPhone과 iPad 네이티브 지원, TestFlight 배포가 가능한 첫 공개 iOS 앱을 출시합니다.
+- Add the Fleet Console app for iPhone and iPad, with secure pairing to a Console on your network and a TestFlight lane for tester builds.
+  ko: iPhone과 iPad에서 쓰는 Fleet Console 앱을 추가합니다. 같은 네트워크의 Console에 안전하게 페어링하고, 테스터 빌드는 TestFlight로 배포합니다.

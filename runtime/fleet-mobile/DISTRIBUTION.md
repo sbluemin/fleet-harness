@@ -169,7 +169,7 @@ signed with an **Apple Distribution** identity (never a development identity) an
    with a password. Keep it outside the repository and outside `~/.fleet`.
 3. **Provisioning profile** — create an **App Store** distribution profile for that App ID and
    certificate; download the `.mobileprovision`.
-4. **App Store Connect** — create the app record (name Fleet, the bundle id) and a TestFlight internal
+4. **App Store Connect** — create the app record (name Fleet Console, the bundle id) and a TestFlight internal
    tester group. Note the group's exact name: it goes into `FLEET_ASC_BETA_GROUPS`, and the job
    assigns each processed build to it. Internal testing skips beta review; external groups do not.
 5. **ASC API key** — App Store Connect → Integrations → App Store Connect API → generate a key with
