@@ -68,6 +68,39 @@ describe("Fleet Mobile Android build contract", () => {
     expect(release).toContain("uses: ./.github/workflows/mobile-release.yml");
   });
 
+  // iOS 전용으로 배포 플래그만 켜도 버전 해석이 돌아야 한다. 안 그러면 mobile_changed가
+  // 비어 mobile-release 호출 자체가 일어나지 않고, 잡 단위 게이트까지 닿지 못한다.
+  it("resolves the mobile shell version when either platform distribution flag is on", () => {
+    const release = read(".github/workflows/stable-release.yml");
+    expect(release).toContain(
+      "vars.FLEET_MOBILE_DISTRIBUTION == 'true' || vars.FLEET_MOBILE_IOS_DISTRIBUTION == 'true'",
+    );
+    expect(release).toContain("if: needs.release.outputs.should_release == 'true' && needs.release.outputs.mobile_changed == 'true'");
+  });
+
+  // 검증 레일은 이벤트 소스를 그대로 체크아웃한다. ref 입력을 두면 "Use workflow from"과
+  // 다른 커밋을 검사할 수 있고, Package.swift/apple 부재를 통과시키면 시뮬레이터 빌드가
+  // 있는 척한다.
+  it("hard-fails the iOS verify rail instead of skipping unfinished pieces", () => {
+    const workflow = read(".github/workflows/mobile-ios-verify.yml");
+    expect(workflow).not.toContain("inputs:");
+    expect(workflow).not.toContain("inputs.ref");
+    expect(workflow).not.toContain("steps.platform.outputs.configured");
+    expect(workflow).not.toContain("configured=true");
+    expect(workflow).not.toContain("exit 0");
+    expect(workflow).toContain("runtime/fleet-mobile/modules/fleet-console-view/Package.swift");
+    expect(workflow).toContain("c.platforms.includes('apple')||c.platforms.includes('ios')");
+    expect(workflow).toContain("pnpm --dir runtime/fleet-mobile exec expo prebuild --platform ios");
+    expect(workflow).toContain("fleetSanitizedLaunchOptions");
+    // 이름과 순서만 보면 원본을 별칭한 사본도 통과한다. 실제로 지우는 줄까지 요구해야
+    // 이 스텝이 "크리덴셜이 지워졌다"를 단언한다.
+    expect(workflow).toContain("fleetSanitizedLaunchOptions?.removeValue(forKey: .url)");
+    expect(workflow).toContain('grep -q "FleetConsoleView" runtime/fleet-mobile/ios/Podfile.lock');
+    expect(workflow).toContain("CODE_SIGNING_ALLOWED=NO");
+    expect(workflow).toContain("name: fleet-ios-simulator-app");
+    expect(workflow).toContain("SecIdentityCreate");
+  });
+
   it("records the release signing certificate in the promoted manifest", () => {
     const promote = read("runtime/fleet-mobile/scripts/lib/android-promote.mjs");
     expect(promote).toContain("signerSha256");

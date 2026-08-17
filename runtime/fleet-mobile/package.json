@@ -1,7 +1,7 @@
 {
   "name": "@dotobokuri/fleet-mobile",
   "version": "1.62.0",
-  "description": "Fleet Console Android shell.",
+  "description": "Fleet Console mobile shell.",
   "private": true,
   "main": "index.ts",
   "scripts": {

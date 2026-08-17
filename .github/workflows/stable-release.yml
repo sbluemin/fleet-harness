@@ -203,8 +203,10 @@ jobs:
       # 마커 태그가 없을 때 무조건 빌드하지 않고 직전 릴리스 태그를 기준점으로 변경을 판정한다는 것
       # — 첫 릴리스 서명 APK는 이미 수동으로 테스터에게 나갔으므로, 무변경 릴리스가 같은 빌드를
       # 다시 배포해 테스터 알림만 울리는 일을 막는다.
+      # Android(FLEET_MOBILE_DISTRIBUTION)나 iOS(FLEET_MOBILE_IOS_DISTRIBUTION) 중 하나라도
+      # 켜져 있으면 버전을 해석한다. 배포 잡 자체는 플랫폼 플래그로 따로 게이트된다.
       - name: Resolve mobile shell version
-        if: steps.version.outputs.should_release == 'true' && vars.FLEET_MOBILE_DISTRIBUTION == 'true'
+        if: steps.version.outputs.should_release == 'true' && (vars.FLEET_MOBILE_DISTRIBUTION == 'true' || vars.FLEET_MOBILE_IOS_DISTRIBUTION == 'true')
         id: mobile
         env:
           LATEST_TAG: ${{ steps.version.outputs.latest_tag }}

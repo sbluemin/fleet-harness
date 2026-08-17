@@ -83,8 +83,11 @@ versioned, like the desktop shell:
 - `runtime/fleet-mobile/package.json` is swept into the workspace-wide version sync and does not
   reach the APK. `app.json` is the version the app carries.
 
-The job is gated on the repository variable `FLEET_MOBILE_DISTRIBUTION` being `true`; without it the
-mobile path is inert. It also needs these repository secrets:
+Stable Release resolves the mobile shell version — and therefore can call `mobile-release.yml` on a
+mobile-changed release — when **either** `FLEET_MOBILE_DISTRIBUTION` or
+`FLEET_MOBILE_IOS_DISTRIBUTION` is `true`. The Android and iOS jobs stay independently gated on
+their own flag, so enabling iOS alone does not run the Android lane. If neither flag is set, the
+mobile path is inert. The Android job also needs these repository secrets:
 
 | Secret | Value |
 |---|---|
@@ -198,7 +201,10 @@ For the first upload, run it by hand — and note which control actually selects
 3. Confirm the job **"Build and distribute iOS (TestFlight)"** appears in the run. If it is missing,
    either the branch is wrong or `FLEET_MOBILE_IOS_DISTRIBUTION` is not `true`.
 
-Once the variable is set, Stable Release also calls this workflow on a mobile-changed release.
+Once either `FLEET_MOBILE_DISTRIBUTION` or `FLEET_MOBILE_IOS_DISTRIBUTION` is `true`, Stable
+Release resolves the mobile shell version and calls this workflow on a mobile-changed release.
+Each job still checks its own flag, so Android-only or iOS-only enablement does not run the
+other lane.
 
 ### After the upload
 
