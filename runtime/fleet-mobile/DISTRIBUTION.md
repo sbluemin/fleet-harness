@@ -236,8 +236,11 @@ run that failed at assignment finishes the assignment on the next attempt.
   state instead of pretending the build is already out. And the group only becomes reachable without
   an invitation once you enable its **public link** in App Store Connect — the API assigns builds,
   it does not open the door. External testing also needs the Test Information filled in (beta app
-  description, feedback email, review contact, privacy policy URL); Apple rejects the submission
-  without them. Internal groups skip all of it.
+  description, feedback email, review contact including a phone number, privacy policy URL); Apple
+  rejects the submission without them. The privacy policy the app ships under is
+  [`PRIVACY.md`](PRIVACY.md); give App Store Connect the URL of that file on a branch that already
+  carries it, since Apple fetches the URL when the submission is validated. Internal groups skip all
+  of it.
 
 Then install the TestFlight app on the iPhone, sign in with that Apple ID, and the build appears.
 
