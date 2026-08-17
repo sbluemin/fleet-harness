@@ -516,7 +516,7 @@ describe("model context window", () => {
     // Marker choice only selects Claude's 200k or 1M coordinate.
     ["claude-gateway--codex--gpt-5.6-sol", 272_000],
     ["claude-gateway--codex--gpt-5.6-terra", 272_000],
-    ["claude-gateway--codex--gpt-5.6-sol-512k", 524_288],
+    ["claude-gateway--codex--gpt-5.6-sol-524k", 524_288],
     ["claude-gateway--codex--gpt-5.6-sol-1m", 1_000_000],
     ["claude-gateway--codex--gpt-5.6-terra-1m", 1_000_000],
     ["claude-gateway--cursor--grok-4.5-fast", 256_000],
@@ -1835,19 +1835,19 @@ describe("route surface", () => {
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-fast");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k-fast");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-512k-fast");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k");
-    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-524k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-524k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-524k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-524k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-524k");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-524k-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna-1m-fast[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-terra-1m-fast[1m]");
-    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-512k[512k]");
+    expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-524k[524k]");
     expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol[1m]");
     expect(ids).not.toContain("claude-gateway--codex--gpt-5.6-sol-1m[1m][1m]");
     expect(ids).toContain("claude-gateway--cursor--auto");
