@@ -18,6 +18,9 @@ describe("Fleet Mobile iOS build contract", () => {
     expect(app.expo.plugins.at(-1)).toBe("./plugins/withFleetIos.ts");
     expect(app.expo.ios.bundleIdentifier).toBe("com.dotobokuri.fleet.mobile");
     expect(app.expo.ios.buildNumber).toMatch(/^\d+$/);
+    expect(app.expo.ios.supportsTablet).toBe(true);
+    expect(app.expo.ios.isTabletOnly).not.toBe(true);
+    expect(app.expo.ios.requireFullScreen).toBeFalsy();
   });
 
   it("withFleetIos disables arbitrary ATS loads and owns the fleet URL scheme", () => {

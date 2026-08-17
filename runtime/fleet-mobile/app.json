@@ -17,7 +17,8 @@
     },
     "ios": {
       "bundleIdentifier": "com.dotobokuri.fleet.mobile",
-      "buildNumber": "2"
+      "buildNumber": "2",
+      "supportsTablet": true
     },
     "plugins": [
       [
