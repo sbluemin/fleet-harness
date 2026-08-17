@@ -45,6 +45,8 @@ interface OperationsCanvasProps {
   readonly onRefreshCatalog?: () => void;
   readonly onClose: (operationId: string) => void;
   readonly onFocus: (operationId: string) => void;
+  /** 빈 캔버스의 일괄 열기 — 대기 목록에 보인 순서(updatedAt 내림차순) 그대로 id를 넘긴다. */
+  readonly onOpenAll: (operationIds: readonly string[]) => void;
   readonly onRename: (operationId: string, title: string) => void;
   readonly onOpenOperationMenu?: (operationId: string, anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
   /** 그 Operation의 패널이 focus layer 뒤로 숨었다 — 그 패널이 주인인 메뉴가 열려 있으면 거둔다. */
@@ -97,6 +99,7 @@ export function OperationsCanvas({
   onRefreshCatalog,
   onClose,
   onFocus,
+  onOpenAll,
   onRename,
   onOpenOperationMenu,
   onDismissOperationMenu,
@@ -1089,6 +1092,7 @@ export function OperationsCanvas({
           operations={theaterOperations}
           canLaunch={canLaunch}
           onOpenOperation={onFocus}
+          onOpenAll={onOpenAll}
           onNewOperation={requestOperationLaunchMenu}
         />
       ) : null}

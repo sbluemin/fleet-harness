@@ -6641,8 +6641,17 @@ body[data-side-bar-animating="true"] .canvas-operation {
   gap: var(--space-2);
 }
 
+/* 4행 + 5행의 윗자락(182px)까지만 보여 스크롤 가능을 암시한다 — 전부 나열하되 캔버스를 잠식하지 않는 캡. */
+.operations-canvas-empty-standby--scroll {
+  max-height: 182px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  padding-right: 2px;
+}
+
 .operations-canvas-empty-standby-chip,
-.operations-canvas-empty-new {
+.operations-canvas-empty-new,
+.operations-canvas-empty-open-all {
   pointer-events: auto;
   cursor: pointer;
 }
@@ -6669,13 +6678,33 @@ body[data-side-bar-animating="true"] .canvas-operation {
   white-space: nowrap;
 }
 
-.operations-canvas-empty-standby-open {
+.operations-canvas-empty-standby-meta {
   flex: none;
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.operations-canvas-empty-standby-time {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.02em;
+}
+
+.operations-canvas-empty-standby-open {
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   font-weight: var(--weight-bold);
   letter-spacing: 0.08em;
+}
+
+.operations-canvas-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .operations-canvas-empty-new {
@@ -6688,6 +6717,22 @@ body[data-side-bar-animating="true"] .canvas-operation {
   font: var(--weight-bold) var(--t-xs)/1.2 var(--font-mono);
 }
 
+.operations-canvas-empty-open-all {
+  padding: 8px var(--space-3);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-secondary);
+  font: var(--weight-bold) var(--t-xs)/1.2 var(--font-mono);
+}
+
+/* 일괄 열기의 확인(arm)은 파괴가 아니라 비용 경고라 coral이 아니라 warn 채널을 쓴다(remote-rotate.is-armed와 같은 문법). */
+.operations-canvas-empty-open-all.is-armed {
+  border-color: color-mix(in oklch, var(--warn) 55%, transparent);
+  background: var(--warn-glow);
+  color: var(--warn-ink);
+}
+
 .operations-canvas-empty-standby-chip:hover,
 .operations-canvas-empty-new:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
@@ -6695,8 +6740,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--brass-bright);
 }
 
+.operations-canvas-empty-open-all:hover:not(.is-armed) {
+  border-color: var(--surface-rim-strong);
+  color: var(--text-primary);
+}
+
 .operations-canvas-empty-standby-chip:focus-visible,
-.operations-canvas-empty-new:focus-visible {
+.operations-canvas-empty-new:focus-visible,
+.operations-canvas-empty-open-all:focus-visible {
   outline: 2px solid color-mix(in oklch, var(--brass) 58%, transparent);
   outline-offset: 2px;
 }
