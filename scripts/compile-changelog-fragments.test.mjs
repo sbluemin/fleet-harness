@@ -21,9 +21,14 @@ test('validates adjacent bilingual pairs and renders deterministic dual previews
   assert.match(result.stdout, /=== CHANGELOG\.ko\.md ===[\s\S]*- 한글 요약을 추가합니다\./);
 });
 
-test('renders the three runtimes in exact order with nested sections', () => {
+test('renders the four runtimes in exact order with nested sections', () => {
   const fixture = createFixture();
-  writeBranchFragment(fixture, 'runtime-spread', `### fleet-desktop
+  writeBranchFragment(fixture, 'runtime-spread', `### fleet-mobile
+#### Added
+- Add mobile.
+  ko: 모바일을 추가합니다.
+
+### fleet-desktop
 #### Added
 - Add desktop.
   ko: 데스크톱을 추가합니다.
@@ -41,12 +46,13 @@ test('renders the three runtimes in exact order with nested sections', () => {
   const result = run(fixture, '--dry-run', '--version', '1.2.3', '--date', '2026-07-10');
 
   assert.equal(result.status, 0, result.stderr);
-  const positions = ['fleet-cli', 'fleet-console', 'fleet-desktop'].map((heading) => result.stdout.indexOf(`### ${heading}`));
+  const positions = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-mobile'].map((heading) => result.stdout.indexOf(`### ${heading}`));
   assert.ok(positions.every((position) => position >= 0));
   assert.deepEqual([...positions].sort((left, right) => left - right), positions);
   assert.match(result.stdout, /### fleet-cli\n\n#### Removed/);
   assert.match(result.stdout, /### fleet-console\n\n#### Changed/);
   assert.match(result.stdout, /### fleet-desktop\n\n#### Added/);
+  assert.match(result.stdout, /### fleet-mobile\n\n#### Added/);
 });
 
 test('rejects the retired fleet-plugin and fleet-core runtime headings', () => {

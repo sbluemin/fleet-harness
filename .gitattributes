@@ -1,0 +1,14 @@
+# Windows에서 기여할 때 CRLF가 섞여 러너의 bash(워크플로 run: 블록)나 Swift 소스가
+# 깨지는 것을 막는다. 저장소의 기존 파일은 모두 LF이므로 이미 LF인 파일에는 변화가 없다.
+*.swift    text eol=lf
+*.podspec  text eol=lf
+*.yml      text eol=lf
+*.yaml     text eol=lf
+*.mjs      text eol=lf
+*.ts       text eol=lf
+*.tsx      text eol=lf
+*.json     text eol=lf
+*.gitignore text eol=lf
+# pnpm은 패치 파일을 바이트 해시로 검증한다 — 어떤 플랫폼 체크아웃에서도 LF를 보존해야
+# 락파일의 해시와 일치한다.
+*.patch    text eol=lf

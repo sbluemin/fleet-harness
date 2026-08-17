@@ -1,0 +1,112 @@
+diff --git a/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift b/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
+index eb1cc94..3849b4d 100644
+--- a/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
++++ b/apple/Sources/ExpoModulesJSI/Coding/JavaScriptCodable+Date.swift
+@@ -53 +53,2 @@ func dateFromMilliseconds(_ milliseconds: Double) throws -> Date {
+-  guard milliseconds.isFinite, abs(milliseconds) <= maxJavaScriptDateMilliseconds else {
++  let magnitude: Double = milliseconds.magnitude
++  guard milliseconds.isFinite, magnitude <= maxJavaScriptDateMilliseconds else {
+diff --git a/apple/Sources/ExpoModulesJSI/Contexts/HostFunctionContext.swift b/apple/Sources/ExpoModulesJSI/Contexts/HostFunctionContext.swift
+index 4e39ce1..7eefea2 100644
+--- a/apple/Sources/ExpoModulesJSI/Contexts/HostFunctionContext.swift
++++ b/apple/Sources/ExpoModulesJSI/Contexts/HostFunctionContext.swift
+@@ -3 +3 @@ internal final class HostFunctionContext: Sendable {
+-  weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) weak var runtime: JavaScriptRuntime?
+@@ -17 +17 @@ internal final class UnownedThisHostFunctionContext: Sendable {
+-  weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Contexts/HostObjectContext.swift b/apple/Sources/ExpoModulesJSI/Contexts/HostObjectContext.swift
+index 7bc72bc..30dece0 100644
+--- a/apple/Sources/ExpoModulesJSI/Contexts/HostObjectContext.swift
++++ b/apple/Sources/ExpoModulesJSI/Contexts/HostObjectContext.swift
+@@ -8 +8 @@ internal final class HostObjectContext: Sendable {
+-  weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptActor.swift b/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptActor.swift
+index 9a0b4e0..020824b 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptActor.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptActor.swift
+@@ -79 +79 @@ internal actor JavaScriptRuntimeActor {
+-  private weak let runtime: JavaScriptRuntime?
++  private weak var runtime: JavaScriptRuntime?
+@@ -98 +98 @@ internal final class JavaScriptRuntimeExecutor: JavaScriptExecutor, @unchecked S
+-  private weak let runtime: JavaScriptRuntime?
++  private weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptPropNameID.swift b/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptPropNameID.swift
+index ef4624d..352d3d3 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptPropNameID.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/JavaScriptPropNameID.swift
+@@ -5 +5 @@ public final class JavaScriptPropNameID: JavaScriptType {
+-  private weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) private weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArray.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArray.swift
+index 049acbb..89ea289 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArray.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArray.swift
+@@ -8 +8 @@ public struct JavaScriptArray: JavaScriptType, ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArrayBuffer.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArrayBuffer.swift
+index 34bd6f8..488b8ec 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArrayBuffer.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptArrayBuffer.swift
+@@ -9 +9 @@ public struct JavaScriptArrayBuffer: ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptBigInt.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptBigInt.swift
+index a3a861f..78b86d8 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptBigInt.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptBigInt.swift
+@@ -40 +40 @@ public struct JavaScriptBigInt: JavaScriptType, Sendable, ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptError.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptError.swift
+index 936aaa2..54c533a 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptError.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptError.swift
+@@ -15 +15 @@ public final class JavaScriptError: Error, Sendable {
+-  private weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) private weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptFunction.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptFunction.swift
+index 3ff84b8..d65ad76 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptFunction.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptFunction.swift
+@@ -7 +7 @@ public struct JavaScriptFunction: JavaScriptType, ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+index cc15fd5..423d352 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptObject.swift
+@@ -9 +9 @@ public struct JavaScriptObject: JavaScriptType, Sendable, ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptPromise.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptPromise.swift
+index c2152bc..c49071e 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptPromise.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptPromise.swift
+@@ -13 +13 @@ public struct JavaScriptPromise: JavaScriptType, ~Copyable {
+-  private weak let runtime: JavaScriptRuntime?
++  private weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptTypedArray.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptTypedArray.swift
+index 280c18a..8d472a3 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptTypedArray.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptTypedArray.swift
+@@ -11 +11 @@ public struct JavaScriptTypedArray: ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptValue.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptValue.swift
+index ded0419..a902ce2 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptValue.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptValue.swift
+@@ -10 +10 @@ public final class JavaScriptValue: JavaScriptType, Equatable, Escapable {
+-  internal weak let runtime: JavaScriptRuntime?
++  nonisolated(unsafe) internal weak var runtime: JavaScriptRuntime?
+diff --git a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptWeakObject.swift b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptWeakObject.swift
+index 9fffe5e..8cc1f18 100644
+--- a/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptWeakObject.swift
++++ b/apple/Sources/ExpoModulesJSI/Runtime/Values/JavaScriptWeakObject.swift
+@@ -8 +8 @@ public struct JavaScriptWeakObject: JavaScriptType, ~Copyable {
+-  internal weak let runtime: JavaScriptRuntime?
++  internal weak var runtime: JavaScriptRuntime?

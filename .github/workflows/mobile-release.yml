@@ -10,12 +10,11 @@ on:
         description: 빌드할 릴리스 커밋의 git ref/sha (app.json 버전이 이미 bump된 상태)
         required: true
         type: string
+  # 수동 실행에는 ref 입력을 두지 않는다. GitHub은 "Use workflow from"에서 고른 브랜치의
+  # 워크플로 파일을 실행하므로, ref만 채우고 드롭다운을 기본 브랜치로 두면 그 브랜치의
+  # 워크플로(= iOS 잡이 없는 버전)가 돌아 아무것도 배포되지 않는다. 입력을 없애면
+  # "Use workflow from"이 유일한 선택지가 되고 체크아웃도 그 브랜치를 따른다.
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 빌드할 git ref (미지정 시 기본 브랜치)
-        required: false
-        type: string
 
 permissions:
   contents: read
@@ -23,6 +22,10 @@ permissions:
 jobs:
   distribute:
     name: Build and distribute Android
+    # iOS 잡과 대칭인 게이트. 릴리스 경로(stable-release)는 이 변수가 true일 때만 여기까지
+    # 오므로 no-op이고, 수동 dispatch로 iOS만 시험할 때 Android 잡이 키스토어 없이 돌다가
+    # 런 전체를 빨갛게 만드는 것을 막는다.
+    if: ${{ vars.FLEET_MOBILE_DISTRIBUTION == 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -86,3 +89,107 @@ jobs:
       - name: Remove signing material
         if: always()
         run: rm -f "$RUNNER_TEMP/release.jks" "$RUNNER_TEMP/firebase-service-account.json"
+
+  distribute-ios:
+    name: Build and distribute iOS (TestFlight)
+    # iOS 배포는 레포 변수 FLEET_MOBILE_IOS_DISTRIBUTION == 'true'일 때만 돈다(Android의
+    # FLEET_MOBILE_DISTRIBUTION과 대칭). 변수가 없으면 잡 전체를 건너뛰어, 시크릿 등록 전에도
+    # 브랜치가 막히지 않는다.
+    if: ${{ vars.FLEET_MOBILE_IOS_DISTRIBUTION == 'true' }}
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+      # Expo 57의 SwiftPM 'apple' 패키지는 Swift 6.2(Xcode 26.x)를 요구한다. 가장 낮은 26.x를
+      # 고른다(mobile-ios-verify.yml과 동일 근거).
+      - name: Select an Expo-compatible Xcode (lowest 26.x, Swift 6.2)
+        run: |
+          target=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | head -1)
+          if [ -z "$target" ]; then target=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1); fi
+          if [ -z "$target" ]; then echo "::error::No Xcode found on the runner" >&2; exit 1; fi
+          echo "DEVELOPER_DIR=$target/Contents/Developer" >> "$GITHUB_ENV"
+          sudo xcode-select -s "$target/Contents/Developer"
+          xcodebuild -version
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # 일곱 개 Apple 시크릿은 전부-또는-전무다. 부분 설정은 서명되지 않은/개발-서명 IPA를
+      # 만들지 않도록 하드 실패시킨다(desktop-release.yml의 all-or-none 서명 게이트와 동형).
+      # 테스터 그룹도 같은 묶음에 든다 — Android가 그룹 없는 업로드를 배포로 치지 않는 것과 같다.
+      - name: Check the Apple signing secrets are complete
+        env:
+          CERT: ${{ secrets.FLEET_IOS_CERTIFICATE_BASE64 }}
+          CERT_PW: ${{ secrets.FLEET_IOS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.FLEET_IOS_PROFILE_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.FLEET_ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.FLEET_ASC_ISSUER_ID }}
+          ASC_KEY: ${{ secrets.FLEET_ASC_KEY_BASE64 }}
+          ASC_GROUPS: ${{ secrets.FLEET_ASC_BETA_GROUPS }}
+        run: |
+          missing=""
+          for v in CERT CERT_PW PROFILE ASC_KEY_ID ASC_ISSUER_ID ASC_KEY ASC_GROUPS; do
+            if [ -z "${!v}" ]; then missing="$missing $v"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error::FLEET_MOBILE_IOS_DISTRIBUTION is true but these Apple secrets are missing:$missing. Set all seven (certificate, password, profile, ASC key id/issuer/key, TestFlight groups) or unset the variable." >&2
+            exit 1
+          fi
+
+      # 서명 자재는 파일로만 존재하고 저장소에는 들어가지 않는다. 러너 밖(RUNNER_TEMP/키체인)에
+      # 쓰고 always()에서 지운다.
+      - name: Materialize the Apple signing material
+        env:
+          CERT: ${{ secrets.FLEET_IOS_CERTIFICATE_BASE64 }}
+          CERT_PW: ${{ secrets.FLEET_IOS_CERTIFICATE_PASSWORD }}
+          PROFILE: ${{ secrets.FLEET_IOS_PROFILE_BASE64 }}
+          ASC_KEY: ${{ secrets.FLEET_ASC_KEY_BASE64 }}
+          ASC_KEY_ID: ${{ secrets.FLEET_ASC_KEY_ID }}
+        run: |
+          printf '%s' "$CERT" | base64 --decode > "$RUNNER_TEMP/dist.p12"
+          printf '%s' "$PROFILE" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+          printf '%s' "$ASC_KEY" | base64 --decode > "$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          KEYCHAIN="$RUNNER_TEMP/fleet-signing.keychain-db"
+          KEYCHAIN_PW=$(openssl rand -base64 24)
+          echo "FLEET_KEYCHAIN=$KEYCHAIN" >> "$GITHUB_ENV"
+          security create-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security set-keychain-settings -lut 3600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PW" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/dist.p12" -k "$KEYCHAIN" -P "$CERT_PW" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PW" "$KEYCHAIN" >/dev/null
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/"
+
+      - name: Build and verify the release IPA
+        env:
+          FLEET_IOS_CERTIFICATE_BASE64: ${{ secrets.FLEET_IOS_CERTIFICATE_BASE64 }}
+          FLEET_IOS_CERTIFICATE_PASSWORD: ${{ secrets.FLEET_IOS_CERTIFICATE_PASSWORD }}
+          FLEET_IOS_PROFILE_BASE64: ${{ secrets.FLEET_IOS_PROFILE_BASE64 }}
+          FLEET_IOS_PROFILE_PATH: ${{ runner.temp }}/profile.mobileprovision
+        run: pnpm --filter @dotobokuri/fleet-mobile ios:build:release
+
+      # Android와 같은 노트를 싣는다: 릴리스 커밋의 제목 한 줄. 업로드 후 빌드가 처리될 때까지
+      # 기다렸다가 그룹에 배정하므로 이 스텝은 Android보다 오래 걸린다(처리 5~15분).
+      - name: Distribute to TestFlight
+        env:
+          FLEET_ASC_KEY_ID: ${{ secrets.FLEET_ASC_KEY_ID }}
+          FLEET_ASC_ISSUER_ID: ${{ secrets.FLEET_ASC_ISSUER_ID }}
+          FLEET_ASC_KEY_BASE64: ${{ secrets.FLEET_ASC_KEY_BASE64 }}
+          FLEET_ASC_KEY_PATH: ${{ runner.temp }}/AuthKey_${{ secrets.FLEET_ASC_KEY_ID }}.p8
+          FLEET_ASC_BETA_GROUPS: ${{ secrets.FLEET_ASC_BETA_GROUPS }}
+          RELEASE_SHA: ${{ inputs.ref || github.sha }}
+        run: |
+          pnpm --filter @dotobokuri/fleet-mobile ios:distribute -- \
+            --notes "$(git log -1 --format=%s "$RELEASE_SHA")"
+
+      - name: Remove signing material
+        if: always()
+        run: |
+          security delete-keychain "$FLEET_KEYCHAIN" 2>/dev/null || true
+          rm -f "$RUNNER_TEMP/dist.p12" "$RUNNER_TEMP/profile.mobileprovision" "$RUNNER_TEMP"/AuthKey_*.p8
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/profile.mobileprovision"

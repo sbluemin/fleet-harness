@@ -1,0 +1,192 @@
+import { createPrivateKey, sign } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fail } from "./android-tools.mjs";
+
+/**
+ * App Store Connect API의 최소 클라이언트. Firebase CLI가 Android에서 하는 일 — 업로드된 빌드를
+ * 테스터 그룹에 붙이고 릴리스 노트를 실어 보내는 것 — 을 iOS에서 하려면 altool만으로는 부족하다.
+ * altool은 바이너리를 올릴 뿐 그룹·노트를 모르기 때문에, 그 두 가지는 이 REST API로만 가능하다.
+ *
+ * 의존성은 추가하지 않는다. 인증은 ES256 JWT 한 장이고 Node에 서명기와 fetch가 이미 있다.
+ */
+export const ASC_BASE_URL = "https://api.appstoreconnect.apple.com";
+export const ASC_GROUPS_ENV = "FLEET_ASC_BETA_GROUPS";
+export const WHATS_NEW_LOCALE = "en-US";
+// Apple은 20분을 넘는 만료를 거부한다. 폴링이 길어져도 만료 전에 새로 발급하도록 짧게 잡는다.
+export const TOKEN_LIFETIME_SECONDS = 900;
+
+export function parseGroupNames(raw) {
+  return [...new Set(String(raw ?? "").split(",").map((name) => name.trim()).filter(Boolean))];
+}
+
+/** 토큰 본문. 팀 키(App Manager)는 sub 없이 iss/aud/exp만 요구한다. */
+export function tokenClaims(keyId, issuerId, nowSeconds) {
+  if (!keyId || !issuerId) fail("App Store Connect key id and issuer id are required to sign an API token");
+  return {
+    header: { alg: "ES256", kid: keyId, typ: "JWT" },
+    payload: { iss: issuerId, iat: nowSeconds, exp: nowSeconds + TOKEN_LIFETIME_SECONDS, aud: "appstoreconnect-v1" },
+  };
+}
+
+function base64Url(value) {
+  return Buffer.from(value).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+}
+
+export function encodeToken({ keyId, issuerId, privateKeyPem, nowSeconds }) {
+  const { header, payload } = tokenClaims(keyId, issuerId, nowSeconds);
+  const signingInput = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(payload))}`;
+  // JOSE는 r||s 원시 서명을 요구한다. 기본 DER로 서명하면 Apple이 401로 되돌려 보낸다.
+  const signature = sign("sha256", Buffer.from(signingInput), {
+    key: createPrivateKey(privateKeyPem),
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${signingInput}.${signature.toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "")}`;
+}
+
+/** Apple의 오류 본문은 errors[]에 사람이 읽을 제목과 상세를 담는다. 그걸 잃지 않고 한 줄로 만든다. */
+export function describeApiError(method, path, status, bodyText) {
+  let detail = String(bodyText ?? "").trim();
+  try {
+    const parsed = JSON.parse(detail);
+    if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+      detail = parsed.errors.map((e) => [e.title, e.detail].filter(Boolean).join(": ")).join(" | ");
+    }
+  } catch {
+    // JSON이 아니면 원문을 그대로 쓴다.
+  }
+  return `App Store Connect ${method} ${path} failed (${status})${detail ? `: ${detail.slice(0, 500)}` : ""}`;
+}
+
+/**
+ * 업로드된 빌드는 CFBundleVersion(빌드 번호)과 마케팅 버전의 짝으로 식별한다. 같은 짝이 이미
+ * 있으면 다시 올리지 않는다 — 재실행이 중복 업로드로 거절당하는 대신 배정 단계로 이어지게 하려는
+ * 것이다(그룹 배정이 실패해 잡을 다시 돌리는 상황이 실제로 생긴다).
+ */
+export function pickBuild(builds, buildNumber) {
+  return builds.find((entry) => entry?.attributes?.version === buildNumber) ?? null;
+}
+
+export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, now = () => Date.now() }) {
+  const privateKeyPem = readFileSync(keyPath, "utf8");
+  let cached = null;
+
+  function token() {
+    const nowSeconds = Math.floor(now() / 1000);
+    if (!cached || cached.expiresAt - 60 <= nowSeconds) {
+      cached = { value: encodeToken({ keyId, issuerId, privateKeyPem, nowSeconds }), expiresAt: nowSeconds + TOKEN_LIFETIME_SECONDS };
+    }
+    return cached.value;
+  }
+
+  async function request(method, path, body) {
+    const response = await fetchImpl(`${ASC_BASE_URL}${path}`, {
+      method,
+      headers: {
+        authorization: `Bearer ${token()}`,
+        ...(body === undefined ? {} : { "content-type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+    if (response.status === 204) return { status: 204, data: null };
+    const text = await response.text();
+    if (!response.ok) return { status: response.status, error: describeApiError(method, path, response.status, text) };
+    try {
+      return { status: response.status, data: text ? JSON.parse(text) : null };
+    } catch {
+      return { status: response.status, error: describeApiError(method, path, response.status, text) };
+    }
+  }
+
+  async function requireOk(method, path, body) {
+    const result = await request(method, path, body);
+    if (result.error) fail(result.error);
+    return result.data;
+  }
+
+  return {
+    async appId(bundleId) {
+      const data = await requireOk("GET", `/v1/apps?filter[bundleId]=${encodeURIComponent(bundleId)}&limit=1`);
+      const app = data?.data?.[0];
+      if (!app) fail(`App Store Connect has no app record for ${bundleId} — create it before the first upload`);
+      return app.id;
+    },
+
+    async findBuild(appId, versionName, buildNumber) {
+      const path =
+        `/v1/builds?filter[app]=${encodeURIComponent(appId)}` +
+        `&filter[preReleaseVersion.version]=${encodeURIComponent(versionName)}` +
+        `&filter[version]=${encodeURIComponent(buildNumber)}&limit=10`;
+      const data = await requireOk("GET", path);
+      return pickBuild(data?.data ?? [], buildNumber);
+    },
+
+    async resolveGroupIds(appId, names) {
+      const data = await requireOk("GET", `/v1/betaGroups?filter[app]=${encodeURIComponent(appId)}&limit=200`);
+      const groups = data?.data ?? [];
+      return names.map((name) => {
+        const match = groups.find((group) => group?.attributes?.name === name);
+        if (!match) {
+          const known = groups.map((group) => group?.attributes?.name).filter(Boolean).join(", ") || "none";
+          fail(`TestFlight has no beta group named "${name}" for this app (groups: ${known})`);
+        }
+        // 외부 그룹은 배정만으로 끝나지 않는다 — Apple의 베타 심사를 통과해야 테스터에게 열린다.
+        return { name, id: match.id, internal: match.attributes?.isInternalGroup !== false };
+      });
+    },
+
+    /**
+     * 외부 테스터에게 나가려면 빌드마다 베타 심사 제출이 필요하다. 이미 제출됐거나 심사를
+     * 통과한 빌드는 Apple이 거절하는데, 그것도 우리가 원하던 상태이므로 실패로 보지 않는다.
+     */
+    async submitForBetaReview(buildId) {
+      const created = await request("POST", "/v1/betaAppReviewSubmissions", {
+        data: { type: "betaAppReviewSubmissions", relationships: { build: { data: { type: "builds", id: buildId } } } },
+      });
+      if (!created.error) return "submitted for beta review";
+      const existing = await request(
+        "GET",
+        `/v1/betaAppReviewSubmissions?filter[build]=${encodeURIComponent(buildId)}&limit=1`,
+      );
+      if (existing.error) fail(created.error);
+      const state = existing.data?.data?.[0]?.attributes?.betaReviewState;
+      if (!state) fail(created.error);
+      return `already in beta review (${state})`;
+    },
+
+    async setWhatsNew(buildId, whatsNew) {
+      const created = await request("POST", "/v1/betaBuildLocalizations", {
+        data: {
+          type: "betaBuildLocalizations",
+          attributes: { locale: WHATS_NEW_LOCALE, whatsNew },
+          relationships: { build: { data: { type: "builds", id: buildId } } },
+        },
+      });
+      if (!created.error) return "created";
+      // 같은 로케일이 이미 있으면 Apple이 409로 막는다 — 재실행이거나 Apple이 기본 로케일을
+      // 만들어 둔 경우다. 그때는 덮어써야 테스터가 이번 빌드의 노트를 본다.
+      const existing = await requireOk(
+        "GET",
+        `/v1/builds/${encodeURIComponent(buildId)}/betaBuildLocalizations?limit=50`,
+      );
+      const mine = (existing?.data ?? []).find((entry) => entry?.attributes?.locale === WHATS_NEW_LOCALE);
+      if (!mine) fail(created.error);
+      await requireOk("PATCH", `/v1/betaBuildLocalizations/${encodeURIComponent(mine.id)}`, {
+        data: { type: "betaBuildLocalizations", id: mine.id, attributes: { whatsNew } },
+      });
+      return "updated";
+    },
+
+    async assignToGroup(groupId, buildId) {
+      const linked = await request("POST", `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, {
+        data: [{ type: "builds", id: buildId }],
+      });
+      if (!linked.error) return "assigned";
+      // 그룹이 "자동 배포"로 설정돼 있으면 Apple이 처리 직후 스스로 붙인다. 그때 이 POST가
+      // 거절당하는데, 결과는 우리가 원하던 바로 그 상태다 — 확인하고 성공으로 친다.
+      const members = await request("GET", `/v1/betaGroups/${encodeURIComponent(groupId)}/builds?limit=200`);
+      if (members.error) fail(linked.error);
+      if ((members.data?.data ?? []).some((entry) => entry?.id === buildId)) return "already assigned";
+      fail(linked.error);
+    },
+  };
+}

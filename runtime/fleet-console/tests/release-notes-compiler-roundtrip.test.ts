@@ -35,6 +35,11 @@ branch: feat/roundtrip-check
 #### Fixed
 - Trust the OS certificate store in managed Node processes.
   ko: 관리 Node 프로세스가 OS 인증서 저장소를 신뢰합니다.
+
+### fleet-mobile
+#### Added
+- Ship the mobile shell on iOS.
+  ko: iOS에서 모바일 셸을 출시합니다.
 `;
 
 function compileDryRun(): { english: string; korean: string } {
@@ -63,7 +68,10 @@ describe("compiled release notes round-trip through the Console parser", () => {
     expect(notes[0]?.sections).toEqual([
       {
         heading: "Added",
-        items: [{ packageTags: [], text: "Add a Wire log toggle to AI Gateway settings.", product: "fleet-console" }],
+        items: [
+          { packageTags: [], text: "Add a Wire log toggle to AI Gateway settings.", product: "fleet-console" },
+          { packageTags: [], text: "Ship the mobile shell on iOS.", product: "fleet-mobile" },
+        ],
       },
       {
         heading: "Fixed",

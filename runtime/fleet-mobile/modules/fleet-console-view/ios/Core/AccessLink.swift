@@ -1,0 +1,409 @@
+import Foundation
+
+// AccessLink.kt의 이식. 규칙(정규식·키셋·base64url 정준성·엔드포인트 파싱)은 원본에서
+// 리터럴로 복사했다. Foundation의 URL/URLComponents는 Android Uri / Java URI와 엣지 동작이
+// 달라(포트·userInfo·빈 경로·다중 쿼리 처리) 공유 프로토콜 벡터를 통과시키지 못하므로,
+// 외부 링크와 엔드포인트 파싱은 원본 시맨틱을 그대로 재현하는 전용 파서로 구현한다.
+// 모든 파싱 실패는 pairing_target_invalid로 던진다.
+
+public struct AccessLinkError: Error, Equatable {
+  public let message: String
+  public init(_ message: String = "pairing_target_invalid") { self.message = message }
+}
+
+public enum AccessLink {
+  // 원본 리터럴 — 변형 금지.
+  private static let tokenPattern = "^[A-Za-z0-9_-]{16,512}$"
+  private static let fingerprintPattern = "^[0-9A-F]{64}$"
+  private static let codePattern = "^[A-Za-z0-9_-]+$"
+  private static let expectedKeys: Set<String> = ["v", "endpoint", "token", "fingerprint", "label"]
+
+  public static func parse(_ raw: String) throws -> AccessTarget {
+    // Kotlin String.trim()은 개행 포함 모든 공백을 제거하므로 whitespacesAndNewlines로 맞춘다.
+    let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    // 길이 비교는 Kotlin String.length(UTF-16 코드 유닛)와 맞춘다.
+    try require(!value.isEmpty && value.utf16.count <= FleetLinkInbox.maxInputLength)
+    // whitespaceOrControl = [\0-\x1f\x7f\s] — 제어문자·DEL·모든 공백 유니코드.
+    try require(!containsWhitespaceOrControl(value))
+
+    let uri = try parseLinkUri(value)
+    try require(uri.scheme.caseInsensitiveEquals("fleet")
+      && uri.host.caseInsensitiveEquals("join")
+      && uri.port == -1)
+    try require(uri.userInfo == nil && uri.fragment == nil && uri.path.isEmpty)
+    try require(uri.queryParameterNames == ["code"] && uri.codeValues.count == 1)
+    guard let code = uri.codeValues.first else { throw AccessLinkError() }
+
+    try require(matches(codePattern, code) && code.utf16.count % 4 != 1)
+    guard let decodedBytes = decodeBase64Url(padBase64Url(code)) else { throw AccessLinkError() }
+    // 정준 재인코딩(패딩 없음)이 원본과 정확히 같아야 한다 — 비정준 패딩비트를 거부한다.
+    try require(encodeBase64UrlNoPadding(decodedBytes) == code)
+    guard let decoded = strictUtf8(decodedBytes) else { throw AccessLinkError() }
+
+    guard let payload = parseJsonObject(decoded) else { throw AccessLinkError() }
+    try require(Set(payload.keys) == expectedKeys)
+    try require(intValue(payload["v"]) == 1)
+    let endpoint = try strictString(payload, "endpoint")
+    let token = try strictString(payload, "token")
+    let fingerprint = normalizeFingerprint(try strictString(payload, "fingerprint"))
+    let label = sanitizeLabel(try strictString(payload, "label"))
+    try require(matches(tokenPattern, token) && matches(fingerprintPattern, fingerprint) && !label.isEmpty)
+
+    let parsedEndpoint = try parseEndpoint(endpoint)
+    return AccessTarget(
+      origin: parsedEndpoint.origin,
+      hostname: parsedEndpoint.hostname,
+      port: parsedEndpoint.port,
+      label: label,
+      token: token,
+      fingerprint: fingerprint
+    )
+  }
+
+  public static func normalizeFingerprint(_ value: String) -> String {
+    String(value.unicodeScalars.filter { isHexDigit($0) }).uppercased()
+  }
+
+  // MARK: - Label sanitization
+
+  private static func sanitizeLabel(_ value: String) -> String {
+    // hiddenLabelChars = [\0-\x1f\x7f-​-‏  ‪-‮⁦-⁩]
+    let stripped = String(value.unicodeScalars.filter { !isHiddenLabelChar($0) })
+    // labelWhitespace = \s+ → 단일 공백으로 축약, trim, 48자 캡.
+    let collapsed = collapseWhitespace(stripped).trimmingCharacters(in: .whitespaces)
+    // Kotlin take(48)은 UTF-16 코드 유닛 기준이므로 grapheme가 아니라 utf16으로 자른다.
+    return utf16Prefix(collapsed, 48)
+  }
+
+  // MARK: - Endpoint
+
+  private struct Endpoint { let origin: String; let hostname: String; let port: Int }
+
+  private static func parseEndpoint(_ value: String) throws -> Endpoint {
+    let uri = try parseGenericUri(value)
+    try require(uri.scheme == "https" && uri.rawUserInfo == nil && uri.rawQuery == nil && uri.rawFragment == nil)
+    try require(uri.rawPath.isEmpty || uri.rawPath == "/")
+    guard let rawHost = uri.host?.lowercased() else { throw AccessLinkError() }
+    let host: String
+    if rawHost.hasPrefix("[") && rawHost.hasSuffix("]") && rawHost.count >= 2 {
+      host = String(rawHost.dropFirst().dropLast())
+    } else {
+      host = rawHost
+    }
+    let port = uri.port == -1 ? 443 : uri.port
+    try require(port >= 1 && port <= 65535)
+    let renderedHost = host.contains(":") ? "[\(host)]" : host
+    let origin = port == 443 ? "https://\(renderedHost)" : "https://\(renderedHost):\(port)"
+    return Endpoint(origin: origin, hostname: host, port: port)
+  }
+
+  // MARK: - fleet://join?code= link parser (Android Uri semantics)
+
+  private struct LinkUri {
+    let scheme: String
+    let userInfo: String?
+    let host: String
+    let port: Int
+    let path: String
+    let fragment: String?
+    let queryParameterNames: Set<String>
+    let codeValues: [String]
+  }
+
+  private static func parseLinkUri(_ value: String) throws -> LinkUri {
+    guard let schemeRange = value.range(of: "://") else { throw AccessLinkError() }
+    let scheme = String(value[value.startIndex..<schemeRange.lowerBound])
+    try require(!scheme.isEmpty && isValidScheme(scheme))
+    var rest = String(value[schemeRange.upperBound...])
+
+    var fragment: String?
+    if let hash = rest.firstIndex(of: "#") {
+      fragment = String(rest[rest.index(after: hash)...])
+      rest = String(rest[rest.startIndex..<hash])
+    }
+
+    var query: String?
+    if let q = rest.firstIndex(of: "?") {
+      query = String(rest[rest.index(after: q)...])
+      rest = String(rest[rest.startIndex..<q])
+    }
+
+    // authority[/path]
+    let authority: String
+    let path: String
+    if let slash = rest.firstIndex(of: "/") {
+      authority = String(rest[rest.startIndex..<slash])
+      path = String(rest[slash...])
+    } else {
+      authority = rest
+      path = ""
+    }
+
+    var userInfo: String?
+    var hostPort = authority
+    if let at = authority.lastIndex(of: "@") {
+      userInfo = String(authority[authority.startIndex..<at])
+      hostPort = String(authority[authority.index(after: at)...])
+    }
+
+    // host[:port] — 브래킷 밖의 마지막 ':'로 분리.
+    var host = hostPort
+    var port = -1
+    if !hostPort.hasPrefix("[") {
+      if let colon = hostPort.lastIndex(of: ":") {
+        host = String(hostPort[hostPort.startIndex..<colon])
+        let portText = String(hostPort[hostPort.index(after: colon)...])
+        // 포트가 비었거나 숫자가 아니면 Android Uri는 port=-1을 주지 않으므로, 존재 자체를 거부 신호로 둔다.
+        port = Int(portText) ?? -2
+      }
+    }
+
+    var names: Set<String> = []
+    var codeValues: [String] = []
+    if let query, !query.isEmpty {
+      for pair in query.split(separator: "&", omittingEmptySubsequences: false) {
+        let parts = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+        let name = String(parts[0])
+        names.insert(name)
+        if name == "code" {
+          codeValues.append(parts.count > 1 ? String(parts[1]) : "")
+        }
+      }
+    }
+
+    return LinkUri(
+      scheme: scheme,
+      userInfo: userInfo,
+      host: host,
+      port: port,
+      path: path,
+      fragment: fragment,
+      queryParameterNames: names,
+      codeValues: codeValues
+    )
+  }
+
+  // MARK: - Generic URI parser (Java URI semantics for the endpoint)
+
+  private struct GenericUri {
+    let scheme: String?
+    let rawUserInfo: String?
+    let host: String?
+    let port: Int
+    let rawPath: String
+    let rawQuery: String?
+    let rawFragment: String?
+  }
+
+  private static func parseGenericUri(_ value: String) throws -> GenericUri {
+    guard let schemeRange = value.range(of: "://") else { throw AccessLinkError() }
+    let scheme = String(value[value.startIndex..<schemeRange.lowerBound]).lowercased()
+    var rest = String(value[schemeRange.upperBound...])
+
+    var fragment: String?
+    if let hash = rest.firstIndex(of: "#") {
+      fragment = String(rest[rest.index(after: hash)...])
+      rest = String(rest[rest.startIndex..<hash])
+    }
+    var query: String?
+    if let q = rest.firstIndex(of: "?") {
+      query = String(rest[rest.index(after: q)...])
+      rest = String(rest[rest.startIndex..<q])
+    }
+    let authority: String
+    let path: String
+    if let slash = rest.firstIndex(of: "/") {
+      authority = String(rest[rest.startIndex..<slash])
+      path = String(rest[slash...])
+    } else {
+      authority = rest
+      path = ""
+    }
+    var userInfo: String?
+    var hostPort = authority
+    if let at = authority.lastIndex(of: "@") {
+      userInfo = String(authority[authority.startIndex..<at])
+      hostPort = String(authority[authority.index(after: at)...])
+    }
+    // IPv6 리터럴은 [..] 로 감싸이며 브래킷 뒤의 :port만 분리한다.
+    var host: String?
+    var port = -1
+    if hostPort.hasPrefix("[") {
+      if let close = hostPort.firstIndex(of: "]") {
+        host = String(hostPort[hostPort.startIndex...close])
+        let after = String(hostPort[hostPort.index(after: close)...])
+        if after.hasPrefix(":") {
+          port = Int(after.dropFirst()) ?? -2
+        } else if !after.isEmpty {
+          throw AccessLinkError()
+        }
+      } else {
+        throw AccessLinkError()
+      }
+    } else if !hostPort.isEmpty {
+      if let colon = hostPort.lastIndex(of: ":") {
+        host = String(hostPort[hostPort.startIndex..<colon])
+        port = Int(hostPort[hostPort.index(after: colon)...]) ?? -2
+      } else {
+        host = hostPort
+      }
+    }
+
+    return GenericUri(
+      scheme: scheme,
+      rawUserInfo: userInfo,
+      host: host,
+      port: port,
+      rawPath: path,
+      rawQuery: query,
+      rawFragment: fragment
+    )
+  }
+
+  // MARK: - Primitives
+
+  private static func padBase64Url(_ value: String) -> String {
+    let remainder = value.count % 4
+    let padding = (4 - remainder) % 4
+    return value + String(repeating: "=", count: padding)
+  }
+
+  private static func decodeBase64Url(_ padded: String) -> [UInt8]? {
+    let standard = padded.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+    guard let data = Data(base64Encoded: standard) else { return nil }
+    return [UInt8](data)
+  }
+
+  private static func encodeBase64UrlNoPadding(_ bytes: [UInt8]) -> String {
+    Data(bytes).base64EncodedString()
+      .replacingOccurrences(of: "+", with: "-")
+      .replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: "=", with: "")
+  }
+
+  private static func strictUtf8(_ bytes: [UInt8]) -> String? {
+    // REPORT 시맨틱: 잘못된 UTF-8은 nil. String(decoding:as:)는 U+FFFD로 치환하므로 쓰지 않는다.
+    var result = ""
+    var decoder = UTF8()
+    var iterator = bytes.makeIterator()
+    loop: while true {
+      switch decoder.decode(&iterator) {
+      case .scalarValue(let scalar): result.unicodeScalars.append(scalar)
+      case .emptyInput: break loop
+      case .error: return nil
+      }
+    }
+    return result
+  }
+
+  private static func parseJsonObject(_ text: String) -> [String: Any]? {
+    guard let data = text.data(using: .utf8) else { return nil }
+    // 최상위가 객체가 아니면(배열·문자열·스칼라) 거부한다 — JSONObject(...)가 던지는 것과 동형.
+    guard let object = try? JSONSerialization.jsonObject(with: data, options: []) else { return nil }
+    return object as? [String: Any]
+  }
+
+  private static func strictString(_ payload: [String: Any], _ key: String) throws -> String {
+    guard let value = payload[key], let string = jsonString(value) else { throw AccessLinkError() }
+    return string
+  }
+
+  // JSON 문자열만 통과시킨다. Foundation은 JSON 문자열을 NSString(=String), 숫자/불리언을
+  // NSNumber로 브리징하므로, NSNumber를 문자열로 오인하지 않게 타입을 좁힌다.
+  private static func jsonString(_ value: Any) -> String? {
+    if value is NSNumber { return nil }
+    return value as? String
+  }
+
+  private static func intValue(_ value: Any?) -> Int? {
+    guard let number = value as? NSNumber else { return nil }
+    // 불리언 NSNumber를 정수 1로 오인하지 않는다.
+    if CFGetTypeID(number) == CFBooleanGetTypeID() { return nil }
+    return number.intValue
+  }
+
+  // MARK: - Character classes
+
+  private static func containsWhitespaceOrControl(_ value: String) -> Bool {
+    for scalar in value.unicodeScalars {
+      if scalar.value <= 0x1f || scalar.value == 0x7f { return true }
+      if isWhitespaceScalar(scalar) { return true }
+    }
+    return false
+  }
+
+  // Java \s (ASCII 공백류) + 유니코드 공백. Android 정규식 \s는 ASCII 기본이나, 안전하게
+  // 유니코드 공백까지 제어문자로 취급한다(엄격한 방향으로만 벗어난다).
+  private static func isWhitespaceScalar(_ s: Unicode.Scalar) -> Bool {
+    switch s.value {
+    case 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x20: return true
+    default: return s.properties.isWhitespace
+    }
+  }
+
+  private static func isHexDigit(_ s: Unicode.Scalar) -> Bool {
+    (s.value >= 0x30 && s.value <= 0x39) || (s.value >= 0x41 && s.value <= 0x46) || (s.value >= 0x61 && s.value <= 0x66)
+  }
+
+  private static func isHiddenLabelChar(_ s: Unicode.Scalar) -> Bool {
+    let v = s.value
+    return (v <= 0x1f)
+      || (v >= 0x7f && v <= 0x9f)
+      || (v >= 0x200b && v <= 0x200f)
+      || v == 0x2028 || v == 0x2029
+      || (v >= 0x202a && v <= 0x202e)
+      || (v >= 0x2066 && v <= 0x2069)
+  }
+
+  private static func collapseWhitespace(_ value: String) -> String {
+    var out = ""
+    var inRun = false
+    for s in value.unicodeScalars {
+      if isWhitespaceScalar(s) {
+        if !inRun { out.append(" "); inRun = true }
+      } else {
+        out.unicodeScalars.append(s)
+        inRun = false
+      }
+    }
+    return out
+  }
+
+  private static func isValidScheme(_ scheme: String) -> Bool {
+    // scheme = ALPHA *( ALPHA / DIGIT / "+" / "-" / "." )
+    guard let first = scheme.unicodeScalars.first, first.properties.isAlphabetic else { return false }
+    for s in scheme.unicodeScalars {
+      let v = s.value
+      let isAlnum = (v >= 0x41 && v <= 0x5a) || (v >= 0x61 && v <= 0x7a) || (v >= 0x30 && v <= 0x39)
+      if !(isAlnum || v == 0x2b || v == 0x2d || v == 0x2e) { return false }
+    }
+    return true
+  }
+
+  private static func matches(_ pattern: String, _ input: String) -> Bool {
+    guard let regex = try? NSRegularExpression(pattern: pattern) else { return false }
+    let range = NSRange(input.startIndex..<input.endIndex, in: input)
+    // Kotlin Regex.matches는 문자열 전체 일치를 요구한다. NSRegularExpression의 $는 끝의
+    // 개행 앞에서도 매치하므로, 매치 범위가 입력 전체와 정확히 같을 때만 참으로 본다
+    // (끝에 개행이 붙은 토큰이 Swift에서만 통과하는 것을 막는다).
+    guard let match = regex.firstMatch(in: input, options: [], range: range) else { return false }
+    return match.range == range
+  }
+
+  // Kotlin String.take(n) 시맨틱(UTF-16 코드 유닛 n개)으로 자른다.
+  private static func utf16Prefix(_ value: String, _ n: Int) -> String {
+    let units = Array(value.utf16)
+    if units.count <= n { return value }
+    return String(decoding: units.prefix(n), as: UTF16.self)
+  }
+
+  private static func require(_ condition: Bool) throws {
+    if !condition { throw AccessLinkError() }
+  }
+}
+
+private extension String {
+  func caseInsensitiveEquals(_ other: String) -> Bool {
+    caseInsensitiveCompare(other) == .orderedSame
+  }
+}

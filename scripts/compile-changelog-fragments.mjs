@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const SECTIONS = ['Added', 'Changed', 'Fixed', 'Removed', 'Breaking Changes'];
 // Release notes are grouped by the runtime a user experiences the change in, never by the package it was implemented in.
-const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop'];
+const PRODUCTS = ['fleet-cli', 'fleet-console', 'fleet-desktop', 'fleet-mobile'];
 const DEFAULT_CHANGELOG = 'CHANGELOG.md';
 const DEFAULT_CHANGELOG_KO = 'CHANGELOG.ko.md';
 const DEFAULT_FRAGMENTS_DIR = '.changelog.d';

@@ -15,6 +15,7 @@ Release notes are grouped by the runtime a user experiences a change in, never b
 - Noticed in the `fleet` terminal launcher maps to `fleet-cli`.
 - Noticed in Fleet Console maps to `fleet-console`.
 - Noticed in the Fleet Desktop shell maps to `fleet-desktop`.
+- Noticed in the Fleet Mobile shell maps to `fleet-mobile`.
 
 Where the code lives does not decide this. A change implemented under `packages/**` or `runtime/fleet-plugins/**` is recorded under the runtime that surfaces it. A change noticed in more than one runtime gets one complete bullet per runtime, each written for that surface and choosing its own section against that runtime's shipped baseline; never cross-reference another runtime from a bullet.
 
@@ -41,7 +42,7 @@ branch: feat/some-topic
   ko: 릴리스 노트를 변경이 드러나는 런타임 기준으로 묶습니다.
 ```
 
-Runtime headings use the Runtime Mapping values above. Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`. Bullets carry no package tag — the runtime heading already states where the change is noticed, and the compiler rejects a bullet that starts with one. Every English bullet and Korean `ko:` line remain adjacent. Groups may be authored in any order because the compiler emits the canonical runtime and section order: `fleet-cli`, `fleet-console`, `fleet-desktop`, each with its sections nested beneath.
+Runtime headings use the Runtime Mapping values above. Section headings are `Added`, `Changed`, `Fixed`, `Removed`, or `Breaking Changes`. Bullets carry no package tag — the runtime heading already states where the change is noticed, and the compiler rejects a bullet that starts with one. Every English bullet and Korean `ko:` line remain adjacent. Groups may be authored in any order because the compiler emits the canonical runtime and section order: `fleet-cli`, `fleet-console`, `fleet-desktop`, `fleet-mobile`, each with its sections nested beneath.
 
 Existing compiled release history remains unchanged. Releases through v1.51.0 use `fleet-plugin` and `fleet-core` headings and per-bullet package tags; do not rewrite them to adopt this layout. The Console reader still understands those releases, but the compiler no longer writes them.
 

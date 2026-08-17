@@ -1,4 +1,4 @@
-export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop";
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-mobile";
 
 export interface ConsoleReleaseNoteItem {
   readonly packageTags: readonly string[];
@@ -56,7 +56,7 @@ type ProductScope = ReleaseNoteProduct | "retired" | "unknown" | "none";
 const RELEASE_NOTE_HEADINGS: readonly ReleaseNoteHeading[] = ["Added", "Changed", "Fixed", "Removed", "Breaking Changes"];
 const VERSION_HEADER_PATTERN = /^## \[([^\]]+)\](?: - ([0-9]{4}-[0-9]{2}-[0-9]{2}))?$/;
 const SECTION_HEADER_PATTERN = /^### (Added|Changed|Fixed|Removed|Breaking Changes)$/;
-const PRODUCT_HEADER_PATTERN = /^### (fleet-(?:cli|console|desktop))$/;
+const PRODUCT_HEADER_PATTERN = /^### (fleet-(?:cli|console|desktop|mobile))$/;
 // v1.51.0까지의 이력은 구현 패키지 축으로 묶여 있어서 이 두 헤딩을 쓴다. 사용자가 체감하는 런타임이
 // 아니므로 그 아래 항목은 노출하지 않는다. 헤딩 자체는 계속 알아본다 — 모르는 헤딩 취급으로 흘리면
 // 아래에서 미분류 버킷으로 되살아나 결국 화면에 다시 나온다.

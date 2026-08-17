@@ -1,0 +1,193 @@
+name: Mobile iOS Verify
+
+# iOS 포팅의 검증 레일. 개발 호스트(Windows)에서는 Swift를 빌드할 수 없으므로, 순수 로직
+# Swift 테스트(SPM)와 서명 없는 시뮬레이터 빌드를 macOS 러너에서 돌린다. Package.swift나
+# apple/ios 플랫폼이 없으면 크게 실패한다 — 침묵 스킵은 커버리지가 있는 척을 만든다.
+# 수동 실행에는 ref 입력을 두지 않는다. GitHub은 "Use workflow from"에서 고른 브랜치의
+# 워크플로를 실행하고 체크아웃도 그 이벤트 소스를 따른다.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - canary
+    # 앱 소스만으로는 부족하다. iOS 빌드는 Expo 상류 비호환을 pnpm 패치로 넘기므로 패치나
+    # 락파일이 흔들리면 앱이 아니라 툴체인이 깨지고, 그건 여기서만 드러난다.
+    paths:
+      - 'runtime/fleet-mobile/**'
+      - 'patches/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/mobile-ios-verify.yml'
+
+permissions:
+  contents: read
+
+# 같은 브랜치에 새 커밋이 오르면 앞선 실행은 이미 답이 아니다 — 취소해 러너를 비운다.
+concurrency:
+  group: mobile-ios-verify-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  swift-tests:
+    name: Swift unit tests (SPM)
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      # Package.swift가 없으면 순수 로직 Swift 테스트가 없다. 없음을 알리고 통과하면 검증
+      # 레일이 있는 척만 하므로 여기서 크게 실패한다.
+      - name: Run swift test over the pure-logic targets
+        run: |
+          if [ ! -f runtime/fleet-mobile/modules/fleet-console-view/Package.swift ]; then
+            echo "::error::Package.swift is required — the pure-logic Swift package must exist" >&2
+            exit 1
+          fi
+          swift test --package-path runtime/fleet-mobile/modules/fleet-console-view
+
+  simulator-build:
+    name: Simulator build (unsigned)
+    # React Native 0.86은 Xcode >= 16.1을 요구한다. macos-14 이미지의 기본 Xcode(15.4)로는
+    # pod install이 거부되므로 최신 이미지를 쓰고 설치된 가장 높은 Xcode를 선택한다.
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      # Expo SDK 57의 SwiftPM 'apple' 패키지는 Swift tools 6.2.0(= Xcode 26.x)을 요구한다.
+      # 그러나 Xcode 26.3의 최신 Swift 컴파일러는 expo-modules-jsi를 깨뜨린다(type-inference
+      # ambiguity). 그래서 6.2를 제공하면서도 그 회귀를 피하도록 가장 낮은 26.x를 고른다.
+      # (16.x는 'apple' 패키지의 6.2 요구를 만족하지 못한다.)
+      - name: Select an Expo-compatible Xcode (lowest 26.x, Swift 6.2)
+        run: |
+          echo "Available Xcodes:"; ls -d /Applications/Xcode_*.app 2>/dev/null || true
+          target=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | head -1)
+          if [ -z "$target" ]; then
+            echo "::warning::No Xcode 26.x found; falling back to the newest available"
+            target=$(ls -d /Applications/Xcode_*.app 2>/dev/null | sort -V | tail -1)
+          fi
+          if [ -z "$target" ]; then
+            echo "::error::No Xcode found on the runner" >&2
+            exit 1
+          fi
+          echo "Selecting $target"
+          sudo xcode-select -s "$target/Contents/Developer"
+          xcodebuild -version
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # apple/ios가 없으면 시뮬레이터 빌드는 의미 없다. configured 출력으로 이후 스텝을
+      # 건너뛰면 커버리지가 있는 척을 만든다 — 여기서 크게 실패하고 prebuild부터
+      # 패키징까지 항상 돌린다.
+      - name: Assert the iOS platform is configured
+        run: |
+          if ! node -e "const c=require('./runtime/fleet-mobile/modules/fleet-console-view/expo-module.config.json'); process.exit(c.platforms.includes('apple')||c.platforms.includes('ios')?0:1)"; then
+            echo "::error::expo-module.config.json must list apple or ios — the simulator build cannot be skipped" >&2
+            exit 1
+          fi
+      # 로컬 TLS identity는 키체인 대신 SecIdentityCreate로 만든다(엔타이틀먼트 없이도 동작).
+      # 그 심볼이 iOS SDK의 공개 헤더에 실제로 있는지 확인한다 — 모듈맵을 통해 비공개 헤더가
+      # 딸려온 것뿐이라면 컴파일은 되지만 TestFlight/App Store 심사에서 비공개 API 사용으로
+      # 걸릴 수 있고, 그건 사용자가 결제한 뒤에야 드러난다.
+      - name: Assert SecIdentityCreate is public iOS SDK API
+        run: |
+          headers="$(xcrun --sdk iphoneos --show-sdk-path)/System/Library/Frameworks/Security.framework/Headers"
+          if ! grep -rlw SecIdentityCreate "$headers" >/dev/null 2>&1; then
+            echo "::error::SecIdentityCreate is not declared in the public iOS SDK headers ($headers) — the loopback TLS identity would depend on private API" >&2
+            exit 1
+          fi
+          grep -rnw SecIdentityCreate "$headers"
+      - name: Expo prebuild (ios)
+        run: pnpm --dir runtime/fleet-mobile exec expo prebuild --platform ios --clean --no-install --non-interactive
+      - name: Pod install
+        working-directory: runtime/fleet-mobile/ios
+        run: pod install
+      # withFleetIos는 AppDelegate에서 fleet:// 페어링 크리덴셜을 지운다 — Android의
+      # FleetLinkActivity가 주는 보장을 iOS에서 만드는 유일한 자리다. 플러그인은 앵커를 못
+      # 찾으면 예외를 던지지만, 그건 "prebuild가 안 죽었다"는 간접 증거일 뿐이다. Expo가
+      # 템플릿을 바꿔 정규식이 엉뚱한 곳을 맞추면 빌드는 통과하고 크리덴셜만 새므로,
+      # 생성된 파일에 실제로 들어갔는지 여기서 직접 확인한다.
+      - name: Assert the pairing credential is stripped in AppDelegate
+        run: |
+          delegate=$(ls runtime/fleet-mobile/ios/*/AppDelegate.swift 2>/dev/null | head -n 1)
+          if [ -z "$delegate" ]; then
+            echo "::error::prebuild produced no AppDelegate.swift to check" >&2
+            exit 1
+          fi
+          node - "$delegate" <<'NODE'
+          const fs = require('node:fs');
+          const file = process.argv[2];
+          const source = fs.readFileSync(file, 'utf8');
+          const marker = source.indexOf('var fleetSanitizedLaunchOptions = launchOptions');
+          const strip = source.indexOf('fleetSanitizedLaunchOptions?.removeValue(forKey: .url)');
+          const start = source.indexOf('factory.startReactNative');
+          const startOptions = source.indexOf('launchOptions: fleetSanitizedLaunchOptions', start);
+          const superOptions = source.indexOf('didFinishLaunchingWithOptions: fleetSanitizedLaunchOptions', startOptions);
+          const originalStartOptions = source.indexOf('launchOptions: launchOptions', start);
+          if (marker < 0 || strip < marker || start < strip || startOptions < start || superOptions < startOptions ||
+              (originalStartOptions >= start && originalStartOptions < superOptions)) {
+            console.error(`::error::${file} does not sanitize the fleet:// launch URL before React Native and super`);
+            console.error(source.split('\n').slice(0, 80).join('\n'));
+            process.exit(1);
+          }
+          console.log(`${file}: pairing credential is stripped before React Native`);
+          NODE
+      # 오토링킹이 로컬 모듈을 놓치면 빌드는 성공하고 앱은 런타임에야 죽는다 — 여기서 크게 실패시킨다.
+      - name: Assert the fleet-console-view pod was autolinked
+        run: grep -q "FleetConsoleView" runtime/fleet-mobile/ios/Podfile.lock
+      # Expo 57의 Swift 6.2 비호환은 patches/expo-modules-jsi@57.0.4.patch가 해결하므로
+      # 전체 앱 빌드는 다시 하드 게이트다 — 이 스텝이 깨지면 앱은 어디서도 빌드되지 않는다.
+      #
+      # 서명은 끈다. 앱은 키체인을 전혀 쓰지 않으므로(LocalTlsIdentity가 비영구 키 +
+      # SecIdentityCreate로 메모리에서 identity를 만든다) application-identifier 엔타이틀먼트가
+      # 필요 없고, 따라서 시뮬레이터 아티팩트에 서명 구조를 흉내 낼 이유도 없다.
+      - name: Build for the simulator without signing
+        working-directory: runtime/fleet-mobile/ios
+        run: |
+          workspace=$(ls -d *.xcworkspace | head -n 1)
+          if [ -z "$workspace" ]; then
+            echo "::error::Expo prebuild produced no .xcworkspace" >&2
+            exit 1
+          fi
+          scheme="${workspace%.xcworkspace}"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      # 빌드된 시뮬레이터 앱을 그대로 내려받을 수 있게 올린다. Xcode 26 툴체인을 설치할 수
+      # 없는 Mac(회사/공용 기기)에서도 `xcrun simctl install`로 실행해 볼 수 있는 경로다 —
+      # 배포 타깃이 iOS 15.1이라 최신 시뮬레이터 런타임이 없어도 돈다. Release로 빌드해야
+      # JS 번들이 앱 안에 들어가 Metro 없이 실행된다.
+      - name: Package the simulator app for download
+        working-directory: runtime/fleet-mobile/ios
+        run: |
+          app=$(ls -d build/Build/Products/Release-iphonesimulator/*.app 2>/dev/null | head -n 1)
+          if [ -z "$app" ]; then
+            echo "::error::simulator build produced no .app" >&2
+            exit 1
+          fi
+          if [ ! -f "$app/main.jsbundle" ]; then
+            echo "::error::the packaged app has no embedded main.jsbundle — it would need Metro to run" >&2
+            exit 1
+          fi
+          ditto -c -k --sequesterRsrc --keepParent "$app" "$RUNNER_TEMP/fleet-simulator-app.zip"
+          echo "packaged $app"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fleet-ios-simulator-app
+          path: ${{ runner.temp }}/fleet-simulator-app.zip
+          retention-days: 14
+
+  js-contract:
+    name: fleet-mobile typecheck and tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @dotobokuri/fleet-mobile typecheck
+      - run: pnpm --filter @dotobokuri/fleet-mobile test

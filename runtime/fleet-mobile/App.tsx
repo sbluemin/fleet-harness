@@ -3,6 +3,7 @@ import {
   AppState,
   BackHandler,
   Modal,
+  Platform,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -340,7 +341,7 @@ export default function App(): React.JSX.Element {
             ) : (
               <Text style={styles.scannerHint}>
                 {permission?.canAskAgain === false
-                  ? "Camera access is turned off for Fleet. Turn it on in Android settings, or paste the link instead."
+                  ? `Camera access is turned off for Fleet. Turn it on in ${Platform.OS === "ios" ? "Settings" : "Android settings"}, or paste the link instead.`
                   : "Fleet needs the camera to read the code. Nothing is recorded or sent anywhere."}
               </Text>
             )}
@@ -435,11 +436,11 @@ function describe(code: string | undefined): string {
     case "remote_host_session_expired": return "The session ended. Try again to reconnect.";
     case "remote_link_throttled": return "Too many attempts reached this Console. It asked to wait before trying again.";
     case "remote_host_busy": return "The Console is busy pairing other devices. Try again shortly.";
-    case "remote_link_pin_not_observed": return "Android could not prove the Console certificate pin for this page.";
+    case "remote_link_pin_not_observed": return "Fleet could not prove the Console certificate pin for this page.";
     case "remote_link_unverified": return "The Console certificate did not meet the pinned identity policy.";
     case "remote_link_redirect_refused": return "The Console tried to redirect the secure connection.";
-    case "remote_link_transport_proof_unavailable": return "Android WebView cannot prove certificate pins for every page transport, so Fleet refused to connect.";
-    case "remote_host_readiness_unsupported": return "This Android WebView cannot provide the authenticated readiness channel Fleet requires.";
+    case "remote_link_transport_proof_unavailable": return "Fleet could not prove certificate pins for every page transport, so it refused to connect.";
+    case "remote_host_readiness_unsupported": return "This device's web view cannot provide the authenticated readiness channel Fleet requires.";
     default: return "Check that the Console is reachable, then try again.";
   }
 }
