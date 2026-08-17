@@ -13,7 +13,7 @@ import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { OperationStatusIcon } from "./operation-status-icon.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { resolveOperationActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
@@ -130,11 +130,13 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
   // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
   // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
-  // 도착 승격까지 사이드바·덱과 같은 표시 활동으로 읽는다 — War Room이 도착 항목을 무대에 올릴 때는
-  // 확인 처리를 미루므로(acknowledged: false), raw 활동만 보면 목록은 대기라는 그 패널을 밴드만 유휴라 부른다.
+  // 마크는 사이드바 칩·지도 점과 같은 마크 축을 읽는다 — 미확인 도착은 AWAITING이 아니라 "unseen"
+  // 이므로 초록 느린 점등으로 그려진다. raw 활동만 보면 목록은 도착이라는 그 패널을 밴드만 유휴라
+  // 부르고(War Room 무대 승격은 acknowledged: false라 도착 표식이 살아남는다), 표시 활동을 그대로
+  // 쓰면 이번엔 안 본 채 끝난 것이 사람을 기다리는 중과 같은 파랑으로 서 버린다.
   const activeOperationStatusMark = activeOperation
     ? <OperationStatusIcon
-        status={resolveOperationDisplayActivity({
+        status={resolveOperationMarkVisual({
           activity: resolveOperationActivity(activeOperation, state.operationRuntime),
           operationId: activeOperation.id,
           idleArrivalIds,

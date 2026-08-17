@@ -72,6 +72,28 @@ export function resolveOperationDisplayActivity({
   return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;
 }
 
+// 마크 축 — 상태 마크가 그리는 값. 섹션·선별 축(resolveOperationDisplayActivity)과 갈라진다:
+// 그쪽은 미확인 도착을 AWAITING 칸에 세워 사용자가 놓치지 않게 하고, 이쪽은 그것을 자기 값으로
+// 남겨 색이 사실을 바꾸지 않게 한다. 사람을 기다리는 중(aurora)과 이미 끝났는데 안 본 것(positive)은
+// 다른 일이고, 한 색으로 뭉치면 화면은 둘을 구별해 주지 못한다.
+export type OperationMarkVisual = OperationActivityVisual | "unseen";
+
+export function resolveOperationMarkVisual({
+  activity,
+  operationId,
+  idleArrivalIds,
+}: {
+  readonly activity: OperationActivityVisual;
+  readonly operationId: string;
+  readonly idleArrivalIds: ReadonlySet<string>;
+}): OperationMarkVisual {
+  return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;
+}
+
+export function operationMarkVisual(mark: OperationMarkVisual | undefined): OperationMarkVisual {
+  return mark === "unseen" ? "unseen" : operationActivityVisual(mark);
+}
+
 export function operationActivityVisual(status: OperationActivityVisual | undefined): OperationActivityVisual {
   if (status === "running") return "running";
   if (status === "background") return "background";
@@ -87,6 +109,11 @@ function resolveActiveLocale() {
       ? navigator.language.toLowerCase()
       : "";
   return resolveConsoleLanguage(preference, navigatorLanguage);
+}
+
+export function operationMarkLabel(mark: OperationMarkVisual | undefined): string {
+  if (mark === "unseen") return getT(resolveActiveLocale())("activity.unseen");
+  return operationActivityLabel(mark);
 }
 
 export function operationActivityLabel(status: OperationActivityVisual | undefined): string {
