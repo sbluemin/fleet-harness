@@ -750,6 +750,67 @@ describe("Session Analyst Evidence Pulse", () => {
     container.remove();
   });
 
+  it("groups the model menu by provider, keeps it on screen, and selects without launching", () => {
+    const mixed = {
+      clis: [{
+        cliId: "claude-gateway",
+        label: "AI Gateway",
+        available: true,
+        defaultModel: "sonnet",
+        models: [
+          { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low", "medium", "high"], defaultEffort: "low" },
+          { id: "opus[1m]", label: "Claude Opus [1M]", effortLevels: ["low"] },
+          { id: "claude-gateway--codex--gpt-5.6-sol", label: "Codex-GPT-5.6-Sol", effortLevels: ["low"] },
+          { id: "claude-gateway--kimi--k3-1m", label: "Moonshot-Kimi-K3-1M", effortLevels: [] },
+        ],
+      }],
+    };
+    storeState = {
+      ...initialAnalysisState,
+      catalog: mixed,
+      cliId: "claude-gateway",
+      model: "sonnet",
+      effort: "low",
+    };
+    const { container, root } = renderPanel();
+    const chip = container.querySelector<HTMLButtonElement>(".session-analyst__model-chip")!;
+    Object.defineProperty(chip, "getBoundingClientRect", {
+      value: () => ({
+        x: 24,
+        y: 700,
+        top: 700,
+        bottom: 728,
+        left: 24,
+        right: 140,
+        width: 116,
+        height: 28,
+        toJSON() { return {}; },
+      }),
+    });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 800 });
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 1440 });
+
+    act(() => chip.click());
+    const menu = document.querySelector<HTMLElement>(".session-analyst__model-menu")!;
+    const captions = [...menu.querySelectorAll(".operation-launch-variant-caption")].map((node) => node.textContent?.trim());
+    const rows = [...menu.querySelectorAll('[role="menuitemradio"]')].map((node) => node.textContent?.replace("✓", "").trim());
+    expect(captions).toEqual(["Claude", "Codex", "Moonshot-Kimi"]);
+    expect(menu.querySelectorAll(".operation-launch-provider-glyph")).toHaveLength(3);
+    expect(chip.querySelector(".operation-launch-provider-glyph")).not.toBeNull();
+    expect(rows).toEqual(["Sonnet", "Opus [1M]", "GPT-5.6-Sol", "K3-1M"]);
+    expect(menu.style.overflowY).toBe("auto");
+    expect(Number.parseFloat(menu.style.maxHeight)).toBeLessThanOrEqual(520);
+    expect(Number.parseFloat(menu.style.top) + Number.parseFloat(menu.style.maxHeight)).toBeLessThanOrEqual(800);
+
+    const kimi = [...menu.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"]')].find((row) => row.textContent?.includes("K3-1M"))!;
+    act(() => kimi.click());
+    expect(dispatch).toHaveBeenCalledWith({ type: "select-model", model: "claude-gateway--kimi--k3-1m" });
+    expect(document.querySelector(".session-analyst__model-menu")).toBeNull();
+
+    act(() => root.unmount());
+    container.remove();
+  });
+
   it("moves the same composer to the bottom and removes settings after the first interaction", () => {
     storeState = {
       ...initialAnalysisState,
