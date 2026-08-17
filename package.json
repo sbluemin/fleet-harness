@@ -41,9 +41,6 @@
         "x64",
         "arm64"
       ]
-    },
-    "patchedDependencies": {
-      "expo-modules-jsi@57.0.4": "patches/expo-modules-jsi@57.0.4.patch"
     }
   },
   "devDependencies": {

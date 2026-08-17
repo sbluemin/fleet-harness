@@ -4,11 +4,6 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
-patchedDependencies:
-  expo-modules-jsi@57.0.4:
-    hash: b8438107421168b4b6aa417e40a08d579dccc8fa9f660977fa7293b33cf8df17
-    path: patches/expo-modules-jsi@57.0.4.patch
-
 importers:
 
   .:
@@ -8627,12 +8622,12 @@ snapshots:
   expo-modules-core@57.0.10(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8))(react@19.2.8):
     dependencies:
       '@expo/expo-modules-macros-plugin': 0.6.1
-      expo-modules-jsi: 57.0.4(patch_hash=b8438107421168b4b6aa417e40a08d579dccc8fa9f660977fa7293b33cf8df17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8))
+      expo-modules-jsi: 57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8))
       invariant: 2.2.4
       react: 19.2.8
       react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8)
 
-  expo-modules-jsi@57.0.4(patch_hash=b8438107421168b4b6aa417e40a08d579dccc8fa9f660977fa7293b33cf8df17)(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8)):
+  expo-modules-jsi@57.0.4(react-native@0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8)):
     dependencies:
       react-native: 0.86.2(@babel/core@7.29.7)(@types/react@19.2.17)(react@19.2.8)
 
