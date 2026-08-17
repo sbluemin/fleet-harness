@@ -2549,8 +2549,13 @@
   --activity-glow: var(--warn-glow);
 }
 
+/* 미확인 완료는 유휴와 같은 초록을 쓴다 — 이미 끝난 일이라는 사실이 색을 정하고, 아직 열지
+   않았다는 것은 색이 아니라 느린 점등이 말한다. 상태 섹션에는 자기 칸이 없다(승격되어 AWAITING
+   칸에 선다): 색과 칸이 갈리는 자리이며, 놓치지 않게 위로 모으는 쪽을 택한 결과다. */
 .tenant-beacon.is-idle,
+.tenant-beacon.is-unseen,
 .canvas-triage-map-dot.is-idle,
+.canvas-triage-map-dot.is-unseen,
 .side-bar-status-section--idle {
   --activity-color: var(--positive);
   --activity-glow: var(--positive-glow);
@@ -2634,6 +2639,33 @@
 .tenant-beacon.is-idle {
   background: var(--activity-color);
   box-shadow: 0 0 9px var(--activity-glow);
+}
+
+/* unseen — 끝났지만 아직 열지 않음. 색은 유휴와 같은 그린이고, 느린 점등만이 미확인을 말한다.
+   주기는 awaiting 맥동(1.8s)의 두 배라 "부르는 중"과 "안 본 채 끝난 것"이 한눈에 갈린다.
+   키프레임의 0%/100%는 완전 점등이다 — reduced-motion이 1회로 잘라도 켜진 채 남는다. */
+.tenant-beacon.is-unseen {
+  background: var(--activity-color);
+  /* 정지 상태를 키프레임의 0%와 같게 못박는다 — 애니메이션은 fill-mode: none이라 reduced-motion이
+     1회로 자르고 나면 요소 자기 스타일로 되돌아온다. 글로우를 키프레임에만 두면 그 자리에서
+     마크가 유휴(9px 글로우)보다도 약한 평평한 사각으로 남는다. */
+  box-shadow: 0 0 10px 1px var(--activity-glow);
+  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite;
+}
+
+/* 활동 축의 --activity-glow를 읽으므로 theme.css가 아니라 이 파일에 산다 — 토큰이 선언되는
+   스코프 밖에 키프레임을 두면 커스텀 속성 계약 게이트가 미정의 참조로 잡는다.
+   시작·끝을 모두 완전 점등으로 못박는다: reduced-motion이 1회로 잘라도 켜진 채 남아야 한다. */
+@keyframes beacon-unseen-blink {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 10px 1px var(--activity-glow);
+  }
+  50% {
+    opacity: 0.38;
+    box-shadow: 0 0 0 0 var(--activity-glow);
+  }
 }
 
 .status-dot--lg {
@@ -3323,6 +3355,28 @@
 
 /* deferred는 사용자가 이미 본 항목이다 — fresh-card와 같은 제외로 다시 흔들지 않는다. */
 .canvas-triage-map-dot.is-awaiting.is-deferred::after {
+  animation: none;
+  opacity: 0.6;
+}
+
+/* 지도의 미확인 — 점 자체의 animation은 지도 모드의 유영(triage-map-drift)이 소유하므로,
+   느린 점등은 ::after 후광이 진다. 비콘과 같은 키프레임을 써서 두 표면의 박자를 맞춘다. */
+.canvas-triage-map-dot.is-unseen {
+  box-shadow: 0 0 11px var(--activity-glow);
+  opacity: 1;
+}
+
+.canvas-triage-map-dot.is-unseen::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 4px;
+  box-shadow: 0 0 12px 2px var(--activity-glow);
+  animation: beacon-unseen-blink 3.6s var(--ease-glide) infinite;
+}
+
+/* deferred는 사용자가 이미 본 항목이다 — awaiting 링과 같은 제외로 다시 흔들지 않는다. */
+.canvas-triage-map-dot.is-unseen.is-deferred::after {
   animation: none;
   opacity: 0.6;
 }

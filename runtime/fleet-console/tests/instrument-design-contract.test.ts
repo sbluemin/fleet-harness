@@ -1223,6 +1223,10 @@ describe("Instrument core design contract", () => {
     const idleArrival = source("operation-idle-arrival.ts");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const components = source("styles/components.css");
+    const theme = source("styles/theme.css");
+    const activity = source("operation-activity.ts");
+    const commandBand = source("components/command-band.tsx");
+    const watchDeck = source("canvas/triage-watch-deck.tsx");
 
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
@@ -1243,9 +1247,8 @@ describe("Instrument core design contract", () => {
     expect(chip).not.toContain("idleUnseen");
     expect(sidebar).not.toContain("idleUnseen");
     expect(sidebar).not.toContain("side-bar-status-header__unseen");
-    // 사이드바 엔트리는 생성 시점부터 표시 활동을 싣는다 — 그룹축·복구 선반이 raw idle을 그리면
-    // 도착한 Operation이 축마다 다른 상태를 말한다.
-    expect(sidebar).toContain("status: resolveOperationDisplayActivity({");
+    // 그룹축·복구 선반이 raw idle을 그리면 도착한 Operation이 축마다 다른 상태를 말한다 — 그래서
+    // 모든 사이드바 표면이 마크 축을 읽는다(아래 마크/섹션 계약이 그 배선을 고정한다).
     expect(sideBarStore).toContain("let statusAxis = false;");
     expect(sideBarStore).toContain("let statusTransitionTicks = new Map<string, number>();");
     expect(idleArrival).toContain("let idleArrivalIds = new Set<string>();");
@@ -1262,7 +1265,8 @@ describe("Instrument core design contract", () => {
     // The group header does not repeat the rounded activity mark; chips and panels already do.
     expect(sidebar).toContain("groupMarkByGroupId.get(entry.operation.groupId)");
     expect(components).toContain(".tenant-beacon.is-awaiting,\n.canvas-triage-map-dot.is-awaiting,\n.side-bar-status-section--awaiting {");
-    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.canvas-triage-map-dot\.is-idle,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
+    // 미확인 완료는 유휴와 같은 --positive를 받는다 — 색은 "끝난 일"을 말하고, 미확인은 모션이 말한다.
+    expect(components).toMatch(/\.tenant-beacon\.is-idle,\s*\.tenant-beacon\.is-unseen,\s*\.canvas-triage-map-dot\.is-idle,\s*\.canvas-triage-map-dot\.is-unseen,\s*\.side-bar-status-section--idle\s*\{[^}]*--activity-color:\s*var\(--positive\)/);
     expect(components).toContain(".tenant-beacon.is-ended,\n.canvas-triage-map-dot.is-ended,\n.side-bar-status-section--ended {");
     expect(components).toContain("--activity-color: var(--ink-fog);");
     expect(components).toMatch(/\.tenant-beacon\.is-background,\s*\.canvas-triage-map-dot\.is-background,\s*\.side-bar-status-section--background\s*\{[^}]*--activity-color:\s*var\(--warn\)/);
@@ -1276,10 +1280,32 @@ describe("Instrument core design contract", () => {
     expect(sidebar).not.toContain("side-bar-status-header__dot");
     expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
-    // 사이드바에는 미확인 도착 전용 표면이 없다 — 상태 마크(aurora AWAITING)가 그 사실을 혼자 나른다.
+    // 사이드바에는 미확인 도착 전용 표면이 없다 — 상태 마크가 그 사실을 혼자 나른다.
     expect(components).not.toContain(".side-bar-chip-unseen");
     expect(components).not.toContain(".side-bar-chip--unseen");
     expect(components).not.toContain(".side-bar-status-header__unseen");
+    // 마크 축은 진짜 대기(aurora 1.8s 호출 맥동)와 미확인 완료(positive 3.6s 느린 점등)를 갈라 그린다.
+    // 두 사실이 한 색이면 화면은 "사람을 기다리는 중"과 "안 본 채 끝난 것"을 구별해 주지 못한다.
+    expect(components).toMatch(/\.tenant-beacon\.is-unseen \{[^}]*background:\s*var\(--activity-color\);[^}]*box-shadow:\s*0 0 10px 1px var\(--activity-glow\);\s*animation:\s*beacon-unseen-blink 3\.6s/);
+    expect(components).toMatch(/\.tenant-beacon\.is-awaiting \{[^}]*animation:\s*aurora-pulse 1\.8s/);
+    // 키프레임은 --activity-glow가 사는 이 파일에 있어야 하고, 0%/100%가 완전 점등이어야 한다 —
+    // reduced-motion이 iteration-count를 1로 자를 때 꺼진 채 남으면 신호가 사라진다.
+    expect(components).toMatch(/@keyframes beacon-unseen-blink \{\s*0%,\s*100% \{\s*opacity: 1;/);
+    expect(theme).not.toContain("@keyframes beacon-unseen-blink");
+    // 지도 점은 유영 애니메이션이 점 자체를 소유하므로 느린 점등을 ::after 후광에 싣는다.
+    expect(components).toMatch(/\.canvas-triage-map-dot\.is-unseen::after \{[^}]*animation:\s*beacon-unseen-blink 3\.6s/);
+    expect(components).toMatch(/\.canvas-triage-map-dot\.is-unseen\.is-deferred::after \{[^}]*animation:\s*none/);
+    // 마크 축과 섹션 축은 갈라진 채로 각자의 자리에 실린다 — 하나로 합치면 색이 칸을 따라간다.
+    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "unseen" : activity;');
+    expect(activity).toContain('return activity === "idle" && idleArrivalIds.has(operationId) ? "awaiting" : activity;');
+    // 생성 지점은 raw 활동과 마크만 싣는다 — 섹션 승격을 여기서도 해 두면 groupOperationsByStatus가
+    // 같은 계산을 다시 해 값이 겹치고, 겹친 값은 어느 표면에도 드러나지 않아 틀려도 아무 테스트가 죽지 않는다.
+    expect(sidebar).toContain("mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),");
+    expect(sidebar).toContain("      status: activity,");
+    expect(sidebar).not.toContain("status: resolveOperationDisplayActivity({");
+    expect(chip).toContain("const markVisual = mark ?? status;");
+    expect(commandBand).toContain("status={resolveOperationMarkVisual({");
+    expect(watchDeck).toContain("const visual = operationMarkVisual(resolveOperationMarkVisual({");
     // 미확인 완료는 패널 아웃라인이 아니라 캡션 아랫변 레일이 나른다 — 상시 aura는 사라졌다.
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");

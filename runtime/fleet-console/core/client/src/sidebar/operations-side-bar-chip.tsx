@@ -3,7 +3,7 @@ import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointe
 
 import { OperationStatusIcon } from "../components/operation-status-icon.js";
 import { useT } from "../i18n/index.js";
-import { type OperationActivityVisual } from "../operation-activity.js";
+import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
 import {
@@ -16,7 +16,16 @@ export interface SideBarEntry {
   readonly active: boolean;
   readonly minimized: boolean;
   readonly notificationCount: number;
+  /**
+   * 활동 — 섹션 분류의 입력. groupOperationsByStatus가 이 값에서 칸을 정하며(미확인 도착은 거기서
+   * AWAITING으로 승격된다), 승격은 그 함수 하나만 소유한다.
+   */
   readonly status?: OperationActivityVisual;
+  /**
+   * 마크 축 — 마크가 그리는 값. 섹션 축과 갈라지는 유일한 값이 "unseen"이다: 칸은 AWAITING이되
+   * 색은 초록(느린 점등)이라, 진짜 대기와 안 본 채 끝난 것이 한 화면에서 구별된다.
+   */
+  readonly mark?: OperationMarkVisual;
   /**
    * 플러그인이 준 실행 표면 표식(예: "CHAT"). 호스트는 뜻을 모른 채 글자만 그린다 —
    * 색은 활동을 말하는 자리이므로 모드는 신호 채널을 빌리지 않는다.
@@ -92,7 +101,9 @@ export function OperationsSideBarChip({
   const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, status, surface } = entry;
+  const { operation, active, minimized, status, mark, surface } = entry;
+  // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
+  const markVisual = mark ?? status;
   const title = displayTitle(operation);
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
@@ -226,7 +237,7 @@ export function OperationsSideBarChip({
           띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
           말하지 않으므로 마크가 그 이름을 진다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationStatusIcon status={status} className="side-bar-chip-status" />
+        <OperationStatusIcon status={markVisual} className="side-bar-chip-status" />
       </span>
       {rename.renaming ? (
         <input

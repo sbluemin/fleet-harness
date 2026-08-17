@@ -4,7 +4,7 @@ import type { OperationActivityVisual } from "../operation-activity.js";
 
 import { useT } from "../i18n/index.js";
 import { getIdleArrivalIds } from "../operation-idle-arrival.js";
-import { operationActivityVisual, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { operationActivityVisual, operationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { useOperationStatusDetails } from "../operation-status-detail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
@@ -1374,8 +1374,9 @@ function renderTriageMapDots(
   return band.mapMarkers?.map((marker) => {
     const operation = band.operations.find((candidate) => candidate.id === marker.operationId);
     if (!operation) return null;
-    // 카드·지도·사이드바가 같은 display-state resolver를 써서 유휴 도착을 모두 대기로 읽는다.
-    const visual = operationActivityVisual(resolveOperationDisplayActivity({
+    // 점·사이드바 칩·커맨드 밴드가 같은 마크 축을 써서 도착을 "unseen"(초록 느린 점등)으로 읽는다.
+    // 선별 축(대기 밴드 정렬·무대 승격)은 그대로 표시 활동을 쓴다 — 색과 배치는 다른 질문이다.
+    const visual = operationMarkVisual(resolveOperationMarkVisual({
       activity: resolveOperationActivity(operation, operationRuntime),
       operationId: operation.id,
       idleArrivalIds: getIdleArrivalIds(),

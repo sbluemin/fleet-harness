@@ -17,7 +17,7 @@ import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
-import { operationRuntimeSurface, resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
+import { operationRuntimeSurface, resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
@@ -390,20 +390,21 @@ export function OperationsSideBar({
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
-  // 엔트리는 처음부터 표시 활동을 싣는다 — 미확인 도착으로 AWAITING에 오른 Operation이 축마다
-  // 다른 상태를 말하지 않도록, 그룹축·상태축·복구 선반이 같은 값을 받는다.
-  const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, canvas.operationOrder).map((operation) => ({
-    operation,
-    active: activeOperationId === operation.id,
-    minimized: minimizedSet.has(operation.id),
-    notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationDisplayActivity({
-      activity: resolveOperationActivity(operation, operationRuntime),
-      operationId: operation.id,
-      idleArrivalIds,
-    }),
-    ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-  }));
+  // 엔트리는 raw 활동과 마크 축을 싣는다. 섹션 승격은 groupOperationsByStatus가 혼자 소유한다 —
+  // 여기서 미리 승격해 두면 그 함수가 같은 계산을 다시 해 값이 겹치고, 겹친 값은 어느 표면에도
+  // 드러나지 않아 틀려도 아무 테스트가 죽지 않는다. 그리는 값은 언제나 mark다.
+  const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, canvas.operationOrder).map((operation) => {
+    const activity = resolveOperationActivity(operation, operationRuntime);
+    return {
+      operation,
+      active: activeOperationId === operation.id,
+      minimized: minimizedSet.has(operation.id),
+      notificationCount: operationNotifications[operation.id] ? 1 : 0,
+      status: activity,
+      mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
+      ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
+    };
+  });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
     allEntries,
@@ -1285,10 +1286,11 @@ export function groupOperationsByStatus(
   return buildStatusSectionOrder(t).map(({ status, label }) => ({
     status,
     label,
-    // 사이드바 엔트리는 생성 시점에 이미 표시 활동으로 해소되므로 여기서의 승격은 멱등이다.
-    // 그래도 남겨 둔다 — 이 함수는 raw 활동으로 직접 구성된 입력도 받으며, 칸을 정한 표시 활동을
-    // 엔트리에도 실어 보내야 섹션과 행의 마크가 같은 화면에서 다른 상태를 말하지 않는다.
-    // 미해소(undefined) 엔트리의 idle 폭백은 그 직접 구성 입력에 대한 방어 계약이다.
+    // 섹션 승격은 이 함수 하나가 소유한다 — 도착한 행을 AWAITING 칸에 세워 놓치지 않게 하는 것은
+    // 배치의 결정이고, 그 행을 무슨 색으로 그릴지는 마크 축(entry.mark)의 결정이다. 둘을 한 값으로
+    // 합치면 색이 칸을 따라가 "사람을 기다리는 중"과 "안 본 채 끝난 것"이 같은 파랑이 된다.
+    // 칸을 정한 값을 엔트리의 status에도 실어 보낸다: 섹션 헤더와 행이 같은 분류를 들고 있어야 한다.
+    // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
     entries: entries
       .flatMap((entry) => {
         const display = resolveOperationDisplayActivity({
@@ -1348,18 +1350,18 @@ export function buildTheaterEntries({
   return sortOperationsByOrder(
     operations.filter((operation) => operation.theaterId === theaterId),
     operationOrder,
-  ).map((operation) => ({
-    operation,
-    active: activeOperationId === operation.id,
-    minimized: minimizedSet.has(operation.id),
-    notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationDisplayActivity({
-      activity: resolveOperationActivity(operation, operationRuntime),
-      operationId: operation.id,
-      idleArrivalIds,
-    }),
-    ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-  }));
+  ).map((operation) => {
+    const activity = resolveOperationActivity(operation, operationRuntime);
+    return {
+      operation,
+      active: activeOperationId === operation.id,
+      minimized: minimizedSet.has(operation.id),
+      notificationCount: operationNotifications[operation.id] ? 1 : 0,
+      status: activity,
+      mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
+      ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
+    };
+  });
 }
 
 function TheaterSectionHeader({

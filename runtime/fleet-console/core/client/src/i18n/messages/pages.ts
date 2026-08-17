@@ -331,6 +331,9 @@ export const pagesEn = {
   "activity.awaiting": "Awaiting input",
   "activity.ended": "Ended",
   "activity.idle": "Idle",
+  // War Room은 무대에 올린 패널의 확인 처리를 미루므로(acknowledged: false), 눈앞에 열려 있는
+  // 패널도 이 마크를 단다 — "아직 열지 않음"은 그 자리에서 거짓이 된다. 확인 여부로만 말한다.
+  "activity.unseen": "Finished, unacknowledged",
 
   // codex — cowork
   "codex.cowork.requestFailed": "Cowork request failed.",
@@ -816,6 +819,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "activity.awaiting": "대기",
   "activity.ended": "종료됨",
   "activity.idle": "유휴",
+  "activity.unseen": "종료됨 — 확인 전",
 
   "codex.cowork.requestFailed": "Cowork 요청에 실패했습니다.",
   "codex.cowork.draftChangesAria": "초안 변경",

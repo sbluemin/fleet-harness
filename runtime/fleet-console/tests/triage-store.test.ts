@@ -2232,7 +2232,7 @@ describe("triage fleet map markers", () => {
     expect(Number.parseFloat(calm["--triage-drift-mult"]!)).toBeGreaterThan(Number.parseFloat(active["--triage-drift-mult"]!));
   });
 
-  it("classifies an idle arrival as an awaiting marker, matching the queue vocabulary", () => {
+  it("classifies an idle arrival as an unseen marker, distinct from a genuine awaiting one", () => {
     const container = document.createElement("div");
     document.body.append(container);
     triagePlateRoot = createRoot(container);
@@ -2253,10 +2253,12 @@ describe("triage fleet map markers", () => {
       setTriageDeckMapModeLive(true);
     });
 
-    // 사이드바·큐가 대기로 세는 유휴 도착은 지도에서도 aurora 대기 마커여야 한다 —
-    // 회색 유휴 점이면 같은 상태가 표면마다 다르게 읽힌다.
+    // 유휴 도착은 지도에서도 사이드바 칩·커맨드 밴드와 같은 마크 축을 쓴다 — 진짜 대기(aurora)와
+    // 구별되는 미확인 마커(초록 느린 점등)여야 한다. 큐가 그것을 대기로 세는 것은 배치 축의 일이고,
+    // 색이 그 배치를 따라가면 두 사실이 한 색으로 뭉친다.
     const dot = container.querySelector<HTMLElement>('[data-triage-map-dot="arrival-map"]');
-    expect(dot?.classList.contains("is-awaiting")).toBe(true);
+    expect(dot?.classList.contains("is-unseen")).toBe(true);
+    expect(dot?.classList.contains("is-awaiting")).toBe(false);
     expect(dot?.classList.contains("is-idle")).toBe(false);
   });
 
