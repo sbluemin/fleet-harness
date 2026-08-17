@@ -27,3 +27,9 @@ jobs:
       # Node 22 run locally, where --test rejects a directory. A suite added later is picked up on its own.
       - name: Run repository script tests
         run: node --test scripts/*.test.mjs
+
+      # This gate reads the repository's own git state, so it has to run against the checkout and not
+      # only against fixtures. An ignore rule arrives in a pull request, and Workspace Verify only runs
+      # on canary pushes, so this job is the one that catches it in time. It needs no install either.
+      - name: Check patch files stay tracked
+        run: node scripts/check-patches-tracked.mjs
