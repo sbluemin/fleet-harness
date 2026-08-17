@@ -1,3 +1,6 @@
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   BUNDLE_ID,
@@ -9,6 +12,7 @@ import {
   requireReleaseSigning,
   requireAscCredentials,
 } from "../scripts/lib/ios-tools.mjs";
+import { readProfileFields } from "../scripts/lib/ios-promote.mjs";
 
 const goodPlist = JSON.stringify({
   CFBundleIdentifier: BUNDLE_ID,
@@ -121,5 +125,47 @@ describe("iOS signing env", () => {
   it("requires all release signing vars", () => {
     expect(() => requireReleaseSigning({})).toThrow(/FLEET_IOS_CERTIFICATE_BASE64/);
     expect(() => requireAscCredentials({})).toThrow(/FLEET_ASC_KEY_ID/);
+  });
+});
+
+// 진짜 App Store 프로파일에는 DeveloperCertificates 같은 <data>가 들어 있다. 예전 구현은 이
+// plist를 통째로 JSON으로 옮기려다 plutil이 거부해 배포 빌드가 첫 단계에서 죽었다.
+describe("provisioning profile fields", () => {
+  function profilePlist(body: string): string {
+    const root = mkdtempSync(path.join(tmpdir(), "ios-profile-"));
+    const file = path.join(root, "profile.plist");
+    writeFileSync(file, `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>${body}</dict></plist>
+`);
+    return file;
+  }
+
+  const CERTIFICATE_DATA = "<key>DeveloperCertificates</key><array><data>TUlJRg==</data></array>";
+
+  it("reads the fields even though the profile carries certificate data", () => {
+    const file = profilePlist(`
+      <key>UUID</key><string>0aedbc2f-1db6-467d-a4d6-7a39b767c82f</string>
+      <key>Name</key><string>Fleet Mobile App Store</string>
+      ${CERTIFICATE_DATA}
+      <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.dotobokuri.fleet.mobile</string></dict>`);
+    expect(readProfileFields(file)).toEqual({
+      teamId: "8TJ9GTYF8J",
+      uuid: "0aedbc2f-1db6-467d-a4d6-7a39b767c82f",
+      name: "Fleet Mobile App Store",
+    });
+  });
+
+  it("rejects a profile issued for another app", () => {
+    const file = profilePlist(`
+      <key>UUID</key><string>u</string>${CERTIFICATE_DATA}
+      <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.example.other</string></dict>`);
+    expect(() => readProfileFields(file)).toThrow(/com\.example\.other/);
+  });
+
+  it("rejects a profile with no UUID to name in ExportOptions", () => {
+    const file = profilePlist(`${CERTIFICATE_DATA}
+      <key>Entitlements</key><dict><key>application-identifier</key><string>8TJ9GTYF8J.com.dotobokuri.fleet.mobile</string></dict>`);
+    expect(() => readProfileFields(file)).toThrow(/no UUID/);
   });
 });

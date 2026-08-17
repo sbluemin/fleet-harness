@@ -112,10 +112,29 @@ describe("App Store Connect API client", () => {
     expect(JSON.parse(calls[2].init.body!).data.attributes.whatsNew).toBe("second round");
   });
 
+  // 그룹이 "자동 배포"면 Apple이 먼저 붙여 두고 우리 POST를 거절한다. 그건 실패가 아니다.
+  it("treats a build Apple already distributed as assigned", async () => {
+    const { impl } = fakeFetch([
+      { status: 409, body: { errors: [{ title: "Conflict", detail: "already related" }] } },
+      { status: 200, body: { data: [{ id: "build-1" }] } },
+    ]);
+    const client = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: impl });
+    expect(await client.assignToGroup("group-9", "build-1")).toBe("already assigned");
+  });
+
+  it("still fails when the group rejects a build it does not carry", async () => {
+    const { impl } = fakeFetch([
+      { status: 409, body: { errors: [{ title: "Conflict", detail: "still processing" }] } },
+      { status: 200, body: { data: [{ id: "another-build" }] } },
+    ]);
+    const client = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: impl });
+    await expect(client.assignToGroup("group-9", "build-1")).rejects.toThrow(/still processing/);
+  });
+
   it("assigns a build to a group with the relationship Apple expects", async () => {
     const { impl, calls } = fakeFetch([{ status: 204 }]);
     const client = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: impl });
-    await client.assignToGroup("group-9", "build-1");
+    expect(await client.assignToGroup("group-9", "build-1")).toBe("assigned");
     expect(calls[0].url).toContain("/v1/betaGroups/group-9/relationships/builds");
     expect(calls[0].init.method).toBe("POST");
     expect(JSON.parse(calls[0].init.body!)).toEqual({ data: [{ type: "builds", id: "build-1" }] });

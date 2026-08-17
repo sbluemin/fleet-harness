@@ -227,20 +227,38 @@ export function readProvisioningProfile(env = process.env) {
   const scratch = path.join(packageRoot, "dist", ".profile.plist");
   mkdirSync(path.dirname(scratch), { recursive: true });
   writeFileSync(scratch, decoded);
-  let plist;
   try {
-    plist = JSON.parse(run("plutil", ["-convert", "json", "-o", "-", scratch], { capture: true }));
+    return readProfileFields(scratch);
   } finally {
     rmSync(scratch, { force: true });
   }
-  const applicationIdentifier = plist.Entitlements?.["application-identifier"] ?? "";
+}
+
+/**
+ * 복호화된 프로파일 plist에서 서명에 필요한 세 값만 뽑는다.
+ *
+ * JSON으로 통째 변환하지 않는 이유가 있다: 프로파일에는 DeveloperCertificates 같은 <data>
+ * 항목이 들어 있고 plutil은 그것을 JSON으로 못 옮겨 "Invalid object in plist for JSON format"으로
+ * 죽는다 — 즉 진짜 App Store 프로파일에서는 항상 실패한다. 필요한 키만 raw로 뽑으면 그 함정을
+ * 통째로 비켜 간다.
+ */
+export function readProfileFields(plistPath) {
+  const extract = (keyPath) => {
+    try {
+      return run("plutil", ["-extract", keyPath, "raw", "-o", "-", plistPath], { capture: true }).trim();
+    } catch {
+      return "";
+    }
+  };
+  const applicationIdentifier = extract("Entitlements.application-identifier");
   const teamId = applicationIdentifier.split(".")[0];
   const bundleId = applicationIdentifier.slice(teamId.length + 1);
   if (!teamId || bundleId !== BUNDLE_ID) {
     fail(`Provisioning profile is for ${bundleId || "an unknown app"}; expected ${BUNDLE_ID}`);
   }
-  if (!plist.UUID) fail("Provisioning profile has no UUID");
-  return { teamId, uuid: plist.UUID, name: plist.Name };
+  const uuid = extract("UUID");
+  if (!uuid) fail("Provisioning profile has no UUID");
+  return { teamId, uuid, name: extract("Name") };
 }
 
 /**

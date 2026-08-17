@@ -157,9 +157,16 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
     },
 
     async assignToGroup(groupId, buildId) {
-      await requireOk("POST", `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, {
+      const linked = await request("POST", `/v1/betaGroups/${encodeURIComponent(groupId)}/relationships/builds`, {
         data: [{ type: "builds", id: buildId }],
       });
+      if (!linked.error) return "assigned";
+      // 그룹이 "자동 배포"로 설정돼 있으면 Apple이 처리 직후 스스로 붙인다. 그때 이 POST가
+      // 거절당하는데, 결과는 우리가 원하던 바로 그 상태다 — 확인하고 성공으로 친다.
+      const members = await request("GET", `/v1/betaGroups/${encodeURIComponent(groupId)}/builds?limit=200`);
+      if (members.error) fail(linked.error);
+      if ((members.data?.data ?? []).some((entry) => entry?.id === buildId)) return "already assigned";
+      fail(linked.error);
     },
   };
 }

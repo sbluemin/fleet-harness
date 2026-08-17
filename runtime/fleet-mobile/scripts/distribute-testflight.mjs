@@ -141,8 +141,8 @@ async function main() {
 
   const groups = await client.resolveGroupIds(appId, groupNames);
   for (const group of groups) {
-    await client.assignToGroup(group.id, build.id);
-    process.stdout.write(`Assigned build ${versionName} (${buildNumber}) to TestFlight group "${group.name}"\n`);
+    const outcome = await client.assignToGroup(group.id, build.id);
+    process.stdout.write(`Build ${versionName} (${buildNumber}) ${outcome} to TestFlight group "${group.name}"\n`);
   }
 
   process.stdout.write(`Distributed ${paths.name} (${sha256}) to ${groups.length} TestFlight group(s)\n`);
