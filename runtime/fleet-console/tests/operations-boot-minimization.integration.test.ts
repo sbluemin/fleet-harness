@@ -8,7 +8,7 @@ import { fetchOperationCatalog } from "@fleet-console/sdk/operations/browser";
 import type { OperationKindDescriptor } from "@fleet-console/sdk/plugin";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
+import { clearCompanionOperationId, clearFormationView, clearMaximizedOperationId, getCompanionOperationId, getFormationView, getMaximizedOperationId, getSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, requestFitAllOperations, resetCanvasViewportSize, restoreOperation, setCanvasViewportSize, setCompanionOperationId, setMaximizedOperationId, setOperationGeometry, setStationKeeping, setViewport, subscribe as subscribeCanvas, toggleFormationView } from "../core/client/src/canvas/canvas-store.js";
 import { BOOT_MINIMIZATION_STORAGE_KEY, resetBootMinimizationSession } from "../core/client/src/boot-minimization-session.js";
 import { CANVAS_MODE_STORAGE_KEY } from "../core/client/src/canvas/canvas-mode-session.js";
 import { armTriageSetAside, getTriageSetAsideArmedId, isTriageActive, resetTriageTheater, setTriageActive } from "../core/client/src/canvas/triage-store.js";
@@ -36,6 +36,7 @@ const canvasMocks = vi.hoisted(() => ({
   catalog: [] as readonly OperationCatalogPlugin[],
   onMount: null as null | (() => void | (() => void)),
   onLaunchAtGeometry: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, geometry: { readonly x: number; readonly y: number; readonly width: number; readonly height: number; readonly zIndex: number }) => void),
+  onLaunchKind: null as null | ((pluginId: string, kind: { readonly type: string; readonly title: string }, canvasPoint: { readonly x: number; readonly y: number }, theaterId?: string) => void),
   onRefreshCatalog: null as null | (() => void),
 }));
 const registryMocks = vi.hoisted(() => ({
@@ -70,13 +71,15 @@ vi.mock("../core/client/src/api.js", () => ({
 
 vi.mock("@fleet-console/sdk/operations/browser", () => ({ fetchOperationCatalog: vi.fn().mockResolvedValue([]) }));
 vi.mock("../core/client/src/canvas/canvas.js", () => ({
-  OperationsCanvas: ({ catalog, onLaunchAtGeometry, onRefreshCatalog }: {
+  OperationsCanvas: ({ catalog, onLaunchAtGeometry, onLaunchKind, onRefreshCatalog }: {
     readonly catalog: readonly OperationCatalogPlugin[];
     readonly onLaunchAtGeometry: NonNullable<typeof canvasMocks.onLaunchAtGeometry>;
+    readonly onLaunchKind: NonNullable<typeof canvasMocks.onLaunchKind>;
     readonly onRefreshCatalog: () => void;
   }) => {
     canvasMocks.catalog = catalog;
     canvasMocks.onLaunchAtGeometry = onLaunchAtGeometry;
+    canvasMocks.onLaunchKind = onLaunchKind;
     canvasMocks.onRefreshCatalog = onRefreshCatalog;
     useLayoutEffect(() => canvasMocks.onMount?.(), []);
     return null;
@@ -152,6 +155,7 @@ beforeEach(() => {
   resetBootMinimizationSession();
   window.history.replaceState({}, "", "/operations");
   loadForTheater("theater-a");
+  setStationKeeping(false);
   clearMaximizedOperationId();
   clearCompanionOperationId();
   clearFormationView();
@@ -174,6 +178,7 @@ beforeEach(() => {
   canvasMocks.catalog = [];
   canvasMocks.onMount = null;
   canvasMocks.onLaunchAtGeometry = null;
+  canvasMocks.onLaunchKind = null;
   canvasMocks.onRefreshCatalog = null;
   vi.mocked(fetchOperationCatalog).mockReset().mockResolvedValue([]);
   registryMocks.plugins = [];
@@ -1253,6 +1258,58 @@ describe("Operations boot minimization", () => {
     expect(getState().activeTheaterId).toBe("theater-b");
     expect(getTheaterCompanionOperationId("theater-a")).toBe("a1");
     expect(getCompanionOperationId()).toBeNull();
+  });
+
+  it("seeds the click geometry onto the canvas even when plugin launch omits it", async () => {
+    const launch = deferred<{ readonly id: string }>();
+    registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
+    await bootApp([]);
+    const clickGeometry = { x: 480, y: 240, width: 560, height: 360, zIndex: 4 };
+    apiMocks.fetchOperations.mockResolvedValue([operation("launched")]);
+
+    await act(async () => {
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, clickGeometry);
+      launch.resolve({ id: "launched" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(getSnapshot().operations.launched).toMatchObject({
+      x: clickGeometry.x,
+      y: clickGeometry.y,
+      width: clickGeometry.width,
+      height: clickGeometry.height,
+    });
+  });
+
+  it("places a Cruise canvas-point launch at the click, not the cascade origin", async () => {
+    const launch = deferred<{ readonly id: string }>();
+    const launchFn = vi.fn(() => launch.promise);
+    registryMocks.plugins = [{ id: "terminal", launch: launchFn }];
+    await bootApp([]);
+    const canvasPoint = { x: 800, y: 400 };
+    const expected = { x: 520, y: 220, width: 560, height: 360 };
+    apiMocks.fetchOperations.mockResolvedValue([operation("launched")]);
+
+    await act(async () => {
+      canvasMocks.onLaunchKind?.("terminal", { type: "shell", title: "Shell" }, canvasPoint);
+      launch.resolve({ id: "launched" });
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(launchFn).toHaveBeenCalledWith(expect.objectContaining({
+      geometry: expect.objectContaining(expected),
+    }));
+    expect(getSnapshot().operations.launched).toMatchObject(expected);
+  });
+
+  it("seeds persisted Operation.geometry onto an empty canvas on hydrate", async () => {
+    const persisted = { x: 480, y: 240, width: 560, height: 360, zIndex: 7 };
+
+    await bootApp([{ ...operation("clicked"), geometry: persisted }]);
+
+    expect(getSnapshot().operations.clicked).toMatchObject(persisted);
   });
 
   it("minimizes a second Theater's existing panels on first in-session view, surfacing only the selected panel", async () => {

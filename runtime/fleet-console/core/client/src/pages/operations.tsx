@@ -12,7 +12,7 @@ import { isBlockingDialogOpen } from "../focus-guards.js";
 import { closeOperationCompletely } from "../operation-close.js";
 import { resumeOperationInPlace } from "../operation-resume.js";
 import { forgetTheaterCompletely, registerTheaterFromPath } from "../theater-crud.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
@@ -281,7 +281,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       : null;
     if (resumeBootProtection !== null || viewMode.effective === "mobile") resumeBootProtectionRef.current = null;
     if (viewMode.effective === "mobile") return;
-    for (const operationId of operationOrder) ensureDefaultGeometry(operationId);
+    for (const operation of sortedTheaterOperations(state)) ensureDefaultGeometry(operation.id, operation.geometry);
     if (!state.operationsHydrated) return;
     pruneOperations(operationOrder);
     // 각 Theater를 세션 중 처음 열 때 한 번, 그 Theater의 부팅 시점 기존 패널을 최소화한다.
@@ -956,6 +956,9 @@ async function launchViaPlugin(
   }
   await fetchOperations(null).then(hydrateOperations).catch(() => {});
   if (!newOperationId) return;
+  // 플러그인 persist와 별개로 생성 좌표를 그 Theater 캔버스에 먼저 심는다. hydrate 뒤
+  // ensureDefaultGeometry가 cascade(index×40)로 덮는 창을 없애기 위함이다.
+  setTheaterOperationGeometry(theaterId, newOperationId, geometry);
   // 최대화 패널이 떠 있는 상태에서 새 Operation을 만들면 최대화를 유지하고 새 패널을 최대화 대상으로 승계한다.
   // focusOperation은 pendingOperationFocus 경로로 clearMaximizedOperationId를 부르므로(최대화 해제), 최대화 중에는 호출하지 않는다.
   // handleFocus(operations.tsx)·Alt+←/→ 순환과 동일 정책으로, 새 패널로 렌더 전용 포커스 레이어를 승계한다.

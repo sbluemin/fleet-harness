@@ -343,6 +343,25 @@ describe("agent attachment routes", () => {
     await harness.postSessions({ theaterId: "theater-1", cliId: "claude", prompt: "fix it", attachmentIds: [id] });
     expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "attachment_not_found" } });
   });
+
+  it("stores launch geometry on the created Operation", async () => {
+    const harness = await createHarness();
+    const geometry = { x: 240, y: 160, width: 560, height: 360, zIndex: 4 };
+
+    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", geometry });
+
+    expect(harness.responses.at(-1)?.status).toBe(200);
+    expect(harness.operations[0]?.geometry).toEqual(geometry);
+  });
+
+  it("rejects a launch whose geometry is not a complete rect", async () => {
+    const harness = await createHarness();
+
+    await harness.postSessions({ theaterId: "theater-1", cliId: "claude", geometry: { x: 10, y: 20 } });
+
+    expect(harness.responses.at(-1)).toEqual({ status: 400, body: { error: "invalid_geometry" } });
+    expect(harness.operations).toHaveLength(0);
+  });
 });
 
 async function createHarness(options: { readonly attachError?: Error } = {}) {
