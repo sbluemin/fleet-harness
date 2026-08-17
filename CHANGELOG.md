@@ -5,6 +5,38 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.66.0] - 2026-08-17
+
+### fleet-cli
+
+#### Added
+- Restore explicit 524K variants for Codex Sol, Luna, and Terra, including Fast, alongside the existing 272K and 1M models.
+
+### fleet-console
+
+#### Added
+- Restore explicit 524K variants for Codex Sol, Luna, and Terra, including Fast, alongside the existing 272K and 1M models.
+- Chat panels now state which model and effort the session runs on, in the chip row and as the log's first line, and mark an ultracode session with the apex tier.
+
+#### Changed
+- Session Analyst's model menu now groups providers with the same glyphs as the canvas launch menu and stays inside the window.
+- Session Analyst now picks its model and effort with the same chip and three-rung track as Quick Launch, limited to low, medium, and high.
+- The left sidebar no longer keeps a separate Background group. Operations still doing leftover work now sit in Running, and only their row mark still says they are in the background.
+- A sidebar row that finished without being opened is now told once by its activity mark, instead of being repeated as a separate dot at the row's right edge, a tinted row, and a count on the status group header.
+- The activity mark now separates an operation that is waiting for you from one that finished without being opened. Waiting keeps the cyan calling pulse; a finished, unacknowledged operation carries the green of a finished run and says so with a slow blink instead. Both still gather at the top of the status list, so nothing moves out of sight to gain the distinction.
+- Fold every status group in the left sidebar and War Room into one shelf caption that keeps the signal stripe and count, drops the tinted wash, and keeps restore verbs on Minimized and Ended only.
+
+#### Fixed
+- State a gateway model's real context window in the Chat view, instead of the 200k coordinate Claude Code meters it on.
+- Move the Chat context meter during a turn, so a file the model just read shows up while it is still working.
+- Place a panel created from a Cruise right-click at the click, instead of dropping it on the default cascade origin.
+- Sidebar rows outside the status sections, including the group axis and the minimized shelf, called such an operation idle while the extra dot said it had arrived. Every sidebar list now reads the same activity.
+
+### fleet-mobile
+
+#### Added
+- Add the Fleet Console app for iPhone and iPad, with secure pairing to a Console on your network and a TestFlight lane for tester builds.
+
 ## [1.65.0] - 2026-08-17
 
 ### fleet-cli
