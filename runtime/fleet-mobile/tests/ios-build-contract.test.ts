@@ -131,6 +131,15 @@ describe("Fleet Mobile iOS build contract", () => {
     expect(view).toContain("activeLoad = staged");
   });
 
+  // 실기기 재현: 콜드 스타트 링크 시도가 진행 중일 때 AppState "active"가 resume()을 부르면
+  // 저장된 타깃이 attempt 카운터를 가져가 링크가 조용히 사라졌다(콘솔 B는 join까지만, 화면은 A).
+  it("keeps foreground resume from stealing an in-flight attempt", () => {
+    const view = read("runtime/fleet-mobile/modules/fleet-console-view/ios/FleetConsoleView.swift");
+    expect(view).toMatch(/private var attemptInFlight = false/);
+    expect(view).toMatch(/public func resume\(\) \{[\s\S]*?if attemptInFlight \{ return \}/);
+    expect(view).toMatch(/let launch = \{\n\s*self\.attemptInFlight = true/);
+  });
+
   it("keeps AccessLink source free of literal C0 bytes", () => {
     const bytes = readFileSync(
       path.join(repoRoot, "runtime/fleet-mobile/modules/fleet-console-view/ios/Core/AccessLink.swift"),

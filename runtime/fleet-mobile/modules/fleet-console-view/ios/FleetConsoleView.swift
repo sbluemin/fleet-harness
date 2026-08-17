@@ -50,6 +50,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   // 어느 타깃/게이트웨이의 뷰인지 되찾을 수 있어야 한다 — Android는 WebViewClient가 staged를
   // 캡처해 그 역할을 하지만, 여기서는 뷰 identity로 찾으므로 활성 로드를 따로 들고 있어야 한다.
   private var activeLoad: StagedLoad?
+  // 시도가 시작되어 커밋/실패로 정착하기 전까지 참. resume()이 이 값을 보지 않으면 포그라운드
+  // 복귀가 인플라이트 시도를 저장된 타깃으로 덮어쓴다 — 콜드 스타트 링크는 attempt 카운터를
+  // 뺏기고 조용히 사라진다(실기기에서 재현). 메인 스레드에서만 읽고 쓴다.
+  private var attemptInFlight = false
   private var detached = false
 
   public required init(appContext: AppContext? = nil) {
@@ -154,6 +158,10 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
   }
 
   public func resume() {
+    // 포그라운드 복귀는 아무것도 붙어 있지 않을 때의 복구 수단이다. 시도가 진행 중이면
+    // 그 시도가 결론을 내게 두어야 한다 — 여기서 재연결하면 저장된 타깃이 방금 들어온
+    // 콜드 스타트 링크를 이긴다.
+    if attemptInFlight { return }
     if activeView == nil && activeTarget != nil { retry() }
   }
 
@@ -176,6 +184,8 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
       self.targetStore.remove(origin)
       if wasActive || wasStaging {
         self.attempt.increment()
+        // 이 제거가 진행 중이던 시도를 끝낸다. 표시해 두지 않으면 resume()이 영원히 막힌다.
+        self.attemptInFlight = false
         self.destroyStaging()
         if wasActive {
           if let view = self.activeView { view.removeFromSuperview(); view.destroySafely() }
@@ -261,6 +271,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     main {
       guard self.isCurrent(id) else { return }
       let launch = {
+        self.attemptInFlight = true
         self.emit("connecting", label: candidate.label, origin: candidate.origin)
         self.worker.async { self.runCandidate(id, candidate, token) }
       }
@@ -510,6 +521,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func commitStaged(_ staged: StagedLoad) {
     guard staging === staged, isCurrent(staged.attemptId) else { return }
+    attemptInFlight = false
     FleetLog.stage("commit")
     guard targetStore.upsert(staged.target) else { failStaged(staged, "remote_target_persist_failed"); return }
     let previousView = activeView
@@ -528,6 +540,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
 
   private func failStaged(_ staged: StagedLoad, _ code: String) {
     guard staging === staged, isCurrent(staged.attemptId) else { return }
+    attemptInFlight = false
     FleetLog.failed("staged-webview", code)
     staging = nil
     staged.view.removeFromSuperview()
@@ -541,6 +554,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     guard isCurrent(id) else { return }
     main {
       guard self.isCurrent(id) else { return }
+      self.attemptInFlight = false
       self.destroyStaging {
         self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel, origin: candidateOrigin, retryAfterSeconds: retryAfter)
       }
@@ -551,6 +565,7 @@ public final class FleetConsoleView: ExpoView, WKNavigationDelegate, WKUIDelegat
     let id = attempt.increment()
     main {
       guard self.isCurrent(id) else { return }
+      self.attemptInFlight = false
       self.destroyStaging {
         self.emit("error", code: code, label: self.activeTarget?.label ?? candidateLabel)
       }
