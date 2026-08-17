@@ -181,7 +181,7 @@ export const agentPlugin = definePlugin({
   // Quick Launch 이미지 첨부. 실패 표현은 컴포저가 거절 코드로 소유한다(messageOperation과 같은 계약).
   uploadLaunchAttachment: async (file) => uploadLaunchAttachment(file),
   discardLaunchAttachment: async (id) => discardLaunchAttachment(id),
-  launch: async ({ theaterId, kind, variant }) => {
+  launch: async ({ theaterId, kind, variant, geometry }) => {
     // 첨부 id는 variant 문자열 계약(Record<string,string>)에 CSV로 실려 온다 — id는 서버가 만든
     // UUID라 쉼표를 품지 않는다.
     const attachmentIds = variant?.attachments?.split(",").filter((id) => id.length > 0);
@@ -189,6 +189,7 @@ export const agentPlugin = definePlugin({
       model: variant?.model,
       effort: variant?.effort,
       prompt: variant?.prompt,
+      geometry,
       ...(attachmentIds?.length ? { attachmentIds } : {}),
       // 모르는 값은 실어 보내지 않는다 — 서버가 최종 판정자지만, 오타가 400으로 왕복하며
       // 초안을 잃게 하는 것보다 여기서 터미널로 접는 편이 낫다(기본이 곧 계약이다).

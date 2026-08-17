@@ -317,7 +317,7 @@ export function OperationSearch({
         // minimizeOperations는 geometry 맵에 없는 id를 버리므로, 페이지와 같이 현재 op의 기본
         // geometry를 먼저 심는다 — persisted canvas가 없는 신규 op도 최소화 대상이 된다.
         const theaterOperations = state.operations.filter((op) => op.theaterId === state.activeTheaterId);
-        for (const operation of theaterOperations) ensureDefaultGeometry(operation.id);
+        for (const operation of theaterOperations) ensureDefaultGeometry(operation.id, operation.geometry);
         minimizeOperations(theaterOperations.map((op) => op.id));
         break;
       }

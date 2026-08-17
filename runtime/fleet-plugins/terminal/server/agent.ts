@@ -7,7 +7,7 @@ import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedP
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
-import type { OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
+import type { OperationGeometry, OperationLaunchKind, OperationNode, OperationPatchInput } from "@fleet-console/sdk/operations";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { readSocketRole, readTicketChannel } from "./shared/index.js";
@@ -39,7 +39,7 @@ import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
-type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown };
+type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
 type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
@@ -490,6 +490,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
     const launchOptions = readLaunchOptions(body, cliId, res);
     if (launchOptions === false) return true;
+    const geometry = readOptionalGeometry(body?.geometry, res);
+    if (geometry === false) return true;
     if (body?.prompt !== undefined && typeof body.prompt !== "string") {
       ctx.host.http.writeJson(res, 400, { error: "invalid_prompt" });
       return true;
@@ -539,6 +541,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ...(composedPrompt ? { prompt: composedPrompt } : {}),
         ...(attachmentIds.length > 0 ? { attachmentIds } : {}),
         ...(chatBorn ? { chatBorn: true as const } : {}),
+        ...(geometry ? { geometry } : {}),
       });
     } catch (error) {
       // createSession이 스스로 처리하지 못한 throw까지 예약을 되돌린다 — bind 후에는 no-op이라 안전.
@@ -555,6 +558,29 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return false;
     }
     return value as readonly string[];
+  }
+
+  function readOptionalGeometry(value: unknown, res: Parameters<typeof handle>[0]["res"]): OperationGeometry | undefined | false {
+    if (value === undefined) return undefined;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_geometry" });
+      return false;
+    }
+    const candidate = value as Record<string, unknown>;
+    const x = candidate.x;
+    const y = candidate.y;
+    const width = candidate.width;
+    const height = candidate.height;
+    const zIndex = candidate.zIndex;
+    if (typeof x !== "number" || !Number.isFinite(x)
+      || typeof y !== "number" || !Number.isFinite(y)
+      || typeof width !== "number" || !Number.isFinite(width)
+      || typeof height !== "number" || !Number.isFinite(height)
+      || typeof zIndex !== "number" || !Number.isFinite(zIndex)) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_geometry" });
+      return false;
+    }
+    return { x, y, width, height, zIndex };
   }
 
   function readLaunchOptions(
@@ -682,7 +708,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     theaterId: string,
     cliId: AgentCliId,
     res: Parameters<typeof handle>[0]["res"],
-    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true } = {},
+    launchOptions: { readonly model?: string; readonly effort?: string; readonly prompt?: string; readonly attachmentIds?: readonly string[]; readonly chatBorn?: true; readonly geometry?: OperationGeometry } = {},
   ): Promise<void> {
     const meta = (await buildAgentCliLaunchMetadata()).find((entry) => entry.id === cliId);
     if (!meta || !meta.available || !meta.signedIn) {
@@ -725,6 +751,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
         ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
       },
+      ...(launchOptions.geometry ? { geometry: launchOptions.geometry } : {}),
       createdAt: session.createdAt,
     });
     if (launchOptions.chatBorn) {

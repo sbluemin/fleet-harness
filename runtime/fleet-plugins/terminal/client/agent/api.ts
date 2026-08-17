@@ -1,4 +1,4 @@
-import type { OperationNode } from "@fleet-console/sdk/operations";
+import type { OperationGeometry, OperationNode } from "@fleet-console/sdk/operations";
 import { readAgentChatJobDetailPayload, type AgentChatJobDetail } from "./chat/chat-events.js";
 import type { AgentCliDiagnostics, AgentCliMetadata, AgentCliState, SessionInfo } from "./types.js";
 
@@ -93,6 +93,7 @@ export async function createAgentSession(
     readonly attachmentIds?: readonly string[];
     /** 생략은 터미널이다 — 기본이 곧 계약이라 이 키를 모르는 호출부도 같은 길을 탄다. */
     readonly viewMode?: "chat";
+    readonly geometry?: OperationGeometry;
   },
   signal?: AbortSignal,
 ): Promise<SessionInfo> {
@@ -105,7 +106,7 @@ export async function createAgentSession(
   const response = await fetch("/plugins/terminal/agent/sessions", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}), ...(viewMode ? { viewMode } : {}) }),
+    body: JSON.stringify({ theaterId, cliId, ...(model ? { model } : {}), ...(effort ? { effort } : {}), ...(prompt ? { prompt } : {}), ...(attachmentIds ? { attachmentIds } : {}), ...(viewMode ? { viewMode } : {}), ...(options?.geometry ? { geometry: options.geometry } : {}) }),
     signal,
   });
   // 거절 사유 코드를 그대로 실어 던진다 — Quick Launch가 초안을 되살리면서 무엇을 고쳐야 하는지

@@ -5,6 +5,7 @@ import type { LaunchContext } from "@fleet-console/sdk/plugin";
 import { assertSessionInfo, createAgentSession } from "../client/agent/api.js";
 import { agentPlugin } from "../client/agent/index.js";
 import { getAgentState, removeSession } from "../client/agent/store.js";
+import { shellPlugin } from "../client/shell/index.js";
 
 afterEach(() => {
   for (const sessionId of Object.keys(getAgentState().sessions)) {
@@ -31,6 +32,7 @@ describe("agent client launch prompt threading", () => {
       model: "kimi--k3",
       effort: "max",
       prompt: "ship the prompt",
+      geometry: LAUNCH_GEOMETRY,
     });
   });
 
@@ -45,6 +47,7 @@ describe("agent client launch prompt threading", () => {
       theaterId: "theater-1",
       cliId: "claude-gateway",
       model: "fable[1m]",
+      geometry: LAUNCH_GEOMETRY,
     });
   });
 
@@ -58,6 +61,7 @@ describe("agent client launch prompt threading", () => {
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
       cliId: "claude-gateway",
+      geometry: LAUNCH_GEOMETRY,
     });
   });
 
@@ -89,6 +93,29 @@ describe("agent client launch prompt threading", () => {
   });
 });
 
+describe("shell client launch geometry", () => {
+  it("creates the shell Operation at the launch-context geometry", async () => {
+    const create = vi.fn(async (input: { readonly geometry?: unknown }) => ({ id: "shell-1", ...input }));
+    const launch = shellPlugin.launch;
+    if (!launch) throw new Error("Shell plugin launch must exist.");
+
+    await launch({
+      theaterId: "theater-1",
+      kind: { id: "shell", type: "shell", title: "Shell" },
+      geometry: LAUNCH_GEOMETRY,
+      operations: { create } as unknown as LaunchContext["operations"],
+    });
+
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({
+      theaterId: "theater-1",
+      type: "shell",
+      geometry: LAUNCH_GEOMETRY,
+    }));
+  });
+});
+
+const LAUNCH_GEOMETRY = { x: 120, y: 80, width: 560, height: 360, zIndex: 3 } as const;
+
 function createLaunchContext(
   variant: Readonly<Record<string, string>>,
   kindId = "claude-gateway",
@@ -100,7 +127,7 @@ function createLaunchContext(
       type: "agent",
       title: "Agent",
     },
-    geometry: { x: 0, y: 0, width: 1, height: 1, zIndex: 1 },
+    geometry: LAUNCH_GEOMETRY,
     operations: {} as LaunchContext["operations"],
     variant,
   };

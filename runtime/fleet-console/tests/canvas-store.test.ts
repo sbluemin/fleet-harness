@@ -812,6 +812,23 @@ describe("station keeping", () => {
     expectAllVisibleClear();
   });
 
+  it("ensureDefaultGeometry seeds a persisted click rect instead of the cascade origin", () => {
+    const persisted = { x: 480, y: 240, width: 560, height: 360, zIndex: 7 };
+
+    ensureDefaultGeometry("op-click", persisted);
+
+    expect(getSnapshot().operations["op-click"]).toMatchObject(persisted);
+  });
+
+  it("ensureDefaultGeometry keeps the first write when a later persist arrives", () => {
+    const persisted = { x: 480, y: 240, width: 560, height: 360, zIndex: 7 };
+
+    ensureDefaultGeometry("op-click");
+    ensureDefaultGeometry("op-click", persisted);
+
+    expect(getSnapshot().operations["op-click"]).toMatchObject({ x: 0, y: 0, width: 640, height: 400 });
+  });
+
   it("restoreOperation settles a panel whose spot was taken while minimized", () => {
     setOperationGeometry("op-a", rect(0, 0));
     setStationKeeping(true);

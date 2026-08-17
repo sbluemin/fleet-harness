@@ -582,11 +582,11 @@ export function liftTopZIndex(toAtLeast: number): void {
   topZIndex = Math.max(topZIndex, toAtLeast);
 }
 
-export function ensureDefaultGeometry(sessionId: string): OperationGeometry {
+export function ensureDefaultGeometry(sessionId: string, persisted?: OperationGeometry | null): OperationGeometry {
   const existing = state.operations[sessionId];
   if (existing) return existing;
   const index = Object.keys(state.operations).length;
-  let geometry: OperationGeometry = {
+  let geometry: OperationGeometry = persisted ?? {
     x: index * DEFAULT_OPERATION_OFFSET,
     y: index * DEFAULT_OPERATION_OFFSET,
     width: DEFAULT_OPERATION_WIDTH,
@@ -597,6 +597,7 @@ export function ensureDefaultGeometry(sessionId: string): OperationGeometry {
     const spot = resolveStationKeepingPosition(geometry, visibleObstacles(sessionId));
     geometry = { ...geometry, x: spot.x, y: spot.y };
   }
+  liftTopZIndex(geometry.zIndex);
   setState({ operations: { ...state.operations, [sessionId]: geometry } });
   return geometry;
 }

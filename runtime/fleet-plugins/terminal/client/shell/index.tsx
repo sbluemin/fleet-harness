@@ -23,13 +23,14 @@ export const shellPlugin = definePlugin({
   closeOperation: async (operationId) => {
     await fetch(`/plugins/terminal/shell/sessions/${encodeURIComponent(operationId)}`, { method: "DELETE" });
   },
-  launch: async ({ theaterId, operations }) => {
+  launch: async ({ theaterId, operations, geometry }) => {
     const operation = await operations.create({
       theaterId,
       type: "shell",
       pluginId: "terminal",
       title: getT("en")("terminal.kind.shell"),
       payload: { theaterId },
+      geometry,
     });
     return { id: operation.id };
   },
