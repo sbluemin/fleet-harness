@@ -1,5 +1,5 @@
 import { AI_GATEWAY_ROUTE_SEGMENT, toClaudeGatewayModelId, type GatewayModel } from "@dotobokuri/core-ai-gateway";
-import { NATIVE_CLAUDE_EFFORTS, NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
+import { NATIVE_CLAUDE_MODEL_ALIASES } from "@dotobokuri/fleet-admiral";
 import type { AnalystSession as AnalystSessionInstance } from "@dotobokuri/fleet-analyst";
 
 export const ANALYSIS_ERROR_CODES = {
@@ -35,10 +35,26 @@ export const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
  * 분석가의 기본 선택.
  *
  * 오늘의 기본값은 `opus[1m]`/`xhigh`였다. 소유자가 sonnet/low로 낮추기로 정했으므로 여기서
- * 한 곳으로 고정한다 — 선택지 자체는 좁히지 않으니 사용자는 여전히 올릴 수 있다.
+ * 한 곳으로 고정한다. 강도 사다리는 ANALYST_EFFORT_LEVELS가 자른다.
  */
 export const ANALYST_DEFAULT_MODEL = "sonnet";
 export const ANALYST_DEFAULT_EFFORT = "low";
+/**
+ * 분석가가 여는 강도. Quick Launch 트랙의 일상 단과 같고, xhigh·max·ultra는
+ * 이 표면에 서지 않는다 — 카탈로그가 더 내놓아도 여기서 자른다.
+ */
+export const ANALYST_EFFORT_LEVELS = ["low", "medium", "high"] as const;
+export type AnalystEffortLevel = (typeof ANALYST_EFFORT_LEVELS)[number];
+
+function clampAnalystEffortLevels(levels: readonly string[]): readonly string[] {
+  return ANALYST_EFFORT_LEVELS.filter((level) => levels.includes(level));
+}
+
+function clampAnalystDefaultEffort(levels: readonly string[], fallback?: string | null): string | undefined {
+  if (fallback && levels.includes(fallback)) return fallback;
+  if (levels.includes(ANALYST_DEFAULT_EFFORT)) return ANALYST_DEFAULT_EFFORT;
+  return levels[0];
+}
 /**
  * 분석가가 고를 수 있는 native Claude 별칭.
  *
@@ -60,7 +76,7 @@ export function nativeClaudeAnalystModels(): readonly {
   return NATIVE_CLAUDE_MODEL_ALIASES.map((modelId) => ({
     modelId,
     name: NATIVE_CLAUDE_LABELS[modelId] ?? modelId,
-    effort: { supported: true, levels: [...NATIVE_CLAUDE_EFFORTS] },
+    effort: { supported: true, levels: [...ANALYST_EFFORT_LEVELS] },
   }));
 }
 
@@ -98,23 +114,30 @@ export function buildAnalysisCatalog(
   gatewayModels: readonly GatewayModel[],
   available: boolean,
 ): AnalysisCatalog {
-  const native = nativeModels.map((model) => ({
-    id: model.modelId,
-    label: model.name,
-    effortLevels: model.effort.supported ? [...(model.effort.levels ?? [])] : [],
-    ...(model.modelId === ANALYST_DEFAULT_MODEL
-      ? { defaultEffort: ANALYST_DEFAULT_EFFORT }
-      : model.effort.supported && model.effort.default
-        ? { defaultEffort: model.effort.default }
-        : {}),
-  }));
-  const gateway = gatewayModels.map((model) => ({
-    id: toClaudeGatewayModelId(model),
-    label: model.displayName,
-    // 게이트웨이 모델 스키마에는 기본 강도가 없다. 없는 값을 지어내면 사용자가 고르지 않은
-    // 강도로 돈다.
-    effortLevels: model.effort.supported ? [...model.effort.levels] : [],
-  }));
+  const native = nativeModels.map((model) => {
+    const effortLevels = model.effort.supported ? clampAnalystEffortLevels(model.effort.levels ?? []) : [];
+    const defaultEffort = model.modelId === ANALYST_DEFAULT_MODEL
+      ? clampAnalystDefaultEffort(effortLevels, ANALYST_DEFAULT_EFFORT)
+      : model.effort.supported
+        ? clampAnalystDefaultEffort(effortLevels, model.effort.default)
+        : undefined;
+    return {
+      id: model.modelId,
+      label: model.name,
+      effortLevels,
+      ...(defaultEffort ? { defaultEffort } : {}),
+    };
+  });
+  const gateway = gatewayModels.map((model) => {
+    const effortLevels = model.effort.supported ? clampAnalystEffortLevels(model.effort.levels) : [];
+    return {
+      id: toClaudeGatewayModelId(model),
+      label: model.displayName,
+      // 게이트웨이 모델 스키마에는 기본 강도가 없다. 없는 값을 지어내면 사용자가 고르지 않은
+      // 강도로 돈다. 클램프 후 단이 비면 강도 없는 모델과 같다.
+      effortLevels,
+    };
+  });
   const models = [...native, ...gateway];
   return {
     clis: [{

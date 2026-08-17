@@ -100,6 +100,12 @@
       "browser": "./components/failure-notice.tsx",
       "import": "./components/failure-notice.tsx",
       "default": "./components/failure-notice.tsx"
+    },
+    "./components/effort-track": {
+      "types": "./components/effort-track.tsx",
+      "browser": "./components/effort-track.tsx",
+      "import": "./components/effort-track.tsx",
+      "default": "./components/effort-track.tsx"
     }
   },
   "scripts": {

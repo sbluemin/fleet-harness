@@ -82,10 +82,14 @@ describe("Session Analyst server contract", () => {
     const entry = catalog.clis[0]!;
     expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude-gateway"]);
     expect(entry.available).toBe(true);
-    // 소유자가 정한 기본은 sonnet/low다. 오늘의 기본이던 opus/xhigh를 낮춘 것이며, 선택지는 그대로다.
+    // 소유자가 정한 기본은 sonnet/low다. 오늘의 기본이던 opus/xhigh를 낮춘 것이며,
+    // 분석가 사다리는 low/medium/high만 연다 — xhigh는 기본값으로도, 선택지로도 서지 않는다.
     expect(entry.defaultModel).toBe("sonnet");
     expect(entry.models.find((model) => model.id === "sonnet")?.defaultEffort).toBe("low");
-    expect(entry.models.find((model) => model.id === "opus")?.defaultEffort).toBe("xhigh");
+    expect(entry.models.find((model) => model.id === "sonnet")?.effortLevels).toEqual(["low", "high"]);
+    expect(entry.models.find((model) => model.id === "opus")?.defaultEffort).toBe("low");
+    expect(entry.models.find((model) => model.id === "opus")?.effortLevels).toEqual(["low", "high"]);
+    expect(JSON.stringify(entry.models)).not.toMatch(/xhigh|max|ultra/);
     expect(entry.models.some((model) => model.id.startsWith("claude-gateway--"))).toBe(true);
     // 게이트웨이 모델 스키마에는 기본 강도가 없으므로 지어내지 않는다.
     expect(entry.models.find((model) => model.id.startsWith("claude-gateway--"))).not.toHaveProperty("defaultEffort");
@@ -109,6 +113,26 @@ describe("Session Analyst server contract", () => {
     const native = [{ modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low"], default: "low" } }];
     expect(buildAnalysisCatalog(native, [], false).clis[0]!.available).toBe(false);
     expect(buildAnalysisCatalog([], [], true).clis[0]!.available).toBe(false);
+  });
+
+  it("clamps analyst effort rungs to low, medium, and high", () => {
+    const catalog = buildAnalysisCatalog(
+      [{ modelId: "sonnet", name: "Claude Sonnet", effort: { supported: true, levels: ["low", "medium", "high", "xhigh", "max"], default: "xhigh" } }],
+      [{
+        id: "codex--gpt-5.6-luna-fast",
+        displayName: "GPT-5.6-Luna-Fast",
+        provider: "codex",
+        effort: { supported: true, levels: ["low", "medium", "high", "xhigh"] },
+      }] as unknown as Parameters<typeof buildAnalysisCatalog>[1],
+      true,
+    );
+    const sonnet = catalog.clis[0]!.models.find((model) => model.id === "sonnet")!;
+    const gateway = catalog.clis[0]!.models.find((model) => model.id.startsWith("claude-gateway--"))!;
+    expect(sonnet.effortLevels).toEqual(["low", "medium", "high"]);
+    expect(sonnet.defaultEffort).toBe("low");
+    expect(gateway.effortLevels).toEqual(["low", "medium", "high"]);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "high" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "xhigh" })).toBe(false);
   });
 
   it("accepts only the frozen message shape", () => {

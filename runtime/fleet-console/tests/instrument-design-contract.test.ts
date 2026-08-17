@@ -2614,7 +2614,7 @@ describe("Effort track interaction grammar", () => {
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
     const components = source("styles/components.css");
-    const trackSource = source("components/effort-track.tsx");
+    const trackSource = externalSource(new URL("sdk/components/effort-track.tsx", CONSOLE_ROOT));
 
     // 게이트 장치는 트랙 우측의 ✦ 토글 하나다. 닫힘·열림이 같은 26px 버튼의 두 상태라
     // 마운트 교체(26px→18px)가 없고, 게이트가 열려도 라벨이 밀리지 않는다.

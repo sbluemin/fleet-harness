@@ -1,10 +1,14 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
+import { EffortTrack } from "@fleet-console/sdk/components/effort-track";
 import { Select } from "@fleet-console/sdk/react/browser";
+import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
+import { createPortal } from "react-dom";
 import "@fleet-console/markdown/styles.css";
 
 import type { AnalysisActivity, AnalysisEntry, AnalysisState } from "./analysis-state.js";
+import type { AnalysisModel } from "./analysis-types.js";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { diagramHydratorLabels, getT, translateServerMessage, type TerminalMessageKey } from "../i18n/index.js";
 import { decorateEvidenceHtml } from "./analysis-evidence.js";
@@ -329,26 +333,32 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                     />
                   </span>
                 ) : null}
-                <span className="session-analyst__select">
-                  <Select
-                    compact
-                    label={t("terminal.analyst.model")}
-                    value={state.model}
-                    disabled={state.started || state.selectionLocked || !model}
-                    options={cli?.models.map((item) => ({ value: item.id, label: item.label })) ?? []}
-                    onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
-                  />
-                </span>
-                <span className="session-analyst__select" data-effort-level={state.effort || "auto"}>
-                  <Select
-                    compact
-                    label={t("terminal.analyst.effort")}
-                    value={state.effort}
-                    disabled={state.started || state.selectionLocked || !model || !model.effortLevels.length}
-                    options={model?.effortLevels.length ? model.effortLevels.map((item) => ({ value: item, label: item })) : [{ value: "", label: t("terminal.analyst.na") }]}
-                    onChange={(effort) => dispatch({ type: "select-effort", effort })}
-                  />
-                </span>
+                <AnalystModelChip
+                  models={cli?.models ?? []}
+                  value={state.model}
+                  disabled={state.started || state.selectionLocked || !model}
+                  label={t("terminal.analyst.model")}
+                  menuLabel={t("terminal.analyst.modelMenu")}
+                  onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
+                />
+                {model && model.effortLevels.length > 0 ? (
+                  <span className="session-analyst__effort" inert={state.started || state.selectionLocked || undefined}>
+                    <EffortTrack
+                      row={analystEffortRow(model)}
+                      value={state.effort}
+                      onChange={(effort) => {
+                        if (effort !== null) dispatch({ type: "select-effort", effort });
+                      }}
+                      autoLabel={t("terminal.analyst.effortAuto")}
+                      autoSlot={false}
+                      ariaLabel={t("terminal.analyst.effort")}
+                      autoValueText={t("terminal.analyst.effortAutoValue")}
+                      className="session-analyst__effort-track"
+                    />
+                  </span>
+                ) : (
+                  <span className="session-analyst__effort-na">{t("terminal.analyst.na")}</span>
+                )}
                 {/* 슬래시 목록은 placeholder 문구에만 있었다 — 읽고 지나가면 다시 만날 길이 없다. */}
                 <button
                   type="button"
@@ -688,4 +698,121 @@ function usePrefersReducedMotion(): boolean {
     return () => query.removeEventListener("change", update);
   }, []);
   return reduced;
+}
+
+function shortModelLabel(label: string): string {
+  return label.replace(/^Claude\s+/u, "");
+}
+
+function analystEffortRow(model: AnalysisModel): OperationLaunchVariantRow {
+  return {
+    id: model.id,
+    label: model.label,
+    launch: { model: model.id },
+    effortAxis: [...model.effortLevels],
+    chips: model.effortLevels.map((id) => ({
+      id,
+      label: id.toUpperCase(),
+      launch: { model: model.id, effort: id },
+    })),
+  };
+}
+
+function AnalystModelChip({
+  models,
+  value,
+  disabled,
+  label,
+  menuLabel,
+  onChange,
+}: {
+  readonly models: readonly AnalysisModel[];
+  readonly value: string;
+  readonly disabled: boolean;
+  readonly label: string;
+  readonly menuLabel: string;
+  readonly onChange: (model: string) => void;
+}) {
+  const [open, setOpen] = React.useState(false);
+  const chipRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
+  const selected = models.find((item) => item.id === value) ?? models[0];
+  React.useLayoutEffect(() => {
+    if (!open || !chipRef.current) return;
+    const rect = chipRef.current.getBoundingClientRect();
+    setMenuStyle({
+      position: "fixed",
+      top: rect.bottom + 8,
+      left: rect.left,
+      zIndex: 40,
+    });
+  }, [open]);
+  React.useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (chipRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.stopPropagation();
+      setOpen(false);
+      chipRef.current?.focus();
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    document.addEventListener("keydown", onKeyDown, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown, true);
+      document.removeEventListener("keydown", onKeyDown, true);
+    };
+  }, [open]);
+  return (
+    <>
+      <button
+        ref={chipRef}
+        type="button"
+        className="session-analyst__model-chip"
+        aria-label={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => { if (!disabled) setOpen((current) => !current); }}
+      >
+        <span className="session-analyst__model-mark" aria-hidden="true">
+          <svg viewBox="0 0 16 16">
+            <rect x="3" y="3" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
+            <circle cx="8" cy="8" r="1.6" fill="currentColor" />
+          </svg>
+        </span>
+        <span className="session-analyst__model-chip-label">{selected ? shortModelLabel(selected.label) : value}</span>
+        <span className="session-analyst__model-chip-caret" aria-hidden="true">▾</span>
+      </button>
+      {open && typeof document !== "undefined"
+        ? createPortal(
+          <div ref={menuRef} className="session-analyst__model-menu theater-menu" role="menu" aria-label={menuLabel} style={menuStyle}>
+            {models.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                className="session-analyst__model-row"
+                role="menuitemradio"
+                aria-checked={item.id === value}
+                onClick={() => {
+                  onChange(item.id);
+                  setOpen(false);
+                  chipRef.current?.focus();
+                }}
+              >
+                <span>{shortModelLabel(item.label)}</span>
+                {item.id === value ? <span className="session-analyst__model-check" aria-hidden="true">✓</span> : null}
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )
+        : null}
+    </>
+  );
 }

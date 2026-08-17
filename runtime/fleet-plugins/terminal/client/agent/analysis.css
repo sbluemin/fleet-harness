@@ -208,11 +208,27 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__slash button small { color: var(--text-tertiary); font-size: var(--t-2xs); }
 .session-analyst__slash button:is(.is-selected, :hover) { background: color-mix(in oklch, var(--aurora) 10%, transparent); color: var(--text-primary); }
 .session-analyst__composer-hint { padding: 6px 4px 0; color: var(--text-tertiary); font-weight: var(--weight-medium); font-size: var(--t-2xs); line-height: 1.4; font-family: var(--font-mono); }
-/* 선택 컨트롤 — 컴포저 면 안의 칩이다. 파이프 구분선은 상자 안에 있을 때의 문법이라 걷는다. */
+/* CLI가 둘 이상일 때만 서는 compact Select. 모델·강도는 아래 칩·트랙이 맡는다. */
 .session-analyst__select { position: relative; display: inline-flex; min-width: 0; border: 1px solid var(--hairline); border-radius: var(--radius-xs); background: var(--surface-panel); transition: border-color var(--duration-base) var(--ease-glide); }
 .session-analyst__select:focus-within { border-color: color-mix(in oklch, var(--aurora) 48%, var(--hairline-strong)); }
-/* 강도는 제품 공용 톤 사다리를 탄다 — Quick Launch 덱과 같은 언어로 읽히게 한다. */
-.session-analyst__select[data-effort-level]:not([data-effort-level="auto"]) { --fc-select-compact-tone: var(--effort-tone, var(--text-secondary)); border-color: color-mix(in oklch, var(--effort-tone, var(--text-secondary)) 32%, var(--hairline)); }
+/* 모델은 Quick Launch 칩과 같은 알약이다. 면은 분석가 패널 토큰만 쓴다 — pillar는 본문 계약이 막는다. */
+.session-analyst__model-chip { display: inline-flex; align-items: center; gap: 7px; min-width: 0; min-height: 27px; border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel); color: var(--text-secondary); padding: 4px 10px; font-family: inherit; font-size: var(--t-md); font-weight: var(--weight-medium); cursor: pointer; transition: border-color var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring); }
+.session-analyst__model-chip:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 45%, var(--hairline)); color: var(--text-primary); }
+.session-analyst__model-chip[aria-expanded="true"] { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
+.session-analyst__model-chip:disabled { opacity: .45; cursor: default; }
+.session-analyst__model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; color: var(--brass-ink); }
+.session-analyst__model-mark svg { width: 14px; height: 14px; }
+.session-analyst__model-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-weight: var(--weight-bold); }
+.session-analyst__model-chip[aria-expanded="true"] .session-analyst__model-chip-label { color: var(--brass); }
+.session-analyst__model-chip-caret { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
+.session-analyst__model-menu { right: auto; width: 216px; max-width: calc(100vw - 16px); }
+.session-analyst__model-row { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 7px var(--space-2); font-family: inherit; font-size: var(--t-md); font-weight: var(--weight-medium); text-align: left; cursor: pointer; }
+.session-analyst__model-row:hover, .session-analyst__model-row:focus-visible { background: color-mix(in oklch, var(--ink-mid) 55%, transparent); color: var(--text-primary); }
+.session-analyst__model-row[aria-checked="true"] { color: var(--text-primary); }
+.session-analyst__model-check { color: var(--brass); font-size: var(--t-xs); }
+.session-analyst__effort { display: inline-flex; min-width: 0; }
+.session-analyst__effort[inert] { opacity: .42; }
+.session-analyst__effort-na { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); }
 .session-analyst__send { display: grid; place-items: center; width: 30px; height: 30px; flex: none; margin-left: auto; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); color: var(--text-secondary); cursor: pointer; transition: border-color var(--duration-fast), color var(--duration-fast); }
 .session-analyst__send:not(:disabled) { border-color: var(--brass); background: var(--brass); color: var(--text-on-brass); }
 .session-analyst__send:hover:not(:disabled) { box-shadow: 0 0 14px var(--brass-glow); }
@@ -294,7 +310,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
+  .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
 }
