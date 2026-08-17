@@ -316,6 +316,7 @@ export const pagesEn = {
   "whatsnew.tab.fleetCli": "Fleet CLI",
   "whatsnew.tab.fleetConsole": "Fleet Console",
   "whatsnew.tab.fleetDesktop": "Fleet Desktop",
+  "whatsnew.tab.fleetMobile": "Fleet Mobile",
   "whatsnew.tab.preProductGrouping": "Pre-product-grouping updates",
 
   // whatsnew section labels: the wire format keeps English enums, only the display label localizes
@@ -801,6 +802,7 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "whatsnew.tab.fleetCli": "Fleet CLI",
   "whatsnew.tab.fleetConsole": "Fleet Console",
   "whatsnew.tab.fleetDesktop": "Fleet Desktop",
+  "whatsnew.tab.fleetMobile": "Fleet Mobile",
   "whatsnew.tab.preProductGrouping": "제품 분류 이전 업데이트",
 
   "whatsnew.section.added": "추가",

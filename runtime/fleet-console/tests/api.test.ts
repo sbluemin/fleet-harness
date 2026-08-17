@@ -100,7 +100,7 @@ describe("client api parsing", () => {
       stale: false,
     }));
 
-    for (const product of ["fleet-cli", "fleet-console", "fleet-desktop"] as const) {
+    for (const product of ["fleet-cli", "fleet-console", "fleet-desktop", "fleet-mobile"] as const) {
       globalThis.fetch = vi.fn(async () => responseFor(product)) as typeof fetch;
       await expect(fetchReleaseNotes()).resolves.toMatchObject({ notes: [{ sections: [{ items: [{ product }] }] }] });
     }

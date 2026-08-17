@@ -32,7 +32,7 @@ export interface QuickLaunchDraftAttachment {
 
 export type ReleaseNotesLocale = "en" | "ko";
 
-export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop";
+export type ReleaseNoteProduct = "fleet-cli" | "fleet-console" | "fleet-desktop" | "fleet-mobile";
 
 export type ConsoleLanguagePreference = "auto" | ReleaseNotesLocale;
 

@@ -23,6 +23,7 @@ describe("What's New tabs", () => {
       { packageTags: ["fleet-cli"], text: "Console provenance", product: "fleet-console" },
       { packageTags: ["fleet-core"], text: "CLI provenance", product: "fleet-cli" },
       { packageTags: ["fleet-desktop"], text: "Desktop provenance", product: "fleet-desktop" },
+      { packageTags: ["fleet-mobile"], text: "Mobile provenance", product: "fleet-mobile" },
     ]);
 
     expect(deriveWhatsNewTabs(release)).toEqual([
@@ -30,6 +31,7 @@ describe("What's New tabs", () => {
       { id: "fleet-cli", label: "Fleet CLI" },
       { id: "fleet-console", label: "Fleet Console" },
       { id: "fleet-desktop", label: "Fleet Desktop" },
+      { id: "fleet-mobile", label: "Fleet Mobile" },
     ]);
     expect(filterWhatsNewSections(release, "fleet-cli")[0]?.items).toEqual([{ packageTags: ["fleet-core"], text: "CLI provenance", product: "fleet-cli" }]);
   });

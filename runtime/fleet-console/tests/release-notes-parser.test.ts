@@ -83,6 +83,12 @@ const PRODUCT_CHANGELOG = `# Changelog
 
 - [fleet-console] Add the Desktop shell.
 
+### fleet-mobile
+
+#### Added
+
+- [fleet-mobile] Add the Mobile shell.
+
 ### fleet-plugin
 
 #### Added
@@ -278,6 +284,7 @@ describe("release note parser", () => {
       { packageTags: ["fleet-cli"], text: "Open the embedded app.", product: "fleet-cli" },
       { packageTags: ["fleet-console"], text: "Add the Console surface.", product: "fleet-console" },
       { packageTags: ["fleet-console"], text: "Add the Desktop shell.", product: "fleet-desktop" },
+      { packageTags: ["fleet-mobile"], text: "Add the Mobile shell.", product: "fleet-mobile" },
     ]);
     expect(sections?.[1]?.items).toEqual([
       { packageTags: ["fleet-console"], text: "Fix the Console surface.", product: "fleet-console" },
