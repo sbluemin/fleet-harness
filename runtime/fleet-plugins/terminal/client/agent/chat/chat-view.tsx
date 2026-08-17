@@ -22,6 +22,7 @@ import {
   type AgentChatTurn,
   type AgentChatTurnItem,
 } from "./chat-events.js";
+import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
@@ -187,6 +188,12 @@ export function AgentChatView({
     [context.language],
   );
 
+  // 이 세션의 실행 좌표. Operation payload에 실려 오므로 스트림과 무관하게 첫 프레임부터 서 있다.
+  const coordinates = React.useMemo(
+    () => readAgentChatSessionCoordinates(context.operation.payload),
+    [context.operation.payload],
+  );
+
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
   const jobsByToolUse = React.useMemo(() => {
@@ -272,6 +279,7 @@ export function AgentChatView({
               이 줄이 대화 면 **안에** 사는 이유는 실측이다: 패널 전체에 걸어 두면 작업 면이 열린
               순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
           <div className="agent-view-chip-row">
+            <SessionCoordinateChip coordinates={coordinates} t={t} />
             {leadingChip}
             <ContextMeterChip context={state.context} language={language} />
             <button
@@ -295,6 +303,11 @@ export function AgentChatView({
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
           >
+        {/* 대화가 시작된 좌표는 사건이다 — 로그의 첫 줄에 기록으로 남는다. 위 칩이 "지금 이 패널이
+            무엇인가"를 답한다면, 이 줄은 전사록을 다시 읽을 때 "이 답이 무엇으로 나온 답인가"를
+            그 자리에서 답한다. 연결 고지보다 앞에 서는 이유는 이것이 연결이 아니라 세션의 사실이기
+            때문이다. */}
+        <SessionBirthLine coordinates={coordinates} t={t} />
         {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
             않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
             상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
@@ -458,6 +471,65 @@ export function AgentChatView({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/**
+ * 이 세션의 실행 좌표를 상시로 말하는 칩.
+ *
+ * 여러 채팅 패널이 한 화면에 서면, 무거운 지시를 어디로 던질지는 좌표가 정한다 — 그래서 이 표식은
+ * 대화 안이 아니라 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리에 선다. 평상시에는 중립이라
+ * 대화를 이기지 않고, 신호(상태) 채널도 쓰지 않는다. 색을 얻는 것은 강도뿐이며, 그 어휘는
+ * 런치 트랙의 것을 그대로 쓴다.
+ *
+ * 컨트롤이 아니라 사실이므로 버튼이 아니다. 누를 수 있게 그리면 "여기서 바꿀 수 있다"는
+ * 거짓 약속이 된다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이다.
+ */
+function SessionCoordinateChip({
+  coordinates,
+  t,
+}: {
+  readonly coordinates: AgentChatSessionCoordinates;
+  readonly t: ReturnType<typeof getT>;
+}) {
+  const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
+  const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
+  return (
+    // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
+    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
+    // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
+    <span
+      className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
+      role="img"
+      aria-label={t("terminal.chat.coordAria", { model, effort })}
+      {...(coordinates.title ? { title: coordinates.title } : {})}
+    >
+      <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+      <span className="agent-chat-coord-model">{model}</span>
+      <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
+      <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
+    </span>
+  );
+}
+
+/** 로그 첫 줄의 태생 기록 — 이 세션이 어떤 좌표로 시작했는지를 대화의 서사 안에 남긴다. */
+function SessionBirthLine({
+  coordinates,
+  t,
+}: {
+  readonly coordinates: AgentChatSessionCoordinates;
+  readonly t: ReturnType<typeof getT>;
+}) {
+  const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
+  const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
+  return (
+    <p className={`agent-chat-birth${coordinates.ultracode ? " is-ultracode" : ""}`}>
+      <span className="agent-chat-birth-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+      <span className="agent-chat-birth-text">
+        {t("terminal.chat.birthLine", { model, effort })}
+      </span>
+      <span className="agent-chat-birth-rule" aria-hidden="true" />
+    </p>
   );
 }
 
