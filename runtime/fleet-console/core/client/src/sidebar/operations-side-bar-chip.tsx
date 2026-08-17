@@ -33,7 +33,6 @@ interface SideBarChipProps {
   /** 전역 선별 사이드바에서 소속 Theater를 축약 없이 보여주는 중립 pill — Theater 이름 전체를 넣는다. */
   readonly theaterName?: string | null;
   readonly statusAxis?: boolean;
-  readonly idleUnseen?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
@@ -71,7 +70,6 @@ export function OperationsSideBarChip({
   groupMark = null,
   theaterName = null,
   statusAxis = false,
-  idleUnseen = false,
   statusLanded = false,
   reorderEnabled = true,
   minimizeEnabled = true,
@@ -100,16 +98,16 @@ export function OperationsSideBarChip({
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext;
-  const unseenContext = idleUnseen ? t("sidebar.chip.unseenContext") : "";
+  // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
+  // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const chipAriaLabel = resumeOnActivate
     ? t("sidebar.chip.resumeAria", { title, groupContext })
     : active
-      ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
-      : t("sidebar.chip.focusAria", { title, groupContext, unseenContext });
+      ? t("sidebar.chip.focusedAria", { title, groupContext })
+      : t("sidebar.chip.focusAria", { title, groupContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
-    idleUnseen ? "side-bar-chip--unseen" : "",
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
@@ -265,13 +263,6 @@ export function OperationsSideBarChip({
           title={groupMark.name}
           aria-label={t("sidebar.chip.groupAria", { name: groupMark.name })}
           style={{ "--group-mark": groupMark.color } as CSSProperties}
-        />
-      ) : null}
-      {idleUnseen ? (
-        <span
-          className="side-bar-chip-unseen"
-          aria-hidden="true"
-          title={t("sidebar.chip.unseenTitle")}
         />
       ) : null}
       {surface && !preview ? (
