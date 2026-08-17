@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.64.0] - 2026-08-17
+
+### fleet-cli
+
+#### Changed
+- Codex Sol, Luna, and Terra keep their existing 272K models and add explicit 512K and 1M variants, including Fast, in the gateway picker.
+
+### fleet-console
+
+#### Added
+- Running background jobs can be stopped one at a time from the job detail view.
+- The empty canvas now offers "Open all in Tactical", resuming every standing-by operation into the auto-arranged grid in one click; beyond eight operations the button arms first so a misclick cannot spawn a pile of shells.
+
+#### Changed
+- Codex Sol, Luna, and Terra keep their existing 272K models and add explicit 512K and 1M variants, including Fast, in the gateway picker.
+- Chat Mode keeps its agent session alive for as long as the Operation is open, so background shells, subagents, and workflows outlive the turn that started them and report back when they settle.
+- Stopping a chat turn now interrupts the agent instead of ending its session, so background work started earlier keeps running.
+- The empty canvas standby list shows every standing-by operation with its last-activity time instead of only the two most recent, scrolling past four; the Korean copy now labels them as kept off so it no longer collides with the War Room waiting label.
+- Drop the rounded status mark from Sort by status and War Room group headers. Each panel already shows that mark.
+
+#### Fixed
+- Keep nested subagent frames off the Chat Mode host transcript so their tools and reports stay on the job surface.
+- Starting Chat Mode from Quick Launch with the ULTRACODE track now keeps standing dynamic-workflow orchestration (`xhigh` plus the session ultracode setting) instead of collapsing that choice to max intensity.
+
 ## [1.63.0] - 2026-08-16
 
 ### fleet-cli
