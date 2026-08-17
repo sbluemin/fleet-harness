@@ -88,11 +88,13 @@ describe("chat session coordinates", () => {
 
   // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없다.
   // 누를 수 있게 그리면 거짓 약속이 된다.
-  it("is not an interactive control", () => {
+  it("is a named mark, not an interactive control", () => {
     mount({ launchModel: "sonnet", launchEffort: "high" });
     expect(chip()?.tagName).toBe("SPAN");
     expect(chip()?.querySelector("button")).toBeNull();
-    expect(container?.querySelector(".agent-chat-coord[role]")).toBeNull();
+    // 일반 span의 aria-label은 무시될 수 있다 — 이름을 지는 역할이 있어야 한 문장으로 읽힌다.
+    expect(chip()?.getAttribute("role")).toBe("img");
+    expect(chip()?.getAttribute("aria-label")).toBe("This session runs on Sonnet at HIGH");
   });
 
   it("marks only an ultracode session with the apex channel", () => {

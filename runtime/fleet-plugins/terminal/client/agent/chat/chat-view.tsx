@@ -495,8 +495,12 @@ function SessionCoordinateChip({
   const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
   const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
   return (
+    // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
+    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
+    // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
     <span
       className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
+      role="img"
       aria-label={t("terminal.chat.coordAria", { model, effort })}
       {...(coordinates.title ? { title: coordinates.title } : {})}
     >
