@@ -53,8 +53,9 @@ describe("plugin client assets", () => {
     const plugin = writeClientPlugin("notice", "index.tsx", [
       'import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";',
       'import { EffortTrack } from "@fleet-console/sdk/components/effort-track";',
+      'import { launchProviderFromModelId } from "@fleet-console/sdk/components/launch-provider-glyphs";',
       'const row = { id: "m", label: "M", launch: { model: "m" }, chips: [{ id: "low", label: "LOW", launch: { model: "m", effort: "low" } }] };',
-      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <><FailureNotice title="t" /><EffortTrack row={row} value="low" onChange={() => {}} autoLabel="AUTO" ariaLabel="effort" autoValueText="auto" /></> }] };',
+      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <><FailureNotice title="t" /><EffortTrack row={row} value="low" onChange={() => {}} autoLabel="AUTO" ariaLabel="effort" autoValueText="auto" /><span>{launchProviderFromModelId("sonnet")}</span></> }] };',
     ].join("\n"));
     const assets = createPluginClientAssets({ plugins: [plugin] });
 
@@ -63,6 +64,7 @@ describe("plugin client assets", () => {
     const source = assets.getClient("notice") ?? "";
     expect(source).toContain("/plugin-runtime/shim/sdk-components-failure-notice.mjs");
     expect(source).toContain("/plugin-runtime/shim/sdk-components-effort-track.mjs");
+    expect(source).toContain("/plugin-runtime/shim/sdk-components-launch-provider-glyphs.mjs");
     expect(assets.manifest().skipped ?? []).toEqual([]);
   });
 

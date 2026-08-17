@@ -7,6 +7,7 @@ import * as sdkNotificationsBrowser from "@fleet-console/sdk/notifications/brows
 import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
 import * as sdkComponentsFailureNotice from "@fleet-console/sdk/components/failure-notice";
 import * as sdkComponentsEffortTrack from "@fleet-console/sdk/components/effort-track";
+import * as sdkComponentsLaunchProviderGlyphs from "@fleet-console/sdk/components/launch-provider-glyphs";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
@@ -42,6 +43,7 @@ interface FleetConsoleRuntime {
   readonly "@fleet-console/sdk/react/browser": typeof sdkReactBrowser;
   readonly "@fleet-console/sdk/components/failure-notice": typeof sdkComponentsFailureNotice;
   readonly "@fleet-console/sdk/components/effort-track": typeof sdkComponentsEffortTrack;
+  readonly "@fleet-console/sdk/components/launch-provider-glyphs": typeof sdkComponentsLaunchProviderGlyphs;
 }
 
 declare global {
@@ -60,6 +62,7 @@ globalThis.__fleetConsoleRuntime__ = {
   // 외부 플러그인이 로드되는 순간 "runtime shim unavailable"로 죽는다.
   "@fleet-console/sdk/components/failure-notice": sdkComponentsFailureNotice,
   "@fleet-console/sdk/components/effort-track": sdkComponentsEffortTrack,
+  "@fleet-console/sdk/components/launch-provider-glyphs": sdkComponentsLaunchProviderGlyphs,
 };
 
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.

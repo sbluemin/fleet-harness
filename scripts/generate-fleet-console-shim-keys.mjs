@@ -35,6 +35,7 @@ const SPECIFIER_ENTRIES = [
   ["@fleet-console/sdk/react/browser", path.join(sdkRoot, "react", "browser.tsx")],
   ["@fleet-console/sdk/components/failure-notice", path.join(sdkRoot, "components", "failure-notice.tsx")],
   ["@fleet-console/sdk/components/effort-track", path.join(sdkRoot, "components", "effort-track.tsx")],
+  ["@fleet-console/sdk/components/launch-provider-glyphs", path.join(sdkRoot, "components", "launch-provider-glyphs.tsx")],
 ];
 
 const tmpDir = mkdtempSync(path.join(os.tmpdir(), "fleet-console-shim-keys-"));

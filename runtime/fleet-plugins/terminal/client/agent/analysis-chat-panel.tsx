@@ -1,5 +1,12 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import { EffortTrack } from "@fleet-console/sdk/components/effort-track";
+import {
+  groupModelsByLaunchProvider,
+  launchEtcGlyph,
+  launchProviderCaption,
+  launchProviderFromModelId,
+  launchProviderGlyph,
+} from "@fleet-console/sdk/components/launch-provider-glyphs";
 import { Select } from "@fleet-console/sdk/react/browser";
 import type { OperationLaunchVariantRow } from "@fleet-console/sdk/operations";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
@@ -339,6 +346,7 @@ export function AnalystChatPanel({ context }: { readonly context: OperationRende
                   disabled={state.started || state.selectionLocked || !model}
                   label={t("terminal.analyst.model")}
                   menuLabel={t("terminal.analyst.modelMenu")}
+                  etcLabel={t("terminal.analyst.modelGroup.etc")}
                   onChange={(nextModel) => dispatch({ type: "select-model", model: nextModel })}
                 />
                 {model && model.effortLevels.length > 0 ? (
@@ -700,8 +708,48 @@ function usePrefersReducedMotion(): boolean {
   return reduced;
 }
 
-function shortModelLabel(label: string): string {
-  return label.replace(/^Claude\s+/u, "");
+function shortModelLabel(label: string, providerCaption?: string): string {
+  const stripped = label.replace(/^Claude\s+/u, "");
+  if (providerCaption && stripped.startsWith(`${providerCaption}-`)) {
+    return stripped.slice(providerCaption.length + 1);
+  }
+  return stripped;
+}
+
+const ANALYST_MENU_MAX_HEIGHT = 520;
+const ANALYST_MENU_MIN_HEIGHT = 120;
+const ANALYST_MENU_MARGIN = 12;
+const ANALYST_MENU_GAP = 8;
+const ANALYST_MENU_WIDTH = 216;
+
+function placeAnalystModelMenu(chip: HTMLElement): React.CSSProperties {
+  const rect = chip.getBoundingClientRect();
+  const viewportWidth = window.innerWidth;
+  const viewportHeight = window.innerHeight;
+  const spaceBelow = viewportHeight - rect.bottom - ANALYST_MENU_GAP - ANALYST_MENU_MARGIN;
+  const spaceAbove = rect.top - ANALYST_MENU_GAP - ANALYST_MENU_MARGIN;
+  const openBelow = spaceBelow >= ANALYST_MENU_MIN_HEIGHT || spaceBelow >= spaceAbove;
+  const maxHeight = Math.max(
+    ANALYST_MENU_MIN_HEIGHT,
+    Math.min(ANALYST_MENU_MAX_HEIGHT, openBelow ? spaceBelow : spaceAbove),
+  );
+  const width = Math.min(ANALYST_MENU_WIDTH, viewportWidth - ANALYST_MENU_MARGIN * 2);
+  const left = Math.min(
+    Math.max(ANALYST_MENU_MARGIN, rect.left),
+    viewportWidth - width - ANALYST_MENU_MARGIN,
+  );
+  const top = openBelow
+    ? rect.bottom + ANALYST_MENU_GAP
+    : Math.max(ANALYST_MENU_MARGIN, rect.top - ANALYST_MENU_GAP - maxHeight);
+  return {
+    position: "fixed",
+    top,
+    left,
+    zIndex: 40,
+    width,
+    maxHeight,
+    overflowY: "auto",
+  };
 }
 
 function analystEffortRow(model: AnalysisModel): OperationLaunchVariantRow {
@@ -724,6 +772,7 @@ function AnalystModelChip({
   disabled,
   label,
   menuLabel,
+  etcLabel,
   onChange,
 }: {
   readonly models: readonly AnalysisModel[];
@@ -731,6 +780,7 @@ function AnalystModelChip({
   readonly disabled: boolean;
   readonly label: string;
   readonly menuLabel: string;
+  readonly etcLabel: string;
   readonly onChange: (model: string) => void;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -738,16 +788,13 @@ function AnalystModelChip({
   const menuRef = React.useRef<HTMLDivElement>(null);
   const [menuStyle, setMenuStyle] = React.useState<React.CSSProperties>({});
   const selected = models.find((item) => item.id === value) ?? models[0];
+  const selectedProvider = launchProviderFromModelId(selected?.id ?? value);
+  const selectedCaption = selectedProvider ? launchProviderCaption(selectedProvider) : undefined;
+  const groups = groupModelsByLaunchProvider(models);
   React.useLayoutEffect(() => {
     if (!open || !chipRef.current) return;
-    const rect = chipRef.current.getBoundingClientRect();
-    setMenuStyle({
-      position: "fixed",
-      top: rect.bottom + 8,
-      left: rect.left,
-      zIndex: 40,
-    });
-  }, [open]);
+    setMenuStyle(placeAnalystModelMenu(chipRef.current));
+  }, [open, models]);
   React.useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -761,11 +808,18 @@ function AnalystModelChip({
       setOpen(false);
       chipRef.current?.focus();
     };
+    const onReposition = () => {
+      if (chipRef.current) setMenuStyle(placeAnalystModelMenu(chipRef.current));
+    };
     document.addEventListener("pointerdown", onPointerDown, true);
     document.addEventListener("keydown", onKeyDown, true);
+    window.addEventListener("resize", onReposition);
+    window.addEventListener("scroll", onReposition, true);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown, true);
       document.removeEventListener("keydown", onKeyDown, true);
+      window.removeEventListener("resize", onReposition);
+      window.removeEventListener("scroll", onReposition, true);
     };
   }, [open]);
   return (
@@ -773,42 +827,53 @@ function AnalystModelChip({
       <button
         ref={chipRef}
         type="button"
-        className="session-analyst__model-chip"
+        className={`session-analyst__model-chip${selectedProvider ? ` is-${selectedProvider}` : ""}`}
         aria-label={label}
         aria-haspopup="menu"
         aria-expanded={open}
         disabled={disabled}
         onClick={() => { if (!disabled) setOpen((current) => !current); }}
       >
-        <span className="session-analyst__model-mark" aria-hidden="true">
-          <svg viewBox="0 0 16 16">
-            <rect x="3" y="3" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            <circle cx="8" cy="8" r="1.6" fill="currentColor" />
-          </svg>
+        <span className="session-analyst__model-mark operation-launch-provider-glyph" aria-hidden="true">
+          {selectedProvider ? launchProviderGlyph(selectedProvider) : launchEtcGlyph()}
         </span>
-        <span className="session-analyst__model-chip-label">{selected ? shortModelLabel(selected.label) : value}</span>
+        <span className="session-analyst__model-chip-label">{selected ? shortModelLabel(selected.label, selectedCaption) : value}</span>
         <span className="session-analyst__model-chip-caret" aria-hidden="true">▾</span>
       </button>
       {open && typeof document !== "undefined"
         ? createPortal(
           <div ref={menuRef} className="session-analyst__model-menu theater-menu" role="menu" aria-label={menuLabel} style={menuStyle}>
-            {models.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className="session-analyst__model-row"
-                role="menuitemradio"
-                aria-checked={item.id === value}
-                onClick={() => {
-                  onChange(item.id);
-                  setOpen(false);
-                  chipRef.current?.focus();
-                }}
-              >
-                <span>{shortModelLabel(item.label)}</span>
-                {item.id === value ? <span className="session-analyst__model-check" aria-hidden="true">✓</span> : null}
-              </button>
-            ))}
+            {groups.map((group, groupIndex) => {
+              const caption = group.provider ? launchProviderCaption(group.provider) : etcLabel;
+              return (
+                <div key={group.provider ?? "etc"} role="group" aria-label={caption}>
+                  {groupIndex > 0 ? <div className="theater-menu-divider" role="separator" /> : null}
+                  <p className={`operation-launch-variant-caption${group.provider ? ` is-${group.provider}` : ""}`}>
+                    <span className={`operation-launch-provider-glyph${group.provider ? "" : " operation-launch-provider-glyph--etc"}`} aria-hidden="true">
+                      {group.provider ? launchProviderGlyph(group.provider) : launchEtcGlyph()}
+                    </span>
+                    <span>{caption}</span>
+                  </p>
+                  {group.models.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="session-analyst__model-row"
+                      role="menuitemradio"
+                      aria-checked={item.id === value}
+                      onClick={() => {
+                        onChange(item.id);
+                        setOpen(false);
+                        chipRef.current?.focus();
+                      }}
+                    >
+                      <span>{shortModelLabel(item.label, caption)}</span>
+                      {item.id === value ? <span className="session-analyst__model-check" aria-hidden="true">✓</span> : null}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
           </div>,
           document.body,
         )

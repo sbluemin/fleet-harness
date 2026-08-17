@@ -216,12 +216,19 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__model-chip:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 45%, var(--hairline)); color: var(--text-primary); }
 .session-analyst__model-chip[aria-expanded="true"] { border-color: var(--brass); background: var(--brass-glow); color: var(--brass); }
 .session-analyst__model-chip:disabled { opacity: .45; cursor: default; }
-.session-analyst__model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; color: var(--brass-ink); }
-.session-analyst__model-mark svg { width: 14px; height: 14px; }
+.session-analyst__model-chip.is-claude { --launch-provider-tone: var(--provider-claude); }
+.session-analyst__model-chip.is-codex { --launch-provider-tone: var(--provider-codex); }
+.session-analyst__model-chip.is-xai { --launch-provider-tone: var(--provider-xai); }
+.session-analyst__model-chip.is-cursor { --launch-provider-tone: var(--provider-cursor); }
+.session-analyst__model-chip.is-opencode { --launch-provider-tone: var(--provider-opencode); }
+.session-analyst__model-chip.is-kimi { --launch-provider-tone: var(--provider-kimi); }
+.session-analyst__model-mark { display: grid; place-items: center; flex: none; width: 14px; height: 14px; color: var(--launch-provider-tone, var(--brass-ink)); }
+.session-analyst__model-chip .operation-launch-provider-glyph { width: 14px; height: 14px; }
+.session-analyst__model-mark svg { width: 10px; height: 10px; }
 .session-analyst__model-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; color: var(--text-primary); font-weight: var(--weight-bold); }
 .session-analyst__model-chip[aria-expanded="true"] .session-analyst__model-chip-label { color: var(--brass); }
 .session-analyst__model-chip-caret { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
-.session-analyst__model-menu { right: auto; width: 216px; max-width: calc(100vw - 16px); }
+.session-analyst__model-menu { right: auto; width: 216px; max-width: calc(100vw - 16px); max-height: 520px; overflow-y: auto; }
 .session-analyst__model-row { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 7px var(--space-2); font-family: inherit; font-size: var(--t-md); font-weight: var(--weight-medium); text-align: left; cursor: pointer; }
 .session-analyst__model-row:hover, .session-analyst__model-row:focus-visible { background: color-mix(in oklch, var(--ink-mid) 55%, transparent); color: var(--text-primary); }
 .session-analyst__model-row[aria-checked="true"] { color: var(--text-primary); }
