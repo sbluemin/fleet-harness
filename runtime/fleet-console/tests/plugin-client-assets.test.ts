@@ -52,7 +52,9 @@ describe("plugin client assets", () => {
     // 에서만 동작하고 외부 플러그인은 준비 단계에서 통째로 탈락한다 — 광고만 하고 못 쓰는 상태다.
     const plugin = writeClientPlugin("notice", "index.tsx", [
       'import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";',
-      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <FailureNotice title="t" /> }] };',
+      'import { EffortTrack } from "@fleet-console/sdk/components/effort-track";',
+      'const row = { id: "m", label: "M", launch: { model: "m" }, chips: [{ id: "low", label: "LOW", launch: { model: "m", effort: "low" } }] };',
+      'export default { id: "notice", railPanels: [{ id: "n", title: "N", render: () => <><FailureNotice title="t" /><EffortTrack row={row} value="low" onChange={() => {}} autoLabel="AUTO" ariaLabel="effort" autoValueText="auto" /></> }] };',
     ].join("\n"));
     const assets = createPluginClientAssets({ plugins: [plugin] });
 
@@ -60,6 +62,7 @@ describe("plugin client assets", () => {
 
     const source = assets.getClient("notice") ?? "";
     expect(source).toContain("/plugin-runtime/shim/sdk-components-failure-notice.mjs");
+    expect(source).toContain("/plugin-runtime/shim/sdk-components-effort-track.mjs");
     expect(assets.manifest().skipped ?? []).toEqual([]);
   });
 

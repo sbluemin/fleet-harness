@@ -46,8 +46,10 @@ describe("Session Analyst contract", () => {
     expect(css).toContain(".session-analyst__composer.is-initial .session-analyst__composer-surface { flex-direction: column;");
     // 저장 표식은 자리를 늘 차지한다 — 나타날 때 줄이 밀리면 그 흔들림이 알림보다 크게 읽힌다.
     expect(css).toMatch(/\.session-analyst__saved \{[^}]*inline-size: [\d.]+em;/);
-    // 강도는 제품 공용 톤 사다리를 탄다.
-    expect(css).toContain("--fc-select-compact-tone: var(--effort-tone, var(--text-secondary));");
+    // 모델은 Quick Launch 칩, 강도는 공용 트랙이다.
+    expect(css).toContain(".session-analyst__model-chip");
+    expect(css).toContain(".session-analyst__effort");
+    expect(css).not.toContain("--fc-select-compact-tone: var(--effort-tone, var(--text-secondary));");
     expect(css).toContain("user-select: text");
     expect(css).toContain(":is(button, select) { user-select: none; }");
     expect(css).not.toContain(":is(button, a)");

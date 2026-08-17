@@ -81,10 +81,12 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__selector-strip")).toBeNull();
     expect(tools.parentElement).toBe(surface);
     // 공급자 축은 고를 것이 하나뿐이면 컨트롤이 되지 않는다.
-    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
+    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(0);
     expect(tools.querySelector('[aria-label="Analysis CLI"]')).toBeNull();
     expect(tools.querySelector('[aria-label="Analysis model"]')).not.toBeNull();
     expect(tools.querySelector('[aria-label="Analysis effort"]')).not.toBeNull();
+    expect(tools.querySelector(".session-analyst__model-chip")).not.toBeNull();
+    expect(tools.querySelector(".effort-track")).not.toBeNull();
     expect(tools.querySelector(".session-analyst__slash-hint")).not.toBeNull();
     expect(surface.querySelector("textarea")?.rows).toBe(1);
     expect(tools.querySelector(".session-analyst__send")?.getAttribute("aria-label")).toBe("Send");
@@ -101,8 +103,10 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel();
     const tools = container.querySelector(".session-analyst__composer-tools")!;
 
-    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(3);
+    expect(tools.querySelectorAll(".fc-select__trigger")).toHaveLength(1);
     expect(tools.querySelector('[aria-label="Analysis CLI"]')).not.toBeNull();
+    expect(tools.querySelector(".session-analyst__model-chip")).not.toBeNull();
+    expect(tools.querySelector(".effort-track")).not.toBeNull();
 
     act(() => root.unmount());
     container.remove();
@@ -154,14 +158,16 @@ describe("Session Analyst Evidence Pulse", () => {
       selectionLocked: true,
     };
     const { container, root } = renderPanel();
-    const selectionTriggers = () => [...container.querySelectorAll<HTMLButtonElement>(".session-analyst__composer-tools .fc-select__trigger")];
+    const modelChip = () => container.querySelector<HTMLButtonElement>(".session-analyst__model-chip")!;
+    const effort = () => container.querySelector<HTMLElement>(".session-analyst__effort")!;
 
-    expect(selectionTriggers()).toHaveLength(2);
-    expect(selectionTriggers().every((trigger) => trigger.disabled)).toBe(true);
+    expect(modelChip().disabled).toBe(true);
+    expect(effort().hasAttribute("inert")).toBe(true);
 
     storeState = { ...storeState, selectionLocked: false };
     act(() => rerenderStore());
-    expect(selectionTriggers().every((trigger) => !trigger.disabled)).toBe(true);
+    expect(modelChip().disabled).toBe(false);
+    expect(effort().hasAttribute("inert")).toBe(false);
 
     act(() => root.unmount());
     container.remove();
@@ -513,7 +519,7 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
     const textarea = container.querySelector("textarea")!;
-    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__composer-tools .fc-select__trigger")!;
+    const trigger = container.querySelector<HTMLButtonElement>(".session-analyst__composer-tools .session-analyst__model-chip")!;
 
     expect(container.querySelector('[role="listbox"]')).not.toBeNull();
     act(() => trigger.focus());
@@ -754,7 +760,8 @@ describe("Session Analyst Evidence Pulse", () => {
     };
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
-    expect(container.querySelectorAll(".fc-select__trigger")).toHaveLength(2);
+    expect(container.querySelector(".session-analyst__model-chip")).not.toBeNull();
+    expect(container.querySelector(".effort-track")).not.toBeNull();
 
     storeState = {
       ...storeState,

@@ -33,6 +33,7 @@ describe("plugin shim registry", () => {
   it("defines at least the SDK browser surfaces plus React", () => {
     expect(defined.length).toBeGreaterThanOrEqual(7);
     expect(defined).toContain("@fleet-console/sdk/components/failure-notice");
+    expect(defined).toContain("@fleet-console/sdk/components/effort-track");
   });
 
   it("serves every defined shim from the browser runtime namespace", () => {
