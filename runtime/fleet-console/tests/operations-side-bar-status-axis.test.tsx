@@ -83,11 +83,11 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
     expect(toggle.querySelector(".side-bar-status-axis-live-tick")).toBeNull();
     expect(Array.from(container?.querySelectorAll(".side-bar-status-header__label") ?? []).map((node) => node.textContent)).toEqual([
-      "AWAITING",
-      "RUNNING",
-      "IDLE",
-      "Minimized",
-      "ENDED",
+      "Awaiting",
+      "Running",
+      "Idle",
+      "Minimized · select to restore",
+      "Ended · select to start again",
     ]);
     expect(container?.querySelector(".side-bar-group-header")).toBeNull();
     expect(required<HTMLElement>('[data-side-bar-chip-id="awaiting"]').style.getPropertyValue("--user-accent")).toBe("var(--id-rose)");
@@ -126,21 +126,21 @@ describe("OperationsSideBar STATUS axis", () => {
 
     const awaiting = required<HTMLElement>(".side-bar-status-section--awaiting");
     expect(awaiting.className).toContain("side-bar-status-section--empty");
-    const awaitingToggle = required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING"]');
+    const awaitingToggle = required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section Awaiting"]');
     expect(awaitingToggle.getAttribute("aria-expanded")).toBe("false");
     expect(awaiting.querySelector(".side-bar-status-empty-hint")).toBeNull();
 
     act(() => awaitingToggle.click());
 
-    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING"]').title).toBe("Collapse");
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section Awaiting"]').title).toBe("Collapse");
     expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
 
-    const runningToggle = required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]');
+    const runningToggle = required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section Running"]');
     expect(runningToggle.getAttribute("aria-expanded")).toBe("true");
     act(() => runningToggle.click());
-    expect(required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').title).toBe("Expand");
+    expect(required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section Running"]').title).toBe("Expand");
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).toBeNull();
-    act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section RUNNING"]').click());
+    act(() => required<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Expand section Running"]').click());
     expect(container?.querySelector('[data-side-bar-chip-id="only"]')).not.toBeNull();
   });
 
@@ -232,19 +232,19 @@ describe("OperationsSideBar STATUS axis", () => {
     setSideBarStatusAxis(true);
     renderSideBar([]);
 
-    act(() => required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section AWAITING"]').click());
+    act(() => required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Expand section Awaiting"]').click());
     expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
 
     act(() => setConsoleState({ operationRuntime: { arriving: { lifecycle: "live", activity: "awaiting" } } }));
     rerenderSideBar([makeOperation("arriving", null)]);
 
-    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING"]').getAttribute("aria-expanded")).toBe("true");
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section Awaiting"]').getAttribute("aria-expanded")).toBe("true");
     expect(container?.querySelector('[data-side-bar-chip-id="arriving"]')).not.toBeNull();
 
     act(() => setConsoleState({ operationRuntime: {} }));
     rerenderSideBar([]);
 
-    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section AWAITING"]').getAttribute("aria-expanded")).toBe("true");
+    expect(required<HTMLButtonElement>('.side-bar-status-section--awaiting [aria-label="Collapse section Awaiting"]').getAttribute("aria-expanded")).toBe("true");
     expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-empty-hint").textContent).toBe("No operations");
   });
 
@@ -259,16 +259,16 @@ describe("OperationsSideBar STATUS axis", () => {
 
     const alpha = required<HTMLElement>(`[data-theater-id="${THEATER.id}"]`);
     const bravo = required<HTMLElement>(`[data-theater-id="${THEATER_B.id}"]`);
-    act(() => alpha.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')?.click());
+    act(() => alpha.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section Running"]')?.click());
 
     expect(alpha.querySelector('[data-side-bar-chip-id="alpha-running"]')).toBeNull();
     expect(bravo.querySelector('[data-side-bar-chip-id="bravo-running"]')).not.toBeNull();
-    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')).not.toBeNull();
+    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Collapse section Running"]')).not.toBeNull();
 
-    act(() => bravo.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section RUNNING"]')?.click());
+    act(() => bravo.querySelector<HTMLButtonElement>('.side-bar-status-section--running [aria-label="Collapse section Running"]')?.click());
 
-    expect(alpha.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
-    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Expand section RUNNING"]')).not.toBeNull();
+    expect(alpha.querySelector('.side-bar-status-section--running [aria-label="Expand section Running"]')).not.toBeNull();
+    expect(bravo.querySelector('.side-bar-status-section--running [aria-label="Expand section Running"]')).not.toBeNull();
   });
 
   it("suppresses group pills but keeps the status mark and marks an idle arrival unseen in inactive Theater preview chips", () => {
@@ -340,7 +340,7 @@ describe("OperationsSideBar STATUS axis", () => {
     act(() => setConsoleState({ operationRuntime: { moving: { lifecycle: "live", activity: "awaiting" } } }));
 
     expect(required<HTMLElement>('[data-side-bar-chip-id="moving"]').className).toContain("side-bar-chip--status-landed");
-    expect(required<HTMLElement>(".side-bar-status-header__label").textContent).toBe("AWAITING");
+    expect(required<HTMLElement>(".side-bar-status-header__label").textContent).toBe("Awaiting");
   });
 
   it("puts the most recently transitioned Operation first and keeps untouched Operations in operationOrder", () => {

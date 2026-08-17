@@ -353,10 +353,10 @@ describe("groupOperationsByStatus", () => {
     const sections = groupOperationsByStatus(entries);
 
     expect(sections.map((section) => [section.status, section.label])).toEqual([
-      ["awaiting", "AWAITING"],
-      ["running", "RUNNING"],
-      ["idle", "IDLE"],
-      ["ended", "ENDED"],
+      ["awaiting", "Awaiting"],
+      ["running", "Running"],
+      ["idle", "Idle"],
+      ["ended", "Ended · select to start again"],
     ]);
     expect(sections[2]?.entries.map((entry) => entry.operation.id)).toEqual(["idle-missing", "idle-explicit"]);
   });

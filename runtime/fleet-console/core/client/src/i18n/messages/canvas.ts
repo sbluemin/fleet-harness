@@ -106,10 +106,10 @@ export const canvasEn = {
   "canvas.groupMenu.confirmUngroupAria": "Confirm: remove all members and delete group",
 
   // ── sidebar ─────────────────────────────────────────────────────────────
-  "sidebar.status.awaiting": "AWAITING",
-  "sidebar.status.running": "RUNNING",
-  "sidebar.status.idle": "IDLE",
-  "sidebar.status.ended": "ENDED",
+  "sidebar.status.awaiting": "Awaiting",
+  "sidebar.status.running": "Running",
+  "sidebar.status.idle": "Idle",
+  "sidebar.status.ended": "Ended · select to start again",
   "sidebar.status.expandSection": "Expand section {label}",
   "sidebar.status.collapseSection": "Collapse section {label}",
   "sidebar.status.expand": "Expand",
@@ -318,7 +318,7 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
   "sidebar.status.awaiting": "대기",
   "sidebar.status.running": "실행 중",
   "sidebar.status.idle": "유휴",
-  "sidebar.status.ended": "종료됨",
+  "sidebar.status.ended": "종료됨 · 선택하여 다시 시작",
   "sidebar.status.expandSection": "{label} 섹션 펼치기",
   "sidebar.status.collapseSection": "{label} 섹션 접기",
   "sidebar.status.expand": "펼치기",
