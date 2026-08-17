@@ -238,11 +238,36 @@ describe("segmentAgentChatLedger", () => {
     expect(segments[1]?.note).toBe("읽었습니다.");
   });
 
-  it("keeps the failure and the outside write on their own rows inside their segment", () => {
+  it("folds the failure and the outside write into the same tally as ordinary steps", () => {
+    const read = tool("Read");
     const failed = tool("Bash", { state: "fail", result: "exit 2" });
     const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
-    const segments = segmentAgentChatLedger([note("해보겠습니다."), tool("Read"), failed, outside]);
+    const segments = segmentAgentChatLedger([note("해보겠습니다."), read, failed, outside]);
+    expect(segments[0]?.inline).toEqual([]);
+    expect(segments[0]?.groups).toEqual([
+      { family: "read", count: 1 },
+      { family: "run", count: 1 },
+      { family: "write", count: 1 },
+    ]);
+    expect(segments[0]?.folded).toEqual([read, failed, outside]);
+  });
+
+  it("counts a failed step in the same family as a successful sibling", () => {
+    const ok = tool("Bash", { detail: "pnpm test" });
+    const failed = tool("Bash", { state: "fail", result: "exit 2" });
+    const segments = segmentAgentChatLedger([note("돌리겠습니다."), ok, failed]);
+    expect(segments[0]?.groups).toEqual([{ family: "run", count: 2 }]);
+    expect(segments[0]?.folded).toEqual([ok, failed]);
+    expect(segments[0]?.inline).toEqual([]);
+  });
+
+  it("spends a live-window slot on a failed or outside step the same way as an ordinary one", () => {
+    const older = tool("Read", { detail: "a.ts" });
+    const failed = tool("Bash", { state: "fail", result: "exit 2" });
+    const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
+    const segments = segmentAgentChatLedger([note("해보겠습니다."), older, failed, outside], 2);
     expect(segments[0]?.inline).toEqual([failed, outside]);
+    expect(segments[0]?.folded).toEqual([older]);
     expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
   });
 
