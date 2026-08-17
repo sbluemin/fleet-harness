@@ -141,6 +141,36 @@ describe("App Store Connect API client", () => {
     expect(calls[0].init.headers.authorization).toMatch(/^Bearer \S+\.\S+\.\S+$/);
   });
 
+  it("tells internal groups apart from external ones", async () => {
+    const { impl } = fakeFetch([
+      { status: 200, body: { data: [
+        { id: "g1", attributes: { name: "Internal", isInternalGroup: true } },
+        { id: "g2", attributes: { name: "Public", isInternalGroup: false } },
+      ] } },
+    ]);
+    const client = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: impl });
+    expect(await client.resolveGroupIds("app", ["Internal", "Public"])).toEqual([
+      { name: "Internal", id: "g1", internal: true },
+      { name: "Public", id: "g2", internal: false },
+    ]);
+  });
+
+  // 심사 제출이 없으면 외부 테스터에게는 아무것도 열리지 않는다.
+  it("submits a build for beta review and accepts one already in review", async () => {
+    const first = fakeFetch([{ status: 201, body: { data: { id: "sub-1" } } }]);
+    const clientA = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: first.impl });
+    expect(await clientA.submitForBetaReview("build-1")).toBe("submitted for beta review");
+    expect(first.calls[0].url).toContain("/v1/betaAppReviewSubmissions");
+    expect(JSON.parse(first.calls[0].init.body!).data.relationships.build.data.id).toBe("build-1");
+
+    const again = fakeFetch([
+      { status: 409, body: { errors: [{ title: "Conflict", detail: "already submitted" }] } },
+      { status: 200, body: { data: [{ id: "sub-1", attributes: { betaReviewState: "APPROVED" } }] } },
+    ]);
+    const clientB = createAscClient({ ...CREDENTIALS, keyPath: keyFile(), fetchImpl: again.impl });
+    expect(await clientB.submitForBetaReview("build-1")).toBe("already in beta review (APPROVED)");
+  });
+
   it("keeps the group env name the workflow and the docs use", () => {
     expect(ASC_GROUPS_ENV).toBe("FLEET_ASC_BETA_GROUPS");
   });

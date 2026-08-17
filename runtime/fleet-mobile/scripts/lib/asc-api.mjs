@@ -129,8 +129,28 @@ export function createAscClient({ keyId, issuerId, keyPath, fetchImpl = fetch, n
           const known = groups.map((group) => group?.attributes?.name).filter(Boolean).join(", ") || "none";
           fail(`TestFlight has no beta group named "${name}" for this app (groups: ${known})`);
         }
-        return { name, id: match.id };
+        // 외부 그룹은 배정만으로 끝나지 않는다 — Apple의 베타 심사를 통과해야 테스터에게 열린다.
+        return { name, id: match.id, internal: match.attributes?.isInternalGroup !== false };
       });
+    },
+
+    /**
+     * 외부 테스터에게 나가려면 빌드마다 베타 심사 제출이 필요하다. 이미 제출됐거나 심사를
+     * 통과한 빌드는 Apple이 거절하는데, 그것도 우리가 원하던 상태이므로 실패로 보지 않는다.
+     */
+    async submitForBetaReview(buildId) {
+      const created = await request("POST", "/v1/betaAppReviewSubmissions", {
+        data: { type: "betaAppReviewSubmissions", relationships: { build: { data: { type: "builds", id: buildId } } } },
+      });
+      if (!created.error) return "submitted for beta review";
+      const existing = await request(
+        "GET",
+        `/v1/betaAppReviewSubmissions?filter[build]=${encodeURIComponent(buildId)}&limit=1`,
+      );
+      if (existing.error) fail(created.error);
+      const state = existing.data?.data?.[0]?.attributes?.betaReviewState;
+      if (!state) fail(created.error);
+      return `already in beta review (${state})`;
     },
 
     async setWhatsNew(buildId, whatsNew) {

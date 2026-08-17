@@ -145,6 +145,13 @@ async function main() {
     process.stdout.write(`Build ${versionName} (${buildNumber}) ${outcome} to TestFlight group "${group.name}"\n`);
   }
 
+  // 내부 그룹은 배정으로 끝나지만 외부 그룹은 심사를 통과해야 열린다. 여기서 제출까지 해야
+  // "초록 = 테스터가 받는다"가 외부 배포에서도 참이 된다.
+  if (groups.some((group) => !group.internal)) {
+    const review = await client.submitForBetaReview(build.id);
+    process.stdout.write(`External groups are in this round — ${review}. Apple opens the build to them once it passes.\n`);
+  }
+
   process.stdout.write(`Distributed ${paths.name} (${sha256}) to ${groups.length} TestFlight group(s)\n`);
 }
 

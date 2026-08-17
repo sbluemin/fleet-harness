@@ -229,8 +229,15 @@ run that failed at assignment finishes the assignment on the next attempt.
 - **Tester access.** The Apple ID signed into the iPhone must be a user on the App Store Connect
   team and a member of the group named in `FLEET_ASC_BETA_GROUPS`. The job assigns the build to the
   group; it cannot add people to it.
-- **External groups.** Assignment works the same way, but Apple holds an external build for Beta App
-  Review before testers get it. Internal groups skip that.
+- **External groups and the public link.** An external group is what turns TestFlight into "anyone
+  with the link", and `FLEET_ASC_BETA_GROUPS` may name external groups alongside internal ones. Two
+  things differ. Apple holds every external build for **Beta App Review**, so the distribute step
+  submits the build for review whenever an external group is in the round and reports the review
+  state instead of pretending the build is already out. And the group only becomes reachable without
+  an invitation once you enable its **public link** in App Store Connect — the API assigns builds,
+  it does not open the door. External testing also needs the Test Information filled in (beta app
+  description, feedback email, review contact, privacy policy URL); Apple rejects the submission
+  without them. Internal groups skip all of it.
 
 Then install the TestFlight app on the iPhone, sign in with that Apple ID, and the build appears.
 
