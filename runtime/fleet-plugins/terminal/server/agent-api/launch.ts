@@ -6,7 +6,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-process";
-import { exposableEffortLadder, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
+import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
 import {
   createAgentCliPlugin,
@@ -14,7 +14,6 @@ import {
   createSystemPromptBuilder,
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
-  NATIVE_CLAUDE_EFFORTS,
   resolveAgentCliId,
   resolveAgentCliProfile,
   resolveNativeClaudeModelAlias,
@@ -88,8 +87,11 @@ export function isGatewayLaunchEffortAllowed(
   model: GatewayModel,
   effort: string,
 ): boolean {
+  // ultra는 카탈로그 사다리 밖의 Console launch sentinel이다 — 하네스 능력(launch factory가
+  // `--effort ultracode`로 전달)이라 enabled 모델이면 사다리·노출과 무관하게 허용한다.
+  if (effort === "ultra") return true;
   // 첫 검사는 어휘만 판별하고, 실제 모델이 그 단을 제공하는지는 아래 카탈로그 사다리가 판다.
-  if (!([...NATIVE_CLAUDE_EFFORTS, "ultra"] as readonly string[]).includes(effort)) return false;
+  if (!(GATEWAY_REASONING_EFFORTS as readonly string[]).includes(effort)) return false;
   const efforts = selection.effortExposure[model.id] ?? exposableEffortLadder(model);
   return efforts.includes(effort as GatewayReasoningEffort);
 }

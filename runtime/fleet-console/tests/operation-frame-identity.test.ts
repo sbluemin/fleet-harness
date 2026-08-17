@@ -78,13 +78,13 @@ describe("OperationFrame identity rename", () => {
     expect(document.activeElement).toBe(identityTrigger());
   });
 
-  it("places inactive identity before its beacon and preserves the full-title tooltip", () => {
+  it("places inactive identity before its More button and preserves the full-title tooltip", () => {
     renderFrame(vi.fn(), false);
     const titlebar = document.querySelector(".canvas-operation-titlebar")!;
     const children = Array.from(titlebar.children);
 
     expect(children[0]?.className).toBe("canvas-operation-identity-name");
-    expect(children[1]?.className).toBe("canvas-operation-beacon-button");
+    expect(children[1]?.className).toBe("canvas-operation-more-button");
     expect(children[2]?.className).toBe("canvas-operation-window-controls");
     expect(document.querySelectorAll(".canvas-operation-window-controls .canvas-operation-icon-button")).toHaveLength(3);
     expect(identityTrigger().title).toBe("A deliberately long Operation title — Drag to move. Double-click, Enter, or F2 to rename");
@@ -162,14 +162,14 @@ describe("OperationFrame identity rename", () => {
     expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
   });
 
-  it("keeps active identity in the name → beacon → controls order", () => {
+  it("keeps active identity in the name → More → controls order", () => {
     renderFrame(vi.fn(), true);
     const children = Array.from(document.querySelector(".canvas-operation-titlebar")!.children);
 
     expect(identityInput()).toBeNull();
     expect(identityTrigger()).not.toBeNull();
     expect(children[0]?.className).toBe("canvas-operation-identity-name");
-    expect(children[1]?.className).toBe("canvas-operation-beacon-button");
+    expect(children[1]?.className).toBe("canvas-operation-more-button");
     expect(children[2]?.className).toBe("canvas-operation-window-controls");
   });
 
@@ -230,7 +230,7 @@ function ActivationRaceFrame({ onActivate }: { readonly onActivate: () => void }
     onMinimize: () => {},
     onMaximize: () => {},
     onRename: () => {},
-    onSetAccent: () => {},
+    onOpenMenu: () => {},
     onGeometryChange: () => {},
     onGeometryCommit: () => {},
     children: createElement("div"),
@@ -276,7 +276,7 @@ function renderFrame(
     onMinimize: () => {},
     onMaximize: () => {},
     onRename,
-    onSetAccent: () => {},
+    onOpenMenu: () => {},
     onGeometryChange: () => {},
     onGeometryCommit,
     children: createElement("div"),

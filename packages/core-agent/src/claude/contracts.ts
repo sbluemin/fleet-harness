@@ -191,6 +191,13 @@ export interface ClaudeGatewaySdkOptions {
    */
   readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
   /**
+   * 세션 설정 `ultracode`. CLI의 `--effort ultracode`가 켜는 것과 같은 자리 — `xhigh` 강도와
+   * standing dynamic-workflow orchestration. `Options.effort` 단이 아니라 settings 플래그다.
+   *
+   * `true`만 연다. `false`를 실으면 사용자·프로젝트 설정의 켠 값을 flag 소스가 덮어 끈다.
+   */
+  readonly ultracode?: true;
+  /**
    * 자식의 `CLAUDE_CONFIG_DIR` 정책. 생략하면 격리다.
    *
    * 정책을 불리언이나 경로 하나로 숨기지 않는 이유: 격리 홈과 공유 홈은 캐시 소유권과 트랜스크립트
@@ -262,6 +269,14 @@ export interface ClaudeGatewayTurn {
   readonly stderr?: (data: string) => void;
 }
 
+/**
+ * 세션 하나의 실행 정책. `ClaudeGatewayTurn`에서 `prompt`만 뺀 모양이다.
+ *
+ * 프롬프트가 빠진 것이 이 타입의 전부다: 세션은 프롬프트 하나가 아니라 **여러 개를 차례로**
+ * 받으므로, 무엇을 물을지는 `send()`가 정하고 어떤 자식으로 도는지는 여기서 한 번 정한다.
+ */
+export type ClaudeGatewaySessionRequest = Omit<ClaudeGatewayTurn, "prompt">;
+
 /** `ClaudeGatewayTurn`이 허용하는 키. 런타임 검증의 단일 출처다. */
 export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "prompt",
@@ -283,6 +298,11 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "abortController",
   "stderr",
 ]);
+
+/** `ClaudeGatewaySessionRequest`가 허용하는 키. 턴의 allowlist에서 `prompt`만 뺀 것이다. */
+export const CLAUDE_GATEWAY_SESSION_KEYS: readonly string[] = Object.freeze(
+  CLAUDE_GATEWAY_TURN_KEYS.filter((key) => key !== "prompt"),
+);
 
 /** 문맥 창을 나눠 쓰는 한 덩어리. `tokens`는 그 덩어리가 지금 차지한 몫이다. */
 export interface ClaudeGatewayContextCategory {
@@ -325,6 +345,51 @@ export interface ClaudeGatewayRun extends AsyncIterable<ClaudeGatewayMessage> {
   getContextUsage(): Promise<ClaudeGatewayContextUsage | null>;
 }
 
+/**
+ * 자식 하나를 **살려 둔 채** 여러 프롬프트를 주고받는 세션.
+ *
+ * `startTurn`과의 차이는 편의가 아니라 자식의 수명이다. 문자열 프롬프트 하나로 시작한 실행은
+ * vendor SDK가 single-turn으로 판정해 첫 `result`에 자식의 stdin을 닫고, 입력이 닫힌 자식은
+ * Claude Code의 wind-down 규율에 따라 **백그라운드 셸을 5초 유예 뒤 kill**한다(에이전트·워크플로는
+ * 기다려 주지만 셸은 기다려 주지 않는다). 즉 턴마다 실행을 세우는 소비처는 백그라운드 작업을
+ * 가질 수 없다 — 그것이 이 인터페이스가 존재하는 이유다.
+ *
+ * 이터레이터는 세션당 하나이고 `close()`까지 끝나지 않는다. 턴 경계는 스트림이 아니라 `result`
+ * 메시지가 말한다 — 백그라운드 작업이 끝나면 자식이 모델을 다시 깨우므로, 한 세션에서 `result`는
+ * 보낸 프롬프트 수보다 많을 수 있다.
+ */
+export interface ClaudeGatewaySession extends AsyncIterable<ClaudeGatewayMessage> {
+  /**
+   * 자식에게 사용자 메시지 하나를 밀어 넣는다. 반환은 큐 등록이며, 진행은 스트림으로만 온다.
+   *
+   * 자식이 자기 큐를 갖고 있으므로 턴 중에 보내도 잃지 않는다. 호출자가 턴을 직렬화하고 싶다면
+   * 그 규율은 호출자의 것이다 — 이 계약은 순서만 보장한다.
+   */
+  send(text: string): void;
+  /**
+   * 도는 턴을 끊는다. 자식은 살아남고 백그라운드 작업도 그대로다 — 프로세스를 죽이는 `close()`와
+   * 다른 물건이다.
+   */
+  interrupt(): Promise<void>;
+  /**
+   * 백그라운드 작업 하나를 멈춘다. 좌표는 `task_notification`·`task_updated`가 실어 온 `task_id`다.
+   * 멈춘 작업은 `stopped` 알림을 낸다.
+   */
+  stopTask(taskId: string): Promise<void>;
+  /**
+   * 진행 중인 포그라운드 작업을 백그라운드로 민다 — 터미널의 Ctrl+B와 같은 자리다. `toolUseId`를
+   * 주면 그 도구 호출 하나만, 없으면 전부. 반환은 실제로 민 것이 있었는가다.
+   */
+  backgroundTasks(toolUseId?: string): Promise<boolean>;
+  /**
+   * 자식이 지금 쓰는 문맥 내역. 턴이 도는 동안에는 자식이 control 채널을 닫아 두므로 `null`이
+   * 정상 응답이다(`ClaudeGatewayRun.getContextUsage`와 같은 규율).
+   */
+  getContextUsage(): Promise<ClaudeGatewayContextUsage | null>;
+  /** 세션을 접고 자식 프로세스를 끝낸다. 살아 있던 백그라운드 작업도 함께 거둬진다. */
+  close(): void;
+}
+
 export interface ClaudeGatewaySdk {
   /** 이 인스턴스가 소유한 격리 `CLAUDE_CONFIG_DIR`. 진단용으로만 노출한다. */
   readonly configDir: string;
@@ -338,6 +403,14 @@ export interface ClaudeGatewaySdk {
    * `fleet-admiral`의 측정된 동작을 그대로 따른다.
    */
   startTurn(turn: ClaudeGatewayTurn): Promise<ClaudeGatewayRun>;
-  /** 진행 중인 턴을 끊고 격리 디렉터리를 지운다. 두 번 불러도 안전하다. */
+  /**
+   * 자식 하나를 살려 둔 세션을 연다. 턴 하나로 끝나지 않는 소비처 — 백그라운드 작업을 가지거나,
+   * 턴 사이에 자식의 상태를 이어야 하는 곳 — 는 `startTurn`이 아니라 이쪽을 쓴다.
+   *
+   * 슬롯은 `startTurn`과 공유한다: 한 인스턴스의 config dir을 두 자식이 동시에 쓰면 세션 상태가
+   * 서로를 덮으므로, 세션이 열려 있는 동안 이 인스턴스는 다른 실행을 세우지 않는다.
+   */
+  openSession(request: ClaudeGatewaySessionRequest): Promise<ClaudeGatewaySession>;
+  /** 진행 중인 턴·세션을 끊고 격리 디렉터리를 지운다. 두 번 불러도 안전하다. */
   dispose(): Promise<void>;
 }

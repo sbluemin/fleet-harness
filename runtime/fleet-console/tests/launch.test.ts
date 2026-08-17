@@ -640,8 +640,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
     // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그가 바뀌면 이 수도 함께 맞춘다.
-    expect(cache.models).toHaveLength(31);
+    expect(cache.models).toHaveLength(43);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-512k-fast");
+    expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]");
     expect(ids).toContain("claude-gateway--cursor--auto");
     expect(ids).toContain("claude-gateway--cursor--composer-2.5");
     expect(ids).toContain("claude-gateway--cursor--grok-4.5");
@@ -656,7 +658,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(ids).not.toContain("claude-gateway--cursor--gpt-5.6-luna[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
-    expect(ids.some((id) => id.includes("--codex--") && id.endsWith("[1m]"))).toBe(false);
     expect(cache.models).toContainEqual(expect.objectContaining({
       id: "claude-gateway--cursor--grok-4.5",
       display_name: "Cursor-Grok-4.5",

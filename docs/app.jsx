@@ -59,8 +59,8 @@ const UI = {
   gwAria: { ko: "게이트웨이 공급자", en: "Gateway providers" },
   gwModels: { ko: "Models", en: "Models" },
   gwNote: {
-    ko: "추론 강도는 모델마다 다르게 열립니다 — 지원하는 모델은 저마다의 사다리를 갖고, 가장 깊은 모델은 <b>MAX</b>와 <b>ULTRACODE</b>(xhigh 강도 + 상시 멀티 에이전트 오케스트레이션)를 정점 게이트 뒤에 드러냅니다.",
-    en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and the deepest expose <b>MAX</b> and <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) behind an apex gate.",
+    ko: "추론 강도는 모델마다 다르게 열립니다 — 지원하는 모델은 저마다의 사다리를 갖고 <b>MAX</b>까지 닿는 모델만 그 단을 엽니다. 모든 게이트웨이 모델은 런치 강도 컨트롤에서 <b>ULTRACODE</b>(xhigh 강도 + 상시 멀티 에이전트 오케스트레이션)를 제공합니다.",
+    en: "Reasoning effort opens differently per model — those that support it carry their own ladder, and only some reach <b>MAX</b>. Every gateway model offers <b>ULTRACODE</b> (xhigh effort plus standing multi-agent orchestration) in its launch intensity controls.",
   },
   gwShotCap: {
     ko: "실제 화면 — 캔버스 우클릭으로 열리는 런치 메뉴. Claude·Codex·Cursor 행이 라이브 패널 위에 떠 있다.",
@@ -153,12 +153,12 @@ const PROVIDERS = [
     cred: "subscription",
     color: "#5fd673",
     mission: {
-      ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol과 Terra는 low부터 ultra까지, Luna는 max까지 노출하므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
-      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol and Terra run from low through ultra, Luna through max, so one model serves both cheap mechanical work and hard judgment.",
+      ko: "GPT-5.6 계열을 Claude Code 표면으로 들여온다. 추론 강도 사다리가 가장 깊은 경로다 — Sol·Terra·Luna 모두 low부터 max까지 노출하고, ULTRACODE는 하네스 능력으로 모든 행에 서므로 같은 모델을 가벼운 작업과 어려운 판단에 다른 강도로 쓸 수 있다.",
+      en: "Brings the GPT-5.6 family onto the Claude Code surface, with the deepest reasoning ladder of any provider here: Sol, Terra, and Luna each run from low through max, and ULTRACODE stands on every row as a harness capability, so one model serves both cheap mechanical work and hard judgment.",
     },
     models: [
-      { ko: "GPT-5.6 Sol — low~ultra, Fast 변형 포함", en: "GPT-5.6 Sol — low through ultra, Fast variant included" },
-      { ko: "GPT-5.6 Terra — low~ultra, Fast 변형 포함", en: "GPT-5.6 Terra — low through ultra, Fast variant included" },
+      { ko: "GPT-5.6 Sol — low~max, Fast 변형 포함", en: "GPT-5.6 Sol — low through max, Fast variant included" },
+      { ko: "GPT-5.6 Terra — low~max, Fast 변형 포함", en: "GPT-5.6 Terra — low through max, Fast variant included" },
       { ko: "GPT-5.6 Luna — low~max, Fast 변형 포함", en: "GPT-5.6 Luna — low through max, Fast variant included" },
     ],
   },

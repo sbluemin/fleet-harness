@@ -5,6 +5,79 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.65.0] - 2026-08-17
+
+### fleet-cli
+
+#### Changed
+- Remove 512K variants from the Codex Sol, Luna, and Terra picker and keep the existing 272K and explicit 1M variants only.
+
+### fleet-console
+
+#### Changed
+- Remove 512K variants from the Codex Sol, Luna, and Terra picker and keep the existing 272K and explicit 1M variants only.
+- Chat Mode now folds failed steps and writes outside the Theater into the same per-sentence tally as ordinary tool calls.
+
+## [1.64.0] - 2026-08-17
+
+### fleet-cli
+
+#### Changed
+- Codex Sol, Luna, and Terra keep their existing 272K models and add explicit 512K and 1M variants, including Fast, in the gateway picker.
+
+### fleet-console
+
+#### Added
+- Running background jobs can be stopped one at a time from the job detail view.
+- The empty canvas now offers "Open all in Tactical", resuming every standing-by operation into the auto-arranged grid in one click; beyond eight operations the button arms first so a misclick cannot spawn a pile of shells.
+
+#### Changed
+- Codex Sol, Luna, and Terra keep their existing 272K models and add explicit 512K and 1M variants, including Fast, in the gateway picker.
+- Chat Mode keeps its agent session alive for as long as the Operation is open, so background shells, subagents, and workflows outlive the turn that started them and report back when they settle.
+- Stopping a chat turn now interrupts the agent instead of ending its session, so background work started earlier keeps running.
+- The empty canvas standby list shows every standing-by operation with its last-activity time instead of only the two most recent, scrolling past four; the Korean copy now labels them as kept off so it no longer collides with the War Room waiting label.
+- Drop the rounded status mark from Sort by status and War Room group headers. Each panel already shows that mark.
+
+#### Fixed
+- Keep nested subagent frames off the Chat Mode host transcript so their tools and reports stay on the job surface.
+- Starting Chat Mode from Quick Launch with the ULTRACODE track now keeps standing dynamic-workflow orchestration (`xhigh` plus the session ultracode setting) instead of collapsing that choice to max intensity.
+
+## [1.63.0] - 2026-08-16
+
+### fleet-cli
+
+#### Changed
+- `fleet --version`, `-v`, and `version` now print the Fleet package version and channel. Claude Code's version is still `fleet cli --version`.
+- `fleet auth login` and `logout` reject an unknown provider name instead of opening a picker.
+- `fleet doctor` reports the install, Claude Code on PATH, gateway auth, and Console health without changing anything. `fleet status` is the same as `fleet console status`.
+- `fleet update --check` reports whether a newer package is available without installing or stopping the Console.
+
+### fleet-console
+
+#### Added
+- Show how much of the context window a chat session is using. A meter chip sits with the view chips and opens a breakdown of what fills the window: messages, tools, memory files, skills, and free space. Each folded turn line carries the tokens that turn added. The reading is taken when a prompt starts, which is the only moment the session answers, so it always describes the last prompt and says so.
+
+#### Changed
+- Every AI Gateway model now offers ULTRACODE in both launch intensity controls, while models without MAX skip that rung.
+- Right Rail panels now share one body text size, so switching between Repository, Quota, Skills, Ledger, and Files no longer changes the type you are reading.
+- Command Band controls now sit on one height, so the local chip, breadcrumb, and mode switch line up on a single baseline.
+- Code highlighting in the file preview now uses its own colour channel instead of borrowing the status colours, so a string no longer reads as "complete" or a number as "in progress".
+- Show each usage-limit reset as a calendar date and hour next to the remaining time, or as a 24-hour clock when it is a day or less away, keep the used percent under the bar, and put the exhaustion countdown in the old percent slot.
+- Give every Operation the same activity mark, one rounded square, in the sidebar, War Room, and the command band alike, in place of the launch-provider glyph, and drop the per-chip notification count.
+- Clear the panel caption down to the name and its window controls: the status mark and slot number are gone, and a More button opens the same Operation menu as right-clicking the sidebar chip.
+- Hide the stop and reply buttons on a War Room card, together with the first-turn invite that only makes sense next to the reply bubble. They return on the staged panel, where they can be used.
+
+#### Fixed
+- Keep Console APIs reachable when several Chat Mode panels are open by moving each chat journal off HTTP/1.1 EventSource onto the same ticketed WebSocket path the terminal already uses.
+- Render Chat Mode step commentary as markdown instead of forcing the whole sentence into italics.
+- Keep the chat workflow stage table in one set of columns at any panel width, eliding a value that no longer fits instead of letting each row set its own layout.
+- Show a gateway model in the chat workflow stage table by its own name, without the routing alias every row repeated.
+- Stop a long agent turn from stretching with blank space by no longer drawing a ledger segment whose sentence and steps are both empty.
+- Tighten the ledger rhythm so a folded tool line sits with its own sentence instead of leaving a blank line under it.
+- Opening Quick Launch from a chat reply bubble addresses that Operation and drops any leftover unsent draft.
+- The apex outline on Quick Launch keeps circling for as long as `ultracode` stays in the prompt. It used to freeze into a single arc the moment the ignition finished.
+- `fleet-console --help` now shows the installed version and channel instead of always saying `local`.
+
 ## [1.62.0] - 2026-08-16
 
 ### fleet-cli

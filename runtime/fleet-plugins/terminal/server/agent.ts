@@ -32,11 +32,11 @@ import { createConsoleObservabilityStore } from "./agent-api/observability-store
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
 import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
+import { resolveChatLaunchEffort } from "./agent-api/chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
 import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
-import type { ClaudeGatewayEffort } from "@dotobokuri/core-agent/claude";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown };
@@ -614,6 +614,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (action === "chat-answer") return handleChatAnswer(req, res, sessionId);
     if (action === "chat-stop") return handleChatStop(req, res, sessionId);
     if (action === "chat-job") return handleChatJob(req, res, sessionId);
+    if (action === "chat-job-stop") return handleChatJobStop(req, res, sessionId);
     if (!ctx.host.security.isTerminalAuthorized(req)) {
       ctx.host.http.writeJson(res, 401, { error: "unauthorized" });
       return true;
@@ -1226,6 +1227,39 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   }
 
   /**
+   * 백그라운드 작업 하나를 사용자가 멈춘다 — 터미널에서 그 셸을 kill하는 것과 같은 자리다.
+   *
+   * 200은 "자식이 중단 요청을 받았다"까지다. 실제 결말은 자식이 내는 `stopped` 알림이 말하며,
+   * 그 알림이 원장의 잡 줄을 닫는다 — 여기서 미리 닫으면 멈추지 않은 작업을 멈췄다고 그린다.
+   */
+  async function handleChatJobStop(req: Parameters<typeof handle>[0]["req"], res: Parameters<typeof handle>[0]["res"], sessionId: string): Promise<boolean> {
+    if (req.method !== "POST") return methodNotAllowed(res);
+    if (!ctx.host.security.validateHost(req) || !ctx.host.security.isTerminalAuthorized(req)) return unauthorized(res);
+    const node = ctx.host.operations.get(sessionId);
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const chat = chatRegistry.get(sessionId);
+    if (!chat) {
+      ctx.host.http.writeJson(res, 409, { error: "chat_not_active" });
+      return true;
+    }
+    const body = await ctx.host.http.readJsonBody<{ readonly jobId?: unknown }>(req);
+    const jobId = typeof body?.jobId === "string" ? body.jobId : "";
+    if (jobId.length === 0) {
+      ctx.host.http.writeJson(res, 400, { error: "invalid_job_id" });
+      return true;
+    }
+    if (!await chat.stopJob(jobId)) {
+      ctx.host.http.writeJson(res, 409, { error: "job_stop_unavailable" });
+      return true;
+    }
+    ctx.host.http.writeJson(res, 200, { ok: true });
+    return true;
+  }
+
+  /**
    * 잡 하나의 상세를 읽는다 — 서브에이전트의 도구 발자국, 또는 셸이 남긴 출력의 꼬리.
    *
    * 스트림에 싣지 않고 별도의 문을 두는 이유는 비용이다. 전사록과 명령 출력은 잡 하나당 수백
@@ -1308,7 +1342,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
     const model = readPayloadString(node.payload, "launchModel") || "opus[1m]";
-    const effort = chatEffortFromLaunchEffort(readPayloadString(node.payload, "launchEffort"));
+    const launchEffort = resolveChatLaunchEffort(readPayloadString(node.payload, "launchEffort"));
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
@@ -1339,7 +1373,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       seed: {
         baseUrl: gatewayBaseUrl,
         model,
-        ...(effort ? { effort } : {}),
+        ...(launchEffort ? { effort: launchEffort.effort } : {}),
         cwd,
         claudeConfigDir,
         origin: sessionOrigin,
@@ -1366,6 +1400,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // 터미널이 `--settings`로 강제하는 것과 같은 값이다. 없으면 같은 프롬프트가 표면에
         // 따라 다른 내장 스킬을 깨운다.
         ...(chatSkillOverrides ? { skillOverrides: chatSkillOverrides } : {}),
+        ...(launchEffort?.ultracode ? { ultracode: true } : {}),
         // 터미널 런치와 같은 자리에 같은 옵션으로 렌더한다 — 두 표면이 한 플러그인을 공유한다.
         resolveFleetPluginRoots: () => renderFleetPluginRootsForChat({
           cwd,
@@ -1750,15 +1785,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     ctx.host.http.writeJson(res, 401, { error: "Unauthorized" });
     return true;
   }
-}
-
-// launch factory의 ultra는 wire effort가 아니라 하네스 능력이다 — SDK 턴에는 max로 옮긴다.
-function chatEffortFromLaunchEffort(value: string): ClaudeGatewayEffort | undefined {
-  if (value.length === 0) return undefined;
-  if (value === "ultra") return "max";
-  return (["low", "medium", "high", "xhigh", "max"] as readonly string[]).includes(value)
-    ? value as ClaudeGatewayEffort
-    : undefined;
 }
 
 function isOperationDeletedEventPayload(value: unknown): value is { readonly operationId: string; readonly pluginId: string } {

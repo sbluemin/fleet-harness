@@ -28,7 +28,6 @@ import "./agent-cli.css";
 import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
 import { AgentChatView } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
-import { formatElapsedDuration } from "./helpers.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
 import type { ModelAuthProviderState } from "./model-auth.js";
 import { loadSystemPromptSettings, setSystemPromptSettingsField, useSystemPromptSettingsStore } from "./settings.js";
@@ -278,6 +277,14 @@ function usePinnedScrollLocal(resetKey: unknown, contentKey: unknown): PinnedScr
   }, [resetKey]);
 
   return { containerRef, contentRef };
+}
+
+function formatElapsedDuration(elapsedMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(elapsedMs / 1000));
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}m ${seconds}s`;
 }
 
 function useElapsed(startedAt: number | undefined, finishedAt: number | undefined): string {
@@ -2176,4 +2183,3 @@ function OpencodeGlyph() {
   );
 }
 
-export { formatElapsedDuration } from "./helpers.js";

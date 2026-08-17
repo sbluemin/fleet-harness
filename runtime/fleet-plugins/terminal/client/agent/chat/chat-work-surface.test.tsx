@@ -73,6 +73,7 @@ function render(): void {
     pluginId: "terminal",
     type: "agent",
     language: "en",
+    operation: { id: "op-1", theaterId: "theater-1", type: "agent", pluginId: "terminal", title: "op", payload: {}, geometry: null, ts: { createdAt: 0, updatedAt: 0 } },
     runtimeState: { lifecycle: "live", activity: "idle" },
   } as unknown as OperationRenderContext;
   act(() => root?.render(createElement(AgentChatView, {

@@ -13,7 +13,6 @@ import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
 import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
-import { resolveOperationMark } from "../operation-mark.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
@@ -138,8 +137,6 @@ interface TheaterEntryBuildInput {
   readonly activeOperationId: string | null;
   readonly operationNotifications: Readonly<Record<string, OperationNotification>>;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
-  readonly catalog: readonly OperationCatalogPlugin[];
-  readonly renderKindIcon: (pluginId: string, kind: OperationLaunchKind) => ReactNode;
 }
 
 interface TheaterSectionHeaderProps {
@@ -221,13 +218,11 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
 export function StatusSectionSlot({
   theaterId,
   section,
-  unseenCount = 0,
   defaultCollapsed = false,
   children,
 }: {
   readonly theaterId: string;
   readonly section: StatusSection;
-  readonly unseenCount?: number;
   readonly defaultCollapsed?: boolean;
   readonly children: ReactNode;
 }) {
@@ -253,9 +248,7 @@ export function StatusSectionSlot({
         >
           <StatusSectionCollapseArrow collapsed={collapsed} />
         </button>
-        <span className="side-bar-status-header__dot" aria-hidden="true" />
         <span className="side-bar-status-header__label">{section.label}</span>
-        {unseenCount > 0 ? <span className="side-bar-status-header__unseen">{unseenCount}</span> : null}
         <span className="side-bar-status-header__count">{section.entries.length}</span>
       </div>
       {!collapsed ? (
@@ -270,13 +263,11 @@ export function StatusSectionSlot({
 function StatusRecoveryShelves({
   theaterId,
   minimizedSection,
-  minimizedUnseenCount,
   dormantSection,
   renderEntry,
 }: {
   readonly theaterId: string;
   readonly minimizedSection: StatusSection;
-  readonly minimizedUnseenCount: number;
   readonly dormantSection: StatusSection;
   readonly renderEntry: (entry: SideBarEntry, index: number, recovery: "minimized" | "ended") => ReactNode;
 }) {
@@ -286,7 +277,7 @@ function StatusRecoveryShelves({
       <section className="triage-side-bar-minimized-shelf side-bar-status-recovery-shelf" onContextMenu={(event) => event.preventDefault()}>
         <p className="triage-side-bar-caption">{t("sidebar.status.minimizedShelf")}</p>
         <ol className="triage-side-bar-minimized-list" aria-label={t("sidebar.status.minimizedShelf")}>
-          <StatusSectionSlot theaterId={theaterId} section={minimizedSection} unseenCount={minimizedUnseenCount}>
+          <StatusSectionSlot theaterId={theaterId} section={minimizedSection}>
             {minimizedSection.entries.map((entry, index) => renderEntry(entry, index, "minimized"))}
           </StatusSectionSlot>
         </ol>
@@ -399,14 +390,19 @@ export function OperationsSideBar({
   const activeGroups = groups.filter((group) => group.theaterId === activeTheaterId);
   const minimizedSet = new Set(minimized);
   const collapsedGroupSet = new Set(collapsedGroups);
+  // 엔트리는 처음부터 표시 활동을 싣는다 — 미확인 도착으로 AWAITING에 오른 Operation이 축마다
+  // 다른 상태를 말하지 않도록, 그룹축·상태축·복구 선반이 같은 값을 받는다.
   const allEntries: SideBarEntry[] = sortOperationsByOrder(activeOperations, canvas.operationOrder).map((operation) => ({
     operation,
     active: activeOperationId === operation.id,
     minimized: minimizedSet.has(operation.id),
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationActivity(operation, operationRuntime),
+    status: resolveOperationDisplayActivity({
+      activity: resolveOperationActivity(operation, operationRuntime),
+      operationId: operation.id,
+      idleArrivalIds,
+    }),
     ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-    ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
   const { living: statusSections, minimized: minimizedSection, dormant: dormantSection } = groupTheaterStatusEntries(
@@ -415,8 +411,6 @@ export function OperationsSideBar({
     getStatusTransitionTick,
     t,
   );
-  const idleUnseenIds = idleArrivalIds;
-  const isIdleUnseen = (id: string) => id !== activeOperationId && idleUnseenIds.has(id);
   // STATUS 축 렌더는 entry/그룹 조회가 칩마다 반복되므로 O(n²)를 피해 Map으로 한 번만 인덱싱한다.
   const entryIndexById = new Map(allEntries.map((entry, index) => [entry.operation.id, index] as const));
   const groupMarkByGroupId = new Map(activeGroups.map((group) => {
@@ -451,7 +445,6 @@ export function OperationsSideBar({
         accentValue={accentValue}
         groupMark={groupMark}
         statusAxis
-        idleUnseen={recovery !== "ended" && isIdleUnseen(entry.operation.id)}
         statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
         minimizeEnabled={!recovery}
@@ -951,8 +944,6 @@ export function OperationsSideBar({
               activeOperationId: null,
               operationNotifications,
               operationRuntime,
-              catalog,
-              renderKindIcon,
             });
             return (
               <TheaterInactiveSection
@@ -1030,7 +1021,6 @@ export function OperationsSideBar({
                     key={section.status}
                     theaterId={theater.id}
                     section={section}
-                    unseenCount={section.entries.filter((entry) => isIdleUnseen(entry.operation.id)).length}
                   >
                     {section.entries.map((entry, index) => renderActiveStatusEntry(entry, index))}
                   </StatusSectionSlot>
@@ -1039,7 +1029,6 @@ export function OperationsSideBar({
                     key="__recovery__"
                     theaterId={theater.id}
                     minimizedSection={minimizedSection}
-                    minimizedUnseenCount={minimizedSection.entries.filter((entry) => isIdleUnseen(entry.operation.id)).length}
                     dormantSection={dormantSection}
                     renderEntry={renderActiveStatusEntry}
                   />,
@@ -1107,7 +1096,6 @@ export function OperationsSideBar({
                         index={globalIndex}
                         isCloseArmed={armedCloseId === entry.operation.id}
                         accentValue={accentValue}
-                        idleUnseen={isIdleUnseen(entry.operation.id)}
                         dragging={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging}
                         dragOffsetY={drag?.kind === "chip" && drag.sourceId === entry.operation.id && drag.dragging ? drag.currentY - drag.startY : 0}
                         dropTarget={
@@ -1297,15 +1285,20 @@ export function groupOperationsByStatus(
   return buildStatusSectionOrder(t).map(({ status, label }) => ({
     status,
     label,
-    // entry.status는 엔트리 생성 시점에 resolveOperationActivity로 이미 해소된다.
-    // 미해소(undefined) 엔트리의 idle 폭백은 직접 구성된 입력에 대한 방어 계약이다.
+    // 사이드바 엔트리는 생성 시점에 이미 표시 활동으로 해소되므로 여기서의 승격은 멱등이다.
+    // 그래도 남겨 둔다 — 이 함수는 raw 활동으로 직접 구성된 입력도 받으며, 칸을 정한 표시 활동을
+    // 엔트리에도 실어 보내야 섹션과 행의 마크가 같은 화면에서 다른 상태를 말하지 않는다.
+    // 미해소(undefined) 엔트리의 idle 폭백은 그 직접 구성 입력에 대한 방어 계약이다.
     entries: entries
-      .filter((entry) =>
-        resolveOperationDisplayActivity({
+      .flatMap((entry) => {
+        const display = resolveOperationDisplayActivity({
           activity: entry.status ?? "idle",
           operationId: entry.operation.id,
           idleArrivalIds,
-        }) === status)
+        });
+        if (display !== status) return [];
+        return [entry.status === display ? entry : { ...entry, status: display }];
+      })
       .sort((left, right) => {
         const leftTick = getTick?.(left.operation.id);
         const rightTick = getTick?.(right.operation.id);
@@ -1350,9 +1343,8 @@ export function buildTheaterEntries({
   activeOperationId,
   operationNotifications,
   operationRuntime,
-  catalog,
-  renderKindIcon,
 }: TheaterEntryBuildInput): SideBarEntry[] {
+  const idleArrivalIds = getIdleArrivalIds();
   return sortOperationsByOrder(
     operations.filter((operation) => operation.theaterId === theaterId),
     operationOrder,
@@ -1361,9 +1353,12 @@ export function buildTheaterEntries({
     active: activeOperationId === operation.id,
     minimized: minimizedSet.has(operation.id),
     notificationCount: operationNotifications[operation.id] ? 1 : 0,
-    status: resolveOperationActivity(operation, operationRuntime),
+    status: resolveOperationDisplayActivity({
+      activity: resolveOperationActivity(operation, operationRuntime),
+      operationId: operation.id,
+      idleArrivalIds,
+    }),
     ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
-    ...resolveOperationMark(operation, catalog, renderKindIcon),
   }));
 }
 
@@ -1541,7 +1536,6 @@ function TheaterInactiveSection({
     getStatusTransitionTick,
     t,
   );
-  const idleUnseenIds = getIdleArrivalIds();
   const hasCustomGroups = sections.some((section) => section.group !== null);
   const renderInactiveStatusEntry = (
     entry: SideBarEntry,
@@ -1560,7 +1554,6 @@ function TheaterInactiveSection({
         accentValue={accentValue}
         groupMark={resolveEntryGroupMark(entry, groups)}
         statusAxis
-        idleUnseen={recovery !== "ended" && idleUnseenIds.has(entry.operation.id)}
         statusLanded={recovery !== "ended" && statusLandingIds.has(entry.operation.id)}
         reorderEnabled={false}
         minimizeEnabled={false}
@@ -1616,7 +1609,6 @@ function TheaterInactiveSection({
               key={section.status}
               theaterId={theater.id}
               section={section}
-              unseenCount={section.entries.filter((entry) => idleUnseenIds.has(entry.operation.id)).length}
             >
               {section.entries.map((entry, index) => renderInactiveStatusEntry(entry, index))}
             </StatusSectionSlot>
@@ -1625,7 +1617,6 @@ function TheaterInactiveSection({
               key="__recovery__"
               theaterId={theater.id}
               minimizedSection={minimizedSection}
-              minimizedUnseenCount={minimizedSection.entries.filter((entry) => idleUnseenIds.has(entry.operation.id)).length}
               dormantSection={dormantSection}
               renderEntry={renderInactiveStatusEntry}
             />,
@@ -1667,7 +1658,6 @@ function TheaterInactiveSection({
                           index={index}
                           isCloseArmed={false}
                           accentValue={accentValue}
-                          idleUnseen={idleUnseenIds.has(entry.operation.id)}
                           dragging={false}
                           dragOffsetY={0}
                           dropTarget={false}

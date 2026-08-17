@@ -191,12 +191,12 @@ describe("agent chat mode routes", () => {
 
     expect(harness.responses.at(-1)).toEqual({ status: 200, body: { delivered: true, chat: true } });
     await vi.waitFor(() => {
-      expect(harness.startTurn).toHaveBeenCalledWith(expect.objectContaining({
-        prompt: "continue the refactor",
-        resume: "sid-live",
-        permissionMode: "bypassPermissions",
-      }));
+      expect(harness.sends).toEqual(["continue the refactor"]);
     });
+    expect(harness.openSession).toHaveBeenCalledWith(expect.objectContaining({
+      resume: "sid-live",
+      permissionMode: "bypassPermissions",
+    }));
     expect(harness.writes).toEqual([]);
     // 전달이 CLI 재기동을 유발하면 안 된다 — attach는 세션 생성 1회뿐이어야 한다.
     expect(harness.attach).toHaveBeenCalledTimes(1);
@@ -326,27 +326,46 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
 
   const sdkConfigDir = mkdtempSync(path.join(os.tmpdir(), "fleet-chat-sdk-"));
   temporaryDirectories.push(sdkConfigDir);
-  const startTurn = vi.fn(async (_turn: unknown) => ({
-    close: () => {},
-    [Symbol.asyncIterator]() {
-      const messages = [
-        { type: "system", subtype: "init", session_id: "sid-live" },
-        { type: "assistant", message: { content: [{ type: "text", text: "continuing" }] } },
-        { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
-      ];
-      let index = 0;
-      return {
-        async next() {
-          if (index >= messages.length) return { done: true as const, value: undefined };
-          return { done: false as const, value: messages[index++] };
-        },
-      };
-    },
-  }));
+  const sends: string[] = [];
+  // 세션 하나가 여러 프롬프트를 받는다 — 보낼 때마다 그 턴의 메시지가 열린 스트림으로 흘러든다.
+  const openSession = vi.fn(async (_request: unknown) => {
+    const queue: Record<string, unknown>[] = [];
+    let waiting: (() => void) | null = null;
+    let closed = false;
+    const wake = (): void => { const resume = waiting; waiting = null; resume?.(); };
+    return {
+      send: (text: string) => {
+        sends.push(text);
+        queue.push(
+          { type: "system", subtype: "init", session_id: "sid-live" },
+          { type: "assistant", message: { content: [{ type: "text", text: "continuing" }] } },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        );
+        wake();
+      },
+      interrupt: async () => {},
+      stopTask: async () => {},
+      backgroundTasks: async () => true,
+      getContextUsage: async () => null,
+      close: () => { closed = true; wake(); },
+      [Symbol.asyncIterator]() {
+        return {
+          async next(): Promise<IteratorResult<Record<string, unknown>>> {
+            for (;;) {
+              const next = queue.shift();
+              if (next !== undefined) return { done: false, value: next };
+              if (closed) return { done: true, value: undefined };
+              await new Promise<void>((resolve) => { waiting = resolve; });
+            }
+          },
+        };
+      },
+    };
+  });
   (globalThis as { __fleetAgentChatSdkFactory?: unknown }).__fleetAgentChatSdkFactory = async ({ models }: { readonly models: readonly string[] }) => ({
     configDir: sdkConfigDir,
     models,
-    startTurn,
+    openSession,
     dispose: async () => {},
   });
 
@@ -504,7 +523,8 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   return {
     attach,
     terminate,
-    startTurn,
+    openSession,
+    sends,
     responses,
     writes,
     operation: (id: string) => operations.find((operation) => operation.id === id),

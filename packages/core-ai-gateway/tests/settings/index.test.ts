@@ -170,6 +170,20 @@ describe("ai-gateway settings", () => {
       .toEqual(new Set(["flagship", "standard", "light", null]));
   });
 
+  it("keeps the ultra launch sentinel out of the settings catalog DTO", () => {
+    // ultracode는 모델의 단이 아니라 Console launch의 하네스 능력이다 — 설정 UI가 고를 수 있는
+    // 사다리에 서면 안 되고, Sol/Terra도 max에서 끝난다.
+    const catalog = buildAiGatewayCatalog();
+    const projected = new Map(
+      catalog.providers.flatMap((provider) => provider.models).map((model) => [model.id, model]),
+    );
+    for (const model of projected.values()) {
+      expect(model.effort?.levels ?? []).not.toContain("ultra");
+    }
+    expect(projected.get("codex--gpt-5.6-sol")?.effort?.levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+    expect(projected.get("codex--gpt-5.6-terra")?.effort?.levels).toEqual(["low", "medium", "high", "xhigh", "max"]);
+  });
+
   it("parses host-only flags and rejects malformed or unknown per-model keys", () => {
     expect(parseAiGatewayUpdate({ models: [{ id: "kimi--k3", hostOnly: true }] })).toEqual({
       ok: true,

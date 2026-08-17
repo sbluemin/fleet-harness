@@ -1,6 +1,6 @@
 import { readFleetCliRelease } from "../release.js";
 import { checkUpdateStatus } from "./check.js";
-import type { UpdateCommandIo } from "./types.js";
+import type { UpdateCommandIo } from "./dispatcher.js";
 
 export async function runFleetUpdateCheck(io: UpdateCommandIo): Promise<number> {
   const release = readFleetCliRelease();

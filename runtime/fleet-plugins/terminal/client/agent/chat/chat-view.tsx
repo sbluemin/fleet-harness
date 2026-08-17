@@ -2,7 +2,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { getT } from "../../i18n/index.js";
-import { AgentApiError, readAgentChatJobDetail } from "../api.js";
+import { AgentApiError, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
@@ -22,6 +22,7 @@ import {
   type AgentChatTurn,
   type AgentChatTurnItem,
 } from "./chat-events.js";
+import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
@@ -187,6 +188,12 @@ export function AgentChatView({
     [context.language],
   );
 
+  // 이 세션의 실행 좌표. Operation payload에 실려 오므로 스트림과 무관하게 첫 프레임부터 서 있다.
+  const coordinates = React.useMemo(
+    () => readAgentChatSessionCoordinates(context.operation.payload),
+    [context.operation.payload],
+  );
+
   const openJobs = openAgentChatJobs(state);
   // 원장의 도구 줄과 잡을 잇는 축. 잡을 낳은 스텝은 한 줄이 아니라 카드로 선다.
   const jobsByToolUse = React.useMemo(() => {
@@ -272,6 +279,7 @@ export function AgentChatView({
               이 줄이 대화 면 **안에** 사는 이유는 실측이다: 패널 전체에 걸어 두면 작업 면이 열린
               순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
           <div className="agent-view-chip-row">
+            <SessionCoordinateChip coordinates={coordinates} t={t} />
             {leadingChip}
             <ContextMeterChip context={state.context} language={language} />
             <button
@@ -295,6 +303,11 @@ export function AgentChatView({
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
           >
+        {/* 대화가 시작된 좌표는 사건이다 — 로그의 첫 줄에 기록으로 남는다. 위 칩이 "지금 이 패널이
+            무엇인가"를 답한다면, 이 줄은 전사록을 다시 읽을 때 "이 답이 무엇으로 나온 답인가"를
+            그 자리에서 답한다. 연결 고지보다 앞에 서는 이유는 이것이 연결이 아니라 세션의 사실이기
+            때문이다. */}
+        <SessionBirthLine coordinates={coordinates} t={t} />
         {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
             않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
             상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
@@ -458,6 +471,65 @@ export function AgentChatView({
         ) : null}
       </div>
     </section>
+  );
+}
+
+/**
+ * 이 세션의 실행 좌표를 상시로 말하는 칩.
+ *
+ * 여러 채팅 패널이 한 화면에 서면, 무거운 지시를 어디로 던질지는 좌표가 정한다 — 그래서 이 표식은
+ * 대화 안이 아니라 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리에 선다. 평상시에는 중립이라
+ * 대화를 이기지 않고, 신호(상태) 채널도 쓰지 않는다. 색을 얻는 것은 강도뿐이며, 그 어휘는
+ * 런치 트랙의 것을 그대로 쓴다.
+ *
+ * 컨트롤이 아니라 사실이므로 버튼이 아니다. 누를 수 있게 그리면 "여기서 바꿀 수 있다"는
+ * 거짓 약속이 된다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이다.
+ */
+function SessionCoordinateChip({
+  coordinates,
+  t,
+}: {
+  readonly coordinates: AgentChatSessionCoordinates;
+  readonly t: ReturnType<typeof getT>;
+}) {
+  const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
+  const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
+  return (
+    // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
+    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
+    // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
+    <span
+      className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
+      role="img"
+      aria-label={t("terminal.chat.coordAria", { model, effort })}
+      {...(coordinates.title ? { title: coordinates.title } : {})}
+    >
+      <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+      <span className="agent-chat-coord-model">{model}</span>
+      <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
+      <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
+    </span>
+  );
+}
+
+/** 로그 첫 줄의 태생 기록 — 이 세션이 어떤 좌표로 시작했는지를 대화의 서사 안에 남긴다. */
+function SessionBirthLine({
+  coordinates,
+  t,
+}: {
+  readonly coordinates: AgentChatSessionCoordinates;
+  readonly t: ReturnType<typeof getT>;
+}) {
+  const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
+  const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
+  return (
+    <p className={`agent-chat-birth${coordinates.ultracode ? " is-ultracode" : ""}`}>
+      <span className="agent-chat-birth-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+      <span className="agent-chat-birth-text">
+        {t("terminal.chat.birthLine", { model, effort })}
+      </span>
+      <span className="agent-chat-birth-rule" aria-hidden="true" />
+    </p>
   );
 }
 
@@ -672,7 +744,7 @@ function Ledger({
   const t = getT(language);
   // 잡을 낳은 스텝은 접지 않는다 — "위임 1건"으로 접히면 그 잡으로 가는 문이 사라진다. 다만
   // 구간에서 꺼내지도 않는다: 원장의 구간을 가르는 것은 모델의 문장이고, 꺼내면 그 잡을 부른
-  // 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다. 실패·Theater 밖 스텝과 같은
+  // 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다. 확인되지 않은 스텝과 같은
   // "줄을 지키는 예외"로 세그먼터에 넘긴다.
   const pinned = React.useCallback(
     (item: AgentChatTurnItem) => item.id !== undefined && jobsByToolUse.has(item.id),
@@ -713,8 +785,8 @@ function Ledger({
 }
 
 /**
- * 끝난 평범한 스텝의 한 줄 집계 — "파일 2개 읽음 · 셸 1회 실행". 도구를 하나하나 세우면 긴 턴이
- * 읽히지 않으므로 일상은 여기로 접히고, 예외(진행 중·실패·Theater 밖)만 자기 줄을 지킨다.
+ * 끝난 스텝의 한 줄 집계 — "파일 2개 읽음 · 셸 1회 실행". 도구를 하나하나 세우면 긴 턴이
+ * 읽히지 않으므로 결과가 온 스텝은 여기로 접히고, 예외(진행 중·확인되지 않음)만 자기 줄을 지킨다.
  *
  * 접힌 것은 감춘 것이 아니라 접은 것이다 — 줄 자체가 열쇠다. 누르면 그 집계가 세고 있던 스텝이
  * 순서대로 펼쳐진다. 그래서 이 줄은 눌린다는 사실을 스스로 말해야 한다: 꺾쇠 하나와 hover에서
@@ -1353,6 +1425,7 @@ function JobDetail({
 }) {
   const t = getT(language);
   const detail = useAgentChatJobDetail(operationId, job);
+  const stop = useAgentChatJobStop(operationId, job);
   return (
     <>
       <div className="agent-chat-detail-head">
@@ -1362,7 +1435,21 @@ function JobDetail({
         <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
         <span className="agent-chat-detail-title">{job.title}</span>
         <span className={`agent-chat-job-outcome ${jobStateClass(job)}`}>{jobOutcome(job, language)}</span>
+        {/* 도는 잡에만 선다. 끝난 잡 위의 중단 버튼은 누를 수 없는 문이고, 그 자리에 있는 것만으로
+            결말이 아직 열려 있다고 말한다. */}
+        {job.open ? (
+          <button
+            type="button"
+            className="agent-chat-detail-stop"
+            aria-label={t("terminal.chat.jobStopAria")}
+            disabled={stop.state === "stopping"}
+            onClick={stop.request}
+          >
+            {stop.state === "stopping" ? t("terminal.chat.jobStopping") : t("terminal.chat.jobStop")}
+          </button>
+        ) : null}
       </div>
+      {stop.state === "failed" ? <div className="agent-chat-detail-stop-error">{t("terminal.chat.jobStopFailed")}</div> : null}
       <div className="agent-chat-detail-meta">{jobMetaParts(job, language).join(" · ")}</div>
       <div className="agent-chat-detail-body">
         {job.kind === "workflow" ? (
@@ -1498,6 +1585,31 @@ function useAgentChatJobDetail(
     };
   }, [operationId, job.id, wanted, job.ends]);
   return result;
+}
+
+/**
+ * 잡 하나를 멈추는 자리.
+ *
+ * 성공을 낙관적으로 그리지 않는다 — 요청이 닿았다는 것과 그 작업이 실제로 끝났다는 것은 다르고,
+ * 후자는 자식이 보내는 결말 알림만 말할 수 있다. 그래서 이 훅은 요청 중과 실패만 안다.
+ * 잡이 닫히면 카드가 스스로 결말을 그리므로, `job.open`이 꺼지는 것이 곧 성공 표시다.
+ */
+function useAgentChatJobStop(
+  operationId: string,
+  job: AgentChatJob,
+): { readonly state: "idle" | "stopping" | "failed"; readonly request: () => void } {
+  const [state, setState] = React.useState<"idle" | "stopping" | "failed">("idle");
+  // 다른 잡으로 옮겨 가면 앞 잡의 실패 표시를 들고 가지 않는다.
+  React.useEffect(() => {
+    setState("idle");
+  }, [job.id]);
+  const request = React.useCallback(() => {
+    setState("stopping");
+    void stopAgentChatJob(operationId, job.id)
+      .then(() => setState("idle"))
+      .catch(() => setState("failed"));
+  }, [operationId, job.id]);
+  return { state, request };
 }
 
 /** 워크플로 한 단계 — 에이전트별로 어떤 신원이 얼마를 썼는지가 이 표의 요점이다. */

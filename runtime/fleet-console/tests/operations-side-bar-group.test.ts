@@ -46,7 +46,6 @@ function makeEntry(id: string, groupId?: string | null, status?: OperationActivi
     minimized: false,
     notificationCount: 0,
     status,
-    icon: null,
   };
 }
 

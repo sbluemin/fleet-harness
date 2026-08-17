@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { CONSOLE_SECURITY_HEADERS } from "../core/host/security-headers.js";
+import { CONSOLE_SECURITY_HEADERS } from "../core/host/http-infra.js";
 
 describe("console security headers", () => {
   it("allows only the badge image host needed by markdown previews", () => {

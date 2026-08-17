@@ -1,9 +1,9 @@
-import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode, type SyntheticEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
-import type { LaunchProviderGlyphId } from "../components/launch-provider-glyphs.js";
+import { OperationStatusIcon } from "../components/operation-status-icon.js";
 import { useT } from "../i18n/index.js";
-import { operationActivityLabel, operationActivityVisual, type OperationActivityVisual } from "../operation-activity.js";
+import { type OperationActivityVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
 import type { OperationNode } from "../types.js";
 import {
@@ -22,9 +22,6 @@ export interface SideBarEntry {
    * 색은 활동을 말하는 자리이므로 모드는 신호 채널을 빌리지 않는다.
    */
   readonly surface?: string;
-  readonly icon: ReactNode;
-  /** 실행된 공급자. 있으면 마크가 그 공급자의 캐리어 시그니처 톤을 입는다. */
-  readonly launchProvider?: LaunchProviderGlyphId | null;
 }
 
 interface SideBarChipProps {
@@ -36,7 +33,6 @@ interface SideBarChipProps {
   /** 전역 선별 사이드바에서 소속 Theater를 축약 없이 보여주는 중립 pill — Theater 이름 전체를 넣는다. */
   readonly theaterName?: string | null;
   readonly statusAxis?: boolean;
-  readonly idleUnseen?: boolean;
   readonly statusLanded?: boolean;
   readonly reorderEnabled?: boolean;
   readonly dragging: boolean;
@@ -74,7 +70,6 @@ export function OperationsSideBarChip({
   groupMark = null,
   theaterName = null,
   statusAxis = false,
-  idleUnseen = false,
   statusLanded = false,
   reorderEnabled = true,
   minimizeEnabled = true,
@@ -97,22 +92,22 @@ export function OperationsSideBarChip({
   const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, notificationCount, status, surface } = entry;
+  const { operation, active, minimized, status, surface } = entry;
   const title = displayTitle(operation);
   // 전역 선별 목록에서 같은 제목이 여러 Theater에 있을 수 있다 — pill은 장식(aria-hidden)이므로
   // 소속 Theater를 접근성 이름에 함께 싣는다. 기존 aria 키의 groupContext 슬롯을 재사용한다.
   const theaterContext = theaterName ? t("sidebar.chip.inTheater", { name: theaterName }) : "";
   const groupContext = (statusAxis && groupMark ? t("sidebar.chip.inGroup", { name: groupMark.name }) : "") + theaterContext;
-  const unseenContext = idleUnseen ? t("sidebar.chip.unseenContext") : "";
+  // 미확인 도착은 활동 축과 별개의 사실이 아니다 — 그 조건이 곧 표시 활동의 AWAITING이므로
+  // 칩은 상태 마크 하나로만 말한다. 접미 문구·행 틴트·우측 점은 같은 사실의 중복 발화였다.
   const chipAriaLabel = resumeOnActivate
     ? t("sidebar.chip.resumeAria", { title, groupContext })
     : active
-      ? t("sidebar.chip.focusedAria", { title, groupContext, unseenContext })
-      : t("sidebar.chip.focusAria", { title, groupContext, unseenContext });
+      ? t("sidebar.chip.focusedAria", { title, groupContext })
+      : t("sidebar.chip.focusAria", { title, groupContext });
   const rename = useInlineRename({ currentTitle: title, onCommit: (next) => onRename(operation.id, next), onBegin: onDisarmClose });
   const chipClassName = [
     "side-bar-chip",
-    idleUnseen ? "side-bar-chip--unseen" : "",
     active ? "side-bar-chip--active" : "",
     minimized ? "side-bar-chip--minimized" : "",
     statusLanded ? "side-bar-chip--status-landed" : "",
@@ -227,10 +222,11 @@ export function OperationsSideBarChip({
         }
       }}
     >
-      <span className="side-bar-chip-beacon-button" aria-hidden="true">
-        <span className={`side-bar-chip-op-icon${entry.launchProvider ? ` operation-provider-mark is-${entry.launchProvider}` : ""}`}>
-          {entry.icon ?? <DefaultOpIcon />}
-        </span>
+      {/* 이름 왼쪽 슬롯은 활동 상태가 소유한다 — 목록에서 먼저 읽혀야 하는 것은 무엇으로
+          띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
+          말하지 않으므로 마크가 그 이름을 진다. */}
+      <span className="side-bar-chip-beacon-button">
+        <OperationStatusIcon status={status} className="side-bar-chip-status" />
       </span>
       {rename.renaming ? (
         <input
@@ -247,9 +243,6 @@ export function OperationsSideBarChip({
       ) : (
         <span className="side-bar-chip-name" onDoubleClick={preview ? undefined : rename.begin}>{title}</span>
       )}
-      {notificationCount > 0 ? (
-        <span className="side-bar-chip-count">{notificationCount}</span>
-      ) : null}
       {theaterName ? (
         <span className="side-bar-chip-theater-pill" title={theaterName} aria-hidden="true">
           {theaterName}
@@ -270,21 +263,6 @@ export function OperationsSideBarChip({
           title={groupMark.name}
           aria-label={t("sidebar.chip.groupAria", { name: groupMark.name })}
           style={{ "--group-mark": groupMark.color } as CSSProperties}
-        />
-      ) : null}
-      {idleUnseen ? (
-        <span
-          className="side-bar-chip-unseen"
-          aria-hidden="true"
-          title={t("sidebar.chip.unseenTitle")}
-        />
-      ) : null}
-      {!statusAxis ? (
-        <span
-          className={`side-bar-chip-status ${chipStatusClass(status)}`}
-          role="img"
-          aria-label={chipStatusLabel(status)}
-          title={chipStatusLabel(status)}
         />
       ) : null}
       {surface && !preview ? (
@@ -328,19 +306,6 @@ function displayTitle(operation: OperationNode): string {
   return operation.title;
 }
 
-function chipStatusClass(status: OperationActivityVisual | undefined): string {
-  const visual = operationActivityVisual(status);
-  if (visual === "running") return "tenant-beacon is-turn-running";
-  if (visual === "background") return "tenant-beacon is-background";
-  if (visual === "awaiting") return "tenant-beacon is-awaiting";
-  if (visual === "ended") return "tenant-beacon is-ended";
-  return "tenant-beacon is-idle";
-}
-
-function chipStatusLabel(status: OperationActivityVisual | undefined): string {
-  return operationActivityLabel(status);
-}
-
 function SideBarCloseIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -363,10 +328,3 @@ function SideBarMinimizeIcon() {
   );
 }
 
-function DefaultOpIcon() {
-  return (
-    <svg viewBox="0 0 14 14" aria-hidden="true">
-      <rect x="2" y="2" width="10" height="10" rx="2.5" fill="none" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}

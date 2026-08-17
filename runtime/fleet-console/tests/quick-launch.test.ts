@@ -610,13 +610,14 @@ describe("buildQuickLaunchEffortDeck", () => {
     id: "fable",
     label: "Fable",
     launch: { model: "fable[1m]" },
-    effortAxis: ["low", "medium", "high", "xhigh", "max", "ultracode"],
-    gatedEfforts: ["max", "ultracode"],
+    effortAxis: ["low", "medium", "high", "xhigh", "max", "ultra"],
+    gatedEfforts: ["max", "ultra"],
     chips: [
       { id: "low", label: "LOW", launch: { model: "fable[1m]", effort: "low" } },
       { id: "high", label: "HIGH", launch: { model: "fable[1m]", effort: "high" } },
       { id: "max", label: "MAX", launch: { model: "fable[1m]", effort: "max" } },
-      { id: "ultracode", label: "ULTRACODE", launch: { model: "fable[1m]", effort: "ultracode" } },
+      // production sentinel은 ultra다 — 칩 id가 곧 launch payload의 effort로 실린다.
+      { id: "ultra", label: "ULTRACODE", launch: { model: "fable[1m]", effort: "ultra" } },
     ],
   } as const;
 
@@ -640,14 +641,14 @@ describe("buildQuickLaunchEffortDeck", () => {
 
   it("reveals a gated tier only when its name is typed from the start", () => {
     expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "ma", false))).toEqual(["max"]);
-    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "ultra", false))).toEqual(["ultracode"]);
+    expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "ultra", false))).toEqual(["ultra"]);
     // 우연한 부분 일치("l" ⊂ ULTRACODE)는 게이트를 열지 않는다.
     expect(ids(buildQuickLaunchEffortDeck(row, null, "AUTO", "l", false))).toEqual(["low"]);
   });
 
   it("keeps the gate open while the current effort is a gated tier", () => {
     const deck = buildQuickLaunchEffortDeck(row, "max", "AUTO", "", false);
-    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultracode"]);
+    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultra"]);
     expect(deck.options.find((option) => option.id === "max")?.checked).toBe(true);
     // 고른 값이 게이트를 붙들고 있으면 문 행은 서지 않는다 — 접어도 접히지 않을 컨트롤이다.
     expect(deck.gateHeldByValue).toBe(true);
@@ -655,7 +656,7 @@ describe("buildQuickLaunchEffortDeck", () => {
 
   it("opens every gated tier when the gate row is opened", () => {
     const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
-    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultracode"]);
+    expect(ids(deck)).toEqual([null, "low", "high", "max", "ultra"]);
     expect(deck.gateOpen).toBe(true);
     expect(deck.gateHeldByValue).toBe(false);
   });
@@ -677,7 +678,7 @@ describe("buildQuickLaunchEffortDeck", () => {
 
   it("marks gated tiers as apex so the deck can split MAX's ember from a plain max", () => {
     const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
-    expect(deck.options.filter((option) => option.apex).map((option) => option.id)).toEqual(["max", "ultracode"]);
+    expect(deck.options.filter((option) => option.apex).map((option) => option.id)).toEqual(["max", "ultra"]);
   });
 
   it("reports no gate when the model offers no gated tier — 'absent' must not look like 'collapsed'", () => {
@@ -690,7 +691,7 @@ describe("buildQuickLaunchEffortDeck", () => {
   });
 
   it("counts only offered gated tiers — an axis-only rung raises no door", () => {
-    const axisOnly = { ...plainRow, gatedEfforts: ["max", "ultracode"] } as const;
+    const axisOnly = { ...plainRow, gatedEfforts: ["max", "ultra"] } as const;
     expect(buildQuickLaunchEffortDeck(axisOnly, null, "AUTO", "", false).hasGate).toBe(false);
   });
 
@@ -712,6 +713,52 @@ describe("buildQuickLaunchEffortDeck", () => {
     expect(ids(deck)).toEqual([null, "low", "max"]);
     // 게이트가 없는 행은 이름도 비어 있다 — 문 행 자체가 서지 않으므로 쓰이지 않는다.
     expect(buildQuickLaunchEffortDeck(plainRow, null, "AUTO", "", false).gatedNames).toBe("");
+  });
+
+  it("gates ultra alone on a MAX-less row and stands a gate on an ultra-only row", () => {
+    // MAX를 건너뛴 gateway 행 — 게이트는 ULTRACODE 하나만 연다.
+    const maxLessRow = {
+      ...plainRow,
+      effortAxis: ["low", "medium", "high", "xhigh", "ultra"],
+      gatedEfforts: ["ultra"],
+      chips: [
+        ...plainRow.chips,
+        { id: "ultra", label: "ULTRACODE", launch: { model: "cursor--grok-4.6-fast", effort: "ultra" } },
+      ],
+    } as const;
+    const maxLess = buildQuickLaunchEffortDeck(maxLessRow, null, "AUTO", "", false);
+    expect(maxLess.hasGate).toBe(true);
+    expect(maxLess.gatedNames).toBe("ULTRACODE");
+    expect(ids(maxLess)).toEqual([null, "low", "xhigh"]);
+    expect(ids(buildQuickLaunchEffortDeck(maxLessRow, null, "AUTO", "", true))).toEqual([null, "low", "xhigh", "ultra"]);
+
+    // 강도 미지원 모델의 ULTRACODE 단독 행 — 자동 외에 고를 값은 게이트 뒤의 ultra뿐이다.
+    const ultraOnlyRow = {
+      id: "auto",
+      label: "Auto",
+      launch: { model: "cursor--auto" },
+      effortAxis: ["ultra"],
+      gatedEfforts: ["ultra"],
+      chips: [{ id: "ultra", label: "ULTRACODE", launch: { model: "cursor--auto", effort: "ultra" } }],
+    } as const;
+    const ultraOnly = buildQuickLaunchEffortDeck(ultraOnlyRow, null, "AUTO", "", false);
+    expect(ultraOnly.hasGate).toBe(true);
+    expect(ids(ultraOnly)).toEqual([null]);
+    const opened = buildQuickLaunchEffortDeck(ultraOnlyRow, "ultra", "AUTO", "", false);
+    // 고른 값이 게이트 단이면 게이트를 붙들고 전부 보인다 — 문 행은 서지 않는다.
+    expect(opened.gateHeldByValue).toBe(true);
+    expect(ids(opened)).toEqual([null, "ultra"]);
+    expect(opened.options.find((option) => option.id === "ultra")?.checked).toBe(true);
+  });
+
+  it("maps the ultra deck option onto the production launch payload", () => {
+    // 덱 option의 id는 행 칩의 id다 — 픽하면 그 칩이 실은 launch가 실행 페이로드가 되므로,
+    // 열린 ultra option은 production sentinel 계약 { model, effort: "ultra" }에 붙어 있어야 한다.
+    const deck = buildQuickLaunchEffortDeck(row, null, "AUTO", "", true);
+    const ultra = deck.options.find((option) => option.id === "ultra");
+    expect(ultra).toBeDefined();
+    expect(row.chips.find((chip) => chip.id === ultra!.id)?.launch)
+      .toEqual({ model: "fable[1m]", effort: "ultra" });
   });
 
   it("marks the checked option and survives a missing row", () => {

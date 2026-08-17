@@ -1,4 +1,7 @@
-import type { UpdateCommandIo } from "./types.js";
+export interface UpdateCommandIo {
+  readonly stdout: Pick<NodeJS.WriteStream, "write">;
+  readonly stderr: Pick<NodeJS.WriteStream, "write">;
+}
 
 const UPDATE_HELP_TEXT = `fleet update — Update Fleet
 

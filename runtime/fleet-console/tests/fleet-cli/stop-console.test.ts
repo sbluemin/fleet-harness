@@ -6,7 +6,7 @@ import { pathToFileURL } from "node:url";
 import { spawn } from "node:child_process";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { UpdateCommandIo } from "../../cli/update/types.js";
+import type { UpdateCommandIo } from "../../cli/update/dispatcher.js";
 
 interface StringWriter {
   write(chunk: string): boolean;
