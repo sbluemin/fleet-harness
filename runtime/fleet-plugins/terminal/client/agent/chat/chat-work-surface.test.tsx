@@ -78,7 +78,6 @@ function render(): void {
   } as unknown as OperationRenderContext;
   act(() => root?.render(createElement(AgentChatView, {
     context,
-    onOpenTerminal: async () => {},
     tourAnchors: false,
   })));
 }
@@ -155,17 +154,19 @@ describe("chat work surface", () => {
   });
 });
 
-describe("chat work surface — floating controls", () => {
-  it("keeps the floating chip row inside the conversation pane", () => {
-    // 패널 전체에 걸어 두면 작업 면이 열린 순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮는다.
-    // 실측에서 elementFromPoint가 접기 꺾쇠 자리에서 칩을 집었다 — 눌러도 접히지 않는다.
+describe("chat work surface — panel controls", () => {
+  it("keeps no floating chip row in the body and leaves the composer with the conversation", () => {
+    // 분석가·뷰 전환·읽기 폭은 캡션 밴드로 떠났다 — 본문 위에 떠 있던 그 줄이 남아 있으면
+    // 작업 면이 열리는 순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮는다(실측으로 겪은 자리다).
     logState = stateWith([job()]);
     mount();
     act(() => { strip()?.click(); });
-    const chips = container?.querySelector(".agent-view-chip-row");
-    expect(chips).not.toBeNull();
-    expect(chips?.closest(".agent-chat-pane")).not.toBeNull();
-    expect(chips?.closest(".agent-chat-work")).toBeNull();
+    expect(container?.querySelector(".agent-view-chip-row")).toBeNull();
+    // 컴포저는 대화 면의 것이다 — 문맥 미터도 그 컨트롤 행에 실려 함께 남는다.
+    const composer = container?.querySelector(".agent-chat-composer");
+    expect(composer).not.toBeNull();
+    expect(composer?.closest(".agent-chat-pane")).not.toBeNull();
+    expect(composer?.closest(".agent-chat-work")).toBeNull();
   });
 });
 

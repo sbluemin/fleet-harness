@@ -46,6 +46,7 @@ const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agen
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
+const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
 const OWNED_SOURCES = [
   "app.tsx",
@@ -481,6 +482,47 @@ describe("Instrument core design contract", () => {
     expect(narrowContainer).toContain(".backend-api-row {");
     expect(narrowContainer).toContain("grid-template-columns: minmax(0, 1fr);");
     expect(components).not.toMatch(/@media \(max-width: 720px\) \{\s*\.backend-api-row/);
+  });
+
+  it("keeps one control grammar on the caption band", () => {
+    const components = source("styles/components.css");
+    const frame = source("canvas/operation-frame.tsx");
+    const shelf = externalSource(SDK_CAPTION_ACTIONS_PATH);
+
+    // 마크 버튼은 창 컨트롤과 한 선택자에서 규칙을 받는다 — 밴드 하나가 두 벌의 격자를 갖지 않게.
+    const grid = components.match(/\.canvas-operation-icon-button,\n\.fleet-caption-action \{[^}]*\}/)?.[0]
+      ?? components.match(/\.fleet-caption-action \{[^}]*\}/)?.[0] ?? "";
+    expect(grid).toContain("width: 24px;");
+    expect(grid).toContain("height: 24px;");
+    const svgSize = components.match(/\.canvas-operation-icon-button svg,\n\.fleet-caption-action svg \{[^}]*\}/)?.[0] ?? "";
+    expect(svgSize).toContain("width: 14px;");
+
+    // 위치 채널은 oklab으로만 섞는다 — oklch의 hue 호가 brass를 초록·자홍에 내려놓았다(실측).
+    const pressed = components.match(/\.canvas-operation-icon-button\.is-active,\n\.fleet-caption-action\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(pressed).toContain("color-mix(in oklab, var(--brass) 60%, var(--surface-rim))");
+    expect(pressed).toContain("color-mix(in oklab, var(--brass) 22%, var(--surface-glass))");
+    expect(pressed).not.toContain("color-mix(in oklch, var(--brass) 60%");
+    const hover = components.match(/\.canvas-operation-icon-button:hover,[\s\S]{0,200}?\.fleet-caption-action:focus-visible \{[^}]*\}/)?.[0] ?? "";
+    expect(hover).toContain("color-mix(in oklab, var(--brass) 45%, var(--surface-rim))");
+
+    // 진행은 aurora(상태)로, 위치는 brass로 — 한 버튼 위에서도 두 채널이 겹치지 않는다.
+    const live = components.match(/\.fleet-caption-action-live \{[^}]*\}/)?.[0] ?? "";
+    expect(live).toContain("background: var(--aurora);");
+    expect(live).not.toContain("--brass");
+
+    // 라벨 없는 마크가 서는 줄이므로 이름표는 전부 같은 말풍선이다 — 브라우저 기본 title은 쓰지 않는다.
+    expect(shelf).toContain('className="fleet-caption-slot"');
+    expect(shelf).toContain('className="fleet-caption-tip"');
+    expect(frame).toContain("<CaptionTipHost label={t(\"canvas.frame.openMenuTitle\")}>");
+    expect(frame).not.toMatch(/canvas-operation-icon-button[\s\S]{0,400}?title=\{t\(/);
+    const tip = components.match(/\.fleet-caption-tip \{[^}]*\}/)?.[0] ?? "";
+    expect(tip).toContain("right: 0;");
+    expect(tip).toContain("pointer-events: none;");
+
+    // 폭을 아는 것은 밴드다 — 뜻이 사라지는 컨트롤은 캡션 컨테이너 질의로 물러난다.
+    const titlebar = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
+    expect(titlebar).toContain("container-type: inline-size;");
+    expect(components).toMatch(/@container \(max-width: 721px\) \{[\s\S]{0,300}?data-caption-action="reading-width"/);
   });
 
   it("keeps SDK v1 rail compatibility as a deprecated root-only facade", () => {
@@ -1938,16 +1980,19 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
       expect(chatJobGlyphBlock).not.toContain(signal);
     }
-    // 두 뷰의 전환 진입은 같은 칩 클래스를 공유한다 — 같은 자리·같은 모양이라야 한 쌍으로 읽힌다.
+    // 두 뷰의 전환 진입은 캡션 밴드의 한 버튼이 진다 — 목적지 마크만 바뀐다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
-    expect(chatView).toContain('className="agent-chat-mode-chip"');
+    expect(chatView).not.toContain("agent-chat-mode-chip");
+    expect(chatView).not.toContain("agent-view-chip-row");
     // 구간 문장은 답변과 같은 마크다운 경로다. italic을 통째로 씌우면 `**굵게**`가 별표로 남고
     // 문장만 기울어진다 — 기울임은 문법(*강조*)이 질 몫이다.
     expect(chatView).toContain('className="agent-chat-ledger-note markdown-body"');
     expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
     expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
-    expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
+    expect((terminalEntry.match(/actionId="view-switch"/g) ?? [])).toHaveLength(2);
+    expect(terminalEntry).toContain("<CaptionTerminalGlyph />");
+    expect(terminalEntry).toContain("<CaptionChatGlyph />");
     // 패널 컴포저는 언제나 서 있다 — 접힘도, 되돌아오는 쉬는 줄도 없다.
     expect(chat).not.toContain(".agent-chat-composer-rest");
     expect(chatView).not.toContain("ComposerRestStrip");
@@ -1996,10 +2041,12 @@ describe("Instrument core design contract", () => {
     expect(chatFollowHoverBlock).toContain("outline: none;");
     // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
     // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
-    // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 중지 버튼 40px)을 넘어서는지 함께 고정한다.
+    // 위쪽 34px은 전환 칩 줄의 몫이었고, 그 줄이 캡션으로 떠난 지금 로그는 패널 상단에서 바로
+    // 시작한다. 아래 여백만 남아 자기 컨트롤(작업 스트립)을 넘어서는지 고정한다.
     const chatLogBlock = chat.match(/^\.agent-chat-log \{[^}]*\}/m)?.[0] ?? "";
     const chatLogPadding = chatLogBlock.match(/padding: ([^;]+);/)?.[1] ?? "";
-    expect(chatLogPadding).toContain("calc(var(--space-3) + 34px)");
+    expect(chatLogPadding.startsWith("var(--space-3) ")).toBe(true);
+    expect(chatLogPadding).not.toContain("34px");
     expect(chatLogPadding).toContain("calc(var(--space-3) + 45px)");
     // 아래 여백이 피하는 것은 이제 작업 스트립이다 — 중지는 컴포저의 발사 자리로 들어가
     // 더 이상 로그 위에 얹히지 않는다.
@@ -2097,10 +2144,12 @@ describe("Instrument core design contract", () => {
     const terminalAgentEntry = externalSource(TERMINAL_AGENT_PATH);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__modechip \{/);
     expect(terminalAnalysisCss).not.toContain(".session-analyst-handle");
-    // Analyst 진입은 뷰 칩 클러스터의 일원이다 — 채팅 전환 칩과 같은 줄·같은 문법.
-    expect(terminalChatCss).toMatch(/\.agent-view-chip-row \{/);
-    expect(terminalChatCss).toContain(".agent-view-chip-row .agent-chat-mode-chip");
-    expect(terminalAgentEntry).toContain('className="agent-chat-mode-chip agent-analyst-chip"');
+    // Analyst 진입은 캡션 동작 선반의 첫 버튼이다 — 전환·읽기 폭과 같은 줄·같은 문법.
+    expect(terminalChatCss).not.toContain(".agent-view-chip-row");
+    expect(terminalChatCss).not.toContain(".agent-analyst-chip");
+    expect(terminalAgentEntry).toContain('actionId="analyst"');
+    expect(terminalAgentEntry).toContain("<CaptionAnalystGlyph />");
+    expect(terminalAgentEntry).toContain("captionActions: (context) => <AgentCaptionActions context={context} />");
     // 캡션 밴드는 호스트가 자리를 비워 둔다 — 채우지 않으면 빈 띠가 남고 프레임의 위 모서리가 각진다.
     expect(terminalAgentEntry).toContain("caption: (context) => <AnalystCaption context={context} />");
     expect(terminalAgentEntry).not.toContain("hideCaption");
@@ -3041,8 +3090,9 @@ describe("War Room deck panel grammar", () => {
     // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 컨트롤은 눌러도 동작하지 않는다.
     // 무대에 오른 패널은 is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다.
     const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
-    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-view-chip-row");
-    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-mode-chip");
+    // 분석가·전환·읽기 폭은 캡션 선반으로 옮겨 갔고, 카드에서는 호스트가 그 선반을 아예 넘기지
+    // 않는다 — CSS로 감추는 것이 아니라 태어나지 않는다.
+    expect(canvas).toContain("descriptor.captionActions === undefined || options.deckSlot !== null ? null");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
     // 카드뷰에서는 컴포저가 스트립조차 서지 않는다 — 입력은 무대에 올라야 가능한 행동이다.
@@ -3050,16 +3100,16 @@ describe("War Room deck panel grammar", () => {
     // 컴포저가 물러난 자리에는 그 받침(중앙 배치용 비율)도 함께 물러난다 — 남겨 두면 대화가
     // 카드 위쪽으로 몰린다.
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-settle");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,[\s\S]{0,400}?\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,[\s\S]{0,400}?\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
     // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.
     expect(hide).not.toContain("is-active");
     expect(hide).not.toContain("is-quicklook");
-    // 칩을 숨긴 카드에서는 그 자리를 피하던 상단 여백만 거둔다. 하단 45px는 작업 스트립이 쓰므로
-    // 타일 규칙은 padding-top만 적는다 — padding-bottom/padding 단축을 쓰면 베이스의 45px가 죽는다.
+    // 카드의 로그는 초대 하한만 되돌린다. 여백은 손대지 않는다 — 피할 부유 칩이 사라져 베이스가
+    // 이미 space-3이고, 하단 45px는 작업 스트립의 몫이라 단축 padding으로 덮으면 죽는다.
     const logOnTile = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-log \{[^}]*\}/)?.[0] ?? "";
-    expect(logOnTile).toContain("padding-top: var(--space-3);");
+    expect(logOnTile).toContain("min-height: 0;");
     expect(logOnTile).not.toContain("45px");
     expect(logOnTile).not.toContain("padding-bottom");
     expect(logOnTile).not.toMatch(/(?:^|[^-])padding:/);

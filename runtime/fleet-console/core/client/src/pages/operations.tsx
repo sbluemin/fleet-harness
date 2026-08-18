@@ -698,6 +698,8 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       theaterLabel={state.theaters.find((theater) => theater.id === state.activeTheaterId)?.label ?? null}
       theme={state.activeTheme}
       language={language}
+      operationKinds={registry.operationKinds}
+      capabilities={poolCapabilities}
       onSelectOperation={setActiveOperation}
       onCloseOperation={handleClose}
     />

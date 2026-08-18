@@ -1327,6 +1327,32 @@ function renderPluginOperation(operation: OperationNode, options: {
         onGeometryChange={options.onGeometryChange}
         onGeometryCommit={options.onGeometryCommit}
         onRenderHiddenFocus={options.onRenderHiddenFocus}
+        captionActions={descriptor.captionActions === undefined || options.deckSlot !== null ? null : (
+          // 본문과 같은 context로 그린다 — 캡션이 본문과 다른 사실을 말하는 프레임이 나오지 않게.
+          // 실패해도 32px 밴드에 오류 상자를 세울 자리는 없으므로, 선반만 조용히 비운다.
+          // (fallback을 생략하거나 null로 두면 `??`가 기본 오류 상자를 되살린다 — 빈 조각이라야 빈다.)
+          <PluginErrorBoundary fallback={<></>}>
+            <PluginOperationRenderer
+              active={options.active}
+              capabilities={capabilities}
+              geometry={geometry}
+              operation={operation}
+              theme={options.theme}
+              language={options.language}
+              viewportZoom={options.viewportZoom}
+              runtimeState={options.runtimeState}
+              onActivate={options.onActivate}
+              onClose={options.onClose}
+              onGeometryChange={options.onGeometryChange}
+              onRequestCompanions={onRequestCompanions}
+              companionsOpen={options.companion}
+              hiddenCompanionPanelIds={options.hiddenCompanionPanelIds}
+              onSetCompanionPanelVisible={onSetCompanionPanelVisible}
+              bodyLive={!options.minimized && !options.focusLayerHidden}
+              render={descriptor.captionActions}
+            />
+          </PluginErrorBoundary>
+        )}
       >
         {options.operationBodyPoolAvailable ? (
           <OperationBodySlot

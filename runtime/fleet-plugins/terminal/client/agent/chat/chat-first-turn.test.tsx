@@ -71,7 +71,6 @@ function mount(language: "en" | "ko" = "en"): void {
   } as unknown as OperationRenderContext;
   act(() => root?.render(createElement(AgentChatView, {
     context,
-    onOpenTerminal: async () => {},
     tourAnchors: false,
   })));
 }

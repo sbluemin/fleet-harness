@@ -5,11 +5,18 @@ import { defineNotificationKind } from "@fleet-console/sdk/notifications/browser
 import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
 import { Select } from "@fleet-console/sdk/react/browser";
+import {
+  CaptionActionButton,
+  CaptionAnalystGlyph,
+  CaptionChatGlyph,
+  CaptionReadingWidthGlyph,
+  CaptionTerminalGlyph,
+} from "@fleet-console/sdk/components/caption-actions";
 import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
-import { getTerminalPrefsSnapshot, useTerminalPrefs, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useTerminalPrefs, nextChatReadingWidth, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
 import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
 import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
@@ -22,11 +29,12 @@ import {
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { currentTerminalLocale, getT, useTerminalLocale, type TerminalMessageKey } from "../i18n/index.js";
 import { disposeAnalysisStore, useAnalysisStore } from "./analysis-store.js";
+import { disposeViewSwitch, setChatPromptOpen, setTerminalHandoff, useViewSwitchState } from "./view-switch-store.js";
 import "./analysis.css";
 import "./agent-cli.css";
 
 import { AgentApiError, convertAgentSessionToChat, createAgentSession, discardLaunchAttachment, exitAgentChat, fetchAgentCliDiagnostics, fetchAgentCliState, messageAgentSession, resumeAgentSession, setAgentCliPath, terminateAgentSession, uploadLaunchAttachment } from "./api.js";
-import { AgentChatView } from "./chat/chat-view.js";
+import { AgentChatView, READING_WIDTH_LABEL_KEY } from "./chat/chat-view.js";
 import { startAgentConnection } from "./connection.js";
 import { loadModelAuth, signInModel, signOutModel, useModelAuthStore } from "./model-auth.js";
 import type { ModelAuthProviderState } from "./model-auth.js";
@@ -88,6 +96,8 @@ export const agentOperationKind = defineOperationKind({
   title: (locale) => getT(locale)("terminal.kind.agent"),
   subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
   render: (context) => <AgentOperationView context={context} />,
+  // 분석가·뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
+  captionActions: (context) => <AgentCaptionActions context={context} />,
   // 에이전트 CLI TUI는 화면 바닥에 입력 컴포저와 상태줄(cwd·모델·권한 모드)을 고정으로 그린다 —
   // 실행 중에도 갱신되지 않으므로 호스트 프리뷰는 이 밴드를 프레임 밖으로 밀어낼 수 있다.
   // 밴드의 단위는 px가 아니라 행이다: 셀 높이가 글꼴 크기를 따르므로(TERMINAL_OPTIONS.lineHeight
@@ -155,6 +165,7 @@ export const agentPlugin = definePlugin({
       await terminateAgentSession(operationId);
     } finally {
       disposeAnalysisStore(operationId);
+      disposeViewSwitch(operationId);
       removeSession(operationId);
     }
   },
@@ -370,42 +381,28 @@ function toggleCompanionPanel(
 
 /** 터미널·채팅·휴면 뷰 공용의 Analyst 진입 칩 — 채팅 전환 칩과 같은 자리·같은 문법으로
     드로어를 여닫는다. 세로 ANALYZE/EXIT 핸들의 후계다. */
-function AnalystEntryChip({
-  context,
-  ready,
-  working,
-}: {
-  readonly context: OperationRenderContext;
-  readonly ready: boolean;
-  readonly working: boolean;
-}) {
-  const open = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
-  const language = context.language ?? "en";
-  const t = getT(language);
-  return (
-    <button
-      type="button"
-      className="agent-chat-mode-chip agent-analyst-chip"
-      aria-label={t(open ? "terminal.analyst.exit" : "terminal.analyst.open")}
-      aria-pressed={open}
-      aria-disabled={!ready}
-      disabled={!ready}
-      title={ready ? undefined : t("terminal.analyst.sendMessageFirst")}
-      onClick={() => { if (ready) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
-    >
-      {working ? <span className="agent-analyst-chip-live" aria-hidden="true" /> : null}
-      <span aria-hidden="true">✳</span> {t("terminal.analyst.chipTitle")}
-    </button>
-  );
-}
-
-const SORTIE_RIBBON_INLINE_LIMIT = 2;
-
-function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
+/**
+ * 캡션 밴드의 동작 선반 — 분석가 · 뷰 전환 · 읽기 폭.
+ *
+ * 본문 위에 떠 있던 칩 줄이 하던 일을 그대로 진다. 자리를 옮기면서 이름표는 말풍선으로 물러나고
+ * 마크만 남는다: 32px 밴드에서 세 개의 라벨은 이름이 설 자리를 먹는다.
+ *
+ * 이 컴포넌트는 본문과 다른 React 트리에 마운트된다(호스트가 캡션에 그린다). 그래서 상태는 전부
+ * 모듈 저장소에서 읽는다 — 세션·분석가·읽기 폭 선호는 이미 그렇고, 전환의 진행/실패만 이번에
+ * 저장소를 하나 얻었다(`view-switch-store`).
+ */
+function AgentCaptionActions({ context }: { readonly context: OperationRenderContext }) {
+  const t = getT(context.language ?? "en");
   const state = useAgentState();
   const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const analysisReadiness = useAnalysisReady(context);
   const { state: analysisState } = useAnalysisStore(context);
+  const readingWidth = useChatReadingWidth();
+  const { terminalPending } = useViewSwitchState(context.operationId);
+  const chatMode = context.operation.payload.chatMode === true;
+  const analystOpen = isCompanionPanelVisible(context, ANALYST_CHAT_COMPANION_ID);
+  const analystReady = analysisReadiness === "ready";
+
   React.useEffect(() => {
     if (analysisReadiness !== "not-ready" || !context.companionsOpen || !context.onSetCompanionPanelVisible) return;
     // 단축키는 disabled 핸들 가드를 거치지 않으므로, 준비 전 진입이 빈 companion 배치를 남기지 않게 호스트 레이어까지 함께 정리한다.
@@ -418,46 +415,124 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     context.onSetCompanionPanelVisible,
   ]);
 
-  // A host that cannot open companions gets no entry chip for them — the mobile layout hands the
-  // whole surface to the session and leaves this callback out, so the chip would open nothing.
-  const analystChip = context.onRequestCompanions === undefined ? null : (
-    <AnalystEntryChip context={context} ready={analysisReadiness === "ready"} working={analysisState.busy} />
-  );
-  const [chatConfirmOpen, setChatConfirmOpen] = React.useState(false);
+  // 투어 앵커는 사용자가 이 마운트에서 직접 채팅 뷰로 넘어온 뒤에만 선다 — 본문의 판정과 같다.
+  const wasChatModeAtMountRef = React.useRef(chatMode);
+  const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
 
+  const openTerminal = React.useCallback(async () => {
+    setTerminalHandoff(context.operationId, { pending: true, error: "none" });
+    try {
+      await openTerminalForOperation(context);
+    } catch (error) {
+      // 왜 안 되는지가 다음 행동을 가른다 — 진행 중인 턴은 기다리면 풀리고, 그 밖의 실패는 아니다.
+      setTerminalHandoff(context.operationId, {
+        error: error instanceof AgentApiError && error.message === "chat_busy" ? "busy" : "failed",
+      });
+    } finally {
+      setTerminalHandoff(context.operationId, { pending: false });
+    }
+  }, [context]);
+
+  // 컴패니언을 열 수 없는 호스트에는 분석가 문을 세우지 않는다 — 모바일 레이아웃은 화면 전부를
+  // 세션에 주고 이 콜백을 빼며, 그 부재가 곧 "여기엔 드로어가 없다"는 말이다.
+  const analyst = context.onRequestCompanions === undefined ? null : (
+    <CaptionActionButton
+      actionId="analyst"
+      label={analystReady ? t(analystOpen ? "terminal.analyst.exit" : "terminal.analyst.open") : t("terminal.analyst.sendMessageFirst")}
+      pressed={analystOpen}
+      disabled={!analystReady}
+      busy={analysisState.busy}
+      onClick={() => { if (analystReady) toggleCompanionPanel(context, ANALYST_CHAT_COMPANION_ID, ANALYST_COMPANION_IDS); }}
+    >
+      <CaptionAnalystGlyph />
+    </CaptionActionButton>
+  );
+
+  // 전환은 목적지 하나로 말한다 — 채팅에서는 터미널 마크가, 터미널에서는 채팅 마크가 선다.
+  // 휴면 세션에는 아직 떠날 자리가 없다(휴면 카드의 고스트가 그 전환을 진다).
+  const canSwitch = isSupportedAgentOperationCliId(session.cliId) && (chatMode || session.status !== "dormant");
+  const viewSwitch = !canSwitch ? null : chatMode ? (
+    <CaptionActionButton
+      actionId="view-switch"
+      label={terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminalAria")}
+      disabled={terminalPending}
+      pending={terminalPending}
+      {...(chatOpenedHere ? { tourAnchor: "terminal" } : {})}
+      onClick={() => { void openTerminal(); }}
+    >
+      <CaptionTerminalGlyph />
+    </CaptionActionButton>
+  ) : (
+    <CaptionActionButton
+      actionId="view-switch"
+      label={t("terminal.chat.openAria")}
+      onClick={() => { setChatPromptOpen(context.operationId, true); }}
+    >
+      <CaptionChatGlyph />
+    </CaptionActionButton>
+  );
+
+  // 읽기 폭은 대화 면의 선호다 — 터미널 뷰에는 맞출 판면이 없으므로 서지 않는다.
+  // 좁은 패널에서 물러나는 판정은 CSS(캡션 컨테이너 질의)가 진다: 폭을 아는 것은 밴드다.
+  const readingWidthAction = !chatMode ? null : (
+    <CaptionActionButton
+      actionId="reading-width"
+      label={t("terminal.chat.readingWidthAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+      onClick={() => { setChatReadingWidth(nextChatReadingWidth(readingWidth)); }}
+    >
+      <CaptionReadingWidthGlyph preset={readingWidth} />
+    </CaptionActionButton>
+  );
+
+  return (
+    <>
+      {analyst}
+      {viewSwitch}
+      {readingWidthAction}
+    </>
+  );
+}
+
+/** 채팅 → 터미널. 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살린다(서버 ticket 가드). */
+async function openTerminalForOperation(context: OperationRenderContext): Promise<void> {
+  await exitAgentChat(context.operationId);
+  try {
+    await resumeSession(context.operationId);
+    context.notifications.dismiss(context.operationId);
+  } catch (error) {
+    context.notifications.emit({
+      kind: agentResumeFailedNotification.id,
+      operationId: context.operationId,
+      message: resumeFailureMessage(error, context.language),
+    });
+    throw error;
+  }
+}
+
+const SORTIE_RIBBON_INLINE_LIMIT = 2;
+
+function AgentOperationView({ context }: { readonly context: OperationRenderContext }) {
+  const state = useAgentState();
+  const session = state.sessions[context.operationId] ?? sessionFromOperation(context);
   const chatMode = context.operation.payload.chatMode === true;
   const sessionStatus = session.status;
+  const { chatPromptOpen } = useViewSwitchState(context.operationId);
   React.useEffect(() => {
     // 확인 오버레이는 라이브 터미널 분기 전용이다 — PTY 종료·채팅 전환으로 분기를 떠나면
     // 상태를 걷어 재개 시 낡은 다이얼로그가 되살아나지 않게 한다(이전 ChatModeEntry의
     // 언마운트-폐기와 등가).
-    if (sessionStatus === "dormant" || chatMode) setChatConfirmOpen(false);
-  }, [sessionStatus, chatMode]);
+    if (sessionStatus === "dormant" || chatMode) setChatPromptOpen(context.operationId, false);
+  }, [context.operationId, sessionStatus, chatMode]);
   // 피처 투어 앵커는 이 마운트에서 사용자가 직접 채팅 뷰로 전환한 뒤에만 세운다 — chatMode는
   // payload에 영속되므로 마운트 시점부터 앵커를 세우면 리로드 직후 캔버스에서 투어가 먼저
   // 떠버린다. "직접 연 순간에만"은 quick-launch-pin 투어와 같은 판정이다.
   const wasChatModeAtMountRef = React.useRef(chatMode);
   const chatOpenedHere = chatMode && !wasChatModeAtMountRef.current;
-  const openTerminal = React.useCallback(async () => {
-    // 순서가 계약이다: chat 모드 마커를 걷은 뒤에만 resume이 PTY를 되살릴 수 있다(서버 ticket 가드).
-    await exitAgentChat(context.operationId);
-    try {
-      await resumeSession(context.operationId);
-      context.notifications.dismiss(context.operationId);
-    } catch (error) {
-      context.notifications.emit({
-        kind: agentResumeFailedNotification.id,
-        operationId: context.operationId,
-        message: resumeFailureMessage(error, context.language),
-      });
-      throw error;
-    }
-  }, [context]);
 
   if (chatMode) {
     return (
       <div className="agent-stream-host">
-        <AgentChatView context={context} onOpenTerminal={openTerminal} tourAnchors={chatOpenedHere} leadingChip={analystChip} />
+        <AgentChatView context={context} tourAnchors={chatOpenedHere} />
       </div>
     );
   }
@@ -465,7 +540,6 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
   if (session.status === "dormant") {
     return (
       <div className="agent-stream-host">
-        {analystChip ? <div className="agent-view-chip-row">{analystChip}</div> : null}
         <DormantOperationView context={context} session={session} />
         {session.resumeAvailable && isSupportedAgentOperationCliId(session.cliId)
           ? <DormantChatEntry context={context} />
@@ -476,22 +550,8 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
 
   return (
     <div className="agent-stream-host">
-      {analystChip || isSupportedAgentOperationCliId(session.cliId) ? (
-        <div className="agent-view-chip-row">
-          {analystChip}
-          {isSupportedAgentOperationCliId(session.cliId) ? (
-            <button
-              type="button"
-              className="agent-chat-mode-chip"
-              aria-label={getT(context.language ?? "en")("terminal.chat.openAria")}
-              onClick={() => setChatConfirmOpen(true)}
-            >
-              <span aria-hidden="true">≣</span> {getT(context.language ?? "en")("terminal.chat.open")}
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-      {chatConfirmOpen ? <ChatModeInterstitial context={context} onClose={() => setChatConfirmOpen(false)} /> : null}
+      {/* 전환을 누르는 곳은 캡션이고, 무엇이 끝나야 넘어갈 수 있는지 말하는 이 오버레이는 본문이다. */}
+      {chatPromptOpen ? <ChatModeInterstitial context={context} onClose={() => setChatPromptOpen(context.operationId, false)} /> : null}
       <TerminalSurface
         operationId={session.sessionId}
         ticketPath={AGENT_TICKET_PATH}

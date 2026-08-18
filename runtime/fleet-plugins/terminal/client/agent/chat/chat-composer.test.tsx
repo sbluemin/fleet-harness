@@ -51,6 +51,7 @@ function mount(options: { readonly turnRunning?: boolean } = {}): void {
   act(() => root?.render(createElement(AgentChatComposer, {
     context,
     coordinate: createElement("span", { className: "coord-stub" }),
+    meter: null,
     tourAnchor: false,
     turnRunning: options.turnRunning ?? false,
     stopping: false,

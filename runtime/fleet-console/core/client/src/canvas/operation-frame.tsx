@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent, type ReactNode, type WheelEvent as ReactWheelEvent } from "react";
 
+import { CaptionTipHost } from "@fleet-console/sdk/components/caption-actions";
 import type { OperationNode, OperationGeometry } from "@fleet-console/sdk/operations";
 
 import { useT } from "../i18n/index.js";
@@ -30,6 +31,12 @@ interface OperationFrameProps {
   readonly groupName?: string | null;
   readonly groupColor?: string | null;
   readonly children: ReactNode;
+  /**
+   * 캡션 동작 선반 — 이 Operation의 플러그인이 채우는 마크 버튼들. 자리는 프레임이 정한다:
+   * 메뉴 버튼 왼쪽, 창 컨트롤 앞. 덱 타일에서는 부모가 아예 넘기지 않는다(카드 본문은 inert라
+   * 동작하지 않는 버튼이 서면 거짓 약속이 된다).
+   */
+  readonly captionActions?: ReactNode;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
@@ -77,7 +84,7 @@ const ARRIVAL_FLASH_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, captionActions = null, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -476,35 +483,44 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
         {/* 캡션은 상태를 말하지 않는다 — 패널 자신의 보더·글로우가 이미 상태 채널을 지고 있고,
             목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
             여는 문(사이드바 우클릭과 같은 메뉴)이 가져간다. */}
+        {/* 플러그인 동작 선반 — 이 줄에서 마크만 서는 버튼은 전부 같은 말풍선을 쓴다. */}
+        {captionActions ? <span className="canvas-operation-caption-actions">{captionActions}</span> : null}
         {onOpenMenu ? (
-          <button
-            type="button"
-            className="canvas-operation-more-button"
-            onPointerDown={stopButtonPointer}
-            onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
-            aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
-            aria-haspopup="menu"
-            title={t("canvas.frame.openMenuTitle")}
-          >
-            <MoreIcon />
-          </button>
+          <CaptionTipHost label={t("canvas.frame.openMenuTitle")}>
+            <button
+              type="button"
+              className="canvas-operation-more-button"
+              onPointerDown={stopButtonPointer}
+              onClick={(event) => openOperationMenu(event.currentTarget.getBoundingClientRect(), event.currentTarget)}
+              aria-label={t("canvas.frame.openMenuAria", { title: displayTitle })}
+              aria-haspopup="menu"
+            >
+              <MoreIcon />
+            </button>
+          </CaptionTipHost>
         ) : null}
         <div className="canvas-operation-window-controls">
           <span className="canvas-operation-controls-divider" aria-hidden="true" />
           {/* 최소화는 무대에서도 쓴다 — War Room의 최소화는 창을 접는 동작이 아니라 판(deck)에서
               내리는 동작이고, 무대에 선 패널이면 무대까지 함께 비운다. 최대화만 계속 빠진다:
               무대는 이미 캔버스 전체라 더 키울 자리가 없다. */}
-          <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })} title={t("canvas.frame.minimizeTitle")}>
-            <MinimizeIcon />
-          </button>
-          {!triageStage && !deckTile && onMaximize ? (
-            <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized} title={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
-              {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
+          <CaptionTipHost label={t("canvas.frame.minimizeTitle")}>
+            <button type="button" className="canvas-operation-icon-button" onPointerDown={stopButtonPointer} onClick={minimize} aria-label={t("canvas.frame.minimizeAria", { title: displayTitle })}>
+              <MinimizeIcon />
             </button>
+          </CaptionTipHost>
+          {!triageStage && !deckTile && onMaximize ? (
+            <CaptionTipHost label={maximized ? t("canvas.frame.restoreTitle") : t("canvas.frame.maximizeTitle")}>
+              <button type="button" className={`canvas-operation-icon-button ${maximized ? "is-active" : ""}`} onPointerDown={stopButtonPointer} onClick={maximize} aria-label={maximized ? t("canvas.frame.restoreAria", { title: displayTitle }) : t("canvas.frame.maximizeAria", { title: displayTitle })} aria-pressed={maximized}>
+                {maximized ? <RestorePanelIcon /> : <MaximizePanelIcon />}
+              </button>
+            </CaptionTipHost>
           ) : null}
-          <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })} title={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
-            {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
-          </button>
+          <CaptionTipHost label={isCloseArmed ? t("canvas.frame.confirmCloseTitle") : t("canvas.frame.closeTitle")}>
+            <button type="button" className={`canvas-operation-icon-button ${isCloseArmed ? "is-armed-close" : ""}`} onPointerDown={stopButtonPointer} onClick={close} aria-label={isCloseArmed ? t("canvas.frame.confirmCloseAria", { title: displayTitle }) : t("canvas.frame.closeAria", { title: displayTitle })}>
+              {isCloseArmed ? t("canvas.frame.closeArmed") : <CloseIcon />}
+            </button>
+          </CaptionTipHost>
         </div>
       </div>
       {/* 무장 중에는 Alt를 놓아도 안내가 남아야 한다 — 확인 기한이 1.5초뿐이라 Alt를 다시 눌러 확인할 시간이 없다. */}
