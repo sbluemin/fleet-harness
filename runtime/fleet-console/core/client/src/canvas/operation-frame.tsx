@@ -74,6 +74,8 @@ const CLOSE_ARM_DURATION_MS = 1500;
 const DRAG_THRESHOLD_PX = 3;
 // 캡션 상태 레일의 도착 플래시 길이 — CSS의 var(--duration-slow)와 한 값이다.
 const ARRIVAL_FLASH_DURATION_MS = 360;
+// 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
+const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
 export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
@@ -140,6 +142,20 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       setArrivalFlash(false);
     }, ARRIVAL_FLASH_DURATION_MS);
   }, [unseen]);
+
+  // 같은 상태의 레일은 한 박자로 뛴다 — CSS 애니메이션의 위상은 그 요소가 상태에 들어간 시각에
+  // 묶인다. 패널마다 진입 시각이 다르면 같은 순간의 밝기가 갈려(실측: 0.45 대 0.78) 화면이
+  // 제각각 깜빡이는 반딧불이가 된다. 상태가 바뀔 때 레일 애니메이션의 시작을 문서 타임라인
+  // 원점으로 옮겨 위상을 하나로 맞춘다. turn의 트래블과 도착 플래시는 제외한다 — 앞의 것은
+  // 진행 위치를 말하는 왕복이고, 뒤의 것은 상태가 아니라 전이라 겹쳐 뛰면 안 된다.
+  useEffect(() => {
+    const frame = operationRef.current;
+    if (!frame || typeof frame.getAnimations !== "function") return;
+    for (const animation of frame.getAnimations({ subtree: true })) {
+      if (!PHASE_LOCKED_RAIL_ANIMATIONS.has((animation as CSSAnimation).animationName)) continue;
+      animation.startTime = 0;
+    }
+  }, [status, unseen]);
 
   useEffect(() => {
     if (rename.renaming || !restoreIdentityFocusRef.current) return;
