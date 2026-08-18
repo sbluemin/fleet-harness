@@ -1988,6 +1988,65 @@ describe("route surface", () => {
   });
 });
 
+describe("usage-limit directive", () => {
+  /** Claude Code injects this behind the tool results of the turn it interrupts. */
+  const DIRECTIVE = "[Usage limit approaching. Checkpoint now: finish the current step, then list up to 3 short bullets of the most impactful remaining work. Don't start subagents or long-running work.]";
+  const CONVERSATION = [
+    { role: "user", content: "Fix the composer width." },
+    { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "Bash", input: {} }] },
+    { role: "user", content: [{ type: "tool_result", tool_use_id: "t1", content: "ok" }] },
+    { role: "user", content: [{ type: "text", text: DIRECTIVE }] },
+  ];
+
+  it("never reaches a translated provider", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+      messages: CONVERSATION,
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly messages: ReadonlyArray<{ readonly role: string }>;
+    };
+    expect(JSON.stringify(body.messages)).not.toContain("Usage limit");
+    // The turn the directive interrupted still ends the request.
+    expect(body.messages).toHaveLength(3);
+    expect(body.messages[body.messages.length - 1]?.role).toBe("user");
+  });
+
+  it("is stripped from native Anthropic passthrough too", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "event: message_stop\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+
+    await router.handle(ctx({
+      res: response(),
+      token: ANTHROPIC_CRED,
+      model: "claude-sonnet-4-6",
+      messages: CONVERSATION,
+    }));
+
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      readonly messages: ReadonlyArray<unknown>;
+    };
+    expect(JSON.stringify(body.messages)).not.toContain("Usage limit");
+    expect(body.messages).toHaveLength(3);
+  });
+});
+
 function createAiGatewayRouter(
   deps: Partial<AiGatewayRouteDeps> = {},
 ) {

@@ -548,6 +548,7 @@ interface ClaudeTextBlockLike {
 /** Structural shape of an Anthropic message, kept local so this module stays a leaf. */
 interface ClaudeMessageLike {
   readonly content: unknown;
+  readonly role?: unknown;
 }
 
 export interface ClaudeSkillPruneOptions {
@@ -795,4 +796,93 @@ export function omitClaudeWebSearchTools<
     } as R,
     changed: true,
   };
+}
+
+/**
+ * Claude Code's own wrap-up directive, injected when the caller's Anthropic quota nears its
+ * limit.
+ *
+ * The client watches `anthropic-ratelimit-unified-*` on its own account and, once the
+ * five-hour window passes 95%, pushes a message of its own into the conversation: finish
+ * the current step, list three bullets, start no subagents. It is not a user turn — the
+ * client marks it meta and never shows it — and it arrives as the last message of the
+ * request, right behind the tool results it interrupts.
+ *
+ * The premise of that directive is the caller's Claude subscription, which has nothing to
+ * do with the Cursor, Codex, xAI, Kimi or OpenCode budget actually paying for the turn it
+ * lands in. One measured session ran 59 assistant turns entirely on a gateway model and
+ * still carried it. So the text either misleads a provider that is nowhere near a limit, or
+ * truthfully shrinks the work on one whose spend the number does not describe. Neither is
+ * something this gateway should forward, and the strip is unconditional for the same reason
+ * the injection is: the request cannot tell whether the account it describes is the account
+ * being billed.
+ *
+ * Shape is the test, never the wording. These sentences ship inside the client binary,
+ * three variants already differ between the approaching and grace cases, and any of them
+ * can be reworded by the next release — a list of exact strings would go stale silently. A
+ * bracketed line opening with `Usage limit ` that is the entire text of its block is not
+ * something a person types into a prompt.
+ */
+const CLAUDE_USAGE_LIMIT_DIRECTIVE = /^\[Usage limit [^\]]*\]$/;
+
+export interface ClaudeUsageLimitStripResult<M> {
+  readonly messages: readonly M[];
+  readonly changed: boolean;
+  /** Directive blocks dropped from this request. */
+  readonly removed: number;
+}
+
+/**
+ * Drop every usage-limit directive from a conversation before it leaves for a provider.
+ *
+ * A directive owns its whole text block, so removing it empties the message it arrived in
+ * and that message goes too — leaving an empty text block behind would be rejected by the
+ * wire, and leaving the message with no blocks says nothing either.
+ *
+ * Removing the last message of a request is the one way this can do harm: a conversation
+ * that ends on an assistant turn reads as a continuation to ask for, and one that ends
+ * nowhere is not a request at all. Measured, the directive always lands behind a user
+ * message (13 of 14 behind tool results), so the guard never fires in the observed shape —
+ * it exists because the cost of being wrong once is a failed turn, while the cost of
+ * declining to strip is one directive that gets through.
+ */
+export function stripClaudeUsageLimitDirectives<M extends ClaudeMessageLike>(
+  messages: readonly M[],
+): ClaudeUsageLimitStripResult<M> {
+  let removed = 0;
+  const kept: M[] = [];
+  for (const message of messages) {
+    const stripped = stripUsageLimitBlocks(message);
+    removed += stripped.removed;
+    if (stripped.message !== null) kept.push(stripped.message);
+  }
+  if (removed === 0) return { messages, changed: false, removed: 0 };
+  const last = kept[kept.length - 1];
+  if (last === undefined || last.role === "assistant") {
+    return { messages, changed: false, removed: 0 };
+  }
+  return { messages: kept, changed: true, removed };
+}
+
+function stripUsageLimitBlocks<M extends ClaudeMessageLike>(
+  message: M,
+): { readonly message: M | null; readonly removed: number } {
+  const content = message.content;
+  if (typeof content === "string") {
+    return isClaudeUsageLimitDirective(content)
+      ? { message: null, removed: 1 }
+      : { message, removed: 0 };
+  }
+  if (!Array.isArray(content)) return { message, removed: 0 };
+  const kept = content.filter(
+    (block: unknown) => !(isClaudeTextBlock(block) && isClaudeUsageLimitDirective(block.text)),
+  );
+  const removed = content.length - kept.length;
+  if (removed === 0) return { message, removed: 0 };
+  if (kept.length === 0) return { message: null, removed };
+  return { message: { ...message, content: kept } as M, removed };
+}
+
+function isClaudeUsageLimitDirective(text: string): boolean {
+  return CLAUDE_USAGE_LIMIT_DIRECTIVE.test(text.trim());
 }

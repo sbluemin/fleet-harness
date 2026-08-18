@@ -9,6 +9,7 @@ import {
 import {
   omitClaudeWebSearchTools,
   pruneClaudeSkillPayloads,
+  stripClaudeUsageLimitDirectives,
 } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
@@ -266,6 +267,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       return true;
     }
 
+    // 하네스가 자기 Anthropic 계정의 한도 임박을 근거로 대화에 끼워 넣는 마무리 지시는 여기서 끊는다.
+    // 그 지시는 이 턴을 실제로 결제하는 구독을 설명하지 않으므로, 목적지를 가리지 않고 전량 제거한다 —
+    // 근거와 모양 판정은 claude-context.ts가 갖는다.
+    const withoutUsageLimitDirectives = stripClaudeUsageLimitDirectives(body.messages);
+    if (withoutUsageLimitDirectives.changed) {
+      body = { ...body, messages: [...withoutUsageLimitDirectives.messages] };
+    }
     // 스킬 본문은 매 턴 재전송되는 고정 비용이라 클라이언트 압축이 걷어낼 수 없다.
     // 프로바이더 분기보다 앞이어야 canonical을 거치지 않는 passthrough까지 함께 덮는다.
     if (target) {
