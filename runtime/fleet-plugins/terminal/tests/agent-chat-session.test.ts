@@ -159,7 +159,18 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     reportActivity: () => true,
     canReportActivity: () => true,
     reportAwaiting: () => {},
+    reportBackgroundPending: () => {},
   };
+}
+
+/** 축이 지나간 상태들. 절대값은 같은 값으로도 다시 나가므로, 계약은 전이만 본다. */
+function transitions(log: readonly boolean[]): boolean[] {
+  return log.filter((value, index) => index === 0 || value !== log[index - 1]);
+}
+
+/** 백그라운드 대기 보고를 받아 적는 시드. 축에 실제로 실리는 값은 이 순서열이 전부다. */
+function pendingSeedFor(transcriptPath: string, log: boolean[]): AgentChatSessionSeed {
+  return { ...seedFor(transcriptPath), reportBackgroundPending: (pending) => { log.push(pending); } };
 }
 
 /** 채팅으로 태어난 세션의 시드 — 이어붙일 트랜스크립트가 없고 홈만 안다. */
@@ -175,6 +186,7 @@ function freshSeedFor(claudeConfigDir: string, onProviderSessionUpdate: AgentCha
     reportActivity: () => true,
     canReportActivity: () => true,
     reportAwaiting: () => {},
+    reportBackgroundPending: () => {},
   };
 }
 
@@ -1024,6 +1036,293 @@ describe("AgentChatRegistry — background jobs on a live session", () => {
     await registry.disposeAll();
 
     expect(events.map((entry) => entry.event)).toContainEqual({ kind: "job-end", id: "sh2", status: "stopped" });
+  });
+
+  /**
+   * 원장과 활동축을 잇는 계약.
+   *
+   * 턴이 닫혀도 서브에이전트·워크플로는 계속 돈다. 그 구간을 유휴로 그리면 사용자는 끝나지 않은
+   * 일을 끝난 것으로 읽는다 — 그래서 원장이 바뀔 때마다 축에 절대값을 보고한다. 셸은 이 축에
+   * 서지 않는다: 긴 백그라운드 명령 하나가 세션을 영영 유휴 밖에 세워 둔다.
+   */
+  it("raises the background axis when an agent job outlives the turn that started it", async () => {
+    const transcriptPath = writeTranscript("sid-bg-agent", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ag1", description: "map the tree", task_type: "local_agent" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-agent", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("map it");
+    await drainTurn(registry, "op-bg-agent");
+
+    expect(transitions(pending)).toEqual([true]);
+    await registry.disposeAll();
+  });
+
+  it("keeps the background axis down while only a shell job is running", async () => {
+    const transcriptPath = writeTranscript("sid-bg-shell", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "sh4", description: "tail the log", task_type: "local_bash" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-shell", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("tail it");
+    await drainTurn(registry, "op-bg-shell");
+
+    // 셸은 알아본 결과가 "에이전트 작업 없음"이므로 무의견이 아니라 확정된 false다.
+    expect(transitions(pending)).toEqual([false]);
+    await registry.disposeAll();
+  });
+
+  it("drops the background axis when the last agent job reports its end", async () => {
+    const transcriptPath = writeTranscript("sid-bg-end", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "wf1", description: "review", task_type: "local_workflow" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          { type: "system", subtype: "task_notification", task_id: "wf1", status: "completed", summary: "done" },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-end", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("review it");
+    await drainTurn(registry, "op-bg-end");
+
+    await vi.waitFor(() => {
+      expect(transitions(pending)).toEqual([true, false]);
+    });
+    await registry.disposeAll();
+  });
+
+  // REPLACE 목록은 종류를 싣고 오지만 스트림 이벤트는 id만 나른다. 목록에서 처음 본 잡의
+  // 종류를 읽지 않으면 셸 하나가 이 축을 세운다.
+  it("reads job kinds off the replace list so a shell it introduces stays off the axis", async () => {
+    const transcriptPath = writeTranscript("sid-bg-replace", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          {
+            type: "system",
+            subtype: "background_tasks_changed",
+            tasks: [{ task_id: "sh5", task_type: "local_bash", description: "tail" }],
+          },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-replace", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("go");
+    await drainTurn(registry, "op-bg-replace");
+
+    expect(transitions(pending)).toEqual([false]);
+    await registry.disposeAll();
+  });
+
+  it("raises the axis when the replace list carries an agent job beside a shell one", async () => {
+    const transcriptPath = writeTranscript("sid-bg-replace-mixed", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          {
+            type: "system",
+            subtype: "background_tasks_changed",
+            tasks: [
+              { task_id: "sh6", task_type: "local_bash", description: "tail" },
+              { task_id: "ag2", task_type: "local_agent", description: "map" },
+            ],
+          },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-replace-mixed", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("go");
+    await drainTurn(registry, "op-bg-replace-mixed");
+
+    expect(transitions(pending)).toEqual([true]);
+    await registry.disposeAll();
+  });
+
+  // 이 축에는 시한이 없으므로 무의견은 영원이 된다 — 상주하는 미지 잡 하나가 배지를 영영 켜 두지
+  // 않도록, 알아본 에이전트 작업이 없으면 그대로 해제한다.
+  it("does not raise the axis for a job of an unrecognized kind", async () => {
+    const transcriptPath = writeTranscript("sid-bg-other", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ot1", description: "watch", task_type: "local_hologram" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-other", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("watch it");
+    await drainTurn(registry, "op-bg-other");
+
+    expect(transitions(pending)).toEqual([false]);
+    await registry.disposeAll();
+  });
+
+  // 이름 붙은 에이전트는 결말을 낸 뒤에도 다음 지시를 기다리며 목록에 실려 온다. 그 항목을 다시
+  // 살아 있는 작업으로 읽으면, 시한이 없는 이 축은 세션이 끝날 때까지 풀리지 않는다.
+  it("keeps a resident agent off the axis once its end event has arrived", async () => {
+    const transcriptPath = writeTranscript("sid-bg-resident", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ag5", description: "probe", task_type: "local_agent" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          { type: "system", subtype: "task_notification", task_id: "ag5", status: "completed", summary: "done" },
+          {
+            type: "system",
+            subtype: "background_tasks_changed",
+            tasks: [{ task_id: "ag5", task_type: "local_agent", description: "probe" }],
+          },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-resident", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("probe it");
+    await drainTurn(registry, "op-bg-resident");
+
+    await vi.waitFor(() => {
+      expect(transitions(pending)).toEqual([true, false]);
+    });
+    await registry.disposeAll();
+  });
+
+  // 목록 행이 종류를 싣지 않는 것은 종류에 대해 침묵한 것이지, 종류가 없다는 뜻이 아니다.
+  it("does not let a kindless replace row erase a kind it already knew", async () => {
+    const transcriptPath = writeTranscript("sid-bg-kindless", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "wf2", description: "review", task_type: "local_workflow" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+          { type: "system", subtype: "background_tasks_changed", tasks: [{ task_id: "wf2", description: "review" }] },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-kindless", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("review it");
+    await drainTurn(registry, "op-bg-kindless");
+
+    await vi.waitFor(() => {
+      expect(transitions(pending)).toEqual([true]);
+    });
+    await registry.disposeAll();
+  });
+
+  // 이 축은 두 어댑터가 같은 필드에 쓴다. 죽어가는 PTY의 마지막 정리나 뒤늦은 hook 하나가 채팅이 세운
+  // 값을 지울 수 있고, 잡 원장은 다음 잡이 뜨거나 끝날 때까지 다시 말하지 않는다. 그래서 턴이 닫히는
+  // 순간 — 이 축이 화면에 나타나는 바로 그 순간 — 절대값을 다시 말한다.
+  it("restates the axis when the turn closes, not only when the ledger changes", async () => {
+    const transcriptPath = writeTranscript("sid-bg-restate", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ag7", description: "map", task_type: "local_agent" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-restate", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("map it");
+    await drainTurn(registry, "op-bg-restate");
+
+    // 원장은 한 번 바뀌었지만 보고는 두 번이다 — 두 번째가 턴 종료의 재천명이다.
+    expect(pending).toEqual([true, true]);
+    await registry.disposeAll();
+  });
+
+  // 상주 에이전트가 다시 일을 받으면 그 좌표는 더 이상 끝난 잡이 아니다. 기억을 남겨 두면 바로 다음
+  // 목록이 지금 일하는 에이전트를 상주 항목으로 오인해 축에서 지운다.
+  it("clears the settled memory when the same job starts again", async () => {
+    const transcriptPath = writeTranscript("sid-bg-restart", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ag8", description: "probe", task_type: "local_agent" },
+          { type: "system", subtype: "task_notification", task_id: "ag8", status: "completed", summary: "done" },
+          { type: "system", subtype: "task_started", task_id: "ag8", description: "probe again", task_type: "local_agent" },
+          {
+            type: "system",
+            subtype: "background_tasks_changed",
+            tasks: [{ task_id: "ag8", task_type: "local_agent", description: "probe again" }],
+          },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-restart", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("probe it");
+    await drainTurn(registry, "op-bg-restart");
+
+    await vi.waitFor(() => {
+      expect(transitions(pending)).toEqual([true, false, true]);
+    });
+    await registry.disposeAll();
+  });
+
+  it("drops the background axis when the session that owned the jobs goes away", async () => {
+    const transcriptPath = writeTranscript("sid-bg-retire", []);
+    const pending: boolean[] = [];
+    const { factory } = createFakeSdkFactory([
+      {
+        messages: [
+          { type: "system", subtype: "task_started", task_id: "ag3", description: "map", task_type: "local_agent" },
+          { type: "result", subtype: "success", is_error: false, duration_ms: 5 },
+        ],
+      },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-bg-retire", () => pendingSeedFor(transcriptPath, pending));
+
+    session.send("map it");
+    await drainTurn(registry, "op-bg-retire");
+    expect(transitions(pending)).toEqual([true]);
+
+    await registry.disposeAll();
+    expect(transitions(pending)).toEqual([true, false]);
   });
 
   // 자식이 startup에서 죽으면 리더는 `ensureSession()`이 해소된 직후에 끝난다. 그 사이에 낀

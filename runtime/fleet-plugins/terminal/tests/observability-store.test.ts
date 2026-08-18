@@ -132,6 +132,54 @@ describe("agent activity observability state", () => {
     expect(store.setTerminalSessionBackgroundPending("session-a", false)).not.toHaveProperty("backgroundPending");
   });
 
+  // 채팅이 인수한 세션에는 PTY가 없어 status가 dormant로 남는다 — 채팅에서 태어난 Operation과
+  // 복원된 Operation이 모두 그렇다. PTY용 setter의 라이프사이클 가드를 그대로 쓰면 이 축은 채팅에서
+  // 영영 서지 못한다. 시드 콜백을 목으로 잡은 세션 테스트는 이 층을 보지 못하므로 여기서 고정한다.
+  it("raises the background axis on a chat-adopted session that has no live PTY status", () => {
+    const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
+    store.injectDormantOperation({
+      sessionId: "session-chat",
+      theaterId: "theater-a",
+      cwd: "/workspace/project",
+      cliId: "claude-gateway",
+      cliLabel: "Claude (Gateway)",
+      createdAt: 1_000,
+    });
+
+    // PTY 쪽 보고는 여기서 거절된다 — 뒤늦게 도착한 best-effort hook이기 때문이다.
+    expect(store.setTerminalSessionBackgroundPending("session-chat", true)).toBeNull();
+    // 채팅 쪽 문지기는 status가 아니라 chatActive다.
+    expect(store.setTerminalSessionChatBackgroundPending("session-chat", true)).toBeNull();
+
+    store.setTerminalSessionChatActive("session-chat", true);
+    const raised = store.setTerminalSessionChatBackgroundPending("session-chat", true);
+    expect(raised).toMatchObject({ chatActive: true, backgroundPending: true });
+    store.setTerminalSessionChatWorking("session-chat", false);
+    expect(sessionActivity(store.getTerminalSessionInfo("session-chat")!)).toBe("background");
+
+    expect(store.setTerminalSessionChatBackgroundPending("session-chat", false)).not.toHaveProperty("backgroundPending");
+    expect(sessionActivity(store.getTerminalSessionInfo("session-chat")!)).toBe("idle");
+  });
+
+  // hook 전달은 best-effort라 PTY 축에는 시한이 있다. 채팅의 원장은 세션 스트림 자체이고 세션이
+  // 사라질 때 반드시 걷히므로, 같은 시한을 두면 아직 도는 작업이 조용히 유휴가 된다.
+  it("gives the chat axis no shelf life, unlike the hook-fed one", () => {
+    vi.useFakeTimers();
+    try {
+      const store = createStore();
+      store.setTerminalSessionBackgroundPending("session-a", true);
+      vi.advanceTimersByTime(31 * 60_000);
+      expect(store.getTerminalSessionInfo("session-a")).not.toHaveProperty("backgroundPending");
+
+      store.setTerminalSessionChatActive("session-a", true);
+      store.setTerminalSessionChatBackgroundPending("session-a", true);
+      vi.advanceTimersByTime(31 * 60_000);
+      expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ backgroundPending: true });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("remembers stopped agents past a cleared badge, and forgets them with the session lifecycle", () => {
     const store = createStore();
 

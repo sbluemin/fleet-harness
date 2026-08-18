@@ -1467,6 +1467,15 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           const updated = observability.setTerminalSessionChatAwaiting(node.id, awaiting);
           if (updated) observability.notifySessionUpdated(updated);
         },
+        reportBackgroundPending: (pending) => {
+          // 같은 값인지는 축을 가진 쪽이 판단한다 — 세션이 따로 기억해 두면 표면이 바뀌며 비워진 축을
+          // 모른 채 다음 보고를 삼킨다. 대신 여기서 이전 값을 읽어, 실제로 달라졌을 때만 방송한다.
+          const before = observability.getTerminalSessionInfo(node.id)?.backgroundPending === true;
+          // null은 축이 이 세션의 것이 아니라는 뜻이다 — 채팅에서 CLI로 되돌아간 뒤에도 잡 원장은
+          // 살아 있으므로, 그 보고가 PTY 어댑터가 채우는 같은 필드를 덮지 않게 setter가 막는다.
+          const updated = observability.setTerminalSessionChatBackgroundPending(node.id, pending);
+          if (updated && before !== pending) observability.notifySessionUpdated(updated);
+        },
       },
     };
   }

@@ -104,6 +104,66 @@ describe("background report", () => {
     expect(partiallyUnreadable.settledAgentIds).toEqual(new Set(["a1"]));
   });
 
+  // 이 축은 사람이 기다리는 일 — 서브에이전트·팀메이트·워크플로우 — 만 센다. 아래 payload는 2026-08-18
+  // Claude Code 2.1.234의 Stop·SubagentStop stdin을 실측해 옮긴 것이다.
+  it("counts only agent work, leaving shell and MCP monitor tasks off the axis", () => {
+    for (const type of ["subagent", "teammate", "workflow"]) {
+      expect(pendingOf(hookInput({ background_tasks: [{ id: `x-${type}`, type, status: "running" }] })), type).toBe(true);
+    }
+    for (const type of ["shell", "monitor"]) {
+      expect(pendingOf(hookInput({ background_tasks: [{ id: `x-${type}`, type, status: "running" }] })), type).toBe(false);
+    }
+  });
+
+  // 서브에이전트가 띄운 백그라운드 셸은 그 서브에이전트가 끝난 뒤에도 부모 목록에 남는다. 셸을 세면
+  // 에이전트가 모두 끝난 세션이 그 명령이 끝날 때까지 백그라운드에 갇힌다.
+  it("releases the axis once only the shell a finished subagent left behind is listed", () => {
+    const subagentStop = readBackgroundHookReport(
+      hookInput({
+        hook_event_name: "SubagentStop",
+        agent_id: "a5ea3d77e5d743fbd",
+        background_tasks: [
+          { id: "a5ea3d77e5d743fbd", type: "subagent", status: "running", agent_type: "general-purpose" },
+          { id: "b8qlyn5y9", type: "shell", status: "running", command: "sleep 90" },
+        ],
+      }),
+    );
+    expect(subagentStop.pending).toBe(false);
+
+    const turnEnd = hookInput({
+      hook_event_name: "Stop",
+      background_tasks: [{ id: "b8qlyn5y9", type: "shell", status: "running", command: "sleep 90" }],
+    });
+    expect(pendingOf(turnEnd, subagentStop.settledAgentIds)).toBe(false);
+  });
+
+  // 어휘가 드리프트해 처음 보는 종류가 오면, 그것을 에이전트 작업으로도 아닌 것으로도 단정하지 않는다.
+  it("stays opinionless about a task type it has never seen", () => {
+    expect(pendingOf(hookInput({ background_tasks: [{ id: "u1", type: "hologram", status: "running" }] }))).toBeUndefined();
+    expect(pendingOf(hookInput({ background_tasks: [{ id: "u2", status: "running" }] }))).toBeUndefined();
+    // 살아 있는 에이전트 작업이 곁에 있으면 답은 이미 정해져 있다.
+    expect(pendingOf(hookInput({ background_tasks: [WORKFLOW_TASK, { id: "u3", type: "hologram" }] }))).toBe(true);
+  });
+
+  // 종류를 모르는 것과 항목을 못 읽은 것은 다른 사실이다. 앞의 것은 id를 남기므로 기억의 가지치기를
+  // 막지 않는다 — 막으면 상주 에이전트가 세션이 끝날 때까지 제외된 채로 굳는다.
+  it("still prunes the settled memory when a listed task is merely of an unknown type", () => {
+    const settled = new Set(["a1"]);
+    const report = readBackgroundHookReport(
+      hookInput({ hook_event_name: "Stop", background_tasks: [WORKFLOW_TASK, { id: "u9", type: "hologram", status: "running" }] }),
+      settled,
+    );
+    expect(report.pending).toBe(true);
+    expect(report.settledAgentIds).toEqual(new Set());
+
+    // 반대로 항목 자체를 못 읽은 목록은 사라졌다는 근거가 되지 못하므로 기억을 그대로 둔다.
+    const withUnreadableEntry = readBackgroundHookReport(
+      hookInput({ hook_event_name: "Stop", background_tasks: [WORKFLOW_TASK, null] }),
+      settled,
+    );
+    expect(withUnreadableEntry.settledAgentIds).toEqual(new Set(["a1"]));
+  });
+
   it("never reads an unrecognized task entry as proof that no work remains", () => {
     // 어휘가 드리프트해 항목 모양을 알아볼 수 없게 되면, 그것을 "남은 작업 없음"으로 접는 순간 거짓 유휴다.
     for (const entry of [null, "running", 7, ["wf-1"]]) {

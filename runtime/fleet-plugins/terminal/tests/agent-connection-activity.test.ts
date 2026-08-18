@@ -68,6 +68,14 @@ describe("Agent connection activity state machine", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "not-working" }))).toBe("background");
   });
 
+  // Chat 어댑터는 턴 경계를 turnState로 말하지 않는다 — 턴이 닫히면 not-working만 남는다.
+  // 그 표면에서 백그라운드로 읽히는 유일한 모양이 이것이므로, 여기서 그대로 고정한다.
+  it("reads a chat session with jobs outliving its closed turn as background", () => {
+    expect(sessionActivity(makeSession({ chatActive: true, modelActivity: "not-working", backgroundPending: true }))).toBe("background");
+    expect(sessionActivity(makeSession({ chatActive: true, modelActivity: "not-working" }))).toBe("idle");
+    expect(sessionActivity(makeSession({ chatActive: true, modelActivity: "working", backgroundPending: true }))).toBe("running");
+  });
+
   it("keeps background-pending working sessions running while the turn is still in flight", () => {
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working" }))).toBe("running");
     expect(sessionActivity(makeSession({ backgroundPending: true, modelActivity: "working", turnState: "running" }))).toBe("running");

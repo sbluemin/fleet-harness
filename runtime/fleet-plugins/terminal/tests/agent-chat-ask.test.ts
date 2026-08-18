@@ -102,6 +102,7 @@ function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
     reportActivity: () => true,
     canReportActivity: () => true,
     reportAwaiting: (awaiting) => { awaitingLog.push(awaiting); },
+    reportBackgroundPending: () => {},
   };
 }
 

@@ -16,9 +16,17 @@
 // 다음 턴 종료 payload가 같은 상주 항목을 다시 살아 있는 작업으로 읽어 유휴·입력대기 전이를 통째로 막는다.
 // 따라서 판정은 이미 stop을 보고한 agent id 집합을 함께 받아 제외하고, 갱신된 집합을 돌려준다.
 //
-// 셸 백그라운드 작업(type: "shell")은 세지 않는다. 이 축은 에이전트 작업 전용이고, 셸을 포함하면
-// 긴 백그라운드 명령이 유휴 휴면까지 막게 된다.
-const NON_AGENT_BACKGROUND_TASK_TYPES: ReadonlySet<string> = new Set(["shell"]);
+// 이 축에 서는 것은 에이전트 작업뿐이다 — 서브에이전트, 이름 붙은 팀메이트, 워크플로우. 그 셋만 센다.
+//
+// 부정 목록(셸만 빼기)이 아니라 양쪽을 다 적는 이유는, 뺄 것이 셸 하나가 아니기 때문이다. 서브에이전트가
+// 띄운 백그라운드 셸은 그 서브에이전트가 끝난 뒤에도 부모 세션의 목록에 남고(2026-08-18 실측), MCP 감시
+// 작업은 세션이 사는 내내 상주한다. 어느 쪽이든 이 축에 세우면 유휴·입력 대기 전이와 유휴 휴면이 통째로
+// 막힌다 — 사람이 기다리는 것은 자기 일을 대신 하는 에이전트이지, 그 에이전트가 남긴 명령이 아니다.
+//
+// 라벨은 실측이다: `shell`·`subagent`(2026-08-18, Claude Code 2.1.234), `workflow`·`teammate`
+// (2.1.224~2.1.226, 아래 테스트 픽스처). `monitor`는 SDK 선언이 예로 드는 MCP 작업 라벨이다.
+const AGENT_BACKGROUND_TASK_TYPES: ReadonlySet<string> = new Set(["subagent", "teammate", "workflow"]);
+const NON_AGENT_BACKGROUND_TASK_TYPES: ReadonlySet<string> = new Set(["shell", "monitor"]);
 
 const NO_SETTLED_AGENT_IDS: ReadonlySet<string> = new Set<string>();
 
@@ -69,20 +77,29 @@ export function readBackgroundHookReport(
   const selfAgentId = typeof payload.agent_id === "string" ? payload.agent_id : undefined;
   const listedIds = new Set<string>();
   let live = false;
-  let unreadable = false;
+  // 두 축은 다른 질문에 답한다. 하나는 "이 항목이 살아 있는 에이전트 작업인가"이고, 다른 하나는
+  // "이 목록에서 id를 전부 거두었는가"다. 처음 보는 종류는 앞의 답을 모르지만 id는 읽었으므로,
+  // 두 축을 한 깃발로 묶으면 그런 항목 하나가 기억의 가지치기를 영영 막아 상주 에이전트가 세션이
+  // 끝날 때까지 제외된 채로 남는다.
+  let workUnknown = false;
+  let listIncomplete = false;
   for (const task of tasks) {
     const entry = readTaskEntry(task);
     if (!entry) {
-      unreadable = true;
+      workUnknown = true;
+      listIncomplete = true;
       continue;
     }
     if (typeof entry.id === "string") listedIds.add(entry.id);
-    if (isLiveAgentWork(entry, selfAgentId, settledAgentIds)) live = true;
+    else listIncomplete = true;
+    const verdict = classifyBackgroundTask(entry, selfAgentId, settledAgentIds);
+    if (verdict === "live") live = true;
+    else if (verdict === "unreadable") workUnknown = true;
   }
-  if (!live && unreadable) return NO_OPINION;
+  if (!live && workUnknown) return NO_OPINION;
   return {
     pending: live,
-    settledAgentIds: nextSettledAgentIds({ settledAgentIds, selfAgentId, listedIds, listComplete: !unreadable }),
+    settledAgentIds: nextSettledAgentIds({ settledAgentIds, selfAgentId, listedIds, listComplete: !listIncomplete }),
   };
 }
 
@@ -92,11 +109,22 @@ function readTaskEntry(task: unknown): BackgroundTaskEntry | null {
   return task as BackgroundTaskEntry;
 }
 
-// 레코드이되 type만 없는 항목은 알아볼 수 없는 것이 아니라 denylist에 걸리지 않은 에이전트 작업으로 본다 —
-// 새로 생기는 에이전트성 백그라운드 타입이 조용히 무시되지 않아야 하고, 그 방향이 거짓 유휴를 만들지 않는다.
-function isLiveAgentWork(entry: BackgroundTaskEntry, selfAgentId: string | undefined, settledAgentIds: ReadonlySet<string>): boolean {
-  if (typeof entry.id === "string" && (entry.id === selfAgentId || settledAgentIds.has(entry.id))) return false;
-  return !(typeof entry.type === "string" && NON_AGENT_BACKGROUND_TASK_TYPES.has(entry.type));
+// 항목 하나의 판정. 어느 목록에도 없는 type과 type이 아예 없는 레코드는 "에이전트 작업 없음"의 근거가 되지
+// 못하므로 알아보지 못한 것으로 남긴다.
+//
+// 이 무의견은 앞선 값을 지키는 것이지 새 값을 세우는 것이 아니다. 처음 보는 종류만 남은 목록이 그 세션의
+// 첫 보고라면 배지는 서지 않은 채로 남는다 — 이 축이 서지 않는 것은 기능이 없던 상태와 같고, 알아보지도
+// 못한 것을 에이전트 작업으로 세우면 셸·감시 작업이 축을 켜던 그 증상으로 되돌아간다. 새 종류가 실제로
+// 에이전트 작업이면 위 목록에 이름을 더하는 것이 답이지, 모르는 것을 전부 세는 것이 아니다.
+function classifyBackgroundTask(
+  entry: BackgroundTaskEntry,
+  selfAgentId: string | undefined,
+  settledAgentIds: ReadonlySet<string>,
+): "live" | "not-agent-work" | "unreadable" {
+  if (typeof entry.id === "string" && (entry.id === selfAgentId || settledAgentIds.has(entry.id))) return "not-agent-work";
+  if (typeof entry.type !== "string") return "unreadable";
+  if (AGENT_BACKGROUND_TASK_TYPES.has(entry.type)) return "live";
+  return NON_AGENT_BACKGROUND_TASK_TYPES.has(entry.type) ? "not-agent-work" : "unreadable";
 }
 
 // 기억은 목록이 지워준다. 목록을 전부 읽어낸 보고에서 더 이상 잡히지 않는 id는 registry에서 사라진 것이므로
