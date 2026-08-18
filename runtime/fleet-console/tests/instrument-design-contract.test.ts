@@ -2918,7 +2918,7 @@ describe("War Room deck panel grammar", () => {
     expect(tile).toContain("width: auto;");
     expect(tile).toContain("height: auto;");
     // 캡션은 창 밖(-32px)에 설 수 없다 — 위 행의 칸을 덮는다. 덱에서만 흐름 안으로 들어온다.
-    const tileCaption = components.match(/\.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
+    const tileCaption = components.match(/^\.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(tileCaption).toContain("position: relative;");
   });
 
@@ -2938,6 +2938,58 @@ describe("War Room deck panel grammar", () => {
     // 전이 소유가 칸이므로 reduced-motion도 칸을 끊는다.
     const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell \{\s*transition: none;\s*\}/);
+    // 확대는 지도 Quick-Look과 같은 "떠 있음"을 입는다 — 확대된 칸만이 --shadow-floating을 진다.
+    // 원래 크기 칸에 주면 0 32px 60px -28px가 10px 간격을 넘어 이웃 카드의 rim을 덮는다.
+    expect(cell).toContain("box-shadow: var(--shadow-floating), 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
+  });
+
+  it("closes the deck tile's state ring across its caption", () => {
+    // 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로 윗변을 이을 주체가 패널뿐이다.
+    // is-deck-tile 블록의 border-top 1px은 캡션 이음새 규칙과 같은 (0,2,0)이고 이음새가 뒤라서
+    // 졌다 — 상태 맥동이 좌·하·우만 칠하는 열린 U가 된다. :has()로 (0,3,0)을 만든 예외가
+    // 실제로 이기는 규칙이므로, 이 예외가 사라지면 U가 되돌아온다.
+    const tileSeamExemption = components.match(/\.canvas-operation\.is-deck-tile:has\(> \.canvas-operation-titlebar\) \{[^}]*\}/)?.[0] ?? "";
+    expect(tileSeamExemption).toContain("border-top-width: 1px;");
+    expect(tileSeamExemption).toContain("border-top-style: solid;");
+    // 예외는 반드시 이음새 규칙 뒤에 온다 — 앞에 두면 같은 승부를 다시 진다.
+    expect(components.indexOf(tileSeamExemption))
+      .toBeGreaterThan(components.indexOf(".canvas-operation:has(> .canvas-operation-titlebar) {"));
+    // 떠 있는 캡션(Cruise·Tactical·companion)의 계약은 그대로다.
+    const tileCaption = components.match(/^\.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
+    expect(tileCaption).toContain("border: 0;");
+  });
+
+  it("puts the deck card's hover mark on the cell, never on the pulsing panel", () => {
+    // is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를 키프레임으로 물고 있어,
+    // 같은 두 속성에 얹은 hover 선언은 애니메이션 오리진에 진다 — 신호가 가장 급한 카드에서만
+    // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 box-shadow가 소유한다.
+    const hover = components.match(/\.canvas-triage-deck-cell:hover:not\(\.is-quicklook\):not\(\.is-morphing\),\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\):not\(\.is-quicklook\):not\(\.is-morphing\) \{[^}]*\}/)?.[0] ?? "";
+    expect(hover).toContain("box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
+    expect(hover).toContain("z-index: 6;");
+    // 확대·변형 중인 칸은 자기 그림자와 z-index를 이미 소유한다 — 제외하지 않으면 확대 칸이 떨어진다.
+    expect(hover).not.toContain("--shadow-floating");
+    // 위치 마크는 패널의 맥동 속성을 절대 건드리지 않는다.
+    expect(components).not.toContain(".canvas-triage-deck-cell:hover > .canvas-triage-deck-mount > .canvas-operation {");
+    // 링이 패널의 10px 라운드를 따라가려면 그 링을 그리는 칸에도 같은 반경이 있어야 한다.
+    const cellBase = components.match(/\n\.canvas-triage-deck-cell \{[^}]*\}/)?.[0] ?? "";
+    expect(cellBase).toContain("border-radius: var(--radius-md);");
+    // 포인터와 키보드가 같은 마크를 받는다. 본문 안쪽 링(pick:focus-visible)은 그대로 남는다.
+    expect(components).toContain(".canvas-triage-deck-pick:focus-visible {");
+    // 겨눈 카드의 캡션 워시는 포커스 패널과 같은 한 값이다 — 새 값을 만들지 않는다.
+    const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
+    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
+    expect(wash).toContain("background-clip: padding-box;");
+  });
+
+  it("mixes the map quick-look border in oklab so brass stays on the location channel", () => {
+    // oklch는 hue를 극좌표 짧은 호로 보간한다. brass(78)와 surface-rim(245)의 60% 믹스는
+    // 실측 hue 144.8(Instrument)·144.2(Maritime)·354(Carbon)에 착지해, 위치 채널이 신호 채널
+    // positive(160·152) 옆에 앉거나 마젠타로 넘어갔다. 같은 함정을 캡션 포커스 워시가 이미
+    // oklab으로 옮겨 해결했다. War Room 안에서는 지도 점 hover(raw brass)·카드 hover와
+    // 같은 색이어야 하므로 이 자리도 oklab이다.
+    const mapQuicklook = components.match(/\.canvas-triage-deck-cell\.is-map-quicklook > \.canvas-triage-deck-mount > \.canvas-operation \{[^}]*\}/)?.[0] ?? "";
+    expect(mapQuicklook).toContain("border-color: color-mix(in oklab, var(--brass) 60%, var(--surface-rim));");
+    expect(mapQuicklook).not.toContain("in oklch");
   });
 
   it("keeps the deck tile's live body out of reach of both pointer and keyboard", () => {

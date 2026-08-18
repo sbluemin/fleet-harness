@@ -3500,9 +3500,13 @@
 }
 
 /* 지도 Quick-Look로 끌어올린 칸의 패널 — 판 위에 떠 있다는 사실만 테두리·그림자로 말한다.
-   자리와 크기는 칸이 지고(is-map-quicklook), 여기서는 그 위에 얹는 강조만 소유한다. */
+   자리와 크기는 칸이 지고(is-map-quicklook), 여기서는 그 위에 얹는 강조만 소유한다.
+   믹스는 oklab이다 — 캡션 포커스 워시와 같은 이유다(.canvas-operation.is-active 옆 주석 참조).
+   oklch는 hue를 극좌표 짧은 호로 보간해 brass(78)와 rim(245)의 60% 믹스가 실측 hue 144.8(Instrument)
+   ·144.2(Maritime)·354(Carbon)에 착지했다 — 위치 채널이 신호 채널 positive(160·152) 옆에 앉거나
+   아예 마젠타로 넘어간다. 네 테마 중 Whites만 우연히 brass에 남았다. */
 .canvas-triage-deck-cell.is-map-quicklook > .canvas-triage-deck-mount > .canvas-operation {
-  border-color: color-mix(in oklch, var(--brass) 60%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--brass) 60%, var(--surface-rim));
   box-shadow: var(--shadow-floating), 0 0 0 1px var(--brass-glow);
 }
 
@@ -3585,12 +3589,48 @@
   display: grid;
   min-width: 0;
   min-height: 0;
-  transition: transform var(--duration-slow) var(--ease-glide);
+  /* 칸 자신은 배경도 보더도 없지만, 아래 hover 링이 패널의 10px 라운드를 따라가려면
+     그 링을 그리는 상자에도 같은 반경이 있어야 한다. overflow는 visible 그대로다. */
+  border-radius: var(--radius-md);
+  transition:
+    transform var(--duration-slow) var(--ease-glide),
+    box-shadow var(--duration-base) var(--ease-glide);
 }
 
+/* 포인터가 겨눈 칸 — 위치(brass)는 칸이 지고 상태(신호색)는 패널이 진다. 이 분담은 취향이 아니라
+   캐스케이드가 정한다: is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를
+   키프레임으로 물고 있어, 같은 두 속성에 얹은 author-normal 선언은 애니메이션 오리진에 진다.
+   실측(맥동 카드에 hover brass를 얹어 계산): 나온 값은 brass가 아니라 aurora였고 그림자도
+   맥동 글로우였다 — 신호가 가장 급한 카드에서만 hover가 사라지는 조용한 실패다.
+   그래서 위치 마크는 패널이 건드리지 않는 표면, 곧 칸의 box-shadow가 소유한다.
+   확대 중(is-quicklook)과 밀도 변형 중(is-morphing)은 각자 자기 그림자·z-index를 이미
+   소유하므로 제외한다 — 넣으면 확대 칸이 이 규칙의 스택으로 떨어진다.
+   키보드는 같은 마크를 같은 순간에 받는다. 기존 .canvas-triage-deck-pick:focus-visible 링은
+   그대로 남긴다: 그 링은 본문 안쪽을, 이 링은 캡션까지 포함한 칸 전체를 말한다.
+   지도 모드에서는 카드 컨테이너가 visibility:hidden + pointer-events:none이라 :hover가 서지 않는다. */
+.canvas-triage-deck-cell:hover:not(.is-quicklook):not(.is-morphing),
+.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible):not(.is-quicklook):not(.is-morphing) {
+  /* 이웃 카드의 16px 맥동 글로우가 10px 간격을 건너와 이 1px 링을 씻지 않게 한 칸 올린다. */
+  z-index: 6;
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
+}
+
+/* 겨눈 카드의 캡션은 포커스 패널과 같은 워시를 입는다 — 새 값이 아니라
+   .canvas-operation.is-active > .canvas-operation-titlebar와 같은 한 값이다. */
+.canvas-triage-deck-cell:hover .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
+.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
+  background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
+  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+  background-clip: padding-box;
+}
+
+/* 확대는 드웰 400ms가 열리고 나서의 읽기 단계다 — 지도 Quick-Look과 같은 "떠 있음" 문법을 입어
+   덮고 있는 이웃과 갈린다. --shadow-floating(0 32px 60px -28px)은 원래 크기 칸에 주면 10px 간격을
+   넘어 이웃 rim을 덮으므로 확대된 칸에만 준다. */
 .canvas-triage-deck-cell.is-quicklook {
   transform: scale(var(--triage-quicklook-scale, 1.95));
   z-index: 9;
+  box-shadow: var(--shadow-floating), 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
 }
 
 /* 지도 모드의 Quick-Look — 은닉된 밴드 안의 칸을 판 위로 끌어올려 점 옆에 세운다. 좌표는
@@ -4346,6 +4386,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
      행처럼 열에도 최소값 0을 명시해야 성립한다. */
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
+  /* 이 두 줄만으로는 윗변이 서지 않는다 — 파일 뒤쪽 캡션 이음새 규칙이 같은 (0,2,0)으로 뒤에 와서
+     이긴다. 실제로 윗변을 되찾는 것은 그 규칙 바로 뒤의
+     `.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar)` 예외다. 여기 남는 두 줄은
+     "타일은 네 변을 진다"는 이 블록의 의도 표명이고, 예외가 지워지면 함께 지워져야 한다. */
   border-top-width: 1px;
   border-top-style: solid;
   border-radius: var(--radius-md);
@@ -5716,6 +5760,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .canvas-operation:has(> .canvas-operation-titlebar) {
   border-top-width: 0;
   border-top-style: none;
+}
+
+/* 덱 타일만 그 면제에서 빠진다 — 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로
+   (.canvas-operation.is-deck-tile > .canvas-operation-titlebar { border: 0 }) 윗변을 이을 주체가
+   패널밖에 없다. is-deck-tile 블록이 이미 border-top 1px을 적어 두었지만 그 선택자는 위 이음새
+   규칙과 같은 (0,2,0)이고 이음새 규칙이 뒤라서 이겼다 — 실측 borderTopWidth "0px". 결과는 상태
+   맥동(is-fresh·is-arriving·is-landed)과 reduced-motion 폴백이 좌·하·우만 칠하는 열린 U였다.
+   :has()로 (0,3,0)을 만들어 이 규칙만 되찾는다. 위 이음새 규칙은 떠 있는 캡션(Cruise·Tactical·
+   companion)의 계약이므로 건드리지 않는다. */
+.canvas-operation.is-deck-tile:has(> .canvas-operation-titlebar) {
+  border-top-width: 1px;
+  border-top-style: solid;
 }
 
 /* 포커스 = 캡션 워시 + 이름 티어. 선(윗변 라인·캡션 아웃라인)은 쓰지 않는다 — 상태 레일과
