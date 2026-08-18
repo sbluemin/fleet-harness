@@ -518,6 +518,16 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain("menuRef.current?.focus({ preventScroll: true });");
   });
 
+  it("keeps the Map canvas out of the keyboard focus order", () => {
+    const canvas = source("canvas/canvas.tsx");
+    const theme = source("styles/theme.css");
+    // tabindex=-1이면 채팅 로그처럼 포커스 불가한 본문을 누른 뒤 Enter가 바다에 brass 링을 남긴다.
+    expect(canvas).not.toContain("tabIndex={-1}");
+    expect(canvas).not.toContain("canvasRef.current?.focus()");
+    expect(theme).toContain("body:focus-visible,");
+    expect(theme).toContain("html:focus-visible {");
+  });
+
   it("replaces the launch menu's native scrollbar with edge strips and a scroll gauge", () => {
     const components = source("styles/components.css");
     const contextMenu = source("canvas/canvas-context-menu.tsx");

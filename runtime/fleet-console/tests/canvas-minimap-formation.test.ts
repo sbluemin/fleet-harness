@@ -496,6 +496,21 @@ describe("CanvasMinimap collapse behavior", () => {
     expect(document.querySelector<HTMLElement>('[aria-label="Operation Peer"]')?.contains(document.activeElement)).toBe(false);
   });
 
+  // Map <main>은 제스처·우클릭 판이지 키보드 정거장이 아니다. tabindex=-1이면 채팅 로그처럼
+  // 포커스 불가한 본문을 누른 뒤 Enter가 :focus-visible brass 링을 바다 왼쪽에 남긴다.
+  it("does not accept keyboard focus on the Map canvas", () => {
+    renderOperationsCanvas();
+    const canvas = document.querySelector<HTMLElement>("main.operations-canvas");
+    expect(canvas).not.toBeNull();
+    expect(canvas!.hasAttribute("tabindex")).toBe(false);
+    canvas!.focus();
+    expect(document.activeElement).not.toBe(canvas);
+    const peer = document.querySelector<HTMLElement>('[aria-label="Operation Peer"]');
+    expect(peer).not.toBeNull();
+    peer!.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    expect(document.activeElement).not.toBe(canvas);
+  });
+
   // 메뉴는 페이지가 소유하고 프레임은 자기가 숨는 것만 안다 — 숨는 순간 그 사실을 주인 id와 함께
   // 올려야, 보이지 않는 패널의 메뉴가 화면에 남아 조작 가능한 채로 버티지 않는다.
   it("reports its own id when a hidden peer's menu owner leaves the focus layer", () => {
