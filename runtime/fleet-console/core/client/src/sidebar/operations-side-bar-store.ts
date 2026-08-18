@@ -4,7 +4,7 @@ import { useCallback, useSyncExternalStore } from "react";
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { clearDeparture, markDeparture, resetDepartureForTests } from "../operation-departure.js";
-import { clearIdleArrival, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
+import { clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { getState, subscribe } from "../store.js";
 import type { OperationNode } from "../types.js";
@@ -201,9 +201,16 @@ export function trackOperationActivityTransitions(input: {
   movedIds.forEach((id) => pendingStatusLandingIds.add(id));
   for (const operation of input.operations) {
     if (!movedIds.includes(operation.id)) continue;
+    // 확인 처리가 정지된 동안(War Room)에는 어떤 활성도 "이미 확인됨"으로 치지 않는다. 그
+    // 정지는 선별 중 활성화를 미인정으로 만들지만 진입 전에 인정된 활성은 건드리지 못하는데,
+    // 그 패널이 선별 중 완료하면 여기서 도착 마크를 통째로 건너뛴다. 마크는 전이 순간에만 붙어
+    // 되살아나지 않으므로, 그 Operation은 대기 큐로 돌아오지 못한 채 덱 카드에 남는다.
+    // 판정만 정지에 맞추고 activeOperationAcknowledged 자체는 두어야 한다 — 그 값을 진입에서
+    // 내리면 종료 복구(setActiveOperation)가 진입 전부터 있던 도착 마크까지 확인 처리해 지운다.
     const focusedAndAcknowledged = operation.id === input.activeOperationId
       && operation.theaterId === input.activeTheaterId
-      && input.activeOperationAcknowledged === true;
+      && input.activeOperationAcknowledged === true
+      && !isIdleArrivalAcknowledgementSuspended();
     if (nextStatuses.get(operation.id) === "running") {
       if (!focusedAndAcknowledged) markDeparture(operation.id);
     } else {

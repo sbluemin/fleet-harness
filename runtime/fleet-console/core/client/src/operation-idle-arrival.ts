@@ -20,6 +20,10 @@ export function setIdleArrivalAcknowledgementSuspended(suspended: boolean): void
   acknowledgementSuspended = suspended;
 }
 
+export function isIdleArrivalAcknowledgementSuspended(): boolean {
+  return acknowledgementSuspended;
+}
+
 export function clearIdleArrival(id: string): void {
   if (!idleArrivalIds.has(id)) return;
   idleArrivalIds = new Set(idleArrivalIds);
