@@ -147,6 +147,10 @@ function argumentsDone(id: string, outputIndex = 0, value = "{}"): CanonicalResp
   return { type: "response.function_call_arguments.done", item_id: id, output_index: outputIndex, arguments: value };
 }
 
+function argumentsDelta(id: string, outputIndex = 0, delta = "{}"): CanonicalResponseEvent {
+  return { type: "response.function_call_arguments.delta", item_id: id, output_index: outputIndex, delta };
+}
+
 async function flushXaiStream(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();
@@ -621,6 +625,169 @@ describe("Grok Responses function-call assembly", () => {
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: 0 })).toThrow("functionCallTimeoutMs must be a positive integer");
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: -1 })).toThrow("functionCallTimeoutMs must be a positive integer");
     expect(() => new XaiResponsesAdapter({ functionCallTimeoutMs: 1.5 })).toThrow("functionCallTimeoutMs must be a positive integer");
+  });
+
+  it("never forwards argument fragments on a normally terminated call", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(functionCallAdded("call-1")),
+      xaiFrame(argumentsDelta("call-1", 0, '{"path":')),
+      xaiFrame(argumentsDelta("call-1", 0, '"a.ts"}')),
+      xaiFrame(functionCallDone("call-1", 0, '{"path":"a.ts"}')),
+      xaiFrame(responseCompleted()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collectXaiEvents(response.events);
+    expect(eventTypes(events)).toEqual([
+      "response.created",
+      "response.output_item.added",
+      "response.function_call_arguments.done",
+      "response.output_item.done",
+      "response.completed",
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.function_call_arguments.done",
+      arguments: '{"path":"a.ts"}',
+    }));
+  });
+
+  it("salvages a complete argument object when the stream ends without a terminal frame", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(functionCallAdded("call-1")),
+      xaiFrame(argumentsDelta("call-1", 0, '{"path":"a.ts"')),
+      xaiFrame(argumentsDelta("call-1", 0, "}")),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collectXaiEvents(response.events);
+    expect(eventTypes(events)).toEqual([
+      "response.created",
+      "response.output_item.added",
+      "response.function_call_arguments.done",
+      "response.output_item.done",
+      "response.completed",
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      type: "response.output_item.done",
+      item: expect.objectContaining({ id: "call-1", name: "Read", arguments: '{"path":"a.ts"}' }),
+    }));
+  });
+
+  it("salvages a stalled call at the assembly deadline and seals the turn", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, functionCallTimeoutMs: 20 }).stream(functionCallRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      controlled.push(xaiFrame(responseCreated()));
+      controlled.push(xaiFrame(functionCallAdded("call-1")));
+      controlled.push(xaiFrame(argumentsDelta("call-1", 0, '{"path":"a.ts"}')));
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(20);
+      expect(eventTypes(await events)).toEqual([
+        "response.created",
+        "response.output_item.added",
+        "response.function_call_arguments.done",
+        "response.output_item.done",
+        "response.completed",
+      ]);
+      expect(controlled.wasCancelled()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still fails a stalled call whose absorbed fragments are truncated", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, functionCallTimeoutMs: 20 }).stream(functionCallRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      const eventsExpectation = expect(events).rejects.toThrow("assembly exceeded 20ms");
+      controlled.push(xaiFrame(responseCreated()));
+      controlled.push(xaiFrame(functionCallAdded("call-1")));
+      controlled.push(xaiFrame(argumentsDelta("call-1", 0, '{"path":"a.ts"')));
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(20);
+      await eventsExpectation;
+      expect(controlled.wasCancelled()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("drops a fragment for a call this stream never opened", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(argumentsDelta("ghost", 3, '{"path":"a.ts"}')),
+      xaiFrame(responseCompleted()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    expect(eventTypes(await collectXaiEvents(response.events))).toEqual([
+      "response.created",
+      "response.completed",
+    ]);
+  });
+
+  it("does not salvage a complete JSON scalar or array", async () => {
+    for (const fragment of ['"a.ts"', '["a.ts"]']) {
+      const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+        xaiFrame(responseCreated()),
+        xaiFrame(functionCallAdded("call-1")),
+        xaiFrame(argumentsDelta("call-1", 0, fragment)),
+      ));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      await expect(collectXaiEvents(response.events)).rejects.toThrow("stream ended before");
+    }
+  });
+
+  it("hands the salvaged call to the Anthropic encoder as a complete tool_use turn", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame(textDelta("Extending the CLI.")),
+      xaiFrame(functionCallAdded("call-1", 1)),
+      xaiFrame(argumentsDelta("call-1", 1, '{"path":"a.ts"}')),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    const frames = parseEncodedSse(await collectEncodedBody(encodeAnthropicSse(response.events)));
+    expect(frames.map((frame) => frame.event)).toContain("message_stop");
+    expect(frames.at(-2)?.data).toMatchObject({ delta: { stop_reason: "tool_use" } });
+    const toolStart = frames.find((frame) => (frame.data as { content_block?: { type?: string } }).content_block?.type === "tool_use");
+    expect(toolStart?.data).toMatchObject({ content_block: { type: "tool_use", id: "call-1", name: "Read" } });
+    expect(JSON.stringify(frames)).toContain('a.ts');
+  });
+
+  it("records only payload-light fields when a call is salvaged", async () => {
+    const wire = wireLogFixture("fleet-xai-salvage-");
+    try {
+      const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+        xaiFrame(responseCreated()),
+        xaiFrame(functionCallAdded("call-1")),
+        xaiFrame(argumentsDelta("call-1", 0, '{"path":"secret-marker.ts"}')),
+      ));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(functionCallRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      await collectXaiEvents(response.events);
+      const salvaged = wire.read().filter((entry) => entry.event === "xai-responses.function_call.salvaged");
+      expect(salvaged).toHaveLength(1);
+      expect(salvaged[0]?.payload).toEqual({
+        reason: "stream ended before function call output_item.done",
+        calls: 1,
+      });
+      expect(JSON.stringify(salvaged)).not.toContain("secret-marker");
+    } finally {
+      wire.cleanup();
+    }
   });
 });
 
