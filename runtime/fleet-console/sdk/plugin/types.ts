@@ -37,12 +37,6 @@ export type OperationRuntimeState =
   | {
     readonly lifecycle: "live";
     readonly activity: OperationActivity;
-    /**
-     * 이 Operation이 어느 실행 표면으로 도는지에 대한 플러그인의 짧은 라벨(예: "CHAT").
-     * 호스트는 뜻을 해석하지 않고 표식으로만 그린다 — 표면의 이름은 그 표면을 가진 플러그인만 안다.
-     * 신호 채널(색)을 쓰지 않는 이유는 색이 활동을 말하는 자리이기 때문이다.
-     */
-    readonly surface?: string;
   }
   | { readonly lifecycle: "dormant" };
 
@@ -65,7 +59,7 @@ export interface TerminalTicket {
  *
  * '@' 덱은 Operation 카테고리 아래에 이 기여를 `categoryLabel`별로 세운다. 호스트는 라벨의 뜻을
  * 해석하지 않는다 — 어느 플러그인의 무엇인지만 알고, 이름과 능력 문구는 그 표면을 가진 플러그인만
- * 안다(런타임 `surface` 라벨과 같은 계약).
+ * 안다.
  *
  * Operation 행선지와 달리 Theater도 활동 상태도 없다. 그래서 행은 상태 배지를 달지 않고,
  * 대신 `capabilityLabel`이 **고르기 전에** 무엇을 할 수 있는 대상인지 말한다 — 바로 윗줄의

@@ -96,23 +96,14 @@ async function consumeStream(reader: ReadableStreamDefaultReader<Uint8Array>, si
 // 두 optional 필드가 모두 부재할 때만 도달한다. 미인식 타이틀은 무의견으로 남아야 하며, 그래야 타이틀 어휘가 드리프트해도
 // 거짓 idle 대신 hook 기반 동작으로 퇴보한다.
 export function sessionRuntime(session: SessionInfo): OperationRuntimeState {
-  // 채팅이 인수했으면 PTY의 죽음은 수명주기의 죽음이 아니다. 활동은 SDK 턴 경계가 말하고,
-  // 표면 라벨은 호스트가 뜻을 모른 채 표식으로만 그린다.
+  // 채팅이 인수했으면 PTY의 죽음은 수명주기의 죽음이 아니다. 활동은 SDK 턴 경계가 말한다.
   if (session.chatActive === true) {
     // 활동 해석은 표면과 무관하다 — 두 어댑터가 같은 필드에 쓰므로 같은 함수가 읽는다.
-    // 여기서 갈리는 것은 수명(PTY의 죽음이 수명의 죽음이 아니다)과 표면 표식뿐이다.
-    return { lifecycle: "live", activity: sessionActivity(session), surface: CHAT_SURFACE_LABEL };
+    return { lifecycle: "live", activity: sessionActivity(session) };
   }
   if (session.status === "dormant") return { lifecycle: "dormant" };
-  return { lifecycle: "live", activity: sessionActivity(session), surface: CLI_SURFACE_LABEL };
+  return { lifecycle: "live", activity: sessionActivity(session) };
 }
-
-// 호스트에 넘기는 실행 표면 표식. 뜻을 아는 쪽은 이 플러그인뿐이다.
-// 두 표면은 대칭으로 말한다 — 채팅만 표식을 달면 그 표식이 "특이 상태"로 읽히지만, 둘 다 달면
-// 사용자가 읽는 것은 "이 Operation이 지금 어느 표면으로 도는가" 하나가 된다.
-// 휴면에는 표식이 없다. 어느 표면으로도 돌고 있지 않기 때문이다.
-const CHAT_SURFACE_LABEL = "CHAT";
-const CLI_SURFACE_LABEL = "CLI";
 
 export function sessionActivity(session: SessionInfo): OperationActivity {
   if (session.attentionPending === true) return "awaiting";

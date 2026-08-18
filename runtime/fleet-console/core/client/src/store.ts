@@ -364,8 +364,7 @@ export function setOperationRuntime(operationId: string, next: OperationRuntimeS
 function sameRuntimeState(current: OperationRuntimeState | undefined, next: OperationRuntimeState): boolean {
   if (!current || current.lifecycle !== next.lifecycle) return false;
   if (current.lifecycle === "dormant" || next.lifecycle === "dormant") return true;
-  // 표면 표식도 값의 일부다 — 활동이 그대로여도 표면이 바뀌면 칩이 달라져야 한다.
-  return current.activity === next.activity && current.surface === next.surface;
+  return current.activity === next.activity;
 }
 
 export function clearOperationRuntime(operationId: string): void {
