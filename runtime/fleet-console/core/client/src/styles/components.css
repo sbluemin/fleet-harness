@@ -5764,18 +5764,42 @@ body[data-side-bar-animating="true"] .canvas-operation {
   animation: caption-rail-travel 3.8s ease-in-out infinite;
 }
 
-/* background는 턴이 끝나고 작업만 남은 상태 — 같은 warn을 낮은 광량의 정적 레일로 낮춘다. */
+/* background는 턴이 끝나고 작업만 남은 상태 — 사람을 부르지 않는 일이 혼자 굴러간다.
+   turn의 왕복과 성격이 겹치지 않도록 한 방향으로만 흐르고, 되감기는 순간이 보이지 않게
+   타일 한 주기(160px)를 정확히 민다. 이동량은 픽셀이어야 한다: background-position의
+   퍼센트는 (영역 폭 − 이미지 폭) 기준이라 타일 주기와 맞아떨어지지 않아 한 바퀴 끝에서 튄다.
+   마루 0.55는 옛 균일 레일(0.45)보다 밝고 unseen 하한(0.58) 아래다 — 흐름의 골이 어두워지는
+   만큼 마루가 밝지 않으면 "살아 있다"가 오히려 약해진다. */
 .canvas-operation.is-running--background > .canvas-operation-titlebar::after {
-  opacity: 0.45;
+  opacity: 0.55;
+  background: repeating-linear-gradient(
+    90deg,
+    color-mix(in oklab, var(--warn) 22%, transparent) 0px,
+    var(--warn) 64px,
+    var(--warn) 96px,
+    color-mix(in oklab, var(--warn) 22%, transparent) 160px
+  );
+  background-size: 160px 100%;
+  animation: caption-rail-flow 6.5s linear infinite;
 }
 
-/* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. */
+/* awaiting은 사람을 기다리는 유일한 상태 — 호출 신호로 맥동한다. 밝기만이 아니라 글로우가
+   함께 열렸다 닫혀 "부른다"가 형태로도 읽힌다. 하한은 background 마루(0.55) 위에 둔다:
+   옛 맥동은 하한이 0.34라 주기의 절반가량 부르는 신호가 아무도 부르지 않는 신호보다
+   어두웠다(위계 역전). */
 .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after {
-  animation: caption-rail-pulse 2s var(--ease-glide) infinite;
+  animation: caption-rail-call 2.4s var(--ease-glide) infinite;
 }
 
-/* 미확인 완료는 도착 순간 1회 플래시로 시선을 부르고 그 뒤 상시 레일로 남는다 —
-   상시 aura(22px glow)를 순간 운동으로 교환한 자리다.
+/* 미확인 완료는 이미 끝난 일이라 급하지 않다 — 부름(2.4s)보다 느린 잔광으로 남는다.
+   하한 0.58은 awaiting 하한(0.62) 아래, background 마루(0.55) 위다. 세 상태의 밝기 위계는
+   awaiting > unseen > background 순으로 어느 순간에도 뒤집히지 않는다. */
+.canvas-operation.is-unseen > .canvas-operation-titlebar::after {
+  animation: caption-rail-tide 4.4s var(--ease-glide) infinite;
+}
+
+/* 도착 순간의 1회 플래시는 그 위에 따로 선다 — 상시 aura(22px glow)를 순간 운동으로
+   교환한 자리이며, 플래시가 끝나면 위의 상시 잔광이 이어받는다.
    플래시를 is-unseen이 아니라 별도의 일시 클래스에 건다: is-unseen은 확인 전까지 계속 참이라
    Theater를 오가며 프레임이 리마운트될 때마다 애니메이션이 다시 돈다. 도착은 상태의 전이이지
    상태의 존재가 아니다. */
@@ -5801,13 +5825,40 @@ body[data-side-bar-animating="true"] .canvas-operation {
   }
 }
 
-@keyframes caption-rail-pulse {
+/* 흐름의 이동량은 타일 한 주기와 같다 — 마지막 프레임이 첫 프레임과 같은 그림이라
+   되감기는 이음매가 없다. 퍼센트로 적으면 이 등식이 깨진다. */
+@keyframes caption-rail-flow {
+  from {
+    background-position: 0 0;
+  }
+  to {
+    background-position: -160px 0;
+  }
+}
+
+/* 부름과 잔광은 시작·끝을 완전 점등으로 못박는다 — reduced-motion이 반복을 1회로 자르거나
+   애니메이션이 멈춘 자리에서도 레일이 꺼진 채 남지 않아야 한다(비콘 마크와 같은 규약). */
+@keyframes caption-rail-call {
   0%,
   100% {
     opacity: 1;
+    box-shadow: 0 0 11px 1px var(--aurora-glow);
   }
   50% {
-    opacity: 0.34;
+    opacity: 0.62;
+    box-shadow: 0 0 0 0 var(--aurora-glow);
+  }
+}
+
+@keyframes caption-rail-tide {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 9px 1px var(--positive-glow);
+  }
+  50% {
+    opacity: 0.58;
+    box-shadow: 0 0 0 0 var(--positive-glow);
   }
 }
 
@@ -6230,9 +6281,19 @@ body[data-side-bar-animating="true"] .canvas-operation {
      즉시 정착한 레일로 대체한다. 상태 자체는 계속 읽혀야 하므로 레일을 끄지는 않는다. */
   .canvas-operation.is-running--turn > .canvas-operation-titlebar::after,
   .canvas-operation.is-running--awaiting > .canvas-operation-titlebar::after,
+  .canvas-operation.is-unseen > .canvas-operation-titlebar::after,
   .canvas-operation.is-unseen-arriving > .canvas-operation-titlebar::after {
     animation: none;
     background: var(--caption-rail);
+    box-shadow: none;
+  }
+
+  /* background만은 색면으로 단락할 수 없다 — 운동을 걷으면 turn과 같은 warn 균일선이 되어
+     두 상태가 한 그림으로 겹친다. 흐름 대신 점선을 켜 형상으로 가른다. aurora·positive는
+     색이 이미 갈라 주므로 균일 색면으로 충분하다. */
+  .canvas-operation.is-running--background > .canvas-operation-titlebar::after {
+    animation: none;
+    background: repeating-linear-gradient(90deg, var(--warn) 0 7px, transparent 7px 13px);
     box-shadow: none;
   }
 }
