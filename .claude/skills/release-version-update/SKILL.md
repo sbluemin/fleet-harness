@@ -80,7 +80,7 @@ Re-fetch once before concluding. Then:
 - Commits since the last `chore(release):` that added no fragment (informational; CI compiles with `--allow-empty` and does not block).
 - Expected CI bump: run the same grep Stable Release uses. `git log --format=%B origin/main..origin/canary` matching `^[[:space:]]*feat(\([^)]+\))?!?:` is `minor`; otherwise `patch`. That includes `feat!:` / `feat(scope)!:` and a `feat:` line in a commit body, not only a conventional subject. Record the inference. Do not write it into the tree. If the user demanded a version that would disagree with that result, stop and ask.
 
-**Release-trigger gate.** Run `node scripts/release-tip-guard.mjs origin/main origin/canary`. Exit `0` / printed `ignorable:` means every path is in Stable Release `paths-ignore` (docs, `.fleet`, `.github`, `.claude`, `.agents`, `**.md`, except release-input prefixes). Pushing `main` then **does not start** Stable Release. Stop and report those paths. Do not add a dummy product file to force a version. Exit `1` / `release-affecting:` is the expected case for a real release — continue.
+**Release-trigger gate.** Run `node scripts/release-tip-guard.mjs origin/main origin/canary`. Exit `0` / printed `ignorable:` means every path is in Stable Release `paths-ignore` (docs, `.fleet`, `.github`, `.claude`, `**.md`, except release-input prefixes). Pushing `main` then **does not start** Stable Release. Stop and report those paths. Do not add a dummy product file to force a version. Exit `1` / `release-affecting:` is the expected case for a real release — continue.
 
 ### Phase 4 — Full local verify
 

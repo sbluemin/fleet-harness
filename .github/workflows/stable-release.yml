@@ -13,7 +13,6 @@ on:
       - '.fleet/**'
       - '.github/**'
       - '.claude/**'
-      - '.agents/**'
       - '.codex/**'
       - '**.md'
 

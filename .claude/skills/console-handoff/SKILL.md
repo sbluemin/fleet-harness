@@ -55,7 +55,7 @@ Create a small folder with real files the change can act on — an agent that re
 `scripts/seed-console.mjs` registers the Theater and, when given a prompt, launches a chat-born Operation and waits for the state you want:
 
 ```bash
-node .agents/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir> --theater <theater> \
+node .claude/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir> --theater <theater> \
   --prompt "<prompt that produces the scenario>" --await ask
 ```
 
@@ -64,7 +64,7 @@ node .agents/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir>
 To leave a *settled* example beside the live one — the two read differently and the contrast is the point — seed a second Operation and answer it:
 
 ```bash
-node .agents/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir> --answer <sessionId> --pick 1
+node .claude/skills/console-handoff/scripts/seed-console.mjs --dir <handoff-dir> --answer <sessionId> --pick 1
 ```
 
 `--pick N` / `--text "…"` / `--approve` / `--dismiss` / `--revise "…"` cover the answer paths. The script re-reads the journal to find the parked question instead of taking its id as an argument, because a real tool_use id can contain a newline.
