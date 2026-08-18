@@ -290,6 +290,16 @@ interface TranscriptLine {
   readonly isSidechain?: unknown;
   readonly isCompactSummary?: unknown;
   readonly timestamp?: unknown;
+  /**
+   * 이 줄을 누가 만들었는가. CLI가 출처를 아는 줄에만 실린다 — 관측된 값은 `human`(사람 입력),
+   * `task-notification`(백그라운드 작업 결말), `peer`(다른 세션)다. 사람 발화에 `human` 아닌
+   * kind가 붙을 이유가 없으므로, **필드가 있는데 human이 아니면** 주입으로 읽는다.
+   *
+   * 반대로 **부재는 아무것도 뜻하지 않는다.** 이 필드가 없는 사람 발화가 실제로 있다(구버전 CLI가
+   * 남긴 줄, Quick Launch가 보낸 `promptSource:"sdk"` 줄). 부재를 "사람 아님"으로 읽으면 지시가
+   * 조용히 사라진다.
+   */
+  readonly origin?: { readonly kind?: unknown };
   readonly message?: {
     readonly role?: unknown;
     readonly content?: unknown;
@@ -345,7 +355,12 @@ function eventsFromTranscriptLine(line: TranscriptLine, options: ChatEventMapOpt
     const results = toolResultsFrom(line.message?.content, options);
     if (results.length > 0) return results;
     const text = readUserText(line.message?.content);
-    return text ? [{ kind: "dispatch", text, ...atField }] : [];
+    if (text === null) return [];
+    // 사람이 친 것이 아닌 운반체는 지휘 로그에 사용자 발화로 서지 않는다. 다만 본문만 걷고 턴
+    // 경계까지 지우면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 갈아치우므로, 말풍선 없는
+    // 여는 이벤트만 남긴다. 그 이벤트가 실제로 턴이 될지는 재생 루프가 정한다(지연 발행).
+    if (isInjectedCarrier(line, text)) return [{ kind: "turn-start", ...atField }];
+    return [{ kind: "dispatch", text, ...atField }];
   }
   if (line.type === "assistant") {
     return eventsFromAssistantContent(line.message?.content, options);
@@ -788,12 +803,65 @@ function readUserText(content: unknown): string | null {
   return normalizeDispatchText(parts.join("\n"));
 }
 
+/**
+ * CLI가 user 줄로 남기지만 사람이 친 것이 아닌 운반체들. 이 목록은 **지목형**이다 — 아는 것만
+ * 버리고 모르는 것은 통과시킨다. 반대로 하면(모르는 것을 버리면) 새 형태의 사람 발화가 조용히
+ * 사라지는데, 노이즈 한 줄보다 지시 한 줄을 잃는 쪽이 훨씬 비싸다.
+ *
+ * `local-command-caveat`·`system-reminder`는 대개 `isMeta`로도 걸리지만, 그 플래그를 달지 않는
+ * 판본이 있어 여기서도 지목한다.
+ *
+ * 목록은 **종류를 더 가르지 않는다.** 어느 운반체가 모델을 깨우는지를 여기서 미리 나누려던 판본이
+ * 있었으나 그 분류는 실물에서 틀렸다 — `/clean-code` 같은 슬래시 명령은 `<command-message>` 줄로
+ * 시작해 뒤에 응답을 달고 온다(실측 14건). 부산물로 분류해 침묵시키면 그 응답이 앞 턴에 얹혀
+ * 앞 턴의 Answer를 갈아치운다. "내용 없는 턴은 열지 않는다"는 판정은 재생 루프가 진다: 여는
+ * 이벤트는 실제 내용이 뒤따를 때 비로소 발행되고 연속된 운반체는 턴 하나로 접힌다
+ * (`chat-session.ts`의 지연 발행). 그래서 이 목록은 종류를 몰라도 되고, 새 운반체가 생겨도
+ * 같은 규칙으로 옳게 동작한다.
+ */
+const INJECTED_TRANSCRIPT_TAGS: ReadonlySet<string> = new Set([
+  "task-notification",
+  "local-command-stdout",
+  "local-command-caveat",
+  "command-name",
+  "command-message",
+  "system-reminder",
+  "bash-input",
+  "bash-stdout",
+]);
+
+/**
+ * 선두 태그의 **이름만** 뽑는다. 접두 문자열 비교로는 속성 있는 태그를 놓친다 —
+ * `"<system-reminder source=\"carrier-completion\">".startsWith("<system-reminder>")`는 false이고,
+ * Fleet 자신이 CLI에 붙여넣는 캐리어 완료 신호가 정확히 그 형태다.
+ */
+const LEADING_TAG_NAME = /^<([a-zA-Z][a-zA-Z0-9-]*)(?=[\s>])/;
+
+/**
+ * `origin.kind`가 실렸는데 사람이 아니라고 말하는가. 부재는 판정하지 않는다 —
+ * 그 이유는 `TranscriptLine.origin` 주석에 있다.
+ */
+function isInjectedOrigin(origin: TranscriptLine["origin"]): boolean {
+  const kind = origin?.kind;
+  return typeof kind === "string" && kind.length > 0 && kind !== "human";
+}
+
+/**
+ * 이 user 줄이 사람이 친 지시가 아니라 주입 운반체인가.
+ *
+ * 두 축을 함께 본다. `origin.kind`는 CLI가 출처를 아는 줄에만 실리므로 있으면 권위이고, 그 필드가
+ * 없는 판본과 `origin.kind==="human"`으로 오는 붙여넣기(Fleet의 캐리어 완료 신호)는 본문 태그로만
+ * 갈린다. 어느 축도 화이트리스트가 아니다 — **아는 것만 지목**하고 모르는 것은 통과시킨다.
+ */
+function isInjectedCarrier(line: TranscriptLine, text: string): boolean {
+  if (isInjectedOrigin(line.origin)) return true;
+  const tag = LEADING_TAG_NAME.exec(text.trimStart())?.[1];
+  return tag !== undefined && INJECTED_TRANSCRIPT_TAGS.has(tag);
+}
+
 function normalizeDispatchText(text: string): string | null {
   const trimmed = text.trim();
-  if (trimmed.length === 0) return null;
-  // 훅·시스템 리마인더 운반 줄은 지휘 로그에 올리지 않는다.
-  if (trimmed.startsWith("<system-reminder>") || trimmed.startsWith("<command-name>")) return null;
-  return capText(trimmed);
+  return trimmed.length === 0 ? null : capText(trimmed);
 }
 
 /**
