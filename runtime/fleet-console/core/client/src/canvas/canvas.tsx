@@ -817,7 +817,6 @@ export function OperationsCanvas({
       onWheel={interaction.onWheel}
       onContextMenu={handleContextMenu}
       ref={canvasRef}
-      tabIndex={-1}
     >
       <CanvasGrid viewport={canvas.viewport} />
       {triageActive ? <div className="canvas-triage-scan" aria-hidden="true" /> : null}
@@ -946,12 +945,9 @@ export function OperationsCanvas({
             operationBodyPoolAvailable,
             deckSlot,
             onRenderHiddenFocus: () => {
-              const focusTarget = canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']");
-              if (focusTarget) {
-                focusTarget.focus();
-                return;
-              }
-              canvasRef.current?.focus();
+              // 숨은 peer의 포커스는 전면 프레임만 받는다. Map <main>은 키보드 정거장이 아니라서
+              // 폴백으로 가져가면 채팅 본문 클릭·Enter가 바다에 :focus-visible brass 링을 남긴다.
+              canvasRef.current?.querySelector<HTMLElement>("[data-focus-layer-target='true']")?.focus();
             },
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             groupName: operationGroup?.name ?? null,

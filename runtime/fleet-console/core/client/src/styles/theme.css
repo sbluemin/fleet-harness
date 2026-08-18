@@ -554,6 +554,14 @@ a {
   border-radius: var(--radius-xs);
 }
 
+/* Map <main>은 키보드 정거장이 아니다. 채팅 로그처럼 포커스 불가한 본문을 누르면
+   브라우저는 document(body)로 포커스를 올린다. 그 자리에 전역 링을 그리면 Enter가
+   뷰포트 전체를 금색으로 감싼다. 선택(복사)을 지키려면 mousedown을 막지 않고 링만 끈다. */
+body:focus-visible,
+html:focus-visible {
+  outline: none;
+}
+
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;

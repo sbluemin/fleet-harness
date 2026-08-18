@@ -179,7 +179,8 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
     return () => terminal.removeEventListener("pointerdown", activate);
   }, [onActivate]);
 
-  // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame(없으면 Canvas)으로 옮긴다.
+  // focus layer가 현재 포커스를 담은 peer를 숨길 때는 body로 흘려보내지 않고 새 전면 frame으로 옮긴다.
+  // Map 바다는 싱크가 아니다 — 전면 프레임이 없으면 브라우저가 inert peer에서 포커스를 걷는다.
   // 메뉴 회수를 포커스 이관보다 먼저 한다 — 뒤에 두면 부모가 메뉴를 닫으며 되돌리는 포커스가
   // 방금 inert가 된 이 프레임의 트리거를 향한다.
   useLayoutEffect(() => {
