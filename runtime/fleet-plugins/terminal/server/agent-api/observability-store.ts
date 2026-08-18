@@ -393,6 +393,30 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
    * 사용자의 답을 기다리는 구간. 진행 중 턴 안에서만 서므로 작업 보고를 끄지 않는다 —
    * 읽는 쪽이 대기를 작업보다 앞세운다.
    */
+  /**
+   * 채팅 표면의 백그라운드 대기 보고. 필드는 PTY 쪽과 같은 하나지만, 그 setter를 그대로 쓸 수 없는
+   * 이유가 둘이다.
+   *
+   * 하나는 라이프사이클이다. 채팅이 인수한 세션은 PTY가 없어 status가 dormant로 남는다 — 채팅에서
+   * 태어난 Operation과 복원된 Operation이 모두 그렇다. 그 status로 보고를 막으면 이 축은 채팅에서
+   * 영영 서지 못한다. 활동 해석도 chatActive를 status보다 앞세우므로, 여기서도 문지기는 chatActive다.
+   *
+   * 다른 하나는 TTL이다. hook 전달은 best-effort라 잃어버린 stop 하나가 배지를 영영 켜 둘 수 있어 PTY
+   * 쪽은 시한을 둔다. 채팅의 원장은 세션 스트림 자체이고 세션이 사라지면 반드시 걷히므로, 여기에 시한을
+   * 두면 아직 도는 작업을 30분 뒤에 조용히 유휴로 만든다. 그래서 앞 표면이 남긴 타이머만 거두고
+   * 새로 걸지는 않는다.
+   */
+  function setTerminalSessionChatBackgroundPending(sessionId: string, pending: boolean): AgentTerminalSessionInfo | null {
+    const session = terminalSessionsById.get(sessionId);
+    if (!session || session.chatActive !== true) return null;
+    if (session.backgroundPendingExpiry) {
+      clearTimeout(session.backgroundPendingExpiry);
+      delete session.backgroundPendingExpiry;
+    }
+    session.backgroundPending = pending;
+    return toTerminalSessionInfo(session);
+  }
+
   function setTerminalSessionChatAwaiting(sessionId: string, awaiting: boolean): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session || session.chatActive !== true) return null;
@@ -536,6 +560,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     getTerminalSessionSettledAgentIds,
     setTerminalSessionModelActivity,
     setTerminalSessionChatActive,
+    setTerminalSessionChatBackgroundPending,
     setTerminalSessionChatWorking,
     setTerminalSessionChatAwaiting,
     transitionTerminalSessionToDormant,

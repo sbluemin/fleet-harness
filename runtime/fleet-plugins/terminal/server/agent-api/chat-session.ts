@@ -29,6 +29,7 @@ import {
   chatReplayFromTranscriptLine,
   chatShellTailFromOutput,
   chatSubagentTrailFromTranscript,
+  readJobKind,
   type AgentChatJobDetail,
   type AgentChatJobKind,
   type AgentChatJournalEvent,
@@ -135,6 +136,16 @@ export interface AgentChatSessionSeed {
    * 끄지 않는다 — 이 값을 읽는 쪽이 대기를 작업보다 앞세운다.
    */
   readonly reportAwaiting: (awaiting: boolean) => void;
+  /**
+   * 턴보다 오래 사는 작업이 지금 이 세션에 남아 있는지 활동축에 보고한다.
+   *
+   * 절대값이다 — 원장이 바뀔 때마다 다시 계산해 보낸다. 증감으로 두면 한 워크플로가 에이전트
+   * 수만큼 결말을 내는 동안 카운터가 먼저 말라, 아직 도는 작업이 유휴로 읽힌다.
+   *
+   * 이 축은 작업 중임을 주장하지 않는다. 거짓 유휴를 막을 뿐이며, 턴이 도는 동안에는 읽는 쪽이
+   * 작업 중을 앞세운다.
+   */
+  readonly reportBackgroundPending: (pending: boolean) => void;
 }
 
 /**
@@ -327,6 +338,14 @@ class AgentChatSession {
    * 으로 남겨 두지 않고 거둬진 것으로 닫는다 — 화면이 없는 작업을 기다리게 두지 않기 위해서다.
    */
   private readonly liveJobs = new Set<string>();
+  /**
+   * 이미 결말을 낸 잡. 이름 붙은 에이전트는 다음 지시를 기다리며 세션에 상주하므로, 자기 결말을 낸
+   * 뒤에도 살아 있는 작업 목록에 계속 실려 온다(PTY 쪽 hook payload에서 실측된 것과 같은 registry다).
+   * 그 항목을 목록에 있다는 이유로 다시 살아 있는 작업으로 읽으면, 이 축에는 시한이 없으므로 세션이
+   * 끝날 때까지 유휴·입력 대기 전이가 통째로 막힌다. 기억은 목록이 지워 준다 — 더 이상 실리지 않는
+   * id는 registry에서 사라진 것이므로 버린다.
+   */
+  private readonly settledJobs = new Set<string>();
   /**
    * 중지 세대. 중지는 도는 턴 하나가 아니라 **그 시점의 큐 전체**를 끊어야 한다 — 큐에 밀려
    * 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다. 각 턴은
@@ -664,11 +683,7 @@ class AgentChatSession {
     // 그리고 이 맵이 곧 상세 라우트의 첫 번째 문이다: 여기 없는 id는 파일 시스템에 닿기 전에
     // 거절된다. task_id는 SDK만 발급하므로 브라우저가 지어낸 좌표는 이 문을 통과할 수 없다.
     if (event.kind === "job") {
-      this.jobKinds.set(event.id, event.jobKind);
-      if (this.jobKinds.size > JOB_KIND_CAP) {
-        const oldest = this.jobKinds.keys().next();
-        if (!oldest.done) this.jobKinds.delete(oldest.value);
-      }
+      this.rememberJobKind(event.id, event.jobKind);
       return;
     }
     if (event.kind !== "tool" && event.kind !== "tool-start") return;
@@ -677,6 +692,52 @@ class AgentChatSession {
     if (this.toolNames.size > TOOL_NAME_CAP) {
       const oldest = this.toolNames.keys().next();
       if (!oldest.done) this.toolNames.delete(oldest.value);
+    }
+  }
+
+  /**
+   * 잡 하나의 종류를 적는다. 긴 세션에서 무한히 자라지 않게 상한을 두고 오래된 것부터 버리되, 아직
+   * 살아 있는 잡은 건너뛴다 — 그 종류는 활동축이 지금 읽고 있고, 잃으면 축이 무의견으로 굳는다.
+   */
+  private rememberJobKind(jobId: string, kind: AgentChatJobKind, incoming?: ReadonlySet<string>): void {
+    this.jobKinds.set(jobId, kind);
+    if (this.jobKinds.size <= JOB_KIND_CAP) return;
+    for (const oldest of this.jobKinds.keys()) {
+      if (this.liveJobs.has(oldest) || incoming?.has(oldest) === true) continue;
+      this.jobKinds.delete(oldest);
+      return;
+    }
+  }
+
+  /**
+   * 살아 있는 작업 목록이 알려 준 종류를 적어 둔다.
+   *
+   * `background_tasks_changed`는 `task_type`을 싣고 오지만 스트림 이벤트(`jobs`)는 id만 나른다 —
+   * 화면은 종류를 이미 첫 등장(`job`)에서 받았기 때문이다. 활동축은 사정이 다르다: 셸을 세지
+   * 않으려면 이 목록에서 처음 본 잡의 종류도 알아야 하고, 그 값은 원본 메시지에만 있다.
+   */
+  private rememberJobKinds(message: ClaudeGatewayMessage): void {
+    if (message.type !== "system" || message.subtype !== "background_tasks_changed") return;
+    const tasks = (message as { readonly tasks?: unknown }).tasks;
+    if (!Array.isArray(tasks)) return;
+    // 이 목록은 `trackJob`이 `liveJobs`를 갈아 끼우기 전에 도착한다 — 그래서 상한을 넘길 때
+    // 살아 있는 잡만 지키면 지금 막 실려 온 잡의 종류가 그 자리에서 버려진다. 이번 목록도 함께 지킨다.
+    const incoming = new Set<string>();
+    for (const task of tasks) {
+      if (!task || typeof task !== "object") continue;
+      const id = (task as { readonly task_id?: unknown }).task_id;
+      if (typeof id !== "string" || id.length === 0) continue;
+      incoming.add(id);
+    }
+    for (const task of tasks) {
+      if (!task || typeof task !== "object") continue;
+      const id = (task as { readonly task_id?: unknown }).task_id;
+      if (typeof id !== "string" || id.length === 0) continue;
+      // 종류를 싣지 않은 행은 종류에 대해 아무 말도 하지 않은 것이다. 그것을 `other`로 적으면 첫 등장이
+      // 알려 준 종류를 지워, 도는 워크플로가 그 자리에서 축에서 사라진다.
+      const rawKind = (task as { readonly task_type?: unknown }).task_type;
+      if (typeof rawKind !== "string") continue;
+      this.rememberJobKind(id, readJobKind(rawKind), incoming);
     }
   }
 
@@ -1135,6 +1196,7 @@ class AgentChatSession {
           if (this.latestSessionId !== this.reportedSessionId) this.syncProviderSessionOnce();
         }
         this.rememberJobOutput(message);
+        this.rememberJobKinds(message);
         this.trackLiveContext(message);
         for (const event of chatEventsFromSdkMessage(message, { cwd: this.seed.cwd, toolNames: this.toolNames })) {
           this.ingest(event);
@@ -1182,12 +1244,56 @@ class AgentChatSession {
 
   /** 살아 있는 잡의 집합을 이벤트대로 따라간다. `jobs`는 세는 것이 아니라 통째로 갈아 끼운다. */
   private trackJob(event: AgentChatStreamEvent): void {
-    if (event.kind === "job") this.liveJobs.add(event.id);
-    else if (event.kind === "job-end") this.liveJobs.delete(event.id);
-    else if (event.kind === "jobs") {
+    if (event.kind === "job") {
+      this.liveJobs.add(event.id);
+      // 같은 좌표가 다시 시작을 알렸다면 그것은 더 이상 끝난 잡이 아니다. 기억을 남겨 두면 바로
+      // 다음 목록이 지금 일하고 있는 에이전트를 상주 항목으로 오인해 축에서 지운다.
+      this.settledJobs.delete(event.id);
+    } else if (event.kind === "job-end") {
+      this.liveJobs.delete(event.id);
+      this.settledJobs.add(event.id);
+    } else if (event.kind === "jobs") {
       this.liveJobs.clear();
-      for (const id of event.ids) this.liveJobs.add(id);
+      for (const id of event.ids) {
+        if (!this.settledJobs.has(id)) this.liveJobs.add(id);
+      }
+      const listed = new Set(event.ids);
+      for (const id of [...this.settledJobs]) {
+        if (!listed.has(id)) this.settledJobs.delete(id);
+      }
+    } else return;
+    this.syncBackgroundPending();
+  }
+
+  /**
+   * 살아 있는 잡 목록을 활동축의 백그라운드 대기값으로 접는다.
+   *
+   * 세는 것은 에이전트 작업뿐이다 — 서브에이전트(이름 붙은 팀메이트 포함)와 워크플로우. PTY 어댑터가
+   * hook 목록에서 셸과 MCP 감시 작업을 빼는 것과 같은 계약이며, 이유도 같다: 사람이 기다리는 것은
+   * 자기 일을 대신 하는 에이전트이지 그 에이전트가 남긴 명령이 아니고, 그것까지 세면 긴 백그라운드
+   * 명령 하나가 세션을 유휴 밖에 세워 둔 채 유휴 휴면까지 막는다.
+   *
+   * 처음 보는 종류는 세지 않는다. PTY 쪽은 같은 자리에서 무의견으로 물러나지만 그 축에는 시한이
+   * 있어 무의견이 영원하지 않다 — 이 축에는 시한이 없으므로, 여기서 물러나면 상주하는 미지 잡 하나가
+   * 에이전트 작업이 다 끝난 뒤에도 배지를 영영 켜 둔다. 새 종류를 놓치는 쪽은 이 기능이 없던 상태로
+   * 돌아갈 뿐이고, 그 종류는 화면의 잡 목록에 `other`로 서서 눈에 띈다.
+   *
+   * 턴 경계는 여기서 보지 않는다. 턴이 도는 동안에도 값은 서지만, 읽는 쪽이 작업 중을 앞세우므로
+   * 화면에 나타나는 것은 턴이 닫힌 뒤부터다 — 그 순간이 곧 "남은 것은 백그라운드뿐"인 순간이다.
+   */
+  private syncBackgroundPending(): void {
+    let pending = false;
+    for (const id of this.liveJobs) {
+      const kind = this.jobKinds.get(id);
+      if (kind === "agent" || kind === "workflow") {
+        pending = true;
+        break;
+      }
     }
+    // 마지막으로 보낸 값을 여기 기억해 두지 않는다. 표면이 바뀌면 축은 스스로 비워지는데(인수·해제
+    // 모두), 이쪽 기억은 그 사실을 모른 채 "이미 보냈다"며 다음 보고를 삼킨다. 원장이 바뀔 때마다
+    // 절대값을 다시 보내고, 같은 값인지는 축을 가진 쪽이 판단하게 둔다.
+    this.seed.reportBackgroundPending(pending);
   }
 
   /**
@@ -1226,6 +1332,11 @@ class AgentChatSession {
     });
     // 답이 풀리지 않은 채 턴이 닫히면 자식은 그 도구 호출에서 멈춘 채 남는다.
     this.abandonAsks("The turn ended before the question was answered.");
+    // 남은 작업을 여기서 한 번 더 절대값으로 말한다. 이 축은 두 어댑터가 같은 필드에 쓰므로, 죽어가는
+    // PTY의 마지막 정리나 뒤늦은 hook 하나가 채팅이 세운 값을 지울 수 있다 — 그리고 잡 원장은 다음
+    // 잡이 뜨거나 끝날 때까지 다시 말하지 않는다. 작업 중 보고보다 **먼저** 말하는 것이 중요하다:
+    // 순서를 뒤집으면 그 사이 한 프레임이 남은 작업을 잊은 채 유휴로 그려진다.
+    this.syncBackgroundPending();
     this.seed.reportActivity(false);
     // 라이브 총량은 이 턴의 것이었다. 다음 턴의 첫 delta가 자기 값을 세울 때까지, 화면은 방금
     // 실린 총량을 그대로 들고 있는다 — 여기서 비우면 턴이 끝나는 순간 미터가 뒤로 간다.
@@ -1282,6 +1393,10 @@ class AgentChatSession {
     }
     for (const id of [...this.liveJobs]) this.push({ kind: "job-end", id, status: "stopped" });
     this.liveJobs.clear();
+    this.settledJobs.clear();
+    // 원장이 비었으니 축도 비어야 한다. 여기서 걷지 않으면 자식과 함께 사라진 작업이 TTL이
+    // 만료될 때까지 이 Operation을 백그라운드로 세워 둔다.
+    this.syncBackgroundPending();
     // 자식이 사라졌으니 기다리던 결말은 오지 않는다. 표시를 걷고 줄을 풀어 준다 — 그러지 않으면
     // 다음 디스패치가 오지 않을 result를 영원히 기다린다.
     this.settlingStoppedTurn = false;

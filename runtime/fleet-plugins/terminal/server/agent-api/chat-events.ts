@@ -570,8 +570,11 @@ export function chatShellTailFromOutput(raw: string, options: ChatEventMapOption
 /**
  * SDK `task_type`을 제품 어휘로 접는다. 모르는 값은 `other`로 남긴다 — 새 종류가 생겼을 때
  * 목록에서 조용히 빠지는 것보다, 이름 없는 잡으로 서서 눈에 띄는 쪽이 낫다.
+ *
+ * 세션이 REPLACE 목록에서 직접 종류를 읽을 때도 같은 표를 쓴다 — 스트림 이벤트와 활동축이
+ * 서로 다른 어휘로 셸을 가르면, 화면에 셸로 선 잡이 축에서는 에이전트 작업으로 세어진다.
  */
-function readJobKind(value: unknown): AgentChatJobKind {
+export function readJobKind(value: unknown): AgentChatJobKind {
   if (value === "local_agent") return "agent";
   if (value === "local_bash") return "shell";
   if (value === "local_workflow") return "workflow";
