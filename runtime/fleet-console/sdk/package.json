@@ -112,6 +112,12 @@
       "browser": "./components/launch-provider-glyphs.tsx",
       "import": "./components/launch-provider-glyphs.tsx",
       "default": "./components/launch-provider-glyphs.tsx"
+    },
+    "./composer": {
+      "types": "./composer/index.ts",
+      "browser": "./composer/index.ts",
+      "import": "./composer/index.ts",
+      "default": "./composer/index.ts"
     }
   },
   "scripts": {
