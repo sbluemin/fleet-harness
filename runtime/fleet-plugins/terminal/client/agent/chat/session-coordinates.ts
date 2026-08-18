@@ -10,6 +10,12 @@
  * 모델 이름을 추측하지 않고 "기본"이라고 말한다.
  */
 
+import {
+  launchProviderFromModelId,
+  launchProviderFromOperationPayload,
+  type LaunchProviderGlyphId,
+} from "@fleet-console/sdk/components/launch-provider-glyphs";
+
 /** 게이트웨이 모델 id의 Console 접두. 표시에서는 벗긴다. */
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
 
@@ -50,6 +56,12 @@ export interface AgentChatSessionCoordinates {
   readonly title: string | null;
   /** 이 세션이 ultracode 오케스트레이션으로 도는가. */
   readonly ultracode: boolean;
+  /**
+   * 이 세션을 실제로 돌린 공급자. 런치가 payload에 적어 둔 값이 먼저이고, 없으면 모델 id의
+   * 게이트웨이 범위에서 읽는다 — 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지
+   * 말하지 못한다. 어느 쪽으로도 읽히지 않으면 `null`이고, 표식은 중립 마름모로 돌아간다.
+   */
+  readonly provider: LaunchProviderGlyphId | null;
 }
 
 /** payload의 `launchModel`을 표시 이름으로 옮긴다. 알 수 없는 게이트웨이 id는 접두만 벗긴다. */
@@ -78,5 +90,6 @@ export function readAgentChatSessionCoordinates(
     effortLevel: effort ?? "auto",
     title: model === null && effort === null ? null : [model, effort].filter(Boolean).join(" · "),
     ultracode: effort === "ultra",
+    provider: launchProviderFromOperationPayload(payload) ?? launchProviderFromModelId(model),
   };
 }

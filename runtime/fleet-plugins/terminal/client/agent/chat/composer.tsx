@@ -29,6 +29,9 @@ import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } 
  * War Room 카드뷰에서는 서지 않는다: chat.css의 `is-deck-tile` 숨김 목록(부유 크롬과 같은
  * 크로스 번들 클래스 계약)이 이 루트를 함께 걷는다.
  *
+ * 발사 컨트롤은 하나다: 턴이 도는 동안 같은 자리가 중지로 바뀐다. 떠 있는 중지 배지를 따로 두면
+ * 대화 위에 얹힌 컨트롤이 하나 더 생기고, 무엇을 눌러야 지금 도는 일이 멈추는지 두 자리로 갈린다.
+ *
  * 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
  * 모델·강도는 컨트롤이 아니라 사실 표시다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이라
  * 이 바에 선 칩과 계기는 읽히기만 한다.
@@ -53,11 +56,18 @@ export function AgentChatComposer({
   context,
   coordinate,
   tourAnchor,
+  turnRunning,
+  stopping,
+  onStop,
 }: {
   readonly context: OperationRenderContext;
-  /** 세션 좌표의 사실 표시 — 모델 칩과 강도 계기가 컨트롤 행 좌측에 앉는다. */
+  /** 세션 좌표의 사실 표시 — 모델·강도 배지가 컨트롤 행 좌측에 앉는다. */
   readonly coordinate: React.ReactNode;
   readonly tourAnchor: boolean;
+  /** 지금 이 세션의 턴이 도는가 — 발사 컨트롤이 중지로 바뀌는 축이다. */
+  readonly turnRunning: boolean;
+  readonly stopping: boolean;
+  readonly onStop: () => Promise<void>;
 }) {
   const t = getT(context.language ?? "en");
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -254,13 +264,28 @@ export function AgentChatComposer({
               label={t("terminal.chat.composerAttach")}
               onFiles={addFiles}
             />
-            <ComposerSubmitButton
-              className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
-              disabled={!canSend}
-              onClick={() => { void send(); }}
-              aria-label={t("terminal.chat.composerSend")}
-              title={t("terminal.chat.composerSend")}
-            />
+            {turnRunning ? (
+              // 도는 턴을 끊는 문. 이 문은 턴만 닫는다 — 이미 태어난 백그라운드 작업은 계속 살고
+              // 잡 표면이 그것을 그대로 말한다(잡 하나만 멈추는 제어 경로는 SDK에 없다).
+              <button
+                type="button"
+                className="agent-chat-composer-send is-stopping"
+                disabled={stopping}
+                onClick={() => { void onStop(); }}
+                aria-label={t("terminal.chat.stopAria")}
+                title={t("terminal.chat.stopTitle")}
+              >
+                <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
+              </button>
+            ) : (
+              <ComposerSubmitButton
+                className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
+                disabled={!canSend}
+                onClick={() => { void send(); }}
+                aria-label={t("terminal.chat.composerSend")}
+                title={t("terminal.chat.composerSend")}
+              />
+            )}
           </span>
         </ComposerBar>
       </div>

@@ -19,8 +19,6 @@ export {
   resolveRowEffort,
 } from "./effort-track.js";
 export type { EffortTrackProps } from "./effort-track.js";
-export { EFFORT_READOUT_TRACK_METRICS, EffortReadout } from "./effort-readout.js";
-export type { EffortReadoutProps } from "./effort-readout.js";
 export { ComposerInput } from "./input.js";
 export type { ComposerInputProps } from "./input.js";
 export {

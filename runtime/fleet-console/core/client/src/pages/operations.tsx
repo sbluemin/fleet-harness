@@ -31,6 +31,7 @@ import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
 import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
+import { blocksOperationsShortcutWhileEditing } from "../operations-editing-shortcut-guard.js";
 import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
@@ -125,7 +126,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
       if (!shouldHandleOperationsKeyboardShortcut()) return;
       if (isBlockingDialogOpen()) return;
       const active = document.activeElement;
-      if (active instanceof HTMLElement && active.matches("input, textarea, [contenteditable='true']") && !active.closest(".xterm")) return;
+      const editing = active instanceof HTMLElement
+        && active.matches("input, textarea, [contenteditable='true']")
+        && !active.closest(".xterm");
+      if (blocksOperationsShortcutWhileEditing(editing, event)) return;
       if (event.code === "Escape" && getTriageSetAsideArmedId() !== null) {
         event.preventDefault();
         event.stopImmediatePropagation();

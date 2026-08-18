@@ -8,6 +8,7 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { AgentChatComposer } from "./composer.js";
 
 const uploads: File[] = [];
+let stops = 0;
 vi.mock("../api.js", () => ({
   messageAgentSession: async () => {},
   uploadLaunchAttachment: async (file: File) => {
@@ -22,6 +23,7 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
   uploads.length = 0;
+  stops = 0;
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: () => "blob:preview",
@@ -37,7 +39,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(): void {
+function mount(options: { readonly turnRunning?: boolean } = {}): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -50,6 +52,9 @@ function mount(): void {
     context,
     coordinate: createElement("span", { className: "coord-stub" }),
     tourAnchor: false,
+    turnRunning: options.turnRunning ?? false,
+    stopping: false,
+    onStop: async () => { stops += 1; },
   })));
 }
 
@@ -99,6 +104,25 @@ describe("chat panel composer", () => {
     await act(async () => { field?.dispatchEvent(textPaste); });
     expect(textPaste.defaultPrevented).toBe(false);
     expect(uploads).toHaveLength(1);
+  });
+
+  // 발사 컨트롤은 하나다 — 떠 있는 중지 배지를 따로 두면 지금 도는 일을 멈추는 자리가 둘로 갈린다.
+  it("turns the send control into stop while a turn runs", async () => {
+    mount({ turnRunning: true });
+    const send = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
+    expect(send?.classList.contains("is-stopping")).toBe(true);
+    expect(send?.getAttribute("aria-label")).toBe("Stop this turn");
+    expect(container?.querySelector(".agent-chat-composer-stop-mark")).not.toBeNull();
+    await act(async () => { send?.click(); });
+    expect(stops).toBe(1);
+
+    act(() => root?.unmount());
+    container?.remove();
+    mount();
+    const idle = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
+    expect(idle?.classList.contains("is-stopping")).toBe(false);
+    // 초안이 없으면 발사도 없다 — 눌러도 아무 일이 없는 죽은 컨트롤을 만들지 않는다.
+    expect(idle?.disabled).toBe(true);
   });
 
   // 파일 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로

@@ -1,6 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
-import { EffortReadout } from "@fleet-console/sdk/composer";
+import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 
 import { getT, type TerminalMessageKey } from "../../i18n/index.js";
 import { nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
@@ -446,21 +446,6 @@ export function AgentChatView({
             </button>
           ) : null}
 
-          {/* 도는 턴을 끊는 문. 이 문은 턴만 닫는다 — 이미 태어난 백그라운드 작업은 계속 살고
-              잡 표면이 그것을 그대로 말한다(잡 하나만 멈추는 제어 경로는 SDK에 없다). */}
-          {turnRunning ? (
-            <button
-              type="button"
-              className="agent-chat-stop"
-              aria-label={t("terminal.chat.stopAria")}
-              title={t("terminal.chat.stopTitle")}
-              disabled={stopping}
-              onClick={() => { void handleStop(); }}
-            >
-              <span className="agent-chat-stop-mark" aria-hidden="true" />
-              {t("terminal.chat.stop")}
-            </button>
-          ) : null}
           </div>
 
           {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
@@ -470,6 +455,9 @@ export function AgentChatView({
             context={context}
             coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
             tourAnchor={tourAnchors}
+            turnRunning={turnRunning}
+            stopping={stopping}
+            onStop={handleStop}
           />
 
           {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
@@ -529,28 +517,28 @@ function SessionCoordinate({
   const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
   const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
   return (
-    // 두 축은 따로 읽힌다 — 런치 표면이 모델을 칩으로, 강도를 축으로 말하는 것과 같은 문법이다.
-    // 한 덩어리 배지로 묶으면 같은 세션을 두 표면이 다른 문법으로 부르게 된다.
-    <span className="agent-chat-coord" {...(coordinates.title ? { title: coordinates.title } : {})}>
-      {/* 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 무시될 수 있어, 남는 것이
-          "Opus"라는 조각뿐이 된다. */}
-      <span
-        className={`agent-chat-coord-model${coordinates.ultracode ? " is-ultracode" : ""}`}
-        role="img"
-        aria-label={t("terminal.chat.coordModelAria", { model })}
-      >
+    // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
+    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
+    // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
+    <span
+      className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
+      role="img"
+      aria-label={t("terminal.chat.coordAria", { model, effort })}
+      {...(coordinates.title ? { title: coordinates.title } : {})}
+    >
+      {/* 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다 — 공급자 글리프가
+          그 축을 진다(런치 메뉴·분석가 칩과 같은 표식). 공급자를 읽지 못한 세션은 중립 마름모로
+          돌아가고, ultracode는 그 자리에 자기 별을 세운다. */}
+      {coordinates.provider !== null && !coordinates.ultracode ? (
+        <span className="agent-chat-coord-glyph" aria-hidden="true" data-provider={coordinates.provider}>
+          {launchProviderGlyph(coordinates.provider)}
+        </span>
+      ) : (
         <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
-        <span className="agent-chat-coord-model-name">{model}</span>
-      </span>
-      <EffortReadout
-        className="agent-chat-coord-effort"
-        rungs={CHAT_EFFORT_RUNGS}
-        value={coordinates.effort === null ? null : coordinates.effortLevel}
-        ariaLabel={t("terminal.chat.coordEffortAria", { effort })}
-      />
-      <span className="agent-chat-coord-effort-label" data-effort-level={coordinates.effortLevel} aria-hidden="true">
-        {effort}
-      </span>
+      )}
+      <span className="agent-chat-coord-model">{model}</span>
+      <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
+      <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
     </span>
   );
 }

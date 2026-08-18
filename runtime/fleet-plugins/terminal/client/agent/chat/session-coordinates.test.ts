@@ -12,7 +12,17 @@ describe("agent chat session coordinates", () => {
       effortLevel: "ultra",
       title: "opus[1m] · ultra",
       ultracode: true,
+      provider: "claude",
     });
+  });
+
+  // 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다. 런치가 적어 둔 값이
+  // 먼저이고, 없으면 게이트웨이 범위에서 읽는다.
+  it("reads the supplier from the launch payload, then from the model scope", () => {
+    expect(readAgentChatSessionCoordinates({ launchModel: "opus[1m]", launchProvider: "xai" }).provider).toBe("xai");
+    expect(readAgentChatSessionCoordinates({ launchModel: "claude-gateway--cursor--auto" }).provider).toBe("cursor");
+    expect(readAgentChatSessionCoordinates({ launchModel: "sonnet" }).provider).toBe("claude");
+    expect(readAgentChatSessionCoordinates({}).provider).toBeNull();
   });
 
   // 좌표가 없는 세션은 서버가 자기 기본값(`opus[1m]`)으로 이어 간다. 그 규칙을 여기서 복제하면
