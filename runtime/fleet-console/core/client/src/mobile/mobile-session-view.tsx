@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { ConsoleTheme, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
+import type { ConsoleTheme, OperationKindDescriptor, OperationRenderContext, OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { useT } from "../i18n/index.js";
+import type { createHostCapabilities } from "../plugin-capabilities.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
 import { OperationBodySlot, type OperationBodyConfig } from "./operation-body-pool.js";
 
@@ -14,12 +16,14 @@ const CLOSE_ARM_DURATION_MS = 1500;
  * gesture, which this shell already answers. Close is a separate two-tap control on that
  * title row so the phone can dispose the Operation the same way the desktop frame does.
  */
-export function MobileSessionView({ operation, theme, language, active, runtimeState, onActivate, onClose }: {
+export function MobileSessionView({ operation, theme, language, active, runtimeState, operationKinds, capabilities, onActivate, onClose }: {
   readonly operation: OperationNode;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
   readonly active: boolean;
   readonly runtimeState: OperationRuntimeState | null;
+  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly onActivate: () => void;
   readonly onClose: () => void;
 }) {
@@ -102,10 +106,47 @@ export function MobileSessionView({ operation, theme, language, active, runtimeS
 
   const title = operation.title;
 
+  // 캔버스 프레임의 캡션 동작 선반과 같은 것 — 이 레이아웃의 제목 줄이 그 밴드다. 여기서 빠지면
+  // 채팅 뷰로 들어간 세션이 터미널로 돌아갈 문을 잃는다(본문에는 더 이상 그 칩이 없다).
+  const descriptor = operationKinds.find((kind) => kind.pluginId === operation.pluginId && kind.type === operation.type);
+  const captionActions = descriptor?.captionActions?.({
+    operationId: operation.id,
+    theaterId: operation.theaterId,
+    pluginId: operation.pluginId,
+    type: operation.type,
+    operation,
+    geometry,
+    active,
+    zoom: 1,
+    theme,
+    language,
+    api: capabilities.api,
+    lifecycle: capabilities.lifecycle,
+    terminal: capabilities.terminal,
+    notifications: capabilities.notifications,
+    operations: capabilities.operations,
+    preferences: capabilities.preferences,
+    settings: capabilities.settings,
+    runtime: capabilities.runtime,
+    runtimeState,
+    bodyLive: true,
+    statusDetail: capabilities.statusDetail,
+    composer: capabilities.composer,
+    onActivate,
+    onClose,
+    onGeometryChange: setGeometry,
+    // 본문과 같은 이유로 companion 콜백은 싣지 않는다 — 그 부재가 "여기엔 드로어가 없다"는 말이다.
+  } satisfies OperationRenderContext);
+
   return (
     <section className="mobile-session-view">
       <div className="mobile-session-bar">
         <h1 className="mobile-session-title">{title}</h1>
+        {captionActions ? (
+          <span className="mobile-session-caption-actions">
+            <PluginErrorBoundary fallback={<></>}>{captionActions}</PluginErrorBoundary>
+          </span>
+        ) : null}
         <button
           type="button"
           className={`mobile-session-close${isCloseArmed ? " is-armed" : ""}`}

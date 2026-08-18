@@ -55,6 +55,7 @@ type AttachmentRejection =
 export function AgentChatComposer({
   context,
   coordinate,
+  meter,
   tourAnchor,
   turnRunning,
   stopping,
@@ -63,6 +64,11 @@ export function AgentChatComposer({
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도 배지가 컨트롤 행 좌측에 앉는다. */
   readonly coordinate: React.ReactNode;
+  /**
+   * 문맥 미터 — 읽는 계기이지 컨트롤이 아니다. 발사 버튼 바로 왼쪽에 앉아, 보내기 직전에
+   * "이 창에 얼마나 남았는가"가 손이 가는 자리에서 읽힌다.
+   */
+  readonly meter: React.ReactNode;
   readonly tourAnchor: boolean;
   /** 지금 이 세션의 턴이 도는가 — 발사 컨트롤이 중지로 바뀌는 축이다. */
   readonly turnRunning: boolean;
@@ -264,6 +270,7 @@ export function AgentChatComposer({
               label={t("terminal.chat.composerAttach")}
               onFiles={addFiles}
             />
+            {meter}
             {turnRunning ? (
               // 도는 턴을 끊는 문. 이 문은 턴만 닫는다 — 이미 태어난 백그라운드 작업은 계속 살고
               // 잡 표면이 그것을 그대로 말한다(잡 하나만 멈추는 제어 경로는 SDK에 없다).

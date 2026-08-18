@@ -39,8 +39,8 @@ describe("Session Analyst entry chip readiness", () => {
 
     const handle = analystHandle();
     expect(handle.disabled).toBe(true);
-    expect(handle.getAttribute("aria-disabled")).toBe("true");
-    expect(handle.title).toBe("Send a message in this session first");
+    expect(handle.getAttribute("aria-label")).toBe("Send a message in this session first");
+    expect(analystTip()).toBe("Send a message in this session first");
     expect(readyCalls(fetch)).toHaveLength(1);
   });
 
@@ -54,8 +54,7 @@ describe("Session Analyst entry chip readiness", () => {
 
     const handle = analystHandle();
     expect(handle.disabled).toBe(false);
-    expect(handle.getAttribute("aria-disabled")).toBe("false");
-    expect(handle.hasAttribute("title")).toBe(false);
+    expect(analystTip()).toBe("Open Session Analyst");
     expect(readyCalls(fetch)).toHaveLength(2);
 
     await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
@@ -73,7 +72,7 @@ describe("Session Analyst entry chip readiness", () => {
     const handle = analystHandle();
     expect(resume?.textContent).toContain("Resume");
     expect(handle.disabled).toBe(false);
-    expect(handle.textContent).toContain("Analyst");
+    expect(analystTip()).toContain("Analyst");
 
     act(() => handle.click());
     expect(onRequestCompanions).toHaveBeenCalledWith(true);
@@ -207,7 +206,9 @@ async function renderOperation(
   }
   root ??= createRoot(container);
   const render = agentOperationKind.render;
+  const captionActions = agentOperationKind.captionActions;
   if (!render) throw new Error("Agent operation renderer must exist.");
+  if (!captionActions) throw new Error("Agent caption shelf must exist.");
   await act(async () => {
     applySessionUpdate({
       sessionId: OPERATION_ID,
@@ -220,13 +221,18 @@ async function renderOperation(
       theaterId: "theater",
       resumeAvailable: true,
     });
-    root?.render(render(createContext(
+    const context = createContext(
       createApi(fetch),
       onRequestCompanions,
       companionsOpen,
       hiddenCompanionPanelIds,
       onSetCompanionPanelVisible,
-    )) as React.ReactNode);
+    );
+    // 호스트는 본문과 캡션 선반을 같은 context로 나란히 그린다 — 분석가 문은 캡션 쪽에 산다.
+    root?.render(createElement("div", null, [
+      createElement("div", { key: "caption" }, captionActions(context) as React.ReactNode),
+      createElement("div", { key: "body" }, render(context) as React.ReactNode),
+    ]));
     await Promise.resolve();
     await Promise.resolve();
   });
@@ -278,9 +284,15 @@ function readyResponse(ready: boolean): Response {
 }
 
 function analystHandle(): HTMLButtonElement {
-  const handle = container?.querySelector<HTMLButtonElement>(".agent-analyst-chip");
+  const handle = container?.querySelector<HTMLButtonElement>('.fleet-caption-action[data-caption-action="analyst"]');
   if (!handle) throw new Error("Session Analyst handle must render.");
   return handle;
+}
+
+/** 캡션 버튼은 이름표를 말풍선으로 옮겼다 — 무엇인지 말하는 문자열은 접근 이름과 그 풍선이다. */
+function analystTip(): string {
+  const tip = analystHandle().parentElement?.querySelector(".fleet-caption-tip");
+  return tip?.textContent ?? "";
 }
 
 function analysisFetch(...readiness: boolean[]): ReturnType<typeof vi.fn> {

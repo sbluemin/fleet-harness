@@ -68,6 +68,26 @@
   min-height: 44px;
   padding-inline: var(--space-1);
   background: var(--canvas-sea-core);
+  /* 캡션 동작 선반의 접힘 판정이 질의하는 컨테이너 — 캔버스 캡션과 같은 규칙을 쓴다. */
+  container-type: inline-size;
+}
+
+/* 이 레이아웃의 캡션 동작 선반 — 제목 왼쪽. 손가락이 닿는 면이므로 격자는 24px이 아니라
+   이 줄의 다른 컨트롤(닫기)과 같은 44px이다. */
+.mobile-session-caption-actions {
+  grid-column: 1;
+  justify-self: start;
+}
+
+.mobile-session-caption-actions .fleet-caption-action {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-pill);
+}
+
+/* 터치에는 hover가 없다 — 뜨지 않을 말풍선이 자리를 잡고 있으면 다음 탭을 가로챌 수 있다. */
+.mobile-session-caption-actions .fleet-caption-tip {
+  display: none;
 }
 
 .mobile-session-title {

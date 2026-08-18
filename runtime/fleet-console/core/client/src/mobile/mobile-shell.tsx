@@ -1,7 +1,9 @@
 import { pluginRuntimeState } from "../operation-activity.js";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { ConsoleTheme, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+import type { ConsoleTheme, OperationKindDescriptor, OperationRuntimeHydration, OperationRuntimeState } from "@fleet-console/sdk/plugin";
+
+import type { createHostCapabilities } from "../plugin-capabilities.js";
 
 import { useT } from "../i18n/index.js";
 import type { OperationNode, OperationNotification } from "../types.js";
@@ -10,7 +12,7 @@ import { MobileSessionView } from "./mobile-session-view.js";
 import { setMobileSessionOpen, useMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";
 
-export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, onSelectOperation, onCloseOperation }: {
+export function MobileShell({ operations, activeOperationId, operationRuntime, operationRuntimeHydration, operationNotifications, theaterLabel, theme, language, operationKinds, capabilities, onSelectOperation, onCloseOperation }: {
   readonly operations: readonly OperationNode[];
   readonly activeOperationId: string | null;
   readonly operationRuntime: Readonly<Record<string, OperationRuntimeState>>;
@@ -19,6 +21,8 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
   readonly theaterLabel: string | null;
   readonly theme: ConsoleTheme;
   readonly language: "en" | "ko";
+  readonly operationKinds: readonly OperationKindDescriptor[];
+  readonly capabilities: ReturnType<typeof createHostCapabilities>;
   readonly onSelectOperation: (operationId: string | null) => void;
   readonly onCloseOperation: (operationId: string) => void;
 }) {
@@ -90,6 +94,8 @@ export function MobileShell({ operations, activeOperationId, operationRuntime, o
         operation={selectedOperation}
         theme={theme}
         language={language}
+        operationKinds={operationKinds}
+        capabilities={capabilities}
         active={activeOperationId === selectedOperation.id}
         runtimeState={pluginRuntimeState(operationRuntime, operationRuntimeHydration, selectedOperation.id)}
         onActivate={() => onSelectOperation(selectedOperation.id)}

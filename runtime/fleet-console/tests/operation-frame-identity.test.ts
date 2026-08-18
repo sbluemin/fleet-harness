@@ -83,10 +83,13 @@ describe("OperationFrame identity rename", () => {
     const titlebar = document.querySelector(".canvas-operation-titlebar")!;
     const children = Array.from(titlebar.children);
 
+    // 캡션의 마크 버튼은 전부 말풍선 자리에 담겨 선다 — 같은 줄이 두 벌의 툴팁 문법을 쓰지 않게.
     expect(children[0]?.className).toBe("canvas-operation-identity-name");
-    expect(children[1]?.className).toBe("canvas-operation-more-button");
+    expect(children[1]?.className).toBe("fleet-caption-slot");
+    expect(children[1]?.firstElementChild?.className).toBe("canvas-operation-more-button");
     expect(children[2]?.className).toBe("canvas-operation-window-controls");
     expect(document.querySelectorAll(".canvas-operation-window-controls .canvas-operation-icon-button")).toHaveLength(3);
+    expect(document.querySelectorAll(".canvas-operation-titlebar .fleet-caption-tip")).toHaveLength(4);
     expect(identityTrigger().title).toBe("A deliberately long Operation title — Drag to move. Double-click, Enter, or F2 to rename");
   });
 
@@ -169,7 +172,8 @@ describe("OperationFrame identity rename", () => {
     expect(identityInput()).toBeNull();
     expect(identityTrigger()).not.toBeNull();
     expect(children[0]?.className).toBe("canvas-operation-identity-name");
-    expect(children[1]?.className).toBe("canvas-operation-more-button");
+    expect(children[1]?.className).toBe("fleet-caption-slot");
+    expect(children[1]?.firstElementChild?.className).toBe("canvas-operation-more-button");
     expect(children[2]?.className).toBe("canvas-operation-window-controls");
   });
 

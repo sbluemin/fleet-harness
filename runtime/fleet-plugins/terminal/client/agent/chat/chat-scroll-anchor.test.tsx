@@ -68,7 +68,6 @@ function viewProps() {
   } as unknown as OperationRenderContext;
   return {
     context,
-    onOpenTerminal: async () => {},
     tourAnchors: false,
   };
 }

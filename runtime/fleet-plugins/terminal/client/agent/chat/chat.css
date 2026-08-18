@@ -44,7 +44,6 @@
 /* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
 .agent-chat-to-term:not(:disabled),
 .agent-chat-inter-button,
-.agent-chat-mode-chip,
 .agent-chat-follow,
 .agent-chat-dormant-open:not(:disabled) {
   cursor: pointer;
@@ -68,12 +67,12 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* 세로 여백은 떠 있는 두 컨트롤을 피한다 — 위는 전환 칩(32px + space-3 오프셋), 아래는 중지
-     버튼(40px + space-3 오프셋). 스크롤 컨테이너의 여백이라야 바닥까지 내린 로그의 마지막 줄이
-     버튼 위로 올라온다: 여백 없이 두면 마지막 턴의 아래 36px이 버튼 뒤에 갇혀 스크롤로도
-     빠져나오지 못한다. 가로는 늘리지 않는다 — 모든 줄의 측정폭을 줄이는 대가가, 세로 여백만으로
-     이미 해소되는 겹침보다 크다. */
-  padding: calc(var(--space-3) + 34px) clamp(var(--space-4), 4vw, var(--space-8)) calc(var(--space-3) + 45px);
+  /* 위쪽 34px은 떠 있던 전환 칩 줄의 몫이었다 — 그 줄이 캡션으로 옮겨 간 지금, 로그는 패널
+     상단에서 바로 시작한다. 아래 45px은 여전히 부유 컨트롤(중지·Follow·잡 스트립)의 자리다.
+     스크롤 컨테이너의 여백이라야 바닥까지 내린 로그의 마지막 줄이 버튼 위로 올라온다: 여백 없이
+     두면 마지막 턴의 아래 36px이 버튼 뒤에 갇혀 스크롤로도 빠져나오지 못한다. 가로는 늘리지
+     않는다 — 모든 줄의 측정폭을 줄이는 대가가, 세로 여백만으로 이미 해소되는 겹침보다 크다. */
+  padding: var(--space-3) clamp(var(--space-4), 4vw, var(--space-8)) calc(var(--space-3) + 45px);
 }
 
 /* 모든 로그 항목은 패널 중앙의 한 컬럼을 공유한다 — 에이전트 턴은 컬럼 전폭을 쓰고,
@@ -1169,27 +1168,10 @@
   outline: none;
 }
 
-/* 뷰 칩 줄 — Analyst 진입 칩과 뷰 전환 칩이 같은 자리(우상단)에 나란히 선다.
-   줄이 위치를 지므로 칩 자체는 흐름에 남는다. */
-.agent-view-chip-row {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 3;
-  display: flex;
-  gap: var(--space-2);
-}
-
-.agent-view-chip-row .agent-chat-mode-chip {
-  position: static;
-}
-
 /* War Room 카드의 본문은 읽는 자리다 — 승격 면이 클릭을 가로채고 본문은 inert라
    Analyst·채팅 뷰 칩과 중지·회신 버튼은 눌러도 동작하지 않는다. 무대에 오른 패널은
    is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다. 휴면 카드의 채팅 진입 고스트와
    첫 턴 초대 문구도 본문 안에 있으므로 함께 숨긴다. */
-.canvas-operation.is-deck-tile .agent-view-chip-row,
-.canvas-operation.is-deck-tile .agent-chat-mode-chip,
 .canvas-operation.is-deck-tile .agent-chat-dormant-open,
 .canvas-operation.is-deck-tile .agent-chat-follow,
 .canvas-operation.is-deck-tile .agent-chat-settle,
@@ -1197,11 +1179,10 @@
   display: none;
 }
 
-/* 칩이 없으면 로그가 그 자리를 되찾는다. 하단 45px는 작업 스트립 몫이라 건드리지 않는다.
-   초대 상태의 높이 하한도 여기서 되돌린다 — 그 하한은 받침이 로그를 잠식하지 못하게 막는
-   장치인데 카드에는 받침이 없고, 작은 카드에서는 그 하한이 로그를 카드 밖으로 밀어낸다. */
+/* 초대 상태의 높이 하한을 되돌린다 — 그 하한은 받침이 로그를 잠식하지 못하게 막는 장치인데
+   카드에는 받침이 없고, 작은 카드에서는 그 하한이 로그를 카드 밖으로 밀어낸다.
+   상단 여백은 더 이상 손대지 않는다: 피할 부유 칩이 사라져 베이스가 이미 space-3이다. */
 .canvas-operation.is-deck-tile .agent-chat-log {
-  padding-top: var(--space-3);
   min-height: 0;
 }
 
@@ -1319,16 +1300,6 @@
   height: 100%;
 }
 
-/* 판면이 100ch(reading 상한)보다 좁으면 프리셋 간 차이가 그려지지 않는다 — 뜻이 없어진
-   컨트롤은 크롬에서 물린다. 가르는 것은 뷰포트가 아니라 이 패널의 폭이다.
-   선택자를 한 단 올린다 — @container는 특정성을 더하지 않으므로, 뒤에 오는
-   .agent-chat-mode-chip 기본 display와 동률이면 소스 순서에 진다. */
-@container (max-width: 719px) {
-  .agent-view-chip-row .agent-chat-width-chip {
-    display: none;
-  }
-}
-
 /* 칩 줄은 본문 위에 떠 있고 폭을 스스로 늘린다 — 좌표 칩까지 서면 최소 폭(320px) 패널에서
    줄이 패널 왼쪽 밖으로 나간다(실측: 340px 줄 vs 296px 여유). 그때 물러나는 것은 좌표 칩이다:
    같은 사실을 로그 첫 줄의 태생 기록이 이미 말하고 있고, 그 줄은 폭을 다투지 않는다.
@@ -1346,53 +1317,6 @@
 }
 
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
-.agent-analyst-chip-live {
-  width: 6px;
-  height: 6px;
-  flex: none;
-  align-self: center;
-  border-radius: var(--radius-pill);
-  background: var(--aurora);
-  box-shadow: 0 0 8px var(--aurora-glow);
-}
-
-.agent-analyst-chip:disabled {
-  opacity: 0.55;
-}
-
-/* 뷰 전환 칩 — 터미널 뷰의 "채팅 뷰"와 채팅 뷰의 "터미널 열기"가 같은 클래스를 공유해
-   같은 자리·같은 모양으로 서로를 가리킨다. brass는 위치·포커스 채널이므로 hover에만 오른다. */
-.agent-chat-mode-chip {
-  position: absolute;
-  top: var(--space-3);
-  right: var(--space-3);
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-2);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
-  padding: 5px var(--space-3);
-  border-radius: var(--radius-xs);
-  background: var(--ink-mid);
-  border: 1px solid var(--hairline-strong);
-  color: var(--text-secondary);
-  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
-}
-
-.agent-chat-mode-chip:hover:not(:disabled) {
-  border-color: var(--brass);
-  color: var(--brass-ink);
-  box-shadow: 0 0 14px var(--brass-glow);
-}
-
-/* 전환 요청 중 — 칩은 자리에 남고 판독만 낮춘다(사라지면 어디를 눌렀는지 잃는다). */
-.agent-chat-mode-chip:disabled {
-  color: var(--text-tertiary);
-  cursor: default;
-}
-
 /* 전환 확인 — 패널 내부 오버레이. */
 .agent-chat-interstitial {
   position: absolute;
@@ -2164,9 +2088,34 @@
 .agent-chat-ctx.is-warn { --agent-chat-ctx-ink: var(--warn); }
 .agent-chat-ctx.is-critical { --agent-chat-ctx-ink: var(--coral); }
 
+/* 미터는 컴포저 컨트롤 행에 산다 — 첨부와 발사 사이, 발사 버튼 바로 왼쪽이다. 누르는 것들
+   사이에 앉지만 자신은 읽는 계기이므로, 좌표 배지와 같은 중립 알약을 쓰고 hover에서만 손에
+   닿는 물건임을 밝힌다. */
 .agent-chat-ctx-chip {
-  position: static;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+  padding: 4px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--ink-mid);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
   font-variant-numeric: tabular-nums;
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-ctx-chip:hover,
+.agent-chat-ctx-chip:focus-visible {
+  border-color: var(--brass);
+  color: var(--brass-ink);
+  outline: none;
 }
 
 .agent-chat-ctx-pct { color: var(--agent-chat-ctx-ink); }
@@ -2198,7 +2147,8 @@
    갉으면 대화가 먼저 밀린다. 오른쪽 끝을 칩에 맞춰 세워 패널 밖으로 넘지 않게 한다. */
 .agent-chat-ctx-pop {
   position: absolute;
-  top: calc(100% + var(--space-2));
+  /* 미터가 패널 바닥의 컴포저 행에 앉으므로 내역은 위로 열린다 — 아래로 열면 패널 밖이다. */
+  bottom: calc(100% + var(--space-2));
   right: 0;
   z-index: 6;
   width: 320px;

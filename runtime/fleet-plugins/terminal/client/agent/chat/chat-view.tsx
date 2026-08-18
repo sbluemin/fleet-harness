@@ -3,8 +3,8 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { launchProviderGlyph } from "@fleet-console/sdk/components/launch-provider-glyphs";
 
 import { getT, type TerminalMessageKey } from "../../i18n/index.js";
-import { nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
-import { AgentApiError, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
+import { useChatReadingWidth, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
+import { readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
 import {
@@ -26,11 +26,12 @@ import {
 } from "./chat-events.js";
 import { CHAT_EFFORT_RUNGS, readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { AgentChatComposer } from "./composer.js";
+import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
-// 칩과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
-const READING_WIDTH_LABEL_KEY = {
+// 캡션 버튼과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
+export const READING_WIDTH_LABEL_KEY = {
   reading: "terminal.chat.readingWidth.reading",
   wide: "terminal.chat.readingWidth.wide",
   full: "terminal.chat.readingWidth.full",
@@ -54,16 +55,11 @@ const READING_WIDTH_LABEL_KEY = {
  */
 export function AgentChatView({
   context,
-  onOpenTerminal,
   tourAnchors,
-  leadingChip,
 }: {
   readonly context: OperationRenderContext;
-  readonly onOpenTerminal: () => Promise<void>;
   /** 사용자가 이 마운트에서 직접 채팅 뷰를 연 경우에만 true — 투어 앵커 렌더 여부를 결정한다. */
   readonly tourAnchors: boolean;
-  /** 칩 줄의 선행 칩(Analyst 진입) — 뷰 전환 칩과 같은 줄에 나란히 선다. */
-  readonly leadingChip?: React.ReactNode;
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
@@ -74,8 +70,9 @@ export function AgentChatView({
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
   const runtime = context.runtimeState;
   const working = runtime?.lifecycle === "live" && runtime.activity === "running";
-  const [terminalPending, setTerminalPending] = React.useState(false);
-  const [terminalError, setTerminalError] = React.useState<"none" | "busy" | "failed">("none");
+  // 터미널로 넘어가는 문은 캡션에 서고, 그 시도가 왜 막혔는지는 이 면이 말한다 — 버튼과 문장이
+  // 서로 다른 트리에 살므로 사실은 저장소를 거쳐 온다.
+  const { terminalError } = useViewSwitchState(context.operationId);
   const [stopping, setStopping] = React.useState(false);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
@@ -98,19 +95,6 @@ export function AgentChatView({
   // 프로그램적 복원이 낳은 scroll 이벤트는 사용자 의도가 아니다. 이것을 걸러내지 않으면 복원 자체가
   // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
   const suppressScrollRef = React.useRef(0);
-
-  const handleOpenTerminal = React.useCallback(async () => {
-    setTerminalPending(true);
-    setTerminalError("none");
-    try {
-      await onOpenTerminal();
-    } catch (error) {
-      // 왜 안 되는지가 다음 행동을 가른다 — 진행 중인 턴은 기다리면 풀리고, 그 밖의 실패는 아니다.
-      setTerminalError(error instanceof AgentApiError && error.message === "chat_busy" ? "busy" : "failed");
-    } finally {
-      setTerminalPending(false);
-    }
-  }, [onOpenTerminal]);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
@@ -286,38 +270,6 @@ export function AgentChatView({
         style={workOpen ? ({ "--agent-chat-work": `${Math.round(workRatio * 1000) / 10}%` } as React.CSSProperties) : undefined}
       >
         <div className="agent-chat-pane">
-          {/* 터미널 복귀는 터미널 뷰의 채팅 전환 칩과 같은 문법이다 — 두 뷰가 서로를 같은
-              자리·같은 모양의 떠 있는 칩으로 가리켜, 전환이 한 쌍의 동작으로 읽힌다.
-              띠바를 두면 채팅 본문이 패널 면과 다른 면 위에 앉아 창이 두 장으로 갈린다.
-              Analyst 진입 칩이 선행하면 같은 줄에 나란히 선다.
-              이 줄이 대화 면 **안에** 사는 이유는 실측이다: 패널 전체에 걸어 두면 작업 면이 열린
-              순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
-          <div className="agent-view-chip-row">
-            {/* 세션 좌표 칩은 컴포저 바로 옮겨 앉았다 — 지시를 쓰는 자리가 좌표를 읽는 자리다. */}
-            {leadingChip}
-            <ContextMeterChip context={state.context} working={turnRunning} language={language} />
-            {/* 읽기 폭 칩 — 불편이 보이는 자리에서 프리셋(기본→넓게→전체)을 순환한다. 설정의
-                같은 선호를 읽고 쓰는 두 번째 표면이지 별도 상태가 아니다. */}
-            <button
-              type="button"
-              className="agent-chat-mode-chip agent-chat-width-chip"
-              aria-label={t("terminal.chat.readingWidthAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
-              onClick={() => { setChatReadingWidth(nextChatReadingWidth(readingWidth)); }}
-            >
-              <span aria-hidden="true">⇔</span> {t(READING_WIDTH_LABEL_KEY[readingWidth])}
-            </button>
-            <button
-              type="button"
-              className="agent-chat-mode-chip"
-              {...(tourAnchors ? { "data-chat-tour": "terminal" } : {})}
-              disabled={terminalPending}
-              aria-label={t("terminal.chat.openTerminalAria")}
-              onClick={() => { void handleOpenTerminal(); }}
-            >
-              <span aria-hidden="true">❯</span> {terminalPending ? t("terminal.chat.openingTerminal") : t("terminal.chat.openTerminal")}
-            </button>
-          </div>
-
           {/* 로그와 그 위에 떠 있는 크롬(Follow·잡 스트립·중지)의 좌표계. 컴포저가 pane 하단에
               in-flow로 서면서, pane에 앵커하던 부유물이 컴포저 위에 얹히지 않도록 부유물의
               containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
@@ -449,6 +401,7 @@ export function AgentChatView({
           <AgentChatComposer
             context={context}
             coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
+            meter={<ContextMeterChip context={state.context} working={turnRunning} language={language} />}
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
@@ -1813,7 +1766,7 @@ function ContextMeterChip({
     <div className={`agent-chat-ctx${contextTone(context)}`} ref={wrapRef}>
       <button
         type="button"
-        className={`agent-chat-mode-chip agent-chat-ctx-chip${stale ? " is-stale" : ""}`}
+        className={`agent-chat-ctx-chip${stale ? " is-stale" : ""}`}
         aria-expanded={open}
         aria-label={t("terminal.chat.contextAria", { percent: String(percent), summary })}
         title={t("terminal.chat.contextAt", { summary })}

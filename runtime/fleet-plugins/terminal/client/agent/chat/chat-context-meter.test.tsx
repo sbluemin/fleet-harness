@@ -90,7 +90,6 @@ function mount(): void {
   } as unknown as OperationRenderContext;
   act(() => root?.render(createElement(AgentChatView, {
     context,
-    onOpenTerminal: async () => {},
     tourAnchors: false,
   })));
 }
@@ -155,6 +154,23 @@ describe("chat context meter", () => {
     logState = stateWith(measured(), "done");
     mount();
     expect(chip()?.className).not.toContain("is-stale");
+  });
+
+  // 계기는 지시를 쓰는 손 옆에 산다 — 첨부와 발사 사이, 발사 버튼 바로 왼쪽이다.
+  it("rides the composer control row, one step left of the send control", () => {
+    mount();
+    const actions = container?.querySelector(".agent-chat-composer-actions");
+    expect(actions).not.toBeNull();
+    const order = Array.from(actions?.children ?? [])
+      .map((child) => child.className || child.tagName)
+      .filter((name) => name !== "INPUT");
+    expect(order).toEqual([
+      "agent-chat-composer-attach",
+      "agent-chat-ctx",
+      "agent-chat-composer-send",
+    ]);
+    // 떠 있던 칩 줄의 잔재를 물려받지 않는다 — 이 행에서는 컴포저의 컨트롤 문법을 쓴다.
+    expect(chip()?.className).not.toContain("agent-chat-mode-chip");
   });
 
   it("says nothing at all before the first number arrives", () => {

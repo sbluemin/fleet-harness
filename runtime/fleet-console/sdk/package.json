@@ -107,6 +107,12 @@
       "import": "./components/effort-track.tsx",
       "default": "./components/effort-track.tsx"
     },
+    "./components/caption-actions": {
+      "types": "./components/caption-actions.tsx",
+      "browser": "./components/caption-actions.tsx",
+      "import": "./components/caption-actions.tsx",
+      "default": "./components/caption-actions.tsx"
+    },
     "./components/launch-provider-glyphs": {
       "types": "./components/launch-provider-glyphs.tsx",
       "browser": "./components/launch-provider-glyphs.tsx",

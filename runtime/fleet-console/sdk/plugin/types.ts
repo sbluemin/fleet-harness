@@ -223,6 +223,14 @@ export interface OperationKindDescriptor {
   readonly subtitle?: (operation: OperationNode) => string | undefined;
   readonly render?: (context: OperationRenderContext) => ReactNode;
   /**
+   * Fills the caption band's action shelf, left of the host's own menu and window controls.
+   * The band stays host-owned exactly as it does for a companion panel's `caption`: the host
+   * places the shelf, paints the surface, and drops it entirely on a War Room deck tile, where a
+   * card body is inert and its controls would be a false promise. Build the buttons with
+   * `@fleet-console/sdk/components/caption-actions` so one band cannot carry two grammars.
+   */
+  readonly captionActions?: (context: OperationRenderContext) => ReactNode;
+  /**
    * Current height in panel pixels of fixed bottom chrome this body always paints below its live
    * content (e.g. an agent CLI's input composer and status lines). A host preview that crops the
    * body may push that band out of frame so the live area fills the preview. The host reads it
