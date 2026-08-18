@@ -1,12 +1,14 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import {
+  COMPOSER_ATTACHMENT_MAX_BYTES,
+  COMPOSER_MAX_ATTACHMENTS,
   ComposerAttachControl,
   ComposerBar,
   ComposerField,
   ComposerInput,
-  ComposerRestStrip,
   ComposerSubmitButton,
+  isComposerAttachmentCandidate,
 } from "@fleet-console/sdk/composer";
 
 import { getT } from "../../i18n/index.js";
@@ -15,15 +17,21 @@ import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } 
 /**
  * 채팅 패널에 귀속된 축약 컴포저 — sdk/composer 블록의 두 번째 조립(첫 번째는 Quick Launch).
  *
- * 상시 노출되지 않는다: 쉬는 한 줄(ComposerRestStrip)로 물러나 있다가 인터랙션에만 2-row로
- * 확장되고, 포커스를 잃으면 초안을 보존한 채 다시 물러난다 — 도킹 Quick Launch의 접힘 문법과
- * 같은 어휘다. War Room 카드뷰에서는 스트립조차 서지 않는다: chat.css의 `is-deck-tile` 숨김
- * 목록(부유 크롬과 같은 크로스 번들 클래스 계약)이 이 루트를 함께 걷는다.
+ * 언제나 서 있다: 접힘도, 되돌아오는 한 줄도 없다. 읽던 자리에서 바로 쓰는 것이 이 패널의
+ * 기본 동작이고, 매 턴 앞에 붙던 "펼치는 클릭" 하나가 그 기본을 가리고 있었다. 대신 크롬을
+ * 줄여 자리값을 치른다 — 안내는 컨트롤 행이 지고(포커스에만 선다), 프레임 밖 셋째 줄은 없다.
  *
- * 행선지 문구는 없다 — 패널 안에 있다는 사실이 곧 행선지이고, placeholder의 세션 이름이
- * 그것을 말한다. 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버
- * 계약 변경이 없다. 모델·강도의 선택 컨트롤은 세션 기본값 패치 경로가 실증된 뒤에 선다 —
- * 그전까지 이 바의 좌표 칩은 사실 표시이지 컨트롤이 아니다(agent-chat-coord와 같은 계약).
+ * 면을 두르지 않는다. 밴드(구분선 + 한 단 올라간 배경)를 두면 패널 안에 또 하나의 패널이
+ * 생겨, 첫 턴 전 가운데에 선 컴포저와 첫 턴 뒤 아래로 내려앉은 컴포저가 서로 다른 물건으로
+ * 읽힌다. 남는 것은 둥근 프레임 하나이고, 자리는 여전히 in-flow다 — 대화의 마지막 줄을
+ * 덮는 부유물이 되지 않는다(중앙 배치와 이동은 chat-view의 꼬리가 소유한다).
+ *
+ * War Room 카드뷰에서는 서지 않는다: chat.css의 `is-deck-tile` 숨김 목록(부유 크롬과 같은
+ * 크로스 번들 클래스 계약)이 이 루트를 함께 걷는다.
+ *
+ * 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
+ * 모델·강도는 컨트롤이 아니라 사실 표시다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이라
+ * 이 바에 선 칩과 계기는 읽히기만 한다.
  */
 
 interface ComposerDraftAttachment {
@@ -35,44 +43,35 @@ interface ComposerDraftAttachment {
   readonly uploading: boolean;
 }
 
+/** 거절 사유는 문구 키와 인자를 함께 들고 다닌다 — 바에 서는 한 줄이 사유를 말해야 한다. */
+type AttachmentRejection =
+  | { readonly kind: "limit" }
+  | { readonly kind: "tooLarge" }
+  | { readonly kind: "failed" };
+
 export function AgentChatComposer({
   context,
-  coordinateChip,
-  inviting,
+  coordinate,
   tourAnchor,
 }: {
   readonly context: OperationRenderContext;
-  /** 세션 좌표의 사실 표시 — 캡션에서 이 바로 옮겨 앉았다(사실이지 컨트롤이 아니다). */
-  readonly coordinateChip: React.ReactNode;
-  /** 첫 턴 전 초대 상태 — 쉬는 줄이 이 세션의 유일한 다음 행동임을 말한다. */
-  readonly inviting: boolean;
+  /** 세션 좌표의 사실 표시 — 모델 칩과 강도 계기가 컨트롤 행 좌측에 앉는다. */
+  readonly coordinate: React.ReactNode;
   readonly tourAnchor: boolean;
 }) {
   const t = getT(context.language ?? "en");
-  const rootRef = React.useRef<HTMLDivElement | null>(null);
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const stripRef = React.useRef<HTMLButtonElement | null>(null);
-  const [open, setOpen] = React.useState(false);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
   const [sending, setSending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
+  const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
+  const [dragOver, setDragOver] = React.useState(false);
   const attachmentsRef = React.useRef(attachments);
   attachmentsRef.current = attachments;
   // 업로드가 끝나기 전에 칩이 제거된 key — 완료 콜백이 자신을 발견하면 방금 받은 id를 서버에서
   // 도로 거둔다(Quick Launch 첨부와 같은 회수 계약).
   const canceledKeysRef = React.useRef(new Set<string>());
-
-  const expand = React.useCallback(() => {
-    setOpen(true);
-    // 접힌 동안 입력은 그려지지 않는다 — 펼침 커밋 뒤에 포커스를 넣는다.
-    window.setTimeout(() => inputRef.current?.focus(), 0);
-  }, []);
-
-  const collapse = React.useCallback(() => {
-    // 초안·첨부는 패널 로컬로 산다 — 물러남은 버림이 아니다.
-    setOpen(false);
-  }, []);
 
   const send = React.useCallback(async () => {
     const text = draft.trim();
@@ -99,10 +98,26 @@ export function AgentChatComposer({
   }, [context.operationId, draft, sending]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
-    for (const file of files) {
+    const images = files.filter((file) => isComposerAttachmentCandidate(file));
+    // 이미지가 하나도 없으면 어떤 사유도 말하지 않는다 — 텍스트 붙여넣기·비이미지 드롭은 조용히 지나간다.
+    if (images.length === 0) return;
+    setRejection(null);
+    // 상태 갱신은 배치되므로 상한은 로컬 카운터로 센다 — ref만 보면 같은 드롭의 앞 장이 안 보인다.
+    let count = attachmentsRef.current.length;
+    for (const file of images) {
+      if (count >= COMPOSER_MAX_ATTACHMENTS) {
+        setRejection({ kind: "limit" });
+        break;
+      }
+      if (file.size > COMPOSER_ATTACHMENT_MAX_BYTES) {
+        setRejection({ kind: "tooLarge" });
+        continue;
+      }
+      count += 1;
       const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       const previewUrl = URL.createObjectURL(file);
-      setAttachments((current) => [...current, { key, id: null, name: file.name, previewUrl, uploading: true }]);
+      const name = file.name.length > 0 ? file.name : "pasted image";
+      setAttachments((current) => [...current, { key, id: null, name, previewUrl, uploading: true }]);
       void uploadLaunchAttachment(file)
         .then(({ id }) => {
           if (canceledKeysRef.current.delete(key)) {
@@ -118,6 +133,7 @@ export function AgentChatComposer({
           canceledKeysRef.current.delete(key);
           URL.revokeObjectURL(previewUrl);
           setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+          setRejection({ kind: "failed" });
         });
     }
   }, []);
@@ -129,117 +145,125 @@ export function AgentChatComposer({
     else canceledKeysRef.current.add(key);
     URL.revokeObjectURL(target.previewUrl);
     setAttachments((current) => current.filter((attachment) => attachment.key !== key));
+    setRejection(null);
   }, []);
 
-  const hasDraft = draft.trim().length > 0 || attachments.length > 0;
+  // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과
+  // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
+  const uploading = attachments.some((attachment) => attachment.uploading);
+  const canSend = draft.trim().length > 0 && !sending && !uploading;
   const placeholder = t("terminal.chat.composerPlaceholder", { name: context.operation.title });
-  const ghost = hasDraft && draft.trim().length > 0
-    ? draft
-    : inviting
-      ? t("terminal.chat.emptyInvite")
-      : placeholder;
+  const notice = failed
+    ? t("terminal.chat.composerSendFailed")
+    : rejection === null
+      ? null
+      : rejection.kind === "limit"
+        ? t("terminal.chat.composerAttachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) })
+        : rejection.kind === "tooLarge"
+          ? t("terminal.chat.composerAttachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) })
+          : t("terminal.chat.composerAttachFailed");
 
   return (
-    <div
-      ref={rootRef}
-      className={`agent-chat-composer${open ? " is-open" : ""}${inviting ? " is-inviting" : ""}`}
-      // 시선이 떠나면 한 줄로 물러난다 — 팝오버 없는 축약 조립이라 포커스 이탈 판정이 곧 접힘이다.
-      onBlur={(event) => {
-        if (open && rootRef.current && !rootRef.current.contains(event.relatedTarget as Node | null)) collapse();
-      }}
-      onKeyDown={(event) => {
-        if (event.key === "Escape" && open) {
-          event.stopPropagation();
-          collapse();
-          // Esc는 키보드 후퇴다 — 포커스를 쉬는 줄로 되돌려 Tab 없이 다시 펼칠 수 있게 한다.
-          // 포커스 이탈로 물러난 경우는 사용자가 이미 다른 곳을 골랐으므로 훔치지 않는다.
-          window.setTimeout(() => stripRef.current?.focus(), 0);
-        }
-      }}
-    >
-      {open ? (
-        <div className="agent-chat-composer-body">
-          <div className="agent-chat-composer-frame">
-            <ComposerField className="agent-chat-composer-field">
-              <ComposerInput
-                ref={inputRef}
-                className="agent-chat-composer-input"
-                rows={1}
-                value={draft}
-                placeholder={placeholder}
-                aria-label={t("terminal.chat.composerInputAria")}
-                spellCheck={false}
-                onChange={(event) => {
-                  setDraft(event.target.value);
-                  setFailed(false);
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
-                    event.preventDefault();
-                    void send();
-                  }
-                }}
-              />
-              {attachments.length > 0 ? (
-                <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
-                  {attachments.map((attachment) => (
-                    <span key={attachment.key} className={`agent-chat-composer-attachment${attachment.uploading ? " is-uploading" : ""}`}>
-                      <img src={attachment.previewUrl} alt={attachment.name} />
-                      <button
-                        type="button"
-                        className="agent-chat-composer-attachment-remove"
-                        onClick={() => removeAttachment(attachment.key)}
-                        aria-label={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
-                        title={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
-                      >
-                        ×
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              ) : null}
-            </ComposerField>
-            <ComposerBar className="agent-chat-composer-bar">
-              {coordinateChip}
-              {failed ? (
-                <span className="agent-chat-composer-error" role="alert">{t("terminal.chat.composerSendFailed")}</span>
-              ) : null}
-              <span className="agent-chat-composer-actions">
-                <ComposerAttachControl
-                  className="agent-chat-composer-attach"
-                  label={t("terminal.chat.composerAttach")}
-                  onFiles={addFiles}
-                />
-                <ComposerSubmitButton
-                  className={`agent-chat-composer-send${hasDraft && !sending ? " is-armed" : ""}`}
-                  disabled={!hasDraft || sending || attachments.some((attachment) => attachment.uploading)}
-                  onClick={() => { void send(); }}
-                  aria-label={t("terminal.chat.composerSend")}
-                  title={t("terminal.chat.composerSend")}
-                />
-              </span>
-            </ComposerBar>
-          </div>
-          <p className="agent-chat-composer-hint" aria-hidden="true">
-            <span>{t("terminal.chat.composerHintEnter")}</span>
-            <span>{t("terminal.chat.composerHintNewline")}</span>
-            <span>{t("terminal.chat.composerHintEsc")}</span>
-          </p>
-        </div>
-      ) : (
-        <ComposerRestStrip
-          ref={stripRef}
-          className="agent-chat-composer-rest"
-          {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
-          aria-expanded={false}
-          aria-label={t("terminal.chat.composerRestAria")}
-          onClick={expand}
-        >
-          {hasDraft ? <span className="agent-chat-composer-draft-dot" aria-hidden="true" /> : null}
-          <span className={`agent-chat-composer-ghost${hasDraft && draft.trim().length > 0 ? " has-draft" : ""}`}>{ghost}</span>
-          <kbd className="agent-chat-composer-key" aria-hidden="true">Enter</kbd>
-        </ComposerRestStrip>
-      )}
+    <div className="agent-chat-composer">
+      <div
+        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}`}
+        {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
+        onDragOver={(event) => {
+          if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
+          event.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={(event) => {
+          // 자식 사이를 오가는 이동은 이탈이 아니다 — 프레임 밖으로 나갈 때만 하이라이트를 내린다.
+          const next = event.relatedTarget;
+          if (next instanceof Node && event.currentTarget.contains(next)) return;
+          setDragOver(false);
+        }}
+        onDrop={(event) => {
+          setDragOver(false);
+          const files = Array.from(event.dataTransfer?.files ?? []);
+          if (files.length === 0) return;
+          // 파일이 실린 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가
+          // 그 파일로 내비게이션해 콘솔째로 떠난다.
+          event.preventDefault();
+          addFiles(files);
+        }}
+      >
+        <ComposerField className="agent-chat-composer-field">
+          <ComposerInput
+            ref={inputRef}
+            className="agent-chat-composer-input"
+            rows={3}
+            value={draft}
+            placeholder={placeholder}
+            aria-label={t("terminal.chat.composerInputAria")}
+            spellCheck={false}
+            onChange={(event) => {
+              setDraft(event.target.value);
+              setFailed(false);
+            }}
+            onPaste={(event) => {
+              const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
+              if (files.length === 0) return;
+              // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
+              event.preventDefault();
+              addFiles(files);
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          />
+          {attachments.length > 0 ? (
+            <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
+              {attachments.map((attachment) => (
+                <span key={attachment.key} className={`agent-chat-composer-attachment${attachment.uploading ? " is-uploading" : ""}`}>
+                  <img src={attachment.previewUrl} alt={attachment.name} />
+                  <button
+                    type="button"
+                    className="agent-chat-composer-attachment-remove"
+                    onClick={() => removeAttachment(attachment.key)}
+                    aria-label={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
+                    title={t("terminal.chat.composerAttachRemove", { name: attachment.name })}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+            </div>
+          ) : null}
+        </ComposerField>
+        <ComposerBar className="agent-chat-composer-bar">
+          {coordinate}
+          {notice !== null ? (
+            <span className="agent-chat-composer-error" role="alert">{notice}</span>
+          ) : (
+            /* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 서고, 좁은 패널에서는
+               ⇧Enter 항목부터 접힌다(CSS @container). 읽는 화면에 상주하면 여러 패널이
+               같은 문구를 나란히 반복한다. */
+            <span className="agent-chat-composer-hint" aria-hidden="true">
+              <span>{t("terminal.chat.composerHintEnter")}</span>
+              <span className="is-optional">{t("terminal.chat.composerHintNewline")}</span>
+            </span>
+          )}
+          <span className="agent-chat-composer-actions">
+            <ComposerAttachControl
+              className="agent-chat-composer-attach"
+              label={t("terminal.chat.composerAttach")}
+              onFiles={addFiles}
+            />
+            <ComposerSubmitButton
+              className={`agent-chat-composer-send${canSend ? " is-armed" : ""}`}
+              disabled={!canSend}
+              onClick={() => { void send(); }}
+              aria-label={t("terminal.chat.composerSend")}
+              title={t("terminal.chat.composerSend")}
+            />
+          </span>
+        </ComposerBar>
+      </div>
     </div>
   );
 }

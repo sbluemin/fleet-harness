@@ -8289,6 +8289,26 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transform: scale(3);
 }
 
+/* 읽기 전용 계기 — 같은 축, 같은 채움, 손잡이 대신 지침(sdk/composer EffortReadout).
+   커서·포인터 반응을 걷는 것이 핵심이다: 이 표식은 사실이지 컨트롤이 아니고, 만질 수 있게
+   보이면 "여기서 바꿀 수 있다"는 거짓 약속이 된다. */
+.effort-track[data-readonly="true"] {
+  cursor: default;
+  touch-action: auto;
+}
+
+.effort-track-needle {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 13px;
+  margin: -6.5px 0 0 -1px;
+  border-radius: 1px;
+  background: color-mix(in oklch, var(--text-primary) 88%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in oklch, var(--text-on-brass) 25%, transparent);
+  pointer-events: none;
+}
+
 .effort-track-knob {
   position: absolute;
   top: 50%;

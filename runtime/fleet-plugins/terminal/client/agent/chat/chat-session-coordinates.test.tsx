@@ -73,15 +73,22 @@ function mount(payload: Record<string, unknown>, language: "en" | "ko" = "en"): 
 }
 
 const chip = () => container?.querySelector(".agent-chat-coord");
-const effort = () => container?.querySelector<HTMLElement>(".agent-chat-coord-effort");
+const model = () => container?.querySelector<HTMLElement>(".agent-chat-coord-model");
+const modelName = () => container?.querySelector<HTMLElement>(".agent-chat-coord-model-name");
+/** 강도 축은 읽기 전용 계기다 — 이름을 지는 요소는 셸이 아니라 그 안의 트랙이다. */
+const effortAxis = () => container?.querySelector<HTMLElement>(".agent-chat-coord-effort .effort-track");
+const effortLabel = () => container?.querySelector<HTMLElement>(".agent-chat-coord-effort-label");
 const birth = () => container?.querySelector<HTMLElement>(".agent-chat-birth");
 
 describe("chat session coordinates", () => {
-  it("states the session's model and effort in the chip row", () => {
+  it("states the session's model and effort on the composer's control row", () => {
     mount({ launchModel: "opus[1m]", launchEffort: "ultra" });
-    expect(chip()?.querySelector(".agent-chat-coord-model")?.textContent).toBe("Opus");
-    expect(effort()?.textContent).toBe("ULTRACODE");
-    expect(effort()?.dataset.effortLevel).toBe("ultra");
+    expect(modelName()?.textContent).toBe("Opus");
+    expect(effortLabel()?.textContent).toBe("ULTRACODE");
+    expect(effortLabel()?.dataset.effortLevel).toBe("ultra");
+    // 두 축은 따로 선다 — 런치 표면과 같은 문법(모델은 칩, 강도는 축)이라야 같은 세션을
+    // 두 표면이 같은 말로 부른다.
+    expect(effortAxis()?.dataset.effortLevel).toBe("ultra");
     // 축약하지 않은 사실은 툴팁에 남는다.
     expect(chip()?.getAttribute("title")).toBe("opus[1m] · ultra");
   });
@@ -92,29 +99,40 @@ describe("chat session coordinates", () => {
     mount({ launchModel: "sonnet", launchEffort: "high" });
     expect(chip()?.tagName).toBe("SPAN");
     expect(chip()?.querySelector("button")).toBeNull();
+    // 강도 축은 트랙과 같은 그림을 쓰되 손잡이도, 슬라이더 역할도, 탭 정지점도 갖지 않는다 —
+    // 만질 수 있게 그리면 "여기서 바꿀 수 있다"는 거짓 약속이 된다.
+    expect(effortAxis()?.dataset.readonly).toBe("true");
+    expect(effortAxis()?.getAttribute("role")).toBe("img");
+    expect(effortAxis()?.hasAttribute("tabindex")).toBe(false);
+    expect(chip()?.querySelector(".effort-track-knob")).toBeNull();
+    expect(chip()?.querySelector(".effort-track-needle")).not.toBeNull();
     // 일반 span의 aria-label은 무시될 수 있다 — 이름을 지는 역할이 있어야 한 문장으로 읽힌다.
-    expect(chip()?.getAttribute("role")).toBe("img");
-    expect(chip()?.getAttribute("aria-label")).toBe("This session runs on Sonnet at HIGH");
+    expect(model()?.getAttribute("role")).toBe("img");
+    expect(model()?.getAttribute("aria-label")).toBe("This session runs on Sonnet");
+    expect(effortAxis()?.getAttribute("aria-label")).toBe("Effort HIGH — fixed for this session");
   });
 
   it("marks only an ultracode session with the apex channel", () => {
     mount({ launchModel: "opus[1m]", launchEffort: "xhigh" });
-    expect(chip()?.classList.contains("is-ultracode")).toBe(false);
+    expect(model()?.classList.contains("is-ultracode")).toBe(false);
     expect(birth()?.classList.contains("is-ultracode")).toBe(false);
     act(() => root?.unmount());
     container?.remove();
     mount({ launchModel: "opus[1m]", launchEffort: "ultra" });
-    expect(chip()?.classList.contains("is-ultracode")).toBe(true);
+    expect(model()?.classList.contains("is-ultracode")).toBe(true);
     expect(birth()?.classList.contains("is-ultracode")).toBe(true);
   });
 
   it("says the coordinates were left to the default instead of naming a model", () => {
     mount({});
-    expect(chip()?.querySelector(".agent-chat-coord-model")?.textContent).toBe("Default");
-    expect(effort()?.textContent).toBe("AUTO");
-    expect(effort()?.dataset.effortLevel).toBe("auto");
+    expect(modelName()?.textContent).toBe("Default");
+    expect(effortLabel()?.textContent).toBe("AUTO");
+    expect(effortLabel()?.dataset.effortLevel).toBe("auto");
+    // 자동은 사다리의 최소 단이 아니라 사다리를 쓰지 않는 상태다 — 채움도 지침도 서지 않는다.
+    expect(effortAxis()?.dataset.auto).toBe("true");
+    expect(chip()?.querySelector(".effort-track-needle")).toBeNull();
     expect(chip()?.hasAttribute("title")).toBe(false);
-    expect(chip()?.getAttribute("aria-label")).toBe("This session runs on Default at AUTO");
+    expect(model()?.getAttribute("aria-label")).toBe("This session runs on Default");
   });
 
   // 태생 기록은 로그의 첫 줄이다 — 연결 고지보다 앞이며, 턴이 하나도 없어도 서 있다.
