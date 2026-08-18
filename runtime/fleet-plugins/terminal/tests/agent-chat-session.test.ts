@@ -370,6 +370,42 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // 주입 운반체는 말풍선 없는 여는 이벤트로 온다. 그것을 곧바로 턴으로 세우면 두 가지가 어긋난다:
+  // 한 번의 슬래시 명령이 여러 줄로 와서 턴이 쪼개지고, 뒤에 아무것도 안 오는 운반체가 화면에는
+  // 없는 턴을 카운트에만 남긴다. 그래서 여는 이벤트는 내용이 따라올 때 비로소 발행된다.
+  it("defers a carrier's turn until content follows, and folds a run of carriers into one", async () => {
+    const transcriptPath = writeTranscript("sid-carrier", [
+      { type: "user", timestamp: "2026-08-18T01:00:00.000Z", message: { role: "user", content: "first order" } },
+      { type: "assistant", timestamp: "2026-08-18T01:00:05.000Z", message: { content: [{ type: "text", text: "워크플로를 띄웠습니다." }] } },
+      // 한 번의 슬래시 명령이 세 줄로 온다 — 턴 하나만 열려야 한다.
+      { type: "user", timestamp: "2026-08-18T01:01:00.000Z", message: { role: "user", content: "<command-message>goal</command-message>\n<command-name>/goal</command-name>" } },
+      { type: "user", timestamp: "2026-08-18T01:01:00.500Z", message: { role: "user", content: "<local-command-stdout>Goal set</local-command-stdout>" } },
+      { type: "assistant", timestamp: "2026-08-18T01:01:09.000Z", message: { content: [{ type: "text", text: "목표 확인했습니다." }] } },
+      // 뒤에 아무 내용도 따르지 않는 운반체 — 턴을 세우지 않는다.
+      { type: "user", timestamp: "2026-08-18T01:02:00.000Z", message: { role: "user", content: "<task-notification>\n<status>completed</status>\n</task-notification>" } },
+    ]);
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-carrier", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(kinds(events)).toEqual([
+      "replay-start",
+      "dispatch", "text", "turn-end",
+      "turn-start", "text", "turn-end",
+      "replay-end",
+    ]);
+    // 접힌 턴의 시작은 묶음의 첫 줄이고, 끝맺지 못한 운반체는 앞 턴의 끝을 늘리지 않는다.
+    expect(events.map((entry) => entry.event).filter((event) => event.kind === "turn-end")).toEqual([
+      { kind: "turn-end", ok: true, durationMs: 5_000 },
+      { kind: "turn-end", ok: true, durationMs: 9_000 },
+    ]);
+    const end = events.map((entry) => entry.event).find((event) => event.kind === "replay-end");
+    expect(end).toEqual({ kind: "replay-end", turns: 2 });
+    await registry.disposeAll();
+  });
+
   // 재생 턴에는 SDK result가 없다 — 소요 시간은 트랜스크립트 줄의 시각에서 나온다.
   // 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃고 "작업함"으로 주저앉는다.
   it("derives each replayed turn's duration from its transcript timestamps", async () => {

@@ -610,8 +610,18 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
   switch (event.kind) {
     case "replay-start":
       return { ...initialAgentChatLogState, replaying: true };
-    case "replay-end":
-      return { ...state, replaying: false, replayedTurns: event.turns };
+    case "replay-end": {
+      // 이 이벤트 앞의 턴은 전부 재생된 과거다. 보통은 각 턴이 turn-end로 닫히지만 두 경우에
+      // 열린 채 남는다: 마지막 턴의 시각 차가 없어 서버가 소요 시간을 말하지 못했을 때, 그리고
+      // 저널이 상한(JOURNAL_CAP)에 걸려 replay-start가 잘려 나가 replaying이 false로 시작했을 때.
+      // 후자에서는 settleLastTurn이 무력하므로 플래그와 무관하게 닫는다 — 지나간 턴이 "작업 중"
+      // 티커를 단 채 굳는 것보다는, 시간을 말하지 않는 편이 정직하다.
+      const last = state.turns.at(-1);
+      const turns = last !== undefined && last.state === "working"
+        ? [...state.turns.slice(0, -1), { ...last, state: "done" as const }]
+        : state.turns;
+      return { ...state, turns, replaying: false, replayedTurns: event.turns };
+    }
     case "context": {
       // 턴 종료 스냅숏은 무조건 권위다 — 그 시점의 측정이므로 라이브가 더 말할 것이 없다.
       // 턴 시작 스냅숏은 왕복 때문에 턴이 한참 돈 뒤에 도착하고(실측 20~30초), 그 값은 이 턴이
@@ -662,12 +672,17 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       // 백그라운드 작업이 끝나면 SDK가 모델을 다시 깨워 두 번째 응답을 낸다(실측: 하나의
       // startTurn이 result를 두 번 낸다). 그 응답을 이미 닫힌 턴에 이어 붙이면 앞 턴의 Answer가
       // 뒤 응답으로 갈아치워진다 — 디스패치 없는 새 턴으로 세운다.
+      //
+      // 재생에서도 같은 줄이 온다: 트랜스크립트의 주입 운반체는 말풍선 없이 이 이벤트만 남긴다.
+      // 그 턴은 이미 끝난 과거이므로 dispatch 턴과 같이 done으로 세운다 — working으로 세우면
+      // 소요 시간을 말할 수 없는 마지막 턴이 "작업 중"으로 굳는다.
+      const settled: AgentChatTurn["state"] = state.replaying ? "done" : "working";
       const last = state.turns.at(-1);
       if (!last || last.state !== "working") {
         const turn: AgentChatTurn = {
           dispatch: null,
           items: [],
-          state: "working",
+          state: settled,
           toolCount: 0,
           draft: "",
           ...(event.at !== undefined ? { startedAt: event.at } : {}),
@@ -676,7 +691,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       }
       return withLastTurn(state, (turn) => ({
         ...turn,
-        state: "working",
+        state: settled,
         ...(event.at !== undefined ? { startedAt: event.at } : {}),
       }));
     }

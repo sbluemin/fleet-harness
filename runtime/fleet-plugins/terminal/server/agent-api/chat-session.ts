@@ -404,21 +404,49 @@ class AgentChatSession {
       turnAt = null;
       lastAt = null;
     };
+    // 사람 발화로는 서지 않지만 모델을 깨우는 주입 운반체는 말풍선 없는 여는 이벤트로 온다.
+    // 그것을 곧바로 발행하지 않고 붙잡아 두는 이유는 두 가지다.
+    //   1) 한 번의 주입이 여러 줄로 온다(슬래시 명령은 command-message·command-name·
+    //      local-command-stdout이 잇따른다). 줄마다 턴을 열면 한 지시가 턴 서넛으로 쪼개진다.
+    //   2) 뒤에 아무 내용도 따라오지 않는 운반체가 있다. 그 자리에 턴을 세우면 화면에는 아무것도
+    //      그려지지 않으면서 "이전 턴 N개 재생됨"의 N만 늘어난다.
+    // 그래서 여는 이벤트는 **실제 내용이 뒤따를 때** 비로소 발행하고, 연달아 온 운반체는 하나로
+    // 접는다. 접힌 턴의 시작 시각은 묶음의 첫 줄이다 — 소요 시간은 그 지점부터 재는 것이 옳다.
+    let pendingOpenAt: number | null | undefined;
+    const openPendingTurn = (): void => {
+      if (pendingOpenAt === undefined) return;
+      const at = pendingOpenAt;
+      pendingOpenAt = undefined;
+      closeReplayedTurn();
+      turns += 1;
+      turnAt = at;
+      this.push(at === null ? { kind: "turn-start" } : { kind: "turn-start", at });
+    };
     try {
       const raw = await fs.readFile(transcriptPath, "utf8");
       for (const line of raw.split("\n")) {
         if (line.trim().length === 0) continue;
         const mapped = chatReplayFromTranscriptLine(line, { cwd: this.seed.cwd, toolNames: this.toolNames });
         for (const event of mapped.events) {
+          if (event.kind === "turn-start") {
+            // 묶음의 첫 줄만 시작 시각으로 남긴다.
+            if (pendingOpenAt === undefined) pendingOpenAt = mapped.at ?? null;
+            continue;
+          }
           if (event.kind === "dispatch") {
+            // 사람이 친 지시가 왔다 — 앞의 운반체는 응답을 부르지 못한 채 끝났으므로 버린다.
+            pendingOpenAt = undefined;
             closeReplayedTurn();
             turns += 1;
             turnAt = mapped.at ?? null;
+          } else {
+            openPendingTurn();
           }
           this.rememberTool(event);
           this.push(event);
         }
-        if (mapped.events.length > 0 && mapped.at !== undefined) lastAt = mapped.at;
+        // 붙잡아 둔 운반체는 아직 턴이 아니다 — 그 줄의 시각으로 앞 턴의 끝을 늘리지 않는다.
+        if (mapped.events.length > 0 && mapped.at !== undefined && pendingOpenAt === undefined) lastAt = mapped.at;
       }
       closeReplayedTurn();
     } catch {

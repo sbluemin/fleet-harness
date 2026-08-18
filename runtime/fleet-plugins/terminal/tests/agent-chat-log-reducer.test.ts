@@ -32,6 +32,47 @@ describe("chat log reducer", () => {
     expect(state.turns[1]).toMatchObject({ state: "done", dispatch: { text: "second" } });
   });
 
+  // 트랜스크립트의 주입 운반체(백그라운드 작업 결말 등)는 말풍선 없이 turn-start만 남긴다.
+  // 그 경계가 없으면 뒤따르는 응답이 앞 턴에 얹혀 앞 턴의 Answer를 밀어낸다.
+  it("opens a settled bubbleless turn for a replayed carrier without swallowing the previous answer", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "dispatch", text: "ship it" },
+      { kind: "text", text: "워크플로를 띄웠습니다. 결과를 기다립니다." },
+      { kind: "turn-start", at: 1755130000000 },
+      { kind: "text", text: "워크플로가 실패했습니다. 원인은 스키마입니다." },
+      { kind: "replay-end", turns: 2 },
+    ]);
+    expect(state.turns).toHaveLength(2);
+    // 앞 턴은 자기 Answer를 그대로 지킨다.
+    expect(state.turns[0]).toMatchObject({
+      state: "done",
+      dispatch: { text: "ship it" },
+      items: [{ type: "text", text: "워크플로를 띄웠습니다. 결과를 기다립니다." }],
+    });
+    // 뒤 턴은 사용자 말풍선 없이 서고, 재생이므로 "작업 중"으로 굳지 않는다.
+    expect(state.turns[1]).toMatchObject({
+      state: "done",
+      dispatch: null,
+      startedAt: 1755130000000,
+      items: [{ type: "text", text: "워크플로가 실패했습니다. 원인은 스키마입니다." }],
+    });
+  });
+
+  // 저널이 상한에 걸려 replay-start가 잘려 나가면 재접속한 브라우저는 replaying:false로 시작한다.
+  // 그때 남은 저널의 turn-start는 라이브로 읽혀 "작업 중"이 되는데, replay-end가 그 뒤에 오면
+  // 그 턴은 지나간 과거임이 확정된다 — 플래그와 무관하게 닫혀야 티커가 굳지 않는다.
+  it("settles a turn left working when replay-start was spliced out of the journal", () => {
+    const state = fold([
+      { kind: "turn-start", at: 1755130000000 },
+      { kind: "text", text: "잘린 저널에서 되살아난 응답" },
+      { kind: "replay-end", turns: 7 },
+    ]);
+    expect(state.replaying).toBe(false);
+    expect(state.replayedTurns).toBe(7);
+    expect(state.turns.at(-1)).toMatchObject({ state: "done", dispatch: null });
+  });
+
   it("runs a live turn through working to done with duration", () => {
     // 현재 작업 여부의 권위는 호스트의 런타임 축으로 옮겼다 — 저널은 턴의 시간축만 소유한다.
     let state = fold([
