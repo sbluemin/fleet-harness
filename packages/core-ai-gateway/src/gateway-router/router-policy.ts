@@ -1,6 +1,4 @@
 import {
-  CLAUDE_SEARCH_TOOL_NAMES,
-  omitClaudeClientTools,
   omitClaudeWebSearchTools,
   pruneClaudeSkillPayloads,
 } from "../anthropic/claude-context.js";
@@ -40,13 +38,6 @@ export interface GatewayPolicySteps {
   readonly pruneSkillPayloads: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
   /** Withhold Claude Code's Web Search tools, in all three spellings. */
   readonly withholdWebSearchTools: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
-  /** Withhold Claude Code's `Grep`/`Glob` from the advertised catalog. */
-  readonly withholdSearchTools: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
-  /** Withhold client tools by name; `tool_choice` pinned to one is downgraded to `auto`. */
-  readonly withholdClientTools: (
-    request: AnthropicMessagesRequest,
-    names: Iterable<string>,
-  ) => AnthropicMessagesRequest;
 }
 
 /**
@@ -100,13 +91,6 @@ export function applyGatewayRequestPolicy(
 }
 
 function buildPolicySteps(context: GatewayPolicyContext): GatewayPolicySteps {
-  const withholdClientTools = (
-    request: AnthropicMessagesRequest,
-    names: Iterable<string>,
-  ): AnthropicMessagesRequest => {
-    const omitted = omitClaudeClientTools(request, names);
-    return omitted.changed ? omitted.request : request;
-  };
   return {
     pruneSkillPayloads: (request) => {
       const pruned = pruneClaudeSkillPayloads(request.messages, {
@@ -123,7 +107,5 @@ function buildPolicySteps(context: GatewayPolicyContext): GatewayPolicySteps {
       const omitted = omitClaudeWebSearchTools(request);
       return omitted.changed ? omitted.request : request;
     },
-    withholdSearchTools: (request) => withholdClientTools(request, CLAUDE_SEARCH_TOOL_NAMES),
-    withholdClientTools,
   };
 }

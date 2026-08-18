@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  CLAUDE_SEARCH_TOOL_NAMES,
-  omitClaudeClientTools,
-} from "../../src/anthropic/claude-context.js";
+import { omitClaudeClientTools } from "../../src/anthropic/claude-context.js";
+
+/** Any pair of caller tool names; this helper knows names, never which ones matter. */
+const SEARCH_TOOLS = ["Grep", "Glob"];
 
 const READ = { name: "Read", input_schema: { type: "object", properties: {} } };
 const GREP = { name: "Grep", input_schema: { type: "object", properties: {} } };
@@ -11,7 +11,7 @@ const GLOB = { name: "Glob", input_schema: { type: "object", properties: {} } };
 
 describe("omitClaudeClientTools", () => {
   it("drops every named tool and leaves the rest in order", () => {
-    const result = omitClaudeClientTools({ tools: [READ, GREP, GLOB] }, CLAUDE_SEARCH_TOOL_NAMES);
+    const result = omitClaudeClientTools({ tools: [READ, GREP, GLOB] }, SEARCH_TOOLS);
 
     expect(result.changed).toBe(true);
     expect(result.request.tools).toEqual([READ]);
@@ -28,7 +28,7 @@ describe("omitClaudeClientTools", () => {
   });
 
   it("omits the tools key rather than sending an empty catalog", () => {
-    const result = omitClaudeClientTools({ tools: [GREP] }, CLAUDE_SEARCH_TOOL_NAMES);
+    const result = omitClaudeClientTools({ tools: [GREP] }, SEARCH_TOOLS);
 
     expect(result.changed).toBe(true);
     expect("tools" in result.request).toBe(false);
@@ -38,7 +38,7 @@ describe("omitClaudeClientTools", () => {
   it("downgrades a pinned tool_choice and keeps its parallel-use flag", () => {
     const result = omitClaudeClientTools(
       { tools: [READ, GREP], tool_choice: { type: "tool", name: "Grep", disable_parallel_tool_use: true } },
-      CLAUDE_SEARCH_TOOL_NAMES,
+      SEARCH_TOOLS,
     );
 
     expect(result.request.tool_choice).toEqual({ type: "auto", disable_parallel_tool_use: true });
@@ -47,7 +47,7 @@ describe("omitClaudeClientTools", () => {
   it("leaves an auto tool_choice and an unaffected catalog identical", () => {
     const request = { tools: [READ], tool_choice: { type: "auto" } };
 
-    const result = omitClaudeClientTools(request, CLAUDE_SEARCH_TOOL_NAMES);
+    const result = omitClaudeClientTools(request, SEARCH_TOOLS);
 
     expect(result.changed).toBe(false);
     expect(result.request).toBe(request);

@@ -294,20 +294,28 @@ describe("upstream credential", () => {
   });
 
   it("applies the target's own policy rather than a blanket one", async () => {
-    const gateway = stubGateway();
-    const streamSpy = vi.spyOn(gateway, "stream");
-    const router = createAiGatewayRouter({ gateway, readAuth });
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
     const res = response();
     await router.handle(ctx({
       res,
       token: ANTHROPIC_CRED,
-      model: "claude-gateway--codex--gpt-5.6-sol-fast",
+      model: "claude-gateway--kimi--k3",
       tools: SEARCH_CATALOG,
     }));
 
     expect(res.status).toBe(200);
-    const [request] = streamSpy.mock.calls[0] ?? [];
-    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
+    // Kimi services Web Search itself, so its policy alone keeps that definition.
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const forwarded = JSON.parse(String(init?.body)) as { tools?: ReadonlyArray<{ name: string }> };
+    expect(forwarded.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob", "WebSearch"]);
   });
 
   it("applies the target policy before the Grok CLI wire is serialized", async () => {

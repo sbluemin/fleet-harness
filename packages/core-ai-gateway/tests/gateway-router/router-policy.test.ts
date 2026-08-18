@@ -52,7 +52,7 @@ describe("gateway request policy", () => {
     ["cursor", ["Read", "Grep", "Glob"]],
     ["xai", ["Read", "Grep", "Glob"]],
     ["opencode", ["Read", "Grep", "Glob"]],
-    ["codex", ["Read"]],
+    ["codex", ["Read", "Grep", "Glob"]],
     ["kimi", ["Read", "Grep", "Glob", "WebSearch"]],
   ] as const)("shapes a %s request", (provider, tools) => {
     expect(toolsFor(provider)).toEqual(tools);
@@ -60,7 +60,7 @@ describe("gateway request policy", () => {
 
   it("downgrades a tool_choice pinned to a tool the policy withheld", () => {
     const target = findGatewayModel(SAMPLE_MODEL.codex)!;
-    const request = { ...requestFor(), tool_choice: { type: "tool", name: "Grep" } };
+    const request = { ...requestFor(), tool_choice: { type: "tool", name: "WebSearch" } };
 
     const shaped = applyGatewayRequestPolicy(
       request as unknown as AnthropicMessagesRequest,

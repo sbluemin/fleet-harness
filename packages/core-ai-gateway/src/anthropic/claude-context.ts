@@ -732,16 +732,6 @@ export const CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS: readonly string[] = [
   ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
 ];
 
-/**
- * Claude Code's file-search tools.
- *
- * Its native builds suppress both and hide embedded search binaries behind the shell;
- * a caller that names them in the tool allowlist gets them back for the whole session,
- * with no per-provider control of its own. Withholding one here is how a provider that
- * should not receive them says so.
- */
-export const CLAUDE_SEARCH_TOOL_NAMES: readonly string[] = ["Grep", "Glob"];
-
 interface ClaudeToolLike {
   readonly name?: unknown;
   readonly type?: unknown;
