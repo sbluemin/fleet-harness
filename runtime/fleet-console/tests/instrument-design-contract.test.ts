@@ -1940,17 +1940,18 @@ describe("Instrument core design contract", () => {
     expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
     expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
     expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
-    // 회신 버튼은 로그 위에 떠 있는 컨트롤이라 신호 채널을 쓰지 않는다 — brass(위치·포커스)만
-    // hover/focus에 오르고, 쉬는 상태는 패널 위 한 칸 물러난 면과 hairline이 진다.
-    const chatReplyBlock = chat.match(/^\.agent-chat-reply \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatReplyBlock).toContain("background: var(--surface-panel-raised);");
-    expect(chatReplyBlock).toContain("border: 1px solid var(--hairline-strong);");
+    // 패널 컴포저의 쉬는 줄은 물러난 상태라 신호 채널을 쓰지 않는다 — 색이 오르는 것은
+    // 초대(brass-ink)·포커스 프레임(brass)·점화된 실행(brass)뿐이고 전부 기존 채널 문법이다.
+    const composerRestBlock = chat.match(/^\.agent-chat-composer-rest \{[^}]*\}/m)?.[0] ?? "";
+    expect(composerRestBlock).toContain("color: var(--text-tertiary);");
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
-      expect(chatReplyBlock).not.toContain(signal);
+      expect(composerRestBlock).not.toContain(signal);
     }
-    const chatReplyHoverBlock = chat.match(/^\.agent-chat-reply:hover,\n\.agent-chat-reply:focus-visible \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatReplyHoverBlock).toContain("border-color: var(--brass);");
-    expect(chatReplyHoverBlock).toContain("outline: none;");
+    const composerFrameFocusBlock = chat.match(/^\.agent-chat-composer-frame:focus-within \{[^}]*\}/m)?.[0] ?? "";
+    expect(composerFrameFocusBlock).toContain("border-color: var(--brass);");
+    const composerArmedBlock = chat.match(/^\.agent-chat-composer-send\.is-armed \{[^}]*\}/m)?.[0] ?? "";
+    expect(composerArmedBlock).toContain("background: var(--brass);");
+    expect(composerArmedBlock).toContain("color: var(--text-on-brass);");
     // Follow 칩은 "바닥을 놓쳤다"는 상태라 쉬는 면에 aurora를 진다. brass는 hover/focus만.
     const chatFollowBlock = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0] ?? "";
     expect(chatFollowBlock).toContain("background: var(--surface-panel-raised);");
@@ -1964,14 +1965,15 @@ describe("Instrument core design contract", () => {
     expect(chatFollowHoverBlock).toContain("outline: none;");
     // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
     // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
-    // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 회신 버튼 40px)을 넘어서는지 함께 고정한다.
+    // 위아래 두 여백이 각자의 컨트롤(전환 칩 32px · 중지 버튼 40px)을 넘어서는지 함께 고정한다.
     const chatLogBlock = chat.match(/^\.agent-chat-log \{[^}]*\}/m)?.[0] ?? "";
     const chatLogPadding = chatLogBlock.match(/padding: ([^;]+);/)?.[1] ?? "";
     expect(chatLogPadding).toContain("calc(var(--space-3) + 34px)");
     expect(chatLogPadding).toContain("calc(var(--space-3) + 45px)");
-    const replySize = Number(chatReplyBlock.match(/height: (\d+)px;/)?.[1]);
+    const floatingStopBlock = chat.match(/^\.agent-chat-stop \{[^}]*\}/m)?.[0] ?? "";
+    const stopSize = Number(floatingStopBlock.match(/height: (\d+)px;/)?.[1]);
     const logBottom = Number(chatLogPadding.match(/calc\(var\(--space-3\) \+ (\d+)px\)\s*$/)?.[1]);
-    expect(logBottom).toBeGreaterThan(replySize);
+    expect(logBottom).toBeGreaterThan(stopSize);
     // 로그 위에 얹히는 면은 --surface-panel-raised로만 물러난다 — 잉크 티어를 직접 잡으면
     // 테마마다 다른 방향(다크는 위, 라이트는 아래)이 한 값으로 굳어 한쪽 테마에서 위계가 무너진다.
     // 스크림은 예외다 — ink-abyss 기반 오버레이는 제품 전역 관례이며 패널 면 위계와 무관하다.
@@ -2941,7 +2943,7 @@ describe("War Room deck panel grammar", () => {
     expect(frame).not.toMatch(/canvas-operation-titlebar"[^>]*inert/);
   });
 
-  it("hides Analyst, Chat-view, stop, and reply chrome on a deck tile and keeps them on the stage", () => {
+  it("hides Analyst, Chat-view, stop, and composer chrome on a deck tile and keeps them on the stage", () => {
     // 카드 본문은 inert이고 승격 면이 클릭을 가로채므로 컨트롤은 눌러도 동작하지 않는다.
     // 무대에 오른 패널은 is-deck-tile이 아니므로 컨트롤이 기존처럼 보인다.
     const terminalChatCss = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
@@ -2950,9 +2952,9 @@ describe("War Room deck panel grammar", () => {
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-dormant-open");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-follow");
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-stop");
-    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-reply");
-    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-invite");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-stop,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-reply,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-invite \{[^}]*\}/)?.[0] ?? "";
+    // 카드뷰에서는 컴포저가 스트립조차 서지 않는다 — 입력은 무대에 올라야 가능한 행동이다.
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-composer");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-stop,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
     // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.

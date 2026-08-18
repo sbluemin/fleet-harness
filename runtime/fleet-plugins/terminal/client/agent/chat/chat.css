@@ -38,11 +38,22 @@
 /* 상단 세션 띠바는 없다 — 로그가 패널 상단까지 올라와 캡션 바로 아래에서 시작한다.
    띠바는 패널 면과 다른 면을 하나 더 얹어 창을 두 장으로 갈랐고, 그 안의 세션 표기는
    캡션·CLI 배너와 겹쳤다. 뷰 전환은 떠 있는 칩이 지고, 진행 상태는 하단 스트립이 진다. */
+/* 로그와 부유 크롬(Follow·잡 스트립·중지)의 좌표계. 컴포저가 pane 하단에 in-flow로 서므로,
+   pane에 앵커하던 부유물이 컴포저 위에 얹히지 않게 containing block을 로그 영역으로 좁힌다. */
+.agent-chat-body {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .agent-chat-log {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  /* 세로 여백은 떠 있는 두 컨트롤을 피한다 — 위는 전환 칩(32px + space-3 오프셋), 아래는 회신
+  /* 세로 여백은 떠 있는 두 컨트롤을 피한다 — 위는 전환 칩(32px + space-3 오프셋), 아래는 중지
      버튼(40px + space-3 오프셋). 스크롤 컨테이너의 여백이라야 바닥까지 내린 로그의 마지막 줄이
      버튼 위로 올라온다: 여백 없이 두면 마지막 턴의 아래 36px이 버튼 뒤에 갇혀 스크롤로도
      빠져나오지 못한다. 가로는 늘리지 않는다 — 모든 줄의 측정폭을 줄이는 대가가, 세로 여백만으로
@@ -799,77 +810,258 @@
   margin-top: var(--space-3);
 }
 
-/* 회신 버튼 — 본문 우하단에 떠 있는 말풍선 하나. 상단 전환 칩과 달리 라벨을 달지 않는다:
-   글리프가 곧 이름인 표적이라 문구가 붙으면 두 칩이 같은 무게로 읽히고, 로그를 가리는 면적이
-   그만큼 늘어난다. 이름은 aria-label과 title이 진다.
-   원형은 컨트롤에서 금지된 모양이 아니다 — Quick Launch 고정 버튼이 같은 원형 아이콘 버튼이다.
-   --radius-pill이 도트·비콘 전용인 것과 별개로, 여기 50%는 크기가 지름을 정하는 아이콘 버튼의
-   모양이다. brass는 위치·포커스 채널이므로 hover/focus에만 오른다.
-   지름은 고정 버튼(32px)보다 크다: 라벨이 없는 표적이라 글리프 자체가 이름을 져야 하고,
-   로그 위에 떠 있으므로 크롬 줄에 앉은 버튼보다 한 단 커야 같은 무게로 읽힌다. */
-.agent-chat-reply {
-  position: absolute;
-  right: var(--space-3);
-  bottom: var(--space-3);
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border-radius: 50%;
+/* 패널 귀속 컴포저 — sdk/composer 블록의 축약 조립(Quick Launch와 같은 부품, 다른 조립).
+   쉬는 한 줄 ↔ 2-row(field/bar) 확장. 면은 패널 위계(--surface-panel-raised 위 --surface-panel),
+   포커스는 brass 채널, 전송 실패는 coral(상태 채널) — 색은 전부 기존 채널 문법 그대로다. */
+.agent-chat-composer {
+  flex: none;
+  border-top: 1px solid var(--surface-rim);
   background: var(--surface-panel-raised);
-  border: 1px solid var(--hairline-strong);
-  color: var(--text-secondary);
-  box-shadow: var(--shadow-soft);
-  cursor: pointer;
-  transition: border-color var(--duration-fast), color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
-/* 첫 턴 전의 초대. 말풍선 왼쪽에 나란히 서서 그 문이 무엇인지 말한다 — 본문 한가운데의
-   안내와 달리, 읽은 자리에서 바로 누를 수 있다. 닫는 수단은 없다(상태가 지나가면 사라진다). */
-.agent-chat-invite {
-  position: absolute;
-  right: calc(var(--space-3) + 40px + var(--space-2));
-  bottom: calc(var(--space-3) + 10px);
-  z-index: 3;
-  margin: 0;
-  max-width: 60%;
+.agent-chat-composer-rest {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  font: inherit;
   font-size: var(--t-sm);
-  line-height: 1.4;
-  text-align: right;
-  color: var(--brass-ink);
-  pointer-events: none;
+  padding: 9px var(--space-4);
+  cursor: text;
+  text-align: left;
 }
 
-/* hover 없이도 강조가 서 있어야 하므로 hover 상태의 표현을 그대로 상시로 세운다. 애니메이션은
-   두지 않는다 — 사라지지 않는 요소가 계속 움직이면 읽는 내내 시선을 빼앗는다. */
-.agent-chat-reply--inviting {
+.agent-chat-composer-rest:hover {
+  color: var(--text-secondary);
+}
+
+/* 첫 턴 전에는 이 줄이 유일한 다음 행동이다 — 초대는 brass-ink가 진다(회신 말풍선의 초대 상태와
+   같은 어휘). 애니메이션은 없다: 사라지지 않는 요소가 움직이면 읽는 내내 시선을 빼앗는다. */
+.agent-chat-composer.is-inviting .agent-chat-composer-rest {
+  color: var(--brass-ink);
+}
+
+.agent-chat-composer-ghost {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.agent-chat-composer-ghost.has-draft {
+  color: var(--text-secondary);
+}
+
+.agent-chat-composer-draft-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  flex: none;
+}
+
+.agent-chat-composer-key {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--surface-rim);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex: none;
+}
+
+.agent-chat-composer-body {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+}
+
+.agent-chat-composer-frame {
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface-panel);
+}
+
+.agent-chat-composer-frame:focus-within {
   border-color: var(--brass);
-  color: var(--brass-ink);
-  box-shadow: var(--brass-halo);
+  box-shadow: 0 0 0 1px var(--brass-glow);
 }
 
-.agent-chat-reply svg {
-  width: 24px;
-  height: 24px;
+.agent-chat-composer-field {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4) var(--space-2);
 }
 
-.agent-chat-reply:hover,
-.agent-chat-reply:focus-visible {
-  border-color: var(--brass);
-  color: var(--brass-ink);
-  box-shadow: var(--brass-halo);
+.agent-chat-composer-input {
+  flex: 1 1 100%;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  resize: none;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: var(--t-md);
+  line-height: 1.5;
+  padding: 0;
+  /* 6줄까지 자라고 그 뒤로는 스크롤 — Quick Launch·Analyst 컴포저와 같은 clamp 정책. */
+  max-height: calc(1.5em * 6);
+}
+
+.agent-chat-composer-input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.agent-chat-composer-input:focus {
   outline: none;
 }
 
-/* 도는 턴을 끊는 문. 회신 버튼 왼쪽에 나란히 서서, 행동이 모이는 자리를 하나로 둔다.
+.agent-chat-composer-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  flex: 1 1 100%;
+}
+
+.agent-chat-composer-attachment {
+  position: relative;
+  width: 52px;
+  height: 52px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+
+.agent-chat-composer-attachment img {
+  border-radius: calc(var(--radius-xs) - 1px);
+}
+
+.agent-chat-composer-attachment img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.agent-chat-composer-attachment.is-uploading img {
+  opacity: 0.45;
+}
+
+/* 제거 칩은 썸네일 밖 모서리에 걸린다 — Quick Launch 첨부 칩과 같은 문법. 면은 패널 면
+   토큰이 진다(스크림 예외를 늘리지 않는다). */
+.agent-chat-composer-attachment-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: 50%;
+  background: var(--surface-panel);
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 제거는 파괴 동작 — coral은 상태 채널이라 hover에만 오른다(Quick Launch와 같은 계약). */
+.agent-chat-composer-attachment-remove:hover {
+  color: var(--coral);
+}
+
+/* 컨트롤 행 — Quick Launch bar와 같은 문법: 좌측은 좌표(사실), 우측은 액션(첨부·실행). */
+.agent-chat-composer-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
+  border-top: 1px solid var(--surface-rim);
+}
+
+.agent-chat-composer-actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.agent-chat-composer-error {
+  font-size: var(--t-sm);
+  color: var(--coral);
+}
+
+.agent-chat-composer-attach {
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 7px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+}
+
+.agent-chat-composer-attach svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-chat-composer-attach:hover {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
+}
+
+.agent-chat-composer-send {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 0;
+  background: var(--surface-panel-raised);
+  color: var(--text-tertiary);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.agent-chat-composer-send svg {
+  width: 16px;
+  height: 16px;
+}
+
+.agent-chat-composer-send.is-armed {
+  background: var(--brass);
+  color: var(--text-on-brass);
+}
+
+.agent-chat-composer-send:disabled {
+  cursor: default;
+}
+
+.agent-chat-composer-hint {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+  margin: 6px 2px 0;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+}
+
+/* 도는 턴을 끊는 문. 말풍선이 퇴역한 우하단 모서리를 잇는다 — 행동이 모이던 자리다.
    turn head에 두지 않는 이유는 도달성이다 — 진행 중 턴의 머리는 원장이 자라면서 위로 밀려
    화면 밖으로 나가고, 그때 멈출 방법이 사라진다. */
 .agent-chat-stop {
   position: absolute;
-  right: calc(var(--space-3) + 40px + var(--space-2));
+  right: var(--space-3);
   bottom: var(--space-3);
   z-index: 3;
   appearance: none;
@@ -970,8 +1162,7 @@
 .canvas-operation.is-deck-tile .agent-chat-dormant-open,
 .canvas-operation.is-deck-tile .agent-chat-follow,
 .canvas-operation.is-deck-tile .agent-chat-stop,
-.canvas-operation.is-deck-tile .agent-chat-reply,
-.canvas-operation.is-deck-tile .agent-chat-invite {
+.canvas-operation.is-deck-tile .agent-chat-composer {
   display: none;
 }
 
