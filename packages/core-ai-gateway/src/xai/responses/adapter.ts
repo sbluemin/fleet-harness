@@ -478,7 +478,12 @@ interface PendingXaiFunctionCall {
   readonly added: Extract<CanonicalResponseEvent, { type: "response.output_item.added" }>;
   readonly deadlineAt: number;
   argumentsDone?: Extract<CanonicalResponseEvent, { type: "response.function_call_arguments.done" }>;
+  /** Fragments absorbed from the wire. Never forwarded — the salvage below is their only reader. */
+  argumentsBuffer: string;
 }
+
+/** The deadline elapsed with calls still pending; the caller decides whether they can be salvaged. */
+const XAI_ASSEMBLY_DEADLINE = Symbol("xai-assembly-deadline");
 
 async function* assembleXaiFunctionCalls(
   source: AsyncIterable<CanonicalResponseEvent>,
@@ -487,22 +492,41 @@ async function* assembleXaiFunctionCalls(
 ): AsyncGenerator<CanonicalResponseEvent> {
   const iterator = source[Symbol.asyncIterator]();
   const pending = new Map<string, PendingXaiFunctionCall>();
+  let snapshot: CanonicalResponseSnapshot | undefined;
   let completedNormally = false;
   try {
     while (true) {
       const deadlineAt = earliestXaiFunctionCallDeadline(pending);
       const result = deadlineAt === undefined
         ? await iterator.next()
-        : await nextXaiEventBeforeDeadline(iterator, deadlineAt, controller, timeoutMs);
+        : await nextXaiEventBeforeDeadline(iterator, deadlineAt);
+      if (result === XAI_ASSEMBLY_DEADLINE) {
+        yield* salvageXaiPendingCalls(
+          pending,
+          snapshot,
+          `function call assembly exceeded ${timeoutMs}ms`,
+          controller,
+        );
+        completedNormally = true;
+        return;
+      }
       if (result.done) {
         if (pending.size > 0) {
-          throw incompleteXaiFunctionCall("stream ended before function call output_item.done");
+          yield* salvageXaiPendingCalls(
+            pending,
+            snapshot,
+            "stream ended before function call output_item.done",
+            controller,
+          );
         }
         completedNormally = true;
         return;
       }
 
       const event = result.value;
+      if (event.type === "response.created") {
+        snapshot = event.response;
+      }
       if (event.type === "response.completed" && pending.size > 0) {
         throw incompleteXaiFunctionCall("response.completed arrived before function call output_item.done");
       }
@@ -514,7 +538,18 @@ async function* assembleXaiFunctionCalls(
           // earliest active deadline, so a later parallel call is never shortened by
           // an earlier call's age.
           deadlineAt: Date.now() + timeoutMs,
+          argumentsBuffer: "",
         });
+        continue;
+      }
+      if (event.type === "response.function_call_arguments.delta") {
+        // Absorbed, never forwarded: a partial fragment cannot be reassembled safely by the
+        // client, and only the salvage below reads the buffer. A fragment for a call this
+        // stream never opened is dropped exactly as before.
+        const call = pending.get(xaiFunctionCallKey(event.output_index, event.item_id));
+        if (call !== undefined) {
+          call.argumentsBuffer += event.delta;
+        }
         continue;
       }
       if (event.type === "response.function_call_arguments.done") {
@@ -569,17 +604,74 @@ function earliestXaiFunctionCallDeadline(
   return earliest;
 }
 
+/**
+ * Grok CLI has been measured delivering a function call's complete argument object in a single
+ * `arguments.delta` and then never sending `arguments.done` or `output_item.done` — the stream
+ * simply stops. Failing the whole turn there discards a tool call the model demonstrably
+ * finished writing, so a pending call whose absorbed buffer parses as a complete JSON object is
+ * closed out and the turn is sealed. Anything short of that is still the protocol error it was:
+ * a truncated fragment cannot be told apart from a call the model was still writing.
+ */
+async function* salvageXaiPendingCalls(
+  pending: Map<string, PendingXaiFunctionCall>,
+  snapshot: CanonicalResponseSnapshot | undefined,
+  reason: string,
+  controller: AbortController,
+): AsyncGenerator<CanonicalResponseEvent> {
+  const salvageable = [...pending.values()].every(
+    (call) => completeXaiArguments(call) !== undefined,
+  );
+  if (snapshot === undefined || !salvageable) {
+    const error = incompleteXaiFunctionCall(reason);
+    controller.abort(error);
+    throw error;
+  }
+
+  wireLog("xai-responses.function_call.salvaged", {
+    reason,
+    calls: pending.size,
+  });
+  // The upstream read is parked on a stream that stopped writing. Releasing it here is what
+  // lets this attempt unwind at all — the failure path aborts for the same reason.
+  controller.abort(incompleteXaiFunctionCall(reason));
+
+  for (const [key, call] of pending) {
+    const args = completeXaiArguments(call) ?? "";
+    const item = { ...call.added.item, arguments: args } as typeof call.added.item;
+    yield call.added;
+    yield {
+      type: "response.function_call_arguments.done",
+      item_id: call.added.item.id,
+      output_index: call.added.output_index,
+      arguments: args,
+    };
+    yield { type: "response.output_item.done", output_index: call.added.output_index, item };
+    pending.delete(key);
+  }
+  // The client-facing encoder requires a terminal frame, and usage is genuinely unknown here.
+  yield { type: "response.completed", response: { ...snapshot, usage: null } };
+}
+
+/** The absorbed buffer, or the streamed `.done` payload, only when it is a complete JSON object. */
+function completeXaiArguments(call: PendingXaiFunctionCall): string | undefined {
+  const candidate = call.argumentsDone?.arguments ?? call.argumentsBuffer;
+  if (candidate.length === 0) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(candidate);
+  } catch {
+    return undefined;
+  }
+  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? candidate : undefined;
+}
+
 async function nextXaiEventBeforeDeadline(
   iterator: AsyncIterator<CanonicalResponseEvent>,
   deadlineAt: number,
-  controller: AbortController,
-  timeoutMs: number,
-): Promise<IteratorResult<CanonicalResponseEvent>> {
+): Promise<IteratorResult<CanonicalResponseEvent> | typeof XAI_ASSEMBLY_DEADLINE> {
   const remainingMs = deadlineAt - Date.now();
   if (remainingMs <= 0) {
-    const error = incompleteXaiFunctionCall(`function call assembly exceeded ${timeoutMs}ms`);
-    controller.abort(error);
-    throw error;
+    return XAI_ASSEMBLY_DEADLINE;
   }
 
   let timeout: ReturnType<typeof setTimeout> | undefined;
@@ -591,11 +683,9 @@ async function nextXaiEventBeforeDeadline(
   try {
     return await Promise.race([
       next,
-      new Promise<never>((_, reject) => {
+      new Promise<typeof XAI_ASSEMBLY_DEADLINE>((resolve) => {
         timeout = setTimeout(() => {
-          const error = incompleteXaiFunctionCall(`function call assembly exceeded ${timeoutMs}ms`);
-          controller.abort(error);
-          reject(error);
+          resolve(XAI_ASSEMBLY_DEADLINE);
         }, remainingMs);
       }),
     ]);
@@ -696,11 +786,17 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         item
       };
     }
-    // Hold argument fragments until the Grok CLI proxy's partial-JSON behavior is observed.
-    // The `.done` event carries the complete argument object, which downstream treats as the
-    // remainder when nothing was streamed ahead of it.
+    // Fragments still never reach the client — the assembler absorbs them and the `.done`
+    // event carries the complete argument object. They are decoded rather than discarded
+    // because this proxy has been measured ending a stream with the whole argument object
+    // delivered as fragments and no terminal frame; the buffer is that turn's only copy.
     case "response.function_call_arguments.delta":
-      return undefined;
+      return {
+        type: value.type,
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        delta: string(value.delta, "delta"),
+      };
     case "response.function_call_arguments.done":
       return {
         type: value.type,
