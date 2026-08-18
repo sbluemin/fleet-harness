@@ -24,6 +24,12 @@ const NATIVE_MODEL_LABELS: Readonly<Record<string, string>> = {
   sonnet: "Sonnet",
 };
 
+/**
+ * 강도 사다리 — 낮은 쪽부터. 이 순서가 곧 계기의 축이다: 모델마다 내놓는 단이 달라도 어휘 전체는
+ * 하나이고, "이 세션이 축의 어디쯤인가"는 그 하나의 어휘 위에서만 참이 된다.
+ */
+export const CHAT_EFFORT_RUNGS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const;
+
 const EFFORT_LABELS: Readonly<Record<string, string>> = {
   low: "LOW",
   medium: "MED",

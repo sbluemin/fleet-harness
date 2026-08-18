@@ -7,6 +7,11 @@
  * 이 모듈을 각자 적재하므로 모듈 스코프 싱글턴 상태는 금지다.
  */
 export {
+  COMPOSER_ATTACHMENT_MAX_BYTES,
+  COMPOSER_MAX_ATTACHMENTS,
+  isComposerAttachmentCandidate,
+} from "./attachments.js";
+export {
   EffortGaugeGlyph,
   EffortTrack,
   effortLadderPosition,
@@ -14,6 +19,8 @@ export {
   resolveRowEffort,
 } from "./effort-track.js";
 export type { EffortTrackProps } from "./effort-track.js";
+export { EFFORT_READOUT_TRACK_METRICS, EffortReadout } from "./effort-readout.js";
+export type { EffortReadoutProps } from "./effort-readout.js";
 export { ComposerInput } from "./input.js";
 export type { ComposerInputProps } from "./input.js";
 export {

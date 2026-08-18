@@ -1,5 +1,6 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
+import { EffortReadout } from "@fleet-console/sdk/composer";
 
 import { getT, type TerminalMessageKey } from "../../i18n/index.js";
 import { nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
@@ -23,7 +24,7 @@ import {
   type AgentChatTurn,
   type AgentChatTurnItem,
 } from "./chat-events.js";
-import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
+import { CHAT_EFFORT_RUNGS, readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { AgentChatComposer } from "./composer.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -326,7 +327,7 @@ export function AgentChatView({
               사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
               콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
           <div
-            className="agent-chat-log"
+            className={`agent-chat-log${awaitingFirstTurn ? " is-inviting" : ""}`}
             ref={logRef}
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
@@ -336,6 +337,16 @@ export function AgentChatView({
             그 자리에서 답한다. 연결 고지보다 앞에 서는 이유는 이것이 연결이 아니라 세션의 사실이기
             때문이다. */}
         <SessionBirthLine coordinates={coordinates} t={t} />
+        {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
+            "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
+            가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
+        {awaitingFirstTurn ? (
+          <div className="agent-chat-hero">
+            <span className="agent-chat-hero-sigil" aria-hidden="true">✳</span>
+            <h2 className="agent-chat-hero-title">{t("terminal.chat.heroTitle")}</h2>
+            <p className="agent-chat-hero-body">{t("terminal.chat.heroBody")}</p>
+          </div>
+        ) : null}
         {/* 시드를 못 세운 세션은 스트림이 오류 하나를 쓰고 닫는다 — 그 뒤로 아무 이벤트도 오지
             않으므로, 이 분기가 없으면 패널은 "연결하는 중…"에 영원히 머문다. 고착된 스피너는
             상태가 아니다: 무엇이 없고 어디로 가야 하는지 말하고, 위 터미널 전환 칩이 그 출구다. */}
@@ -452,16 +463,20 @@ export function AgentChatView({
           ) : null}
           </div>
 
-          {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로 쓴다. 쉬는 한 줄로 물러나 있다가
-              인터랙션에만 펼쳐지고(도킹 QL의 접힘 문법), 첫 턴 전에는 그 줄 자체가 초대다.
-              말풍선 문(Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch
-              멘션 전달은 여전히 살아 있는 별도 경로다. */}
+          {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로, 언제나 서 있다. 말풍선 문
+              (Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch 멘션
+              전달은 여전히 살아 있는 별도 경로다. */}
           <AgentChatComposer
             context={context}
-            coordinateChip={<SessionCoordinateChip coordinates={coordinates} t={t} />}
-            inviting={awaitingFirstTurn}
+            coordinate={<SessionCoordinate coordinates={coordinates} t={t} />}
             tourAnchor={tourAnchors}
           />
+
+          {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
+              컴포저가 하단으로 내려앉는다 — 움직이는 것은 컴포저 하나이고, 컴포저 자신은 언제나
+              in-flow라 대화의 마지막 줄을 덮지 않는다. 높이를 직접 애니메이션하지 않는 이유는
+              패널 높이가 사용자 손에 달려 있어서다: 비율로 두면 어떤 높이에서도 같은 자리다. */}
+          <div className={`agent-chat-settle${awaitingFirstTurn ? " is-inviting" : ""}`} aria-hidden="true" />
         </div>
 
         {workOpen ? (
@@ -504,7 +519,7 @@ export function AgentChatView({
  * 컨트롤이 아니라 사실이므로 버튼이 아니다. 누를 수 있게 그리면 "여기서 바꿀 수 있다"는
  * 거짓 약속이 된다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이다.
  */
-function SessionCoordinateChip({
+function SessionCoordinate({
   coordinates,
   t,
 }: {
@@ -514,19 +529,28 @@ function SessionCoordinateChip({
   const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
   const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
   return (
-    // 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 지원 대상이 아니라 무시될 수 있고,
-    // 그러면 남는 것은 "Opus · ULTRACODE"라는 조각뿐이다. 상태 아이콘이 쓰는 것과 같은 role로
-    // 이 복합 표식 전체가 한 문장으로 읽히게 한다.
-    <span
-      className={`agent-chat-coord${coordinates.ultracode ? " is-ultracode" : ""}`}
-      role="img"
-      aria-label={t("terminal.chat.coordAria", { model, effort })}
-      {...(coordinates.title ? { title: coordinates.title } : {})}
-    >
-      <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
-      <span className="agent-chat-coord-model">{model}</span>
-      <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
-      <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
+    // 두 축은 따로 읽힌다 — 런치 표면이 모델을 칩으로, 강도를 축으로 말하는 것과 같은 문법이다.
+    // 한 덩어리 배지로 묶으면 같은 세션을 두 표면이 다른 문법으로 부르게 된다.
+    <span className="agent-chat-coord" {...(coordinates.title ? { title: coordinates.title } : {})}>
+      {/* 이름을 지는 역할이 필요하다 — 일반 span의 aria-label은 무시될 수 있어, 남는 것이
+          "Opus"라는 조각뿐이 된다. */}
+      <span
+        className={`agent-chat-coord-model${coordinates.ultracode ? " is-ultracode" : ""}`}
+        role="img"
+        aria-label={t("terminal.chat.coordModelAria", { model })}
+      >
+        <span className="agent-chat-coord-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
+        <span className="agent-chat-coord-model-name">{model}</span>
+      </span>
+      <EffortReadout
+        className="agent-chat-coord-effort"
+        rungs={CHAT_EFFORT_RUNGS}
+        value={coordinates.effort === null ? null : coordinates.effortLevel}
+        ariaLabel={t("terminal.chat.coordEffortAria", { effort })}
+      />
+      <span className="agent-chat-coord-effort-label" data-effort-level={coordinates.effortLevel} aria-hidden="true">
+        {effort}
+      </span>
     </span>
   );
 }

@@ -25,21 +25,15 @@ export const QUICK_LAUNCH_PROMPT_MAX_CHARS = 16000;
 export const QUICK_LAUNCH_DEFAULT_MODEL = "opus[1m]";
 
 /**
- * 이미지 첨부 상한의 브라우저 사본(터미널 플러그인 서버 launch-attachments.ts와 동치).
- * 프롬프트 상한과 같은 이유로 복제한다 — 브라우저 코드는 플러그인 서버 모듈을 끌어올 수 없고,
- * 여기서 미리 거르지 않으면 확실히 400으로 거절될 업로드가 왕복한다. 서버가 최종 판정자다.
+ * 이미지 첨부 정책은 컴포저 블록 패키지가 소유한다 — Quick Launch와 채팅 컴포저가 같은 입구를
+ * 같은 규칙으로 열어야 한쪽에서 되는 붙여넣기가 다른 쪽에서 조용히 사라지지 않는다. 이 이름들은
+ * 기존 호출부를 위한 별칭이고, 정의는 sdk/composer/attachments.ts 한 곳에 있다.
  */
-export const QUICK_LAUNCH_ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
-export const QUICK_LAUNCH_MAX_ATTACHMENTS = 4;
-
-/**
- * 붙여넣기·드롭에서 첨부 후보로 받아들일 파일인지. 최종 판정은 서버의 매직 바이트 검사가 하므로
- * 여기서는 브라우저가 아는 라벨로만 거른다 — 이미지가 아닌 파일(텍스트 붙여넣기 등)을 조용히
- * 지나가게 하는 것이 목적이지, 위조를 막는 자리가 아니다.
- */
-export function isQuickLaunchAttachmentCandidate(file: { readonly type: string }): boolean {
-  return file.type.startsWith("image/");
-}
+export {
+  COMPOSER_ATTACHMENT_MAX_BYTES as QUICK_LAUNCH_ATTACHMENT_MAX_BYTES,
+  COMPOSER_MAX_ATTACHMENTS as QUICK_LAUNCH_MAX_ATTACHMENTS,
+  isComposerAttachmentCandidate as isQuickLaunchAttachmentCandidate,
+} from "@fleet-console/sdk/composer";
 
 /**
  * 업로드 거절 코드를 문구 키로 옮긴다. 모르는 코드·네트워크 실패는 일반 업로드 실패 문구로

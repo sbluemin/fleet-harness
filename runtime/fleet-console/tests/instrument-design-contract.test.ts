@@ -1955,13 +1955,17 @@ describe("Instrument core design contract", () => {
     expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
     expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
     expect(terminalEntry).toContain('className="agent-chat-mode-chip"');
-    // 패널 컴포저의 쉬는 줄은 물러난 상태라 신호 채널을 쓰지 않는다 — 색이 오르는 것은
-    // 초대(brass-ink)·포커스 프레임(brass)·점화된 실행(brass)뿐이고 전부 기존 채널 문법이다.
-    const composerRestBlock = chat.match(/^\.agent-chat-composer-rest \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerRestBlock).toContain("color: var(--text-tertiary);");
-    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
-      expect(composerRestBlock).not.toContain(signal);
-    }
+    // 패널 컴포저는 언제나 서 있다 — 접힘도, 되돌아오는 쉬는 줄도 없다.
+    expect(chat).not.toContain(".agent-chat-composer-rest");
+    expect(chatView).not.toContain("ComposerRestStrip");
+    // 면을 두르지 않는다: 밴드(구분선 + 한 단 올라간 배경)를 두면 패널 안에 또 하나의 패널이
+    // 생겨, 가운데에 선 컴포저와 아래로 내려앉은 컴포저가 다른 물건으로 읽힌다.
+    const composerBlock = chat.match(/^\.agent-chat-composer \{[^}]*\}/m)?.[0] ?? "";
+    expect(composerBlock).not.toContain("border-top");
+    expect(composerBlock).not.toContain("background");
+    // 자리는 그대로 in-flow다 — 컴포저가 떠서 대화의 마지막 줄을 덮으면 안 된다.
+    expect(composerBlock).toContain("flex: none;");
+    expect(composerBlock).not.toContain("position: absolute");
     const composerFrameFocusBlock = chat.match(/^\.agent-chat-composer-frame:focus-within \{[^}]*\}/m)?.[0] ?? "";
     expect(composerFrameFocusBlock).toContain("border-color: var(--brass);");
     const composerArmedBlock = chat.match(/^\.agent-chat-composer-send\.is-armed \{[^}]*\}/m)?.[0] ?? "";
@@ -2667,7 +2671,7 @@ describe("Effort track interaction grammar", () => {
     expect(reduced).toContain(".agent-chat-ask-dot");
   });
 
-  it("pins the chat session-coordinate grammar — neutral by default, apex only for ultracode", () => {
+  it("pins the chat session-coordinate grammar — two axes, neutral by default, apex only for ultracode", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const view = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const block = (selector: string): string => {
@@ -2677,37 +2681,62 @@ describe("Effort track interaction grammar", () => {
     };
 
     // 좌표는 상태(신호)도 위치(brass)도 정체성도 아니다 — 기본형은 어떤 채널도 타지 않는다.
-    const chip = block(".agent-chat-coord");
+    const chip = block(".agent-chat-coord-model");
     expect(chip).toContain("border: 1px solid var(--hairline);");
     for (const channel of ["--aurora", "--warn", "--coral", "--positive", "--brass", "--id-"]) {
       expect(chip, channel).not.toContain(channel);
     }
 
     // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest, ULTRACODE는 apex.
-    expect(block('.agent-chat-coord-effort[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
-    const ultra = block('.agent-chat-coord-effort[data-effort-level="ultra"]');
-    expect(ultra).toContain("var(--apex-ink)");
-    expect(ultra).toContain("animation: agent-chat-ultracode-wave 2.6s linear infinite;");
+    expect(block('.agent-chat-coord-effort-label[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
+    expect(block('.agent-chat-coord-effort-label[data-effort-level="ultra"]')).toContain("color: var(--apex-ink);");
+
+    // 티어 연출은 계기 하나가 진다 — 라벨까지 움직이면 타자 치는 면에서 상시 모션이 둘이 된다.
+    expect(chat).not.toContain("agent-chat-ultracode-wave");
 
     // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
     // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
-    expect(block(".agent-chat-coord.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+    expect(block(".agent-chat-coord-model.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
     expect(block(".agent-chat-birth.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
 
-    // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
-    const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(reduced).toMatch(
-      /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
-    );
+    // 가운데에서 하단으로 내려앉는 이동은 모션이므로 감속에서 멈춘다 — 자리는 그대로 바뀌되
+    // 한 프레임에 간다.
+    const chatReduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(chatReduced).toMatch(/\.agent-chat-settle \{\s*transition: none;/);
 
-    // 최소 폭(320px) 패널에서 칩 줄은 패널 밖으로 나간다 — 그때 물러나는 것은 좌표 칩이고,
-    // 같은 사실은 폭을 다투지 않는 태생 기록이 잇는다. 뷰포트가 아니라 패널 폭이 가른다.
-    expect(chat).toMatch(/@container \(max-width: 379px\) \{\s*\.agent-chat-coord \{\s*display: none;/);
+    // 좁아질 때 물러나는 순서: 키 안내 → 강도 축. 모델 칩은 마지막까지 남고, 같은 사실은
+    // 폭을 다투지 않는 태생 기록이 잇는다. 뷰포트가 아니라 패널 폭이 가른다.
+    expect(chat).toMatch(/@container \(max-width: 470px\) \{\s*\.agent-chat-composer-hint \{\s*display: none;/);
+    expect(chat).toMatch(/@container \(max-width: 379px\) \{[\s\S]{0,120}\.agent-chat-coord-effort-label \{\s*display: none;/);
 
     // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
-    // 누를 수 있게 그리면 거짓 약속이 된다.
-    expect(view).toMatch(/<span\s+className=\{`agent-chat-coord\$\{/);
+    // 누를 수 있게 그리면 거짓 약속이 된다. 강도 축도 같은 계약을 진다(읽기 전용 계기).
+    expect(view).toContain('<span className="agent-chat-coord"');
     expect(view).not.toMatch(/className="agent-chat-coord"[\s\S]{0,200}onClick/);
+    expect(view).toContain("<EffortReadout");
+  });
+
+  it("pins the read-only effort readout — the same axis without a handle", () => {
+    const components = source("styles/components.css");
+    const readout = externalSource(new URL("sdk/composer/effort-readout.tsx", CONSOLE_ROOT));
+
+    // 계기는 트랙과 같은 클래스·같은 픽셀 앵커를 쓴다 — 두 표식이 나란히 서는 화면에서
+    // 축의 길이가 어긋나면 같은 사다리로 읽히지 않는다.
+    expect(readout).toContain('className="effort-track"');
+    expect(readout).toContain("var(--effort-track-gap)");
+    expect(readout).toContain("--effort-closed-intervals");
+
+    // 손잡이는 서지 않는다. 20px 흰 원은 이 앱에서 "끌 수 있다"는 어휘이고, 세션 좌표는
+    // 여기서 바꿀 수 없다 — 지침만 남기고 슬라이더 역할·탭 정지점도 함께 걷는다.
+    expect(readout).not.toContain("effort-track-knob");
+    expect(readout).toContain('className="effort-track-needle"');
+    expect(readout).toContain('role="img"');
+    expect(readout).not.toContain('role="slider"');
+    expect(readout).not.toContain("tabIndex");
+
+    // 읽기 전용 트랙은 포인터 어포던스를 버린다.
+    expect(components).toMatch(/\.effort-track\[data-readonly="true"\] \{[^}]*cursor: default;/);
+    expect(components).toContain(".effort-track-needle {");
   });
 
   it("pins the persistent apex toggle and the pixel-anchored gap", () => {
@@ -3021,7 +3050,10 @@ describe("War Room deck panel grammar", () => {
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-stop");
     // 카드뷰에서는 컴포저가 스트립조차 서지 않는다 — 입력은 무대에 올라야 가능한 행동이다.
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-composer");
-    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-mode-chip,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-follow,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-stop,\s*\n\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
+    // 컴포저가 물러난 자리에는 그 받침(중앙 배치용 비율)도 함께 물러난다 — 남겨 두면 대화가
+    // 카드 위쪽으로 몰린다.
+    expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-settle");
+    const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-view-chip-row,[\s\S]{0,400}?\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
     // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
     // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.

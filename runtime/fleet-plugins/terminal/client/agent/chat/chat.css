@@ -822,70 +822,13 @@
 }
 
 /* 패널 귀속 컴포저 — sdk/composer 블록의 축약 조립(Quick Launch와 같은 부품, 다른 조립).
-   쉬는 한 줄 ↔ 2-row(field/bar) 확장. 면은 패널 위계(--surface-panel-raised 위 --surface-panel),
+   언제나 서 있다: 접힘도, 되돌아오는 한 줄도 없다. 대신 면을 두르지 않는다 — 구분선과 한 단
+   올라간 배경(밴드)을 두면 패널 안에 또 하나의 패널이 생겨, 첫 턴 전 가운데에 선 컴포저와
+   첫 턴 뒤 아래로 내려앉은 컴포저가 서로 다른 물건으로 읽힌다. 남는 것은 프레임 하나이고,
+   자리는 그대로 in-flow다(부유물이 아니므로 대화의 마지막 줄을 덮지 않는다).
    포커스는 brass 채널, 전송 실패는 coral(상태 채널) — 색은 전부 기존 채널 문법 그대로다. */
 .agent-chat-composer {
   flex: none;
-  border-top: 1px solid var(--surface-rim);
-  background: var(--surface-panel-raised);
-}
-
-.agent-chat-composer-rest {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  width: 100%;
-  border: 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  font: inherit;
-  font-size: var(--t-sm);
-  padding: 9px var(--space-4);
-  cursor: text;
-  text-align: left;
-}
-
-.agent-chat-composer-rest:hover {
-  color: var(--text-secondary);
-}
-
-/* 첫 턴 전에는 이 줄이 유일한 다음 행동이다 — 초대는 brass-ink가 진다(회신 말풍선의 초대 상태와
-   같은 어휘). 애니메이션은 없다: 사라지지 않는 요소가 움직이면 읽는 내내 시선을 빼앗는다. */
-.agent-chat-composer.is-inviting .agent-chat-composer-rest {
-  color: var(--brass-ink);
-}
-
-.agent-chat-composer-ghost {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.agent-chat-composer-ghost.has-draft {
-  color: var(--text-secondary);
-}
-
-.agent-chat-composer-draft-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  flex: none;
-}
-
-.agent-chat-composer-key {
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  color: var(--text-tertiary);
-  border: 1px solid var(--surface-rim);
-  border-radius: 4px;
-  padding: 1px 6px;
-  flex: none;
-}
-
-.agent-chat-composer-body {
   padding: var(--space-2) var(--space-3) var(--space-3);
 }
 
@@ -893,11 +836,20 @@
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
   background: var(--surface-panel);
+  transition:
+    border-color var(--duration-base) var(--ease-spring),
+    box-shadow var(--duration-base) var(--ease-spring);
 }
 
 .agent-chat-composer-frame:focus-within {
   border-color: var(--brass);
   box-shadow: 0 0 0 1px var(--brass-glow);
+}
+
+/* 파일을 끌어온 동안 — 어디에 놓이는지 프레임이 스스로 말한다(포커스와 같은 brass 채널). */
+.agent-chat-composer-frame.is-drag-over {
+  border-color: var(--brass);
+  background: var(--brass-glow);
 }
 
 .agent-chat-composer-field {
@@ -919,7 +871,10 @@
   font-size: var(--t-md);
   line-height: 1.5;
   padding: 0;
-  /* 6줄까지 자라고 그 뒤로는 스크롤 — Quick Launch·Analyst 컴포저와 같은 clamp 정책. */
+  /* 세 줄에서 시작해 여섯 줄까지 자라고 그 뒤로는 스크롤. 하한을 CSS가 지는 이유는 자동 높이가
+     매 입력마다 scrollHeight를 인라인 height로 쓰기 때문이다 — rows 속성만 두면 첫 렌더에서
+     한 줄로 깎여, 안내를 컨트롤 행으로 올려 되찾은 세로가 그대로 사라진다. */
+  min-height: calc(1.5em * 3);
   max-height: calc(1.5em * 6);
 }
 
@@ -947,14 +902,11 @@
 }
 
 .agent-chat-composer-attachment img {
-  border-radius: calc(var(--radius-xs) - 1px);
-}
-
-.agent-chat-composer-attachment img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
+  border-radius: calc(var(--radius-xs) - 1px);
 }
 
 .agent-chat-composer-attachment.is-uploading img {
@@ -987,11 +939,10 @@
   color: var(--coral);
 }
 
-/* 컨트롤 행 — Quick Launch bar와 같은 문법: 좌측은 좌표(사실), 우측은 액션(첨부·실행). */
+/* 컨트롤 행 — Quick Launch bar와 같은 문법: 좌측은 좌표(사실)와 키 안내, 우측은 액션. */
 .agent-chat-composer-bar {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: var(--space-2);
   padding: var(--space-2) var(--space-3) var(--space-3) var(--space-4);
   border-top: 1px solid var(--surface-rim);
@@ -1002,11 +953,35 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  flex: none;
 }
 
 .agent-chat-composer-error {
   font-size: var(--t-sm);
   color: var(--coral);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 선다. 읽는 화면에 상주하면 여러 패널이
+   같은 문구를 나란히 반복하고, 프레임 밖 셋째 줄로 두면 그만큼 입력이 좁아진다. */
+.agent-chat-composer-hint {
+  display: flex;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  opacity: 0;
+  transition: opacity var(--duration-base) var(--ease-glide);
+}
+
+.agent-chat-composer-frame:focus-within .agent-chat-composer-hint {
+  opacity: 1;
 }
 
 .agent-chat-composer-attach {
@@ -1057,14 +1032,60 @@
   cursor: default;
 }
 
-.agent-chat-composer-hint {
+/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며 컴포저가
+   하단으로 내려앉는다 — 높이가 아니라 비율을 애니메이션하는 이유는 패널 높이가 사용자 손에
+   달려 있어서다(어떤 높이에서도 같은 자리). 움직이는 것은 컴포저 하나뿐이다. */
+.agent-chat-settle {
+  flex: 0 1 0;
+  min-height: 0;
+  transition: flex-grow var(--duration-slow) var(--ease-spring);
+}
+
+.agent-chat-settle.is-inviting {
+  flex-grow: 0.5;
+}
+
+/* ── 첫 진입 히어로 ──────────────────────────────────────────────────────
+   아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
+   "아직 아무것도 없는 제품"으로 읽힌다. 태생 줄은 맨 위에 남고, 이 덩어리가 남은 세로를
+   위아래로 나눠 가진다(로그가 이때만 flex 열이 된다). */
+.agent-chat-log.is-inviting {
   display: flex;
-  justify-content: flex-end;
-  gap: var(--space-3);
-  margin: 6px 2px 0;
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
+  flex-direction: column;
+}
+
+.agent-chat-hero {
+  margin-block: auto;
+  text-align: center;
+  padding: var(--space-5) var(--space-4);
+  flex: none;
+}
+
+.agent-chat-hero-sigil {
+  display: block;
+  font-size: var(--t-lg);
+  line-height: 1;
+  color: var(--brass-ink);
+  margin-bottom: var(--space-2);
+}
+
+.agent-chat-hero-title {
+  font-family: var(--font-display);
+  font-weight: var(--weight-medium);
+  font-size: var(--t-xl);
+  line-height: 1.25;
+  letter-spacing: 0.005em;
+  color: var(--text-primary);
+  margin: 0 0 var(--space-2);
+  text-wrap: balance;
+}
+
+.agent-chat-hero-body {
+  margin: 0 auto;
+  max-width: 36ch;
   color: var(--text-tertiary);
+  font-size: var(--t-md);
+  line-height: 1.55;
 }
 
 /* 도는 턴을 끊는 문. 말풍선이 퇴역한 우하단 모서리를 잇는다 — 행동이 모이던 자리다.
@@ -1173,6 +1194,7 @@
 .canvas-operation.is-deck-tile .agent-chat-dormant-open,
 .canvas-operation.is-deck-tile .agent-chat-follow,
 .canvas-operation.is-deck-tile .agent-chat-stop,
+.canvas-operation.is-deck-tile .agent-chat-settle,
 .canvas-operation.is-deck-tile .agent-chat-composer {
   display: none;
 }
@@ -1188,99 +1210,88 @@
   max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));
 }
 
-/* ── 세션 좌표 칩 ────────────────────────────────────────────────────────
-   이 세션이 무엇으로 도는가(모델 · 강도). 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리다.
-   [doctrine] 기본형은 어떤 채널도 타지 않는다 — hairline 테두리와 tertiary 글자뿐이다.
-   좌표는 상태(신호)도 위치(brass)도 정체성(--id-*)도 아니므로 그 채널들을 빌리면 안 된다.
-   색을 얻는 것은 강도 한 자리이며, 그 어휘는 런치 트랙의 것을 그대로 쓴다:
-   MAX는 crest, ULTRACODE는 apex, 미지정(auto)은 파선 밑줄.
-   컨트롤이 아니라 사실이므로 hover 반응도 두지 않는다. */
+/* ── 세션 좌표 ──────────────────────────────────────────────────────────
+   이 세션이 무엇으로 도는가(모델 · 강도). 컴포저 컨트롤 행 좌측 — 지시를 쓰는 자리가 좌표를
+   읽는 자리다. 두 축은 따로 선다: 모델은 칩, 강도는 축. 런치 표면(Quick Launch·Analyst)이
+   같은 문법을 쓰므로, 한 덩어리 배지로 묶으면 같은 세션을 두 표면이 다르게 부르게 된다.
+   [doctrine] 기본형은 어떤 채널도 타지 않는다 — hairline 테두리와 낮은 티어 글자뿐이다.
+   색을 얻는 것은 강도 한 자리이며(MAX는 crest, ULTRACODE는 apex), 컨트롤이 아니라 사실이므로
+   hover 반응도, 손잡이도 없다 — 강도 축은 sdk/composer의 읽기 전용 계기가 그린다. */
 .agent-chat-coord {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.agent-chat-coord-model {
+  display: inline-flex;
+  align-items: center;
   gap: 6px;
-  padding: 5px var(--space-3);
-  border-radius: var(--radius-xs);
-  border: 1px solid var(--hairline);
-  background: var(--ink-mid);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
-  color: var(--text-tertiary);
+  min-width: 0;
   white-space: nowrap;
+  min-height: 26px;
+  padding: 3px 10px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  background: var(--surface-panel-raised);
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+/* 긴 게이트웨이 모델 이름 하나가 컨트롤 행 전체를 밀어낼 수 있다 — 이름만 잘리고 축은 온전히 남는다. */
+.agent-chat-coord-model-name {
+  min-width: 0;
+  max-width: 16ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .agent-chat-coord-mark {
   flex: none;
   font-size: var(--t-2xs);
   line-height: 1;
+  color: var(--text-tertiary);
 }
 
-/* 긴 게이트웨이 모델 이름 하나가 칩 줄 전체를 밀어낼 수 있다 — 이름만 잘리고 강도는 온전히 남는다. */
-.agent-chat-coord-model {
-  min-width: 0;
-  max-width: 14ch;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--text-secondary);
+/* 무장한 세션의 칩만 apex 표식을 얻는다.
+   [doctrine] apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 두 hue 사이 짧은 호를 지나므로,
+   라이트 테마(hairline hue 100)에서 apex(295)와의 혼합이 coral(신호 채널)을 관통한다. */
+.agent-chat-coord-model.is-ultracode {
+  border-color: color-mix(in oklab, var(--apex) 48%, var(--hairline-strong));
 }
 
-.agent-chat-coord-sep {
-  color: var(--hairline-strong);
+.agent-chat-coord-model.is-ultracode .agent-chat-coord-mark {
+  color: var(--apex-ink);
 }
 
-/* 미지정 강도는 사다리 위의 단이 아니라 모델에 맡긴 자리다 — 트랙의 파선 문법과 같은 말. */
-.agent-chat-coord-effort[data-effort-level="auto"] {
+/* 계기 옆 라벨 — 축이 위치를 말하고 이 글자가 이름을 말한다(트랙 표면과 같은 짝). */
+.agent-chat-coord-effort-label {
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+/* 미지정 강도는 사다리 위의 단이 아니라 모델에 맡긴 자리다 — 계기의 파선 문법과 같은 말. */
+.agent-chat-coord-effort-label[data-effort-level="auto"] {
   text-decoration: underline dashed;
   text-decoration-thickness: 1px;
   text-underline-offset: 3px;
   text-decoration-color: color-mix(in oklch, var(--text-tertiary) 55%, transparent);
 }
 
-/* MAX는 crest 채널을 색으로만 받는다 — 트랙의 잉걸불 명멸까지 옮기면 타자 치는 면에서
-   상시로 깜빡이는 것이 둘이 된다. 이 면의 상시 모션은 ultracode 하나로 족하다. */
-.agent-chat-coord-effort[data-effort-level="max"] {
+/* MAX는 crest, ULTRACODE는 apex — 색만 받는다. 계기 자신이 이미 티어 연출을 지므로
+   라벨까지 움직이면 타자 치는 면에서 상시로 깜빡이는 것이 둘이 된다. */
+.agent-chat-coord-effort-label[data-effort-level="max"] {
   color: var(--crest-ink);
 }
 
-/* ULTRACODE — 강도 트랙과 같은 apex 물결. 이 세션이 실제로 ultracode 오케스트레이션으로
-   돈다는 사실의 표식이며(시드가 SDK 옵션으로 켠다), 그래서 "요청"이 아니라 상태로 말한다.
-   [doctrine] 무한 애니메이션이지만 진행 신호가 아니라 티어 표식이다 — 강도 트랙의
-   `effort-ultracode-wave`가 이미 같은 자리에서 같은 예외를 진다. 감속 모션에서는 아래
-   봉인 블록이 물결을 세우고 단색 apex + 파선 밑줄로 티어를 남긴다. */
-.agent-chat-coord-effort[data-effort-level="ultra"] {
-  font-weight: var(--weight-medium);
-  background-image: linear-gradient(
-    105deg,
-    var(--apex-ink) 0%,
-    color-mix(in oklch, var(--apex) 55%, white) 16%,
-    var(--apex-ink) 32%,
-    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
-    var(--apex-ink) 64%,
-    color-mix(in oklch, var(--apex) 55%, white) 80%,
-    var(--apex-ink) 100%
-  );
-  background-size: 240% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  animation: agent-chat-ultracode-wave 2.6s linear infinite;
-}
-
-@keyframes agent-chat-ultracode-wave {
-  from { background-position: 0 0; }
-  to { background-position: -240% 0; }
-}
-
-/* 무장한 세션의 칩만 apex 테두리를 얻는다.
-   [doctrine] apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 두 hue 사이 짧은 호를 지나므로,
-   라이트 테마(hairline hue 100)에서 apex(295)와의 혼합이 coral(신호 채널)을 관통한다. */
-.agent-chat-coord.is-ultracode {
-  border-color: color-mix(in oklab, var(--apex) 48%, var(--hairline-strong));
-}
-
-.agent-chat-coord.is-ultracode .agent-chat-coord-mark {
+.agent-chat-coord-effort-label[data-effort-level="ultra"] {
   color: var(--apex-ink);
+  font-weight: var(--weight-medium);
 }
 
 /* 판면이 100ch(reading 상한)보다 좁으면 프리셋 간 차이가 그려지지 않는다 — 뜻이 없어진
@@ -1297,8 +1308,23 @@
    줄이 패널 왼쪽 밖으로 나간다(실측: 340px 줄 vs 296px 여유). 그때 물러나는 것은 좌표 칩이다:
    같은 사실을 로그 첫 줄의 태생 기록이 이미 말하고 있고, 그 줄은 폭을 다투지 않는다.
    가르는 것은 뷰포트가 아니라 이 패널의 폭이다 — 넓은 창 안에서도 패널은 얼마든지 좁아진다. */
+@container (max-width: 600px) {
+  .agent-chat-composer-hint .is-optional {
+    display: none;
+  }
+}
+
+@container (max-width: 470px) {
+  .agent-chat-composer-hint {
+    display: none;
+  }
+}
+
+/* 그보다 좁아지면 강도 축(116px)이 물러난다 — 같은 사실을 로그 첫 줄의 태생 기록이 이미
+   말하고 있고, 그 줄은 폭을 다투지 않는다. 모델 칩은 마지막까지 남는다. */
 @container (max-width: 379px) {
-  .agent-chat-coord {
+  .agent-chat-coord-effort,
+  .agent-chat-coord-effort-label {
     display: none;
   }
 }
@@ -1506,16 +1532,14 @@
     transition: none;
   }
 
-  /* ULTRACODE 물결 봉인 — 모션만 죽이고 티어는 남긴다. 그라데이션을 지우면서 채움도 함께
-     되돌려야 한다: `color: transparent`가 남으면 글자가 통째로 사라진다. */
-  .agent-chat-coord-effort[data-effort-level="ultra"] {
-    animation: none;
-    background-image: none;
-    color: var(--apex-ink);
-    -webkit-text-fill-color: var(--apex-ink);
-    text-decoration: underline dashed;
-    text-decoration-thickness: 1px;
-    text-underline-offset: 3px;
+  /* 컴포저가 가운데에서 하단으로 내려앉는 이동을 세운다 — 자리는 그대로 바뀌되 한 프레임에
+     간다. 강도 계기의 apex 유영은 core의 effort-track 봉인이 같은 클래스로 이미 세운다. */
+  .agent-chat-settle {
+    transition: none;
+  }
+
+  .agent-chat-composer-hint {
+    transition: none;
   }
 }
 
