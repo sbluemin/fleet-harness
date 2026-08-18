@@ -26,6 +26,17 @@
   -webkit-user-select: text;
 }
 
+/* 읽기 폭 프리셋 — 사용자 선호가 measure 변수 하나만 갈아끼운다. 로그 컬럼·하단 스트립·
+   덱 타일 스트립이 전부 이 변수를 경유하므로 값 하나로 표면 전체가 한 몸으로 따라온다.
+   reading(기본)은 위의 100ch 그대로다. */
+.agent-chat[data-reading-width="wide"] {
+  --agent-chat-measure: 140ch;
+}
+
+.agent-chat[data-reading-width="full"] {
+  --agent-chat-measure: 100%;
+}
+
 /* 조상 커서를 auto로 되돌렸으므로 채팅의 인터랙티브 요소는 pointer를 직접 진다. */
 .agent-chat-to-term:not(:disabled),
 .agent-chat-inter-button,
@@ -1272,6 +1283,16 @@
   color: var(--apex-ink);
 }
 
+/* 판면이 100ch(reading 상한)보다 좁으면 프리셋 간 차이가 그려지지 않는다 — 뜻이 없어진
+   컨트롤은 크롬에서 물린다. 가르는 것은 뷰포트가 아니라 이 패널의 폭이다.
+   선택자를 한 단 올린다 — @container는 특정성을 더하지 않으므로, 뒤에 오는
+   .agent-chat-mode-chip 기본 display와 동률이면 소스 순서에 진다. */
+@container (max-width: 719px) {
+  .agent-view-chip-row .agent-chat-width-chip {
+    display: none;
+  }
+}
+
 /* 칩 줄은 본문 위에 떠 있고 폭을 스스로 늘린다 — 좌표 칩까지 서면 최소 폭(320px) 패널에서
    줄이 패널 왼쪽 밖으로 나간다(실측: 340px 줄 vs 296px 여유). 그때 물러나는 것은 좌표 칩이다:
    같은 사실을 로그 첫 줄의 태생 기록이 이미 말하고 있고, 그 줄은 폭을 다투지 않는다.
@@ -1524,6 +1545,10 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  /* 칩 줄(폭 칩·좌표 칩)의 @container 기준은 이 대화 면이다 — 작업 면이 옆 컬럼으로 서면
+     좁아지는 것은 섹션이 아니라 이 면인데, 섹션 폭으로 재면 프리셋이 전부 같게 그려지는
+     폭에서도 폭 칩이 뜻을 잃은 채 남는다. 스플릿 적층·그립 규칙은 이 면 밖이라 불변이다. */
+  container-type: inline-size;
 }
 
 /* 스트립 전용 바닥 여백은 없다. 스트립이 회신 버튼과 같은 행으로 내려오면서 그 높이가 로그의

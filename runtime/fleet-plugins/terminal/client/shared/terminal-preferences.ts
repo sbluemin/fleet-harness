@@ -20,6 +20,20 @@ export function isTerminalInactiveFlush(value: unknown): value is TerminalInacti
   return value === "saving" || value === "balanced" || value === "instant";
 }
 
+// 채팅 로그 컬럼의 읽기 폭 프리셋. 값은 chat.css의 data-reading-width 오버라이드와 한 벌이다 —
+// reading이 기존의 100ch 중앙 컬럼이고, 폰트처럼 서버 영속(플러그인 설정)이라 콘솔을 따라다닌다.
+export type ChatReadingWidth = "reading" | "wide" | "full";
+
+export const DEFAULT_CHAT_READING_WIDTH: ChatReadingWidth = "reading";
+
+export function isChatReadingWidth(value: unknown): value is ChatReadingWidth {
+  return value === "reading" || value === "wide" || value === "full";
+}
+
+export function nextChatReadingWidth(width: ChatReadingWidth): ChatReadingWidth {
+  return width === "reading" ? "wide" : width === "wide" ? "full" : "reading";
+}
+
 export type TerminalFontId = "cascadia" | "jetbrains" | "fira-code" | "source-code-pro";
 
 export type TerminalFontSource = "curated" | "custom";
@@ -205,6 +219,7 @@ interface TerminalPrefsState {
   readonly renderer: TerminalRenderer;
   readonly inactiveFlush: TerminalInactiveFlush;
   readonly font: TerminalFontSettings;
+  readonly chatReadingWidth: ChatReadingWidth;
 }
 
 type Listener = () => void;
@@ -220,6 +235,7 @@ const listeners = new Set<Listener>();
 let state: TerminalPrefsState = initState();
 let settingsCapability: ClientSettingsCapability | null = null;
 let fontWriteEpoch = 0;
+let chatReadingWidthWriteEpoch = 0;
 let terminalSettingsWriteFlight: Promise<void> | null = null;
 
 export function migrateLegacyTerminalPrefs(): void {
@@ -244,8 +260,9 @@ export function migrateLegacyTerminalPrefs(): void {
 export function connectTerminalSettings(settings: ClientSettingsCapability): void {
   // 재연결 시 진행 중인 이전 하이드레이션이 낡은 결과를 채택하지 못하도록 epoch를 올려 폐기한다.
   fontWriteEpoch += 1;
+  chatReadingWidthWriteEpoch += 1;
   settingsCapability = settings;
-  void hydrateFontFromServer();
+  void hydrateTerminalSettingsFromServer();
 }
 
 export function getTerminalPrefsSnapshot(): TerminalPrefsState {
@@ -266,6 +283,10 @@ export function useTerminalInactiveFlush(): TerminalInactiveFlush {
 
 export function useTerminalFontSettings(): TerminalFontSettings {
   return useSyncExternalStore(subscribe, () => state.font, () => state.font);
+}
+
+export function useChatReadingWidth(): ChatReadingWidth {
+  return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
 }
 
 export function setTerminalRenderer(renderer: TerminalRenderer): void {
@@ -309,11 +330,25 @@ export function setTerminalFontSize(size: number): void {
   void pushFontToServer(font);
 }
 
-async function hydrateFontFromServer(): Promise<void> {
+export function setChatReadingWidth(width: ChatReadingWidth): void {
+  chatReadingWidthWriteEpoch += 1;
+  patchState({ chatReadingWidth: width });
+  void pushChatReadingWidthToServer(width);
+}
+
+async function hydrateTerminalSettingsFromServer(): Promise<void> {
   if (!settingsCapability) return;
   const epoch = fontWriteEpoch;
+  const widthEpoch = chatReadingWidthWriteEpoch;
   try {
     const value = await settingsCapability.read("terminal");
+    if (value !== null) {
+      // 읽기 폭은 서버 값이 전부다 — 새 선호라 폰트 같은 localStorage 시드 마이그레이션이 없다.
+      const storedWidth = value["chatReadingWidth"];
+      if (isChatReadingWidth(storedWidth) && widthEpoch === chatReadingWidthWriteEpoch) {
+        patchState({ chatReadingWidth: storedWidth });
+      }
+    }
     if (value !== null) {
       const parsed = parseTerminalFontSettingsValue(value["font"]);
       if (parsed !== null) {
@@ -347,6 +382,16 @@ async function pushFontToServer(font: TerminalFontSettings): Promise<void> {
     await mergeTerminalSettingsRecord(settings, {
       font: { source: font.source, id: font.id, customName: font.customName, size: font.size },
     });
+  } catch {
+    // best-effort — write 실패 시 조용히 무시한다.
+  }
+}
+
+async function pushChatReadingWidthToServer(width: ChatReadingWidth): Promise<void> {
+  const settings = settingsCapability;
+  if (!settings) return;
+  try {
+    await mergeTerminalSettingsRecord(settings, { chatReadingWidth: width });
   } catch {
     // best-effort — write 실패 시 조용히 무시한다.
   }
@@ -433,8 +478,8 @@ function getSnapshot(): TerminalPrefsState {
 
 function initState(): TerminalPrefsState {
   if (typeof window === "undefined") {
-    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings() };
+    return { renderer: "webgl", inactiveFlush: DEFAULT_TERMINAL_INACTIVE_FLUSH, font: createDefaultTerminalFontSettings(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
   }
   migrateLegacyTerminalPrefs();
-  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont() };
+  return { renderer: readStoredRenderer(), inactiveFlush: readStoredInactiveFlush(), font: readStoredFont(), chatReadingWidth: DEFAULT_CHAT_READING_WIDTH };
 }

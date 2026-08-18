@@ -1,7 +1,8 @@
 import { React } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 
-import { getT } from "../../i18n/index.js";
+import { getT, type TerminalMessageKey } from "../../i18n/index.js";
+import { nextChatReadingWidth, setChatReadingWidth, useChatReadingWidth, type ChatReadingWidth } from "../../shared/terminal-preferences.js";
 import { AgentApiError, readAgentChatJobDetail, stopAgentChatJob } from "../api.js";
 import { StreamedMarkdown } from "../streamed-markdown.js";
 import { useAgentChatStream, type AgentChatViewState } from "./chat-store.js";
@@ -26,6 +27,13 @@ import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } fro
 import { AgentChatComposer } from "./composer.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
+
+// 칩과 설정 Select가 같은 이름을 쓴다 — 한 선호의 두 표면이 다른 어휘를 갖지 않게 한다.
+const READING_WIDTH_LABEL_KEY = {
+  reading: "terminal.chat.readingWidth.reading",
+  wide: "terminal.chat.readingWidth.wide",
+  full: "terminal.chat.readingWidth.full",
+} as const satisfies Record<ChatReadingWidth, TerminalMessageKey>;
 
 /**
  * Chat Mode의 Operation 본문 — 지휘 로그.
@@ -58,6 +66,8 @@ export function AgentChatView({
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
+  // 읽기 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
+  const readingWidth = useChatReadingWidth();
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
   // 동안만 정직해지고, 패널을 닫는 순간 사이드바가 다시 휴면으로 돌아간다. 축이 degraded면 호스트가
   // null 을 건네므로 진행 중이라고 주장하지 않는다(그 사실은 전역 배너가 말한다).
@@ -265,7 +275,7 @@ export function AgentChatView({
   }, []);
 
   return (
-    <section className="agent-chat" aria-label={t("terminal.chat.aria")}>
+    <section className="agent-chat" data-reading-width={readingWidth} aria-label={t("terminal.chat.aria")}>
       {/* 대화 면과 작업 면이 나란히 산다. 넓은 패널에서는 작업 면이 오른쪽 컬럼이고, 좁아지면
           같은 면이 아래 서랍으로 접힌다 — 별개의 기능이 아니라 한 면의 두 방향이며, 그 전환은
           뷰포트가 아니라 이 패널의 폭이 정한다(패널은 덱 안에서 얼마든지 좁아진다). */}
@@ -285,6 +295,16 @@ export function AgentChatView({
             {/* 세션 좌표 칩은 컴포저 바로 옮겨 앉았다 — 지시를 쓰는 자리가 좌표를 읽는 자리다. */}
             {leadingChip}
             <ContextMeterChip context={state.context} working={turnRunning} language={language} />
+            {/* 읽기 폭 칩 — 불편이 보이는 자리에서 프리셋(기본→넓게→전체)을 순환한다. 설정의
+                같은 선호를 읽고 쓰는 두 번째 표면이지 별도 상태가 아니다. */}
+            <button
+              type="button"
+              className="agent-chat-mode-chip agent-chat-width-chip"
+              aria-label={t("terminal.chat.readingWidthAria", { current: t(READING_WIDTH_LABEL_KEY[readingWidth]) })}
+              onClick={() => { setChatReadingWidth(nextChatReadingWidth(readingWidth)); }}
+            >
+              <span aria-hidden="true">⇔</span> {t(READING_WIDTH_LABEL_KEY[readingWidth])}
+            </button>
             <button
               type="button"
               className="agent-chat-mode-chip"
