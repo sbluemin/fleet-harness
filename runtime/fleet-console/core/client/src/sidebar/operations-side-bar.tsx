@@ -17,7 +17,7 @@ import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode, resolveAccentColor } from "../canvas/operation-accent.js";
 import { getTheaterCanvasSnapshot, setOperationOrder, toggleGroupCollapsed, toggleTheaterGroupCollapsed, useCanvasState, useCollapsedGroups } from "../canvas/canvas-store.js";
 import { consumeOperationLaunchMenu, consumeSideBarAddTheater, consumeSideBarTheaterLaunch, sortOperationsByOrder } from "../store.js";
-import { operationRuntimeSurface, resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
+import { resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { applyVisibleReorder, groupDropIndexFromPoint, dropTargetFromPoint, insertIntoSegment, moveByTargetIndex, reorderGroupIds, reorderTheaterIds, reorderWithinSegment, theaterDropIndexFromPoint, type DropSectionInfo } from "./operations-side-bar-hit-test.js";
 import { useContextMenuKeyboard } from "./context-menu-keyboard.js";
 import {
@@ -402,7 +402,6 @@ export function OperationsSideBar({
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
-      ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
     };
   });
   const groupedSections = groupOperations(allEntries, activeGroups, canvas.operationOrder);
@@ -1360,7 +1359,6 @@ export function buildTheaterEntries({
       notificationCount: operationNotifications[operation.id] ? 1 : 0,
       status: activity,
       mark: resolveOperationMarkVisual({ activity, operationId: operation.id, idleArrivalIds }),
-      ...(operationRuntimeSurface(operationRuntime[operation.id]) ? { surface: operationRuntimeSurface(operationRuntime[operation.id])! } : {}),
     };
   });
 }

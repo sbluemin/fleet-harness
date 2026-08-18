@@ -31,23 +31,6 @@ describe("OperationsSideBarChip activity status", () => {
     expect(statusDot.className).toContain(expectedClass);
     expect(statusDot.getAttribute("aria-label")).toBe(expectedLabel);
   });
-
-  // 실행 표면 표식은 모드를 말하고 상태는 말하지 않는다 — 신호 채널을 빌리지 않으므로
-  // 상태 점의 클래스는 표식이 붙어도 그대로다.
-  it("paints the plugin-supplied surface mark beside the status dot without changing it", () => {
-    renderChip("running", "CHAT");
-    const surface = container?.querySelector<HTMLSpanElement>(".side-bar-chip-surface");
-    const statusDot = container?.querySelector<HTMLSpanElement>('[role="img"]');
-
-    expect(surface?.textContent).toBe("CHAT");
-    expect(statusDot?.className).toContain("is-turn-running");
-    expect(statusDot?.getAttribute("aria-label")).toBe("Running");
-  });
-
-  it("omits the surface mark when the plugin supplies none", () => {
-    renderChip("running");
-    expect(container?.querySelector(".side-bar-chip-surface")).toBeNull();
-  });
 });
 
 // degraded 는 "모른다"는 뜻이다 — 마지막으로 알던 값을 지금의 사실처럼 패널에 넘기면,
@@ -84,7 +67,7 @@ describe("Operation runtime contract", () => {
   });
 });
 
-function renderChip(status: OperationActivityVisual | undefined, surface?: string): HTMLSpanElement {
+function renderChip(status: OperationActivityVisual | undefined): HTMLSpanElement {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -104,7 +87,6 @@ function renderChip(status: OperationActivityVisual | undefined, surface?: strin
       minimized: false,
       notificationCount: 0,
       status,
-      ...(surface ? { surface } : {}),
     },
     index: 0,
     isCloseArmed: false,

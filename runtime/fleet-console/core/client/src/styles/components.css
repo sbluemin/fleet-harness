@@ -5186,21 +5186,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
     0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
 }
 
-/* 실행 표면 표식(예: CHAT) — 모드를 말할 뿐 상태를 말하지 않는다. 그래서 신호 채널(aurora·warn·
-   coral·positive)도, 위치를 말하는 brass도 빌리지 않고 중성 잉크와 헤어라인만 쓴다. */
-.side-bar-chip-surface {
-  flex: none;
-  padding: 0 3px;
-  border: 1px solid var(--hairline);
-  border-radius: 3px;
-  color: var(--ink-muted);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  line-height: 13px;
-  letter-spacing: 0.06em;
-  white-space: nowrap;
-}
-
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
    기존 operation spine과 독립된 mark/pill로만 표시하고 signal 색을 identity에 재사용하지 않는다. */
 .side-bar-chip-group-mark {

@@ -26,11 +26,6 @@ export interface SideBarEntry {
    * 색은 초록(느린 점등)이라, 진짜 대기와 안 본 채 끝난 것이 한 화면에서 구별된다.
    */
   readonly mark?: OperationMarkVisual;
-  /**
-   * 플러그인이 준 실행 표면 표식(예: "CHAT"). 호스트는 뜻을 모른 채 글자만 그린다 —
-   * 색은 활동을 말하는 자리이므로 모드는 신호 채널을 빌리지 않는다.
-   */
-  readonly surface?: string;
 }
 
 interface SideBarChipProps {
@@ -101,7 +96,7 @@ export function OperationsSideBarChip({
   const t = useT();
   const chipRef = useRef<HTMLLIElement | null>(null);
   const suppressClickRef = useRef(false);
-  const { operation, active, minimized, status, mark, surface } = entry;
+  const { operation, active, minimized, status, mark } = entry;
   // 마크 축이 없는 엔트리(직접 구성한 입력)는 섹션 축을 그대로 그린다 — 두 축은 "unseen"에서만 갈린다.
   const markVisual = mark ?? status;
   const title = displayTitle(operation);
@@ -275,9 +270,6 @@ export function OperationsSideBarChip({
           aria-label={t("sidebar.chip.groupAria", { name: groupMark.name })}
           style={{ "--group-mark": groupMark.color } as CSSProperties}
         />
-      ) : null}
-      {surface && !preview ? (
-        <span className="side-bar-chip-surface" title={surface}>{surface}</span>
       ) : null}
       {!preview && !minimized && minimizeEnabled ? (
         <button

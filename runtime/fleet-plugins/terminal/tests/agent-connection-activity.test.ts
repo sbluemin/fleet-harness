@@ -59,7 +59,7 @@ describe("Agent connection activity state machine", () => {
         : { turnState: "ended" as const };
       expect(sessionActivity(makeSession({ ...shape, chatActive: true })), activity).toBe(activity);
       expect(sessionRuntime(makeSession({ ...shape, chatActive: true, status: "dormant" })), activity)
-        .toEqual({ lifecycle: "live", activity, surface: "CHAT" });
+        .toEqual({ lifecycle: "live", activity });
     }
   });
 
@@ -97,7 +97,7 @@ describe("Agent connection activity state machine", () => {
 
     expect(dto.chatActive).toBe(true);
     expect(dto.modelActivity).toBe("working");
-    expect(sessionRuntime(dto)).toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
+    expect(sessionRuntime(dto)).toEqual({ lifecycle: "live", activity: "running" });
 
     // 채팅이 인수하지 않은 같은 모양은 종전대로 휴면이다.
     const plain = assertSessionInfo({
@@ -116,21 +116,20 @@ describe("Agent connection activity state machine", () => {
   // 예전에는 dormant 가 활동 해석의 첫 분기라 아래 신호를 전부 삼켰다.
   it("keeps a chat-adopted session live while its PTY is gone", () => {
     expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true })))
-      .toEqual({ lifecycle: "live", activity: "idle", surface: "CHAT" });
+      .toEqual({ lifecycle: "live", activity: "idle" });
     expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true, modelActivity: "working" })))
-      .toEqual({ lifecycle: "live", activity: "running", surface: "CHAT" });
+      .toEqual({ lifecycle: "live", activity: "running" });
     // 인수하지 않았으면 종전대로 휴면이다.
     expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
   });
 
-  // 두 표면은 대칭으로 말한다. 휴면은 어느 표면으로도 돌지 않으므로 표식이 없다.
-  it("names the surface an Operation runs on, for both surfaces and neither when dormant", () => {
+  it("keeps chat-adopted sessions live and dormant sessions dormant, with no surface label", () => {
     expect(sessionRuntime(makeSession({ status: "registered", modelActivity: "working" })))
-      .toEqual({ lifecycle: "live", activity: "running", surface: "CLI" });
+      .toEqual({ lifecycle: "live", activity: "running" });
     expect(sessionRuntime(makeSession({ status: "registered", attentionPending: true })))
-      .toEqual({ lifecycle: "live", activity: "awaiting", surface: "CLI" });
+      .toEqual({ lifecycle: "live", activity: "awaiting" });
     expect(sessionRuntime(makeSession({ status: "dormant", chatActive: true })))
-      .toEqual({ lifecycle: "live", activity: "idle", surface: "CHAT" });
+      .toEqual({ lifecycle: "live", activity: "idle" });
     expect(sessionRuntime(makeSession({ status: "dormant" }))).toEqual({ lifecycle: "dormant" });
   });
 

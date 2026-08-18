@@ -37,11 +37,6 @@ export function operationRuntimeVisual(state: OperationRuntimeState | undefined)
   return state ? runtimeStateVisual(state) : undefined;
 }
 
-// 플러그인이 실은 실행 표면 표식. 휴면 상태에는 표면이 없다.
-export function operationRuntimeSurface(state: OperationRuntimeState | undefined): string | undefined {
-  return state?.lifecycle === "live" ? state.surface : undefined;
-}
-
 // 플러그인 본문에 넘기는 런타임 축. degraded 는 "모른다"는 뜻이므로 마지막으로 알던 값을 지금의
 // 사실처럼 넘기지 않는다 — 그러면 패널은 끊긴 축 위에서 계속 작업 중이라고 말한다.
 // 칩 쪽은 재가된 대로 배너 하나로만 말하고 마지막 표시를 유지한다(여기와 다른 결정, 다른 표면).
