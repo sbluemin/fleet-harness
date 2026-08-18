@@ -1893,6 +1893,11 @@ describe("Instrument core design contract", () => {
     // 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다.
     expect(chatRootBlock).toContain("container-type: inline-size;");
     expect(chat).toContain("@container (max-width: 719px)");
+    // 읽기 폭 프리셋은 measure 변수 하나만 갈아끼운다 — 로그 컬럼·하단 스트립·덱 타일 스트립이
+    // 전부 이 변수를 경유하므로, 세 값(100ch/140ch/100%)이 표면을 한 몸으로 묶는 계약이다.
+    expect(chatRootBlock).toContain("--agent-chat-measure: 100ch;");
+    expect(chat).toMatch(/\.agent-chat\[data-reading-width="wide"\] \{\s*--agent-chat-measure: 140ch;\s*\}/);
+    expect(chat).toMatch(/\.agent-chat\[data-reading-width="full"\] \{\s*--agent-chat-measure: 100%;\s*\}/);
     // 쉬는 스트립은 신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고, 쉬는 상태에는 그 사실이 없다.
     const chatStripRestBlock = chat.match(/^\.agent-chat-strip\.is-rest \{[^}]*\}/m)?.[0] ?? "";
     expect(chatStripRestBlock).toContain("color: var(--text-tertiary);");

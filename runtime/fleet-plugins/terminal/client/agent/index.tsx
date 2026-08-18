@@ -9,8 +9,8 @@ import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
-import { getTerminalPrefsSnapshot, useTerminalPrefs, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize } from "../shared/terminal-preferences.js";
-import type { TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
+import { getTerminalPrefsSnapshot, useTerminalPrefs, setChatReadingWidth, setInstalledTerminalFont, setTerminalRenderer, setTerminalInactiveFlush, setTerminalFont, setTerminalFontSize, useChatReadingWidth } from "../shared/terminal-preferences.js";
+import type { ChatReadingWidth, TerminalFontId, TerminalFontSettings, TerminalInactiveFlush, TerminalRenderer } from "../shared/terminal-preferences.js";
 import { AnalystCaption, AnalystChatPanel } from "./analysis-chat-panel.js";
 import { fetchAnalysisReady } from "./analysis-api.js";
 import {
@@ -616,8 +616,35 @@ function GeneralSection() {
       <ClaudeGatewaySystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
+      <ChatReadingWidthSettingsCard />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
     </>
+  );
+}
+
+/** 채팅 읽기 폭 — 채팅 판면의 폭 칩과 같은 선호를 읽고 쓰는 설정 표면. */
+function ChatReadingWidthSettingsCard() {
+  const t = getT(useTerminalLocale());
+  const width = useChatReadingWidth();
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.chatReadingWidthAria")}>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title" id="terminal-chat-reading-width-label">{t("terminal.settings.chatReadingWidthTitle")}</p>
+          <p className="global-settings-help">{t("terminal.settings.chatReadingWidthHelp")}</p>
+        </div>
+        <Select
+          aria-labelledby="terminal-chat-reading-width-label"
+          value={width}
+          options={[
+            { value: "reading", label: t("terminal.chat.readingWidth.reading") },
+            { value: "wide", label: t("terminal.chat.readingWidth.wide") },
+            { value: "full", label: t("terminal.chat.readingWidth.full") },
+          ]}
+          onChange={(value) => { setChatReadingWidth(value as ChatReadingWidth); }}
+        />
+      </div>
+    </section>
   );
 }
 
