@@ -19,6 +19,7 @@ import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
+import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton } from "./composer-blocks.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -120,7 +121,6 @@ export function QuickLaunch() {
   // `ultracode` 하이라이트를 그리는 미러 레이어. textarea가 스크롤하면 같은 만큼 따라가야 글자가
   // 어긋나지 않는다(6줄 클램프 뒤로는 실제로 스크롤한다).
   const highlightRef = useRef<HTMLDivElement | null>(null);
-  const attachmentInputRef = useRef<HTMLInputElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const theaterChipRef = useRef<HTMLButtonElement | null>(null);
   const modelChipRef = useRef<HTMLButtonElement | null>(null);
@@ -1398,8 +1398,7 @@ export function QuickLaunch() {
         {/* 접힌 한 줄 — 물러난 바가 남기는 유일한 컨트롤이다. 초안 자취를 싣고, 누르면 펼쳐진다.
             접힌 동안 아래 컨트롤은 inert라 Tab이 닿지 않으므로 이 버튼이 되돌아오는 통로다. */}
         {pinned ? (
-          <button
-            type="button"
+          <ComposerRestStrip
             className="quick-launch-strip"
             onClick={() => expandAndFocus({ addressFocused: true })}
             aria-label={t("chrome.quickLaunch.expand")}
@@ -1421,7 +1420,7 @@ export function QuickLaunch() {
                 </span>
               ))}
             </span>
-          </button>
+          </ComposerRestStrip>
         ) : null}
 
         {mentionDeckOpen ? (
@@ -1617,7 +1616,7 @@ export function QuickLaunch() {
 
         {/* 접힌 동안 입력과 컨트롤은 inert다 — max-height:0만으로는 Tab이 보이지 않는 컨트롤에 닿는다
             (멘션 접힘이 쓰는 계약과 같다). */}
-        <div className="quick-launch-field" inert={showStrip || undefined}>
+        <ComposerField className="quick-launch-field" inert={showStrip || undefined}>
           {mentionTarget ? (
             <span className="quick-launch-mention" title={mentionTargetName(mentionTarget)}>
               {mentionTarget.kind === "operation" && mentionTarget.entry.launchProvider ? (
@@ -1639,7 +1638,7 @@ export function QuickLaunch() {
                 {renderUltracodeHighlight(prompt, ultracodeTokens)}
               </div>
             ) : null}
-          <textarea
+          <ComposerInput
             ref={inputRef}
             className="quick-launch-input"
             rows={1}
@@ -1703,32 +1702,28 @@ export function QuickLaunch() {
               <img src={zoomedAttachment.previewUrl} alt={zoomedAttachment.name} />
             </div>
           ) : null}
-        </div>
+        </ComposerField>
 
-        <div className="quick-launch-bar" ref={barRef} inert={showStrip || undefined}>
+        <ComposerBar className="quick-launch-bar" ref={barRef} inert={showStrip || undefined}>
           {/* 멘션이 확정되면 런치 3종(theater/model/effort)은 접히고 행선지 태그가 그 자리를 잇는다 —
               한 입력의 행선지는 하나라는 사실을 바가 배타적으로 말한다. */}
           {/* inert는 접힘 전환(360ms) 동안에도 하위 컨트롤을 포커스 대상에서 즉시 제외한다 —
               visibility는 전환이 끝나야 뒤집혀 그 창 동안 Tab이 보이지 않는 칩에 닿는다. */}
           <span className={`quick-launch-launch-sel${mentionTarget ? " is-hidden" : ""}`} inert={mentionTarget !== null || undefined}>
-          <button
+          <ComposerChip
             ref={theaterChipRef}
-            type="button"
             className="quick-launch-chip quick-launch-chip--theater"
-            aria-haspopup="menu"
             aria-expanded={popover === "theater"}
             onClick={() => setPopover(popover === "theater" ? null : "theater")}
           >
             <span className="quick-launch-mark" aria-hidden="true">{activeTheater ? theaterInitials(activeTheater.label) : "—"}</span>
             <span className="quick-launch-chip-label">{activeTheater?.label ?? t("chrome.quickLaunch.theaterUnset")}</span>
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
-          </button>
+          </ComposerChip>
 
-          <button
+          <ComposerChip
             ref={modelChipRef}
-            type="button"
             className="quick-launch-chip quick-launch-chip--model"
-            aria-haspopup="menu"
             aria-expanded={popover === "model"}
             disabled={groups.length === 0}
             onClick={() => setPopover(popover === "model" ? null : "model")}
@@ -1745,7 +1740,7 @@ export function QuickLaunch() {
             ) : null}
             <span className="quick-launch-chip-label">{modelLabel}</span>
             <span className="quick-launch-caret" aria-hidden="true">▾</span>
-          </button>
+          </ComposerChip>
 
           {/* 강도는 고른 모델에 딸린 값이라 그 칩 바로 옆에 산다. 사다리가 없는 모델에서는
               접는다 — 조작할 수 없는 컨트롤이 자리를 지키면 바가 고장 난 것처럼 읽힌다. */}
@@ -1813,30 +1808,12 @@ export function QuickLaunch() {
               (화면 안내가 이 버튼을 앵커로 삼으므로, 존재만으로 판정이 서야 한다). */}
           {/* 파일 픽커 — 붙여넣기·드롭과 같은 입구의 명시적 형태. 능력 있는 대상에서만 선다. */}
           {attachmentPlugin?.uploadLaunchAttachment ? (
-            <>
-              <input
-                ref={attachmentInputRef}
-                type="file"
-                // 입구 폭은 paste·드롭과 같다(image/*) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
-                accept="image/*"
-                multiple
-                hidden
-                onChange={(event) => {
-                  addAttachmentFiles(Array.from(event.target.files ?? []));
-                  // 같은 파일을 연달아 고를 수 있게 값을 비운다 — 남기면 change가 다시 안 온다.
-                  event.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                className="quick-launch-attach"
-                onClick={() => attachmentInputRef.current?.click()}
-                aria-label={t("chrome.quickLaunch.attachmentAdd")}
-                title={t("chrome.quickLaunch.attachmentAdd")}
-              >
-                <AttachImageIcon />
-              </button>
-            </>
+            // 입구 폭은 paste·드롭과 같다(image/*, 블록 기본값) — 형식의 최종 판정자는 서버 매직 바이트 스니퍼다.
+            <ComposerAttachControl
+              className="quick-launch-attach"
+              label={t("chrome.quickLaunch.attachmentAdd")}
+              onFiles={(files) => addAttachmentFiles([...files])}
+            />
           ) : null}
           {dockSuppressed || showStrip ? null : (
             <>
@@ -1862,8 +1839,7 @@ export function QuickLaunch() {
               </button>
             </>
           )}
-          <button
-            type="button"
+          <ComposerSubmitButton
             className="quick-launch-submit"
             disabled={!canSubmit}
             onClick={submit}
@@ -1872,9 +1848,7 @@ export function QuickLaunch() {
             // 결과 재확인이다(멘션 중에는 이 값이 실려 가지 않으므로 평소 이름으로 돌아간다).
             aria-label={t(chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
             title={t(chatStart && !mentionTarget ? "chrome.quickLaunch.runChatWithKey" : "chrome.quickLaunch.runWithKey")}
-          >
-            <SubmitArrowIcon />
-          </button>
+          />
 
           {popover === "theater" ? (
             <div
@@ -1953,7 +1927,7 @@ export function QuickLaunch() {
               ))}
             </div>
           ) : null}
-        </div>
+        </ComposerBar>
       </section>
     </div>
   );
@@ -2056,16 +2030,6 @@ function TerminalViewIcon() {
   );
 }
 
-function AttachImageIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2" y="3" width="12" height="10" rx="1.5" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <circle cx="6" cy="6.6" r="1.1" fill="currentColor" />
-      <path d="M3.2 11.6 6.8 8.4l2.4 2.1 1.9-1.7 1.7 1.5" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
 function MentionFocusIcon() {
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -2088,21 +2052,6 @@ function PinIcon() {
         fill="none"
         stroke="currentColor"
         strokeWidth="1.5"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function SubmitArrowIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path
-        d="M8 12.75V4.25M4.5 7.75 8 4.25l3.5 3.5"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.7"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
