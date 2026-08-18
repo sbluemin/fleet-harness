@@ -140,6 +140,29 @@ describe("caller credential", () => {
     expect(res.body).toContain("message_stop");
   });
 
+  it("forwards a native Anthropic request with no policy applied", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-opus-5",
+      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+      tools: [{ name: "Grep", input_schema: { type: "object", properties: {} } }],
+    }));
+
+    // 게이트웨이 대상이 없는 요청은 정책을 거치지 않는다. Claude 자신에게 가는
+    // 트래픽을 게이트웨이가 다듬으면 클라이언트가 보낸 계약을 우리가 바꾸는 것이다.
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const forwarded = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    expect(forwarded.messages).toEqual([{ role: "user", content: BASH_FIRST_MESSAGE }]);
+    expect(forwarded.tools).toEqual([{ name: "Grep", input_schema: { type: "object", properties: {} } }]);
+  });
+
   it("accepts an x-api-key credential too", async () => {
     const router = createAiGatewayRouter({ gateway: stubGateway(), readAuth });
     const res = response();
@@ -249,7 +272,9 @@ describe("upstream credential", () => {
     expect(request?.tool_choice).toEqual({ type: "auto" });
   });
 
-  it("strips Claude Code's shell-first directive before Cursor sees it", async () => {
+  // 공급자별 정책 매트릭스는 router-policy.test.ts가 소유한다. 여기서 고정하는 것은
+  // 라우터가 그 정책을 *모든 디스패치 분기에서* 실제로 적용한다는 사실뿐이다.
+  it("applies the target policy on the gateway-stream branch", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({
@@ -270,7 +295,7 @@ describe("upstream credential", () => {
     expect(request?.messages).toEqual([{ role: "user", content: "Listing tail\n\n<total_tokens>1 tokens left</total_tokens>" }]);
   });
 
-  it("leaves the shell-first directive in place for Codex", async () => {
+  it("applies the target's own policy rather than a blanket one", async () => {
     const gateway = stubGateway();
     const streamSpy = vi.spyOn(gateway, "stream");
     const router = createAiGatewayRouter({ gateway, readAuth });
@@ -287,7 +312,7 @@ describe("upstream credential", () => {
     expect(request?.messages).toEqual([{ role: "user", content: BASH_FIRST_MESSAGE }]);
   });
 
-  it("strips Claude Code's shell-first directive before the Grok CLI wire", async () => {
+  it("applies the target policy before the Grok CLI wire is serialized", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "data: [DONE]\n\n",
       { status: 200, headers: { "content-type": "text/event-stream" } },
@@ -311,7 +336,7 @@ describe("upstream credential", () => {
     expect(String(init?.body)).toContain("Listing tail");
   });
 
-  it("strips Claude Code's shell-first directive before the OpenCode wire", async () => {
+  it("applies the target policy on the Anthropic passthrough branch", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "data: [DONE]\n\n",
       { status: 200, headers: { "content-type": "text/event-stream" } },

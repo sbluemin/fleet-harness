@@ -6,12 +6,7 @@ import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../anthropic/native.js";
-import {
-  omitClaudeWebSearchTools,
-  pruneClaudeSkillPayloads,
-  stripClaudeBashFirstDirective,
-  stripClaudeUsageLimitDirectives,
-} from "../anthropic/claude-context.js";
+import { stripClaudeUsageLimitDirectives } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
@@ -37,12 +32,13 @@ import {
   GATEWAY_MODELS,
   upstreamModelId,
 } from "../models.js";
-import type { GatewayModel, GatewayProvider } from "../models.js";
+import type { GatewayModel } from "../models.js";
 import { resolveAiGatewaySelection } from "../settings/index.js";
 import type { AiGatewayStoredSettings } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
 
+import { applyGatewayRequestPolicy } from "./router-policy.js";
 import {
   createOpencodeGateway,
   isOpencodeAnthropicPassthrough,
@@ -89,18 +85,6 @@ export interface CodexSubscriptionAuth {
   readonly accessToken: string;
   readonly accountId: string;
 }
-
-/**
- * Claude Code의 셸 우선 지시문을 걷어낼 공급자.
- *
- * 지시문은 모든 요청에 똑같이 실리지만 제거는 공급자별 결정이다. 나열되지 않은
- * 공급자 — 네이티브 Anthropic, Kimi, Codex — 는 클라이언트가 보낸 문단을 그대로 받는다.
- */
-const BASH_FIRST_DIRECTIVE_STRIPPED_PROVIDERS: ReadonlySet<GatewayProvider> = new Set<GatewayProvider>([
-  "cursor",
-  "xai",
-  "opencode",
-]);
 
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
@@ -282,35 +266,15 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
     // 하네스가 자기 Anthropic 계정의 한도 임박을 근거로 대화에 끼워 넣는 마무리 지시는 여기서 끊는다.
     // 그 지시는 이 턴을 실제로 결제하는 구독을 설명하지 않으므로, 목적지를 가리지 않고 전량 제거한다 —
-    // 근거와 모양 판정은 claude-context.ts가 갖는다.
+    // 근거와 모양 판정은 claude-context.ts가 갖는다. 공급자별 판단이 아니므로 아래 정책으로 내려가지
+    // 않는다: 게이트웨이 대상이 없는 네이티브 Anthropic까지 덮어야 하는 유일한 다듬기다.
     const withoutUsageLimitDirectives = stripClaudeUsageLimitDirectives(body.messages);
     if (withoutUsageLimitDirectives.changed) {
       body = { ...body, messages: [...withoutUsageLimitDirectives.messages] };
     }
-    // 스킬 본문은 매 턴 재전송되는 고정 비용이라 클라이언트 압축이 걷어낼 수 없다.
-    // 프로바이더 분기보다 앞이어야 canonical을 거치지 않는 passthrough까지 함께 덮는다.
-    if (target) {
-      const pruned = pruneClaudeSkillPayloads(body.messages, {
-        ...(typeof target.contextWindow === "number" ? { contextWindow: target.contextWindow } : {}),
-        model: upstreamModelId(target),
-        withheld: withheldSkills,
-      });
-      for (const skill of pruned.withheld) withheldSkills.add(skill.name);
-      if (pruned.changed) body = { ...body, messages: [...pruned.messages] };
-    }
-    // Claude Code의 Web Search는 Claude·Kimi 소유 능력이다. 다른 공급자에게 정의를
-    // 넘기면 모델이 호출을 시도한다. 네이티브 Anthropic(`!target`)과 Kimi는 그대로 둔다.
-    if (target && target.provider !== "kimi") {
-      const omitted = omitClaudeWebSearchTools(body);
-      if (omitted.changed) body = omitted.request;
-    }
-    // Fleet은 억제된 `Grep`/`Glob`을 되살려 패널에 쥐여 주는데, 클라이언트는 셸로
-    // 검색하라는 지시를 매 턴 함께 싣는다. 도구는 광고하면서 쓰지 말라고 이르는
-    // 요청이 그대로 공급자에게 가므로, 그 문단만 여기서 걷어낸다.
-    if (target && BASH_FIRST_DIRECTIVE_STRIPPED_PROVIDERS.has(target.provider)) {
-      const stripped = stripClaudeBashFirstDirective(body.messages);
-      if (stripped.changed) body = { ...body, messages: [...stripped.messages] };
-    }
+    // 그 밖에 요청을 어떻게 다듬을지는 공급자가 자기 폴더에서 선언한다. 여기는 그 결정을
+    // 실행할 뿐 어느 공급자가 무엇을 받는지 알지 않는다.
+    if (target) body = applyGatewayRequestPolicy(body, target, withheldSkills);
 
     let credential = "";
     let chatgptAccountId = "";

@@ -67,10 +67,25 @@ export function isCursorHotPathToolName(name: string): boolean {
   return (CURSOR_HOT_PATH_TOOL_LEAVES as readonly string[]).includes(leaf);
 }
 
-/** Caller tools whose Cursor-native equivalent is redirected without advertising a duplicate. */
+/** Caller tools a Cursor-native exec can be translated into. */
 export function isCursorNativeRedirectToolName(name: string): boolean {
   const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
   return ["grep", "bash", "shellcommand", "execcommand"].includes(leaf);
+}
+
+/**
+ * Caller tools kept out of the advertised catalog because Cursor owns the capability.
+ *
+ * This is deliberately narrower than the redirect targets above. A shell tool is
+ * withheld because Cursor's own shell is the same capability under another name, and
+ * advertising both invites the model to pick one at random. `Grep` is not: the
+ * redirect can only carry the subset of its schema the native shape can express and
+ * fail-closes on the rest, so the caller's tool is the better route and the redirect
+ * remains the fallback for a native call the model makes anyway.
+ */
+export function isCursorWithheldToolName(name: string): boolean {
+  const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
+  return ["bash", "shellcommand", "execcommand"].includes(leaf);
 }
 
 /**

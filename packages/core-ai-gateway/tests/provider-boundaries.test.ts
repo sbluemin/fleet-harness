@@ -194,6 +194,43 @@ function isSharedAnthropicModule(srcRelative: string): boolean {
   return SHARED_ANTHROPIC_MODULES.has(srcRelative.split(/[\\/]/).join("/"));
 }
 
+/** The one gateway-router module a provider folder may reach, and only for its types. */
+const PROVIDER_POLICY_CONTRACT = new Set([
+  "gateway-router/router-policy.js",
+  "gateway-router/router-policy.ts",
+]);
+
+/**
+ * Static import declarations with their type-only flag, for the seam-direction check.
+ *
+ * A provider declaring its own router policy has to name the contract it implements,
+ * which is the one dependency pointing back at the serving seam. Restricting it to
+ * `import type` keeps that edge erased at runtime, so the seam still owns every real
+ * module the providers hang off.
+ */
+function importDeclarations(text: string): ReadonlyArray<{ specifier: string; typeOnly: boolean }> {
+  const sourceFile = ts.createSourceFile(
+    "probe.ts",
+    text,
+    ts.ScriptTarget.Latest,
+    /* setParentNodes */ false,
+    ts.ScriptKind.TS,
+  );
+  const declarations: Array<{ specifier: string; typeOnly: boolean }> = [];
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement) || !isStaticSpecifier(statement.moduleSpecifier)) continue;
+    const clause = statement.importClause;
+    const named = clause?.namedBindings;
+    const typeOnly = clause?.isTypeOnly === true
+      || (named !== undefined
+        && ts.isNamedImports(named)
+        && named.elements.length > 0
+        && named.elements.every((element) => element.isTypeOnly));
+    declarations.push({ specifier: statement.moduleSpecifier.text, typeOnly });
+  }
+  return declarations;
+}
+
 function providerOf(file: string): string | undefined {
   const first = firstPathSegment(path.relative(srcDir, file));
   return (PROVIDER_FOLDERS as readonly string[]).includes(first) ? first : undefined;
@@ -290,6 +327,37 @@ describe("core-ai-gateway provider boundaries", () => {
           `${rel} imports ${specifier} — only anthropic/protocol.js and anthropic/passthrough.js are shared`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("lets a provider folder reach the serving seam only for the policy contract, type-only", () => {
+    for (const file of listTsFiles(srcDir)) {
+      const rel = path.relative(srcDir, file);
+      if (providerOf(file) === undefined) continue;
+      for (const declaration of importDeclarations(readFileSync(file, "utf8"))) {
+        if (!isRelative(declaration.specifier)) continue;
+        const resolved = path.resolve(path.dirname(file), declaration.specifier);
+        if (!isWithin(srcDir, resolved)) continue;
+        const target = path.relative(srcDir, resolved).split(/[\\/]/).join("/");
+        if (firstPathSegment(target) !== "gateway-router") continue;
+        expect(
+          PROVIDER_POLICY_CONTRACT.has(target),
+          `${rel} imports ${declaration.specifier} — gateway-router/router-policy.js is the only module a provider may reach`,
+        ).toBe(true);
+        expect(
+          declaration.typeOnly,
+          `${rel} imports ${declaration.specifier} as a value — the policy contract must stay an \`import type\``,
+        ).toBe(true);
+      }
+    }
+  });
+
+  it("gives every provider folder exactly one router policy", () => {
+    for (const provider of PROVIDER_FOLDERS) {
+      expect(
+        existsSync(path.join(srcDir, provider, "router-policy.ts")),
+        `${provider} declares no router policy — a provider without one would inherit another provider's answer`,
+      ).toBe(true);
     }
   });
 

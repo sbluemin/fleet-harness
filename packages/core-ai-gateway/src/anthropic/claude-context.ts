@@ -781,6 +781,26 @@ export const ANTHROPIC_WEB_SEARCH_TOOL_NAME = "web_search";
 /** Anthropic's server-side web search tool type. */
 export const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
 
+/**
+ * Every spelling web search arrives under: two tool names and one server-tool type.
+ * The omission matches a tool on either field, so all three withhold together.
+ */
+export const CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS: readonly string[] = [
+  CLAUDE_WEB_SEARCH_TOOL_NAME,
+  ANTHROPIC_WEB_SEARCH_TOOL_NAME,
+  ANTHROPIC_WEB_SEARCH_TOOL_TYPE,
+];
+
+/**
+ * Claude Code's file-search tools.
+ *
+ * Its native builds suppress both and hide embedded search binaries behind the shell;
+ * a caller that names them in the tool allowlist gets them back for the whole session,
+ * with no per-provider control of its own. Withholding one here is how a provider that
+ * should not receive them says so.
+ */
+export const CLAUDE_SEARCH_TOOL_NAMES: readonly string[] = ["Grep", "Glob"];
+
 interface ClaudeToolLike {
   readonly name?: unknown;
   readonly type?: unknown;
@@ -798,39 +818,49 @@ interface ClaudeToolsRequestLike<TTool, TChoice> {
   readonly tool_choice?: TChoice;
 }
 
-export interface ClaudeWebSearchOmitResult<R> {
+export interface ClaudeToolOmitResult<R> {
   readonly request: R;
   readonly changed: boolean;
 }
 
-function isClaudeWebSearchTool(tool: ClaudeToolLike): boolean {
-  return tool.type === ANTHROPIC_WEB_SEARCH_TOOL_TYPE
-    || tool.name === CLAUDE_WEB_SEARCH_TOOL_NAME
-    || tool.name === ANTHROPIC_WEB_SEARCH_TOOL_NAME;
+function matchesToolIdentifier(tool: ClaudeToolLike, identifiers: ReadonlySet<string>): boolean {
+  return (typeof tool.name === "string" && identifiers.has(tool.name))
+    || (typeof tool.type === "string" && identifiers.has(tool.type));
 }
 
-function isClaudeWebSearchToolChoice(choice: ClaudeToolChoiceLike | undefined): boolean {
+function matchesToolChoice(
+  choice: ClaudeToolChoiceLike | undefined,
+  identifiers: ReadonlySet<string>,
+): boolean {
   return choice?.type === "tool"
-    && (choice.name === CLAUDE_WEB_SEARCH_TOOL_NAME
-      || choice.name === ANTHROPIC_WEB_SEARCH_TOOL_NAME);
+    && typeof choice.name === "string"
+    && identifiers.has(choice.name);
 }
 
 /**
- * Drop Claude Code's Web Search tool definitions from a request.
+ * Drop named client tool definitions from a request.
  *
- * Past `tool_use` / `tool_result` history stays in `messages` — only the
- * catalog is withheld. The caller decides which requests this applies to.
+ * Past `tool_use` / `tool_result` history stays in `messages` — only the catalog is
+ * withheld, because rewriting history would leave a result with no call to answer.
+ * A `tool_choice` pinned to a withheld tool is downgraded to `auto`; leaving it would
+ * pin the request to a tool the model can no longer see.
+ *
+ * Which names, and which requests, are the caller's decision. This module knows how
+ * Claude Code spells its tools, never which provider deserves them.
  */
-export function omitClaudeWebSearchTools<
+export function omitClaudeClientTools<
   TTool extends ClaudeToolLike,
   TChoice extends ClaudeToolChoiceLike,
   R extends ClaudeToolsRequestLike<TTool, TChoice>,
->(request: R): ClaudeWebSearchOmitResult<R> {
+>(request: R, names: Iterable<string>): ClaudeToolOmitResult<R> {
+  const identifiers = new Set(names);
+  if (identifiers.size === 0) return { request, changed: false };
+
   const tools = request.tools;
-  const kept = tools?.filter((tool) => !isClaudeWebSearchTool(tool));
+  const kept = tools?.filter((tool) => !matchesToolIdentifier(tool, identifiers));
   const toolsChanged = tools !== undefined && kept !== undefined && kept.length !== tools.length;
   const choice = request.tool_choice;
-  const choiceChanged = isClaudeWebSearchToolChoice(choice);
+  const choiceChanged = matchesToolChoice(choice, identifiers);
   if (!toolsChanged && !choiceChanged) {
     return { request, changed: false };
   }
@@ -950,4 +980,13 @@ function stripUsageLimitBlocks<M extends ClaudeMessageLike>(
  */
 function isClaudeUsageLimitDirective(text: string): boolean {
   return CLAUDE_USAGE_LIMIT_DIRECTIVE.test(text);
+}
+
+/** Drop Claude Code's Web Search tool definitions, in all three spellings. */
+export function omitClaudeWebSearchTools<
+  TTool extends ClaudeToolLike,
+  TChoice extends ClaudeToolChoiceLike,
+  R extends ClaudeToolsRequestLike<TTool, TChoice>,
+>(request: R): ClaudeToolOmitResult<R> {
+  return omitClaudeClientTools<TTool, TChoice, R>(request, CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS);
 }

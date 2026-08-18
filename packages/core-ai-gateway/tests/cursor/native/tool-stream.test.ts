@@ -32,6 +32,7 @@ import {
   cursorNativeRedirectResultReplies,
   isCursorHotPathToolName,
   isCursorNativeRedirectToolName,
+  isCursorWithheldToolName,
 } from "../../../src/cursor/native/exec-redirect.js";
 
 afterEach(() => resetCursorWireModelMemory());
@@ -733,6 +734,13 @@ describe("Cursor client tool suspension", () => {
     expect(isCursorNativeRedirectToolName("Bash")).toBe(true);
     expect(isCursorNativeRedirectToolName("shell_command")).toBe(true);
     expect(isCursorNativeRedirectToolName("exec_command")).toBe(true);
+    // Withholding is the narrower half: a redirect target is not automatically hidden.
+    expect(isCursorWithheldToolName("Grep")).toBe(false);
+    expect(isCursorWithheldToolName("Glob")).toBe(false);
+    expect(isCursorWithheldToolName("Read")).toBe(false);
+    expect(isCursorWithheldToolName("Bash")).toBe(true);
+    expect(isCursorWithheldToolName("shell_command")).toBe(true);
+    expect(isCursorWithheldToolName("exec_command")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__ToolSearch")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__wiki_read")).toBe(false);
   });

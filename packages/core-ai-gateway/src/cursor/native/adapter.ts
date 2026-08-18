@@ -38,6 +38,7 @@ import {
   cursorNativeRedirectResultReplies,
   isCursorHotPathToolName,
   isCursorNativeRedirectToolName,
+  isCursorWithheldToolName,
   type CursorNativeRedirectResultType,
 } from "./exec-redirect.js";
 import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
@@ -852,7 +853,7 @@ function applyCursorToolBudget(request: CanonicalResponseRequest): CursorToolBud
   const sourceTools = declaredTools.filter((tool) => {
     const explicitlySelected = referencedNames.has(tool.name)
       || cursorToolMatches(tool.name, selectedName);
-    if (isCursorNativeRedirectToolName(tool.name) && !explicitlySelected) return false;
+    if (isCursorWithheldToolName(tool.name) && !explicitlySelected) return false;
     return !supportsDeferredLoading
       || tool.defer_loading !== true
       || isCursorToolSearchName(tool.name)
