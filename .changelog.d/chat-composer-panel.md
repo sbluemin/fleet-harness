@@ -11,5 +11,5 @@ branch: chat-composer-panel
 
 #### Removed
 
-- The floating reply bubble that opened Quick Launch from a chat panel is retired, along with the caption coordinate badge and the "via Quick Launch" dispatch tag — the in-panel composer replaces that path, and Quick Launch mentions keep working as a separate route.
+- The floating reply bubble that opened Quick Launch from a chat panel is retired, along with the caption coordinate badge and the "via Quick Launch" dispatch tag: the in-panel composer replaces that path, and Quick Launch mentions keep working as a separate route.
   ko: 채팅 패널에서 Quick Launch를 열던 말풍선 버튼과 캡션 좌표 배지, "Quick Launch로 전달" 표기가 퇴역했습니다. 인패널 컴포저가 그 경로를 대체하며, Quick Launch 멘션 전달은 별도 경로로 그대로 동작합니다.
