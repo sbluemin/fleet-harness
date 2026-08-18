@@ -11,14 +11,9 @@ import type { GatewayRequestPolicy } from "../gateway-router/router-policy.js";
  * anyway, so the two paths cover each other instead of competing.
  *
  * Web Search stays withheld — that one is Claude- and Kimi-owned, and no Cursor model
- * can service a call to it. The shell-first directive goes with the search tools: it
- * would send the model down the shell redirect it was just given a better route past.
+ * can service a call to it.
  */
 export const cursorRequestPolicy: GatewayRequestPolicy = {
   provider: "cursor",
-  shapeRequest: (request, steps) => {
-    const pruned = steps.pruneSkillPayloads(request);
-    const withheld = steps.withholdWebSearchTools(pruned);
-    return steps.stripShellFirstDirective(withheld);
-  },
+  shapeRequest: (request, steps) => steps.withholdWebSearchTools(steps.pruneSkillPayloads(request)),
 };

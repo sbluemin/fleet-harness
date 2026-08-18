@@ -3,7 +3,6 @@ import {
   omitClaudeClientTools,
   omitClaudeWebSearchTools,
   pruneClaudeSkillPayloads,
-  stripClaudeBashFirstDirective,
 } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
@@ -48,8 +47,6 @@ export interface GatewayPolicySteps {
     request: AnthropicMessagesRequest,
     names: Iterable<string>,
   ) => AnthropicMessagesRequest;
-  /** Drop the client's shell-first directive so it cannot argue with the catalog. */
-  readonly stripShellFirstDirective: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
 }
 
 /**
@@ -128,9 +125,5 @@ function buildPolicySteps(context: GatewayPolicyContext): GatewayPolicySteps {
     },
     withholdSearchTools: (request) => withholdClientTools(request, CLAUDE_SEARCH_TOOL_NAMES),
     withholdClientTools,
-    stripShellFirstDirective: (request) => {
-      const stripped = stripClaudeBashFirstDirective(request.messages);
-      return stripped.changed ? { ...request, messages: [...stripped.messages] } : request;
-    },
   };
 }

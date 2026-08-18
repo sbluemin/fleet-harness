@@ -17,19 +17,11 @@ const SAMPLE_MODEL: Readonly<Record<GatewayProvider, string>> = {
   xai: "claude-gateway--xai--grok-4.6",
 };
 
-const SHELL_FIRST = "Do your work through the Bash tool wherever it can accomplish the job: read"
-  + " files with cat, head, or sed -n, search with grep and find, and make file changes with sed,"
-  + " heredocs, or short scripts, rather than using the dedicated Read, Edit, or Write tools. Fall"
-  + " back to a dedicated tool only when Bash genuinely cannot do the job.";
-
 function requestFor(): AnthropicMessagesRequest {
   return {
     model: "irrelevant",
     max_tokens: 128,
-    messages: [
-      { role: "user", content: "Find the failing test." },
-      { role: "user", content: `Listing tail\n\nWhile bypass permissions mode is active:\n\n${SHELL_FIRST}\n\ntail` },
-    ],
+    messages: [{ role: "user", content: "Find the failing test." }],
     tools: [
       { name: "Read", input_schema: { type: "object", properties: {} } },
       { name: "Grep", input_schema: { type: "object", properties: {} } },
@@ -39,17 +31,11 @@ function requestFor(): AnthropicMessagesRequest {
   } as unknown as AnthropicMessagesRequest;
 }
 
-function shapedFor(provider: GatewayProvider): {
-  readonly tools: readonly string[];
-  readonly keepsShellFirst: boolean;
-} {
+function toolsFor(provider: GatewayProvider): readonly string[] {
   const target = findGatewayModel(SAMPLE_MODEL[provider]);
   if (!target) throw new Error(`${provider}: sample model left the catalog`);
   const shaped = applyGatewayRequestPolicy(requestFor(), target, new Set<string>());
-  return {
-    tools: (shaped.tools ?? []).map((tool) => String((tool as { name?: unknown }).name)),
-    keepsShellFirst: JSON.stringify(shaped.messages).includes("Do your work through the Bash tool"),
-  };
+  return (shaped.tools ?? []).map((tool) => String((tool as { name?: unknown }).name));
 }
 
 describe("gateway request policy", () => {
@@ -61,19 +47,15 @@ describe("gateway request policy", () => {
     }
   });
 
-  // 도구 보류와 셸 우선 지시문은 한 결정의 양면이다. 한쪽만 바뀌면 모델은 검색할
-  // 도구가 없는데 셸을 쓰라는 말도 못 듣거나, 쓰지 말라고 들은 카탈로그를 받는다.
+  // 어느 공급자가 무엇을 받는지가 여기 한 표에 모인다. 정책을 바꾸면 이 표가 먼저 진다.
   it.each([
-    ["cursor", ["Read", "Grep", "Glob"], false],
-    ["xai", ["Read", "Grep", "Glob"], false],
-    ["opencode", ["Read", "Grep", "Glob"], false],
-    ["codex", ["Read"], true],
-    ["kimi", ["Read", "Grep", "Glob", "WebSearch"], true],
-  ] as const)("shapes a %s request", (provider, tools, keepsShellFirst) => {
-    const shaped = shapedFor(provider);
-
-    expect(shaped.tools).toEqual(tools);
-    expect(shaped.keepsShellFirst).toBe(keepsShellFirst);
+    ["cursor", ["Read", "Grep", "Glob"]],
+    ["xai", ["Read", "Grep", "Glob"]],
+    ["opencode", ["Read", "Grep", "Glob"]],
+    ["codex", ["Read"]],
+    ["kimi", ["Read", "Grep", "Glob", "WebSearch"]],
+  ] as const)("shapes a %s request", (provider, tools) => {
+    expect(toolsFor(provider)).toEqual(tools);
   });
 
   it("downgrades a tool_choice pinned to a tool the policy withheld", () => {

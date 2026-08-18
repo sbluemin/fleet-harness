@@ -36,13 +36,13 @@ const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
 /** Claude Code's shell-first directive as it arrives, with one neighbour on each side. */
-const BASH_FIRST_MESSAGE = `Listing tail
-
-While bypass permissions mode is active:
-
-Do your work through the Bash tool wherever it can accomplish the job: read files with cat, head, or sed -n, search with grep and find, and make file changes with sed, heredocs, or short scripts, rather than using the dedicated Read, Edit, or Write tools. Fall back to a dedicated tool only when Bash genuinely cannot do the job.
-
-<total_tokens>1 tokens left</total_tokens>`;
+/** A caller catalog carrying the tools provider policies decide about. */
+const SEARCH_CATALOG = [
+  { name: "Read", input_schema: { type: "object", properties: {} } },
+  { name: "Grep", input_schema: { type: "object", properties: {} } },
+  { name: "Glob", input_schema: { type: "object", properties: {} } },
+  { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+];
 
 describe("gateway error messages", () => {
   it("includes a transport cause code", () => {
@@ -151,16 +151,14 @@ describe("caller credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-opus-5",
-      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
-      tools: [{ name: "Grep", input_schema: { type: "object", properties: {} } }],
+      tools: SEARCH_CATALOG,
     }));
 
     // 게이트웨이 대상이 없는 요청은 정책을 거치지 않는다. Claude 자신에게 가는
     // 트래픽을 게이트웨이가 다듬으면 클라이언트가 보낸 계약을 우리가 바꾸는 것이다.
     const [, init] = fetchMock.mock.calls[0] ?? [];
-    const forwarded = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    expect(forwarded.messages).toEqual([{ role: "user", content: BASH_FIRST_MESSAGE }]);
-    expect(forwarded.tools).toEqual([{ name: "Grep", input_schema: { type: "object", properties: {} } }]);
+    const forwarded = JSON.parse(String(init?.body)) as { tools?: ReadonlyArray<{ name: string }> };
+    expect(forwarded.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob", "WebSearch"]);
   });
 
   it("accepts an x-api-key credential too", async () => {
@@ -287,12 +285,12 @@ describe("upstream credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--cursor--grok-4.5",
-      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+      tools: SEARCH_CATALOG,
     }));
 
     expect(res.status).toBe(200);
     const [request] = streamSpy.mock.calls[0] ?? [];
-    expect(request?.messages).toEqual([{ role: "user", content: "Listing tail\n\n<total_tokens>1 tokens left</total_tokens>" }]);
+    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob"]);
   });
 
   it("applies the target's own policy rather than a blanket one", async () => {
@@ -304,12 +302,12 @@ describe("upstream credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--codex--gpt-5.6-sol-fast",
-      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+      tools: SEARCH_CATALOG,
     }));
 
     expect(res.status).toBe(200);
     const [request] = streamSpy.mock.calls[0] ?? [];
-    expect(request?.messages).toEqual([{ role: "user", content: BASH_FIRST_MESSAGE }]);
+    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
   });
 
   it("applies the target policy before the Grok CLI wire is serialized", async () => {
@@ -327,13 +325,13 @@ describe("upstream credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--xai--grok-4.6",
-      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+      tools: SEARCH_CATALOG,
     }));
 
     expect(res.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(init?.body)).not.toContain("Do your work through the Bash tool");
-    expect(String(init?.body)).toContain("Listing tail");
+    expect(String(init?.body)).toContain("\"Grep\"");
+    expect(String(init?.body)).not.toContain("WebSearch");
   });
 
   it("applies the target policy on the Anthropic passthrough branch", async () => {
@@ -351,13 +349,13 @@ describe("upstream credential", () => {
       res,
       token: ANTHROPIC_CRED,
       model: "claude-gateway--opencode--minimax-m3[1m]",
-      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+      tools: SEARCH_CATALOG,
     }));
 
     expect(res.status).toBe(200);
     const [, init] = fetchMock.mock.calls[0] ?? [];
-    expect(String(init?.body)).not.toContain("Do your work through the Bash tool");
-    expect(String(init?.body)).toContain("Listing tail");
+    expect(String(init?.body)).toContain("\"Grep\"");
+    expect(String(init?.body)).not.toContain("WebSearch");
   });
 
   it("projects Codex usage from the registry when Claude strips the 1M marker", async () => {

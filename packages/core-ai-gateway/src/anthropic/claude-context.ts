@@ -715,65 +715,6 @@ function withheldClaudeSkillStub(name: string, tokens: number, budget: number): 
     + `Read the skill's own files if you need it, or run this work on a model with a larger window.]`;
 }
 
-/**
- * Claude Code's shell-first directive, as it composes the paragraph.
- *
- * The client injects it as a meta message on every turn — under a
- * `While bypass permissions mode is active:` header when permissions are
- * bypassed, under `While auto mode is active:` in auto mode, and bare when it
- * only asks for a shell-first bias. The tool names inside are interpolated, so
- * the pattern reads them as identifiers rather than fixed words.
- *
- * The body is one paragraph of roughly 330 characters; the bound keeps a
- * missing terminator from letting the match run through the whole message.
- */
-const CLAUDE_BASH_FIRST_DIRECTIVE
-  = /\n*(?:While (?:bypass permissions|auto) mode is active:\s*)?Do your work through the [A-Za-z][A-Za-z0-9_]* tool wherever it can accomplish the job:[\s\S]{0,600}?genuinely cannot do the job\.\n*/;
-
-export interface ClaudeBashFirstStripResult<M> {
-  readonly messages: readonly M[];
-  readonly changed: boolean;
-}
-
-/**
- * Drop Claude Code's shell-first directive from a request's messages.
- *
- * On its native builds the client hides `Glob`/`Grep` behind embedded binaries
- * and tells the model to search with `grep` and `find` through the shell
- * instead. A caller that restores those tools inherits both halves: the tools
- * are advertised, and a standing instruction keeps steering past them. The
- * directive also covers `Read`/`Edit`/`Write`, so what reaches a provider is a
- * catalog its model is told not to use.
- *
- * Removal is anchored on the client's own wording rather than on a message
- * position or role: the paragraph moves between the string and block content
- * shapes, and it arrives on a `system`-role message that is not part of the
- * conversation the caller wrote. Anchoring on text means a client release that
- * rewrites the paragraph stops matching and nothing is removed — the request
- * passes through unchanged rather than losing a neighbouring instruction.
- *
- * Which requests this applies to is the caller's decision, not this module's.
- */
-export function stripClaudeBashFirstDirective<M extends ClaudeMessageLike>(
-  messages: readonly M[],
-): ClaudeBashFirstStripResult<M> {
-  let changed = false;
-  const next = messages.map((message) => mapClaudeMessageText(message, (text) => {
-    const stripped = text.replace(
-      CLAUDE_BASH_FIRST_DIRECTIVE,
-      (match: string, offset: number, whole: string) => (
-        // 지시문만 걷어내고 앞뒤 문단 사이의 빈 줄 하나는 남긴다. 문단이 텍스트의
-        // 끝이나 시작에 걸려 있으면 남길 이웃이 없으므로 통째로 지운다.
-        offset === 0 || offset + match.length === whole.length ? "" : "\n\n"
-      ),
-    );
-    if (stripped === text) return text;
-    changed = true;
-    return stripped;
-  }));
-  return changed ? { messages: next, changed } : { messages, changed };
-}
-
 /** Claude Code's client-side Web Search tool. */
 export const CLAUDE_WEB_SEARCH_TOOL_NAME = "WebSearch";
 /** Anthropic's server-side web search tool name. */

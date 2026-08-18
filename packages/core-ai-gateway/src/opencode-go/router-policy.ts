@@ -10,9 +10,5 @@ import type { GatewayRequestPolicy } from "../gateway-router/router-policy.js";
  */
 export const opencodeGoRequestPolicy: GatewayRequestPolicy = {
   provider: "opencode",
-  shapeRequest: (request, steps) => {
-    const pruned = steps.pruneSkillPayloads(request);
-    const withheld = steps.withholdWebSearchTools(pruned);
-    return steps.stripShellFirstDirective(withheld);
-  },
+  shapeRequest: (request, steps) => steps.withholdWebSearchTools(steps.pruneSkillPayloads(request)),
 };
