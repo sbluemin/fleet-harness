@@ -406,7 +406,7 @@ describe("splitAgentChatTurn", () => {
     expect(view.answer).toBeNull();
   });
 
-  it("counts failed steps and folds same-file changes into one ledger entry", () => {
+  it("marks the failed step and folds same-file changes into one ledger entry", () => {
     const state = fold([
       { kind: "replay-start" },
       { kind: "replay-end", turns: 0 },
@@ -420,7 +420,6 @@ describe("splitAgentChatTurn", () => {
       { kind: "turn-end", ok: true, durationMs: 4200 },
     ]);
     const view = splitAgentChatTurn(state.turns.at(-1)!);
-    expect(view.failed).toBe(1);
     expect(view.changes).toEqual([{ file: "a.ts", added: 13, removed: 1 }]);
     expect(view.ledger.at(-1)).toMatchObject({ name: "Bash", state: "fail", result: "1 test failed" });
   });
@@ -452,7 +451,7 @@ describe("splitAgentChatTurn", () => {
     ]);
     const view = splitAgentChatTurn(state.turns.at(-1)!);
     expect(view.changes).toEqual([]);
-    expect(view.failed).toBe(1);
+    expect(view.ledger.at(-1)).toMatchObject({ name: "Write", state: "fail", result: "EACCES" });
   });
 
   it("never promotes an answer for an error turn", () => {

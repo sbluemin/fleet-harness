@@ -38,7 +38,9 @@ import "./chat.css";
  * 맨 위에 스트립으로 서고, 그 아래로 스텝이 쌓이며, 각 스텝은 이름·좌표·결과를 차례로
  * 채워 간다. 지나간 스텝과 흘러나온 문장은 화면에서 사라지지 않는다. 끝나면 Answer 앞의
  * 전부가 `{duration} 동안 작업함` 한 줄로 접히고, 그 줄 오른쪽의 아이콘이 다시 편다.
- * 접힘은 실패를 삼키지 않는다 — 실패한 스텝이 있으면 그 수가 접힌 줄에 남는다.
+ * 접힌 줄은 **그 턴의 결말**만 말한다 — 끝내 실패했는지, 사용자가 끊었는지, 아직 도는 잡이
+ * 있는지. 도중에 넘어진 스텝은 결말이 아니라 과정이므로 그 수를 접힌 줄에 싣지 않고,
+ * 펼침 안에서 ✕와 실패 사유로 온전히 선다.
  */
 export function AgentChatView({
   context,
@@ -631,7 +633,6 @@ function ChatTurn({
             ) : view.ledger.length > 0 || view.changes.length > 0 ? (
               <WorkFold
                 durationMs={turn.durationMs}
-                failed={view.failed}
                 running={stillRunning}
                 error={turn.state === "error"}
                 stopped={turn.state === "stopped"}
@@ -1179,11 +1180,12 @@ function Step({
 /**
  * 끝난 턴의 과정 접힘 — 요약 줄이 곧 턴의 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다.
  * 스텝 수는 세지 않는다: 몇 번 도구를 불렀는지는 접어 둔 사람이 궁금해할 값이 아니다.
- * 실패한 스텝 수만 예외다 — 접힘이 실패를 삼키면 이 문법을 세운 이유가 사라진다.
+ * 실패한 스텝 수도 세지 않는다 — 도중에 넘어졌어도 턴이 끝까지 걸어왔다면 그 넘어짐은 결말이
+ * 아니라 과정이고, 과정은 펼침 안에 산다(스텝마다 ✕와 실패 사유가 그대로 선다). 요약이 말하는
+ * 것은 **턴의 결말**뿐이다: 끝내 실패했거나(턴 실패), 사용자가 끊었거나(중지됨), 아직 도는 잡.
  */
 function WorkFold({
   durationMs,
-  failed,
   running,
   error,
   stopped,
@@ -1192,9 +1194,9 @@ function WorkFold({
   children,
 }: {
   readonly durationMs: number | undefined;
-  readonly failed: number;
   /** 이 턴이 낳은 잡 중 아직 도는 것의 수. 접힘이 이것을 삼키면 접힘이 곧 거짓말이 된다. */
   readonly running: number;
+  /** 턴 자체가 실패로 닫혔는가. 스텝 하나가 넘어진 것과 다르다 — 이쪽은 결말이다. */
   readonly error: boolean;
   /** 사용자가 끊은 턴. 실패와 같은 잉크를 쓰지 않는다 — 고칠 것이 없는 결말이다. */
   readonly stopped: boolean;
@@ -1212,9 +1214,8 @@ function WorkFold({
       <summary aria-label={t("terminal.chat.foldAria")}>
         <span className="agent-chat-fold-label">{label}</span>
         {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}
-        {failed > 0 ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldFailed", { count: failed })}</span> : null}
         {stopped ? <span className="agent-chat-fold-stopped">{t("terminal.chat.foldTurnStopped")}</span> : null}
-        {failed === 0 && error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
+        {error ? <span className="agent-chat-fold-failed">{t("terminal.chat.foldTurnFailed")}</span> : null}
         {/* 이 턴이 문맥에 더한 몫. 총량은 위 칩이 말하고, 이 줄은 그 총량이 어디서 왔는지만 말한다.
             줄어든 턴(압축이 끼어든 경우)도 그대로 부호를 지고 선다 — 압축은 사건이지 오류가 아니다. */}
         {contextGrew !== undefined && contextGrew !== 0 ? (
