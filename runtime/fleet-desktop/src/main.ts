@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { app, BrowserWindow, dialog, Menu, Notification, session, shell, Tray, WebContentsView } from "electron";
+import { app, BrowserWindow, dialog, Menu, Notification, screen, session, shell, Tray, WebContentsView } from "electron";
 
 import { createDesktopLifecycle } from "./app-lifecycle.js";
 import { showBootFailureAndExit } from "./boot-failure.js";
@@ -32,7 +32,8 @@ import { resolveRuntimePaths } from "./runtime/runtime-paths.js";
 import { SidecarSupervisor, type SidecarRuntime } from "./sidecar-supervisor.js";
 import { configureTray, createDesktopTray, shouldConfigureTray } from "./tray.js";
 import { createNoopUpdateController, createUpdateController, resolveActiveWindow, showWindowsHiddenUpdateDialog } from "./update-controller.js";
-import { applyWindowPolicy, confinePickerNavigation, createSecureWindow } from "./window-policy.js";
+import { createTitleBarOverlayRefresher, type TitleBarOverlayRefresher } from "./title-bar-overlay-refresh.js";
+import { applyWindowPolicy, confinePickerNavigation, createSecureWindow, INITIAL_WINDOWS_TITLE_BAR_OVERLAY } from "./window-policy.js";
 import { createZoomState } from "./zoom-state.js";
 
 type RuntimeProgress = (state: RuntimeEntryState, detail?: string, progress?: number) => Promise<void>;
@@ -118,12 +119,14 @@ async function boot(): Promise<void> {
     const url = typeof input === "string" ? input : input.href;
     return isRemoteConsoleOrigin(new URL(url).origin) ? consoleSession.fetch(url, init) : globalThis.fetch(url, init);
   };
+  let overlayRefresher: TitleBarOverlayRefresher | null = null;
   const themeSynchronizer = process.platform === "win32"
     ? createDesktopThemeSynchronizer({
       fetch: consoleFetch,
       applyTheme: (snapshot) => {
         if (!window || window.isDestroyed()) return;
-        window.setTitleBarOverlay(snapshot.titleBarOverlay);
+        // 리프레셔가 현재 모니터 배율 보정을 소유한다 — 창이 아직 없으면 적용할 곳도 없다.
+        overlayRefresher?.applyOverlay(snapshot.titleBarOverlay);
       },
     })
     : null;
@@ -197,10 +200,19 @@ async function boot(): Promise<void> {
         const createdWindow = createSecureWindow(BrowserWindow, { iconPath: desktopResources.iconPath, platform: process.platform });
         window = createdWindow;
         fullscreenSynchronizer = createDesktopFullscreenSynchronizer(createdWindow, { fetch: consoleFetch });
+        overlayRefresher = process.platform === "win32"
+          ? createTitleBarOverlayRefresher(createdWindow, {
+            screen,
+            initialOverlay: INITIAL_WINDOWS_TITLE_BAR_OVERLAY,
+            getZoomFactor: () => createdWindow.webContents.getZoomFactor(),
+          })
+          : null;
         createdWindow.once("closed", () => {
           themeSynchronizer?.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
+          overlayRefresher?.stop();
+          overlayRefresher = null;
           picker.close();
         });
         controls.attachWindow(createdWindow);
@@ -209,7 +221,17 @@ async function boot(): Promise<void> {
         bridge.attach(createdWindow.webContents);
         // 창이 어디로 옮겨 가든 덮개는 따라가지 않는다 — 새 콘솔 위에 남은 옛 목록은 거짓말이다.
         createdWindow.webContents.on("did-navigate", () => picker.close());
-        createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => controls.zoomChanged(createdWindow.webContents, zoomDirection));
+        createdWindow.webContents.on("zoom-changed", (_event, zoomDirection) => {
+          controls.zoomChanged(createdWindow.webContents, zoomDirection);
+          overlayRefresher?.refresh();
+        });
+        // 시작 시 복원되는 줌은 이벤트를 내지 않는다 — 로드가 끝난 자리에서 보정 높이를 재확인한다.
+        createdWindow.webContents.on("did-finish-load", () => overlayRefresher?.refresh());
+        // 스냅·최대화 전환(Win+Shift+화살표 등)은 moved 없이 모니터를 건널 수 있다 — 게이트가
+        // no-op이므로 상태 전환마다 배율 정합을 재확인해도 비용이 없다.
+        createdWindow.on("maximize", () => overlayRefresher?.refresh());
+        createdWindow.on("unmaximize", () => overlayRefresher?.refresh());
+        createdWindow.on("restore", () => overlayRefresher?.refresh());
         refreshNativeUpdateActions?.();
         await createdWindow.loadFile(desktopResources.entryPagePath);
         return createdWindow;
@@ -246,9 +268,9 @@ async function boot(): Promise<void> {
     show: () => { void lifecycle.show(); },
     quit: () => { void lifecycle.quit(); },
     diagnostics: () => { void shell.openPath(path.join(app.getPath("userData"), "logs")); },
-    zoomIn: () => controls.zoomIn(),
-    zoomOut: () => controls.zoomOut(),
-    actualSize: () => controls.actualSize(),
+    zoomIn: () => { controls.zoomIn(); overlayRefresher?.refresh(); },
+    zoomOut: () => { controls.zoomOut(); overlayRefresher?.refresh(); },
+    actualSize: () => { controls.actualSize(); overlayRefresher?.refresh(); },
     reloadConsole: () => controls.reloadConsole(),
     consoleReady: () => controls.consoleReady(),
     updates,
