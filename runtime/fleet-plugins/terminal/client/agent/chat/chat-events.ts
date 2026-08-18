@@ -860,8 +860,6 @@ export interface AgentChatTurnView {
   readonly streamingText: string | null;
   /** 이 턴이 건드린 파일 — 같은 파일의 여러 쓰기는 한 줄로 합친다. */
   readonly changes: readonly AgentChatChange[];
-  /** 결과가 실패로 돌아온 스텝 수. 접힌 줄이 이 값을 말한다. */
-  readonly failed: number;
   /** 아직 답하지 않은 카드가 있는가 — 이 턴은 일하는 중이 아니라 기다리는 중이다. */
   readonly awaiting: boolean;
 }
@@ -875,7 +873,6 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
   const last = turn.items.at(-1);
   const trailingText = last?.type === "text" ? last.text ?? "" : null;
   const changes = collectChanges(turn.items);
-  const failed = turn.items.reduce((count, item) => count + (item.state === "fail" ? 1 : 0), 0);
   const awaiting = turn.items.some((item) => item.type === "ask" && item.ask?.outcome === undefined);
   if (turn.state === "working") {
     const streaming = (trailingText ?? "") + turn.draft;
@@ -884,12 +881,11 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
       answer: null,
       streamingText: streaming.length > 0 ? streaming : null,
       changes,
-      failed,
       awaiting,
     };
   }
   if (turn.state === "error") {
-    return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
+    return { ledger: turn.items, answer: null, streamingText: null, changes, awaiting };
   }
   // 중지된 턴에서 흐르던 글은 Answer가 아니다 — 끝까지 쓰이지 않았으므로 그 이름을 줄 수 없다.
   // 그렇다고 접힘 속에 넣지도 않는다: 방금 멈춘 사람이 가장 먼저 보려는 것이 그 글이고,
@@ -900,7 +896,6 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
       answer: null,
       streamingText: trailingText !== null && trailingText.length > 0 ? trailingText : null,
       changes,
-      failed,
       awaiting,
     };
   }
@@ -911,14 +906,13 @@ export function splitAgentChatTurn(turn: AgentChatTurn): AgentChatTurnView {
       answer: turn.answer,
       streamingText: null,
       changes,
-      failed,
       awaiting,
     };
   }
   if (trailingText !== null && trailingText.length > 0) {
-    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null, changes, failed, awaiting };
+    return { ledger: turn.items.slice(0, -1), answer: trailingText, streamingText: null, changes, awaiting };
   }
-  return { ledger: turn.items, answer: null, streamingText: null, changes, failed, awaiting };
+  return { ledger: turn.items, answer: null, streamingText: null, changes, awaiting };
 }
 
 /**
