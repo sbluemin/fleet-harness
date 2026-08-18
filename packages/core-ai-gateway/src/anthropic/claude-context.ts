@@ -823,7 +823,7 @@ export function omitClaudeWebSearchTools<
  * bracketed line opening with `Usage limit ` that is the entire text of its block is not
  * something a person types into a prompt.
  */
-const CLAUDE_USAGE_LIMIT_DIRECTIVE = /^\[Usage limit [^\]]*\]$/;
+const CLAUDE_USAGE_LIMIT_DIRECTIVE = /^\s*\[Usage limit [^\]]*\]\s*$/;
 
 export interface ClaudeUsageLimitStripResult<M> {
   readonly messages: readonly M[];
@@ -883,6 +883,12 @@ function stripUsageLimitBlocks<M extends ClaudeMessageLike>(
   return { message: { ...message, content: kept } as M, removed };
 }
 
+/**
+ * The surrounding whitespace is matched rather than trimmed away first: every text block of
+ * every message reaches this test, skill bodies included, and one of those was measured at
+ * 162,681 tokens. `trim()` would copy that string in full before the first character could
+ * rule it out, where the anchored pattern rejects it on that character.
+ */
 function isClaudeUsageLimitDirective(text: string): boolean {
-  return CLAUDE_USAGE_LIMIT_DIRECTIVE.test(text.trim());
+  return CLAUDE_USAGE_LIMIT_DIRECTIVE.test(text);
 }

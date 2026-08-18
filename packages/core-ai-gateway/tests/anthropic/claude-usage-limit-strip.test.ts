@@ -94,6 +94,19 @@ describe("stripClaudeUsageLimitDirectives", () => {
     expect(result.messages).toBe(messages);
   });
 
+  it("matches a directive padded with whitespace, and leaves a long body untouched", () => {
+    const skillBody = `Base directory for this skill: /tmp/skills/dataviz\n\n${"x".repeat(50_000)}`;
+    const messages = [
+      userText(skillBody),
+      { role: "user", content: [{ type: "text", text: `\n  ${APPROACHING}\n` }] },
+    ];
+
+    const result = stripClaudeUsageLimitDirectives(messages);
+
+    expect(result.changed).toBe(true);
+    expect(result.messages).toEqual([userText(skillBody)]);
+  });
+
   it("returns the same array when nothing matched", () => {
     const messages = [userText("Ship it.")];
     const result = stripClaudeUsageLimitDirectives(messages);
