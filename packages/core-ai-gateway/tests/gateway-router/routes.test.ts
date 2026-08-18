@@ -35,6 +35,15 @@ const ANTHROPIC_CRED = "sk-ant-oat01-caller";
 const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
+/** Claude Code's shell-first directive as it arrives, with one neighbour on each side. */
+/** A caller catalog carrying the tools provider policies decide about. */
+const SEARCH_CATALOG = [
+  { name: "Read", input_schema: { type: "object", properties: {} } },
+  { name: "Grep", input_schema: { type: "object", properties: {} } },
+  { name: "Glob", input_schema: { type: "object", properties: {} } },
+  { name: "WebSearch", input_schema: { type: "object", properties: { query: { type: "string" } } } },
+];
+
 describe("gateway error messages", () => {
   it("includes a transport cause code", () => {
     const error = new TypeError("fetch failed");
@@ -129,6 +138,27 @@ describe("caller credential", () => {
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toContain("text/event-stream");
     expect(res.body).toContain("message_stop");
+  });
+
+  it("forwards a native Anthropic request with no policy applied", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({ fetch: fetchMock, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-opus-5",
+      tools: SEARCH_CATALOG,
+    }));
+
+    // 게이트웨이 대상이 없는 요청은 정책을 거치지 않는다. Claude 자신에게 가는
+    // 트래픽을 게이트웨이가 다듬으면 클라이언트가 보낸 계약을 우리가 바꾸는 것이다.
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const forwarded = JSON.parse(String(init?.body)) as { tools?: ReadonlyArray<{ name: string }> };
+    expect(forwarded.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob", "WebSearch"]);
   });
 
   it("accepts an x-api-key credential too", async () => {
@@ -238,6 +268,102 @@ describe("upstream credential", () => {
     const [request] = streamSpy.mock.calls[0] ?? [];
     expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
     expect(request?.tool_choice).toEqual({ type: "auto" });
+  });
+
+  // 공급자별 정책 매트릭스는 router-policy.test.ts가 소유한다. 여기서 고정하는 것은
+  // 라우터가 그 정책을 *모든 디스패치 분기에서* 실제로 적용한다는 사실뿐이다.
+  it("applies the target policy on the gateway-stream branch", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5",
+      tools: SEARCH_CATALOG,
+    }));
+
+    expect(res.status).toBe(200);
+    const [request] = streamSpy.mock.calls[0] ?? [];
+    expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob"]);
+  });
+
+  it("applies the target's own policy rather than a blanket one", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3",
+      tools: SEARCH_CATALOG,
+    }));
+
+    expect(res.status).toBe(200);
+    // Kimi services Web Search itself, so its policy alone keeps that definition.
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    const forwarded = JSON.parse(String(init?.body)) as { tools?: ReadonlyArray<{ name: string }> };
+    expect(forwarded.tools?.map((tool) => tool.name)).toEqual(["Read", "Grep", "Glob", "WebSearch"]);
+  });
+
+  it("applies the target policy before the Grok CLI wire is serialized", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readXaiToken: () => "grok-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+      tools: SEARCH_CATALOG,
+    }));
+
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(init?.body)).toContain("\"Grep\"");
+    expect(String(init?.body)).not.toContain("WebSearch");
+  });
+
+  it("applies the target policy on the Anthropic passthrough branch", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+      tools: SEARCH_CATALOG,
+    }));
+
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(init?.body)).toContain("\"Grep\"");
+    expect(String(init?.body)).not.toContain("WebSearch");
   });
 
   it("projects Codex usage from the registry when Claude strips the 1M marker", async () => {

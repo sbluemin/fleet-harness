@@ -32,6 +32,7 @@ import {
   cursorNativeRedirectResultReplies,
   isCursorHotPathToolName,
   isCursorNativeRedirectToolName,
+  isCursorWithheldToolName,
 } from "../../../src/cursor/native/exec-redirect.js";
 
 afterEach(() => resetCursorWireModelMemory());
@@ -453,6 +454,64 @@ describe("Cursor client tool suspension", () => {
       },
     });
 
+    // Claude Code spells its ripgrep switches as the flags themselves. Naming only the
+    // word-shaped spellings sent every case-insensitive search to the shell instead.
+    const flagSchemaTools = [{
+      clientName: "Grep",
+      wireName: "cc_grep_ffffffff",
+      inputSchemaValue: {
+        type: "object",
+        properties: {
+          pattern: { type: "string" },
+          path: { type: "string" },
+          output_mode: { type: "string" },
+          "-i": { type: "boolean" },
+          "-B": { type: "number" },
+          "-A": { type: "number" },
+          context: { type: "number" },
+          head_limit: { type: "number" },
+        },
+        required: ["pattern"],
+      },
+    }] as const;
+
+    expect(cursorNativeExecRedirect(
+      {
+        id: 7,
+        execId: "grep-flags-7",
+        grepArgs: {
+          pattern: "Fleet",
+          path: ".",
+          caseInsensitive: true,
+          contextBefore: 2,
+          contextAfter: 3,
+          context: 1,
+        },
+      },
+      flagSchemaTools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toMatchObject({
+      execCase: "grepArgs",
+      call: {
+        name: "Grep",
+        arguments: JSON.stringify({
+          pattern: "Fleet",
+          output_mode: "content",
+          "-i": true,
+          "-B": 2,
+          "-A": 3,
+          context: 1,
+        }),
+      },
+    });
+
+    // Nothing on the caller's tool can say "sorted", so the redirect still fails closed.
+    expect(cursorNativeExecRedirect(
+      { id: 8, execId: "grep-sort-8", grepArgs: { pattern: "Fleet", path: ".", sort: "modified" } },
+      flagSchemaTools,
+      CURSOR_TOOL_PROVIDER_IDENTIFIER,
+    )).toBeNull();
+
     const shell = cursorNativeExecRedirect(
       {
         id: 3,
@@ -733,6 +792,13 @@ describe("Cursor client tool suspension", () => {
     expect(isCursorNativeRedirectToolName("Bash")).toBe(true);
     expect(isCursorNativeRedirectToolName("shell_command")).toBe(true);
     expect(isCursorNativeRedirectToolName("exec_command")).toBe(true);
+    // Withholding is the narrower half: a redirect target is not automatically hidden.
+    expect(isCursorWithheldToolName("Grep")).toBe(false);
+    expect(isCursorWithheldToolName("Glob")).toBe(false);
+    expect(isCursorWithheldToolName("Read")).toBe(false);
+    expect(isCursorWithheldToolName("Bash")).toBe(true);
+    expect(isCursorWithheldToolName("shell_command")).toBe(true);
+    expect(isCursorWithheldToolName("exec_command")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__ToolSearch")).toBe(true);
     expect(isCursorHotPathToolName("mcp__fleet__wiki_read")).toBe(false);
   });

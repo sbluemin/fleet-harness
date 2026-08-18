@@ -1269,6 +1269,53 @@ describe("Grok Responses adapter", () => {
     }
   });
 
+  it("drops Grok's end-of-sequence marker before it reaches the client as text", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      'event: response.content_part.added\ndata: {"item_id":"m1","output_index":1,"content_index":0,"part":{"type":"output_text","text":""}}\n\n'
+      + 'event: response.output_text.delta\ndata: {"item_id":"m1","output_index":1,"content_index":0,"delta":"done."}\n\n'
+      + 'event: response.output_text.delta\ndata: {"item_id":"m1","output_index":1,"content_index":0,"delta":"<|eos|>"}\n\n'
+      + 'event: response.output_text.done\ndata: {"item_id":"m1","output_index":1,"content_index":0,"text":"done.<|eos|>"}\n\n',
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), {
+      apiKey: "xai-secret",
+    });
+    if (!response.ok) throw new Error("expected success");
+    const events = await collectXaiEvents(response.events);
+
+    // 마커만 실려 온 델타는 이벤트 자체가 사라지고, 진짜 본문에 붙어 온 마커는 지워진다.
+    expect(events).toEqual([
+      {
+        type: "response.content_part.added",
+        item_id: "m1",
+        output_index: 1,
+        content_index: 0,
+        part: { type: "output_text", text: "" },
+      },
+      { type: "response.output_text.delta", item_id: "m1", output_index: 1, content_index: 0, delta: "done." },
+      { type: "response.output_text.done", item_id: "m1", output_index: 1, content_index: 0, text: "done." },
+    ]);
+  });
+
+  it("leaves ordinary assistant text untouched", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => xaiResponse(
+      'event: response.output_text.delta\ndata: {"item_id":"m1","output_index":0,"content_index":0,"delta":"the <|eos| token"}\n\n',
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), {
+      apiKey: "xai-secret",
+    });
+    if (!response.ok) throw new Error("expected success");
+    const events = await collectXaiEvents(response.events);
+
+    // 마커와 비슷하지만 닫히지 않은 문자열은 모델이 쓴 산문이다.
+    expect(events).toEqual([{
+      type: "response.output_text.delta",
+      item_id: "m1",
+      output_index: 0,
+      content_index: 0,
+      delta: "the <|eos| token",
+    }]);
+  });
+
   it("uses the CLI proxy with subscription and model headers", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response("data: [DONE]\n\n", { status: 200 }));
     const request: CanonicalResponseRequest = {

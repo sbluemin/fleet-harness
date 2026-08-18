@@ -67,10 +67,25 @@ export function isCursorHotPathToolName(name: string): boolean {
   return (CURSOR_HOT_PATH_TOOL_LEAVES as readonly string[]).includes(leaf);
 }
 
-/** Caller tools whose Cursor-native equivalent is redirected without advertising a duplicate. */
+/** Caller tools a Cursor-native exec can be translated into. */
 export function isCursorNativeRedirectToolName(name: string): boolean {
   const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
   return ["grep", "bash", "shellcommand", "execcommand"].includes(leaf);
+}
+
+/**
+ * Caller tools kept out of the advertised catalog because Cursor owns the capability.
+ *
+ * This is deliberately narrower than the redirect targets above. A shell tool is
+ * withheld because Cursor's own shell is the same capability under another name, and
+ * advertising both invites the model to pick one at random. `Grep` is not: the
+ * redirect can only carry the subset of its schema the native shape can express and
+ * fail-closes on the rest, so the caller's tool is the better route and the redirect
+ * remains the fallback for a native call the model makes anyway.
+ */
+export function isCursorWithheldToolName(name: string): boolean {
+  const leaf = toolLeafName(name).replace(/[_-]/g, "").toLowerCase();
+  return ["bash", "shellcommand", "execcommand"].includes(leaf);
 }
 
 /**
@@ -350,23 +365,32 @@ function grepArguments(
       if (!schemaHasProperty(tool.inputSchemaValue, "path")) return null;
       args.path = input.path;
     }
-    const optionMappings: ReadonlyArray<readonly [unknown, string]> = [
-      [input.glob || undefined, "glob"],
-      [input.outputMode, "output_mode"],
-      [input.caseInsensitive ? true : undefined, "case_insensitive"],
-      [input.contextBefore, "context_before"],
-      [input.contextAfter, "context_after"],
-      [input.context, "context"],
-      [input.type, "type"],
-      [input.headLimit, "head_limit"],
-      [input.multiline ? true : undefined, "multiline"],
-      [input.sort, "sort"],
-      [input.sortAscending, "sort_ascending"],
-      [input.offset, "offset"],
+    // Each option is looked up by candidate rather than by one fixed name. Claude Code
+    // spells its ripgrep switches as the flags themselves — `-i`, `-B`, `-A` — while a
+    // caller that models the same options as words spells them out; both are a `Grep`
+    // that can express the operation. Naming only one shape meant every case-insensitive
+    // or context-carrying native search fail-closed to the shell path below, which was
+    // measured against the client's real schema, not inferred.
+    const optionMappings: ReadonlyArray<readonly [unknown, readonly string[]]> = [
+      [input.glob || undefined, ["glob"]],
+      [input.outputMode, ["output_mode"]],
+      [input.caseInsensitive ? true : undefined, ["-i", "case_insensitive"]],
+      [input.contextBefore, ["-B", "context_before"]],
+      [input.contextAfter, ["-A", "context_after"]],
+      [input.context, ["context", "-C"]],
+      [input.type, ["type"]],
+      [input.headLimit, ["head_limit"]],
+      [input.multiline ? true : undefined, ["multiline"]],
+      [input.sort, ["sort"]],
+      [input.sortAscending, ["sort_ascending"]],
+      [input.offset, ["offset"]],
     ];
-    for (const [value, key] of optionMappings) {
+    for (const [value, candidates] of optionMappings) {
       if (value === undefined) continue;
-      if (!schemaHasProperty(tool.inputSchemaValue, key)) return null;
+      const key = firstSchemaProperty(tool.inputSchemaValue, candidates);
+      // No spelling of this option exists on the caller's tool, so the redirect cannot
+      // state what the model asked for. Fail closed and let the shell path try.
+      if (key === undefined) return null;
       args[key] = value;
     }
     return args;

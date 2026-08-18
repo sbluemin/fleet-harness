@@ -221,16 +221,26 @@ describe("Cursor request budgets", () => {
       .toMatch(/^cc_read_[a-f0-9]{8}$/);
   });
 
-  it("advertises Read directly without routing it as native, while routing Grep and Bash", () => {
+  it("advertises Read and Grep while withholding the shell, and still routes all three", () => {
     const plan = buildCursorRunPlan(request({
       tools: [tool("Read"), tool("Grep"), tool("Bash")],
     }), "conversation-guidance-eligibility");
     const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
     const guidance = encodedRunRequest(plan).action?.userMessageAction?.requestContext?.rules?.[0]?.content ?? "";
+    const wireName = (clientName: string): string | undefined =>
+      plan.redirectTools.find((tool) => tool.clientName === clientName)?.toolName;
 
-    expect(names).toContain(plan.redirectTools.find((tool) => tool.clientName === "Read")?.toolName);
-    expect(names).not.toContain(plan.redirectTools.find((tool) => tool.clientName === "Grep")?.toolName);
-    expect(names).not.toContain(plan.redirectTools.find((tool) => tool.clientName === "Bash")?.toolName);
+    // Cursor's own shell is the same capability under another name, so advertising both
+    // would let the model pick at random. Its native grep is not: the redirect can only
+    // carry the subset of Grep's schema the native shape expresses, so the caller's tool
+    // is the better route and the redirect stays the fallback.
+    expect(names).toContain(wireName("Read"));
+    expect(names).toContain(wireName("Grep"));
+    expect(names).not.toContain(wireName("Bash"));
+    // Advertising Grep does not retire its redirect — a native search still lands on it.
+    expect(plan.redirectTools.map((tool) => tool.clientName)).toEqual(
+      expect.arrayContaining(["Read", "Grep", "Bash"]),
+    );
     expect(guidance).not.toContain("Native read requests are routed");
     expect(guidance).toContain("Native search, shell requests are routed");
   });
@@ -311,16 +321,27 @@ describe("Cursor request budgets", () => {
     ]));
   });
 
-  it("keeps an explicitly selected caller Read on the wire", () => {
+  it("keeps an explicitly selected withheld tool on the wire", () => {
     const plan = buildCursorRunPlan(request({
-      tools: [tool("Read"), tool("Grep")],
-      tool_choice: { type: "function", name: "Read" },
+      tools: [tool("Read"), tool("Bash")],
+      tool_choice: { type: "function", name: "Bash" },
     }), "conversation-explicit-redirect-tool");
     const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
 
-    expect(names).toHaveLength(1);
-    expect(names[0]).toMatch(/^cc_read_[a-f0-9]{8}$/);
-    expect(plan.redirectTools.map((tool) => tool.clientName)).toEqual(["Read", "Grep"]);
+    expect(names).toEqual([
+      expect.stringMatching(/^cc_read_[a-f0-9]{8}$/),
+      expect.stringMatching(/^cc_bash_[a-f0-9]{8}$/),
+    ]);
+    expect(plan.redirectTools.map((tool) => tool.clientName)).toEqual(["Read", "Bash"]);
+  });
+
+  it("withholds the shell from the catalog when nothing selected it", () => {
+    const plan = buildCursorRunPlan(request({
+      tools: [tool("Read"), tool("Bash")],
+    }), "conversation-withheld-shell");
+    const names = runRequest(plan).mcpTools?.mcpTools.map((entry) => entry.toolName) ?? [];
+
+    expect(names).toEqual([expect.stringMatching(/^cc_read_[a-f0-9]{8}$/)]);
   });
 
   it("keeps deferred tools eager when the client did not advertise ToolSearch", () => {

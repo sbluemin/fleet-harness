@@ -726,6 +726,26 @@ function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
   return canonicalEvent(parsed);
 }
 
+/**
+ * Grok's end-of-sequence marker, which this wire emits as ordinary assistant text
+ * rather than as a control frame.
+ *
+ * Measured on a live turn: after the answer's own message item closed, the stream
+ * opened a second message whose entire text was this marker, and it reached the
+ * client as visible output. It is stripped from every text field rather than only
+ * from a lone one, because a marker the model did not mean as prose is not prose
+ * wherever it lands.
+ *
+ * The strip is per event. A marker split across two deltas would survive it, which
+ * has not been observed — the upstream tokenizer emits it whole — and buffering the
+ * text stream to cover that would cost every turn for a shape none has produced.
+ */
+const XAI_EOS_SENTINEL = "<|eos|>";
+
+function withoutXaiSentinel(text: string): string {
+  return text.includes(XAI_EOS_SENTINEL) ? text.split(XAI_EOS_SENTINEL).join("") : text;
+}
+
 function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
   if (!isRecord(value) || typeof value.type !== "string") {
     throw new UpstreamProtocolError("Grok CLI SSE event was not an object with a type");
@@ -746,25 +766,30 @@ function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
         content_index: number(value.content_index, "content_index"),
         part: {
           type: "output_text",
-          text: typeof part.text === "string" ? part.text : ""
+          text: typeof part.text === "string" ? withoutXaiSentinel(part.text) : ""
         }
       };
     }
-    case "response.output_text.delta":
+    case "response.output_text.delta": {
+      const delta = withoutXaiSentinel(string(value.delta, "delta"));
+      if (delta.length === 0) {
+        return undefined;
+      }
       return {
         type: value.type,
         item_id: string(value.item_id, "item_id"),
         output_index: number(value.output_index, "output_index"),
         content_index: number(value.content_index, "content_index"),
-        delta: string(value.delta, "delta")
+        delta
       };
+    }
     case "response.output_text.done":
       return {
         type: value.type,
         item_id: string(value.item_id, "item_id"),
         output_index: number(value.output_index, "output_index"),
         content_index: number(value.content_index, "content_index"),
-        text: string(value.text, "text")
+        text: withoutXaiSentinel(string(value.text, "text"))
       };
     case "response.reasoning_summary_text.delta":
     case "response.reasoning_text.delta":
