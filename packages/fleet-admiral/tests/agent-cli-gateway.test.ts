@@ -273,6 +273,25 @@ describe("claude-gateway system prompt mode", () => {
     expect(args).toContain("--dangerously-skip-permissions");
   });
 
+  it("restores the suppressed search tools without replacing the built-in set", () => {
+    const args = buildClaudeGatewayArgs({
+      cliId: "claude-gateway",
+      mcpServers: [],
+      pluginRoot: "/fleet/plugin",
+      pluginRoots: ["/fleet/plugin"],
+      systemPromptMode: "off",
+    });
+
+    // 이름을 허용 목록에 올려야 억제가 풀린다. `--tools`는 내장 집합을 통째로
+    // 대체하므로 두 도구를 되살리는 값이 나머지를 함께 지운다.
+    const allowed = args.indexOf("--allowedTools");
+    expect(allowed).toBeGreaterThanOrEqual(0);
+    expect(args[allowed + 1]).toBe("Grep,Glob");
+    expect(args).not.toContain("--tools");
+    // 가변 인자가 값을 삼키지 않도록 바이패스 플래그가 뒤에 와야 한다.
+    expect(args.indexOf("--dangerously-skip-permissions")).toBeGreaterThan(allowed + 1);
+  });
+
   it("cleans the prompt file when plugin injection fails", async () => {
     const root = createTempRoot("fleet-admiral-gateway-injection-failure-");
     const isolatedTmp = path.join(root, "tmp");

@@ -9,6 +9,7 @@ import {
 import {
   omitClaudeWebSearchTools,
   pruneClaudeSkillPayloads,
+  stripClaudeBashFirstDirective,
   stripClaudeUsageLimitDirectives,
 } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
@@ -36,7 +37,7 @@ import {
   GATEWAY_MODELS,
   upstreamModelId,
 } from "../models.js";
-import type { GatewayModel } from "../models.js";
+import type { GatewayModel, GatewayProvider } from "../models.js";
 import { resolveAiGatewaySelection } from "../settings/index.js";
 import type { AiGatewayStoredSettings } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
@@ -88,6 +89,18 @@ export interface CodexSubscriptionAuth {
   readonly accessToken: string;
   readonly accountId: string;
 }
+
+/**
+ * Claude Code의 셸 우선 지시문을 걷어낼 공급자.
+ *
+ * 지시문은 모든 요청에 똑같이 실리지만 제거는 공급자별 결정이다. 나열되지 않은
+ * 공급자 — 네이티브 Anthropic, Kimi, Codex — 는 클라이언트가 보낸 문단을 그대로 받는다.
+ */
+const BASH_FIRST_DIRECTIVE_STRIPPED_PROVIDERS: ReadonlySet<GatewayProvider> = new Set<GatewayProvider>([
+  "cursor",
+  "xai",
+  "opencode",
+]);
 
 /** Claude Code가 claude.ai 구독으로 붙일 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
@@ -290,6 +303,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     if (target && target.provider !== "kimi") {
       const omitted = omitClaudeWebSearchTools(body);
       if (omitted.changed) body = omitted.request;
+    }
+    // Fleet은 억제된 `Grep`/`Glob`을 되살려 패널에 쥐여 주는데, 클라이언트는 셸로
+    // 검색하라는 지시를 매 턴 함께 싣는다. 도구는 광고하면서 쓰지 말라고 이르는
+    // 요청이 그대로 공급자에게 가므로, 그 문단만 여기서 걷어낸다.
+    if (target && BASH_FIRST_DIRECTIVE_STRIPPED_PROVIDERS.has(target.provider)) {
+      const stripped = stripClaudeBashFirstDirective(body.messages);
+      if (stripped.changed) body = { ...body, messages: [...stripped.messages] };
     }
 
     let credential = "";

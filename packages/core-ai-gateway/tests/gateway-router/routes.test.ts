@@ -35,6 +35,15 @@ const ANTHROPIC_CRED = "sk-ant-oat01-caller";
 const SUBSCRIPTION_TOKEN = "chatgpt-subscription-access-token";
 const ACCOUNT_ID = "11111111-2222-3333-4444-555555555555";
 
+/** Claude Code's shell-first directive as it arrives, with one neighbour on each side. */
+const BASH_FIRST_MESSAGE = `Listing tail
+
+While bypass permissions mode is active:
+
+Do your work through the Bash tool wherever it can accomplish the job: read files with cat, head, or sed -n, search with grep and find, and make file changes with sed, heredocs, or short scripts, rather than using the dedicated Read, Edit, or Write tools. Fall back to a dedicated tool only when Bash genuinely cannot do the job.
+
+<total_tokens>1 tokens left</total_tokens>`;
+
 describe("gateway error messages", () => {
   it("includes a transport cause code", () => {
     const error = new TypeError("fetch failed");
@@ -238,6 +247,92 @@ describe("upstream credential", () => {
     const [request] = streamSpy.mock.calls[0] ?? [];
     expect(request?.tools?.map((tool) => tool.name)).toEqual(["Read"]);
     expect(request?.tool_choice).toEqual({ type: "auto" });
+  });
+
+  it("strips Claude Code's shell-first directive before Cursor sees it", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      readCursorToken: () => "cursor-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--cursor--grok-4.5",
+      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+    }));
+
+    expect(res.status).toBe(200);
+    const [request] = streamSpy.mock.calls[0] ?? [];
+    expect(request?.messages).toEqual([{ role: "user", content: "Listing tail\n\n<total_tokens>1 tokens left</total_tokens>" }]);
+  });
+
+  it("leaves the shell-first directive in place for Codex", async () => {
+    const gateway = stubGateway();
+    const streamSpy = vi.spyOn(gateway, "stream");
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--codex--gpt-5.6-sol-fast",
+      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+    }));
+
+    expect(res.status).toBe(200);
+    const [request] = streamSpy.mock.calls[0] ?? [];
+    expect(request?.messages).toEqual([{ role: "user", content: BASH_FIRST_MESSAGE }]);
+  });
+
+  it("strips Claude Code's shell-first directive before the Grok CLI wire", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readXaiToken: () => "grok-subscription-token",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+    }));
+
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(init?.body)).not.toContain("Do your work through the Bash tool");
+    expect(String(init?.body)).toContain("Listing tail");
+  });
+
+  it("strips Claude Code's shell-first directive before the OpenCode wire", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--opencode--minimax-m3[1m]",
+      messages: [{ role: "user", content: BASH_FIRST_MESSAGE }],
+    }));
+
+    expect(res.status).toBe(200);
+    const [, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(init?.body)).not.toContain("Do your work through the Bash tool");
+    expect(String(init?.body)).toContain("Listing tail");
   });
 
   it("projects Codex usage from the registry when Claude strips the 1M marker", async () => {
