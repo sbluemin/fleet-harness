@@ -91,8 +91,8 @@ describe("chat first-turn surface", () => {
     mount();
     expect(hero()).not.toBeNull();
     expect(hero()?.textContent).toContain("What should this session take on?");
-    // 태생 기록은 여전히 로그의 첫 줄이다 — 히어로가 그 앞을 가로채지 않는다.
-    expect(log()?.firstElementChild?.classList.contains("agent-chat-birth")).toBe(true);
+    // 초대는 빈 로그의 유일한 내용이다 — 좌표를 다시 적는 줄은 컴포저 배지로 갈음한다.
+    expect(log()?.firstElementChild?.classList.contains("agent-chat-hero")).toBe(true);
 
     act(() => root?.unmount());
     container?.remove();

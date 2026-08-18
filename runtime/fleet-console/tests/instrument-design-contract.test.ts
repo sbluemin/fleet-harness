@@ -1959,10 +1959,17 @@ describe("Instrument core design contract", () => {
     // 자리는 그대로 in-flow다 — 컴포저가 떠서 대화의 마지막 줄을 덮으면 안 된다.
     expect(composerBlock).toContain("flex: none;");
     expect(composerBlock).not.toContain("position: absolute");
-    // 쓰는 자리는 읽는 줄과 같은 폭에 정렬한다 — 상한일 뿐 고정폭이 아니라 좁아지면 따라 줄어든다.
+    // 쓰는 자리는 기본 읽기 폭에 정렬한다 — 상한일 뿐 고정폭이 아니라 좁아지면 따라 줄어든다.
+    // 읽기 폭 프리셋은 이 상한을 갈지 않는다: 전체 폭으로 읽는 사람도 쓰는 자리는 같은 폭이라야
+    // 프리셋을 바꿀 때마다 입력창이 화면을 가로지르지 않는다.
     const composerFrameBlock = chat.match(/^\.agent-chat-composer-frame \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerFrameBlock).toContain("max-width: var(--agent-chat-measure);");
+    expect(composerFrameBlock).toContain("max-width: var(--agent-chat-composer-measure);");
     expect(composerFrameBlock).toContain("margin-inline: auto;");
+    for (const preset of ["wide", "full"]) {
+      const presetBlock = chat.match(new RegExp(`\\.agent-chat\\[data-reading-width="${preset}"\\] \\{[^}]*\\}`))?.[0] ?? "";
+      expect(presetBlock, preset).toContain("--agent-chat-measure:");
+      expect(presetBlock, preset).not.toContain("--agent-chat-composer-measure");
+    }
     // 발사 컨트롤은 하나다 — 턴이 도는 동안 같은 자리가 중지가 되고, 떠 있는 중지 배지는 없다.
     expect(chat).not.toContain(".agent-chat-stop");
     expect(chatView).not.toContain('className="agent-chat-stop"');
@@ -2702,7 +2709,6 @@ describe("Effort track interaction grammar", () => {
     // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
     // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
     expect(block(".agent-chat-coord.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
-    expect(block(".agent-chat-birth.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
 
     // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
     const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
@@ -2710,9 +2716,10 @@ describe("Effort track interaction grammar", () => {
       /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
     );
 
-    // 최소 폭(320px) 패널에서 칩 줄은 패널 밖으로 나간다 — 그때 물러나는 것은 좌표 칩이고,
-    // 같은 사실은 폭을 다투지 않는 태생 기록이 잇는다. 뷰포트가 아니라 패널 폭이 가른다.
-    expect(chat).toMatch(/@container \(max-width: 379px\) \{\s*\.agent-chat-coord \{\s*display: none;/);
+    // 좌표를 말하는 자리는 이제 이 배지 하나다 — 로그 첫 줄의 태생 기록이 퇴역했으므로
+    // 좁은 폭에서도 배지가 물러나지 않는다(물러나면 좌표를 볼 길이 사라진다).
+    expect(chat).not.toContain(".agent-chat-birth");
+    expect(chat).not.toMatch(/@container \([^)]*\) \{\s*\.agent-chat-coord \{\s*display: none;/);
 
     // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
     // 누를 수 있게 그리면 거짓 약속이 된다.

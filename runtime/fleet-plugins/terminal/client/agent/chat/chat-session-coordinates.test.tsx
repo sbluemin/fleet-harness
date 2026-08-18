@@ -74,7 +74,6 @@ function mount(payload: Record<string, unknown>, language: "en" | "ko" = "en"): 
 
 const chip = () => container?.querySelector(".agent-chat-coord");
 const effort = () => container?.querySelector<HTMLElement>(".agent-chat-coord-effort");
-const birth = () => container?.querySelector<HTMLElement>(".agent-chat-birth");
 
 describe("chat session coordinates", () => {
   it("states the session's model and effort in the chip row", () => {
@@ -100,12 +99,10 @@ describe("chat session coordinates", () => {
   it("marks only an ultracode session with the apex channel", () => {
     mount({ launchModel: "opus[1m]", launchEffort: "xhigh" });
     expect(chip()?.classList.contains("is-ultracode")).toBe(false);
-    expect(birth()?.classList.contains("is-ultracode")).toBe(false);
     act(() => root?.unmount());
     container?.remove();
     mount({ launchModel: "opus[1m]", launchEffort: "ultra" });
     expect(chip()?.classList.contains("is-ultracode")).toBe(true);
-    expect(birth()?.classList.contains("is-ultracode")).toBe(true);
   });
 
   // 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다.
@@ -138,11 +135,11 @@ describe("chat session coordinates", () => {
     expect(chip()?.getAttribute("aria-label")).toBe("This session runs on Default at AUTO");
   });
 
-  // 태생 기록은 로그의 첫 줄이다 — 연결 고지보다 앞이며, 턴이 하나도 없어도 서 있다.
-  it("records the starting coordinates as the log's first line", () => {
+  // 좌표를 말하는 자리는 하나다 — 컴포저의 배지가 상시로 서 있으므로 로그가 같은 사실을
+  // 첫 줄에 한 번 더 적지 않는다.
+  it("leaves the log to the conversation and keeps the coordinates on the composer", () => {
     mount({ launchModel: "opus[1m]", launchEffort: "ultra" }, "ko");
-    const log = container?.querySelector(".agent-chat-log");
-    expect(log?.firstElementChild?.classList.contains("agent-chat-birth")).toBe(true);
-    expect(birth()?.textContent).toContain("Opus · ULTRACODE 좌표로 시작");
+    expect(container?.querySelector(".agent-chat-birth")).toBeNull();
+    expect(container?.querySelector(".agent-chat-composer-bar .agent-chat-coord")).not.toBeNull();
   });
 });

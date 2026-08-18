@@ -332,11 +332,6 @@ export function AgentChatView({
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
           >
-        {/* 대화가 시작된 좌표는 사건이다 — 로그의 첫 줄에 기록으로 남는다. 위 칩이 "지금 이 패널이
-            무엇인가"를 답한다면, 이 줄은 전사록을 다시 읽을 때 "이 답이 무엇으로 나온 답인가"를
-            그 자리에서 답한다. 연결 고지보다 앞에 서는 이유는 이것이 연결이 아니라 세션의 사실이기
-            때문이다. */}
-        <SessionBirthLine coordinates={coordinates} t={t} />
         {/* 아직 아무 말도 오가지 않은 패널이 지는 초대. 빈 로그를 그대로 두면 96%가 빈 면이라
             "아직 아무것도 없는 제품"으로 읽힌다 — 이 한 덩어리가 그 자리를 지고, 바로 아래
             가운데에 선 컴포저가 다음 행동을 말한다. 첫 턴이 오면 함께 사라진다. */}
@@ -540,27 +535,6 @@ function SessionCoordinate({
       <span className="agent-chat-coord-sep" aria-hidden="true">·</span>
       <span className="agent-chat-coord-effort" data-effort-level={coordinates.effortLevel}>{effort}</span>
     </span>
-  );
-}
-
-/** 로그 첫 줄의 태생 기록 — 이 세션이 어떤 좌표로 시작했는지를 대화의 서사 안에 남긴다. */
-function SessionBirthLine({
-  coordinates,
-  t,
-}: {
-  readonly coordinates: AgentChatSessionCoordinates;
-  readonly t: ReturnType<typeof getT>;
-}) {
-  const model = coordinates.model ?? t("terminal.chat.coordDefaultModel");
-  const effort = coordinates.effort ?? t("terminal.chat.coordAutoEffort");
-  return (
-    <p className={`agent-chat-birth${coordinates.ultracode ? " is-ultracode" : ""}`}>
-      <span className="agent-chat-birth-mark" aria-hidden="true">{coordinates.ultracode ? "✦" : "◇"}</span>
-      <span className="agent-chat-birth-text">
-        {t("terminal.chat.birthLine", { model, effort })}
-      </span>
-      <span className="agent-chat-birth-rule" aria-hidden="true" />
-    </p>
   );
 }
 
