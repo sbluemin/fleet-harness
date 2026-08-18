@@ -23,16 +23,17 @@ import {
   type AgentChatTurnItem,
 } from "./chat-events.js";
 import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
+import { AgentChatComposer } from "./composer.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
 
 /**
  * Chat Mode의 Operation 본문 — 지휘 로그.
  *
- * 대화 입력창은 없다: 지시는 Quick Launch 멘션으로만 들어온다(제품 결정). 다만 모델이 멈춰 서서
- * 물으면 그 자리에 카드가 서고, 카드 안에서 답한다 — 이 패널은 터미널을 대신하는 에이전트 실행
- * 환경이고, 에이전트가 물었을 때 답하는 것은 그 환경의 기본 기능이다. 카드의 입력은 새 턴을
- * 만들지 않고 지금 그 질문에만 살며, 답하면 사라진다.
+ * 지시는 패널 하단의 귀속 컴포저에서 쓴다(sdk/composer 블록의 축약 조립 — 쉬는 한 줄로
+ * 물러나 있다가 인터랙션에만 펼쳐진다). Quick Launch 멘션 전달은 여전히 살아 있는 별도
+ * 경로다. 모델이 멈춰 서서 물으면 그 자리에 카드가 서고, 카드 안에서 답한다 — 카드의 입력은
+ * 새 턴을 만들지 않고 지금 그 질문에만 살며, 답하면 사라진다.
  *
  * 턴의 표현 문법은 두 국면이다. 진행 중에는 **라이브 원장**이 선다 — 이 턴이 건드린 파일이
  * 맨 위에 스트립으로 서고, 그 아래로 스텝이 쌓이며, 각 스텝은 이름·좌표·결과를 차례로
@@ -281,7 +282,7 @@ export function AgentChatView({
               이 줄이 대화 면 **안에** 사는 이유는 실측이다: 패널 전체에 걸어 두면 작업 면이 열린
               순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮고, 히트 테스트가 칩을 집는다. */}
           <div className="agent-view-chip-row">
-            <SessionCoordinateChip coordinates={coordinates} t={t} />
+            {/* 세션 좌표 칩은 컴포저 바로 옮겨 앉았다 — 지시를 쓰는 자리가 좌표를 읽는 자리다. */}
             {leadingChip}
             <ContextMeterChip context={state.context} working={turnRunning} language={language} />
             <button
@@ -296,6 +297,11 @@ export function AgentChatView({
             </button>
           </div>
 
+          {/* 로그와 그 위에 떠 있는 크롬(Follow·잡 스트립·중지)의 좌표계. 컴포저가 pane 하단에
+              in-flow로 서면서, pane에 앵커하던 부유물이 컴포저 위에 얹히지 않도록 부유물의
+              containing block을 로그 영역으로 좁힌다 — 컴포저 높이가 얼마가 되든 부유물은
+              언제나 그 위에 선다. */}
+          <div className="agent-chat-body">
           {/* data-chat-tour는 코어 feature-tour 카탈로그가 짚는 크로스 번들 앵커 계약이다 —
               사용자가 직접 전환해 들어온 마운트에서만 세워, 리로드로 복원된 채팅 패널이
               콘솔 로드 화면에서 투어를 발화시키지 않게 한다. */}
@@ -424,27 +430,18 @@ export function AgentChatView({
               {t("terminal.chat.stop")}
             </button>
           ) : null}
+          </div>
 
-          {/* 아직 아무 턴도 없는 세션에서는 이 문이 곧 유일한 다음 행동이다. 본문 한가운데의
-              안내 문장 대신 그 문 자체를 초대 상태로 세운다 — 읽고 나서 어디를 눌러야 하는지
-              다시 찾게 만들지 않기 위해서다. 닫는 수단은 두지 않는다: 첫 턴이 시작되면 상태가
-              스스로 지나가고, 그전까지는 계속 참인 안내다. */}
-          {awaitingFirstTurn ? (
-            <p className="agent-chat-invite" aria-hidden="true">{t("terminal.chat.emptyInvite")}</p>
-          ) : null}
-          {/* 회신은 이 패널을 읽던 사람이 이어서 하는 일이므로 어포던스도 본문 안에 선다. 누르면
-              호스트 컴포저가 이 Operation을 행선지로 들고 열린다 — 여기는 입력창이 아니라 그리로
-              가는 문이다(이 뷰에 입력창을 두지 않는다는 결정은 그대로다). */}
-          <button
-            type="button"
-            className={awaitingFirstTurn ? "agent-chat-reply agent-chat-reply--inviting" : "agent-chat-reply"}
-            {...(tourAnchors ? { "data-chat-tour": "composer" } : {})}
-            aria-label={t(awaitingFirstTurn ? "terminal.chat.emptyInviteAria" : "terminal.chat.replyAria")}
-            title={t(awaitingFirstTurn ? "terminal.chat.emptyInvite" : "terminal.chat.replyTitle")}
-            onClick={() => { context.composer.open({ mentionOperationId: context.operationId }); }}
-          >
-            <ReplyBubbleIcon />
-          </button>
+          {/* 이 패널에 귀속된 축약 컴포저 — 읽던 자리에서 바로 쓴다. 쉬는 한 줄로 물러나 있다가
+              인터랙션에만 펼쳐지고(도킹 QL의 접힘 문법), 첫 턴 전에는 그 줄 자체가 초대다.
+              말풍선 문(Quick Launch로 가는 회신 버튼)은 이 컴포저가 대체했다 — Quick Launch
+              멘션 전달은 여전히 살아 있는 별도 경로다. */}
+          <AgentChatComposer
+            context={context}
+            coordinateChip={<SessionCoordinateChip coordinates={coordinates} t={t} />}
+            inviting={awaitingFirstTurn}
+            tourAnchor={tourAnchors}
+          />
         </div>
 
         {workOpen ? (
@@ -535,21 +532,6 @@ function SessionBirthLine({
   );
 }
 
-/** 회신 버튼의 말풍선 — 꼬리는 왼쪽 아래로, 몸통은 둥근 모서리 하나로 읽히게. */
-function ReplyBubbleIcon() {
-  return (
-    <svg viewBox="0 0 20 20" aria-hidden="true" focusable="false">
-      <path
-        d="M6.4 15.6H6a3 3 0 0 1-3-3V7.6a3 3 0 0 1 3-3h8a3 3 0 0 1 3 3v5a3 3 0 0 1-3 3H9.6l-3.2 2.6z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function ChatTurn({
   operationId,
   turn,
@@ -592,7 +574,8 @@ function ChatTurn({
       {turn.dispatch ? (
         <div className="agent-chat-dispatch">
           <div className="agent-chat-dispatch-meta">
-            <span className="agent-chat-dispatch-via">{t("terminal.chat.viaQuickLaunch")}</span>
+            {/* "Quick Launch로 전달" 배지는 퇴역했다 — 패널 컴포저가 주 경로가 되면서 들어온 문이
+                더는 특기 사항이 아니고, 경로를 가르는 origin 와이어는 배지 하나 값이 아니다. */}
             {turn.dispatch.at !== undefined ? <span>{timeFormat.format(new Date(turn.dispatch.at))}</span> : null}
           </div>
           <div className="agent-chat-dispatch-bubble">{turn.dispatch.text}</div>
