@@ -5,6 +5,53 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.67.0] - 2026-08-18
+
+### fleet-cli
+
+#### Changed
+- Agents now search with the dedicated Grep and Glob tools instead of shell commands alone.
+
+#### Fixed
+- Stop a Grok answer from ending in the raw `<|eos|>` marker the model emits as text.
+
+### fleet-console
+
+#### Added
+- Chat Mode panels now carry their own composer, always open at the panel bottom and aligned to the reading column instead of the full panel width: it sends with Enter, keeps per-panel drafts, takes images by paste, drop, or the attach button, and carries the key hints on its control row while you type. Before the first message the panel offers an invitation right above it, and the composer settles to the bottom once the conversation starts. The session's model and effort ride the same row as one badge marked with the supplier's glyph, and while a turn runs the send control becomes stop. It works on the canvas, on the War Room stage, and in narrow layouts, while deck-tile cards show no composer.
+- Operation chat now has a "Chat reading width" preference with Reading, Wide, and Full presets, adjustable from the panel caption or the Terminal plugin settings.
+
+#### Changed
+- Keep the collapsed chat turn summary to the turn's own outcome, so a turn that finished no longer carries a failed-step count; individual failures stay visible when the work is expanded.
+- Agents now search with the dedicated Grep and Glob tools instead of shell commands alone.
+- An Operation panel's own controls now live in its caption instead of floating over the body: Session Analyst, the chat/terminal switch, and the chat reading width stand as marks to the left of the panel menu, and every caption control names itself in a hover bubble. The reading width appears only in the chat view and steps aside on a narrow panel; a War Room card keeps its caption clear of them. With no chip row over the body, a chat log now starts at the top of the panel.
+- The chat context meter moved from the floating chip row into the composer control row, one step to the left of the send control, so what is left in the window reads where the message is written.
+- Give each panel state its own motion on the caption rail: background work now flows in one direction, a panel awaiting your answer pulses with a widening glow, and a finished but unopened panel breathes slowly instead of sitting still. Panels in the same state now pulse in step with each other, an awaiting panel never dims below a working one, and with reduced motion turned on background work stays a dashed rail so it never reads as a running turn.
+- Answer the pointer the moment it reaches a War Room card: the card you are aiming at now takes a brass hairline and a warmed caption right away, instead of staying silent for the four-tenths of a second before the preview opens. The enlarged preview then lifts clear of the cards it covers, and a card reached by keyboard shows the same mark as one reached by pointer.
+
+#### Fixed
+- Console view shortcuts such as Alt+F and Alt+T now fire while a text field has focus, so typing in a chat composer no longer costs you the keys that switch the view. Alt+Arrow still belongs to word-wise caret movement while editing.
+- Show a chat Operation as background while subagents or workflows keep running after its turn ends, instead of reading as idle until they finish.
+- Stop counting background work Fleet does not recognize as agent work toward an Operation's background state.
+- Stop replaying the agent CLI's own internal lines as messages you sent. Switching an Operation to the chat view no longer shows background-task notifications, slash-command expansions, or local command output as your own chat bubbles, and the replies that followed them stay on their own turns instead of overwriting the previous answer.
+- Keep Cruise Map from taking keyboard focus, so focusing a chat view and pressing Enter no longer paints a brass line on the map.
+- Keep Claude Code's usage-limit wrap-up directive out of every request the AI gateway forwards, so work running on another provider is no longer told to cut itself short because the Claude subscription is near its limit.
+- Stop a Grok answer from ending in the raw `<|eos|>` marker the model emits as text.
+- A pressed caption control (a maximized panel, an open Session Analyst) draws its brass fill on the brass hue in every theme; it previously landed on green or magenta because the color mix took the long way around the hue circle.
+- Close the state ring around a War Room card. A card waiting for review, arriving, or landing back on the deck drew its coloured outline down both sides and along the bottom but never across the top, so the caption sat outside the ring; the outline now encloses the whole card, including with reduced motion turned on. The magnified panel in the map view also gets its intended brass edge back instead of a green one that read as a completion signal.
+- Promote a panel that finishes during War Room onto the stage even when it was already focused before you entered.
+- Keep a Grok turn whose tool call arrived complete but whose stream stopped before its closing frame, instead of ending the turn with a mid-response server error.
+
+#### Removed
+- A chat log no longer opens with a line restating the coordinates it started on. The composer badge carries that fact at all times, so the log begins with the conversation itself.
+- The floating reply bubble that opened Quick Launch from a chat panel is retired, along with the caption coordinate badge, the "via Quick Launch" dispatch tag, and the floating stop pill: the in-panel composer replaces those, and Quick Launch mentions keep working as a separate route.
+- Remove the CLI/CHAT surface chip from left-sidebar Operation rows.
+
+### fleet-desktop
+
+#### Fixed
+- Keep the Windows window control buttons sized and aligned with the top band when the window moves between monitors with different display scales and when the zoom level changes.
+
 ## [1.66.0] - 2026-08-17
 
 ### fleet-cli
