@@ -519,6 +519,12 @@ describe("Instrument core design contract", () => {
     expect(tip).toContain("right: 0;");
     expect(tip).toContain("pointer-events: none;");
 
+    // 이름표는 겨누는 동안만 뜬다 — 클릭이 남긴 포커스로 열면 눌러도 그 자리에 남는 버튼(최대화)에서
+    // 풍선이 붙박이가 된다. 키보드로 짚어 온 포커스만 겨눔으로 친다.
+    const tipReveal = components.match(/\.fleet-caption-slot:hover \.fleet-caption-tip,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
+    expect(tipReveal).toContain(":has(:focus-visible)");
+    expect(tipReveal).not.toContain(":focus-within");
+
     // 폭을 아는 것은 밴드다 — 뜻이 사라지는 컨트롤은 캡션 컨테이너 질의로 물러난다.
     const titlebar = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebar).toContain("container-type: inline-size;");
