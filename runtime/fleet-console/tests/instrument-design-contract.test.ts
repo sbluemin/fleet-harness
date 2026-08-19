@@ -177,8 +177,6 @@ const RUNTIME_CUSTOM_PROPERTY_ALLOWLIST = new Set([
   "--canvas-menu-max-height",
   // Quick Launch TSX injects the viewport-derived height ceiling for its open popover.
   "--quick-launch-pop-max-height",
-  // Triage Watch Deck TSX injects the grid-capped quick-look magnification at hover time.
-  "--triage-quicklook-scale",
   // Watch Deck zoom tween injects card column/row sizing each frame.
   "--triage-card-min",
   "--triage-row-min",
@@ -3016,17 +3014,17 @@ describe("War Room deck panel grammar", () => {
     expect(components).not.toContain("canvas-triage-deck-card");
   });
 
-  it("magnifies the cell so the panel and its caption take one transform", () => {
-    const cell = components.match(/\.canvas-triage-deck-cell\.is-quicklook \{[^}]*\}/)?.[0] ?? "";
-    expect(cell).toContain("transform: scale(var(--triage-quicklook-scale");
-    // 밀도 변형도 같은 칸의 transform이다 — 둘은 공존하지 않으므로 한 소유자로 충분하다.
+  it("never magnifies a hovered card — the cell's transform belongs to the density morph alone", () => {
+    // hover 확대는 폐기됐다. 겨눈 칸은 링으로만 말하고(아래 hover 계약), 칸을 키우지 않는다 —
+    // 확대는 이웃을 덮어 판 전체를 읽지 못하게 만드는 조작이었다.
+    expect(components).not.toContain(".canvas-triage-deck-cell.is-quicklook");
+    expect(components).not.toContain("--triage-quicklook-scale");
+    expect(deck).not.toContain("is-quicklook\"");
+    // 칸의 transform 소유자는 밀도 변형 하나뿐이다.
     expect(components).toContain(".canvas-triage-deck-cell.is-morphing {");
     // 전이 소유가 칸이므로 reduced-motion도 칸을 끊는다.
     const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reducedMotion).toMatch(/\.canvas-triage-deck-cell \{\s*transition: none;\s*\}/);
-    // 확대는 지도 Quick-Look과 같은 "떠 있음"을 입는다 — 확대된 칸만이 --shadow-floating을 진다.
-    // 원래 크기 칸에 주면 0 32px 60px -28px가 10px 간격을 넘어 이웃 카드의 rim을 덮는다.
-    expect(cell).toContain("box-shadow: var(--shadow-floating), 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
   });
 
   it("closes the deck tile's state ring across its caption", () => {
@@ -3049,10 +3047,10 @@ describe("War Room deck panel grammar", () => {
     // is-fresh·is-arriving·is-landed가 패널의 border-color와 box-shadow를 키프레임으로 물고 있어,
     // 같은 두 속성에 얹은 hover 선언은 애니메이션 오리진에 진다 — 신호가 가장 급한 카드에서만
     // 위치 마크가 사라지는 조용한 실패다. 그래서 위치는 칸의 box-shadow가 소유한다.
-    const hover = components.match(/\.canvas-triage-deck-cell:hover:not\(\.is-quicklook\):not\(\.is-morphing\),\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\):not\(\.is-quicklook\):not\(\.is-morphing\) \{[^}]*\}/)?.[0] ?? "";
+    const hover = components.match(/\.canvas-triage-deck-cell:hover:not\(\.is-morphing\),\n\.canvas-triage-deck-cell:has\(> \.canvas-triage-deck-pick:focus-visible\):not\(\.is-morphing\) \{[^}]*\}/)?.[0] ?? "";
     expect(hover).toContain("box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);");
     expect(hover).toContain("z-index: 6;");
-    // 확대·변형 중인 칸은 자기 그림자와 z-index를 이미 소유한다 — 제외하지 않으면 확대 칸이 떨어진다.
+    // 변형 중인 칸은 자기 그림자와 z-index를 이미 소유한다 — 제외하지 않으면 그 칸이 떨어진다.
     expect(hover).not.toContain("--shadow-floating");
     // 위치 마크는 패널의 맥동 속성을 절대 건드리지 않는다.
     expect(components).not.toContain(".canvas-triage-deck-cell:hover > .canvas-triage-deck-mount > .canvas-operation {");
@@ -3102,8 +3100,8 @@ describe("War Room deck panel grammar", () => {
     expect(terminalChatCss).toContain(".canvas-operation.is-deck-tile .agent-chat-settle");
     const hide = terminalChatCss.match(/\.canvas-operation\.is-deck-tile \.agent-chat-dormant-open,[\s\S]{0,400}?\.canvas-operation\.is-deck-tile \.agent-chat-composer \{[^}]*\}/)?.[0] ?? "";
     expect(hide).toContain("display: none;");
-    // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 is-quicklook에 묶이면 카드이면서
-    // 선택된 칸, 또는 확대된 칸에서 다시 그려진다.
+    // 선택(무대) 축은 카드 클래스의 부재다 — is-active나 지도 확대창 클래스에 묶이면 카드이면서
+    // 선택된 칸, 또는 판 위로 끌어올린 칸에서 다시 그려진다.
     expect(hide).not.toContain("is-active");
     expect(hide).not.toContain("is-quicklook");
     // 카드의 로그는 초대 하한만 되돌린다. 여백은 손대지 않는다 — 피할 부유 칩이 사라져 베이스가
@@ -3141,14 +3139,6 @@ describe("War Room deck panel grammar", () => {
     expect(raised).toContain("position: fixed;");
     expect(raised).toContain("visibility: visible;");
     expect(raised).toContain("pointer-events: none;");
-  });
-
-  it("reads quick-look layout coordinates from the cell that owns positioning", () => {
-    // 칸이 position: relative라 그 안의 좌표는 칸 기준 0이다 — grid 기준 offset과 빼려면 좌표를
-    // 칸에서 읽어야 하고, 안쪽 요소에서 읽으면 복귀 flight 목적지가 grid 모서리로 무너진다.
-    expect(deck).toContain('target.closest<HTMLElement>(".canvas-triage-deck-cell")');
-    expect(deck).toContain("layoutBox.offsetLeft - grid.offsetLeft");
-    expect(deck).not.toContain("target.offsetLeft - grid.offsetLeft");
   });
 
   it("keeps the minimized shelf neutral and above the dormant shelf", () => {
