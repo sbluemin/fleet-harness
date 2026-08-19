@@ -9,8 +9,10 @@ import {
   performFileContextAction,
   type FileContextAction,
 } from "./context-menu.js";
+import { countLines, formatByteSize } from "./format.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
+import { FileIcon } from "./file-icon.js";
 import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { CodeViewer } from "./viewer/code.js";
@@ -24,7 +26,17 @@ import {
   resizeTreePaneWithKeyboard,
   resolveExtraWidth,
 } from "./layout.js";
-import { setSelectedPath, setTreePaneWidth, setViewState, useFileExplorerViewState } from "./view-store.js";
+import {
+  activateStoredDocument,
+  canNavigateDocumentHistory,
+  closeStoredDocument,
+  hydrateStoredSession,
+  navigateStoredHistory,
+  setDocViewState,
+  setTreePaneWidth,
+  useFileExplorerViewState,
+  type ViewState,
+} from "./view-store.js";
 import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
@@ -95,11 +107,28 @@ function makeFilesClient(theaterId: string | null): PluginFilesClient {
   };
 }
 
+function nameOfPath(relativePath: string): string {
+  return relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
+}
+
+function dirOfPath(relativePath: string): string {
+  const slash = relativePath.lastIndexOf("/");
+  return slash < 0 ? "" : relativePath.slice(0, slash + 1);
+}
+
 function FileExplorerPanel(ctx: RailPanelContext) {
   const { theaterId } = ctx;
   const t = getT(ctx.language);
   const contextScope = theaterId ?? "";
-  const { selectedPath, viewState, treePaneWidth } = useFileExplorerViewState(contextScope);
+  const {
+    selectedPath,
+    openDocs,
+    activePath,
+    history,
+    historyIndex,
+    docStates,
+    treePaneWidth,
+  } = useFileExplorerViewState(contextScope);
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -110,29 +139,36 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  // 마크다운 소스 모드로 보는 경로들 — 문서별로 기억하고 프리뷰가 기본이다.
+  const [sourceModePaths, setSourceModePaths] = useState<ReadonlySet<string>>(new Set());
   const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
 
-  const openFilePath = useCallback(async (relativePath: string, displayName?: string) => {
-    if (!theaterId) {
-      setViewState(theaterId, { kind: "error", message: translateServerError("no_theater", t) });
-      return;
-    }
-    setSelectedPath(contextScope, relativePath);
-    const name = displayName ?? relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
+  const docSession = useMemo(
+    () => ({ openDocs, activePath, history, historyIndex }),
+    [openDocs, activePath, history, historyIndex],
+  );
+
+  // 저장된 열린 문서 세션 복원 — 메모리에 이미 세션이 있으면 그쪽이 이긴다.
+  useEffect(() => {
+    hydrateStoredSession(contextScope || null);
+  }, [contextScope]);
+
+  const fetchDocContent = useCallback(async (relativePath: string, silent: boolean) => {
+    if (!theaterId) return;
+    const scope = contextScope;
+    const name = nameOfPath(relativePath);
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
-      const src = theaterId
-        ? `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`
-        : "";
-      setViewState(contextScope, { kind: "image", relativePath, name, src });
+      const src = `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`;
+      setDocViewState(scope, relativePath, { kind: "image", relativePath, name, src });
       return;
     }
 
-    setViewState(contextScope, { kind: "loading" });
+    if (!silent) setDocViewState(scope, relativePath, { kind: "loading" });
     try {
       // files/read는 422(binary_file)를 error 바디로 반환하므로 raw fetch로 직접 처리한다.
       const res = await fetch("/plugins/file-explorer/files/read", {
@@ -146,34 +182,65 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       }
       const result = await res.json() as FileReadResult;
       if (result.binary) {
-        setViewState(contextScope, { kind: "binary", name });
+        setDocViewState(scope, relativePath, { kind: "binary", name });
         return;
       }
-      setViewState(contextScope, { kind: "code", relativePath: result.relativePath, content: result.content, lang: result.lang, truncated: result.truncated });
+      setDocViewState(scope, relativePath, {
+        kind: "code",
+        relativePath: result.relativePath,
+        content: result.content,
+        lang: result.lang,
+        truncated: result.truncated,
+        sizeBytes: result.sizeBytes,
+      });
     } catch (e: unknown) {
       const raw = e instanceof Error ? e.message : "Unable to load file";
       if (raw === "binary_file") {
-        setViewState(contextScope, { kind: "binary", name });
+        setDocViewState(scope, relativePath, { kind: "binary", name });
       } else {
-        setViewState(contextScope, { kind: "error", message: translateServerError(raw, t) });
+        setDocViewState(scope, relativePath, { kind: "error", message: translateServerError(raw, t) });
       }
     }
   }, [contextScope, t, theaterId]);
+
+  const openFilePath = useCallback((relativePath: string, displayName?: string) => {
+    if (!theaterId) return;
+    const name = displayName ?? nameOfPath(relativePath);
+    activateStoredDocument(contextScope, { relativePath, name });
+  }, [contextScope, theaterId]);
+
+  // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
+  const docStatesRef = useRef(docStates);
+  docStatesRef.current = docStates;
+  useEffect(() => {
+    if (!activePath) return;
+    void fetchDocContent(activePath, docStatesRef.current.has(activePath));
+  }, [activePath, fetchDocContent]);
+
   useLayoutEffect(() => {
     if (!searchTarget || searchTarget.theaterId !== theaterId) return;
     setRevealTarget(searchTarget);
-    void openFilePath(searchTarget.relativePath);
+    openFilePath(searchTarget.relativePath);
     consumeFileSearchTarget(searchTarget);
   }, [openFilePath, searchTarget, theaterId]);
-  const handleSelect = useCallback(async (entry: FolderEntry) => {
+
+  const handleSelect = useCallback((entry: FolderEntry) => {
     if (entry.kind !== "file") return;
-    await openFilePath(entry.relativePath, entry.name);
+    openFilePath(entry.relativePath, entry.name);
   }, [openFilePath]);
 
-  const handleCloseViewer = useCallback(() => {
-    setViewState(contextScope, { kind: "none" });
-    setSelectedPath(contextScope, null);
+  const handleCloseDoc = useCallback((relativePath: string) => {
+    closeStoredDocument(contextScope, relativePath);
   }, [contextScope]);
+
+  const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Escape") return;
+    // 컨텍스트 메뉴가 열려 있으면 메뉴의 Escape 경로가 우선한다(메뉴가 stopPropagation한다).
+    if (!activePath) return;
+    event.preventDefault();
+    event.stopPropagation();
+    closeStoredDocument(contextScope, activePath);
+  }, [activePath, contextScope]);
 
   const showFeedback = useCallback((message: string) => {
     nextTransientIdRef.current += 1;
@@ -189,6 +256,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   useEffect(() => {
     setActiveContextMenu(null);
     setFeedback(null);
+    setSourceModePaths(new Set());
   }, [contextScope]);
 
   const handleOpenContextMenu = useCallback((
@@ -263,7 +331,26 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     setTreePaneWidth(nextWidth);
   }, []);
 
-  const isViewerActive = viewState.kind !== "none";
+  const isViewerActive = activePath !== null;
+  const activeDoc = activePath ? openDocs.find((doc) => doc.relativePath === activePath) ?? null : null;
+  const viewState: ViewState = activePath
+    ? docStates.get(activePath) ?? { kind: "loading" }
+    : { kind: "none" };
+  const isMarkdownDoc = viewState.kind === "code" && viewState.lang === "markdown";
+  const showSource = activePath !== null && sourceModePaths.has(activePath);
+  const canGoBack = canNavigateDocumentHistory(docSession, -1);
+  const canGoForward = canNavigateDocumentHistory(docSession, 1);
+
+  const handleToggleSourceMode = useCallback((source: boolean) => {
+    if (!activePath) return;
+    setSourceModePaths((current) => {
+      if (current.has(activePath) === source) return current;
+      const next = new Set(current);
+      if (source) next.add(activePath);
+      else next.delete(activePath);
+      return next;
+    });
+  }, [activePath]);
 
   useLayoutEffect(() => {
     if (!isViewerActive) {
@@ -286,6 +373,13 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   const dividerState = getTreePaneSeparatorState(treePaneWidth, splitContainerWidth);
 
+  const viewerMeta = viewState.kind === "code"
+    ? [
+      viewState.sizeBytes !== undefined ? formatByteSize(viewState.sizeBytes) : null,
+      t("fileExplorer.viewer.lines", { count: countLines(viewState.content) }),
+    ].filter((part): part is string => part !== null && part !== "")
+    : [];
+
   return (
     <div
       ref={rootRef}
@@ -293,24 +387,104 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       style={isViewerActive
         ? { gridTemplateColumns: buildSplitGridTemplate(treePaneWidth) }
         : undefined}
+      onKeyDown={handleRootKeyDown}
     >
       {isViewerActive && (
         <>
           <div className="fexp-viewer-pane">
+            <div className="fexp-chips" role="list" aria-label={t("fileExplorer.viewer.openFiles")}>
+              {openDocs.map((doc) => (
+                <div
+                  key={doc.relativePath}
+                  role="listitem"
+                  className={`fexp-chip${doc.relativePath === activePath ? " is-active" : ""}`}
+                >
+                  <button
+                    type="button"
+                    className="fexp-chip-open"
+                    aria-current={doc.relativePath === activePath ? "true" : undefined}
+                    title={doc.relativePath}
+                    onClick={() => openFilePath(doc.relativePath, doc.name)}
+                  >
+                    <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
+                    <span className="fexp-chip-name">{doc.name}</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="fexp-chip-close"
+                    aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
+                    onClick={() => handleCloseDoc(doc.relativePath)}
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
             <div className="fexp-viewer-head">
-              <span className="fexp-viewer-filename">
-                {viewState.kind !== "loading" && viewState.kind !== "error"
-                  ? "relativePath" in viewState ? viewState.relativePath : viewState.name
-                  : ""}
+              <button
+                type="button"
+                className="fexp-viewer-nav"
+                disabled={!canGoBack}
+                aria-label={t("fileExplorer.viewer.back")}
+                title={t("fileExplorer.viewer.back")}
+                onClick={() => navigateStoredHistory(contextScope, -1)}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M10 3L5 8l5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                className="fexp-viewer-nav"
+                disabled={!canGoForward}
+                aria-label={t("fileExplorer.viewer.forward")}
+                title={t("fileExplorer.viewer.forward")}
+                onClick={() => navigateStoredHistory(contextScope, 1)}
+              >
+                <svg width="12" height="12" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                  <path d="M6 3l5 5-5 5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </button>
+              {activeDoc && (
+                <span className="fexp-viewer-doc-icon" aria-hidden="true"><FileIcon name={activeDoc.name} /></span>
+              )}
+              <span className="fexp-viewer-filename" title={activePath ?? undefined}>
+                {activeDoc?.name ?? (activePath ? nameOfPath(activePath) : "")}
+                {activePath && dirOfPath(activePath) && (
+                  <span className="fexp-viewer-dir">{dirOfPath(activePath)}</span>
+                )}
               </span>
-              <button className="fexp-viewer-close" type="button" onClick={handleCloseViewer} aria-label={t("fileExplorer.viewer.close")}>
+              {isMarkdownDoc && (
+                <div className="fexp-view-mode" role="group" aria-label={t("fileExplorer.viewer.viewModeAria")}>
+                  <button
+                    type="button"
+                    aria-pressed={!showSource}
+                    onClick={() => handleToggleSourceMode(false)}
+                  >
+                    {t("fileExplorer.viewer.previewMode")}
+                  </button>
+                  <button
+                    type="button"
+                    aria-pressed={showSource}
+                    onClick={() => handleToggleSourceMode(true)}
+                  >
+                    {t("fileExplorer.viewer.sourceMode")}
+                  </button>
+                </div>
+              )}
+              <button
+                className="fexp-viewer-close"
+                type="button"
+                onClick={() => activePath && handleCloseDoc(activePath)}
+                aria-label={t("fileExplorer.viewer.close")}
+              >
                 ✕
               </button>
             </div>
             <div className="fexp-viewer-body">
               {viewState.kind === "loading" && <div className="fexp-viewer-loading">{t("fileExplorer.status.loading")}</div>}
               {viewState.kind === "error" && <div className="fexp-viewer-error">{viewState.message}</div>}
-              {viewState.kind === "code" && viewState.lang === "markdown" && (
+              {viewState.kind === "code" && isMarkdownDoc && !showSource && (
                 <MarkdownViewer
                   content={viewState.content}
                   onOpenPath={openFilePath}
@@ -320,7 +494,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   language={ctx.language}
                 />
               )}
-              {viewState.kind === "code" && viewState.lang !== "markdown" && (
+              {viewState.kind === "code" && (!isMarkdownDoc || showSource) && (
                 <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} t={t} />
               )}
               {viewState.kind === "image" && (
@@ -330,6 +504,13 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                 <BinaryViewer name={viewState.name} t={t} />
               )}
             </div>
+            {viewerMeta.length > 0 && (
+              <div className="fexp-viewer-meta">
+                {viewerMeta.map((part, index) => (
+                  <span key={index} className="fexp-viewer-meta-part">{part}</span>
+                ))}
+              </div>
+            )}
           </div>
           <div
             className="fexp-divider"
@@ -347,6 +528,11 @@ function FileExplorerPanel(ctx: RailPanelContext) {
         </>
       )}
       <div className="fexp-tree-pane">
+        {isViewerActive && (
+          <div className="fexp-tree-pane-label" aria-hidden="true">
+            {t("fileExplorer.panel.title")}
+          </div>
+        )}
         <FileTree
           key={contextScope}
           ref={fileTreeRef}

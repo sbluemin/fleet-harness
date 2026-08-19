@@ -71,6 +71,7 @@ export async function listTheaterContents(
   const entries: FolderEntry[] = [];
   const hiddenVcs: string[] = [];
   const truncated = await collectContentsEntries(realTargetAbs, realRoot, opendir, stat, entries, hiddenVcs);
+  await attachEntryStats(entries, realTargetAbs, stat);
   entries.sort((a, b) => {
     if (a.kind !== b.kind) return a.kind === "dir" ? -1 : 1;
     return a.name.localeCompare(b.name);
@@ -205,6 +206,33 @@ async function collectContentsEntries(
     throw mapFolderBrowserFsError(error);
   } finally {
     await directory.close();
+  }
+}
+
+/**
+ * 수집된 엔트리에 정렬용 메타(sizeBytes/mtimeMs)를 사후 일괄 부착한다.
+ * 수집 루프의 빠른 경로(일반 dirent는 stat 없이 통과)를 건드리지 않기 위해 별도 패스로 둔다.
+ * stat 실패(경합 삭제 등)는 해당 엔트리의 메타만 생략한다.
+ */
+async function attachEntryStats(
+  entries: FolderEntry[],
+  targetPath: string,
+  stat: typeof fs.promises.stat,
+): Promise<void> {
+  for (let start = 0; start < entries.length; start += CLASSIFY_CONCURRENCY) {
+    const batch = entries.slice(start, start + CLASSIFY_CONCURRENCY);
+    await Promise.all(batch.map(async (entry, offset) => {
+      try {
+        const s = await stat(path.join(targetPath, entry.name));
+        entries[start + offset] = {
+          ...entry,
+          ...(entry.kind === "file" ? { sizeBytes: s.size } : {}),
+          mtimeMs: s.mtimeMs,
+        };
+      } catch {
+        // 메타는 정렬 보조 신호다 — 실패해도 목록 자체를 막지 않는다.
+      }
+    }));
   }
 }
 

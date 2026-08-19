@@ -62,7 +62,24 @@
 }
 
 .fexp-root.is-split .fexp-tree-pane {
+  /* 확장 분할에서는 트리 페인 상단에 파일리스트 라벨 행이 붙는다. */
+  grid-template-rows: auto 1fr;
   border-left: 1px solid var(--surface-rim);
+}
+
+/* 분할 상태에서 트리 페인을 파일 리스트로 명명하는 라벨 — 뷰어 칩 스트립과 시선 높이를 맞춘다. */
+.fexp-tree-pane-label {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  min-height: 33px;
+  border-bottom: 1px solid var(--surface-rim);
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* ── viewer↔tree 디바이더 ── */
@@ -182,13 +199,181 @@
 
 .fexp-viewer-pane {
   display: grid;
-  grid-template-rows: 46px 1fr;
+  /* 칩 스트립(auto) · 헤더(46px) · 본문(1fr) · 메타 바(auto) */
+  grid-template-rows: auto 46px minmax(0, 1fr) auto;
   /* .fexp-tree-pane과 동일한 암시적 auto 열 클램프 */
   grid-template-columns: minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
   overflow: hidden;
   border-right: 1px solid var(--surface-rim);
+}
+
+/* ── 열린 파일 칩 스트립 ── */
+.fexp-chips {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--surface-rim);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.fexp-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.fexp-chip {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 180px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: transparent;
+}
+
+.fexp-chip.is-active {
+  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  background: var(--brass-glow);
+}
+
+.fexp-chip-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 2px 2px 2px 8px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-pill) 0 0 var(--radius-pill);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+}
+
+.fexp-chip.is-active .fexp-chip-open {
+  color: var(--text-primary);
+}
+
+.fexp-chip-open:focus-visible,
+.fexp-chip-close:focus-visible,
+.fexp-viewer-nav:focus-visible,
+.fexp-view-mode button:focus-visible,
+.fexp-sort-btn:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
+}
+
+.fexp-chip-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.fexp-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fexp-chip-close {
+  flex-shrink: 0;
+  padding: 2px 7px 2px 4px;
+  background: none;
+  border: none;
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-size: var(--t-xs);
+  line-height: 1;
+}
+
+.fexp-chip-close:hover {
+  color: var(--text-secondary);
+}
+
+/* ── 뷰어 이력/모드 컨트롤 ── */
+.fexp-viewer-nav {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 3px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  line-height: 1;
+}
+
+.fexp-viewer-nav:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+
+.fexp-viewer-nav:disabled {
+  color: var(--text-tertiary);
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fexp-viewer-doc-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.fexp-viewer-dir {
+  margin-left: 8px;
+  color: var(--text-tertiary);
+}
+
+.fexp-view-mode {
+  flex-shrink: 0;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+
+.fexp-view-mode button {
+  padding: 1px 8px;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-xs) - 2px);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+}
+
+.fexp-view-mode button[aria-pressed="true"] {
+  background: var(--surface-glass-strong);
+  color: var(--text-primary);
+}
+
+.fexp-viewer-meta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 12px;
+  border-top: 1px solid var(--surface-rim);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.fexp-viewer-meta-part + .fexp-viewer-meta-part::before {
+  content: "·";
+  margin: 0 4px;
 }
 
 /* ── 뷰어 헤더 ── */
@@ -658,6 +843,63 @@
 
 .fexp-hidden-toggle.is-active {
   color: var(--brass-ink);
+}
+
+/* ── 삭제 파일 고스트 행 — 합성 정보 행, 포커스 불가 ── */
+.fexp-tree-ghost {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding-right: 12px;
+  font-size: var(--t-sm);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  cursor: default;
+}
+
+.fexp-tree-ghost .fexp-tree-icon {
+  opacity: 0.55;
+}
+
+.fexp-tree-ghost .fexp-tree-name {
+  flex: 0 1 auto;
+  color: color-mix(in oklch, var(--coral-ink) 72%, var(--text-tertiary));
+  text-decoration: line-through;
+}
+
+.fexp-tree-ghost .fexp-git-badge {
+  margin-left: auto;
+}
+
+/* ── 정렬 순환 버튼 ── */
+.fexp-sort-btn {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-tertiary);
+  padding: 2px 4px;
+  border-radius: var(--radius-xs);
+  line-height: 1;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  transition: color 0.1s;
+}
+
+.fexp-sort-btn:hover {
+  color: var(--text-secondary);
+}
+
+.fexp-sort-label {
+  max-width: 64px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ── 수동 새로고침 버튼 ── */

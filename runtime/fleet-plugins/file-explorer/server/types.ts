@@ -2,6 +2,10 @@ export interface FolderEntry {
   readonly name: string;
   readonly relativePath: string;
   readonly kind: "dir" | "file";
+  /** 파일 크기(바이트). stat 실패 시 생략 — 정렬은 생략 항목을 이름순 꼬리로 보낸다. */
+  readonly sizeBytes?: number;
+  /** 수정 시각(epoch ms). stat 실패 시 생략. */
+  readonly mtimeMs?: number;
 }
 
 export interface FolderListResult {
@@ -21,6 +25,8 @@ export interface FileReadResult {
   readonly lang: string;
   readonly truncated?: boolean;
   readonly binary?: boolean;
+  /** 디스크상 전체 크기(바이트) — truncated여도 전체 크기를 담는다. */
+  readonly sizeBytes?: number;
 }
 
 export interface FileSearchItem {
