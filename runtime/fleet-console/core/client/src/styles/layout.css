@@ -69,6 +69,132 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   outline-offset: 1px;
 }
 
+/* ---------------------------------------------------------------------------
+   업데이트 커튼 — 업데이트를 연결 오류가 아니라 진행 상태로 만드는 화면.
+   이 자리가 비어 있던 동안 같은 순간은 "연결 끊김"으로 보였고, 그것은 고장과
+   구별되지 않았다. 커튼은 화면을 가리되 지우지 않는다: 뒤에 남은 마지막 값이
+   "돌아올 자리"라는 약속의 근거이기 때문이다.
+   --------------------------------------------------------------------------- */
+.update-curtain {
+  position: fixed;
+  inset: 0;
+  /* 이 콘솔이 지금 사라지는 중이라는 것보다 급한 화면은 없다 — 온보딩 투어(120)와 모드
+     커튼까지 덮는다. 그 위로 무언가를 누를 수 있게 두면, 곧 없어질 콘솔로 손을 부른다. */
+  z-index: 130;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-4);
+  /* 흐림은 쓰지 않는다(디자인 계약). 불투명 스크림만으로 가리되, 뒤에 남은 마지막 값이
+     완전히 사라지지는 않게 한다 — 그 잔상이 "돌아올 자리"라는 약속의 근거다. */
+  background: color-mix(in oklch, var(--ink-abyss) 88%, transparent);
+}
+
+.update-curtain-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-3);
+  width: min(420px, 100%);
+  padding: var(--space-5) var(--space-4);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background: var(--surface-glass-strong);
+  box-shadow: var(--shadow-floating);
+  text-align: center;
+}
+
+.update-curtain-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-lg);
+  font-weight: var(--weight-bold);
+}
+
+.update-curtain-sub {
+  margin: 0;
+  max-width: 34em;
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.update-curtain-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.update-curtain-step {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+}
+
+.update-curtain-mark {
+  flex: none;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+}
+
+.update-curtain-step.is-done { color: var(--text-secondary); }
+.update-curtain-step.is-done .update-curtain-mark { border-color: var(--positive); background: var(--positive); }
+.update-curtain-step.is-now { color: var(--warn-ink); }
+.update-curtain-step.is-now .update-curtain-mark { border-color: var(--warn); box-shadow: 0 0 0 3px var(--warn-glow); }
+
+/* 결과는 링크 배너와 같은 자리, 같은 문법으로 말한다 — 다른 것은 채널뿐이다. */
+.update-outcome {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-3);
+  flex: none;
+  min-height: 34px;
+  padding: var(--space-1) var(--space-4);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.update-outcome--ok {
+  border-bottom: 1px solid color-mix(in oklch, var(--positive) 55%, var(--surface-rim));
+  background: var(--positive-glow);
+  color: var(--positive-ink);
+}
+
+.update-outcome--failed {
+  border-bottom: 1px solid color-mix(in oklch, var(--coral) 55%, var(--surface-rim));
+  background: var(--coral-glow);
+  color: var(--coral-ink);
+}
+
+.update-outcome-note { color: inherit; opacity: 0.8; }
+
+.update-outcome-dismiss {
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  color: inherit;
+  font: inherit;
+  font-weight: var(--weight-bold);
+  cursor: pointer;
+}
+
+.update-outcome-dismiss:hover,
+.update-outcome-dismiss:focus-visible {
+  border-color: var(--brass);
+  outline: 1px solid var(--brass);
+  outline-offset: 1px;
+}
+
 .console-body,
 .console-body.is-canvas {
   height: 100%;

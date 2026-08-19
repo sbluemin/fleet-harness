@@ -22,6 +22,7 @@ import { consoleTarget, createRemoteBridge, type RemoteBridge } from "./remote-b
 import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink } from "./fleet-protocol.js";
 import { createDesktopLogger, describeError, type DesktopLogger } from "./logging.js";
 import { createDesktopThemeSynchronizer } from "./desktop-theme-sync.js";
+import { createDesktopUpdateSynchronizer } from "./desktop-update-sync.js";
 import { createDesktopFullscreenSynchronizer } from "./desktop-fullscreen-sync.js";
 import { installApplicationMenu } from "./menu.js";
 import { resolveDesktopResourcePaths } from "./resource-paths.js";
@@ -130,6 +131,28 @@ async function boot(): Promise<void> {
       },
     })
     : null;
+  /**
+   * 테마 오버레이와 달리 이 구독은 플랫폼을 가리지 않는다 — 콘솔이 스스로 갈아 끼울 수 없는
+   * 설치 레이아웃은 어느 OS에서나 셸이 수행해야 한다. updates는 아래에서 만들어지므로
+   * 여기서는 그때 채워질 자리만 잡는다.
+   */
+  let applyDelegatedUpdate: ((version: string) => void) | null = null;
+  const updateSynchronizer = createDesktopUpdateSynchronizer({
+    fetch: consoleFetch,
+    applyUpdate: (version) => applyDelegatedUpdate?.(version),
+  });
+  /**
+   * 이 구독은 **이 셸이 감독하는 설치본**에 대한 것이다. 창이 남의 콘솔을 보고 있다고 해서
+   * 그 콘솔의 업데이트 요청을 이 기계가 수행해서는 안 된다 — 그러면 원격 호스트가 눌린
+   * 업데이트에 이쪽 앱이 재시작되고, 정작 그 호스트는 갱신되지 않는다.
+   */
+  const subscribeSupervisedConsoleUpdates = async (origin: string): Promise<void> => {
+    if (origin !== localConsoleOrigin) {
+      updateSynchronizer.stop();
+      return;
+    }
+    await updateSynchronizer.start(origin);
+  };
   let fullscreenSynchronizer: ReturnType<typeof createDesktopFullscreenSynchronizer> | null = null;
   let refreshNativeUpdateActions: (() => void) | null = null;
   const zoomState = createZoomState(path.join(app.getPath("userData"), "desktop-state.json"));
@@ -168,7 +191,7 @@ async function boot(): Promise<void> {
     loadConsole: (url) => handOffWindowToConsole({
       publishShellHome,
       loadUrl: async (target) => { await window?.loadURL(target); },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
     }, url),
     openPicker: (url) => picker.open(url),
@@ -209,6 +232,7 @@ async function boot(): Promise<void> {
           : null;
         createdWindow.once("closed", () => {
           themeSynchronizer?.stop();
+          updateSynchronizer.stop();
           fullscreenSynchronizer?.stop();
           fullscreenSynchronizer = null;
           overlayRefresher?.stop();
@@ -243,7 +267,7 @@ async function boot(): Promise<void> {
         controls.handoffStarted();
         void publishShellHome(origin);
       },
-      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); },
+      synchronizeTheme: async (origin) => { await themeSynchronizer?.start(origin); await subscribeSupervisedConsoleUpdates(origin); },
       synchronizeFullscreen: (origin) => fullscreenSynchronizer?.activate(origin),
       onConsoleLoaded: () => controls.onConsoleLoaded(),
       onFirstRunFailure: async () => showFirstRunFailure(),
@@ -264,6 +288,7 @@ async function boot(): Promise<void> {
       onStateChange: () => refreshNativeUpdateActions?.(),
     })
     : createNoopUpdateController();
+  applyDelegatedUpdate = (version) => { void updates.applyRequested(version); };
   const actions = {
     show: () => { void lifecycle.show(); },
     quit: () => { void lifecycle.quit(); },

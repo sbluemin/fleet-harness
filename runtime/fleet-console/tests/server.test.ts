@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ConsoleLockPayload } from "../core/host/console-contract-types.js";
 import { DESKTOP_FULLSCREEN_EVENT, DESKTOP_FULLSCREEN_PATH } from "../core/host/desktop-contract.js";
 import { DESKTOP_THEME_EVENTS_PATH, DESKTOP_THEME_PATH } from "../core/host/desktop-contract.js";
+import { DESKTOP_RESOURCE_ROOT_MARKER, formatDesktopResourceRootMarker } from "@fleet-console/desktop-protocol";
 import { createConsoleLock } from "../core/host/lock.js";
 import { deriveOperationLabel } from "../../fleet-plugins/terminal/server/agent-api/auto-name.js";
 import { createConsoleObservabilityStore } from "../../fleet-plugins/terminal/server/agent-api/observability-store.js";
@@ -1035,6 +1036,75 @@ describe("console static and terminal ticket boundary", () => {
     await expect(response.json()).resolves.toEqual({ error: "invalid_update_apply_body" });
   });
 
+  it("hands a managed installation layout to the shell instead of refusing it", async () => {
+    // 이 트리는 셸의 진입-흐름 트랜잭션이 만들었다 — 콘솔이 제자리에서 갈아 끼울 수 없다.
+    // 예전에는 여기서 503으로 끝나고 사용자는 아무 데도 가지 못했다.
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-managed-root-"));
+    MANAGED_ROOTS.push(root);
+    const latest = path.join(root, "console", "latest");
+    fs.mkdirSync(latest, { recursive: true });
+    fs.writeFileSync(path.join(latest, DESKTOP_RESOURCE_ROOT_MARKER), formatDesktopResourceRootMarker());
+    const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.0.0", packageRoot: latest },
+      updateApply: { start: updateApplyStart },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh: vi.fn().mockResolvedValue({ updateAvailable: true, latestVersion: "1.2.3" }),
+      },
+    });
+
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.endpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(202);
+    await expect(response.json()).resolves.toEqual({ status: "delegated" });
+    // 위임했으면 이 프로세스가 자기를 죽이는 워커를 띄워서는 안 된다.
+    expect(updateApplyStart).not.toHaveBeenCalled();
+
+    // 그리고 수행자인 셸이 그 요청을 들을 수 있어야 한다.
+    const channel = await fetch(`${fixture.endpoint}api/v1/desktop/update`, {
+      headers: { origin: new URL(fixture.endpoint).origin },
+    });
+    expect(channel.status).toBe(200);
+    const snapshot = await channel.json() as { requestedVersion: string | null; requestId: string | null };
+    expect(snapshot.requestedVersion).toBe("1.2.3");
+    expect(snapshot.requestId).toEqual(expect.any(String));
+  });
+
+  it("reports the outcome of the update this console came back from", async () => {
+    let dataDir = "";
+    const fixture = await startFixture({
+      release: { channel: "stable", version: "1.2.3", packageRoot: "/pkg" },
+      beforeCreateServer: ({ fleetDataDir }) => {
+        // 워커는 죽은 프로세스가 남긴 기록만 남긴다. 답하는 것은 그다음 세대의 데몬이다.
+        dataDir = path.join(fleetDataDir, "console");
+        fs.mkdirSync(dataDir, { recursive: true });
+        // 결과에는 시효가 있다 — 방금 끝난 업데이트여야 이 콘솔이 그것을 말한다.
+        const finishedAt = new Date().toISOString();
+        fs.writeFileSync(path.join(dataDir, "update-progress.json"), JSON.stringify({
+          phase: "completed",
+          startedAt: finishedAt,
+          updatedAt: finishedAt,
+          fromVersion: "1.0.0",
+          targetVersion: "1.2.3",
+        }));
+      },
+    });
+
+    const response = await fetch(`${fixture.endpoint}api/v1/updates/progress`);
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      state: "completed",
+      fromVersion: "1.0.0",
+      targetVersion: "1.2.3",
+    });
+  });
+
   it("rejects update apply for local release channels", async () => {
     const fixture = await startFixture({
       release: { channel: "local", version: "1.0.0", packageRoot: "/pkg" },
@@ -1097,6 +1167,8 @@ describe("console static and terminal ticket boundary", () => {
     expect(updateApplyStart).toHaveBeenCalledWith({
       currentEndpoint: fixture.endpoint,
       currentPackageRoot: "/pkg",
+      // 진행 기록이 "무엇에서 무엇으로"를 말하려면 출발 버전도 함께 실려야 한다.
+      fromVersion: "test",
       currentPid: process.pid,
       dataDir: path.join(fixture.fleetDataDir, "console"),
       lockFile: fixture.lockFile,
@@ -2596,6 +2668,9 @@ async function startReminderFixture(options: Parameters<typeof startFixture>[0] 
     fleetAdmiralMock.externalizeForReminderFixture = false;
   }
 }
+
+const MANAGED_ROOTS: string[] = [];
+afterEach(() => { for (const dir of MANAGED_ROOTS.splice(0)) fs.rmSync(dir, { recursive: true, force: true }); });
 
 async function startFixture(options: {
   readonly agentRuntime?: ConsoleServerDeps["agentRuntime"];

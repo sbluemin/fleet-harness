@@ -112,8 +112,22 @@ export type ConsoleUpdateApplyError =
   | "update_not_available"
   | "update_worker_unavailable";
 
+/**
+ * 이 콘솔이 방금 겪은(또는 겪고 있는) 업데이트. 서버의 메모리가 아니라 워커가 디스크에
+ * 남긴 기록에서 온다 — 그래서 재기동을 건너뛰고도 결과를 말할 수 있다.
+ */
+export interface ConsoleUpdateProgress {
+  readonly state: "idle" | "running" | "completed" | "failed";
+  readonly phase?: string;
+  readonly startedAt?: string;
+  readonly targetVersion?: string;
+  readonly fromVersion?: string;
+  readonly endpointChanged?: boolean;
+  readonly error?: string;
+}
+
 export interface ConsoleUpdateApplyAcceptedResponse {
-  readonly status: "accepted";
+  readonly status: "accepted" | "delegated";
 }
 
 export interface OperationGeometry {

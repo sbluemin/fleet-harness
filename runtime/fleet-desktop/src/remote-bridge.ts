@@ -375,7 +375,13 @@ function describe(code: string): string {
       아직 유효한 링크 문자열을 다시 붙여넣는 길만 실제로 열려 있다.
     */
     case "remote_link_device_limit": return "That console has paired as many devices as it can hold. Remove one there, then paste the access link again.";
-    case "remote_host_session_expired": return "That console no longer recognises this device. Ask for a fresh access link.";
+    /*
+      세션이 끝난 것과 페어링을 잃은 것은 다른 사실이다. 콘솔이 재시작하면 세션은 메모리와 함께
+      사라지지만 페어링은 남고, 이 창의 쿠키가 그 비밀을 아직 들고 있다 — 다시 열기만 하면 open()의
+      조인이 그것을 새 세션으로 바꾼다. 여기서 "새 링크를 받아라"라고 말하면, 링크가 필요 없는
+      사람에게 링크를 구하러 가게 만든다. 링크가 정말 필요한 경우는 remote_host_not_paired다.
+    */
+    case "remote_host_session_expired": return "That console ended this session — it may have restarted. Open it again from the host list to resume.";
     case "remote_link_host_mismatch": return "That console refused the link as meant for a different address.";
     case "remote_host_is_self": return "That link points back at this console.";
     case "pairing_target_invalid": return "That is not a Fleet Console access link.";

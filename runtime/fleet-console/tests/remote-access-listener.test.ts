@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import tls from "node:tls";
 import os from "node:os";
 import path from "node:path";
 
@@ -11,7 +12,7 @@ import { createConsoleLock } from "../core/host/lock.js";
 import { PAIRED_DEVICE_LIMIT } from "../core/host/paired-devices.js";
 import { normalizeFingerprint } from "../core/host/remote-identity.js";
 import { parseAccessLink } from "../core/host/access-link.js";
-import { createConsoleServer, type ConsoleServer } from "../core/host/server.js";
+import { createConsoleServer, type ConsoleServer, type ConsoleServerDeps } from "../core/host/server.js";
 import type { ConsoleRemoteAccessSettings } from "../core/host/settings/settings-domain.js";
 
 // 원격 리스너는 자기 인증서로만 신원을 증명한다. 링크가 실어 나른 지문으로 검증해야
@@ -128,6 +129,88 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const session = cookie.split(";")[0]!;
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("stops even while a remote device is still holding a connection", async () => {
+    /**
+     * 원격 창은 스스로 연결을 끊지 않는다. 리스너를 `close()`만 하고 소켓을 남기면 그 종료는
+     * 영영 끝나지 않고, 프로세스도 락도 그대로 남는다 — 업데이트 워커는 그 락이 사라지기를
+     * 기다리다 시간 초과로 실패한다. 원격 업데이트가 통째로 불가능해지는 지점이다.
+     */
+    const fixture = await startFixture({ remote: true });
+    const held = tls.connect({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+    });
+    await new Promise<void>((resolve, reject) => {
+      held.once("secureConnect", () => resolve());
+      held.once("error", reject);
+    });
+    // 요청을 보내지 않고 붙잡고만 있는다 — 받아들여진 채 쉬고 있는 연결이 바로 close()를
+    // 붙드는 것이고, 원격 창이 스트림 사이에서 취하는 상태다.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const stopped = await Promise.race([
+      stopFixture(fixture).then(() => "stopped" as const),
+      new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 5_000)),
+    ]);
+    held.destroy();
+
+    expect(stopped).toBe("stopped");
+  });
+
+  it("makes a remote hand read what it is doing before it takes the host down", async () => {
+    /**
+     * 원격에서 누른 손은 이 기계 앞에 없다. 이 콘솔을 내리는 일은 그 자리에 앉아 있는 사람의
+     * 화면까지 함께 내리므로, 원격 리스너로 들어온 요청은 그 사실을 읽고 나서만 진행한다.
+     * 보안 관문이 아니라 고의성의 표식이다 — 관문은 이미 세션이 지켰다.
+     */
+    const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
+    const fixture = await startFixture({
+      remote: true,
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      updateApply: { start: updateApplyStart },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh: async () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+      },
+    });
+    const joined = await remoteRequest(fixture, "POST", "/api/v1/join", JSON.stringify({ token: grantTokenOf(await createLink(fixture)) }));
+    const session = cookiesOf(joined);
+    const origin = `https://${BIND_HOST}:${fixture.remotePort}`;
+
+    const unconfirmed = await remoteRequest(fixture, "POST", "/api/v1/updates/apply", JSON.stringify({}), session, { origin });
+    expect(unconfirmed.status).toBe(409);
+    expect(JSON.parse(unconfirmed.body)).toEqual({ error: "host_restart_confirmation_required" });
+    expect(updateApplyStart).not.toHaveBeenCalled();
+
+    const confirmed = await remoteRequest(fixture, "POST", "/api/v1/updates/apply", JSON.stringify({ acknowledgeHostRestart: true }), session, { origin });
+    expect(confirmed.status).toBe(202);
+    expect(updateApplyStart).toHaveBeenCalledOnce();
+  });
+
+  it("asks the hand at the machine for no such confirmation", async () => {
+    const updateApplyStart = vi.fn().mockResolvedValue({ accepted: true });
+    const fixture = await startFixture({
+      remote: true,
+      release: { channel: "stable", version: "1.0.0", packageRoot: "/pkg" },
+      updateApply: { start: updateApplyStart },
+      updateCheck: {
+        getStatus: () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+        refresh: async () => ({ updateAvailable: true, latestVersion: "1.2.3" }),
+      },
+    });
+
+    const response = await fetch(`${fixture.loopbackEndpoint}api/v1/updates/apply`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", origin: new URL(fixture.loopbackEndpoint).origin },
+      body: JSON.stringify({}),
+    });
+
+    expect(response.status).toBe(202);
+    expect(updateApplyStart).toHaveBeenCalledOnce();
   });
 
   it("refuses a loopback grant presented to the remote listener", async () => {
@@ -1469,7 +1552,7 @@ function remoteSettings(enabled: boolean, host: string, port: number) {
   };
 }
 
-async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string; readonly remoteAccess?: ConsoleRemoteAccessSettings; readonly remoteRandomInt?: (min: number, maxExclusive: number) => number }): Promise<Fixture> {
+async function startFixture(options: { readonly remote: boolean; readonly bindHost?: string; readonly remoteAccess?: ConsoleRemoteAccessSettings; readonly remoteRandomInt?: (min: number, maxExclusive: number) => number; readonly release?: ConsoleServerDeps["release"]; readonly updateCheck?: ConsoleServerDeps["updateCheck"]; readonly updateApply?: ConsoleServerDeps["updateApply"] }): Promise<Fixture> {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-remote-"));
   const dataRoot = path.join(dir, "fleet-home");
   tempDirs.push(dir);
@@ -1490,7 +1573,7 @@ async function startFixture(options: { readonly remote: boolean; readonly bindHo
       JSON.stringify({ version: 1, general: { remoteAccess }, plugins: {} }),
     );
   }
-  return bootFixture(dir, dataRoot, consoleDataDir, options.remote, options.remoteRandomInt);
+  return bootFixture(dir, dataRoot, consoleDataDir, options.remote, options.remoteRandomInt, options);
 }
 
 /**
@@ -1513,7 +1596,7 @@ function bootFixtureFrom(fixture: Fixture): Promise<Fixture> {
   return bootFixture(fixture.dir, dataRoot, path.join(dataRoot, "console"), true);
 }
 
-async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean, remoteRandomInt?: (min: number, maxExclusive: number) => number): Promise<Fixture> {
+async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string, remote: boolean, remoteRandomInt?: (min: number, maxExclusive: number) => number, updateDeps: Pick<ConsoleServerDeps, "release" | "updateCheck" | "updateApply"> = {}): Promise<Fixture> {
   const server = createConsoleServer({
     port: 0,
     version: "test",
@@ -1521,6 +1604,9 @@ async function bootFixture(dir: string, dataRoot: string, consoleDataDir: string
     dataDir: dataRoot,
     systemFonts: { getFonts: async () => [] },
     remoteRandomInt,
+    ...(updateDeps.release ? { release: updateDeps.release } : {}),
+    ...(updateDeps.updateCheck ? { updateCheck: updateDeps.updateCheck } : {}),
+    ...(updateDeps.updateApply ? { updateApply: updateDeps.updateApply } : {}),
   });
   servers.push(server);
   const loopbackEndpoint = await server.start({ dir, lockFile: path.join(dir, "console.lock") });

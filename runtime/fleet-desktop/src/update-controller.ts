@@ -15,6 +15,12 @@ export interface UpdateControllerOptions {
 export interface UpdateController {
   check(manual?: boolean): Promise<void>;
   install(): Promise<void>;
+  /**
+   * 콘솔 안에서 사용자가 이미 업데이트를 눌렀다. 동의는 그 자리에서 받았으므로 여기서
+   * 다시 묻지 않는다 — 남은 일은 수행뿐이다. 네이티브 확인 대화를 거치는 check()와
+   * 다른 점은 그것 하나다.
+   */
+  applyRequested(version: string): Promise<void>;
   availableVersion(): string | null;
   enabled(): boolean;
 }
@@ -46,6 +52,14 @@ export function createUpdateController(options: UpdateControllerOptions): Update
     options.quit();
   };
   return {
+    async applyRequested(version: string) {
+      // 이미 그 버전이면 재시작은 아무것도 바꾸지 않는다. 설명 없는 앱 재시작만 남고,
+      // 사용자는 같은 버전과 같은 표식 앞으로 돌아온다.
+      if (version === options.currentVersion()) return;
+      available = version;
+      options.onStateChange?.();
+      await install();
+    },
     async check(manual = true) {
       const result = await options.registry.check(options.currentVersion(), manual);
       available = result.latest === options.currentVersion() ? null : result.latest;
@@ -62,7 +76,7 @@ export function createUpdateController(options: UpdateControllerOptions): Update
 }
 
 export function createNoopUpdateController(): UpdateController {
-  return { check: async () => undefined, install: async () => undefined, availableVersion: () => null, enabled: () => false };
+  return { applyRequested: async () => undefined, check: async () => undefined, install: async () => undefined, availableVersion: () => null, enabled: () => false };
 }
 
 export async function showWindowsHiddenUpdateDialog(window: WindowsUpdateWindow | null, tray: WindowsUpdateTray | null, version: string, showDialog: () => Promise<UpdateDialogResult>): Promise<UpdateDialogResult> {

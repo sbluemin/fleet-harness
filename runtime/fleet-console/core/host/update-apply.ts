@@ -10,6 +10,8 @@ import type { GlobalPackageManagerCommand } from "@dotobokuri/core-agent";
 import { withHidden, withNodeSystemCa } from "@dotobokuri/core-process";
 import { DESKTOP_RESOURCE_ROOT_MARKER, isDesktopResourceRootMarkerValid } from "@fleet-console/desktop-protocol";
 
+import { CONSOLE_UPDATE_PROGRESS_FILE, writeConsoleUpdateProgress } from "./update-progress.js";
+
 export interface ConsoleUpdateApplyService {
   start(request: ConsoleUpdateApplyRequest): Promise<ConsoleUpdateApplyStartResult>;
 }
@@ -21,6 +23,7 @@ export interface ConsoleUpdateApplyRequest {
   readonly currentPackageRoot: string;
   readonly lockFile: string;
   readonly targetVersion: string;
+  readonly fromVersion: string;
 }
 
 export interface ConsoleUpdateApplyStartResult {
@@ -42,6 +45,13 @@ export interface CreateConsoleUpdateApplyServiceDeps {
 
 export interface ConsoleUpdateWorkerScriptConfig {
   readonly currentEndpoint: string;
+  readonly fromVersion: string;
+  readonly progressFile: string;
+  /**
+   * 새 데몬이 되찾아야 할 포트. 주소가 유지되면 열려 있던 화면이 스스로 다시 붙으므로,
+   * 이 값이 곧 "같은 자리로 돌아온다"는 약속의 전부다.
+   */
+  readonly resumePort: number | null;
   readonly currentPackageRoot: string;
   readonly currentPid: number;
   readonly lockFile: string;
@@ -49,6 +59,7 @@ export interface ConsoleUpdateWorkerScriptConfig {
   readonly packageManager: ConsoleUpdatePackageManagerSpec;
   readonly packageNames: readonly [string, ...string[]];
   readonly serverModulePath: string;
+  readonly startedAt: string;
   readonly statusFile: string;
   readonly targetVersion: string;
   readonly workerPath: string;
@@ -109,21 +120,38 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
     makeDir(request.dataDir, { recursive: true, mode: 0o700 });
     const statusFile = path.join(request.dataDir, `${WORKER_FILE_PREFIX}${stamp}${STATUS_FILE_SUFFIX}`);
     const logFile = path.join(request.dataDir, `${WORKER_FILE_PREFIX}${stamp}${LOG_FILE_SUFFIX}`);
+    const progressFile = path.join(request.dataDir, CONSOLE_UPDATE_PROGRESS_FILE);
+    const startedAt = new Date(now()).toISOString();
     const script = emitConsoleUpdateWorkerScript({
       currentEndpoint: request.currentEndpoint,
       currentPackageRoot: request.currentPackageRoot,
       currentPid: request.currentPid,
+      fromVersion: request.fromVersion,
       lockFile: request.lockFile,
       logFile,
       packageManager,
       packageNames: PACKAGE_NAMES,
+      progressFile,
+      resumePort: readEndpointPort(request.currentEndpoint),
       serverModulePath,
       statusFile,
+      startedAt,
       targetVersion: request.targetVersion,
       workerPath,
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
+    // 기록은 워커가 실제로 떠난 **뒤에** 남긴다. 띄우지도 못한 업데이트를 "진행 중"으로
+    // 적어 두면, 그 사이 새로고침한 화면은 아무도 진행하지 않는 커튼 아래 갇힌다.
     await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
+    // 그리고 워커가 첫 줄을 쓰기 전의 찰나에도 화면이 새로고침될 수 있다. 그때 "아무 일도
+    // 없다"고 답하면 사용자는 업데이트가 취소된 줄 안다 — 수락은 여기서 기록한다.
+    writeConsoleUpdateProgress(request.dataDir, {
+      phase: "starting",
+      startedAt,
+      updatedAt: startedAt,
+      targetVersion: request.targetVersion,
+      fromVersion: request.fromVersion,
+    }, { makeDir, writeFile });
     return { accepted: true };
   }
 
@@ -143,6 +171,8 @@ const stopTimeoutMs = 60000;
 const startTimeoutMs = 60000;
 const sleepMs = 250;
 
+let consoleStopped = false;
+
 async function main() {
   writeStatus("starting");
   cleanupStaleWorkers();
@@ -155,14 +185,21 @@ async function main() {
   await installPackages(manager);
   writeStatus("starting-daemon");
   const lock = await startNewDaemon();
-  openBrowser(new URL("console/", lock.endpoint).toString());
-  writeStatus("completed");
+  // 같은 주소로 돌아왔으면 열려 있던 화면이 스스로 다시 붙는다 — 새 창은 그 복귀를
+  // 덮어쓸 뿐이다. 주소를 되찾지 못했을 때만, 갈 곳을 잃지 않도록 창을 연다.
+  const endpointChanged = !isSameEndpoint(lock.endpoint, config.currentEndpoint);
+  if (endpointChanged) openBrowser(new URL("console/", lock.endpoint).toString());
+  writeStatus("completed", endpointChanged ? { endpointChanged: true } : {});
 }
 
 main()
-  .catch((error) => {
-    writeStatus("failed", { error: sanitizeError(error) });
-    log("failed: " + sanitizeError(error));
+  .catch(async (error) => {
+    const reason = sanitizeError(error);
+    log("failed: " + reason);
+    // 콘솔을 이미 내린 뒤에 실패했다면, 실패를 말할 화면조차 없다. 옛 버전이라도
+    // 다시 세워야 사용자가 무엇이 잘못됐는지 읽을 수 있다.
+    if (consoleStopped) await recoverConsoleBestEffort();
+    writeStatus("failed", { error: reason });
     process.exitCode = 1;
   })
   .finally(() => {
@@ -174,12 +211,24 @@ main()
   });
 
 function writeStatus(phase, extra = {}) {
-  const payload = {
+  const updatedAt = new Date().toISOString();
+  fs.writeFileSync(config.statusFile, JSON.stringify({ phase, updatedAt, ...extra }, null, 2), { mode: 0o600 });
+  // 재기동한 데몬이 읽는 것은 이 고정 이름의 기록이다. 타임스탬프가 붙은 위 파일은
+  // 이 실행의 진단 흔적이고, 아래가 "방금 무슨 일이 있었는가"에 답하는 쪽이다.
+  const record = {
     phase,
-    updatedAt: new Date().toISOString(),
-    ...extra,
+    startedAt: config.startedAt,
+    updatedAt,
+    targetVersion: config.targetVersion,
+    fromVersion: config.fromVersion,
   };
-  fs.writeFileSync(config.statusFile, JSON.stringify(payload, null, 2), { mode: 0o600 });
+  if (extra.endpointChanged === true) record.endpointChanged = true;
+  if (typeof extra.error === "string") record.error = extra.error;
+  try {
+    fs.writeFileSync(config.progressFile, JSON.stringify(record, null, 2), { mode: 0o600 });
+  } catch {
+    // 진단 기록이 없다고 업데이트를 멈추지는 않는다.
+  }
   log("phase: " + phase);
 }
 
@@ -204,6 +253,7 @@ function cleanupStaleWorkers() {
 
 async function stopCurrentConsole() {
   writeStatus("stopping-console");
+  consoleStopped = true;
   try {
     process.kill(config.currentPid, "SIGTERM");
   } catch (error) {
@@ -216,9 +266,14 @@ async function waitForOldConsoleExit() {
   let escalated = false;
   while (Date.now() < deadline) {
     const pidGone = !isProcessAlive(config.currentPid);
-    const lockGone = !fs.existsSync(config.lockFile);
     const healthGone = await isHealthGone(config.currentEndpoint);
-    if (pidGone && lockGone && healthGone) return;
+    if (pidGone && healthGone) {
+      // 죽은 프로세스가 남긴 락은 정의상 stale이다. 그것이 스스로 사라지기를 기다리면
+      // SIGKILL로 내린 콘솔 뒤에서는 영원히 기다리게 되고, 업데이트는 늘 시간 초과로
+      // 끝난다. 우리가 내린 그 pid의 락이면 우리가 치운다.
+      removeStaleLock();
+      return;
+    }
     if (!escalated && Date.now() > deadline - 10000 && isProcessAlive(config.currentPid)) {
       escalated = true;
       try {
@@ -268,10 +323,15 @@ async function installPackages(manager) {
   if (code !== 0) throw new Error("global package install failed with exit code " + code);
 }
 
+function daemonEnv() {
+  if (config.resumePort === null) return process.env;
+  return { ...process.env, FLEET_CONSOLE_RESUME_PORT: String(config.resumePort) };
+}
+
 async function startNewDaemon() {
   const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
     detached: true,
-    env: process.env,
+    env: daemonEnv(),
     stdio: "ignore",
     windowsHide: true,
   });
@@ -284,6 +344,43 @@ async function startNewDaemon() {
     await sleep(sleepMs);
   }
   throw new Error("new console daemon did not become healthy");
+}
+
+/**
+ * 설치가 실패한 뒤의 마지막 의무: 어떤 버전이든 콘솔을 다시 세운다. 여기서는 목표 버전을
+ * 요구하지 않는다 — 옛 버전으로라도 살아 있어야 실패를 읽을 화면이 생긴다.
+ */
+async function recoverConsoleBestEffort() {
+  try {
+    const child = spawn(process.execPath, [config.serverModulePath, "serve"], {
+      detached: true,
+      env: daemonEnv(),
+      stdio: "ignore",
+      windowsHide: true,
+    });
+    child.once("error", () => {});
+    child.unref();
+    const deadline = Date.now() + startTimeoutMs;
+    while (Date.now() < deadline) {
+      const lock = readLock();
+      if (lock && isProcessAlive(lock.pid) && await isAnyHealthOk(lock)) {
+        log("recovered console after failure");
+        return;
+      }
+      await sleep(sleepMs);
+    }
+    log("recovery did not become healthy before timeout");
+  } catch (error) {
+    log("recovery failed: " + sanitizeError(error));
+  }
+}
+
+function isSameEndpoint(left, right) {
+  try {
+    return new URL(left).host === new URL(right).host;
+  } catch {
+    return false;
+  }
 }
 
 function openBrowser(url) {
@@ -313,6 +410,18 @@ function spawnExit(command, args) {
   });
 }
 
+/** 우리가 내린 pid의 락만 지운다 — 그 사이 올라온 새 콘솔의 락은 건드리지 않는다. */
+function removeStaleLock() {
+  const lock = readLock();
+  if (!lock || lock.pid !== config.currentPid) return;
+  try {
+    fs.rmSync(config.lockFile, { force: true });
+    log("removed the stale lock of the console we stopped");
+  } catch {
+    // 지우지 못해도 새 데몬이 stale lock을 스스로 정리한다.
+  }
+}
+
 function readLock() {
   try {
     return JSON.parse(fs.readFileSync(config.lockFile, "utf8"));
@@ -334,6 +443,18 @@ async function isNewHealthOk(lock) {
       return false;
     }
     return version === config.targetVersion;
+  } catch {
+    return false;
+  }
+}
+
+async function isAnyHealthOk(lock) {
+  if (!lock || typeof lock.endpoint !== "string" || typeof lock.token !== "string") return false;
+  try {
+    const response = await fetch(new URL("api/v1/health", lock.endpoint), {
+      headers: { authorization: "Bearer " + lock.token },
+    });
+    return response.ok;
   } catch {
     return false;
   }
@@ -408,7 +529,22 @@ function sanitizeError(error) {
 `;
 }
 
-function isManagedRuntimePackageRoot(packageRoot: string): boolean {
+/** 되찾아야 할 포트는 지금 열려 있는 주소가 알고 있다. 읽히지 않으면 약속하지 않는다. */
+function readEndpointPort(endpoint: string): number | null {
+  try {
+    const port = Number.parseInt(new URL(endpoint).port, 10);
+    return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * 이 설치 트리를 이 프로세스가 제자리에서 갈아 끼워도 되는가. 셸의 강화된 진입-흐름
+ * 트랜잭션이 만들어 소유하는 레이아웃이면 안 된다 — Desktop provenance나 릴리스 채널이
+ * 아니라 **설치 레이아웃**의 경계다.
+ */
+export function isManagedRuntimePackageRoot(packageRoot: string): boolean {
   if (path.basename(packageRoot) !== "latest" || path.basename(path.dirname(packageRoot)) !== "console") return false;
   try {
     return isDesktopResourceRootMarkerValid(fs.readFileSync(path.join(packageRoot, DESKTOP_RESOURCE_ROOT_MARKER), "utf8"));

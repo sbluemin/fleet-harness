@@ -212,19 +212,35 @@ export interface ConsoleObserverWorkspacesResponse {
   readonly tenants: readonly ConsoleObservedWorkspace[];
 }
 
+/**
+ * 수락에는 두 가지가 있다. "accepted"는 이 콘솔이 스스로 갈아 끼운다는 뜻이고,
+ * "delegated"는 이 설치 레이아웃을 제자리에서 고칠 수 없어 창을 들고 있는 셸에게
+ * 넘겼다는 뜻이다. 둘 다 업데이트가 시작됐다 — 다른 것은 수행자뿐이다.
+ */
 export interface ConsoleUpdateApplyAcceptedResponse {
-  readonly status: "accepted";
+  readonly status: "accepted" | "delegated";
 }
 
 // An apply request can be refused by the current installation layout without
 // implying a Desktop release channel or Console feature mode.
 export type ConsoleUpdateApplyError =
   | "console_not_ready"
+  | "host_restart_confirmation_required"
   | "local_channel"
   | "managed_runtime_update_requires_relaunch"
   | "update_already_in_progress"
   | "update_not_available"
   | "update_worker_unavailable";
+
+export interface ConsoleUpdateProgressResponse {
+  readonly state: "idle" | "running" | "completed" | "failed";
+  readonly phase?: string;
+  readonly startedAt?: string;
+  readonly targetVersion?: string;
+  readonly fromVersion?: string;
+  readonly endpointChanged?: boolean;
+  readonly error?: string;
+}
 
 export interface ConsoleOperationGeometry {
   readonly x: number;

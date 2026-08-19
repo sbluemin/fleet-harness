@@ -193,7 +193,10 @@ describe("remote bridge", () => {
 
     expect(harness.trace).toContain(`withdraw:${REMOTE}`);
     expect(harness.trace).toContain(`load:${LOCAL}/console/`);
-    expect(harness.notices[0]?.body).toContain("no longer recognises this device");
+    // 세션이 끝난 것과 페어링을 잃은 것은 다른 사실이다 — 재시작 뒤에는 링크가 아니라
+    // "다시 열기"가 답이므로, 안내가 링크를 구하러 보내면 안 된다.
+    expect(harness.notices[0]?.body).toContain("ended this session");
+    expect(harness.notices[0]?.body).not.toContain("fresh access link");
   });
 
   it("refuses a host the local console no longer lists", async () => {

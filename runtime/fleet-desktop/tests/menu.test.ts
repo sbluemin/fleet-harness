@@ -5,7 +5,7 @@ import { installApplicationMenu } from "../src/menu.js";
 describe("application menu", () => {
   it("keeps the macOS application and edit menus while adding gated View actions and every accelerator", () => {
     const menu = { buildFromTemplate: vi.fn((_template: unknown) => "menu"), setApplicationMenu: vi.fn() };
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
+    const updates = { applyRequested: vi.fn(async () => undefined), check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
     let consoleReady = false;
     const zoomIn = vi.fn();
     const zoomOut = vi.fn();
@@ -45,7 +45,7 @@ describe("application menu", () => {
    */
   it.each(["darwin", "win32", "linux"] as const)("offers no runtime switching of its own on %s", (platform) => {
     const menu = { buildFromTemplate: vi.fn((_template: unknown) => "menu"), setApplicationMenu: vi.fn() };
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => null, enabled: () => true };
+    const updates = { applyRequested: vi.fn(async () => undefined), check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => null, enabled: () => true };
     const window = { setMenu: vi.fn(), setMenuBarVisibility: vi.fn() };
 
     installApplicationMenu(menu as never, { show: vi.fn(), quit: vi.fn(), diagnostics: vi.fn(), zoomIn: vi.fn(), zoomOut: vi.fn(), actualSize: vi.fn(), reloadConsole: vi.fn(), consoleReady: () => true, updates }, platform, window as never);
@@ -57,7 +57,7 @@ describe("application menu", () => {
 
   it.each(["win32", "linux"] as const)("installs hidden accelerators and permanently hides the native menu bar on %s", (platform) => {
     const menu = { buildFromTemplate: vi.fn((_template: unknown) => "menu"), setApplicationMenu: vi.fn() };
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => null, enabled: () => true };
+    const updates = { applyRequested: vi.fn(async () => undefined), check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => null, enabled: () => true };
     const window = { setMenu: vi.fn(), setMenuBarVisibility: vi.fn() };
     const zoomIn = vi.fn();
     const zoomOut = vi.fn();

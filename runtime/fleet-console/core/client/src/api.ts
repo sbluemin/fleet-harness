@@ -1,4 +1,4 @@
-import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
+import type { ConsoleEnvironmentDiagnostics, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateProgress, OperationGroup, OperationNode, ObserverStatus, ReleaseNoteItem, ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes, ReleaseNotesLocale, ReleaseNotesResponse, TheaterBootstrap, TheaterInfo } from "./types.js";
 
 export interface TheaterFolderListEntry {
   readonly name: string;
@@ -104,10 +104,49 @@ export async function fetchReleaseNotes(options: ReleaseNotesFetchOptions = {}):
   return assertReleaseNotesResponse(await response.json(), response.status);
 }
 
-export async function applyConsoleUpdate(signal?: AbortSignal): Promise<ConsoleUpdateApplyAcceptedResponse> {
-  const response = await fetch("/api/v1/updates/apply", { method: "POST", signal });
+export interface ApplyConsoleUpdateOptions {
+  /**
+   * 원격에서 누른 손은 이 기계 앞에 없다. 이 콘솔을 내리는 일이 그 자리에 앉은 사람의
+   * 화면까지 내린다는 사실을 읽고 눌렀다는 표식이며, 서버는 원격 리스너로 들어온 요청에만
+   * 이것을 요구한다.
+   */
+  readonly acknowledgeHostRestart?: boolean;
+  readonly signal?: AbortSignal;
+}
+
+export async function applyConsoleUpdate(options: ApplyConsoleUpdateOptions = {}): Promise<ConsoleUpdateApplyAcceptedResponse> {
+  const body = options.acknowledgeHostRestart === true ? JSON.stringify({ acknowledgeHostRestart: true }) : undefined;
+  const response = await fetch("/api/v1/updates/apply", {
+    method: "POST",
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body }),
+    ...(options.signal ? { signal: options.signal } : {}),
+  });
   await assertOk(response);
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
+}
+
+/**
+ * 이 화면의 세션은 콘솔이 재기동하면 사라진다 — 세션은 메모리에만 있기 때문이다. 그러나
+ * 페어링은 남고, 그 비밀은 이 브라우저의 쿠키가 들고 있다. 토큰 없는 join은 "이 기기를
+ * 기억하는가"를 묻는 것이며, 기억한다면 새 세션이 열린다. 새 액세스 링크는 필요 없다.
+ *
+ * 원격 리스너는 조인 시도에 실패 예산을 매기고 거절 횟수를 주인에게 보고하므로, 이것은
+ * 한 번의 단절에 한 번만 불려야 한다. 호출자가 그 규율을 소유한다.
+ */
+export async function resumeConsoleSession(signal?: AbortSignal): Promise<void> {
+  const response = await fetch("/api/v1/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    ...(signal ? { signal } : {}),
+  });
+  await assertOk(response);
+}
+
+export async function fetchUpdateProgress(signal?: AbortSignal): Promise<ConsoleUpdateProgress> {
+  const response = await fetch("/api/v1/updates/progress", { cache: "no-store", signal });
+  await assertOk(response);
+  return assertConsoleUpdateProgress(await response.json(), response.status);
 }
 
 export async function addTheater(folderGrantId: string, signal?: AbortSignal): Promise<TheaterInfo> {
@@ -413,8 +452,25 @@ function assertConsoleEnvironmentDiagnostics(value: unknown, status: number): Co
 
 function assertConsoleUpdateApplyAccepted(value: unknown, status: number): ConsoleUpdateApplyAcceptedResponse {
   const payload = value as Partial<ConsoleUpdateApplyAcceptedResponse>;
-  if (!payload || payload.status !== "accepted") throw new ApiError(status, "Invalid update response");
-  return { status: "accepted" };
+  if (!payload || (payload.status !== "accepted" && payload.status !== "delegated")) throw new ApiError(status, "Invalid update response");
+  return { status: payload.status };
+}
+
+function assertConsoleUpdateProgress(value: unknown, status: number): ConsoleUpdateProgress {
+  const payload = value as Partial<ConsoleUpdateProgress>;
+  const state = payload?.state;
+  if (state !== "idle" && state !== "running" && state !== "completed" && state !== "failed") {
+    throw new ApiError(status, "Invalid update progress response");
+  }
+  return {
+    state,
+    ...(typeof payload.phase === "string" ? { phase: payload.phase } : {}),
+    ...(typeof payload.startedAt === "string" ? { startedAt: payload.startedAt } : {}),
+    ...(typeof payload.targetVersion === "string" ? { targetVersion: payload.targetVersion } : {}),
+    ...(typeof payload.fromVersion === "string" ? { fromVersion: payload.fromVersion } : {}),
+    ...(payload.endpointChanged === true ? { endpointChanged: true } : {}),
+    ...(typeof payload.error === "string" ? { error: payload.error } : {}),
+  };
 }
 
 function assertReleaseNotesResponse(value: unknown, status: number): ReleaseNotesResponse {
