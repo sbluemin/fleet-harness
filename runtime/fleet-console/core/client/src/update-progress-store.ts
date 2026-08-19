@@ -35,10 +35,17 @@ const SEEN_KEY = "fleet-console.update.seen";
 const POLL_INTERVAL_MS = 1_500;
 /** 종착 없이 이만큼 지나면 지켜보기를 멈춘다 — 커튼이 영원히 남는 것이 가장 나쁘다. */
 const WATCH_TIMEOUT_MS = 10 * 60 * 1000;
+/**
+ * 위임은 폴링할 대상이 없다 — 워커가 없으니 진행 기록도 없고, 수행자인 셸은 곧 이 창을
+ * 통째로 재시작한다. 그런데 듣는 셸이 없으면 아무 일도 일어나지 않으므로, 그때 커튼이
+ * 영원히 남지 않도록 이만큼만 기다린다.
+ */
+const DELEGATED_TIMEOUT_MS = 60 * 1000;
 
 const listeners = new Set<Listener>();
 let store: UpdateProgressSnapshot = { watching: false, progress: null, outcome: null, delegated: false, targetVersion: null };
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
+let delegatedTimer: ReturnType<typeof setTimeout> | null = null;
 let watchStartedAt: number | null = null;
 
 export function getUpdateProgressSnapshot(): UpdateProgressSnapshot {
@@ -69,7 +76,16 @@ export function beginUpdateWatch(targetVersion: string | null): void {
 
 /** 이 설치 레이아웃은 셸이 갈아 끼운다. 창은 곧 재시작되므로 폴링할 서버도 없다. */
 export function markUpdateDelegated(targetVersion: string | null): void {
+  watchStartedAt = Date.now();
   setStore({ ...store, watching: true, delegated: true, outcome: null, targetVersion });
+  if (delegatedTimer !== null) clearTimeout(delegatedTimer);
+  delegatedTimer = setTimeout(() => {
+    delegatedTimer = null;
+    // 재시작이 오지 않았다. 성공했다고도 실패했다고도 말할 수 없으므로 아무것도 지어내지
+    // 않고 화면만 돌려준다 — 업데이트 표식은 그대로 남아 다시 시도할 수 있다.
+    stopWatching();
+    setStore({ ...store, watching: false, delegated: false });
+  }, DELEGATED_TIMEOUT_MS);
 }
 
 export function acknowledgeUpdateOutcome(): void {
@@ -85,6 +101,10 @@ function stopWatching(): void {
   if (pollTimer !== null) {
     clearTimeout(pollTimer);
     pollTimer = null;
+  }
+  if (delegatedTimer !== null) {
+    clearTimeout(delegatedTimer);
+    delegatedTimer = null;
   }
 }
 
