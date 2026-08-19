@@ -34,6 +34,19 @@ import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
  * as asked.
  */
 export const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
+/**
+ * The Grok CLI proxy, kept as a fallback.
+ *
+ * Whether the direct endpoint accepts a subscription token turns out to depend on the account:
+ * oh-my-pi#5978 reports `402 You have run out of credits or need a Grok subscription` from it on
+ * an account whose official CLI works, and that CLI reaches this proxy instead. An account in
+ * that state would otherwise lose the xAI route entirely, so a 402 or 426 falls back here — 426
+ * because the proxy rejects a caller that does not present the CLI's identity headers.
+ */
+export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/responses";
+export const XAI_CLI_CLIENT_VERSION = "1.0.3";
+/** Statuses that mean "this account cannot use the direct endpoint", not "this request is bad". */
+const XAI_PROXY_FALLBACK_STATUSES: ReadonlySet<number> = new Set([402, 426]);
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
@@ -74,6 +87,40 @@ export interface XaiResponsesAdapterOptions {
   headers?: Readonly<Record<string, string>>;
 }
 
+interface XaiEndpoint {
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
+}
+
+/**
+ * Once an account is known to be proxy-only, every later call starts there.
+ *
+ * A fresh adapter is constructed per request, so the latch cannot live on the instance; without
+ * it such an account would pay a rejected round trip on every single turn. Process-scoped like
+ * the wire-log target above it, and reset the same way in tests.
+ */
+let xaiProxyOnlyAccount = false;
+
+/** Test seam: forget that the direct endpoint was refused. */
+export function resetXaiProxyFallback(): void {
+  xaiProxyOnlyAccount = false;
+}
+
+function directXaiEndpoint(): XaiEndpoint {
+  return { url: XAI_RESPONSES_URL, headers: {} };
+}
+
+function proxyXaiEndpoint(model: string): XaiEndpoint {
+  return {
+    url: XAI_CLI_RESPONSES_URL,
+    headers: {
+      "x-xai-token-auth": "xai-grok-cli",
+      "x-grok-client-version": XAI_CLI_CLIENT_VERSION,
+      "x-grok-model-override": model,
+    },
+  };
+}
+
 export class XaiResponsesAdapter implements AiGatewayAdapter {
   readonly capabilities = {} as const;
   private readonly fetchImpl: FetchLike;
@@ -82,13 +129,11 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly idleTimeoutMs: number;
   private readonly functionCallTimeoutMs: number;
   private readonly semanticStallTimeoutMs: number;
-  private readonly url: string;
   private readonly extraHeaders: Readonly<Record<string, string>>;
 
   constructor(options: XaiResponsesAdapterOptions = {}) {
-    // 엔드포인트는 고정이다. 임의 오버라이드는 provider 어댑터를 다시 범용화하므로
+    // 엔드포인트 후보는 고정이다. 임의 오버라이드는 provider 어댑터를 다시 범용화하므로
     // 옵션으로 노출하지 않는다.
-    this.url = XAI_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
     const fetchTracker = createXaiFetchFailureTracker(options.fetch ?? globalThis.fetch.bind(globalThis));
     this.fetchImpl = fetchTracker.fetch;
@@ -126,8 +171,22 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     let retryAvailable = true;
     let response: AdapterResponse;
 
+    // 계정이 직결을 거부한 이력이 있으면 처음부터 프록시로 간다.
+    let endpoint = xaiProxyOnlyAccount ? proxyXaiEndpoint(payload.model) : directXaiEndpoint();
+
     try {
-      response = await this.fetchResponse(options.apiKey, payload, controller);
+      response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
+      if (!response.ok && endpoint.url === XAI_RESPONSES_URL
+        && XAI_PROXY_FALLBACK_STATUSES.has(response.status)) {
+        wireLog("xai-responses.endpoint.fallback", {
+          status: response.status,
+          from: XAI_RESPONSES_URL,
+          to: XAI_CLI_RESPONSES_URL,
+        });
+        xaiProxyOnlyAccount = true;
+        endpoint = proxyXaiEndpoint(payload.model);
+        response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
+      }
     } catch (error) {
       if (!isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)) {
         unlinkAbort();
@@ -140,7 +199,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       });
       try {
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, controller.signal);
-        response = await this.fetchResponse(options.apiKey, payload, controller);
+        response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
       } catch (retryError) {
         unlinkAbort();
         throw retryError;
@@ -156,7 +215,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       ...response,
       events: retryXaiEvents(response.events, async (signal) => {
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, signal);
-        const retried = await this.fetchResponse(options.apiKey, payload, controller);
+        const retried = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
         if (!retried.ok) {
           throw new UpstreamProtocolError(`xAI retry failed with status ${retried.status}`);
         }
@@ -169,18 +228,19 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     apiKey: string,
     payload: XaiResponsesWireRequest,
     controller: AbortController,
+    endpoint: XaiEndpoint,
   ): Promise<AdapterResponse> {
     // Exact JSON body sent on each attempt, including every tool's parameters and strict flag.
-    wireLog("xai-responses.wire.request", { url: this.url, payload });
-    const response = await this.fetchImpl(this.url, {
+    wireLog("xai-responses.wire.request", { url: endpoint.url, payload });
+    const response = await this.fetchImpl(endpoint.url, {
       method: "POST",
       headers: {
         accept: "text/event-stream",
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
-        // The `x-xai-token-auth` / `x-grok-client-version` / `x-grok-model-override` trio the
-        // Grok CLI proxy required has no meaning here: this endpoint authenticates on the bearer
-        // token alone and takes the model from the payload.
+        // 직결 엔드포인트는 bearer 토큰만 보고 모델은 payload에서 읽는다. CLI 신원 헤더는
+        // 프록시로 폴백할 때만 실린다.
+        ...endpoint.headers,
         ...this.extraHeaders
       },
       body: JSON.stringify(payload),
