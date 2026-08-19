@@ -6403,8 +6403,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   transition: opacity var(--duration-fast) var(--ease-spring);
 }
 
+/* 이름표는 **지금 이 버튼을 겨누고 있는 동안**만 뜬다. 포인터가 겨눔을 놓으면 이름표도 놓아야
+   하는데, 클릭은 버튼에 포커스를 남긴다 — `:focus-within`으로 열면 최대화처럼 눌러도 그 자리에
+   남는 버튼에서 마우스를 치운 뒤에도 풍선이 계속 서 있다(다른 곳을 눌러야 사라진다). 키보드로
+   짚어 온 포커스만 겨눔으로 치는 `:focus-visible`이 그 둘을 가른다. */
 .fleet-caption-slot:hover .fleet-caption-tip,
-.fleet-caption-slot:focus-within .fleet-caption-tip {
+.fleet-caption-slot:has(:focus-visible) .fleet-caption-tip {
   opacity: 1;
   transition-delay: 0.35s;
 }
