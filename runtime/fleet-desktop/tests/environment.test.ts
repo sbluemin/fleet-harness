@@ -19,7 +19,7 @@ describe("desktop environment", () => {
     const worktree = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-dev-"));
     TEMP_DIRS.push(worktree);
     const resourceRoot = path.join(worktree, "runtime", "fleet-console");
-    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false);
+    const environment = createDesktopEnvironment(path.join(worktree, "user-data"), "1.23.0", resourceRoot, false, {});
     const expectedConsoleDir = path.join(worktree, ".fleet", "console");
 
     expect(environment.consoleDir).toBe(expectedConsoleDir);
@@ -27,23 +27,18 @@ describe("desktop environment", () => {
     expect(environment.serviceEnv.FLEET_CONSOLE_DIR).toBe(expectedConsoleDir);
     expect(environment.serviceEnv[DESKTOP_DEVELOPMENT_ENV]).toBe("1");
     expect(fs.existsSync(path.join(expectedConsoleDir, "desktop-owner-id"))).toBe(true);
-    expect(resolveDesktopUserDataDirectory(path.join(worktree, "user-data"), resourceRoot, false)).toBe(path.join(expectedConsoleDir, "desktop"));
+    expect(resolveDesktopUserDataDirectory(path.join(worktree, "user-data"), resourceRoot, false, {})).toBe(path.join(expectedConsoleDir, "desktop"));
   });
 
   it("does not pass a development protocol marker to packaged sidecars", () => {
     const userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-desktop-packaged-"));
     TEMP_DIRS.push(userDataDir);
-    const originalDevelopment = process.env[DESKTOP_DEVELOPMENT_ENV];
-    process.env[DESKTOP_DEVELOPMENT_ENV] = "1";
-    try {
-      const environment = createDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/sidecar/fleet-console", true);
-      expect(environment.serviceEnv[DESKTOP_DEVELOPMENT_ENV]).toBeUndefined();
-      expect(fs.existsSync(path.join(userDataDir, "desktop-owner-id"))).toBe(true);
-      expect(resolveDesktopUserDataDirectory(userDataDir, "/packaged/resources/sidecar/fleet-console", true)).toBe(userDataDir);
-    } finally {
-      if (originalDevelopment === undefined) delete process.env[DESKTOP_DEVELOPMENT_ENV];
-      else process.env[DESKTOP_DEVELOPMENT_ENV] = originalDevelopment;
-    }
+    const environment = createDesktopEnvironment(userDataDir, "1.23.0", "/packaged/resources/sidecar/fleet-console", true, {
+      [DESKTOP_DEVELOPMENT_ENV]: "1",
+    });
+    expect(environment.serviceEnv[DESKTOP_DEVELOPMENT_ENV]).toBeUndefined();
+    expect(fs.existsSync(path.join(userDataDir, "desktop-owner-id"))).toBe(true);
+    expect(resolveDesktopUserDataDirectory(userDataDir, "/packaged/resources/sidecar/fleet-console", true, {})).toBe(userDataDir);
   });
 
   it("routes a development shell into the isolated slots named by the current variables", () => {

@@ -5,6 +5,7 @@ import * as path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAuthService, DEFAULT_AUTH_PATH } from "../../src/auth/index.js";
+import { getFleetDataDir } from "../../src/data-dir/paths.js";
 
 const tempRoots: string[] = [];
 const PRIMARY_PROVIDER_ID = "Test Anthropic Provider";
@@ -17,8 +18,10 @@ describe("auth storage", () => {
     }
   });
 
-  it("defaults to ~/.fleet/auth.json", () => {
-    expect(DEFAULT_AUTH_PATH).toBe(path.join(os.homedir(), ".fleet", "auth.json"));
+  it("places auth.json on the Fleet data root", () => {
+    // DEFAULT_AUTH_PATH is resolved at import time from getFleetDataDir().
+    // Isolated launches inherit FLEET_DATA_DIR, so this is not always ~/.fleet.
+    expect(DEFAULT_AUTH_PATH).toBe(path.join(getFleetDataDir(), "auth.json"));
   });
 
   it("stores and reads provider keys from the configured auth path", async () => {
