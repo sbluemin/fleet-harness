@@ -52,6 +52,13 @@ export const IDLE_CONSOLE_UPDATE_PROGRESS: ConsoleUpdateProgressStatus = { state
  */
 export const CONSOLE_UPDATE_PROGRESS_STALE_MS = 10 * 60 * 1000;
 
+/**
+ * 결과는 겪은 사람에게 한 번 말하면 끝나는 소식이다. 기록은 디스크에 남으므로, 시효가
+ * 없으면 다른 기기·다른 브라우저·시크릿 창이 몇 주 뒤에도 "업데이트되었습니다"를 본다.
+ * 확인 여부는 브라우저마다 다르지만 사실의 신선도는 서버가 안다.
+ */
+export const CONSOLE_UPDATE_OUTCOME_TTL_MS = 6 * 60 * 60 * 1000;
+
 const RUNNING_PHASES = new Set<ConsoleUpdatePhase>(["starting", "preflight-ok", "stopping-console", "installing", "starting-daemon"]);
 const PROGRESS_FILE_MODE = 0o600;
 
@@ -86,8 +93,12 @@ export function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecor
     fromVersion: record.fromVersion,
     ...(record.endpointChanged === true ? { endpointChanged: true } : {}),
   };
-  if (record.phase === "completed") return { state: "completed", ...shared };
-  if (record.phase === "failed") return { state: "failed", ...shared, ...(record.error ? { error: record.error } : {}) };
+  if (record.phase === "completed" || record.phase === "failed") {
+    const finishedAtMs = Date.parse(record.updatedAt);
+    if (Number.isFinite(finishedAtMs) && nowMs - finishedAtMs > CONSOLE_UPDATE_OUTCOME_TTL_MS) return IDLE_CONSOLE_UPDATE_PROGRESS;
+    if (record.phase === "completed") return { state: "completed", ...shared };
+    return { state: "failed", ...shared, ...(record.error ? { error: record.error } : {}) };
+  }
   if (!RUNNING_PHASES.has(record.phase)) return IDLE_CONSOLE_UPDATE_PROGRESS;
   const updatedAtMs = Date.parse(record.updatedAt);
   if (Number.isFinite(updatedAtMs) && nowMs - updatedAtMs > CONSOLE_UPDATE_PROGRESS_STALE_MS) {

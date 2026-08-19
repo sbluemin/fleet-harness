@@ -1083,10 +1083,12 @@ describe("console static and terminal ticket boundary", () => {
         // 워커는 죽은 프로세스가 남긴 기록만 남긴다. 답하는 것은 그다음 세대의 데몬이다.
         dataDir = path.join(fleetDataDir, "console");
         fs.mkdirSync(dataDir, { recursive: true });
+        // 결과에는 시효가 있다 — 방금 끝난 업데이트여야 이 콘솔이 그것을 말한다.
+        const finishedAt = new Date().toISOString();
         fs.writeFileSync(path.join(dataDir, "update-progress.json"), JSON.stringify({
           phase: "completed",
-          startedAt: "2026-08-19T00:00:00.000Z",
-          updatedAt: "2026-08-19T00:01:00.000Z",
+          startedAt: finishedAt,
+          updatedAt: finishedAt,
           fromVersion: "1.0.0",
           targetVersion: "1.2.3",
         }));

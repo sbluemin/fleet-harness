@@ -141,6 +141,8 @@ const MIN_CONSOLE_STATIC_PORT = 1024;
 const MAX_CONSOLE_STATIC_PORT = 65535;
 const SERVER_TIMEOUT_MS = 30 * 60 * 1000;
 const MAX_BODY_BYTES = 1024 * 1024;
+/** 위임 요청의 시효. 수행자인 셸은 곧 이 창을 재시작하므로, 그보다 오래 걸려 있을 이유가 없다. */
+const DESKTOP_UPDATE_REQUEST_TTL_MS = 60_000;
 const UPDATE_APPLY_FORBIDDEN_BODY_KEYS = new Set(["channel", "package", "packageName", "packageVersion", "packages", "targetVersion", "version"]);
 const OPERATION_RENAMED_EVENT_CHANNEL = "operation:renamed";
 export const PAIRING_IDENTITY_PATH = "/api/v1/pairing-identity";
@@ -498,6 +500,11 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
    * 이 콘솔도 함께 내려가므로, 재기동 후까지 살아남아야 할 사실이 아니다.
    */
   let desktopUpdateRequest: DesktopUpdateRequestSnapshot = emptyDesktopUpdateRequest();
+  /**
+   * 걸어 둔 요청은 붙는 구독자마다 다시 들려준다. 그래서 시효가 없으면, 한참 뒤에 붙은
+   * 셸이 사용자가 잊은 요청으로 앱을 재시작한다 — 요청은 눌린 그 순간의 것이다.
+   */
+  let desktopUpdateRequestedAt = 0;
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
   }
@@ -729,7 +736,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   });
   const desktopUpdateRouter = createDesktopUpdateRouter({
-    getUpdateRequest: () => desktopUpdateRequest,
+    getUpdateRequest: () => readDesktopUpdateRequest(),
     isAuthorized: isExactConsoleOrigin,
     writeJson,
     subscribe: (res, snapshot) => {
@@ -2250,7 +2257,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function readDesktopUpdateRequest(): DesktopUpdateRequestSnapshot {
+    if (desktopUpdateRequest.requestId === null) return desktopUpdateRequest;
+    if (Date.now() - desktopUpdateRequestedAt <= DESKTOP_UPDATE_REQUEST_TTL_MS) return desktopUpdateRequest;
+    desktopUpdateRequest = emptyDesktopUpdateRequest();
+    return desktopUpdateRequest;
+  }
+
   function publishDesktopUpdateRequest(snapshot: DesktopUpdateRequestSnapshot): void {
+    desktopUpdateRequestedAt = Date.now();
     desktopUpdateRequest = snapshot;
     if (desktopUpdateSseSubscribers.size === 0) return;
     const data = encodeSseData(DESKTOP_UPDATE_EVENT, snapshot);
@@ -2337,25 +2352,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     },
   };
 
+  /**
+   * 업데이트가 방금 이 콘솔을 갈아 끼웠다면, 열려 있던 화면은 옛 주소를 계속 두드리고 있다.
+   * 그 주소를 되찾는 것이 "같은 자리로 돌아온다"는 약속의 전부다.
+   *
+   * 다만 이것은 **바인드할 포트**일 뿐, 사용자가 요청한 포트가 아니다. 보고되는 portMode와
+   * requestedPort를 건드리면 설정 화면이 "요청한 포트를 쓰지 못했습니다"라고 말하게 되는데,
+   * 사용자는 그런 포트를 요청한 적이 없다. 그리고 사용자가 고정 포트를 지정해 두었다면
+   * 그쪽이 이긴다 — 명시된 설정이 복귀 편의보다 앞선다.
+   */
   function resolveConsolePortListenPlan(): ConsolePortListenPlan {
+    const plan = resolveConfiguredConsolePortListenPlan();
+    if (resumePort === null || plan.portMode !== "dynamic") return plan;
+    return { ...plan, port: resumePort, allowFallback: true };
+  }
+
+  function resolveConfiguredConsolePortListenPlan(): ConsolePortListenPlan {
     if (deps.port !== undefined) {
       return {
         port,
         requestedPort: null,
         portMode: "dynamic",
         allowFallback: false,
-      };
-    }
-    // 업데이트가 방금 이 콘솔을 갈아 끼웠다면, 열려 있던 화면은 옛 주소를 계속 두드리고
-    // 있다. 그 주소를 되찾는 것이 "같은 자리로 돌아온다"는 약속의 전부이므로, 이 한 번의
-    // 기동에 한해 포트를 지정받는다. 되찾지 못해도 기동은 계속한다 — 주소가 바뀐 콘솔이
-    // 뜨지 않는 콘솔보다 낫고, 그 경우 워커가 새 창으로 갈 곳을 알려 준다.
-    if (resumePort !== null) {
-      return {
-        port: resumePort,
-        requestedPort: resumePort,
-        portMode: "static",
-        allowFallback: true,
       };
     }
     if (channel === "local") {

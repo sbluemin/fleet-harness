@@ -14,7 +14,7 @@ function emptyStream(): Response {
 }
 
 function createFetchStub(snapshot: unknown): typeof fetch {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: unknown) => {
     const url = String(input);
     return url.endsWith("/events") ? emptyStream() : snapshotResponse(snapshot);
   }) as unknown as typeof fetch;

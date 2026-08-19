@@ -53,6 +53,9 @@ export function createUpdateController(options: UpdateControllerOptions): Update
   };
   return {
     async applyRequested(version: string) {
+      // 이미 그 버전이면 재시작은 아무것도 바꾸지 않는다. 설명 없는 앱 재시작만 남고,
+      // 사용자는 같은 버전과 같은 표식 앞으로 돌아온다.
+      if (version === options.currentVersion()) return;
       available = version;
       options.onStateChange?.();
       await install();

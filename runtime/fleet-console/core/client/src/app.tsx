@@ -356,7 +356,7 @@ export function App() {
         {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
             칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
             유휴나 휴면으로 추정하지는 않는다. */}
-        {state.operationRuntimeHydration === "degraded" ? (
+        {state.operationRuntimeHydration === "degraded" && !updateProgress.watching ? (
           <div className="console-link-banner" role="status" aria-live="polite">
             <span>{t("chrome.runtime.degraded")}</span>
           </div>

@@ -15,10 +15,14 @@ let connectionGeneration = 0;
 let statusRefreshInFlight: Promise<void> | null = null;
 let statusRefreshPending = false;
 /**
- * 한 번의 단절에 한 번만. 원격 리스너는 조인 시도에 실패 예산을 매기고 거절 횟수를 주인에게
- * 보고하므로, 되살아나지 않는 페어링으로 계속 두드리면 주인의 화면에 거짓 경보가 쌓인다.
+ * 다시 합류하기를 그만두는 조건은 "한 번 해봤다"가 아니라 **"이 콘솔이 이 기기를 잊었다"**이다.
+ *
+ * 원격 리스너는 조인 시도에 실패 예산을 매기고 거절 횟수를 주인에게 보고하므로, 되살아나지
+ * 않는 페어링(401)으로 계속 두드리면 주인의 화면에 거짓 경보가 쌓인다. 반대로 일시적인
+ * 거절(429/503, 아직 덜 뜬 콘솔)에서까지 빗장을 걸면, 화면은 되살아날 수 있는데도 영영
+ * 401 루프에 남는다 — 이 변경이 없애려던 바로 그 실패다.
  */
-let sessionResumeAttempted = false;
+let sessionResumeRefused = false;
 
 export function connectOperationsSse(): void {
   if (reconnectHandle !== null) {
@@ -85,7 +89,7 @@ export function connectOperationsSse(): void {
   source.onopen = () => {
     if (!isCurrentSource()) return;
     reconnectDelayMs = 1_000;
-    sessionResumeAttempted = false;
+    sessionResumeRefused = false;
     setConnectionState("live");
     refreshObserverStatus();
   };
@@ -112,9 +116,12 @@ export function connectOperationsSse(): void {
         // 받으라"는 잘못된 결론만 남는다. 여기서 한 번, 조용히 다시 합류한다.
         .catch(async (error: unknown) => {
           if (!(error instanceof ApiError) || error.status !== 401) return;
-          if (sessionResumeAttempted) return;
-          sessionResumeAttempted = true;
-          await resumeConsoleSession().catch(() => undefined);
+          if (sessionResumeRefused) return;
+          await resumeConsoleSession().catch((joinError: unknown) => {
+            // 401은 페어링이 정말 사라졌다는 답이다 — 더 두드려도 거절 카운터만 올린다.
+            // 그 밖의 실패는 아직 답이 아니므로 다음 재시도에서 한 번 더 묻는다.
+            if (joinError instanceof ApiError && joinError.status === 401) sessionResumeRefused = true;
+          });
         })
         .finally(() => {
           if (retryGeneration === connectionGeneration) connectOperationsSse();

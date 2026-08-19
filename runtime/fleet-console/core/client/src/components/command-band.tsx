@@ -13,6 +13,7 @@ import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
 import { OperationStatusIcon } from "./operation-status-icon.js";
 import { useConsoleState } from "../hooks/use-store.js";
+import { useUpdateProgress } from "../update-progress-store.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../operation-activity.js";
 import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
@@ -70,6 +71,7 @@ const TACTICAL_LAYOUTS: readonly {
 export function CommandBand({ operationsViewVisible: requestedOperationsViewVisible }: CommandBandProps) {
   const t = useT();
   const state = useConsoleState();
+  const updateProgress = useUpdateProgress();
   const sideBar = useSideBarState();
   const railChromeExpanded = useRailChromeExpanded();
   const viewMode = useViewMode();
@@ -529,7 +531,9 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           </button>
           {environmentOpen ? <div ref={environmentPopoverRef}><EnvironmentPopover environment={environment} error={environmentError} loading={environmentLoading} copiedValue={copiedValue} copyFailedValue={copyFailedValue} desktopShell={desktopShell} onCopy={copyEnvironmentValue} /></div> : null}
         </div> : null}
-        {state.connection !== "live" ? (
+        {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 커튼이 그 사실을 말하고 있는
+            동안 이 칩까지 "연결 끊김"이라고 말하면, 한 화면이 두 가지 이야기를 한다. */}
+        {state.connection !== "live" && !updateProgress.watching ? (
           <span className="command-band-link-chip" data-link-state={state.connection}>
             {t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}
           </span>

@@ -140,8 +140,11 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       workerPath,
     });
     writeFile(workerPath, script, { mode: TEMP_FILE_MODE });
-    // 워커가 첫 줄을 쓰기 전에 화면이 새로고침될 수 있다. 그 찰나에 "아무 일도 없다"고
-    // 답하면 커튼이 걷히고 사용자는 업데이트가 취소된 줄 안다 — 수락은 여기서 기록한다.
+    // 기록은 워커가 실제로 떠난 **뒤에** 남긴다. 띄우지도 못한 업데이트를 "진행 중"으로
+    // 적어 두면, 그 사이 새로고침한 화면은 아무도 진행하지 않는 커튼 아래 갇힌다.
+    await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
+    // 그리고 워커가 첫 줄을 쓰기 전의 찰나에도 화면이 새로고침될 수 있다. 그때 "아무 일도
+    // 없다"고 답하면 사용자는 업데이트가 취소된 줄 안다 — 수락은 여기서 기록한다.
     writeConsoleUpdateProgress(request.dataDir, {
       phase: "starting",
       startedAt,
@@ -149,7 +152,6 @@ export function createConsoleUpdateApplyService(deps: CreateConsoleUpdateApplySe
       targetVersion: request.targetVersion,
       fromVersion: request.fromVersion,
     }, { makeDir, writeFile });
-    await spawnDetachedWorker(spawnWorker, execPath, [workerPath], childEnv);
     return { accepted: true };
   }
 
