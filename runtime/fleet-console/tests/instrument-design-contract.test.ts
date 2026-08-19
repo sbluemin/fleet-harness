@@ -1291,6 +1291,10 @@ describe("Instrument core design contract", () => {
 
     expect(operations).toContain('event.code === "KeyS" && !event.shiftKey');
     expect(operations).toContain("toggleSideBarStatusAxis();");
+    // 축 스위치는 사이드바에 하나만 선다 — Theater 행에 되돌리면 배치가 스코프를 속인다.
+    expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
+    expect(sidebar).toContain('className="operations-side-bar-axis"');
+    expect(sidebar).toContain('data-sidebar-axis={statusAxis ? "status" : "group"}');
     expect(sidebar).toContain('title={t("sidebar.theater.sortByStatusTitle")}');
     expect(sidebar).toContain("groupTheaterStatusEntries(");
     expect(sidebar).toContain("minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id)");
@@ -1375,6 +1379,8 @@ describe("Instrument core design contract", () => {
     expect(components).toMatch(/\.canvas-operation\.is-unseen \{[^}]*--caption-rail:\s*var\(--positive\)/);
     expect(components).not.toContain(".canvas-operation.is-unseen.is-active {");
     expect(components).toContain(".side-bar-status-axis-live-tick {");
+    // 대기 틱의 호스트는 Theater 정체성 표식이다 — 전역 스위치 위에서는 어느 Theater인지가 지워진다.
+    expect(sidebar).toMatch(/side-bar-theater-anchor[\s\S]{0,400}side-bar-status-axis-live-tick/);
   });
 
   it("pins the selectable Right Rail panel behavior contract", () => {

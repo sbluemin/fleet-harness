@@ -55,6 +55,21 @@ afterEach(() => {
 });
 
 describe("OperationsSideBar STATUS axis", () => {
+  it("stands one axis strip regardless of Theater count, and none when there is no Theater to organise", () => {
+    const second: TheaterInfo = { ...THEATER, id: "theater-b", label: "Second" };
+    setConsoleState({ operationRuntime: {} });
+
+    renderSideBar([], [], vi.fn(), THEATER.id, [THEATER, second]);
+    expect(container?.querySelectorAll(".side-bar-theater-header").length).toBe(2);
+    // 두 Theater가 서도 축 스위치는 하나다 — 여기가 사용자가 "공통 버튼인데 Theater마다 있다"고
+    // 지적한 지점이고, 카디널리티가 곧 계약이다.
+    expect(container?.querySelectorAll(".operations-side-bar-axis").length).toBe(1);
+
+    rerenderSideBar([], [], THEATER.id, []);
+    // 정리할 목록이 없으면 정리 축도 서지 않는다.
+    expect(container?.querySelectorAll(".operations-side-bar-axis").length).toBe(0);
+  });
+
   it("toggles from GROUP to ordered status sections, hides the live tick, and renders group identity pills without row beacons", () => {
     const operations = [
       makeOperation("idle", null),
@@ -72,16 +87,28 @@ describe("OperationsSideBar STATUS axis", () => {
     });
     renderSideBar(operations, [GROUP_A]);
 
-    const toggle = required<HTMLButtonElement>(".side-bar-status-axis-toggle");
-    expect(toggle.getAttribute("aria-pressed")).toBe("false");
-    expect(toggle.title).toBe("Sort by status (Alt+S)");
-    expect(toggle.querySelector(".side-bar-status-axis-live-tick")).not.toBeNull();
+    // 축 스위치는 Theater 수와 무관하게 하나만 선다. Theater 행에 N개를 두면 배치가 국소라고
+    // 말하면서 전역 불리언 하나를 뒤집어, 한 번의 클릭이 모든 행을 함께 눌린 상태로 만든다.
+    expect(container?.querySelectorAll(".side-bar-status-axis-toggle").length).toBe(0);
+    expect(container?.querySelectorAll(".operations-side-bar-axis").length).toBe(1);
+    const groupSeg = required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="group"]');
+    const statusSeg = required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="status"]');
+    expect(groupSeg.textContent).toBe("Groups");
+    expect(statusSeg.textContent).toBe("Status");
+    expect(groupSeg.getAttribute("aria-pressed")).toBe("true");
+    expect(statusSeg.getAttribute("aria-pressed")).toBe("false");
+    expect(statusSeg.title).toBe("Sort all Theaters by status (Alt+S)");
+    expect(required<HTMLElement>(".operations-side-bar").dataset.sidebarAxis).toBe("group");
+    // 대기 틱은 축 스위치가 아니라 그 Theater의 정체성 표식이 진다.
+    expect(required<HTMLElement>(".side-bar-theater-anchor .side-bar-status-axis-live-tick")).not.toBeNull();
     expect(container?.querySelector(".side-bar-group-header")).not.toBeNull();
 
-    act(() => toggle.click());
+    act(() => statusSeg.click());
 
-    expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(toggle.querySelector(".side-bar-status-axis-live-tick")).toBeNull();
+    expect(groupSeg.getAttribute("aria-pressed")).toBe("false");
+    expect(statusSeg.getAttribute("aria-pressed")).toBe("true");
+    expect(required<HTMLElement>(".operations-side-bar").dataset.sidebarAxis).toBe("status");
+    expect(container?.querySelector(".side-bar-status-axis-live-tick")).toBeNull();
     expect(Array.from(container?.querySelectorAll(".side-bar-status-header__label") ?? []).map((node) => node.textContent)).toEqual([
       "Awaiting",
       "Running",
@@ -317,7 +344,7 @@ describe("OperationsSideBar STATUS axis", () => {
 
     expect(getSnapshot().operationOrder).toEqual(["first", "second"]);
 
-    act(() => required<HTMLButtonElement>(".side-bar-status-axis-toggle").click());
+    act(() => required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="group"]').click());
     const groupFirst = required<HTMLElement>('[data-side-bar-chip-id="first"]');
     act(() => groupFirst.dispatchEvent(new KeyboardEvent("keydown", {
       key: "ArrowDown",
