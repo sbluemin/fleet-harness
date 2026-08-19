@@ -29,11 +29,11 @@ import { OperationsSideBarGroupHeader } from "./operations-side-bar-group-header
 import {
   consumeStatusLandings,
   setSideBarCollapsed,
+  setSideBarStatusAxis,
   setTheaterCollapsed,
   getStatusTransitionTick,
   getSideBarStatusSectionCollapsed,
   trackOperationActivityTransitions,
-  toggleSideBarStatusAxis,
   toggleSideBarStatusSectionCollapsed,
   useCollapsedTheaters,
   useSideBarState,
@@ -143,7 +143,6 @@ interface TheaterSectionHeaderProps {
   readonly theater: TheaterInfo;
   readonly active: boolean;
   readonly collapsed: boolean;
-  readonly statusAxis: boolean;
   readonly statusActionsOpen: boolean;
   readonly showStatusLiveTick: boolean;
   readonly dragging: boolean;
@@ -151,7 +150,6 @@ interface TheaterSectionHeaderProps {
   readonly dragOffsetY: number;
   readonly onSelectTheater: (theaterId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
-  readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
@@ -177,7 +175,6 @@ interface TheaterInactiveSectionProps {
   readonly onFocus: (operationId: string) => void;
   readonly onResume: (operationId: string) => void;
   readonly onToggleCollapsed: (theaterId: string) => void;
-  readonly onToggleStatusAxis: () => void;
   readonly onOpenActions: (anchor: DOMRect, returnFocus?: HTMLButtonElement | null) => void;
   readonly onOpenLaunch: (event: MouseEvent<HTMLButtonElement>, theaterId: string) => void;
   readonly onContextMenu: (anchor: DOMRect, returnFocus?: HTMLElement | null) => void;
@@ -907,6 +904,7 @@ export function OperationsSideBar({
       className={`operations-side-bar ${collapsed ? "is-closed" : "is-expanded"}`}
       ref={rootRef}
       data-sidebar-state={collapsed ? "closed" : "expanded"}
+      data-sidebar-axis={statusAxis ? "status" : "group"}
       data-resizing={resizing ? "true" : undefined}
       data-canvas-blocker
       style={{ "--side-bar-width": `${width}px` } as CSSProperties}
@@ -914,6 +912,35 @@ export function OperationsSideBar({
       onContextMenu={openNewMenuAtCursor}
     >
       {!collapsed && theaterError ? <p className="side-bar-theater-error">{theaterError}</p> : null}
+
+      {/* 축은 목록 전체를 다시 쓰는 하나짜리 세션 스위치다 — Theater 행에 두면 배치가 국소라고
+          말하면서 효과는 전역이라 읽는 사람이 스코프를 오해한다. 목록 위 고정 스트립에
+          한 번만 서고, 눌림이 아니라 낱말로 현재 축을 말한다. Theater가 없으면 정리할
+          목록도 없으므로 스트립도 서지 않는다. */}
+      {theaters.length > 0 ? (
+        <div className="operations-side-bar-axis" role="group" aria-label={t("sidebar.axis.aria")}>
+          <button
+            type="button"
+            className="operations-side-bar-axis-seg"
+            data-axis="group"
+            aria-pressed={!statusAxis}
+            title={t("sidebar.axis.groupTitle")}
+            onClick={() => setSideBarStatusAxis(false)}
+          >
+            {t("sidebar.axis.group")}
+          </button>
+          <button
+            type="button"
+            className="operations-side-bar-axis-seg"
+            data-axis="status"
+            aria-pressed={statusAxis}
+            title={t("sidebar.theater.sortByStatusTitle")}
+            onClick={() => setSideBarStatusAxis(true)}
+          >
+            {t("sidebar.axis.status")}
+          </button>
+        </div>
+      ) : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>
         {theaters.map((theater, theaterIndex) => {
@@ -966,7 +993,6 @@ export function OperationsSideBar({
                 onFocus={onFocus}
                 onResume={onResume}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
-                onToggleStatusAxis={toggleSideBarStatusAxis}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
@@ -994,7 +1020,6 @@ export function OperationsSideBar({
                 theater={theater}
                 active
                 collapsed={theaterCollapsed}
-                statusAxis={statusAxis}
                 statusActionsOpen={statusActionsOpen}
                 showStatusLiveTick={showStatusLiveTick}
                 dragging={isTheaterDragging}
@@ -1002,7 +1027,6 @@ export function OperationsSideBar({
                 dragOffsetY={theaterDragOffsetY}
                 onSelectTheater={onSelectTheater}
                 onToggleCollapsed={toggleTheaterSectionCollapsed}
-                onToggleStatusAxis={toggleSideBarStatusAxis}
                 onOpenActions={(anchor, returnFocus) => {
                   setNewMenu(null);
                   setActiveContextMenu({ kind: "theater", theaterId: theater.id, anchor, returnFocus });
@@ -1367,7 +1391,6 @@ function TheaterSectionHeader({
   theater,
   active,
   collapsed,
-  statusAxis,
   statusActionsOpen,
   showStatusLiveTick,
   dragging,
@@ -1375,7 +1398,6 @@ function TheaterSectionHeader({
   dragOffsetY,
   onSelectTheater,
   onToggleCollapsed,
-  onToggleStatusAxis,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
@@ -1454,26 +1476,20 @@ function TheaterSectionHeader({
         aria-expanded={!collapsed}
         title={active ? (collapsed ? t("sidebar.theater.expand", { theater: theater.label }) : t("sidebar.theater.collapse", { theater: theater.label })) : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
-        <span className="side-bar-theater-anchor" aria-hidden="true">{theaterInitials(theater.label)}</span>
+        <span className="side-bar-theater-anchor" aria-hidden="true">
+          {theaterInitials(theater.label)}
+          {/* "여기 대기 중"은 Theater 하나의 사실이므로 정체성 표식이 진다. 전역 축 스위치에
+              얹으면 어느 Theater인지가 지워진다. */}
+          {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
+        </span>
         <span className="side-bar-theater-name">{theater.label}</span>
         <ChevronIcon collapsed={collapsed} />
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
-        <button
-          type="button"
-          className="side-bar-status-axis-toggle"
-          aria-label={t("sidebar.theater.sortByStatus")}
-          aria-pressed={statusAxis}
-          title={t("sidebar.theater.sortByStatusTitle")}
-          onClick={(event) => {
-            event.stopPropagation();
-            onToggleStatusAxis();
-          }}
-        >
-          <StatusListIcon />
-          {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
-        </button>
-        <span className="side-bar-theater-split-control" role="group" aria-label={t("sidebar.theater.operationControlsAria", { theater: theater.label })}>
+        {/* 축 토글이 빠지면서 이 묶음과 바깥 행 컨트롤이 같은 범위가 됐다. 겹친 두 group을
+            그대로 두면 보조기술이 분할 버튼 하나를 두 겹으로 읽으므로, 바깥 하나만 남긴다
+            (플러스는 Operation, 케밥은 Theater 동작이라 바깥 라벨이 둘을 함께 덮는다). */}
+        <span className="side-bar-theater-split-control">
           <button
             type="button"
             className="side-bar-theater-row-btn side-bar-theater-launch-btn side-bar-theater-split-plus"
@@ -1522,7 +1538,6 @@ function TheaterInactiveSection({
   onFocus,
   onResume,
   onToggleCollapsed,
-  onToggleStatusAxis,
   onOpenActions,
   onOpenLaunch,
   onContextMenu,
@@ -1589,7 +1604,6 @@ function TheaterInactiveSection({
         theater={theater}
         active={false}
         collapsed={collapsed}
-        statusAxis={statusAxis}
         statusActionsOpen={statusActionsOpen}
         showStatusLiveTick={showStatusLiveTick}
         dragging={dragging}
@@ -1597,7 +1611,6 @@ function TheaterInactiveSection({
         dragOffsetY={dragOffsetY}
         onSelectTheater={onSelectTheater}
         onToggleCollapsed={onToggleCollapsed}
-        onToggleStatusAxis={onToggleStatusAxis}
         onOpenActions={onOpenActions}
         onOpenLaunch={onOpenLaunch}
         onContextMenu={onContextMenu}
@@ -1801,19 +1814,6 @@ function ChevronIcon({ collapsed }: { readonly collapsed: boolean }) {
   return (
     <svg className={`side-bar-theater-chevron${collapsed ? " is-collapsed" : ""}`} viewBox="0 0 16 16" aria-hidden="true">
       <path d="M3.8 6 8 10.2 12.2 6" fill="none" stroke="currentColor" strokeWidth="1.45" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function StatusListIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="4" cy="4" r="1.5" fill="currentColor" />
-      <path d="M8 4h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="4" cy="8" r="1.5" fill="currentColor" />
-      <path d="M8 8h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-      <circle cx="4" cy="12" r="1.5" fill="currentColor" />
-      <path d="M8 12h5.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
     </svg>
   );
 }

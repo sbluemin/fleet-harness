@@ -4786,6 +4786,61 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 
+/* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
+   .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
+   새 어휘가 아니다. 눌림 채움은 brass(위치 채널)를 oklab에서 섞는다. */
+.operations-side-bar-axis {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  margin: var(--space-1) var(--space-1) 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+}
+
+.operations-side-bar-axis-seg {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  /* 커맨드 밴드 .command-band-mode-seg와 같은 치수·서체다 — 좁은 열에 맞춘 변종이 아니라
+     같은 세그먼트여야 두 표면의 뷰 스위치가 한 어휘로 읽힌다. 폭만 열을 채우도록 늘린다. */
+  height: 24px;
+  padding: 0 var(--space-2);
+  /* 이웃 행 버튼과 같은 보더 링 hover 문법 — 채움형 사각 hover 금지. */
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  white-space: nowrap;
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
+}
+
+.operations-side-bar-axis-seg:hover {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
+}
+
+.operations-side-bar-axis-seg[aria-pressed="true"] {
+  background: color-mix(in oklab, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
+}
+
+.operations-side-bar-axis-seg:focus-visible {
+  outline: 2px solid var(--aurora);
+  outline-offset: 1px;
+}
+
 .operations-side-bar-chips {
   flex: 1;
   list-style: none;
@@ -4890,6 +4945,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-anchor {
+  position: relative;
   display: grid;
   place-items: center;
   flex: none;
@@ -4990,47 +5046,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   margin-left: 2px;
 }
 
-.side-bar-status-axis-toggle {
-  position: relative;
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  padding: 0;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--text-tertiary);
-  cursor: pointer;
-}
-
-.side-bar-status-axis-toggle svg {
-  display: block;
-  width: 14px;
-  height: 14px;
-}
-
-.side-bar-status-axis-toggle:hover {
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
-}
-
-.side-bar-status-axis-toggle[aria-pressed="true"] {
-  border-color: var(--hairline-strong);
-  background: var(--ink-veil);
-  color: var(--brass-ink);
-}
-
-.side-bar-status-axis-toggle:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 1px;
-}
-
+/* 대기 틱은 Theater 정체성 표식 위에 선다 — 어느 Theater가 기다리는지가 이 신호의 내용이고,
+   전역 축 스위치 위에서는 그 사실이 "어딘가"로 뭉개진다. */
 .side-bar-status-axis-live-tick {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: -3px;
+  right: -3px;
   width: 6px;
   height: 6px;
   border-radius: var(--radius-pill);
@@ -5050,7 +5071,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   flex: none;
   height: 22px;
   padding: 0;
-  /* 이웃 status-axis 토글과 동일한 보더 링 hover 문법 — 채움형 사각 hover 금지. */
+  /* 축 스트립 세그먼트와 동일한 보더 링 hover 문법 — 채움형 사각 hover 금지. */
   border: 1px solid transparent;
   border-radius: 6px;
   background: transparent;
@@ -5616,6 +5637,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
 @media (prefers-reduced-motion: reduce) {
   .side-bar-group-header,
   .side-bar-theater-header {
+    transition: none;
+  }
+
+  .operations-side-bar-axis-seg {
     transition: none;
   }
 
