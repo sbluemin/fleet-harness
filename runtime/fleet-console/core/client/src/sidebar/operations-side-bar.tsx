@@ -924,6 +924,7 @@ export function OperationsSideBar({
             className="operations-side-bar-axis-seg"
             data-axis="group"
             aria-pressed={!statusAxis}
+            title={t("sidebar.axis.groupTitle")}
             onClick={() => setSideBarStatusAxis(false)}
           >
             {t("sidebar.axis.group")}
@@ -1485,7 +1486,10 @@ function TheaterSectionHeader({
         <ChevronIcon collapsed={collapsed} />
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
-        <span className="side-bar-theater-split-control" role="group" aria-label={t("sidebar.theater.operationControlsAria", { theater: theater.label })}>
+        {/* 축 토글이 빠지면서 이 묶음과 바깥 행 컨트롤이 같은 범위가 됐다. 겹친 두 group을
+            그대로 두면 보조기술이 분할 버튼 하나를 두 겹으로 읽으므로, 바깥 하나만 남긴다
+            (플러스는 Operation, 케밥은 Theater 동작이라 바깥 라벨이 둘을 함께 덮는다). */}
+        <span className="side-bar-theater-split-control">
           <button
             type="button"
             className="side-bar-theater-row-btn side-bar-theater-launch-btn side-bar-theater-split-plus"

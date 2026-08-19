@@ -5640,6 +5640,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
     transition: none;
   }
 
+  .operations-side-bar-axis-seg {
+    transition: none;
+  }
+
   .side-bar-theater-chevron {
     transition: none;
   }
