@@ -1,6 +1,5 @@
 import type { GatewayEffortExposure, GatewayModel } from "@dotobokuri/core-ai-gateway";
 
-import type { AdmiralDoctrine } from "../protocols/doctrine.js";
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 import type { LaunchCommandLineLimit } from "./prompt.js";
 
@@ -77,9 +76,7 @@ export interface AgentCliInjectionContext {
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
-  readonly systemPromptMode: "append" | "replace" | "off";
   readonly resumeSessionId?: string;
-  readonly systemPromptFile?: string;
 }
 
 export interface AgentCliInjectionCapabilityEnabled {
@@ -101,7 +98,6 @@ export interface AgentCliPluginMarketplaceLock {
 export interface CreateAgentCliPluginOptions {
   readonly captureSessionHookExec?: FleetHookExec;
   readonly cliId: string;
-  readonly doctrine?: AdmiralDoctrine;
   readonly cwd: string;
   readonly dataDir?: string;
   // 턴 시작(UserPromptSubmit)·턴 종료(Stop) 신호를 호스트로 알리는 hook. host가 빌드해 주입한다.

@@ -2,9 +2,9 @@
  * ai-gateway/gateway-models-tool — live roster of the gateway models a host may
  * assign to workflow stages.
  *
- * The tool reports facts and stops there. When to pin a model at all, and what
- * counts as a reason, is doctrine and lives in the Standing Orders and the
- * `workflow` skill; stating it twice would let the two drift apart.
+ * The tool reports facts and stops there. Whether a run may leave the host unpinned
+ * is enforced by the gateway model guard hook, not stated here — a rule the hook
+ * blocks on and this description repeats would drift apart the moment either moves.
  */
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
@@ -39,34 +39,20 @@ const GATEWAY_MODELS_DOCTRINE = {
   id: GATEWAY_MODELS_TOOL_ID,
   tag: GATEWAY_MODELS_TOOL_ID,
   title: "gateway_models Tool Guidelines",
+  // MCP로 실제 전달되는 필드는 description 하나다(core-agent specToMcpTool). whenToUse·
+  // usageGuidelines에 적은 문장은 모델에 도달하지 않으므로, 틀리면 조용히 실패하는 두 규칙은
+  // 여기에 둔다. 나머지 판정 규칙은 응답 본문을 보면 알 수 있어 싣지 않는다 — 길어질수록
+  // 읽히지 않고, 읽히지 않으면 없는 것과 같다.
   description:
     `Report the gateway models currently available to this session, each model's routing constraints, capability class, and benchmark evidence, and the current provider allowances and the user's provider spend priority.`
-    + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`,
+    + ` The roster is the models the user exposed in the Console minus the ones reserved for the host session, and it is editable while this session runs, so it is resolved at call time rather than remembered.`
+    + ` Two spellings, never interchangeable: agentTypes names an identity for the Agent tool's subagent_type, while modelId is the model as a value for a workflow stage's opts.model — each is refused where the other belongs.`
+    + ` Names are registered once at session start while this roster is re-read live, so a model or reasoning rung exposed mid-session appears here under a name that will not resolve until a new session.`,
   promptSnippet:
     `gateway_models — Live roster of assignable gateway models: constraints, capability class, benchmark evidence, provider allowances, and the user's provider priority.`,
-  whenToUse: [
-    `Call gateway_models before every run that leaves the host — a staged workflow or a single Agent — not only when a run pins a model or a reasoning effort.`,
-    `Call it again before a later dispatch in the same session; the roster is re-read from Settings on every call, and allowances move while work is in flight.`,
-  ],
-  whenNotToUse: [
-    `Do not carry an earlier read forward as if it were still current. The revision tracks roster and default changes only, never allowance movement, so equal revisions do not mean equal quotas.`,
-    `Do not treat the response as a recommendation to act on unread. It reports facts; the choice and its justification stay with you.`,
-  ],
-  // 이 목록은 필드 사전이 아니라 판정 규칙이다. 응답을 보면 알 수 있는 것은 빼고,
-  // 틀리면 조용히 실패하는 것만 남긴다 — 길어질수록 읽히지 않고, 읽히지 않으면 없는 것과 같다.
-  usageGuidelines: [
-    `Two spellings, never interchangeable. agentTypes names an identity once per reasoning rung, so a name already carries the level and nothing further pins effort; modelId is the model as a value. Prefer a name: a wrong one fails loudly, while modelId reaches whatever the catalog holds, including a model the user turned off, in silence.`,
-    `Names are registered once at session start; this roster is re-read live. A model — or a level — exposed mid-session appears here under a name that will not resolve until a new session. That, not a stale roster, is what an unknown-name failure means.`,
-    `effortLadder is what this session offers, not what the model can do. A level outside the model's own ladder is clamped down with no signal and refused when nothing is below it, and some models have no effort control at all.`,
-    `A model's window is in the provider entry that serves it, and a model in no entry is one the user turned off or reserved for the host session. Every entry reports its allowance, the parent subscription included; what differs is what you can select.`,
-    `claude reports a window but serves no model by design, so a session on a built-in Claude model spends an allowance you can read and never select; a session launched on a gateway default instead spends the entry that serves that model, which further runs can pile back onto.`,
-    `Read pressure before doing arithmetic of your own; it is the verdict on one window, combining headroom with burn pace against that window's own clock, and it never says which model to choose. Compare usedPercent only within one cadence — a shared window id does not mean a shared length.`,
-    `Where a provider splits into pools, quotaScope picks the window that applies and the isAggregate one stays out of headroom math. recoveryHalfLifeMs prices the drain: weeks of lockout for a monthly window, hours for a session one.`,
-    `Three fields, three questions, and none implies another. homolineage marks a Claude-family model, derived from its id alone and silent about what this session runs on; the entry it sits under marks whose allowance it spends; capabilityClass states the provider's own lineup positioning — the quality prior where no benchmark figures exist, which no allowance figure implies.`,
-    `Quality reads benchmark first — third-party figures measured about the vendor model, with scores inside routingTieBandPoints forming one band and a caveat changing what its figures are evidence of — and capabilityClass where unmeasured: judgment seats keep to the top reachable band, and neither quality nor allowance ever falls back to this session's own model. The catalog carries one benchmark source deliberately; a model it has not measured carries no figures and is judged by its capability class alone.`,
-    `providerPriority is the user's standing spend order: listed providers spend first everywhere allowance decides, the pressure forecast included — leave one only on observed failure, and never lift an identity across a quality band for it.`,
-    `Absence is never safety. A missing derived field means the reading could not support it, and status "unsupported" means the allowance could not be read at all.`,
-  ],
+  whenToUse: [],
+  whenNotToUse: [],
+  usageGuidelines: [],
 };
 
 export function buildGatewayModelsToolSpec(deps: GatewayModelsToolDeps): AgentToolSpec {

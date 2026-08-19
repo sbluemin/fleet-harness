@@ -3,7 +3,6 @@ import path from "node:path";
 
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
-import { resolveDoctrineFromCliId } from "../../protocols/doctrine.js";
 import {
   ASSET_PLUGIN_DIRECTORY_NAMES,
   assetBundle,
@@ -82,10 +81,9 @@ function resolveRenderablePluginBundles(
   options: CreateAgentCliPluginOptions,
 ): readonly RenderablePluginBundle[] {
   const homeMarketplace = homeMarketplaceTarget(fleetRoot);
-  const doctrine = options.doctrine ?? resolveDoctrineFromCliId(options.cliId);
   return PLUGIN_BUNDLES.map((bundle) => ({
     bundle: bundle.source === "asset"
-      ? { ...bundle, directoryName: resolveAssetPluginDirectoryName(doctrine) }
+      ? { ...bundle, directoryName: resolveAssetPluginDirectoryName() }
       : bundle,
     target: homeMarketplace,
   }));
@@ -128,7 +126,9 @@ function renderPluginRoot(
     switch (bundle.source) {
       case "asset":
         ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
-        ensurePrivateDir(path.join(stagedPluginRoot, "skills"), stagedPluginRoot);
+        // skills 디렉터리는 만들지 않는다. 이 세션은 스킬 자산을 싣지 않으며, 빈 디렉터리를
+        // 남기면 옛 설치본의 스킬이 지워졌는지 아닌지가 파일 시스템만 보고는 갈리지 않는다.
+        // MARKETPLACE_PRUNE_ENTRIES의 "skills"가 기존 렌더 잔재를 걷어내는 쪽을 맡는다.
         renderAssetPluginRoot(stagedPluginRoot, bundle, options);
         break;
     }

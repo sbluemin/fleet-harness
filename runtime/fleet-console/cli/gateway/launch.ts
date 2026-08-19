@@ -2,7 +2,6 @@ import { spawn } from "node:child_process";
 
 import { resolveAiGatewaySelection } from "@dotobokuri/core-ai-gateway";
 import {
-  buildGatewaySystemPrompt,
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
   resolveAgentCliProfile,
@@ -34,7 +33,6 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     profile = { ...profile, args: [...profile.args, ...options.passthroughArgs] };
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
     const injected = await injectAgentCliProfile(profile, {
-      buildSystemPrompt: () => buildGatewaySystemPrompt(),
       dataDir: options.dataDir,
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.

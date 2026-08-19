@@ -296,28 +296,6 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await registry.disposeAll();
   });
 
-  // doctrine 주입은 모델에게 물어서 확인할 수 없다 — 같은 지시를 `--append-system-prompt`로
-  // 받는 터미널 세션조차 "그런 문자열은 없다"고 답한다(2026-08-16 실측, cursor-auto). 그래서
-  // 전달 자체를 여기서 고정한다.
-  it("passes the Admiral doctrine through to the session", async () => {
-    const home = tempDir("chat-home-");
-    const { factory, openSession } = createFakeSdkFactory([
-      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
-    ]);
-    const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-doctrine", () => ({
-      ...freshSeedFor(home),
-      systemPrompt: { mode: "append", text: "## Mission Anchor Standing Order" },
-    }));
-    session.send("go");
-    await drainTurn(registry, "op-doctrine");
-
-    expect(openSession).toHaveBeenCalledWith(expect.objectContaining({
-      systemPrompt: { mode: "append", text: "## Mission Anchor Standing Order" },
-    }));
-    await registry.disposeAll();
-  });
-
   // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면
   // 자식의 훅이 남의 세션 축에 턴을 보고한다.
   it("keeps the inherited terminal session id out of the sdk child", async () => {

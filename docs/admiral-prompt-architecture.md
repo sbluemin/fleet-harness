@@ -3,28 +3,29 @@ maintainer: admiral-only
 edit_policy: |
   DO NOT MODIFY THROUGH A DELEGATED RUN.
   This document is the Admiral persona's self-model — its operational reference
-  for how the system prompt and live Fleet state flow through Fleet Console's
+  for how delegation policy and live Fleet state flow through Fleet Console's
   terminal launcher, fleet-admiral, and core-infra. Updates must originate from the Admiral
-  directly, in response to verified code changes in prompt assembly or runtime
+  directly, in response to verified code changes in that policy or in runtime
   lifecycle machinery.
 ---
 
-# Admiral Prompt & Runtime Architecture
+# Admiral Policy & Runtime Architecture
 
 > This document is owned by the Admiral persona only. Updates must come only
-> from the Admiral, in response to verified changes in prompt assembly, runtime
-> lifecycle machinery, or Admiral prompt policy.
+> from the Admiral, in response to verified changes in delegation policy, runtime
+> lifecycle machinery, or the hook that enforces that policy.
 
 ---
 
 ## 1. Purpose
 
-This document is the operational reference for the Admiral's prompt assembly and
-runtime lifecycle model. The current architecture has no per-turn runtime-context
-tag prefix. The Admiral system prompt is assembled inside each host — Fleet
-Console's terminal plugin for gateway launches, and the Console-owned `fleet`
-thin launcher for its gateway-doctrine launch — and live state is consumed
-through public leaf package APIs and package-local policy modules.
+This document is the operational reference for the Admiral's delegation-policy
+surface and runtime lifecycle model. **Fleet no longer assembles a system prompt.**
+There is no per-turn runtime-context tag prefix, no `<fleet>` block, and no Fleet
+skill asset; a gateway session runs on Claude Code's own prompt plus the project's
+own instruction files. What Fleet still owns is the delegation policy, and it is
+enforced as code — see §2. Live state is consumed through public leaf package APIs
+and package-local policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
 guide. Post-verification documentation and Fleet Wiki mutation are performed
@@ -33,30 +34,58 @@ delegated.
 
 ---
 
-## 2. System Prompt Shape
+## 2. Delegation Policy Surface
 
-`createSystemPromptBuilder().build()` in
-`packages/fleet-admiral/src/prompts/index.ts` assembles the Admiral prompt and
-delegates the whole body to `prompts/gateway.ts`. Terminal's `off` mode skips
-this Fleet prompt construction while keeping the gateway runtime composition.
+No system prompt is written and no prompt flag is passed. `--append-system-prompt-file`
+and `--system-prompt-file` are absent from every launch path, and the terminal prompt
+mode setting that once chose between them is gone from the settings store, the routes,
+and the UI.
 
-**Gateway doctrine** static prompt:
+The policy that used to live in the Standing Orders now lives in one embedded hook,
+`packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`. It is stateless — every judgment
+is made from one stdin payload, so a hook timeout cannot silently open the gate through a
+missing state file. One script serves three roles, selected by its first argument:
 
-- `<fleet section="preamble">` then `<fleet section="role">`
-- `<fleet section="standing-orders" type="<id>">` — six blocks, ids
-  `command-integrity`, `mission-anchor`, `context-confidence`,
-  `orchestration-policy`, `deep-dive`, `result-integrity`
-- **No** `protocol-gate`, `roster`, `persona`, or `tone` block. There is no
-  metaphor axis on this path.
+| Subcommand | Event | Matcher | Effect |
+|---|---|---|---|
+| `remind` | UserPromptSubmit | — | Injects the pin contract every turn. This is the only path by which the contract reaches the model. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation before it runs and states how to pin it. |
+| `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 
----
+`gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
+`claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
+context by design, so moving it to another model removes the point of that surface. For
+`Workflow` it blocks `agentType` in a script, a malformed `opts.model`, and any
+`agent()` stage that pins no model at all. It does not rewrite the script: assigning one
+model to every stage would erase the model spread that is the whole reason to use that
+surface, so the block carries the instruction and the host does the assignment.
+
+Two properties of the harness make this shape necessary, both measured on
+Claude Code 2.1.235:
+
+- The `Agent` tool's `model` parameter is a closed zod enum (`sonnet|opus|haiku|fable`),
+  enforced client-side. A gateway model id is rejected before the tool runs, and a
+  `PreToolUse` hook cannot smuggle one in either — `updatedInput` is re-validated against
+  the same enum. Only an agent definition's `model` frontmatter reaches a gateway model
+  on this surface, which is why the roster of identities still exists.
+- The agent registry is fixed at session start. A definition added mid-session is not
+  found, and an edit to an existing definition's `model` does not take effect. A hook
+  therefore cannot repoint one shared identity at different models; it can only choose
+  among identities already registered.
+
+Identity descriptions are one label line (`xai/grok-4.6 @low`). Everything a choice needs
+— capability class, benchmark figures, effort ladder, provider allowance, the
+`agentTypes` name map — is reported by `gateway_models` at call time, so repeating it
+once per identity would put the same table in the session window twenty times over.
 
 ## 3. Live State Access
 
 Runtime state is read through direct owners:
 
-- Standing Order policy: `packages/fleet-admiral/src/protocols/**`. Bodies live in `standing-orders/gateway.ts`; prompt assembly lives in `src/prompts/gateway.ts`.
-- Built-in skill assets: base source at `packages/fleet-admiral/assets/skills/wiki-operations/SKILL.md`, plus gateway assets under `packages/fleet-admiral/assets/skills/gateway/<name>/SKILL.md`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_SKILL_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`. Gateway rendering remaps each `gateway/<name>` asset onto the live `skills/<name>` path; all three prompt modes retain that skill composition.
+- Delegation policy: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- Skill assets: none. The plugin renders no `skills/` directory, and `MARKETPLACE_PRUNE_ENTRIES` removes the one an earlier install left behind.
+- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Only its `description` reaches the model — `core-agent`'s `specToMcpTool` serves that field alone, so `whenToUse`/`usageGuidelines` are kept empty rather than filled with rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 

@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, createSystemPromptBuilder, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveDoctrineFromCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -1399,12 +1399,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const gatewayCompactCeiling = gatewayContextWindow === undefined
       ? undefined
       : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
-    const chatDoctrine = resolveDoctrineFromCliId(CHAT_SUPPORTED_CLI_ID);
     const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-    const systemPromptMode = deps.globalOptionsService.load().claudeGatewaySystemPromptMode ?? "append";
-    const systemPrompt = systemPromptMode === "off"
-      ? undefined
-      : { mode: systemPromptMode, text: createSystemPromptBuilder().build() } as const;
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -1420,13 +1415,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cwd,
         claudeConfigDir,
         origin: sessionOrigin,
-        ...(systemPrompt ? { systemPrompt } : {}),
         resolveFleetMcpServers: async () => {
           const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
           const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
             cwd,
-            // PTY 주입과 같은 필터다. doctrine이 호스트 세션에 허용한 도구만 실린다.
-            includeTool: (toolId) => isHostSessionToolAllowed(toolId, chatDoctrine),
+            // PTY 주입과 같은 필터다. 이 세션에 허용된 호스트 도구만 실린다.
+            includeTool: (toolId) => isHostSessionToolAllowed(toolId),
             label: mcpTokenLabel,
           });
           return endpoint.servers.map((server) => {

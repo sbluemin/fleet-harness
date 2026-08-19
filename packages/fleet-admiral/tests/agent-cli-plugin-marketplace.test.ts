@@ -99,16 +99,13 @@ describe("agent CLI plugin marketplace rendering", () => {
       readonly hooks: Record<string, unknown>;
     };
     // AskUserQuestion은 Notification 훅을 발화하지 않으므로 PreToolUse(정확 매처)로 잡는다.
-    // 백그라운드 축은 PreToolUse spawn을 세지 않는다 — 워크플로우 1건이 spawn 1회·stop N회를 내기 때문이다.
-    // 단, Workflow에는 정책 게이트(워크플로우 모델 가드)가 상주한다. spawn 카운팅 신호가 아니라
-    // opts.model/agentType 위반을 실행 전에 차단할 뿐이라 #554가 우려한 카운팅 불일치와 무관하다.
+    // Agent|Workflow에는 위임 게이트가 상주한다. spawn 카운팅 신호가 아니라 핀되지 않은 위임을
+    // 실행 전에 차단할 뿐이라 #554가 우려한 카운팅 불일치와 무관하다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
-      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
+      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
     ]);
-    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "workflow-guard.mjs"))).toBe(true);
-    // Task/Agent는 여전히 PreToolUse spawn 카운팅 대상이 아니다.
-    expect(JSON.stringify(hooksJson.hooks)).not.toContain("Task|Agent");
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
     ]);
@@ -139,8 +136,15 @@ describe("agent CLI plugin marketplace rendering", () => {
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: Record<string, ReadonlyArray<{ readonly hooks: ReadonlyArray<{ readonly args: readonly string[] }> }>>;
     };
-    const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks.map((hook) => hook.args[2]);
-    expect(userPromptSubmit).toEqual(["capture-session", "turn-start", "auto-name"]);
+    const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks ?? [];
+    expect(userPromptSubmit.slice(0, 3).map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
+    // 위임 규약 주입은 host 훅 뒤에 선다. 이 세션은 Fleet 시스템 프롬프트를 싣지 않으므로
+    // 매 턴의 이 주입이 그 규약이 모델에 닿는 유일한 경로다.
+    expect(userPromptSubmit[3]?.args).toEqual([
+      "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+      "remind",
+    ]);
+    expect(userPromptSubmit).toHaveLength(4);
     expect(hooksJson.hooks.Stop?.[0]?.hooks.map((hook) => hook.args[2])).toEqual(["turn-end"]);
   });
 
@@ -191,8 +195,8 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet-gateway"))).toBe(true);
   });
 
-  it("omits protocol skills and carrier-operations for gateway doctrine", async () => {
-    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-gateway-doctrine-"));
+  it("renders no skill assets at all", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-gateway-skills-"));
     tempDirs.push(root);
 
     const plugin = await createAgentCliPlugin({
@@ -202,56 +206,11 @@ describe("agent CLI plugin marketplace rendering", () => {
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
-    const skillsRoot = path.join(plugin.pluginRoot, "skills");
-    expect(existsSync(path.join(skillsRoot, "carrier-operations", "SKILL.md"))).toBe(false);
-    expect(existsSync(path.join(skillsRoot, "gateway"))).toBe(false);
-    for (const mode of ["protocol-baseline", "protocol-frontline", "protocol-midline", "protocol-redline"]) {
-      expect(existsSync(path.join(skillsRoot, mode, "SKILL.md"))).toBe(false);
-    }
-    expect(existsSync(path.join(skillsRoot, "wiki-operations", "SKILL.md"))).toBe(true);
-    expect(existsSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"))).toBe(true);
-    // gateway 전용 오버레이는 대응하는 base 자산이 없어도 렌더된다.
-    // 캐리어 페르소나가 맡던 역할은 gateway에서 작전별 워크플로 스킬이 대신한다.
-    for (const skill of [
-      "workflow",
-      "workflow-architecting",
-      "workflow-review",
-      "workflow-research",
-    ]) {
-      expect(existsSync(path.join(skillsRoot, skill, "SKILL.md")), skill).toBe(true);
-    }
-    // 구명 디렉터리가 되살아나면 스킬이 두 벌 렌더되어 어느 쪽이 로드될지 갈라진다.
-    // workflow-implementing은 퇴역했다 — 되살아나면 파일을 쓰는 실행이 다시 스켈레톤을 갖고,
-    // 그 규율이 workflow 스킬의 "When the run writes files"와 두 벌로 갈라진다.
-    for (const retired of [
-      "architecture-review",
-      "implementation-run",
-      "quality-review",
-      "codebase-research",
-      "workflow-implementing",
-    ]) {
-      expect(existsSync(path.join(skillsRoot, retired)), retired).toBe(false);
-    }
-    // 모델·effort 배정은 workflow 스킬이 흡수했으므로 별도 스킬로 렌더되지 않는다.
-    expect(existsSync(path.join(skillsRoot, "model-loadout"))).toBe(false);
-
-    // gateway/assumption-audit 오버레이가 base 자산을 대체하고 protocol 참조를 남기지 않는다.
-    const assumptionAudit = readFileSync(path.join(skillsRoot, "assumption-audit", "SKILL.md"), "utf8");
-    expect(assumptionAudit).not.toContain("protocol mode");
-    expect(assumptionAudit).not.toContain("Protocol Gate");
-
-    // gateway 경로가 렌더하는 모든 스킬은 프롬프트와 같은 어휘 계약을 따른다:
-    // 실행자를 지칭하지 않고 워크플로 스테이지로만 실행을 기술한다.
-    const renderedSkills = readdirSync(skillsRoot, { withFileTypes: true })
-      .filter((entry) => entry.isDirectory())
-      .map((entry) => entry.name);
-    expect(renderedSkills.length).toBeGreaterThan(0);
-    for (const skill of renderedSkills) {
-      const body = readFileSync(path.join(skillsRoot, skill, "SKILL.md"), "utf8");
-      for (const pattern of [/\bcarriers?\b/i, /\bsubagents?\b/i, /\bdelegat\w*/i]) {
-        expect(body, `${skill}/SKILL.md`).not.toMatch(pattern);
-      }
-    }
+    // 위임 규율은 시스템 프롬프트도 스킬도 아니라 모델 가드 훅이 싣는다. 스킬 루트가
+    // 되살아나면 같은 규율이 두 벌로 갈라지고, 그중 하나는 아무도 갱신하지 않는다.
+    expect(existsSync(path.join(plugin.pluginRoot, "skills"))).toBe(false);
+    expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
+    expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
   });
 
   it("renders only the gateway asset root and prunes retired roots", async () => {
@@ -277,7 +236,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(retiredClassicRoot)).toBe(false);
     expect(existsSync(retiredNativeRoot)).toBe(false);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "skills", "wiki-operations", "SKILL.md"))).toBe(true);
+    expect(existsSync(path.join(plugin.pluginRoot, "skills"))).toBe(false);
   });
 });
 
