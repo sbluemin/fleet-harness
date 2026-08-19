@@ -50,6 +50,8 @@ describe("terminal settings routes", () => {
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor 경유 Opus/Fable Max Mode와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
     expect(allIds).toContain("kimi--k3");
+    expect(allIds).toContain("xai--grok-4.6");
+    expect(allIds).toContain("xai--grok-composer-2.5-fast");
     for (const id of [
       "cursor--auto",
       "cursor--composer-2.5",

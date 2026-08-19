@@ -698,6 +698,7 @@ describe("model catalog", () => {
     // 분배됐다. 이 둘은 provider 스스로 light 로 자리매김한 모델이다.
     expect(findGatewayModel("codex--gpt-5.6-luna")?.capabilityClass).toBe("light");
     expect(findGatewayModel("opencode--deepseek-v4-flash")?.capabilityClass).toBe("light");
+    expect(findGatewayModel("xai--grok-composer-2.5-fast")?.capabilityClass).toBe("light");
     expect(findGatewayModel("codex--gpt-5.6-sol")?.capabilityClass).toBe("flagship");
     // -fast 는 같은 upstream 의 서비스 티어라 base 의 class 를 따른다.
     expect(findGatewayModel("codex--gpt-5.6-sol-fast")?.capabilityClass).toBe("flagship");
@@ -1159,6 +1160,10 @@ describe("model catalog", () => {
       display_name: "xAI-Grok-4.6",
       max_input_tokens: 500_000,
     });
+    expect(list.data.find((entry) => entry.id === "claude-gateway--xai--grok-composer-2.5-fast")).toMatchObject({
+      display_name: "xAI-Grok-Composer-2.5-Fast",
+      max_input_tokens: 200_000,
+    });
     expect(list.data.find((entry) => entry.id.endsWith("cursor--composer-2.5"))).toMatchObject({
       display_name: "Cursor-Composer-2.5",
       max_input_tokens: 200_000,
@@ -1268,6 +1273,7 @@ describe("model catalog", () => {
     const cursorGrok = entries.get("claude-gateway--cursor--grok-4.5");
     const cursorGrok46 = entries.get("claude-gateway--cursor--grok-4.6");
     const cursorComposer = entries.get("claude-gateway--cursor--composer-2.5-fast");
+    const xaiComposer = entries.get("claude-gateway--xai--grok-composer-2.5-fast");
 
     expect(sol?.capabilities.effort).toEqual({
       supported: true,
@@ -1314,6 +1320,16 @@ describe("model catalog", () => {
       xhigh: { supported: true },
     });
     expect(cursorGrok46?.max_input_tokens).toBe(256_000);
+    expect(xaiComposer?.max_input_tokens).toBe(200_000);
+    expect(xaiComposer?.capabilities.effort).toEqual({
+      supported: false,
+      low: { supported: false },
+      medium: { supported: false },
+      high: { supported: false },
+      max: { supported: false },
+      xhigh: null,
+    });
+    expect(xaiComposer?.capabilities.thinking.supported).toBe(false);
   });
 
   it("unwraps the alias a picked model comes back as", () => {

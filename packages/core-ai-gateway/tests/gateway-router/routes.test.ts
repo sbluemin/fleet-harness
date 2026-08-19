@@ -1954,7 +1954,7 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(43);
+    expect(list.data).toHaveLength(44);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
@@ -2003,6 +2003,10 @@ describe("route surface", () => {
     expect(list.data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--xai--grok-4.6",
       display_name: "xAI-Grok-4.6",
+    }));
+    expect(list.data).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-composer-2.5-fast",
+      display_name: "xAI-Grok-Composer-2.5-Fast",
     }));
     expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(entry.display_name))).toBe(true);
   });

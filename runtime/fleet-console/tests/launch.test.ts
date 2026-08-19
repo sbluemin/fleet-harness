@@ -639,7 +639,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
     expect(cache.fetchedAt).toEqual(expect.any(Number));
     // core-ai-gateway의 GATEWAY_MODELS 전량이 prewrite되어야 한다 — 카탈로그가 바뀌면 이 수도 함께 맞춘다.
-    expect(cache.models).toHaveLength(43);
+    expect(cache.models).toHaveLength(44);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-524k-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-1m-fast[1m]");
@@ -668,6 +668,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(cache.models).toContainEqual(expect.objectContaining({
       id: "claude-gateway--xai--grok-4.6",
       display_name: "xAI-Grok-4.6",
+    }));
+    expect(cache.models).toContainEqual(expect.objectContaining({
+      id: "claude-gateway--xai--grok-composer-2.5-fast",
+      display_name: "xAI-Grok-Composer-2.5-Fast",
     }));
     expect(cache.models.every((model) => model.id.startsWith("claude"))).toBe(true);
     expect(cache.models.every((model) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(model.display_name))).toBe(true);
