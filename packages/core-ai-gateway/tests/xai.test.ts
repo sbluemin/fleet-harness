@@ -791,6 +791,147 @@ describe("Grok Responses function-call assembly", () => {
   });
 });
 
+describe("Grok Responses stall watchdog", () => {
+  it("requires a positive semantic stall timeout option", () => {
+    expect(() => new XaiResponsesAdapter({ semanticStallTimeoutMs: 0 })).toThrow("semanticStallTimeoutMs must be a positive integer");
+    expect(() => new XaiResponsesAdapter({ semanticStallTimeoutMs: -1 })).toThrow("semanticStallTimeoutMs must be a positive integer");
+    expect(() => new XaiResponsesAdapter({ semanticStallTimeoutMs: 1.5 })).toThrow("semanticStallTimeoutMs must be a positive integer");
+  });
+
+  it("fails a stream that stops emitting events while keepalive bytes keep arriving", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, semanticStallTimeoutMs: 100 })
+        .stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      const eventsExpectation = expect(events).rejects.toThrow("emitted no event for 100ms");
+      controlled.push(xaiFrame(responseCreated()));
+      controlled.push(xaiFrame(textDelta("partial")));
+      await flushXaiStream();
+      // Comments feed the byte-level idle watchdog without carrying an event; before the stall
+      // clock existed this was enough to park the read indefinitely.
+      await vi.advanceTimersByTimeAsync(60);
+      controlled.push(": keepalive\n\n");
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(60);
+      await eventsExpectation;
+      expect(controlled.wasCancelled()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("bounds a stream that never emits its first event", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, semanticStallTimeoutMs: 100 })
+        .stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      const eventsExpectation = expect(events).rejects.toThrow("emitted no event for 100ms");
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(100);
+      await eventsExpectation;
+      expect(controlled.wasCancelled()).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps a slow but progressing stream alive past the stall timeout", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, semanticStallTimeoutMs: 100 })
+        .stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      controlled.push(xaiFrame(responseCreated()));
+      await flushXaiStream();
+      // Total elapsed time far exceeds the timeout; every individual gap stays under it.
+      for (const chunk of ["one", "two", "three"]) {
+        await vi.advanceTimersByTimeAsync(60);
+        controlled.push(xaiFrame(textDelta(chunk)));
+        await flushXaiStream();
+      }
+      controlled.push(xaiFrame(responseCompleted()));
+      controlled.close();
+      await expect(events).resolves.toEqual([
+        responseCreated(),
+        textDelta("one"),
+        textDelta("two"),
+        textDelta("three"),
+        responseCompleted(),
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still salvages a complete pending call when the stall fires first", async () => {
+    vi.useFakeTimers();
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({
+        fetch: fetchMock,
+        functionCallTimeoutMs: 10_000,
+        semanticStallTimeoutMs: 100,
+      }).stream(functionCallRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      controlled.push(xaiFrame(responseCreated()));
+      controlled.push(xaiFrame(functionCallAdded("call-1")));
+      controlled.push(xaiFrame(argumentsDelta("call-1", 0, '{"path":"a.ts"}')));
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(100);
+      await expect(events).resolves.toEqual([
+        responseCreated(),
+        functionCallAdded("call-1"),
+        argumentsDone("call-1", 0, '{"path":"a.ts"}'),
+        functionCallDone("call-1", 0, '{"path":"a.ts"}'),
+        { type: "response.completed", response: xaiSnapshot() },
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("records the stall with the last event it saw", async () => {
+    vi.useFakeTimers();
+    const wire = wireLogFixture("fleet-xai-stall-");
+    try {
+      const controlled = controlledXaiResponse();
+      const fetchMock = vi.fn<typeof fetch>(async () => controlled.response);
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, semanticStallTimeoutMs: 100 })
+        .stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      const events = collectXaiEvents(response.events);
+      const eventsExpectation = expect(events).rejects.toThrow("emitted no event for 100ms");
+      controlled.push(xaiFrame(responseCreated()));
+      await flushXaiStream();
+      await vi.advanceTimersByTimeAsync(100);
+      await eventsExpectation;
+      const stalled = wire.read().filter((entry) => entry.event === "xai-responses.stream.stalled");
+      expect(stalled).toHaveLength(1);
+      expect(stalled[0]?.payload).toEqual({
+        semanticStallTimeoutMs: 100,
+        pendingFunctionCalls: 0,
+        lastEvent: "response.created",
+      });
+    } finally {
+      wire.cleanup();
+      vi.useRealTimers();
+    }
+  });
+});
+
 describe("Grok Responses retry", () => {
   function failed(type = "server_error", id = "r1"): CanonicalResponseEvent {
     return {
