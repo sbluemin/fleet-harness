@@ -5,6 +5,8 @@ import {
   BIRD_HALF_WIDTH,
   PERSONAS,
   deckY,
+  placeStayPut,
+  stayPutFractions,
   stepFlock,
   type BirdBody,
   type BirdPersona,
@@ -193,6 +195,16 @@ describe("Scuttlebutt roaming engine", () => {
     const body = bird({ moored: true, modeUntil: 0, mode: "fly" });
     stepFlock([body], [persona], viewport, 0.1, 5, sequence(roll, 0));
     expect(body.mode).toBe(mode);
+  });
+
+  it("restores a stay-put fraction onto the current viewport and records it back", () => {
+    const body = bird({ x: 10, y: 10, vx: 80, vy: -40 });
+    placeStayPut(body, viewport, 0.25, 0.5);
+    expect(body.x).toBeCloseTo(200);
+    expect(body.y).toBeCloseTo(300);
+    expect(body.vx).toBeCloseTo(0);
+    expect(body.vy).toBeCloseTo(0);
+    expect(stayPutFractions(body, viewport)).toEqual({ nx: 0.25, ny: 0.5 });
   });
 
   it("keeps a moored bird out of the separation force", () => {
