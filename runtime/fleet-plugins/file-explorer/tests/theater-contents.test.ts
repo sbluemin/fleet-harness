@@ -216,7 +216,8 @@ describe("listTheaterContents VCS edge cases", () => {
       expect(result).not.toHaveProperty("hiddenVcsInternals");
       // 루트/대상 containment용 realpath 2회만 — 상한 이후 심링크는 분류하지 않는다.
       expect(realpath).toHaveBeenCalledTimes(2);
-      expect(stat).toHaveBeenCalledTimes(1);
+      // 대상 디렉터리 판별 1회 + 수집된 엔트리 정렬 메타(attachEntryStats) 500회.
+      expect(stat).toHaveBeenCalledTimes(1 + 500);
     } finally {
       realpath.mockRestore();
       stat.mockRestore();

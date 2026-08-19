@@ -64,8 +64,17 @@ export interface VcsRow {
   readonly key: string;
 }
 
+/** 작업 트리에서 삭제된 파일의 합성 행 — 실제 목록에 없으므로 정보 표시 전용, 포커스 불가. */
+export interface GhostRow {
+  readonly type: "ghost";
+  readonly name: string;
+  readonly relativePath: string;
+  readonly depth: number;
+  readonly key: string;
+}
+
 export type EntryRow = FlatRow & { readonly type: "entry" };
-export type TreeRow = EntryRow | CapRow | VcsRow;
+export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow;
 
 export function isEntryRow(row: TreeRow): row is EntryRow {
   return row.type === "entry";
@@ -107,8 +116,50 @@ const VIRTUALIZE_THRESHOLD = 200;
 const ROW_HEIGHT = 30;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
+const PREFS_SORT_MODE = "fleet-console.fileExplorer.sortMode";
+const PREFS_EXPANDED_PREFIX = "fleet-console.fileExplorer.expanded.";
+const EXPANDED_PERSIST_CAP = 200;
+const EXPANDED_RESTORE_FETCH_CAP = 50;
 const GIT_STATUS_DEBOUNCE_MS = 500;
 export const FILTER_DIRECTORY_CAP = 500;
+
+// ═══ 정렬 ═══════════════════════════════════════════════════════════════════
+
+export type SortMode = "name" | "modified" | "size";
+
+export const SORT_MODE_CYCLE: readonly SortMode[] = ["name", "modified", "size"];
+
+export function nextSortMode(mode: SortMode): SortMode {
+  const index = SORT_MODE_CYCLE.indexOf(mode);
+  return SORT_MODE_CYCLE[(index + 1) % SORT_MODE_CYCLE.length] ?? "name";
+}
+
+/**
+ * 한 수준의 엔트리를 정렬한다. 디렉터리는 항상 파일보다 앞이다.
+ * name — 서버 순서(이미 dirs-first 이름순)를 그대로 쓴다.
+ * modified — 최신 우선. 메타 없는 항목은 이름순 꼬리로 보낸다.
+ * size — 파일은 큰 것 우선, 디렉터리는 이름순(크기 신호가 없다).
+ */
+export function sortEntries(entries: readonly FolderEntry[], mode: SortMode): readonly FolderEntry[] {
+  if (mode === "name") return entries;
+  const byName = (a: FolderEntry, b: FolderEntry) => a.name.localeCompare(b.name);
+  const byMeta = (metaOf: (entry: FolderEntry) => number | undefined) =>
+    (a: FolderEntry, b: FolderEntry): number => {
+      const am = metaOf(a);
+      const bm = metaOf(b);
+      if (am === undefined && bm === undefined) return byName(a, b);
+      if (am === undefined) return 1;
+      if (bm === undefined) return -1;
+      return bm - am || byName(a, b);
+    };
+  const dirs = entries.filter((entry) => entry.kind === "dir");
+  const files = entries.filter((entry) => entry.kind !== "dir");
+  if (mode === "modified") {
+    const compare = byMeta((entry) => entry.mtimeMs);
+    return [...dirs.slice().sort(compare), ...files.slice().sort(compare)];
+  }
+  return [...dirs, ...files.slice().sort(byMeta((entry) => entry.sizeBytes))];
+}
 
 export interface GitStatusBadge {
   readonly text: "M" | "U" | "D";
@@ -222,6 +273,12 @@ interface LevelMeta {
   readonly hiddenVcs?: readonly string[];
 }
 
+export interface BuildRowsOptions {
+  readonly sortMode?: SortMode;
+  /** 부모 폴더 상대경로("" = 루트) → 그 폴더에서 삭제된 파일 이름들. 고스트 행으로 합성된다. */
+  readonly deletedByDir?: ReadonlyMap<string, readonly string[]>;
+}
+
 export function buildFlatRows(
   entries: readonly FolderEntry[],
   depth: number,
@@ -235,9 +292,12 @@ export function buildFlatRows(
   filterCollapsedDirs: ReadonlySet<string> = new Set(),
   levelMeta: LevelMeta = {},
   levelKey = "",
+  options: BuildRowsOptions = {},
 ): TreeRow[] {
   const rows: TreeRow[] = [];
+  const sortMode = options.sortMode ?? "name";
   // VCS 표식 행은 디렉터리 구간에 이름순으로 끼워 넣는다 — 숨김 파일 표시 중이고 필터링이 아닐 때만.
+  // 이름순이 아닌 정렬에서는 끼워 넣을 기준이 없으므로 수준 끝에 몰아 붙인다.
   const vcsNames = !low && showHidden && levelMeta.hiddenVcs
     ? [...levelMeta.hiddenVcs].sort((a, b) => a.localeCompare(b))
     : [];
@@ -246,13 +306,31 @@ export function buildFlatRows(
     for (;;) {
       const name = vcsNames[vcsIdx];
       if (name === undefined) return;
-      if (beforeName !== undefined && name.localeCompare(beforeName) >= 0) return;
+      if (sortMode === "name" && beforeName !== undefined && name.localeCompare(beforeName) >= 0) return;
       vcsIdx += 1;
       rows.push({ type: "vcs", name, depth, key: `vcs:${levelKey}:${name}` });
     }
   };
+  // 삭제 고스트 행 — 삭제 파일은 목록에 실제 행이 없으므로 여기서 합성한다.
+  // 필터 중에는 실제 목록과 구분이 흐려지므로 내지 않는다.
+  const ghostNames = !low && options.deletedByDir?.get(levelKey)
+    ? [...(options.deletedByDir.get(levelKey) ?? [])]
+      .filter((name) => showHidden || !name.startsWith("."))
+      .sort((a, b) => a.localeCompare(b))
+    : [];
+  let ghostIdx = 0;
+  const flushGhosts = (beforeName?: string) => {
+    for (;;) {
+      const name = ghostNames[ghostIdx];
+      if (name === undefined) return;
+      if (sortMode === "name" && beforeName !== undefined && name.localeCompare(beforeName) >= 0) return;
+      ghostIdx += 1;
+      const relativePath = levelKey ? `${levelKey}/${name}` : name;
+      rows.push({ type: "ghost", name, relativePath, depth, key: `ghost:${relativePath}` });
+    }
+  };
   let filesStarted = false;
-  for (const entry of entries) {
+  for (const entry of sortEntries(entries, sortMode)) {
     if (!showHidden && entry.name.startsWith(".")) continue;
     const childResult = childResults.get(entry.relativePath);
     const children = childResult?.entries;
@@ -267,10 +345,14 @@ export function buildFlatRows(
     }
     if (entry.kind === "dir") {
       flushVcs(entry.name);
-    } else if (!filesStarted) {
-      // VCS 행은 "디렉터리 같은" 항목 — 첫 파일 행이 나오기 전에 남은 것을 밀어낸다.
-      filesStarted = true;
-      flushVcs();
+    } else {
+      if (!filesStarted) {
+        // VCS 행은 "디렉터리 같은" 항목 — 첫 파일 행이 나오기 전에 남은 것을 밀어낸다.
+        filesStarted = true;
+        flushVcs();
+      }
+      // 고스트(삭제 파일)는 파일 구간에 이름순으로 끼워 넣는다.
+      flushGhosts(entry.name);
     }
     const isExpanded = !filterCollapsedDirs.has(entry.relativePath)
       && (expandedDirs.has(entry.relativePath) || Boolean(low && childMatch));
@@ -302,11 +384,13 @@ export function buildFlatRows(
             hiddenVcs: childResult?.hiddenVcsInternals,
           },
           folderIdentity,
+          options,
         ));
       }
     }
   }
   flushVcs();
+  flushGhosts();
   if (levelMeta.truncatedCap !== undefined) {
     rows.push({ type: "cap", depth, cap: levelMeta.truncatedCap, key: `cap:${levelKey}` });
   }
@@ -365,6 +449,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
+  const [sortMode, setSortMode] = useState<SortMode>(() => readSortMode());
   const [cursorPath, setCursorPath] = useState<string | null>(null);
   const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
   const [filterWalked, setFilterWalked] = useState<number | null>(null);
@@ -428,6 +513,41 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setFilterWalked(null);
     setFilterCapped(false);
   }, [contextKey, theaterId]);
+
+  // 저장된 펼침 상태 복원 — 위 리셋 효과 다음에 선언되어 리셋 후에 실행된다.
+  useEffect(() => {
+    if (!theaterId) return;
+    const stored = readExpandedDirs(contextKey);
+    if (stored.length === 0) return;
+    const requestContextKey = contextKey;
+    setExpandedDirs((current) => {
+      const next = new Set([...current, ...stored]);
+      expandedDirsRef.current = next;
+      return next;
+    });
+    // 내용은 다시 불러온다(상한까지) — 실패한 폴더는 접힌 채 남는다.
+    for (const relPath of stored.slice(0, EXPANDED_RESTORE_FETCH_CAP)) {
+      filesRef.current.listFolder(relPath).then((r) => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+        setChildResults((prev) => new Map(prev).set(relPath, r));
+      }).catch(() => {
+        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+        setExpandedDirs((prev) => {
+          if (!prev.has(relPath)) return prev;
+          const next = new Set(prev);
+          next.delete(relPath);
+          expandedDirsRef.current = next;
+          return next;
+        });
+      });
+    }
+  }, [contextKey, theaterId]);
+
+  // 펼침 상태 지속 — Theater별로 저장해 리로드 후 복원한다.
+  useEffect(() => {
+    if (!theaterId) return;
+    saveExpandedDirs(contextKey, expandedDirs);
+  }, [contextKey, expandedDirs, theaterId]);
 
   useEffect(() => {
     if (!theaterId) return;
@@ -683,6 +803,18 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
+  const handleCycleSort = useCallback(() => {
+    setSortMode((prev) => {
+      const next = nextSortMode(prev);
+      try {
+        localStorage.setItem(PREFS_SORT_MODE, next);
+      } catch {
+        // localStorage 접근 실패 무시
+      }
+      return next;
+    });
+  }, []);
+
   const refreshTree = useCallback(() => {
     if (!theaterId) return;
     const requestContextKey = contextKey;
@@ -711,6 +843,33 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const low = filterText.toLowerCase();
 
+  const gitAvailable = gitStatusResult?.gitAvailable === true;
+  const gitStatusByPath = useMemo(
+    () => new Map(gitStatusResult?.statuses.map((entry) => [entry.path, entry.status]) ?? []),
+    [gitStatusResult],
+  );
+
+  // 삭제 파일의 고스트 행 데이터 — 실제 목록에 아직 남아 있는 경로(스테이지 삭제 등)는 제외한다.
+  const deletedByDir = useMemo(() => {
+    if (!gitAvailable) return new Map<string, readonly string[]>();
+    const listedPaths = new Set<string>();
+    for (const entry of result?.entries ?? []) listedPaths.add(entry.relativePath);
+    for (const child of childResults.values()) {
+      for (const entry of child.entries) listedPaths.add(entry.relativePath);
+    }
+    const grouped = new Map<string, string[]>();
+    for (const [statusPath, status] of gitStatusByPath) {
+      if (status !== "deleted" || listedPaths.has(statusPath)) continue;
+      const slash = statusPath.lastIndexOf("/");
+      const dir = slash < 0 ? "" : statusPath.slice(0, slash);
+      const name = slash < 0 ? statusPath : statusPath.slice(slash + 1);
+      const bucket = grouped.get(dir);
+      if (bucket) bucket.push(name);
+      else grouped.set(dir, [name]);
+    }
+    return grouped as ReadonlyMap<string, readonly string[]>;
+  }, [childResults, gitAvailable, gitStatusByPath, result]);
+
   const flatRows = useMemo(() => {
     if (!result) return [];
     return buildFlatRows(
@@ -726,13 +885,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       filterCollapsedDirs,
       { truncatedCap: result.truncated ? result.cap : undefined, hiddenVcs: result.hiddenVcsInternals },
       "",
+      { sortMode, deletedByDir },
     );
-  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs]);
-  const gitAvailable = gitStatusResult?.gitAvailable === true;
-  const gitStatusByPath = useMemo(
-    () => new Map(gitStatusResult?.statuses.map((entry) => [entry.path, entry.status]) ?? []),
-    [gitStatusResult],
-  );
+  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs, sortMode, deletedByDir]);
 
   const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
@@ -918,6 +1073,22 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         </div>
       );
     }
+    if (row.type === "ghost") {
+      return (
+        <div
+          key={row.key}
+          className="fexp-tree-ghost"
+          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
+          role="note"
+          aria-label={t("fileExplorer.git.deletedGhost", { name: row.name })}
+          title={t("fileExplorer.git.deletedGhost", { name: row.name })}
+        >
+          <span className="fexp-tree-icon" aria-hidden="true"><FileIcon name={row.name} /></span>
+          <span className="fexp-tree-name">{row.name}</span>
+          <span className="fexp-git-badge is-deleted" aria-hidden="true">D</span>
+        </div>
+      );
+    }
     return (
       <FlatTreeRow
         key={row.entry.relativePath}
@@ -962,6 +1133,18 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             ✕
           </button>
         )}
+        <button
+          type="button"
+          className="fexp-sort-btn"
+          onClick={handleCycleSort}
+          aria-label={t("fileExplorer.sort.cycle", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
+          title={t("fileExplorer.sort.cycle", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
+        >
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+            <path d="M4.5 3v9M4.5 12l-2-2M4.5 12l2-2M9 4.5h5M9 8h4M9 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          <span className="fexp-sort-label">{t(SORT_MODE_LABEL_KEYS[sortMode])}</span>
+        </button>
         <button
           type="button"
           className="fexp-refresh-btn"
@@ -1130,6 +1313,46 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryCli
       )}
     </button>
   );
+}
+
+const SORT_MODE_LABEL_KEYS = {
+  name: "fileExplorer.sort.name",
+  modified: "fileExplorer.sort.modified",
+  size: "fileExplorer.sort.size",
+} as const satisfies Record<SortMode, FileExplorerMessageKey>;
+
+function readSortMode(): SortMode {
+  try {
+    const raw = localStorage.getItem(PREFS_SORT_MODE);
+    return raw === "modified" || raw === "size" ? raw : "name";
+  } catch {
+    return "name";
+  }
+}
+
+function readExpandedDirs(contextKey: string): readonly string[] {
+  try {
+    const raw = localStorage.getItem(PREFS_EXPANDED_PREFIX + contextKey);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is string => typeof item === "string").slice(0, EXPANDED_PERSIST_CAP);
+  } catch {
+    return [];
+  }
+}
+
+function saveExpandedDirs(contextKey: string, expandedDirs: ReadonlySet<string>): void {
+  try {
+    const key = PREFS_EXPANDED_PREFIX + contextKey;
+    if (expandedDirs.size === 0) {
+      localStorage.removeItem(key);
+      return;
+    }
+    localStorage.setItem(key, JSON.stringify([...expandedDirs].slice(0, EXPANDED_PERSIST_CAP)));
+  } catch {
+    // localStorage 접근 실패 무시
+  }
 }
 
 function readShowHidden(): boolean {

@@ -18,6 +18,8 @@ export interface FileReadResult {
   readonly content: string;
   readonly lang: string;
   readonly truncated?: boolean;
+  /** 디스크상 전체 크기(바이트) — truncated여도 전체 크기를 담는다. */
+  readonly sizeBytes: number;
 }
 
 const FILE_SIZE_CAP = 1024 * 1024;
@@ -95,6 +97,7 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
       content: chunk.toString("utf8"),
       lang: detectLang(realResolved),
       truncated: true,
+      sizeBytes: stat.size,
     };
   }
 
@@ -105,6 +108,7 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
     relativePath: path.relative(realRoot, realResolved),
     content: buffer.toString("utf8"),
     lang: detectLang(realResolved),
+    sizeBytes: stat.size,
   };
 }
 
