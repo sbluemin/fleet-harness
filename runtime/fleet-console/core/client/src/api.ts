@@ -125,6 +125,24 @@ export async function applyConsoleUpdate(options: ApplyConsoleUpdateOptions = {}
   return assertConsoleUpdateApplyAccepted(await response.json(), response.status);
 }
 
+/**
+ * 이 화면의 세션은 콘솔이 재기동하면 사라진다 — 세션은 메모리에만 있기 때문이다. 그러나
+ * 페어링은 남고, 그 비밀은 이 브라우저의 쿠키가 들고 있다. 토큰 없는 join은 "이 기기를
+ * 기억하는가"를 묻는 것이며, 기억한다면 새 세션이 열린다. 새 액세스 링크는 필요 없다.
+ *
+ * 원격 리스너는 조인 시도에 실패 예산을 매기고 거절 횟수를 주인에게 보고하므로, 이것은
+ * 한 번의 단절에 한 번만 불려야 한다. 호출자가 그 규율을 소유한다.
+ */
+export async function resumeConsoleSession(signal?: AbortSignal): Promise<void> {
+  const response = await fetch("/api/v1/join", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    ...(signal ? { signal } : {}),
+  });
+  await assertOk(response);
+}
+
 export async function fetchUpdateProgress(signal?: AbortSignal): Promise<ConsoleUpdateProgress> {
   const response = await fetch("/api/v1/updates/progress", { cache: "no-store", signal });
   await assertOk(response);

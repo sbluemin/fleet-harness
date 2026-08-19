@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopyFor } from "../core/client/src/components/command-band-system-cluster.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
+import { applyObserverStatus } from "../core/client/src/store.js";
+import { resolveStepIndex } from "../core/client/src/components/update-curtain.js";
 import { getT } from "../core/client/src/i18n/index.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
 
@@ -110,6 +112,60 @@ describe("CommandBandSystemCluster", () => {
       tone: "blocked",
       disabled: true,
     });
+  });
+
+  it("puts the update mark on the control that performs the update", () => {
+    // 설정에 붙어 있던 동안, 그 점을 따라간 사람은 업데이트가 없는 화면에 도착했다.
+    applyObserverStatus({
+      name: "console", workspaces: 0, version: "1.0.0", channel: "stable",
+      updateAvailable: true, latestVersion: "1.2.3",
+      port: 4000, portMode: "dynamic", requestedPort: null, effectivePort: 4000, portHonored: true,
+      wikiServerStatus: "unknown",
+    } as never);
+    mountCluster();
+
+    const help = document.querySelector<HTMLButtonElement>(".command-band-help")!;
+    const settings = document.querySelector<HTMLButtonElement>(".command-band-settings")!;
+    expect(help.querySelector(".command-band-update-dot")).not.toBeNull();
+    // 같은 뜻의 표식이 커맨드 밴드에 둘이 되면 안 된다.
+    expect(settings.querySelector(".command-band-update-dot")).toBeNull();
+    expect(document.querySelectorAll(".command-band-update-dot")).toHaveLength(1);
+    expect(help.getAttribute("aria-label")).toBe("Help — update ready");
+  });
+
+  it("carries no mark when there is nothing to update", () => {
+    applyObserverStatus({
+      name: "console", workspaces: 0, version: "1.0.0", channel: "stable",
+      updateAvailable: false,
+      port: 4000, portMode: "dynamic", requestedPort: null, effectivePort: 4000, portHonored: true,
+      wikiServerStatus: "unknown",
+    } as never);
+    mountCluster();
+
+    expect(document.querySelector(".command-band-update-dot")).toBeNull();
+    expect(document.querySelector<HTMLButtonElement>(".command-band-help")!.getAttribute("aria-label")).toBe("Help");
+  });
+
+  it("asks a remote hand to confirm before it takes the host down, and says why", () => {
+    const copy = resolveUpdateApplyCopyFor("armed", "host_restart_confirmation_required", "1.2.3", getT("en"));
+
+    expect(copy.disabled).toBe(false);
+    expect(copy.tone).toBe("warn");
+    expect(copy.label).toBe("Restart this host?");
+    // 무엇을 잃는지가 화면에 있어야 동의가 성립한다.
+    expect(copy.title).toContain("the screen of anyone sitting in front of it goes down too");
+  });
+
+  it("never claims the update is done while it is still installing", () => {
+    // 202는 시작됐다는 뜻일 뿐이다. 결과를 아는 것은 재기동을 겪고 돌아온 콘솔이다.
+    const applying = resolveUpdateApplyCopyFor("applying", null, "1.2.3", getT("en"));
+    expect(applying.disabled).toBe(true);
+    expect(applying.label).not.toBe("Done");
+  });
+
+  it("keeps the idle row on neutral ink and lets it name the version delta", () => {
+    // 대기 중 업데이트 안내는 정보다 — 신호 채널은 확인 대기·진행·실패만 쓴다.
+    expect(resolveUpdateApplyCopyFor("idle", null, "1.2.3", getT("en")).tone).toBe("info");
   });
 
   it("keeps Settings a direct one-click action without a menu", () => {
@@ -240,5 +296,18 @@ describe("CommandBandSystemCluster", () => {
     act(() => { window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" })); });
     expect(menuItems()).toHaveLength(0);
     expect(document.activeElement).toBe(trigger);
+  });
+});
+
+describe("update curtain steps", () => {
+  it("marks the step the console is actually in", () => {
+    expect(resolveStepIndex("stopping-console")).toBe(0);
+    expect(resolveStepIndex("installing")).toBe(1);
+    expect(resolveStepIndex("starting-daemon")).toBe(2);
+  });
+
+  it("calls the unreachable stretch installing, because that is what it is", () => {
+    // 워커는 콘솔을 내린 직후 설치를 시작한다 — 닿지 않는 시간은 설치 시간이다.
+    expect(resolveStepIndex(null)).toBe(1);
   });
 });

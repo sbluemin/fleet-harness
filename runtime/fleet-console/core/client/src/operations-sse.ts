@@ -1,4 +1,4 @@
-import { fetchObserverStatus, fetchOperations } from "./api.js";
+import { ApiError, fetchObserverStatus, fetchOperations, resumeConsoleSession } from "./api.js";
 import { CONTROL_RECLAIMED_EVENT, type SessionEndedDetail, type SessionEndedReason } from "./control-session.js";
 import { applyDesktopFullscreenSnapshot, resetDesktopFullscreenSnapshot } from "./desktop-fullscreen.js";
 import { applyControlHolder, applyObserverStatus, applyOperationUpdate, getState, hydrateOperations, setConnectionState } from "./store.js";
@@ -14,6 +14,11 @@ let activeSource: EventSource | null = null;
 let connectionGeneration = 0;
 let statusRefreshInFlight: Promise<void> | null = null;
 let statusRefreshPending = false;
+/**
+ * 한 번의 단절에 한 번만. 원격 리스너는 조인 시도에 실패 예산을 매기고 거절 횟수를 주인에게
+ * 보고하므로, 되살아나지 않는 페어링으로 계속 두드리면 주인의 화면에 거짓 경보가 쌓인다.
+ */
+let sessionResumeAttempted = false;
 
 export function connectOperationsSse(): void {
   if (reconnectHandle !== null) {
@@ -80,6 +85,7 @@ export function connectOperationsSse(): void {
   source.onopen = () => {
     if (!isCurrentSource()) return;
     reconnectDelayMs = 1_000;
+    sessionResumeAttempted = false;
     setConnectionState("live");
     refreshObserverStatus();
   };
@@ -101,7 +107,15 @@ export function connectOperationsSse(): void {
         .then((operations) => {
           if (retryGeneration === connectionGeneration) hydrateOperations(operations);
         })
-        .catch(() => undefined)
+        // 콘솔이 재기동하면 이 화면의 세션은 사라지지만 페어링은 남는다. 그 사실을 아무도
+        // 쓰지 않으면 원격 화면은 401을 영원히 반복하며, 사람에게는 "새 액세스 링크를
+        // 받으라"는 잘못된 결론만 남는다. 여기서 한 번, 조용히 다시 합류한다.
+        .catch(async (error: unknown) => {
+          if (!(error instanceof ApiError) || error.status !== 401) return;
+          if (sessionResumeAttempted) return;
+          sessionResumeAttempted = true;
+          await resumeConsoleSession().catch(() => undefined);
+        })
         .finally(() => {
           if (retryGeneration === connectionGeneration) connectOperationsSse();
         });
