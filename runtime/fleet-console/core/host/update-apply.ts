@@ -266,9 +266,14 @@ async function waitForOldConsoleExit() {
   let escalated = false;
   while (Date.now() < deadline) {
     const pidGone = !isProcessAlive(config.currentPid);
-    const lockGone = !fs.existsSync(config.lockFile);
     const healthGone = await isHealthGone(config.currentEndpoint);
-    if (pidGone && lockGone && healthGone) return;
+    if (pidGone && healthGone) {
+      // 죽은 프로세스가 남긴 락은 정의상 stale이다. 그것이 스스로 사라지기를 기다리면
+      // SIGKILL로 내린 콘솔 뒤에서는 영원히 기다리게 되고, 업데이트는 늘 시간 초과로
+      // 끝난다. 우리가 내린 그 pid의 락이면 우리가 치운다.
+      removeStaleLock();
+      return;
+    }
     if (!escalated && Date.now() > deadline - 10000 && isProcessAlive(config.currentPid)) {
       escalated = true;
       try {
@@ -358,7 +363,7 @@ async function recoverConsoleBestEffort() {
     const deadline = Date.now() + startTimeoutMs;
     while (Date.now() < deadline) {
       const lock = readLock();
-      if (lock && lock.pid !== config.currentPid && await isAnyHealthOk(lock)) {
+      if (lock && isProcessAlive(lock.pid) && await isAnyHealthOk(lock)) {
         log("recovered console after failure");
         return;
       }
@@ -403,6 +408,18 @@ function spawnExit(command, args) {
     child.once("error", () => resolve(1));
     child.once("exit", (code) => resolve(code ?? 1));
   });
+}
+
+/** 우리가 내린 pid의 락만 지운다 — 그 사이 올라온 새 콘솔의 락은 건드리지 않는다. */
+function removeStaleLock() {
+  const lock = readLock();
+  if (!lock || lock.pid !== config.currentPid) return;
+  try {
+    fs.rmSync(config.lockFile, { force: true });
+    log("removed the stale lock of the console we stopped");
+  } catch {
+    // 지우지 못해도 새 데몬이 stale lock을 스스로 정리한다.
+  }
 }
 
 function readLock() {

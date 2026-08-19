@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import http from "node:http";
 import https from "node:https";
+import tls from "node:tls";
 import os from "node:os";
 import path from "node:path";
 
@@ -128,6 +129,36 @@ describe.skipIf(REMOTE_HOST === null)("remote access listener", () => {
     const session = cookie.split(";")[0]!;
     await expect(remoteRequest(fixture, "GET", "/api/v1/theaters", undefined, session)).resolves.toMatchObject({ status: 200 });
     await expect(remoteRequest(fixture, "GET", "/console/", undefined, session)).resolves.toMatchObject({ status: 200 });
+  });
+
+  it("stops even while a remote device is still holding a connection", async () => {
+    /**
+     * 원격 창은 스스로 연결을 끊지 않는다. 리스너를 `close()`만 하고 소켓을 남기면 그 종료는
+     * 영영 끝나지 않고, 프로세스도 락도 그대로 남는다 — 업데이트 워커는 그 락이 사라지기를
+     * 기다리다 시간 초과로 실패한다. 원격 업데이트가 통째로 불가능해지는 지점이다.
+     */
+    const fixture = await startFixture({ remote: true });
+    const held = tls.connect({
+      host: BIND_HOST,
+      port: fixture.remotePort,
+      rejectUnauthorized: false,
+      checkServerIdentity: () => undefined,
+    });
+    await new Promise<void>((resolve, reject) => {
+      held.once("secureConnect", () => resolve());
+      held.once("error", reject);
+    });
+    // 요청을 보내지 않고 붙잡고만 있는다 — 받아들여진 채 쉬고 있는 연결이 바로 close()를
+    // 붙드는 것이고, 원격 창이 스트림 사이에서 취하는 상태다.
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    const stopped = await Promise.race([
+      stopFixture(fixture).then(() => "stopped" as const),
+      new Promise<"hung">((resolve) => setTimeout(() => resolve("hung"), 5_000)),
+    ]);
+    held.destroy();
+
+    expect(stopped).toBe("stopped");
   });
 
   it("makes a remote hand read what it is doing before it takes the host down", async () => {

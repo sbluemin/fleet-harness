@@ -2049,7 +2049,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     listeners = [];
     boundPort = null;
     access.revokeAllSessions();
-    if (closingRemote) await new Promise<void>((resolve) => closingRemote.close(() => resolve()));
+    await closeHttpServer(closingRemote);
     const cleanupResults = await Promise.allSettled([...pluginCleanupCallbacks].map((cleanup) => cleanup()));
     for (const result of cleanupResults) {
       if (result.status === "rejected") {
@@ -2532,7 +2532,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     // 원격을 끄면 보유자도 사라진다. 알리지 않으면 커튼이 아무도 없는 콘솔 위에 남는다 —
     // 신원 갱신도 리스너를 다시 여는 경로라 이 자리를 지난다.
     broadcastControlChanged();
-    if (closing) await new Promise<void>((resolve) => closing.close(() => resolve()));
+    await closeHttpServer(closing);
   }
 
   /**
@@ -2869,7 +2869,12 @@ async function maybeStartLoopbackServer(
   return srv;
 }
 
-function closeHttpServer(srv: http.Server | null): Promise<void> {
+/**
+ * 리스너를 닫는 유일한 방법. `close()`만 부르면 **열려 있는 연결이 끝날 때까지** 완료되지
+ * 않는데, SSE 스트림과 원격 창의 소켓은 스스로 끝나지 않는다 — 그래서 연결도 함께 끊는다.
+ * 이것을 빠뜨린 리스너 하나가 프로세스 전체의 종료를 막는다.
+ */
+function closeHttpServer(srv: http.Server | https.Server | null): Promise<void> {
   return new Promise((resolve) => {
     if (!srv) {
       resolve();

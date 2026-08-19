@@ -35,6 +35,11 @@ describe("console update apply worker", () => {
     expect(script).toContain("if (consoleStopped) await recoverConsoleBestEffort();");
     // 재기동한 데몬이 읽는 고정 이름의 기록.
     expect(script).toContain("config.progressFile");
+    // SIGKILL로 내린 콘솔은 정의상 락을 남긴다. 그 락이 사라지기를 기다리면 업데이트는
+    // 늘 시간 초과로 끝나므로, 프로세스가 사라진 것만으로 정지를 인정하고 락은 워커가 치운다.
+    expect(script).toContain("if (pidGone && healthGone) {");
+    expect(script).toContain("function removeStaleLock()");
+    expect(script).not.toContain("const lockGone");
     expect(script).toContain('"/resolved/npm.cmd"');
     expect(script).toContain('"/d","/s","/c","call","/resolved/npm.cmd "');
     expect(script).toContain("ensureGlobalRootWritable(manager)");
