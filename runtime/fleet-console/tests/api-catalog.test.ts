@@ -58,6 +58,8 @@ GET|/api/v1/access-links|http
 GET|/api/v1/desktop/shell|http
 GET|/api/v1/desktop/theme/events|sse
 GET|/api/v1/desktop/theme|http
+GET|/api/v1/desktop/update/events|sse
+GET|/api/v1/desktop/update|http
 GET|/api/v1/health|http
 GET|/api/v1/local-consoles|http
 GET|/api/v1/operations/:operationId|http
@@ -73,6 +75,7 @@ GET|/api/v1/settings/global|http
 GET|/api/v1/settings/plugins/:pluginId|http
 GET|/api/v1/status|http
 GET|/api/v1/theaters|http
+GET|/api/v1/updates/progress|http
 GET|/api/v1/updates/release-notes|http
 GET|/plugins/file-explorer/files/image|http
 GET|/plugins/file-explorer/files/watch|sse
@@ -213,7 +216,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(143);
+    expect(body.routes).toHaveLength(146);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

@@ -22,6 +22,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Local",
   // 액세스 링크의 모양 그 자체 — 번역하면 붙여넣을 것과 달라진다.
   "fleet://join?code=...",
+  // 버전 델타는 두 숫자와 화살표뿐 — 번역할 낱말이 없다.
+  "{from} → {to}",
   // 단축키 표기·언어 칩·버전 태그
   "⌘/Ctrl",
   "EN",

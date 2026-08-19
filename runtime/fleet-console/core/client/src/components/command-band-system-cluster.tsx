@@ -4,6 +4,7 @@ import { useLocation, useNavigate } from "react-router-dom";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { ApiError, applyConsoleUpdate } from "../api.js";
+import { beginUpdateWatch, markUpdateDelegated } from "../update-progress-store.js";
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { isDesktopShell, useDesktopHomeOrigin } from "../desktop-shell.js";
 import { fetchLocalConsoles, probeRemoteHost, refreshRemoteHosts, useRemoteHosts, type LocalConsole, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
@@ -14,12 +15,14 @@ import { AddHostDialog } from "./add-host-dialog.js";
 import { EFFORT_CONFIRM_TIP_SEEN_KEY, forgetAllFeatureTours } from "./feature-tour.js";
 import { KeyboardShortcutsDialog } from "./keyboard-shortcuts-dialog.js";
 
-type UpdateApplyState = "idle" | "applying" | "accepted" | "completed" | "blocked" | "error";
+type UpdateApplyState = "idle" | "applying" | "armed" | "blocked" | "error";
 
 interface UpdateApplyCopy {
   readonly label: string;
+  /** 행 안에서 라벨 뒤에 붙는 두 번째 줄. 버전 델타나 확인 문구가 여기 온다. */
+  readonly detail?: string;
   readonly title: string;
-  readonly tone: "warn" | "live" | "blocked" | "error";
+  readonly tone: "info" | "warn" | "live" | "blocked" | "error";
   readonly disabled: boolean;
 }
 
@@ -28,7 +31,6 @@ interface GithubStarsState {
   readonly status: "idle" | "loading" | "ready" | "error";
 }
 
-const UPDATE_APPLY_COMPLETE_DELAY_MS = 1_400;
 const GITHUB_REPO_URL = "https://github.com/sbluemin/fleet-harness";
 const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargazers";
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
@@ -109,7 +111,7 @@ export function CommandBandSystemCluster() {
   return (
     <div className="command-band-system-cluster">
       <HostSwitcher />
-      <SettingsButton updateAvailable={state.updateAvailable} />
+      <SettingsButton />
       <HelpMenu
         version={state.version}
         latestVersion={state.latestVersion}
@@ -510,7 +512,7 @@ function CheckGlyph() {
   return <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2.5 6.3 4.8 8.6 9.5 3.9" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>;
 }
 
-function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean }) {
+function SettingsButton() {
   const t = useT();
   const navigate = useNavigate();
   const location = useLocation();
@@ -555,7 +557,6 @@ function SettingsButton({ updateAvailable }: { readonly updateAvailable: boolean
       title={t("chrome.system.settings")}
     >
       <SettingsGlyph />
-      {updateAvailable ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
     </button>
   );
 }
@@ -599,12 +600,18 @@ function HelpMenu({ releaseDisabled, updateAvailable, latestVersion, version }: 
   };
 
   return <span ref={rootRef} className="command-band-system-anchor">
-    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={t("chrome.system.help")} title={t("chrome.system.help")}><HelpGlyph /></button>
+    {/* 표식은 실행 버튼 위에 있어야 한다. 설정에 붙어 있던 동안 그 점을 따라간 사람은
+        업데이트가 없는 화면에 도착했다. 색·크기·위치는 그대로 옮겨 온 것이며, 커맨드 밴드에
+        같은 뜻의 표식이 둘이 되지 않도록 설정 쪽은 함께 제거했다. */}
+    <button ref={triggerRef} type="button" className="command-band-button command-band-help" onClick={() => setOpen((previous) => !previous)} aria-haspopup="menu" aria-expanded={open} aria-label={updateAvailable ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")} title={updateAvailable ? t("chrome.system.helpUpdateReady") : t("chrome.system.help")}>
+      <HelpGlyph />
+      {updateAvailable ? <span className="command-band-update-dot" aria-hidden="true" /> : null}
+    </button>
     {open ? <div ref={menuRef} className="command-band-system-menu" role="menu" aria-label={t("chrome.system.help")}>
       <button type="button" role="menuitem" disabled={releaseDisabled} onClick={() => { setOpen(false); openWhatsNew(); }}><WhatsNewGlyph /><span>{t("chrome.system.whatsNew")}</span></button>
       <button type="button" role="menuitem" onClick={() => { setOpen(false); setShortcutsOpen(true); }}><KeyboardGlyph /><span>{t("chrome.system.keyboardShortcuts")}</span></button>
       <button type="button" role="menuitem" disabled={replayDisabled} onClick={replayScreenGuide} title={t(replayDisabled ? "chrome.system.replayScreenGuideNone" : "chrome.system.replayScreenGuideTitle")}><ScreenGuideGlyph /><span>{t("chrome.system.replayScreenGuide")}</span></button>
-      {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} /> : null}
+      {updateAvailable ? <UpdateApplyControl latestVersion={latestVersion} version={version} onStarted={() => setOpen(false)} /> : null}
       <div className="command-band-system-menu-divider" role="separator" />
       <GithubLinks version={version} />
     </div> : null}
@@ -651,40 +658,38 @@ function useMenuButtonKeyboard(rootRef: RefObject<HTMLElement | null>, triggerRe
   }, [menuRef, open, rootRef, setOpen, triggerRef]);
 }
 
-function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string | null }) {
+function UpdateApplyControl({ latestVersion, version, onStarted }: {
+  readonly latestVersion: string | null;
+  readonly version: string;
+  readonly onStarted: () => void;
+}) {
   const t = useT();
   const [applyState, setApplyState] = useState<UpdateApplyState>("idle");
   const [errorCode, setErrorCode] = useState<string | null>(null);
-  const completionTimerRef = useRef<number | null>(null);
   const copy = resolveUpdateApplyCopy(applyState, errorCode, latestVersion, t);
-
-  useEffect(() => () => {
-    if (completionTimerRef.current !== null) window.clearTimeout(completionTimerRef.current);
-  }, []);
 
   const handleApply = async () => {
     if (copy.disabled) return;
-    if (completionTimerRef.current !== null) {
-      window.clearTimeout(completionTimerRef.current);
-      completionTimerRef.current = null;
-    }
+    // 두 번째 누름이 곧 동의다. 첫 누름에서 서버가 확인을 요구했고, 그 문장은 이 버튼이
+    // 이미 화면에 띄워 두었다 — 별도 대화 상자를 세우지 않는 것은 커맨드 밴드의 다른
+    // 두-번-누름 컨트롤과 같은 문법이다.
+    const acknowledgeHostRestart = applyState === "armed";
     setApplyState("applying");
     setErrorCode(null);
     try {
-      const result = await applyConsoleUpdate();
-      if (result.status !== "accepted") {
-        setApplyState("error");
-        setErrorCode("invalid_response");
-        return;
-      }
-      setApplyState("accepted");
-      completionTimerRef.current = window.setTimeout(() => {
-        completionTimerRef.current = null;
-        setApplyState("completed");
-      }, UPDATE_APPLY_COMPLETE_DELAY_MS);
+      const result = await applyConsoleUpdate(acknowledgeHostRestart ? { acknowledgeHostRestart: true } : {});
+      // 여기서 "완료"라고 말하지 않는다. 202는 시작됐다는 뜻일 뿐이고, 결과를 아는 것은
+      // 재기동을 겪고 돌아온 콘솔이다. 그때까지의 화면은 커튼이 소유한다.
+      if (result.status === "delegated") markUpdateDelegated(latestVersion);
+      else beginUpdateWatch(latestVersion);
+      onStarted();
     } catch (error) {
       const code = error instanceof ApiError ? error.message : "network_error";
       setErrorCode(code);
+      if (code === "host_restart_confirmation_required") {
+        setApplyState("armed");
+        return;
+      }
       setApplyState(isBlockedUpdateApplyError(code) ? "blocked" : "error");
     }
   };
@@ -699,9 +704,22 @@ function UpdateApplyControl({ latestVersion }: { readonly latestVersion: string 
       title={copy.title}
       aria-live="polite"
     >
-      {copy.label}
+      <span>{copy.label}</span>
+      {copy.detail ? <span className="command-band-update-detail">{copy.detail}</span> : null}
     </button>
   );
+
+  function resolveUpdateApplyCopy(
+    state: UpdateApplyState,
+    code: string | null,
+    latest: string | null,
+    translate: Translate<CoreMessageKey>,
+  ): UpdateApplyCopy {
+    const base = resolveUpdateApplyCopyFor(state, code, latest, translate);
+    if (base.detail !== undefined || state !== "idle" || latest === null) return base;
+    // 최신 버전이 툴팁 안에만 있으면 호버해야 읽힌다. 행 자체가 말하게 한다.
+    return { ...base, detail: translate("chrome.system.update.versionDelta", { from: version, to: latest }) };
+  }
 }
 
 function GithubLinks({ version }: { readonly version: string }) {
@@ -722,7 +740,7 @@ function GithubLinks({ version }: { readonly version: string }) {
   );
 }
 
-export function resolveUpdateApplyCopy(
+export function resolveUpdateApplyCopyFor(
   applyState: UpdateApplyState,
   errorCode: string | null,
   latestVersion: string | null,
@@ -732,15 +750,25 @@ export function resolveUpdateApplyCopy(
     ? t("chrome.system.update.latestVersion", { version: latestVersion })
     : t("chrome.system.update.available");
   if (applyState === "applying") return { label: t("chrome.system.update.requesting"), title: t("chrome.system.update.requestingTitle"), tone: "live", disabled: true };
-  if (applyState === "accepted") return { label: t("chrome.system.update.updating"), title: t("chrome.system.update.updatingTitle"), tone: "live", disabled: true };
-  if (applyState === "completed") return { label: t("chrome.system.update.done"), title: t("chrome.system.update.doneTitle"), tone: "live", disabled: true };
+  if (applyState === "armed") {
+    return {
+      label: t("chrome.system.update.confirmHostRestart"),
+      detail: t("chrome.system.update.confirmHostRestartConfirm"),
+      title: t("chrome.system.update.confirmHostRestartTitle"),
+      tone: "warn",
+      disabled: false,
+    };
+  }
   if (applyState === "blocked") return resolveBlockedUpdateApplyCopy(errorCode, t);
   if (applyState === "error") return { label: t("common.retry"), title: t("chrome.system.update.retryTitle"), tone: "error", disabled: false };
-  return { label: t("chrome.system.update.update"), title: latest, tone: "warn", disabled: false };
+  // 대기 중 업데이트 안내는 정보다(중립 잉크). 신호 채널은 확인 대기(warn)·진행(live)·실패(error)만 쓴다.
+  return { label: t("chrome.system.update.update"), title: latest, tone: "info", disabled: false };
 }
 
 function resolveBlockedUpdateApplyCopy(errorCode: string | null, t: Translate<CoreMessageKey>): UpdateApplyCopy {
   if (errorCode === "local_channel") return { label: t("chrome.system.update.local"), title: t("chrome.system.update.localTitle"), tone: "blocked", disabled: true };
+  // 이 콘솔이 스스로 갈아 끼울 수 없는 레이아웃은 이제 셸에게 넘어간다. 이 문구는 그
+  // 위임을 모르는 옛 서버에 붙었을 때만 남는 마지막 안내다.
   if (errorCode === "managed_runtime_update_requires_relaunch") return { label: t("chrome.system.update.updateAndRestart"), title: t("chrome.system.update.managedTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_already_in_progress") return { label: t("chrome.system.update.busy"), title: t("chrome.system.update.busyTitle"), tone: "blocked", disabled: true };
   if (errorCode === "update_not_available") return { label: t("chrome.system.update.current"), title: t("chrome.system.update.currentTitle"), tone: "blocked", disabled: true };

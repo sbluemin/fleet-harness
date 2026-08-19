@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, useLocation, useNavigate } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopy } from "../core/client/src/components/command-band-system-cluster.js";
+import { CommandBandSystemCluster, propagateSettingsEntryIndex, resolveUpdateApplyCopyFor } from "../core/client/src/components/command-band-system-cluster.js";
 import { hydrateGlobalSettings } from "../core/client/src/global-settings-store.js";
 import { getT } from "../core/client/src/i18n/index.js";
 import type { GlobalSettingsState } from "../core/client/src/types.js";
@@ -104,7 +104,7 @@ function menuItems(): HTMLElement[] {
 
 describe("CommandBandSystemCluster", () => {
   it("gives managed installation updates an actionable Desktop relaunch instruction instead of retry", () => {
-    expect(resolveUpdateApplyCopy("blocked", "managed_runtime_update_requires_relaunch", "1.2.3", getT("en"))).toEqual({
+    expect(resolveUpdateApplyCopyFor("blocked", "managed_runtime_update_requires_relaunch", "1.2.3", getT("en"))).toEqual({
       label: "Update and Restart",
       title: "This managed Console installation updates through Fleet Console Desktop. Use Desktop Update and Restart.",
       tone: "blocked",
