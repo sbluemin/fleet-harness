@@ -125,16 +125,26 @@ POST|/plugins/file-explorer/files/reveal|http
 POST|/plugins/quota/connect|http
 POST|/plugins/quota/order|http
 POST|/plugins/repository/changed|http
+POST|/plugins/repository/commit-create|http
 POST|/plugins/repository/commit-file|http
 POST|/plugins/repository/commit|http
 POST|/plugins/repository/compare-file|http
 POST|/plugins/repository/compare|http
+POST|/plugins/repository/discard|http
 POST|/plugins/repository/fetch|http
 POST|/plugins/repository/file|http
 POST|/plugins/repository/log|http
 POST|/plugins/repository/palette-search|http
+POST|/plugins/repository/pull|http
+POST|/plugins/repository/push|http
 POST|/plugins/repository/refs|http
 POST|/plugins/repository/repos|http
+POST|/plugins/repository/stage|http
+POST|/plugins/repository/stash|http
+POST|/plugins/repository/status|http
+POST|/plugins/repository/tree|http
+POST|/plugins/repository/unstage|http
+POST|/plugins/repository/workstate|http
 POST|/plugins/repository/worktrees|http
 POST|/plugins/scuttlebutt/chat/:chatId/message|http
 POST|/plugins/scuttlebutt/chat/:chatId/stop|http
@@ -203,7 +213,7 @@ describe("api catalog", () => {
 
     expect(response.status).toBe(200);
     expect(body.version).toBe("test");
-    expect(body.routes).toHaveLength(133);
+    expect(body.routes).toHaveLength(143);
     expect(body.routes).toEqual(expect.arrayContaining(buildApiCatalog()));
     const identities = body.routes.map(apiCatalogIdentity);
     expect(identities.slice().sort()).toEqual(EXPECTED_API_CATALOG_IDENTITIES);

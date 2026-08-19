@@ -1769,8 +1769,8 @@
 .repository-checkout-tab-mark {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-style: normal;
-  font-size: 9px;
-  color: var(--ink-fog);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
 }
 
 /* ═══ Fork 워크벤치 — 툴바 동사(Pull/Push/Stash) ══════════════════════════ */
@@ -1780,7 +1780,7 @@
 .repository-verb-count {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-style: normal;
-  font-size: 10px;
+  font-size: var(--t-xs);
   margin-left: 4px;
   color: var(--brass-ink);
 }
@@ -1809,9 +1809,9 @@
   gap: 6px;
   padding: 6px 10px;
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
+  font-size: var(--t-xs);
   letter-spacing: 0.08em;
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   border-bottom: 1px solid var(--hairline);
   position: sticky;
   top: 0;
@@ -1822,7 +1822,7 @@
 .repository-staging-bulk {
   margin-left: auto;
   font: inherit;
-  font-size: 10px;
+  font-size: var(--t-xs);
   color: var(--brass-ink);
   background: var(--brass-glow);
   border: 1px solid color-mix(in oklab, var(--brass) 35%, transparent);
@@ -1852,7 +1852,7 @@
 .repository-staging-row:focus-within .repository-stage-actions { opacity: 1; }
 .repository-stage-action {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 11px;
+  font-size: var(--t-xs);
   line-height: 1;
   color: var(--text-secondary);
   background: var(--ink-mid);
@@ -1893,13 +1893,13 @@
 .repository-commit-subject { border-radius: var(--radius-xs) var(--radius-xs) 0 0; }
 .repository-commit-body { border-top: none; border-radius: 0 0 var(--radius-xs) var(--radius-xs); color: var(--text-secondary); }
 .repository-commit-subject::placeholder,
-.repository-commit-body::placeholder { color: var(--ink-fog); }
+.repository-commit-body::placeholder { color: var(--text-tertiary); }
 .repository-commit-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
 .repository-commit-amend { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-sm); color: var(--text-tertiary); }
 .repository-commit-target {
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 10px;
-  color: var(--ink-fog);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1908,7 +1908,7 @@
   margin-left: auto;
   font: inherit;
   font-size: var(--t-sm);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   color: var(--text-on-brass);
   background: var(--brass);
   border: none;
@@ -1924,7 +1924,7 @@
   flex: none;
   padding: 5px 12px;
   font-size: var(--t-sm);
-  color: var(--ink-fog);
+  color: var(--text-tertiary);
   border-bottom: 1px solid var(--hairline);
 }
 .repository-filetree-scroll { flex: 1; overflow: auto; padding: 4px 0 10px; }
@@ -1949,7 +1949,7 @@
 .repository-filetree-row.is-changed { color: var(--text-secondary); cursor: pointer; }
 .repository-filetree-row.is-changed:hover { background: var(--ink-mid); color: var(--text-primary); }
 .repository-filetree-row .repository-folder-chevron.is-collapsed { transform: rotate(-90deg); }
-.repository-filetree-note { padding: 6px 14px; font-size: var(--t-sm); color: var(--ink-fog); }
+.repository-filetree-note { padding: 6px 14px; font-size: var(--t-sm); color: var(--text-tertiary); }
 .repository-filetree-note.is-error { color: var(--coral-ink); }
 
 /* 스태시 컨텍스트 메뉴의 파괴 동사 — 무장 시에만 coral. */
