@@ -3,7 +3,6 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildResumeArgs(context.resumeSessionId),
-    ...buildSystemPromptArgs(context),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -44,17 +43,6 @@ function buildSettingsArgs(
 
 function buildResumeArgs(resumeSessionId: string | undefined): string[] {
   return resumeSessionId === undefined ? [] : ["--resume", resumeSessionId];
-}
-
-function buildSystemPromptArgs(context: AgentCliInjectionContext): string[] {
-  if (context.systemPromptMode === "off") return [];
-  if (context.systemPromptFile === undefined) {
-    throw new Error(`Claude Gateway system prompt file is required in ${context.systemPromptMode} mode`);
-  }
-  const flag = context.systemPromptMode === "replace"
-    ? "--system-prompt-file"
-    : "--append-system-prompt-file";
-  return [flag, context.systemPromptFile];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

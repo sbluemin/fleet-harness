@@ -111,16 +111,13 @@ describe("claude-gateway custom agents", () => {
       expect(name.startsWith("cursor-")).toBe(true);
       expect(agent.model.startsWith("claude-gateway--")).toBe(true);
       expect(agent.prompt).toBe(GENERAL_PURPOSE_AGENT_PROMPT);
-      expect(agent.description).toContain("gateway_models");
-      // capability class 는 판단석 배정의 prior 다. 설명 첫 문장에서 사라지면 호스트는
-      // 정체성을 고르는 순간(gateway_models 재조회 전) 등급을 볼 수 없다.
-      expect(agent.description).toContain("flagship class");
-      // 호스트가 읽는 유일한 선택 신호이므로 프롬프트와 같은 모드 어휘를 써야 한다.
-      expect(agent.description).toContain("recon, decide, implement, or verify");
-      expect(agent.description).not.toMatch(/researching complex questions/i);
-      // 이름과 모델 id는 철자가 다르고 서로 대체되지 않는다. 이 문장이 사라지면 둘을 잇는
-      // 자리가 없어지고, 이름을 요구하는 자리에 모델 id를 넣는 실패로 되돌아간다.
-      expect(agent.description).toContain(`agent type name ${FLEET_PLUGIN_NAME}:${name}`);
+      // description은 선택 신호가 아니라 목록 라벨이다. 정체성 선택에 필요한 사실은
+      // gateway_models가 호출 시점에 보고하고, 핀 강제는 모델 가드 훅이 맡는다. 이 줄이
+      // 다시 문단으로 자라면 정체성 스무 개마다 같은 표가 복제되어 세션 창에 상주한다.
+      expect(agent.description.length).toBeLessThanOrEqual(48);
+      expect(agent.description).not.toContain("gateway_models");
+      expect(agent.description).not.toContain("class");
+      expect(agent.description).not.toContain("Bench");
     }
     const withEffort = names.find((name) => name.endsWith("-high"));
     expect(withEffort).toBeDefined();
@@ -152,41 +149,16 @@ describe("claude-gateway custom agents", () => {
     expect(files.every((file) => !file.content.includes(omittedModelId))).toBe(true);
   });
 
-  it("carries each model's own capability class, light tiers included", () => {
+  it("labels each identity by provider, model, and rung", () => {
     const flash = requireGatewayModel("opencode--deepseek-v4-flash");
-    const agents = buildGatewayCustomAgents([flash]);
-    const definitions = Object.values(agents);
-    expect(definitions.length).toBeGreaterThan(0);
-    for (const definition of definitions) {
-      // light 가 flagship 으로 읽히면 판단석 배정의 prior 가 통째로 뒤집힌다.
-      expect(definition.description).toContain("light class");
-      expect(definition.description).not.toContain("flagship class");
+    for (const definition of Object.values(buildGatewayCustomAgents([flash]))) {
+      // 사람이 목록에서 이 줄을 알아볼 만큼만 — 공급자와 모델, 강도를 쓰는 모델이면 그 단.
+      expect(definition.description).toContain("opencode/deepseek-v4-flash");
+      expect(definition.description).not.toContain("claude-gateway--");
     }
-  });
 
-  it("embeds CursorBench figures and a role-fit sentence in each identity description", () => {
     const solHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-sol-fast")])["codex-gpt-5-6-sol-fast-high"];
-    expect(solHigh?.description).toContain("Bench CursorBench 3.2: 63.5% at high effort, ~14k tokens/task.");
-    expect(solHigh?.description).toContain("Class prior: judgment-seat candidate (decide, judge, synthesize) — the figures above, not the label, set its band.");
-
-    const lunaHigh = buildGatewayCustomAgents([requireGatewayModel("codex--gpt-5.6-luna-fast")])["codex-gpt-5-6-luna-fast-high"];
-    expect(lunaHigh?.description).toContain("Class prior: light lineup — fits wide mechanical fans (recon, scan, extract, verify), though measured figures can still earn a band seat.");
-
-    for (const definition of Object.values(buildGatewayCustomAgents([requireGatewayModel("cursor--grok-4.5")]))) {
-      expect(definition.description).toContain("score carries a caveat");
-    }
-
-    // CursorBench 미측정 모델은 벤치 문장 없이 class 폴백 문장만 싣는다 —
-    // 단일 소스 정책이 호스트 판정을 class prior 로 유도하는 지점.
-    for (const modelId of ["minimax-m3", "deepseek-v4-pro", "qwen3.8-max", "deepseek-v4-flash", "hy3", "mimo-v2.5"]) {
-      const definitions = Object.values(buildGatewayCustomAgents([requireGatewayModel(`opencode--${modelId}`)]));
-      expect(definitions.length).toBeGreaterThan(0);
-      for (const definition of definitions) {
-        expect(definition.description, modelId).toContain("No bench evidence; capability class is the only prior.");
-        expect(definition.description, modelId).not.toContain("Bench SWE-rebench");
-        expect(definition.description, modelId).not.toContain("Bench AA Terminal-Bench");
-      }
-    }
+    expect(solHigh?.description).toBe("codex/gpt-5.6-sol-fast @high");
   });
 
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
@@ -240,29 +212,14 @@ describe("claude-gateway custom agents", () => {
   });
 });
 
-describe("claude-gateway system prompt mode", () => {
-  it.each(["append", "replace"] as const)("throws when %s mode has no system prompt file", (systemPromptMode) => {
-    const context: AgentCliInjectionContext = {
-      cliId: "claude-gateway",
-      mcpServers: [],
-      pluginRoot: "/fleet/plugin",
-      pluginRoots: ["/fleet/plugin"],
-      systemPromptMode,
-    };
-
-    expect(() => buildClaudeGatewayArgs(context)).toThrow(
-      `Claude Gateway system prompt file is required in ${systemPromptMode} mode`,
-    );
-  });
-
-  it("allows off mode to omit the system prompt file while preserving gateway composition", () => {
+describe("claude-gateway argument composition", () => {
+  it("never carries a system prompt flag while preserving gateway composition", () => {
     const args = buildClaudeGatewayArgs({
       cliId: "claude-gateway",
       mcpServers: [{ name: "fleet", endpointUrl: "http://127.0.0.1:48123/mcp", bearerToken: "token" }],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
       skillOverrides: { "claude-api": "off" },
-      systemPromptMode: "off",
     });
 
     expect(args).not.toContain("--append-system-prompt-file");
@@ -279,7 +236,6 @@ describe("claude-gateway system prompt mode", () => {
       mcpServers: [],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
-      systemPromptMode: "off",
     });
 
     // 이름을 허용 목록에 올려야 억제가 풀린다. `--tools`는 내장 집합을 통째로
@@ -317,62 +273,38 @@ describe("claude-gateway system prompt mode", () => {
     }
   });
 
-  it("composes append, replace, and off without disabling gateway assets", async () => {
-    const root = createTempRoot("fleet-admiral-gateway-system-prompt-");
+  it("composes gateway assets with no system prompt flag on any path", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-compose-");
     const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
     const model = requireGatewayModel("cursor--grok-4.5");
-    let builtPrompts = 0;
     const hook: FleetHookExec = { command: process.execPath, args: ["hook"] };
-    const options = (systemPromptMode: "append" | "replace" | "off") => ({
-      ...baseInjectOptions(root, {
-        systemPromptMode,
-        gatewayDelegationModels: [model],
-        captureSessionHookExec: hook,
-      }),
-      buildSystemPrompt: () => {
-        builtPrompts += 1;
-        return "Fleet doctrine";
-      },
-    });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      gatewayDelegationModels: [model],
+      captureSessionHookExec: hook,
+    }));
 
-    const appended = await injectAgentCliProfile(profile, options("append"));
-    const replaced = await injectAgentCliProfile(profile, options("replace"));
-    const off = await injectAgentCliProfile(profile, options("off"));
-    const appendedPromptPath = promptPathOf(appended, "--append-system-prompt-file");
-    const replacedPromptPath = promptPathOf(replaced, "--system-prompt-file");
+    // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 두 플래그 중 어느 것도 argv에 없어야 한다.
+    expect(injected.args).not.toContain("--append-system-prompt-file");
+    expect(injected.args).not.toContain("--system-prompt-file");
+    expect(injected.args).toContain("--plugin-dir");
+    expect(injected.args).toContain("--mcp-config");
+    expect(injected.args).toContain("--settings");
+    expect(injected.args).toContain("--dangerously-skip-permissions");
 
-    expect(existsSync(appendedPromptPath)).toBe(true);
-    expect(existsSync(replacedPromptPath)).toBe(true);
-    expect(appended.args).not.toContain("--system-prompt-file");
-    expect(replaced.args).not.toContain("--append-system-prompt-file");
-    expect(off.args).not.toContain("--append-system-prompt-file");
-    expect(off.args).not.toContain("--system-prompt-file");
-    expect(builtPrompts).toBe(2);
-    for (const injected of [appended, replaced, off]) {
-      expect(injected.args).toContain("--plugin-dir");
-      expect(injected.args).toContain("--mcp-config");
-      expect(injected.args).toContain("--settings");
-      expect(injected.args).toContain("--dangerously-skip-permissions");
-      const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
-      const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
-      const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")) as {
-        hooks: { UserPromptSubmit: Array<{ hooks: Array<{ command: string }> }> };
-      };
-      expect(pluginJson).toContain(FLEET_PLUGIN_NAME);
-      expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(process.execPath);
-      expect(readdirSync(path.join(pluginRoot, "agents")).length).toBeGreaterThan(0);
-      expect(readdirSync(path.join(pluginRoot, "skills")).length).toBeGreaterThan(0);
-      const settings = JSON.parse(injected.args[injected.args.indexOf("--settings") + 1]!) as { skillOverrides: Record<string, string> };
-      expect(settings.skillOverrides).toEqual({ "claude-api": "off" });
-    }
+    const pluginRoot = injected.args[injected.args.indexOf("--plugin-dir") + 1]!;
+    const pluginJson = readFileSync(path.join(pluginRoot, ".claude-plugin", "plugin.json"), "utf8");
+    const hooksJson = JSON.parse(readFileSync(path.join(pluginRoot, "hooks", "hooks.json"), "utf8")) as {
+      hooks: { UserPromptSubmit: Array<{ hooks: Array<{ command: string }> }> };
+    };
+    expect(pluginJson).toContain(FLEET_PLUGIN_NAME);
+    expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks[0]?.command).toBe(process.execPath);
+    expect(readdirSync(path.join(pluginRoot, "agents")).length).toBeGreaterThan(0);
+    // 스킬 자산은 더 이상 렌더되지 않는다.
+    expect(existsSync(path.join(pluginRoot, "skills"))).toBe(false);
+    const settings = JSON.parse(injected.args[injected.args.indexOf("--settings") + 1]!) as { skillOverrides: Record<string, string> };
+    expect(settings.skillOverrides).toEqual({ "claude-api": "off" });
 
-    appended.cleanup?.();
-    replaced.cleanup?.();
-    off.cleanup?.();
-    expect(existsSync(appendedPromptPath)).toBe(false);
-    expect(existsSync(path.dirname(appendedPromptPath))).toBe(false);
-    expect(existsSync(replacedPromptPath)).toBe(false);
-    expect(existsSync(path.dirname(replacedPromptPath))).toBe(false);
+    injected.cleanup?.();
   });
 });
 
@@ -430,12 +362,6 @@ function agentsDirOf(profile: AgentCliProfile): string {
   return path.join(profile.args[index + 1]!, "agents");
 }
 
-function promptPathOf(profile: AgentCliProfile, flag: "--append-system-prompt-file" | "--system-prompt-file"): string {
-  const index = profile.args.indexOf(flag);
-  expect(index).toBeGreaterThanOrEqual(0);
-  return profile.args[index + 1]!;
-}
-
 function createTempRoot(prefix: string): string {
   const root = mkdtempSync(path.join(os.tmpdir(), prefix));
   tempDirs.push(root);
@@ -466,11 +392,9 @@ function baseInjectOptions(
   overrides: {
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
-    readonly systemPromptMode?: "append" | "replace" | "off";
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    buildSystemPrompt: () => "Fleet doctrine",
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: {
       async getEndpoint() {
@@ -483,7 +407,6 @@ function baseInjectOptions(
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
-    ...(overrides.systemPromptMode ? { systemPromptMode: overrides.systemPromptMode } : {}),
     withMarketplaceLock: async (_target, fn) => fn(),
   };
 }

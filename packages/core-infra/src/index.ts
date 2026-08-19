@@ -21,7 +21,6 @@ export {
   sanitizeGlobalOptionsData,
 } from "./data-dir/settings/store.js";
 export type {
-  ClaudeGatewaySystemPromptMode,
   GlobalOptionsData,
   GlobalOptionsService,
   GlobalOptionsStore,

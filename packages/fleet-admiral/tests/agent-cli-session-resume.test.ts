@@ -30,25 +30,6 @@ afterEach(() => {
 });
 
 describe("agent CLI session resume and capture hooks", () => {
-  it("builds the Admiral system prompt for the canonical gateway CLI", async () => {
-    const built: string[] = [];
-    const root = createTempRoot("fleet-admiral-doctrine-claude-gateway-");
-    const profile = baseProfile("claude-gateway", {
-      args: [],
-      cwd: root,
-      env: { HOME: root },
-    });
-    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      buildSystemPrompt: () => {
-        built.push(profile.id);
-        return "Fleet doctrine";
-      },
-    }));
-    injected.cleanup?.();
-
-    expect(built).toEqual(["claude-gateway"]);
-  });
-
   it("places Claude --resume before Fleet injection flags", async () => {
     const root = createTempRoot("fleet-admiral-claude-resume-");
     const profile = baseProfile("claude-gateway", {
@@ -61,7 +42,6 @@ describe("agent CLI session resume and capture hooks", () => {
     }));
 
     expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", "claude-session-123"]);
-    expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--append-system-prompt-file"]));
     expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
     expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
     expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--dangerously-skip-permissions"]));
@@ -134,13 +114,13 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["console.js", "hook", "background-report"] }] },
     ]);
-    // Workflow 모델 가드는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
+    // 위임 게이트는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
-      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
+      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
     ]);
     // 같은 스크립트가 디스패치 직후에도 선다 — 즉시 반환된 run id를 결과로 읽는 사고를 막는다.
     expect(hooksJson.hooks.PostToolUse).toEqual([
-      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/workflow-guard.mjs"] }] },
+      { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "workflow-receipt"] }] },
     ]);
     injected.cleanup?.();
   });
@@ -166,6 +146,8 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
+      // 위임 규약 주입. 시스템 프롬프트가 없으므로 이것이 그 규약의 유일한 전달 경로다.
+      { args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "remind"], command: process.execPath, type: "command" },
     ]);
     expect(existsSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"))).toBe(false);
   });

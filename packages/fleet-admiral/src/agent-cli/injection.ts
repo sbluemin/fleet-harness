@@ -12,7 +12,6 @@ import {
   launchPromptHasCmdUnsafeChars,
   writeLaunchPromptPointer,
 } from "./prompt.js";
-import { resolveDoctrineFromCliId } from "../protocols/doctrine.js";
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
@@ -26,7 +25,6 @@ import type {
 } from "./types.js";
 
 export interface InjectAgentCliProfileOptions {
-  readonly buildSystemPrompt: () => string;
   readonly dataDir?: string;
   readonly dedicatedMcpSession: DedicatedMcpSession;
   readonly mcpSessionLabel?: string;
@@ -42,7 +40,6 @@ export interface InjectAgentCliProfileOptions {
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
-  readonly systemPromptMode?: "append" | "replace" | "off";
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
@@ -83,29 +80,22 @@ interface ExecutorServerToken {
   readonly token: string;
 }
 
-const SYSTEM_PROMPT_FILE_MODE = 0o600;
-
 export async function injectAgentCliProfile(
   profile: AgentCliProfile,
   options: InjectAgentCliProfileOptions,
 ): Promise<AgentCliProfile> {
   const capability = getAgentCliInjectionCapability(profile.id);
-  const doctrine = resolveDoctrineFromCliId(profile.id);
-  const systemPromptMode = options.systemPromptMode ?? "append";
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
   const tokens = await options.dedicatedMcpSession.issueSessionToken({
     cwd: profile.cwd,
-    // CLI doctrine에 허용된 호스트 도구만 세션 MCP에 노출한다.
-    includeTool: (toolId) => isHostSessionToolAllowed(toolId, doctrine),
+    // 이 세션에 허용된 호스트 도구만 세션 MCP에 노출한다.
+    includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     label: tokenLabel,
   });
   const mcpServers = buildAgentCliMcpServerConfigs(endpoint.servers, tokens);
   const tempCleanups: Array<() => void> = [];
   try {
-    const systemPromptFile = systemPromptMode === "off"
-      ? undefined
-      : writeSystemPromptFile(profile.id, options.buildSystemPrompt(), (cleanup) => tempCleanups.push(cleanup));
     let promptArgs = [...(profile.promptArgs ?? [])];
     let deliveredViaFile = false;
     const cmdWrapped = profile.commandLineLimit?.via === "cmd-shim";
@@ -128,7 +118,6 @@ export async function injectAgentCliProfile(
     }
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
-      doctrine,
       cwd: profile.cwd,
       dataDir: options.dataDir,
       rootDir: options.pluginRootDir,
@@ -157,9 +146,7 @@ export async function injectAgentCliProfile(
       pluginRoot: plugin.pluginRoot,
       pluginRoots: plugin.pluginRoots,
       skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
-      systemPromptMode,
       resumeSessionId: options.resumeSessionId,
-      systemPromptFile,
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(
@@ -243,19 +230,6 @@ function takeLaunchPromptBody(promptArgs: readonly string[]): string {
     throw new Error(`Launch prompt file conversion expects a single positional prompt, got ${promptArgs.length}`);
   }
   return promptArgs[0]!;
-}
-
-function writeSystemPromptFile(
-  cliId: string,
-  systemPrompt: string,
-  onCleanup: (cleanup: () => void) => void,
-): string {
-  const tempDir = mkdtempSync(path.join(os.tmpdir(), `fleet-${cliId}-`));
-  onCleanup(() => rmBestEffort(tempDir));
-  const filePath = path.join(tempDir, "system-prompt.md");
-  writeFileSync(filePath, systemPrompt, { encoding: "utf8", flag: "wx", mode: SYSTEM_PROMPT_FILE_MODE });
-  chmodBestEffort(filePath, SYSTEM_PROMPT_FILE_MODE);
-  return filePath;
 }
 
 function chmodBestEffort(targetPath: string, mode: number): void {

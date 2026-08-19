@@ -11,7 +11,6 @@ import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, Gateway
 import {
   createAgentCliPlugin,
   createSessionCaptureHookExec,
-  createSystemPromptBuilder,
   injectAgentCliProfile,
   prepareAiGatewayLaunchProfile,
   resolveAgentCliId,
@@ -207,7 +206,6 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       hookEntry,
       infraServices,
       createSessionCaptureHookExec,
-      createSystemPromptBuilder,
       injectProfile,
       onRuntimeSessionStart: deps.onRuntimeSessionStart,
       resolveProfile,
@@ -250,7 +248,6 @@ async function createAgentCliLaunchSpec(options: {
   readonly effort?: string;
   readonly createSessionCaptureHookExec: typeof createSessionCaptureHookExec;
   readonly createSessionIdentityResolver: typeof createSessionIdentityResolver;
-  readonly createSystemPromptBuilder: typeof createSystemPromptBuilder;
   readonly cwd: string;
   readonly dataDir: string;
   readonly env: NodeJS.ProcessEnv;
@@ -270,7 +267,6 @@ async function createAgentCliLaunchSpec(options: {
       throw new Error("Fleet Console agent runtime is unavailable.");
     }
     const cliId = resolveAgentCliId(options.env, { cliId: options.cliId });
-    const globalOptions = options.infraServices.globalOptionsService.load();
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
     // resolveProfile보다 먼저 읽어 명시 모델 검증·Agent 정의 렌더·cache가 한 스냅샷을 공유한다.
     const gatewaySelection = cliId === "claude-gateway" && options.readAiGatewaySettings
@@ -306,7 +302,6 @@ async function createAgentCliLaunchSpec(options: {
       prompt: options.prompt,
     });
     const injectedProfile = await options.injectProfile(profile, {
-      buildSystemPrompt: () => options.createSystemPromptBuilder().build(),
       dataDir: options.dataDir,
       dedicatedMcpSession: agentRuntime.dedicatedMcpSession,
       captureSessionHookExec: buildConsoleCaptureHookCommand(
@@ -323,7 +318,6 @@ async function createAgentCliLaunchSpec(options: {
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,
-      systemPromptMode: globalOptions.claudeGatewaySystemPromptMode ?? "append",
       ...(gatewaySelection
         ? {
           // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.

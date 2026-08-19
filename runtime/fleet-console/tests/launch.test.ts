@@ -52,7 +52,6 @@ function createDefaultTerminalLaunchResolver(
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
 function createFakeInfraServices(globalOptions: {
   readonly agentIdleDormantMinutes?: number | null;
-  readonly claudeGatewaySystemPromptMode?: "append" | "replace" | "off";
 } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
@@ -77,7 +76,6 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const runtime = createFakeRuntime((event) => events.push(event));
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile, options) => {
-      expect(options.buildSystemPrompt).toEqual(expect.any(Function));
       expect(options.captureSessionHookExec).toMatchObject({ command: process.execPath });
       expect(options.captureSessionHookExec?.args).toContain("capture-session");
       expect(options.captureSessionHookExec?.args).toContain("claude");
@@ -382,21 +380,20 @@ describe("createDefaultTerminalLaunchResolver", () => {
       sessionId: "gateway-integration",
     });
     const pluginRoot = spec.args[spec.args.indexOf("--plugin-dir") + 1];
-    const promptPath = spec.args[spec.args.indexOf("--append-system-prompt-file") + 1];
 
     expect(spec.bin).toBe(process.execPath);
     expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
     expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet-gateway"));
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
-    expect(existsSync(promptPath!)).toBe(true);
+    // 위임 규율은 시스템 프롬프트가 아니라 이 훅이 싣는다.
+    expect(existsSync(path.join(pluginRoot!, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
 
     await spec.cleanup?.();
-    expect(existsSync(promptPath!)).toBe(false);
     expect(releasedLabels).toEqual(["gateway-integration"]);
   });
 
-  it("replaces the Claude Code system prompt only for new AI Gateway launches when enabled", async () => {
+  it("never carries a system prompt flag into an AI Gateway launch", async () => {
     const root = makeTempDir();
     const resolve = createDefaultTerminalLaunchResolver({
       agentRuntime: {
@@ -427,7 +424,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
         PATH: process.env.PATH,
       },
       execPath: process.execPath,
-      infraServices: createFakeInfraServices({ claudeGatewaySystemPromptMode: "replace" }) as never,
+      infraServices: createFakeInfraServices() as never,
     });
 
     const spec = await resolve(root, {
@@ -435,8 +432,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
       sessionId: "gateway-replace",
     });
 
-    expect(spec.args).toContain("--system-prompt-file");
+    // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 위임 규율은 모델 가드 훅이 맡는다.
+    expect(spec.args).not.toContain("--system-prompt-file");
     expect(spec.args).not.toContain("--append-system-prompt-file");
+    expect(spec.args).toContain("--plugin-dir");
     await spec.cleanup?.();
   });
 

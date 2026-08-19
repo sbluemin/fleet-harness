@@ -410,100 +410,36 @@ describe("gateway_models tool", () => {
   });
 });
 
-// 이 텍스트는 모델이 실제로 읽는 live tool metadata다. Standing Order와 어긋나면 실무에서는
-// 이쪽이 이긴다 — 실제로 "핀할 때만 호출하라"는 구 지침이 새 doctrine을 무효화한 채 남아 있었고,
-// 그 모순을 잡아낸 테스트가 하나도 없었다. 여기서 고정한다.
+// 이 도구에서 모델에 실제로 도달하는 텍스트는 description 하나다 — core-agent의 specToMcpTool이
+// MCP 도구로 내보내는 필드가 그것뿐이다. 예전에는 그 사실을 모른 채 판정 규칙 수천 자가
+// whenToUse·usageGuidelines에 쌓여 있었고, 그 문장들은 한 번도 모델에 실린 적이 없다.
+// 여기서는 틀리면 조용히 실패하는 두 규칙이 실제로 나가는 필드에 있는지만 고정한다.
 describe("gateway_models tool doctrine", () => {
   function doctrine() {
     return buildGatewayModelsToolSpec({ readSelection: () => ({ models: [] }) });
   }
 
-  it("requires a read before every run rather than only before pinning", () => {
+  it("carries the two failure-loud rules in the field MCP actually serves", () => {
+    const { description } = doctrine();
+    // 이름 자리에 modelId를 넣으면 전 분기가 시작 즉시 죽는다. 그 실패가 이 로스터에
+    // agentTypes가 생긴 이유이므로, 두 철자의 구분은 반드시 description에 있어야 한다.
+    expect(description).toContain("Two spellings, never interchangeable");
+    expect(description).toContain("subagent_type");
+    expect(description).toContain("opts.model");
+    // 세션 중 노출한 모델은 이름이 해석되지 않는다. 이것을 모르면 stale roster를 의심하며
+    // 같은 실패를 반복한다.
+    expect(description).toContain("registered once at session start");
+  });
+
+  it("states the roster is resolved at call time rather than remembered", () => {
+    expect(doctrine().description).toContain("resolved at call time rather than remembered");
+  });
+
+  // 판정 규칙이 이 필드들로 돌아가면 그 문장은 다시 아무에게도 도달하지 않은 채 유지비만 낸다.
+  it("keeps the fields MCP does not serve empty", () => {
     const spec = doctrine();
-    expect(spec.whenToUse.join("\n")).toContain("before every run that leaves the host");
-    // 구 지침은 호출 의무를 핀 여부로 한정했다. 그 한정이 돌아오면 분산 기본이 죽는다.
-    expect(spec.whenToUse.join("\n")).not.toContain("before authoring a workflow that pins");
-  });
-
-  it("does not restore the inherit-shortcut that skipped the roster entirely", () => {
-    const spec = doctrine();
-    expect(spec.whenNotToUse.join("\n")).not.toContain("when every stage will inherit the session model");
-  });
-
-  it("ranks quality by benchmark evidence first, class as the unmeasured prior, never the session model", () => {
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    // 품질 축이 allowance 로 무너지던 것이 실측된 실패다: 판단 스테이지(propose)에 품질
-    // 신호가 없어 아키텍처 제안석이 light 모델로 균등 분배됐다. 이제 측정(benchmark)이
-    // 먼저 품질을 답하고, class 는 측정이 없는 곳의 prior 로만 남으며, providerPriority 는
-    // allowance 축 전용이다. 어느 질문도 세션 모델로 돌아가지 않는다.
-    expect(guidelines).toContain("the quality prior where no benchmark figures exist");
-    expect(guidelines).toContain("Quality reads benchmark first");
-    expect(guidelines).toContain("judgment seats keep to the top reachable band");
-    // 소스 간 점수 비교를 허용하면 공급자 간 class 비교와 같은 오류가 벤치 차원에서
-    // 재현된다 — 카탈로그는 단일 소스가 정책이고, 미측정 모델은 class 로만 판정한다.
-    expect(guidelines).toContain("The catalog carries one benchmark source deliberately");
-    expect(guidelines).toContain("judged by its capability class alone");
-    expect(guidelines).toContain("neither quality nor allowance ever falls back to this session's own model");
-    // 구 문언이 되살아나면 공급자 주장(class)이 다시 공급자 간 품질 통화가 된다.
-    expect(guidelines).not.toContain("the roster's only quality signal");
-    expect(guidelines).not.toContain("judgment seats keep to the highest reachable class");
-    expect(guidelines).not.toContain("the choice falls to allowance");
-    expect(guidelines).not.toContain("it is not a reason to pin");
-    // 폐기된 측정 테이블 어휘가 도구 문언에 되살아나면 품질 신호가 두 벌이 된다.
-    expect(guidelines).not.toContain("roleFit");
-    expect(guidelines).not.toContain("role fit");
-  });
-
-  // 우선순위는 사용자 옵트인 소진 순서다. 예보(pressure)가 그것을 뒤집으면 옵트인이
-  // 무력화되고, 품질 밴드를 넘으면 판단석이 할당량 축으로 떨어진다.
-  it("carries the user's provider spend priority as an allowance-axis order only", () => {
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("providerPriority is the user's standing spend order");
-    expect(guidelines).toContain("the pressure forecast included");
-    expect(guidelines).toContain("leave one only on observed failure");
-    expect(guidelines).toContain("never lift an identity across a quality band");
-  });
-
-  // claude 항목이 로스터 모델을 하나도 서빙하지 않는다는 사실과, 미핀 실행이 항상 claude 를
-  // 쓴다는 주장은 다르다. 세션이 게이트웨이 기본 모델로 기동되면 후자는 거짓이 된다 —
-  // 도구 지침이 그 보편 주장을 유지하면 스킬이 고쳐도 호스트는 이쪽을 읽는다.
-  it("does not claim the claude entry is always what an unpinned run spends", () => {
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("a session launched on a gateway default instead spends the entry that serves that model");
-    expect(guidelines).not.toContain("it is what an unpinned run spends, and the baseline an offload is measured against");
-  });
-
-  // buildProviders 는 claude 를 항상 목록에 넣고 스냅샷이 준 창을 그대로 enrich 한다
-  // (터미널 쿼터 어댑터도 providers.claude.windows 를 실어 나른다). "보고되지 않는다"고
-  // 쓰면 호스트가 실제로 읽히는 parent pressure 를 무시한 채 안전하다고 판단한다.
-  it("does not tell the host the parent allowance goes unreported", () => {
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("Every entry reports its allowance, the parent subscription included");
-    expect(guidelines).toContain("an allowance you can read and never select");
-    expect(guidelines).not.toContain("spends an allowance no window here reports");
-  });
-
-  // homolineage 는 upstream 모델 id 가 "claude"로 시작하는지만 본다. 세션을 참조하지
-  // 않으므로 "이 세션의 계열"로 서술하면 비-Claude 기본으로 기동된 세션에서 거짓이 된다.
-  it("describes homolineage as a model-derived Claude-family flag, not a session-relative one", () => {
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("derived from its id alone and silent about what this session runs on");
-    expect(guidelines).not.toContain("the blind spots an identity inherits from this session's lineage");
-  });
-
-  it("keeps the scope-matching rule tied to a declared quotaScope", () => {
-    // quotaScope는 Cursor만 선언한다. 이 문장이 전 프로바이더 규칙으로 읽히면
-    // codex/kimi/claude는 읽을 창이 없어진다 — 조건절이 규칙의 본체다.
-    expect(doctrine().usageGuidelines.join("\n")).toContain("Where a provider splits into pools");
-  });
-
-  it("keeps the two spellings distinct and the name the preferred selector", () => {
-    // 이 두 문장이 사라지면 호스트는 이름을 요구하는 자리에 modelId를 넣는 실패로
-    // 되돌아간다. 그것이 이 로스터에 agentTypes가 생긴 이유다.
-    const guidelines = doctrine().usageGuidelines.join("\n");
-    expect(guidelines).toContain("Two spellings, never interchangeable");
-    expect(guidelines).toContain("Prefer a name");
-    // modelId를 기본 경로로 되돌리면 사용자가 꺼둔 모델이 오류 없이 실행된다.
-    expect(guidelines).toContain("including a model the user turned off");
+    expect(spec.whenToUse).toEqual([]);
+    expect(spec.whenNotToUse).toEqual([]);
+    expect(spec.usageGuidelines).toEqual([]);
   });
 });
