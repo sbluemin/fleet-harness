@@ -204,7 +204,7 @@ export async function handleRepositoryFile(
   }
 
   const mode = body.mode as DiffFileMode;
-  if (mode !== "unified" && mode !== "untracked") {
+  if (mode !== "unified" && mode !== "untracked" && mode !== "staged" && mode !== "worktree") {
     ctx.host.http.writeJson(res, 400, { error: "invalid_mode" });
     return;
   }
@@ -264,7 +264,7 @@ export async function handleRepositoryFile(
       return;
     }
 
-    // unified 모드: git diff HEAD -- <path>
+    // unified: HEAD 대비 통합 diff / staged: 인덱스 축 / worktree: 워크트리 축
     // 심링크 escaping 차단: 존재하는 파일에 한해 realpath containment 재검증
     try {
       const [realGitCwd, realFile] = await Promise.all([
@@ -279,12 +279,18 @@ export async function handleRepositoryFile(
       // 파일이 삭제된 경우(D 상태) realpath가 실패해도 git이 안전하게 처리
     }
     let result;
-    try {
-      result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
-    } catch (err) {
-      if (!isNoHeadError(err)) throw err;
-      // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
+    if (mode === "worktree") {
+      result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+    } else if (mode === "staged") {
       result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+    } else {
+      try {
+        result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "HEAD", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+      } catch (err) {
+        if (!isNoHeadError(err)) throw err;
+        // no-HEAD 신규 저장소: staged hunk를 --cached로 조회 (changed 목록의 fallback과 동일)
+        result = await runGit(["diff", "--no-ext-diff", "--no-textconv", "--cached", "--relative", "--unified=3", "--", literalPathspec(relativePath)], { cwd: gitCwd });
+      }
     }
     ctx.host.http.writeJson(res, 200, { content: result.stdout, truncated: result.truncated });
   } catch (error) {

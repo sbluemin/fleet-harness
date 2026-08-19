@@ -80,7 +80,16 @@ function countFetchUpdatedRefs(stderr: string): number {
   ).length;
 }
 
-class NoRemoteError extends Error {}
+export class NoRemoteError extends Error {}
+
+// 네트워크를 건드리는 모든 git 실행이 공유하는 하드닝 접두 — fetch가 확립한 결을
+// push/pull이 그대로 물려받는다(transport 실행 경로·훅·프록시·ssh 명령 고정).
+export const NETWORK_HARDENING_ARGS = [
+  "-c", "core.sshCommand=ssh",
+  "-c", "core.gitProxy=none",
+  "-c", "protocol.ext.allow=never",
+  "-c", `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
+] as const;
 
 // repo-local `credential.helper=!<명령>`·경로 helper의 zero-click 실행을 막기 위한
 // 비실행 helper 화이트리스트 — bare 이름(경로 구분자·인자 없음)만 허용한다.
@@ -96,7 +105,7 @@ const SAFE_CREDENTIAL_HELPERS = new Set([
   "manager-core",
 ]);
 
-async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly string[]> {
+export async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly string[]> {
   const raw = (await runGit(["config", "--get-all", "credential.helper"], { cwd: gitCwd, allowExitCodes: [1] })).stdout;
   const helpers = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   const kept = helpers.filter((helper) => {
@@ -108,7 +117,7 @@ async function resolveCredentialHelperArgs(gitCwd: string): Promise<readonly str
   return ["-c", "credential.helper=", ...kept.flatMap((helper) => ["-c", `credential.helper=${helper}`]), "-c", "core.askPass="];
 }
 
-async function resolveDefaultRemote(gitCwd: string): Promise<string | null> {
+export async function resolveDefaultRemote(gitCwd: string): Promise<string | null> {
   const branch = (await runGit(["rev-parse", "--abbrev-ref", "HEAD"], { cwd: gitCwd })).stdout.trim();
   if (branch && branch !== "HEAD") {
     const upstream = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
