@@ -27,6 +27,16 @@ export const XAI_CLI_CLIENT_VERSION = "1.0.3";
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
+/**
+ * Longest gap tolerated between two canonical events on one Grok CLI stream.
+ *
+ * The transport idle timeout watches bytes, so a proxy that keeps writing SSE comments while the
+ * model produces nothing resets it forever. Wire captures show that exact shape: streams that fell
+ * silent after `content_part.added` or mid `output_text.delta` and were still parked ten minutes
+ * later. Measured gaps inside healthy turns are p99 0.38s and 5.9s at worst, so a minute is two
+ * orders of magnitude of headroom while still bounding a hang that used to be unbounded.
+ */
+export const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 60_000;
 const XAI_RETRY_DELAY_MS = 200;
 
 /**
@@ -49,6 +59,7 @@ export interface XaiResponsesAdapterOptions {
   maxBodyBytes?: number;
   idleTimeoutMs?: number;
   functionCallTimeoutMs?: number;
+  semanticStallTimeoutMs?: number;
   /** 구독 경로가 요구하는 추가 헤더. */
   headers?: Readonly<Record<string, string>>;
 }
@@ -60,6 +71,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly maxBodyBytes: number;
   private readonly idleTimeoutMs: number;
   private readonly functionCallTimeoutMs: number;
+  private readonly semanticStallTimeoutMs: number;
   private readonly url: string;
   private readonly extraHeaders: Readonly<Record<string, string>>;
 
@@ -82,6 +94,10 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     this.functionCallTimeoutMs = positiveInteger(
       options.functionCallTimeoutMs ?? DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS,
       "functionCallTimeoutMs"
+    );
+    this.semanticStallTimeoutMs = positiveInteger(
+      options.semanticStallTimeoutMs ?? DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS,
+      "semanticStallTimeoutMs"
     );
   }
 
@@ -189,7 +205,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         idleTimeoutMs: this.idleTimeoutMs,
         maxBodyBytes: this.maxBodyBytes,
         onClose: () => undefined
-      }, this.functionCallTimeoutMs)
+      }, this.functionCallTimeoutMs, this.semanticStallTimeoutMs)
     };
   }
 
@@ -461,7 +477,8 @@ async function abortableXaiDelay(delayMs: number, signal: AbortSignal): Promise<
 function parseXaiEventStream(
   body: ReadableStream<Uint8Array> | null,
   options: ReadOptions & { onClose: () => void },
-  functionCallTimeoutMs: number
+  functionCallTimeoutMs: number,
+  semanticStallTimeoutMs: number,
 ): AsyncGenerator<CanonicalResponseEvent> {
   return assembleXaiFunctionCalls(
     parseUpstreamSseStream(
@@ -471,6 +488,7 @@ function parseXaiEventStream(
     ),
     options.controller,
     functionCallTimeoutMs,
+    semanticStallTimeoutMs,
   );
 }
 
@@ -489,27 +507,47 @@ async function* assembleXaiFunctionCalls(
   source: AsyncIterable<CanonicalResponseEvent>,
   controller: AbortController,
   timeoutMs: number,
+  semanticStallTimeoutMs: number,
 ): AsyncGenerator<CanonicalResponseEvent> {
   const iterator = source[Symbol.asyncIterator]();
   const pending = new Map<string, PendingXaiFunctionCall>();
   let snapshot: CanonicalResponseSnapshot | undefined;
   let completedNormally = false;
+  // The stall clock starts at the first read, so a proxy that accepts the request and then never
+  // writes an event is bounded too — not only one that goes quiet mid-turn.
+  let lastEventAt = Date.now();
+  let lastEventType: string | undefined;
   try {
     while (true) {
-      const deadlineAt = earliestXaiFunctionCallDeadline(pending);
-      const result = deadlineAt === undefined
-        ? await iterator.next()
-        : await nextXaiEventBeforeDeadline(iterator, deadlineAt);
+      const callDeadlineAt = earliestXaiFunctionCallDeadline(pending);
+      const stallDeadlineAt = lastEventAt + semanticStallTimeoutMs;
+      const callDeadlineFirst = callDeadlineAt !== undefined && callDeadlineAt <= stallDeadlineAt;
+      const result = await nextXaiEventBeforeDeadline(
+        iterator,
+        Math.min(stallDeadlineAt, callDeadlineAt ?? Number.POSITIVE_INFINITY),
+      );
       if (result === XAI_ASSEMBLY_DEADLINE) {
-        yield* salvageXaiPendingCalls(
+        if (callDeadlineFirst) {
+          yield* salvageXaiPendingCalls(
+            pending,
+            snapshot,
+            `function call assembly exceeded ${timeoutMs}ms`,
+            controller,
+          );
+          completedNormally = true;
+          return;
+        }
+        yield* failXaiSemanticStall(
           pending,
           snapshot,
-          `function call assembly exceeded ${timeoutMs}ms`,
+          semanticStallTimeoutMs,
+          lastEventType,
           controller,
         );
         completedNormally = true;
         return;
       }
+      lastEventAt = Date.now();
       if (result.done) {
         if (pending.size > 0) {
           yield* salvageXaiPendingCalls(
@@ -524,6 +562,7 @@ async function* assembleXaiFunctionCalls(
       }
 
       const event = result.value;
+      lastEventType = event.type;
       if (event.type === "response.created") {
         snapshot = event.response;
       }
@@ -650,6 +689,39 @@ async function* salvageXaiPendingCalls(
   }
   // The client-facing encoder requires a terminal frame, and usage is genuinely unknown here.
   yield { type: "response.completed", response: { ...snapshot, usage: null } };
+}
+
+/**
+ * The stream went quiet without a terminal frame. A pending function call is still worth the
+ * salvage rule above — the model may have finished writing it — but a turn with nothing pending
+ * has only a partial answer to show for itself, and sealing that as `response.completed` would
+ * present a truncated reply as a finished one. Failing is the honest outcome there.
+ */
+async function* failXaiSemanticStall(
+  pending: Map<string, PendingXaiFunctionCall>,
+  snapshot: CanonicalResponseSnapshot | undefined,
+  semanticStallTimeoutMs: number,
+  lastEventType: string | undefined,
+  controller: AbortController,
+): AsyncGenerator<CanonicalResponseEvent> {
+  const reason = `upstream emitted no event for ${semanticStallTimeoutMs}ms`;
+  wireLog("xai-responses.stream.stalled", {
+    semanticStallTimeoutMs,
+    pendingFunctionCalls: pending.size,
+    lastEvent: lastEventType ?? null,
+  });
+  if (pending.size > 0) {
+    yield* salvageXaiPendingCalls(pending, snapshot, reason, controller);
+    return;
+  }
+  const error = xaiSemanticStallError(reason);
+  // The upstream read is parked on a stream that stopped writing; aborting is what unwinds it.
+  controller.abort(error);
+  throw error;
+}
+
+function xaiSemanticStallError(reason: string): UpstreamProtocolError {
+  return new UpstreamProtocolError(`Grok CLI ${reason}`);
 }
 
 /** The absorbed buffer, or the streamed `.done` payload, only when it is a complete JSON object. */
