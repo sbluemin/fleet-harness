@@ -1,10 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
-  XAI_CLI_CLIENT_VERSION,
   XAI_CLI_CREDITS_URL,
   XAI_CLI_REFRESH_URL,
-  XAI_CLI_RESPONSES_URL,
+  XAI_RESPONSES_URL,
   XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
   encodeAnthropicSse,
@@ -1469,11 +1468,12 @@ describe("Grok Responses adapter", () => {
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
-    expect(String(url)).toBe(XAI_CLI_RESPONSES_URL);
+    expect(String(url)).toBe(XAI_RESPONSES_URL);
     expect(headers.get("authorization")).toBe("Bearer session-token");
-    expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
-    expect(headers.get("x-grok-client-version")).toBe(XAI_CLI_CLIENT_VERSION);
-    expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
+    // The Grok CLI proxy's headers must not come back: they belong to the queued endpoint.
+    expect(headers.get("x-xai-token-auth")).toBeNull();
+    expect(headers.get("x-grok-client-version")).toBeNull();
+    expect(headers.get("x-grok-model-override")).toBeNull();
     expect(body).toMatchObject({
       model: "grok-4.6",
       input: [{ type: "message", role: "user", content: "hi" }],

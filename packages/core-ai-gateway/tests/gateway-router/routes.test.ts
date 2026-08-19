@@ -18,7 +18,7 @@ import {
   KIMI_MESSAGES_URL,
   MAX_GATEWAY_REQUEST_BODY_BYTES,
   OPENCODE_MESSAGES_URL,
-  XAI_CLI_RESPONSES_URL,
+  XAI_RESPONSES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
   errorMessage,
 } from "../../src/index.js";
@@ -1047,11 +1047,11 @@ describe("Grok CLI Responses", () => {
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(res.status).toBe(200);
-    expect(String(url)).toBe(XAI_CLI_RESPONSES_URL);
+    expect(String(url)).toBe(XAI_RESPONSES_URL);
     expect(headers.get("authorization")).toBe("Bearer grok-subscription-token");
-    expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
-    expect(headers.get("x-grok-client-version")).toBe("1.0.3");
-    expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
+    expect(headers.get("x-xai-token-auth")).toBeNull();
+    expect(headers.get("x-grok-client-version")).toBeNull();
+    expect(headers.get("x-grok-model-override")).toBeNull();
     expect(body.model).toBe("grok-4.6");
   });
 

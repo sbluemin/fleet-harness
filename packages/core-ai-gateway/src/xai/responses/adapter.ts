@@ -21,9 +21,19 @@ import {
 } from "../../transport/upstream-sse.js";
 import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
 
-/** Grok CLI 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
-export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/responses";
-export const XAI_CLI_CLIENT_VERSION = "1.0.3";
+/**
+ * xAI's own Responses endpoint, reached with the SuperGrok subscription token.
+ *
+ * The Grok CLI proxy at `cli-chat-proxy.grok.com/v1/responses` serves the same subscription and
+ * the same credential, but queues: measured head to head against this URL at one moment with an
+ * identical model, effort, and prompt, the proxy stalled 5-18s on a third of the requests while
+ * this one held 0.66-1.11s across every sample. Quota is drawn from the same subscription either
+ * way. The proxy still owns billing (`quota.ts`), which is the one surface it answers faster.
+ *
+ * The proxy also silently remaps the model to a `-build` variant; this endpoint returns the model
+ * as asked.
+ */
+export const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
@@ -76,9 +86,9 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly extraHeaders: Readonly<Record<string, string>>;
 
   constructor(options: XaiResponsesAdapterOptions = {}) {
-    // Grok CLI 소유 어댑터는 이 네임스페이스 엔드포인트로 고정된다. 임의 엔드포인트
-    // 오버라이드는 provider 어댑터를 다시 범용화하므로 옵션으로 노출하지 않는다.
-    this.url = XAI_CLI_RESPONSES_URL;
+    // 엔드포인트는 고정이다. 임의 오버라이드는 provider 어댑터를 다시 범용화하므로
+    // 옵션으로 노출하지 않는다.
+    this.url = XAI_RESPONSES_URL;
     this.extraHeaders = options.headers ?? {};
     const fetchTracker = createXaiFetchFailureTracker(options.fetch ?? globalThis.fetch.bind(globalThis));
     this.fetchImpl = fetchTracker.fetch;
@@ -117,7 +127,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     let response: AdapterResponse;
 
     try {
-      response = await this.fetchResponse(request, options.apiKey, payload, controller);
+      response = await this.fetchResponse(options.apiKey, payload, controller);
     } catch (error) {
       if (!isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)) {
         unlinkAbort();
@@ -130,7 +140,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       });
       try {
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, controller.signal);
-        response = await this.fetchResponse(request, options.apiKey, payload, controller);
+        response = await this.fetchResponse(options.apiKey, payload, controller);
       } catch (retryError) {
         unlinkAbort();
         throw retryError;
@@ -146,7 +156,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       ...response,
       events: retryXaiEvents(response.events, async (signal) => {
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, signal);
-        const retried = await this.fetchResponse(request, options.apiKey, payload, controller);
+        const retried = await this.fetchResponse(options.apiKey, payload, controller);
         if (!retried.ok) {
           throw new UpstreamProtocolError(`xAI retry failed with status ${retried.status}`);
         }
@@ -156,7 +166,6 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   }
 
   private async fetchResponse(
-    request: CanonicalResponseRequest,
     apiKey: string,
     payload: XaiResponsesWireRequest,
     controller: AbortController,
@@ -169,9 +178,9 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         accept: "text/event-stream",
         authorization: `Bearer ${apiKey}`,
         "content-type": "application/json",
-        "x-xai-token-auth": "xai-grok-cli",
-        "x-grok-client-version": XAI_CLI_CLIENT_VERSION,
-        "x-grok-model-override": request.model,
+        // The `x-xai-token-auth` / `x-grok-client-version` / `x-grok-model-override` trio the
+        // Grok CLI proxy required has no meaning here: this endpoint authenticates on the bearer
+        // token alone and takes the model from the payload.
         ...this.extraHeaders
       },
       body: JSON.stringify(payload),
