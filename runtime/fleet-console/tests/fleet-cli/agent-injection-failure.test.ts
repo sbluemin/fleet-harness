@@ -25,7 +25,6 @@ describe("agent CLI injection failure cleanup", () => {
 
     try {
       await expect(injectAgentCliProfile(TEST_PROFILE, {
-        buildSystemPrompt: () => "prompt",
         dataDir,
         dedicatedMcpSession: {
           getEndpoint: async () => ({

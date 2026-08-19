@@ -3,10 +3,17 @@ import * as path from "node:path";
 import { getFleetDataDir } from "../paths.js";
 import { createDurableJsonStore } from "../../fs-store/json-store.js";
 
+export type ClaudeCodeSystemPromptMode = "on" | "off";
+
 export interface GlobalOptionsData {
   readonly version: 1;
   /** Idle agent auto-DORMANT threshold in minutes. `null` disables; key absent means server default. */
   readonly agentIdleDormantMinutes?: number | null;
+  /**
+   * Claude Code's own base system prompt for new gateway sessions. Key absent means `on`,
+   * which is what a launch without any prompt flag already does.
+   */
+  readonly claudeCodeSystemPrompt?: ClaudeCodeSystemPromptMode;
 }
 
 export interface GlobalOptionsValidationResult {
@@ -107,13 +114,16 @@ export function sanitizeGlobalOptionsData(value: unknown): GlobalOptionsValidati
   }
 
   const agentIdleDormantMinutes = sanitizeAgentIdleDormantMinutes(value.agentIdleDormantMinutes);
+  const claudeCodeSystemPrompt = sanitizeClaudeCodeSystemPrompt(value.claudeCodeSystemPrompt);
   const data: GlobalOptionsData = {
     version: GLOBAL_OPTIONS_VERSION,
     ...(agentIdleDormantMinutes !== undefined ? { agentIdleDormantMinutes } : {}),
+    ...(claudeCodeSystemPrompt !== undefined ? { claudeCodeSystemPrompt } : {}),
   };
-  const allowedKeys = new Set(["version", "agentIdleDormantMinutes"]);
+  const allowedKeys = new Set(["version", "agentIdleDormantMinutes", "claudeCodeSystemPrompt"]);
   const changed = Object.keys(value).some((key) => !allowedKeys.has(key)) ||
-    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined);
+    ("agentIdleDormantMinutes" in value && agentIdleDormantMinutes === undefined) ||
+    ("claudeCodeSystemPrompt" in value && claudeCodeSystemPrompt === undefined);
 
   return { data, changed };
 }
@@ -122,6 +132,10 @@ function sanitizeAgentIdleDormantMinutes(value: unknown): number | null | undefi
   if (value === null) return null;
   if (typeof value === "number" && Number.isFinite(value) && Number.isInteger(value) && value > 0) return value;
   return undefined;
+}
+
+function sanitizeClaudeCodeSystemPrompt(value: unknown): ClaudeCodeSystemPromptMode | undefined {
+  return value === "on" || value === "off" ? value : undefined;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

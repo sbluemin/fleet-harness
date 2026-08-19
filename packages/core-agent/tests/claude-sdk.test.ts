@@ -366,6 +366,15 @@ describe("system prompt channel", () => {
     await sdk.dispose();
   });
 
+  it("forwards preset mode as the bare claude_code preset with nothing appended", async () => {
+    const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
+    await drain(await sdk.startTurn({ prompt: "hi", model: LUNA, systemPrompt: { mode: "preset" } }));
+    const options = runVendorQuery.mock.calls[0]?.[0].options as Record<string, unknown>;
+    // `append` 키가 붙으면 vendor가 빈 본문을 프롬프트 안에 이어 붙인다 — 이 모드는 그것이 아니다.
+    expect(options.systemPrompt).toEqual({ type: "preset", preset: "claude_code" });
+    await sdk.dispose();
+  });
+
   it("injects nothing when the caller omits it", async () => {
     const sdk = await createClaudeGatewaySdk({ baseUrl: BASE_URL, models: [LUNA] });
     await drain(await sdk.startTurn({ prompt: "hi", model: LUNA }));
@@ -379,7 +388,7 @@ describe("system prompt channel", () => {
     await expect(sdk.startTurn({ prompt: "hi", model: LUNA, systemPrompt: { mode: "replace", text: "" } }))
       .rejects.toThrow(/non-empty string/);
     await expect(sdk.startTurn({ prompt: "hi", model: LUNA, systemPrompt: { mode: "prepend", text: "x" } as never }))
-      .rejects.toThrow(/"replace" or "append"/);
+      .rejects.toThrow(/"replace", "append", or "preset"/);
     expect(runVendorQuery).not.toHaveBeenCalled();
     await sdk.dispose();
   });

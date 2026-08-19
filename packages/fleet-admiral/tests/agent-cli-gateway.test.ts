@@ -230,6 +230,20 @@ describe("claude-gateway argument composition", () => {
     expect(args).toContain("--dangerously-skip-permissions");
   });
 
+  it("turns Claude Code's own prompt off with an empty prompt value, never with an append flag", () => {
+    const args = buildClaudeGatewayArgs({
+      cliId: "claude-gateway",
+      mcpServers: [],
+      pluginRoot: "/fleet/plugin",
+      pluginRoots: ["/fleet/plugin"],
+      claudeCodeSystemPrompt: "off",
+    });
+
+    // Fleet은 실을 본문이 없다. 이 플래그는 기본 프롬프트를 비우는 수단이라 값이 빈 문자열이다.
+    expect(args).not.toContain("--append-system-prompt");
+    expect(args[args.indexOf("--system-prompt") + 1]).toBe("");
+  });
+
   it("restores the suppressed search tools without replacing the built-in set", () => {
     const args = buildClaudeGatewayArgs({
       cliId: "claude-gateway",
@@ -270,6 +284,34 @@ describe("claude-gateway argument composition", () => {
       expect(readdirSync(isolatedTmp)).toEqual([]);
     } finally {
       vi.restoreAllMocks();
+    }
+  });
+
+  it("empties Claude Code's prompt in place, leaving no file behind", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-sysprompt-off-");
+    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      claudeCodeSystemPrompt: "off",
+    }));
+
+    // 본문이 있으면 그것이 새 시스템 프롬프트가 된다 — 비우는 것이 목적이므로 값은 빈 문자열이다.
+    expect(injected.args[injected.args.indexOf("--system-prompt") + 1]).toBe("");
+    expect(injected.args).not.toContain("--system-prompt-file");
+    expect(injected.args).not.toContain("--append-system-prompt");
+    injected.cleanup?.();
+  });
+
+  it("leaves Claude Code's prompt alone when the session does not turn it off", async () => {
+    const root = createTempRoot("fleet-admiral-gateway-sysprompt-on-");
+    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const on = await injectAgentCliProfile(profile, baseInjectOptions(root, { claudeCodeSystemPrompt: "on" }));
+    const byDefault = await injectAgentCliProfile(profile, baseInjectOptions(root));
+
+    for (const injected of [on, byDefault]) {
+      expect(injected.args).not.toContain("--system-prompt");
+      expect(injected.args).not.toContain("--system-prompt-file");
+      expect(injected.args).not.toContain("--append-system-prompt-file");
+      injected.cleanup?.();
     }
   });
 
@@ -392,10 +434,12 @@ function baseInjectOptions(
   overrides: {
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly captureSessionHookExec?: FleetHookExec;
+    readonly claudeCodeSystemPrompt?: "on" | "off";
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
     dataDir: path.join(root, "data"),
+    ...(overrides.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: overrides.claudeCodeSystemPrompt } : {}),
     dedicatedMcpSession: {
       async getEndpoint() {
         return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };

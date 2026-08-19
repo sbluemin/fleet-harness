@@ -192,7 +192,6 @@ function baseProfile(
 function baseInjectOptions(
   root: string,
   overrides: {
-    readonly buildSystemPrompt?: Parameters<typeof injectAgentCliProfile>[1]["buildSystemPrompt"];
     readonly autoNameHookExec?: FleetHookExec;
     readonly backgroundReportHookExec?: FleetHookExec;
     readonly captureSessionHookExec?: FleetHookExec;
@@ -205,7 +204,6 @@ function baseInjectOptions(
   } = {},
 ): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    buildSystemPrompt: overrides.buildSystemPrompt ?? (() => "Fleet doctrine"),
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: overrides.dedicatedMcpSession ?? createDedicatedMcpSession(),
     ...(overrides.autoNameHookExec ? { autoNameHookExec: overrides.autoNameHookExec } : {}),

@@ -77,6 +77,12 @@ export interface AgentCliInjectionContext {
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
   readonly resumeSessionId?: string;
+  /**
+   * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략은 `on`이며 플래그가
+   * 붙지 않는다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다 —
+   * 실측(2.1.235, haiku): 턴당 총 입력 토큰 26,036 → 19,546.
+   */
+  readonly claudeCodeSystemPrompt?: "on" | "off";
 }
 
 export interface AgentCliInjectionCapabilityEnabled {

@@ -673,11 +673,61 @@ function GeneralSection() {
   // 제공하므로, 플러그인은 자체 래퍼로 감싸 그 간격을 가로채지 않는다(간격은 호스트 소관).
   return (
     <>
+      <ClaudeCodeSystemPromptSettingsBlock />
       <IdleAgentSessionsSettingsBlock />
       <TerminalFontSettingsCard terminalFont={terminalFont} />
       <ChatReadingWidthSettingsCard />
       <TerminalDrawingCard terminalRenderer={terminalRenderer} terminalInactiveFlush={terminalInactiveFlush} />
     </>
+  );
+}
+
+/**
+ * Claude Code 자신의 시스템 프롬프트를 새 세션에 실을지 고르는 표면. Fleet은 자기 프롬프트를
+ * 싣지 않으므로 이 스위치가 끄는 것은 Claude Code의 것 하나뿐이다.
+ */
+function ClaudeCodeSystemPromptSettingsBlock() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.claudeSystemPromptAria")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      {state ? (
+        <>
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</p>
+              <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptHelp")}</p>
+            </div>
+            <Select
+              aria-labelledby="claude-code-system-prompt-label"
+              value={state.claudeCodeSystemPrompt}
+              disabled={saving}
+              options={[
+                { value: "on", label: t("terminal.settings.claudeSystemPromptOn") },
+                { value: "off", label: t("terminal.settings.claudeSystemPromptOff") },
+              ]}
+              onChange={(value) => void setSystemPromptSettingsField(
+                "claudeCodeSystemPrompt",
+                value as "on" | "off",
+              )}
+            />
+          </div>
+          <p className="global-settings-foot">{t("terminal.settings.claudeSystemPromptFoot")}</p>
+        </>
+      ) : (
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      )}
+    </section>
   );
 }
 

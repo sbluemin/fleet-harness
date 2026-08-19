@@ -38,6 +38,7 @@ import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
 import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import { resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
 type HookTurnBody = { readonly phase?: unknown; readonly input?: unknown };
@@ -1400,6 +1401,11 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ? undefined
       : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
     const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
+    // 터미널 런치와 같은 설정을 읽는다. `off`는 systemPrompt를 아예 싣지 않는 것이고, SDK는
+    // 그때 Claude Code 기본 프롬프트를 붙이지 않는다(실측: 생략 18,272 / preset 24,632 토큰).
+    const chatSystemPrompt = resolveClaudeCodeSystemPrompt(deps.globalOptionsService.load()) === "on"
+      ? { mode: "preset" } as const
+      : undefined;
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -1415,6 +1421,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cwd,
         claudeConfigDir,
         origin: sessionOrigin,
+        ...(chatSystemPrompt ? { systemPrompt: chatSystemPrompt } : {}),
         resolveFleetMcpServers: async () => {
           const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
           const tokens = await runtime.dedicatedMcpSession.issueSessionToken({

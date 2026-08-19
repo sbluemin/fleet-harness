@@ -378,7 +378,7 @@ describe("gateway loadout derived quota metrics", () => {
 
 describe("gateway_models tool", () => {
   it("is available to gateway sessions that can route its ids", () => {
-    expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID, "gateway")).toBe(true);
+    expect(isHostSessionToolAllowed(GATEWAY_MODELS_TOOL_ID)).toBe(true);
   });
 
   it("resolves the roster on every call rather than at registration", async () => {

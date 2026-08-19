@@ -32,8 +32,12 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     let profile = await resolveAgentCliProfile(options.env, options.cwd, { cliId: "claude-gateway" });
     profile = { ...profile, args: [...profile.args, ...options.passthroughArgs] };
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
+    // Console 설정과 같은 전역 옵션을 읽는다 — 두 런치 표면이 한 스위치를 공유해야
+    // 사용자가 고른 값이 터미널을 바꿔도 따라온다. 키가 없으면 주입 기본값(on)이다.
+    const claudeCodeSystemPrompt = options.runtime.infraServices.globalOptionsService.load().claudeCodeSystemPrompt;
     const injected = await injectAgentCliProfile(profile, {
       dataDir: options.dataDir,
+      ...(claudeCodeSystemPrompt ? { claudeCodeSystemPrompt } : {}),
       dedicatedMcpSession: options.runtime.dedicatedMcpSession,
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
       gatewayDelegationModels: selection.delegationModels,

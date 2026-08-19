@@ -10,6 +10,7 @@ import {
   type ClaudeGatewaySdkOptions,
   type ClaudeGatewayServedMcpServer,
   type ClaudeGatewaySession,
+  type ClaudeGatewaySystemPrompt,
 } from "@dotobokuri/core-agent/claude";
 
 import {
@@ -89,6 +90,12 @@ export interface AgentChatSessionSeed {
    */
   readonly claudeConfigDir: string;
   readonly origin: AgentChatSessionOrigin;
+  /**
+   * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. `{ mode: "preset" }`이면 켜고,
+   * `undefined`는 결함이 아니라 사용자의 설정(`off`)이다 — SDK는 이 필드가 없으면 그 프롬프트를
+   * 아예 붙이지 않는다. 터미널에서 같은 Operation을 열면 같은 설정이 CLI 플래그로 나타난다.
+   */
+  readonly systemPrompt?: ClaudeGatewaySystemPrompt;
   /**
    * Fleet MCP 좌표를 이 세션 수명에 맞춰 발급한다. 값이 아니라 함수인 이유는 발급물이 세션
    * 토큰이기 때문이다 — seed를 만드는 쪽은 세션이 실제로 생겼는지 모르므로, 여기서 발급하면
@@ -1143,6 +1150,7 @@ class AgentChatSession {
         const session = await sdk.openSession({
           model: this.seed.model,
           ...(this.seed.effort ? { effort: this.seed.effort } : {}),
+          ...(this.seed.systemPrompt ? { systemPrompt: this.seed.systemPrompt } : {}),
           ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
           cwd: this.seed.cwd,
           // 이어붙일 좌표는 세션을 열 때 한 번 선다. 채팅으로 태어난 세션에는 그것이 없고,

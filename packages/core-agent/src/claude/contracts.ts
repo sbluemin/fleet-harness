@@ -87,19 +87,23 @@ export interface ClaudeGatewayMcpServerOptions {
 }
 
 /**
- * 호출자가 직접 쓴 시스템 지시. Claude Code CLI의 두 플래그와 같은 두 모드다.
+ * 호출자가 직접 쓴 시스템 지시. Claude Code CLI의 플래그와 같은 모드들이다.
  *
  * - `replace` — `--system-prompt`. 이 텍스트가 시스템 블록이 된다. 측정하면 SDK 자신의 62자
  *   정체성 블록은 남고 이 텍스트가 별도 블록으로 붙으며 프롬프트 캐싱이 걸린다.
  * - `append` — `--append-system-prompt`. Claude Code의 기본 프롬프트를 켠 뒤 그 **본문 안에**
  *   이 텍스트를 이어 붙인다. 측정치로 27,7xx자를 매 턴 싣게 되므로, 코딩 에이전트가 실제로
  *   필요한 소비처에만 쓴다. 페르소나만 필요하면 `replace`다.
+ * - `preset` — 이어붙일 텍스트 없이 Claude Code 기본 프롬프트만 켠다. 생략과의 차이가 이
+ *   모드의 전부다: 실측(SDK 0.3.212, haiku, 턴당 총 입력 토큰) 생략 18,272 / `preset`
+ *   24,632 — 생략하면 그 기본 프롬프트가 아예 실리지 않는다.
  *
  * 생략하면 아무것도 주입하지 않는다. 그때 자식이 받는 시스템은 SDK 정체성 한 줄뿐이다.
  */
 export type ClaudeGatewaySystemPrompt =
   | { readonly mode: "replace"; readonly text: string }
-  | { readonly mode: "append"; readonly text: string };
+  | { readonly mode: "append"; readonly text: string }
+  | { readonly mode: "preset" };
 
 /**
  * 자식이 도구를 쓰기 전에 호스트에게 묻는 자리. 호출자가 이 콜백을 주면 vendor가 대화형 도구

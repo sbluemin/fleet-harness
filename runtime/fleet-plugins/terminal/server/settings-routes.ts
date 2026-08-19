@@ -1,6 +1,6 @@
 import type http from "node:http";
 
-import type { GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
+import type { ClaudeCodeSystemPromptMode, GlobalOptionsData, GlobalOptionsService } from "@dotobokuri/core-infra";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 
@@ -26,6 +26,7 @@ interface TerminalSettingsRouteDeps {
 
 interface TerminalSettingsBody {
   readonly agentIdleDormantMinutes?: unknown;
+  readonly claudeCodeSystemPrompt?: unknown;
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
@@ -34,6 +35,7 @@ interface TerminalSettingsBody {
 
 type TerminalSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -43,6 +45,7 @@ export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
+  readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   readonly aiGateway: AiGatewayUpdateValue | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -149,6 +152,7 @@ export function toTerminalSettingsState(
     agentIdleDormantMinutes: data.agentIdleDormantMinutes === undefined
       ? DEFAULT_AGENT_IDLE_DORMANT_MINUTES
       : data.agentIdleDormantMinutes,
+    claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(data),
     aiGateway: configured
       ? {
         ...(aiGateway.models?.length ? { models: aiGateway.models } : {}),
@@ -160,6 +164,11 @@ export function toTerminalSettingsState(
     wireLogEnabled,
     compactCeiling: aiGateway.compactCeiling ?? null,
   };
+}
+
+/** 키가 없으면 켜진 것으로 읽는다 — 플래그 없는 런치가 이미 하는 일이다. */
+export function resolveClaudeCodeSystemPrompt(data: GlobalOptionsData): ClaudeCodeSystemPromptMode {
+  return data.claudeCodeSystemPrompt ?? "on";
 }
 
 export function resolveAgentIdleDormantMinutes(data: GlobalOptionsData): number | null {
@@ -177,6 +186,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "agentIdleDormantMinutes") {
     return isAgentIdleDormantMinutes(body.agentIdleDormantMinutes)
       ? { agentIdleDormantMinutes: body.agentIdleDormantMinutes }
+      : null;
+  }
+  if (keys[0] === "claudeCodeSystemPrompt") {
+    return body.claudeCodeSystemPrompt === "on" || body.claudeCodeSystemPrompt === "off"
+      ? { claudeCodeSystemPrompt: body.claudeCodeSystemPrompt }
       : null;
   }
   if (keys[0] === "aiGateway") {

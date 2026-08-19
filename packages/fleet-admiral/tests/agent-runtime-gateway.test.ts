@@ -40,7 +40,7 @@ describe("createFleetGatewayAgentRuntimeLifecycle", () => {
 		const [serverToken] = lifecycle.dedicatedMcpSession.issueSessionToken({
 			label: "gateway-host",
 			cwd: process.cwd(),
-			includeTool: (toolId) => isHostSessionToolAllowed(toolId, "gateway"),
+			includeTool: (toolId) => isHostSessionToolAllowed(toolId),
 		});
 		expect(serverToken?.name).toBe("fleet");
 		const endpoint = await lifecycle.dedicatedMcpSession.getEndpoint();
