@@ -1,0 +1,150 @@
+import type http from "node:http";
+
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
+
+import { InvalidRepoError, resolveGitCwd } from "./diff.js";
+import { classifyFetchError, NETWORK_HARDENING_ARGS, NoRemoteError, resolveCredentialHelperArgs, resolveDefaultRemote } from "./fetch.js";
+import { GitExecutorError, runGit } from "./git-executor.js";
+import { classifyWriteError } from "./stage.js";
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+// 원격 동사는 왕복이 길다 — fetch와 같은 이유로 기본 30s보다 여유를 준다.
+const REMOTE_TIMEOUT_MS = 120_000;
+
+export function classifyPushError(stderr: string): "non_fast_forward" | null {
+  return /non-fast-forward|fetch first|updates were rejected/i.test(stderr) ? "non_fast_forward" : null;
+}
+
+export function classifyPullError(stderr: string): "non_fast_forward" | "dirty_worktree" | null {
+  if (/not possible to fast-forward|need to specify how to reconcile|diverg/i.test(stderr)) return "non_fast_forward";
+  if (/overwritten by merge|Please commit your changes or stash/i.test(stderr)) return "dirty_worktree";
+  return null;
+}
+
+interface RemoteContext {
+  readonly gitCwd: string;
+  readonly branch: string;
+}
+
+async function resolveRemoteContext(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<RemoteContext | null> {
+  if (req.method !== "POST") { ctx.host.http.writeJson(res, 405, { error: "Method not allowed" }); return null; }
+  if (!ctx.host.security.isTerminalAuthorized(req)) { ctx.host.http.writeJson(res, 401, { error: "unauthorized" }); return null; }
+  const body = await ctx.host.http.readJsonBody<{ readonly theaterId?: unknown; readonly repoRel?: unknown; readonly subPath?: unknown }>(req);
+  if (!isPlainObject(body) || "subPath" in body || typeof body.theaterId !== "string") {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
+    return null;
+  }
+  const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
+  if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return null; }
+  let gitCwd: string;
+  try { ({ gitCwd } = await resolveGitCwd(theaterPath, body.repoRel)); }
+  catch (error) {
+    if (error instanceof InvalidRepoError) { ctx.host.http.writeJson(res, 400, { error: error.code }); return null; }
+    throw error;
+  }
+  try {
+    const branch = (await runGit(["symbolic-ref", "--quiet", "--short", "HEAD"], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
+    if (!branch) { ctx.host.http.writeJson(res, 422, { error: "detached_head" }); return null; }
+    return { gitCwd, branch };
+  } catch (error) {
+    writeRemoteFailure(res, ctx, error, () => null);
+    return null;
+  }
+}
+
+function writeRemoteFailure(
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+  error: unknown,
+  classify: (stderr: string) => string | null,
+): void {
+  if (error instanceof NoRemoteError) { ctx.host.http.writeJson(res, 422, { error: "no_remote" }); return; }
+  if (error instanceof GitExecutorError) {
+    if (error.code === "timeout") { ctx.host.http.writeJson(res, 422, { error: "timeout" }); return; }
+    const specific = classify(error.stderr);
+    if (specific) { ctx.host.http.writeJson(res, 409, { error: specific }); return; }
+    const network = classifyFetchError(error.stderr);
+    if (network) { ctx.host.http.writeJson(res, 422, { error: network }); return; }
+    const locked = classifyWriteError(error.stderr);
+    if (locked) { ctx.host.http.writeJson(res, 409, { error: locked }); return; }
+    if (error.code === "no_git_repo" || error.code === "git_unavailable") {
+      ctx.host.http.writeJson(res, 422, { error: error.code });
+      return;
+    }
+    ctx.host.http.writeJson(res, 500, { error: "git_failed" });
+    return;
+  }
+  throw error;
+}
+
+/**
+ * Push — 현재 브랜치를 자기 upstream(없으면 기본 원격에 -u)으로만 민다.
+ * 강제 푸시·refspec 재지정은 이 표면에 존재하지 않는다.
+ */
+export async function handleRepositoryPush(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<void> {
+  const remoteCtx = await resolveRemoteContext(req, res, ctx);
+  if (!remoteCtx) return;
+  const { gitCwd, branch } = remoteCtx;
+  try {
+    const upstreamRemote = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
+    const remote = upstreamRemote && upstreamRemote !== "." ? upstreamRemote : await resolveDefaultRemote(gitCwd);
+    if (!remote) throw new NoRemoteError();
+    const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
+    await runGit([
+      ...NETWORK_HARDENING_ARGS,
+      ...credentialArgs,
+      "push",
+      // repo config의 remote.<name>.receivepack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
+      "--receive-pack=git-receive-pack",
+      "--no-recurse-submodules",
+      ...(upstreamRemote ? [] : ["--set-upstream"]),
+      remote,
+      `refs/heads/${branch}:refs/heads/${branch}`,
+    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
+    ctx.host.http.writeJson(res, 200, { ok: true, remote, branch });
+  } catch (error) {
+    writeRemoteFailure(res, ctx, error, classifyPushError);
+  }
+}
+
+/**
+ * Pull — fast-forward만 허용한다. 서버가 병합·리베이스를 대신 결정하지 않는다:
+ * 갈라진 히스토리는 사람이(또는 에이전트가) 터미널에서 푸는 것이 이 패널의 계약이다.
+ */
+export async function handleRepositoryPull(
+  req: http.IncomingMessage,
+  res: http.ServerResponse,
+  ctx: FleetPluginServerContext,
+): Promise<void> {
+  const remoteCtx = await resolveRemoteContext(req, res, ctx);
+  if (!remoteCtx) return;
+  const { gitCwd, branch } = remoteCtx;
+  try {
+    const upstreamRemote = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
+    if (!upstreamRemote || upstreamRemote === ".") { ctx.host.http.writeJson(res, 422, { error: "no_upstream" }); return; }
+    const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
+    await runGit([
+      ...NETWORK_HARDENING_ARGS,
+      ...credentialArgs,
+      "pull",
+      "--ff-only",
+      "--no-rebase",
+      "--upload-pack=git-upload-pack",
+      "--no-recurse-submodules",
+    ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
+    ctx.host.http.writeJson(res, 200, { ok: true, remote: upstreamRemote, branch });
+  } catch (error) {
+    writeRemoteFailure(res, ctx, error, classifyPullError);
+  }
+}

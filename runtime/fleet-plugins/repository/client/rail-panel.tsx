@@ -3,24 +3,21 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
-import type { DiffFileEntry, DiffFileMode, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
+import type { DiffFileEntry, DiffListResult, RepoCandidate, RepositorySearchResult, ReposResult, WorkstateResult, WorktreeCandidate, WorktreesResult } from "../server/types.js";
 import "./repository.css";
-import { ChangedFiles, type ChangedFilesState } from "./changed-files.js";
+import { type ChangedFilesState } from "./changed-files.js";
 import { fuzzyMatch, shortRefName } from "./repository-parsers.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { buildRepoTree, compressRepoFolder, countRepos, type RepoTreeNode } from "./repository-parsers.js";
-import { clearSelectedFile, setSelectedFile, type SelectedFile, useSelectedFile } from "./repository-state.js";
-import { HunkView } from "./hunk-view.js";
+import { clearSelectedFile } from "./repository-state.js";
 import { dropHistoryCacheForRepository } from "./repository-state.js";
 import { HistoryPanel } from "./history-panel.js";
 import { dropRepoViewState, readRepoViewState, readWorkspaceTreeState, writeRepoViewState, writeWorkspaceTreeState } from "./repository-state.js";
-import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
+import { StagingView, guardMessageOf } from "./staging-view.js";
 import { buildWorkspaceTreeSections, clampWorkspaceTreeWidth, readWorkspaceTreeWidth, saveWorkspaceTreeWidth } from "./workspace-layout.js";
 import { activateRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
 type T = Translate<RepositoryMessageKey>;
-
-type ViewMode = "list" | "tree";
 
 type RepositoryFetchResult =
   | { readonly ok: true; readonly skipped: "throttled"; readonly lastFetchAt: string }
@@ -30,28 +27,16 @@ interface RepositoryPanelProps {
   readonly ctx: RailPanelContext;
 }
 
-const PREFS_VIEW_MODE = "fleet-console.diff.viewMode";
-const PREFS_LIST_PANE_WIDTH = "fleet-console.diff.listPaneWidth";
 const PREFS_SOURCE = "fleet-console.repository.source";
 const PREFS_REPO_PREFIX = "fleet-console.repository.repo.";
 const PREFS_SCAN_DEPTH = "fleet-console.repository.scanDepth";
 const SCAN_DEPTH_MIN = 1;
 const SCAN_DEPTH_MAX = 8;
 const SCAN_DEPTH_DEFAULT = 3;
-const LIST_PANE_DEFAULT_WIDTH = 248;
-const LIST_PANE_MIN_WIDTH = 220;
 // ✓ 체류는 클릭했다는 사실이 눈에 남을 만큼만, 말풍선은 짧은 한 마디를 읽을 만큼만.
 // 원격 왕복이 수백 ms라 요청 자체는 거의 보이지 않으므로, 결과 쪽 체류가 피드백을 진다.
 const SYNC_SETTLED_MS = 1400;
 const SYNC_HINT_MS = 2200;
-
-function readViewMode(): ViewMode {
-  try {
-    const value = localStorage.getItem(PREFS_VIEW_MODE);
-    if (value === "list" || value === "tree") return value;
-  } catch { /* ignore */ }
-  return "list";
-}
 
 export function readRepositorySource(): Source {
   try {
@@ -103,17 +88,46 @@ function saveRepositorySource(source: Source): void {
   try { localStorage.setItem(PREFS_SOURCE, source); } catch { /* ignore */ }
 }
 
-function readListPaneWidth(): number {
-  try {
-    const value = localStorage.getItem(PREFS_LIST_PANE_WIDTH);
-    const width = value === null ? NaN : Number.parseFloat(value);
-    if (Number.isFinite(width) && width > 0) return Math.max(LIST_PANE_MIN_WIDTH, width);
-  } catch { /* ignore */ }
-  return LIST_PANE_DEFAULT_WIDTH;
+
+function mapSharedVerbError(code: string, t: T): string | null {
+  switch (code) {
+    case "auth_failed": return t("repository.verb.failedAuth");
+    case "network": return t("repository.verb.failedNetwork");
+    case "timeout": return t("repository.verb.failedTimeout");
+    case "no_remote": return t("repository.verb.failedNoRemote");
+    case "detached_head": return t("repository.verb.failedDetachedHead");
+    case "index_locked": return t("repository.guard.indexLocked");
+    case "stash_conflict": return t("repository.verb.failedStashConflict");
+    default: return null;
+  }
 }
 
-function getHunkMode(selected: SelectedFile): DiffFileMode {
-  return selected.entry.status === "U" ? "untracked" : "unified";
+export interface CheckoutTab {
+  readonly relPath: string;
+  readonly label: string;
+  readonly worktree: boolean;
+}
+
+/**
+ * Fork의 상단 레포 탭 — 루트 체크아웃과 워크트리들이 한 줄에 선다.
+ * 중첩 저장소는 트리에서 고르되, 선택 중이면 자기 탭이 임시로 나타난다.
+ */
+export function buildCheckoutTabs(repos: readonly RepoCandidate[], worktrees: readonly WorktreeCandidate[], selectedRel: string): readonly CheckoutTab[] {
+  const tabs: CheckoutTab[] = [];
+  const seen = new Set<string>();
+  const push = (relPath: string, label: string, worktree: boolean) => {
+    if (seen.has(relPath)) return;
+    seen.add(relPath);
+    tabs.push({ relPath, label, worktree });
+  };
+  const root = repos.find((repo) => repo.kind === "root");
+  if (root) push(root.relPath, root.name, false);
+  for (const worktree of worktrees) push(worktree.relPath, worktree.name, true);
+  if (!seen.has(selectedRel)) {
+    const selected = repos.find((repo) => repo.relPath === selectedRel);
+    if (selected) push(selected.relPath, selected.name, false);
+  }
+  return tabs;
 }
 
 function RepositoryPanel({ ctx }: RepositoryPanelProps) {
@@ -179,6 +193,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
+  const [workstate, setWorkstate] = useState<WorkstateResult | null>(null);
+  const [workstateRetry, setWorkstateRetry] = useState(0);
+  type VerbKind = "pull" | "push" | "stash";
+  const [verbBusy, setVerbBusy] = useState<VerbKind | null>(null);
+  const [verbNotice, setVerbNotice] = useState<{ readonly kind: "success" | "error"; readonly text: string } | null>(null);
+  const verbNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const writeLockedRef = useRef(false);
+  const workstateRef = useRef<WorkstateResult | null>(null);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
   const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; baseLabel: string; headLabel: string; seq: number } | null>(null);
   const [inspectRequest, setInspectRequest] = useState<{ fullHash: string; seq: number } | null>(null);
@@ -200,13 +222,11 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [syncing, setSyncing] = useState(false);
   const syncRequestIdRef = useRef(0);
   const autoSyncTheaterRef = useRef<string | null>(null);
-  const [viewMode, setViewMode] = useState<ViewMode>(readViewMode);
   const [filterText, setFilterText] = useState(initialRepoViewState?.filterText ?? "");
   const [collapsedChangeFolders, setCollapsedChangeFolders] = useState(() => new Set(initialRepoViewState?.collapsedFolders ?? []));
   const repoViewCacheKey = `${ctx.theaterId ?? ""}\x00${repoRel}`;
   const [hydratedRepoViewCacheKey, setHydratedRepoViewCacheKey] = useState(repoViewCacheKey);
   const freshRefFilterCacheKeyRef = useRef<string | null>(null);
-  const changesListRef = useRef<HTMLDivElement>(null);
   const restoredChangesScrollTopRef = useRef<number | null>(initialRepoViewState?.scrollTop ?? null);
   const changesScrollTopRef = useRef(initialRepoViewState?.scrollTop ?? 0);
   const changesCacheFrameRef = useRef<number | null>(null);
@@ -214,11 +234,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // epoch를 key에 섞어 전환 착지와 동일한 초기 상태(로컬 필터·선택·스크롤)로 재설정한다.
   const [historyLandingEpoch, setHistoryLandingEpoch] = useState(0);
   const searchTarget = useRepositorySearchTarget();
-  const selectedFile = useSelectedFile(ctx.theaterId ?? null, repoRel);
-  const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
-  const listPaneWidthRef = useRef(listPaneWidth);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
   const setSource = useCallback((next: Source) => {
     setSourceState(next);
     saveRepositorySource(next);
@@ -297,6 +312,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSyncSettled(false);
     setSyncHinting(false);
     setSyncHintAvailable(false);
+    if (verbNoticeTimerRef.current !== null) {
+      clearTimeout(verbNoticeTimerRef.current);
+      verbNoticeTimerRef.current = null;
+    }
+    setVerbNotice(null);
+    setWorkstate(null);
     setChangedFiles({ kind: "loading" });
     setCompareRequest(null);
     setInspectRequest(null);
@@ -396,13 +417,90 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     return () => { cancelled = true; };
   }, [changedFilesRetry, ctx.theaterId, repoRel]);
 
+  useEffect(() => {
+    if (!ctx.theaterId) { setWorkstate(null); return; }
+    let cancelled = false;
+    ctx.api.fetch("repository", "workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
+      .then((response) => response.ok ? response.json() as Promise<WorkstateResult> : Promise.reject(new Error("workstate_failed")))
+      .then((value) => { if (!cancelled) setWorkstate(value); })
+      .catch(() => { if (!cancelled) setWorkstate(null); });
+    return () => { cancelled = true; };
+  }, [ctx.api, ctx.theaterId, repoRel, workstateRetry]);
   const refreshRepositoryData = useCallback(() => {
     setRefsRetry((value) => value + 1);
     setWorktreesRetry((value) => value + 1);
     setChangedFilesRetry((value) => value + 1);
     setReposRetry((value) => value + 1);
+    setWorkstateRetry((value) => value + 1);
     setHistoryExternalRefreshToken((value) => value + 1);
   }, []);
+  // 스테이징 뷰의 변이는 목록·울타리를 새로 읽는다 — repos 재스캔은 불필요하고,
+  // 기록·refs 재적재는 커밋처럼 기록 축이 실제로 움직인 변이에만 지불한다.
+  const handleWorkspaceMutated = useCallback((options: { readonly history: boolean }) => {
+    setChangedFilesRetry((value) => value + 1);
+    setWorkstateRetry((value) => value + 1);
+    if (options.history) {
+      setRefsRetry((value) => value + 1);
+      setHistoryExternalRefreshToken((value) => value + 1);
+    }
+  }, []);
+  const showVerbNotice = useCallback((notice: { readonly kind: "success" | "error"; readonly text: string }) => {
+    if (verbNoticeTimerRef.current !== null) clearTimeout(verbNoticeTimerRef.current);
+    setVerbNotice(notice);
+    verbNoticeTimerRef.current = setTimeout(() => {
+      verbNoticeTimerRef.current = null;
+      setVerbNotice(null);
+    }, 6000);
+  }, []);
+  const runToolbarVerb = useCallback(async (verb: VerbKind, route: string, body: Record<string, unknown>, successText: (payload: Record<string, unknown>) => string, mapError: (code: string) => string | null) => {
+    if (!ctx.theaterId || verbBusy) return;
+    setVerbBusy(verb);
+    try {
+      const response = await fetch(`/plugins/repository/${route}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...body }),
+      });
+      const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+      if (!response.ok) {
+        const code = typeof payload.error === "string" ? payload.error : "git_failed";
+        showVerbNotice({ kind: "error", text: mapError(code) ?? mapSharedVerbError(code, t) ?? code });
+        return;
+      }
+      showVerbNotice({ kind: "success", text: successText(payload) });
+      // 성공한 원격·스태시 동사만 전역 갱신을 지불한다 — 실패는 저장소를 바꾸지 않았다.
+      handleWorkspaceMutated({ history: true });
+    } catch {
+      showVerbNotice({ kind: "error", text: t("repository.verb.failedNetwork") });
+    } finally {
+      setVerbBusy(null);
+    }
+  }, [ctx.theaterId, handleWorkspaceMutated, repoRel, showVerbNotice, t, verbBusy]);
+  const handlePull = useCallback(() => {
+    void runToolbarVerb("pull", "pull", {}, (payload) => t("repository.verb.pulled", { branch: String(payload.branch ?? ""), remote: String(payload.remote ?? "") }), (code) =>
+      code === "non_fast_forward" ? t("repository.verb.failedPullDiverged")
+      : code === "dirty_worktree" ? t("repository.verb.failedDirtyWorktree")
+      : code === "no_upstream" ? t("repository.verb.failedNoUpstream")
+      : null);
+  }, [runToolbarVerb, t]);
+  const handlePush = useCallback(() => {
+    void runToolbarVerb("push", "push", {}, (payload) => t("repository.verb.pushed", { branch: String(payload.branch ?? ""), remote: String(payload.remote ?? "") }), (code) =>
+      code === "non_fast_forward" ? t("repository.verb.failedNonFastForward") : null);
+  }, [runToolbarVerb, t]);
+  const handleStash = useCallback(() => {
+    void runToolbarVerb("stash", "stash", { action: "save" }, () => t("repository.verb.stashed"), (code) =>
+      code === "nothing_to_stash" ? t("repository.verb.failedNothingToStash") : null);
+  }, [runToolbarVerb, t]);
+  const handleStashRowAction = useCallback((action: "apply" | "pop" | "drop", name: string, sha: string) => {
+    // 스태시 동사도 툴바·스테이징과 같은 울타리를 진다 — 잠금 중 우회로가 되면 안 된다.
+    if (writeLockedRef.current) {
+      showVerbNotice({ kind: "error", text: guardMessageOf(workstateRef.current, t) ?? t("repository.guard.indexLocked") });
+      return;
+    }
+    void runToolbarVerb("stash", "stash", { action, name, sha }, () =>
+      t(action === "apply" ? "repository.stash.applied" : action === "pop" ? "repository.stash.popped" : "repository.stash.dropped"), (code) =>
+      code === "stash_moved" ? t("repository.stash.moved") : null);
+  }, [runToolbarVerb, showVerbNotice, t]);
   const showSyncNotice = useCallback((notice: SyncNotice) => {
     if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
     setSyncNotice(notice);
@@ -446,6 +544,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
     if (syncSettledTimerRef.current !== null) clearTimeout(syncSettledTimerRef.current);
     if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current);
+    if (verbNoticeTimerRef.current !== null) clearTimeout(verbNoticeTimerRef.current);
   }, []);
   const syncRepository = useCallback(async (mode?: "auto") => {
     if (!ctx.theaterId) return;
@@ -503,26 +602,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
 
   useLayoutEffect(() => () => clearSelectedFile(), []);
 
-  const updateChangesScroll = useCallback(() => {
-    const list = changesListRef.current;
-    if (!list || list.clientHeight <= 0 || list.scrollHeight <= 0) return;
-    if (restoredChangesScrollTopRef.current !== null) {
-      const restoredScrollTop = restoredChangesScrollTopRef.current;
-      if (restoredScrollTop > 0 && list.scrollHeight <= list.clientHeight) return;
-      list.scrollTop = restoredScrollTop;
-      restoredChangesScrollTopRef.current = null;
-    }
-    changesScrollTopRef.current = list.scrollTop;
-    scheduleChangesCacheWrite();
-  }, [scheduleChangesCacheWrite]);
-  useLayoutEffect(() => {
-    updateChangesScroll();
-    const list = changesListRef.current;
-    if (!list) return;
-    const observer = new ResizeObserver(updateChangesScroll);
-    observer.observe(list);
-    return () => observer.disconnect();
-  }, [changedFiles, filterText, hydratedRepoViewCacheKey, updateChangesScroll, viewMode]);
   useEffect(() => {
     scheduleChangesCacheWrite();
   }, [collapsedChangeFolders, filterText, hydratedRepoViewCacheKey, refFilter, repoRel, scheduleChangesCacheWrite]);
@@ -534,9 +613,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     flushChangesCache();
   }, [flushChangesCache]);
 
-  const handleSelectFile = useCallback((entry: DiffFileEntry) => {
-    if (ctx.theaterId) setSelectedFile(entry, ctx.theaterId, repoRel);
-  }, [ctx.theaterId, repoRel]);
   const handleSelectRepository = useCallback((next: { readonly relPath: string }) => {
     const decision = resolveRepositorySelection(ctx.theaterId, repoRel, next.relPath);
     // 동일 컨텍스트 재선택도 "이 체크아웃의 History" 착지다 — refFilter를 걷어내고 History 패널을
@@ -557,36 +633,6 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     }
     transitionRepository(next.relPath, true, decision.landing);
   }, [ctx.theaterId, repoRel, setSource, transitionRepository]);
-  const handleCloseHunk = useCallback(() => clearSelectedFile(), []);
-  const handleViewMode = useCallback((next: ViewMode) => {
-    setViewMode(next);
-    try { localStorage.setItem(PREFS_VIEW_MODE, next); } catch { /* ignore */ }
-  }, []);
-  const handleDividerDown = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
-    event.preventDefault();
-    const container = rootRef.current;
-    if (!container) return;
-    const containerWidth = container.getBoundingClientRect().width;
-    const startX = event.clientX;
-    const startWidth = listPaneWidthRef.current;
-    setIsDragging(true);
-    const onMove = (move: PointerEvent) => {
-      const next = clampListPaneWidth({ startWidth, dx: move.clientX - startX, containerWidth, listPaneMinWidth: LIST_PANE_MIN_WIDTH, hunkPaneMinWidth: HUNK_PANE_MIN_WIDTH, dividerWidth: DIFF_DIVIDER_WIDTH });
-      if (next !== null) {
-        listPaneWidthRef.current = next;
-        setListPaneWidth(next);
-      }
-    };
-    const onUp = () => {
-      document.removeEventListener("pointermove", onMove);
-      document.removeEventListener("pointerup", onUp);
-      setIsDragging(false);
-      try { localStorage.setItem(PREFS_LIST_PANE_WIDTH, String(listPaneWidthRef.current)); } catch { /* ignore */ }
-    };
-    document.addEventListener("pointermove", onMove);
-    document.addEventListener("pointerup", onUp);
-  }, []);
-
   const openCompare = useCallback((base: string, head: string) => {
     setSource("history");
     setCompareRequest((prev) => ({
@@ -602,28 +648,16 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setInspectRequest((prev) => ({ fullHash: sha, seq: (prev?.seq ?? 0) + 1 }));
   }, [setSource]);
 
-  const hunkMode = selectedFile ? getHunkMode(selectedFile) : null;
-  const retryChangedFiles = useCallback(() => setChangedFilesRetry((value) => value + 1), []);
-  const handleToggleChangeFolder = useCallback((path: string) => {
-    setCollapsedChangeFolders((current) => {
-      const next = new Set(current);
-      if (next.has(path)) next.delete(path);
-      else next.add(path);
-      return next;
-    });
-  }, []);
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
   const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
-  // 파일 목록이 왼쪽 고정 열, diff가 오른쪽 가변 열이다 — 검사기 독·History Changes 탭과 같은
-  // 문법이고, 파일을 골라도 목록이 제자리에 남아 다음 파일을 같은 위치에서 고를 수 있다.
-  const changesView = <div ref={rootRef} className={`repository-root${selectedFile ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={selectedFile ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
-    <div className="repository-list-pane">
-      <div className="repository-toolbar"><div className="repository-filter"><input type="text" className="repository-filter-input" placeholder={t("repository.common.filterPlaceholder")} aria-label={t("repository.common.filterChangedFiles")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText ? <button type="button" className="repository-filter-clear" aria-label={t("repository.common.clearFilter")} onClick={() => setFilterText("")}>✕</button> : null}</div><div className="repository-view-toggle"><button type="button" className={`repository-toggle-btn${viewMode === "list" ? " is-active" : ""}`} title={t("repository.common.listView")} aria-pressed={viewMode === "list"} onClick={() => handleViewMode("list")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><line x1="2" y1="3.5" x2="12" y2="3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="7" x2="12" y2="7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /><line x1="2" y1="10.5" x2="12" y2="10.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg></button><button type="button" className={`repository-toggle-btn${viewMode === "tree" ? " is-active" : ""}`} title={t("repository.common.treeView")} aria-pressed={viewMode === "tree"} onClick={() => handleViewMode("tree")}><svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><rect x="1" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="1" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="1" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /><rect x="9" y="9" width="4" height="4" rx="1" stroke="currentColor" strokeWidth="1.3" /></svg></button></div></div>
-      <ChangedFiles state={changedFiles} onRetry={retryChangedFiles} viewMode={viewMode} selectedPath={selectedFile?.entry.path ?? null} onSelect={handleSelectFile} filterText={filterText} t={t} collapsedFolders={collapsedChangeFolders} onToggleFolder={handleToggleChangeFolder} scrollContainerRef={changesListRef} onScroll={updateChangesScroll} />
-    </div>
-    {selectedFile ? <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" /> : null}
-    {selectedFile && hunkMode ? <div className="repository-hunk-pane"><div className="repository-hunk-head"><span>{selectedFile.entry.path}</span><button type="button" onClick={handleCloseHunk}>✕</button></div><HunkView ctx={ctx} repoRel={repoRel} file={selectedFile.entry} mode={hunkMode} /></div> : null}
-  </div>;
+  const checkoutTabs = buildCheckoutTabs(repos, worktrees, repoRel);
+  const writeLocked = guardMessageOf(workstate, t) !== null;
+  writeLockedRef.current = writeLocked;
+  workstateRef.current = workstate;
+  // WORKING > Changes는 Fork 문법의 스테이징 뷰다 — 목록·diff·커밋 상자를 StagingView가 소유한다.
+  // 체크아웃마다 새 인스턴스를 세운다 — 키 없이 재사용하면 이전 체크아웃의 목록·커밋 초안 위에서
+  // 파괴 동사가 다른 체크아웃을 때릴 수 있다.
+  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} onMutated={handleWorkspaceMutated} />;
   const syncNoticeMessage = syncNotice == null ? null
     : syncNotice.kind === "error"
       ? t(syncNotice.code === "auth_failed" ? "repository.sync.failedAuth"
@@ -637,11 +671,30 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const workspaceMain = <div className="repository-source-fill" hidden={source !== "changes"}>{changesView}</div>;
   return (
     <div className="repository-unified is-workspace">
-      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button></div>
+      <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button><span className="repository-verb-cluster">
+        <button type="button" className="repository-sync-button repository-verb-button" title={t("repository.verb.pullTitle")} disabled={verbBusy !== null || writeLocked} onClick={handlePull}>⇩ {t("repository.verb.pull")}{workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null}</button>
+        <button type="button" className="repository-sync-button repository-verb-button" title={t("repository.verb.pushTitle")} disabled={verbBusy !== null || writeLocked} onClick={handlePush}>⇧ {t("repository.verb.push")}{workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null}</button>
+        <button type="button" className="repository-sync-button repository-verb-button" title={t("repository.verb.stashTitle")} disabled={verbBusy !== null || writeLocked} onClick={handleStash}>▤ {t("repository.verb.stash")}</button>
+      </span></div>
+      <div className="repository-checkout-tabs" role="tablist" aria-label={t("repository.tabs.aria")}>
+        {checkoutTabs.map((tab) => <button
+          key={tab.relPath || "\u0000root"}
+          type="button"
+          role="tab"
+          className={`repository-checkout-tab${tab.relPath === repoRel ? " is-active" : ""}`}
+          aria-selected={tab.relPath === repoRel}
+          title={tab.relPath || tab.label}
+          onClick={() => handleSelectRepository({ relPath: tab.relPath })}
+        >
+          <span className="repository-checkout-tab-label">{tab.label}</span>
+          {tab.worktree && <i className="repository-checkout-tab-mark" title={t("repository.tabs.worktreeMark")}>wt</i>}
+        </button>)}
+      </div>
       <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
       {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
+      {verbNotice ? <div className={`repository-sync-toast is-${verbNotice.kind}`} role="status"><span>{verbNotice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setVerbNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
@@ -673,9 +726,10 @@ interface WorkspaceTreeProps {
   readonly onRef: (ref: string) => void;
   readonly onCompare: (base: string, head: string) => void;
   readonly onStashInspect: (stashSha: string) => void;
+  readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
 }
 
-export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect, onStashAction }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -726,7 +780,8 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
     </button>;
   };
   const currentBranchRef = refs.branches.find((item) => item.current)?.ref ?? null;
-  const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">
+  // 발견 검색창 하나가 트리 전체를 거른다 — 저장소뿐 아니라 브랜치·태그·스태시 행도 같은 질의를 따른다(Fork 문법).
+  const refRows = (refSource: RefSource) => buildRefListGroups(refSource, refs).map((group) => ({ ...group, rows: query ? group.rows.filter((row) => fuzzyMatch(query, row.primary) !== null || (row.sub ? fuzzyMatch(query, row.sub) !== null : false)) : group.rows })).filter((group) => group.rows.length > 0).map((group) => <div key={group.label ?? refSource} className="repository-ws-ref-group">
     {group.label && <span className="repository-ws-ref-subhead">{t(group.label === "LOCAL" ? "repository.refs.local" : "repository.refs.remotes")}</span>}
     {/* 브랜치 행은 role=button 자손에 interactive content가 금지되므로(ARIA-in-HTML)
         래퍼 div + 형제 네이티브 버튼 2개(행 본체·비교 액션)로 구성한다 */}
@@ -742,7 +797,11 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
         <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}
       </button>
       {refs.defaultBase && row.ref !== refs.defaultBase ? <button type="button" className="repository-tree-action" title={t("repository.compare.withBase")} aria-label={t("repository.compare.withBase")} onClick={() => onCompare(refs.defaultBase!, row.ref!)}>⇆</button> : null}
-    </div> : <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}`} disabled={!row.stashSha} onClick={() => { if (row.stashSha) onStashInspect(row.stashSha); }}>
+    </div> : <button type="button" key={row.key} className={`repository-ws-tree-row${row.current ? " is-current" : ""}`} disabled={!row.stashSha} onClick={() => { if (row.stashSha) onStashInspect(row.stashSha); }} onContextMenu={(event) => {
+      if (row.source !== "stashes" || !onStashAction) return;
+      event.preventDefault();
+      setRefContextMenu({ row, anchor: { x: event.clientX, y: event.clientY } });
+    }}>
       <SourceIcon source={row.source} /><span>{row.primary}</span>{row.current && <i>HEAD</i>}{row.sub && <i>{row.sub}</i>}
     </button>)}
   </div>);
@@ -766,7 +825,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
         </>}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("worktrees") ? " is-collapsed" : ""}`}>{sectionHeader("worktrees")}
-        {!collapsedSections.has("worktrees") && (worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktrees.map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>))}
+        {!collapsedSections.has("worktrees") && (worktreesError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadWorktreesFailed")} onRetry={onRetryWorktrees} /> : worktrees.filter((worktree) => !query || fuzzyMatch(query, worktree.name) !== null).map((worktree) => <button type="button" key={worktree.relPath} className={`repository-ws-tree-row${worktree.relPath === selectedRel ? " is-current" : ""}`} title={worktree.relPath} onClick={() => onRepository(worktree)}><SourceIcon source="worktrees" /><span>{worktree.name}</span>{worktree.current && <i>HEAD</i>}</button>))}
       </section>
       <section className={`repository-ws-section${collapsedSections.has("branches") ? " is-collapsed" : ""}`}>{sectionHeader("branches")}
         {!collapsedSections.has("branches") && (refsError ? <WorkspaceTreeError t={t} label={t("repository.discovery.loadRefsFailed")} onRetry={onRetryRefs} /> : refRows("branches"))}
@@ -774,7 +833,16 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
       <section className={`repository-ws-section${collapsedSections.has("tags") ? " is-collapsed" : ""}`}>{sectionHeader("tags")}{!collapsedSections.has("tags") && !refsError && refRows("tags")}</section>
       <section className={`repository-ws-section${collapsedSections.has("stashes") ? " is-collapsed" : ""}`}>{sectionHeader("stashes")}{!collapsedSections.has("stashes") && !refsError && refRows("stashes")}</section>
     </WorkspaceTreeScroll>
-    {refContextMenu ? <RepositoryRefContextMenu
+    {refContextMenu && refContextMenu.row.source === "stashes" && onStashAction ? <StashRowContextMenu
+      key={`${refContextMenu.row.key}:${refContextMenu.anchor.x}:${refContextMenu.anchor.y}`}
+      anchor={refContextMenu.anchor}
+      boundaryRef={treeRef}
+      stashName={refContextMenu.row.sub ?? refContextMenu.row.key}
+      stashSha={refContextMenu.row.stashSha ?? ""}
+      t={t}
+      onAction={onStashAction}
+      onClose={() => setRefContextMenu(null)}
+    /> : refContextMenu && refContextMenu.row.source !== "stashes" ? <RepositoryRefContextMenu
       key={`${refContextMenu.row.key}:${refContextMenu.anchor.x}:${refContextMenu.anchor.y}`}
       anchor={refContextMenu.anchor}
       boundaryRef={treeRef}
@@ -854,6 +922,82 @@ function RepositoryRefContextMenu({ anchor, boundaryRef, rowRef, currentRef, def
   return <div ref={menuRef} className="repository-context-menu" role="menu" style={style}>
     <button type="button" className="repository-context-menu-item" role="menuitem" disabled={!currentRef || currentRef === rowRef} onClick={() => activate(currentRef)}>{t("repository.compare.withCurrent")}</button>
     <button type="button" className="repository-context-menu-item" role="menuitem" disabled={!defaultBase || defaultBase === rowRef} onClick={() => activate(defaultBase)}>{t("repository.compare.withBase")}</button>
+  </div>;
+}
+
+function StashRowContextMenu({ anchor, boundaryRef, stashName, stashSha, t, onAction, onClose }: {
+  readonly anchor: { readonly x: number; readonly y: number };
+  readonly boundaryRef: RefObject<HTMLElement | null>;
+  readonly stashName: string;
+  readonly stashSha: string;
+  readonly t: T;
+  readonly onAction: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
+  readonly onClose: () => void;
+}) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [position, setPosition] = useState<{ readonly x: number; readonly y: number } | null>(null);
+  // drop은 이 메뉴의 유일한 파괴 동사 — 제품 공용 2단 무장 문법을 따른다.
+  const [dropArmed, setDropArmed] = useState(false);
+  const dropTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useLayoutEffect(() => {
+    const menu = menuRef.current;
+    const boundary = boundaryRef.current;
+    if (!menu || !boundary) return;
+    const updatePosition = () => setPosition(clampRepositoryContextMenuPosition(anchor, boundary.getBoundingClientRect(), menu.getBoundingClientRect()));
+    updatePosition();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(updatePosition);
+    observer.observe(menu);
+    observer.observe(boundary);
+    return () => observer.disconnect();
+  }, [anchor, boundaryRef]);
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => menuRef.current?.querySelector<HTMLButtonElement>("button:not(:disabled)")?.focus());
+    return () => window.cancelAnimationFrame(focusFrame);
+  }, []);
+  useEffect(() => () => { if (dropTimerRef.current !== null) clearTimeout(dropTimerRef.current); }, []);
+  useEffect(() => {
+    const handleOutsidePointer = (event: PointerEvent) => {
+      if (event.target instanceof Node && !menuRef.current?.contains(event.target)) onClose();
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose();
+    };
+    const handleScroll = () => onClose();
+    document.addEventListener("pointerdown", handleOutsidePointer, true);
+    window.addEventListener("keydown", handleKeyDown);
+    window.addEventListener("scroll", handleScroll, true);
+    return () => {
+      document.removeEventListener("pointerdown", handleOutsidePointer, true);
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("scroll", handleScroll, true);
+    };
+  }, [onClose]);
+  const style: CSSProperties = position ? { left: position.x, top: position.y } : { left: 0, top: 0, visibility: "hidden" };
+  const run = (action: "apply" | "pop") => {
+    onClose();
+    onAction(action, stashName, stashSha);
+  };
+  const handleDrop = () => {
+    if (!dropArmed) {
+      setDropArmed(true);
+      dropTimerRef.current = setTimeout(() => {
+        dropTimerRef.current = null;
+        setDropArmed(false);
+      }, 1500);
+      return;
+    }
+    if (dropTimerRef.current !== null) { clearTimeout(dropTimerRef.current); dropTimerRef.current = null; }
+    onClose();
+    onAction("drop", stashName, stashSha);
+  };
+  return <div ref={menuRef} className="repository-context-menu" role="menu" style={style}>
+    <button type="button" className="repository-context-menu-item" role="menuitem" onClick={() => run("apply")}>{t("repository.stash.apply")}</button>
+    <button type="button" className="repository-context-menu-item" role="menuitem" onClick={() => run("pop")}>{t("repository.stash.pop")}</button>
+    <button type="button" className={`repository-context-menu-item repository-context-menu-danger${dropArmed ? " is-armed" : ""}`} role="menuitem" onClick={handleDrop}>{dropArmed ? t("repository.stash.dropArm") : t("repository.stash.drop")}</button>
   </div>;
 }
 

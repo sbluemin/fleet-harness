@@ -66,12 +66,15 @@ describe("Inspector dock", () => {
     expect(historySource).toContain("<FilesViewToggle");
   });
 
-  it("renders the commit and compare inspectors through the resizable dock", () => {
+  it("renders the compare inspector through the resizable dock and the commit inspector through the tab triple", () => {
     expect(compareSource).toContain("<WorkspaceDock");
-    expect(historySource).toContain("<WorkspaceDock");
-    // 두 검사기 모두 직접 .repository-ws-dock을 열지 않아야 디바이더가 한쪽에서만 사라지는 일이 없다.
+    // 커밋 검사기는 Fork의 3탭 문법(Commit/Changes/File Tree)으로 통일됐다 — 독 직결 단일 뷰는 은퇴.
+    expect(historySource).not.toContain("<WorkspaceDock");
+    expect(historySource).toContain('useState<"details" | "changes" | "tree">');
+    expect(historySource).toContain("repository.filetree.tab");
+    expect(historySource).toContain("<CommitTreeView");
+    // 비교 검사기는 직접 .repository-ws-dock을 열지 않아야 디바이더가 한쪽에서만 사라지는 일이 없다.
     expect(compareSource).not.toContain("className=\"repository-ws-dock ");
-    expect(historySource).not.toContain("className=\"repository-ws-dock\"");
   });
 
   it("injects the dock file width as a custom property, never as an inline track list", () => {

@@ -1,10 +1,15 @@
-// /file 엔드포인트에서 hunk 모드를 구분하는 타입. staged/workdir/commit 분기는 git diff HEAD 통합으로 제거.
-export type DiffFileMode = "unified" | "untracked";
+// /file 엔드포인트에서 hunk 모드를 구분하는 타입.
+// - `unified`: HEAD 대비 통합 diff — History의 WIP 조망이 쓴다.
+// - `staged` / `worktree`: 스테이징 뷰의 두 목록이 각자 자기 축의 hunk를 본다
+//   (Fork 문법의 Local Changes가 이 분기를 되살렸다 — 통합 제거 결정의 의도적 회귀).
+export type DiffFileMode = "unified" | "untracked" | "staged" | "worktree";
 
 export interface DiffFileEntry {
   readonly path: string;
   readonly oldPath?: string;
   readonly status: "M" | "A" | "D" | "R" | "T" | "U";
+  /** 병합 충돌 항목 — status는 U를 공유하지만 untracked가 아니다. 스테이징 뷰가 discard·diff 축을 가른다. */
+  readonly conflicted?: boolean;
   readonly additions: number;
   readonly deletions: number;
 }
@@ -112,4 +117,34 @@ export interface CompareResult {
   readonly files: readonly DiffFileEntry[];
   readonly mergeBase?: string;
   readonly truncated?: boolean;
+}
+
+export interface TreeEntry {
+  readonly path: string;
+  readonly name: string;
+  readonly kind: "tree" | "blob";
+}
+
+export interface TreeResult {
+  readonly entries: readonly TreeEntry[];
+  readonly truncated?: boolean;
+}
+
+export interface StatusResult {
+  readonly staged: readonly DiffFileEntry[];
+  readonly unstaged: readonly DiffFileEntry[];
+  readonly truncated?: boolean;
+}
+
+export interface WorkstateResult {
+  readonly indexLock: boolean;
+  readonly inProgress: "merge" | "rebase" | "cherry-pick" | null;
+  readonly headBranch: string | null;
+  /** amend 프리필이 커밋 조회 라우트(REF_RE: hex 전용)에 넘길 수 있는 HEAD SHA — unborn이면 null */
+  readonly headSha: string | null;
+  readonly upstream: string | null;
+  readonly ahead: number | null;
+  readonly behind: number | null;
+  /** 이 컨텍스트(체크아웃) 안에 배치된 Console Operation — 경로는 싣지 않는다. */
+  readonly stationedOperations: readonly { readonly id: string; readonly title: string }[];
 }
