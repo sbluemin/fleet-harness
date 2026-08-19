@@ -48,7 +48,7 @@ describe("tray menu", () => {
     const actualSize = vi.fn();
     const reloadConsole = vi.fn();
     let consoleReady = false;
-    const updates = { check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
+    const updates = { applyRequested: vi.fn(async () => undefined), check: vi.fn(async () => undefined), install: vi.fn(async () => undefined), availableVersion: () => "1.2.4", enabled: () => true };
 
     configureTray(tray as never, menu as never, { show, quit, diagnostics, zoomIn, zoomOut, actualSize, reloadConsole, consoleReady: () => consoleReady, updates });
 
