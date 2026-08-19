@@ -91,10 +91,10 @@ function saveRepositorySource(source: Source): void {
 
 function mapSharedVerbError(code: string, t: T): string | null {
   switch (code) {
-    case "auth_failed": return t("repository.sync.failedAuth");
-    case "network": return t("repository.sync.failedNetwork");
-    case "timeout": return t("repository.sync.failedTimeout");
-    case "no_remote": return t("repository.sync.failedNoRemote");
+    case "auth_failed": return t("repository.verb.failedAuth");
+    case "network": return t("repository.verb.failedNetwork");
+    case "timeout": return t("repository.verb.failedTimeout");
+    case "no_remote": return t("repository.verb.failedNoRemote");
     case "detached_head": return t("repository.verb.failedDetachedHead");
     case "index_locked": return t("repository.guard.indexLocked");
     case "stash_conflict": return t("repository.verb.failedStashConflict");
