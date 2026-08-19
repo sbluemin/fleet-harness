@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-17T00:00:00Z",
+  "updatedAt": "2026-08-19T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -731,7 +731,7 @@
     "xai": {
       "name": "xAI",
       "defaultModel": "grok-4.6",
-      "source": "official Grok CLI 1.0.3 ~/.grok/models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models (observed 2026-08-13)",
+      "source": "official Grok CLI 1.0.4 ~/.grok/models_cache.json from GET https://cli-chat-proxy.grok.com/v1/models (grok-4.6 observed 2026-08-13); grok-composer-2.5-fast is the account-verified OpenCodex xAI identity, live POST /v1/responses accepted on the Grok CLI proxy 2026-08-19 (absent from the public docs.x.ai catalog)",
       "models": [
         {
           "modelId": "grok-4.6",
@@ -749,6 +749,13 @@
             ]
           },
           "benchmarkKey": "grok-4.6"
+        },
+        {
+          "modelId": "grok-composer-2.5-fast",
+          "name": "Grok-Composer-2.5-Fast",
+          "capabilityClass": "light",
+          "wire": "responses",
+          "contextWindow": 200000
         }
       ]
     }
