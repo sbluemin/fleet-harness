@@ -11719,7 +11719,7 @@ body[data-codex-reading="true"] .operations-side-bar {
   z-index: 40;
   display: flex;
   flex-direction: column;
-  min-width: 180px;
+  min-width: 212px;
   max-width: min(280px, calc(100vw - 16px));
   padding: 4px;
   border: 1px solid var(--surface-rim-strong);
@@ -11772,8 +11772,10 @@ body[data-codex-reading="true"] .operations-side-bar {
 .command-band-update--error { border-color: color-mix(in oklch, var(--coral) 42%, transparent); background: color-mix(in oklch, var(--coral) 10%, transparent); color: var(--coral-ink); }
 .command-band-update:disabled { cursor: default; opacity: 0.75; }
 .command-band-system-menu .command-band-update { width: calc(100% - 12px); margin: 2px 6px; text-align: left; }
-/* 최신 버전은 툴팁이 아니라 행이 말한다 — 호버는 읽기의 조건이 될 수 없다. */
-.command-band-update-detail { margin-left: auto; padding-left: 8px; font-weight: var(--weight-regular); color: var(--text-tertiary); }
+/* 최신 버전은 툴팁이 아니라 행이 말한다 — 호버는 읽기의 조건이 될 수 없다.
+   알약은 한 줄이어야 알약이다: 두 조각 모두 줄바꿈을 금지하고, 메뉴가 그만큼을 내준다. */
+.command-band-update > span { white-space: nowrap; }
+.command-band-update-detail { margin-left: auto; padding-left: 10px; font-weight: var(--weight-regular); color: var(--text-tertiary); }
 
 .command-band-github { display: flex; align-items: center; padding: 2px 6px; }
 
