@@ -25,7 +25,16 @@ describe("console update apply worker", () => {
     expect(script).toContain('"@dotobokuri/fleet-console"');
     expect(script).toContain('"serve"');
     // 워커가 교체 데몬을 띄울 때 process.env를 그대로 넘기는 계약 — 서비스의 child env 주입(예: NODE_USE_SYSTEM_CA)이 데몬까지 도달하는 경로다.
-    expect(script).toContain("env: process.env");
+    // 되찾을 포트가 그 위에 얹히더라도 상속 자체는 끊기지 않는다.
+    expect(script).toContain("env: daemonEnv()");
+    expect(script).toContain("if (config.resumePort === null) return process.env;");
+    expect(script).toContain("return { ...process.env, FLEET_CONSOLE_RESUME_PORT: String(config.resumePort) };");
+    // 같은 주소로 돌아왔으면 새 창을 열지 않는다 — 복귀는 원래 창의 몫이다.
+    expect(script).toContain("if (endpointChanged) openBrowser(");
+    // 설치가 실패해도 콘솔은 다시 서야 한다. 실패를 읽을 화면이 그것뿐이다.
+    expect(script).toContain("if (consoleStopped) await recoverConsoleBestEffort();");
+    // 재기동한 데몬이 읽는 고정 이름의 기록.
+    expect(script).toContain("config.progressFile");
     expect(script).toContain('"/resolved/npm.cmd"');
     expect(script).toContain('"/d","/s","/c","call","/resolved/npm.cmd "');
     expect(script).toContain("ensureGlobalRootWritable(manager)");
@@ -70,11 +79,20 @@ describe("console update apply worker", () => {
       currentPackageRoot: "/pkg",
       currentPid: 111,
       dataDir: "/data/console",
+      fromVersion: "1.2.2",
       lockFile: "/tmp/console.lock",
       targetVersion: "1.2.3",
     })).resolves.toEqual({ accepted: true });
 
-    expect(writes).toHaveLength(1);
+    // 워커 스크립트 하나와, 수락 시점의 진행 기록 하나. 후자가 없으면 워커가 첫 줄을
+    // 쓰기 전에 새로고침한 화면이 "아무 일도 없다"는 답을 받는다.
+    expect(writes).toHaveLength(2);
+    expect(writes[1]?.filePath).toBe("/data/console/update-progress.json");
+    expect(JSON.parse(writes[1]?.content ?? "{}")).toMatchObject({
+      phase: "starting",
+      fromVersion: "1.2.2",
+      targetVersion: "1.2.3",
+    });
     expect(writes[0]?.filePath).toBe("/tmp/fleet-console-update-123-456.mjs");
     expect(writes[0]?.content).toContain("/data/console/fleet-console-update-123-456.status.json");
     expect(writes[0]?.content).toContain("/data/console/fleet-console-update-123-456.log");
@@ -117,6 +135,7 @@ describe("console update apply worker", () => {
       currentPackageRoot: "/pkg",
       currentPid: 111,
       dataDir: "/data/console",
+      fromVersion: "1.2.2",
       lockFile: "/tmp/console.lock",
       targetVersion: "1.2.3",
     });
@@ -144,6 +163,7 @@ describe("console update apply worker", () => {
       currentPackageRoot: "/not-a-global-install",
       currentPid: 111,
       dataDir: "/data/console",
+      fromVersion: "1.2.2",
       lockFile: "/tmp/console.lock",
       targetVersion: "1.2.3",
     })).rejects.toThrow("no supported global package manager found");
@@ -161,7 +181,7 @@ describe("console update apply worker", () => {
     const writeFile = vi.fn();
     const service = createConsoleUpdateApplyService({ preflightInstall, writeFile, spawnWorker: () => { throw new Error("must not spawn"); } });
 
-    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentPackageRoot: latest, currentPid: 111, dataDir: root, lockFile: path.join(root, "console.lock"), targetVersion: "1.2.3" })).rejects.toThrow("managed_runtime_update_requires_relaunch");
+    await expect(service.start({ currentEndpoint: "http://127.0.0.1:4000/", currentPackageRoot: latest, currentPid: 111, dataDir: root, fromVersion: "1.2.2", lockFile: path.join(root, "console.lock"), targetVersion: "1.2.3" })).rejects.toThrow("managed_runtime_update_requires_relaunch");
     expect(preflightInstall).not.toHaveBeenCalled();
     expect(writeFile).not.toHaveBeenCalled();
   });
@@ -173,11 +193,15 @@ function createConfig(): ConsoleUpdateWorkerScriptConfig {
     currentEndpoint: "http://127.0.0.1:4000/",
     currentPackageRoot: "/pkg",
     currentPid: 111,
+    fromVersion: "1.2.2",
     lockFile: "/tmp/console.lock",
     logFile: "/tmp/fleet-console-update.log",
     packageManager: createPackageManagerSpec(),
     packageNames: ["@dotobokuri/fleet-console"],
+    progressFile: "/data/console/update-progress.json",
+    resumePort: 4000,
     serverModulePath: "/pkg/dist/cli.mjs",
+    startedAt: "2026-08-19T00:00:00.000Z",
     statusFile: "/tmp/fleet-console-update.status.json",
     targetVersion: "1.2.3",
     workerPath: "/tmp/fleet-console-update.mjs",

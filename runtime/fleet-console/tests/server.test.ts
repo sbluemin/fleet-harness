@@ -1097,6 +1097,8 @@ describe("console static and terminal ticket boundary", () => {
     expect(updateApplyStart).toHaveBeenCalledWith({
       currentEndpoint: fixture.endpoint,
       currentPackageRoot: "/pkg",
+      // 진행 기록이 "무엇에서 무엇으로"를 말하려면 출발 버전도 함께 실려야 한다.
+      fromVersion: "test",
       currentPid: process.pid,
       dataDir: path.join(fixture.fleetDataDir, "console"),
       lockFile: fixture.lockFile,

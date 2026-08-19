@@ -1,7 +1,7 @@
 import type { ApiCatalogEntry } from "@fleet-console/sdk/plugin";
 
 import { DESKTOP_FULLSCREEN_API_CATALOG, DESKTOP_SHELL_API_CATALOG } from "./desktop-contract.js";
-import { DESKTOP_THEME_API_CATALOG } from "./desktop-contract.js";
+import { DESKTOP_THEME_API_CATALOG, DESKTOP_UPDATE_API_CATALOG } from "./desktop-contract.js";
 import { GLOBAL_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { PLUGIN_SETTINGS_API_CATALOG } from "./settings/settings-domain.js";
 import { OPERATIONS_API_CATALOG } from "./operations/operations-domain.js";
@@ -22,6 +22,7 @@ export function buildApiCatalog(extraEntries: readonly ApiCatalogEntry[] = []): 
     ...DESKTOP_FULLSCREEN_API_CATALOG,
     ...DESKTOP_SHELL_API_CATALOG,
     ...DESKTOP_THEME_API_CATALOG,
+    ...DESKTOP_UPDATE_API_CATALOG,
     ...GLOBAL_SETTINGS_API_CATALOG,
     ...PLUGIN_SETTINGS_API_CATALOG,
     ...SYSTEM_FONTS_API_CATALOG,

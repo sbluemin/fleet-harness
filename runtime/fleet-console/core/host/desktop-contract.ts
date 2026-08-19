@@ -229,3 +229,81 @@ export function createDesktopThemeRouter(deps: DesktopThemeRouteDeps): (context:
     return true;
   };
 }
+
+/**
+ * 이 콘솔이 스스로 갈아 끼울 수 없는 설치 레이아웃일 때, 업데이트를 실제로 수행하는 것은
+ * 창을 들고 있는 셸이다. 페이지는 셸에게 말을 걸 수 없고 걸어서도 안 되므로(렌더러는
+ * 샌드박스이고 preload도 IPC도 없다), 방향은 반대로 흐른다 — 셸이 이 라우트의 구독자다.
+ * 테마 동기화가 이미 쓰는 길과 같은 모양이며, 새 통로를 뚫지 않는다.
+ *
+ * 여기 실리는 것은 "요청됐다"는 사실 하나뿐이다. 무엇을 어떻게 설치할지는 셸의 강화된
+ * 진입-흐름 트랜잭션이 정하며, 콘솔은 그 결정에 관여하지 않는다.
+ */
+export const DESKTOP_UPDATE_PATH = "/api/v1/desktop/update";
+export const DESKTOP_UPDATE_EVENTS_PATH = "/api/v1/desktop/update/events";
+export const DESKTOP_UPDATE_EVENT = "desktop:update";
+
+export interface DesktopUpdateRequestSnapshot {
+  /** 요청된 목표 버전. 대기 중인 요청이 없으면 null. */
+  readonly requestedVersion: string | null;
+  /** 이 요청의 표. 셸이 같은 요청을 두 번 수행하지 않기 위한 값이다. */
+  readonly requestId: string | null;
+}
+
+export const emptyDesktopUpdateRequest = (): DesktopUpdateRequestSnapshot => ({ requestedVersion: null, requestId: null });
+
+export function isDesktopUpdateRequestSnapshot(value: unknown): value is DesktopUpdateRequestSnapshot {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const entry = value as Record<string, unknown>;
+  if (Object.keys(entry).length !== 2) return false;
+  const versionOk = entry.requestedVersion === null || typeof entry.requestedVersion === "string";
+  const idOk = entry.requestId === null || typeof entry.requestId === "string";
+  return versionOk && idOk;
+}
+
+interface DesktopUpdateRouteDeps {
+  readonly getUpdateRequest: () => DesktopUpdateRequestSnapshot;
+  readonly isAuthorized: (req: http.IncomingMessage) => boolean;
+  readonly subscribe: (res: http.ServerResponse, snapshot: DesktopUpdateRequestSnapshot) => void;
+  readonly writeJson: (res: http.ServerResponse, status: number, body: unknown) => void;
+}
+
+export const DESKTOP_UPDATE_API_CATALOG: readonly ApiCatalogEntry[] = [
+  {
+    method: "GET",
+    path: DESKTOP_UPDATE_PATH,
+    summary: "Read whether an update was requested for the shell that owns this window to perform.",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "http",
+  },
+  {
+    method: "GET",
+    path: DESKTOP_UPDATE_EVENTS_PATH,
+    summary: "Stream update requests the owning shell must perform.",
+    category: "Desktop",
+    gate: "origin-strict",
+    transport: "sse",
+  },
+];
+
+export function createDesktopUpdateRouter(deps: DesktopUpdateRouteDeps): (context: DesktopFullscreenRouteContext) => boolean {
+  return ({ req, res, pathname }) => {
+    if (pathname !== DESKTOP_UPDATE_PATH && pathname !== DESKTOP_UPDATE_EVENTS_PATH) return false;
+    if (req.method !== "GET") {
+      deps.writeJson(res, 405, { error: "Method not allowed" });
+      return true;
+    }
+    if (!deps.isAuthorized(req)) {
+      deps.writeJson(res, 401, { error: "unauthorized" });
+      return true;
+    }
+    const snapshot = deps.getUpdateRequest();
+    if (pathname === DESKTOP_UPDATE_PATH) {
+      deps.writeJson(res, 200, snapshot);
+      return true;
+    }
+    deps.subscribe(res, snapshot);
+    return true;
+  };
+}

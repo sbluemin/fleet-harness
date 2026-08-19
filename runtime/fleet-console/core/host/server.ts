@@ -21,8 +21,8 @@ import { createCodexGateway } from "./codex/gateway.js";
 import { acknowledgmentMatches, createConsoleSettingsStore, effectiveRemoteAccessAdvertisedTuple, REMOTE_AUTO_PORT_ATTEMPTS, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, type ConsoleRemoteAccessSettings, type ConsoleThemeId, type RemoteAccessSettingsChange } from "./settings/settings-domain.js";
 import { DESKTOP_FULLSCREEN_EVENT, desktopFullscreenSnapshot } from "./desktop-contract.js";
 import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopShell, type DesktopShellSnapshot } from "./desktop-contract.js";
-import { DESKTOP_THEME_EVENT, desktopThemeSnapshot } from "./desktop-contract.js";
-import { createDesktopThemeRouter } from "./desktop-contract.js";
+import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
+import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
 import { createConsoleDurableStateStore, emptyDurableConsoleState, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./settings/settings-domain.js";
@@ -64,7 +64,8 @@ import { createFolderGrantStore } from "./theaters/theater-domain.js";
 import type { TheaterRegistration } from "./theaters/theater-domain.js";
 import { TheaterRegistry } from "./theaters/theater-domain.js";
 import { canonicalizeTheaterPathSync, workspaceHash } from "./theaters/theater-domain.js";
-import { createConsoleUpdateApplyService, type ConsoleUpdateApplyService } from "./update-apply.js";
+import { createConsoleUpdateApplyService, isManagedRuntimePackageRoot, type ConsoleUpdateApplyService } from "./update-apply.js";
+import { IDLE_CONSOLE_UPDATE_PROGRESS, readConsoleUpdateProgress, type ConsoleUpdateProgressStatus } from "./update-progress.js";
 import { createConsoleUpdateCheckService, type ConsoleUpdateCheckService } from "./update-check.js";
 
 export interface ConsoleServerDeps {
@@ -242,6 +243,14 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
     transport: "http",
   },
   {
+    method: "GET",
+    path: "/api/v1/updates/progress",
+    summary: "Read the outcome of the update this console just came back from.",
+    category: "Update",
+    gate: "loopback",
+    transport: "http",
+  },
+  {
     method: "POST",
     path: "/api/v1/updates/apply",
     summary: "Request console update application.",
@@ -395,6 +404,9 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   // 폴백되는 죽은 경로였다. deps.version은 테스트 오버라이드용으로 유지한다.
   const version = deps.version ?? release.version;
   const channel = release.channel;
+  // 한 번의 기동에만 유효한 지시다. 읽자마자 환경에서 지운다 — 남겨 두면 이 콘솔이 나중에
+  // 띄우는 자식들까지 오래된 포트에 묶인다.
+  const resumePort = takeConsoleResumePort(process.env);
   const lock = createConsoleLock({ hostname: () => host });
   const releaseNotes = deps.releaseNotes ?? createConsoleReleaseNotesService();
   const updateCheck = deps.updateCheck ?? createConsoleUpdateCheckService({ readRelease: () => release });
@@ -480,6 +492,12 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const pluginEventListeners = new Map<string, Set<(payload: unknown) => void>>();
   const operationSseSubscribers = new Set<OperationSseSubscriber>();
   const desktopThemeSseSubscribers = new Set<http.ServerResponse>();
+  const desktopUpdateSseSubscribers = new Set<http.ServerResponse>();
+  /**
+   * 대기 중인 위임 요청. 리스너와 수명을 같이하는 휘발 상태다 — 셸이 앱을 재시작하면
+   * 이 콘솔도 함께 내려가므로, 재기동 후까지 살아남아야 할 사실이 아니다.
+   */
+  let desktopUpdateRequest: DesktopUpdateRequestSnapshot = emptyDesktopUpdateRequest();
   function publishPluginEvent(channel: string, payload: unknown): void {
     for (const listener of pluginEventListeners.get(channel) ?? []) listener(payload);
   }
@@ -710,6 +728,24 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       });
     },
   });
+  const desktopUpdateRouter = createDesktopUpdateRouter({
+    getUpdateRequest: () => desktopUpdateRequest,
+    isAuthorized: isExactConsoleOrigin,
+    writeJson,
+    subscribe: (res, snapshot) => {
+      res.writeHead(200, withSecurityHeaders({
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      }));
+      res.write(":connected\n\n");
+      res.write(encodeSseData(DESKTOP_UPDATE_EVENT, snapshot));
+      desktopUpdateSseSubscribers.add(res);
+      res.on("close", () => {
+        desktopUpdateSseSubscribers.delete(res);
+      });
+    },
+  });
   const desktopShellRouter = createDesktopShellRouter({
     getShell: (req) => {
       const owner = shellOwnerOf(req);
@@ -812,6 +848,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   routeRegistry.register("/api/v1/desktop", async (context) => {
     if (await desktopShellRouter(context)) return true;
     if (await desktopFullscreenRouter(context)) return true;
+    if (desktopUpdateRouter(context)) return true;
     return desktopThemeRouter(context);
   });
   routeRegistry.register("/plugin-runtime", handlePluginRuntimeRoute);
@@ -961,6 +998,10 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
     if (pathname === "/api/v1/updates/release-notes") {
       runAsyncHandler(handleObserverReleaseNotes(req, res), res);
+      return;
+    }
+    if (pathname === "/api/v1/updates/progress") {
+      handleUpdateProgress(req, res);
       return;
     }
     if (pathname === "/api/v1/updates/apply") {
@@ -1822,6 +1863,25 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  /**
+   * 업데이트가 끝났는지 말해 줄 수 있는 것은 그 업데이트를 겪은 프로세스가 아니다 —
+   * 그 프로세스는 이미 죽었다. 답하는 쪽은 **다음 세대의 데몬**이고, 근거는 워커가
+   * 디스크에 남긴 기록이다. 그래서 이 라우트는 자기 메모리를 읽지 않는다.
+   */
+  function handleUpdateProgress(req: http.IncomingMessage, res: http.ServerResponse): void {
+    if (req.method !== "GET") {
+      writeJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+    let progress: ConsoleUpdateProgressStatus;
+    try {
+      progress = readConsoleUpdateProgress(durablePaths.dir);
+    } catch {
+      progress = IDLE_CONSOLE_UPDATE_PROGRESS;
+    }
+    writeJson(res, 200, progress);
+  }
+
   async function handleUpdateApply(req: http.IncomingMessage, res: http.ServerResponse): Promise<void> {
     if (req.method !== "POST") {
       writeJson(res, 405, { error: "Method not allowed" });
@@ -1853,6 +1913,21 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
       writeJson(res, 409, { error: "update_not_available" });
       return;
     }
+    // 원격에서 누른 손은 이 기계 앞에 없다. 이 콘솔을 내리는 일은 그 자리에 앉아 있는
+    // 사람의 화면까지 함께 내리므로, 원격 리스너로 들어온 요청은 그 사실을 읽고 나서만
+    // 진행한다. 보안 관문이 아니라 고의성의 표식이다 — 관문은 이미 세션이 지켰다.
+    if (!isLoopbackListener(req) && (body === null || body.acknowledgeHostRestart !== true)) {
+      writeJson(res, 409, { error: "host_restart_confirmation_required" });
+      return;
+    }
+    // 이 트리를 제자리에서 고칠 수 없는 설치 레이아웃이라면, 업데이트를 거절하는 대신
+    // 창을 들고 있는 셸에게 넘긴다. 거절은 사용자를 아무 데도 데려가지 않았다.
+    if (isManagedRuntimePackageRoot(release.packageRoot)) {
+      publishDesktopUpdateRequest({ requestedVersion: freshStatus.latestVersion, requestId: crypto.randomUUID() });
+      const delegated: ConsoleUpdateApplyAcceptedResponse = { status: "delegated" };
+      writeJson(res, 202, delegated);
+      return;
+    }
     const handle = lockHandle;
     if (!handle || !activeEndpoint || !activeLockFile) {
       writeJson(res, 503, { error: "console_not_ready" });
@@ -1865,6 +1940,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         currentPackageRoot: release.packageRoot,
         currentPid: process.pid,
         dataDir: durablePaths.dir,
+        fromVersion: version,
         lockFile: activeLockFile,
         targetVersion: freshStatus.latestVersion,
       });
@@ -2174,6 +2250,15 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
     }
   }
 
+  function publishDesktopUpdateRequest(snapshot: DesktopUpdateRequestSnapshot): void {
+    desktopUpdateRequest = snapshot;
+    if (desktopUpdateSseSubscribers.size === 0) return;
+    const data = encodeSseData(DESKTOP_UPDATE_EVENT, snapshot);
+    for (const res of desktopUpdateSseSubscribers) {
+      res.write(data);
+    }
+  }
+
   function persistDurableState(): void {
     try {
       saveDurableState(deletionCoordinator.list());
@@ -2259,6 +2344,18 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
         requestedPort: null,
         portMode: "dynamic",
         allowFallback: false,
+      };
+    }
+    // 업데이트가 방금 이 콘솔을 갈아 끼웠다면, 열려 있던 화면은 옛 주소를 계속 두드리고
+    // 있다. 그 주소를 되찾는 것이 "같은 자리로 돌아온다"는 약속의 전부이므로, 이 한 번의
+    // 기동에 한해 포트를 지정받는다. 되찾지 못해도 기동은 계속한다 — 주소가 바뀐 콘솔이
+    // 뜨지 않는 콘솔보다 낫고, 그 경우 워커가 새 창으로 갈 곳을 알려 준다.
+    if (resumePort !== null) {
+      return {
+        port: resumePort,
+        requestedPort: resumePort,
+        portMode: "static",
+        allowFallback: true,
       };
     }
     if (channel === "local") {
@@ -2795,6 +2892,16 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 
 function hasForbiddenUpdateApplyBodyKeys(body: Record<string, unknown>): boolean {
   return Object.keys(body).some((key) => UPDATE_APPLY_FORBIDDEN_BODY_KEYS.has(key));
+}
+
+export const CONSOLE_RESUME_PORT_ENV = "FLEET_CONSOLE_RESUME_PORT";
+
+export function takeConsoleResumePort(env: NodeJS.ProcessEnv): number | null {
+  const raw = env[CONSOLE_RESUME_PORT_ENV];
+  delete env[CONSOLE_RESUME_PORT_ENV];
+  if (raw === undefined) return null;
+  const port = Number.parseInt(raw, 10);
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : null;
 }
 
 function isValidConsoleStaticPort(value: unknown): value is number {
