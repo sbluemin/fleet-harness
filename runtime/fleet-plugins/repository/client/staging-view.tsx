@@ -30,8 +30,8 @@ interface StagingViewProps {
   readonly ctx: RailPanelContext;
   readonly repoRel: string;
   readonly workstate: WorkstateResult | null;
-  /** 스테이지·커밋이 저장소를 바꿨을 때 패널 전역(변경 목록·기록·workstate)을 다시 읽게 한다. */
-  readonly onMutated: () => void;
+  /** 변이 후 패널 전역 갱신 — history:true는 커밋처럼 기록 축이 실제로 움직인 변이에만 쓴다. */
+  readonly onMutated: (options: { readonly history: boolean }) => void;
 }
 
 export function guardMessageOf(workstate: WorkstateResult | null, t: T): string | null {
@@ -53,6 +53,8 @@ export function stationedMessageOf(workstate: WorkstateResult | null, t: T): str
 
 function hunkModeOf(selection: Selection): "staged" | "worktree" | "untracked" {
   if (selection.axis === "staged") return "staged";
+  // 충돌 항목은 U를 공유하지만 tracked다 — untracked 축으로 읽으면 전체-추가 허위 diff가 된다.
+  if (selection.entry.conflicted) return "worktree";
   return selection.entry.status === "U" ? "untracked" : "worktree";
 }
 
@@ -109,12 +111,14 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
     let cancelled = false;
     const seq = ++requestSeqRef.current;
     setStatus((current) => current.kind === "ok" ? current : { kind: "loading" });
-    ctx.api.fetch("repository", "status", {
+    // api.fetch(assertSafeResponse)는 비2xx에서 payload를 버리고 throw한다 — 오류 코드를 읽어야
+    // 하는 경로는 raw fetch를 유지한다(rail-panel의 changed 로더와 같은 결).
+    fetch("/plugins/repository/status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }),
     }).then(async (response) => {
-      if (!response.ok) throw new Error((await response.json() as { readonly error?: string }).error ?? "git_failed");
+      if (!response.ok) throw new Error((await response.json().catch(() => ({})) as { readonly error?: string }).error ?? "git_failed");
       return response.json() as Promise<StatusResult>;
     }).then((result) => {
       if (cancelled || seq !== requestSeqRef.current) return;
@@ -132,16 +136,17 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, statusRetry]);
 
-  const reload = useCallback(() => {
+  const reloadStatus = useCallback(() => {
     setStatusRetry((value) => value + 1);
-    onMutated();
-  }, [onMutated]);
+  }, []);
 
-  const runVerb = useCallback(async (route: string, body: Record<string, unknown>, mapError?: (code: string) => string | null): Promise<Record<string, unknown> | null> => {
+  // 실패한 동사는 저장소를 바꾸지 않았다 — 상태 목록만 다시 읽고, 전역 갱신(기록·refs 재적재)은
+  // 성공한 변이에만 지불한다. 오류 코드는 raw fetch로 읽는다(assertSafeResponse는 payload를 버린다).
+  const runVerb = useCallback(async (route: string, body: Record<string, unknown>, mutation: "local" | "history", mapError?: (code: string) => string | null): Promise<Record<string, unknown> | null> => {
     if (!ctx.theaterId || busy) return null;
     setBusy(true);
     try {
-      const response = await ctx.api.fetch("repository", route, {
+      const response = await fetch(`/plugins/repository/${route}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ theaterId: ctx.theaterId, repoRel, ...body }),
@@ -150,23 +155,32 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
       if (!response.ok) {
         const code = typeof payload.error === "string" ? payload.error : "git_failed";
         showNotice({ kind: "error", text: mapError?.(code) ?? code });
+        reloadStatus();
         return null;
       }
+      reloadStatus();
+      onMutated({ history: mutation === "history" });
       return payload;
     } catch {
-      showNotice({ kind: "error", text: "network" });
+      showNotice({ kind: "error", text: t("repository.verb.failedNetwork") });
+      reloadStatus();
       return null;
     } finally {
       setBusy(false);
-      reload();
     }
-  }, [busy, ctx.api, ctx.theaterId, repoRel, reload, showNotice]);
+  }, [busy, ctx.theaterId, onMutated, reloadStatus, repoRel, showNotice, t]);
 
-  const stagePaths = useCallback((paths: readonly string[]) => { void runVerb("stage", { paths }); }, [runVerb]);
-  const unstagePaths = useCallback((paths: readonly string[]) => { void runVerb("unstage", { paths }); }, [runVerb]);
+  const stagePaths = useCallback((paths: readonly string[]) => { void runVerb("stage", { paths }, "local"); }, [runVerb]);
+  const stageAll = useCallback(() => { void runVerb("stage", { all: true }, "local"); }, [runVerb]);
+  // 리네임(R)은 새 경로만 내리면 옛 경로의 스테이지된 삭제가 남는다 — oldPath를 함께 내린다.
+  const unstageEntries = useCallback((entries: readonly DiffFileEntry[]) => {
+    const paths = entries.flatMap((entry) => entry.oldPath ? [entry.path, entry.oldPath] : [entry.path]);
+    void runVerb("unstage", { paths }, "local");
+  }, [runVerb]);
+  const unstageAll = useCallback(() => { void runVerb("unstage", { all: true }, "local"); }, [runVerb]);
   const discardEntry = useCallback((entry: DiffFileEntry) => {
-    const body = entry.status === "U" ? { untrackedPaths: [entry.path] } : { paths: [entry.path] };
-    void runVerb("discard", body);
+    const body = entry.status === "U" && !entry.conflicted ? { untrackedPaths: [entry.path] } : { paths: [entry.path] };
+    void runVerb("discard", body, "local");
   }, [runVerb]);
 
   const armOrDiscard = useCallback((entry: DiffFileEntry) => {
@@ -216,7 +230,7 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
       subject: trimmedSubject,
       ...(bodyText.trim() ? { message: bodyText.trim() } : {}),
       ...(amend ? { amend: true } : {}),
-    }, (code) => code === "identity_missing" ? t("repository.staging.failedIdentity")
+    }, "history", (code) => code === "identity_missing" ? t("repository.staging.failedIdentity")
       : code === "nothing_to_commit" ? t("repository.staging.failedNothingToCommit")
       : code === "index_locked" ? t("repository.guard.indexLocked")
       : null);
@@ -277,17 +291,18 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
             emptyLabel={t("repository.staging.emptyUnstaged")}
             actionLabel={t("repository.staging.stageAll")}
             actionDisabled={busy || writeLocked || unstaged.length === 0}
-            onAction={() => stagePaths(unstaged.map((entry) => entry.path))}
+            onAction={stageAll}
             selectedPath={selection?.axis === "unstaged" ? selection.entry.path : null}
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
             rowActions={(entry) => <>
-              <button
+              {/* 충돌 파일의 discard는 서버에서 무음 no-op이 된다 — 동사를 숨기고 충돌 표식으로 안내한다. */}
+              {!entry.conflicted && <button
                 type="button"
                 className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}`}
                 aria-label={t("repository.staging.discardFile", { path: entry.path })}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); armOrDiscard(entry); }}
-              >{armedDiscard === entry.path ? t("repository.staging.discardArm") : "⌫"}</button>
+              >{armedDiscard === entry.path ? t("repository.staging.discardArm") : "⌫"}</button>}
               <button
                 type="button"
                 className="repository-stage-action"
@@ -304,7 +319,7 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
             emptyLabel={t("repository.staging.emptyStaged")}
             actionLabel={t("repository.staging.unstageAll")}
             actionDisabled={busy || writeLocked || staged.length === 0}
-            onAction={() => unstagePaths(staged.map((entry) => entry.path))}
+            onAction={unstageAll}
             selectedPath={selection?.axis === "staged" ? selection.entry.path : null}
             onSelect={(entry) => setSelection({ axis: "staged", entry })}
             rowActions={(entry) => <button
@@ -312,7 +327,7 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
               className="repository-stage-action"
               aria-label={t("repository.staging.unstageFile", { path: entry.path })}
               disabled={busy || writeLocked}
-              onClick={(event) => { event.stopPropagation(); unstagePaths([entry.path]); }}
+              onClick={(event) => { event.stopPropagation(); unstageEntries([entry]); }}
             >−</button>}
           />
         </>}
@@ -376,12 +391,13 @@ function StagingSection({ t, label, files, emptyLabel, actionLabel, actionDisabl
     <div className="repository-staging-rows">
       {files.length === 0
         ? <div className="repository-empty-row">{emptyLabel}</div>
-        : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
+        : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
     </div>
   </section>;
 }
 
-function StagingFileRow({ entry, isSelected, onSelect, actions }: {
+function StagingFileRow({ t, entry, isSelected, onSelect, actions }: {
+  readonly t: T;
   readonly entry: DiffFileEntry;
   readonly isSelected: boolean;
   readonly onSelect: (entry: DiffFileEntry) => void;
@@ -399,6 +415,7 @@ function StagingFileRow({ entry, isSelected, onSelect, actions }: {
         {dir && <span className="repository-file-dir">{dir}</span>}
       </span>
       <span className="repository-nums">
+        {entry.conflicted && <span className="repository-conflict-chip">{t("repository.staging.conflict")}</span>}
         {entry.additions > 0 && <span className="repository-additions">+{entry.additions}</span>}
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>

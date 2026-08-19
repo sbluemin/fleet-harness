@@ -127,7 +127,8 @@ describe("Repository workstate route", () => {
     const operations: StubOperation[] = [
       { id: "op-in", title: "stationed op", payload: { cwd: clonePath } },
       { id: "op-out", title: "elsewhere", payload: { cwd: tmpDir } },
-      { id: "op-null", title: "no cwd", payload: null },
+      // cwd 없는 op는 터미널 플러그인이 Theater 루트에서 기동한다 — 루트 컨텍스트의 주둔으로 집계돼야 한다.
+      { id: "op-rootless", title: "no cwd", payload: null },
     ];
     let writes: JsonWrite[] = [];
     await handleRepositoryWorkstate(req, res, makeContext(clonePath, { theaterId: "t" }, writes, operations));
@@ -139,7 +140,10 @@ describe("Repository workstate route", () => {
     expect(state.behind).toBe(0);
     expect(state.headSha).toMatch(/^[0-9a-f]{40}$/);
     // theater 루트 컨텍스트: 클론 안의 op만 주둔으로 집계된다 — tmpDir op는 클론 밖이다.
-    expect(state.stationedOperations).toEqual([{ id: "op-in", title: "stationed op" }]);
+    expect(state.stationedOperations).toEqual([
+      { id: "op-in", title: "stationed op" },
+      { id: "op-rootless", title: "no cwd" },
+    ]);
 
     const gitDir = path.resolve(clonePath, (await runGit(["rev-parse", "--absolute-git-dir"], { cwd: clonePath })).stdout.trim());
     await fs.writeFile(path.join(gitDir, "index.lock"), "");

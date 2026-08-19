@@ -95,8 +95,9 @@ export async function handleRepositoryWorkstate(
     try { realGitCwd = await fs.realpath(gitCwd); } catch { /* 존재는 resolveGitCwd가 이미 보장 */ }
     const stationedOperations: { readonly id: string; readonly title: string }[] = [];
     for (const operation of ctx.host.operations.list()) {
-      const cwd = (operation.payload as { readonly cwd?: unknown } | null)?.cwd;
-      if (typeof cwd !== "string") continue;
+      const rawCwd = (operation.payload as { readonly cwd?: unknown } | null)?.cwd;
+      // cwd 없는 Operation은 터미널 플러그인이 Theater 루트에서 기동한다 — 루트 컨텍스트의 주둔으로 집계한다.
+      const cwd = typeof rawCwd === "string" ? rawCwd : theaterPath;
       let realCwd: string;
       try { realCwd = await fs.realpath(cwd); } catch { continue; }
       if (isPathContained(realGitCwd, realCwd)) stationedOperations.push({ id: operation.id, title: operation.title });

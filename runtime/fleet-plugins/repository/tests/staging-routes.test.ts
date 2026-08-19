@@ -166,8 +166,9 @@ describe("Repository staging routes", () => {
     expect(await fs.readFile(path.join(repo, "tracked.txt"), "utf8")).toBe("base\n");
     await expect(fs.stat(path.join(repo, "loose.txt"))).rejects.toThrow();
 
+    const stashSha = (await runGit(["rev-parse", "--verify", "stash@{0}"], { cwd: repo })).stdout.trim();
     writes = [];
-    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "pop", name: "stash@{0}" }, writes));
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "pop", name: "stash@{0}", sha: stashSha }, writes));
     expect(writes[0]!.status).toBe(200);
     expect(await fs.readFile(path.join(repo, "tracked.txt"), "utf8")).toContain("wip");
     expect(await fs.readFile(path.join(repo, "loose.txt"), "utf8")).toBe("loose\n");
@@ -175,7 +176,7 @@ describe("Repository staging routes", () => {
 
   it("rejects malformed stash names and unknown actions", async () => {
     const writes: JsonWrite[] = [];
-    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "pop", name: "stash@{0}; rm -rf" }, writes));
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "pop", name: "stash@{0}; rm -rf", sha: "a".repeat(40) }, writes));
     expect(writes[0]!.status).toBe(400);
     expect(readStashAction("explode")).toBeNull();
     expect(readStashAction("pop")).toBe("pop");
@@ -185,6 +186,38 @@ describe("Repository staging routes", () => {
     const writes: JsonWrite[] = [];
     await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "save" }, writes));
     expect(writes[0]).toEqual({ status: 422, payload: { error: "nothing_to_stash" } });
+  });
+
+  it("refuses a positional stash action whose sha no longer matches", async () => {
+    await fs.appendFile(path.join(repo, "tracked.txt"), "wip\n");
+    let writes: JsonWrite[] = [];
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "save" }, writes));
+    expect(writes[0]!.status).toBe(200);
+    // 다른 sha를 쥔 채 drop을 시도 — 위치가 밀린 상황의 재현이다.
+    writes = [];
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "drop", name: "stash@{0}", sha: "b".repeat(40) }, writes));
+    expect(writes[0]).toEqual({ status: 409, payload: { error: "stash_moved" } });
+    expect((await runGit(["stash", "list"], { cwd: repo })).stdout.trim()).not.toBe("");
+    // 존재하지 않는 위치도 실행 대신 이동 거절로 답한다.
+    writes = [];
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "drop", name: "stash@{9}", sha: "b".repeat(40) }, writes));
+    expect(writes[0]).toEqual({ status: 409, payload: { error: "stash_moved" } });
+  });
+
+  it("stages and unstages everything through the all flag past the per-request path cap", async () => {
+    await fs.writeFile(path.join(repo, "bulk-a.txt"), "a\n");
+    await fs.writeFile(path.join(repo, "bulk-b.txt"), "b\n");
+    let writes: JsonWrite[] = [];
+    await handleRepositoryStage(req, res, makeContext(repo, { theaterId: "t", all: true }, writes));
+    expect(writes[0]!.status).toBe(200);
+    let status = await readStatus(repo);
+    expect(status.unstaged).toEqual([]);
+    expect(status.staged.length).toBeGreaterThanOrEqual(2);
+    writes = [];
+    await handleRepositoryUnstage(req, res, makeContext(repo, { theaterId: "t", all: true }, writes));
+    expect(writes[0]!.status).toBe(200);
+    status = await readStatus(repo);
+    expect(status.staged).toEqual([]);
   });
 });
 
@@ -213,5 +246,8 @@ describe("parseStatusV2", () => {
     expect(parsed.staged.map((entry) => entry.path)).toEqual(["both.txt"]);
     expect(parsed.unstaged.map((entry) => entry.path)).toEqual(["both.txt", "conflicted.txt"]);
     expect(parsed.unstaged[1]!.status).toBe("U");
+    // 충돌은 untracked와 U를 공유하지만 conflicted로 갈라진다 — 스테이징 뷰의 discard/diff 축 분기 근거.
+    expect(parsed.unstaged[1]!.conflicted).toBe(true);
+    expect(parsed.unstaged[0]!.conflicted).toBeUndefined();
   });
 });

@@ -90,9 +90,10 @@ export function parseStatusV2(stdout: string, stagedNums: NumstatMap, unstagedNu
       const filePath = record.slice(2);
       if (filePath) unstaged.push({ path: filePath, status: "U", additions: 0, deletions: 0 });
     } else if (kind === "u") {
-      // 병합 충돌 항목 — 스테이징 UI가 절반만 집어삼키지 않도록 unstaged에 U로 표면화한다.
+      // 병합 충돌 항목 — U를 공유하되 conflicted로 표시해 untracked와 갈라 둔다
+      // (충돌 파일을 untracked로 취급하면 discard가 무음 no-op이 되고 diff가 전체-추가로 보인다).
       const filePath = record.split(" ").slice(10).join(" ");
-      if (filePath) unstaged.push({ path: filePath, status: "U", additions: 0, deletions: 0 });
+      if (filePath) unstaged.push({ path: filePath, status: "U", conflicted: true, additions: 0, deletions: 0 });
     }
   }
   return { staged, unstaged };

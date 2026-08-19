@@ -1954,5 +1954,15 @@
 .repository-filetree-note { padding: 6px 14px; font-size: var(--t-sm); color: var(--text-tertiary); }
 .repository-filetree-note.is-error { color: var(--coral-ink); }
 
+/* 충돌 표식 — untracked와 U를 공유하는 행을 warn 신호로 가른다(discard 동사는 숨겨진다). */
+.repository-conflict-chip {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--t-2xs);
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  color: var(--warn-ink);
+  border: 1px solid color-mix(in oklab, var(--warn) 45%, transparent);
+}
+
 /* 스태시 컨텍스트 메뉴의 파괴 동사 — 무장 시에만 coral. */
 .repository-context-menu-danger.is-armed { color: var(--coral-ink); }

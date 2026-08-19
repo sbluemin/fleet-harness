@@ -199,6 +199,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [verbBusy, setVerbBusy] = useState<VerbKind | null>(null);
   const [verbNotice, setVerbNotice] = useState<{ readonly kind: "success" | "error"; readonly text: string } | null>(null);
   const verbNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const writeLockedRef = useRef(false);
+  const workstateRef = useRef<WorkstateResult | null>(null);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
   const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; baseLabel: string; headLabel: string; seq: number } | null>(null);
   const [inspectRequest, setInspectRequest] = useState<{ fullHash: string; seq: number } | null>(null);
@@ -432,12 +434,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setWorkstateRetry((value) => value + 1);
     setHistoryExternalRefreshToken((value) => value + 1);
   }, []);
-  // 스테이징 뷰의 변이는 목록·기록·울타리를 함께 새로 읽는다 — repos 재스캔은 불필요해 건너뛴다.
-  const handleWorkspaceMutated = useCallback(() => {
+  // 스테이징 뷰의 변이는 목록·울타리를 새로 읽는다 — repos 재스캔은 불필요하고,
+  // 기록·refs 재적재는 커밋처럼 기록 축이 실제로 움직인 변이에만 지불한다.
+  const handleWorkspaceMutated = useCallback((options: { readonly history: boolean }) => {
     setChangedFilesRetry((value) => value + 1);
     setWorkstateRetry((value) => value + 1);
-    setRefsRetry((value) => value + 1);
-    setHistoryExternalRefreshToken((value) => value + 1);
+    if (options.history) {
+      setRefsRetry((value) => value + 1);
+      setHistoryExternalRefreshToken((value) => value + 1);
+    }
   }, []);
   const showVerbNotice = useCallback((notice: { readonly kind: "success" | "error"; readonly text: string }) => {
     if (verbNoticeTimerRef.current !== null) clearTimeout(verbNoticeTimerRef.current);
@@ -463,13 +468,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         return;
       }
       showVerbNotice({ kind: "success", text: successText(payload) });
+      // 성공한 원격·스태시 동사만 전역 갱신을 지불한다 — 실패는 저장소를 바꾸지 않았다.
+      handleWorkspaceMutated({ history: true });
     } catch {
-      showVerbNotice({ kind: "error", text: t("repository.sync.failedNetwork") });
+      showVerbNotice({ kind: "error", text: t("repository.verb.failedNetwork") });
     } finally {
       setVerbBusy(null);
-      refreshRepositoryData();
     }
-  }, [ctx.theaterId, refreshRepositoryData, repoRel, showVerbNotice, t, verbBusy]);
+  }, [ctx.theaterId, handleWorkspaceMutated, repoRel, showVerbNotice, t, verbBusy]);
   const handlePull = useCallback(() => {
     void runToolbarVerb("pull", "pull", {}, (payload) => t("repository.verb.pulled", { branch: String(payload.branch ?? ""), remote: String(payload.remote ?? "") }), (code) =>
       code === "non_fast_forward" ? t("repository.verb.failedPullDiverged")
@@ -485,10 +491,16 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     void runToolbarVerb("stash", "stash", { action: "save" }, () => t("repository.verb.stashed"), (code) =>
       code === "nothing_to_stash" ? t("repository.verb.failedNothingToStash") : null);
   }, [runToolbarVerb, t]);
-  const handleStashRowAction = useCallback((action: "apply" | "pop" | "drop", name: string) => {
-    void runToolbarVerb("stash", "stash", { action, name }, () =>
-      t(action === "apply" ? "repository.stash.applied" : action === "pop" ? "repository.stash.popped" : "repository.stash.dropped"), () => null);
-  }, [runToolbarVerb, t]);
+  const handleStashRowAction = useCallback((action: "apply" | "pop" | "drop", name: string, sha: string) => {
+    // 스태시 동사도 툴바·스테이징과 같은 울타리를 진다 — 잠금 중 우회로가 되면 안 된다.
+    if (writeLockedRef.current) {
+      showVerbNotice({ kind: "error", text: guardMessageOf(workstateRef.current, t) ?? t("repository.guard.indexLocked") });
+      return;
+    }
+    void runToolbarVerb("stash", "stash", { action, name, sha }, () =>
+      t(action === "apply" ? "repository.stash.applied" : action === "pop" ? "repository.stash.popped" : "repository.stash.dropped"), (code) =>
+      code === "stash_moved" ? t("repository.stash.moved") : null);
+  }, [runToolbarVerb, showVerbNotice, t]);
   const showSyncNotice = useCallback((notice: SyncNotice) => {
     if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
     setSyncNotice(notice);
@@ -640,8 +652,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
   const checkoutTabs = buildCheckoutTabs(repos, worktrees, repoRel);
   const writeLocked = guardMessageOf(workstate, t) !== null;
+  writeLockedRef.current = writeLocked;
+  workstateRef.current = workstate;
   // WORKING > Changes는 Fork 문법의 스테이징 뷰다 — 목록·diff·커밋 상자를 StagingView가 소유한다.
-  const changesView = <StagingView ctx={ctx} repoRel={repoRel} workstate={workstate} onMutated={handleWorkspaceMutated} />;
+  // 체크아웃마다 새 인스턴스를 세운다 — 키 없이 재사용하면 이전 체크아웃의 목록·커밋 초안 위에서
+  // 파괴 동사가 다른 체크아웃을 때릴 수 있다.
+  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} onMutated={handleWorkspaceMutated} />;
   const syncNoticeMessage = syncNotice == null ? null
     : syncNotice.kind === "error"
       ? t(syncNotice.code === "auth_failed" ? "repository.sync.failedAuth"
@@ -710,7 +726,7 @@ interface WorkspaceTreeProps {
   readonly onRef: (ref: string) => void;
   readonly onCompare: (base: string, head: string) => void;
   readonly onStashInspect: (stashSha: string) => void;
-  readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string) => void;
+  readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
 }
 
 export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect, onStashAction }: WorkspaceTreeProps) {
@@ -822,6 +838,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
       anchor={refContextMenu.anchor}
       boundaryRef={treeRef}
       stashName={refContextMenu.row.sub ?? refContextMenu.row.key}
+      stashSha={refContextMenu.row.stashSha ?? ""}
       t={t}
       onAction={onStashAction}
       onClose={() => setRefContextMenu(null)}
@@ -908,12 +925,13 @@ function RepositoryRefContextMenu({ anchor, boundaryRef, rowRef, currentRef, def
   </div>;
 }
 
-function StashRowContextMenu({ anchor, boundaryRef, stashName, t, onAction, onClose }: {
+function StashRowContextMenu({ anchor, boundaryRef, stashName, stashSha, t, onAction, onClose }: {
   readonly anchor: { readonly x: number; readonly y: number };
   readonly boundaryRef: RefObject<HTMLElement | null>;
   readonly stashName: string;
+  readonly stashSha: string;
   readonly t: T;
-  readonly onAction: (action: "apply" | "pop" | "drop", name: string) => void;
+  readonly onAction: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
   readonly onClose: () => void;
 }) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -961,7 +979,7 @@ function StashRowContextMenu({ anchor, boundaryRef, stashName, t, onAction, onCl
   const style: CSSProperties = position ? { left: position.x, top: position.y } : { left: 0, top: 0, visibility: "hidden" };
   const run = (action: "apply" | "pop") => {
     onClose();
-    onAction(action, stashName);
+    onAction(action, stashName, stashSha);
   };
   const handleDrop = () => {
     if (!dropArmed) {
@@ -974,7 +992,7 @@ function StashRowContextMenu({ anchor, boundaryRef, stashName, t, onAction, onCl
     }
     if (dropTimerRef.current !== null) { clearTimeout(dropTimerRef.current); dropTimerRef.current = null; }
     onClose();
-    onAction("drop", stashName);
+    onAction("drop", stashName, stashSha);
   };
   return <div ref={menuRef} className="repository-context-menu" role="menu" style={style}>
     <button type="button" className="repository-context-menu-item" role="menuitem" onClick={() => run("apply")}>{t("repository.stash.apply")}</button>

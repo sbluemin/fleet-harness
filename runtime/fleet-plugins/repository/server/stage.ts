@@ -43,6 +43,7 @@ type WriteHandlerBody = {
   readonly repoRel?: unknown;
   readonly paths?: unknown;
   readonly untrackedPaths?: unknown;
+  readonly all?: unknown;
   readonly subPath?: unknown;
 };
 
@@ -91,6 +92,17 @@ export async function handleRepositoryStage(
 ): Promise<void> {
   const resolved = await resolveWriteContext(req, res, ctx);
   if (!resolved) return;
+  // "모두 스테이지"는 경로 나열 대신 git의 전체 연산을 쓴다 — 요청당 경로 상한(1000)이
+  // 대형 저장소의 일괄 동사를 부러뜨리지 않게 한다.
+  if (resolved.body.all === true) {
+    try {
+      await runGit(["add", "-A", "--", "."], { cwd: resolved.gitCwd });
+      ctx.host.http.writeJson(res, 200, { ok: true });
+    } catch (error) {
+      writeGitFailure(res, ctx, error);
+    }
+    return;
+  }
   const paths = readStagePaths(resolved.body.paths);
   if (!paths) { ctx.host.http.writeJson(res, 400, { error: "invalid_paths" }); return; }
   try {
@@ -108,15 +120,17 @@ export async function handleRepositoryUnstage(
 ): Promise<void> {
   const resolved = await resolveWriteContext(req, res, ctx);
   if (!resolved) return;
-  const paths = readStagePaths(resolved.body.paths);
+  const all = resolved.body.all === true;
+  const paths = all ? [] : readStagePaths(resolved.body.paths);
   if (!paths) { ctx.host.http.writeJson(res, 400, { error: "invalid_paths" }); return; }
+  const pathspecs = all ? ["."] : literalPathspecs(paths);
   try {
     try {
-      await runGit(["restore", "--staged", "--", ...literalPathspecs(paths)], { cwd: resolved.gitCwd });
+      await runGit(["restore", "--staged", "--", ...pathspecs], { cwd: resolved.gitCwd });
     } catch (error) {
       // unborn HEAD(첫 커밋 전)에는 복원할 원본이 없어 restore가 실패한다 — 인덱스에서 내리는 것으로 동등하다.
       if (!(error instanceof GitExecutorError) || !/could not resolve HEAD|unknown revision|bad revision/i.test(error.stderr)) throw error;
-      await runGit(["rm", "-r", "--cached", "-q", "--", ...literalPathspecs(paths)], { cwd: resolved.gitCwd });
+      await runGit(["rm", "-r", "--cached", "-q", "--", ...pathspecs], { cwd: resolved.gitCwd });
     }
     ctx.host.http.writeJson(res, 200, { ok: true });
   } catch (error) {

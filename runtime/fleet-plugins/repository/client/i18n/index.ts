@@ -213,6 +213,7 @@ export const repositoryEn = {
   "repository.stash.applied": "Stash applied",
   "repository.stash.popped": "Stash popped",
   "repository.stash.dropped": "Stash dropped",
+  "repository.stash.moved": "The stash list changed since you opened this menu. Nothing was touched — check the list and try again.",
 
   // commit file tree
   "repository.filetree.tab": "File Tree",
@@ -412,6 +413,7 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.stash.applied": "스태시를 적용했습니다",
   "repository.stash.popped": "스태시를 적용하고 제거했습니다",
   "repository.stash.dropped": "스태시를 삭제했습니다",
+  "repository.stash.moved": "메뉴를 연 뒤 스태시 목록이 바뀌었습니다. 아무것도 건드리지 않았습니다 — 목록을 확인하고 다시 시도하세요.",
 
   "repository.filetree.tab": "파일 트리",
   "repository.filetree.loading": "트리 불러오는 중…",

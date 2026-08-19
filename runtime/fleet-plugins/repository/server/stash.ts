@@ -41,6 +41,7 @@ export async function handleRepositoryStash(
     readonly repoRel?: unknown;
     readonly action?: unknown;
     readonly name?: unknown;
+    readonly sha?: unknown;
     readonly message?: unknown;
     readonly subPath?: unknown;
   }>(req);
@@ -52,6 +53,11 @@ export async function handleRepositoryStash(
   if (!action) { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
   const name = body.name;
   if (action !== "save" && (typeof name !== "string" || !STASH_NAME_RE.test(name))) {
+    ctx.host.http.writeJson(res, 400, { error: "invalid_stash" });
+    return;
+  }
+  const sha = body.sha;
+  if (action !== "save" && (typeof sha !== "string" || !/^[0-9a-f]{7,40}$/i.test(sha))) {
     ctx.host.http.writeJson(res, 400, { error: "invalid_stash" });
     return;
   }
@@ -85,6 +91,23 @@ export async function handleRepositoryStash(
         return;
       }
       ctx.host.http.writeJson(res, 200, { ok: true });
+      return;
+    }
+    // stash@{n}은 위치 주소라 동시 stash push/drop에 밀린다 — 행이 쥐고 있던 SHA와 대조해
+    // 어긋나면 실행 대신 거절한다(특히 drop은 비가역이라 다른 스태시를 지울 수 있다).
+    let resolved: string;
+    try {
+      resolved = (await runGit(["rev-parse", "--verify", `${name as string}`], { cwd: gitCwd })).stdout.trim();
+    } catch (error) {
+      if (error instanceof GitExecutorError && error.code === "non_zero_exit") {
+        // 그 위치의 스태시가 이미 사라진 경우 — 없는 대상 실행보다 이동 거절이 정확하다.
+        ctx.host.http.writeJson(res, 409, { error: "stash_moved" });
+        return;
+      }
+      throw error;
+    }
+    if (!resolved.toLowerCase().startsWith((sha as string).toLowerCase())) {
+      ctx.host.http.writeJson(res, 409, { error: "stash_moved" });
       return;
     }
     await runGit([...STASH_HARDENING_ARGS, "stash", action, name as string], { cwd: gitCwd });

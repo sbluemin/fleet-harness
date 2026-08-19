@@ -8,6 +8,8 @@ export interface DiffFileEntry {
   readonly path: string;
   readonly oldPath?: string;
   readonly status: "M" | "A" | "D" | "R" | "T" | "U";
+  /** 병합 충돌 항목 — status는 U를 공유하지만 untracked가 아니다. 스테이징 뷰가 discard·diff 축을 가른다. */
+  readonly conflicted?: boolean;
   readonly additions: number;
   readonly deletions: number;
 }
