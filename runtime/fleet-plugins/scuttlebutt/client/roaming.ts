@@ -98,6 +98,23 @@ export function stepMooredBehavior(body: BirdBody, time: number, random: () => n
   body.modeUntil = time + rand(picked.span[0], picked.span[1], random);
 }
 
+/** 저장된 화면비 좌표를 현재 뷰포트에 다시 얹는다 — 창 크기가 바뀌어도 같은 자리에 가깝게 선다. */
+export function placeStayPut(body: BirdBody, viewport: Viewport, nx: number, ny: number): void {
+  body.x = clamp(nx * viewport.width, BIRD_HALF_WIDTH + 6, viewport.width - BIRD_HALF_WIDTH - 6);
+  body.y = clamp(ny * viewport.height, BIRD_HALF_HEIGHT + 10, viewport.height - BIRD_HALF_HEIGHT - 2);
+  body.vx = 0;
+  body.vy = 0;
+}
+
+export function stayPutFractions(body: BirdBody, viewport: Viewport): { nx: number; ny: number } {
+  const nx = viewport.width > 0 ? body.x / viewport.width : 0.5;
+  const ny = viewport.height > 0 ? body.y / viewport.height : 0.5;
+  return {
+    nx: clamp(nx, 0, 1),
+    ny: clamp(ny, 0, 1),
+  };
+}
+
 export function pickWaypoint(body: BirdBody, viewport: Viewport, random: () => number): void {
   body.deckPlan = false;
   body.tx = rand(70, viewport.width - 70, random);

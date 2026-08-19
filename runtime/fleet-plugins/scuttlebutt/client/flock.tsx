@@ -18,6 +18,8 @@ import {
   createBirdBody,
   PERSONAS,
   pickWaypoint,
+  placeStayPut,
+  stayPutFractions,
   stepFlock,
   type BirdBody,
   type BirdFrame,
@@ -25,6 +27,7 @@ import {
 import {
   getScuttlebuttSettings,
   subscribeScuttlebuttSettings,
+  writeAideStayPut,
 } from "./settings-store.js";
 
 const MORPHS = ["tori", "bori", "dori"] as const;
@@ -105,7 +108,16 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   });
   const bodiesRef = React.useRef<readonly BirdBody[] | null>(null);
   if (bodiesRef.current === null) {
-    bodiesRef.current = MORPHS.map((_, index) => createBirdBody(index, viewportRef.current, Math.random));
+    const stored = getScuttlebuttSettings();
+    bodiesRef.current = MORPHS.map((morph, index) => {
+      const body = createBirdBody(index, viewportRef.current, Math.random);
+      const stay = stored.stayPut[morph];
+      body.moored = stay.enabled;
+      if (stay.enabled && stay.nx != null && stay.ny != null) {
+        placeStayPut(body, viewportRef.current, stay.nx, stay.ny);
+      }
+      return body;
+    });
   }
   const birdRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   // 소식은 근무 중인 첫 제독이 전한다 — 토리에 고정하면 토리를 끈 순간 알릴 곳이 사라진다.
@@ -136,16 +148,20 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   const [answering, setAnswering] = React.useState<readonly AdmiralId[]>([]);
   // 답을 세우려고 우리가 정박시킨 부관들. 사용자가 직접 세운 정박과 구분해야 되돌릴 때 남의 것을 내리지 않는다.
   const mentionMooredRef = React.useRef(new Set<AdmiralId>());
-  // 정박은 이 세션 동안만 산다 — 설정에도 preferences에도 남기지 않는다.
-  const [moored, setMoored] = React.useState<readonly boolean[]>([false, false, false]);
+  // 사용자가 켠 정박은 설정에 남긴다 — 멘션이 답을 읽으라고 잠깐 세운 정박만 이 세션에서 끝난다.
+  const [moored, setMoored] = React.useState<readonly boolean[]>(() =>
+    MORPHS.map((morph) => getScuttlebuttSettings().stayPut[morph].enabled),
+  );
   const [positionRevision, setPositionRevision] = React.useState(0);
 
   const applyMoored = React.useCallback((index: number, resolve: (current: boolean) => boolean) => {
     setMoored((current) => {
-      const next = replaceAt(current, index, resolve(current[index] ?? false));
+      const nextValue = resolve(current[index] ?? false);
+      const next = replaceAt(current, index, nextValue);
+      if (next === current) return current;
       const body = bodiesRef.current?.[index];
       if (body) {
-        body.moored = next[index] ?? false;
+        body.moored = nextValue;
         // 풀어 주면 자던 새도 깨워 가까운 새 항로부터 다시 시작한다.
         if (!body.moored) {
           body.mode = "fly";
@@ -159,7 +175,17 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
   }, []);
 
   const toggleMoored = React.useCallback((index: number) => {
-    applyMoored(index, (current) => !current);
+    const admiral = MORPHS[index]!;
+    let next = false;
+    applyMoored(index, (current) => {
+      next = !current;
+      return next;
+    });
+    const body = bodiesRef.current?.[index];
+    const fractions = body ? stayPutFractions(body, viewportRef.current) : { nx: null, ny: null };
+    void writeAideStayPut(admiral, next
+      ? { enabled: true, nx: fractions.nx, ny: fractions.ny }
+      : { enabled: false, nx: null, ny: null });
   }, [applyMoored]);
 
   /**
@@ -195,8 +221,37 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
    */
   const releaseMentionMoor = React.useCallback((admiral: AdmiralId) => {
     if (!mentionMooredRef.current.delete(admiral)) return;
-    applyMoored(MORPHS.indexOf(admiral), () => false);
+    applyMoored(MORPHS.indexOf(admiral), () => getScuttlebuttSettings().stayPut[admiral].enabled);
   }, [applyMoored]);
+
+  // 설정 읽기가 늦게 도착해도 첫 페인트 전에 정박을 얹는다 — 한 프레임 순항했다가 붙으면 튄다.
+  React.useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    const bodies = bodiesRef.current;
+    if (!bodies) return;
+    const frames = [...motionFramesRef.current];
+    let placed = false;
+    for (let index = 0; index < MORPHS.length; index += 1) {
+      const admiral = MORPHS[index]!;
+      if (mentionMooredRef.current.has(admiral)) continue;
+      const stay = settings.stayPut[admiral];
+      applyMoored(index, () => stay.enabled);
+      const body = bodies[index]!;
+      if (stay.enabled && stay.nx != null && stay.ny != null) {
+        placeStayPut(body, viewport, stay.nx, stay.ny);
+        const left = body.x - BIRD_HALF_WIDTH;
+        const top = body.y - BIRD_HALF_HEIGHT;
+        frames[index] = { left, top, tilt: 0, flight: "hover", mode: body.mode };
+        const element = birdRefs.current[index];
+        if (element) element.style.transform = `translate(${left}px, ${top}px) rotate(0deg)`;
+        placed = true;
+      }
+    }
+    if (placed) {
+      motionFramesRef.current = frames;
+      setMotionFrames(frames);
+    }
+  }, [applyMoored, settings.stayPut]);
 
   const closeAnswer = React.useCallback((admiral: AdmiralId) => {
     setAnswering((current) => current.filter((candidate) => candidate !== admiral));
@@ -476,6 +531,11 @@ export function ScuttlebuttFlock({ context }: { readonly context: FloatingWidget
     pickWaypoint(body, viewportRef.current, Math.random);
     gesturesRef.current[index] = null;
     setGrabbed((current) => replaceAt(current, index, false));
+    const admiral = MORPHS[index]!;
+    if (body.moored && !mentionMooredRef.current.has(admiral) && moved >= 7) {
+      const { nx, ny } = stayPutFractions(body, viewportRef.current);
+      void writeAideStayPut(admiral, { enabled: true, nx, ny });
+    }
   }, [clearTimer, clickAction]);
 
   const t = getT(context.language);

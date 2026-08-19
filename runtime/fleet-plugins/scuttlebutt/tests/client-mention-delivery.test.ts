@@ -39,6 +39,17 @@ describe("mention delivery ownership", () => {
   it("never releases a moor the user set themselves", () => {
     expect(flock).toMatch(/if \(!current\) mentionMooredRef\.current\.add\(admiral\);/u);
     expect(flock).toMatch(/if \(!mentionMooredRef\.current\.delete\(admiral\)\) return;/u);
+    expect(flock).toMatch(/getScuttlebuttSettings\(\)\.stayPut\[admiral\]\.enabled/u);
+  });
+
+  it("persists a user stay-put switch and never persists a mention moor", () => {
+    expect(flock).toMatch(/void writeAideStayPut\(/u);
+    const mention = flock.match(/const askFromMention = React\.useCallback\(async \(admiral: AdmiralId, text: string\) => \{[\s\S]*?\}, \[applyMoored, sessions\]\);/u);
+    expect(mention?.[0]).toBeTruthy();
+    expect(mention?.[0]).not.toMatch(/writeAideStayPut/u);
+    const release = flock.match(/const releaseMentionMoor = React\.useCallback\(\(admiral: AdmiralId\) => \{[\s\S]*?\}, \[applyMoored\]\);/u);
+    expect(release?.[0]).toBeTruthy();
+    expect(release?.[0]).not.toMatch(/writeAideStayPut/u);
   });
 
   it("returns focus to the aide only when the answer was closed from the keyboard", () => {
