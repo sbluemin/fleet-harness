@@ -21,6 +21,8 @@ branch: update-continuity
   ko: 설치 중인데 완료했다고 말하지 않으며, 실패한 업데이트는 침묵 대신 사유와 함께 실패를 알립니다.
 - A remote screen recovers by itself after the console restarts, instead of retrying an expired session forever.
   ko: Console이 다시 시작된 뒤 원격 화면이 스스로 복구됩니다. 만료된 세션으로 영원히 재시도하지 않습니다.
+- A console with remote access turned on now shuts down when asked, instead of staying alive until it is killed because a connected device was still holding the listener open.
+  ko: 원격 접속을 켠 Console이 종료 요청에 제대로 응답합니다. 접속한 기기가 리스너를 붙잡고 있어 강제 종료될 때까지 살아 있던 문제를 고쳤습니다.
 
 ### fleet-desktop
 
