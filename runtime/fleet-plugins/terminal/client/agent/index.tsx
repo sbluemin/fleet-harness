@@ -1332,6 +1332,21 @@ function AiGatewayModelsCard() {
  * providerPriority 등 나머지 축은 그대로 실어 보낸다 — 이 카드의 저장은 항상
  * 우선순위 키를 에코하므로, 선택 스프레드를 빠뜨리면 제거 한 번이 해제로 둔갑한다.
  */
+/**
+ * 픽커가 기준 선택지로 내놓는 모델.
+ *
+ * `fast`는 `-fast` id 접미사로 추론되는데, 그 접미사가 언제나 변형 쌍을 뜻하지는 않는다.
+ * `grok-composer-2.5-fast`는 카탈로그에 없는 `grok-composer-2.5`의 빠른 빌드가 아니라 그
+ * 자체가 모델 이름이다. 플래그만 보고 걸러내면 픽커에서 사라지고 토글을 걸 기준 모델도 없어
+ * 어디로도 선택할 수 없다. fast 모델은 자기가 지목하는 기준이 실제로 있을 때만 변형으로 남는다.
+ */
+export function selectAiGatewayBaseModels(
+  models: readonly AiGatewayCatalogModel[],
+): AiGatewayCatalogModel[] {
+  return models.filter((model) => !model.fast
+    || !models.some((candidate) => `${candidate.id}-fast` === model.id));
+}
+
 export function composeAiGatewayRemoval(selection: AiGatewaySettings, id: string): AiGatewaySettings {
   const { models, ...rest } = selection;
   return {
@@ -1413,7 +1428,7 @@ function AiGatewayProviderBlock({
   onSetHostOnly,
 }: AiGatewayProviderBlockProps) {
   const t = getT(useTerminalLocale());
-  const baseModels = provider.models.filter((model) => !model.fast);
+  const baseModels = selectAiGatewayBaseModels(provider.models);
   const [draftBase, setDraftBase] = React.useState(baseModels[0]?.id ?? "");
   const [draftFast, setDraftFast] = React.useState(false);
 
