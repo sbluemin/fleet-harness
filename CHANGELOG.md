@@ -5,6 +5,59 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.68.0] - 2026-08-19
+
+### fleet-cli
+
+#### Changed
+- Gateway sessions no longer carry a Fleet system prompt or Fleet skills. Each turn states the pin contract instead, and a delegation that names no gateway identity is refused with instructions rather than quietly running on the session's own model.
+
+### fleet-console
+
+#### Added
+- The file explorer viewer now keeps every open file on a chip strip with back/forward history, an Escape shortcut to close, a Preview/Source toggle for markdown, and a size and line-count meta bar.
+- The file tree gains a Name/Modified/Size sort control, and files deleted in the working tree appear as struck-through ghost rows with a D badge.
+- Open files and expanded folders are remembered per Theater and restored after a reload.
+- The Repository panel now works like a Git client, not just a viewer: a Local Changes view splits unstaged and staged files with per-file and bulk stage, unstage, and two-step discard, and a commit box with amend support writes commits from the staged set.
+- Pull, Push, and Stash join Sync on the Repository panel toolbar, with ahead/behind counts on the current branch; pull stays fast-forward-only and diverged histories are handed back with a clear message instead of a server-side merge.
+- Checkout tabs above the Repository workspace switch between the root checkout and its worktrees in one click, and the commit inspector gains a File Tree tab that browses the full tree at that commit folder by folder.
+- Write actions guard themselves before running: the panel locks its write verbs while the index is locked or a merge, rebase, or cherry-pick is in progress, and warns when Operations are stationed in the same checkout.
+- Settings now carries one Claude Code system prompt switch. On keeps Claude Code's own prompt, and Off replaces it with an empty one, which measures 6,490 fewer input tokens per turn in a terminal session and 6,360 in Chat. It binds new sessions in both the terminal and Chat, and a running session keeps the prompt it launched with.
+- Offer xAI Grok Composer 2.5 Fast in the AI Gateway model picker.
+
+#### Changed
+- Send Grok turns to xAI's own Responses endpoint instead of the Grok CLI proxy, which queued roughly a third of requests behind a 5 to 18 second wait. The same subscription and quota back both routes, and an account the direct endpoint refuses falls back to the proxy on its own.
+- The WORKING > Changes view is now the staging workbench: the previous unified changed-file list (with its filter and tree grouping) is replaced by the unstaged/staged split.
+- The Repository workspace filter now walks the whole sidebar - branches, tags, stashes, and worktrees answer the same query as repositories.
+- Stash rows offer apply, pop, and drop from their context menu, with drop behind the product's two-step arm.
+- The sidebar now carries one named Groups | Status switch pinned above the Theater list, instead of repeating an unlabelled sort button on every Theater row. One control, one effect, and the current axis is a word you read rather than a pressed state you decode. Alt+S still flips it and the axis still opens on Groups each session.
+- A Theater's "something is awaiting in here" tick now sits on that Theater's initials, so it says which Theater is waiting instead of riding the switch that organises all of them.
+- Delegation policy is enforced while a run starts rather than described in advance. An Agent or Workflow run that pins no gateway identity is refused with the instruction to read gateway_models and pin one, and every turn carries that contract.
+- Updating now keeps the screen you were on: the console comes back on the same address, the open tab reconnects itself, and no second window is opened unless the old address could not be reclaimed.
+- An update in progress reads as progress instead of a connection error: a curtain names the step the console is in and says the screen will come back, and the result is reported when it does.
+- The update mark moved from the settings button to the help button, where the update action lives, and the menu row now names the version it would install.
+- Updating from a remote session now asks for confirmation first, because it restarts the console on someone else's machine.
+
+#### Fixed
+- A caption button's name tag now clears as soon as the pointer leaves the button. Clicking one - maximizing a panel, for example - no longer leaves its tooltip standing until you click somewhere else, while keyboard focus still shows the name.
+- Stay put on Tori, Bori, and Dori now survives a Console restart or update, so the aides remain moored at the last place you left them until you switch it off.
+- Update no longer claims to be done while it is still installing, and a failed update now says so with its reason instead of leaving the console silent.
+- A remote screen recovers by itself after the console restarts, instead of retrying an expired session forever.
+- A console with remote access turned on now shuts down when asked, instead of staying alive until it is killed because a connected device was still holding the listener open.
+- End a Grok turn whose upstream went quiet mid-stream, instead of waiting on it indefinitely because the proxy keeps the connection alive without sending anything.
+
+#### Removed
+- The Fleet system prompt mode setting is gone. Gateway sessions and Chat Mode no longer receive a Fleet system prompt, so its Append and Replace compositions have nothing left to compose.
+- Stop magnifying a War Room deck card on hover. Pointing at a card no longer waits out a dwell and then blows it up over its neighbours; the card you are pointing at is still marked with the brass ring and lit caption, and clicking it still takes it to the stage. Hovering a marker in the map view still raises that panel beside it.
+
+### fleet-desktop
+
+#### Changed
+- Update from inside the console now works on Desktop: the shell picks up the request and performs it with its own restart, instead of the console offering a control that could not act.
+
+#### Fixed
+- A window whose remote session ended is now told to open that host again, instead of being sent to ask for an access link it does not need.
+
 ## [1.67.0] - 2026-08-18
 
 ### fleet-cli
