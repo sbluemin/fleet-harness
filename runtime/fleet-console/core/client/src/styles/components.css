@@ -3583,7 +3583,7 @@
 /* 덱의 한 칸 — 카드가 아니라 자리다. 여기 서는 것은 그 Operation의 실제 패널이고(캔버스가
    portal로 들여보낸다), 칸은 자리·배율·변형만 진다. 칸 크기가 곧 패널 크기이자 PTY 크기다:
    종전의 축소 프리뷰는 transform으로 줄여 글자까지 뭉갰지만, 이제 셸은 이 칸에 맞춰 다시
-   줄바꿈한다. Quick-Look 확대와 밀도 변형(morph)은 둘 다 이 칸의 transform이며 공존하지 않는다. */
+   줄바꿈한다. 칸의 transform은 밀도 변형(morph)만 쓴다. */
 .canvas-triage-deck-cell {
   position: relative;
   display: grid;
@@ -3603,13 +3603,13 @@
    실측(맥동 카드에 hover brass를 얹어 계산): 나온 값은 brass가 아니라 aurora였고 그림자도
    맥동 글로우였다 — 신호가 가장 급한 카드에서만 hover가 사라지는 조용한 실패다.
    그래서 위치 마크는 패널이 건드리지 않는 표면, 곧 칸의 box-shadow가 소유한다.
-   확대 중(is-quicklook)과 밀도 변형 중(is-morphing)은 각자 자기 그림자·z-index를 이미
-   소유하므로 제외한다 — 넣으면 확대 칸이 이 규칙의 스택으로 떨어진다.
+   밀도 변형 중(is-morphing)은 자기 그림자·z-index를 이미 소유하므로 제외한다 — 넣으면 변형 중인
+   칸이 이 규칙의 스택으로 떨어진다.
    키보드는 같은 마크를 같은 순간에 받는다. 기존 .canvas-triage-deck-pick:focus-visible 링은
    그대로 남긴다: 그 링은 본문 안쪽을, 이 링은 캡션까지 포함한 칸 전체를 말한다.
    지도 모드에서는 카드 컨테이너가 visibility:hidden + pointer-events:none이라 :hover가 서지 않는다. */
-.canvas-triage-deck-cell:hover:not(.is-quicklook):not(.is-morphing),
-.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible):not(.is-quicklook):not(.is-morphing) {
+.canvas-triage-deck-cell:hover:not(.is-morphing),
+.canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible):not(.is-morphing) {
   /* 이웃 카드의 16px 맥동 글로우가 10px 간격을 건너와 이 1px 링을 씻지 않게 한 칸 올린다. */
   z-index: 6;
   box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
@@ -3622,15 +3622,6 @@
   background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
-}
-
-/* 확대는 드웰 400ms가 열리고 나서의 읽기 단계다 — 지도 Quick-Look과 같은 "떠 있음" 문법을 입어
-   덮고 있는 이웃과 갈린다. --shadow-floating(0 32px 60px -28px)은 원래 크기 칸에 주면 10px 간격을
-   넘어 이웃 rim을 덮으므로 확대된 칸에만 준다. */
-.canvas-triage-deck-cell.is-quicklook {
-  transform: scale(var(--triage-quicklook-scale, 1.95));
-  z-index: 9;
-  box-shadow: var(--shadow-floating), 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
 }
 
 /* 지도 모드의 Quick-Look — 은닉된 밴드 안의 칸을 판 위로 끌어올려 점 옆에 세운다. 좌표는
