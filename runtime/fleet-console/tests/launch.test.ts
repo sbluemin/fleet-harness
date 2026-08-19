@@ -446,7 +446,12 @@ describe("createDefaultTerminalLaunchResolver", () => {
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: root,
       dataDir: path.join(root, "data"),
-      env: { HOME: root, PATH: process.env.PATH ?? "" },
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        HOME: root,
+        PATH: process.env.PATH ?? "",
+      },
       agentRuntime: {
         dedicatedMcpSession: {
           getEndpoint: async () => ({ servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] }),
