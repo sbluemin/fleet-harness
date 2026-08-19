@@ -48,8 +48,11 @@ export interface AiGatewayCatalog {
   readonly providers: readonly AiGatewayCatalogProvider[];
 }
 
+export type ClaudeCodeSystemPromptMode = "on" | "off";
+
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
+  readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
   readonly aiGateway: AiGatewaySettings | null;
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
@@ -59,6 +62,7 @@ export interface SystemPromptSettingsState {
 
 export type SystemPromptSettingsUpdate =
   | { readonly agentIdleDormantMinutes: number | null }
+  | { readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode }
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
@@ -108,6 +112,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   if (
     !payload
     || !isAgentIdleDormantMinutes(payload.agentIdleDormantMinutes)
+    || !isClaudeCodeSystemPromptMode(payload.claudeCodeSystemPrompt)
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
@@ -117,12 +122,17 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
   }
   return {
     agentIdleDormantMinutes: payload.agentIdleDormantMinutes,
+    claudeCodeSystemPrompt: payload.claudeCodeSystemPrompt,
     aiGateway: payload.aiGateway ?? null,
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
     compactCeiling: payload.compactCeiling,
   };
+}
+
+function isClaudeCodeSystemPromptMode(value: unknown): value is ClaudeCodeSystemPromptMode {
+  return value === "on" || value === "off";
 }
 
 function isAiGatewayCatalog(value: unknown): value is AiGatewayCatalog {
@@ -147,7 +157,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -219,6 +229,9 @@ export async function setSystemPromptSettingsField<Field extends SystemPromptSet
 }
 
 function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptSettingsState): SystemPromptSettingsUpdate {
+  if (field === "claudeCodeSystemPrompt") {
+    return { claudeCodeSystemPrompt: state.claudeCodeSystemPrompt };
+  }
   if (field === "aiGateway") return { aiGateway: state.aiGateway };
   if (field === "cursorDiagnosticsEnabled") {
     return { cursorDiagnosticsEnabled: state.cursorDiagnosticsEnabled };

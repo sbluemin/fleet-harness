@@ -31,6 +31,7 @@ describe("system prompt settings api", () => {
 
   it("loads Terminal prompt settings from the plugin route", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -40,6 +41,7 @@ describe("system prompt settings api", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -53,6 +55,7 @@ describe("system prompt settings api", () => {
   it("saves Cursor diagnostics to the plugin route", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
       cursorDiagnosticsEnabled: true,
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
@@ -62,6 +65,7 @@ describe("system prompt settings api", () => {
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
@@ -84,6 +88,7 @@ describe("system prompt settings api", () => {
 
   it("rejects responses missing the gateway catalog", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
@@ -94,14 +99,38 @@ describe("system prompt settings api", () => {
 
   it("rejects responses missing the Cursor diagnostics setting", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGatewayCatalog: EMPTY_CATALOG,
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
 
+  it("saves the Claude Code system prompt switch to the plugin route", async () => {
+    const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "off",
+      agentIdleDormantMinutes: 60,
+      aiGateway: null,
+      aiGatewayCatalog: EMPTY_CATALOG,
+      cursorDiagnosticsEnabled: false,
+      wireLogEnabled: false,
+      compactCeiling: null,
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(saveSystemPromptSettings({ claudeCodeSystemPrompt: "off" })).resolves.toMatchObject({
+      claudeCodeSystemPrompt: "off",
+    });
+    expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ claudeCodeSystemPrompt: "off" }),
+      signal: undefined,
+    });
+  });
+
   it("saves agentIdleDormantMinutes including null Off", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: null,
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
@@ -111,6 +140,7 @@ describe("system prompt settings api", () => {
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: null,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
@@ -126,6 +156,7 @@ describe("system prompt settings api", () => {
       models: [{ id: "cursor--grok-4.5" }],
     };
     const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway,
       aiGatewayCatalog: CATALOG,
@@ -145,6 +176,7 @@ describe("system prompt settings api", () => {
 
   it("rejects responses missing the wire log setting", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
@@ -154,6 +186,7 @@ describe("system prompt settings api", () => {
 
   it("saves Cursor diagnostics independently from the gateway selection", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,
@@ -177,6 +210,7 @@ describe("system prompt settings api", () => {
 
   it("saves the wire log setting independently from Cursor diagnostics", async () => {
     const fetchMock = vi.fn(async () => jsonResponse({
+      claudeCodeSystemPrompt: "on",
       agentIdleDormantMinutes: 60,
       aiGateway: null,
       aiGatewayCatalog: CATALOG,

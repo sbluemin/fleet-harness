@@ -630,7 +630,6 @@ function cmdShimProfile(root: string, overrides: {
 
 function injectOptions(root: string, released?: { token: boolean }): Parameters<typeof injectAgentCliProfile>[1] {
   return {
-    buildSystemPrompt: () => "Fleet doctrine",
     dataDir: path.join(root, "data"),
     dedicatedMcpSession: {
       async getEndpoint() {

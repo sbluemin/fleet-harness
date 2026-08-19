@@ -52,6 +52,7 @@ function createDefaultTerminalLaunchResolver(
 // launch resolver가 실제 ~/.fleet/settings.json을 읽지 않도록 테스트를 격리한다.
 function createFakeInfraServices(globalOptions: {
   readonly agentIdleDormantMinutes?: number | null;
+  readonly claudeCodeSystemPrompt?: "on" | "off";
 } = {}) {
   const data = { version: 1 as const, ...globalOptions };
   return {
@@ -436,6 +437,34 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.args).not.toContain("--system-prompt-file");
     expect(spec.args).not.toContain("--append-system-prompt-file");
     expect(spec.args).toContain("--plugin-dir");
+    await spec.cleanup?.();
+  });
+
+  it("empties Claude Code's own system prompt when the global option turns it off", async () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "console-launch-sysprompt-"));
+    TEMP_DIRS.push(root);
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: root,
+      dataDir: path.join(root, "data"),
+      env: { HOME: root, PATH: process.env.PATH ?? "" },
+      agentRuntime: {
+        dedicatedMcpSession: {
+          getEndpoint: async () => ({ servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] }),
+          issueSessionToken: () => [{ name: "fleet", token: "token-123" }],
+          releaseSessionToken: () => {},
+        },
+        mcpRegistry: { getAllAgentTools: () => [] },
+        async cleanup() {},
+      } as never,
+      execPath: process.execPath,
+      infraServices: createFakeInfraServices({ claudeCodeSystemPrompt: "off" }) as never,
+    });
+
+    const spec = await resolve(root, { cliId: "claude-gateway", sessionId: "gateway-prompt-off" });
+
+    // Fleet은 실을 본문이 없다 — 값이 비어 있어야 기본 프롬프트가 사라진다.
+    expect(spec.args[spec.args.indexOf("--system-prompt") + 1]).toBe("");
+    expect(spec.args).not.toContain("--system-prompt-file");
     await spec.cleanup?.();
   });
 

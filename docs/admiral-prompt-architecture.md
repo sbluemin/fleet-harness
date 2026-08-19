@@ -36,10 +36,19 @@ delegated.
 
 ## 2. Delegation Policy Surface
 
-No system prompt is written and no prompt flag is passed. `--append-system-prompt-file`
-and `--system-prompt-file` are absent from every launch path, and the terminal prompt
-mode setting that once chose between them is gone from the settings store, the routes,
-and the UI.
+Fleet writes no system prompt of its own. `--append-system-prompt-file` is absent from
+every launch path, and the terminal prompt mode setting that once chose between Fleet
+prompt compositions is gone from the settings store, the routes, and the UI.
+
+One switch remains in its place, and it governs Claude Code's own prompt rather than
+Fleet's: `claudeCodeSystemPrompt` (`on` | `off`) in the global options store, absent
+meaning `on`. `off` passes `--system-prompt ""`, so the child's system block is
+empty instead of Claude Code's — measured on 2.1.235 as 26,036 to 19,546 total input
+tokens per turn. Nothing is written to disk: the file form that once carried the Fleet
+prompt existed because that prompt was long, and an empty prompt has no body to move. The same option reaches Chat Mode as the SDK's
+`{ mode: "preset" }` when `on`, and as an omitted `systemPrompt` when `off`; measured on
+SDK 0.3.212 as 24,632 against 18,272. Both launch surfaces — the Console terminal plugin
+and the standalone `fleet` launcher — read that one option, and it binds new sessions only.
 
 The policy that used to live in the Standing Orders now lives in one embedded hook,
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the

@@ -86,8 +86,10 @@ it("carries the analyst prompt as a replace-mode system prompt, not as user cont
   await analyst.start();
   await analyst.send("hello");
   const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
-  expect(turn.systemPrompt?.mode).toBe("replace");
-  expect(turn.systemPrompt?.text).toContain("You are Session Analyst");
+  const systemPrompt = turn.systemPrompt;
+  expect(systemPrompt?.mode).toBe("replace");
+  // `preset` 모드에는 text가 없다 — 좁히지 않으면 이 단언이 컴파일되지 않는다.
+  expect(systemPrompt?.mode === "replace" ? systemPrompt.text : undefined).toContain("You are Session Analyst");
   expect(turn.prompt).toBe("hello");
   expect(Object.hasOwn(turn, "resume")).toBe(false);
   await analyst.dispose();
@@ -98,7 +100,8 @@ it("pins Korean output language in the system prompt", async () => {
   await analyst.start();
   await analyst.send("hello");
   const turn = sdk.startTurn.mock.calls[0]?.[0] as ClaudeGatewayTurn;
-  expect(turn.systemPrompt?.text).toContain("\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.");
+  const systemPrompt = turn.systemPrompt;
+  expect(systemPrompt?.mode === "replace" ? systemPrompt.text : undefined).toContain("\n\n# Language\nWrite every user-facing response in Korean (한국어): answers, follow-up suggestions, artifact titles, and artifact body text. Keep code, commands, file paths, identifiers, and protocol tokens in their original form.");
   await analyst.dispose();
 });
 

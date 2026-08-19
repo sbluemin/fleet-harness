@@ -48,7 +48,7 @@ describe("fleet-cli gateway MCP composition", () => {
     const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
       label: "gateway-host",
       cwd: process.cwd(),
-      includeTool: (toolId) => isHostSessionToolAllowed(toolId, "gateway"),
+      includeTool: (toolId) => isHostSessionToolAllowed(toolId),
     });
 
     expect(endpoint.servers.map((server) => server.name)).toEqual(["fleet"]);

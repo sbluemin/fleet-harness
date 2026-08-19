@@ -73,6 +73,22 @@ describe("data-dir settings store", () => {
     });
   });
 
+  it("preserves claudeCodeSystemPrompt and drops values outside the two modes", () => {
+    for (const mode of ["on", "off"] as const) {
+      expect(sanitizeGlobalOptionsData({ version: 1, claudeCodeSystemPrompt: mode })).toEqual({
+        changed: false,
+        data: { version: 1, claudeCodeSystemPrompt: mode },
+      });
+    }
+    // 키가 없는 것은 결함이 아니라 기본값(on)이므로 그대로 비워 둔다.
+    expect(sanitizeGlobalOptionsData({ version: 1 })).toEqual({ changed: false, data: { version: 1 } });
+    // 알 수 없는 값은 지워지고, 그 사실이 changed로 보고되어 파일이 정리된다.
+    expect(sanitizeGlobalOptionsData({ version: 1, claudeCodeSystemPrompt: "append" })).toEqual({
+      changed: true,
+      data: { version: 1 },
+    });
+  });
+
   it("preserves valid agentIdleDormantMinutes and drops invalid values", () => {
     expect(sanitizeGlobalOptionsData({
       version: 1,

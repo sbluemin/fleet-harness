@@ -40,6 +40,11 @@ export interface InjectAgentCliProfileOptions {
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly pluginRootDir?: string;
+  /**
+   * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략하면 `on` —
+   * 플래그 없는 런치가 이미 하는 일이다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다.
+   */
+  readonly claudeCodeSystemPrompt?: "on" | "off";
   readonly resumeSessionId?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
   /**
@@ -147,6 +152,7 @@ export async function injectAgentCliProfile(
       pluginRoots: plugin.pluginRoots,
       skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
       resumeSessionId: options.resumeSessionId,
+      ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
     const mergeArgs = (nextPromptArgs: readonly string[]) => mergeAgentCliArgs(

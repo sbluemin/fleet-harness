@@ -42,8 +42,12 @@ describe("launchClaudeGateway", () => {
     const releaseSessionToken = vi.fn();
     const runtimeCleanup = vi.fn(async () => {});
     const serverClose = vi.fn(async () => {});
+    const globalOptions = { version: 1 as const, claudeCodeSystemPrompt: "off" as const };
     const runtime = {
       aiGatewayStore: createAiGatewaySettingsStore({ dataDir }),
+      infraServices: {
+        globalOptionsService: { load: () => globalOptions, save: () => globalOptions, update: () => globalOptions },
+      },
       dataDir,
       dedicatedMcpSession: {
         getEndpoint: async () => ({
@@ -79,6 +83,8 @@ describe("launchClaudeGateway", () => {
     const [bin, args, options] = mockedSpawn.mock.calls[0]!;
     expect(bin).toBe(process.execPath);
     expect(args.slice(0, passthroughArgs.length)).toEqual(passthroughArgs);
+    // 이 런처도 Console과 같은 전역 옵션을 읽는다 — 설정 Off가 여기서도 프롬프트를 비운다.
+    expect(args[args.indexOf("--system-prompt") + 1]).toBe("");
     expect(args.indexOf("--plugin-dir")).toBeGreaterThan(args.indexOf("hello"));
     expect(args.indexOf("--mcp-config")).toBeGreaterThan(args.indexOf("hello"));
     expect(options).toMatchObject({ cwd: process.cwd(), stdio: "inherit" });

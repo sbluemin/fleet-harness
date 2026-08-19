@@ -3,6 +3,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
     ...buildResumeArgs(context.resumeSessionId),
+    ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
       pluginRoot,
@@ -43,6 +44,15 @@ function buildSettingsArgs(
 
 function buildResumeArgs(resumeSessionId: string | undefined): string[] {
   return resumeSessionId === undefined ? [] : ["--resume", resumeSessionId];
+}
+
+/**
+ * Claude Code 기본 시스템 프롬프트를 끌 때만 플래그가 실린다. Fleet은 실을 본문이 없으므로
+ * 값은 빈 문자열이다 — 대체할 텍스트가 아니라 비우는 수단이다. 파일로 쓰던 옛 경로는 Fleet
+ * 프롬프트가 길어서 필요했던 것이고, 여기에는 옮길 본문 자체가 없다.
+ */
+function buildBaseSystemPromptArgs(claudeCodeSystemPrompt: "on" | "off" | undefined): string[] {
+  return claudeCodeSystemPrompt === "off" ? ["--system-prompt", ""] : [];
 }
 
 function buildClaudeMcpConfig(servers: readonly AgentCliMcpServerArg[]): string {

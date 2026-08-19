@@ -27,6 +27,7 @@ import {
   type GlobalOptionsService,
 } from "@dotobokuri/core-infra";
 
+import { resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
 import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
@@ -315,6 +316,8 @@ async function createAgentCliLaunchSpec(options: {
       inputWaitingHookExec: buildConsoleAttentionHookCommand(options.hookEntry),
       autoNameHookExec: buildConsoleAutoNameHookCommand(options.hookEntry),
       onCleanup: (cleanup) => cleanupStack.push(cleanup),
+      // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
+      claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.globalOptionsService.load()),
       resumeSessionId: options.resumeSessionId,
       withMarketplaceLock: withConsoleMarketplaceLock,
       mcpSessionLabel: options.sessionId,

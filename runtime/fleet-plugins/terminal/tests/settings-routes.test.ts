@@ -31,6 +31,8 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({
       agentIdleDormantMinutes: 60,
+      // 키가 없는 설정 파일은 플래그 없는 런치와 같은 뜻이다 — Claude Code 프롬프트가 켜진 세션.
+      claudeCodeSystemPrompt: "on",
       aiGateway: null,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
@@ -86,6 +88,24 @@ describe("terminal settings routes", () => {
     expect(harness.writes[0]?.status).toBe(200);
     expect(harness.writes[0]?.body).toMatchObject({ agentIdleDormantMinutes: 30 });
     expect(harness.currentData()).toEqual({ version: 1, agentIdleDormantMinutes: 30 });
+  });
+
+  it("PUT /plugins/terminal/settings stores the Claude Code system prompt switch", async () => {
+    const harness = createRouteHarness({
+      body: { claudeCodeSystemPrompt: "off" },
+      data: { version: 1 },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({ claudeCodeSystemPrompt: "off" });
+    expect(harness.currentData()).toEqual({ version: 1, claudeCodeSystemPrompt: "off" });
+  });
+
+  it("PUT /plugins/terminal/settings rejects a system prompt value outside the two modes", async () => {
+    const harness = createRouteHarness({ body: { claudeCodeSystemPrompt: "append" }, data: { version: 1 } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
   });
 
   it("PUT /plugins/terminal/settings rejects non-boolean payloads", async () => {

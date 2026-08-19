@@ -374,14 +374,16 @@ function vendorFlagSettings(options: ClaudeGatewaySdkOptions): { readonly settin
 /** 호출자가 고른 모드를 vendor가 아는 모양으로 옮긴다. 텍스트는 이 패키지가 만들지 않는다. */
 function vendorSystemPrompt(
   systemPrompt: ClaudeGatewaySystemPrompt,
-): string | { type: "preset"; preset: "claude_code"; append: string } {
-  const text = systemPrompt?.text;
+): string | { type: "preset"; preset: "claude_code"; append?: string } {
+  // `preset`은 이어붙일 텍스트가 없는 모드다. 텍스트 검사보다 먼저 걸러야 한다.
+  if (systemPrompt?.mode === "preset") return { type: "preset", preset: "claude_code" };
+  const text = (systemPrompt as { text?: unknown } | undefined)?.text;
   if (typeof text !== "string" || text.length === 0) {
     throw new TypeError("turn.systemPrompt.text must be a non-empty string.");
   }
   if (systemPrompt.mode === "replace") return text;
   if (systemPrompt.mode === "append") return { type: "preset", preset: "claude_code", append: text };
-  throw new TypeError(`turn.systemPrompt.mode must be "replace" or "append", got: ${String((systemPrompt as { mode?: unknown }).mode)}`);
+  throw new TypeError(`turn.systemPrompt.mode must be "replace", "append", or "preset", got: ${String((systemPrompt as { mode?: unknown }).mode)}`);
 }
 
 /**

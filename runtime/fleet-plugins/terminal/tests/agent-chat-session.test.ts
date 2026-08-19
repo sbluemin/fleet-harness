@@ -222,6 +222,35 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await registry.disposeAll();
   });
 
+  it("opens the session with the Claude Code prompt only when the seed carries it", async () => {
+    const home = tempDir("chat-home-");
+    const withPrompt = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
+    ]);
+    const withoutPrompt = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
+    ]);
+
+    const onRegistry = new AgentChatRegistry(withPrompt.factory);
+    await onRegistry.ensure("op-on", () => ({ ...freshSeedFor(home), systemPrompt: { mode: "preset" } }));
+    onRegistry.get("op-on")?.send("hello");
+    await drainTurn(onRegistry, "op-on");
+
+    const offRegistry = new AgentChatRegistry(withoutPrompt.factory);
+    await offRegistry.ensure("op-off", () => freshSeedFor(home));
+    offRegistry.get("op-off")?.send("hello");
+    await drainTurn(offRegistry, "op-off");
+
+    const onRequest = withPrompt.openSession.mock.calls[0]?.[0] as Record<string, unknown>;
+    const offRequest = withoutPrompt.openSession.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(onRequest.systemPrompt).toEqual({ mode: "preset" });
+    // 필드의 부재가 설정 `off`다 — SDK는 이때 Claude Code 기본 프롬프트를 붙이지 않는다.
+    expect("systemPrompt" in offRequest).toBe(false);
+
+    await onRegistry.disposeAll();
+    await offRegistry.disposeAll();
+  });
+
   it("publishes the coordinate of the transcript the sdk grew in the shared home", async () => {
     const home = tempDir("chat-home-");
     const updates: unknown[] = [];
