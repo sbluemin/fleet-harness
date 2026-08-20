@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type {
   AdapterCallOptions,
   AdapterResponse,
@@ -90,6 +92,8 @@ type OpenAIResponsesWireRequest = Omit<
   tool_choice?: OpenAIResponsesWireToolChoice;
   /** Requests extra output fields, e.g. `web_search_call.action.sources` for hosted web search results. */
   include?: string[];
+  /** Prefix-cache identity for the ChatGPT backend. See {@link codexSessionIdentity}. */
+  prompt_cache_key?: string;
 };
 
 export interface OpenAIResponsesAdapterOptions {
@@ -128,6 +132,14 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
     );
   }
 
+  /**
+   * Headers a subclass derives from the request itself, merged over the constructor's.
+   * The base Platform API surface derives none.
+   */
+  protected perRequestHeaders(_request: CanonicalResponseRequest): Record<string, string> {
+    return {};
+  }
+
   async stream(
     request: CanonicalResponseRequest,
     options: AdapterCallOptions
@@ -150,7 +162,8 @@ export class OpenAIResponsesAdapter implements AiGatewayAdapter {
           accept: "text/event-stream",
           authorization: `Bearer ${options.apiKey}`,
           "content-type": "application/json",
-          ...this.extraHeaders
+          ...this.extraHeaders,
+          ...this.perRequestHeaders(request)
         },
         body: JSON.stringify(payload),
         signal: controller.signal
@@ -232,6 +245,11 @@ export class CodexResponsesAdapter extends OpenAIResponsesAdapter {
       ...(options.idleTimeoutMs !== undefined ? { idleTimeoutMs: options.idleTimeoutMs } : {}),
     });
     this.isMarkedFetchFailure = fetchFailureTracker.isMarkedFailure;
+  }
+
+  protected override perRequestHeaders(request: CanonicalResponseRequest): Record<string, string> {
+    const sessionId = codexSessionIdentity(request);
+    return sessionId === undefined ? {} : { session_id: sessionId };
   }
 
   override async stream(
@@ -634,10 +652,53 @@ function forOpenAIResponsesBackend(
   return payload;
 }
 
+/**
+ * The ChatGPT backend's prefix cache is reached by request identity, not by the prefix alone.
+ *
+ * Measured against `gpt-5.6-luna` over three fresh ~7.9k-token prefixes replayed for eight
+ * turns each (21 warm turns per arm): the bare request the gateway used to send hit the cache
+ * on 8 of 21 turns, and adding `prompt_cache_key` alone changed nothing (8/21). Sending the
+ * `session_id` request header moved it to 19/21 — the same rate as replaying codex-rs's whole
+ * identity header set. So the sticky routing this backend performs keys on that header, and a
+ * request without it is load-balanced away from the machine holding its own prefix.
+ *
+ * `prompt_cache_key` is sent alongside because it is the documented Responses field for this
+ * purpose and codex-rs sends it; it simply is not what makes the difference here.
+ *
+ * The identity has to be the caller's conversation, not this adapter's lifetime — a gateway
+ * builds one adapter per request. Claude Code's `metadata.user_id` is stable for a session and
+ * is already the Cursor path's session source (`resolveCursorSessionIdentity`). A caller that
+ * sends none keeps the un-pinned behavior rather than being handed a fresh identity per turn,
+ * which would pin every turn to a different machine and be strictly worse than sending nothing.
+ */
+export function codexSessionIdentity(request: CanonicalResponseRequest): string | undefined {
+  const userId = request.metadata?.user_id?.trim();
+  if (!userId) return undefined;
+  const digest = createHash("sha256")
+    .update("fleet:codex:claude-session:")
+    .update(userId)
+    .digest("hex");
+  // UUID-shaped, as codex-rs's own `session_id` is. Deterministic, so the same conversation
+  // reaches the same value across the per-request adapters a gateway constructs.
+  return [
+    digest.slice(0, 8),
+    digest.slice(8, 12),
+    digest.slice(12, 16),
+    digest.slice(16, 20),
+    digest.slice(20, 32),
+  ].join("-");
+}
+
 function forChatGptBackend(request: CanonicalResponseRequest): CanonicalResponseRequest {
   const copy: Record<string, unknown> = { ...request };
   for (const field of CHATGPT_UNSUPPORTED_FIELDS) {
     delete copy[field];
+  }
+  // Derived before `metadata` is dropped below: this backend rejects the field itself
+  // ("Unsupported parameter"), but the caller identity inside it is what reaches the cache.
+  const sessionId = codexSessionIdentity(request);
+  if (sessionId !== undefined) {
+    copy.prompt_cache_key = sessionId;
   }
   if (request.tool_choice === "none" || isClaudeCodeSuggestionMode(request)) {
     // 명시적 no-tools 요청과 Claude Code Suggestion turn은 이 stateless backend에 tool
