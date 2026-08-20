@@ -49,6 +49,7 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Activity Rail",
   "Quick Launch",
   "Theater",
+  "Theater {name}",
   "Codex",
   // 실행 그룹은 공급자 제품명을 그대로 읽는다 — Codex와 같은 자리다.
   "Claude",

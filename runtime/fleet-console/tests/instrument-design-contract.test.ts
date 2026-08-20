@@ -946,6 +946,26 @@ describe("Instrument core design contract", () => {
     expect(reducedMotion).toContain(".canvas-operation-group-label,");
   });
 
+  it("pins the Shell caption Theater label — neutral meta, no colour mark, yields before the title", () => {
+    const frame = source("canvas/operation-frame.tsx");
+    const canvas = source("canvas/canvas.tsx");
+    const components = source("styles/components.css");
+    const labelBlock = components.match(/\.canvas-operation-theater-label \{[^}]*\}/)?.[0] ?? "";
+
+    expect(canvas).toContain("operation.type === \"shell\"");
+    expect(frame).toContain('className="canvas-operation-theater-label"');
+    expect(labelBlock).not.toMatch(/border|background/);
+    expect(labelBlock).toContain("color: var(--text-tertiary);");
+    expect(labelBlock).toContain("flex: 0 8 auto;");
+    expect(labelBlock).toContain("max-width: min(40%, 18ch);");
+    expect(labelBlock).toContain("min-width: 0;");
+    expect(labelBlock).toContain("text-overflow: ellipsis;");
+    expect(labelBlock).not.toMatch(/animation/);
+    expect(components).toMatch(/\.canvas-operation\.is-active > \.canvas-operation-titlebar \.canvas-operation-theater-label \{\s*color: var\(--text-secondary\);/);
+    const reducedMotion = components.slice(components.indexOf("@media (prefers-reduced-motion: reduce)"));
+    expect(reducedMotion).toContain(".canvas-operation-theater-label,");
+  });
+
   it("pins the AI Gateway capability-class badge grammar — ink rank, no signal colour, dashed for unclassed", () => {
     // 등급은 Operation 상태가 아니라 프로바이더가 자기 라인업에 대해 주장하는 속성이다.
     // 신호색을 빌리면 같은 행에서 등급이 상태처럼 읽혀 활동 축과 서로를 부정한다.

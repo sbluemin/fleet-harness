@@ -952,6 +952,9 @@ export function OperationsCanvas({
             accentKey: canvas.operationAccent[operation.id] ?? operationAccentFromNode(operation),
             groupName: operationGroup?.name ?? null,
             groupColor: operationGroupColor,
+            theaterLabel: operation.type === "shell"
+              ? state.theaters.find((theater) => theater.id === operation.theaterId)?.label || null
+              : null,
             onActivate: () => {
               setActiveOperation(operation.id);
               // 선별 중에는 기록하지 않는다 — 무대는 슬롯 geometry이고, 외부 Theater 무대의 기록은
@@ -1270,6 +1273,7 @@ function renderPluginOperation(operation: OperationNode, options: {
   readonly accentKey: string | null;
   readonly groupName: string | null;
   readonly groupColor: string | null;
+  readonly theaterLabel: string | null;
   readonly onActivate: () => void;
   readonly onClose: () => void;
   readonly onMinimize: () => void;
@@ -1317,6 +1321,7 @@ function renderPluginOperation(operation: OperationNode, options: {
         accentKey={options.accentKey}
         groupName={options.groupName}
         groupColor={options.groupColor}
+        theaterLabel={options.theaterLabel}
         onActivate={options.onActivate}
         onClose={options.onClose}
         onMinimize={options.onMinimize}

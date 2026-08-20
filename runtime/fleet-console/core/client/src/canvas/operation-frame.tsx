@@ -30,6 +30,8 @@ interface OperationFrameProps {
   readonly accentKey?: string | null;
   readonly groupName?: string | null;
   readonly groupColor?: string | null;
+  /** Shell 캡션의 소속 Theater. 저장 제목과 별개라 Theater 이름이 바뀌어도 따라간다. */
+  readonly theaterLabel?: string | null;
   readonly children: ReactNode;
   /**
    * 캡션 동작 선반 — 이 Operation의 플러그인이 채우는 마크 버튼들. 자리는 프레임이 정한다:
@@ -84,7 +86,7 @@ const ARRIVAL_FLASH_DURATION_MS = 360;
 // 위상을 한 박자로 묶는 레일 애니메이션 — components.css의 상태 레일 선언과 한 벌이다.
 const PHASE_LOCKED_RAIL_ANIMATIONS = new Set(["caption-rail-flow", "caption-rail-call", "caption-rail-tide"]);
 
-export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, children, captionActions = null, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
+export function OperationFrame({ operation, active, unseen, geometry, zoom, status, minimized = false, maximized = false, renderHidden = false, focusLayerTarget = false, topEdge = false, interactionDisabled = false, triageStage = false, triagePicked = false, deckTile = false, glanceHud, accentKey = null, groupName = null, groupColor = null, theaterLabel = null, children, captionActions = null, onActivate, onClose, onMinimize, onMaximize, onRename, onOpenMenu, onRenderHiddenDismissMenu, onGeometryChange, onGeometryCommit, onRenderHiddenFocus }: OperationFrameProps) {
   const t = useT();
   const operationRef = useRef<HTMLElement | null>(null);
   const terminalRef = useRef<HTMLDivElement | null>(null);
@@ -118,6 +120,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
   // 그룹 소속은 개인 accent와 다른 축이므로 자기 마크(도트)와 중립 티어 이름으로 따로 선다 —
   // 색은 도트만 지고 이름은 캡션의 기존 중립 메타 티어를 그대로 상속한다.
   const groupLabelVisible = Boolean(groupName && groupColor);
+  const theaterLabelVisible = Boolean(theaterLabel);
   const className = [
     "canvas-operation",
     unseen ? "is-unseen" : "",
@@ -428,7 +431,7 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
       aria-label={t("canvas.frame.operationAria", {
         title: displayTitle,
         groupContext: groupLabelVisible ? t("canvas.frame.inGroup", { name: groupName ?? "" }) : "",
-      })}
+      }) + (theaterLabelVisible ? t("canvas.frame.inTheater", { name: theaterLabel ?? "" }) : "")}
       aria-hidden={renderHidden || undefined}
       tabIndex={focusLayerTarget ? -1 : undefined}
       inert={minimized || renderHidden ? true : undefined}
@@ -479,6 +482,15 @@ export function OperationFrame({ operation, active, unseen, geometry, zoom, stat
             {displayTitle}
           </button>
         )}
+        {theaterLabelVisible ? (
+          <span
+            className="canvas-operation-theater-label"
+            title={t("canvas.frame.theaterTitle", { name: theaterLabel ?? "" })}
+            aria-hidden="true"
+          >
+            {theaterLabel}
+          </span>
+        ) : null}
         {triagePicked ? <span className="canvas-operation-triage-picked">{t("canvas.triage.picked")}</span> : null}
         {/* 캡션은 상태를 말하지 않는다 — 패널 자신의 보더·글로우가 이미 상태 채널을 지고 있고,
             목록에서 상태를 읽는 자리는 사이드바 칩이다. 이 자리는 그 Operation에 대한 동작을
