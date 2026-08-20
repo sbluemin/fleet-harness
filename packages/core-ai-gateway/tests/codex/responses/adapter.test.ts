@@ -114,6 +114,52 @@ describe("codex responses adapter", () => {
     expect(body.store).toBe(false);
   });
 
+  it("pins the prefix cache with a session_id header and prompt_cache_key derived from metadata.user_id", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      metadata: { user_id: "user_abc_account_1_session_2" },
+    }), { apiKey: "k" });
+
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+    const sessionId = headers.get("session_id");
+    // Sticky routing on this backend keys on the header, so both spellings must be the
+    // same value; the caller's own metadata still never reaches the wire body.
+    expect(sessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(body.prompt_cache_key).toBe(sessionId);
+    expect(body).not.toHaveProperty("metadata");
+  });
+
+  it("derives the same identity for the same user_id and a different one otherwise", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    const adapter = new CodexResponsesAdapter({ fetch: fetchMock });
+    await adapter.stream(request({ metadata: { user_id: "session-a" } }), { apiKey: "k" });
+    // A gateway builds one adapter per request, so the value must come from the caller,
+    // not from adapter lifetime.
+    await new CodexResponsesAdapter({ fetch: fetchMock })
+      .stream(request({ metadata: { user_id: "session-a" } }), { apiKey: "k" });
+    await adapter.stream(request({ metadata: { user_id: "session-b" } }), { apiKey: "k" });
+
+    const sessionIds = fetchMock.mock.calls.map(
+      (call) => new Headers(call[1]?.headers).get("session_id"),
+    );
+    expect(sessionIds[0]).toBe(sessionIds[1]);
+    expect(sessionIds[2]).not.toBe(sessionIds[0]);
+  });
+
+  it("omits both spellings when the caller sent no user_id", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
+      metadata: { session: "s" },
+    }), { apiKey: "k" });
+
+    // A per-turn identity would pin every turn to a different machine, which is strictly
+    // worse than sending none.
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("session_id")).toBeNull();
+    expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)))
+      .not.toHaveProperty("prompt_cache_key");
+  });
+
   it("omits all tool controls for explicit tool_choice none", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     await new CodexResponsesAdapter({ fetch: fetchMock }).stream(request({
