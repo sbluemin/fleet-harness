@@ -38,6 +38,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(fetchSystemPromptSettings()).resolves.toEqual({
@@ -48,6 +49,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", { signal: undefined });
   });
@@ -61,6 +63,7 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
@@ -93,6 +96,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     })));
     await expect(fetchSystemPromptSettings()).rejects.toThrow("Invalid Terminal settings response");
   });
@@ -115,6 +119,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ claudeCodeSystemPrompt: "off" })).resolves.toMatchObject({
@@ -137,6 +142,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ agentIdleDormantMinutes: null })).resolves.toMatchObject({
@@ -163,6 +169,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ aiGateway })).resolves.toMatchObject({ aiGateway });
@@ -193,12 +200,14 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     });
     expect(fetchMock).toHaveBeenCalledWith("/plugins/terminal/settings", {
       method: "PUT",
@@ -217,6 +226,7 @@ describe("system prompt settings api", () => {
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: true,
       compactCeiling: null,
+      xaiEndpoint: "direct" as const,
     }));
     vi.stubGlobal("fetch", fetchMock);
     await expect(saveSystemPromptSettings({ wireLogEnabled: true })).resolves.toMatchObject({

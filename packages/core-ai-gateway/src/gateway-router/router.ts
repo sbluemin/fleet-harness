@@ -33,8 +33,8 @@ import {
   upstreamModelId,
 } from "../models.js";
 import type { GatewayModel } from "../models.js";
-import { resolveAiGatewaySelection } from "../settings/index.js";
-import type { AiGatewayStoredSettings } from "../settings/index.js";
+import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../settings/index.js";
+import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
 
@@ -184,6 +184,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     } catch {
       // 진단 설정 판독 실패는 모델 요청을 막지 않고 안전한 기본값 Off로 단락한다.
       return false;
+    }
+  };
+  const xaiEndpoint = (): XaiEndpointPreference => {
+    if (!deps.readAiGatewaySettings) return DEFAULT_XAI_ENDPOINT_PREFERENCE;
+    try {
+      return deps.readAiGatewaySettings().xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE;
+    } catch {
+      // A settings read that fails must not decide the endpoint for the user; fall back to the
+      // documented default rather than to whichever branch happens to be cheaper.
+      return DEFAULT_XAI_ENDPOINT_PREFERENCE;
     }
   };
   const compactCeiling = (): CompactCeiling | undefined => {
@@ -367,7 +377,10 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
           : target.provider === "opencode"
             ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
             : target.provider === "xai"
-              ? new AnthropicMessagesGateway(new XaiResponsesAdapter({ fetch: fetchImpl }))
+              ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
+                fetch: fetchImpl,
+                endpoint: xaiEndpoint(),
+              }))
               : createGatewayFor(target, chatgptAccountId, deps.originator));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()

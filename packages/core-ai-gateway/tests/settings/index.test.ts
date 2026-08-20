@@ -285,3 +285,17 @@ describe("ai-gateway settings", () => {
     expect(parseAiGatewayUpdate({ defaultModel: "kimi--k3", unknown: true })).toEqual({ ok: false });
   });
 });
+
+describe("xAI endpoint preference", () => {
+  it("keeps a stored preference, including the one that matches the default", () => {
+    expect(normalizeAiGatewaySettings({ version: 1, xaiEndpoint: "cli-proxy" }).xaiEndpoint).toBe("cli-proxy");
+    // `direct` is not folded away: absence means never chosen, and a later default change must
+    // not move an installation the user pinned.
+    expect(normalizeAiGatewaySettings({ version: 1, xaiEndpoint: "direct" }).xaiEndpoint).toBe("direct");
+  });
+
+  it("drops an unknown endpoint rather than failing the whole file", () => {
+    expect(normalizeAiGatewaySettings({ version: 1, xaiEndpoint: "somewhere-else" }).xaiEndpoint).toBeUndefined();
+    expect(normalizeAiGatewaySettings({ version: 1, xaiEndpoint: 3 }).xaiEndpoint).toBeUndefined();
+  });
+});

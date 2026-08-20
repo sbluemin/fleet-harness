@@ -8,11 +8,14 @@ import {
   buildAiGatewayCatalog,
   normalizeCompactCeiling,
   parseAiGatewayUpdate,
+  DEFAULT_XAI_ENDPOINT_PREFERENCE,
+  XAI_ENDPOINT_PREFERENCES,
   type AiGatewayCatalog,
   type AiGatewaySettingsStore,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
   type CompactCeiling,
+  type XaiEndpointPreference,
 } from "@dotobokuri/core-ai-gateway";
 
 interface TerminalSettingsRouteDeps {
@@ -31,6 +34,7 @@ interface TerminalSettingsBody {
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
   readonly compactCeiling?: unknown;
+  readonly xaiEndpoint?: unknown;
 }
 
 type TerminalSettingsUpdate =
@@ -39,7 +43,8 @@ type TerminalSettingsUpdate =
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
-  | { readonly compactCeiling: CompactCeiling | undefined };
+  | { readonly compactCeiling: CompactCeiling | undefined }
+  | { readonly xaiEndpoint: XaiEndpointPreference };
 
 export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
@@ -51,6 +56,7 @@ export interface TerminalSettingsState {
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
+  readonly xaiEndpoint: XaiEndpointPreference;
 }
 
 export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, deps: TerminalSettingsRouteDeps): void {
@@ -127,6 +133,13 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         ));
         return true;
       }
+      if ("xaiEndpoint" in update) {
+        const stored = deps.aiGatewayStore.writeXaiEndpoint(update.xaiEndpoint);
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
       const updated = deps.globalOptionsService.update((current) => ({ ...current, ...update }));
       ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
         updated, deps.aiGatewayStore.read(), deps.wireLogRuntime.enabled(),
@@ -163,6 +176,7 @@ export function toTerminalSettingsState(
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
     compactCeiling: aiGateway.compactCeiling ?? null,
+    xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
 }
 
@@ -211,6 +225,12 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
     if (body.compactCeiling === null) return { compactCeiling: undefined };
     const ceiling = normalizeCompactCeiling(body.compactCeiling);
     return ceiling === undefined ? null : { compactCeiling: ceiling };
+  }
+  if (keys[0] === "xaiEndpoint") {
+    return typeof body.xaiEndpoint === "string"
+      && XAI_ENDPOINT_PREFERENCES.includes(body.xaiEndpoint as XaiEndpointPreference)
+      ? { xaiEndpoint: body.xaiEndpoint as XaiEndpointPreference }
+      : null;
   }
   return null;
 }

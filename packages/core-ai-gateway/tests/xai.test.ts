@@ -886,6 +886,208 @@ describe("Grok Responses proxy fallback", () => {
   });
 });
 
+describe("Grok endpoint preference and escalation", () => {
+  beforeEach(() => { resetXaiProxyFallback(); });
+  afterEach(() => { resetXaiProxyFallback(); });
+
+  function okStream(): Response {
+    return xaiResponse(xaiFrame(responseCreated()), xaiFrame(textDelta("hi")), xaiFrame(responseCompleted()));
+  }
+
+  function overloadStream(): Response {
+    return xaiResponse(xaiFrame({
+      type: "error",
+      code: null,
+      message: "The model is currently at capacity due to high demand.",
+    }));
+  }
+
+  it("opens on the proxy when the stored preference names it", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okStream());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "cli-proxy", clientVersion: async () => "9.9.9" })
+      .stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    await collectXaiEvents(response.events);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-grok-client-version")).toBe("9.9.9");
+  });
+
+  it("escalates a capacity refusal from the direct endpoint to the proxy", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(overloadStream())
+      .mockResolvedValueOnce(okStream());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    expect(await collectXaiEvents(response.events)).toHaveLength(3);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
+  });
+
+  it("does not latch a capacity escalation onto later calls", async () => {
+    const first = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(overloadStream())
+      .mockResolvedValueOnce(okStream());
+    const firstResponse = await new XaiResponsesAdapter({ fetch: first }).stream(xaiRequest(), { apiKey: "k" });
+    if (!firstResponse.ok) throw new Error("expected ok");
+    await collectXaiEvents(firstResponse.events);
+
+    // A full pool is a fact about that minute, not about the account.
+    const second = vi.fn<typeof fetch>().mockResolvedValue(okStream());
+    const secondResponse = await new XaiResponsesAdapter({ fetch: second }).stream(xaiRequest(), { apiKey: "k" });
+    if (!secondResponse.ok) throw new Error("expected ok");
+    await collectXaiEvents(secondResponse.events);
+    expect(String(second.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
+  });
+
+  it("reopens on the proxy when the direct endpoint never admits the turn", async () => {
+    const controlled = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(controlled.response)
+      .mockResolvedValueOnce(okStream());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpointEscalationMs: 30 })
+      .stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collectXaiEvents(response.events);
+    expect(events).toHaveLength(3);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
+    // The escalation aborted the stalled attempt, so its stream is already closed.
+    expect(controlled.wasCancelled()).toBe(true);
+  });
+
+  it("keeps waiting past the escalation bound when the proxy is already the endpoint", async () => {
+    const controlled = controlledXaiResponse();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(controlled.response);
+    const response = await new XaiResponsesAdapter({
+      fetch: fetchMock,
+      endpoint: "cli-proxy",
+      endpointEscalationMs: 20,
+      clientVersion: async () => "1.0.5",
+    }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const collected = collectXaiEvents(response.events);
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    controlled.push(xaiFrame(responseCreated()));
+    controlled.push(xaiFrame(responseCompleted()));
+    controlled.close();
+    expect(await collected).toHaveLength(2);
+  });
+});
+
+describe("Grok reasoning replay", () => {
+  beforeEach(() => { resetXaiProxyFallback(); });
+  afterEach(() => { resetXaiProxyFallback(); });
+
+  function reasoningRequest(): CanonicalResponseRequest {
+    return xaiRequest({
+      input: [
+        { type: "message", role: "user", content: "hi" },
+        {
+          type: "function_call",
+          call_id: "c1",
+          name: "read_file",
+          arguments: "{}",
+          reasoning_encrypted: "enc-blob",
+          reasoning_id: "rs_1",
+        },
+        { type: "function_call_output", call_id: "c1", output: "ok" },
+      ],
+    });
+  }
+
+  it("replays the blob as its own item ahead of the call it belongs to", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(
+      xaiResponse(xaiFrame(responseCreated()), xaiFrame(responseCompleted())),
+    );
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(reasoningRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    await collectXaiEvents(response.events);
+    const body = JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as {
+      input: Array<Record<string, unknown>>;
+      include?: string[];
+    };
+    expect(body.include).toEqual(["reasoning.encrypted_content"]);
+    expect(body.input.map((item) => item.type)).toEqual([
+      "message",
+      "reasoning",
+      "function_call",
+      "function_call_output",
+    ]);
+    expect(body.input[1]).toEqual({
+      type: "reasoning",
+      id: "rs_1",
+      summary: [],
+      encrypted_content: "enc-blob",
+    });
+    // Replay metadata is gateway vocabulary; the wire rejects unknown item keys.
+    expect(body.input[2]).not.toHaveProperty("reasoning_encrypted");
+    expect(body.input[2]).not.toHaveProperty("reasoning_id");
+  });
+
+  it("drops the replay and reopens when the wire answers with an empty stream", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(xaiResponse())
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated()), xaiFrame(responseCompleted())));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(reasoningRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    expect(await collectXaiEvents(response.events)).toHaveLength(2);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retried = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body)) as {
+      input: Array<Record<string, unknown>>;
+      include?: string[];
+    };
+    expect(retried.input.map((item) => item.type)).toEqual(["message", "function_call", "function_call_output"]);
+    expect(retried.include).toBeUndefined();
+    // Same endpoint: an empty stream is the replay being rejected, not the pool being full.
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_RESPONSES_URL);
+  });
+
+  it("leaves an empty stream alone when there was no replay to drop", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    expect(await collectXaiEvents(response.events)).toEqual([]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("surfaces the closing reasoning item so the blob can ride back to the client", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame({
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { type: "reasoning", id: "rs_9", summary: [], encrypted_content: "blob-9" },
+      }),
+      xaiFrame(responseCompleted()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    const events = await collectXaiEvents(response.events);
+    expect(events[1]).toEqual({
+      type: "response.output_item.done",
+      output_index: 0,
+      item: { id: "rs_9", type: "reasoning", encrypted_content: "blob-9" },
+    });
+  });
+
+  it("ignores a reasoning item that carries no blob", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(
+      xaiFrame(responseCreated()),
+      xaiFrame({
+        type: "response.output_item.done",
+        output_index: 0,
+        item: { type: "reasoning", id: "rs_9", summary: [] },
+      }),
+      xaiFrame(responseCompleted()),
+    ));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+    expect(await collectXaiEvents(response.events)).toHaveLength(2);
+  });
+});
+
 describe("Grok Responses stall watchdog", () => {
   it("requires a positive semantic stall timeout option", () => {
     expect(() => new XaiResponsesAdapter({ semanticStallTimeoutMs: 0 })).toThrow("semanticStallTimeoutMs must be a positive integer");

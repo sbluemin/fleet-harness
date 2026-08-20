@@ -12,6 +12,7 @@ import {
   buildAnthropicModelList,
   buildGatewayModelConstraints,
   clampReasoningEffort,
+  encodeReasoningSignature,
   findGatewayModel,
   gatewayModelIdentity,
   parseGatewayBenchmarksRegistry,
@@ -336,6 +337,47 @@ describe("Anthropic request translation", () => {
         reasoning_content: "Inspecting.",
       },
     ]);
+  });
+
+  it("recovers a provider reasoning blob from the thinking signature it rode out on", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [{
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Inspecting.", signature: encodeReasoningSignature("rs_1", "enc-blob") },
+          { type: "tool_use", id: "c1", name: "read_file", input: { path: "a.ts" } },
+        ],
+      }],
+    };
+
+    expect(translateAnthropicRequest(request).input).toEqual([
+      {
+        type: "function_call",
+        call_id: "c1",
+        name: "read_file",
+        arguments: JSON.stringify({ path: "a.ts" }),
+        reasoning_content: "Inspecting.",
+        reasoning_encrypted: "enc-blob",
+        reasoning_id: "rs_1",
+      },
+    ]);
+  });
+
+  it("ignores a signature this gateway did not write", () => {
+    const request: AnthropicMessagesRequest = {
+      ...baseRequest(),
+      messages: [{
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Inspecting.", signature: "gateway_reasoning:rs_1" },
+          { type: "text", text: "Done" },
+        ],
+      }],
+    };
+
+    const [item] = translateAnthropicRequest(request).input;
+    expect(item).not.toHaveProperty("reasoning_encrypted");
   });
 
   it("attaches assistant thinking to the following tool call for replay", () => {
@@ -1896,6 +1938,55 @@ describe("Anthropic SSE keepalive", () => {
 });
 
 describe("Anthropic SSE encoding", () => {
+  const reasoningTurn = (): CanonicalResponseEvent[] => [
+    {
+      type: "response.created",
+      response: { id: "resp_r", model: "grok-4.6", usage: { input_tokens: 5, output_tokens: 0 } },
+    },
+    { type: "response.reasoning_summary_text.delta", item_id: "rs_1", output_index: 0, delta: "Thinking." },
+    {
+      type: "response.output_item.done",
+      output_index: 0,
+      item: { id: "rs_1", type: "reasoning", encrypted_content: "enc-blob" },
+    },
+    {
+      type: "response.completed",
+      response: { id: "resp_r", model: "grok-4.6", usage: { input_tokens: 5, output_tokens: 3 } },
+    },
+  ];
+
+  it("carries a reasoning blob out on the thinking block's signature", async () => {
+    const frames = parseSse(await collectBody(encodeAnthropicSse(iterable(reasoningTurn()))));
+    const signature = frames
+      .filter((frame) => frame.event === "content_block_delta")
+      .map((frame) => (frame.data.delta as Record<string, unknown> | undefined)?.signature)
+      .find((value) => typeof value === "string");
+    expect(signature).toBe(encodeReasoningSignature("rs_1", "enc-blob"));
+  });
+
+  it("opens a thinking block for a blob whose summary never streamed", async () => {
+    const withoutSummary = reasoningTurn().filter(
+      (event) => event.type !== "response.reasoning_summary_text.delta",
+    );
+    const frames = parseSse(await collectBody(encodeAnthropicSse(iterable(withoutSummary))));
+    const start = frames.find((frame) => frame.event === "content_block_start");
+    expect((start?.data.content_block as Record<string, unknown>).type).toBe("thinking");
+    const signature = frames
+      .filter((frame) => frame.event === "content_block_delta")
+      .map((frame) => (frame.data.delta as Record<string, unknown> | undefined)?.signature)
+      .find((value) => typeof value === "string");
+    expect(signature).toBe(encodeReasoningSignature("rs_1", "enc-blob"));
+  });
+
+  it("carries the same blob on the non-streaming message", async () => {
+    const message = await collectAnthropicMessage(iterable(reasoningTurn()), "grok-4.6");
+    expect((message.content as Array<Record<string, unknown>>)[0]).toEqual({
+      type: "thinking",
+      thinking: "Thinking.",
+      signature: encodeReasoningSignature("rs_1", "enc-blob"),
+    });
+  });
+
   it("emits the complete Anthropic text-turn sequence", async () => {
     const events = iterable<CanonicalResponseEvent>([
       {

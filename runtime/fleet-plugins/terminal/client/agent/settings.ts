@@ -50,6 +50,9 @@ export interface AiGatewayCatalog {
 
 export type ClaudeCodeSystemPromptMode = "on" | "off";
 
+/** Which xAI endpoint a subscription turn opens on. Mirrors the gateway's own vocabulary. */
+export type XaiEndpointPreference = "direct" | "cli-proxy";
+
 export interface SystemPromptSettingsState {
   readonly agentIdleDormantMinutes: number | null;
   readonly claudeCodeSystemPrompt: ClaudeCodeSystemPromptMode;
@@ -58,6 +61,7 @@ export interface SystemPromptSettingsState {
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
   readonly compactCeiling: CompactCeiling | null;
+  readonly xaiEndpoint: XaiEndpointPreference;
 }
 
 export type SystemPromptSettingsUpdate =
@@ -66,7 +70,8 @@ export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
-  | { readonly compactCeiling: CompactCeiling | null };
+  | { readonly compactCeiling: CompactCeiling | null }
+  | { readonly xaiEndpoint: XaiEndpointPreference };
 
 export class TerminalSettingsApiError extends Error {
   readonly status: number;
@@ -117,6 +122,7 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
     || !isCompactCeiling(payload.compactCeiling)
+    || !isXaiEndpointPreference(payload.xaiEndpoint)
   ) {
     throw new TerminalSettingsApiError(status, "Invalid Terminal settings response");
   }
@@ -128,7 +134,12 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
     compactCeiling: payload.compactCeiling,
+    xaiEndpoint: payload.xaiEndpoint,
   };
+}
+
+function isXaiEndpointPreference(value: unknown): value is XaiEndpointPreference {
+  return value === "direct" || value === "cli-proxy";
 }
 
 function isClaudeCodeSystemPromptMode(value: unknown): value is ClaudeCodeSystemPromptMode {
@@ -157,7 +168,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -241,6 +252,9 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "compactCeiling") {
     return { compactCeiling: state.compactCeiling };
+  }
+  if (field === "xaiEndpoint") {
+    return { xaiEndpoint: state.xaiEndpoint };
   }
   return { agentIdleDormantMinutes: state.agentIdleDormantMinutes };
 }

@@ -22,6 +22,14 @@ export interface CanonicalInputMessage {
   content: string | CanonicalInputContentPart[];
   /** Provider 추론 재생 메타데이터. 어댑터가 모델별로 선택하며 visible content로 노출하지 않는다. */
   reasoning_content?: string;
+  /**
+   * The provider's own opaque reasoning blob for the turn this item closed, to be replayed
+   * verbatim on the next request. Unlike `reasoning_content` it is never renderable text —
+   * only the provider can decrypt it — so an adapter either round-trips it or drops it.
+   */
+  reasoning_encrypted?: string;
+  /** The provider's id for the reasoning item `reasoning_encrypted` came from. */
+  reasoning_id?: string;
 }
 
 /** Flatten message text for adapters that only accept a string prompt body. */
@@ -71,6 +79,10 @@ export interface CanonicalFunctionCall {
   arguments: string;
   /** 이 assistant tool call 앞의 provider 추론. 요구하는 모델의 history에만 재생한다. */
   reasoning_content?: string;
+  /** @see CanonicalInputMessage.reasoning_encrypted */
+  reasoning_encrypted?: string;
+  /** @see CanonicalInputMessage.reasoning_id */
+  reasoning_id?: string;
 }
 
 export interface CanonicalFunctionCallOutput {
@@ -250,10 +262,26 @@ export interface CanonicalWebSearchCallOutputItem {
   action?: CanonicalWebSearchAction;
 }
 
+/**
+ * A closed reasoning trace, carrying the provider's opaque blob when it sent one.
+ *
+ * The blob is what lets a stateless caller hand the model back its own prior thinking instead
+ * of paying for it twice: measured against xAI's Responses wire on 2026-08-20, replaying it
+ * across a tool round-trip halved the reasoning tokens of the following turn (32 vs 66) and cut
+ * output tokens by ~40%. It reaches the client encoded in the thinking block's signature and
+ * returns on the next request as `reasoning_encrypted`.
+ */
+export interface CanonicalReasoningOutputItem {
+  id: string;
+  type: "reasoning";
+  encrypted_content?: string;
+}
+
 export type CanonicalOutputItem =
   | CanonicalMessageOutputItem
   | CanonicalFunctionCallOutputItem
-  | CanonicalWebSearchCallOutputItem;
+  | CanonicalWebSearchCallOutputItem
+  | CanonicalReasoningOutputItem;
 
 export type CanonicalResponseEvent =
   | {
@@ -323,6 +351,38 @@ export type CanonicalResponseEvent =
       type: "error";
       error: CanonicalError;
     };
+
+/**
+ * Carrier for a provider reasoning blob across the Anthropic wire.
+ *
+ * A thinking block's `signature` is the only field on that wire whose value the client returns
+ * untouched and never renders, which is exactly what an opaque blob needs. The prefix keeps the
+ * gateway's own placeholder signatures (`gateway_...`) and any provider's real ones from being
+ * mistaken for one of these, and the version segment leaves room to change the encoding without
+ * a decoder guessing at which shape it holds. The id may be empty; the blob never is.
+ */
+const REASONING_SIGNATURE_PREFIX = "fleet-reasoning:v1:";
+
+export function encodeReasoningSignature(id: string, encrypted: string): string {
+  return `${REASONING_SIGNATURE_PREFIX}${id}:${encrypted}`;
+}
+
+export interface DecodedReasoningSignature {
+  readonly id: string;
+  readonly encrypted: string;
+}
+
+/** `undefined` for anything this gateway did not write — including a real provider signature. */
+export function decodeReasoningSignature(signature: unknown): DecodedReasoningSignature | undefined {
+  if (typeof signature !== "string" || !signature.startsWith(REASONING_SIGNATURE_PREFIX)) {
+    return undefined;
+  }
+  const body = signature.slice(REASONING_SIGNATURE_PREFIX.length);
+  const separator = body.indexOf(":");
+  if (separator === -1) return undefined;
+  const encrypted = body.slice(separator + 1);
+  return encrypted.length > 0 ? { id: body.slice(0, separator), encrypted } : undefined;
+}
 
 export interface CanonicalError {
   type: string;

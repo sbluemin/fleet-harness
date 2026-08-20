@@ -635,6 +635,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(aiGateway.compactCeiling !== undefined
             ? { compactCeiling: aiGateway.compactCeiling }
             : {}),
+          ...(aiGateway.xaiEndpoint !== undefined
+            ? { xaiEndpoint: aiGateway.xaiEndpoint }
+            : {}),
           ...(value ?? {}),
         });
         return aiGateway;
@@ -669,6 +672,19 @@ function createRouteHarness(options: HarnessOptions = {}) {
         if (ceiling === undefined) {
           const without = { ...aiGateway } as { compactCeiling?: unknown };
           delete without.compactCeiling;
+          aiGateway = without as AiGatewayStoredSettings;
+        }
+        return aiGateway;
+      },
+      writeXaiEndpoint: (endpoint) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          ...(endpoint === undefined ? {} : { xaiEndpoint: endpoint }),
+        });
+        if (endpoint === undefined) {
+          const without = { ...aiGateway } as { xaiEndpoint?: unknown };
+          delete without.xaiEndpoint;
           aiGateway = without as AiGatewayStoredSettings;
         }
         return aiGateway;

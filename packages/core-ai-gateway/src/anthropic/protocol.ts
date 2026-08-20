@@ -14,6 +14,8 @@ import type {
 } from "../canonical/index.js";
 import {
   clampReasoningEffort,
+  decodeReasoningSignature,
+  encodeReasoningSignature,
   normalizeCanonicalMessageContent,
   REASONING_EFFORTS,
 } from "../canonical/index.js";
@@ -351,12 +353,28 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
   const items: CanonicalResponseRequest["input"] = [];
   const parts: CanonicalInputContentPart[] = [];
   let reasoningContent = "";
+  let reasoningBlob: { id: string; encrypted: string } | undefined;
 
-  const takeReasoningContent = (): { reasoning_content?: string } => {
-    if (role !== "assistant" || reasoningContent.length === 0) return {};
+  // Text and blob are taken together and reset together: both describe the one reasoning trace
+  // that preceded the item now being emitted, and the caller pairs them with it by position.
+  const takeReasoningContent = (): {
+    reasoning_content?: string;
+    reasoning_encrypted?: string;
+    reasoning_id?: string;
+  } => {
+    if (role !== "assistant") return {};
+    const blob = reasoningBlob;
     const reasoning = reasoningContent;
     reasoningContent = "";
-    return { reasoning_content: reasoning };
+    reasoningBlob = undefined;
+    if (reasoning.length === 0 && blob === undefined) return {};
+    return {
+      ...(reasoning.length === 0 ? {} : { reasoning_content: reasoning }),
+      ...(blob === undefined ? {} : {
+        reasoning_encrypted: blob.encrypted,
+        ...(blob.id.length === 0 ? {} : { reasoning_id: blob.id }),
+      }),
+    };
   };
 
   const flushParts = (includeReasoning = true): void => {
@@ -408,6 +426,11 @@ function translateMessage(message: AnthropicMessage): CanonicalResponseRequest["
       case "thinking":
         if (role === "assistant" && typeof block.thinking === "string") {
           reasoningContent += block.thinking;
+        }
+        if (role === "assistant") {
+          // Last one wins: a client that split one trace across blocks returns the same blob on
+          // each, and a genuinely new trace supersedes the one before it.
+          reasoningBlob = decodeReasoningSignature(block.signature) ?? reasoningBlob;
         }
         break;
       case "redacted_thinking":
@@ -663,6 +686,7 @@ export async function collectAnthropicMessage(
   let model = fallbackModel;
   let text = "";
   const thinking = new Map<string, string>();
+  const reasoningBlobs = new Map<string, string>();
   let stopReason = "end_turn";
   let outputTokens = 0;
   let inputTokens = 0;
@@ -705,6 +729,20 @@ export async function collectAnthropicMessage(
         break;
       }
       case "response.output_item.done":
+        // The reasoning item closes carrying the provider's opaque blob. It rides back to the
+        // client on the thinking block's signature, the one field a client returns verbatim.
+        if (event.item.type === "reasoning") {
+          if (event.item.encrypted_content !== undefined) {
+            reasoningBlobs.set(
+              event.item.id,
+              encodeReasoningSignature(event.item.id, event.item.encrypted_content),
+            );
+            // A trace whose summary never streamed still has a blob worth carrying; an empty
+            // thinking block is the only place to hang it, and clients render nothing for it.
+            if (!thinking.has(event.item.id)) thinking.set(event.item.id, "");
+          }
+          break;
+        }
         // Provider-executed web search arrives whole at `done` — there is no argument-delta
         // stream to accumulate the way client function calls have. It does not set tool_use
         // as the stop reason: this is a server-side tool, not a client round-trip.
@@ -747,7 +785,7 @@ export async function collectAnthropicMessage(
   content.unshift(...[...thinking].map(([itemId, value]) => ({
     type: "thinking",
     thinking: value,
-    signature: `gateway_${reasoningBlockKey(itemId)}`,
+    signature: reasoningBlobs.get(itemId) ?? `gateway_${reasoningBlockKey(itemId)}`,
   })));
 
   return {
@@ -790,6 +828,8 @@ export async function* encodeAnthropicSse(
   let messageStopped = false;
   let sawToolUse = false;
   let activeContentKey: string | undefined;
+  /** Reasoning-block key → the signature that carries this turn's opaque reasoning blob. */
+  const reasoningBlobs = new Map<string, string>();
 
   const encode = (event: string, data: unknown): Uint8Array =>
     encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
@@ -827,7 +867,9 @@ export async function* encodeAnthropicSse(
         ? [encode("content_block_delta", {
             type: "content_block_delta",
             index: block.index,
-            delta: { type: "signature_delta", signature: `gateway_${key}` }
+            // The blob is only known once the reasoning item closes, which is why the signature
+            // is emitted here at block close rather than at block start.
+            delta: { type: "signature_delta", signature: reasoningBlobs.get(key) ?? `gateway_${key}` }
           })]
         : []),
       encode("content_block_stop", {
@@ -958,6 +1000,21 @@ export async function* encodeAnthropicSse(
         break;
       }
       case "response.output_item.done":
+        if (event.item.type === "reasoning") {
+          if (event.item.encrypted_content !== undefined) {
+            const key = reasoningBlockKey(event.item.id);
+            reasoningBlobs.set(key, encodeReasoningSignature(event.item.id, event.item.encrypted_content));
+            // The trace may have streamed no summary at all; the blob still needs a block to
+            // ride out on, so open an empty thinking block for it and close it immediately.
+            if (!blocks.has(key)) {
+              yield* closeActiveContent();
+              const start = startContentBlock(key, "thinking");
+              if (start !== undefined) yield start;
+            }
+            yield* closeBlock(key);
+          }
+          break;
+        }
         if (event.item.type === "function_call") {
           let block = blocks.get(event.item.id);
           if (block === undefined) {

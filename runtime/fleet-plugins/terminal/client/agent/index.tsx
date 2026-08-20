@@ -881,6 +881,7 @@ function AgentCliSection() {
       </section>
       <ModelAuthBlock />
       <AiGatewayModelsCard />
+      <AiGatewayXaiEndpointCard />
       <AiGatewayCompactTimingCard />
       <AiGatewayDiagnosticsCard />
     </>
@@ -961,6 +962,65 @@ function formatCompactTokens(n: number): string {
     return `${Number.isInteger(m) ? String(m) : m.toFixed(2).replace(/0+$/, "").replace(/\.$/, "")}M`;
   }
   return `${Math.round(n / 1000)}K`;
+}
+
+/**
+ * The endpoint an xAI turn opens on.
+ *
+ * A segmented pair rather than a toggle: neither endpoint is the "on" state — they are two pools
+ * with different failure shapes, and the copy has to be able to say so for both.
+ */
+function AiGatewayXaiEndpointCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  React.useEffect(() => {
+    const controller = new AbortController();
+    void loadSystemPromptSettings(controller.signal);
+    return () => controller.abort();
+  }, []);
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.xaiEndpoint")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.xaiEndpoint")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
+  const endpoint = state.xaiEndpoint;
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.xaiEndpoint")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title" id="xai-endpoint-label">{t("terminal.settings.xaiEndpoint")}</p>
+          <p className="global-settings-help">{t("terminal.settings.xaiEndpointHelp")}</p>
+        </div>
+        <div className="segmented" role="group" aria-labelledby="xai-endpoint-label">
+          <button
+            type="button"
+            className={`segmented-option${endpoint === "direct" ? " is-active" : ""}`}
+            disabled={saving}
+            onClick={() => void setSystemPromptSettingsField("xaiEndpoint", "direct")}
+          >
+            {t("terminal.settings.xaiEndpointDirect")}
+          </button>
+          <button
+            type="button"
+            className={`segmented-option${endpoint === "cli-proxy" ? " is-active" : ""}`}
+            disabled={saving}
+            onClick={() => void setSystemPromptSettingsField("xaiEndpoint", "cli-proxy")}
+          >
+            {t("terminal.settings.xaiEndpointProxy")}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
 }
 
 function AiGatewayCompactTimingCard() {

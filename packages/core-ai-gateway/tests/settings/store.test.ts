@@ -96,6 +96,25 @@ describe("ai-gateway settings store", () => {
     });
   });
 
+  it("persists xaiEndpoint independently of models", () => {
+    const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
+    store.write({ models: [{ id: "kimi--k3" }] });
+    store.writeXaiEndpoint("cli-proxy");
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "kimi--k3" }],
+      xaiEndpoint: "cli-proxy",
+    });
+    // A models-only save must not silently move the endpoint back to the default.
+    store.write({ models: [{ id: "cursor--auto" }] });
+    expect(store.read()?.xaiEndpoint).toBe("cli-proxy");
+    store.writeXaiEndpoint(undefined);
+    expect(store.read()).toEqual({
+      version: 1,
+      models: [{ id: "cursor--auto" }],
+    });
+  });
+
   it("keeps each setting axis independent across writes", () => {
     const store = createAiGatewaySettingsStore({ dataDir: createDataDir() });
 

@@ -8,6 +8,7 @@ import {
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,
   type AiGatewayUpdateValue,
+  type XaiEndpointPreference,
 } from "./index.js";
 
 // AI Gateway 설정은 Fleet 데이터 루트의 단일 파일(`<dataDir>/ai-gateway.json`)이 소유한다.
@@ -32,6 +33,8 @@ export interface AiGatewaySettingsStore {
   readonly writeWireLogEnabled: (enabled: boolean | undefined) => AiGatewayStoredSettings;
   /** `undefined`는 Auto(키 제거). models 선별은 보존한다. */
   readonly writeCompactCeiling: (ceiling: CompactCeiling | undefined) => AiGatewayStoredSettings;
+  /** `undefined`는 xaiEndpoint 키를 제거해 기본(direct)으로 돌아간다. */
+  readonly writeXaiEndpoint: (endpoint: XaiEndpointPreference | undefined) => AiGatewayStoredSettings;
 }
 
 export interface CreateAiGatewaySettingsStoreDeps {
@@ -136,6 +139,7 @@ export function createAiGatewaySettingsStore(
       // 무관한 모델 노출 저장 한 번이 사용자의 소진 순서를 지운다.
       ...(current.providerPriority ? { providerPriority: current.providerPriority } : {}),
       ...(current.compactCeiling !== undefined ? { compactCeiling: current.compactCeiling } : {}),
+      ...(current.xaiEndpoint !== undefined ? { xaiEndpoint: current.xaiEndpoint } : {}),
       ...(value ?? {}),
     })),
     writeCursorDiagnosticsEnabled: (enabled) => update((current) => normalizeAiGatewaySettings({
@@ -161,6 +165,16 @@ export function createAiGatewaySettingsStore(
       const withoutCeiling = { ...next } as { compactCeiling?: CompactCeiling };
       delete withoutCeiling.compactCeiling;
       return withoutCeiling as AiGatewayStoredSettings;
+    }),
+    writeXaiEndpoint: (endpoint) => update((current) => {
+      const next = normalizeAiGatewaySettings({
+        ...current,
+        ...(endpoint === undefined ? {} : { xaiEndpoint: endpoint }),
+      });
+      if (endpoint !== undefined) return next;
+      const withoutEndpoint = { ...next } as { xaiEndpoint?: XaiEndpointPreference };
+      delete withoutEndpoint.xaiEndpoint;
+      return withoutEndpoint as AiGatewayStoredSettings;
     }),
   };
 }
