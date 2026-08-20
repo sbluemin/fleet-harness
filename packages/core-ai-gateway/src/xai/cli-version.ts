@@ -20,9 +20,17 @@ import {
  *
  * 1. `FLEET_XAI_CLI_VERSION` — an operator override for a machine with no CLI installed.
  * 2. `$GROK_HOME/bin/grok` — the installer's symlink, whose target is `grok-<version>`.
- * 3. `$GROK_HOME/.metadata_version` — stamped with its own version by every CLI run.
- * 4. `grok --version` — the authority, but a process spawn, so it is the last resort.
- * 5. {@link XAI_CLI_FALLBACK_CLIENT_VERSION} — better a stale number than none: the proxy
+ *    POSIX only: the Windows updater copies the new binary over `bin\grok.exe`, so there is
+ *    no link to read and no version in the name.
+ * 3. `$GROK_HOME/.metadata_version` — stamped with its own version by every CLI run, on every
+ *    platform and by every installer, which is what carries Windows and npm installs.
+ * 4. `$GROK_HOME/bin/grok[.exe]` run directly — an absolute path, so it is the same binary the
+ *    installer placed and not whatever `grok` resolves to. This is the Windows authority.
+ * 5. `grok --version` from `PATH` — for an install that lives outside the Grok home. On Windows
+ *    an npm install puts a `grok.cmd` shim there, which `execFile` refuses to run without a
+ *    shell; that failure is expected and falls through rather than being worked around, since
+ *    step 3 already covers an npm install that has ever run.
+ * 6. {@link XAI_CLI_FALLBACK_CLIENT_VERSION} — better a stale number than none: the proxy
  *    rejects an absent header outright, while a low-but-present one at least fails with a
  *    message naming the floor.
  */
@@ -71,9 +79,17 @@ async function fromMetadataMarker(
   }
 }
 
-async function fromCommand(deps: CredentialResolverDeps): Promise<string | undefined> {
+/** The executable the official installer places, named for the platform it runs on. */
+function grokExecutablePath(home: string, deps: CredentialResolverDeps): string {
+  return path.join(home, "bin", deps.platform === "win32" ? "grok.exe" : "grok");
+}
+
+async function fromCommand(
+  deps: CredentialResolverDeps,
+  file: string,
+): Promise<string | undefined> {
   try {
-    return versionFrom(await deps.execFile("grok", ["--version"], { timeout: VERSION_EXEC_TIMEOUT_MS }));
+    return versionFrom(await deps.execFile(file, ["--version"], { timeout: VERSION_EXEC_TIMEOUT_MS }));
   } catch {
     return undefined;
   }
@@ -90,7 +106,8 @@ export async function resolveXaiCliClientVersion(
   const home = grokHomeDir(deps);
   return await fromInstallerSymlink(home, readLink)
     ?? await fromMetadataMarker(home, deps)
-    ?? await fromCommand(deps)
+    ?? await fromCommand(deps, grokExecutablePath(home, deps))
+    ?? await fromCommand(deps, "grok")
     ?? XAI_CLI_FALLBACK_CLIENT_VERSION;
 }
 

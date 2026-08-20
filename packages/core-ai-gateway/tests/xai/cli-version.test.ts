@@ -63,10 +63,49 @@ describe("Grok CLI client version", () => {
     expect(execFile).not.toHaveBeenCalled();
   });
 
+  it("runs the installed executable by absolute path on Windows, where there is no symlink", async () => {
+    // The Windows updater copies the new binary over `bin\\grok.exe`, so nothing on disk names
+    // the version and the marker file may lag a fresh install that has not been run yet.
+    const home = await grokHome();
+    const execFile = vi.fn(async (file: string) => {
+      if (file !== path.join(home, "bin", "grok.exe")) throw new Error(`unexpected file: ${file}`);
+      return "grok 1.6.2 (deadbee) [stable]\n";
+    });
+    await expect(resolveXaiCliClientVersion({
+      deps: deps({ platform: "win32", env: { GROK_HOME: home }, execFile }),
+    })).resolves.toBe("1.6.2");
+  });
+
+  it("falls through to PATH when the Grok home holds no executable", async () => {
+    const home = await grokHome();
+    const execFile = vi.fn(async (file: string) => {
+      // A Windows npm install leaves a `grok.cmd` shim on PATH, which `execFile` refuses to
+      // run without a shell; the home copy is simply absent here.
+      if (file === "grok") return "grok 1.7.0";
+      throw new Error("ENOENT");
+    });
+    await expect(resolveXaiCliClientVersion({
+      deps: deps({ platform: "win32", env: { GROK_HOME: home }, execFile }),
+    })).resolves.toBe("1.7.0");
+    expect(execFile.mock.calls.map(([file]) => file)).toEqual([
+      path.join(home, "bin", "grok.exe"),
+      "grok",
+    ]);
+  });
+
   it("spawns the CLI only when the filesystem says nothing", async () => {
     await expect(resolveXaiCliClientVersion({
       deps: deps({ execFile: async () => "grok 1.4.0 (abc1234) [stable]\n" }),
     })).resolves.toBe("1.4.0");
+  });
+
+  it("prefers the marker file over any spawn", async () => {
+    const home = await grokHome();
+    const execFile = vi.fn(async () => "grok 9.9.9");
+    await expect(resolveXaiCliClientVersion({
+      deps: deps({ platform: "win32", env: { GROK_HOME: home }, readBounded: async () => "1.5.1", execFile }),
+    })).resolves.toBe("1.5.1");
+    expect(execFile).not.toHaveBeenCalled();
   });
 
   it("falls back to a constant rather than sending no version at all", async () => {
