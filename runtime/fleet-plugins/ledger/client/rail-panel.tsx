@@ -419,10 +419,13 @@ function LedgerIcon() {
   );
 }
 
-export const ledgerPanel: RailPanelDescriptor = {
+// `satisfies`, not an annotation: `RailPanelDescriptor` is a union of a rendering panel and an
+// activate-only rail action, so annotating erases which arm this is and leaves `render` optional
+// to every caller. The check against the contract is identical; the concrete shape survives it.
+export const ledgerPanel = {
   id: "ledger",
   title: (locale) => getT(locale)("ledger.panel.title"),
   icon: LedgerIcon,
   defaultWidth: 392,
   render: (ctx) => <LedgerPanelBody ctx={ctx} />,
-};
+} satisfies RailPanelDescriptor;
