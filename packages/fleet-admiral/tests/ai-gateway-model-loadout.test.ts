@@ -426,6 +426,9 @@ describe("gateway_models tool doctrine", () => {
     expect(description).toContain("Two spellings, never interchangeable");
     expect(description).toContain("subagent_type");
     expect(description).toContain("opts.model");
+    // 워크플로우 스테이지도 agentType으로 핀할 수 있다. 이름 축을 Agent 전용으로 적으면
+    // 로스터를 읽은 호스트가 지원되는 경로를 쓰지 않는다.
+    expect(description).toContain("opts.agentType");
     // 세션 중 노출한 모델은 이름이 해석되지 않는다. 이것을 모르면 stale roster를 의심하며
     // 같은 실패를 반복한다.
     expect(description).toContain("registered once at session start");

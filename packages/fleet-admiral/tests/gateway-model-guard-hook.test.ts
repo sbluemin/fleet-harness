@@ -50,6 +50,9 @@ describe("gateway model guard — remind", () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain("gateway_models");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("subagent_type");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.model");
+    // 핀이 선택이 된 뒤에도 로스터 조회는 핀의 조건이다 — 기억한 이름은 여전히 해석된다는
+    // 증거가 아니다. 워크플로우 스테이지의 두 핀 철자가 그 조회에 함께 묶여 있어야 한다.
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.agentType");
   });
 
   // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 규약은 실려야 한다.
@@ -113,39 +116,55 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(stderr).toContain("prefix");
   });
 
-  // 틀린 핀을 막는 것만으로는 부족하다 — 아예 핀하지 않은 스테이지가 세션 모델을 상속한다.
-  it("blocks a stage that pins no model at all", () => {
+  // 핀하지 않은 스테이지는 세션 모델로 돈다. 스테이지를 옮길지 말지는 작업을 읽어야 나오는
+  // 판단이라 훅이 볼 수 없다 — 요구하면 한 값으로 전부 채우는 순응만 남는다.
+  it("passes a stage that pins no model at all", () => {
     for (const script of [`agent("x")`, `agent("x", { schema: S })`, `const r = await agent(prompt, {})`]) {
-      const { status, stderr } = gateWorkflow({ script });
-      expect(status, script).toBe(2);
-      expect(stderr, script).toContain("model");
+      expect(gateWorkflow({ script }).status, script).toBe(0);
     }
   });
 
-  it("counts every unpinned stage in one script", () => {
-    const { status, stderr } = gateWorkflow({
+  it("passes a script that mixes pinned and unpinned stages", () => {
+    const { status } = gateWorkflow({
       script: [
         `const a = await agent("one", { model: "claude-gateway--xai--grok-4.6" })`,
         `const b = await agent("two", { schema: S })`,
         `const c = await agent("three")`,
       ].join("\n"),
     });
-    expect(status).toBe(2);
-    expect(stderr).toContain("2건");
-  });
-
-  // 프롬프트 텍스트의 괄호를 호출 경계로 세면 멀쩡한 스크립트가 막힌다.
-  it("reads call boundaries past parentheses and quotes inside the prompt", () => {
-    const { status } = gateWorkflow({
-      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "claude-gateway--xai--grok-4.6" })`,
-    });
     expect(status).toBe(0);
   });
 
-  it("blocks agentType usage in a dynamic workflow", () => {
+  // agentType은 스테이지의 또 다른 정당한 핀이다. 내장 타입도 그 자리의 정당한 값이므로
+  // fleet: 접두를 요구하지 않는다.
+  it("passes agentType usage in a dynamic workflow", () => {
+    for (const value of ["fleet:xai-grok-4-6-low", "general-purpose", "code-reviewer"]) {
+      expect(gateWorkflow({ script: `agent("x", { agentType: "${value}" })` }).status, value).toBe(0);
+    }
+  });
+
+  // 콜론 앞 공백도 유효한 프로퍼티 표기다. 정규 표기만 아는 검사는 그 한 칸으로 비켜간다.
+  it("reads a property written with whitespace before the colon", () => {
+    for (const script of [
+      `agent("x", { agentType : "claude-gateway--codex--gpt-5.6-sol-fast" })`,
+      `agent("x", { model : "codex--gpt-5.6-sol-fast" })`,
+    ]) {
+      expect(gateWorkflow({ script }).status, script).toBe(2);
+    }
+  });
+
+  // 두 철자를 맞바꾼 나머지 절반. modelId는 어떤 레지스트리에도 이름으로 없어 반드시 죽는다.
+  it("blocks a modelId written into the agentType slot", () => {
     const { status, stderr } = gateWorkflow({
-      script: `agent("x", { agentType: "fleet:codex-gpt-5-6-sol-fast-high" })`,
+      script: `agent("x", { agentType: "claude-gateway--codex--gpt-5.6-sol-fast" })`,
     });
+    expect(status).toBe(2);
+    expect(stderr).toContain("opts.model");
+  });
+
+  // 로스터 이름이 model 자리에 들어가면 전 분기가 디스패치 즉시 죽는다. 그 실패만 미리 잡는다.
+  it("blocks a roster identity name written into the model slot", () => {
+    const { status, stderr } = gateWorkflow({ script: `agent("x", { model: "fleet:xai-grok-4-6-low" })` });
     expect(status).toBe(2);
     expect(stderr).toContain("agentType");
   });
