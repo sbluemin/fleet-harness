@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-19T00:00:00Z",
+  "updatedAt": "2026-08-20T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -396,7 +396,7 @@
     "cursor": {
       "name": "Cursor",
       "defaultModel": "auto",
-      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; claude-opus-5 and claude-fable-5 standard/Max Mode windows observed 2026-08-10; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05)",
+      "source": "Cursor GetUsableModels + Run conversationCheckpointUpdate.token_details.max_tokens (cli-2026.07.08-0c04a8a; auto, composer-2.5, and grok-4.5 families observed 2026-08-01); cursor-agent 2026.08.11-e8db854 observed 2026-08-13 for grok-4.6; claude-opus-5 and claude-fable-5 standard/Max Mode windows observed 2026-08-10; quotaScope from DashboardService/GetCurrentPeriodUsage autoBucketModels (2026-08-05); gpt-5.6-sol/terra/luna, gemini-3.7-flash, and kimi-k3 ids, effort rungs, and api quotaScope observed 2026-08-20 from live GetUsableModels (cursor-agent 2026.08.11-e8db854) and GetCurrentPeriodUsage autoBucketModels. Their windows are unmeasured because Cursor answers a first-turn Run with an empty token_details, so each carries the conservative cross-provider figure (272000 from the Codex catalog for the GPT-5.6 lineup, 256000 elsewhere); no Max Mode or -fast sibling is published for them",
       "models": [
         {
           "modelId": "auto",
@@ -578,6 +578,96 @@
             "upstreamModelIdTemplate": "claude-fable-5-{effort}"
           },
           "benchmarkKey": "claude-fable-5"
+        },
+        {
+          "modelId": "gpt-5.6-sol",
+          "name": "GPT-5.6-Sol",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "contextWindow": 272000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "gpt-5.6-sol-{effort}"
+          },
+          "benchmarkKey": "gpt-5.6-sol"
+        },
+        {
+          "modelId": "gpt-5.6-terra",
+          "name": "GPT-5.6-Terra",
+          "capabilityClass": "standard",
+          "quotaScope": "api",
+          "contextWindow": 272000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "gpt-5.6-terra-{effort}"
+          },
+          "benchmarkKey": "gpt-5.6-terra"
+        },
+        {
+          "modelId": "gpt-5.6-luna",
+          "name": "GPT-5.6-Luna",
+          "capabilityClass": "light",
+          "quotaScope": "api",
+          "contextWindow": 272000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "gpt-5.6-luna-{effort}"
+          },
+          "benchmarkKey": "gpt-5.6-luna"
+        },
+        {
+          "modelId": "gemini-3.7-flash",
+          "name": "Gemini-3.7-Flash",
+          "capabilityClass": "light",
+          "quotaScope": "api",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "upstreamModelIdTemplate": "gemini-3.7-flash-{effort}"
+          }
+        },
+        {
+          "modelId": "kimi-k3",
+          "name": "Kimi-K3",
+          "capabilityClass": "flagship",
+          "quotaScope": "api",
+          "contextWindow": 256000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "high",
+              "max"
+            ],
+            "upstreamModelIdTemplate": "kimi-k3-{effort}"
+          },
+          "benchmarkKey": "kimi-k3"
         }
       ]
     },

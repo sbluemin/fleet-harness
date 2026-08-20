@@ -848,7 +848,7 @@ describe("model catalog", () => {
 
   it("contains only the approved provider families", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(18);
-    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(11);
+    expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(16);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
     expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
@@ -889,6 +889,11 @@ describe("model catalog", () => {
       "claude-opus-5-1m",
       "claude-fable-5",
       "claude-fable-5-1m",
+      "gpt-5.6-sol",
+      "gpt-5.6-terra",
+      "gpt-5.6-luna",
+      "gemini-3.7-flash",
+      "kimi-k3",
     ]);
     expect(Object.fromEntries(CURSOR_SUBSCRIPTION_MODELS.map((model) => [
       model.upstreamId,
@@ -904,6 +909,11 @@ describe("model catalog", () => {
       "claude-opus-5-1m": 1_000_000,
       "claude-fable-5": 300_000,
       "claude-fable-5-1m": 1_000_000,
+      "gpt-5.6-sol": 272_000,
+      "gpt-5.6-terra": 272_000,
+      "gpt-5.6-luna": 272_000,
+      "gemini-3.7-flash": 256_000,
+      "kimi-k3": 256_000,
       default: 256_000,
     });
     for (const id of ["cursor--claude-opus-5-1m", "cursor--claude-fable-5-1m"]) {
@@ -1424,7 +1434,23 @@ describe("model catalog", () => {
       contextWindow: 1_000_000,
       cursorMaxMode: true,
     });
-    expect(findGatewayModel("claude-gateway--cursor--kimi-k3")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--cursor--kimi-k3")).toMatchObject({
+      id: "cursor--kimi-k3",
+      upstreamId: "kimi-k3",
+      contextWindow: 256_000,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--kimi-k3[1m]")).toBeUndefined();
+    expect(findGatewayModel("claude-gateway--cursor--gemini-3.7-flash")).toMatchObject({
+      id: "cursor--gemini-3.7-flash",
+      upstreamId: "gemini-3.7-flash",
+      contextWindow: 256_000,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--gpt-5.6-sol")).toMatchObject({
+      id: "cursor--gpt-5.6-sol",
+      upstreamId: "gpt-5.6-sol",
+      contextWindow: 272_000,
+    });
+    expect(findGatewayModel("claude-gateway--cursor--minimax-m3")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--cursor--glm-5.2[1m]")).toBeUndefined();
     expect(findGatewayModel("claude-gateway--k3[1m]")).toBeUndefined();
     expect(findGatewayModel("k3[1m]")).toBeUndefined();

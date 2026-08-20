@@ -1954,7 +1954,7 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(44);
+    expect(list.data).toHaveLength(49);
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
@@ -1988,7 +1988,12 @@ describe("route surface", () => {
     expect(ids).toContain("claude-gateway--cursor--claude-opus-5-1m[1m]");
     expect(ids).toContain("claude-gateway--cursor--claude-fable-5");
     expect(ids).toContain("claude-gateway--cursor--claude-fable-5-1m[1m]");
-    expect(ids).not.toContain("claude-gateway--cursor--kimi-k3");
+    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-sol");
+    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-terra");
+    expect(ids).toContain("claude-gateway--cursor--gpt-5.6-luna");
+    expect(ids).toContain("claude-gateway--cursor--gemini-3.7-flash");
+    expect(ids).toContain("claude-gateway--cursor--kimi-k3");
+    expect(ids).not.toContain("claude-gateway--cursor--kimi-k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3[1m]");
     expect(ids).toContain("claude-gateway--kimi--k3-256k");
     expect(ids).toContain("claude-gateway--opencode--minimax-m3[1m]");
