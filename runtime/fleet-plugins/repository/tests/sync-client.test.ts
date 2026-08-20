@@ -92,8 +92,15 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).not.toContain("setVerbNotice");
     expect(railPanelSource).not.toContain("repository.verb.pulled\"");
     expect(railPanelSource).not.toContain("repository.verb.pushed\"");
-    // 토스트 렌더는 sync 하나만 남는다 — 동사 쪽 두 번째 렌더가 생기면 배너가 부활한 것이다.
-    expect(railPanelSource.split("repository-sync-toast").length - 1).toBe(1);
+    // 배너를 쓰는 표면은 sync와 스태시 "행" 동작 둘뿐이다 — 툴바 동사가 세 번째로 끼어들면 부활한 것이다.
+    expect(railPanelSource.split("repository-sync-toast").length - 1).toBe(2);
+    const verbRun = railPanelSource.slice(railPanelSource.indexOf("const runToolbarVerb"), railPanelSource.indexOf("const handlePull"));
+    expect(verbRun).not.toContain("setSyncNotice");
+    for (const handler of ["const handlePull", "const handlePush", "const handleStash ="]) {
+      const start = railPanelSource.indexOf(handler);
+      expect(start, handler).toBeGreaterThanOrEqual(0);
+      expect(railPanelSource.slice(start, railPanelSource.indexOf("}, [", start)), handler).not.toContain("Notice");
+    }
     expect(railPanelSource).toContain("showVerbOutcome");
     expect(railPanelSource).toContain("VerbToolbarButton");
     expect(railPanelSource).toContain("repository-sync-glyph repository-sync-glyph-settled");
@@ -149,6 +156,22 @@ describe("Repository sync client contracts", () => {
     expect(remoteSource).toContain("parsePushOutcome");
     expect(remoteSource).not.toContain("@{upstream}..HEAD");
     expect(remoteSource).toContain("[up to date]");
+  });
+
+  // 2026-08-21 리뷰 — 스태시 "행" 동작(적용·적용 후 제거·삭제)은 툴바 동사가 아니다. 결과를 툴바 Stash
+  // 버튼에 얹으면 "작업 중 변경 전체를 스태시" 버튼에 ✓·실패 점이 붙어, 누르지도 않은 명령에 답이 귀속된다.
+  it("keeps stash row-action outcomes off the toolbar verb button", () => {
+    const start = railPanelSource.indexOf("const handleStashRowAction");
+    const body = railPanelSource.slice(start, railPanelSource.indexOf("}, [", start));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(body).toContain("showRowNotice");
+    expect(body).not.toContain("showVerbOutcome");
+    expect(body).toContain("\"notice\"");
+    // 행 알림 타이머도 전환·언마운트에서 함께 걷힌다.
+    const unmountStart = railPanelSource.indexOf("useEffect(() => () => {");
+    expect(railPanelSource.slice(unmountStart, railPanelSource.indexOf("}, []);", unmountStart))).toContain("rowNoticeTimerRef");
+    const transitionStart = railPanelSource.indexOf("const transitionRepository");
+    expect(railPanelSource.slice(transitionStart, railPanelSource.indexOf("setChangedFiles({ kind: \"loading\" })", transitionStart))).toContain("rowNoticeTimerRef");
   });
 
   it("captures external-refresh scroll before loading and restores it with the new rows", () => {

@@ -243,7 +243,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [workstate, setWorkstate] = useState<WorkstateResult | null>(null);
   const [workstateRetry, setWorkstateRetry] = useState(0);
   type VerbKind = "pull" | "push" | "stash";
-  const [verbBusy, setVerbBusy] = useState<VerbKind | null>(null);
+  // 잠금은 행 동작도 함께 진다(같은 저장소를 쓴다) — 그러나 회전은 그 일을 시킨 표면에서만 돈다.
+  // 행 메뉴에서 고른 삭제가 툴바 Stash 버튼을 돌리면, 결과와 마찬가지로 진행 상태까지 오귀속된다.
+  const [verbBusy, setVerbBusy] = useState<{ readonly verb: VerbKind; readonly surface: "button" | "notice" } | null>(null);
   // 동사의 결과는 흐름 안의 배너가 아니라 그 동사의 버튼 자리에서 답한다 — 동기화가 "이미 최신 상태"를
   // 답하는 문법과 같다. 성공은 아이콘이 잠깐 ✓로 바뀌고(settled) 말풍선이 실질(받은·보낸 커밋 수)을 짧게
   // 이른 뒤 물러나며, 실패는 같은 말풍선이 더 오래 머문 뒤 coral 점만 남겨 다음 시도까지 hover·포커스로
@@ -254,6 +256,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [verbHinting, setVerbHinting] = useState(false);
   const verbSettledTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const verbHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 스태시 행 동작(적용·적용 후 제거·삭제)은 툴바 동사가 아니다. 그 답을 툴바 Stash 버튼에 얹으면
+  // "작업 중 변경 전체를 스태시" 버튼에 ✓와 실패 점이 붙어, 행 메뉴에서 고른 동작의 결과가 누르지도
+  // 않은 명령에 귀속된다. 행 동작은 자기 행이 곧 사라질 수 있어 행 자리에도 답할 수 없으므로,
+  // 이 개편 이전과 같이 패널 알림으로 답한다 — 버튼 문법은 툴바 동사만의 것이다.
+  const [rowNotice, setRowNotice] = useState<{ readonly kind: "success" | "error"; readonly text: string } | null>(null);
+  const rowNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writeLockedRef = useRef(false);
   const workstateRef = useRef<WorkstateResult | null>(null);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
@@ -367,7 +375,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setSyncSettled(false);
     setSyncHinting(false);
     setSyncHintAvailable(false);
-    for (const timer of [verbSettledTimerRef, verbHintTimerRef]) {
+    for (const timer of [verbSettledTimerRef, verbHintTimerRef, rowNoticeTimerRef]) {
       if (timer.current !== null) {
         clearTimeout(timer.current);
         timer.current = null;
@@ -376,6 +384,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setVerbOutcome(null);
     setVerbSettled(false);
     setVerbHinting(false);
+    setRowNotice(null);
     setWorkstate(null);
     setChangedFiles({ kind: "loading" });
     setCompareRequest(null);
@@ -516,6 +525,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setVerbSettled(false);
     setVerbHinting(false);
   }, []);
+  const showRowNotice = useCallback((notice: { readonly kind: "success" | "error"; readonly text: string }) => {
+    if (rowNoticeTimerRef.current !== null) clearTimeout(rowNoticeTimerRef.current);
+    setRowNotice(notice);
+    rowNoticeTimerRef.current = setTimeout(() => {
+      rowNoticeTimerRef.current = null;
+      setRowNotice(null);
+    }, 6000);
+  }, []);
   const showVerbOutcome = useCallback((outcome: VerbOutcome) => {
     for (const timer of [verbSettledTimerRef, verbHintTimerRef]) {
       if (timer.current !== null) {
@@ -537,11 +554,15 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       setVerbHinting(false);
     }, outcome.kind === "error" ? VERB_ERROR_HINT_MS : SYNC_HINT_MS);
   }, []);
-  const runToolbarVerb = useCallback(async (verb: VerbKind, route: string, body: Record<string, unknown>, successText: (payload: Record<string, unknown>) => string, mapError: (code: string) => string | null) => {
+  const runToolbarVerb = useCallback(async (verb: VerbKind, route: string, body: Record<string, unknown>, successText: (payload: Record<string, unknown>) => string, mapError: (code: string) => string | null, surface: "button" | "notice" = "button") => {
     if (!ctx.theaterId || verbBusy) return;
+    const emit = (kind: "success" | "error", text: string) => {
+      if (surface === "notice") showRowNotice({ kind, text });
+      else showVerbOutcome({ verb, kind, text });
+    };
     // 새 시도는 지난 결과의 표면을 먼저 걷는다 — 앞 결과가 남은 채 다음 요청이 돌면 어느 시도의 답인지 읽을 수 없다.
-    clearVerbSurfacing();
-    setVerbBusy(verb);
+    if (surface === "button") clearVerbSurfacing();
+    setVerbBusy({ verb, surface });
     try {
       const response = await fetch(`/plugins/repository/${route}`, {
         method: "POST",
@@ -551,18 +572,18 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
       if (!response.ok) {
         const code = typeof payload.error === "string" ? payload.error : "git_failed";
-        showVerbOutcome({ verb, kind: "error", text: mapError(code) ?? mapSharedVerbError(code, t) ?? code });
+        emit("error", mapError(code) ?? mapSharedVerbError(code, t) ?? code);
         return;
       }
-      showVerbOutcome({ verb, kind: "success", text: successText(payload) });
+      emit("success", successText(payload));
       // 성공한 원격·스태시 동사만 전역 갱신을 지불한다 — 실패는 저장소를 바꾸지 않았다.
       handleWorkspaceMutated({ history: true });
     } catch {
-      showVerbOutcome({ verb, kind: "error", text: t("repository.verb.failedNetwork") });
+      emit("error", t("repository.verb.failedNetwork"));
     } finally {
       setVerbBusy(null);
     }
-  }, [clearVerbSurfacing, ctx.theaterId, handleWorkspaceMutated, repoRel, showVerbOutcome, t, verbBusy]);
+  }, [clearVerbSurfacing, ctx.theaterId, handleWorkspaceMutated, repoRel, showRowNotice, showVerbOutcome, t, verbBusy]);
   const handlePull = useCallback(() => {
     void runToolbarVerb("pull", "pull", {}, (payload) => verbCountText(payload.received, "pull", t), (code) =>
       code === "non_fast_forward" ? t("repository.verb.failedPullDiverged")
@@ -581,13 +602,13 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const handleStashRowAction = useCallback((action: "apply" | "pop" | "drop", name: string, sha: string) => {
     // 스태시 동사도 툴바·스테이징과 같은 울타리를 진다 — 잠금 중 우회로가 되면 안 된다.
     if (writeLockedRef.current) {
-      showVerbOutcome({ verb: "stash", kind: "error", text: guardMessageOf(workstateRef.current, t) ?? t("repository.guard.indexLocked") });
+      showRowNotice({ kind: "error", text: guardMessageOf(workstateRef.current, t) ?? t("repository.guard.indexLocked") });
       return;
     }
     void runToolbarVerb("stash", "stash", { action, name, sha }, () =>
       t(action === "apply" ? "repository.stash.applied" : action === "pop" ? "repository.stash.popped" : "repository.stash.dropped"), (code) =>
-      code === "stash_moved" ? t("repository.stash.moved") : null);
-  }, [runToolbarVerb, showVerbOutcome, t]);
+      code === "stash_moved" ? t("repository.stash.moved") : null, "notice");
+  }, [runToolbarVerb, showRowNotice, t]);
   const showSyncNotice = useCallback((notice: SyncNotice) => {
     if (syncNoticeTimerRef.current !== null) clearTimeout(syncNoticeTimerRef.current);
     setSyncNotice(notice);
@@ -633,6 +654,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     if (syncHintTimerRef.current !== null) clearTimeout(syncHintTimerRef.current);
     if (verbSettledTimerRef.current !== null) clearTimeout(verbSettledTimerRef.current);
     if (verbHintTimerRef.current !== null) clearTimeout(verbHintTimerRef.current);
+    if (rowNoticeTimerRef.current !== null) clearTimeout(rowNoticeTimerRef.current);
   }, []);
   const syncRepository = useCallback(async (mode?: "auto") => {
     if (!ctx.theaterId) return;
@@ -760,9 +782,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   return (
     <div className="repository-unified is-workspace">
       <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button><span className="repository-verb-cluster">
-        <VerbToolbarButton glyph="⇩" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
-        <VerbToolbarButton glyph="⇧" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
-        <VerbToolbarButton glyph="▤" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbBusy !== null || writeLocked} busy={verbBusy === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
+        <VerbToolbarButton glyph="⇩" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
+        <VerbToolbarButton glyph="⇧" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
+        <VerbToolbarButton glyph="▤" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
       </span></div>
       <div className="repository-checkout-tabs" role="tablist" aria-label={t("repository.tabs.aria")}>
         {checkoutTabs.map((tab) => <button
@@ -783,6 +805,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
       <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : ""}</span>
       {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
+      {rowNotice ? <div className={`repository-sync-toast is-${rowNotice.kind}`} role="status"><span>{rowNotice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setRowNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
