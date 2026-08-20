@@ -32,7 +32,8 @@ import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-s
 import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { blocksOperationsShortcutWhileEditing } from "../operations-editing-shortcut-guard.js";
-import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
+import { findTheaterShellId, isTheaterShellLaunch, theaterShellDecisionRequiresHydration } from "../theater-shell.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -44,6 +45,9 @@ const DEFAULT_SHELL_WIDTH = 560;
 const DEFAULT_SHELL_HEIGHT = 360;
 // 사용자 close와 PTY 자가종료가 같은 operation의 close path를 중복 실행하는 것을 막는다.
 const closingOperationIds = new Set<string>();
+// Theater당 Shell 생성은 하나다. hydrate 전 빈 목록을 "없음"으로 읽거나 더블클릭이 두 장을 심지 않게,
+// 생성·목록 대기 중인 Theater를 붙잡는다.
+const inflightTheaterShellLaunches = new Set<string>();
 
 interface OperationsProps {
   readonly state: ConsoleState;
@@ -940,6 +944,41 @@ function canvasPointToGeometry(point: CanvasPoint): Omit<OperationGeometry, "zIn
 }
 
 async function launchViaPlugin(
+  pluginId: string,
+  kind: OperationLaunchKind,
+  geometry: OperationGeometry,
+  theaterId: string,
+  plugins: readonly FleetClientPlugin[],
+  variant?: Readonly<Record<string, string>>,
+): Promise<void> {
+  if (!isTheaterShellLaunch(kind)) {
+    await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant);
+    return;
+  }
+  if (inflightTheaterShellLaunches.has(theaterId)) return;
+  inflightTheaterShellLaunches.add(theaterId);
+  try {
+    // 부트 중 operations는 빈 배열이다. 그 상태를 "Shell 없음"으로 읽으면 복원분 옆에 하나를 더 만든다.
+    if (theaterShellDecisionRequiresHydration(kind, getState().operationsHydrated)) {
+      await fetchOperations(null).then(hydrateInitialOperations).catch(() => {});
+    }
+    const snapshot = getState();
+    const existingId = findTheaterShellId(snapshot.operations, theaterId, {
+      pluginId,
+      activeOperationId: snapshot.activeOperationId,
+    });
+    if (existingId) {
+      // Theater당 Shell은 하나다. 이미 있으면 생성 대신 그 패널을 포커스한다(최소화 복원·카메라 이동).
+      focusOperation(existingId);
+      return;
+    }
+    await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant);
+  } finally {
+    inflightTheaterShellLaunches.delete(theaterId);
+  }
+}
+
+async function createLaunchedOperation(
   pluginId: string,
   kind: OperationLaunchKind,
   geometry: OperationGeometry,

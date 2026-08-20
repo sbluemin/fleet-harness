@@ -4654,6 +4654,27 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-overflow: ellipsis;
 }
 
+/* Shell 소속 Theater — 그룹과 같은 중립 메타 티어. 색 마크는 없다(위치이지 정체성·그룹이 아니다).
+   제목보다 먼저 양보한다. 긴 Theater 이름이 "Shell"을 밀어내면 캡션 1순위가 뒤집힌다. */
+.canvas-operation-theater-label {
+  flex: 0 8 auto;
+  min-width: 0;
+  max-width: min(40%, 18ch);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  color: var(--text-tertiary);
+  transition: color var(--duration-base) var(--ease-spring);
+}
+
+.canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-theater-label {
+  color: var(--text-secondary);
+}
+
 /* 진행 중 캐리어 스트림을 패널 바깥 아래에 floating으로 띄우는 dock. left/top/width는 패널 geometry를
    인라인으로 받고(top=패널 하단 모서리), translateY로 작은 간격만큼 아래로 내려 패널 하단에 정렬한다. */
 .canvas-operation-jobdock {
@@ -6468,6 +6489,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   .canvas-operation-titlebar,
   .canvas-operation-titlebar::after,
   .canvas-operation-group-label,
+  .canvas-operation-theater-label,
   .canvas-operation-window-controls,
   .canvas-operation-icon-button {
     transition-duration: 0.01ms;

@@ -165,6 +165,49 @@ describe("OperationFrame identity rename", () => {
     expect(document.querySelector(".canvas-operation")!.className).toContain("is-top-edge");
   });
 
+  it("shows a Theater name after the Shell title without putting it in the rename draft", () => {
+    act(() => root!.render(createElement(OperationFrame, {
+      operation: {
+        id: "operation-identity",
+        theaterId: "theater-identity",
+        type: "shell",
+        pluginId: "terminal",
+        title: "Shell",
+        payload: {},
+        geometry: null,
+        ts: { createdAt: 1, updatedAt: 1 },
+      },
+      active: false,
+      unseen: false,
+      theaterLabel: "fleet-harness",
+      glanceHud: { index: "01", hints: [] },
+      geometry: { x: 0, y: 0, width: 320, height: 200, zIndex: 1 },
+      zoom: 1,
+      onActivate: () => {},
+      onClose: () => {},
+      onMinimize: () => {},
+      onMaximize: () => {},
+      onRename: () => {},
+      onOpenMenu: () => {},
+      onGeometryChange: () => {},
+      onGeometryCommit: () => {},
+      children: createElement("div"),
+    })));
+
+    const titlebar = document.querySelector(".canvas-operation-titlebar")!;
+    const children = Array.from(titlebar.children);
+    const theater = document.querySelector(".canvas-operation-theater-label");
+    expect(theater?.textContent).toBe("fleet-harness");
+    expect(children[0]?.className).toBe("canvas-operation-identity-name");
+    expect(children[1]?.className).toBe("canvas-operation-theater-label");
+    expect(identityTrigger().textContent).toBe("Shell");
+    expect(document.querySelector("article")?.getAttribute("aria-label")).toContain("fleet-harness");
+
+    beginRename(identityTrigger());
+    expect(identityInput()?.value).toBe("Shell");
+    expect(document.querySelector(".canvas-operation-theater-label")?.textContent).toBe("fleet-harness");
+  });
+
   it("keeps active identity in the name → More → controls order", () => {
     renderFrame(vi.fn(), true);
     const children = Array.from(document.querySelector(".canvas-operation-titlebar")!.children);

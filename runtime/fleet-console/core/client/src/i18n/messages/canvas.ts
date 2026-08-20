@@ -48,7 +48,9 @@ export const canvasEn = {
 
   "canvas.frame.operationAria": "Operation {title}{groupContext}",
   "canvas.frame.inGroup": " in group {name}",
+  "canvas.frame.inTheater": " in {name}",
   "canvas.frame.groupTitle": "Group {name}",
+  "canvas.frame.theaterTitle": "Theater {name}",
   "canvas.frame.renameAria": "Rename operation {title}",
   "canvas.frame.renameTitle": "{title} — Drag to move. Double-click, Enter, or F2 to rename",
   "canvas.frame.openMenuAria": "Open menu for operation {title}",
@@ -246,7 +248,9 @@ export const canvasKo: Record<keyof typeof canvasEn, string> = {
 
   "canvas.frame.operationAria": "Operation {title}{groupContext}",
   "canvas.frame.inGroup": " · {name} 그룹",
+  "canvas.frame.inTheater": " · {name}",
   "canvas.frame.groupTitle": "{name} 그룹",
+  "canvas.frame.theaterTitle": "Theater {name}",
   "canvas.frame.renameAria": "Operation {title} 이름 바꾸기",
   "canvas.frame.renameTitle": "{title} — 드래그로 이동. 더블클릭, Enter 또는 F2로 이름 변경",
   "canvas.frame.openMenuAria": "Operation {title} 메뉴 열기",
