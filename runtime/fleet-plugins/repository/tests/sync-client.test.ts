@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 // 2026-08-05 재가로 무상태 계약을 의도적으로 개정 — 수동 Sync는 결과를 표면화한다.
 const railPanelSource = await fs.readFile(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
 const historyPanelSource = await fs.readFile(new URL("../client/history-panel.tsx", import.meta.url), "utf8");
+const remoteSource = await fs.readFile(new URL("../server/remote.ts", import.meta.url), "utf8");
 
 describe("Repository sync client contracts", () => {
   it("surfaces a classified notice for manual sync failure", () => {
@@ -134,7 +135,20 @@ describe("Repository sync client contracts", () => {
   it("keeps the verb outcome announced and its failure text longer-lived than success", () => {
     expect(railPanelSource).toContain("const VERB_ERROR_HINT_MS");
     expect(railPanelSource).toContain("outcome.kind === \"error\" ? VERB_ERROR_HINT_MS : SYNC_HINT_MS");
-    expect(railPanelSource).toContain("{verbOutcome ? verbOutcome.text : syncHinting ? t(\"repository.sync.upToDate\") : \"\"}");
+    // 동사 결과는 hover 재개방을 위해 남으므로, 한 리전을 동기화와 나눠 쓰면 남은 동사 문면이 뒤이은
+    // 동기화 결과의 낭독을 영원히 가린다. 두 리전은 분리된 채로 있어야 한다.
+    expect(railPanelSource).toContain("{syncHinting ? t(\"repository.sync.upToDate\") : \"\"}");
+    expect(railPanelSource).toContain("{verbOutcome ? verbOutcome.text : \"\"}");
+    expect(railPanelSource).not.toContain("verbOutcome.text : syncHinting");
+  });
+
+  // 2026-08-20 리뷰 — 보낸 커밋 수는 push 자신이 보고한 원격 ref 이동에서만 정직하다. 로컬 추적 ref는
+  // 다른 체크아웃이 같은 커밋을 이미 민 경우 낡아 있어, 아무것도 보내지 않은 push를 "N개 보냄"으로 읽힌다.
+  it("counts a push from the porcelain result, never from the local tracking ref", () => {
+    expect(remoteSource).toContain("\"--porcelain\"");
+    expect(remoteSource).toContain("parsePushOutcome");
+    expect(remoteSource).not.toContain("@{upstream}..HEAD");
+    expect(remoteSource).toContain("[up to date]");
   });
 
   it("captures external-refresh scroll before loading and restores it with the new rows", () => {

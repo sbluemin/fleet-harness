@@ -99,6 +99,29 @@ async function countCommits(gitCwd: string, range: string): Promise<number | nul
   }
 }
 
+/**
+ * 보낸 커밋 수의 유일한 정직한 출처는 push 자신이 보고한 원격 ref의 이동이다 — 로컬 추적 ref는
+ * 다른 체크아웃이 같은 커밋을 이미 민 경우 낡아 있어, 아무것도 보내지 않은 push를 "N개 보냄"으로
+ * 읽게 만든다. `--porcelain`의 `<flag>\t<from>:<to>\t<summary>` 줄에서 `<old>..<new>`만 취하고,
+ * 새 브랜치·해석 불가는 0으로 단정하지 않고 null로 물러난다.
+ */
+type PushOutcome = { readonly kind: "moved"; readonly from: string; readonly to: string } | { readonly kind: "up_to_date" } | null;
+
+function parsePushOutcome(stdout: string, branch: string): PushOutcome {
+  for (const line of stdout.split("\n")) {
+    const fields = line.split("\t");
+    if (fields.length < 3) continue;
+    const [, refPair, summary] = fields;
+    if (!refPair || !summary) continue;
+    if (refPair.split(":")[1] !== `refs/heads/${branch}`) continue;
+    const trimmed = summary.trim();
+    const moved = /^([0-9a-f]{7,40})\.\.([0-9a-f]{7,40})$/.exec(trimmed);
+    if (moved) return { kind: "moved", from: moved[1]!, to: moved[2]! };
+    return trimmed === "[up to date]" ? { kind: "up_to_date" } : null;
+  }
+  return null;
+}
+
 async function headSha(gitCwd: string): Promise<string | null> {
   try {
     const sha = (await runGit(["rev-parse", "HEAD"], { cwd: gitCwd })).stdout.trim();
@@ -125,12 +148,11 @@ export async function handleRepositoryPush(
     const remote = upstreamRemote && upstreamRemote !== "." ? upstreamRemote : await resolveDefaultRemote(gitCwd);
     if (!remote) throw new NoRemoteError();
     const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
-    // 보낸 커밋 수는 push 전에만 셀 수 있다 — 뒤에 세면 upstream이 이미 따라잡아 항상 0이 된다.
-    const sent = upstreamRemote ? await countCommits(gitCwd, "@{upstream}..HEAD") : null;
-    await runGit([
+    const pushed = await runGit([
       ...NETWORK_HARDENING_ARGS,
       ...credentialArgs,
       "push",
+      "--porcelain",
       // repo config의 remote.<name>.receivepack이 로컬 transport에서 명령 실행되므로 표준 명령을 강제한다.
       "--receive-pack=git-receive-pack",
       "--no-recurse-submodules",
@@ -138,6 +160,11 @@ export async function handleRepositoryPush(
       remote,
       `refs/heads/${branch}:refs/heads/${branch}`,
     ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
+    const outcome = parsePushOutcome(pushed.stdout, branch);
+    // `[up to date]`는 이동이 없었다는 확정이므로 0으로 답하고, 새 브랜치·해석 불가만 null로 물러난다.
+    const sent = outcome === null ? null
+      : outcome.kind === "up_to_date" ? 0
+      : await countCommits(gitCwd, `${outcome.from}..${outcome.to}`);
     ctx.host.http.writeJson(res, 200, { ok: true, remote, branch, ...(sent === null ? {} : { sent }) });
   } catch (error) {
     writeRemoteFailure(res, ctx, error, classifyPushError);

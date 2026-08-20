@@ -778,7 +778,10 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
           {tab.worktree && <i className="repository-checkout-tab-mark" title={t("repository.tabs.worktreeMark")}>wt</i>}
         </button>)}
       </div>
-      <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : syncHinting ? t("repository.sync.upToDate") : ""}</span>
+      {/* 동사 결과는 말풍선이 물러난 뒤에도 hover 재개방을 위해 남아 있으므로, 한 라이브 리전을 동기화와
+          나눠 쓰면 남아 있는 동사 문면이 뒤이은 동기화 결과의 낭독을 영원히 가린다 — 리전을 분리한다. */}
+      <span className="repository-sr-only" role="status">{syncHinting ? t("repository.sync.upToDate") : ""}</span>
+      <span className="repository-sr-only" role="status">{verbOutcome ? verbOutcome.text : ""}</span>
       {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
         <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
