@@ -158,13 +158,25 @@ describe("Right Rail panel context", () => {
     expect(railPanelContextMock.themes.at(-1)).toBe("carbon");
   });
 
-  it("runs action icons without opening a rail panel", () => {
+  it("disables action icons until a Theater is active", () => {
     renderRail();
     const action = container.querySelector<HTMLButtonElement>("#rail-tab-shell-action")!;
 
+    expect(action.disabled).toBe(true);
     act(() => action.click());
 
-    expect(railPanelContextMock.activate).toHaveBeenCalledWith(expect.objectContaining({ theaterId: null }));
+    expect(railPanelContextMock.activate).not.toHaveBeenCalled();
+    expect(container.querySelector("#rail-panel-repository")).not.toBeNull();
+  });
+
+  it("runs action icons above plugin panels without opening a rail panel", () => {
+    renderRail("theater-a");
+    const action = container.querySelector<HTMLButtonElement>("#rail-tab-shell-action")!;
+
+    expect(action.disabled).toBe(false);
+    act(() => action.click());
+
+    expect(railPanelContextMock.activate).toHaveBeenCalledWith(expect.objectContaining({ theaterId: "theater-a" }));
     expect(container.querySelector("#rail-panel-repository")).not.toBeNull();
     expect(action.getAttribute("role")).toBe("button");
     expect(action.hasAttribute("aria-selected")).toBe(false);
@@ -505,9 +517,9 @@ describe("Right Rail hover-reveal header", () => {
   });
 });
 
-function renderRail(): void {
+function renderRail(theaterId: string | null = null): void {
   act(() => {
-    root.render(<RightRail theaterId={null} api={{} as never} />);
+    root.render(<RightRail theaterId={theaterId} api={{} as never} />);
   });
 }
 

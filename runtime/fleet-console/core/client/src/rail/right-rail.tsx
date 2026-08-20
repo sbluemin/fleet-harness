@@ -596,6 +596,7 @@ interface RailIconProps {
 function RailIcon({ panel, context, language, isActive }: RailIconProps) {
   const handleClick = useCallback(() => {
     if (panel.activate) {
+      if (context.theaterId === null) return;
       panel.activate(context);
       return;
     }
@@ -612,6 +613,7 @@ function RailIcon({ panel, context, language, isActive }: RailIconProps) {
       role={panel.activate ? "button" : "tab"}
       aria-selected={panel.activate ? undefined : isActive}
       aria-label={title}
+      disabled={panel.activate !== undefined && context.theaterId === null}
       title={title}
       onClick={handleClick}
     >
