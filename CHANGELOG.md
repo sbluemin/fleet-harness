@@ -5,6 +5,41 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.70.0] - 2026-08-20
+
+### fleet-cli
+
+#### Added
+- Replay Grok's own prior reasoning across a tool round-trip, so the model no longer re-derives thinking it already did. Measured against xAI's wire, the following turn spends about half the reasoning tokens.
+
+#### Changed
+- A workflow stage no longer has to name a gateway model. Stages that name none run on the session's own model, and a stage may pin an identity through `agentType` again; only a model value that would kill the run at dispatch is still refused. Naming a gateway identity remains required for `Agent` delegation.
+- Send Grok turns to the endpoint the official Grok CLI uses. It is the pool an xAI subscription is built around, and it holds a steadier worst case than xAI's shared API, which refuses a turn outright when it is full.
+- Tell that endpoint the version of the Grok CLI actually installed on this machine, read from the installation itself. The gateway used to claim a version fixed in its own source, which only ages as that endpoint raises the version it accepts.
+
+#### Fixed
+- Codex turns now reuse the prompt cache instead of paying for the whole conversation again. The gateway sent no session identity, so OpenAI routed each turn to a different machine and only about 4 in 10 turns found their own cached prefix; naming the session lifts that to better than 9 in 10 and cut the input tokens one measured run billed by 71 percent.
+- Retry a Grok turn that xAI refused for capacity, and name the refusal an overload when the retry is refused too. xAI announces it with an empty error type and code, so the gateway read it as a plain API error, never retried it, and ended the turn on a message that only asked you to try again in a few minutes.
+
+### fleet-console
+
+#### Added
+- Choose which endpoint Grok turns use, in Settings under AI Gateway next to the xAI models. Chat Proxy is the default and is what the official Grok CLI uses; Direct is xAI's own API. Both draw on the same subscription, and a turn always stays on the one you pick.
+- Replay Grok's own prior reasoning across a tool round-trip, so the model no longer re-derives thinking it already did. Measured against xAI's wire, the following turn spends about half the reasoning tokens.
+
+#### Changed
+- Session Analyst model names in the picker now use the same mono type, size, and glyph-column indent as the canvas context menu.
+- Pull, Push, and Stash report their outcome on the button itself instead of a banner that pushed the Repository panel down: the icon turns into a check, a small bubble names how many commits moved, and a failed attempt leaves a marker whose message reopens on hover.
+- Move Shell creation from the canvas context menu and expandable right rail panel to a direct right rail action that creates one Shell Operation per Theater on the canvas. Pressing the action again focuses the existing panel. The Shell caption shows its Theater name.
+- Send Grok turns to the endpoint the official Grok CLI uses by default, and tell it the version of the Grok CLI actually installed on this machine. The gateway used to claim a version fixed in its own source, which only ages as that endpoint raises the version it accepts.
+
+#### Fixed
+- Codex turns now reuse the prompt cache instead of paying for the whole conversation again. The gateway sent no session identity, so OpenAI routed each turn to a different machine and only about 4 in 10 turns found their own cached prefix; naming the session lifts that to better than 9 in 10 and cut the input tokens one measured run billed by 71 percent.
+- Retry a Grok turn that xAI refused for capacity, and name the refusal an overload when the retry is refused too. xAI announces it with an empty error type and code, so the gateway read it as a plain API error, never retried it, and ended the turn on a message that only asked you to try again in a few minutes.
+
+#### Removed
+- Drop the Alerts panel from the right rail. Operation attention still shows on the left list and the mobile Alerts tab.
+
 ## [1.69.0] - 2026-08-20
 
 ### fleet-cli
