@@ -229,9 +229,10 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__model-chip[aria-expanded="true"] .session-analyst__model-chip-label { color: var(--brass); }
 .session-analyst__model-chip-caret { flex: none; color: var(--text-tertiary); font-size: var(--t-2xs); }
 .session-analyst__model-menu { right: auto; width: 216px; max-width: calc(100vw - 16px); max-height: 520px; overflow-y: auto; }
-.session-analyst__model-row { display: flex; align-items: center; justify-content: space-between; gap: 7px; width: 100%; border: 0; border-radius: var(--radius-xs); background: transparent; color: var(--text-secondary); padding: 7px var(--space-2); font-family: inherit; font-size: var(--t-md); font-weight: var(--weight-medium); text-align: left; cursor: pointer; }
-.session-analyst__model-row:hover, .session-analyst__model-row:focus-visible { background: color-mix(in oklch, var(--ink-mid) 55%, transparent); color: var(--text-primary); }
-.session-analyst__model-row[aria-checked="true"] { color: var(--text-primary); }
+/* 모델 행은 우클릭 실행 메뉴와 같은 .operation-launch-variant-row(mono / --t-xs)다.
+   표식이 없으므로 캡션 글리프(16px)+간격(6px)만큼 들여 글자 열을 머리글과 맞춘다. */
+.session-analyst__model-menu .operation-launch-variant-row { padding-left: calc(var(--space-2) + 16px + 6px); }
+.session-analyst__model-menu .operation-launch-variant-row[aria-checked="true"] { color: var(--text-primary); }
 .session-analyst__model-check { color: var(--brass); font-size: var(--t-xs); }
 .session-analyst__effort { display: inline-flex; min-width: 0; }
 .session-analyst__effort[inert] { opacity: .42; }
