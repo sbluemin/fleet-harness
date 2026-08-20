@@ -50,6 +50,9 @@ describe("gateway model guard — remind", () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain("gateway_models");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("subagent_type");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.model");
+    // 핀이 선택이 된 뒤에도 로스터 조회는 핀의 조건이다 — 기억한 이름은 여전히 해석된다는
+    // 증거가 아니다. 워크플로우 스테이지의 두 핀 철자가 그 조회에 함께 묶여 있어야 한다.
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.agentType");
   });
 
   // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 규약은 실려야 한다.

@@ -19,10 +19,12 @@ import { readFileSync } from "node:fs";
 
 // 모델에게 주는 지시이므로 영어로 쓴다.
 const TURN_REMINDER = [
-  "Before any Agent run leaves the host, call gateway_models and pin an identity from what it reports —",
-  "allowances move while work is in flight. Agent: subagent_type = the fleet:* name.",
-  "A Workflow stage may stay on the host model; when you do move one, opts.model takes the modelId with the",
-  "claude-gateway-- prefix and opts.agentType takes the fleet:* name. The spellings are never interchangeable.",
+  "Call gateway_models before a run leaves the host and pin from what that call reports — allowances and the",
+  "roster itself move while work is in flight, so a remembered name is not evidence that it still resolves.",
+  "Agent: subagent_type = the fleet:* name, always.",
+  "A Workflow stage may stay on the host model; when you do move one, pin it from that same lookup —",
+  "opts.model takes the modelId with the claude-gateway-- prefix, opts.agentType takes the fleet:* name.",
+  "The spellings are never interchangeable.",
 ].join(" ");
 
 const IN_FLIGHT_CONTRACT = [
