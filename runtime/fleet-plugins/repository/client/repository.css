@@ -1712,6 +1712,14 @@
   border-left: 1px solid var(--hairline-strong);
   background: var(--ink-veil);
 }
+/* 동사 실패 문면은 한 마디가 아니라 조치를 담은 문장이라 한 뼘 넓게 서고, 테두리는 신호 채널을 쓴다 —
+   같은 부품이지만 성공(중립)과 실패(coral)가 색으로 갈린다. */
+.repository-identity .repository-verb-button .repository-sync-hint { max-width: 264px; }
+.repository-identity .repository-sync-hint.is-error { border-color: color-mix(in oklab, var(--coral) 45%, transparent); }
+.repository-identity .repository-sync-hint.is-error::before {
+  border-top-color: color-mix(in oklab, var(--coral) 45%, transparent);
+  border-left-color: color-mix(in oklab, var(--coral) 45%, transparent);
+}
 /* 자동 노출이 물러난 뒤에도 다음 동기화까지 hover·포커스로 같은 한 마디를 다시 열 수 있다. */
 .repository-sync-hint.is-open,
 .repository-sync-button:hover .repository-sync-hint,
@@ -1776,7 +1784,9 @@
 }
 
 /* ═══ Fork 워크벤치 — 툴바 동사(Pull/Push/Stash) ══════════════════════════ */
-.repository-verb-cluster { display: inline-flex; gap: 4px; margin-left: 4px; }
+/* 동사 묶음은 span이라 `.repository-identity span`(0,1,1)의 overflow:hidden을 물려받는다 — 그대로 두면
+   버튼 아래로 여는 결과 말풍선이 버튼 줄 높이에서 잘려 아예 보이지 않는다. 같은 스코프로 되돌린다. */
+.repository-identity .repository-verb-cluster { display: inline-flex; overflow: visible; gap: 4px; margin-left: 4px; }
 .repository-verb-button { position: relative; }
 .repository-verb-button:disabled { opacity: 0.45; cursor: default; }
 .repository-verb-count {

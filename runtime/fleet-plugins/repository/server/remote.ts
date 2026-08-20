@@ -85,6 +85,30 @@ function writeRemoteFailure(
 }
 
 /**
+ * 동사의 결과를 "몇 커밋"이라는 실질로 돌려주기 위한 보조 계수 — 실패하면 null을 돌려
+ * 성공한 동사를 절대 실패로 뒤집지 않는다. range는 서버가 만든 sha 또는 고정 리터럴이라
+ * 옵션처럼 보이는 입력이 될 수 없다.
+ */
+async function countCommits(gitCwd: string, range: string): Promise<number | null> {
+  try {
+    const raw = (await runGit(["rev-list", "--count", range], { cwd: gitCwd })).stdout.trim();
+    const count = Number.parseInt(raw, 10);
+    return Number.isInteger(count) && count >= 0 ? count : null;
+  } catch {
+    return null;
+  }
+}
+
+async function headSha(gitCwd: string): Promise<string | null> {
+  try {
+    const sha = (await runGit(["rev-parse", "HEAD"], { cwd: gitCwd })).stdout.trim();
+    return /^[0-9a-f]{40}$/.test(sha) ? sha : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Push — 현재 브랜치를 자기 upstream(없으면 기본 원격에 -u)으로만 민다.
  * 강제 푸시·refspec 재지정은 이 표면에 존재하지 않는다.
  */
@@ -101,6 +125,8 @@ export async function handleRepositoryPush(
     const remote = upstreamRemote && upstreamRemote !== "." ? upstreamRemote : await resolveDefaultRemote(gitCwd);
     if (!remote) throw new NoRemoteError();
     const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
+    // 보낸 커밋 수는 push 전에만 셀 수 있다 — 뒤에 세면 upstream이 이미 따라잡아 항상 0이 된다.
+    const sent = upstreamRemote ? await countCommits(gitCwd, "@{upstream}..HEAD") : null;
     await runGit([
       ...NETWORK_HARDENING_ARGS,
       ...credentialArgs,
@@ -112,7 +138,7 @@ export async function handleRepositoryPush(
       remote,
       `refs/heads/${branch}:refs/heads/${branch}`,
     ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
-    ctx.host.http.writeJson(res, 200, { ok: true, remote, branch });
+    ctx.host.http.writeJson(res, 200, { ok: true, remote, branch, ...(sent === null ? {} : { sent }) });
   } catch (error) {
     writeRemoteFailure(res, ctx, error, classifyPushError);
   }
@@ -134,6 +160,7 @@ export async function handleRepositoryPull(
     const upstreamRemote = (await runGit(["config", "--get", `branch.${branch}.remote`], { cwd: gitCwd, allowExitCodes: [1] })).stdout.trim();
     if (!upstreamRemote || upstreamRemote === ".") { ctx.host.http.writeJson(res, 422, { error: "no_upstream" }); return; }
     const credentialArgs = await resolveCredentialHelperArgs(gitCwd);
+    const before = await headSha(gitCwd);
     await runGit([
       ...NETWORK_HARDENING_ARGS,
       ...credentialArgs,
@@ -143,7 +170,8 @@ export async function handleRepositoryPull(
       "--upload-pack=git-upload-pack",
       "--no-recurse-submodules",
     ], { cwd: gitCwd, timeoutMs: REMOTE_TIMEOUT_MS });
-    ctx.host.http.writeJson(res, 200, { ok: true, remote: upstreamRemote, branch });
+    const received = before === null ? null : await countCommits(gitCwd, `${before}..HEAD`);
+    ctx.host.http.writeJson(res, 200, { ok: true, remote: upstreamRemote, branch, ...(received === null ? {} : { received }) });
   } catch (error) {
     writeRemoteFailure(res, ctx, error, classifyPullError);
   }

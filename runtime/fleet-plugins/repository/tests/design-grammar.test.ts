@@ -184,6 +184,21 @@ describe("Repository design grammar", () => {
     expect(blockOf(".repository-sync-dot")).toContain("var(--coral)");
   });
 
+  // 2026-08-20 재가 — 동사 결과도 말풍선을 쓴다. 실패는 신호 채널(coral)로 갈리고 화살표까지 같이 물든다.
+  // 실패 문면은 한 마디가 아니라 조치 문장이라 동사 버튼에서만 한 뼘 넓게 선다.
+  it("splits the verb outcome hint by signal channel and widens it for actionable failures", () => {
+    const errorHint = blockOf(".repository-identity .repository-sync-hint.is-error");
+    expect(errorHint).toContain("var(--coral)");
+    expect(errorHint).not.toContain("var(--brass)");
+    const arrow = blockOf(".repository-identity .repository-sync-hint.is-error::before");
+    expect(arrow).toContain("border-top-color");
+    expect(arrow).toContain("border-left-color");
+    expect(blockOf(".repository-identity .repository-verb-button .repository-sync-hint")).toContain("max-width: 264px");
+    // 묶음이 span이라 `.repository-identity span`의 overflow:hidden을 물려받는다 — 같은 스코프로 되돌리지
+    // 않으면 버튼 아래로 여는 말풍선이 버튼 줄에서 잘려 결과가 아예 보이지 않는다(실측 확인된 회귀).
+    expect(blockOf(".repository-identity .repository-verb-cluster")).toContain("overflow: visible");
+  });
+
   it("keeps workspace section header buttons within the interaction grammar", () => {
     const sectionHead = blockOf(".repository-ws-section-head");
     expect(sectionHead).toContain("display: flex");

@@ -83,6 +83,60 @@ describe("Repository sync client contracts", () => {
     expect(railPanelSource).toContain("externalRefreshToken={historyExternalRefreshToken}");
   });
 
+  // 2026-08-20 재가 — 툴바 동사(Pull/Push/Stash)의 결과에서 배너를 원천 제거했다. 성공·실패 모두
+  // 그 동사의 버튼 자리에서 답한다(✓ 체류 · 말풍선 · coral 점). verbNotice/토스트가 되살아나면
+  // "origin에서 canary를 pull했습니다" 같은 서술 블록이 다시 패널 본문을 밀어낸다.
+  it("answers every toolbar verb on its own button, never in a banner", () => {
+    expect(railPanelSource).not.toContain("verbNotice");
+    expect(railPanelSource).not.toContain("setVerbNotice");
+    expect(railPanelSource).not.toContain("repository.verb.pulled\"");
+    expect(railPanelSource).not.toContain("repository.verb.pushed\"");
+    // 토스트 렌더는 sync 하나만 남는다 — 동사 쪽 두 번째 렌더가 생기면 배너가 부활한 것이다.
+    expect(railPanelSource.split("repository-sync-toast").length - 1).toBe(1);
+    expect(railPanelSource).toContain("showVerbOutcome");
+    expect(railPanelSource).toContain("VerbToolbarButton");
+    expect(railPanelSource).toContain("repository-sync-glyph repository-sync-glyph-settled");
+  });
+
+  // 성공 문면은 "무엇을 했다"가 아니라 "몇 커밋이 움직였다"여야 버튼 곁의 ahead/behind 계기와 함께 읽힌다.
+  // 서버가 수를 세지 못한 경우를 0으로 단정하면 갱신을 "이미 최신 상태"라고 거짓말하게 된다.
+  it("carries the substantive commit count, and never reads an unknown count as zero", () => {
+    const start = railPanelSource.indexOf("function verbCountText");
+    const body = railPanelSource.slice(start, railPanelSource.indexOf("\n}", start));
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(body).toContain("repository.verb.pulledResult");
+    expect(body).toContain("repository.verb.pushedResult");
+    expect(body).toContain("repository.verb.upToDate");
+    expect(body).toContain("repository.verb.pulledCount_one");
+    expect(body).toContain("repository.verb.pushedCount_other");
+    expect(body).toContain("count === null");
+  });
+
+  // 한 시도의 답은 ✓와 말풍선 두 표면에 나뉜다. 새 시도가 둘을 함께 걷지 않으면 앞 시도의 실패 문면과
+  // 뒤 시도의 성공 ✓가 겹친다. 저장소 전환·언마운트도 같은 두 타이머를 걷어야 한다.
+  it("clears both verb surfaces before the next attempt, on transition, and on unmount", () => {
+    expect(railPanelSource).toContain("clearVerbSurfacing();");
+    const clearStart = railPanelSource.indexOf("const clearVerbSurfacing");
+    const clearBody = railPanelSource.slice(clearStart, railPanelSource.indexOf("}, []);", clearStart));
+    expect(clearBody).toContain("setVerbOutcome(null)");
+    expect(clearBody).toContain("setVerbSettled(false)");
+    expect(clearBody).toContain("setVerbHinting(false)");
+    for (const timer of ["verbSettledTimerRef", "verbHintTimerRef"]) {
+      const unmountStart = railPanelSource.indexOf("useEffect(() => () => {");
+      expect(railPanelSource.slice(unmountStart, railPanelSource.indexOf("}, []);", unmountStart)), timer).toContain(timer);
+      const transitionStart = railPanelSource.indexOf("const transitionRepository");
+      const transitionEnd = railPanelSource.indexOf("setChangedFiles({ kind: \"loading\" })", transitionStart);
+      expect(railPanelSource.slice(transitionStart, transitionEnd), timer).toContain(timer);
+    }
+  });
+
+  // 실패 문면은 조치를 담고 있어 성공보다 오래 머문다. 스크린 리더에도 같은 답이 가야 한다.
+  it("keeps the verb outcome announced and its failure text longer-lived than success", () => {
+    expect(railPanelSource).toContain("const VERB_ERROR_HINT_MS");
+    expect(railPanelSource).toContain("outcome.kind === \"error\" ? VERB_ERROR_HINT_MS : SYNC_HINT_MS");
+    expect(railPanelSource).toContain("{verbOutcome ? verbOutcome.text : syncHinting ? t(\"repository.sync.upToDate\") : \"\"}");
+  });
+
   it("captures external-refresh scroll before loading and restores it with the new rows", () => {
     const refreshStart = historyPanelSource.indexOf("const externalRefreshRequested");
     const capture = historyPanelSource.indexOf("const preservedExternalScrollTop", refreshStart);
