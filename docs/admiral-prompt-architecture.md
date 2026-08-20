@@ -73,7 +73,10 @@ stage only taught the host to fill every stage with one value — the spread it 
 produce, spelled as compliance. What survives is the failure a host cannot recover from:
 a `model` value that is neither a lineage alias nor a `claude-gateway--` modelId kills
 every branch at dispatch, so it is refused before the run rather than after. `agentType`
-is a stage's other legitimate pin and is no longer refused.
+is a stage's other legitimate pin and is refused only when it carries that same modelId —
+the two spellings swapped the other way, which no registry resolves. A built-in type such
+as `general-purpose` passes, so the check names the modelId rather than demanding a
+`fleet:` prefix.
 
 Two properties of the harness make this shape necessary, both measured on
 Claude Code 2.1.235:

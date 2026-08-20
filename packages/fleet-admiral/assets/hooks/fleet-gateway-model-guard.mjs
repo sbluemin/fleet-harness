@@ -52,6 +52,7 @@ const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
 const MODEL_VALUE_RE = /model:\s*['"]([^'"]+)['"]/g;
+const AGENT_TYPE_VALUE_RE = /agentType:\s*['"]([^'"]+)['"]/g;
 
 function block(message) {
   process.stderr.write(`[fleet-gateway-model-guard] ${message}\n`);
@@ -99,6 +100,24 @@ function assertWorkflowModelValues(script) {
   }
 }
 
+/**
+ * 이름 자리에 들어간 modelId. 두 철자를 맞바꾼 나머지 절반이다.
+ *
+ * `fleet:` 접두만 통과시키지는 않는다 — `general-purpose`처럼 이 저장소가 싣지 않은 내장
+ * agentType도 그 자리의 정당한 값이라, 접두로 거르면 멀쩡한 스크립트가 막힌다. modelId만
+ * 골라 막는다: 그 값은 어떤 레지스트리에도 이름으로 등록되어 있지 않아 반드시 죽는다.
+ */
+function assertWorkflowAgentTypeValues(script) {
+  for (const match of script.matchAll(AGENT_TYPE_VALUE_RE)) {
+    const value = match[1];
+    if (!value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
+    block(
+      `opts.agentType 값이 올바르지 않습니다: "${value}". modelId는 opts.model 자리이고, ` +
+        "agentType에는 gateway_models가 보고한 fleet:* 이름을 씁니다."
+    );
+  }
+}
+
 /** 검사 대상 스크립트 원문. 볼 수 없는 호출 형태는 undefined를 돌려준다. */
 function resolveWorkflowScript(toolInput) {
   if (typeof toolInput.script === "string" && toolInput.script.length > 0) return toolInput.script;
@@ -129,6 +148,7 @@ function gateWorkflowDelegation(toolInput) {
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
   assertWorkflowModelValues(script);
+  assertWorkflowAgentTypeValues(script);
   process.exit(0);
 }
 

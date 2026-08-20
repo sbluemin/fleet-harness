@@ -135,9 +135,21 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(status).toBe(0);
   });
 
-  // agentType은 스테이지의 또 다른 정당한 핀이다. 값 검사는 model 자리에만 건다.
+  // agentType은 스테이지의 또 다른 정당한 핀이다. 내장 타입도 그 자리의 정당한 값이므로
+  // fleet: 접두를 요구하지 않는다.
   it("passes agentType usage in a dynamic workflow", () => {
-    expect(gateWorkflow({ script: `agent("x", { agentType: "fleet:xai-grok-4-6-low" })` }).status).toBe(0);
+    for (const value of ["fleet:xai-grok-4-6-low", "general-purpose", "code-reviewer"]) {
+      expect(gateWorkflow({ script: `agent("x", { agentType: "${value}" })` }).status, value).toBe(0);
+    }
+  });
+
+  // 두 철자를 맞바꾼 나머지 절반. modelId는 어떤 레지스트리에도 이름으로 없어 반드시 죽는다.
+  it("blocks a modelId written into the agentType slot", () => {
+    const { status, stderr } = gateWorkflow({
+      script: `agent("x", { agentType: "claude-gateway--codex--gpt-5.6-sol-fast" })`,
+    });
+    expect(status).toBe(2);
+    expect(stderr).toContain("opts.model");
   });
 
   // 로스터 이름이 model 자리에 들어가면 전 분기가 디스패치 즉시 죽는다. 그 실패만 미리 잡는다.
