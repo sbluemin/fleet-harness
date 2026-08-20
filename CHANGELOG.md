@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.69.0] - 2026-08-20
+
+### fleet-cli
+
+#### Added
+- Offer Cursor's GPT-5.6 Sol, Terra, and Luna, Gemini 3.7 Flash, and Kimi K3 as gateway models, each with the reasoning rungs Cursor publishes for it.
+
+### fleet-console
+
+#### Added
+- Offer Cursor's GPT-5.6 Sol, Terra, and Luna, Gemini 3.7 Flash, and Kimi K3 as gateway models, each with the reasoning rungs Cursor publishes for it.
+
 ## [1.68.0] - 2026-08-19
 
 ### fleet-cli

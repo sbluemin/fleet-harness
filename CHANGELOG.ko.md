@@ -5,6 +5,18 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.69.0] - 2026-08-20
+
+### fleet-cli
+
+#### Added
+- Cursor의 GPT-5.6 Sol·Terra·Luna, Gemini 3.7 Flash, Kimi K3를 게이트웨이 모델로 제공하며, 각 모델은 Cursor가 공개한 추론 단계를 그대로 따릅니다.
+
+### fleet-console
+
+#### Added
+- Cursor의 GPT-5.6 Sol·Terra·Luna, Gemini 3.7 Flash, Kimi K3를 게이트웨이 모델로 제공하며, 각 모델은 Cursor가 공개한 추론 단계를 그대로 따릅니다.
+
 ## [1.68.0] - 2026-08-19
 
 ### fleet-cli
