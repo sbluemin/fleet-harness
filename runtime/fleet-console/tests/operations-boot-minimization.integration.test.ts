@@ -1198,7 +1198,8 @@ describe("Operations boot minimization", () => {
     apiMocks.fetchOperations.mockResolvedValue([operation("first"), operation("launched", 2)]);
 
     await act(async () => {
-      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
+      // Analyze 비승계는 생성 경로 계약이다. Shell 런치는 Theater 싱글톤이라 기존 패널을 재사용한다.
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "agent", title: "Agent" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
       launch.resolve({ id: "launched" });
       await Promise.resolve();
       await Promise.resolve();
@@ -1236,7 +1237,7 @@ describe("Operations boot minimization", () => {
     );
     await act(async () => {
       setCompanionOperationId("a1");
-      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
+      canvasMocks.onLaunchAtGeometry?.("terminal", { type: "agent", title: "Agent" }, { x: 0, y: 0, width: 640, height: 400, zIndex: 2 });
       await Promise.resolve();
     });
     await act(async () => {
@@ -1265,7 +1266,11 @@ describe("Operations boot minimization", () => {
     registryMocks.plugins = [{ id: "terminal", launch: vi.fn(() => launch.promise) }];
     await bootApp([]);
     const clickGeometry = { x: 480, y: 240, width: 560, height: 360, zIndex: 4 };
-    apiMocks.fetchOperations.mockResolvedValue([operation("launched")]);
+    // Shell 런치는 생성 전에 서버 목록을 다시 읽는다. 그 조회가 생성분을 미리 주면 재사용으로 접혀
+    // 클릭 좌표를 심지 않는다.
+    apiMocks.fetchOperations
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([operation("launched")]);
 
     await act(async () => {
       canvasMocks.onLaunchAtGeometry?.("terminal", { type: "shell", title: "Shell" }, clickGeometry);
@@ -1289,7 +1294,9 @@ describe("Operations boot minimization", () => {
     await bootApp([]);
     const canvasPoint = { x: 800, y: 400 };
     const expected = { x: 520, y: 220, width: 560, height: 360 };
-    apiMocks.fetchOperations.mockResolvedValue([operation("launched")]);
+    apiMocks.fetchOperations
+      .mockResolvedValueOnce([])
+      .mockResolvedValue([operation("launched")]);
 
     await act(async () => {
       canvasMocks.onLaunchKind?.("terminal", { type: "shell", title: "Shell" }, canvasPoint);
