@@ -44,17 +44,27 @@ export interface RailSearchResult {
 
 export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;
 
-export interface RailPanelDescriptor {
+interface RailContributionBase {
   readonly id: string;
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);
-  /** 패널을 펼치는 대신 즉시 실행하는 rail 동작. */
-  readonly activate?: (ctx: RailPanelContext) => void;
-  readonly render?: (ctx: RailPanelContext) => ReactNode;
-  readonly search?: RailSearchProvider;
   readonly side?: "right";
+}
+
+export type RailPanelDescriptor = RailContributionBase & ({
+  readonly render: (ctx: RailPanelContext) => ReactNode;
+  readonly activate?: never;
+  readonly search?: RailSearchProvider;
   /** @deprecated Core ignores this field; every panel is Theater-root scoped. */
   readonly pathAware?: boolean;
   readonly defaultWidth?: number;
   readonly preferredExtraWidth?: number;
-}
+} | {
+  /** 패널을 펼치는 대신 즉시 실행하는 rail 동작. */
+  readonly activate: (ctx: RailPanelContext) => void;
+  readonly render?: never;
+  readonly search?: never;
+  readonly pathAware?: never;
+  readonly defaultWidth?: never;
+  readonly preferredExtraWidth?: never;
+});
