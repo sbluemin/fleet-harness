@@ -33,7 +33,7 @@ import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompani
 import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
 import { blocksOperationsShortcutWhileEditing } from "../operations-editing-shortcut-guard.js";
 import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
-import { findTheaterShellId, isTheaterShellLaunch, theaterShellDecisionRequiresHydration } from "../theater-shell.js";
+import { findTheaterShellId, isTheaterShellLaunch } from "../theater-shell.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";
@@ -958,9 +958,14 @@ async function launchViaPlugin(
   if (inflightTheaterShellLaunches.has(theaterId)) return;
   inflightTheaterShellLaunches.add(theaterId);
   try {
-    // 부트 중 operations는 빈 배열이다. 그 상태를 "Shell 없음"으로 읽으면 복원분 옆에 하나를 더 만든다.
-    if (theaterShellDecisionRequiresHydration(kind, getState().operationsHydrated)) {
-      await fetchOperations(null).then(hydrateInitialOperations).catch(() => {});
+    // SSE `operation:changed`는 이미 아는 id만 패치한다. 다른 탭이 만든 Shell은 목록에 안 들어오므로
+    // 결정 직전에 서버 목록을 다시 읽는다. 부트(미hydrate)는 초기 합치기, 그 다음부터는 교체다.
+    try {
+      const operations = await fetchOperations(null);
+      if (getState().operationsHydrated) hydrateOperations(operations);
+      else hydrateInitialOperations(operations);
+    } catch {
+      // 조회 실패 시 로컬 스냅샷으로 결정한다.
     }
     const snapshot = getState();
     const existingId = findTheaterShellId(snapshot.operations, theaterId, {
