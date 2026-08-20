@@ -143,6 +143,16 @@ describe("gateway model guard — Workflow delegation", () => {
     }
   });
 
+  // 콜론 앞 공백도 유효한 프로퍼티 표기다. 정규 표기만 아는 검사는 그 한 칸으로 비켜간다.
+  it("reads a property written with whitespace before the colon", () => {
+    for (const script of [
+      `agent("x", { agentType : "claude-gateway--codex--gpt-5.6-sol-fast" })`,
+      `agent("x", { model : "codex--gpt-5.6-sol-fast" })`,
+    ]) {
+      expect(gateWorkflow({ script }).status, script).toBe(2);
+    }
+  });
+
   // 두 철자를 맞바꾼 나머지 절반. modelId는 어떤 레지스트리에도 이름으로 없어 반드시 죽는다.
   it("blocks a modelId written into the agentType slot", () => {
     const { status, stderr } = gateWorkflow({

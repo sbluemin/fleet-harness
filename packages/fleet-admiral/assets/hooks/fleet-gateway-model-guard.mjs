@@ -51,8 +51,9 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-const MODEL_VALUE_RE = /model:\s*['"]([^'"]+)['"]/g;
-const AGENT_TYPE_VALUE_RE = /agentType:\s*['"]([^'"]+)['"]/g;
+// 콜론 앞 공백은 유효한 프로퍼티 표기다. 정규식이 정규 표기만 알면 그 한 칸이 검사를 비켜간다.
+const MODEL_VALUE_RE = /model\s*:\s*['"]([^'"]+)['"]/g;
+const AGENT_TYPE_VALUE_RE = /agentType\s*:\s*['"]([^'"]+)['"]/g;
 
 function block(message) {
   process.stderr.write(`[fleet-gateway-model-guard] ${message}\n`);
