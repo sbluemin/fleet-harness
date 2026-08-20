@@ -139,6 +139,13 @@ describe("legacy active Repository panel migration", () => {
     expect(getRailStoreSnapshot().activeRailPanelId).toBe(id);
     expect(storage.setItem).not.toHaveBeenCalled();
   });
+
+  it("closes a stored Alerts panel and drops the persisted id", async () => {
+    const storage = stubStorage("alerts");
+    const { getRailStoreSnapshot } = await freshStore();
+    expect(getRailStoreSnapshot().activeRailPanelId).toBeNull();
+    expect(storage.values.has("fleet-console.rail.activePanelId")).toBe(false);
+  });
 });
 
 describe("rail chrome state", () => {

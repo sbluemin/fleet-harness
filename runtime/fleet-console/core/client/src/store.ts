@@ -850,30 +850,6 @@ export function dismissNotificationsForOperation(operationId: string): void {
   setState({ operationNotifications });
 }
 
-export function setGlobalMute(globalMute: boolean): void {
-  const notificationPreferences = { ...state.notificationPreferences, globalMute };
-  writeStoredNotificationPreferences(notificationPreferences);
-  setState({ notificationPreferences });
-}
-
-export function setDnd(dnd: boolean): void {
-  const notificationPreferences = { ...state.notificationPreferences, dnd };
-  writeStoredNotificationPreferences(notificationPreferences);
-  setState({ notificationPreferences });
-}
-
-export function toggleTheaterMute(theaterId: string): void {
-  const mutedTheaterIds = { ...state.notificationPreferences.mutedTheaterIds };
-  if (mutedTheaterIds[theaterId]) {
-    delete mutedTheaterIds[theaterId];
-  } else {
-    mutedTheaterIds[theaterId] = true;
-  }
-  const notificationPreferences = { ...state.notificationPreferences, mutedTheaterIds };
-  writeStoredNotificationPreferences(notificationPreferences);
-  setState({ notificationPreferences });
-}
-
 export function activeTheater(current: ConsoleState): TheaterInfo | null {
   return current.theaters.find((theater) => theater.id === current.activeTheaterId) ?? null;
 }
@@ -1038,18 +1014,6 @@ function writeStoredWhatsNewSeenVersion(version: string): void {
     window.localStorage.setItem(WHATS_NEW_SEEN_VERSION_STORAGE_KEY, version);
   } catch {
     // 저장소가 막힌 환경에서는 in-memory watermark만 유지한다.
-  }
-}
-
-function writeStoredNotificationPreferences(preferences: NotificationPreferences): void {
-  if (typeof window === "undefined") return;
-  try {
-    window.localStorage.setItem(NOTIFICATION_PREFERENCES_STORAGE_KEY, JSON.stringify({
-      version: NOTIFICATION_PREFERENCES_VERSION,
-      preferences,
-    }));
-  } catch {
-    // 저장소가 막힌 환경에서는 현재 세션 상태만 유지한다.
   }
 }
 

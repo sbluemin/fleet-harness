@@ -127,6 +127,12 @@ function readStoredPanelId(): string | null {
       } catch { /* best-effort migration */ }
       return "repository";
     }
+    if (stored === "alerts") {
+      try {
+        localStorage.removeItem(PREFS_ACTIVE_PANEL);
+      } catch { /* best-effort migration */ }
+      return null;
+    }
     return stored;
   } catch { return null; }
 }
