@@ -2,6 +2,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncE
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -21,7 +22,7 @@ import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 interface RightRailProps {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
-  readonly onLaunchOperation?: (pluginId: string, type: string) => void;
+  readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
 }
 
 const MIN_PANEL_WIDTH = 240;

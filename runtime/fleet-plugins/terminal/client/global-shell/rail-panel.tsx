@@ -1,12 +1,15 @@
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
 import { getT } from "../i18n/index.js";
+
+const SHELL_LAUNCH_KIND = { id: "shell", type: "shell", title: "Shell" } as const satisfies OperationLaunchKind;
 
 export const globalShellPanel: RailPanelDescriptor = {
   id: "global-shell",
   title: (locale) => getT(locale)("terminal.kind.shell"),
   icon: TerminalGlyphIcon,
-  activate: (ctx: RailPanelContext) => ctx.launchOperation?.("terminal", "shell"),
+  activate: (ctx: RailPanelContext) => ctx.launchOperation?.("terminal", SHELL_LAUNCH_KIND),
 };
 
 function TerminalGlyphIcon() {

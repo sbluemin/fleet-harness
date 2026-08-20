@@ -9,7 +9,11 @@ describe("Shell rail launcher", () => {
 
     globalShellPanel.activate?.({ launchOperation } as unknown as RailPanelContext);
 
-    expect(launchOperation).toHaveBeenCalledWith("terminal", "shell");
+    expect(launchOperation).toHaveBeenCalledWith("terminal", {
+      id: "shell",
+      type: "shell",
+      title: "Shell",
+    });
     expect(globalShellPanel.render).toBeUndefined();
   });
 

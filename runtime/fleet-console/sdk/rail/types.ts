@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientApiCapability, ConsoleTheme } from "../plugin/types.js";
+import type { OperationLaunchKind } from "../operations/types.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
 export interface RailPathContext {
@@ -18,7 +19,7 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
-  readonly launchOperation?: (pluginId: string, type: string) => void;
+  readonly launchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }
