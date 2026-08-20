@@ -18,6 +18,7 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
+  readonly launchOperation?: (pluginId: string, type: string) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }
@@ -46,7 +47,9 @@ export interface RailPanelDescriptor {
   readonly id: string;
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);
-  readonly render: (ctx: RailPanelContext) => ReactNode;
+  /** 패널을 펼치는 대신 즉시 실행하는 rail 동작. */
+  readonly activate?: (ctx: RailPanelContext) => void;
+  readonly render?: (ctx: RailPanelContext) => ReactNode;
   readonly search?: RailSearchProvider;
   readonly side?: "right";
   /** @deprecated Core ignores this field; every panel is Theater-root scoped. */

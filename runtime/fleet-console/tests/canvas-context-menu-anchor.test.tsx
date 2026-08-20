@@ -187,7 +187,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
   });
 
-  it("omits role and plugin chrome while keeping Terminal Shell in a final Etc group", () => {
+  it("omits role and plugin chrome together with Terminal Shell", () => {
     const terminal: OperationCatalogPlugin = {
       id: "terminal",
       title: "Terminal",
@@ -201,22 +201,13 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
     expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Controls");
     expect(document.querySelector(".canvas-context-menu")?.textContent).not.toContain("Terminal");
-    const groupLabels = Array.from(document.querySelectorAll(".operation-launch-variant-caption")).map((node) => node.textContent?.trim());
-    expect(groupLabels).toEqual(["Etc"]);
-    const etcGlyph = document.querySelector(".operation-launch-provider-glyph--etc");
-    expect(etcGlyph?.querySelectorAll("circle")).toHaveLength(3);
-    expect(etcGlyph?.getAttribute("aria-hidden")).toBe("true");
+    expect(document.querySelector(".operation-launch-variant-caption")).toBeNull();
+    expect(document.querySelector(".operation-launch-provider-glyph--etc")).toBeNull();
 
     const order = Array.from(document.querySelectorAll("[data-operation-launch-kind]"))
       .map((node) => node.getAttribute("data-operation-launch-kind"));
-    expect(order).toEqual(["codex", "shell"]);
-    expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
-    expect(document.querySelectorAll(".theater-menu-divider")).toHaveLength(1);
-
-    renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
-      ...terminal,
-      kinds: [{ id: "shell", type: "shell", title: "Shell" }],
-    }]);
+    expect(order).toEqual(["codex"]);
+    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
     expect(document.querySelectorAll(".theater-menu-divider")).toHaveLength(0);
   });
 
@@ -270,16 +261,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
     act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     expect(activeKind()).toBe("claude-gateway");
 
-    // 실행할 수 없는 종류는 건너뛴다.
-    act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(activeKind()).toBe("shell");
-
-    // 끝에서 다시 처음으로 돈다.
+    // 실행할 수 없는 종류와 우클릭에서 제거된 Shell을 건너뛰고 처음으로 돈다.
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     expect(activeKind()).toBe("claude-gateway");
 
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    expect(activeKind()).toBe("shell");
+    expect(activeKind()).toBe("claude-gateway");
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
     expect(activeKind()).toBe("claude-gateway");
   });
@@ -405,14 +392,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const rows = document.querySelectorAll<HTMLButtonElement>(".canvas-context-menu-item");
     const asideText = () => document.querySelector(".canvas-context-menu-aside")?.textContent;
 
-    // 포인터로 열고 방향키로 옮기는 혼합 입력이 흔하다. Claude가 먼저, Shell은 Etc의 마지막 행이다.
-    act(() => rows[1]!.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    expect(rows).toHaveLength(1);
+    // Shell은 rail 실행으로 이동했으므로 우클릭 메뉴에는 Claude 행만 남는다.
     act(() => rows[0]!.focus());
-    // 가리키는 동안에는 포인터가 이겨 설명 없는 Shell 상태를 유지한다.
-    expect(asideText()).toBeUndefined();
+    expect(asideText()).toBe("Runs Claude Code with built-in Claude and enabled Gateway models");
 
     act(() => menu.dispatchEvent(new MouseEvent("mouseout", { bubbles: true, relatedTarget: document.body })));
-    // 포인터가 나가면 포커스가 짚고 있는 Claude 행의 설명이 다시 드러난다.
     expect(asideText()).toBe("Runs Claude Code with built-in Claude and enabled Gateway models");
   });
 
@@ -432,6 +417,8 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const menu = document.querySelector(".canvas-context-menu")!;
     expect(menu.getAttribute("aria-label")).toBe("Operation launcher");
     expect(document.querySelector(".canvas-context-menu-head")).toBeNull();
+    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
+    expect(document.querySelector(".operation-launch-provider-glyph--etc")).toBeNull();
   });
 
   it("gives the menu a valid ancestor for its menu items", () => {
@@ -563,8 +550,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
   });
 
-  it("keeps Terminal Shell below the model bands in the Etc group", () => {
-    // Terminal Shell은 모델 실행과 성격이 달라, 카탈로그 순서와 무관하게 마지막 Etc 그룹으로 간다.
+  it("removes Terminal Shell while preserving model bands", () => {
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
       ...gateway!,
@@ -573,12 +559,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const order = Array.from(document
       .querySelector(".canvas-context-menu")!
-      .querySelectorAll('[data-operation-launch-kind="shell"], .operation-launch-variant-caption, [data-launch-variant-row]'))
+      .querySelectorAll('.operation-launch-variant-caption, [data-launch-variant-row]'))
       .map((element) => element.getAttribute("data-launch-variant-row")
-        ?? element.getAttribute("data-operation-launch-kind")
         ?? `caption:${element.textContent?.trim()}`);
-    expect(order).toEqual(["caption:Claude", "fable", "caption:Etc", "shell"]);
-    expect(document.querySelector('[aria-label="Etc"] [data-operation-launch-kind="shell"]')).not.toBeNull();
+    expect(order).toEqual(["caption:Claude", "fable"]);
+    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
   });
 
   it("keeps a locked menu on one direct row per kind instead of an unusable model band", () => {
@@ -721,7 +706,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     }
   });
 
-  it("walks direct-launch rows and model rows as one arrow-key set", () => {
+  it("keeps model rows in the arrow-key set after removing Shell", () => {
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, [{
       ...gateway!,
@@ -729,16 +714,13 @@ describe("CanvasContextMenu launch kind attribute", () => {
     }]);
 
     const menu = document.querySelector<HTMLElement>(".canvas-context-menu")!;
-    const shell = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]')!;
     const model = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
 
-    // 두 종류의 행이 한 목록의 형제다. 모델이 먼저이고 Etc의 Shell이 마지막이어도 순환한다.
     act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
     expect(document.activeElement).toBe(model);
     pressFlyoutKey("ArrowDown");
-    expect(document.activeElement).toBe(shell);
-    pressFlyoutKey("ArrowUp");
     expect(document.activeElement).toBe(model);
+    expect(document.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
   });
 
   it("opens the effort submenu from a model row with ArrowRight, then restores focus with Escape", async () => {
@@ -788,20 +770,20 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
-  it("leaves kinds without variants on the existing direct-launch path", () => {
+  it("leaves non-Shell kinds without variants on the direct-launch path", () => {
     const onLaunchKind = vi.fn();
     const catalog: readonly OperationCatalogPlugin[] = [{
-      id: "terminal",
-      title: "Terminal",
-      kinds: [{ id: "shell", type: "shell", title: "Shell" }],
+      id: "tools",
+      title: "Tools",
+      kinds: [{ id: "notes", type: "notes", title: "Notes" }],
     }];
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, catalog, vi.fn(), false, onLaunchKind);
 
-    const shell = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="shell"]')!;
-    expect(shell.hasAttribute("aria-haspopup")).toBe(false);
-    expect(shell.querySelector(".operation-launch-menu-chevron")).toBeNull();
-    act(() => shell.click());
-    expect(onLaunchKind).toHaveBeenCalledWith("terminal", catalog[0]!.kinds[0]);
+    const notes = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="notes"]')!;
+    expect(notes.hasAttribute("aria-haspopup")).toBe(false);
+    expect(notes.querySelector(".operation-launch-menu-chevron")).toBeNull();
+    act(() => notes.click());
+    expect(onLaunchKind).toHaveBeenCalledWith("tools", catalog[0]!.kinds[0]);
   });
 
   it("marks the rendered menu box as the tour placement boundary", () => {

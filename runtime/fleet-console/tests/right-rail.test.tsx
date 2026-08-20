@@ -4,7 +4,7 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0 }));
+const railPanelContextMock = vi.hoisted(() => ({ themes: [] as unknown[], renderCount: 0, activate: vi.fn() }));
 
 vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
   BUILT_IN_RAIL_PANELS: [
@@ -42,7 +42,20 @@ vi.mock("../core/client/src/rail/built-in-panels.js", () => ({
 }));
 
 vi.mock("../core/client/src/rail/rail-registry.js", () => ({
-  useRailPanels: () => [],
+  useRailPanels: () => [
+    {
+      id: "shell-action",
+      title: "SHELL",
+      icon: "H",
+      activate: railPanelContextMock.activate,
+    },
+    {
+      id: "file-explorer",
+      title: "FILES",
+      icon: "F",
+      render: () => null,
+    },
+  ],
 }));
 
 vi.mock("../core/client/src/rail/use-codex-split-extra-width.js", () => ({
@@ -73,6 +86,7 @@ beforeEach(() => {
   setRailOverlayAlpha(100);
   railPanelContextMock.themes.length = 0;
   railPanelContextMock.renderCount = 0;
+  railPanelContextMock.activate.mockClear();
   setState({ connection: "live", connectionLostAt: null, activeTheme: "instrument" });
   container = document.createElement("div");
   document.body.replaceChildren(container);
@@ -142,6 +156,20 @@ describe("Right Rail panel context", () => {
 
     act(() => setState({ activeTheme: "carbon" }));
     expect(railPanelContextMock.themes.at(-1)).toBe("carbon");
+  });
+
+  it("runs action icons without opening a rail panel", () => {
+    renderRail();
+    const action = container.querySelector<HTMLButtonElement>("#rail-tab-shell-action")!;
+
+    act(() => action.click());
+
+    expect(railPanelContextMock.activate).toHaveBeenCalledWith(expect.objectContaining({ theaterId: null }));
+    expect(container.querySelector("#rail-panel-repository")).not.toBeNull();
+    expect(action.getAttribute("role")).toBe("button");
+    expect(action.hasAttribute("aria-selected")).toBe(false);
+    const icons = Array.from(container.querySelectorAll<HTMLElement>(".right-rail-ico"));
+    expect(icons.indexOf(action)).toBeLessThan(icons.indexOf(container.querySelector<HTMLElement>("#rail-tab-file-explorer")!));
   });
 });
 
