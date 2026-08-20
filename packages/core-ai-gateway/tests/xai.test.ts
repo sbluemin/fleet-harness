@@ -1028,6 +1028,10 @@ describe("Grok Responses stall watchdog", () => {
 });
 
 describe("Grok Responses retry", () => {
+  const CAPACITY_MESSAGE = "The model is currently at capacity due to high demand."
+    + " Please try again in a few minutes, or use a higher service tier for priority processing:"
+    + " https://docs.x.ai/developers/advanced-api-usage/priority-processing";
+
   function failed(type = "server_error", id = "r1"): CanonicalResponseEvent {
     return {
       type: "response.failed",
@@ -1156,6 +1160,87 @@ describe("Grok Responses retry", () => {
     if (!response.ok) throw new Error("expected ok");
 
     await expect(collectXaiEvents(response.events)).resolves.toEqual([failed("invalid_prompt")]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  /** Captured verbatim from `xai-responses.wire.event`: both class-bearing fields are empty. */
+  function capacityFrame(message = CAPACITY_MESSAGE): string {
+    return xaiFrame({ sequence_number: 0, type: "error", code: null, message, param: null });
+  }
+
+  it("retries a capacity refusal that ends the stream without a paired failure", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(xaiResponse(
+        xaiFrame(responseCreated("r1")),
+        xaiFrame(reasoning("discarded reasoning")),
+        capacityFrame(),
+      ))
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated("r2")), xaiFrame(textDelta("ok"))));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      responseCreated("r2"),
+      textDelta("ok"),
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("hands a second capacity refusal to the client as overloaded_error", async () => {
+    // A fresh Response per attempt: one instance would hand the retry an already-locked body.
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => xaiResponse(capacityFrame()));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      { type: "error", error: { type: "overloaded_error", message: CAPACITY_MESSAGE } },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("records the stream-end discard with payload-light fields", async () => {
+    const wire = wireLogFixture("fleet-xai-capacity-");
+    try {
+      const fetchMock = vi.fn<typeof fetch>()
+        .mockResolvedValueOnce(xaiResponse(capacityFrame()))
+        .mockResolvedValueOnce(xaiResponse(xaiFrame(textDelta("terminal"))));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+      if (!response.ok) throw new Error("expected ok");
+      await collectXaiEvents(response.events);
+
+      const entries = wire.read().filter((entry) => entry.event === "xai-responses.retry.discarded");
+      expect(entries).toHaveLength(1);
+      expect(entries[0]?.payload).toEqual({ reason: "error_stream_end", errorTypes: ["overloaded_error"] });
+      expect(JSON.stringify(entries)).not.toMatch(/capacity|demand|message/);
+    } finally {
+      wire.cleanup();
+    }
+  });
+
+  it("leaves an unclassified error frame as api_error and does not retry it", async () => {
+    const message = "Tool call arguments were not valid JSON";
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(capacityFrame(message)));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      { type: "error", error: { type: "api_error", message } },
+    ]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps an upstream-declared code over the message it carries", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(xaiResponse(xaiFrame({
+      type: "error",
+      code: "invalid_prompt",
+      message: CAPACITY_MESSAGE,
+    })));
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
+    if (!response.ok) throw new Error("expected ok");
+
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      { type: "error", error: { type: "invalid_prompt", message: CAPACITY_MESSAGE } },
+    ]);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

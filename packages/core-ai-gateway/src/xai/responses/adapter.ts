@@ -400,10 +400,20 @@ async function* generateXaiRetryEvents(
       }
 
       if (result.done) {
-        yield* lead;
+        // A held error that no `response.failed` ever joined, on a stream that then closed
+        // without committing a byte: the turn produced nothing, so the pair it was waiting for
+        // is never coming. Measured on xAI's capacity refusal, which arrives as a lone `error`
+        // frame and ends the stream — holding it here surfaced a retryable overload untried.
         if (pendingError !== undefined) {
-          yield pendingError;
+          wireLog("xai-responses.retry.discarded", {
+            reason: "error_stream_end",
+            errorTypes: [pendingError.error.type],
+          });
+          lead.length = 0;
+          yield* await retry(controller.signal);
+          return;
         }
+        yield* lead;
         normalCompletion = true;
         return;
       }
@@ -461,7 +471,8 @@ function isRetryableXaiFailure(event: CanonicalResponseEvent): event is
 function isRetryableXaiErrorType(type: string): boolean {
   return type === "server_error"
     || type === "server_is_overloaded"
-    || type === "service_unavailable_error";
+    || type === "service_unavailable_error"
+    || type === XAI_OVERLOADED_ERROR_TYPE;
 }
 
 function commitsXaiOutput(event: CanonicalResponseEvent): boolean {
@@ -1060,16 +1071,35 @@ function outputItem(value: unknown): CanonicalOutputItem | undefined {
 }
 
 
+/**
+ * Anthropic's own name for the overload class, which the client-facing encoder forwards verbatim.
+ *
+ * A capacity refusal reaches this adapter with both class-bearing fields empty — measured as
+ * `{"type":"error","code":null,"message":"The model is currently at capacity due to high
+ * demand..."}` — so the projection below used to synthesize `api_error` and the class was gone
+ * before `isRetryableXaiErrorType` ever saw it: an overload the retry path exists to absorb was
+ * indistinguishable from a malformed request. The message is the only surviving discriminator,
+ * so it is read here, at the one site that decides the class, rather than at each consumer.
+ *
+ * Naming it in Anthropic's vocabulary rather than xAI's earns the second half: when the single
+ * retry also fails, the client is handed an error its own backoff recognizes instead of a flat
+ * `api_error` that ends the turn.
+ */
+const XAI_OVERLOADED_ERROR_TYPE = "overloaded_error";
+/** Deliberately narrow: a false positive costs one extra pre-commit attempt, nothing more. */
+const XAI_CAPACITY_MESSAGE = /\bat capacity\b|\boverloaded\b/i;
+
 function canonicalError(value: unknown): CanonicalError {
   const error = record(value, "error");
   const message = string(error.message, "error.message");
-  const type =
-    typeof error.type === "string" && error.type !== "error"
-      ? error.type
-      : typeof error.code === "string"
-        ? error.code
-        : "api_error";
-  return { type, message };
+  return { type: xaiErrorType(error, message), message };
+}
+
+/** An upstream-declared class always wins; the message is consulted only where none was sent. */
+function xaiErrorType(error: Record<string, unknown>, message: string): string {
+  if (typeof error.type === "string" && error.type !== "error") return error.type;
+  if (typeof error.code === "string") return error.code;
+  return XAI_CAPACITY_MESSAGE.test(message) ? XAI_OVERLOADED_ERROR_TYPE : "api_error";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
