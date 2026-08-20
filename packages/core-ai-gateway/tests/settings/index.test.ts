@@ -127,7 +127,7 @@ describe("ai-gateway settings", () => {
   it("resolves stale ids out of the exposed selection", () => {
     const selection = resolveAiGatewaySelection({
       version: 1,
-      models: [{ id: "cursor--grok-4.5" }, { id: "cursor--kimi-k3" }],
+      models: [{ id: "cursor--grok-4.5" }, { id: "cursor--minimax-m3" }],
     });
     expect(selection.models.map((model) => model.id)).toEqual(["cursor--grok-4.5"]);
   });
