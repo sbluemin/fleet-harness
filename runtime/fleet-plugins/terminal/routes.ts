@@ -20,7 +20,6 @@ import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
-import { registerGlobalShellRoutes } from "./server/global.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
 import { registerTerminalModelAuthRoutes } from "./server/model-auth-routes.js";
 import { createTerminalRuntime } from "./server/shared/index.js";
@@ -95,7 +94,6 @@ export default definePlugin({
     const unsubscribeControl = ctx.host.events.subscribe(CONTROL_HOLDER_EVENT_CHANNEL, () => { runtime.renegotiateSockets(); });
     ctx.host.lifecycle.registerCleanup(unsubscribeControl);
     registerShellRoutes(ctx, runtime);
-    registerGlobalShellRoutes(ctx, runtime);
     registerTerminalSettingsRoutes(ctx, {
       globalOptionsService: infraServices.globalOptionsService,
       aiGatewayStore,

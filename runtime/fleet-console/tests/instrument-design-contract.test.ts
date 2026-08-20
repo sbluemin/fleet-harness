@@ -542,7 +542,7 @@ describe("Instrument core design contract", () => {
     expect(rightRail).toContain('pathContext: { kind: "root", relPath: null, label: theaterLabel }');
     expect(types).toContain("readonly theme?: ConsoleTheme;");
     expect(rightRail).toContain("theme,");
-    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, activeId]");
+    expect(rightRail).toContain("[theaterId, theaterLabel, api, language, theme, onLaunchOperation]");
     expect(rightRail).not.toContain("selectPathContext");
     expect(rightRail).not.toContain(".pathAware");
   });
@@ -666,10 +666,9 @@ describe("Instrument core design contract", () => {
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
     expect(components).not.toContain(".canvas-operation-formation-slot {");
     expect(contextMenu).not.toContain("canvas-context-menu-head");
-    expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
-    expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
-    // 그룹 머리글은 캔버스 메뉴 전체에서 한 클래스뿐이다 — 머리글 문법이 갈라지면 머리글과 첫
-    // 항목 사이 간격이 그룹마다 어긋난다(Etc가 하위 항목에 붙어 보였던 회귀).
+    expect(contextMenu).not.toContain('canvas.menu.etc');
+    expect(contextMenu).not.toContain("operation-launch-provider-glyph--etc");
+    // 그룹 머리글은 캔버스 메뉴 전체에서 한 클래스뿐이다.
     expect(contextMenu).not.toContain("canvas-context-menu-plugin");
     expect(components).not.toContain(".canvas-context-menu-plugin");
     expect(contextMenu).not.toContain("CanvasContextMenuMode");
@@ -2212,15 +2211,15 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain('className="operation-launch-menu-brief"');
     expect(contextMenu).toContain("operation-launch-menu-description operation-launch-menu-description--quiet");
 
-    // 역할·플러그인·동작 이름을 반복하던 시각 헤더는 제거한다. 메뉴 역할은 aria-label이,
-    // Terminal Shell의 별도 성격은 최하단 Etc 그룹이 맡는다.
+    // 역할·플러그인·동작 이름을 반복하던 시각 헤더는 제거한다. 메뉴 역할은 aria-label이 맡고,
+    // Terminal Shell은 rail 실행으로 이동해 Etc 그룹을 만들지 않는다.
     expect(components).not.toContain(".canvas-context-menu-reticle");
     expect(contextMenu).not.toContain('className="canvas-context-menu-reticle"');
     expect(contextMenu).not.toContain("canvas-context-menu-head");
     expect(components).not.toContain(".canvas-context-menu-head {");
     expect(contextMenu).toContain('aria-label={menuLabel}');
-    expect(contextMenu).toContain('aria-label={t("canvas.menu.etc")}');
-    expect(contextMenu).toContain("operation-launch-provider-glyph--etc");
+    expect(contextMenu).not.toContain('canvas.menu.etc');
+    expect(contextMenu).not.toContain("operation-launch-provider-glyph--etc");
 
     // 폭은 세 곳이 함께 알아야 한다. 하나만 고치면 컴파일은 되고 치수만 조용히 어긋난다.
     // 폭은 컨테이너가 단일 소유자다. 컨테이너에 폭이 없으면 설명 어사이드의 100%가 메뉴

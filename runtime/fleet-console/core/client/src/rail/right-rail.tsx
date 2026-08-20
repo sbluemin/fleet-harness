@@ -2,6 +2,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, useSyncE
 
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
+import type { OperationLaunchKind } from "@fleet-console/sdk/operations";
 import type { ClientApiCapability } from "@fleet-console/sdk/plugin";
 import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/rail";
 
@@ -21,6 +22,7 @@ import { useCodexSplitExtraWidth } from "./use-codex-split-extra-width.js";
 interface RightRailProps {
   readonly theaterId: string | null;
   readonly api: ClientApiCapability;
+  readonly onLaunchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
 }
 
 const MIN_PANEL_WIDTH = 240;
@@ -94,7 +96,7 @@ function saveStoredPanelWidth(activePanelId: string | null, width: number): void
   } catch { /* ignore */ }
 }
 
-export function RightRail({ theaterId, api }: RightRailProps) {
+export function RightRail({ theaterId, api, onLaunchOperation }: RightRailProps) {
   const t = useT();
   const theaterFallback = t("rail.theater.fallback");
   const theaterLabel = useSyncExternalStore(
@@ -114,8 +116,10 @@ export function RightRail({ theaterId, api }: RightRailProps) {
   const overlayAlpha = useRailOverlayAlpha();
   const previousRailChromeExpandedRef = useRef(railChromeExpanded);
   const previousPanelBehaviorRef = useRef(panelBehavior);
-  const pluginPanels = useRailPanels();
+  const pluginContributions = useRailPanels();
   const builtInPanels = BUILT_IN_RAIL_PANELS;
+  const pluginPanels = pluginContributions.filter((panel) => panel.render !== undefined);
+  const pluginActions = pluginContributions.filter((panel) => panel.activate !== undefined && panel.render === undefined);
   const allPanels = [...builtInPanels, ...pluginPanels];
   const activePanel = allPanels.find((p) => p.id === activeId) ?? null;
   const activePanelTitle = activePanel ? resolveLocalizedText(activePanel.title, language) : "";
@@ -339,16 +343,20 @@ export function RightRail({ theaterId, api }: RightRailProps) {
     saveStoredPanelWidth(activeIdRef.current, desiredWidthRef.current);
   }, []);
 
-  const ctx: RailPanelContext = useMemo(() => ({
+  const baseCtx: RailPanelContext = useMemo(() => ({
     theaterId,
     pathContext: { kind: "root", relPath: null, label: theaterLabel },
     api,
     language,
     theme,
+    launchOperation: onLaunchOperation,
+  }), [theaterId, theaterLabel, api, language, theme, onLaunchOperation]);
+  const ctx: RailPanelContext = useMemo(() => ({
+    ...baseCtx,
     requestExtraWidth: (px: number | null) => {
       if (activeId !== null) requestRailPanelExtraWidth(activeId, px);
     },
-  }), [theaterId, theaterLabel, api, language, theme, activeId]);
+  }), [activeId, baseCtx]);
 
   return (
     <div
@@ -402,13 +410,18 @@ export function RightRail({ theaterId, api }: RightRailProps) {
       <nav className="right-rail-icons" aria-label={t("rail.chrome.toolsAria")}>
         <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {builtInPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} language={language} isActive={activeId === panel.id} />
+            <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
           ))}
-          {builtInPanels.length > 0 && pluginPanels.length > 0 ? (
+          {builtInPanels.length > 0 && (pluginActions.length > 0 || pluginPanels.length > 0) ? (
             <div className="right-rail-divider" role="separator" aria-hidden="true" />
           ) : null}
+        </div>
+        {pluginActions.map((panel) => (
+          <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={false} />
+        ))}
+        <div className="right-rail-tabs" role="tablist" aria-label={t("rail.chrome.panelsAria")}>
           {pluginPanels.map((panel) => (
-            <RailIcon key={panel.id} panel={panel} language={language} isActive={activeId === panel.id} />
+            <RailIcon key={panel.id} panel={panel} context={baseCtx} language={language} isActive={activeId === panel.id} />
           ))}
         </div>
       </nav>
@@ -559,7 +572,7 @@ const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, 
   return (
     <div ref={panelBodyRef} id={`rail-panel-${activePanel.id}`} className="right-rail-panel-body" role="tabpanel" aria-labelledby={`rail-tab-${activeId}`} tabIndex={-1}>
       <div ref={panelContentRef} className="right-rail-panel-content" inert={staleVisible || undefined}>
-        {activePanel.render(ctx)}
+        {activePanel.render?.(ctx)}
       </div>
       {/* 덮개도 배너와 같은 축으로 건다 — 재연결 시도 중에도 패널 값은 여전히 멈춰 있다. */}
       {staleVisible ? (
@@ -575,12 +588,20 @@ const RailPanelBody = memo(function RailPanelBody({ activePanel, activeId, ctx, 
 
 interface RailIconProps {
   readonly panel: RailPanelDescriptor;
+  readonly context: RailPanelContext;
   readonly language: ConsoleLocale;
   readonly isActive: boolean;
 }
 
-function RailIcon({ panel, language, isActive }: RailIconProps) {
-  const handleClick = useCallback(() => toggleRailPanel(panel.id), [panel.id]);
+function RailIcon({ panel, context, language, isActive }: RailIconProps) {
+  const handleClick = useCallback(() => {
+    if (panel.activate) {
+      if (context.theaterId === null) return;
+      panel.activate(context);
+      return;
+    }
+    toggleRailPanel(panel.id);
+  }, [context, panel]);
   const icon = typeof panel.icon === "function" ? panel.icon() : panel.icon;
   const title = resolveLocalizedText(panel.title, language);
 
@@ -589,9 +610,10 @@ function RailIcon({ panel, language, isActive }: RailIconProps) {
       id={`rail-tab-${panel.id}`}
       className={`right-rail-ico${isActive ? " is-active" : ""}`}
       type="button"
-      role="tab"
-      aria-selected={isActive}
+      role={panel.activate ? "button" : "tab"}
+      aria-selected={panel.activate ? undefined : isActive}
       aria-label={title}
+      disabled={panel.activate !== undefined && context.theaterId === null}
       title={title}
       onClick={handleClick}
     >

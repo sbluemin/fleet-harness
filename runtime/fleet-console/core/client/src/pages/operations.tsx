@@ -394,6 +394,10 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
     void launchViaPlugin(pluginId, kind, geometry, launchTheaterId, registry.plugins, variant);
   }, [registry.plugins]);
 
+  const handleRailLaunchOperation = useCallback((pluginId: string, kind: OperationLaunchKind) => {
+    handleSideBarLaunchKind(pluginId, kind);
+  }, [handleSideBarLaunchKind]);
+
   // Quick Launch 컴포저가 남긴 의도를 여기서 소비한다. 대상 Theater로의 전환이 실제로 반영된 뒤에만
   // 실행해야 한다 — activeTheaterId가 아직 이전 Theater면 launch 좌표와 포커스 승계가 엉뚱한 캔버스로 간다.
   useEffect(() => {
@@ -780,7 +784,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
           onDismissOperationMenu={dismissOperationMenu}
         />
       </div>
-      <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} />
+      <RightRail theaterId={state.activeTheaterId} api={STABLE_RAIL_API} onLaunchOperation={handleRailLaunchOperation} />
       {/* Operation 메뉴는 War Room 전용이 아니다 — 사이드바 우클릭·War Room 카드·패널 캡션의
           More 버튼이 모두 같은 메뉴를 연다. */}
       {operationMenu && menuOperation ? (

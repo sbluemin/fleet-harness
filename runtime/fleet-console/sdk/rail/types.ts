@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import type { ConsoleLocale, LocalizedText } from "../i18n/types.js";
 import type { ClientApiCapability, ConsoleTheme } from "../plugin/types.js";
+import type { OperationLaunchKind } from "../operations/types.js";
 
 /** @deprecated Rail panels now always operate at the Theater root. */
 export interface RailPathContext {
@@ -18,6 +19,7 @@ export interface RailPanelContext {
   readonly selectPathContext?: (relPath: string | null) => void;
   readonly api: ClientApiCapability;
   readonly requestExtraWidth?: (px: number | null) => void;
+  readonly launchOperation?: (pluginId: string, kind: OperationLaunchKind) => void;
   readonly language?: ConsoleLocale;
   readonly theme?: ConsoleTheme;
 }
@@ -42,15 +44,27 @@ export interface RailSearchResult {
 
 export type RailSearchProvider = (request: RailSearchRequest) => Promise<readonly RailSearchResult[]>;
 
-export interface RailPanelDescriptor {
+interface RailContributionBase {
   readonly id: string;
   readonly title: LocalizedText;
   readonly icon: ReactNode | (() => ReactNode);
-  readonly render: (ctx: RailPanelContext) => ReactNode;
-  readonly search?: RailSearchProvider;
   readonly side?: "right";
+}
+
+export type RailPanelDescriptor = RailContributionBase & ({
+  readonly render: (ctx: RailPanelContext) => ReactNode;
+  readonly activate?: never;
+  readonly search?: RailSearchProvider;
   /** @deprecated Core ignores this field; every panel is Theater-root scoped. */
   readonly pathAware?: boolean;
   readonly defaultWidth?: number;
   readonly preferredExtraWidth?: number;
-}
+} | {
+  /** 패널을 펼치는 대신 즉시 실행하는 rail 동작. */
+  readonly activate: (ctx: RailPanelContext) => void;
+  readonly render?: never;
+  readonly search?: never;
+  readonly pathAware?: never;
+  readonly defaultWidth?: never;
+  readonly preferredExtraWidth?: never;
+});

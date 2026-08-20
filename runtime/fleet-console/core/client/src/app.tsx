@@ -126,7 +126,7 @@ export function App() {
   operationsViewVisibleRef.current = operationsViewVisible;
   // 팔레트의 "Open panel"과 패널 검색 목록 — RightRail과 동일한 빌트인+플러그인 합성 순서를 미러한다.
   const paletteRailPanels = useMemo(
-    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right")],
+    () => [...BUILT_IN_RAIL_PANELS, ...registry.railPanels.filter((panel) => (panel.side ?? "right") === "right" && panel.render !== undefined)],
     [registry.railPanels],
   );
   const companionShortcuts = useMemo((): readonly CompanionShortcutEntry[] => {
