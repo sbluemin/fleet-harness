@@ -20,35 +20,37 @@ import {
   type UpstreamReadOptions,
 } from "../../transport/upstream-sse.js";
 import { logRawWireEvent, wireLog } from "../../transport/wire-log.js";
+import { DEFAULT_XAI_ENDPOINT_PREFERENCE } from "../../settings/index.js";
 import type { XaiEndpointPreference } from "../../settings/index.js";
 import { XAI_CLI_FALLBACK_CLIENT_VERSION, xaiCliClientVersion } from "../cli-version.js";
 
 /**
- * xAI's own Responses endpoint, reached with the SuperGrok subscription token, and the default.
+ * xAI's own Responses endpoint, reached with the SuperGrok subscription token.
  *
  * It is the shared standard-tier pool. Warm, it is the faster of the two — `response.created` at
- * ~0.69s median against the proxy's ~0.83s — but its tail is the whole problem: re-measured
+ * ~0.69s median against the proxy's ~0.83s — but its tail is the whole problem: measured
  * 2026-08-20 with an identical body and credential, it answered five consecutive requests with
  * `{"type":"error","message":"The model is currently at capacity due to high demand..."}` at one
  * moment, and parked 10.6s and 68.7s before `response.created` at another. The proxy's worst
- * sample in the same interleaved run was 1.5s.
+ * sample in the same interleaved run was 1.5s, which is why the proxy is the default.
  *
- * So neither endpoint dominates and the preference is the user's ({@link XaiEndpointPreference}),
- * but a capacity refusal or a stalled open is not a preference — it is this pool being full, and
- * {@link XAI_ENDPOINT_ESCALATION_MS} / the overload arm move that turn to the proxy.
+ * The endpoint is the user's setting ({@link XaiEndpointPreference}) and a turn never crosses to
+ * the other one: the two do not share a prompt cache, so a crossing re-prefills the entire
+ * conversation. Measured on a live 8-request session, the first request after a crossing served
+ * 128 cached tokens of 30,067 and the first request back served 128 of 58,441, while requests
+ * that stayed put settled at 0.88-0.98 — a cost no per-turn rerouting can earn back.
  *
  * The proxy remaps the model to its `-build` variant; this endpoint returns the model as asked.
  * Quota is drawn from the same subscription either way, and billing (`quota.ts`) is proxy-owned.
  */
 export const XAI_RESPONSES_URL = "https://api.x.ai/v1/responses";
 /**
- * The Grok CLI proxy, kept as a fallback.
+ * The Grok CLI's own chat proxy, and the default endpoint.
  *
- * Whether the direct endpoint accepts a subscription token turns out to depend on the account:
- * oh-my-pi#5978 reports `402 You have run out of credits or need a Grok subscription` from it on
- * an account whose official CLI works, and that CLI reaches this proxy instead. An account in
- * that state would otherwise lose the xAI route entirely, so a 402 or 426 falls back here — 426
- * because the proxy rejects a caller that does not present the CLI's identity headers.
+ * It is what the official CLI talks to, so it is the path an xAI subscription is actually built
+ * around: whether the direct endpoint accepts a subscription token depends on the account
+ * (oh-my-pi#5978 reports `402 You have run out of credits or need a Grok subscription` from it on
+ * an account whose official CLI works), while this one serves every subscription that CLI serves.
  */
 export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/responses";
 /**
@@ -56,8 +58,6 @@ export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/respons
  * `../cli-version.ts`, which explains why this must not be the only source.
  */
 export const XAI_CLI_CLIENT_VERSION = XAI_CLI_FALLBACK_CLIENT_VERSION;
-/** Statuses that mean "this account cannot use the direct endpoint", not "this request is bad". */
-const XAI_PROXY_FALLBACK_STATUSES: ReadonlySet<number> = new Set([402, 426]);
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
@@ -71,20 +71,6 @@ export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
  * orders of magnitude of headroom while still bounding a hang that used to be unbounded.
  */
 export const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 60_000;
-/**
- * How long the direct endpoint may hold a turn open before it is treated as full.
- *
- * `response.created` is the upstream's own admission receipt: it lands once the request has been
- * accepted and routed, so a gap here is queueing, not generation. Warm samples put it at ~0.7s
- * median and the whole interleaved run stayed under 1.6s except for two admissions at 10.6s and
- * 68.7s — the shape this bound exists to cut. Twelve seconds sits an order of magnitude above the
- * healthy median and below the stalls, and nothing has been emitted to the client yet, so the
- * escalation is invisible: the turn simply opens again on the proxy.
- *
- * Applies to the direct endpoint alone. The proxy has nowhere left to escalate to, and holding a
- * second bound over it would only convert a slow-but-live turn into a failed one.
- */
-export const DEFAULT_XAI_ENDPOINT_ESCALATION_MS = 12_000;
 const XAI_RETRY_DELAY_MS = 200;
 
 /**
@@ -134,10 +120,8 @@ export interface XaiResponsesAdapterOptions {
   semanticStallTimeoutMs?: number;
   /** 구독 경로가 요구하는 추가 헤더. */
   headers?: Readonly<Record<string, string>>;
-  /** Which endpoint a turn opens on. Absent is `"direct"`. */
+  /** The endpoint every turn uses. Absent is {@link DEFAULT_XAI_ENDPOINT_PREFERENCE}. */
   endpoint?: XaiEndpointPreference;
-  /** Escalation bound for a direct-endpoint turn that has not been admitted yet. */
-  endpointEscalationMs?: number;
   /** Test seam for the installed Grok CLI version the proxy is told about. */
   clientVersion?: () => Promise<string>;
 }
@@ -147,19 +131,6 @@ interface XaiEndpoint {
   readonly headers: Readonly<Record<string, string>>;
 }
 
-/**
- * Once an account is known to be proxy-only, every later call starts there.
- *
- * A fresh adapter is constructed per request, so the latch cannot live on the instance; without
- * it such an account would pay a rejected round trip on every single turn. Process-scoped like
- * the wire-log target above it, and reset the same way in tests.
- */
-let xaiProxyOnlyAccount = false;
-
-/** Test seam: forget that the direct endpoint was refused. */
-export function resetXaiProxyFallback(): void {
-  xaiProxyOnlyAccount = false;
-}
 
 function directXaiEndpoint(): XaiEndpoint {
   return { url: XAI_RESPONSES_URL, headers: {} };
@@ -195,7 +166,6 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
   private readonly idleTimeoutMs: number;
   private readonly functionCallTimeoutMs: number;
   private readonly semanticStallTimeoutMs: number;
-  private readonly endpointEscalationMs: number;
   private readonly endpointPreference: XaiEndpointPreference;
   private readonly clientVersion: () => Promise<string>;
   private readonly extraHeaders: Readonly<Record<string, string>>;
@@ -223,11 +193,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       options.semanticStallTimeoutMs ?? DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS,
       "semanticStallTimeoutMs"
     );
-    this.endpointEscalationMs = positiveInteger(
-      options.endpointEscalationMs ?? DEFAULT_XAI_ENDPOINT_ESCALATION_MS,
-      "endpointEscalationMs"
-    );
-    this.endpointPreference = options.endpoint ?? "direct";
+    this.endpointPreference = options.endpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE;
     this.clientVersion = options.clientVersion ?? (() => xaiCliClientVersion());
   }
 
@@ -242,25 +208,6 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     // 호출자 signal과 초기/retry fetch 및 stream read를 하나의 per-call controller로 묶는다.
     const controller = new AbortController();
     const unlinkAbort = linkAbortSignal(options.signal, controller);
-    /**
-     * Each upstream attempt gets its own controller, linked to the turn's.
-     *
-     * Reopening has to be able to cut the attempt it is replacing: an unadmitted stream has a
-     * `next()` still pending on it, and an async iterator defers `return()` until that settles,
-     * so closing it without aborting the fetch deadlocks the very escalation that was meant to
-     * rescue the turn. Aborting only the attempt leaves the turn — and the caller's linkage —
-     * intact for the stream that takes its place.
-     */
-    let attempt: AbortController | undefined;
-    let unlinkAttempt: () => void = () => undefined;
-    const openAttempt = (): AbortController => {
-      attempt?.abort();
-      unlinkAttempt();
-      const next = new AbortController();
-      unlinkAttempt = linkAbortSignal(controller.signal, next);
-      attempt = next;
-      return next;
-    };
     const tools = xaiWireTools(request);
     let payload = forXaiResponsesBackend(request, tools);
     /**
@@ -274,42 +221,14 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     let retryAvailable = true;
     let response: AdapterResponse;
 
-    // 계정이 직결을 거부한 이력이 있으면, 또는 사용자가 프록시를 고정했으면 처음부터 프록시로 간다.
-    let endpoint = xaiProxyOnlyAccount || this.endpointPreference === "cli-proxy"
+    // 엔드포인트는 설정이 정한 하나뿐이다. 턴 도중이든 턴 사이든 다른 쪽으로 넘어가지 않는다 —
+    // 두 엔드포인트는 프롬프트 캐시를 공유하지 않아 한 번 건널 때마다 대화 전체를 다시 프리필한다.
+    const endpoint = this.endpointPreference === "cli-proxy"
       ? await this.proxyEndpoint(payload.model)
       : directXaiEndpoint();
 
-    /**
-     * Move this turn to the proxy, if it is not already there.
-     *
-     * Unlatched on purpose: a 402/426 is a standing fact about the account, but a full pool is a
-     * fact about this minute. Latching it would keep every later turn off the endpoint the user
-     * chose long after the capacity that caused it came back.
-     */
-    const escalateToProxy = async (reason: string): Promise<boolean> => {
-      if (endpoint.url !== XAI_RESPONSES_URL) return false;
-      endpoint = await this.proxyEndpoint(payload.model);
-      wireLog("xai-responses.endpoint.escalate", {
-        reason,
-        from: XAI_RESPONSES_URL,
-        to: XAI_CLI_RESPONSES_URL,
-      });
-      return true;
-    };
-
     try {
-      response = await this.fetchResponse(options.apiKey, payload, openAttempt(), endpoint);
-      if (!response.ok && endpoint.url === XAI_RESPONSES_URL
-        && XAI_PROXY_FALLBACK_STATUSES.has(response.status)) {
-        wireLog("xai-responses.endpoint.fallback", {
-          status: response.status,
-          from: XAI_RESPONSES_URL,
-          to: XAI_CLI_RESPONSES_URL,
-        });
-        xaiProxyOnlyAccount = true;
-        endpoint = await this.proxyEndpoint(payload.model);
-        response = await this.fetchResponse(options.apiKey, payload, openAttempt(), endpoint);
-      }
+      response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
     } catch (error) {
       if (!isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)) {
         unlinkAbort();
@@ -322,7 +241,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
       });
       try {
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, controller.signal);
-        response = await this.fetchResponse(options.apiKey, payload, openAttempt(), endpoint);
+        response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
       } catch (retryError) {
         unlinkAbort();
         throw retryError;
@@ -330,7 +249,6 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     }
 
     if (!response.ok) {
-      unlinkAttempt();
       unlinkAbort();
       return response;
     }
@@ -341,18 +259,16 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         payload = forXaiResponsesBackend(request, tools, false);
         wireLog("xai-responses.reasoning.replay_dropped", { reason });
         await abortableXaiDelay(XAI_RETRY_DELAY_MS, signal);
-        const withoutReplay = await this.fetchResponse(options.apiKey, payload, openAttempt(), endpoint);
+        const withoutReplay = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
         if (!withoutReplay.ok) {
           throw new UpstreamProtocolError(`xAI retry failed with status ${withoutReplay.status}`);
         }
         return withoutReplay.events;
       }
-      // Escalation changes where the turn is reopened, never whether the backoff is paid: the
-      // delay is also the window in which a caller that closed the stream can still stop the
-      // reopen, and skipping it would send a request on behalf of an abandoned turn.
-      await escalateToProxy(reason);
+      // The delay is also the window in which a caller that closed the stream can still stop the
+      // reopen, so it is paid before any reattempt.
       await abortableXaiDelay(XAI_RETRY_DELAY_MS, signal);
-      const retried = await this.fetchResponse(options.apiKey, payload, openAttempt(), endpoint);
+      const retried = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
       if (!retried.ok) {
         throw new UpstreamProtocolError(`xAI retry failed with status ${retried.status}`);
       }
@@ -365,16 +281,9 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         response.events,
         reopen,
         controller,
-        () => { unlinkAttempt(); unlinkAbort(); },
+        unlinkAbort,
         retryAvailable,
         () => replayAvailable,
-        {
-          timeoutMs: this.endpointEscalationMs,
-          // Only a turn that still has somewhere better to go is worth cutting short.
-          escalate: async (signal) => endpoint.url === XAI_RESPONSES_URL
-            ? await reopen(signal, "admission_timeout")
-            : undefined,
-        },
       ),
     };
   }
@@ -528,22 +437,11 @@ function toolNameMatches(declaredName: string, selectedName: string): boolean {
 
 type ReadOptions = UpstreamReadOptions;
 
-/**
- * Bound on how long a turn may go unadmitted before it is reopened elsewhere.
- *
- * `escalate` returning `undefined` means "there is nowhere better" — the wait then continues
- * unbounded, exactly as it did before, because a slow answer still beats a killed turn.
- */
 /** Reopen the turn upstream. `reason` selects the recovery, not just the log line. */
 type XaiReopen = (
   signal: AbortSignal,
-  reason: "retryable_failure" | "admission_timeout" | "empty_stream",
+  reason: "retryable_failure" | "empty_stream",
 ) => Promise<AsyncIterable<CanonicalResponseEvent>>;
-
-interface XaiAdmissionWatch {
-  readonly timeoutMs: number;
-  readonly escalate: (signal: AbortSignal) => Promise<AsyncIterable<CanonicalResponseEvent> | undefined>;
-}
 
 function retryXaiEvents(
   events: AsyncIterable<CanonicalResponseEvent>,
@@ -552,7 +450,6 @@ function retryXaiEvents(
   unlinkAbort: () => void,
   retryAvailable: boolean,
   replayAvailable: () => boolean,
-  admission?: XaiAdmissionWatch,
 ): AsyncIterable<CanonicalResponseEvent> {
   return {
     [Symbol.asyncIterator]() {
@@ -564,7 +461,6 @@ function retryXaiEvents(
         unlinkAbort,
         retryAvailable,
         replayAvailable,
-        admission,
       );
       return {
         next: () => iterator.next(),
@@ -581,34 +477,6 @@ function retryXaiEvents(
   };
 }
 
-/** Sentinel for "the admission budget ran out before the upstream said anything". */
-const XAI_ADMISSION_TIMEOUT = Symbol("xai-admission-timeout");
-
-/**
- * Race one already-pending `next()` against a deadline.
- *
- * The pending promise is passed in rather than started here so a timeout that turns out to have
- * nowhere to escalate to can go back to waiting on the *same* promise. Calling `next()` again
- * instead would abandon the first one, and the event it eventually resolves with — typically the
- * `response.created` the turn was waiting for — would be lost.
- */
-async function xaiEventWithin(
-  pending: Promise<IteratorResult<CanonicalResponseEvent>>,
-  timeoutMs: number,
-): Promise<IteratorResult<CanonicalResponseEvent> | typeof XAI_ADMISSION_TIMEOUT> {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      pending,
-      new Promise<typeof XAI_ADMISSION_TIMEOUT>((resolve) => {
-        timer = setTimeout(() => resolve(XAI_ADMISSION_TIMEOUT), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timer !== undefined) clearTimeout(timer);
-  }
-}
-
 async function* generateXaiRetryEvents(
   source: AsyncIterator<CanonicalResponseEvent>,
   retry: XaiReopen,
@@ -616,51 +484,18 @@ async function* generateXaiRetryEvents(
   unlinkAbort: () => void,
   retryAvailable: boolean,
   replayAvailable: () => boolean,
-  admission?: XaiAdmissionWatch,
 ): AsyncGenerator<CanonicalResponseEvent> {
   // Anthropic 변환이 message_start/thinking을 즉시 발화하므로 commit 전 lead만 보류한다.
   const lead: CanonicalResponseEvent[] = [];
   let committed = false;
   let normalCompletion = false;
   let pendingError: Extract<CanonicalResponseEvent, { type: "error" }> | undefined;
-  // The watch covers admission only. Once the upstream has said anything at all the turn is
-  // live, and a later silence belongs to the semantic-stall bound, not to endpoint choice.
-  let watchAdmission = admission !== undefined;
-  // Survives a timeout that could not escalate, so the abandoned wait resumes on the same read.
-  let pendingNext: Promise<IteratorResult<CanonicalResponseEvent>> | undefined;
-
   try {
     while (true) {
       let result: IteratorResult<CanonicalResponseEvent>;
       try {
-        pendingNext ??= source.next();
-        const awaited = watchAdmission
-          ? await xaiEventWithin(pendingNext, admission!.timeoutMs)
-          : await pendingNext;
-        if (awaited === XAI_ADMISSION_TIMEOUT) {
-          // Escalating aborts this attempt, which is what lets the `return()` below settle.
-          const escalated = await admission!.escalate(controller.signal);
-          if (escalated === undefined) {
-            // Nowhere better to go: stop watching and wait this one out.
-            watchAdmission = false;
-            continue;
-          }
-          wireLog("xai-responses.retry.discarded", {
-            reason: "admission_timeout",
-            timeoutMs: admission!.timeoutMs,
-          });
-          void pendingNext.catch(() => undefined);
-          pendingNext = undefined;
-          await source.return?.().catch(() => undefined);
-          lead.length = 0;
-          yield* escalated;
-          return;
-        }
-        pendingNext = undefined;
-        watchAdmission = false;
-        result = awaited;
+        result = await source.next();
       } catch (error) {
-        pendingNext = undefined;
         if (committed || controller.signal.aborted || !isUndiciSocketTermination(error)) {
           throw error;
         }

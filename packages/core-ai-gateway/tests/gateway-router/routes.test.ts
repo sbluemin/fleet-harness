@@ -18,6 +18,7 @@ import {
   KIMI_MESSAGES_URL,
   MAX_GATEWAY_REQUEST_BODY_BYTES,
   OPENCODE_MESSAGES_URL,
+  XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
   createAiGatewayRouter as createCoreAiGatewayRouter,
   errorMessage,
@@ -1026,7 +1027,7 @@ describe("OpenCode Go passthrough", () => {
 });
 
 describe("Grok CLI Responses", () => {
-  it("routes xAI models through the CLI proxy with the reused subscription credential", async () => {
+  it("routes xAI models through the chat proxy with the reused subscription credential", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => new Response(
       "data: [DONE]\n\n",
       { status: 200, headers: { "content-type": "text/event-stream" } },
@@ -1047,12 +1048,41 @@ describe("Grok CLI Responses", () => {
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(res.status).toBe(200);
-    expect(String(url)).toBe(XAI_RESPONSES_URL);
+    // No stored preference: the default endpoint, and the identity headers it gates on.
+    expect(String(url)).toBe(XAI_CLI_RESPONSES_URL);
     expect(headers.get("authorization")).toBe("Bearer grok-subscription-token");
-    expect(headers.get("x-xai-token-auth")).toBeNull();
-    expect(headers.get("x-grok-client-version")).toBeNull();
-    expect(headers.get("x-grok-model-override")).toBeNull();
+    expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
+    expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
     expect(body.model).toBe("grok-4.6");
+  });
+
+  it("honors a stored direct-endpoint preference", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      "data: [DONE]\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readXaiToken: () => "grok-subscription-token",
+      // Settings that name an endpoint must also expose the model: the selection is the
+      // spend contract the execution path enforces, not just the discovery list.
+      readAiGatewaySettings: () => ({
+        version: 1,
+        models: [{ id: "xai--grok-4.6" }],
+        xaiEndpoint: "direct" as const,
+      }),
+    });
+    const res = response();
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--xai--grok-4.6",
+    }));
+
+    const [url, init] = fetchMock.mock.calls[0] ?? [];
+    expect(String(url)).toBe(XAI_RESPONSES_URL);
+    expect(new Headers(init?.headers).get("x-xai-token-auth")).toBeNull();
   });
 
   it("withholds Claude Code's Web Search tools from the Grok CLI wire", async () => {

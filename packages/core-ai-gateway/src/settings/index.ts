@@ -61,14 +61,16 @@ export interface AiGatewayStoredSettings {
    */
   readonly compactCeiling?: CompactCeiling;
   /**
-   * Which xAI endpoint the subscription route starts on. Absent is `"direct"`.
+   * Which xAI endpoint every subscription turn uses. Absent is
+   * {@link DEFAULT_XAI_ENDPOINT_PREFERENCE}.
    *
-   * Both endpoints serve the same subscription and the same credential. `direct` answers a
-   * warm request in ~0.7s but is the shared standard-tier pool: measured on 2026-08-20 it
-   * refused outright with `"The model is currently at capacity"` and, on other samples,
-   * parked 10.6s and 68.7s before `response.created`. `cli-proxy` is the Grok CLI's own
-   * pool — same warm latency, worst sample 1.5s — and remaps the model to its `-build`
-   * variant. Neither is strictly better, so the choice is the user's.
+   * Both endpoints serve the same subscription and the same credential, and a turn never
+   * crosses between them: they do not share a prompt cache, so a crossing re-prefills the whole
+   * conversation. `direct` answers a warm request slightly faster but is the shared
+   * standard-tier pool — measured 2026-08-20 it refused outright with `"The model is currently
+   * at capacity"` and, on other samples, parked 10.6s and 68.7s before `response.created`.
+   * `cli-proxy` is the Grok CLI's own pool, whose worst sample in the same run was 1.5s, which
+   * is why it is the default.
    */
   readonly xaiEndpoint?: XaiEndpointPreference;
 }
@@ -78,7 +80,7 @@ export type XaiEndpointPreference = "direct" | "cli-proxy";
 
 export const XAI_ENDPOINT_PREFERENCES: readonly XaiEndpointPreference[] = ["direct", "cli-proxy"];
 
-export const DEFAULT_XAI_ENDPOINT_PREFERENCE: XaiEndpointPreference = "direct";
+export const DEFAULT_XAI_ENDPOINT_PREFERENCE: XaiEndpointPreference = "cli-proxy";
 
 function sanitizeXaiEndpoint(value: unknown): XaiEndpointPreference | undefined {
   return typeof value === "string" && XAI_ENDPOINT_PREFERENCES.includes(value as XaiEndpointPreference)
@@ -128,9 +130,8 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
   // 레거시 defaultModel 키는 조용히 버린다 — 저장하지도, 보존하지도 않는다.
   const providerPriority = sanitizeProviderPriority(value.providerPriority);
   const compactCeiling = normalizeCompactCeiling(value.compactCeiling);
-  // `direct` is the default, but it is kept rather than folded away: absence means "never
-  // chosen", and a later default change must not silently move an installation the user
-  // deliberately pinned.
+  // The default value is kept rather than folded away: absence means "never chosen", and a
+  // later default change must not silently move an installation the user deliberately pinned.
   const xaiEndpoint = sanitizeXaiEndpoint(value.xaiEndpoint);
   return {
     version: 1,

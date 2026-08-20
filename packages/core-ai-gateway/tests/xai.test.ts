@@ -6,7 +6,6 @@ import {
   XAI_CLI_CLIENT_VERSION,
   XAI_CLI_RESPONSES_URL,
   XAI_RESPONSES_URL,
-  resetXaiProxyFallback,
   XAI_CLI_SETTINGS_URL,
   XaiResponsesAdapter,
   encodeAnthropicSse,
@@ -793,102 +792,13 @@ describe("Grok Responses function-call assembly", () => {
   });
 });
 
-describe("Grok Responses proxy fallback", () => {
-  beforeEach(() => { resetXaiProxyFallback(); });
-  afterEach(() => { resetXaiProxyFallback(); });
-
+describe("Grok endpoint selection", () => {
   function refusal(status: number): Response {
     return new Response(JSON.stringify({ error: "nope" }), {
       status,
       headers: { "content-type": "application/json" },
     });
   }
-
-  function okStream(): Response {
-    return xaiResponse(xaiFrame(responseCreated()), xaiFrame(textDelta("hi")), xaiFrame(responseCompleted()));
-  }
-
-  for (const status of [402, 426]) {
-    it(`falls back to the Grok CLI proxy on ${status}`, async () => {
-      const fetchMock = vi.fn<typeof fetch>()
-        .mockResolvedValueOnce(refusal(status))
-        .mockResolvedValueOnce(okStream());
-      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
-      if (!response.ok) throw new Error(`expected ok, got ${response.status}`);
-      expect(await collectXaiEvents(response.events)).toHaveLength(3);
-      expect(fetchMock).toHaveBeenCalledTimes(2);
-      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
-      expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
-      // The proxy refuses a caller that does not present the CLI's identity.
-      const retryHeaders = new Headers(fetchMock.mock.calls[1]?.[1]?.headers);
-      expect(retryHeaders.get("x-xai-token-auth")).toBe("xai-grok-cli");
-      expect(retryHeaders.get("x-grok-client-version")).toBe(XAI_CLI_CLIENT_VERSION);
-      expect(retryHeaders.get("x-grok-model-override")).toBe("grok-4.6");
-      // The first attempt must stay clean of them.
-      expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-xai-token-auth")).toBeNull();
-    });
-  }
-
-  for (const status of [400, 401, 404, 429, 500]) {
-    it(`returns ${status} without falling back`, async () => {
-      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(refusal(status));
-      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
-      expect(response.ok).toBe(false);
-      if (response.ok) throw new Error("expected refusal");
-      expect(response.status).toBe(status);
-      expect(fetchMock).toHaveBeenCalledTimes(1);
-    });
-  }
-
-  it("starts at the proxy on every later call once an account is refused", async () => {
-    const first = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(refusal(402))
-      .mockResolvedValueOnce(okStream());
-    const firstResponse = await new XaiResponsesAdapter({ fetch: first }).stream(xaiRequest(), { apiKey: "k" });
-    if (!firstResponse.ok) throw new Error("expected ok");
-    await collectXaiEvents(firstResponse.events);
-
-    // A fresh adapter — the router builds one per request — must not repeat the rejected hop.
-    const second = vi.fn<typeof fetch>().mockResolvedValue(okStream());
-    const secondResponse = await new XaiResponsesAdapter({ fetch: second }).stream(xaiRequest(), { apiKey: "k" });
-    if (!secondResponse.ok) throw new Error("expected ok");
-    await collectXaiEvents(secondResponse.events);
-    expect(second).toHaveBeenCalledTimes(1);
-    expect(String(second.mock.calls[0]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
-
-    resetXaiProxyFallback();
-    const third = vi.fn<typeof fetch>().mockResolvedValue(okStream());
-    const thirdResponse = await new XaiResponsesAdapter({ fetch: third }).stream(xaiRequest(), { apiKey: "k" });
-    if (!thirdResponse.ok) throw new Error("expected ok");
-    await collectXaiEvents(thirdResponse.events);
-    expect(String(third.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
-  });
-
-  it("records the fallback on the wire log", async () => {
-    const wire = wireLogFixture("fleet-xai-fallback-");
-    try {
-      const fetchMock = vi.fn<typeof fetch>()
-        .mockResolvedValueOnce(refusal(402))
-        .mockResolvedValueOnce(okStream());
-      const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
-      if (!response.ok) throw new Error("expected ok");
-      await collectXaiEvents(response.events);
-      const entries = wire.read().filter((entry) => entry.event === "xai-responses.endpoint.fallback");
-      expect(entries).toHaveLength(1);
-      expect(entries[0]?.payload).toEqual({
-        status: 402,
-        from: XAI_RESPONSES_URL,
-        to: XAI_CLI_RESPONSES_URL,
-      });
-    } finally {
-      wire.cleanup();
-    }
-  });
-});
-
-describe("Grok endpoint preference and escalation", () => {
-  beforeEach(() => { resetXaiProxyFallback(); });
-  afterEach(() => { resetXaiProxyFallback(); });
 
   function okStream(): Response {
     return xaiResponse(xaiFrame(responseCreated()), xaiFrame(textDelta("hi")), xaiFrame(responseCompleted()));
@@ -902,84 +812,59 @@ describe("Grok endpoint preference and escalation", () => {
     }));
   }
 
-  it("opens on the proxy when the stored preference names it", async () => {
+  it("uses the proxy by default, with the CLI identity the proxy gates on", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okStream());
-    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "cli-proxy", clientVersion: async () => "9.9.9" })
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, clientVersion: async () => "9.9.9" })
       .stream(xaiRequest(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected ok");
     await collectXaiEvents(response.events);
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
-    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-grok-client-version")).toBe("9.9.9");
+    const headers = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(headers.get("x-xai-token-auth")).toBe("xai-grok-cli");
+    expect(headers.get("x-grok-client-version")).toBe("9.9.9");
+    expect(headers.get("x-grok-model-override")).toBe("grok-4.6");
   });
 
-  it("escalates a capacity refusal from the direct endpoint to the proxy", async () => {
-    const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(overloadStream())
-      .mockResolvedValueOnce(okStream());
-    const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
-    if (!response.ok) throw new Error("expected ok");
-    expect(await collectXaiEvents(response.events)).toHaveLength(3);
-    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
-  });
-
-  it("does not latch a capacity escalation onto later calls", async () => {
-    const first = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(overloadStream())
-      .mockResolvedValueOnce(okStream());
-    const firstResponse = await new XaiResponsesAdapter({ fetch: first }).stream(xaiRequest(), { apiKey: "k" });
-    if (!firstResponse.ok) throw new Error("expected ok");
-    await collectXaiEvents(firstResponse.events);
-
-    // A full pool is a fact about that minute, not about the account.
-    const second = vi.fn<typeof fetch>().mockResolvedValue(okStream());
-    const secondResponse = await new XaiResponsesAdapter({ fetch: second }).stream(xaiRequest(), { apiKey: "k" });
-    if (!secondResponse.ok) throw new Error("expected ok");
-    await collectXaiEvents(secondResponse.events);
-    expect(String(second.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
-  });
-
-  it("reopens on the proxy when the direct endpoint never admits the turn", async () => {
-    const controlled = controlledXaiResponse();
-    const fetchMock = vi.fn<typeof fetch>()
-      .mockResolvedValueOnce(controlled.response)
-      .mockResolvedValueOnce(okStream());
-    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpointEscalationMs: 30 })
+  it("uses the direct endpoint when the setting names it, without the CLI identity", async () => {
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(okStream());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "direct" })
       .stream(xaiRequest(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected ok");
-    const events = await collectXaiEvents(response.events);
-    expect(events).toHaveLength(3);
-    expect(fetchMock).toHaveBeenCalledTimes(2);
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
-    // The escalation aborted the stalled attempt, so its stream is already closed.
-    expect(controlled.wasCancelled()).toBe(true);
+    await collectXaiEvents(response.events);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
+    expect(new Headers(fetchMock.mock.calls[0]?.[1]?.headers).get("x-xai-token-auth")).toBeNull();
   });
 
-  it("keeps waiting past the escalation bound when the proxy is already the endpoint", async () => {
-    const controlled = controlledXaiResponse();
-    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(controlled.response);
-    const response = await new XaiResponsesAdapter({
-      fetch: fetchMock,
-      endpoint: "cli-proxy",
-      endpointEscalationMs: 20,
-      clientVersion: async () => "1.0.5",
-    }).stream(xaiRequest(), { apiKey: "k" });
+  // The two endpoints do not share a prompt cache, so a crossing re-prefills the whole
+  // conversation. No upstream answer is worth that, and none of these reroute the turn.
+  for (const status of [400, 401, 402, 404, 426, 429, 500]) {
+    it(`returns ${status} from the chosen endpoint rather than crossing`, async () => {
+      const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(refusal(status));
+      const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "direct" })
+        .stream(xaiRequest(), { apiKey: "k" });
+      expect(response.ok).toBe(false);
+      if (response.ok) throw new Error("expected refusal");
+      expect(response.status).toBe(status);
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(String(fetchMock.mock.calls[0]?.[0])).toBe(XAI_RESPONSES_URL);
+    });
+  }
+
+  it("retries a capacity refusal on the same endpoint", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(overloadStream())
+      .mockResolvedValueOnce(okStream());
+    const response = await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "direct" })
+      .stream(xaiRequest(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected ok");
-    const collected = collectXaiEvents(response.events);
-    await new Promise((resolve) => setTimeout(resolve, 60));
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    controlled.push(xaiFrame(responseCreated()));
-    controlled.push(xaiFrame(responseCompleted()));
-    controlled.close();
-    expect(await collected).toHaveLength(2);
+    expect(await collectXaiEvents(response.events)).toHaveLength(3);
+    expect(fetchMock.mock.calls.map((call) => String(call[0])))
+      .toEqual([XAI_RESPONSES_URL, XAI_RESPONSES_URL]);
   });
 });
 
 describe("Grok reasoning replay", () => {
-  beforeEach(() => { resetXaiProxyFallback(); });
-  afterEach(() => { resetXaiProxyFallback(); });
-
   function reasoningRequest(): CanonicalResponseRequest {
     return xaiRequest({
       input: [
@@ -1040,8 +925,8 @@ describe("Grok reasoning replay", () => {
     };
     expect(retried.input.map((item) => item.type)).toEqual(["message", "function_call", "function_call_output"]);
     expect(retried.include).toBeUndefined();
-    // Same endpoint: an empty stream is the replay being rejected, not the pool being full.
-    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_RESPONSES_URL);
+    // Same endpoint: an empty stream is the replay being rejected, not a reason to cross.
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(XAI_CLI_RESPONSES_URL);
   });
 
   it("leaves an empty stream alone when there was no replay to drop", async () => {
@@ -1847,13 +1732,13 @@ describe("Grok Responses adapter", () => {
       stream: true,
       metadata: { user_id: "caller-metadata" },
     };
-    await new XaiResponsesAdapter({ fetch: fetchMock }).stream(request, { apiKey: "session-token" });
+    await new XaiResponsesAdapter({ fetch: fetchMock, endpoint: "direct" }).stream(request, { apiKey: "session-token" });
     const [url, init] = fetchMock.mock.calls[0] ?? [];
     const headers = new Headers(init?.headers);
     const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
     expect(String(url)).toBe(XAI_RESPONSES_URL);
     expect(headers.get("authorization")).toBe("Bearer session-token");
-    // The Grok CLI proxy's headers must not come back: they belong to the queued endpoint.
+    // The proxy's identity headers belong to the proxy alone and must not ride along here.
     expect(headers.get("x-xai-token-auth")).toBeNull();
     expect(headers.get("x-grok-client-version")).toBeNull();
     expect(headers.get("x-grok-model-override")).toBeNull();
