@@ -59,16 +59,21 @@ missing state file. One script serves three roles, selected by its first argumen
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
 | `remind` | UserPromptSubmit | — | Injects the pin contract every turn. This is the only path by which the contract reaches the model. |
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation before it runs and states how to pin it. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned `Agent` delegation, and a `Workflow` stage whose model value is misspelled. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
-context by design, so moving it to another model removes the point of that surface. For
-`Workflow` it blocks `agentType` in a script, a malformed `opts.model`, and any
-`agent()` stage that pins no model at all. It does not rewrite the script: assigning one
-model to every stage would erase the model spread that is the whole reason to use that
-surface, so the block carries the instruction and the host does the assignment.
+context by design, so moving it to another model removes the point of that surface.
+
+For `Workflow` the gate judges spelling only. A stage that names no model is allowed and
+runs on the session model; whether a fan-out is worth spreading across providers is a
+reading of the work, not a property the hook can see, and a gate that demanded a pin per
+stage only taught the host to fill every stage with one value — the spread it was meant to
+produce, spelled as compliance. What survives is the failure a host cannot recover from:
+a `model` value that is neither a lineage alias nor a `claude-gateway--` modelId kills
+every branch at dispatch, so it is refused before the run rather than after. `agentType`
+is a stage's other legitimate pin and is no longer refused.
 
 Two properties of the harness make this shape necessary, both measured on
 Claude Code 2.1.235:

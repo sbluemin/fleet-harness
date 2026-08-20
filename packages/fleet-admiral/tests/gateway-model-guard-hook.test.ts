@@ -113,39 +113,33 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(stderr).toContain("prefix");
   });
 
-  // 틀린 핀을 막는 것만으로는 부족하다 — 아예 핀하지 않은 스테이지가 세션 모델을 상속한다.
-  it("blocks a stage that pins no model at all", () => {
+  // 핀하지 않은 스테이지는 세션 모델로 돈다. 스테이지를 옮길지 말지는 작업을 읽어야 나오는
+  // 판단이라 훅이 볼 수 없다 — 요구하면 한 값으로 전부 채우는 순응만 남는다.
+  it("passes a stage that pins no model at all", () => {
     for (const script of [`agent("x")`, `agent("x", { schema: S })`, `const r = await agent(prompt, {})`]) {
-      const { status, stderr } = gateWorkflow({ script });
-      expect(status, script).toBe(2);
-      expect(stderr, script).toContain("model");
+      expect(gateWorkflow({ script }).status, script).toBe(0);
     }
   });
 
-  it("counts every unpinned stage in one script", () => {
-    const { status, stderr } = gateWorkflow({
+  it("passes a script that mixes pinned and unpinned stages", () => {
+    const { status } = gateWorkflow({
       script: [
         `const a = await agent("one", { model: "claude-gateway--xai--grok-4.6" })`,
         `const b = await agent("two", { schema: S })`,
         `const c = await agent("three")`,
       ].join("\n"),
     });
-    expect(status).toBe(2);
-    expect(stderr).toContain("2건");
-  });
-
-  // 프롬프트 텍스트의 괄호를 호출 경계로 세면 멀쩡한 스크립트가 막힌다.
-  it("reads call boundaries past parentheses and quotes inside the prompt", () => {
-    const { status } = gateWorkflow({
-      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "claude-gateway--xai--grok-4.6" })`,
-    });
     expect(status).toBe(0);
   });
 
-  it("blocks agentType usage in a dynamic workflow", () => {
-    const { status, stderr } = gateWorkflow({
-      script: `agent("x", { agentType: "fleet:codex-gpt-5-6-sol-fast-high" })`,
-    });
+  // agentType은 스테이지의 또 다른 정당한 핀이다. 값 검사는 model 자리에만 건다.
+  it("passes agentType usage in a dynamic workflow", () => {
+    expect(gateWorkflow({ script: `agent("x", { agentType: "fleet:xai-grok-4-6-low" })` }).status).toBe(0);
+  });
+
+  // 로스터 이름이 model 자리에 들어가면 전 분기가 디스패치 즉시 죽는다. 그 실패만 미리 잡는다.
+  it("blocks a roster identity name written into the model slot", () => {
+    const { status, stderr } = gateWorkflow({ script: `agent("x", { model: "fleet:xai-grok-4-6-low" })` });
     expect(status).toBe(2);
     expect(stderr).toContain("agentType");
   });

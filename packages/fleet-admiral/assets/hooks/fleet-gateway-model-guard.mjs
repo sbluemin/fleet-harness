@@ -9,7 +9,7 @@
 // 세 곳에서 따로 늙는다.
 //
 //   remind            UserPromptSubmit          매 턴 규약 주입 (무조건)
-//   gate-delegation   PreToolUse  Agent|Workflow  핀되지 않은 위임을 차단
+//   gate-delegation   PreToolUse  Agent|Workflow  Agent의 핀 누락과 workflow의 틀린 모델 철자를 차단
 //   workflow-receipt  PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
 //
 // 상태를 남기지 않는다. 훅은 호출마다 새 프로세스로 뜨므로 프로세스 간 기억은 파일로만
@@ -19,10 +19,10 @@ import { readFileSync } from "node:fs";
 
 // 모델에게 주는 지시이므로 영어로 쓴다.
 const TURN_REMINDER = [
-  "Before any Agent or Workflow run leaves the host, call gateway_models and pin an identity from what it",
-  "reports — allowances move while work is in flight.",
-  "Agent: subagent_type = the fleet:* name. Workflow: opts.model = the modelId, the claude-gateway-- prefix",
-  "included. The two spellings are never interchangeable.",
+  "Before any Agent run leaves the host, call gateway_models and pin an identity from what it reports —",
+  "allowances move while work is in flight. Agent: subagent_type = the fleet:* name.",
+  "A Workflow stage may stay on the host model; when you do move one, opts.model takes the modelId with the",
+  "claude-gateway-- prefix and opts.agentType takes the fleet:* name. The spellings are never interchangeable.",
 ].join(" ");
 
 const IN_FLIGHT_CONTRACT = [
@@ -33,11 +33,8 @@ const IN_FLIGHT_CONTRACT = [
   "Report the finding once, in the turn the result arrives. If asked before then, say it is still running.",
 ].join(" ");
 
-const PIN_INSTRUCTION = [
-  "Call gateway_models first, then pin the identity it reports:",
-  "Agent — subagent_type = the fleet:* name;",
-  "Workflow — opts.model = the modelId with the claude-gateway-- prefix, written as a literal.",
-].join(" ");
+const PIN_INSTRUCTION =
+  "Call gateway_models first, then pin the identity it reports: subagent_type = the fleet:* name.";
 
 /**
  * 정체성이 핀되지 않은 위임으로 취급하는 Agent 타입.
@@ -52,9 +49,7 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-const AGENT_TYPE_RE = /agentType\s*:/;
 const MODEL_VALUE_RE = /model:\s*['"]([^'"]+)['"]/g;
-const AGENT_CALL_RE = /\bagent\s*\(/g;
 
 function block(message) {
   process.stderr.write(`[fleet-gateway-model-guard] ${message}\n`);
@@ -76,61 +71,13 @@ function readHookInput() {
 }
 
 /**
- * `agent(` 호출 하나가 차지하는 원문 범위. 괄호 균형으로 끝을 찾되 문자열·주석 안의 괄호는
- * 세지 않는다 — 프롬프트 텍스트에 괄호가 흔해서, 세는 순간 호출 경계가 엉뚱한 곳에서 닫힌다.
+ * 워크플로우가 쓴 모델 값의 철자 검사.
  *
- * 끝을 찾지 못하면 undefined를 돌려주고 호출자는 그 호출을 검사하지 않는다. 이 스캐너는
- * 파서가 아니므로, 판정할 수 없는 형태를 "핀 없음"으로 몰아 멀쩡한 스크립트를 막는 쪽이
- * 검사 한 건을 놓치는 쪽보다 나쁘다.
+ * 스테이지를 옮길지 말지는 호스트가 정한다 — 핀하지 않은 스테이지는 세션 모델로 돌면 그만이다.
+ * 여기서 막는 것은 옮기기로 해놓고 값을 잘못 쓴 경우뿐이다. 로스터 이름이나 prefix가 빠진
+ * modelId가 `model` 자리에 들어가면 모든 분기가 시작 즉시 죽으므로, 그 실패는 실행 전에 잡는
+ * 편이 훨씬 싸다.
  */
-function sliceCall(script, openParenIndex) {
-  let depth = 0;
-  let quote;
-  let escaped = false;
-  for (let i = openParenIndex; i < script.length; i += 1) {
-    const char = script[i];
-    if (quote !== undefined) {
-      if (escaped) escaped = false;
-      else if (char === "\\") escaped = true;
-      else if (char === quote) quote = undefined;
-      continue;
-    }
-    if (char === "'" || char === '"' || char === "`") {
-      quote = char;
-      continue;
-    }
-    if (char === "/" && script[i + 1] === "/") {
-      const lineEnd = script.indexOf("\n", i);
-      if (lineEnd === -1) return undefined;
-      i = lineEnd;
-      continue;
-    }
-    if (char === "/" && script[i + 1] === "*") {
-      const blockEnd = script.indexOf("*/", i + 2);
-      if (blockEnd === -1) return undefined;
-      i = blockEnd + 1;
-      continue;
-    }
-    if (char === "(") depth += 1;
-    else if (char === ")") {
-      depth -= 1;
-      if (depth === 0) return script.slice(openParenIndex, i + 1);
-    }
-  }
-  return undefined;
-}
-
-/** model 옵션이 없는 `agent(` 호출의 개수. 경계를 못 읽은 호출은 세지 않는다. */
-function countUnpinnedAgentCalls(script) {
-  let unpinned = 0;
-  for (const match of script.matchAll(AGENT_CALL_RE)) {
-    const call = sliceCall(script, match.index + match[0].length - 1);
-    if (call === undefined) continue;
-    if (!/\bmodel\s*:/.test(call)) unpinned += 1;
-  }
-  return unpinned;
-}
-
 function assertWorkflowModelValues(script) {
   for (const match of script.matchAll(MODEL_VALUE_RE)) {
     const value = match[1];
@@ -144,7 +91,8 @@ function assertWorkflowModelValues(script) {
     if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
       `opts.model 값이 올바르지 않습니다: "${value}". gateway_models의 modelId(claude-gateway-- prefix 포함)를 ` +
-        "그대로 복사하거나 lineage alias(fable|opus|sonnet|haiku)를 사용하세요."
+        "그대로 복사하거나 lineage alias(fable|opus|sonnet|haiku)를 사용하세요. " +
+        "fleet:* 이름은 opts.agentType 자리입니다."
     );
   }
 }
@@ -178,20 +126,6 @@ function gateAgentDelegation(toolInput) {
 function gateWorkflowDelegation(toolInput) {
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
-  if (AGENT_TYPE_RE.test(script)) {
-    block(
-      "dynamic workflow 스크립트에 agentType이 금지됩니다. agentType은 팀메이트/서브에이전트 표면 전용이고, " +
-        "워크플로우는 opts.model로만 팬아웃해야 합니다."
-    );
-  }
-  const unpinned = countUnpinnedAgentCalls(script);
-  if (unpinned > 0) {
-    block(
-      `model이 지정되지 않은 agent() 호출이 ${unpinned}건 있습니다. ` +
-        PIN_INSTRUCTION +
-        " 스테이지마다 모델을 나누는 것이 이 표면의 목적이므로, 한 값으로 채우지 말고 역할별로 배분하세요."
-    );
-  }
   assertWorkflowModelValues(script);
   process.exit(0);
 }
