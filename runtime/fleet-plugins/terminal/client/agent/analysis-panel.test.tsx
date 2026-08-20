@@ -49,6 +49,9 @@ describe("Session Analyst contract", () => {
     // 모델은 Quick Launch 칩, 강도는 공용 트랙이다.
     expect(css).toContain(".session-analyst__model-chip");
     expect(css).toContain(".session-analyst__effort");
+    // 드롭다운 모델명은 우클릭 실행 메뉴와 같은 variant-row 조판이다.
+    expect(css).not.toContain(".session-analyst__model-row");
+    expect(css).toContain(".session-analyst__model-menu .operation-launch-variant-row");
     expect(css).not.toContain("--fc-select-compact-tone: var(--effort-tone, var(--text-secondary));");
     expect(css).toContain("user-select: text");
     expect(css).toContain(":is(button, select) { user-select: none; }");

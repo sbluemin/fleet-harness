@@ -858,7 +858,7 @@ function AnalystModelChip({
                     <button
                       key={item.id}
                       type="button"
-                      className="session-analyst__model-row"
+                      className="operation-launch-variant-row"
                       role="menuitemradio"
                       aria-checked={item.id === value}
                       onClick={() => {
@@ -867,7 +867,7 @@ function AnalystModelChip({
                         chipRef.current?.focus();
                       }}
                     >
-                      <span>{shortModelLabel(item.label, caption)}</span>
+                      <span className="operation-launch-variant-row-label">{shortModelLabel(item.label, caption)}</span>
                       {item.id === value ? <span className="session-analyst__model-check" aria-hidden="true">✓</span> : null}
                     </button>
                   ))}

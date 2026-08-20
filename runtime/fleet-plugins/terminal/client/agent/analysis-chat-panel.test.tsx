@@ -797,6 +797,8 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(captions).toEqual(["Claude", "Codex", "Moonshot-Kimi"]);
     expect(menu.querySelectorAll(".operation-launch-provider-glyph")).toHaveLength(3);
     expect(chip.querySelector(".operation-launch-provider-glyph")).not.toBeNull();
+    expect(menu.querySelectorAll(".operation-launch-variant-row")).toHaveLength(4);
+    expect(menu.querySelector(".session-analyst__model-row")).toBeNull();
     expect(rows).toEqual(["Sonnet", "Opus [1M]", "GPT-5.6-Sol", "K3-1M"]);
     expect(menu.style.overflowY).toBe("auto");
     expect(Number.parseFloat(menu.style.maxHeight)).toBeLessThanOrEqual(520);
