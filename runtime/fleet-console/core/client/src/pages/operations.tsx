@@ -960,12 +960,14 @@ async function launchViaPlugin(
   try {
     // SSE `operation:changed`는 이미 아는 id만 패치한다. 다른 탭이 만든 Shell은 목록에 안 들어오므로
     // 결정 직전에 서버 목록을 다시 읽는다. 부트(미hydrate)는 초기 합치기, 그 다음부터는 교체다.
+    let rosterFresh = false;
     try {
       const operations = await fetchOperations(null);
       if (getState().operationsHydrated) hydrateOperations(operations);
       else hydrateInitialOperations(operations);
+      rosterFresh = true;
     } catch {
-      // 조회 실패 시 로컬 스냅샷으로 결정한다.
+      // 조회 실패. 로컬에 Shell이 있으면 포커스하고, 없으면 만들지 않는다.
     }
     const snapshot = getState();
     const existingId = findTheaterShellId(snapshot.operations, theaterId, {
@@ -977,6 +979,7 @@ async function launchViaPlugin(
       focusOperation(existingId);
       return;
     }
+    if (!rosterFresh) return;
     await createLaunchedOperation(pluginId, kind, geometry, theaterId, plugins, variant);
   } finally {
     inflightTheaterShellLaunches.delete(theaterId);
