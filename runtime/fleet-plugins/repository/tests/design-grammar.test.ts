@@ -371,11 +371,11 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
     expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
     // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
-    // 창은 로컬 [lane*14, lane*14+14]를 노출하므로 좌표는 활성 노드 기준(--gutter-indicator-x)
-    // 이고 CSS가 브레이크포인트 안에서만 적용한다 — prop은 폭을 모른다.
+    // lane 0 행도 기본 x ≥ 16은 14px 창을 벗어나므로 표식 준비는 compact면 무조건이고,
+    // 좌표는 활성 노드 기준(--gutter-indicator-x), 적용은 CSS가 브레이크포인트 안에서만 한다.
     expect(graphSource).toContain('"--gutter-indicator-x": `${cx + NODE_R + 3}px`');
-    expect(graphSource).toContain('textAnchor={compact && node.lane > 0 ? "end" : undefined}');
-    expect(finalStage).toContain('.history-graph-gutter-compact text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }');
+    expect(graphSource).toContain('textAnchor={compact ? "end" : undefined}');
+    expect(finalStage).toContain('.history-graph-gutter text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }');
     // 커밋 행 목록이 compact 문법의 컨테이너다 — CSS만으로 브레이크포인트를 판정한다.
     // .history-list-pane은 규칙 3개(공용 min-width·스택 재선언·본체)라 본체 규칙을 직접 찾는다.
     expect(blocksOf(".history-list-pane").some((body) => body.includes("container-type: inline-size"))).toBe(true);
