@@ -5,6 +5,57 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.71.0] - 2026-08-21
+
+### fleet-cli
+
+#### Added
+- Add on-demand Professional Pushback and orchestration skills without restoring a Fleet system prompt.
+- Offer the OpenCode Go models Ox-Alpha-Free and Muse-Spark-1.2-Contributor, each with the reasoning-effort rungs its backend accepts.
+
+#### Fixed
+- Let a long-running turn finish instead of cutting it off while the model is still working. The gateway now waits as long as the client itself does, so a turn that goes quiet during a lengthy answer is no longer ended early.
+- Recover a gateway turn that a provider drops or refuses, instead of ending it on the first attempt. Transient failures now reach Claude Code as statuses its own retry budget acts on, so an interruption that one more attempt would clear no longer surfaces as an API error.
+- Cap how many upstream connections the launcher holds per provider, so a wide fan-out queues instead of opening a connection per agent and losing streams to the pressure.
+- Record every failed gateway turn to a durable log, so an interruption that used to vanish after one on-screen notice can be diagnosed afterwards.
+
+#### Breaking Changes
+- Every `Workflow` stage must name a gateway model again. A stage that pins none is refused before the run instead of falling back to the session model, and `agentType` is refused in a script rather than accepted as a stage's other pin. Delegation is judged from the call payload alone: no roster lookup has to land first, so naming a `fleet:*` identity is enough to dispatch.
+
+### fleet-console
+
+#### Added
+- Add on-demand Professional Pushback and orchestration skills to gateway Operations without restoring a Fleet system prompt.
+- Offer the OpenCode Go models Ox-Alpha-Free and Muse-Spark-1.2-Contributor, each with the reasoning-effort rungs its backend accepts.
+
+#### Changed
+- Keep delegation one level deep: an agent you delegate to can no longer spawn agents of its own.
+- Find files from the Files panel with one search that skips dependency and build folders, instead of opening folder after folder until it gives up. A file six levels deep now answers in milliseconds, path fragments such as `deep/needle` match, and Escape clears the filter instead of closing the document you were reading.
+- Mark an open document that changed on disk and reload it on your click, so an agent editing the file no longer leaves you reading a stale copy without saying so.
+- Show a large file as soon as you open it by drawing only the lines on screen, and say plainly how much of the file the preview holds. Long lines can now be wrapped instead of scrolling sideways for hundreds of screens.
+- Roll uncommitted changes up the folders that contain them, so the working set is visible at the root instead of only after expanding to the file.
+- Size the panel from the window when a document opens, and mark how many open files the strip is hiding, keeping the active one in view.
+- Reach the file tree by keyboard the way a tree is expected to work: type-ahead jumps, PageUp/PageDown, and Shift+F10 or the Context Menu key opening the row menu that every row already advertised.
+- Ledger groups spend by backend, so you can see which provider the money went to before opening a single model row.
+- Show a Shell operation as its own kind glyph instead of an activity status mark, since a shell never reports a running or awaiting turn. The sidebar chip, command band, mobile list, and War Room map dot all drop the glow for shells, and status sections still list them where they were.
+- Installed skill cards say what a skill does. The card carries the skill's own description, the agent list collapses to a count, and a project skill that hides a global one of the same name is marked as such.
+- The scope-wide update moves off every card into one action above the list, labeled with how many skills it will touch, and Remove is now a word instead of a bare glyph.
+- The installed filter matches a skill's description, so a word that appears only there still finds the skill.
+
+#### Fixed
+- Let a long-running turn finish instead of cutting it off while the model is still working. The gateway now waits as long as the client itself does, so a turn that goes quiet during a lengthy answer is no longer ended early.
+- Recover a gateway turn that a provider drops or refuses, instead of ending it on the first attempt. Transient failures now reach Claude Code as statuses its own retry budget acts on, so an interruption that one more attempt would clear no longer surfaces as an API error.
+- Cap how many upstream connections a single Console holds per provider, so a wide fan-out queues instead of opening a connection per agent and losing streams to the pressure.
+- Record every failed gateway turn to a durable log, so an interruption that used to vanish after one on-screen notice can be diagnosed afterwards.
+- Keep every folder you left open actually open after a reload, instead of restoring only the first few and drawing the rest as open but empty.
+- Cut a long listing at the alphabetical boundary the cap message describes, so the entries it drops are the ones after the limit rather than a scattered sample from the middle.
+- Keep a folder that fails to open expanded with the reason and a retry, instead of silently collapsing it, and say when live updates are limited in this Theater.
+- Report a running turn's token count for gateway models whose provider withholds usage until the turn ends, instead of showing zero for the whole run.
+- Deliver the whole multi-line Quick Launch prompt on Windows installs that run the agent CLI through a `.cmd` shim, instead of only its first line.
+- Ledger daily bars open that day's models in every window, not only Today, and a day with nothing to show is no longer drawn as a button that does nothing.
+- Ledger states in dollars when the total holds spend the daily chart cannot place on a day, instead of leaving the two silently disagreeing.
+- Installed skills show which registry they came from again. The panel could only read an older skills lock file layout, so every skill was reported as having no source.
+
 ## [1.70.0] - 2026-08-20
 
 ### fleet-cli
