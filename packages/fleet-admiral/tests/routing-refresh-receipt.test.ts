@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -160,6 +160,29 @@ describe("gateway routing refresh receipt", () => {
     const result = runGuard("Agent", { subagent_type: "fleet:cursor-grok-4-5-fast-high" });
     expect(result.status).toBe(2);
     expect(result.stderr).toContain("refresh did not complete");
+  });
+
+  it.runIf(process.platform !== "win32")("blocks repeated orchestration when receipt invalidation fails", async () => {
+    const spec = buildGatewayModelsToolSpec({
+      routingReceiptRoot: RECEIPT_ROOT,
+      readSelection: () => ({ models: [model()] }),
+    });
+    await spec.execute({
+      hookEventName: "PostToolUse",
+      sessionId: SESSION_ID,
+      promptId: PROMPT_ID,
+      routingNonce: ROUTING_NONCE,
+    }, {} as never);
+    chmodSync(RECEIPT_ROOT, 0o500);
+    try {
+      const result = beginOrchestration();
+      expect(result.status).toBe(2);
+      expect(result.stderr).toContain("could not be invalidated");
+      // The old receipt still exists, but the Skill call never runs because PreToolUse blocked it.
+      expect(runGuard("Agent", { subagent_type: "fleet:cursor-grok-4-5-fast-high" }).status).toBe(0);
+    } finally {
+      chmodSync(RECEIPT_ROOT, 0o700);
+    }
   });
 
   it("removes the launch receipt on SessionEnd", async () => {

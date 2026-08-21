@@ -195,13 +195,17 @@ function routingReceiptPath(input, routingNonce) {
   return path.join(ROUTING_RECEIPT_ROOT, `${key}.json`);
 }
 
-function removeRoutingReceipt(input, routingNonce) {
+function removeRoutingReceipt(input, routingNonce, bestEffort = false) {
   const receiptPath = routingReceiptPath(input, routingNonce);
   if (receiptPath === undefined) return;
   try {
     rmSync(receiptPath, { force: true });
-  } catch {
-    // Cleanup is best effort. A later gateway dispatch still verifies prompt_id from the receipt payload.
+  } catch (error) {
+    if (bestEffort) return;
+    block(
+      "The prior gateway routing context could not be invalidated. Keep the work on the host and retry " +
+        "fleet:orchestration only after the local receipt store is writable."
+    );
   }
 }
 
@@ -307,7 +311,7 @@ if (subcommand === "begin-orchestration") {
 }
 
 if (subcommand === "cleanup-routing") {
-  removeRoutingReceipt(input, routingNonce);
+  removeRoutingReceipt(input, routingNonce, true);
   process.exit(0);
 }
 
