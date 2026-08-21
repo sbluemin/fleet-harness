@@ -197,6 +197,24 @@ describe("Ledger Claude Code provider presentation", () => {
     expect(container.querySelector(".ledger-backend-composition")).toBeNull();
   });
 
+  it("gives no composition width to a backend that spent nothing", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 12 },
+      modelRows: [
+        { ...modelRow, costUsd: 12 },
+        { ...modelRow, modelId: "claude-gateway--xai--grok-4.6", provider: "xai", label: "Grok 4.6", costUsd: 0, messages: 40 },
+      ],
+      modelCount: 2,
+    });
+    // 조각에는 `min-width` 하한이 있어, $0 그룹을 남기면 스스로 `0%`라 말하면서 실제 지출과 같은 폭을 갖는다.
+    expect([...container.querySelectorAll<HTMLElement>(".ledger-backend-slice")].map((slice) => slice.className))
+      .toEqual(["ledger-backend-slice is-anthropic"]);
+    // 행은 사라지지 않는다 — 쓴 토큰은 여전히 그 백엔드의 것이다.
+    expect(backendHeads().map((head) => head.querySelector("strong")?.textContent)).toEqual(["Anthropic", "xAI"]);
+  });
+
   it("never rounds a nonzero backend share to 0% or a partial share to 100%", async () => {
     const value = dto();
     await renderWith({

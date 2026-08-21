@@ -155,9 +155,12 @@ function BackendComposition({ groups, totalCostUsd, t }: {
 }) {
   const grouped = groups.reduce((total, group) => total + group.costUsd, 0);
   const remainder = totalCostUsd - grouped;
+  // `min-width`는 진짜 몫이 사라지지 않게 막는 하한이라, 비용이 0인 그룹까지 조각으로 두면
+  // 자기 라벨이 `0%`라고 말하는 백엔드가 실제 지출과 같은 폭을 차지한다. 행은 남기고 조각만 뺀다.
+  const slices = groups.filter((group) => group.costUsd > 0);
   return (
     <div className="ledger-backend-composition" role="img" aria-label={t("ledger.backends.composition")}>
-      {groups.map((group) => (
+      {slices.map((group) => (
         <span
           key={group.provider}
           className={`ledger-backend-slice is-${providerClass(group.provider)}`}
