@@ -5,6 +5,7 @@ import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 
 import type { SkillListItem } from "../server/skill-types.js";
 import type { SkillsMessageKey } from "./i18n/index.js";
+import { filterInstalled, namesInOtherScope } from "./installed-view.js";
 import { JobStatusDock } from "./skill-feedback.js";
 import { SkillCard } from "./skill-card.js";
 import {
@@ -76,11 +77,10 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
     }
   }, [updateLog.status, theaterId, loadList]);
 
-  const handleUpdate = useCallback((updScope: string) => {
-    const s = updScope as Scope;
-    updateScopeRef.current = s;
-    const body: Record<string, unknown> = { scope: s };
-    if (s === "project" && theaterId) {
+  const handleUpdate = useCallback((updScope: Scope) => {
+    updateScopeRef.current = updScope;
+    const body: Record<string, unknown> = { scope: updScope };
+    if (updScope === "project" && theaterId) {
       body["theaterId"] = theaterId;
     }
     updateLog.start("/plugins/skills/update", body);
@@ -138,11 +138,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
   }, [handleUpdate]);
 
   const visibleScope: Scope = scope === "project" && !theaterId ? "global" : scope;
-  const filtered = installedList.filter((s) => {
-    if (s.scope !== visibleScope) return false;
-    if (filterText) return s.name.toLowerCase().includes(filterText.toLowerCase());
-    return true;
-  });
+  const inScope = installedList.filter((s) => s.scope === visibleScope);
+  const filtered = filterInstalled(inScope, filterText);
+  const otherScopeNames = namesInOtherScope(installedList, visibleScope);
 
   const isUpdating =
     updateLog.status === "running" && updateScopeRef.current === visibleScope;
@@ -183,6 +181,27 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
           aria-label={t("skills.filter.installedAria")}
         />
 
+        {/* scope 전체를 건드리는 동사는 scope가 사는 자리에 하나만 둔다 — 카드마다 같은
+            버튼을 복제하면 어느 것이 이 카드의 동사인지 알 수 없게 된다. */}
+        {inScope.length > 0 && (
+          <div className="skills-scope-shelf">
+            <span className="skills-scope-shelf-label">
+              {t("skills.update.scopeLabel", {
+                count: inScope.length,
+                scope: t(visibleScope === "project" ? "skills.scope.project" : "skills.scope.global"),
+              })}
+            </span>
+            <button
+              type="button"
+              className="skills-btn skills-btn--ghost"
+              onClick={() => handleUpdate(visibleScope)}
+              disabled={isUpdating}
+            >
+              {isUpdating ? t("skills.action.updating") : t("skills.action.update")}
+            </button>
+          </div>
+        )}
+
         {installedLoading && <div className="skills-empty-state">{t("skills.empty.loading")}</div>}
 
         {!installedLoading && filtered.length === 0 && (
@@ -198,10 +217,9 @@ export function InstalledTab({ theaterId, onReadMore, refreshKey, t, language }:
             <SkillCard
               key={`${skill.scope}:${skill.name}`}
               skill={skill}
+              shadowsOtherScope={otherScopeNames.has(skill.name)}
               onReadMore={onReadMore}
-              onUpdate={handleUpdate}
               onRemove={handleRemove}
-              isUpdating={isUpdating}
               t={t}
             />
           ))}

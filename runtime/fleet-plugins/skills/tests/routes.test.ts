@@ -348,3 +348,173 @@ describe("job output redaction", () => {
     expect(output).toContain("access_token=[redacted]");
   });
 });
+
+describe("list DTO carries the description the card needs", () => {
+  it("reads SKILL.md frontmatter from the CLI-reported path without leaking that path", async () => {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-desc-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const described = path.join(theaterRoot, ".claude", "skills", "console-e2e");
+    const bare = path.join(theaterRoot, ".claude", "skills", "no-frontmatter");
+    await fs.mkdir(described, { recursive: true });
+    await fs.mkdir(bare, { recursive: true });
+    await fs.writeFile(
+      path.join(described, "SKILL.md"),
+      "---\nname: console-e2e\ndescription: Drive a headless real-browser end-to-end test.\n---\n\n# body\n",
+      "utf-8",
+    );
+    await fs.writeFile(path.join(bare, "SKILL.md"), "# no frontmatter here\n", "utf-8");
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+
+      const executor: CliExecutor = async (args) => ({
+        stdout: args.includes("-g") ? "[]" : JSON.stringify([
+          { name: "console-e2e", path: described, scope: "project", agents: ["Claude Code"] },
+          { name: "no-frontmatter", path: bare, scope: "project", agents: ["Claude Code"] },
+        ]),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      const res = makeRes();
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1"), res, ctx, executor);
+
+      expect(res._status).toBe(200);
+      const skills = (res._body as { skills: Array<Record<string, unknown>> }).skills;
+      expect(skills).toHaveLength(2);
+
+      const described_dto = skills.find((s) => s.name === "console-e2e");
+      expect(described_dto?.description).toBe("Drive a headless real-browser end-to-end test.");
+      // 절대 경로는 서버 안에만 남는다 — 설명을 실어 보내려고 경로를 함께 흘리지 않는다.
+      expect("path" in (described_dto ?? {})).toBe(false);
+      expect(JSON.stringify(skills)).not.toContain(temporaryDirectory);
+
+      // frontmatter가 없으면 키 자체를 생략한다 — 빈 문자열을 만들어 카드에 빈 줄을 그리지 않는다.
+      const bare_dto = skills.find((s) => s.name === "no-frontmatter");
+      expect("description" in (bare_dto ?? {})).toBe(false);
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("lock file provenance", () => {
+  async function listWith(lockName: string | null, lockBody: unknown): Promise<Array<Record<string, unknown>>> {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-lock-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const skillDir = path.join(theaterRoot, ".claude", "skills", "agent-browser");
+    await fs.mkdir(skillDir, { recursive: true });
+    if (lockName !== null) {
+      await fs.mkdir(path.dirname(path.join(theaterRoot, lockName)), { recursive: true });
+      const body = typeof lockBody === "string" ? lockBody : JSON.stringify(lockBody);
+      await fs.writeFile(path.join(theaterRoot, lockName), body, "utf-8");
+    }
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+      const executor: CliExecutor = async (args) => ({
+        stdout: args.includes("-g") ? "[]" : JSON.stringify([
+          { name: "agent-browser", path: skillDir, scope: "project", agents: ["Claude Code"] },
+        ]),
+        stderr: "",
+        exitCode: 0,
+      });
+      const res = makeRes();
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1"), res, ctx, executor);
+      return (res._body as { skills: Array<Record<string, unknown>> }).skills;
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  }
+
+  async function listWithoutLock(): Promise<Array<Record<string, unknown>>> {
+    return listWith(null, null);
+  }
+
+  it("reads the v3 nested lock shape", async () => {
+    // 실제 파일은 v3다. v1 모양만 읽으면 설치 출처가 있는 스킬까지 전부 출처 없음으로 보인다.
+    const skills = await listWith(path.join(".agents", ".skill-lock.json"), {
+      version: 3,
+      skills: { "agent-browser": { source: "vercel-labs/agent-browser", sourceType: "github" } },
+      dismissed: [],
+    });
+    expect(skills[0]?.source).toBe("vercel-labs/agent-browser");
+  });
+
+  it("still reads the v1 flat lock shape", async () => {
+    const skills = await listWith("skills-lock.json", {
+      "agent-browser": { source: "vercel-labs/agent-browser" },
+    });
+    expect(skills[0]?.source).toBe("vercel-labs/agent-browser");
+  });
+
+  it("marks a skill absent from a readable lock as unmanaged, not as having a source", async () => {
+    const skills = await listWith("skills-lock.json", { version: 3, skills: {} });
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect(skills[0]?.unmanaged).toBe(true);
+  });
+
+  it("claims neither source nor unmanaged when the lock cannot be read", async () => {
+    // 손상된/모르는 스키마의 lock은 "출처 없음"이 아니라 "출처 미상"이다. unmanaged를 세우면
+    // 스키마가 또 바뀌는 날 레지스트리 설치 스킬까지 전부 직접 작성이라고 단언하게 된다.
+    const skills = await listWith("skills-lock.json", "not json at all");
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("claims neither source nor unmanaged when no lock file exists at all", async () => {
+    const skills = await listWithoutLock();
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("treats an unrecognized lock shape as unreadable rather than empty", async () => {
+    const skills = await listWith("skills-lock.json", { version: 9, entries: ["agent-browser"] });
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it.each([
+    ["an array skills table", { version: 9, skills: [] }],
+    ["a populated array skills table", { version: 9, skills: [{ source: "owner/repo" }] }],
+    ["a scalar skills table", { version: 9, skills: "owner/repo" }],
+    ["a null skills table", { version: 9, skills: null }],
+    ["a top-level array", ["agent-browser"]],
+    ["a v1-looking file whose entries carry no source", { version: 9, meta: {}, config: { debug: true } }],
+  ])("does not accept %s as a readable lock", async (_label, body) => {
+    // 배열도 typeof "object"라 이 한 글자를 놓치면 "읽어낸 빈 lock"으로 통과하고,
+    // 설치된 스킬 전부가 다시 관리 밖(=로컬)으로 단언된다.
+    const skills = await listWith("skills-lock.json", body);
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("still accepts a v3 file whose declared skills table is an empty record", async () => {
+    // v3는 `skills` 키로 표를 스스로 선언한다 — 비어 있어도 읽어낸 lock이다.
+    const skills = await listWith("skills-lock.json", { version: 3, skills: {} });
+    expect(skills[0]?.unmanaged).toBe(true);
+  });
+});

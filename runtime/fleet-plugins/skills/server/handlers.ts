@@ -7,6 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
+import { readSkillDescription } from "./frontmatter.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
 import type { AgentId, Scope, SkillListItem } from "./skill-types.js";
@@ -18,7 +19,14 @@ interface LockFileEntry {
   source?: string;
 }
 
-type LockFileV1 = Record<string, LockFileEntry>;
+/** v1은 이름을 최상위 키로 두고, v3는 `skills` 아래로 한 겹 넣는다. */
+type LockFile = Record<string, LockFileEntry | unknown> & { skills?: Record<string, LockFileEntry> };
+
+interface LockLookup {
+  readonly sources: Map<string, string>;
+  /** lock을 실제로 읽어냈는가 — 읽지 못했다면 출처의 부재는 "모름"이지 "로컬"이 아니다. */
+  readonly lockRead: boolean;
+}
 
 interface RawSkillEntry {
   name: string;
@@ -44,35 +52,78 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async function readSkillSources(cwd: string): Promise<Map<string, string>> {
+function isRecord(value: unknown): value is Record<string, unknown> {
+  // 배열도 typeof "object"다 — 그 한 글자를 빠뜨리면 `skills: []`가 "읽어낸 빈 lock"으로
+  // 통과하고, 모든 스킬이 다시 관리 밖(=로컬)으로 단언된다.
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasSourceEntry(table: Record<string, unknown>): boolean {
+  return Object.values(table).some((entry) => isRecord(entry) && typeof entry["source"] === "string");
+}
+
+/**
+ * 이 JSON을 lock으로 인정할 수 있는가.
+ *
+ * 스키마가 두 벌이다: v1은 이름이 최상위 키였고, v3부터는 `skills` 아래로 한 겹 들어간다.
+ * v1 모양만 읽으면 v3 파일에서 아무것도 못 건져 **모든 스킬이 출처 없음으로 보인다** —
+ * 실측에서 18개 전부 source:null이던 원인이 provenance의 부재가 아니라 이 불일치였다.
+ * 모르는 모양은 "빈 lock"이 아니라 "읽지 못함"으로 떨어뜨린다(다음 스키마 변경 대비).
+ *
+ * 두 벌의 판정 기준이 다른 것은 의도다: v3는 `skills` 키로 표를 스스로 선언하므로 그 표가
+ * 레코드이기만 하면 비어 있어도 "읽어낸 빈 lock"이다. v1은 선언이 없어 내용으로 추론할
+ * 수밖에 없으므로, 우리가 실제로 소비하는 것(문자열 `source`를 든 항목)이 하나라도 있어야
+ * lock으로 인정한다.
+ */
+function isLockShape(parsed: unknown): parsed is LockFile {
+  if (!isRecord(parsed)) return false;
+  if ("skills" in parsed) return isRecord(parsed["skills"]);
+  return hasSourceEntry(parsed);
+}
+
+function collectLockSources(lock: LockFile, sources: Map<string, string>): void {
+  const table = isRecord(lock.skills) ? lock.skills : (lock as Record<string, unknown>);
+  for (const [name, entry] of Object.entries(table)) {
+    if (isRecord(entry) && typeof entry["source"] === "string") {
+      sources.set(name, entry["source"]);
+    }
+  }
+}
+
+/**
+ * lock을 읽었는지와 그 안에 무엇이 있었는지를 함께 돌려준다.
+ *
+ * 두 가지는 다른 사실이다: **읽었는데 그 스킬이 없다**(관리 밖 = 손으로 놓인 파일)와
+ * **읽지 못했다**(부재·손상·모르는 스키마). 앞의 것만 "local"이라고 말할 수 있다.
+ * 이 구분을 잃으면, 내일 lock 스키마가 한 번 더 바뀌는 순간 레지스트리에서 설치한
+ * 스킬까지 전부 "직접 작성"이라고 자신 있게 거짓말하게 된다.
+ */
+async function readSkillSources(cwd: string): Promise<LockLookup> {
   const sources = new Map<string, string>();
 
-  try {
-    const raw = await fs.readFile(path.join(cwd, "skills-lock.json"), "utf-8");
-    const parsed = JSON.parse(raw) as LockFileV1;
-    if (typeof parsed === "object" && parsed !== null) {
-      for (const [name, entry] of Object.entries(parsed)) {
-        if (entry && typeof entry.source === "string") sources.set(name, entry.source);
-      }
-      return sources;
+  for (const candidate of [
+    path.join(cwd, "skills-lock.json"),
+    path.join(cwd, ".agents", ".skill-lock.json"),
+  ]) {
+    let raw: string;
+    try {
+      raw = await fs.readFile(candidate, "utf-8");
+    } catch {
+      continue; // 부재 → 다음 후보
     }
-  } catch {
-    // 부재/파싱 실패 → 폴백
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      // 파싱된 lock은 항목이 하나도 없어도 "읽은" 것이다 — 빈 lock은 모름이 아니라 비어 있음이다.
+      if (isLockShape(parsed)) {
+        collectLockSources(parsed, sources);
+        return { sources, lockRead: true };
+      }
+    } catch {
+      // 손상/모르는 스키마 → 읽지 못한 것으로 남긴다
+    }
   }
 
-  try {
-    const raw = await fs.readFile(path.join(cwd, ".agents", ".skill-lock.json"), "utf-8");
-    const parsed = JSON.parse(raw) as LockFileV1;
-    if (typeof parsed === "object" && parsed !== null) {
-      for (const [name, entry] of Object.entries(parsed)) {
-        if (entry && typeof entry.source === "string") sources.set(name, entry.source);
-      }
-    }
-  } catch {
-    // 부재/파싱 실패 → source 생략 (에러 아님)
-  }
-
-  return sources;
+  return { sources, lockRead: false };
 }
 
 async function runListCommand(args: string[], cwd: string, executor: CliExecutor): Promise<RawSkillEntry[]> {
@@ -165,42 +216,56 @@ function spawnJobAsync(
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
+/**
+ * CLI가 보고한 entry.path는 DTO로 나가지 않지만, 여기서 버리지도 않는다 — 카드가 이름 말고
+ * 아무것도 말하지 못하던 이유가 그 경로를 버린 것이었다. 경로는 서버 안에 남아 SKILL.md
+ * frontmatter의 description 한 줄이 되고, 절대 경로 자체는 응답에 실리지 않는다.
+ */
+async function toListItems(
+  raw: readonly RawSkillEntry[],
+  scope: Scope,
+  lock: LockLookup,
+  allowedRoot: string,
+): Promise<SkillListItem[]> {
+  return Promise.all(raw.map(async (entry) => {
+    const description = entry.path
+      ? await readSkillDescription(entry.path, allowedRoot)
+      : undefined;
+    const source = lock.sources.get(entry.name);
+    // lock을 읽었는데 이 스킬이 없을 때만 "관리 밖"이라고 단언할 수 있다.
+    const unmanaged = !source && lock.lockRead;
+    return {
+      name: entry.name,
+      scope,
+      agents: entry.agents,
+      ...(source ? { source } : {}),
+      ...(unmanaged ? { unmanaged: true } : {}),
+      ...(description ? { description } : {}),
+      displayPath: buildDisplayPath(scope, entry.name),
+    };
+  }));
+}
+
 async function listInstalledSkills(projectCwd: string | null, executor: CliExecutor): Promise<SkillListItem[]> {
+  const homeDir = os.homedir();
   if (projectCwd) {
     const [projectRaw, globalRaw, projectSources, globalSources] = await Promise.all([
       runListCommand(["list", "--json"], projectCwd, executor),
-      runListCommand(["list", "-g", "--json"], os.homedir(), executor),
+      runListCommand(["list", "-g", "--json"], homeDir, executor),
       readSkillSources(projectCwd),
-      readSkillSources(os.homedir()),
+      readSkillSources(homeDir),
     ]);
-    return [
-      ...projectRaw.map((entry) => ({
-        name: entry.name,
-        scope: "project" as Scope,
-        agents: entry.agents,
-        source: projectSources.get(entry.name),
-        displayPath: buildDisplayPath("project", entry.name),
-      })),
-      ...globalRaw.map((entry) => ({
-        name: entry.name,
-        scope: "global" as Scope,
-        agents: entry.agents,
-        source: globalSources.get(entry.name),
-        displayPath: buildDisplayPath("global", entry.name),
-      })),
-    ];
+    const [projectItems, globalItems] = await Promise.all([
+      toListItems(projectRaw, "project", projectSources, projectCwd),
+      toListItems(globalRaw, "global", globalSources, homeDir),
+    ]);
+    return [...projectItems, ...globalItems];
   }
   const [globalRaw, globalSources] = await Promise.all([
-    runListCommand(["list", "-g", "--json"], os.homedir(), executor),
-    readSkillSources(os.homedir()),
+    runListCommand(["list", "-g", "--json"], homeDir, executor),
+    readSkillSources(homeDir),
   ]);
-  return globalRaw.map((entry) => ({
-    name: entry.name,
-    scope: "global" as Scope,
-    agents: entry.agents,
-    source: globalSources.get(entry.name),
-    displayPath: buildDisplayPath("global", entry.name),
-  }));
+  return toListItems(globalRaw, "global", globalSources, homeDir);
 }
 
 export async function handleList(
