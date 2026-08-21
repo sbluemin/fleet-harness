@@ -892,7 +892,7 @@ describe("model catalog", () => {
     expect(CODEX_SUBSCRIPTION_MODELS).toHaveLength(18);
     expect(CURSOR_SUBSCRIPTION_MODELS).toHaveLength(16);
     expect(KIMI_SUBSCRIPTION_MODELS).toHaveLength(2);
-    expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(11);
+    expect(OPENCODE_SUBSCRIPTION_MODELS).toHaveLength(13);
     expect(CODEX_SUBSCRIPTION_MODELS.every((model) => model.upstreamId?.startsWith("gpt-5.6-"))).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("524k")).every((model) => model.contextWindow === 524_288)).toBe(true);
     expect(CODEX_SUBSCRIPTION_MODELS.filter((model) => model.id.includes("-1m")).every((model) => model.contextWindow === 1_000_000)).toBe(true);
@@ -963,13 +963,14 @@ describe("model catalog", () => {
         .toMatchObject({ cursorMaxMode: true });
     }
     expect(KIMI_SUBSCRIPTION_MODELS.map((model) => model.upstreamId)).toEqual(["k3", "k3-256k"]);
-    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브). wire 미선언 =
-    // Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
+    // OpenCode Go의 서비스 가능 전 모델(2026-08-03 라이브 프로브, 08-21 두 모델 추가).
+    // wire 미선언 = Anthropic passthrough, 그 외에는 선언된 네이티브 wire의 번역 경로를 탄다.
     expect(OPENCODE_SUBSCRIPTION_MODELS.map((model) => [model.upstreamId, model.wire ?? "anthropic"])).toEqual([
       ["minimax-m3", "anthropic"],
       ["qwen3.8-max", "anthropic"],
       ["gpt-5.6-luna", "responses"],
       ["grok-4.5", "responses"],
+      ["muse-spark-1.2-contributor", "responses"],
       ["deepseek-v4-flash", "chat-completions"],
       ["deepseek-v4-pro", "chat-completions"],
       ["glm-5.2", "chat-completions"],
@@ -977,11 +978,23 @@ describe("model catalog", () => {
       ["mimo-v2.5-pro", "chat-completions"],
       ["mimo-v2.5", "chat-completions"],
       ["hy3", "chat-completions"],
+      ["ox-alpha-free", "chat-completions"],
     ]);
-    // effort는 reasoning 파라미터를 실측으로 수용한 responses wire에서만 연다.
-    expect(OPENCODE_SUBSCRIPTION_MODELS.every((model) => (
-      model.effort.supported === ((model.wire ?? "anthropic") === "responses")
-    ))).toBe(true);
+    // effort는 백엔드가 추론 강도 파라미터를 수용한다고 실측된 모델에서만 연다. responses
+    // wire는 `reasoning`을 받고, ox-alpha-free의 chat-completions 백엔드는 `reasoning_effort`를
+    // 받으며 거부 메시지로 자기 사다리를 직접 밝혔다(2026-08-21 실측). 사다리 역시 그
+    // 거부 메시지가 정한 것이지 wire가 정한 것이 아니다.
+    expect(OPENCODE_SUBSCRIPTION_MODELS
+      .filter((model) => model.effort.supported)
+      .map((model) => [
+        model.upstreamId,
+        model.effort.supported ? model.effort.levels : [],
+      ])).toEqual([
+      ["gpt-5.6-luna", ["low", "medium", "high", "xhigh", "max"]],
+      ["grok-4.5", ["low", "medium", "high"]],
+      ["muse-spark-1.2-contributor", ["low", "medium", "high", "xhigh"]],
+      ["ox-alpha-free", ["low", "high", "max"]],
+    ]);
   });
 
   it("keeps the approved GPT-5.6 and K3 effort ladders in the gateway registry", () => {

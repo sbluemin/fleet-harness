@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-20T00:00:00Z",
+  "updatedAt": "2026-08-21T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -717,7 +717,7 @@
     "opencode": {
       "name": "OpenCode",
       "defaultModel": "minimax-m3",
-      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only",
+      "source": "live GET https://opencode.ai/zen/go/v1/models + per-model wire probes on /messages, /responses, /chat/completions (2026-08-03); contextWindow cross-checked against models.dev api.json opencode-go entries and oh-my-pi packages/catalog/src/models.json (2026-08-03, both agree). Excluded: mimo-v2-pro/mimo-v2-omni (upstream server_error), hy3-preview (listed but Router.ModelNotFound); superseded generations removed 2026-08-08 \u2014 the catalog keeps each lineup's current generation only; ox-alpha-free and muse-spark-1.2-contributor added 2026-08-21 from the same live list, each wire chosen by a streaming probe on that date (ox-alpha-free frames natively on /chat/completions and returns reasoning_content deltas; muse-spark-1.2-contributor frames natively on /responses and echoes its own reasoning block) and each effort ladder taken from the upstream's own rejection message (ox-alpha-free: low/high/max; muse-spark-1.2-contributor: none/minimal/low/medium/high/xhigh, so max is refused); their contextWindow comes from models.dev api.json opencode-go entries (2026-08-21). muse-spark-1.2-contributor's Responses backend accepts only tool_choice auto: named function choices, required, and none are refused with a 400 (2026-08-21), so a caller that forces a tool cannot use it",
       "models": [
         {
           "modelId": "minimax-m3",
@@ -764,6 +764,22 @@
             ]
           },
           "benchmarkKey": "grok-4.5"
+        },
+        {
+          "modelId": "muse-spark-1.2-contributor",
+          "name": "Muse-Spark-1.2-Contributor",
+          "capabilityClass": "flagship",
+          "wire": "responses",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          }
         },
         {
           "modelId": "deepseek-v4-flash",
@@ -815,6 +831,21 @@
           "capabilityClass": "flagship",
           "wire": "chat-completions",
           "contextWindow": 256000
+        },
+        {
+          "modelId": "ox-alpha-free",
+          "name": "Ox-Alpha-Free",
+          "capabilityClass": "flagship",
+          "wire": "chat-completions",
+          "contextWindow": 1000000,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "high",
+              "max"
+            ]
+          }
         }
       ]
     },

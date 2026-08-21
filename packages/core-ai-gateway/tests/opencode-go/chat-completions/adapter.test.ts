@@ -115,6 +115,43 @@ describe("chat completions request translation", () => {
     expect(headers.get("authorization")).toBe("Bearer k");
   });
 
+  it("puts reasoning effort on the wire only for OpenCode models that declare a ladder", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
+    const body = (): Record<string, unknown> =>
+      JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body)) as Record<string, unknown>;
+
+    // 카탈로그가 사다리를 선언한 모델은 선언된 단 그대로 나간다.
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      model: "ox-alpha-free",
+      reasoning: { summary: "auto", effort: "max" },
+    }), { apiKey: "k" });
+    expect(body().reasoning_effort).toBe("max");
+
+    // 사다리에 없는 단은 그 사다리 안으로 하향 클램프된다 — 백엔드는 medium을 거부한다.
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      model: "ox-alpha-free",
+      reasoning: { summary: "auto", effort: "medium" },
+    }), { apiKey: "k" });
+    expect(body().reasoning_effort).toBe("low");
+
+    // 사다리를 선언하지 않은 모델에는 이 wire의 기본 동작대로 아무것도 싣지 않는다.
+    fetchMock.mockClear();
+    await new OpencodeGoChatCompletionsAdapter({ fetch: fetchMock }).stream(request({
+      model: "deepseek-v4-flash",
+      reasoning: { summary: "auto", effort: "high" },
+    }), { apiKey: "k" });
+    expect(body()).not.toHaveProperty("reasoning_effort");
+
+    // generic instance는 provider 실측이 없으므로 선언 모델에도 싣지 않는다.
+    fetchMock.mockClear();
+    await adapter(fetchMock).stream(request({
+      model: "ox-alpha-free",
+      reasoning: { summary: "auto", effort: "high" },
+    }), { apiKey: "k" });
+    expect(body()).not.toHaveProperty("reasoning_effort");
+  });
+
   it("omits tools only for the exact Claude Code Suggestion Mode turn on OpenCode", async () => {
     const fetchMock = vi.fn<typeof fetch>(async () => sse("data: [DONE]\n\n"));
     const tools: CanonicalResponseRequest["tools"] = [{
