@@ -204,3 +204,18 @@ describe("검색·복원으로 연 문서의 mtime 심기", () => {
     expect(store).toContain("if (viewState.mtimeMs !== undefined) return;");
   });
 });
+
+describe("낡음 기준선의 소유권", () => {
+  it("Theater 스코프가 바뀌면 mtime 캐시를 비운다", () => {
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    // A의 foo.png mtime이 B의 같은 이름 파일에 실리면 바뀌지도 않은 문서가 낡음으로 표시된다.
+    expect(source).toContain("knownMtimesRef.current = new Map<string, number>();");
+  });
+
+  it("기준 mtime 없이 여는 이미지는 여는 시점에 부모 목록으로 기준을 잡는다", () => {
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    // 첫 목록이 "이미 바뀐 뒤"의 값이면 그 변경을 영영 놓친다.
+    expect(source).toContain("if (!knownMtimesRef.current.has(relativePath))");
+    expect(source).toContain("listFolder(parentDirOf(relativePath))");
+  });
+});

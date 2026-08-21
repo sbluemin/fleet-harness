@@ -536,9 +536,11 @@ export async function searchTheaterFiles(
         return { files: [], totalMatches: 0, ignoredSkipped };
       }
       if (entryCount >= SEARCH_ENTRY_CAP) { walkCapped = true; break; }
-      entryCount += 1;
-      // VCS 날것은 검색 대상에서 항상 제외한다.
+      // VCS 날것과, 숨김을 끈 질의의 숨김 항목은 예산을 쓰기 전에 뺀다.
+      // 결과에서만 걸러내면 점 파일 25,000개가 항목 예산을 태워 보이는 파일에 닿지 못한다.
       if (VCS_INTERNAL_NAMES.has(entry.name)) continue;
+      if (!includeHidden && entry.name.startsWith(".")) continue;
+      entryCount += 1;
       const relativePath = directory.relativePath ? `${directory.relativePath}/${entry.name}` : entry.name;
       const absolutePath = path.join(directory.absolutePath, entry.name);
       const ignoredName = honorIgnoreList && SEARCH_IGNORED_DIRECTORY_NAMES.has(entry.name);

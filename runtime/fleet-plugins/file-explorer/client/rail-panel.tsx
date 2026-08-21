@@ -18,7 +18,7 @@ import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { cacheBustedImageSrc, ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
-import { loadedMtimeOf, stalePathsAfterRefresh } from "./viewer/stale.js";
+import { loadedMtimeOf, parentDirOf, stalePathsAfterRefresh } from "./viewer/stale.js";
 import {
   buildSplitGridTemplate,
   canResizeTreePane,
@@ -142,6 +142,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
   const chipsRef = useRef<HTMLDivElement>(null);
+  // Theater마다 다른 경로 공간이다 — 스코프를 바꿀 때 비우지 않으면 A의 foo.png mtime이
+  // B의 같은 이름 파일에 실려 바뀌지도 않은 문서를 낡음으로 표시한다.
   const knownMtimesRef = useRef(new Map<string, number>());
   const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
@@ -158,6 +160,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const contextScopeRef = useRef(contextScope);
+  contextScopeRef.current = contextScope;
 
   const docSession = useMemo(
     () => ({ openDocs, activePath, history, historyIndex }),
@@ -169,6 +175,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     hydrateStoredSession(contextScope || null);
   }, [contextScope]);
 
+  useEffect(() => {
+    knownMtimesRef.current = new Map<string, number>();
+  }, [contextScope]);
+
   const fetchDocContent = useCallback(async (relativePath: string, silent: boolean) => {
     if (!theaterId) return;
     const scope = contextScope;
@@ -176,6 +186,17 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
+      // 부모 폴더를 한 번도 나열한 적이 없으면(검색·세션 복원으로 연 경우) 기준 mtime이 없다.
+      // 그 상태로 두면 첫 목록이 "이미 바뀐 뒤"의 값일 수 있어 그 변경을 영영 놓친다 — 지금 확보한다.
+      if (!knownMtimesRef.current.has(relativePath)) {
+        try {
+          const listing = await filesRef.current.listFolder(parentDirOf(relativePath));
+          for (const entry of listing.entries) {
+            if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+          }
+        } catch { /* 목록 실패는 표식 없이 여는 것으로 감수한다 — 다음 목록에서 회복된다 */ }
+        if (scope !== contextScopeRef.current) return;
+      }
       const mtimeMs = knownMtimesRef.current.get(relativePath);
       const src = cacheBustedImageSrc(
         `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,

@@ -1,4 +1,5 @@
 import { EventEmitter } from "node:events";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -261,6 +262,16 @@ describe("Files palette search", () => {
     await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, withHidden.ctx);
     const hiddenBody = withHidden.writes[0]?.body as { totalMatches: number };
     expect(hiddenBody.totalMatches).toBeGreaterThan(body.totalMatches);
+  });
+
+  it("does not charge hidden entries against the traversal budget", async () => {
+    // 결과에서만 걸러내면 점 파일이 항목 예산을 태워 보이는 파일에 닿지 못한다.
+    const source = fsSync.readFileSync(new URL("../server/tree-services.ts", import.meta.url), "utf8");
+    const walk = source.slice(source.indexOf("if (entryCount >= SEARCH_ENTRY_CAP)"));
+    const skipIndex = walk.indexOf('if (!includeHidden && entry.name.startsWith("."))');
+    const chargeIndex = walk.indexOf("entryCount += 1;");
+    expect(skipIndex).toBeGreaterThan(-1);
+    expect(skipIndex).toBeLessThan(chargeIndex);
   });
 
   it("accepts a palette-search limit of 200", async () => {

@@ -1223,7 +1223,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       rootEntries: synthesized.rootEntries,
       childResults: synthesized.childResults,
       deletedByDir: ghostByDir as ReadonlyMap<string, readonly string[]>,
-      totalMatches: filterOutcome.totalMatches,
+      // 삭제된 파일의 고스트 행도 화면에 서는 결과다 — 세지 않으면 행을 보여주면서 "0건"이라 말한다.
+      // 서버 총계에 이미 들어 있는 경로는 빼고 센다(삭제 파일은 디스크에 없으므로 보통 겹치지 않는다).
+      totalMatches: filterOutcome.totalMatches
+        + ghostPaths.filter((path) => !filterOutcome.files.some((file) => file.relativePath === path)).length,
       walkCapped: filterOutcome.walkCapped === true,
       ignoredSkipped: filterOutcome.ignoredSkipped === true,
     };
