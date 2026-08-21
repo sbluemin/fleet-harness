@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH, WORKSPACE_DOCK_SPLIT_MIN_WIDTH } from "../client/workspace-layout.js";
 
 const css = await fs.readFile(new URL("../client/repository.css", import.meta.url), "utf8");
+const railPanelSource = await fs.readFile(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
 
 interface CssRule {
   readonly selectors: readonly string[];
@@ -349,13 +350,26 @@ describe("Repository design grammar", () => {
   });
 
   // 2026-08-21 재가 — 축소 순서 계약(history 축). 최종 단계에서 gutter+subject만 남고,
-  // subject 보장폭(minmax 96px)은 어느 단계에서도 유지된다.
+  // subject 보장폭(minmax 96px)은 어느 단계에서도 유지된다. gutter는 뷰포트 축소가 아니라
+  // 오버플 클립으로 줄어든다 — width만 줄이면 viewBox 종횡비가 그림을 세로로 눌러 레인 선이 끊긴다.
   it("keeps a final commit-row stage where only gutter and subject survive", () => {
     const finalStage = atRuleBodies("(max-width: 320px)");
-    expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto;");
+    expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr);");
+    expect(finalStage).toContain(".history-graph-gutter { overflow: hidden; }");
+    expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
+    // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
+    expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.
     const badgeStage = atRuleBodies("(max-width: 420px)");
     expect(badgeStage).toContain(".history-commit-badges { display: none; }");
+  });
+
+  // 접힌 동사 라벨은 display:none이라 접근성 트리에서 빠진다 — 접근성 이름은 라벨과 계수를
+  // 직접 합성해 어느 폭에서도 "Pull 3↓" 전체가 낭독된다.
+  it("composes the verb accessible name from label and count", () => {
+    expect(railPanelSource).toContain("aria-label={[label, countText].filter(Boolean).join(\" \")}");
+    expect(railPanelSource).toContain("countText={workstate?.behind ? `${workstate.behind}↓` : null}");
+    expect(railPanelSource).toContain("countText={workstate?.ahead ? `${workstate.ahead}↑` : null}");
   });
 
   // 체크아웃 탭 라벨도 identity 축의 2단으로 양보한다.

@@ -1111,12 +1111,16 @@
 }
 @container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto; } }
 @container (max-width: 420px) { .history-commit-badges { display: none; } .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto; } .history-commit-subject { grid-column: 2; } .history-commit-body-mark { grid-column: 3; } }
-/* 축소 순서 계약의 최종 단계 — 320px 아래에서는 gutter+subject만 남는다. gutter의 행별
-   레인 폭(rowLaneCount)을 1레인으로 고정해 subject 실효폭이 그래프에 잠식되지 않게 한다.
-   정체(refs) 신호는 뱃지 대신 off-head dim·HEAD 링 같은 색 채널로 잔존한다. */
+/* 축소 순서 계약의 최종 단계 — 320px 아래에서는 gutter+subject만 남는다. gutter는 뷰포트
+   축소가 아니라 오버플 클립으로 1레인만 남긴다 — width만 줄이면 viewBox 종횡비가 그림 전체를
+   세로로 눌러 레인 선이 행 사이에서 끊긴다. 본문 마커(↵)도 이 단계에서 양보한다 — 남아 있으면
+   hasBody 커밋에서 최종 단계가 성립하지 않는다. 정체(refs) 신호는 off-head dim·HEAD 링 같은
+   색 채널로 잔존한다. */
 @container (max-width: 320px) {
-  .history-graph-gutter svg { width: 14px; }
-  .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto; gap: 0 6px; padding: 0 8px; }
+  .history-graph-gutter { overflow: hidden; }
+  .history-graph-gutter svg { min-width: 14px; }
+  .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
+  .history-commit-body-mark { display: none; }
 }
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
