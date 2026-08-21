@@ -1117,8 +1117,10 @@
    hasBody 커밋에서 최종 단계가 성립하지 않는다. 정체(refs) 신호는 off-head dim·HEAD 링 같은
    색 채널로 잔존한다. */
 @container (max-width: 320px) {
-  .history-graph-gutter { overflow: hidden; }
-  .history-graph-gutter svg { min-width: 14px; }
+  /* 래퍼를 14px로 묶어야 오버플이 생긴다 — auto 트랙은 SVG 고유폭(rowLaneCount*14)을
+     그대로 트랙으로 삼아 클립할 대상 자체가 없었다(2026-08-21 리뷰 정정). SVG는 자연 크기로
+     남아 종횡비가 보존되고, 왼쪽 1레인만 남기고 잘린다. */
+  .history-graph-gutter { width: 14px; overflow: hidden; }
   .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
   .history-commit-body-mark { display: none; }
 }

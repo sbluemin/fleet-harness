@@ -360,7 +360,8 @@ describe("Repository design grammar", () => {
   it("keeps a final commit-row stage where only gutter and subject survive", () => {
     const finalStage = atRuleBodies("(max-width: 320px)");
     expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr);");
-    expect(finalStage).toContain(".history-graph-gutter { overflow: hidden; }");
+    expect(finalStage).toContain(".history-graph-gutter { width: 14px; overflow: hidden; }");
+    // SVG 자체는 축소하지 않는다 — 뷰포트 축소는 viewBox 종횡비로 그림을 세로로 눌러 레인 선을 끊는다.
     expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
