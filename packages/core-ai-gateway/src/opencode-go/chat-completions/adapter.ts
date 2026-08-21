@@ -9,7 +9,8 @@ import type {
   CanonicalResponseRequest,
   CanonicalUsage,
 } from "../../canonical/index.js";
-import { canonicalMessageText } from "../../canonical/index.js";
+import { canonicalMessageText, clampReasoningEffort, type ReasoningEffort } from "../../canonical/index.js";
+import { OPENCODE_SUBSCRIPTION_MODELS, upstreamModelId } from "../../models.js";
 import {
   UpstreamProtocolError,
   UpstreamBodyLimitError,
@@ -66,6 +67,8 @@ interface ChatWireRequest {
   tool_choice?: "auto" | "none" | "required" | { type: "function"; function: { name: string } };
   parallel_tool_calls?: boolean;
   max_tokens?: number;
+  /** OpenCode Go 백엔드가 받는 추론 강도. 카탈로그가 사다리를 선언한 모델에만 실린다. */
+  reasoning_effort?: ReasoningEffort;
   stream: true;
   stream_options: { include_usage: true };
 }
@@ -87,9 +90,11 @@ export interface OpenAIChatCompletionsAdapterOptions {
  * - No strict-mode schema rewrite. Chat Completions backends differ on strict
  *   support, so tools ship with their original schemas and the optional-argument
  *   pollution caveat documented for Cursor applies here too.
- * - Chat Completions에는 이식 가능한 `reasoning` 요청 파라미터가 없어 설정은 wire에 싣지
- *   않는다. Provider가 보낸 `reasoning_content`는 canonical reasoning으로 보존하고, 이전
- *   assistant 추론은 wire 요구가 실측된 모델에만 재생한다.
+ * - Chat Completions 규격에는 이식 가능한 `reasoning` 요청 파라미터가 없다. 그래서 effort는
+ *   기본적으로 wire에 싣지 않고, 백엔드가 자기 사다리를 실측으로 밝힌 provider instance의
+ *   선언 모델에 한해 `reasoning_effort`로만 나간다(아래 reasoningEffortPolicy). Provider가
+ *   보낸 `reasoning_content`는 canonical reasoning으로 보존하고, 이전 assistant 추론은 wire
+ *   요구가 실측된 모델에만 재생한다.
  */
 export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
   private readonly fetchImpl: FetchLike;
@@ -124,7 +129,11 @@ export class OpenAIChatCompletionsAdapter implements AiGatewayAdapter {
     const unlinkAbort = linkAbortSignal(options.signal, controller);
     const supportsImageInput = imageInputPolicy.get(this)?.(request.model) ?? true;
     const omitTools = toolOmissionPolicy.has(this) && shouldOmitTools(request);
-    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools);
+    const requestedEffort = request.reasoning?.effort;
+    const reasoningEffort = requestedEffort === undefined
+      ? undefined
+      : reasoningEffortPolicy.get(this)?.(request.model, requestedEffort);
+    const payload = forChatCompletionsBackend(request, supportsImageInput, omitTools, reasoningEffort);
     wireLog("openai-chat.wire.request", { url: this.url, payload });
     let response: Response;
 
@@ -192,6 +201,18 @@ const argumentPruningPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
  * 이 omission은 provider 실측에 근거하므로 generic class에는 결합하지 않는다.
  */
 const toolOmissionPolicy = new WeakMap<OpenAIChatCompletionsAdapter, true>();
+
+/**
+ * 어떤 instance가 canonical effort를 wire에 싣는지, 그리고 어떤 모델에 어떤 단으로 싣는지.
+ *
+ * Chat Completions 규격에는 reasoning 파라미터가 없으므로 generic instance는 계속 아무것도
+ * 싣지 않는다. 실을 수 있다는 근거는 백엔드별 실측뿐이라 — image/pruning 정책과 같은 이유로 —
+ * provider instance에만 결합한다. 반환이 undefined면 그 모델에는 싣지 않는다.
+ */
+const reasoningEffortPolicy = new WeakMap<
+  OpenAIChatCompletionsAdapter,
+  (model: string, effort: ReasoningEffort) => ReasoningEffort | undefined
+>();
 const CLAUDE_CODE_SUGGESTION_MODE_PREFIX =
   "[SUGGESTION MODE: Suggest what the user might naturally type next into Claude Code.]";
 const CLAUDE_CODE_SUGGESTION_MODE_SUFFIXES = [
@@ -233,6 +254,10 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
     // no-tools 조건은 Suggestion Mode에 더해 `tool_choice: "none"`까지 wire에서 catalog를
     // 뺀다 — generic class의 호환 동작은 바꾸지 않고 provider instance에만 결합한다.
     toolOmissionPolicy.set(this, true);
+    // OpenCode Go의 Chat 백엔드는 `reasoning_effort`를 받고, 거부 메시지로 자기 사다리를
+    // 직접 밝힌다(ox-alpha-free: low/high/max, 2026-08-21 실측). 사다리를 선언한 모델에만
+    // 실어야 한다 — 선언 없는 모델에 보내면 그 백엔드가 받는다는 근거가 없다.
+    reasoningEffortPolicy.set(this, opencodeGoChatReasoningEffort);
   }
 
   /**
@@ -242,6 +267,24 @@ export class OpencodeGoChatCompletionsAdapter extends OpenAIChatCompletionsAdapt
   wireTools(request: CanonicalResponseRequest): readonly CanonicalFunctionTool[] {
     return shouldOmitTools(request) ? [] : request.tools ?? [];
   }
+}
+
+/**
+ * 카탈로그가 effort 사다리를 선언한 OpenCode Go chat-completions 모델의 wire effort.
+ *
+ * 사다리는 카탈로그 한 곳에서만 산다. 선언이 없으면 undefined를 돌려 이 wire의 기본 동작
+ * (싣지 않음)을 유지하고, 있으면 그 사다리 안으로 하향 클램프한다 — 라우터가 이미 같은
+ * 사다리로 클램프하지만, canonical을 직접 부르는 호출자에게도 같은 계약이 서야 한다.
+ */
+function opencodeGoChatReasoningEffort(
+  model: string,
+  effort: ReasoningEffort,
+): ReasoningEffort | undefined {
+  const entry = OPENCODE_SUBSCRIPTION_MODELS.find(
+    (candidate) => upstreamModelId(candidate) === model,
+  );
+  if (entry?.effort.supported !== true) return undefined;
+  return clampReasoningEffort(effort, entry.effort.levels, model);
 }
 
 /**
@@ -270,6 +313,7 @@ function forChatCompletionsBackend(
   request: CanonicalResponseRequest,
   supportsImageInput: boolean,
   omitTools = false,
+  reasoningEffort?: ReasoningEffort,
 ): ChatWireRequest {
   const messages: ChatWireMessage[] = [];
   if (request.instructions !== undefined && request.instructions.length > 0) {
@@ -375,6 +419,9 @@ function forChatCompletionsBackend(
   }
   if (request.max_output_tokens !== undefined) {
     payload.max_tokens = request.max_output_tokens;
+  }
+  if (reasoningEffort !== undefined) {
+    payload.reasoning_effort = reasoningEffort;
   }
   return payload;
 }
