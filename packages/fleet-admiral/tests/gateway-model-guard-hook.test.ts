@@ -167,6 +167,11 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(stderr).toContain("agentType");
   });
 
+  it("does not read a suffixed identifier as opts.agentType", () => {
+    const script = `const cfg = { subagentType: "helper" }; agent("x", { model: "opus" })`;
+    expect(gateWorkflow({ script }).status).toBe(0);
+  });
+
   it("reads the script from scriptPath for resume-style runs", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "gateway-model-guard-"));
     tempDirs.push(dir);

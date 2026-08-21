@@ -52,7 +52,8 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-const AGENT_TYPE_RE = /agentType\s*:/;
+// `subagentType:` 같은 접미 식별자를 opts.agentType으로 읽으면 멀쩡한 스크립트가 막힌다.
+const AGENT_TYPE_RE = /\bagentType\s*:/;
 // 핀 인식(`\bmodel\s*:`)과 값 검증은 같은 철자를 봐야 한다. 경계나 공백 하나가 어긋나면
 // `{ model : "..." }`가 핀으로 세어지고도 검증을 건너뛰고, `response_model:` 같은 설정 키가
 // opts.model로 오인되어 멀쩡한 스크립트가 막힌다.
