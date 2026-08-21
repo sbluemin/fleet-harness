@@ -10,6 +10,7 @@ import type { ConsoleLockPayload } from "./console-contract-types.js";
 import { openBrowser, type BrowserOpenResult, type OpenBrowserDeps } from "./browser.js";
 import { describeConsoleLaunch, describeDaemonStartFailure } from "./failure-notice.js";
 import { createConsoleHealthClient } from "./health.js";
+import { runPanelGateway } from "./panel-gateway.js";
 import {
   ASCII_FLEET_BANNER,
   FLEET_COMMAND,
@@ -340,6 +341,12 @@ export async function runConsoleRestart(deps: ConsoleRestartDeps = {}): Promise<
 export async function main(): Promise<void> {
   if (process.argv[2] === "serve") {
     await createConsoleDaemonLifecycle().runServer();
+    return;
+  }
+  if (process.argv[2] === "panel-gateway") {
+    // 패널 하나가 쓰는 AI Gateway를 이 프로세스로 띄운다. hook과 같은 진입점을 재사용하므로
+    // 개발(tsx)과 게시(dist/cli.mjs) 양쪽에서 빌드 설정 추가 없이 같은 방식으로 spawn된다.
+    await runPanelGateway();
     return;
   }
   if (process.argv[2] === "hook") {

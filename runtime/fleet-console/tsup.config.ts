@@ -13,7 +13,7 @@ fs.rmSync(path.join(__dirname, "dist", "fleet-plugins", "diff"), { recursive: tr
 // dist/client(vite 산출물)을 보존해야 하므로 clean을 끈다 — dist/cli.*만 이 빌드의 소유다.
 export default defineConfig([
   {
-    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/cli.ts", "access-protocol": "access-protocol/index.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts" },
+    entry: { fleet: "cli/fleet-entry.ts", cli: "core/host/cli.ts", "panel-gateway": "core/host/panel-gateway-entry.ts", "access-protocol": "access-protocol/index.ts", "desktop-protocol": "core/host/desktop-protocol.ts", "fleet-plugins/terminal/routes": "../fleet-plugins/terminal/routes.ts", "fleet-plugins/repository/routes": "../fleet-plugins/repository/routes.ts", "fleet-plugins/file-explorer/routes": "../fleet-plugins/file-explorer/routes.ts", "fleet-plugins/skills/routes": "../fleet-plugins/skills/routes.ts", "fleet-plugins/ledger/routes": "../fleet-plugins/ledger/routes.ts", "fleet-plugins/quota/routes": "../fleet-plugins/quota/routes.ts", "fleet-plugins/scuttlebutt/routes": "../fleet-plugins/scuttlebutt/routes.ts" },
     format: ["esm"],
     banner: { js: "#!/usr/bin/env node" },
     // 선언(.d.ts)은 패키지가 타입으로 노출하는 cli·access-protocol 엔트리에만 생성한다.

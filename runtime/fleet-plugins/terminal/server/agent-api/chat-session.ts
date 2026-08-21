@@ -37,18 +37,6 @@ import {
   type AgentChatStreamEvent,
 } from "./chat-events.js";
 import { chatChildEnv } from "../shared/launch-env.js";
-import { PANEL_GATEWAY_HEADER_ENV, panelGatewayHeaderValue } from "../ai-gateway-pool.js";
-
-/**
- * Chat Mode 자식의 환경. 이 표면도 PTY 표면과 같은 패널 게이트웨이로 가야 한다 — 여기서
- * 헤더를 빠뜨리면 같은 Operation의 두 얼굴이 서로 다른 라우터로 갈라지고, 사용자가 켠 격리는
- * 터미널로 말할 때만 성립한다.
- */
-function chatSdkEnv(panelId: string | undefined): NodeJS.ProcessEnv {
-  const env = chatChildEnv(process.env);
-  const headers = panelGatewayHeaderValue(env[PANEL_GATEWAY_HEADER_ENV], panelId ?? "");
-  return headers === undefined ? env : { ...env, [PANEL_GATEWAY_HEADER_ENV]: headers };
-}
 import type { AgentProviderSession } from "./types.js";
 
 /**
@@ -74,15 +62,6 @@ export type AgentChatSessionOrigin =
 
 export interface AgentChatSessionSeed {
   readonly baseUrl: string;
-  /**
-   * 이 Operation이 자기 게이트웨이를 받았을 때 그 라우터를 지목하는 패널 식별자. 부재/빈 값은
-   * Console 공용 게이트웨이를 쓴다는 뜻이다.
-   *
-   * Chat Mode는 같은 Operation의 다른 얼굴이므로 PTY 표면과 같은 라우터로 가야 한다. baseUrl은
-   * 두 표면이 공유하는 값이라 여기서 갈라질 수 없고(공유 홈의 discovery 캐시가 그 값을 글자
-   * 단위로 대조한다), 신원은 자식이 되돌려 보내는 헤더로 간다.
-   */
-  readonly panelId?: string;
   readonly model: string;
   /**
    * 이 모델의 **실제** 문맥 창(카탈로그 값). 자식이 재는 창이 아니다 — 자식은 좌표가 둘뿐이라
@@ -1115,7 +1094,7 @@ class AgentChatSession {
           ...(this.seed.ultracode ? { ultracode: true } : {}),
           // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
           // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
-          env: chatSdkEnv(this.seed.panelId),
+          env: chatChildEnv(process.env),
           ...(pluginRoots.length > 0 ? { plugins: pluginRoots.map((root) => ({ path: root })) } : {}),
         });
         if (this.disposed) {

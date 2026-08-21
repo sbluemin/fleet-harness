@@ -3,7 +3,7 @@ import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import process from "node:process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { resolvePathBinary } from "@dotobokuri/core-process";
 import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
@@ -33,7 +33,6 @@ import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buil
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
-import { PANEL_GATEWAY_HEADER_ENV, panelGatewayHeaderValue } from "../ai-gateway-pool.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -42,14 +41,12 @@ export interface AiGatewayLaunchBinding {
   /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
   origin(): string | null;
   /**
-   * 이 Operation이 자기 게이트웨이를 받을 때 자식이 되돌려 보낼 패널 식별자. 미주입이거나 빈
-   * 문자열이면 이 런치는 Console 공용 게이트웨이를 쓴다.
+   * 이 Operation 전용 게이트웨이의 base URL. `null`이면 Console 공용 게이트웨이를 쓴다.
    *
-   * 값은 spawn env에 그대로 구워지므로 런치 시점에 한 번만 정해진다 — 설정을 나중에 끄더라도
-   * 이미 떠 있는 패널은 자기 식별자를 계속 보낸다. 그게 옳다: 살아 있는 자식의 env를 바꿀
-   * 방법은 없고, 라우터는 패널이 사라질 때 회수된다.
+   * 부르는 것 자체가 그 전용 프로세스를 띄우는 지점이다. 값은 spawn env에 구워지므로 런치
+   * 시점에 한 번만 정해지고, 같은 Operation의 다른 표면(Chat Mode)은 같은 답을 받는다.
    */
-  panelIdFor?(operationId: string | undefined): string;
+  panelBaseUrlFor?(operationId: string | undefined): Promise<string | null>;
 }
 
 export interface TerminalLaunchResolverDeps {
@@ -234,6 +231,39 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
 
 export const createDefaultTerminalLaunchResolver = createAgentTerminalLaunchResolver;
 
+/**
+ * 패널 게이트웨이 자식을 띄우는 커맨드.
+ *
+ * Console 진입점 옆의 전용 번들(`panel-gateway.mjs`)을 우선한다. 실측 2026-08-22: 같은 일을
+ * 전체 Console 번들(`cli.mjs panel-gateway`)로 하면 물리 풋프린트 84.6 MiB에 기동 222 ms인데,
+ * 전용 번들은 42.5 MiB에 95 ms다(맨 Node 바닥 10.8 MiB). 게이트웨이가 쓰지도 않는 서버·플러그인
+ * 호스트를 패널 수만큼 다시 적재할 이유가 없다.
+ *
+ * 그 번들이 없는 환경(소스 실행 등)에서는 같은 일을 하는 Console 서브커맨드로 떨어진다 —
+ * 격리를 못 쓰게 되는 것보다 조금 무거운 편이 낫다.
+ */
+export function buildPanelGatewayCommand(
+  deps: { readonly entryPath?: string; readonly execPath?: string; readonly tsxLoaderPath?: string } = {},
+  fileExists: (candidate: string) => boolean = (candidate) => fs.existsSync(candidate),
+): { readonly execPath: string; readonly args: readonly string[] } {
+  const entry = buildConsoleHookEntry(deps as TerminalLaunchResolverDeps);
+  const extension = path.extname(entry.entryPath);
+  if (!TYPESCRIPT_SUBCOMMAND_EXTENSIONS.has(extension)) {
+    const sibling = path.join(path.dirname(entry.entryPath), `${PANEL_GATEWAY_ENTRY_BASENAME}${extension}`);
+    if (fileExists(sibling)) return { execPath: entry.execPath, args: [sibling] };
+    return { execPath: entry.execPath, args: [entry.entryPath, PANEL_GATEWAY_SUBCOMMAND] };
+  }
+  if (!entry.tsxLoaderPath) throw new Error("Fleet Console panel gateway for a TypeScript entry requires a tsx loader path");
+  return {
+    execPath: entry.execPath,
+    args: ["--import", pathToFileURL(entry.tsxLoaderPath).href, entry.entryPath, PANEL_GATEWAY_SUBCOMMAND],
+  };
+}
+
+const PANEL_GATEWAY_ENTRY_BASENAME = "panel-gateway";
+const PANEL_GATEWAY_SUBCOMMAND = "panel-gateway";
+const TYPESCRIPT_SUBCOMMAND_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
+
 function resolveHookEntryPath(candidate: string | undefined): string {
   if (candidate && hasHookEntryExtension(candidate)) return candidate;
   if (candidate) {
@@ -353,28 +383,22 @@ async function createAgentCliLaunchSpec(options: {
       if (!options.aiGateway) {
         throw new Error("The AI gateway launch binding is unavailable.");
       }
-      const origin = options.aiGateway.origin();
-      if (!origin) {
-        throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
+      // 패널 전용 게이트웨이가 붙으면 그 자식 프로세스의 URL을 쓴다. 부재는 Console 공용이다.
+      const panelBaseUrl = await options.aiGateway.panelBaseUrlFor?.(options.operationId) ?? null;
+      let baseUrl: string;
+      if (panelBaseUrl) {
+        baseUrl = panelBaseUrl;
+      } else {
+        const origin = options.aiGateway.origin();
+        if (!origin) {
+          throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
+        }
+        baseUrl = `${origin}${options.aiGateway.routePath}`;
       }
-      // baseUrl은 패널마다 갈라지지 않는다. Claude Code는 Claude 홈마다 게이트웨이 모델 캐시를
-      // 하나만 두고 그 baseUrl이 자기 ANTHROPIC_BASE_URL과 글자 단위로 같을 때만 인정하므로,
-      // 패널마다 다른 URL을 주면 마지막에 뜬 패널을 뺀 전부가 빈 /model 픽커를 갖게 된다.
-      // 패널 신원은 요청 헤더로 간다.
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
-        baseUrl: `${origin}${options.aiGateway.routePath}`,
+        baseUrl,
         selection: gatewaySelection,
       });
-      const panelHeaders = panelGatewayHeaderValue(
-        launchProfile.env[PANEL_GATEWAY_HEADER_ENV],
-        options.aiGateway.panelIdFor?.(options.operationId) ?? "",
-      );
-      if (panelHeaders !== undefined) {
-        launchProfile = {
-          ...launchProfile,
-          env: { ...launchProfile.env, [PANEL_GATEWAY_HEADER_ENV]: panelHeaders },
-        };
-      }
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
     return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
