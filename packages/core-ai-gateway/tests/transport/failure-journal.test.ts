@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, stat } from "node:fs/promises";
+import { mkdtemp, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -81,7 +81,13 @@ describe("failure journal", () => {
   });
 
   it("never throws at the caller when the target is unwritable", async () => {
-    const journal = createFailureJournal({ filePath: "/proc/definitely/not/writable.jsonl" });
+    // A regular file standing where the journal wants a directory fails the same way on every
+    // host. An absolute system path such as /proc does not: it is missing on macOS and can hang
+    // the mkdir probe on a Linux runner.
+    const dir = await mkdtemp(join(tmpdir(), "fleet-journal-"));
+    const blocker = join(dir, "blocker");
+    await writeFile(blocker, "not a directory");
+    const journal = createFailureJournal({ filePath: join(blocker, "failures.jsonl") });
     expect(() => journal.write(record())).not.toThrow();
     await expect(journal.flush()).resolves.toBeUndefined();
   });
