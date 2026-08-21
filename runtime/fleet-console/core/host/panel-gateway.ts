@@ -8,9 +8,11 @@ import {
   createAiGatewaySettingsStore,
   createCursorDiagnosticLog,
   createFailureJournal,
+  DEFAULT_WIRE_LOG_MAX_BYTES,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
+  setWireLogTarget,
 } from "@dotobokuri/core-ai-gateway";
 import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@dotobokuri/fleet-admiral";
 import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
@@ -24,6 +26,54 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
  * that differ in one number is far easier to reason about than two unrelated shapes.
  */
 export const PANEL_GATEWAY_ROUTE_PATH = `/${AI_GATEWAY_ROUTE_SEGMENT}`;
+
+/**
+ * Env vars the parent uses to hand this child the roots it must not guess.
+ *
+ * `getFleetDataDir()` reads only `FLEET_DATA_DIR`, but a Console's effective root can come from
+ * `FLEET_CONSOLE_DATA_DIR` or from an embedded `createConsoleServer({ dataDir })` — neither of
+ * which the child inherits. Left to itself the child fell back to the real `~/.fleet`, read a
+ * different `ai-gateway.json` than the Console it belongs to, and wrote its diagnostics into the
+ * user's actual root while the caller believed the run was isolated.
+ *
+ * The log directory is passed for the same reason rather than rebuilt from the data root: where a
+ * plugin's data lives is the host's answer, and reconstructing another side's path is exactly the
+ * mistake that dropped the gateway mount from the base URL.
+ */
+export const PANEL_GATEWAY_DATA_DIR_ENV = "FLEET_DATA_DIR";
+export const PANEL_GATEWAY_LOG_DIR_ENV = "FLEET_PANEL_GATEWAY_LOG_DIR";
+
+/**
+ * Where this child writes its diagnostics.
+ *
+ * The host's answer wins because only the host knows where its plugin data lives; a Console booted
+ * with `FLEET_CONSOLE_DATA_DIR` or an embedded `dataDir` keeps that slot somewhere this child
+ * cannot derive. The fallback exists only for a child started without the variable at all.
+ */
+export function panelGatewayLogDir(
+  env: Readonly<Record<string, string | undefined>>,
+  dataDir: string,
+): string {
+  const named = env[PANEL_GATEWAY_LOG_DIR_ENV];
+  if (named !== undefined && named.trim().length > 0) return named;
+  return path.join(dataDir, "console", "plugins", "terminal", "ai-gateway");
+}
+
+/**
+ * The wire-log target this child must install, from the user's stored setting.
+ *
+ * `undefined` means the setting was never chosen and the environment target stands. `false` is not
+ * the same as absent and must win over an inherited `FLEET_GATEWAY_WIRE_LOG`: that variable is
+ * inherited from whatever launched the Console, and honouring it against an explicit opt-out would
+ * write prompts and completions to disk that the user refused.
+ */
+export function panelGatewayWireLogTarget(
+  stored: boolean | undefined,
+  logDir: string,
+): { readonly path: string; readonly maxBytes: number } | null | undefined {
+  if (stored === undefined) return undefined;
+  return stored ? { path: path.join(logDir, "wire-log.jsonl"), maxBytes: DEFAULT_WIRE_LOG_MAX_BYTES } : null;
+}
 
 /**
  * Line the child writes to stdout once it is listening, followed by the **full base URL** a client
@@ -53,7 +103,20 @@ export async function runPanelGateway(): Promise<void> {
   const dataDir = getFleetDataDir();
   const infraServices = createInfraServices();
   const store = createAiGatewaySettingsStore({ dataDir });
-  const logDir = path.join(dataDir, "console", "plugins", "terminal", "ai-gateway");
+  const logDir = panelGatewayLogDir(process.env, dataDir);
+  /**
+   * 와이어 로그는 이 프로세스에서도 사용자가 저장한 값을 따라야 한다.
+   *
+   * 안 하면 두 방향 모두 틀린다: 설정에서 켜도 전용 패널의 요청만 로그에서 빠지고, 명시적으로
+   * 껐는데 `FLEET_GATEWAY_WIRE_LOG`가 상속되면 프롬프트 본문이 그대로 남는다. 뒤쪽은 사용자의
+   * 명시적 거부를 무시하고 민감한 페이로드를 기록하는 것이라 더 나쁘다. 판독이 실패하면
+   * false로 닫는다 — Console의 applyStoredWireLog가 택한 규율과 같다.
+   */
+  try {
+    setWireLogTarget(panelGatewayWireLogTarget(store.read().wireLogEnabled, logDir));
+  } catch {
+    setWireLogTarget(panelGatewayWireLogTarget(false, logDir));
+  }
   /**
    * 진단 파일은 이 프로세스 전용이다.
    *
@@ -98,6 +161,7 @@ export async function runPanelGateway(): Promise<void> {
 
   const shutdown = async (): Promise<void> => {
     server.close();
+    setWireLogTarget(undefined);
     router.dispose();
     await diagnostics.flush();
     await failureJournal.flush();

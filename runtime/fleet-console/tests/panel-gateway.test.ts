@@ -6,7 +6,13 @@ import { fileURLToPath } from "node:url";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { PANEL_GATEWAY_READY_PREFIX, PANEL_GATEWAY_ROUTE_PATH } from "../core/host/panel-gateway.js";
+import {
+  PANEL_GATEWAY_LOG_DIR_ENV,
+  PANEL_GATEWAY_READY_PREFIX,
+  PANEL_GATEWAY_ROUTE_PATH,
+  panelGatewayLogDir,
+  panelGatewayWireLogTarget,
+} from "../core/host/panel-gateway.js";
 
 /**
  * 자식은 게시본이 실제로 실행하는 진입점, 즉 번들된 `dist/cli.mjs`로 띄운다.
@@ -34,11 +40,12 @@ afterEach(() => {
 
 function startPanelGateway(
   args: readonly string[] = [SLIM_ENTRY],
-): { readonly child: ChildProcess; readonly ready: Promise<string> } {
+  extraEnv: NodeJS.ProcessEnv = {},
+): { readonly child: ChildProcess; readonly ready: Promise<string>; readonly dataDir: string } {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-panel-gw-"));
   dirs.push(dataDir);
   const child = spawn(process.execPath, [...args], {
-    env: { ...process.env, FLEET_DATA_DIR: dataDir },
+    env: { ...process.env, FLEET_GATEWAY_WIRE_LOG: "", FLEET_DATA_DIR: dataDir, ...extraEnv },
     stdio: ["pipe", "pipe", "pipe"],
   });
   children.push(child);
@@ -62,7 +69,7 @@ function startPanelGateway(
     child.once("error", (error) => { clearTimeout(timer); reject(error); });
     child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`panel gateway exited early with ${code}. stderr=${stderr}`)); });
   });
-  return { child, ready };
+  return { child, ready, dataDir };
 }
 
 describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
@@ -142,4 +149,37 @@ describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
     // 부모가 사라지면 자식도 사라져야 한다 — 아니면 Console이 죽은 뒤에도 포트를 쥔 채 남는다.
     await expect(exited).resolves.toBe(0);
   }, START_TIMEOUT_MS + 10_000);
+});
+
+describe("panel gateway log directory", () => {
+  it("uses the directory the host named", () => {
+    const resolved = panelGatewayLogDir({ [PANEL_GATEWAY_LOG_DIR_ENV]: "/host/slot" }, "/data");
+
+    // 호스트만이 자기 플러그인 데이터가 어디 사는지 안다. 데이터 루트에서 되짚어 만들면
+    // FLEET_CONSOLE_DATA_DIR이나 임베드 dataDir로 뜬 Console의 실제 슬롯과 어긋난다.
+    expect(resolved).toBe("/host/slot");
+  });
+
+  it("falls back only when the host named nothing", () => {
+    expect(panelGatewayLogDir({}, "/data")).toBe("/data/console/plugins/terminal/ai-gateway");
+    expect(panelGatewayLogDir({ [PANEL_GATEWAY_LOG_DIR_ENV]: "   " }, "/data"))
+      .toBe("/data/console/plugins/terminal/ai-gateway");
+  });
+});
+
+describe("panel gateway wire log target", () => {
+  it("writes beside the other diagnostics when the setting is on", () => {
+    expect(panelGatewayWireLogTarget(true, "/logs"))
+      .toEqual({ path: "/logs/wire-log.jsonl", maxBytes: expect.any(Number) });
+  });
+
+  it("overrides an inherited environment target when the setting is off", () => {
+    // `null`이라야 상속된 FLEET_GATEWAY_WIRE_LOG를 이긴다. undefined면 env가 살아남아,
+    // 사용자가 명시적으로 거부한 프롬프트 본문이 그대로 디스크에 남는다.
+    expect(panelGatewayWireLogTarget(false, "/logs")).toBeNull();
+  });
+
+  it("leaves the environment target alone when the user never chose", () => {
+    expect(panelGatewayWireLogTarget(undefined, "/logs")).toBeUndefined();
+  });
 });

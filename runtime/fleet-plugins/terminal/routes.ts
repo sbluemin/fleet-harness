@@ -19,7 +19,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import { registerAgentRoutes } from "./server/agent.js";
 import { registerAnalysisRoutes } from "./server/agent-api/analysis-routes.js";
 import { AI_GATEWAY_ROUTE_SEGMENT, registerAiGatewayRoutes } from "./server/ai-gateway-routes.js";
-import { createPanelGatewayPool } from "./server/panel-gateway-pool.js";
+import { PANEL_GATEWAY_DATA_DIR_ENV, PANEL_GATEWAY_LOG_DIR_ENV, createPanelGatewayPool } from "./server/panel-gateway-pool.js";
 import { buildPanelGatewayCommand } from "./server/agent-api/launch.js";
 import { createAgentCliPathStore } from "./server/agent-api/agent-cli-paths.js";
 import { registerTerminalSettingsRoutes } from "./server/settings-routes.js";
@@ -116,6 +116,14 @@ export default definePlugin({
     const panelGateways = createPanelGatewayPool({
       enabled: () => aiGatewayStore.read().dedicatedGatewayPerPanel === true,
       command: () => buildPanelGatewayCommand(),
+      // 자식은 이 Console의 **유효** 루트를 추측하면 안 된다. FLEET_CONSOLE_DATA_DIR이나 임베드
+      // dataDir로 뜬 Console의 루트는 자식 환경에 없어서, 그대로 두면 자식이 사용자의 진짜
+      // ~/.fleet을 읽고 거기에 진단을 남긴다 — 격리라고 믿은 실행이 실제로는 아니게 된다.
+      env: {
+        ...process.env,
+        [PANEL_GATEWAY_DATA_DIR_ENV]: ctx.host.paths.fleetDataDir,
+        [PANEL_GATEWAY_LOG_DIR_ENV]: path.join(ctx.host.paths.pluginDataDir(ctx.pluginId), "ai-gateway"),
+      },
     });
     ctx.host.lifecycle.registerCleanup(() => panelGateways.dispose());
     const unsubscribeGatewayRelease = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {

@@ -57,6 +57,17 @@ interface PanelGatewayEntry {
 /** Line a ready child writes. Kept in sync with the host module the child runs. */
 const READY_PREFIX = "fleet-panel-gateway-ready ";
 
+/**
+ * Roots the parent hands the child, kept in sync with the same host module.
+ *
+ * The child must never derive these. `getFleetDataDir()` reads only `FLEET_DATA_DIR`, while a
+ * Console's effective root can come from `FLEET_CONSOLE_DATA_DIR` or an embedded `dataDir` that
+ * the child does not inherit — left alone it falls back to the real `~/.fleet` and both reads the
+ * wrong settings and writes into a root the caller believed it had isolated away from.
+ */
+export const PANEL_GATEWAY_DATA_DIR_ENV = "FLEET_DATA_DIR";
+export const PANEL_GATEWAY_LOG_DIR_ENV = "FLEET_PANEL_GATEWAY_LOG_DIR";
+
 export function createPanelGatewayPool(deps: CreatePanelGatewayPoolDeps): PanelGatewayPool {
   const maxGateways = deps.maxGateways ?? MAX_PANEL_GATEWAYS;
   const startTimeoutMs = deps.startTimeoutMs ?? PANEL_GATEWAY_START_TIMEOUT_MS;
