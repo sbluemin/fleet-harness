@@ -639,6 +639,76 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(createResolver).toHaveBeenCalledWith({ cwd: "/work" });
   });
 
+  it("names a dedicated panel in a request header while every panel keeps one base URL", async () => {
+    const claudeConfigDir = makeTempDir("fleet-claude-panel-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+        panelIdFor: (operationId?: string) => operationId ?? "",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+        ...baseProfile,
+        id: "claude-gateway",
+        label: "Claude (Gateway)",
+        cwd,
+        env: { ...env },
+      })) as never,
+    });
+
+    const spec = await resolve("/work", {
+      sessionId: "session-panel",
+      operationId: "op-panel-1",
+      cliId: "claude-gateway",
+    });
+    const cache = JSON.parse(readFileSync(path.join(claudeConfigDir, "cache", "gateway-models.json"), "utf8")) as {
+      readonly baseUrl: string;
+    };
+
+    expect(spec.env.ANTHROPIC_CUSTOM_HEADERS).toBe("x-fleet-panel: op-panel-1");
+    // 패널이 갈려도 baseUrl은 하나여야 한다 — Claude Code는 이 캐시의 baseUrl이 자기
+    // ANTHROPIC_BASE_URL과 정확히 같을 때만 게이트웨이 모델을 인정한다.
+    expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
+    expect(cache.baseUrl).toBe(spec.env.ANTHROPIC_BASE_URL);
+  });
+
+  it("sends no panel header when the launch shares the console gateway", async () => {
+    const claudeConfigDir = makeTempDir("fleet-claude-shared-");
+    const resolve = createDefaultTerminalLaunchResolver({
+      cwd: "/work",
+      env: { CLAUDE_CONFIG_DIR: claudeConfigDir, PATH: "/bin" } as NodeJS.ProcessEnv,
+      agentRuntime: createFakeRuntime() as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+        panelIdFor: () => "",
+      },
+      infraServices: createFakeInfraServices() as never,
+      injectProfile: (async (profile: AgentCliProfile) => profile) as never,
+      resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
+        ...baseProfile,
+        id: "claude-gateway",
+        label: "Claude (Gateway)",
+        cwd,
+        env: { ...env },
+      })) as never,
+    });
+
+    const spec = await resolve("/work", {
+      sessionId: "session-shared",
+      operationId: "op-shared-1",
+      cliId: "claude-gateway",
+    });
+
+    expect(spec.env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
+    expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
+  });
+
   it("prewrites the complete Claude Code gateway model cache before launch", async () => {
     const claudeConfigDir = makeTempDir("fleet-claude-gateway-");
     const resolve = createDefaultTerminalLaunchResolver({

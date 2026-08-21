@@ -498,6 +498,31 @@ describe("terminal settings routes", () => {
     expect(harness.applied).toEqual([enabled]);
   });
 
+  it.each([true, false])("PUT /plugins/terminal/settings accepts dedicatedGatewayPerPanel=%s and persists it", async (enabled) => {
+    const harness = createRouteHarness({ body: { dedicatedGatewayPerPanel: enabled } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(200);
+    expect(harness.writes[0]?.body).toMatchObject({ dedicatedGatewayPerPanel: enabled });
+    // 정규형은 opt-in만 보존한다 — false는 키 자체가 사라지고 기본값(공용 하나)으로 읽힌다.
+    expect(harness.currentAiGateway().dedicatedGatewayPerPanel).toBe(enabled ? true : undefined);
+  });
+
+  it("PUT /plugins/terminal/settings rejects non-boolean dedicated gateway values", async () => {
+    const harness = createRouteHarness({ body: { dedicatedGatewayPerPanel: "yes" } });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.writes[0]?.status).toBe(400);
+    expect(harness.updateCalls).toBe(0);
+  });
+
+  it("PUT /plugins/terminal/settings keeps the dedicated gateway opt-in across an unrelated save", async () => {
+    const harness = createRouteHarness({
+      body: { aiGateway: { models: [{ id: "cursor--auto" }] } },
+      aiGateway: { version: 1, dedicatedGatewayPerPanel: true },
+    });
+    await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
+    expect(harness.currentAiGateway().dedicatedGatewayPerPanel).toBe(true);
+  });
+
   it("PUT /plugins/terminal/settings rejects non-boolean wire log values", async () => {
     const harness = createRouteHarness({ body: { wireLogEnabled: "yes" } });
     await harness.handle({ req: jsonReq("PUT"), res: res(), pathname: "/plugins/terminal/settings" });
@@ -629,6 +654,9 @@ function createRouteHarness(options: HarnessOptions = {}) {
           ...(typeof aiGateway.wireLogEnabled === "boolean"
             ? { wireLogEnabled: aiGateway.wireLogEnabled }
             : {}),
+          ...(aiGateway.dedicatedGatewayPerPanel === true
+            ? { dedicatedGatewayPerPanel: true }
+            : {}),
           ...(aiGateway.providerPriority
             ? { providerPriority: aiGateway.providerPriority }
             : {}),
@@ -647,6 +675,14 @@ function createRouteHarness(options: HarnessOptions = {}) {
         aiGateway = normalizeAiGatewaySettings({
           ...aiGateway,
           cursorDiagnosticsEnabled: enabled,
+        });
+        return aiGateway;
+      },
+      writeDedicatedGatewayPerPanel: (enabled) => {
+        updateCalls += 1;
+        aiGateway = normalizeAiGatewaySettings({
+          ...aiGateway,
+          dedicatedGatewayPerPanel: enabled,
         });
         return aiGateway;
       },

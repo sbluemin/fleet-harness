@@ -33,6 +33,7 @@ interface TerminalSettingsBody {
   readonly aiGateway?: unknown;
   readonly cursorDiagnosticsEnabled?: unknown;
   readonly wireLogEnabled?: unknown;
+  readonly dedicatedGatewayPerPanel?: unknown;
   readonly compactCeiling?: unknown;
   readonly xaiEndpoint?: unknown;
 }
@@ -43,6 +44,7 @@ type TerminalSettingsUpdate =
   | { readonly aiGateway: AiGatewayUpdateValue | undefined }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
+  | { readonly dedicatedGatewayPerPanel: boolean }
   | { readonly compactCeiling: CompactCeiling | undefined }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -55,6 +57,7 @@ export interface TerminalSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
+  readonly dedicatedGatewayPerPanel: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -126,6 +129,17 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
         ));
         return true;
       }
+      if ("dedicatedGatewayPerPanel" in update) {
+        // 저장만 한다. 이미 떠 있는 패널은 런치 때 구운 URL을 계속 다이얼하므로 이 값의 변경은
+        // 다음 런치부터 보인다 — 살아 있는 자식의 목적지를 바꿀 방법은 없고, 바꿔서도 안 된다.
+        const stored = deps.aiGatewayStore.writeDedicatedGatewayPerPanel(
+          update.dedicatedGatewayPerPanel,
+        );
+        ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
+          deps.globalOptionsService.load(), stored, deps.wireLogRuntime.enabled(),
+        ));
+        return true;
+      }
       if ("compactCeiling" in update) {
         const stored = deps.aiGatewayStore.writeCompactCeiling(update.compactCeiling);
         ctx.host.http.writeJson(res, 200, toTerminalSettingsState(
@@ -175,6 +189,7 @@ export function toTerminalSettingsState(
     aiGatewayCatalog: buildAiGatewayCatalog(),
     cursorDiagnosticsEnabled: aiGateway.cursorDiagnosticsEnabled === true,
     wireLogEnabled,
+    dedicatedGatewayPerPanel: aiGateway.dedicatedGatewayPerPanel === true,
     compactCeiling: aiGateway.compactCeiling ?? null,
     xaiEndpoint: aiGateway.xaiEndpoint ?? DEFAULT_XAI_ENDPOINT_PREFERENCE,
   };
@@ -219,6 +234,11 @@ function parseTerminalSettingsBody(value: unknown): TerminalSettingsUpdate | nul
   if (keys[0] === "wireLogEnabled") {
     return typeof body.wireLogEnabled === "boolean"
       ? { wireLogEnabled: body.wireLogEnabled }
+      : null;
+  }
+  if (keys[0] === "dedicatedGatewayPerPanel") {
+    return typeof body.dedicatedGatewayPerPanel === "boolean"
+      ? { dedicatedGatewayPerPanel: body.dedicatedGatewayPerPanel }
       : null;
   }
   if (keys[0] === "compactCeiling") {

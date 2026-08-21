@@ -880,6 +880,7 @@ function AgentCliSection() {
         <p className="global-settings-foot">{t("terminal.settings.agentCliFoot")}</p>
       </section>
       <ModelAuthBlock />
+      <AiGatewayDedicatedCard />
       <AiGatewayModelsCard />
       <AiGatewayCompactTimingCard />
       <AiGatewayDiagnosticsCard />
@@ -1204,6 +1205,41 @@ function AiGatewayDiagnosticsCard() {
         onToggle={() => void setSystemPromptSettingsField("wireLogEnabled", !state.wireLogEnabled)}
       />
       <p className="global-settings-foot">{t("terminal.settings.aiGatewayDiagnosticsFoot")}</p>
+    </section>
+  );
+}
+
+function AiGatewayDedicatedCard() {
+  const t = getT(useTerminalLocale());
+  const settings = useSystemPromptSettingsStore();
+  const state = settings.state;
+  const saving = settings.savingField !== null;
+
+  if (!state) {
+    return (
+      <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDedicated")}>
+        <p className="global-settings-resp-title">{t("terminal.settings.aiGatewayDedicated")}</p>
+        <p className="global-settings-help">{settings.loading ? t("terminal.settings.loading") : t("terminal.settings.unavailable")}</p>
+      </section>
+    );
+  }
+
+  return (
+    <section className="global-settings-card" aria-label={t("terminal.settings.aiGatewayDedicated")}>
+      {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
+      <SettingToggleRow
+        title={t("terminal.settings.aiGatewayDedicated")}
+        help={t("terminal.settings.aiGatewayDedicatedHelp")}
+        onLabel={t("terminal.settings.enabled")}
+        offLabel={t("terminal.settings.off")}
+        value={state.dedicatedGatewayPerPanel}
+        disabled={saving}
+        onToggle={() => void setSystemPromptSettingsField(
+          "dedicatedGatewayPerPanel",
+          !state.dedicatedGatewayPerPanel,
+        )}
+      />
+      <p className="global-settings-foot">{t("terminal.settings.aiGatewayDedicatedFoot")}</p>
     </section>
   );
 }

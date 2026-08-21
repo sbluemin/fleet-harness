@@ -49,6 +49,18 @@ export interface AiGatewayStoredSettings {
    */
   readonly wireLogEnabled?: boolean;
   /**
+   * true면 각 패널(Operation)이 자기 몫의 게이트웨이 라우터를 받는다. 부재/false는 기본값인
+   * 콘솔당 하나다. 저장 정규형은 opt-in인 true만 보존한다.
+   *
+   * What a dedicated router actually separates is router-owned state: the upstream in-flight
+   * gate, the Cursor adapter instance that holds the live runs and its HTTP/2 sessions, and the
+   * withheld-skill memory. What it cannot separate is anything the panels share by nature —
+   * one credential per provider, one provider-side rate limit, one failure journal file, and the
+   * state-keyed Cursor caches that live at module scope. Read the setting as isolation of this
+   * process's own bookkeeping, never as more allowance.
+   */
+  readonly dedicatedGatewayPerPanel?: boolean;
+  /**
    * The user's opt-in ordered preference for which provider allowances to spend
    * first. It weights the allowance axis of run distribution only and never
    * overrides quality evidence; absent means no preference.
@@ -138,6 +150,7 @@ export function normalizeAiGatewaySettings(value: unknown): AiGatewayStoredSetti
     ...(models.length > 0 ? { models } : {}),
     ...(value.cursorDiagnosticsEnabled === true ? { cursorDiagnosticsEnabled: true } : {}),
     ...(typeof value.wireLogEnabled === "boolean" ? { wireLogEnabled: value.wireLogEnabled } : {}),
+    ...(value.dedicatedGatewayPerPanel === true ? { dedicatedGatewayPerPanel: true } : {}),
     ...(providerPriority ? { providerPriority: [...providerPriority] } : {}),
     ...(compactCeiling !== undefined ? { compactCeiling } : {}),
     ...(xaiEndpoint !== undefined ? { xaiEndpoint } : {}),
