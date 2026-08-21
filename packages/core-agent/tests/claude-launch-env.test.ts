@@ -73,6 +73,19 @@ describe("claudeGatewayLaunchEnv", () => {
     expect(env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
   });
 
+  it("caps subagent spawn depth so a delegated worker cannot re-delegate", () => {
+    const env = claudeGatewayLaunchEnv({}, { baseUrl: BASE_URL, configDir: CONFIG_DIR });
+    expect(env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("1");
+  });
+
+  it("preserves an explicit subagent spawn depth override", () => {
+    const env = claudeGatewayLaunchEnv(
+      { CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "3" },
+      { baseUrl: BASE_URL, configDir: CONFIG_DIR },
+    );
+    expect(env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("3");
+  });
+
   it("drops undefined inherited entries rather than forwarding them as empty strings", () => {
     const env = claudeGatewayLaunchEnv({ SOMETHING: undefined }, { baseUrl: BASE_URL, configDir: CONFIG_DIR });
     expect(env).not.toHaveProperty("SOMETHING");

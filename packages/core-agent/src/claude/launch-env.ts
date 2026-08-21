@@ -69,6 +69,11 @@ export function claudeGatewayLaunchEnv(
   // 1M ceiling은 `[1m]` 모델의 선제 압축을 켜고, unmarked custom model에서는
   // Claude Code의 200k 좌표로 clamp된다. 명시적 운영자 override는 보존한다.
   env.CLAUDE_CODE_AUTO_COMPACT_WINDOW ??= "1000000";
+  // 위임은 한 단으로 끝난다. 1이면 세션 자신(depth 0)만 Agent를 부를 수 있고, 그 아래
+  // 서브에이전트에게는 Agent 도구가 실리지 않는다 — 호출 후 거절이 아니라 목록에서 사라진다.
+  // Admiral의 PTY 자식(`fleet-admiral/src/agent-cli/claude/factory.ts`)에 같은 값이 있고,
+  // 이 파일 머리말이 말하는 "두 곳을 함께 고친다"의 한쪽이 여기다.
+  env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ??= "1";
 
   // 자체 bearer를 주입하지 않는다. 주입하면 Claude Code가 claude.ai OAuth 대신 그것을 보내고,
   // 게이트웨이의 sk-ant-* 호출자 게이트를 통과할 자격증명이 사라진다.
