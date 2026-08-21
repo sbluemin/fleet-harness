@@ -64,6 +64,12 @@ export function createPanelGatewayPool(deps: CreatePanelGatewayPoolDeps): PanelG
   const live = new Map<string, PanelGatewayEntry>();
   const shared = new Set<string>();
   const starting = new Map<string, Promise<string | null>>();
+  /**
+   * 기동 중에 회수된 Operation. 그 순간에는 죽일 자식이 아직 없으므로, 준비를 마친 뒤에
+   * 여기서 잡아 내려야 한다. 놓치면 이미 사라진 패널의 프로세스가 Console이 끝날 때까지
+   * 남아 여덟 자리 중 하나를 계속 차지한다.
+   */
+  const releasedWhileStarting = new Set<string>();
   let disposed = false;
 
   const decideShared = (operationId: string): null => {
@@ -79,6 +85,12 @@ export function createPanelGatewayPool(deps: CreatePanelGatewayPoolDeps): PanelG
       windowsHide: true,
     });
     const baseUrl = await waitForReady(child, startTimeoutMs);
+    if (releasedWhileStarting.delete(operationId)) {
+      // 기동 중에 패널이 사라졌다. 공용으로 기록하지도 않는다 — 그 Operation은 더 이상 없고,
+      // 같은 id가 다시 나타난다면 그때의 설정으로 새로 판단해야 한다.
+      kill(child);
+      return null;
+    }
     if (baseUrl === null || disposed) {
       kill(child);
       return decideShared(operationId);
@@ -119,6 +131,7 @@ export function createPanelGatewayPool(deps: CreatePanelGatewayPoolDeps): PanelG
     },
     release: (operationId) => {
       shared.delete(operationId);
+      if (starting.has(operationId)) releasedWhileStarting.add(operationId);
       const entry = live.get(operationId);
       if (!entry) return;
       live.delete(operationId);
@@ -130,6 +143,7 @@ export function createPanelGatewayPool(deps: CreatePanelGatewayPoolDeps): PanelG
       for (const entry of live.values()) kill(entry.child);
       live.clear();
       shared.clear();
+      releasedWhileStarting.clear();
     },
   };
 }
@@ -166,8 +180,10 @@ function waitForReady(child: ChildProcess, timeoutMs: number): Promise<string | 
       const rest = buffered.slice(at + READY_PREFIX.length);
       const end = rest.search(/[\r\n]/u);
       if (end < 0) return;
-      const port = Number.parseInt(rest.slice(0, end), 10);
-      finish(Number.isInteger(port) && port > 0 ? `http://127.0.0.1:${port}` : null);
+      // 자식이 마운트까지 포함한 완성된 URL을 준다. 여기서 조립하지 않는 이유가 있다 —
+      // 조립하던 시절 마운트 경로가 빠져 모든 모델 요청이 404였고, 마운트를 테스트 쪽에서
+      // 덧붙이는 바람에 그 결함이 green 아래 숨었다.
+      finish(asLoopbackUrl(rest.slice(0, end).trim()));
     };
     child.stdout?.setEncoding("utf8");
     child.stdout?.on("data", onData);
@@ -175,6 +191,23 @@ function waitForReady(child: ChildProcess, timeoutMs: number): Promise<string | 
     child.once("error", () => { finish(null); });
     child.once("exit", () => { finish(null); });
   });
+}
+
+/**
+ * 자식이 보고한 문자열을 신뢰하기 전에 형태를 확인한다. 루프백 http URL이 아니면 이 패널은
+ * 공용 게이트웨이로 떨어진다 — 잘못된 URL을 자식 env에 구우면 그 패널의 모든 턴이 죽는다.
+ */
+function asLoopbackUrl(candidate: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(candidate);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "http:") return null;
+  if (url.hostname !== "127.0.0.1") return null;
+  if (!url.port) return null;
+  return `${url.origin}${url.pathname.replace(/\/+$/u, "")}`;
 }
 
 function kill(child: ChildProcess): void {

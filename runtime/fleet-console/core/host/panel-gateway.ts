@@ -25,7 +25,15 @@ import { createInfraServices, getFleetDataDir } from "@dotobokuri/core-infra";
  */
 export const PANEL_GATEWAY_ROUTE_PATH = `/${AI_GATEWAY_ROUTE_SEGMENT}`;
 
-/** Line the child writes to stdout once it is listening. The parent waits for exactly this. */
+/**
+ * Line the child writes to stdout once it is listening, followed by the **full base URL** a client
+ * must dial — mount path included.
+ *
+ * The child reports the whole URL rather than just its port because it is the only side that knows
+ * where it mounted. Handing back a port made the parent reconstruct the rest, and reconstructing it
+ * is exactly what went wrong: the mount was dropped and every model request through a dedicated
+ * gateway 404'd, while tests that appended the mount themselves stayed green.
+ */
 export const PANEL_GATEWAY_READY_PREFIX = "fleet-panel-gateway-ready ";
 
 /**
@@ -97,7 +105,7 @@ export async function runPanelGateway(): Promise<void> {
 
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("panel_gateway_not_listening");
-  process.stdout.write(`${PANEL_GATEWAY_READY_PREFIX}${address.port}\n`);
+  process.stdout.write(`${PANEL_GATEWAY_READY_PREFIX}http://127.0.0.1:${address.port}${PANEL_GATEWAY_ROUTE_PATH}\n`);
 
   /**
    * 부모가 사라지면 이 프로세스도 사라져야 한다. stdin은 부모가 쥔 파이프이므로, 부모가 죽으면

@@ -16,7 +16,7 @@ class FakeChild extends EventEmitter {
   readonly stderr = new FakeStream();
   readonly stdin = new FakeStream();
   readonly kill = vi.fn();
-  ready(port: number): void { this.stdout.emit("data", `${READY_PREFIX}${port}\n`); }
+  ready(port: number): void { this.stdout.emit("data", `${READY_PREFIX}http://127.0.0.1:${port}/ai-gateway\n`); }
 }
 
 function harness(options: {
@@ -49,6 +49,11 @@ function harness(options: {
   return { children, exits, pool, spawnChild };
 }
 
+/** spawnChild가 n번째 자식을 만들 때까지 기다린다. 마이크로태스크 수를 세지 않기 위한 것이다. */
+async function spawned(children: readonly FakeChild[], count: number): Promise<void> {
+  for (let tick = 0; tick < 50 && children.length < count; tick += 1) await Promise.resolve();
+}
+
 describe("panel gateway pool", () => {
   it("keeps the launch on the console gateway while the setting is off", async () => {
     const { pool, spawnChild } = harness({ enabled: () => false });
@@ -61,8 +66,8 @@ describe("panel gateway pool", () => {
   it("runs one gateway process per panel and hands back its own port", async () => {
     const { pool, spawnChild } = harness({ ports: [4100, 4200] });
 
-    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4100");
-    await expect(pool.claim("op-2")).resolves.toBe("http://127.0.0.1:4200");
+    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4100/ai-gateway");
+    await expect(pool.claim("op-2")).resolves.toBe("http://127.0.0.1:4200/ai-gateway");
     expect(spawnChild).toHaveBeenCalledTimes(2);
     expect(pool.size()).toBe(2);
   });
@@ -106,7 +111,7 @@ describe("panel gateway pool", () => {
     await expect(pool.claim("op-1")).resolves.toBeNull();
     expect(spawnChild).not.toHaveBeenCalled();
     // 결정은 그 Operation의 것이지 전역이 아니다.
-    await expect(pool.claim("op-2")).resolves.toBe("http://127.0.0.1:4100");
+    await expect(pool.claim("op-2")).resolves.toBe("http://127.0.0.1:4100/ai-gateway");
   });
 
   it("shares the console gateway when a child never reports a port", async () => {
@@ -169,7 +174,7 @@ describe("panel gateway pool", () => {
     await pool.claim("op-1");
     pool.release("op-1");
 
-    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4200");
+    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4200/ai-gateway");
     expect(spawnChild).toHaveBeenCalledTimes(2);
   });
 
@@ -182,7 +187,7 @@ describe("panel gateway pool", () => {
     expect(exits).toEqual([{ operationId: "op-1", code: 9 }]);
     expect(pool.size()).toBe(0);
     // 죽었다고 그 Operation을 공용으로 굳히지 않는다 — 다음 표면은 새 프로세스를 받는다.
-    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4200");
+    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4200/ai-gateway");
   });
 
   it("shuts every panel process down when the host tears down", async () => {
@@ -212,6 +217,52 @@ describe("panel gateway pool", () => {
     expect(spawnChild).not.toHaveBeenCalled();
   });
 
+  it("hands back the mounted URL the child reported, never a bare origin", async () => {
+    const { pool } = harness({ ports: [4100] });
+
+    // 마운트가 빠진 URL을 자식 env에 구우면 그 패널의 모든 모델 요청이 404가 된다.
+    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4100/ai-gateway");
+  });
+
+  it("shares the console gateway when the child reports something that is not a loopback URL", async () => {
+    const { children, pool } = harness({ autoReady: false });
+    const claim = pool.claim("op-1");
+    await Promise.resolve();
+    children[0]?.stdout.emit("data", `${READY_PREFIX}http://example.com/ai-gateway\n`);
+
+    await expect(claim).resolves.toBeNull();
+  });
+
+  it("shuts down a gateway whose panel was released while it was still starting", async () => {
+    const { children, pool } = harness({ autoReady: false });
+    const claim = pool.claim("op-1");
+    await spawned(children, 1);
+
+    pool.release("op-1");
+    children[0]?.ready(4100);
+
+    // 이미 사라진 패널의 프로세스가 살아남으면 Console이 끝날 때까지 자리를 차지한다.
+    await expect(claim).resolves.toBeNull();
+    expect(children[0]?.kill).toHaveBeenCalledWith("SIGTERM");
+    expect(pool.size()).toBe(0);
+  });
+
+  it("frees the ceiling after a mid-start release", async () => {
+    const { children, pool } = harness({ autoReady: false, maxGateways: 1 });
+    const claim = pool.claim("op-1");
+    await spawned(children, 1);
+    pool.release("op-1");
+    children[0]?.ready(4100);
+    await expect(claim).resolves.toBeNull();
+
+    const second = pool.claim("op-2");
+    await spawned(children, 2);
+    children[1]?.ready(4200);
+
+    // 회수된 기동은 자리를 돌려줘야 한다 — 아니면 상한 1짜리 풀이 영영 막힌다.
+    await expect(second).resolves.toBe("http://127.0.0.1:4200/ai-gateway");
+  });
+
   it("does not record a decision when the settings read failed", async () => {
     let failing = true;
     const { pool } = harness({
@@ -224,6 +275,6 @@ describe("panel gateway pool", () => {
     failing = false;
 
     // 판독 실패는 결정이 아니다 — 다음 표면은 진짜 답을 받는다.
-    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4100");
+    await expect(pool.claim("op-1")).resolves.toBe("http://127.0.0.1:4100/ai-gateway");
   });
 });

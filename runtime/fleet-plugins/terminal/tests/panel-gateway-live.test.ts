@@ -59,8 +59,26 @@ describe.skipIf(!HAS_BUILD)("panel gateway pool over real processes", () => {
     const baseUrl = await pool.claim("op-live-1");
     expect(baseUrl).not.toBeNull();
 
-    const response = await fetch(`${baseUrl}/ai-gateway/api/hello`);
+    // 마운트 경로까지 포함해 그대로 다이얼한다. 여기서 테스트가 경로를 덧붙이면 URL이 불완전해도
+    // green이 되고, 실제로 그렇게 해서 모든 모델 요청이 404인 결함을 놓쳤다.
+    expect(baseUrl).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/ai-gateway$/u);
+    const response = await fetch(`${baseUrl}/api/hello`);
     expect(response.status).toBe(200);
+  }, TIMEOUT_MS);
+
+  it("serves a messages request at exactly the path a client appends", async () => {
+    pool = createPool();
+    const baseUrl = await pool.claim("op-live-1");
+
+    // Claude Code가 baseUrl 뒤에 붙이는 그 경로다. 401은 라우터가 거기 있다는 뜻이고,
+    // 404였다면 이 패널의 모든 턴이 죽는다는 뜻이다.
+    const response = await fetch(`${baseUrl}/v1/messages`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-gateway--xai--grok-4.6", messages: [] }),
+    });
+
+    expect(response.status).toBe(401);
   }, TIMEOUT_MS);
 
   it("gives two panels two gateways that both answer", async () => {
@@ -71,7 +89,7 @@ describe.skipIf(!HAS_BUILD)("panel gateway pool over real processes", () => {
     expect(first).not.toBeNull();
     expect(second).not.toBe(first);
     const statuses = await Promise.all([first, second].map(async (baseUrl) => {
-      const response = await fetch(`${baseUrl}/ai-gateway/api/hello`);
+      const response = await fetch(`${baseUrl}/api/hello`);
       return response.status;
     }));
     expect(statuses).toEqual([200, 200]);
@@ -80,12 +98,12 @@ describe.skipIf(!HAS_BUILD)("panel gateway pool over real processes", () => {
   it("stops answering once the panel is released", async () => {
     pool = createPool();
     const baseUrl = await pool.claim("op-live-1");
-    expect((await fetch(`${baseUrl}/ai-gateway/api/hello`)).status).toBe(200);
+    expect((await fetch(`${baseUrl}/api/hello`)).status).toBe(200);
 
     pool.release("op-live-1");
     await new Promise((resolve) => { setTimeout(resolve, 500); });
 
     // 회수는 포트를 실제로 놓아야 한다 — 안 그러면 Console이 사는 동안 포트가 새어 나간다.
-    await expect(fetch(`${baseUrl}/ai-gateway/api/hello`)).rejects.toThrow();
+    await expect(fetch(`${baseUrl}/api/hello`)).rejects.toThrow();
   }, TIMEOUT_MS);
 });

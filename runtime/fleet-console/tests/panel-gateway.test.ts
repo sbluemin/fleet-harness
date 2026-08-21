@@ -57,7 +57,7 @@ function startPanelGateway(
       const end = rest.search(/[\r\n]/u);
       if (end < 0) return;
       clearTimeout(timer);
-      resolve(`http://127.0.0.1:${rest.slice(0, end).trim()}`);
+      resolve(rest.slice(0, end).trim());
     });
     child.once("error", (error) => { clearTimeout(timer); reject(error); });
     child.once("exit", (code) => { clearTimeout(timer); reject(new Error(`panel gateway exited early with ${code}. stderr=${stderr}`)); });
@@ -68,18 +68,18 @@ function startPanelGateway(
 describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
   it("listens on its own port and serves the gateway there", async () => {
     const { ready } = startPanelGateway();
-    const origin = await ready;
+    const baseUrl = await ready;
 
-    const hello = await fetch(`${origin}${PANEL_GATEWAY_ROUTE_PATH}/api/hello`);
+    const hello = await fetch(`${baseUrl}/api/hello`);
 
     expect(hello.status).toBe(200);
   }, START_TIMEOUT_MS + 10_000);
 
   it("refuses a messages request that carries no Anthropic credential", async () => {
     const { ready } = startPanelGateway();
-    const origin = await ready;
+    const baseUrl = await ready;
 
-    const response = await fetch(`${origin}${PANEL_GATEWAY_ROUTE_PATH}/v1/messages`, {
+    const response = await fetch(`${baseUrl}/v1/messages`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ model: "claude-gateway--xai--grok-4.6", messages: [] }),
@@ -91,9 +91,9 @@ describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
 
   it("answers nothing outside its mounted route", async () => {
     const { ready } = startPanelGateway();
-    const origin = await ready;
+    const baseUrl = await ready;
 
-    const response = await fetch(`${origin}/v1/messages`, { method: "POST", body: "{}" });
+    const response = await fetch(`${new URL(baseUrl).origin}/v1/messages`, { method: "POST", body: "{}" });
 
     expect(response.status).toBe(404);
   }, START_TIMEOUT_MS + 10_000);
@@ -110,9 +110,9 @@ describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
   it("serves the same gateway through the console entry fallback", async () => {
     // 전용 번들이 없는 환경에서 쓰는 폴백 경로다. 더 무겁지만 같은 것을 서빙해야 한다.
     const { ready } = startPanelGateway([CLI_ENTRY, "panel-gateway"]);
-    const origin = await ready;
+    const baseUrl = await ready;
 
-    const hello = await fetch(`${origin}${PANEL_GATEWAY_ROUTE_PATH}/api/hello`);
+    const hello = await fetch(`${baseUrl}/api/hello`);
 
     expect(hello.status).toBe(200);
   }, START_TIMEOUT_MS + 10_000);
