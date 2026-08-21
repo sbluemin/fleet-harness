@@ -1093,7 +1093,8 @@
 .history-file-diff { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; overflow: hidden; }.history-file-repository-head { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 7px 12px; border-bottom: 1px solid var(--surface-rim); color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }.history-file-repository-head > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }.history-file-repository-head > div { display: flex; gap: 2px; margin-left: auto; }.history-file-repository-head button { width: 24px; height: 24px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: none; color: var(--text-tertiary); cursor: pointer; }.history-file-repository-head button:disabled { cursor: default; opacity: .4; }
 .history-inspector-empty { padding: 16px; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-sm); }.history-inspector-error { color: var(--coral-ink); }
 /* 진행형 축소 — 컨테이너(패널·트리 리사이즈)가 좁아질수록 작성자 → 시간 → sha → 뱃지 순으로 양보한다.
-   숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
+   축소 순서 계약: 정체(badges)보다 부수 메타(author/time/sha)가 먼저 양보하고, 최후에는 gutter+subject만
+   남는다. 숨긴 셀은 grid item에서 빠지므로 그 자리의 트랙까지 함께 걷어내야 한다(7ch 같은 고정 트랙은 비어도 폭을 잡는다).
    제목은 어느 폭에서도 한 줄을 유지한다(기본 규칙의 nowrap+ellipsis): 행 높이는 그래프 gutter의
    ROW_HEIGHT(28px)와 가상 스크롤 기하에 묶여 있어 줄바꿈이 레인 선과 스크롤 위치를 함께 깨뜨린다. */
 @container (max-width: 760px) {
@@ -1110,6 +1111,13 @@
 }
 @container (max-width: 520px) { .history-commit-sha { display: none; } .history-commit-row-main { grid-template-columns: auto auto minmax(96px, 1fr) auto; } }
 @container (max-width: 420px) { .history-commit-badges { display: none; } .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto; } .history-commit-subject { grid-column: 2; } .history-commit-body-mark { grid-column: 3; } }
+/* 축소 순서 계약의 최종 단계 — 320px 아래에서는 gutter+subject만 남는다. gutter의 행별
+   레인 폭(rowLaneCount)을 1레인으로 고정해 subject 실효폭이 그래프에 잠식되지 않게 한다.
+   정체(refs) 신호는 뱃지 대신 off-head dim·HEAD 링 같은 색 채널로 잔존한다. */
+@container (max-width: 320px) {
+  .history-graph-gutter svg { width: 14px; }
+  .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto; gap: 0 6px; padding: 0 8px; }
+}
 @media (prefers-reduced-motion: reduce) { .history-segmented button { transition-duration: .01ms; } }
 /* Repository sources mirror the approved unified explorer. */
 .repository-unified { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; container-type: inline-size; }
@@ -1776,6 +1784,11 @@
   top: 1px;
 }
 .repository-checkout-tab-label { overflow: hidden; text-overflow: ellipsis; max-width: 18ch; }
+/* 축소 순서 계약 — identity 축 2단. 라벨이 양보한 뒤에는 탭 라벨이 양보하고,
+   워크트리 표식(wt)은 정체 신호라 마지막까지 남는다. */
+@container (max-width: 380px) {
+  .repository-checkout-tab-label { max-width: 10ch; }
+}
 .repository-checkout-tab-mark {
   font-family: var(--font-mono, ui-monospace, monospace);
   font-style: normal;
@@ -1795,6 +1808,14 @@
   font-size: var(--t-xs);
   margin-left: 4px;
   color: var(--brass-ink);
+}
+/* 동사 라벨 수납 — 축소 순서 계약의 identity 축이다. 패널이 좁아지면 라벨이 먼저 양보하고
+   글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 DOM에 상주하므로 aria-label과 함께
+   스크린 리더 낭독은 어느 단계에서도 유지된다. Sync 버튼은 이 수납에서 제외한다(글리프만으로
+   이미 최소형). */
+.repository-verb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 460px) {
+  .repository-verb-label { display: none; }
 }
 
 /* ═══ Fork 워크벤치 — 스테이징(Local Changes) ══════════════════════════════ */

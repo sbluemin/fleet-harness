@@ -64,9 +64,14 @@ function blockOf(selector: string): string {
 // prefers-reduced-motion 블록들의 본문만 모은다 — 파일 뒤쪽에 같은 선언이 있으면 통과해 버리는
 // slice(indexOf(...)) 방식은 "미디어 블록 안에 있음"을 증명하지 못한다.
 function reducedMotionBodies(): string {
+  return atRuleBodies("@media (prefers-reduced-motion: reduce)");
+}
+
+// 임의 at-rule(@media/@container) prelude에 속한 규칙 본문들을 정규화해 모은다 —
+// 컨테이너 쿼리 단계 계약이 "블록 안에 있음"을 증명하는 데 같은 파서를 쓴다.
+function atRuleBodies(prelude: string): string {
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const bodies: string[] = [];
-  const prelude = "@media (prefers-reduced-motion: reduce)";
   let from = 0;
   for (;;) {
     const start = stripped.indexOf(prelude, from);
@@ -85,8 +90,9 @@ function reducedMotionBodies(): string {
     bodies.push(stripped.slice(open + 1, index));
     from = index + 1;
   }
-  if (bodies.length === 0) throw new Error("Missing prefers-reduced-motion block");
-  return bodies.join("\n");
+  if (bodies.length === 0) throw new Error(`Missing at-rule block: ${prelude}`);
+  // 본문 규칙 사이 공백을 한 칸으로 정규화해 부분 문자열 단언이 안정적으로 붙게 한다.
+  return bodies.join("\n").replace(/\s+/g, " ");
 }
 
 describe("Repository design grammar", () => {
@@ -168,8 +174,8 @@ describe("Repository design grammar", () => {
     expect(css).toContain(".repository-sync-button:focus-visible .repository-sync-hint");
     // 동작 줄이기에서는 전이 연출만 걷고 상태는 남긴다 — opacity/transform 규칙을 지우면 안 된다.
     const reduced = reducedMotionBodies();
-    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }");
-    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }");
+    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }".replace(/\s+/g, " "));
+    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }".replace(/\s+/g, " "));
     expect(glyph).toContain("transition:");
   });
 
@@ -327,5 +333,34 @@ describe("Repository design grammar", () => {
         expect(blockOf(`.repository-line-${row} .repository-token-${token}`), `${row}/${token}`).toContain("inherit");
       }
     }
+  });
+
+  // 2026-08-21 재가 — 축소 순서 계약(identity 축). 패널이 좁아지면 동사 라벨이 먼저 양보하고
+  // 글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 표현만 숨겨지므로 DOM 상주가 계약이다.
+  it("collapses verb labels before glyphs under the shrink-order contract", () => {
+    const label = blockOf(".repository-verb-label");
+    expect(label).toContain("white-space: nowrap");
+    expect(label).toContain("text-overflow: ellipsis");
+    const collapsed = rules
+      .filter((rule) => rule.selectors.includes(".repository-verb-label") && rule.body.includes("display: none"));
+    expect(collapsed).toHaveLength(1);
+    // Sync 버튼은 수납에서 제외 — 글리프만으로 이미 최소형이다.
+    expect(css).not.toMatch(/\.repository-sync-button\s+\.repository-verb-label/);
+  });
+
+  // 2026-08-21 재가 — 축소 순서 계약(history 축). 최종 단계에서 gutter+subject만 남고,
+  // subject 보장폭(minmax 96px)은 어느 단계에서도 유지된다.
+  it("keeps a final commit-row stage where only gutter and subject survive", () => {
+    const finalStage = atRuleBodies("(max-width: 320px)");
+    expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr) auto;");
+    // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.
+    const badgeStage = atRuleBodies("(max-width: 420px)");
+    expect(badgeStage).toContain(".history-commit-badges { display: none; }");
+  });
+
+  // 체크아웃 탭 라벨도 identity 축의 2단으로 양보한다.
+  it("shortens checkout tab labels as the identity axis yields", () => {
+    const tabStage = atRuleBodies("(max-width: 380px)");
+    expect(tabStage).toContain(".repository-checkout-tab-label { max-width: 10ch; }");
   });
 });

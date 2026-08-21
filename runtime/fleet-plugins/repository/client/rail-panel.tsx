@@ -108,6 +108,10 @@ function verbCountText(raw: unknown, verb: "pull" | "push", t: T): string {
 /**
  * 툴바 동사 버튼 — 동기화 버튼과 같은 부품으로 조립한다: 진행 중 회전, 성공 시 ✓ 체류,
  * 결과 말풍선, 실패 점. 결과 표면이 버튼 안에 있으므로 어떤 답도 패널 본문을 밀어내지 않는다.
+ *
+ * 라벨 수납 — identity 줄이 좁아지면 CSS 컨테이너 쿼리가 .repository-verb-label을 숨겨
+ * 글리프+계수만 남긴다(1단). 라벨 span은 항상 DOM에 남아 스크린 리더 낭독과 title 대체를
+ * 지키고, 시각적 축소는 표현 계약이므로 design-grammar.test.ts가 단계를 고정한다.
  */
 function VerbToolbarButton({ glyph, label, title, count, disabled, busy, outcome, settled, hinting, failedTitle, onClick }: {
   readonly glyph: string;
@@ -123,12 +127,12 @@ function VerbToolbarButton({ glyph, label, title, count, disabled, busy, outcome
   readonly onClick: () => void;
 }) {
   return (
-    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-syncing" : ""}`} title={title} disabled={disabled} onClick={onClick}>
+    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-syncing" : ""}`} title={title} aria-label={title} disabled={disabled} onClick={onClick}>
       <span className={`repository-sync-icon${settled ? " is-settled" : ""}`} aria-hidden="true">
         <span className="repository-sync-glyph repository-sync-glyph-idle">{glyph}</span>
         <span className="repository-sync-glyph repository-sync-glyph-settled">✓</span>
       </span>
-      {label}
+      <span className="repository-verb-label">{label}</span>
       {count}
       {outcome?.kind === "error" && <span className="repository-sync-dot" title={failedTitle} aria-hidden="true" />}
       {outcome && <span className={`repository-sync-hint${outcome.kind === "error" ? " is-error" : ""}${hinting ? " is-open" : ""}`} aria-hidden="true">{outcome.text}</span>}
