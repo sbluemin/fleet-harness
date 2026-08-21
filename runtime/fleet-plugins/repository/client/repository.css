@@ -1814,9 +1814,10 @@
   color: var(--brass-ink);
 }
 /* 동사 라벨 수납 — 축소 순서 계약의 identity 축이다. 패널이 좁아지면 라벨이 먼저 양보하고
-   글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 DOM에 상주하므로 aria-label과 함께
-   스크린 리더 낭독은 어느 단계에서도 유지된다. Sync 버튼은 이 수납에서 제외한다(글리프만으로
-   이미 최소형). */
+   글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 `.repository-identity span`(0,1,1)의
+   brass·mono·t-2xs를 물려받으므로 같은 스코프로 버튼 문법을 되돌린다 — 라벨은 위치 채널이 아니라
+   버튼 텍스트다(2026-08-21 리뷰 정정). Sync 버튼은 이 수납에서 제외한다(글리프만으로 이미 최소형). */
+.repository-verb-button .repository-verb-label { color: inherit; font-family: inherit; font-size: inherit; }
 .repository-verb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @container (max-width: 460px) {
   .repository-verb-label { display: none; }

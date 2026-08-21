@@ -337,11 +337,16 @@ describe("Repository design grammar", () => {
   });
 
   // 2026-08-21 재가 — 축소 순서 계약(identity 축). 패널이 좁아지면 동사 라벨이 먼저 양보하고
-  // 글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 표현만 숨겨지므로 DOM 상주가 계약이다.
+  // 글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 `.repository-identity span`(0,1,1)의
+  // brass·mono·t-2xs를 물려받으므로 버튼 스코프의 되돌림 규칙이 반드시 함께 있어야 한다.
   it("collapses verb labels before glyphs under the shrink-order contract", () => {
-    const label = blockOf(".repository-verb-label");
-    expect(label).toContain("white-space: nowrap");
-    expect(label).toContain("text-overflow: ellipsis");
+    const label = blockOf(".repository-verb-button .repository-verb-label");
+    expect(label).toContain("color: inherit");
+    expect(label).toContain("font-family: inherit");
+    expect(label).toContain("font-size: inherit");
+    const base = blockOf(".repository-verb-label");
+    expect(base).toContain("white-space: nowrap");
+    expect(base).toContain("text-overflow: ellipsis");
     const collapsed = rules
       .filter((rule) => rule.selectors.includes(".repository-verb-label") && rule.body.includes("display: none"));
     expect(collapsed).toHaveLength(1);
