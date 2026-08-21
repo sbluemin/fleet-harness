@@ -69,6 +69,24 @@ describe("claude-gateway profile", () => {
     });
   });
 
+  it("caps subagent spawn depth so a delegated worker cannot re-delegate", async () => {
+    const profile = await resolveAgentCliProfile({
+      CLAUDE_BIN: process.execPath,
+    }, "/tmp", { cliId: "claude-gateway" });
+
+    // 1이면 세션 자신만 Agent를 부를 수 있다 — 서브에이전트의 도구 목록에서 Agent가 사라진다.
+    expect(profile.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("1");
+  });
+
+  it("preserves an explicit operator subagent depth override", async () => {
+    const profile = await resolveAgentCliProfile({
+      CLAUDE_BIN: process.execPath,
+      CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "3",
+    }, "/tmp", { cliId: "claude-gateway" });
+
+    expect(profile.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("3");
+  });
+
   it("delivers ultra as Claude Code --effort ultracode", async () => {
     const profile = await resolveAgentCliProfile({
       CLAUDE_BIN: process.execPath,
