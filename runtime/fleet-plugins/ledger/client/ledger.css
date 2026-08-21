@@ -184,11 +184,20 @@
   line-height: 1.5;
 }
 
-.ledger-trend-bars {
-  position: relative;
+.ledger-trend-chart {
   display: flex;
   align-items: flex-end;
   height: 88px;
+  gap: var(--space-1);
+}
+
+.ledger-trend-bars {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  align-items: flex-end;
+  height: 100%;
+  min-width: 0;
   gap: 2px;
 }
 
@@ -214,6 +223,28 @@
 .ledger-trend-bar[aria-pressed="true"] {
   background: var(--ink-pearl);
   filter: drop-shadow(0 0 3px var(--brass));
+}
+
+/* 작동할 수 없는 막대는 컨트롤 문법을 빌리지 않는다 — 이중 클래스라야 위의 베이스 hover(0-1-0)를 이긴다. */
+.ledger-trend-bar.ledger-trend-bar--inert {
+  cursor: default;
+}
+
+.ledger-trend-bar.ledger-trend-bar--inert:hover {
+  background: var(--ink-fog);
+}
+
+/* 날짜 없는 잔여분 — 출처 불완전이라는 상태이므로 warn 채널을 빌리고, 무늬로 "어느 날도 아님"을 말한다.
+   막대 문법을 상속하지 않으므로 hover·cursor 재정의가 필요 없다. */
+.ledger-trend-residual-cap {
+  flex: 0 0 10px;
+  min-height: 3px;
+  border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--warn) 55%, transparent) 0 2px,
+    transparent 2px 5px
+  );
 }
 
 .ledger-trend-tooltip {
@@ -276,6 +307,28 @@
   font-size: var(--t-2xs);
 }
 
+.ledger-trend-residual {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin: var(--space-2) 0 0;
+  padding: var(--space-2);
+  border: 1px solid color-mix(in oklch, var(--warn) 26%, var(--hairline));
+  border-radius: var(--radius-xs);
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+  line-height: 1.55;
+}
+
+.ledger-trend-residual-mark {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  margin-top: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--warn);
+}
+
 .ledger-daily-detail {
   margin-top: var(--space-4);
   padding-top: var(--space-3);
@@ -305,28 +358,36 @@
   color: var(--text-secondary);
 }
 
+
 .ledger-client-mark.is-anthropic,
-.ledger-client-mark.is-claude {
+.ledger-client-mark.is-claude,
+.ledger-backend-slice.is-anthropic,
+.ledger-backend-slice.is-claude {
   color: var(--provider-claude);
 }
 
-.ledger-client-mark.is-codex {
+.ledger-client-mark.is-codex,
+.ledger-backend-slice.is-codex {
   color: var(--provider-codex);
 }
 
-.ledger-client-mark.is-cursor {
+.ledger-client-mark.is-cursor,
+.ledger-backend-slice.is-cursor {
   color: var(--provider-cursor);
 }
 
-.ledger-client-mark.is-kimi {
+.ledger-client-mark.is-kimi,
+.ledger-backend-slice.is-kimi {
   color: var(--provider-kimi);
 }
 
-.ledger-client-mark.is-opencode {
+.ledger-client-mark.is-opencode,
+.ledger-backend-slice.is-opencode {
   color: var(--provider-opencode);
 }
 
-.ledger-client-mark.is-xai {
+.ledger-client-mark.is-xai,
+.ledger-backend-slice.is-xai {
   color: var(--provider-xai);
 }
 
@@ -379,6 +440,114 @@
 
 .ledger-value--tertiary {
   color: var(--text-tertiary);
+}
+
+.ledger-backend-list {
+  display: grid;
+  gap: var(--space-1);
+}
+
+/* 공급자 톤은 정체성이며 표식으로만 칠한다 — 이 조각은 상태 표면이 아니라 지출의 정체성 표식이다. */
+.ledger-backend-composition {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  margin-bottom: var(--space-2);
+  overflow: hidden;
+  border-radius: var(--radius-pill);
+}
+
+/* 정체성 톤이 없는 공급자는 중립 잉크로 둔다 — 없는 정체성을 지어내지 않는다. */
+.ledger-backend-slice {
+  min-width: 3px;
+  flex-basis: 0;
+  background: currentcolor;
+  color: var(--text-tertiary);
+}
+
+/* 어떤 백엔드에도 잡히지 않은 몫 — 정체성이 없으므로 색 대신 무늬로 구분한다. */
+.ledger-backend-slice--remainder {
+  background: repeating-linear-gradient(
+    135deg,
+    var(--text-tertiary) 0 2px,
+    transparent 2px 5px
+  );
+}
+
+.ledger-backend-head {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto 22px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  padding: 0;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.ledger-backend-head:hover {
+  border-color: color-mix(in oklch, var(--brass) 40%, var(--hairline));
+  background: var(--brass-glow);
+}
+
+.ledger-backend-head:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
+}
+
+.ledger-backend-copy {
+  min-width: 0;
+}
+
+.ledger-backend-copy strong,
+.ledger-backend-copy small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ledger-backend-copy strong {
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+}
+
+.ledger-backend-copy small {
+  margin-top: 2px;
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-backend-values {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+.ledger-backend-chevron {
+  display: grid;
+  place-items: center;
+  color: var(--text-tertiary);
+  transition: transform 160ms ease;
+}
+
+.ledger-backend-head[aria-expanded="true"] .ledger-backend-chevron {
+  transform: rotate(90deg);
+}
+
+.ledger-backend-models {
+  padding: var(--space-1) 0 var(--space-2) var(--space-4);
 }
 
 .ledger-coverage-more {
@@ -494,7 +663,9 @@
 @media (prefers-reduced-motion: reduce) {
   .ledger-segment button,
   .ledger-button,
-  .ledger-trend-bar {
+  .ledger-trend-bar,
+  .ledger-backend-head,
+  .ledger-backend-chevron {
     transition-duration: .01ms;
   }
 }
