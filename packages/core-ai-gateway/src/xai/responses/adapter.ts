@@ -59,7 +59,16 @@ export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/respons
  */
 export const XAI_CLI_CLIENT_VERSION = XAI_CLI_FALLBACK_CLIENT_VERSION;
 export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
-export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
+/**
+ * Longest the upstream may send no bytes at all before the read is abandoned.
+ *
+ * Calibrated against what the caller tolerates, not against how fast a short turn answers.
+ * Claude Code's own byte-stream idle watchdog waits 300s, so anything tighter here converts a
+ * turn the client was still willing to wait for into a failure the client never asked for.
+ * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
+ * and the rate climbed through the session as the conversation grew and the gaps grew with it.
+ */
+export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
 /**
  * Longest gap tolerated between two canonical events on one Grok CLI stream.
@@ -67,10 +76,20 @@ export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
  * The transport idle timeout watches bytes, so a proxy that keeps writing SSE comments while the
  * model produces nothing resets it forever. Wire captures show that exact shape: streams that fell
  * silent after `content_part.added` or mid `output_text.delta` and were still parked ten minutes
- * later. Measured gaps inside healthy turns are p99 0.38s and 5.9s at worst, so a minute is two
- * orders of magnitude of headroom while still bounding a hang that used to be unbounded.
+ * later. This clock exists to bound that hang.
+ *
+ * It was a minute, justified by healthy-turn gaps of p99 0.38s and 5.9s at worst. A live session
+ * on 2026-08-21 falsified that number: it killed 9 turns of 70s to 165s whose only fault was a
+ * quiet stretch while the model worked, and the failure rate climbed through the session as the
+ * conversation grew and the thinking gaps grew with it. Those measurements came from short turns
+ * and never saw a long one, so the headroom they claimed did not exist.
+ *
+ * Five minutes instead, taken from what the caller actually tolerates rather than from how fast a
+ * short turn answers: Claude Code's own idle watchdog waits 300s. A bound tighter than the
+ * client's converts a turn the client was still willing to wait for into a failure it never asked
+ * for, and past the commit point that failure is unrecoverable at both layers.
  */
-export const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 60_000;
+export const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 300_000;
 const XAI_RETRY_DELAY_MS = 200;
 
 /**

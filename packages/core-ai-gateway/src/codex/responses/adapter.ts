@@ -37,7 +37,16 @@ export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 /** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
 export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
-export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 30_000;
+/**
+ * Longest the upstream may send no bytes at all before the read is abandoned.
+ *
+ * Calibrated against what the caller tolerates, not against how fast a short turn answers.
+ * Claude Code's own byte-stream idle watchdog waits 300s, so anything tighter here converts a
+ * turn the client was still willing to wait for into a failure the client never asked for.
+ * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
+ * and the rate climbed through the session as the conversation grew and the gaps grew with it.
+ */
+export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 const CODEX_RETRY_DELAY_MS = 200;
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
