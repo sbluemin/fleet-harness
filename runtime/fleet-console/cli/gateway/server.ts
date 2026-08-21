@@ -5,6 +5,7 @@ import {
   AI_GATEWAY_MODEL_ENV,
   createAiGatewayRouter,
   createCursorDiagnosticLog,
+  createFailureJournal,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
@@ -27,7 +28,11 @@ export async function startGatewayHttpServer(deps: {
   readonly authService: AuthService;
 }): Promise<FleetCliGatewayServer> {
   const diagnostics = createCursorDiagnosticLog(path.join(getFleetDataDir(), "fleet-cli", "ai-gateway"));
+  const failureJournal = createFailureJournal({
+    filePath: path.join(getFleetDataDir(), "fleet-cli", "ai-gateway", "failures.jsonl"),
+  });
   const router = createAiGatewayRouter({
+    failureJournal: failureJournal.write,
     readAiGatewaySettings: () => deps.store.read(),
     readKimiApiKey: () => deps.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
     readOpencodeApiKey: () => deps.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
@@ -69,6 +74,7 @@ export async function startGatewayHttpServer(deps: {
   } catch (error) {
     router.dispose();
     await diagnostics.flush();
+    await failureJournal.flush();
     throw error;
   }
 
@@ -86,6 +92,7 @@ export async function startGatewayHttpServer(deps: {
       closePromise ??= closeServer(server).finally(async () => {
         router.dispose();
         await diagnostics.flush();
+        await failureJournal.flush();
       });
       return closePromise;
     },

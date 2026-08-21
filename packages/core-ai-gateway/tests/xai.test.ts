@@ -1368,14 +1368,32 @@ describe("Grok Responses retry", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it("shares one two-call budget between fetch and stream retry", async () => {
+  it("keeps the stream budget after a dial spent the fetch budget", async () => {
+    // Two faults, two causes: a stale pooled socket on the dial and an upstream that gave up
+    // mid-turn. They used to share one budget, so surviving the first left nothing for the
+    // second and the turn died on a failure one more attempt would have absorbed.
     const fetchMock = vi.fn<typeof fetch>()
       .mockRejectedValueOnce(socketTermination())
-      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated()), xaiFrame(failed())));
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated()), xaiFrame(failed())))
+      .mockResolvedValueOnce(xaiResponse(xaiFrame(responseCreated()), xaiFrame(textDelta("recovered"))));
     const response = await new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" });
     if (!response.ok) throw new Error("expected ok");
 
-    await expect(collectXaiEvents(response.events)).resolves.toEqual([responseCreated(), failed()]);
+    await expect(collectXaiEvents(response.events)).resolves.toEqual([
+      responseCreated(),
+      textDelta("recovered"),
+    ]);
+    // dial, dial-retry, then the pre-commit stream retry the split preserved.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
+  it("spends the fetch budget only once", async () => {
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockRejectedValueOnce(socketTermination())
+      .mockRejectedValueOnce(socketTermination());
+    await expect(
+      new XaiResponsesAdapter({ fetch: fetchMock }).stream(xaiRequest(), { apiKey: "k" }),
+    ).rejects.toThrow();
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 

@@ -53,3 +53,30 @@ export * from "./codex/credentials.js";
 export * from "./codex/responses/index.js";
 export * from "./kimi/index.js";
 export * from "./transport/sse-keepalive.js";
+export {
+  DEFAULT_MAX_IN_FLIGHT_PER_ORIGIN,
+  DEFAULT_MAX_QUEUE_WAIT_MS,
+  UpstreamQueueTimeoutError,
+  createUpstreamGate,
+} from "./transport/upstream-gate.js";
+export type {
+  UpstreamGate,
+  UpstreamGateOptions,
+  UpstreamGateOriginStats,
+} from "./transport/upstream-gate.js";
+export {
+  DEFAULT_FAILURE_JOURNAL_MAX_BYTES,
+  createFailureJournal,
+  failureDetail,
+} from "./transport/failure-journal.js";
+export type {
+  FailureJournal,
+  FailureJournalOptions,
+  GatewayFailurePhase,
+  GatewayFailureRecord,
+  GatewayFailureSink,
+} from "./transport/failure-journal.js";
+export {
+  GATEWAY_TRANSIENT_ERROR_STATUS,
+  claudeRetryableUpstreamStatus,
+} from "./anthropic/claude-context.js";

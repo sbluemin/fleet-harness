@@ -6,7 +6,10 @@ import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../anthropic/native.js";
-import { stripClaudeUsageLimitDirectives } from "../anthropic/claude-context.js";
+import {
+  GATEWAY_TRANSIENT_ERROR_STATUS,
+  stripClaudeUsageLimitDirectives,
+} from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
@@ -37,6 +40,11 @@ import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../s
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
+import { findCauseCode } from "../transport/upstream-sse.js";
+import { createUpstreamGate } from "../transport/upstream-gate.js";
+import type { UpstreamGateOriginStats } from "../transport/upstream-gate.js";
+import { failureDetail } from "../transport/failure-journal.js";
+import type { GatewayFailureSink } from "../transport/failure-journal.js";
 
 import { applyGatewayRequestPolicy } from "./router-policy.js";
 import {
@@ -136,17 +144,41 @@ export interface AiGatewayRouteDeps {
   readonly readModelOverride?: () => string | undefined;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
+  /**
+   * Concurrent upstream calls allowed per provider origin, for every provider reached over `fetch`.
+   *
+   * Those turns hold their socket for the whole stream, so the bound is a real ceiling on
+   * simultaneous connections to one origin. Cursor is **not** covered: it dials `http2.connect`
+   * per Run rather than `fetch`, so it offers no seam this bound can wrap and keeps its own
+   * separate limits. Absent is the transport default.
+   */
+  readonly maxUpstreamInFlight?: number;
+  /**
+   * Where failed turns are recorded.
+   *
+   * A failure after the response commits can only be reported as one SSE frame the client renders
+   * once, so without a sink it leaves no trace anywhere. Absent means the gateway keeps no record.
+   */
+  readonly failureJournal?: GatewayFailureSink;
 }
 
 export interface AiGatewayRouter {
   readonly handle: GatewayHttpHandler;
+  /** Live upstream occupancy per provider origin. Empty when nothing is in flight. */
+  upstreamStats(): readonly UpstreamGateOriginStats[];
   /** Dispose only router-owned provider state; injected gateways remain externally owned. */
   dispose(): void;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
   const readAuth = deps.readAuth;
-  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  // One gate for this router's lifetime. It is the only place that sees every upstream call, so
+  // it is also the only place that can bound them or report how many are open.
+  const upstreamGate = createUpstreamGate(
+    deps.fetch ?? globalThis.fetch.bind(globalThis),
+    deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
+  );
+  const fetchImpl = upstreamGate.fetch as typeof fetch;
   const ownedCursorAdapter = deps.gateway
     ? undefined
     : new CursorAdapter({ diagnostics: deps.cursorDiagnostics });
@@ -330,6 +362,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const controller = new AbortController();
     const abort = (): void => controller.abort(new Error("client disconnected"));
     req.once("close", abort);
+    const startedAt = Date.now();
 
     try {
       if (!target) {
@@ -375,13 +408,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ?? (target.provider === "cursor"
           ? ownedCursorGateway!
           : target.provider === "opencode"
-            ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
+            ? createOpencodeGateway(
+              opencodeGoWire(target) as "responses" | "chat-completions",
+              fetchImpl,
+            )
             : target.provider === "xai"
               ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
                 fetch: fetchImpl,
                 endpoint: xaiEndpoint(),
               }))
-              : createGatewayFor(target, chatgptAccountId, deps.originator));
+              : createGatewayFor(target, chatgptAccountId, deps.originator, fetchImpl));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()
         : undefined;
@@ -423,8 +459,41 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // context window; a 400 carrying the same text ends the turn instead. Everything
       // else keeps 400 — a Cursor transport-budget refusal is not an overflow, and
       // reporting it as one would send the client compacting after the wrong thing.
-      const status = error instanceof ContextWindowExceededError ? 413 : invalidRequest ? 400 : 502;
+      // A transient gateway-side fault must arrive as a status Claude Code's retry budget acts
+      // on. `502` is not one of them, so every dropped socket and stalled stream used to end the
+      // turn at the client on the first try.
+      const status = error instanceof ContextWindowExceededError
+        ? 413
+        : invalidRequest ? 400 : GATEWAY_TRANSIENT_ERROR_STATUS;
       const message = errorMessage(error);
+      const recordFailure = (): void => {
+        if (!deps.failureJournal) return;
+        const code = findCauseCode(error);
+        const [busiest] = upstreamGate.stats()
+          .slice()
+          .sort((left, right) => right.inFlight - left.inFlight);
+        deps.failureJournal({
+          timestamp: new Date(startedAt).toISOString(),
+          phase: res.headersSent ? "post_commit" : "pre_commit",
+          ...(target ? { model: target.id, provider: target.provider } : {}),
+          ...(res.headersSent ? {} : { status }),
+          errorType: type,
+          ...(code === undefined ? {} : { code }),
+          detail: failureDetail(message),
+          elapsedMs: Date.now() - startedAt,
+          ...(busiest
+            ? { upstreamInFlight: busiest.inFlight, upstreamQueued: busiest.queued }
+            : {}),
+        });
+      };
+      // 저널은 관측 수단일 뿐이므로, 호스트가 주입한 싱크가 던져도 클라이언트 응답을 막아서는
+      // 안 된다. 가드가 없으면 싱크의 예외가 원래 실패를 덮고 이 catch 밖으로 빠져나가, 아래
+      // 응답 종료가 실행되지 않는다.
+      try {
+        recordFailure();
+      } catch {
+        // 기록 실패는 삼킨다 — 기록하지 못한 것이 응답을 바꾸는 이유가 되면 안 된다.
+      }
       if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
         // 오류 문구 없는 잘린 스트림만 보므로, 종단 SSE error 프레임으로 사유를 남긴다.
@@ -441,7 +510,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
   return {
     handle,
-    dispose: () => ownedCursorAdapter?.dispose(),
+    upstreamStats: () => upstreamGate.stats(),
+    dispose: () => {
+      upstreamGate.dispose();
+      ownedCursorAdapter?.dispose();
+    },
   };
 }
 
@@ -497,13 +570,17 @@ function createGatewayFor(
   model: GatewayModel,
   chatgptAccountId: string,
   originator: string,
+  fetchImpl: typeof fetch,
 ): AnthropicMessagesGateway {
   if (model.provider !== "codex") {
     throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
   }
+  // 어댑터가 fetch를 받지 않으면 globalThis.fetch로 떨어져 게이트 밖에서 소켓을 연다.
+  // 그러면 이 라우터의 상한과 점유 보고가 이 공급자만 보지 못한다.
   return new AnthropicMessagesGateway(new CodexResponsesAdapter({
     accountId: chatgptAccountId,
     headers: { originator },
+    fetch: fetchImpl,
   }));
 }
 

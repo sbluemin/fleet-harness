@@ -5,6 +5,7 @@ import {
   AI_GATEWAY_ROUTE_SEGMENT,
   createAiGatewayRouter,
   createCursorDiagnosticLog,
+  createFailureJournal,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
@@ -46,9 +47,21 @@ export function registerAiGatewayRoutes(
         ctx.host.paths.pluginDataDir(ctx.pluginId),
         "ai-gateway",
       ));
+  // Always on, unlike the wire log: a failed turn is the one event that otherwise leaves no
+  // trace, and a post-commit failure reaches the user as a single SSE frame nobody can retrieve.
+  const ownedFailureJournal = deps.failureJournal
+    ? undefined
+    : createFailureJournal({
+        filePath: path.join(
+          ctx.host.paths.pluginDataDir(ctx.pluginId),
+          "ai-gateway",
+          "failures.jsonl",
+        ),
+      });
   const router = createAiGatewayRouter({
     ...deps,
     originator: "fleet-console",
+    failureJournal: deps.failureJournal ?? ownedFailureJournal?.write,
     // 자격증명 조달은 호스트 결정이다 — Console은 core-ai-gateway가 export한 기본 reader를 주입한다.
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
@@ -56,9 +69,10 @@ export function registerAiGatewayRoutes(
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });
-  ctx.host.lifecycle.registerCleanup(() => {
+  ctx.host.lifecycle.registerCleanup(async () => {
     router.dispose();
-    return ownedDiagnostics?.flush();
+    await ownedDiagnostics?.flush();
+    await ownedFailureJournal?.flush();
   });
   registerRouter(ctx, AI_GATEWAY_ROUTE_SEGMENT, router.handle, [
     { method: "*", path: "/api/hello", summary: "Read the AI Gateway health response.", category: "Terminal Plugin", gate: "loopback", transport: "http" },

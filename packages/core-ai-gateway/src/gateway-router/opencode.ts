@@ -37,8 +37,13 @@ export function isOpencodeAnthropicPassthrough(model: Pick<GatewayModel, "wire">
 /** 번역 경로용 게이트웨이. 요청마다 생성해도 되는 무상태 어댑터를 감싼다. */
 export function createOpencodeGateway(
   wire: Exclude<GatewayModelWire, "anthropic">,
+  fetchImpl?: typeof fetch,
 ): AnthropicMessagesGateway {
-  return new AnthropicMessagesGateway(createOpencodeGoAdapter(wire));
+  // fetch를 넘기지 않으면 어댑터가 globalThis.fetch로 떨어져 라우터의 업스트림 게이트를 우회한다.
+  return new AnthropicMessagesGateway(createOpencodeGoAdapter(
+    wire,
+    fetchImpl ? { fetch: fetchImpl } : {},
+  ));
 }
 
 export async function proxyToOpencode(
