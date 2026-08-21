@@ -319,18 +319,19 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
         fill={laneColor(node.lane)}
       />
 
-      {/* collapse 인디케이터 — compact 모드에서는 SVG 전체가 -lane*14px 밀려나므로,
-          인디케이터를 활성 노드 기준으로 배치하되 text-anchor=end로 글리프가 시작점의
-          왼쪽에 끝나게 한다. 시작 앵커 두면 ⋯ 몸통이 14px 창 밖으로 잘려 표식이 사라진다.
+      {/* collapse 인디케이터 — compact 모드(320px 아래, CSS 컨테이너 쿼리가 판정)에서는
+          SVG가 -lane*14px 밀려나고 창이 14px로 잘리므로, 인디케이터를 end-앵커로 바꾸고
+          x는 CSS(.history-graph-gutter-compact text)가 브레이크포인트 안에서만 13px로
+          되돌린다. prop은 폭을 모르므로 좌표 분기도 CSS에 맡긴다.
           잘림 신호가 사라지면 허위 완결이 된다. */}
       {node.collapsed && (
         <text
-          x={compact ? cx + NODE_R + 3 : lanes * LANE_WIDTH + 2}
+          x={lanes * LANE_WIDTH + 2}
           y={cy + 4}
           fontSize={10}
           fontFamily="monospace"
           fill="var(--ink-fog)"
-          textAnchor={compact ? "end" : undefined}
+          textAnchor={compact && node.lane > 0 ? "end" : undefined}
         >
           ⋯
         </text>

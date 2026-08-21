@@ -371,10 +371,14 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
     expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
     // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
-    // 좌표는 활성 노드 기준이고 text-anchor=end로 글리프가 시작점 왼쪽에 끝나므로
-    // ⋯ 몸통이 14px 창 밖으로 잘리지 않는다.
-    expect(graphSource).toContain("x={compact ? cx + NODE_R + 3 : lanes * LANE_WIDTH + 2}");
-    expect(graphSource).toContain('textAnchor={compact ? "end" : undefined}');
+    // 좌표·앵커 분기는 CSS가 브레이크포인트 안에서만 처리한다 — prop은 폭을 모르므로
+    // 전 폭 분기면 정상 그래프의 표식 위치가 어긋난다(2026-08-21 리뷰 정정).
+    expect(graphSource).toContain("x={lanes * LANE_WIDTH + 2}");
+    expect(graphSource).toContain('textAnchor={compact && node.lane > 0 ? "end" : undefined}');
+    expect(finalStage).toContain('.history-graph-gutter-compact text[text-anchor="end"] { x: 13px; }');
+    // 커밋 행 목록이 compact 문법의 컨테이너다 — CSS만으로 브레이크포인트를 판정한다.
+    // .history-list-pane은 규칙 3개(공용 min-width·스택 재선언·본체)라 본체 규칙을 직접 찾는다.
+    expect(blocksOf(".history-list-pane").some((body) => body.includes("container-type: inline-size"))).toBe(true);
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.

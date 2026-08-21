@@ -698,6 +698,9 @@
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
+  /* compact 거터 문법의 컨테이너 — 커밋 행 목록 자체가 기준이라 CSS만으로 브레이크포인트를
+     판정할 수 있다(React prop은 폭을 모른다). */
+  container-type: inline-size;
 }
 
 .history-divider {
@@ -1121,8 +1124,10 @@
      삼는다. SVG는 자연 크기로 남고(종횡비 보존), lane>0 행의 compact 클래스만 음수 margin으로
      현재 레인을 창 안으로 민다 — 왼쪽 고정 클립은 lane>0 행의 노드를 통째로 잃는다. */
   .history-graph-gutter { width: 14px; overflow: hidden; }
-  /* 오프셋은 각 행의 실제 레인에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다. */
+  /* 오프셋은 각 행의 실제 레인에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
+     인디케이터 재배치(⋯)도 같은 브레이크포인트에서만 발동한다. */
   .history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }
+  .history-graph-gutter-compact text[text-anchor="end"] { x: 13px; }
   .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
   .history-commit-body-mark { display: none; }
 }
