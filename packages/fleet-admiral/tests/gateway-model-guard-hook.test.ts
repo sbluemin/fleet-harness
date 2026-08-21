@@ -114,6 +114,16 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(stderr).toContain("claude-gateway--");
   });
 
+  // 값 검증이 핀 인식보다 넓으면 `response_model` 같은 설정 키가 opts.model로 오인된다.
+  it("does not read a suffixed configuration key as a stage pin", () => {
+    for (const script of [
+      `const cfg = { response_model : "compact" }; agent(cfg.response_model, { model: "opus" })`,
+      `const cfg = { response_model: "compact" }; agent(cfg.response_model, { model: "opus" })`,
+    ]) {
+      expect(gateWorkflow({ script }).status, script).toBe(0);
+    }
+  });
+
   it("blocks a lineage alias that carries the gateway prefix", () => {
     const { status, stderr } = gateWorkflow({ script: `agent("x", { model: "claude-gateway--fable" })` });
     expect(status).toBe(2);

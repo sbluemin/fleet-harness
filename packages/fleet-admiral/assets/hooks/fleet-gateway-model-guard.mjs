@@ -53,9 +53,10 @@ const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
 const AGENT_TYPE_RE = /agentType\s*:/;
-// 핀 인식(`\bmodel\s*:`)과 값 검증이 같은 철자를 봐야 한다. 콜론 앞 공백을 여기서만
-// 놓치면 `{ model : "..." }`가 핀으로 세어지고도 값 검증을 받지 않는다.
-const MODEL_VALUE_RE = /model\s*:\s*['"]([^'"]+)['"]/g;
+// 핀 인식(`\bmodel\s*:`)과 값 검증은 같은 철자를 봐야 한다. 경계나 공백 하나가 어긋나면
+// `{ model : "..." }`가 핀으로 세어지고도 검증을 건너뛰고, `response_model:` 같은 설정 키가
+// opts.model로 오인되어 멀쩡한 스크립트가 막힌다.
+const MODEL_VALUE_RE = /\bmodel\s*:\s*['"]([^'"]+)['"]/g;
 const AGENT_CALL_RE = /\bagent\s*\(/g;
 
 function block(message) {
