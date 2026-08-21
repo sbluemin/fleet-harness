@@ -374,8 +374,9 @@ describe("Repository design grammar", () => {
     // lane 0 행도 기본 x ≥ 16은 14px 창을 벗어나므로 표식 준비는 compact면 무조건이고,
     // 좌표는 활성 노드 기준(--gutter-indicator-x), 적용은 CSS가 브레이크포인트 안에서만 한다.
     expect(graphSource).toContain('"--gutter-indicator-x": `${cx + NODE_R + 3}px`');
-    expect(graphSource).toContain('textAnchor={compact ? "end" : undefined}');
-    expect(finalStage).toContain('.history-graph-gutter text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }');
+    expect(graphSource).toContain('className={compact ? "history-graph-collapse-indicator-compact" : undefined}');
+    expect(graphSource).not.toContain('textAnchor={compact ? "end" : undefined}');
+    expect(finalStage).toContain('.history-graph-collapse-indicator-compact { x: var(--gutter-indicator-x, 13px); text-anchor: end; }');
     // 커밋 행 목록이 compact 문법의 컨테이너다 — CSS만으로 브레이크포인트를 판정한다.
     // .history-list-pane은 규칙 3개(공용 min-width·스택 재선언·본체)라 본체 규칙을 직접 찾는다.
     expect(blocksOf(".history-list-pane").some((body) => body.includes("container-type: inline-size"))).toBe(true);

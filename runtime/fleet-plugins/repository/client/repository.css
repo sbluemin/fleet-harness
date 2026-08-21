@@ -1127,10 +1127,10 @@
   /* 오프셋은 각 행의 실제 레인에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
      인디케이터(⋯)도 활성 노드 기준 좌표(--gutter-indicator-x)로 재배치한다 — 창은 로컬
      [lane*14, lane*14+14]를 노출하므로 고정 x는 어느 레인에서든 벗어난다. 표식은 lane 0
-     행에서도 필요하다(기본 x ≥ 16은 14px 창을 벗어난다) — compact 클래스가 없는 행은
-     text-anchor="end" 선택자 대신 인접 형제 규칙으로 잡는다. */
+     행에서도 필요하다(기본 x ≥ 16은 14px 창을 벗어난다). x와 text-anchor를 모두 이 단계에
+     가둬 넓은 폭의 기존 표식 위치와 정렬을 바꾸지 않는다. */
   .history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }
-  .history-graph-gutter text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }
+  .history-graph-collapse-indicator-compact { x: var(--gutter-indicator-x, 13px); text-anchor: end; }
   .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
   .history-commit-body-mark { display: none; }
 }
