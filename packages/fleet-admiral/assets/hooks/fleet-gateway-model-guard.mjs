@@ -9,21 +9,29 @@
 // 세 곳에서 따로 늙는다.
 //
 //   remind            UserPromptSubmit          매 턴 규약 주입 (무조건)
-//   gate-delegation   PreToolUse  Agent|Workflow  Agent의 핀 누락과 workflow의 틀린 모델 철자를 차단
+//   gate-delegation   PreToolUse  Agent|Workflow  로스터를 읽지 않은 팬아웃, Agent의 핀 누락,
+//                                                 workflow의 틀린 모델 철자를 차단
 //   workflow-receipt  PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
 //
-// 상태를 남기지 않는다. 훅은 호출마다 새 프로세스로 뜨므로 프로세스 간 기억은 파일로만
-// 가능한데, 그 파일은 곧 신선도·정리·경합을 떠안는 두 번째 진실이 된다. 세 판정 모두
-// stdin 한 번으로 끝나도록 짰다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
+// 자체 상태를 남기지 않는다. 프로세스 간 기억을 위해 훅이 직접 쓰는 파일은 곧 신선도·정리·
+// 경합을 떠안는 두 번째 진실이 되고, 그 파일이 사라지면 게이트가 조용히 열린다. 조회 여부는
+// 그래서 하네스가 이미 소유한 트랜스크립트에서 읽는다 — 새 진실을 만들지 않고, 훅이 관리할
+// 수명도 없다.
 import { readFileSync } from "node:fs";
 
 // 모델에게 주는 지시이므로 영어로 쓴다.
+//
+// 조회와 핀은 층위가 다르다. 조회는 무조건이고 핀은 표면마다 조건이 붙는데, 한 문단에 섞으면
+// 핀 쪽 면제("스테이지는 세션 모델에 머물러도 된다")가 조회의 무조건성까지 조건부로 물들인다.
+// 그래서 조회를 먼저 끝내고, 핀 철자는 그 뒤에서 따로 말한다.
 const TURN_REMINDER = [
-  "Call gateway_models before a run leaves the host and pin from what that call reports — allowances and the",
-  "roster itself move while work is in flight, so a remembered name is not evidence that it still resolves.",
+  "Call gateway_models before any Agent or Workflow run leaves the host — every time, not once per session.",
+  "The roster and its allowances are resolved at call time, so a name you remember is not evidence that it",
+  "still resolves.",
+  "Then pin from what that call reports.",
   "Agent: subagent_type = the fleet:* name, always.",
-  "A Workflow stage may stay on the host model; when you do move one, pin it from that same lookup —",
-  "opts.model takes the modelId with the claude-gateway-- prefix, opts.agentType takes the fleet:* name.",
+  "A Workflow stage may stay on the session model; when you do move one, opts.model takes the modelId with",
+  "the claude-gateway-- prefix and opts.agentType takes the fleet:* name.",
   "The spellings are never interchangeable.",
 ].join(" ");
 
@@ -37,6 +45,11 @@ const IN_FLIGHT_CONTRACT = [
 
 const PIN_INSTRUCTION =
   "Call gateway_models first, then pin the identity it reports: subagent_type = the fleet:* name.";
+
+const LOOKUP_INSTRUCTION =
+  "Call gateway_models now, then pin from what it reports. The roster is resolved at call time —"
+  + " a name carried in from memory, from another session, or from this tool's own description is not evidence"
+  + " that it still resolves.";
 
 /**
  * 정체성이 핀되지 않은 위임으로 취급하는 Agent 타입.
@@ -55,6 +68,11 @@ const GATEWAY_MODEL_PREFIX = "claude-gateway--";
 const MODEL_VALUE_RE = /model\s*:\s*['"]([^'"]+)['"]/g;
 const AGENT_TYPE_VALUE_RE = /agentType\s*:\s*['"]([^'"]+)['"]/g;
 
+// MCP 이름은 서버 등록명에 따라 접두가 달라진다. 서버 이름을 하드코딩하면 등록명이 바뀌는 날
+// 게이트가 조용히 전부 통과시키므로, 접두는 모양으로만 받고 도구 이름으로 판정한다.
+const LOOKUP_TOOL_NAME_RE = /^(?:mcp__[A-Za-z0-9_.-]+__)?gateway_models$/;
+const LOOKUP_CALL_HINT_RE = /"name"\s*:\s*"(?:mcp__[A-Za-z0-9_.-]+__)?gateway_models"/;
+
 function block(message) {
   process.stderr.write(`[fleet-gateway-model-guard] ${message}\n`);
   process.exit(2);
@@ -72,6 +90,81 @@ function readHookInput() {
     // 입력을 읽지 못하면 판정할 근거가 없다. 차단은 근거가 있을 때만 한다.
     process.exit(0);
   }
+}
+
+/**
+ * 이 세션이 로스터를 읽었는가. 판정 근거는 하네스가 쓰는 세션 트랜스크립트다.
+ *
+ * 호출이 아니라 `tool_result`가 판정 대상이다. 호출만 세면 게이트웨이가 응답하지 않아 실패로
+ * 끝난 조회와, 위임과 같은 턴에 발행되어 아직 결과가 없는 조회가 성공한 조회와 구별되지 않는다
+ * — 둘 다 로스터를 받지 못한 세션인데, 그 세션이 기억해둔 이름으로 위임하는 것이 이 게이트가
+ * 막으려는 바로 그 경우다. 하네스는 한 턴에 병렬로 발행된 호출도 각각 별도 라인으로 적으므로,
+ * 결과 없는 `tool_use`는 예외적인 모양이 아니라 흔한 중간 상태다.
+ *
+ * 트랜스크립트를 볼 수 없으면 참을 돌린다. 훅이 이 필드를 받지 못하는 경로가 생겼을 때 모든
+ * 위임이 막히는 쪽이, 조회 한 번을 놓치는 쪽보다 훨씬 나쁘다 — 게이트는 근거가 있을 때만 닫는다.
+ */
+function sessionReadRoster(input) {
+  const transcriptPath = typeof input?.transcript_path === "string" ? input.transcript_path : undefined;
+  if (transcriptPath === undefined || transcriptPath.length === 0) return true;
+  let raw;
+  try {
+    raw = readFileSync(transcriptPath, "utf8");
+  } catch {
+    return true;
+  }
+  // 값싼 부정 먼저. `gateway_models`라는 문자열 자체는 매 턴 주입되는 규약문, 도구 목록,
+  // 사용자 프롬프트에도 흔해서 그것만으로는 호출의 증거가 못 된다. 힌트가 걸린 뒤에야 라인을
+  // 파싱해 진짜 tool_use인지 가린다.
+  if (!LOOKUP_CALL_HINT_RE.test(raw)) return false;
+  // 결과를 기다리는 조회 호출. 결과 라인에는 도구 이름이 없으므로 id로만 이어 붙일 수 있다.
+  const awaitedLookupIds = new Set();
+  for (const line of raw.split("\n")) {
+    const namesLookup = line.includes("gateway_models");
+    const answersLookup = awaitedLookupIds.size > 0 && idMentionedIn(line, awaitedLookupIds);
+    if (!namesLookup && !answersLookup) continue;
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    // 서브에이전트가 읽은 로스터는 호스트의 조회가 아니다. 위임을 결정하는 것은 호스트다.
+    if (entry?.isSidechain === true) continue;
+    const content = entry?.message?.content;
+    if (!Array.isArray(content)) continue;
+    for (const contentBlock of content) {
+      if (contentBlock?.type === "tool_use") {
+        if (typeof contentBlock.name !== "string" || typeof contentBlock.id !== "string") continue;
+        if (LOOKUP_TOOL_NAME_RE.test(contentBlock.name)) awaitedLookupIds.add(contentBlock.id);
+        continue;
+      }
+      if (contentBlock?.type !== "tool_result") continue;
+      if (!awaitedLookupIds.delete(contentBlock.tool_use_id)) continue;
+      // 성공은 `is_error`의 부재로 적힌다 — 참인 경우만 실패다. 하나만 도착하면 충분하다.
+      if (contentBlock.is_error !== true) return true;
+    }
+  }
+  return false;
+}
+
+/** 이 라인이 아직 결과를 기다리는 호출 id를 언급하는가. 조회 id는 세션당 한 줌이라 선형 검사로 충분하다. */
+function idMentionedIn(line, ids) {
+  for (const id of ids) {
+    if (line.includes(id)) return true;
+  }
+  return false;
+}
+
+/**
+ * 로스터를 읽지 않은 팬아웃을 차단한다.
+ *
+ * 핀의 철자는 볼 수 있어도 그 이름이 아직 해석되는지는 로스터에만 있다. 철자만 검사하면
+ * 기억한 이름이 통과하고, 그 순간 규약은 지켜졌다는 외양만 남는다.
+ */
+function assertRosterWasRead(input, subject) {
+  if (sessionReadRoster(input)) return;
+  block(`${subject} 이 세션은 아직 gateway_models를 호출하지 않았습니다. ` + LOOKUP_INSTRUCTION);
 }
 
 /**
@@ -135,9 +228,14 @@ function resolveWorkflowScript(toolInput) {
   return undefined;
 }
 
-function gateAgentDelegation(toolInput) {
+function gateAgentDelegation(toolInput, input) {
   const agentType = typeof toolInput.subagent_type === "string" ? toolInput.subagent_type : undefined;
-  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) process.exit(0);
+  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) {
+    // 게이트웨이 정체성으로 나가는 위임만 로스터를 요구한다. 내장 타입은 호스트 모델로 도는
+    // 도구 선택이라 로스터에 걸린 것이 없다.
+    assertRosterWasRead(input, `게이트웨이 위임(${agentType})이 거부되었습니다:`);
+    process.exit(0);
+  }
   if (agentType !== undefined && !UNPINNED_AGENT_TYPES.has(agentType)) process.exit(0);
   block(
     `이 위임은 정체성이 핀되지 않았습니다(subagent_type: ${agentType ?? "미지정"}). ` +
@@ -145,7 +243,10 @@ function gateAgentDelegation(toolInput) {
   );
 }
 
-function gateWorkflowDelegation(toolInput) {
+function gateWorkflowDelegation(toolInput, input) {
+  // 스테이지를 옮기지 않는 워크플로우도 호스트를 떠나는 팬아웃이다. 옮길지 말지를 판단하려면
+  // 그 판단의 재료인 로스터를 먼저 읽어야 하므로, 스크립트를 보기 전에 조회부터 확인한다.
+  assertRosterWasRead(input, "이 워크플로우 디스패치가 거부되었습니다:");
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
   assertWorkflowModelValues(script);
@@ -169,8 +270,8 @@ if (subcommand === "workflow-receipt") {
 }
 
 if (subcommand === "gate-delegation") {
-  if (toolName === "Agent") gateAgentDelegation(toolInput);
-  if (toolName === "Workflow") gateWorkflowDelegation(toolInput);
+  if (toolName === "Agent") gateAgentDelegation(toolInput, input);
+  if (toolName === "Workflow") gateWorkflowDelegation(toolInput, input);
   process.exit(0);
 }
 

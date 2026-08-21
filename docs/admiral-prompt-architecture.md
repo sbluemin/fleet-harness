@@ -52,21 +52,43 @@ and the standalone `fleet` launcher — read that one option, and it binds new s
 
 The policy that used to live in the Standing Orders now lives in one embedded hook,
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`. It is stateless — every judgment
-is made from one stdin payload, so a hook timeout cannot silently open the gate through a
-missing state file. One script serves three roles, selected by its first argument:
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`. It keeps no state of its own: a
+file the hook wrote itself would carry freshness, cleanup, and contention, and a gate that
+opens when its own bookkeeping goes missing is not a gate. What it needs to remember about
+the session it reads from the transcript the harness already writes, addressed by the
+`transcript_path` the payload carries. One script serves three roles, selected by its
+first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
 | `remind` | UserPromptSubmit | — | Injects the pin contract every turn. This is the only path by which the contract reaches the model. |
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned `Agent` delegation, and a `Workflow` stage whose model value is misspelled. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks a fan-out from a session that has not read the roster, an unpinned `Agent` delegation, and a `Workflow` stage whose model value is misspelled. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
+
+Before either judgment, `gate-delegation` asks whether this session ever received a
+roster, by scanning the session transcript for a `tool_use` block naming `gateway_models`
+and then for the `tool_result` answering that call id. The spelling of a pin is visible in
+the payload; whether the name it spells still resolves is only in the roster. The answer
+is what counts, not the call: a lookup the gateway never answered and one issued in the
+same turn as the delegation both leave the session without a roster, and the harness
+records even parallel calls on separate lines, so a `tool_use` still awaiting its result
+is an ordinary intermediate state rather than an exotic one. A result carrying
+`is_error` is a failure; success is written as that field being absent, and one answered
+call is enough. A gate that reads spelling alone passes a name carried in
+from memory or from another session, and what remains is the appearance of compliance.
+The scan ignores a lookup made inside a subagent — the host is what decides the
+delegation — and it ignores the string `gateway_models` wherever it appears outside a
+call, which is every turn: the contract injected by `remind` contains it, and so does the
+tool listing. A fan-out onto a built-in agent type needs no lookup, because nothing on
+that path is drawn from the roster. When the transcript cannot be read at all the gate
+stays open: a harness path that stops carrying `transcript_path` would otherwise block
+every delegation, which is a worse failure than missing one lookup.
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
 context by design, so moving it to another model removes the point of that surface.
 
-For `Workflow` the gate judges spelling only. A stage that names no model is allowed and
+Past that lookup, for `Workflow` the gate judges spelling only. A stage that names no model is allowed and
 runs on the session model; whether a fan-out is worth spreading across providers is a
 reading of the work, not a property the hook can see, and a gate that demanded a pin per
 stage only taught the host to fill every stage with one value — the spread it was meant to

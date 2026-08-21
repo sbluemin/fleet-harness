@@ -53,6 +53,9 @@ describe("gateway model guard — remind", () => {
     // 핀이 선택이 된 뒤에도 로스터 조회는 핀의 조건이다 — 기억한 이름은 여전히 해석된다는
     // 증거가 아니다. 워크플로우 스테이지의 두 핀 철자가 그 조회에 함께 묶여 있어야 한다.
     expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.agentType");
+    // 조회는 무조건이고 핀은 표면마다 조건이 붙는다. 한 문단에 섞으면 핀 쪽 면제가 조회의
+    // 무조건성까지 조건부로 물들이므로, 주입문은 조회를 먼저 끝내고 핀 철자를 뒤에서 말한다.
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("every time, not once per session");
   });
 
   // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 규약은 실려야 한다.
@@ -218,5 +221,176 @@ describe("gateway model guard — workflow receipt", () => {
     });
     expect(status).toBe(0);
     expect(stdout).toContain("still in flight");
+  });
+});
+
+describe("gateway model guard — roster lookup", () => {
+  // 트랜스크립트는 하네스가 쓰는 그 파일이다. 훅이 따로 만드는 상태 파일이 아니므로 신선도와
+  // 정리를 떠안지 않는다 — 픽스처도 같은 모양으로 만든다.
+  function transcript(lines: readonly unknown[]): string {
+    const dir = mkdtempSync(path.join(os.tmpdir(), "gateway-model-guard-transcript-"));
+    tempDirs.push(dir);
+    const transcriptPath = path.join(dir, "session.jsonl");
+    writeFileSync(transcriptPath, lines.map((line) => JSON.stringify(line)).join("\n"));
+    return transcriptPath;
+  }
+
+  // 조회는 호출이 아니라 결과로 완성된다. 픽스처도 tool_use와 tool_result를 쌍으로 적는다.
+  function lookupCall(
+    toolName = "mcp__fleet__gateway_models",
+    extra: Record<string, unknown> = {},
+    id = "toolu_lookup",
+  ) {
+    return [
+      { type: "assistant", ...extra, message: { role: "assistant", content: [{ type: "tool_use", id, name: toolName, input: {} }] } },
+      {
+        type: "user",
+        ...extra,
+        message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content: `{"models":[]}` }] },
+      },
+    ];
+  }
+
+  /** 게이트웨이가 응답하지 않아 실패로 끝난 조회. 세션은 로스터를 받지 못했다. */
+  function failedLookupCall(id = "toolu_failed") {
+    return [
+      { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "mcp__fleet__gateway_models", input: {} }] } },
+      {
+        type: "user",
+        message: {
+          role: "user",
+          content: [{ type: "tool_result", tool_use_id: id, is_error: true, content: "MCP error: gateway unavailable" }],
+        },
+      },
+    ];
+  }
+
+  /** 위임과 같은 턴에 발행되어 아직 결과가 없는 조회. 병렬 호출도 각각 별도 라인으로 적힌다. */
+  function unansweredLookupCall(id = "toolu_pending") {
+    return [
+      { type: "assistant", message: { role: "assistant", content: [{ type: "tool_use", id, name: "mcp__fleet__gateway_models", input: {} }] } },
+    ];
+  }
+
+  // 매 턴 주입되는 규약문에는 `gateway_models`가 그대로 들어 있다. 도구 목록과 사용자 프롬프트도
+  // 마찬가지다. 문자열이 보인다는 사실은 호출의 증거가 아니다.
+  const MENTION_WITHOUT_CALL = [
+    {
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "왜 gateway_models 없이 팬아웃하지?" }] },
+    },
+    {
+      type: "system",
+      attachment: { type: "hook_additional_context", content: ["Call gateway_models before any Agent or Workflow run"] },
+    },
+    {
+      type: "assistant",
+      message: {
+        role: "assistant",
+        content: [{ type: "tool_use", id: "toolu_0", name: "ToolSearch", input: { query: "select:mcp__fleet__gateway_models" } }],
+      },
+    },
+  ];
+
+  function gateAgentWith(transcriptPath: string, subagentType: string) {
+    return run("gate-delegation", {
+      tool_name: "Agent",
+      transcript_path: transcriptPath,
+      tool_input: { subagent_type: subagentType },
+    });
+  }
+
+  function gateWorkflowWith(transcriptPath: string, toolInput: unknown) {
+    return run("gate-delegation", { tool_name: "Workflow", transcript_path: transcriptPath, tool_input: toolInput });
+  }
+
+  it("passes a gateway delegation once the session has read the roster", () => {
+    const transcriptPath = transcript(lookupCall());
+    expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status).toBe(0);
+    expect(gateWorkflowWith(transcriptPath, { script: `agent("x")` }).status).toBe(0);
+  });
+
+  // 이 게이트가 존재하는 이유. 철자만 보면 기억한 이름이 통과하고, 규약은 지켜졌다는 외양만 남는다.
+  it("blocks a fan-out from a session that never called gateway_models", () => {
+    const transcriptPath = transcript(MENTION_WITHOUT_CALL);
+    const agent = gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low");
+    expect(agent.status).toBe(2);
+    expect(agent.stderr).toContain("gateway_models");
+
+    const workflow = gateWorkflowWith(transcriptPath, { script: `agent("x")` });
+    expect(workflow.status).toBe(2);
+    expect(workflow.stderr).toContain("gateway_models");
+  });
+
+  // 스테이지를 하나도 옮기지 않는 워크플로우도 호스트를 떠나는 팬아웃이다. 옮길지 말지를
+  // 판단하려면 그 재료인 로스터를 먼저 읽어야 한다.
+  it("blocks an unread-roster Workflow whichever form the dispatch takes", () => {
+    const transcriptPath = transcript(MENTION_WITHOUT_CALL);
+    for (const toolInput of [{ script: `agent("x")` }, { name: "saved-workflow" }, { scriptPath: "/tmp/absent.js" }]) {
+      expect(gateWorkflowWith(transcriptPath, toolInput).status, JSON.stringify(toolInput)).toBe(2);
+    }
+  });
+
+  // 서브에이전트가 읽은 로스터는 호스트의 조회가 아니다. 위임을 결정하는 것은 호스트다.
+  it("does not count a lookup made inside a subagent", () => {
+    const transcriptPath = transcript(lookupCall("mcp__fleet__gateway_models", { isSidechain: true }));
+    expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status).toBe(2);
+  });
+
+  // MCP 서버 등록명은 바뀔 수 있다. 접두를 하드코딩하면 그날 게이트가 조용히 전부 통과시킨다.
+  it("recognises the lookup under any MCP server prefix", () => {
+    for (const toolName of ["gateway_models", "mcp__fleet__gateway_models", "mcp__fleet-console__gateway_models"]) {
+      const transcriptPath = transcript(lookupCall(toolName));
+      expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status, toolName).toBe(0);
+    }
+  });
+
+  // 내장 타입은 호스트 모델로 도는 도구 선택이라 로스터에 걸린 것이 없다.
+  it("does not demand a lookup for built-in agent types", () => {
+    const transcriptPath = transcript(MENTION_WITHOUT_CALL);
+    for (const subagentType of ["Explore", "Plan", "fork"]) {
+      expect(gateAgentWith(transcriptPath, subagentType).status, subagentType).toBe(0);
+    }
+  });
+
+  // 근거가 없으면 닫지 않는다. 훅이 이 필드를 받지 못하는 경로가 생겼을 때 모든 위임이 막히는
+  // 쪽이, 조회 한 번을 놓치는 쪽보다 훨씬 나쁘다.
+  it("stays open when the transcript cannot be read", () => {
+    expect(gateAgent({ subagent_type: "fleet:xai-grok-4-6-low" }).status).toBe(0);
+    expect(gateWorkflowWith("/nonexistent/session.jsonl", { script: `agent("x")` }).status).toBe(0);
+    expect(gateWorkflowWith("", { script: `agent("x")` }).status).toBe(0);
+  });
+
+  // 호출만 세면 실패로 끝난 조회가 성공한 조회와 구별되지 않는다. 그 세션은 로스터를 받지
+  // 못했으므로, 기억해둔 이름으로 나가는 위임이 이 게이트를 그대로 통과한다.
+  it("does not count a lookup that failed", () => {
+    const transcriptPath = transcript(failedLookupCall());
+    expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status).toBe(2);
+    expect(gateWorkflowWith(transcriptPath, { script: `agent("x")` }).status).toBe(2);
+  });
+
+  // 조회를 위임과 같은 턴에 발행하면 호출은 트랜스크립트에 있어도 로스터는 아직 오지 않았다.
+  it("does not count a lookup whose result has not arrived", () => {
+    const transcriptPath = transcript(unansweredLookupCall());
+    expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status).toBe(2);
+  });
+
+  // 실패는 재시도로 회복된다. 성공한 결과가 하나 도착하면 그것으로 충분하다.
+  it("counts a successful retry after a failed lookup", () => {
+    const transcriptPath = transcript([
+      ...failedLookupCall("toolu_first"),
+      ...lookupCall("mcp__fleet__gateway_models", {}, "toolu_second"),
+    ]);
+    expect(gateAgentWith(transcriptPath, "fleet:xai-grok-4-6-low").status).toBe(0);
+  });
+
+  // 조회를 마친 세션에서도 철자 검사는 그대로다. 두 판정은 독립이다.
+  it("still judges spelling after the roster was read", () => {
+    const transcriptPath = transcript(lookupCall());
+    const { status, stderr } = gateWorkflowWith(transcriptPath, {
+      script: `agent("x", { model: "codex--gpt-5.6-sol-fast" })`,
+    });
+    expect(status).toBe(2);
+    expect(stderr).toContain("claude-gateway--");
   });
 });
