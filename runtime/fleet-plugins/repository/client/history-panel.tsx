@@ -247,7 +247,7 @@ export function CommitRow({ entry, checkouts, selected, picked = false, pin = nu
       <span className="history-commit-author"><span className="history-commit-avatar" aria-hidden="true">{initials(entry.authorName)}</span><span className="history-commit-author-name">{entry.authorName}</span></span>
       <span className="history-commit-sha">{entry.shortHash}</span>
       <span className="history-commit-time">{formatCommitTime(entry.authorAt, new Date(), locale)}</span>
-      <span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} /></span>
+      <span className="history-graph-gutter" aria-hidden="true"><GraphGutter node={graphNode} compact /></span>
     </button>
     {onCompareAction && <button type="button" className="history-row-compare" aria-label={compareLabel} onClick={() => onCompareAction(entry)}>⇆</button>}
   </div>;

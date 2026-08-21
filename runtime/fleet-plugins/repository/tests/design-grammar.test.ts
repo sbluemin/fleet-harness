@@ -5,6 +5,8 @@ import { describe, expect, it } from "vitest";
 import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH, WORKSPACE_DOCK_SPLIT_MIN_WIDTH } from "../client/workspace-layout.js";
 
 const css = await fs.readFile(new URL("../client/repository.css", import.meta.url), "utf8");
+const railPanelSource = await fs.readFile(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+const graphSource = await fs.readFile(new URL("../client/graph.tsx", import.meta.url), "utf8");
 
 interface CssRule {
   readonly selectors: readonly string[];
@@ -64,9 +66,14 @@ function blockOf(selector: string): string {
 // prefers-reduced-motion 블록들의 본문만 모은다 — 파일 뒤쪽에 같은 선언이 있으면 통과해 버리는
 // slice(indexOf(...)) 방식은 "미디어 블록 안에 있음"을 증명하지 못한다.
 function reducedMotionBodies(): string {
+  return atRuleBodies("@media (prefers-reduced-motion: reduce)");
+}
+
+// 임의 at-rule(@media/@container) prelude에 속한 규칙 본문들을 정규화해 모은다 —
+// 컨테이너 쿼리 단계 계약이 "블록 안에 있음"을 증명하는 데 같은 파서를 쓴다.
+function atRuleBodies(prelude: string): string {
   const stripped = css.replace(/\/\*[\s\S]*?\*\//g, "");
   const bodies: string[] = [];
-  const prelude = "@media (prefers-reduced-motion: reduce)";
   let from = 0;
   for (;;) {
     const start = stripped.indexOf(prelude, from);
@@ -85,8 +92,9 @@ function reducedMotionBodies(): string {
     bodies.push(stripped.slice(open + 1, index));
     from = index + 1;
   }
-  if (bodies.length === 0) throw new Error("Missing prefers-reduced-motion block");
-  return bodies.join("\n");
+  if (bodies.length === 0) throw new Error(`Missing at-rule block: ${prelude}`);
+  // 본문 규칙 사이 공백을 한 칸으로 정규화해 부분 문자열 단언이 안정적으로 붙게 한다.
+  return bodies.join("\n").replace(/\s+/g, " ");
 }
 
 describe("Repository design grammar", () => {
@@ -168,8 +176,8 @@ describe("Repository design grammar", () => {
     expect(css).toContain(".repository-sync-button:focus-visible .repository-sync-hint");
     // 동작 줄이기에서는 전이 연출만 걷고 상태는 남긴다 — opacity/transform 규칙을 지우면 안 된다.
     const reduced = reducedMotionBodies();
-    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }");
-    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }");
+    expect(reduced).toContain(".repository-identity .repository-sync-glyph { transition-duration: 1ms; }".replace(/\s+/g, " "));
+    expect(reduced).toContain(".repository-identity .repository-sync-hint { transition-duration: 1ms; }".replace(/\s+/g, " "));
     expect(glyph).toContain("transition:");
   });
 
@@ -327,5 +335,69 @@ describe("Repository design grammar", () => {
         expect(blockOf(`.repository-line-${row} .repository-token-${token}`), `${row}/${token}`).toContain("inherit");
       }
     }
+  });
+
+  // 2026-08-21 재가 — 축소 순서 계약(identity 축). 패널이 좁아지면 동사 라벨이 먼저 양보하고
+  // 글리프+계수(ahead/behind 실질)가 남는다. 라벨 span은 `.repository-identity span`(0,1,1)의
+  // brass·mono·t-2xs를 물려받으므로 버튼 스코프의 되돌림 규칙이 반드시 함께 있어야 한다.
+  it("collapses verb labels before glyphs under the shrink-order contract", () => {
+    const label = blockOf(".repository-verb-button .repository-verb-label");
+    expect(label).toContain("color: inherit");
+    expect(label).toContain("font-family: inherit");
+    expect(label).toContain("font-size: inherit");
+    const base = blockOf(".repository-verb-label");
+    expect(base).toContain("white-space: nowrap");
+    expect(base).toContain("text-overflow: ellipsis");
+    const collapsed = rules
+      .filter((rule) => rule.selectors.includes(".repository-verb-label") && rule.body.includes("display: none"));
+    expect(collapsed).toHaveLength(1);
+    // Sync 버튼은 수납에서 제외 — 글리프만으로 이미 최소형이다.
+    expect(css).not.toMatch(/\.repository-sync-button\s+\.repository-verb-label/);
+  });
+
+  // 2026-08-21 재가 — 축소 순서 계약(history 축). 최종 단계에서 gutter+subject만 남고,
+  // subject 보장폭(minmax 96px)은 어느 단계에서도 유지된다. gutter는 뷰포트 축소가 아니라
+  // 오버플 클립으로 줄어든다 — width만 줄이면 viewBox 종횡비가 그림을 세로로 눌러 레인 선이 끊긴다.
+  it("keeps a final commit-row stage where only gutter and subject survive", () => {
+    const finalStage = atRuleBodies("(max-width: 320px)");
+    expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr);");
+    expect(finalStage).toContain(".history-graph-gutter { width: 14px; overflow: hidden; }");
+    // SVG 자체는 축소하지 않는다 — 뷰포트 축소는 viewBox 종횡비로 그림을 세로로 눌러 레인 선을 끊는다.
+    // lane>0 행의 노드는 왼쪽 고정 클립으로 잃어버리므로, compact 클래스의 음수 margin이 현재
+    // 레인을 14px 창 안으로 민다(graph.tsx GraphGutter). 오프셋은 이 컨테이너 쿼리 안에서만
+    // 발동한다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다(2026-08-21 리뷰 정정).
+    expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
+    // 오프셋은 각 행의 실제 레인(--gutter-lane)에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
+    expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
+    expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
+    // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
+    // lane 0 행도 기본 x ≥ 16은 14px 창을 벗어나므로 표식 준비는 compact면 무조건이고,
+    // 좌표는 활성 노드 기준(--gutter-indicator-x), 적용은 CSS가 브레이크포인트 안에서만 한다.
+    expect(graphSource).toContain('"--gutter-indicator-x": `${cx + NODE_R + 3}px`');
+    expect(graphSource).toContain('className={compact ? "history-graph-collapse-indicator-compact" : undefined}');
+    expect(graphSource).not.toContain('textAnchor={compact ? "end" : undefined}');
+    expect(finalStage).toContain('.history-graph-collapse-indicator-compact { x: var(--gutter-indicator-x, 13px); text-anchor: end; }');
+    // 커밋 행 목록이 compact 문법의 컨테이너다 — CSS만으로 브레이크포인트를 판정한다.
+    // .history-list-pane은 규칙 3개(공용 min-width·스택 재선언·본체)라 본체 규칙을 직접 찾는다.
+    expect(blocksOf(".history-list-pane").some((body) => body.includes("container-type: inline-size"))).toBe(true);
+    // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
+    expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
+    // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.
+    const badgeStage = atRuleBodies("(max-width: 420px)");
+    expect(badgeStage).toContain(".history-commit-badges { display: none; }");
+  });
+
+  // 접힌 동사 라벨은 display:none이라 접근성 트리에서 빠진다 — 접근성 이름은 라벨과 계수를
+  // 직접 합성해 어느 폭에서도 "Pull 3↓" 전체가 낭독된다.
+  it("composes the verb accessible name from label and count", () => {
+    expect(railPanelSource).toContain("aria-label={[label, countText].filter(Boolean).join(\" \")}");
+    expect(railPanelSource).toContain("countText={workstate?.behind ? `${workstate.behind}↓` : null}");
+    expect(railPanelSource).toContain("countText={workstate?.ahead ? `${workstate.ahead}↑` : null}");
+  });
+
+  // 체크아웃 탭 라벨도 identity 축의 2단으로 양보한다.
+  it("shortens checkout tab labels as the identity axis yields", () => {
+    const tabStage = atRuleBodies("(max-width: 380px)");
+    expect(tabStage).toContain(".repository-checkout-tab-label { max-width: 10ch; }");
   });
 });

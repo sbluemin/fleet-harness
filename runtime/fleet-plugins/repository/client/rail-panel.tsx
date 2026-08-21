@@ -108,12 +108,19 @@ function verbCountText(raw: unknown, verb: "pull" | "push", t: T): string {
 /**
  * 툴바 동사 버튼 — 동기화 버튼과 같은 부품으로 조립한다: 진행 중 회전, 성공 시 ✓ 체류,
  * 결과 말풍선, 실패 점. 결과 표면이 버튼 안에 있으므로 어떤 답도 패널 본문을 밀어내지 않는다.
+ *
+ * 라벨 수납 — identity 줄이 좁아지면 CSS 컨테이너 쿼리가 .repository-verb-label을 숨겨
+ * 글리프+계수만 남긴다(1단). 접힌 라벨은 display:none이라 접근성 트리에서도 빠지므로,
+ * 접근성 이름은 라벨과 계수 텍스트를 직접 합성해 어느 폭에서도 "Pull 3↓" 전체가 낭독된다.
+ * 시각적 축소는 표현 계약이므로 design-grammar.test.ts가 단계를 고정한다.
  */
-function VerbToolbarButton({ glyph, label, title, count, disabled, busy, outcome, settled, hinting, failedTitle, onClick }: {
+function VerbToolbarButton({ glyph, label, title, count, countText, disabled, busy, outcome, settled, hinting, failedTitle, onClick }: {
   readonly glyph: string;
   readonly label: string;
   readonly title: string;
   readonly count: ReactNode;
+  /** 접근성 이름에 합성되는 계수 텍스트("3↓") — 시각 계수와 같은 출처에서 온다. */
+  readonly countText: string | null;
   readonly disabled: boolean;
   readonly busy: boolean;
   readonly outcome: { readonly kind: "success" | "error"; readonly text: string } | null;
@@ -123,12 +130,12 @@ function VerbToolbarButton({ glyph, label, title, count, disabled, busy, outcome
   readonly onClick: () => void;
 }) {
   return (
-    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-syncing" : ""}`} title={title} disabled={disabled} onClick={onClick}>
+    <button type="button" className={`repository-sync-button repository-verb-button${busy ? " is-syncing" : ""}`} title={title} aria-label={[label, countText].filter(Boolean).join(" ")} disabled={disabled} onClick={onClick}>
       <span className={`repository-sync-icon${settled ? " is-settled" : ""}`} aria-hidden="true">
         <span className="repository-sync-glyph repository-sync-glyph-idle">{glyph}</span>
         <span className="repository-sync-glyph repository-sync-glyph-settled">✓</span>
       </span>
-      {label}
+      <span className="repository-verb-label">{label}</span>
       {count}
       {outcome?.kind === "error" && <span className="repository-sync-dot" title={failedTitle} aria-hidden="true" />}
       {outcome && <span className={`repository-sync-hint${outcome.kind === "error" ? " is-error" : ""}${hinting ? " is-open" : ""}`} aria-hidden="true">{outcome.text}</span>}
@@ -782,9 +789,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   return (
     <div className="repository-unified is-workspace">
       <div className={`repository-identity${repoRel ? " is-subcontext" : ""}`}><RepositoryIcon /><strong>{selectedRepo?.name ?? t("repository.panel.title")}</strong>{selectedRepo?.branch && <span>{selectedRepo.branch}</span>}<button type="button" className={`repository-sync-button${syncing ? " is-syncing" : ""}`} title={t("repository.sync.title")} aria-label={t("repository.sync.title")} disabled={syncing} onClick={() => { void syncRepository(); }}><span className={`repository-sync-icon${syncSettled ? " is-settled" : ""}`} aria-hidden="true"><span className="repository-sync-glyph repository-sync-glyph-idle">↻</span><span className="repository-sync-glyph repository-sync-glyph-settled">✓</span></span>{t("repository.sync.button")}{syncFailed && <span className="repository-sync-dot" title={t("repository.sync.lastFailed")} aria-hidden="true" />}{syncHintAvailable && <span className={`repository-sync-hint${syncHinting ? " is-open" : ""}`} aria-hidden="true">{t("repository.sync.upToDate")}</span>}</button><span className="repository-verb-cluster">
-        <VerbToolbarButton glyph="⇩" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
-        <VerbToolbarButton glyph="⇧" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
-        <VerbToolbarButton glyph="▤" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
+        <VerbToolbarButton glyph="⇩" label={t("repository.verb.pull")} title={t("repository.verb.pullTitle")} count={workstate?.behind ? <em className="repository-verb-count" title={t("repository.verb.behindCount", { count: workstate.behind })}>{workstate.behind}↓</em> : null} countText={workstate?.behind ? `${workstate.behind}↓` : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "pull"} outcome={verbOutcome?.verb === "pull" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "pull"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePull} />
+        <VerbToolbarButton glyph="⇧" label={t("repository.verb.push")} title={t("repository.verb.pushTitle")} count={workstate?.ahead ? <em className="repository-verb-count" title={t("repository.verb.aheadCount", { count: workstate.ahead })}>{workstate.ahead}↑</em> : null} countText={workstate?.ahead ? `${workstate.ahead}↑` : null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "push"} outcome={verbOutcome?.verb === "push" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "push"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handlePush} />
+        <VerbToolbarButton glyph="▤" label={t("repository.verb.stash")} title={t("repository.verb.stashTitle")} count={null} countText={null} disabled={verbBusy !== null || writeLocked} busy={verbBusy?.surface === "button" && verbBusy.verb === "stash"} outcome={verbOutcome?.verb === "stash" ? verbOutcome : null} settled={verbSettled && verbOutcome?.verb === "stash"} hinting={verbHinting} failedTitle={t("repository.verb.lastFailed")} onClick={handleStash} />
       </span></div>
       <div className="repository-checkout-tabs" role="tablist" aria-label={t("repository.tabs.aria")}>
         {checkoutTabs.map((tab) => <button
