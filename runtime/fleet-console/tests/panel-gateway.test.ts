@@ -117,6 +117,21 @@ describe.skipIf(!HAS_BUILD)("panel gateway process", () => {
     expect(hello.status).toBe(200);
   }, START_TIMEOUT_MS + 10_000);
 
+  it("keeps its diagnostics in files no other gateway rotates", async () => {
+    const { child, ready } = startPanelGateway();
+    await ready;
+    const dataDir = dirs[dirs.length - 1]!;
+    const logDir = path.join(dataDir, "console", "plugins", "terminal", "ai-gateway");
+
+    await fetch(`${await ready}/api/hello`);
+    child.stdin?.end();
+    await new Promise((resolve) => { child.once("exit", resolve); });
+
+    // 회전은 프로세스 안에서만 직렬화된다. 파일을 공유하면 한쪽 rename이 다른 쪽 기록을 덮는다.
+    const written = fs.existsSync(logDir) ? fs.readdirSync(logDir) : [];
+    expect(written.every((name) => !name.startsWith("failures.jsonl"))).toBe(true);
+  }, START_TIMEOUT_MS + 10_000);
+
   it("shuts itself down when its parent closes stdin", async () => {
     const { child, ready } = startPanelGateway();
     await ready;

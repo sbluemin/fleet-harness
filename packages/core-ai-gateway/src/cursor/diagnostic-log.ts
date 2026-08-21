@@ -48,6 +48,14 @@ const CURSOR_DIAGNOSTIC_EVENTS = new Set<CursorDiagnosticEventName>([
 
 export interface CursorDiagnosticLogOptions {
   readonly maxBytes?: number;
+  /**
+   * File name inside `dir`. Defaults to the shared one.
+   *
+   * Rotation here is serialized only within one process, so two processes sharing a file can have
+   * one's rename replace what the other just created. A host that runs more than one writer over
+   * the same directory gives each its own name rather than trusting that they never rotate at once.
+   */
+  readonly fileName?: string;
 }
 
 export interface CursorDiagnosticLog {
@@ -65,7 +73,7 @@ export function createCursorDiagnosticLog(
   dir: string,
   options: CursorDiagnosticLogOptions = {},
 ): CursorDiagnosticLog {
-  const logPath = path.join(dir, CURSOR_DIAGNOSTIC_FILE);
+  const logPath = path.join(dir, options.fileName ?? CURSOR_DIAGNOSTIC_FILE);
   const backupPath = `${logPath}.1`;
   const maxBytes = positiveInteger(options.maxBytes) ?? DEFAULT_CURSOR_DIAGNOSTIC_MAX_BYTES;
   let initialized = false;

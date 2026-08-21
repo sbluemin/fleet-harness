@@ -54,10 +54,20 @@ export async function runPanelGateway(): Promise<void> {
   const infraServices = createInfraServices();
   const store = createAiGatewaySettingsStore({ dataDir });
   const logDir = path.join(dataDir, "console", "plugins", "terminal", "ai-gateway");
-  const diagnostics = createCursorDiagnosticLog(logDir);
-  // 실패 저널은 Console과 같은 파일을 쓴다. 패널을 갈라도 "이 기기의 실패 기록"은 하나여야
-  // 한 번의 조회로 전부 보인다 — 프로세스마다 파일을 나누면 진단이 파편으로 흩어진다.
-  const failureJournal = createFailureJournal({ filePath: path.join(logDir, "failures.jsonl") });
+  /**
+   * 진단 파일은 이 프로세스 전용이다.
+   *
+   * 처음에는 Console과 같은 파일을 쓰게 두었다 — "이 기기의 실패 기록"이 하나여야 한 번에 보이니까.
+   * 그런데 두 구현 모두 회전을 **프로세스 안에서만** 직렬화한다(저널은 로컬 promise 체인, Cursor
+   * 진단 로그는 로컬 바이트 카운터). 게이트웨이 여러 개가 같은 파일을 2 MiB 근처에서 함께 밀면
+   * 한쪽의 rename이 다른 쪽이 방금 만든 파일을 백업으로 덮어써, 지키려던 그 기록을 잃는다.
+   *
+   * 그래서 조회는 한 파일이 아니라 한 디렉터리가 된다 — `failures*.jsonl`을 모아 읽으면 된다.
+   * Console 자신의 파일 이름은 그대로라 기존 조회 습관도 깨지지 않는다.
+   */
+  const suffix = `panel-${process.pid}`;
+  const diagnostics = createCursorDiagnosticLog(logDir, { fileName: `cursor-${suffix}.jsonl` });
+  const failureJournal = createFailureJournal({ filePath: path.join(logDir, `failures.${suffix}.jsonl`) });
   const router = createAiGatewayRouter({
     failureJournal: failureJournal.write,
     readAiGatewaySettings: () => store.read(),
