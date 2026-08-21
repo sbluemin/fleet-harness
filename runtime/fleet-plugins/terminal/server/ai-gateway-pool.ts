@@ -61,11 +61,31 @@ export function panelGatewayHeaderValue(
  */
 export const MAX_DEDICATED_GATEWAYS = 32;
 
+/**
+ * How many "this one shares the Console gateway" decisions are remembered.
+ *
+ * Only the decision is kept — an id, not a router — because an Operation that launched shared has
+ * nothing else to point at. It has to be remembered anyway: a second surface of the same
+ * Operation asks again later, and re-reading the setting then would move a running Operation onto
+ * a different router than the one its first surface is already using.
+ *
+ * The ceiling exists because these entries would otherwise accumulate for the life of a Console
+ * that never deletes an Operation. Past it the oldest decision is forgotten, and an Operation
+ * whose decision was forgotten is re-decided on its next claim; that is the exact defect this
+ * memory closes, so the ceiling is set far above any believable count of live Operations.
+ */
+export const MAX_REMEMBERED_SHARED_PANELS = 512;
+
 export interface DedicatedGatewayPool {
   /**
    * Give this operation its own router and return the panel id its child must send back.
-   * Returns `""` when the launch shares the Console router — the setting is off, the launch
-   * carries no operation identity, or the pool is already at {@link MAX_DEDICATED_GATEWAYS}.
+   * Returns `""` when this operation shares the Console router — the setting was off when it
+   * first asked, it carries no operation identity, or the pool was already at
+   * {@link MAX_DEDICATED_GATEWAYS}.
+   *
+   * The decision is taken once per operation and then repeated, never re-evaluated. Both surfaces
+   * of one Operation ask separately — the terminal launch and the Chat Mode session — and a
+   * setting change between those two calls must not put them on different routers.
    */
   readonly claim: (operationId: string | undefined) => string;
   /** The panel router this request names, or `undefined` when it names none. */
@@ -85,22 +105,37 @@ export interface CreateDedicatedGatewayPoolDeps {
 
 export function createDedicatedGatewayPool(deps: CreateDedicatedGatewayPoolDeps): DedicatedGatewayPool {
   const routers = new Map<string, AiGatewayRouter>();
+  const shared = new Set<string>();
+  const decideShared = (operationId: string): string => {
+    shared.add(operationId);
+    // Insertion order is iteration order, so the first key is the oldest decision.
+    if (shared.size > MAX_REMEMBERED_SHARED_PANELS) {
+      const [oldest] = shared;
+      if (oldest !== undefined) shared.delete(oldest);
+    }
+    return "";
+  };
   return {
     claim: (operationId) => {
       if (!operationId || !isPanelId(operationId)) return "";
-      // 이미 라우터를 가진 패널은 설정을 꺼도 자기 라우터로 돌아온다. 자식은 런치 때 구운 헤더를
-      // 계속 보내므로, 여기서 공용으로 되돌리면 살아 있는 패널의 신원이 갈라진다.
+      // 이 Operation이 이미 답을 받았으면 그 답을 되풀이한다. 설정을 그 사이에 바꿔도 마찬가지다 —
+      // 자식은 런치 때 구운 헤더를 계속 보내고, 같은 Operation의 두 표면(터미널·Chat)은 따로
+      // 물어보므로, 여기서 다시 판단하면 한 Operation이 두 라우터로 갈라진다.
       if (routers.has(operationId)) return operationId;
+      if (shared.has(operationId)) return "";
       let enabled: boolean;
       try {
         enabled = deps.enabled();
       } catch {
         // A settings read that fails must not fail the launch. The shared router is the default
         // and can always serve this panel, so fall back to it rather than refusing to start.
+        // The failure is not recorded as a decision — the next surface deserves a real answer.
         return "";
       }
-      if (!enabled) return "";
-      if (routers.size >= MAX_DEDICATED_GATEWAYS) return "";
+      if (!enabled) return decideShared(operationId);
+      // 상한에 걸린 것도 결정이다. 기억하지 않으면 자리가 하나 나는 순간 이 Operation의 다음
+      // 표면만 전용을 받아, 첫 표면이 쓰는 공용 라우터와 갈라진다.
+      if (routers.size >= MAX_DEDICATED_GATEWAYS) return decideShared(operationId);
       routers.set(operationId, deps.createRouter());
       return operationId;
     },
@@ -117,6 +152,9 @@ export function createDedicatedGatewayPool(deps: CreateDedicatedGatewayPoolDeps)
       return isPanelId(panelId) ? routers.get(panelId) : undefined;
     },
     release: (operationId) => {
+      // 결정은 그 Operation의 것이다. 삭제되면 결정도 함께 사라져야, 같은 id가 다시 나타나더라도
+      // 그때의 설정으로 새로 판단한다.
+      shared.delete(operationId);
       const router = routers.get(operationId);
       if (!router) return;
       routers.delete(operationId);
@@ -137,6 +175,7 @@ export function createDedicatedGatewayPool(deps: CreateDedicatedGatewayPoolDeps)
         }
       }
       routers.clear();
+      shared.clear();
     },
   };
 }

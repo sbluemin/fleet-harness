@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   MAX_DEDICATED_GATEWAYS,
+  MAX_REMEMBERED_SHARED_PANELS,
   PANEL_GATEWAY_HEADER,
   createDedicatedGatewayPool,
   panelGatewayHeaderValue,
@@ -143,7 +144,74 @@ describe("dedicated gateway pool", () => {
 
     pool.release("op-0");
 
-    expect(pool.claim("op-overflow")).toBe("op-overflow");
+    // 새 Operation은 빈 자리를 받는다. 상한에 걸렸던 op-overflow는 그때의 결정을 유지한다 —
+    // 아래 "remembers a ceiling refusal" 참고.
+    expect(pool.claim("op-fresh")).toBe("op-fresh");
+  });
+
+  it("repeats the shared decision after the setting is turned on", () => {
+    let enabled = false;
+    const { built, pool } = harness({ enabled: () => enabled });
+    expect(pool.claim("op-1")).toBe("");
+    enabled = true;
+
+    // 터미널로 뜬 뒤 설정을 켜고 같은 Operation을 Chat Mode로 여는 경로다. 여기서 다시 판단하면
+    // 이미 공용으로 말하고 있는 자식과 새 표면이 서로 다른 라우터로 갈라진다.
+    expect(pool.claim("op-1")).toBe("");
+    expect(built).toHaveLength(0);
+
+    // 결정은 그 Operation의 것이지 전역이 아니다 — 새 Operation은 켜진 설정을 본다.
+    expect(pool.claim("op-2")).toBe("op-2");
+  });
+
+  it("remembers a ceiling refusal so a freed slot cannot split one operation", () => {
+    const { pool } = harness();
+    for (let index = 0; index < MAX_DEDICATED_GATEWAYS; index += 1) pool.claim(`op-${index}`);
+    expect(pool.claim("op-overflow")).toBe("");
+
+    pool.release("op-0");
+
+    expect(pool.claim("op-overflow")).toBe("");
+  });
+
+  it("re-decides an operation whose settings read failed", () => {
+    let failing = true;
+    const { pool } = harness({
+      enabled: () => {
+        if (failing) throw new Error("settings unreadable");
+        return true;
+      },
+    });
+    expect(pool.claim("op-1")).toBe("");
+    failing = false;
+
+    // 판독 실패는 결정이 아니다 — 그때 답을 못 준 것뿐이므로 다음 표면은 진짜 답을 받는다.
+    expect(pool.claim("op-1")).toBe("op-1");
+  });
+
+  it("forgets a released operation's shared decision", () => {
+    let enabled = false;
+    const { pool } = harness({ enabled: () => enabled });
+    pool.claim("op-1");
+    enabled = true;
+
+    pool.release("op-1");
+
+    expect(pool.claim("op-1")).toBe("op-1");
+  });
+
+  it("stops remembering shared decisions past its ceiling", () => {
+    let enabled = false;
+    const { pool } = harness({ enabled: () => enabled });
+    for (let index = 0; index <= MAX_REMEMBERED_SHARED_PANELS; index += 1) {
+      pool.claim(`op-${index}`);
+    }
+    enabled = true;
+
+    // 가장 오래된 결정이 밀려나 다시 판단된다. 그것이 이 상한이 인정하는 유일한 퇴화다.
+    expect(pool.claim("op-0")).toBe("op-0");
+    // 그 뒤의 결정은 그대로 남아 있다.
+    expect(pool.claim("op-1")).toBe("");
   });
 
   it("ignores a release for a panel it never issued", () => {
