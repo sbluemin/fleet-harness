@@ -46,15 +46,16 @@ export function SkillCard({ skill, shadowsOtherScope, onReadMore, onRemove, t }:
 
   useEffect(() => () => clearArmTimer(), [clearArmTimer]);
 
-  // 출처가 없는 스킬은 레지스트리에서 온 것이 아니라 손으로 쓴 것이다. 빈 줄로 두면 "아직
-  // 못 읽었다"로 읽히므로, 아는 사실(이 Theater에서 작성된 파일)을 그대로 적는다.
-  const provenance = skill.source ?? t("skills.card.local");
+  // 출처는 세 상태다: 기록이 있음(레지스트리), lock을 읽었지만 없음(관리 밖 = 로컬),
+  // 그리고 lock 자체를 읽지 못함(미상). 마지막을 "로컬"로 적으면 손으로 쓴 적 없는 스킬을
+  // 손으로 썼다고 단언하게 되므로, 그때는 아무 말도 하지 않는다.
+  const provenance = skill.source ?? (skill.unmanaged ? t("skills.card.local") : null);
   const metaParts = [
     t(skill.agents.length === 1 ? "skills.card.agents_one" : "skills.card.agents_other", {
       count: skill.agents.length,
     }),
-    provenance,
   ];
+  if (provenance) metaParts.push(provenance);
   // 가림은 방향이 있는 사실이다 — project 사본이 global을 가리는 것이지, 그 반대가 아니다.
   if (shadowsOtherScope) {
     metaParts.push(t(

@@ -11,6 +11,11 @@ export interface SkillListItem {
   readonly scope: Scope;
   readonly agents: string[];
   readonly source?: string;
+  /**
+   * lock을 읽어냈는데 그 안에 이 스킬이 없을 때만 참이다 — 즉 "관리 밖"을 단언할 수 있을 때만.
+   * lock 자체를 읽지 못했다면 source도 unmanaged도 없다: 출처는 거짓이 아니라 미상이다.
+   */
+  readonly unmanaged?: boolean;
   /** SKILL.md frontmatter의 description — 없으면 생략한다(빈 문자열을 만들지 않는다). */
   readonly description?: string;
   readonly displayPath: string;

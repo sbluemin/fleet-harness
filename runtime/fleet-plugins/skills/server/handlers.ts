@@ -22,6 +22,12 @@ interface LockFileEntry {
 /** v1은 이름을 최상위 키로 두고, v3는 `skills` 아래로 한 겹 넣는다. */
 type LockFile = Record<string, LockFileEntry | unknown> & { skills?: Record<string, LockFileEntry> };
 
+interface LockLookup {
+  readonly sources: Map<string, string>;
+  /** lock을 실제로 읽어냈는가 — 읽지 못했다면 출처의 부재는 "모름"이지 "로컬"이 아니다. */
+  readonly lockRead: boolean;
+}
+
 interface RawSkillEntry {
   name: string;
   path: string;
@@ -47,45 +53,67 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
 /**
- * lock 파일에서 이름→source를 뽑는다.
+ * 이 JSON을 lock으로 인정할 수 있는가.
  *
  * 스키마가 두 벌이다: v1은 이름이 최상위 키였고, v3부터는 `skills` 아래로 한 겹 들어간다.
  * v1 모양만 읽으면 v3 파일에서 아무것도 못 건져 **모든 스킬이 출처 없음으로 보인다** —
  * 실측에서 18개 전부 source:null이던 원인이 provenance의 부재가 아니라 이 불일치였다.
- * 두 모양을 모두 읽고, 실제로 기록이 없을 때만 빈 채로 남긴다.
+ * 모르는 모양은 "빈 lock"이 아니라 "읽지 못함"으로 떨어뜨린다(다음 스키마 변경 대비).
  */
-function collectLockSources(parsed: unknown, sources: Map<string, string>): boolean {
-  if (typeof parsed !== "object" || parsed === null) return false;
+function isLockShape(parsed: unknown): parsed is LockFile {
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
   const lock = parsed as LockFile;
+  if (typeof lock.skills === "object" && lock.skills !== null) return true;
+  // v1은 이름이 최상위 키다 — 값이 객체인 항목이 하나라도 있어야 lock으로 인정한다.
+  return Object.values(parsed as Record<string, unknown>)
+    .some((entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry));
+}
+
+function collectLockSources(lock: LockFile, sources: Map<string, string>): void {
   const table = (typeof lock.skills === "object" && lock.skills !== null)
     ? lock.skills
-    : (parsed as Record<string, LockFileEntry>);
-  let found = false;
+    : (lock as Record<string, LockFileEntry>);
   for (const [name, entry] of Object.entries(table)) {
     if (entry && typeof entry === "object" && typeof (entry as LockFileEntry).source === "string") {
       sources.set(name, (entry as LockFileEntry).source as string);
-      found = true;
     }
   }
-  return found;
 }
 
-async function readSkillSources(cwd: string): Promise<Map<string, string>> {
+/**
+ * lock을 읽었는지와 그 안에 무엇이 있었는지를 함께 돌려준다.
+ *
+ * 두 가지는 다른 사실이다: **읽었는데 그 스킬이 없다**(관리 밖 = 손으로 놓인 파일)와
+ * **읽지 못했다**(부재·손상·모르는 스키마). 앞의 것만 "local"이라고 말할 수 있다.
+ * 이 구분을 잃으면, 내일 lock 스키마가 한 번 더 바뀌는 순간 레지스트리에서 설치한
+ * 스킬까지 전부 "직접 작성"이라고 자신 있게 거짓말하게 된다.
+ */
+async function readSkillSources(cwd: string): Promise<LockLookup> {
   const sources = new Map<string, string>();
 
   for (const candidate of [
     path.join(cwd, "skills-lock.json"),
     path.join(cwd, ".agents", ".skill-lock.json"),
   ]) {
+    let raw: string;
     try {
-      const raw = await fs.readFile(candidate, "utf-8");
-      if (collectLockSources(JSON.parse(raw), sources)) return sources;
+      raw = await fs.readFile(candidate, "utf-8");
     } catch {
-      // 부재/파싱 실패 → 다음 후보로, 끝내 없으면 source 생략 (에러 아님)
+      continue; // 부재 → 다음 후보
+    }
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      // 파싱된 lock은 항목이 하나도 없어도 "읽은" 것이다 — 빈 lock은 모름이 아니라 비어 있음이다.
+      if (isLockShape(parsed)) {
+        collectLockSources(parsed, sources);
+        return { sources, lockRead: true };
+      }
+    } catch {
+      // 손상/모르는 스키마 → 읽지 못한 것으로 남긴다
     }
   }
 
-  return sources;
+  return { sources, lockRead: false };
 }
 
 async function runListCommand(args: string[], cwd: string, executor: CliExecutor): Promise<RawSkillEntry[]> {
@@ -186,18 +214,22 @@ function spawnJobAsync(
 async function toListItems(
   raw: readonly RawSkillEntry[],
   scope: Scope,
-  sources: Map<string, string>,
+  lock: LockLookup,
   allowedRoot: string,
 ): Promise<SkillListItem[]> {
   return Promise.all(raw.map(async (entry) => {
     const description = entry.path
       ? await readSkillDescription(entry.path, allowedRoot)
       : undefined;
+    const source = lock.sources.get(entry.name);
+    // lock을 읽었는데 이 스킬이 없을 때만 "관리 밖"이라고 단언할 수 있다.
+    const unmanaged = !source && lock.lockRead;
     return {
       name: entry.name,
       scope,
       agents: entry.agents,
-      ...(sources.get(entry.name) ? { source: sources.get(entry.name) } : {}),
+      ...(source ? { source } : {}),
+      ...(unmanaged ? { unmanaged: true } : {}),
       ...(description ? { description } : {}),
       displayPath: buildDisplayPath(scope, entry.name),
     };

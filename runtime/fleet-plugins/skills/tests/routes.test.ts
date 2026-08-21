@@ -411,13 +411,16 @@ describe("list DTO carries the description the card needs", () => {
 });
 
 describe("lock file provenance", () => {
-  async function listWith(lockName: string, lockBody: unknown): Promise<Array<Record<string, unknown>>> {
+  async function listWith(lockName: string | null, lockBody: unknown): Promise<Array<Record<string, unknown>>> {
     const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-lock-"));
     const theaterRoot = path.join(temporaryDirectory, "theater");
     const skillDir = path.join(theaterRoot, ".claude", "skills", "agent-browser");
     await fs.mkdir(skillDir, { recursive: true });
-    await fs.mkdir(path.dirname(path.join(theaterRoot, lockName)), { recursive: true });
-    await fs.writeFile(path.join(theaterRoot, lockName), JSON.stringify(lockBody), "utf-8");
+    if (lockName !== null) {
+      await fs.mkdir(path.dirname(path.join(theaterRoot, lockName)), { recursive: true });
+      const body = typeof lockBody === "string" ? lockBody : JSON.stringify(lockBody);
+      await fs.writeFile(path.join(theaterRoot, lockName), body, "utf-8");
+    }
 
     try {
       const ctx = {
@@ -448,6 +451,10 @@ describe("lock file provenance", () => {
     }
   }
 
+  async function listWithoutLock(): Promise<Array<Record<string, unknown>>> {
+    return listWith(null, null);
+  }
+
   it("reads the v3 nested lock shape", async () => {
     // 실제 파일은 v3다. v1 모양만 읽으면 설치 출처가 있는 스킬까지 전부 출처 없음으로 보인다.
     const skills = await listWith(path.join(".agents", ".skill-lock.json"), {
@@ -465,8 +472,28 @@ describe("lock file provenance", () => {
     expect(skills[0]?.source).toBe("vercel-labs/agent-browser");
   });
 
-  it("omits source when the lock records none, rather than inventing one", async () => {
+  it("marks a skill absent from a readable lock as unmanaged, not as having a source", async () => {
     const skills = await listWith("skills-lock.json", { version: 3, skills: {} });
     expect("source" in (skills[0] ?? {})).toBe(false);
+    expect(skills[0]?.unmanaged).toBe(true);
+  });
+
+  it("claims neither source nor unmanaged when the lock cannot be read", async () => {
+    // 손상된/모르는 스키마의 lock은 "출처 없음"이 아니라 "출처 미상"이다. unmanaged를 세우면
+    // 스키마가 또 바뀌는 날 레지스트리 설치 스킬까지 전부 직접 작성이라고 단언하게 된다.
+    const skills = await listWith("skills-lock.json", "not json at all");
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("claims neither source nor unmanaged when no lock file exists at all", async () => {
+    const skills = await listWithoutLock();
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("treats an unrecognized lock shape as unreadable rather than empty", async () => {
+    const skills = await listWith("skills-lock.json", { version: 9, entries: ["agent-browser"] });
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
   });
 });
