@@ -21,7 +21,19 @@ export function createClaudeFamilyCliDefinition(
       // 상한을 넘길 때만 주입 계층이 파일 포인터로 바꾸고, cmd shim이면 그 짧은 지시만
       // shim 안전 검사를 받는다.
       const commandLineLimit = resolveLaunchCommandLineLimit(prefixArgs);
-      const childEnv = createChildEnv(profileOptions.env, {});
+      const childEnv = createChildEnv(profileOptions.env, {
+        // 위임은 한 단으로 끝난다. 이 상한이 1이면 세션 자신(depth 0)만 Agent를 부를 수 있고,
+        // 그 아래 서브에이전트에게는 Agent 도구가 아예 실리지 않는다 — 호출 후 거절이 아니라
+        // 목록에서 사라진다. Fleet의 실행 에이전트 프롬프트가 산문으로 걸어 둔 "assignment
+        // 전체를 재위임하지 말라"를 기계적으로 만드는 유일한 레버다.
+        //
+        // 에이전트 frontmatter로는 못 한다: `tools:` 허용목록은 MCP·지연 도구까지 함께 얼려
+        // 게이트웨이 정체성에서 Fleet MCP를 떨어뜨리고, `disallowed-tools`는 스킬/명령 전용이라
+        // 에이전트 파일에서는 조용히 무시되며, `tools: ["*", "Agent(...)"]`의 allowedAgentTypes는
+        // 중첩 스폰을 실제로 막지 않는다(세 경로 모두 실측).
+        CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH:
+          profileOptions.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH ?? "1",
+      });
       return {
         args: [...prefixArgs, ...buildModelArgs(profileOptions.model), ...buildEffortArgs(profileOptions.effort)],
         bin,
