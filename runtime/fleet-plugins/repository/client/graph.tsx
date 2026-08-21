@@ -319,10 +319,12 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
         fill={laneColor(node.lane)}
       />
 
-      {/* collapse 인디케이터 */}
+      {/* collapse 인디케이터 — compact 모드에서는 레인 내용물이 창 밖으로 밀려나므로,
+          인디케이터를 현재 레인 창 안(노드 오른쪽)에 다시 배치한다. 잘림 신호가 사라지면
+          역사가 온전해 보이는 허위 완결이 된다. */}
       {node.collapsed && (
         <text
-          x={lanes * LANE_WIDTH + 2}
+          x={compact && node.lane > 0 ? LANE_WIDTH - 4 : lanes * LANE_WIDTH + 2}
           y={cy + 4}
           fontSize={10}
           fontFamily="monospace"

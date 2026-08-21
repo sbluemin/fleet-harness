@@ -370,6 +370,8 @@ describe("Repository design grammar", () => {
     // 오프셋은 각 행의 실제 레인(--gutter-lane)에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
     expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
     expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
+    // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
+    expect(graphSource).toContain("compact && node.lane > 0 ? LANE_WIDTH - 4 : lanes * LANE_WIDTH + 2");
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.
