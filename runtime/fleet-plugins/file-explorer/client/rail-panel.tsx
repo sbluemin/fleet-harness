@@ -35,6 +35,7 @@ import {
   closeStoredDocument,
   hydrateStoredSession,
   markDocStale,
+  seedDocMtime,
   navigateStoredHistory,
   setDocViewState,
   setTreePaneWidth,
@@ -251,7 +252,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     openFilePath(entry.relativePath, entry.name);
   }, [openFilePath]);
 
-  const handleEntriesRefreshed = useCallback((relativeDir: string, entries: readonly FolderEntry[]) => {
+  const handleEntriesRefreshed = useCallback((result: FolderListResult) => {
+    const entries = result.entries;
     for (const entry of entries) {
       if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
     }
@@ -259,11 +261,21 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     for (const doc of openDocsRef.current) {
       loadedMtimeByPath.set(doc.relativePath, loadedMtimeOf(docStatesRef.current.get(doc.relativePath)));
     }
+    // 목록이 먼저 도착하는 경우(검색·세션 복원으로 연 문서)를 위해, mtime 없이 열린
+    // 문서에는 이제 알게 된 mtime을 심어 준다 — 그러지 않으면 이후 변경이 영원히 표식 없이 지나간다.
+    for (const doc of openDocsRef.current) {
+      if (loadedMtimeByPath.get(doc.relativePath) !== undefined) continue;
+      const known = knownMtimesRef.current.get(doc.relativePath);
+      if (known === undefined) continue;
+      seedDocMtime(contextScope, doc.relativePath, known);
+      loadedMtimeByPath.set(doc.relativePath, known);
+    }
     const stale = stalePathsAfterRefresh({
-      relativeDir,
+      relativeDir: result.relativePath,
       entries,
       openPaths: openDocsRef.current.map((doc) => doc.relativePath),
       loadedMtimeByPath,
+      truncated: result.truncated === true,
     });
     for (const path of stale) {
       markDocStale(contextScope, path, true);

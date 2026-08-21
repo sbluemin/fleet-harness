@@ -33,7 +33,7 @@ interface FileTreeProps {
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
-  readonly onEntriesRefreshed?: (relativeDir: string, entries: readonly FolderEntry[]) => void;
+  readonly onEntriesRefreshed?: (result: FolderListResult) => void;
   /** 뷰어가 열어 둔 문서들의 부모 폴더 — 펼침 여부와 무관하게 변경을 지켜본다. */
   readonly watchedDirectories?: readonly string[];
   readonly t: Translate<FileExplorerMessageKey>;
@@ -743,8 +743,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const inFlightFoldersRef = useRef(new Map<string, Promise<void>>());
   const filterRequestRef = useRef(0);
   const isFiltering = filterText.trim().length > 0;
-  const emitEntriesRefreshed = (relativeDir: string, entries: readonly FolderEntry[]) => {
-    onEntriesRefreshedRef.current?.(relativeDir, entries);
+  const emitEntriesRefreshed = (result: FolderListResult) => {
+    // 목록 결과를 통째로 넘긴다 — 뷰어는 truncated까지 봐야 "행이 없다"를 "파일이 없다"로 오독하지 않는다.
+    onEntriesRefreshedRef.current?.(result);
   };
 
   const refreshGitStatus = useCallback(async () => {
@@ -801,7 +802,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         const r = await filesRef.current.listFolder(relPath);
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
-        emitEntriesRefreshed(relPath, r.entries);
+        emitEntriesRefreshed(r);
         setExpandedDirs((prev) => {
           if (prev.has(relPath)) return prev;
           const next = new Set(prev);
@@ -858,7 +859,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
-      emitEntriesRefreshed(r.relativePath, r.entries);
+      emitEntriesRefreshed(r);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
@@ -891,12 +892,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       }
       setCurrentPath("");
       setResult(rootResult);
-      emitEntriesRefreshed(rootResult.relativePath, rootResult.entries);
+      emitEntriesRefreshed(rootResult);
       setChildResults((current) => {
         const next = new Map(current);
         for (const [relativePath, folderResult] of nextResults) {
           next.set(relativePath, folderResult);
-          emitEntriesRefreshed(relativePath, folderResult.entries);
+          emitEntriesRefreshed(folderResult);
         }
         return next;
       });
@@ -981,7 +982,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setResult(r);
         setError(null);
-        emitEntriesRefreshed(r.relativePath, r.entries);
+        emitEntriesRefreshed(r);
       }).catch(() => {});
     };
 
@@ -990,12 +991,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       // 재연결 풀 리프레시는 놓친 change 이벤트의 조정 경로이므로 git 배지도 함께 갱신한다
       void refreshGitStatus();
       const requestContextKey = contextKey;
-      void runWithConcurrency([...expandedDirsRef.current], FOLDER_FETCH_CONCURRENCY, async (relPath) => {
+      // 재연결 조정은 끊긴 동안 놓친 이벤트를 메우는 경로다 — 펼친 폴더뿐 아니라
+      // 열린 문서를 품은(접혀 있을 수 있는) 폴더까지 봐야 낡음 표식이 복구된다.
+      const reconcileDirs = [...new Set([...expandedDirsRef.current, ...watchedDirectoriesRef.current])];
+      void runWithConcurrency(reconcileDirs, FOLDER_FETCH_CONCURRENCY, async (relPath) => {
         try {
           const r = await filesRef.current.listFolder(relPath);
           if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-          setChildResults((prev) => new Map(prev).set(relPath, r));
-          emitEntriesRefreshed(relPath, r.entries);
+          if (expandedDirsRef.current.has(relPath)) setChildResults((prev) => new Map(prev).set(relPath, r));
+          emitEntriesRefreshed(r);
         } catch { /* 재연결 조정 실패는 다음 이벤트에서 회복된다 */ }
       });
     };
@@ -1028,7 +1032,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
           // 펼쳐지지 않은 폴더의 목록은 트리 상태에 넣지 않는다 — 뷰어 신호용으로만 쓴다.
           if (expandedDirsRef.current.has(relDir)) setChildResults((prev) => new Map(prev).set(relDir, r));
-          emitEntriesRefreshed(relDir, r.entries);
+          emitEntriesRefreshed(r);
         }).catch(() => {});
       }
     });
@@ -1088,7 +1092,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const request = files.listFolder(relPath).then((r) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setChildResults((prev) => new Map(prev).set(relPath, r));
-      emitEntriesRefreshed(relPath, r.entries);
+      emitEntriesRefreshed(r);
       setExpandFailedDirs((prev) => {
         if (!prev.has(relPath)) return prev;
         const next = new Set(prev);
@@ -1145,7 +1149,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
-      emitEntriesRefreshed(r.relativePath, r.entries);
+      emitEntriesRefreshed(r);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
@@ -1157,7 +1161,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         const r = await files.listFolder(relPath);
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
-        emitEntriesRefreshed(relPath, r.entries);
+        emitEntriesRefreshed(r);
       } catch { /* 개별 폴더 실패는 조용히 둔다 — ↻로 재시도 */ }
     });
   }, [contextKey, files, currentPath, expandedDirs, theaterId, t]);
@@ -1359,7 +1363,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     void files.listFolder(relPath).then((r) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setChildResults((prev) => new Map(prev).set(relPath, r));
-      emitEntriesRefreshed(relPath, r.entries);
+      emitEntriesRefreshed(r);
     }).catch(() => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setExpandFailedDirs((prev) => new Set(prev).add(relPath));

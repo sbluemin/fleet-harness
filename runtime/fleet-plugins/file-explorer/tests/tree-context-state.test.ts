@@ -96,10 +96,11 @@ describe("FileTree context request guard", () => {
 
   it("notifies onEntriesRefreshed after every successful files/list", () => {
     const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
-    expect(source).toContain("onEntriesRefreshed?: (relativeDir: string, entries: readonly FolderEntry[]) => void");
+    // 목록 결과를 통째로 넘긴다 — 뷰어가 truncated를 봐야 "행 없음"을 "파일 없음"으로 오독하지 않는다.
+    expect(source).toContain("onEntriesRefreshed?: (result: FolderListResult) => void");
     expect(source).toContain("emitEntriesRefreshed(");
-    expect(source).toMatch(/emitEntriesRefreshed\(r\.relativePath, r\.entries\)/);
-    expect(source).toMatch(/emitEntriesRefreshed\(relPath, r\.entries\)/);
+    expect(source).toMatch(/emitEntriesRefreshed\(r\)/);
+    expect(source).toMatch(/emitEntriesRefreshed\(rootResult\)/);
   });
 });
 

@@ -567,6 +567,9 @@ export async function searchTheaterFiles(
           ignoredSkipped = true;
           continue;
         }
+        // 숨김을 끈 질의에서는 숨김 디렉터리 자체를 순회에서 뺀다. 결과만 걸러내면
+        // .fleet 같은 큰 점 디렉터리가 500폴더 예산을 다 써서, 보이는 파일이 다시 안 나온다.
+        if (!includeHidden && entry.name.startsWith(".")) continue;
         if (!visited.has(realPath)) pending.push({ absolutePath: realPath, relativePath });
         continue;
       }

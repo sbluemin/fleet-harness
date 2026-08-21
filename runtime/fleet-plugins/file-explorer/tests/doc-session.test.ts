@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import {
@@ -149,5 +151,56 @@ describe("wrap toggle persistence", () => {
     expect(getFileExplorerSnapshot("other-theater").wrapLines).toBe(true);
     setWrapLines(false);
     expect(getFileExplorerSnapshot("wrap-session").wrapLines).toBe(false);
+  });
+});
+
+describe("낡음 표식 도달 범위", () => {
+  const entry = (relativePath: string, mtimeMs?: number) => ({
+    name: relativePath.split("/").at(-1) ?? relativePath,
+    relativePath,
+    kind: "file" as const,
+    ...(mtimeMs === undefined ? {} : { mtimeMs }),
+  });
+
+  it("사라진 파일도 낡음으로 본다", () => {
+    // 삭제·이름 변경된 파일을 "최신"이라 말하면 없는 경로의 내용을 표식 없이 계속 보여준다.
+    const stale = stalePathsAfterRefresh({
+      relativeDir: "docs",
+      entries: [entry("docs/other.md", 10)],
+      openPaths: ["docs/gone.md"],
+      loadedMtimeByPath: new Map([["docs/gone.md", 10]]),
+    });
+    expect(stale).toEqual(["docs/gone.md"]);
+  });
+
+  it("잘린 목록에서는 행이 없다고 사라졌다고 하지 않는다", () => {
+    const stale = stalePathsAfterRefresh({
+      relativeDir: "docs",
+      entries: [entry("docs/other.md", 10)],
+      openPaths: ["docs/maybe.md"],
+      loadedMtimeByPath: new Map([["docs/maybe.md", 10]]),
+      truncated: true,
+    });
+    expect(stale).toEqual([]);
+  });
+
+  it("mtime이 바뀐 파일은 여전히 낡음이다", () => {
+    const stale = stalePathsAfterRefresh({
+      relativeDir: "docs",
+      entries: [entry("docs/a.md", 20)],
+      openPaths: ["docs/a.md"],
+      loadedMtimeByPath: new Map([["docs/a.md", 10]]),
+    });
+    expect(stale).toEqual(["docs/a.md"]);
+  });
+});
+
+describe("검색·복원으로 연 문서의 mtime 심기", () => {
+  it("mtime 없이 열린 문서에 목록이 알려 준 mtime을 심는다", () => {
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("seedDocMtime(contextScope, doc.relativePath, known)");
+    const store = fs.readFileSync(new URL("../client/view-store.ts", import.meta.url), "utf8");
+    // 이미 mtime이 있는 문서를 덮으면 낡음 판정이 리셋된다.
+    expect(store).toContain("if (viewState.mtimeMs !== undefined) return;");
   });
 });
