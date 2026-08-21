@@ -61,10 +61,14 @@ function writeModelGuardScript(pluginRoot: string): string {
  * 절대 경로를 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 실제
  * 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
  */
-function modelGuardHook(subcommand: string): FleetHookExec {
+function modelGuardHook(subcommand: string, routingNonce?: string): FleetHookExec {
   return {
     command: process.execPath,
-    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand],
+    args: [
+      `\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`,
+      subcommand,
+      ...(routingNonce ? [routingNonce] : []),
+    ],
   };
 }
 
@@ -85,23 +89,35 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
+  const routingNonce = options.gatewayRoutingNonce;
   const preToolUse = [
     ...(inputWaitingExec
       ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
       : []),
     ...(modelGuardScriptPath
-      ? [{
-          // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
-          // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
-          // 보내지 않는다.
-          matcher: "Agent|Workflow",
-          hooks: [claudeCommandHook(modelGuardHook("gate-delegation"))],
-        }]
+      ? [
+          {
+            // 같은 prompt에서 orchestration을 다시 실행하면 앞선 성공 receipt를 먼저 폐기한다.
+            // 그래야 두 번째 MCP refresh 실패가 첫 로스터로 조용히 열리지 않는다.
+            matcher: "Skill",
+            hooks: [{
+              ...claudeCommandHook(modelGuardHook("begin-orchestration", routingNonce)),
+              if: "Skill(fleet:orchestration)",
+            }],
+          },
+          {
+            // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
+            // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
+            // 보내지 않는다.
+            matcher: "Agent|Workflow",
+            hooks: [claudeCommandHook(modelGuardHook("gate-delegation", routingNonce))],
+          },
+        ]
       : []),
   ];
   // orchestration은 의미 정책만 싣는다. 성공 직후 이미 연결된 Fleet MCP에서 로스터를 다시 읽어
-  // Fleet 전용 핀 문법과 함께 문맥에 넣는다. mcp_tool 훅 실패는 non-blocking이므로, 디스패치의
-  // PreToolUse 하드 게이트는 독립적으로 남아 잘못된 핀을 막는다.
+  // Fleet 전용 핀 문법과 함께 문맥에 넣고, 같은 성공 응답만 private receipt를 만든다. MCP 오류는
+  // Claude Code에서 non-blocking이므로 PreToolUse는 receipt 없이는 gateway 위임을 fail-closed한다.
   const postToolUse = modelGuardScriptPath
     ? [
         {
@@ -111,7 +127,12 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
             if: "Skill(fleet:orchestration)",
             server: "fleet",
             tool: "gateway_models",
-            input: { hookEventName: "PostToolUse" },
+            input: {
+              hookEventName: "PostToolUse",
+              sessionId: "${session_id}",
+              promptId: "${prompt_id}",
+              ...(routingNonce ? { routingNonce } : {}),
+            },
             statusMessage: "Refreshing Fleet routing context",
           }],
         },
@@ -146,6 +167,11 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
       ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
       ...(postToolUse.length > 0 ? { PostToolUse: postToolUse } : {}),
       ...(postToolUseFailure.length > 0 ? { PostToolUseFailure: postToolUseFailure } : {}),
+      ...(modelGuardScriptPath && routingNonce ? {
+        SessionEnd: [{
+          hooks: [claudeCommandHook(modelGuardHook("cleanup-routing", routingNonce))],
+        }],
+      } : {}),
       ...(inputWaitingExec ? {
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",

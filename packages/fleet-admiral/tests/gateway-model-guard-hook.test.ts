@@ -18,24 +18,40 @@ afterEach(() => {
   }
 });
 
-function run(subcommand: string, payload: unknown): {
+function run(subcommand: string, payload: unknown, routingNonce?: string): {
   readonly status: number;
   readonly stderr: string;
   readonly stdout: string;
 } {
-  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand], {
+  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand, ...(routingNonce ? [routingNonce] : [])], {
     input: JSON.stringify(payload),
     encoding: "utf8",
   });
   return { status: result.status ?? -1, stderr: result.stderr, stdout: result.stdout };
 }
 
-function gateWorkflow(toolInput: unknown) {
-  return run("gate-delegation", { tool_name: "Workflow", tool_input: toolInput });
+function gateWorkflow(toolInput: unknown, coordinates?: {
+  readonly sessionId: string;
+  readonly promptId: string;
+  readonly routingNonce: string;
+}) {
+  return run("gate-delegation", {
+    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
+    tool_name: "Workflow",
+    tool_input: toolInput,
+  }, coordinates?.routingNonce);
 }
 
-function gateAgent(toolInput: unknown) {
-  return run("gate-delegation", { tool_name: "Agent", tool_input: toolInput });
+function gateAgent(toolInput: unknown, coordinates?: {
+  readonly sessionId: string;
+  readonly promptId: string;
+  readonly routingNonce: string;
+}) {
+  return run("gate-delegation", {
+    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
+    tool_name: "Agent",
+    tool_input: toolInput,
+  }, coordinates?.routingNonce);
 }
 
 describe("gateway model guard — remind", () => {
@@ -64,7 +80,7 @@ describe("gateway model guard — remind", () => {
 
 describe("gateway model guard — Agent delegation", () => {
   it("passes a pinned gateway identity", () => {
-    expect(gateAgent({ subagent_type: "fleet:xai-grok-4-6-low" }).status).toBe(0);
+    expect(gateAgent({ subagent_type: "Explore" }).status).toBe(0);
   });
 
   it("blocks the unpinned spellings", () => {
@@ -92,11 +108,12 @@ describe("gateway model guard — Agent delegation", () => {
 });
 
 describe("gateway model guard — Workflow delegation", () => {
-  it("passes a full gateway modelId", () => {
-    const { status } = gateWorkflow({
+  it("blocks a gateway modelId when no live routing receipt exists", () => {
+    const { status, stderr } = gateWorkflow({
       script: `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast", effort: "low" })`,
     });
-    expect(status).toBe(0);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no prompt-scoped routing receipt");
   });
 
   it("passes lineage aliases without the gateway prefix", () => {
@@ -159,7 +176,7 @@ describe("gateway model guard — Workflow delegation", () => {
   // 프롬프트 텍스트의 괄호를 호출 경계로 세면 멀쩡한 스크립트가 막힌다.
   it("reads call boundaries past parentheses and quotes inside the prompt", () => {
     const { status } = gateWorkflow({
-      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "claude-gateway--xai--grok-4.6" })`,
+      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "opus" })`,
     });
     expect(status).toBe(0);
   });
@@ -181,7 +198,7 @@ describe("gateway model guard — Workflow delegation", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "gateway-model-guard-"));
     tempDirs.push(dir);
     const scriptPath = path.join(dir, "wf.js");
-    writeFileSync(scriptPath, `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast" })`);
+    writeFileSync(scriptPath, `agent("x", { model: "opus" })`);
     expect(gateWorkflow({ scriptPath }).status).toBe(0);
     writeFileSync(scriptPath, `agent("x", { model: "codex--gpt-5.6-sol-fast[1m]" })`);
     expect(gateWorkflow({ scriptPath }).status).toBe(2);

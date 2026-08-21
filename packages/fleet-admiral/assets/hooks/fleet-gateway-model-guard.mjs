@@ -9,15 +9,20 @@
 // 어휘(오케스트레이션 스킬 / 정체성 이름 / modelId / 접수증)를 공유하기 때문이다 — 파일을
 // 쪼개면 그 어휘가 여러 곳에서 따로 늙는다.
 //
-//   remind               UserPromptSubmit           위임·병렬 작업을 orchestration 스킬로 라우팅
-//   gate-delegation      PreToolUse  Agent|Workflow  핀되지 않은 위임을 차단
-//   workflow-receipt     PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
-//   orchestration-failed PostToolUseFailure Skill    로스터가 주입되지 않았음을 명시
+//   remind                 UserPromptSubmit           위임·병렬 작업을 orchestration 스킬로 라우팅
+//   begin-orchestration    PreToolUse Skill            이전 refresh receipt를 폐기
+//   gate-delegation        PreToolUse Agent|Workflow   핀되지 않은 위임을 차단
+//   workflow-receipt       PostToolUse Workflow         접수증을 결과로 읽는 사고를 차단
+//   orchestration-failed   PostToolUseFailure Skill     로스터가 주입되지 않았음을 명시
+//   cleanup-routing        SessionEnd                   이 런치의 receipt를 정리
 //
-// 상태를 남기지 않는다. 훅은 호출마다 새 프로세스로 뜨므로 프로세스 간 기억은 파일로만
-// 가능한데, 그 파일은 곧 신선도·정리·경합을 떠안는 두 번째 진실이 된다. 세 판정 모두
-// stdin 한 번으로 끝난다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
-import { readFileSync } from "node:fs";
+// 핀 형식 판정은 stdin 한 번으로 끝난다. gateway 위임만 예외로, 성공한 MCP refresh가 쓴
+// prompt-scoped private receipt를 PreToolUse가 검증한다. orchestration을 다시 열 때 먼저 폐기해
+// 뒤이은 refresh 실패가 앞선 성공으로 가려지지 않는다. receipt가 없거나 다른 세션/런치의 것이면
+// fail-closed하므로 non-blocking MCP 오류가 stale identity dispatch로 바뀌지 않는다.
+import { closeSync, constants, openSync, readFileSync, rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 // 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
 const TURN_REMINDER = [
@@ -58,6 +63,7 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
+const ROUTING_RECEIPT_ROOT = process.env.FLEET_ROUTING_RECEIPT_ROOT || path.join(os.tmpdir(), "fleet-routing-receipts");
 // `subagentType:` 같은 접미 식별자를 opts.agentType으로 읽으면 멀쩡한 스크립트가 막힌다.
 const AGENT_TYPE_RE = /\bagentType\s*:/;
 // 핀 인식(`\bmodel\s*:`)과 값 검증은 같은 철자를 봐야 한다. 경계나 공백 하나가 어긋나면
@@ -142,6 +148,7 @@ function countUnpinnedAgentCalls(script) {
 }
 
 function assertWorkflowModelValues(script) {
+  const gatewayModels = [];
   for (const match of script.matchAll(MODEL_VALUE_RE)) {
     const value = match[1];
     if (MODEL_ALIASES.test(value)) continue;
@@ -151,12 +158,16 @@ function assertWorkflowModelValues(script) {
           "Write the alias bare (fable|opus|sonnet|haiku)."
       );
     }
-    if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
+    if (value.startsWith(GATEWAY_MODEL_PREFIX)) {
+      gatewayModels.push(value);
+      continue;
+    }
     block(
       `opts.model is not a value this run can resolve: "${value}". Copy a modelId from gateway_models verbatim, ` +
         "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku)."
     );
   }
+  return gatewayModels;
 }
 
 /** 검사 대상 스크립트 원문. 볼 수 없는 호출 형태는 undefined를 돌려준다. */
@@ -175,16 +186,78 @@ function resolveWorkflowScript(toolInput) {
   return undefined;
 }
 
-function gateAgentDelegation(toolInput) {
+function routingReceiptPath(input, routingNonce) {
+  const sessionId = typeof input.session_id === "string" ? input.session_id : undefined;
+  if (!sessionId || !routingNonce) return undefined;
+  const key = [sessionId, routingNonce]
+    .map((part) => Buffer.from(part, "utf8").toString("base64url"))
+    .join(".");
+  return path.join(ROUTING_RECEIPT_ROOT, `${key}.json`);
+}
+
+function removeRoutingReceipt(input, routingNonce) {
+  const receiptPath = routingReceiptPath(input, routingNonce);
+  if (receiptPath === undefined) return;
+  try {
+    rmSync(receiptPath, { force: true });
+  } catch {
+    // Cleanup is best effort. A later gateway dispatch still verifies prompt_id from the receipt payload.
+  }
+}
+
+function readRoutingReceipt(input, routingNonce) {
+  const receiptPath = routingReceiptPath(input, routingNonce);
+  const promptId = typeof input.prompt_id === "string" ? input.prompt_id : undefined;
+  if (receiptPath === undefined || !promptId) {
+    block(
+      "This gateway delegation has no prompt-scoped routing receipt. Invoke fleet:orchestration again; " +
+        "do not dispatch from stale routing context."
+    );
+  }
+  let fd;
+  let receipt;
+  try {
+    fd = openSync(receiptPath, constants.O_RDONLY | constants.O_NOFOLLOW);
+    receipt = JSON.parse(readFileSync(fd, "utf8"));
+  } catch {
+    block(
+      "The live gateway roster refresh did not complete for this handoff. Keep the work on the host or " +
+        "invoke fleet:orchestration again; do not guess an identity."
+    );
+  } finally {
+    if (fd !== undefined) closeSync(fd);
+  }
+  if (receipt.promptId !== promptId) {
+    block(
+      "The live gateway roster refresh did not complete for this handoff. Keep the work on the host or " +
+        "invoke fleet:orchestration again; do not guess an identity."
+    );
+  }
+  return {
+    agentTypes: new Set(Array.isArray(receipt.agentTypes) ? receipt.agentTypes.filter((value) => typeof value === "string") : []),
+    modelIds: new Set(Array.isArray(receipt.modelIds) ? receipt.modelIds.filter((value) => typeof value === "string") : []),
+  };
+}
+
+function gateAgentDelegation(toolInput, input, routingNonce) {
   const agentType = typeof toolInput.subagent_type === "string" ? toolInput.subagent_type : undefined;
-  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) process.exit(0);
+  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) {
+    const receipt = readRoutingReceipt(input, routingNonce);
+    if (!receipt.agentTypes.has(agentType)) {
+      block(
+        `subagent_type is not in the fresh gateway roster: "${agentType}". ` +
+          "Invoke fleet:orchestration again or keep the work on the host."
+      );
+    }
+    process.exit(0);
+  }
   if (agentType !== undefined && !UNPINNED_AGENT_TYPES.has(agentType)) process.exit(0);
   block(
     `This delegation pins no identity (subagent_type: ${agentType ?? "absent"}). ` + PIN_INSTRUCTION
   );
 }
 
-function gateWorkflowDelegation(toolInput) {
+function gateWorkflowDelegation(toolInput, input, routingNonce) {
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
   if (AGENT_TYPE_RE.test(script)) {
@@ -202,11 +275,22 @@ function gateWorkflowDelegation(toolInput) {
         "filling every stage with a single value."
     );
   }
-  assertWorkflowModelValues(script);
+  const gatewayModels = assertWorkflowModelValues(script);
+  if (gatewayModels.length > 0) {
+    const receipt = readRoutingReceipt(input, routingNonce);
+    const stale = gatewayModels.find((modelId) => !receipt.modelIds.has(modelId));
+    if (stale !== undefined) {
+      block(
+        `opts.model is not in the fresh gateway roster: "${stale}". ` +
+          "Invoke fleet:orchestration again or keep the work on the host."
+      );
+    }
+  }
   process.exit(0);
 }
 
 const subcommand = process.argv[2];
+const routingNonce = process.argv[3];
 
 if (subcommand === "remind") {
   emitContext("UserPromptSubmit", TURN_REMINDER);
@@ -215,6 +299,17 @@ if (subcommand === "remind") {
 const input = readHookInput();
 const toolName = input?.tool_name;
 const toolInput = input?.tool_input ?? {};
+
+if (subcommand === "begin-orchestration") {
+  if (toolName !== "Skill" || toolInput.skill !== "fleet:orchestration") process.exit(0);
+  removeRoutingReceipt(input, routingNonce);
+  process.exit(0);
+}
+
+if (subcommand === "cleanup-routing") {
+  removeRoutingReceipt(input, routingNonce);
+  process.exit(0);
+}
 
 if (subcommand === "workflow-receipt") {
   if (toolName !== "Workflow") process.exit(0);
@@ -227,8 +322,8 @@ if (subcommand === "orchestration-failed") {
 }
 
 if (subcommand === "gate-delegation") {
-  if (toolName === "Agent") gateAgentDelegation(toolInput);
-  if (toolName === "Workflow") gateWorkflowDelegation(toolInput);
+  if (toolName === "Agent") gateAgentDelegation(toolInput, input, routingNonce);
+  if (toolName === "Workflow") gateWorkflowDelegation(toolInput, input, routingNonce);
   process.exit(0);
 }
 

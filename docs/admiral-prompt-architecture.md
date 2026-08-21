@@ -58,24 +58,33 @@ that fresh roster with Fleet's pin syntax. The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
 Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, injects the skill-routing
 tripwire, validates the resulting pin, handles Workflow receipts, and makes a failed
-orchestration explicit. It is stateless — every judgment is made from one stdin
-payload, so a hook timeout cannot silently open the gate through a missing state file.
-One script serves four roles, selected by its first argument:
+orchestration explicit. Pin syntax is judged from one stdin payload. Gateway identities
+and model ids additionally require a private receipt written only by a successful live
+`gateway_models` hook response. The receipt is keyed by Claude session plus an opaque
+per-launch nonce, carries the current `prompt_id`, and is replaced rather than accumulated.
+A repeated orchestration invocation deletes the prior receipt before refresh, so a
+non-blocking MCP failure cannot fall back to an earlier roster; SessionEnd removes the
+launch receipt. One script serves six roles, selected by its first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
 | `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:orchestration`; it does not repeat the pin mechanics. |
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation before it runs and directs the host back through orchestration. |
+| `begin-orchestration` | PreToolUse | `Skill(fleet:orchestration)` | Invalidates any prior routing receipt before a new live refresh can run. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and refuses gateway pins absent from this prompt's fresh receipt. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 | `orchestration-failed` | PostToolUseFailure | `Skill(fleet:orchestration)` | States that no fresh routing context was supplied. |
+| `cleanup-routing` | SessionEnd | — | Removes this launched session's private routing receipt. |
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
-context by design, so moving it to another model removes the point of that surface. For
-`Workflow` it blocks `agentType` in a script, a malformed `opts.model`, and any
-`agent()` stage that pins no model at all. It does not rewrite the script: assigning one
-model to every stage would erase the model spread that is the whole reason to use that
-surface, so the block carries the instruction and the host does the assignment.
+context by design, so moving it to another model removes the point of that surface.
+Gateway `fleet:*` identities must also appear in the fresh receipt. For `Workflow` it
+blocks `agentType` in a script, a malformed `opts.model`, any gateway model id absent
+from the receipt, and any `agent()` stage that pins no model at all. Bare lineage aliases
+and name-only saved workflows retain their existing behavior because they do not claim a
+live Fleet roster identity. The hook does not rewrite the script: assigning one model to
+every stage would erase the model spread that is the whole reason to use that surface,
+so the block carries the instruction and the host does the assignment.
 
 Two properties of the harness make this shape necessary, both measured on
 Claude Code 2.1.235:
@@ -101,7 +110,7 @@ Runtime state is read through direct owners:
 
 - Delegation gate and routing tripwire: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
 - On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `orchestration` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
-- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Its ordinary result remains the live roster; its hook mode formats the same reading as `PostToolUse` additional context after orchestration. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
+- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Its ordinary result remains the live roster; its hook mode formats the same reading as `PostToolUse` additional context after orchestration and atomically records the exact gateway names accepted by the dispatch gate. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 

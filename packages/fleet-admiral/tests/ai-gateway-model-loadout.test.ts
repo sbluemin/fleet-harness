@@ -4,12 +4,22 @@ import {
   findGatewayModel,
   type GatewayModel,
 } from "@dotobokuri/core-ai-gateway";
-import { describe, expect, it } from "vitest";
+import { rmSync } from "node:fs";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, describe, expect, it } from "vitest";
 
 import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../src/agent-cli/gateway-agents.js";
 import { buildGatewayModelsToolSpec, GATEWAY_MODELS_TOOL_ID } from "../src/ai-gateway/gateway-models-tool.js";
 import { buildGatewayLoadout, type GatewayLoadout } from "../src/ai-gateway/model-loadout.js";
 import { isHostSessionToolAllowed } from "../src/tools.js";
+
+const TEST_ROUTING_RECEIPT_ROOT = path.join(os.tmpdir(), "fleet-admiral-model-loadout-receipt");
+
+afterEach(() => {
+  rmSync(TEST_ROUTING_RECEIPT_ROOT, { recursive: true, force: true });
+});
 
 function allModels(loadout: ReturnType<typeof buildGatewayLoadout>) {
   return Object.values(loadout.providers).flatMap((provider) => provider.models);
@@ -412,8 +422,14 @@ describe("gateway_models tool", () => {
   it("formats a fresh reading as PostToolUse context for the orchestration hook", async () => {
     const spec = buildGatewayModelsToolSpec({
       readSelection: () => ({ models: [model("cursor--grok-4.5-fast")] }),
+      routingReceiptRoot: TEST_ROUTING_RECEIPT_ROOT,
     });
-    const result = await spec.execute({ hookEventName: "PostToolUse" }, {} as never) as {
+    const result = await spec.execute({
+      hookEventName: "PostToolUse",
+      sessionId: "session-loadout",
+      promptId: "prompt-loadout",
+      routingNonce: "nonce-loadout",
+    }, {} as never) as {
       content: readonly { readonly text: string }[];
       details: GatewayLoadout;
       isError: boolean;

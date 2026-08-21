@@ -45,7 +45,7 @@ Forbidden patterns:
 2. Keep Admiral runtime policy under `packages/fleet-admiral`; use `assets/hooks/` and `assets/skills/` only as the embedded hook and skill authoring sources.
 3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
 4. Use the embedded `professional-pushback` skill when a requested approach has a material technical flaw and `orchestration` to plan the smallest useful evidence graph and integrate its results.
-5. Keep Fleet roster lookup and pin syntax out of the semantic skill; the post-skill hook supplies them from a fresh `gateway_models` reading, and the pre-dispatch hook validates the resulting pin.
+5. Keep Fleet roster lookup and pin syntax out of the semantic skill; the post-skill hook supplies them from a fresh `gateway_models` reading, and the pre-dispatch hook accepts gateway pins only from that prompt-scoped refresh receipt. Starting orchestration again invalidates the prior receipt before refresh, so hook failure closes the gateway path instead of reusing stale routing context.
 6. Keep graph mechanics in the live Workflow tool contract rather than repeating them in the skill; after meaningful returns, prune branches that can no longer change the host decision.
 7. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
 8. Keep Workflow-receipt handling and pin enforcement in the model guard hook; do not duplicate them in another skill.

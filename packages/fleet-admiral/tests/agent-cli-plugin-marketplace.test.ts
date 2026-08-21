@@ -92,6 +92,7 @@ describe("agent CLI plugin marketplace rendering", () => {
       dataDir,
       inputWaitingHookExec,
       backgroundReportHookExec: { command: "node", args: ["cli.mjs", "hook", "background-report"] },
+      gatewayRoutingNonce: "routing-nonce",
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
@@ -103,7 +104,16 @@ describe("agent CLI plugin marketplace rendering", () => {
     // 실행 전에 차단할 뿐이라 #554가 우려한 카운팅 불일치와 무관하다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
-      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "begin-orchestration", "routing-nonce"],
+          if: "Skill(fleet:orchestration)",
+        }],
+      },
+      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation", "routing-nonce"] }] },
     ]);
     expect(hooksJson.hooks.PostToolUse).toEqual([
       {
@@ -113,7 +123,12 @@ describe("agent CLI plugin marketplace rendering", () => {
           if: "Skill(fleet:orchestration)",
           server: "fleet",
           tool: "gateway_models",
-          input: { hookEventName: "PostToolUse" },
+          input: {
+            hookEventName: "PostToolUse",
+            sessionId: "${session_id}",
+            promptId: "${prompt_id}",
+            routingNonce: "routing-nonce",
+          },
           statusMessage: "Refreshing Fleet routing context",
         }],
       },
@@ -133,6 +148,13 @@ describe("agent CLI plugin marketplace rendering", () => {
         command: process.execPath,
         args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "orchestration-failed"],
         if: "Skill(fleet:orchestration)",
+      }],
+    }]);
+    expect(hooksJson.hooks.SessionEnd).toEqual([{
+      hooks: [{
+        type: "command",
+        command: process.execPath,
+        args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "cleanup-routing", "routing-nonce"],
       }],
     }]);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);

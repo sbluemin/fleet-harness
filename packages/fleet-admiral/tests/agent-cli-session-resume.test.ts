@@ -116,7 +116,29 @@ describe("agent CLI session resume and capture hooks", () => {
     ]);
     // 위임 게이트는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
-      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: expect.arrayContaining([
+            "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+            "begin-orchestration",
+          ]),
+          if: "Skill(fleet:orchestration)",
+        }],
+      },
+      {
+        matcher: "Agent|Workflow",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: expect.arrayContaining([
+            "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+            "gate-delegation",
+          ]),
+        }],
+      },
     ]);
     // orchestration 성공 뒤에는 훅이 실시간 로스터를 공급하고, Workflow 뒤에는 접수증 계약을 붙인다.
     expect(hooksJson.hooks.PostToolUse).toEqual([
@@ -127,7 +149,12 @@ describe("agent CLI session resume and capture hooks", () => {
           if: "Skill(fleet:orchestration)",
           server: "fleet",
           tool: "gateway_models",
-          input: { hookEventName: "PostToolUse" },
+          input: {
+            hookEventName: "PostToolUse",
+            sessionId: "${session_id}",
+            promptId: "${prompt_id}",
+            routingNonce: expect.any(String),
+          },
           statusMessage: "Refreshing Fleet routing context",
         }],
       },
@@ -144,6 +171,16 @@ describe("agent CLI session resume and capture hooks", () => {
         }],
       },
     ]);
+    expect(hooksJson.hooks.SessionEnd).toEqual([{
+      hooks: [{
+        type: "command",
+        command: process.execPath,
+        args: expect.arrayContaining([
+          "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+          "cleanup-routing",
+        ]),
+      }],
+    }]);
     injected.cleanup?.();
   });
 
