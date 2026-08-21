@@ -11,6 +11,7 @@ import type {
   AnthropicMessagesRequest,
   CanonicalResponseRequest,
 } from "../../src/index.js";
+import type { GatewayFailureRecord } from "../../src/index.js";
 import type { GatewayHttpHandlerContext } from "../../src/gateway-router/types.js";
 import { describe, expect, it, vi } from "vitest";
 
@@ -611,6 +612,51 @@ describe("upstream credential", () => {
     await second;
     expect(fetchMock).toHaveBeenCalledTimes(2);
     router.dispose();
+  });
+
+  it("journals a failed turn with its phase, cause, and upstream occupancy", async () => {
+    const records: GatewayFailureRecord[] = [];
+    const gateway = {
+      stream: async () => {
+        const error = new TypeError("fetch failed");
+        Object.defineProperty(error, "cause", { value: { code: "UND_ERR_SOCKET" } });
+        throw error;
+      },
+    } as unknown as AnthropicMessagesGateway;
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      failureJournal: (entry) => records.push(entry),
+    });
+
+    await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED }));
+
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      phase: "pre_commit",
+      status: 500,
+      errorType: "api_error",
+      code: "UND_ERR_SOCKET",
+      provider: "codex",
+    });
+    expect(records[0]!.detail).toContain("UND_ERR_SOCKET");
+    expect(typeof records[0]!.elapsedMs).toBe("number");
+  });
+
+  it("keeps a caller mistake out of the transient class it journals", async () => {
+    const records: GatewayFailureRecord[] = [];
+    const gateway = {
+      stream: async () => { throw new ContextWindowExceededError(300_000, 200_000); },
+    } as unknown as AnthropicMessagesGateway;
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      failureJournal: (entry) => records.push(entry),
+    });
+
+    await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED }));
+
+    expect(records[0]).toMatchObject({ status: 413, errorType: "invalid_request_error" });
   });
 
   it("reports a transient gateway fault as a status Claude Code retries", async () => {

@@ -65,6 +65,18 @@ export type {
   UpstreamGateOriginStats,
 } from "./transport/upstream-gate.js";
 export {
+  DEFAULT_FAILURE_JOURNAL_MAX_BYTES,
+  createFailureJournal,
+  failureDetail,
+} from "./transport/failure-journal.js";
+export type {
+  FailureJournal,
+  FailureJournalOptions,
+  GatewayFailurePhase,
+  GatewayFailureRecord,
+  GatewayFailureSink,
+} from "./transport/failure-journal.js";
+export {
   GATEWAY_TRANSIENT_ERROR_STATUS,
   claudeRetryableUpstreamStatus,
 } from "./anthropic/claude-context.js";

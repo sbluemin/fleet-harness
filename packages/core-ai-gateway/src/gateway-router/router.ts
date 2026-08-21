@@ -40,8 +40,11 @@ import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../s
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
+import { findCauseCode } from "../transport/upstream-sse.js";
 import { createUpstreamGate } from "../transport/upstream-gate.js";
 import type { UpstreamGateOriginStats } from "../transport/upstream-gate.js";
+import { failureDetail } from "../transport/failure-journal.js";
+import type { GatewayFailureSink } from "../transport/failure-journal.js";
 
 import { applyGatewayRequestPolicy } from "./router-policy.js";
 import {
@@ -148,6 +151,13 @@ export interface AiGatewayRouteDeps {
    * simultaneous provider connections. Absent is the transport default.
    */
   readonly maxUpstreamInFlight?: number;
+  /**
+   * Where failed turns are recorded.
+   *
+   * A failure after the response commits can only be reported as one SSE frame the client renders
+   * once, so without a sink it leaves no trace anywhere. Absent means the gateway keeps no record.
+   */
+  readonly failureJournal?: GatewayFailureSink;
 }
 
 export interface AiGatewayRouter {
@@ -350,6 +360,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const controller = new AbortController();
     const abort = (): void => controller.abort(new Error("client disconnected"));
     req.once("close", abort);
+    const startedAt = Date.now();
 
     try {
       if (!target) {
@@ -450,6 +461,26 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ? 413
         : invalidRequest ? 400 : GATEWAY_TRANSIENT_ERROR_STATUS;
       const message = errorMessage(error);
+      // Recorded before the client is told, so a sink failure cannot change what it is told.
+      if (deps.failureJournal) {
+        const code = findCauseCode(error);
+        const [busiest] = upstreamGate.stats()
+          .slice()
+          .sort((left, right) => right.inFlight - left.inFlight);
+        deps.failureJournal({
+          timestamp: new Date(startedAt).toISOString(),
+          phase: res.headersSent ? "post_commit" : "pre_commit",
+          ...(target ? { model: target.id, provider: target.provider } : {}),
+          ...(res.headersSent ? {} : { status }),
+          errorType: type,
+          ...(code === undefined ? {} : { code }),
+          detail: failureDetail(message),
+          elapsedMs: Date.now() - startedAt,
+          ...(busiest
+            ? { upstreamInFlight: busiest.inFlight, upstreamQueued: busiest.queued }
+            : {}),
+        });
+      }
       if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
         // 오류 문구 없는 잘린 스트림만 보므로, 종단 SSE error 프레임으로 사유를 남긴다.
