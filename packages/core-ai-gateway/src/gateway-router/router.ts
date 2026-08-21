@@ -145,10 +145,12 @@ export interface AiGatewayRouteDeps {
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
   /**
-   * Concurrent upstream calls allowed per provider origin.
+   * Concurrent upstream calls allowed per provider origin, for every provider reached over `fetch`.
    *
-   * Every gateway turn holds its socket for the whole stream, so this is the process's ceiling on
-   * simultaneous provider connections. Absent is the transport default.
+   * Those turns hold their socket for the whole stream, so the bound is a real ceiling on
+   * simultaneous connections to one origin. Cursor is **not** covered: it dials `http2.connect`
+   * per Run rather than `fetch`, so it offers no seam this bound can wrap and keeps its own
+   * separate limits. Absent is the transport default.
    */
   readonly maxUpstreamInFlight?: number;
   /**

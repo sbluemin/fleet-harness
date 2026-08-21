@@ -194,7 +194,8 @@ export function createUpstreamGate(
     const origin = originOf(input);
     if (origin === undefined) return await fetchImpl(input, init);
     const queue = queueFor(origin);
-    const release = await queue.acquire(signalOf(input, init), maxQueueWaitMs);
+    const signal = signalOf(input, init);
+    const release = await queue.acquire(signal, maxQueueWaitMs);
     let response: Response;
     try {
       response = await fetchImpl(input, init);
@@ -203,7 +204,7 @@ export function createUpstreamGate(
       sweep(origin);
       throw error;
     }
-    return holdUntilBodyEnds(response, () => {
+    return holdUntilBodyEnds(response, signal, () => {
       release();
       sweep(origin);
     });
@@ -223,34 +224,57 @@ export function createUpstreamGate(
 }
 
 /**
- * Keep the permit until the response body is finished, failed, or cancelled.
+ * Keep the permit until the response body is finished, failed, cancelled, or aborted.
  *
  * The socket lives as long as the body does, so the permit has to as well. A response that cannot
  * carry a body has already freed its socket by the time it reaches here.
+ *
+ * The abort listener is not redundant with the read path. A consumer parked on backpressure — the
+ * gateway proxy waits on a `drain` event that a dead client socket never emits — has no read in
+ * flight, so an abort that kills the upstream body reaches nothing: `pull` is not running to catch
+ * it and `cancel` is never called. The permit would then be held for the process's lifetime, and
+ * enough abandoned streams retire the ceiling into a queue nothing ever leaves.
  */
-function holdUntilBodyEnds(response: Response, release: Release): Response {
+function holdUntilBodyEnds(
+  response: Response,
+  signal: AbortSignal | null | undefined,
+  release: Release,
+): Response {
   if (!response.body || !canCarryBody(response.status)) {
     release();
     return response;
   }
   const reader = response.body.getReader();
+  let onAbort: (() => void) | undefined;
+  const finish = (): void => {
+    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+    release();
+  };
+  if (signal) {
+    onAbort = () => {
+      finish();
+      void reader.cancel(signal.reason).catch(() => undefined);
+    };
+    if (signal.aborted) onAbort();
+    else signal.addEventListener("abort", onAbort, { once: true });
+  }
   const held = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
         const { done, value } = await reader.read();
         if (done) {
-          release();
+          finish();
           controller.close();
           return;
         }
         controller.enqueue(value);
       } catch (error) {
-        release();
+        finish();
         controller.error(error);
       }
     },
     cancel(reason) {
-      release();
+      finish();
       return reader.cancel(reason);
     },
   });

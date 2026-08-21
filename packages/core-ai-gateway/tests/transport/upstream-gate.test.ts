@@ -134,6 +134,41 @@ describe("upstream gate", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("releases a permit whose consumer parked on backpressure and then aborted", async () => {
+    // The gateway proxy waits on a `drain` event a dead client socket never emits, so nothing is
+    // pulling when the abort lands. Without an abort listener the permit is held forever and the
+    // ceiling decays into a queue nothing leaves.
+    const held = openStream();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(held.response);
+    const gate = createUpstreamGate(fetchMock, { maxInFlight: 1 });
+    const caller = new AbortController();
+
+    const response = await gate.fetch("https://up.example/v1", { signal: caller.signal });
+    // Take the reader but never pull again — the consumer is parked.
+    response.body!.getReader();
+    expect(gate.stats()).toEqual([{ origin: "https://up.example", inFlight: 1, queued: 0 }]);
+
+    caller.abort(new Error("client disconnected"));
+    await Promise.resolve();
+
+    expect(gate.stats()).toEqual([]);
+  });
+
+  it("releases immediately when the signal was already aborted", async () => {
+    const held = openStream();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(held.response);
+    const gate = createUpstreamGate(fetchMock, { maxInFlight: 1 });
+    const caller = new AbortController();
+
+    // A fetch that resolves after the caller gave up must not strand its permit either.
+    const pending = gate.fetch("https://up.example/v1", { signal: caller.signal });
+    caller.abort(new Error("late"));
+    await pending.catch(() => undefined);
+    await Promise.resolve();
+
+    expect(gate.stats()).toEqual([]);
+  });
+
   it("passes through a target it cannot key", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("ok", { status: 200 }));
     const gate = createUpstreamGate(fetchMock, { maxInFlight: 1 });
