@@ -11,7 +11,7 @@ import { COMMAND_BAND_RAIL_STRIP_PX, commandBandActiveOperation, commandBandCent
 import { CommandBandOperationMenu, CommandBandTheaterMenu, CommandBandTriggerCaret, type CommandBandSwitcherMenu } from "./command-band-switcher.js";
 import { CommandBandSystemCluster } from "./command-band-system-cluster.js";
 import { ViewModeToggle } from "./view-mode-toggle.js";
-import { OperationStatusIcon } from "./operation-status-icon.js";
+import { OperationNameMark } from "./operation-name-mark.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useUpdateProgress } from "../update-progress-store.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../operation-activity.js";
@@ -132,12 +132,14 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
   // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
   // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
+  // Shell만은 예외다 — 활동 축을 발행하지 않으므로 그 자리를 종류 글리프가 가져간다.
   // 마크는 사이드바 칩·지도 점과 같은 마크 축을 읽는다 — 미확인 도착은 AWAITING이 아니라 "unseen"
   // 이므로 초록 느린 점등으로 그려진다. raw 활동만 보면 목록은 도착이라는 그 패널을 밴드만 유휴라
   // 부르고(War Room 무대 승격은 acknowledged: false라 도착 표식이 살아남는다), 표시 활동을 그대로
   // 쓰면 이번엔 안 본 채 끝난 것이 사람을 기다리는 중과 같은 파랑으로 서 버린다.
   const activeOperationStatusMark = activeOperation
-    ? <OperationStatusIcon
+    ? <OperationNameMark
+        operation={activeOperation}
         status={resolveOperationMarkVisual({
           activity: resolveOperationActivity(activeOperation, state.operationRuntime),
           operationId: activeOperation.id,

@@ -35,6 +35,8 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   // Remote access Desktop 설치 링크 라벨 — GitHub 제품 표면 명칭을 그대로 둔다.
   "GitHub releases",
   "Backend API",
+  // Operation 종류 명칭 — 플러그인 카탈로그(terminal.kind.shell)도 두 로케일 모두 "Shell"이다.
+  "Shell",
   // 캔버스 모드 3종은 번역하지 않는 제품 고유 명칭이다.
   "Cruise",
   "Tactical",

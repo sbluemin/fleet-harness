@@ -97,7 +97,9 @@ export function operationActivityVisual(status: OperationActivityVisual | undefi
   return "idle";
 }
 
-function resolveActiveLocale() {
+// 마크 라벨을 그리는 다른 조형(종류 글리프)도 같은 로케일 해석을 쓴다 — 한 화면의 두 마크가
+// 서로 다른 언어로 낭독되면 안 된다.
+export function resolveActiveLocale() {
   const preference = getGlobalSettingsStoreState().state?.language ?? "auto";
   const navigatorLanguage =
     typeof navigator !== "undefined" && typeof navigator.language === "string"
