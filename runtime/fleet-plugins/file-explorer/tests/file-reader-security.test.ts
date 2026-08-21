@@ -1,11 +1,14 @@
 import fs from "node:fs";
+import type http from "node:http";
 import os from "node:os";
 import path from "node:path";
 
+import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { FileReadError, readFileForTheater } from "../server/file-reader.js";
 import { ImageServeError, readImageForTheater } from "../server/image-server.js";
+import { handleFilesImage } from "../server/tree-services.js";
 
 let tmpDir: string;
 let theaterPath: string;
@@ -75,5 +78,44 @@ describe("readImageForTheater — symlink containment", () => {
     ).rejects.toSatisfy(
       (e: unknown) => e instanceof ImageServeError && e.code === "path_outside_theater",
     );
+  });
+});
+
+describe("handleFilesImage cache-busting query", () => {
+  it("serves the image when an extra v= parameter is present", async () => {
+    const chunks: Buffer[] = [];
+    let status = 0;
+    const jsonWrites: Array<{ readonly status: number }> = [];
+    const res = {
+      writeHead: (code: number) => {
+        status = code;
+      },
+      end: (buf?: Buffer) => {
+        if (buf) chunks.push(buf);
+      },
+    } as unknown as http.ServerResponse;
+    const ctx = {
+      host: {
+        http: {
+          writeJson: (_response: http.ServerResponse, code: number) => jsonWrites.push({ status: code }),
+        },
+        security: { isTerminalAuthorized: () => true },
+        paths: { resolveTheaterPath: () => theaterPath },
+      },
+    } as unknown as FleetPluginServerContext;
+
+    await handleFilesImage(
+      {
+        method: "GET",
+        url: "/files/image?theaterId=theater-a&path=normal.png&v=1787123456789",
+        headers: { host: "localhost" },
+      } as http.IncomingMessage,
+      res,
+      ctx,
+    );
+
+    expect(jsonWrites).toEqual([]);
+    expect(status).toBe(200);
+    expect(Buffer.concat(chunks).byteLength).toBe(4);
   });
 });

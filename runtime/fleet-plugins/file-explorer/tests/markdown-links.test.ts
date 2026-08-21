@@ -6,6 +6,7 @@ import {
   isSupportedMarkdownImagePath,
   resolveMarkdownFileRef,
 } from "../client/viewer/markdown-links.js";
+import { cacheBustedImageSrc } from "../client/viewer/image.js";
 
 describe("file explorer markdown links", () => {
   it("README 기준 상대 이미지 경로를 Theater 내부 경로로 해석한다", () => {
@@ -50,5 +51,11 @@ describe("file explorer markdown links", () => {
     expect(isAllowedExternalMarkdownImageSrc("https://img.shields.io/npm/v/@dotobokuri/fleet-cli?color=blue")).toBe(true);
     expect(isAllowedExternalMarkdownImageSrc("http://img.shields.io/npm/v/pkg")).toBe(false);
     expect(isAllowedExternalMarkdownImageSrc("https://example.com/tracker.png")).toBe(false);
+  });
+
+  it("mtimeMs를 이미지 src의 캐시 버스트 질의로 붙인다", () => {
+    const src = buildFileExplorerImageSrc("abc", "images/logo.png");
+    expect(cacheBustedImageSrc(src, 1710000000000)).toBe(`${src}&t=1710000000000`);
+    expect(cacheBustedImageSrc(src, undefined)).toBe(src);
   });
 });

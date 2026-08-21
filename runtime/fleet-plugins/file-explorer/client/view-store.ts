@@ -5,8 +5,8 @@ import { MIN_TREE_PX, TREE_PANE_DEFAULT_WIDTH } from "./layout.js";
 export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
-  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number }
-  | { kind: "image"; relativePath: string; name: string; src: string }
+  | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean }
+  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; stale?: boolean }
   | { kind: "binary"; name: string }
   | { kind: "error"; message: string };
 
@@ -31,6 +31,8 @@ interface TheaterViewState extends DocSession {
 
 interface FileExplorerViewState extends TheaterViewState {
   readonly treePaneWidth: number;
+  /** Wrap long lines in the code viewer — remembered for this Console session. */
+  readonly wrapLines: boolean;
 }
 
 type Listener = () => void;
@@ -55,12 +57,14 @@ const DEFAULT_THEATER_STATE: TheaterViewState = {
 const DEFAULT_SERVER_SNAPSHOT: FileExplorerViewState = {
   ...DEFAULT_THEATER_STATE,
   treePaneWidth: TREE_PANE_DEFAULT_WIDTH,
+  wrapLines: false,
 };
 
 const theaterStateMap = new Map<string, TheaterViewState>();
 const snapshotMap = new Map<string, FileExplorerViewState>();
 const listeners = new Set<Listener>();
 let treePaneWidth = readTreePaneWidth();
+let wrapLines = false;
 
 export function useFileExplorerViewState(theaterId: string | null): FileExplorerViewState {
   return useSyncExternalStore(
@@ -159,6 +163,27 @@ export function setDocViewState(theaterId: string | null, relativePath: string, 
   patchTheaterState(theaterId, { docStates });
 }
 
+export function markDocStale(theaterId: string | null, relativePath: string, stale: boolean): void {
+  if (!theaterId) return;
+  const current = getOrDefault(theaterId);
+  const viewState = current.docStates.get(relativePath);
+  if (!viewState || (viewState.kind !== "code" && viewState.kind !== "image")) return;
+  if (Boolean(viewState.stale) === stale) return;
+  const docStates = new Map(current.docStates);
+  docStates.set(relativePath, { ...viewState, stale });
+  patchTheaterState(theaterId, { docStates });
+}
+
+export function setWrapLines(nextWrap: boolean): void {
+  if (wrapLines === nextWrap) return;
+  wrapLines = nextWrap;
+  emit();
+}
+
+export function getFileExplorerSnapshot(theaterId: string | null): FileExplorerViewState {
+  return getSnapshot(theaterId);
+}
+
 /** 저장된 세션을 스토어에 되살린다 — 이미 열린 문서가 있으면(메모리 우선) 건드리지 않는다. */
 export function hydrateStoredSession(theaterId: string | null): void {
   if (!theaterId) return;
@@ -200,10 +225,11 @@ function getSnapshot(theaterId: string | null): FileExplorerViewState {
     && prev.historyIndex === base.historyIndex
     && prev.docStates === base.docStates
     && prev.treePaneWidth === treePaneWidth
+    && prev.wrapLines === wrapLines
   ) {
     return prev;
   }
-  const next = { ...base, treePaneWidth };
+  const next = { ...base, treePaneWidth, wrapLines };
   snapshotMap.set(key, next);
   return next;
 }

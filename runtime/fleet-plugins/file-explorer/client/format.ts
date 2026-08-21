@@ -1,3 +1,7 @@
+import type { Translate } from "@fleet-console/sdk/i18n";
+
+import type { FileExplorerMessageKey } from "./i18n/index.js";
+
 /** 뷰어 메타 바의 파일 크기 표기 — 1024 기수, KB/MB는 소수 한 자리. */
 export function formatByteSize(sizeBytes: number): string {
   if (!Number.isFinite(sizeBytes) || sizeBytes < 0) return "";
@@ -12,4 +16,41 @@ export function countLines(content: string): number {
   if (content === "") return 0;
   const lines = content.split("\n");
   return lines.at(-1) === "" ? lines.length - 1 : lines.length;
+}
+
+/** UTF-8 byte length of the loaded slice — used when the read was truncated. */
+export function loadedByteSize(content: string): number {
+  return new TextEncoder().encode(content).byteLength;
+}
+
+export interface ViewerMetaInput {
+  readonly content: string;
+  readonly truncated?: boolean;
+  readonly sizeBytes?: number;
+}
+
+/**
+ * Honest viewer meta copy. Truncated reads show the loaded slice against the
+ * real file size and never present the slice's line count as the file's.
+ */
+export function buildViewerMetaParts(
+  input: ViewerMetaInput,
+  t: Translate<FileExplorerMessageKey>,
+): readonly string[] {
+  const lineCount = countLines(input.content);
+  if (input.truncated) {
+    const shown = formatByteSize(loadedByteSize(input.content));
+    const total = input.sizeBytes !== undefined ? formatByteSize(input.sizeBytes) : "";
+    const sizePart = shown && total
+      ? t("fileExplorer.viewer.partialMeta", { shown, total })
+      : shown || total;
+    return [
+      sizePart,
+      t("fileExplorer.viewer.linesLoaded", { count: lineCount }),
+    ].filter((part): part is string => Boolean(part));
+  }
+  return [
+    input.sizeBytes !== undefined ? formatByteSize(input.sizeBytes) : "",
+    t("fileExplorer.viewer.lines", { count: lineCount }),
+  ].filter((part): part is string => part !== "");
 }

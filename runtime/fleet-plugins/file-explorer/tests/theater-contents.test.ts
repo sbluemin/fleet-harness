@@ -58,9 +58,58 @@ describe("listTheaterContents", () => {
       expect(result.entries).toHaveLength(expectedLength);
       if (truncated) {
         expect(result).toMatchObject({ truncated: true, cap: 500 });
+        expect(result.entries.map((entry) => entry.name)).toEqual(
+          Array.from({ length: expectedLength }, (_, index) => `file-${String(index).padStart(3, "0")}.txt`),
+        );
       } else {
         expect(result).not.toHaveProperty("truncated");
       }
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("600개 폴더는 readdir 순서와 무관하게 이름순 앞 500개만 보인다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-600-"));
+    const dirents = Array.from({ length: 600 }, (_, index) => {
+      const nameIndex = 599 - index;
+      return {
+        name: `file-${String(nameIndex).padStart(3, "0")}.txt`,
+        isDirectory: () => false,
+        isFile: () => true,
+        isSymbolicLink: () => false,
+      };
+    });
+    const fakeOpendir = async () => ({
+      read: async () => dirents.shift() ?? null,
+      close: async () => undefined,
+    });
+
+    try {
+      const result = await listTheaterContents(dir, "", { opendir: fakeOpendir as unknown as typeof fs.promises.opendir });
+
+      expect(result.entries).toHaveLength(500);
+      expect(result).toMatchObject({ truncated: true, cap: 500 });
+      expect(result.entries.map((entry) => entry.name)).toEqual(
+        Array.from({ length: 500 }, (_, index) => `file-${String(index).padStart(3, "0")}.txt`),
+      );
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("검색이 건너뛰는 의존성/빌드 디렉터리도 목록에는 남긴다", async () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-ignored-"));
+    fs.mkdirSync(path.join(dir, "node_modules"));
+    fs.mkdirSync(path.join(dir, "dist"));
+    fs.writeFileSync(path.join(dir, "readme.md"), "");
+
+    try {
+      const result = await listTheaterContents(dir, "");
+      const names = result.entries.map((entry) => entry.name);
+      expect(names).toContain("node_modules");
+      expect(names).toContain("dist");
+      expect(names).toContain("readme.md");
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }
@@ -177,10 +226,10 @@ describe("listTheaterContents VCS edge cases", () => {
   it("표시 상한 이후의 심링크 꼬리는 실해석하지 않고 truncated로 알린다", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-contents-aliascap-"));
     fs.mkdirSync(path.join(dir, ".git"));
-    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "metadata"), "dir");
+    fs.symlinkSync(path.join(dir, ".git"), path.join(dir, "z-metadata"), "dir");
     const realpath = vi.spyOn(fs.promises, "realpath");
     const stat = vi.spyOn(fs.promises, "stat");
-    // 순서 통제: 표시 가능 파일 500개를 먼저, 별칭 심링크와 깨진 심링크 꼬리를 뒤에 낸다.
+    // 이름순 cap: file-* 가 z-* 보다 앞이므로 심링크 꼬리는 잘린 뒤에 남는다.
     const dirents = [
       ...Array.from({ length: 500 }, (_, i) => ({
         name: `file-${String(i).padStart(3, "0")}.txt`,
@@ -189,13 +238,13 @@ describe("listTheaterContents VCS edge cases", () => {
         isSymbolicLink: () => false,
       })),
       {
-        name: "metadata",
+        name: "z-metadata",
         isDirectory: () => false,
         isFile: () => false,
         isSymbolicLink: () => true,
       },
       ...Array.from({ length: 32 }, (_, i) => ({
-        name: `alias-${String(i).padStart(2, "0")}`,
+        name: `z-alias-${String(i).padStart(2, "0")}`,
         isDirectory: () => false,
         isFile: () => false,
         isSymbolicLink: () => true,

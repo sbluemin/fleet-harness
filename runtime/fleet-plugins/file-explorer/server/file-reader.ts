@@ -20,6 +20,8 @@ export interface FileReadResult {
   readonly truncated?: boolean;
   /** 디스크상 전체 크기(바이트) — truncated여도 전체 크기를 담는다. */
   readonly sizeBytes: number;
+  /** 파일 mtime (epoch ms) — 같은 stat에서 채운다. */
+  readonly mtimeMs: number;
 }
 
 const FILE_SIZE_CAP = 1024 * 1024;
@@ -98,6 +100,7 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
       lang: detectLang(realResolved),
       truncated: true,
       sizeBytes: stat.size,
+      mtimeMs: stat.mtimeMs,
     };
   }
 
@@ -109,6 +112,7 @@ export async function readFileForTheater(theaterPath: string, relativePath: stri
     content: buffer.toString("utf8"),
     lang: detectLang(realResolved),
     sizeBytes: stat.size,
+    mtimeMs: stat.mtimeMs,
   };
 }
 

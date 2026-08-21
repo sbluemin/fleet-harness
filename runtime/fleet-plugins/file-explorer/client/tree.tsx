@@ -14,8 +14,8 @@ import {
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
-import type { FolderEntry, FolderListResult } from "../server/types.js";
-import { restoreContextMenuFocus } from "./context-menu.js";
+import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
+import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import type { FileSearchTarget } from "./search-navigation.js";
@@ -33,6 +33,7 @@ interface FileTreeProps {
   readonly revealTarget?: FileSearchTarget | null;
   readonly onSelect: (entry: FolderEntry) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
+  readonly onEntriesRefreshed?: (relativeDir: string, entries: readonly FolderEntry[]) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -73,8 +74,16 @@ export interface GhostRow {
   readonly key: string;
 }
 
+/** 첫 펼침이 실패한 폴더 아래의 인라인 재시도 행 — 포커스/선택 대상이 아니다. */
+export interface ExpandErrorRow {
+  readonly type: "error";
+  readonly relativePath: string;
+  readonly depth: number;
+  readonly key: string;
+}
+
 export type EntryRow = FlatRow & { readonly type: "entry" };
-export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow;
+export type TreeRow = EntryRow | CapRow | VcsRow | GhostRow | ExpandErrorRow;
 
 export function isEntryRow(row: TreeRow): row is EntryRow {
   return row.type === "entry";
@@ -93,35 +102,31 @@ export type TreeNavigationAction =
   | { readonly kind: "expand" }
   | { readonly kind: "collapse" }
   | { readonly kind: "activate" }
+  | { readonly kind: "openMenu" }
   | { readonly kind: "none" };
 
-interface FilterDescendantLoadOptions {
-  readonly entries: readonly FolderEntry[];
-  readonly cachedResults: ReadonlyMap<string, FolderListResult>;
-  readonly files: PluginFilesClient;
-  readonly showHidden: boolean;
-  readonly isCurrent: () => boolean;
-  readonly onFolderResult: (relativePath: string, result: FolderListResult) => void;
-  readonly onProgress?: (walked: number) => void;
-}
-
-export interface FilterLoadStats {
-  /** 실제로 내용을 확인한 폴터 수 (캐시 적중 포함) */
-  readonly walked: number;
-  /** 폴터 상한에 걸려 일부 폴터를 탐색하지 못한 경우 true — UI가 표식을 띄운다. */
-  readonly capped: boolean;
+export interface TreeNavigationOptions {
+  readonly pageSize?: number;
+  readonly shiftKey?: boolean;
 }
 
 const VIRTUALIZE_THRESHOLD = 200;
-const ROW_HEIGHT = 30;
+export const ROW_HEIGHT = 30;
+export const TREE_PADDING_Y = 8;
 const OVERSCAN = 5;
 const PREFS_SHOW_HIDDEN = "fleet-console.fileExplorer.showHidden";
 const PREFS_SORT_MODE = "fleet-console.fileExplorer.sortMode";
 const PREFS_EXPANDED_PREFIX = "fleet-console.fileExplorer.expanded.";
-const EXPANDED_PERSIST_CAP = 200;
-const EXPANDED_RESTORE_FETCH_CAP = 50;
+/** Persist and restore share one cap so a saved expansion is always re-fetched. */
+export const EXPANDED_PERSIST_CAP = 200;
+/** 복원·재조회 팬아웃 동시 실행 상한 — 상한 없는 팬아웃은 필터에서 걷어낸 요청 폭주와 같은 것이다. */
+export const FOLDER_FETCH_CONCURRENCY = 6;
 const GIT_STATUS_DEBOUNCE_MS = 500;
-export const FILTER_DIRECTORY_CAP = 500;
+export const FILTER_SEARCH_DEBOUNCE_MS = 180;
+export const PALETTE_SEARCH_LIMIT = 200;
+/** i18n cap interpolation for walkCapped — matches the server directory walk budget. */
+export const PALETTE_SEARCH_WALK_CAP = 500;
+export const TYPEAHEAD_RESET_MS = 1000;
 
 // ═══ 정렬 ═══════════════════════════════════════════════════════════════════
 
@@ -220,50 +225,263 @@ export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boo
   return visibilityState === "visible";
 }
 
-export async function loadFilterDescendants({ entries, cachedResults, files, showHidden, isCurrent, onFolderResult, onProgress }: FilterDescendantLoadOptions): Promise<FilterLoadStats> {
-  const pending: FolderEntry[] = [];
-  const knownResults = new Map(cachedResults);
-  const queuedPaths = new Set<string>();
-  const visitedFolders = new Set<string>();
-  let requestCount = 0;
-  let capped = false;
-  const enqueue = (candidates: readonly FolderEntry[]) => {
-    for (const candidate of candidates) {
-      if (!isVisibleDirectory(candidate, showHidden) || queuedPaths.has(candidate.relativePath)) continue;
-      if (queuedPaths.size >= FILTER_DIRECTORY_CAP) { capped = true; return; }
-      queuedPaths.add(candidate.relativePath);
-      pending.push(candidate);
+export function paletteSearchRequestBody(theaterId: string, query: string): {
+  readonly theaterId: string;
+  readonly query: string;
+  readonly limit: number;
+} {
+  return { theaterId, query, limit: PALETTE_SEARCH_LIMIT };
+}
+
+export function shouldClearFilterOnEscape(filterText: string): boolean {
+  return filterText.length > 0;
+}
+
+export function isWatchDegraded(state: string): boolean {
+  return state === "degraded";
+}
+
+export function pathMatchesQuery(relativePath: string, query: string): boolean {
+  const tokens = query.trim().toLowerCase().split(/[\s/]+/).filter(Boolean);
+  if (tokens.length === 0) return false;
+  const haystack = relativePath.toLowerCase();
+  return tokens.every((token) => haystack.includes(token));
+}
+
+export function isHiddenRelativePath(relativePath: string): boolean {
+  return relativePath.split("/").some((part) => part.startsWith("."));
+}
+
+function parentRelativePath(relativePath: string): string {
+  const slash = relativePath.lastIndexOf("/");
+  return slash < 0 ? "" : relativePath.slice(0, slash);
+}
+
+function nameOfRelativePath(relativePath: string): string {
+  const slash = relativePath.lastIndexOf("/");
+  return slash < 0 ? relativePath : relativePath.slice(slash + 1);
+}
+
+function expandedDepth(relativePath: string): number {
+  if (!relativePath) return 0;
+  return relativePath.split("/").length;
+}
+
+/**
+ * 상한 있는 팬아웃 — paths를 최대 limit개씩만 동시에 처리한다.
+ * 200개 펼침을 복원할 때 200개 POST를 한꺼번에 던지지 않기 위한 것이며,
+ * 실패한 항목은 각 작업이 자체적으로 삼킨다(호출부 계약 유지).
+ */
+export async function runWithConcurrency(
+  paths: readonly string[],
+  limit: number,
+  run: (path: string) => Promise<void>,
+): Promise<void> {
+  if (paths.length === 0) return;
+  const width = Math.max(1, Math.min(limit, paths.length));
+  let cursor = 0;
+  const workers = Array.from({ length: width }, async () => {
+    for (;;) {
+      const index = cursor;
+      cursor += 1;
+      if (index >= paths.length) return;
+      const path = paths[index];
+      if (path === undefined) return;
+      await run(path);
+    }
+  });
+  await Promise.all(workers);
+}
+
+/** Shallowest-first, then name, truncated to the shared persist/restore cap. */
+export function selectPersistableExpanded(
+  expandedDirs: Iterable<string>,
+  cap = EXPANDED_PERSIST_CAP,
+): string[] {
+  return [...expandedDirs]
+    .sort((left, right) => {
+      const depthDelta = expandedDepth(left) - expandedDepth(right);
+      return depthDelta !== 0 ? depthDelta : left.localeCompare(right);
+    })
+    .slice(0, cap);
+}
+
+export interface VirtualRowWindow {
+  readonly startIdx: number;
+  readonly endIdx: number;
+  readonly offsetY: number;
+  readonly totalHeight: number;
+}
+
+export function virtualRowWindow(
+  scrollTop: number,
+  containerHeight: number,
+  rowCount: number,
+): VirtualRowWindow {
+  const contentScroll = scrollTop - TREE_PADDING_Y;
+  const startIdx = Math.max(0, Math.floor(contentScroll / ROW_HEIGHT) - OVERSCAN);
+  const endIdx = Math.min(rowCount, Math.ceil((contentScroll + containerHeight) / ROW_HEIGHT) + OVERSCAN);
+  return {
+    startIdx,
+    endIdx,
+    offsetY: startIdx * ROW_HEIGHT,
+    totalHeight: rowCount * ROW_HEIGHT,
+  };
+}
+
+interface FilterTrieNode {
+  readonly name: string;
+  readonly relativePath: string;
+  kind: "dir" | "file";
+  readonly children: Map<string, FilterTrieNode>;
+}
+
+function ensureFilterNode(
+  nodes: Map<string, FilterTrieNode>,
+  name: string,
+  relativePath: string,
+  kind: "dir" | "file",
+): FilterTrieNode {
+  const existing = nodes.get(name);
+  if (!existing) {
+    const created: FilterTrieNode = { name, relativePath, kind, children: new Map() };
+    nodes.set(name, created);
+    return created;
+  }
+  if (kind === "dir") existing.kind = "dir";
+  return existing;
+}
+
+function insertFilterPath(
+  root: Map<string, FilterTrieNode>,
+  relativePath: string,
+  leafKind: "dir" | "file",
+): void {
+  const parts = relativePath.split("/").filter(Boolean);
+  if (parts.length === 0) return;
+  let current = root;
+  let prefix = "";
+  for (let index = 0; index < parts.length; index += 1) {
+    const name = parts[index] ?? "";
+    prefix = prefix ? `${prefix}/${name}` : name;
+    const isLeaf = index === parts.length - 1;
+    const node = ensureFilterNode(current, name, prefix, isLeaf ? leafKind : "dir");
+    current = node.children;
+  }
+}
+
+function entriesFromTrie(nodes: Map<string, FilterTrieNode>): FolderEntry[] {
+  const entries: FolderEntry[] = [...nodes.values()].map((node) => ({
+    name: node.name,
+    relativePath: node.relativePath,
+    kind: node.kind,
+  }));
+  const byName = (left: FolderEntry, right: FolderEntry) => left.name.localeCompare(right.name);
+  return [
+    ...entries.filter((entry) => entry.kind === "dir").sort(byName),
+    ...entries.filter((entry) => entry.kind !== "dir").sort(byName),
+  ];
+}
+
+function folderResultFromEntries(relativePath: string, entries: readonly FolderEntry[]): FolderListResult {
+  return {
+    relativePath,
+    parentRelativePath: relativePath === "" ? null : parentRelativePath(relativePath),
+    entries,
+  };
+}
+
+export interface SynthesizedFilterTree {
+  readonly rootEntries: FolderEntry[];
+  readonly childResults: Map<string, FolderListResult>;
+}
+
+/** Build a dirs-first tree from palette-search hits so matches stay in ancestor form. */
+export function synthesizeFilterTree(
+  matches: readonly FileSearchItem[],
+  extraDirs: readonly string[] = [],
+): SynthesizedFilterTree {
+  const root = new Map<string, FilterTrieNode>();
+  for (const dirPath of extraDirs) insertFilterPath(root, dirPath, "dir");
+  for (const match of matches) insertFilterPath(root, match.relativePath, match.kind);
+  const childResults = new Map<string, FolderListResult>();
+  const visit = (nodes: Map<string, FilterTrieNode>, relativePath: string | null) => {
+    const entries = entriesFromTrie(nodes);
+    if (relativePath !== null) childResults.set(relativePath, folderResultFromEntries(relativePath, entries));
+    for (const node of nodes.values()) {
+      if (node.kind === "dir") visit(node.children, node.relativePath);
     }
   };
+  visit(root, null);
+  // Directory hits with no synthesized children still need an empty listing so auto-expand
+  // can distinguish "fetched" dirs from "not yet listed" ones.
+  for (const match of matches) {
+    if (match.kind !== "dir" || childResults.has(match.relativePath)) continue;
+    childResults.set(match.relativePath, folderResultFromEntries(match.relativePath, []));
+  }
+  for (const dirPath of extraDirs) {
+    if (childResults.has(dirPath)) continue;
+    childResults.set(dirPath, folderResultFromEntries(dirPath, []));
+  }
+  return { rootEntries: entriesFromTrie(root), childResults };
+}
 
-  enqueue(entries);
-  while (pending.length > 0 && isCurrent()) {
-    const entry = pending.shift();
-    if (!entry) break;
-    const cached = knownResults.get(entry.relativePath);
-    if (cached) {
-      if (visitedFolders.has(cached.relativePath)) continue;
-      visitedFolders.add(cached.relativePath);
-      onProgress?.(visitedFolders.size);
-      enqueue(cached.entries);
-      continue;
-    }
-    if (requestCount >= FILTER_DIRECTORY_CAP) { capped = true; break; }
-    requestCount += 1;
-    try {
-      const result = await files.listFolder(entry.relativePath);
-      if (!isCurrent()) break;
-      knownResults.set(entry.relativePath, result);
-      onFolderResult(entry.relativePath, result);
-      if (visitedFolders.has(result.relativePath)) continue;
-      visitedFolders.add(result.relativePath);
-      onProgress?.(visitedFolders.size);
-      enqueue(result.entries);
-    } catch {
-      // 권한 오류나 사라진 폴더는 해당 하위 트리만 건너뛴다.
+export interface GitDirRollup {
+  readonly modified: number;
+  readonly untracked: number;
+  readonly deleted: number;
+  readonly total: number;
+}
+
+export function rollupGitStatuses(
+  statuses: ReadonlyMap<string, GitFileStatus>,
+): ReadonlyMap<string, GitDirRollup> {
+  const rollups = new Map<string, { modified: number; untracked: number; deleted: number; total: number }>();
+  for (const [filePath, status] of statuses) {
+    const normalized = filePath.replaceAll("\\", "/");
+    const parts = normalized.split("/").filter(Boolean);
+    for (let index = 1; index < parts.length; index += 1) {
+      const dir = parts.slice(0, index).join("/");
+      const current = rollups.get(dir) ?? { modified: 0, untracked: 0, deleted: 0, total: 0 };
+      current[status] += 1;
+      current.total += 1;
+      rollups.set(dir, current);
     }
   }
-  return { walked: visitedFolders.size, capped };
+  return rollups;
+}
+
+export function resolveTypeaheadIndex(
+  rows: readonly TreeRow[],
+  currentIndex: number,
+  buffer: string,
+): number | null {
+  const needle = buffer.toLowerCase();
+  if (!needle) return null;
+  const matches: number[] = [];
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row && isEntryRow(row) && row.entry.name.toLowerCase().startsWith(needle)) matches.push(index);
+  }
+  if (matches.length === 0) return null;
+  return matches.find((index) => index > currentIndex) ?? matches[0] ?? null;
+}
+
+function pagedEntryIndex(
+  rows: readonly TreeRow[],
+  index: number,
+  direction: 1 | -1,
+  pageSize: number,
+): number {
+  const entryIndices: number[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    if (rows[i]?.type === "entry") entryIndices.push(i);
+  }
+  if (entryIndices.length === 0) return index;
+  const position = entryIndices.indexOf(index);
+  const from = position < 0 ? 0 : position;
+  const next = Math.max(0, Math.min(entryIndices.length - 1, from + direction * pageSize));
+  return entryIndices[next] ?? index;
 }
 
 interface LevelMeta {
@@ -277,6 +495,10 @@ export interface BuildRowsOptions {
   readonly sortMode?: SortMode;
   /** 부모 폴더 상대경로("" = 루트) → 그 폴더에서 삭제된 파일 이름들. 고스트 행으로 합성된다. */
   readonly deletedByDir?: ReadonlyMap<string, readonly string[]>;
+  /** 필터 합성 트리 — 자식 목록이 있는 디렉터리를 기본 펼친다. */
+  readonly autoExpandAll?: boolean;
+  /** 첫 펼침이 실패한 디렉터리. 펼친 채로 인라인 오류 행을 붙인다. */
+  readonly failedDirs?: ReadonlySet<string>;
 }
 
 export function buildFlatRows(
@@ -312,10 +534,11 @@ export function buildFlatRows(
     }
   };
   // 삭제 고스트 행 — 삭제 파일은 목록에 실제 행이 없으므로 여기서 합성한다.
-  // 필터 중에는 실제 목록과 구분이 흐려지므로 내지 않는다.
-  const ghostNames = !low && options.deletedByDir?.get(levelKey)
+  // 필터가 켜져 있어도 유지한다. 이름 필터(low)가 있으면 이름에 바늘이 있는 것만 남긴다.
+  const ghostNames = options.deletedByDir?.get(levelKey)
     ? [...(options.deletedByDir.get(levelKey) ?? [])]
       .filter((name) => showHidden || !name.startsWith("."))
+      .filter((name) => !low || name.toLowerCase().includes(low))
       .sort((a, b) => a.localeCompare(b))
     : [];
   let ghostIdx = 0;
@@ -354,15 +577,24 @@ export function buildFlatRows(
       // 고스트(삭제 파일)는 파일 구간에 이름순으로 끼워 넣는다.
       flushGhosts(entry.name);
     }
-    const isExpanded = !filterCollapsedDirs.has(entry.relativePath)
-      && (expandedDirs.has(entry.relativePath) || Boolean(low && childMatch));
+    const fetched = childResults.has(entry.relativePath);
+    const isLoading = loadingDirs.has(entry.relativePath);
+    const failed = options.failedDirs?.has(entry.relativePath) === true;
+    const wantsExpanded = !filterCollapsedDirs.has(entry.relativePath)
+      && (
+        expandedDirs.has(entry.relativePath)
+        || Boolean(low && childMatch)
+        || Boolean(options.autoExpandAll && fetched)
+      );
+    // 자식을 아직 못 가져온 펼침은 그리지 않는다. 로딩 중이거나 실패 행을 붙일 때만 예외.
+    const isExpanded = wantsExpanded && (fetched || isLoading || failed);
     rows.push({
       type: "entry",
       entry,
       depth,
       isSelected: selectedPath === entry.relativePath,
       isExpanded,
-      isLoading: loadingDirs.has(entry.relativePath),
+      isLoading,
     });
     if (entry.kind === "dir" && isExpanded && !isCycle) {
       if (children) {
@@ -386,6 +618,13 @@ export function buildFlatRows(
           folderIdentity,
           options,
         ));
+      } else if (failed) {
+        rows.push({
+          type: "error",
+          relativePath: entry.relativePath,
+          depth: depth + 1,
+          key: `error:${entry.relativePath}`,
+        });
       }
     }
   }
@@ -404,9 +643,21 @@ function nextEntryIndex(rows: readonly TreeRow[], from: number, direction: 1 | -
   return null;
 }
 
-export function resolveTreeNavigation(rows: readonly TreeRow[], index: number, key: string): TreeNavigationAction {
+export function resolveTreeNavigation(
+  rows: readonly TreeRow[],
+  index: number,
+  key: string,
+  options: TreeNavigationOptions = {},
+): TreeNavigationAction {
   const row = rows[index];
   if (!row || row.type !== "entry") return { kind: "none" };
+  if (isTreeContextMenuKey(key, options.shiftKey === true)) return { kind: "openMenu" };
+  if (key === "PageDown" && options.pageSize !== undefined) {
+    return { kind: "focus", index: pagedEntryIndex(rows, index, 1, Math.max(1, options.pageSize)) };
+  }
+  if (key === "PageUp" && options.pageSize !== undefined) {
+    return { kind: "focus", index: pagedEntryIndex(rows, index, -1, Math.max(1, options.pageSize)) };
+  }
   if (key === "ArrowDown") return { kind: "focus", index: nextEntryIndex(rows, index, 1) ?? index };
   if (key === "ArrowUp") return { kind: "focus", index: nextEntryIndex(rows, index, -1) ?? index };
   if (key === "Home") return { kind: "focus", index: nextEntryIndex(rows, -1, 1) ?? index };
@@ -435,7 +686,7 @@ export function resolveTreeNavigation(rows: readonly TreeRow[], index: number, k
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, onEntriesRefreshed, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -452,13 +703,17 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortMode());
   const [cursorPath, setCursorPath] = useState<string | null>(null);
   const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
-  const [filterWalked, setFilterWalked] = useState<number | null>(null);
-  const [filterCapped, setFilterCapped] = useState(false);
+  const [filterSearching, setFilterSearching] = useState(false);
+  const [filterFailed, setFilterFailed] = useState(false);
+  const [filterOutcome, setFilterOutcome] = useState<FileSearchResult | null>(null);
+  const [expandFailedDirs, setExpandFailedDirs] = useState<Set<string>>(new Set());
+  const [watchDegraded, setWatchDegraded] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
   const revealedRequestRef = useRef(0);
   const gitStatusRequestRef = useRef(0);
+  const typeaheadRef = useRef({ buffer: "", at: 0 });
 
   // SSE 핸들러가 최신 상태를 참조하도록 ref로 유지
   const expandedDirsRef = useRef<Set<string>>(expandedDirs);
@@ -471,9 +726,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   contextKeyRef.current = contextKey;
   const childResultsRef = useRef<Map<string, FolderListResult>>(childResults);
   childResultsRef.current = childResults;
+  const onEntriesRefreshedRef = useRef(onEntriesRefreshed);
+  onEntriesRefreshedRef.current = onEntriesRefreshed;
   const inFlightFoldersRef = useRef(new Map<string, Promise<void>>());
   const filterRequestRef = useRef(0);
-  const isFiltering = Boolean(filterText);
+  const isFiltering = filterText.trim().length > 0;
+  const emitEntriesRefreshed = (relativeDir: string, entries: readonly FolderEntry[]) => {
+    onEntriesRefreshedRef.current?.(relativeDir, entries);
+  };
 
   const refreshGitStatus = useCallback(async () => {
     if (!theaterId) return;
@@ -510,37 +770,37 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     setScrollTop(0);
     setCursorPath(null);
     setGitStatusResult(null);
-    setFilterWalked(null);
-    setFilterCapped(false);
+    setFilterSearching(false);
+    setFilterFailed(false);
+    setFilterOutcome(null);
+    setExpandFailedDirs(new Set());
+    setWatchDegraded(false);
   }, [contextKey, theaterId]);
 
   // 저장된 펼침 상태 복원 — 위 리셋 효과 다음에 선언되어 리셋 후에 실행된다.
+  // 자식을 가져온 뒤에만 expanded로 올려 빈 펼침 행을 만들지 않는다.
   useEffect(() => {
     if (!theaterId) return;
     const stored = readExpandedDirs(contextKey);
     if (stored.length === 0) return;
     const requestContextKey = contextKey;
-    setExpandedDirs((current) => {
-      const next = new Set([...current, ...stored]);
-      expandedDirsRef.current = next;
-      return next;
-    });
-    // 내용은 다시 불러온다(상한까지) — 실패한 폴더는 접힌 채 남는다.
-    for (const relPath of stored.slice(0, EXPANDED_RESTORE_FETCH_CAP)) {
-      filesRef.current.listFolder(relPath).then((r) => {
+    void runWithConcurrency(stored, FOLDER_FETCH_CONCURRENCY, async (relPath) => {
+      try {
+        const r = await filesRef.current.listFolder(relPath);
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
-      }).catch(() => {
-        if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+        emitEntriesRefreshed(relPath, r.entries);
         setExpandedDirs((prev) => {
-          if (!prev.has(relPath)) return prev;
+          if (prev.has(relPath)) return prev;
           const next = new Set(prev);
-          next.delete(relPath);
+          next.add(relPath);
           expandedDirsRef.current = next;
           return next;
         });
-      });
-    }
+      } catch {
+        // 복원 실패는 접힌 채 둔다 — 사용자가 다시 펼치면 인라인 오류 행이 붙는다.
+      }
+    });
   }, [contextKey, theaterId]);
 
   // 펼침 상태 지속 — Theater별로 저장해 리로드 후 복원한다.
@@ -586,6 +846,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
+      emitEntriesRefreshed(r.relativePath, r.entries);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
@@ -618,9 +879,13 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       }
       setCurrentPath("");
       setResult(rootResult);
+      emitEntriesRefreshed(rootResult.relativePath, rootResult.entries);
       setChildResults((current) => {
         const next = new Map(current);
-        for (const [relativePath, folderResult] of nextResults) next.set(relativePath, folderResult);
+        for (const [relativePath, folderResult] of nextResults) {
+          next.set(relativePath, folderResult);
+          emitEntriesRefreshed(relativePath, folderResult.entries);
+        }
         return next;
       });
       setExpandedDirs((current) => new Set([...current, ...nextExpanded]));
@@ -631,36 +896,53 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [contextKey, files, revealTarget, theaterId]);
 
   useEffect(() => {
+    const query = filterText.trim();
+    if (!theaterId || !query) {
+      setFilterSearching(false);
+      setFilterFailed(false);
+      setFilterOutcome(null);
+      return;
+    }
     const requestId = ++filterRequestRef.current;
-    if (!isFiltering || !result) return;
-    let active = true;
     const requestContextKey = contextKey;
-    const isCurrent = () => active
-      && requestId === filterRequestRef.current
-      && isCurrentContextRequest(requestContextKey, contextKeyRef.current);
-    setFilterWalked(0);
-    setFilterCapped(false);
-    void loadFilterDescendants({
-      entries: result.entries,
-      cachedResults: childResultsRef.current,
-      files,
-      showHidden,
-      isCurrent,
-      onFolderResult: (relativePath, folderResult) => {
-        if (!isCurrent()) return;
-        setChildResults((prev) => new Map(prev).set(relativePath, folderResult));
-      },
-      onProgress: (walked) => {
-        if (!isCurrent()) return;
-        setFilterWalked(walked);
-      },
-    }).then((stats) => {
-      if (!isCurrent()) return;
-      setFilterWalked(null);
-      setFilterCapped(stats.capped);
-    });
-    return () => { active = false; };
-  }, [contextKey, files, isFiltering, result, showHidden]);
+    const controller = new AbortController();
+    setFilterSearching(true);
+    setFilterFailed(false);
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const response = await fetch("/plugins/file-explorer/files/palette-search", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(paletteSearchRequestBody(theaterId, query)),
+            signal: controller.signal,
+          });
+          if (!response.ok) throw new Error("search_failed");
+          const outcome = await response.json() as FileSearchResult;
+          if (
+            requestId !== filterRequestRef.current
+            || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
+          ) return;
+          setFilterOutcome(outcome);
+          setFilterSearching(false);
+          setFilterFailed(false);
+        } catch {
+          if (controller.signal.aborted) return;
+          if (
+            requestId !== filterRequestRef.current
+            || !isCurrentContextRequest(requestContextKey, contextKeyRef.current)
+          ) return;
+          setFilterFailed(true);
+          setFilterSearching(false);
+          setFilterOutcome(null);
+        }
+      })();
+    }, FILTER_SEARCH_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [contextKey, filterText, theaterId]);
 
   useEffect(() => {
     const el = treeRef.current;
@@ -687,6 +969,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setResult(r);
         setError(null);
+        emitEntriesRefreshed(r.relativePath, r.entries);
       }).catch(() => {});
     };
 
@@ -694,13 +977,15 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       reloadRoot();
       // 재연결 풀 리프레시는 놓친 change 이벤트의 조정 경로이므로 git 배지도 함께 갱신한다
       void refreshGitStatus();
-      for (const relPath of expandedDirsRef.current) {
-        const requestContextKey = contextKey;
-        filesRef.current.listFolder(relPath).then((r) => {
+      const requestContextKey = contextKey;
+      void runWithConcurrency([...expandedDirsRef.current], FOLDER_FETCH_CONCURRENCY, async (relPath) => {
+        try {
+          const r = await filesRef.current.listFolder(relPath);
           if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
           setChildResults((prev) => new Map(prev).set(relPath, r));
-        }).catch(() => {});
-      }
+          emitEntriesRefreshed(relPath, r.entries);
+        } catch { /* 재연결 조정 실패는 다음 이벤트에서 회복된다 */ }
+      });
     };
 
     es.addEventListener("change", (e) => {
@@ -727,8 +1012,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         filesRef.current.listFolder(relDir).then((r) => {
           if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
           setChildResults((prev) => new Map(prev).set(relDir, r));
+          emitEntriesRefreshed(relDir, r.entries);
         }).catch(() => {});
       }
+    });
+
+    es.addEventListener("state", (e) => {
+      const state = (e as MessageEvent).data as string;
+      setWatchDegraded(isWatchDegraded(state));
     });
 
     es.onopen = () => {
@@ -760,24 +1051,39 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       expandedDirsRef.current = next;
       return next;
     });
+    if (!plan.nextExpanded) {
+      setExpandFailedDirs((prev) => {
+        if (!prev.has(relPath)) return prev;
+        const next = new Set(prev);
+        next.delete(relPath);
+        return next;
+      });
+    }
     if (plan.fetch === "none") return;
     const requestContextKey = contextKey;
     const showSpinner = plan.fetch === "foreground";
     if (showSpinner) setLoadingDirs((prev) => new Set(prev).add(relPath));
+    setExpandFailedDirs((prev) => {
+      if (!prev.has(relPath)) return prev;
+      const next = new Set(prev);
+      next.delete(relPath);
+      return next;
+    });
     const request = files.listFolder(relPath).then((r) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setChildResults((prev) => new Map(prev).set(relPath, r));
-    }).catch(() => {
-      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-      // 캐시가 없는 첫 펼침 실패는 빈 폴더로 남기지 않고 접는다.
-      if (childResultsRef.current.has(relPath)) return;
-      setExpandedDirs((prev) => {
+      emitEntriesRefreshed(relPath, r.entries);
+      setExpandFailedDirs((prev) => {
         if (!prev.has(relPath)) return prev;
         const next = new Set(prev);
         next.delete(relPath);
-        expandedDirsRef.current = next;
         return next;
       });
+    }).catch(() => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      // 캐시가 없는 첫 펼침 실패는 접지 않고 인라인 재시도 행을 붙인다.
+      if (childResultsRef.current.has(relPath)) return;
+      setExpandFailedDirs((prev) => new Set(prev).add(relPath));
     }).finally(() => {
       inFlightFoldersRef.current.delete(relPath);
       if (!showSpinner) return;
@@ -823,18 +1129,21 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       setResult(r);
       setError(null);
+      emitEntriesRefreshed(r.relativePath, r.entries);
     }).catch((e: unknown) => {
       if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
       const raw = e instanceof Error ? e.message : "Unable to load folder";
       setError(translateServerError(raw, t));
     });
-    // 펼쳐진 모든 폴더 재조회
-    for (const relPath of expandedDirs) {
-      files.listFolder(relPath).then((r) => {
+    // 펼쳐진 모든 폴더 재조회 — 상한 있는 팬아웃으로
+    void runWithConcurrency([...expandedDirs], FOLDER_FETCH_CONCURRENCY, async (relPath) => {
+      try {
+        const r = await files.listFolder(relPath);
         if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
         setChildResults((prev) => new Map(prev).set(relPath, r));
-      }).catch(() => {});
-    }
+        emitEntriesRefreshed(relPath, r.entries);
+      } catch { /* 개별 폴더 실패는 조용히 둔다 — ↻로 재시도 */ }
+    });
   }, [contextKey, files, currentPath, expandedDirs, theaterId, t]);
 
   const handleRefresh = useCallback(() => {
@@ -842,12 +1151,12 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   }, [refreshGitStatus, refreshTree]);
 
   const low = filterText.toLowerCase();
-
   const gitAvailable = gitStatusResult?.gitAvailable === true;
   const gitStatusByPath = useMemo(
-    () => new Map(gitStatusResult?.statuses.map((entry) => [entry.path, entry.status]) ?? []),
+    () => new Map(gitStatusResult?.statuses.map((entry) => [entry.path.replaceAll("\\", "/"), entry.status]) ?? []),
     [gitStatusResult],
   );
+  const gitRollups = useMemo(() => rollupGitStatuses(gitStatusByPath), [gitStatusByPath]);
 
   // 삭제 파일의 고스트 행 데이터 — 실제 목록에 아직 남아 있는 경로(스테이지 삭제 등)는 제외한다.
   const deletedByDir = useMemo(() => {
@@ -870,8 +1179,56 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     return grouped as ReadonlyMap<string, readonly string[]>;
   }, [childResults, gitAvailable, gitStatusByPath, result]);
 
+  const filterTree = useMemo(() => {
+    if (!isFiltering || !filterOutcome) return null;
+    const visibleMatches = filterOutcome.files.filter((item) => showHidden || !isHiddenRelativePath(item.relativePath));
+    const ghostPaths: string[] = [];
+    const ghostByDir = new Map<string, string[]>();
+    if (gitAvailable) {
+      for (const [statusPath, status] of gitStatusByPath) {
+        if (status !== "deleted") continue;
+        if (!showHidden && isHiddenRelativePath(statusPath)) continue;
+        if (!pathMatchesQuery(statusPath, filterText)) continue;
+        ghostPaths.push(statusPath);
+        const dir = parentRelativePath(statusPath);
+        const name = nameOfRelativePath(statusPath);
+        const bucket = ghostByDir.get(dir);
+        if (bucket) bucket.push(name);
+        else ghostByDir.set(dir, [name]);
+      }
+    }
+    const extraDirs = [...new Set(ghostPaths.map((path) => parentRelativePath(path)).filter(Boolean))];
+    const synthesized = synthesizeFilterTree(visibleMatches, extraDirs);
+    return {
+      rootEntries: synthesized.rootEntries,
+      childResults: synthesized.childResults,
+      deletedByDir: ghostByDir as ReadonlyMap<string, readonly string[]>,
+      totalMatches: filterOutcome.totalMatches,
+      walkCapped: filterOutcome.walkCapped === true,
+      ignoredSkipped: filterOutcome.ignoredSkipped === true,
+    };
+  }, [filterOutcome, filterText, gitAvailable, gitStatusByPath, isFiltering, showHidden]);
+
   const flatRows = useMemo(() => {
     if (!result) return [];
+    if (isFiltering) {
+      if (!filterTree) return [];
+      return buildFlatRows(
+        filterTree.rootEntries,
+        0,
+        selectedPath,
+        expandedDirs,
+        loadingDirs,
+        filterTree.childResults,
+        "",
+        showHidden,
+        new Set(),
+        filterCollapsedDirs,
+        {},
+        "",
+        { sortMode, deletedByDir: filterTree.deletedByDir, autoExpandAll: true, failedDirs: expandFailedDirs },
+      );
+    }
     return buildFlatRows(
       result.entries,
       0,
@@ -879,24 +1236,27 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       expandedDirs,
       loadingDirs,
       childResults,
-      low,
+      isFiltering ? "" : low,
       showHidden,
       new Set(),
       filterCollapsedDirs,
       { truncatedCap: result.truncated ? result.cap : undefined, hiddenVcs: result.hiddenVcsInternals },
       "",
-      { sortMode, deletedByDir },
+      { sortMode, deletedByDir, autoExpandAll: false, failedDirs: expandFailedDirs },
     );
-  }, [result, selectedPath, expandedDirs, loadingDirs, childResults, low, showHidden, filterCollapsedDirs, sortMode, deletedByDir]);
+  }, [childResults, deletedByDir, expandFailedDirs, expandedDirs, filterCollapsedDirs, filterTree, isFiltering, loadingDirs, low, result, selectedPath, showHidden, sortMode]);
 
   const hasOnlyHiddenEntries = !showHidden && result !== null && result.entries.length > 0 && flatRows.length === 0 && !filterText;
 
   const shouldVirtualize = flatRows.length > VIRTUALIZE_THRESHOLD;
-  const startIdx = shouldVirtualize ? Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - OVERSCAN) : 0;
-  const endIdx = shouldVirtualize ? Math.min(flatRows.length, Math.ceil((scrollTop + containerHeight) / ROW_HEIGHT) + OVERSCAN) : flatRows.length;
+  const windowed = shouldVirtualize
+    ? virtualRowWindow(scrollTop, containerHeight, flatRows.length)
+    : { startIdx: 0, endIdx: flatRows.length, offsetY: 0, totalHeight: flatRows.length * ROW_HEIGHT };
+  const startIdx = windowed.startIdx;
+  const endIdx = windowed.endIdx;
   const visibleRows = flatRows.slice(startIdx, endIdx);
-  const totalHeight = flatRows.length * ROW_HEIGHT;
-  const offsetY = startIdx * ROW_HEIGHT;
+  const totalHeight = windowed.totalHeight;
+  const offsetY = windowed.offsetY;
   const selectedVisiblePath = selectedPath && hasEntryPath(flatRows, selectedPath)
     ? selectedPath
     : null;
@@ -907,14 +1267,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     ? resolvedCursorPath
     : firstEntryPath(visibleRows);
 
-  const filterMatchCount = useMemo(() => {
-    if (!low) return 0;
-    let count = 0;
-    for (const row of flatRows) {
-      if (isEntryRow(row) && row.entry.kind === "file" && row.entry.name.toLowerCase().includes(low)) count += 1;
-    }
-    return count;
-  }, [flatRows, low]);
+  const filterMatchCount = filterTree?.totalMatches ?? 0;
 
   useEffect(() => {
     if (renderedCursorPath !== cursorPath) setCursorPath(renderedCursorPath);
@@ -973,21 +1326,65 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
   };
 
+  const openRowContextMenu = (row: EntryRow, x: number, y: number) => {
+    setCursorPath(row.entry.relativePath);
+    onContextMenu(row.entry, x, y);
+  };
+
+  const retryExpand = (relPath: string) => {
+    const requestContextKey = contextKey;
+    setExpandFailedDirs((prev) => {
+      if (!prev.has(relPath)) return prev;
+      const next = new Set(prev);
+      next.delete(relPath);
+      return next;
+    });
+    setLoadingDirs((prev) => new Set(prev).add(relPath));
+    void files.listFolder(relPath).then((r) => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setChildResults((prev) => new Map(prev).set(relPath, r));
+      emitEntriesRefreshed(relPath, r.entries);
+    }).catch(() => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setExpandFailedDirs((prev) => new Set(prev).add(relPath));
+    }).finally(() => {
+      if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
+      setLoadingDirs((prev) => { const next = new Set(prev); next.delete(relPath); return next; });
+    });
+  };
+
   const handleTreeItemKeyDown = (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => {
     const index = flatRows.findIndex((candidate) => isEntryRow(candidate) && candidate.entry.relativePath === row.entry.relativePath);
     if (index < 0) return;
-    const action = resolveTreeNavigation(flatRows, index, event.key);
+    const pageSize = Math.max(1, Math.floor(containerHeight / ROW_HEIGHT));
+    const action = resolveTreeNavigation(flatRows, index, event.key, { pageSize, shiftKey: event.shiftKey });
     if (action.kind === "none") {
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") event.preventDefault();
+      const printable = event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey;
+      if (!printable) return;
+      event.preventDefault();
+      const now = Date.now();
+      const nextBuffer = now - typeaheadRef.current.at > TYPEAHEAD_RESET_MS
+        ? event.key
+        : `${typeaheadRef.current.buffer}${event.key}`;
+      typeaheadRef.current = { buffer: nextBuffer, at: now };
+      const target = resolveTypeaheadIndex(flatRows, index, nextBuffer);
+      if (target !== null) focusRow(target);
       return;
     }
     event.preventDefault();
+    if (action.kind === "openMenu") {
+      event.stopPropagation();
+      const anchor = contextMenuAnchorFromRowRect(event.currentTarget.getBoundingClientRect());
+      openRowContextMenu(row, anchor.x, anchor.y);
+      return;
+    }
     if (action.kind === "focus") {
       focusRow(action.index);
       return;
     }
     if (action.kind === "expand") {
-      if (low) {
+      if (isFiltering) {
         setFilterCollapsedDirs((current) => {
           const next = new Set(current);
           next.delete(row.entry.relativePath);
@@ -1000,12 +1397,13 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     }
     if (action.kind === "collapse") {
       if (row.entry.kind === "dir") {
-        if (low) {
+        if (isFiltering) {
           setFilterCollapsedDirs((current) => new Set(current).add(row.entry.relativePath));
         } else {
           setExpandedDirs((current) => {
             const next = new Set(current);
             next.delete(row.entry.relativePath);
+            expandedDirsRef.current = next;
             return next;
           });
         }
@@ -1020,7 +1418,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       onSelect(row.entry);
       return;
     }
-    if (!low) {
+    if (!isFiltering) {
       handleDirClick(row.entry);
       return;
     }
@@ -1039,8 +1437,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
 
   const handleRowContextMenu = (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => {
     event.preventDefault();
-    setCursorPath(row.entry.relativePath);
-    onContextMenu(row.entry, event.clientX, event.clientY);
+    openRowContextMenu(row, event.clientX, event.clientY);
   };
 
   if (!theaterId) return <div className="fexp-tree-empty">{t("fileExplorer.status.selectTheater")}</div>;
@@ -1089,6 +1486,25 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         </div>
       );
     }
+    if (row.type === "error") {
+      return (
+        <div
+          key={row.key}
+          className="fexp-tree-error"
+          style={{ paddingLeft: `${row.depth * 16 + 12}px` }}
+          role="alert"
+        >
+          <span>{t("fileExplorer.tree.expandFailed")}</span>
+          <button
+            type="button"
+            className="fexp-tree-error-retry"
+            onClick={() => retryExpand(row.relativePath)}
+          >
+            {t("fileExplorer.tree.expandRetry")}
+          </button>
+        </div>
+      );
+    }
     return (
       <FlatTreeRow
         key={row.entry.relativePath}
@@ -1097,6 +1513,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         rowRefs={rowRefs}
         gitAvailable={gitAvailable}
         gitStatus={gitStatusByPath.get(row.entry.relativePath)}
+        rollup={row.entry.kind === "dir" ? gitRollups.get(row.entry.relativePath) : undefined}
         onEntryClick={handleRowClick}
         onContextMenu={handleRowContextMenu}
         onKeyDown={handleTreeItemKeyDown}
@@ -1116,6 +1533,14 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           value={filterText}
           onChange={(e) => {
             setFilterText(e.target.value);
+            setFilterCollapsedDirs(new Set());
+          }}
+          onKeyDown={(event) => {
+            if (event.key !== "Escape") return;
+            if (!shouldClearFilterOnEscape(filterText)) return;
+            event.preventDefault();
+            event.stopPropagation();
+            setFilterText("");
             setFilterCollapsedDirs(new Set());
           }}
           aria-label={t("fileExplorer.filter.aria")}
@@ -1176,14 +1601,34 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           )}
         </button>
       </div>
-      {isFiltering && filterWalked !== null && (
+      {isFiltering && filterSearching && (
         <div className="fexp-filter-scan" role="status">
-          {t("fileExplorer.filter.scanning", { count: filterWalked })}
+          {t("fileExplorer.filter.searchingAll")}
         </div>
       )}
-      {isFiltering && filterWalked === null && filterCapped && (
+      {isFiltering && !filterSearching && !filterFailed && (
+        <div className="fexp-filter-scan" role="status">
+          {t("fileExplorer.filter.resultCount", { count: filterMatchCount })}
+        </div>
+      )}
+      {isFiltering && !filterSearching && !filterFailed && filterTree?.ignoredSkipped && (
         <div className="fexp-filter-cap" role="status">
-          {t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: FILTER_DIRECTORY_CAP })}
+          {t("fileExplorer.filter.ignoredHint")}
+        </div>
+      )}
+      {isFiltering && !filterSearching && !filterFailed && filterTree?.walkCapped && (
+        <div className="fexp-filter-cap" role="status">
+          {t("fileExplorer.filter.capped", { matches: filterMatchCount, cap: PALETTE_SEARCH_WALK_CAP })}
+        </div>
+      )}
+      {isFiltering && filterFailed && (
+        <div className="fexp-filter-cap" role="alert">
+          {t("fileExplorer.filter.searchFailed")}
+        </div>
+      )}
+      {watchDegraded && (
+        <div className="fexp-tree-degraded" role="status">
+          {t("fileExplorer.tree.watchDegraded")}
         </div>
       )}
       {gitStatusResult?.truncated && (
@@ -1219,7 +1664,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
         ) : (
           visibleRows.map(renderTreeRow)
         )}
-        {flatRows.length === 0 && filterText && (
+        {flatRows.length === 0 && isFiltering && !filterSearching && (
           <div className="fexp-tree-empty">{t("fileExplorer.status.noMatchingItems")}</div>
         )}
         {flatRows.length === 0 && !filterText && result.entries.length === 0 && (
@@ -1257,28 +1702,25 @@ function hasFilterMatch(
   return false;
 }
 
-function isVisibleDirectory(entry: FolderEntry, showHidden: boolean): boolean {
-  return entry.kind === "dir" && (showHidden || !entry.name.startsWith("."));
-}
-
 interface FlatTreeRowProps {
   readonly row: EntryRow;
   readonly cursor: boolean;
   readonly rowRefs: React.MutableRefObject<Map<string, HTMLButtonElement>>;
   readonly gitAvailable: boolean;
   readonly gitStatus: GitFileStatus | undefined;
+  readonly rollup: GitDirRollup | undefined;
   readonly onEntryClick: (row: EntryRow) => void;
   readonly onContextMenu: (row: EntryRow, event: ReactMouseEvent<HTMLButtonElement>) => void;
   readonly onKeyDown: (row: EntryRow, event: ReactKeyboardEvent<HTMLButtonElement>) => void;
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
-function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryClick, onContextMenu, onKeyDown, t }: FlatTreeRowProps) {
+function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, onEntryClick, onContextMenu, onKeyDown, t }: FlatTreeRowProps) {
   const { entry, depth, isSelected, isExpanded, isLoading } = row;
   const isDir = entry.kind === "dir";
   // 디렉터리형 행이라도 정확 경로에 상태가 있으면 배지를 단다 —
   // dirty 서브모듈/디렉터리형 심링크는 git이 그 경로 자체를 보고한다.
-  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 묰배지.
+  // 일반 디렉터리는 상태 항목 자체가 없어 자연스럽게 무배지.
   const gitBadge = gitAvailable ? mapGitStatusBadge(gitStatus) : null;
   const indent = depth * 16;
   const handleClick = useCallback(() => onEntryClick(row), [onEntryClick, row]);
@@ -1295,6 +1737,7 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryCli
       role="treeitem"
       tabIndex={cursor ? 0 : -1}
       aria-haspopup="menu"
+      aria-level={depth + 1}
       aria-selected={isSelected}
       aria-expanded={isDir ? isExpanded : undefined}
       onClick={handleClick}
@@ -1306,6 +1749,13 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, onEntryCli
       </span>
       <span className="fexp-tree-name">{entry.name}</span>
       {isLoading && <span className="fexp-tree-spin" aria-hidden="true">⋯</span>}
+      {isDir && rollup && rollup.total > 0 && (
+        <span className="fexp-tree-rollup" aria-label={t("fileExplorer.git.rollupAria", { count: rollup.total })}>
+          {rollup.modified > 0 && <span className="fexp-tree-rollup-mark is-modified" />}
+          {rollup.untracked > 0 && <span className="fexp-tree-rollup-mark is-untracked" />}
+          {rollup.deleted > 0 && <span className="fexp-tree-rollup-mark is-deleted" />}
+        </span>
+      )}
       {gitBadge && (
         <span className={`fexp-git-badge is-${gitBadge.status}`} aria-label={t(gitBadge.messageKey)}>
           {gitBadge.text}
@@ -1330,26 +1780,26 @@ function readSortMode(): SortMode {
   }
 }
 
-function readExpandedDirs(contextKey: string): readonly string[] {
+export function readExpandedDirs(contextKey: string): readonly string[] {
   try {
     const raw = localStorage.getItem(PREFS_EXPANDED_PREFIX + contextKey);
     if (!raw) return [];
     const parsed = JSON.parse(raw) as unknown;
     if (!Array.isArray(parsed)) return [];
-    return parsed.filter((item): item is string => typeof item === "string").slice(0, EXPANDED_PERSIST_CAP);
+    return selectPersistableExpanded(parsed.filter((item): item is string => typeof item === "string"));
   } catch {
     return [];
   }
 }
 
-function saveExpandedDirs(contextKey: string, expandedDirs: ReadonlySet<string>): void {
+export function saveExpandedDirs(contextKey: string, expandedDirs: ReadonlySet<string>): void {
   try {
     const key = PREFS_EXPANDED_PREFIX + contextKey;
     if (expandedDirs.size === 0) {
       localStorage.removeItem(key);
       return;
     }
-    localStorage.setItem(key, JSON.stringify([...expandedDirs].slice(0, EXPANDED_PERSIST_CAP)));
+    localStorage.setItem(key, JSON.stringify(selectPersistableExpanded(expandedDirs)));
   } catch {
     // localStorage 접근 실패 무시
   }

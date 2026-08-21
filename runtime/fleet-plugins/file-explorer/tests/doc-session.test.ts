@@ -2,12 +2,18 @@ import { describe, expect, it } from "vitest";
 
 import {
   activateDocument,
+  activateStoredDocument,
   canNavigateDocumentHistory,
   closeDocument,
   EMPTY_DOC_SESSION,
+  getFileExplorerSnapshot,
+  markDocStale,
   navigateDocumentHistory,
+  setDocViewState,
+  setWrapLines,
   type DocSession,
 } from "../client/view-store.js";
+import { isLoadedDocumentStale, stalePathsAfterRefresh } from "../client/viewer/stale.js";
 
 const doc = (relativePath: string) => ({ relativePath, name: relativePath.split("/").at(-1) ?? relativePath });
 
@@ -86,5 +92,62 @@ describe("문서 세션 전이", () => {
     session = closeDocument(session, "b.ts");
     session = navigateDocumentHistory(session, -1);
     expect(session.activePath).toBe("a.ts");
+  });
+});
+
+describe("stale document mark", () => {
+  it("같은 mtime이면 표시하지 않고 달라지면 표시한다", () => {
+    expect(isLoadedDocumentStale(10, 10)).toBe(false);
+    expect(isLoadedDocumentStale(10, 11)).toBe(true);
+    expect(isLoadedDocumentStale(undefined, 11)).toBe(false);
+    expect(isLoadedDocumentStale(10, undefined)).toBe(false);
+  });
+
+  it("새로고침된 부모 디렉터리의 열린 문서만 고른다", () => {
+    const entries = [
+      { name: "a.ts", relativePath: "src/a.ts", kind: "file" as const, mtimeMs: 20 },
+      { name: "b.ts", relativePath: "src/b.ts", kind: "file" as const, mtimeMs: 5 },
+    ];
+    expect(stalePathsAfterRefresh({
+      relativeDir: "src",
+      entries,
+      openPaths: ["src/a.ts", "src/b.ts", "README.md"],
+      loadedMtimeByPath: new Map([["src/a.ts", 10], ["src/b.ts", 5], ["README.md", 1]]),
+    })).toEqual(["src/a.ts"]);
+  });
+
+  it("표시를 세우고 다시 읽으면 지운다", () => {
+    const theater = "stale-mark-session";
+    activateStoredDocument(theater, { relativePath: "src/a.ts", name: "a.ts" });
+    setDocViewState(theater, "src/a.ts", {
+      kind: "code",
+      relativePath: "src/a.ts",
+      content: "old",
+      lang: "typescript",
+      mtimeMs: 10,
+    });
+    markDocStale(theater, "src/a.ts", true);
+    expect(getFileExplorerSnapshot(theater).docStates.get("src/a.ts")).toMatchObject({ stale: true, content: "old" });
+    setDocViewState(theater, "src/a.ts", {
+      kind: "code",
+      relativePath: "src/a.ts",
+      content: "new",
+      lang: "typescript",
+      mtimeMs: 20,
+      stale: false,
+    });
+    expect(getFileExplorerSnapshot(theater).docStates.get("src/a.ts")).toMatchObject({ stale: false, content: "new", mtimeMs: 20 });
+  });
+});
+
+describe("wrap toggle persistence", () => {
+  it("세션 동안 wrap 선택을 기억한다", () => {
+    setWrapLines(false);
+    expect(getFileExplorerSnapshot("wrap-session").wrapLines).toBe(false);
+    setWrapLines(true);
+    expect(getFileExplorerSnapshot("wrap-session").wrapLines).toBe(true);
+    expect(getFileExplorerSnapshot("other-theater").wrapLines).toBe(true);
+    setWrapLines(false);
+    expect(getFileExplorerSnapshot("wrap-session").wrapLines).toBe(false);
   });
 });

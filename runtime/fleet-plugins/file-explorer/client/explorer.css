@@ -37,7 +37,18 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fexp-root {
+  .fexp-root,
+  .fexp-divider,
+  .fexp-filter-input,
+  .fexp-filter-clear,
+  .fexp-viewer-close,
+  .fexp-viewer-stale,
+  .fexp-viewer-wrap,
+  .fexp-tree-row,
+  .fexp-hidden-toggle,
+  .fexp-sort-btn,
+  .fexp-refresh-btn,
+  .fexp-tree-error-retry {
     transition-duration: 0.01ms;
   }
 
@@ -87,22 +98,22 @@
   width: 4px;
   cursor: col-resize;
   background: var(--surface-rim);
-  transition: background 140ms;
+  transition: background var(--duration-fast) var(--ease-spring);
   flex-shrink: 0;
 }
 
 .fexp-divider:hover {
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
+  background: color-mix(in oklab, var(--brass) 50%, transparent);
 }
 
 .fexp-divider:active {
-  background: color-mix(in oklch, var(--brass) 80%, transparent);
+  background: color-mix(in oklab, var(--brass) 80%, transparent);
 }
 
 .fexp-divider:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: -2px;
-  background: color-mix(in oklch, var(--brass) 50%, transparent);
+  background: color-mix(in oklab, var(--brass) 50%, transparent);
 }
 
 /* ── 파일 행 컨텍스트 메뉴 ── */
@@ -152,7 +163,7 @@
 
 .fexp-context-menu-item:focus-visible {
   outline: none;
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
 }
 
@@ -170,12 +181,12 @@
   max-width: calc(100% - 24px);
   padding: 6px 10px;
   transform: translateX(-50%);
-  border: 1px solid color-mix(in oklch, var(--brass) 36%, var(--surface-rim));
+  border: 1px solid color-mix(in oklab, var(--brass) 36%, var(--surface-rim));
   border-radius: var(--radius-md);
   background:
     linear-gradient(
-      color-mix(in oklch, var(--brass) 12%, var(--surface-glass-strong)),
-      color-mix(in oklch, var(--brass) 12%, var(--surface-glass-strong))
+      color-mix(in oklab, var(--brass) 12%, var(--surface-glass-strong)),
+      color-mix(in oklab, var(--brass) 12%, var(--surface-glass-strong))
     ),
     var(--ink-deep);
   box-shadow: var(--shadow-anchor);
@@ -210,15 +221,59 @@
 }
 
 /* ── 열린 파일 칩 스트립 ── */
+.fexp-chips-wrap {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  min-width: 0;
+  border-bottom: 1px solid var(--surface-rim);
+}
+
 .fexp-chips {
   display: flex;
   align-items: center;
   gap: 4px;
   min-width: 0;
   padding: 6px 8px;
-  border-bottom: 1px solid var(--surface-rim);
   overflow-x: auto;
   scrollbar-width: none;
+}
+
+.fexp-chips.is-overflowing::after,
+.fexp-chips.is-scrolled::before {
+  content: "";
+  position: sticky;
+  top: 0;
+  bottom: 0;
+  width: 28px;
+  align-self: stretch;
+  flex-shrink: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.fexp-chips.is-overflowing::after {
+  right: 0;
+  margin-left: -28px;
+  background: linear-gradient(to right, transparent, var(--surface-panel));
+}
+
+.fexp-chips.is-scrolled::before {
+  left: 0;
+  margin-right: -28px;
+  background: linear-gradient(to right, var(--surface-panel), transparent);
+}
+
+.fexp-chips-more {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 10px 0 4px;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .fexp-chips::-webkit-scrollbar {
@@ -236,7 +291,7 @@
 }
 
 .fexp-chip.is-active {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
 }
 
@@ -263,7 +318,14 @@
 .fexp-chip-close:focus-visible,
 .fexp-viewer-nav:focus-visible,
 .fexp-view-mode button:focus-visible,
-.fexp-sort-btn:focus-visible {
+.fexp-sort-btn:focus-visible,
+.fexp-filter-clear:focus-visible,
+.fexp-refresh-btn:focus-visible,
+.fexp-hidden-toggle:focus-visible,
+.fexp-viewer-close:focus-visible,
+.fexp-viewer-stale:focus-visible,
+.fexp-viewer-wrap:focus-visible,
+.fexp-tree-error-retry:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: -2px;
 }
@@ -397,6 +459,47 @@
   white-space: nowrap;
 }
 
+.fexp-viewer-stale {
+  flex-shrink: 0;
+  max-width: 42%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid color-mix(in oklch, var(--warn) 30%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--warn) 9%, transparent);
+  color: var(--warn-ink);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-viewer-wrap {
+  flex-shrink: 0;
+  max-width: 28%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: 2px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-viewer-wrap[aria-pressed="true"] {
+  background: var(--surface-glass-strong);
+  color: var(--text-primary);
+}
+
 .fexp-viewer-close {
   flex-shrink: 0;
   background: none;
@@ -407,7 +510,7 @@
   line-height: 1;
   padding: 4px;
   border-radius: var(--radius-xs);
-  transition: color 0.12s;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-viewer-close:hover {
@@ -492,7 +595,7 @@
   font-size: var(--t-sm);
   padding: 3px 8px;
   outline: none;
-  transition: border-color 140ms;
+  transition: border-color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-filter-input:focus {
@@ -509,7 +612,7 @@
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   line-height: 1;
-  transition: color 0.1s;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-filter-clear:hover {
@@ -543,17 +646,19 @@
 .fexp-tree-row {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
   gap: 6px;
   width: 100%;
+  height: 30px;
   min-width: 0;
-  padding: 5px 12px;
+  padding: 0 12px;
   background: none;
   border: none;
   cursor: pointer;
   text-align: left;
   font-size: var(--t-sm);
   color: var(--text-secondary);
-  transition: background 0.1s;
+  transition: background var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-tree-row:hover {
@@ -649,19 +754,90 @@
   text-align: center;
 }
 
-.fexp-git-badge.is-modified { color: var(--warn); }
-.fexp-git-badge.is-untracked { color: var(--positive); }
-.fexp-git-badge.is-deleted { color: var(--coral); }
+.fexp-git-badge.is-modified { color: var(--warn-ink); }
+.fexp-git-badge.is-untracked { color: var(--positive-ink); }
+.fexp-git-badge.is-deleted { color: var(--coral-ink); }
 
 .fexp-tree-empty,
-.fexp-tree-loading,
-.fexp-tree-error {
+.fexp-tree-loading {
   padding: 16px 12px;
   font-size: var(--t-sm);
   color: var(--text-tertiary);
 }
 
-.fexp-tree-error { color: var(--coral-ink); }
+/* 전체 로드 실패 메시지는 문단이다 — 한 줄로 자르면 사유가 사라진다. */
+.fexp-tree-error {
+  padding: 16px 12px;
+  font-size: var(--t-sm);
+  color: var(--coral-ink);
+}
+
+/* 인라인 펼침 실패 행은 가상화 격자 위에 서므로 한 행 높이를 지킨다. */
+.fexp-tree .fexp-tree-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 12px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.fexp-tree-error-retry {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 8px;
+  border: 1px solid color-mix(in oklch, var(--coral) 30%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--coral) 8%, transparent);
+  color: var(--coral-ink);
+  cursor: pointer;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+  transition: background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tree-degraded {
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 30px;
+  padding: 0 12px;
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fexp-tree-rollup {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding-left: 8px;
+  margin-left: auto;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+/* 롤업 표식은 잎 배지(M/U/D)보다 한 단 조용한 점이다 — 조상 행은 "안에 무언가 있다"만 말하고,
+   무엇인지는 펼쳐서 잎 배지로 읽는다. 크기를 주지 않으면 aria만 남고 화면에는 아무것도 그려지지 않는다. */
+.fexp-tree-rollup-mark {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  flex: 0 0 auto;
+}
+
+.fexp-tree-rollup-mark.is-modified { color: var(--warn-ink); }
+.fexp-tree-rollup-mark.is-untracked { color: var(--positive-ink); }
+.fexp-tree-rollup-mark.is-deleted { color: var(--coral-ink); }
 
 /* ── 코드 뷰어 ── */
 .fexp-code-wrap {
@@ -682,14 +858,37 @@
 
 .fexp-code-scroll {
   flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
-.fexp-code-table {
-  border-collapse: collapse;
-  width: 100%;
+.fexp-code-sizer {
+  position: relative;
+  min-width: 100%;
+}
+
+.fexp-code-window {
+  min-width: 100%;
+}
+
+.fexp-code-wrap:not(.is-wrap) .fexp-code-window {
+  width: max-content;
+}
+
+.fexp-code-row {
+  display: grid;
+  grid-template-columns: 38px minmax(0, max-content);
+  box-sizing: border-box;
+  height: 21px;
   font-family: var(--font-mono);
   font-size: var(--t-md);
+  line-height: 21px;
+}
+
+.fexp-code-wrap.is-wrap .fexp-code-row {
+  grid-template-columns: 38px minmax(0, 1fr);
+  height: auto;
+  min-height: 21px;
   line-height: 1.6;
 }
 
@@ -699,7 +898,6 @@
   text-align: right;
   user-select: none;
   color: var(--text-tertiary);
-  vertical-align: top;
   border-right: 1px solid var(--surface-rim);
 }
 
@@ -707,7 +905,11 @@
   padding: 0 12px;
   white-space: pre;
   color: var(--text-secondary);
-  vertical-align: top;
+}
+
+.fexp-code-wrap.is-wrap .fexp-line-code {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* 구문강조 토큰 팔레트 */
@@ -834,7 +1036,7 @@
   line-height: 1;
   display: flex;
   align-items: center;
-  transition: color 0.1s;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-hidden-toggle:hover {
@@ -888,7 +1090,7 @@
   line-height: 1;
   font-family: var(--font-mono);
   font-size: var(--t-xs);
-  transition: color 0.1s;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-sort-btn:hover {
@@ -915,7 +1117,7 @@
   line-height: 1;
   display: flex;
   align-items: center;
-  transition: color 0.1s;
+  transition: color var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-refresh-btn:hover {
