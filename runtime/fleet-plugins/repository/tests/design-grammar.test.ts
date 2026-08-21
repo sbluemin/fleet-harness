@@ -367,8 +367,9 @@ describe("Repository design grammar", () => {
     // 레인을 14px 창 안으로 민다(graph.tsx GraphGutter). 오프셋은 이 컨테이너 쿼리 안에서만
     // 발동한다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다(2026-08-21 리뷰 정정).
     expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
-    expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: -14px; }");
-    expect(graphSource).toContain('compact && node.lane > 0 ? "history-graph-gutter-compact" : undefined');
+    // 오프셋은 각 행의 실제 레인(--gutter-lane)에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
+    expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
+    expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.

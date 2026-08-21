@@ -1,3 +1,5 @@
+import type { CSSProperties } from "react";
+
 import type { LogCommitEntry } from "../server/types.js";
 
 // ═══ graph-layout ════════════════════════════════════════════════════════════
@@ -159,9 +161,9 @@ interface GraphGutterProps {
   readonly node: GraphNode;
   /**
    * 축소 순서 계약의 최종 단계(320px 아래) — 거터를 1레인 폭으로 압축한다. 뷰포트 축소나
-   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, lane>0 행에만
-   * .history-graph-gutter-compact 클래스를 얹는다. 오프셋 자체는 CSS가 담당하며
-   * 320px 컨테이너 쿼리 안에서만 발동한다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다.
+   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, lane>0 행에만 자기 레인 오프셋을
+   * CSS 변수(--gutter-lane)로 실어 보낸다. 오프셋의 발동은 CSS가 담당해 320px 컨테이너
+   * 쿼리 안에서만 일어난다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다.
    */
   readonly compact?: boolean;
 }
@@ -234,7 +236,7 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
       viewBox={`0 0 ${width} ${ROW_HEIGHT}`}
       aria-hidden="true"
       className={compact && node.lane > 0 ? "history-graph-gutter-compact" : undefined}
-      style={{ display: "block", flexShrink: 0 }}
+      style={{ display: "block", flexShrink: 0, ...(compact && node.lane > 0 ? { "--gutter-lane": String(node.lane) } as CSSProperties : {}) }}
     >
       {/* passThrough 수직선 */}
       {node.passThroughLanes.map((lane) => (

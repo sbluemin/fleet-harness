@@ -1121,7 +1121,8 @@
      삼는다. SVG는 자연 크기로 남고(종횡비 보존), lane>0 행의 compact 클래스만 음수 margin으로
      현재 레인을 창 안으로 민다 — 왼쪽 고정 클립은 lane>0 행의 노드를 통째로 잃는다. */
   .history-graph-gutter { width: 14px; overflow: hidden; }
-  .history-graph-gutter-compact { margin-left: -14px; }
+  /* 오프셋은 각 행의 실제 레인에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다. */
+  .history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }
   .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
   .history-commit-body-mark { display: none; }
 }
