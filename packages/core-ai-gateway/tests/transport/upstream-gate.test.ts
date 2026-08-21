@@ -118,6 +118,22 @@ describe("upstream gate", () => {
     expect(gate.stats()).toEqual([]);
   });
 
+  it("honors a signal carried by a Request when no init is given", async () => {
+    const held = openStream();
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(held.response);
+    const gate = createUpstreamGate(fetchMock, { maxInFlight: 1 });
+    const caller = new AbortController();
+
+    await gate.fetch("https://up.example/v1");
+    // The signal lives on the Request, not on an init the caller never passed.
+    const queued = gate.fetch(new Request("https://up.example/v1", { signal: caller.signal }));
+    await Promise.resolve();
+    caller.abort(new Error("client disconnected"));
+
+    await expect(queued).rejects.toThrow("client disconnected");
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("passes through a target it cannot key", async () => {
     const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response("ok", { status: 200 }));
     const gate = createUpstreamGate(fetchMock, { maxInFlight: 1 });

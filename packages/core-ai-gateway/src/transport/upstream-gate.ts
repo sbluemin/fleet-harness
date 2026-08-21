@@ -194,7 +194,7 @@ export function createUpstreamGate(
     const origin = originOf(input);
     if (origin === undefined) return await fetchImpl(input, init);
     const queue = queueFor(origin);
-    const release = await queue.acquire(init?.signal, maxQueueWaitMs);
+    const release = await queue.acquire(signalOf(input, init), maxQueueWaitMs);
     let response: Response;
     try {
       response = await fetchImpl(input, init);
@@ -263,6 +263,21 @@ function holdUntilBodyEnds(response: Response, release: Release): Response {
 
 function canCarryBody(status: number): boolean {
   return status !== 204 && status !== 205 && status !== 304;
+}
+
+/**
+ * The signal that governs this call, wherever the caller put it.
+ *
+ * `fetch(new Request(url, { signal }))` carries no `init`, so reading `init.signal` alone leaves
+ * that caller queued until a permit or the wait bound even though it already gave up. The gate
+ * accepts a `Request` by its own signature, so it has to honour one.
+ */
+function signalOf(
+  input: string | URL | Request,
+  init: RequestInit | undefined,
+): AbortSignal | null | undefined {
+  if (init?.signal !== undefined) return init.signal;
+  return typeof input === "string" || input instanceof URL ? undefined : input.signal;
 }
 
 function originOf(input: string | URL | Request): string | undefined {

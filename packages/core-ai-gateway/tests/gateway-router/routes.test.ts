@@ -665,6 +665,24 @@ describe("upstream credential", () => {
     expect(typeof records[0]!.elapsedMs).toBe("number");
   });
 
+  it("completes the client response even when the journal sink throws", async () => {
+    // The journal is an observation surface. A host sink that throws must not replace the failure
+    // it was recording and leave the client with no response at all.
+    const gateway = {
+      stream: async () => { throw new Error("upstream died"); },
+    } as unknown as AnthropicMessagesGateway;
+    const router = createAiGatewayRouter({
+      gateway,
+      readAuth,
+      failureJournal: () => { throw new Error("sink exploded"); },
+    });
+    const res = response();
+
+    await expect(router.handle(ctx({ res, token: ANTHROPIC_CRED }))).resolves.toBe(true);
+    expect(res.status).toBe(500);
+    expect(res.body).toContain("upstream died");
+  });
+
   it("keeps a caller mistake out of the transient class it journals", async () => {
     const records: GatewayFailureRecord[] = [];
     const gateway = {

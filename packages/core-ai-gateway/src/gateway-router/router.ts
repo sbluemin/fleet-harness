@@ -464,8 +464,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ? 413
         : invalidRequest ? 400 : GATEWAY_TRANSIENT_ERROR_STATUS;
       const message = errorMessage(error);
-      // Recorded before the client is told, so a sink failure cannot change what it is told.
-      if (deps.failureJournal) {
+      const recordFailure = (): void => {
+        if (!deps.failureJournal) return;
         const code = findCauseCode(error);
         const [busiest] = upstreamGate.stats()
           .slice()
@@ -483,6 +483,14 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
             ? { upstreamInFlight: busiest.inFlight, upstreamQueued: busiest.queued }
             : {}),
         });
+      };
+      // 저널은 관측 수단일 뿐이므로, 호스트가 주입한 싱크가 던져도 클라이언트 응답을 막아서는
+      // 안 된다. 가드가 없으면 싱크의 예외가 원래 실패를 덮고 이 catch 밖으로 빠져나가, 아래
+      // 응답 종료가 실행되지 않는다.
+      try {
+        recordFailure();
+      } catch {
+        // 기록 실패는 삼킨다 — 기록하지 못한 것이 응답을 바꾸는 이유가 되면 안 된다.
       }
       if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
