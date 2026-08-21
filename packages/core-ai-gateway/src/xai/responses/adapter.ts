@@ -218,7 +218,19 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
      * reopen. Once dropped it stays dropped for this turn.
      */
     let replayAvailable = replaysXaiReasoning(request);
-    let retryAvailable = true;
+    /**
+     * Two budgets, deliberately not one.
+     *
+     * A socket that dies while the request is still being written and a stream that dies after
+     * the upstream accepted it are different faults with different causes — a stale pooled
+     * connection versus an upstream that gave up mid-turn. Sharing one budget meant the first
+     * one to fire disarmed the other, so a request that survived a stale socket on the second
+     * dial then had no attempt left when its stream dropped. Spending each where it belongs
+     * costs at most one extra dial per turn and is the difference between a recovered turn and
+     * an `API mid response error` at the client.
+     */
+    let fetchRetryAvailable = true;
+    let streamRetryAvailable = true;
     let response: AdapterResponse;
 
     // 엔드포인트는 설정이 정한 하나뿐이다. 턴 도중이든 턴 사이든 다른 쪽으로 넘어가지 않는다 —
@@ -230,11 +242,14 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
     try {
       response = await this.fetchResponse(options.apiKey, payload, controller, endpoint);
     } catch (error) {
-      if (!isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)) {
+      if (
+        !fetchRetryAvailable
+        || !isRetryableXaiFetchSocket(error, controller.signal, this.isMarkedFetchFailure)
+      ) {
         unlinkAbort();
         throw error;
       }
-      retryAvailable = false;
+      fetchRetryAvailable = false;
       wireLog("xai-responses.retry.discarded", {
         reason: "socket_termination",
         phase: "fetch",
@@ -282,7 +297,7 @@ export class XaiResponsesAdapter implements AiGatewayAdapter {
         reopen,
         controller,
         unlinkAbort,
-        retryAvailable,
+        streamRetryAvailable,
         () => replayAvailable,
       ),
     };

@@ -566,6 +566,109 @@ describe("upstream credential", () => {
     }));
   });
 
+  it("bounds concurrent upstream calls per origin and reports occupancy", async () => {
+    let open!: ReadableStreamDefaultController<Uint8Array>;
+    const held = new ReadableStream<Uint8Array>({ start(c) { open = c; } });
+    const fetchMock = vi.fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(held, {
+        status: 200, headers: { "content-type": "text/event-stream" },
+      }))
+      .mockResolvedValue(new Response("event: message_stop\n\n", {
+        status: 200, headers: { "content-type": "text/event-stream" },
+      }));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+      maxUpstreamInFlight: 1,
+    });
+
+    const settle = async (): Promise<void> => {
+      for (let tick = 0; tick < 50; tick += 1) await Promise.resolve();
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    };
+
+    const first = router.handle(ctx({
+      res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--kimi--k3[1m]",
+    }));
+    await settle();
+
+    // The first turn's stream is still open, so its socket is still counted.
+    expect(router.upstreamStats()).toEqual([
+      expect.objectContaining({ inFlight: 1, queued: 0 }),
+    ]);
+
+    const second = router.handle(ctx({
+      res: response(), token: ANTHROPIC_CRED, model: "claude-gateway--kimi--k3[1m]",
+    }));
+    await settle();
+
+    // Second turn waits for a permit rather than opening a second socket.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    open.close();
+    await first;
+    await second;
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    router.dispose();
+  });
+
+  it("reports a transient gateway fault as a status Claude Code retries", async () => {
+    // 502 is absent from the client's retry list, so a dropped upstream socket used to end the
+    // turn on the first attempt instead of reaching the 10-attempt budget.
+    const gateway = {
+      stream: async () => {
+        const error = new TypeError("fetch failed");
+        Object.defineProperty(error, "cause", { value: { code: "UND_ERR_SOCKET" } });
+        throw error;
+      },
+    } as unknown as AnthropicMessagesGateway;
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    expect(res.status).toBe(500);
+    expect(res.body).toContain("UND_ERR_SOCKET");
+  });
+
+  it("keeps a caller mistake on its own status", async () => {
+    const gateway = {
+      stream: async () => {
+        throw new ContextWindowExceededError(300_000, 200_000);
+      },
+    } as unknown as AnthropicMessagesGateway;
+    const router = createAiGatewayRouter({ gateway, readAuth });
+    const res = response();
+
+    await router.handle(ctx({ res, token: ANTHROPIC_CRED }));
+
+    expect(res.status).toBe(413);
+  });
+
+  it("lifts a passthrough upstream 503 onto overloaded_error with its body intact", async () => {
+    const fetchMock = vi.fn<typeof fetch>(async () => new Response(
+      JSON.stringify({ type: "error", error: { type: "api_error", message: "upstream said no" } }),
+      { status: 503, headers: { "content-type": "application/json" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readKimiApiKey: async () => "kimi-secret",
+    });
+    const res = response();
+
+    await router.handle(ctx({
+      res,
+      token: ANTHROPIC_CRED,
+      model: "claude-gateway--kimi--k3[1m]",
+    }));
+
+    expect(res.status).toBe(529);
+    // The wording has to survive: the client's retry detection reads the upstream's own text.
+    expect(res.body).toContain("upstream said no");
+  });
+
   it("rejects a removed Cursor model instead of forwarding it to Anthropic", async () => {
     const router = createAiGatewayRouter({
       readAuth,

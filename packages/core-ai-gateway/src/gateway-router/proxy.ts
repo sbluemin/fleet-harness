@@ -1,4 +1,7 @@
-import { projectAnthropicResponseUsage } from "../anthropic/claude-context.js";
+import {
+  claudeRetryableUpstreamStatus,
+  projectAnthropicResponseUsage,
+} from "../anthropic/claude-context.js";
 import { eagerAnthropicRequestBody } from "../anthropic/passthrough.js";
 import { withSseKeepAlive } from "../transport/sse-keepalive.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
@@ -71,7 +74,9 @@ export async function proxyAnthropicMessages(
   upstream.headers.forEach((value, key) => {
     if (!HOP_BY_HOP_HEADERS.has(key)) responseHeaders[key] = value;
   });
-  res.writeHead(upstream.status, responseHeaders);
+  // Passthrough forwards the provider's own bytes, but a status the client refuses to retry
+  // would strand a transient upstream failure that one attempt would have cleared.
+  res.writeHead(claudeRetryableUpstreamStatus(upstream.status), responseHeaders);
   if (!upstream.body) {
     res.end();
     return;

@@ -10,6 +10,7 @@ import type {
   CanonicalResponseRequest,
 } from "../canonical/index.js";
 import { OpenAIResponsesAdapter } from "../codex/responses/adapter.js";
+import { claudeRetryableUpstreamStatus } from "./claude-context.js";
 import { withSseKeepAlive } from "../transport/sse-keepalive.js";
 import { estimateTokens } from "../transport/token-estimate.js";
 import { logCanonicalEvents, wireLog, wireLogEnabled } from "../transport/wire-log.js";
@@ -100,7 +101,9 @@ export class AnthropicMessagesGateway {
         headers.set("content-length", String(translated.body.byteLength));
       }
       return {
-        status: upstream.status,
+        // The upstream body is forwarded with its wording intact so the client can still read
+        // what happened; only the status is lifted onto a code the client's retry budget acts on.
+        status: claudeRetryableUpstreamStatus(upstream.status),
         headers,
         body: oneChunk(translated.body)
       };

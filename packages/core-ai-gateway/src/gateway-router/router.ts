@@ -6,7 +6,10 @@ import {
   anthropicNativeHeaders,
   ANTHROPIC_MESSAGES_URL,
 } from "../anthropic/native.js";
-import { stripClaudeUsageLimitDirectives } from "../anthropic/claude-context.js";
+import {
+  GATEWAY_TRANSIENT_ERROR_STATUS,
+  stripClaudeUsageLimitDirectives,
+} from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
@@ -37,6 +40,8 @@ import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../s
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
 import type { CompactCeiling } from "../anthropic/claude-context.js";
 import { defaultCredentialDeps } from "../transport/credentials.js";
+import { createUpstreamGate } from "../transport/upstream-gate.js";
+import type { UpstreamGateOriginStats } from "../transport/upstream-gate.js";
 
 import { applyGatewayRequestPolicy } from "./router-policy.js";
 import {
@@ -136,17 +141,32 @@ export interface AiGatewayRouteDeps {
   readonly readModelOverride?: () => string | undefined;
   readonly cursorDiagnostics?: CursorDiagnosticSink;
   readonly fetch?: typeof fetch;
+  /**
+   * Concurrent upstream calls allowed per provider origin.
+   *
+   * Every gateway turn holds its socket for the whole stream, so this is the process's ceiling on
+   * simultaneous provider connections. Absent is the transport default.
+   */
+  readonly maxUpstreamInFlight?: number;
 }
 
 export interface AiGatewayRouter {
   readonly handle: GatewayHttpHandler;
+  /** Live upstream occupancy per provider origin. Empty when nothing is in flight. */
+  upstreamStats(): readonly UpstreamGateOriginStats[];
   /** Dispose only router-owned provider state; injected gateways remain externally owned. */
   dispose(): void;
 }
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
   const readAuth = deps.readAuth;
-  const fetchImpl = deps.fetch ?? globalThis.fetch.bind(globalThis);
+  // One gate for this router's lifetime. It is the only place that sees every upstream call, so
+  // it is also the only place that can bound them or report how many are open.
+  const upstreamGate = createUpstreamGate(
+    deps.fetch ?? globalThis.fetch.bind(globalThis),
+    deps.maxUpstreamInFlight === undefined ? {} : { maxInFlight: deps.maxUpstreamInFlight },
+  );
+  const fetchImpl = upstreamGate.fetch as typeof fetch;
   const ownedCursorAdapter = deps.gateway
     ? undefined
     : new CursorAdapter({ diagnostics: deps.cursorDiagnostics });
@@ -423,7 +443,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       // context window; a 400 carrying the same text ends the turn instead. Everything
       // else keeps 400 — a Cursor transport-budget refusal is not an overflow, and
       // reporting it as one would send the client compacting after the wrong thing.
-      const status = error instanceof ContextWindowExceededError ? 413 : invalidRequest ? 400 : 502;
+      // A transient gateway-side fault must arrive as a status Claude Code's retry budget acts
+      // on. `502` is not one of them, so every dropped socket and stalled stream used to end the
+      // turn at the client on the first try.
+      const status = error instanceof ContextWindowExceededError
+        ? 413
+        : invalidRequest ? 400 : GATEWAY_TRANSIENT_ERROR_STATUS;
       const message = errorMessage(error);
       if (res.headersSent) {
         // 헤더를 보낸 뒤에는 상태 코드를 바꿀 수 없다. 그냥 끊으면 클라이언트는
@@ -441,7 +466,11 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
 
   return {
     handle,
-    dispose: () => ownedCursorAdapter?.dispose(),
+    upstreamStats: () => upstreamGate.stats(),
+    dispose: () => {
+      upstreamGate.dispose();
+      ownedCursorAdapter?.dispose();
+    },
   };
 }
 

@@ -11,6 +11,53 @@ export const COMPACT_CEILING_CUSTOM_MAX = 99;
 
 /** Stored compact-timing policy. Absent / null is Auto (window − 16k). */
 export type CompactCeiling = "early" | "late" | number;
+
+/**
+ * The statuses Claude Code's own retry budget acts on.
+ *
+ * Documented in Claude Code's error reference: a failure that arrives before the response
+ * stream starts is retried up to `CLAUDE_CODE_MAX_RETRIES` (default 10) with exponential
+ * backoff and `retry-after` honoured — but only for these codes. Every other status ends the
+ * turn at the client, no matter how transient the cause was.
+ *
+ * `502`, `503`, and `504` are deliberately absent from that list, which is why they must not
+ * be what a transient upstream failure reaches Claude Code as.
+ */
+const CLAUDE_RETRYABLE_STATUSES: ReadonlySet<number> = new Set([408, 409, 429, 500, 529]);
+
+/**
+ * What a gateway-side transient failure reports when no upstream status exists.
+ *
+ * A dropped socket, a stalled stream, or an adapter fault is not the caller's mistake and is
+ * usually gone on the next attempt, so it has to land inside {@link CLAUDE_RETRYABLE_STATUSES}.
+ * `500` rather than `529`: the gateway cannot claim the provider was overloaded when the
+ * evidence is only that its own read failed.
+ */
+export const GATEWAY_TRANSIENT_ERROR_STATUS = 500;
+
+/**
+ * Remap an upstream status Claude Code would refuse to retry onto one it will.
+ *
+ * A bad-gateway / unavailable / timeout answer from a provider edge is the transient class the
+ * client's retry budget exists for, but the client never sees it that way because those codes
+ * are not on its list — so the turn dies on a failure that a single retry would have absorbed.
+ * Measured 2026-08-21: an upstream answered `503` with an empty body 38.7s after dispatch while
+ * the gateway was carrying concurrent streams, and the turn ended there.
+ *
+ * They become `529` (`overloaded_error`) rather than `500`: the upstream did answer, and what it
+ * answered means "not now". That is also the one code Claude Code's retry watchdog will keep
+ * retrying indefinitely when an operator turns it on.
+ *
+ * Statuses the client already retries pass through untouched, and so does every 4xx — a `400`
+ * or `413` is a verdict about the request that retrying cannot change.
+ */
+export function claudeRetryableUpstreamStatus(status: number): number {
+  if (CLAUDE_RETRYABLE_STATUSES.has(status)) return status;
+  if (status === 502 || status === 503 || status === 504) return 529;
+  // Cloudflare-family edge failures carry the same "try again" meaning.
+  if (status >= 520 && status <= 524) return 529;
+  return status;
+}
 const DEFAULT_MAX_JSON_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_SSE_FRAME_BYTES = 1024 * 1024;
 const MAX_SSE_SEPARATOR_BYTES = 4;
