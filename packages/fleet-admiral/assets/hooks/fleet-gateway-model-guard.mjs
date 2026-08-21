@@ -95,6 +95,12 @@ function readHookInput() {
 /**
  * 이 세션이 로스터를 읽었는가. 판정 근거는 하네스가 쓰는 세션 트랜스크립트다.
  *
+ * 호출이 아니라 `tool_result`가 판정 대상이다. 호출만 세면 게이트웨이가 응답하지 않아 실패로
+ * 끝난 조회와, 위임과 같은 턴에 발행되어 아직 결과가 없는 조회가 성공한 조회와 구별되지 않는다
+ * — 둘 다 로스터를 받지 못한 세션인데, 그 세션이 기억해둔 이름으로 위임하는 것이 이 게이트가
+ * 막으려는 바로 그 경우다. 하네스는 한 턴에 병렬로 발행된 호출도 각각 별도 라인으로 적으므로,
+ * 결과 없는 `tool_use`는 예외적인 모양이 아니라 흔한 중간 상태다.
+ *
  * 트랜스크립트를 볼 수 없으면 참을 돌린다. 훅이 이 필드를 받지 못하는 경로가 생겼을 때 모든
  * 위임이 막히는 쪽이, 조회 한 번을 놓치는 쪽보다 훨씬 나쁘다 — 게이트는 근거가 있을 때만 닫는다.
  */
@@ -111,8 +117,12 @@ function sessionReadRoster(input) {
   // 사용자 프롬프트에도 흔해서 그것만으로는 호출의 증거가 못 된다. 힌트가 걸린 뒤에야 라인을
   // 파싱해 진짜 tool_use인지 가린다.
   if (!LOOKUP_CALL_HINT_RE.test(raw)) return false;
+  // 결과를 기다리는 조회 호출. 결과 라인에는 도구 이름이 없으므로 id로만 이어 붙일 수 있다.
+  const awaitedLookupIds = new Set();
   for (const line of raw.split("\n")) {
-    if (!line.includes("gateway_models")) continue;
+    const namesLookup = line.includes("gateway_models");
+    const answersLookup = awaitedLookupIds.size > 0 && idMentionedIn(line, awaitedLookupIds);
+    if (!namesLookup && !answersLookup) continue;
     let entry;
     try {
       entry = JSON.parse(line);
@@ -124,10 +134,24 @@ function sessionReadRoster(input) {
     const content = entry?.message?.content;
     if (!Array.isArray(content)) continue;
     for (const contentBlock of content) {
-      if (contentBlock?.type !== "tool_use") continue;
-      if (typeof contentBlock.name !== "string") continue;
-      if (LOOKUP_TOOL_NAME_RE.test(contentBlock.name)) return true;
+      if (contentBlock?.type === "tool_use") {
+        if (typeof contentBlock.name !== "string" || typeof contentBlock.id !== "string") continue;
+        if (LOOKUP_TOOL_NAME_RE.test(contentBlock.name)) awaitedLookupIds.add(contentBlock.id);
+        continue;
+      }
+      if (contentBlock?.type !== "tool_result") continue;
+      if (!awaitedLookupIds.delete(contentBlock.tool_use_id)) continue;
+      // 성공은 `is_error`의 부재로 적힌다 — 참인 경우만 실패다. 하나만 도착하면 충분하다.
+      if (contentBlock.is_error !== true) return true;
     }
+  }
+  return false;
+}
+
+/** 이 라인이 아직 결과를 기다리는 호출 id를 언급하는가. 조회 id는 세션당 한 줌이라 선형 검사로 충분하다. */
+function idMentionedIn(line, ids) {
+  for (const id of ids) {
+    if (line.includes(id)) return true;
   }
   return false;
 }

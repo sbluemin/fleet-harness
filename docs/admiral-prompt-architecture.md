@@ -65,10 +65,16 @@ first argument:
 | `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks a fan-out from a session that has not read the roster, an unpinned `Agent` delegation, and a `Workflow` stage whose model value is misspelled. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 
-Before either judgment, `gate-delegation` asks whether this session ever called
-`gateway_models`, by scanning the session transcript for a `tool_use` block naming that
-tool. The spelling of a pin is visible in the payload; whether the name it spells still
-resolves is only in the roster. A gate that reads spelling alone passes a name carried in
+Before either judgment, `gate-delegation` asks whether this session ever received a
+roster, by scanning the session transcript for a `tool_use` block naming `gateway_models`
+and then for the `tool_result` answering that call id. The spelling of a pin is visible in
+the payload; whether the name it spells still resolves is only in the roster. The answer
+is what counts, not the call: a lookup the gateway never answered and one issued in the
+same turn as the delegation both leave the session without a roster, and the harness
+records even parallel calls on separate lines, so a `tool_use` still awaiting its result
+is an ordinary intermediate state rather than an exotic one. A result carrying
+`is_error` is a failure; success is written as that field being absent, and one answered
+call is enough. A gate that reads spelling alone passes a name carried in
 from memory or from another session, and what remains is the appearance of compliance.
 The scan ignores a lookup made inside a subagent — the host is what decides the
 delegation — and it ignores the string `gateway_models` wherever it appears outside a
