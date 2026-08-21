@@ -33,6 +33,7 @@ import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buil
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
+import { PANEL_GATEWAY_HEADER_ENV, panelGatewayHeaderValue } from "../ai-gateway-pool.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -40,6 +41,15 @@ export interface AiGatewayLaunchBinding {
   readonly routePath: string;
   /** Console이 리슨 중인 origin. MCP는 별도 포트라 여기서 유도하면 안 된다. */
   origin(): string | null;
+  /**
+   * 이 Operation이 자기 게이트웨이를 받을 때 자식이 되돌려 보낼 패널 식별자. 미주입이거나 빈
+   * 문자열이면 이 런치는 Console 공용 게이트웨이를 쓴다.
+   *
+   * 값은 spawn env에 그대로 구워지므로 런치 시점에 한 번만 정해진다 — 설정을 나중에 끄더라도
+   * 이미 떠 있는 패널은 자기 식별자를 계속 보낸다. 그게 옳다: 살아 있는 자식의 env를 바꿀
+   * 방법은 없고, 라우터는 패널이 사라질 때 회수된다.
+   */
+  panelIdFor?(operationId: string | undefined): string;
 }
 
 export interface TerminalLaunchResolverDeps {
@@ -213,6 +223,7 @@ export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDe
       cliId: context?.cliId,
       model: context?.model,
       effort: context?.effort,
+      ...(context?.operationId ? { operationId: context.operationId } : {}),
       prompt: context?.prompt,
       createSessionIdentityResolver: resolveSessionIdentityResolver,
       resumeSessionId: context?.resumeSessionId,
@@ -260,6 +271,7 @@ async function createAgentCliLaunchSpec(options: {
   readonly resolveProfile: typeof resolveAgentCliProfile;
   readonly resumeSessionId?: string;
   readonly sessionId: string;
+  readonly operationId?: string;
 }): Promise<TerminalLaunchSpec> {
   const cleanupStack: Array<() => void | Promise<void>> = [];
   try {
@@ -345,10 +357,24 @@ async function createAgentCliLaunchSpec(options: {
       if (!origin) {
         throw new Error("Fleet Console has not bound a port yet, so the AI gateway URL cannot be derived.");
       }
+      // baseUrl은 패널마다 갈라지지 않는다. Claude Code는 Claude 홈마다 게이트웨이 모델 캐시를
+      // 하나만 두고 그 baseUrl이 자기 ANTHROPIC_BASE_URL과 글자 단위로 같을 때만 인정하므로,
+      // 패널마다 다른 URL을 주면 마지막에 뜬 패널을 뺀 전부가 빈 /model 픽커를 갖게 된다.
+      // 패널 신원은 요청 헤더로 간다.
       launchProfile = prepareAiGatewayLaunchProfile(injectedProfile, {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
       });
+      const panelHeaders = panelGatewayHeaderValue(
+        launchProfile.env[PANEL_GATEWAY_HEADER_ENV],
+        options.aiGateway.panelIdFor?.(options.operationId) ?? "",
+      );
+      if (panelHeaders !== undefined) {
+        launchProfile = {
+          ...launchProfile,
+          env: { ...launchProfile.env, [PANEL_GATEWAY_HEADER_ENV]: panelHeaders },
+        };
+      }
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
     return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
