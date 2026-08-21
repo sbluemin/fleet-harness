@@ -107,6 +107,13 @@ describe("gateway model guard — Workflow delegation", () => {
     expect(stderr).toContain("claude-gateway--");
   });
 
+  // 핀 인식은 콜론 앞 공백을 허용한다. 값 검증만 놓치면 핀으로 세어진 스테이지가 검사 없이 나간다.
+  it("validates a model value written with whitespace before the colon", () => {
+    const { status, stderr } = gateWorkflow({ script: `agent("x", { model : "codex--gpt-5.6-sol-fast" })` });
+    expect(status).toBe(2);
+    expect(stderr).toContain("claude-gateway--");
+  });
+
   it("blocks a lineage alias that carries the gateway prefix", () => {
     const { status, stderr } = gateWorkflow({ script: `agent("x", { model: "claude-gateway--fable" })` });
     expect(status).toBe(2);
