@@ -562,6 +562,21 @@ export interface ClaudeResponseCompatibilityOptions {
   readonly compactCeiling?: import("./claude-context.js").CompactCeiling | null;
   /** Rewrites the echoed response model to the client-requested id. */
   readonly model?: string;
+  /**
+   * Deterministic character-based estimate of this request's input tokens, used ONLY when the
+   * upstream envelope reports no input usage at all.
+   *
+   * Responses-backed providers (xAI, Codex, OpenCode) send `usage: null` on `response.created`,
+   * so the `message_start` frame they produce would otherwise claim zero input tokens for the
+   * whole turn — and Claude Code reads that frame to size the turn while it is still running,
+   * which is what leaves those models showing `0 tok` until the turn ends. Cursor never hits
+   * this branch: its adapter synthesizes a real per-segment usage before `response.created`.
+   *
+   * This is an estimate and is labelled as one — it is a floor for a frame that would otherwise
+   * be a definite lie (zero), never a substitute for the upstream count. The terminal
+   * `message_delta` still reports whatever upstream actually measured.
+   */
+  readonly estimatedInputTokens?: number;
 }
 
 interface AnthropicCacheAwareUsage {
@@ -657,14 +672,32 @@ function nonNegativeCacheValue(value: number | undefined): number {
   return value;
 }
 
+function estimatedFallbackInputTokens(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value) || value <= 0) {
+    return 0;
+  }
+  return Math.floor(value);
+}
+
 /** Build the shared usage shape directly from a canonical response snapshot's usage. */
 function anthropicUsageFromCanonical(
   usage: CanonicalUsage | null | undefined,
   advertisedContextWindow: number | undefined,
-  options: { forceOutputZero?: boolean; compactCeiling?: ClaudeResponseCompatibilityOptions["compactCeiling"] } = {},
+  options: {
+    forceOutputZero?: boolean;
+    compactCeiling?: ClaudeResponseCompatibilityOptions["compactCeiling"];
+    estimatedInputTokens?: number;
+  } = {},
 ): AnthropicCacheAwareUsage {
+  // The estimate only stands in for a missing count, never for a measured one: any positive
+  // upstream input total wins, and the cache breakdown is left untouched because an estimate
+  // cannot say which part of it was a cache hit.
+  const reportedInputTokens = usage?.input_tokens ?? 0;
+  const inputTokens = reportedInputTokens > 0
+    ? reportedInputTokens
+    : estimatedFallbackInputTokens(options.estimatedInputTokens);
   return toAnthropicCacheAwareUsage(
-    usage?.input_tokens ?? 0,
+    inputTokens,
     usage?.cached_input_tokens,
     usage?.cache_write_input_tokens,
     options.forceOutputZero ? 0 : usage?.output_tokens ?? 0,
@@ -797,7 +830,7 @@ export async function collectAnthropicMessage(
     stop_reason: stopReason,
     stop_sequence: null,
     usage: toAnthropicCacheAwareUsage(
-      inputTokens,
+      inputTokens > 0 ? inputTokens : estimatedFallbackInputTokens(options.estimatedInputTokens),
       cachedInputTokens,
       cacheWriteInputTokens,
       outputTokens,
@@ -901,6 +934,7 @@ export async function* encodeAnthropicSse(
               usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
                 forceOutputZero: true,
                 compactCeiling: options.compactCeiling,
+                estimatedInputTokens: options.estimatedInputTokens,
               })
             }
           });
@@ -1087,6 +1121,7 @@ export async function* encodeAnthropicSse(
           // zero input usage even though Kimi's native Anthropic stream works.
           usage: anthropicUsageFromCanonical(event.response.usage, options.contextWindow, {
             compactCeiling: options.compactCeiling,
+            estimatedInputTokens: options.estimatedInputTokens,
           })
         });
         yield encode("message_stop", { type: "message_stop" });
