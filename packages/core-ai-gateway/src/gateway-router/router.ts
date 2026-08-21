@@ -406,13 +406,16 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         ?? (target.provider === "cursor"
           ? ownedCursorGateway!
           : target.provider === "opencode"
-            ? createOpencodeGateway(opencodeGoWire(target) as "responses" | "chat-completions")
+            ? createOpencodeGateway(
+              opencodeGoWire(target) as "responses" | "chat-completions",
+              fetchImpl,
+            )
             : target.provider === "xai"
               ? new AnthropicMessagesGateway(new XaiResponsesAdapter({
                 fetch: fetchImpl,
                 endpoint: xaiEndpoint(),
               }))
-              : createGatewayFor(target, chatgptAccountId, deps.originator));
+              : createGatewayFor(target, chatgptAccountId, deps.originator, fetchImpl));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()
         : undefined;
@@ -557,13 +560,17 @@ function createGatewayFor(
   model: GatewayModel,
   chatgptAccountId: string,
   originator: string,
+  fetchImpl: typeof fetch,
 ): AnthropicMessagesGateway {
   if (model.provider !== "codex") {
     throw new TypeError(`Unsupported translated gateway provider: ${model.provider}`);
   }
+  // 어댑터가 fetch를 받지 않으면 globalThis.fetch로 떨어져 게이트 밖에서 소켓을 연다.
+  // 그러면 이 라우터의 상한과 점유 보고가 이 공급자만 보지 못한다.
   return new AnthropicMessagesGateway(new CodexResponsesAdapter({
     accountId: chatgptAccountId,
     headers: { originator },
+    fetch: fetchImpl,
   }));
 }
 

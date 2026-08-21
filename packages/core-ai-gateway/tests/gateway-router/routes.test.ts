@@ -567,6 +567,28 @@ describe("upstream credential", () => {
     }));
   });
 
+  it.each([
+    ["claude-gateway--codex--gpt-5.6-sol", "codex"],
+    ["claude-gateway--opencode--deepseek-v4-flash", "opencode responses"],
+  ])("routes the %s translated adapter through the upstream gate", async (model) => {
+    // An adapter built without a fetch falls back to globalThis.fetch, which opens sockets the
+    // router neither bounds nor counts — the provider escapes the ceiling this router imposes.
+    const fetchMock = vi.fn<typeof fetch>().mockResolvedValue(new Response(
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"r\",\"output\":[]}}\n\n",
+      { status: 200, headers: { "content-type": "text/event-stream" } },
+    ));
+    const router = createAiGatewayRouter({
+      fetch: fetchMock,
+      readAuth,
+      readOpencodeApiKey: async () => "opencode-secret",
+    });
+
+    await router.handle(ctx({ res: response(), token: ANTHROPIC_CRED, model }));
+
+    expect(fetchMock).toHaveBeenCalled();
+    router.dispose();
+  });
+
   it("bounds concurrent upstream calls per origin and reports occupancy", async () => {
     let open!: ReadableStreamDefaultController<Uint8Array>;
     const held = new ReadableStream<Uint8Array>({ start(c) { open = c; } });
