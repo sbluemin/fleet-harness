@@ -319,12 +319,13 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
         fill={laneColor(node.lane)}
       />
 
-      {/* collapse 인디케이터 — compact 모드에서는 레인 내용물이 창 밖으로 밀려나므로,
-          인디케이터를 현재 레인 창 안(노드 오른쪽)에 다시 배치한다. 잘림 신호가 사라지면
-          역사가 온전해 보이는 허위 완결이 된다. */}
+      {/* collapse 인디케이터 — compact 모드에서는 SVG 전체가 -lane*14px 밀려나므로,
+          인디케이터 좌표에 같은 오프셋을 더해 활성 노드 바로 오른쪽 창 안에 둔다.
+          lane 0은 밀림이 없어도 기본 위치(lanes*14+2)가 14px 창을 벗어나므로
+          노드 오른쪽으로 당겨 온다. 잘림 신호가 사라지면 허위 완결이 된다. */}
       {node.collapsed && (
         <text
-          x={compact && node.lane > 0 ? LANE_WIDTH - 4 : lanes * LANE_WIDTH + 2}
+          x={compact ? cx + NODE_R + 3 : lanes * LANE_WIDTH + 2}
           y={cy + 4}
           fontSize={10}
           fontFamily="monospace"
