@@ -320,9 +320,10 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
       />
 
       {/* collapse 인디케이터 — compact 모드(320px 아래, CSS 컨테이너 쿼리가 판정)에서는
-          SVG가 -lane*14px 밀려나고 창이 14px로 잘리므로, 인디케이터를 end-앵커로 바꾸고
-          x는 CSS(.history-graph-gutter-compact text)가 브레이크포인트 안에서만 13px로
-          되돌린다. prop은 폭을 모르므로 좌표 분기도 CSS에 맡긴다.
+          SVG가 -lane*14px 밀려나 창은 로컬 좌표 [lane*14, lane*14+14]를 노출한다. 인디케이터를
+          활성 노드 바로 오른쪽(cx + NODE_R + 3)에 두면 어느 레인에서든 창 안에 떨어지고,
+          end-앵커로 글리프 몸통도 시작점 왼쪽에 끝난다. x·앵커 모두 CSS 변수 --gutter-lane과
+          함께 브레이크포인트 안에서만 재정의된다 — prop은 폭을 모른다.
           잘림 신호가 사라지면 허위 완결이 된다. */}
       {node.collapsed && (
         <text
@@ -332,6 +333,7 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
           fontFamily="monospace"
           fill="var(--ink-fog)"
           textAnchor={compact && node.lane > 0 ? "end" : undefined}
+          style={compact && node.lane > 0 ? ({ "--gutter-indicator-x": `${cx + NODE_R + 3}px` } as CSSProperties) : undefined}
         >
           ⋯
         </text>

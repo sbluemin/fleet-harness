@@ -1125,9 +1125,10 @@
      현재 레인을 창 안으로 민다 — 왼쪽 고정 클립은 lane>0 행의 노드를 통째로 잃는다. */
   .history-graph-gutter { width: 14px; overflow: hidden; }
   /* 오프셋은 각 행의 실제 레인에서 온다 — 고정 -14px는 lane 2+ 노드를 다시 창 밖에 남긴다.
-     인디케이터 재배치(⋯)도 같은 브레이크포인트에서만 발동한다. */
+     인디케이터(⋯)도 활성 노드 기준 좌표(--gutter-indicator-x)로 재배치한다 — 창은 로컬
+     [lane*14, lane*14+14]를 노출하므로 고정 x는 어느 레인에서든 벗어난다. */
   .history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }
-  .history-graph-gutter-compact text[text-anchor="end"] { x: 13px; }
+  .history-graph-gutter-compact text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }
   .history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr); gap: 0 6px; padding: 0 8px; }
   .history-commit-body-mark { display: none; }
 }

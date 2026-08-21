@@ -371,11 +371,11 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
     expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
     // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
-    // 좌표·앵커 분기는 CSS가 브레이크포인트 안에서만 처리한다 — prop은 폭을 모르므로
-    // 전 폭 분기면 정상 그래프의 표식 위치가 어긋난다(2026-08-21 리뷰 정정).
-    expect(graphSource).toContain("x={lanes * LANE_WIDTH + 2}");
+    // 창은 로컬 [lane*14, lane*14+14]를 노출하므로 좌표는 활성 노드 기준(--gutter-indicator-x)
+    // 이고 CSS가 브레이크포인트 안에서만 적용한다 — prop은 폭을 모른다.
+    expect(graphSource).toContain('"--gutter-indicator-x": `${cx + NODE_R + 3}px`');
     expect(graphSource).toContain('textAnchor={compact && node.lane > 0 ? "end" : undefined}');
-    expect(finalStage).toContain('.history-graph-gutter-compact text[text-anchor="end"] { x: 13px; }');
+    expect(finalStage).toContain('.history-graph-gutter-compact text[text-anchor="end"] { x: var(--gutter-indicator-x, 13px); }');
     // 커밋 행 목록이 compact 문법의 컨테이너다 — CSS만으로 브레이크포인트를 판정한다.
     // .history-list-pane은 규칙 3개(공용 min-width·스택 재선언·본체)라 본체 규칙을 직접 찾는다.
     expect(blocksOf(".history-list-pane").some((body) => body.includes("container-type: inline-size"))).toBe(true);
