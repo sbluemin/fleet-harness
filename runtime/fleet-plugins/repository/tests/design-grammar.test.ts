@@ -6,6 +6,7 @@ import { WORKSPACE_DOCK_DIVIDER_WIDTH, WORKSPACE_DOCK_MAIN_MIN_WIDTH, WORKSPACE_
 
 const css = await fs.readFile(new URL("../client/repository.css", import.meta.url), "utf8");
 const railPanelSource = await fs.readFile(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+const graphSource = await fs.readFile(new URL("../client/graph.tsx", import.meta.url), "utf8");
 
 interface CssRule {
   readonly selectors: readonly string[];
@@ -362,7 +363,10 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr);");
     expect(finalStage).toContain(".history-graph-gutter { width: 14px; overflow: hidden; }");
     // SVG 자체는 축소하지 않는다 — 뷰포트 축소는 viewBox 종횡비로 그림을 세로로 눌러 레인 선을 끊는다.
+    // lane>0 행의 노드는 왼쪽 고정 클립으로 잃어버리므로, compact 모드의 음수 margin이 현재
+    // 레인을 14px 창 안으로 민다(graph.tsx GraphGutter).
     expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
+    expect(graphSource).toContain("compact && node.lane > 0 ? { marginLeft: `-${node.lane * LANE_WIDTH}px` }");
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.

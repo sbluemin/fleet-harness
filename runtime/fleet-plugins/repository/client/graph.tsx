@@ -157,6 +157,12 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
 interface GraphGutterProps {
   readonly node: GraphNode;
+  /**
+   * 축소 순서 계약의 최종 단계(320px 아래) — 거터를 1레인 폭으로 압축한다. 뷰포트 축소나
+   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, 대신 SVG를 음수 margin으로
+   * 밀어 현재 행의 레인이 14px 창 안에 오게 한다. 종횡비는 viewBox가 그대로라 보존된다.
+   */
+  readonly compact?: boolean;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -211,7 +217,7 @@ function branchPath(fromX: number, toLane: number, cy: number): string {
 
 // ─── GraphGutter ─────────────────────────────────────────────────────────────
 
-export function GraphGutter({ node }: GraphGutterProps) {
+export function GraphGutter({ node, compact = false }: GraphGutterProps) {
   // Fork 문법 — 거터 폭은 이 행이 실제로 쓰는 레인만큼이다. 목록 전체 최대 레인 수로 고정하면
   // 분기가 하나도 없는 행까지 빈 레인만큼 본문이 밀려 좁은 rail에서 제목 폭을 상시 잠식한다.
   const lanes = Math.max(node.rowLaneCount, 1);
@@ -226,7 +232,7 @@ export function GraphGutter({ node }: GraphGutterProps) {
       height={ROW_HEIGHT}
       viewBox={`0 0 ${width} ${ROW_HEIGHT}`}
       aria-hidden="true"
-      style={{ display: "block", flexShrink: 0 }}
+      style={{ display: "block", flexShrink: 0, ...(compact && node.lane > 0 ? { marginLeft: `-${node.lane * LANE_WIDTH}px` } : {}) }}
     >
       {/* passThrough 수직선 */}
       {node.passThroughLanes.map((lane) => (
