@@ -129,6 +129,14 @@ export function restoreContextMenuFocus(
   return target;
 }
 
+export function isTreeContextMenuKey(key: string, shiftKey: boolean): boolean {
+  return key === "ContextMenu" || (key === "F10" && shiftKey);
+}
+
+export function contextMenuAnchorFromRowRect(rect: Pick<DOMRect, "left" | "bottom">): Point {
+  return { x: rect.left, y: rect.bottom };
+}
+
 export async function performFileContextAction(
   action: FileContextAction,
   theaterId: string,

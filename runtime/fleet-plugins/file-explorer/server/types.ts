@@ -27,10 +27,13 @@ export interface FileReadResult {
   readonly binary?: boolean;
   /** 디스크상 전체 크기(바이트) — truncated여도 전체 크기를 담는다. */
   readonly sizeBytes?: number;
+  /** 파일 mtime (epoch ms) — 같은 stat에서 채운다. */
+  readonly mtimeMs: number;
 }
 
 export interface FileSearchItem {
   readonly relativePath: string;
+  readonly kind: "file" | "dir";
 }
 
 export interface FileSearchResult {
@@ -39,4 +42,6 @@ export interface FileSearchResult {
   readonly totalMatches: number;
   /** 탐색 상한(디렉터리/엔트리 캡)에 걸려 전체를 탐색하지 못한 경우에만 존재 */
   readonly walkCapped?: true;
+  /** 탐색 보행이 의존성/빌드 디렉터리를 하나라도 건너뛴 경우 true */
+  readonly ignoredSkipped: boolean;
 }

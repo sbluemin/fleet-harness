@@ -8,6 +8,8 @@ import {
   performFileContextAction,
   resolveContextMenuKeyboardAction,
   restoreContextMenuFocus,
+  isTreeContextMenuKey,
+  contextMenuAnchorFromRowRect,
 } from "../client/context-menu.js";
 
 describe("file explorer row context menu", () => {
@@ -116,6 +118,13 @@ describe("file explorer row context menu", () => {
     expect(resolveContextMenuKeyboardAction(2, "Tab", 4)).toEqual({ kind: "close" });
     expect(resolveContextMenuKeyboardAction(0, "Tab", 0)).toEqual({ kind: "close" });
   });
+
+  it("treats Shift+F10 and the ContextMenu key as row menu openers", () => {
+    expect(isTreeContextMenuKey("F10", true)).toBe(true);
+    expect(isTreeContextMenuKey("F10", false)).toBe(false);
+    expect(isTreeContextMenuKey("ContextMenu", false)).toBe(true);
+    expect(contextMenuAnchorFromRowRect({ left: 20, bottom: 64 })).toEqual({ x: 20, y: 64 });
+  });
 });
 
 function createKeyboardHarness() {
@@ -170,3 +179,4 @@ function createKeyboardHarness() {
     tabStops: () => items.filter((item) => item.tabIndex === 0),
   };
 }
+

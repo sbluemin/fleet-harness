@@ -1,22 +1,26 @@
 import fs from "node:fs";
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import type { FolderListResult } from "../server/types.js";
+import {
+  buildFlatRows,
+  EXPANDED_PERSIST_CAP,
+  FOLDER_FETCH_CONCURRENCY,
+  FILTER_SEARCH_DEBOUNCE_MS,
+  isCurrentContextRequest,
+  isEntryRow,
+  PALETTE_SEARCH_LIMIT,
+  planFolderExpand,
+  readExpandedDirs,
+  runWithConcurrency,
+  saveExpandedDirs,
+  selectPersistableExpanded,
+  shouldClearFilterOnEscape,
+  synthesizeFilterTree,
+} from "../client/tree.js";
 
-import { buildFlatRows, FILTER_DIRECTORY_CAP, isCurrentContextRequest, isEntryRow, loadFilterDescendants, planFolderExpand, type PluginFilesClient } from "../client/tree.js";
-
-const ROOT_ENTRIES = [{ name: "src", relativePath: "src", kind: "dir" }] as const;
-const SRC_RESULT: FolderListResult = {
-  relativePath: "src",
-  parentRelativePath: "",
-  entries: [{ name: "nested", relativePath: "src/nested", kind: "dir" }, { name: ".git", relativePath: "src/.git", kind: "dir" }],
-};
-const NESTED_RESULT: FolderListResult = {
-  relativePath: "src/nested",
-  parentRelativePath: "src",
-  entries: [{ name: "match.ts", relativePath: "src/nested/match.ts", kind: "file" }],
-};
+const ROOT_ENTRIES = [{ name: "src", relativePath: "src", kind: "dir" as const }];
 
 describe("FileTree context request guard", () => {
   it("applies a list response only to the context that started it", () => {
@@ -30,79 +34,34 @@ describe("FileTree context request guard", () => {
     expect(source).toMatch(/<FileTree\s+key=\{contextScope\}/);
   });
 
-  it("loads unopened descendants for a filter and renders their matching path", async () => {
-    const results = new Map<string, FolderListResult>();
-    const listFolder = vi.fn(async (relativePath?: string) => {
-      if (relativePath === "src") return SRC_RESULT;
-      if (relativePath === "src/nested") return NESTED_RESULT;
-      throw new Error(`unexpected path: ${relativePath}`);
-    });
-    const files: PluginFilesClient = { listFolder };
+  it("filters with one debounced palette-search request instead of walking folders", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain("/plugins/file-explorer/files/palette-search");
+    expect(source).toContain("paletteSearchRequestBody(");
+    expect(source).toContain("FILTER_SEARCH_DEBOUNCE_MS");
+    expect(source).not.toContain("loadFilterDescendants");
+    expect(source).not.toContain("FILTER_DIRECTORY_CAP");
+    expect(FILTER_SEARCH_DEBOUNCE_MS).toBe(180);
+    expect(PALETTE_SEARCH_LIMIT).toBe(200);
+  });
 
-    await loadFilterDescendants({
-      entries: ROOT_ENTRIES,
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: (relativePath, result) => results.set(relativePath, result),
-    });
+  it("clears a non-empty filter on Escape and does not swallow Escape when empty", () => {
+    expect(shouldClearFilterOnEscape("needle")).toBe(true);
+    expect(shouldClearFilterOnEscape("")).toBe(false);
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain("shouldClearFilterOnEscape(filterText)");
+    expect(source).toContain("event.stopPropagation()");
+  });
 
-    expect(listFolder).toHaveBeenCalledWith("src");
-    expect(listFolder).toHaveBeenCalledWith("src/nested");
-    expect(listFolder).not.toHaveBeenCalledWith("src/.git");
-    expect(buildFlatRows(ROOT_ENTRIES, 0, null, new Set(), new Set(), results, "match", false).filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual([
+  it("builds the filtered tree from palette-search hits including unopened descendants", () => {
+    const { rootEntries, childResults } = synthesizeFilterTree([
+      { relativePath: "src/nested/match.ts", kind: "file" },
+    ]);
+    expect(buildFlatRows(rootEntries, 0, null, new Set(), new Set(), childResults, "", false, new Set(), new Set(), {}, "", { autoExpandAll: true }).filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual([
       "src",
       "src/nested",
       "src/nested/match.ts",
     ]);
-  });
-
-  it("stops a stale filter traversal before applying or requesting later descendants", async () => {
-    let current = true;
-    const onFolderResult = vi.fn(() => { current = false; });
-    const files: PluginFilesClient = {
-      listFolder: vi.fn(async () => SRC_RESULT),
-    };
-
-    await loadFilterDescendants({
-      entries: ROOT_ENTRIES,
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => current,
-      onFolderResult,
-    });
-
-    expect(onFolderResult).toHaveBeenCalledOnce();
-    expect(files.listFolder).toHaveBeenCalledTimes(1);
-  });
-
-  it("uses cached folder results before requesting descendants again", async () => {
-    const listFolder = vi.fn();
-    const files: PluginFilesClient = { listFolder };
-    const cachedResults = new Map<string, FolderListResult>([
-      ["src", SRC_RESULT],
-      ["src/nested", NESTED_RESULT],
-    ]);
-
-    await loadFilterDescendants({
-      entries: ROOT_ENTRIES,
-      cachedResults,
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: vi.fn(),
-    });
-
-    expect(listFolder).not.toHaveBeenCalled();
-  });
-
-  it("keeps one recursive walk active while filter text remains non-empty", () => {
-    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
-
-    expect(source).toContain("const isFiltering = Boolean(filterText);");
-    expect(source).toContain("}, [contextKey, files, isFiltering, result, showHidden]);");
   });
 
   it("re-expands from cache and joins an in-flight list instead of starting another", () => {
@@ -115,28 +74,7 @@ describe("FileTree context request guard", () => {
     expect(source).toContain("planFolderExpand(");
     expect(source).toContain("inFlightFoldersRef");
     expect(source).toContain("if (childResultsRef.current.has(relPath)) return;");
-    expect(source).toMatch(/setExpandedDirs\(\(prev\) => \{\s*if \(!prev\.has\(relPath\)\) return prev;/);
-  });
-
-  it("stops traversing when a server result repeats a visited relative path", async () => {
-    const cycleResult: FolderListResult = {
-      relativePath: "src",
-      parentRelativePath: "",
-      entries: [{ name: "loop", relativePath: "src/loop", kind: "dir" }],
-    };
-    const listFolder = vi.fn(async () => cycleResult);
-    const files: PluginFilesClient = { listFolder };
-
-    await loadFilterDescendants({
-      entries: ROOT_ENTRIES,
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: vi.fn(),
-    });
-
-    expect(listFolder).toHaveBeenCalledTimes(2);
+    expect(source).toContain("setExpandFailedDirs((prev) => new Set(prev).add(relPath))");
   });
 
   it("does not recursively render a cached cyclic folder result", () => {
@@ -156,26 +94,111 @@ describe("FileTree context request guard", () => {
     expect(rows.filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual(["src", "src/match.ts"]);
   });
 
-  it("caps distinct directory requests during recursive discovery", async () => {
-    const listFolder = vi.fn(async (relativePath?: string) => {
-      const index = Number(relativePath?.split("-").at(-1) ?? "0");
-      return {
-        relativePath: relativePath ?? "",
-        parentRelativePath: null,
-        entries: [{ name: `dir-${index + 1}`, relativePath: `dir-${index + 1}`, kind: "dir" }],
-      } satisfies FolderListResult;
-    });
-    const files: PluginFilesClient = { listFolder };
-
-    await loadFilterDescendants({
-      entries: [{ name: "dir-0", relativePath: "dir-0", kind: "dir" }],
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: vi.fn(),
-    });
-
-    expect(listFolder).toHaveBeenCalledTimes(FILTER_DIRECTORY_CAP);
+  it("notifies onEntriesRefreshed after every successful files/list", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    // 목록 결과를 통째로 넘긴다 — 뷰어가 truncated를 봐야 "행 없음"을 "파일 없음"으로 오독하지 않는다.
+    expect(source).toContain("onEntriesRefreshed?: (result: FolderListResult) => void");
+    expect(source).toContain("emitEntriesRefreshed(");
+    expect(source).toMatch(/emitEntriesRefreshed\(r\)/);
+    expect(source).toMatch(/emitEntriesRefreshed\(rootResult\)/);
   });
 });
+
+describe("expanded persist/restore cap parity", () => {
+  const memory = new Map<string, string>();
+  const localStorageStub = {
+    getItem: (key: string) => memory.get(key) ?? null,
+    setItem: (key: string, value: string) => { memory.set(key, value); },
+    removeItem: (key: string) => { memory.delete(key); },
+  };
+
+  afterEach(() => memory.clear());
+
+  Object.defineProperty(globalThis, "localStorage", {
+    configurable: true,
+    value: localStorageStub,
+  });
+
+  it("persists shallowest-first and uses one cap for save and restore", () => {
+    const selected = selectPersistableExpanded([
+      "src/deep/a",
+      "z",
+      "src",
+      "src/deep",
+    ], 3);
+    expect(selected).toEqual(["src", "z", "src/deep"]);
+    expect(EXPANDED_PERSIST_CAP).toBe(200);
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    // 저장 상한과 복원 상한이 다시 갈라지면 "열린 척하는 빈 폴더"가 돌아온다.
+    expect(source).not.toContain("EXPANDED_RESTORE_FETCH_CAP");
+    expect(source).toContain("selectPersistableExpanded(expandedDirs)");
+    // 복원은 저장된 목록 전체를 대상으로 하되 상한 있는 팬아웃으로 돈다.
+    expect(source).toContain("runWithConcurrency(stored, FOLDER_FETCH_CONCURRENCY");
+  });
+
+  it("caps how many folder fetches run at once while restoring", async () => {
+    const started: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const paths = Array.from({ length: 25 }, (_, index) => `dir-${index}`);
+    await runWithConcurrency(paths, FOLDER_FETCH_CONCURRENCY, async (path) => {
+      started.push(path);
+      inFlight += 1;
+      peak = Math.max(peak, inFlight);
+      await Promise.resolve();
+      inFlight -= 1;
+    });
+    expect(started).toHaveLength(paths.length);
+    expect(new Set(started).size).toBe(paths.length);
+    expect(peak).toBeLessThanOrEqual(FOLDER_FETCH_CONCURRENCY);
+  });
+
+  it("round-trips only the shared cap through localStorage", () => {
+    const key = "cap-parity";
+    const dirs = new Set(Array.from({ length: EXPANDED_PERSIST_CAP + 40 }, (_, index) => `d${index}/nested`));
+    saveExpandedDirs(key, dirs);
+    const restored = readExpandedDirs(key);
+    expect(restored).toHaveLength(EXPANDED_PERSIST_CAP);
+    expect(restored).toEqual(selectPersistableExpanded(dirs));
+  });
+});
+
+describe("stale-mark reach", () => {
+  it("refreshes a changed directory that holds an open document even when it is collapsed", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    // 검색으로 연 파일이나 부모를 접어 둔 파일도 낡음 표식이 서야 한다.
+    expect(source).toContain("watchedDirectoriesRef.current.has(relDir)");
+    expect(source).toContain("expandedDirsRef.current.has(relDir) || watchedByViewer");
+    // 접힌 폴더의 목록은 트리 상태를 오염시키지 않는다.
+    expect(source).toContain("if (expandedDirsRef.current.has(relDir)) setChildResults(");
+  });
+
+  it("passes the parents of open documents from the viewer to the tree", () => {
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("watchedDocumentDirectories");
+    expect(source).toContain("watchedDirectories={watchedDocumentDirectories}");
+  });
+});
+
+describe("watch degraded and failed expand source contracts", () => {
+  it("listens for the watcher state event", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain('es.addEventListener("state"');
+    expect(source).toContain("fexp-tree-degraded");
+    expect(source).toContain("fileExplorer.tree.watchDegraded");
+  });
+
+  it("gives every treeitem an aria-level", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain("aria-level={depth + 1}");
+  });
+
+  it("renders the inline retry row for a first expand failure", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    expect(source).toContain('className="fexp-tree-error"');
+    expect(source).toContain('className="fexp-tree-error-retry"');
+    expect(source).toContain("fileExplorer.tree.expandFailed");
+    expect(source).toContain("fileExplorer.tree.expandRetry");
+  });
+});
+

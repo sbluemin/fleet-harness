@@ -9,19 +9,22 @@ import {
   performFileContextAction,
   type FileContextAction,
 } from "./context-menu.js";
-import { countLines, formatByteSize } from "./format.js";
+import { buildViewerMetaParts } from "./format.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import { FileIcon } from "./file-icon.js";
 import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
-import { CodeViewer } from "./viewer/code.js";
-import { ImageViewer } from "./viewer/image.js";
+import { canWrapLines, CodeViewer } from "./viewer/code.js";
+import { cacheBustedImageSrc, ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
+import { loadedMtimeOf, parentDirOf, stalePathsAfterRefresh } from "./viewer/stale.js";
 import {
   buildSplitGridTemplate,
   canResizeTreePane,
+  CHIP_STRIP_GAP_PX,
   clampTreePaneWidth,
+  countOverflowingChips,
   getTreePaneSeparatorState,
   resizeTreePaneWithKeyboard,
   resolveExtraWidth,
@@ -31,9 +34,12 @@ import {
   canNavigateDocumentHistory,
   closeStoredDocument,
   hydrateStoredSession,
+  markDocStale,
+  seedDocMtime,
   navigateStoredHistory,
   setDocViewState,
   setTreePaneWidth,
+  setWrapLines,
   useFileExplorerViewState,
   type ViewState,
 } from "./view-store.js";
@@ -64,7 +70,8 @@ export const fileExplorerPanel: RailPanelDescriptor = {
     const response = await fetch("/plugins/file-explorer/files/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, query, limit }),
+      // 파일 열기 팔레트는 파일만 받는다 — 디렉터리를 문서로 열면 not_a_file로 끝난다.
+      body: JSON.stringify({ theaterId, query, limit, kinds: ["file"] }),
       signal,
     });
     if (!response.ok) throw new Error("file_search_failed");
@@ -128,23 +135,35 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     historyIndex,
     docStates,
     treePaneWidth,
+    wrapLines,
   } = useFileExplorerViewState(contextScope);
   const treePaneWidthRef = useRef(treePaneWidth);
   treePaneWidthRef.current = treePaneWidth;
   const rootRef = useRef<HTMLDivElement>(null);
   const fileTreeRef = useRef<FileTreeHandle | null>(null);
+  const chipsRef = useRef<HTMLDivElement>(null);
+  // Theater마다 다른 경로 공간이다 — 스코프를 바꿀 때 비우지 않으면 A의 foo.png mtime이
+  // B의 같은 이름 파일에 실려 바뀌지도 않은 문서를 낡음으로 표시한다.
+  const knownMtimesRef = useRef(new Map<string, number>());
   const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
   const [activeContextMenu, setActiveContextMenu] = useState<ActiveContextMenu | null>(null);
   const [feedback, setFeedback] = useState<InlineFeedback | null>(null);
   const [splitContainerWidth, setSplitContainerWidth] = useState(0);
+  const [viewportWidth, setViewportWidth] = useState(() => typeof window === "undefined" ? 0 : window.innerWidth);
+  const [chipOverflow, setChipOverflow] = useState(0);
+  const [chipsScrolled, setChipsScrolled] = useState(false);
   // 마크다운 소스 모드로 보는 경로들 — 문서별로 기억하고 프리뷰가 기본이다.
   const [sourceModePaths, setSourceModePaths] = useState<ReadonlySet<string>>(new Set());
   const searchTarget = useFileSearchTarget();
 
   // theaterId 변경마다 새 클라이언트 인스턴스를 생성한다(PluginFilesClient는 stateless).
   const files = useMemo(() => makeFilesClient(theaterId), [theaterId]);
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const contextScopeRef = useRef(contextScope);
+  contextScopeRef.current = contextScope;
 
   const docSession = useMemo(
     () => ({ openDocs, activePath, history, historyIndex }),
@@ -156,6 +175,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     hydrateStoredSession(contextScope || null);
   }, [contextScope]);
 
+  useEffect(() => {
+    knownMtimesRef.current = new Map<string, number>();
+  }, [contextScope]);
+
   const fetchDocContent = useCallback(async (relativePath: string, silent: boolean) => {
     if (!theaterId) return;
     const scope = contextScope;
@@ -163,8 +186,23 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     const ext = name.slice(name.lastIndexOf(".")).toLowerCase();
 
     if (IMAGE_EXTS.has(ext)) {
-      const src = `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`;
-      setDocViewState(scope, relativePath, { kind: "image", relativePath, name, src });
+      // 부모 폴더를 한 번도 나열한 적이 없으면(검색·세션 복원으로 연 경우) 기준 mtime이 없다.
+      // 그 상태로 두면 첫 목록이 "이미 바뀐 뒤"의 값일 수 있어 그 변경을 영영 놓친다 — 지금 확보한다.
+      if (!knownMtimesRef.current.has(relativePath)) {
+        try {
+          const listing = await filesRef.current.listFolder(parentDirOf(relativePath));
+          for (const entry of listing.entries) {
+            if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+          }
+        } catch { /* 목록 실패는 표식 없이 여는 것으로 감수한다 — 다음 목록에서 회복된다 */ }
+        if (scope !== contextScopeRef.current) return;
+      }
+      const mtimeMs = knownMtimesRef.current.get(relativePath);
+      const src = cacheBustedImageSrc(
+        `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,
+        mtimeMs,
+      );
+      setDocViewState(scope, relativePath, { kind: "image", relativePath, name, src, mtimeMs, stale: false });
       return;
     }
 
@@ -185,6 +223,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
         setDocViewState(scope, relativePath, { kind: "binary", name });
         return;
       }
+      knownMtimesRef.current.set(relativePath, result.mtimeMs);
       setDocViewState(scope, relativePath, {
         kind: "code",
         relativePath: result.relativePath,
@@ -192,6 +231,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
         lang: result.lang,
         truncated: result.truncated,
         sizeBytes: result.sizeBytes,
+        mtimeMs: result.mtimeMs,
+        stale: false,
       });
     } catch (e: unknown) {
       const raw = e instanceof Error ? e.message : "Unable to load file";
@@ -212,6 +253,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   // 활성 문서가 바뀔 때 내용을 불러온다 — 캐시가 있으면 즉시 그리고 배경에서 재검증한다.
   const docStatesRef = useRef(docStates);
   docStatesRef.current = docStates;
+  const openDocsRef = useRef(openDocs);
+  openDocsRef.current = openDocs;
   useEffect(() => {
     if (!activePath) return;
     void fetchDocContent(activePath, docStatesRef.current.has(activePath));
@@ -226,12 +269,48 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   const handleSelect = useCallback((entry: FolderEntry) => {
     if (entry.kind !== "file") return;
+    if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
     openFilePath(entry.relativePath, entry.name);
   }, [openFilePath]);
+
+  const handleEntriesRefreshed = useCallback((result: FolderListResult) => {
+    const entries = result.entries;
+    for (const entry of entries) {
+      if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+    }
+    const loadedMtimeByPath = new Map<string, number | undefined>();
+    for (const doc of openDocsRef.current) {
+      loadedMtimeByPath.set(doc.relativePath, loadedMtimeOf(docStatesRef.current.get(doc.relativePath)));
+    }
+    // 목록이 먼저 도착하는 경우(검색·세션 복원으로 연 문서)를 위해, mtime 없이 열린
+    // 문서에는 이제 알게 된 mtime을 심어 준다 — 그러지 않으면 이후 변경이 영원히 표식 없이 지나간다.
+    for (const doc of openDocsRef.current) {
+      if (loadedMtimeByPath.get(doc.relativePath) !== undefined) continue;
+      const known = knownMtimesRef.current.get(doc.relativePath);
+      if (known === undefined) continue;
+      seedDocMtime(contextScope, doc.relativePath, known);
+      loadedMtimeByPath.set(doc.relativePath, known);
+    }
+    const stale = stalePathsAfterRefresh({
+      relativeDir: result.relativePath,
+      entries,
+      openPaths: openDocsRef.current.map((doc) => doc.relativePath),
+      loadedMtimeByPath,
+      truncated: result.truncated === true,
+    });
+    for (const path of stale) {
+      markDocStale(contextScope, path, true);
+    }
+  }, [contextScope]);
 
   const handleCloseDoc = useCallback((relativePath: string) => {
     closeStoredDocument(contextScope, relativePath);
   }, [contextScope]);
+
+  const handleReloadStale = useCallback(() => {
+    if (!activePath) return;
+    void fetchDocContent(activePath, true);
+  }, [activePath, fetchDocContent]);
 
   const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== "Escape") return;
@@ -338,8 +417,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     : { kind: "none" };
   const isMarkdownDoc = viewState.kind === "code" && viewState.lang === "markdown";
   const showSource = activePath !== null && sourceModePaths.has(activePath);
+  const showCodePane = viewState.kind === "code" && (!isMarkdownDoc || showSource);
+  // 줄바꿈은 창을 나누지 않고 전부 그리므로, 감당 가능한 줄 수까지만 연다.
+  const wrapAvailable = viewState.kind === "code" && canWrapLines(viewState.content.split("\n").length);
   const canGoBack = canNavigateDocumentHistory(docSession, -1);
   const canGoForward = canNavigateDocumentHistory(docSession, 1);
+  const isStale = (viewState.kind === "code" || viewState.kind === "image") && Boolean(viewState.stale);
 
   const handleToggleSourceMode = useCallback((source: boolean) => {
     if (!activePath) return;
@@ -367,17 +450,74 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     return () => observer.disconnect();
   }, [isViewerActive]);
 
+  useEffect(() => {
+    const onResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
   useLayoutEffect(() => {
-    ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive));
-  }, [ctx, isViewerActive]);
+    ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive, viewportWidth));
+  }, [ctx, isViewerActive, viewportWidth]);
+
+  /** 열린 문서들의 부모 폴더 — 트리에서 접혀 있어도 이 폴더의 변경은 지켜봐야 낡음 표식이 선다. */
+  const watchedDocumentDirectories = useMemo(() => {
+    const dirs = new Set<string>();
+    for (const doc of openDocs) {
+      const slash = doc.relativePath.lastIndexOf("/");
+      dirs.add(slash < 0 ? "" : doc.relativePath.slice(0, slash));
+    }
+    return [...dirs];
+  }, [openDocs]);
+
+  const measureChipOverflow = useCallback(() => {
+    const container = chipsRef.current;
+    if (!container) {
+      setChipOverflow(0);
+      setChipsScrolled(false);
+      return;
+    }
+    const widths = [...container.querySelectorAll<HTMLElement>(".fexp-chip")].map((el) => el.getBoundingClientRect().width);
+    setChipOverflow(countOverflowingChips(container.clientWidth, container.scrollLeft, widths, CHIP_STRIP_GAP_PX));
+    setChipsScrolled(container.scrollLeft > 1);
+  }, []);
+
+  /**
+   * 활성 칩을 띠 안으로 끌어온다. scrollIntoView({inline:"nearest"})는 칩이 "조금 걸친" 상태를
+   * 이미 보이는 것으로 판정해 그대로 두므로(실측: 오른쪽 끝이 31px 잘린 채 유지), 좌표로 직접 민다.
+   */
+  const ensureActiveChipVisible = useCallback(() => {
+    const container = chipsRef.current;
+    const activeChip = container?.querySelector<HTMLElement>(".fexp-chip.is-active");
+    if (!container || !activeChip) return;
+    const left = activeChip.offsetLeft;
+    const right = left + activeChip.offsetWidth;
+    const viewLeft = container.scrollLeft;
+    const viewRight = viewLeft + container.clientWidth;
+    if (left < viewLeft) container.scrollLeft = Math.max(0, left - CHIP_STRIP_GAP_PX);
+    else if (right > viewRight) container.scrollLeft = right - container.clientWidth + CHIP_STRIP_GAP_PX;
+  }, []);
+
+  useLayoutEffect(() => {
+    const container = chipsRef.current;
+    if (!container || !isViewerActive) {
+      setChipOverflow(0);
+      setChipsScrolled(false);
+      return;
+    }
+    measureChipOverflow();
+    ensureActiveChipVisible();
+    measureChipOverflow();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measureChipOverflow);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [activePath, chipOverflow, ensureActiveChipVisible, isViewerActive, measureChipOverflow, openDocs]);
 
   const dividerState = getTreePaneSeparatorState(treePaneWidth, splitContainerWidth);
 
   const viewerMeta = viewState.kind === "code"
-    ? [
-      viewState.sizeBytes !== undefined ? formatByteSize(viewState.sizeBytes) : null,
-      t("fileExplorer.viewer.lines", { count: countLines(viewState.content) }),
-    ].filter((part): part is string => part !== null && part !== "")
+    ? buildViewerMetaParts(viewState, t)
     : [];
 
   return (
@@ -392,33 +532,49 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       {isViewerActive && (
         <>
           <div className="fexp-viewer-pane">
-            <div className="fexp-chips" role="list" aria-label={t("fileExplorer.viewer.openFiles")}>
-              {openDocs.map((doc) => (
-                <div
-                  key={doc.relativePath}
-                  role="listitem"
-                  className={`fexp-chip${doc.relativePath === activePath ? " is-active" : ""}`}
+            <div className="fexp-chips-wrap">
+              <div
+                ref={chipsRef}
+                className={`fexp-chips${chipOverflow > 0 ? " is-overflowing" : ""}${chipsScrolled ? " is-scrolled" : ""}`}
+                role="list"
+                aria-label={t("fileExplorer.viewer.openFiles")}
+                onScroll={measureChipOverflow}
+              >
+                {openDocs.map((doc) => (
+                  <div
+                    key={doc.relativePath}
+                    role="listitem"
+                    className={`fexp-chip${doc.relativePath === activePath ? " is-active" : ""}`}
+                  >
+                    <button
+                      type="button"
+                      className="fexp-chip-open"
+                      aria-current={doc.relativePath === activePath ? "true" : undefined}
+                      title={doc.relativePath}
+                      onClick={() => openFilePath(doc.relativePath, doc.name)}
+                    >
+                      <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
+                      <span className="fexp-chip-name">{doc.name}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="fexp-chip-close"
+                      aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
+                      onClick={() => handleCloseDoc(doc.relativePath)}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {chipOverflow > 0 && (
+                <span
+                  className="fexp-chips-more"
+                  title={t("fileExplorer.viewer.moreChipsTitle", { count: chipOverflow })}
                 >
-                  <button
-                    type="button"
-                    className="fexp-chip-open"
-                    aria-current={doc.relativePath === activePath ? "true" : undefined}
-                    title={doc.relativePath}
-                    onClick={() => openFilePath(doc.relativePath, doc.name)}
-                  >
-                    <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
-                    <span className="fexp-chip-name">{doc.name}</span>
-                  </button>
-                  <button
-                    type="button"
-                    className="fexp-chip-close"
-                    aria-label={t("fileExplorer.viewer.closeNamed", { name: doc.name })}
-                    onClick={() => handleCloseDoc(doc.relativePath)}
-                  >
-                    ✕
-                  </button>
-                </div>
-              ))}
+                  {t("fileExplorer.viewer.moreChips", { count: chipOverflow })}
+                </span>
+              )}
             </div>
             <div className="fexp-viewer-head">
               <button
@@ -454,6 +610,33 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   <span className="fexp-viewer-dir">{dirOfPath(activePath)}</span>
                 )}
               </span>
+              {isStale && (
+                <button
+                  type="button"
+                  className="fexp-viewer-stale"
+                  title={t("fileExplorer.viewer.staleTitle")}
+                  onClick={handleReloadStale}
+                >
+                  {t("fileExplorer.viewer.staleReload")}
+                </button>
+              )}
+              {showCodePane && (
+                <button
+                  type="button"
+                  className="fexp-viewer-wrap"
+                  aria-pressed={wrapLines && wrapAvailable}
+                  disabled={!wrapAvailable}
+                  title={wrapAvailable
+                    ? (wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn"))
+                    : t("fileExplorer.viewer.wrapUnavailable")}
+                  aria-label={wrapAvailable
+                    ? (wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn"))
+                    : t("fileExplorer.viewer.wrapUnavailable")}
+                  onClick={() => setWrapLines(!wrapLines)}
+                >
+                  {wrapLines && wrapAvailable ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn")}
+                </button>
+              )}
               {isMarkdownDoc && (
                 <div className="fexp-view-mode" role="group" aria-label={t("fileExplorer.viewer.viewModeAria")}>
                   <button
@@ -494,8 +677,14 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                   language={ctx.language}
                 />
               )}
-              {viewState.kind === "code" && (!isMarkdownDoc || showSource) && (
-                <CodeViewer content={viewState.content} lang={viewState.lang} truncated={viewState.truncated} t={t} />
+              {showCodePane && viewState.kind === "code" && (
+                <CodeViewer
+                  content={viewState.content}
+                  lang={viewState.lang}
+                  truncated={viewState.truncated}
+                  wrap={wrapLines}
+                  t={t}
+                />
               )}
               {viewState.kind === "image" && (
                 <ImageViewer src={viewState.src} name={viewState.name} />
@@ -543,6 +732,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           revealTarget={revealTarget}
           onSelect={handleSelect}
           onContextMenu={handleOpenContextMenu}
+          onEntriesRefreshed={handleEntriesRefreshed}
+          watchedDirectories={watchedDocumentDirectories}
           t={t}
         />
       </div>

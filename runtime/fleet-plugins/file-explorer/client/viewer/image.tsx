@@ -3,6 +3,12 @@ interface ImageViewerProps {
   readonly name: string;
 }
 
+export function cacheBustedImageSrc(src: string, mtimeMs: number | undefined): string {
+  if (mtimeMs === undefined) return src;
+  const separator = src.includes("?") ? "&" : "?";
+  return `${src}${separator}t=${mtimeMs}`;
+}
+
 export function ImageViewer({ src, name }: ImageViewerProps) {
   return (
     <div className="fexp-img-wrap">

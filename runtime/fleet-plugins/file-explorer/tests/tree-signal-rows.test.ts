@@ -1,12 +1,15 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   buildFlatRows,
-  FILTER_DIRECTORY_CAP,
   isEntryRow,
-  loadFilterDescendants,
+  PALETTE_SEARCH_LIMIT,
+  paletteSearchRequestBody,
   resolveTreeNavigation,
-  type PluginFilesClient,
+  synthesizeFilterTree,
+  virtualRowWindow,
+  ROW_HEIGHT,
+  TREE_PADDING_Y,
   type TreeRow,
 } from "../client/tree.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
@@ -25,13 +28,15 @@ function rowKinds(rows: readonly TreeRow[]): string[] {
 
 describe("buildFlatRows signal rows", () => {
   it("appends a cap row after the children of a truncated folder", () => {
+    const children = Array.from({ length: 3 }, (_, index) => entry(`a${index}.txt`, `many/a${index}.txt`, "file"));
     const root = [entry("many", "many", "dir"), entry("readme.md", "readme.md", "file")];
-    const many = folderResult("many", [entry("a.txt", "many/a.txt", "file")], { truncated: true, cap: 500 });
+    const many = folderResult("many", children, { truncated: true, cap: 500 });
     const rows = buildFlatRows(root, 0, null, new Set(["many"]), new Set(), new Map([["many", many]]), "", false);
 
-    expect(rowKinds(rows)).toEqual(["entry", "entry", "cap", "entry"]);
-    const cap = rows[2];
-    expect(cap).toMatchObject({ type: "cap", depth: 1, cap: 500 });
+    expect(rowKinds(rows)).toEqual(["entry", "entry", "entry", "entry", "cap", "entry"]);
+    const cap = rows[4];
+    // 안내문의 수는 상한 상수가 아니라 실제로 보여준 항목 수다 — 분류에서 버려진 항목이 있으면 둘은 다르다.
+    expect(cap).toMatchObject({ type: "cap", depth: 1, cap: children.length });
   });
 
   it("appends a root-level cap row when the root listing is truncated", () => {
@@ -140,47 +145,92 @@ describe("resolveTreeNavigation over marker rows", () => {
   });
 });
 
-describe("loadFilterDescendants stats", () => {
-  it("reports walked counts through onProgress and returns them", async () => {
-    const progress: number[] = [];
-    const files: PluginFilesClient = {
-      listFolder: vi.fn(async (relativePath?: string) =>
-        relativePath === "src"
-          ? folderResult("src", [entry("nested", "src/nested", "dir")])
-          : folderResult("src/nested", [])),
-    };
-
-    const stats = await loadFilterDescendants({
-      entries: [entry("src", "src", "dir")],
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: vi.fn(),
-      onProgress: (walked) => progress.push(walked),
+describe("palette-search filter tree", () => {
+  it("issues a single palette-search body with limit 200", () => {
+    expect(paletteSearchRequestBody("theater-a", "needle", true)).toEqual({
+      theaterId: "theater-a",
+      query: "needle",
+      limit: PALETTE_SEARCH_LIMIT,
+      includeHidden: true,
     });
-
-    expect(stats).toEqual({ walked: 2, capped: false });
-    expect(progress).toEqual([1, 2]);
+    // 숨김 토글이 꺼져 있으면 서버가 상한·집계 전에 걸러야 표시 수와 안내 수가 일치한다.
+    expect(paletteSearchRequestBody("theater-a", "needle", false)).toMatchObject({ includeHidden: false });
+    expect(PALETTE_SEARCH_LIMIT).toBe(200);
   });
 
-  it("flags capped when the directory cap stops the walk", async () => {
-    const listFolder = vi.fn(async (relativePath?: string) => {
-      const index = Number(relativePath?.split("-").at(-1) ?? "0");
-      return folderResult(relativePath ?? "", [entry(`dir-${index + 1}`, `dir-${index + 1}`, "dir")]);
-    });
-    const files: PluginFilesClient = { listFolder };
+  it("synthesizes ancestor directories so matches stay in tree form", () => {
+    const { rootEntries, childResults } = synthesizeFilterTree([
+      { relativePath: "src/deep/a/b/c/d/needle-target.ts", kind: "file" },
+    ]);
+    const rows = buildFlatRows(
+      rootEntries,
+      0,
+      null,
+      new Set(),
+      new Set(),
+      childResults,
+      "",
+      false,
+      new Set(),
+      new Set(),
+      {},
+      "",
+      { autoExpandAll: true },
+    );
+    expect(rows.filter(isEntryRow).map((row) => row.entry.relativePath)).toEqual([
+      "src",
+      "src/deep",
+      "src/deep/a",
+      "src/deep/a/b",
+      "src/deep/a/b/c",
+      "src/deep/a/b/c/d",
+      "src/deep/a/b/c/d/needle-target.ts",
+    ]);
+  });
 
-    const stats = await loadFilterDescendants({
-      entries: [entry("dir-0", "dir-0", "dir")],
-      cachedResults: new Map(),
-      files,
-      showHidden: false,
-      isCurrent: () => true,
-      onFolderResult: vi.fn(),
-    });
+  it("keeps a failed expand open with an inline error row", () => {
+    const root = [entry("src", "src", "dir")];
+    const rows = buildFlatRows(
+      root,
+      0,
+      null,
+      new Set(["src"]),
+      new Set(),
+      new Map(),
+      "",
+      false,
+      new Set(),
+      new Set(),
+      {},
+      "",
+      { failedDirs: new Set(["src"]) },
+    );
+    expect(rows.map((row) => (row.type === "entry" ? row.entry.relativePath : row.type))).toEqual([
+      "src",
+      "error",
+    ]);
+    expect(rows[0]).toMatchObject({ type: "entry", isExpanded: true });
+  });
 
-    expect(stats.capped).toBe(true);
-    expect(stats.walked).toBe(FILTER_DIRECTORY_CAP);
+  it("does not render a directory as expanded when children were not fetched", () => {
+    const root = [entry("src", "src", "dir")];
+    const rows = buildFlatRows(root, 0, null, new Set(["src"]), new Set(), new Map(), "", false);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ type: "entry", isExpanded: false });
+  });
+});
+
+describe("virtualRowWindow", () => {
+  it("accounts for the tree container's 8px vertical padding in the index math", () => {
+    const atRest = virtualRowWindow(0, 600, 400);
+    expect(atRest.startIdx).toBe(0);
+    expect(atRest.totalHeight).toBe(400 * ROW_HEIGHT);
+
+    const afterPadding = virtualRowWindow(TREE_PADDING_Y, 600, 400);
+    expect(afterPadding.startIdx).toBe(0);
+
+    const oneRowDown = virtualRowWindow(TREE_PADDING_Y + ROW_HEIGHT, 60, 400);
+    expect(oneRowDown.startIdx).toBe(0); // overscan pulls the previous row in
+    expect(oneRowDown.endIdx).toBeGreaterThan(1);
   });
 });

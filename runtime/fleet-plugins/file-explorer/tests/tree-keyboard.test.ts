@@ -2,7 +2,8 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { buildFlatRows, isEntryRow, resolveTreeNavigation, type EntryRow } from "../client/tree.js";
+import { buildFlatRows, isEntryRow, resolveTreeNavigation, resolveTypeaheadIndex, type EntryRow } from "../client/tree.js";
+import { contextMenuAnchorFromRowRect, isTreeContextMenuKey } from "../client/context-menu.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
 describe("FileTree keyboard navigation", () => {
@@ -161,3 +162,39 @@ const CHILD_RESULTS = new Map<string, FolderListResult>([
     entry("match.md", "docs/match.md", "file"),
   ] }],
 ]);
+
+describe("FileTree keyboard completeness", () => {
+  it("jumps type-ahead to the next row whose name starts with the buffer", () => {
+    const current = rows(new Set(["src"]), "");
+    const srcIndex = current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "src");
+    const matchIndex = current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "src/match.ts");
+    expect(resolveTypeaheadIndex(current, srcIndex, "m")).toBe(matchIndex);
+    const otherIndex = current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "src/other.ts");
+    expect(resolveTypeaheadIndex(current, matchIndex, "o")).toBe(otherIndex);
+  });
+
+  it("pages by one viewport of rows", () => {
+    const current = rows(new Set(["src", "docs"]), "");
+    const start = current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "src");
+    expect(resolveTreeNavigation(current, start, "PageDown", { pageSize: 2 })).toEqual({
+      kind: "focus",
+      index: current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "src/other.ts"),
+    });
+    const end = current.findIndex((row) => isEntryRow(row) && row.entry.relativePath === "root.txt");
+    expect(resolveTreeNavigation(current, end, "PageUp", { pageSize: 10 })).toEqual({
+      kind: "focus",
+      index: start,
+    });
+  });
+
+  it("opens the focused row context menu from Shift+F10 and the ContextMenu key", () => {
+    const current = rows(new Set(), "");
+    expect(resolveTreeNavigation(current, 0, "F10", { shiftKey: true })).toEqual({ kind: "openMenu" });
+    expect(resolveTreeNavigation(current, 0, "ContextMenu")).toEqual({ kind: "openMenu" });
+    expect(resolveTreeNavigation(current, 0, "F10")).toEqual({ kind: "none" });
+    expect(isTreeContextMenuKey("F10", true)).toBe(true);
+    expect(isTreeContextMenuKey("ContextMenu", false)).toBe(true);
+    expect(contextMenuAnchorFromRowRect({ left: 12, bottom: 40 })).toEqual({ x: 12, y: 40 });
+  });
+
+});

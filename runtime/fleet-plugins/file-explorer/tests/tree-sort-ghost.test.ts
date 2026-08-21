@@ -74,12 +74,12 @@ describe("삭제 고스트 행", () => {
     ]);
   });
 
-  it("필터 중에는 고스트를 내지 않고, 숨김 규칙을 따른다", () => {
+  it("필터 중에도 이름에 바늘이 있는 고스트를 유지하고, 숨김 규칙을 따른다", () => {
     const filtered = buildFlatRows(
       rootEntries, 0, null, new Set(), new Set(), new Map(), "keep", false, new Set(), new Set(), {}, "",
       { deletedByDir: new Map([["", ["keep-gone.ts"]]]) },
     );
-    expect(filtered.some((row) => row.type === "ghost")).toBe(false);
+    expect(filtered.some((row) => row.type === "ghost" && row.name === "keep-gone.ts")).toBe(true);
 
     const hiddenGhost = buildFlatRows(
       rootEntries, 0, null, new Set(), new Set(), new Map(), "", false, new Set(), new Set(), {}, "",

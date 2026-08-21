@@ -30,12 +30,25 @@ describe("목록/읽기 메타", () => {
     expect(dirEntry?.mtimeMs).toBeTypeOf("number");
   });
 
-  it("파일 읽기는 전체 크기(sizeBytes)를 싣는다", async () => {
+  it("파일 읽기는 전체 크기(sizeBytes)와 mtimeMs를 싣는다", async () => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "fexp-meta-"));
     fs.writeFileSync(path.join(dir, "a.txt"), "hello\nworld\n");
 
     const result = await readFileForTheater(dir, "a.txt");
     expect(result.sizeBytes).toBe(12);
     expect(result.truncated).toBeUndefined();
+    expect(result.mtimeMs).toBe(fs.statSync(path.join(dir, "a.txt")).mtimeMs);
+  });
+
+  it("1 MiB cap으로 잘린 읽기도 mtimeMs를 싣는다", async () => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "fexp-meta-"));
+    const payload = Buffer.alloc(1024 * 1024 + 40, 97);
+    fs.writeFileSync(path.join(dir, "big.txt"), payload);
+
+    const result = await readFileForTheater(dir, "big.txt");
+    expect(result.truncated).toBe(true);
+    expect(result.content).toHaveLength(1024 * 1024);
+    expect(result.sizeBytes).toBe(1024 * 1024 + 40);
+    expect(result.mtimeMs).toBe(fs.statSync(path.join(dir, "big.txt")).mtimeMs);
   });
 });
