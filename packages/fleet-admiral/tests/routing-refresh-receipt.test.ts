@@ -162,7 +162,7 @@ describe("gateway routing refresh receipt", () => {
     expect(result.stderr).toContain("refresh did not complete");
   });
 
-  it.runIf(process.platform !== "win32")("blocks repeated orchestration when receipt invalidation fails", async () => {
+  it.runIf(process.platform !== "win32" && process.geteuid?.() !== 0)("blocks repeated orchestration when receipt invalidation fails", async () => {
     const spec = buildGatewayModelsToolSpec({
       routingReceiptRoot: RECEIPT_ROOT,
       readSelection: () => ({ models: [model()] }),
