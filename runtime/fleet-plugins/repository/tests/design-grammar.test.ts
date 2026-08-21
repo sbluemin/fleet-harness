@@ -371,9 +371,10 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: calc(-1 * var(--gutter-lane, 1) * 14px); }");
     expect(graphSource).toContain('"--gutter-lane": String(node.lane)');
     // compact 모드에서도 잘림 인디케이터(⋯)가 창 안에 남아야 한다 — 사라지면 허위 완결이다.
-    // 좌표는 SVG 자체가 밀린 만큼을 상쇄하는 활성 노드 기준(cx + NODE_R + 3)이라
-    // lane 값과 무관하게 창 안에 떨어진다.
+    // 좌표는 활성 노드 기준이고 text-anchor=end로 글리프가 시작점 왼쪽에 끝나므로
+    // ⋯ 몸통이 14px 창 밖으로 잘리지 않는다.
     expect(graphSource).toContain("x={compact ? cx + NODE_R + 3 : lanes * LANE_WIDTH + 2}");
+    expect(graphSource).toContain('textAnchor={compact ? "end" : undefined}');
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.

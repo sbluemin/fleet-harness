@@ -320,9 +320,9 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
       />
 
       {/* collapse 인디케이터 — compact 모드에서는 SVG 전체가 -lane*14px 밀려나므로,
-          인디케이터 좌표에 같은 오프셋을 더해 활성 노드 바로 오른쪽 창 안에 둔다.
-          lane 0은 밀림이 없어도 기본 위치(lanes*14+2)가 14px 창을 벗어나므로
-          노드 오른쪽으로 당겨 온다. 잘림 신호가 사라지면 허위 완결이 된다. */}
+          인디케이터를 활성 노드 기준으로 배치하되 text-anchor=end로 글리프가 시작점의
+          왼쪽에 끝나게 한다. 시작 앵커 두면 ⋯ 몸통이 14px 창 밖으로 잘려 표식이 사라진다.
+          잘림 신호가 사라지면 허위 완결이 된다. */}
       {node.collapsed && (
         <text
           x={compact ? cx + NODE_R + 3 : lanes * LANE_WIDTH + 2}
@@ -330,6 +330,7 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
           fontSize={10}
           fontFamily="monospace"
           fill="var(--ink-fog)"
+          textAnchor={compact ? "end" : undefined}
         >
           ⋯
         </text>
