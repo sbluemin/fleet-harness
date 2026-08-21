@@ -89,6 +89,11 @@ describe("Command Band switcher disclosure", () => {
     expect(source).toContain("activity: resolveOperationActivity(activeOperation, state.operationRuntime),");
     expect(source).toContain("idleArrivalIds,");
     expect(source).toContain("{activeOperationStatusMark}");
+    // Shell만 예외다 — 활동 축을 발행하지 않으므로 그 칸을 종류 글리프가 가져간다. 분기는 밴드가
+    // 직접 적지 않고 칩·모바일과 같은 한 문(OperationNameMark)을 지난다.
+    expect(source).toContain("<OperationNameMark");
+    expect(source).toContain("operation={activeOperation}");
+    expect(source).not.toMatch(/command-band[^\n]*type === "shell"/);
     expect(source).not.toContain("operation-provider-mark");
     expect(source).not.toContain("command-band-operation-attribute");
     expect(styles).not.toContain(".command-band-operation-attribute");

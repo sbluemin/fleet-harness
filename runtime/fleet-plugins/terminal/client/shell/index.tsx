@@ -2,6 +2,7 @@ import { defineOperationKind } from "@fleet-console/sdk/plugin/browser";
 import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { definePlugin, React } from "@fleet-console/sdk/plugin/browser";
 import { FailureNotice } from "@fleet-console/sdk/components/failure-notice";
+import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph";
 import { getT } from "../i18n/index.js";
 import { TerminalSurface } from "../shared/index.js";
 
@@ -92,15 +93,5 @@ function ShellOperationView({ context }: { readonly context: OperationRenderCont
       onStatusDetail={(detail) => context.statusDetail.set(context.operationId, detail)}
       onExit={context.onClose}
     />
-  );
-}
-
-function ShellGlyph() {
-  // 순정 셸 — 화면+프롬프트 stroke 마크. 셸 플러그인이 자기 드롭다운 아이콘을 소유한다.
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <rect x="2.8" y="3.4" width="10.4" height="9.2" rx="1.4" fill="none" stroke="currentColor" strokeWidth="1.15" />
-      <path d="M5 6.6 6.8 8.4 5 10.2M8.4 10.2h2.8" fill="none" stroke="currentColor" strokeWidth="1.15" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }

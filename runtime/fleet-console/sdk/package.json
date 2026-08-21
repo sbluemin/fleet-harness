@@ -119,6 +119,12 @@
       "import": "./components/launch-provider-glyphs.tsx",
       "default": "./components/launch-provider-glyphs.tsx"
     },
+    "./components/shell-glyph": {
+      "types": "./components/shell-glyph.tsx",
+      "browser": "./components/shell-glyph.tsx",
+      "import": "./components/shell-glyph.tsx",
+      "default": "./components/shell-glyph.tsx"
+    },
     "./composer": {
       "types": "./composer/index.ts",
       "browser": "./composer/index.ts",

@@ -236,6 +236,7 @@ const SHIM_DEFINITIONS: readonly ShimDefinition[] = [
   { name: "sdk-components-failure-notice", specifier: "@fleet-console/sdk/components/failure-notice", globalKey: "@fleet-console/sdk/components/failure-notice", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/failure-notice"] ?? [] },
   { name: "sdk-components-effort-track", specifier: "@fleet-console/sdk/components/effort-track", globalKey: "@fleet-console/sdk/components/effort-track", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/effort-track"] ?? [] },
   { name: "sdk-components-launch-provider-glyphs", specifier: "@fleet-console/sdk/components/launch-provider-glyphs", globalKey: "@fleet-console/sdk/components/launch-provider-glyphs", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/launch-provider-glyphs"] ?? [] },
+  { name: "sdk-components-shell-glyph", specifier: "@fleet-console/sdk/components/shell-glyph", globalKey: "@fleet-console/sdk/components/shell-glyph", namedExports: SHIM_NAMED_EXPORTS["@fleet-console/sdk/components/shell-glyph"] ?? [] },
 ];
 const SHIM_URL_BY_SPECIFIER = new Map(SHIM_DEFINITIONS.map((definition) => [definition.specifier, `/plugin-runtime/shim/${definition.name}.mjs`]));
 const SHIM_BY_NAME = new Map(SHIM_DEFINITIONS.map((definition) => [definition.name, definition]));

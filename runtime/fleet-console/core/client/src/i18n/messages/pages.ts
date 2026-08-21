@@ -336,6 +336,9 @@ export const pagesEn = {
   // 패널도 이 마크를 단다 — "아직 열지 않음"은 그 자리에서 거짓이 된다. 확인 여부로만 말한다.
   "activity.unseen": "Finished, unacknowledged",
 
+  // Operation 종류 마크 — Shell은 활동 축을 발행하지 않으므로 그 자리를 종류가 채운다.
+  "operation.kind.shell": "Shell",
+
   // codex — cowork
   "codex.cowork.requestFailed": "Cowork request failed.",
   "codex.cowork.draftChangesAria": "Draft changes",
@@ -822,6 +825,8 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "activity.ended": "종료됨",
   "activity.idle": "유휴",
   "activity.unseen": "종료됨 — 확인 전",
+
+  "operation.kind.shell": "Shell",
 
   "codex.cowork.requestFailed": "Cowork 요청에 실패했습니다.",
   "codex.cowork.draftChangesAria": "초안 변경",

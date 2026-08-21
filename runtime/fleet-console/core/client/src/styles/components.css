@@ -2667,6 +2667,26 @@
   }
 }
 
+/* 종류 마크 — 신호가 아니라 잉크다. Shell은 활동 축을 발행하지 않아 활동 비콘이 늘 같은 값으로
+   굳는다(초록 유휴 / 중공 종료). 그 자리를 이 마크가 대신하며, 살아있든 종료됐든 같은 그림이다:
+   상태 채널(aurora·warn·positive·coral)도, 위치 채널(brass)도 빌리지 않는다.
+   목록 슬롯의 표준 치수는 14px 하나다 — 표면마다 다른 크기를 두면 같은 사실이 표면 수만큼의
+   무게로 읽힌다. 지도 점은 점 자체가 마크라 여기가 아니라 .canvas-triage-map-dot.is-shell이 맡는다. */
+.shell-kind-mark {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  color: var(--text-secondary);
+}
+
+.shell-kind-mark svg {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
 .status-dot--lg {
   width: 10px;
   height: 10px;
@@ -3336,6 +3356,23 @@
     border-color var(--duration-fast) var(--ease-glide),
     box-shadow var(--duration-fast) var(--ease-glide),
     opacity var(--duration-fast) var(--ease-glide);
+}
+
+/* Shell 점 — 활동 is-* 를 아예 달지 않으므로 --activity-color 채움과 발광·링이 성립하지 않는다.
+   남는 것은 기본 규칙의 채움과 유휴 감쇠뿐이라 여기서 그 둘만 되돌린다. box-shadow는 건드리지
+   않는다: hover/focus의 brass 링(.canvas-triage-map-dot:hover, 0,2,1)이 계속 이겨야 한다. */
+.canvas-triage-map-dot.is-shell {
+  display: grid;
+  place-items: center;
+  background: none;
+  opacity: 1;
+  color: var(--text-secondary);
+}
+
+.canvas-triage-map-dot.is-shell svg {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .canvas-triage-map-dot.is-awaiting {

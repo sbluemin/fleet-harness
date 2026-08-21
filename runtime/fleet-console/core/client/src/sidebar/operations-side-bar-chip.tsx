@@ -1,7 +1,7 @@
 import { useEffect, useRef, type CSSProperties, type PointerEvent as ReactPointerEvent, type SyntheticEvent } from "react";
 
 
-import { OperationStatusIcon } from "../components/operation-status-icon.js";
+import { OperationNameMark } from "../components/operation-name-mark.js";
 import { useT } from "../i18n/index.js";
 import { type OperationActivityVisual, type OperationMarkVisual } from "../operation-activity.js";
 import { useInlineRename } from "../use-inline-rename.js";
@@ -230,9 +230,10 @@ export function OperationsSideBarChip({
     >
       {/* 이름 왼쪽 슬롯은 활동 상태가 소유한다 — 목록에서 먼저 읽혀야 하는 것은 무엇으로
           띄웠는지가 아니라 지금 무엇을 하고 있는지다. 칩 자체가 상태를 접근성 이름으로
-          말하지 않으므로 마크가 그 이름을 진다. */}
+          말하지 않으므로 마크가 그 이름을 진다. 예외는 Shell 하나다: Shell은 활동 축을
+          발행하지 않아 비콘이 늘 같은 값으로 굳으므로, 그 자리를 종류 글리프가 가져간다. */}
       <span className="side-bar-chip-beacon-button">
-        <OperationStatusIcon status={markVisual} className="side-bar-chip-status" />
+        <OperationNameMark operation={operation} status={markVisual} className="side-bar-chip-status" />
       </span>
       {rename.renaming ? (
         <input

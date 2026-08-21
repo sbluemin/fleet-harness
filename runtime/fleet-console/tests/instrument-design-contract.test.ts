@@ -2305,6 +2305,7 @@ describe("Instrument core design contract", () => {
     const sidebar = source("sidebar/operations-side-bar.tsx");
     const chip = source("sidebar/operations-side-bar-chip.tsx");
     const statusIcon = source("components/operation-status-icon.tsx");
+    const nameMark = source("components/operation-name-mark.tsx");
     const minimap = source("canvas/canvas-minimap.tsx");
     const commandBand = source("components/command-band.tsx");
     const components = source("styles/components.css");
@@ -2321,10 +2322,22 @@ describe("Instrument core design contract", () => {
     expect(sidebar).toContain("hasCustomGroups && section.entries.length > 0");
     expect(sidebar).toContain("theaterInitials(theater.label)");
     expect(chip).toContain("side-bar-chip-status");
-    // 상태 마크 해석은 한 모듈이 소유한다 — 표면마다 매핑을 다시 적으면 같은 상태가 두 조형으로 갈라진다.
-    expect(chip).toContain('import { OperationStatusIcon } from "../components/operation-status-icon.js"');
+    // 이름 왼쪽 칸의 조형 선택은 한 모듈이 소유한다 — 표면마다 "Shell이면 글리프" 분기를 다시 적으면
+    // 같은 사실이 표면 수만큼의 조형으로 갈라진다. 칩·밴드·모바일이 모두 이 문을 지난다.
+    expect(chip).toContain('import { OperationNameMark } from "../components/operation-name-mark.js"');
+    expect(nameMark).toContain('import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph"');
+    expect(nameMark).toContain("if (isShellOperation(operation)) return <ShellKindMark");
+    expect(nameMark).toContain('return <OperationStatusIcon status={status}');
+    // 상태 마크 해석은 여전히 상태 아이콘 하나가 소유한다 — 종류 분기는 그 위층의 다른 질문이다.
     expect(statusIcon).toContain('if (visual === "background") return "tenant-beacon is-background"');
     expect(statusIcon).toContain('if (visual === "awaiting") return "tenant-beacon is-awaiting"');
+    // 종류 마크는 신호 채널도 위치 채널도 빌리지 않는다 — 활동 토큰 묶음 밖에 선다.
+    expect(components).toMatch(/\.shell-kind-mark \{[^}]*width:\s*14px;[^}]*height:\s*14px;[^}]*color:\s*var\(--text-secondary\)/);
+    expect(components).not.toMatch(/\.shell-kind-mark \{[^}]*(box-shadow|animation)/);
+    expect(components).toMatch(/\.canvas-triage-map-dot\.is-shell \{[^}]*background:\s*none;[^}]*opacity:\s*1;[^}]*color:\s*var\(--text-secondary\)/);
+    // 활동 토큰 묶음에 종류를 끼워 넣으면 Shell이 다시 상태 축의 한 값으로 읽힌다.
+    expect(components).not.toContain(".canvas-triage-map-dot.is-shell,");
+    expect(components).not.toContain(".tenant-beacon.is-shell");
     expect(chip).not.toContain("is-attention");
     expect(components).toContain(".side-bar-chip:focus-within .side-bar-chip-close");
     expect(components).toContain(".side-bar-chip--minimized .side-bar-chip-name {\n  color: var(--ink-muted);");

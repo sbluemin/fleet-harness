@@ -35,6 +35,7 @@ describe("plugin shim registry", () => {
     expect(defined).toContain("@fleet-console/sdk/components/failure-notice");
     expect(defined).toContain("@fleet-console/sdk/components/effort-track");
     expect(defined).toContain("@fleet-console/sdk/components/launch-provider-glyphs");
+    expect(defined).toContain("@fleet-console/sdk/components/shell-glyph");
   });
 
   it("serves every defined shim from the browser runtime namespace", () => {

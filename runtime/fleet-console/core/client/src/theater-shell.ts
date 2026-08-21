@@ -13,6 +13,15 @@ export function isTheaterShellLaunch(kind: Pick<OperationLaunchKind, "type">): b
   return kind.type === SHELL_OPERATION_TYPE;
 }
 
+/**
+ * 이미 존재하는 Operation이 Shell인가 — 크롬이 종류 마크를 그릴지 정하는 유일한 판정.
+ * pluginId는 보지 않는다: 재사용 대상 Shell을 "찾는" 일(findTheaterShellId)과 달리, 무엇으로
+ * 그릴지는 제품 정체성(type)만의 문제다.
+ */
+export function isShellOperation(operation: Pick<OperationNode, "type">): boolean {
+  return operation.type === SHELL_OPERATION_TYPE;
+}
+
 /** 목록이 비어 있는 부트 구간을 "Shell 없음"으로 읽으면 복원분 옆에 하나를 더 만든다. */
 export function theaterShellDecisionRequiresHydration(
   kind: Pick<OperationLaunchKind, "type">,

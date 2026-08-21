@@ -8,6 +8,7 @@ import * as sdkReactBrowser from "@fleet-console/sdk/react/browser";
 import * as sdkComponentsFailureNotice from "@fleet-console/sdk/components/failure-notice";
 import * as sdkComponentsEffortTrack from "@fleet-console/sdk/components/effort-track";
 import * as sdkComponentsLaunchProviderGlyphs from "@fleet-console/sdk/components/launch-provider-glyphs";
+import * as sdkComponentsShellGlyph from "@fleet-console/sdk/components/shell-glyph";
 import "@fontsource-variable/fraunces";
 import "@fontsource-variable/fraunces/standard-italic.css";
 import "@fontsource-variable/manrope";
@@ -44,6 +45,7 @@ interface FleetConsoleRuntime {
   readonly "@fleet-console/sdk/components/failure-notice": typeof sdkComponentsFailureNotice;
   readonly "@fleet-console/sdk/components/effort-track": typeof sdkComponentsEffortTrack;
   readonly "@fleet-console/sdk/components/launch-provider-glyphs": typeof sdkComponentsLaunchProviderGlyphs;
+  readonly "@fleet-console/sdk/components/shell-glyph": typeof sdkComponentsShellGlyph;
 }
 
 declare global {
@@ -63,6 +65,7 @@ globalThis.__fleetConsoleRuntime__ = {
   "@fleet-console/sdk/components/failure-notice": sdkComponentsFailureNotice,
   "@fleet-console/sdk/components/effort-track": sdkComponentsEffortTrack,
   "@fleet-console/sdk/components/launch-provider-glyphs": sdkComponentsLaunchProviderGlyphs,
+  "@fleet-console/sdk/components/shell-glyph": sdkComponentsShellGlyph,
 };
 
 // 서버 주입이 첫 페인트의 권위값이며 theme-hint는 미주입 서빙 경로의 폴백이다.
