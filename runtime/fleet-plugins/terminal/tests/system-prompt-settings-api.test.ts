@@ -37,7 +37,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -49,7 +48,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     });
@@ -64,7 +62,6 @@ describe("system prompt settings api", () => {
       aiGateway: null,
       aiGatewayCatalog: EMPTY_CATALOG,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -98,7 +95,6 @@ describe("system prompt settings api", () => {
       agentIdleDormantMinutes: 60,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     })));
@@ -122,7 +118,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -146,7 +141,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: EMPTY_CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -174,7 +168,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -206,7 +199,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));
@@ -214,7 +206,6 @@ describe("system prompt settings api", () => {
     await expect(saveSystemPromptSettings({ cursorDiagnosticsEnabled: true })).resolves.toMatchObject({
       cursorDiagnosticsEnabled: true,
       wireLogEnabled: false,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     });
@@ -234,7 +225,6 @@ describe("system prompt settings api", () => {
       aiGatewayCatalog: CATALOG,
       cursorDiagnosticsEnabled: false,
       wireLogEnabled: true,
-      dedicatedGatewayPerPanel: false,
       compactCeiling: null,
       xaiEndpoint: "direct" as const,
     }));

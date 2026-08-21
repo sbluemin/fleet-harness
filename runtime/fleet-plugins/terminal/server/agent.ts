@@ -1375,7 +1375,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
     const gatewayBaseUrl = resolveAnalysisGatewayBaseUrl(origin);
-    const panelId = deps.aiGateway?.panelIdFor?.(node.id) ?? "";
     // 공유 홈의 discovery 캐시는 호스트 소유다 — SDK 쪽은 이 홈에 쓰지 않으므로 여기서 세운다.
     // 노출 목록 전체를 쓰는 이유는 같은 홈을 PTY 자식이 함께 읽기 때문이다.
     try {
@@ -1412,9 +1411,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       ok: true,
       seed: {
         baseUrl: gatewayBaseUrl,
-        // Chat Mode도 이 Operation의 패널이다. claim은 PTY가 이미 받아 둔 라우터를 그대로
-        // 돌려주므로, 터미널로 열렸던 Operation을 Chat으로 바꿔도 같은 라우터에 머문다.
-        ...(panelId ? { panelId } : {}),
         model,
         // 자식은 창이 500k인 모델도 자기 200k 좌표로 재고, 그 좌표를 물어보는 모든 표면에 그대로
         // 말한다. 실제 창과 투영에 쓰인 압축 정책을 함께 실어야 세션이 그것을 되돌릴 수 있다.

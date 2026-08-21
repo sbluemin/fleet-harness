@@ -66,7 +66,6 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
-    const gatewayRoutePath = `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`;
     const runtime = createTerminalRuntime(ctx);
     registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Terminal Plugin", gate: "one-use-ticket", transport: "websocket" });
     ctx.host.lifecycle.registerCleanup(() => runtime.stop());
@@ -101,22 +100,11 @@ export default definePlugin({
       wireLogRuntime: wireLog,
     });
     registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
-    const dedicatedGateways = registerAiGatewayRoutes(ctx, {
+    registerAiGatewayRoutes(ctx, {
       readAiGatewaySettings: aiGatewayStore.read,
-      dedicatedGatewayPerPanel: () => aiGatewayStore.read().dedicatedGatewayPerPanel === true,
       readKimiApiKey: () => infraServices.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
       readOpencodeApiKey: () => infraServices.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     });
-    /**
-     * 패널 전용 라우터의 수명은 그 패널이다. 삭제가 유일한 확정 종료 신호이므로 여기서 회수한다 —
-     * 휴면은 아직 그 Operation이 존재한다는 뜻이고, 다시 깨어난 런치는 같은 라우터로 돌아온다.
-     * 삭제 없이 쌓이는 경우는 풀 자체의 상한(MAX_DEDICATED_GATEWAYS)이 막는다.
-     */
-    const unsubscribeGatewayRelease = ctx.host.events.subscribe(OPERATION_DELETED_EVENT_CHANNEL, (payload) => {
-      if (!isOperationDeletedEvent(payload) || payload.pluginId !== ctx.pluginId) return;
-      dedicatedGateways.release(payload.operationId);
-    });
-    ctx.host.lifecycle.registerCleanup(unsubscribeGatewayRelease);
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.
     const agentCliPathStore = createAgentCliPathStore(ctx.host.storage, ctx.pluginId);
@@ -128,11 +116,8 @@ export default definePlugin({
       globalOptionsService: infraServices.globalOptionsService,
       readAiGatewaySettings: aiGatewayStore.read,
       aiGateway: {
-        routePath: gatewayRoutePath,
+        routePath: `${ctx.basePath}/${AI_GATEWAY_ROUTE_SEGMENT}`,
         origin: () => ctx.host.server.origin(),
-        // claim이 곧 이 패널의 라우터를 짓는 지점이다. 설정이 꺼져 있으면 빈 문자열을 돌려주어
-        // 공용 게이트웨이 그대로가 되고, 켜져 있으면 이 Operation만 아는 식별자를 돌려준다.
-        panelIdFor: (operationId) => dedicatedGateways.claim(operationId),
       },
     });
     registerLaunchCatalog(ctx, async () => [...await agentLaunchKinds(), SHELL_LAUNCH_KIND]);

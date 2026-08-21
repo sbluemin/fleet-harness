@@ -60,7 +60,6 @@ export interface SystemPromptSettingsState {
   readonly aiGatewayCatalog: AiGatewayCatalog;
   readonly cursorDiagnosticsEnabled: boolean;
   readonly wireLogEnabled: boolean;
-  readonly dedicatedGatewayPerPanel: boolean;
   readonly compactCeiling: CompactCeiling | null;
   readonly xaiEndpoint: XaiEndpointPreference;
 }
@@ -71,7 +70,6 @@ export type SystemPromptSettingsUpdate =
   | { readonly aiGateway: AiGatewaySettings | null }
   | { readonly cursorDiagnosticsEnabled: boolean }
   | { readonly wireLogEnabled: boolean }
-  | { readonly dedicatedGatewayPerPanel: boolean }
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
@@ -123,7 +121,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     || !isAiGatewayCatalog(payload.aiGatewayCatalog)
     || typeof payload.cursorDiagnosticsEnabled !== "boolean"
     || typeof payload.wireLogEnabled !== "boolean"
-    || typeof payload.dedicatedGatewayPerPanel !== "boolean"
     || !isCompactCeiling(payload.compactCeiling)
     || !isXaiEndpointPreference(payload.xaiEndpoint)
   ) {
@@ -136,7 +133,6 @@ function assertSystemPromptSettingsState(value: unknown, status: number): System
     aiGatewayCatalog: payload.aiGatewayCatalog,
     cursorDiagnosticsEnabled: payload.cursorDiagnosticsEnabled,
     wireLogEnabled: payload.wireLogEnabled,
-    dedicatedGatewayPerPanel: payload.dedicatedGatewayPerPanel,
     compactCeiling: payload.compactCeiling,
     xaiEndpoint: payload.xaiEndpoint,
   };
@@ -172,7 +168,7 @@ import { React } from "@fleet-console/sdk/plugin/browser";
 
 
 // aiGatewayCatalog는 서버 소유 읽기 전용 투영이라 저장 필드에서 제외한다.
-export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "dedicatedGatewayPerPanel" | "compactCeiling" | "xaiEndpoint";
+export type SystemPromptSettingsField = "agentIdleDormantMinutes" | "claudeCodeSystemPrompt" | "aiGateway" | "cursorDiagnosticsEnabled" | "wireLogEnabled" | "compactCeiling" | "xaiEndpoint";
 
 interface SystemPromptSettingsStoreState {
   readonly loading: boolean;
@@ -253,9 +249,6 @@ function toSettingsUpdate(field: SystemPromptSettingsField, state: SystemPromptS
   }
   if (field === "wireLogEnabled") {
     return { wireLogEnabled: state.wireLogEnabled };
-  }
-  if (field === "dedicatedGatewayPerPanel") {
-    return { dedicatedGatewayPerPanel: state.dedicatedGatewayPerPanel };
   }
   if (field === "compactCeiling") {
     return { compactCeiling: state.compactCeiling };

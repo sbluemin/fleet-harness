@@ -137,18 +137,14 @@ function createFakeSdkFactory(turns: FakeTurn[]) {
     };
   });
   const dispose = vi.fn(async () => { occupied = false; });
-  const factoryCalls: Array<{ readonly env?: NodeJS.ProcessEnv }> = [];
-  const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true; readonly env?: NodeJS.ProcessEnv }) => {
-    factoryCalls.push(options);
-    return {
-      configDir,
-      models: options.models,
-      startTurn: async () => { throw new Error("Chat Mode must run on a session, not a single turn."); },
-      openSession,
-      dispose,
-    };
-  });
-  return { factory: factory as never, factoryCalls, openSession, sends, dispose, configDir, liveSession: () => live };
+  const factory = vi.fn(async (options: { readonly baseUrl: string; readonly models: readonly string[]; readonly ultracode?: true }) => ({
+    configDir,
+    models: options.models,
+    startTurn: async () => { throw new Error("Chat Mode must run on a session, not a single turn."); },
+    openSession,
+    dispose,
+  }));
+  return { factory: factory as never, openSession, sends, dispose, configDir, liveSession: () => live };
 }
 
 function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessionSeed["onProviderSessionUpdate"] = () => {}): AgentChatSessionSeed {
@@ -223,37 +219,6 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     expect(sends).toEqual(["let us talk about the render path"]);
     const request = openSession.mock.calls[0]?.[0] as Record<string, unknown>;
     expect("resume" in request).toBe(false);
-    await registry.disposeAll();
-  });
-
-  it("sends the panel gateway header when the Operation has its own gateway", async () => {
-    const home = tempDir("chat-panel-");
-    const fake = createFakeSdkFactory([
-      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
-    ]);
-    const registry = new AgentChatRegistry(fake.factory);
-    await registry.ensure("op-panel", () => ({ ...freshSeedFor(home), panelId: "op-panel" }));
-    registry.get("op-panel")?.send("hello");
-    await drainTurn(registry, "op-panel");
-
-    // Chat Mode는 같은 Operation의 다른 얼굴이다 — 헤더가 빠지면 이 표면만 공용 라우터로 샌다.
-    expect(fake.factoryCalls[0]?.env?.ANTHROPIC_CUSTOM_HEADERS).toBe("x-fleet-panel: op-panel");
-
-    await registry.disposeAll();
-  });
-
-  it("sends no panel gateway header when the Operation shares the console gateway", async () => {
-    const home = tempDir("chat-shared-");
-    const fake = createFakeSdkFactory([
-      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
-    ]);
-    const registry = new AgentChatRegistry(fake.factory);
-    await registry.ensure("op-shared", () => freshSeedFor(home));
-    registry.get("op-shared")?.send("hello");
-    await drainTurn(registry, "op-shared");
-
-    expect(fake.factoryCalls[0]?.env?.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
-
     await registry.disposeAll();
   });
 
