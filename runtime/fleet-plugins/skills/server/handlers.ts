@@ -52,6 +52,16 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  // 배열도 typeof "object"다 — 그 한 글자를 빠뜨리면 `skills: []`가 "읽어낸 빈 lock"으로
+  // 통과하고, 모든 스킬이 다시 관리 밖(=로컬)으로 단언된다.
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function hasSourceEntry(table: Record<string, unknown>): boolean {
+  return Object.values(table).some((entry) => isRecord(entry) && typeof entry["source"] === "string");
+}
+
 /**
  * 이 JSON을 lock으로 인정할 수 있는가.
  *
@@ -59,23 +69,23 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
  * v1 모양만 읽으면 v3 파일에서 아무것도 못 건져 **모든 스킬이 출처 없음으로 보인다** —
  * 실측에서 18개 전부 source:null이던 원인이 provenance의 부재가 아니라 이 불일치였다.
  * 모르는 모양은 "빈 lock"이 아니라 "읽지 못함"으로 떨어뜨린다(다음 스키마 변경 대비).
+ *
+ * 두 벌의 판정 기준이 다른 것은 의도다: v3는 `skills` 키로 표를 스스로 선언하므로 그 표가
+ * 레코드이기만 하면 비어 있어도 "읽어낸 빈 lock"이다. v1은 선언이 없어 내용으로 추론할
+ * 수밖에 없으므로, 우리가 실제로 소비하는 것(문자열 `source`를 든 항목)이 하나라도 있어야
+ * lock으로 인정한다.
  */
 function isLockShape(parsed: unknown): parsed is LockFile {
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
-  const lock = parsed as LockFile;
-  if (typeof lock.skills === "object" && lock.skills !== null) return true;
-  // v1은 이름이 최상위 키다 — 값이 객체인 항목이 하나라도 있어야 lock으로 인정한다.
-  return Object.values(parsed as Record<string, unknown>)
-    .some((entry) => typeof entry === "object" && entry !== null && !Array.isArray(entry));
+  if (!isRecord(parsed)) return false;
+  if ("skills" in parsed) return isRecord(parsed["skills"]);
+  return hasSourceEntry(parsed);
 }
 
 function collectLockSources(lock: LockFile, sources: Map<string, string>): void {
-  const table = (typeof lock.skills === "object" && lock.skills !== null)
-    ? lock.skills
-    : (lock as Record<string, LockFileEntry>);
+  const table = isRecord(lock.skills) ? lock.skills : (lock as Record<string, unknown>);
   for (const [name, entry] of Object.entries(table)) {
-    if (entry && typeof entry === "object" && typeof (entry as LockFileEntry).source === "string") {
-      sources.set(name, (entry as LockFileEntry).source as string);
+    if (isRecord(entry) && typeof entry["source"] === "string") {
+      sources.set(name, entry["source"]);
     }
   }
 }

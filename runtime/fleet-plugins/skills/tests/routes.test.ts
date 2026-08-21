@@ -496,4 +496,25 @@ describe("lock file provenance", () => {
     const skills = await listWith("skills-lock.json", { version: 9, entries: ["agent-browser"] });
     expect("unmanaged" in (skills[0] ?? {})).toBe(false);
   });
+
+  it.each([
+    ["an array skills table", { version: 9, skills: [] }],
+    ["a populated array skills table", { version: 9, skills: [{ source: "owner/repo" }] }],
+    ["a scalar skills table", { version: 9, skills: "owner/repo" }],
+    ["a null skills table", { version: 9, skills: null }],
+    ["a top-level array", ["agent-browser"]],
+    ["a v1-looking file whose entries carry no source", { version: 9, meta: {}, config: { debug: true } }],
+  ])("does not accept %s as a readable lock", async (_label, body) => {
+    // 배열도 typeof "object"라 이 한 글자를 놓치면 "읽어낸 빈 lock"으로 통과하고,
+    // 설치된 스킬 전부가 다시 관리 밖(=로컬)으로 단언된다.
+    const skills = await listWith("skills-lock.json", body);
+    expect("source" in (skills[0] ?? {})).toBe(false);
+    expect("unmanaged" in (skills[0] ?? {})).toBe(false);
+  });
+
+  it("still accepts a v3 file whose declared skills table is an empty record", async () => {
+    // v3는 `skills` 키로 표를 스스로 선언한다 — 비어 있어도 읽어낸 lock이다.
+    const skills = await listWith("skills-lock.json", { version: 3, skills: {} });
+    expect(skills[0]?.unmanaged).toBe(true);
+  });
 });
