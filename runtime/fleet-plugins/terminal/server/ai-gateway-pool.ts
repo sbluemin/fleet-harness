@@ -20,30 +20,35 @@ export const PANEL_GATEWAY_HEADER = "x-fleet-panel";
 /** Env var Claude Code reads extra request headers from, as newline-separated `Name: Value`. */
 const CUSTOM_HEADERS_ENV = "ANTHROPIC_CUSTOM_HEADERS";
 
+/** Env var name, for callers that place the value into their own environment shape. */
+export const PANEL_GATEWAY_HEADER_ENV = CUSTOM_HEADERS_ENV;
+
 /**
- * Adds this panel's identity to whatever custom headers the child was already going to send.
+ * The `ANTHROPIC_CUSTOM_HEADERS` value carrying this panel's identity, or `undefined` when the
+ * launch has no panel of its own and the variable must stay as the caller found it.
  *
- * The user's own `ANTHROPIC_CUSTOM_HEADERS` is preserved rather than replaced, and a line already
- * naming this header is dropped first so a relaunch cannot stack two panel ids — Claude Code
- * keeps the last pair for a repeated name, and inheriting a previous panel's id would route this
- * panel's turns onto another panel's router.
+ * Returns a value rather than a merged environment because the two surfaces that need it hold
+ * their env in different shapes — the PTY profile's values are all present, the Chat Mode child's
+ * are a `ProcessEnv` — and one signature covering both would have to lie about one of them.
+ *
+ * The user's own headers are preserved rather than replaced, and a line already naming this
+ * header is dropped first so a relaunch cannot stack two panel ids: Claude Code keeps the last
+ * pair for a repeated name, and an inherited id would route this panel's turns onto another
+ * panel's router.
  */
-export function withPanelGatewayHeader(
-  env: Readonly<Record<string, string>>,
+export function panelGatewayHeaderValue(
+  current: string | undefined,
   panelId: string,
-): Record<string, string> {
-  if (panelId.length === 0) return { ...env };
-  const existing = (env[CUSTOM_HEADERS_ENV] ?? "")
+): string | undefined {
+  if (panelId.length === 0) return undefined;
+  const existing = (current ?? "")
     .split(/\r?\n/u)
     .filter((line) => {
       const at = line.indexOf(":");
       return at > 0 && line.slice(0, at).trim().toLowerCase() !== PANEL_GATEWAY_HEADER;
     })
     .filter((line) => line.trim().length > 0);
-  return {
-    ...env,
-    [CUSTOM_HEADERS_ENV]: [...existing, `${PANEL_GATEWAY_HEADER}: ${panelId}`].join("\n"),
-  };
+  return [...existing, `${PANEL_GATEWAY_HEADER}: ${panelId}`].join("\n");
 }
 
 /**

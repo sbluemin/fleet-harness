@@ -5,7 +5,7 @@ import {
   MAX_DEDICATED_GATEWAYS,
   PANEL_GATEWAY_HEADER,
   createDedicatedGatewayPool,
-  withPanelGatewayHeader,
+  panelGatewayHeaderValue,
 } from "../server/ai-gateway-pool.js";
 
 function headers(panelId?: string): Record<string, unknown> {
@@ -184,27 +184,18 @@ describe("dedicated gateway pool", () => {
   });
 });
 
-describe("panel gateway header env", () => {
-  it("carries the panel id in the env Claude Code reads custom headers from", () => {
-    const env = withPanelGatewayHeader({ PATH: "/bin" }, "op-1");
-
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe(`${PANEL_GATEWAY_HEADER}: op-1`);
-    expect(env.PATH).toBe("/bin");
+describe("panel gateway header value", () => {
+  it("carries the panel id in the value Claude Code reads custom headers from", () => {
+    expect(panelGatewayHeaderValue(undefined, "op-1")).toBe(`${PANEL_GATEWAY_HEADER}: op-1`);
   });
 
-  it("leaves the env untouched when the launch has no panel of its own", () => {
-    const env = withPanelGatewayHeader({ PATH: "/bin" }, "");
-
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBeUndefined();
+  it("leaves the variable alone when the launch has no panel of its own", () => {
+    expect(panelGatewayHeaderValue(undefined, "")).toBeUndefined();
+    expect(panelGatewayHeaderValue("X-Org: acme", "")).toBeUndefined();
   });
 
   it("keeps the headers the user already configured", () => {
-    const env = withPanelGatewayHeader(
-      { ANTHROPIC_CUSTOM_HEADERS: "X-Org: acme\nX-Tenant: blue" },
-      "op-1",
-    );
-
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe(
+    expect(panelGatewayHeaderValue("X-Org: acme\nX-Tenant: blue", "op-1")).toBe(
       `X-Org: acme\nX-Tenant: blue\n${PANEL_GATEWAY_HEADER}: op-1`,
     );
   });
@@ -212,11 +203,8 @@ describe("panel gateway header env", () => {
   it("replaces an inherited panel id rather than stacking a second one", () => {
     // Claude Code는 이름이 겹치면 마지막 쌍만 남긴다. 그래도 앞 값을 지우지 않으면 상속된
     // 다른 패널의 id가 그대로 자식 env에 남아, 순서 한 번만 뒤집혀도 남의 라우터로 간다.
-    const env = withPanelGatewayHeader(
-      { ANTHROPIC_CUSTOM_HEADERS: `${PANEL_GATEWAY_HEADER}: op-stale\nX-Org: acme` },
-      "op-1",
-    );
-
-    expect(env.ANTHROPIC_CUSTOM_HEADERS).toBe(`X-Org: acme\n${PANEL_GATEWAY_HEADER}: op-1`);
+    expect(
+      panelGatewayHeaderValue(`${PANEL_GATEWAY_HEADER}: op-stale\nX-Org: acme`, "op-1"),
+    ).toBe(`X-Org: acme\n${PANEL_GATEWAY_HEADER}: op-1`);
   });
 });

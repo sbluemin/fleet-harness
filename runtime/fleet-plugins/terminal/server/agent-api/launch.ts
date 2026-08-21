@@ -33,7 +33,7 @@ import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buil
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
-import { withPanelGatewayHeader } from "../ai-gateway-pool.js";
+import { PANEL_GATEWAY_HEADER_ENV, panelGatewayHeaderValue } from "../ai-gateway-pool.js";
 
 /** AI gateway를 Console의 실제 listening origin에 연결하는 launch 바인딩. */
 export interface AiGatewayLaunchBinding {
@@ -365,11 +365,14 @@ async function createAgentCliLaunchSpec(options: {
         baseUrl: `${origin}${options.aiGateway.routePath}`,
         selection: gatewaySelection,
       });
-      const panelId = options.aiGateway.panelIdFor?.(options.operationId) ?? "";
-      if (panelId.length > 0) {
+      const panelHeaders = panelGatewayHeaderValue(
+        launchProfile.env[PANEL_GATEWAY_HEADER_ENV],
+        options.aiGateway.panelIdFor?.(options.operationId) ?? "",
+      );
+      if (panelHeaders !== undefined) {
         launchProfile = {
           ...launchProfile,
-          env: withPanelGatewayHeader(launchProfile.env, panelId),
+          env: { ...launchProfile.env, [PANEL_GATEWAY_HEADER_ENV]: panelHeaders },
         };
       }
     }
