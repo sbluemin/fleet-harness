@@ -1,5 +1,3 @@
-import type { CSSProperties } from "react";
-
 import type { LogCommitEntry } from "../server/types.js";
 
 // ═══ graph-layout ════════════════════════════════════════════════════════════
@@ -159,13 +157,6 @@ export function layoutGraph(commits: readonly LogCommitEntry[]): GraphLayout {
 
 interface GraphGutterProps {
   readonly node: GraphNode;
-  /**
-   * 축소 순서 계약의 최종 단계(320px 아래) — 거터를 1레인 폭으로 압축한다. 뷰포트 축소나
-   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, lane>0 행에만 자기 레인 오프셋을
-   * CSS 변수(--gutter-lane)로 실어 보낸다. 오프셋의 발동은 CSS가 담당해 320px 컨테이너
-   * 쿼리 안에서만 일어난다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다.
-   */
-  readonly compact?: boolean;
 }
 
 // ─── constants ───────────────────────────────────────────────────────────────
@@ -220,7 +211,7 @@ function branchPath(fromX: number, toLane: number, cy: number): string {
 
 // ─── GraphGutter ─────────────────────────────────────────────────────────────
 
-export function GraphGutter({ node, compact = false }: GraphGutterProps) {
+export function GraphGutter({ node }: GraphGutterProps) {
   // Fork 문법 — 거터 폭은 이 행이 실제로 쓰는 레인만큼이다. 목록 전체 최대 레인 수로 고정하면
   // 분기가 하나도 없는 행까지 빈 레인만큼 본문이 밀려 좁은 rail에서 제목 폭을 상시 잠식한다.
   const lanes = Math.max(node.rowLaneCount, 1);
@@ -235,8 +226,7 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
       height={ROW_HEIGHT}
       viewBox={`0 0 ${width} ${ROW_HEIGHT}`}
       aria-hidden="true"
-      className={compact && node.lane > 0 ? "history-graph-gutter-compact" : undefined}
-      style={{ display: "block", flexShrink: 0, ...(compact && node.lane > 0 ? { "--gutter-lane": String(node.lane) } as CSSProperties : {}) }}
+      style={{ display: "block", flexShrink: 0 }}
     >
       {/* passThrough 수직선 */}
       {node.passThroughLanes.map((lane) => (
@@ -319,13 +309,7 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
         fill={laneColor(node.lane)}
       />
 
-      {/* collapse 인디케이터 — compact 모드(320px 아래, CSS 컨테이너 쿼리가 판정)에서는
-          SVG가 -lane*14px 밀려나 창은 로컬 좌표 [lane*14, lane*14+14]를 노출한다. 인디케이터를
-          활성 노드 바로 오른쪽(cx + NODE_R + 3)에 두면 어느 레인(0 포함)에서든 창 안에
-          떨어지고, compact 전용 CSS의 end-anchor로 글리프 몸통도 시작점 왼쪽에 끝난다.
-          lane>0 조건은 오프셋(margin) 필요성의 조건이지 표식 재배치의 조건이 아니다 — 표식은
-          compact면 항상 준비한다. 좌표와 anchor 적용 자체는 CSS가 브레이크포인트 안에서만 한다 —
-          prop은 폭을 모른다. 잘림 신호가 사라지면 허위 완결이 된다. */}
+      {/* collapse 인디케이터 */}
       {node.collapsed && (
         <text
           x={lanes * LANE_WIDTH + 2}
@@ -333,8 +317,6 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
           fontSize={10}
           fontFamily="monospace"
           fill="var(--ink-fog)"
-          className={compact ? "history-graph-collapse-indicator-compact" : undefined}
-          style={compact ? ({ "--gutter-indicator-x": `${cx + NODE_R + 3}px` } as CSSProperties) : undefined}
         >
           ⋯
         </text>
