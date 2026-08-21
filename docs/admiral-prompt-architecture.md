@@ -21,16 +21,16 @@ edit_policy: |
 
 This document is the operational reference for the Admiral's delegation-policy
 surface and runtime lifecycle model. **Fleet no longer assembles a system prompt.**
-There is no per-turn runtime-context tag prefix, no `<fleet>` block, and no Fleet
-skill asset; a gateway session runs on Claude Code's own prompt plus the project's
-own instruction files. What Fleet still owns is the delegation policy, and it is
-enforced as code — see §2. Live state is consumed through public leaf package APIs
-and package-local policy modules.
+There is no per-turn runtime-context tag prefix and no `<fleet>` block; a gateway
+session runs on Claude Code's own prompt plus the project's own instruction files.
+Fleet contributes only compact on-demand plugin skills, never an always-on prompt
+layer. What Fleet still owns is the delegation policy, and it is enforced as code —
+see §2. Live state is consumed through public leaf package APIs and package-local
+policy modules.
 
 This document is for the Admiral. It is not a public spec and not a contributor
-guide. Post-verification documentation and Fleet Wiki mutation are performed
-directly by the Admiral through the `wiki-operations` skill; they are not
-delegated.
+guide. Post-verification documentation and Fleet Wiki mutation remain host-owned
+operations; they are not delegated.
 
 ---
 
@@ -50,25 +50,41 @@ prompt existed because that prompt was long, and an empty prompt has no body to 
 SDK 0.3.212 as 24,632 against 18,272. Both launch surfaces — the Console terminal plugin
 and the standalone `fleet` launcher — read that one option, and it binds new sessions only.
 
-The policy that used to live in the Standing Orders now lives in one embedded hook,
+The delegation contract that used to live in the Standing Orders is now split between
+one on-demand skill, the live Workflow tool, and embedded hooks. `fleet:orchestration`
+owns semantic execution-graph decisions; the Workflow tool owns graph mechanics. A
+`PostToolUse` MCP hook calls `gateway_models` after orchestration succeeds and injects
+that fresh roster with Fleet's pin syntax. The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`. It is stateless — every judgment
-is made from one stdin payload, so a hook timeout cannot silently open the gate through a
-missing state file. One script serves three roles, selected by its first argument:
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, injects the skill-routing
+tripwire, validates the resulting pin, handles Workflow receipts, and makes a failed
+orchestration explicit. Pin syntax is judged from one stdin payload. Gateway identities
+and model ids additionally require a private receipt written only by a successful live
+`gateway_models` hook response. The receipt is keyed by Claude session plus an opaque
+per-launch nonce, carries the current `prompt_id`, and is replaced rather than accumulated.
+A repeated orchestration invocation deletes the prior receipt before refresh, so a
+non-blocking MCP failure cannot fall back to an earlier roster; SessionEnd removes the
+launch receipt. One script serves six roles, selected by its first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
-| `remind` | UserPromptSubmit | — | Injects the pin contract every turn. This is the only path by which the contract reaches the model. |
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation before it runs and states how to pin it. |
+| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:orchestration`; it does not repeat the pin mechanics. |
+| `begin-orchestration` | PreToolUse | `Skill(fleet:orchestration)` | Invalidates any prior routing receipt before a new live refresh can run. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and refuses gateway pins absent from this prompt's fresh receipt. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
+| `orchestration-failed` | PostToolUseFailure | `Skill(fleet:orchestration)` | States that no fresh routing context was supplied. |
+| `cleanup-routing` | SessionEnd | — | Removes this launched session's private routing receipt. |
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
-context by design, so moving it to another model removes the point of that surface. For
-`Workflow` it blocks `agentType` in a script, a malformed `opts.model`, and any
-`agent()` stage that pins no model at all. It does not rewrite the script: assigning one
-model to every stage would erase the model spread that is the whole reason to use that
-surface, so the block carries the instruction and the host does the assignment.
+context by design, so moving it to another model removes the point of that surface.
+Gateway `fleet:*` identities must also appear in the fresh receipt. For `Workflow` it
+blocks `agentType` in a script, a malformed `opts.model`, any gateway model id absent
+from the receipt, and any `agent()` stage that pins no model at all. Bare lineage aliases
+and name-only saved workflows retain their existing behavior because they do not claim a
+live Fleet roster identity. The hook does not rewrite the script: assigning one model to
+every stage would erase the model spread that is the whole reason to use that surface,
+so the block carries the instruction and the host does the assignment.
 
 Two properties of the harness make this shape necessary, both measured on
 Claude Code 2.1.235:
@@ -92,9 +108,9 @@ once per identity would put the same table in the session window twenty times ov
 
 Runtime state is read through direct owners:
 
-- Delegation policy: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- Skill assets: none. The plugin renders no `skills/` directory, and `MARKETPLACE_PRUNE_ENTRIES` removes the one an earlier install left behind.
-- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Only its `description` reaches the model — `core-agent`'s `specToMcpTool` serves that field alone, so `whenToUse`/`usageGuidelines` are kept empty rather than filled with rules nothing reads.
+- Delegation gate and routing tripwire: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
+- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `orchestration` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
+- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Its ordinary result remains the live roster; its hook mode formats the same reading as `PostToolUse` additional context after orchestration and atomically records the exact gateway names accepted by the dispatch gate. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 

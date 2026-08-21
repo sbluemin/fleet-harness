@@ -42,15 +42,14 @@ Forbidden patterns:
 ## 4. Operational Guidance For Agents
 
 1. Ask whether the behavior belongs to host assembly, generic infrastructure, or generic MCP transport.
-2. Put Admiral prompt/protocol/tool policy in `packages/fleet-admiral/src/**`.
-4. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
-5. For operational work, let the protocol gate select exactly one protocol skill: trivial, standard, high-risk, or multi-agent.
-6. Follow the active protocol's declared checkpoints. Trivial has none and uses Mission Anchor Compact Mode.
-7. Use the reduced protocol cadence: emit `brief: <...>` after readiness checks and `status: executing` when execution begins.
-8. Apply Context Confidence at the active protocol's host-authored planning boundary: standard requires sufficient confidence; high-risk and multi-agent require complete confidence. The host retains planning and trade-off arbitration, while Genesis executes the bounded implementation contract and returns artifact and QA evidence for host inspection.
-9. Let Result Integrity route verification loops: received results get relevance/completeness/conflict checks, mutating finalized jobs run the Artifact Inspection Gate, speculation goes to Deep Dive, and contradictions with verified facts re-enter Context Confidence.
-10. For mutating runs, inspect actual artifacts before acceptance: direct git diff and changed files against the run's intent and the Mission Objective. Read-only runs skip this gate and route claims through Deep Dive.
-11. Run `pnpm check:protocol-sync` after changing protocol gate text, protocol skill assets, or report-token grammar.
+2. Keep Admiral runtime policy under `packages/fleet-admiral`; use `assets/hooks/` and `assets/skills/` only as the embedded hook and skill authoring sources.
+3. Keep runtime boot order explicit in `runtime/fleet-console/cli/runtime/runtime.ts`.
+4. Use the embedded `professional-pushback` skill when a requested approach has a material technical flaw and `orchestration` to plan the smallest useful evidence graph and integrate its results.
+5. Keep Fleet roster lookup and pin syntax out of the semantic skill; the post-skill hook supplies them from a fresh `gateway_models` reading, and the pre-dispatch hook accepts gateway pins only from that prompt-scoped refresh receipt. Starting orchestration again invalidates the prior receipt before refresh, so hook failure closes the gateway path instead of reusing stale routing context.
+6. Keep graph mechanics in the live Workflow tool contract rather than repeating them in the skill; after meaningful returns, prune branches that can no longer change the host decision.
+7. Keep implementation on the host by default; delegate only fully specified, mechanical, disjoint, independently checkable batches in isolated worktrees.
+8. Keep Workflow-receipt handling and pin enforcement in the model guard hook; do not duplicate them in another skill.
+9. For mutating runs, inspect actual diffs and changed files against the settled host decisions before acceptance.
 
 ## 5. Compatibility Invariants
 

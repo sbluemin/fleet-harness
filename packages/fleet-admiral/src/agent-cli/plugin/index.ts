@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -52,15 +53,18 @@ const MARKETPLACE_PRUNE_ENTRIES = [
 export async function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
 ): Promise<AgentCliPlugin> {
-  const fleetRoot = options.rootDir ?? options.dataDir ?? getFleetDataDir();
-  const renderableBundles = resolveRenderablePluginBundles(fleetRoot, options);
+  const renderOptions = options.gatewayRoutingNonce
+    ? options
+    : { ...options, gatewayRoutingNonce: crypto.randomUUID() };
+  const fleetRoot = renderOptions.rootDir ?? renderOptions.dataDir ?? getFleetDataDir();
+  const renderableBundles = resolveRenderablePluginBundles(fleetRoot, renderOptions);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();
   for (const marketplace of marketplaceBundles) {
     await options.withMarketplaceLock(marketplace.target.root, () => {
       for (const { bundle, target } of marketplace.bundles) {
         const pluginRoot = pluginRootForTarget(target, bundle);
-        renderPluginRoot(pluginRoot, bundle, options);
+        renderPluginRoot(pluginRoot, bundle, renderOptions);
         pluginRoots.set(bundle, pluginRoot);
       }
       renderMarketplaceRoot(marketplace.target, marketplace.bundles.map(({ bundle }) => bundle));
@@ -126,9 +130,8 @@ function renderPluginRoot(
     switch (bundle.source) {
       case "asset":
         ensurePrivateDir(path.join(stagedPluginRoot, "agents"), stagedPluginRoot);
-        // skills 디렉터리는 만들지 않는다. 이 세션은 스킬 자산을 싣지 않으며, 빈 디렉터리를
-        // 남기면 옛 설치본의 스킬이 지워졌는지 아닌지가 파일 시스템만 보고는 갈리지 않는다.
-        // MARKETPLACE_PRUNE_ENTRIES의 "skills"가 기존 렌더 잔재를 걷어내는 쪽을 맡는다.
+        // 스킬 하위 디렉터리는 내장 자산을 쓸 때만 생성된다. 전체 플러그인 루트를 staging 후
+        // 교체하므로 제거되거나 이름이 바뀐 스킬이 다음 세션에 남지 않는다.
         renderAssetPluginRoot(stagedPluginRoot, bundle, options);
         break;
     }

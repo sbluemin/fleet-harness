@@ -116,12 +116,71 @@ describe("agent CLI session resume and capture hooks", () => {
     ]);
     // 위임 게이트는 spawn 카운팅이 아니라 정책 게이트라 input-waiting 훅 없이도 상주한다.
     expect(hooksJson.hooks.PreToolUse).toEqual([
-      { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: expect.arrayContaining([
+            "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+            "begin-orchestration",
+          ]),
+          if: "Skill(fleet:orchestration)",
+        }],
+      },
+      {
+        matcher: "Agent|Workflow",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: expect.arrayContaining([
+            "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+            "gate-delegation",
+          ]),
+        }],
+      },
     ]);
-    // 같은 스크립트가 디스패치 직후에도 선다 — 즉시 반환된 run id를 결과로 읽는 사고를 막는다.
+    // orchestration 성공 뒤에는 훅이 실시간 로스터를 공급하고, Workflow 뒤에는 접수증 계약을 붙인다.
     expect(hooksJson.hooks.PostToolUse).toEqual([
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "mcp_tool",
+          if: "Skill(fleet:orchestration)",
+          server: "fleet",
+          tool: "gateway_models",
+          input: {
+            hookEventName: "PostToolUse",
+            sessionId: "${session_id}",
+            promptId: "${prompt_id}",
+            routingNonce: expect.any(String),
+          },
+          statusMessage: "Refreshing Fleet routing context",
+        }],
+      },
       { matcher: "Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "workflow-receipt"] }] },
     ]);
+    expect(hooksJson.hooks.PostToolUseFailure).toEqual([
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "orchestration-failed"],
+          if: "Skill(fleet:orchestration)",
+        }],
+      },
+    ]);
+    expect(hooksJson.hooks.SessionEnd).toEqual([{
+      hooks: [{
+        type: "command",
+        command: process.execPath,
+        args: expect.arrayContaining([
+          "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
+          "cleanup-routing",
+        ]),
+      }],
+    }]);
     injected.cleanup?.();
   });
 
@@ -146,7 +205,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
-      // 위임 규약 주입. 시스템 프롬프트가 없으므로 이것이 그 규약의 유일한 전달 경로다.
+      // 위임·병렬 요청을 orchestration 스킬로 보내는 라우팅 트립와이어.
       { args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "remind"], command: process.execPath, type: "command" },
     ]);
     expect(existsSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"))).toBe(false);

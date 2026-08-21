@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { EMBEDDED_AGENT_CLI_HOOK_ASSETS } from "../assets.generated.js";
+import { EMBEDDED_AGENT_CLI_HOOK_ASSETS, EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../gateway-agents.js";
 import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
@@ -9,7 +9,7 @@ import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js
 export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet-gateway"] as const;
 
 export const assetBundle: AssetPluginBundle = {
-  description: "Fleet gateway identities and delegation policy hooks",
+  description: "Fleet gateway identities, on-demand skills, and delegation policy hooks",
   directoryName: "fleet-gateway",
   displayName: "Fleet",
   name: FLEET_PLUGIN_NAME,
@@ -27,11 +27,19 @@ export function renderAssetPluginRoot(
   bundle: AssetPluginBundle,
   options: CreateAgentCliPluginOptions,
 ): void {
+  renderEmbeddedSkillAssets(pluginRoot);
   const modelGuardScriptPath = writeModelGuardScript(pluginRoot);
   writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options, modelGuardScriptPath), pluginRoot);
-  // 게이트웨이 정체성은 이 플러그인이 싣는다. 렌더는 스테이징 디렉터리에 전부 쓰고
-  // 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 정의가 남아 있을 수 없다.
+  // 게이트웨이 정체성과 온디맨드 스킬은 이 플러그인이 싣는다. 렌더는 스테이징
+  // 디렉터리에 전부 쓰고 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 자산이
+  // 남을 수 없다.
   renderGatewayAgentAssets(pluginRoot, options);
+}
+
+function renderEmbeddedSkillAssets(pluginRoot: string): void {
+  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+    writePrivateFile(path.join(pluginRoot, "skills", asset.relativePath), asset.content, pluginRoot);
+  }
 }
 
 function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
@@ -53,18 +61,21 @@ function writeModelGuardScript(pluginRoot: string): string {
  * 절대 경로를 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 실제
  * 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
  */
-function modelGuardHook(subcommand: string): FleetHookExec {
+function modelGuardHook(subcommand: string, routingNonce?: string): FleetHookExec {
   return {
     command: process.execPath,
-    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand],
+    args: [
+      `\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`,
+      subcommand,
+      ...(routingNonce ? [routingNonce] : []),
+    ],
   };
 }
 
 function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?: string): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더하고,
-  // 위임 규약 주입은 그 뒤에 붙인다. 이 세션은 Fleet 시스템 프롬프트를 싣지 않으므로,
-  // 로스터를 읽고 정체성을 핀하라는 지침이 상주 텍스트로 존재하는 곳이 없다 — 매 턴
-  // 여기서 한 문단이 실리는 것이 그 지침의 유일한 전달 경로다.
+  // 위임·병렬 작업을 orchestration 스킬로 보내는 트립와이어를 그 뒤에 붙인다. 스킬은
+  // 의미 정책만 소유하고, 완료 뒤 PostToolUse가 실시간 로스터와 핀 문법을 별도 주입한다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
   if (modelGuardScriptPath) userPromptSubmitExecs.push(modelGuardHook("remind"));
@@ -78,26 +89,67 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
   // (idle_prompt(정상 유휴 대기, 차단 아님)·auth_success·elicitation_complete/response 등 비대기 타입 제외).
   // 한 번의 대기가 PreToolUse와 Notification 두 경로로 동시에 들어올 수 있어, 최종 중복 제거는 클라이언트(store)에서 세션별로 한다.
   const inputWaitingExec = options.inputWaitingHookExec;
+  const routingNonce = options.gatewayRoutingNonce;
   const preToolUse = [
     ...(inputWaitingExec
       ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
       : []),
     ...(modelGuardScriptPath
-      ? [{
-          // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
-          // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
-          // 보내지 않는다.
-          matcher: "Agent|Workflow",
-          hooks: [claudeCommandHook(modelGuardHook("gate-delegation"))],
-        }]
+      ? [
+          {
+            // 같은 prompt에서 orchestration을 다시 실행하면 앞선 성공 receipt를 먼저 폐기한다.
+            // 그래야 두 번째 MCP refresh 실패가 첫 로스터로 조용히 열리지 않는다.
+            matcher: "Skill",
+            hooks: [{
+              ...claudeCommandHook(modelGuardHook("begin-orchestration", routingNonce)),
+              if: "Skill(fleet:orchestration)",
+            }],
+          },
+          {
+            // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
+            // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
+            // 보내지 않는다.
+            matcher: "Agent|Workflow",
+            hooks: [claudeCommandHook(modelGuardHook("gate-delegation", routingNonce))],
+          },
+        ]
       : []),
   ];
-  // 같은 스크립트가 워크플로 디스패치 직후에도 한 번 더 선다. 이쪽은 차단이 아니라 문맥 추가이고,
-  // 즉시 반환된 run id를 결과로 읽는 사고를 그 자리에서 막는다.
+  // orchestration은 의미 정책만 싣는다. 성공 직후 이미 연결된 Fleet MCP에서 로스터를 다시 읽어
+  // Fleet 전용 핀 문법과 함께 문맥에 넣고, 같은 성공 응답만 private receipt를 만든다. MCP 오류는
+  // Claude Code에서 non-blocking이므로 PreToolUse는 receipt 없이는 gateway 위임을 fail-closed한다.
   const postToolUse = modelGuardScriptPath
+    ? [
+        {
+          matcher: "Skill",
+          hooks: [{
+            type: "mcp_tool",
+            if: "Skill(fleet:orchestration)",
+            server: "fleet",
+            tool: "gateway_models",
+            input: {
+              hookEventName: "PostToolUse",
+              sessionId: "${session_id}",
+              promptId: "${prompt_id}",
+              ...(routingNonce ? { routingNonce } : {}),
+            },
+            statusMessage: "Refreshing Fleet routing context",
+          }],
+        },
+        {
+          // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
+          matcher: "Workflow",
+          hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
+        },
+      ]
+    : [];
+  const postToolUseFailure = modelGuardScriptPath
     ? [{
-        matcher: "Workflow",
-        hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
+        matcher: "Skill",
+        hooks: [{
+          ...claudeCommandHook(modelGuardHook("orchestration-failed")),
+          if: "Skill(fleet:orchestration)",
+        }],
       }]
     : [];
   return {
@@ -114,6 +166,12 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
       } : {}),
       ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
       ...(postToolUse.length > 0 ? { PostToolUse: postToolUse } : {}),
+      ...(postToolUseFailure.length > 0 ? { PostToolUseFailure: postToolUseFailure } : {}),
+      ...(modelGuardScriptPath && routingNonce ? {
+        SessionEnd: [{
+          hooks: [claudeCommandHook(modelGuardHook("cleanup-routing", routingNonce))],
+        }],
+      } : {}),
       ...(inputWaitingExec ? {
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",
@@ -129,7 +187,11 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
   };
 }
 
-function claudeCommandHook(hookExec: FleetHookExec): unknown {
+function claudeCommandHook(hookExec: FleetHookExec): {
+  readonly args: string[];
+  readonly command: string;
+  readonly type: "command";
+} {
   return {
     // exec 형식: command는 직접 spawn되는 실행 파일, args는 셸 토크나이징 없이 그대로 전달된다.
     // Windows cmd/powershell의 따옴표 규칙과 무관하게 동작하며 공백 포함 경로도 안전하다.

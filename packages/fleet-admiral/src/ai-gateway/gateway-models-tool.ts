@@ -2,10 +2,24 @@
  * ai-gateway/gateway-models-tool — live roster of the gateway models a host may
  * assign to workflow stages.
  *
- * The tool reports facts and stops there. Whether a run may leave the host unpinned
- * is enforced by the gateway model guard hook, not stated here — a rule the hook
- * blocks on and this description repeats would drift apart the moment either moves.
+ * Ordinary calls report facts and stop there. Hook-mode calls wrap the same fresh
+ * reading in Claude Code's PostToolUse context envelope; dispatch enforcement remains
+ * in the gateway model guard hook.
  */
+
+import {
+  chmodSync,
+  closeSync,
+  constants,
+  lstatSync,
+  mkdirSync,
+  openSync,
+  renameSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import os from "node:os";
+import path from "node:path";
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import type { GatewayModel, GatewayProvider } from "@dotobokuri/core-ai-gateway";
@@ -33,7 +47,27 @@ export interface GatewayModelsToolDeps {
   readonly readSelection: () => Promise<GatewayModelsSelection> | GatewayModelsSelection;
   /** Omitted when the host cannot read allowances; every provider then reports `unsupported`. */
   readonly readQuota?: () => Promise<GatewayQuotaSnapshot | undefined> | GatewayQuotaSnapshot | undefined;
+  /** Test-only isolation for private hook receipts. Runtime calls use the OS temporary root. */
+  readonly routingReceiptRoot?: string;
 }
+
+interface GatewayModelsToolInput {
+  /** Hook event whose additional context should receive this reading. Omit for an ordinary tool result. */
+  readonly hookEventName?: "PostToolUse";
+  /** Claude hook coordinates. Required together in hook mode so a later dispatch can consume this exact receipt. */
+  readonly sessionId?: string;
+  readonly promptId?: string;
+  /** Opaque per-session launch identity; never included in model-visible context. */
+  readonly routingNonce?: string;
+}
+
+interface RoutingReceiptStore {
+  readonly root: string;
+}
+
+const DEFAULT_ROUTING_RECEIPT_ROOT = path.join(os.tmpdir(), "fleet-routing-receipts");
+const ROUTING_RECEIPT_MODE = 0o600;
+const ROUTING_RECEIPT_DIR_MODE = 0o700;
 
 const GATEWAY_MODELS_DOCTRINE = {
   id: GATEWAY_MODELS_TOOL_ID,
@@ -60,18 +94,137 @@ export function buildGatewayModelsToolSpec(deps: GatewayModelsToolDeps): AgentTo
     ...GATEWAY_MODELS_DOCTRINE,
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        hookEventName: { type: "string", enum: ["PostToolUse"] },
+        sessionId: { type: "string" },
+        promptId: { type: "string" },
+        routingNonce: { type: "string" },
+      },
       additionalProperties: false,
     },
-    async execute() {
+    async execute(args) {
       const loadout = await resolveLoadout(deps);
+      const input = isGatewayModelsToolInput(args) ? args : {};
+      if (input.hookEventName === "PostToolUse") {
+        writeRoutingReceipt(input, loadout, {
+          root: deps.routingReceiptRoot ?? DEFAULT_ROUTING_RECEIPT_ROOT,
+        });
+      }
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(loadout) }],
+        content: [{
+          type: "text" as const,
+          text: input.hookEventName === "PostToolUse"
+            ? JSON.stringify({
+                hookSpecificOutput: {
+                  hookEventName: "PostToolUse",
+                  additionalContext: routingContext(loadout),
+                },
+              })
+            : JSON.stringify(loadout),
+        }],
         isError: false,
         details: loadout,
       };
     },
   };
+}
+
+function isGatewayModelsToolInput(value: unknown): value is GatewayModelsToolInput {
+  if (!value || typeof value !== "object") return false;
+  const input = value as Record<string, unknown>;
+  if (input.hookEventName !== undefined && input.hookEventName !== "PostToolUse") return false;
+  return [input.sessionId, input.promptId, input.routingNonce]
+    .every((field) => field === undefined || typeof field === "string");
+}
+
+function writeRoutingReceipt(
+  input: GatewayModelsToolInput,
+  loadout: GatewayLoadout,
+  store: RoutingReceiptStore,
+): void {
+  const sessionId = requireHookCoordinate(input.sessionId, "sessionId");
+  const promptId = requireHookCoordinate(input.promptId, "promptId");
+  const routingNonce = requireHookCoordinate(input.routingNonce, "routingNonce");
+  ensureRoutingReceiptRoot(store.root);
+  const receiptPath = path.join(store.root, `${receiptKey(sessionId, routingNonce)}.json`);
+  const temporaryPath = `${receiptPath}.${process.pid}.tmp`;
+  const receipt = JSON.stringify({
+    promptId,
+    agentTypes: allAgentTypes(loadout),
+    modelIds: allModelIds(loadout),
+  });
+  let fd: number | undefined;
+  try {
+    fd = openSync(
+      temporaryPath,
+      constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+      ROUTING_RECEIPT_MODE,
+    );
+    writeFileSync(fd, receipt, { encoding: "utf8" });
+    closeSync(fd);
+    fd = undefined;
+    try {
+      renameSync(temporaryPath, receiptPath);
+    } catch (error) {
+      if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
+      // Windows rename does not replace an existing target. PreToolUse normally removed it;
+      // this fallback covers crash recovery without weakening the POSIX atomic replace path.
+      rmSync(receiptPath, { force: true });
+      renameSync(temporaryPath, receiptPath);
+    }
+  } catch (error) {
+    if (fd !== undefined) closeSync(fd);
+    rmSync(temporaryPath, { force: true });
+    throw error;
+  }
+}
+
+function ensureRoutingReceiptRoot(root: string): void {
+  try {
+    const stat = lstatSync(root);
+    if (stat.isSymbolicLink() || !stat.isDirectory()) {
+      throw new Error(`Routing receipt root is unsafe: ${root}`);
+    }
+  } catch (error) {
+    if (!(error instanceof Error && "code" in error && error.code === "ENOENT")) throw error;
+    mkdirSync(root, { mode: ROUTING_RECEIPT_DIR_MODE });
+  }
+  chmodSync(root, ROUTING_RECEIPT_DIR_MODE);
+}
+
+function receiptKey(sessionId: string, routingNonce: string): string {
+  return [sessionId, routingNonce]
+    .map((part) => Buffer.from(part, "utf8").toString("base64url"))
+    .join(".");
+}
+
+function requireHookCoordinate(value: string | undefined, name: string): string {
+  if (value === undefined || value.length === 0) {
+    throw new Error(`gateway_models hook mode requires ${name}`);
+  }
+  return value;
+}
+
+function allAgentTypes(loadout: GatewayLoadout): string[] {
+  return Object.values(loadout.providers)
+    .flatMap((provider) => provider.models)
+    .flatMap((model) => Object.values(model.agentTypes));
+}
+
+function allModelIds(loadout: GatewayLoadout): string[] {
+  return Object.values(loadout.providers)
+    .flatMap((provider) => provider.models)
+    .map((model) => model.modelId);
+}
+
+function routingContext(loadout: GatewayLoadout): string {
+  return [
+    "Use this fresh gateway roster for the handoff. Do not reuse an earlier reading or guess an identity.",
+    "Agent: choose a resolvable agentTypes value and copy it to subagent_type.",
+    "Workflow: choose a modelId and copy it verbatim to every agent() stage's opts.model.",
+    "The two spellings are not interchangeable. If no suitable identity is usable, keep the work on the host or report the blocked handoff.",
+    JSON.stringify(loadout),
+  ].join("\n");
 }
 
 async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoadout> {

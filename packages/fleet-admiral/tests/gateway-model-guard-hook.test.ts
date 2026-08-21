@@ -18,41 +18,61 @@ afterEach(() => {
   }
 });
 
-function run(subcommand: string, payload: unknown): {
+function run(subcommand: string, payload: unknown, routingNonce?: string): {
   readonly status: number;
   readonly stderr: string;
   readonly stdout: string;
 } {
-  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand], {
+  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand, ...(routingNonce ? [routingNonce] : [])], {
     input: JSON.stringify(payload),
     encoding: "utf8",
   });
   return { status: result.status ?? -1, stderr: result.stderr, stdout: result.stdout };
 }
 
-function gateWorkflow(toolInput: unknown) {
-  return run("gate-delegation", { tool_name: "Workflow", tool_input: toolInput });
+function gateWorkflow(toolInput: unknown, coordinates?: {
+  readonly sessionId: string;
+  readonly promptId: string;
+  readonly routingNonce: string;
+}) {
+  return run("gate-delegation", {
+    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
+    tool_name: "Workflow",
+    tool_input: toolInput,
+  }, coordinates?.routingNonce);
 }
 
-function gateAgent(toolInput: unknown) {
-  return run("gate-delegation", { tool_name: "Agent", tool_input: toolInput });
+function gateAgent(toolInput: unknown, coordinates?: {
+  readonly sessionId: string;
+  readonly promptId: string;
+  readonly routingNonce: string;
+}) {
+  return run("gate-delegation", {
+    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
+    tool_name: "Agent",
+    tool_input: toolInput,
+  }, coordinates?.routingNonce);
 }
 
 describe("gateway model guard — remind", () => {
-  // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 위임 규약이 모델에 닿는 경로는 이 주입뿐이다.
-  it("injects the pin contract on every turn", () => {
+  // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 매 턴 주입은 세부 핀 규약 대신
+  // 위임·병렬 작업을 온디맨드 orchestration 스킬로 라우팅하는 트립와이어만 맡는다.
+  it("routes delegated and parallel work through orchestration on every turn", () => {
     const { status, stdout } = run("remind", {});
     expect(status).toBe(0);
     const parsed = JSON.parse(stdout) as {
       hookSpecificOutput: { hookEventName: string; additionalContext: string };
     };
     expect(parsed.hookSpecificOutput.hookEventName).toBe("UserPromptSubmit");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("gateway_models");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("subagent_type");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("opts.model");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("delegation or a parallel workload");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("fleet:orchestration");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("before calling Agent or Workflow");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("completion supplies the live routing context");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("Do not delegate implementation by default");
+    expect(parsed.hookSpecificOutput.additionalContext).not.toContain("opts.model");
   });
 
-  // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 규약은 실려야 한다.
+  // 주입은 stdin과 무관하게 성립해야 한다. 턴 시작 payload 모양이 바뀌어도 라우팅 트립와이어는 실려야 한다.
   it("does not depend on the hook payload", () => {
     expect(run("remind", { hook_event_name: "UserPromptSubmit", prompt: "hello" }).status).toBe(0);
   });
@@ -60,14 +80,15 @@ describe("gateway model guard — remind", () => {
 
 describe("gateway model guard — Agent delegation", () => {
   it("passes a pinned gateway identity", () => {
-    expect(gateAgent({ subagent_type: "fleet:xai-grok-4-6-low" }).status).toBe(0);
+    expect(gateAgent({ subagent_type: "Explore" }).status).toBe(0);
   });
 
   it("blocks the unpinned spellings", () => {
     for (const subagentType of ["general-purpose", "claude"]) {
       const { status, stderr } = gateAgent({ subagent_type: subagentType });
       expect(status, subagentType).toBe(2);
-      expect(stderr, subagentType).toContain("gateway_models");
+      expect(stderr, subagentType).toContain("fleet:orchestration");
+      expect(stderr, subagentType).toContain("live routing context");
     }
   });
 
@@ -87,11 +108,12 @@ describe("gateway model guard — Agent delegation", () => {
 });
 
 describe("gateway model guard — Workflow delegation", () => {
-  it("passes a full gateway modelId", () => {
-    const { status } = gateWorkflow({
+  it("blocks a gateway modelId when no live routing receipt exists", () => {
+    const { status, stderr } = gateWorkflow({
       script: `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast", effort: "low" })`,
     });
-    expect(status).toBe(0);
+    expect(status).toBe(2);
+    expect(stderr).toContain("no prompt-scoped routing receipt");
   });
 
   it("passes lineage aliases without the gateway prefix", () => {
@@ -154,7 +176,7 @@ describe("gateway model guard — Workflow delegation", () => {
   // 프롬프트 텍스트의 괄호를 호출 경계로 세면 멀쩡한 스크립트가 막힌다.
   it("reads call boundaries past parentheses and quotes inside the prompt", () => {
     const { status } = gateWorkflow({
-      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "claude-gateway--xai--grok-4.6" })`,
+      script: `await agent("check foo(bar) and \\"baz)\\" here", { model: "opus" })`,
     });
     expect(status).toBe(0);
   });
@@ -176,7 +198,7 @@ describe("gateway model guard — Workflow delegation", () => {
     const dir = mkdtempSync(path.join(os.tmpdir(), "gateway-model-guard-"));
     tempDirs.push(dir);
     const scriptPath = path.join(dir, "wf.js");
-    writeFileSync(scriptPath, `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast" })`);
+    writeFileSync(scriptPath, `agent("x", { model: "opus" })`);
     expect(gateWorkflow({ scriptPath }).status).toBe(0);
     writeFileSync(scriptPath, `agent("x", { model: "codex--gpt-5.6-sol-fast[1m]" })`);
     expect(gateWorkflow({ scriptPath }).status).toBe(2);
@@ -188,6 +210,33 @@ describe("gateway model guard — Workflow delegation", () => {
 
   it("ignores tools it does not gate", () => {
     expect(run("gate-delegation", { tool_name: "Bash", tool_input: { command: "ls" } }).status).toBe(0);
+  });
+});
+
+describe("gateway model guard — orchestration failure", () => {
+  it("states that a failed orchestration supplied no routing context", () => {
+    const { status, stdout } = run("orchestration-failed", {
+      hook_event_name: "PostToolUseFailure",
+      tool_name: "Skill",
+      tool_input: { skill: "fleet:orchestration" },
+      error: "skill failed",
+    });
+    expect(status).toBe(0);
+    const parsed = JSON.parse(stdout) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUseFailure");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("no live routing context was supplied");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("do not guess an identity");
+  });
+
+  it("ignores another failed skill", () => {
+    expect(run("orchestration-failed", {
+      hook_event_name: "PostToolUseFailure",
+      tool_name: "Skill",
+      tool_input: { skill: "fleet:professional-pushback" },
+      error: "skill failed",
+    }).stdout).toBe("");
   });
 });
 
