@@ -103,6 +103,15 @@ async function renderTodayWith(value: LedgerSummaryDto): Promise<void> {
   await renderWindowWith(value, "Today");
 }
 
+function backendHeads(): HTMLButtonElement[] {
+  return [...container.querySelectorAll<HTMLButtonElement>(".ledger-backend-head")];
+}
+
+async function expandBackend(label: string): Promise<void> {
+  const head = backendHeads().find((candidate) => candidate.textContent?.startsWith(label));
+  await act(async () => head!.click());
+}
+
 function trendDto(window: LedgerWindow = "week"): LedgerSummaryDto {
   const value = dto("ok", window, 13.59, [
     { day: "2026-08-13", costUsd: 1.25 },
@@ -130,13 +139,129 @@ describe("Ledger Claude Code provider presentation", () => {
     });
     expect(container.querySelector(".ledger-hero-cost")?.textContent).toBe("$12.34");
     expect(container.textContent).toContain("Claude Code · 2 models");
-    expect(container.textContent).toContain("All models used through Claude Code are included.");
-    expect(container.textContent).toContain("Claude Opus 5Anthropic");
-    expect(container.textContent).toContain("Grok 4.6xAI");
+    expect(container.textContent).toContain("Grouped by backend.");
     expect(container.querySelector(".ledger-client-mark.is-anthropic")).not.toBeNull();
     expect(container.querySelector(".ledger-client-mark.is-xai")).not.toBeNull();
     expect(container.textContent).toContain("Total tokens");
     expect(container.textContent).not.toMatch(/Operation|Theater|device-wide/i);
+  });
+
+  it("folds model rows into cost-ranked backends and opens one on demand", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 15 },
+      modelRows: [
+        { ...modelRow, costUsd: 12 },
+        { ...modelRow, modelId: "claude-gateway--xai--grok-4.6", provider: "xai", label: "Grok 4.6", costUsd: 3 },
+      ],
+      modelCount: 2,
+    });
+
+    // Backends carry the money; individual models stay behind a disclosure.
+    expect(backendHeads().map((head) => head.textContent)).toEqual([
+      expect.stringContaining("Anthropic80%"),
+      expect.stringContaining("xAI20%"),
+    ]);
+    expect(container.querySelector(".ledger-client-row")).toBeNull();
+    expect(backendHeads()[0]?.getAttribute("aria-label")).toBe("Anthropic · $12.00 · 2k tokens · 80% of spend");
+
+    await expandBackend("Anthropic");
+    expect(backendHeads()[0]?.getAttribute("aria-expanded")).toBe("true");
+    expect(container.textContent).toContain("Claude Opus 5Anthropic");
+    expect(container.textContent).not.toContain("Grok 4.6xAI");
+
+    await expandBackend("Anthropic");
+    expect(container.querySelector(".ledger-client-row")).toBeNull();
+  });
+
+  it("paints one composition slice per backend and only when a split exists", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 15 },
+      modelRows: [
+        { ...modelRow, costUsd: 12 },
+        { ...modelRow, modelId: "claude-gateway--xai--grok-4.6", provider: "xai", label: "Grok 4.6", costUsd: 3 },
+      ],
+      modelCount: 2,
+    });
+    const slices = [...container.querySelectorAll<HTMLElement>(".ledger-backend-slice")];
+    expect(slices.map((slice) => slice.className)).toEqual([
+      "ledger-backend-slice is-anthropic",
+      "ledger-backend-slice is-xai",
+    ]);
+    expect(slices.map((slice) => slice.style.flexGrow)).toEqual(["12", "3"]);
+
+    await renderWith(dto("ok", "week", 0));
+    expect(container.querySelector(".ledger-backend-composition")).toBeNull();
+  });
+
+  it("never rounds a nonzero backend share to 0% or a partial share to 100%", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 10_000 },
+      modelRows: [
+        { ...modelRow, costUsd: 9_999.5 },
+        { ...modelRow, modelId: "claude-gateway--xai--grok-4.6", provider: "xai", label: "Grok 4.6", costUsd: 0.5 },
+      ],
+      modelCount: 2,
+    });
+    expect(backendHeads().map((head) => head.querySelector("small")?.textContent)).toEqual([">99.9%", "<0.1%"]);
+  });
+
+  it("strands no model behind an opened backend", async () => {
+    const value = dto();
+    const rows = Array.from({ length: 7 }, (_, index) => ({
+      ...modelRow,
+      modelId: `claude-opus-5-${index}`,
+      label: `Model ${index}`,
+      costUsd: 10 - index,
+    }));
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 49 },
+      modelRows: rows,
+      modelCount: 7,
+    });
+    await expandBackend("Anthropic");
+    // 서버가 보낸 행을 클라이언트가 다시 자르면 그 모델에 닿을 길이 사라진다.
+    expect(container.querySelectorAll(".ledger-client-row")).toHaveLength(7);
+    expect(container.textContent).not.toContain("more models");
+  });
+
+  it("closes the composition bar against the window total, not the grouped subtotal", async () => {
+    const value = dto();
+    await renderWith({
+      ...value,
+      // 80행 상한과 날짜 없는 기록 때문에 모델 행 합계는 창 합계보다 작을 수 있다.
+      totals: { ...value.totals, costUsd: 100 },
+      modelRows: [
+        { ...modelRow, costUsd: 60 },
+        { ...modelRow, modelId: "claude-gateway--xai--grok-4.6", provider: "xai", label: "Grok 4.6", costUsd: 30 },
+      ],
+      modelCount: 2,
+    });
+    const slices = [...container.querySelectorAll<HTMLElement>(".ledger-backend-slice")];
+    expect(slices.map((slice) => slice.style.flexGrow)).toEqual(["60", "30", "10"]);
+    expect(slices[2]?.className).toContain("ledger-backend-slice--remainder");
+    expect(slices[2]?.getAttribute("title")).toBe("Not attributed to a listed backend · $10.00 · 10%");
+    // 폭의 분모와 라벨의 분모가 같아야 60%가 60%로 읽힌다.
+    expect(backendHeads().map((head) => head.querySelector("small")?.textContent)).toEqual(["60%", "30%"]);
+  });
+
+  it("still paints a composition bar when one backend holds every grouped dollar", async () => {
+    await renderWith(dto());
+    const slices = [...container.querySelectorAll<HTMLElement>(".ledger-backend-slice")];
+    expect(slices).toHaveLength(1);
+    expect(container.querySelector(".ledger-backend-slice--remainder")).toBeNull();
+  });
+
+  it("names the token total it shows in the backend accessible name", async () => {
+    await renderWith(dto());
+    expect(backendHeads()[0]?.getAttribute("aria-label"))
+      .toBe("Anthropic · $12.34 · 2k tokens · 100% of spend");
   });
 
   it("renders a Claude Code model empty state", async () => {
@@ -154,6 +279,8 @@ describe("Ledger Claude Code provider presentation", () => {
       modelRows: [{ ...modelRow, provider: "opencode", costUsd: 0, messages: 12 }],
       modelCount: 1,
     });
+    expect(backendHeads()[0]?.querySelector("strong")?.textContent).toBe("OpenCode");
+    await expandBackend("OpenCode");
     expect(container.querySelector(".ledger-client-copy small")?.textContent).toBe("OpenCode");
   });
 
@@ -168,6 +295,8 @@ describe("Ledger Claude Code provider presentation", () => {
       }],
     });
     expect(container.querySelector(".ledger-total-token")?.textContent).toContain("2k");
+    expect(container.querySelector(".ledger-backend-values")?.textContent).toContain("2k");
+    await expandBackend("Anthropic");
     expect(container.querySelector(".ledger-client-values")?.textContent).toContain("2k");
   });
 
@@ -188,63 +317,123 @@ describe("Ledger daily model detail", () => {
     );
   });
 
-  it("renders selectable button marks with labels, tooltip, and the latest nonzero day selected", async () => {
+  it("labels every bar and opens no detail until a day is chosen", async () => {
     await renderTodayWith(trendDto("today"));
-    const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
+    const bars = [...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")];
     expect(bars).toHaveLength(2);
-    expect(bars.map((bar) => ({ tag: bar.tagName, pressed: bar.getAttribute("aria-pressed") }))).toEqual([
-      { tag: "BUTTON", pressed: "false" },
-      { tag: "BUTTON", pressed: "true" },
-    ]);
     expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
       "Aug 13 · $1.25 · Linear scale",
       "Aug 14 · $12.34 · Linear scale",
     ]);
     expect(bars[1]?.querySelector(".ledger-trend-tooltip")?.textContent).toContain("$12.34");
-    expect(container.textContent).toContain("Aug 14 model detail");
-  });
-
-  it.each(["week", "month"] as const)("shows no model detail in the %s window", async (window) => {
-    const value = trendDto(window);
-    if (window === "month") await renderWindowWith(value, "This month");
-    else await renderWith(value);
-    const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
-    expect(bars.every((bar) => bar.getAttribute("aria-disabled") === "true")).toBe(true);
+    // 자동 선택은 창 전체 목록과 하루 목록을 같은 화면에 겹쳐 그렸다 — 선택은 클릭에서만 시작한다.
     expect(bars.every((bar) => bar.getAttribute("aria-pressed") === "false")).toBe(true);
     expect(container.querySelector(".ledger-daily-detail")).toBeNull();
-    await act(async () => bars[0]!.click());
+    expect(container.textContent).toContain("Select a day to see the models that ran on it.");
+  });
+
+  it.each(["today", "week", "month"] as const)("opens a day's models in the %s window", async (window) => {
+    const value = trendDto(window);
+    if (window === "month") await renderWindowWith(value, "This month");
+    else if (window === "today") await renderTodayWith(value);
+    else await renderWith(value);
+
+    const bars = [...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")];
+    expect(bars.map((bar) => bar.tagName)).toEqual(["BUTTON", "BUTTON"]);
+    expect(container.querySelector(".ledger-daily-detail")).toBeNull();
+
+    await act(async () => (bars[1] as HTMLButtonElement).click());
+    expect(bars[1]?.getAttribute("aria-pressed")).toBe("true");
+    expect(container.textContent).toContain("Aug 14 model detail");
+
+    await act(async () => (bars[0] as HTMLButtonElement).click());
+    expect(bars[0]?.getAttribute("aria-pressed")).toBe("true");
+    expect(bars[1]?.getAttribute("aria-pressed")).toBe("false");
+    expect(container.textContent).toContain("Aug 13 model detail");
+
+    // Pressing the selected day again closes it, so the disclosure is reversible.
+    await act(async () => (bars[0] as HTMLButtonElement).click());
     expect(container.querySelector(".ledger-daily-detail")).toBeNull();
   });
 
-  it("keeps today's detail available in the Today window", async () => {
-    await renderTodayWith(trendDto("today"));
-    const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
-    expect(bars[1]?.getAttribute("aria-disabled")).toBe("false");
-    expect(container.textContent).toContain("Aug 14 model detail");
+  it("draws a day with no detail as a mark, never as a control", async () => {
+    const value = dto("ok", "week", 12.34, [
+      { day: "2026-08-13", costUsd: 0 },
+      { day: "2026-08-14", costUsd: 12.34 },
+    ]);
+    await renderWith({ ...value, generatedAtMs: new Date(2026, 7, 14, 12).getTime() });
+    const bars = [...container.querySelectorAll<HTMLElement>(".ledger-trend-bar")];
+    expect(bars.map((bar) => bar.tagName)).toEqual(["DIV", "BUTTON"]);
+    expect(bars[0]?.getAttribute("role")).toBe("img");
+    expect(bars[0]?.className).toContain("ledger-trend-bar--inert");
+    // `aria-disabled` 만 붙은 <button>은 탭 순서에 남아 죽은 정지점이 된다 — 그 형태는 더 이상 없다.
+    expect(container.querySelector("[aria-disabled]")).toBeNull();
+    expect(bars[0]?.getAttribute("aria-label")).toBe("Aug 13 · $0.00 · Linear scale");
   });
 
-  it("uses the Console host day instead of the browser-local generated date", async () => {
+  it("labels days from the server's day keys, never from the browser clock", async () => {
     const value = trendDto("today");
     await renderTodayWith({
       ...value,
+      // 브라우저가 보는 생성 시각이 하루 이르더라도 축·상세 라벨은 서버가 준 날짜 키를 따른다.
       generatedAtMs: new Date(2026, 7, 13, 12).getTime(),
       currentDay: "2026-08-14",
     });
+    expect([...container.querySelectorAll(".ledger-trend-axis span")].map((node) => node.textContent))
+      .toEqual(["Aug 13", "Aug 14"]);
     const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
-    expect(bars[1]?.getAttribute("aria-disabled")).toBe("false");
+    expect(bars.map((bar) => bar.getAttribute("aria-label"))).toEqual([
+      "Aug 13 · $1.25 · Linear scale",
+      "Aug 14 · $12.34 · Linear scale",
+    ]);
+    await act(async () => bars[1]!.click());
     expect(container.textContent).toContain("Aug 14 model detail");
   });
 
-  it("keeps past bars non-selectable even in the Today response", async () => {
-    await renderTodayWith(trendDto("today"));
-    const bars = [...container.querySelectorAll<HTMLButtonElement>(".ledger-trend-bar")];
-    expect(bars[0]?.getAttribute("aria-disabled")).toBe("true");
-    expect(bars[1]?.getAttribute("aria-pressed")).toBe("true");
-    await act(async () => bars[0]!.click());
-    expect(bars[0]?.getAttribute("aria-pressed")).toBe("false");
-    expect(bars[1]?.getAttribute("aria-pressed")).toBe("true");
-    expect(container.textContent).toContain("Aug 14 model detail");
-    expect(container.textContent).not.toContain("Aug 13 model detail");
+  it("names the undated remainder in dollars and caps the chart with it", async () => {
+    const value = trendDto("week");
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 20 },
+      dailySource: { unmatchedEntries: 3 },
+    });
+    // hero $20.00 - dated ($1.25 + $12.34) = $6.41
+    expect(container.querySelector(".ledger-trend-residual")?.textContent)
+      .toContain("$6.41 is in the total but not on the chart — 3 records carry no day.");
+    const cap = container.querySelector<HTMLElement>(".ledger-trend-residual-cap");
+    expect(cap?.tagName).toBe("DIV");
+    expect(cap?.getAttribute("aria-label"))
+      .toBe("Undated remainder $6.41, in the total but not on any day.");
+    // 툴팁은 `.ledger-trend-bars` 폭을 기준으로 앵커된다 — 마개가 그 안에 있으면 모든 날짜가 밀린다.
+    expect(container.querySelector(".ledger-trend-bars .ledger-trend-residual-cap")).toBeNull();
+    expect(container.querySelectorAll(".ledger-trend-bars > *")).toHaveLength(2);
+  });
+
+  it("stays silent when every record carries a day", async () => {
+    const value = trendDto("week");
+    await renderWith({ ...value, totals: { ...value.totals, costUsd: 13.59 } });
+    expect(container.querySelector(".ledger-trend-residual")).toBeNull();
+    expect(container.querySelector(".ledger-trend-residual-cap")).toBeNull();
+  });
+
+  it("names a gap the undated records do not explain", async () => {
+    const value = trendDto("week");
+    await renderWith({ ...value, totals: { ...value.totals, costUsd: 20 } });
+    // 날짜 없는 기록이 0이어도 히어로와 차트가 어긋나면 침묵하지 않는다(예: 일별 축의 366일 상한).
+    expect(container.querySelector(".ledger-trend-residual")?.textContent)
+      .toContain("$6.41 is in the total but not on the chart.");
+    expect(container.querySelector(".ledger-trend-residual")?.textContent).not.toContain("records");
+  });
+
+  it("stays silent when the remainder rounds away below a cent", async () => {
+    const value = trendDto("week");
+    await renderWith({
+      ...value,
+      totals: { ...value.totals, costUsd: 13.592 },
+      dailySource: { unmatchedEntries: 1 },
+    });
+    expect(container.querySelector(".ledger-trend-residual")).toBeNull();
+    expect(container.querySelector(".ledger-trend-residual-cap")).toBeNull();
   });
 
   it("switches between linear and square-root scales without changing values", async () => {

@@ -9,9 +9,11 @@ import {
   costValueTier,
   formatCost,
   formatCostParts,
+  formatShare,
   formatTokenParts,
   formatTokens,
   lowerValueTier,
+  safePercent,
   tokenValueTier,
   type FormattedValueParts,
   type ValueTier,
@@ -98,6 +100,130 @@ function ModelRow({ row }: { readonly row: LedgerModelRowDto }) {
   );
 }
 
+interface BackendGroup {
+  readonly provider: string;
+  readonly label: string;
+  readonly costUsd: number;
+  readonly tokens: number;
+  readonly share: number;
+  readonly rows: readonly LedgerModelRowDto[];
+}
+
+/**
+ * 운영자가 실제로 당길 수 있는 손잡이는 모델이 아니라 백엔드다. 서버는 백엔드 합계를 주지
+ * 않지만 `modelRows`가 이미 provider와 금액을 함께 나르므로 클라이언트에서 접는다 —
+ * 따라서 이 분해는 서버가 상한(80행)까지 보낸 모델만 덮는다. 그 사실은 섹션의
+ * `+N more models` 줄이 그대로 진다.
+ */
+function groupByBackend(
+  rows: readonly LedgerModelRowDto[],
+  totalCostUsd: number,
+): readonly BackendGroup[] {
+  const groups = new Map<string, { rows: LedgerModelRowDto[]; costUsd: number; tokens: number }>();
+  for (const row of rows) {
+    const group = groups.get(row.provider) ?? { rows: [], costUsd: 0, tokens: 0 };
+    group.rows.push(row);
+    group.costUsd += row.costUsd;
+    group.tokens += totalTokens(row.usage);
+    groups.set(row.provider, group);
+  }
+  return [...groups.entries()]
+    .map(([provider, group]) => ({
+      provider,
+      label: providerLabel(provider),
+      costUsd: group.costUsd,
+      tokens: group.tokens,
+      share: safePercent(group.costUsd, totalCostUsd),
+      rows: group.rows,
+    }))
+    .sort((a, b) => (
+      b.costUsd - a.costUsd
+      || b.tokens - a.tokens
+      || (a.label < b.label ? -1 : a.label > b.label ? 1 : 0)
+    ));
+}
+
+/**
+ * 조각 너비는 `flex-grow`가 나누므로 분모가 조각 합계다. 라벨의 share는 창 전체 합계를 분모로
+ * 쓴다 — 두 분모가 갈리면 폭과 퍼센트가 어긋난다(서버가 모델 행을 80개로 자르면 특히 그렇다).
+ * 남은 몫을 중립 조각으로 명시해 두 분모를 하나로 되돌린다.
+ */
+function BackendComposition({ groups, totalCostUsd, t }: {
+  readonly groups: readonly BackendGroup[];
+  readonly totalCostUsd: number;
+  readonly t: T;
+}) {
+  const grouped = groups.reduce((total, group) => total + group.costUsd, 0);
+  const remainder = totalCostUsd - grouped;
+  return (
+    <div className="ledger-backend-composition" role="img" aria-label={t("ledger.backends.composition")}>
+      {groups.map((group) => (
+        <span
+          key={group.provider}
+          className={`ledger-backend-slice is-${providerClass(group.provider)}`}
+          style={{ flexGrow: group.costUsd }}
+          title={t("ledger.backends.slice", { label: group.label, share: formatShare(group.share) })}
+        />
+      ))}
+      {remainder > 0 ? (
+        <span
+          className="ledger-backend-slice ledger-backend-slice--remainder"
+          style={{ flexGrow: remainder }}
+          title={t("ledger.backends.remainder", {
+            cost: formatCost(remainder),
+            share: formatShare(safePercent(remainder, totalCostUsd)),
+          })}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function BackendGroupRow({ group, t }: { readonly group: BackendGroup; readonly t: T }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className="ledger-backend">
+      <button
+        type="button"
+        className="ledger-backend-head"
+        aria-expanded={open}
+        aria-label={t("ledger.backends.row", {
+          label: group.label,
+          cost: formatCost(group.costUsd),
+          tokens: formatTokens(group.tokens),
+          share: formatShare(group.share),
+        })}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <span className={`ledger-client-mark is-${providerClass(group.provider)}`}>
+          {providerGlyph(group.provider)}
+        </span>
+        <span className="ledger-backend-copy">
+          <strong>{group.label}</strong>
+          <small>{formatShare(group.share)}</small>
+        </span>
+        <span className="ledger-backend-values">
+          <ValueAmount parts={formatCostParts(group.costUsd)} tier={costValueTier(group.costUsd)} />
+          <ValueAmount parts={formatTokenParts(group.tokens)} tier={tokenValueTier(group.tokens)} />
+        </span>
+        <span className="ledger-backend-chevron" aria-hidden="true">
+          <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" fill="none" strokeWidth="1.4">
+            <path d="M3.5 1.5 L7 5 L3.5 8.5" />
+          </svg>
+        </span>
+      </button>
+      {/* 펼친 백엔드는 받은 행을 전부 보여준다 — 여기서 한 번 더 자르면 그 모델에 닿을 길이 없다. */}
+      {open ? (
+        <div className="ledger-backend-models">
+          <div className="ledger-client-list">
+            {group.rows.map((row) => <ModelRow key={row.modelId} row={row} />)}
+          </div>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 const TREND_DAY_MARKER = "{ledgerTrendDayValue}";
 const TREND_COST_MARKER = "{ledgerTrendCostValue}";
 const TREND_VALUE_MARKERS = /(\{ledgerTrendDayValue\}|\{ledgerTrendCostValue\})/;
@@ -142,19 +268,21 @@ function DailyDetail({ detail, language, t }: {
   );
 }
 
+/**
+ * 상세를 가진 날은 서버가 이미 모든 창에 대해 직렬화한다(`dailyDetails`). Today만 열어 두던
+ * 게이트는 나머지 창의 막대를 눌러도 아무 일이 없는 컨트롤로 만들었고, 그 창들이 받아 놓고
+ * 버리는 payload가 주 73.9%·월 82.3%였다. 이제 상세가 있는 날은 어느 창에서든 선택할 수 있다.
+ */
 function detailDays(data: LedgerSummaryDto): readonly string[] {
-  if (data.scope.window !== "today") return [];
-  return data.dailyDetails
-    .filter((detail) => detail.day === data.currentDay)
-    .map((detail) => detail.day);
+  return data.dailyDetails.map((detail) => detail.day);
 }
 
-function defaultSelectedDay(data: LedgerSummaryDto): string | null {
-  const available = new Set(detailDays(data));
-  return data.daily.filter((point) => available.has(point.day) && point.costUsd > 0).at(-1)?.day
-    ?? data.daily.filter((point) => available.has(point.day)).at(-1)?.day
-    ?? null;
-}
+/**
+ * 창 전체 목록과 하루 목록은 같은 행 문법을 쓰므로, 하루를 자동 선택하면 같은 모델이 서로
+ * 다른 금액으로 두 번 그려진다(창 목록은 날짜가 붙지 않은 기록까지 포함한다). 선택은 항상
+ * 사용자의 클릭에서만 시작한다.
+ */
+const NO_DAY_SELECTED: string | null = null;
 
 function TrendSection({ data, language, t }: {
   readonly data: LedgerSummaryDto;
@@ -162,13 +290,17 @@ function TrendSection({ data, language, t }: {
   readonly t: T;
 }) {
   const [scale, setScale] = useState<TrendScale>("linear");
-  const [selectedDay, setSelectedDay] = useState<string | null>(() => defaultSelectedDay(data));
-  const fallbackDay = defaultSelectedDay(data);
+  const [selectedDay, setSelectedDay] = useState<string | null>(NO_DAY_SELECTED);
   const availableDetailDays = new Set(detailDays(data));
-  const selected = selectedDay && availableDetailDays.has(selectedDay)
-    ? selectedDay
-    : fallbackDay;
+  const selected = selectedDay && availableDetailDays.has(selectedDay) ? selectedDay : null;
   const detail = selected ? data.dailyDetails.find((entry) => entry.day === selected) : undefined;
+  // 날짜를 붙이지 못한 기록은 합계에 남고 일별 축에서만 빠진다(summary.ts). 그 차이를 건수가
+  // 아니라 금액으로 말하지 않으면 히어로와 차트가 조용히 어긋난다.
+  const datedCost = data.daily.reduce((total, point) => total + point.costUsd, 0);
+  const residual = data.totals.costUsd - datedCost;
+  // 날짜 없는 기록이 흔한 원인이지만 유일한 원인은 아니다(예: fillDailyPoints의 366일 상한).
+  // 금액으로 문을 열고, 건수는 실제로 있을 때만 말한다.
+  const showsResidual = residual >= 0.005;
   const dayFormatter = useMemo(
     () => new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }),
     [language],
@@ -196,6 +328,8 @@ function TrendSection({ data, language, t }: {
         </div>
       </div>
       <p className="ledger-trend-description">{t("ledger.trend.explanation")}</p>
+      <p className="ledger-trend-description">{t("ledger.trend.select")}</p>
+      <div className="ledger-trend-chart">
       <div className="ledger-trend-bars" role="group" aria-label={t("ledger.trend.aria")}>
         {data.daily.map((point, index) => {
           const day = formatDay(point.day);
@@ -205,6 +339,23 @@ function TrendSection({ data, language, t }: {
             scale: scaleLabel,
           });
           const height = `${Math.max(3, maxTransformed > 0 ? (transform(point.costUsd) / maxTransformed) * 100 : 0)}%`;
+          const style = { height, ["--ledger-bar-pos" as string]: String(index / Math.max(1, data.daily.length - 1)) };
+          const tooltip = <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>;
+          // 상세가 없는 날은 눌러도 열 것이 없다. `aria-disabled`만 붙인 <button>은 탭 순서에
+          // 남아 죽은 정지점이 되므로, 작동할 수 없는 막대는 컨트롤이 아니라 표식으로 그린다.
+          if (!availableDetailDays.has(point.day)) {
+            return (
+              <div
+                key={point.day}
+                className="ledger-trend-bar ledger-trend-bar--inert"
+                role="img"
+                aria-label={label}
+                style={style}
+              >
+                {tooltip}
+              </div>
+            );
+          }
           return (
             <button
               type="button"
@@ -212,16 +363,24 @@ function TrendSection({ data, language, t }: {
               className="ledger-trend-bar"
               aria-label={label}
               aria-pressed={selected === point.day}
-              aria-disabled={!availableDetailDays.has(point.day)}
-              style={{ height, ["--ledger-bar-pos" as string]: String(index / Math.max(1, data.daily.length - 1)) }}
-              onClick={() => {
-                if (availableDetailDays.has(point.day)) setSelectedDay(point.day);
-              }}
+              style={style}
+              onClick={() => setSelectedDay((current) => current === point.day ? null : point.day)}
             >
-              <span className="ledger-trend-tooltip" aria-hidden="true">{label}</span>
+              {tooltip}
             </button>
           );
         })}
+      </div>
+      {/* 잔여 마개는 `.ledger-trend-bars` 밖에 선다 — 툴팁이 그 컨테이너 폭을 기준으로 앵커되므로
+          안에 끼우면 모든 날짜 툴팁이 마개 폭만큼 밀린다. */}
+      {showsResidual ? (
+        <div
+          className="ledger-trend-residual-cap"
+          role="img"
+          aria-label={t("ledger.trend.residualAria", { cost: formatCost(residual) })}
+          style={{ height: `${Math.max(6, maxTransformed > 0 ? Math.min(100, (transform(residual) / maxTransformed) * 100) : 0)}%` }}
+        />
+      ) : null}
       </div>
       <div className="ledger-trend-axis">
         <span>{formatDay(data.daily[0]!.day)}</span>
@@ -234,6 +393,17 @@ function TrendSection({ data, language, t }: {
       <p className="ledger-trend-scale-note">
         {t(scale === "sqrt" ? "ledger.trend.scaleNoteSqrt" : "ledger.trend.scaleNoteLinear")}
       </p>
+      {showsResidual ? (
+        <p className="ledger-trend-residual">
+          <span className="ledger-trend-residual-mark" aria-hidden="true" />
+          <span>{data.dailySource.unmatchedEntries > 0
+            ? t("ledger.trend.residual", {
+              cost: formatCost(residual),
+              count: data.dailySource.unmatchedEntries,
+            })
+            : t("ledger.trend.residualPlain", { cost: formatCost(residual) })}</span>
+        </p>
+      ) : null}
       {detail ? <DailyDetail detail={detail} language={language} t={t} /> : null}
     </div>
   );
@@ -334,6 +504,10 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
 
   // Keep a previous response cached for back-and-forth controls, but never paint it under a new window label.
   const visibleData = data?.scope.window === window ? data : null;
+  const backends = useMemo(
+    () => visibleData ? groupByBackend(visibleData.modelRows, visibleData.totals.costUsd) : [],
+    [visibleData],
+  );
   return (
     <div className="ledger-root">
       <div className="ledger-controls">
@@ -379,16 +553,21 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
                 t={t}
               />
             ) : null}
-            <h3>{t("ledger.section.models")}</h3>
-            <p className="ledger-clients-description">{t("ledger.models.explanation")}</p>
+            <h3>{t("ledger.section.backends")}</h3>
+            <p className="ledger-clients-description">{t("ledger.backends.explanation")}</p>
             {visibleData.modelRows.length === 0 ? (
               <div className="ledger-inline-empty">
                 <strong>{t("ledger.empty.title")}</strong>
                 <p>{t("ledger.empty.body")}</p>
               </div>
             ) : (
-              <div className="ledger-client-list">
-                {visibleData.modelRows.map((row) => <ModelRow key={row.modelId} row={row} />)}
+              <div className="ledger-backend-list" role="group" aria-label={t("ledger.backends.aria")}>
+                {visibleData.totals.costUsd > 0
+                  ? <BackendComposition groups={backends} totalCostUsd={visibleData.totals.costUsd} t={t} />
+                  : null}
+                {backends.map((group) => (
+                  <BackendGroupRow key={group.provider} group={group} t={t} />
+                ))}
               </div>
             )}
             {visibleData.modelCount > visibleData.modelRows.length ? (
