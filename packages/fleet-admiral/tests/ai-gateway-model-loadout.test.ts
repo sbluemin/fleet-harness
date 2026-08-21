@@ -408,6 +408,26 @@ describe("gateway_models tool", () => {
       Object.values(result.details.providers).every((entry) => entry.quota.status === "unsupported"),
     ).toBe(true);
   });
+
+  it("formats a fresh reading as PostToolUse context for the orchestration hook", async () => {
+    const spec = buildGatewayModelsToolSpec({
+      readSelection: () => ({ models: [model("cursor--grok-4.5-fast")] }),
+    });
+    const result = await spec.execute({ hookEventName: "PostToolUse" }, {} as never) as {
+      content: readonly { readonly text: string }[];
+      details: GatewayLoadout;
+      isError: boolean;
+    };
+    const hookOutput = JSON.parse(result.content[0]!.text) as {
+      hookSpecificOutput: { hookEventName: string; additionalContext: string };
+    };
+    expect(result.isError).toBe(false);
+    expect(hookOutput.hookSpecificOutput.hookEventName).toBe("PostToolUse");
+    expect(hookOutput.hookSpecificOutput.additionalContext).toContain("Agent: choose a resolvable agentTypes value");
+    expect(hookOutput.hookSpecificOutput.additionalContext).toContain("Workflow: choose a modelId");
+    expect(hookOutput.hookSpecificOutput.additionalContext).toContain("claude-gateway--cursor--grok-4.5-fast");
+    expect(hookOutput.hookSpecificOutput.additionalContext).toContain("fleet:cursor-grok-4-5-fast");
+  });
 });
 
 // 이 도구에서 모델에 실제로 도달하는 텍스트는 description 하나다 — core-agent의 specToMcpTool이

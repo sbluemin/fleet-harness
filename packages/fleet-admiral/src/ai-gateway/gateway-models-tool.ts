@@ -2,9 +2,9 @@
  * ai-gateway/gateway-models-tool — live roster of the gateway models a host may
  * assign to workflow stages.
  *
- * The tool reports facts and stops there. Whether a run may leave the host unpinned
- * is enforced by the gateway model guard hook, not stated here — a rule the hook
- * blocks on and this description repeats would drift apart the moment either moves.
+ * Ordinary calls report facts and stop there. Hook-mode calls wrap the same fresh
+ * reading in Claude Code's PostToolUse context envelope; dispatch enforcement remains
+ * in the gateway model guard hook.
  */
 
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
@@ -35,6 +35,11 @@ export interface GatewayModelsToolDeps {
   readonly readQuota?: () => Promise<GatewayQuotaSnapshot | undefined> | GatewayQuotaSnapshot | undefined;
 }
 
+interface GatewayModelsToolInput {
+  /** Hook event whose additional context should receive this reading. Omit for an ordinary tool result. */
+  readonly hookEventName?: "PostToolUse";
+}
+
 const GATEWAY_MODELS_DOCTRINE = {
   id: GATEWAY_MODELS_TOOL_ID,
   tag: GATEWAY_MODELS_TOOL_ID,
@@ -60,18 +65,47 @@ export function buildGatewayModelsToolSpec(deps: GatewayModelsToolDeps): AgentTo
     ...GATEWAY_MODELS_DOCTRINE,
     parameters: {
       type: "object",
-      properties: {},
+      properties: {
+        hookEventName: { type: "string", enum: ["PostToolUse"] },
+      },
       additionalProperties: false,
     },
-    async execute() {
+    async execute(args) {
       const loadout = await resolveLoadout(deps);
+      const input = isGatewayModelsToolInput(args) ? args : {};
       return {
-        content: [{ type: "text" as const, text: JSON.stringify(loadout) }],
+        content: [{
+          type: "text" as const,
+          text: input.hookEventName === "PostToolUse"
+            ? JSON.stringify({
+                hookSpecificOutput: {
+                  hookEventName: "PostToolUse",
+                  additionalContext: routingContext(loadout),
+                },
+              })
+            : JSON.stringify(loadout),
+        }],
         isError: false,
         details: loadout,
       };
     },
   };
+}
+
+function isGatewayModelsToolInput(value: unknown): value is GatewayModelsToolInput {
+  if (!value || typeof value !== "object") return false;
+  const hookEventName = (value as { readonly hookEventName?: unknown }).hookEventName;
+  return hookEventName === undefined || hookEventName === "PostToolUse";
+}
+
+function routingContext(loadout: GatewayLoadout): string {
+  return [
+    "Use this fresh gateway roster for the handoff. Do not reuse an earlier reading or guess an identity.",
+    "Agent: choose a resolvable agentTypes value and copy it to subagent_type.",
+    "Workflow: choose a modelId and copy it verbatim to every agent() stage's opts.model.",
+    "The two spellings are not interchangeable. If no suitable identity is usable, keep the work on the host or report the blocked handoff.",
+    JSON.stringify(loadout),
+  ].join("\n");
 }
 
 async function resolveLoadout(deps: GatewayModelsToolDeps): Promise<GatewayLoadout> {

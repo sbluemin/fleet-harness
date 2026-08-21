@@ -105,6 +105,36 @@ describe("agent CLI plugin marketplace rendering", () => {
       { matcher: "AskUserQuestion", hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "attention"] }] },
       { matcher: "Agent|Workflow", hooks: [{ type: "command", command: process.execPath, args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "gate-delegation"] }] },
     ]);
+    expect(hooksJson.hooks.PostToolUse).toEqual([
+      {
+        matcher: "Skill",
+        hooks: [{
+          type: "mcp_tool",
+          if: "Skill(fleet:orchestration)",
+          server: "fleet",
+          tool: "gateway_models",
+          input: { hookEventName: "PostToolUse" },
+          statusMessage: "Refreshing Fleet routing context",
+        }],
+      },
+      {
+        matcher: "Workflow",
+        hooks: [{
+          type: "command",
+          command: process.execPath,
+          args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "workflow-receipt"],
+        }],
+      },
+    ]);
+    expect(hooksJson.hooks.PostToolUseFailure).toEqual([{
+      matcher: "Skill",
+      hooks: [{
+        type: "command",
+        command: process.execPath,
+        args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "orchestration-failed"],
+        if: "Skill(fleet:orchestration)",
+      }],
+    }]);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
@@ -138,8 +168,8 @@ describe("agent CLI plugin marketplace rendering", () => {
     };
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks ?? [];
     expect(userPromptSubmit.slice(0, 3).map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
-    // 위임 규약 주입은 host 훅 뒤에 선다. 이 세션은 Fleet 시스템 프롬프트를 싣지 않으므로
-    // 매 턴의 이 주입이 그 규약이 모델에 닿는 유일한 경로다.
+    // orchestration 스킬 라우팅 트립와이어는 host 훅 뒤에 선다. 로스터와 핀 문법은
+    // 스킬 완료 뒤 PostToolUse가 공급하고, 여기서는 필요한 요청에서 스킬을 먼저 열게 한다.
     expect(userPromptSubmit[3]?.args).toEqual([
       "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
       "remind",
@@ -195,7 +225,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(path.join(dataDir, "marketplace", "plugins", "fleet-gateway"))).toBe(true);
   });
 
-  it("renders no skill assets at all", async () => {
+  it("renders exactly the selected on-demand skill assets", async () => {
     const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-plugin-gateway-skills-"));
     tempDirs.push(root);
 
@@ -206,9 +236,15 @@ describe("agent CLI plugin marketplace rendering", () => {
       withMarketplaceLock: async (_target, fn) => fn(),
     });
 
-    // 위임 규율은 시스템 프롬프트도 스킬도 아니라 모델 가드 훅이 싣는다. 스킬 루트가
-    // 되살아나면 같은 규율이 두 벌로 갈라지고, 그중 하나는 아무도 갱신하지 않는다.
-    expect(existsSync(path.join(plugin.pluginRoot, "skills"))).toBe(false);
+    const skillsRoot = path.join(plugin.pluginRoot, "skills");
+    expect(readdirSync(skillsRoot).sort()).toEqual([
+      "orchestration",
+      "professional-pushback",
+    ]);
+    for (const skillName of readdirSync(skillsRoot)) {
+      expect(existsSync(path.join(skillsRoot, skillName, "SKILL.md"))).toBe(true);
+    }
+    // 실시간 로스터·핀 규율은 스킬 본문이 아니라 훅과 모델 가드가 소유한다.
     expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
   });
@@ -236,7 +272,10 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(retiredClassicRoot)).toBe(false);
     expect(existsSync(retiredNativeRoot)).toBe(false);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
-    expect(existsSync(path.join(plugin.pluginRoot, "skills"))).toBe(false);
+    expect(readdirSync(path.join(plugin.pluginRoot, "skills")).sort()).toEqual([
+      "orchestration",
+      "professional-pushback",
+    ]);
   });
 });
 

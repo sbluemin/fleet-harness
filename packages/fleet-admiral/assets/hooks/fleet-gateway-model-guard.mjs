@@ -1,28 +1,34 @@
 #!/usr/bin/env node
 // Fleet gateway model guard — 게이트웨이 세션의 위임 정책을 코드로 강제하는 단일 훅.
 //
-// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 위임 전에 로스터를 읽고 정체성을
-// 핀하라는 지침이 상주 텍스트로 존재하지 않으므로, 그 역할 전부가 이 스크립트에 있다.
+// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을
+// orchestration 스킬로 라우팅하는 짧은 트립와이어만 주입한다. 스킬이 돌아온 뒤의 훅이
+// 실시간 로스터와 핀 문법을 제공하고, 디스패치 직전의 이 훅은 그 형식을 하드 게이트로 검증한다.
 //
-// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 세 판정이 같은
-// 어휘(정체성 이름 / modelId / 접수증)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
-// 세 곳에서 따로 늙는다.
+// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 네 판정이 같은
+// 어휘(오케스트레이션 스킬 / 정체성 이름 / modelId / 접수증)를 공유하기 때문이다 — 파일을
+// 쪼개면 그 어휘가 여러 곳에서 따로 늙는다.
 //
-//   remind            UserPromptSubmit          매 턴 규약 주입 (무조건)
-//   gate-delegation   PreToolUse  Agent|Workflow  핀되지 않은 위임을 차단
-//   workflow-receipt  PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
+//   remind               UserPromptSubmit           위임·병렬 작업을 orchestration 스킬로 라우팅
+//   gate-delegation      PreToolUse  Agent|Workflow  핀되지 않은 위임을 차단
+//   workflow-receipt     PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
+//   orchestration-failed PostToolUseFailure Skill    로스터가 주입되지 않았음을 명시
 //
 // 상태를 남기지 않는다. 훅은 호출마다 새 프로세스로 뜨므로 프로세스 간 기억은 파일로만
 // 가능한데, 그 파일은 곧 신선도·정리·경합을 떠안는 두 번째 진실이 된다. 세 판정 모두
-// stdin 한 번으로 끝나도록 짰다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
+// stdin 한 번으로 끝난다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
 import { readFileSync } from "node:fs";
 
 // 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
 const TURN_REMINDER = [
-  "Before any Agent or Workflow run leaves the host, call gateway_models and pin an identity from what it",
-  "reports — allowances move while work is in flight.",
-  "Agent: subagent_type = the fleet:* name. Workflow: opts.model = the modelId, the claude-gateway-- prefix",
-  "included. The two spellings are never interchangeable.",
+  "If handling this request requires delegation or a parallel workload, invoke the fleet:orchestration skill",
+  "before calling Agent or Workflow. Its completion supplies the live routing context for the handoff.",
+  "Do not delegate implementation by default; keep it on the host unless the skill's narrow mechanical exception applies.",
+].join(" ");
+
+const ORCHESTRATION_FAILURE = [
+  "fleet:orchestration did not complete, so no live routing context was supplied.",
+  "Keep the work on the host or invoke the skill again; do not guess an identity or dispatch from stale context.",
 ].join(" ");
 
 const IN_FLIGHT_CONTRACT = [
@@ -34,7 +40,7 @@ const IN_FLIGHT_CONTRACT = [
 ].join(" ");
 
 const PIN_INSTRUCTION = [
-  "Call gateway_models first, then pin the identity it reports:",
+  "Invoke fleet:orchestration and use the live routing context its completion supplies:",
   "Agent — subagent_type = the fleet:* name;",
   "Workflow — opts.model = the modelId with the claude-gateway-- prefix, written as a literal.",
 ].join(" ");
@@ -213,6 +219,11 @@ const toolInput = input?.tool_input ?? {};
 if (subcommand === "workflow-receipt") {
   if (toolName !== "Workflow") process.exit(0);
   emitContext("PostToolUse", IN_FLIGHT_CONTRACT);
+}
+
+if (subcommand === "orchestration-failed") {
+  if (toolName !== "Skill" || toolInput.skill !== "fleet:orchestration") process.exit(0);
+  emitContext("PostToolUseFailure", ORCHESTRATION_FAILURE);
 }
 
 if (subcommand === "gate-delegation") {
