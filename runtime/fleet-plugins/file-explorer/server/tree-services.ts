@@ -474,6 +474,10 @@ export interface TheaterFileSearchOutcome {
 
 export interface SearchTheaterFilesOptions {
   readonly signal?: AbortSignal;
+  /** 결과에 포함할 종류. 파일 열기용 팔레트는 파일만 받아야 디렉터리를 문서로 열려다 실패하지 않는다. */
+  readonly kinds?: readonly ("file" | "dir")[];
+  /** 숨김(점) 경로 포함 여부. 상한과 집계 "전에" 걸러야 표시 수와 안내 수가 어긋나지 않는다. */
+  readonly includeHidden?: boolean;
   /** 무시 목록을 끄고 의존성·산출 폴더까지 순회한다(첫 순회가 0건일 때의 폴백 경로). */
   readonly includeIgnored?: boolean;
 }
@@ -495,6 +499,13 @@ export async function searchTheaterFiles(
   let ignoredSkipped = false;
   const signal = options.signal;
   const honorIgnoreList = options.includeIgnored !== true;
+  const allowedKinds = options.kinds;
+  const includeHidden = options.includeHidden !== false;
+  const accepts = (relativePath: string, kind: "file" | "dir"): boolean => {
+    if (allowedKinds && !allowedKinds.includes(kind)) return false;
+    if (!includeHidden && relativePath.split("/").some((segment) => segment.startsWith("."))) return false;
+    return true;
+  };
 
   if (tokens.length === 0) return { files: [], totalMatches: 0, ignoredSkipped: false };
 
@@ -536,7 +547,7 @@ export async function searchTheaterFiles(
       if (entry.isSymbolicLink()) {
         if (ignoredName) {
           ignoredSkipped = true;
-          if (pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "dir" });
+          if (accepts(relativePath, "dir") && pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "dir" });
           continue;
         }
         try {
@@ -551,7 +562,7 @@ export async function searchTheaterFiles(
         }
       }
       if (kind === "dir") {
-        if (pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "dir" });
+        if (accepts(relativePath, "dir") && pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "dir" });
         if (ignoredName) {
           ignoredSkipped = true;
           continue;
@@ -560,7 +571,7 @@ export async function searchTheaterFiles(
         continue;
       }
       if (kind !== "file") continue;
-      if (pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "file" });
+      if (accepts(relativePath, "file") && pathMatchesSearchTokens(relativePath, tokens)) matches.push({ relativePath, kind: "file" });
     }
     if (walkCapped) break;
   }
@@ -590,6 +601,8 @@ export async function handleFilesSearch(
     readonly theaterId?: unknown;
     readonly query?: unknown;
     readonly limit?: unknown;
+    readonly kinds?: unknown;
+    readonly includeHidden?: unknown;
   }>(req);
   if (
     !isPlainObject(body)
@@ -603,6 +616,9 @@ export async function handleFilesSearch(
     ctx.host.http.writeJson(res, 400, { error: "invalid_request" });
     return;
   }
+  const kinds = parseSearchKinds(body.kinds);
+  if (kinds === "invalid") { ctx.host.http.writeJson(res, 400, { error: "invalid_request" }); return; }
+  const includeHidden = body.includeHidden !== false;
   const theaterPath = ctx.host.paths.resolveTheaterPath(body.theaterId);
   if (!theaterPath) { ctx.host.http.writeJson(res, 404, { error: "theater_not_found" }); return; }
   const abort = new AbortController();
@@ -613,7 +629,11 @@ export async function handleFilesSearch(
   const detach = () => { if (typeof res.off === "function") res.off("close", onClose); };
   try {
     if (abort.signal.aborted) return;
-    let outcome = await searchTheaterFiles(theaterPath, body.query, body.limit as number, { signal: abort.signal });
+    let outcome = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
+      signal: abort.signal,
+      ...(kinds ? { kinds } : {}),
+      includeHidden,
+    });
     if (abort.signal.aborted) return;
     // 무시 목록 때문에 한 건도 못 찾았다면 그 목록을 끄고 한 번 더 본다 —
     // "찾기가 못 찾는다"를 고치러 넣은 스킵이 같은 증상을 다른 이유로 만들면 안 된다.
@@ -621,6 +641,8 @@ export async function handleFilesSearch(
       const fallback = await searchTheaterFiles(theaterPath, body.query, body.limit as number, {
         signal: abort.signal,
         includeIgnored: true,
+        ...(kinds ? { kinds } : {}),
+        includeHidden,
       });
       if (abort.signal.aborted) return;
       // 폴백이 실제로 찾아냈을 때만 채택한다 — 이때는 아무것도 숨기지 않았으므로 표식도 내린다.
@@ -638,6 +660,18 @@ export async function handleFilesSearch(
   } finally {
     detach();
   }
+}
+
+/** 요청의 kinds를 검증한다 — 알 수 없는 값은 조용히 무시하지 않고 거절한다. */
+function parseSearchKinds(raw: unknown): readonly ("file" | "dir")[] | null | "invalid" {
+  if (raw === undefined) return null;
+  if (!Array.isArray(raw) || raw.length === 0) return "invalid";
+  const kinds: ("file" | "dir")[] = [];
+  for (const value of raw) {
+    if (value !== "file" && value !== "dir") return "invalid";
+    if (!kinds.includes(value)) kinds.push(value);
+  }
+  return kinds;
 }
 
 function tokenizeSearchQuery(query: string): string[] {

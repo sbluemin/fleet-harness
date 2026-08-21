@@ -15,7 +15,7 @@ import { translateServerError } from "./i18n/index.js";
 import { FileIcon } from "./file-icon.js";
 import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
-import { CodeViewer } from "./viewer/code.js";
+import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { cacheBustedImageSrc, ImageViewer } from "./viewer/image.js";
 import { MarkdownViewer } from "./viewer/markdown.js";
 import { loadedMtimeOf, stalePathsAfterRefresh } from "./viewer/stale.js";
@@ -69,7 +69,8 @@ export const fileExplorerPanel: RailPanelDescriptor = {
     const response = await fetch("/plugins/file-explorer/files/palette-search", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ theaterId, query, limit }),
+      // 파일 열기 팔레트는 파일만 받는다 — 디렉터리를 문서로 열면 not_a_file로 끝난다.
+      body: JSON.stringify({ theaterId, query, limit, kinds: ["file"] }),
       signal,
     });
     if (!response.ok) throw new Error("file_search_failed");
@@ -384,6 +385,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const isMarkdownDoc = viewState.kind === "code" && viewState.lang === "markdown";
   const showSource = activePath !== null && sourceModePaths.has(activePath);
   const showCodePane = viewState.kind === "code" && (!isMarkdownDoc || showSource);
+  // 줄바꿈은 창을 나누지 않고 전부 그리므로, 감당 가능한 줄 수까지만 연다.
+  const wrapAvailable = viewState.kind === "code" && canWrapLines(viewState.content.split("\n").length);
   const canGoBack = canNavigateDocumentHistory(docSession, -1);
   const canGoForward = canNavigateDocumentHistory(docSession, 1);
   const isStale = (viewState.kind === "code" || viewState.kind === "image") && Boolean(viewState.stale);
@@ -423,6 +426,16 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   useLayoutEffect(() => {
     ctx.requestExtraWidth?.(resolveExtraWidth(isViewerActive, viewportWidth));
   }, [ctx, isViewerActive, viewportWidth]);
+
+  /** 열린 문서들의 부모 폴더 — 트리에서 접혀 있어도 이 폴더의 변경은 지켜봐야 낡음 표식이 선다. */
+  const watchedDocumentDirectories = useMemo(() => {
+    const dirs = new Set<string>();
+    for (const doc of openDocs) {
+      const slash = doc.relativePath.lastIndexOf("/");
+      dirs.add(slash < 0 ? "" : doc.relativePath.slice(0, slash));
+    }
+    return [...dirs];
+  }, [openDocs]);
 
   const measureChipOverflow = useCallback(() => {
     const container = chipsRef.current;
@@ -578,12 +591,17 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                 <button
                   type="button"
                   className="fexp-viewer-wrap"
-                  aria-pressed={wrapLines}
-                  title={wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn")}
-                  aria-label={wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn")}
+                  aria-pressed={wrapLines && wrapAvailable}
+                  disabled={!wrapAvailable}
+                  title={wrapAvailable
+                    ? (wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn"))
+                    : t("fileExplorer.viewer.wrapUnavailable")}
+                  aria-label={wrapAvailable
+                    ? (wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn"))
+                    : t("fileExplorer.viewer.wrapUnavailable")}
                   onClick={() => setWrapLines(!wrapLines)}
                 >
-                  {wrapLines ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn")}
+                  {wrapLines && wrapAvailable ? t("fileExplorer.viewer.wrapOff") : t("fileExplorer.viewer.wrapOn")}
                 </button>
               )}
               {isMarkdownDoc && (
@@ -682,6 +700,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           onSelect={handleSelect}
           onContextMenu={handleOpenContextMenu}
           onEntriesRefreshed={handleEntriesRefreshed}
+          watchedDirectories={watchedDocumentDirectories}
           t={t}
         />
       </div>

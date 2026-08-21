@@ -21,7 +21,7 @@ import {
   resolveExtraWidth,
 } from "../client/layout.js";
 import { buildViewerMetaParts } from "../client/format.js";
-import { visibleLineWindow } from "../client/viewer/code.js";
+import { canWrapLines, visibleLineWindow, WRAP_LINE_BUDGET } from "../client/viewer/code.js";
 
 const t = getT("en");
 
@@ -142,5 +142,30 @@ describe("활성 칩 가시성", () => {
     // scrollIntoView는 "조금 걸친" 칩을 보이는 것으로 판정해 잘린 채 남긴다.
     expect(source).toContain("ensureActiveChipVisible");
     expect(source).not.toContain('scrollIntoView({ inline: "nearest"');
+  });
+});
+
+describe("줄바꿈 가상화", () => {
+  it("줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 격자에 얹지 않기 위해", () => {
+    const source = fs.readFileSync(new URL("../client/viewer/code.tsx", import.meta.url), "utf8");
+    // 측정 추정으로 창을 유지하면 끝줄이 도달 불가가 된다(실측: 1,200줄에서 1039행 정지).
+    expect(source).toContain("const wrapping = wrap && canWrapLines(lines.length)");
+    expect(source).toContain("? { start: 0, end: lines.length, offsetY: 0, totalHeight: 0 }");
+    expect(source).not.toContain("wrappedLineHeight");
+  });
+
+  it("줄바꿈 예산을 넘는 파일은 줄바꿈 컨트롤을 닫고 이유를 말한다", () => {
+    expect(canWrapLines(WRAP_LINE_BUDGET)).toBe(true);
+    expect(canWrapLines(WRAP_LINE_BUDGET + 1)).toBe(false);
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("disabled={!wrapAvailable}");
+    expect(source).toContain("fileExplorer.viewer.wrapUnavailable");
+  });
+
+  it("가상화 창은 자기 줄 높이 축으로만 계산한다", () => {
+    const window = visibleLineWindow(0, 200, 100, 42);
+    expect(window.totalHeight).toBe(4200);
+    const scrolled = visibleLineWindow(420, 200, 100, 42);
+    expect(scrolled.offsetY).toBe(scrolled.start * 42);
   });
 });

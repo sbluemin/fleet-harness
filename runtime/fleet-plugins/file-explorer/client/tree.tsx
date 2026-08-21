@@ -34,6 +34,8 @@ interface FileTreeProps {
   readonly onSelect: (entry: FolderEntry) => void;
   readonly onContextMenu: (entry: FolderEntry, x: number, y: number) => void;
   readonly onEntriesRefreshed?: (relativeDir: string, entries: readonly FolderEntry[]) => void;
+  /** 뷰어가 열어 둔 문서들의 부모 폴더 — 펼침 여부와 무관하게 변경을 지켜본다. */
+  readonly watchedDirectories?: readonly string[];
   readonly t: Translate<FileExplorerMessageKey>;
 }
 
@@ -225,12 +227,15 @@ export function shouldRefreshGitStatusOnVisibility(visibilityState: string): boo
   return visibilityState === "visible";
 }
 
-export function paletteSearchRequestBody(theaterId: string, query: string): {
+export function paletteSearchRequestBody(theaterId: string, query: string, showHidden: boolean): {
   readonly theaterId: string;
   readonly query: string;
   readonly limit: number;
+  readonly includeHidden: boolean;
 } {
-  return { theaterId, query, limit: PALETTE_SEARCH_LIMIT };
+  // 숨김 제외는 서버에서 상한·집계 전에 걸러야 한다. 클라이언트에서 뒤늦게 거르면
+  // 200칸을 점(dot) 경로가 채운 뒤 전부 사라지고, 안내는 여전히 일치 수를 말한다.
+  return { theaterId, query, limit: PALETTE_SEARCH_LIMIT, includeHidden: showHidden };
 }
 
 export function shouldClearFilterOnEscape(filterText: string): boolean {
@@ -612,7 +617,9 @@ export function buildFlatRows(
           nextAncestorFolders,
           filterCollapsedDirs,
           {
-            truncatedCap: childResult?.truncated ? childResult.cap : undefined,
+            // 안내문이 말하는 수는 "상한 상수"가 아니라 실제로 보여준 항목 수여야 한다 —
+            // 분류에서 버려진 항목(끊긴 심링크·소켓)이 있으면 둘이 어긋난다.
+            truncatedCap: childResult?.truncated ? childResult.entries.length : undefined,
             hiddenVcs: childResult?.hiddenVcsInternals,
           },
           folderIdentity,
@@ -686,7 +693,7 @@ export function resolveTreeNavigation(
 }
 
 export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileTree(
-  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, onEntriesRefreshed, t },
+  { contextKey, files, theaterId, selectedPath, revealTarget, onSelect, onContextMenu, onEntriesRefreshed, watchedDirectories, t },
   ref,
 ) {
   const [result, setResult] = useState<FolderListResult | null>(null);
@@ -700,6 +707,9 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [scrollTop, setScrollTop] = useState(0);
   const [containerHeight, setContainerHeight] = useState(600);
   const [showHidden, setShowHidden] = useState<boolean>(() => readShowHidden());
+  // 검색 요청은 최신 토글 값을 실어야 하고, 값이 바뀌면 질의를 다시 던져야 한다.
+  const showHiddenRef = useRef(showHidden);
+  showHiddenRef.current = showHidden;
   const [sortMode, setSortMode] = useState<SortMode>(() => readSortMode());
   const [cursorPath, setCursorPath] = useState<string | null>(null);
   const [gitStatusResult, setGitStatusResult] = useState<GitStatusResult | null>(null);
@@ -728,6 +738,8 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   childResultsRef.current = childResults;
   const onEntriesRefreshedRef = useRef(onEntriesRefreshed);
   onEntriesRefreshedRef.current = onEntriesRefreshed;
+  const watchedDirectoriesRef = useRef<ReadonlySet<string>>(new Set());
+  watchedDirectoriesRef.current = useMemo(() => new Set(watchedDirectories ?? []), [watchedDirectories]);
   const inFlightFoldersRef = useRef(new Map<string, Promise<void>>());
   const filterRequestRef = useRef(0);
   const isFiltering = filterText.trim().length > 0;
@@ -914,7 +926,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           const response = await fetch("/plugins/file-explorer/files/palette-search", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(paletteSearchRequestBody(theaterId, query)),
+            body: JSON.stringify(paletteSearchRequestBody(theaterId, query, showHiddenRef.current)),
             signal: controller.signal,
           });
           if (!response.ok) throw new Error("search_failed");
@@ -942,7 +954,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [contextKey, filterText, theaterId]);
+  }, [contextKey, filterText, showHidden, theaterId]);
 
   useEffect(() => {
     const el = treeRef.current;
@@ -1006,12 +1018,16 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       if (relDir === "" || relDir === currentPathRef.current) {
         reloadRoot();
       }
-      // 펼쳐진 폴더에 해당하면 해당 폴더만 재조회
-      if (relDir !== "" && expandedDirsRef.current.has(relDir)) {
+      // 펼쳐진 폴더, 그리고 열린 문서를 품은 폴더는 재조회한다.
+      // 후자를 빼면 검색으로 연 파일이나 부모를 접어 둔 파일은 디스크가 바뀌어도
+      // 낡음 표식이 서지 않는다 — 표식은 이 목록의 mtime 비교로만 서기 때문이다.
+      const watchedByViewer = watchedDirectoriesRef.current.has(relDir);
+      if (relDir !== "" && (expandedDirsRef.current.has(relDir) || watchedByViewer)) {
         const requestContextKey = contextKey;
         filesRef.current.listFolder(relDir).then((r) => {
           if (!isCurrentContextRequest(requestContextKey, contextKeyRef.current)) return;
-          setChildResults((prev) => new Map(prev).set(relDir, r));
+          // 펼쳐지지 않은 폴더의 목록은 트리 상태에 넣지 않는다 — 뷰어 신호용으로만 쓴다.
+          if (expandedDirsRef.current.has(relDir)) setChildResults((prev) => new Map(prev).set(relDir, r));
           emitEntriesRefreshed(relDir, r.entries);
         }).catch(() => {});
       }
@@ -1240,7 +1256,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       showHidden,
       new Set(),
       filterCollapsedDirs,
-      { truncatedCap: result.truncated ? result.cap : undefined, hiddenVcs: result.hiddenVcsInternals },
+      { truncatedCap: result.truncated ? result.entries.length : undefined, hiddenVcs: result.hiddenVcsInternals },
       "",
       { sortMode, deletedByDir, autoExpandAll: false, failedDirs: expandFailedDirs },
     );

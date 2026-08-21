@@ -8,6 +8,16 @@ import { tokenize } from "../syntax/highlighter.js";
 /** Matches `.fexp-code-row` height (13px --t-md × 1.6, rounded). */
 export const CODE_LINE_HEIGHT_PX = 21;
 export const CODE_OVERSCAN_LINES = 8;
+/**
+ * 줄바꿈을 켜면 한 줄의 높이가 내용에 따라 달라져 고정 높이 가상화의 인덱스↔스크롤 대응이 깨진다
+ * (실측: 1,200줄 파일에서 끝까지 스크롤해도 1039행에서 멈춤). 그래서 줄바꿈 모드는 창을 나누지 않고
+ * 전부 그리며, 그것이 감당 가능한 줄 수까지만 줄바꿈을 허용한다.
+ */
+export const WRAP_LINE_BUDGET = 2000;
+
+export function canWrapLines(lineCount: number): boolean {
+  return lineCount <= WRAP_LINE_BUDGET;
+}
 
 interface CodeViewerProps {
   readonly content: string;
@@ -37,8 +47,10 @@ export function visibleLineWindow(
 export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeViewerProps) {
   const lines = useMemo(() => content.split("\n"), [content]);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const windowRef = useRef<HTMLDivElement>(null);
   const [scrollTop, setScrollTop] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(480);
+  const wrapping = wrap && canWrapLines(lines.length);
 
   useLayoutEffect(() => {
     const node = scrollRef.current;
@@ -51,13 +63,17 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
     return () => observer.disconnect();
   }, []);
 
-  const { start, end, offsetY, totalHeight } = visibleLineWindow(scrollTop, viewportHeight, lines.length);
+  const windowed = visibleLineWindow(scrollTop, viewportHeight, lines.length);
+  // 줄바꿈 모드는 창을 나누지 않는다 — 가변 높이를 고정 높이 격자에 얹으면 뒷줄이 도달 불가가 된다.
+  const { start, end, offsetY, totalHeight } = wrapping
+    ? { start: 0, end: lines.length, offsetY: 0, totalHeight: 0 }
+    : windowed;
   const rendered = useMemo(() => {
     return lines.slice(start, end).map((line) => renderLine(line, lang));
   }, [lang, lines, start, end]);
 
   return (
-    <div className={`fexp-code-wrap${wrap ? " is-wrap" : ""}`}>
+    <div className={`fexp-code-wrap${wrapping ? " is-wrap" : ""}`}>
       {truncated && <div className="fexp-truncated-badge">{t("fileExplorer.viewer.truncated")}</div>}
       <div
         ref={scrollRef}
@@ -66,15 +82,9 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
         aria-label={t("fileExplorer.viewer.fileContentsAria")}
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
-        {wrap ? (
-          <div
-            className="fexp-code-sizer"
-            style={{
-              paddingTop: offsetY,
-              paddingBottom: Math.max(0, totalHeight - offsetY - (end - start) * CODE_LINE_HEIGHT_PX),
-            }}
-          >
-            <div className="fexp-code-window">
+        {wrapping ? (
+          <div className="fexp-code-sizer">
+            <div className="fexp-code-window" ref={windowRef}>
               {rendered.map((html, index) => (
                 <CodeRow key={start + index} lineNumber={start + index + 1} html={html} />
               ))}
@@ -82,7 +92,7 @@ export function CodeViewer({ content, lang, truncated, wrap = false, t }: CodeVi
           </div>
         ) : (
           <div className="fexp-code-sizer" style={{ height: totalHeight }}>
-            <div className="fexp-code-window" style={{ transform: `translateY(${offsetY}px)` }}>
+            <div className="fexp-code-window" ref={windowRef} style={{ transform: `translateY(${offsetY}px)` }}>
               {rendered.map((html, index) => (
                 <CodeRow key={start + index} lineNumber={start + index + 1} html={html} />
               ))}

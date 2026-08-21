@@ -28,7 +28,13 @@ afterEach(async () => {
   await fs.rm(temporaryDirectory, { force: true, recursive: true });
 });
 
-function searchContext(body: { readonly theaterId?: unknown; readonly query?: unknown; readonly limit?: unknown }): {
+function searchContext(body: {
+  readonly theaterId?: unknown;
+  readonly query?: unknown;
+  readonly limit?: unknown;
+  readonly kinds?: unknown;
+  readonly includeHidden?: unknown;
+}): {
   readonly ctx: FleetPluginServerContext;
   readonly writes: Array<{ readonly status: number; readonly body: unknown }>;
 } {
@@ -215,6 +221,46 @@ describe("Files palette search", () => {
     expect(responseEvents).toContain("close");
     expect(requestEvents).not.toContain("close");
     expect(writes[0]?.status).toBe(200);
+  });
+
+  it("returns only the kinds the caller asked for", async () => {
+    // 파일 열기 팔레트가 디렉터리 적중을 받으면 그것을 문서로 열려다 not_a_file로 끝난다.
+    await fs.mkdir(path.join(theaterPath, "needle-dir"));
+    const both = searchContext({ theaterId: "theater-a", query: "needle", limit: 8 });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, both.ctx);
+    const bothBody = both.writes[0]?.body as { files: Array<{ kind: string }> };
+    expect(bothBody.files.some((file) => file.kind === "dir")).toBe(true);
+
+    const filesOnly = searchContext({ theaterId: "theater-a", query: "needle", limit: 8, kinds: ["file"] });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, filesOnly.ctx);
+    const filesBody = filesOnly.writes[0]?.body as { files: Array<{ kind: string }>; totalMatches: number };
+    expect(filesBody.files.every((file) => file.kind === "file")).toBe(true);
+    // 종류 필터는 상한과 집계 전에 걸린다 — 총계도 파일만 센다.
+    expect(filesBody.totalMatches).toBe(filesBody.files.length);
+  });
+
+  it("rejects an unknown kinds value instead of ignoring it", async () => {
+    const { ctx, writes } = searchContext({ theaterId: "theater-a", query: "needle", limit: 8, kinds: ["folder"] });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, ctx);
+    expect(writes[0]).toEqual({ status: 400, body: { error: "invalid_request" } });
+  });
+
+  it("drops hidden matches before the limit and the count", async () => {
+    // 숨김 경로가 상한을 채운 뒤 클라이언트에서 걸리면 화면은 비고 안내만 일치 수를 말한다.
+    await fs.mkdir(path.join(theaterPath, ".secret"), { recursive: true });
+    for (let index = 0; index < 5; index += 1) {
+      await fs.writeFile(path.join(theaterPath, ".secret", `needle-${index}.ts`), "export {}");
+    }
+    const shown = searchContext({ theaterId: "theater-a", query: "needle", limit: 200, includeHidden: false });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, shown.ctx);
+    const body = shown.writes[0]?.body as { files: Array<{ relativePath: string }>; totalMatches: number };
+    expect(body.files.every((file) => !file.relativePath.split("/").some((segment) => segment.startsWith(".")))).toBe(true);
+    expect(body.totalMatches).toBe(body.files.length);
+
+    const withHidden = searchContext({ theaterId: "theater-a", query: "needle", limit: 200, includeHidden: true });
+    await handleFilesSearch({ method: "POST" } as http.IncomingMessage, {} as http.ServerResponse, withHidden.ctx);
+    const hiddenBody = withHidden.writes[0]?.body as { totalMatches: number };
+    expect(hiddenBody.totalMatches).toBeGreaterThan(body.totalMatches);
   });
 
   it("accepts a palette-search limit of 200", async () => {

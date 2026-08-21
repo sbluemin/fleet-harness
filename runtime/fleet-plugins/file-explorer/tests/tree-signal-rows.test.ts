@@ -28,13 +28,15 @@ function rowKinds(rows: readonly TreeRow[]): string[] {
 
 describe("buildFlatRows signal rows", () => {
   it("appends a cap row after the children of a truncated folder", () => {
+    const children = Array.from({ length: 3 }, (_, index) => entry(`a${index}.txt`, `many/a${index}.txt`, "file"));
     const root = [entry("many", "many", "dir"), entry("readme.md", "readme.md", "file")];
-    const many = folderResult("many", [entry("a.txt", "many/a.txt", "file")], { truncated: true, cap: 500 });
+    const many = folderResult("many", children, { truncated: true, cap: 500 });
     const rows = buildFlatRows(root, 0, null, new Set(["many"]), new Set(), new Map([["many", many]]), "", false);
 
-    expect(rowKinds(rows)).toEqual(["entry", "entry", "cap", "entry"]);
-    const cap = rows[2];
-    expect(cap).toMatchObject({ type: "cap", depth: 1, cap: 500 });
+    expect(rowKinds(rows)).toEqual(["entry", "entry", "entry", "entry", "cap", "entry"]);
+    const cap = rows[4];
+    // 안내문의 수는 상한 상수가 아니라 실제로 보여준 항목 수다 — 분류에서 버려진 항목이 있으면 둘은 다르다.
+    expect(cap).toMatchObject({ type: "cap", depth: 1, cap: children.length });
   });
 
   it("appends a root-level cap row when the root listing is truncated", () => {
@@ -145,11 +147,14 @@ describe("resolveTreeNavigation over marker rows", () => {
 
 describe("palette-search filter tree", () => {
   it("issues a single palette-search body with limit 200", () => {
-    expect(paletteSearchRequestBody("theater-a", "needle")).toEqual({
+    expect(paletteSearchRequestBody("theater-a", "needle", true)).toEqual({
       theaterId: "theater-a",
       query: "needle",
       limit: PALETTE_SEARCH_LIMIT,
+      includeHidden: true,
     });
+    // 숨김 토글이 꺼져 있으면 서버가 상한·집계 전에 걸러야 표시 수와 안내 수가 일치한다.
+    expect(paletteSearchRequestBody("theater-a", "needle", false)).toMatchObject({ includeHidden: false });
     expect(PALETTE_SEARCH_LIMIT).toBe(200);
   });
 

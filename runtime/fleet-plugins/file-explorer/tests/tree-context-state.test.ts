@@ -162,6 +162,23 @@ describe("expanded persist/restore cap parity", () => {
   });
 });
 
+describe("stale-mark reach", () => {
+  it("refreshes a changed directory that holds an open document even when it is collapsed", () => {
+    const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
+    // 검색으로 연 파일이나 부모를 접어 둔 파일도 낡음 표식이 서야 한다.
+    expect(source).toContain("watchedDirectoriesRef.current.has(relDir)");
+    expect(source).toContain("expandedDirsRef.current.has(relDir) || watchedByViewer");
+    // 접힌 폴더의 목록은 트리 상태를 오염시키지 않는다.
+    expect(source).toContain("if (expandedDirsRef.current.has(relDir)) setChildResults(");
+  });
+
+  it("passes the parents of open documents from the viewer to the tree", () => {
+    const source = fs.readFileSync(new URL("../client/rail-panel.tsx", import.meta.url), "utf8");
+    expect(source).toContain("watchedDocumentDirectories");
+    expect(source).toContain("watchedDirectories={watchedDocumentDirectories}");
+  });
+});
+
 describe("watch degraded and failed expand source contracts", () => {
   it("listens for the watcher state event", () => {
     const source = fs.readFileSync(new URL("../client/tree.tsx", import.meta.url), "utf8");
