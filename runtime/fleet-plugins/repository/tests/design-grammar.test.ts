@@ -363,10 +363,12 @@ describe("Repository design grammar", () => {
     expect(finalStage).toContain(".history-commit-row-main { grid-template-columns: auto minmax(96px, 1fr);");
     expect(finalStage).toContain(".history-graph-gutter { width: 14px; overflow: hidden; }");
     // SVG 자체는 축소하지 않는다 — 뷰포트 축소는 viewBox 종횡비로 그림을 세로로 눌러 레인 선을 끊는다.
-    // lane>0 행의 노드는 왼쪽 고정 클립으로 잃어버리므로, compact 모드의 음수 margin이 현재
-    // 레인을 14px 창 안으로 민다(graph.tsx GraphGutter).
+    // lane>0 행의 노드는 왼쪽 고정 클립으로 잃어버리므로, compact 클래스의 음수 margin이 현재
+    // 레인을 14px 창 안으로 민다(graph.tsx GraphGutter). 오프셋은 이 컨테이너 쿼리 안에서만
+    // 발동한다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다(2026-08-21 리뷰 정정).
     expect(finalStage).not.toMatch(/\.history-graph-gutter svg \{[^}]*(^|[^-])width:/);
-    expect(graphSource).toContain("compact && node.lane > 0 ? { marginLeft: `-${node.lane * LANE_WIDTH}px` }");
+    expect(finalStage).toContain(".history-graph-gutter-compact { margin-left: -14px; }");
+    expect(graphSource).toContain('compact && node.lane > 0 ? "history-graph-gutter-compact" : undefined');
     // 본문 마커도 양보해야 hasBody 커밋에서 최종 단계가 성립한다.
     expect(finalStage).toContain(".history-commit-body-mark { display: none; }");
     // 이전 단계(420px)의 badges 소멸과 공존한다 — 사다리를 대체하지 않는다.

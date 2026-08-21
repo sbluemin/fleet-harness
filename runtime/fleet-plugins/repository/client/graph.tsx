@@ -159,8 +159,9 @@ interface GraphGutterProps {
   readonly node: GraphNode;
   /**
    * 축소 순서 계약의 최종 단계(320px 아래) — 거터를 1레인 폭으로 압축한다. 뷰포트 축소나
-   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, 대신 SVG를 음수 margin으로
-   * 밀어 현재 행의 레인이 14px 창 안에 오게 한다. 종횡비는 viewBox가 그대로라 보존된다.
+   * 왼쪽 클립은 lane>0 행의 커밋 노드를 통째로 잘라 내므로, lane>0 행에만
+   * .history-graph-gutter-compact 클래스를 얹는다. 오프셋 자체는 CSS가 담당하며
+   * 320px 컨테이너 쿼리 안에서만 발동한다 — 전 폭에서 켜면 정상 그래프의 레인 좌표가 어긋난다.
    */
   readonly compact?: boolean;
 }
@@ -232,7 +233,8 @@ export function GraphGutter({ node, compact = false }: GraphGutterProps) {
       height={ROW_HEIGHT}
       viewBox={`0 0 ${width} ${ROW_HEIGHT}`}
       aria-hidden="true"
-      style={{ display: "block", flexShrink: 0, ...(compact && node.lane > 0 ? { marginLeft: `-${node.lane * LANE_WIDTH}px` } : {}) }}
+      className={compact && node.lane > 0 ? "history-graph-gutter-compact" : undefined}
+      style={{ display: "block", flexShrink: 0 }}
     >
       {/* passThrough 수직선 */}
       {node.passThroughLanes.map((lane) => (
