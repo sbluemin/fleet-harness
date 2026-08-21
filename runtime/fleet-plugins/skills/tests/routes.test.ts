@@ -348,3 +348,125 @@ describe("job output redaction", () => {
     expect(output).toContain("access_token=[redacted]");
   });
 });
+
+describe("list DTO carries the description the card needs", () => {
+  it("reads SKILL.md frontmatter from the CLI-reported path without leaking that path", async () => {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-desc-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const described = path.join(theaterRoot, ".claude", "skills", "console-e2e");
+    const bare = path.join(theaterRoot, ".claude", "skills", "no-frontmatter");
+    await fs.mkdir(described, { recursive: true });
+    await fs.mkdir(bare, { recursive: true });
+    await fs.writeFile(
+      path.join(described, "SKILL.md"),
+      "---\nname: console-e2e\ndescription: Drive a headless real-browser end-to-end test.\n---\n\n# body\n",
+      "utf-8",
+    );
+    await fs.writeFile(path.join(bare, "SKILL.md"), "# no frontmatter here\n", "utf-8");
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+
+      const executor: CliExecutor = async (args) => ({
+        stdout: args.includes("-g") ? "[]" : JSON.stringify([
+          { name: "console-e2e", path: described, scope: "project", agents: ["Claude Code"] },
+          { name: "no-frontmatter", path: bare, scope: "project", agents: ["Claude Code"] },
+        ]),
+        stderr: "",
+        exitCode: 0,
+      });
+
+      const res = makeRes();
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1"), res, ctx, executor);
+
+      expect(res._status).toBe(200);
+      const skills = (res._body as { skills: Array<Record<string, unknown>> }).skills;
+      expect(skills).toHaveLength(2);
+
+      const described_dto = skills.find((s) => s.name === "console-e2e");
+      expect(described_dto?.description).toBe("Drive a headless real-browser end-to-end test.");
+      // 절대 경로는 서버 안에만 남는다 — 설명을 실어 보내려고 경로를 함께 흘리지 않는다.
+      expect("path" in (described_dto ?? {})).toBe(false);
+      expect(JSON.stringify(skills)).not.toContain(temporaryDirectory);
+
+      // frontmatter가 없으면 키 자체를 생략한다 — 빈 문자열을 만들어 카드에 빈 줄을 그리지 않는다.
+      const bare_dto = skills.find((s) => s.name === "no-frontmatter");
+      expect("description" in (bare_dto ?? {})).toBe(false);
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  });
+});
+
+describe("lock file provenance", () => {
+  async function listWith(lockName: string, lockBody: unknown): Promise<Array<Record<string, unknown>>> {
+    const temporaryDirectory = await fs.mkdtemp(path.join(os.tmpdir(), "fleet-skills-lock-"));
+    const theaterRoot = path.join(temporaryDirectory, "theater");
+    const skillDir = path.join(theaterRoot, ".claude", "skills", "agent-browser");
+    await fs.mkdir(skillDir, { recursive: true });
+    await fs.mkdir(path.dirname(path.join(theaterRoot, lockName)), { recursive: true });
+    await fs.writeFile(path.join(theaterRoot, lockName), JSON.stringify(lockBody), "utf-8");
+
+    try {
+      const ctx = {
+        host: {
+          security: { isTerminalAuthorized: () => true },
+          http: {
+            writeJson: (res: http.ServerResponse, status: number, body: unknown) => {
+              (res as unknown as { _status: number })._status = status;
+              (res as unknown as { _body: unknown })._body = body;
+            },
+            readJsonBody: async () => ({}),
+          },
+          paths: { resolveTheaterPath: () => theaterRoot },
+        },
+      } as unknown as FleetPluginServerContext;
+      const executor: CliExecutor = async (args) => ({
+        stdout: args.includes("-g") ? "[]" : JSON.stringify([
+          { name: "agent-browser", path: skillDir, scope: "project", agents: ["Claude Code"] },
+        ]),
+        stderr: "",
+        exitCode: 0,
+      });
+      const res = makeRes();
+      await handleList(makeReq("GET", "/plugins/skills/list?theaterId=t1"), res, ctx, executor);
+      return (res._body as { skills: Array<Record<string, unknown>> }).skills;
+    } finally {
+      await fs.rm(temporaryDirectory, { force: true, recursive: true });
+    }
+  }
+
+  it("reads the v3 nested lock shape", async () => {
+    // 실제 파일은 v3다. v1 모양만 읽으면 설치 출처가 있는 스킬까지 전부 출처 없음으로 보인다.
+    const skills = await listWith(path.join(".agents", ".skill-lock.json"), {
+      version: 3,
+      skills: { "agent-browser": { source: "vercel-labs/agent-browser", sourceType: "github" } },
+      dismissed: [],
+    });
+    expect(skills[0]?.source).toBe("vercel-labs/agent-browser");
+  });
+
+  it("still reads the v1 flat lock shape", async () => {
+    const skills = await listWith("skills-lock.json", {
+      "agent-browser": { source: "vercel-labs/agent-browser" },
+    });
+    expect(skills[0]?.source).toBe("vercel-labs/agent-browser");
+  });
+
+  it("omits source when the lock records none, rather than inventing one", async () => {
+    const skills = await listWith("skills-lock.json", { version: 3, skills: {} });
+    expect("source" in (skills[0] ?? {})).toBe(false);
+  });
+});

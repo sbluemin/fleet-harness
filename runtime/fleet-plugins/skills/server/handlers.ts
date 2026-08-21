@@ -7,6 +7,7 @@ import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 
 import { type CliExecutor, defaultCwd, stripAnsi } from "./cli.js";
 import { appendChunk, createJob, finishJob, getJobResult } from "./jobs.js";
+import { readSkillDescription } from "./frontmatter.js";
 import { ProjectPathError, resolveProjectCwd } from "./project-path.js";
 import { searchRegistry } from "./registry-search.js";
 import type { AgentId, Scope, SkillListItem } from "./skill-types.js";
@@ -18,7 +19,8 @@ interface LockFileEntry {
   source?: string;
 }
 
-type LockFileV1 = Record<string, LockFileEntry>;
+/** v1은 이름을 최상위 키로 두고, v3는 `skills` 아래로 한 겹 넣는다. */
+type LockFile = Record<string, LockFileEntry | unknown> & { skills?: Record<string, LockFileEntry> };
 
 interface RawSkillEntry {
   name: string;
@@ -44,32 +46,43 @@ const installedSkillsByTheater = new Map<string, readonly SkillListItem[]>();
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
+/**
+ * lock 파일에서 이름→source를 뽑는다.
+ *
+ * 스키마가 두 벌이다: v1은 이름이 최상위 키였고, v3부터는 `skills` 아래로 한 겹 들어간다.
+ * v1 모양만 읽으면 v3 파일에서 아무것도 못 건져 **모든 스킬이 출처 없음으로 보인다** —
+ * 실측에서 18개 전부 source:null이던 원인이 provenance의 부재가 아니라 이 불일치였다.
+ * 두 모양을 모두 읽고, 실제로 기록이 없을 때만 빈 채로 남긴다.
+ */
+function collectLockSources(parsed: unknown, sources: Map<string, string>): boolean {
+  if (typeof parsed !== "object" || parsed === null) return false;
+  const lock = parsed as LockFile;
+  const table = (typeof lock.skills === "object" && lock.skills !== null)
+    ? lock.skills
+    : (parsed as Record<string, LockFileEntry>);
+  let found = false;
+  for (const [name, entry] of Object.entries(table)) {
+    if (entry && typeof entry === "object" && typeof (entry as LockFileEntry).source === "string") {
+      sources.set(name, (entry as LockFileEntry).source as string);
+      found = true;
+    }
+  }
+  return found;
+}
+
 async function readSkillSources(cwd: string): Promise<Map<string, string>> {
   const sources = new Map<string, string>();
 
-  try {
-    const raw = await fs.readFile(path.join(cwd, "skills-lock.json"), "utf-8");
-    const parsed = JSON.parse(raw) as LockFileV1;
-    if (typeof parsed === "object" && parsed !== null) {
-      for (const [name, entry] of Object.entries(parsed)) {
-        if (entry && typeof entry.source === "string") sources.set(name, entry.source);
-      }
-      return sources;
+  for (const candidate of [
+    path.join(cwd, "skills-lock.json"),
+    path.join(cwd, ".agents", ".skill-lock.json"),
+  ]) {
+    try {
+      const raw = await fs.readFile(candidate, "utf-8");
+      if (collectLockSources(JSON.parse(raw), sources)) return sources;
+    } catch {
+      // 부재/파싱 실패 → 다음 후보로, 끝내 없으면 source 생략 (에러 아님)
     }
-  } catch {
-    // 부재/파싱 실패 → 폴백
-  }
-
-  try {
-    const raw = await fs.readFile(path.join(cwd, ".agents", ".skill-lock.json"), "utf-8");
-    const parsed = JSON.parse(raw) as LockFileV1;
-    if (typeof parsed === "object" && parsed !== null) {
-      for (const [name, entry] of Object.entries(parsed)) {
-        if (entry && typeof entry.source === "string") sources.set(name, entry.source);
-      }
-    }
-  } catch {
-    // 부재/파싱 실패 → source 생략 (에러 아님)
   }
 
   return sources;
@@ -165,42 +178,52 @@ function spawnJobAsync(
 
 // ─── handlers ────────────────────────────────────────────────────────────────
 
+/**
+ * CLI가 보고한 entry.path는 DTO로 나가지 않지만, 여기서 버리지도 않는다 — 카드가 이름 말고
+ * 아무것도 말하지 못하던 이유가 그 경로를 버린 것이었다. 경로는 서버 안에 남아 SKILL.md
+ * frontmatter의 description 한 줄이 되고, 절대 경로 자체는 응답에 실리지 않는다.
+ */
+async function toListItems(
+  raw: readonly RawSkillEntry[],
+  scope: Scope,
+  sources: Map<string, string>,
+  allowedRoot: string,
+): Promise<SkillListItem[]> {
+  return Promise.all(raw.map(async (entry) => {
+    const description = entry.path
+      ? await readSkillDescription(entry.path, allowedRoot)
+      : undefined;
+    return {
+      name: entry.name,
+      scope,
+      agents: entry.agents,
+      ...(sources.get(entry.name) ? { source: sources.get(entry.name) } : {}),
+      ...(description ? { description } : {}),
+      displayPath: buildDisplayPath(scope, entry.name),
+    };
+  }));
+}
+
 async function listInstalledSkills(projectCwd: string | null, executor: CliExecutor): Promise<SkillListItem[]> {
+  const homeDir = os.homedir();
   if (projectCwd) {
     const [projectRaw, globalRaw, projectSources, globalSources] = await Promise.all([
       runListCommand(["list", "--json"], projectCwd, executor),
-      runListCommand(["list", "-g", "--json"], os.homedir(), executor),
+      runListCommand(["list", "-g", "--json"], homeDir, executor),
       readSkillSources(projectCwd),
-      readSkillSources(os.homedir()),
+      readSkillSources(homeDir),
     ]);
-    return [
-      ...projectRaw.map((entry) => ({
-        name: entry.name,
-        scope: "project" as Scope,
-        agents: entry.agents,
-        source: projectSources.get(entry.name),
-        displayPath: buildDisplayPath("project", entry.name),
-      })),
-      ...globalRaw.map((entry) => ({
-        name: entry.name,
-        scope: "global" as Scope,
-        agents: entry.agents,
-        source: globalSources.get(entry.name),
-        displayPath: buildDisplayPath("global", entry.name),
-      })),
-    ];
+    const [projectItems, globalItems] = await Promise.all([
+      toListItems(projectRaw, "project", projectSources, projectCwd),
+      toListItems(globalRaw, "global", globalSources, homeDir),
+    ]);
+    return [...projectItems, ...globalItems];
   }
   const [globalRaw, globalSources] = await Promise.all([
-    runListCommand(["list", "-g", "--json"], os.homedir(), executor),
-    readSkillSources(os.homedir()),
+    runListCommand(["list", "-g", "--json"], homeDir, executor),
+    readSkillSources(homeDir),
   ]);
-  return globalRaw.map((entry) => ({
-    name: entry.name,
-    scope: "global" as Scope,
-    agents: entry.agents,
-    source: globalSources.get(entry.name),
-    displayPath: buildDisplayPath("global", entry.name),
-  }));
+  return toListItems(globalRaw, "global", globalSources, homeDir);
 }
 
 export async function handleList(

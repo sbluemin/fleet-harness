@@ -11,6 +11,8 @@ export interface SkillListItem {
   readonly scope: Scope;
   readonly agents: string[];
   readonly source?: string;
+  /** SKILL.md frontmatter의 description — 없으면 생략한다(빈 문자열을 만들지 않는다). */
+  readonly description?: string;
   readonly displayPath: string;
 }
 

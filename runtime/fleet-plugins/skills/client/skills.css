@@ -179,31 +179,35 @@
 
 .skills-card-name-btn:hover { color: var(--brass-ink); }
 
-.skills-card-scope-badge {
-  border-radius: var(--radius-xs);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.08em;
-  padding: 2px 5px;
-  text-transform: uppercase;
-}
-
-.skills-card-scope-badge--project {
-  background: color-mix(in srgb, var(--brass) 15%, transparent);
-  color: var(--brass-ink);
-}
-
-.skills-card-scope-badge--global {
-  background: color-mix(in srgb, var(--ink-fog) 15%, transparent);
-  color: var(--text-secondary);
-}
-
 .skills-card-meta {
   color: var(--text-tertiary);
   font-size: var(--t-sm);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.skills-card-agents { font-style: italic; }
+/* 카드가 답해야 하는 질문은 "이게 내가 찾던 그 스킬인가"이고, 그 답은 SKILL.md 저자가
+   이미 frontmatter에 한 줄로 써 두었다. 두 줄에서 자르는 이유는 카드가 읽는 자리가 아니라
+   고르는 자리이기 때문이다 — 본문은 이름을 눌러 연다. */
+.skills-card-desc {
+  color: var(--text-secondary);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--t-sm);
+  line-height: 1.35;
+  margin: 0;
+  overflow: hidden;
+}
+
+.skills-card-footer {
+  align-items: center;
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
 
 .skills-card-installs {
   color: var(--text-tertiary);
@@ -216,6 +220,29 @@
   display: flex;
   gap: var(--space-2);
   margin-top: var(--space-1);
+}
+
+/* ─── scope shelf ───────────────────────────────────────────────────────────── */
+
+/* scope 전체에 걸리는 동사가 사는 유일한 자리. 카드 위가 아니라 scope 토글 아래에 두어야
+   무엇을 건드리는 버튼인지가 위치로 읽힌다. */
+.skills-scope-shelf {
+  align-items: center;
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--space-2);
+  padding: 0 2px;
+}
+
+.skills-scope-shelf-label {
+  color: var(--text-tertiary);
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* ─── buttons ───────────────────────────────────────────────────────────────── */
@@ -260,6 +287,7 @@
 .skills-btn--remove {
   background: none;
   color: var(--text-tertiary);
+  flex-shrink: 0;
   margin-left: auto;
 }
 
