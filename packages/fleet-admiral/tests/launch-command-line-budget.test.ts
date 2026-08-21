@@ -560,6 +560,67 @@ describe("injectAgentCliProfile command-line enforcement", () => {
     }
   });
 
+  // Quick Launch 컴포저는 멀티라인 초안을 그대로 보낸다. cmd.exe는 명령줄을 줄바꿈에서 끊으므로
+  // .cmd shim 경유 argv에 실린 그 원문은 첫 줄만 자식에게 닿고 나머지 줄은 조용히 사라진다.
+  it("moves a multi-line cmd-shim launch prompt into a file so every line survives", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-cmd-multiline-");
+    const original = "Fix the login redirect bug\n\n- keep the session cookie\n- add a regression test";
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      // 이 원문은 cmd 특수문자도 없고 명령줄 상한 안에도 든다 — 줄바꿈만이 유일한 이유다.
+      expect(/["&<>()@^|%]/.test(original)).toBe(false);
+
+      const injected = await injectAgentCliProfile(
+        cmdShimProfile(root, { promptArgs: [original] }),
+        injectOptions(root),
+      );
+      const instruction = injected.args.at(-1)!;
+      expect(instruction.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX)).toBe(true);
+      expect(injected.args).not.toContain(original);
+      expect(injected.args.some((arg) => arg.includes("\n"))).toBe(false);
+      const filePath = instruction.slice(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX.length);
+      expect(readFileSync(filePath, "utf8")).toBe(original);
+      injected.cleanup?.();
+      expect(existsSync(filePath)).toBe(false);
+    } finally {
+      restoreTmp();
+    }
+  });
+
+  // 실행 파일을 직접 부르는 Windows 경로에는 cmd 파서가 없다 — CreateProcess는 인용된 인자
+  // 안의 줄바꿈을 그대로 넘긴다. 여기까지 파일로 밀어내면 멀쩡한 경로에서 원문이 사라진다.
+  it("keeps a multi-line native CreateProcess launch prompt on argv", async () => {
+    const root = createTempRoot("fleet-admiral-cmdline-native-multiline-");
+    const original = "Fix the login redirect bug\n\n- keep the session cookie\n- add a regression test";
+    const isolatedTmp = path.join(root, "tmp");
+    mkdirSync(isolatedTmp);
+    const restoreTmp = isolateTmp(isolatedTmp);
+
+    try {
+      const injected = await injectAgentCliProfile({
+        args: [],
+        bin: "claude.exe",
+        commandLineLimit: { maxChars: WINDOWS_CREATE_PROCESS_COMMAND_LINE_MAX_CHARS, via: "create-process" },
+        cwd: root,
+        env: { HOME: root },
+        id: "claude-gateway",
+        label: "claude-gateway",
+        promptArgs: [original],
+        terminalName: "xterm-256color",
+      }, injectOptions(root));
+
+      expect(injected.args.at(-1)).toBe(original);
+      expect(injected.args.some((arg) => arg.startsWith(LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX))).toBe(false);
+      expect(readdirSync(isolatedTmp).filter((name) => name.startsWith(LAUNCH_PROMPT_TEMP_DIR_PREFIX))).toEqual([]);
+      injected.cleanup?.();
+    } finally {
+      restoreTmp();
+    }
+  });
+
   it("moves a native CreateProcess launch prompt into a file when the original argv overflows", async () => {
     const root = createTempRoot("fleet-admiral-cmdline-native-overflow-");
     const original = "a".repeat(500);

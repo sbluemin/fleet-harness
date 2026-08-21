@@ -14,6 +14,11 @@ import path from "node:path";
 // 요구**한다고 명시하는데, node-pty로 나가는 이 런치 경로는 둘 다 제공하지 않는다. 따라서
 // 따옴표 안이라는 가정도 성립하지 않는다.
 const CMD_UNSAFE_PROMPT_PATTERN = /["&<>()@^|%]/;
+// cmd.exe의 명령줄은 줄바꿈에서 끝난다. 따옴표 안이어도 파서는 거기서 명령을 끊고, ^는 줄 잇기라
+// 줄바꿈 자체를 지우므로 이스케이프할 수단이 없다 — shim 경유 argv에 실린 멀티라인 프롬프트는
+// 첫 줄만 자식에게 닿고 나머지는 조용히 사라진다. 실행 파일을 직접 부르는 경로(CreateProcess)는
+// 인용된 인자 안의 줄바꿈을 그대로 전달하므로 여기 걸리지 않는다.
+const CMD_LINE_BREAK_PATTERN = /[\n\r]/;
 const LAUNCH_PROMPT_FILE_MODE = 0o600;
 
 export const LAUNCH_PROMPT_TEMP_DIR_PREFIX = "fleet-quick-launch-";
@@ -22,6 +27,14 @@ export const LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX = "Read and follow the launch
 
 export function launchPromptHasCmdUnsafeChars(prompt: string): boolean {
   return CMD_UNSAFE_PROMPT_PATTERN.test(prompt);
+}
+
+/**
+ * cmd.exe로 감싸인 shim 실행에서만 참인 조건 — 원문에 줄바꿈이 있으면 그 명령줄은 첫 줄에서
+ * 끊긴다. 길이 상한과 무관하게 파일 포인터로 옮겨야 프롬프트 전문이 전달된다.
+ */
+export function launchPromptHasCmdLineBreak(prompt: string): boolean {
+  return CMD_LINE_BREAK_PATTERN.test(prompt);
 }
 
 /**
