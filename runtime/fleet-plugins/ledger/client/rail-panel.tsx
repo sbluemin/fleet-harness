@@ -296,11 +296,10 @@ function TrendSection({ data, language, t }: {
   const detail = selected ? data.dailyDetails.find((entry) => entry.day === selected) : undefined;
   // 날짜를 붙이지 못한 기록은 합계에 남고 일별 축에서만 빠진다(summary.ts). 그 차이를 건수가
   // 아니라 금액으로 말하지 않으면 히어로와 차트가 조용히 어긋난다.
-  const datedCost = data.daily.reduce((total, point) => total + point.costUsd, 0);
-  const residual = data.totals.costUsd - datedCost;
+  const residual = undatedResidual(data);
   // 날짜 없는 기록이 흔한 원인이지만 유일한 원인은 아니다(예: fillDailyPoints의 366일 상한).
   // 금액으로 문을 열고, 건수는 실제로 있을 때만 말한다.
-  const showsResidual = residual >= 0.005;
+  const showsResidual = residual >= MIN_VISIBLE_RESIDUAL_USD;
   const dayFormatter = useMemo(
     () => new Intl.DateTimeFormat(language, { month: "short", day: "numeric" }),
     [language],
@@ -464,6 +463,27 @@ function SourceSection({ data, t }: { readonly data: LedgerSummaryDto; readonly 
   );
 }
 
+/** 금액이 센트로 반올림되어 사라지는 잔여는 말하지 않는다. */
+const MIN_VISIBLE_RESIDUAL_USD = 0.005;
+
+/** 합계에 있으나 일별 축의 어느 날에도 놓이지 못한 금액. */
+function undatedResidual(data: LedgerSummaryDto): number {
+  return data.totals.costUsd - data.daily.reduce((total, point) => total + point.costUsd, 0);
+}
+
+/**
+ * 모델 행의 세션이 리포트 메타데이터에 하나도 없으면 일별 축이 통째로 비고(summary.ts),
+ * 부모가 차트를 아예 렌더하지 않아 차트 안의 잔여 문장도 함께 사라진다. 그 상태에서는
+ * 지출 전액이 차트에서 빠진 것이므로, 차트가 없을 때야말로 금액을 말해야 한다.
+ * 리포트 자체를 읽지 못한 경우는 `ledger.daily.unavailable`이 이미 정확히 설명하므로 제외한다.
+ */
+function showsChartlessResidual(data: LedgerSummaryDto): boolean {
+  const reportCanProvideDates = data.source.report === "ok" || data.source.report === "degraded";
+  return data.daily.length === 0
+    && reportCanProvideDates
+    && undatedResidual(data) >= MIN_VISIBLE_RESIDUAL_USD;
+}
+
 function LedgerPanelBody({ ctx }: LedgerPanelProps) {
   const t = getT(ctx.language);
   const [window, setWindow] = useState<LedgerWindow>("week");
@@ -545,6 +565,15 @@ function LedgerPanelBody({ ctx }: LedgerPanelProps) {
           </section>
 
           <section className="ledger-clients">
+            {showsChartlessResidual(visibleData) ? (
+              <p className="ledger-trend-residual">
+                <span className="ledger-trend-residual-mark" aria-hidden="true" />
+                <span>{t("ledger.trend.residualNoChart", {
+                  cost: formatCost(undatedResidual(visibleData)),
+                  count: visibleData.dailySource.unmatchedEntries,
+                })}</span>
+              </p>
+            ) : null}
             {visibleData.daily.length > 0 ? (
               <TrendSection
                 key={`${visibleData.scope.window}:${visibleData.generatedAtMs}`}

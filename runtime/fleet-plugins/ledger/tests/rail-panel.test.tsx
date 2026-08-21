@@ -425,6 +425,31 @@ describe("Ledger daily model detail", () => {
     expect(container.querySelector(".ledger-trend-residual")?.textContent).not.toContain("records");
   });
 
+  it("names the whole total in dollars when no record could be dated", async () => {
+    const value = dto("ok", "week", 42.5);
+    await renderWith({ ...value, daily: [], dailyDetails: [], dailySource: { unmatchedEntries: 3 } });
+    // 축이 통째로 비면 부모가 차트를 렌더하지 않아 차트 안의 잔여 문장도 사라진다 —
+    // 지출 전액이 빠진 그 상태가 금액을 말해야 할 자리다.
+    expect(container.querySelector(".ledger-trend")).toBeNull();
+    expect(container.querySelector(".ledger-trend-residual")?.textContent).toContain(
+      "No record could be dated, so there is no daily chart. The full $42.50 stays in the total — 3 records carry no day.",
+    );
+  });
+
+  it("leaves an unreadable report to its own explanation", async () => {
+    const value = dto("degraded", "week", 42.5);
+    await renderWith({
+      ...value,
+      daily: [],
+      dailyDetails: [],
+      dailySource: { unmatchedEntries: 0 },
+      source: { ...value.source, status: "degraded", report: "unavailable" },
+    });
+    // 리포트를 읽지 못한 경우는 `ledger.daily.unavailable`이 이미 정확히 설명한다.
+    expect(container.querySelector(".ledger-trend-residual")).toBeNull();
+    expect(container.textContent).toContain("Daily detail is unavailable, but the model totals above remain complete.");
+  });
+
   it("stays silent when the remainder rounds away below a cent", async () => {
     const value = trendDto("week");
     await renderWith({
