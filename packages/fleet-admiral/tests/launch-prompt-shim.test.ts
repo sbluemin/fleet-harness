@@ -10,6 +10,7 @@ import {
   LAUNCH_PROMPT_FILE_INSTRUCTION_PREFIX,
   LAUNCH_PROMPT_FILE_NAME,
   LAUNCH_PROMPT_TEMP_DIR_PREFIX,
+  launchPromptHasCmdLineBreak,
   launchPromptHasCmdUnsafeChars,
   writeLaunchPromptFile,
   writeLaunchPromptPointer,
@@ -35,6 +36,24 @@ describe("launchPromptHasCmdUnsafeChars", () => {
     expect(launchPromptHasCmdUnsafeChars("Fix the login redirect bug")).toBe(false);
     expect(launchPromptHasCmdUnsafeChars("Summarize %USERPROFILE%")).toBe(true);
     expect(launchPromptHasCmdUnsafeChars("a & b")).toBe(true);
+  });
+
+  // 줄바꿈은 이 집합이 아니다 — 재해석이 아니라 명령줄 자체의 끝이고, shim 경유일 때만
+  // 문제가 된다. 두 갈래를 한 술어로 합치면 실행 파일을 직접 부르는 Windows 경로에서
+  // 멀쩡히 전달되던 멀티라인 원문까지 파일로 밀려난다.
+  it("leaves a line break to the cmd-shim-only predicate", () => {
+    expect(launchPromptHasCmdUnsafeChars("line one\nline two")).toBe(false);
+  });
+});
+
+describe("launchPromptHasCmdLineBreak", () => {
+  // cmd.exe /d /s /c 로 감싼 실행에 멀티라인 인자를 실으면 첫 줄만 자식의 argv에 닿는다.
+  // ^는 줄 잇기라 줄바꿈을 지우고, 따옴표 안이어도 파서가 그 줄에서 명령을 끊는다.
+  it("detects the line breaks that truncate a cmd-shim command line", () => {
+    expect(launchPromptHasCmdLineBreak("Fix the login redirect bug")).toBe(false);
+    expect(launchPromptHasCmdLineBreak("line one\nline two")).toBe(true);
+    expect(launchPromptHasCmdLineBreak("line one\r\nline two")).toBe(true);
+    expect(launchPromptHasCmdLineBreak("line one\rline two")).toBe(true);
   });
 });
 

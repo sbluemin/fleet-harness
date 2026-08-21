@@ -9,6 +9,7 @@ import { buildClaudeGatewayArgs } from "./builders/claude.js";
 import {
   assertLaunchCommandLineBudget,
   LaunchPromptError,
+  launchPromptHasCmdLineBreak,
   launchPromptHasCmdUnsafeChars,
   writeLaunchPromptPointer,
 } from "./prompt.js";
@@ -119,7 +120,12 @@ export async function injectAgentCliProfile(
     // 올린다. 명령줄 초과는 주입 인자가 합쳐진 뒤에만 알 수 있어 예산 검사에서 옮긴다.
     if (promptArgs.length > 0 && windowsLaunch) {
       const body = takeLaunchPromptBody(promptArgs);
-      if (launchPromptHasCmdUnsafeChars(body)) convertPromptToFile(body);
+      // 줄바꿈은 cmd shim일 때만 문제가 된다 — cmd의 명령줄이 거기서 끊겨 첫 줄만 자식에게
+      // 닿는다. 실행 파일을 직접 부르는 Windows 경로는 인용된 인자 안의 줄바꿈을 그대로
+      // 전달하므로 멀티라인 원문을 argv에 남긴다.
+      if (launchPromptHasCmdUnsafeChars(body) || (cmdWrapped && launchPromptHasCmdLineBreak(body))) {
+        convertPromptToFile(body);
+      }
     }
     const plugin = await createAgentCliPlugin({
       cliId: profile.id,
