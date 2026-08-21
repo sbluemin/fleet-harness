@@ -131,7 +131,7 @@ describe("gateway model guard — Workflow delegation", () => {
       ].join("\n"),
     });
     expect(status).toBe(2);
-    expect(stderr).toContain("2건");
+    expect(stderr).toContain("2 agent() call(s)");
   });
 
   // 프롬프트 텍스트의 괄호를 호출 경계로 세면 멀쩡한 스크립트가 막힌다.

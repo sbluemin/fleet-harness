@@ -17,7 +17,7 @@
 // stdin 한 번으로 끝나도록 짰다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
 import { readFileSync } from "node:fs";
 
-// 모델에게 주는 지시이므로 영어로 쓴다.
+// 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
 const TURN_REMINDER = [
   "Before any Agent or Workflow run leaves the host, call gateway_models and pin an identity from what it",
   "reports — allowances move while work is in flight.",
@@ -137,14 +137,14 @@ function assertWorkflowModelValues(script) {
     if (MODEL_ALIASES.test(value)) continue;
     if (PREFIXED_ALIAS_RE.test(value)) {
       block(
-        `lineage alias에는 claude-gateway-- prefix를 붙이면 안 됩니다: "${value}". ` +
-          "alias는 그대로(fable|opus|sonnet|haiku) 사용하세요."
+        `A lineage alias must not carry the claude-gateway-- prefix: "${value}". ` +
+          "Write the alias bare (fable|opus|sonnet|haiku)."
       );
     }
     if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
-      `opts.model 값이 올바르지 않습니다: "${value}". gateway_models의 modelId(claude-gateway-- prefix 포함)를 ` +
-        "그대로 복사하거나 lineage alias(fable|opus|sonnet|haiku)를 사용하세요."
+      `opts.model is not a value this run can resolve: "${value}". Copy a modelId from gateway_models verbatim, ` +
+        "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku)."
     );
   }
 }
@@ -170,8 +170,7 @@ function gateAgentDelegation(toolInput) {
   if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) process.exit(0);
   if (agentType !== undefined && !UNPINNED_AGENT_TYPES.has(agentType)) process.exit(0);
   block(
-    `이 위임은 정체성이 핀되지 않았습니다(subagent_type: ${agentType ?? "미지정"}). ` +
-      PIN_INSTRUCTION
+    `This delegation pins no identity (subagent_type: ${agentType ?? "absent"}). ` + PIN_INSTRUCTION
   );
 }
 
@@ -180,16 +179,17 @@ function gateWorkflowDelegation(toolInput) {
   if (script === undefined) process.exit(0);
   if (AGENT_TYPE_RE.test(script)) {
     block(
-      "dynamic workflow 스크립트에 agentType이 금지됩니다. agentType은 팀메이트/서브에이전트 표면 전용이고, " +
-        "워크플로우는 opts.model로만 팬아웃해야 합니다."
+      "agentType is not allowed in a dynamic workflow script. It belongs to the teammate and subagent surfaces; " +
+        "a workflow fans out through opts.model alone."
     );
   }
   const unpinned = countUnpinnedAgentCalls(script);
   if (unpinned > 0) {
     block(
-      `model이 지정되지 않은 agent() 호출이 ${unpinned}건 있습니다. ` +
+      `${unpinned} agent() call(s) pin no model. ` +
         PIN_INSTRUCTION +
-        " 스테이지마다 모델을 나누는 것이 이 표면의 목적이므로, 한 값으로 채우지 말고 역할별로 배분하세요."
+        " Spreading stages across models is the point of this surface, so assign one per role rather than " +
+        "filling every stage with a single value."
     );
   }
   assertWorkflowModelValues(script);
