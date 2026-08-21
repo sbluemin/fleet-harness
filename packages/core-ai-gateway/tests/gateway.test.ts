@@ -3911,6 +3911,80 @@ describe("response model rewrite", () => {
   });
 });
 
+describe("message_start input usage floor", () => {
+  const usageAdapter = (
+    createdUsage: Record<string, number> | null,
+    completedUsage: Record<string, number> | null,
+  ): AiGatewayAdapter => ({
+    async stream() {
+      return {
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        events: iterable<CanonicalResponseEvent>([
+          {
+            type: "response.created",
+            response: { id: "resp_usage", model: "grok-4.6", usage: createdUsage as never },
+          },
+          { type: "response.output_text.delta", item_id: "m", output_index: 0, content_index: 0, delta: "hi" },
+          {
+            type: "response.completed",
+            response: { id: "resp_usage", model: "grok-4.6", usage: completedUsage as never },
+          },
+        ]),
+      };
+    },
+  });
+
+  const longRequest = (): AnthropicMessagesRequest => ({
+    ...baseRequest(),
+    system: [{ type: "text", text: "You are a assistant. ".repeat(200) }],
+    messages: [{ role: "user", content: "Summarize this. ".repeat(200) }],
+  });
+
+  it("reports an estimated input floor on message_start when response.created carries no usage", async () => {
+    const response = await new AnthropicMessagesGateway(usageAdapter(null, { input_tokens: 900, output_tokens: 4 }))
+      .stream(longRequest(), { apiKey: "k" });
+    const frames = parseSse(await collectBody(response.body));
+    const start = frames.find((item) => item.event === "message_start");
+    const usage = (start?.data as { message: { usage: { input_tokens: number; output_tokens: number } } }).message.usage;
+
+    // Without the floor this frame reports 0 and Claude Code sizes the whole running turn at
+    // zero tokens; the estimate is a floor, so it only has to be positive, never exact.
+    expect(usage.input_tokens).toBeGreaterThan(0);
+    expect(usage.output_tokens).toBe(0);
+  });
+
+  it("never lets the estimate override a measured upstream input count", async () => {
+    const response = await new AnthropicMessagesGateway(
+      usageAdapter({ input_tokens: 7, output_tokens: 0 }, { input_tokens: 11, output_tokens: 4 }),
+    ).stream(longRequest(), { apiKey: "k" });
+    const frames = parseSse(await collectBody(response.body));
+    const start = frames.find((item) => item.event === "message_start");
+    const delta = frames.find((item) => item.event === "message_delta");
+
+    expect((start?.data as { message: { usage: { input_tokens: number } } }).message.usage.input_tokens).toBe(7);
+    expect((delta?.data as { usage: { input_tokens: number } }).usage.input_tokens).toBe(11);
+  });
+
+  it("floors a terminal message_delta whose upstream usage is missing entirely", async () => {
+    const response = await new AnthropicMessagesGateway(usageAdapter(null, null))
+      .stream(longRequest(), { apiKey: "k" });
+    const frames = parseSse(await collectBody(response.body));
+    const delta = frames.find((item) => item.event === "message_delta");
+
+    expect((delta?.data as { usage: { input_tokens: number } }).usage.input_tokens).toBeGreaterThan(0);
+  });
+
+  it("applies the same floor to the non-streaming response body", async () => {
+    const response = await new AnthropicMessagesGateway(usageAdapter(null, null))
+      .stream({ ...longRequest(), stream: false }, { apiKey: "k" });
+    const body = JSON.parse(await collectBody(response.body)) as { usage: { input_tokens: number } };
+
+    expect(body.usage.input_tokens).toBeGreaterThan(0);
+  });
+});
+
 describe("upstream errors", () => {
   it("maps an OpenAI error to Anthropic shape while preserving its HTTP status", async () => {
     const adapter = new OpenAIResponsesAdapter({

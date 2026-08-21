@@ -77,7 +77,14 @@ export class AnthropicMessagesGateway {
       reasoning: canonical.reasoning,
       tools: canonical.tools,
     });
-    guardModelContextWindow(canonical, options.modelContextWindow, this.adapter);
+    // One estimate serves both the overflow guard and the usage floor below: the guard refuses
+    // a turn that cannot fit, and the floor keeps `message_start` from claiming zero input on
+    // providers whose `response.created` carries no usage.
+    const estimatedInputTokens = estimateCanonicalRequestTokens(
+      canonical,
+      this.adapter.wireTools?.(canonical) ?? canonical.tools ?? [],
+    );
+    guardModelContextWindow(canonical, options.modelContextWindow, estimatedInputTokens);
     const upstream = await this.adapter.stream(canonical, {
       apiKey: options.apiKey,
       ...(options.modelContextWindow === undefined
@@ -126,6 +133,7 @@ export class AnthropicMessagesGateway {
           contextWindow: options.contextWindow,
           compactCeiling: options.compactCeiling,
           model: request.model,
+          estimatedInputTokens,
         }))
       };
     }
@@ -135,6 +143,7 @@ export class AnthropicMessagesGateway {
       contextWindow: options.contextWindow,
       compactCeiling: options.compactCeiling,
       model: request.model,
+      estimatedInputTokens,
     });
     return {
       status: upstream.status,
@@ -170,7 +179,7 @@ async function* oneChunk(body: Uint8Array): AsyncGenerator<Uint8Array> {
 function guardModelContextWindow(
   canonical: CanonicalResponseRequest,
   modelContextWindow: number | undefined,
-  adapter: AiGatewayAdapter,
+  requestTokens: number,
 ): void {
   if (
     typeof modelContextWindow !== "number"
@@ -179,8 +188,6 @@ function guardModelContextWindow(
   ) {
     return;
   }
-  const wireTools = adapter.wireTools?.(canonical) ?? canonical.tools ?? [];
-  const requestTokens = estimateCanonicalRequestTokens(canonical, wireTools);
   if (requestTokens > modelContextWindow) {
     throw new ContextWindowExceededError(requestTokens, modelContextWindow);
   }
