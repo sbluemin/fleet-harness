@@ -9,30 +9,20 @@
 // 세 곳에서 따로 늙는다.
 //
 //   remind            UserPromptSubmit          매 턴 규약 주입 (무조건)
-//   gate-delegation   PreToolUse  Agent|Workflow  로스터를 읽지 않은 팬아웃, Agent의 핀 누락,
-//                                                 workflow의 틀린 모델 철자를 차단
+//   gate-delegation   PreToolUse  Agent|Workflow  핀되지 않은 위임을 차단
 //   workflow-receipt  PostToolUse Workflow        접수증을 결과로 읽는 사고를 차단
 //
-// 자체 상태를 남기지 않는다. 프로세스 간 기억을 위해 훅이 직접 쓰는 파일은 곧 신선도·정리·
-// 경합을 떠안는 두 번째 진실이 되고, 그 파일이 사라지면 게이트가 조용히 열린다. 조회 여부는
-// 그래서 하네스가 이미 소유한 트랜스크립트에서 읽는다 — 새 진실을 만들지 않고, 훅이 관리할
-// 수명도 없다.
+// 상태를 남기지 않는다. 훅은 호출마다 새 프로세스로 뜨므로 프로세스 간 기억은 파일로만
+// 가능한데, 그 파일은 곧 신선도·정리·경합을 떠안는 두 번째 진실이 된다. 세 판정 모두
+// stdin 한 번으로 끝나도록 짰다 — 그래서 타임아웃으로 게이트가 조용히 열릴 여지도 작다.
 import { readFileSync } from "node:fs";
 
 // 모델에게 주는 지시이므로 영어로 쓴다.
-//
-// 조회와 핀은 층위가 다르다. 조회는 무조건이고 핀은 표면마다 조건이 붙는데, 한 문단에 섞으면
-// 핀 쪽 면제("스테이지는 세션 모델에 머물러도 된다")가 조회의 무조건성까지 조건부로 물들인다.
-// 그래서 조회를 먼저 끝내고, 핀 철자는 그 뒤에서 따로 말한다.
 const TURN_REMINDER = [
-  "Call gateway_models before any Agent or Workflow run leaves the host — every time, not once per session.",
-  "The roster and its allowances are resolved at call time, so a name you remember is not evidence that it",
-  "still resolves.",
-  "Then pin from what that call reports.",
-  "Agent: subagent_type = the fleet:* name, always.",
-  "A Workflow stage may stay on the session model; when you do move one, opts.model takes the modelId with",
-  "the claude-gateway-- prefix and opts.agentType takes the fleet:* name.",
-  "The spellings are never interchangeable.",
+  "Before any Agent or Workflow run leaves the host, call gateway_models and pin an identity from what it",
+  "reports — allowances move while work is in flight.",
+  "Agent: subagent_type = the fleet:* name. Workflow: opts.model = the modelId, the claude-gateway-- prefix",
+  "included. The two spellings are never interchangeable.",
 ].join(" ");
 
 const IN_FLIGHT_CONTRACT = [
@@ -43,13 +33,11 @@ const IN_FLIGHT_CONTRACT = [
   "Report the finding once, in the turn the result arrives. If asked before then, say it is still running.",
 ].join(" ");
 
-const PIN_INSTRUCTION =
-  "Call gateway_models first, then pin the identity it reports: subagent_type = the fleet:* name.";
-
-const LOOKUP_INSTRUCTION =
-  "Call gateway_models now, then pin from what it reports. The roster is resolved at call time —"
-  + " a name carried in from memory, from another session, or from this tool's own description is not evidence"
-  + " that it still resolves.";
+const PIN_INSTRUCTION = [
+  "Call gateway_models first, then pin the identity it reports:",
+  "Agent — subagent_type = the fleet:* name;",
+  "Workflow — opts.model = the modelId with the claude-gateway-- prefix, written as a literal.",
+].join(" ");
 
 /**
  * 정체성이 핀되지 않은 위임으로 취급하는 Agent 타입.
@@ -64,14 +52,9 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-// 콜론 앞 공백은 유효한 프로퍼티 표기다. 정규식이 정규 표기만 알면 그 한 칸이 검사를 비켜간다.
-const MODEL_VALUE_RE = /model\s*:\s*['"]([^'"]+)['"]/g;
-const AGENT_TYPE_VALUE_RE = /agentType\s*:\s*['"]([^'"]+)['"]/g;
-
-// MCP 이름은 서버 등록명에 따라 접두가 달라진다. 서버 이름을 하드코딩하면 등록명이 바뀌는 날
-// 게이트가 조용히 전부 통과시키므로, 접두는 모양으로만 받고 도구 이름으로 판정한다.
-const LOOKUP_TOOL_NAME_RE = /^(?:mcp__[A-Za-z0-9_.-]+__)?gateway_models$/;
-const LOOKUP_CALL_HINT_RE = /"name"\s*:\s*"(?:mcp__[A-Za-z0-9_.-]+__)?gateway_models"/;
+const AGENT_TYPE_RE = /agentType\s*:/;
+const MODEL_VALUE_RE = /model:\s*['"]([^'"]+)['"]/g;
+const AGENT_CALL_RE = /\bagent\s*\(/g;
 
 function block(message) {
   process.stderr.write(`[fleet-gateway-model-guard] ${message}\n`);
@@ -93,88 +76,61 @@ function readHookInput() {
 }
 
 /**
- * 이 세션이 로스터를 읽었는가. 판정 근거는 하네스가 쓰는 세션 트랜스크립트다.
+ * `agent(` 호출 하나가 차지하는 원문 범위. 괄호 균형으로 끝을 찾되 문자열·주석 안의 괄호는
+ * 세지 않는다 — 프롬프트 텍스트에 괄호가 흔해서, 세는 순간 호출 경계가 엉뚱한 곳에서 닫힌다.
  *
- * 호출이 아니라 `tool_result`가 판정 대상이다. 호출만 세면 게이트웨이가 응답하지 않아 실패로
- * 끝난 조회와, 위임과 같은 턴에 발행되어 아직 결과가 없는 조회가 성공한 조회와 구별되지 않는다
- * — 둘 다 로스터를 받지 못한 세션인데, 그 세션이 기억해둔 이름으로 위임하는 것이 이 게이트가
- * 막으려는 바로 그 경우다. 하네스는 한 턴에 병렬로 발행된 호출도 각각 별도 라인으로 적으므로,
- * 결과 없는 `tool_use`는 예외적인 모양이 아니라 흔한 중간 상태다.
- *
- * 트랜스크립트를 볼 수 없으면 참을 돌린다. 훅이 이 필드를 받지 못하는 경로가 생겼을 때 모든
- * 위임이 막히는 쪽이, 조회 한 번을 놓치는 쪽보다 훨씬 나쁘다 — 게이트는 근거가 있을 때만 닫는다.
+ * 끝을 찾지 못하면 undefined를 돌려주고 호출자는 그 호출을 검사하지 않는다. 이 스캐너는
+ * 파서가 아니므로, 판정할 수 없는 형태를 "핀 없음"으로 몰아 멀쩡한 스크립트를 막는 쪽이
+ * 검사 한 건을 놓치는 쪽보다 나쁘다.
  */
-function sessionReadRoster(input) {
-  const transcriptPath = typeof input?.transcript_path === "string" ? input.transcript_path : undefined;
-  if (transcriptPath === undefined || transcriptPath.length === 0) return true;
-  let raw;
-  try {
-    raw = readFileSync(transcriptPath, "utf8");
-  } catch {
-    return true;
-  }
-  // 값싼 부정 먼저. `gateway_models`라는 문자열 자체는 매 턴 주입되는 규약문, 도구 목록,
-  // 사용자 프롬프트에도 흔해서 그것만으로는 호출의 증거가 못 된다. 힌트가 걸린 뒤에야 라인을
-  // 파싱해 진짜 tool_use인지 가린다.
-  if (!LOOKUP_CALL_HINT_RE.test(raw)) return false;
-  // 결과를 기다리는 조회 호출. 결과 라인에는 도구 이름이 없으므로 id로만 이어 붙일 수 있다.
-  const awaitedLookupIds = new Set();
-  for (const line of raw.split("\n")) {
-    const namesLookup = line.includes("gateway_models");
-    const answersLookup = awaitedLookupIds.size > 0 && idMentionedIn(line, awaitedLookupIds);
-    if (!namesLookup && !answersLookup) continue;
-    let entry;
-    try {
-      entry = JSON.parse(line);
-    } catch {
+function sliceCall(script, openParenIndex) {
+  let depth = 0;
+  let quote;
+  let escaped = false;
+  for (let i = openParenIndex; i < script.length; i += 1) {
+    const char = script[i];
+    if (quote !== undefined) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === quote) quote = undefined;
       continue;
     }
-    // 서브에이전트가 읽은 로스터는 호스트의 조회가 아니다. 위임을 결정하는 것은 호스트다.
-    if (entry?.isSidechain === true) continue;
-    const content = entry?.message?.content;
-    if (!Array.isArray(content)) continue;
-    for (const contentBlock of content) {
-      if (contentBlock?.type === "tool_use") {
-        if (typeof contentBlock.name !== "string" || typeof contentBlock.id !== "string") continue;
-        if (LOOKUP_TOOL_NAME_RE.test(contentBlock.name)) awaitedLookupIds.add(contentBlock.id);
-        continue;
-      }
-      if (contentBlock?.type !== "tool_result") continue;
-      if (!awaitedLookupIds.delete(contentBlock.tool_use_id)) continue;
-      // 성공은 `is_error`의 부재로 적힌다 — 참인 경우만 실패다. 하나만 도착하면 충분하다.
-      if (contentBlock.is_error !== true) return true;
+    if (char === "'" || char === '"' || char === "`") {
+      quote = char;
+      continue;
+    }
+    if (char === "/" && script[i + 1] === "/") {
+      const lineEnd = script.indexOf("\n", i);
+      if (lineEnd === -1) return undefined;
+      i = lineEnd;
+      continue;
+    }
+    if (char === "/" && script[i + 1] === "*") {
+      const blockEnd = script.indexOf("*/", i + 2);
+      if (blockEnd === -1) return undefined;
+      i = blockEnd + 1;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+      if (depth === 0) return script.slice(openParenIndex, i + 1);
     }
   }
-  return false;
+  return undefined;
 }
 
-/** 이 라인이 아직 결과를 기다리는 호출 id를 언급하는가. 조회 id는 세션당 한 줌이라 선형 검사로 충분하다. */
-function idMentionedIn(line, ids) {
-  for (const id of ids) {
-    if (line.includes(id)) return true;
+/** model 옵션이 없는 `agent(` 호출의 개수. 경계를 못 읽은 호출은 세지 않는다. */
+function countUnpinnedAgentCalls(script) {
+  let unpinned = 0;
+  for (const match of script.matchAll(AGENT_CALL_RE)) {
+    const call = sliceCall(script, match.index + match[0].length - 1);
+    if (call === undefined) continue;
+    if (!/\bmodel\s*:/.test(call)) unpinned += 1;
   }
-  return false;
+  return unpinned;
 }
 
-/**
- * 로스터를 읽지 않은 팬아웃을 차단한다.
- *
- * 핀의 철자는 볼 수 있어도 그 이름이 아직 해석되는지는 로스터에만 있다. 철자만 검사하면
- * 기억한 이름이 통과하고, 그 순간 규약은 지켜졌다는 외양만 남는다.
- */
-function assertRosterWasRead(input, subject) {
-  if (sessionReadRoster(input)) return;
-  block(`${subject} 이 세션은 아직 gateway_models를 호출하지 않았습니다. ` + LOOKUP_INSTRUCTION);
-}
-
-/**
- * 워크플로우가 쓴 모델 값의 철자 검사.
- *
- * 스테이지를 옮길지 말지는 호스트가 정한다 — 핀하지 않은 스테이지는 세션 모델로 돌면 그만이다.
- * 여기서 막는 것은 옮기기로 해놓고 값을 잘못 쓴 경우뿐이다. 로스터 이름이나 prefix가 빠진
- * modelId가 `model` 자리에 들어가면 모든 분기가 시작 즉시 죽으므로, 그 실패는 실행 전에 잡는
- * 편이 훨씬 싸다.
- */
 function assertWorkflowModelValues(script) {
   for (const match of script.matchAll(MODEL_VALUE_RE)) {
     const value = match[1];
@@ -188,26 +144,7 @@ function assertWorkflowModelValues(script) {
     if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
       `opts.model 값이 올바르지 않습니다: "${value}". gateway_models의 modelId(claude-gateway-- prefix 포함)를 ` +
-        "그대로 복사하거나 lineage alias(fable|opus|sonnet|haiku)를 사용하세요. " +
-        "fleet:* 이름은 opts.agentType 자리입니다."
-    );
-  }
-}
-
-/**
- * 이름 자리에 들어간 modelId. 두 철자를 맞바꾼 나머지 절반이다.
- *
- * `fleet:` 접두만 통과시키지는 않는다 — `general-purpose`처럼 이 저장소가 싣지 않은 내장
- * agentType도 그 자리의 정당한 값이라, 접두로 거르면 멀쩡한 스크립트가 막힌다. modelId만
- * 골라 막는다: 그 값은 어떤 레지스트리에도 이름으로 등록되어 있지 않아 반드시 죽는다.
- */
-function assertWorkflowAgentTypeValues(script) {
-  for (const match of script.matchAll(AGENT_TYPE_VALUE_RE)) {
-    const value = match[1];
-    if (!value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
-    block(
-      `opts.agentType 값이 올바르지 않습니다: "${value}". modelId는 opts.model 자리이고, ` +
-        "agentType에는 gateway_models가 보고한 fleet:* 이름을 씁니다."
+        "그대로 복사하거나 lineage alias(fable|opus|sonnet|haiku)를 사용하세요."
     );
   }
 }
@@ -228,14 +165,9 @@ function resolveWorkflowScript(toolInput) {
   return undefined;
 }
 
-function gateAgentDelegation(toolInput, input) {
+function gateAgentDelegation(toolInput) {
   const agentType = typeof toolInput.subagent_type === "string" ? toolInput.subagent_type : undefined;
-  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) {
-    // 게이트웨이 정체성으로 나가는 위임만 로스터를 요구한다. 내장 타입은 호스트 모델로 도는
-    // 도구 선택이라 로스터에 걸린 것이 없다.
-    assertRosterWasRead(input, `게이트웨이 위임(${agentType})이 거부되었습니다:`);
-    process.exit(0);
-  }
+  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) process.exit(0);
   if (agentType !== undefined && !UNPINNED_AGENT_TYPES.has(agentType)) process.exit(0);
   block(
     `이 위임은 정체성이 핀되지 않았습니다(subagent_type: ${agentType ?? "미지정"}). ` +
@@ -243,14 +175,24 @@ function gateAgentDelegation(toolInput, input) {
   );
 }
 
-function gateWorkflowDelegation(toolInput, input) {
-  // 스테이지를 옮기지 않는 워크플로우도 호스트를 떠나는 팬아웃이다. 옮길지 말지를 판단하려면
-  // 그 판단의 재료인 로스터를 먼저 읽어야 하므로, 스크립트를 보기 전에 조회부터 확인한다.
-  assertRosterWasRead(input, "이 워크플로우 디스패치가 거부되었습니다:");
+function gateWorkflowDelegation(toolInput) {
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
+  if (AGENT_TYPE_RE.test(script)) {
+    block(
+      "dynamic workflow 스크립트에 agentType이 금지됩니다. agentType은 팀메이트/서브에이전트 표면 전용이고, " +
+        "워크플로우는 opts.model로만 팬아웃해야 합니다."
+    );
+  }
+  const unpinned = countUnpinnedAgentCalls(script);
+  if (unpinned > 0) {
+    block(
+      `model이 지정되지 않은 agent() 호출이 ${unpinned}건 있습니다. ` +
+        PIN_INSTRUCTION +
+        " 스테이지마다 모델을 나누는 것이 이 표면의 목적이므로, 한 값으로 채우지 말고 역할별로 배분하세요."
+    );
+  }
   assertWorkflowModelValues(script);
-  assertWorkflowAgentTypeValues(script);
   process.exit(0);
 }
 
@@ -270,8 +212,8 @@ if (subcommand === "workflow-receipt") {
 }
 
 if (subcommand === "gate-delegation") {
-  if (toolName === "Agent") gateAgentDelegation(toolInput, input);
-  if (toolName === "Workflow") gateWorkflowDelegation(toolInput, input);
+  if (toolName === "Agent") gateAgentDelegation(toolInput);
+  if (toolName === "Workflow") gateWorkflowDelegation(toolInput);
   process.exit(0);
 }
 
