@@ -1,9 +1,9 @@
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
-import { askWiki, fetchHealth, fetchSearch, runDrydock } from "../api.js";
+import { askWiki, createEntry, fetchHealth, fetchSearch, fetchSchemaDocument, runDrydock } from "../api.js";
 import type { QueryAnswerResponse } from "../api.js";
-import { getState, subscribeState } from "../state.js";
+import { getState, loadInitialData, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
 import type { CodexHealthResponse, SearchEntry, WikiIndexEntry } from "../api.js";
 
@@ -210,6 +210,10 @@ export function mountNavigatorInto(
   let askError: string | null = null;
   let askEpoch = 0;
   let askQuestion = "";
+  let creating = false;
+  let createError: string | null = null;
+  // 네이티브 select는 제품 표면에서 금지된다 — 패싯과 같은 칩 문법을 쓴다.
+  let createTemplate = "";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let searchController: AbortController | null = null;
   let healthController: AbortController | null = null;
@@ -293,6 +297,56 @@ export function mountNavigatorInto(
     renderList(getState());
   }
 
+  /** 신규 항목 폼. 템플릿을 고르면 그 본문이 초안이 된다. */
+  function renderCreateForm(state: AppState): void {
+    const host = root.querySelector<HTMLElement>("#codex-nav-create");
+    if (!host) return;
+    if (!creating || mode !== "entries") { host.innerHTML = ""; host.hidden = true; return; }
+    host.hidden = false;
+    const t = consoleT();
+    const templates = state.schemaCatalog?.templates ?? [];
+    host.innerHTML = `
+      <form class="codex-create-form" data-create-form>
+        <input class="codex-create-input" name="title" required autocomplete="off"
+          placeholder="${escapeHtml(t("codex.nav.newTitle"))}" aria-label="${escapeHtml(t("codex.nav.newTitle"))}" />
+        <input class="codex-create-input" name="id" required autocomplete="off" spellcheck="false"
+          placeholder="${escapeHtml(t("codex.nav.newId"))}" aria-label="${escapeHtml(t("codex.nav.newId"))}" />
+        ${templates.length > 0 ? `<div class="codex-create-templates" role="group" aria-label="${escapeHtml(t("codex.nav.newTemplate"))}">
+          <button type="button" class="codex-facet${createTemplate ? "" : " is-active"}" data-template-pick="" aria-pressed="${!createTemplate}">${escapeHtml(t("codex.nav.newBlank"))}</button>
+          ${templates.map((tpl) => `<button type="button" class="codex-facet${createTemplate === tpl.id ? " is-active" : ""}" data-template-pick="${escapeHtml(tpl.id)}" aria-pressed="${createTemplate === tpl.id}">${escapeHtml(tpl.id)}</button>`).join("")}
+        </div>` : ""}
+        <div class="codex-create-actions">
+          <button type="submit" class="queue-action-btn queue-action-btn--approve">${escapeHtml(t("codex.nav.newCreate"))}</button>
+          <button type="button" class="queue-action-btn queue-action-btn--cancel" data-action="new-cancel">${escapeHtml(t("common.cancel"))}</button>
+        </div>
+        ${createError ? `<p class="queue-action-error">${escapeHtml(createError)}</p>` : ""}
+      </form>`;
+    host.querySelector<HTMLInputElement>('[name="title"]')?.focus();
+  }
+
+  async function submitCreate(form: HTMLFormElement): Promise<void> {
+    const data = new FormData(form);
+    const title = (data.get("title") ?? "").toString().trim();
+    const id = (data.get("id") ?? "").toString().trim();
+    const templateId = createTemplate;
+    if (!title || !id) return;
+    createError = null;
+    let body = "";
+    if (templateId) {
+      // 템플릿 본문을 그대로 초안으로 쓴다 — 빈 문서보다 섹션이 있는 편이 쓰기 쉽다.
+      try { body = (await fetchSchemaDocument(activeTheaterId, templateId)).content; } catch { body = ""; }
+    }
+    try {
+      await createEntry(activeTheaterId, { id, title, body, ...(templateId ? { templateId } : {}) });
+      creating = false;
+      await loadInitialData();
+      selectEntry(id);
+    } catch (error) {
+      createError = error instanceof Error ? error.message : String(error);
+      renderList(getState());
+    }
+  }
+
   function renderShell(): void {
     const t = consoleT();
     root.innerHTML = `
@@ -301,6 +355,7 @@ export function mountNavigatorInto(
         <button type="button" role="tab" data-mode="entries" aria-selected="true">${escapeHtml(t("codex.nav.entries"))}</button>
         <button type="button" role="tab" data-mode="schema" aria-selected="false">${escapeHtml(t("codex.nav.schema"))}</button>
         <button type="button" role="tab" data-mode="ask" aria-selected="false">${escapeHtml(t("codex.nav.ask"))}</button>
+        <button type="button" class="codex-nav-new" data-action="new-entry" aria-label="${escapeHtml(t("codex.nav.newEntry"))}" title="${escapeHtml(t("codex.nav.newEntry"))}">+</button>
       </div>
       <div class="codex-nav-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -320,6 +375,7 @@ export function mountNavigatorInto(
         <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))}</button>
         <button class="codex-nav-quick" data-action="run-check" type="button">${escapeHtml(t("codex.nav.runCheck"))}</button>
       </div>
+      <div class="codex-nav-create" id="codex-nav-create" hidden></div>
       <div class="codex-nav-facets" id="codex-nav-facets" role="group" aria-label="${escapeHtml(t("codex.nav.facetType"))}"></div>
       <div class="codex-nav-health" hidden></div>
       <div class="codex-nav-list-header">
@@ -431,6 +487,7 @@ export function mountNavigatorInto(
 
     const localMatches = sortEntries(filterEntries(state.index, currentQuery, activeTag, activeFacet), sortOrder);
     renderFacets(state.index);
+    renderCreateForm(state);
     const seenIds = new Set(localMatches.map((entry) => entry.id));
     const remoteMatches = sortEntries(
       serverResults.filter((entry) => {
@@ -587,6 +644,27 @@ export function mountNavigatorInto(
     }
     if (quickBtn?.dataset.action === "run-check") {
       void executeDrydockRun(quickBtn);
+      return;
+    }
+    const templatePick = target.closest<HTMLElement>("[data-template-pick]");
+    if (templatePick) {
+      createTemplate = templatePick.dataset.templatePick ?? "";
+      renderList(getState());
+      return;
+    }
+
+    if (quickBtn?.dataset.action === "new-entry") {
+      creating = !creating;
+      createError = null;
+      createTemplate = "";
+      mode = "entries";
+      renderList(getState());
+      return;
+    }
+    if (quickBtn?.dataset.action === "new-cancel") {
+      creating = false;
+      createError = null;
+      renderList(getState());
     }
   }
 
@@ -645,7 +723,10 @@ export function mountNavigatorInto(
 
   // Ask는 타이핑마다 돌면 안 된다 — 제출로만 실행한다.
   function handleSubmit(event: SubmitEvent): void {
-    const form = (event.target as HTMLElement | null)?.closest<HTMLFormElement>("[data-ask-form]");
+    const host = event.target as HTMLElement | null;
+    const createForm = host?.closest<HTMLFormElement>("[data-create-form]");
+    if (createForm) { event.preventDefault(); void submitCreate(createForm); return; }
+    const form = host?.closest<HTMLFormElement>("[data-ask-form]");
     if (!form) return;
     event.preventDefault();
     void submitAsk(new FormData(form).get("q")?.toString() ?? "");
