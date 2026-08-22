@@ -1,7 +1,8 @@
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
-import { fetchHealth, fetchSearch } from "../api.js";
+import { askWiki, fetchHealth, fetchSearch, runDrydock } from "../api.js";
+import type { QueryAnswerResponse } from "../api.js";
 import { getState, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
 import type { CodexHealthResponse, SearchEntry, WikiIndexEntry } from "../api.js";
@@ -122,14 +123,42 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
   </div>`;
 }
 
-function filterEntries(entries: WikiIndexEntry[], query: string, activeTag: string | null): WikiIndexEntry[] {
+function filterEntries(
+  entries: WikiIndexEntry[],
+  query: string,
+  activeTag: string | null,
+  facet: { axis: "type" | "status"; value: string } | null,
+): WikiIndexEntry[] {
   const q = query.toLowerCase();
   return entries.filter((entry) => {
     const matchesQuery = !query ||
       entry.title.toLowerCase().includes(q) ||
       entry.tags.some((tag) => tag.toLowerCase().includes(q));
-    return matchesQuery && (!activeTag || entry.tags.includes(activeTag));
+    if (!matchesQuery) return false;
+    if (activeTag && !entry.tags.includes(activeTag)) return false;
+    if (!facet) return true;
+    // status가 비어 있는 문서는 fleet-wiki 기본값과 같이 current로 센다.
+    const value = facet.axis === "type" ? entry.type : (entry.status ?? "current");
+    return value === facet.value;
   });
+}
+
+/** 실제 말뭉치에 존재하는 값만 패싯으로 낸다 — 비어 있는 칸은 선택지가 아니다. */
+function buildFacets(entries: WikiIndexEntry[]): Array<{ axis: "type" | "status"; value: string; count: number }> {
+  const counts = new Map<string, { axis: "type" | "status"; value: string; count: number }>();
+  const bump = (axis: "type" | "status", value: string | undefined) => {
+    if (!value) return;
+    const key = `${axis}:${value}`;
+    const existing = counts.get(key);
+    if (existing) existing.count += 1;
+    else counts.set(key, { axis, value, count: 1 });
+  };
+  for (const entry of entries) {
+    bump("type", entry.type);
+    bump("status", entry.status ?? "current");
+  }
+  return [...counts.values()].sort((left, right) =>
+    left.axis.localeCompare(right.axis) || right.count - left.count || left.value.localeCompare(right.value));
 }
 
 function sortEntries(entries: WikiIndexEntry[], sortOrder: SortOrder): WikiIndexEntry[] {
@@ -171,7 +200,16 @@ export function mountNavigatorInto(
   let activeTheaterId = options.initialTheaterId;
   let serverResults: SearchEntry[] = [];
   let sortOrder = readSortOrder();
-  let mode: "entries" | "schema" = "entries";
+  let mode: "entries" | "schema" | "ask" = "entries";
+  // 패싯은 fleet-wiki가 이미 정의해 둔 type·status enum이고, UI가 한 번도 보여준 적이 없다.
+  let activeFacet: { axis: "type" | "status"; value: string } | null = null;
+  let lastCheck: string | null = null;
+  // Ask 모드 상태 — 검색과 달리 한 번의 명시적 제출로만 돌아간다.
+  let askAnswer: QueryAnswerResponse | null = null;
+  let askState: "idle" | "loading" | "error" = "idle";
+  let askError: string | null = null;
+  let askEpoch = 0;
+  let askQuestion = "";
   let debounceTimer: ReturnType<typeof setTimeout> | null = null;
   let searchController: AbortController | null = null;
   let healthController: AbortController | null = null;
@@ -180,6 +218,81 @@ export function mountNavigatorInto(
   let health: CodexHealthResponse | null = null;
   let healthPopoverOpen = false;
 
+  /** 패싯 줄. 활성 패싯만 brass(위치 채널)를 쓴다. */
+  function renderFacets(entries: WikiIndexEntry[]): void {
+    const host = root.querySelector<HTMLElement>("#codex-nav-facets");
+    if (!host) return;
+    if (mode !== "entries") { host.innerHTML = ""; host.hidden = true; return; }
+    const facets = buildFacets(entries);
+    if (facets.length === 0) { host.innerHTML = ""; host.hidden = true; return; }
+    host.hidden = false;
+    const t = consoleT();
+    const all = `<button type="button" class="codex-facet${activeFacet ? "" : " is-active"}" data-facet-clear aria-pressed="${!activeFacet}">${escapeHtml(t("codex.nav.facetAll"))} <span class="c">${entries.length}</span></button>`;
+    host.innerHTML = all + facets.map((facet) => {
+      const active = activeFacet?.axis === facet.axis && activeFacet.value === facet.value;
+      return `<button type="button" class="codex-facet${active ? " is-active" : ""}" data-facet-axis="${escapeHtml(facet.axis)}" data-facet-value="${escapeHtml(facet.value)}" aria-pressed="${active}">${escapeHtml(facet.value)} <span class="c">${facet.count}</span></button>`;
+    }).join("");
+  }
+
+  /**
+   * 말뭉치에 묻는 화면. 답을 지어내지 않는다 — `wiki_resolve`가 고른 항목과 그 항목이
+   * 내세우는 근거·출처를 그대로 보여주고, 클릭하면 원문으로 간다. 답변 생성은 여기서
+   * 하지 않으므로 출처 없는 문장이 화면에 생길 수 없다.
+   */
+  function renderAskPanel(): string {
+    const t = consoleT();
+    const form = `
+      <form class="codex-ask-form" data-ask-form>
+        <input class="codex-ask-input" name="q" type="search" autocomplete="off" spellcheck="false"
+          placeholder="${escapeHtml(t("codex.nav.askPlaceholder"))}"
+          aria-label="${escapeHtml(t("codex.nav.ask"))}" value="${escapeHtml(askQuestion)}" />
+      </form>`;
+    if (askState === "loading") return `${form}<div class="codex-nav-loading" aria-live="polite">${escapeHtml(t("codex.query.answering"))}</div>`;
+    if (askState === "error") return `${form}<div class="codex-nav-error" role="alert">${escapeHtml(askError ?? "")}</div>`;
+    if (!askAnswer) return form;
+    if (askAnswer.entries.length === 0) return `${form}<div class="codex-nav-empty">${escapeHtml(t("codex.query.noAnswer"))}</div>`;
+
+    const uncertain = askAnswer.missingOrUncertain.length > 0
+      ? `<div class="codex-ask-uncertain"><b>${escapeHtml(t("codex.query.uncertain"))}</b><ul>${askAnswer.missingOrUncertain.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul></div>`
+      : "";
+
+    const cards = askAnswer.entries.map((entry) => `
+      <article class="codex-ask-card">
+        <button class="codex-ask-card-title" type="button" data-entry-id="${escapeHtml(entry.id)}">${escapeHtml(entry.title)}</button>
+        <p class="codex-ask-summary">${escapeHtml(entry.summary)}</p>
+        ${entry.facts.length > 0 ? `<ul class="codex-ask-facts">${entry.facts.map((fact) => `
+          <li>
+            <span class="codex-ask-claim">${escapeHtml(fact.claim)}</span>
+            ${fact.sourceRefs.length > 0 ? `<span class="codex-ask-source">${escapeHtml(t("codex.query.sources"))}: ${escapeHtml(fact.sourceRefs.join(", "))}</span>` : ""}
+          </li>`).join("")}</ul>` : ""}
+        <p class="codex-ask-meta">${escapeHtml(entry.status)} &middot; ${escapeHtml(formatRelativeUpdated(entry.updated))}</p>
+      </article>`).join("");
+
+    return `${form}${uncertain}<div class="codex-ask-results">${cards}</div>`;
+  }
+
+  async function submitAsk(question: string): Promise<void> {
+    const trimmed = question.trim();
+    askQuestion = trimmed;
+    if (!trimmed) { askAnswer = null; askState = "idle"; renderList(getState()); return; }
+    const epoch = ++askEpoch;
+    const theaterId = activeTheaterId;
+    askState = "loading";
+    askError = null;
+    renderList(getState());
+    try {
+      const answer = await askWiki(theaterId, trimmed);
+      if (epoch !== askEpoch || theaterId !== activeTheaterId) return;
+      askAnswer = answer;
+      askState = "idle";
+    } catch (error) {
+      if (epoch !== askEpoch || theaterId !== activeTheaterId) return;
+      askState = "error";
+      askError = error instanceof Error ? error.message : String(error);
+    }
+    renderList(getState());
+  }
+
   function renderShell(): void {
     const t = consoleT();
     root.innerHTML = `
@@ -187,6 +300,7 @@ export function mountNavigatorInto(
       <div class="codex-nav-modes" role="tablist" aria-label="${escapeHtml(t("codex.nav.catalogAria"))}">
         <button type="button" role="tab" data-mode="entries" aria-selected="true">${escapeHtml(t("codex.nav.entries"))}</button>
         <button type="button" role="tab" data-mode="schema" aria-selected="false">${escapeHtml(t("codex.nav.schema"))}</button>
+        <button type="button" role="tab" data-mode="ask" aria-selected="false">${escapeHtml(t("codex.nav.ask"))}</button>
       </div>
       <div class="codex-nav-search">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.35-4.35"/></svg>
@@ -204,7 +318,9 @@ export function mountNavigatorInto(
           ${escapeHtml(t("codex.nav.reviewQueue"))} <span class="badge" id="codex-nav-drydock-badge">0</span>
         </button>
         <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))}</button>
+        <button class="codex-nav-quick" data-action="run-check" type="button">${escapeHtml(t("codex.nav.runCheck"))}</button>
       </div>
+      <div class="codex-nav-facets" id="codex-nav-facets" role="group" aria-label="${escapeHtml(t("codex.nav.facetType"))}"></div>
       <div class="codex-nav-health" hidden></div>
       <div class="codex-nav-list-header">
         <div class="codex-nav-list-summary">
@@ -226,6 +342,8 @@ export function mountNavigatorInto(
   renderShell();
 
   const searchInput = root.querySelector<HTMLInputElement>(".codex-nav-search-input")!;
+  // 입력만 숨기면 아이콘이 남은 빈 줄이 보인다 — 검색 줄 전체를 숨긴다.
+  const searchRow = root.querySelector<HTMLElement>(".codex-nav-search")!;
   const navList = root.querySelector<HTMLElement>("#codex-nav-list")!;
   const eyebrow = root.querySelector<HTMLElement>("#codex-nav-eyebrow")!;
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
@@ -240,17 +358,22 @@ export function mountNavigatorInto(
     const pendingCount = health?.pendingCount ?? 0;
     const issueCount = drydock?.issueCount ?? 0;
     const logUnreadable = health?.logUnreadable === true;
-    const visible = health !== null && (logUnreadable || !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0));
+    const visible = lastCheck !== null
+      || (health !== null && (logUnreadable || !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0)));
     healthStrip.hidden = !visible;
-    if (!visible || !health) {
+    if (!visible) {
       healthStrip.innerHTML = "";
+      return;
+    }
+    if (!health) {
+      healthStrip.innerHTML = `<span class="codex-nav-health-summary">${escapeHtml(lastCheck ?? "")}</span>`;
       return;
     }
     const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : "warn";
     const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
     healthStrip.innerHTML = `
       <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>
-      <span class="codex-nav-health-summary">${escapeHtml(logUnreadable ? t("codex.nav.healthLogUnreadable") : t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount }))}</span>
+      <span class="codex-nav-health-summary">${escapeHtml(lastCheck ?? (logUnreadable ? t("codex.nav.healthLogUnreadable") : t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount })))}</span>
       <button class="codex-nav-health-detail" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}">${escapeHtml(t("codex.nav.healthDetails"))}</button>
       ${healthPopoverOpen ? `<div class="codex-nav-health-popover" role="dialog" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
         ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
@@ -286,9 +409,16 @@ export function mountNavigatorInto(
   function renderList(state: AppState): void {
     const t = consoleT();
     root.querySelectorAll<HTMLElement>("[data-mode]").forEach((button) => button.setAttribute("aria-selected", String(button.dataset.mode === mode)));
-    searchInput.hidden = mode === "schema";
-    sortControls.hidden = mode === "schema";
-    activeFilterButton.hidden = mode === "schema" || activeTag === null;
+    searchRow.hidden = mode !== "entries";
+    sortControls.hidden = mode !== "entries";
+    activeFilterButton.hidden = mode !== "entries" || activeTag === null;
+    if (mode === "ask") {
+      renderFacets(state.index);
+      eyebrow.textContent = t("codex.nav.ask");
+      navList.innerHTML = renderAskPanel();
+      drydockBadge.textContent = String(state.pendingPatchCount);
+      return;
+    }
     if (mode === "schema") {
       const catalog = state.schemaCatalog;
       eyebrow.textContent = t("codex.nav.schemaCount", { count: catalog?.templates.length ?? 0 });
@@ -299,7 +429,8 @@ export function mountNavigatorInto(
       return;
     }
 
-    const localMatches = sortEntries(filterEntries(state.index, currentQuery, activeTag), sortOrder);
+    const localMatches = sortEntries(filterEntries(state.index, currentQuery, activeTag, activeFacet), sortOrder);
+    renderFacets(state.index);
     const seenIds = new Set(localMatches.map((entry) => entry.id));
     const remoteMatches = sortEntries(
       serverResults.filter((entry) => {
@@ -393,7 +524,7 @@ export function mountNavigatorInto(
     }
 
     const modeBtn = target.closest<HTMLElement>("[data-mode]");
-    if (modeBtn?.dataset.mode === "entries" || modeBtn?.dataset.mode === "schema") {
+    if (modeBtn?.dataset.mode === "entries" || modeBtn?.dataset.mode === "schema" || modeBtn?.dataset.mode === "ask") {
       mode = modeBtn.dataset.mode;
       renderList(getState());
       return;
@@ -430,6 +561,21 @@ export function mountNavigatorInto(
       return;
     }
 
+    if (target.closest("[data-facet-clear]")) {
+      activeFacet = null;
+      renderList(getState());
+      return;
+    }
+    const facetBtn = target.closest<HTMLElement>("[data-facet-axis]");
+    if (facetBtn) {
+      const axis = facetBtn.dataset.facetAxis === "status" ? "status" : "type";
+      const value = facetBtn.dataset.facetValue ?? "";
+      // 같은 패싯을 다시 누르면 해제 — 토글이지 라디오가 아니다.
+      activeFacet = activeFacet?.axis === axis && activeFacet.value === value ? null : { axis, value };
+      renderList(getState());
+      return;
+    }
+
     const quickBtn = target.closest<HTMLElement>("[data-action]");
     if (quickBtn?.dataset.action === "drydock") {
       options.onRequest({ kind: "drydock" });
@@ -437,6 +583,37 @@ export function mountNavigatorInto(
     }
     if (quickBtn?.dataset.action === "conflicts") {
       options.onRequest({ kind: "conflicts" });
+      return;
+    }
+    if (quickBtn?.dataset.action === "run-check") {
+      void executeDrydockRun(quickBtn);
+    }
+  }
+
+  /**
+   * Drydock을 실제로 돌린다. 결과는 헬스 스트립에 그대로 흘려보낸다 — 검사 버튼이 자기
+   * 결과창을 따로 만들면 같은 정보를 두 곳에서 말하게 된다.
+   */
+  async function executeDrydockRun(button: HTMLElement): Promise<void> {
+    if (button.getAttribute("aria-busy") === "true") return;
+    const t = consoleT();
+    const original = button.textContent;
+    button.setAttribute("aria-busy", "true");
+    button.textContent = t("codex.nav.checkRunning");
+    try {
+      const report = await runDrydock(activeTheaterId);
+      lastCheck = report.issues.length === 0
+        ? t("codex.nav.checkClean")
+        : t("codex.nav.checkResult", {
+            errors: report.errorCount, warnings: report.warningCount, infos: report.infoCount,
+          });
+      loadHealth();
+    } catch (error) {
+      lastCheck = error instanceof Error ? error.message : String(error);
+    } finally {
+      button.removeAttribute("aria-busy");
+      button.textContent = original;
+      renderHealth();
     }
   }
 
@@ -466,6 +643,15 @@ export function mountNavigatorInto(
     }, SEARCH_DEBOUNCE_MS);
   }
 
+  // Ask는 타이핑마다 돌면 안 된다 — 제출로만 실행한다.
+  function handleSubmit(event: SubmitEvent): void {
+    const form = (event.target as HTMLElement | null)?.closest<HTMLFormElement>("[data-ask-form]");
+    if (!form) return;
+    event.preventDefault();
+    void submitAsk(new FormData(form).get("q")?.toString() ?? "");
+  }
+
+  root.addEventListener("submit", handleSubmit);
   root.addEventListener("click", handleClick);
   searchInput.addEventListener("input", handleSearchInput);
   document.addEventListener("click", handleDocumentClick);
@@ -478,6 +664,7 @@ export function mountNavigatorInto(
   return {
     destroy(): void {
       unsubscribe();
+      root.removeEventListener("submit", handleSubmit);
       root.removeEventListener("click", handleClick);
       searchInput.removeEventListener("input", handleSearchInput);
       document.removeEventListener("click", handleDocumentClick);

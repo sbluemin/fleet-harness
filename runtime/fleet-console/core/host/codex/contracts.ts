@@ -66,10 +66,67 @@ export interface EntryFrontmatter {
   whyThisMatched?: string;
 }
 
+/** 이 항목을 `[[wiki:id]]`로 가리키는 다른 항목들 — 작성자가 실제로 그은 간선. */
+export interface EntryBacklink {
+  id: string;
+  title: string;
+}
+
 export interface EntryResponse {
   frontmatter: EntryFrontmatter;
   body: string;
   raw?: RawSourceItem[];
+  backlinks?: EntryBacklink[];
+  /** 본문 링크를 슬러그가 아니라 제목으로 그리기 위한 id -> title 사전. */
+  linkTitles?: Record<string, string>;
+}
+
+/** 편집·생성 결과. 사람이 직접 쓴 변경은 Cowork와 같이 stage 후 즉시 승인된다. */
+export interface EntryWriteResponse {
+  ok: true;
+  entryId: string;
+  patchId: string;
+}
+
+export interface DrydockIssueDto {
+  code: string;
+  severity: "error" | "warning" | "info";
+  message: string;
+  path: string;
+}
+
+export interface DrydockRunResponse {
+  ok: boolean;
+  ranAt: string;
+  issues: DrydockIssueDto[];
+  errorCount: number;
+  warningCount: number;
+  infoCount: number;
+}
+
+/** 말뭉치에 물어 얻은 출처 붙은 답. `wiki_resolve`의 컨텍스트 팩을 전송용으로 옮긴 것. */
+export interface QueryFact {
+  claim: string;
+  sourceRefs: string[];
+  confidence: "high" | "medium" | "low";
+}
+
+export interface QueryEntry {
+  id: string;
+  title: string;
+  summary: string;
+  facts: QueryFact[];
+  whenToUse: string;
+  updated: string;
+  status: string;
+  related: string[];
+}
+
+export interface QueryAnswerResponse {
+  question: string;
+  entries: QueryEntry[];
+  missingOrUncertain: string[];
+  tokenEstimate: number;
 }
 
 export interface DrydockPatchSetMember {

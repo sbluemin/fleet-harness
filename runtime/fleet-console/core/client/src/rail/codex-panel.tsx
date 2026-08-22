@@ -166,6 +166,11 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
         refreshCodexHealth();
         openCodexReader({ kind: "drydock", patchId: undefined });
       },
+      // 편집·충돌 해결은 목록과 헬스만 갱신한다 — 사용자가 보던 문서에 그대로 머문다.
+      onEntrySaved: () => {
+        void loadInitialData();
+        refreshCodexHealth();
+      },
     });
   }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey, locale]);
 

@@ -197,6 +197,7 @@ export function mountReaderInto(
     onPatchOpen: opts.onPatchOpen,
     onConflictOpen: opts.onConflictOpen,
     onDecided: opts.onDecided,
+    onEntrySaved: opts.onEntrySaved,
     onRelatedClick: opts.onRelatedClick,
     onClose: opts.onClose,
     theaterId: opts.theaterId,

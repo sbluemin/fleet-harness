@@ -22,6 +22,8 @@ export interface RenderedMarkdown {
 export interface RenderMarkdownOptions {
   omitDuplicateTitle?: string;
   resolveWikiLink?: (id: string) => string | null;
+  /** 링크 텍스트. 없으면 id를 그대로 쓴다 — 슬러그는 사람이 읽는 이름이 아니다. */
+  resolveWikiLinkLabel?: (id: string) => string;
   /** 코드블록 Copy 버튼 라벨. 기본값 `"Copy"`. */
   readonly copyLabel?: string;
   /** 코드블록 Copy 버튼 aria-label. 기본값 `(language) => \`Copy ${language} code\``. */
@@ -64,7 +66,7 @@ const highlighter = configureHighlighter();
 
 export function renderMarkdown(body: string, options: RenderMarkdownOptions = {}): RenderedMarkdown {
   const { entries, content } = extractFrontmatter(body);
-  const bodyWithWikiLinks = renderWikiLinks(content, options.resolveWikiLink);
+  const bodyWithWikiLinks = renderWikiLinks(content, options.resolveWikiLink, options.resolveWikiLinkLabel);
   const rawHtml = marked.parse(bodyWithWikiLinks, { async: false }) as string;
   const frontmatterHtml = renderFrontmatterCard(entries);
   const safeHtml = DOMPurify.sanitize(frontmatterHtml + rawHtml, sanitizeConfig);
@@ -132,14 +134,18 @@ function renderFrontmatterCard(entries: FrontmatterEntry[]): string {
   return `<dl class="frontmatter">${rows}</dl>`;
 }
 
-function renderWikiLinks(body: string, resolveWikiLink?: (id: string) => string | null): string {
+function renderWikiLinks(
+  body: string,
+  resolveWikiLink?: (id: string) => string | null,
+  resolveWikiLinkLabel?: (id: string) => string,
+): string {
   return body.replace(WIKI_LINK_PATTERN, (_match, rawId: string) => {
     const id = rawId.trim();
     if (!id) return "";
     if (!resolveWikiLink) return escapeHtml(`[[wiki:${id}]]`);
     const href = resolveWikiLink(id);
     if (href === null) return escapeHtml(`[[wiki:${id}]]`);
-    const label = escapeHtml(id);
+    const label = escapeHtml(resolveWikiLinkLabel?.(id) ?? id);
     const encodedId = encodeURIComponent(id);
     return `<a href="${href}" data-entry-id="${encodedId}">${label}</a>`;
   });

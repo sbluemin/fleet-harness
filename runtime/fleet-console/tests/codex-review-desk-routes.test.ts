@@ -221,6 +221,116 @@ describe("review desk routes", () => {
     });
     expect(response.status).toBe(403);
   });
+
+  // ── editing and creating ──────────────────────────────────────────────────
+
+  it("saves a direct edit as an approved patch and bumps the version", async () => {
+    const response = await fetch(`${baseUrl}/api/entry/routing-policy/edit`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ body: "line one\nedited\nline three", expectedVersion: 3 }),
+    });
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({ ok: true, entryId: "routing-policy" });
+
+    const entry = await (await fetch(`${baseUrl}/api/entry/routing-policy`)).json() as {
+      body: string; frontmatter: { version: number };
+    };
+    expect(entry.body).toContain("edited");
+    expect(entry.frontmatter.version).toBe(4);
+  });
+
+  it("refuses an edit written against a stale version instead of overwriting", async () => {
+    const response = await fetch(`${baseUrl}/api/entry/routing-policy/edit`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ body: "clobber", expectedVersion: 1 }),
+    });
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({ error: "entry_stale", currentVersion: 3 });
+  });
+
+  it("creates a new entry and refuses a duplicate id", async () => {
+    const create = await fetch(`${baseUrl}/api/entry`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ id: "brand-new", title: "Brand new", body: "hello", type: "concept" }),
+    });
+    expect(create.status).toBe(200);
+
+    const again = await fetch(`${baseUrl}/api/entry`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ id: "brand-new", title: "Brand new", body: "hello" }),
+    });
+    expect(again.status).toBe(409);
+    await expect(again.json()).resolves.toMatchObject({ error: "entry_exists" });
+  });
+
+  it("applies the write gate to entry edits", async () => {
+    const response = await fetch(`${baseUrl}/api/entry/routing-policy/edit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ body: "x" }),
+    });
+    expect(response.status).toBe(403);
+  });
+
+  // ── drydock on demand ─────────────────────────────────────────────────────
+
+  it("runs drydock on request instead of replaying a log entry", async () => {
+    const response = await fetch(`${baseUrl}/api/drydock/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({}),
+    });
+    expect(response.status).toBe(200);
+    const report = await response.json() as {
+      ranAt: string; issues: Array<{ code: string; severity: string }>;
+      errorCount: number; warningCount: number; infoCount: number;
+    };
+    expect(Date.parse(report.ranAt)).not.toBeNaN();
+    expect(Array.isArray(report.issues)).toBe(true);
+    expect(report.errorCount + report.warningCount + report.infoCount).toBe(report.issues.length);
+  });
+
+  // ── the authored link graph ───────────────────────────────────────────────
+
+  it("returns backlinks and link titles so the reader can show authored edges", async () => {
+    // alpha links to routing-policy; routing-policy links back to nothing.
+    await fetch(`${baseUrl}/api/entry`, {
+      method: "POST",
+      headers: { "content-type": "application/json", origin: baseUrl },
+      body: JSON.stringify({ id: "linker", title: "Linker", body: "see [[wiki:routing-policy]]" }),
+    });
+
+    const target = await (await fetch(`${baseUrl}/api/entry/routing-policy`)).json() as {
+      backlinks?: Array<{ id: string; title: string }>;
+    };
+    expect(target.backlinks).toEqual([{ id: "linker", title: "Linker" }]);
+
+    const source = await (await fetch(`${baseUrl}/api/entry/linker`)).json() as {
+      linkTitles?: Record<string, string>;
+    };
+    expect(source.linkTitles).toMatchObject({ "routing-policy": "Routing policy" });
+  });
+
+  // ── asking the corpus ─────────────────────────────────────────────────────
+
+  it("answers a question with entries drawn from the corpus", async () => {
+    const response = await fetch(`${baseUrl}/api/query?q=${encodeURIComponent("routing policy")}`);
+    expect(response.status).toBe(200);
+    const answer = await response.json() as { question: string; entries: Array<{ id: string }> };
+    expect(answer.question).toBe("routing policy");
+    expect(answer.entries.some((entry) => entry.id === "routing-policy")).toBe(true);
+  });
+
+  it("rejects an empty question rather than returning the whole corpus", async () => {
+    const response = await fetch(`${baseUrl}/api/query?q=`);
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({ error: "question_required" });
+  });
+
 });
 
 // ─── fixtures ─────────────────────────────────────────────────────────────────

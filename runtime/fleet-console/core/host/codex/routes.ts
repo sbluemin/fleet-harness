@@ -7,6 +7,9 @@ import {
   approvePatch,
   approvePatchSet,
   briefingQuery,
+  buildBacklinksIndex,
+  enqueuePatch,
+  extractWikiLinks,
   listQueue,
   listWiki,
   parseLog,
@@ -17,6 +20,8 @@ import {
   readWikiEntry,
   rejectPatch,
   resolveConflict,
+  resolveWikiContext,
+  runDryDock,
   showQueue,
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
@@ -26,6 +31,11 @@ import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
 import type {
   CodexHealthResponse,
   ConflictDetailMeta,
+  DrydockIssueDto,
+  DrydockRunResponse,
+  EntryBacklink,
+  EntryWriteResponse,
+  QueryAnswerResponse,
   ConflictDetailResponse,
   ConflictListItem,
   ConflictResolveResponse,
@@ -84,6 +94,10 @@ const DEFAULT_SEARCH_LIMIT = 50;
 const MAX_RAW_REF_LENGTH = 256;
 const MAX_POST_BODY_BYTES = 1024;
 const MAX_REASON_LENGTH = 256;
+/** 문서 본문은 결정 payload와 자릿수가 다르다 — 1MB는 Cowork 초안 상한과 같다. */
+const MAX_ENTRY_BODY_BYTES = 1_048_576;
+const MAX_PATCH_SUMMARY_LENGTH = 120;
+const ENTRY_EDIT_PROPOSER = "console_editor";
 const BODY_TOO_LARGE = Symbol("too_large");
 
 const PATCH_ERROR_MAP: ReadonlyArray<[string | ((m: string) => boolean), number, string]> = [
@@ -189,6 +203,9 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
   if (url.pathname === "/api/health") {
     return handleHealth(response, context);
   }
+  if (url.pathname === "/api/query") {
+    return handleQuery(url, response, context);
+  }
   const entryMatch = url.pathname.match(/^\/api\/entry\/([^/]+)$/);
   if (entryMatch) {
     return handleEntry(entryMatch[1] ?? "", url, response, context);
@@ -228,8 +245,12 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
   const setDecisionMatch = url.pathname.match(/^\/api\/drydock\/sets\/([^/]+)\/decision$/);
   const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
   const conflictResolveMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)\/resolve$/);
+  const entryEditMatch = url.pathname.match(/^\/api\/entry\/([^/]+)\/edit$/);
+  const isEntryCreate = url.pathname === "/api/entry";
+  const isDrydockRun = url.pathname === "/api/drydock/run";
 
-  if (!setDecisionMatch && !decisionMatch && !conflictResolveMatch) {
+  if (!setDecisionMatch && !decisionMatch && !conflictResolveMatch
+      && !entryEditMatch && !isEntryCreate && !isDrydockRun) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
@@ -237,6 +258,29 @@ async function routePost(url: URL, request: IncomingMessage, response: ServerRes
 
   // 모든 쓰기 경로가 같은 관문을 지난다: 리스너 허용 → Origin → content-type.
   if (!passesWriteGate(request, response, context)) return;
+
+  if (isDrydockRun) {
+    await withActionLock(`${context.workspaceId}:drydock`, response, "drydock_busy", () =>
+      runDrydockAction(response, context));
+    return;
+  }
+
+  if (isEntryCreate) {
+    await withActionLock(`${context.workspaceId}:entry:create`, response, "entry_busy", () =>
+      runEntryCreateAction(request, response, context));
+    return;
+  }
+
+  if (entryEditMatch) {
+    const entryId = decodePathSegment(entryEditMatch[1] ?? "");
+    if (!isSafeEntryId(entryId)) {
+      sendJson(response, 400, { error: "invalid entry id" });
+      return;
+    }
+    await withActionLock(`${context.workspaceId}:entry:${entryId}`, response, "entry_busy", () =>
+      runEntryEditAction(entryId, request, response, context));
+    return;
+  }
 
   if (setDecisionMatch) {
     const patchSetId = decodePathSegment(setDecisionMatch[1] ?? "");
@@ -333,6 +377,8 @@ async function handleSearch(url: URL, response: ServerResponse, context: RouteCo
       updated: entry.updated,
       path: `wiki/${entry.id}.md`,
       status: entry.status,
+      // type은 UI가 패싯을 그리기 위해 필요하다 — 검색 경로에는 있었지만 목록 경로에는 없었다.
+      type: entry.type,
       revalidateAfter: entry.revalidateAfter,
       rawSourceRef: entry.rawSourceRef,
       rawSourceRefs: entry.rawSourceRefs?.map((item) => item.ref),
@@ -414,8 +460,45 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     } satisfies EntryFrontmatter,
     body,
     ...(raw !== undefined ? { raw } : {}),
+    ...(await buildEntryGraph(id, body, context.paths)),
   };
   sendJson(response, 200, responseBody);
+}
+
+/**
+ * 작성자가 실제로 그은 간선. 백링크는 `buildBacklinksIndex`가 이미 계산할 수 있었지만
+ * 콘솔이 한 번도 호출하지 않아 화면에 없었다. 본문 링크 제목도 여기서 함께 해석한다 —
+ * 슬러그로 그리면 읽는 사람이 그 링크가 무엇인지 알 수 없다.
+ */
+async function buildEntryGraph(
+  id: string,
+  body: string,
+  paths: MemoryPaths,
+): Promise<{ backlinks?: EntryBacklink[]; linkTitles?: Record<string, string> }> {
+  try {
+    const entries = await listWiki(paths);
+    const titleById = new Map(entries.map((entry) => [entry.id, entry.title]));
+
+    const backlinkIds = buildBacklinksIndex(entries).get(id);
+    const backlinks = [...(backlinkIds ?? [])]
+      .filter((refId) => refId !== id)
+      .map((refId) => ({ id: refId, title: titleById.get(refId) ?? refId }))
+      .sort((left, right) => left.title.localeCompare(right.title));
+
+    const linkTitles: Record<string, string> = {};
+    for (const linkedId of extractWikiLinks(body)) {
+      const title = titleById.get(linkedId);
+      if (title) linkTitles[linkedId] = title;
+    }
+
+    return {
+      ...(backlinks.length > 0 ? { backlinks } : {}),
+      ...(Object.keys(linkTitles).length > 0 ? { linkTitles } : {}),
+    };
+  } catch {
+    // 그래프는 부가 정보다 — 못 만들어도 문서 자체는 열려야 한다.
+    return {};
+  }
 }
 
 async function handleHealth(response: ServerResponse, context: RouteContext): Promise<void> {
@@ -735,12 +818,233 @@ async function readCurrentEntry(
   }
 }
 
+/**
+ * 사람이 직접 쓴 편집. Cowork가 이미 세운 선례를 따른다 — stage 후 같은 호출에서 승인한다.
+ * 패치 큐는 *기계가* 제안한 변경을 사람이 검토하기 위한 관문이고, 사람이 직접 쓴 글에서는
+ * 그 사람이 곧 검토자다. 감사 흔적(패치 + 로그)은 그대로 남는다.
+ */
+async function runEntryEditAction(
+  entryId: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  const body = await readJsonBody(request, response, MAX_ENTRY_BODY_BYTES);
+  if (body === null) return;
+
+  const nextBody = typeof body.body === "string" ? body.body : null;
+  if (nextBody === null) {
+    sendJson(response, 400, { error: "invalid_body" });
+    return;
+  }
+  if (nextBody.length > MAX_ENTRY_BODY_BYTES) {
+    sendJson(response, 413, { error: "payload_too_large" });
+    return;
+  }
+
+  const existing = await readWikiEntry(entryId, context.paths);
+  if (!existing) {
+    sendJson(response, 404, { error: "not_found", id: entryId });
+    return;
+  }
+  // 낙관적 동시성 — 편집 중 다른 경로가 같은 문서를 바꿨으면 덮어쓰지 않는다.
+  const expectedVersion = typeof body.expectedVersion === "number" ? body.expectedVersion : null;
+  if (expectedVersion !== null && expectedVersion !== existing.version) {
+    sendJson(response, 409, { error: "entry_stale", currentVersion: existing.version });
+    return;
+  }
+
+  const { body: _previousBody, ...frontmatter } = existing;
+  const now = new Date().toISOString();
+  const nextEntry = {
+    ...frontmatter,
+    ...(typeof body.title === "string" && body.title.trim() ? { title: body.title.trim() } : {}),
+    body: nextBody,
+    updated: now,
+    version: existing.version + 1,
+  };
+
+  await commitEntryPatch(response, context, {
+    op: "update_wiki",
+    target: `wiki/${entryId}.md`,
+    summary: clampSummary(typeof body.summary === "string" && body.summary.trim()
+      ? body.summary.trim()
+      : `Edit ${nextEntry.title}`),
+    entry: nextEntry,
+    entryId,
+    now,
+  });
+}
+
+/** 템플릿 기반 신규 항목. 템플릿 본문은 그대로 초안이 된다. */
+async function runEntryCreateAction(
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  const body = await readJsonBody(request, response, MAX_ENTRY_BODY_BYTES);
+  if (body === null) return;
+
+  const entryId = typeof body.id === "string" ? body.id.trim() : "";
+  const title = typeof body.title === "string" ? body.title.trim() : "";
+  if (!isSafeEntryId(entryId) || !title) {
+    sendJson(response, 400, { error: "invalid_entry" });
+    return;
+  }
+  if (await readWikiEntry(entryId, context.paths)) {
+    sendJson(response, 409, { error: "entry_exists", id: entryId });
+    return;
+  }
+
+  const tags = Array.isArray(body.tags)
+    ? body.tags.filter((tag): tag is string => typeof tag === "string" && tag.length > 0).slice(0, MAX_SEARCH_TAGS)
+    : [];
+  const entryBody = typeof body.body === "string" ? body.body : "";
+  if (entryBody.length > MAX_ENTRY_BODY_BYTES) {
+    sendJson(response, 413, { error: "payload_too_large" });
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const entry: Record<string, unknown> = {
+    id: entryId,
+    title,
+    tags,
+    created: now,
+    updated: now,
+    version: 1,
+    body: entryBody,
+  };
+  if (typeof body.type === "string" && body.type) entry.type = body.type;
+  if (typeof body.status === "string" && body.status) entry.status = body.status;
+  if (typeof body.templateId === "string" && body.templateId) entry.template_id = body.templateId;
+
+  await commitEntryPatch(response, context, {
+    op: "create_wiki",
+    target: `wiki/${entryId}.md`,
+    summary: clampSummary(`Create ${title}`),
+    entry,
+    entryId,
+    now,
+  });
+}
+
+/** stage + 즉시 승인. 두 단계를 한 호출로 묶되 감사 흔적은 둘 다 남긴다. */
+async function commitEntryPatch(
+  response: ServerResponse,
+  context: RouteContext,
+  input: {
+    op: "create_wiki" | "update_wiki";
+    target: string;
+    summary: string;
+    entry: unknown;
+    entryId: string;
+    now: string;
+  },
+): Promise<void> {
+  try {
+    const patchId = await enqueuePatch({
+      frontmatter: {
+        op: input.op,
+        target: input.target,
+        summary: input.summary,
+        proposer: ENTRY_EDIT_PROPOSER,
+        created: input.now,
+      },
+      body: JSON.stringify(input.entry),
+    }, context.paths);
+    await approvePatch(patchId, context.paths);
+    sendJson(response, 200, { ok: true, entryId: input.entryId, patchId } satisfies EntryWriteResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const mapped = mapPatchError(message);
+    if (mapped) {
+      sendJson(response, mapped.status, { error: mapped.error });
+      return;
+    }
+    process.stderr.write(`[fleet-console-codex] entry write error: ${message}\n`);
+    sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+/**
+ * Drydock을 실제로 돌린다. 지금까지 헬스 칩은 에이전트가 우연히 남긴 로그를 재생할 뿐이었고,
+ * 사용자가 검사를 촉발할 방법이 없었다. `fix`는 노출하지 않는다 — 자동 수정은 사람이 결과를
+ * 본 뒤에 고를 일이지 검사 버튼에 딸려 오면 안 된다.
+ */
+async function runDrydockAction(response: ServerResponse, context: RouteContext): Promise<void> {
+  try {
+    const report = await runDryDock(context.paths);
+    const issues: DrydockIssueDto[] = report.issues.map((issue) => ({
+      code: issue.code,
+      severity: issue.severity,
+      message: issue.message,
+      path: issue.path,
+    }));
+    sendJson(response, 200, {
+      ok: report.ok,
+      ranAt: new Date().toISOString(),
+      issues,
+      errorCount: issues.filter((issue) => issue.severity === "error").length,
+      warningCount: issues.filter((issue) => issue.severity === "warning").length,
+      infoCount: issues.filter((issue) => issue.severity === "info").length,
+    } satisfies DrydockRunResponse);
+  } catch (error) {
+    process.stderr.write(`[fleet-console-codex] drydock run error: ${error instanceof Error ? error.message : String(error)}\n`);
+    sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+/** 말뭉치에 묻는다. `wiki_resolve`의 컨텍스트 팩을 그대로 전송용으로 옮긴다. */
+async function handleQuery(url: URL, response: ServerResponse, context: RouteContext): Promise<void> {
+  const question = (url.searchParams.get("q") ?? "").trim();
+  if (!question) {
+    sendJson(response, 400, { error: "question_required" });
+    return;
+  }
+  if (question.length > MAX_SEARCH_QUERY_LENGTH) {
+    sendJson(response, 400, { error: "question_too_long" });
+    return;
+  }
+  try {
+    const payload = await resolveWikiContext({ query: question }, context.paths);
+    const pack = payload.context_pack;
+    sendJson(response, 200, {
+      question,
+      tokenEstimate: pack.token_estimate,
+      missingOrUncertain: pack.missing_or_uncertain,
+      entries: pack.entries.map((entry) => ({
+        id: entry.id,
+        title: entry.title,
+        summary: entry.summary,
+        whenToUse: entry.when_to_use,
+        updated: entry.staleness.updated,
+        status: entry.staleness.status,
+        related: entry.related,
+        facts: entry.facts.map((fact) => ({
+          claim: fact.claim,
+          sourceRefs: fact.source_refs,
+          confidence: fact.confidence,
+        })),
+      })),
+    } satisfies QueryAnswerResponse);
+  } catch (error) {
+    process.stderr.write(`[fleet-console-codex] query error: ${error instanceof Error ? error.message : String(error)}\n`);
+    sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+function clampSummary(value: string): string {
+  return value.length > MAX_PATCH_SUMMARY_LENGTH ? `${value.slice(0, MAX_PATCH_SUMMARY_LENGTH - 1)}\u2026` : value;
+}
+
 /** POST 본문 파싱 공통부 — 실패 시 응답을 보내고 null을 돌려준다. */
 async function readJsonBody(
   request: IncomingMessage,
   response: ServerResponse,
+  maxBytes = MAX_POST_BODY_BYTES,
 ): Promise<Record<string, unknown> | null> {
-  const bodyResult = await readRequestBody(request);
+  const bodyResult = await readRequestBody(request, maxBytes);
   if (bodyResult === BODY_TOO_LARGE) {
     sendJson(response, 413, { error: "payload_too_large" });
     return null;
@@ -792,14 +1096,17 @@ function centerSearchExcerpt(value: string, query: string): string {
   return value.slice(start, start + maxLength).trim();
 }
 
-async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {
+async function readRequestBody(
+  request: IncomingMessage,
+  maxBytes = MAX_POST_BODY_BYTES,
+): Promise<string | null | typeof BODY_TOO_LARGE> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     let totalBytes = 0;
     let exceeded = false;
     request.on("data", (chunk: Buffer) => {
       totalBytes += chunk.byteLength;
-      if (totalBytes > MAX_POST_BODY_BYTES) {
+      if (totalBytes > maxBytes) {
         exceeded = true;
         return;
       }

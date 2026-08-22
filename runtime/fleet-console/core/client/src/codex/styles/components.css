@@ -2367,3 +2367,145 @@ kbd {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
 }
+
+/* ─── Entry editor ──────────────────────────────────────────────────────────── */
+
+.entry-actions { display: flex; gap: var(--space-2); }
+
+.entry-editor { display: grid; gap: var(--space-3); }
+
+.entry-editor-area {
+  width: 100%;
+  min-height: 320px;
+  resize: vertical;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.7;
+  color: var(--text-primary);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+}
+
+.entry-editor-area:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: -1px;
+}
+
+/* ─── Facets ────────────────────────────────────────────────────────────────── */
+
+.codex-nav-facets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.codex-facet {
+  appearance: none;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: var(--space-hair) var(--space-2);
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+}
+
+.codex-facet:hover { background: var(--surface-panel-raised); color: var(--text-primary); }
+/* 활성 패싯만 brass — 위치 채널이다. */
+.codex-facet.is-active { background: var(--brass); border-color: var(--brass); color: var(--text-on-brass); font-weight: var(--weight-medium); }
+.codex-facet .c { opacity: 0.65; margin-inline-start: var(--space-hair); font-family: var(--font-mono); font-size: var(--font-size-2xs); }
+.codex-facet:focus-visible { outline: 2px solid var(--brass); outline-offset: 1px; }
+
+/* ─── Ask the wiki ──────────────────────────────────────────────────────────── */
+
+.codex-ask-form { padding: var(--space-3); }
+
+.codex-ask-input {
+  width: 100%;
+  font: inherit;
+  font-size: var(--font-size-sm);
+  color: var(--text-primary);
+  background: var(--surface-panel-raised);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  padding: var(--space-2) var(--space-3);
+}
+
+.codex-ask-input:focus-visible { outline: 2px solid var(--brass); outline-offset: -1px; }
+
+.codex-ask-results { display: grid; gap: var(--space-2); padding: 0 var(--space-3) var(--space-4); }
+
+.codex-ask-card {
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  padding: var(--space-3);
+  background: var(--surface-panel-raised);
+}
+
+.codex-ask-card-title {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: start;
+}
+
+.codex-ask-card-title:hover { color: var(--brass-ink); }
+.codex-ask-card-title:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+
+.codex-ask-summary {
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.codex-ask-facts { margin: var(--space-2) 0 0; padding-inline-start: var(--space-4); display: grid; gap: var(--space-1); }
+.codex-ask-facts li { font-size: var(--font-size-sm); color: var(--text-secondary); }
+.codex-ask-claim { display: block; color: var(--text-primary); }
+
+.codex-ask-source {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+  margin-top: var(--space-hair);
+}
+
+.codex-ask-meta {
+  margin: var(--space-2) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-2xs);
+  color: var(--text-tertiary);
+}
+
+.codex-ask-uncertain {
+  margin: 0 var(--space-3) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in oklab, var(--warn) 34%, var(--surface-rim));
+  border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--warn) 9%, transparent);
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.codex-ask-uncertain b { display: block; color: var(--text-primary); margin-bottom: var(--space-hair); }
+.codex-ask-uncertain ul { margin: 0; padding-inline-start: var(--space-4); }
+
+/* ─── Backlinks ─────────────────────────────────────────────────────────────── */
+
+/* 작성자가 그은 간선은 태그 유사도와 다른 무게를 가진다 — aurora 테두리로 구분한다. */
+.related-card--backlink {
+  border-color: color-mix(in oklab, var(--aurora) 32%, var(--surface-rim));
+}

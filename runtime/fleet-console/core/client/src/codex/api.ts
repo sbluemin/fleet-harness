@@ -10,14 +10,20 @@ import type {
   ConflictDetailResponse,
   ConflictListItem,
   ConflictResolveResponse,
+  DrydockIssueDto,
+  DrydockRunResponse,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
   DrydockMeta,
   DrydockPatchSetResponse,
   DrydockSetDecisionResponse,
+  EntryBacklink,
   EntryFrontmatter,
   EntryResponse,
+  EntryWriteResponse,
+  QueryAnswerResponse,
+  QueryEntry,
   SearchEntry,
   SearchResponse,
   SchemaCatalogResponse,
@@ -36,14 +42,20 @@ export type {
   ConflictDetailResponse,
   ConflictListItem,
   ConflictResolveResponse,
+  DrydockIssueDto,
+  DrydockRunResponse,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
   DrydockMeta,
   DrydockPatchSetResponse,
   DrydockSetDecisionResponse,
+  EntryBacklink,
   EntryFrontmatter,
   EntryResponse,
+  EntryWriteResponse,
+  QueryAnswerResponse,
+  QueryEntry,
   SearchEntry,
   SchemaCatalogResponse,
   SchemaDocumentResponse,
@@ -153,6 +165,41 @@ export async function resolveConflictRecord(
   return postJson<ConflictResolveResponse>(
     apiPath(theaterId, `/conflicts/${encodeURIComponent(conflictId)}/resolve`),
     body,
+  );
+}
+
+export interface EntryEditInput { body: string; title?: string; summary?: string; expectedVersion?: number; }
+
+export async function saveEntryEdit(
+  theaterId: string | null,
+  entryId: string,
+  input: EntryEditInput,
+): Promise<EntryWriteResponse> {
+  return postJson<EntryWriteResponse>(apiPath(theaterId, `/entry/${encodeURIComponent(entryId)}/edit`), input);
+}
+
+export interface EntryCreateInput {
+  id: string; title: string; body: string;
+  tags?: string[]; type?: string; status?: string; templateId?: string;
+}
+
+export async function createEntry(theaterId: string | null, input: EntryCreateInput): Promise<EntryWriteResponse> {
+  return postJson<EntryWriteResponse>(apiPath(theaterId, "/entry"), input);
+}
+
+/** Drydock을 실제로 실행한다 — 지금까지는 로그 재생뿐이었다. */
+export async function runDrydock(theaterId: string | null): Promise<DrydockRunResponse> {
+  return postJson<DrydockRunResponse>(apiPath(theaterId, "/drydock/run"), {});
+}
+
+export async function askWiki(
+  theaterId: string | null,
+  question: string,
+  signal?: AbortSignal,
+): Promise<QueryAnswerResponse> {
+  return fetchJson<QueryAnswerResponse>(
+    apiPath(theaterId, `/query?${new URLSearchParams({ q: question })}`),
+    signal,
   );
 }
 

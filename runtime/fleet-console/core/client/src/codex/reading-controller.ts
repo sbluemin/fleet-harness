@@ -8,6 +8,7 @@ import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   decideDrydock,
   decideDrydockSet,
+  saveEntryEdit,
   fetchConflictDetail,
   fetchConflicts,
   fetchDrydock,
@@ -18,6 +19,8 @@ import {
 } from "./api.js";
 import type {
   ConflictDetailResponse,
+  EntryBacklink,
+  EntryResponse,
   ConflictListItem,
   ConflictResolution,
   DrydockDetailResponse,
@@ -58,7 +61,7 @@ export interface ReadingController {
   destroy(): void;
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
-  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
+  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onEntrySaved" | "onRelatedClick" | "onClose" | "theaterId">>): void;
   /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
   refreshLocale(): Promise<void>;
 }
@@ -73,8 +76,13 @@ export interface MountReadingOptions {
   /** 패치 행 클릭(상세 진입) 또는 뒤로가기(undefined) 콜백 */
   readonly onPatchOpen?: (patchId: string | undefined) => void;
   readonly onConflictOpen?: (conflictId: string | undefined) => void;
-  /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 */
+  /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 — 큐로 되돌아간다. */
   readonly onDecided?: () => void;
+  /**
+   * 문서 자체가 바뀐 뒤의 갱신 — 편집 저장·충돌 해결이 쓴다. onDecided와 달리 화면을
+   * 옮기지 않는다: 방금 쓴 글에서 검토 대기열로 튕겨 나가면 안 된다.
+   */
+  readonly onEntrySaved?: () => void;
   readonly onEntryRendered?: (entryId: string) => void;
   readonly onTocChanged?: (count: number) => void;
   readonly tocContainer: HTMLElement;
@@ -131,6 +139,10 @@ export function mountReadingInto(
   let conflictPhase: "idle" | "confirming" | "submitting" = "idle";
   let conflictChoice: ConflictResolution | null = null;
   let conflictError: string | null = null;
+  // 편집 상태 — 초안은 저장 전까지 DOM 안에만 있다.
+  let currentEntry: EntryResponse | null = null;
+  let editing = false;
+  let editError: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
 
@@ -184,6 +196,13 @@ export function mountReadingInto(
       return;
     }
 
+    const entryActionBtn = target.closest<HTMLElement>("[data-entry-action]");
+    if (entryActionBtn) {
+      event.preventDefault();
+      handleEntryAction(entryActionBtn.dataset.entryAction);
+      return;
+    }
+
     // 드라이독 결정/뒤로가기 액션
     const drydockBtn = target.closest<HTMLElement>("[data-drydock-action]");
     if (drydockBtn) {
@@ -192,6 +211,60 @@ export function mountReadingInto(
       return;
     }
 
+  }
+
+  function handleEntryAction(action: string | undefined): void {
+    if (!action || !currentEntry) return;
+    if (action === "edit") { editing = true; editError = null; redrawEditor(); return; }
+    if (action === "edit-cancel") { editing = false; editError = null; redrawEditor(); return; }
+    if (action === "edit-save") { void submitEntryEdit(); return; }
+  }
+
+  async function submitEntryEdit(): Promise<void> {
+    const entry = currentEntry;
+    const textarea = readContainer.querySelector<HTMLTextAreaElement>("#codex-entry-editor");
+    if (!entry || !textarea) return;
+    const nextBody = textarea.value;
+    const saveBtn = readContainer.querySelector<HTMLButtonElement>('[data-entry-action="edit-save"]');
+    if (saveBtn) saveBtn.disabled = true;
+    editError = null;
+    try {
+      await saveEntryEdit(liveOpts.theaterId, entry.frontmatter.id, {
+        body: nextBody,
+        expectedVersion: entry.frontmatter.version,
+      });
+      editing = false;
+      await renderEntryView(entry.frontmatter.id);
+      liveOpts.onEntrySaved?.();
+    } catch (err) {
+      if (saveBtn) saveBtn.disabled = false;
+      editError = err instanceof Error ? err.message : String(err);
+      redrawEditor();
+    }
+  }
+
+  /** 편집기는 본문 영역만 갈아 끼운다 — 헤더·백링크는 그대로 둔다. */
+  function redrawEditor(): void {
+    const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
+    const actions = readContainer.querySelector<HTMLElement>(".entry-actions");
+    if (!body || !currentEntry) return;
+    if (editing) {
+      body.innerHTML = renderEntryEditor(currentEntry.body, editError);
+      if (actions) actions.innerHTML = "";
+      body.querySelector<HTMLTextAreaElement>("#codex-entry-editor")?.focus();
+    } else {
+      const t = consoleT();
+      const linkTitles = currentEntry.linkTitles ?? {};
+      body.innerHTML = renderMarkdown(currentEntry.body, {
+        omitDuplicateTitle: currentEntry.frontmatter.title,
+        resolveWikiLink: (id) => entryPath(id),
+        resolveWikiLinkLabel: (id) => linkTitles[id] ?? id,
+        ...markdownCopyOptions(t),
+      }).html;
+      if (actions) {
+        actions.innerHTML = `<button type="button" class="queue-action-btn" data-entry-action="edit">${escapeHtml(t("codex.reading.edit"))}</button>`;
+      }
+    }
   }
 
   function handleConflictAction(action: string | undefined): void {
@@ -229,7 +302,7 @@ export function mountReadingInto(
     try {
       await resolveConflictRecord(liveOpts.theaterId, conflictId, resolution);
       // 해결된 충돌은 목록에서 사라지므로 목록으로 돌려보낸다. 헬스 칩도 함께 갱신된다.
-      liveOpts.onDecided?.();
+      liveOpts.onEntrySaved?.();
       liveOpts.onConflictOpen?.(undefined);
     } catch (err) {
       conflictPhase = "confirming";
@@ -403,9 +476,13 @@ export function mountReadingInto(
 
       const { index } = getState();
       const t = consoleT();
+      currentEntry = entry;
+      // 링크 텍스트가 슬러그면 무엇을 가리키는지 읽을 수 없다 — 서버가 준 사전으로 제목을 얹는다.
+      const linkTitles = entry.linkTitles ?? {};
       const { html: markdownHtml, toc } = renderMarkdown(entry.body, {
         omitDuplicateTitle: entry.frontmatter.title,
         resolveWikiLink: (id) => entryPath(id),
+        resolveWikiLinkLabel: (id) => linkTitles[id] ?? id,
         ...markdownCopyOptions(t),
       });
 
@@ -415,11 +492,14 @@ export function mountReadingInto(
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
             ${renderMetaChips(entry.frontmatter)}
+            <div class="entry-actions">
+              <button type="button" class="queue-action-btn" data-entry-action="edit">${escapeHtml(t("codex.reading.edit"))}</button>
+            </div>
           </header>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
           </div>
-          ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
+          ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index, entry.backlinks ?? [])}
         </article>
       `;
 
@@ -659,11 +739,20 @@ function renderSheetBreadcrumb(title: string): string {
   `;
 }
 
-function renderRelatedList(currentId: string, currentTags: string[], entries: ReturnType<typeof getState>["index"]): string {
+function renderRelatedList(
+  currentId: string,
+  currentTags: string[],
+  entries: ReturnType<typeof getState>["index"],
+  backlinks: readonly EntryBacklink[] = [],
+): string {
+  const t = consoleT();
+  const backlinkIds = new Set(backlinks.map((link) => link.id));
+
+  // 태그 유사도는 우연이고 백링크는 작성자의 의도다 — 두 목록을 섞지 않고, 의도를 먼저 놓는다.
   const tagSet = new Set(currentTags);
-  const related = entries
-    .filter((e) => e.id !== currentId)
-    .map((e) => ({ entry: e, matchingTags: e.tags.filter((t) => tagSet.has(t)) }))
+  const similar = entries
+    .filter((e) => e.id !== currentId && !backlinkIds.has(e.id))
+    .map((e) => ({ entry: e, matchingTags: e.tags.filter((tag) => tagSet.has(tag)) }))
     .filter((item) => item.matchingTags.length > 0)
     .sort(
       (a, b) =>
@@ -672,23 +761,47 @@ function renderRelatedList(currentId: string, currentTags: string[], entries: Re
     )
     .slice(0, 5);
 
-  if (related.length === 0) return "";
+  if (backlinks.length === 0 && similar.length === 0) return "";
+
+  const backlinkSection = backlinks.length === 0 ? "" : `
+    <section class="related-list related-list--backlinks">
+      <h2>${escapeHtml(t("codex.reading.referencedBy"))}</h2>
+      <div class="related-items">
+        ${backlinks.map((link) => `
+          <button class="related-card related-card--backlink" type="button" data-entry-id="${escapeAttribute(link.id)}">
+            <strong>${escapeHtml(link.title)}</strong>
+          </button>`).join("")}
+      </div>
+    </section>`;
+
+  const similarSection = similar.length === 0 ? "" : `
+    <section class="related-list">
+      <h2>${escapeHtml(t("codex.reading.similarTags"))}</h2>
+      <div class="related-items">
+        ${similar.map((item) => `
+          <button class="related-card" type="button" data-entry-id="${escapeAttribute(item.entry.id)}">
+            <strong>${escapeHtml(item.entry.title)}</strong>
+            <span>${renderTagChips(item.matchingTags)}</span>
+          </button>`).join("")}
+      </div>
+    </section>`;
+
+  return backlinkSection + similarSection;
+}
+
+/** 평범한 마크다운 편집기. 저장은 다른 모든 쓰기와 같이 패치로 남는다. */
+function renderEntryEditor(body: string, error: string | null): string {
   const t = consoleT();
   return `
-    <section class="related-list">
-      <h2>${escapeHtml(t("codex.reading.relatedEntries"))}</h2>
-      <div class="related-items">
-        ${related
-          .map(
-            (item) =>
-              `<button class="related-card" type="button" data-entry-id="${escapeAttribute(item.entry.id)}">
-                <strong>${escapeHtml(item.entry.title)}</strong>
-                <span>${renderTagChips(item.matchingTags)}</span>
-              </button>`,
-          )
-          .join("")}
+    <div class="entry-editor">
+      <textarea id="codex-entry-editor" class="entry-editor-area" spellcheck="false"
+        aria-label="${escapeAttribute(t("codex.reading.editAria"))}">${escapeHtml(body)}</textarea>
+      <div class="queue-action-buttons entry-editor-actions">
+        <button type="button" class="queue-action-btn queue-action-btn--approve" data-entry-action="edit-save">${escapeHtml(t("codex.reading.editSave"))}</button>
+        <button type="button" class="queue-action-btn queue-action-btn--cancel" data-entry-action="edit-cancel">${escapeHtml(t("common.cancel"))}</button>
       </div>
-    </section>
+      ${error ? `<p class="queue-action-error">${escapeHtml(error)}</p>` : ""}
+    </div>
   `;
 }
 
