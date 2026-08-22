@@ -98,6 +98,20 @@ describe("fleet gateway serve banner", () => {
     expect(banner).not.toContain("\x1b[");
   });
 
+  it("names the credential header a standalone client must send", () => {
+    // 라우터는 `sk-ant-` 접두가 없는 요청을 401로 돌려보낸다. base URL만 안내하면 배너를 그대로
+    // 따른 사용자가 곧장 401을 만난다.
+    const banner = buildServeBanner({
+      baseUrl: "http://127.0.0.1:53211/ai-gateway",
+      exposed: 3,
+      env: { NO_COLOR: "1" },
+      isTTY: true,
+    });
+    expect(banner).toContain("ANTHROPIC_API_KEY=sk-ant-");
+    expect(banner).toContain("starts with `sk-ant-`");
+    expect(banner).toContain("never reads the");
+  });
+
   it("says plainly that an empty selection refuses every request", () => {
     const banner = buildServeBanner({
       baseUrl: "http://127.0.0.1:1/ai-gateway",

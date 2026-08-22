@@ -9,6 +9,12 @@ import { startGatewayHttpServer, type FleetCliGatewayServer } from "./server.js"
 import { applyStoredWireLog } from "../runtime/runtime.js";
 import { command, dim, optionRow, resolveColorEnabled, section, stripAnsi } from "../styles/tokens.js";
 
+/**
+ * 배너가 제안하는 자격증명 값. 라우터는 접두만 보고 값을 읽지 않으므로 실제 Anthropic 키가
+ * 아니어도 되고, 그래서 진짜처럼 보이는 문자열을 쓰지 않는다.
+ */
+const PLACEHOLDER_ANTHROPIC_KEY = "sk-ant-fleet-local";
+
 export interface GatewayServeIo {
   readonly stdout: { write(chunk: string): boolean; isTTY?: boolean };
   readonly stderr: { write(chunk: string): boolean };
@@ -109,9 +115,13 @@ export function buildServeBanner(options: {
     ),
     "",
     `  ${dim("export", colorEnabled)} ${command(`ANTHROPIC_BASE_URL=${options.baseUrl}`, colorEnabled)}`,
+    `  ${dim("export", colorEnabled)} ${command(`ANTHROPIC_API_KEY=${PLACEHOLDER_ANTHROPIC_KEY}`, colorEnabled)}`,
     "",
-    `  ${dim("Loopback only, and no authentication — whatever reaches this port spends", colorEnabled)}`,
-    `  ${dim("your subscriptions. Press Ctrl+C to stop.", colorEnabled)}`,
+    // 키를 요구하되 검사하지 않는다는 사실을 둘 다 적는다. 하나만 적으면 배너를 그대로 따른
+    // 사용자가 401을 만나거나(키 생략), 진짜 Anthropic 자격이 필요하다고 오해한다(키만 요구).
+    `  ${dim("The gateway only checks that the key starts with `sk-ant-`; it never reads the", colorEnabled)}`,
+    `  ${dim("value, and spends your own subscriptions. Loopback only, and no authentication —", colorEnabled)}`,
+    `  ${dim("whatever reaches this port can spend them. Press Ctrl+C to stop.", colorEnabled)}`,
     "",
   ];
   const text = `${lines.join("\n")}\n`;

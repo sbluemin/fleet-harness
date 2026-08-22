@@ -1,6 +1,8 @@
 import {
   COMPACT_CEILING_CUSTOM_MAX,
   COMPACT_CEILING_CUSTOM_MIN,
+  COMPACT_CEILING_EARLY_PERCENT,
+  COMPACT_CEILING_LATE_PERCENT,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
   GATEWAY_PROVIDERS,
   XAI_ENDPOINT_PREFERENCES,
@@ -121,6 +123,45 @@ export function parseProviderPriority(
     seen.add(entry);
   }
   return entries as readonly GatewayProvider[];
+}
+
+/**
+ * 인터랙티브 Policy 화면이 고르는 compact 상한. `custom`은 저장된 퍼센트가 있을 때만 나타나며
+ * 그 값을 그대로 유지한다 — 이 축을 건드리지 않고 지나가려는 사용자가 화면을 지나갔다는 이유로
+ * `set compact-ceiling 82`를 잃어서는 안 된다.
+ */
+export type CompactCeilingChoice = "auto" | "early" | "late" | "custom";
+
+export interface CompactCeilingChoices {
+  readonly options: readonly { readonly value: CompactCeilingChoice; readonly label: string; readonly hint: string }[];
+  readonly initialValue: CompactCeilingChoice;
+}
+
+export function buildCompactCeilingChoices(stored: CompactCeiling | undefined): CompactCeilingChoices {
+  const custom = typeof stored === "number" ? stored : undefined;
+  const initialValue: CompactCeilingChoice = custom !== undefined
+    ? "custom"
+    : stored === "early" || stored === "late" ? stored : "auto";
+  return {
+    options: [
+      { value: "auto", label: "Auto", hint: "context window - 16k" },
+      { value: "early", label: "Early", hint: `${COMPACT_CEILING_EARLY_PERCENT}% of the window` },
+      { value: "late", label: "Late", hint: `${COMPACT_CEILING_LATE_PERCENT}% of the window` },
+      ...(custom === undefined
+        ? []
+        : [{ value: "custom" as const, label: `Custom (${custom}%)`, hint: "keep the stored percent" }]),
+    ],
+    initialValue,
+  };
+}
+
+/** 고른 항목을 저장 값으로. `custom`은 저장된 퍼센트를 되돌려 그 축을 그대로 둔다. */
+export function resolveCompactCeilingChoice(
+  choice: CompactCeilingChoice,
+  stored: CompactCeiling | undefined,
+): CompactCeiling | undefined {
+  if (choice === "custom") return typeof stored === "number" ? stored : undefined;
+  return choice === "auto" ? undefined : choice;
 }
 
 /** 저장된 정책을 사람이 읽는 값으로. status와 인터랙티브 요약이 같은 어휘를 쓰게 한다. */

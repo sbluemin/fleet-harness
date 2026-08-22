@@ -58,7 +58,8 @@ export function buildGatewayHelpText(options: BuildGatewayHelpTextOptions = {}):
     `  ${dim("Model selection is edited on the interactive screen only — a model carries a", colorEnabled)}`,
     `  ${dim("provider, an effort ladder, and a host-only flag, which `set` cannot express.", colorEnabled)}`,
     `  ${dim("`serve` binds 127.0.0.1 and carries no authentication: whatever reaches the", colorEnabled)}`,
-    `  ${dim("port spends your subscriptions. Point a client at it with ANTHROPIC_BASE_URL.", colorEnabled)}`,
+    `  ${dim("port spends your subscriptions. A client points at it with ANTHROPIC_BASE_URL", colorEnabled)}`,
+    `  ${dim("and any ANTHROPIC_API_KEY starting with `sk-ant-` — the value is never read.", colorEnabled)}`,
     "",
   ];
   const text = lines.join("\n");

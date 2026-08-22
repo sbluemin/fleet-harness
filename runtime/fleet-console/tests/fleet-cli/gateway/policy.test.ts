@@ -8,6 +8,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   GATEWAY_SET_KEYS,
   applyGatewaySetting,
+  buildCompactCeilingChoices,
+  resolveCompactCeilingChoice,
   describeGatewayPolicy,
   isGatewaySetKey,
   parseProviderPriority,
@@ -124,6 +126,36 @@ describe("fleet gateway set", () => {
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.message).toContain("(missing)");
     expect(store.read().xaiEndpoint).toBeUndefined();
+  });
+});
+
+describe("interactive compact ceiling choices", () => {
+  it("offers only the three named steps when nothing custom is stored", () => {
+    const choices = buildCompactCeilingChoices(undefined);
+    expect(choices.options.map((option) => option.value)).toEqual(["auto", "early", "late"]);
+    expect(choices.initialValue).toBe("auto");
+  });
+
+  it("preselects a stored named step", () => {
+    expect(buildCompactCeilingChoices("late").initialValue).toBe("late");
+  });
+
+  it("surfaces a stored percent as its own choice instead of collapsing it into auto", () => {
+    // 숫자를 auto로 접으면, xAI 엔드포인트만 바꾸러 들어온 사용자가 화면을 지나갔다는
+    // 이유만으로 `set compact-ceiling 82`를 잃는다.
+    const choices = buildCompactCeilingChoices(82);
+    expect(choices.initialValue).toBe("custom");
+    expect(choices.options.map((option) => option.value)).toEqual(["auto", "early", "late", "custom"]);
+    expect(choices.options.at(3)?.label).toContain("82");
+  });
+
+  it("keeps the stored percent when the custom choice is accepted", () => {
+    expect(resolveCompactCeilingChoice("custom", 82)).toBe(82);
+    expect(resolveCompactCeilingChoice("auto", 82)).toBeUndefined();
+    expect(resolveCompactCeilingChoice("early", 82)).toBe("early");
+    // custom은 저장된 퍼센트가 있을 때만 화면에 오르지만, 없을 때 들어와도 auto로 안전하게 접힌다.
+    expect(resolveCompactCeilingChoice("custom", undefined)).toBeUndefined();
+    expect(resolveCompactCeilingChoice("custom", "late")).toBeUndefined();
   });
 });
 

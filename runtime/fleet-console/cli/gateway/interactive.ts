@@ -9,8 +9,6 @@ import {
   select,
 } from "@clack/prompts";
 import {
-  COMPACT_CEILING_EARLY_PERCENT,
-  COMPACT_CEILING_LATE_PERCENT,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
   GATEWAY_PROVIDERS,
   GATEWAY_PROVIDER_NAMES,
@@ -19,7 +17,13 @@ import {
   type GatewayProvider,
 } from "@dotobokuri/core-ai-gateway";
 
-import { describeGatewayPolicy, writeProviderPriority } from "./policy.js";
+import {
+  buildCompactCeilingChoices,
+  describeGatewayPolicy,
+  resolveCompactCeilingChoice,
+  writeProviderPriority,
+  type CompactCeilingChoice,
+} from "./policy.js";
 import { collectGatewayModels } from "./report.js";
 import {
   buildGatewayModelChoices,
@@ -219,19 +223,14 @@ async function editPriority(deps: GatewayInteractiveDeps): Promise<void> {
 
 async function editPolicy(deps: GatewayInteractiveDeps): Promise<void> {
   const settings = deps.store.read();
-  const ceiling = await select<"auto" | "early" | "late">({
+  const ceilingChoices = buildCompactCeilingChoices(settings.compactCeiling);
+  const ceiling = await select<CompactCeilingChoice>({
     message: "When does a turn compact?",
-    options: [
-      { value: "auto", label: "Auto", hint: "context window − 16k" },
-      { value: "early", label: "Early", hint: `${COMPACT_CEILING_EARLY_PERCENT}% of the window` },
-      { value: "late", label: "Late", hint: `${COMPACT_CEILING_LATE_PERCENT}% of the window` },
-    ],
-    initialValue: settings.compactCeiling === undefined || typeof settings.compactCeiling === "number"
-      ? "auto"
-      : settings.compactCeiling,
+    options: [...ceilingChoices.options],
+    initialValue: ceilingChoices.initialValue,
   });
   if (isCancel(ceiling)) return;
-  deps.store.writeCompactCeiling(ceiling === "auto" ? undefined : ceiling);
+  deps.store.writeCompactCeiling(resolveCompactCeilingChoice(ceiling, settings.compactCeiling));
 
   const endpoint = await select<"direct" | "cli-proxy">({
     message: "Which xAI endpoint does a subscription turn open on?",
@@ -243,7 +242,7 @@ async function editPolicy(deps: GatewayInteractiveDeps): Promise<void> {
   });
   if (isCancel(endpoint)) return;
   deps.store.writeXaiEndpoint(endpoint);
-  log.success(`Compact ${ceiling} · xAI ${endpoint}.`);
+  log.success(`Compact ${describeGatewayPolicy(deps.store.read())["compact-ceiling"]} · xAI ${endpoint}.`);
 }
 
 async function editDiagnostics(deps: GatewayInteractiveDeps): Promise<void> {
