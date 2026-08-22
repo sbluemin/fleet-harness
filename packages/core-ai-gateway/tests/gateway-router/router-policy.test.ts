@@ -10,6 +10,7 @@ import type { AnthropicMessagesRequest } from "../../src/anthropic/protocol.js";
 
 /** One catalog model per provider, so every policy runs against a real target. */
 const SAMPLE_MODEL: Readonly<Record<GatewayProvider, string>> = {
+  antigravity: "claude-gateway--antigravity--gemini-3.7-flash[1m]",
   codex: "claude-gateway--codex--gpt-5.6-sol",
   cursor: "claude-gateway--cursor--grok-4.5",
   kimi: "claude-gateway--kimi--k3",

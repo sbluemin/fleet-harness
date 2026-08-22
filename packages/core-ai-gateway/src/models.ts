@@ -25,7 +25,7 @@ export const KIMI_AUTH_PROVIDER_ID = "Claude Code with Moonshot Kimi";
 export const KIMI_CODE_API_BASE_URL = "https://api.kimi.com/coding";
 export const KIMI_CODE_MODEL = "k3";
 
-export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "kimi"] as const;
+export const GATEWAY_PROVIDERS = ["codex", "xai", "cursor", "opencode", "antigravity", "kimi"] as const;
 export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 
 /**
@@ -228,6 +228,7 @@ const GatewayModelsRegistrySchema = z.object({
     kimi: GatewayProviderSchema,
     opencode: GatewayProviderSchema,
     xai: GatewayProviderSchema,
+    antigravity: GatewayProviderSchema,
   }).strict(),
   pricing: GatewayPricingRegistrySchema,
 }).strict();
@@ -862,8 +863,11 @@ function validateRegistry(value: GatewayModelsRegistry): void {
           }
         }
         if (exactModelIds) {
-          if (provider !== "cursor") {
-            throw new Error(`Gateway effort model id overrides are only supported by Cursor: ${provider}/${model.modelId}`);
+          // Cursor and Antigravity both spell a rung inside the wire model id, so
+          // both need per-level overrides. Every other provider carries effort as a
+          // request field, where an id override would silently never be read.
+          if (provider !== "cursor" && provider !== "antigravity") {
+            throw new Error(`Gateway effort model id overrides are only supported by Cursor and Antigravity: ${provider}/${model.modelId}`);
           }
           for (const effort of Object.keys(exactModelIds) as GatewayReasoningEffort[]) {
             if (!model.effort.levels.includes(effort)) {

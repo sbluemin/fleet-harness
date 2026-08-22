@@ -23,6 +23,7 @@ type T = Translate<QuotaMessageKey>;
 type ConnectableProviderId = "claude" | "cursor";
 
 const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
+  antigravity: "Antigravity",
   claude: "Claude Code",
   codex: "Codex",
   cursor: "Cursor",
@@ -32,6 +33,7 @@ const PROVIDER_NAME: Readonly<Record<ProviderId, string>> = {
 };
 
 export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  antigravity: "quota.antigravity.signedOut",
   claude: "quota.claude.signedOut",
   codex: "quota.codex.signedOut",
   cursor: "quota.cursor.signedOut",
@@ -41,6 +43,7 @@ export const SIGNED_OUT_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
 };
 
 export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  antigravity: "quota.expired.antigravity",
   claude: "quota.expired.claude",
   codex: "quota.expired.codex",
   cursor: "quota.expired.cursor",
@@ -52,6 +55,7 @@ export const EXPIRED_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
 // Cursor·Kimi·OpenCode만 이 상태에 도달하지만(claude·codex 파서는 반환하지 않는다),
 // 프로바이더별 안내를 공용 문구로 대신하면 다른 공급자의 지시를 보여주게 되므로 나머지도 명시한다.
 export const NO_SUBSCRIPTION_KEY: Readonly<Record<ProviderId, QuotaMessageKey>> = {
+  antigravity: "quota.noSubscription",
   claude: "quota.noSubscription",
   codex: "quota.noSubscription",
   cursor: "quota.noSubscription",
@@ -726,6 +730,7 @@ function QuotaPanel({ ctx }: { readonly ctx: RailPanelContext }) {
   }, [refresh]);
 
   const fetchedAt = Math.max(
+    data?.providers.antigravity.fetchedAt ?? 0,
     data?.providers.claude.fetchedAt ?? 0,
     data?.providers.codex.fetchedAt ?? 0,
     data?.providers.cursor.fetchedAt ?? 0,

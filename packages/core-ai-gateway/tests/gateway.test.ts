@@ -1242,11 +1242,12 @@ describe("model catalog", () => {
 
   it("includes every provider with collision-free ids and provider-prefixed labels", () => {
     expect(new Set(GATEWAY_MODELS.map((model) => model.provider))).toEqual(
-      new Set(["codex", "cursor", "kimi", "opencode", "xai"]),
+      new Set(["antigravity", "codex", "cursor", "kimi", "opencode", "xai"]),
     );
     expect(new Set(GATEWAY_MODELS.map((model) => model.id)).size).toBe(GATEWAY_MODELS.length);
     expect(GATEWAY_MODELS.every((model) => model.id.startsWith(`${model.provider}--`))).toBe(true);
     const providerLabels = {
+      antigravity: "Antigravity",
       codex: "Codex",
       cursor: "Cursor",
       kimi: "Moonshot-Kimi",
@@ -4400,6 +4401,7 @@ function minimalRegistry() {
     version: 1,
     updatedAt: "2026-08-01T00:00:00Z",
     providers: {
+      antigravity: provider("Antigravity", "gemini-3.7-flash"),
       codex: provider("Codex", "codex-model"),
       cursor: provider("Cursor", "auto"),
       kimi: provider("Kimi", "k3"),

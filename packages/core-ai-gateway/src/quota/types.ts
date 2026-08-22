@@ -84,6 +84,7 @@ export interface ProviderDto {
 
 export interface QuotaSummaryDto {
   readonly providers: {
+    readonly antigravity: ProviderDto;
     readonly claude: ProviderDto;
     readonly codex: ProviderDto;
     readonly cursor: ProviderDto;

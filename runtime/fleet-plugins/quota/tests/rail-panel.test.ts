@@ -196,6 +196,7 @@ describe("provider status copy", () => {
   it("names its own provider in every provider-specific message", () => {
     const en = QUOTA_MESSAGES.en;
     const expectedMention: Readonly<Record<string, string>> = {
+      antigravity: "Antigravity",
       claude: "Claude",
       codex: "Codex",
       cursor: "Cursor",
@@ -222,17 +223,17 @@ describe("provider order", () => {
   // 빠뜨린 순서라도 카드가 전부, 정확히 한 번씩 그려져야 한다.
   it("drops unknown ids, dedupes, and appends missing providers in default order", () => {
     expect(sanitizeProviderOrder(["opencode", "bogus", "claude", "opencode"]))
-      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi"]);
+      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi", "antigravity"]);
     expect(sanitizeProviderOrder(undefined)).toEqual([...PROVIDER_ORDER_DEFAULT]);
     expect(sanitizeProviderOrder("claude")).toEqual([...PROVIDER_ORDER_DEFAULT]);
   });
 
   it("moves a provider one step and refuses to cross the list boundary", () => {
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", -1))
-      .toEqual(["claude", "codex", "cursor", "xai", "opencode", "kimi"]);
+      .toEqual(["claude", "codex", "cursor", "xai", "opencode", "kimi", "antigravity"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "cursor", 1))
-      .toEqual(["claude", "codex", "xai", "opencode", "cursor", "kimi"]);
+      .toEqual(["claude", "codex", "xai", "opencode", "cursor", "kimi", "antigravity"]);
     expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "claude", -1)).toBeNull();
-    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "kimi", 1)).toBeNull();
+    expect(movedProviderOrder(PROVIDER_ORDER_DEFAULT, "antigravity", 1)).toBeNull();
   });
 });

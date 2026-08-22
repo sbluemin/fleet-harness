@@ -2,6 +2,46 @@
   "version": 1,
   "updatedAt": "2026-08-22T00:00:00Z",
   "providers": {
+    "antigravity": {
+      "name": "Antigravity",
+      "defaultModel": "gemini-3.7-flash",
+      "source": "live POST https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels read with the credential the Antigravity CLI (agy 1.1.18) owns, 2026-08-22; the same read reported defaultAgentModelId gemini-3.7-flash-high and a deprecatedModelIds entry mapping gemini-3.1-pro-high to gemini-pro-agent, and a live streamGenerateContent probe on that date confirmed gemini-3.1-pro-high is refused with INVALID_ARGUMENT while gemini-pro-agent answers. Effort spelling was measured per model on one fixed prompt: gemini-3.7-flash-tiered honours generationConfig.thinkingConfig.thinkingLevel (343 / 407 / 434 reasoning tokens at low / medium / high) so its ladder is a request field, while Gemini 3.1 Pro encodes the rung in the wire id. thinkingLevel accepts low, medium, and high only: minimal and max are both refused. Claude and GPT-OSS models are served by the same subscription but are deliberately not exposed here",
+      "models": [
+        {
+          "modelId": "gemini-3.7-flash",
+          "name": "Gemini-3.7-Flash",
+          "capabilityClass": "light",
+          "providerModelId": "gemini-3.7-flash-tiered",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "medium",
+              "high"
+            ]
+          }
+        },
+        {
+          "modelId": "gemini-3.1-pro",
+          "name": "Gemini-3.1-Pro",
+          "capabilityClass": "flagship",
+          "providerModelId": "gemini-3.1-pro-low",
+          "contextWindow": 1048576,
+          "effort": {
+            "supported": true,
+            "levels": [
+              "low",
+              "high"
+            ],
+            "upstreamModelIds": {
+              "low": "gemini-3.1-pro-low",
+              "high": "gemini-pro-agent"
+            }
+          }
+        }
+      ]
+    },
     "codex": {
       "name": "Codex",
       "defaultModel": "gpt-5.6-sol",

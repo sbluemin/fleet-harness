@@ -48,10 +48,15 @@ describe("terminal settings routes", () => {
       readonly aiGatewayCatalog: { readonly providers: readonly { readonly id: string; readonly models: readonly { readonly id: string; readonly maxMode: boolean; readonly fast: boolean; readonly capabilityClass: string | null; readonly effort: unknown }[] }[] };
     };
     const providers = body.aiGatewayCatalog.providers;
-    expect(providers.map((provider) => provider.id)).toEqual(["codex", "xai", "cursor", "opencode", "kimi"]);
+    expect(providers.map((provider) => provider.id)).toEqual(["codex", "xai", "cursor", "opencode", "antigravity", "kimi"]);
     const allIds = providers.flatMap((provider) => provider.models.map((model) => model.id));
     // Cursor 경유 Opus/Fable Max Mode와 Kimi 프로바이더는 다른 경로다 — 둘 다 노출한다.
     expect(allIds).toContain("kimi--k3");
+    // Antigravity는 Gemini만 노출한다. 같은 구독이 Claude·GPT-OSS도 서비스하지만
+    // 카탈로그에 없으므로 설정 화면에도 뜨지 않아야 한다.
+    expect(allIds).toContain("antigravity--gemini-3.7-flash");
+    expect(allIds).toContain("antigravity--gemini-3.1-pro");
+    expect(allIds.filter((id) => id.startsWith("antigravity--"))).toHaveLength(2);
     expect(allIds).toContain("xai--grok-4.6");
     expect(allIds).toContain("xai--grok-composer-2.5-fast");
     for (const id of [

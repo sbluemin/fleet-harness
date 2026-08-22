@@ -1,6 +1,7 @@
 // Compatibility-only facade. Provider branching and behavior live in the provider
 // folders; this file only re-exports the public surface from their new locations.
 export * from "./anthropic/index.js";
+export * from "./antigravity/index.js";
 // Provider quota probes and the shared quota vocabulary. `CredentialMethod` is
 // re-exported from transport/credentials.js (same closed shape), so the quota
 // DTO types are re-listed explicitly to keep the facade unambiguous.
