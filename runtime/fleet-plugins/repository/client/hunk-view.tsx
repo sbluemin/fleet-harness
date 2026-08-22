@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { DiffFileEntry, DiffFileMode, DiffHunkResult } from "../server/types.js";
-import { getT } from "./i18n/index.js";
+import { getT, readErrorSentence } from "./i18n/index.js";
 import { highlightEscapedDiffCode, parseHunk } from "./repository-parsers.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -105,7 +105,7 @@ export function HunkView({ ctx, repoRel, file, mode, commit, compare }: HunkView
   }
 
   if (state.kind === "error") {
-    return <div className="repository-hunk-error">{state.message}</div>;
+    return <div className="repository-hunk-error">{readErrorSentence(t, state.message)}</div>;
   }
 
   const { result } = state;

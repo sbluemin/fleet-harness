@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
@@ -6,7 +6,7 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, type RepositoryMessageKey } from "./i18n/index.js";
 import { HunkView } from "./hunk-view.js";
-import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, buildDiffGridTemplate, clampListPaneWidth } from "./rail-layout.js";
+import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
 
 type T = Translate<RepositoryMessageKey>;
 
@@ -30,6 +30,8 @@ interface StagingViewProps {
   readonly ctx: RailPanelContext;
   readonly repoRel: string;
   readonly workstate: WorkstateResult | null;
+  /** workstate 읽기가 실패한 상태 — 울타리를 모르는 채로 쓰기를 열어 두지 않는다. */
+  readonly stateUnknown?: boolean;
   /** 변이 후 패널 전역 갱신 — history:true는 커밋처럼 기록 축이 실제로 움직인 변이에만 쓴다. */
   readonly onMutated: (options: { readonly history: boolean }) => void;
 }
@@ -70,7 +72,7 @@ function readListPaneWidth(): number {
  * Local Changes 스테이징 뷰 — Fork 문법의 심장부.
  * 왼쪽은 Unstaged/Staged 두 단, 오른쪽은 선택한 축의 diff, 아래는 커밋 상자다.
  */
-export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewProps) {
+export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, onMutated }: StagingViewProps) {
   const t = getT(ctx.language);
   const [status, setStatus] = useState<StatusState>({ kind: "loading" });
   const [statusRetry, setStatusRetry] = useState(0);
@@ -89,7 +91,8 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
   const rootRef = useRef<HTMLDivElement>(null);
   const requestSeqRef = useRef(0);
 
-  const guardMessage = guardMessageOf(workstate, t);
+  // 울타리를 읽지 못한 상태는 "울타리 없음"이 아니다 — 읽기 실패는 닫힌 쪽으로 넘어진다.
+  const guardMessage = stateUnknown ? t("repository.guard.stateUnknown") : guardMessageOf(workstate, t);
   const stationedMessage = stationedMessageOf(workstate, t);
   const writeLocked = guardMessage !== null;
 
@@ -279,7 +282,10 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
       {guardMessage ?? stationedMessage}
     </div>}
     {notice && <div className={`repository-sync-toast is-${notice.kind}`} role="status"><span>{notice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setNotice(null)}>✕</button></div>}
-    <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? { gridTemplateColumns: buildDiffGridTemplate(listPaneWidth) } : undefined}>
+    {/* 끌어서 정한 목록 폭은 인라인 grid-template-columns가 아니라 변수로 들어온다 — 인라인 값은
+        좁은 폭에서 세로로 쌓는 컨테이너 쿼리를 이겨, 실측에서 본 목록 82px·파일명 폭 0px 붕괴를
+        되살린다(독이 이미 같은 이유로 변수를 쓴다). */}
+    <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
       <div className="repository-list-pane repository-staging-lists">
         {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
         {status.kind === "error" && <div className="repository-sections-error"><span>{status.message}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
@@ -296,17 +302,25 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
             onSelect={(entry) => setSelection({ axis: "unstaged", entry })}
             rowActions={(entry) => <>
               {/* 충돌 파일의 discard는 서버에서 무음 no-op이 된다 — 동사를 숨기고 충돌 표식으로 안내한다. */}
+              {/* 추적되지 않는 파일의 ⌫는 되돌리기가 아니라 삭제다 — 같은 글리프·같은 문구로 두면
+                  두 번째 클릭이 파일을 지운다는 사실이 어디에도 적혀 있지 않다. */}
               {!entry.conflicted && <button
                 type="button"
                 className={`repository-stage-action repository-discard-action${armedDiscard === entry.path ? " is-armed" : ""}`}
-                aria-label={t("repository.staging.discardFile", { path: entry.path })}
+                aria-label={entry.status === "U"
+                  ? t("repository.staging.deleteUntracked", { path: entry.path })
+                  : t("repository.staging.discardFile", { path: entry.path })}
+                title={entry.status === "U"
+                  ? t("repository.staging.deleteUntracked", { path: entry.path })
+                  : t("repository.staging.discardFile", { path: entry.path })}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); armOrDiscard(entry); }}
-              >{armedDiscard === entry.path ? t("repository.staging.discardArm") : "⌫"}</button>}
+              >{armedDiscard === entry.path ? t(entry.status === "U" ? "repository.staging.deleteArm" : "repository.staging.discardArm") : "⌫"}</button>}
               <button
                 type="button"
                 className="repository-stage-action"
                 aria-label={t("repository.staging.stageFile", { path: entry.path })}
+                title={t("repository.staging.stageFile", { path: entry.path })}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); stagePaths([entry.path]); }}
               >+</button>
@@ -326,6 +340,7 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
               type="button"
               className="repository-stage-action"
               aria-label={t("repository.staging.unstageFile", { path: entry.path })}
+                title={t("repository.staging.unstageFile", { path: entry.path })}
               disabled={busy || writeLocked}
               onClick={(event) => { event.stopPropagation(); unstageEntries([entry]); }}
             >−</button>}
@@ -334,7 +349,12 @@ export function StagingView({ ctx, repoRel, workstate, onMutated }: StagingViewP
       </div>
       {hunkSelection && <div className="repository-divider" onPointerDown={handleDividerDown} aria-hidden="true" />}
       {hunkSelection && <div className="repository-hunk-pane">
-        <div className="repository-hunk-head"><span>{hunkSelection.entry.path}</span><button type="button" onClick={() => setSelection(null)}>✕</button></div>
+        {/* 이 머리는 파일명/닫기 클래스를 쓰지 않아 긴 경로가 줄어들지 않고 ✕를 머리 밖으로 밀어냈다
+            — 실측에서 ✕는 폭 11px로 오른쪽 경계 142px 바깥에 서 있었다(누를 수 없다). */}
+        <div className="repository-hunk-head">
+          <span className="repository-hunk-filename" title={hunkSelection.entry.path}>{hunkSelection.entry.path}</span>
+          <button type="button" className="repository-hunk-close" aria-label={t("repository.hunk.close")} title={t("repository.hunk.close")} onClick={() => setSelection(null)}>✕</button>
+        </div>
         <HunkView key={`${hunkSelection.axis}:${hunkSelection.entry.path}`} ctx={ctx} repoRel={repoRel} file={hunkSelection.entry} mode={hunkModeOf(hunkSelection)} />
       </div>}
     </div>

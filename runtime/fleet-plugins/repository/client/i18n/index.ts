@@ -6,8 +6,8 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 export const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
-  "repository.sync.button": "Sync",
-  "repository.sync.title": "Fetch --prune from origin, then refresh",
+  "repository.sync.button": "Fetch",
+  "repository.sync.title": "Update remote-tracking branches from origin",
 
   // workspace tree sections
   "repository.section.context": "CONTEXT",
@@ -51,6 +51,23 @@ export const repositoryEn = {
   "repository.common.treeView": "Tree view",
   "repository.common.resizeSourceTree": "Resize source tree",
   "repository.common.noMatchingItems": "No matching items",
+  "repository.common.reloadState": "Reload repository state",
+
+  // read failures — a code is not a sentence; every one of these names the failure and the next move
+  "repository.read.failedGit": "Git couldn't finish this read. Try again.",
+  "repository.read.failedNoRepo": "This folder is not a git repository.",
+  "repository.read.failedGitMissing": "Git isn't available here. Install git, then try again.",
+  "repository.read.failedUnknownRef": "That commit or ref is no longer in this repository.",
+  "repository.read.failedFileMissing": "That file is not part of this commit.",
+  "repository.read.failedNoTheater": "No project is open in this panel.",
+  "repository.read.failedTimeout": "The read timed out. Try again.",
+  "repository.read.failedUnknown": "Something went wrong reading this repository. Try again.",
+
+  // disclosed caps
+  "repository.status.capped": "Only the first {count} changed files are listed.",
+  "repository.commit.filesCapped": "This commit's file list was cut off.",
+  "repository.scan.limitReached": "scan limit reached",
+  "repository.guard.stateUnknown": "Repository state could not be read — reload before writing.",
 
   // changes notices
   "repository.changes.section": "Changes",
@@ -133,18 +150,19 @@ export const repositoryEn = {
   "repository.history.countLegend": "All refs · dimmed = not in current checkout",
 
   // sync outcome surfacing (manual sync only; auto sync stays silent)
-  "repository.sync.failedAuth": "Sync failed — authentication. Check your credentials for origin.",
-  "repository.sync.failedNetwork": "Sync failed — network. origin is unreachable.",
-  "repository.sync.failedTimeout": "Sync failed — timed out.",
-  "repository.sync.failedNoRemote": "Sync failed — no remote is configured.",
-  "repository.sync.failedGit": "Sync failed — git error.",
-  "repository.sync.summary": "Synced — {newRefs} new · {updatedRefs} updated · {pruned} pruned",
-  "repository.sync.upToDate": "Already up to date",
+  "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for origin.",
+  "repository.sync.failedNetwork": "Fetch failed — network. origin is unreachable.",
+  "repository.sync.failedTimeout": "Fetch failed — timed out.",
+  "repository.sync.failedNoRemote": "Fetch failed — no remote is configured.",
+  "repository.sync.failedGit": "Fetch failed — git error.",
+  "repository.sync.summary": "Fetched — {newRefs} new · {updatedRefs} updated · {pruned} pruned",
+  "repository.sync.upToDate": "No new commits on origin",
   "repository.sync.dismiss": "Dismiss",
-  "repository.sync.lastFailed": "Last sync failed",
+  "repository.sync.lastFailed": "Last fetch failed",
 
   // hunk
   "repository.hunk.diffTruncated": "Diff truncated",
+  "repository.hunk.close": "Close this diff",
 
   // checkout tabs
   "repository.tabs.aria": "Checkouts",
@@ -196,6 +214,8 @@ export const repositoryEn = {
   "repository.staging.stageFile": "Stage {path}",
   "repository.staging.unstageFile": "Unstage {path}",
   "repository.staging.discardFile": "Discard changes in {path}",
+  "repository.staging.deleteUntracked": "Delete {path} — it is not tracked yet",
+  "repository.staging.deleteArm": "Delete?",
   "repository.staging.discardArm": "Sure?",
   "repository.staging.emptyUnstaged": "No unstaged changes",
   "repository.staging.emptyStaged": "Nothing staged yet",
@@ -213,9 +233,9 @@ export const repositoryEn = {
 
   // stash rows
   "repository.stash.apply": "Apply",
-  "repository.stash.pop": "Pop",
-  "repository.stash.drop": "Drop",
-  "repository.stash.dropArm": "Sure?",
+  "repository.stash.pop": "Apply and remove",
+  "repository.stash.drop": "Delete stash",
+  "repository.stash.dropArm": "Delete?",
   "repository.stash.applied": "Stash applied",
   "repository.stash.popped": "Stash popped",
   "repository.stash.dropped": "Stash dropped",
@@ -231,8 +251,8 @@ export const repositoryEn = {
 
 export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
-  "repository.sync.button": "동기화",
-  "repository.sync.title": "origin에서 fetch --prune 후 새로고침",
+  "repository.sync.button": "가져오기",
+  "repository.sync.title": "origin의 원격 추적 브랜치를 갱신합니다",
 
   "repository.section.context": "컨텍스트",
   "repository.section.working": "작업",
@@ -271,6 +291,21 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.common.treeView": "트리 보기",
   "repository.common.resizeSourceTree": "소스 트리 크기 조절",
   "repository.common.noMatchingItems": "일치하는 항목 없음",
+  "repository.common.reloadState": "저장소 상태 새로 읽기",
+
+  "repository.read.failedGit": "Git이 이 읽기를 끝내지 못했습니다. 다시 시도하세요.",
+  "repository.read.failedNoRepo": "이 폴더는 git 저장소가 아닙니다.",
+  "repository.read.failedGitMissing": "이 컴퓨터에서 git을 찾을 수 없습니다. git을 설치한 뒤 다시 시도하세요.",
+  "repository.read.failedUnknownRef": "그 커밋 또는 ref가 이 저장소에 더 이상 없습니다.",
+  "repository.read.failedFileMissing": "그 파일은 이 커밋에 없습니다.",
+  "repository.read.failedNoTheater": "이 패널에 열린 프로젝트가 없습니다.",
+  "repository.read.failedTimeout": "읽기가 시간 초과됐습니다. 다시 시도하세요.",
+  "repository.read.failedUnknown": "저장소를 읽는 중 문제가 발생했습니다. 다시 시도하세요.",
+
+  "repository.status.capped": "변경 파일 중 앞의 {count}개만 표시됩니다.",
+  "repository.commit.filesCapped": "이 커밋의 파일 목록이 잘렸습니다.",
+  "repository.scan.limitReached": "탐색 한도 도달",
+  "repository.guard.stateUnknown": "저장소 상태를 읽지 못했습니다 — 쓰기 전에 새로 읽으세요.",
 
   "repository.changes.section": "변경",
   "repository.changes.empty": "변경 없음",
@@ -345,17 +380,18 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.history.offHead": "현재 체크아웃에 포함되지 않음",
   "repository.history.countLegend": "모든 ref 기록 · 흐림 = 체크아웃 미포함",
 
-  "repository.sync.failedAuth": "동기화 실패 — 인증. origin 자격 증명을 확인하세요.",
-  "repository.sync.failedNetwork": "동기화 실패 — 네트워크. origin에 연결할 수 없습니다.",
-  "repository.sync.failedTimeout": "동기화 실패 — 시간 초과.",
-  "repository.sync.failedNoRemote": "동기화 실패 — 설정된 remote가 없습니다.",
-  "repository.sync.failedGit": "동기화 실패 — git 오류.",
-  "repository.sync.summary": "동기화 완료 — 신규 {newRefs} · 갱신 {updatedRefs} · 정리 {pruned}",
-  "repository.sync.upToDate": "이미 최신 상태",
+  "repository.sync.failedAuth": "가져오기 실패 — 인증. origin 자격 증명을 확인하세요.",
+  "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. origin에 연결할 수 없습니다.",
+  "repository.sync.failedTimeout": "가져오기 실패 — 시간 초과.",
+  "repository.sync.failedNoRemote": "가져오기 실패 — 설정된 remote가 없습니다.",
+  "repository.sync.failedGit": "가져오기 실패 — git 오류.",
+  "repository.sync.summary": "가져오기 완료 — 신규 {newRefs} · 갱신 {updatedRefs} · 정리 {pruned}",
+  "repository.sync.upToDate": "origin에 새 커밋 없음",
   "repository.sync.dismiss": "닫기",
-  "repository.sync.lastFailed": "마지막 동기화 실패",
+  "repository.sync.lastFailed": "마지막 가져오기 실패",
 
   "repository.hunk.diffTruncated": "Diff가 잘림",
+  "repository.hunk.close": "이 diff 닫기",
 
   "repository.tabs.aria": "체크아웃",
   "repository.tabs.worktreeMark": "워크트리",
@@ -403,6 +439,8 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.staging.stageFile": "{path} 스테이지",
   "repository.staging.unstageFile": "{path} 스테이지 해제",
   "repository.staging.discardFile": "{path}의 변경 버리기",
+  "repository.staging.deleteUntracked": "{path} 삭제 — 아직 추적되지 않는 파일입니다",
+  "repository.staging.deleteArm": "삭제할까요?",
   "repository.staging.discardArm": "정말요?",
   "repository.staging.emptyUnstaged": "미스테이지 변경 없음",
   "repository.staging.emptyStaged": "아직 스테이지된 것이 없습니다",
@@ -421,7 +459,7 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.stash.apply": "적용",
   "repository.stash.pop": "적용 후 제거",
   "repository.stash.drop": "삭제",
-  "repository.stash.dropArm": "정말요?",
+  "repository.stash.dropArm": "삭제할까요?",
   "repository.stash.applied": "스태시 적용됨",
   "repository.stash.popped": "스태시 적용 후 제거됨",
   "repository.stash.dropped": "스태시 삭제됨",
@@ -446,6 +484,27 @@ const translators: Record<ConsoleLocale, Translate<RepositoryMessageKey>> = {
 
 export function getT(locale: ConsoleLocale | undefined): Translate<RepositoryMessageKey> {
   return translators[locale ?? "en"];
+}
+
+/**
+ * 서버 오류 코드를 사람이 읽을 문장으로 옮긴다. 코드는 화면에 나오지 않는다 — verb 경로가 이미
+ * 이 규칙을 지키고 있었고(repository.verb.failed*), 읽기 경로만 raw 코드를 그대로 그리고 있었다.
+ */
+export function readErrorSentence(t: Translate<RepositoryMessageKey>, code: string): string {
+  switch (code) {
+    case "no_git_repo": return t("repository.read.failedNoRepo");
+    case "git_unavailable": return t("repository.read.failedGitMissing");
+    case "unknown_ref":
+    case "invalid_ref":
+    case "unknown_commit": return t("repository.read.failedUnknownRef");
+    case "file_not_found":
+    case "unknown_path": return t("repository.read.failedFileMissing");
+    case "no_theater": return t("repository.read.failedNoTheater");
+    case "timeout":
+    case "git_timeout": return t("repository.read.failedTimeout");
+    case "git_failed": return t("repository.read.failedGit");
+    default: return t("repository.read.failedUnknown");
+  }
 }
 
 /** toLocaleString / Intl에 넘길 BCP 47 태그 */

@@ -89,6 +89,7 @@ function renderWorkspaceTree(): ReactElement<ElementProps> {
     onRepository: vi.fn(),
     onScanDepth: vi.fn(),
     onRetryRepos: vi.fn(),
+    onReloadState: vi.fn(),
     onRetryWorktrees: vi.fn(),
     onRetryRefs: vi.fn(),
     onSource: vi.fn(),
