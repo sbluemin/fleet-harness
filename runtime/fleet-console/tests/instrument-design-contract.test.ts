@@ -1004,7 +1004,7 @@ describe("Instrument core design contract", () => {
     // 되고 같은 Operation이 두 색으로 보인다 — 대조표는 .operation-provider-mark 한 곳에만 있어야
     // 하고, 표면 클래스는 치수만 소유한다.
     const css = source("styles/components.css");
-    for (const provider of ["claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
+    for (const provider of ["antigravity", "claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
       expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
     }
     // 공급자는 정체성 축이다 — 마크의 잉크에만 머물러야 하므로 배경·테두리로 번지지 않고,
@@ -1022,6 +1022,35 @@ describe("Instrument core design contract", () => {
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
     expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
+  });
+
+  it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {
+    // 공급자 색 대조표는 --provider-* 축 하나다. 표에서 빠진 공급자는 컴파일도 렌더도 실패하지
+    // 않고 조용히 회색으로 떨어지며, AI Gateway 칩의 경우 톤이 미정의라 color-mix()가 통째로
+    // 무효화되어 테두리·배경까지 사라진다 — 같은 공급자가 두 화면에서 다른 마크로 읽힌다.
+    const providers = ["antigravity", "codex", "cursor", "kimi", "opencode", "xai"] as const;
+    const theme = source("styles/theme.css");
+    for (const provider of providers) {
+      expect(theme).toMatch(new RegExp(`--provider-${provider}: oklch\\(`));
+    }
+
+    const gatewayCss = externalSource(TERMINAL_AGENT_CLI_CSS_PATH).replace(/\r\n/g, "\n");
+    for (const provider of providers) {
+      expect(gatewayCss).toContain(
+        `.ai-gateway-provider.is-${provider} { --ai-gateway-provider-tone: var(--provider-${provider}); }`,
+      );
+    }
+    // 톤은 --provider-* 말고 다른 축에서 빌려오지 않는다 — --id-*를 빌리면 같은 공급자가
+    // Quota 레일과 다른 색으로 불린다.
+    for (const [, body] of gatewayCss.matchAll(/\.ai-gateway-provider\.is-[a-z]+ \{([^}]*)\}/g)) {
+      expect(body).toMatch(/var\(--provider-[a-z]+\)/);
+    }
+
+    // Quota 레일은 Claude Code까지 세므로 한 공급자가 더 많다.
+    const quotaCss = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
+    for (const provider of [...providers, "claude"]) {
+      expect(quotaCss).toContain(`.quota-provider__mark--${provider} {\n  color: var(--provider-${provider});\n}`);
+    }
   });
 
   it("pins the AI Gateway provider-priority toggle grammar — ink rank only, no signal colour, no brass", () => {

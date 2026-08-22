@@ -308,6 +308,10 @@
   color: var(--text-tertiary);
 }
 
+.quota-provider__mark--antigravity {
+  color: var(--provider-antigravity);
+}
+
 .quota-provider__mark--claude {
   color: var(--provider-claude);
 }
@@ -326,6 +330,10 @@
 
 .quota-provider__mark--opencode {
   color: var(--provider-opencode);
+}
+
+.quota-provider__mark--xai {
+  color: var(--provider-xai);
 }
 
 .quota-plan {
