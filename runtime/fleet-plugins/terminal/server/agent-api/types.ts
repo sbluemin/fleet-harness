@@ -4,13 +4,27 @@ export type AgentTurnState = "none" | "running" | "ended";
 
 export type AgentModelActivity = "working" | "not-working";
 
-export type AgentAttentionReason =
-  | "idle_prompt"
-  | "permission_prompt"
-  | "auth_success"
-  | "elicitation_dialog"
-  | "elicitation_complete"
-  | "elicitation_response";
+// Claude Notification hook의 notification_type 값. 이 목록 밖(예: AskUserQuestion=PreToolUse는 필드
+// 자체가 없음)은 reason 없이 흘려, 클라이언트가 실제 입력 대기로 처리하게 한다. 임의 문자열이
+// 브라우저 페이로드로 새는 것도 막는다. 목록과 유니온을 따로 적으면 한쪽만 늘어나 조용히 어긋나므로
+// 목록을 유일한 출처로 두고 유니온을 파생시킨다.
+export const AGENT_ATTENTION_REASONS = [
+  "idle_prompt",
+  "permission_prompt",
+  "auth_success",
+  "elicitation_dialog",
+  "elicitation_complete",
+  "elicitation_response",
+] as const;
+
+export type AgentAttentionReason = (typeof AGENT_ATTENTION_REASONS)[number];
+
+/** hook stdin(JSON)의 notification_type을 알려진 reason으로 정규화한다. 알 수 없거나 부재면 undefined. */
+export function normalizeAttentionReason(value: unknown): AgentAttentionReason | undefined {
+  return typeof value === "string" && (AGENT_ATTENTION_REASONS as readonly string[]).includes(value)
+    ? (value as AgentAttentionReason)
+    : undefined;
+}
 
 export type AgentLabelSource = "user" | "auto";
 

@@ -23,7 +23,6 @@ import { findGatewayModel, resolveAiGatewaySelection } from "@dotobokuri/core-ai
 import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
-import { normalizeAttentionReason } from "./agent-api/attention-hook.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, renderFleetPluginRootsForChat, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
@@ -37,7 +36,7 @@ import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSe
 import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
-import type { AgentProviderSession, AgentProviderTitleMarker, AgentTerminalSessionInfo, AgentLabelSource } from "./agent-api/types.js";
+import { normalizeAttentionReason, type AgentProviderSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./agent-api/types.js";
 import { resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
