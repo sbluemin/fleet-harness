@@ -96,9 +96,18 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
  *
  * Ambiguity resolves downward. Overclassing puts a light model in seats that
  * needed judgment; underclassing merely costs one candidate. A `-fast` entry
- * therefore inherits its base class only when `providerModelId` proves it is
- * the same upstream under different service terms; an unlinked `-fast`/`flash`
- * name reads as the provider's light tier.
+ * therefore inherits its base class only where a link proves it is the same
+ * upstream under different service terms, and an unlinked `-fast`/`flash` name
+ * reads as the provider's light tier.
+ *
+ * Two links prove it, because providers spell the same fact two ways. Where the
+ * variant reaches its base's own wire id, `providerModelId` already carries the
+ * proof. Where the provider gives the variant a wire id of its own — Cursor's
+ * `cursor-grok-4.6-{effort}-fast` against `cursor-grok-4.6-{effort}` — that
+ * field is spoken for by the wire, so {@link GatewayModelEntry.variantOf} states
+ * the lineage separately. Without the second spelling such a variant could not
+ * be linked at all, and the downward rule would grade a flagship's priority tier
+ * as light purely because the catalog had no room to say otherwise.
  *
  * Routing aliases (Cursor's `auto`) carry no class: what serves the request
  * varies per call, so any single class would lie.
@@ -201,6 +210,14 @@ const GatewayModelEntrySchema = z.object({
   benchmarkKey: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
+  /**
+   * The catalog entry this one is a serving variant of, when the provider gives
+   * the variant its own wire id and `providerModelId` is therefore unavailable
+   * as the lineage link. Pure provenance: it names a sibling `modelId` in the
+   * same provider and never reaches a request, so the variant keeps sending its
+   * own upstream id while inheriting the base's class and benchmark evidence.
+   */
+  variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
   cursorMaxMode: z.literal(true).optional(),
   quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
@@ -781,8 +798,41 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       // A service-tier sibling is the same upstream under different terms; a
       // class diverging from its base would let the serving tier edit the prior.
-      if (!isRoutingAlias && model.providerModelId) {
-        const base = definition.models.find((candidate) => candidate.modelId === model.providerModelId);
+      // The lineage link is `providerModelId` where the sibling reaches the
+      // base's own wire id, and `variantOf` where the provider gave it one of
+      // its own. Two links must never name two different bases.
+      const catalogEntry = (modelId: string | undefined) => (
+        modelId === undefined ? undefined : definition.models.find((candidate) => candidate.modelId === modelId)
+      );
+      // `providerModelId`는 계보 지목이기 전에 wire id다. 카탈로그에 없는 upstream 이름을
+      // 담고 있으면 어떤 base 도 지목하지 않은 것이므로 `variantOf` 와 경쟁하지 않는다 —
+      // 여기서 무조건 불일치를 거부하면, 자체 wire id 와 계보를 동시에 적어야 하는 변형이
+      // 다시 표현 불가가 되어 이 필드를 들인 이유가 사라진다.
+      const providerLinkedBase = isRoutingAlias ? undefined : catalogEntry(model.providerModelId);
+      if (model.variantOf && providerLinkedBase && model.providerModelId !== model.variantOf) {
+        throw new Error(`Gateway service-tier sibling names two different bases: ${provider}/${model.modelId}`);
+      }
+      if (model.variantOf === model.modelId) {
+        throw new Error(`Gateway service-tier sibling names itself as its base: ${provider}/${model.modelId}`);
+      }
+      const baseModelId = isRoutingAlias ? undefined : model.variantOf ?? model.providerModelId;
+      if (baseModelId) {
+        const base = catalogEntry(baseModelId);
+        // `providerModelId` may legitimately name an upstream this catalog does
+        // not list, so only an explicit `variantOf` demands a resolvable base.
+        if (model.variantOf && !base) {
+          throw new Error(`Gateway service-tier sibling names an unknown base: ${provider}/${model.modelId} -> ${model.variantOf}`);
+        }
+        // A chain would let the class travel two hops from the model that
+        // actually stated it, so a base is always a base. 한 홉 위도 두 표기 중
+        // 어느 쪽으로든 이어질 수 있으므로 둘 다 본다 — `variantOf` 만 보면 base 가
+        // `providerModelId` 로 이어진 형제일 때 체인이 그대로 통과한다.
+        const baseLink = base && base.modelId !== base.providerModelId
+          ? base.variantOf ?? base.providerModelId
+          : base?.variantOf;
+        if (base && catalogEntry(baseLink)) {
+          throw new Error(`Gateway service-tier sibling names another sibling as its base: ${provider}/${model.modelId}`);
+        }
         if (base && base.capabilityClass !== model.capabilityClass) {
           throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
         }

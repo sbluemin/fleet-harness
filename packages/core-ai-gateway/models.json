@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updatedAt": "2026-08-21T00:00:00Z",
+  "updatedAt": "2026-08-22T00:00:00Z",
   "providers": {
     "codex": {
       "name": "Codex",
@@ -411,7 +411,7 @@
         {
           "modelId": "composer-2.5",
           "name": "Composer-2.5",
-          "capabilityClass": "flagship",
+          "capabilityClass": "standard",
           "quotaScope": "auto",
           "contextWindow": 200000,
           "benchmarkKey": "composer-2.5"
@@ -419,9 +419,11 @@
         {
           "modelId": "composer-2.5-fast",
           "name": "Composer-2.5-Fast",
-          "capabilityClass": "light",
+          "capabilityClass": "standard",
+          "variantOf": "composer-2.5",
           "quotaScope": "auto",
-          "contextWindow": 200000
+          "contextWindow": 200000,
+          "benchmarkKey": "composer-2.5"
         },
         {
           "modelId": "grok-4.5",
@@ -443,7 +445,8 @@
         {
           "modelId": "grok-4.5-fast",
           "name": "Grok-4.5-Fast",
-          "capabilityClass": "light",
+          "capabilityClass": "flagship",
+          "variantOf": "grok-4.5",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -454,7 +457,8 @@
               "high"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.5-{effort}-fast"
-          }
+          },
+          "benchmarkKey": "grok-4.5"
         },
         {
           "modelId": "grok-4.6",
@@ -477,7 +481,8 @@
         {
           "modelId": "grok-4.6-fast",
           "name": "Grok-4.6-Fast",
-          "capabilityClass": "light",
+          "capabilityClass": "flagship",
+          "variantOf": "grok-4.6",
           "quotaScope": "auto",
           "contextWindow": 256000,
           "effort": {
@@ -489,7 +494,8 @@
               "xhigh"
             ],
             "upstreamModelIdTemplate": "cursor-grok-4.6-{effort}-fast"
-          }
+          },
+          "benchmarkKey": "grok-4.6"
         },
         {
           "modelId": "claude-opus-5",
@@ -874,7 +880,7 @@
         {
           "modelId": "grok-composer-2.5-fast",
           "name": "Grok-Composer-2.5-Fast",
-          "capabilityClass": "light",
+          "capabilityClass": "standard",
           "wire": "responses",
           "contextWindow": 200000
         }

@@ -735,15 +735,132 @@ describe("model catalog", () => {
     expect(() => parseGatewayModelsRegistry(tierDrift)).toThrow(/sibling class differs from its base/);
   });
 
+  // Cursor 의 -fast 는 base 와 같은 upstream 의 우선 서비스 티어지만 자체 wire id 를 받는다.
+  // providerModelId 는 그 wire id 자리라 계보를 적을 칸이 없었고, 그 결과 flagship 의 우선
+  // 티어가 '링크 없는 -fast' 규칙에 걸려 light 로 강등돼 벤치 증거까지 잃고 있었다.
+  // variantOf 는 wire 를 건드리지 않고 그 계보만 적는다.
+  it("inherits class and benchmark through variantOf without touching the wire id", () => {
+    expect(resolveCursorModelSelection("cursor--grok-4.6-fast", "high").upstreamModelId)
+      .toBe("cursor-grok-4.6-high-fast");
+    expect(findGatewayModel("cursor--composer-2.5-fast")?.upstreamId).toBe("composer-2.5-fast");
+
+    const classDrift = minimalRegistry();
+    classDrift.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", capabilityClass: "flagship" },
+      { modelId: "model-fast", name: "Model Fast", variantOf: "model", capabilityClass: "light" },
+    ];
+    expect(() => parseGatewayModelsRegistry(classDrift)).toThrow(/sibling class differs from its base/);
+
+    const benchDrift = minimalRegistry();
+    benchDrift.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", capabilityClass: "flagship", benchmarkKey: "grok-4.6" },
+      { modelId: "model-fast", name: "Model Fast", variantOf: "model", capabilityClass: "flagship" },
+    ];
+    expect(() => parseGatewayModelsRegistry(benchDrift)).toThrow(/sibling benchmark key differs from its base/);
+
+    // 오타 하나가 링크를 조용히 끊고 상속 검증 전체를 무력화하면, 그 항목은 다시 판정만
+    // 어긋난 채 통과한다.
+    const unknownBase = minimalRegistry();
+    unknownBase.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model-fast", name: "Model Fast", variantOf: "modle", capabilityClass: "flagship" },
+    ];
+    expect(() => parseGatewayModelsRegistry(unknownBase)).toThrow(/names an unknown base/);
+
+    const selfLink = minimalRegistry();
+    selfLink.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", variantOf: "model", capabilityClass: "flagship" },
+    ];
+    expect(() => parseGatewayModelsRegistry(selfLink)).toThrow(/names itself as its base/);
+
+    // 체인을 허용하면 class 가 실제로 그것을 진술한 모델에서 두 홉 떨어진다.
+    const chained = minimalRegistry();
+    chained.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", capabilityClass: "flagship" },
+      { modelId: "model-fast", name: "Model Fast", variantOf: "model", capabilityClass: "flagship" },
+      { modelId: "model-fast-1m", name: "Model Fast 1M", variantOf: "model-fast", capabilityClass: "flagship" },
+    ];
+    expect(() => parseGatewayModelsRegistry(chained)).toThrow(/names another sibling as its base/);
+
+    // 두 링크가 서로 다른 base 를 가리키면 어느 쪽이 계보인지 카탈로그가 답할 수 없다.
+    const twoBases = minimalRegistry();
+    twoBases.providers.codex.models = [
+      { modelId: "codex-model", name: "Model", capabilityClass: "flagship" },
+      { modelId: "other", name: "Other", capabilityClass: "flagship" },
+      {
+        modelId: "codex-model-fast",
+        name: "Model Fast",
+        providerModelId: "codex-model",
+        variantOf: "other",
+        serviceTier: "priority",
+        capabilityClass: "flagship",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(twoBases)).toThrow(/names two different bases/);
+
+    // providerModelId 는 계보 지목이기 전에 wire id 다. 카탈로그에 없는 upstream 이름을
+    // 담은 경우까지 경쟁 base 로 읽으면, 자체 wire id 와 계보를 동시에 적어야 하는 변형이
+    // 다시 표현 불가가 된다 — 이 필드를 들인 이유가 그 표현이었다.
+    const wireIdBesideLineage = minimalRegistry();
+    wireIdBesideLineage.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", capabilityClass: "flagship" },
+      {
+        modelId: "model-fast",
+        name: "Model Fast",
+        providerModelId: "cursor-model-2.5-fast",
+        variantOf: "model",
+        capabilityClass: "flagship",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(wireIdBesideLineage)).not.toThrow();
+
+    // 한 홉 위가 providerModelId 로 이어진 형제여도 체인은 체인이다. variantOf 만 보면
+    // 이 두 홉이 통과해 class 와 벤치 출처가 중간 변형에 매달린다.
+    const chainedThroughProviderLink = minimalRegistry();
+    chainedThroughProviderLink.providers.codex.models = [
+      { modelId: "codex-model", name: "Model", capabilityClass: "flagship" },
+      {
+        modelId: "codex-model-fast",
+        name: "Model Fast",
+        providerModelId: "codex-model",
+        serviceTier: "priority",
+        capabilityClass: "flagship",
+      },
+      {
+        modelId: "codex-model-fast-1m",
+        name: "Model Fast 1M",
+        variantOf: "codex-model-fast",
+        capabilityClass: "flagship",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(chainedThroughProviderLink))
+      .toThrow(/names another sibling as its base/);
+  });
+
   it("classes every catalog model, light tiers included, and never the router", () => {
     // 실측된 실패의 재발 방지: 아키텍처 Propose 석이 luna·deepseek-flash 로 균등
     // 분배됐다. 이 둘은 provider 스스로 light 로 자리매김한 모델이다.
     expect(findGatewayModel("codex--gpt-5.6-luna")?.capabilityClass).toBe("light");
     expect(findGatewayModel("opencode--deepseek-v4-flash")?.capabilityClass).toBe("light");
-    expect(findGatewayModel("xai--grok-composer-2.5-fast")?.capabilityClass).toBe("light");
     expect(findGatewayModel("codex--gpt-5.6-sol")?.capabilityClass).toBe("flagship");
-    // -fast 는 같은 upstream 의 서비스 티어라 base 의 class 를 따른다.
+    // -fast 는 같은 upstream 의 서비스 티어라 base 의 class 를 따른다. Codex 는 base 의
+    // wire id 를 그대로 써서 providerModelId 가 계보를 증명하고, Cursor 는 -fast 에 자체
+    // wire id 를 주므로 variantOf 가 같은 사실을 말한다 — 둘 중 어느 링크도 없이 이름만
+    // -fast 인 항목만 light 로 내려간다.
     expect(findGatewayModel("codex--gpt-5.6-sol-fast")?.capabilityClass).toBe("flagship");
+    expect(findGatewayModel("cursor--grok-4.6-fast")?.capabilityClass).toBe("flagship");
+    expect(findGatewayModel("cursor--grok-4.5-fast")?.capabilityClass).toBe("flagship");
+    // Composer 2.5 는 Cursor 라인업의 속도 지향 자사 모델이고, 측정치(56.1)도 이 카탈로그
+    // flagship 최저 rung(grok-4.6 low 61.0) 아래다. 같은 벤더 모델을 파는 xAI 항목도 같은
+    // 자리에 선다 — provider 별로 갈리면 어느 한쪽 진술이 반드시 거짓이 된다.
+    expect(findGatewayModel("cursor--composer-2.5")?.capabilityClass).toBe("standard");
+    expect(findGatewayModel("cursor--composer-2.5-fast")?.capabilityClass).toBe("standard");
+    expect(findGatewayModel("xai--grok-composer-2.5-fast")?.capabilityClass).toBe("standard");
     expect(findGatewayModel("cursor--auto")?.capabilityClass).toBeUndefined();
     for (const model of GATEWAY_MODELS) {
       if (model.id === "cursor--auto") continue;
@@ -776,7 +893,6 @@ describe("model catalog", () => {
     expect(GATEWAY_BENCHMARKS_STAMP).not.toContain("swe-rebench:");
     expect(GATEWAY_BENCHMARKS_STAMP).not.toContain("aa-terminal-bench:");
     expect(findGatewayModel("cursor--auto")?.benchmark).toBeUndefined();
-    expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark).toBeUndefined();
 
     const grok46 = findGatewayModel("cursor--grok-4.6");
     expect(grok46?.benchmark?.source).toBe("CursorBench 3.2");
@@ -787,7 +903,13 @@ describe("model catalog", () => {
       xhigh: { score: 70.8, tokensPerTask: 41136, stepsPerTask: 46 },
     });
     expect(grok46?.benchmark?.caveat).toBeUndefined();
-    expect(findGatewayModel("cursor--grok-4.6-fast")?.benchmark).toBeUndefined();
+    // variantOf 로 이어진 Cursor 의 서비스 변형은 base 와 같은 upstream 이므로 base 에 대해
+    // 측정된 증거를 그대로 쓴다 — 링크가 없던 동안에는 이 증거가 통째로 비어 있었다.
+    expect(findGatewayModel("cursor--grok-4.6-fast")?.benchmark).toEqual(grok46?.benchmark);
+    expect(findGatewayModel("cursor--grok-4.5-fast")?.benchmark)
+      .toEqual(findGatewayModel("cursor--grok-4.5")?.benchmark);
+    expect(findGatewayModel("cursor--composer-2.5-fast")?.benchmark)
+      .toEqual(findGatewayModel("cursor--composer-2.5")?.benchmark);
     expect(grok46?.benchmark?.observedAt).toBe("2026-08-13T00:00:00Z");
 
     const opus = findGatewayModel("cursor--claude-opus-5");
