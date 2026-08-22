@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.72.0] - 2026-08-22
+
+### fleet-cli
+
+#### Added
+- `agy` CLI로 이미 로그인해 둔 Antigravity 구독으로 Claude Code 턴을 보낼 수 있습니다. AI Gateway 설정에서 켜면 Gemini 3.7 Flash와 Gemini 3.1 Pro를 고를 수 있습니다.
+- AI Gateway를 터미널에서 구성합니다. `fleet gateway`는 모델·공급자·소진 순서·정책을 다루는 인터랙티브 화면을 열고, `fleet gateway status`·`models`·`set`은 같은 설정을 프롬프트 없이 조회하거나 바꿉니다.
+- `fleet gateway serve`로 AI Gateway를 독립 포트에 띄웁니다. Anthropic API를 말하는 클라이언트가 `ANTHROPIC_BASE_URL`로 구독을 쓸 수 있습니다. 루프백에만 바인딩하며 인증은 없습니다.
+
+#### Changed
+- `fleet --help`를 런타임·런타임 명령·설정·유지보수로 나눕니다. 각 런타임은 명령을 한 줄로 보여주고 자세한 내용은 `fleet <runtime> --help`가 받으며, 새 설정 섹션은 구성을 담은 파일과 환경변수를 짚어 줍니다.
+- 공급자 인증을 게이트웨이 아래 `fleet gateway auth`로 옮깁니다. 기존 `fleet auth` 문법도 당분간 동작하며 어디로 옮겨졌는지 알려 줍니다.
+- 비Anthropic AI Gateway 공급자에게 Claude Code의 정체성 문장과 Anthropic 빌링 헤더를 더 이상 보내지 않습니다. Gemini·Grok·GPT·Kimi·MiniMax 턴이 자신을 Claude Code라고 인식하지 않습니다. Anthropic이 직접 처리하는 턴은 그대로입니다.
+
+### fleet-console
+
+#### Added
+- `agy` CLI로 이미 로그인해 둔 Antigravity 구독으로 Claude Code 턴을 보낼 수 있습니다. AI Gateway 설정에서 켜면 Gemini 3.7 Flash와 Gemini 3.1 Pro를 고를 수 있습니다.
+- Quota 패널에 Antigravity 사용량을 표시합니다. 구독이 재는 Gemini 5시간·주간 한도를 보여줍니다.
+
+#### Changed
+- 비Anthropic AI Gateway 공급자에게 Claude Code의 정체성 문장과 Anthropic 빌링 헤더를 더 이상 보내지 않습니다. Gemini·Grok·GPT·Kimi·MiniMax 턴이 자신을 Claude Code라고 인식하지 않습니다. Anthropic이 직접 처리하는 턴은 그대로입니다.
+
 ## [1.71.1] - 2026-08-22
 
 ### fleet-cli
