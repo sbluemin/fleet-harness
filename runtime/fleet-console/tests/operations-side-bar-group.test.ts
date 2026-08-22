@@ -14,7 +14,7 @@ import {
   getIdleArrivalIds,
   markIdleArrival,
   subscribeIdleArrival,
-} from "../core/client/src/operation-idle-arrival.js";
+} from "../core/client/src/operation-marks.js";
 import {
   getStatusTransitionTick,
   recordStatusTransitions,

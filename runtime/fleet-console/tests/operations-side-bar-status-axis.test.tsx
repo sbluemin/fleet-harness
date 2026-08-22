@@ -6,7 +6,7 @@ import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { getSnapshot, loadForTheater, setOperationOrder } from "../core/client/src/canvas/canvas-store.js";
-import { getIdleArrivalIds, markIdleArrival } from "../core/client/src/operation-idle-arrival.js";
+import { getIdleArrivalIds, markIdleArrival } from "../core/client/src/operation-marks.js";
 import { requestSideBarOperationAction } from "../core/client/src/sidebar/interaction.js";
 import { findAccessibilityViolations, formatAccessibilityViolations } from "./helpers/accessibility-rules.js";
 import { OperationsSideBar } from "../core/client/src/sidebar/operations-side-bar.js";

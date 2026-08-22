@@ -4,11 +4,10 @@ import { Select } from "@fleet-console/sdk/react/browser";
 
 import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
-import { requestReleaseNotes } from "../release-notes-fetch.js";
+import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable, requestReleaseNotes, type WhatsNewTabId } from "../whatsnew.js";
 import { closeWhatsNew, selectReleaseNote } from "../store.js";
 import type { ConsoleState, ReleaseNoteItem, ReleaseNoteSection } from "../types.js";
 import { resolveReleaseNotesLocale } from "../whatsnew-i18n.js";
-import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable, type WhatsNewTabId } from "../whatsnew-tabs.js";
 
 interface WhatsNewModalProps {
   readonly state: ConsoleState;

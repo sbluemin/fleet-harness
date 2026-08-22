@@ -1,4 +1,4 @@
-import { isBlockingDialogOpen } from "./focus-guards.js";
+import { isBlockingDialogOpen } from "./shortcuts.js";
 import { setActiveOperation } from "./store.js";
 
 // 문서 캡처 가드는 Map 위 패널·미니맵·Map 표면을 유지한다. 빈 바다의 해제는 캔버스

@@ -1,4 +1,4 @@
-import { isBlockingDialogOpen } from "./focus-guards.js";
+import { isBlockingDialogOpen } from "./shortcuts.js";
 import { isKeyboardShortcutsModalOpen } from "./components/keyboard-shortcuts-dialog.js";
 
 export type PanelShortcutOutcome = "suppress" | "reveal" | "apply";

@@ -2,7 +2,7 @@ import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph";
 
 import { getT } from "../i18n/index.js";
 import { resolveActiveLocale } from "../operation-activity.js";
-import { isShellOperation } from "../theater-shell.js";
+import { isShellOperation } from "../theater.js";
 import type { OperationMarkVisual } from "../operation-activity.js";
 import type { OperationNode } from "../types.js";
 

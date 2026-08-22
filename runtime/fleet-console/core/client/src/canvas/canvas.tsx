@@ -8,15 +8,14 @@ import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import type { OperationRuntimeState, CompanionPanelDescriptor, ConsoleTheme, FleetClientPlugin, OperationKindDescriptor, OperationRenderContext } from "@fleet-console/sdk/plugin";
 
 import { fetchOperations } from "../api.js";
-import { availableCompanionPanels } from "../companion-shortcut.js";
-import { isBlockingDialogOpen } from "../focus-guards.js";
+import { availableCompanionPanels, isBlockingDialogOpen } from "../shortcuts.js";
 import { clearActiveOperation, isWarRoomEmptyReleaseTarget } from "../active-operation-surface.js";
 import { flattenGroupedOrder, focusCycleOperationIds, hydrateOperations, requestOperationKeyboardFocus, requestOperationLaunchMenu, resolveOperationGroup, setActiveOperation } from "../store.js";
 import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { pluginRuntimeState, resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";

@@ -16,11 +16,11 @@ import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import {
   markIdleArrival,
   resetIdleArrivalForTests,
-} from "../core/client/src/operation-idle-arrival.js";
+} from "../core/client/src/operation-marks.js";
 import {
   markDeparture,
   resetDepartureForTests,
-} from "../core/client/src/operation-departure.js";
+} from "../core/client/src/operation-marks.js";
 import { getState, setState } from "../core/client/src/store.js";
 import type { OperationNode } from "../core/client/src/types.js";
 

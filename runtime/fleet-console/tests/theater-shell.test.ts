@@ -5,7 +5,7 @@ import {
   isTheaterShellLaunch,
   resolveTheaterShellLaunch,
   theaterShellDecisionRequiresHydration,
-} from "../core/client/src/theater-shell.js";
+} from "../core/client/src/theater.js";
 import type { OperationNode } from "../core/client/src/types.js";
 
 const THEATER = "theater-a";

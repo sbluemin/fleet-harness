@@ -7,7 +7,7 @@ import {
   markDeparture,
   resetDepartureForTests,
   subscribeDeparture,
-} from "../core/client/src/operation-departure.js";
+} from "../core/client/src/operation-marks.js";
 import {
   resetSideBarStatusRecencyForTests,
   trackOperationActivityTransitions,

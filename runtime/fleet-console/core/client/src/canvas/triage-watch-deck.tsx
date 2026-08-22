@@ -4,9 +4,8 @@ import { ShellGlyph } from "@fleet-console/sdk/components/shell-glyph";
 import type { OperationActivityVisual } from "../operation-activity.js";
 
 import { useT } from "../i18n/index.js";
-import { getIdleArrivalIds } from "../operation-idle-arrival.js";
+import { getIdleArrivalIds, useOperationStatusDetails } from "../operation-marks.js";
 import { operationActivityVisual, operationMarkVisual, resolveOperationActivity, resolveOperationDisplayActivity, resolveOperationMarkVisual } from "../operation-activity.js";
-import { useOperationStatusDetails } from "../operation-status-detail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import type { OperationGeometry, OperationNode } from "../types.js";
 import {

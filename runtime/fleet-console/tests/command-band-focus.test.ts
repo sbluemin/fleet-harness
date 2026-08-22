@@ -2,7 +2,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../core/client/src/focus-guards.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../core/client/src/shortcuts.js";
 
 beforeEach(() => document.body.replaceChildren());
 afterEach(() => document.body.replaceChildren());

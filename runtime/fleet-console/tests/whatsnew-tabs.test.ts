@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable } from "../core/client/src/whatsnew-tabs.js";
+import { deriveWhatsNewOverview, deriveWhatsNewTabs, filterWhatsNewSections, isWhatsNewTabAvailable } from "../core/client/src/whatsnew.js";
 import type { ReleaseNotes } from "../core/client/src/types.js";
 
 function note(items: ReleaseNotes["sections"][number]["items"]): ReleaseNotes {

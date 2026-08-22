@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { getT } from "../core/client/src/i18n/index.js";
-import { buildShortcutGroups, formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../core/client/src/shortcuts-catalog.js";
+import { buildShortcutGroups, formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../core/client/src/shortcuts.js";
 
 describe("shortcut catalog", () => {
   it("lists the command palette immediately after operation search, then Quick Launch", () => {

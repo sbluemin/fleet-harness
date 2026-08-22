@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 
 import type { OperationNode } from "../sdk/operations/types.js";
 import type { CompanionPanelDescriptor } from "../sdk/plugin/types.js";
-import { RESERVED_SHORTCUT_CODES, availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../core/client/src/companion-shortcut.js";
+import { RESERVED_SHORTCUT_CODES, availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../core/client/src/shortcuts.js";
 
 const COMPANIONS = [
   companion("streams", true),

@@ -4,7 +4,7 @@
 
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { resetIdleArrivalForTests, getIdleArrivalIds } from "../core/client/src/operation-idle-arrival.js";
+import { resetIdleArrivalForTests, getIdleArrivalIds } from "../core/client/src/operation-marks.js";
 import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import { loadForTheater } from "../core/client/src/canvas/canvas-store.js";
 import {

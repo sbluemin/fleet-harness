@@ -12,7 +12,7 @@ import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
 import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
-import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts-catalog.js";
+import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { isTriageActive } from "../canvas/triage-store.js";

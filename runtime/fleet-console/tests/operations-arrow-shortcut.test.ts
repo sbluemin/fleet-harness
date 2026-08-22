@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { resolveOperationsArrowShortcutAction } from "../core/client/src/operations-arrow-shortcut.js";
+import { resolveOperationsArrowShortcutAction } from "../core/client/src/shortcuts.js";
 
 describe("Operations Alt+Arrow shortcut policy", () => {
   it("makes Alt+Left a no-op and Alt+Right defer-only while Triage is active", () => {

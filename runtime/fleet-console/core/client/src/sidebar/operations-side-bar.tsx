@@ -7,10 +7,10 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";

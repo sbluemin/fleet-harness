@@ -15,7 +15,7 @@ import { OperationNameMark } from "./operation-name-mark.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useUpdateProgress } from "../update-progress-store.js";
 import { resolveOperationActivity, resolveOperationMarkVisual } from "../operation-activity.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { setRailChromeExpanded, toggleRailChrome, useRailChromeExpanded } from "../rail/rail-store.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setSideBarCollapsed, useSideBarState } from "../sidebar/operations-side-bar-store.js";

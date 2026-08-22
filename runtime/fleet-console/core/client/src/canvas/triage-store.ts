@@ -3,9 +3,8 @@ import { useSyncExternalStore } from "react";
 
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { clearIdleArrival, getIdleArrivalIds, setIdleArrivalAcknowledgementSuspended } from "../operation-idle-arrival.js";
+import { clearIdleArrival, clearOperationStatusDetail, getIdleArrivalIds, recordOperationActivityTransition, setIdleArrivalAcknowledgementSuspended } from "../operation-marks.js";
 import { resolveOperationActivity, resolveOperationDisplayActivity } from "../operation-activity.js";
-import { clearOperationStatusDetail, recordOperationActivityTransition } from "../operation-status-detail-store.js";
 import { getState, clearPendingSideBarSignals, registerFocusTheaterSwitchSuppression, setActiveOperation, setActiveTheater } from "../store.js";
 import { clearSideBarOperationAction } from "../sidebar/interaction.js";
 import type { OperationGeometry, OperationNode } from "../types.js";

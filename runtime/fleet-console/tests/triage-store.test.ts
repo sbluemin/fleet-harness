@@ -14,7 +14,7 @@ import {
   getIdleArrivalIds,
   markIdleArrival,
   resetIdleArrivalForTests,
-} from "../core/client/src/operation-idle-arrival.js";
+} from "../core/client/src/operation-marks.js";
 import { focusOperation, getState, requestOperationLaunchMenu, setActiveOperation, setActiveTheater, setState as setConsoleState } from "../core/client/src/store.js";
 import {
   clearFormationView,
@@ -86,7 +86,7 @@ import type { OperationNode } from "../core/client/src/types.js";
 import { TriageClearPlate } from "../core/client/src/canvas/canvas-overlays.js";
 import { resolveTriageDeckPromotion, resolveTriageMapDriftStyle, TRIAGE_DECK_ARRIVAL_DWELL_MS, TriageWatchDeck, useTriageDeckZoomControl, type TriageDeckZoomControl } from "../core/client/src/canvas/triage-watch-deck.js";
 import { triageStageGeometryFor } from "../core/client/src/canvas/coordinates.js";
-import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-status-detail-store.js";
+import { getOperationStatusDetailSnapshot, recordOperationActivityTransition, setOperationStatusDetail } from "../core/client/src/operation-marks.js";
 
 const THEATER_ID = "theater-a";
 const THEATERS = [

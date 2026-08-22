@@ -9,7 +9,7 @@ const codexApiMocks = vi.hoisted(() => ({ fetchSearch: vi.fn() }));
 vi.mock("../core/client/src/codex/api.js", () => codexApiMocks);
 
 import { OperationSearch } from "../core/client/src/components/operation-search.js";
-import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/focus-guards.js";
+import { takeKeyboardShortcutsReturnFocus } from "../core/client/src/shortcuts.js";
 import { useConsoleState } from "../core/client/src/hooks/use-store.js";
 import { getSideBarState, setSideBarCollapsed } from "../core/client/src/sidebar/operations-side-bar-store.js";
 import { closeOperationSearch, getState, openOperationSearch, setState, toggleOperationSearch } from "../core/client/src/store.js";

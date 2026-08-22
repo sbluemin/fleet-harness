@@ -8,10 +8,9 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
-import { isBlockingDialogOpen } from "../focus-guards.js";
-import { closeOperationCompletely } from "../operation-close.js";
-import { resumeOperationInPlace } from "../operation-resume.js";
-import { forgetTheaterCompletely, registerTheaterFromPath } from "../theater-crud.js";
+import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../shortcuts.js";
+import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
+import { findTheaterShellId, forgetTheaterCompletely, isTheaterShellLaunch, registerTheaterFromPath } from "../theater.js";
 import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
 import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
@@ -29,11 +28,7 @@ import { toggleSideBarStatusAxis } from "../sidebar/operations-side-bar-store.js
 import { CodexReadingSheet } from "../components/codex-reading-sheet.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { shouldHandleOperationsKeyboardShortcut } from "../components/keyboard-shortcuts-dialog.js";
-import { availableCompanionPanels, resolveCompanionShortcutToggle, usableCompanionShortcuts } from "../companion-shortcut.js";
-import { resolveOperationsArrowShortcutAction } from "../operations-arrow-shortcut.js";
-import { blocksOperationsShortcutWhileEditing } from "../operations-editing-shortcut-guard.js";
 import { cancelAddTheater, compareOperationCreatedAt, consumeOperationFocus, consumeQuickLaunch, reopenQuickLaunchWithDraft, focusCycleOperationIds, focusOperation, getState, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaters, nextOperationId, requestOperationKeyboardFocus, setActiveOperation, setActiveTheater, sortOperationsByOrder } from "../store.js";
-import { findTheaterShellId, isTheaterShellLaunch } from "../theater-shell.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { MobileShell } from "../mobile/mobile-shell.js";
 import { OperationBodyPool, type OperationBodyConfig } from "../mobile/operation-body-pool.js";

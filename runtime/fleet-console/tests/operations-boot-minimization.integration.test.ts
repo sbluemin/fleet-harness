@@ -113,7 +113,7 @@ vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabili
 vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] }) }));
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
-vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
+vi.mock("../core/client/src/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 // operations.tsx의 Alt 핸들러가 상태축 분기를 위해 이 모듈을 함께 읽으므로, 누락되면 preventDefault 이전에 던진다.
 // 부분 목으로 두어야 이 스토어에 export가 늘어도 이 테스트가 따라 깨지지 않는다.
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (importOriginal) => ({
