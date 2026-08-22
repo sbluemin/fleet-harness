@@ -442,7 +442,7 @@ describe("Cowork inline copilot", () => {
 
     // 리플레이된 done은 diff로 전환하지 않는다.
     listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "2" }));
-    expect(body.querySelector(".cowork-block--added")).toBeNull();
+    expect(body.querySelector(".codex-diff-block.is-added")).toBeNull();
     expect(article.querySelector(".cowork-revision-stream")).toBeNull();
 
     // 이번 마운트에서 직접 보낸 실행의 done은 변경이 있으면 diff로 전환한다.
@@ -453,7 +453,7 @@ describe("Cowork inline copilot", () => {
     await vi.waitFor(() => expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/prompt"))).toBe(true));
     listeners.get("done")?.(new MessageEvent("done", { data: JSON.stringify({ type: "done" }), lastEventId: "9" }));
 
-    await vi.waitFor(() => expect(body.querySelector(".cowork-block--added")).not.toBeNull());
+    await vi.waitFor(() => expect(body.querySelector(".codex-diff-block.is-added")).not.toBeNull());
     expect(body.textContent).toContain("Readable text.");
 
     controller.destroy();

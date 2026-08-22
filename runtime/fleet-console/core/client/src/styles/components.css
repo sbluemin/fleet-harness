@@ -11464,6 +11464,8 @@ body[data-codex-side="true"] .command-card {
 }
 
 .codex-reading-sheet-body {
+  container-type: inline-size;
+  container-name: codex-doc;
   flex: 1;
   min-height: 0;
   display: grid;
@@ -11629,6 +11631,10 @@ body[data-codex-reading="true"] .operations-side-bar {
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-5) var(--space-6) var(--space-10);
+  /* 문서 타이포는 창이 아니라 이 판의 폭을 따른다 — 뷰포트 질의를 쓰면 1280px 창 안의
+     530px split 판이 전체 페이지 크기로 렌더된다. */
+  container-type: inline-size;
+  container-name: codex-doc;
 }
 
 /* split 좌측 문서는 읽기 measure 캡 없이 doc-pane 폭을 채운다(베이스 .markdown-body의

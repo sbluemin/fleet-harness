@@ -105,6 +105,8 @@ export interface DrydockListItem {
   summary?: string;
   op?: "create_wiki" | "update_wiki";
   target?: string;
+  /** 큐에서 바로 분류할 수 있도록 제안자를 목록에도 싣는다. */
+  proposer?: string;
 }
 
 export interface DrydockListResponse {
@@ -147,6 +149,23 @@ export interface DrydockDetailResponse {
   wikiEntry: DrydockWikiEntry;
   targetExists: boolean;
   patchSet: DrydockPatchSetResponse | null;
+  /**
+   * 승인 게이트가 diff를 그리려면 제안본만으로는 부족하다 — update_wiki가 덮어쓸 현재
+   * 문서 본문을 함께 싣는다. create_wiki이거나 대상이 없으면 null.
+   */
+  currentBody: string | null;
+  /** 현재 문서의 version — 제안본 version과 함께 "v3 → v4"를 그리기 위한 값. */
+  currentVersion: number | null;
+}
+
+/** 패치 셋 일괄 승인 결과 — fleet-wiki `approvePatchSet`의 전송용 축약형. */
+export interface DrydockSetDecisionResponse {
+  ok: true;
+  patchSetId: string;
+  status: "accepted" | "partial";
+  acceptedIds: string[];
+  failed: Array<{ id: string; error: string }>;
+  missing: string[];
 }
 
 export interface SchemaCatalogResponse {
@@ -167,12 +186,42 @@ export interface ConflictListItem {
   path: string;
 }
 
+/**
+ * 충돌 화면이 "왜 막혔는지"를 말하려면 meta의 몇 필드가 필수다. 나머지 필드는
+ * fleet-wiki ConflictMeta가 계속 넓어지므로 인덱스 시그니처로 열어 둔다.
+ */
+export interface ConflictDetailMeta {
+  status?: string;
+  reason?: string;
+  createdAt?: string;
+  target?: string;
+  wikiId?: string;
+  title?: string;
+  baseVersion?: number;
+  currentVersion?: number;
+  proposedVersion?: number;
+  warnings?: string[];
+  resolution?: string;
+  resolvedAt?: string;
+  note?: string;
+  [key: string]: unknown;
+}
+
 export interface ConflictDetailResponse {
   id: string;
-  meta: Record<string, unknown>;
+  meta: ConflictDetailMeta;
   current: string | null;
   proposed: string | null;
   rawSource: string | null;
+}
+
+/** 충돌 해결 결과 — `keep_current`는 rejected, `take_proposed`는 queued로 기록된다. */
+export interface ConflictResolveResponse {
+  ok: true;
+  id: string;
+  status: string;
+  resolution: string;
+  resolvedAt?: string;
 }
 
 export interface CodexHealthResponse {

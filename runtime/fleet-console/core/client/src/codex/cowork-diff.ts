@@ -37,6 +37,94 @@ export function diffDraftLines(base: string, draft: string): readonly DraftLine[
   return result;
 }
 
+export interface DiffLine {
+  readonly text: string;
+  readonly kind: "context" | "added" | "removed";
+}
+
+/**
+ * 양방향 유니파이드 라인 diff. `diffDraftLines`는 결과 초안의 줄만 돌려주므로 "무엇이
+ * 사라졌는지"를 말할 수 없다 — 승인 게이트와 충돌 화면은 삭제된 줄까지 보여야 하므로
+ * 같은 LCS를 쓰되 removed 줄도 함께 낸다.
+ */
+export function diffUnifiedLines(base: string, next: string): readonly DiffLine[] {
+  const before = base.replace(/\r\n/g, "\n").split("\n");
+  const after = next.replace(/\r\n/g, "\n").split("\n");
+  const rows = before.length + 1;
+  const columns = after.length + 1;
+  if (rows * columns > MAX_LCS_CELLS) {
+    const max = Math.max(before.length, after.length);
+    const linear: DiffLine[] = [];
+    for (let k = 0; k < max; k += 1) {
+      const b = before[k];
+      const a = after[k];
+      if (a !== undefined && a === b) linear.push({ text: a, kind: "context" });
+      else {
+        if (b !== undefined) linear.push({ text: b, kind: "removed" });
+        if (a !== undefined) linear.push({ text: a, kind: "added" });
+      }
+    }
+    return linear;
+  }
+  const lcs = Array.from({ length: rows }, () => new Uint16Array(columns));
+  for (let i = before.length - 1; i >= 0; i -= 1) {
+    for (let j = after.length - 1; j >= 0; j -= 1) {
+      lcs[i]![j] = before[i] === after[j] ? lcs[i + 1]![j + 1]! + 1 : Math.max(lcs[i + 1]![j]!, lcs[i]![j + 1]!);
+    }
+  }
+  const result: DiffLine[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < before.length || j < after.length) {
+    if (i < before.length && j < after.length && before[i] === after[j]) {
+      result.push({ text: after[j]!, kind: "context" }); i += 1; j += 1;
+    } else if (i < before.length && (j >= after.length || lcs[i + 1]![j]! >= lcs[i]![j + 1]!)) {
+      result.push({ text: before[i]!, kind: "removed" }); i += 1;
+    } else {
+      result.push({ text: after[j]!, kind: "added" }); j += 1;
+    }
+  }
+  return result;
+}
+
+/**
+ * 변경되지 않은 긴 구간을 접어 검토 가능한 hunk만 남긴다. 문서 전체를 늘어놓으면
+ * "무엇이 바뀌었는가"가 다시 묻히기 때문이다.
+ */
+export function collapseDiffContext(lines: readonly DiffLine[], padding = 3): readonly (DiffLine | { readonly kind: "gap"; readonly skipped: number })[] {
+  const keep = new Set<number>();
+  lines.forEach((line, index) => {
+    if (line.kind === "context") return;
+    for (let k = index - padding; k <= index + padding; k += 1) {
+      if (k >= 0 && k < lines.length) keep.add(k);
+    }
+  });
+  const out: (DiffLine | { readonly kind: "gap"; readonly skipped: number })[] = [];
+  let skipped = 0;
+  lines.forEach((line, index) => {
+    if (keep.has(index)) {
+      if (skipped > 0) { out.push({ kind: "gap", skipped }); skipped = 0; }
+      out.push(line);
+    } else {
+      skipped += 1;
+    }
+  });
+  if (skipped > 0) out.push({ kind: "gap", skipped });
+  return out;
+}
+
+export interface DiffCounts { readonly added: number; readonly removed: number; }
+
+export function countDiffLines(lines: readonly DiffLine[]): DiffCounts {
+  let added = 0;
+  let removed = 0;
+  for (const line of lines) {
+    if (line.kind === "added") added += 1;
+    else if (line.kind === "removed") removed += 1;
+  }
+  return { added, removed };
+}
+
 export interface DraftBlock {
   readonly markdown: string;
   readonly kind: "same" | "added" | "removed";

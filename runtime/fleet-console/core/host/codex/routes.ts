@@ -5,6 +5,7 @@ import { join, relative as relativePath, resolve as resolvePath, sep } from "nod
 
 import {
   approvePatch,
+  approvePatchSet,
   briefingQuery,
   listQueue,
   listWiki,
@@ -15,6 +16,7 @@ import {
   readPatchSet,
   readWikiEntry,
   rejectPatch,
+  resolveConflict,
   showQueue,
 } from "@dotobokuri/fleet-wiki";
 import { PATCH_FILENAME, PATCH_META_FILENAME } from "@dotobokuri/fleet-wiki";
@@ -23,8 +25,10 @@ import type { CoworkService } from "@dotobokuri/fleet-wiki/cowork";
 
 import type {
   CodexHealthResponse,
+  ConflictDetailMeta,
   ConflictDetailResponse,
   ConflictListItem,
+  ConflictResolveResponse,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
@@ -32,6 +36,7 @@ import type {
   DrydockPatch,
   DrydockPatchSetMember,
   DrydockPatchSetResponse,
+  DrydockSetDecisionResponse,
   DrydockWikiEntry,
   EntryFrontmatter,
   EntryResponse,
@@ -67,7 +72,10 @@ const JSON_HEADERS = {
 };
 const SAFE_ENTRY_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_PATCH_ID = /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{3}Z-[0-9a-f]{8}$/;
+const SAFE_PATCH_SET_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const SAFE_CONFLICT_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+/** 충돌 해결 조작 → fleet-wiki resolution 값. UI가 보낼 수 있는 값은 이 셋뿐이다. */
+const CONFLICT_RESOLUTIONS = new Set(["queued", "rejected", "manual"]);
 const MAX_SEARCH_QUERY_LENGTH = 256;
 const MAX_SEARCH_TAGS = 16;
 const MAX_SEARCH_TAG_LENGTH = 64;
@@ -215,44 +223,82 @@ async function routeGet(url: URL, response: ServerResponse, context: RouteContex
 }
 
 async function routePost(url: URL, request: IncomingMessage, response: ServerResponse, context: RouteContext): Promise<void> {
+  // 패치 셋 경로가 단일 패치 경로보다 먼저 판정되어야 한다 — `sets`가 patch id로 해석되면
+  // SAFE_PATCH_ID에서 400으로 죽는다.
+  const setDecisionMatch = url.pathname.match(/^\/api\/drydock\/sets\/([^/]+)\/decision$/);
   const decisionMatch = url.pathname.match(/^\/api\/drydock\/([^/]+)\/decision$/);
-  if (!decisionMatch) {
+  const conflictResolveMatch = url.pathname.match(/^\/api\/conflicts\/([^/]+)\/resolve$/);
+
+  if (!setDecisionMatch && !decisionMatch && !conflictResolveMatch) {
     response.writeHead(405, withSecurityHeaders({ ...JSON_HEADERS, allow: "GET, HEAD" }));
     response.end(JSON.stringify({ error: "method_not_allowed" }));
     return;
   }
 
-  const rawSegment = decisionMatch[1] ?? "";
-  const patchId = decodePathSegment(rawSegment);
+  // 모든 쓰기 경로가 같은 관문을 지난다: 리스너 허용 → Origin → content-type.
+  if (!passesWriteGate(request, response, context)) return;
+
+  if (setDecisionMatch) {
+    const patchSetId = decodePathSegment(setDecisionMatch[1] ?? "");
+    if (!SAFE_PATCH_SET_ID.test(patchSetId)) {
+      sendJson(response, 400, { error: "invalid_patch_set_id" });
+      return;
+    }
+    await withActionLock(`${context.workspaceId}:set:${patchSetId}`, response, "patch_busy", () =>
+      runSetDecisionAction(patchSetId, request, response, context));
+    return;
+  }
+
+  if (conflictResolveMatch) {
+    const conflictId = decodePathSegment(conflictResolveMatch[1] ?? "");
+    if (!SAFE_CONFLICT_ID.test(conflictId)) {
+      sendJson(response, 400, { error: "invalid_conflict_id" });
+      return;
+    }
+    await withActionLock(`${context.workspaceId}:conflict:${conflictId}`, response, "conflict_busy", () =>
+      runConflictResolveAction(conflictId, request, response, context));
+    return;
+  }
+
+  const patchId = decodePathSegment(decisionMatch![1] ?? "");
   if (!SAFE_PATCH_ID.test(patchId)) {
     sendJson(response, 400, { error: "invalid_patch_id" });
     return;
   }
+  await withActionLock(`${context.workspaceId}:${patchId}`, response, "patch_busy", () =>
+    runDecisionAction(patchId, request, response, context));
+}
 
+/** 쓰기 관문 — 통과하지 못하면 이 함수가 이미 응답을 보낸 뒤 false를 돌려준다. */
+function passesWriteGate(request: IncomingMessage, response: ServerResponse, context: RouteContext): boolean {
   if (!context.admitted) {
     sendJson(response, 403, { error: "write_loopback_only" });
-    return;
+    return false;
   }
-
   const originHeader = request.headers.origin;
   if (!originHeader || !isOriginAllowed(originHeader, context.allowedOrigins, context.port)) {
     sendJson(response, 403, { error: "origin_mismatch" });
-    return;
+    return false;
   }
-
   const contentType = (request.headers["content-type"] ?? "").toLowerCase();
   if (!contentType.startsWith("application/json")) {
     sendJson(response, 415, { error: "unsupported_media_type" });
-    return;
+    return false;
   }
+  return true;
+}
 
-  const lockKey = `${context.workspaceId}:${patchId}`;
+async function withActionLock(
+  lockKey: string,
+  response: ServerResponse,
+  busyError: string,
+  run: () => Promise<void>,
+): Promise<void> {
   if (patchActionLocks.has(lockKey)) {
-    sendJson(response, 409, { error: "patch_busy" });
+    sendJson(response, 409, { error: busyError });
     return;
   }
-
-  const actionPromise = runDecisionAction(patchId, request, response, context);
+  const actionPromise = run();
   patchActionLocks.set(lockKey, actionPromise);
   try {
     await actionPromise;
@@ -436,6 +482,7 @@ async function handleDrydockList(url: URL, response: ServerResponse, context: Ro
         summary: patch.frontmatter.summary,
         op: patch.frontmatter.op as "create_wiki" | "update_wiki",
         target: patch.frontmatter.target,
+        proposer: patch.frontmatter.proposer,
       };
     } catch {
       return { ...item, meta: item.meta as DrydockMeta };
@@ -482,6 +529,9 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
     const targetPath = resolvePatchTargetPath(patch.frontmatter.target, context.paths);
     const targetExists = await fileExists(targetPath);
     const patchSet = meta.patch_set_id ? await readPatchSetResponse(meta.patch_set_id, context.paths) : null;
+    // 승인 화면의 diff 기준선. 현재 문서를 못 읽어도 승인 자체는 막지 않는다 —
+    // diff 없이 제안본만 보여주던 기존 동작으로 조용히 강등된다.
+    const current = targetExists ? await readCurrentEntry(wikiEntry.id, context.paths) : null;
     sendJson(response, 200, {
       source,
       patch: patch as DrydockPatch,
@@ -489,6 +539,8 @@ async function handleDrydockDetail(rawSegment: string, response: ServerResponse,
       wikiEntry,
       targetExists,
       patchSet,
+      currentBody: current?.body ?? null,
+      currentVersion: current?.version ?? null,
     } satisfies DrydockDetailResponse);
   } catch {
     sendJson(response, 400, { error: "malformed_patch" });
@@ -567,6 +619,146 @@ async function runDecisionAction(
     }
     process.stderr.write(`[fleet-console-codex] patch action error: ${message}\n`);
     sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+/**
+ * 패치 셋 일괄 승인. 부분 실패는 실패가 아니다 — `approvePatchSet`가 accepted/failed/missing을
+ * 모두 돌려주므로 200으로 싣고, UI가 무엇이 남았는지 그대로 보여준다.
+ */
+async function runSetDecisionAction(
+  patchSetId: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  const body = await readJsonBody(request, response);
+  if (body === null) return;
+
+  if (body.action !== "approve") {
+    // 일괄 반려는 의도적으로 없다 — 반려는 사유가 패치마다 다르므로 개별 경로로만 받는다.
+    sendJson(response, 400, { error: "invalid_action" });
+    return;
+  }
+
+  try {
+    const result = await approvePatchSet(patchSetId, context.paths);
+    sendJson(response, 200, {
+      ok: true,
+      patchSetId: result.patch_set_id,
+      status: result.status,
+      acceptedIds: result.accepted.map((meta) => meta.id),
+      failed: result.failed.map((entry) => ({ id: entry.patch_id, error: entry.error })),
+      missing: result.missing,
+    } satisfies DrydockSetDecisionResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isErrorCode(error, "ENOENT") || message.includes("patch set")) {
+      sendJson(response, 404, { error: "patch_set_not_found" });
+      return;
+    }
+    process.stderr.write(`[fleet-console-codex] patch set action error: ${message}\n`);
+    sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+/**
+ * 충돌 해결. 본문을 다시 쓰지는 않는다 — 충돌 레코드의 상태만 닫고, 실제 반영은
+ * 기존 패치 큐 경로가 맡는다(그래서 `take_proposed`가 queued로 기록된다).
+ */
+async function runConflictResolveAction(
+  conflictId: string,
+  request: IncomingMessage,
+  response: ServerResponse,
+  context: RouteContext,
+): Promise<void> {
+  const body = await readJsonBody(request, response);
+  if (body === null) return;
+
+  const resolution = typeof body.resolution === "string" ? body.resolution : "";
+  if (!CONFLICT_RESOLUTIONS.has(resolution)) {
+    sendJson(response, 400, { error: "invalid_resolution" });
+    return;
+  }
+  const note = typeof body.note === "string" ? body.note.trim() : "";
+  if (note.length > MAX_REASON_LENGTH) {
+    sendJson(response, 400, { error: "note_too_long" });
+    return;
+  }
+
+  // 경로 조립 전에 컨테인먼트를 다시 확인한다 — id 정규식만으로는 심링크 탈출을 막지 못한다.
+  const conflictDir = await resolveSafeConflictDir(conflictId, context.paths);
+  if (!conflictDir) {
+    sendJson(response, 404, { error: "conflict_not_found" });
+    return;
+  }
+
+  try {
+    const meta = await resolveConflict(
+      conflictId,
+      { resolution: resolution as "queued" | "rejected" | "manual", ...(note ? { note } : {}) },
+      context.paths,
+    );
+    sendJson(response, 200, {
+      ok: true,
+      id: meta.id,
+      status: meta.status,
+      resolution: meta.resolution ?? resolution,
+      ...(meta.resolvedAt ? { resolvedAt: meta.resolvedAt } : {}),
+    } satisfies ConflictResolveResponse);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (isErrorCode(error, "ENOENT")) {
+      sendJson(response, 404, { error: "conflict_not_found" });
+      return;
+    }
+    process.stderr.write(`[fleet-console-codex] conflict resolve error: ${message}\n`);
+    sendJson(response, 500, { error: "internal_error" });
+  }
+}
+
+/**
+ * 승인 diff의 기준선이 될 현재 문서. 읽기 실패는 치명적이지 않다 — null을 돌려주면
+ * 화면이 diff 없는 제안본 뷰로 강등될 뿐 승인 경로는 그대로 살아 있다.
+ */
+async function readCurrentEntry(
+  entryId: string,
+  paths: MemoryPaths,
+): Promise<{ body: string; version: number } | null> {
+  if (!SAFE_ENTRY_ID.test(entryId)) return null;
+  try {
+    const entry = await readWikiEntry(entryId, paths);
+    if (!entry) return null;
+    return { body: entry.body, version: entry.version };
+  } catch {
+    return null;
+  }
+}
+
+/** POST 본문 파싱 공통부 — 실패 시 응답을 보내고 null을 돌려준다. */
+async function readJsonBody(
+  request: IncomingMessage,
+  response: ServerResponse,
+): Promise<Record<string, unknown> | null> {
+  const bodyResult = await readRequestBody(request);
+  if (bodyResult === BODY_TOO_LARGE) {
+    sendJson(response, 413, { error: "payload_too_large" });
+    return null;
+  }
+  if (bodyResult === null) {
+    sendJson(response, 400, { error: "invalid_body" });
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(bodyResult) as unknown;
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      sendJson(response, 400, { error: "invalid_body" });
+      return null;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    sendJson(response, 400, { error: "invalid_body" });
+    return null;
   }
 }
 
@@ -863,7 +1055,7 @@ async function readConflictDetail(id: string, paths: MemoryPaths): Promise<Confl
   const conflictDir = await resolveSafeConflictDir(id, paths);
   if (!conflictDir) return null;
   try {
-    const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as Record<string, unknown>;
+    const meta = JSON.parse(await readFile(join(conflictDir, "meta.json"), "utf8")) as ConflictDetailMeta;
     const current = await readOptionalFile(join(conflictDir, "current.md"));
     const proposed = await readOptionalFile(join(conflictDir, "proposed.md"));
     const rawSource = await readOptionalFile(join(conflictDir, "raw-source.md"));

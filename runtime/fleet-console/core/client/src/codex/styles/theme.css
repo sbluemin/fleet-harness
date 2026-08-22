@@ -1,38 +1,42 @@
+/*
+ * Codex 타이포 토큰은 더 이상 독립 스케일이 아니다 — 콘솔 사다리의 별칭이다.
+ *
+ * 이전에는 10px부터 96px까지 21개 크기를 자기 값으로 선언했고, 그래서 콘솔이 사다리를
+ * 조정해도 Codex만 옛 값에 남았다. 이름은 유지한다: 이 토큰은 Codex 밖에서도 소비된다
+ * (shared markdown 17곳, core components 3곳). 이름을 지우는 것은 그 두 곳을 함께 옮기는
+ * 별도 변경이고, 값이 따라오게 만드는 것이 드리프트의 실제 원인이었다.
+ *
+ * 24px 이상 디스플레이 크기는 사다리 밖에 두는 것이 계약이므로(디자인 계약 테스트의
+ * "사다리 최대가 22px이므로 24px 이상은 디스플레이 영역") 그대로 리터럴로 남긴다.
+ */
 :root {
-  --space-hair: 2px;
-  --space-tight: 6px;
+  /* 콘솔 사다리 별칭 — 값은 styles/theme.css 한 곳에서만 정해진다. */
+  --font-size-2xs: var(--t-2xs);
+  --font-size-xs: var(--t-xs);
+  --font-size-sm: var(--t-sm);
+  --font-size-md: var(--t-md);
+  --font-size-lg: var(--t-base);
+  --font-size-body: var(--t-lg);
+  --font-size-title-md: var(--t-xl);
 
-  --font-size-2xs: 10px;
-  --font-size-xs: 11px;
-  --font-size-sm: 12px;
-  --font-size-compact: 12.5px;
-  --font-size-md: 13px;
-  --font-size-lg: 14px;
-  --font-size-base: 16px;
-  --font-size-code: 13.5px;
-  --font-size-body: 17px;
-  --font-size-title-sm: 18px;
-  --font-size-title-lg: 19px;
-  --font-size-title-md: 22px;
+  /* 사다리 밖에 있던 반픽셀·중간값을 가장 가까운 단으로 접었다.
+     12.5 -> 12, 13.5 -> 13, 16 -> 17, 18 -> 17, 19 -> 17. */
+  --font-size-compact: var(--t-sm);
+  --font-size-code: var(--t-md);
+  --font-size-base: var(--t-lg);
+  --font-size-title-sm: var(--t-lg);
+  --font-size-title-lg: var(--t-lg);
+
+  /* 디스플레이 티어(>= 24px) — 사다리 밖이 계약이다. */
   --font-size-title-xl: 26px;
   --font-size-display-sm: 24px;
   --font-size-display-md: 30px;
   --font-size-display-lg: 36px;
   --font-size-display-xl: 44px;
-  --font-size-display-2xl: 60px;
-  --font-size-display-hero-md: 72px;
-  --font-size-display-hero-sm: 56px;
-  --font-size-display-hero: 96px;
 
-  --blur-soft: 0px;
-  --blur-control: 0px;
-  --blur-rise: 0px;
-  --blur-glass: 0px;
-  --blur-pop: 0px;
-  --blur-overlay: 0px;
+  /* 콘솔 간격 척도는 4px에서 시작한다. hair(2px)는 칩 내부 광학 보정 전용으로만 남긴다. */
+  --space-hair: 2px;
 }
-
-
 
 @keyframes codex-glow {
   0%,

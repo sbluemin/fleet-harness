@@ -6,12 +6,16 @@ import type {
   CoworkOptionsResponse,
   CoworkSessionDto,
   CodexHealthResponse,
+  ConflictDetailMeta,
   ConflictDetailResponse,
   ConflictListItem,
+  ConflictResolveResponse,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
   DrydockMeta,
+  DrydockPatchSetResponse,
+  DrydockSetDecisionResponse,
   EntryFrontmatter,
   EntryResponse,
   SearchEntry,
@@ -28,17 +32,30 @@ export type {
   CoworkOptionsResponse,
   CoworkSessionDto,
   CodexHealthResponse,
+  ConflictDetailMeta,
   ConflictDetailResponse,
   ConflictListItem,
+  ConflictResolveResponse,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockListResponse,
   DrydockMeta,
+  DrydockPatchSetResponse,
+  DrydockSetDecisionResponse,
   EntryFrontmatter,
   EntryResponse,
   SearchEntry,
   SchemaCatalogResponse,
   SchemaDocumentResponse,
+};
+
+/** 충돌 화면의 세 조작 — UI 어휘를 fleet-wiki resolution 값으로 옮기는 유일한 지점. */
+export type ConflictResolution = "keep_current" | "take_proposed" | "manual";
+
+const CONFLICT_RESOLUTION_WIRE: Readonly<Record<ConflictResolution, string>> = {
+  keep_current: "rejected",
+  take_proposed: "queued",
+  manual: "manual",
 };
 
 // 하위 호환 별칭 — navigator 참조
@@ -110,6 +127,31 @@ export async function decideDrydock(
   if (reason !== undefined) body.reason = reason;
   return postJson<{ ok: true; meta: DrydockMeta }>(
     apiPath(theaterId, `/drydock/${encodeURIComponent(patchId)}/decision`),
+    body,
+  );
+}
+
+/** 패치 셋 일괄 승인. 부분 성공도 200으로 돌아오므로 결과를 그대로 UI에 전달한다. */
+export async function decideDrydockSet(
+  theaterId: string | null,
+  patchSetId: string,
+): Promise<DrydockSetDecisionResponse> {
+  return postJson<DrydockSetDecisionResponse>(
+    apiPath(theaterId, `/drydock/sets/${encodeURIComponent(patchSetId)}/decision`),
+    { action: "approve" },
+  );
+}
+
+export async function resolveConflictRecord(
+  theaterId: string | null,
+  conflictId: string,
+  resolution: ConflictResolution,
+  note?: string,
+): Promise<ConflictResolveResponse> {
+  const body: Record<string, unknown> = { resolution: CONFLICT_RESOLUTION_WIRE[resolution] };
+  if (note) body.note = note;
+  return postJson<ConflictResolveResponse>(
+    apiPath(theaterId, `/conflicts/${encodeURIComponent(conflictId)}/resolve`),
     body,
   );
 }

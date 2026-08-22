@@ -7,20 +7,24 @@ import { diagramHydratorLabels, formatRelativeTime, getT, markdownCopyOptions, t
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
 import {
   decideDrydock,
+  decideDrydockSet,
   fetchConflictDetail,
   fetchConflicts,
   fetchDrydock,
   fetchDrydockDetail,
   fetchEntry,
   fetchSchemaDocument,
+  resolveConflictRecord,
 } from "./api.js";
 import type {
   ConflictDetailResponse,
   ConflictListItem,
+  ConflictResolution,
   DrydockDetailResponse,
   DrydockListItem,
   DrydockMeta,
 } from "./api.js";
+import { diffCounts, renderDiffCountChip, renderLineDiff } from "./diff-view.js";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { mountCoworkInline } from "./cowork-controller.js";
@@ -80,6 +84,13 @@ export interface MountReadingOptions {
 
 const OP_BADGE_GLYPHS: Record<string, string> = { create_wiki: "+", update_wiki: "↻" };
 
+/** 충돌 화면 버튼 → 해결 값. 세 가지 결말만 존재한다. */
+const CONFLICT_ACTION_CHOICE: Readonly<Record<string, ConflictResolution>> = {
+  "resolve-keep": "keep_current",
+  "resolve-take": "take_proposed",
+  "resolve-manual": "manual",
+};
+
 function opLabel(op: string, t: T): string {
   if (op === "create_wiki") return t("codex.reading.opCreate");
   if (op === "update_wiki") return t("codex.reading.opUpdate");
@@ -109,6 +120,17 @@ export function mountReadingInto(
   let decisionError: string | null = null;
   let currentDetailMeta: DrydockMeta | null = null;
   let currentDetailPatchId: string | null = null;
+  // 승인 게이트가 diff를 다시 그리려면 응답과 렌더된 제안본을 들고 있어야 한다.
+  let currentDetail: DrydockDetailResponse | null = null;
+  let currentDetailMarkdown = "";
+  let patchView: "diff" | "document" = "diff";
+  let setPhase: "idle" | "confirming" | "submitting" = "idle";
+  let setError: string | null = null;
+  // 충돌 해결 상태 — 조작이 파괴적이므로 결정 바와 같은 arm→confirm 두 단계를 쓴다.
+  let currentConflict: ConflictDetailResponse | null = null;
+  let conflictPhase: "idle" | "confirming" | "submitting" = "idle";
+  let conflictChoice: ConflictResolution | null = null;
+  let conflictError: string | null = null;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
 
@@ -141,9 +163,9 @@ export function mountReadingInto(
     }
 
     const conflictActionBtn = target.closest<HTMLElement>("[data-conflict-action]");
-    if (conflictActionBtn?.dataset.conflictAction === "back") {
+    if (conflictActionBtn) {
       event.preventDefault();
-      liveOpts.onConflictOpen?.(undefined);
+      handleConflictAction(conflictActionBtn.dataset.conflictAction);
       return;
     }
 
@@ -172,11 +194,86 @@ export function mountReadingInto(
 
   }
 
+  function handleConflictAction(action: string | undefined): void {
+    if (!action) return;
+    if (action === "back") {
+      liveOpts.onConflictOpen?.(undefined);
+      return;
+    }
+    if (action === "cancel") {
+      conflictPhase = "idle";
+      conflictChoice = null;
+      conflictError = null;
+      redrawConflictBar();
+      return;
+    }
+    if (action === "resolve-confirm") {
+      if (conflictChoice) void submitConflictResolution(conflictChoice);
+      return;
+    }
+    const choice = CONFLICT_ACTION_CHOICE[action];
+    if (choice) {
+      conflictChoice = choice;
+      conflictPhase = "confirming";
+      conflictError = null;
+      redrawConflictBar();
+    }
+  }
+
+  async function submitConflictResolution(resolution: ConflictResolution): Promise<void> {
+    const conflictId = currentConflict?.id;
+    if (!conflictId) return;
+    conflictPhase = "submitting";
+    conflictError = null;
+    redrawConflictBar();
+    try {
+      await resolveConflictRecord(liveOpts.theaterId, conflictId, resolution);
+      // 해결된 충돌은 목록에서 사라지므로 목록으로 돌려보낸다. 헬스 칩도 함께 갱신된다.
+      liveOpts.onDecided?.();
+      liveOpts.onConflictOpen?.(undefined);
+    } catch (err) {
+      conflictPhase = "confirming";
+      conflictError = err instanceof Error ? err.message : String(err);
+      redrawConflictBar();
+    }
+  }
+
+  function redrawConflictBar(): void {
+    const wrap = readContainer.querySelector<HTMLElement>("[data-conflict-bar-wrap]");
+    if (!wrap) return;
+    wrap.innerHTML = renderConflictBarContent(conflictPhase, conflictChoice, conflictError);
+  }
+
   function handleDrydockAction(action: string | undefined): void {
     if (!action) return;
 
     if (action === "back") {
       liveOpts.onPatchOpen?.(undefined);
+      return;
+    }
+
+    if (action === "view-diff" || action === "view-document") {
+      patchView = action === "view-diff" ? "diff" : "document";
+      redrawPatchBody();
+      return;
+    }
+
+    if (action === "approve-set") {
+      setPhase = "confirming";
+      setError = null;
+      redrawSetBand();
+      return;
+    }
+
+    if (action === "approve-set-confirm") {
+      void submitSetApproval();
+      return;
+    }
+
+    if (action === "approve-set-cancel") {
+      setPhase = "idle";
+      setError = null;
+      redrawSetBand();
       return;
     }
 
@@ -236,6 +333,45 @@ export function mountReadingInto(
       decisionError = err instanceof Error ? err.message : String(err);
       redrawDecisionBar();
     }
+  }
+
+  async function submitSetApproval(): Promise<void> {
+    const patchSetId = currentDetail?.patchSet?.id;
+    if (!patchSetId) return;
+    setPhase = "submitting";
+    setError = null;
+    redrawSetBand();
+    try {
+      const result = await decideDrydockSet(liveOpts.theaterId, patchSetId);
+      if (result.status === "partial") {
+        // 부분 성공은 실패가 아니다 — 남은 패치가 무엇인지 말해주고 큐로 되돌린다.
+        setPhase = "idle";
+        setError = consoleT()("codex.reading.setPartial", {
+          accepted: result.acceptedIds.length,
+          remaining: result.failed.length + result.missing.length,
+        });
+        redrawSetBand();
+      }
+      liveOpts.onDecided?.();
+    } catch (err) {
+      setPhase = "confirming";
+      setError = err instanceof Error ? err.message : String(err);
+      redrawSetBand();
+    }
+  }
+
+  function redrawSetBand(): void {
+    const wrap = readContainer.querySelector<HTMLElement>("[data-set-band-wrap]");
+    if (!wrap || !currentDetail?.patchSet) return;
+    wrap.innerHTML = renderSetBandContent(currentDetail.patchSet, setPhase, setError);
+  }
+
+  function redrawPatchBody(): void {
+    const body = readContainer.querySelector<HTMLElement>("#codex-reader-body");
+    const toggle = readContainer.querySelector<HTMLElement>("[data-patch-view-toggle]");
+    if (!body || !currentDetail) return;
+    body.innerHTML = renderPatchBody(currentDetail, currentDetailMarkdown, patchView);
+    if (toggle) toggle.innerHTML = renderPatchViewToggle(patchView);
   }
 
   function redrawDecisionBar(): void {
@@ -332,6 +468,11 @@ export function mountReadingInto(
     // 새 뷰 진입 시 결정 상태 초기화
     currentDetailMeta = null;
     currentDetailPatchId = null;
+    currentDetail = null;
+    currentDetailMarkdown = "";
+    patchView = "diff";
+    setPhase = "idle";
+    setError = null;
     decisionPhase = "idle";
     decisionError = null;
 
@@ -342,6 +483,9 @@ export function mountReadingInto(
 
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
+        currentDetail = detail;
+        // 비교 기준선이 없으면(신규 문서이거나 현재본을 못 읽음) diff 탭 자체를 띄우지 않는다.
+        patchView = detail.currentBody === null ? "document" : "diff";
 
         const t = consoleT();
         const { html: markdownHtml, toc } = renderMarkdown(detail.wikiEntry.body, {
@@ -349,12 +493,16 @@ export function mountReadingInto(
           resolveWikiLink: (id) => entryPath(id),
           ...markdownCopyOptions(t),
         });
+        currentDetailMarkdown = markdownHtml;
 
-        readContainer.innerHTML = renderPatchDetail(detail, markdownHtml);
+        readContainer.innerHTML = renderPatchDetail(detail, markdownHtml, patchView);
 
-        opts.tocContainer.innerHTML = renderTocSheet(toc);
+        // diff 뷰에는 문서 목차가 없다 — 제안본 전체를 보고 있을 때만 목차를 싣는다.
+        const showToc = patchView === "document" && toc.length > 0;
+        opts.tocContainer.innerHTML = showToc ? renderTocSheet(toc) : "";
+        opts.onTocChanged?.(showToc ? toc.length : 0);
         const article = readContainer.querySelector<HTMLElement>("article");
-        if (article && toc.length > 0) {
+        if (article && showToc) {
           cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
         }
       } else {
@@ -379,10 +527,16 @@ export function mountReadingInto(
     opts.onTocChanged?.(0);
     cleanupReader();
 
+    currentConflict = null;
+    conflictPhase = "idle";
+    conflictChoice = null;
+    conflictError = null;
+
     try {
       if (conflictId) {
         const detail = await fetchConflictDetail(liveOpts.theaterId, conflictId);
         if (!isCurrentSubRequest("conflicts", conflictId, requestEpoch)) return;
+        currentConflict = detail;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
         readContainer.innerHTML = renderConflictDetail(detail);
@@ -555,10 +709,35 @@ function renderDrydockList(items: DrydockListItem[], title: string): string {
         <h1>${escapeHtml(title)}</h1>
       </header>
       <div class="queue-row-list">
-        ${items.map(renderQueueRow).join("")}
+        ${renderQueueGroups(items)}
       </div>
     </article>
   `;
+}
+
+/**
+ * 같은 `patch_set_id`로 함께 stage된 패치는 한 덩어리로 묶어 그린다. 낱개로 흩어 놓으면
+ * 하나의 소스에서 쪼개진 페이지들이 서로 무관해 보이고, 검토자가 순서를 알 수 없다.
+ */
+function renderQueueGroups(items: DrydockListItem[]): string {
+  const t = consoleT();
+  const order: Array<string | null> = [];
+  const groups = new Map<string | null, DrydockListItem[]>();
+  for (const item of items) {
+    const key = item.meta.patch_set_id ?? null;
+    if (!groups.has(key)) { groups.set(key, []); order.push(key); }
+    groups.get(key)!.push(item);
+  }
+  return order.map((key) => {
+    const group = groups.get(key)!;
+    if (key === null || group.length < 2) return group.map(renderQueueRow).join("");
+    return `
+      <section class="queue-set-group" aria-label="${escapeAttribute(t(group.length === 1 ? "codex.reading.setGroupAria_one" : "codex.reading.setGroupAria_other", { count: group.length }))}">
+        <p class="queue-set-group-head">${escapeHtml(t(group.length === 1 ? "codex.reading.setGroupHead_one" : "codex.reading.setGroupHead_other", { count: group.length }))}</p>
+        ${group.map(renderQueueRow).join("")}
+      </section>
+    `;
+  }).join("");
 }
 
 function renderQueueRow(item: DrydockListItem): string {
@@ -569,7 +748,8 @@ function renderQueueRow(item: DrydockListItem): string {
   const target = item.target ?? item.id;
   const createdAtMs = new Date(item.meta.createdAt).getTime();
   const time = Number.isNaN(createdAtMs) ? "" : formatRelativeTime(createdAtMs, consoleLocale());
-  const metaParts = [time].filter(Boolean);
+  // 제안자는 큐에서 바로 보여야 한다 — 상세를 열어야만 알 수 있으면 분류가 불가능하다.
+  const metaParts = [time, item.proposer ?? ""].filter(Boolean);
   return `
     <button class="queue-row" type="button" data-patch-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(label + ": " + target)}">
       <span class="queue-row-badge" aria-hidden="true">
@@ -584,18 +764,34 @@ function renderQueueRow(item: DrydockListItem): string {
   `;
 }
 
-function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string): string {
+function renderPatchDetail(
+  detail: DrydockDetailResponse,
+  markdownHtml: string,
+  view: "diff" | "document",
+): string {
   const t = consoleT();
-  const { patch, meta, wikiEntry, targetExists } = detail;
+  const { patch, meta, wikiEntry, targetExists, patchSet, currentVersion } = detail;
   const op = patch.frontmatter.op;
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   const label = opLabel(op, t);
   const targetLabel = targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
+  const hasDiff = detail.currentBody !== null;
+  const counts = hasDiff ? diffCounts(detail.currentBody ?? "", wikiEntry.body) : null;
+  // "v3 → v4"는 stale-base 충돌을 나중에 읽을 수 있게 만드는 값이다.
+  const versionLabel = currentVersion !== null && currentVersion !== wikiEntry.version
+    ? `v${currentVersion} \u2192 v${wikiEntry.version}`
+    : `v${wikiEntry.version}`;
 
   return `
-    <article class="document">
-      <header class="document-header">
+    <article class="document queue-detail">
+      <div class="queue-decision-dock" data-decision-bar-wrap>
+        ${isPending ? renderDecisionBarContent("idle", null) : renderDecidedState(meta)}
+      </div>
+      ${patchSet && patchSet.members.length > 1
+        ? `<div data-set-band-wrap>${renderSetBandContent(patchSet, "idle", null)}</div>`
+        : ""}
+      <header class="document-header queue-detail-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol>
             <li><span>Codex</span></li>
@@ -605,18 +801,71 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
         </nav>
         <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
         <h1><span class="op-badge">${glyph}</span> ${escapeHtml(wikiEntry.title)}</h1>
-        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${escapeHtml(String(wikiEntry.version))} · ${escapeHtml(targetLabel)}</p>
+        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}</p>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
       </header>
+      ${hasDiff
+        ? `<div class="queue-view-switch" data-patch-view-toggle>${renderPatchViewToggle(view)}</div>
+           ${counts ? `<div class="queue-change-summary">${renderDiffCountChip(counts) ?? ""}</div>` : ""}`
+        : ""}
       <div class="markdown-body" id="codex-reader-body">
-        ${markdownHtml}
-      </div>
-      <div class="queue-decision-section" data-decision-bar-wrap>
-        ${isPending
-          ? renderDecisionBarContent("idle", null)
-          : renderDecidedState(meta)}
+        ${renderPatchBody(detail, markdownHtml, view)}
       </div>
     </article>
+  `;
+}
+
+/** diff 탭과 제안본 탭. diff 기준선이 없으면 이 스위치 자체가 렌더되지 않는다. */
+function renderPatchViewToggle(view: "diff" | "document"): string {
+  const t = consoleT();
+  const tab = (id: "diff" | "document", labelKey: "codex.reading.viewChanges" | "codex.reading.viewDocument") => `
+    <button type="button" class="queue-view-tab" role="tab"
+      aria-selected="${view === id}"
+      data-drydock-action="${id === "diff" ? "view-diff" : "view-document"}"
+    >${escapeHtml(t(labelKey))}</button>`;
+  return `<div class="queue-view-tabs" role="tablist" aria-label="${escapeAttribute(t("codex.reading.viewSwitchAria"))}">${tab("diff", "codex.reading.viewChanges")}${tab("document", "codex.reading.viewDocument")}</div>`;
+}
+
+function renderPatchBody(
+  detail: DrydockDetailResponse,
+  markdownHtml: string,
+  view: "diff" | "document",
+): string {
+  if (view === "diff" && detail.currentBody !== null) {
+    return renderLineDiff(detail.currentBody, detail.wikiEntry.body, consoleT());
+  }
+  return markdownHtml;
+}
+
+/**
+ * 패치 셋 밴드. 부분 승인 결과도 여기에서 말한다 — 남은 패치가 몇 개인지 모르면
+ * 검토자는 큐를 처음부터 다시 읽어야 한다.
+ */
+function renderSetBandContent(
+  patchSet: NonNullable<DrydockDetailResponse["patchSet"]>,
+  phase: "idle" | "confirming" | "submitting",
+  error: string | null,
+): string {
+  const t = consoleT();
+  const pending = patchSet.members.filter((member) => member.source === "queue").length;
+  const label = patchSet.sourceRef || patchSet.id;
+  const action = phase === "submitting"
+    ? `<span class="queue-action-spinner" role="status" aria-label="${escapeAttribute(t("codex.reading.processingAria"))}"></span>`
+    : phase === "confirming"
+      ? `<span class="queue-set-confirm">
+           <button type="button" class="queue-action-btn queue-action-btn--approve" data-drydock-action="approve-set-confirm">${escapeHtml(t(pending === 1 ? "codex.reading.setApproveConfirm_one" : "codex.reading.setApproveConfirm_other", { count: pending }))}</button>
+           <button type="button" class="queue-action-btn queue-action-btn--cancel" data-drydock-action="approve-set-cancel">${escapeHtml(t("common.cancel"))}</button>
+         </span>`
+      : `<button type="button" class="queue-action-btn queue-set-approve" data-drydock-action="approve-set">${escapeHtml(t("codex.reading.setApproveAll"))}</button>`;
+  return `
+    <div class="queue-set-band">
+      <span class="queue-set-band-copy">
+        <b>${escapeHtml(label)}</b>
+        <span>${escapeHtml(t(patchSet.members.length === 1 ? "codex.reading.setBandCount_one" : "codex.reading.setBandCount_other", { count: patchSet.members.length }))}</span>
+      </span>
+      ${action}
+    </div>
+    ${error ? `<p class="queue-action-error queue-set-error">${escapeHtml(error)}</p>` : ""}
   `;
 }
 
@@ -678,24 +927,89 @@ function renderDecidedState(meta: DrydockMeta): string {
 
 function renderConflictDetail(detail: ConflictDetailResponse): string {
   const t = consoleT();
-  const status = (detail.meta?.status as string | undefined) ?? t("codex.reading.conflictOpen");
+  const meta = detail.meta ?? {};
+  const status = meta.status ?? t("codex.reading.conflictOpen");
+  const resolved = status === "resolved";
+  // 충돌이 난 "문서"가 제목이어야 한다 — 디렉터리 이름은 식별자일 뿐 내용이 아니다.
+  const title = meta.title ?? meta.wikiId ?? meta.target ?? detail.id;
+  const reason = meta.reason ? t(`codex.reading.conflictReason.${meta.reason}` as CoreMessageKey, {}) : "";
+  // 알 수 없는 reason 코드는 원문 그대로 보여준다 — 침묵하는 것보다 낫다.
+  const reasonText = reason && !reason.startsWith("codex.reading.conflictReason.") ? reason : (meta.reason ?? "");
+  const versionLine = typeof meta.baseVersion === "number" && typeof meta.currentVersion === "number"
+    ? t("codex.reading.conflictVersions", { base: meta.baseVersion, current: meta.currentVersion })
+    : "";
+  const warnings = Array.isArray(meta.warnings) ? meta.warnings.filter((w): w is string => typeof w === "string") : [];
+  const hasBoth = detail.current !== null && detail.proposed !== null;
+
   return `
-    <article class="document">
-      <header class="document-header">
+    <article class="document conflict-detail">
+      ${resolved ? "" : `<div class="queue-decision-dock" data-conflict-bar-wrap>${renderConflictBarContent("idle", null, null)}</div>`}
+      <header class="document-header queue-detail-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol><li><span>Codex</span></li><li><span>${escapeHtml(t("codex.reading.conflicts"))}</span></li></ol>
         </nav>
         <button type="button" class="queue-back-btn" data-conflict-action="back" aria-label="${escapeAttribute(t("codex.reading.backConflicts"))}">${escapeHtml(t("codex.reading.backConflicts"))}</button>
-        <h1>${escapeHtml(detail.id)}</h1>
+        <h1>${escapeHtml(title)}</h1>
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
+        <div class="meta-chips">
+          ${reasonText ? `<span class="chip chip-conflict-reason">${escapeHtml(reasonText)}</span>` : ""}
+          ${versionLine ? `<span class="chip">${escapeHtml(versionLine)}</span>` : ""}
+          <span class="chip queue-dl-mono">${escapeHtml(detail.id)}</span>
+        </div>
+        ${warnings.length > 0
+          ? `<ul class="conflict-warnings">${warnings.map((w) => `<li>${escapeHtml(w)}</li>`).join("")}</ul>`
+          : ""}
       </header>
       <div class="markdown-body">
-        ${detail.current ? `<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>` : ""}
-        ${detail.proposed ? `<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>` : ""}
+        ${hasBoth
+          ? renderLineDiff(detail.current ?? "", detail.proposed ?? "", t)
+          : `${detail.current ? `<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>` : ""}
+             ${detail.proposed ? `<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>` : ""}`}
+        ${detail.rawSource
+          ? `<details class="conflict-raw"><summary>${escapeHtml(t("codex.reading.conflictRawSource"))}</summary><pre><code>${escapeHtml(detail.rawSource)}</code></pre></details>`
+          : ""}
       </div>
     </article>
   `;
 }
+
+/**
+ * 충돌 해결 바. 세 결말 모두 되돌리기 어려우므로 결정 바와 같은 arm -> confirm 문법을 쓴다.
+ */
+function renderConflictBarContent(
+  phase: "idle" | "confirming" | "submitting",
+  choice: ConflictResolution | null,
+  error: string | null,
+): string {
+  const t = consoleT();
+  if (phase === "submitting") {
+    return `<span class="queue-action-spinner" role="status" aria-label="${escapeAttribute(t("codex.reading.processingAria"))}"></span>`;
+  }
+  if (phase === "confirming" && choice) {
+    return `
+      <p class="queue-decision-confirm">${escapeHtml(t(CONFLICT_CONFIRM_KEY[choice]))}</p>
+      <div class="queue-action-buttons">
+        <button type="button" class="queue-action-btn queue-action-btn--approve" data-conflict-action="resolve-confirm">${escapeHtml(t("codex.reading.conflictConfirmYes"))}</button>
+        <button type="button" class="queue-action-btn queue-action-btn--cancel" data-conflict-action="cancel">${escapeHtml(t("common.cancel"))}</button>
+      </div>
+      ${error ? `<p class="queue-action-error">${escapeHtml(error)}</p>` : ""}
+    `;
+  }
+  return `
+    <div class="queue-action-buttons">
+      <button type="button" class="queue-action-btn" data-conflict-action="resolve-keep">${escapeHtml(t("codex.reading.conflictKeepCurrent"))}</button>
+      <button type="button" class="queue-action-btn queue-action-btn--approve" data-conflict-action="resolve-take">${escapeHtml(t("codex.reading.conflictTakeProposed"))}</button>
+      <button type="button" class="queue-action-btn queue-action-btn--cancel" data-conflict-action="resolve-manual">${escapeHtml(t("codex.reading.conflictMarkManual"))}</button>
+    </div>
+    ${error ? `<p class="queue-action-error">${escapeHtml(error)}</p>` : ""}
+  `;
+}
+
+const CONFLICT_CONFIRM_KEY: Readonly<Record<ConflictResolution, CoreMessageKey>> = {
+  keep_current: "codex.reading.conflictKeepConfirm",
+  take_proposed: "codex.reading.conflictTakeConfirm",
+  manual: "codex.reading.conflictManualConfirm",
+};
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {
   const clipboard = navigator.clipboard;

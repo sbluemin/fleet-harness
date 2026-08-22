@@ -11,7 +11,8 @@ import {
   updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
-import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
+import { diffDraftLines } from "./cowork-diff.js";
+import { renderBlockDiff } from "./diff-view.js";
 import type { DraftLine } from "./cowork-diff.js";
 import { CoworkAgentMenu } from "./cowork-agent-menu.js";
 import { entryPath } from "./router.js";
@@ -856,10 +857,8 @@ function copyCodeToClipboard(button: HTMLElement, code: string): void {
 // 소스 라인이 아닌 "렌더된 문서" 관점의 diff — 변경 블록은 하이라이트, 삭제 블록은
 // 흐림+취소선으로 문서 흐름 안에 표시된다.
 function renderRenderedDiff(base: string, draft: string): string {
-  return diffDraftBlocks(base, draft).map(block => {
-    const html = renderMarkdown(block.markdown, { resolveWikiLink: (id) => entryPath(id), ...markdownCopyOptions(consoleT()) }).html;
-    return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
-  }).join("");
+  // Codex 공통 diff 문법을 쓴다 — 승인 게이트·충돌 화면과 같은 표현이어야 한다.
+  return renderBlockDiff(base, draft, consoleT());
 }
 function annotationToDto(card: AnnotationCard): CoworkAnnotationDto { return { id: card.id, quote: card.quote, comment: card.comment.trim() || consoleT()("codex.cowork.defaultComment") }; }
 function annotationFromDto(dto: CoworkAnnotationDto): AnnotationCard { return { id: dto.id, quote: dto.quote, comment: dto.comment, status: "pending" }; }
