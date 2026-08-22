@@ -123,7 +123,7 @@ function publishPluginSnapshot(
 
 /**
  * 기대 파일 전량을 바이트 비교로 검증한다. 여분 파일은 실패 사유가 아니다 — 실패는
- * 매니페스트 해시 불일치이거나 기대 파일의 부재·변조다.
+ * 매니페스트 해시 불일치, 기대 파일의 부재·변조, 또는 필수 디렉터리의 부재다.
  */
 function verifyPluginSnapshot(
   snapshotRoot: string,
@@ -134,6 +134,9 @@ function verifyPluginSnapshot(
     const manifestRaw = readFileSync(path.join(snapshotRoot, SNAPSHOT_MANIFEST_NAME), "utf8");
     const manifest = JSON.parse(manifestRaw) as { readonly contentHash?: unknown };
     if (manifest.contentHash !== contentHash) return false;
+    // agents/는 빈 로스터에서도 소비자가 요구하는 필수 디렉터리인데, 파일 목록에는 빈
+    // 디렉터리가 실리지 않으므로 존재를 명시적으로 검증해야 복구 경로가 발동할 수 있다.
+    if (!statSync(path.join(snapshotRoot, "agents")).isDirectory()) return false;
     for (const file of files) {
       const onDisk = readFileSync(path.join(snapshotRoot, ...file.relativePath.split("/")), "utf8");
       if (onDisk !== file.content) return false;

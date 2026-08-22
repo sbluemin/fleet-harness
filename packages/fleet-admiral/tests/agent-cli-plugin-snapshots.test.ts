@@ -136,6 +136,22 @@ describe("agent CLI plugin snapshot store", () => {
     expect(readFileSync(guardPath, "utf8")).toBe(original);
   });
 
+  // 빈 로스터 스냅숏의 agents/는 파일이 없는 필수 디렉터리다 — 파일 바이트 검증만으로는
+  // 그 부재를 못 잡으므로, 디렉터리 소실도 손상으로 판정되어 복구 경로가 발동해야 한다.
+  it("repairs a snapshot whose required empty agents directory was lost", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-snapshot-agents-dir-");
+    const lock = async <T>(_target: string, fn: () => T | Promise<T>) => fn();
+
+    const first = await createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock });
+    first.cleanup();
+    rmSync(path.join(first.pluginRoot, "agents"), { recursive: true, force: true });
+
+    const second = await createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock });
+
+    expect(second.pluginRoot).toBe(first.pluginRoot);
+    expect(existsSync(path.join(second.pluginRoot, "agents"))).toBe(true);
+  });
+
   it("refuses the launch when a corrupt snapshot is still leased by a live session", async () => {
     const { dataDir, cwd } = createRoots("fleet-admiral-snapshot-corrupt-leased-");
     const lock = async <T>(_target: string, fn: () => T | Promise<T>) => fn();
