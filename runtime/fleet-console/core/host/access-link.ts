@@ -1,1 +1,1 @@
-export * from "../../access-protocol/index.js";
+export * from "@fleet-console/access-protocol";
