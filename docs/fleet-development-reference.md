@@ -50,12 +50,14 @@ Fleet supports multiple concurrent instances sharing the same durable state file
 
 ## 5. Isolated Development Data
 
-By default every Fleet host reads and writes the real user data root at `~/.fleet` — credentials, global settings, AI Gateway selection, and workspaces all live there. `pnpm cli`, `pnpm console`, and `pnpm desktop` therefore run through `scripts/run-isolated.mjs`, which points all three at one checkout-local root so a development run cannot read or overwrite the user's own environment:
+By default every Fleet host reads and writes the real user data root at `~/.fleet` — credentials, global settings, AI Gateway selection, and workspaces all live there. `pnpm fleet`, `pnpm console`, and `pnpm desktop` therefore run through `scripts/run-isolated.mjs`, which points all three at one checkout-local root so a development run cannot read or overwrite the user's own environment:
 
 | Variable | Development value | Owns |
 |---|---|---|
 | `FLEET_DATA_DIR` | `<checkout>/.fleet/isolated` | Credentials, global settings, AI Gateway selection, workspaces |
 | `FLEET_CONSOLE_DATA_DIR` | `<checkout>/.fleet/isolated/console` | Console durable state and runtime lock |
 | `FLEET_DESKTOP_DATA_DIR` | `<checkout>/.fleet/isolated/desktop` | Desktop owner identity and Electron user data |
+
+`pnpm fleet` runs this checkout's built `fleet` launcher, so every command the installed binary accepts works against the isolated root — `pnpm fleet gateway status`, `pnpm fleet --help`, `pnpm fleet console status`. It runs the build output, so build once before using it. `pnpm cli` remains as the former name of the same target.
 
 Because the root is isolated, a development run starts with no credentials, no installed marketplace plugins, and no accumulated workspace knowledge — that is the point of the isolation, not a defect. Set any variable yourself to override the default slot; each must be an absolute path, and a relative value fails loudly rather than silently falling back to the real root. `FLEET_CONSOLE_DIR` remains accepted as the former name of `FLEET_CONSOLE_DATA_DIR` so already-shipped Desktop shells keep working, but Desktop honors that older name only when packaged.

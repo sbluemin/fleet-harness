@@ -141,6 +141,55 @@ describe("dual-entry dispatch", () => {
     });
   });
 
+  it("reserves fleet gateway and keeps it off the Claude passthrough path", async () => {
+    expect(classifyFleetArgv(["gateway"])).toEqual({ kind: "gateway", gatewayArgv: [] });
+    expect(classifyFleetArgv(["gateway", "set", "wire-log", "on"])).toEqual({
+      kind: "gateway",
+      gatewayArgv: ["set", "wire-log", "on"],
+    });
+    // `cli` 뒤의 예약어는 지금처럼 Claude에게 간다.
+    expect(classifyFleetArgv(["cli", "gateway"])).toEqual({
+      kind: "passthrough",
+      passthroughArgs: ["gateway"],
+    });
+  });
+
+  it("routes fleet gateway to the gateway dispatcher, not to Claude", async () => {
+    const io = createIo();
+    const runApp = vi.fn(async () => undefined);
+    const gateway = vi.fn(async () => 0);
+    const status = await dispatchFleetArgv(["gateway", "status"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: runApp as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: (async () => 0) as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+      dispatchGatewayCommand: gateway as never,
+    });
+    expect(status).toBe(0);
+    expect(gateway).toHaveBeenCalledWith(["status"], io);
+    expect(runApp).not.toHaveBeenCalled();
+  });
+
+  it("keeps fleet auth working but says where it moved", async () => {
+    const io = createIo();
+    const auth = vi.fn(async () => 0);
+    const status = await dispatchFleetArgv(["auth", "list"], {
+      stdout: io.stdout,
+      stderr: io.stderr,
+      env: {},
+      runApp: (async () => undefined) as never,
+      createInfraServices: (() => ({})) as never,
+      dispatchAuthCommand: auth as never,
+      dispatchUpdateCommand: (async () => 0) as never,
+    });
+    expect(status).toBe(0);
+    expect(auth).toHaveBeenCalledTimes(1);
+    expect(io.stderr.toString()).toContain("`fleet auth` moved to `fleet gateway auth`");
+  });
+
   it("reserves fleet doctor without Claude passthrough", async () => {
     expect(classifyFleetArgv(["doctor"])).toEqual({ kind: "doctor", argv: ["doctor"] });
     expect(classifyFleetArgv(["cli", "doctor"])).toEqual({

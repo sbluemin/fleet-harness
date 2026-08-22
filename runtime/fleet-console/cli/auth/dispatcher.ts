@@ -10,12 +10,15 @@ import {
   type AuthCommandIo,
 } from "./login-flow.js";
 
-const AUTH_HELP_TEXT = `fleet auth — Authentication
+const AUTH_HELP_TEXT = `fleet gateway auth — AI Gateway provider authentication
 
 Usage:
-  fleet auth login [kimi|opencode]
-  fleet auth list
-  fleet auth logout [kimi|opencode]
+  fleet gateway auth login [kimi|opencode]
+  fleet gateway auth list
+  fleet gateway auth logout [kimi|opencode]
+
+Codex, Cursor, and xAI use their own subscription credentials.
+Run fleet gateway status to see whether each one was found.
 `;
 
 export async function dispatchAuthCommand(
@@ -32,7 +35,7 @@ export async function dispatchAuthCommand(
   if (command === "list") return listAuthProviders(io, deps);
   if (command === "logout") return logoutAuthProvider(argv.slice(2), io, deps);
 
-  io.stderr.write(`Unknown fleet auth command: ${command}\n`);
+  io.stderr.write(`Unknown fleet gateway auth command: ${command}\n`);
   io.stdout.write(AUTH_HELP_TEXT);
   return 1;
 }
