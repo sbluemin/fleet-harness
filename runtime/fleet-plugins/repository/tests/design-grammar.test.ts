@@ -125,6 +125,13 @@ describe("Repository honesty grammar", () => {
   it("takes the dragged list width as a variable so the stack query can win", () => {
     expect(blockOf(".repository-staging-root.has-hunk")).toContain("var(--staging-list-width");
   });
+
+  // 컨테이너 쿼리는 컨테이너 자신에게 적용되지 않는다. 조건을 지는 요소가 스테이징 루트이므로
+  // 컨테이너는 그 부모여야 한다 — 루트가 컨테이너면 조건이 조상 폭으로 풀려 배치마다 달라진다.
+  it("owns the stack container on the parent, not on the queried element", () => {
+    expect(blockOf(".repository-staging")).toContain("container-type: inline-size");
+    expect(blockOf(".repository-staging-root")).not.toContain("container-type");
+  });
 });
 
 describe("Repository signal mixing", () => {

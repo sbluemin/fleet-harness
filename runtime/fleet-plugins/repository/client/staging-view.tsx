@@ -4,7 +4,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
-import { getT, type RepositoryMessageKey } from "./i18n/index.js";
+import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { HunkView } from "./hunk-view.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
 
@@ -19,7 +19,7 @@ const NOTICE_MS = 6000;
 
 type StatusState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly staged: readonly DiffFileEntry[]; readonly unstaged: readonly DiffFileEntry[] }
+  | { readonly kind: "ok"; readonly staged: readonly DiffFileEntry[]; readonly unstaged: readonly DiffFileEntry[]; readonly truncated?: boolean }
   | { readonly kind: "error"; readonly message: string };
 
 type Axis = "staged" | "unstaged";
@@ -32,6 +32,8 @@ interface StagingViewProps {
   readonly workstate: WorkstateResult | null;
   /** workstate 읽기가 실패한 상태 — 울타리를 모르는 채로 쓰기를 열어 두지 않는다. */
   readonly stateUnknown?: boolean;
+  /** 패널이 로컬 상태를 다시 읽을 때 함께 오르는 토큰 — 이 값이 바뀌면 스테이징 목록도 다시 읽는다. */
+  readonly reloadToken?: number;
   /** 변이 후 패널 전역 갱신 — history:true는 커밋처럼 기록 축이 실제로 움직인 변이에만 쓴다. */
   readonly onMutated: (options: { readonly history: boolean }) => void;
 }
@@ -72,7 +74,7 @@ function readListPaneWidth(): number {
  * Local Changes 스테이징 뷰 — Fork 문법의 심장부.
  * 왼쪽은 Unstaged/Staged 두 단, 오른쪽은 선택한 축의 diff, 아래는 커밋 상자다.
  */
-export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, onMutated }: StagingViewProps) {
+export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, reloadToken = 0, onMutated }: StagingViewProps) {
   const t = getT(ctx.language);
   const [status, setStatus] = useState<StatusState>({ kind: "loading" });
   const [statusRetry, setStatusRetry] = useState(0);
@@ -125,7 +127,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, onM
       return response.json() as Promise<StatusResult>;
     }).then((result) => {
       if (cancelled || seq !== requestSeqRef.current) return;
-      setStatus({ kind: "ok", staged: result.staged, unstaged: result.unstaged });
+      // 상한에 걸린 상태 목록을 전체로 그리면 "모두 스테이지"가 보이지 않는 나머지를 건드리지 않는다는
+      // 사실이 사라진다 — 사용자가 실제로 행동하는 표면이 여기이므로 잘림은 여기서 말해야 한다.
+      setStatus({ kind: "ok", staged: result.staged, unstaged: result.unstaged, ...(result.truncated ? { truncated: true } : {}) });
       setSelection((current) => {
         if (!current) return current;
         const pool = current.axis === "staged" ? result.staged : result.unstaged;
@@ -137,7 +141,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, onM
       setStatus({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
     return () => { cancelled = true; };
-  }, [ctx.api, ctx.theaterId, repoRel, statusRetry]);
+  }, [ctx.api, ctx.theaterId, repoRel, reloadToken, statusRetry]);
 
   const reloadStatus = useCallback(() => {
     setStatusRetry((value) => value + 1);
@@ -288,7 +292,8 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, onM
     <div ref={rootRef} className={`repository-root repository-staging-root${hunkSelection ? " has-hunk" : ""}${isDragging ? " is-dragging" : ""}`} style={hunkSelection ? ({ "--staging-list-width": `${listPaneWidth}px` } as CSSProperties) : undefined}>
       <div className="repository-list-pane repository-staging-lists">
         {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
-        {status.kind === "error" && <div className="repository-sections-error"><span>{status.message}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
+        {status.kind === "error" && <div className="repository-sections-error"><span>{readErrorSentence(t, status.message)}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
+        {status.kind === "ok" && status.truncated && <div className="repository-truncated-note">{t("repository.status.capped", { count: staged.length + unstaged.length })}</div>}
         {status.kind === "ok" && <>
           <StagingSection
             t={t}

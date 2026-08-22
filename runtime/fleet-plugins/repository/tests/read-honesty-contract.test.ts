@@ -1,3 +1,5 @@
+import fs from "node:fs/promises";
+
 import { describe, expect, it } from "vitest";
 
 import { REPOSITORY_MESSAGES, getT, readErrorSentence } from "../client/i18n/index.js";
@@ -66,5 +68,28 @@ describe("honesty copy exists in both locales", () => {
         expect(REPOSITORY_MESSAGES[locale][key].length).toBeGreaterThan(3);
       }
     }
+  });
+});
+
+// 정직성은 사용자가 실제로 행동하는 표면에서만 성립한다 — 잘림 고지가 렌더되지 않는 컴포넌트에
+// 앉아 있으면 "모두 스테이지"는 여전히 보이지 않는 나머지를 건드린다.
+const stagingSource = await fs.readFile(new URL("../client/staging-view.tsx", import.meta.url), "utf8");
+
+describe("the staging surface carries its own honesty", () => {
+  const source = stagingSource;
+
+  it("keeps the status cap from the server and renders it beside the lists", () => {
+    expect(source).toContain("...(result.truncated ? { truncated: true } : {})");
+    expect(source).toContain('className="repository-truncated-note"');
+    expect(source).toContain('t("repository.status.capped"');
+  });
+
+  it("re-reads the status when the panel reloads local repository state", () => {
+    expect(source).toContain("reloadToken");
+    expect(source).toMatch(/\[ctx\.api, ctx\.theaterId, repoRel, reloadToken, statusRetry\]/);
+  });
+
+  it("speaks a failed status read as a sentence", () => {
+    expect(source).toContain("readErrorSentence(t, status.message)");
   });
 });

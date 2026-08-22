@@ -1855,7 +1855,11 @@
 }
 
 /* ═══ Fork 워크벤치 — 스테이징(Local Changes) ══════════════════════════════ */
-.repository-staging { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+/* 컨테이너 쿼리는 컨테이너 자신이 아니라 자손에게만 적용된다 — 스택 조건을 지는 요소가
+   .repository-staging-root이므로 컨테이너는 그 부모가 진다. 루트가 스스로 컨테이너였을 때는
+   조건이 조상(.repository-ws-history)의 폭으로 풀려, 두 폭이 우연히 같은 워크스페이스에서만
+   맞고 레일 배치에서는 어긋났다. */
+.repository-staging { display: flex; flex-direction: column; min-height: 0; height: 100%; container-type: inline-size; }
 .repository-staging-guard {
   display: flex;
   align-items: center;
@@ -1869,7 +1873,7 @@
 }
 /* 잠금 울타리는 경고보다 한 단 단호하다 — 쓰기 동사가 실제로 비활성인 상태의 유일한 설명이다. */
 .repository-staging-guard.is-locked { color: var(--coral-ink); background: color-mix(in oklab, var(--coral) 9%, transparent); border-bottom-color: color-mix(in oklab, var(--coral) 30%, transparent); }
-.repository-staging-root { flex: 1; min-height: 0; container-type: inline-size; }
+.repository-staging-root { flex: 1; min-height: 0; }
 /* 목록 220 + 디바이더 4 + diff 140 = 364px. 그 아래에서 좌우로 나누면 목록이 82px까지 눌려
    파일명 요소 폭이 0px가 된다(실측). 두 열이 함께 설 수 없는 폭에서는 위아래로 세운다. */
 .repository-staging-root.has-hunk {

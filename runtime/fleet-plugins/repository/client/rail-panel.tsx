@@ -240,6 +240,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
+  // 로컬 상태 새로 읽기가 오를 때마다 함께 오른다 — 스테이징 뷰는 자기 상태를 따로 읽으므로
+  // 이 토큰이 없으면 트리 수치만 갱신되고 목록·파괴적 동사는 낡은 채로 남는다.
+  const [stateReloadToken, setStateReloadToken] = useState(0);
   const [workstate, setWorkstate] = useState<WorkstateResult | null>(null);
   const [workstateRetry, setWorkstateRetry] = useState(0);
   const [workstateFailed, setWorkstateFailed] = useState(false);
@@ -501,6 +504,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, workstateRetry]);
   const refreshRepositoryData = useCallback(() => {
+    setStateReloadToken((value) => value + 1);
     setRefsRetry((value) => value + 1);
     setWorktreesRetry((value) => value + 1);
     setChangedFilesRetry((value) => value + 1);
@@ -774,7 +778,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   // WORKING > Changes는 Fork 문법의 스테이징 뷰다 — 목록·diff·커밋 상자를 StagingView가 소유한다.
   // 체크아웃마다 새 인스턴스를 세운다 — 키 없이 재사용하면 이전 체크아웃의 목록·커밋 초안 위에서
   // 파괴 동사가 다른 체크아웃을 때릴 수 있다.
-  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} stateUnknown={workstateFailed} onMutated={handleWorkspaceMutated} />;
+  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} stateUnknown={workstateFailed} reloadToken={stateReloadToken} onMutated={handleWorkspaceMutated} />;
   const syncNoticeMessage = syncNotice == null ? null
     : syncNotice.kind === "error"
       ? t(syncNotice.code === "auth_failed" ? "repository.sync.failedAuth"
