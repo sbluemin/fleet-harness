@@ -7,9 +7,7 @@ import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type Compan
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
-import { ControlBar } from "./components/control-bar.js";
-import { ControlCurtain } from "./components/control-curtain.js";
-import { ControlReclaimedNotice } from "./components/control-reclaimed-notice.js";
+import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "./components/control-handover.js";
 import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
 import { OperationSearch } from "./components/operation-search.js";
