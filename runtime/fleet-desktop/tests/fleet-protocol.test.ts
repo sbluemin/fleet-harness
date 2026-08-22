@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink } from "../src/fleet-protocol.js";
+import { findAccessLinkArgument, FLEET_PROTOCOL, isFleetProtocolLink } from "../src/console-links.js";
 
 const LINK = "fleet://join?code=eyJ2IjoxLCJlbmRwb2ludCI6Imh0dHBzOi8vYS50ZXN0OjQzMTAifQ";
 

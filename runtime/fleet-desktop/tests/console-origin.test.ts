@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { isConsoleOrigin, isLoopbackConsoleOrigin, isRemoteConsoleOrigin, normalizeConsoleOrigin } from "../src/console-origin.js";
+import { isConsoleOrigin, isLoopbackConsoleOrigin, isRemoteConsoleOrigin, normalizeConsoleOrigin } from "../src/console-links.js";
 
 describe("console origin", () => {
   it("accepts a loopback console over plaintext and a remote console over TLS", () => {

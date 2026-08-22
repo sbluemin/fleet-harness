@@ -1,4 +1,4 @@
-import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-origin.js";
+import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import type { BrowserWindow, WebContents } from "electron";
 
 const DESKTOP_FULLSCREEN_PATH = "/api/v1/desktop/fullscreen";

@@ -1,4 +1,4 @@
-import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-origin.js";
+import { normalizeConsoleOrigin as normalizeAnyConsoleOrigin } from "./console-links.js";
 import { createDesktopEventStream, parseDesktopSseFrame, type DesktopEventStream } from "./desktop-event-stream.js";
 
 /**

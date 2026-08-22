@@ -14,7 +14,7 @@ import { buildApiCatalog, type ApiCatalogEntry } from "./api-catalog.js";
 import { CONTROL_CHANGED_EVENT, CONTROL_HOLDER_EVENT_CHANNEL, CONTROL_RECLAIMED_EVENT, controlChangedSnapshot, controlReclaimedSnapshot, type ControlHolderSnapshot, type ControlReclaimedReason } from "./access-control-contract.js";
 import { createAccessRegistry, createLoopbackListenerIdentity, expirePairingCookie, formatPairingCookie, formatSessionCookie, listenerAuthority, listenerOrigin, readPairingCookie, readSessionCookie, resolveListenerIdentity, type AccessAudience, type AccessClass, type AccessSession, type ListenerIdentity } from "./auth.js";
 import { createPairedDeviceStore, PAIRED_DEVICE_LIMIT } from "./paired-devices.js";
-import { listRemoteInterfaces } from "./remote-interfaces.js";
+import { listRemoteInterfaces, probeRemoteIdentity } from "./remote-discovery.js";
 import type { ConsoleEnvironmentDiagnostics, ConsoleHealth, ConsoleObserverStatus, ConsoleTheaterFolderListResponse, ConsoleTheaterInfo, ConsoleUpdateApplyAcceptedResponse, ConsoleUpdateApplyError } from "./console-contract-types.js";
 import { createCodexWorkspaceRouter } from "./codex/workspace-routes.js";
 import { createCodexGateway } from "./codex/gateway.js";
@@ -47,7 +47,6 @@ import { createRemoteIdentityStore, fingerprintsMatch } from "./remote-identity.
 import { encodeAccessLink, parseAccessLink, sanitizeAccessLabel } from "./access-link.js";
 import { createRemoteHostStore, type RemoteHostRecord } from "./remote-hosts.js";
 import { createRemoteJoinGuard, normalizeRemoteJoinSource } from "./remote-join-guard.js";
-import { probeRemoteIdentity } from "./remote-probe.js";
 import { listLocalConsoles } from "./local-consoles.js";
 import { createPluginClientAssets } from "./plugin-host/plugin-host.js";
 import { createFleetPluginHost } from "./plugin-host/plugin-host.js";

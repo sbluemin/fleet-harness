@@ -1,6 +1,6 @@
 import type { BrowserWindow, BrowserWindowConstructorOptions, WebContents } from "electron";
 
-import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-origin.js";
+import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 
 export interface SecureWindowOptions {
   readonly iconPath: string;
