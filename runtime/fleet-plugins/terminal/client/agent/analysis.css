@@ -28,10 +28,10 @@ button.session-analyst__chip { cursor: pointer; }
 button.session-analyst__chip:hover:not(:disabled) { border-color: var(--brass); color: var(--brass-ink); box-shadow: 0 0 14px var(--brass-glow); }
 button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: default; }
 /* 모드 세그먼트 — [Chat | Artifacts·n]. 선택 표시는 brass(위치 채널)만 쓴다. */
-.session-analyst__modechip { display: inline-flex; overflow: hidden; border: 1px solid var(--hairline-strong); border-radius: var(--radius-xs); background: var(--ink-mid); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; }
+.session-analyst__modechip { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid transparent; border-radius: var(--radius-md); background: var(--surface-track); font-family: var(--font-body); font-size: var(--t-sm); font-weight: var(--weight-medium); letter-spacing: -.005em; }
 .session-analyst__modechip button { display: inline-flex; align-items: center; gap: 6px; border: 0; background: transparent; color: var(--text-tertiary); padding: 5px 9px; font: inherit; letter-spacing: inherit; line-height: 1; cursor: pointer; }
-.session-analyst__modechip button + button { border-left: 1px solid var(--hairline); }
-.session-analyst__modechip button[aria-pressed="true"] { background: var(--brass-glow); color: var(--brass-ink); }
+.session-analyst__modechip button { border-radius: var(--radius-xs); }
+.session-analyst__modechip button[aria-pressed="true"] { background: var(--surface-select); box-shadow: var(--elev-select); color: var(--brass-ink); }
 .session-analyst__modechip button:disabled { color: var(--text-tertiary); opacity: .5; cursor: default; }
 /* 카운트 배지 — 기존 세로 핸들의 aurora 배지 톤을 승계한다. */
 .session-analyst__chip-count { display: grid; place-items: center; min-width: 15px; min-height: 15px; border-radius: var(--radius-pill); background: color-mix(in oklch, var(--aurora) 16%, transparent); color: var(--aurora-ink); font-weight: var(--weight-bold); font-size: var(--t-2xs); line-height: 1; }
@@ -168,7 +168,7 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
    컴포저에 근거 질문을 프리필해 분석가의 session_read 경로로 맥락을 보여준다. */
 .session-analyst__ev { display: inline-grid; place-items: center; min-width: 20px; height: 15px; padding: 0 4px; margin: 0 1px; vertical-align: 2px; border: 1px solid color-mix(in oklch, var(--aurora) 40%, var(--hairline)); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--aurora) 8%, transparent); color: var(--aurora-ink); font-family: var(--font-mono); font-weight: var(--weight-medium); font-size: 9px; line-height: 1; cursor: pointer; transition: border-color var(--duration-fast), background var(--duration-fast); }
 /* 호버 델타는 위치/호버 채널(brass) — 칩의 바탕 aurora는 인용 표식으로 남는다. */
-.session-analyst__ev:hover { border-color: var(--brass); color: var(--brass-ink); background: color-mix(in oklch, var(--brass) 10%, transparent); }
+.session-analyst__ev:hover { border-color: var(--brass); color: var(--brass-ink); background: var(--surface-hover); }
 
 /* 아티팩트 저작/발행 카드 — 스파인 열에 맞춘 인라인 카드. */
 .session-analyst__author-card { min-width: 0; flex: none; margin: var(--space-4) 0 0 26px; overflow: hidden; border: 1px solid var(--hairline); border-radius: var(--radius-md); background: var(--surface-panel-raised); padding: var(--space-3); animation: analyst-status-rise var(--duration-base) var(--ease-glide) both; }

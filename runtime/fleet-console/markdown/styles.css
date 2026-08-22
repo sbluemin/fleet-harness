@@ -541,9 +541,7 @@ code.hljs {
 }
 
 .diagram-block:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 4px;
-  box-shadow: var(--shadow-soft), 0 0 0 4px var(--brass-glow);
+  box-shadow: var(--ring-shadow), var(--shadow-soft);
 }
 
 .diagram-block svg {

@@ -7,6 +7,8 @@
 }
 
 .right-rail {
+  --ring-backdrop: var(--surface-chrome);
+  --ring-shadow: 0 0 0 2px var(--ring-backdrop), 0 0 0 4px var(--ring);
   display: flex;
   flex-direction: row;
   width: calc(44px + var(--right-rail-panel-width, 0px));
@@ -197,15 +199,18 @@
 
 .right-rail-float-toggle.is-active {
   color: var(--brass-ink);
-  background: var(--brass-glow);
-  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
+  border-color: transparent;
 }
 
-/* 활성 hover는 brass 채널을 유지한 채 테두리만 강화한다(비활성 hover의 veil 덮기 방지). */
+/* 활성 항목의 hover는 선택 면을 덮지 않는다 — 썸은 그대로 두고 라벨만 한 단 올린다.
+   여기서 배경을 다시 칠하면 마우스를 올린 순간 선택 상태가 사라진 것처럼 읽힌다. */
 .right-rail-float-toggle.is-active:hover {
-  color: var(--brass-ink);
-  background: var(--brass-glow);
-  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
+  color: var(--brass-bright);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
+  border-color: transparent;
 }
 
 .right-rail-alpha {
@@ -274,11 +279,11 @@
 }
 
 .right-rail-alpha-slider:focus-visible::-webkit-slider-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .right-rail-alpha-slider:focus-visible::-moz-range-thumb {
-  box-shadow: 0 0 0 2px var(--brass);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 /* forced-colors 모드는 box-shadow 포커스 링을 제거하므로 outline으로 병기한다. */
@@ -300,8 +305,8 @@
 
 .right-rail-close-btn {
   margin-left: auto;
-  width: 20px;
-  height: 20px;
+  width: 24px;
+  height: 24px;
   flex: none;
   display: inline-grid;
   place-items: center;
@@ -314,8 +319,8 @@
 }
 
 .right-rail-close-btn svg {
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   display: block;
 }
 
@@ -324,8 +329,6 @@
   color: var(--brass-bright);
   border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklch, var(--brass) 12%, var(--surface-glass));
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
 }
 
 .right-rail-panel-body {
@@ -415,7 +418,6 @@
 .right-rail-ico:focus-visible {
   color: var(--text-secondary);
   background: var(--surface-glass);
-  outline: none;
 }
 
 .right-rail-ico.is-active {
@@ -454,9 +456,8 @@
 }
 
 .right-rail-resize-handle:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
   background: color-mix(in oklch, var(--brass) 50%, transparent);
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .right-rail.is-dragging .right-rail-resize-handle {

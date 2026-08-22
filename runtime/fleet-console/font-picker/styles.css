@@ -56,8 +56,7 @@
 .fc-font-browser__row:focus-visible,
 .fc-font-browser__stepper:focus-visible,
 .fc-font-browser__range:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .fc-font-browser__listbox { max-height: 18rem; overflow: auto; }

@@ -22,9 +22,8 @@
 }
 
 .scuttlebutt-bird:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
   border-radius: var(--radius-md);
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-bird-tag {
@@ -620,8 +619,7 @@
 
 .scuttlebutt-arrival-open:focus-visible,
 .scuttlebutt-arrival-dismiss:focus-visible {
-  outline: 2px solid var(--positive);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-departure-bubble {
@@ -727,8 +725,7 @@
 
 .scuttlebutt-departure-open:focus-visible,
 .scuttlebutt-departure-dismiss:focus-visible {
-  outline: 2px solid var(--warn);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 부유 레이어는 클릭을 통과시키므로 실제로 그린 표면만 스스로 되살린다. */
@@ -803,8 +800,7 @@
 }
 
 .scuttlebutt-chat-moor:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-chat-moor-track {
@@ -863,7 +859,7 @@
 }
 
 .scuttlebutt-chat-tuck:focus-visible {
-  outline: 2px solid var(--brass);
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-chat-log {
@@ -981,7 +977,7 @@
 .scuttlebutt-composer input:focus {
   border-color: var(--brass);
   outline: none;
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-send {
@@ -997,7 +993,7 @@
 }
 
 .scuttlebutt-send:focus-visible {
-  outline: 2px solid var(--text-primary);
+  box-shadow: var(--ring-shadow);
 }
 
 .scuttlebutt-send:disabled {

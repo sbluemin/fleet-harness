@@ -124,8 +124,7 @@
 
 .mobile-session-close:focus-visible {
   color: var(--text-primary);
-  outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* chip-close-arm lives in components.css — same 1.5s coral arm as the desktop frame. */
@@ -142,7 +141,6 @@
 .mobile-session-close.is-armed:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
   color: var(--coral-ink);
-  outline: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -219,7 +217,6 @@
 .mobile-header-icon-button[aria-pressed="true"] {
   color: var(--text-primary);
   border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
-  outline: none;
 }
 
 .mobile-total-count {
@@ -249,7 +246,6 @@
 .mobile-new-operation:focus-visible,
 .mobile-new-operation:active {
   border-color: var(--brass);
-  outline: none;
 }
 
 .mobile-status-sections {
@@ -306,7 +302,6 @@
 .mobile-operation-card:focus-visible,
 .mobile-operation-card:active {
   border-color: color-mix(in srgb, var(--brass) 65%, var(--hairline));
-  outline: none;
 }
 
 .mobile-operation-card-copy {
@@ -384,7 +379,7 @@
 
 .mobile-theater-row:focus-visible {
   border-color: color-mix(in srgb, var(--brass) 55%, var(--hairline));
-  outline: none;
+  box-shadow: var(--ring-shadow);
 }
 
 .mobile-theater-copy {
@@ -471,8 +466,9 @@
 }
 
 .mobile-tab.is-active {
-  color: var(--text-primary);
-  background: color-mix(in srgb, var(--brass) 12%, transparent);
+  color: var(--brass-ink);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
 }
 
 .mobile-tab-icon {
@@ -566,8 +562,7 @@
 
 .mobile-settings-back:focus-visible {
   color: var(--text-primary);
-  outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 헤더는 뒤로가기·제목·저장 표시 세 자리다. 제목이 가운데 자리를 다 쓰도록 남은 둘은 늘어나지 않는다. */
@@ -648,7 +643,6 @@
 .mobile-settings-row:focus-visible,
 .mobile-settings-row:active {
   background: var(--ink-mid);
-  outline: none;
 }
 
 .mobile-settings-row-icon {

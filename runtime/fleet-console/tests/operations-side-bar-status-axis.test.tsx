@@ -91,8 +91,8 @@ describe("OperationsSideBar STATUS axis", () => {
     // 말하면서 전역 불리언 하나를 뒤집어, 한 번의 클릭이 모든 행을 함께 눌린 상태로 만든다.
     expect(container?.querySelectorAll(".side-bar-status-axis-toggle").length).toBe(0);
     expect(container?.querySelectorAll(".operations-side-bar-axis").length).toBe(1);
-    const groupSeg = required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="group"]');
-    const statusSeg = required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="status"]');
+    const groupSeg = required<HTMLButtonElement>('.fc-segmented__option[data-axis="group"]');
+    const statusSeg = required<HTMLButtonElement>('.fc-segmented__option[data-axis="status"]');
     expect(groupSeg.textContent).toBe("Groups");
     expect(statusSeg.textContent).toBe("Status");
     expect(groupSeg.getAttribute("aria-pressed")).toBe("true");
@@ -363,7 +363,7 @@ describe("OperationsSideBar STATUS axis", () => {
 
     expect(getSnapshot().operationOrder).toEqual(["first", "second"]);
 
-    act(() => required<HTMLButtonElement>('.operations-side-bar-axis-seg[data-axis="group"]').click());
+    act(() => required<HTMLButtonElement>('.fc-segmented__option[data-axis="group"]').click());
     const groupFirst = required<HTMLElement>('[data-side-bar-chip-id="first"]');
     act(() => groupFirst.dispatchEvent(new KeyboardEvent("keydown", {
       key: "ArrowDown",

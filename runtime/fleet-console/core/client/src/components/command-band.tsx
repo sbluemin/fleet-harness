@@ -25,6 +25,7 @@ import { useInlineRename } from "../use-inline-rename.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import { useViewMode } from "../view-mode-store.js";
 import { useFullscreenCommandBand } from "./use-fullscreen-command-band.js";
+import { Segmented } from "@fleet-console/sdk/components/segmented";
 
 interface NavigatorWithUserAgentData extends Navigator {
   readonly userAgentData?: {
@@ -549,24 +550,20 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
       </div>
       {operationsViewVisible ? <div ref={mapControlsRef} className={`command-band-map-controls${sideBar.collapsed ? " is-docked" : ""}`}>
         <span className="command-band-dock-divider" aria-hidden="true" />
-        <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
-          {CANVAS_MODES.map((mode) => (
-            <button
-              key={mode.id}
-              type="button"
-              className="command-band-mode-seg"
-              data-canvas-mode={mode.id}
-              disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}
-              aria-pressed={canvasMode === mode.id}
-              aria-label={t(mode.titleKey)}
-              title={t(mode.titleKey)}
-              onMouseDown={(event) => event.preventDefault()}
-              onClick={() => selectCanvasMode(mode.id)}
-            >
-              {mode.label}
-            </button>
-          ))}
-        </div>
+        <Segmented
+          className="command-band-mode-switch"
+          ariaLabel={t("chrome.commandBand.canvasMode")}
+          value={canvasMode}
+          onChange={(next) => selectCanvasMode(next)}
+          options={CANVAS_MODES.map((mode) => ({
+            value: mode.id,
+            label: mode.label,
+            title: t(mode.titleKey),
+            ariaLabel: t(mode.titleKey),
+            disabled: mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0,
+            data: { "data-canvas-mode": mode.id },
+          }))}
+        />
         {canvasMode === "cruise" ? <div className="command-band-mode-tray" role="group" aria-label={t("chrome.commandBand.cruiseTools")}>
           <span className="command-band-mode-tray-divider" aria-hidden="true" />
           <button type="button" className="command-band-mode-tool" onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })} disabled={state.activeTheaterId === null} aria-label={t("chrome.commandBand.resetCanvasView")} title={t("chrome.commandBand.resetCanvasView")}><ResetViewIcon /></button>

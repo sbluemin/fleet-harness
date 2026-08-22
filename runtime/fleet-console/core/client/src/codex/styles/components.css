@@ -748,7 +748,7 @@ kbd {
 }
 
 .manifest-link:hover {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
   border-color: color-mix(in oklch, var(--brass) 50%, transparent);
   transform: translateY(-1px);
   color: var(--brass-bright);
@@ -829,8 +829,7 @@ kbd {
 }
 
 .command-card:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
-  outline-offset: 4px;
+  box-shadow: var(--ring-shadow);
 }
 
 .command-search {
@@ -865,6 +864,7 @@ kbd {
 
 #command-input:focus-visible {
   outline: 0;
+  box-shadow: none;
   text-shadow: 0 0 18px var(--brass-glow);
 }
 
@@ -896,9 +896,7 @@ kbd {
 }
 
 .command-result:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass-bright) 30%, transparent);
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .command-result-text {
@@ -1421,7 +1419,7 @@ kbd {
 }
 
 .queue-row:hover {
-  background: color-mix(in oklch, var(--brass) 6%, transparent);
+  background: var(--surface-hover);
   border-color: color-mix(in oklch, var(--brass) 22%, transparent);
 }
 
@@ -1756,7 +1754,7 @@ kbd {
 }
 
 .queue-raw-link:hover {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
   border-color: color-mix(in oklch, var(--brass) 50%, transparent);
   transform: translateY(-1px);
   color: var(--brass-bright);
@@ -1942,7 +1940,7 @@ kbd {
 .queue-reject-textarea:focus {
   outline: none;
   border-color: var(--brass);
-  box-shadow: 0 0 0 2px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .queue-action-error {
@@ -2150,8 +2148,23 @@ kbd {
 /* ─── Codex Navigator ─────────────────────────────────────────────────────── */
 
 .codex-nav-modes { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 8px 10px 0; }
-.codex-nav-modes button { border: 0; border-bottom: 2px solid transparent; padding: 8px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
-.codex-nav-modes button[aria-selected="true"] { border-bottom-color: var(--brass); color: var(--text-primary); }
+/* ── 언더라인 탭 문법(C8) ── 인디케이터는 열이 아니라 라벨의 폭을 잰다. 열 전폭 바는 열이
+   넓어질수록 길어져서 탭이 아니라 구획선처럼 읽히고, 무엇이 선택됐는지를 폭으로 말하지 못한다. */
+.codex-nav-modes button { position: relative; border: 0; padding: 8px 8px 10px; background: transparent; color: var(--text-tertiary); cursor: pointer; }
+.codex-nav-modes button[aria-selected="true"] { color: var(--text-primary); }
+.codex-nav-modes button[aria-selected="true"]::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: max-content;
+  min-width: 24px;
+  max-width: calc(100% - 16px);
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+}
 
 .codex-nav-search {
   display: flex;
@@ -2274,12 +2287,11 @@ kbd {
 .codex-nav-health-detail:hover,
 .codex-nav-health-detail:focus-visible,
 .codex-nav-health-detail[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
 }
 
 .codex-nav-health-detail:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .codex-nav-health-popover {
@@ -2386,7 +2398,7 @@ kbd {
 }
 
 .codex-nav-active-filter:hover {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--surface-hover);
 }
 
 .codex-nav-entry {
@@ -2405,7 +2417,7 @@ kbd {
 
 .codex-nav-entry:hover,
 .codex-nav-entry:focus-within {
-  background: color-mix(in oklch, var(--brass) 6%, transparent);
+  background: var(--surface-hover);
 }
 
 .codex-nav-entry.is-current {
@@ -2488,8 +2500,7 @@ kbd {
 .codex-nav-tag:focus-visible,
 .codex-nav-sort button:focus-visible,
 .codex-nav-active-filter:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .codex-nav-loading,
@@ -2548,8 +2559,7 @@ kbd {
 .cowork-x:hover { color: var(--text-primary); }
 .cowork-pill:focus-visible, .cowork-ghost:focus-visible, .cowork-solid:focus-visible, .cowork-x:focus-visible, .cowork-chip:focus-visible, .cowork-send:focus-visible,
 .cowork-dock-input:focus-visible, .cowork-composer textarea:focus-visible, .cowork-card textarea:focus-visible {
-  outline: 2px solid var(--brass-bright);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 선택 앵커 레이어 — 문서 스크롤을 따라가는 절대 배치 오버레이 */
@@ -2750,7 +2760,11 @@ kbd {
 }
 .cowork-chip span { color: var(--brass-bright); }
 .cowork-chip:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); color: var(--text-primary); }
-.cowork-chip.is-active { background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
+.cowork-chip.is-active {
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
+  color: var(--brass-ink);
+}
 .cowork-chip--config { max-width: 16ch; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .cowork-dock-input {
@@ -2878,7 +2892,11 @@ kbd {
   transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
 .cowork-agent-row:hover { background: color-mix(in oklch, var(--ink-pearl) 8%, transparent); }
-.cowork-agent-row[aria-pressed="true"] { background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
+.cowork-agent-row[aria-pressed="true"] {
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
+  color: var(--brass-ink);
+}
 .cowork-agent-row-label { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cowork-agent-check { color: var(--brass-bright); font-size: var(--font-size-xs); inline-size: 12px; flex: none; }
 /* 손잡이는 실행 메뉴의 어휘 그대로다 — 행을 짚으면 윤곽이 먼저 서고, 짚거나 열면 brass 워시. */
@@ -2896,7 +2914,7 @@ kbd {
 .cowork-agent-row:hover .cowork-agent-effort-handle,
 .cowork-agent-row:focus-visible .cowork-agent-effort-handle { border-color: color-mix(in oklch, var(--surface-rim) 85%, transparent); }
 .cowork-agent-effort-handle:hover,
-.cowork-agent-effort-handle[data-open="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: color-mix(in oklch, var(--brass) 14%, transparent); }
+.cowork-agent-effort-handle[data-open="true"] { border-color: color-mix(in oklch, var(--brass) 40%, transparent); background: var(--surface-hover); }
 .cowork-effort-flyout {
   position: absolute;
   z-index: 9;

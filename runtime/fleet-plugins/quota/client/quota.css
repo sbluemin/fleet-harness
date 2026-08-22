@@ -193,8 +193,7 @@
 }
 
 .quota-grip:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .quota-grip:active {

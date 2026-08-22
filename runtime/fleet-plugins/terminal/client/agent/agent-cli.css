@@ -113,7 +113,8 @@
 
 .agent-cli-path-input:focus {
   border-color: var(--brass);
-  outline: 1px solid var(--brass);
+  outline: none;
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-cli-path-actions {
@@ -476,8 +477,9 @@
 }
 
 .ai-gateway-host-only.is-on {
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  border-color: transparent;
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
   color: var(--brass-ink);
 }
 
@@ -585,9 +587,9 @@
 }
 
 .ai-gateway-effort-level.is-on {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--surface-select);
   color: var(--brass-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
+  box-shadow: var(--elev-select);
 }
 
 /* 마지막 한 단계는 끌 수 없다. 켜진 채로 잠긴 상태이므로 흐리게 만들지 않는다 —

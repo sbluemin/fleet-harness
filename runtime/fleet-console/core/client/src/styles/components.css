@@ -108,11 +108,11 @@
 
 .fc-btn--secondary:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--brass) 45%, var(--hairline-strong));
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
 }
 
 .fc-btn--ghost:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -122,8 +122,7 @@
 }
 
 .fc-btn:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 /* ===== Global Settings — 전역 옵션(시스템 프롬프트 주입 + 메타포) 표면 ===== */
 .global-settings-page {
@@ -455,7 +454,7 @@
 }
 
 .global-settings-toggle:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -550,7 +549,7 @@
 .console-port-input:focus {
   outline: none;
   border-color: var(--brass);
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .console-port-input.is-invalid {
@@ -764,7 +763,6 @@
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
   color: var(--text-secondary);
-  outline: none;
 }
 
 .host-switcher-chip .host-switcher-name { color: inherit; }
@@ -956,8 +954,8 @@
 .add-host-close {
   display: grid;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
@@ -1078,8 +1076,8 @@
 .pair-close {
   display: grid;
   flex: none;
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   place-items: center;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-xs);
@@ -1496,7 +1494,7 @@
   font-size: var(--t-base);
 }
 
-.remote-host-name:focus { outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent); outline-offset: 3px; }
+.remote-host-name:focus { outline: none; box-shadow: var(--ring-shadow); }
 .remote-host-text small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
 
 .remote-host-open {
@@ -1602,10 +1600,11 @@
 .theme-mode-seg {
   display: inline-flex;
   flex: none;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
+  background: var(--surface-track);
 }
 
 .theme-mode-seg button {
@@ -1643,9 +1642,9 @@
 }
 
 .theme-mode-seg button.is-active {
-  color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
+  color: var(--brass-ink);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
 }
 
 .theme-dark-tray {
@@ -1783,7 +1782,7 @@
 
 .typography-reset:hover:not(:disabled) {
   border-color: color-mix(in oklch, var(--brass) 56%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -1982,7 +1981,7 @@
 
 .font-field:focus-within {
   border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .font-field input {
@@ -2085,9 +2084,9 @@
   border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
+  font-family: var(--font-body);
   font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   cursor: pointer;
   transition:
@@ -2100,7 +2099,8 @@
 }
 
 .segmented-option.is-active {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
   color: var(--brass-ink);
   box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
 }
@@ -2225,7 +2225,7 @@
 }
 
 .model-auth-button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -2235,7 +2235,7 @@
 }
 
 .model-auth-button.is-primary:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -2328,8 +2328,7 @@
 
 .backend-api-core-toggle:focus-visible,
 .backend-api-plugin-toggle:focus-visible {
-  outline: 1px solid var(--brass);
-  outline-offset: 5px;
+  box-shadow: var(--ring-shadow);
 }
 
 .backend-api-core-group {
@@ -2499,7 +2498,7 @@
 }
 
 .settings-disclosure-toggle:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
 }
 
@@ -3500,7 +3499,12 @@
 .canvas-triage-map-dot:focus-visible {
   border-color: var(--brass);
   box-shadow: 0 0 0 3px var(--brass-glow);
-  outline: none;
+}
+
+/* hover 글로우가 전역 포커스 링을 덮으므로 키보드 자리는 링으로 되돌린다 — 마우스 hover에는
+   글로우가, 키보드 포커스에는 링이 남는다. */
+.canvas-triage-map-dot:focus-visible {
+  box-shadow: var(--ring-shadow);
 }
 
 /* 무대 복귀 착지 확인 — 카드와 같은 positive 플래시 문법을 지도 점에도 준다(지도 모드에서는
@@ -3728,8 +3732,7 @@
 }
 
 .canvas-triage-deck-pick:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow-inset);
 }
 
 /* 검토 전 대기·도착·착지 신호는 칸이 받아 그 안의 패널 테두리로 말한다 — 신호가 칸이 아니라
@@ -3910,6 +3913,7 @@
      읽힌다. 절단 신호와 포인터 항해는 방향 스트립이, 위치 표시는 스크롤 게이지가 잇는다.
      휠·키보드 스크롤과 강도 플라이아웃의 scroll-follow는 스크롤 포트 그대로라 영향이 없다. */
   scrollbar-width: none;
+  animation: fleet-menu-in var(--duration-fast) var(--ease-spring);
 }
 
 .canvas-context-menu::-webkit-scrollbar {
@@ -4054,9 +4058,9 @@
 /* 항목은 tabIndex=-1이라 방향키로만 포커스가 옮겨온다. 프로그래매틱 포커스에서도 자리가
    보이도록 :focus-visible뿐 아니라 :focus에도 같은 brass 강조를 준다. */
 .canvas-context-menu-item:focus {
-  outline: none;
   color: var(--text-primary);
   background: color-mix(in oklch, var(--brass) 12%, transparent);
+  box-shadow: var(--ring-shadow);
 }
 
 .canvas-context-menu-help {
@@ -4734,6 +4738,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 ═══════════════════════════════════════════════════════════════════════════════════ */
 
 .operations-side-bar {
+  --ring-backdrop: var(--surface-chrome);
+  --ring-shadow: 0 0 0 2px var(--ring-backdrop), 0 0 0 4px var(--ring);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -4838,6 +4844,92 @@ body[data-side-bar-animating="true"] .canvas-operation {
 /* 축 스트립은 스크롤 목록 바깥에 고정된 하나짜리 뷰 스위치다 — 커맨드 밴드의
    .command-band-mode-switch와 같은 세그먼트 문법을 사이드바 폭에 맞춰 좁힌 것이고,
    새 어휘가 아니다. 눌림 채움은 brass(위치 채널)를 oklab에서 섞는다. */
+/* ══ 세그먼티드 컨트롤(SDK `Segmented`) ══════════════════════════════════════════
+   제품에 하나뿐인 세그먼티드 구현의 표면 규칙이다. 선택은 강조색 채움이 아니라 트랙 위에서
+   미끄러지는 썸이 말한다 — 실측에서 기존 brass 채움은 Whites에서 방향이 뒤집혀 있었고
+   (ΔL −4.8: 강조가 주변보다 어두웠다) 나머지 테마에서도 농도가 스물여덟 갈래로 갈려 있었다.
+   썸의 면·트랙의 면·고도는 전부 테마 토큰이 지므로 여기서는 형상과 운동만 적는다. */
+.fc-segmented {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 2px;
+  padding: 2px;
+  border-radius: var(--radius-md);
+  background: var(--surface-track);
+}
+
+.fc-segmented.is-stretch {
+  display: flex;
+  width: 100%;
+}
+
+.fc-segmented.is-stretch .fc-segmented__option {
+  flex: 1;
+  min-width: 0;
+}
+
+.fc-segmented__thumb {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 0;
+  border-radius: var(--radius-xs);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
+  pointer-events: none;
+}
+
+/* 첫 배치는 정지 상태로 선다 — 열자마자 썸이 왼쪽에서 날아오면 이동이 뜻을 잃는다.
+   이후 전환만 스프링으로 움직인다. */
+.fc-segmented.is-armed .fc-segmented__thumb {
+  transition:
+    transform var(--duration-base) var(--ease-spring),
+    width var(--duration-base) var(--ease-spring);
+}
+
+.fc-segmented__option {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 24px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--radius-xs);
+  background: none;
+  color: var(--text-tertiary);
+  /* 컨트롤 라벨은 사람이 누르는 낱말이지 수치가 아니다 — 텔레메트리 활자(모노)를 쓰지 않는다. */
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--duration-fast) var(--ease-glide);
+}
+
+.fc-segmented__option:hover:not(:disabled) {
+  color: var(--text-secondary);
+}
+
+.fc-segmented__option[aria-pressed="true"] {
+  color: var(--brass-ink);
+}
+
+.fc-segmented__option:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fc-segmented.is-armed .fc-segmented__thumb { transition: none; }
+}
+
+
 .operations-side-bar-axis {
   display: flex;
   flex: none;
@@ -4845,7 +4937,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   gap: 2px;
   margin: var(--space-1) var(--space-1) 2px;
   padding: 2px;
-  border: 1px solid var(--surface-rim);
+  background: var(--surface-track);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
 }
 
@@ -4865,9 +4958,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
   white-space: nowrap;
   transition:
     background var(--duration-fast) var(--ease-spring),
@@ -4881,13 +4974,13 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operations-side-bar-axis-seg[aria-pressed="true"] {
-  background: color-mix(in oklab, var(--brass) 12%, transparent);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
   color: var(--brass-ink);
 }
 
 .operations-side-bar-axis-seg:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .operations-side-bar-chips {
@@ -4944,8 +5037,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-activate:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .side-bar-theater-header {
@@ -4979,7 +5071,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--ink-deep);
   border-color: var(--surface-rim);
   color: var(--text-secondary);
-  outline: none;
 }
 
 .side-bar-theater-header:focus-visible {
@@ -5053,13 +5144,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-ghost-theater-row:focus-visible .side-bar-ghost-theater-anchor {
   border-style: solid;
   border-color: var(--brass);
-  background: var(--brass-glow);
+  background: var(--surface-hover);
   color: var(--brass-ink);
 }
 
 .side-bar-ghost-theater-row:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .side-bar-ghost-theater-row:disabled {
@@ -5141,8 +5231,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-row-btn svg {
-  width: 13px;
-  height: 13px;
+  width: 14px;
+  height: 14px;
 }
 
 .side-bar-theater-row-btn:hover,
@@ -5152,8 +5242,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-row-btn:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .side-bar-theater-groups {
@@ -5194,7 +5283,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-chip:hover,
 .side-bar-chip:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  outline: none;
 }
 
 .side-bar-chip:focus-visible {
@@ -5295,9 +5383,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .side-bar-chip-rename-input:focus {
   border-color: color-mix(in oklch, var(--brass) 68%, var(--surface-rim));
-  box-shadow:
-    inset 0 0 0 1px color-mix(in oklch, var(--brass) 20%, transparent),
-    0 0 0 2px color-mix(in oklch, var(--brass) 18%, transparent);
+  box-shadow: var(--ring-shadow);
 }
 
 /* 그룹 mark와 STATUS 축 pill은 identity 채널만 사용한다. 그룹의 resolveAccentColor(--id-*) 값은
@@ -5410,7 +5496,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   color: var(--text-secondary);
-  outline: none;
 }
 
 .side-bar-chip-close svg {
@@ -5444,7 +5529,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-chip .side-bar-chip-close.is-armed:hover,
 .side-bar-chip .side-bar-chip-close.is-armed:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
-  outline: none;
 }
 
 @keyframes chip-close-arm {
@@ -5513,8 +5597,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-status-header__toggle:hover,
 .side-bar-status-header__toggle:focus-visible {
   color: var(--text-secondary);
-  outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);
-  outline-offset: -1px;
 }
 
 .side-bar-status-header__label {
@@ -5670,7 +5752,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .side-bar-group-header__toggle:hover,
 .side-bar-group-header__toggle:focus-visible {
   color: var(--text-secondary);
-  outline: none;
 }
 
 .side-bar-group-header__arrow {
@@ -6037,8 +6118,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .canvas-operation-identity-name:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 65%, transparent);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .canvas-operation-identity-input {
@@ -6054,7 +6134,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .canvas-operation-identity-input:focus {
   border-color: var(--brass);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 32%, transparent);
+  box-shadow: var(--ring-shadow);
 }
 
 /* 캡션 More 버튼 — 사이드바 우클릭과 같은 Operation 메뉴를 여는 문.
@@ -6090,7 +6170,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-color: color-mix(in oklch, var(--ink-fog) 32%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   color: var(--text-secondary);
-  outline: none;
 }
 
 /* accent 설정 팝업 — 패널/Dock 좌측 인디케이터 클릭으로 열린다. 트리거에 앵커되는 오버레이 팝업.
@@ -6113,7 +6192,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   gap: 2px;
   padding: 6px;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-raised);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이 — maritime/carbon의 반투명
      glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
   background:
@@ -6123,6 +6202,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     ),
     var(--ink-deep);
   box-shadow: var(--shadow-anchor);
+  animation: fleet-menu-in var(--duration-fast) var(--ease-spring);
 }
 
 .group-context-menu-section-label {
@@ -6158,7 +6238,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .group-context-menu-item:focus-visible {
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
   border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
-  outline: none;
 }
 
 .group-context-menu-item:focus-visible {
@@ -6229,7 +6308,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .group-context-menu-new-input:focus {
   border-color: color-mix(in oklch, var(--brass) 60%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
+  box-shadow: var(--ring-shadow);
 }
 
 .group-context-menu-divider {
@@ -6256,7 +6335,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .accent-tone-row:focus-visible {
   border-color: color-mix(in oklch, var(--ink-fog) 20%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 8%, transparent);
-  outline: none;
 }
 
 .accent-tone-row:focus-visible {
@@ -6265,8 +6343,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .accent-tone-row[aria-pressed="true"] {
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
+  border-color: transparent;
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
 }
 
 .accent-tone-flag {
@@ -6361,8 +6440,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--brass-bright);
   border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
   background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
 }
 
 .canvas-operation-icon-button.is-active,
@@ -6517,7 +6594,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .canvas-operation .canvas-operation-window-controls .canvas-operation-icon-button.is-armed-close:focus-visible {
   background: color-mix(in oklch, var(--coral) 32%, transparent);
   color: var(--coral-ink);
-  outline: none;
 }
 
 /* 캡션은 name → More → 상시 컨트롤 순서다. 창 컨트롤은 패널 속성이라 호버 전개하지 않는다. */
@@ -7056,8 +7132,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .operations-canvas-empty-standby-chip:focus-visible,
 .operations-canvas-empty-new:focus-visible,
 .operations-canvas-empty-open-all:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 58%, transparent);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .operations-canvas-empty-new:disabled {
@@ -7689,7 +7764,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   z-index: 40;
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-raised);
   /* 팝업 판독성 계약: glass/pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의
      canonical 주석 참조) — operation-launch·캔버스 컨텍스트 메뉴가 이 규칙을 상속한다. */
   background:
@@ -7699,6 +7774,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     ),
     var(--ink-deep);
   box-shadow: var(--shadow-floating);
+  animation: fleet-menu-in var(--duration-fast) var(--ease-spring);
 }
 
 .theater-menu-list {
@@ -7729,7 +7805,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .theater-menu-item:hover:not(:disabled),
 .theater-menu-item:focus-visible {
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
 }
 
 .theater-menu-item.is-active {
@@ -8005,9 +8081,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .operation-launch-variant-row:hover,
 .operation-launch-variant-row:focus-visible,
 .operation-launch-variant-row[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
   color: var(--text-primary);
-  outline: none;
 }
 
 /* 캔버스 메뉴는 실행 종류 행과 모델 밴드를 한 목록에 세운다. 그 목록의 왼쪽 홈통은 표식 자리다 —
@@ -8074,7 +8149,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .operation-launch-variant-effort-handle:hover,
 .operation-launch-variant-effort-handle[data-open="true"] {
   border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: var(--surface-hover);
 }
 
 .operation-launch-variant-effort-gauge {
@@ -8201,8 +8276,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .effort-track:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 자동은 사다리 위의 한 단이 아니라 사다리를 쓰지 않는 상태다. 파선 테두리는 이 앱에서 "아직
@@ -8392,8 +8466,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .effort-track-apex-toggle:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .effort-track-apex-toggle[data-open="true"] {
@@ -8886,8 +8959,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .terminal-viewer-badge-action:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 줌 보정 레이어: position:relative 기준 박스를 제공해 .terminal-canvas의 역스케일(%-기반)이
@@ -8943,7 +9015,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .terminal-job-line:hover {
-  background: color-mix(in oklch, var(--brass) 7%, transparent);
+  background: var(--surface-hover);
   transform: translateX(1px);
 }
 
@@ -9217,7 +9289,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .commissioning-secondary-link:hover,
 .commissioning-skip:hover {
   border-color: color-mix(in oklch, var(--brass) 52%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--surface-hover);
 }
 
 .commissioning-error {
@@ -9388,7 +9460,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .app-toast-action:hover {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
 }
 
 .app-toast-close {
@@ -9440,8 +9512,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operation-search-card:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
-  outline-offset: 4px;
+  box-shadow: var(--ring-shadow);
 }
 
 .operation-search-field {
@@ -9587,9 +9658,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operation-search-result:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: -2px;
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass-bright) 30%, transparent);
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .operation-search-result-text {
@@ -9892,9 +9961,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .directory-browser-root-chip.is-active {
-  border-color: color-mix(in oklch, var(--brass) 54%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  color: var(--brass-bright);
+  border-color: transparent;
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
+  color: var(--brass-ink);
 }
 
 .directory-browser-root-chip:disabled {
@@ -9943,7 +10013,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .directory-browser-crumb:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  background: var(--surface-hover);
   color: var(--brass-bright);
 }
 
@@ -9975,7 +10045,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .directory-browser-filter:focus-within {
   border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .directory-browser-filter-glyph {
@@ -10065,7 +10135,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .directory-browser-jump-input:focus {
   border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
-  box-shadow: 0 0 0 3px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
   outline: none;
 }
 
@@ -10554,7 +10624,6 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
   transform: translateY(-50%) translateX(-3px);
   color: var(--brass-ink);
   background: color-mix(in oklch, var(--surface-glass) 94%, var(--ink-deep));
-  outline: none;
 }
 
 .codex-edge-handle-chevron {
@@ -10608,7 +10677,6 @@ body:has([aria-modal="true"]:not([hidden])) .codex-edge-handle {
   color: var(--text-primary);
   background: var(--surface-glass);
   border-color: var(--surface-rim);
-  outline: none;
 }
 
 /* 접힌 상태 = pane 숨김. brass로 '활성 토글'을 강조(focus-adjacent emphasis). */
@@ -10768,7 +10836,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-close:hover,
 .whatsnew-close:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 45%, transparent);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-hover);
   color: var(--brass-bright);
 }
 
@@ -10827,8 +10895,9 @@ body[data-codex-side="true"] .command-card {
 }
 
 .whatsnew-language-picker button.is-active {
-  background: color-mix(in oklch, var(--brass) 18%, transparent);
-  color: var(--brass-bright);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
+  color: var(--brass-ink);
 }
 
 .whatsnew-language-picker button:disabled {
@@ -10857,7 +10926,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-refresh:hover,
 .whatsnew-refresh:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 42%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  background: var(--surface-hover);
 }
 
 .whatsnew-refresh:disabled {
@@ -10965,7 +11034,7 @@ body[data-codex-side="true"] .command-card {
 .whatsnew-page-button:hover:not(:disabled),
 .whatsnew-page-button:focus-visible {
   border-color: color-mix(in oklch, var(--brass) 42%, transparent);
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  background: var(--surface-hover);
 }
 
 .whatsnew-page-button:disabled {
@@ -11231,8 +11300,8 @@ body[data-codex-side="true"] .command-card {
 
 .fc-settings-toggle:focus-within .fc-settings-toggle__control,
 .fc-settings-field__control:focus {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: var(--ring-shadow);
 }
 
 .fc-settings-select,
@@ -11434,7 +11503,7 @@ body[data-codex-side="true"] .command-card {
 .codex-reader-history-btn:focus-visible {
   color: var(--brass-bright);
   border-color: var(--brass-deep);
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+  background: var(--surface-hover);
 }
 
 .codex-reader-history-btn:disabled {
@@ -11455,7 +11524,7 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   background: transparent;
   color: var(--text-tertiary);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xs);
   width: 24px;
   height: 24px;
   display: grid;
@@ -11682,7 +11751,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 .codex-doc-outline-toggle:hover,
 .codex-doc-outline-toggle:focus-visible {
   color: var(--brass-bright);
-  background: color-mix(in oklch, var(--brass) 6%, transparent);
+  background: var(--surface-hover);
 }
 
 .codex-doc-outline-chevron {
@@ -11933,7 +12002,10 @@ body[data-codex-reading="true"] .operations-side-bar {
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
 .fc-select__trigger:hover { border-color: var(--surface-rim-strong); }
-.fc-select__trigger:focus-visible { outline: none; border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); }
+.fc-select__trigger:focus-visible {
+ border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));
+ box-shadow: var(--ring-shadow);
+}
 .fc-select__trigger[aria-expanded="true"] { border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); }
 .fc-select__trigger:disabled { opacity: 0.45; cursor: default; }
 .fc-select__caret { color: var(--text-tertiary); font-size: var(--t-xs); transition: transform var(--duration-fast) var(--ease-glide); }
@@ -12340,9 +12412,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-start-view-undo:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 /* ── 고정(도킹) ────────────────────────────────────────────────────────
@@ -12631,9 +12702,8 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-attachment-thumb-button:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 .quick-launch-attachment-thumb {
@@ -12688,8 +12758,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-attachment-remove:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 확대 보기 — 카드 위에 뜨는 단일 레이어. 클릭·Escape로 닫힌다(팝오버와 같은 소유). */
@@ -12739,8 +12808,7 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .quick-launch-attach:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  box-shadow: var(--ring-shadow);
 }
 
 .quick-launch-attach svg {
@@ -13658,8 +13726,6 @@ body[data-codex-reading="true"] .operations-side-bar {
 .control-bar button:hover:not(:disabled),
 .control-bar button:focus-visible {
   border-color: var(--brass-bright);
-  outline: 1px solid var(--brass);
-  outline-offset: 2px;
 }
 
 .control-curtain-actions button:disabled,
@@ -13822,7 +13888,9 @@ body[data-codex-reading="true"] .operations-side-bar {
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
 .fc-failure__action:hover { border-color: var(--brass); }
-.fc-failure__action:focus-visible { outline: none; border-color: var(--brass); box-shadow: 0 0 0 2px var(--brass-glow); }
+.fc-failure__action:focus-visible {
+  box-shadow: var(--ring-shadow);
+}
 .fc-failure__action--primary {
   background: var(--brass);
   border-color: var(--brass);

@@ -111,9 +111,8 @@
 }
 
 .fexp-divider:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
   background: color-mix(in oklab, var(--brass) 50%, transparent);
+  box-shadow: var(--ring-shadow-inset);
 }
 
 /* ── 파일 행 컨텍스트 메뉴 ── */
@@ -130,7 +129,7 @@
   overflow-y: auto;
   padding: 6px;
   border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-raised);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 ink 언더레이. */
   background:
     linear-gradient(
@@ -139,6 +138,7 @@
     ),
     var(--ink-deep);
   box-shadow: var(--shadow-anchor);
+  animation: fleet-menu-in var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-context-menu-item {
@@ -162,9 +162,9 @@
 }
 
 .fexp-context-menu-item:focus-visible {
-  outline: none;
   border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
   background: var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 .fexp-context-menu-separator {
@@ -291,8 +291,9 @@
 }
 
 .fexp-chip.is-active {
-  border-color: color-mix(in oklab, var(--brass) 55%, var(--surface-rim));
-  background: var(--brass-glow);
+  border-color: transparent;
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
 }
 
 .fexp-chip-open {
@@ -326,8 +327,7 @@
 .fexp-viewer-stale:focus-visible,
 .fexp-viewer-wrap:focus-visible,
 .fexp-tree-error-retry:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .fexp-chip-icon {
@@ -666,8 +666,7 @@
 }
 
 .fexp-tree-row:focus-visible {
-  outline: 2px solid var(--brass);
-  outline-offset: -2px;
+  box-shadow: var(--ring-shadow-inset);
 }
 
 .fexp-tree-row.is-cur {

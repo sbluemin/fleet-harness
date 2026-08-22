@@ -42,6 +42,7 @@ import {
   type SideBarStatus,
 } from "./operations-side-bar-store.js";
 import { SideBarResizeHandle, useSideBarResize } from "./side-bar-resize.js";
+import { Segmented } from "@fleet-console/sdk/components/segmented";
 
 interface OperationsSideBarProps {
   readonly theaters: readonly TheaterInfo[];
@@ -918,28 +919,17 @@ export function OperationsSideBar({
           한 번만 서고, 눌림이 아니라 낱말로 현재 축을 말한다. Theater가 없으면 정리할
           목록도 없으므로 스트립도 서지 않는다. */}
       {theaters.length > 0 ? (
-        <div className="operations-side-bar-axis" role="group" aria-label={t("sidebar.axis.aria")}>
-          <button
-            type="button"
-            className="operations-side-bar-axis-seg"
-            data-axis="group"
-            aria-pressed={!statusAxis}
-            title={t("sidebar.axis.groupTitle")}
-            onClick={() => setSideBarStatusAxis(false)}
-          >
-            {t("sidebar.axis.group")}
-          </button>
-          <button
-            type="button"
-            className="operations-side-bar-axis-seg"
-            data-axis="status"
-            aria-pressed={statusAxis}
-            title={t("sidebar.theater.sortByStatusTitle")}
-            onClick={() => setSideBarStatusAxis(true)}
-          >
-            {t("sidebar.axis.status")}
-          </button>
-        </div>
+        <Segmented
+          className="operations-side-bar-axis"
+          stretch
+          ariaLabel={t("sidebar.axis.aria")}
+          value={statusAxis ? "status" : "group"}
+          onChange={(next) => setSideBarStatusAxis(next === "status")}
+          options={[
+            { value: "group", label: t("sidebar.axis.group"), title: t("sidebar.axis.groupTitle"), data: { "data-axis": "group" } },
+            { value: "status", label: t("sidebar.axis.status"), title: t("sidebar.theater.sortByStatusTitle"), data: { "data-axis": "status" } },
+          ]}
+        />
       ) : null}
 
       <ol className="operations-side-bar-chips" ref={chipsRef} aria-label={t("sidebar.list.aria")}>

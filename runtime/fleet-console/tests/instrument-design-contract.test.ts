@@ -801,6 +801,90 @@ describe("Instrument core design contract", () => {
   // 깊이를 나르는 근사 무채색(그림자·스크림·시트)은 console CLAUDE.md가 명시한 예외라 통과시킨다.
   // 문법은 oklch 하나가 아니다 — hex·rgb·hsl로 적은 유채색도 같은 두 규칙을 깨므로 함께 막고,
   // 채널을 해석할 수 없는 함수형(color()/lab()/lch())은 통과시키지 않는다.
+  // 포커스 표시는 제품 전체에서 하나다. 이 핀이 막는 회귀는 두 가지이며 둘 다 실측으로 확인됐다:
+  //  (1) 채널 침범 — 링이 brass·aurora·warn·positive·coral 다섯 색으로 흩어져 "대기 중"과
+  //      "키보드가 여기"가 같은 색으로 말해지고 있었다(플러그인에만 aurora 링 8곳).
+  //  (2) 표현 분산 — 같은 brass가 48/55/58/65/68/70% 여섯 농도와 offset 1·2·3px으로 갈렸고,
+  //      outline:none으로 끈 뒤 자기 글로우를 다시 그린 표면이 11곳이었다(인풋의 이중 링).
+  // 그래서 표면은 자기 hover·상태 페인트만 지고, 링은 전역 규칙 하나와 두 토큰만 쓴다.
+  it("pins the single focus-ring grammar — one brass ring, no signal channel, no per-surface outline", () => {
+    const theme = source("styles/theme.css");
+    expect(theme).toContain("--ring: var(--brass);");
+    expect(theme.match(/^ {2}--ring:/gm)).toHaveLength(1);
+    expect(theme).toContain("--ring-shadow: 0 0 0 2px var(--ring-backdrop), 0 0 0 4px var(--ring);");
+    expect(theme).toContain("--ring-shadow-inset: inset 0 0 0 2px var(--ring);");
+    expect(theme).toMatch(/^:focus-visible \{\n {2}outline: none;\n {2}box-shadow: var\(--ring-shadow\);\n\}/m);
+    // box-shadow는 forced-colors에서 지워진다 — 그 모드에서만 outline으로 병기하고 시스템 색을 쓴다.
+    expect(theme).toMatch(/@media \(forced-colors: active\) \{\s*:focus-visible \{\s*outline: 2px solid Highlight;/);
+
+    const outlineViolations: string[] = [];
+    const shadowViolations: string[] = [];
+    for (const file of listProductCssFiles()) {
+      const css = fs.readFileSync(file, "utf8").replace(/\r\n/g, "\n");
+      const masked = maskCssCommentsAndStrings(css);
+      const forcedColors = [...masked.matchAll(/@media \(forced-colors: active\)\s*\{/g)].map((match) => ({
+        start: match.index,
+        end: masked.indexOf("\n}", match.index),
+      }));
+      const insideForcedColors = (index: number) =>
+        forcedColors.some((range) => index >= range.start && (range.end === -1 || index <= range.end));
+      for (const declaration of cssDeclarations(masked, "outline")) {
+        if (declaration.value === "none" || declaration.value === "0") continue;
+        if (insideForcedColors(declaration.index)) continue;
+        const selector = selectorAt(masked, declaration.index);
+        if (!selector.includes(":focus")) continue;
+        outlineViolations.push(`${consoleRelativePath(file)}:${lineAt(css, declaration.index)} ${selector}`);
+      }
+      // 포커스 전용 규칙의 box-shadow는 링 토큰이거나, 쉬는 상태의 그림자를 함께 실은 합성이어야 한다.
+      // 자기 글로우를 링 대신 그리면 굵기·농도가 다시 갈린다.
+      for (const declaration of cssDeclarations(masked, "box-shadow")) {
+        const selector = selectorAt(masked, declaration.index);
+        if (!selector.includes(":focus")) continue;
+        if (selector.includes(":hover") || selector.includes("::-")) continue;
+        if (declaration.value === "none") continue;
+        if (declaration.value.includes("var(--ring-shadow")) continue;
+        shadowViolations.push(`${consoleRelativePath(file)}:${lineAt(css, declaration.index)} ${selector}`);
+      }
+    }
+    expect(outlineViolations).toEqual([]);
+    expect(shadowViolations).toEqual([]);
+  });
+
+  // 선택 문법(C2). 이 핀이 막는 회귀는 "활성 상태를 강조색 채움으로 그리기"다 — 실측에서 그 면은
+  // 네 테마 모두 뒤 면 대비 1.16~1.22:1이었고 Whites는 농도를 올려도 회복되지 않았다(brass L 56%가
+  // L 95.5% 종이에 섞이면 거의 움직이지 않는다). 선택은 색이 아니라 고도로 말한다.
+  it("pins the selection grammar — one raised surface, no brass fill on pressed toggles", () => {
+    const theme = source("styles/theme.css");
+    // 값은 밴드 면 기준 OKLab ΔL ≈ +11로 테마마다 실측해 잡았다 — 면 분리는 WCAG 대비비가 아니라
+    // ΔL로 잰다(대비비는 어두운 두 면 사이에서 +0.05 오프셋에 눌려 1.1~1.2로 붙는다).
+    expect(theme).toContain("--surface-select: oklch(24% 0.018 245);");
+    expect(theme).toContain("--surface-select: oklch(32% 0.045 248);");
+    expect(theme).toContain("--surface-select: oklch(29% 0.007 252);");
+    expect(theme).toContain("--surface-select-edge: oklch(100% 0 0 / 8%);");
+    expect(theme).toContain("--elev-select: inset 0 1px 0 var(--surface-select-edge), 0 1px 2px oklch(0% 0 0 / 40%);");
+    // 라이트는 방향이 반대다 — 종이 위에서 "선택됨"은 더 밝게 칠하는 것이 아니라 들어 올리는 것이다.
+    const whites = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+    expect(whites).toContain("--surface-select: oklch(100% 0 0);");
+    expect(whites).toMatch(/--elev-select: inset 0 0 0 1px var\(--surface-select-edge\)/);
+
+    const canonical: Array<[string, string]> = [
+      ["styles/layout.css", '.command-band-mode-seg[aria-pressed="true"]'],
+      ["styles/layout.css", '.command-band-mode-tool[aria-pressed="true"]'],
+      ["styles/layout.css", '.command-band-button[aria-pressed="true"]'],
+      ["styles/components.css", '.operations-side-bar-axis-seg[aria-pressed="true"]'],
+      ["styles/components.css", ".theme-mode-seg button.is-active"],
+      ["styles/components.css", ".segmented-option.is-active"],
+      ["styles/mobile.css", ".mobile-tab.is-active"],
+    ];
+    for (const [file, selector] of canonical) {
+      const css = source(file);
+      const block = css.match(new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{[^}]*\\}`, "m"))?.[0] ?? "";
+      expect(block, `${file} ${selector}`).toContain("background: var(--surface-select);");
+      expect(block, `${file} ${selector}`).toContain("box-shadow: var(--elev-select);");
+      expect(block, `${file} ${selector}`).not.toMatch(/background:[^;]*--brass/);
+    }
+  });
+
   it("keeps chromatic color literals inside theme.css", () => {
     const violations: string[] = [];
     for (const file of listProductCssFiles()) {
@@ -1096,11 +1180,13 @@ describe("Instrument core design contract", () => {
     expect(shell).not.toContain("overflow: hidden;");
 
     // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
-    // 활동 축과 충돌하므로, 코어 segmented와 같은 brass 워시+brass ink+inset 링만 쓴다.
+    // 활동 축과 충돌한다. 코어 segmented와 같은 문법을 쓰되, C2 이후 그 문법은 brass 워시가 아니라
+    // 들어 올린 면(--surface-select + --elev-select)이고 brass는 라벨에만 남는다.
     const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
-    expect(on).toContain("background: color-mix(in oklch, var(--brass) 16%, transparent);");
+    expect(on).toContain("background: var(--surface-select);");
+    expect(on).toContain("box-shadow: var(--elev-select);");
     expect(on).toContain("color: var(--brass-ink);");
-    expect(on).toContain("box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);");
+    expect(on).not.toMatch(/background:[^;]*--brass/);
     for (const [, , body] of css.matchAll(/([^{}]*\.ai-gateway-effort[^{}]*)\{([^}]*)\}/g)) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive)[a-z-]*\)/);
     }
@@ -1340,7 +1426,12 @@ describe("Instrument core design contract", () => {
     expect(sidebar).not.toContain('className="side-bar-status-axis-toggle"');
     expect(sidebar).toContain('className="operations-side-bar-axis"');
     expect(sidebar).toContain('data-sidebar-axis={statusAxis ? "status" : "group"}');
-    expect(sidebar).toContain('title={t("sidebar.theater.sortByStatusTitle")}');
+    // 축 스위치는 제품에 하나뿐인 세그먼티드 구현을 쓴다 — 인라인 버튼 두 개로 되돌리면
+    // 선택 페인트가 다시 이 표면만의 것이 된다(C 이전 스물여덟 갈래가 그렇게 생겼다).
+    expect(sidebar).toContain('from "@fleet-console/sdk/components/segmented"');
+    expect(sidebar).toContain("<Segmented");
+    expect(sidebar).toContain('title: t("sidebar.theater.sortByStatusTitle")');
+    expect(sidebar).not.toContain('className="operations-side-bar-axis-seg"');
     expect(sidebar).toContain("groupTheaterStatusEntries(");
     expect(sidebar).toContain("minimizedIds.has(entry.operation.id) && !dormantIds.has(entry.operation.id)");
     expect(sidebar).toContain("<StatusRecoveryShelves");
@@ -1559,7 +1650,9 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
     // 캔버스 모드는 세그먼트 스위치 하나가 단독으로 소유한다 — 모드별 도구를 밴드에 상시
     // 늘어놓으면 다른 모드의 도구를 눌러 무경고로 모드를 이탈시킬 수 있다(2026-08 격자 클릭 사고).
-    expect(commandBand).toContain('className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}');
+    expect(commandBand).toContain('from "@fleet-console/sdk/components/segmented"');
+    expect(commandBand).toContain('className="command-band-mode-switch"');
+    expect(commandBand).toContain('ariaLabel={t("chrome.commandBand.canvasMode")}');
     // 모드는 낱말로, 모드 전용 도구는 아이콘으로 말한다 — 세그먼트에 아이콘을 더하면 클러스터가
     // 375px까지 벌어져 1280px 밴드에서 중앙 브레드크럼이 사라진다(2026-08 실측).
     expect(commandBand).toContain('{ id: "cruise", label: "Cruise", titleKey: "chrome.commandBand.modeCruise" },');
@@ -1567,7 +1660,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain('{ id: "warRoom", label: "War Room", titleKey: "chrome.commandBand.modeWarRoom" },');
     expect(commandBand).not.toMatch(/<mode\.Icon \/>/);
     expect(commandBand).toContain('const canvasMode: CanvasMode = triageActive ? "warRoom" : formationView ? "tactical" : "cruise";');
-    expect(commandBand).toContain('aria-pressed={canvasMode === mode.id}');
+    expect(commandBand).toContain("value={canvasMode}");
     // 트레이는 활성 모드의 도구만 마운트한다 — 비활성 모드 도구는 disabled가 아니라 부재다.
     expect(commandBand).toContain('{canvasMode === "cruise" ? <div className="command-band-mode-tray"');
     expect(commandBand).toContain('{canvasMode === "tactical" ? <div className="command-band-mode-tray"');
@@ -1582,7 +1675,7 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("onClick={() => { if (formationLayout !== layout.id) selectFormationLayout(layout.id); }}");
     expect(commandBand).toContain("aria-pressed={formationLayout === layout.id}");
     // Tactical은 Theater별 상태라 활성 Theater로, War Room은 전역 모드라 등록된 Theater 존재로 게이트한다.
-    expect(commandBand).toContain('disabled={mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0}');
+    expect(commandBand).toContain('disabled: mode.id === "tactical" ? state.activeTheaterId === null : state.theaters.length === 0,');
     // 모드 이름은 번역하지 않는 제품 고유 명칭이다 — 로케일 메시지에 이름을 넣으면 두 벌이 생긴다.
     expect(commandBand).not.toMatch(/t\("chrome\.commandBand\.(triage|formationView)"\)/);
     const sidebar = source("sidebar/operations-side-bar.tsx");
@@ -1755,9 +1848,11 @@ describe("Instrument core design contract", () => {
     expect(whatsNewOverlayBlock).toContain("z-index: 35;");
     // 모달 뒤로 물러나는 것은 떠 있는 밴드뿐이다 — 도킹된 밴드에 걸면 44px 빈 띠만 남는다.
     expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
-    // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 밴드 토글의 눌림은 brass 채움이다.
+    // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — C2 이후 밴드 토글의 눌림은
+    // brass 채움이 아니라 들어 올린 면이다(실측: 채움은 뒤 면 대비 1.19:1로 보이지 않았다).
     const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(pressedBandButtonBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(pressedBandButtonBlock).toContain("background: var(--surface-select);");
+    expect(pressedBandButtonBlock).toContain("box-shadow: var(--elev-select);");
     expect(pressedBandButtonBlock).toContain("color: var(--brass-ink);");
   });
 
@@ -1865,13 +1960,16 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--ink-abyss: oklch(97% 0.003 100);");
     expect(theme.match(/^:root \{/gm)).toHaveLength(1);
     // Legacy dark 테마는 팔레트 토큰만 — 광학·color-scheme과 형상·타이포 오버라이드는 진입 불가.
+    // ring·elev는 팔레트와 같은 층이다: 포커스 링 색과 고도 레시피는 테마의 대기(잉크 스케일·
+    // 대비)에 묶여 있어 테마가 재조율해야 하고, 라운드·간격·서체 같은 형상은 아니다.
+    // 이 목록을 늘릴 때는 "테마가 색으로 답해야 하는가"만 기준으로 삼을 것.
     const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(darkVariantBlocks).toHaveLength(3);
     for (const block of darkVariantBlocks) {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id)[a-z-]*:$/);
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|ring|elev)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 regular 굵기 보정)을 허용한다.
@@ -1883,7 +1981,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|ring|elev)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -2095,7 +2193,9 @@ describe("Instrument core design contract", () => {
     }
     const chatFollowHoverBlock = chat.match(/^\.agent-chat-follow:hover,\n\.agent-chat-follow:focus-visible \{[^}]*\}/m)?.[0] ?? "";
     expect(chatFollowHoverBlock).toContain("border-color: var(--brass);");
-    expect(chatFollowHoverBlock).toContain("outline: none;");
+    // 포커스 표시는 이 규칙의 몫이 아니다 — C1 이후 링은 전역 :focus-visible 하나가 그린다.
+    // 여기서 outline을 다시 적으면 그 단일성이 깨지므로 어떤 형태로도 등장하지 않아야 한다.
+    expect(chatFollowHoverBlock).not.toContain("outline");
     // 떠 있는 컨트롤은 자기 몫의 로그 여백을 함께 가진다 — 스크롤 컨테이너가 그만큼 비워 두지
     // 않으면 바닥까지 내린 마지막 줄이 컨트롤 뒤에 갇혀 스크롤로도 빠져나오지 못한다.
     // 위쪽 34px은 전환 칩 줄의 몫이었고, 그 줄이 캡션으로 떠난 지금 로그는 패널 상단에서 바로
@@ -2620,7 +2720,9 @@ describe("Instrument core design contract", () => {
     expect(armed).toContain("color: var(--coral-ink);");
     expect(armed).toContain("animation: chip-close-arm 1.5s linear forwards;");
     const focus = css.match(/^\.mobile-session-close:focus-visible \{[^}]*\}/m)?.[0] ?? "";
-    expect(focus).toContain("outline: 2px solid color-mix(in srgb, var(--brass) 55%, transparent);");
+    // brass 포커스는 유지하되 표현은 제품 공통 링이다 — 자기 농도·offset을 다시 발명하지 않는다.
+    expect(focus).toContain("box-shadow: var(--ring-shadow);");
+    expect(focus).not.toContain("outline:");
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.mobile-session-close\.is-armed \{\s*animation: none;/);
   });
 });

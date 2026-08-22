@@ -325,9 +325,8 @@
 }
 
 .agent-chat-tally-fold > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 /* 어포던스는 오직 이 꺾쇠가 진다. 이전에는 9px에 --hairline-strong이라, 쉬는 상태에서 눌리는
@@ -554,7 +553,6 @@
 .agent-chat-ask-option:focus-visible {
   border-color: var(--brass);
   background: color-mix(in oklch, var(--brass) 7%, var(--surface-panel));
-  outline: none;
 }
 
 .agent-chat-ask-option:hover:not(:disabled) .agent-chat-ask-option-label,
@@ -563,8 +561,9 @@
 }
 
 .agent-chat-ask-option[aria-pressed="true"] {
-  border-color: var(--brass);
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-panel));
+  border-color: transparent;
+  box-shadow: var(--elev-select);
+  background: var(--surface-select);
 }
 
 .agent-chat-ask-option:disabled { opacity: 0.55; cursor: default; }
@@ -609,9 +608,9 @@
 .agent-chat-ask-input::placeholder { color: var(--text-tertiary); }
 
 .agent-chat-ask-input:focus {
-  outline: 2px solid var(--brass);
-  outline-offset: 1px;
+  outline: none;
   border-style: solid;
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-ask-foot {
@@ -632,7 +631,9 @@
   cursor: pointer;
 }
 
-.agent-chat-ask-send:focus-visible { outline: 2px solid var(--brass); outline-offset: 2px; }
+.agent-chat-ask-send:focus-visible {
+ box-shadow: var(--ring-shadow);
+}
 .agent-chat-ask-send:disabled { opacity: 0.45; cursor: default; }
 
 /* 보조 동작 — 승인이 주 동작이므로 채움을 양보한다. */
@@ -664,7 +665,6 @@
 .agent-chat-ask-mini:focus-visible {
   color: var(--brass-ink);
   border-color: var(--brass);
-  outline: none;
 }
 
 .agent-chat-ask-hint {
@@ -747,9 +747,8 @@
 .agent-chat-fold > summary:hover { color: var(--text-secondary); }
 
 .agent-chat-fold > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 3px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-fold > summary::-webkit-details-marker { display: none; }
@@ -851,7 +850,7 @@
 
 .agent-chat-composer-frame:focus-within {
   border-color: var(--brass);
-  box-shadow: 0 0 0 1px var(--brass-glow);
+  box-shadow: var(--ring-shadow);
 }
 
 /* 파일을 끌어온 동안 — 어디에 놓이는지 프레임이 스스로 말한다(포커스와 같은 brass 채널). */
@@ -1009,7 +1008,7 @@
 
 .agent-chat-composer-attach:hover {
   color: var(--brass-ink);
-  background: var(--brass-glow);
+  background: var(--surface-hover);
 }
 
 .agent-chat-composer-send {
@@ -1053,7 +1052,6 @@
 .agent-chat-composer-send.is-stopping:focus-visible {
   border-color: var(--brass);
   color: var(--brass-ink);
-  outline: none;
 }
 
 .agent-chat-composer-send.is-stopping:disabled {
@@ -1165,7 +1163,11 @@
   border-color: var(--brass);
   color: var(--brass-ink);
   box-shadow: var(--brass-halo);
-  outline: none;
+}
+
+/* hover halo가 전역 포커스 링을 덮으므로 키보드 자리는 링으로 되돌린다. */
+.agent-chat-follow:focus-visible {
+  box-shadow: var(--ring-shadow);
 }
 
 /* War Room 카드의 본문은 읽는 자리다 — 승격 면이 클릭을 가로채고 본문은 inert라
@@ -1570,8 +1572,7 @@
 .agent-chat-job:hover { border-color: var(--hairline-strong); }
 
 .agent-chat-job:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-job.is-open { border-color: color-mix(in oklch, var(--aurora) 32%, var(--hairline)); }
@@ -1693,8 +1694,7 @@
 .agent-chat-strip:hover { border-color: color-mix(in oklch, var(--aurora) 55%, var(--hairline)); }
 
 .agent-chat-strip:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 3px;
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-strip-orbit {
@@ -1789,9 +1789,8 @@
 .agent-chat-work-cap:hover { color: var(--text-secondary); }
 
 .agent-chat-work-cap:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-work-cap-chev {
@@ -1848,8 +1847,7 @@
 }
 
 .agent-chat-detail-back:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 /* 중단은 되돌릴 수 없는 문이라 돌아가기와 같은 무게로 두지 않는다 — 평소에는 조용하고,
@@ -1875,8 +1873,7 @@
 }
 
 .agent-chat-detail-stop:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
+  box-shadow: var(--ring-shadow);
 }
 
 .agent-chat-detail-stop:disabled {
@@ -2115,7 +2112,6 @@
 .agent-chat-ctx-chip:focus-visible {
   border-color: var(--brass);
   color: var(--brass-ink);
-  outline: none;
 }
 
 .agent-chat-ctx-pct { color: var(--agent-chat-ctx-ink); }
@@ -2291,9 +2287,8 @@
 .agent-chat-ctx-detail > summary:hover .agent-chat-ctx-name { color: var(--text-secondary); }
 
 .agent-chat-ctx-detail > summary:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 2px;
   border-radius: var(--radius-xs);
+  box-shadow: var(--ring-shadow);
 }
 
 /* 값이 언제 잰 것인지 말하지 않으면 이 표면은 조용한 거짓말이 된다 — 자식은 턴이 끝나기 전에

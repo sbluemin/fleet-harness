@@ -107,6 +107,12 @@
       "import": "./components/effort-track.tsx",
       "default": "./components/effort-track.tsx"
     },
+    "./components/segmented": {
+      "types": "./components/segmented.tsx",
+      "browser": "./components/segmented.tsx",
+      "import": "./components/segmented.tsx",
+      "default": "./components/segmented.tsx"
+    },
     "./components/caption-actions": {
       "types": "./components/caption-actions.tsx",
       "browser": "./components/caption-actions.tsx",

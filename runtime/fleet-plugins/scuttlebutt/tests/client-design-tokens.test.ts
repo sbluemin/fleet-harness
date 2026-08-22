@@ -27,8 +27,11 @@ describe("Scuttlebutt design tokens", () => {
     expect(bubble).toMatch(/\),\s*var\(--ink-deep\);/);
     expect(label).toContain("color: var(--warn-ink);");
     expect(label).not.toContain("72%");
-    expect(focus).toContain("outline: 2px solid var(--warn);");
-    // 닫기 액션도 같은 신호 채널의 포커스 규칙을 공유한다.
+    // 포커스는 신호 채널이 아니다 — warn 링은 "이 알림이 경고"인지 "여기에 키보드가 있는지"를
+    // 같은 색으로 말하고 있었다. C1 이후 링은 brass 하나이며 표현은 --ring-shadow 하나다.
+    expect(focus).toContain("var(--ring-shadow)");
+    expect(focus).not.toContain("var(--warn)");
+    // 닫기 액션도 같은 포커스 규칙을 공유한다.
     expect(focus).toContain(".scuttlebutt-departure-dismiss:focus-visible");
   });
 

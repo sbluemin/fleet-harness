@@ -65,8 +65,6 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .right-rail-stale-veil button:hover,
 .right-rail-stale-veil button:focus-visible {
   border-color: var(--brass);
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
 }
 
 /* ---------------------------------------------------------------------------
@@ -191,8 +189,6 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .update-outcome-dismiss:hover,
 .update-outcome-dismiss:focus-visible {
   border-color: var(--brass);
-  outline: 1px solid var(--brass);
-  outline-offset: 1px;
 }
 
 .console-body,
@@ -207,6 +203,10 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
    좌우 여백 트랙은 동일 하한 + 동일 1fr이라 하한이 물려도 중심이 유지된다. 하한은 좌측 캡과
    맵 컨트롤 실측 폭에서 계산해 밴드에 주입한다(--command-band-center-gutter). */
 .command-band {
+  /* 포커스 링 안쪽 겹은 이 컨트롤들이 실제로 놓인 밴드 면이다(기본값은 패널 면).
+     --ring-shadow를 여기서 다시 조립하는 이유는 theme.css 주석 참조 — 치환은 선언 지점에서 일어난다. */
+  --ring-backdrop: var(--surface-band);
+  --ring-shadow: 0 0 0 2px var(--ring-backdrop), 0 0 0 4px var(--ring);
   --command-band-center-gutter: 44px;
   --command-band-stage-left: var(--command-band-left-width, 280px);
   --command-band-stage-right: 0px;
@@ -358,7 +358,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-local-chip:focus-visible {
   border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim));
   background: var(--surface-glass-strong);
-  outline: none;
 }
 
 .command-band-local-chip-label {
@@ -448,7 +447,9 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 .command-band-environment-row code { color: var(--text-primary); font-family: var(--font-mono); overflow-wrap: anywhere; word-break: break-all; }
 .command-band-environment-row button { padding: 2px 5px; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: var(--surface-glass); color: var(--text-secondary); font-weight: var(--weight-regular); font-size: inherit; line-height: inherit; font-family: inherit; cursor: pointer; }
 .command-band-environment-row button:hover,
-.command-band-environment-row button:focus-visible { border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim)); outline: none; }
+.command-band-environment-row button:focus-visible {
+ border-color: color-mix(in oklch, var(--ink-fog) 55%, var(--surface-rim));
+}
 .command-band-environment-footer { margin-top: var(--space-2); color: var(--text-tertiary); font-size: var(--t-2xs); }
 
 /* 좁은 뷰에서는 칩 앵커(x≈80~160) + 520px 폭이 우측을 벗어나 Copy 버튼이 잘린다 —
@@ -504,7 +505,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
   background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
   color: var(--text-secondary);
-  outline: none;
 }
 
 /* 눌린 아이콘 버튼은 밴드의 다른 토글과 같은 문법으로 말한다 — .command-band-mode-seg·
@@ -512,7 +512,8 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
    이미 이 문법을 입고 있다. 이 규칙이 없던 동안 aria-pressed는 접근성 트리에만 존재하고
    화면에는 아무 흔적도 남기지 않았다. */
 .command-band-button[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
   color: var(--brass-ink);
 }
 
@@ -561,8 +562,10 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   align-items: center;
   gap: 2px;
   padding: 2px;
-  border: 1px solid var(--surface-rim);
+  /* 테두리 대신 움푹한 트랙 — 선 하나로 묶는 대신 면을 내려 썸이 올라설 자리를 만든다. */
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
+  background: var(--surface-track);
 }
 
 .command-band-mode-seg {
@@ -575,9 +578,9 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   border-radius: 6px;
   color: var(--text-tertiary);
   white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-bold);
+  font-family: var(--font-body);
+  font-size: var(--t-sm);
+  font-weight: var(--weight-medium);
 }
 
 /* hover는 이웃 command-band-button과 동일한 링 문법 — brass 채움은 활성(pressed) 상태 전용. */
@@ -587,8 +590,16 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   color: var(--text-primary);
 }
 
+/* ── 선택 문법(C2) ── 제품의 모든 세그먼티드·토글이 공유하는 정본이다.
+   선택된 컨트롤은 강조색으로 칠하지 않고 면을 들어 올린다. 기존 레시피
+   color-mix(brass 12%)는 실측에서 뒤 면 대비 1.16~1.22:1로 사실상 보이지 않았고, 농도를 22%로
+   올려도 Whites는 1.30에 머물렀다 — brass가 L 56%라 L 95.5% 종이에 섞이면 거의 움직이지 않는다.
+   그래서 면은 --surface-select(다크는 한 단 밝은 잉크, 라이트는 순백 카드)와 --elev-select가
+   지고, brass는 라벨(--brass-ink)에만 남는다. 새 토글은 이 세 줄을 그대로 쓰고 자기 농도를
+   발명하지 않는다 — 계약 테스트가 정본 소비처 목록을 함께 고정한다. */
 .command-band-mode-seg[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
   color: var(--brass-ink);
 }
 
@@ -646,7 +657,8 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 .command-band-mode-tool[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--surface-select);
+  box-shadow: var(--elev-select);
   color: var(--brass-ink);
 }
 
@@ -732,8 +744,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 .command-band-segment-trigger:hover,
 .command-band-segment-trigger:focus-visible,
 .command-band-segment-trigger.is-open {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  outline: none;
+  background: var(--surface-hover);
 }
 
 .command-band-segment-label {
@@ -771,9 +782,13 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   max-width: min(340px, calc(100vw - 24px));
   max-height: min(60vh, 420px);
   overflow-y: auto;
-  padding: var(--space-2);
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
+  /* ── 드롭다운 문법(C4) ── 떠 있는 면은 라운드 한 단 위(md+4)와 안쪽 여백을 쓴다. 여백이 있어야
+     항목 호버가 면 가장자리에 닿지 않고 캡슐로 떠서, 목록이 아니라 고를 수 있는 것들로 읽힌다.
+     구분선도 그 여백 안으로 들여쓴다 — 전폭 선은 메뉴를 두 개의 상자로 갈라 놓는다. */
+  padding: 6px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-raised);
+  animation: fleet-menu-in var(--duration-fast) var(--ease-spring);
   /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(components.css whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
@@ -789,12 +804,17 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  padding: var(--space-2);
+  min-height: 32px;
+  padding: 0 var(--space-2);
   border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+  /* 메뉴 항목은 수치가 아니라 문장이다 — 텔레메트리 활자(모노 11px)에서 본문 티어로 내려온다.
+     한국어에는 대문자가 없어 uppercase가 라틴 라벨만 대문자로 세우고 있었고, 그 결과 같은 줄에
+     두 개의 활자 체계가 섞여 있었다. */
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.005em;
   text-align: left;
   transition:
     color var(--duration-fast) var(--ease-spring),
@@ -804,8 +824,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 .command-band-menu-item:hover:not(:disabled),
 .command-band-menu-item:focus-visible {
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  outline: none;
+  background: var(--surface-hover);
 }
 
 .command-band-menu-item.is-active {
@@ -858,7 +877,8 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 
 .command-band-menu-divider {
   height: 1px;
-  margin: var(--space-2) var(--space-1);
+  /* 안쪽 여백보다 더 들여쓴다 — 전폭 선은 한 메뉴를 두 개의 상자로 갈라 놓는다. */
+  margin: var(--space-1) var(--space-3);
   background: var(--surface-rim);
 }
 

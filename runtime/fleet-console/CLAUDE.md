@@ -42,7 +42,8 @@
 
 ## Design invariants
 
-- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location/focus/hover only, and user or agent identity uses the `--id-*` tones painted exclusively as marks (caption nameplate, rail-chip spine, minimap dot) — borders stay state-owned and identity never repaints signal surfaces or the unfocused caption fill.
+- Every color speaks on exactly one channel: signal tokens (`aurora`/`warn`/`coral`/`positive`) carry state only, `brass` carries location and focus only, and user or agent identity uses the `--id-*` tones painted exclusively as marks (caption nameplate, rail-chip spine, minimap dot) — borders stay state-owned and identity never repaints signal surfaces or the unfocused caption fill.
+- Interaction state is carried by form, not by one colour at four strengths: hover is a neutral surface (`--surface-hover`), selection is a raised surface (`--surface-select` + `--elev-select`), current location is a spine, and keyboard focus is the single ring (`--ring-shadow`). No surface reinvents a focus outline or paints selection as a brass fill; the segmented control has exactly one implementation, the SDK `Segmented`.
 - Core and built-in plugin CSS consume colors only as theme tokens via `var()`/`color-mix`; chromatic raw literals live solely in `theme.css` token definitions so all three themes retune together. Near-achromatic shadow, scrim, and sheen literals that carry depth rather than hue are the sanctioned exception.
 - `tests/instrument-design-contract.test.ts` pins the design grammar: a legitimate grammar change updates the contract together with the change, and intentional exceptions are recorded as doctrine comments beside the exempted CSS rule.
 

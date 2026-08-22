@@ -101,12 +101,13 @@ describe("Repository honesty grammar", () => {
     }
   });
 
-  // 로컬 상태를 다시 읽는 컨트롤은 쉬는 상태에서 위치 채널을 켜지 않는다 — brass는 hover/focus에만.
-  it("rests the reload control on neutral ink and takes brass only on focus", () => {
+  // 로컬 상태를 다시 읽는 컨트롤은 쉬는 상태에서 위치 채널을 켜지 않는다. 포커스 표시는 C1 이후
+  // 이 표면의 몫이 아니라 제품 공통 링(--ring-shadow)이며, 링의 색은 brass 하나다.
+  it("rests the reload control on neutral ink and takes the shared ring only on focus", () => {
     const rest = blockOf(".repository-reload-state");
     expect(rest).toContain("var(--text-tertiary)");
     expect(rest).not.toContain("var(--brass)");
-    expect(blockOf(".repository-reload-state:focus-visible")).toContain("var(--brass)");
+    expect(blockOf(".repository-reload-state:focus-visible")).toContain("var(--ring-shadow)");
   });
 
   // 목록 220 + 디바이더 4 + diff 140 = 364px. 그 아래에서 좌우 분할을 유지하면 목록이 82px까지
@@ -277,8 +278,9 @@ describe("Repository design grammar", () => {
     expect(sectionHeadHover).toContain("color: var(--text-secondary)");
 
     const sectionHeadFocus = blockOf(".repository-ws-section-head:focus-visible");
-    expect(sectionHeadFocus).toContain("outline: 1px solid var(--brass)");
-    expect(sectionHeadFocus).toContain("outline-offset: -1px");
+    // 자기 outline 대신 공통 링을 쓴다 — 농도·offset을 표면마다 다시 정하지 않는다.
+    expect(sectionHeadFocus).toContain("var(--ring-shadow)");
+    expect(sectionHeadFocus).not.toContain("outline:");
 
     const chevrons = blocksOf(".repository-folder-chevron");
     expect(chevrons[0]).toContain("width: 11px");
