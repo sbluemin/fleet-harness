@@ -63,6 +63,19 @@ const STAGE_SPREAD_GUIDANCE = [
 ].join(" ");
 
 /**
+ * 이 검사가 스크립트 어디를 보는지.
+ *
+ * 값 스캔은 원문 전체를 훑으므로 `meta.phases[].model`도 함께 걸린다. 그런데 거절 사유가
+ * `opts.model`을 특정하면 호스트는 멀쩡한 스테이지 핀을 들여다보며 시간을 쓴다 — 실제로
+ * `meta.phases`에 사람이 읽는 라벨을 적었다가 엉뚱한 필드를 지목받은 사례가 있었다. 그래서
+ * 필드를 특정하지 않고, 대신 어디까지가 판정 대상인지를 말한다.
+ */
+const SCANNED_FIELDS = [
+  "Every model: value in the script is judged, a meta.phases entry's included —",
+  "leave that field out unless it names the same model its stages pin.",
+].join(" ");
+
+/**
  * 정체성이 핀되지 않은 위임으로 취급하는 Agent 타입.
  *
  * 내장 전문 에이전트(Explore/Plan/…)와 fork는 통과시킨다. fork는 부모 컨텍스트를 잇는 것이
@@ -170,8 +183,10 @@ function assertWorkflowModelValues(script) {
     }
     if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
-      `opts.model is not a value this run can resolve: "${value}". Copy a modelId from gateway_models verbatim, ` +
-        "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku). " +
+      `A model value in this script is not one this run can resolve: "${value}". ` +
+        SCANNED_FIELDS +
+        " Copy a modelId from gateway_models verbatim, the claude-gateway-- prefix included, " +
+        "or use a lineage alias (fable|opus|sonnet|haiku). " +
         STAGE_SPREAD_GUIDANCE
     );
   }

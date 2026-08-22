@@ -162,6 +162,24 @@ describe("gateway model guard — Workflow delegation", () => {
     }
   });
 
+  // 값 스캔은 원문 전체를 훑으므로 meta.phases[].model도 걸린다. 거절 사유가 opts.model을
+  // 특정하면 호스트는 멀쩡한 스테이지 핀을 들여다본다 — 실제로 그 사고가 있었다.
+  it("names the whole scanned surface instead of blaming opts.model", () => {
+    const script = [
+      "export const meta = {",
+      "  name: 'x', description: 'y',",
+      "  phases: [{ title: 'Map', detail: 'boundaries', model: 'codex gpt-5.6-luna @xhigh' }],",
+      "}",
+      "await agent('do', { model: 'claude-gateway--codex--gpt-5.6-luna', effort: 'xhigh' })",
+    ].join("\n");
+    const { status, stderr } = gateWorkflow({ script });
+    expect(status).toBe(2);
+    expect(stderr).toContain("codex gpt-5.6-luna @xhigh");
+    expect(stderr).toContain("a meta.phases entry's included");
+    // 스테이지 핀은 멀쩡하므로 그 필드를 지목해서는 안 된다.
+    expect(stderr).not.toContain("opts.model is not a value");
+  });
+
   it("counts every unpinned stage in one script", () => {
     const { status, stderr } = gateWorkflow({
       script: [
