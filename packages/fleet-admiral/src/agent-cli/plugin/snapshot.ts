@@ -185,6 +185,11 @@ function hasLiveLease(
 /**
  * best-effort 회수. 현재 스냅숏과 살아 있는 리스가 있는 스냅숏은 절대 지우지 않고,
  * 나머지는 유예를 넘겼거나 상한을 초과한 오래된 것부터 지운다. 어떤 실패도 런치를 막지 않는다.
+ *
+ * 리스 흔적이 남은(파일은 있는데 pid가 전부 죽은) 스냅숏은 유예 안에서는 상한으로도 지우지
+ * 않는다 — 데몬이 재시작하면 리스 pid는 죽어 보여도 그 데몬이 띄운 Claude 자식이 아직 그
+ * 트리의 훅을 읽고 있을 수 있다. 상한은 정상 반납되어 리스 흔적이 전혀 없는, 고아가 있을 수
+ * 없는 스냅숏에만 적용한다.
  */
 export function gcPluginSnapshots(
   snapshotsRoot: string,
@@ -196,7 +201,7 @@ export function gcPluginSnapshots(
   const isPidAlive = deps.isPidAlive ?? isProcessAlive;
   try {
     const snapshotPattern = new RegExp(`^${escapeRegExp(stem)}-[0-9a-f]{${SNAPSHOT_HASH_PREFIX_LENGTH}}$`);
-    const unpinned: Array<{ readonly dirName: string; readonly lastUsedAt: number }> = [];
+    const unpinned: Array<{ readonly dirName: string; readonly hasLeaseTrace: boolean; readonly lastUsedAt: number }> = [];
     for (const entry of readdirSync(snapshotsRoot)) {
       try {
         if (entry.startsWith(STAGING_PREFIX)) {
@@ -207,7 +212,11 @@ export function gcPluginSnapshots(
         }
         if (!snapshotPattern.test(entry) || entry === keepDirName) continue;
         if (hasLiveLease(snapshotsRoot, entry, isPidAlive)) continue;
-        unpinned.push({ dirName: entry, lastUsedAt: snapshotLastUsedAt(snapshotsRoot, entry) });
+        unpinned.push({
+          dirName: entry,
+          hasLeaseTrace: hasAnyLeaseTrace(snapshotsRoot, entry),
+          lastUsedAt: snapshotLastUsedAt(snapshotsRoot, entry),
+        });
       } catch {
         continue;
       }
@@ -216,7 +225,8 @@ export function gcPluginSnapshots(
     for (const [index, snapshot] of unpinned.entries()) {
       const beyondCap = unpinned.length - index > GC_MAX_UNPINNED_SNAPSHOTS;
       const beyondGrace = now() - snapshot.lastUsedAt > GC_GRACE_MS;
-      if (!beyondCap && !beyondGrace) continue;
+      const capCollectable = beyondCap && !snapshot.hasLeaseTrace;
+      if (!capCollectable && !beyondGrace) continue;
       try {
         removePrivatePath(path.join(snapshotsRoot, snapshot.dirName), snapshotsRoot);
         removePrivatePath(leasesRootFor(snapshotsRoot, snapshot.dirName), snapshotsRoot);
@@ -227,6 +237,13 @@ export function gcPluginSnapshots(
   } catch {
     return;
   }
+}
+
+/** 리스 파일이 하나라도 남아 있는가 — pid 생사와 무관한 흔적 판정. 정상 반납된 세션은 파일을 지우고 간다. */
+function hasAnyLeaseTrace(snapshotsRoot: string, dirName: string): boolean {
+  const leaseDir = leasesRootFor(snapshotsRoot, dirName);
+  if (!existsSync(leaseDir)) return false;
+  return readdirSync(leaseDir).length > 0;
 }
 
 function snapshotLastUsedAt(snapshotsRoot: string, dirName: string): number {

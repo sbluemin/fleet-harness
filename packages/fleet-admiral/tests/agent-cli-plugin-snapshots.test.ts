@@ -218,8 +218,48 @@ describe("agent CLI plugin snapshot store", () => {
     });
 
     const survivors = readdirSync(root).filter((entry) => SNAPSHOT_DIR_PATTERN.test(entry)).sort();
-    // 유예 안이라도 무리스 스냅숏은 상한(8)까지만 남는다 — 가장 오래된 것부터 걷힌다.
+    // 유예 안이라도 리스 흔적 없는 스냅숏은 상한(8)까지만 남는다 — 가장 오래된 것부터 걷힌다.
     expect(survivors).toEqual(dirNames.slice(2).sort());
+  });
+
+  // 데몬이 재시작하면 리스 pid는 죽어 보여도 그 데몬이 띄운 자식이 스냅숏을 읽고 있을 수 있다.
+  // 죽은 pid라도 리스 흔적이 남아 있으면 유예 안에서는 상한으로도 걷지 않는다.
+  it("keeps a dead-pid-leased snapshot inside the grace window even beyond the cap", () => {
+    const root = mkdtempSync(path.join(os.tmpdir(), "fleet-admiral-snapshot-orphan-"));
+    tempDirs.push(root);
+    const dirNames: string[] = [];
+    for (let index = 0; index < 10; index += 1) {
+      const dirName = `fleet-gateway-${index.toString(16).padStart(16, "0")}`;
+      dirNames.push(dirName);
+      mkdirSync(path.join(root, dirName), { recursive: true });
+      writeFileSync(
+        path.join(root, dirName, ".fleet-snapshot.json"),
+        `${JSON.stringify({ version: 1, contentHash: dirName.slice("fleet-gateway-".length), renderedAt: 1_000 + index }, null, 2)}\n`,
+      );
+    }
+    // 가장 오래된 스냅숏에 죽은 pid의 리스 흔적을 남긴다 — 고아 자식이 있을 수 있는 상태.
+    const orphanLeaseDir = path.join(root, "leases", dirNames[0]!);
+    mkdirSync(orphanLeaseDir, { recursive: true });
+    writeFileSync(path.join(orphanLeaseDir, "12345-orphan.json"), `${JSON.stringify({ pid: 12345, startedAt: 1_000 })}\n`);
+
+    gcPluginSnapshots(root, "fleet-gateway", "fleet-gateway-current0000000", {
+      now: () => 2_000,
+      isPidAlive: () => false,
+    });
+
+    const survivors = readdirSync(root).filter((entry) => SNAPSHOT_DIR_PATTERN.test(entry)).sort();
+    // 흔적 있는 0번은 상한을 이겨 살아남고, 흔적 없는 1번만 상한으로 걷힌다.
+    expect(survivors).toContain(dirNames[0]!);
+    expect(survivors).not.toContain(dirNames[1]!);
+
+    // 유예를 넘기면 죽은 pid 리스 흔적도 더는 보호가 아니다 — 잔존 리스크는 24h로 수용한다.
+    // lastUsedAt은 리스 파일의 실제 mtime도 반영하므로 실제 시계 기준으로 유예를 넘긴다.
+    gcPluginSnapshots(root, "fleet-gateway", "fleet-gateway-current0000000", {
+      now: () => Date.now() + 25 * 60 * 60 * 1000,
+      isPidAlive: () => false,
+    });
+    expect(readdirSync(root).filter((entry) => SNAPSHOT_DIR_PATTERN.test(entry))).toEqual([]);
+    expect(existsSync(orphanLeaseDir)).toBe(false);
   });
 
   it("serializes concurrent acquisitions through the store lock and converges on one snapshot", async () => {
