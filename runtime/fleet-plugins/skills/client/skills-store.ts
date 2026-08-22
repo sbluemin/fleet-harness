@@ -104,11 +104,6 @@ export function setInstalledState(contextKey: string, list: readonly SkillListIt
   emit();
 }
 
-export function setUpdateJob(jobId: string | null, scope: Scope | null): void {
-  state = { ...state, updateJobId: jobId, updateJobScope: scope };
-  emit();
-}
-
 export function setInstallFormOpenId(id: string | null): void {
   state = { ...state, installFormOpenId: id };
   emit();

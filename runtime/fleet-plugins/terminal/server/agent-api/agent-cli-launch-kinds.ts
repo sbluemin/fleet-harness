@@ -68,7 +68,7 @@ export function buildAgentCliLaunchKinds(
     });
 }
 
-export function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
+function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
   const native: OperationLaunchVariantGroup = {
     id: "native",
     label: "Claude",

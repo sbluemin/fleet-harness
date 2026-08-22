@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { blocksOperationsShortcutWhileEditing } from "../core/client/src/operations-editing-shortcut-guard.js";
+import { blocksOperationsShortcutWhileEditing } from "../core/client/src/shortcuts.js";
 
 describe("Operations shortcut guard while editing", () => {
   it("lets every shortcut through when nothing is being edited", () => {

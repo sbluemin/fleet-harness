@@ -89,7 +89,7 @@ export async function validatePatch(patch: Patch, paths: MemoryPaths): Promise<v
   if (op === "update_wiki" && !(await pathExists(absoluteTarget))) throw new Error("update_wiki target does not exist");
 }
 
-export async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
+async function applyPatch(patch: Patch, paths: MemoryPaths): Promise<string> {
   await validatePatch(patch, paths);
   await validatePatchBase(patch, undefined, paths);
   await ensureWorkspaceSchema(paths);
@@ -672,9 +672,9 @@ export const REQUIRED_WIKI_FRONTMATTER_KEYS = [
 ] as const;
 
 export const PATCH_SET_DIRNAME = "_sets";
-export const PATCH_SET_META_FILENAME = PATCH_META_FILENAME;
+const PATCH_SET_META_FILENAME = PATCH_META_FILENAME;
 
-export function getPatchSetDir(paths: MemoryPaths, patchSetId: string): string {
+function getPatchSetDir(paths: MemoryPaths, patchSetId: string): string {
   assertSafePatchSetId(patchSetId);
   const patchSetDir = path.join(paths.queueDir, PATCH_SET_DIRNAME, patchSetId);
   const relative = path.relative(path.join(paths.queueDir, PATCH_SET_DIRNAME), patchSetDir);
@@ -684,7 +684,7 @@ export function getPatchSetDir(paths: MemoryPaths, patchSetId: string): string {
   return patchSetDir;
 }
 
-export function getPatchSetMetaFile(paths: MemoryPaths, patchSetId: string): string {
+function getPatchSetMetaFile(paths: MemoryPaths, patchSetId: string): string {
   return path.join(getPatchSetDir(paths, patchSetId), PATCH_SET_META_FILENAME);
 }
 

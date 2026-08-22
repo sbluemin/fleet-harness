@@ -48,11 +48,11 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let delegatedTimer: ReturnType<typeof setTimeout> | null = null;
 let watchStartedAt: number | null = null;
 
-export function getUpdateProgressSnapshot(): UpdateProgressSnapshot {
+function getUpdateProgressSnapshot(): UpdateProgressSnapshot {
   return store;
 }
 
-export function subscribeUpdateProgress(listener: Listener): () => void {
+function subscribeUpdateProgress(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }

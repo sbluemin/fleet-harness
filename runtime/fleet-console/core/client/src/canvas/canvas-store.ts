@@ -66,8 +66,8 @@ const DEFAULT_OPERATION_HEIGHT = 400;
 const DEFAULT_OPERATION_OFFSET = 40;
 export const MIN_OPERATION_WIDTH = 320;
 export const MIN_OPERATION_HEIGHT = 200;
-export const OPERATION_GRID_GAP = 8;
-export const OPERATION_GRID_PADDING = 0;
+const OPERATION_GRID_GAP = 8;
+const OPERATION_GRID_PADDING = 0;
 // 본문 위에 붙는 창 캡션 높이. CSS top:-32px / height:32px 와 한 값이다.
 // grid/rows 행 보폭에 넣어 아래 행 캡션이 위 행 본문을 침범하지 않게 한다.
 export const OPERATION_WINDOW_CAPTION_HEIGHT = 32;
@@ -560,16 +560,6 @@ export function setOperationAccent(operationId: string, accentKey: string | null
   setState({ operationAccent });
 }
 
-export function forgetOperationMetadata(operationId: string): void {
-  const operationOrder = state.operationOrder.filter((id) => id !== operationId);
-  const orderChanged = operationOrder.length !== state.operationOrder.length;
-  const accentChanged = operationId in state.operationAccent;
-  if (!orderChanged && !accentChanged) return;
-  const operationAccent = { ...state.operationAccent };
-  delete operationAccent[operationId];
-  setState({ operationOrder, operationAccent });
-}
-
 // 공유 z-index 카운터에서 다음 최상단 값을 발급한다. Operation을 활성화·생성할 때 호출한다.
 export function claimTopZIndex(): number {
   topZIndex += 1;
@@ -578,7 +568,7 @@ export function claimTopZIndex(): number {
 
 // 공유 카운터를 주어진 값 이상으로 끌어올린다. Operation 레지스트리가 새로고침 복원 시
 // 복원된 셸의 최대 zIndex를 반영해, "활성화→최상단"이 Operations·셸을 가로질러 계속 성립하게 한다.
-export function liftTopZIndex(toAtLeast: number): void {
+function liftTopZIndex(toAtLeast: number): void {
   topZIndex = Math.max(topZIndex, toAtLeast);
 }
 
@@ -995,14 +985,14 @@ export function setFormationLayout(layout: FormationLayout): void {
   emitFormationLayout();
 }
 
-export function subscribeFormationView(listener: Listener): () => void {
+function subscribeFormationView(listener: Listener): () => void {
   formationViewListeners.add(listener);
   return () => {
     formationViewListeners.delete(listener);
   };
 }
 
-export function subscribeFormationLayout(listener: Listener): () => void {
+function subscribeFormationLayout(listener: Listener): () => void {
   formationLayoutListeners.add(listener);
   return () => {
     formationLayoutListeners.delete(listener);

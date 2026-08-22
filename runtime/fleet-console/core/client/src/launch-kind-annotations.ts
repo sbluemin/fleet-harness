@@ -13,7 +13,7 @@ export interface LaunchKindAnnotation {
   readonly briefKey: CoreMessageKey;
 }
 
-export const LAUNCH_KIND_ANNOTATIONS: Readonly<Record<string, LaunchKindAnnotation>> = {
+const LAUNCH_KIND_ANNOTATIONS: Readonly<Record<string, LaunchKindAnnotation>> = {
   "claude-gateway": {
     descriptionKey: "launchKind.claudeGateway.description",
     briefKey: "launchKind.claudeGateway.brief",

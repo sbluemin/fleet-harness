@@ -53,7 +53,7 @@ export function appendUser(state: ChatState, text: string): ChatState {
   };
 }
 
-export function quietToolStatus(title: string, status: string, locale?: ConsoleLocale): string {
+function quietToolStatus(title: string, status: string, locale?: ConsoleLocale): string {
   const t = getT(locale);
   const combined = `${title} ${status}`.toLowerCase();
   if (combined.includes("search")) return t("status.searching");

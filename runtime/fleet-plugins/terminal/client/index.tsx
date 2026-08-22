@@ -9,7 +9,7 @@ import "./assets/fonts/symbols-nerd-font-mono.css";
 
 const AGENT_OPERATION_TYPES = new Set(["agent"]);
 
-export const terminalPlugin = definePlugin({
+const terminalPlugin = definePlugin({
   id: "terminal",
   operationKinds: [shellOperationKind, agentOperationKind],
   settingsSections: [generalSettingsSection, agentSettingsSection],

@@ -6,7 +6,7 @@ import { useT } from "../i18n/index.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { theaterInitials } from "../sidebar/operations-side-bar.js";
 import { setActiveTheater } from "../store.js";
-import { registerTheaterFromPath } from "../theater-crud.js";
+import { registerTheaterFromPath } from "../theater.js";
 import type { ConsoleState } from "../types.js";
 import { setMobileTab } from "./mobile-store.js";
 import "../styles/mobile.css";

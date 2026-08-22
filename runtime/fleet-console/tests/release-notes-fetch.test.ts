@@ -24,7 +24,7 @@ describe("release notes fetch coordination", () => {
       return promise;
     });
     globalThis.fetch = fetchMock as typeof fetch;
-    const { requestReleaseNotes } = await import("../core/client/src/release-notes-fetch.js");
+    const { requestReleaseNotes } = await import("../core/client/src/whatsnew.js");
     const { getState } = await import("../core/client/src/store.js");
 
     const english = requestReleaseNotes({ locale: "en" });

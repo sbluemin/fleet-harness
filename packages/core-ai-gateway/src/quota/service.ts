@@ -182,5 +182,3 @@ export function createQuotaService(deps: QuotaServiceDeps): QuotaService {
     },
   };
 }
-
-export const quotaServiceConstants = { CACHE_TTL_MS, STALE_TTL_MS } as const;

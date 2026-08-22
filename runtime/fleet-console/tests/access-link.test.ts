@@ -10,7 +10,7 @@ import {
   sanitizeAccessLabel,
   type AccessLinkPayload,
   type ValidatedAccessLink,
-} from "../access-protocol/index.js";
+} from "@fleet-console/access-protocol";
 
 interface AccessProtocolVectors {
   readonly positive: ReadonlyArray<{

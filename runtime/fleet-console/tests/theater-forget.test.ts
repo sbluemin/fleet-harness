@@ -34,7 +34,7 @@ vi.mock("../core/client/src/store.js", () => ({
   removeTheater: mocks.removeTheater,
 }));
 
-import { forgetTheaterCompletely } from "../core/client/src/theater-crud.js";
+import { forgetTheaterCompletely } from "../core/client/src/theater.js";
 
 const RECEIPT = {
   deletionId: "deletion-theater-a",

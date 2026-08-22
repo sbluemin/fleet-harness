@@ -47,7 +47,7 @@ export interface ResolveXaiCliVersionOptions {
 }
 
 /** The Grok CLI home the official installer and this resolver share. */
-export function grokHomeDir(deps: CredentialResolverDeps): string {
+function grokHomeDir(deps: CredentialResolverDeps): string {
   return optionalTrimmedString(deps.env.GROK_HOME) ?? path.join(deps.homedir(), ".grok");
 }
 
@@ -123,9 +123,4 @@ let cached: Promise<string> | undefined;
 export function xaiCliClientVersion(options: ResolveXaiCliVersionOptions = {}): Promise<string> {
   cached ??= resolveXaiCliClientVersion(options).catch(() => XAI_CLI_FALLBACK_CLIENT_VERSION);
   return cached;
-}
-
-/** Test seam: forget the resolved version. */
-export function resetXaiCliClientVersion(): void {
-  cached = undefined;
 }

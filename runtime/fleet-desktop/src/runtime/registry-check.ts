@@ -79,7 +79,7 @@ export function createRegistryChecker(options: RegistryCheckerOptions): Registry
   };
 }
 
-export function createRegistryCheckDependencies(): RegistryCheckDependencies {
+function createRegistryCheckDependencies(): RegistryCheckDependencies {
   return { fetch: async (url, init) => fetch(url, init), fileSystem: { readFile: async (target) => readFile(target, "utf8"), writeFile: async (target, content) => { await writeFile(target, content); } }, setInterval, clearInterval };
 }
 

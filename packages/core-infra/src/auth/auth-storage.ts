@@ -22,7 +22,7 @@ const AUTH_LOCK_TIMEOUT_MS = 5_000;
  * 심볼릭링크(ELOOP)·권한(EACCES)·파싱 오류는 모두 삼키고 빈 store({})를 반환한다.
  * auth-storage(서비스 읽기 경로)가 공유하는 symlink 방어 읽기의 단일 구현이다.
  */
-export function readAuthStoreFile(filePath: string): AuthStorageData {
+function readAuthStoreFile(filePath: string): AuthStorageData {
   let fd: number | undefined;
   try {
     fd = fs.openSync(filePath, fs.constants.O_RDONLY | NOFOLLOW_FLAG);

@@ -16,7 +16,7 @@ export interface CanvasViewport {
   readonly zoom: number;
 }
 
-export function canvasToScreen(point: CanvasPoint, viewport: CanvasViewport): CanvasPoint {
+function canvasToScreen(point: CanvasPoint, viewport: CanvasViewport): CanvasPoint {
   return {
     x: point.x * viewport.zoom + viewport.x,
     y: point.y * viewport.zoom + viewport.y,
@@ -36,15 +36,6 @@ export function canvasRectToScreen(rect: CanvasRect, viewport: CanvasViewport): 
     ...point,
     width: rect.width * viewport.zoom,
     height: rect.height * viewport.zoom,
-  };
-}
-
-export function screenRectToCanvas(rect: CanvasRect, viewport: CanvasViewport): CanvasRect {
-  const point = screenToCanvas(rect, viewport);
-  return {
-    ...point,
-    width: rect.width / viewport.zoom,
-    height: rect.height / viewport.zoom,
   };
 }
 

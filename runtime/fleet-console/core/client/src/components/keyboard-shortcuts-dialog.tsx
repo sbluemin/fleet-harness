@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 
-import { useActiveCompanionShortcuts } from "../active-companion-shortcuts.js";
+import { buildShortcutGroups, useActiveCompanionShortcuts } from "../shortcuts.js";
 import { useT } from "../i18n/index.js";
-import { buildShortcutGroups } from "../shortcuts-catalog.js";
 
 interface KeyboardShortcutsDialogProps {
   readonly onClose: () => void;

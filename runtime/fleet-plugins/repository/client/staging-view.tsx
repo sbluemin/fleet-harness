@@ -47,7 +47,7 @@ export function guardMessageOf(workstate: WorkstateResult | null, t: T): string 
   return null;
 }
 
-export function stationedMessageOf(workstate: WorkstateResult | null, t: T): string | null {
+function stationedMessageOf(workstate: WorkstateResult | null, t: T): string | null {
   const stationed = workstate?.stationedOperations ?? [];
   if (stationed.length === 0) return null;
   return stationed.length === 1

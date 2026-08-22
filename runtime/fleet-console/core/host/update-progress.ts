@@ -85,7 +85,7 @@ export function readConsoleUpdateProgress(dataDir: string, deps: ReadConsoleUpda
   return toConsoleUpdateProgressStatus(record, now());
 }
 
-export function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowMs: number): ConsoleUpdateProgressStatus {
+function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecord, nowMs: number): ConsoleUpdateProgressStatus {
   const shared = {
     phase: record.phase,
     startedAt: record.startedAt,
@@ -107,7 +107,7 @@ export function toConsoleUpdateProgressStatus(record: ConsoleUpdateProgressRecor
   return { state: "running", ...shared };
 }
 
-export function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRecord | null {
+function parseConsoleUpdateProgressRecord(raw: string): ConsoleUpdateProgressRecord | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);

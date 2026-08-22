@@ -4,9 +4,7 @@ import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { ControlBar } from "../core/client/src/components/control-bar.js";
-import { ControlCurtain } from "../core/client/src/components/control-curtain.js";
-import { ControlReclaimedNotice } from "../core/client/src/components/control-reclaimed-notice.js";
+import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "../core/client/src/components/control-handover.js";
 import { CONTROL_RECLAIMED_EVENT } from "../core/client/src/control-session.js";
 import { applyControlHolder, dismissControlCurtain, getState, setState } from "../core/client/src/store.js";
 import type { ControlHolder } from "../core/client/src/types.js";

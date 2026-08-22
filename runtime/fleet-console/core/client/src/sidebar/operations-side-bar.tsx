@@ -7,10 +7,10 @@ import type { OperationCatalogPlugin, OperationLaunchKind } from "@fleet-console
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
 import { getT, useT, type CoreMessageKey } from "../i18n/index.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationGroup, OperationNode, OperationNotification, TheaterInfo } from "../types.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { DirectoryBrowserModal } from "../components/directory-browser-modal.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
@@ -213,7 +213,7 @@ function buildStatusSectionOrder(t: Translate<CoreMessageKey>): readonly Omit<St
 
 // 사이드바 STATUS 칸은 활동을 네 칸으로만 읽는다. background는 실행 중과 같은 칸에 앉히되,
 // 행 마크는 그대로 background다 — 칸 키로 활동을 덮으면 헤더와 비콘이 다른 상태를 말한다.
-export function statusSectionBucket(status: OperationActivityVisual | SideBarStatus): SideBarStatus {
+function statusSectionBucket(status: OperationActivityVisual | SideBarStatus): SideBarStatus {
   return status === "background" ? "running" : status;
 }
 

@@ -46,7 +46,7 @@ type TerminalSettingsUpdate =
   | { readonly compactCeiling: CompactCeiling | undefined }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
-export const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
+const DEFAULT_AGENT_IDLE_DORMANT_MINUTES = 60;
 
 export interface TerminalSettingsState {
   readonly agentIdleDormantMinutes: number | null;
@@ -154,7 +154,7 @@ export function registerTerminalSettingsRoutes(ctx: FleetPluginServerContext, de
   ]);
 }
 
-export function toTerminalSettingsState(
+function toTerminalSettingsState(
   data: GlobalOptionsData,
   aiGateway: AiGatewayStoredSettings,
   wireLogEnabled: boolean,

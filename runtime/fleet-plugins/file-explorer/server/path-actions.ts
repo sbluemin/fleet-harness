@@ -20,7 +20,7 @@ export interface ResolvedActionPath {
   readonly realPath: string;
 }
 
-export async function resolveContainedActionPath(
+async function resolveContainedActionPath(
   theaterPath: string,
   relativePath: string,
 ): Promise<ResolvedActionPath> {
@@ -195,7 +195,7 @@ export async function copyPathToClipboard(
   }
 }
 
-export async function resolveClipboardCommand(
+async function resolveClipboardCommand(
   platform: NodeJS.Platform,
   findExecutable: ClipboardActionDependencies["findExecutable"] = findExecutableOnPath,
 ): Promise<ClipboardCommand | null> {

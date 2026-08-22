@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { ActiveCompanionShortcutsProvider } from "../core/client/src/active-companion-shortcuts.js";
+import { ActiveCompanionShortcutsProvider } from "../core/client/src/shortcuts.js";
 import { KeyboardShortcutsDialog, isKeyboardShortcutsModalOpen, shouldHandleOperationsKeyboardShortcut } from "../core/client/src/components/keyboard-shortcuts-dialog.js";
 
 let root: Root | null = null;

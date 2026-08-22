@@ -4,7 +4,7 @@ import type { OperationRuntimeHydration, OperationRuntimeState } from "@fleet-co
 import { buildOperationSearchEntries } from "./operation-search.js";
 import { readQuickLaunchSelection, writeQuickLaunchPinned } from "./quick-launch-preferences.js";
 import { getGlobalSettingsStoreState, setGlobalSettingsField } from "./global-settings-store.js";
-import { acknowledgeIdleArrival } from "./operation-idle-arrival.js";
+import { acknowledgeIdleArrival } from "./operation-marks.js";
 import { uiFontFamily } from "./ui-font.js";
 import type {
   CodexReaderRequest,
@@ -225,7 +225,7 @@ export function failReleaseNotesFetch(error: string): void {
   setState({ releaseNotesLoading: false, releaseNotesError: error });
 }
 
-export function applyThemeToDocument(theme: ThemeId): void {
+function applyThemeToDocument(theme: ThemeId): void {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", theme);
   }

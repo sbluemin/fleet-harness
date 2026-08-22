@@ -18,7 +18,7 @@ import {
   type RailSearchGroup,
 } from "../operation-search.js";
 import { operationActivityLabel } from "../operation-activity.js";
-import { resumeOperationInPlace } from "../operation-resume.js";
+import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import {
   buildCodexPaletteEntries,
   buildPaletteCommands,
@@ -27,9 +27,8 @@ import {
   matchPaletteCommands,
   type PaletteCommandEntry,
 } from "../palette-commands.js";
-import { stashKeyboardShortcutsReturnFocus } from "../focus-guards.js";
-import { closeOperationCompletely } from "../operation-close.js";
-import { forgetTheaterCompletely } from "../theater-crud.js";
+import { stashKeyboardShortcutsReturnFocus } from "../shortcuts.js";
+import { forgetTheaterCompletely } from "../theater.js";
 import type { DeferredDeletionReceipt } from "../api.js";
 import { getLoadedTheaterId, clearFormationView, ensureDefaultGeometry, forceDropCompanionOperationId, getCompanionOperationId, getStationKeeping, loadForTheater, minimizeOperations, requestFitAllOperations, setStationKeeping, toggleFormationView } from "../canvas/canvas-store.js";
 import { enterTriage, focusedTriageOperationId, forgetTriageOperation, isTriageActive, setTriageActive, visitTriageTheater } from "../canvas/triage-store.js";

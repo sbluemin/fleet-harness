@@ -33,7 +33,7 @@ export function useDesktopHomeOrigin(): DesktopShellHome {
   return home;
 }
 
-export async function fetchDesktopHomeOrigin(signal?: AbortSignal): Promise<string | null> {
+async function fetchDesktopHomeOrigin(signal?: AbortSignal): Promise<string | null> {
   const response = await fetch("/api/v1/desktop/shell", { signal });
   if (!response.ok) return null;
   return readHomeOrigin(await response.json());

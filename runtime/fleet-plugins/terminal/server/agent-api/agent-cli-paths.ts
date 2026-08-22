@@ -143,19 +143,6 @@ export function applyAgentCliPathEnvOverlay(
   return { ...env, [envName]: userPath };
 }
 
-export function buildAgentCliClientEnvOverlay(
-  env: NodeJS.ProcessEnv,
-  cliId: string | undefined,
-  userPaths: Readonly<Record<string, string>>,
-): Readonly<Record<string, string>> | undefined {
-  const cliCommand = agentCliCommandForId(cliId);
-  // npx bridge를 쓰는 Claude 계열만 기존 CLAUDE_BIN 계약의 최소 오버레이가 필요하다.
-  if (cliCommand !== "claude") return undefined;
-  const userPath = userPaths[cliCommand];
-  if (!userPath || (env.CLAUDE_BIN?.trim().length ?? 0) > 0) return undefined;
-  return { CLAUDE_BIN: userPath };
-}
-
 function resolveConfiguredPath(
   executablePath: string,
   env: NodeJS.ProcessEnv,

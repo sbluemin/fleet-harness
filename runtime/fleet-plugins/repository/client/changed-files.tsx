@@ -70,7 +70,7 @@ function readCollapsed(key: string): boolean {
   try { return localStorage.getItem(key) === "1"; } catch { return false; }
 }
 
-export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t, collapsedFolders, onToggleFolder, scrollContainerRef, onScroll }: ChangedFilesProps) {
+function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect, filterText, t, collapsedFolders, onToggleFolder, scrollContainerRef, onScroll }: ChangedFilesProps) {
   const [changesCollapsed, setChangesCollapsed] = useState(() => readCollapsed(PREFS_CHANGES_COLLAPSED));
 
   const handleToggleChanges = useCallback(() => {

@@ -856,19 +856,6 @@ function effortKey(kindKey: string, groupId: string, rowId: string): string {
   return `${kindKey}\u001f${groupId}\u001f${rowId}`;
 }
 
-// 좌하단 런처 FAB와 메뉴 헤더가 공유하던 '커맨드 레티클' 마크 — 외곽 스코프 링 + 사방 조준 틱 +
-// 중앙의 '+'(생성 의미 보존). 메뉴 헤더가 한 줄로 내려앉으면서 메뉴에서는 쓰지 않지만,
-// Canvas controls 진입점의 마크로 계속 export한다.
-export function CommandReticleIcon() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <circle cx="12" cy="12" r="7" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M12 2.4v3.4M12 18.2v3.4M2.4 12h3.4M18.2 12h3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-      <path d="M12 9.2v5.6M9.2 12h5.6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
 // 어사이드는 기본으로 메뉴 오른쪽에 선다. 오른쪽에 자리가 없으면 왼쪽으로 뒤집고, 양쪽 모두
 // 좁으면(캔버스가 대략 516px 아래) 아예 펴지 않는다 — 뒤집기만 하고 왼쪽 여백을 안 보면 설명이
 // 화면 왼쪽으로 밀려 앞부분이 잘린 채 남는다. 펴지 못해도 한 단어 대비는 행에 그대로 있고

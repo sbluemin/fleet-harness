@@ -26,7 +26,7 @@ export interface ChatRouteDeps {
  */
 const AI_GATEWAY_OWNER_PLUGIN_ID = "terminal";
 
-export function resolveAiGatewayBaseUrl(origin: string): string {
+function resolveAiGatewayBaseUrl(origin: string): string {
   return `${origin.replace(/\/+$/u, "")}/plugins/${AI_GATEWAY_OWNER_PLUGIN_ID}/${AI_GATEWAY_ROUTE_SEGMENT}`;
 }
 

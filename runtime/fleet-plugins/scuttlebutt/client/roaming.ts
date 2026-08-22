@@ -87,7 +87,7 @@ export function createBirdBody(index: number, viewport: Viewport, random: () => 
  * 정박 중에는 웨이포인트에 도착할 일이 없어 행동 전환이 영영 오지 않는다 — 날갯짓만 남고
  * 걷기·수면·깃단장이 사라진다. 그래서 이동 대신 시간으로 다음 자세를 고른다.
  */
-export function stepMooredBehavior(body: BirdBody, time: number, random: () => number): void {
+function stepMooredBehavior(body: BirdBody, time: number, random: () => number): void {
   body.vx = 0;
   body.vy = 0;
   body.cruise = false;

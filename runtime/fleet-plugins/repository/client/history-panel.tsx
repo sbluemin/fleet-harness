@@ -106,7 +106,7 @@ export function calculateHistoryWindow(itemCount: number, scrollTop: number, vie
   };
 }
 
-export function isHistoryGenerationCurrent(request: HistoryLoadGeneration, current: HistoryLoadGeneration): boolean {
+function isHistoryGenerationCurrent(request: HistoryLoadGeneration, current: HistoryLoadGeneration): boolean {
   return request.theaterId === current.theaterId
     && request.repoRel === current.repoRel
     && request.refFilter === current.refFilter

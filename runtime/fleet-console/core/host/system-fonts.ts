@@ -103,7 +103,7 @@ export function normalizeSystemFonts(fonts: readonly IFontInfo[]): readonly Syst
     .sort((left, right) => left.family.localeCompare(right.family, undefined, { sensitivity: "base" }) || left.family.localeCompare(right.family));
 }
 
-export function buildSystemFontsResponse(fonts: readonly SystemFontRecord[]): SystemFontsResponse {
+function buildSystemFontsResponse(fonts: readonly SystemFontRecord[]): SystemFontsResponse {
   return { version: 1, fonts };
 }
 

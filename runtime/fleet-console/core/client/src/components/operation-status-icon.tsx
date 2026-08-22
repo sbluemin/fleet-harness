@@ -5,7 +5,7 @@ import { operationMarkLabel, operationMarkVisual, type OperationMarkVisual } fro
  * 같은 마크를 쓴다 — 표면마다 다른 조형을 두면 같은 사실이 표면 수만큼의 이야기로 갈라진다.
  * 조형은 둥근 네모 하나뿐이다(원형 폐지). 상태는 채움·중공·발광·맥동으로만 갈린다.
  */
-export function operationStatusIconClass(status: OperationMarkVisual | undefined): string {
+function operationStatusIconClass(status: OperationMarkVisual | undefined): string {
   const visual = operationMarkVisual(status);
   if (visual === "running") return "tenant-beacon is-turn-running";
   if (visual === "background") return "tenant-beacon is-background";

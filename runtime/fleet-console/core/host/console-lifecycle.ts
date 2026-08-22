@@ -10,6 +10,7 @@ import type { ConsoleLockPayload } from "./console-contract-types.js";
 import { openBrowser, type BrowserOpenResult, type OpenBrowserDeps } from "./browser.js";
 import { describeConsoleLaunch, describeDaemonStartFailure } from "./failure-notice.js";
 import { createConsoleHealthClient } from "./health.js";
+import { createConsoleStalePolicy } from "./stale.js";
 import {
   ASCII_FLEET_BANNER,
   FLEET_COMMAND,
@@ -26,7 +27,6 @@ import { readFleetCliRelease } from "../../cli/release.js";
 import { createConsoleLock } from "./lock.js";
 import { createConsolePaths } from "./paths.js";
 import { createConsoleServer } from "./server.js";
-import { createConsoleStalePolicy } from "./stale.js";
 
 export type ConsoleCliMode = "start" | "stop" | "restart" | "status" | "help";
 

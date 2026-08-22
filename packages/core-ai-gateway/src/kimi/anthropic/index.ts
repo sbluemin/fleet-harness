@@ -11,7 +11,7 @@ import { KIMI_CODE_API_BASE_URL } from "../../models.js";
 
 export const KIMI_MESSAGES_URL = `${KIMI_CODE_API_BASE_URL}/v1/messages`;
 
-export const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonly ReasoningEffort[];
+const KIMI_REASONING_EFFORTS = ["low", "high", "max"] as const satisfies readonly ReasoningEffort[];
 
 /** K3 accepts three native effort tiers; normalize Claude Code's wider picker ladder. */
 export function kimiRequestBody(body: AnthropicMessagesRequest, model: string): AnthropicMessagesRequest {

@@ -63,7 +63,7 @@ vi.mock("../core/client/src/plugin-capabilities.js", () => ({ createHostCapabili
 vi.mock("../core/client/src/plugin-registry.js", () => ({ usePluginRegistry: () => ({ plugins: registryMocks.plugins, failures: [], operationKinds: registryMocks.operationKinds, settingsSections: [], notificationKinds: [], railPanels: [], floatingWidgets: [] }) }));
 vi.mock("../core/client/src/rail/rail-store.js", () => ({ toggleRailChrome: vi.fn() }));
 vi.mock("../core/client/src/rail/right-rail.js", () => ({ RightRail: () => null }));
-vi.mock("../core/client/src/release-notes-fetch.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
+vi.mock("../core/client/src/whatsnew.js", () => ({ abortReleaseNotesFetch: vi.fn(), requestReleaseNotes: vi.fn() }));
 vi.mock("../core/client/src/sidebar/operations-side-bar-store.js", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../core/client/src/sidebar/operations-side-bar-store.js")>()),
   getSideBarState: () => ({ collapsed: false }),

@@ -1,4 +1,4 @@
-export const skillsEn = {
+const skillsEn = {
   "skills.panel.title": "Skills",
   "skills.tab.installed": "Installed",
   "skills.tab.find": "Find",
@@ -61,7 +61,7 @@ export const skillsEn = {
   "skills.failure.remove.retry": "Try again",
 } as const;
 
-export const skillsKo: Record<keyof typeof skillsEn, string> = {
+const skillsKo: Record<keyof typeof skillsEn, string> = {
   "skills.panel.title": "스킬",
   "skills.tab.installed": "설치됨",
   "skills.tab.find": "찾기",

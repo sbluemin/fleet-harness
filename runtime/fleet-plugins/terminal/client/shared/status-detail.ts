@@ -1,5 +1,5 @@
 const STATUS_DETAIL_MAX_LENGTH = 120;
-export const STATUS_DETAIL_REPORT_DELAY_MS = 500;
+const STATUS_DETAIL_REPORT_DELAY_MS = 500;
 const STATUS_DETAIL_ROLLING_LIMIT = 4_096;
 
 interface StatusDetailReporterOptions {
@@ -36,7 +36,7 @@ export function extractMeaningfulStatusDetail(value: string): string | null {
   return null;
 }
 
-export function isMeaningfulStatusDetail(detail: string): boolean {
+function isMeaningfulStatusDetail(detail: string): boolean {
   if ([...detail].length < 3) return false;
   const semantic = detail.replace(/[\s\p{P}\p{S}\p{M}]/gu, "");
   if (semantic.length < 3) return false;

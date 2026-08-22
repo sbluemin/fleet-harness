@@ -250,12 +250,12 @@ export type RemoteAccessErrorCode =
   | "bind_permission_denied"
   | "remote_listener_failed";
 
-export function remoteAccessOrigin(host: string, port: number): string {
+function remoteAccessOrigin(host: string, port: number): string {
   const formattedHost = host.includes(":") && !host.startsWith("[") ? `[${host}]` : host;
   return `https://${formattedHost}:${port}`;
 }
 
-export function remoteAccessAcknowledgmentMatches(
+function remoteAccessAcknowledgmentMatches(
   state: RemoteAccessState,
   acknowledgment: RemoteAccessAcknowledgment | null = state.acknowledgment,
 ): boolean {
@@ -427,10 +427,6 @@ export function isValidRemoteAccessState(value: unknown): value is RemoteAccessS
 
 export function isValidRemoteAccessId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
-}
-
-export function isValidRemoteAccessLinkValue(value: unknown): value is string {
-  return typeof value === "string" && /^fleet:\/\/join\?code=[A-Za-z0-9._~-]+$/u.test(value);
 }
 
 export function isValidRemoteFingerprint(value: unknown): value is string | null {

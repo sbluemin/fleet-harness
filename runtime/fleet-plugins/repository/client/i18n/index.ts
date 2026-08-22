@@ -3,7 +3,7 @@ import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
 // ═══ messages ════════════════════════════════════════════════════════════════
 
-export const repositoryEn = {
+const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
   "repository.sync.button": "Fetch",
@@ -249,7 +249,7 @@ export const repositoryEn = {
   "repository.filetree.hint": "Files changed in this commit are marked; select one to open its diff.",
 } as const;
 
-export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
+const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
   "repository.sync.button": "가져오기",
   "repository.sync.title": "원격 추적 브랜치를 갱신합니다",

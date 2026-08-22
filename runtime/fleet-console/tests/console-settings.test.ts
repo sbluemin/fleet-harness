@@ -4,7 +4,7 @@ import os from "node:os";
 
 import { afterEach, describe, expect, it } from "vitest";
 
-import { listRemoteInterfaces } from "../core/host/remote-interfaces.js";
+import { listRemoteInterfaces } from "../core/host/remote-discovery.js";
 import {
   createConsoleSettingsStore,
   sanitizeConsoleSettingsData,

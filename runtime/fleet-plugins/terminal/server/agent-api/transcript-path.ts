@@ -28,7 +28,7 @@ export async function resolveTranscriptPath(capturePath: string, operationCreate
   }
 }
 
-export async function transcriptFileExists(filePath: string): Promise<boolean> {
+async function transcriptFileExists(filePath: string): Promise<boolean> {
   const stat = await fs.stat(filePath).catch(() => null);
   return stat?.isFile() ?? false;
 }

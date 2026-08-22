@@ -11,7 +11,7 @@ const IGNORED_FSYNC_ERROR_CODES = new Set(["EPERM", "EINVAL", "ENOSYS"]);
 /**
  * temp 파일 경로 생성기
  */
-export function buildTempPath(filePath: string): string {
+function buildTempPath(filePath: string): string {
   const suffix = `${process.pid}.${Date.now()}.${Math.random().toString(16).slice(2)}.${os.hostname()}`;
   return `${filePath}.${suffix}.tmp`;
 }

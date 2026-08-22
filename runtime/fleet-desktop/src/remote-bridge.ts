@@ -1,6 +1,6 @@
 import type { WebContents } from "electron";
 
-import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-origin.js";
+import { isLoopbackConsoleOrigin, isRemoteConsoleOrigin } from "./console-links.js";
 import type { DesktopNotice } from "./desktop-notices.js";
 import { confirmRemoteIdentity, joinRemoteConsole, type RemoteCertificatePins, type SessionFetch } from "./remote-access.js";
 import type { WindowPolicy } from "./window-policy.js";

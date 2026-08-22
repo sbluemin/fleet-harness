@@ -34,8 +34,8 @@ export interface ConsoleLockTrustInput {
   readonly host: string;
 }
 
-export const LOCK_DIR_MODE = 0o700;
-export const LOCK_FILE_MODE = 0o600;
+const LOCK_DIR_MODE = 0o700;
+const LOCK_FILE_MODE = 0o600;
 
 export function createConsoleLock(deps: ConsoleLockDeps = {}) {
   const fsImpl = deps.fs ?? fs;

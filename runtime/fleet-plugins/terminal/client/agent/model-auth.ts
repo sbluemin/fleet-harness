@@ -12,7 +12,7 @@ export interface ModelAuthMutationResult {
   readonly state: ModelAuthState;
 }
 
-export class TerminalModelAuthApiError extends Error {
+class TerminalModelAuthApiError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
@@ -22,13 +22,13 @@ export class TerminalModelAuthApiError extends Error {
   }
 }
 
-export async function fetchModelAuthState(signal?: AbortSignal): Promise<ModelAuthState> {
+async function fetchModelAuthState(signal?: AbortSignal): Promise<ModelAuthState> {
   const response = await fetch("/plugins/terminal/model-auth/state", { signal });
   await assertOk(response);
   return assertModelAuthState(await response.json(), response.status);
 }
 
-export async function signInModelProvider(provider: string, apiKey: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
+async function signInModelProvider(provider: string, apiKey: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
   const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(provider)}`, {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
@@ -39,7 +39,7 @@ export async function signInModelProvider(provider: string, apiKey: string, sign
   return assertMutationResult(await response.json(), response.status);
 }
 
-export async function signOutModelProvider(provider: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
+async function signOutModelProvider(provider: string, signal?: AbortSignal): Promise<ModelAuthMutationResult> {
   const response = await fetch(`/plugins/terminal/model-auth/providers/${encodeURIComponent(provider)}`, {
     method: "DELETE",
     signal,
@@ -119,7 +119,7 @@ export function useModelAuthStore(): ModelAuthStoreState {
   return React.useSyncExternalStore(subscribe, getModelAuthStoreState, getModelAuthStoreState);
 }
 
-export function getModelAuthStoreState(): ModelAuthStoreState {
+function getModelAuthStoreState(): ModelAuthStoreState {
   return snapshot;
 }
 

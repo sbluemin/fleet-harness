@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { isConsoleConflict, showConsoleConflictAndQuit } from "../src/console-conflict.js";
+import { isConsoleConflict, showConsoleConflictAndQuit } from "../src/boot-dialogs.js";
 
 describe("Console conflict handling", () => {
   it.each(["cli_daemon_requires_confirmation", "console_lock_foreign_process_unhealthy"])("classifies %s as a live external Console conflict", (message) => {

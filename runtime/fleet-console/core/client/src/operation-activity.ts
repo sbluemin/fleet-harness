@@ -22,7 +22,7 @@ export function resolveOperationActivity(
   return isRestoredAbsentOperation(operation) ? "ended" : "idle";
 }
 
-export function isRestoredAbsentOperation(operation: OperationNode): boolean {
+function isRestoredAbsentOperation(operation: OperationNode): boolean {
   return operation.payload?.restoredDormant === true || operation.payload?.resumeAvailable === true;
 }
 

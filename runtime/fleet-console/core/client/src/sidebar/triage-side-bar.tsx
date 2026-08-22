@@ -7,8 +7,8 @@ import type { OperationRuntimeState, FleetClientPlugin } from "@fleet-console/sd
 
 import { useT } from "../i18n/index.js";
 import { CanvasContextMenu } from "../canvas/canvas-context-menu.js";
-import { resumeOperationInPlace } from "../operation-resume.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-idle-arrival.js";
+import { resumeOperationInPlace } from "../operation-actions.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import type { OperationNode, OperationNotification } from "../types.js";
 import { getTheaterCanvasSnapshot, getTheaterMinimizedIds, setTheaterOperationMinimized, useCanvasState } from "../canvas/canvas-store.js";
 import { resolveOperationActivity } from "../operation-activity.js";

@@ -24,7 +24,7 @@ import { resolveClaudeCredentials } from "./credentials.js";
 // Claude states its window lengths only as block names (`five_hour`,
 // `seven_day`), never as numbers, so these are product knowledge and ship with
 // `durationBasis: "catalog"` — visibly an assumption that can go stale.
-export const CLAUDE_SESSION_MS = 5 * HOUR_MS;
+const CLAUDE_SESSION_MS = 5 * HOUR_MS;
 
 /**
  * OpenUsage reads `subscriptionType` plus a `\d+x` suffix from `rateLimitTier`.

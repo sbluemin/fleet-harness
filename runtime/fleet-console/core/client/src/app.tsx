@@ -3,16 +3,13 @@ import { Navigate, Route, Routes, useLocation, useNavigate } from "react-router-
 
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 
-import { ActiveCompanionShortcutsProvider } from "./active-companion-shortcuts.js";
+import { ActiveCompanionShortcutsProvider, availableCompanionPanels, type CompanionShortcutEntry, takeKeyboardShortcutsReturnFocus, usableCompanionShortcuts } from "./shortcuts.js";
 import { fetchGroups, fetchOperations, fetchTheaterBootstrap, fetchTheaters, restoreDeletion, type DeferredDeletionReceipt } from "./api.js";
 import { CommandBand } from "./components/command-band.js";
 import { CommissioningOverlay } from "./components/commissioning-overlay.js";
-import { ControlBar } from "./components/control-bar.js";
-import { ControlCurtain } from "./components/control-curtain.js";
-import { ControlReclaimedNotice } from "./components/control-reclaimed-notice.js";
+import { ControlBar, ControlCurtain, ControlReclaimedNotice } from "./components/control-handover.js";
 import { FeatureTourOverlay } from "./components/feature-tour.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts-dialog.js";
-import { takeKeyboardShortcutsReturnFocus } from "./focus-guards.js";
 import { OperationSearch } from "./components/operation-search.js";
 import { QuickLaunch } from "./components/quick-launch.js";
 import { ReconnectButton } from "./components/reconnect-button.js";
@@ -34,7 +31,7 @@ import { BUILT_IN_RAIL_PANELS } from "./rail/built-in-panels.js";
 import { setRailChromeExpanded, toggleRailChrome } from "./rail/rail-store.js";
 import { refreshObserverStatus } from "./operations-sse.js";
 import { closeKeyboardShortcuts, hydrateGroups, hydrateInitialOperations, hydrateOperations, hydrateTheaterBootstrap, hydrateTheaters, openOperationSearch, resolveOnboardingOnBootstrap, setOperationsViewActive, setState, themePolarity, toggleOperationSearch, toggleQuickLaunch } from "./store.js";
-import { abortReleaseNotesFetch, requestReleaseNotes } from "./release-notes-fetch.js";
+import { abortReleaseNotesFetch, requestReleaseNotes } from "./whatsnew.js";
 import { getSideBarState, setSideBarCollapsed, subscribeOperationActivityTracking } from "./sidebar/operations-side-bar-store.js";
 import { observeSideBarCollapseMotion } from "./sidebar/side-bar-motion.js";
 import { useMobileSessionOpen } from "./mobile/mobile-store.js";
@@ -43,8 +40,6 @@ import { MobileSettingsPage } from "./mobile/mobile-settings-page.js";
 import { MobileTheaterPage } from "./mobile/mobile-theater-page.js";
 import { getViewModeSnapshot, useViewMode } from "./view-mode-store.js";
 import { useConsoleLocale, useT } from "./i18n/index.js";
-import type { CompanionShortcutEntry } from "./shortcuts-catalog.js";
-import { availableCompanionPanels, usableCompanionShortcuts } from "./companion-shortcut.js";
 import { resolveReleaseNotesLocale } from "./whatsnew-i18n.js";
 
 // 서버는 부팅 시 update 체크를 fire-and-forget으로 시작하므로, 첫 방문이 SSE 연결보다

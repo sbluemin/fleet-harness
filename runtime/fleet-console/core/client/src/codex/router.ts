@@ -4,11 +4,3 @@
 export function entryPath(id: string): string {
   return `/entry/${encodeURIComponent(id)}`;
 }
-
-export function homePath(): string {
-  return "/";
-}
-
-export function indexMdPath(): string {
-  return "/index";
-}

@@ -28,30 +28,7 @@ export function escapeTomlBasicString(value: string): string {
   });
 }
 
-// TOML 멀티라인 basic string("""...""") 본문용 이스케이프.
-// 줄바꿈을 리터럴로 보존해 doctrine을 사람이 읽기 좋게(pretty) 직렬화한다.
-export function escapeTomlMultilineString(value: string): string {
-  // 1) 백슬래시를 먼저 이스케이프해 이후 변환과 충돌하지 않도록 한다.
-  let result = value.replace(/\\/g, "\\\\");
-  // 2) 줄바꿈/탭을 제외한 제어문자와 DEL은 \uXXXX로 이스케이프한다.
-  result = result.replace(
-    TOML_MULTILINE_CONTROL_PATTERN,
-    (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
-  // 3) 따옴표 처리: 3개 이상 연속되면 종료 구분자(""")와 충돌하고,
-  //    문자열 맨 끝의 따옴표는 닫는 """ 앞에서 모호해지므로 그 경우만 이스케이프한다.
-  //    중간의 1~2개 연속 따옴표는 안전하므로 그대로 둔다.
-  result = result.replace(TOML_MULTILINE_QUOTE_RUN_PATTERN, (run: string, offset: number) => {
-    const isTrailingRun = offset + run.length === result.length;
-    if (run.length >= 3 || isTrailingRun) {
-      return run.replace(/"/g, "\\\"");
-    }
-    return run;
-  });
-  return result;
-}
-
-export function buildPosixShellCommand(values: readonly string[]): string {
+function buildPosixShellCommand(values: readonly string[]): string {
   return values.map(posixShellQuote).join(" ");
 }
 

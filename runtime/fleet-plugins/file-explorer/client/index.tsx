@@ -2,7 +2,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { fileExplorerPanel } from "./rail-panel.js";
 
-export const fileExplorerPlugin = definePlugin({
+const fileExplorerPlugin = definePlugin({
   id: "file-explorer",
   railPanels: [fileExplorerPanel],
 });

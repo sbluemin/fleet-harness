@@ -10,6 +10,7 @@ packages:
   - "runtime/fleet-desktop"
   - "runtime/fleet-mobile"
   - "runtime/fleet-console/desktop-protocol"
+  - "runtime/fleet-console/access-protocol"
   - "runtime/fleet-console/sdk"
   - "runtime/fleet-console/markdown"
   - "runtime/fleet-console/font-picker"

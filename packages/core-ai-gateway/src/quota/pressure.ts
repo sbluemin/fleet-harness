@@ -132,11 +132,3 @@ export function deriveQuotaWindowRisk(window: QuotaWindowRiskInput, at: number):
     pressure: windowPressure(window.usedPercent, paceRatio),
   };
 }
-
-export const quotaPressureThresholds = {
-  MIN_ELAPSED_FRACTION,
-  PACE_CRITICAL,
-  PACE_ELEVATED,
-  USED_CRITICAL_PERCENT,
-  USED_ELEVATED_PERCENT,
-} as const;

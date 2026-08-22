@@ -25,7 +25,7 @@ export type InstallExecutor = (
 ) => Promise<void>;
 
 export const TOKSCALE_VERSION = "4.7.0";
-export const TOKSCALE_PACKAGE = "tokscale";
+const TOKSCALE_PACKAGE = "tokscale";
 export const TOKSCALE_TIMEOUT_MS = 60_000;
 const MAX_BUFFER_BYTES = 10 * 1024 * 1024;
 const PROCESS_KILL_GRACE_MS = 1_000;
@@ -37,10 +37,6 @@ let _bootstrapPromise: Promise<string> | null = null;
 export function resetCliStateForTest(): void {
   _binPath = null;
   _bootstrapPromise = null;
-}
-
-export function isBootstrapInFlight(): boolean {
-  return _bootstrapPromise !== null;
 }
 
 export function resolveNpmCommand(

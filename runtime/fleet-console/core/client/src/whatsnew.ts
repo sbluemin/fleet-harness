@@ -1,9 +1,53 @@
-import type { Translate } from "@fleet-console/sdk/i18n";
+// What's New: the release-notes request lifecycle and the tab/overview derivation
+// the modal renders from a fetched note. Locale resolution stays in whatsnew-i18n.ts,
+// which is the console-wide language SSoT rather than a What's New concern.
 
+import type { ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes } from "./types.js";
+import type { ReleaseNotesLocale } from "./types.js";
+import type { Translate } from "@fleet-console/sdk/i18n";
+import { applyReleaseNotes, beginReleaseNotesFetch, failReleaseNotesFetch } from "./store.js";
+import { fetchReleaseNotes } from "./api.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { getT, type CoreMessageKey } from "./i18n/index.js";
-import type { ReleaseNoteProduct, ReleaseNoteSection, ReleaseNotes } from "./types.js";
 import { resolveConsoleLanguage } from "./whatsnew-i18n.js";
+
+// ─── fetch lifecycle ───────────────────────────────────────────────────────────
+
+export interface ReleaseNotesRequestOptions {
+  readonly force?: boolean;
+  readonly locale: ReleaseNotesLocale;
+}
+
+let activeAbortController: AbortController | null = null;
+let requestGeneration = 0;
+
+export function requestReleaseNotes(options: ReleaseNotesRequestOptions): Promise<void> {
+  activeAbortController?.abort();
+  const controller = new AbortController();
+  const generation = ++requestGeneration;
+  activeAbortController = controller;
+  beginReleaseNotesFetch();
+  return fetchReleaseNotes({ ...options, signal: controller.signal })
+    .then((response) => {
+      if (generation === requestGeneration) applyReleaseNotes(response);
+    })
+    .catch((error: unknown) => {
+      if (controller.signal.aborted || generation !== requestGeneration) return;
+      failReleaseNotesFetch(error instanceof Error ? error.message : String(error));
+    })
+    .finally(() => {
+      if (generation === requestGeneration) activeAbortController = null;
+    });
+}
+
+export function abortReleaseNotesFetch(): void {
+  if (activeAbortController === null) return;
+  activeAbortController.abort();
+  activeAbortController = null;
+  requestGeneration += 1;
+}
+
+// ─── tabs, sections, and overview ──────────────────────────────────────────────
 
 export type WhatsNewTabId = "overview" | "all-updates" | "other-updates" | ReleaseNoteProduct;
 
@@ -21,7 +65,7 @@ export interface WhatsNewOverviewItem {
 
 type T = Translate<CoreMessageKey>;
 
-export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] {
+function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] {
   return [
     { id: "fleet-cli", label: t("whatsnew.tab.fleetCli") },
     { id: "fleet-console", label: t("whatsnew.tab.fleetConsole") },
@@ -30,15 +74,15 @@ export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: R
   ];
 }
 
-export function buildOverviewTab(t: T): WhatsNewTab {
+function buildOverviewTab(t: T): WhatsNewTab {
   return { id: "overview", label: t("whatsnew.tab.overview") };
 }
 
-export function buildAllUpdatesTab(t: T): WhatsNewTab {
+function buildAllUpdatesTab(t: T): WhatsNewTab {
   return { id: "all-updates", label: t("whatsnew.tab.allUpdates") };
 }
 
-export function buildOtherUpdatesTab(t: T): WhatsNewTab {
+function buildOtherUpdatesTab(t: T): WhatsNewTab {
   return { id: "other-updates", label: t("whatsnew.tab.otherUpdates") };
 }
 

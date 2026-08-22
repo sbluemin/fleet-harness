@@ -3,12 +3,12 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 import type { RepositoryMessageKey } from "./i18n/index.js";
 
 export const WORKSPACE_DOCK_DEFAULT_HEIGHT = 230;
-export const WORKSPACE_DOCK_MIN_HEIGHT = 160;
+const WORKSPACE_DOCK_MIN_HEIGHT = 160;
 export const WORKSPACE_TREE_DEFAULT_WIDTH = 222;
-export const WORKSPACE_TREE_MIN_WIDTH = 148;
-export const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
+const WORKSPACE_TREE_MIN_WIDTH = 148;
+const WORKSPACE_TREE_DIVIDER_WIDTH = 4;
 // 트리를 줄여도 중앙(History/Changes) 영역이 유의미하게 남도록 하는 최소 보장 폭.
-export const WORKSPACE_MAIN_MIN_WIDTH = 180;
+const WORKSPACE_MAIN_MIN_WIDTH = 180;
 
 // 검사기 독(파일 목록 ⇔ diff)의 폭 축. 저장값은 CSS 변수로만 주입한다 — 인라인
 // grid-template-columns는 좁은 독을 세로 스택으로 바꾸는 컨테이너 쿼리를 이겨버려

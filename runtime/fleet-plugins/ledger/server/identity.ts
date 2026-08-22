@@ -1,6 +1,6 @@
 export const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-export const ANTHROPIC_PROVIDER = "anthropic";
-export const UNKNOWN_PROVIDER = "unknown";
+const ANTHROPIC_PROVIDER = "anthropic";
+const UNKNOWN_PROVIDER = "unknown";
 
 const PROVIDER_RE = /^[a-z0-9][a-z0-9-]{0,31}$/;
 

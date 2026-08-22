@@ -2,7 +2,7 @@ import { definePlugin } from "@fleet-console/sdk/plugin/browser";
 
 import { skillsPanel } from "./rail-panel.js";
 
-export const skillsPlugin = definePlugin({
+const skillsPlugin = definePlugin({
   id: "skills",
   railPanels: [skillsPanel],
 });

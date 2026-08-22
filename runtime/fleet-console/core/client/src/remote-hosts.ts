@@ -36,12 +36,8 @@ export function useRemoteHosts(): readonly RemoteHost[] {
   return useSyncExternalStore(subscribe, getRemoteHosts, getRemoteHosts);
 }
 
-export function getRemoteHosts(): readonly RemoteHost[] {
+function getRemoteHosts(): readonly RemoteHost[] {
   return snapshot;
-}
-
-export function hasLoadedRemoteHosts(): boolean {
-  return loaded;
 }
 
 export async function refreshRemoteHosts(signal?: AbortSignal): Promise<readonly RemoteHost[]> {

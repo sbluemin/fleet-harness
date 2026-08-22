@@ -30,7 +30,7 @@ export interface TheaterRootResolution {
   readonly realRoot: string;
 }
 
-export class TheaterRootError extends Error {
+class TheaterRootError extends Error {
   readonly code: "invalid_path" | "not_found" | "forbidden";
 
   constructor(code: TheaterRootError["code"]) {

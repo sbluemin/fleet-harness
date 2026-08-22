@@ -228,7 +228,7 @@ export function formatPace(paceRatio: number): string {
   return `${Math.round(paceRatio * 10) / 10}`;
 }
 
-export function exhaustNote(window: QuotaWindow, now: number, t: T): string | null {
+function exhaustNote(window: QuotaWindow, now: number, t: T): string | null {
   const projectedExhaustionAt = liveProjectionAt(window, now);
   return projectedExhaustionAt === undefined
     ? null

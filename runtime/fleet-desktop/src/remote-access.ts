@@ -2,18 +2,23 @@ import crypto from "node:crypto";
 import net from "node:net";
 import tls from "node:tls";
 
+import { normalizeFingerprint, pinHostname } from "@fleet-console/access-protocol";
+
 /** Chromium 검증 결과 코드. 0=수락, -2=거부, -3=Chromium 판정 그대로. */
 export const CERTIFICATE_ACCEPTED = 0;
 export const CERTIFICATE_REJECTED = -2;
 export const CERTIFICATE_DEFAULT = -3;
 
-export const REMOTE_REQUEST_TIMEOUT_MS = 8_000;
+const REMOTE_REQUEST_TIMEOUT_MS = 8_000;
 
 /** Electron이 검증기에 넘기는 값 중 이 게이트가 실제로 읽는 부분만 선언한다. */
 export interface CertificateVerifyRequest {
   readonly hostname: string;
   readonly certificate?: { readonly data?: string };
 }
+
+/** 핀 비교 표기는 Console의 접근 프로토콜이 단독 정의한다 — 여기서 다시 정의하지 않는다. */
+export { normalizeFingerprint, pinHostname };
 
 export type CertificateVerifyProc = (request: CertificateVerifyRequest, callback: (verificationResult: number) => void) => void;
 
@@ -155,19 +160,8 @@ async function readConflictCode(response: Response): Promise<string> {
   }
 }
 
-/** 인증서 핀은 호스트 단위다. Chromium은 검증기에 대괄호 없는 호스트명을 넘긴다. */
-export function pinHostname(hostname: string): string {
-  const unwrapped = hostname.startsWith("[") && hostname.endsWith("]") ? hostname.slice(1, -1) : hostname;
-  return unwrapped.toLowerCase();
-}
-
-/** Console과 같은 표기로 맞춘다 — 구분자 유무가 불일치로 읽혀서는 안 된다. */
-export function normalizeFingerprint(value: string): string {
-  return value.replace(/[^0-9a-fA-F]/gu, "").toUpperCase();
-}
-
 /** 제시된 PEM 인증서의 지문. 읽을 수 없는 인증서는 불일치가 아니라 판정 불가로 되돌린다. */
-export function certificateFingerprint(certificatePem: string): string | null {
+function certificateFingerprint(certificatePem: string): string | null {
   if (typeof certificatePem !== "string" || certificatePem.length === 0) return null;
   try {
     return normalizeFingerprint(new crypto.X509Certificate(certificatePem).fingerprint256);

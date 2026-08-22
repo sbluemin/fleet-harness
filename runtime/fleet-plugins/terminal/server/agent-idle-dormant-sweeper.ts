@@ -3,7 +3,7 @@ import type { GlobalOptionsData } from "@dotobokuri/core-infra";
 import type { AgentTerminalSessionInfo } from "./agent-api/types.js";
 import { resolveAgentIdleDormantMinutes } from "./settings-routes.js";
 
-export const AGENT_IDLE_DORMANT_SWEEP_INTERVAL_MS = 60_000;
+const AGENT_IDLE_DORMANT_SWEEP_INTERVAL_MS = 60_000;
 
 export interface IdleAgentDormantSweepDeps {
   readonly loadGlobalOptions: () => GlobalOptionsData;

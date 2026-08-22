@@ -156,7 +156,7 @@ export function AddHostDialog({ onClose, openerRef }: {
 }
 
 /** 서버가 준 코드만 문장으로 바꾼다 — 모르는 코드는 지어내지 않고 가장 흔한 원인으로 되돌린다. */
-export function remoteHostErrorKey(code: string): CoreMessageKey {
+function remoteHostErrorKey(code: string): CoreMessageKey {
   const known = ["pairing_target_invalid", "remote_host_unreachable", "remote_host_fingerprint_mismatch", "remote_host_is_self"];
   return (known.includes(code) ? `settings.remote.hosts.error.${code}` : "settings.remote.hosts.error.pairing_target_invalid") as CoreMessageKey;
 }

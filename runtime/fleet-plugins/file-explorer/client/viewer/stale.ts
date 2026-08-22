@@ -6,7 +6,7 @@ export function parentDirOf(relativePath: string): string {
   return slash < 0 ? "" : relativePath.slice(0, slash);
 }
 
-export function normalizeRelativeDir(relativeDir: string): string {
+function normalizeRelativeDir(relativeDir: string): string {
   return relativeDir.replace(/\/+$/, "");
 }
 
@@ -19,7 +19,7 @@ export function isLoadedDocumentStale(
   return loadedMtimeMs !== diskMtimeMs;
 }
 
-export function findEntryMtimeMs(
+function findEntryMtimeMs(
   entries: readonly FolderEntry[],
   relativePath: string,
 ): number | undefined {
@@ -27,7 +27,7 @@ export function findEntryMtimeMs(
   return entry?.mtimeMs;
 }
 
-export function hasEntry(entries: readonly FolderEntry[], relativePath: string): boolean {
+function hasEntry(entries: readonly FolderEntry[], relativePath: string): boolean {
   return entries.some((item) => item.relativePath === relativePath);
 }
 

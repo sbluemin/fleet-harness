@@ -3,8 +3,7 @@ import { useCallback, useSyncExternalStore } from "react";
 
 import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 
-import { clearDeparture, markDeparture, resetDepartureForTests } from "../operation-departure.js";
-import { clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markIdleArrival, resetIdleArrivalForTests } from "../operation-idle-arrival.js";
+import { clearDeparture, clearIdleArrival, isIdleArrivalAcknowledgementSuspended, markDeparture, markIdleArrival, resetDepartureForTests, resetIdleArrivalForTests } from "../operation-marks.js";
 import { resolveOperationActivity } from "../operation-activity.js";
 import { getState, subscribe } from "../store.js";
 import type { OperationNode } from "../types.js";

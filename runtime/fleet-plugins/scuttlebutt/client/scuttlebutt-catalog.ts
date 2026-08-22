@@ -1,7 +1,7 @@
 import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { createTranslator } from "@fleet-console/sdk/i18n/translate";
 
-export const scuttlebuttEn = {
+const scuttlebuttEn = {
   "chat.label.tori": "Aide Tori",
   "chat.label.bori": "Aide Bori",
   "chat.label.dori": "Aide Dori",
@@ -53,7 +53,7 @@ export const scuttlebuttEn = {
 
 export type ScuttlebuttMessageKey = keyof typeof scuttlebuttEn;
 
-export const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
+const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
   "chat.label.tori": "토리 부관",
   "chat.label.bori": "보리 부관",
   "chat.label.dori": "도리 부관",
@@ -103,7 +103,7 @@ export const scuttlebuttKo: Record<ScuttlebuttMessageKey, string> = {
   "line.dori.3": "캐리어 스트림 정상.",
 };
 
-export const SCUTTLEBUTT_MESSAGES = {
+const SCUTTLEBUTT_MESSAGES = {
   en: scuttlebuttEn,
   ko: scuttlebuttKo,
 } as const;

@@ -6,8 +6,8 @@ import type { FileExplorerMessageKey } from "../i18n/index.js";
 import { tokenize } from "../syntax/highlighter.js";
 
 /** Matches `.fexp-code-row` height (13px --t-md × 1.6, rounded). */
-export const CODE_LINE_HEIGHT_PX = 21;
-export const CODE_OVERSCAN_LINES = 8;
+const CODE_LINE_HEIGHT_PX = 21;
+const CODE_OVERSCAN_LINES = 8;
 /**
  * 줄바꿈을 켜면 한 줄의 높이가 내용에 따라 달라져 고정 높이 가상화의 인덱스↔스크롤 대응이 깨진다
  * (실측: 1,200줄 파일에서 끝까지 스크롤해도 1039행에서 멈춤). 그래서 줄바꿈 모드는 창을 나누지 않고

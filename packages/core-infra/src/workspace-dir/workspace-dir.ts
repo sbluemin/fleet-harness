@@ -31,7 +31,7 @@ export function toWorkspaceDirectoryName(canonicalCwd: string): string {
   return canonicalCwd.replace(/[^a-zA-Z0-9]/g, "-");
 }
 
-export function getWorkspaceDirectoryRoot(dataDir: string): string {
+function getWorkspaceDirectoryRoot(dataDir: string): string {
   if (!dataDir.trim()) {
     throw new Error("Fleet data directory is required");
   }

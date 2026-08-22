@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { describeBootFailure, showBootFailureAndExit } from "../src/boot-failure.js";
+import { describeBootFailure, showBootFailureAndExit } from "../src/boot-dialogs.js";
 
 describe("desktop boot failure notice", () => {
   it("names the managed runtime mismatch and what to install", () => {

@@ -2,10 +2,10 @@ import { estimateTokens } from "../transport/token-estimate.js";
 
 export const CLAUDE_COMPAT_CONTEXT_WINDOW = 1_000_000;
 export const CLAUDE_DEFAULT_CONTEXT_WINDOW = 200_000;
-export const CLAUDE_COMPACT_RESERVE = 32_000;
+const CLAUDE_COMPACT_RESERVE = 32_000;
 export const PROVIDER_COMPACT_RESERVE = 16_000;
-export const COMPACT_CEILING_EARLY_PERCENT = 88;
-export const COMPACT_CEILING_LATE_PERCENT = 97;
+const COMPACT_CEILING_EARLY_PERCENT = 88;
+const COMPACT_CEILING_LATE_PERCENT = 97;
 export const COMPACT_CEILING_CUSTOM_MIN = 70;
 export const COMPACT_CEILING_CUSTOM_MAX = 99;
 
@@ -94,13 +94,6 @@ interface Projection<T> {
 interface SseSeparator {
   readonly index: number;
   readonly length: number;
-}
-
-/** A provider window whose usage must be mapped onto one of Claude Code's fixed coordinates. */
-export function canProjectClaudeContextWindow(contextWindow: number | undefined): boolean {
-  return typeof contextWindow === "number"
-    && Number.isFinite(contextWindow)
-    && contextWindow > CLAUDE_DEFAULT_CONTEXT_WINDOW;
 }
 
 /** A provider model whose real context window is at least 1M. */
@@ -209,7 +202,7 @@ export function compactThresholdTokens(
   return Math.floor(window * percent / 100);
 }
 
-export function compactCeilingPercent(
+function compactCeilingPercent(
   compactCeiling?: CompactCeiling | null,
 ): number | undefined {
   if (compactCeiling === "early") return COMPACT_CEILING_EARLY_PERCENT;
@@ -763,17 +756,17 @@ function withheldClaudeSkillStub(name: string, tokens: number, budget: number): 
 }
 
 /** Claude Code's client-side Web Search tool. */
-export const CLAUDE_WEB_SEARCH_TOOL_NAME = "WebSearch";
+const CLAUDE_WEB_SEARCH_TOOL_NAME = "WebSearch";
 /** Anthropic's server-side web search tool name. */
-export const ANTHROPIC_WEB_SEARCH_TOOL_NAME = "web_search";
+const ANTHROPIC_WEB_SEARCH_TOOL_NAME = "web_search";
 /** Anthropic's server-side web search tool type. */
-export const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
+const ANTHROPIC_WEB_SEARCH_TOOL_TYPE = "web_search_20250305";
 
 /**
  * Every spelling web search arrives under: two tool names and one server-tool type.
  * The omission matches a tool on either field, so all three withhold together.
  */
-export const CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS: readonly string[] = [
+const CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS: readonly string[] = [
   CLAUDE_WEB_SEARCH_TOOL_NAME,
   ANTHROPIC_WEB_SEARCH_TOOL_NAME,
   ANTHROPIC_WEB_SEARCH_TOOL_TYPE,

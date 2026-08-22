@@ -16,10 +16,10 @@ import type { CredentialResolverDeps } from "../transport/credentials.js";
 import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";
 
 export const REQUEST_TIMEOUT_MS = 10_000;
-export const MAX_RESPONSE_BYTES = 262_144;
+const MAX_RESPONSE_BYTES = 262_144;
 export const MAX_WINDOWS = 8;
 export const MAX_CREDIT_ENTRIES = 256;
-export const TLS_CERT_ERROR_CODES: ReadonlySet<string> = new Set([
+const TLS_CERT_ERROR_CODES: ReadonlySet<string> = new Set([
   "UNABLE_TO_VERIFY_LEAF_SIGNATURE",
   "UNABLE_TO_GET_ISSUER_CERT",
   "UNABLE_TO_GET_ISSUER_CERT_LOCALLY",

@@ -1,6 +1,6 @@
 import { useEffect, useId, useMemo, useState } from "react";
 
-import { loadApiCatalog, useApiCatalogStore } from "../backend-api-catalog-store.js";
+import { loadApiCatalog, useApiCatalogStore } from "../backend-api-catalog.js";
 import { useT, type CoreMessageKey } from "../i18n/index.js";
 import type { ApiCatalogEntry } from "../types.js";
 
@@ -181,7 +181,7 @@ function CoreApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGrou
   );
 }
 
-export function PluginApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGroupProps) {
+function PluginApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGroupProps) {
   const t = useT();
   const listId = useId();
 

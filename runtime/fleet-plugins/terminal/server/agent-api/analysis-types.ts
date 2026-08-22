@@ -29,7 +29,7 @@ export type AnalysisCatalogModel = { readonly id: string; readonly label: string
  * 값을 불투명 문자열로만 다루므로 항목이 하나로 줄어도 화면 계약은 그대로다.
  */
 export type AnalystCliId = "claude-gateway";
-export const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
+const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
 
 /**
  * 분석가의 기본 선택.
@@ -37,13 +37,13 @@ export const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
  * 오늘의 기본값은 `opus[1m]`/`xhigh`였다. 소유자가 sonnet/low로 낮추기로 정했으므로 여기서
  * 한 곳으로 고정한다. 강도 사다리는 ANALYST_EFFORT_LEVELS가 자른다.
  */
-export const ANALYST_DEFAULT_MODEL = "sonnet";
-export const ANALYST_DEFAULT_EFFORT = "low";
+const ANALYST_DEFAULT_MODEL = "sonnet";
+const ANALYST_DEFAULT_EFFORT = "low";
 /**
  * 분석가가 여는 강도. Quick Launch 트랙의 일상 단과 같고, xhigh·max·ultra는
  * 이 표면에 서지 않는다 — 카탈로그가 더 내놓아도 여기서 자른다.
  */
-export const ANALYST_EFFORT_LEVELS = ["low", "medium", "high"] as const;
+const ANALYST_EFFORT_LEVELS = ["low", "medium", "high"] as const;
 export type AnalystEffortLevel = (typeof ANALYST_EFFORT_LEVELS)[number];
 
 function clampAnalystEffortLevels(levels: readonly string[]): readonly string[] {

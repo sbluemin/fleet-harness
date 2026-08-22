@@ -42,7 +42,7 @@ export interface TerminalTouchGestures {
 const PAN_THRESHOLD_PX = 8;
 const PINCH_THRESHOLD_RATIO = 0.05;
 export const MIN_FONT_SCALE = 0.6;
-export const MAX_FONT_SCALE = 2.2;
+const MAX_FONT_SCALE = 2.2;
 const DEFAULT_MIN_FONT_SCALE = MIN_FONT_SCALE;
 const DEFAULT_MAX_FONT_SCALE = MAX_FONT_SCALE;
 

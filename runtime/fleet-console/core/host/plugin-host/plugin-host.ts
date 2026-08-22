@@ -61,7 +61,7 @@ export function discoverFleetPlugins(options: DiscoverFleetPluginsOptions = {}):
   return [...sourcePlugins, ...distPlugins];
 }
 
-export function parseFleetPluginManifest(value: unknown): FleetPluginManifest | null {
+function parseFleetPluginManifest(value: unknown): FleetPluginManifest | null {
   if (!isRecord(value)) return null;
   const id = readPluginId(value.id);
   if (!id) return null;

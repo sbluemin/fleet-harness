@@ -36,7 +36,7 @@ export type { FetchLike };
 export const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 /** ChatGPT 구독으로 Codex가 호출하는 백엔드. Platform API와 다른 표면이다. */
 export const CHATGPT_CODEX_RESPONSES_URL = "https://chatgpt.com/backend-api/codex/responses";
-export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
+const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 /**
  * Longest the upstream may send no bytes at all before the read is abandoned.
  *
@@ -46,7 +46,7 @@ export const DEFAULT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
  * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
  * and the rate climbed through the session as the conversation grew and the gaps grew with it.
  */
-export const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
+const DEFAULT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 const CODEX_RETRY_DELAY_MS = 200;
 
 // ChatGPT 백엔드는 Platform API가 받는 샘플링 파라미터를 400으로 거절한다.
@@ -680,7 +680,7 @@ function forOpenAIResponsesBackend(
  * sends none keeps the un-pinned behavior rather than being handed a fresh identity per turn,
  * which would pin every turn to a different machine and be strictly worse than sending nothing.
  */
-export function codexSessionIdentity(request: CanonicalResponseRequest): string | undefined {
+function codexSessionIdentity(request: CanonicalResponseRequest): string | undefined {
   const userId = request.metadata?.user_id?.trim();
   if (!userId) return undefined;
   const digest = createHash("sha256")

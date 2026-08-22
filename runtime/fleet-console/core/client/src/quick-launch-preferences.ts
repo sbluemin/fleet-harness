@@ -27,7 +27,7 @@ export interface QuickLaunchSelection {
 
 export type QuickLaunchStartView = "terminal" | "chat";
 
-export const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
+const EMPTY_QUICK_LAUNCH_SELECTION: QuickLaunchSelection = {
   theaterId: null,
   model: null,
   effort: null,

@@ -1,7 +1,7 @@
 import { createClientCapabilities } from "@fleet-console/sdk/plugin/browser";
 import type { PluginInstallContext } from "@fleet-console/sdk/plugin";
 
-import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-status-detail-store.js";
+import { clearOperationStatusDetail, setOperationStatusDetail } from "./operation-marks.js";
 import { clearOperationRuntime, dismissNotificationsForOperation, openQuickLaunch, openQuickLaunchForOperation, raiseOperationNotification, setOperationRuntime, setOperationRuntimeHydration } from "./store.js";
 
 export function createHostCapabilities(resync: () => void = () => undefined): PluginInstallContext {

@@ -8,7 +8,7 @@ import type { RailPanelContext, RailPanelDescriptor } from "@fleet-console/sdk/r
 
 import "../styles/rail.css";
 import { BUILT_IN_RAIL_PANELS } from "./built-in-panels.js";
-import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../focus-guards.js";
+import { focusCommandBandToggleWhenPanelContainsActiveElement } from "../shortcuts.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import { ReconnectButton } from "../components/reconnect-button.js";

@@ -17,7 +17,7 @@ import { watcherRegistry } from "./watcher.js";
 
 export type FolderBrowserErrorCode = "invalid_path" | "not_found" | "forbidden";
 
-export class FolderBrowserError extends Error {
+class FolderBrowserError extends Error {
   readonly code: FolderBrowserErrorCode;
 
   constructor(code: FolderBrowserErrorCode) {
@@ -32,7 +32,7 @@ const DIRECTORY_ENTRY_CAP = 500;
 const CLASSIFY_CONCURRENCY = 16;
 
 /** 버전 관리 날것 디렉터리 — 목록·필터·검색에서 항상 제외하고, 제외 사실은 hiddenVcsInternals로 알린다. */
-export const VCS_INTERNAL_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg"]);
+const VCS_INTERNAL_NAMES: ReadonlySet<string> = new Set([".git", ".svn", ".hg"]);
 
 export async function listTheaterContents(
   theaterPath: string,
@@ -244,7 +244,7 @@ export interface GitStatusResult {
 
 export type GitStatusPathErrorCode = "invalid_path" | "not_found" | "forbidden";
 
-export class GitStatusPathError extends Error {
+class GitStatusPathError extends Error {
   readonly code: GitStatusPathErrorCode;
 
   constructor(code: GitStatusPathErrorCode) {
@@ -441,7 +441,7 @@ const SEARCH_ENTRY_CAP = 25_000;
 const SEARCH_LIMIT_MAX = 200;
 
 /** 재귀 검색 보행에서만 건너뛴다. files/list 트리 목록은 이 디렉터리를 그대로 보여 준다. */
-export const SEARCH_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
+const SEARCH_IGNORED_DIRECTORY_NAMES: ReadonlySet<string> = new Set([
   "node_modules",
   ".pnpm",
   ".yarn",
