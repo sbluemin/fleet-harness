@@ -127,10 +127,12 @@ export async function readXaiSubscriptionToken(): Promise<string | null> {
 /**
  * The credential the Antigravity CLI (`agy`) left in the OS credential store.
  *
- * Fleet never runs Antigravity's OAuth flow; `agy login` owns it. This reader
- * only decodes what that CLI wrote and, when the access token is within its
- * refresh window, exchanges the CLI's own refresh token in memory — the vendor's
- * copy is never rewritten.
+ * Fleet holds no Antigravity OAuth client and mints no token of its own: `agy
+ * login` owns the sign-in, and this reader only decodes what that CLI wrote. A
+ * lapsed token is renewed by running the vendor CLI so it renews its own
+ * credential, then reading the store again; `forceRenew` asks for that even
+ * while the local clock still calls the token healthy, which is what a turn
+ * refused upstream with 401/403 needs.
  */
 export async function readAntigravitySubscriptionToken(
   options: { readonly forceRenew?: boolean } = {},
