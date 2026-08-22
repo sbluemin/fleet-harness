@@ -204,11 +204,44 @@ describe("antigravity credentials", () => {
     expect(antigravityUserAgent("win32", "x64")).toContain("os_type=windows; arch=amd64");
   });
 
-  it("has no credential store to read on Windows rather than guessing at one", async () => {
-    const execFile = vi.fn(async (_file: string, _args: readonly string[]) => "unused");
+  it("reads the Windows Credential Manager item go-keyring wrote", async () => {
+    // The Windows store takes arbitrary bytes, so `agy` leaves plain JSON there
+    // with none of the `go-keyring-base64:` wrapping the other platforms need;
+    // the base64 here is this reader's own transport off PowerShell's stdout.
+    const payload = JSON.stringify({
+      token: {
+        access_token: ACCESS,
+        refresh_token: REFRESH,
+        expiry: new Date(Date.now() + 3_600_000).toISOString(),
+      },
+      auth_method: "consumer",
+    });
+    const execFile = vi.fn(
+      async (_file: string, _args: readonly string[]) =>
+        Buffer.from(payload, "utf8").toString("base64"),
+    );
+    const result = await resolveAntigravityAuth(credentialDeps({
+      platform: "win32",
+      env: { SystemRoot: "C:\\Windows" },
+      execFile,
+    }));
+    expect(result).toMatchObject({ status: "ok", credentials: { accessToken: ACCESS } });
+
+    const [file, args] = execFile.mock.calls[0]!;
+    // Absolute path: PATH order must not choose which binary sees the secret.
+    expect(file).toBe("C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe");
+    expect(args.slice(0, 3)).toEqual(["-NoProfile", "-NonInteractive", "-EncodedCommand"]);
+    const script = Buffer.from(args[3] ?? "", "base64").toString("utf16le");
+    expect(script).toContain("CredReadW");
+    expect(script).toContain("gemini:antigravity");
+  });
+
+  it("treats an empty Credential Manager read as signed out", async () => {
+    const execFile = vi.fn(async (_file: string, _args: readonly string[]) => "");
     const result = await resolveAntigravityAuth(credentialDeps({ platform: "win32", execFile }));
     expect(result).toEqual({ status: "signed_out" });
-    expect(execFile).not.toHaveBeenCalled();
+    // No SystemRoot to resolve against, so the bare name is the only fallback left.
+    expect(execFile.mock.calls[0]?.[0]).toBe("powershell.exe");
   });
 });
 

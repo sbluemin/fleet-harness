@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import path from "node:path";
 
 import {
   MAX_CREDENTIAL_BYTES,
@@ -71,6 +72,12 @@ export const ANTIGRAVITY_REFRESH_BUFFER_MS = 60_000;
 /** `agy models` is a network round trip; measured near 3s, bounded well above it. */
 const VENDOR_REFRESH_TIMEOUT_MS = 20_000;
 const KEYCHAIN_TIMEOUT_MS = 5_000;
+/**
+ * Windows pays for a PowerShell start and a C# compile the other stores do not.
+ * Measured near 450ms on this path (2026-08-22); bounded well above it because a
+ * cold .NET load makes that figure a floor, not a ceiling.
+ */
+const WINDOWS_CREDENTIAL_TIMEOUT_MS = 15_000;
 
 const vendorRefreshInFlight = new Map<string, Promise<void>>();
 
@@ -178,12 +185,74 @@ export function parseAntigravityKeychainValue(raw: string): StoredAntigravityTok
 }
 
 /**
+ * `go-keyring`'s Windows backend stores one Credential Manager generic item named
+ * `service:account`, so this names the same secret macOS and Linux reach through
+ * their own store's addressing.
+ */
+const WINDOWS_CREDENTIAL_TARGET = `${ANTIGRAVITY_KEYCHAIN_SERVICE}:${ANTIGRAVITY_KEYCHAIN_ACCOUNT}`;
+
+/**
+ * Read one Credential Manager item and print its blob as base64.
+ *
+ * Windows ships no shell tool that prints a generic credential's value, which is
+ * why this declares `CredReadW` and calls it rather than shelling out to one. Two
+ * choices here are deliberate: the blob is emitted base64 because the console code
+ * page would otherwise decide how `go-keyring`'s UTF-8 bytes come out, and base64
+ * is ASCII under every page; and an absent item prints nothing and exits 0, since
+ * "not signed in" is a fact to report, not a failure to raise.
+ */
+const WINDOWS_CREDENTIAL_READER = `$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class FleetAntigravityCredential {
+  [DllImport("advapi32.dll", SetLastError=true, CharSet=CharSet.Unicode, EntryPoint="CredReadW")]
+  private static extern bool CredRead(string target, uint type, uint flags, out IntPtr credential);
+  [DllImport("advapi32.dll")]
+  private static extern void CredFree(IntPtr credential);
+  [StructLayout(LayoutKind.Sequential, CharSet=CharSet.Unicode)]
+  private struct CREDENTIAL {
+    public uint Flags; public uint Type; public IntPtr TargetName; public IntPtr Comment;
+    public long LastWritten; public uint CredentialBlobSize; public IntPtr CredentialBlob;
+    public uint Persist; public uint AttributeCount; public IntPtr Attributes;
+    public IntPtr TargetAlias; public IntPtr UserName;
+  }
+  public static string Read(string target) {
+    IntPtr handle;
+    if (!CredRead(target, 1, 0, out handle)) return "";
+    try {
+      CREDENTIAL cred = (CREDENTIAL)Marshal.PtrToStructure(handle, typeof(CREDENTIAL));
+      byte[] blob = new byte[cred.CredentialBlobSize];
+      Marshal.Copy(cred.CredentialBlob, blob, 0, (int)cred.CredentialBlobSize);
+      return Convert.ToBase64String(blob);
+    } finally { CredFree(handle); }
+  }
+}
+'@
+[Console]::Out.Write([FleetAntigravityCredential]::Read('${WINDOWS_CREDENTIAL_TARGET}'))
+`;
+
+/**
+ * PowerShell by absolute path, never by name.
+ *
+ * This runs with the caller's `PATH`, and a credential reader is the last place to
+ * let `PATH` order pick which binary sees the secret. The bare name stays only as
+ * the fallback for a host that hid `SystemRoot`.
+ */
+function windowsPowerShell(deps: CredentialResolverDeps): string {
+  const systemRoot = optionalTrimmedString(deps.env.SystemRoot);
+  return systemRoot === undefined
+    ? "powershell.exe"
+    : path.win32.join(systemRoot, "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
+}
+
+/**
  * Read the OS credential store `go-keyring` wrote into.
  *
- * macOS is the keychain and Linux is libsecret through `secret-tool`, which is the
- * same backend `go-keyring` selects on each platform. Windows uses the Credential
- * Manager, which has no shell reader that returns a value on stdout, so it reports
- * absent rather than pretending to have looked.
+ * Each branch reads the store `go-keyring` itself selects for that platform: the
+ * keychain on macOS, libsecret through `secret-tool` on Linux, and the Credential
+ * Manager on Windows. Anything else has no store to read and reports absent rather
+ * than pretending to have looked.
  */
 async function readKeychainValue(deps: CredentialResolverDeps): Promise<string | null> {
   if (deps.platform === "darwin") {
@@ -213,6 +282,24 @@ async function readKeychainValue(deps: CredentialResolverDeps): Promise<string |
       ],
       { timeout: KEYCHAIN_TIMEOUT_MS },
     );
+    return raw.length > MAX_CREDENTIAL_BYTES ? null : raw;
+  }
+  if (deps.platform === "win32") {
+    const encoded = await deps.execFile(
+      windowsPowerShell(deps),
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-EncodedCommand",
+        // `-EncodedCommand` takes UTF-16LE base64, which is what keeps a script
+        // full of quotes and `$` out of Windows command-line quoting entirely.
+        Buffer.from(WINDOWS_CREDENTIAL_READER, "utf16le").toString("base64"),
+      ],
+      { timeout: WINDOWS_CREDENTIAL_TIMEOUT_MS },
+    );
+    const blob = encoded.trim();
+    if (blob.length === 0) return null;
+    const raw = Buffer.from(blob, "base64").toString("utf8");
     return raw.length > MAX_CREDENTIAL_BYTES ? null : raw;
   }
   return null;
