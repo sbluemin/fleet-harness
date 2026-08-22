@@ -45,6 +45,19 @@ export const DEFAULT_ANTIGRAVITY_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 const AUTH_REJECTION_STATUS: ReadonlySet<number> = new Set([401, 403]);
 
 /**
+ * Let go of a response nothing will read.
+ *
+ * The upstream gate holds a per-origin permit until the body ends, so a response
+ * that is replaced rather than consumed holds its permit for the life of the
+ * process. One abandoned rejection per renewal is enough to retire the ceiling
+ * into a queue nothing leaves, and at `maxUpstreamInFlight: 1` the very retry
+ * that abandoned it would wait behind its own permit until the queue times out.
+ */
+async function discardResponseBody(response: Response): Promise<void> {
+  await response.body?.cancel().catch(() => undefined);
+}
+
+/**
  * Longest the upstream may send nothing at all before the read is abandoned.
  *
  * Taken from what the caller tolerates rather than from how fast a short turn
@@ -170,6 +183,7 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
         const renewed = await this.renewCredential().catch(() => null);
         if (renewed && renewed !== options.apiKey) {
           wireLog("antigravity.wire.auth_retry", { status: response.status });
+          await discardResponseBody(response);
           response = await send(renewed);
         }
       }

@@ -84,7 +84,14 @@ export async function loadAntigravityCodeAssist(
       body: JSON.stringify({ metadata: { ideType: "ANTIGRAVITY" } }),
       signal: controller.signal,
     });
-    if (!response.ok) return {};
+    if (!response.ok) {
+      // The upstream gate holds this origin's permit until the body ends, and an
+      // empty read is deliberately not cached, so a consistently rejecting
+      // endpoint would leak one permit per turn and eventually make every turn
+      // wait out the queue before it even starts.
+      await response.body?.cancel().catch(() => undefined);
+      return {};
+    }
     const payload = credentialRecord(await response.json());
     if (!payload) return {};
     const project = projectId(payload.cloudaicompanionProject);

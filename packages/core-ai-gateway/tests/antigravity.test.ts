@@ -10,7 +10,9 @@ import {
   buildAntigravityEnvelope,
   createAntigravitySignatureLedger,
   createToolNameCodec,
+  createUpstreamGate,
   fetchAntigravityUsage,
+  loadAntigravityCodeAssist,
   isAntigravitySignature,
   parseAntigravityKeychainValue,
   parseAntigravityQuotaSummary,
@@ -728,6 +730,58 @@ describe("antigravity adapter", () => {
     expect(result.ok).toBe(false);
     expect(renewCredential).not.toHaveBeenCalled();
     expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it("frees the origin permit it abandoned, so the retry is not queued behind itself", async () => {
+    // The upstream gate holds a permit until the body ends. At a ceiling of one,
+    // an abandoned rejection would make the retry wait behind its own permit —
+    // so this passing at all is the proof the first body was released.
+    const sseFrame = `data: ${JSON.stringify({ response: { candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }], modelVersion: "gemini-3.7-flash", responseId: "r" } })}\n\n`;
+    let attempt = 0;
+    const gate = createUpstreamGate(
+      (async (_input: unknown, init?: RequestInit) => {
+        attempt += 1;
+        if (String((init?.headers as Record<string, string>).Authorization) === `Bearer ${ACCESS}`) {
+          // A real rejection carries a body, which is what holds the permit.
+          return new Response(JSON.stringify({ error: { code: 401, message: "nope" } }), { status: 401 });
+        }
+        return new Response(sseFrame, { status: 200, headers: { "content-type": "text/event-stream" } });
+      }) as never,
+      { maxInFlight: 1, maxQueueWaitMs: 2_000 },
+    );
+    try {
+      const adapter = new AntigravityGenerateContentAdapter({
+        fetch: gate.fetch as never,
+        project: "p",
+        renewCredential: async () => "renewed-token",
+      });
+      const result = await adapter.stream(request(), { apiKey: ACCESS });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      await collect(result.events);
+      expect(attempt).toBe(2);
+      // Both the discarded rejection and the consumed stream gave their permit back.
+      expect(gate.stats().every((origin) => origin.inFlight === 0)).toBe(true);
+    } finally {
+      gate.dispose();
+    }
+  });
+
+  it("frees the permit for a rejected onboarding read rather than leaking one per turn", async () => {
+    const gate = createUpstreamGate(
+      (async () => new Response(JSON.stringify({ error: "denied" }), { status: 403 })) as never,
+      { maxInFlight: 1, maxQueueWaitMs: 2_000 },
+    );
+    try {
+      // Onboarding failures are deliberately not cached, so a leak here would be
+      // one permit per turn; three consecutive reads completing proves otherwise.
+      for (let i = 0; i < 3; i += 1) {
+        expect(await loadAntigravityCodeAssist(gate.fetch as never, ACCESS)).toEqual({});
+      }
+      expect(gate.stats().every((origin) => origin.inFlight === 0)).toBe(true);
+    } finally {
+      gate.dispose();
+    }
   });
 
   it("keeps its ledger across turns so one round trip can recover its own blob", async () => {
