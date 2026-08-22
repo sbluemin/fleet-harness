@@ -384,7 +384,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.bin).toBe(process.execPath);
     expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
-    expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet-gateway"));
+    // 스냅숏 디렉터리 이름은 내용 해시라 리터럴로 고정하지 않는다 — 저장소 위치와 접두만 고정한다.
+    expect(path.dirname(pluginRoot!)).toBe(path.join(root, "plugin-snapshots"));
+    expect(path.basename(pluginRoot!)).toMatch(/^fleet-gateway-[0-9a-f]{16}$/);
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
     // 위임 규율은 시스템 프롬프트가 아니라 이 훅이 싣는다.

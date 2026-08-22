@@ -97,7 +97,11 @@ export interface FleetHookExec {
 
 export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
 
-export interface AgentCliPluginMarketplaceLock {
+/**
+ * 호스트가 공급하는 플러그인 스냅숏 저장소 락. target은 저장소 루트이고, 호스트 구현은
+ * 거기에 `.lock`을 붙인 advisory 디렉터리 락으로 렌더·회수를 프로세스 간 직렬화한다.
+ */
+export interface AgentCliPluginStoreLock {
   <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
 }
 
@@ -124,7 +128,7 @@ export interface CreateAgentCliPluginOptions {
   readonly gatewayEffortExposure?: GatewayEffortExposure;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
-  readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
+  readonly withPluginStoreLock: AgentCliPluginStoreLock;
 }
 
 export interface AgentCliPlugin {
@@ -142,16 +146,6 @@ export interface PluginBundleBase {
 
 export interface AssetPluginBundle extends PluginBundleBase {
   readonly source: "asset";
-}
-
-export interface MarketplaceTarget {
-  readonly name: string;
-  readonly root: string;
-}
-
-export interface RenderablePluginBundle {
-  readonly bundle: PluginBundle;
-  readonly target: MarketplaceTarget;
 }
 
 export type PluginBundle = AssetPluginBundle;

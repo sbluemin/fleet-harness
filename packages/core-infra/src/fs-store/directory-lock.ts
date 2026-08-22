@@ -165,7 +165,12 @@ function restoreQuarantinedLock(quarantineDir: string, lockDir: string): void {
   }
 }
 
-function isProcessAlive(pid: number): boolean {
+/**
+ * 같은 호스트의 pid 생존 프로브. ESRCH만 죽음으로 판정하고 EPERM 등 그 외 오류는
+ * 살아 있음으로 취급한다 — 소유자 판별이 불확실할 때 자원을 회수하지 않는 보수적 계약이며,
+ * lock 복구와 plugin snapshot lease 회수가 같은 판정을 공유한다.
+ */
+export function isProcessAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
     return true;

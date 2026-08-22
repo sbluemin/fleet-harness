@@ -7,7 +7,7 @@ import {
   resolveAgentCliProfile,
 } from "@dotobokuri/fleet-admiral";
 
-import { withFleetMarketplaceLock } from "../runtime/host-hooks.js";
+import { withFleetPluginStoreLock } from "../runtime/host-hooks.js";
 import type { FleetCliRuntime } from "../runtime/runtime.js";
 import type { FleetCliGatewayServer } from "./server.js";
 
@@ -42,7 +42,7 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
       gatewayDelegationModels: selection.delegationModels,
       gatewayEffortExposure: selection.effortExposure,
-      withMarketplaceLock: withFleetMarketplaceLock,
+      withPluginStoreLock: withFleetPluginStoreLock,
       onCleanup: (cleanup) => profileCleanups.push(cleanup),
     });
     const launchProfile = prepareAiGatewayLaunchProfile(injected, {

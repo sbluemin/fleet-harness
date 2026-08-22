@@ -295,9 +295,9 @@ describe("claude-gateway argument composition", () => {
         },
         {
           ...baseInjectOptions(root),
-          withMarketplaceLock: async () => { throw new Error("injected marketplace failure"); },
+          withPluginStoreLock: async () => { throw new Error("injected plugin store failure"); },
         },
-      )).rejects.toThrow("injected marketplace failure");
+      )).rejects.toThrow("injected plugin store failure");
 
       expect(readdirSync(isolatedTmp)).toEqual([]);
     } finally {
@@ -472,6 +472,6 @@ function baseInjectOptions(
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
-    withMarketplaceLock: async (_target, fn) => fn(),
+    withPluginStoreLock: async (_target, fn) => fn(),
   };
 }

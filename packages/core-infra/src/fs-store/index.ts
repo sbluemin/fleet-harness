@@ -10,7 +10,7 @@ export type {
 } from "./types.js";
 
 export { createDurableJsonStore } from "./json-store.js";
-export { withDirectoryLock } from "./directory-lock.js";
+export { isProcessAlive, withDirectoryLock } from "./directory-lock.js";
 export {
   NOFOLLOW_FLAG,
   safeLstat,

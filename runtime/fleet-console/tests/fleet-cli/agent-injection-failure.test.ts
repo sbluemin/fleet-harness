@@ -34,7 +34,7 @@ describe("agent CLI injection failure cleanup", () => {
           releaseSessionToken,
         } as never,
         pluginRootDir: invalidPluginRoot,
-        withMarketplaceLock: (_target, fn) => fn(),
+        withPluginStoreLock: (_target, fn) => fn(),
       })).rejects.toThrow();
     } finally {
       rmSync(dataDir, { recursive: true, force: true });

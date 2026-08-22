@@ -147,7 +147,7 @@ describe("agent CLI session resume and capture hooks", () => {
       cliId: "claude-gateway",
       cwd: root,
       dataDir,
-      withMarketplaceLock: async (_target, fn) => fn(),
+      withPluginStoreLock: async (_target, fn) => fn(),
     });
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: {
@@ -228,7 +228,7 @@ function baseInjectOptions(
     ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
     ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
     ...(overrides.turnStartHookExec ? { turnStartHookExec: overrides.turnStartHookExec } : {}),
-    withMarketplaceLock: async (_target, fn) => fn(),
+    withPluginStoreLock: async (_target, fn) => fn(),
   };
 }
 

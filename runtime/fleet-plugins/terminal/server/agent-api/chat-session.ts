@@ -37,7 +37,10 @@ import {
   type AgentChatStreamEvent,
 } from "./chat-events.js";
 import { chatChildEnv } from "../shared/launch-env.js";
+import type { FleetPluginRootsLease } from "./launch.js";
 import type { AgentProviderSession } from "./types.js";
+
+const EMPTY_PLUGIN_LEASE: FleetPluginRootsLease = { roots: [], cleanup: () => {} };
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -105,10 +108,11 @@ export interface AgentChatSessionSeed {
    */
   readonly resolveFleetMcpServers?: () => Promise<readonly ClaudeGatewayServedMcpServer[]>;
   /**
-   * Fleet 플러그인 루트를 렌더하고 그 경로를 돌려준다. 스킬·게이트웨이 정체성·정책 훅이 전부
-   * 이 디렉터리 한 벌로 실린다 — 터미널 세션이 `--plugin-dir`로 받는 것과 같은 것이다.
+   * Fleet 플러그인 스냅숏 리스를 확보한다. 스킬·게이트웨이 정체성·정책 훅이 전부 이 스냅숏
+   * 한 벌로 실린다 — 터미널 세션이 `--plugin-dir`로 받는 것과 같은 것이다. cleanup은 dispose가
+   * 부르고, 그래야 리스가 풀려 옛 스냅숏이 회수될 수 있다.
    */
-  readonly resolveFleetPluginRoots?: () => Promise<readonly string[]>;
+  readonly resolveFleetPluginRoots?: () => Promise<FleetPluginRootsLease>;
   /**
    * 내장 스킬 중 이 doctrine이 끄는 것들. 터미널 세션이 `--settings`로 받는 것과 같은 값이며,
    * 없으면 같은 프롬프트가 표면에 따라 다른 스킬을 깨운다.
@@ -266,6 +270,7 @@ class AgentChatSession {
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
+  private pluginLeaseCleanup: (() => void) | null = null;
   /**
    * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
    * 토큰이 턴 수만큼 쌓인다.
@@ -672,6 +677,9 @@ class AgentChatSession {
     // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
     if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
     this.seed.releaseFleetMcpServers?.();
+    // 플러그인 스냅숏 리스를 반납한다 — 세션이 접힌 뒤에야 옛 스냅숏이 GC 대상이 된다.
+    this.pluginLeaseCleanup?.();
+    this.pluginLeaseCleanup = null;
     this.listeners.clear();
   }
 
@@ -1073,36 +1081,43 @@ class AgentChatSession {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
       this.sdkFlight = (async () => {
-        // 플러그인을 못 실으면 스킬도 게이트웨이 정체성도 정책 훅도 없는 세션이 된다. 세션을
-        // 죽일 사유는 아니지만 조용히 넘길 사유도 아니다 — 같은 Operation을 터미널로 열었을
-        // 때와 다른 능력을 갖게 되고, 그 차이는 화면 어디에도 드러나지 않는다.
-        const pluginRoots = await (this.seed.resolveFleetPluginRoots?.() ?? Promise.resolve([]))
-          .catch(() => {
+        // 플러그인을 못 실으면 스킬도 게이트웨이 정체성도 정책 훅도 없는 세션이 된다. 그런 세션을
+        // 조용히 계속 돌리면 같은 Operation을 터미널로 열었을 때와 다른, 특히 위임 가드가 없는
+        // 능력을 갖게 되고 그 차이는 화면 어디에도 드러나지 않는다 — 구체 코드를 저널에 남기고
+        // 턴을 실패시킨다. 실패한 턴이 무장 해제된 세션보다 낫다.
+        const pluginLease = await (this.seed.resolveFleetPluginRoots?.() ?? Promise.resolve(EMPTY_PLUGIN_LEASE))
+          .catch((error: unknown) => {
             this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
-            return [] as readonly string[];
+            throw error instanceof Error ? error : new Error("Fleet plugin snapshot unavailable");
           });
-        const sdk = await this.createSdk({
-          baseUrl: this.seed.baseUrl,
-          models: [this.seed.model],
-          // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
-          home: { kind: "shared", configDir: this.seed.claudeConfigDir },
-          // Chat Mode는 같은 세션의 다른 얼굴이다. 터미널로 열었을 때 CLI가 읽는 층을 그대로
-          // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
-          settingSources: ["user", "project", "local"],
-          allowAmbientMcpServers: true,
-          ...(this.seed.skillOverrides ? { skillOverrides: this.seed.skillOverrides } : {}),
-          ...(this.seed.ultracode ? { ultracode: true } : {}),
-          // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
-          // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
-          env: chatChildEnv(process.env),
-          ...(pluginRoots.length > 0 ? { plugins: pluginRoots.map((root) => ({ path: root })) } : {}),
-        });
-        if (this.disposed) {
-          await sdk.dispose().catch(() => undefined);
-          throw new Error("chat session disposed");
+        try {
+          const sdk = await this.createSdk({
+            baseUrl: this.seed.baseUrl,
+            models: [this.seed.model],
+            // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
+            home: { kind: "shared", configDir: this.seed.claudeConfigDir },
+            // Chat Mode는 같은 세션의 다른 얼굴이다. 터미널로 열었을 때 CLI가 읽는 층을 그대로
+            // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
+            settingSources: ["user", "project", "local"],
+            allowAmbientMcpServers: true,
+            ...(this.seed.skillOverrides ? { skillOverrides: this.seed.skillOverrides } : {}),
+            ...(this.seed.ultracode ? { ultracode: true } : {}),
+            // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
+            // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
+            env: chatChildEnv(process.env),
+            ...(pluginLease.roots.length > 0 ? { plugins: pluginLease.roots.map((root) => ({ path: root })) } : {}),
+          });
+          if (this.disposed) {
+            await sdk.dispose().catch(() => undefined);
+            throw new Error("chat session disposed");
+          }
+          this.pluginLeaseCleanup = pluginLease.cleanup;
+          this.sdk = sdk;
+          return sdk;
+        } catch (error) {
+          pluginLease.cleanup();
+          throw error;
         }
-        this.sdk = sdk;
-        return sdk;
       })().finally(() => {
         this.sdkFlight = null;
       });

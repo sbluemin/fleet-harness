@@ -18,7 +18,7 @@ export type ConsoleTurnPhase = "start" | "end";
 
 const JAVASCRIPT_ENTRY_EXTENSIONS = new Set([".cjs", ".js", ".mjs"]);
 const TYPESCRIPT_ENTRY_EXTENSIONS = new Set([".cts", ".mts", ".ts", ".tsx"]);
-const MARKETPLACE_LOCK_DIR_SUFFIX = ".lock";
+const PLUGIN_STORE_LOCK_DIR_SUFFIX = ".lock";
 
 export function buildConsoleTurnHookCommand(entry: ConsoleHookCommandEntry, phase: ConsoleTurnPhase): FleetHookExec {
   return buildConsoleCliHookExec(entry, ["hook", phase === "start" ? "turn-start" : "turn-end"]);
@@ -67,8 +67,8 @@ export function toCaptureProvider(cliId: AgentCliId): ConsoleCaptureProvider {
   return "claude";
 }
 
-export function withConsoleMarketplaceLock<T>(target: string, fn: () => T): T {
-  const lockDir = `${target}${MARKETPLACE_LOCK_DIR_SUFFIX}`;
+export function withConsolePluginStoreLock<T>(target: string, fn: () => T): T {
+  const lockDir = `${target}${PLUGIN_STORE_LOCK_DIR_SUFFIX}`;
   mkdirSync(path.dirname(lockDir), { recursive: true });
   return withDirectoryLock({ lockDir }, fn);
 }

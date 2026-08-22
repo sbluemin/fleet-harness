@@ -29,7 +29,7 @@ import {
 
 import { resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsoleMarketplaceLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsolePluginStoreLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
@@ -115,17 +115,24 @@ function buildConsoleHookEntry(deps: TerminalLaunchResolverDeps): ConsoleHookCom
   return { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
 }
 
+/** Chat 세션이 쥐는 플러그인 스냅숏 리스. cleanup은 세션 종료 시 리스를 해제한다. */
+export interface FleetPluginRootsLease {
+  readonly roots: readonly string[];
+  readonly cleanup: () => void;
+}
+
 /**
- * Chat Mode 세션이 SDK에 넘길 Fleet 플러그인 루트를 렌더한다.
+ * Chat Mode 세션이 SDK에 넘길 Fleet 플러그인 스냅숏을 확보한다.
  *
- * PTY 런치와 **같은 자리에 같은 옵션으로** 쓴다. 옵션이 갈리면 나중에 렌더한 쪽이 앞선 쪽의
- * 훅을 지우므로, 여기서 훅 exec를 빼는 것은 "Chat에는 상태 훅을 걸지 않는다"가 아니라
- * "터미널 세션의 상태 훅을 지운다"가 된다. 두 표면의 신호 차이는 이 파일이 아니라 호스트가
- * 그 신호를 읽는 자리에서 가른다.
+ * PTY 런치와 **같은 자리에 같은 옵션으로** 쓴다 — 내용이 같으면 두 표면이 같은 불변
+ * 스냅숏을 공유하고, 갈리면 각자 자기 스냅숏을 받는다. 여기서 훅 exec를 빼면 Chat이
+ * 다른 내용의 스냅숏을 받게 될 뿐 터미널 세션의 훅이 지워지지는 않지만, 두 표면의 신호
+ * 차이는 이 파일이 아니라 호스트가 그 신호를 읽는 자리에서 가른다는 원칙은 그대로다.
+ * 반환된 리스의 cleanup을 세션 teardown에 연결하지 않으면 스냅숏이 회수되지 않는다.
  */
 export async function renderFleetPluginRootsForChat(
   deps: TerminalLaunchResolverDeps & { readonly cwd: string },
-): Promise<readonly string[]> {
+): Promise<FleetPluginRootsLease> {
   const hookEntry = buildConsoleHookEntry(deps);
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const gatewaySelection = deps.readAiGatewaySettings
@@ -141,7 +148,7 @@ export async function renderFleetPluginRootsForChat(
     backgroundReportHookExec: buildConsoleBackgroundHookCommand(hookEntry),
     inputWaitingHookExec: buildConsoleAttentionHookCommand(hookEntry),
     autoNameHookExec: buildConsoleAutoNameHookCommand(hookEntry),
-    withMarketplaceLock: withConsoleMarketplaceLock,
+    withPluginStoreLock: withConsolePluginStoreLock,
     ...(gatewaySelection
       ? {
         gatewayDelegationModels: gatewaySelection.delegationModels,
@@ -149,7 +156,7 @@ export async function renderFleetPluginRootsForChat(
       }
       : {}),
   });
-  return plugin.pluginRoots;
+  return { roots: plugin.pluginRoots, cleanup: plugin.cleanup };
 }
 
 const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude-gateway";
@@ -319,7 +326,7 @@ async function createAgentCliLaunchSpec(options: {
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.globalOptionsService.load()),
       resumeSessionId: options.resumeSessionId,
-      withMarketplaceLock: withConsoleMarketplaceLock,
+      withPluginStoreLock: withConsolePluginStoreLock,
       mcpSessionLabel: options.sessionId,
       ...(gatewaySelection
         ? {

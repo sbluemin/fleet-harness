@@ -47,7 +47,7 @@ export interface InjectAgentCliProfileOptions {
    */
   readonly claudeCodeSystemPrompt?: "on" | "off";
   readonly resumeSessionId?: string;
-  readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
+  readonly withPluginStoreLock: AgentCliPluginStoreLock;
   /**
    * claude-gateway 전용: 위임 정체성으로 등록할 모델, 즉 AI Gateway 노출 집합에서 host 전용
    * 모델을 뺀 목록이다. `selection.models`를 넘기는 버그를 막기 위해 이름에 delegation을 명시한다.
@@ -57,7 +57,7 @@ export interface InjectAgentCliProfileOptions {
   readonly gatewayEffortExposure?: GatewayEffortExposure;
 }
 
-interface AgentCliPluginMarketplaceLock {
+interface AgentCliPluginStoreLock {
   <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
 }
 
@@ -141,7 +141,7 @@ export async function injectAgentCliProfile(
       // 게이트웨이 정체성은 플러그인이 파일로 싣는다 — argv에는 이미 있던 플러그인 경로만 남는다.
       gatewayDelegationModels: options.gatewayDelegationModels,
       gatewayEffortExposure: options.gatewayEffortExposure,
-      withMarketplaceLock: options.withMarketplaceLock,
+      withPluginStoreLock: options.withPluginStoreLock,
     });
     const cleanup = createOnceCleanup(() => {
       plugin.cleanup();
