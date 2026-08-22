@@ -1,8 +1,6 @@
 import {
   COMPACT_CEILING_CUSTOM_MAX,
   COMPACT_CEILING_CUSTOM_MIN,
-  COMPACT_CEILING_EARLY_PERCENT,
-  COMPACT_CEILING_LATE_PERCENT,
   DEFAULT_XAI_ENDPOINT_PREFERENCE,
   GATEWAY_PROVIDERS,
   XAI_ENDPOINT_PREFERENCES,
@@ -36,6 +34,11 @@ export const GATEWAY_SET_KEY_SYNTAX: Readonly<Record<GatewaySetKey, string>> = O
   "cursor-diagnostics": "on | off",
   "provider-priority": "comma-separated providers, or `none`",
 });
+
+// 표시용 퍼센트. core-ai-gateway는 이 둘을 내부 상수로 두므로 소비 계층이 미러링한다 —
+// Console의 AI Gateway 화면도 같은 값을 자기 파일에 들고 있다(terminal/client/agent/index.tsx).
+const COMPACT_CEILING_EARLY_PERCENT = 88;
+const COMPACT_CEILING_LATE_PERCENT = 97;
 
 export type GatewaySetResult =
   | { readonly ok: true; readonly summary: string }
