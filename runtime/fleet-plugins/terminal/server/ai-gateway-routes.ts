@@ -36,8 +36,8 @@ export type {
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken">>;
+  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken" | "renewAntigravityToken">>;
 
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
@@ -69,6 +69,8 @@ export function registerAiGatewayRoutes(
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
     readXaiToken: deps.readXaiToken ?? (() => readXaiSubscriptionToken()),
     readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
+    renewAntigravityToken: deps.renewAntigravityToken
+      ?? (() => readAntigravitySubscriptionToken({ forceRenew: true })),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });

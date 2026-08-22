@@ -674,6 +674,62 @@ describe("antigravity adapter", () => {
     expect(new TextDecoder().decode(result.body)).toBe(body);
   });
 
+  it("renews the credential once when the upstream refuses it before the local expiry", async () => {
+    // A session revoked server-side looks healthy to the local clock, so without
+    // this every turn fails until the recorded expiry finally passes.
+    const sent: string[] = [];
+    const fetchImpl = vi.fn(async (_input: unknown, init?: RequestInit) => {
+      const auth = String((init?.headers as Record<string, string>).Authorization);
+      sent.push(auth);
+      if (auth === `Bearer ${ACCESS}`) return new Response("{}", { status: 401 });
+      return new Response(
+        `data: ${JSON.stringify({ response: { candidates: [{ content: { role: "model", parts: [{ text: "ok" }] } }], modelVersion: "gemini-3.7-flash", responseId: "r" } })}\n\n`,
+        { status: 200, headers: { "content-type": "text/event-stream" } },
+      );
+    });
+    const renewCredential = vi.fn(async () => "renewed-token");
+    const adapter = new AntigravityGenerateContentAdapter({
+      fetch: fetchImpl as never,
+      project: "p",
+      renewCredential,
+    });
+    const result = await adapter.stream(request(), { apiKey: ACCESS });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    await collect(result.events);
+    expect(renewCredential).toHaveBeenCalledTimes(1);
+    expect(sent).toEqual([`Bearer ${ACCESS}`, "Bearer renewed-token"]);
+  });
+
+  it("does not spend a second turn when the renewal returns the same token", async () => {
+    // A rejection that survives a fresh credential is about this request.
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 403 }));
+    const renewCredential = vi.fn(async () => ACCESS);
+    const adapter = new AntigravityGenerateContentAdapter({
+      fetch: fetchImpl as never,
+      project: "p",
+      renewCredential,
+    });
+    const result = await adapter.stream(request(), { apiKey: ACCESS });
+    expect(result.ok).toBe(false);
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(renewCredential).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves a non-auth failure alone rather than renewing a working credential", async () => {
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 400 }));
+    const renewCredential = vi.fn(async () => "renewed-token");
+    const adapter = new AntigravityGenerateContentAdapter({
+      fetch: fetchImpl as never,
+      project: "p",
+      renewCredential,
+    });
+    const result = await adapter.stream(request(), { apiKey: ACCESS });
+    expect(result.ok).toBe(false);
+    expect(renewCredential).not.toHaveBeenCalled();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps its ledger across turns so one round trip can recover its own blob", async () => {
     const adapter = new AntigravityGenerateContentAdapter({
       fetch: (async () => new Response(

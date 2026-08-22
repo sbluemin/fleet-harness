@@ -49,6 +49,7 @@ export async function startGatewayHttpServer(deps: {
     readCursorToken: () => readCursorSubscriptionToken(),
     readXaiToken: () => readXaiSubscriptionToken(),
     readAntigravityToken: () => readAntigravitySubscriptionToken(),
+    renewAntigravityToken: () => readAntigravitySubscriptionToken({ forceRenew: true }),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: diagnostics.write,
   });

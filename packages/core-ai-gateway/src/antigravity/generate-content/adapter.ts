@@ -41,6 +41,9 @@ export const ANTIGRAVITY_STREAM_URL =
 
 export const DEFAULT_ANTIGRAVITY_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 
+/** Upstream statuses that mean "this credential", not "this request". */
+const AUTH_REJECTION_STATUS: ReadonlySet<number> = new Set([401, 403]);
+
 /**
  * Longest the upstream may send nothing at all before the read is abandoned.
  *
@@ -61,6 +64,16 @@ export interface AntigravityGenerateContentAdapterOptions {
   readonly project?: string;
   readonly codeAssist?: AntigravityCodeAssistCache;
   readonly signatureLedger?: AntigravitySignatureLedger;
+  /**
+   * Renew the subscription credential and return the fresh token.
+   *
+   * Cloud Code Assist can reject a token before the expiry the local store
+   * records — a session revoked or rotated server-side. Without this the reader
+   * keeps calling that same token healthy, so every turn fails until the
+   * recorded expiry finally passes. The quota probe already retries behind a
+   * forced renewal; this is the same contract for a turn.
+   */
+  readonly renewCredential?: () => Promise<string | null>;
 }
 
 /**
@@ -79,6 +92,7 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
   private readonly project: string | undefined;
   private readonly codeAssist: AntigravityCodeAssistCache;
   private readonly ledger: AntigravitySignatureLedger;
+  private readonly renewCredential: (() => Promise<string | null>) | undefined;
 
   constructor(options: AntigravityGenerateContentAdapterOptions = {}) {
     this.fetchImpl = options.fetch ?? ((input, init) => fetch(input, init));
@@ -93,6 +107,7 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
     // The ledger outlives one turn on purpose: it is the fallback for a client
     // that dropped the thinking block carrying a call's signature.
     this.ledger = options.signatureLedger ?? createAntigravitySignatureLedger();
+    this.renewCredential = options.renewCredential;
   }
 
   async stream(
@@ -132,19 +147,32 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
       generationConfig: envelope.request.generationConfig,
     });
 
+    const body = JSON.stringify(envelope);
+    const send = (token: string): Promise<Response> => this.fetchImpl(ANTIGRAVITY_STREAM_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "text/event-stream",
+        Authorization: `Bearer ${token}`,
+        "User-Agent": antigravityUserAgent(),
+      },
+      body,
+      signal: controller.signal,
+    });
+
     let response: Response;
     try {
-      response = await this.fetchImpl(ANTIGRAVITY_STREAM_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "text/event-stream",
-          Authorization: `Bearer ${options.apiKey}`,
-          "User-Agent": antigravityUserAgent(),
-        },
-        body: JSON.stringify(envelope),
-        signal: controller.signal,
-      });
+      response = await send(options.apiKey);
+      // One retry, and only behind a token the renewal actually changed: a
+      // rejection that survives a fresh credential is about this request, and
+      // re-sending it would spend a second turn to learn the same thing.
+      if (AUTH_REJECTION_STATUS.has(response.status) && this.renewCredential) {
+        const renewed = await this.renewCredential().catch(() => null);
+        if (renewed && renewed !== options.apiKey) {
+          wireLog("antigravity.wire.auth_retry", { status: response.status });
+          response = await send(renewed);
+        }
+      }
     } catch (error) {
       unlink();
       throw error;

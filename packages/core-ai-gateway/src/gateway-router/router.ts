@@ -132,8 +132,13 @@ export async function readXaiSubscriptionToken(): Promise<string | null> {
  * refresh window, exchanges the CLI's own refresh token in memory — the vendor's
  * copy is never rewritten.
  */
-export async function readAntigravitySubscriptionToken(): Promise<string | null> {
-  const credentials = await resolveAntigravityCredentials(defaultCredentialDeps);
+export async function readAntigravitySubscriptionToken(
+  options: { readonly forceRenew?: boolean } = {},
+): Promise<string | null> {
+  const credentials = await resolveAntigravityCredentials(
+    defaultCredentialDeps,
+    options.forceRenew === true ? { forceRefresh: true } : {},
+  );
   return credentials?.accessToken ?? null;
 }
 
@@ -155,6 +160,12 @@ export interface AiGatewayRouteDeps {
   readonly readCursorToken: () => string | null | Promise<string | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
   readonly readAntigravityToken?: () => string | null | Promise<string | null>;
+  /**
+   * Re-read the Antigravity credential after the upstream refused it, renewing
+   * it first. Absent means a refused token ends the turn, which is what happens
+   * for every provider that cannot renew on demand.
+   */
+  readonly renewAntigravityToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
@@ -209,7 +220,12 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   let ownedAntigravityGateway: AnthropicMessagesGateway | undefined;
   const antigravityGateway = (): AnthropicMessagesGateway => {
     ownedAntigravityGateway ??= new AnthropicMessagesGateway(
-      new AntigravityGenerateContentAdapter({ fetch: fetchImpl }),
+      new AntigravityGenerateContentAdapter({
+        fetch: fetchImpl,
+        ...(deps.renewAntigravityToken
+          ? { renewCredential: async () => (await deps.renewAntigravityToken?.()) ?? null }
+          : {}),
+      }),
     );
     return ownedAntigravityGateway;
   };
