@@ -983,14 +983,26 @@ export function omitClaudeWebSearchTools<
  * Shape is the test rather than the exact sentence. `x-anthropic-billing-header:` carries a
  * client version that changes every release, and the identity sentence has two spellings
  * already — the interactive CLI's and the Agent SDK's, the latter used by subagents and by
- * headless `-p` runs. Both are anchored on the opening they have kept, and both must be the
- * whole of a single-line block: measured across an interactive turn, a headless turn and a
- * subagent turn, Claude Code always ships each on a `system` block of its own, and requiring
- * the whole block is what keeps a real instruction that merely opens the same way from being
- * silently deleted.
+ * headless `-p` runs. Both must be the whole of a single-line block: measured across an
+ * interactive turn, a headless turn and a subagent turn, Claude Code always ships each on a
+ * `system` block of its own.
+ *
+ * The identity test needs one more constraint than the header does. A header line is
+ * self-identifying — nothing but that header opens with that name — while `You are Claude
+ * Code` is also how a caller's own one-line instruction can open. So the identity pattern
+ * additionally requires the block to be a *single* sentence that names Anthropic: no period
+ * before the sentence ends, and `Anthropic` inside it. `You are Claude Code. Always answer in
+ * Korean.` keeps its block, and so does the real sentence with instructions appended after it,
+ * while both metadata spellings still match and can still be reworded within the sentence.
+ *
+ * Erring toward keeping a block is deliberate. Failing to strip a reworded sentence restores
+ * the old, loud symptom — the identity leaks and Cloud Code Assist refuses the turn — which is
+ * noticed immediately. Stripping a caller's real instruction deletes prompt content silently,
+ * and nothing downstream can tell it ever existed.
  */
 const CLAUDE_BILLING_HEADER_BLOCK = /^\s*x-anthropic-billing-header:[^\n]*[ \t]*$/;
-const CLAUDE_CLIENT_IDENTITY_BLOCK = /^\s*You are (?:Claude Code|a Claude agent)\b[^\n]*[ \t]*$/;
+const CLAUDE_CLIENT_IDENTITY_BLOCK =
+  /^\s*You are (?:Claude Code|a Claude agent)\b[^.\n]*\bAnthropic\b[^.\n]*\.?[ \t]*$/;
 
 export interface ClaudeClientIdentityStripResult<B> {
   /** The surviving blocks, or `undefined` when every one of them was metadata. */

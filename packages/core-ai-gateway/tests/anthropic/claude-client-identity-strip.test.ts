@@ -66,6 +66,12 @@ describe("claude client identity strip", () => {
       "an instruction that opens like the identity sentence but continues",
       `${IDENTITY_CLI}\n\nAlways answer in Korean and cite file paths.`,
     ],
+    // Same line, not just the next one: the opener alone is also how a caller's own
+    // one-line instruction starts, so the sentence has to end where the metadata's does.
+    ["a one-line instruction opening with the CLI opener", "You are Claude Code. Always answer in Korean and cite file paths."],
+    ["a one-line instruction opening with the SDK opener", "You are a Claude agent. Use absolute paths."],
+    ["the identity sentence with instructions appended after it", `${IDENTITY_CLI} Always answer in Korean.`],
+    ["an opener continued without naming Anthropic", "You are Claude Code, the best assistant ever"],
     ["a sentence that only mentions Claude", "Explain how Claude Code handles subagents."],
     ["prose about the billing header", "The x-anthropic-billing-header: line is telemetry."],
     ["a different agent identity", "You are a Gemini agent, built on Google's Agent SDK."],
