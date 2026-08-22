@@ -96,9 +96,18 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
  *
  * Ambiguity resolves downward. Overclassing puts a light model in seats that
  * needed judgment; underclassing merely costs one candidate. A `-fast` entry
- * therefore inherits its base class only when `providerModelId` proves it is
- * the same upstream under different service terms; an unlinked `-fast`/`flash`
- * name reads as the provider's light tier.
+ * therefore inherits its base class only where a link proves it is the same
+ * upstream under different service terms, and an unlinked `-fast`/`flash` name
+ * reads as the provider's light tier.
+ *
+ * Two links prove it, because providers spell the same fact two ways. Where the
+ * variant reaches its base's own wire id, `providerModelId` already carries the
+ * proof. Where the provider gives the variant a wire id of its own — Cursor's
+ * `cursor-grok-4.6-{effort}-fast` against `cursor-grok-4.6-{effort}` — that
+ * field is spoken for by the wire, so {@link GatewayModelEntry.variantOf} states
+ * the lineage separately. Without the second spelling such a variant could not
+ * be linked at all, and the downward rule would grade a flagship's priority tier
+ * as light purely because the catalog had no room to say otherwise.
  *
  * Routing aliases (Cursor's `auto`) carry no class: what serves the request
  * varies per call, so any single class would lie.
@@ -201,6 +210,14 @@ const GatewayModelEntrySchema = z.object({
   benchmarkKey: z.string().min(1).optional(),
   description: z.string().min(1).optional(),
   providerModelId: z.string().min(1).optional(),
+  /**
+   * The catalog entry this one is a serving variant of, when the provider gives
+   * the variant its own wire id and `providerModelId` is therefore unavailable
+   * as the lineage link. Pure provenance: it names a sibling `modelId` in the
+   * same provider and never reaches a request, so the variant keeps sending its
+   * own upstream id while inheriting the base's class and benchmark evidence.
+   */
+  variantOf: z.string().min(1).optional(),
   serviceTier: z.literal("priority").optional(),
   cursorMaxMode: z.literal(true).optional(),
   quotaScope: z.enum(GATEWAY_QUOTA_SCOPES).optional(),
@@ -781,8 +798,28 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       // A service-tier sibling is the same upstream under different terms; a
       // class diverging from its base would let the serving tier edit the prior.
-      if (!isRoutingAlias && model.providerModelId) {
-        const base = definition.models.find((candidate) => candidate.modelId === model.providerModelId);
+      // The lineage link is `providerModelId` where the sibling reaches the
+      // base's own wire id, and `variantOf` where the provider gave it one of
+      // its own. Two links must never name two different bases.
+      if (model.variantOf && model.providerModelId && model.providerModelId !== model.variantOf) {
+        throw new Error(`Gateway service-tier sibling names two different bases: ${provider}/${model.modelId}`);
+      }
+      if (model.variantOf === model.modelId) {
+        throw new Error(`Gateway service-tier sibling names itself as its base: ${provider}/${model.modelId}`);
+      }
+      const baseModelId = isRoutingAlias ? undefined : model.variantOf ?? model.providerModelId;
+      if (baseModelId) {
+        const base = definition.models.find((candidate) => candidate.modelId === baseModelId);
+        // `providerModelId` may legitimately name an upstream this catalog does
+        // not list, so only an explicit `variantOf` demands a resolvable base.
+        if (model.variantOf && !base) {
+          throw new Error(`Gateway service-tier sibling names an unknown base: ${provider}/${model.modelId} -> ${model.variantOf}`);
+        }
+        // A chain would let the class travel two hops from the model that
+        // actually stated it, so a base is always a base.
+        if (base?.variantOf) {
+          throw new Error(`Gateway service-tier sibling names another sibling as its base: ${provider}/${model.modelId}`);
+        }
         if (base && base.capabilityClass !== model.capabilityClass) {
           throw new Error(`Gateway service-tier sibling class differs from its base: ${provider}/${model.modelId}`);
         }
