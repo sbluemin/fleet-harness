@@ -9,6 +9,7 @@ import {
   GATEWAY_SET_KEYS,
   applyGatewaySetting,
   buildCompactCeilingChoices,
+  nextPriorityDefault,
   resolveCompactCeilingChoice,
   describeGatewayPolicy,
   isGatewaySetKey,
@@ -126,6 +127,32 @@ describe("fleet gateway set", () => {
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.message).toContain("(missing)");
     expect(store.read().xaiEndpoint).toBeUndefined();
+  });
+});
+
+describe("interactive spend priority defaults", () => {
+  const ALL = ["codex", "xai", "cursor", "opencode", "kimi"] as const;
+
+  it("defaults to the terminating choice when nothing is stored", () => {
+    // 기본값이 없으면 커서가 남은 공급자 첫 줄에 놓인다. 순위가 없는 사용자가 화면을 열어
+    // 엔터만 눌러도 없던 랭킹이 생기는 경로다.
+    expect(nextPriorityDefault(undefined, [], ALL)).toBe("");
+    expect(nextPriorityDefault([], [], ALL)).toBe("");
+  });
+
+  it("walks the stored order while it lasts, then terminates", () => {
+    const stored = ["cursor", "codex"] as const;
+    expect(nextPriorityDefault(stored, [], ALL)).toBe("cursor");
+    expect(nextPriorityDefault(stored, ["cursor"], ALL.filter((p) => p !== "cursor"))).toBe("codex");
+    // 저장된 둘을 다 지나면 기본은 Done이라, 부분 순위가 전체 랭킹으로 자라지 않는다.
+    expect(nextPriorityDefault(stored, ["cursor", "codex"], ["xai", "opencode", "kimi"])).toBe("");
+  });
+
+  it("terminates when the stored suggestion was already ranked by hand", () => {
+    // 사용자가 저장 순서와 다르게 골랐다면 제안이 remaining에 없다. 옵션에 없는 기본값을
+    // 넘기면 프롬프트가 첫 줄로 되돌아가므로 종료 항목으로 접는다.
+    expect(nextPriorityDefault(["cursor", "codex"], ["codex"], ["xai", "cursor", "opencode", "kimi"]))
+      .toBe("");
   });
 });
 

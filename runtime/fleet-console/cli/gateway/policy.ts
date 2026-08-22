@@ -126,6 +126,20 @@ export function parseProviderPriority(
 }
 
 /**
+ * Spend priority 화면에서 다음 자리의 기본 선택. 저장된 순서가 아직 남아 있으면 그 값을,
+ * 소진되면 종료 항목("")을 고른다 — 기본값이 없으면 커서가 남은 공급자 첫 줄에 놓이고,
+ * 엔터만 눌러 지나가는 사용자가 없던 순위를 하나씩 만들어 낸다.
+ */
+export function nextPriorityDefault(
+  stored: readonly GatewayProvider[] | undefined,
+  ordered: readonly GatewayProvider[],
+  remaining: readonly GatewayProvider[],
+): GatewayProvider | "" {
+  const suggested = (stored ?? [])[ordered.length];
+  return suggested !== undefined && remaining.includes(suggested) ? suggested : "";
+}
+
+/**
  * 인터랙티브 Policy 화면이 고르는 compact 상한. `custom`은 저장된 퍼센트가 있을 때만 나타나며
  * 그 값을 그대로 유지한다 — 이 축을 건드리지 않고 지나가려는 사용자가 화면을 지나갔다는 이유로
  * `set compact-ceiling 82`를 잃어서는 안 된다.

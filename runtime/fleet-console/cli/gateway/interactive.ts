@@ -20,6 +20,7 @@ import {
 import {
   buildCompactCeilingChoices,
   describeGatewayPolicy,
+  nextPriorityDefault,
   resolveCompactCeilingChoice,
   writeProviderPriority,
   type CompactCeilingChoice,
@@ -207,9 +208,7 @@ async function editPriority(deps: GatewayInteractiveDeps): Promise<void> {
           hint: ordered.length === 0 ? "clears the stored order" : "leave the rest unranked",
         },
       ],
-      ...(settings.providerPriority?.[ordered.length] !== undefined
-        ? { initialValue: settings.providerPriority[ordered.length] }
-        : {}),
+      initialValue: nextPriorityDefault(settings.providerPriority, ordered, remaining),
     });
     if (isCancel(next)) return;
     if (next === "") break;
