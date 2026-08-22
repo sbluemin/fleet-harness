@@ -4,8 +4,8 @@ branch: repo-panel-refit-p1
 
 ### fleet-console
 #### Changed
-- The repository panel names its remote verb after what it does: the toolbar reads Fetch, its result speaks about origin's commits, and the tooltip drops raw git flags.
-  ko: 저장소 패널의 원격 동사가 하는 일을 그대로 말합니다. 툴바는 가져오기로 읽히고, 결과 문면은 origin의 커밋을 기준으로 말하며, 툴팁에서 git 플래그가 사라집니다.
+- The repository panel names its remote verb after what it does: the toolbar reads Fetch, its result speaks about the remote it actually fetched, and the tooltip drops raw git flags.
+  ko: 저장소 패널의 원격 동사가 하는 일을 그대로 말합니다. 툴바는 가져오기로 읽히고, 결과 문면은 실제로 가져온 원격을 기준으로 말하며, 툴팁에서 git 플래그가 사라집니다.
 - Destructive verbs say what they destroy: deleting an untracked file is named apart from discarding tracked changes, and dropping a stash asks about deletion instead of a bare "Sure?".
   ko: 파괴적인 동사가 무엇을 없애는지 말합니다. 추적되지 않는 파일 삭제는 추적 파일의 변경 버리기와 이름이 갈리고, 스태시 삭제는 "정말요?" 대신 삭제 여부를 묻습니다.
 

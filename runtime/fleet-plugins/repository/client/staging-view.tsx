@@ -293,7 +293,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
       <div className="repository-list-pane repository-staging-lists">
         {status.kind === "loading" && <div className="repository-sections-loading">{t("repository.common.loading")}</div>}
         {status.kind === "error" && <div className="repository-sections-error"><span>{readErrorSentence(t, status.message)}</span><button type="button" className="repository-refresh-btn" onClick={() => setStatusRetry((value) => value + 1)}>{t("repository.common.retry")}</button></div>}
-        {status.kind === "ok" && status.truncated && <div className="repository-truncated-note">{t("repository.status.capped", { count: staged.length + unstaged.length })}</div>}
+        {/* 한 파일이 스테이지·미스테이지 양쪽에 걸리면 parseStatusV2가 두 배열 모두에 넣는다 —
+            길이를 더하면 사용자가 찾을 수 있는 파일 수보다 큰 값을 말하게 된다. 경로로 센다. */}
+        {status.kind === "ok" && status.truncated && <div className="repository-truncated-note">{t("repository.status.capped", { count: new Set([...staged, ...unstaged].map((entry) => entry.path)).size })}</div>}
         {status.kind === "ok" && <>
           <StagingSection
             t={t}

@@ -101,6 +101,12 @@ describe("the staging surface carries its own honesty", () => {
     expect(source).toMatch(/\[ctx\.api, ctx\.theaterId, repoRel, reloadToken, statusRetry\]/);
   });
 
+  // 한 파일이 양쪽 축에 걸리면 parseStatusV2가 두 배열에 모두 넣는다 — 길이 합은 파일 수가 아니다.
+  it("counts unique paths in the cap note, not list entries", () => {
+    expect(source).toContain("new Set([...staged, ...unstaged].map((entry) => entry.path)).size");
+    expect(source).not.toContain("count: staged.length + unstaged.length");
+  });
+
   it("speaks a failed status read as a sentence", () => {
     expect(source).toContain("readErrorSentence(t, status.message)");
   });
