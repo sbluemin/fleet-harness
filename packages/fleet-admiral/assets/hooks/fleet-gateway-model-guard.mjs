@@ -48,6 +48,21 @@ const PIN_INSTRUCTION = [
 ].join(" ");
 
 /**
+ * 한 값은 한 모델만 가리킨다는 사실과, 흩뿌리기가 로스터 크기에 달렸다는 사실.
+ *
+ * "역할마다 다른 모델"만 말하면 노출 모델이 하나인 세션에서 지킬 방법이 없고, 그러면 값 안에
+ * 프로바이더나 강도를 끼워 넣어 다양성을 흉내 내는 문자열이 나온다(실제로 `grok-4.6 (xai/cursor)
+ * @high`가 나왔다). 그래서 두 문장을 붙여 둔다 — 몇 개일 때 무엇을 하는지, 그리고 값에 무엇을
+ * 넣으면 안 되는지.
+ */
+const STAGE_SPREAD_GUIDANCE = [
+  "When the roster exposes several models, assign them across the stages by role;",
+  "when it exposes one, pin that one to every stage — never invent variety inside the value.",
+  "A modelId names one model and nothing else: its provider is already part of it,",
+  "and a reasoning rung is the separate effort option.",
+].join(" ");
+
+/**
  * 정체성이 핀되지 않은 위임으로 취급하는 Agent 타입.
  *
  * 내장 전문 에이전트(Explore/Plan/…)와 fork는 통과시킨다. fork는 부모 컨텍스트를 잇는 것이
@@ -156,7 +171,8 @@ function assertWorkflowModelValues(script) {
     if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
       `opts.model is not a value this run can resolve: "${value}". Copy a modelId from gateway_models verbatim, ` +
-        "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku)."
+        "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku). " +
+        STAGE_SPREAD_GUIDANCE
     );
   }
 }
@@ -198,10 +214,7 @@ function gateWorkflowDelegation(toolInput) {
   const unpinned = countUnpinnedAgentCalls(script);
   if (unpinned > 0) {
     block(
-      `${unpinned} agent() call(s) pin no model. ` +
-        PIN_INSTRUCTION +
-        " Spreading stages across models is the point of this surface, so assign one per role rather than " +
-        "filling every stage with a single value."
+      `${unpinned} agent() call(s) pin no model. ` + PIN_INSTRUCTION + " " + STAGE_SPREAD_GUIDANCE
     );
   }
   assertWorkflowModelValues(script);

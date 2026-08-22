@@ -148,6 +148,20 @@ describe("gateway model guard — Workflow delegation", () => {
     }
   });
 
+  // 노출 모델이 하나뿐인 세션에서도 지킬 수 있는 지시여야 한다. "역할마다 다른 모델"만 말하면
+  // 값 안에 프로바이더나 강도를 끼워 넣어 다양성을 흉내 내는 문자열이 나온다.
+  it("tells a one-model roster to repeat the pin instead of inventing variety", () => {
+    for (const script of [`agent("x", {})`, `agent("x", { model: "grok-4.6 (xai/cursor) @high" })`]) {
+      const { status, stderr } = gateWorkflow({ script });
+      expect(status, script).toBe(2);
+      expect(stderr, script).toContain("when it exposes one, pin that one to every stage");
+      expect(stderr, script).toContain("never invent variety inside the value");
+      // 관측된 실패 형태 그대로: 프로바이더 둘과 강도를 값 하나에 융합했다.
+      expect(stderr, script).toContain("its provider is already part of it");
+      expect(stderr, script).toContain("a reasoning rung is the separate effort option");
+    }
+  });
+
   it("counts every unpinned stage in one script", () => {
     const { status, stderr } = gateWorkflow({
       script: [
