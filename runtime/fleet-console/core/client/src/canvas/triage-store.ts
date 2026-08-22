@@ -37,7 +37,7 @@ export interface TriageStageIdentity {
 const RETURN_WINDOW_MS = 10_000;
 const CLEAR_DELAY_MS = 600;
 // 패널/사이드바 닫기의 1500ms 확인과 같은 두 번 눌러 확정 문법이라, 확인 시간이 달라지면 학습이 깨진다.
-export const SET_ASIDE_ARM_DURATION_MS = 1500;
+const SET_ASIDE_ARM_DURATION_MS = 1500;
 
 // 선별 처리는 전역 모드다 — 활성/지목/무장/카운트는 Theater와 무관하게 하나만 존재한다.
 let triageActive = false;
@@ -121,12 +121,12 @@ let revision = 0;
 
 // 덱 줌은 전역 선별 처리와 같은 단일 영속 값이다. 카드 크기는 deck의 inline CSS 변수가 소유하고,
 // map 판정(작전지도 LOD)은 카드 최소폭 140px 미만으로 낙찰하는 순간으로 고정한다.
-export const TRIAGE_DECK_ZOOM_MIN = 0.35;
-export const TRIAGE_DECK_ZOOM_MAX = 2.0;
+const TRIAGE_DECK_ZOOM_MIN = 0.35;
+const TRIAGE_DECK_ZOOM_MAX = 2.0;
 export const TRIAGE_DECK_ZOOM_DEFAULT = 1.0;
 export const TRIAGE_DECK_CARD_BASE_MIN_PX = 260;
-export const TRIAGE_DECK_MAP_CARD_MIN_PX = 140;
-export const TRIAGE_DECK_ZOOM_PRESETS: readonly number[] = [1.0, 1.6, 0.4];
+const TRIAGE_DECK_MAP_CARD_MIN_PX = 140;
+const TRIAGE_DECK_ZOOM_PRESETS: readonly number[] = [1.0, 1.6, 0.4];
 
 const TRIAGE_DECK_ZOOM_STORAGE_KEY = "fleet-console.triage-deck-zoom";
 let triageDeckZoom: number | null = null;
@@ -237,7 +237,7 @@ const MAP_LABEL_RELAXATION_PASSES = 18;
 // 이름표가 한 줄로 차지하는 세로 대역과, 같은 줄에 서도 글자가 안 겹치는 최소 가로 간격.
 const MAP_LABEL_ROW_PCT = 4.5;
 const MAP_LABEL_MIN_DX_PCT = 26;
-export const TRIAGE_MAP_COLLINEAR_RATIO = 0.12;
+const TRIAGE_MAP_COLLINEAR_RATIO = 0.12;
 
 export interface TriageMapMarkerLayout {
   readonly operationId: string;

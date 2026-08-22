@@ -8,11 +8,11 @@ import {
   type CredentialResolverDeps,
 } from "../transport/credentials.js";
 
-export const XAI_OIDC_ISSUER = "https://auth.x.ai";
+const XAI_OIDC_ISSUER = "https://auth.x.ai";
 export const XAI_CLI_REFRESH_URL = "https://auth.x.ai/oauth2/token";
-export const XAI_CLI_DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
+const XAI_CLI_DEFAULT_CLIENT_ID = "b1a00492-073a-47ea-816f-4c329264a828";
 /** Same 5-minute early-refresh window the Grok CLI and OpenUsage use. */
-export const XAI_CLI_REFRESH_BUFFER_MS = 5 * 60 * 1_000;
+const XAI_CLI_REFRESH_BUFFER_MS = 5 * 60 * 1_000;
 const REFRESH_TIMEOUT_MS = 15_000;
 const FALLBACK_ACCESS_TOKEN_TTL_MS = 3_600_000;
 

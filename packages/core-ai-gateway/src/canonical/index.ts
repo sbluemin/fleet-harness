@@ -110,7 +110,7 @@ export interface CanonicalFunctionTool {
   defer_loading?: boolean;
 }
 
-export const CANONICAL_NATIVE_TOOL_NAMES = ["web_search"] as const;
+const CANONICAL_NATIVE_TOOL_NAMES = ["web_search"] as const;
 
 export type CanonicalNativeToolName = typeof CANONICAL_NATIVE_TOOL_NAMES[number];
 

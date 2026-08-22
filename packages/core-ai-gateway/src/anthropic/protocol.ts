@@ -149,7 +149,7 @@ export interface TranslateAnthropicRequestOptions {
   nativeTools?: readonly CanonicalNativeToolName[];
 }
 
-export class UnsupportedAnthropicContentError extends TypeError {
+class UnsupportedAnthropicContentError extends TypeError {
   constructor(type: string) {
     super(`Unsupported Anthropic content block type: ${type}`);
     this.name = "UnsupportedAnthropicContentError";
@@ -297,7 +297,7 @@ function validatedWebSearchMaxUses(maxUses: number | undefined): { max_uses?: nu
 const REASONING_EFFORT_SET = new Set<unknown>(REASONING_EFFORTS);
 
 /** Translate Claude Code's adaptive `/effort` wire into the Responses reasoning shape. */
-export function translateAnthropicReasoning(
+function translateAnthropicReasoning(
   request: Pick<AnthropicMessagesRequest, "thinking" | "output_config">,
   supportedEfforts?: readonly ReasoningEffort[],
 ): CanonicalReasoning | undefined {

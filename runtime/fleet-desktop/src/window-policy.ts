@@ -21,7 +21,7 @@ export interface WindowPolicy {
   withdrawRemoteConsoleOrigin(origin: string): void;
 }
 
-export const DESKTOP_WINDOW_TITLE = "Fleet Console";
+const DESKTOP_WINDOW_TITLE = "Fleet Console";
 
 const CANVAS_FAR_BACKGROUND_COLOR = "#010204";
 export const INITIAL_WINDOWS_TITLE_BAR_OVERLAY = { color: "#03080e", symbolColor: "#989fa6", height: 43 } as const;

@@ -22,7 +22,7 @@ export function readStashAction(value: unknown): StashAction | null {
   return value === "save" || value === "apply" || value === "pop" || value === "drop" ? value : null;
 }
 
-export function classifyStashError(stderr: string): "stash_conflict" | "nothing_to_stash" | null {
+function classifyStashError(stderr: string): "stash_conflict" | "nothing_to_stash" | null {
   if (/conflict|could not restore untracked files|overwritten by merge/i.test(stderr)) return "stash_conflict";
   if (/No local changes to save/i.test(stderr)) return "nothing_to_stash";
   return null;

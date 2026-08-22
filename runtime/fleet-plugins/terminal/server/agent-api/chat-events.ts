@@ -1052,7 +1052,7 @@ function maskSecrets(value: string): string {
  * 쓰기 계열 도구의 입력에서 변경 한 건을 접는다. 파일 본문은 싣지 않고 줄 수만 센다 —
  * "무엇이 얼마나 바뀌었는가"는 좌표이지 내용이 아니다.
  */
-export function changeFromToolInput(name: string, input: unknown, options: ChatEventMapOptions = {}): AgentChatChange | null {
+function changeFromToolInput(name: string, input: unknown, options: ChatEventMapOptions = {}): AgentChatChange | null {
   if (!WRITE_TOOLS.has(name)) return null;
   if (!input || typeof input !== "object" || Array.isArray(input)) return null;
   const record = input as Record<string, unknown>;
@@ -1089,7 +1089,7 @@ function lineCount(value: unknown): number {
 }
 
 /** 도구 입력의 경로 좌표가 Operation cwd 밖을 가리키는지. 좌표가 없으면 false다. */
-export function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boolean {
+function pathIsOutsideCwd(input: unknown, cwd: string | undefined): boolean {
   if (!cwd || !input || typeof input !== "object" || Array.isArray(input)) return false;
   const record = input as Record<string, unknown>;
   for (const key of PATH_KEYS) {

@@ -7,7 +7,7 @@
  * 같다. 두 벌로 복사하면 프로토콜 결함도 두 곳에서 고쳐야 하므로 여기 한 벌만 둔다.
  */
 
-export class DesktopSseProtocolError extends Error {}
+class DesktopSseProtocolError extends Error {}
 
 export interface DesktopEventStream {
   start(origin: string): Promise<void>;

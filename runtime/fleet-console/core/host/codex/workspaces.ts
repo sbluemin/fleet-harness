@@ -67,7 +67,7 @@ export class WorkspaceRegistry {
   }
 }
 
-export function toMetadata(item: WorkspaceRegistration): WorkspaceMetadata {
+function toMetadata(item: WorkspaceRegistration): WorkspaceMetadata {
   return {
     id: item.id,
     cwd: item.cwd,

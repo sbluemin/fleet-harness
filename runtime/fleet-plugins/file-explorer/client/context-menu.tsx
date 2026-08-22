@@ -105,7 +105,7 @@ export function clampContextMenuPosition(
   };
 }
 
-export function resolveContextMenuFocusTarget(
+function resolveContextMenuFocusTarget(
   relativePath: string,
   rowRefs: ReadonlyMap<string, HTMLElement>,
   cursorPath: string | null,

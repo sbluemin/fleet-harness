@@ -12,9 +12,9 @@ export type AccessAudience = "local" | "remote";
  */
 export type AccessClass = "full" | "monitoring";
 
-export const SESSION_COOKIE_NAME = "fleet_console_session";
+const SESSION_COOKIE_NAME = "fleet_console_session";
 /** 페어링 자격이 담기는 쿠키. 세션과 달리 회수 전까지 살아 남는다. */
-export const PAIRING_COOKIE_NAME = "fleet_console_pairing";
+const PAIRING_COOKIE_NAME = "fleet_console_pairing";
 
 /**
  * 링크 1회 교환용 자격. 사용되면 즉시 소멸하고, 미사용 상태로도 짧게만 살아 있는다.
@@ -330,7 +330,7 @@ export function createLoopbackListenerIdentity(port: number): ListenerIdentity {
 }
 
 /** IPv4-mapped IPv6(`::ffff:127.0.0.1`)와 IPv6 루프백을 같은 주소로 본다. */
-export function normalizeBindAddress(address: string | undefined): string {
+function normalizeBindAddress(address: string | undefined): string {
   if (!address) return "";
   const stripped = address.startsWith("::ffff:") ? address.slice(7) : address;
   return stripped === "::1" ? "127.0.0.1" : stripped;
@@ -354,7 +354,7 @@ export function sessionCookieName(port: number): string {
   return `${SESSION_COOKIE_NAME}_${port}`;
 }
 
-export function pairingCookieName(port: number): string {
+function pairingCookieName(port: number): string {
   return `${PAIRING_COOKIE_NAME}_${port}`;
 }
 
@@ -366,7 +366,7 @@ export function pairingCookieName(port: number): string {
  * 기기만 자격이 삭는다 — 잠든 자격이 영원히 살아 있는 편이 더 나쁘므로 이것은 비용이 아니라
  * 성질이다. 그 경우 서버의 페어링은 남으므로, 목록에서 마지막 접속 시각을 보고 치우면 된다.
  */
-export const PAIRING_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
+const PAIRING_COOKIE_MAX_AGE_SECONDS = 365 * 24 * 60 * 60;
 
 /** 요청 쿠키에서 이름이 정확히 일치하는 값만 읽는다. 다른 쿠키는 무시한다. */
 function readCookie(headers: { readonly cookie?: string | string[] }, name: string): string | null {

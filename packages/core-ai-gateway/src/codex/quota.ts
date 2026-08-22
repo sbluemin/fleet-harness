@@ -39,7 +39,7 @@ function codexWindow(source: unknown, fallbackId: "session" | "weekly"): QuotaWi
  * Codex `plan_type` is a product slug. OpenUsage maps the two Pro extra-usage
  * SKUs to the public 5x/20x labels; every other slug stays a title-cased name.
  */
-export function formatCodexPlan(value: unknown): string | undefined {
+function formatCodexPlan(value: unknown): string | undefined {
   if (typeof value !== "string") return titleCase(value);
   switch (value.trim().toLowerCase()) {
     case "prolite":

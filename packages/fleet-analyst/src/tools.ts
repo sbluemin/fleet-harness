@@ -10,7 +10,7 @@ const exec = promisify(execFile);
 const MAX_ARTIFACT_BYTES = 50 * 1024;
 const MAX_ARTIFACTS = 20;
 
-export const ANALYST_TOOL_IDS = {
+const ANALYST_TOOL_IDS = {
   sessionOutline: "session_outline",
   sessionEvents: "session_events",
   sessionRead: "session_read",

@@ -28,7 +28,7 @@ export function escapeTomlBasicString(value: string): string {
   });
 }
 
-export function buildPosixShellCommand(values: readonly string[]): string {
+function buildPosixShellCommand(values: readonly string[]): string {
   return values.map(posixShellQuote).join(" ");
 }
 

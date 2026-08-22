@@ -264,7 +264,7 @@ export function advanceFeatureTourStep(index: number, total: number): number {
   return Math.min(index + 1, Math.max(0, total - 1));
 }
 
-export function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {
+function featureTourSeenKey(tourId: string, phase: FeatureTourPhase): string {
   return `${tourId}.${phase}`;
 }
 

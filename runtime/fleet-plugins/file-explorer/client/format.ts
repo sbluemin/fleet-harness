@@ -19,7 +19,7 @@ export function countLines(content: string): number {
 }
 
 /** UTF-8 byte length of the loaded slice — used when the read was truncated. */
-export function loadedByteSize(content: string): number {
+function loadedByteSize(content: string): number {
   return new TextEncoder().encode(content).byteLength;
 }
 

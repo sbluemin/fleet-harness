@@ -27,7 +27,7 @@ import { logRawWireEvent, wireLog, type RawWireEventPayload } from "../../transp
 
 /** OpenCode Go 구독이 노출하는 Chat Completions 네임스페이스 엔드포인트. */
 export const OPENCODE_GO_CHAT_COMPLETIONS_URL = "https://opencode.ai/zen/go/v1/chat/completions";
-export const DEFAULT_CHAT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
+const DEFAULT_CHAT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 /**
  * Longest the upstream may send no bytes at all before the read is abandoned.
  *
@@ -37,7 +37,7 @@ export const DEFAULT_CHAT_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
  * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
  * and the rate climbed through the session as the conversation grew and the gaps grew with it.
  */
-export const DEFAULT_CHAT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
+const DEFAULT_CHAT_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
 
 /**
  * OpenAI Chat Completions wire shapes. Deliberately their own types: the wire

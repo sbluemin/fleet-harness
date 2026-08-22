@@ -79,7 +79,7 @@ export interface DesktopShellSnapshot {
 
 export const emptyDesktopShell = (): DesktopShellSnapshot => ({ homeOrigin: null });
 
-export function isDesktopShellSnapshot(value: unknown): value is DesktopShellSnapshot {
+function isDesktopShellSnapshot(value: unknown): value is DesktopShellSnapshot {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
   if (Object.keys(entry).length !== 1) return false;

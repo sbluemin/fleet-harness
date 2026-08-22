@@ -618,7 +618,7 @@ function MoreIcon() {
   );
 }
 
-export function MinimizeIcon() {
+function MinimizeIcon() {
   // 타이틀바 하단 수평선 — Operation이 아래 dock으로 가라앉는 최소화 마크.
   return (
     <svg viewBox="0 0 16 16" aria-hidden="true">

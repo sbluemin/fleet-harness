@@ -5,7 +5,7 @@ export type ChatStreamEvent =
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: { readonly code: string; readonly message: string } };
 
-export function parseChatStreamEvent(data: string): ChatStreamEvent | null {
+function parseChatStreamEvent(data: string): ChatStreamEvent | null {
   try {
     const value = JSON.parse(data) as unknown;
     if (!isRecord(value) || typeof value.type !== "string") return null;

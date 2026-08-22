@@ -31,7 +31,7 @@ export interface DesktopUpdateSynchronizerDeps {
   readonly clearTimeout?: (timer: ReturnType<typeof setTimeout>) => void;
 }
 
-export const MAX_DESKTOP_UPDATE_SSE_BUFFER_CHARS = 8 * 1024;
+const MAX_DESKTOP_UPDATE_SSE_BUFFER_CHARS = 8 * 1024;
 
 export function createDesktopUpdateSynchronizer(deps: DesktopUpdateSynchronizerDeps): DesktopUpdateSynchronizer {
   const handledRequestIds = new Set<string>();

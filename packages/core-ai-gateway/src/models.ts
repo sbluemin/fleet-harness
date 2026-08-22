@@ -34,7 +34,7 @@ export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
  * Responses, and Chat Completions endpoints side by side, and each model is
  * native to exactly one of them. Omission means `anthropic`.
  */
-export const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
+const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
 
 export const GATEWAY_REASONING_EFFORTS = [
@@ -69,7 +69,7 @@ const GatewayModelEffortSchema = z.discriminatedUnion("supported", [
   }).strict(),
 ]);
 
-export const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
+const GATEWAY_QUOTA_SCOPES = ["auto", "api"] as const;
 export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
 
 /**
@@ -97,7 +97,7 @@ export type GatewayQuotaScope = typeof GATEWAY_QUOTA_SCOPES[number];
  * Routing aliases (Cursor's `auto`) carry no class: what serves the request
  * varies per call, so any single class would lie.
  */
-export const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
+const GATEWAY_CAPABILITY_CLASSES = ["flagship", "standard", "light"] as const;
 export type GatewayCapabilityClass = typeof GATEWAY_CAPABILITY_CLASSES[number];
 
 const GatewayBenchmarkFiguresSchema = z.object({
@@ -219,7 +219,7 @@ const GatewayProviderSchema = z.object({
   models: z.array(GatewayModelEntrySchema).min(1),
 }).strict();
 
-export const GatewayModelsRegistrySchema = z.object({
+const GatewayModelsRegistrySchema = z.object({
   version: z.number().int().positive(),
   updatedAt: z.iso.datetime(),
   providers: z.object({

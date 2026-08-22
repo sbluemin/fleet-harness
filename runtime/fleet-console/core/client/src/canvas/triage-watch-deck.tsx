@@ -81,7 +81,7 @@ interface TriageDeckPromotionDecision {
 }
 
 export const TRIAGE_DECK_ARRIVAL_DWELL_MS = 1_100;
-export const TRIAGE_DECK_QUICKLOOK_DWELL_MS = 400;
+const TRIAGE_DECK_QUICKLOOK_DWELL_MS = 400;
 
 // 승격 출발 rect 1회용 채널 — 클릭 순간의 rect는 outbound flight의 출발점으로만 쓰여야 한다.
 // deckCardRects에 덮어쓰면 무대 복귀 flight의 목적지까지 오염되므로, 소비 즉시 비워지는
@@ -118,7 +118,7 @@ export function resolveTriageMorphFrame(cardRect: DOMRect, dotRect: DOMRect): Tr
 
 // CSS 쪽 전환 길이(--duration-slow * 1.15 ≈ 414ms)보다 넉넉히 길게 잡아 전환이 끝나기 전에
 // 프레임이 걷히는 일을 막는다.
-export const TRIAGE_DECK_MORPH_MS = 470;
+const TRIAGE_DECK_MORPH_MS = 470;
 
 interface TriageDeckMorph {
   readonly phase: "to-map" | "to-cards";
@@ -1146,7 +1146,7 @@ interface TriageMapDragState {
 }
 
 // 클릭과 드래그를 가르는 이동 거리 — 이보다 짧으면 무대로 올리는 클릭으로 읽는다.
-export const TRIAGE_MAP_DRAG_THRESHOLD_PX = 4;
+const TRIAGE_MAP_DRAG_THRESHOLD_PX = 4;
 
 // 드래그로 끝난 포인터가 뒤이어 내보내는 click 1회를 삼키는 채널. 브라우저는 pointerup 뒤
 // click을 항상 보내므로, 이 표시가 없으면 점을 옮길 때마다 그 패널이 무대로 올라간다.

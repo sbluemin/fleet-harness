@@ -101,7 +101,7 @@ function toResolvedBinary(
 // 버전 추출은 실패해도 throw하지 않는다(가용성 표시는 유지). Token Boundary 하드룰에 따라
 // `--version` 출력에는 설치 경로/사용자명이 섞일 수 있으므로, semver 패턴에 매칭된 값만 반환하고
 // 매칭 실패 시 raw 출력을 흘리지 않고 null로 둔다.
-export async function probeAgentCliVersion(
+async function probeAgentCliVersion(
   resolved: ResolvedBinary,
   runVersion: AgentCliDetectorDeps["runVersion"] = execFileVersion,
 ): Promise<string | null> {

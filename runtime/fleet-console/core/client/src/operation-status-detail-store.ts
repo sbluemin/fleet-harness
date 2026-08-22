@@ -46,12 +46,12 @@ export function getOperationStatusDetailSnapshot(operationId: string): Operation
   };
 }
 
-export function subscribeOperationStatusDetail(listener: Listener): () => void {
+function subscribeOperationStatusDetail(listener: Listener): () => void {
   listeners.add(listener);
   return () => listeners.delete(listener);
 }
 
-export function getOperationStatusDetailRevision(): number {
+function getOperationStatusDetailRevision(): number {
   return revision;
 }
 

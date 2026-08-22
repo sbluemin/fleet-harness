@@ -40,7 +40,7 @@ async function messageMentionTarget(targetId: string, text: string): Promise<voi
   await bridge.ask(targetId as AdmiralId, text);
 }
 
-export const scuttlebuttPlugin = definePlugin({
+const scuttlebuttPlugin = definePlugin({
   id: "scuttlebutt",
   floatingWidgets: [{ id: "mascot", render: (context) => <ScuttlebuttFlock context={context} /> }],
   settingsSections: [scuttlebuttSettingsSection],

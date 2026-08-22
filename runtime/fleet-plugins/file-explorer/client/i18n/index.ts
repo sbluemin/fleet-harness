@@ -211,7 +211,7 @@ export const fileExplorerKo: Record<keyof typeof fileExplorerEn, string> = {
   "fileExplorer.git.rollupAria": "내부 변경 파일 {count}개",
 };
 
-export const FILE_EXPLORER_MESSAGES = { en: fileExplorerEn, ko: fileExplorerKo } as const;
+const FILE_EXPLORER_MESSAGES = { en: fileExplorerEn, ko: fileExplorerKo } as const;
 export type FileExplorerMessageKey = keyof typeof fileExplorerEn;
 
 // ═══ translator ══════════════════════════════════════════════════════════════

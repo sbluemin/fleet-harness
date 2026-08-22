@@ -9,7 +9,7 @@ export const CERTIFICATE_ACCEPTED = 0;
 export const CERTIFICATE_REJECTED = -2;
 export const CERTIFICATE_DEFAULT = -3;
 
-export const REMOTE_REQUEST_TIMEOUT_MS = 8_000;
+const REMOTE_REQUEST_TIMEOUT_MS = 8_000;
 
 /** Electron이 검증기에 넘기는 값 중 이 게이트가 실제로 읽는 부분만 선언한다. */
 export interface CertificateVerifyRequest {
@@ -161,7 +161,7 @@ async function readConflictCode(response: Response): Promise<string> {
 }
 
 /** 제시된 PEM 인증서의 지문. 읽을 수 없는 인증서는 불일치가 아니라 판정 불가로 되돌린다. */
-export function certificateFingerprint(certificatePem: string): string | null {
+function certificateFingerprint(certificatePem: string): string | null {
   if (typeof certificatePem !== "string" || certificatePem.length === 0) return null;
   try {
     return normalizeFingerprint(new crypto.X509Certificate(certificatePem).fingerprint256);

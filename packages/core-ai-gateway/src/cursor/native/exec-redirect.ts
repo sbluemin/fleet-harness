@@ -53,7 +53,7 @@ const GREP_CANDIDATES = ["Grep"] as const;
 const SHELL_CANDIDATES = ["Bash", "shell_command", "exec_command"] as const;
 
 /** Caller tools kept eager because Cursor uses them directly or through a native redirect. */
-export const CURSOR_HOT_PATH_TOOL_LEAVES = [
+const CURSOR_HOT_PATH_TOOL_LEAVES = [
   "read",
   "bash",
   "grep",

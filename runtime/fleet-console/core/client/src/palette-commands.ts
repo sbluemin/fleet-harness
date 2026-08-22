@@ -64,7 +64,7 @@ export interface ScoredPaletteCommand {
 
 type T = Translate<CoreMessageKey>;
 
-export function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; readonly label: string }[] {
+function buildPaletteThemes(t: T): readonly { readonly id: ThemeId; readonly label: string }[] {
   return [
     { id: "instrument", label: t("palette.theme.instrument") },
     { id: "maritime", label: t("palette.theme.maritime") },

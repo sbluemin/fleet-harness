@@ -58,7 +58,7 @@ export const XAI_CLI_RESPONSES_URL = "https://cli-chat-proxy.grok.com/v1/respons
  * `../cli-version.ts`, which explains why this must not be the only source.
  */
 export const XAI_CLI_CLIENT_VERSION = XAI_CLI_FALLBACK_CLIENT_VERSION;
-export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
+const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
 /**
  * Longest the upstream may send no bytes at all before the read is abandoned.
  *
@@ -68,8 +68,8 @@ export const DEFAULT_XAI_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
  * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
  * and the rate climbed through the session as the conversation grew and the gaps grew with it.
  */
-export const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
-export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
+const DEFAULT_XAI_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
+const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
 /**
  * Longest gap tolerated between two canonical events on one Grok CLI stream.
  *
@@ -89,7 +89,7 @@ export const DEFAULT_XAI_RESPONSES_FUNCTION_CALL_TIMEOUT_MS = 30_000;
  * client's converts a turn the client was still willing to wait for into a failure it never asked
  * for, and past the commit point that failure is unrecoverable at both layers.
  */
-export const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 300_000;
+const DEFAULT_XAI_RESPONSES_SEMANTIC_STALL_TIMEOUT_MS = 300_000;
 const XAI_RETRY_DELAY_MS = 200;
 
 /**

@@ -1,6 +1,6 @@
 export const ANSI_RESET = "\x1b[0m";
-export const ANSI_BOLD = "\x1b[1m";
-export const ANSI_DIM = "\x1b[2m";
+const ANSI_BOLD = "\x1b[1m";
+const ANSI_DIM = "\x1b[2m";
 
 const CONTROL_SEQUENCE_PATTERN = /(?:\x1b(?:\[[0-?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\)|P[^\x1b]*(?:\x1b\\|$)|[_^X][^\x1b]*(?:\x1b\\|$)|[@-_])|[\x90\x98\x9d\x9e\x9f][^\x9c]*(?:\x9c|$)|\x9b[0-?]*[ -/]*[@-~])/g;
 
@@ -16,8 +16,8 @@ export function paint(color: string, text: string, colorEnabled: boolean): strin
   return `${color}${text}${ANSI_RESET}`;
 }
 
-export const FLEET_ACCENT = "\x1b[38;2;254;188;56m";
-export const FLEET_OPTION = "\x1b[38;2;125;211;252m";
+const FLEET_ACCENT = "\x1b[38;2;254;188;56m";
+const FLEET_OPTION = "\x1b[38;2;125;211;252m";
 export const FLEET_COMMAND = "\x1b[38;2;94;234;212m";
 export const GRADIENT_COLORS: readonly string[] = [
   "\x1b[38;2;0;255;255m",

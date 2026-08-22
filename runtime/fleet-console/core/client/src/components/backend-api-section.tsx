@@ -181,7 +181,7 @@ function CoreApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGrou
   );
 }
 
-export function PluginApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGroupProps) {
+function PluginApiCatalogGroup({ group, expanded, onToggle }: PluginApiCatalogGroupProps) {
   const t = useT();
   const listId = useId();
 

@@ -225,7 +225,7 @@ export function failReleaseNotesFetch(error: string): void {
   setState({ releaseNotesLoading: false, releaseNotesError: error });
 }
 
-export function applyThemeToDocument(theme: ThemeId): void {
+function applyThemeToDocument(theme: ThemeId): void {
   if (typeof document !== "undefined") {
     document.documentElement.setAttribute("data-theme", theme);
   }

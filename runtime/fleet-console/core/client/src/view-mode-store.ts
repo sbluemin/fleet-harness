@@ -36,7 +36,7 @@ export function getViewModeSnapshot(): ViewModeSnapshot {
   return store;
 }
 
-export function subscribeViewMode(listener: Listener): () => void {
+function subscribeViewMode(listener: Listener): () => void {
   listeners.add(listener);
   return () => { listeners.delete(listener); };
 }

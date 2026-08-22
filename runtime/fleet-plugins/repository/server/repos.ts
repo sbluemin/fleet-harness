@@ -13,7 +13,7 @@ import type { RepoCandidate, ReposResult } from "./types.js";
 export const REPOS_CAP = 200;
 export const HARD_CAP_DEPTH = 8;
 export const NESTED_BRANCH_CAP = 64;
-export const SCAN_VISIT_BUDGET = 10_000;
+const SCAN_VISIT_BUDGET = 10_000;
 const DEFAULT_DEPTH = 3;
 
 export interface ScannedRepo {

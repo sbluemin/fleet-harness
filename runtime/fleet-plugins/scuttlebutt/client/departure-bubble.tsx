@@ -15,7 +15,7 @@ import {
 import { getT } from "./scuttlebutt-catalog.js";
 
 export const MAX_DEPARTURE_ANNOUNCEMENTS = 3;
-export const DEPARTURE_VISIBLE_MS = 6_000;
+const DEPARTURE_VISIBLE_MS = 6_000;
 
 export const createDepartureSelectionState = createArrivalSelectionState;
 export const dismissDepartureAnnouncement = dismissArrivalAnnouncement;

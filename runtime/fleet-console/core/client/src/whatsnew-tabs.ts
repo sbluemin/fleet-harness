@@ -21,7 +21,7 @@ export interface WhatsNewOverviewItem {
 
 type T = Translate<CoreMessageKey>;
 
-export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] {
+function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: ReleaseNoteProduct })[] {
   return [
     { id: "fleet-cli", label: t("whatsnew.tab.fleetCli") },
     { id: "fleet-console", label: t("whatsnew.tab.fleetConsole") },
@@ -30,15 +30,15 @@ export function buildProductTabs(t: T): readonly (WhatsNewTab & { readonly id: R
   ];
 }
 
-export function buildOverviewTab(t: T): WhatsNewTab {
+function buildOverviewTab(t: T): WhatsNewTab {
   return { id: "overview", label: t("whatsnew.tab.overview") };
 }
 
-export function buildAllUpdatesTab(t: T): WhatsNewTab {
+function buildAllUpdatesTab(t: T): WhatsNewTab {
   return { id: "all-updates", label: t("whatsnew.tab.allUpdates") };
 }
 
-export function buildOtherUpdatesTab(t: T): WhatsNewTab {
+function buildOtherUpdatesTab(t: T): WhatsNewTab {
   return { id: "other-updates", label: t("whatsnew.tab.otherUpdates") };
 }
 

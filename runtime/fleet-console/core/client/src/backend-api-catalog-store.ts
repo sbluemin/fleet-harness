@@ -22,7 +22,7 @@ export function useApiCatalogStore(): ApiCatalogStoreState {
   return useSyncExternalStore(subscribe, getApiCatalogStoreState, getApiCatalogStoreState);
 }
 
-export function getApiCatalogStoreState(): ApiCatalogStoreState {
+function getApiCatalogStoreState(): ApiCatalogStoreState {
   return snapshot;
 }
 

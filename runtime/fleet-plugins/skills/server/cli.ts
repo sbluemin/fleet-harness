@@ -28,7 +28,7 @@ export type CliExecutor = (
 
 // ─── constants ───────────────────────────────────────────────────────────────
 
-export const SKILLS_VERSION = "1.5.14";
+const SKILLS_VERSION = "1.5.14";
 
 const SKILLS_PACKAGE = "skills";
 const BOOTSTRAP_TIMEOUT_MS = 60_000;

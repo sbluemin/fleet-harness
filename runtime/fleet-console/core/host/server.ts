@@ -392,7 +392,7 @@ export const SERVER_API_CATALOG: readonly ApiCatalogEntry[] = [
 
 export const REMOTE_HOSTS_PATH = "/api/v1/remote-hosts";
 export const LOCAL_CONSOLES_PATH = "/api/v1/local-consoles";
-export const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
+const REMOTE_HOST_HANDOFF_PATH = "/api/v1/desktop/handoff";
 
 export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer {
   const host = deps.host ?? DEFAULT_HOST;
@@ -2917,7 +2917,7 @@ function hasForbiddenUpdateApplyBodyKeys(body: Record<string, unknown>): boolean
   return Object.keys(body).some((key) => UPDATE_APPLY_FORBIDDEN_BODY_KEYS.has(key));
 }
 
-export const CONSOLE_RESUME_PORT_ENV = "FLEET_CONSOLE_RESUME_PORT";
+const CONSOLE_RESUME_PORT_ENV = "FLEET_CONSOLE_RESUME_PORT";
 
 export function takeConsoleResumePort(env: NodeJS.ProcessEnv): number | null {
   const raw = env[CONSOLE_RESUME_PORT_ENV];

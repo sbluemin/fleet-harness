@@ -47,7 +47,7 @@ export interface ResolveXaiCliVersionOptions {
 }
 
 /** The Grok CLI home the official installer and this resolver share. */
-export function grokHomeDir(deps: CredentialResolverDeps): string {
+function grokHomeDir(deps: CredentialResolverDeps): string {
   return optionalTrimmedString(deps.env.GROK_HOME) ?? path.join(deps.homedir(), ".grok");
 }
 

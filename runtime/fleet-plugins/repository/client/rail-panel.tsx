@@ -50,7 +50,7 @@ export function readRepositorySource(): Source {
   return "history";
 }
 
-export function readStoredRepositoryRel(theaterId: string): string {
+function readStoredRepositoryRel(theaterId: string): string {
   try { return localStorage.getItem(`${PREFS_REPO_PREFIX}${theaterId}`) ?? ""; }
   catch { return ""; }
 }
@@ -74,7 +74,7 @@ export function readScanDepth(): number {
   return SCAN_DEPTH_DEFAULT;
 }
 
-export function saveScanDepth(depth: number): void {
+function saveScanDepth(depth: number): void {
   try { localStorage.setItem(PREFS_SCAN_DEPTH, String(depth)); } catch { /* ignore */ }
 }
 
@@ -159,7 +159,7 @@ export interface CheckoutTab {
  * Fork의 상단 레포 탭 — 루트 체크아웃과 워크트리들이 한 줄에 선다.
  * 중첩 저장소는 트리에서 고르되, 선택 중이면 자기 탭이 임시로 나타난다.
  */
-export function buildCheckoutTabs(repos: readonly RepoCandidate[], worktrees: readonly WorktreeCandidate[], selectedRel: string): readonly CheckoutTab[] {
+function buildCheckoutTabs(repos: readonly RepoCandidate[], worktrees: readonly WorktreeCandidate[], selectedRel: string): readonly CheckoutTab[] {
   const tabs: CheckoutTab[] = [];
   const seen = new Set<string>();
   const push = (relPath: string, label: string, worktree: boolean) => {

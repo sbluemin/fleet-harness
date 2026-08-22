@@ -8,8 +8,8 @@ export const WORKSPACE_SCHEMA_AGENTS_FILENAME = "AGENTS.md";
 export const WORKSPACE_SCHEMA_FILENAME = "wiki-schema.md";
 export const WORKSPACE_TEMPLATE_PREFIX = "template-";
 export const WORKSPACE_TEMPLATE_SUFFIX = ".md";
-export const TEMPLATE_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
-export const MAX_TEMPLATE_UTF8_BYTES = 256 * 1024;
+const TEMPLATE_ID_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+const MAX_TEMPLATE_UTF8_BYTES = 256 * 1024;
 
 // 파일명 prefix로 template id를 추론할 때 쓰는 기본 후보 목록.
 const DEFAULT_TEMPLATE_IDS = ["prd"];
@@ -24,7 +24,7 @@ export const REQUIRED_WORKSPACE_SCHEMA_SECTIONS = [
   "Ingest, Patch, and Lint Workflow",
 ] as const;
 
-export const DEFAULT_WORKSPACE_SCHEMA_AGENTS = `# Fleet Wiki Workspace Schema
+const DEFAULT_WORKSPACE_SCHEMA_AGENTS = `# Fleet Wiki Workspace Schema
 
 This directory defines the workspace-local operating conventions for \`.fleet/knowledge\`.
 
@@ -50,7 +50,7 @@ This directory defines the workspace-local operating conventions for \`.fleet/kn
 - Existing persisted entry template compliance issues are warnings; ingest and approval remain hard gates.
 `;
 
-export const DEFAULT_WORKSPACE_WIKI_SCHEMA = `# Fleet Wiki Workspace Schema
+const DEFAULT_WORKSPACE_WIKI_SCHEMA = `# Fleet Wiki Workspace Schema
 
 Fleet Wiki is a workspace-local knowledge base. Each entry must follow common workspace conventions plus the selected document template.
 
@@ -320,7 +320,7 @@ export async function scanTemplates(paths: MemoryPaths): Promise<WorkspaceTempla
   return templates.sort((left, right) => left.id.localeCompare(right.id));
 }
 
-export function schemaTemplateRef(id: string): string {
+function schemaTemplateRef(id: string): string {
   assertTemplateId(id);
   return `schema/${WORKSPACE_TEMPLATE_PREFIX}${id}${WORKSPACE_TEMPLATE_SUFFIX}`;
 }
@@ -382,7 +382,7 @@ export async function validateSchemaTemplateCreate(
   return absolute;
 }
 
-export function assertTemplateId(id: string): void {
+function assertTemplateId(id: string): void {
   if (!TEMPLATE_ID_PATTERN.test(id)) throw new Error("template_id must match /^[a-z][a-z0-9-]{0,63}$/");
 }
 

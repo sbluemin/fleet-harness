@@ -70,7 +70,7 @@ interface StoredFile {
   readonly devices: readonly StoredDevice[];
 }
 
-export function hashPairingSecret(secret: string): string {
+function hashPairingSecret(secret: string): string {
   return crypto.createHash("sha256").update(secret, "utf8").digest("hex");
 }
 

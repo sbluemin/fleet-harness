@@ -127,14 +127,14 @@ const GIT_STATUS_DEBOUNCE_MS = 500;
 export const FILTER_SEARCH_DEBOUNCE_MS = 180;
 export const PALETTE_SEARCH_LIMIT = 200;
 /** i18n cap interpolation for walkCapped — matches the server directory walk budget. */
-export const PALETTE_SEARCH_WALK_CAP = 500;
-export const TYPEAHEAD_RESET_MS = 1000;
+const PALETTE_SEARCH_WALK_CAP = 500;
+const TYPEAHEAD_RESET_MS = 1000;
 
 // ═══ 정렬 ═══════════════════════════════════════════════════════════════════
 
 export type SortMode = "name" | "modified" | "size";
 
-export const SORT_MODE_CYCLE: readonly SortMode[] = ["name", "modified", "size"];
+const SORT_MODE_CYCLE: readonly SortMode[] = ["name", "modified", "size"];
 
 export function nextSortMode(mode: SortMode): SortMode {
   const index = SORT_MODE_CYCLE.indexOf(mode);
@@ -242,18 +242,18 @@ export function shouldClearFilterOnEscape(filterText: string): boolean {
   return filterText.length > 0;
 }
 
-export function isWatchDegraded(state: string): boolean {
+function isWatchDegraded(state: string): boolean {
   return state === "degraded";
 }
 
-export function pathMatchesQuery(relativePath: string, query: string): boolean {
+function pathMatchesQuery(relativePath: string, query: string): boolean {
   const tokens = query.trim().toLowerCase().split(/[\s/]+/).filter(Boolean);
   if (tokens.length === 0) return false;
   const haystack = relativePath.toLowerCase();
   return tokens.every((token) => haystack.includes(token));
 }
 
-export function isHiddenRelativePath(relativePath: string): boolean {
+function isHiddenRelativePath(relativePath: string): boolean {
   return relativePath.split("/").some((part) => part.startsWith("."));
 }
 

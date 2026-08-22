@@ -30,10 +30,10 @@ export type AnalysisEvent =
   | { readonly type: "complete" }
   | { readonly type: "error"; readonly error: AnalysisError };
 
-export const FORBIDDEN_ANALYSIS_KEYS = new Set(["path", "cwd", "canonicalcwd", "transcriptpath", "providersession", "sessionid", "token", "ticket", "url", "mcpurl", "rawtranscript"]);
+const FORBIDDEN_ANALYSIS_KEYS = new Set(["path", "cwd", "canonicalcwd", "transcriptpath", "providersession", "sessionid", "token", "ticket", "url", "mcpurl", "rawtranscript"]);
 export const MAX_ARTIFACT_BYTES = 50 * 1024;
 
-export function hasForbiddenAnalysisKey(value: unknown): boolean {
+function hasForbiddenAnalysisKey(value: unknown): boolean {
   if (!value || typeof value !== "object") return false;
   if (Array.isArray(value)) return value.some(hasForbiddenAnalysisKey);
   return Object.entries(value as Record<string, unknown>).some(([key, child]) => FORBIDDEN_ANALYSIS_KEYS.has(key.toLowerCase()) || hasForbiddenAnalysisKey(child));

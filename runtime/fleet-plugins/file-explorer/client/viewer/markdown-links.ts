@@ -1,4 +1,4 @@
-export const MARKDOWN_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const MARKDOWN_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 
 const ALLOWED_EXTERNAL_IMAGE_HOSTS = new Set(["img.shields.io"]);
 const EXTERNAL_REF_PATTERN = /^[a-z][a-z0-9+.-]*:/i;

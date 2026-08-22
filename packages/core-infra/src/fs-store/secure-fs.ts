@@ -4,7 +4,7 @@ import * as path from "node:path";
 import type { DirectoryIdentity } from "./types.js";
 
 // 파일 권한 상수
-export const SECURE_DIR_MODE = 0o700;
+const SECURE_DIR_MODE = 0o700;
 export const SECURE_FILE_MODE = 0o600;
 // [LOW #11] O_NOFOLLOW: POSIX(darwin/linux)에서만 유효. Windows는 이 상수가 없어 0으로 폴백.
 // 이 코드의 대상 플랫폼은 darwin/posix이며 Windows symlink 방어는 보장되지 않는다.

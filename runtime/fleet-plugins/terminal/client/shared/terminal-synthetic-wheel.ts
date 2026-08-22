@@ -22,7 +22,7 @@ export interface TerminalWheelFallbackRect {
   readonly height: number;
 }
 
-export function isFiniteWheelOrigin(origin: TerminalWheelOrigin | null | undefined): origin is TerminalWheelOrigin {
+function isFiniteWheelOrigin(origin: TerminalWheelOrigin | null | undefined): origin is TerminalWheelOrigin {
   return origin !== null
     && origin !== undefined
     && Number.isFinite(origin.clientX)

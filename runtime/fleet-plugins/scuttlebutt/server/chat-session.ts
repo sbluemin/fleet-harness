@@ -285,7 +285,7 @@ function message(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function redactScratchPath(text: string, cwd: string): string {
+function redactScratchPath(text: string, cwd: string): string {
   if (!cwd) return text;
   const variants = new Set([cwd, cwd.replaceAll("\\", "/"), cwd.replaceAll("/", "\\")]);
   let redacted = text;

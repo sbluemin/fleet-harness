@@ -73,7 +73,7 @@ export type SystemPromptSettingsUpdate =
   | { readonly compactCeiling: CompactCeiling | null }
   | { readonly xaiEndpoint: XaiEndpointPreference };
 
-export class TerminalSettingsApiError extends Error {
+class TerminalSettingsApiError extends Error {
   readonly status: number;
 
   constructor(status: number, message: string) {
@@ -193,7 +193,7 @@ export function useSystemPromptSettingsStore(): SystemPromptSettingsStoreState {
   return React.useSyncExternalStore(subscribe, getSystemPromptSettingsStoreState, getSystemPromptSettingsStoreState);
 }
 
-export function getSystemPromptSettingsStoreState(): SystemPromptSettingsStoreState {
+function getSystemPromptSettingsStoreState(): SystemPromptSettingsStoreState {
   return snapshot;
 }
 

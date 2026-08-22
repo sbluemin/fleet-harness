@@ -108,7 +108,7 @@ const UNUSABLE_REMOTE_BIND_HOSTS = new Set(["127.0.0.1", "localhost", "::1", "0.
  * Chromium은 URL 호스트명을 소문자로 정규화해 보낸다. 저장된 이름에 대문자가 남아 있으면 리스너와
  * 인증서는 멀쩡한데 모든 요청이 403이다 — 조인까지 포함해서. 그래서 경계에서 한 번 접어 둔다.
  */
-export function canonicalizeRemoteBindHost(value: string): string {
+function canonicalizeRemoteBindHost(value: string): string {
   return value.toLowerCase();
 }
 
@@ -133,7 +133,7 @@ export interface CreateConsoleSettingsStoreDeps {
 
 export const PLUGIN_ID_PATTERN = /^[a-z0-9][a-z0-9._-]*$/;
 export const UI_FONT_SIZE_RANGE = { min: 12, max: 18, step: 1 } as const;
-export const DEFAULT_UI_FONT_SETTINGS: UiFontSettings = { source: "builtin", id: "manrope", size: 14 };
+const DEFAULT_UI_FONT_SETTINGS: UiFontSettings = { source: "builtin", id: "manrope", size: 14 };
 
 const SETTINGS_VERSION = 1;
 const SETTINGS_LOCK_DIR_NAME = "settings.lock";
@@ -194,7 +194,7 @@ export function emptyConsoleSettingsData(): ConsoleSettingsData {
   return { version: 1, general: {}, plugins: {} };
 }
 
-export function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefined {
+function sanitizeUiFontSettings(value: unknown): UiFontSettings | undefined {
   if (isConsoleUiFontId(value)) return { source: "builtin", id: value, size: DEFAULT_UI_FONT_SETTINGS.size };
   if (!isRecord(value) || !isValidUiFontSize(value.size)) return undefined;
   if (value.source === "builtin" && isConsoleUiFontId(value.id)) {
@@ -218,7 +218,7 @@ export function sanitizeSeenFeatureTours(value: unknown): readonly string[] | un
   return [...seen];
 }
 
-export function isUiFontSettings(value: unknown): value is UiFontSettings {
+function isUiFontSettings(value: unknown): value is UiFontSettings {
   if (!isRecord(value) || !isValidUiFontSize(value.size)) return false;
   if (value.source === "builtin") return isConsoleUiFontId(value.id);
   return value.source === "system" && typeof value.familyName === "string" && value.familyName.length > 0 && value.familyName === sanitizeSystemFontFamily(value.familyName);
@@ -432,7 +432,7 @@ export function createGlobalSettingsRouter(deps: GlobalSettingsRouteDeps): (cont
   };
 }
 
-export function buildGlobalSettingsState(store: DurableJsonStore<ConsoleSettingsData>): GlobalSettingsState {
+function buildGlobalSettingsState(store: DurableJsonStore<ConsoleSettingsData>): GlobalSettingsState {
   return toGlobalSettingsState(store.load());
 }
 

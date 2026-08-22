@@ -30,7 +30,7 @@ export interface TerminalKeyModifiers {
   readonly shift: boolean;
 }
 
-export const NO_TERMINAL_MODIFIERS: TerminalKeyModifiers = { ctrl: false, alt: false, shift: false };
+const NO_TERMINAL_MODIFIERS: TerminalKeyModifiers = { ctrl: false, alt: false, shift: false };
 
 export type TerminalKeyId =
   | "escape"

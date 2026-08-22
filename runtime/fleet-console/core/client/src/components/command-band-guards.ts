@@ -95,17 +95,17 @@ export function commandBandMenuClampedLeft(
 // mapControlsLead는 스테이지 원점에서 앵커까지의 거리다 — 펼침이면 앵커=사이드바 폭=스테이지
 // 원점이라 0, 접힘이면 스테이지 원점이 0이라 도킹 앵커 그대로다. 하한은 스테이지 원점 기준으로
 // 재야 접힌 상태에서도 겹치지 않는다.
-export const COMMAND_BAND_MAP_CONTROLS_INSET_PX = 8;
-export const COMMAND_BAND_CENTER_BREATHING_PX = 12;
-export const COMMAND_BAND_CENTER_GUTTER_FLOOR_PX = 44;
-export const COMMAND_BAND_CENTER_MIN_PX = 168;
+const COMMAND_BAND_MAP_CONTROLS_INSET_PX = 8;
+const COMMAND_BAND_CENTER_BREATHING_PX = 12;
+const COMMAND_BAND_CENTER_GUTTER_FLOOR_PX = 44;
+const COMMAND_BAND_CENTER_MIN_PX = 168;
 
 // 접힘 도킹 앵커 — 사이드바가 접히면 맵 컨트롤의 정박 경계(사이드바 우측 경계선)가 사라지므로,
 // 좌측 컨트롤군의 실측 콘텐츠 끝을 새 앵커로 쓴다(브레드크럼이 이미 쓰는 "정렬 앵커는 실제
 // 스테이지 경계" 원칙의 클러스터 판). CSS가 앵커에 INSET(--space-2)을 다시 더해 도킹 구분선이
 // 정확히 콘텐츠 끝 + DOCK_DIVIDER_LEAD에 놓인다. 미측정(0 이하)이면 사이드바 폭 앵커로
 // 폴백해 첫 페인트가 기존 문법과 동일하게 남는다.
-export const COMMAND_BAND_DOCK_DIVIDER_LEAD_PX = 10;
+const COMMAND_BAND_DOCK_DIVIDER_LEAD_PX = 10;
 
 export function commandBandMapControlsAnchor(
   collapsed: boolean,

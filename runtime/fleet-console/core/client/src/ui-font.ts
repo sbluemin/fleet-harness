@@ -39,7 +39,7 @@ export function normalizeUiFont(value: unknown): UiFontSettings {
   return DEFAULT_UI_FONT;
 }
 
-export function normalizeUiFontSize(value: unknown): number {
+function normalizeUiFontSize(value: unknown): number {
   if (typeof value !== "number" || !Number.isInteger(value) || value < UI_FONT_SIZE_RANGE.min || value > UI_FONT_SIZE_RANGE.max) return UI_FONT_SIZE_RANGE.defaultValue;
   return value;
 }
@@ -49,7 +49,7 @@ export function uiFontFamily(value: UiFontSettings): string {
   return builtInUiFont(value.id).family;
 }
 
-export function builtInUiFont(id: UiFontId): UiFontBuiltIn {
+function builtInUiFont(id: UiFontId): UiFontBuiltIn {
   return UI_FONT_BUILT_INS.find((font) => font.id === id) ?? UI_FONT_BUILT_INS[0]!;
 }
 

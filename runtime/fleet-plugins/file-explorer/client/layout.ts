@@ -15,8 +15,8 @@ export const HOST_EXTRA_WIDTH_CLAMP_PX = 548;
  * 남은 뷰포트를 전부 달라고 하면 반대쪽으로 같은 실수를 한다 — 캔버스가 190px만 남는다.
  * 그래서 창의 일정 비율만 요청하고, 좁은 창에서는 하한이, 넓은 창에서는 상한이 판을 잡는다.
  */
-export const EXTRA_WIDTH_VIEWPORT_RATIO = 0.3;
-export const EXTRA_WIDTH_MIN_PX = 320;
+const EXTRA_WIDTH_VIEWPORT_RATIO = 0.3;
+const EXTRA_WIDTH_MIN_PX = 320;
 export const EXTRA_WIDTH_MAX_PX = 720;
 
 export interface TreePaneSeparatorState {

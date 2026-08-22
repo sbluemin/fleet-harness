@@ -40,7 +40,7 @@ export async function postConsoleAgentHook(options: ConsoleHookPostOptions): Pro
   }
 }
 
-export function readConsoleLock(env: NodeJS.ProcessEnv): ConsoleLockPayload | null {
+function readConsoleLock(env: NodeJS.ProcessEnv): ConsoleLockPayload | null {
   const lockFile = path.join(resolveConsoleRuntimeDir(env), LOCK_FILE_NAME);
   try {
     const stat = fs.lstatSync(lockFile);

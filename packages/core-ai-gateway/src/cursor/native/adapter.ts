@@ -52,8 +52,8 @@ import {
 import { resolveCursorModelSelection } from "../../models.js";
 import { estimateTokens } from "../../transport/token-estimate.js";
 
-export const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
-export const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
+const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
+const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
 // Live tool bridge에서 검증한 프로토콜 버전. 모델 discovery에 사용한
 // 로컬 Cursor CLI 버전과 transport wire version은 같은 수명주기가 아니다.
 export const CURSOR_CLIENT_VERSION = "cli-2026.07.08-0c04a8a";
@@ -62,10 +62,10 @@ export const CURSOR_TOOL_BYTES_LIMIT = 120_000;
 export const CURSOR_TOOL_PROVIDER_IDENTIFIER = "fleet-gateway";
 /** `CursorRuleSource.CURSOR_RULE_SOURCE_USER`, carried as the int32 the field declares. */
 const CURSOR_RULE_SOURCE_USER = 2;
-export const CURSOR_TOOL_FINALIZE_GRACE_MS = 50;
-export const CURSOR_CLIENT_HEARTBEAT_MS = 5_000;
-export const CURSOR_PENDING_LIVE_RUN_TTL_MS = 5 * 60_000;
-export const CURSOR_PENDING_LIVE_RUN_CAPACITY = 64;
+const CURSOR_TOOL_FINALIZE_GRACE_MS = 50;
+const CURSOR_CLIENT_HEARTBEAT_MS = 5_000;
+const CURSOR_PENDING_LIVE_RUN_TTL_MS = 5 * 60_000;
+const CURSOR_PENDING_LIVE_RUN_CAPACITY = 64;
 /** Ceiling on the tool-call frames one parked Run will hold for its next segment. */
 const CURSOR_DEFERRED_TOOL_FRAME_LIMIT = 64;
 export const CONNECT_FLAG_COMPRESSED = 0x01;
@@ -283,7 +283,7 @@ function extractCursorUnknownExecFields(message: unknown): readonly UnknownField
   ));
 }
 
-export function parseConnectEndStreamError(payload: Uint8Array): Error | null {
+function parseConnectEndStreamError(payload: Uint8Array): Error | null {
   try {
     const parsed = JSON.parse(Buffer.from(payload).toString("utf8")) as {
       readonly error?: { readonly code?: string; readonly message?: string };

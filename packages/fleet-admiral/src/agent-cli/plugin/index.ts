@@ -24,7 +24,7 @@ export type {
   CreateAgentCliPluginOptions,
 } from "../types.js";
 
-export const FLEET_MARKETPLACE_NAME = "fleet-harness";
+const FLEET_MARKETPLACE_NAME = "fleet-harness";
 
 const MARKETPLACE_DIR_NAME = "marketplace";
 const PLUGIN_BUNDLES_DIR_NAME = "plugins";

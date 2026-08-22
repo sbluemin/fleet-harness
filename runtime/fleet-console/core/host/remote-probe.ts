@@ -3,7 +3,7 @@ import tls from "node:tls";
 
 import { normalizeFingerprint } from "./access-link.js";
 
-export const REMOTE_PROBE_TIMEOUT_MS = 6_000;
+const REMOTE_PROBE_TIMEOUT_MS = 6_000;
 
 export type RemoteProbeResult =
   | { readonly state: "match" }

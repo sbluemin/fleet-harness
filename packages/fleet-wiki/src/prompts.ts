@@ -2,9 +2,9 @@ import { Type } from "typebox";
 
 import { FLEET_WIKI_BOUNDARY_GUIDELINES } from "./store.js";
 
-export const WIKI_SCHEMA_PROMPT_NOTE =
+const WIKI_SCHEMA_PROMPT_NOTE =
   "Workspace common rules live in `.fleet/knowledge/schema/wiki-schema.md`; body sections live in `.fleet/knowledge/schema/template-*.md`.";
-export const CANONICAL_WIKI_LINK_GUIDELINE =
+const CANONICAL_WIKI_LINK_GUIDELINE =
   "When linking to other wiki entries, use canonical `[[wiki:entry-id]]` syntax.";
 
 export const WIKI_INGEST_DESCRIPTION = "Propose workspace-local Fleet Wiki patches.";
