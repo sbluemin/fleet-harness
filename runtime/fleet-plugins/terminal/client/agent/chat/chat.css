@@ -853,6 +853,11 @@
   box-shadow: var(--ring-shadow);
 }
 
+/* 프레임이 포커스를 대신 그리므로 안쪽 입력에는 링을 그리지 않는다(코어 .font-field와 같은 문법). */
+.agent-chat-composer-frame:focus-within .agent-chat-composer-input:focus-visible {
+  box-shadow: none;
+}
+
 /* 파일을 끌어온 동안 — 어디에 놓이는지 프레임이 스스로 말한다(포커스와 같은 brass 채널). */
 .agent-chat-composer-frame.is-drag-over {
   border-color: var(--brass);

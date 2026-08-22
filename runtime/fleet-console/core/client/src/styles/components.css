@@ -1984,6 +1984,14 @@
   box-shadow: var(--ring-shadow);
 }
 
+/* 프레임이 포커스를 대신 그리는 컨트롤 — 안쪽 입력에는 링을 그리지 않는다. 입력이 자기 outline만
+   끄면 전역 :focus-visible의 box-shadow는 그대로 남아 링이 두 겹으로 겹친다(실측: 사용자가
+   타이핑을 시작하는 순간 입력과 프레임에 같은 링이 동시에 그려졌다). 자손 선택자는 특이도
+   (0,2,0)이라 전역 규칙(0,1,0)을 이긴다. */
+.font-field:focus-within input:focus-visible {
+  box-shadow: none;
+}
+
 .font-field input {
   flex: 1;
   min-width: 0;
@@ -10046,6 +10054,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .directory-browser-filter:focus-within {
   border-color: color-mix(in oklch, var(--brass) 50%, var(--surface-rim));
   box-shadow: var(--ring-shadow);
+}
+
+.directory-browser-filter:focus-within .directory-browser-filter-input:focus-visible {
+  box-shadow: none;
 }
 
 .directory-browser-filter-glyph {

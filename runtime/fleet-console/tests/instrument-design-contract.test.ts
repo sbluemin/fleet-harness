@@ -815,7 +815,25 @@ describe("Instrument core design contract", () => {
     expect(theme).toContain("--ring-shadow-inset: inset 0 0 0 2px var(--ring);");
     expect(theme).toMatch(/^:focus-visible \{\n {2}outline: none;\n {2}box-shadow: var\(--ring-shadow\);\n\}/m);
     // box-shadow는 forced-colors에서 지워진다 — 그 모드에서만 outline으로 병기하고 시스템 색을 쓴다.
-    expect(theme).toMatch(/@media \(forced-colors: active\) \{\s*:focus-visible \{\s*outline: 2px solid Highlight;/);
+    // 미디어 쿼리는 특이도를 더하지 않는다 — 자기 outline을 끈 컴포넌트 규칙((0,2,0))이
+    // 이 폴백((0,1,0))을 이기면 forced-colors에서 포커스가 통째로 보이지 않는다(box-shadow도 이
+    // 모드에서 지워지므로). 접근성 오버라이드 모드의 !important는 그 자리를 되찾기 위한 것이다.
+    expect(theme).toMatch(/@media \(forced-colors: active\) \{\s*:focus-visible \{\s*outline: 2px solid Highlight !important;/);
+
+    // 프레임이 포커스를 대신 그리는 컨트롤은 안쪽 입력의 링을 반드시 끈다. 입력이 자기 outline만
+    // 끄면 전역 규칙의 box-shadow가 남아 링이 두 겹이 된다(실측 확인). 링을 :focus-within으로
+    // 그리는 래퍼를 새로 만들면 이 목록에도 함께 올릴 것.
+    const delegated: Array<[string, string]> = [
+      ["styles/components.css", ".font-field:focus-within input:focus-visible"],
+      ["styles/components.css", ".directory-browser-filter:focus-within .directory-browser-filter-input:focus-visible"],
+    ];
+    for (const [file, selector] of delegated) {
+      const css = source(file);
+      const block = css.match(new RegExp(`^${selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} \\{[^}]*\\}`, "m"))?.[0] ?? "";
+      expect(block, `${file} ${selector}`).toContain("box-shadow: none;");
+    }
+    const chatCss = externalSource(TERMINAL_CHAT_CSS_PATH);
+    expect(chatCss).toContain(".agent-chat-composer-frame:focus-within .agent-chat-composer-input:focus-visible");
 
     const outlineViolations: string[] = [];
     const shadowViolations: string[] = [];

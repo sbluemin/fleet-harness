@@ -635,11 +635,16 @@ html:focus-visible {
 }
 
 /* forced-colors 모드는 box-shadow를 지운다 — 포커스 표시가 통째로 사라지지 않도록 outline으로 병기한다.
-   시스템 색(Highlight)을 쓰는 것이 이 모드의 계약이므로 여기서만 brass를 떠난다. */
+   시스템 색(Highlight)을 쓰는 것이 이 모드의 계약이므로 여기서만 brass를 떠난다.
+   !important인 이유는 특이도다: 미디어 쿼리는 특이도를 더하지 않으므로 이 규칙은 (0,1,0)이고,
+   자기 outline을 끈 컴포넌트 규칙(예: .directory-browser-filter-input:focus, (0,2,0))에 진다.
+   그 자리에서는 box-shadow도 이 모드에서 함께 지워지므로 포커스가 통째로 보이지 않는다
+   (실측: 같은 선택자를 문서 끝에 주입해도 outline-style이 none으로 계산됐다).
+   접근성 오버라이드 모드에서 !important는 이 상황의 관용구이며, 여기 말고는 쓰지 않는다. */
 @media (forced-colors: active) {
   :focus-visible {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
+    outline: 2px solid Highlight !important;
+    outline-offset: 2px !important;
   }
 }
 
