@@ -72,6 +72,14 @@ describe("claude client identity strip", () => {
     ["a one-line instruction opening with the SDK opener", "You are a Claude agent. Use absolute paths."],
     ["the identity sentence with instructions appended after it", `${IDENTITY_CLI} Always answer in Korean.`],
     ["an opener continued without naming Anthropic", "You are Claude Code, the best assistant ever"],
+    // A single sentence naming Anthropic is still ordinary prose a caller can write, which is
+    // why the identity test is a literal set and not a shape.
+    [
+      "a one-sentence instruction that also names Anthropic",
+      "You are Claude Code, Anthropic's coding assistant, and you must always answer in Korean.",
+    ],
+    ["a near-miss of the CLI sentence", "You are Claude Code, Anthropic's official CLI."],
+    ["a near-miss of the SDK sentence", "You are a Claude agent built on the Claude Agent SDK."],
     ["a sentence that only mentions Claude", "Explain how Claude Code handles subagents."],
     ["prose about the billing header", "The x-anthropic-billing-header: line is telemetry."],
     ["a different agent identity", "You are a Gemini agent, built on Google's Agent SDK."],

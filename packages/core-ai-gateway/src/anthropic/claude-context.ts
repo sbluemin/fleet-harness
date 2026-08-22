@@ -980,29 +980,40 @@ export function omitClaudeWebSearchTools<
  * the caller's bytes are forwarded untouched — so it is a policy step every gateway provider
  * declares instead.
  *
- * Shape is the test rather than the exact sentence. `x-anthropic-billing-header:` carries a
- * client version that changes every release, and the identity sentence has two spellings
- * already — the interactive CLI's and the Agent SDK's, the latter used by subagents and by
- * headless `-p` runs. Both must be the whole of a single-line block: measured across an
- * interactive turn, a headless turn and a subagent turn, Claude Code always ships each on a
- * `system` block of its own.
+ * The two are judged differently, because only one of them is self-identifying. Nothing but
+ * that header opens with `x-anthropic-billing-header:`, so a prefix test is enough and has to
+ * be: the line carries a client version that changes every release. The identity sentence has
+ * no such token — `You are Claude Code` is also how a caller's own prompt can open — so it is
+ * matched as one of the exact sentences measured on the wire, not by shape.
  *
- * The identity test needs one more constraint than the header does. A header line is
- * self-identifying — nothing but that header opens with that name — while `You are Claude
- * Code` is also how a caller's own one-line instruction can open. So the identity pattern
- * additionally requires the block to be a *single* sentence that names Anthropic: no period
- * before the sentence ends, and `Anthropic` inside it. `You are Claude Code. Always answer in
- * Korean.` keeps its block, and so does the real sentence with instructions appended after it,
- * while both metadata spellings still match and can still be reworded within the sentence.
+ * Two attempts at a shape test are the reason. Anchoring on the opener deleted
+ * `You are Claude Code. Always answer in Korean.`; additionally requiring one sentence naming
+ * Anthropic still deleted `You are Claude Code, Anthropic's coding assistant, and you must
+ * always answer in Korean.` Every heuristic loose enough to survive a rewording is loose
+ * enough to swallow a real instruction, because unlike the bracketed usage-limit directive
+ * this text is ordinary prose a caller can plausibly write.
  *
- * Erring toward keeping a block is deliberate. Failing to strip a reworded sentence restores
- * the old, loud symptom — the identity leaks and Cloud Code Assist refuses the turn — which is
- * noticed immediately. Stripping a caller's real instruction deletes prompt content silently,
- * and nothing downstream can tell it ever existed.
+ * The asymmetry settles it. Failing to strip a reworded sentence restores the old, loud
+ * symptom — the identity leaks and Cloud Code Assist refuses the turn outright — which surfaces
+ * on the first run and is fixed by adding the new spelling here. Stripping a caller's real
+ * instruction deletes prompt content silently, and nothing downstream can tell it ever
+ * existed. So this list is deliberately literal, and going stale is its intended failure mode.
+ *
+ * Both still have to be the whole of their block: measured across an interactive turn, a
+ * headless turn and a subagent turn, Claude Code always ships each on a `system` block of its
+ * own, and a block is only ever removed whole.
  */
 const CLAUDE_BILLING_HEADER_BLOCK = /^\s*x-anthropic-billing-header:[^\n]*[ \t]*$/;
-const CLAUDE_CLIENT_IDENTITY_BLOCK =
-  /^\s*You are (?:Claude Code|a Claude agent)\b[^.\n]*\bAnthropic\b[^.\n]*\.?[ \t]*$/;
+
+/** The exact identity sentences measured on the wire: the interactive CLI's, and the Agent SDK's. */
+const CLAUDE_CLIENT_IDENTITY_SENTENCES: readonly string[] = [
+  "You are Claude Code, Anthropic's official CLI for Claude.",
+  "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+];
+
+/** Longest sentence plus room for the whitespace a block may be padded with. */
+const CLAUDE_IDENTITY_MAX_BLOCK_LENGTH =
+  Math.max(...CLAUDE_CLIENT_IDENTITY_SENTENCES.map((sentence) => sentence.length)) + 16;
 
 export interface ClaudeClientIdentityStripResult<B> {
   /** The surviving blocks, or `undefined` when every one of them was metadata. */
@@ -1031,12 +1042,15 @@ export function stripClaudeClientIdentity<B extends ClaudeTextBlockLike>(
 }
 
 /**
- * Anchored like the usage-limit test and for the same reason: a system prompt block can be
- * the whole of a skill body, so the pattern has to reject on the first character rather than
- * trim a copy of it first.
+ * The length gate comes before the comparison for the same reason the usage-limit test is
+ * anchored: a system block can be the whole of a skill body, and trimming one to compare it
+ * would copy the entire string before the first character could rule it out.
  */
 function isClaudeClientIdentityBlock(block: ClaudeTextBlockLike): boolean {
   const text = block.text;
   if (typeof text !== "string") return false;
-  return CLAUDE_BILLING_HEADER_BLOCK.test(text) || CLAUDE_CLIENT_IDENTITY_BLOCK.test(text);
+  if (CLAUDE_BILLING_HEADER_BLOCK.test(text)) return true;
+  if (text.length > CLAUDE_IDENTITY_MAX_BLOCK_LENGTH) return false;
+  const trimmed = text.trim();
+  return CLAUDE_CLIENT_IDENTITY_SENTENCES.includes(trimmed);
 }
