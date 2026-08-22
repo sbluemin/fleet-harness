@@ -188,9 +188,15 @@
   background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
 }
 
+/* 공급자 마크의 색 대조표는 --provider-* 하나뿐이다 — 여기 빠진 공급자는 톤이 미정의가 되어
+   color-mix()가 통째로 무효화되고, 칩 테두리·배경만 사라진 채 마크가 회색으로 남는다. Quota
+   레일의 대조표(.quota-provider__mark--*)와 같은 축을 써야 두 화면이 같은 공급자를 같은 색으로 부른다. */
+.ai-gateway-provider.is-antigravity { --ai-gateway-provider-tone: var(--provider-antigravity); }
 .ai-gateway-provider.is-codex { --ai-gateway-provider-tone: var(--provider-codex); }
 .ai-gateway-provider.is-cursor { --ai-gateway-provider-tone: var(--provider-cursor); }
-.ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--id-plum); }
+.ai-gateway-provider.is-kimi { --ai-gateway-provider-tone: var(--provider-kimi); }
+.ai-gateway-provider.is-opencode { --ai-gateway-provider-tone: var(--provider-opencode); }
+.ai-gateway-provider.is-xai { --ai-gateway-provider-tone: var(--provider-xai); }
 
 /* 헤드는 말풍선의 기준 상자이기도 하다 — 기준을 토글로 두면 말풍선 폭이 토글 폭에서
    자라 좁은 화면에서 카드 밖으로 넘는다. 좁아지면 부제부터 다음 줄로 접어 글리프·이름·

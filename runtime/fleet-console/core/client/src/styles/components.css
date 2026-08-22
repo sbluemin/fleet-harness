@@ -7914,6 +7914,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-transform: uppercase;
 }
 
+.operation-launch-variant-caption.is-antigravity,
+.quick-launch-pop-band.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .operation-launch-variant-caption.is-claude,
 .quick-launch-pop-band.is-claude { --launch-provider-tone: var(--provider-claude); }
 .operation-launch-variant-caption.is-codex,
@@ -7950,6 +7952,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 10px;
 }
 
+.quick-launch-kind-icon.is-antigravity,
 .quick-launch-kind-icon.is-claude,
 .quick-launch-kind-icon.is-codex,
 .quick-launch-kind-icon.is-cursor,
@@ -7958,6 +7961,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .quick-launch-kind-icon.is-xai {
   color: var(--launch-provider-tone);
 }
+.quick-launch-kind-icon.is-antigravity { --launch-provider-tone: var(--provider-antigravity); }
 .quick-launch-kind-icon.is-claude { --launch-provider-tone: var(--provider-claude); }
 .quick-launch-kind-icon.is-codex { --launch-provider-tone: var(--provider-codex); }
 .quick-launch-kind-icon.is-cursor { --launch-provider-tone: var(--provider-cursor); }
@@ -7969,6 +7973,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    세는 크롬 표면(사이드바 칩·커맨드 밴드·팔레트·War Room 카드)이 하나의 캐리어 시그니처 톤을
    공유하므로 대조표는 여기 한 번만 적고, 각 표면은 자기 치수만 소유한다. 공급자는 정체성 축이라
    마크의 잉크에만 머문다 — 테두리·상태 표면을 덧칠하지 않고, 포커스나 활성으로 다시 칠하지도 않는다. */
+.operation-provider-mark.is-antigravity { color: var(--provider-antigravity); }
 .operation-provider-mark.is-claude { color: var(--provider-claude); }
 .operation-provider-mark.is-codex { color: var(--provider-codex); }
 .operation-provider-mark.is-cursor { color: var(--provider-cursor); }
