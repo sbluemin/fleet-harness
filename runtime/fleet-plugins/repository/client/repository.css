@@ -456,12 +456,14 @@
   color: var(--text-secondary);
 }
 
+/* 잘림은 "조용한 메모"가 아니라 상태다 — File Explorer(.fexp-truncated-badge)와 같은 warn 처리를
+   쓴다. 같은 사실이 레일마다 다른 급으로 읽히면 어느 쪽을 믿어야 할지 알 수 없다. */
 .repository-truncated-badge {
   flex-shrink: 0;
   padding: 4px 12px;
   font-size: var(--t-xs);
-  color: var(--text-tertiary);
-  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
   border-bottom: 1px solid var(--surface-rim);
   font-family: var(--font-mono);
 }
@@ -576,8 +578,11 @@
   background: color-mix(in oklch, var(--positive) 12%, transparent);
 }
 
+/* 두 hue를 섞는 자리에서 oklch는 원통 좌표를 따라 먼 호를 돈다 — 실측에서 추가 글자는 hue 109.6
+   (황록), 삭제 글자는 hue 64(호박)로 떨어져 신호가 자기 색을 잃었다(세 테마 모두). oklab으로
+   섞으면 같은 비율이 hue 150.6 / 29.6에 앉아 positive·coral 옆에 머문다. */
 .repository-line-add .repository-line-code {
-  color: color-mix(in oklch, var(--text-primary) 72%, var(--positive));
+  color: color-mix(in oklab, var(--text-primary) 72%, var(--positive));
 }
 
 .repository-line-del {
@@ -585,7 +590,7 @@
 }
 
 .repository-line-del .repository-line-code {
-  color: color-mix(in oklch, var(--text-primary) 60%, var(--coral));
+  color: color-mix(in oklab, var(--text-primary) 60%, var(--coral));
 }
 
 /* 구문강조도 장식적 구분 — --id-* 정체성 봉투에서만 가져와 상태 신호(warn/positive)와 격리한다 */
@@ -966,7 +971,6 @@
 
 .history-empty,
 .history-error,
-.history-truncated,
 .history-pagination {
   padding: 14px 12px;
   color: var(--text-tertiary);
@@ -982,9 +986,62 @@
 }
 
 .history-truncated {
-  color: var(--text-tertiary);
+  padding: 14px 12px;
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  color: var(--warn-ink);
   border-top: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--ink-fog) 8%, transparent);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+}
+
+/* 상태 목록이 상한에 걸렸다는 고지 — 목록의 마지막 줄에 앉아 "이게 전부"라는 인상을 끊는다. */
+.repository-truncated-note {
+  padding: 6px 10px;
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  border-top: 1px solid var(--surface-rim);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+/* 탐색 한도 표식 — 워크스페이스 트리는 개수 문면을 접지만, 한도에 걸렸다는 사실은 접지 않는다. */
+.repository-scan-limit {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: var(--radius-xs);
+  color: var(--warn-ink);
+  background: color-mix(in oklch, var(--warn) 12%, transparent);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+}
+
+/* 로컬 상태를 다시 읽는 컨트롤 — 쉬는 상태는 중립이고 brass는 hover/focus에만 온다. */
+.repository-reload-state {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: var(--t-sm);
+  line-height: 1;
+  transition: color var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), background var(--duration-fast) var(--ease-glide);
+}
+
+.repository-reload-state:hover {
+  color: var(--text-primary);
+  border-color: var(--surface-rim-strong);
+  background: color-mix(in oklch, var(--ink-fog) 9%, transparent);
+}
+
+.repository-reload-state:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 1px;
 }
 
 .history-pagination {
@@ -1798,7 +1855,11 @@
 }
 
 /* ═══ Fork 워크벤치 — 스테이징(Local Changes) ══════════════════════════════ */
-.repository-staging { display: flex; flex-direction: column; min-height: 0; height: 100%; }
+/* 컨테이너 쿼리는 컨테이너 자신이 아니라 자손에게만 적용된다 — 스택 조건을 지는 요소가
+   .repository-staging-root이므로 컨테이너는 그 부모가 진다. 루트가 스스로 컨테이너였을 때는
+   조건이 조상(.repository-ws-history)의 폭으로 풀려, 두 폭이 우연히 같은 워크스페이스에서만
+   맞고 레일 배치에서는 어긋났다. */
+.repository-staging { display: flex; flex-direction: column; min-height: 0; height: 100%; container-type: inline-size; }
 .repository-staging-guard {
   display: flex;
   align-items: center;
@@ -1813,6 +1874,20 @@
 /* 잠금 울타리는 경고보다 한 단 단호하다 — 쓰기 동사가 실제로 비활성인 상태의 유일한 설명이다. */
 .repository-staging-guard.is-locked { color: var(--coral-ink); background: color-mix(in oklab, var(--coral) 9%, transparent); border-bottom-color: color-mix(in oklab, var(--coral) 30%, transparent); }
 .repository-staging-root { flex: 1; min-height: 0; }
+/* 목록 220 + 디바이더 4 + diff 140 = 364px. 그 아래에서 좌우로 나누면 목록이 82px까지 눌려
+   파일명 요소 폭이 0px가 된다(실측). 두 열이 함께 설 수 없는 폭에서는 위아래로 세운다. */
+.repository-staging-root.has-hunk {
+  grid-template-columns: minmax(0, min(var(--staging-list-width, 248px), calc(100% - 144px))) 4px minmax(0, 1fr);
+}
+@container (width < 364px) {
+  .repository-staging-root.has-hunk {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: minmax(0, 40%) minmax(0, 1fr);
+  }
+  /* 세로 스택에서 열 디바이더는 트랙 수를 어긋내므로 흐름에서 뺀다 — 이음매는 테두리가 잇는다. */
+  .repository-staging-root.has-hunk > .repository-divider { display: none; }
+  .repository-staging-root.has-hunk > .repository-hunk-pane { border-left: 0; border-top: 1px solid var(--surface-rim); }
+}
 .repository-staging-lists { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; }
 .repository-staging-section { display: flex; flex-direction: column; min-height: 0; }
 .repository-staging-head {
@@ -1906,7 +1981,9 @@
 .repository-commit-body { border-top: none; border-radius: 0 0 var(--radius-xs) var(--radius-xs); color: var(--text-secondary); }
 .repository-commit-subject::placeholder,
 .repository-commit-body::placeholder { color: var(--text-tertiary); }
-.repository-commit-row { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+/* 좁은 폭에서 이 줄을 한 줄로 붙들면 커밋 버튼이 세로 글자기둥이 된다(실측: 31×89px).
+   줄바꿈을 허용하고 버튼이 남은 줄을 통째로 갖게 한다 — 컨트롤은 눌리는 대신 내려간다. */
+.repository-commit-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; margin-top: 8px; }
 .repository-commit-amend { display: inline-flex; align-items: center; gap: 5px; font-size: var(--t-sm); color: var(--text-tertiary); }
 .repository-commit-target {
   font-family: var(--font-mono, ui-monospace, monospace);
@@ -1918,6 +1995,8 @@
 }
 .repository-commit-button {
   margin-left: auto;
+  flex: none;
+  white-space: nowrap;
   font: inherit;
   font-size: var(--t-sm);
   font-weight: var(--weight-medium);

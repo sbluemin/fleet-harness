@@ -3,7 +3,7 @@ import { useCallback, useMemo, useState, type RefObject } from "react";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { DiffFileEntry } from "../server/types.js";
-import type { RepositoryMessageKey } from "./i18n/index.js";
+import { readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { DiffTreeView } from "./repository-tree.js";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -12,7 +12,7 @@ export type FilesViewMode = "list" | "tree";
 
 export type ChangedFilesState =
   | { readonly kind: "loading" }
-  | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[] }
+  | { readonly kind: "ok"; readonly files: readonly DiffFileEntry[]; readonly truncated?: boolean }
   | { readonly kind: "notice"; readonly reason: "no_git_repo" | "git_unavailable" }
   | { readonly kind: "error"; readonly message: string };
 
@@ -108,7 +108,7 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
   if (state.kind === "error") {
     return (
       <div className="repository-sections-error">
-        <span>{state.message}</span>
+        <span>{readErrorSentence(t, state.message)}</span>
         <button type="button" className="repository-refresh-btn" onClick={onRetry}>{t("repository.common.retry")}</button>
       </div>
     );
@@ -149,6 +149,9 @@ export function ChangedFiles({ state, onRetry, viewMode, selectedPath, onSelect,
                 />
               ))
             )}
+            {/* 상한에 걸린 목록을 전체인 것처럼 그리면 "모두 스테이지"가 보이지 않는 나머지를
+                건드리지 않는다는 사실이 화면에서 사라진다 — 잘렸다는 것은 항상 말한다. */}
+            {state.truncated && <div className="repository-truncated-note">{t("repository.status.capped", { count: state.files.length })}</div>}
           </div>
         )}
       </div>

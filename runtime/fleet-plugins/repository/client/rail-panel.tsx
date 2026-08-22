@@ -240,8 +240,12 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [refsError, setRefsError] = useState(false); const [refsRetry, setRefsRetry] = useState(0);
   const [changedFiles, setChangedFiles] = useState<ChangedFilesState>({ kind: "loading" });
   const [changedFilesRetry, setChangedFilesRetry] = useState(0);
+  // 로컬 상태 새로 읽기가 오를 때마다 함께 오른다 — 스테이징 뷰는 자기 상태를 따로 읽으므로
+  // 이 토큰이 없으면 트리 수치만 갱신되고 목록·파괴적 동사는 낡은 채로 남는다.
+  const [stateReloadToken, setStateReloadToken] = useState(0);
   const [workstate, setWorkstate] = useState<WorkstateResult | null>(null);
   const [workstateRetry, setWorkstateRetry] = useState(0);
+  const [workstateFailed, setWorkstateFailed] = useState(false);
   type VerbKind = "pull" | "push" | "stash";
   // 잠금은 행 동작도 함께 진다(같은 저장소를 쓴다) — 그러나 회전은 그 일을 시킨 표면에서만 돈다.
   // 행 메뉴에서 고른 삭제가 툴바 Stash 버튼을 돌리면, 결과와 마찬가지로 진행 상태까지 오귀속된다.
@@ -263,7 +267,8 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const [rowNotice, setRowNotice] = useState<{ readonly kind: "success" | "error"; readonly text: string } | null>(null);
   const rowNoticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const writeLockedRef = useRef(false);
-  const workstateRef = useRef<WorkstateResult | null>(null);
+  // 쓰기 울타리 문면은 렌더 아래쪽에서 정해지지만 verb 핸들러는 그 위에서 닫힌다 — ref로 건넨다.
+  const writeGuardRef = useRef<string | null>(null);
   const [historyExternalRefreshToken, setHistoryExternalRefreshToken] = useState(0);
   const [compareRequest, setCompareRequest] = useState<{ base: string; head: string; baseLabel: string; headLabel: string; seq: number } | null>(null);
   const [inspectRequest, setInspectRequest] = useState<{ fullHash: string; seq: number } | null>(null);
@@ -478,7 +483,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
         return;
       }
       const data = await response.json() as DiffListResult;
-      if (!cancelled) setChangedFiles({ kind: "ok", files: data.files });
+      // 서버는 상한에 걸린 목록에 truncated를 실어 보낸다. 이 값을 버리면 잘린 목록이 전체로 보이고,
+      // "모두 스테이지"가 보이지 않는 나머지를 건드리지 않는다는 사실이 화면에서 사라진다.
+      if (!cancelled) setChangedFiles({ kind: "ok", files: data.files, ...(data.truncated ? { truncated: true } : {}) });
     }).catch((error: unknown) => {
       if (!cancelled) setChangedFiles({ kind: "error", message: error instanceof Error ? error.message : "unknown" });
     });
@@ -490,11 +497,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     let cancelled = false;
     ctx.api.fetch("repository", "workstate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ theaterId: ctx.theaterId, repoRel }) })
       .then((response) => response.ok ? response.json() as Promise<WorkstateResult> : Promise.reject(new Error("workstate_failed")))
-      .then((value) => { if (!cancelled) setWorkstate(value); })
-      .catch(() => { if (!cancelled) setWorkstate(null); });
+      .then((value) => { if (!cancelled) { setWorkstate(value); setWorkstateFailed(false); } })
+      // 실패를 null로 접으면 병합·리베이스·index lock 경고와 ahead/behind가 함께 사라지고 쓰기 verb가
+      // 깨끗한 저장소처럼 켜진다. 마지막으로 읽은 값은 남기고, 모른다는 사실만 따로 든다.
+      .catch(() => { if (!cancelled) setWorkstateFailed(true); });
     return () => { cancelled = true; };
   }, [ctx.api, ctx.theaterId, repoRel, workstateRetry]);
   const refreshRepositoryData = useCallback(() => {
+    setStateReloadToken((value) => value + 1);
     setRefsRetry((value) => value + 1);
     setWorktreesRetry((value) => value + 1);
     setChangedFilesRetry((value) => value + 1);
@@ -602,7 +612,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const handleStashRowAction = useCallback((action: "apply" | "pop" | "drop", name: string, sha: string) => {
     // 스태시 동사도 툴바·스테이징과 같은 울타리를 진다 — 잠금 중 우회로가 되면 안 된다.
     if (writeLockedRef.current) {
-      showRowNotice({ kind: "error", text: guardMessageOf(workstateRef.current, t) ?? t("repository.guard.indexLocked") });
+      showRowNotice({ kind: "error", text: writeGuardRef.current ?? t("repository.guard.indexLocked") });
       return;
     }
     void runToolbarVerb("stash", "stash", { action, name, sha }, () =>
@@ -761,13 +771,14 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
   const wipFiles = changedFiles.kind === "ok" ? changedFiles.files : [];
   const selectedRepo = repos.find((repo) => repo.relPath === repoRel) ?? worktrees.find((worktree) => worktree.relPath === repoRel);
   const checkoutTabs = buildCheckoutTabs(repos, worktrees, repoRel);
-  const writeLocked = guardMessageOf(workstate, t) !== null;
+  const writeGuardMessage = workstateFailed ? t("repository.guard.stateUnknown") : guardMessageOf(workstate, t);
+  const writeLocked = writeGuardMessage !== null;
   writeLockedRef.current = writeLocked;
-  workstateRef.current = workstate;
+  writeGuardRef.current = writeGuardMessage;
   // WORKING > Changes는 Fork 문법의 스테이징 뷰다 — 목록·diff·커밋 상자를 StagingView가 소유한다.
   // 체크아웃마다 새 인스턴스를 세운다 — 키 없이 재사용하면 이전 체크아웃의 목록·커밋 초안 위에서
   // 파괴 동사가 다른 체크아웃을 때릴 수 있다.
-  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} onMutated={handleWorkspaceMutated} />;
+  const changesView = <StagingView key={`${ctx.theaterId ?? ""}\u0000${repoRel}`} ctx={ctx} repoRel={repoRel} workstate={workstate} stateUnknown={workstateFailed} reloadToken={stateReloadToken} onMutated={handleWorkspaceMutated} />;
   const syncNoticeMessage = syncNotice == null ? null
     : syncNotice.kind === "error"
       ? t(syncNotice.code === "auth_failed" ? "repository.sync.failedAuth"
@@ -807,7 +818,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       {syncNotice && syncNoticeMessage ? <div className={`repository-sync-toast is-${syncNotice.kind === "error" ? "error" : "success"}`} role="status"><span>{syncNoticeMessage}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setSyncNotice(null)}>✕</button></div> : null}
       {rowNotice ? <div className={`repository-sync-toast is-${rowNotice.kind}`} role="status"><span>{rowNotice.text}</span><button type="button" aria-label={t("repository.sync.dismiss")} onClick={() => setRowNotice(null)}>✕</button></div> : null}
       <div ref={layoutRef} className={`repository-ws-layout${isTreeDragging ? " is-dragging" : ""}`} style={{ "--ws-tree-width": `${treeWidth}px` } as React.CSSProperties}>
-        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
+        <WorkspaceTree theaterId={ctx.theaterId ?? ""} t={t} repos={repos} reposError={reposError} reposTruncated={reposTruncated} scanDepth={scanDepth} worktrees={worktrees} worktreesError={worktreesError} refs={refs} refsError={refsError} changedFiles={changedFiles} selectedRel={repoRel} source={source} refFilter={refFilter} onRepository={handleSelectRepository} onScanDepth={setScanDepth} onRetryRepos={() => setReposRetry((value) => value + 1)} onReloadState={refreshRepositoryData} onRetryWorktrees={() => setWorktreesRetry((value) => value + 1)} onRetryRefs={() => setRefsRetry((value) => value + 1)} onSource={setSource} onRef={(ref) => { setRefFilter(ref); setSource("history"); }} onCompare={openCompare} onStashInspect={openStashInspect} onStashAction={handleStashRowAction} />
         <div className="repository-divider repository-ws-tree-divider" onPointerDown={handleTreeDividerDown} role="separator" aria-orientation="vertical" aria-label={t("repository.common.resizeSourceTree")} />
         <HistoryPanel key={`${ctx.theaterId ?? ""}:${repoRel}:${historyLandingEpoch}`} cacheScope={`${ctx.theaterId ?? ""}:${repoRel}`} ctx={ctx} repoRel={repoRel} externalRefreshToken={historyExternalRefreshToken} active refFilter={refFilter} wipFiles={wipFiles} workspace workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} onClearRef={() => setRefFilter(null)} onWip={() => setSource("changes")} />
       </div>
@@ -833,6 +844,8 @@ interface WorkspaceTreeProps {
   readonly onRepository: (repo: RepoCandidate | WorktreeCandidate) => void;
   readonly onScanDepth: (depth: number) => void;
   readonly onRetryRepos: () => void;
+  /** 로컬 저장소 상태(작업·스태시·refs·ahead)를 원격 fetch 없이 다시 읽는다. */
+  readonly onReloadState: () => void;
   readonly onRetryWorktrees: () => void;
   readonly onRetryRefs: () => void;
   readonly onSource: (source: Source) => void;
@@ -842,7 +855,7 @@ interface WorkspaceTreeProps {
   readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string, sha: string) => void;
 }
 
-export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect, onStashAction }: WorkspaceTreeProps) {
+export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTruncated, scanDepth, worktrees, worktreesError, refs, refsError, changedFiles, selectedRel, source, refFilter, onRepository, onScanDepth, onRetryRepos, onReloadState, onRetryWorktrees, onRetryRefs, onSource, onRef, onCompare, onStashInspect, onStashAction }: WorkspaceTreeProps) {
   const [initialTreeState] = useState(() => readWorkspaceTreeState(theaterId));
   const [query, setQuery] = useState(initialTreeState?.query ?? "");
   const [collapsedSections, setCollapsedSections] = useState(() => new Set(initialTreeState?.collapsedSections ?? ["tags", "stashes"]));
@@ -919,7 +932,7 @@ export function WorkspaceTree({ theaterId = "", t, repos, reposError, reposTrunc
     </button>)}
   </div>);
   return <aside ref={treeRef} className="repository-ws-tree">
-    <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={reposTruncated} onEnter={() => {
+    <RepositoryDiscovery t={t} query={query} onQuery={setQuery} totalCount={repos.length} matchedCount={matchedCount} scanDepth={scanDepth} onScanDepth={onScanDepth} truncated={reposTruncated} onReload={onReloadState} onEnter={() => {
       const first = rootMatches[0] ?? nestedMatches[0];
       if (first) onRepository(first);
     }} />
@@ -1184,7 +1197,7 @@ function WorkspaceTreeError({ t, label, onRetry }: { readonly t: T; readonly lab
 
 
 function SourceIcon({ source }: { readonly source: SourceIconKind }) { const path = source === "repositories" ? "M3 5h12v9H3zM5 3h8v2" : source === "worktrees" ? "M5 3v12M5 6h7M5 12h7" : source === "changes" ? "M3 4h12M3 9h12M3 14h12" : source === "history" ? "M4 4v10h10M7 7h6v5" : source === "branches" ? "M5 3v12M5 6h7M5 12h7" : source === "tags" ? "M3 4h8l4 4-7 7-5-5z" : "M4 5h10v9H4zM6 3h6"; return <svg viewBox="0 0 18 18" aria-hidden="true"><path d={path} fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>; }
-function RepositoryDiscovery({ t, query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onEnter }: { readonly t: T; readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onEnter: () => void }) {
+function RepositoryDiscovery({ t, query, onQuery, totalCount, matchedCount, scanDepth, onScanDepth, truncated, onReload, onEnter }: { readonly t: T; readonly query: string; readonly onQuery: (query: string) => void; readonly totalCount: number; readonly matchedCount: number; readonly scanDepth: number; readonly onScanDepth: (depth: number) => void; readonly truncated: boolean; readonly onReload: () => void; readonly onEnter: () => void }) {
   return <div className="repository-discovery">
     <input type="text" className="repository-filter-input" placeholder={t("repository.discovery.placeholder")} aria-label={t("repository.discovery.aria")} value={query} onChange={(event) => onQuery(event.target.value)} onKeyDown={(event) => {
       if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -1196,6 +1209,12 @@ function RepositoryDiscovery({ t, query, onQuery, totalCount, matchedCount, scan
       <output className="repository-depth-value">{scanDepth}</output>
       <button type="button" className="repository-depth-step" aria-label={t("repository.discovery.scanDeeper")} disabled={scanDepth >= SCAN_DEPTH_MAX} onClick={() => onScanDepth(scanDepth + 1)}>+</button>
     </span>
+    {/* 작업 트리·스태시·ahead는 이 패널이 관측하지 않는다. 그 축을 다시 읽는 유일한 경로가
+        원격 fetch(동기화)뿐이면, 자기 저장소의 상태를 알기 위해 네트워크를 호출해야 한다. */}
+    <button type="button" className="repository-reload-state" aria-label={t("repository.common.reloadState")} title={t("repository.common.reloadState")} onClick={onReload}>↻</button>
+    {/* 워크스페이스 트리에서 이 카운트는 숨겨진다 — 그러면 상한에 걸린 탐색이 완전한 목록으로 보인다.
+        숫자는 접더라도 "한도에 걸렸다"는 사실은 접지 않는다. */}
+    {truncated && <span className="repository-scan-limit" title={t("repository.discovery.countFoundLimited", { count: totalCount })}>{t("repository.scan.limitReached")}</span>}
     <span className="repository-scan-count">{query ? t("repository.discovery.countMatched", { matched: matchedCount, total: totalCount }) : truncated ? t("repository.discovery.countFoundLimited", { count: totalCount }) : t("repository.discovery.countFound", { count: totalCount })}</span>
   </div>;
 }

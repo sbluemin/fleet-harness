@@ -5,7 +5,7 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 import type { CompareResult, DiffFileEntry } from "../server/types.js";
 import { FileRow, FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
-import { getT } from "./i18n/index.js";
+import { getT, readErrorSentence } from "./i18n/index.js";
 import { DiffTreeView } from "./repository-tree.js";
 import { WorkspaceDock } from "./workspace-dock.js";
 
@@ -78,7 +78,7 @@ export function CompareInspector({ ctx, repoRel, pair, onSwap, onClose }: Compar
     : state.kind === "notice"
       ? state.reason === "no_git_repo" ? t("repository.changes.notice.noGitRepoBody") : t("repository.changes.notice.gitUnavailableBody")
       : state.kind === "error"
-        ? state.message === "no_merge_base" ? t("repository.compare.noMergeBase") : state.message
+        ? state.message === "no_merge_base" ? t("repository.compare.noMergeBase") : readErrorSentence(t, state.message)
         : state.files.length === 0 ? t("repository.compare.noDifferences") : null;
 
   return <WorkspaceDock

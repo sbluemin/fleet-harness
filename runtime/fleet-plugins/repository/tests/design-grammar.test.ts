@@ -89,6 +89,68 @@ function reducedMotionBodies(): string {
   return bodies.join("\n");
 }
 
+describe("Repository honesty grammar", () => {
+  // 잘림·상한 고지는 "조용한 메모"가 아니라 상태다 — File Explorer(.fexp-truncated-badge)가 쓰는
+  // warn 처리와 같은 급으로 말해야 같은 사실이 레일마다 다른 무게로 읽히지 않는다.
+  it("speaks every cap on the warn channel", () => {
+    for (const selector of [".repository-truncated-badge", ".history-truncated", ".repository-truncated-note", ".repository-scan-limit"]) {
+      const body = blockOf(selector);
+      expect(body).toContain("var(--warn-ink)");
+      expect(body).toContain("var(--warn) 12%");
+      expect(body).not.toContain("var(--ink-fog) 8%");
+    }
+  });
+
+  // 로컬 상태를 다시 읽는 컨트롤은 쉬는 상태에서 위치 채널을 켜지 않는다 — brass는 hover/focus에만.
+  it("rests the reload control on neutral ink and takes brass only on focus", () => {
+    const rest = blockOf(".repository-reload-state");
+    expect(rest).toContain("var(--text-tertiary)");
+    expect(rest).not.toContain("var(--brass)");
+    expect(blockOf(".repository-reload-state:focus-visible")).toContain("var(--brass)");
+  });
+
+  // 목록 220 + 디바이더 4 + diff 140 = 364px. 그 아래에서 좌우 분할을 유지하면 목록이 82px까지
+  // 눌려 파일명 요소 폭이 0px가 된다(격리 콘솔 실측). 두 열이 못 서면 위아래로 세운다.
+  it("stacks the staging split instead of imploding the file list", () => {
+    const bodies = blocksOf(".repository-staging-root.has-hunk");
+    expect(bodies.length).toBeGreaterThanOrEqual(2);
+    const stacked = bodies.find((body) => body.includes("grid-template-rows"));
+    expect(stacked).toBeDefined();
+    expect(stacked).toContain("grid-template-columns: minmax(0, 1fr)");
+    expect(css.replace(/\/\*[\s\S]*?\*\//g, "")).toContain("@container (width < 364px)");
+    expect(blockOf(".repository-staging-root.has-hunk > .repository-divider")).toContain("display: none");
+  });
+
+  // 끌어서 정한 폭은 인라인 스타일이 아니라 변수로 들어와야 컨테이너 쿼리가 이긴다(독과 같은 이유).
+  it("takes the dragged list width as a variable so the stack query can win", () => {
+    expect(blockOf(".repository-staging-root.has-hunk")).toContain("var(--staging-list-width");
+  });
+
+  // 컨테이너 쿼리는 컨테이너 자신에게 적용되지 않는다. 조건을 지는 요소가 스테이징 루트이므로
+  // 컨테이너는 그 부모여야 한다 — 루트가 컨테이너면 조건이 조상 폭으로 풀려 배치마다 달라진다.
+  it("owns the stack container on the parent, not on the queried element", () => {
+    expect(blockOf(".repository-staging")).toContain("container-type: inline-size");
+    expect(blockOf(".repository-staging-root")).not.toContain("container-type");
+  });
+});
+
+describe("Repository signal mixing", () => {
+  // 두 hue를 섞는 자리에서 oklch는 원통 좌표의 먼 호를 돈다. 격리 콘솔 실측: 추가 글자 hue 109.6
+  // (황록) · 삭제 글자 hue 64(호박) — Instrument·Maritime·Whites 모두. oklab은 150.6 / 29.6이다.
+  it("mixes two-hue diff text in oklab so add and delete keep their signal", () => {
+    expect(blockOf(".repository-line-add .repository-line-code")).toContain("color-mix(in oklab, var(--text-primary) 72%, var(--positive))");
+    expect(blockOf(".repository-line-del .repository-line-code")).toContain("color-mix(in oklab, var(--text-primary) 60%, var(--coral))");
+  });
+
+  // 컨트롤은 좁아지면 눌리는 대신 줄을 바꾼다 — 실측에서 커밋 버튼은 31×89px 세로 글자기둥이 됐다.
+  it("lets the commit row wrap instead of crushing its button", () => {
+    expect(blockOf(".repository-commit-row")).toContain("flex-wrap: wrap");
+    const button = blockOf(".repository-commit-button");
+    expect(button).toContain("flex: none");
+    expect(button).toContain("white-space: nowrap");
+  });
+});
+
 describe("Repository design grammar", () => {
   it("reserves brass for location while selections use neutral ink", () => {
     expect(blockOf(".repository-ref-row.is-current")).toContain("var(--text-primary)");
