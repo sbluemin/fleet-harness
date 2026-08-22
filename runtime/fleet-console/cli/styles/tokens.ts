@@ -55,6 +55,33 @@ export function dim(text: string, colorEnabled: boolean): string {
   return paint(ANSI_DIM, text, colorEnabled);
 }
 
+/** Help 목록의 기본 이름 컬럼 폭. 이름 뒤 여백은 색 코드가 아니라 원문 길이로 잡는다. */
+export const HELP_NAME_COLUMN = 20;
+
+function padName(name: string, width: number): string {
+  return " ".repeat(Math.max(1, width - name.length));
+}
+
+/** `  <name><padding><description>` 한 줄. 이름은 command 색. */
+export function commandRow(
+  name: string,
+  description: string,
+  colorEnabled: boolean,
+  width: number = HELP_NAME_COLUMN,
+): string {
+  return `  ${command(name, colorEnabled)}${padName(name, width)}${dim(description, colorEnabled)}`;
+}
+
+/** commandRow와 같은 격자이되 이름이 옵션·경로·환경변수일 때. */
+export function optionRow(
+  name: string,
+  description: string,
+  colorEnabled: boolean,
+  width: number = HELP_NAME_COLUMN,
+): string {
+  return `  ${option(name, colorEnabled)}${padName(name, width)}${dim(description, colorEnabled)}`;
+}
+
 export const ASCII_FLEET_BANNER: readonly string[] = [
   "███████╗██╗     ███████╗███████╗████████╗",
   "██╔════╝██║     ██╔════╝██╔════╝╚══██╔══╝",

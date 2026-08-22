@@ -61,6 +61,19 @@ fleet-console
 
 Prefer `fleet console`. The transitional `fleet-console` bin still works. The launcher ensures the local console server is running and opens `/console/` directly without browser token fragments.
 
+The AI Gateway is configured from the same launcher, against the same `ai-gateway.json` the Console screen edits:
+
+```bash
+fleet gateway                          # interactive configuration
+fleet gateway status                   # configuration and credential state
+fleet gateway models --json            # what the gateway currently exposes
+fleet gateway auth login               # Kimi / OpenCode Go API keys
+fleet gateway set xai-endpoint direct  # one policy axis, no prompts
+fleet gateway serve                    # a standalone loopback gateway
+```
+
+The CLI writes the settings file directly, so it works with the Console stopped; an open Console tab shows the change after a reload. `fleet gateway serve` binds 127.0.0.1 and carries no authentication.
+
 ## Desktop coexistence
 
 Fleet Console Desktop is a thin Electron shell around this service, not a second Console implementation. Its packaged standard Node `22.23.1` sidecar runs this package's `dist/cli.mjs serve` outside Electron's asar and loads exactly `http://127.0.0.1:<verified-port>/console/`. The service remains the owner of HTTP/REST/SSE/WebSocket, PTY, provider policy, plugin runtime, durable JSON state, and the React UI.

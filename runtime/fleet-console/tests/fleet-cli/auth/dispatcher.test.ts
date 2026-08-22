@@ -18,7 +18,7 @@ vi.mock("../../../cli/auth/login-flow.js", () => ({
   resolveAuthCliId: (value: string | undefined, io: { stderr: { write(chunk: string): boolean } }) => {
     if (value === undefined) return undefined;
     if (value === "kimi" || value === "opencode") return value;
-    io.stderr.write(`Unknown fleet auth provider: ${value}\nUse kimi or opencode.\n`);
+    io.stderr.write(`Unknown fleet gateway auth provider: ${value}\nUse kimi or opencode.\n`);
     return "invalid";
   },
   runAuthLoginFlow: mocks.runAuthLoginFlow,
@@ -35,7 +35,7 @@ describe("auth dispatcher", () => {
   it("documents the provider auth surface", async () => {
     const io = createIo();
     await expect(dispatchAuthCommand(["auth", "--help"], io, createDeps())).resolves.toBe(0);
-    expect(io.stdout.output).toContain("fleet auth login [kimi|opencode]");
+    expect(io.stdout.output).toContain("fleet gateway auth login [kimi|opencode]");
   });
 
   it("dispatches Kimi login", async () => {
@@ -63,7 +63,7 @@ describe("auth dispatcher", () => {
     const io = createIo();
     await expect(dispatchAuthCommand(["auth", "logout", "bogus"], io, createDeps())).resolves.toBe(1);
     expect(mocks.deleteApiKey).not.toHaveBeenCalled();
-    expect(io.stderr.output).toContain("Unknown fleet auth provider: bogus");
+    expect(io.stderr.output).toContain("Unknown fleet gateway auth provider: bogus");
     expect(io.stderr.output).toContain("Use kimi or opencode.");
   });
 });

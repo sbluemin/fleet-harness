@@ -26,6 +26,12 @@ export interface FleetCliGatewayServer {
 export async function startGatewayHttpServer(deps: {
   readonly store: AiGatewaySettingsStore;
   readonly authService: AuthService;
+  /**
+   * 들을 포트. 부재는 임시 포트다. 주소는 언제나 127.0.0.1이며 그 선택은 호출자에게 열려
+   * 있지 않다 — 이 라우터에는 인증이 없어서, 루프백을 벗어나는 순간 도달 가능한 누구나
+   * 사용자의 구독을 쓸 수 있다.
+   */
+  readonly port?: number;
 }): Promise<FleetCliGatewayServer> {
   const diagnostics = createCursorDiagnosticLog(path.join(getFleetDataDir(), "fleet-cli", "ai-gateway"));
   const failureJournal = createFailureJournal({
@@ -70,7 +76,7 @@ export async function startGatewayHttpServer(deps: {
   };
 
   try {
-    await listen(server);
+    await listen(server, deps.port);
   } catch (error) {
     router.dispose();
     await diagnostics.flush();
@@ -99,7 +105,7 @@ export async function startGatewayHttpServer(deps: {
   };
 }
 
-function listen(server: http.Server): Promise<void> {
+function listen(server: http.Server, port?: number): Promise<void> {
   return new Promise((resolve, reject) => {
     const onError = (error: Error) => {
       server.off("listening", onListening);
@@ -111,7 +117,7 @@ function listen(server: http.Server): Promise<void> {
     };
     server.once("error", onError);
     server.once("listening", onListening);
-    server.listen(0, "127.0.0.1");
+    server.listen(port ?? 0, "127.0.0.1");
   });
 }
 

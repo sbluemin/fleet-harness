@@ -51,7 +51,7 @@ describe("Kimi auth login flow", () => {
     await expect(runAuthLoginFlow(["bogus"], io, createDeps())).resolves.toBe(1);
     expect(mocks.password).not.toHaveBeenCalled();
     expect(mocks.setApiKey).not.toHaveBeenCalled();
-    expect(io.stderr.output).toBe("Unknown fleet auth provider: bogus\nUse kimi or opencode.\n");
+    expect(io.stderr.output).toBe("Unknown fleet gateway auth provider: bogus\nUse kimi or opencode.\n");
   });
 });
 

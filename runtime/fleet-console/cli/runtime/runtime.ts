@@ -98,7 +98,8 @@ export async function createFleetCliRuntime(
   }
 }
 
-function applyStoredWireLog(store: AiGatewaySettingsStore, dataDir: string): void {
+/** 저장된 wire-log 토글을 프로세스에 적용한다. CLI 런타임과 `fleet gateway serve`가 공유한다. */
+export function applyStoredWireLog(store: AiGatewaySettingsStore, dataDir: string): void {
   try {
     applyWireLog(store.read().wireLogEnabled, dataDir);
   } catch {

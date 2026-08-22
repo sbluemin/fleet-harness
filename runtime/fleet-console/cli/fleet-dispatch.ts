@@ -3,6 +3,7 @@ import { createInfraServices } from "@dotobokuri/core-infra";
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
 import { buildFleetHelpText, buildFleetVersionText, isFleetVersionArg } from "./cli-args.js";
+import { dispatchGatewayCommand } from "./gateway/dispatcher.js";
 import { dispatchDoctorCommand } from "./doctor.js";
 import { readFleetCliRelease } from "./release.js";
 import {
@@ -19,6 +20,7 @@ import { resolveSiblingConsoleCliPath } from "./update/stop-console.js";
 
 export type FleetDispatch =
   | { readonly kind: "update"; readonly argv: readonly string[] }
+  | { readonly kind: "gateway"; readonly gatewayArgv: readonly string[] }
   | { readonly kind: "auth"; readonly argv: readonly string[] }
   | { readonly kind: "console"; readonly consoleArgv: readonly string[] }
   | { readonly kind: "doctor"; readonly argv: readonly string[] }
@@ -38,18 +40,20 @@ export interface FleetDispatchOptions {
     io: { readonly stdout: { write(chunk: string): boolean }; readonly stderr: { write(chunk: string): boolean } },
     options?: { readonly siblingCliPath?: string },
   ) => Promise<number>;
+  readonly dispatchGatewayCommand?: typeof dispatchGatewayCommand;
   readonly siblingCliPath?: string;
   readonly moduleUrl?: string;
 }
 
 /**
- * Exact fleet.mjs precedence: update > auth > console > doctor > status > cli > help > version > Claude passthrough.
- * `cli` is stripped before help/passthrough classification. Reserved words after `cli`
- * stay Claude passthrough so `fleet cli status` still asks Claude Code.
+ * Exact fleet.mjs precedence: update > gateway > auth > console > doctor > status > cli > help >
+ * version > Claude passthrough. `cli` is stripped before help/passthrough classification.
+ * Reserved words after `cli` stay Claude passthrough so `fleet cli status` still asks Claude Code.
  */
 export function classifyFleetArgv(argv: readonly string[]): FleetDispatch {
   const command = argv[0];
   if (command === "update") return { kind: "update", argv };
+  if (command === "gateway") return { kind: "gateway", gatewayArgv: argv.slice(1) };
   if (command === "auth") return { kind: "auth", argv };
   if (command === "console") return { kind: "console", consoleArgv: argv.slice(1) };
   if (command === "doctor") return { kind: "doctor", argv };
@@ -84,7 +88,14 @@ export async function dispatchFleetArgv(
     return await update(dispatch.argv, io, { siblingCliPath });
   }
 
+  if (dispatch.kind === "gateway") {
+    return await (options.dispatchGatewayCommand ?? dispatchGatewayCommand)(dispatch.gatewayArgv, io);
+  }
+
   if (dispatch.kind === "auth") {
+    // `fleet auth`는 `fleet gateway auth`로 옮겨 갔다. 손가락이 기억하는 문법을 곧장
+    // 깨뜨리지 않되, 어디로 갔는지는 매번 말한다.
+    io.stderr.write("`fleet auth` moved to `fleet gateway auth`. The old spelling still works for now.\n");
     return await auth(dispatch.argv, io, createInfra());
   }
 

@@ -48,7 +48,7 @@
 
 ## Distribution constraints
 
-- Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry may still run an ephemeral per-process AI Gateway for Claude Code passthrough.
+- Console serves its own web build and owns both published bins (`fleet`, `fleet-console`); there is no second Console web/HTTP owner. The `fleet` entry may still run an AI Gateway listener of its own — ephemeral for Claude Code passthrough, or explicitly long-lived under `fleet gateway serve` — always bound to loopback, never a Console web/HTTP surface, and never authenticated.
 - Published Console artifacts are self-contained: workspace packages are bundled and must not survive as workspace-version dependencies.
 - The published `./desktop-protocol` subpath is a compatibility surface for shipped Desktop shells under always-latest Console installs; keep its export surface unchanged.
 - Host and built-in plugin bundles may load separate copies of a module. Never coordinate across that boundary through module-scoped singleton state.

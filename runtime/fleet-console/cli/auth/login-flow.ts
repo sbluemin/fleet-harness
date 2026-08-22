@@ -93,7 +93,7 @@ export function resolveAuthCliId(
   if (value === undefined) return undefined;
   const parsed = parseAuthCliId(value);
   if (parsed) return parsed;
-  io.stderr.write(`Unknown fleet auth provider: ${value}\nUse kimi or opencode.\n`);
+  io.stderr.write(`Unknown fleet gateway auth provider: ${value}\nUse kimi or opencode.\n`);
   return "invalid";
 }
 
