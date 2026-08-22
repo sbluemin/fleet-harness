@@ -1,10 +1,11 @@
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /**
- * `pnpm cli` / `pnpm console` / `pnpm desktop`의 공통 진입점. 세 호스트가 **같은** 격리
+ * `pnpm fleet` / `pnpm console` / `pnpm desktop`의 공통 진입점. 세 호스트가 **같은** 격리
  * 데이터 루트를 보게 만드는 것이 이 런처의 전부다.
  *
  * 격리가 필요한 이유는 이 셋이 기본값으로는 사용자의 실제 `~/.fleet`을 읽고 쓰기 때문이다 —
@@ -24,8 +25,14 @@ import { fileURLToPath } from "node:url";
  * cmd에서 동작하지 않고, 체크아웃 절대경로는 실행 시점에만 알 수 있다.
  */
 
+const FLEET_ENTRY = "runtime/fleet-console/dist/fleet.mjs";
+
 const TARGETS = {
-  cli: [process.execPath, "runtime/fleet-console/dist/fleet.mjs"],
+  // `fleet`은 설치본과 같은 진입점이다 — `pnpm fleet gateway status`는 `fleet gateway status`가
+  // 하는 일을 격리 루트에 대고 한다. `cli`는 이 타겟의 옛 이름으로 남는다: `fleet cli`가 이제
+  // 세 런타임 중 하나(Claude 패스스루)를 가리키므로, 그 이름으로 전체 launcher를 부르면 거짓말이 된다.
+  fleet: [process.execPath, FLEET_ENTRY],
+  cli: [process.execPath, FLEET_ENTRY],
   console: [process.execPath, "runtime/fleet-console/dist/cli.mjs"],
   desktop: ["pnpm", "--filter", "@dotobokuri/fleet-desktop", "dev"],
 };
@@ -51,6 +58,13 @@ const env = {
 };
 
 const [file, ...args] = command;
+// dist는 빌드 산출물이라 갓 체크아웃한 워크트리에는 없다. Node가 던지는 ERR_MODULE_NOT_FOUND
+// 스택 대신 무엇을 해야 하는지 말한다.
+const entry = file === process.execPath ? args[0] : undefined;
+if (entry !== undefined && !existsSync(path.join(repoRoot, entry))) {
+  process.stderr.write(`${entry} is missing. Build it first: pnpm build\n`);
+  process.exit(1);
+}
 // Windows에서 `pnpm`은 `.cmd` shim이라 Node가 셸 없이는 띄우지 못한다. POSIX에서는 셸을 거치지
 // 않으므로 전달 인자가 다시 파싱되지 않는다.
 const useShell = file === "pnpm" && process.platform === "win32";
