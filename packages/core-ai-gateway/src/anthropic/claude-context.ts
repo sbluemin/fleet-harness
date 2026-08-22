@@ -961,3 +961,96 @@ export function omitClaudeWebSearchTools<
 >(request: R): ClaudeToolOmitResult<R> {
   return omitClaudeClientTools<TTool, TChoice, R>(request, CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS);
 }
+
+/**
+ * Anthropic's own client identity and billing metadata, as Claude Code prepends them to
+ * `system`.
+ *
+ * Two separate leaks share one strip because they arrive together and are removed for the
+ * same reason. The billing line is Anthropic's internal telemetry — client version and
+ * entrypoint — and a third-party provider has no business receiving it. The identity
+ * sentence tells the model it is Claude Code or a Claude Agent SDK agent, which is simply
+ * false once the turn is served by Gemini, Grok, GPT, Kimi or MiniMax; a model told it is
+ * Claude answers as Claude, cites Claude model ids, and describes a product it is not.
+ *
+ * This is the same judgement the usage-limit strip above makes about a Claude subscription
+ * number reaching a provider that is not billing it, with one difference that decides where
+ * it runs: that one has to reach native Anthropic requests too, so it sits unconditional in
+ * the router. This one must **not** — on the Anthropic passthrough both lines are true and
+ * the caller's bytes are forwarded untouched — so it is a policy step every gateway provider
+ * declares instead.
+ *
+ * The two are judged differently, because only one of them is self-identifying. Nothing but
+ * that header opens with `x-anthropic-billing-header:`, so a prefix test is enough and has to
+ * be: the line carries a client version that changes every release. The identity sentence has
+ * no such token — `You are Claude Code` is also how a caller's own prompt can open — so it is
+ * matched as one of the exact sentences measured on the wire, not by shape.
+ *
+ * Two attempts at a shape test are the reason. Anchoring on the opener deleted
+ * `You are Claude Code. Always answer in Korean.`; additionally requiring one sentence naming
+ * Anthropic still deleted `You are Claude Code, Anthropic's coding assistant, and you must
+ * always answer in Korean.` Every heuristic loose enough to survive a rewording is loose
+ * enough to swallow a real instruction, because unlike the bracketed usage-limit directive
+ * this text is ordinary prose a caller can plausibly write.
+ *
+ * The asymmetry settles it. Failing to strip a reworded sentence restores the old, loud
+ * symptom — the identity leaks and Cloud Code Assist refuses the turn outright — which surfaces
+ * on the first run and is fixed by adding the new spelling here. Stripping a caller's real
+ * instruction deletes prompt content silently, and nothing downstream can tell it ever
+ * existed. So this list is deliberately literal, and going stale is its intended failure mode.
+ *
+ * Both still have to be the whole of their block: measured across an interactive turn, a
+ * headless turn and a subagent turn, Claude Code always ships each on a `system` block of its
+ * own, and a block is only ever removed whole.
+ */
+const CLAUDE_BILLING_HEADER_BLOCK = /^\s*x-anthropic-billing-header:[^\n]*[ \t]*$/;
+
+/** The exact identity sentences measured on the wire: the interactive CLI's, and the Agent SDK's. */
+const CLAUDE_CLIENT_IDENTITY_SENTENCES: readonly string[] = [
+  "You are Claude Code, Anthropic's official CLI for Claude.",
+  "You are a Claude agent, built on Anthropic's Claude Agent SDK.",
+];
+
+/** Longest sentence plus room for the whitespace a block may be padded with. */
+const CLAUDE_IDENTITY_MAX_BLOCK_LENGTH =
+  Math.max(...CLAUDE_CLIENT_IDENTITY_SENTENCES.map((sentence) => sentence.length)) + 16;
+
+export interface ClaudeClientIdentityStripResult<B> {
+  /** The surviving blocks, or `undefined` when every one of them was metadata. */
+  readonly system: readonly B[] | undefined;
+  readonly changed: boolean;
+  /** Blocks dropped from this request. */
+  readonly removed: number;
+}
+
+/**
+ * Drop Anthropic's client identity and billing blocks from a system prompt.
+ *
+ * A dropped block leaves nothing behind: emptying its text would keep a blank paragraph in
+ * the joined instructions, and on a wire that rejects an empty text block it would fail the
+ * turn outright. When the whole prompt was metadata the result is `undefined` rather than an
+ * empty array, so the caller drops `system` entirely instead of sending an empty one.
+ */
+export function stripClaudeClientIdentity<B extends ClaudeTextBlockLike>(
+  system: readonly B[] | undefined,
+): ClaudeClientIdentityStripResult<B> {
+  if (system === undefined) return { system, changed: false, removed: 0 };
+  const kept = system.filter((block) => !isClaudeClientIdentityBlock(block));
+  const removed = system.length - kept.length;
+  if (removed === 0) return { system, changed: false, removed: 0 };
+  return { system: kept.length > 0 ? kept : undefined, changed: true, removed };
+}
+
+/**
+ * The length gate comes before the comparison for the same reason the usage-limit test is
+ * anchored: a system block can be the whole of a skill body, and trimming one to compare it
+ * would copy the entire string before the first character could rule it out.
+ */
+function isClaudeClientIdentityBlock(block: ClaudeTextBlockLike): boolean {
+  const text = block.text;
+  if (typeof text !== "string") return false;
+  if (CLAUDE_BILLING_HEADER_BLOCK.test(text)) return true;
+  if (text.length > CLAUDE_IDENTITY_MAX_BLOCK_LENGTH) return false;
+  const trimmed = text.trim();
+  return CLAUDE_CLIENT_IDENTITY_SENTENCES.includes(trimmed);
+}

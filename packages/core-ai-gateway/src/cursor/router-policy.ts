@@ -12,8 +12,14 @@ import type { GatewayRequestPolicy } from "../gateway-router/router-policy.js";
  *
  * Web Search stays withheld — that one is Claude- and Kimi-owned, and no Cursor model
  * can service a call to it.
+ *
+ * Anthropic's client identity and billing blocks go as well, and reselling Claude seats
+ * is not an exception: the identity describes the caller's client rather than whichever
+ * model sits behind the seat, and the billing line names an account Cursor is not the one
+ * charging.
  */
 export const cursorRequestPolicy: GatewayRequestPolicy = {
   provider: "cursor",
-  shapeRequest: (request, steps) => steps.withholdWebSearchTools(steps.pruneSkillPayloads(request)),
+  shapeRequest: (request, steps) =>
+    steps.stripClientIdentity(steps.withholdWebSearchTools(steps.pruneSkillPayloads(request))),
 };
