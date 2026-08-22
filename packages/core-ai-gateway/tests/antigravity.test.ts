@@ -508,6 +508,7 @@ describe("antigravity response stream", () => {
     codec: createToolNameCodec(),
     ledger: createAntigravitySignatureLedger(),
     model: "gemini-3.7-flash-tiered",
+    callIdPrefix: "agent-fixed",
   };
 
   it("emits the reasoning item before the call it belongs to", async () => {
@@ -616,6 +617,46 @@ describe("antigravity response stream", () => {
     const usage = done?.type === "response.completed" ? done.response.usage : null;
     expect(usage).not.toBeNull();
     expect(usage).not.toHaveProperty("cached_input_tokens");
+  });
+
+  it("keeps a fabricated call id unique across turns so replayed results stay attributed", async () => {
+    // `functionCall.id` is optional on this wire. When the upstream omits it, a
+    // per-stream counter alone hands turn 2 the same id turn 1 used, and the
+    // replayed history then labels the earlier call's result with the later
+    // call's name.
+    const idsFor = async (name: string, callIdPrefix: string): Promise<string[]> => {
+      const events = await collect(translateAntigravityStream(
+        frames(responseFrame([{ functionCall: { name, args: {} } }])),
+        { ...options, ledger: createAntigravitySignatureLedger(), callIdPrefix },
+      ));
+      return events.flatMap((event) =>
+        event.type === "response.output_item.added" && event.item.type === "function_call"
+          ? [event.item.call_id]
+          : []);
+    };
+    const [first] = await idsFor("read_file", "agent-turn-1");
+    const [second] = await idsFor("write_file", "agent-turn-2");
+    expect(first).toBeDefined();
+    expect(second).toBeDefined();
+    expect(first).not.toBe(second);
+
+    // The replayed history keeps each result on its own function.
+    const envelope = buildAntigravityEnvelope(request({
+      input: [
+        { type: "message", role: "user", content: "go" },
+        { type: "function_call", call_id: first!, name: "read_file", arguments: "{}" },
+        { type: "function_call_output", call_id: first!, output: "contents" },
+        { type: "function_call", call_id: second!, name: "write_file", arguments: "{}" },
+        { type: "function_call_output", call_id: second!, output: "written" },
+      ],
+    }), { requestId: "agent-test", codec: createToolNameCodec(), ledger: createAntigravitySignatureLedger() });
+    const responses = envelope.request.contents
+      .flatMap((content) => content.parts)
+      .flatMap((part) => (part.functionResponse ? [part.functionResponse] : []));
+    expect(responses.map((entry) => [entry.name, entry.response.result])).toEqual([
+      ["read_file", "contents"],
+      ["write_file", "written"],
+    ]);
   });
 
   it("classifies the upstream error envelope rather than reporting a bare failure", async () => {

@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+
 import type {
   CanonicalError,
   CanonicalResponseEvent,
@@ -125,6 +127,19 @@ export interface TranslateStreamOptions {
   readonly ledger: AntigravitySignatureLedger;
   /** The catalog model id, echoed when the upstream reports none. */
   readonly model: string;
+  /**
+   * Request-unique prefix for a fabricated `call_id`.
+   *
+   * `functionCall.id` is optional on this wire. Every live response observed
+   * carried one, but where it is absent the id has to be invented — and a call
+   * id is the only id here that outlives its own response: the client returns it
+   * on the next turn's `tool_result`, and the replayed history is keyed by it.
+   * A per-stream counter alone would hand turn 2 the same `agc_0` turn 1 used,
+   * and `linkFunctionResponseNames` would then label the earlier call's result
+   * with the later call's name. The item ids below stay counter-only because
+   * nothing outside one response ever reads them.
+   */
+  readonly callIdPrefix: string;
 }
 
 /**
@@ -152,6 +167,12 @@ export async function* translateAntigravityStream(
   let usage: CanonicalUsage | null = null;
   let outputIndex = 0;
   let sequence = 0;
+
+  // A caller that reaches this from JavaScript can still pass nothing; an id
+  // reading `agc_undefined_0` would collide exactly as the counter alone did.
+  const callIdPrefix = options.callIdPrefix && options.callIdPrefix.length > 0
+    ? options.callIdPrefix
+    : randomUUID();
 
   let textItemId: string | undefined;
   let reasoningItemId: string | undefined;
@@ -219,7 +240,7 @@ export async function* translateAntigravityStream(
         const wireName = typeof call.name === "string" ? call.name : "";
         const callId = typeof call.id === "string" && call.id.length > 0
           ? call.id
-          : `agc_${sequence++}`;
+          : `agc_${callIdPrefix}_${sequence++}`;
         if (signature !== undefined) options.ledger.record(callId, signature);
         const args = JSON.stringify(isRecord(call.args) ? call.args : {});
         const itemId = `agf_${sequence++}`;

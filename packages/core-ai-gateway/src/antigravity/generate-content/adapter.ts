@@ -225,6 +225,8 @@ export class AntigravityGenerateContentAdapter implements AiGatewayAdapter {
         codec,
         ledger: this.ledger,
         model: request.model,
+        // The envelope's own request id is already unique per request.
+        callIdPrefix: envelope.requestId,
       }),
     };
   }
