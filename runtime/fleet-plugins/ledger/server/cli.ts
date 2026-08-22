@@ -39,10 +39,6 @@ export function resetCliStateForTest(): void {
   _bootstrapPromise = null;
 }
 
-export function isBootstrapInFlight(): boolean {
-  return _bootstrapPromise !== null;
-}
-
 export function resolveNpmCommand(
   npmArgs: readonly string[],
   platform: NodeJS.Platform = process.platform,

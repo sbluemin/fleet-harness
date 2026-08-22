@@ -560,16 +560,6 @@ export function setOperationAccent(operationId: string, accentKey: string | null
   setState({ operationAccent });
 }
 
-export function forgetOperationMetadata(operationId: string): void {
-  const operationOrder = state.operationOrder.filter((id) => id !== operationId);
-  const orderChanged = operationOrder.length !== state.operationOrder.length;
-  const accentChanged = operationId in state.operationAccent;
-  if (!orderChanged && !accentChanged) return;
-  const operationAccent = { ...state.operationAccent };
-  delete operationAccent[operationId];
-  setState({ operationOrder, operationAccent });
-}
-
 // 공유 z-index 카운터에서 다음 최상단 값을 발급한다. Operation을 활성화·생성할 때 호출한다.
 export function claimTopZIndex(): number {
   topZIndex += 1;

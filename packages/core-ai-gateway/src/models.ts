@@ -37,21 +37,6 @@ export type GatewayProvider = typeof GATEWAY_PROVIDERS[number];
 export const GATEWAY_MODEL_WIRES = ["anthropic", "responses", "chat-completions"] as const;
 export type GatewayModelWire = typeof GATEWAY_MODEL_WIRES[number];
 
-/**
- * Whether a model's requests stay in Anthropic Messages form end to end (no
- * canonical translation). The `[1m]` discovery marker for such models
- * additionally requires a real 1M window: Claude Code attaches its long-context
- * beta to `[1m]` models, and that synthetic beta must never reach a sub-1M
- * Anthropic-compatible upstream. Translated-wire models are exempt — the beta
- * never leaves the gateway on those paths.
- */
-export function isAnthropicPassthroughModel(
-  model: Pick<GatewayModel, "provider" | "wire">,
-): boolean {
-  if (model.provider === "kimi") return true;
-  return model.provider === "opencode" && (model.wire ?? "anthropic") === "anthropic";
-}
-
 export const GATEWAY_REASONING_EFFORTS = [
   "low",
   "medium",
@@ -330,7 +315,6 @@ const registry = (() => {
 })();
 
 export const GATEWAY_MODELS_UPDATED_AT = registry.updatedAt;
-export const GATEWAY_MODEL_PRICING_UPDATED_AT = registry.pricing.observedAt;
 export const GATEWAY_MODEL_PRICING: Readonly<Record<string, GatewayModelPricing>> = Object.freeze(
   Object.fromEntries(
     Object.entries(registry.pricing.models).map(([modelId, pricing]) => [

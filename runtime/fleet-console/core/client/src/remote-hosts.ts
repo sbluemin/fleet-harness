@@ -40,10 +40,6 @@ export function getRemoteHosts(): readonly RemoteHost[] {
   return snapshot;
 }
 
-export function hasLoadedRemoteHosts(): boolean {
-  return loaded;
-}
-
 export async function refreshRemoteHosts(signal?: AbortSignal): Promise<readonly RemoteHost[]> {
   const response = await fetch(HOSTS_PATH, { signal });
   await assertOk(response);

@@ -2095,5 +2095,3 @@ function trapFocus(event: KeyboardEvent, card: HTMLElement | null): void {
     first?.focus();
   }
 }
-
-export const QUICK_LAUNCH_POPOVER_GAP = POPOVER_GAP;

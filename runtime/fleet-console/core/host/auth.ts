@@ -1,10 +1,5 @@
 import crypto from "node:crypto";
 
-export function readBearerToken(headers: { readonly authorization?: string | string[] }): string | null {
-  const header = Array.isArray(headers.authorization) ? headers.authorization[0] : headers.authorization;
-  return header?.startsWith("Bearer ") ? header.slice(7) : null;
-}
-
 /**
  * 접근 자격은 발급 대상(audience)에 묶인다. 루프백 리스너용으로 발급된 자격은 원격
  * 리스너에서 거부되므로, 같은 조인 문법을 쓰면서도 로컬 자격이 원격으로 재생되지 않는다.

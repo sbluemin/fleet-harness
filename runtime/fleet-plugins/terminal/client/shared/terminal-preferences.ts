@@ -273,18 +273,6 @@ export function useTerminalPrefs(): TerminalPrefsState {
   return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
-export function useTerminalRenderer(): TerminalRenderer {
-  return useSyncExternalStore(subscribe, () => state.renderer, () => state.renderer);
-}
-
-export function useTerminalInactiveFlush(): TerminalInactiveFlush {
-  return useSyncExternalStore(subscribe, () => state.inactiveFlush, () => state.inactiveFlush);
-}
-
-export function useTerminalFontSettings(): TerminalFontSettings {
-  return useSyncExternalStore(subscribe, () => state.font, () => state.font);
-}
-
 export function useChatReadingWidth(): ChatReadingWidth {
   return useSyncExternalStore(subscribe, () => state.chatReadingWidth, () => state.chatReadingWidth);
 }
@@ -301,13 +289,6 @@ export function setTerminalInactiveFlush(inactiveFlush: TerminalInactiveFlush): 
 
 export function setTerminalFont(fontId: TerminalFontId): void {
   const font = createCuratedTerminalFontSettings(fontId, state.font.size);
-  fontWriteEpoch += 1;
-  patchState({ font });
-  void pushFontToServer(font);
-}
-
-export function setCustomTerminalFont(customName: string): void {
-  const font = createCustomTerminalFontSettings(customName, state.font.size);
   fontWriteEpoch += 1;
   patchState({ font });
   void pushFontToServer(font);

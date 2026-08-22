@@ -124,8 +124,3 @@ export function xaiCliClientVersion(options: ResolveXaiCliVersionOptions = {}): 
   cached ??= resolveXaiCliClientVersion(options).catch(() => XAI_CLI_FALLBACK_CLIENT_VERSION);
   return cached;
 }
-
-/** Test seam: forget the resolved version. */
-export function resetXaiCliClientVersion(): void {
-  cached = undefined;
-}

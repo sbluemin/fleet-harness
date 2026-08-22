@@ -72,19 +72,6 @@ export async function loadInitialData(): Promise<void> {
   }
 }
 
-export async function loadConflicts(): Promise<void> {
-  try {
-    const conflicts = await fetchConflicts(state.currentWorkspaceId);
-    setState({ conflicts });
-  } catch {
-    // conflicts 로드 실패는 silent — Navigator에서 진입점만 표시
-  }
-}
-
-export function setPendingPatchCount(count: number): void {
-  setState({ pendingPatchCount: count });
-}
-
 // ─── Internal helpers ─────────────────────────────────────────────────────────
 
 function setState(next: Partial<AppState>): void {

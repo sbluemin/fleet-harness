@@ -54,7 +54,6 @@ import { estimateTokens } from "../../transport/token-estimate.js";
 
 export const CURSOR_API_ORIGIN = "https://api2.cursor.sh";
 export const CURSOR_RUN_PATH = "/agent.v1.AgentService/Run";
-export const CURSOR_MODELS_PATH = "/agent.v1.AgentService/GetUsableModels";
 // Live tool bridge에서 검증한 프로토콜 버전. 모델 discovery에 사용한
 // 로컬 Cursor CLI 버전과 transport wire version은 같은 수명주기가 아니다.
 export const CURSOR_CLIENT_VERSION = "cli-2026.07.08-0c04a8a";

@@ -435,12 +435,6 @@ export function setTriageMapMarkerOverride(operationId: string, point: { x: numb
   emitTriage();
 }
 
-export function clearTriageMapMarkerOverrides(): void {
-  if (triageMapMarkerOverrides.size === 0) return;
-  triageMapMarkerOverrides.clear();
-  emitTriage();
-}
-
 export interface TriageMapProjection {
   readonly minX: number;
   readonly maxX: number;

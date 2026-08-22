@@ -96,13 +96,6 @@ interface SseSeparator {
   readonly length: number;
 }
 
-/** A provider window whose usage must be mapped onto one of Claude Code's fixed coordinates. */
-export function canProjectClaudeContextWindow(contextWindow: number | undefined): boolean {
-  return typeof contextWindow === "number"
-    && Number.isFinite(contextWindow)
-    && contextWindow > CLAUDE_DEFAULT_CONTEXT_WINDOW;
-}
-
 /** A provider model whose real context window is at least 1M. */
 export function isClaudeOneMillionContextWindow(contextWindow: number | undefined): boolean {
   return typeof contextWindow === "number"

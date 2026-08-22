@@ -73,10 +73,6 @@ export function selectSession(sessionId: string | null): void {
   setAgentState({ activeTerminalSessionId: sessionId });
 }
 
-export function sessionTurnState(sessionId: string): TurnState {
-  return state.turnState[sessionId] ?? state.sessions[sessionId]?.turnState ?? "none";
-}
-
 function emit(): void {
   for (const listener of listeners) listener();
 }

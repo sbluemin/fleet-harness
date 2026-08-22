@@ -39,15 +39,6 @@ export function canvasRectToScreen(rect: CanvasRect, viewport: CanvasViewport): 
   };
 }
 
-export function screenRectToCanvas(rect: CanvasRect, viewport: CanvasViewport): CanvasRect {
-  const point = screenToCanvas(rect, viewport);
-  return {
-    ...point,
-    width: rect.width / viewport.zoom,
-    height: rect.height / viewport.zoom,
-  };
-}
-
 export interface ModeGeometryRect {
   readonly x: number;
   readonly y: number;

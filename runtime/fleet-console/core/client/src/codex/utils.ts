@@ -16,14 +16,6 @@ export function escapeAttribute(value: string): string {
   return escapeHtml(value).replace(/"/g, "&quot;");
 }
 
-export function formatAbsoluteDate(iso: string, locale: ConsoleLocale = "en"): string {
-  try {
-    return formatAbsoluteDateTime(iso, locale);
-  } catch {
-    return iso;
-  }
-}
-
 export function relativeTime(iso: string, locale: ConsoleLocale = "en"): string {
   const timestampMs = new Date(iso).getTime();
   if (Number.isNaN(timestampMs)) return iso;

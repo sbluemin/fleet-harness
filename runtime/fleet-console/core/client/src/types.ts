@@ -429,10 +429,6 @@ export function isValidRemoteAccessId(value: unknown): value is string {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(value);
 }
 
-export function isValidRemoteAccessLinkValue(value: unknown): value is string {
-  return typeof value === "string" && /^fleet:\/\/join\?code=[A-Za-z0-9._~-]+$/u.test(value);
-}
-
 export function isValidRemoteFingerprint(value: unknown): value is string | null {
   return value === null || (typeof value === "string" && /^[0-9a-f]{2}(?::[0-9a-f]{2})+$/iu.test(value));
 }

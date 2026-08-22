@@ -252,15 +252,6 @@ export interface DesktopUpdateRequestSnapshot {
 
 export const emptyDesktopUpdateRequest = (): DesktopUpdateRequestSnapshot => ({ requestedVersion: null, requestId: null });
 
-export function isDesktopUpdateRequestSnapshot(value: unknown): value is DesktopUpdateRequestSnapshot {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const entry = value as Record<string, unknown>;
-  if (Object.keys(entry).length !== 2) return false;
-  const versionOk = entry.requestedVersion === null || typeof entry.requestedVersion === "string";
-  const idOk = entry.requestId === null || typeof entry.requestId === "string";
-  return versionOk && idOk;
-}
-
 interface DesktopUpdateRouteDeps {
   readonly getUpdateRequest: () => DesktopUpdateRequestSnapshot;
   readonly isAuthorized: (req: http.IncomingMessage) => boolean;

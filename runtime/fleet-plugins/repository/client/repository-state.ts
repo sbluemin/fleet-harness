@@ -173,12 +173,6 @@ export function getSelectedFile(theaterId: string | null, repoRel: string): Sele
   return diffViewState.file;
 }
 
-export function useSelectedFile(theaterId: string | null, repoRel: string): SelectedFile | null {
-  const s = useSyncExternalStore(subscribeDiffView, getDiffViewSnapshot, getDiffViewSnapshot);
-  if (!s.file || s.file.theaterId !== theaterId || s.file.repoRel !== repoRel) return null;
-  return s.file;
-}
-
 export function setSelectedFile(entry: DiffFileEntry, theaterId: string, repoRel: string): void {
   diffViewState = { file: { entry, theaterId, repoRel } };
   emitDiffView();
