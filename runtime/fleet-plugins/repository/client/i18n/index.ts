@@ -7,7 +7,7 @@ export const repositoryEn = {
   // panel / identity
   "repository.panel.title": "Repository",
   "repository.sync.button": "Fetch",
-  "repository.sync.title": "Update remote-tracking branches from origin",
+  "repository.sync.title": "Update remote-tracking branches",
 
   // workspace tree sections
   "repository.section.context": "CONTEXT",
@@ -65,7 +65,7 @@ export const repositoryEn = {
 
   // disclosed caps
   "repository.status.capped": "Only the first {count} changed files are listed.",
-  "repository.commit.filesCapped": "This commit's file list was cut off.",
+  "repository.commit.capped": "Some of this commit's data was cut off.",
   "repository.scan.limitReached": "scan limit reached",
   "repository.guard.stateUnknown": "Repository state could not be read — reload before writing.",
 
@@ -150,13 +150,13 @@ export const repositoryEn = {
   "repository.history.countLegend": "All refs · dimmed = not in current checkout",
 
   // sync outcome surfacing (manual sync only; auto sync stays silent)
-  "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for origin.",
-  "repository.sync.failedNetwork": "Fetch failed — network. origin is unreachable.",
+  "repository.sync.failedAuth": "Fetch failed — authentication. Check your credentials for the remote.",
+  "repository.sync.failedNetwork": "Fetch failed — network. The remote is unreachable.",
   "repository.sync.failedTimeout": "Fetch failed — timed out.",
   "repository.sync.failedNoRemote": "Fetch failed — no remote is configured.",
   "repository.sync.failedGit": "Fetch failed — git error.",
   "repository.sync.summary": "Fetched — {newRefs} new · {updatedRefs} updated · {pruned} pruned",
-  "repository.sync.upToDate": "No new commits on origin",
+  "repository.sync.upToDate": "No new commits on the remote",
   "repository.sync.dismiss": "Dismiss",
   "repository.sync.lastFailed": "Last fetch failed",
 
@@ -252,7 +252,7 @@ export const repositoryEn = {
 export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.panel.title": "저장소",
   "repository.sync.button": "가져오기",
-  "repository.sync.title": "origin의 원격 추적 브랜치를 갱신합니다",
+  "repository.sync.title": "원격 추적 브랜치를 갱신합니다",
 
   "repository.section.context": "컨텍스트",
   "repository.section.working": "작업",
@@ -303,7 +303,7 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.read.failedUnknown": "저장소를 읽는 중 문제가 발생했습니다. 다시 시도하세요.",
 
   "repository.status.capped": "변경 파일 중 앞의 {count}개만 표시됩니다.",
-  "repository.commit.filesCapped": "이 커밋의 파일 목록이 잘렸습니다.",
+  "repository.commit.capped": "이 커밋의 데이터 일부가 잘렸습니다.",
   "repository.scan.limitReached": "탐색 한도 도달",
   "repository.guard.stateUnknown": "저장소 상태를 읽지 못했습니다 — 쓰기 전에 새로 읽으세요.",
 
@@ -380,13 +380,13 @@ export const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.history.offHead": "현재 체크아웃에 포함되지 않음",
   "repository.history.countLegend": "모든 ref 기록 · 흐림 = 체크아웃 미포함",
 
-  "repository.sync.failedAuth": "가져오기 실패 — 인증. origin 자격 증명을 확인하세요.",
-  "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. origin에 연결할 수 없습니다.",
+  "repository.sync.failedAuth": "가져오기 실패 — 인증. 원격 자격 증명을 확인하세요.",
+  "repository.sync.failedNetwork": "가져오기 실패 — 네트워크. 원격에 연결할 수 없습니다.",
   "repository.sync.failedTimeout": "가져오기 실패 — 시간 초과.",
   "repository.sync.failedNoRemote": "가져오기 실패 — 설정된 remote가 없습니다.",
   "repository.sync.failedGit": "가져오기 실패 — git 오류.",
   "repository.sync.summary": "가져오기 완료 — 신규 {newRefs} · 갱신 {updatedRefs} · 정리 {pruned}",
-  "repository.sync.upToDate": "origin에 새 커밋 없음",
+  "repository.sync.upToDate": "원격에 새 커밋 없음",
   "repository.sync.dismiss": "닫기",
   "repository.sync.lastFailed": "마지막 가져오기 실패",
 

@@ -44,9 +44,15 @@ describe("honesty copy exists in both locales", () => {
     expect(REPOSITORY_MESSAGES.en["repository.sync.button"]).toBe("Fetch");
     expect(REPOSITORY_MESSAGES.en["repository.sync.title"]).not.toContain("--prune");
     expect(REPOSITORY_MESSAGES.ko["repository.sync.title"]).not.toContain("--prune");
-    // fetch 결과는 브랜치 발산이 아니라 원격 ref에 대해서만 말한다.
-    expect(REPOSITORY_MESSAGES.en["repository.sync.upToDate"]).toMatch(/origin/);
-    expect(REPOSITORY_MESSAGES.ko["repository.sync.upToDate"]).toContain("origin");
+    // 이 컨트롤이 부르는 원격은 브랜치의 설정 원격이다 — origin이 아닐 수도, 없을 수도 있으므로
+    // 어떤 문면도 원격 이름을 지어내지 않는다(server/fetch.ts resolveDefaultRemote).
+    for (const locale of ["en", "ko"] as const) {
+      for (const key of ["repository.sync.title", "repository.sync.upToDate", "repository.sync.failedAuth", "repository.sync.failedNetwork", "repository.sync.failedNoRemote", "repository.sync.failedTimeout", "repository.sync.failedGit"] as const) {
+        expect(REPOSITORY_MESSAGES[locale][key]).not.toContain("origin");
+      }
+    }
+    expect(REPOSITORY_MESSAGES.en["repository.sync.upToDate"]).toMatch(/remote/i);
+    expect(REPOSITORY_MESSAGES.ko["repository.sync.upToDate"]).toContain("원격");
   });
 
   it("says what a destructive stash verb destroys", () => {
@@ -62,9 +68,15 @@ describe("honesty copy exists in both locales", () => {
     expect(REPOSITORY_MESSAGES.ko["repository.staging.deleteUntracked"]).toContain("삭제");
   });
 
+  it("does not blame the file list for a commit read the server only reports as truncated", () => {
+    // server/commit.ts는 meta·name-status·numstat 세 truncated를 한 플래그로 OR한다.
+    expect(REPOSITORY_MESSAGES.en["repository.commit.capped"]).not.toMatch(/file list/i);
+    expect(REPOSITORY_MESSAGES.ko["repository.commit.capped"]).not.toContain("파일 목록");
+  });
+
   it("carries copy for every cap the server can report", () => {
     for (const locale of ["en", "ko"] as const) {
-      for (const key of ["repository.status.capped", "repository.commit.filesCapped", "repository.scan.limitReached", "repository.guard.stateUnknown"] as const) {
+      for (const key of ["repository.status.capped", "repository.commit.capped", "repository.scan.limitReached", "repository.guard.stateUnknown"] as const) {
         expect(REPOSITORY_MESSAGES[locale][key].length).toBeGreaterThan(3);
       }
     }

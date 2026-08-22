@@ -12,8 +12,8 @@ branch: repo-panel-refit-p1
 #### Added
 - The source tree carries a reload control that re-reads local repository state, working tree, stashes, refs, and ahead/behind, without contacting the remote.
   ko: 소스 트리에 로컬 저장소 상태(작업 트리·스태시·refs·ahead/behind)를 원격 접속 없이 다시 읽는 새로고침 컨트롤이 생겼습니다.
-- Cut-off lists say so: a capped status list, a capped commit file list, and a scan that hit its depth limit each carry a visible mark instead of looking complete.
-  ko: 잘린 목록이 잘렸다고 말합니다. 상한에 걸린 상태 목록, 커밋 파일 목록, 탐색 깊이 한도가 각각 표식을 달아 완전한 목록처럼 보이지 않습니다.
+- Cut-off reads say so: a capped status list, a commit whose read was cut off, and a scan that hit its depth limit each carry a visible mark instead of looking complete.
+  ko: 잘린 읽기가 잘렸다고 말합니다. 상한에 걸린 상태 목록, 잘린 커밋 읽기, 탐색 깊이 한도가 각각 표식을 달아 완전한 것처럼 보이지 않습니다.
 
 #### Fixed
 - Failed repository reads explain themselves. History, commit, diff, and compare failures now show a sentence and a next step instead of a raw error code.
