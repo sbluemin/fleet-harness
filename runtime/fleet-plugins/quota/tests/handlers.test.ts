@@ -185,11 +185,11 @@ describe("quota route handlers", () => {
     test.readJson.mockResolvedValue({ providerOrder: ["opencode", "bogus", "claude", "opencode"] });
     await handleSummary(test.req, test.res, test.ctx, test.service);
     expect((test.writes[0]?.payload as { providerOrder: unknown }).providerOrder)
-      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi"]);
+      .toEqual(["opencode", "claude", "codex", "xai", "cursor", "kimi", "antigravity"]);
   });
 
   it("persists a full provider order while preserving connection flags", async () => {
-    const order = ["opencode", "kimi", "cursor", "xai", "codex", "claude"];
+    const order = ["opencode", "kimi", "cursor", "xai", "codex", "claude", "antigravity"];
     const test = harness("POST", "/plugins/quota/order", { order });
     await handleOrder(test.req, test.res, test.ctx, test.serializeSettings);
     expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
@@ -200,10 +200,10 @@ describe("quota route handlers", () => {
     expect(test.writes).toEqual([{ status: 200, payload: { providerOrder: order } }]);
   });
 
-  it("accepts the six-card permutation the panel posts after a drag", async () => {
-    // 서버는 현재 기본 집합의 완전한 순열만 받는다. 옛 다섯 장(opencode 없음)을 받으면
+  it("accepts the full-deck permutation the panel posts after a drag", async () => {
+    // 서버는 현재 기본 집합의 완전한 순열만 받는다. 공급자가 하나 늘어난 뒤 옛 덱을 받으면
     // POST /order가 400으로 거절되고, 패널은 summary로 되돌려 드래그가 적용되지 않은 것처럼 보인다.
-    const order = ["kimi", "claude", "codex", "xai", "cursor", "opencode"];
+    const order = ["kimi", "claude", "codex", "xai", "cursor", "opencode", "antigravity"];
     const test = harness("POST", "/plugins/quota/order", { order });
     await handleOrder(test.req, test.res, test.ctx, test.serializeSettings);
     expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
@@ -216,10 +216,10 @@ describe("quota route handlers", () => {
 
   it("rejects partial, duplicated, unknown, or non-array provider orders", async () => {
     const invalid: unknown[] = [
-      ["claude", "codex", "cursor", "kimi", "opencode"],
-      ["claude", "codex", "xai", "cursor", "kimi"],
-      ["claude", "claude", "codex", "xai", "cursor", "kimi"],
-      ["claude", "codex", "xai", "cursor", "kimi", "bogus"],
+      ["claude", "codex", "cursor", "kimi", "opencode", "antigravity"],
+      ["claude", "codex", "xai", "cursor", "kimi", "opencode"],
+      ["claude", "claude", "codex", "xai", "cursor", "kimi", "antigravity"],
+      ["claude", "codex", "xai", "cursor", "kimi", "opencode", "bogus"],
       "claude",
     ];
     for (const order of invalid) {
@@ -234,12 +234,12 @@ describe("quota route handlers", () => {
     const test = harness("POST", "/plugins/quota/connect", { provider: "claude", connected: true });
     test.readJson.mockResolvedValue({
       claudeConnected: false,
-      providerOrder: ["kimi", "claude", "codex", "xai", "cursor", "opencode"],
+      providerOrder: ["kimi", "claude", "codex", "xai", "cursor", "opencode", "antigravity"],
     });
     await handleConnect(test.req, test.res, test.ctx, test.service, test.serializeSettings);
     expect(test.writeJson).toHaveBeenCalledWith("quota", "settings", {
       claudeConnected: true,
-      providerOrder: ["kimi", "claude", "codex", "xai", "cursor", "opencode"],
+      providerOrder: ["kimi", "claude", "codex", "xai", "cursor", "opencode", "antigravity"],
     });
   });
 

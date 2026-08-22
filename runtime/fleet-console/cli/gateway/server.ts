@@ -6,6 +6,7 @@ import {
   createAiGatewayRouter,
   createCursorDiagnosticLog,
   createFailureJournal,
+  readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
@@ -47,6 +48,7 @@ export async function startGatewayHttpServer(deps: {
     readAuth: () => readCodexSubscriptionAuth(),
     readCursorToken: () => readCursorSubscriptionToken(),
     readXaiToken: () => readXaiSubscriptionToken(),
+    readAntigravityToken: () => readAntigravitySubscriptionToken(),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: diagnostics.write,
   });

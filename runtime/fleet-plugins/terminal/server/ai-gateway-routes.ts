@@ -6,6 +6,7 @@ import {
   createAiGatewayRouter,
   createCursorDiagnosticLog,
   createFailureJournal,
+  readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
@@ -22,6 +23,7 @@ export {
   OPENCODE_MESSAGES_URL,
   callerAnthropicCredential,
   createAiGatewayRouter,
+  readAntigravitySubscriptionToken,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
@@ -34,8 +36,8 @@ export type {
 
 export type ConsoleAiGatewayRouteDeps = Omit<
   AiGatewayRouteDeps,
-  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken"
-> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken">>;
+  "originator" | "readModelOverride" | "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken"
+> & Partial<Pick<AiGatewayRouteDeps, "readAuth" | "readCursorToken" | "readXaiToken" | "readAntigravityToken">>;
 
 export function registerAiGatewayRoutes(
   ctx: FleetPluginServerContext,
@@ -66,6 +68,7 @@ export function registerAiGatewayRoutes(
     readAuth: deps.readAuth ?? (() => readCodexSubscriptionAuth()),
     readCursorToken: deps.readCursorToken ?? (() => readCursorSubscriptionToken()),
     readXaiToken: deps.readXaiToken ?? (() => readXaiSubscriptionToken()),
+    readAntigravityToken: deps.readAntigravityToken ?? (() => readAntigravitySubscriptionToken()),
     readModelOverride: () => process.env[AI_GATEWAY_MODEL_ENV],
     cursorDiagnostics: deps.cursorDiagnostics ?? ownedDiagnostics?.write,
   });

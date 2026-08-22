@@ -889,6 +889,7 @@ function AgentCliSection() {
 }
 
 const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
+  antigravity: "terminal.settings.aiGatewayProviderAntigravity",
   codex: "terminal.settings.aiGatewayProviderCodex",
   cursor: "terminal.settings.aiGatewayProviderCursor",
   kimi: "terminal.settings.aiGatewayProviderKimi",
@@ -897,6 +898,7 @@ const AI_GATEWAY_PROVIDER_LABEL_KEYS = {
 } as const;
 
 const AI_GATEWAY_PROVIDER_SUB_KEYS = {
+  antigravity: "terminal.settings.aiGatewaySubAntigravity",
   codex: "terminal.settings.aiGatewaySubCodex",
   cursor: "terminal.settings.aiGatewaySubCursor",
   kimi: "terminal.settings.aiGatewaySubKimi",

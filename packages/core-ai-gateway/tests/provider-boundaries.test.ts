@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 
 const srcDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src");
 
-const PROVIDER_FOLDERS = ["codex", "cursor", "kimi", "opencode-go", "xai"] as const;
+const PROVIDER_FOLDERS = ["antigravity", "codex", "cursor", "kimi", "opencode-go", "xai"] as const;
 
 const SELF_PACKAGE = "@dotobokuri/core-ai-gateway";
 

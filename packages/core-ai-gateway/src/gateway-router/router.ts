@@ -11,6 +11,8 @@ import {
   stripClaudeUsageLimitDirectives,
 } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
+import { AntigravityGenerateContentAdapter } from "../antigravity/generate-content/adapter.js";
+import { resolveAntigravityCredentials } from "../antigravity/credentials.js";
 import { UnsupportedReasoningEffortError } from "../canonical/index.js";
 import { CodexResponsesAdapter } from "../codex/responses/adapter.js";
 import { resolveCodexCredentials } from "../codex/credentials.js";
@@ -122,6 +124,19 @@ export async function readXaiSubscriptionToken(): Promise<string | null> {
   return credentials?.accessToken ?? null;
 }
 
+/**
+ * The credential the Antigravity CLI (`agy`) left in the OS credential store.
+ *
+ * Fleet never runs Antigravity's OAuth flow; `agy login` owns it. This reader
+ * only decodes what that CLI wrote and, when the access token is within its
+ * refresh window, exchanges the CLI's own refresh token in memory — the vendor's
+ * copy is never rewritten.
+ */
+export async function readAntigravitySubscriptionToken(): Promise<string | null> {
+  const credentials = await resolveAntigravityCredentials(defaultCredentialDeps);
+  return credentials?.accessToken ?? null;
+}
+
 export async function readCodexSubscriptionAuth(): Promise<CodexSubscriptionAuth | null> {
   const credentials = await resolveCodexCredentials(defaultCredentialDeps);
   if (!credentials?.accountId) return null;
@@ -139,6 +154,7 @@ export interface AiGatewayRouteDeps {
   readonly readAuth: () => CodexSubscriptionAuth | null | Promise<CodexSubscriptionAuth | null>;
   readonly readCursorToken: () => string | null | Promise<string | null>;
   readonly readXaiToken?: () => string | null | Promise<string | null>;
+  readonly readAntigravityToken?: () => string | null | Promise<string | null>;
   readonly readKimiApiKey?: () => Promise<string | undefined>;
   readonly readOpencodeApiKey?: () => Promise<string | undefined>;
   readonly readModelOverride?: () => string | undefined;
@@ -185,6 +201,18 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   const ownedCursorGateway = ownedCursorAdapter
     ? new AnthropicMessagesGateway(ownedCursorAdapter)
     : undefined;
+  // Antigravity's adapter is built once and kept: it carries the reasoning-blob
+  // ledger that lets a turn recover a `thoughtSignature` the client did not
+  // replay, and a per-request adapter would forget it between the two halves of
+  // one tool round-trip. The gateway wrapper is lazy so a session that never
+  // selects an Antigravity model pays nothing for it.
+  let ownedAntigravityGateway: AnthropicMessagesGateway | undefined;
+  const antigravityGateway = (): AnthropicMessagesGateway => {
+    ownedAntigravityGateway ??= new AnthropicMessagesGateway(
+      new AntigravityGenerateContentAdapter({ fetch: fetchImpl }),
+    );
+    return ownedAntigravityGateway;
+  };
   // 창을 감당 못 해 본문이 한 번 보류된 스킬들. 이 라우터가 사는 동안 유지해야
   // 다음 세션의 첫 요청부터 목록에서 빠진다 — 프로세스당 한 번만 낭비되는 턴이 된다.
   const withheldSkills = new Set<string>();
@@ -357,6 +385,13 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
         return true;
       }
       credential = xaiToken;
+    } else if (target?.provider === "antigravity") {
+      const antigravityToken = await deps.readAntigravityToken?.();
+      if (!antigravityToken) {
+        writeAnthropicError(res, 401, "authentication_error", "No active Antigravity sign-in was found. Run `agy` and sign in first.");
+        return true;
+      }
+      credential = antigravityToken;
     }
 
     const controller = new AbortController();
@@ -417,7 +452,9 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
                 fetch: fetchImpl,
                 endpoint: xaiEndpoint(),
               }))
-              : createGatewayFor(target, chatgptAccountId, deps.originator, fetchImpl));
+              : target.provider === "antigravity"
+                ? antigravityGateway()
+                : createGatewayFor(target, chatgptAccountId, deps.originator, fetchImpl));
       const diagnosticsEnabled = target.provider === "cursor"
         ? cursorDiagnosticsEnabled()
         : undefined;

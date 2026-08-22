@@ -2173,7 +2173,11 @@ describe("route surface", () => {
     const ids = list.data.map((entry) => entry.id);
     // picker가 버리지 않도록 모든 항목이 claude- alias로 나가야 한다.
     expect(ids.every((id) => id.startsWith("claude"))).toBe(true);
-    expect(list.data).toHaveLength(51);
+    expect(list.data).toHaveLength(53);
+    // Both Antigravity models carry a real 1M window, so both are advertised on
+    // Claude Code's `[1m]` coordinate rather than its unmarked 200k one.
+    expect(ids).toContain("claude-gateway--antigravity--gemini-3.7-flash[1m]");
+    expect(ids).toContain("claude-gateway--antigravity--gemini-3.1-pro[1m]");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(ids).toContain("claude-gateway--codex--gpt-5.6-luna");
@@ -2234,7 +2238,7 @@ describe("route surface", () => {
       id: "claude-gateway--xai--grok-composer-2.5-fast",
       display_name: "xAI-Grok-Composer-2.5-Fast",
     }));
-    expect(list.data.every((entry) => /^(Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(entry.display_name))).toBe(true);
+    expect(list.data.every((entry) => /^(Antigravity|Codex|Cursor|Moonshot-Kimi|OpenCode|xAI)-/.test(entry.display_name))).toBe(true);
   });
 
   it("filters model discovery to the curated allowlist", async () => {

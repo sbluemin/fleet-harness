@@ -5,6 +5,7 @@ import {
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
 import { upstreamModelId } from "../models.js";
+import { antigravityRequestPolicy } from "../antigravity/router-policy.js";
 import { codexRequestPolicy } from "../codex/router-policy.js";
 import { cursorRequestPolicy } from "../cursor/router-policy.js";
 import { kimiRequestPolicy } from "../kimi/router-policy.js";
@@ -57,6 +58,7 @@ export interface GatewayRequestPolicy {
 }
 
 const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
+  antigravity: antigravityRequestPolicy,
   codex: codexRequestPolicy,
   cursor: cursorRequestPolicy,
   kimi: kimiRequestPolicy,
