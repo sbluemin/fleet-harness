@@ -1,6 +1,7 @@
 import {
   omitClaudeWebSearchTools,
   pruneClaudeSkillPayloads,
+  stripClaudeClientIdentity,
 } from "../anthropic/claude-context.js";
 import type { AnthropicMessagesRequest } from "../anthropic/protocol.js";
 import type { GatewayModel, GatewayProvider } from "../models.js";
@@ -39,6 +40,15 @@ export interface GatewayPolicySteps {
   readonly pruneSkillPayloads: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
   /** Withhold Claude Code's Web Search tools, in all three spellings. */
   readonly withholdWebSearchTools: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
+  /**
+   * Drop Anthropic's client identity and billing blocks from the system prompt.
+   *
+   * Unlike the two steps above this one shapes what the client wrote rather than which
+   * capabilities the target is offered, and it is the one rewrite that belongs here rather
+   * than unconditional in the router: the metadata is accurate on the Anthropic passthrough
+   * and false everywhere else, and the passthrough never reaches a policy.
+   */
+  readonly stripClientIdentity: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
 }
 
 /**
@@ -108,6 +118,15 @@ function buildPolicySteps(context: GatewayPolicyContext): GatewayPolicySteps {
     withholdWebSearchTools: (request) => {
       const omitted = omitClaudeWebSearchTools(request);
       return omitted.changed ? omitted.request : request;
+    },
+    stripClientIdentity: (request) => {
+      const stripped = stripClaudeClientIdentity(request.system);
+      if (!stripped.changed) return request;
+      if (stripped.system === undefined) {
+        const { system: _dropped, ...rest } = request;
+        return rest;
+      }
+      return { ...request, system: [...stripped.system] };
     },
   };
 }

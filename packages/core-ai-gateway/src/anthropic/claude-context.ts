@@ -961,3 +961,70 @@ export function omitClaudeWebSearchTools<
 >(request: R): ClaudeToolOmitResult<R> {
   return omitClaudeClientTools<TTool, TChoice, R>(request, CLAUDE_WEB_SEARCH_TOOL_IDENTIFIERS);
 }
+
+/**
+ * Anthropic's own client identity and billing metadata, as Claude Code prepends them to
+ * `system`.
+ *
+ * Two separate leaks share one strip because they arrive together and are removed for the
+ * same reason. The billing line is Anthropic's internal telemetry — client version and
+ * entrypoint — and a third-party provider has no business receiving it. The identity
+ * sentence tells the model it is Claude Code or a Claude Agent SDK agent, which is simply
+ * false once the turn is served by Gemini, Grok, GPT, Kimi or MiniMax; a model told it is
+ * Claude answers as Claude, cites Claude model ids, and describes a product it is not.
+ *
+ * This is the same judgement the usage-limit strip above makes about a Claude subscription
+ * number reaching a provider that is not billing it, with one difference that decides where
+ * it runs: that one has to reach native Anthropic requests too, so it sits unconditional in
+ * the router. This one must **not** — on the Anthropic passthrough both lines are true and
+ * the caller's bytes are forwarded untouched — so it is a policy step every gateway provider
+ * declares instead.
+ *
+ * Shape is the test rather than the exact sentence. `x-anthropic-billing-header:` carries a
+ * client version that changes every release, and the identity sentence has two spellings
+ * already — the interactive CLI's and the Agent SDK's, the latter used by subagents and by
+ * headless `-p` runs. Both are anchored on the opening they have kept, and both must be the
+ * whole of a single-line block: measured across an interactive turn, a headless turn and a
+ * subagent turn, Claude Code always ships each on a `system` block of its own, and requiring
+ * the whole block is what keeps a real instruction that merely opens the same way from being
+ * silently deleted.
+ */
+const CLAUDE_BILLING_HEADER_BLOCK = /^\s*x-anthropic-billing-header:[^\n]*[ \t]*$/;
+const CLAUDE_CLIENT_IDENTITY_BLOCK = /^\s*You are (?:Claude Code|a Claude agent)\b[^\n]*[ \t]*$/;
+
+export interface ClaudeClientIdentityStripResult<B> {
+  /** The surviving blocks, or `undefined` when every one of them was metadata. */
+  readonly system: readonly B[] | undefined;
+  readonly changed: boolean;
+  /** Blocks dropped from this request. */
+  readonly removed: number;
+}
+
+/**
+ * Drop Anthropic's client identity and billing blocks from a system prompt.
+ *
+ * A dropped block leaves nothing behind: emptying its text would keep a blank paragraph in
+ * the joined instructions, and on a wire that rejects an empty text block it would fail the
+ * turn outright. When the whole prompt was metadata the result is `undefined` rather than an
+ * empty array, so the caller drops `system` entirely instead of sending an empty one.
+ */
+export function stripClaudeClientIdentity<B extends ClaudeTextBlockLike>(
+  system: readonly B[] | undefined,
+): ClaudeClientIdentityStripResult<B> {
+  if (system === undefined) return { system, changed: false, removed: 0 };
+  const kept = system.filter((block) => !isClaudeClientIdentityBlock(block));
+  const removed = system.length - kept.length;
+  if (removed === 0) return { system, changed: false, removed: 0 };
+  return { system: kept.length > 0 ? kept : undefined, changed: true, removed };
+}
+
+/**
+ * Anchored like the usage-limit test and for the same reason: a system prompt block can be
+ * the whole of a skill body, so the pattern has to reject on the first character rather than
+ * trim a copy of it first.
+ */
+function isClaudeClientIdentityBlock(block: ClaudeTextBlockLike): boolean {
+  const text = block.text;
+  if (typeof text !== "string") return false;
+  return CLAUDE_BILLING_HEADER_BLOCK.test(text) || CLAUDE_CLIENT_IDENTITY_BLOCK.test(text);
+}

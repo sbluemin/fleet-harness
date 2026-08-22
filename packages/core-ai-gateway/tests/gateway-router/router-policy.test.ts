@@ -99,4 +99,38 @@ describe("gateway request policy", () => {
 
     expect([...withheldSkills]).toEqual(["huge"]);
   });
+  // Every gateway provider must declare the strip. A provider added without it fails here
+  // rather than quietly forwarding Anthropic's identity and telemetry to a third party.
+  it.each(GATEWAY_PROVIDERS)("strips Anthropic client identity and billing for %s", (provider) => {
+    const target = findGatewayModel(SAMPLE_MODEL[provider])!;
+    const prompt = { type: "text", text: "You are an interactive agent." };
+    const request = {
+      model: "irrelevant",
+      max_tokens: 8,
+      messages: [{ role: "user", content: "Hello" }],
+      system: [
+        { type: "text", text: "x-anthropic-billing-header: cc_version=2.1.239.707; cc_entrypoint=cli;" },
+        { type: "text", text: "You are Claude Code, Anthropic's official CLI for Claude." },
+        { type: "text", text: "You are a Claude agent, built on Anthropic's Claude Agent SDK." },
+        prompt,
+      ],
+    } as unknown as AnthropicMessagesRequest;
+
+    const shaped = applyGatewayRequestPolicy(request, target, new Set<string>());
+
+    expect(shaped.system).toEqual([prompt]);
+  });
+
+  it("leaves a system prompt carrying no client metadata untouched", () => {
+    const target = findGatewayModel(SAMPLE_MODEL.xai)!;
+    const system = [{ type: "text", text: "You are a terse assistant." }];
+    const request = {
+      model: "irrelevant",
+      max_tokens: 8,
+      messages: [{ role: "user", content: "Hello" }],
+      system,
+    } as unknown as AnthropicMessagesRequest;
+
+    expect(applyGatewayRequestPolicy(request, target, new Set<string>()).system).toBe(system);
+  });
 });
