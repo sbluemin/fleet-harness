@@ -18,40 +18,24 @@ afterEach(() => {
   }
 });
 
-function run(subcommand: string, payload: unknown, routingNonce?: string): {
+function run(subcommand: string, payload: unknown): {
   readonly status: number;
   readonly stderr: string;
   readonly stdout: string;
 } {
-  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand, ...(routingNonce ? [routingNonce] : [])], {
+  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand], {
     input: JSON.stringify(payload),
     encoding: "utf8",
   });
   return { status: result.status ?? -1, stderr: result.stderr, stdout: result.stdout };
 }
 
-function gateWorkflow(toolInput: unknown, coordinates?: {
-  readonly sessionId: string;
-  readonly promptId: string;
-  readonly routingNonce: string;
-}) {
-  return run("gate-delegation", {
-    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
-    tool_name: "Workflow",
-    tool_input: toolInput,
-  }, coordinates?.routingNonce);
+function gateWorkflow(toolInput: unknown) {
+  return run("gate-delegation", { tool_name: "Workflow", tool_input: toolInput });
 }
 
-function gateAgent(toolInput: unknown, coordinates?: {
-  readonly sessionId: string;
-  readonly promptId: string;
-  readonly routingNonce: string;
-}) {
-  return run("gate-delegation", {
-    ...(coordinates ? { session_id: coordinates.sessionId, prompt_id: coordinates.promptId } : {}),
-    tool_name: "Agent",
-    tool_input: toolInput,
-  }, coordinates?.routingNonce);
+function gateAgent(toolInput: unknown) {
+  return run("gate-delegation", { tool_name: "Agent", tool_input: toolInput });
 }
 
 describe("gateway model guard — remind", () => {
@@ -67,7 +51,8 @@ describe("gateway model guard — remind", () => {
     expect(parsed.hookSpecificOutput.additionalContext).toContain("delegation or a parallel workload");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("fleet:orchestration");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("before calling Agent or Workflow");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("completion supplies the live routing context");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("gateway_models");
+    expect(parsed.hookSpecificOutput.additionalContext).toContain("session-scoped");
     expect(parsed.hookSpecificOutput.additionalContext).toContain("Do not delegate implementation by default");
     expect(parsed.hookSpecificOutput.additionalContext).not.toContain("opts.model");
   });
@@ -87,8 +72,8 @@ describe("gateway model guard — Agent delegation", () => {
     for (const subagentType of ["general-purpose", "claude"]) {
       const { status, stderr } = gateAgent({ subagent_type: subagentType });
       expect(status, subagentType).toBe(2);
-      expect(stderr, subagentType).toContain("fleet:orchestration");
-      expect(stderr, subagentType).toContain("live routing context");
+      expect(stderr, subagentType).toContain("gateway_models");
+      expect(stderr, subagentType).toContain("subagent_type");
     }
   });
 
@@ -108,12 +93,14 @@ describe("gateway model guard — Agent delegation", () => {
 });
 
 describe("gateway model guard — Workflow delegation", () => {
-  it("blocks a gateway modelId when no live routing receipt exists", () => {
-    const { status, stderr } = gateWorkflow({
+  // 훅은 핀의 형식만 본다. 이름이 이 세션에서 실제로 해석되는지는 디스패치가 판정한다 —
+  // 그 판정을 훅이 미리 흉내 내려면 호스트가 읽은 로스터를 훅이 다시 읽어야 하고,
+  // 그러면 같은 사실이 두 곳에서 따로 늙는다.
+  it("passes a prefixed gateway modelId on its spelling alone", () => {
+    const { status } = gateWorkflow({
       script: `agent("x", { model: "claude-gateway--codex--gpt-5.6-sol-fast", effort: "low" })`,
     });
-    expect(status).toBe(2);
-    expect(stderr).toContain("no prompt-scoped routing receipt");
+    expect(status).toBe(0);
   });
 
   it("passes lineage aliases without the gateway prefix", () => {
@@ -159,6 +146,38 @@ describe("gateway model guard — Workflow delegation", () => {
       expect(status, script).toBe(2);
       expect(stderr, script).toContain("model");
     }
+  });
+
+  // 노출 모델이 하나뿐인 세션에서도 지킬 수 있는 지시여야 한다. "역할마다 다른 모델"만 말하면
+  // 값 안에 프로바이더나 강도를 끼워 넣어 다양성을 흉내 내는 문자열이 나온다.
+  it("tells a one-model roster to repeat the pin instead of inventing variety", () => {
+    for (const script of [`agent("x", {})`, `agent("x", { model: "grok-4.6 (xai/cursor) @high" })`]) {
+      const { status, stderr } = gateWorkflow({ script });
+      expect(status, script).toBe(2);
+      expect(stderr, script).toContain("when it exposes one, pin that one to every stage");
+      expect(stderr, script).toContain("never invent variety inside the value");
+      // 관측된 실패 형태 그대로: 프로바이더 둘과 강도를 값 하나에 융합했다.
+      expect(stderr, script).toContain("its provider is already part of it");
+      expect(stderr, script).toContain("a reasoning rung is the separate effort option");
+    }
+  });
+
+  // 값 스캔은 원문 전체를 훑으므로 meta.phases[].model도 걸린다. 거절 사유가 opts.model을
+  // 특정하면 호스트는 멀쩡한 스테이지 핀을 들여다본다 — 실제로 그 사고가 있었다.
+  it("names the whole scanned surface instead of blaming opts.model", () => {
+    const script = [
+      "export const meta = {",
+      "  name: 'x', description: 'y',",
+      "  phases: [{ title: 'Map', detail: 'boundaries', model: 'codex gpt-5.6-luna @xhigh' }],",
+      "}",
+      "await agent('do', { model: 'claude-gateway--codex--gpt-5.6-luna', effort: 'xhigh' })",
+    ].join("\n");
+    const { status, stderr } = gateWorkflow({ script });
+    expect(status).toBe(2);
+    expect(stderr).toContain("codex gpt-5.6-luna @xhigh");
+    expect(stderr).toContain("a meta.phases entry's included");
+    // 스테이지 핀은 멀쩡하므로 그 필드를 지목해서는 안 된다.
+    expect(stderr).not.toContain("opts.model is not a value");
   });
 
   it("counts every unpinned stage in one script", () => {
@@ -210,33 +229,6 @@ describe("gateway model guard — Workflow delegation", () => {
 
   it("ignores tools it does not gate", () => {
     expect(run("gate-delegation", { tool_name: "Bash", tool_input: { command: "ls" } }).status).toBe(0);
-  });
-});
-
-describe("gateway model guard — orchestration failure", () => {
-  it("states that a failed orchestration supplied no routing context", () => {
-    const { status, stdout } = run("orchestration-failed", {
-      hook_event_name: "PostToolUseFailure",
-      tool_name: "Skill",
-      tool_input: { skill: "fleet:orchestration" },
-      error: "skill failed",
-    });
-    expect(status).toBe(0);
-    const parsed = JSON.parse(stdout) as {
-      hookSpecificOutput: { hookEventName: string; additionalContext: string };
-    };
-    expect(parsed.hookSpecificOutput.hookEventName).toBe("PostToolUseFailure");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("no live routing context was supplied");
-    expect(parsed.hookSpecificOutput.additionalContext).toContain("do not guess an identity");
-  });
-
-  it("ignores another failed skill", () => {
-    expect(run("orchestration-failed", {
-      hook_event_name: "PostToolUseFailure",
-      tool_name: "Skill",
-      tool_input: { skill: "fleet:professional-pushback" },
-      error: "skill failed",
-    }).stdout).toBe("");
   });
 });
 

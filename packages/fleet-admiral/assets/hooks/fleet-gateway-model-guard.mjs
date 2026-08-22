@@ -1,39 +1,36 @@
 #!/usr/bin/env node
 // Fleet gateway model guard — 게이트웨이 세션의 위임 정책을 코드로 강제하는 단일 훅.
 //
-// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을
-// orchestration 스킬로 라우팅하는 짧은 트립와이어만 주입한다. 스킬이 돌아온 뒤의 훅이
-// 실시간 로스터와 핀 문법을 제공하고, 디스패치 직전의 이 훅은 그 형식을 하드 게이트로 검증한다.
+// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을 orchestration
+// 스킬로 보내고 살아 있는 로스터를 직접 읽게 하는 짧은 트립와이어만 주입한다. 스킬은 의미 정책만
+// 소유하고, 핀에 쓸 수 있는 이름은 gateway_models 응답에만 있으며, 디스패치 직전의 이 훅은 그
+// 결과의 형식을 하드 게이트로 검증한다.
 //
-// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 네 판정이 같은
-// 어휘(오케스트레이션 스킬 / 정체성 이름 / modelId / 접수증)를 공유하기 때문이다 — 파일을
-// 쪼개면 그 어휘가 여러 곳에서 따로 늙는다.
+// 로스터 주입을 훅으로 하지 않는 이유: Claude Code의 `if` 조건은 퍼미션 룰 문법으로 평가되고
+// 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 의존한다. Skill 도구에는 그 매처가 없어
+// `Skill(<name>)` 조건은 항상 거짓이 되고, 그 조건을 단 훅은 verbose 로그 한 줄만 남기고 조용히
+// 스킵된다. 스킬 전후에 훅을 걸어 문맥을 주입하는 설계는 그래서 성립하지 않는다 — 대신 호스트가
+// 직접 도구를 호출하게 한다.
 //
-//   remind                 UserPromptSubmit           위임·병렬 작업을 orchestration 스킬로 라우팅
-//   begin-orchestration    PreToolUse Skill            이전 refresh receipt를 폐기
+// 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 세 판정이 같은 어휘
+// (orchestration 스킬 / 정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
+// 여러 곳에서 따로 늙는다.
+//
+//   remind                 UserPromptSubmit           위임·병렬 작업을 스킬과 로스터 조회로 라우팅
 //   gate-delegation        PreToolUse Agent|Workflow   핀되지 않은 위임을 차단
 //   workflow-receipt       PostToolUse Workflow         접수증을 결과로 읽는 사고를 차단
-//   orchestration-failed   PostToolUseFailure Skill     로스터가 주입되지 않았음을 명시
-//   cleanup-routing        SessionEnd                   이 런치의 receipt를 정리
 //
-// 핀 형식 판정은 stdin 한 번으로 끝난다. gateway 위임만 예외로, 성공한 MCP refresh가 쓴
-// prompt-scoped private receipt를 PreToolUse가 검증한다. orchestration을 다시 열 때 먼저 폐기해
-// 뒤이은 refresh 실패가 앞선 성공으로 가려지지 않는다. receipt가 없거나 다른 세션/런치의 것이면
-// fail-closed하므로 non-blocking MCP 오류가 stale identity dispatch로 바뀌지 않는다.
-import { closeSync, constants, openSync, readFileSync, rmSync } from "node:fs";
-import os from "node:os";
-import path from "node:path";
+// 판정은 stdin 한 번으로 끝난다. 이 훅은 핀의 형식만 본다 — 이름이 실제로 이 세션에서 해석되는지는
+// 디스패치가 판정하며, 그 판정을 미리 흉내 내려면 호스트가 읽은 로스터를 훅이 다시 읽어야 하므로
+// 같은 사실이 두 곳에서 따로 늙는다.
+import { readFileSync } from "node:fs";
 
 // 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
 const TURN_REMINDER = [
   "If handling this request requires delegation or a parallel workload, invoke the fleet:orchestration skill",
-  "before calling Agent or Workflow. Its completion supplies the live routing context for the handoff.",
+  "before calling Agent or Workflow, and read the live roster with the fleet gateway_models tool in the same turn —",
+  "delegation identities are session-scoped, so one not taken from that reading will not resolve.",
   "Do not delegate implementation by default; keep it on the host unless the skill's narrow mechanical exception applies.",
-].join(" ");
-
-const ORCHESTRATION_FAILURE = [
-  "fleet:orchestration did not complete, so no live routing context was supplied.",
-  "Keep the work on the host or invoke the skill again; do not guess an identity or dispatch from stale context.",
 ].join(" ");
 
 const IN_FLIGHT_CONTRACT = [
@@ -45,9 +42,37 @@ const IN_FLIGHT_CONTRACT = [
 ].join(" ");
 
 const PIN_INSTRUCTION = [
-  "Invoke fleet:orchestration and use the live routing context its completion supplies:",
-  "Agent — subagent_type = the fleet:* name;",
-  "Workflow — opts.model = the modelId with the claude-gateway-- prefix, written as a literal.",
+  "Read the live roster with the fleet gateway_models tool and pin from what it returns:",
+  "Agent — subagent_type = an agentTypes value;",
+  "Workflow — opts.model = a modelId with the claude-gateway-- prefix, written as a literal.",
+].join(" ");
+
+/**
+ * 한 값은 한 모델만 가리킨다는 사실과, 흩뿌리기가 로스터 크기에 달렸다는 사실.
+ *
+ * "역할마다 다른 모델"만 말하면 노출 모델이 하나인 세션에서 지킬 방법이 없고, 그러면 값 안에
+ * 프로바이더나 강도를 끼워 넣어 다양성을 흉내 내는 문자열이 나온다(실제로 `grok-4.6 (xai/cursor)
+ * @high`가 나왔다). 그래서 두 문장을 붙여 둔다 — 몇 개일 때 무엇을 하는지, 그리고 값에 무엇을
+ * 넣으면 안 되는지.
+ */
+const STAGE_SPREAD_GUIDANCE = [
+  "When the roster exposes several models, assign them across the stages by role;",
+  "when it exposes one, pin that one to every stage — never invent variety inside the value.",
+  "A modelId names one model and nothing else: its provider is already part of it,",
+  "and a reasoning rung is the separate effort option.",
+].join(" ");
+
+/**
+ * 이 검사가 스크립트 어디를 보는지.
+ *
+ * 값 스캔은 원문 전체를 훑으므로 `meta.phases[].model`도 함께 걸린다. 그런데 거절 사유가
+ * `opts.model`을 특정하면 호스트는 멀쩡한 스테이지 핀을 들여다보며 시간을 쓴다 — 실제로
+ * `meta.phases`에 사람이 읽는 라벨을 적었다가 엉뚱한 필드를 지목받은 사례가 있었다. 그래서
+ * 필드를 특정하지 않고, 대신 어디까지가 판정 대상인지를 말한다.
+ */
+const SCANNED_FIELDS = [
+  "Every model: value in the script is judged, a meta.phases entry's included —",
+  "leave that field out unless it names the same model its stages pin.",
 ].join(" ");
 
 /**
@@ -63,7 +88,6 @@ const GATEWAY_AGENT_PREFIX = "fleet:";
 const MODEL_ALIASES = /^(fable|opus|sonnet|haiku)$/;
 const PREFIXED_ALIAS_RE = /^claude-gateway--(fable|opus|sonnet|haiku)$/;
 const GATEWAY_MODEL_PREFIX = "claude-gateway--";
-const ROUTING_RECEIPT_ROOT = process.env.FLEET_ROUTING_RECEIPT_ROOT || path.join(os.tmpdir(), "fleet-routing-receipts");
 // `subagentType:` 같은 접미 식별자를 opts.agentType으로 읽으면 멀쩡한 스크립트가 막힌다.
 const AGENT_TYPE_RE = /\bagentType\s*:/;
 // 핀 인식(`\bmodel\s*:`)과 값 검증은 같은 철자를 봐야 한다. 경계나 공백 하나가 어긋나면
@@ -148,7 +172,6 @@ function countUnpinnedAgentCalls(script) {
 }
 
 function assertWorkflowModelValues(script) {
-  const gatewayModels = [];
   for (const match of script.matchAll(MODEL_VALUE_RE)) {
     const value = match[1];
     if (MODEL_ALIASES.test(value)) continue;
@@ -158,16 +181,15 @@ function assertWorkflowModelValues(script) {
           "Write the alias bare (fable|opus|sonnet|haiku)."
       );
     }
-    if (value.startsWith(GATEWAY_MODEL_PREFIX)) {
-      gatewayModels.push(value);
-      continue;
-    }
+    if (value.startsWith(GATEWAY_MODEL_PREFIX)) continue;
     block(
-      `opts.model is not a value this run can resolve: "${value}". Copy a modelId from gateway_models verbatim, ` +
-        "the claude-gateway-- prefix included, or use a lineage alias (fable|opus|sonnet|haiku)."
+      `A model value in this script is not one this run can resolve: "${value}". ` +
+        SCANNED_FIELDS +
+        " Copy a modelId from gateway_models verbatim, the claude-gateway-- prefix included, " +
+        "or use a lineage alias (fable|opus|sonnet|haiku). " +
+        STAGE_SPREAD_GUIDANCE
     );
   }
-  return gatewayModels;
 }
 
 /** 검사 대상 스크립트 원문. 볼 수 없는 호출 형태는 undefined를 돌려준다. */
@@ -186,82 +208,16 @@ function resolveWorkflowScript(toolInput) {
   return undefined;
 }
 
-function routingReceiptPath(input, routingNonce) {
-  const sessionId = typeof input.session_id === "string" ? input.session_id : undefined;
-  if (!sessionId || !routingNonce) return undefined;
-  const key = [sessionId, routingNonce]
-    .map((part) => Buffer.from(part, "utf8").toString("base64url"))
-    .join(".");
-  return path.join(ROUTING_RECEIPT_ROOT, `${key}.json`);
-}
-
-function removeRoutingReceipt(input, routingNonce, bestEffort = false) {
-  const receiptPath = routingReceiptPath(input, routingNonce);
-  if (receiptPath === undefined) return;
-  try {
-    rmSync(receiptPath, { force: true });
-  } catch (error) {
-    if (bestEffort) return;
-    block(
-      "The prior gateway routing context could not be invalidated. Keep the work on the host and retry " +
-        "fleet:orchestration only after the local receipt store is writable."
-    );
-  }
-}
-
-function readRoutingReceipt(input, routingNonce) {
-  const receiptPath = routingReceiptPath(input, routingNonce);
-  const promptId = typeof input.prompt_id === "string" ? input.prompt_id : undefined;
-  if (receiptPath === undefined || !promptId) {
-    block(
-      "This gateway delegation has no prompt-scoped routing receipt. Invoke fleet:orchestration again; " +
-        "do not dispatch from stale routing context."
-    );
-  }
-  let fd;
-  let receipt;
-  try {
-    fd = openSync(receiptPath, constants.O_RDONLY | constants.O_NOFOLLOW);
-    receipt = JSON.parse(readFileSync(fd, "utf8"));
-  } catch {
-    block(
-      "The live gateway roster refresh did not complete for this handoff. Keep the work on the host or " +
-        "invoke fleet:orchestration again; do not guess an identity."
-    );
-  } finally {
-    if (fd !== undefined) closeSync(fd);
-  }
-  if (receipt.promptId !== promptId) {
-    block(
-      "The live gateway roster refresh did not complete for this handoff. Keep the work on the host or " +
-        "invoke fleet:orchestration again; do not guess an identity."
-    );
-  }
-  return {
-    agentTypes: new Set(Array.isArray(receipt.agentTypes) ? receipt.agentTypes.filter((value) => typeof value === "string") : []),
-    modelIds: new Set(Array.isArray(receipt.modelIds) ? receipt.modelIds.filter((value) => typeof value === "string") : []),
-  };
-}
-
-function gateAgentDelegation(toolInput, input, routingNonce) {
+function gateAgentDelegation(toolInput) {
   const agentType = typeof toolInput.subagent_type === "string" ? toolInput.subagent_type : undefined;
-  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) {
-    const receipt = readRoutingReceipt(input, routingNonce);
-    if (!receipt.agentTypes.has(agentType)) {
-      block(
-        `subagent_type is not in the fresh gateway roster: "${agentType}". ` +
-          "Invoke fleet:orchestration again or keep the work on the host."
-      );
-    }
-    process.exit(0);
-  }
+  if (agentType !== undefined && agentType.startsWith(GATEWAY_AGENT_PREFIX)) process.exit(0);
   if (agentType !== undefined && !UNPINNED_AGENT_TYPES.has(agentType)) process.exit(0);
   block(
     `This delegation pins no identity (subagent_type: ${agentType ?? "absent"}). ` + PIN_INSTRUCTION
   );
 }
 
-function gateWorkflowDelegation(toolInput, input, routingNonce) {
+function gateWorkflowDelegation(toolInput) {
   const script = resolveWorkflowScript(toolInput);
   if (script === undefined) process.exit(0);
   if (AGENT_TYPE_RE.test(script)) {
@@ -273,28 +229,14 @@ function gateWorkflowDelegation(toolInput, input, routingNonce) {
   const unpinned = countUnpinnedAgentCalls(script);
   if (unpinned > 0) {
     block(
-      `${unpinned} agent() call(s) pin no model. ` +
-        PIN_INSTRUCTION +
-        " Spreading stages across models is the point of this surface, so assign one per role rather than " +
-        "filling every stage with a single value."
+      `${unpinned} agent() call(s) pin no model. ` + PIN_INSTRUCTION + " " + STAGE_SPREAD_GUIDANCE
     );
   }
-  const gatewayModels = assertWorkflowModelValues(script);
-  if (gatewayModels.length > 0) {
-    const receipt = readRoutingReceipt(input, routingNonce);
-    const stale = gatewayModels.find((modelId) => !receipt.modelIds.has(modelId));
-    if (stale !== undefined) {
-      block(
-        `opts.model is not in the fresh gateway roster: "${stale}". ` +
-          "Invoke fleet:orchestration again or keep the work on the host."
-      );
-    }
-  }
+  assertWorkflowModelValues(script);
   process.exit(0);
 }
 
 const subcommand = process.argv[2];
-const routingNonce = process.argv[3];
 
 if (subcommand === "remind") {
   emitContext("UserPromptSubmit", TURN_REMINDER);
@@ -304,30 +246,14 @@ const input = readHookInput();
 const toolName = input?.tool_name;
 const toolInput = input?.tool_input ?? {};
 
-if (subcommand === "begin-orchestration") {
-  if (toolName !== "Skill" || toolInput.skill !== "fleet:orchestration") process.exit(0);
-  removeRoutingReceipt(input, routingNonce);
-  process.exit(0);
-}
-
-if (subcommand === "cleanup-routing") {
-  removeRoutingReceipt(input, routingNonce, true);
-  process.exit(0);
-}
-
 if (subcommand === "workflow-receipt") {
   if (toolName !== "Workflow") process.exit(0);
   emitContext("PostToolUse", IN_FLIGHT_CONTRACT);
 }
 
-if (subcommand === "orchestration-failed") {
-  if (toolName !== "Skill" || toolInput.skill !== "fleet:orchestration") process.exit(0);
-  emitContext("PostToolUseFailure", ORCHESTRATION_FAILURE);
-}
-
 if (subcommand === "gate-delegation") {
-  if (toolName === "Agent") gateAgentDelegation(toolInput, input, routingNonce);
-  if (toolName === "Workflow") gateWorkflowDelegation(toolInput, input, routingNonce);
+  if (toolName === "Agent") gateAgentDelegation(toolInput);
+  if (toolName === "Workflow") gateWorkflowDelegation(toolInput);
   process.exit(0);
 }
 

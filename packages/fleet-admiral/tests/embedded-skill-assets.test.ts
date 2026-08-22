@@ -50,7 +50,11 @@ describe("embedded Fleet skills", () => {
     expect(content).toContain("propose branch may intentionally explore an open decision");
     expect(content).toContain("only reduces coverage");
     expect(content).toContain("Retry once only when the failure is plausibly transient");
-    expect(content).not.toContain("gateway_models");
+    // 스킬은 로스터를 읽으라고만 말한다. 이름의 철자와 제약은 도구가 스스로 보고하므로
+    // 여기에 옮겨 적으면 같은 사실이 두 곳에서 따로 늙는다.
+    expect(content).toContain("call the Fleet MCP tool `gateway_models`");
+    // 판정 대상의 범위는 실으나 핀 철자는 싣지 않는다.
+    expect(content).toContain("a `meta.phases` entry's included");
     expect(content).not.toContain("agentTypes");
     expect(content).not.toContain("subagent_type");
     expect(content).not.toContain("modelId");

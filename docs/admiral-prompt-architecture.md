@@ -51,40 +51,47 @@ SDK 0.3.212 as 24,632 against 18,272. Both launch surfaces — the Console termi
 and the standalone `fleet` launcher — read that one option, and it binds new sessions only.
 
 The delegation contract that used to live in the Standing Orders is now split between
-one on-demand skill, the live Workflow tool, and embedded hooks. `fleet:orchestration`
-owns semantic execution-graph decisions; the Workflow tool owns graph mechanics. A
-`PostToolUse` MCP hook calls `gateway_models` after orchestration succeeds and injects
-that fresh roster with Fleet's pin syntax. The command hook at
+one on-demand skill, the live Workflow tool, the `gateway_models` tool, and embedded
+hooks. `fleet:orchestration` owns semantic execution-graph decisions and opens with a
+preflight that requires a `gateway_models` call; the Workflow tool owns graph mechanics;
+`gateway_models` owns the identity roster and reports its own spellings and constraints.
+The host reads that roster itself. The command hook at
 `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, rendered into the
-Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, injects the skill-routing
-tripwire, validates the resulting pin, handles Workflow receipts, and makes a failed
-orchestration explicit. Pin syntax is judged from one stdin payload. Gateway identities
-and model ids additionally require a private receipt written only by a successful live
-`gateway_models` hook response. The receipt is keyed by Claude session plus an opaque
-per-launch nonce, carries the current `prompt_id`, and is replaced rather than accumulated.
-A repeated orchestration invocation deletes the prior receipt before refresh, so a
-non-blocking MCP failure cannot fall back to an earlier roster; SessionEnd removes the
-launch receipt. One script serves six roles, selected by its first argument:
+Fleet plugin at `hooks/fleet-gateway-model-guard.mjs`, injects the skill-and-roster
+routing tripwire, validates the resulting pin, and handles Workflow receipts. Every
+judgment is made from one stdin payload. One script serves three roles, selected by its
+first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
-| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:orchestration`; it does not repeat the pin mechanics. |
-| `begin-orchestration` | PreToolUse | `Skill(fleet:orchestration)` | Invalidates any prior routing receipt before a new live refresh can run. |
-| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and refuses gateway pins absent from this prompt's fresh receipt. |
+| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:orchestration` and names `gateway_models` as the roster source; it does not repeat the pin mechanics. |
+| `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and a pin whose spelling this run cannot resolve. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
-| `orchestration-failed` | PostToolUseFailure | `Skill(fleet:orchestration)` | States that no fresh routing context was supplied. |
-| `cleanup-routing` | SessionEnd | — | Removes this launched session's private routing receipt. |
+
+No hook is attached before or after the orchestration skill, and none may be. Claude Code
+evaluates a hook's `if` as a permission rule and matches its rule content through the
+tool's `preparePermissionMatcher`, which the Skill tool does not implement, so an
+`if: "Skill(<name>)"` condition is always false and the hook is skipped with only a
+verbose log. An earlier design injected the roster from a `PostToolUse` MCP hook gated
+that way and recorded a prompt-scoped receipt the dispatch gate validated against; it
+never fired once, no receipt was ever written, and the gate refused every gateway pin
+while the pin contract itself never reached the host. The roster now reaches the host
+through its own attention — the turn reminder and the skill preflight.
 
 `gate-delegation` blocks an `Agent` call whose `subagent_type` is `general-purpose` or
 `claude`, or absent. Built-in specialist types and `fork` pass — `fork` inherits parent
 context by design, so moving it to another model removes the point of that surface.
-Gateway `fleet:*` identities must also appear in the fresh receipt. For `Workflow` it
-blocks `agentType` in a script, a malformed `opts.model`, any gateway model id absent
-from the receipt, and any `agent()` stage that pins no model at all. Bare lineage aliases
-and name-only saved workflows retain their existing behavior because they do not claim a
-live Fleet roster identity. The hook does not rewrite the script: assigning one model to
-every stage would erase the model spread that is the whole reason to use that surface,
-so the block carries the instruction and the host does the assignment.
+Gateway `fleet:*` identities pass on their prefix. For `Workflow` it blocks `agentType` in
+a script, a malformed `opts.model`, and any `agent()` stage that pins no model at all.
+Bare lineage aliases and name-only saved workflows retain their existing behavior because
+they do not claim a live Fleet roster identity. The gate judges spelling only; whether a
+name resolves in this session is the dispatcher's judgment, and mirroring it here would
+age the same fact in two places. The hook does not rewrite the script: assigning one model
+to every stage would erase the model spread that is the whole reason to use that surface,
+so the block carries the instruction and the host does the assignment. That instruction
+states what to do at each roster size, because a session exposing one model cannot spread
+stages across several and answered an unsatisfiable demand by fusing providers and a
+reasoning rung into one `opts.model` string.
 
 Two properties of the harness make this shape necessary, both measured on
 Claude Code 2.1.235:
@@ -110,7 +117,7 @@ Runtime state is read through direct owners:
 
 - Delegation gate and routing tripwire: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
 - On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `orchestration` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
-- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. Its ordinary result remains the live roster; its hook mode formats the same reading as `PostToolUse` additional context after orchestration and atomically records the exact gateway names accepted by the dispatch gate. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
+- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the orchestration preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 

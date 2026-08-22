@@ -1,4 +1,3 @@
-import crypto from "node:crypto";
 import { existsSync, lstatSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
@@ -53,18 +52,15 @@ const MARKETPLACE_PRUNE_ENTRIES = [
 export async function createAgentCliPlugin(
   options: CreateAgentCliPluginOptions,
 ): Promise<AgentCliPlugin> {
-  const renderOptions = options.gatewayRoutingNonce
-    ? options
-    : { ...options, gatewayRoutingNonce: crypto.randomUUID() };
-  const fleetRoot = renderOptions.rootDir ?? renderOptions.dataDir ?? getFleetDataDir();
-  const renderableBundles = resolveRenderablePluginBundles(fleetRoot, renderOptions);
+  const fleetRoot = options.rootDir ?? options.dataDir ?? getFleetDataDir();
+  const renderableBundles = resolveRenderablePluginBundles(fleetRoot, options);
   const marketplaceBundles = groupRenderableBundlesByMarketplace(renderableBundles);
   const pluginRoots = new Map<PluginBundle, string>();
   for (const marketplace of marketplaceBundles) {
     await options.withMarketplaceLock(marketplace.target.root, () => {
       for (const { bundle, target } of marketplace.bundles) {
         const pluginRoot = pluginRootForTarget(target, bundle);
-        renderPluginRoot(pluginRoot, bundle, renderOptions);
+        renderPluginRoot(pluginRoot, bundle, options);
         pluginRoots.set(bundle, pluginRoot);
       }
       renderMarketplaceRoot(marketplace.target, marketplace.bundles.map(({ bundle }) => bundle));

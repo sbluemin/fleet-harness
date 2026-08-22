@@ -7,6 +7,10 @@ description: Decide whether research, review, or verification should leave the h
 
 Research, review, and verification may be delegated; implementation normally is not. The host retains routing, planning, product intent, trade-off arbitration, synthesis, acceptance of results, and ownership of the final code change.
 
+## Preflight
+
+Before dispatching anything, call the Fleet MCP tool `gateway_models` in this turn. Delegation identities are session-scoped and the exposed set is editable while a session runs, so nothing else in this session states which identities exist. Take every identity from that reading, and use the spellings and constraints the tool itself reports; this skill does not restate them. If the reading fails or exposes nothing usable, keep the work on the host and say the handoff is blocked. Every `model:` value in a workflow script is judged before dispatch, a `meta.phases` entry's included — leave that field out unless it names the same model its stages pin.
+
 ## Plan the execution graph
 
 Before dispatching, derive the smallest useful graph:
