@@ -5,6 +5,30 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.71.1] - 2026-08-22
+
+### fleet-cli
+
+#### Fixed
+- Read a Cursor Fast variant at its base model's grade and benchmark evidence when picking delegation candidates, so a flagship's priority tier is no longer passed over as a light model.
+
+### fleet-console
+
+#### Added
+- The source tree carries a reload control that re-reads local repository state, working tree, stashes, refs, and ahead/behind, without contacting the remote.
+- Cut-off reads say so: a capped status list, a commit whose read was cut off, and a scan that hit its depth limit each carry a visible mark instead of looking complete.
+
+#### Changed
+- The repository panel names its remote verb after what it does: the toolbar reads Fetch, its result speaks about the remote it actually fetched, and the tooltip drops raw git flags.
+- Destructive verbs say what they destroy: deleting an untracked file is named apart from discarding tracked changes, and dropping a stash asks about deletion instead of a bare "Sure?".
+
+#### Fixed
+- Correct the AI Gateway model grades in Settings: a Cursor Fast variant now carries its base model's grade instead of LIGHT, and Composer 2.5 reads as STANDARD on both Cursor and xAI instead of contradicting itself across providers.
+- Failed repository reads explain themselves. History, commit, diff, and compare failures now show a sentence and a next step instead of a raw error code.
+- A repository whose state could not be read no longer looks clean: write verbs stay locked and say why, instead of turning on as if there were no merge, rebase, or index lock in progress.
+- The changes view stays usable in a narrow rail: the file list and diff stack instead of crushing filenames to zero width, the diff header keeps its close button in reach, and the commit button no longer collapses into a column of characters.
+- Added and deleted diff lines keep their signal colors in every theme instead of drifting toward yellow-green and amber.
+
 ## [1.71.0] - 2026-08-21
 
 ### fleet-cli

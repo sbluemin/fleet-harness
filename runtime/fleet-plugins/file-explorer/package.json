@@ -1,6 +1,6 @@
 {
   "name": "@fleet-plugins/file-explorer",
-  "version": "1.71.0",
+  "version": "1.71.1",
   "private": true,
   "type": "module",
   "scripts": {
