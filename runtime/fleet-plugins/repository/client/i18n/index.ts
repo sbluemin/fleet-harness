@@ -472,7 +472,7 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.filetree.hint": "이 커밋에서 바뀐 파일에 표시가 붙습니다. 선택하면 diff가 열립니다.",
 };
 
-const REPOSITORY_MESSAGES = { en: repositoryEn, ko: repositoryKo } as const;
+export const REPOSITORY_MESSAGES = { en: repositoryEn, ko: repositoryKo } as const;
 export type RepositoryMessageKey = keyof typeof repositoryEn;
 
 // ═══ translator ══════════════════════════════════════════════════════════════
