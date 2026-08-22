@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, readFileSync, readdirSync, renameSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { isProcessAlive } from "@dotobokuri/core-infra";
@@ -72,9 +72,12 @@ export function acquirePluginSnapshot(
   const snapshotRoot = path.join(snapshotsRoot, dirName);
   if (existsSync(snapshotRoot)) {
     if (!verifyPluginSnapshot(snapshotRoot, contentHash, files)) {
-      if (hasLiveLease(snapshotsRoot, dirName)) {
+      // 손상 복구도 회수(GC)와 같은 보수 규칙을 따른다: 살아 있는 리스는 물론, 유예 안의
+      // 죽은 pid 리스 흔적도 재시작 고아 자식이 아직 이 트리를 읽고 있을 수 있다는 증거다.
+      // 그 트리를 지우고 다시 쓰는 대신 새 런치를 시끄럽게 실패시킨다.
+      if (hasLiveLease(snapshotsRoot, dirName) || hasRecentLeaseTrace(snapshotsRoot, dirName)) {
         throw new Error(
-          `Fleet plugin snapshot is corrupt while sessions still lease it: ${snapshotRoot}`,
+          `Fleet plugin snapshot is corrupt while sessions may still lease it: ${snapshotRoot}`,
         );
       }
       removePrivatePath(snapshotRoot, snapshotsRoot);
@@ -136,7 +139,9 @@ function verifyPluginSnapshot(
     if (manifest.contentHash !== contentHash) return false;
     // agents/는 빈 로스터에서도 소비자가 요구하는 필수 디렉터리인데, 파일 목록에는 빈
     // 디렉터리가 실리지 않으므로 존재를 명시적으로 검증해야 복구 경로가 발동할 수 있다.
-    if (!statSync(path.join(snapshotRoot, "agents")).isDirectory()) return false;
+    // lstat(no-follow)이어야 한다 — 심링크로 바꿔치기된 디렉터리는 이 패키지 fs 규약대로
+    // 실디렉터리가 아니라 손상으로 판정한다.
+    if (!lstatSync(path.join(snapshotRoot, "agents")).isDirectory()) return false;
     for (const file of files) {
       const onDisk = readFileSync(path.join(snapshotRoot, ...file.relativePath.split("/")), "utf8");
       if (onDisk !== file.content) return false;
@@ -247,6 +252,21 @@ function hasAnyLeaseTrace(snapshotsRoot: string, dirName: string): boolean {
   const leaseDir = leasesRootFor(snapshotsRoot, dirName);
   if (!existsSync(leaseDir)) return false;
   return readdirSync(leaseDir).length > 0;
+}
+
+/** 유예(24h) 안의 리스 흔적이 있는가 — 죽은 pid라도 재시작 고아 자식의 가능성으로 취급한다. */
+function hasRecentLeaseTrace(snapshotsRoot: string, dirName: string, now: () => number = Date.now): boolean {
+  const leaseDir = leasesRootFor(snapshotsRoot, dirName);
+  if (!existsSync(leaseDir)) return false;
+  for (const entry of readdirSync(leaseDir)) {
+    try {
+      if (now() - statSync(path.join(leaseDir, entry)).mtimeMs <= GC_GRACE_MS) return true;
+    } catch {
+      // 확인할 수 없는 흔적은 최근 것으로 취급한다 — 불확실을 삭제로 해소하지 않는다.
+      return true;
+    }
+  }
+  return false;
 }
 
 function snapshotLastUsedAt(snapshotsRoot: string, dirName: string): number {

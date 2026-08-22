@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -164,7 +165,53 @@ describe("agent CLI plugin snapshot store", () => {
     // 새 런치를 시끄럽게 실패시킨다.
     await expect(
       createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock }),
-    ).rejects.toThrow(/corrupt while sessions still lease it/);
+    ).rejects.toThrow(/corrupt while sessions may still lease it/);
+  });
+
+  // 데몬이 죽고 자식만 남으면 리스 pid는 죽어 보인다. 손상 복구도 GC와 같은 보수 규칙을
+  // 따른다 — 유예 안의 죽은 pid 리스 흔적이 있으면 그 트리를 지우고 다시 쓰지 않는다.
+  it("refuses to repair a corrupt snapshot that carries a recent dead-pid lease trace", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-snapshot-orphan-repair-");
+    const lock = async <T>(_target: string, fn: () => T | Promise<T>) => fn();
+
+    const first = await createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock });
+    first.cleanup();
+    const guardPath = path.join(first.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs");
+    writeFileSync(guardPath, "// tampered\n");
+    // 방금 종료된 프로세스의 pid로 죽은 리스 흔적을 남긴다 — 재시작 고아 상태의 재현.
+    const deadPid = spawnSync(process.execPath, ["-e", ""]).pid!;
+    const leaseDir = path.join(dataDir, "plugin-snapshots", "leases", path.basename(first.pluginRoot));
+    mkdirSync(leaseDir, { recursive: true });
+    writeFileSync(path.join(leaseDir, `${deadPid}-orphan.json`), `${JSON.stringify({ pid: deadPid, startedAt: Date.now() })}\n`);
+
+    await expect(
+      createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock }),
+    ).rejects.toThrow(/corrupt while sessions may still lease it/);
+    expect(readFileSync(guardPath, "utf8")).toBe("// tampered\n");
+  });
+
+  // 심링크로 바꿔치기된 agents/는 실디렉터리가 아니다 — no-follow 판정으로 손상 처리되어
+  // 복구 경로가 실디렉터리를 되살린다.
+  it("treats a symlinked agents directory as corruption and repairs it", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-snapshot-agents-link-");
+    const lock = async <T>(_target: string, fn: () => T | Promise<T>) => fn();
+
+    const first = await createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock });
+    first.cleanup();
+    const agentsPath = path.join(first.pluginRoot, "agents");
+    const outside = path.join(dataDir, "outside-agents");
+    mkdirSync(outside, { recursive: true });
+    rmSync(agentsPath, { recursive: true, force: true });
+    // Windows에서는 junction이 권한 없이 생성 가능하다. POSIX에서는 type 인자가 무시된다.
+    symlinkSync(outside, agentsPath, "junction");
+
+    const second = await createAgentCliPlugin({ cliId: "claude-gateway", cwd, dataDir, withPluginStoreLock: lock });
+
+    expect(second.pluginRoot).toBe(first.pluginRoot);
+    const restored = readdirSync(path.join(second.pluginRoot), { withFileTypes: true })
+      .find((entry) => entry.name === "agents");
+    expect(restored?.isDirectory()).toBe(true);
+    expect(restored?.isSymbolicLink()).toBe(false);
   });
 
   it("releases its lease on cleanup, and cleanup is idempotent", async () => {
