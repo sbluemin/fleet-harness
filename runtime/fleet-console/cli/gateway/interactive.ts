@@ -134,6 +134,10 @@ async function adjustModelDetail(deps: GatewayInteractiveDeps): Promise<void> {
         })),
         { value: "", label: "Done", hint: "back to the menu" },
       ],
+      // 기본은 Done이다. 이 화면은 모델 편집기가 자동으로 넘겨주므로, 기본값이 없으면 커서가
+      // 첫 모델에 놓이고 — 사다리 없는 모델이면 다음 화면의 선택지가 Host-only 하나뿐이라 —
+      // 그냥 지나가려던 엔터 두 번이 위임 로스터를 바꿔 버린다.
+      initialValue: "",
     });
     if (isCancel(target) || target === "") return;
 
