@@ -801,7 +801,15 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       // The lineage link is `providerModelId` where the sibling reaches the
       // base's own wire id, and `variantOf` where the provider gave it one of
       // its own. Two links must never name two different bases.
-      if (model.variantOf && model.providerModelId && model.providerModelId !== model.variantOf) {
+      const catalogEntry = (modelId: string | undefined) => (
+        modelId === undefined ? undefined : definition.models.find((candidate) => candidate.modelId === modelId)
+      );
+      // `providerModelId`는 계보 지목이기 전에 wire id다. 카탈로그에 없는 upstream 이름을
+      // 담고 있으면 어떤 base 도 지목하지 않은 것이므로 `variantOf` 와 경쟁하지 않는다 —
+      // 여기서 무조건 불일치를 거부하면, 자체 wire id 와 계보를 동시에 적어야 하는 변형이
+      // 다시 표현 불가가 되어 이 필드를 들인 이유가 사라진다.
+      const providerLinkedBase = isRoutingAlias ? undefined : catalogEntry(model.providerModelId);
+      if (model.variantOf && providerLinkedBase && model.providerModelId !== model.variantOf) {
         throw new Error(`Gateway service-tier sibling names two different bases: ${provider}/${model.modelId}`);
       }
       if (model.variantOf === model.modelId) {
@@ -809,15 +817,20 @@ function validateRegistry(value: GatewayModelsRegistry): void {
       }
       const baseModelId = isRoutingAlias ? undefined : model.variantOf ?? model.providerModelId;
       if (baseModelId) {
-        const base = definition.models.find((candidate) => candidate.modelId === baseModelId);
+        const base = catalogEntry(baseModelId);
         // `providerModelId` may legitimately name an upstream this catalog does
         // not list, so only an explicit `variantOf` demands a resolvable base.
         if (model.variantOf && !base) {
           throw new Error(`Gateway service-tier sibling names an unknown base: ${provider}/${model.modelId} -> ${model.variantOf}`);
         }
         // A chain would let the class travel two hops from the model that
-        // actually stated it, so a base is always a base.
-        if (base?.variantOf) {
+        // actually stated it, so a base is always a base. 한 홉 위도 두 표기 중
+        // 어느 쪽으로든 이어질 수 있으므로 둘 다 본다 — `variantOf` 만 보면 base 가
+        // `providerModelId` 로 이어진 형제일 때 체인이 그대로 통과한다.
+        const baseLink = base && base.modelId !== base.providerModelId
+          ? base.variantOf ?? base.providerModelId
+          : base?.variantOf;
+        if (base && catalogEntry(baseLink)) {
           throw new Error(`Gateway service-tier sibling names another sibling as its base: ${provider}/${model.modelId}`);
         }
         if (base && base.capabilityClass !== model.capabilityClass) {

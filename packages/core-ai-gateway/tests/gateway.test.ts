@@ -801,6 +801,45 @@ describe("model catalog", () => {
       },
     ];
     expect(() => parseGatewayModelsRegistry(twoBases)).toThrow(/names two different bases/);
+
+    // providerModelId 는 계보 지목이기 전에 wire id 다. 카탈로그에 없는 upstream 이름을
+    // 담은 경우까지 경쟁 base 로 읽으면, 자체 wire id 와 계보를 동시에 적어야 하는 변형이
+    // 다시 표현 불가가 된다 — 이 필드를 들인 이유가 그 표현이었다.
+    const wireIdBesideLineage = minimalRegistry();
+    wireIdBesideLineage.providers.cursor.models = [
+      { modelId: "auto", name: "Auto", providerModelId: "default" },
+      { modelId: "model", name: "Model", capabilityClass: "flagship" },
+      {
+        modelId: "model-fast",
+        name: "Model Fast",
+        providerModelId: "cursor-model-2.5-fast",
+        variantOf: "model",
+        capabilityClass: "flagship",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(wireIdBesideLineage)).not.toThrow();
+
+    // 한 홉 위가 providerModelId 로 이어진 형제여도 체인은 체인이다. variantOf 만 보면
+    // 이 두 홉이 통과해 class 와 벤치 출처가 중간 변형에 매달린다.
+    const chainedThroughProviderLink = minimalRegistry();
+    chainedThroughProviderLink.providers.codex.models = [
+      { modelId: "codex-model", name: "Model", capabilityClass: "flagship" },
+      {
+        modelId: "codex-model-fast",
+        name: "Model Fast",
+        providerModelId: "codex-model",
+        serviceTier: "priority",
+        capabilityClass: "flagship",
+      },
+      {
+        modelId: "codex-model-fast-1m",
+        name: "Model Fast 1M",
+        variantOf: "codex-model-fast",
+        capabilityClass: "flagship",
+      },
+    ];
+    expect(() => parseGatewayModelsRegistry(chainedThroughProviderLink))
+      .toThrow(/names another sibling as its base/);
   });
 
   it("classes every catalog model, light tiers included, and never the router", () => {
