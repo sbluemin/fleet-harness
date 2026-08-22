@@ -122,12 +122,6 @@ export interface CreateAgentCliPluginOptions {
   // claude-gateway 렌더만 읽어 `agents/` 정의를 만든다.
   readonly gatewayDelegationModels?: readonly GatewayModel[];
   readonly gatewayEffortExposure?: GatewayEffortExposure;
-  /**
-   * Opaque launch identity shared by the hook-side refresh receipt and dispatch gate.
-   * createAgentCliPlugin generates one for this render when omitted. It is never shown to
-   * the model and must not be reused across separately launched sessions.
-   */
-  readonly gatewayRoutingNonce?: string;
   readonly onCleanup?: (cleanup: () => void) => void;
   readonly rootDir?: string;
   readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
