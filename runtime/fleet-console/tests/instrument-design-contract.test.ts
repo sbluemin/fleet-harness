@@ -2318,7 +2318,9 @@ describe("Instrument core design contract", () => {
     // 결말의 성패는 스파인 노드가 진다 — 접힘 줄이 ✓를 또 들면 두 곳이 같은 말을 한다.
     expect(terminalAnalysisCss).not.toContain(".session-analyst__receipt-mark");
     // 물결은 채팅 원장의 것과 한 벌이다. 값이 갈라지면 같은 사실을 두 면이 다른 속도로 말한다.
-    const analystWave = terminalAnalysisCss.match(/\.session-analyst__live-text \{[^}]*\}/)?.[0] ?? "";
+    // 줄머리에 못을 박는다 — 앵커 없는 `.session-analyst__live-text {`는 합성 규칙의
+    // `strong.session-analyst__live-text {` 꼬리에도 물린다.
+    const analystWave = terminalAnalysisCss.match(/^\.session-analyst__live-text \{[^}]*\}/m)?.[0] ?? "";
     expect(analystWave).toContain("background-size: 200% 100%;");
     expect(analystWave).toContain("background-clip: text;");
     expect(analystWave).toContain("color: transparent;");
@@ -2330,6 +2332,11 @@ describe("Instrument core design contract", () => {
     // 프레임과 같다(200% 이미지에 ΔP 200 = 2W = 타일 한 폭).
     expect(terminalAnalysisCss).toMatch(
       /@keyframes analyst-live-sweep \{\s*from \{ background-position: 200% 0; \}\s*to \{ background-position: 0% 0; \}/,
+    );
+    // 펄스 문구는 애니메이션을 둘 진다(도착 + 물결). 합성하지 않으면 도착 애니메이션이 같은
+    // 속성을 더 높은 특정성으로 쥐고 있어 물결이 조용히 죽고 정지된 그라데이션만 남는다.
+    expect(terminalAnalysisCss).toMatch(
+      /\.session-analyst__pulse-copy strong\.session-analyst__live-text \{[\s\S]*?analyst-stage-enter[\s\S]*?analyst-live-sweep 2\.4s linear infinite;/,
     );
     // 봉인은 모션만 죽인다 — `color: transparent`가 남으면 글자가 통째로 사라진다.
     const analystSeal = terminalAnalysisCss.match(

@@ -102,6 +102,14 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__pulse.is-error .session-analyst__pulse-orbit { border-color: color-mix(in oklch, var(--coral) 35%, transparent); border-top-color: var(--coral); animation: none; }
 .session-analyst__pulse-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .session-analyst__pulse-copy strong { font-weight: var(--weight-medium); overflow-wrap: anywhere; animation: analyst-stage-enter var(--duration-base) var(--ease-glide) both; }
+/* 이 문구는 애니메이션을 둘 진다: 도착(stage-enter)과 진행(물결). 위 규칙이 같은 속성을 더
+   높은 특정성으로 쥐고 있어 물결만 얹으면 조용히 사라지고 정지된 그라데이션만 남는다
+   (실측 적발 — 계약이 이 합성을 못으로 박는다). */
+.session-analyst__pulse-copy strong.session-analyst__live-text {
+  animation:
+    analyst-stage-enter var(--duration-base) var(--ease-glide) both,
+    analyst-live-sweep 2.4s linear infinite;
+}
 .session-analyst__pulse-copy small { font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__pulse time { margin-left: auto; color: var(--aurora-ink); font-size: var(--t-2xs); }
 .session-analyst__pulse.is-error time { color: var(--coral-ink); }
@@ -349,7 +357,8 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 @media (prefers-reduced-motion: reduce) {
   /* 물결 봉인 — 모션만 죽이고 줄은 남긴다. 그라데이션을 지우면서 채움도 함께 되돌려야
      한다: `color: transparent`가 남으면 글자가 통째로 사라진다. */
-  .session-analyst__live-text { animation: none; background-image: none; color: var(--text-secondary); }
+  .session-analyst__live-text,
+  .session-analyst__pulse-copy strong.session-analyst__live-text { animation: none; background-image: none; color: var(--text-secondary); }
   .session-analyst__turn-head .session-analyst__live-text { color: var(--text-tertiary); }
 
   .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
