@@ -73,7 +73,13 @@ export interface AgentCliMcpServerArg {
 export type ClaudeSessionCoordinate =
   | { readonly kind: "new"; readonly sessionId: string }
   | { readonly kind: "resume"; readonly sessionId: string }
-  | { readonly kind: "fork"; readonly sessionId: string; readonly from: string };
+  | { readonly kind: "fork"; readonly sessionId: string; readonly from: string }
+  /**
+   * 좌표를 호출자의 인자가 이미 들고 있다. Fleet은 세션 플래그를 하나도 싣지 않는다 —
+   * `fleet --resume <id>`·`fleet -c`처럼 사용자가 직접 넘긴 경우다. `sessionId`는 이 런치의
+   * 플러그인 트리 이름일 뿐 Claude 세션 id가 아니다: 자식이 어떤 세션을 열지 우리는 모른다.
+   */
+  | { readonly kind: "external"; readonly sessionId: string };
 
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;

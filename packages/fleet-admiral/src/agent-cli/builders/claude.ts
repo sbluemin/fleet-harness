@@ -52,6 +52,9 @@ function buildSettingsArgs(
  */
 function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinate"]): string[] {
   switch (coordinate.kind) {
+    // 호출자의 인자가 이미 좌표를 들고 있다. 여기서 `--session-id`를 더하면 자식이 거부한다.
+    case "external":
+      return [];
     case "resume":
       return ["--resume", coordinate.sessionId];
     case "fork":
