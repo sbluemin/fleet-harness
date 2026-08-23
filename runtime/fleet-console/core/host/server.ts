@@ -427,6 +427,7 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
   const consoleSettingsStore = createConsoleSettingsStore({ paths: durablePaths });
   const tryServeStaticConsole = createStaticConsoleHandler(release.packageRoot, {
     getActiveTheme: () => consoleSettingsStore.load().general?.theme ?? "instrument",
+    getLiquidGlass: () => consoleSettingsStore.load().general?.liquidGlass ?? true,
   });
   const wikiWorkspaceResolver = createWikiWorkspaceResolver({
     ensureWorkspace: (cwd) => {

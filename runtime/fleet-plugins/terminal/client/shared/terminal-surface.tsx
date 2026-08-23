@@ -537,6 +537,24 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     outputSchedulerRef.current?.setInactiveFlushMs(inactiveFlushMs);
   }, [inactiveFlushMs, mountedTerminalEpoch]);
 
+  // 리퀴드 글래스 게이트의 실효 상태 — 채널 계산값이 단일 진실이다(설정·@supports·
+  // prefers-reduced-transparency 세 게이트를 모두 통과했을 때만 backdrop 채널이 none이 아니다).
+  const [liquidGlassPane, setLiquidGlassPane] = useState(() => readLiquidGlassPaneActive());
+  useEffect(() => {
+    const sync = () => setLiquidGlassPane(readLiquidGlassPaneActive());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass", "data-theme"] });
+    // OS 접근성 설정(prefers-reduced-transparency)은 속성 변이 없이 채널을 닫는다 —
+    // 미디어쿼리 변화도 같은 sync로 받아야 열린 터미널이 즉시 불투명 계약으로 돌아간다.
+    const reducedTransparency = window.matchMedia("(prefers-reduced-transparency: reduce)");
+    reducedTransparency.addEventListener("change", sync);
+    return () => {
+      observer.disconnect();
+      reducedTransparency.removeEventListener("change", sync);
+    };
+  }, []);
+
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -589,11 +607,16 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     const terminal = terminalRef.current;
     const container = containerRef.current;
     if (!terminal || !container) return;
-    const terminalTheme = terminalThemeFor(activeTheme);
-    terminal.options.theme = terminalTheme;
-    terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
-    syncTerminalViewportBackground(container, terminalTheme);
-  }, [activeTheme, mountedTerminalEpoch]);
+    const applyTerminalTheme = () => {
+      const terminalTheme = terminalThemeFor(activeTheme);
+      terminal.options.theme = terminalTheme;
+      terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
+      syncTerminalViewportBackground(container, terminalTheme);
+    };
+    applyTerminalTheme();
+    // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
+    // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -708,19 +731,61 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
   }
 }
 
-/* 패널 면은 theme.css의 --surface-panel 하나가 소유한다 — 캡션·거터·터미널 필드가 같은 값이라야
-   창 하나로 읽힌다. xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의
-   background 리터럴은 그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 —
-   두 값이 갈라지지 않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
-export function resolvePanelSurface(fallback: string): string {
+/* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
+   필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
+   - 다크 + 게이트 열림: xterm 배경은 완전 투명으로 비우고, 필드·거터를 컨테이너
+     (.canvas-operation-terminal/.terminal-shell)의 --glass-tint-terminal 한 겹이 칠한다.
+     다크는 minimumContrastRatio=1이라 투명 배경이 대비 보정에 관여하지 않는다.
+   - 라이트(Whites)와 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값
+     (라이트 유리=불투명 종이, 게이트 닫힘=불투명 --surface-panel)을 그대로 받는다 —
+     컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
+   xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
+   생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
+   위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
+export function resolvePanelSurface(theme: TerminalThemeId, fallback: string): string {
   if (typeof document === "undefined") return fallback;
-  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--surface-panel").trim();
-  return resolved || fallback;
+  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) return "rgba(0, 0, 0, 0)";
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
+  if (!resolved) return fallback;
+  return normalizeCssColorToRgba(resolved) ?? fallback;
+}
+
+let colorProbeCtx: CanvasRenderingContext2D | null | undefined;
+
+function normalizeCssColorToRgba(color: string): string | null {
+  if (colorProbeCtx === undefined) {
+    try {
+      const probe = document.createElement("canvas");
+      probe.width = 1;
+      probe.height = 1;
+      colorProbeCtx = probe.getContext("2d", { willReadFrequently: true });
+      if (colorProbeCtx) colorProbeCtx.globalCompositeOperation = "copy";
+    } catch {
+      colorProbeCtx = null;
+    }
+  }
+  if (!colorProbeCtx) return color;
+  try {
+    colorProbeCtx.fillStyle = color;
+    colorProbeCtx.fillRect(0, 0, 1, 1);
+    const d = colorProbeCtx.getImageData(0, 0, 1, 1).data;
+    return `rgba(${d[0]}, ${d[1]}, ${d[2]}, ${(d[3] / 255).toFixed(3)})`;
+  } catch {
+    return color;
+  }
+}
+
+/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
+   reduced-transparency)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다. */
+export function readLiquidGlassPaneActive(): boolean {
+  if (typeof document === "undefined") return false;
+  const backdrop = getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-strong").trim();
+  return backdrop !== "" && backdrop !== "none";
 }
 
 function terminalThemeFor(theme: TerminalThemeId): ITheme {
   const base = baseTerminalThemeFor(theme);
-  return { ...base, background: resolvePanelSurface(base.background ?? "") };
+  return { ...base, background: resolvePanelSurface(theme, base.background ?? "") };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

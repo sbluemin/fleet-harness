@@ -5,7 +5,7 @@ import { createRemoteAccessLink, fetchGlobalSettingsState, fetchRemoteAccessStat
 import { generateRemoteAutoPort, isCommittableRemotePortDraft, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN } from "../core/client/src/types.js";
 
 const originalFetch = globalThis.fetch;
-const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, remoteAccess: { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null }, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
+const SETTINGS = { consolePortMode: "dynamic", consoleStaticPort: null, remoteAccess: { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null }, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "manrope", size: 14 }, language: "auto" } as const;
 
 afterEach(() => {
   globalThis.fetch = originalFetch;

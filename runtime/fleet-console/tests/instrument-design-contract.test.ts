@@ -679,9 +679,23 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).not.toContain("onTogglePerimeter");
   });
 
-  it("uses opaque token surfaces without blur or deprecated accent variables", () => {
+  it("keeps backdrop blur on the liquid glass channels without deprecated accent variables", () => {
     const css = OWNED_SOURCES.filter((path) => path.endsWith(".css")).map(source).join("\n");
-    expect(css).not.toMatch(/backdrop-filter|--op-accent|--chip-accent/);
+    expect(css).not.toMatch(/--op-accent|--chip-accent/);
+    // 리퀴드 글래스 계약: backdrop-filter는 theme.css의 glass 채널(var(--glass-backdrop-*))만
+    // 소비한다. raw blur를 표면에 직접 들면 세 게이트(@supports 미달·prefers-reduced-transparency·
+    // 설정 data-glass="off")가 그 표면을 놓쳐 불투명 폴백 계약이 깨진다.
+    const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
+    expect(backdropDeclarations.length).toBeGreaterThan(0);
+    for (const declaration of backdropDeclarations) {
+      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: var\(--glass-backdrop-(?:strong|soft|panel|scrim)\);$/);
+    }
+    // 게이트와 폴백 기본값은 theme.css에 존재해야 한다 — 채널 기본값이 곧 구 불투명 계약이다.
+    const theme = source("styles/theme.css");
+    expect(theme).toContain("--glass-underlay: var(--ink-deep);");
+    expect(theme).toContain(':root:not([data-glass="off"])');
+    expect(theme).toContain("@media (prefers-reduced-transparency: reduce)");
+    expect(theme).toMatch(/@supports \(\(backdrop-filter: blur\(1px\)\) or \(-webkit-backdrop-filter: blur\(1px\)\)\)/);
     expect(css).toContain("background: var(--surface-glass)");
     expect(css).toContain(":focus-visible");
     // brass 채움 버튼은 전용 on-brass 텍스트 티어를 소비한다 — abyss 재결합은 라이트 AA 회귀다.
@@ -1460,10 +1474,11 @@ describe("Instrument core design contract", () => {
     const railStore = source("rail/rail-store.ts");
     expect(rail).toContain(".right-rail.is-overlay");
     expect(rail).toContain(".right-rail.is-switching");
-    // Doctrine: the overlay slot ::before composites its glass layers over an opaque
-    // var(--ink-deep) final layer — maritime/carbon --surface-glass-strong is a 78~80%
-    // alpha token, so without the underlay the slider's 100% endpoint can never be opaque.
-    expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--ink-deep\);/);
+    // Doctrine: the overlay slot ::before composites its glass layers over the
+    // --glass-underlay channel — its default is the old opaque var(--ink-deep), so with the
+    // liquid glass gate closed the slider's 100% endpoint stays fully opaque, and with the
+    // gate open the same channel turns transparent under backdrop blur.
+    expect(rail).toMatch(/\.right-rail\.is-overlay \.right-rail-panel-slot::before \{[^}]*\)\s*,\s*var\(--glass-underlay\);/);
     // Doctrine: keep both WebKit and Firefox track styling so the continuous
     // opacity control communicates its filled range in either engine.
     expect(rail).toContain(".right-rail-alpha-slider::-moz-range-progress");
@@ -1498,11 +1513,13 @@ describe("Instrument core design contract", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     const scuttlebuttCss = externalSource(SCUTTLEBUTT_CSS_PATH);
     // Doctrine: scrim-backed popup cards, floating menus, and anchored guidance cards
-    // composite their glass layers over an opaque var(--ink-deep) final layer —
-    // maritime/carbon/whites glass tokens carry 60~82% alpha, so without the underlay they
-    // bleed the canvas through and legibility collapses (canonical doctrine comment:
-    // .whatsnew-card in components.css). Non-popup glass surfaces keep the themes'
-    // translucent glass identity untouched.
+    // composite their tint layers over the --glass-underlay channel and carry
+    // backdrop-filter via the --glass-backdrop-* channels (canonical doctrine comment:
+    // .whatsnew-card in components.css). The channel defaults reproduce the old opaque
+    // contract exactly — underlay = var(--ink-deep), tint = the old surface tokens,
+    // blur = none — so any closed gate (@supports, prefers-reduced-transparency,
+    // data-glass="off") restores full opacity. Painting raw --surface-* or var(--ink-deep)
+    // directly on a popup is a regression: that surface would escape the gates.
     const componentsPopupSelectors = [
       ".whatsnew-card",
       ".commissioning-card",
@@ -1518,20 +1535,22 @@ describe("Instrument core design contract", () => {
       ".operation-search-card",
       ".quick-launch-card",
       ".feature-tour-card",
+      ".glass-welcome-card",
     ];
     // Quick Launch 오버레이도 fleet-pop을 타므로 억제 절을 함께 못 박는다 — 규칙 옆에 붙은
     // 자체 reduced-motion 블록은 .fc-select__* 선례와 같은 형태다.
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\) \{\s*\.quick-launch-overlay \{\s*animation: none;\s*\}/);
     for (const selector of componentsPopupSelectors) {
       const scoped = selector.replace(/\./g, "\\.");
-      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--ink-deep\\);`));
+      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*\\),\\s*var\\(--glass-underlay\\);`));
+      expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
-    expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--ink-deep\);/);
-    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--ink-deep\);/);
-    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--ink-deep\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--ink-deep\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--ink-deep\);/);
-    expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--ink-deep\);/);
+    expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
+    expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--glass-underlay\);/);
+    expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--glass-underlay\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--glass-underlay\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__export-menu \{[^}]*var\(--glass-underlay\);/);
+    expect(terminalAnalysisCss).toMatch(/\.session-analyst__slash \{[^}]*var\(--glass-underlay\);/);
     // Quaker aides float over the Map — the same glass token that is opaque on Instrument
     // is 78~82% alpha on every other theme, so the speech surfaces need the underlay too.
     for (const selector of [
@@ -1543,7 +1562,7 @@ describe("Instrument core design contract", () => {
       ".scuttlebutt-chat-card",
     ]) {
       const scoped = selector.replace(/\./g, "\\.");
-      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--ink-deep\\);`));
+      expect(scuttlebuttCss).toMatch(new RegExp(`${scoped} \\{[\\s\\S]*?\\),\\s*var\\(--glass-underlay\\);`));
     }
   });
 
@@ -1708,17 +1727,18 @@ describe("Instrument core design contract", () => {
     // 있어야 한 열 한가운데의 이중 hairline과 우측 경계선 단절이 재발하지 않는다.
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
     expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
-    expect(commandBandLeftBlock).toContain("background: var(--surface-chrome);");
+    expect(layout).toMatch(/\.command-band-left::before \{[^}]*background: var\(--glass-tint-chrome\);/);
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
-    expect(sideBarBlock).toContain("background: var(--surface-chrome);");
-    // 패널은 하나의 면이다 — 본체·캡션·본문 거터가 모두 --surface-panel을 소비해야 창 하나로 읽힌다.
-    // 셋 중 하나라도 다른 값을 잡으면 캡션 이음새나 터미널 둘레 액자 테가 되살아난다.
+    expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
+    // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
+    // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    expect(operationBlock).toContain("background: var(--surface-panel);");
+    expect(operationBlock).toContain("background: var(--glass-tint-panel);");
+    expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--surface-panel);");
+    expect(titlebarBlock).toContain("background: var(--glass-tint-panel-face);");
     expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
@@ -1728,11 +1748,11 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).not.toContain("border-color: inherit;");
     expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
-    expect(panelBodyBlock).toContain("background: var(--surface-panel);");
-    // 레일 Shell 카드도 같은 면이다 — 이 기본 규칙의 소비처는 레일 하나뿐이고, 유리로 되돌리면
-    // 카드가 자기 안의 xterm과 갈린다(불투명 xterm 배경은 반투명 유리를 따라갈 수 없다).
+    expect(panelBodyBlock).toContain("background: var(--glass-tint-terminal);");
+    // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
+    // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
-    expect(terminalShellBlock).toContain("background: var(--surface-panel);");
+    expect(terminalShellBlock).toContain("background: var(--glass-tint-terminal);");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
@@ -1897,7 +1917,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id)[a-z-]*:$/);
+        expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass)[a-z-]*:$/);
       }
     }
     // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
@@ -1912,7 +1932,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge|glass)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -1963,7 +1983,8 @@ describe("Instrument core design contract", () => {
 
     // xterm은 CSS 변수를 못 받으므로 계산값을 읽어 넘긴다 — 이 경로가 사라지면 터미널 필드가
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
-    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--surface-panel")');
+    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal")');
+    expect(fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8")).toContain("allowTransparency: true");
     expect(surface).toContain("...base, background: resolvePanelSurface(");
 
     // ITheme의 background 리터럴은 토큰을 못 읽는 환경의 폴백일 뿐이다 — 테마별로 theme.css의
@@ -1986,11 +2007,11 @@ describe("Instrument core design contract", () => {
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatRootBlock).toContain("background: var(--surface-panel);");
+    expect(chatRootBlock).toContain("background: var(--glass-tint-panel-face);");
     expect(chatRootBlock).not.toContain("--surface-window");
     expect(chatRootBlock).not.toContain("transition: background");
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatNodeBlock).toContain("background: var(--surface-panel);");
+    expect(chatNodeBlock).toContain("background: var(--glass-tint-panel);");
     expect(chatNodeBlock).not.toContain("--surface-window");
     // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
@@ -2299,7 +2320,7 @@ describe("Instrument core design contract", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     // 드로어 바닥은 오퍼레이션 패널과 같은 --surface-panel 한 장이다. pillar로 되돌아가면 안 되고,
     // 포커스 워시(--surface-window)는 캡션 전용이므로 본문이 따라가서도 안 된다.
-    expect(terminalAnalysisCss).toContain("background: var(--surface-panel);");
+    expect(terminalAnalysisCss).toContain("background: var(--glass-tint-panel-face);");
     expect(terminalAnalysisCss).not.toContain("surface-pillar");
     expect(terminalAnalysisCss).not.toContain("surface-window");
     // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
@@ -2579,7 +2600,7 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--surface-panel))");
+    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face))");
     expect(components).not.toContain("--surface-window");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
@@ -3286,7 +3307,7 @@ describe("Effort track interaction grammar", () => {
     // sticky를 잃으면 스크롤한 목록에서 모델 이름만 남고 공급자를 잃는다.
     const bandRule = components.match(/\.quick-launch-command-deck \.quick-launch-pop-band \{[^}]*\}/)?.[0] ?? "";
     expect(bandRule).toContain("position: sticky");
-    expect(bandRule).toContain("var(--ink-deep)");
+    expect(bandRule).toContain("var(--glass-tint-deep)");
     expect(composer).not.toMatch(/id: `model-\$\{row\.id\}`,[\s\S]{0,200}?quick-launch-kind-icon/);
 
     // 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에서 시작한다 — 항목이 자기 머리글보다
@@ -3414,7 +3435,7 @@ describe("War Room deck panel grammar", () => {
     expect(components).toContain(".canvas-triage-deck-pick:focus-visible {");
     // 겨눈 카드의 캡션 워시는 포커스 패널과 같은 한 값이다 — 새 값을 만들지 않는다.
     const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
+    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));");
     expect(wash).toContain("background-clip: padding-box;");
   });
 

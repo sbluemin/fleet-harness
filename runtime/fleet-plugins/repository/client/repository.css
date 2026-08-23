@@ -1902,7 +1902,9 @@
   border-bottom: 1px solid var(--hairline);
   position: sticky;
   top: 0;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
   z-index: 1;
 }
 .repository-staging-head i { font-style: normal; color: var(--text-tertiary); }
@@ -1962,7 +1964,7 @@
   flex: none;
   padding: 8px 10px 10px;
   border-top: 1px solid var(--hairline-strong);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   display: flex;
   flex-direction: column;
   gap: 0;

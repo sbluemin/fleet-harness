@@ -26,6 +26,7 @@ beforeEach(() => {
     remoteAccess: { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null },
     seenFeatureTours: [],
     theme: "instrument",
+    liquidGlass: true,
     uiFont: DEFAULT_UI_FONT,
     language: "en",
   });

@@ -159,6 +159,8 @@ function assertGlobalSettingsState(value: unknown, status: number): GlobalSettin
     ...(payload.remoteAccess === undefined ? {} : { remoteAccess: payload.remoteAccess }),
     seenFeatureTours: payload.seenFeatureTours,
     theme: payload.theme,
+    // 구서버 응답에는 필드가 없다 — 기본 옵트인(true)으로 정규화해 화면 계약을 한 형으로 유지한다.
+    liquidGlass: payload.liquidGlass !== false,
     uiFont: normalizeUiFont(payload.uiFont),
     language: payload.language,
   };

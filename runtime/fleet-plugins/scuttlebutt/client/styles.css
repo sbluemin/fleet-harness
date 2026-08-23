@@ -34,8 +34,11 @@
   transform: translateX(-50%);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-pill);
   color: var(--text-secondary);
@@ -61,8 +64,11 @@
   transform: translate(-50%, -4px);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid color-mix(in oklch, var(--brass) 45%, var(--hairline));
   border-radius: var(--radius-md);
   color: var(--text-primary);
@@ -382,10 +388,12 @@
   /* 팝업 판독성 계약: positive wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong)),
-      color-mix(in oklch, var(--positive) 12%, var(--surface-glass-strong))
+      color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong)),
+      color-mix(in oklch, var(--positive) 12%, var(--glass-tint-strong))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -463,8 +471,11 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -642,10 +653,12 @@
   /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong)),
-      color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong))
+      color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong)),
+      color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   font-size: var(--t-sm);
@@ -745,8 +758,11 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   animation: scuttlebutt-card-in var(--duration-base) var(--ease-spring);
 }

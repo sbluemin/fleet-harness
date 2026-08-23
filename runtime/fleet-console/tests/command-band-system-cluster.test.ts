@@ -18,6 +18,7 @@ const SETTINGS: GlobalSettingsState = {
   remoteAccess: { enabled: false, publicEndpointEnabled: false, listenAddress: "", advertisedHost: "", listenPort: { mode: "auto", value: 49152 }, advertisedPort: { mode: "auto", value: 49153 }, acknowledgment: null },
   seenFeatureTours: [],
   theme: "instrument",
+  liquidGlass: true,
   uiFont: { source: "builtin", id: "manrope", size: 14 },
   language: "auto",
 };

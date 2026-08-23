@@ -64,6 +64,8 @@ export interface ConsoleGeneralSettings {
   readonly remoteAccess?: ConsoleRemoteAccessSettings;
   readonly seenFeatureTours?: readonly string[];
   readonly theme?: ConsoleThemeId;
+  /** 리퀴드 글래스 머티리얼 — 부재는 켜짐(기본 옵트인)이다. */
+  readonly liquidGlass?: boolean;
   readonly uiFont?: UiFontSettings;
 }
 
@@ -251,6 +253,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
       ? "whites"
       : undefined;
   const uiFont = sanitizeUiFontSettings(value.uiFont);
+  const liquidGlass = typeof value.liquidGlass === "boolean" ? value.liquidGlass : undefined;
   return {
     ...(consolePortMode !== undefined ? { consolePortMode } : {}),
     ...(consoleStaticPort !== undefined ? { consoleStaticPort } : {}),
@@ -258,6 +261,7 @@ function readConsoleGeneralSettings(value: unknown): ConsoleGeneralSettings | nu
     ...(remoteAccess !== undefined ? { remoteAccess } : {}),
     ...(seenFeatureTours !== undefined ? { seenFeatureTours } : {}),
     ...(theme !== undefined ? { theme } : {}),
+    ...(liquidGlass !== undefined ? { liquidGlass } : {}),
     ...(uiFont !== undefined ? { uiFont } : {}),
   };
 }
@@ -393,6 +397,7 @@ interface GlobalSettingsBody {
   readonly remoteAccess?: unknown;
   readonly seenFeatureTours?: unknown;
   readonly theme?: unknown;
+  readonly liquidGlass?: unknown;
   readonly uiFont?: unknown;
 }
 
@@ -492,6 +497,10 @@ async function mutateGlobalSettings(
     deps.writeJson(res, 400, { error: "invalid_theme" });
     return;
   }
+  if (body.liquidGlass !== undefined && typeof body.liquidGlass !== "boolean") {
+    deps.writeJson(res, 400, { error: "invalid_liquid_glass" });
+    return;
+  }
   if (!isUiFontSettingsOrUndefined(body.uiFont)) {
     deps.writeJson(res, 400, { error: "invalid_ui_font" });
     return;
@@ -514,6 +523,7 @@ async function mutateGlobalSettings(
       ...(body.remoteAccess !== undefined ? { remoteAccess: nextRemoteAccess } : {}),
       ...(body.seenFeatureTours !== undefined ? { seenFeatureTours: sanitizeSeenFeatureTours(body.seenFeatureTours) ?? [] } : {}),
       ...(theme !== undefined ? { theme } : {}),
+      ...(typeof body.liquidGlass === "boolean" ? { liquidGlass: body.liquidGlass } : {}),
       ...(isUiFontSettings(body.uiFont) ? { uiFont: body.uiFont } : {}),
     },
     plugins: current.plugins,
@@ -579,6 +589,7 @@ function toGlobalSettingsState(data: ConsoleSettingsData): GlobalSettingsState {
     remoteAccess: general.remoteAccess ?? createDefaultRemoteAccess(crypto.randomInt),
     seenFeatureTours: general.seenFeatureTours ?? [],
     theme: general.theme ?? "instrument",
+    liquidGlass: general.liquidGlass ?? true,
     uiFont: general.uiFont ?? DEFAULT_UI_FONT_SETTINGS,
   };
 }
