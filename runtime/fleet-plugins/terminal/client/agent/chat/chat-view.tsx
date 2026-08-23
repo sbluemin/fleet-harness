@@ -74,13 +74,20 @@ export function AgentChatView({
   // 서로 다른 트리에 살므로 사실은 저장소를 거쳐 온다.
   const { terminalError } = useViewSwitchState(context.operationId);
   const [stopping, setStopping] = React.useState(false);
+  const [stopFailed, setStopFailed] = React.useState(false);
+  const [queuedTurns, setQueuedTurns] = React.useState(0);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
   const [following, setFollowing] = React.useState(true);
+  // 자리를 세운 뒤 새로 열린 턴 수. 스트리밍 델타를 세면 답 한 건이 수십 건으로 부풀므로,
+  // 사용자 지시와 그 응답을 함께 담는 턴의 탄생만 센다.
+  const [unseenTurns, setUnseenTurns] = React.useState(0);
+  const [answerAnnouncement, setAnswerAnnouncement] = React.useState("");
   // 두 번째 목적지는 **나란히** 선다. 탭 교체는 대화를 통째로 숨겼는데, 백그라운드 작업은
   // 대화를 대신하는 것이 아니라 대화 옆에서 동시에 도는 것이다 — 동시에 일어나는 두 가지 앞에서
   // 하나를 고르라고 요구하면, 무엇이 도는지 보려고 무엇을 물었는지를 잃는다.
   const [workOpen, setWorkOpen] = React.useState(false);
+  const [workStacked, setWorkStacked] = React.useState(false);
   const [openJobId, setOpenJobId] = React.useState<string | null>(null);
   // 작업 면이 차지하는 비율. 마운트 안에서만 산다 — 패널마다 알맞은 비율이 다르고, 세션을
   // 넘겨 기억할 만큼 무거운 결정이 아니다.
@@ -95,6 +102,8 @@ export function AgentChatView({
   // 프로그램적 복원이 낳은 scroll 이벤트는 사용자 의도가 아니다. 이것을 걸러내지 않으면 복원 자체가
   // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
   const suppressScrollRef = React.useRef(0);
+  const previousTurnCountRef = React.useRef(state.turns.length);
+  const previousReadyAnswersRef = React.useRef(0);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
   // 있음"은 아직 모른다는 뜻이고, 그것을 초대로 읽으면 과거가 있는 세션에도 초대가 잠깐 스친다.
@@ -148,6 +157,31 @@ export function AgentChatView({
     bottomDistanceRef.current = Math.max(0, log.scrollHeight - log.scrollTop - log.clientHeight);
   }, [restoreFollow, scrollSignal, working, state.turns.length]);
 
+  React.useEffect(() => {
+    const previous = previousTurnCountRef.current;
+    previousTurnCountRef.current = state.turns.length;
+    // 서버 저널에는 최초 replay-end가 남아 있고, 그 뒤부터 turns가 늘어나는 것은 live turn-start다.
+    // replay-start가 상한에서 잘려도 replay-end 뒤에 과거 턴을 추가하는 경로는 없으므로 별도
+    // "완료" 축을 복제하지 않고 이벤트 순서 자체를 따른다. 빈 chat-born 세션의 첫 턴도 놓치지 않는다.
+    if (state.replaying || state.turns.length <= previous) return;
+    const arrived = state.turns.length - previous;
+    // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
+    // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.
+    setQueuedTurns((current) => Math.max(0, current - arrived));
+    if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
+  }, [state.replaying, state.turns.length]);
+
+  React.useEffect(() => {
+    const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;
+    const previous = previousReadyAnswersRef.current;
+    previousReadyAnswersRef.current = ready;
+    // 리플레이된 과거 답변은 읽어 주지 않는다. live 턴 하나가 완료된 전이만 빈 live region의
+    // 텍스트를 바꿔, 이미 채워진 status 노드를 삽입할 때 브라우저마다 달라지는 발화를 피한다.
+    if (state.replaying || ready <= previous) return;
+    setAnswerAnnouncement("");
+    requestAnimationFrame(() => setAnswerAnnouncement(t("terminal.chat.answerReady")));
+  }, [state.replaying, state.turns, t]);
+
   // War Room 스테이지 승격처럼 패널 크기가 바뀌는 순간에도 앵커를 지킨다. 이 복원이 없으면 로그는
   // 바뀐 높이 위에서 예전 scrollTop 을 그대로 들고 있게 되고, 접혀 있던 패널이 펼쳐지는 경우처럼
   // 높이가 0에서 자라면 그 값이 곧 맨 위다.
@@ -158,6 +192,15 @@ export function AgentChatView({
     observer.observe(log);
     return () => observer.disconnect();
   }, [restoreAnchor]);
+
+  React.useEffect(() => {
+    const split = splitRef.current;
+    if (!split || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => setWorkStacked(split.getBoundingClientRect().width <= 719));
+    observer.observe(split);
+    setWorkStacked(split.getBoundingClientRect().width <= 719);
+    return () => observer.disconnect();
+  }, []);
 
   const handleScroll = React.useCallback(() => {
     const log = logRef.current;
@@ -170,12 +213,14 @@ export function AgentChatView({
     nearBottomRef.current = atBottom;
     bottomDistanceRef.current = atBottom ? null : distance;
     setFollowing(atBottom);
+    if (atBottom) setUnseenTurns(0);
   }, []);
 
   const handleFollow = React.useCallback(() => {
     nearBottomRef.current = true;
     bottomDistanceRef.current = null;
     setFollowing(true);
+    setUnseenTurns(0);
     const log = logRef.current;
     if (log) applyScrollTop(log.scrollHeight);
   }, [applyScrollTop]);
@@ -216,22 +261,54 @@ export function AgentChatView({
   // 읽으므로 여기서는 쓰지 않는다: 끊을 턴이 없는데 서 있는 중지 버튼은 눌러도 409를 받는다.
   const turnRunning = state.turns.at(-1)?.state === "working";
 
+  React.useEffect(() => {
+    if (state.connection === "open" || !turnRunning) setStopFailed(false);
+  }, [state.connection, turnRunning]);
+
   const collapseWork = React.useCallback(() => {
     setWorkOpen(false);
     setOpenJobId(null);
   }, []);
 
-  const handleStop = React.useCallback(async (): Promise<void> => {
+  const handleStop = React.useCallback(async (): Promise<boolean> => {
     setStopping(true);
+    setStopFailed(false);
     try {
       await state.stopTurn();
+      return true;
     } catch {
-      // 실패해도 따로 말하지 않는다. 이 버튼이 실패하는 경우는 사실상 "이미 끝났다" 하나이고,
-      // 그 사실은 턴이 스스로 닫히면서 화면에 말한다 — 오류 줄을 더하면 같은 사건이 두 번 읽힌다.
+      // WebSocket이 끊긴 동안의 중지는 서버에 닿지 않는다. 턴이 닫히지 않은 채 버튼만 원래대로
+      // 돌아가면 접수된 것처럼 읽히므로, 재연결 뒤 다시 누를 수 있게 초점 가까이에서 실패를 말한다.
+      setStopFailed(true);
+      return false;
     } finally {
       setStopping(false);
     }
   }, [state.stopTurn]);
+
+  const setBoundedWorkRatio = React.useCallback((next: number) => {
+    setWorkRatio(Math.min(0.78, Math.max(0.18, next)));
+  }, []);
+
+  const onGripKeyDown = React.useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    const split = splitRef.current;
+    if (!split) return;
+    const backward = workStacked ? "ArrowUp" : "ArrowLeft";
+    const forward = workStacked ? "ArrowDown" : "ArrowRight";
+    if (event.key === "Home") {
+      event.preventDefault();
+      setBoundedWorkRatio(0.18);
+    } else if (event.key === "End") {
+      event.preventDefault();
+      setBoundedWorkRatio(0.78);
+    } else if (event.key === backward) {
+      event.preventDefault();
+      setWorkRatio((current) => Math.min(0.78, current + 0.04));
+    } else if (event.key === forward) {
+      event.preventDefault();
+      setWorkRatio((current) => Math.max(0.18, current - 0.04));
+    }
+  }, [setBoundedWorkRatio, workStacked]);
 
   // 손잡이 드래그. 가로(오른쪽 컬럼)와 세로(아래 서랍)가 같은 상태를 쓰고 축만 다르다 —
   // 좁은 패널에서 컬럼이 서랍으로 접히는 것이 별개의 기능이 아니라 같은 면의 다른 방향이기 때문이다.
@@ -247,7 +324,7 @@ export function AgentChatView({
         ? (box.right - moved.clientX) / box.width
         : (box.bottom - moved.clientY) / box.height;
       // 어느 쪽도 0으로 눌리지 않는다 — 사라진 면은 접힌 것과 구별되지 않는데, 접는 문은 따로 있다.
-      setWorkRatio(Math.min(0.78, Math.max(0.18, raw)));
+      setBoundedWorkRatio(raw);
     };
     const up = (): void => {
       grip.removeEventListener("pointermove", move);
@@ -257,13 +334,14 @@ export function AgentChatView({
     grip.addEventListener("pointermove", move);
     grip.addEventListener("pointerup", up);
     grip.addEventListener("pointercancel", up);
-  }, []);
+  }, [setBoundedWorkRatio]);
 
   return (
     <section className="agent-chat" data-reading-width={readingWidth} aria-label={t("terminal.chat.aria")}>
       {/* 대화 면과 작업 면이 나란히 산다. 넓은 패널에서는 작업 면이 오른쪽 컬럼이고, 좁아지면
           같은 면이 아래 서랍으로 접힌다 — 별개의 기능이 아니라 한 면의 두 방향이며, 그 전환은
           뷰포트가 아니라 이 패널의 폭이 정한다(패널은 덱 안에서 얼마든지 좁아진다). */}
+      <span className="agent-chat-sr-only" role="status" aria-atomic="true">{answerAnnouncement}</span>
       <div
         className={`agent-chat-split${workOpen ? " is-open" : ""}`}
         ref={splitRef}
@@ -281,6 +359,9 @@ export function AgentChatView({
           <div
             className={`agent-chat-log${awaitingFirstTurn ? " is-inviting" : ""}`}
             ref={logRef}
+            role="log"
+            aria-label={t("terminal.chat.aria")}
+            aria-live="off"
             onScroll={handleScroll}
             {...(tourAnchors ? { "data-chat-tour": "log" } : {})}
           >
@@ -325,6 +406,9 @@ export function AgentChatView({
         {state.errorCode === "chat_turn_failed"
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.turnFailed")}</div>
           : null}
+        {stopFailed
+          ? <div className="agent-chat-sys agent-chat-sys--error" role="alert">{t("terminal.chat.stopFailed")}</div>
+          : null}
         {state.connection === "lost"
           ? <div className="agent-chat-sys agent-chat-sys--error">{t("terminal.chat.connectionLost")}</div>
           : null}
@@ -346,10 +430,10 @@ export function AgentChatView({
             <button
               type="button"
               className="agent-chat-follow"
-              aria-label={t("terminal.chat.followAria")}
+              aria-label={unseenTurns > 0 ? t("terminal.chat.followUnreadAria", { count: unseenTurns }) : t("terminal.chat.followAria")}
               onClick={handleFollow}
             >
-              {t("terminal.chat.follow")}
+              {unseenTurns > 0 ? t("terminal.chat.followUnread", { count: unseenTurns }) : t("terminal.chat.follow")}
             </button>
           ) : null}
 
@@ -405,7 +489,10 @@ export function AgentChatView({
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
+            queuedTurns={queuedTurns}
             onStop={handleStop}
+            onQueued={() => setQueuedTurns((current) => current + 1)}
+            onQueueRejected={() => setQueuedTurns((current) => Math.max(0, current - 1))}
           />
 
           {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
@@ -422,8 +509,14 @@ export function AgentChatView({
             <div
               className="agent-chat-grip"
               role="separator"
-              aria-orientation="vertical"
+              tabIndex={0}
+              aria-orientation={workStacked ? "horizontal" : "vertical"}
               aria-label={t("terminal.chat.gripAria")}
+              aria-valuemin={18}
+              aria-valuemax={78}
+              aria-valuenow={Math.round(workRatio * 100)}
+              aria-valuetext={t("terminal.chat.gripValue", { percent: Math.round(workRatio * 100) })}
+              onKeyDown={onGripKeyDown}
               onPointerDown={onGripDown}
             />
             <WorkPanel

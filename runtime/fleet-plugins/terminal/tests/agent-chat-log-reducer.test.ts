@@ -59,6 +59,23 @@ describe("chat log reducer", () => {
     });
   });
 
+  it("keeps a capped journal's dispatch and immediate start in one replayed turn", () => {
+    const state = fold([
+      { kind: "replay-start" },
+      { kind: "dispatch", text: "queued before reconnect" },
+      { kind: "turn-start", at: 1755130000000 },
+      { kind: "text", text: "완료했습니다." },
+      { kind: "turn-end", ok: true },
+      { kind: "replay-end", turns: 1 },
+    ]);
+    expect(state.turns).toHaveLength(1);
+    expect(state.turns[0]).toMatchObject({
+      state: "done",
+      dispatch: { text: "queued before reconnect" },
+      startedAt: 1755130000000,
+    });
+  });
+
   // 저널이 상한에 걸려 replay-start가 잘려 나가면 재접속한 브라우저는 replaying:false로 시작한다.
   // 그때 남은 저널의 turn-start는 라이브로 읽혀 "작업 중"이 되는데, replay-end가 그 뒤에 오면
   // 그 턴은 지나간 과거임이 확정된다 — 플래그와 무관하게 닫혀야 티커가 굳지 않는다.

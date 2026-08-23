@@ -782,6 +782,18 @@
   margin-top: var(--space-1);
 }
 
+.agent-chat-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
 .agent-chat-answer {
   margin-top: var(--space-3);
@@ -973,6 +985,17 @@
   white-space: nowrap;
 }
 
+/* 예약은 성공 receipt이지 상태 경보다. 중립 잉크로 사실만 남기고, 다음 턴이 실제로 열릴 때 내린다. */
+.agent-chat-composer-queued {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
 /* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 선다. 읽는 화면에 상주하면 여러 패널이
    같은 문구를 나란히 반복하고, 프레임 밖 셋째 줄로 두면 그만큼 입력이 좁아진다. */
 .agent-chat-composer-hint {
@@ -1040,32 +1063,42 @@
   cursor: default;
 }
 
-/* 턴이 도는 동안 같은 자리가 중지가 된다. 신호 토큰을 쓰지 않는다 — 이 버튼은 상태를 보고하는
-   것이 아니라 행동을 제안하는 것이고, coral을 여기 쓰면 "무언가 잘못됐다"로 읽힌다. */
-.agent-chat-composer-send.is-stopping {
+/* 실행 중에는 현재 턴과 다음 턴의 문을 함께 세운다. 중지는 상태 신호가 아니라 행동이라 중립 잉크를
+   쓰고, brass는 hover/focus 위치만 말한다. 다음 지시는 평소 전송과 같은 원형 문을 유지한다. */
+.agent-chat-composer-stop {
+  height: 32px;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-3);
   border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
   background: var(--surface-panel-raised);
   color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  cursor: pointer;
   transition: border-color var(--duration-fast), color var(--duration-fast);
 }
 
-.agent-chat-composer-send.is-stopping:hover:not(:disabled),
-.agent-chat-composer-send.is-stopping:focus-visible {
+.agent-chat-composer-stop:hover:not(:disabled),
+.agent-chat-composer-stop:focus-visible {
   border-color: var(--brass);
   color: var(--brass-ink);
   outline: none;
 }
 
-.agent-chat-composer-send.is-stopping:disabled {
-  opacity: 0.6;
-}
+.agent-chat-composer-stop:disabled { opacity: 0.6; }
+.agent-chat-composer-send.is-queue:not(.is-armed) { opacity: 0.6; }
 
 /* 정지 표식은 사각형 하나다. */
 .agent-chat-composer-stop-mark {
-  width: 9px;
-  height: 9px;
+  width: 8px;
+  height: 8px;
   border-radius: 2px;
   background: currentColor;
+  flex: none;
 }
 
 /* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며 컴포저가
@@ -1311,9 +1344,15 @@
 }
 
 @container (max-width: 470px) {
-  .agent-chat-composer-hint {
+  .agent-chat-composer-hint,
+  .agent-chat-coord {
     display: none;
   }
+
+  .agent-chat-composer-field { padding-inline: var(--space-3); }
+  .agent-chat-composer-bar { padding-left: var(--space-3); }
+  .agent-chat-composer-actions { gap: var(--space-1); }
+  .agent-chat-composer-stop { padding-inline: var(--space-2); }
 }
 
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
@@ -1514,9 +1553,12 @@
   transition: background var(--duration-fast);
 }
 
-.agent-chat-grip:hover::after {
-  background: var(--text-tertiary);
+.agent-chat-grip:hover::after,
+.agent-chat-grip:focus-visible::after {
+  background: var(--brass);
 }
+
+.agent-chat-grip:focus-visible { outline: none; }
 
 /* 작업 면이 열려 있는 동안에도 좁은 패널에서는 세로로 쌓인다. 뷰포트가 아니라 이 패널의 폭이
    가른다 — 채팅 패널은 덱 안에서 얼마든지 좁아지고, 그때 두 컬럼은 어느 쪽도 읽을 수 없다. */

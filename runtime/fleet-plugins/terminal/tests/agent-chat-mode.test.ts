@@ -76,11 +76,12 @@ describe("agent chat mode routes", () => {
 
   // 터미널로 열어 놓고 아직 아무것도 시키지 않은 세션. 트랜스크립트가 없는 것이 정상이고 잃을
   // 과거도 없다 — 여기서 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을
-  // 새로 만들어야 한다. 부재의 뜻을 가르는 것은 태생이 아니라 좌표가 심겼는지다.
-  it("converts a terminal session that has not run its first turn yet", async () => {
+  // 새로 만들어야 한다. launch 좌표는 플러그인 수명용 세션 id일 뿐 첫 턴의 증거가 아니다.
+  it("converts a terminal session with only its launch coordinate before the first turn", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
+    harness.attachLaunchProviderSession(sessionId);
 
     await harness.post(sessionId, "chat");
 
@@ -137,21 +138,6 @@ describe("agent chat mode routes", () => {
     await delivery;
   });
 
-  // 터미널 복귀는 chat 마커를 먼저 걷고 resume을 부른다. 그래서 resume 시점에는 이 세션이 방금
-  // 채팅에 있었다는 사실이 payload에 남지 않고, 남은 단서는 좌표가 없다는 것뿐이다 — 그것을
-  // 거절하면 첫 턴 전에 표면을 바꾼 세션이 돌아올 길을 잃는다.
-  it("resumes a session that never recorded a coordinate as a fresh start", async () => {
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    await harness.post(sessionId, "chat");
-    await harness.del(sessionId, "chat");
-
-    await harness.post(sessionId, "resume");
-
-    expect(harness.responses.at(-1)?.status).toBe(200);
-  });
-
   // 좌표가 한 번 심긴 뒤의 부재는 "아직 시작 전"이 아니라 과거의 상실이다. fresh로 떨어뜨리면
   // 지워진 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다.
   it("rejects conversion when a captured transcript went missing", async () => {
@@ -201,17 +187,27 @@ describe("agent chat mode routes", () => {
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "operation_chat_mode" } });
   });
 
-  it("clears chat mode on DELETE so the terminal path reopens", async () => {
+  it("returns a launch-only first-turn session from Chat to a fresh CLI", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createSession();
-    harness.attachProviderSession(sessionId);
+    harness.setLive(sessionId);
+    harness.attachLaunchProviderSession(sessionId);
     await harness.post(sessionId, "chat");
     expect(harness.operation(sessionId)?.payload.chatMode).toBe(true);
 
+    // 캡션의 복귀 버튼과 같은 순서: Chat 세션을 접은 뒤 dormant Operation을 resume한다.
     await harness.del(sessionId, "chat");
+    await harness.post(sessionId, "resume");
 
-    expect(harness.responses.at(-1)).toEqual({ status: 200, body: { ok: true } });
+    expect(harness.responses.at(-2)).toEqual({ status: 200, body: { ok: true } });
+    expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.operation(sessionId)?.payload.chatMode).toBeUndefined();
+    expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
+      sessionId,
+    }));
+    expect(harness.attach).toHaveBeenLastCalledWith(expect.not.objectContaining({
+      resumeSessionId: "sid-live",
+    }));
   });
 
   it("resume on a chat mode operation clears the marker and relaunches the cli", async () => {
@@ -596,6 +592,18 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
         harness: "claude-code",
         id: "sid-live",
         transcriptPath,
+        capturedAt: "2026-08-14T00:00:00.000Z",
+      };
+    },
+    /** 런치 시점에 미리 심는 좌표 — 첫 prompt capture나 transcript가 아직 없는 상태다. */
+    attachLaunchProviderSession: (sessionId: string) => {
+      const operation = operations.find((candidate) => candidate.id === sessionId);
+      if (!operation) throw new Error("Operation not found");
+      operation.payload.session = {
+        ...(operation.payload.session as Record<string, unknown> | undefined),
+        harness: "claude-code",
+        id: "sid-live",
+        source: "launch",
         capturedAt: "2026-08-14T00:00:00.000Z",
       };
     },

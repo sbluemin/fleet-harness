@@ -8,9 +8,18 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { AgentChatComposer } from "./composer.js";
 
 const uploads: File[] = [];
+const messages: string[] = [];
 let stops = 0;
+let queued = 0;
+let queueRejected = 0;
+let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
+let releaseMessage: (() => void) | null = null;
 vi.mock("../api.js", () => ({
-  messageAgentSession: async () => {},
+  messageAgentSession: async (_operationId: string, text: string) => {
+    messages.push(text);
+    if (messageDelivery === "reject") throw new Error("delivery failed");
+    if (messageDelivery === "hold") await new Promise<void>((resolve) => { releaseMessage = resolve; });
+  },
   uploadLaunchAttachment: async (file: File) => {
     uploads.push(file);
     return { id: `att-${uploads.length}` };
@@ -23,7 +32,12 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
   uploads.length = 0;
+  messages.length = 0;
   stops = 0;
+  queued = 0;
+  queueRejected = 0;
+  messageDelivery = "resolve";
+  releaseMessage = null;
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: () => "blob:preview",
@@ -39,24 +53,31 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(options: { readonly turnRunning?: boolean } = {}): void {
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
+function composerProps(options: { readonly turnRunning?: boolean; readonly queuedTurns?: number } = {}) {
   const context = {
     operationId: "op-1",
     language: "en",
     operation: { id: "op-1", title: "Fresh chat", payload: {} },
   } as unknown as OperationRenderContext;
-  act(() => root?.render(createElement(AgentChatComposer, {
+  return {
     context,
     coordinate: createElement("span", { className: "coord-stub" }),
     meter: null,
     tourAnchor: false,
     turnRunning: options.turnRunning ?? false,
     stopping: false,
-    onStop: async () => { stops += 1; },
-  })));
+    queuedTurns: options.queuedTurns ?? 0,
+    onStop: async () => { stops += 1; return true; },
+    onQueued: () => { queued += 1; },
+    onQueueRejected: () => { queueRejected += 1; },
+  };
+}
+
+function mount(options: { readonly turnRunning?: boolean; readonly queuedTurns?: number } = {}): void {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  act(() => root?.render(createElement(AgentChatComposer, composerProps(options))));
 }
 
 const input = () => container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
@@ -107,23 +128,98 @@ describe("chat panel composer", () => {
     expect(uploads).toHaveLength(1);
   });
 
-  // 발사 컨트롤은 하나다 — 떠 있는 중지 배지를 따로 두면 지금 도는 일을 멈추는 자리가 둘로 갈린다.
-  it("turns the send control into stop while a turn runs", async () => {
+  it("stands stop and queue-next as separate controls while a turn runs", async () => {
     mount({ turnRunning: true });
-    const send = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
-    expect(send?.classList.contains("is-stopping")).toBe(true);
-    expect(send?.getAttribute("aria-label")).toBe("Stop this turn");
-    expect(container?.querySelector(".agent-chat-composer-stop-mark")).not.toBeNull();
-    await act(async () => { send?.click(); });
+    const stop = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-stop");
+    const queue = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue");
+    expect(stop?.textContent).toContain("Stop current");
+    expect(stop?.getAttribute("aria-label")).toBe("Stop this turn");
+    expect(queue?.getAttribute("aria-label")).toBe("Queue next (Enter)");
+    expect(queue?.disabled).toBe(true);
+
+    const field = input();
+    await act(async () => {
+      if (!field) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "check the tests");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(queue?.disabled).toBe(false);
+    await act(async () => { queue?.click(); });
+    expect(messages).toEqual(["check the tests"]);
+    expect(queued).toBe(1);
+
+    await act(async () => { stop?.click(); });
     expect(stops).toBe(1);
 
     act(() => root?.unmount());
     container?.remove();
     mount();
+    expect(container?.querySelector(".agent-chat-composer-stop")).toBeNull();
     const idle = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
-    expect(idle?.classList.contains("is-stopping")).toBe(false);
-    // 초안이 없으면 발사도 없다 — 눌러도 아무 일이 없는 죽은 컨트롤을 만들지 않는다.
+    expect(idle?.classList.contains("is-queue")).toBe(false);
     expect(idle?.disabled).toBe(true);
+  });
+
+  it("restores focus only after an acknowledged stop", async () => {
+    mount({ turnRunning: true });
+    const stop = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-stop");
+    const elsewhere = document.createElement("button");
+    document.body.append(elsewhere);
+    elsewhere.focus();
+
+    // 정상 완료는 사용자가 작업 면에 둔 초점을 빼앗지 않는다.
+    act(() => root?.render(createElement(AgentChatComposer, composerProps({ turnRunning: false }))));
+    expect(document.activeElement).toBe(elsewhere);
+
+    act(() => root?.render(createElement(AgentChatComposer, composerProps({ turnRunning: true }))));
+    await act(async () => { container?.querySelector<HTMLButtonElement>(".agent-chat-composer-stop")?.click(); });
+    expect(stops).toBe(1);
+    expect(document.activeElement).toBe(input());
+    stop?.remove();
+    elsewhere.remove();
+  });
+
+  it("records a queued receipt before delivery settles and rolls it back on rejection", async () => {
+    mount({ turnRunning: true });
+    const field = input();
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queue this");
+      field?.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    messageDelivery = "hold";
+    let delivery: Promise<void> | undefined;
+    act(() => {
+      delivery = (async () => {
+        container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue")?.click();
+        await Promise.resolve();
+      })();
+    });
+    await act(async () => { await Promise.resolve(); });
+    expect(queued).toBe(1);
+    releaseMessage?.();
+    await act(async () => { await delivery; });
+    expect(queueRejected).toBe(0);
+
+    messageDelivery = "reject";
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "reject this");
+      field?.dispatchEvent(new Event("input", { bubbles: true }));
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue")?.click();
+      await Promise.resolve();
+    });
+    expect(queued).toBe(2);
+    expect(queueRejected).toBe(1);
+  });
+
+  it("keeps a visible receipt for accepted queued turns", () => {
+    mount({ turnRunning: true, queuedTurns: 2 });
+    const receipt = container?.querySelector(".agent-chat-composer-queued");
+    expect(receipt?.getAttribute("role")).toBe("status");
+    expect(receipt?.textContent).toBe("2 next instructions queued");
   });
 
   // 파일 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로

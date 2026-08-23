@@ -662,7 +662,9 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       const turn: AgentChatTurn = {
         dispatch: { text: event.text, ...(event.at !== undefined ? { at: event.at } : {}) },
         items: [],
-        state: state.replaying ? "done" : "working",
+        // synthetic replay에서는 저널의 live dispatch 뒤에 같은 턴의 turn-start가 따라온다. 여기서
+        // 미리 done으로 닫으면 그 start가 별도 턴을 만들므로, replay-end나 다음 dispatch가 닫게 둔다.
+        state: "working",
         toolCount: 0,
         draft: "",
       };
@@ -678,7 +680,12 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       // 소요 시간을 말할 수 없는 마지막 턴이 "작업 중"으로 굳는다.
       const settled: AgentChatTurn["state"] = state.replaying ? "done" : "working";
       const last = state.turns.at(-1);
-      if (!last || last.state !== "working") {
+      // capped 저널의 live dispatch/start는 내용이 끼지 않은 연속 쌍이라 한 턴이다. 반대로
+      // transcript carrier의 start는 앞 dispatch가 이미 내용을 낸 뒤 오므로 말풍선 없는 다음 턴이다.
+      const opensCarrier = state.replaying
+        && last?.dispatch !== null
+        && (last?.items.length ?? 0) > 0;
+      if (!last || last.state !== "working" || opensCarrier) {
         const turn: AgentChatTurn = {
           dispatch: null,
           items: [],
@@ -687,7 +694,7 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
           draft: "",
           ...(event.at !== undefined ? { startedAt: event.at } : {}),
         };
-        return { ...state, turns: [...state.turns, turn] };
+        return { ...state, turns: [...settleLastTurn(state), turn] };
       }
       return withLastTurn(state, (turn) => ({
         ...turn,

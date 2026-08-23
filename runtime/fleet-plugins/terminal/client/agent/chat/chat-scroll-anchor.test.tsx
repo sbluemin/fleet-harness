@@ -194,7 +194,40 @@ describe("chat log scroll anchor", () => {
     expect(log.scrollTop).toBe(1800);
   });
 
-  it("shows Follow after the reader leaves the bottom and returns on click", () => {
+  it("counts the first live turn after an empty replay while the reader is away", () => {
+    logState = { ...makeLogState(), turns: [], replayedTurns: 0 };
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    logState = {
+      ...logState,
+      turns: [{ dispatch: { text: "first" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+
+    const chip = container?.querySelector<HTMLButtonElement>(".agent-chat-follow");
+    expect(chip?.textContent).toBe("1 new");
+  });
+
+  it("does not count replay history before replay-end", () => {
+    logState = { ...makeLogState(), turns: [], replaying: true, replayedTurns: 0 };
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    logState = {
+      ...logState,
+      turns: [{ dispatch: { text: "history" }, items: [], state: "done", toolCount: 0, draft: "" }],
+    };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
+  });
+
+  it("counts new turns while the reader is away and clears the count on follow", () => {
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     expect(container?.querySelector(".agent-chat-follow")).toBeNull();
@@ -202,9 +235,19 @@ describe("chat log scroll anchor", () => {
     log.scrollTop = 200;
     act(() => { log.dispatchEvent(new Event("scroll")); });
 
-    const chip = container?.querySelector<HTMLButtonElement>(".agent-chat-follow");
+    let chip = container?.querySelector<HTMLButtonElement>(".agent-chat-follow");
     expect(chip).not.toBeNull();
     expect(chip?.textContent).toBe("Follow");
+
+    const priorTurns = logState.turns;
+    logState = {
+      ...logState,
+      turns: [...priorTurns, { dispatch: { text: "next" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    chip = container?.querySelector<HTMLButtonElement>(".agent-chat-follow");
+    expect(chip?.textContent).toBe("1 new");
+    expect(chip?.getAttribute("aria-label")).toBe("Follow the live log past 1 new turns");
 
     act(() => { chip?.click(); });
     expect(log.scrollTop).toBe(1000);

@@ -9,11 +9,12 @@ import { AgentChatView } from "./chat-view.js";
 import type { AgentChatTurn } from "./chat-events.js";
 
 let turns: readonly AgentChatTurn[] = [];
+let replaying = false;
 
 vi.mock("./chat-store.js", () => ({
   useAgentChatStream: () => ({
     turns,
-    replaying: false,
+    replaying,
     replayedTurns: 0,
     errorCode: null,
     jobs: [],
@@ -44,13 +45,11 @@ afterEach(() => {
   root = null;
   container = null;
   turns = [];
+  replaying = false;
   vi.unstubAllGlobals();
 });
 
-function mount(language: "en" | "ko" = "en"): void {
-  container = document.createElement("div");
-  document.body.append(container);
-  root = createRoot(container);
+function viewProps(language: "en" | "ko" = "en") {
   const context = {
     operationId: "op-1",
     theaterId: "theater-1",
@@ -69,10 +68,14 @@ function mount(language: "en" | "ko" = "en"): void {
       ts: { createdAt: 0, updatedAt: 0 },
     },
   } as unknown as OperationRenderContext;
-  act(() => root?.render(createElement(AgentChatView, {
-    context,
-    tourAnchors: false,
-  })));
+  return { context, tourAnchors: false };
+}
+
+function mount(language: "en" | "ko" = "en"): void {
+  container = document.createElement("div");
+  document.body.append(container);
+  root = createRoot(container);
+  act(() => root?.render(createElement(AgentChatView, viewProps(language))));
 }
 
 /** 첫 턴이 오간 뒤의 최소 상태 — 이 뷰가 읽는 필드를 모두 갖춘 한 턴. */
@@ -90,6 +93,8 @@ describe("chat first-turn surface", () => {
     mount();
     expect(hero()).not.toBeNull();
     expect(hero()?.textContent).toContain("What should this session take on?");
+    expect(container?.querySelector(".agent-chat-log")?.getAttribute("role")).toBe("log");
+    expect(container?.querySelector(".agent-chat-log")?.getAttribute("aria-live")).toBe("off");
     // 초대는 빈 로그의 유일한 내용이다 — 좌표를 다시 적는 줄은 컴포저 배지로 갈음한다.
     expect(log()?.firstElementChild?.classList.contains("agent-chat-hero")).toBe(true);
 
@@ -98,6 +103,21 @@ describe("chat first-turn surface", () => {
     turns = [doneTurn()];
     mount();
     expect(hero()).toBeNull();
+  });
+
+  it("announces the first live answer after an empty replay completes", () => {
+    replaying = true;
+    mount();
+    const announcer = container?.querySelector('[role="status"]');
+    expect(announcer?.textContent).toBe("");
+
+    replaying = false;
+    act(() => root?.render(createElement(AgentChatView, viewProps())));
+    expect(announcer?.textContent).toBe("");
+
+    turns = [{ ...doneTurn(), answer: "live" }];
+    act(() => root?.render(createElement(AgentChatView, viewProps())));
+    expect(announcer?.textContent).toBe("Answer ready");
   });
 
   // 첫 턴 전에는 받침이 컴포저를 가운데로 올리고, 첫 턴이 오면 비율이 0으로 줄며 컴포저가

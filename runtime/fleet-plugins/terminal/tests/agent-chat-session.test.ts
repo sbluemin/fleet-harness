@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../server/agent-api/chat-session.js";
+import { initialAgentChatLogState, reduceAgentChatLog } from "../client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent } from "../server/agent-api/chat-events.js";
 
 const temporaryDirectories: string[] = [];
@@ -242,7 +243,7 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
-  it("starts the first turn without a resume coordinate and replays nothing", async () => {
+  it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
@@ -251,8 +252,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     const session = await registry.ensure("op-1", () => freshSeedFor(home));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    // 되돌려줄 과거가 없다는 것은 "읽지 못했다"와 다르다 — replay 이벤트도 오류도 내지 않는다.
-    expect(kinds(events)).toEqual([]);
+    // 되돌릴 과거가 0턴이라는 사실도 명시적으로 닫힌 경계가 말한다.
+    expect(kinds(events)).toEqual(["replay-start", "replay-end"]);
 
     session.send("let us talk about the render path");
     await drainTurn(registry, "op-1");
@@ -425,6 +426,78 @@ describe("AgentChatRegistry — chat-born sessions", () => {
 });
 
 describe("AgentChatRegistry", () => {
+  it("synthesizes replay boundaries when the journal cap has removed both original markers", async () => {
+    const transcriptPath = writeTranscript("sid-capped-boundary", Array.from({ length: 1_100 }, (_, index) => [
+      { type: "user", message: { role: "user", content: `order ${index}` } },
+      { type: "assistant", message: { content: [{ type: "text", text: `answer ${index}` }] } },
+    ]).flat());
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-capped-boundary", () => seedFor(transcriptPath));
+    session.send("live after the capped replay");
+    await drainTurn(registry, "op-capped-boundary");
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(events[0]?.event).toEqual({ kind: "replay-start" });
+    const replayEnd = events.at(-1)?.event;
+    expect(replayEnd).toMatchObject({ kind: "replay-end" });
+    const held = events.slice(1, -1).map((entry) => entry.event);
+    const dispatches = held.filter((event) => event.kind === "dispatch").length;
+    // 합성 경계 안의 원래 replay-end는 live tail보다 먼저 재생을 끝내므로 전달하지 않는다.
+    expect(held.some((event) => event.kind === "replay-end")).toBe(false);
+    // live 턴의 dispatch/start 쌍도 한 턴이다. 둘을 각각 세면 이 값이 dispatches보다 하나 커진다.
+    expect(held.some((event) => event.kind === "turn-start")).toBe(true);
+    expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(dispatches);
+    await registry.disposeAll();
+  });
+
+  it("counts a mid-turn tail retained at the journal cap", async () => {
+    const transcriptPath = writeTranscript("sid-capped-tail", Array.from({ length: 667 }, (_, index) => [
+      { type: "user", message: { role: "user", content: `order ${index}` } },
+      { type: "assistant", message: { content: [{ type: "tool_use", id: `tool-${index}`, name: "Read", input: { file_path: `file-${index}.ts` } }] } },
+      { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: `tool-${index}`, content: "ok" }] } },
+    ]).flat());
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-capped-tail", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const held = events.slice(1, -1).map((entry) => entry.event);
+    expect(held[0]?.kind).not.toBe("dispatch");
+    const state = held.reduce((current, event) => reduceAgentChatLog(current, event), {
+      ...initialAgentChatLogState,
+      replaying: true,
+    });
+    const replayEnd = events.at(-1)?.event;
+    expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(state.turns.length);
+    await registry.disposeAll();
+  });
+
+  it("wraps live turns accumulated after the origin replay when reconnecting below the journal cap", async () => {
+    const transcriptPath = writeTranscript("sid-reconnect", [
+      { type: "user", message: { role: "user", content: "first order" } },
+      { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-reconnect", () => seedFor(transcriptPath));
+    session.send("live before reconnect");
+    await drainTurn(registry, "op-reconnect");
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(events[0]?.event).toEqual({ kind: "replay-start" });
+    expect(events.at(-1)?.event).toEqual({ kind: "replay-end", turns: 2 });
+    expect(events.slice(1, -1).some((entry) => entry.event.kind === "replay-end")).toBe(false);
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },
@@ -1836,10 +1909,12 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
-  it("drops turns that were queued behind the stopped one", async () => {
-    // 큐에 밀려 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다.
+  it("keeps an explicitly queued next turn after stopping the current one", async () => {
     const transcriptPath = writeTranscript("sess-stop-queue", []);
-    const { factory, sends } = createHangingSdkFactory();
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-stop-2", () => seedFor(transcriptPath));
 
@@ -1848,15 +1923,15 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     session.send("first");
     session.send("second");
-    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
 
     expect(session.stopTurn()).toBe(true);
+    liveSession()?.emit({ type: "result", subtype: "error_during_execution", is_error: true });
     await drainTurn(registry, "op-stop-2");
 
-    // 큐에 밀려 있던 두 번째 메시지는 자식에게 닿지 않는다.
-    expect(sends).toEqual(["first"]);
+    expect(sends).toEqual(["first", "second"]);
     const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
-    expect(dispatches).toHaveLength(1);
+    expect(dispatches).toHaveLength(2);
     await registry.disposeAll();
   });
 

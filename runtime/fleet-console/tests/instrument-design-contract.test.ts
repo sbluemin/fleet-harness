@@ -42,6 +42,7 @@ const TERMINAL_ANALYSIS_CSS_PATH = new URL("../../fleet-plugins/terminal/client/
 const TERMINAL_AGENT_CLI_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/agent-cli.css", import.meta.url);
 const TERMINAL_SURFACE_PATH = new URL("../../fleet-plugins/terminal/client/shared/terminal-surface.tsx", import.meta.url);
 const TERMINAL_CHAT_VIEW_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat-view.tsx", import.meta.url);
+const TERMINAL_CHAT_COMPOSER_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/composer.tsx", import.meta.url);
 const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
@@ -2056,6 +2057,7 @@ describe("Instrument core design contract", () => {
     }
     // 두 뷰의 전환 진입은 캡션 밴드의 한 버튼이 진다 — 목적지 마크만 바뀐다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    const chatComposer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
     const terminalEntry = fs.readFileSync(fileURLToPath(TERMINAL_AGENT_PATH), "utf8");
     expect(chatView).not.toContain("agent-chat-mode-chip");
     expect(chatView).not.toContain("agent-view-chip-row");
@@ -2089,11 +2091,14 @@ describe("Instrument core design contract", () => {
       expect(presetBlock, preset).toContain("--agent-chat-measure:");
       expect(presetBlock, preset).not.toContain("--agent-chat-composer-measure");
     }
-    // 발사 컨트롤은 하나다 — 턴이 도는 동안 같은 자리가 중지가 되고, 떠 있는 중지 배지는 없다.
+    // 실행 중에는 현재 턴의 중지와 다음 턴의 예약을 분리해 함께 세운다. 중지는 행동이지 오류
+    // 상태가 아니므로 중립 잉크를 쓰고, signal token은 빌리지 않는다.
     expect(chat).not.toContain(".agent-chat-stop");
     expect(chatView).not.toContain('className="agent-chat-stop"');
-    const composerStopBlock = chat.match(/^\.agent-chat-composer-send\.is-stopping \{[^}]*\}/m)?.[0] ?? "";
+    const composerStopBlock = chat.match(/^\.agent-chat-composer-stop \{[^}]*\}/m)?.[0] ?? "";
     expect(composerStopBlock).toContain("color: var(--text-secondary);");
+    expect(chatComposer).toContain('className="agent-chat-composer-stop"');
+    expect(chatComposer).toContain("is-queue");
     for (const signal of ["--aurora", "--positive", "--warn", "--coral"]) {
       expect(composerStopBlock, signal).not.toContain(signal);
     }
