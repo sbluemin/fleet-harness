@@ -2191,9 +2191,11 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     const reconnected: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => reconnected.push(entry));
+    // 재생 경계 뒤, 그리고 snapshot-end 앞이다 — 예약은 이번 접속이 발견한 사정이지 새 도착이 아니다.
     const order = kinds(reconnected);
-    expect(order.at(-1)).toBe("queue");
+    expect(order.at(-1)).toBe("snapshot-end");
     expect(order.indexOf("replay-end")).toBeLessThan(order.lastIndexOf("queue"));
+    expect(order.lastIndexOf("queue")).toBeLessThan(order.lastIndexOf("snapshot-end"));
     expect(latestQueue(reconnected).map((entry) => entry.text)).toEqual(["still waiting"]);
 
     // 리듀서도 같은 자리에 접는다 — 재생이 비운 뒤 스냅숏이 채운다.

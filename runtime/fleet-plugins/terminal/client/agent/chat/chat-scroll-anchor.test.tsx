@@ -255,40 +255,33 @@ describe("chat log scroll anchor", () => {
     expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
   });
 
+  // 예약은 서버가 소유한다. 끊긴 동안 그 턴이 시작했다면 재접속 스냅숏의 큐에서 빠져 있고 화면은
+  // 그것을 그대로 그린다 — 화면이 세던 receipt를 뒤늦게 맞출 일 자체가 사라졌다.
   it("clears a queued receipt when its turn starts during reconnect", async () => {
     logState = {
       ...makeLogState(),
       turns: [{ dispatch: { text: "running" }, items: [], state: "working", toolCount: 0, draft: "" }],
+      queue: [{ id: "q1", text: "queued instruction" }],
     };
     mountView();
-    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
-    if (!field) throw new Error("Missing chat composer input");
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(field, "queued instruction");
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
-    });
-    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+    expect(container?.querySelectorAll(".agent-chat-composer-queue-item").length).toBe(1);
 
     logState = { ...logState, snapshotting: true };
     mountView();
+    // 끊긴 사이 그 예약이 시작했다 — 재접속 스냅숏이 싣고 오는 큐는 비어 있다.
     logState = {
       ...logState,
-      replaying: false,
+      snapshotting: false,
       observedTurns: 2,
+      queue: [],
       turns: [
         ...logState.turns,
         { dispatch: { text: "queued instruction" }, items: [], state: "working", toolCount: 0, draft: "" },
       ],
     };
     mountView();
-    logState = { ...logState, snapshotting: false };
-    mountView();
 
-    expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
+    expect(container?.querySelector(".agent-chat-composer-queue-item")).toBeNull();
   });
 
   it("does not let restored history consume a receipt queued during snapshot delivery", async () => {
@@ -297,24 +290,17 @@ describe("chat log scroll anchor", () => {
       snapshotting: true,
       observedTurns: 10,
       turns: [{ dispatch: { text: "restored" }, items: [], state: "working", toolCount: 0, draft: "" }],
+      queue: [{ id: "q9", text: "queued during snapshot" }],
     };
     mountView();
-    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
-    if (!field) throw new Error("Missing chat composer input");
-    await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(field, "queued during snapshot");
-      field.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-    await act(async () => {
-      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
-    });
 
-    // 이 receipt보다 앞서 시작한 턴이 snapshot-end에서 드러나도 새 지시를 소비하지 않는다.
+    // 이 예약보다 앞서 시작한 턴이 snapshot-end에서 드러나도 새 지시를 소비하지 않는다 — 큐를
+    // 내리는 것은 서버가 보내는 다음 목록뿐이고, 복원된 이력은 그 축을 건드리지 않는다.
     logState = { ...logState, snapshotting: false, observedTurns: 11 };
     mountView();
 
-    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+    expect(container?.querySelectorAll(".agent-chat-composer-queue-item").length).toBe(1);
+    expect(container?.querySelector(".agent-chat-composer-queue-text")?.textContent).toBe("queued during snapshot");
   });
 
   it("clears a queued receipt from the monotonic coordinate when capped history shrinks", async () => {
