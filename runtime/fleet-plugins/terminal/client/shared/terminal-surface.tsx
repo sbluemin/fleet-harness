@@ -769,7 +769,8 @@ function normalizeCssColorToRgba(color: string): string | null {
     colorProbeCtx.fillStyle = color;
     colorProbeCtx.fillRect(0, 0, 1, 1);
     const d = colorProbeCtx.getImageData(0, 0, 1, 1).data;
-    return `rgba(${d[0]}, ${d[1]}, ${d[2]}, ${(d[3] / 255).toFixed(3)})`;
+    // noUncheckedIndexedAccess: 픽셀 인덱스 접근은 undefined 후보라 기본값으로 좁힌다.
+    return `rgba(${d[0] ?? 0}, ${d[1] ?? 0}, ${d[2] ?? 0}, ${((d[3] ?? 255) / 255).toFixed(3)})`;
   } catch {
     return color;
   }
