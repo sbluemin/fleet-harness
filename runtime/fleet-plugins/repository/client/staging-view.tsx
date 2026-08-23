@@ -435,7 +435,7 @@ function StagingSection({ t, view, label, files, emptyLabel, actionLabel, action
       {files.length === 0
         ? <div className="repository-empty-row">{emptyLabel}</div>
         : view === "tree"
-          ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} />
+          ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} conflictLabel={t("repository.staging.conflict")} />
           : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
     </div>
   </section>;
