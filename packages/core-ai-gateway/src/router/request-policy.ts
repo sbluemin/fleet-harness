@@ -1,0 +1,132 @@
+import {
+  omitClaudeWebSearchTools,
+  pruneClaudeSkillPayloads,
+  stripClaudeClientIdentity,
+} from "../downstream/harness/claude-code/context.js";
+import type { AnthropicMessagesRequest } from "../downstream/wire/anthropic-messages/protocol.js";
+import type { GatewayModel, GatewayProvider } from "../models.js";
+import { upstreamModelId } from "../models.js";
+import { antigravityRequestPolicy } from "../upstream/antigravity/request-policy.js";
+import { codexRequestPolicy } from "../upstream/codex/request-policy.js";
+import { cursorRequestPolicy } from "../upstream/cursor/request-policy.js";
+import { kimiRequestPolicy } from "../upstream/kimi/request-policy.js";
+import { opencodeGoRequestPolicy } from "../upstream/opencode-go/request-policy.js";
+import { xaiRequestPolicy } from "../upstream/xai/request-policy.js";
+
+/**
+ * What a provider knows about the request it is shaping.
+ *
+ * `withheldSkills` is the router's own set and outlives the request: a skill body
+ * withheld once keeps its listing entry hidden for the rest of the connection.
+ */
+export interface GatewayPolicyContext {
+  readonly target: GatewayModel;
+  /** The upstream wire model id, for the skill estimator's token ratio. */
+  readonly upstreamModel: string;
+  readonly withheldSkills: Set<string>;
+}
+
+/**
+ * The request-shaping steps a provider policy may apply.
+ *
+ * The implementations live here rather than in the provider folders on purpose: they
+ * read Claude Code's own request vocabulary from `anthropic/claude-context.ts`, which
+ * is the client-facing compatibility seam and not on the list of Anthropic modules a
+ * provider folder may import. A provider states *which* steps its wire deserves; how
+ * a step is performed stays with the seam that understands the client.
+ */
+export interface GatewayPolicySteps {
+  /** Withhold skill bodies the target's window cannot afford, and delist them. */
+  readonly pruneSkillPayloads: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
+  /** Withhold Claude Code's Web Search tools, in all three spellings. */
+  readonly withholdWebSearchTools: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
+  /**
+   * Drop Anthropic's client identity and billing blocks from the system prompt.
+   *
+   * Unlike the two steps above this one shapes what the client wrote rather than which
+   * capabilities the target is offered, and it is the one rewrite that belongs here rather
+   * than unconditional in the router: the metadata is accurate on the Anthropic passthrough
+   * and false everywhere else, and the passthrough never reaches a policy.
+   */
+  readonly stripClientIdentity: (request: AnthropicMessagesRequest) => AnthropicMessagesRequest;
+}
+
+/**
+ * One provider's answer to "what does my wire deserve to receive".
+ *
+ * Every gateway provider declares one. There is no default: a provider added without
+ * a policy fails to compile rather than silently inheriting another provider's answer,
+ * which is the same reason this package duplicates provider semantics elsewhere.
+ */
+export interface GatewayRequestPolicy {
+  readonly provider: GatewayProvider;
+  readonly shapeRequest: (
+    request: AnthropicMessagesRequest,
+    steps: GatewayPolicySteps,
+    context: GatewayPolicyContext,
+  ) => AnthropicMessagesRequest;
+}
+
+const POLICIES: Readonly<Record<GatewayProvider, GatewayRequestPolicy>> = {
+  antigravity: antigravityRequestPolicy,
+  codex: codexRequestPolicy,
+  cursor: cursorRequestPolicy,
+  kimi: kimiRequestPolicy,
+  // The provider id is `opencode`; its folder carries the `-go` subscription name.
+  opencode: opencodeGoRequestPolicy,
+  xai: xaiRequestPolicy,
+};
+
+/** The policy a gateway target's provider declared for itself. */
+export function resolveGatewayRequestPolicy(provider: GatewayProvider): GatewayRequestPolicy {
+  return POLICIES[provider];
+}
+
+/**
+ * Run a target's own policy over a caller request.
+ *
+ * Native Anthropic traffic never reaches here — it carries no gateway target, and the
+ * caller's request is forwarded byte for byte.
+ */
+export function applyGatewayRequestPolicy(
+  request: AnthropicMessagesRequest,
+  target: GatewayModel,
+  withheldSkills: Set<string>,
+): AnthropicMessagesRequest {
+  const context: GatewayPolicyContext = {
+    target,
+    upstreamModel: upstreamModelId(target),
+    withheldSkills,
+  };
+  const policy = resolveGatewayRequestPolicy(target.provider);
+  return policy.shapeRequest(request, buildPolicySteps(context), context);
+}
+
+function buildPolicySteps(context: GatewayPolicyContext): GatewayPolicySteps {
+  return {
+    pruneSkillPayloads: (request) => {
+      const pruned = pruneClaudeSkillPayloads(request.messages, {
+        ...(typeof context.target.contextWindow === "number"
+          ? { contextWindow: context.target.contextWindow }
+          : {}),
+        model: context.upstreamModel,
+        withheld: context.withheldSkills,
+      });
+      for (const skill of pruned.withheld) context.withheldSkills.add(skill.name);
+      return pruned.changed ? { ...request, messages: [...pruned.messages] } : request;
+    },
+    withholdWebSearchTools: (request) => {
+      const omitted = omitClaudeWebSearchTools(request);
+      return omitted.changed ? omitted.request : request;
+    },
+    stripClientIdentity: (request) => {
+      const stripped = stripClaudeClientIdentity(request.system);
+      if (!stripped.changed) return request;
+      if (stripped.system === undefined) {
+        const { system: _dropped, ...rest } = request;
+        return rest;
+      }
+      return { ...request, system: [...stripped.system] };
+    },
+  };
+}

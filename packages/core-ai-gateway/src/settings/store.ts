@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 import { createDurableJsonStore, getFleetDataDir } from "@dotobokuri/core-infra";
 
-import type { CompactCeiling } from "../anthropic/claude-context.js";
+import type { CompactCeiling } from "../downstream/harness/claude-code/context.js";
 import {
   normalizeAiGatewaySettings,
   type AiGatewayStoredSettings,

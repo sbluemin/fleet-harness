@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createAiGatewayQuotaCollectors, createQuotaService } from "../../src/quota/service.js";
 import { KIMI_AUTH_PROVIDER_ID } from "../../src/models.js";
-import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/opencode-go/index.js";
+import { OPENCODE_AUTH_PROVIDER_ID } from "../../src/upstream/opencode-go/index.js";
 import type { ProviderSuccess } from "../../src/quota/types.js";
 
 function ok(fetchedAt: number, usedPercent = 10): ProviderSuccess {

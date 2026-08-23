@@ -3,11 +3,6 @@ import modelsData from "../models.json" with { type: "json" };
 import { z } from "zod";
 
 import { clampReasoningEffort, type ReasoningEffort } from "./canonical/index.js";
-import {
-  hasClaudeOneMillionMarker,
-  isClaudeOneMillionContextWindow,
-  stripClaudeOneMillionMarker,
-} from "./anthropic/claude-context.js";
 
 /**
  * Subscription credential coordinates for gateway providers.
@@ -354,65 +349,16 @@ export const KIMI_SUBSCRIPTION_MODELS = providerModels("kimi");
 export const OPENCODE_SUBSCRIPTION_MODELS = providerModels("opencode");
 
 /**
- * The prefix every discovered gateway model id carries.
+ * A catalog entry by its canonical id or one of its declared aliases.
  *
- * It was introduced against a Claude Code discovery filter that dropped ids not
- * beginning with `claude`. That filter no longer exists: in 2.1.221 the reader of
- * the gateway model cache maps every entry into the picker with no id test at all
- * (observed 2026-08-04). The prefix is therefore not what makes a model
- * discoverable, and a future reader should not infer that it is.
- *
- * It stays because the grammar is already published. Persisted sessions,
- * `ANTHROPIC_MODEL` values, and stored defaults hold prefixed ids, and
- * `findGatewayModel` resolves a prefixed id and a bare registry id to the same
- * model. Dropping the prefix is a migration of those persisted values, not an
- * edit to this constant.
+ * Bare catalog vocabulary only. A downstream harness that publishes its own id
+ * grammar resolves that spelling in its own folder before the catalog is asked —
+ * see `downstream/harness/claude-code/discovery.ts`.
  */
-export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
-const CLAUDE_ONE_MILLION_MARKER = "[1m]";
-const CLAUDE_ONE_MILLION_DISPLAY_SUFFIX = " (1M Context)";
-
-export function toGatewayModelAlias(modelId: string): string {
-  return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
-}
-
-/**
- * Claude Code understands only its default 200k coordinate and the `[1m]` 1M
- * coordinate. Keep that marker truthful: only a provider model whose real window
- * reaches 1M is advertised as such. The response compatibility seam maps every
- * other real window onto the unmarked 200k coordinate while preserving Claude's
- * absolute compaction reserve.
- */
-export function toClaudeGatewayModelId(model: GatewayModel): string {
-  const alias = toGatewayModelAlias(model.id);
-  return isClaudeOneMillionContextWindow(model.contextWindow)
-    ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
-    : alias;
-}
-
-function toClaudeGatewayModelDisplayName(model: GatewayModel): string {
-  return isClaudeOneMillionContextWindow(model.contextWindow)
-    ? `${model.displayName}${CLAUDE_ONE_MILLION_DISPLAY_SUFFIX}`
-    : model.displayName;
-}
-
 export function findGatewayModel(
   id: string,
   catalog: readonly GatewayModel[] = GATEWAY_MODELS,
 ): GatewayModel | undefined {
-  if (id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
-    const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
-    const model = catalog.find((candidate) => candidate.id === scopedId);
-    if (!model) return undefined;
-    // Claude Code may omit the discovery-only marker from the request, so both
-    // forms resolve to the same registry model. A fabricated marker for a
-    // genuinely unmarked 200k model would make Claude undercount its context,
-    // so accept a marker only when discovery emits one.
-    return hasClaudeOneMillionMarker(id)
-      && !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model))
-      ? undefined
-      : model;
-  }
   return catalog.find((model) => model.id === id || model.aliases?.includes(id));
 }
 
@@ -593,53 +539,32 @@ export interface AnthropicModelCapabilities {
   readonly thinking: AnthropicThinkingCapability;
 }
 
-export interface AnthropicModelEntry {
-  readonly type: "model";
-  readonly id: string;
-  readonly display_name: string;
-  readonly created_at: string;
-  readonly capabilities: AnthropicModelCapabilities;
-  readonly max_input_tokens: number | null;
-  readonly max_tokens: null;
-}
+/** How a caller's model string is looked up in the catalog. */
+export type GatewayModelLookup = (
+  id: string,
+  catalog: readonly GatewayModel[],
+) => GatewayModel | undefined;
 
-export interface AnthropicModelList {
-  readonly data: readonly AnthropicModelEntry[];
-  readonly has_more: false;
-  readonly first_id: string | null;
-  readonly last_id: string | null;
-}
-
-/** Claude Code gateway model discovery (`GET /v1/models`). */
-export function buildAnthropicModelList(
-  models: readonly GatewayModel[] = GATEWAY_MODELS,
-  createdAt = GATEWAY_MODELS_UPDATED_AT,
-): AnthropicModelList {
-  const data = models.map((model) => ({
-    type: "model" as const,
-    id: toClaudeGatewayModelId(model),
-    display_name: toClaudeGatewayModelDisplayName(model),
-    created_at: createdAt,
-    capabilities: anthropicModelCapabilities(model.effort),
-    max_input_tokens: model.contextWindow ?? null,
-    max_tokens: null,
-  }));
-  return {
-    data,
-    has_more: false,
-    first_id: data[0]?.id ?? null,
-    last_id: data[data.length - 1]?.id ?? null,
-  };
-}
-
-/** Resolve a canonical gateway id or current provider alias to its wire model id. */
+/**
+ * Resolve a canonical gateway id or current provider alias to its wire model id.
+ *
+ * `find` is how the caller's spelling reaches the catalog. It defaults to bare
+ * catalog vocabulary; a downstream harness that publishes its own id grammar passes
+ * its own resolver instead, which is why this module holds no harness grammar.
+ */
 export function resolveGatewayModel(
   requested: string | undefined,
-  options: { readonly override?: string; readonly catalog?: readonly GatewayModel[]; readonly fallback: string },
+  options: {
+    readonly override?: string;
+    readonly catalog?: readonly GatewayModel[];
+    readonly fallback: string;
+    readonly find?: GatewayModelLookup;
+  },
 ): string {
   if (options.override) return options.override;
   if (!requested) return options.fallback;
-  const model = findGatewayModel(requested, options.catalog ?? GATEWAY_MODELS);
+  const find = options.find ?? findGatewayModel;
+  const model = find(requested, options.catalog ?? GATEWAY_MODELS);
   return model ? upstreamModelId(model) : options.fallback;
 }
 
@@ -951,7 +876,7 @@ function anthropicEffortCapability(effort: GatewayModelEffort): AnthropicEffortC
   };
 }
 
-function anthropicModelCapabilities(effort: GatewayModelEffort): AnthropicModelCapabilities {
+export function anthropicModelCapabilities(effort: GatewayModelEffort): AnthropicModelCapabilities {
   const reasoningSupported = effort.supported && effort.levels.length > 0;
   return {
     batch: capability(false),

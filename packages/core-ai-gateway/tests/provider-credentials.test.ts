@@ -2,8 +2,8 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { codexAuthFilePath, resolveCodexCredentials } from "../src/codex/credentials.js";
-import { cursorAuthFilePath, resolveCursorCredentials } from "../src/cursor/credentials.js";
+import { codexAuthFilePath, resolveCodexCredentials } from "../src/upstream/codex/credentials.js";
+import { cursorAuthFilePath, resolveCursorCredentials } from "../src/upstream/cursor/credentials.js";
 import type { CredentialResolverDeps } from "../src/transport/credentials.js";
 
 function deps(overrides: Partial<CredentialResolverDeps> = {}): CredentialResolverDeps {

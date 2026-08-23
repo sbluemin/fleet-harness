@@ -1,0 +1,779 @@
+import type {
+  AdapterCallOptions,
+  AdapterResponse,
+  AiGatewayAdapter,
+  CanonicalError,
+  CanonicalOutputItem,
+  CanonicalResponseEvent,
+  CanonicalResponseRequest,
+  CanonicalResponseSnapshot,
+  CanonicalToolChoice,
+  CanonicalUsage,
+  CanonicalWebSearchAction,
+  CanonicalWebSearchCallOutputItem,
+  CanonicalWebSearchSource,
+} from "../../../canonical/index.js";
+import {
+  UpstreamProtocolError,
+  linkAbortSignal,
+  parseSseFrameFields,
+  parseUpstreamSseStream,
+  positiveInteger,
+  readBoundedBody,
+  type FetchLike,
+  type UpstreamReadOptions,
+} from "../../../transport/upstream-sse.js";
+import { logRawWireEvent, wireLog } from "../../../transport/wire-log.js";
+
+/** OpenCode Go 구독이 노출하는 Responses 네임스페이스 엔드포인트. */
+export const OPENCODE_GO_RESPONSES_URL = "https://opencode.ai/zen/go/v1/responses";
+const DEFAULT_OPENCODE_GO_RESPONSES_MAX_UPSTREAM_BODY_BYTES = 64 * 1024 * 1024;
+/**
+ * Longest the upstream may send no bytes at all before the read is abandoned.
+ *
+ * Calibrated against what the caller tolerates, not against how fast a short turn answers.
+ * Claude Code's own byte-stream idle watchdog waits 300s, so anything tighter here converts a
+ * turn the client was still willing to wait for into a failure the client never asked for.
+ * Measured 2026-08-21 on a live session: 30s killed 20 turns whose upstream was simply thinking,
+ * and the rate climbed through the session as the conversation grew and the gaps grew with it.
+ */
+const DEFAULT_OPENCODE_GO_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS = 300_000;
+
+/**
+ * OpenAI Responses wire shapes. The canonical model keeps `native_tools` as a
+ * provider-neutral list and `tool_choice` as a small closed union that has no member
+ * for a hosted tool selector, so this adapter's outbound payload is its own honest
+ * type rather than a reuse of `CanonicalResponseRequest`. `native_tools` never reaches
+ * the wire: it is merged into `tools`/`tool_choice` below and dropped.
+ *
+ * OpenCode Go owns this copy. Its Responses backend shares the OpenAI wire, but not
+ * the Codex subscription surface: it has no ChatGPT-unsupported sampling-field branch,
+ * no `store: false` requirement, and no `dropSamplingParams` option. Same wire does
+ * not justify adapter reuse — duplication is deliberate.
+ */
+interface OpenCodeResponsesWireFunctionTool {
+  type: "function";
+  name: string;
+  description?: string;
+  parameters: Record<string, unknown>;
+  strict?: boolean;
+}
+
+/**
+ * Live-probe confirmed (HTTP 200, one `web_search_call` with 17 sources): the OpenAI Responses
+ * hosted web search filter accepts either `allowed_domains` or `blocked_domains`, mirroring
+ * Anthropic's own mutually-exclusive pair. `max_uses` still has no confirmed wire field and is dropped.
+ */
+interface OpenCodeResponsesWireWebSearchTool {
+  type: "web_search";
+  filters?: { allowed_domains: string[] } | { blocked_domains: string[] };
+}
+
+type OpenCodeResponsesWireTool = OpenCodeResponsesWireFunctionTool | OpenCodeResponsesWireWebSearchTool;
+
+type OpenCodeResponsesWireToolChoice = CanonicalToolChoice | { type: "web_search" };
+
+type OpenCodeResponsesWireRequest = Omit<
+  CanonicalResponseRequest,
+  "tools" | "tool_choice" | "native_tools"
+> & {
+  tools?: OpenCodeResponsesWireTool[];
+  tool_choice?: OpenCodeResponsesWireToolChoice;
+  /** Requests extra output fields, e.g. `web_search_call.action.sources` for hosted web search results. */
+  include?: string[];
+};
+
+export interface OpencodeGoResponsesAdapterOptions {
+  fetch?: FetchLike;
+  maxBodyBytes?: number;
+  idleTimeoutMs?: number;
+  /** 구독 경로가 요구하는 추가 헤더. */
+  headers?: Readonly<Record<string, string>>;
+}
+
+export class OpencodeGoResponsesAdapter implements AiGatewayAdapter {
+  readonly capabilities = { nativeTools: ["web_search"] } as const;
+  private readonly fetchImpl: FetchLike;
+  private readonly maxBodyBytes: number;
+  private readonly idleTimeoutMs: number;
+  private readonly url: string;
+  private readonly extraHeaders: Readonly<Record<string, string>>;
+
+  constructor(options: OpencodeGoResponsesAdapterOptions = {}) {
+    // OpenCode Go 소유 어댑터는 이 네임스페이스 엔드포인트로 고정된다. 임의 엔드포인트
+    // 오버라이드는 provider 어댑터를 다시 범용화하므로 옵션으로 노출하지 않는다.
+    this.url = OPENCODE_GO_RESPONSES_URL;
+    this.extraHeaders = options.headers ?? {};
+    this.fetchImpl = options.fetch ?? globalThis.fetch.bind(globalThis);
+    this.maxBodyBytes = positiveInteger(
+      options.maxBodyBytes ?? DEFAULT_OPENCODE_GO_RESPONSES_MAX_UPSTREAM_BODY_BYTES,
+      "maxBodyBytes"
+    );
+    this.idleTimeoutMs = positiveInteger(
+      options.idleTimeoutMs ?? DEFAULT_OPENCODE_GO_RESPONSES_UPSTREAM_IDLE_TIMEOUT_MS,
+      "idleTimeoutMs"
+    );
+  }
+
+  async stream(
+    request: CanonicalResponseRequest,
+    options: AdapterCallOptions
+  ): Promise<AdapterResponse> {
+    if (options.apiKey.length === 0) {
+      throw new TypeError("apiKey must not be empty");
+    }
+
+    const controller = new AbortController();
+    const unlinkAbort = linkAbortSignal(options.signal, controller);
+    const payload = forOpenCodeGoResponsesBackend(request);
+    // Exact JSON body sent upstream, including each tool's `parameters` and any `strict` flag.
+    wireLog("opencode-go-responses.wire.request", { url: this.url, payload });
+    let response: Response;
+
+    try {
+      response = await this.fetchImpl(this.url, {
+        method: "POST",
+        headers: {
+          accept: "text/event-stream",
+          authorization: `Bearer ${options.apiKey}`,
+          "content-type": "application/json",
+          ...this.extraHeaders
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+    } catch (error) {
+      unlinkAbort();
+      throw error;
+    }
+
+    if (!response.ok) {
+      if (process.env.FLEET_AI_GATEWAY_DEBUG === "1") {
+        const roles = payload.input.map((item) => ("role" in item ? item.role : item.type));
+        console.error(`[ai-gateway] upstream ${response.status} input roles=${JSON.stringify(roles)} keys=${JSON.stringify(Object.keys(payload))}`);
+      }
+      try {
+        const body = await readBoundedBody(response.body, {
+          controller,
+          idleTimeoutMs: this.idleTimeoutMs,
+          maxBodyBytes: this.maxBodyBytes
+        });
+        return {
+          ok: false,
+          status: response.status,
+          headers: response.headers,
+          body
+        };
+      } finally {
+        unlinkAbort();
+      }
+    }
+
+    return {
+      ok: true,
+      status: response.status,
+      headers: response.headers,
+      events: parseOpenCodeGoEventStream(response.body, {
+        controller,
+        idleTimeoutMs: this.idleTimeoutMs,
+        maxBodyBytes: this.maxBodyBytes,
+        onClose: unlinkAbort
+      })
+    };
+  }
+}
+
+function forOpenCodeGoResponsesBackend(
+  request: CanonicalResponseRequest,
+): OpenCodeResponsesWireRequest {
+  const {
+    tools: canonicalTools,
+    tool_choice: canonicalToolChoice,
+    native_tools: nativeTools,
+    ...rest
+  } = request;
+  const payload: OpenCodeResponsesWireRequest = { ...rest };
+
+  // Canonical-only input fields must never reach the wire. The Responses API rejects an
+  // unknown input property with a 400 that fails the entire request — observed as
+  // `Unknown parameter: 'input[N].reasoning_content'` — so every item is stripped here
+  // rather than at each producer. `reasoning_content` is replay metadata only the Chat
+  // Completions path consumes; this backend takes reasoning back as its own items.
+  payload.input = request.input.map((item) => {
+    if (item.type === "function_call_output") {
+      const {
+        is_error: _isError,
+        tool_references: _toolReferences,
+        ...wireItem
+      } = item;
+      return wireItem;
+    }
+    const { reasoning_content: _reasoningContent, ...wireItem } = item;
+    return wireItem;
+  });
+
+  const wireTools: OpenCodeResponsesWireTool[] = (canonicalTools ?? []).map((tool) => {
+    const { defer_loading: _deferLoading, ...wireTool } = tool;
+    // A schema outside strict mode's subset is rejected with a 400 that fails the whole
+    // request, not just that tool, so an incompatible tool keeps its original schema and
+    // forfeits the guarantee rather than taking every other tool down with it.
+    if (!strictCompatible(wireTool.parameters)) return wireTool;
+    return {
+      ...wireTool,
+      parameters: strictParameters(wireTool.parameters),
+      strict: true,
+    };
+  });
+
+  // native_tools is canonical-only: it must never reach the OpenAI wire body as-is.
+  // Provider-owned web search is merged into `tools` as a hosted tool selector instead.
+  let requiresHostedWebSearch = false;
+  let hasHostedWebSearch = false;
+  for (const nativeTool of nativeTools ?? []) {
+    const webSearchTool: OpenCodeResponsesWireWebSearchTool = { type: "web_search" };
+    if (nativeTool.allowed_domains !== undefined && nativeTool.allowed_domains.length > 0) {
+      webSearchTool.filters = { allowed_domains: [...nativeTool.allowed_domains] };
+    } else if (nativeTool.blocked_domains !== undefined && nativeTool.blocked_domains.length > 0) {
+      webSearchTool.filters = { blocked_domains: [...nativeTool.blocked_domains] };
+    }
+    // max_uses has no confirmed OpenAI Responses wire field. Dropping it here
+    // (rather than inventing a shape) is deliberate; allowed/blocked_domains are anthropic's
+    // own mutually-exclusive pair, so translateAnthropicTools rejects requests that set both.
+    wireTools.push(webSearchTool);
+    hasHostedWebSearch = true;
+    if (nativeTool.required === true) {
+      requiresHostedWebSearch = true;
+    }
+  }
+
+  if (wireTools.length > 0) {
+    payload.tools = wireTools;
+  }
+
+  if (requiresHostedWebSearch) {
+    payload.tool_choice = { type: "web_search" };
+  } else if (canonicalToolChoice !== undefined) {
+    payload.tool_choice = canonicalToolChoice;
+  }
+
+  // Hosted web search only reports its sources when explicitly requested via `include`.
+  // Without this, `response.output_item.done` for `web_search_call` arrives with no `action.sources`.
+  if (hasHostedWebSearch) {
+    const rawInclude = (request as { include?: unknown }).include;
+    const existingInclude = Array.isArray(rawInclude)
+      ? rawInclude.filter((entry): entry is string => typeof entry === "string")
+      : [];
+    payload.include = Array.from(new Set([...existingInclude, "web_search_call.action.sources"]));
+  }
+
+  return payload;
+}
+
+type ReadOptions = UpstreamReadOptions;
+
+function parseOpenCodeGoEventStream(
+  body: ReadableStream<Uint8Array> | null,
+  options: ReadOptions & { onClose: () => void }
+): AsyncGenerator<CanonicalResponseEvent> {
+  return parseUpstreamSseStream(
+    body,
+    { ...options, missingBodyMessage: "OpenCode Go streaming response had no body" },
+    parseEventFrame,
+  );
+}
+
+function parseEventFrame(frame: string): CanonicalResponseEvent | undefined {
+  const { event: eventName, data } = parseSseFrameFields(frame);
+  if (data.length === 0 || data === "[DONE]") {
+    return undefined;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(data);
+  } catch (error) {
+    throw new UpstreamProtocolError(
+      `OpenCode Go SSE contained invalid JSON: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  // Raw provider payload before the event-name type fallback and canonical filtering.
+  logRawWireEvent("opencode-go-responses.wire.event", eventName, parsed);
+  if (isRecord(parsed) && typeof parsed.type !== "string" && eventName !== undefined) {
+    parsed = { ...parsed, type: eventName };
+  }
+  return canonicalEvent(parsed);
+}
+
+function canonicalEvent(value: unknown): CanonicalResponseEvent | undefined {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    throw new UpstreamProtocolError("OpenCode Go SSE event was not an object with a type");
+  }
+
+  switch (value.type) {
+    case "response.created":
+      return { type: value.type, response: responseSnapshot(value.response) };
+    case "response.content_part.added": {
+      const part = record(value.part, "response.content_part.added.part");
+      if (part.type !== "output_text") {
+        return undefined;
+      }
+      return {
+        type: value.type,
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        content_index: number(value.content_index, "content_index"),
+        part: {
+          type: "output_text",
+          text: typeof part.text === "string" ? part.text : ""
+        }
+      };
+    }
+    case "response.output_text.delta":
+      return {
+        type: value.type,
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        content_index: number(value.content_index, "content_index"),
+        delta: string(value.delta, "delta")
+      };
+    case "response.output_text.done":
+      return {
+        type: value.type,
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        content_index: number(value.content_index, "content_index"),
+        text: string(value.text, "text")
+      };
+    case "response.reasoning_summary_text.delta":
+    case "response.reasoning_text.delta":
+      return {
+        type: "response.reasoning_summary_text.delta",
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        delta: string(value.delta, "delta")
+      };
+    case "response.output_item.added":
+    case "response.output_item.done": {
+      const item = outputItem(value.item);
+      if (item === undefined) {
+        return undefined;
+      }
+      return {
+        type: value.type,
+        output_index: number(value.output_index, "output_index"),
+        item
+      };
+    }
+    // Argument deltas are dropped: a partial JSON fragment cannot have its nulls stripped, and
+    // forwarding raw fragments would let the client reassemble the un-stripped text. The `.done`
+    // event below carries the whole argument object, which downstream treats as the remainder
+    // when nothing was streamed ahead of it.
+    case "response.function_call_arguments.delta":
+      return undefined;
+    case "response.function_call_arguments.done":
+      return {
+        type: value.type,
+        item_id: string(value.item_id, "item_id"),
+        output_index: number(value.output_index, "output_index"),
+        arguments: stripNullArguments(string(value.arguments, "arguments"))
+      };
+    case "response.completed":
+      return { type: value.type, response: responseSnapshot(value.response) };
+    case "response.failed": {
+      const response = record(value.response, "response.failed.response");
+      return {
+        type: value.type,
+        response: {
+          ...responseSnapshot(response),
+          error: canonicalError(response.error)
+        }
+      };
+    }
+    case "error":
+      return { type: "error", error: canonicalError(value.error ?? value) };
+    default:
+      return undefined;
+  }
+}
+
+function responseSnapshot(value: unknown): CanonicalResponseSnapshot {
+  const response = record(value, "response");
+  return {
+    id: string(response.id, "response.id"),
+    model: string(response.model, "response.model"),
+    usage: response.usage === null || response.usage === undefined ? null : usage(response.usage)
+  };
+}
+
+function usage(value: unknown): CanonicalUsage {
+  const parsed = record(value, "usage");
+  const inputTokens = number(parsed.input_tokens, "usage.input_tokens");
+  const outputTokens = number(parsed.output_tokens, "usage.output_tokens");
+
+  const inputDetails = optionalRecord(parsed.input_tokens_details, "usage.input_tokens_details");
+  const cachedInputTokens = inputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(inputDetails.cached_tokens, "usage.input_tokens_details.cached_tokens");
+  const cacheWriteInputTokens = inputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(inputDetails.cache_write_tokens, "usage.input_tokens_details.cache_write_tokens");
+
+  const outputDetails = optionalRecord(parsed.output_tokens_details, "usage.output_tokens_details");
+  const reasoningOutputTokens = outputDetails === undefined
+    ? undefined
+    : optionalNonNegativeNumber(outputDetails.reasoning_tokens, "usage.output_tokens_details.reasoning_tokens");
+
+  const totalTokens = optionalNonNegativeNumber(parsed.total_tokens, "usage.total_tokens");
+
+  // cached_tokens/cache_write_tokens/reasoning_tokens are documented as subsets of their
+  // parent totals and total_tokens as their sum, but upstream envelopes have not been
+  // observed to guarantee that arithmetic. Reject only malformed shape (wrong type /
+  // negative / non-finite) here; a self-inconsistent but well-typed envelope is preserved
+  // as-is on the canonical event rather than failing the whole response. The Anthropic
+  // conversion layer falls back to the authoritative parent input total when the two
+  // exceed it, rather than inventing a read-over-write truncation priority.
+
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    ...(cachedInputTokens === undefined ? {} : { cached_input_tokens: cachedInputTokens }),
+    ...(cacheWriteInputTokens === undefined ? {} : { cache_write_input_tokens: cacheWriteInputTokens }),
+    ...(reasoningOutputTokens === undefined ? {} : { reasoning_output_tokens: reasoningOutputTokens }),
+    ...(totalTokens === undefined ? {} : { total_tokens: totalTokens })
+  };
+}
+
+/**
+ * OpenAI strict mode admits no optional property: every key must appear in `required`, and
+ * "not provided" is expressed as an explicit null rather than omission.
+ *
+ * Without it the model fabricates values for omitted optional fields — empty strings for
+ * free-form strings, an arbitrary member for enums — and those reach the client as real
+ * arguments. A fabricated `Agent.model` silently overrides the subagent's pinned model, and a
+ * fabricated `Read.pages` fails the call outright.
+ *
+ * `stripNullArguments` is the inverse: the nulls this transform makes representable are
+ * removed again before the call reaches the client, restoring omission semantics.
+ */
+/**
+ * Keywords known to survive strict mode. An allowlist rather than a denylist: an unknown
+ * keyword is far more likely to be one strict rejects than one it accepts, and the cost is
+ * asymmetric — an over-strict verdict costs a single tool its guarantee, while a wrong
+ * permissive verdict costs the whole request a 400 that fails every tool with it.
+ */
+const STRICT_ALLOWED_KEYWORDS = new Set([
+  "type",
+  "properties",
+  "required",
+  "additionalProperties",
+  "items",
+  "enum",
+  "anyOf",
+  "$defs",
+  "$ref",
+  "description",
+  "title",
+  "pattern",
+  "minimum",
+  "maximum",
+  "exclusiveMinimum",
+  "exclusiveMaximum",
+  "multipleOf",
+  "minLength",
+  "maxLength",
+  "minItems",
+  "maxItems",
+  // Dropped by `strictSchema` before the schema reaches the wire.
+  "$schema",
+  "default",
+  "format",
+]);
+
+/** Whether every subschema stays inside the subset strict mode accepts. */
+function strictCompatible(schema: unknown): boolean {
+  if (!isRecord(schema)) return true;
+
+  for (const key of Object.keys(schema)) {
+    if (!STRICT_ALLOWED_KEYWORDS.has(key)) return false;
+  }
+  // Strict mode requires every subschema to declare what it accepts.
+  if (!("type" in schema) && !Array.isArray(schema.anyOf) && typeof schema.$ref !== "string") {
+    return false;
+  }
+  // A free-form object cannot satisfy strict mode, which requires every key to be declared
+  // with `additionalProperties: false`; an array must say what it holds.
+  if (schema.type === "object" && !isRecord(schema.properties)) return false;
+  if (schema.type === "array" && !isRecord(schema.items)) return false;
+
+  if (isRecord(schema.properties)) {
+    for (const value of Object.values(schema.properties)) {
+      if (!strictCompatible(value)) return false;
+    }
+  }
+  if (isRecord(schema.$defs)) {
+    for (const value of Object.values(schema.$defs)) {
+      if (!strictCompatible(value)) return false;
+    }
+  }
+  if (isRecord(schema.items) && !strictCompatible(schema.items)) return false;
+  if (Array.isArray(schema.anyOf)) {
+    for (const branch of schema.anyOf) {
+      if (!strictCompatible(branch)) return false;
+    }
+  }
+  return true;
+}
+
+function strictParameters(schema: Record<string, unknown>): Record<string, unknown> {
+  const converted = strictSchema(schema);
+  return isRecord(converted) ? converted : schema;
+}
+
+function strictSchema(schema: unknown): unknown {
+  if (!isRecord(schema)) return schema;
+  const next: Record<string, unknown> = { ...schema };
+
+  // Metadata strict mode has no use for: `$schema` is a dialect marker it does not accept, and
+  // `default` is meaningless once every property is required. `format` is validated against a
+  // closed set of values strict mode enumerates — `uri` (WebFetch.url) is rejected with a
+  // request-wide 400 — so the advisory hint is stripped rather than gambling the request on it.
+  delete next.$schema;
+  delete next.default;
+  delete next.format;
+
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    const branches = next[key];
+    if (Array.isArray(branches)) next[key] = branches.map(strictSchema);
+  }
+  if (isRecord(next.items)) next.items = strictSchema(next.items);
+  if (isRecord(next.$defs)) {
+    const rewrittenDefs: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(next.$defs)) {
+      rewrittenDefs[name] = strictSchema(value);
+    }
+    next.$defs = rewrittenDefs;
+  }
+
+  const properties = next.properties;
+  if (isRecord(properties)) {
+    const required = new Set(
+      Array.isArray(next.required)
+        ? next.required.filter((name): name is string => typeof name === "string")
+        : [],
+    );
+    const rewritten: Record<string, unknown> = {};
+    for (const [name, value] of Object.entries(properties)) {
+      const child = strictSchema(value);
+      rewritten[name] = required.has(name) ? child : nullableSchema(child);
+    }
+    next.properties = rewritten;
+    next.required = Object.keys(rewritten);
+    next.additionalProperties = false;
+  }
+  return next;
+}
+
+/**
+ * Widens a schema so an explicit null is valid, which is how strict mode spells "absent".
+ *
+ * Naming that null in each property's description was measured and dropped: it changed
+ * nothing. Under strict mode a model still supplies the default quoted in the description
+ * rather than declining, and the instruction only grew the tool catalog. What strict does buy
+ * is that a value the model was told not to send is now omittable at all — which is what
+ * stopped `Agent.model` from overriding a pinned subagent model.
+ */
+function nullableSchema(schema: unknown): unknown {
+  if (!isRecord(schema)) return schema;
+  const next: Record<string, unknown> = { ...schema };
+
+  if (Array.isArray(next.enum) && !next.enum.includes(null)) {
+    next.enum = [...next.enum, null];
+  }
+  if (Array.isArray(next.anyOf)) {
+    next.anyOf = [...next.anyOf, { type: "null" }];
+    return next;
+  }
+  const type = next.type;
+  if (typeof type === "string") {
+    if (type !== "null") next.type = [type, "null"];
+  } else if (Array.isArray(type)) {
+    if (!type.includes("null")) next.type = [...type, "null"];
+  }
+  return next;
+}
+
+/**
+ * Removes the nulls strict mode requires, so the client sees an omitted argument rather than
+ * an explicit null. Anthropic tool schemas treat absence — not null — as "not provided".
+ */
+function stripNullArguments(raw: string): string {
+  if (raw.length === 0 || !raw.includes("null")) return raw;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    return raw;
+  }
+  if (!isRecord(parsed)) return raw;
+  return JSON.stringify(withoutNulls(parsed));
+}
+
+function withoutNulls(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry === null) continue;
+    out[key] = withoutNullMembers(entry);
+  }
+  return out;
+}
+
+// strict 재작성의 정확한 역변환: 재작성이 표현 가능하게 만든 것은 객체 프로퍼티 위치의
+// null뿐이므로 배열 속 객체까지 내려가 그 null만 제거하고, 배열 원소 자체의 null은
+// 재작성이 만든 값이 아니라 모델이 실제로 보낸 데이터이므로 보존한다.
+function withoutNullMembers(entry: unknown): unknown {
+  if (isRecord(entry)) return withoutNulls(entry);
+  if (Array.isArray(entry)) return entry.map(withoutNullMembers);
+  return entry;
+}
+
+function outputItem(value: unknown): CanonicalOutputItem | undefined {
+  const item = record(value, "item");
+  if (item.type === "message") {
+    return {
+      id: string(item.id, "item.id"),
+      type: "message",
+      role: "assistant"
+    };
+  }
+  if (item.type === "function_call") {
+    const id = string(item.id, "item.id");
+    return {
+      id,
+      type: "function_call",
+      call_id: typeof item.call_id === "string" ? item.call_id : id,
+      name: string(item.name, "item.name"),
+      arguments: typeof item.arguments === "string" ? stripNullArguments(item.arguments) : ""
+    };
+  }
+  if (item.type === "web_search_call") {
+    const result: CanonicalWebSearchCallOutputItem = {
+      id: string(item.id, "item.id"),
+      type: "web_search_call"
+    };
+    if (typeof item.status === "string") {
+      result.status = item.status;
+    }
+    const action = webSearchAction(item.action);
+    if (action !== undefined) {
+      result.action = action;
+    }
+    return result;
+  }
+  return undefined;
+}
+
+/** Parses the OpenAI live `web_search_call.action` shape leniently: unknown/missing fields are just omitted. */
+function webSearchAction(value: unknown): CanonicalWebSearchAction | undefined {
+  if (!isRecord(value) || typeof value.type !== "string") {
+    return undefined;
+  }
+  const action: CanonicalWebSearchAction = { type: value.type };
+  if (typeof value.query === "string") {
+    action.query = value.query;
+  }
+  if (Array.isArray(value.queries)) {
+    const queries = value.queries.filter((entry): entry is string => typeof entry === "string");
+    if (queries.length > 0) {
+      action.queries = queries;
+    }
+  }
+  if (typeof value.url === "string") {
+    action.url = value.url;
+  }
+  if (typeof value.pattern === "string") {
+    action.pattern = value.pattern;
+  }
+  const sources = webSearchSources(value.sources);
+  if (sources !== undefined) {
+    action.sources = sources;
+  }
+  return action;
+}
+
+/** Invalid or incomplete source entries are dropped, never fabricated with placeholder values. */
+function webSearchSources(value: unknown): CanonicalWebSearchSource[] | undefined {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const sources: CanonicalWebSearchSource[] = [];
+  for (const entry of value) {
+    if (!isRecord(entry) || typeof entry.url !== "string" || entry.url.length === 0) {
+      continue;
+    }
+    const source: CanonicalWebSearchSource = {
+      type: typeof entry.type === "string" ? entry.type : "url",
+      url: entry.url
+    };
+    if (typeof entry.title === "string" && entry.title.length > 0) {
+      source.title = entry.title;
+    }
+    sources.push(source);
+  }
+  return sources.length > 0 ? sources : undefined;
+}
+
+function canonicalError(value: unknown): CanonicalError {
+  const error = record(value, "error");
+  const message = string(error.message, "error.message");
+  const type =
+    typeof error.type === "string" && error.type !== "error"
+      ? error.type
+      : typeof error.code === "string"
+        ? error.code
+        : "api_error";
+  return { type, message };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function record(value: unknown, name: string): Record<string, unknown> {
+  if (!isRecord(value)) {
+    throw new UpstreamProtocolError(`${name} must be an object`);
+  }
+  return value;
+}
+
+/** Optional nested detail object. Absent or null means the field was never reported. */
+function optionalRecord(value: unknown, name: string): Record<string, unknown> | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  return record(value, name);
+}
+
+function string(value: unknown, name: string): string {
+  if (typeof value !== "string") {
+    throw new UpstreamProtocolError(`${name} must be a string`);
+  }
+  return value;
+}
+
+function number(value: unknown, name: string): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    throw new UpstreamProtocolError(`${name} must be a number`);
+  }
+  return value;
+}
+
+/** Optional finite nonnegative detail count. Absent or null means the field was never reported. */
+function optionalNonNegativeNumber(value: unknown, name: string): number | undefined {
+  if (value === undefined || value === null) {
+    return undefined;
+  }
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+    throw new UpstreamProtocolError(`${name} must be a finite nonnegative number`);
+  }
+  return value;
+}

@@ -1,12 +1,12 @@
 import type { AuthService } from "../auth/types.js";
 
-import { fetchAntigravityUsage } from "../antigravity/quota.js";
-import { fetchClaudeUsage } from "../anthropic/quota.js";
-import { fetchCodexUsage } from "../codex/quota.js";
-import { fetchCursorUsage } from "../cursor/quota.js";
-import { fetchKimiUsage } from "../kimi/quota.js";
-import { fetchOpencodeUsage } from "../opencode-go/quota.js";
-import { fetchXaiUsage } from "../xai/quota.js";
+import { fetchAntigravityUsage } from "../upstream/antigravity/quota.js";
+import { fetchClaudeUsage } from "../upstream/anthropic/quota.js";
+import { fetchCodexUsage } from "../upstream/codex/quota.js";
+import { fetchCursorUsage } from "../upstream/cursor/quota.js";
+import { fetchKimiUsage } from "../upstream/kimi/quota.js";
+import { fetchOpencodeUsage } from "../upstream/opencode-go/quota.js";
+import { fetchXaiUsage } from "../upstream/xai/quota.js";
 import { defaultCredentialDeps, type CredentialResolverDeps } from "../transport/credentials.js";
 import { deriveQuotaWindowRisk } from "./pressure.js";
 import type { ProviderDto, ProviderResult, ProviderSuccess, QuotaSummaryDto } from "./types.js";
