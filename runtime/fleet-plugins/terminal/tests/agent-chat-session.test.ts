@@ -536,6 +536,42 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // 한 진행 중 턴이 상한(2000)을 넘길 만큼 durable 이벤트를 내면 그 턴의 dispatch/turn-start가
+  // 저널에서 밀려난다. 그 꼬리를 경계 안에 두면 클라이언트가 done으로 닫고 서버는 새 turn-start를
+  // 내지 않아 "끝난 척"으로 굳는다 — 꼬리를 live로 흘리고 합성 turn-start를 앞세워야 working으로 선다.
+  it("keeps a capped in-flight tail live with a synthetic turn-start when the opening frames were evicted", async () => {
+    const home = tempDir("chat-home-");
+    // result가 없어 턴은 열린 채다. 2001개의 text가 저널에 쌓여 dispatch/turn-start를 밀어낸다.
+    const messages = Array.from({ length: 2_001 }, (_, i) => ({ type: "assistant", message: { content: [{ type: "text", text: `line ${i}` }] } }));
+    const { factory } = createFakeSdkFactory([{ messages }]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-capped-inflight", () => freshSeedFor(home));
+
+    const probe: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => probe.push(entry));
+    session.send("start a very long turn");
+    await vi.waitFor(() => {
+      expect(probe.filter((entry) => entry.event.kind === "text").length).toBeGreaterThanOrEqual(2_001);
+    }, { timeout: 5_000 });
+
+    // mid-turn 재접속: 재생 스냅숏엔 밀려난 dispatch/turn-start가 없다.
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const kindsList = events.map((entry) => entry.event.kind);
+    const endIdx = kindsList.indexOf("replay-end");
+    const startIdx = kindsList.indexOf("turn-start");
+    // 여는 좌표가 실제로 밀려났음을 못 박는다 — dispatch가 남아 있으면 정상 경로이지 이 상한 경로가
+    // 아니다. dispatch 부재 + 경계 뒤 turn-start가 곧 합성 turn-start 경로다.
+    expect(kindsList.includes("dispatch")).toBe(false);
+    expect(endIdx).toBeGreaterThanOrEqual(0);
+    expect(startIdx).toBeGreaterThan(endIdx);
+    // 리듀스하면 마지막 턴은 done이 아니라 working이다.
+    const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
+    expect(state.turns.at(-1)?.state).toBe("working");
+
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },

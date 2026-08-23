@@ -522,7 +522,26 @@ class AgentChatSession {
       // 붙으므로, 그 진행 중 턴까지 경계 안에 넣으면 클라이언트가 그것을 재생된 과거로 읽어
       // "작업 중"이 아니라 "작업함"으로 굳힌다(재생 turn-start는 done으로 세운다). 진행 중 턴의
       // 시작부터는 경계 밖으로 흘려, 그 turn-start가 live로 도착해 working으로 서게 한다.
-      const liveFrom = this.turnOpen ? this.inFlightTurnStartIndex(snapshot) : -1;
+      // 여는 좌표(dispatch/turn-start)를 찾으면 거기서부터가 live다. 상한이 그 좌표까지 밀어냈으면
+      // (-1) 마지막 turn-end 뒤 꼬리 전체가 진행 중 턴이지만 여는 이벤트가 없다 — 그 꼬리를 그대로
+      // 경계 안에 두면 클라이언트가 done으로 닫고, 서버는 여전히 열린 것으로 알아 새 turn-start를
+      // 내지 않으므로 이후 델타가 무시되어 정확히 이 수정이 없애려는 "끝난 척" 상태로 굳는다.
+      // 그래서 꼬리를 live로 흘리되 앞에 합성 turn-start를 세워 working 턴을 열어 받게 한다.
+      let liveFrom = -1;
+      let syntheticStart = false;
+      if (this.turnOpen) {
+        const markerIdx = this.inFlightTurnStartIndex(snapshot);
+        if (markerIdx >= 0) {
+          liveFrom = markerIdx;
+        } else {
+          let lastEnd = -1;
+          for (let i = snapshot.length - 1; i >= 0; i -= 1) {
+            if (snapshot[i]?.event.kind === "turn-end") { lastEnd = i; break; }
+          }
+          liveFrom = lastEnd + 1;
+          syntheticStart = true;
+        }
+      }
       const replayEnd = liveFrom === -1 ? snapshot.length : liveFrom;
       const replayed = snapshot.slice(0, replayEnd);
       const live = snapshot.slice(replayEnd);
@@ -536,6 +555,8 @@ class AgentChatSession {
         seq: replayed.at(-1)?.seq ?? this.seq,
         event: { kind: "replay-end", turns: countReplayedTurns(replayed) },
       });
+      // 상한에 여는 좌표가 밀려난 경우: 합성 turn-start로 working 턴을 연 뒤 꼬리를 잇는다.
+      if (syntheticStart) listener({ seq: live[0]?.seq ?? this.seq, event: { kind: "turn-start" } });
       // 경계 밖: 지금 도는 턴의 이벤트를 live로 흘린다 — 클라이언트가 새로 여는 working 턴이 된다.
       for (const entry of live) {
         if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
@@ -552,8 +573,8 @@ class AgentChatSession {
   /**
    * 지금 열려 있는 턴이 snapshot에서 시작하는 자리. 턴은 직렬로 돌므로 열린 턴은 마지막 turn-end
    * 뒤의 꼬리 하나뿐이고, 그 첫 이벤트는 dispatch(사용자 턴) 또는 turn-start(자식이 다시 연 턴)다.
-   * 열린 턴이 없거나(정상적으로 turnOpen이 false), 상한에 시작 좌표가 밀려 못 찾으면 -1을 돌려
-   * 호출부가 예전처럼 전체를 재생으로 되쓰게 한다.
+   * 상한에 그 여는 좌표가 밀려 못 찾으면 -1을 돌리고, 그때는 호출부가 꼬리를 live로 흘리며 합성
+   * turn-start를 앞세운다(경계 안에 두면 done으로 굳는다).
    */
   private inFlightTurnStartIndex(snapshot: readonly AgentChatJournalEvent[]): number {
     let lastEnd = -1;
