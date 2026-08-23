@@ -70,8 +70,18 @@ type AttachmentRejection =
   | { readonly kind: "tooLarge" }
   | { readonly kind: "failed" };
 
-/** 취소가 한 발 늦었다 — 그 사이 자기 차례가 온 지시다. 남은 길은 중지뿐이므로 그렇게 말한다. */
-type QueueRejection = { readonly kind: "cancelRace" };
+/**
+ * 취소 요청 하나의 결말.
+ *
+ * 두 실패를 갈라야 한다. `started`는 서버가 판정한 사실이다 — 그 사이 자기 차례가 왔으니 남은 길은
+ * 중지다. `unreachable`은 판정이 아니라 **판정이 없었다**는 뜻이다: 소켓이 끊겼거나 ACK가 오지 않아
+ * 요청이 서버에 닿았는지조차 모르며, 그 지시는 아직 큐에 남아 있을 수 있다. 둘을 한 문구로 합치면
+ * 연결이 끊긴 사용자에게 "이미 시작됐으니 턴을 중지하라"고 말하게 되는데, 그것은 사실이 아닐뿐더러
+ * 필요하지 않은 파괴 동작을 권하는 것이다. 도는 턴의 중지(`stopFailed`)가 이미 같은 규율을 쓴다.
+ */
+export type AgentChatQueueCancelOutcome = "canceled" | "started" | "unreachable";
+
+type QueueRejection = { readonly kind: "started" | "unreachable" };
 
 export function AgentChatComposer({
   context,
@@ -115,8 +125,8 @@ export function AgentChatComposer({
     readonly onOpen: () => void;
   };
   readonly onStop: () => Promise<boolean>;
-  /** 아직 시작하지 않은 예약 하나를 거둔다. false는 그 사이 시작했다는 뜻이다. */
-  readonly onCancelQueued: (queueId: string) => Promise<boolean>;
+  /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
+  readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
 }) {
   const t = getT(context.language ?? "en");
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -246,9 +256,10 @@ export function AgentChatComposer({
 
   const cancelQueued = React.useCallback(async (queueId: string) => {
     setQueueRejection(null);
-    // 칩은 낙관적으로 지우지 않는다. 목록의 권위는 서버이고, 거절은 "그 사이 시작했다"는 사실이라
-    // 지웠다 되돌리면 사용자가 취소를 두 번 읽는다 — 서버가 보낸 다음 목록이 칩을 내린다.
-    if (!await onCancelQueued(queueId)) setQueueRejection({ kind: "cancelRace" });
+    // 칩은 낙관적으로 지우지 않는다. 목록의 권위는 서버이고, 거절은 사실이라 지웠다 되돌리면
+    // 사용자가 취소를 두 번 읽는다 — 서버가 보낸 다음 목록이 칩을 내린다.
+    const outcome = await onCancelQueued(queueId);
+    if (outcome !== "canceled") setQueueRejection({ kind: outcome });
   }, [onCancelQueued]);
 
   // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과
@@ -259,7 +270,9 @@ export function AgentChatComposer({
   const notice = failed
     ? t("terminal.chat.composerSendFailed")
     : queueRejection !== null
-      ? t("terminal.chat.queueCancelFailed")
+      ? t(queueRejection.kind === "started"
+        ? "terminal.chat.queueCancelFailed"
+        : "terminal.chat.queueCancelUnreachable")
       : rejection === null
         ? null
         : rejection.kind === "limit"

@@ -11,7 +11,7 @@ const uploads: File[] = [];
 const messages: string[] = [];
 let stops = 0;
 let canceled: string[] = [];
-let cancelOutcome: "accept" | "reject" = "accept";
+let cancelOutcome: "canceled" | "started" | "unreachable" = "canceled";
 let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
 let releaseMessage: (() => void) | null = null;
 vi.mock("../api.js", () => ({
@@ -35,7 +35,7 @@ beforeEach(() => {
   messages.length = 0;
   stops = 0;
   canceled = [];
-  cancelOutcome = "accept";
+  cancelOutcome = "canceled";
   messageDelivery = "resolve";
   releaseMessage = null;
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
@@ -83,7 +83,7 @@ function composerProps(options: MountOptions = {}) {
     onStop: async () => { stops += 1; return true; },
     onCancelQueued: async (queueId: string) => {
       canceled.push(queueId);
-      return cancelOutcome === "accept";
+      return cancelOutcome;
     },
   };
 }
@@ -227,7 +227,7 @@ describe("chat panel composer", () => {
   // 취소가 한 발 늦으면 그 지시는 이미 도는 턴이다. ok로 삼키면 사용자는 취소되지 않은 턴을
   // 취소된 것으로 읽으므로, 남은 길(중지)을 그 자리에서 말한다.
   it("says so when the cancel lost the race to the turn starting", async () => {
-    cancelOutcome = "reject";
+    cancelOutcome = "started";
     mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }] });
     await act(async () => {
       container?.querySelector<HTMLButtonElement>(".agent-chat-composer-queue-cancel")?.click();
@@ -235,6 +235,21 @@ describe("chat panel composer", () => {
     const notice = container?.querySelector(".agent-chat-composer-error");
     expect(notice?.getAttribute("role")).toBe("alert");
     expect(notice?.textContent).toContain("already started");
+  });
+
+  // 서버에 닿지도 못한 실패를 "이미 시작했다"로 읽으면, 연결이 끊긴 사용자에게 멈추지 않아도 될
+  // 턴을 멈추라고 권하게 된다. 그 지시는 아직 큐에 남아 있을 수 있다 — 도는 턴의 중지와 같은 규율로
+  // 판정의 부재는 재연결·재시도로 말한다.
+  it("tells the user to reconnect when the cancel never reached the server", async () => {
+    cancelOutcome = "unreachable";
+    mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }] });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-queue-cancel")?.click();
+    });
+    const notice = container?.querySelector(".agent-chat-composer-error");
+    expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.textContent).toContain("Reconnect and try again");
+    expect(notice?.textContent).not.toContain("already started");
   });
 
   // 중지는 포인터와 키보드 두 길을 함께 진다. Esc는 프레임 안에서만 듣는다 — 문서 전역에 걸면

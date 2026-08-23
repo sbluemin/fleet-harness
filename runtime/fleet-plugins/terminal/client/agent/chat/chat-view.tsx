@@ -26,7 +26,7 @@ import {
   type AgentChatTurnItem,
 } from "./chat-events.js";
 import { CHAT_EFFORT_RUNGS, readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
-import { AgentChatComposer } from "./composer.js";
+import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -301,13 +301,19 @@ export function AgentChatView({
     }
   }, [state.stopTurn]);
 
-  const handleCancelQueued = React.useCallback(async (queueId: string): Promise<boolean> => {
+  const handleCancelQueued = React.useCallback(async (queueId: string): Promise<AgentChatQueueCancelOutcome> => {
     try {
       await state.cancelQueued(queueId);
-      return true;
-    } catch {
-      // 거절과 연결 끊김이 여기서 만난다. 둘 다 "거두지 못했다"이고, 컴포저가 그 사실을 말한다.
-      return false;
+      return "canceled";
+    } catch (error) {
+      // 서버가 판정한 거절과 서버에 닿지도 못한 실패가 여기서 만난다. 둘을 합치면 연결이 끊긴
+      // 사용자에게 "이미 시작됐으니 턴을 중지하라"고 말하게 되는데, 그 지시는 아직 큐에 남아 있을
+      // 수 있다 — 도는 턴의 중지가 같은 자리에서 이미 둘을 갈라 말한다(stopFailed).
+      //
+      // 서버의 판정은 `queue_not_found` 하나뿐이다. 소켓 부재·조기 종료·ACK 시한(chat-store가 던지는
+      // 코드들)은 판정이 아니라 판정의 부재이고, 알 수 없는 NACK도 그쪽에 둔다 — 시작했다고 단정할
+      // 근거가 없는 실패를 시작으로 읽으면 사용자가 멈추지 않아도 될 턴을 멈춘다.
+      return error instanceof Error && error.message === "queue_not_found" ? "started" : "unreachable";
     }
   }, [state.cancelQueued]);
 
