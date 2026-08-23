@@ -74,6 +74,16 @@ export const AI_GATEWAY_ROUTE_SEGMENT = "ai-gateway";
 export const AI_GATEWAY_MODEL_ENV = "FLEET_AI_GATEWAY_MODEL";
 
 /**
+ * 이 와이어가 서빙하는 엔드포인트. 하네스 선택자는 이 접미 **바로 앞** 경로 조각이다.
+ *
+ * 호스트가 라우터를 어디에 마운트했는지 이 파일은 모른다 — 경로 판정이 전부 접미 비교인
+ * 이유이고, 선택자도 같은 규칙 위에 선다. `/ai-gateway/grok/v1/messages`에서 접미
+ * `/v1/messages`를 떼면 남는 마지막 조각이 `grok`이다. 마운트 경로에 우연히 같은 이름이
+ * 들어 있어도 그것은 접미 바로 앞이 아니므로 선택자가 되지 않는다.
+ */
+const WIRE_ENDPOINT_SUFFIXES = ["/v1/messages", "/v1/models"] as const;
+
+/**
  * `/v1/messages` 본문의 상한.
  *
  * 이 리더는 본문을 전부 메모리에 모은 뒤에야 파싱하므로, 상한이 없으면 요청 하나가 호스트
@@ -158,6 +168,14 @@ export interface AiGatewayRouteDeps {
    * so a host that never names one keeps today's behaviour byte for byte.
    */
   readonly harness?: GatewayHarnessProfile;
+  /**
+   * 같은 마운트에서 함께 서빙하는 하네스들. 키가 곧 선택자 경로 조각이다.
+   *
+   * 라우터는 호출자가 누구인지 **판정하지 않는다** — 클라이언트가 자기 base URL에 적어 넣은
+   * 조각을 읽을 뿐이다. 그 조각이 없거나 여기 없는 이름이면 기본 하네스가 응답한다.
+   * 헤더 스니핑을 쓰지 않는 이유가 이것이다: 스니핑은 라우터에 클라이언트 조건을 되돌려 놓는다.
+   */
+  readonly harnesses?: Readonly<Record<string, GatewayHarnessProfile>>;
   /** core-ai-gateway 설정의 노출 모델 선별을 읽는다. 미주입(테스트 하네스)이면 전체 카탈로그를 노출한다. */
   readonly readAiGatewaySettings?: () => AiGatewayStoredSettings;
   /** 테스트가 upstream을 대체할 수 있도록 주입 가능하게 둔다. */
@@ -207,9 +225,21 @@ export interface AiGatewayRouter {
 
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
   const readAuth = deps.readAuth;
-  const harness = deps.harness ?? claudeCodeHarnessProfile;
+  const defaultHarness = deps.harness ?? claudeCodeHarnessProfile;
+  const selectableHarnesses = deps.harnesses ?? {};
+  const servedHarnesses = [defaultHarness, ...Object.values(selectableHarnesses)];
+  /** 이 요청을 서빙할 하네스. 선택자는 와이어 엔드포인트 바로 앞 경로 조각이다. */
+  const harnessForPath = (pathname: string): GatewayHarnessProfile => {
+    const suffix = WIRE_ENDPOINT_SUFFIXES.find((candidate) => pathname.endsWith(candidate));
+    if (!suffix) return defaultHarness;
+    const mounted = pathname.slice(0, pathname.length - suffix.length);
+    return selectableHarnesses[mounted.slice(mounted.lastIndexOf("/") + 1)] ?? defaultHarness;
+  };
   /** The caller's credential, or null when neither header carries one this harness sends. */
-  const acceptedCredential = (headers: Record<string, unknown>): string | null => (
+  const acceptedCredential = (
+    headers: Record<string, unknown>,
+    harness: GatewayHarnessProfile,
+  ): string | null => (
     callerWireCredentials(headers).find((credential) => harness.acceptsCredential(credential)) ?? null
   );
   // One gate for this router's lifetime. It is the only place that sees every upstream call, so
@@ -294,16 +324,19 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
   };
 
   const handle: GatewayHttpHandler = async ({ req, res, pathname }) => {
+    const harness = harnessForPath(pathname);
     // 클라이언트는 base URL 뒤에 자기 경로를 붙인다. 어느 경로를 먼저 두드리는지는
     // 하네스가 선언한다 — Claude Code는 /api/hello, Grok Build는 아무것도 두드리지 않는다.
-    if (harness.probePaths.some((probePath) => pathname.endsWith(probePath))) {
+    // 프로브는 서빙하는 하네스 전체에 대해 본다: 응답이 빈 객체 하나라 어느 프로필이 그것을
+    // 선언했는지가 동작을 가르지 않고, 프로브 경로에는 선택자를 붙일 엔드포인트 접미가 없다.
+    if (servedHarnesses.some((profile) => profile.probePaths.some((probePath) => pathname.endsWith(probePath)))) {
       res.writeHead(200, { "content-type": "application/json" });
       res.end("{}");
       return true;
     }
     // 하네스의 gateway model discovery. 이게 있어야 Claude Code의 /model picker에 GPT가 뜬다.
     if (pathname.endsWith("/v1/models")) {
-      if (!acceptedCredential(req.headers)) {
+      if (!acceptedCredential(req.headers, harness)) {
         writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
         return true;
       }
@@ -319,7 +352,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
       writeAnthropicError(res, 405, "invalid_request_error", "Method not allowed");
       return true;
     }
-    const callerCredential = acceptedCredential(req.headers);
+    const callerCredential = acceptedCredential(req.headers, harness);
     if (!callerCredential) {
       writeAnthropicError(res, 401, "authentication_error", "Missing Anthropic credential");
       return true;
@@ -367,6 +400,8 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     // 대상을 가리지 않고 모든 요청에 닿아야 하는 다듬기는 하네스가 선언한다. 게이트웨이 대상이
     // 없는 네이티브 Anthropic까지 덮어야 하므로 아래 공급자 정책으로 내려갈 수 없다.
     body = harness.sanitizeRequest(body);
+    // 하네스가 헤더로만 싣는 대화 정체성을, 업스트림이 읽는 자리로 옮겨 적는다.
+    body = withSessionIdentity(body, harness, req.headers);
     // 그 밖에 요청을 어떻게 다듬을지는 공급자가 자기 폴더에서 선언한다. 여기는 그 결정을
     // 실행할 뿐 어느 공급자가 무엇을 받는지 알지 않는다.
     if (target) body = applyGatewayRequestPolicy(body, target, withheldSkills);
@@ -665,6 +700,28 @@ function createGatewayFor(
  * x-api-key가 오는 요청을 예전 판정이 통과시켰고, 그 관대함을 유지한다. 게이트웨이는
  * 자체 bearer를 주입하지 않으므로, 고른 값은 Anthropic 원문 중계에서 청구 주체가 된다.
  */
+/**
+ * 하네스가 헤더에서만 읽을 수 있는 대화 정체성을 요청 본문의 자리로 옮겨 적는다.
+ *
+ * 업스트림은 캐논 요청의 `metadata.user_id` 하나만 본다 — Cursor는 그것으로 conversation과
+ * x-session-id를 만들고, Codex는 sticky routing용 `session_id`를 만든다. 클라이언트가 그 값을
+ * 어디에 싣는지는 클라이언트마다 다르므로 판독은 프로필이 하고, 이 함수는 옮겨 적기만 한다.
+ *
+ * 이미 값이 있으면 덮지 않는다. 본문에 직접 싣는 클라이언트(Claude Code)의 값이 언제나
+ * 이기며, 그래야 기존 동작이 글자 하나 바뀌지 않는다.
+ */
+function withSessionIdentity(
+  body: AnthropicMessagesRequest,
+  harness: GatewayHarnessProfile,
+  headers: Readonly<Record<string, unknown>>,
+): AnthropicMessagesRequest {
+  const existing = body.metadata?.user_id;
+  if (typeof existing === "string" && existing.trim().length > 0) return body;
+  const identity = harness.resolveSessionIdentity?.(headers);
+  if (!identity) return body;
+  return { ...body, metadata: { ...body.metadata, user_id: identity } };
+}
+
 function callerWireCredentials(headers: Record<string, unknown>): readonly string[] {
   const candidates: string[] = [];
   const raw = headers.authorization;

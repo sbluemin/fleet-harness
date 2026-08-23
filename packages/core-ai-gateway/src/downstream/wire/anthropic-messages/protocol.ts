@@ -24,7 +24,7 @@ import {
   resolveGatewayModel,
   upstreamModelId,
 } from "../../../models.js";
-import type { GatewayModel, GatewayModelLookup } from "../../../models.js";
+import type { AnthropicModelCapabilities, GatewayModel, GatewayModelLookup } from "../../../models.js";
 
 export const DEFAULT_CODEX_MODEL = upstreamModelId(gatewayProviderDefault("codex"));
 
@@ -133,6 +133,57 @@ export interface AnthropicMessagesRequest {
   context_management?: Record<string, unknown>;
   /** Claude Code는 일부 요청을 비스트리밍으로 보낸다. 없거나 false면 응답을 단일 JSON으로 돌려줘야 한다. */
   stream?: boolean;
+}
+
+export interface AnthropicModelEntry {
+  readonly type: "model";
+  readonly id: string;
+  readonly display_name: string;
+  readonly created_at: string;
+  readonly capabilities: AnthropicModelCapabilities;
+  readonly max_input_tokens: number | null;
+  readonly max_tokens: null;
+}
+
+export interface AnthropicModelList {
+  readonly data: readonly AnthropicModelEntry[];
+  readonly has_more: false;
+  readonly first_id: string | null;
+  readonly last_id: string | null;
+}
+
+/**
+ * `GET /v1/models`의 Anthropic 응답 모양.
+ *
+ * 이 와이어에 붙는 클라이언트는 전부 이 봉투를 읽지만, 그 안의 **id 문법은 각자 다르다** —
+ * Claude Code는 `claude-gateway--`와 `[1m]` 좌표를, Grok Build는 점 없는 자기 접두를 읽는다.
+ * 그래서 문법은 `render`로 들어오고 이 함수는 봉투만 만든다. 와이어가 어느 방언도 알지 않는
+ * 상태를 유지하는 값이, 하네스마다 이 12줄을 복제하는 비용보다 크다.
+ */
+export function buildAnthropicModelListPayload(
+  models: readonly GatewayModel[],
+  createdAt: string,
+  render: (model: GatewayModel) => { readonly id: string; readonly displayName: string },
+  capabilitiesOf: (model: GatewayModel) => AnthropicModelCapabilities,
+): AnthropicModelList {
+  const data = models.map((model) => {
+    const rendered = render(model);
+    return {
+      type: "model" as const,
+      id: rendered.id,
+      display_name: rendered.displayName,
+      created_at: createdAt,
+      capabilities: capabilitiesOf(model),
+      max_input_tokens: model.contextWindow ?? null,
+      max_tokens: null,
+    };
+  });
+  return {
+    data,
+    has_more: false,
+    first_id: data[0]?.id ?? null,
+    last_id: data[data.length - 1]?.id ?? null,
+  };
 }
 
 export interface TranslateAnthropicRequestOptions {

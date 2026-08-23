@@ -4,9 +4,13 @@ import {
   anthropicModelCapabilities,
   findGatewayModel,
   resolveGatewayModel,
-  type AnthropicModelCapabilities,
   type GatewayModel,
 } from "../../../models.js";
+import { buildAnthropicModelListPayload } from "../../wire/anthropic-messages/protocol.js";
+import type {
+  AnthropicModelEntry,
+  AnthropicModelList,
+} from "../../wire/anthropic-messages/protocol.js";
 
 import {
   hasClaudeOneMillionMarker,
@@ -89,43 +93,22 @@ export function findClaudeGatewayModel(
     : model;
 }
 
-export interface AnthropicModelEntry {
-  readonly type: "model";
-  readonly id: string;
-  readonly display_name: string;
-  readonly created_at: string;
-  readonly capabilities: AnthropicModelCapabilities;
-  readonly max_input_tokens: number | null;
-  readonly max_tokens: null;
-}
-
-export interface AnthropicModelList {
-  readonly data: readonly AnthropicModelEntry[];
-  readonly has_more: false;
-  readonly first_id: string | null;
-  readonly last_id: string | null;
-}
+export type { AnthropicModelEntry, AnthropicModelList };
 
 /** Claude Code gateway model discovery (`GET /v1/models`). */
 export function buildAnthropicModelList(
   models: readonly GatewayModel[] = GATEWAY_MODELS,
   createdAt = GATEWAY_MODELS_UPDATED_AT,
 ): AnthropicModelList {
-  const data = models.map((model) => ({
-    type: "model" as const,
-    id: toClaudeGatewayModelId(model),
-    display_name: toClaudeGatewayModelDisplayName(model),
-    created_at: createdAt,
-    capabilities: anthropicModelCapabilities(model.effort),
-    max_input_tokens: model.contextWindow ?? null,
-    max_tokens: null,
-  }));
-  return {
-    data,
-    has_more: false,
-    first_id: data[0]?.id ?? null,
-    last_id: data[data.length - 1]?.id ?? null,
-  };
+  return buildAnthropicModelListPayload(
+    models,
+    createdAt,
+    (model) => ({
+      id: toClaudeGatewayModelId(model),
+      displayName: toClaudeGatewayModelDisplayName(model),
+    }),
+    (model) => anthropicModelCapabilities(model.effort),
+  );
 }
 
 
