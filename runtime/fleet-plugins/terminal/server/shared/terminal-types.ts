@@ -9,11 +9,6 @@ export interface TerminalLaunchSpec {
   readonly env: NodeJS.ProcessEnv;
   readonly messagePolicy?: CliMessagePolicy;
   readonly renameCommand?: string;
-  /**
-   * spawn된 자식의 pid를 런치를 만든 쪽으로 되돌린다. 플러그인 트리 홀더가 이 pid로 옮겨
-   * 앉아야, 런처가 먼저 죽어도 회수가 살아 있는 트리를 걷지 않는다.
-   */
-  readonly onChildSpawned?: (pid: number) => void;
   /** Spawn-time selected opaque provider identity reader; never browser-visible. */
   readonly sessionIdentityResolver?: SessionIdentityResolver;
   readonly terminalName?: string;
@@ -89,8 +84,6 @@ export interface TerminalPtyDataDisposable {
 
 export interface TerminalPtyHandle {
   readonly fd?: number;
-  /** spawn된 자식의 pid. node-pty가 채우며, 테스트 대역은 비워 둘 수 있다. */
-  readonly pid?: number;
   onData(callback: (data: string) => void): TerminalPtyDataDisposable;
   onExit(callback: () => void): TerminalPtyDataDisposable;
   write(data: string): void;

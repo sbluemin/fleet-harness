@@ -229,7 +229,6 @@ function fakeClaudeSession(
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
       },
     },
-    attach: () => {},
     release: overrides.release ?? (() => {}),
   };
 }

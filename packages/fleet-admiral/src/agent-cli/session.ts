@@ -57,8 +57,6 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeSystemPrompt: "on" | "off";
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
-  /** 이 트리를 읽는 자식의 pid를 홀더에 옮겨 적는다. spawn 직후 호스트가 부른다. */
-  readonly attach: (childPid: number) => void;
   readonly release: () => void;
 }
 
@@ -111,7 +109,6 @@ export async function prepareClaudeSession(
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
       },
     },
-    attach: plugin.attach,
     release: plugin.cleanup,
   };
 }

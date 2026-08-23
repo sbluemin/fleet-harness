@@ -111,7 +111,6 @@ function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
           options: { plugins: [{ path: pluginRoot }], settingSources: ["user", "project", "local"], allowAmbientMcpServers: true },
           request: { sessionId, permissionMode: "bypassPermissions" },
         },
-        attach: () => {},
         release: () => {},
       };
     },

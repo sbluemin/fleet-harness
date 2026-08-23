@@ -5,7 +5,7 @@ import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { assetBundle, buildAssetPluginFiles } from "./fleet.js";
 import { reclaimLegacyMarketplace } from "./legacy-marketplace.js";
-import { acquirePluginSession, PLUGIN_SESSIONS_DIR_NAME, type PluginSessionReclaimDeps } from "./session-store.js";
+import { acquirePluginSession, PLUGIN_SESSIONS_DIR_NAME } from "./session-store.js";
 import type { AgentCliPlugin, CreateAgentCliPluginOptions } from "../types.js";
 
 export type {
@@ -41,10 +41,9 @@ export async function createAgentCliPlugin(
   const fleetRoot = options.dataDir ?? getFleetDataDir();
   const sessionsRoot = pluginSessionsRoot(fleetRoot, options.cwd);
   const files = buildAssetPluginFiles(assetBundle, options);
-  const reclaimDeps: PluginSessionReclaimDeps = options.reclaimDeps ?? {};
   const lease = withDirectoryLock(
     { lockDir: `${sessionsRoot}${SESSIONS_LOCK_SUFFIX}` },
-    () => acquirePluginSession(sessionsRoot, options.sessionId, files, reclaimDeps),
+    () => acquirePluginSession(sessionsRoot, options.sessionId, files),
   );
   // 레거시 트리는 이 코드가 읽지도 쓰지도 않지만, 남겨 두면 한 호스트에 Fleet 플러그인
   // 트리가 둘이 된다. 렌더 경로에 붙여 두어 구버전 런치가 끊긴 뒤 자연히 걷히게 한다.
@@ -52,7 +51,6 @@ export async function createAgentCliPlugin(
   const cleanup = createOnceCleanup(() => lease.release());
   options.onCleanup?.(cleanup);
   return {
-    attach: lease.attach,
     cleanup,
     pluginRoot: lease.pluginRoot,
     pluginRoots: [lease.pluginRoot],
