@@ -477,6 +477,27 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  it("wraps live turns accumulated after the origin replay when reconnecting below the journal cap", async () => {
+    const transcriptPath = writeTranscript("sid-reconnect", [
+      { type: "user", message: { role: "user", content: "first order" } },
+      { type: "assistant", message: { content: [{ type: "text", text: "done" }] } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-reconnect", () => seedFor(transcriptPath));
+    session.send("live before reconnect");
+    await drainTurn(registry, "op-reconnect");
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(events[0]?.event).toEqual({ kind: "replay-start" });
+    expect(events.at(-1)?.event).toEqual({ kind: "replay-end", turns: 2 });
+    expect(events.slice(1, -1).some((entry) => entry.event.kind === "replay-end")).toBe(false);
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },

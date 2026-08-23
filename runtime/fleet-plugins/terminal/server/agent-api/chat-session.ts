@@ -515,9 +515,10 @@ class AgentChatSession {
     const snapshot = this.journal;
     const retainedStart = snapshot.findIndex((entry) => entry.event.kind === "replay-start");
     const retainedEnd = snapshot.findIndex((entry) => entry.event.kind === "replay-end");
-    if (retainedStart < 0 || retainedEnd < retainedStart) {
-      // JOURNAL_CAP이 최초 경계를 밀어냈더라도 이 접속에서 되쓰는 모든 것은 과거다. 매 구독마다
-      // 합성 경계를 세우면 잘린 tail을 live 턴으로 오인하지 않고, 다음 실제 push부터만 live가 된다.
+    const boundaryCoversSnapshot = retainedStart === 0 && retainedEnd === snapshot.length - 1;
+    if (!boundaryCoversSnapshot) {
+      // 원래 경계가 상한에 밀렸거나 그 뒤로 live 턴이 쌓였더라도, 이 접속에서 되쓰는 snapshot
+      // 전체는 과거다. 바깥 경계를 다시 세워 다음 실제 push부터만 live가 되게 한다.
       listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
       // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
       // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다.
