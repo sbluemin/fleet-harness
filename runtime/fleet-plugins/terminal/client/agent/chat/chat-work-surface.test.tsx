@@ -155,6 +155,23 @@ describe("chat work surface", () => {
 });
 
 describe("chat work surface — panel controls", () => {
+  it("exposes the splitter value and resizes the pane from the keyboard", () => {
+    logState = stateWith([job()]);
+    mount();
+    act(() => { strip()?.click(); });
+
+    const grip = container?.querySelector<HTMLElement>(".agent-chat-grip");
+    expect(grip?.tabIndex).toBe(0);
+    expect(grip?.getAttribute("aria-valuenow")).toBe("42");
+    expect(grip?.getAttribute("aria-valuetext")).toBe("Background work pane 42%");
+
+    act(() => { grip?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
+    expect(container?.querySelector(".agent-chat-grip")?.getAttribute("aria-valuenow")).toBe("46");
+
+    act(() => { grip?.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })); });
+    expect(container?.querySelector(".agent-chat-grip")?.getAttribute("aria-valuenow")).toBe("18");
+  });
+
   it("keeps no floating chip row in the body and leaves the composer with the conversation", () => {
     // 분석가·뷰 전환·읽기 폭은 캡션 밴드로 떠났다 — 본문 위에 떠 있던 그 줄이 남아 있으면
     // 작업 면이 열리는 순간 그 오른쪽 위로 넘어가 접기 컨트롤을 덮는다(실측으로 겪은 자리다).

@@ -824,11 +824,16 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const payload = node.payload;
     const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(payload);
-    // 이어붙일 좌표가 없으면 재개는 정의상 **새 시작**이고, `fresh`와 같은 경로다 — 저장된
-    // 세션을 버리는 것이 아니라 애초에 없었으므로 지울 stale 상태도 없다. 여기서 거절하면 첫 턴
-    // 전에 표면을 바꾼 세션이 터미널로 돌아올 길을 잃는다. chat 여부로는 판단할 수 없다: 그
-    // 복귀는 chat 마커를 먼저 걷고 이 라우트를 부르므로 이 시점의 payload에는 이미 없다.
-    const startsFresh = fresh || !providerSession;
+    // 이어붙일 좌표가 없거나 launch 좌표뿐이면 재개는 정의상 **새 시작**이고, `fresh`와 같은
+    // 경로다. launch 좌표는 플러그인 수명용으로 첫 prompt 전에 심은 id일 뿐 transcript가 있는
+    // provider 세션의 증거가 아니다. 이를 --resume에 넘기면 첫 턴 전 Chat → CLI 복귀가 존재하지
+    // 않는 세션을 재개하려다 실패한다.
+    //
+    // chat 여부로는 판단할 수 없다: 캡션의 복귀 버튼은 chat 마커를 먼저 걷고 이 라우트를 부르므로
+    // 이 시점의 payload에는 이미 없다. 그래서 Chat 진입의 resolveChatSeed와 같은 source 판정을 쓴다.
+    const startsFresh = fresh
+      || !providerSession
+      || providerSession.source === "launch";
     // chat 모드 Operation의 resume은 터미널 복귀다 — 진행 중 chat 턴이 있으면 같은 세션 위에
     // 두 필자를 만들 수 없어 거절하고, 아니면 chat 세션을 접고 모드 마커를 걷은 뒤 재기동한다.
     let resumeNode = node;
@@ -1344,14 +1349,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     // transcript 부재는 두 가지 뜻일 수 있고, 그것을 가르는 것은 태생이 아니라 **좌표가 한 번
     // 이라도 심겼는지**다.
     //
-    // providerSession이 아직 없다면 이 세션은 첫 턴을 돌지 않았다. 부재가 정상이고, 잃을 과거도
-    // 없다. 터미널로 열어 놓고 아무것도 시키지 않은 Operation이 정확히 그 상태다 — 여기서
-    // 거절하면 표면을 바꾸려는 사용자가 멀쩡한 터미널을 닫고 Operation을 새로 만들어야 한다.
+    // 첫 턴 전에도 launch resolver가 플러그인 트리 회수를 위해 세션 id를 미리 심는다. 그 좌표는
+    // source:"launch"이고 아직 transcript를 만들었다는 증거가 아니다 — 사용자가 아무 말도 하지 않은
+    // 채 터미널에서 Chat으로 넘어오는 정상 경로가 정확히 이 상태다.
     //
-    // providerSession이 한 번 심린 뒤의 부재는 과거의 상실이다. 그때 fresh로 떨어뜨리면 지워진
-    // 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고, 그 세션이 이전 정체성을 덮어쓴다 —
-    // 바로 그 상실을 막으려고 이 거절이 있다.
-    const neverStarted = !providerSession;
+    // UserPromptSubmit capture가 한 번 지나면 source가 실제 hook 값으로 바뀌고 transcript 경로도
+    // 알려진다. 그 뒤 파일이 사라진 경우에만 과거의 상실이다. 이때 fresh로 떨어뜨리면 지워진
+    // 트랜스크립트가 조용히 무관한 새 세션으로 바뀌고 이전 정체성을 덮어쓰므로 거절한다.
+    const neverStarted = !providerSession || providerSession.source === "launch";
     if (!transcriptPath && !neverStarted) return { ok: false, status: 409, error: "chat_transcript_missing" };
     const sessionOrigin: AgentChatSessionOrigin = transcriptPath
       ? { kind: "resume", transcriptPath }
@@ -1465,8 +1470,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           // 같은 값인지는 축을 가진 쪽이 판단한다 — 세션이 따로 기억해 두면 표면이 바뀌며 비워진 축을
           // 모른 채 다음 보고를 삼킨다. 대신 여기서 이전 값을 읽어, 실제로 달라졌을 때만 방송한다.
           const before = observability.getTerminalSessionInfo(node.id)?.backgroundPending === true;
-          // null은 축이 이 세션의 것이 아니라는 뜻이다 — 채팅에서 CLI로 되돌아간 뒤에도 잡 원장은
-          // 살아 있으므로, 그 보고가 PTY 어댑터가 채우는 같은 필드를 덮지 않게 setter가 막는다.
+          // null은 축이 이 세션의 것이 아니라는 뜻이다 — 세션 정리와 보고가 경합해도 이미 다른
+          // 소유자가 채우는 같은 필드를 덮지 않게 setter가 막는다.
           const updated = observability.setTerminalSessionChatBackgroundPending(node.id, pending);
           if (updated && before !== pending) observability.notifySessionUpdated(updated);
         },

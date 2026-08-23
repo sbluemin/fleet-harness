@@ -188,6 +188,13 @@ interface PendingAsk {
 export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<ClaudeGatewaySdk>;
 
 const JOURNAL_CAP = 2_000;
+
+function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
+  return entries.reduce((count, entry) => (
+    entry.event.kind === "dispatch" || entry.event.kind === "turn-start" ? count + 1 : count
+  ), 0);
+}
+
 const TOOL_NAME_CAP = 500;
 /**
  * 문맥 카테고리 중 **쓴 것이 아닌** 자리의 이름. vendor가 영어 고정으로 붙인다(실측).
@@ -405,11 +412,14 @@ class AgentChatSession {
   }
 
   async replayTranscript(): Promise<void> {
-    // 채팅으로 태어난 세션에는 되돌려줄 과거가 없다 — 빈 리플레이는 "읽지 못했다"와 다르므로
-    // 오류 이벤트도 내지 않고, 로그는 첫 턴부터 자란다.
-    if (this.seed.origin.kind === "fresh") return;
-    const transcriptPath = this.seed.origin.transcriptPath;
+    // 재생 경계는 과거가 0턴이어도 남긴다. 같은 서버 안에서 브라우저만 다시 연결하면 이 저널이
+    // chat-born 세션의 첫 턴들을 되쓰는데, 경계가 없으면 과거 Answer를 새 도착으로 알릴 수 있다.
     this.push({ kind: "replay-start" });
+    if (this.seed.origin.kind === "fresh") {
+      this.push({ kind: "replay-end", turns: 0 });
+      return;
+    }
+    const transcriptPath = this.seed.origin.transcriptPath;
     let turns = 0;
     // 재생 턴의 소요 시간은 트랜스크립트가 이미 들고 있다 — 디스패치 줄과 그 턴 마지막 줄의
     // 시각 차이다. 이것이 없으면 접힘 줄이 과거 턴에서만 시간을 잃는다.
@@ -474,9 +484,20 @@ class AgentChatSession {
     this.push({ kind: "replay-end", turns });
   }
 
-  /** 저널 전체를 되돌려준 뒤 라이브 이벤트를 흘린다. 반환값은 구독 해제다. */
+  /** 저널 전체를 명시적인 재생 경계 안에서 되돌려준 뒤 라이브 이벤트를 흘린다. 반환값은 구독 해제다. */
   subscribe(listener: (event: AgentChatJournalEvent) => void): () => void {
-    for (const entry of this.journal) listener(entry);
+    const snapshot = this.journal;
+    const retainedStart = snapshot.findIndex((entry) => entry.event.kind === "replay-start");
+    const retainedEnd = snapshot.findIndex((entry) => entry.event.kind === "replay-end");
+    if (retainedStart < 0 || retainedEnd < retainedStart) {
+      // JOURNAL_CAP이 최초 경계를 밀어냈더라도 이 접속에서 되쓰는 모든 것은 과거다. 매 구독마다
+      // 합성 경계를 세우면 잘린 tail을 live 턴으로 오인하지 않고, 다음 실제 push부터만 live가 된다.
+      listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
+      for (const entry of snapshot) listener(entry);
+      listener({ seq: snapshot.at(-1)?.seq ?? this.seq, event: { kind: "replay-end", turns: countReplayedTurns(snapshot) } });
+    } else {
+      for (const entry of snapshot) listener(entry);
+    }
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -497,12 +518,12 @@ class AgentChatSession {
 
   send(text: string): void {
     if (this.disposed) return;
-    const epoch = this.stopEpoch;
     this.pendingTurns += 1;
     this.turnFlight = this.turnFlight
-      // 큐에서 기다리는 동안 중지가 눌렸다면 이 턴은 시작하지 않는다. 시작한 뒤 끊으면 모델을
-      // 한 번 깨우고 그 대가를 치른 다음 버리는 셈이라, 사용자가 멈춘 것을 그대로 실행한 것이 된다.
-      .then(() => (epoch === this.stopEpoch ? this.dispatch(text) : undefined))
+      // 이 메시지는 사용자가 별도로 예약한 다음 턴이다. 현재 턴의 중지는 지금 도는 일만 닫으며,
+      // 이미 접수된 다음 지시까지 취소하지 않는다. dispatch는 앞 턴이 닫힐 때까지 기다린 뒤 자기
+      // 세대를 잡으므로 중단 result가 늦게 와도 새 지시의 결말로 읽히지 않는다.
+      .then(() => this.dispatch(text))
       .catch(() => undefined)
       .finally(() => {
         this.pendingTurns -= 1;

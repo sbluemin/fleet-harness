@@ -242,7 +242,7 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
 }
 
 describe("AgentChatRegistry — chat-born sessions", () => {
-  it("starts the first turn without a resume coordinate and replays nothing", async () => {
+  it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
     const { factory, openSession, sends } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
@@ -251,8 +251,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     const session = await registry.ensure("op-1", () => freshSeedFor(home));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    // 되돌려줄 과거가 없다는 것은 "읽지 못했다"와 다르다 — replay 이벤트도 오류도 내지 않는다.
-    expect(kinds(events)).toEqual([]);
+    // 되돌릴 과거가 0턴이라는 사실도 명시적으로 닫힌 경계가 말한다.
+    expect(kinds(events)).toEqual(["replay-start", "replay-end"]);
 
     session.send("let us talk about the render path");
     await drainTurn(registry, "op-1");
@@ -425,6 +425,23 @@ describe("AgentChatRegistry — chat-born sessions", () => {
 });
 
 describe("AgentChatRegistry", () => {
+  it("synthesizes replay boundaries when the journal cap has removed both original markers", async () => {
+    const transcriptPath = writeTranscript("sid-capped-boundary", Array.from({ length: 1_100 }, (_, index) => [
+      { type: "user", message: { role: "user", content: `order ${index}` } },
+      { type: "assistant", message: { content: [{ type: "text", text: `answer ${index}` }] } },
+    ]).flat());
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-capped-boundary", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    expect(events[0]?.event).toEqual({ kind: "replay-start" });
+    expect(events.at(-1)?.event).toMatchObject({ kind: "replay-end" });
+    expect(events.slice(1, -1).some((entry) => entry.event.kind === "dispatch")).toBe(true);
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },
@@ -1836,10 +1853,12 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
-  it("drops turns that were queued behind the stopped one", async () => {
-    // 큐에 밀려 있던 턴이 중지 직후 태연히 시작하면, 사용자가 멈춘 것은 화면에서 멈추지 않는다.
+  it("keeps an explicitly queued next turn after stopping the current one", async () => {
     const transcriptPath = writeTranscript("sess-stop-queue", []);
-    const { factory, sends } = createHangingSdkFactory();
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-stop-2", () => seedFor(transcriptPath));
 
@@ -1848,15 +1867,15 @@ describe("AgentChatRegistry — stopping a turn", () => {
 
     session.send("first");
     session.send("second");
-    await vi.waitFor(() => { expect(kinds(seen)).toContain("turn-start"); });
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
 
     expect(session.stopTurn()).toBe(true);
+    liveSession()?.emit({ type: "result", subtype: "error_during_execution", is_error: true });
     await drainTurn(registry, "op-stop-2");
 
-    // 큐에 밀려 있던 두 번째 메시지는 자식에게 닿지 않는다.
-    expect(sends).toEqual(["first"]);
+    expect(sends).toEqual(["first", "second"]);
     const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
-    expect(dispatches).toHaveLength(1);
+    expect(dispatches).toHaveLength(2);
     await registry.disposeAll();
   });
 

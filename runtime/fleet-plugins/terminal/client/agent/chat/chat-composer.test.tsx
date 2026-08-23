@@ -8,9 +8,11 @@ import type { OperationRenderContext } from "@fleet-console/sdk/plugin";
 import { AgentChatComposer } from "./composer.js";
 
 const uploads: File[] = [];
+const messages: string[] = [];
 let stops = 0;
+let queued = 0;
 vi.mock("../api.js", () => ({
-  messageAgentSession: async () => {},
+  messageAgentSession: async (_operationId: string, text: string) => { messages.push(text); },
   uploadLaunchAttachment: async (file: File) => {
     uploads.push(file);
     return { id: `att-${uploads.length}` };
@@ -23,7 +25,9 @@ let container: HTMLDivElement | null = null;
 
 beforeEach(() => {
   uploads.length = 0;
+  messages.length = 0;
   stops = 0;
+  queued = 0;
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
   vi.stubGlobal("URL", Object.assign(URL, {
     createObjectURL: () => "blob:preview",
@@ -39,7 +43,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function mount(options: { readonly turnRunning?: boolean } = {}): void {
+function mount(options: { readonly turnRunning?: boolean; readonly queuedTurns?: number } = {}): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -55,7 +59,9 @@ function mount(options: { readonly turnRunning?: boolean } = {}): void {
     tourAnchor: false,
     turnRunning: options.turnRunning ?? false,
     stopping: false,
+    queuedTurns: options.queuedTurns ?? 0,
     onStop: async () => { stops += 1; },
+    onQueued: () => { queued += 1; },
   })));
 }
 
@@ -107,23 +113,44 @@ describe("chat panel composer", () => {
     expect(uploads).toHaveLength(1);
   });
 
-  // 발사 컨트롤은 하나다 — 떠 있는 중지 배지를 따로 두면 지금 도는 일을 멈추는 자리가 둘로 갈린다.
-  it("turns the send control into stop while a turn runs", async () => {
+  it("stands stop and queue-next as separate controls while a turn runs", async () => {
     mount({ turnRunning: true });
-    const send = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
-    expect(send?.classList.contains("is-stopping")).toBe(true);
-    expect(send?.getAttribute("aria-label")).toBe("Stop this turn");
-    expect(container?.querySelector(".agent-chat-composer-stop-mark")).not.toBeNull();
-    await act(async () => { send?.click(); });
+    const stop = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-stop");
+    const queue = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue");
+    expect(stop?.textContent).toContain("Stop current");
+    expect(stop?.getAttribute("aria-label")).toBe("Stop this turn");
+    expect(queue?.getAttribute("aria-label")).toBe("Queue next (Enter)");
+    expect(queue?.disabled).toBe(true);
+
+    const field = input();
+    await act(async () => {
+      if (!field) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "check the tests");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(queue?.disabled).toBe(false);
+    await act(async () => { queue?.click(); });
+    expect(messages).toEqual(["check the tests"]);
+    expect(queued).toBe(1);
+
+    await act(async () => { stop?.click(); });
     expect(stops).toBe(1);
 
     act(() => root?.unmount());
     container?.remove();
     mount();
+    expect(container?.querySelector(".agent-chat-composer-stop")).toBeNull();
     const idle = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send");
-    expect(idle?.classList.contains("is-stopping")).toBe(false);
-    // 초안이 없으면 발사도 없다 — 눌러도 아무 일이 없는 죽은 컨트롤을 만들지 않는다.
+    expect(idle?.classList.contains("is-queue")).toBe(false);
     expect(idle?.disabled).toBe(true);
+  });
+
+  it("keeps a visible receipt for accepted queued turns", () => {
+    mount({ turnRunning: true, queuedTurns: 2 });
+    const receipt = container?.querySelector(".agent-chat-composer-queued");
+    expect(receipt?.getAttribute("role")).toBe("status");
+    expect(receipt?.textContent).toBe("2 next instructions queued");
   });
 
   // 파일 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로
