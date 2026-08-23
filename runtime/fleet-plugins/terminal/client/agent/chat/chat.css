@@ -280,16 +280,26 @@
   margin-bottom: 0;
 }
 
+/* 구간 문장은 이 면에서 가장 밝다. 예전에는 답변보다 한 단 낮춘 tertiary였는데, 집계 줄이
+   같은 tertiary라 스트리밍 중에는 문장과 장부가 한 덩어리 회색으로 읽혔다(사용자 적발).
+   secondary로 한 단만 올리는 것으로는 갈리지 않는다 — 잉크 스케일에서 secondary(L70)와
+   tertiary(L64)는 6포인트뿐이고, 실측에서 둘을 나란히 두면 같은 회색으로 보인다. 세 티어
+   중 갈리는 것은 primary(L94)뿐이다. 답변보다 밝아지는 것은 뒤집힘이 아니다: 도는 동안
+   읽을 것은 이 문장이고, 턴이 끝나면 이 문장은 접힘 안으로 들어간다 — 펼쳐 본 사람은
+   결말이 아니라 과정을 읽으러 온 사람이다. */
 .agent-chat .agent-chat-ledger-note.markdown-body p,
 .agent-chat .agent-chat-ledger-note.markdown-body li {
-  color: var(--text-tertiary);
+  color: var(--text-primary);
 }
 
 /* 끝난 일상 스텝의 한 줄 집계 — 도구를 세우지 않고 "무엇을 몇 번 했는가"만 남긴다.
    면도 테두리도 없다: 이 줄은 카드가 아니라 문장이고, 카드는 예외에게만 준다. */
 .agent-chat-tally {
   display: flex;
-  flex-wrap: wrap;
+  /* 이 줄의 자식은 링·글자 묶음·꺾쇠 셋뿐이고 줄바꿈은 묶음이 자기 안에서 진다. 여기서
+     wrap을 열어 두면 절이 많은 줄에서 꺾쇠가 홀로 다음 줄로 떨어진다 — 감싸는 flex는
+     좁아지기보다 넘기기를 먼저 고르기 때문이다(절마다 계열 글리프가 서면서 더 자주 난다). */
+  flex-wrap: nowrap;
   align-items: baseline;
   gap: var(--space-2);
   padding: 2px var(--space-1);
@@ -301,6 +311,25 @@
 
 .agent-chat-tally-sep {
   color: var(--hairline-strong);
+}
+
+/* 계열 글리프와 그 문구는 한 덩어리다 — 절 사이 간격(space-2)을 그대로 쓰면 글리프가 앞
+   절 끝에 붙어 읽혀 무엇을 세는 표식인지 알 수 없다. */
+.agent-chat-tally-clause {
+  display: inline-flex;
+  align-items: baseline;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+/* 계열 표식. 색을 따로 쥐지 않는다 — 계열은 상태(신호)도 위치(brass)도 정체성도 아니라
+   어떤 채널에도 속하지 않고, 잉크를 쥐는 순간 도는 줄의 물결이 이 글자에서만 끊긴다
+   (배경 클립은 투명한 자식만 통과시킨다 — 구분점과 `other` 이름이 이미 그 예외다).
+   폭을 1em으로 고정해 여러 절이 같은 리듬으로 선다. */
+.agent-chat-tally-glyph {
+  flex: none;
+  width: 1em;
+  text-align: center;
 }
 
 /* 집계 줄의 글자 묶음. 도는 구간에서는 이 묶음만 물결지고 링과 꺾쇠는 제자리에 남는다. */
@@ -397,6 +426,7 @@
    차이는 이 글리프 하나뿐). 크기와 잉크를 한 단씩 올려 쉬는 상태에서도 읽히게 하고, hover는
    그 위 한 단으로 남긴다 — brass는 위치·포커스 채널이라 "눌린다"를 질 수 없다. */
 .agent-chat-tally-chev {
+  flex: none;
   font-size: var(--t-xs);
   line-height: 1;
   align-self: center;
@@ -1684,6 +1714,12 @@
     animation: none;
     background-image: none;
     color: var(--text-secondary);
+  }
+
+  /* 턴 헤드의 잉크는 tertiary다 — 봉인의 기본 채움(secondary)을 그대로 받으면 모션을 끈
+     것만으로 시계가 밝아져, 없는 상태 변화를 말하게 된다. */
+  .agent-chat-turn-head .agent-chat-live-text {
+    color: var(--text-tertiary);
   }
 
   /* 컴포저가 가운데에서 하단으로 내려앉는 이동을 세운다 — 자리는 그대로 바뀌되 한 프레임에 간다. */

@@ -707,7 +707,8 @@ function ChatTurn({
   );
 }
 
-/** 진행 중 턴 헤드의 라이브 티커 — 시각 전용이라 라이브 리전이 아니다(매초 재낭독 방지). */
+/** 진행 중 턴 헤드의 라이브 티커 — 시각 전용이라 라이브 리전이 아니다(매초 재낭독 방지).
+ *  집계 줄과 같은 명도 물결을 진다: 둘 다 "이 턴이 아직 살아 있다"를 말하므로 같은 어휘다. */
 function TurnElapsedLabel({
   turn,
   language,
@@ -717,7 +718,11 @@ function TurnElapsedLabel({
 }) {
   const t = getT(language);
   const elapsedMs = useTurnElapsedMs(turn.startedAt, turn.state === "working");
-  return <span aria-hidden="true">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(elapsedMs) })}</span>;
+  return (
+    <span className="agent-chat-live-text" aria-hidden="true">
+      {t("terminal.chat.turnWorking", { elapsed: formatElapsed(elapsedMs) })}
+    </span>
+  );
 }
 
 /**
@@ -889,13 +894,16 @@ function Tally({
   const clauses = groups.map((group, index) => (
     <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
-      {/* 알려진 계열은 문구 하나로 끝나지만, `other`는 도구 이름이 곧 주어다. 그 이름만 따로
-          그려 한 단 밝은 잉크를 지운다 — 접히지 않은 스텝 줄의 동사가 이미 그 잉크를 쓰므로,
-          이것은 새 문법이 아니라 두 줄을 같은 문법으로 되돌리는 것이다. */}
-      {group.family === "other" && group.name !== undefined
-        ? <span className="agent-chat-tally-name">{group.name}</span>
-        : null}
-      <span>{groupLabel(group, t)}</span>
+      <span className="agent-chat-tally-clause">
+        <span className="agent-chat-tally-glyph" aria-hidden="true">{familyGlyph(group.family)}</span>
+        {/* 알려진 계열은 문구 하나로 끝나지만, `other`는 도구 이름이 곧 주어다. 그 이름만 따로
+            그려 한 단 밝은 잉크를 지운다 — 접히지 않은 스텝 줄의 동사가 이미 그 잉크를 쓰므로,
+            이것은 새 문법이 아니라 두 줄을 같은 문법으로 되돌리는 것이다. */}
+        {group.family === "other" && group.name !== undefined
+          ? <span className="agent-chat-tally-name">{group.name}</span>
+          : null}
+        <span>{groupLabel(group, t)}</span>
+      </span>
     </React.Fragment>
   ));
   // 라이브 줄은 자기가 살아 있다고 스스로 말해야 한다. 예전에는 최근 여덟 줄이 흘러가는 것
@@ -917,7 +925,10 @@ function Tally({
                 {index > 0 || clauses.length > 0
                   ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
                   : null}
-                <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
+                <span className="agent-chat-tally-clause">
+                  <span className="agent-chat-tally-glyph" aria-hidden="true">{familyGlyph(agentChatToolFamily(item.name))}</span>
+                  <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
+                </span>
               </React.Fragment>
             ))}
           </span>
@@ -992,6 +1003,36 @@ function settledLabel(count: number, t: ReturnType<typeof getT>): string {
 }
 
 /** 복수형은 이 저장소 관례대로 호출부가 고른다(`_one`/`_other`). */
+/**
+ * 계열 표식 — 같은 종류의 일이 어디서 몇 번 있었는지를 읽기 전에 **보이게** 한다.
+ *
+ * 집계 줄은 절이 이어질수록 한 줄짜리 글자 덩어리가 되어, 무엇이 몇 건인지 세려면 문장을
+ * 읽어야 했다. 표식이 앞에 서면 세는 일이 읽기가 아니라 훑기가 된다.
+ *
+ * 알파벳은 제품에 이미 있는 잡 글리프(◆ 위임 · ❯ 셸 · ⣿ 워크플로 · ▪ 그 밖)를 그대로
+ * 물려받아 넓힌 것이다 — 같은 일을 두 면이 다른 기호로 부르면 표식이 어휘가 아니라 장식이
+ * 된다. 전부 텍스트 표현 문자다: 이모지를 쓰면 자기 색을 들고 와 채널 계약을 깬다.
+ */
+function familyGlyph(family: string): string {
+  return FAMILY_GLYPHS[family] ?? "▪";
+}
+
+const FAMILY_GLYPHS: Readonly<Record<string, string>> = {
+  read: "▤",
+  write: "✚",
+  edit: "✎",
+  run: "❯",
+  inspect: "◉",
+  search: "⌕",
+  fetch: "↧",
+  delegate: "◆",
+  workflow: "⣿",
+  stop: "■",
+  plan: "☰",
+  ask: "?",
+  propose: "▷",
+};
+
 function groupLabel(group: AgentChatStepGroup, t: ReturnType<typeof getT>): string {
   const plural = group.count === 1 ? "one" : "other";
   const key = `terminal.chat.group.${group.family}_${plural}` as Parameters<typeof t>[0];

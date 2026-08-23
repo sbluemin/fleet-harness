@@ -354,6 +354,80 @@ describe("chat ledger — one live line, and a job anchor instead of a card", ()
 });
 
 /**
+ * 계열 표식 — 집계 줄은 절이 이어질수록 한 줄짜리 글자 덩어리가 된다. 표식이 절 앞에 서면
+ * 무엇이 몇 건인지 세는 일이 읽기가 아니라 훑기가 된다.
+ */
+describe("chat ledger — family glyphs on the tally clauses", () => {
+  it("marks every clause with its family, and shares the job glyph alphabet", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Looking around." },
+          { type: "tool", name: "Read", detail: "alpha.md", state: "ok" },
+          { type: "tool", name: "Bash", detail: "ls", state: "ok" },
+          { type: "tool", name: "Grep", detail: "needle", state: "ok" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "done",
+        toolCount: 3,
+        draft: "",
+      }],
+    };
+    mount();
+    const clauses = [...(container?.querySelectorAll(".agent-chat-tally-clause") ?? [])];
+    expect(clauses).toHaveLength(3);
+    expect(clauses.map((clause) => clause.querySelector(".agent-chat-tally-glyph")?.textContent))
+      .toEqual(["▤", "❯", "⌕"]);
+    // 셸은 잡 글리프(❯)와 같은 기호다 — 같은 일을 두 면이 다른 기호로 부르면 어휘가 아니라 장식이 된다.
+    expect(clauses[1]?.textContent).toContain("Ran 1 shell command");
+  });
+
+  it("marks the running clause too, so the live line reads the same way", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Working." },
+          { type: "tool", name: "Read", detail: "alpha.md", state: "ok" },
+          { type: "tool", name: "Bash", detail: "pnpm test", state: "running" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "working",
+        toolCount: 2,
+        draft: "",
+      }],
+    };
+    mount();
+    const live = container?.querySelector(".agent-chat-tally.is-live");
+    const running = live?.querySelector(".agent-chat-tally-running .agent-chat-tally-clause");
+    expect(running?.querySelector(".agent-chat-tally-glyph")?.textContent).toBe("❯");
+    expect(running?.textContent).toContain("Running pnpm test");
+  });
+
+  it("falls back to the neutral mark for a tool with no family", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Calling out." },
+          { type: "tool", name: "mcp__fleet__wiki_read", detail: "page", state: "ok" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "done",
+        toolCount: 1,
+        draft: "",
+      }],
+    };
+    mount();
+    const clause = container?.querySelector(".agent-chat-tally-clause");
+    expect(clause?.querySelector(".agent-chat-tally-glyph")?.textContent).toBe("▪");
+    // `other`는 도구 이름이 곧 주어다 — 표식이 그 이름을 밀어내지 않는다.
+    expect(clause?.querySelector(".agent-chat-tally-name")?.textContent).toBe("mcp__fleet__wiki_read");
+  });
+});
+
+/**
  * 병렬 도구 배치 — 한 assistant 메시지가 tool_use 블록을 여럿 실은 경우다. 그 스텝들은 다음
  * 사용자 메시지가 결과를 실어 올 때까지 **동시에** running으로 남으므로, 꼬리 하나만 라이브 줄로
  * 걷으면 나머지가 그대로 전폭 행으로 선다 — 배치가 클수록 한 줄 원장이 무너진다.
