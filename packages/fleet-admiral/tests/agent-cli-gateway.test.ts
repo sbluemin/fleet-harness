@@ -361,7 +361,7 @@ describe("claude-gateway argument composition", () => {
     expect(readdirSync(path.join(pluginRoot, "agents")).length).toBeGreaterThan(0);
     // 선택된 Fleet 지침은 시스템 프롬프트가 아니라 온디맨드 플러그인 스킬로만 렌더된다.
     expect(readdirSync(path.join(pluginRoot, "skills")).sort()).toEqual([
-      "orchestration",
+      "delegation",
       "professional-pushback",
     ]);
     const settings = JSON.parse(injected.args[injected.args.indexOf("--settings") + 1]!) as { skillOverrides: Record<string, string> };

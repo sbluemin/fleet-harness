@@ -1,9 +1,9 @@
 ---
-name: orchestration
+name: delegation
 description: Decide whether research, review, or verification should leave the host, plan the smallest useful execution graph, and integrate returned evidence while keeping implementation on the host by default. Use for multi-step delegation, parallel agents, Workflow calls, or cross-run synthesis. Skip for a direct host-only task.
 ---
 
-# Orchestration
+# Delegation
 
 Research, review, and verification may be delegated; implementation normally is not. The host retains routing, planning, product intent, trade-off arbitration, synthesis, acceptance of results, and ownership of the final code change.
 

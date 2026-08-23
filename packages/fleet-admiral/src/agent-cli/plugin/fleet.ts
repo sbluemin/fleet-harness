@@ -70,7 +70,7 @@ function modelGuardHook(subcommand: string): FleetHookExec {
 
 function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?: string): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더하고,
-  // 위임·병렬 작업을 orchestration 스킬과 로스터 조회로 보내는 트립와이어를 그 뒤에 붙인다.
+  // 위임·병렬 작업을 delegation 스킬과 로스터 조회로 보내는 트립와이어를 그 뒤에 붙인다.
   // 스킬은 의미 정책만 소유하고, 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
@@ -101,7 +101,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
         ]
       : []),
   ];
-  // orchestration 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
+  // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
   // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
   // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
   // 호스트가 스킬의 preflight 지시와 매 턴 리마인더를 읽고 gateway_models로 직접 읽는다.

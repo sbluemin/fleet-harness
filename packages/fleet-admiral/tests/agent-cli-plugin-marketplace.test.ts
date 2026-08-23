@@ -115,11 +115,11 @@ describe("agent CLI plugin marketplace rendering", () => {
         }],
       },
     ]);
-    // orchestration \uc2a4\ud0ac \uc804\ud6c4\uc5d0\ub294 \ud6c5\uc744 \uac78\uc9c0 \uc54a\ub294\ub2e4. Claude Code\uc758 `if`\ub294 \ud37c\ubbf8\uc158 \ub8f0\ub85c \ud3c9\uac00\ub418\uace0
+    // delegation \uc2a4\ud0ac \uc804\ud6c4\uc5d0\ub294 \ud6c5\uc744 \uac78\uc9c0 \uc54a\ub294\ub2e4. Claude Code\uc758 `if`\ub294 \ud37c\ubbf8\uc158 \ub8f0\ub85c \ud3c9\uac00\ub418\uace0
     // Skill \ub3c4\uad6c\uc5d0\ub294 \ub8f0 \ucf58\ud150\uce20 \ub9e4\ucc98\uac00 \uc5c6\uc5b4 `Skill(<name>)` \uc870\uac74\uc774 \ud56d\uc0c1 \uac70\uc9d3\uc774 \ub418\uae30 \ub54c\ubb38\uc774\ub2e4.
     expect(hooksJson.hooks.PostToolUseFailure).toBeUndefined();
     expect(hooksJson.hooks.SessionEnd).toBeUndefined();
-    expect(JSON.stringify(hooksJson)).not.toContain("Skill(fleet:orchestration)");
+    expect(JSON.stringify(hooksJson)).not.toContain("Skill(fleet:delegation)");
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
@@ -153,7 +153,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     };
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks ?? [];
     expect(userPromptSubmit.slice(0, 3).map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
-    // orchestration 스킬 라우팅 트립와이어는 host 훅 뒤에 선다. 로스터와 핀 문법은
+    // delegation 스킬 라우팅 트립와이어는 host 훅 뒤에 선다. 로스터와 핀 문법은
     // 스킬 완료 뒤 PostToolUse가 공급하고, 여기서는 필요한 요청에서 스킬을 먼저 열게 한다.
     expect(userPromptSubmit[3]?.args).toEqual([
       "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
@@ -223,7 +223,7 @@ describe("agent CLI plugin marketplace rendering", () => {
 
     const skillsRoot = path.join(plugin.pluginRoot, "skills");
     expect(readdirSync(skillsRoot).sort()).toEqual([
-      "orchestration",
+      "delegation",
       "professional-pushback",
     ]);
     for (const skillName of readdirSync(skillsRoot)) {
@@ -258,7 +258,7 @@ describe("agent CLI plugin marketplace rendering", () => {
     expect(existsSync(retiredNativeRoot)).toBe(false);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
     expect(readdirSync(path.join(plugin.pluginRoot, "skills")).sort()).toEqual([
-      "orchestration",
+      "delegation",
       "professional-pushback",
     ]);
   });
