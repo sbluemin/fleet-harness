@@ -13,7 +13,7 @@ import { breadcrumbSegments, buildViewerMetaParts } from "./format.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import { FileIcon } from "./file-icon.js";
-import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
+import { FileTree, isFilterFocusShortcut, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { cacheBustedImageSrc, ImageViewer } from "./viewer/image.js";
@@ -48,6 +48,8 @@ import { activateFileSearchTarget, consumeFileSearchTarget, mintRevealRequestId,
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 const FEEDBACK_DURATION_MS = 2_500;
+/** 폴더 브레드크럼 클릭 복사의 더블클릭 유예 — 이 안에 두 번째 클릭이 오면 복사 없이 reveal만 한다. */
+const CRUMB_DBLCLICK_GRACE_MS = 250;
 
 interface ActiveContextMenu {
   readonly id: number;
@@ -316,6 +318,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   }, [activePath, fetchDocContent]);
 
   const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    // "/"는 패널 어디서든 필터로 — 트리만 잡으면 뷰어 페인(칩·브레드크럼·줌)에서 단축키가 죽는다.
+    if (isFilterFocusShortcut(event.key, event.target)) {
+      event.preventDefault();
+      fileTreeRef.current?.focusFilter();
+      return;
+    }
     if (event.key !== "Escape") return;
     // 컨텍스트 메뉴가 열려 있으면 메뉴의 Escape 경로가 우선한다(메뉴가 stopPropagation한다).
     if (!activePath) return;
@@ -392,6 +400,29 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     if (!theaterId) return;
     setRevealTarget({ theaterId, relativePath: path, requestId: mintRevealRequestId() });
   }, [theaterId]);
+
+  // 더블클릭은 click을 두 번 앞세운다 — 폴더 조각의 복사를 유예 없이 실행하면
+  // reveal 더블클릭마다 클립보드가 두 번 덮인다. 유예 안에 두 번째 클릭이 오면 복사를 접는다.
+  const crumbCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPendingCrumbCopy = useCallback(() => {
+    if (crumbCopyTimerRef.current === null) return;
+    clearTimeout(crumbCopyTimerRef.current);
+    crumbCopyTimerRef.current = null;
+  }, []);
+  useEffect(() => cancelPendingCrumbCopy, [cancelPendingCrumbCopy, contextScope]);
+
+  const handleCrumbDirClick = useCallback((path: string) => {
+    cancelPendingCrumbCopy();
+    crumbCopyTimerRef.current = setTimeout(() => {
+      crumbCopyTimerRef.current = null;
+      handleCrumbCopy(path);
+    }, CRUMB_DBLCLICK_GRACE_MS);
+  }, [cancelPendingCrumbCopy, handleCrumbCopy]);
+
+  const handleCrumbDirDoubleClick = useCallback((path: string) => {
+    cancelPendingCrumbCopy();
+    handleCrumbReveal(path);
+  }, [cancelPendingCrumbCopy, handleCrumbReveal]);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -643,8 +674,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                       title={segment.isLeaf
                         ? t("fileExplorer.viewer.crumbFileTitle", { path: segment.path })
                         : t("fileExplorer.viewer.crumbDirTitle", { path: segment.path })}
-                      onClick={() => handleCrumbCopy(segment.path)}
-                      onDoubleClick={segment.isLeaf ? undefined : () => handleCrumbReveal(segment.path)}
+                      onClick={segment.isLeaf
+                        ? () => handleCrumbCopy(segment.path)
+                        : () => handleCrumbDirClick(segment.path)}
+                      onDoubleClick={segment.isLeaf ? undefined : () => handleCrumbDirDoubleClick(segment.path)}
                     >
                       {segment.name}
                     </button>

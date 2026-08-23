@@ -41,6 +41,8 @@ interface FileTreeProps {
 
 export interface FileTreeHandle {
   readonly restoreContextMenuFocus: (relativePath: string) => HTMLElement | null;
+  /** "/" 단축키의 착지점 — 패널 루트가 잡은 키를 필터 입력으로 넘긴다. */
+  readonly focusFilter: () => void;
 }
 
 export interface FlatRow {
@@ -1356,6 +1358,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
       renderedCursorPath,
       treeRef.current,
     ),
+    focusFilter: () => filterInputRef.current?.focus(),
   }), [renderedCursorPath]);
 
   const focusRow = (rowIndex: number) => {
@@ -1578,14 +1581,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   };
 
   return (
-    <div
-      className="fexp-tree-container"
-      onKeyDown={(event) => {
-        if (!isFilterFocusShortcut(event.key, event.target)) return;
-        event.preventDefault();
-        filterInputRef.current?.focus();
-      }}
-    >
+    <div className="fexp-tree-container">
       <div className="fexp-head">
       <div className="fexp-filter">
         <div className="fexp-filter-box">
