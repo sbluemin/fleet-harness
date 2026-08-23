@@ -6,7 +6,7 @@ import path from "node:path";
 import { findGatewayModel, type GatewayModel } from "@dotobokuri/core-ai-gateway";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createAgentCliPlugin, pluginSessionsRoot } from "../src/agent-cli/plugin/index.js";
+import { createAgentCliPlugin, pluginSessionsRoot, removePluginSession } from "../src/agent-cli/plugin/index.js";
 import type { CreateAgentCliPluginOptions } from "../src/agent-cli/types.js";
 
 const tempDirs: string[] = [];
@@ -133,6 +133,32 @@ describe("agent CLI plugin session store", () => {
     expect(second.pluginRoot).toBe(first.pluginRoot);
     expect(existsSync(guardPath)).toBe(true);
     expect(readdirSync(pluginSessionsRoot(dataDir, cwd))).toEqual([sessionId]);
+  });
+
+  // 트리는 런치가 끝나도 남지만 세션 자체가 사라지면 읽을 주체도 없다 — 그때 호스트가 걷는다.
+  it("removes only the named session's tree when the host reclaims it", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-session-reclaim-");
+    const goneId = randomUUID();
+    const keptId = randomUUID();
+
+    const gone = await createAgentCliPlugin(options({ cwd, dataDir, sessionId: goneId }));
+    const kept = await createAgentCliPlugin(options({ cwd, dataDir, sessionId: keptId }));
+
+    removePluginSession({ cwd, dataDir, sessionId: goneId });
+
+    expect(existsSync(gone.pluginRoot)).toBe(false);
+    expect(existsSync(kept.pluginRoot)).toBe(true);
+    expect(readdirSync(pluginSessionsRoot(dataDir, cwd))).toEqual([keptId]);
+  });
+
+  it("survives a reclaim for a session, workspace, or data dir that is not there", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-session-reclaim-absent-");
+
+    // 어느 쪽도 던지지 않고, 없는 워크스페이스를 만들지도 않는다 — 회수는 자리를 세우지 않는다.
+    expect(() => removePluginSession({ cwd, dataDir, sessionId: randomUUID() })).not.toThrow();
+    expect(() => removePluginSession({ cwd, dataDir, sessionId: "../escape" })).not.toThrow();
+    expect(() => removePluginSession({ cwd: path.join(cwd, "absent"), dataDir, sessionId: randomUUID() })).not.toThrow();
+    expect(existsSync(path.join(dataDir, "workspaces"))).toBe(false);
   });
 
   describe("legacy marketplace tree", () => {

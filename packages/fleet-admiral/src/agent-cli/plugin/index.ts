@@ -1,11 +1,11 @@
 import path from "node:path";
 
-import { ensureWorkspaceDirectory, withDirectoryLock } from "@dotobokuri/core-infra";
+import { ensureWorkspaceDirectory, resolveWorkspaceDirectory, withDirectoryLock } from "@dotobokuri/core-infra";
 import { getFleetDataDir } from "@dotobokuri/core-infra/data-dir";
 
 import { assetBundle, buildAssetPluginFiles } from "./fleet.js";
 import { reclaimLegacyMarketplace } from "./legacy-marketplace.js";
-import { acquirePluginSession, PLUGIN_SESSIONS_DIR_NAME } from "./session-store.js";
+import { acquirePluginSession, PLUGIN_SESSIONS_DIR_NAME, removePluginSessionTree } from "./session-store.js";
 import type { AgentCliPlugin, CreateAgentCliPluginOptions } from "../types.js";
 
 export type {
@@ -22,6 +22,30 @@ const SESSIONS_LOCK_SUFFIX = ".lock";
  */
 export function pluginSessionsRoot(dataDir: string, cwd: string): string {
   return path.join(ensureWorkspaceDirectory(dataDir, cwd).path, PLUGIN_SESSIONS_DIR_NAME);
+}
+
+/**
+ * 이 세션의 플러그인 트리를 걷는다. Operation이 사라질 때 호스트가 부른다 — 트리는 세션의
+ * 것이라 런치가 끝나도 남지만, 세션 자체가 없어지면 그것을 읽을 주체도 없다.
+ *
+ * 없는 워크스페이스를 만들지 않는다: 회수는 자리를 세우는 일이 아니다. 어떤 실패도 호출자의
+ * 삭제 흐름을 막지 않는다.
+ */
+export function removePluginSession(options: {
+  readonly cwd: string;
+  readonly dataDir?: string;
+  readonly sessionId: string;
+}): void {
+  try {
+    const fleetRoot = options.dataDir ?? getFleetDataDir();
+    const sessionsRoot = path.join(resolveWorkspaceDirectory(fleetRoot, options.cwd).path, PLUGIN_SESSIONS_DIR_NAME);
+    withDirectoryLock(
+      { lockDir: `${sessionsRoot}${SESSIONS_LOCK_SUFFIX}` },
+      () => removePluginSessionTree(sessionsRoot, options.sessionId),
+    );
+  } catch {
+    return;
+  }
 }
 
 /**

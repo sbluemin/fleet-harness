@@ -37,6 +37,17 @@ export function isPluginSessionId(value: string): boolean {
 }
 
 /**
+ * 세션이 사라졌을 때 그 트리를 걷는다. 호출자는 저장소 락을 이미 쥐고 있어야 한다.
+ *
+ * 트리는 세션의 것이므로 런치가 끝나도 남지만, 세션 자체가 없어지면 그것을 읽을 것도 없다.
+ * 이 트리를 읽던 자식이 이미 접힌 뒤에 부른다 — 훅은 이벤트 시점에 디스크를 다시 읽는다.
+ */
+export function removePluginSessionTree(sessionsRoot: string, sessionId: string): void {
+  if (!isPluginSessionId(sessionId)) return;
+  removePrivatePath(path.join(sessionsRoot, sessionId), sessionsRoot);
+}
+
+/**
  * 이 세션의 플러그인 트리를 확보한다. 호출자는 저장소 락을 이미 쥐고 있어야 한다.
  *
  * **한 세션의 트리는 언제나 런치 하나가 독점한다.** 같은 Claude 세션을 PTY와 SDK가 함께 여는

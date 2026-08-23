@@ -70,6 +70,11 @@ export interface ConsoleRuntimeSessionInfo {
   readonly label: string;
   readonly mcpToolCount: number;
   readonly sessionId: string;
+  /**
+   * 이 런치가 연 Claude 세션의 id. Fleet이 못박은 값이라 자식의 첫 프롬프트를 기다리지 않고
+   * 여기서 이미 확정이다 — capture hook이 오기 전에도 호스트가 그 세션의 좌표를 안다.
+   */
+  readonly claudeSessionId?: string;
 }
 
 export type GatewayLaunchOptionErrorCode = "gateway_model_not_enabled" | "invalid_effort";
@@ -343,6 +348,7 @@ async function createAgentCliLaunchSpec(options: {
       label: injectedProfile.label,
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
+      claudeSessionId: injectedProfile.session.sessionId,
     });
     let launchProfile: AgentCliProfile = injectedProfile;
     if (injectedProfile.id === "claude-gateway") {

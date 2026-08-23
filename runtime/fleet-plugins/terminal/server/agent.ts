@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import process from "node:process";
 
-import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
+import { buildDisabledSkillOverrides, buildGatewayModelsToolSpec, createDelayedPtyWriter, createFleetGatewayAgentRuntimeLifecycle, formatPtyMessage, GATEWAY_DISABLED_CLAUDE_SKILLS, getAgentCliIds, getAgentCliMetadata, isHostSessionToolAllowed, LaunchPromptError, MAX_LAUNCH_PROMPT_CHARS, NATIVE_CLAUDE_EFFORTS, parseAgentCliId, removePluginSession, resolveNativeClaudeModelAlias, sanitizeLaunchPrompt, sanitizePtyMessageText, writeGatewayModelCacheForHome, type AgentCliId, type PtyInputChunk } from "@dotobokuri/fleet-admiral";
 import type { AgentToolSpec } from "@dotobokuri/core-agent";
 import { ensureWorkspaceDirectory, withDirectoryLock, type GlobalOptionsService } from "@dotobokuri/core-infra";
 import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet-wiki";
@@ -786,7 +786,20 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         ? observability.registerTerminalRuntimeSession(runtimeSession) ?? namedSession
         : observability.updateTerminalSessionStatus(sessionId, "terminal-only") ?? namedSession;
       observability.notifySessionUpdated(created);
-      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, undefined, observability.getDurableOperation(sessionId)?.providerTitle) });
+      // 세션 좌표는 런치 시점에 이미 확정이다 — Fleet이 못박은 id이므로 capture hook을 기다리지
+      // 않는다. 첫 프롬프트 없이 닫히는 패널도 자기 플러그인 트리를 걷을 수 있어야 한다.
+      // 이미 좌표가 있으면 그것을 남긴다 — 재개 런치의 기존 기록이 트랜스크립트 경로까지 들고
+      // 있고, 못박은 id는 그 기록과 같은 값이라 덮어써서 얻을 것이 없다.
+      const launchedProviderSession = readProviderSession(ctx.host.operations.get(sessionId)?.payload)
+        ?? (runtimeSession?.claudeSessionId
+          ? {
+            provider: "claude" as const,
+            sessionId: runtimeSession.claudeSessionId,
+            capturedAt: new Date().toISOString(),
+            source: "launch",
+          }
+          : undefined);
+      ctx.host.operations.patch(sessionId, { payload: toOperationPayload(ctx.host.operations.get(sessionId)?.payload, cwd, created, launchedProviderSession, observability.getDurableOperation(sessionId)?.providerTitle) });
       ctx.host.http.writeJson(res, 200, created);
     } catch (error) {
       // 실패한 스폰은 첨부 예약을 되돌린다 — 재시도가 같은 id를 다시 실을 수 있고,
@@ -1676,13 +1689,36 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   function removeSession(sessionId: string): void {
     reminderWriter.cancel(sessionId);
     resetOscActivity(sessionId);
-    void chatRegistry.dispose(sessionId);
+    // 트리 회수를 이 teardown 뒤로 붙인다 — 훅은 이벤트 시점에 트리를 다시 읽으므로,
+    // 자식이 아직 접히는 중일 때 지우면 종료 경로의 훅이 빈 자리를 읽는다.
+    const disposed = chatRegistry.dispose(sessionId);
     terminalRuntime.terminate(sessionId);
     pendingRuntimeSessions.delete(sessionId);
     observability.removeTerminalSession(sessionId);
     // 첨부 파일의 수명은 Operation을 따른다 — dormant·재개를 지나도 남고, 삭제와 함께 거둔다.
     launchAttachments.releaseSession(sessionId);
+    // Operation이 지워지기 전에 좌표를 읽어 둔다 — 지운 뒤에는 어느 트리였는지 알 수 없다.
+    const reclaimTree = buildSessionTreeReclaim(sessionId);
     ctx.host.operations.delete(sessionId);
+    void disposed.catch(() => undefined).finally(reclaimTree);
+  }
+
+  /**
+   * 이 Operation의 세션 플러그인 트리를 걷는 일감을 만든다.
+   *
+   * 트리는 세션의 것이라 런치가 끝나도 남지만, 세션 자체가 사라지면 그것을 읽을 주체도 없다.
+   * 좌표(cwd·세션 id)는 Operation이 durable하게 아는 값이고, 삭제 뒤에는 되찾을 수 없으므로
+   * 지우기 전에 붙든다. 회수 실패가 패널 닫기를 막지는 않는다.
+   */
+  function buildSessionTreeReclaim(sessionId: string): () => void {
+    const operation = ctx.host.operations.get(sessionId);
+    if (!operation) return () => undefined;
+    const providerSessionId = readProviderSession(operation.payload)?.sessionId;
+    const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
+    if (!providerSessionId || !cwd) return () => undefined;
+    return () => {
+      removePluginSession({ cwd, dataDir: ctx.host.paths.fleetDataDir, sessionId: providerSessionId });
+    };
   }
 
   async function cleanup(): Promise<void> {
