@@ -2309,6 +2309,42 @@ describe("Instrument core design contract", () => {
     expect(terminalAnalysisCss).not.toMatch(/\.session-analyst__chips \{[^}]*position: absolute/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__turn-node \{/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__receipt > summary \{/);
+    // 끝난 턴의 접힘은 채팅 원장의 `.agent-chat-fold`와 같은 문법이다 — 문장이지 카드가 아니다.
+    // 알약(면·테두리)으로 되돌아가면 이 줄이 결말을 말하는 문장이 아니라 물건으로 읽힌다.
+    const analystReceiptSummary = terminalAnalysisCss.match(/\.session-analyst__receipt > summary \{[^}]*\}/)?.[0] ?? "";
+    expect(analystReceiptSummary).not.toContain("border:");
+    expect(analystReceiptSummary).not.toContain("background:");
+    expect(analystReceiptSummary).not.toContain("radius-pill");
+    // 결말의 성패는 스파인 노드가 진다 — 접힘 줄이 ✓를 또 들면 두 곳이 같은 말을 한다.
+    expect(terminalAnalysisCss).not.toContain(".session-analyst__receipt-mark");
+    // 물결은 채팅 원장의 것과 한 벌이다. 값이 갈라지면 같은 사실을 두 면이 다른 속도로 말한다.
+    // 줄머리에 못을 박는다 — 앵커 없는 `.session-analyst__live-text {`는 합성 규칙의
+    // `strong.session-analyst__live-text {` 꼬리에도 물린다.
+    const analystWave = terminalAnalysisCss.match(/^\.session-analyst__live-text \{[^}]*\}/m)?.[0] ?? "";
+    expect(analystWave).toContain("background-size: 200% 100%;");
+    expect(analystWave).toContain("background-clip: text;");
+    expect(analystWave).toContain("color: transparent;");
+    expect(analystWave).toContain("animation: analyst-live-sweep 2.4s linear infinite;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--apex", "--id-"]) {
+      expect(analystWave, signal).not.toContain(signal);
+    }
+    // 되풀이는 이음매가 없어야 한다 — 이동량이 타일 한 폭의 정수배여야 마지막 프레임이 첫
+    // 프레임과 같다(200% 이미지에 ΔP 200 = 2W = 타일 한 폭).
+    expect(terminalAnalysisCss).toMatch(
+      /@keyframes analyst-live-sweep \{\s*from \{ background-position: 200% 0; \}\s*to \{ background-position: 0% 0; \}/,
+    );
+    // 펄스 문구는 애니메이션을 둘 진다(도착 + 물결). 합성하지 않으면 도착 애니메이션이 같은
+    // 속성을 더 높은 특정성으로 쥐고 있어 물결이 조용히 죽고 정지된 그라데이션만 남는다.
+    expect(terminalAnalysisCss).toMatch(
+      /\.session-analyst__pulse-copy strong\.session-analyst__live-text \{[\s\S]*?analyst-stage-enter[\s\S]*?analyst-live-sweep 2\.4s linear infinite;/,
+    );
+    // 봉인은 모션만 죽인다 — `color: transparent`가 남으면 글자가 통째로 사라진다.
+    const analystSeal = terminalAnalysisCss.match(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.session-analyst__live-text \{[^}]*\}/,
+    )?.[0] ?? "";
+    expect(analystSeal).toContain("animation: none;");
+    expect(analystSeal).toContain("background-image: none;");
+    expect(analystSeal).toContain("color: var(--text-secondary);");
     // 사용자 발화 정체성은 --id-cerulean 워시 문법(디스패치 버블과 동형)만 쓴다.
     expect(terminalAnalysisCss).toContain("color-mix(in oklch, var(--id-cerulean) 10%, var(--surface-panel-raised))");
     // 아티팩트는 드로어 안의 모드다 — 모드 세그먼트가 있고, 세로 핸들과 두 번째 컴패니언은 되살아나면 안 된다.

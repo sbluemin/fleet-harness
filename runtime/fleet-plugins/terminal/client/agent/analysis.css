@@ -102,23 +102,60 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 .session-analyst__pulse.is-error .session-analyst__pulse-orbit { border-color: color-mix(in oklch, var(--coral) 35%, transparent); border-top-color: var(--coral); animation: none; }
 .session-analyst__pulse-copy { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .session-analyst__pulse-copy strong { font-weight: var(--weight-medium); overflow-wrap: anywhere; animation: analyst-stage-enter var(--duration-base) var(--ease-glide) both; }
+/* 이 문구는 애니메이션을 둘 진다: 도착(stage-enter)과 진행(물결). 위 규칙이 같은 속성을 더
+   높은 특정성으로 쥐고 있어 물결만 얹으면 조용히 사라지고 정지된 그라데이션만 남는다
+   (실측 적발 — 계약이 이 합성을 못으로 박는다). */
+.session-analyst__pulse-copy strong.session-analyst__live-text {
+  animation:
+    analyst-stage-enter var(--duration-base) var(--ease-glide) both,
+    analyst-live-sweep 2.4s linear infinite;
+}
 .session-analyst__pulse-copy small { font-family: var(--font-body); font-size: var(--t-xs); color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__pulse time { margin-left: auto; color: var(--aurora-ink); font-size: var(--t-2xs); }
 .session-analyst__pulse.is-error time { color: var(--coral-ink); }
 .session-analyst__truth-mark { display: block; margin: var(--space-1) 0 0 2px; color: var(--text-tertiary); font-size: var(--t-2xs); }
 
 /* 완료 턴의 과정 영수증 — 접힌 한 줄, 펼치면 도구 단계. 채팅 뷰 agent-chat-receipt와 동형. */
+/* 끝난 턴의 접힘 — 채팅 원장의 `.agent-chat-fold`와 같은 문법이다. 예전에는 알약이었는데,
+   면과 테두리를 두르면 이 줄이 문장이 아니라 카드로 읽힌다. 원장 쪽 주석이 말하는 그대로다:
+   카드는 예외에게만 준다. 결말의 성패는 스파인 노드가 이미 지므로 ✓도 걷었다. */
 .session-analyst__receipt { margin-top: var(--space-2); }
-.session-analyst__receipt > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); padding: 4px var(--space-3); border: 1px solid var(--hairline); border-radius: var(--radius-pill); background: var(--surface-panel-raised); transition: color var(--duration-fast), border-color var(--duration-fast); }
-.session-analyst__receipt > summary:hover { color: var(--text-secondary); border-color: var(--hairline-strong); }
+.session-analyst__receipt > summary { list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: var(--space-2); font-family: var(--font-mono); font-size: var(--t-xs); letter-spacing: .06em; font-variant-numeric: tabular-nums; color: var(--text-tertiary); transition: color var(--duration-fast); }
+.session-analyst__receipt > summary:hover { color: var(--text-secondary); }
 .session-analyst__receipt > summary::-webkit-details-marker { display: none; }
-.session-analyst__receipt-mark { color: var(--positive); }
-.session-analyst__receipt-chev { font-size: 9px; transition: transform var(--duration-fast); }
-.session-analyst__receipt[open] .session-analyst__receipt-chev { transform: rotate(90deg); }
+.session-analyst__receipt-chev { font-size: var(--t-xs); line-height: 1; color: var(--text-tertiary); transition: transform var(--duration-fast); }
+.session-analyst__receipt[open] .session-analyst__receipt-chev { transform: rotate(180deg); }
 .session-analyst__receipt-body { padding: var(--space-1) 0 0 var(--space-3); }
-.session-analyst__receipt-step { display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-top: var(--space-1); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); padding: 4px var(--space-3); background: var(--surface-panel-raised); border: 1px solid var(--hairline); border-radius: var(--radius-xs); }
+/* 펼친 스텝도 카드가 아니라 줄이다 — 접힌 줄이 문장이 된 이상 그 안이 카드면 문법이 갈린다. */
+.session-analyst__receipt-step { display: flex; align-items: baseline; gap: var(--space-2); min-width: 0; margin-top: var(--space-1); font-family: var(--font-mono); font-size: var(--t-xs); color: var(--text-tertiary); }
 .session-analyst__receipt-step strong { color: var(--text-secondary); font-weight: var(--weight-medium); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .session-analyst__receipt-step small { color: var(--text-tertiary); white-space: nowrap; }
+
+/* 좌→우 명도 물결 — 채팅 원장의 `.agent-chat-live-text`와 한 벌이다. 값이 갈라지면 같은
+   사실을 두 면이 다른 속도로 말하게 되므로 그라데이션·크기·주기를 그대로 옮겼다.
+   [doctrine] 진행은 이미 링(aurora)이 말한다. 이 물결은 색 채널을 하나도 빌리지 않는
+   순수 명도 스윕이다. 되풀이가 이음매 없도록 이미지 200%에 ΔP 200을 쓴다 — 한 바퀴의
+   이동량이 정확히 타일 한 폭이라 마지막 프레임이 첫 프레임과 같다. */
+.session-analyst__live-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--text-tertiary) 0%,
+    var(--text-tertiary) 34%,
+    var(--text-primary) 50%,
+    var(--text-tertiary) 66%,
+    var(--text-tertiary) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: analyst-live-sweep 2.4s linear infinite;
+}
+
+@keyframes analyst-live-sweep {
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
+}
 /* 중단 영수증 — 진행이 멎은 자리의 기록. */
 .session-analyst__stopped.is-error { border-left-color: var(--coral); color: var(--coral-ink); }
 .session-analyst__stopped { display: flex; align-items: center; gap: var(--space-2); min-height: 30px; margin-top: var(--space-2); border-left: 2px solid var(--text-tertiary); background: var(--surface-panel-raised); padding: 0 var(--space-3); color: var(--text-tertiary); font-weight: var(--weight-regular); font-size: var(--t-2xs); line-height: 1.3; font-family: var(--font-mono); animation: analyst-receipt-settle var(--duration-base) var(--ease-glide) both; }
@@ -318,6 +355,12 @@ button.session-analyst__chip:disabled { color: var(--text-tertiary); cursor: def
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* 물결 봉인 — 모션만 죽이고 줄은 남긴다. 그라데이션을 지우면서 채움도 함께 되돌려야
+     한다: `color: transparent`가 남으면 글자가 통째로 사라진다. */
+  .session-analyst__live-text,
+  .session-analyst__pulse-copy strong.session-analyst__live-text { animation: none; background-image: none; color: var(--text-secondary); }
+  .session-analyst__turn-head .session-analyst__live-text { color: var(--text-tertiary); }
+
   .session-analyst__chip, .session-analyst__suggestions button, .session-analyst__followups-row button, .session-analyst__queue-item button, .session-analyst__composer-surface, .session-analyst__composer textarea, .session-analyst__select, .session-analyst__model-chip, .session-analyst__slash-hint, .session-analyst__send, .session-analyst__artifact-count, .session-analyst__artifact-count i, .session-analyst__receipt-chev, .session-analyst__chat-pane, .session-analyst__artifacts, .session-analyst__turn-node { transition: none; }
   .session-analyst__suggestions button:hover, .session-analyst__followups-row button:hover { transform: none; }
   .session-analyst__chip-dot, .session-analyst__turn-node, .session-analyst__pulse-orbit { animation: none !important; }
