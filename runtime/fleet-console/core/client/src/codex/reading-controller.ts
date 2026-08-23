@@ -1,5 +1,5 @@
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
-import { renderMarkdown } from "@fleet-console/markdown/core";
+import { renderMarkdown, slugifyHeading } from "@fleet-console/markdown/core";
 import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 import type { DraftBlock } from "@fleet-console/markdown/diff";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -806,7 +806,7 @@ function renderDiffBlocks(blocks: readonly DraftBlock[], mode: "changes" | "full
     }).html;
     return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
   };
-  if (mode === "full") return blocks.map(renderBlock).join("");
+  if (mode === "full") return remapDiffHeadingIds(blocks.map(renderBlock).join(""));
   return blocks
     .map((block) => {
       if (block.kind !== "same") return renderBlock(block);
@@ -814,6 +814,27 @@ function renderDiffBlocks(blocks: readonly DraftBlock[], mode: "changes" | "full
       return `<div class="queue-diff-fold" role="note">${escapeHtml(t("codex.reading.diffFold", { count }))}</div>`;
     })
     .join("");
+}
+
+// 블록별 renderMarkdown은 헤딩 ID 네임스페이스를 매번 새로 시작한다 — 제안 문서의
+// 아웃라인(detailProposedToc)은 전문 1회 렌더 기준이므로, 삭제 블록의 헤딩 ID를 걷고
+// 나머지(same+added = 제안 문서의 헤딩 순서 그대로)를 같은 슬러그·중복 규칙으로
+// 재배정해 아웃라인 앵커가 제안 문서 헤딩에 정확히 닿게 한다.
+function remapDiffHeadingIds(html: string): string {
+  const document = new DOMParser().parseFromString(html, "text/html");
+  const usedIds = new Map<string, number>();
+  for (const heading of document.body.querySelectorAll("h2, h3")) {
+    if (heading.closest(".cowork-block--removed")) {
+      heading.removeAttribute("id");
+      continue;
+    }
+    const text = heading.textContent?.trim() ?? "";
+    const baseId = slugifyHeading(text || "section");
+    const count = usedIds.get(baseId) ?? 0;
+    usedIds.set(baseId, count + 1);
+    heading.id = count === 0 ? baseId : `${baseId}-${count + 1}`;
+  }
+  return document.body.innerHTML;
 }
 
 function renderPatchMetaChips(proposer: string, tags: string[]): string {

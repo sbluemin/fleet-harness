@@ -268,6 +268,11 @@ function isExternalLink(href: string): boolean {
   return /^[a-z][a-z0-9+.-]*:/i.test(href) && !href.startsWith(window.location.origin);
 }
 
+/** 헤딩 ID 슬러그 — decorateHeadings와 diff 재배정(reading-controller)이 같은 규칙을 공유한다. */
+export function slugifyHeading(value: string): string {
+  return slugify(value);
+}
+
 function slugify(value: string): string {
   const slug = value
     .trim()
