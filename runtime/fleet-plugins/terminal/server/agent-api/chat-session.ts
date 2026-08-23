@@ -192,17 +192,30 @@ const JOURNAL_CAP = 2_000;
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
   let count = 0;
   let turnOpen = false;
+  let hasContent = false;
   for (const { event } of entries) {
     if (event.kind === "dispatch") {
       count += 1;
       turnOpen = true;
+      hasContent = false;
     } else if (event.kind === "turn-start") {
-      // dispatch 바로 뒤의 start는 같은 턴의 시작 좌표다. 디스패치 없이 자식이 스스로 깨어난
-      // start만 별도 턴으로 센다 — 클라이언트 reducer와 같은 문법이다.
+      // dispatch 바로 뒤의 start는 같은 턴의 시작 좌표다. 반면 내용 뒤의 start는 transcript
+      // carrier가 여는 다음 bubbleless 턴이고, 열린 턴이 없을 때의 start도 새 턴이다.
+      if (!turnOpen || hasContent) count += 1;
+      turnOpen = true;
+      hasContent = false;
+    } else if (event.kind === "text"
+      || event.kind === "tool-start"
+      || event.kind === "tool"
+      || event.kind === "ask") {
+      // 상한이 턴 중간을 자르면 첫 retained 이벤트가 내용일 수 있다. 클라이언트 appendItem이
+      // 만드는 bubbleless 턴과 같은 한 턴을 여기서도 센다.
       if (!turnOpen) count += 1;
       turnOpen = true;
+      hasContent = true;
     } else if (event.kind === "turn-end") {
       turnOpen = false;
+      hasContent = false;
     }
   }
   return count;
@@ -506,7 +519,11 @@ class AgentChatSession {
       // JOURNAL_CAP이 최초 경계를 밀어냈더라도 이 접속에서 되쓰는 모든 것은 과거다. 매 구독마다
       // 합성 경계를 세우면 잘린 tail을 live 턴으로 오인하지 않고, 다음 실제 push부터만 live가 된다.
       listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
-      for (const entry of snapshot) listener(entry);
+      // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
+      // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다.
+      for (const entry of snapshot) {
+        if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
+      }
       listener({ seq: snapshot.at(-1)?.seq ?? this.seq, event: { kind: "replay-end", turns: countReplayedTurns(snapshot) } });
     } else {
       for (const entry of snapshot) listener(entry);

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../server/agent-api/chat-session.js";
+import { initialAgentChatLogState, reduceAgentChatLog } from "../client/agent/chat/chat-events.js";
 import type { AgentChatJournalEvent } from "../server/agent-api/chat-events.js";
 
 const temporaryDirectories: string[] = [];
@@ -445,9 +446,34 @@ describe("AgentChatRegistry", () => {
     expect(replayEnd).toMatchObject({ kind: "replay-end" });
     const held = events.slice(1, -1).map((entry) => entry.event);
     const dispatches = held.filter((event) => event.kind === "dispatch").length;
+    // 합성 경계 안의 원래 replay-end는 live tail보다 먼저 재생을 끝내므로 전달하지 않는다.
+    expect(held.some((event) => event.kind === "replay-end")).toBe(false);
     // live 턴의 dispatch/start 쌍도 한 턴이다. 둘을 각각 세면 이 값이 dispatches보다 하나 커진다.
     expect(held.some((event) => event.kind === "turn-start")).toBe(true);
     expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(dispatches);
+    await registry.disposeAll();
+  });
+
+  it("counts a mid-turn tail retained at the journal cap", async () => {
+    const transcriptPath = writeTranscript("sid-capped-tail", Array.from({ length: 667 }, (_, index) => [
+      { type: "user", message: { role: "user", content: `order ${index}` } },
+      { type: "assistant", message: { content: [{ type: "tool_use", id: `tool-${index}`, name: "Read", input: { file_path: `file-${index}.ts` } }] } },
+      { type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: `tool-${index}`, content: "ok" }] } },
+    ]).flat());
+    const { factory } = createFakeSdkFactory([]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-capped-tail", () => seedFor(transcriptPath));
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const held = events.slice(1, -1).map((entry) => entry.event);
+    expect(held[0]?.kind).not.toBe("dispatch");
+    const state = held.reduce((current, event) => reduceAgentChatLog(current, event), {
+      ...initialAgentChatLogState,
+      replaying: true,
+    });
+    const replayEnd = events.at(-1)?.event;
+    expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(state.turns.length);
     await registry.disposeAll();
   });
 
