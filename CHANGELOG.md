@@ -5,6 +5,29 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.72.0] - 2026-08-22
+
+### fleet-cli
+
+#### Added
+- Route Claude Code turns through an Antigravity subscription, using the sign-in the `agy` CLI already owns; Gemini 3.7 Flash and Gemini 3.1 Pro are selectable once enabled in AI Gateway settings.
+- Configure the AI Gateway from the terminal: `fleet gateway` opens an interactive screen for models, providers, spend priority, and policy, and `fleet gateway status`, `models`, and `set` report or change the same settings without prompts.
+- Serve the AI Gateway on its own port with `fleet gateway serve`, so a client that speaks the Anthropic API can ride your subscriptions through `ANTHROPIC_BASE_URL`. It binds to loopback only and carries no authentication.
+
+#### Changed
+- Group `fleet --help` into runtimes, their commands, settings, and maintenance. Each runtime lists its commands on one line and hands the detail to `fleet <runtime> --help`, and the new settings section names the files and environment variables that hold your configuration.
+- Move provider authentication under the gateway as `fleet gateway auth`. The old `fleet auth` spelling still works and says where it went.
+- Stop forwarding Claude Code's own identity line and Anthropic billing header to non-Anthropic AI Gateway providers, so a Gemini, Grok, GPT, Kimi or MiniMax turn is no longer told it is Claude Code. Turns served by Anthropic itself are unaffected.
+
+### fleet-console
+
+#### Added
+- Route Claude Code turns through an Antigravity subscription, using the sign-in the `agy` CLI already owns; Gemini 3.7 Flash and Gemini 3.1 Pro are selectable once enabled in AI Gateway settings.
+- Show Antigravity usage in the Quota panel, with the 5-hour and weekly Gemini limits the subscription meters.
+
+#### Changed
+- Stop forwarding Claude Code's own identity line and Anthropic billing header to non-Anthropic AI Gateway providers, so a Gemini, Grok, GPT, Kimi or MiniMax turn is no longer told it is Claude Code. Turns served by Anthropic itself are unaffected.
+
 ## [1.71.1] - 2026-08-22
 
 ### fleet-cli
