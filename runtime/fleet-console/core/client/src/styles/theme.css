@@ -204,10 +204,12 @@
   --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
-  --glass-on-tint-chrome: oklch(19% 0.018 245 / 48%);
-  --glass-on-tint-panel: oklch(16.5% 0.016 245 / 55%);
-  --glass-on-tint-terminal: oklch(16.5% 0.016 245 / 50%);
-  --glass-on-tint-band: oklch(13% 0.018 245 / 52%);
+  --glass-on-tint-chrome: oklch(24% 0.02 245 / 48%);
+  /* 다크 유리는 자기 명도를 가진 스모크다 — 뒤(Map)가 거의 검정이라, 틴트 L을 원 면보다
+     6~10pt 올려야 유리막이 '검은 구멍'이 아니라 재질로 읽힌다(실측 피드백 반영). */
+  --glass-on-tint-panel: oklch(26% 0.022 245 / 50%);
+  --glass-on-tint-terminal: oklch(27% 0.022 245 / 40%);
+  --glass-on-tint-band: oklch(18% 0.02 245 / 52%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
   --glass-on-backdrop-scrim: blur(3px);
@@ -372,10 +374,10 @@
   --glass-on-tint-raised: oklch(28% 0.04 248 / 46%);
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
-  --glass-on-tint-chrome: oklch(28% 0.04 248 / 42%);
-  --glass-on-tint-panel: oklch(23% 0.03 248 / 48%);
-  --glass-on-tint-terminal: oklch(23% 0.03 248 / 45%);
-  --glass-on-tint-band: oklch(20% 0.045 248 / 46%);
+  --glass-on-tint-chrome: oklch(31% 0.04 248 / 42%);
+  --glass-on-tint-panel: oklch(30% 0.038 248 / 46%);
+  --glass-on-tint-terminal: oklch(31% 0.038 248 / 38%);
+  --glass-on-tint-band: oklch(24% 0.045 248 / 46%);
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
   --hairline: oklch(36% 0.035 248);
@@ -444,10 +446,10 @@
   --glass-on-tint-raised: oklch(25% 0.007 252 / 46%);
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
-  --glass-on-tint-chrome: oklch(25% 0.006 252 / 42%);
-  --glass-on-tint-panel: oklch(19% 0.008 252 / 48%);
-  --glass-on-tint-terminal: oklch(19% 0.008 252 / 45%);
-  --glass-on-tint-band: oklch(18% 0.007 255 / 46%);
+  --glass-on-tint-chrome: oklch(27% 0.006 252 / 42%);
+  --glass-on-tint-panel: oklch(26% 0.008 252 / 46%);
+  --glass-on-tint-terminal: oklch(27% 0.008 252 / 38%);
+  --glass-on-tint-band: oklch(22% 0.007 255 / 46%);
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
   --hairline: oklch(33% 0.006 252);

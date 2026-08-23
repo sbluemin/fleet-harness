@@ -562,10 +562,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
 
     let disposed = false;
 
-    // 리퀴드 글래스가 켜진 동안은 WebGL을 붙이지 않는다 — WebGL 렌더러는 반투명 배경을
-    // 프리멀티플라이해 틴트가 검게 눌린다(실측: 유리 패널 속 터미널만 새까매짐). DOM 렌더러는
-    // CSS 색을 그대로 그려 알파가 산다. 게이트가 닫히면 설정대로 WebGL로 복귀한다.
-    if (terminalRenderer === "webgl" && !liquidGlassPane) {
+    if (terminalRenderer === "webgl") {
       try {
         const webglAddon = new WebglAddon();
         webglAddonRef.current = webglAddon;
@@ -604,7 +601,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [terminalRenderer, operationId, mountedTerminalEpoch, liquidGlassPane]);
+  }, [terminalRenderer, operationId, mountedTerminalEpoch]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -743,7 +740,36 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
 export function resolvePanelSurface(fallback: string): string {
   if (typeof document === "undefined") return fallback;
   const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
-  return resolved || fallback;
+  if (!resolved) return fallback;
+  // xterm 내부 색 파서는 압축 CSS가 만드는 oklch 변형(`.022` 선행 0 생략·% 알파)을 검정으로
+  // 낙하시킨다(실측: scrollable-element가 rgb(0,0,0)). 브라우저 canvas로 어떤 CSS 색이든
+  // rgba()로 정규화해 넘기면 파서 방언과 무관하게 알파까지 산다.
+  return normalizeCssColorToRgba(resolved) ?? fallback;
+}
+
+let colorProbeCtx: CanvasRenderingContext2D | null | undefined;
+
+function normalizeCssColorToRgba(color: string): string | null {
+  if (colorProbeCtx === undefined) {
+    try {
+      const probe = document.createElement("canvas");
+      probe.width = 1;
+      probe.height = 1;
+      colorProbeCtx = probe.getContext("2d", { willReadFrequently: true });
+      if (colorProbeCtx) colorProbeCtx.globalCompositeOperation = "copy";
+    } catch {
+      colorProbeCtx = null;
+    }
+  }
+  if (!colorProbeCtx) return color;
+  try {
+    colorProbeCtx.fillStyle = color;
+    colorProbeCtx.fillRect(0, 0, 1, 1);
+    const d = colorProbeCtx.getImageData(0, 0, 1, 1).data;
+    return `rgba(${d[0]}, ${d[1]}, ${d[2]}, ${(d[3] / 255).toFixed(3)})`;
+  } catch {
+    return color;
+  }
 }
 
 /* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
