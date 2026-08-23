@@ -46,6 +46,22 @@ describe("grok build harness selector", () => {
     expect(res.status).toBe(401);
   });
 
+  it("falls to the default harness for a segment that names an inherited property", async () => {
+    // 선택자 조회를 평범한 객체 인덱싱으로 하면 `toString` 같은 프로토타입 키가 함수로 잡히고,
+    // 바로 다음 자격증명 검사에서 `acceptsCredential is not a function`으로 요청 처리가 죽는다.
+    // 문서화된 동작은 "등록되지 않은 조각이면 기본 하네스"이므로, 여기서는 Claude Code가 답해야 한다.
+    const router = grokRouter();
+    const res = response();
+    await router.handle(ctx({
+      res,
+      pathname: `${BASE}/toString/v1/messages`,
+      model: GROK_MODEL,
+      token: "eyJ0eXAiOiJKV1Qi",
+    }));
+    // 기본 하네스는 이 자격증명을 자기 것으로 인정하지 않는다 — 죽는 대신 401이다.
+    expect(res.status).toBe(401);
+  });
+
   it("refuses grok's own built-in model id instead of relaying it to Anthropic", async () => {
     // Grok Build는 세션마다 제목 생성 보조 턴을 같은 base_url로 보내는데, 그 턴의 모델 id는
     // 커스텀 모델이 아니라 내장 `grok-4.6`이고 본문에는 사용자 질의 원문이 들어 있다.

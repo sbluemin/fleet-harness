@@ -226,14 +226,19 @@ export interface AiGatewayRouter {
 export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter {
   const readAuth = deps.readAuth;
   const defaultHarness = deps.harness ?? claudeCodeHarnessProfile;
-  const selectableHarnesses = deps.harnesses ?? {};
-  const servedHarnesses = [defaultHarness, ...Object.values(selectableHarnesses)];
+  // 선택자 조회는 Map으로 한다. 평범한 객체 인덱싱이면 `toString`·`constructor` 같은
+  // 프로토타입 키가 값으로 잡혀, 등록되지 않은 조각이 기본 하네스로 떨어지는 대신
+  // 함수 하나를 하네스라고 들고 다음 줄에서 요청 처리를 죽인다.
+  const selectableHarnesses = new Map<string, GatewayHarnessProfile>(
+    Object.entries(deps.harnesses ?? {}),
+  );
+  const servedHarnesses = [defaultHarness, ...selectableHarnesses.values()];
   /** 이 요청을 서빙할 하네스. 선택자는 와이어 엔드포인트 바로 앞 경로 조각이다. */
   const harnessForPath = (pathname: string): GatewayHarnessProfile => {
     const suffix = WIRE_ENDPOINT_SUFFIXES.find((candidate) => pathname.endsWith(candidate));
     if (!suffix) return defaultHarness;
     const mounted = pathname.slice(0, pathname.length - suffix.length);
-    return selectableHarnesses[mounted.slice(mounted.lastIndexOf("/") + 1)] ?? defaultHarness;
+    return selectableHarnesses.get(mounted.slice(mounted.lastIndexOf("/") + 1)) ?? defaultHarness;
   };
   /** The caller's credential, or null when neither header carries one this harness sends. */
   const acceptedCredential = (
