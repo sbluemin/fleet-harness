@@ -34,6 +34,19 @@ interface CodexWorkspaceState {
 let lastCodexContextKey: string | null = null;
 let lastResolvedWorkspace: CodexWorkspaceState | null = null;
 
+/**
+ * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
+ * 레일 패널이 해석해 둔 12-hex id여야 /console/codex/w/ 라우터가 인식한다.
+ * 덱은 항상 레일의 확대 버튼을 거쳐 열리므로 해석 결과가 이미 따뜻하다.
+ */
+export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | null {
+  const contextKey = theaterId ?? "";
+  if (lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey && lastResolvedWorkspace.hasWiki) {
+    return lastResolvedWorkspace.id;
+  }
+  return null;
+}
+
 // ─── Rail panel descriptor ───────────────────────────────────────────────────
 
 export const codexPanel: RailPanelDescriptor = {

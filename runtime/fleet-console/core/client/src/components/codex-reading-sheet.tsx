@@ -11,6 +11,7 @@ import {
 } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { useT } from "../i18n/index.js";
+import { resolvedCodexWorkspaceIdFor } from "../rail/codex-panel.js";
 import { collapseCodexReader, expandCodexReader, openCodexReader } from "../store.js";
 import { loadInitialData } from "../codex/state.js";
 
@@ -91,11 +92,14 @@ export function CodexReadingSheet() {
     const subId =
       kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
 
+    // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
+    // Theater id는 /console/codex/w/ 라우터에서 workspace_not_found로 떨어진다.
+    const workspaceId = resolvedCodexWorkspaceIdFor(theaterId);
     mountReaderInto(readRef.current, tocRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
-      theaterId,
+      theaterId: workspaceId ?? theaterId,
       sessionTheaterId: theaterId,
       // 오버레이(크게 보기) 안에서 related 링크 클릭은 오버레이를 유지한 채 문서만 교체한다
       // (split의 onRelatedClick은 split에 머문다 — codex-panel.tsx). expandCodexReader가

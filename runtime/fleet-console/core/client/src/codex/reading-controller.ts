@@ -1,5 +1,6 @@
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { renderMarkdown, slugifyHeading } from "@fleet-console/markdown/core";
+import type { TocItem } from "@fleet-console/markdown/core";
 import { diffDraftBlocks } from "@fleet-console/markdown/diff";
 import type { DraftBlock } from "@fleet-console/markdown/diff";
 import type { Translate } from "@fleet-console/sdk/i18n";
@@ -121,7 +122,7 @@ export function mountReadingInto(
   let diffMode: "changes" | "full" = "changes";
   let detailDiffBlocks: readonly DraftBlock[] | null = null;
   let detailProposedToc = "";
-  let detailProposedTocCount = 0;
+  let detailProposedTocItems: readonly TocItem[] = [];
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
   const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
@@ -290,9 +291,21 @@ export function mountReadingInto(
     readContainer.querySelectorAll<HTMLElement>("[data-diff-mode]").forEach((button) => {
       button.setAttribute("aria-pressed", String(button.dataset.diffMode === diffMode));
     });
-    // 전문 모드에서만 제안 문서의 아웃라인이 실제 DOM과 대응한다.
-    opts.tocContainer.innerHTML = diffMode === "full" ? detailProposedToc : "";
-    opts.onTocChanged?.(diffMode === "full" ? detailProposedTocCount : 0);
+    // 전문 모드에서만 제안 문서의 아웃라인이 실제 DOM과 대응한다 — 재배정된 헤딩 ID 위에
+    // 스크롤 스파이를 다시 설치해 아웃라인 활성 표시(aria-current)를 엔트리 뷰와 맞춘다.
+    cleanupSpy?.();
+    cleanupSpy = null;
+    if (diffMode === "full") {
+      opts.tocContainer.innerHTML = detailProposedToc;
+      opts.onTocChanged?.(detailProposedTocItems.length);
+      const article = readContainer.querySelector<HTMLElement>("article");
+      if (article && detailProposedTocItems.length > 0) {
+        cleanupSpy = installTocScrollSpy(article, [...detailProposedTocItems], opts.tocContainer);
+      }
+    } else {
+      opts.tocContainer.innerHTML = "";
+      opts.onTocChanged?.(0);
+    }
   }
 
   readContainer.addEventListener("click", handleClick);
@@ -388,7 +401,7 @@ export function mountReadingInto(
     decisionError = null;
     detailDiffBlocks = null;
     detailProposedToc = "";
-    detailProposedTocCount = 0;
+    detailProposedTocItems = [];
     diffMode = "changes";
 
     try {
@@ -421,7 +434,7 @@ export function mountReadingInto(
           ...markdownCopyOptions(t),
         });
         detailProposedToc = renderTocSheet(toc);
-        detailProposedTocCount = toc.length;
+        detailProposedTocItems = toc;
         detailDiffBlocks = currentBody !== null
           ? diffDraftBlocks(currentBody, detail.wikiEntry.body)
           : null;
@@ -438,7 +451,7 @@ export function mountReadingInto(
           opts.onTocChanged?.(0);
         } else {
           opts.tocContainer.innerHTML = detailProposedToc;
-          opts.onTocChanged?.(detailProposedTocCount);
+          opts.onTocChanged?.(detailProposedTocItems.length);
           const article = readContainer.querySelector<HTMLElement>("article");
           if (article && toc.length > 0) {
             cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
