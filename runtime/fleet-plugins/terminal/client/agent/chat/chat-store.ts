@@ -52,7 +52,11 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
         // 서버는 접속마다 보유 저널을 처음부터 되쓴다. 채팅 출생은 replay-start를 남기지
         // 않고, JOURNAL_CAP에 걸린 세션은 그 마커가 앞에서 잘린다. 열릴 때 비우지 않으면
         // 재접속 리플레이가 남은 턴·잡·질문 카드 위에 겹친다(옛 EventSource onopen과 같은 자리).
-        if (next === "open") setLog(() => initialAgentChatLogState);
+        if (next === "open") {
+          // 화면 로그는 snapshot으로 다시 쓰되, 서버가 준 누적 턴 좌표는 재접속 전 값을 보존한다.
+          // 저널 상한으로 과거 행이 잘려도 이 좌표와 새 snapshot-end의 차이는 단조다.
+          setLog((current) => ({ ...initialAgentChatLogState, observedTurns: current.observedTurns }));
+        }
         setConnection(next);
       },
       onEvent: (raw) => {

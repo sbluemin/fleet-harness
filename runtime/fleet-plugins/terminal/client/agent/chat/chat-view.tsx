@@ -104,6 +104,11 @@ export function AgentChatView({
   // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
   const suppressScrollRef = React.useRef(0);
   const previousTurnCountRef = React.useRef(state.turns.length);
+  // 재접속 직전 서버 누적 좌표. 저널 상한으로 화면의 과거 턴이 잘려도 이 값은 역행하지 않는다.
+  const snapshotTurnBaselineRef = React.useRef<number | null>(state.snapshotting ? state.observedTurns : null);
+  // snapshot이 시작될 때 이미 서 있던 receipt만 그 snapshot에서 시작한 턴과 맞춘다. 전달 중 새로
+  // 넣은 지시는 이 기준 뒤의 것이므로, 앞서 시작한 턴이 대신 소비하면 안 된다.
+  const snapshotQueuedBaselineRef = React.useRef(0);
   const previousReadyAnswersRef = React.useRef(0);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
@@ -161,16 +166,29 @@ export function AgentChatView({
   React.useEffect(() => {
     const previous = previousTurnCountRef.current;
     previousTurnCountRef.current = state.turns.length;
-    // 서버 저널에는 최초 replay-end가 남아 있고, 그 뒤부터 turns가 늘어나는 것은 live turn-start다.
-    // replay-start가 상한에서 잘려도 replay-end 뒤에 과거 턴을 추가하는 경로는 없으므로 별도
-    // "완료" 축을 복제하지 않고 이벤트 순서 자체를 따른다. 빈 chat-born 세션의 첫 턴도 놓치지 않는다.
-    if (state.replaying || state.turns.length <= previous) return;
-    const arrived = state.turns.length - previous;
+    if (state.snapshotting) {
+      // open이 로그를 비우기 전의 수를 보존한다. snapshot 안에서 같은 턴을 복원한 것은 새 도착이
+      // 아니지만, 끊긴 동안 예약 턴이 실제로 시작했다면 그 receipt는 snapshot-end에서 내려야 한다.
+      if (snapshotTurnBaselineRef.current === null) {
+        snapshotTurnBaselineRef.current = state.observedTurns;
+        snapshotQueuedBaselineRef.current = queuedTurns;
+      }
+      return;
+    }
+    const baseline = snapshotTurnBaselineRef.current;
+    snapshotTurnBaselineRef.current = null;
+    const arrived = baseline === null
+      ? Math.max(0, state.turns.length - previous)
+      : Math.min(snapshotQueuedBaselineRef.current, Math.max(0, state.observedTurns - baseline));
+    snapshotQueuedBaselineRef.current = 0;
+    if (arrived === 0) return;
     // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
     // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.
     setQueuedTurns((current) => Math.max(0, current - arrived));
-    if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
-  }, [state.replaying, state.turns.length]);
+    // snapshot 안의 증가는 끊긴 동안 시작한 예약일 수 있지만, 이미 보던 턴의 복원이기도 하다.
+    // 화면 도착 신호는 snapshot 밖에서 직접 열린 턴만 센다.
+    if (baseline === null && !nearBottomRef.current) setUnseenTurns((current) => current + arrived);
+  }, [queuedTurns, state.observedTurns, state.snapshotting, state.turns.length]);
 
   React.useEffect(() => {
     const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;

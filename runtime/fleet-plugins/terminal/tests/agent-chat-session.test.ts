@@ -242,6 +242,10 @@ function kinds(events: readonly AgentChatJournalEvent[]): readonly string[] {
   return events.map((entry) => entry.event.kind);
 }
 
+function withoutSnapshotEnd(events: readonly AgentChatJournalEvent[]): readonly AgentChatJournalEvent[] {
+  return events.filter((entry) => entry.event.kind !== "snapshot-end");
+}
+
 describe("AgentChatRegistry — chat-born sessions", () => {
   it("starts the first turn without a resume coordinate after an empty replay boundary", async () => {
     const home = tempDir("chat-home-");
@@ -253,7 +257,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
     // 되돌릴 과거가 0턴이라는 사실도 명시적으로 닫힌 경계가 말한다.
-    expect(kinds(events)).toEqual(["replay-start", "replay-end"]);
+    expect(kinds(events)).toEqual(["replay-start", "replay-end", "snapshot-end"]);
 
     session.send("let us talk about the render path");
     await drainTurn(registry, "op-1");
@@ -441,10 +445,11 @@ describe("AgentChatRegistry", () => {
 
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    expect(events[0]?.event).toEqual({ kind: "replay-start" });
-    const replayEnd = events.at(-1)?.event;
+    const snapshot = withoutSnapshotEnd(events);
+    expect(snapshot[0]?.event).toEqual({ kind: "replay-start" });
+    const replayEnd = snapshot.at(-1)?.event;
     expect(replayEnd).toMatchObject({ kind: "replay-end" });
-    const held = events.slice(1, -1).map((entry) => entry.event);
+    const held = snapshot.slice(1, -1).map((entry) => entry.event);
     const dispatches = held.filter((event) => event.kind === "dispatch").length;
     // 합성 경계 안의 원래 replay-end는 live tail보다 먼저 재생을 끝내므로 전달하지 않는다.
     expect(held.some((event) => event.kind === "replay-end")).toBe(false);
@@ -466,13 +471,14 @@ describe("AgentChatRegistry", () => {
 
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    const held = events.slice(1, -1).map((entry) => entry.event);
+    const snapshot = withoutSnapshotEnd(events);
+    const held = snapshot.slice(1, -1).map((entry) => entry.event);
     expect(held[0]?.kind).not.toBe("dispatch");
     const state = held.reduce((current, event) => reduceAgentChatLog(current, event), {
       ...initialAgentChatLogState,
       replaying: true,
     });
-    const replayEnd = events.at(-1)?.event;
+    const replayEnd = snapshot.at(-1)?.event;
     expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(state.turns.length);
     await registry.disposeAll();
   });
@@ -493,8 +499,9 @@ describe("AgentChatRegistry", () => {
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
     expect(events[0]?.event).toEqual({ kind: "replay-start" });
-    expect(events.at(-1)?.event).toEqual({ kind: "replay-end", turns: 2 });
-    expect(events.slice(1, -1).some((entry) => entry.event.kind === "replay-end")).toBe(false);
+    expect(events.at(-2)?.event).toEqual({ kind: "replay-end", turns: 2 });
+    expect(events.at(-1)?.event).toMatchObject({ kind: "snapshot-end", turns: expect.any(Number) });
+    expect(events.slice(1, -2).some((entry) => entry.event.kind === "replay-end")).toBe(false);
     await registry.disposeAll();
   });
 
@@ -522,16 +529,19 @@ describe("AgentChatRegistry", () => {
     // mid-turn으로 재접속하는 두 번째 구독자 — subscribe는 이 순간의 저널을 동기로 되쓴다.
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    const kindsList = events.map((entry) => entry.event.kind);
+    const kindsList = kinds(events);
     const endIdx = kindsList.indexOf("replay-end");
     const startIdx = kindsList.indexOf("turn-start");
     // 진행 중 턴의 turn-start는 경계(replay-end) 뒤에 live로 온다.
     expect(endIdx).toBeGreaterThanOrEqual(0);
     expect(startIdx).toBeGreaterThan(endIdx);
 
-    // 재접속 스냅숏을 리듀스하면 마지막 턴은 done이 아니라 working이다.
+    // 재접속 스냅숏을 리듀스하면 마지막 턴은 done이 아니라 working이다. snapshot-end는 이
+    // live 문법의 opener까지가 복원 상태이며, 뒤 이벤트부터 새 도착임을 클라이언트에 말한다.
     const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
     expect(state.turns.at(-1)?.state).toBe("working");
+    expect(events.at(-1)?.event).toMatchObject({ kind: "snapshot-end", turns: expect.any(Number) });
+    expect(state.snapshotting).toBe(false);
 
     await registry.disposeAll();
   });
@@ -557,7 +567,7 @@ describe("AgentChatRegistry", () => {
     // mid-turn 재접속: 재생 스냅숏엔 밀려난 dispatch/turn-start가 없다.
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    const kindsList = events.map((entry) => entry.event.kind);
+    const kindsList = kinds(events);
     const endIdx = kindsList.indexOf("replay-end");
     const startIdx = kindsList.indexOf("turn-start");
     // 여는 좌표가 실제로 밀려났음을 못 박는다 — dispatch가 남아 있으면 정상 경로이지 이 상한 경로가
@@ -631,7 +641,7 @@ describe("AgentChatRegistry", () => {
 
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
-    expect(kinds(events)).toEqual(["replay-start", "dispatch", "text", "replay-end"]);
+    expect(kinds(events)).toEqual(["replay-start", "dispatch", "text", "replay-end", "snapshot-end"]);
     await registry.disposeAll();
   });
 
@@ -659,7 +669,7 @@ describe("AgentChatRegistry", () => {
       "replay-start",
       "dispatch", "text", "turn-end",
       "turn-start", "text", "turn-end",
-      "replay-end",
+      "replay-end", "snapshot-end",
     ]);
     // 접힌 턴의 시작은 묶음의 첫 줄이고, 끝맺지 못한 운반체는 앞 턴의 끝을 늘리지 않는다.
     expect(events.map((entry) => entry.event).filter((event) => event.kind === "turn-end")).toEqual([

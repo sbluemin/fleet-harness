@@ -12,6 +12,8 @@ function makeLogState(): AgentChatLogState {
   return {
     turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
     replaying: false,
+    snapshotting: false,
+    observedTurns: 0,
     errorCode: null,
     jobs: [],
     context: null,
@@ -22,6 +24,11 @@ function makeLogState(): AgentChatLogState {
 let logState: AgentChatLogState = makeLogState();
 
 vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
+vi.mock("../api.js", () => ({
+  discardLaunchAttachment: async () => {},
+  messageAgentSession: async () => {},
+  uploadLaunchAttachment: async () => ({ id: "attachment" }),
+}));
 vi.mock("@fleet-console/markdown/styles.css", () => ({}));
 vi.mock("./chat.css", () => ({}));
 
@@ -211,7 +218,7 @@ describe("chat log scroll anchor", () => {
   });
 
   it("does not count replay history before replay-end", () => {
-    logState = { ...makeLogState(), turns: [], replaying: true };
+    logState = { ...makeLogState(), turns: [], replaying: true, snapshotting: true };
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 200;
@@ -224,6 +231,121 @@ describe("chat log scroll anchor", () => {
     mountView();
 
     expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
+  });
+
+  it("does not count an in-flight turn restored after replay-end as a new arrival", () => {
+    logState = { ...makeLogState(), turns: [], replaying: true, snapshotting: true };
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    // 서버는 working 문법을 지키려고 opener를 replay-end 뒤에 두지만, snapshot-end 전까지는
+    // 이미 보던 턴의 복원이다. Follow 칩이 새 도착으로 세면 안 된다.
+    logState = {
+      ...logState,
+      replaying: false,
+      turns: [{ dispatch: { text: "in flight" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    logState = { ...logState, snapshotting: false };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
+  });
+
+  it("clears a queued receipt when its turn starts during reconnect", async () => {
+    logState = {
+      ...makeLogState(),
+      turns: [{ dispatch: { text: "running" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued instruction");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+
+    logState = { ...logState, snapshotting: true };
+    mountView();
+    logState = {
+      ...logState,
+      replaying: false,
+      observedTurns: 2,
+      turns: [
+        ...logState.turns,
+        { dispatch: { text: "queued instruction" }, items: [], state: "working", toolCount: 0, draft: "" },
+      ],
+    };
+    mountView();
+    logState = { ...logState, snapshotting: false };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
+  });
+
+  it("does not let restored history consume a receipt queued during snapshot delivery", async () => {
+    logState = {
+      ...makeLogState(),
+      snapshotting: true,
+      observedTurns: 10,
+      turns: [{ dispatch: { text: "restored" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued during snapshot");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+
+    // 이 receipt보다 앞서 시작한 턴이 snapshot-end에서 드러나도 새 지시를 소비하지 않는다.
+    logState = { ...logState, snapshotting: false, observedTurns: 11 };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+  });
+
+  it("clears a queued receipt from the monotonic coordinate when capped history shrinks", async () => {
+    logState = {
+      ...makeLogState(),
+      observedTurns: 2_000,
+      turns: [{ dispatch: { text: "running" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued over cap");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+
+    logState = { ...logState, snapshotting: true };
+    mountView();
+    // JOURNAL_CAP이 과거를 밀어 화면에는 한 턴만 남아도 서버 누적 좌표는 새 턴을 말한다.
+    logState = {
+      ...logState,
+      snapshotting: false,
+      observedTurns: 2_001,
+      turns: [{ dispatch: { text: "queued over cap" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
   });
 
   it("counts new turns while the reader is away and clears the count on follow", () => {
