@@ -10,7 +10,7 @@
  * credential dependencies explicitly.
  */
 
-import type { AuthService } from "@dotobokuri/core-infra";
+import type { AuthService } from "../auth/types.js";
 import { findCauseCode } from "../transport/upstream-sse.js";
 import type { CredentialResolverDeps } from "../transport/credentials.js";
 import type { ProviderDto, QuotaWindowPeriod, WindowDurationBasis } from "./types.js";

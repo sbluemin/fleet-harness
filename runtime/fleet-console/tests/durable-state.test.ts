@@ -163,7 +163,7 @@ describe("durable console state", () => {
           path: deps.filePath,
           load: () => deps.sanitize(undefined),
           save: () => undefined,
-          update: (mutate) => mutate(deps.sanitize(undefined)),
+          update: (mutate) => mutate(deps.sanitize(undefined)) ?? deps.sanitize(undefined),
         };
       },
     });

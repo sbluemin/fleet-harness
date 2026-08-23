@@ -1,5 +1,5 @@
 import { cancel, isCancel, password, select } from "@clack/prompts";
-import type { AuthService } from "@dotobokuri/core-infra";
+import type { AuthService } from "@dotobokuri/core-ai-gateway";
 import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,

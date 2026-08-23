@@ -1,9 +1,10 @@
-// auth 공개 배럴 — named export 일원화 (집계 객체 없음)
+// 공급자 자격증명 공개 배럴 — named export 일원화 (집계 객체 없음)
 
-export { createAuthService, DEFAULT_AUTH_PATH } from "./auth-storage.js";
+export { createProviderAuthService, resolveProviderAuthPath } from "./store.js";
 export {
   DEFAULT_AUTH_VALIDATION_TIMEOUT_MS,
   createAuthValidationError,
+  formatAuthValidationFailureMessage,
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
 } from "./validation.js";
@@ -18,5 +19,5 @@ export type {
   AuthValidationRequest,
   AuthValidationResult,
   AuthValidationStatus,
-  CreateAuthServiceDeps,
+  CreateProviderAuthServiceDeps,
 } from "./types.js";

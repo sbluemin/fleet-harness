@@ -1,4 +1,4 @@
-import type { AuthService } from "@dotobokuri/core-infra";
+import type { AuthService } from "../auth/types.js";
 
 import { fetchAntigravityUsage } from "../antigravity/quota.js";
 import { fetchClaudeUsage } from "../anthropic/quota.js";

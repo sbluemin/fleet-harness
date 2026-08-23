@@ -37,7 +37,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -55,7 +55,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -72,7 +72,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -90,7 +90,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -103,7 +103,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -121,7 +121,7 @@ describe("dual-entry dispatch", () => {
         stderr: io.stderr,
         env: {},
         runApp: runApp as never,
-        createInfraServices: (() => ({})) as never,
+        createAuthService: (() => ({})) as never,
         dispatchAuthCommand: (async () => 0) as never,
         dispatchUpdateCommand: (async () => 0) as never,
       });
@@ -163,7 +163,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
       dispatchGatewayCommand: gateway as never,
@@ -181,7 +181,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: (async () => undefined) as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: auth as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });
@@ -210,7 +210,7 @@ describe("dual-entry dispatch", () => {
       stderr: io.stderr,
       env: {},
       runApp: runApp as never,
-      createInfraServices: (() => ({})) as never,
+      createAuthService: (() => ({})) as never,
       dispatchAuthCommand: (async () => 0) as never,
       dispatchUpdateCommand: (async () => 0) as never,
     });

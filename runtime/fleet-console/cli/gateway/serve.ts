@@ -1,8 +1,10 @@
 import {
   createAiGatewaySettingsStore,
+  createProviderAuthService,
   type AiGatewaySettingsStore,
+  type AuthService,
 } from "@dotobokuri/core-ai-gateway";
-import { createInfraServices, getFleetDataDir, type AuthService } from "@dotobokuri/core-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { collectGatewayModels } from "./report.js";
 import { startGatewayHttpServer, type FleetCliGatewayServer } from "./server.js";
@@ -69,7 +71,7 @@ export async function runGatewayServe(
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const store = (deps.createStore ?? ((dir) => createAiGatewaySettingsStore({ dataDir: dir })))(dataDir);
   applyStoredWireLog(store, dataDir);
-  const authService = (deps.createAuthService ?? (() => createInfraServices().authService))();
+  const authService = (deps.createAuthService ?? (() => createProviderAuthService({ dataDir })))();
 
   let server: FleetCliGatewayServer;
   try {

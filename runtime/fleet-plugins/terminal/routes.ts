@@ -11,6 +11,7 @@ import { KIMI_AUTH_PROVIDER_ID, OPENCODE_AUTH_PROVIDER_ID } from "@dotobokuri/fl
 import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   createAiGatewaySettingsStore,
+  createProviderAuthService,
   setWireLogTarget,
   wireLogEnabled,
 } from "@dotobokuri/core-ai-gateway";
@@ -66,6 +67,7 @@ export default definePlugin({
     ctx.host.operations.registerOperationType("agent");
     ctx.host.operations.registerPayloadSanitizer(ctx.pluginId, TERMINAL_SENSITIVE_FIELDS);
     const infraServices = createInfraServices();
+    const authService = createProviderAuthService({ dataDir: ctx.host.paths.fleetDataDir });
     const runtime = createTerminalRuntime(ctx);
     registerWsHandler(ctx, "/", runtime.handleUpgrade, { method: "GET", path: "", summary: "Open the Terminal WebSocket transport.", category: "Terminal Plugin", gate: "one-use-ticket", transport: "websocket" });
     ctx.host.lifecycle.registerCleanup(() => runtime.stop());
@@ -99,11 +101,11 @@ export default definePlugin({
       aiGatewayStore,
       wireLogRuntime: wireLog,
     });
-    registerTerminalModelAuthRoutes(ctx, { authService: infraServices.authService });
+    registerTerminalModelAuthRoutes(ctx, { authService });
     registerAiGatewayRoutes(ctx, {
       readAiGatewaySettings: aiGatewayStore.read,
-      readKimiApiKey: () => infraServices.authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
-      readOpencodeApiKey: () => infraServices.authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
+      readKimiApiKey: () => authService.getApiKey(KIMI_AUTH_PROVIDER_ID),
+      readOpencodeApiKey: () => authService.getApiKey(OPENCODE_AUTH_PROVIDER_ID),
     });
     // Agent Operation과 Analyst는 같은 plugin storage 키를 읽되 수명은 각 라우트가 독립 소유한다.
     // store는 무상태 어댑터라 여기서 별도로 만들어도 저장 파일과 우선순위 계약은 하나로 유지된다.

@@ -139,6 +139,39 @@ describe("createDurableJsonStore", () => {
     expect(stat.mode & 0o777).toBe(0o600);
   });
 
+  it("mutate가 undefined를 반환하면 쓰기를 생략하고 현재 값을 돌려준다", () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "data.json");
+    const store = createDurableJsonStore<TestData>({
+      filePath,
+      lockDir: `${filePath}.lock`,
+      sanitize,
+      sensitivity: "normal",
+    });
+
+    const result = store.update(() => undefined);
+
+    // 바꿀 것이 없다는 판정이 빈 문서를 새로 만들면, 저장한 적 없는 파일이 생긴다.
+    expect(result).toEqual({ version: 1, value: "" });
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  it("mutate가 undefined를 반환해도 기존 파일은 그대로 둔다", () => {
+    const dir = makeTempDir();
+    const filePath = path.join(dir, "data.json");
+    const store = createDurableJsonStore<TestData>({
+      filePath,
+      lockDir: `${filePath}.lock`,
+      sanitize,
+      sensitivity: "normal",
+    });
+    store.save({ version: 2, value: "kept" });
+    const before = fs.readFileSync(filePath, "utf-8");
+
+    expect(store.update(() => undefined)).toEqual({ version: 2, value: "kept" });
+    expect(fs.readFileSync(filePath, "utf-8")).toBe(before);
+  });
+
   it("normal 모드에서 0o644 권한으로 파일을 생성한다", () => {
     if (process.platform === "win32") return;
     const dir = makeTempDir();

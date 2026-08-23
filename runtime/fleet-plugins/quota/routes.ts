@@ -1,9 +1,9 @@
 import { definePlugin, registerRouter } from "@fleet-console/sdk/plugin/node";
 import {
   createAiGatewayQuotaCollectors,
+  createProviderAuthService,
   createQuotaService,
 } from "@dotobokuri/core-ai-gateway";
-import { createAuthService, DEFAULT_AUTH_PATH } from "@dotobokuri/core-infra";
 
 import { handleConnect, handleOrder, handleSummary } from "./server/handlers.js";
 
@@ -28,7 +28,9 @@ export default definePlugin({
       isClaudeConnected: () => isConnected("claude"),
       isCursorConnected: () => isConnected("cursor"),
       ...createAiGatewayQuotaCollectors({
-        authService: createAuthService({ authPath: DEFAULT_AUTH_PATH }),
+        // dataDir는 호스트의 **유효** Fleet 루트다. 생략하면 격리 루트로 띄운 Console이
+        // 사용자의 진짜 auth.json을 읽는다.
+        authService: createProviderAuthService({ dataDir: ctx.host.paths.fleetDataDir }),
       }),
     });
     registerRouter(ctx, "summary", async ({ req, res }) => {
