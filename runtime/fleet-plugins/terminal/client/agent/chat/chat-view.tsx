@@ -104,6 +104,8 @@ export function AgentChatView({
   // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
   const suppressScrollRef = React.useRef(0);
   const previousTurnCountRef = React.useRef(state.turns.length);
+  // 재접속 직전 턴 수. snapshot 안에서 그보다 늘어난 몫은 끊긴 동안 시작한 예약 턴이다.
+  const snapshotTurnBaselineRef = React.useRef<number | null>(state.snapshotting ? 0 : null);
   const previousReadyAnswersRef = React.useRef(0);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
@@ -161,15 +163,24 @@ export function AgentChatView({
   React.useEffect(() => {
     const previous = previousTurnCountRef.current;
     previousTurnCountRef.current = state.turns.length;
-    // replay-end 뒤에도 진행 중 턴의 opener가 live 문법으로 복원될 수 있다. snapshot-end가 오기
-    // 전까지는 이번 접속이 이미 보유하던 상태이지 새 도착이 아니다. 그 뒤부터 열린 턴만 receipt와
-    // 미확인 집계를 움직인다. 빈 chat-born 세션의 첫 턴도 snapshot-end 뒤라 놓치지 않는다.
-    if (state.snapshotting || state.turns.length <= previous) return;
-    const arrived = state.turns.length - previous;
+    if (state.snapshotting) {
+      // open이 로그를 비우기 전의 수를 보존한다. snapshot 안에서 같은 턴을 복원한 것은 새 도착이
+      // 아니지만, 끊긴 동안 예약 턴이 실제로 시작했다면 그 receipt는 snapshot-end에서 내려야 한다.
+      if (snapshotTurnBaselineRef.current === null) snapshotTurnBaselineRef.current = previous;
+      return;
+    }
+    const baseline = snapshotTurnBaselineRef.current;
+    snapshotTurnBaselineRef.current = null;
+    const arrived = baseline === null
+      ? Math.max(0, state.turns.length - previous)
+      : Math.max(0, state.turns.length - baseline);
+    if (arrived === 0) return;
     // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
     // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.
     setQueuedTurns((current) => Math.max(0, current - arrived));
-    if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
+    // snapshot 안의 증가는 끊긴 동안 시작한 예약일 수 있지만, 이미 보던 턴의 복원이기도 하다.
+    // 화면 도착 신호는 snapshot 밖에서 직접 열린 턴만 센다.
+    if (baseline === null && !nearBottomRef.current) setUnseenTurns((current) => current + arrived);
   }, [state.snapshotting, state.turns.length]);
 
   React.useEffect(() => {

@@ -23,6 +23,11 @@ function makeLogState(): AgentChatLogState {
 let logState: AgentChatLogState = makeLogState();
 
 vi.mock("./chat-store.js", () => ({ useAgentChatStream: () => logState }));
+vi.mock("../api.js", () => ({
+  discardLaunchAttachment: async () => {},
+  messageAgentSession: async () => {},
+  uploadLaunchAttachment: async () => ({ id: "attachment" }),
+}));
 vi.mock("@fleet-console/markdown/styles.css", () => ({}));
 vi.mock("./chat.css", () => ({}));
 
@@ -246,6 +251,41 @@ describe("chat log scroll anchor", () => {
     mountView();
 
     expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
+  });
+
+  it("clears a queued receipt when its turn starts during reconnect", async () => {
+    logState = {
+      ...makeLogState(),
+      turns: [{ dispatch: { text: "running" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued instruction");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+
+    logState = { ...logState, snapshotting: true };
+    mountView();
+    logState = {
+      ...logState,
+      replaying: false,
+      turns: [
+        ...logState.turns,
+        { dispatch: { text: "queued instruction" }, items: [], state: "working", toolCount: 0, draft: "" },
+      ],
+    };
+    mountView();
+    logState = { ...logState, snapshotting: false };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
   });
 
   it("counts new turns while the reader is away and clears the count on follow", () => {
