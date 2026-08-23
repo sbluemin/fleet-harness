@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../src/agent-cli/assets.generated.js";
 
 const EXPECTED_SKILLS = [
-  "orchestration/SKILL.md",
+  "delegation/SKILL.md",
   "professional-pushback/SKILL.md",
 ] as const;
 
@@ -39,8 +39,8 @@ describe("embedded Fleet skills", () => {
     expect(content).not.toContain("assumption-audit");
   });
 
-  it("keeps orchestration focused on semantic execution-graph policy", () => {
-    const content = skillBody("orchestration/SKILL.md");
+  it("keeps delegation focused on semantic execution-graph policy", () => {
+    const content = skillBody("delegation/SKILL.md");
     expect(content).toContain("derive the smallest useful graph");
     expect(content).toContain("Dispatch only branches whose outputs can change the host's decision");
     expect(content).toContain("Keep decision and integration nodes on the host");
@@ -66,7 +66,7 @@ describe("embedded Fleet skills", () => {
   });
 
   it("keeps implementation and judgment on the host by default", () => {
-    const content = skillBody("orchestration/SKILL.md");
+    const content = skillBody("delegation/SKILL.md");
     expect(content).toContain("implementation normally is not");
     expect(content).toContain("Implementation delegation is an exception");
     expect(content).toContain("Implement directly on the host unless **all** of these are true");
@@ -81,8 +81,8 @@ describe("embedded Fleet skills", () => {
     expect(content).not.toContain("opts.model");
   });
 
-  it("keeps volatile ranking policy out of orchestration", () => {
-    const content = skillBody("orchestration/SKILL.md");
+  it("keeps volatile ranking policy out of delegation", () => {
+    const content = skillBody("delegation/SKILL.md");
     expect(content).not.toContain("providerPriority");
     expect(content).not.toContain("routingTieBandPoints");
     expect(content).not.toContain("usedPercent");

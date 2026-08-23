@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Fleet gateway model guard — 게이트웨이 세션의 위임 정책을 코드로 강제하는 단일 훅.
 //
-// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을 orchestration
+// 이 저장소는 Admiral 시스템 프롬프트를 싣지 않는다. 매 턴에는 위임·병렬 작업을 delegation
 // 스킬로 보내고 살아 있는 로스터를 직접 읽게 하는 짧은 트립와이어만 주입한다. 스킬은 의미 정책만
 // 소유하고, 핀에 쓸 수 있는 이름은 gateway_models 응답에만 있으며, 디스패치 직전의 이 훅은 그
 // 결과의 형식을 하드 게이트로 검증한다.
@@ -13,7 +13,7 @@
 // 직접 도구를 호출하게 한다.
 //
 // 첫 인자가 서브커맨드다. 훅 이벤트마다 별도 파일을 두지 않는 이유는 세 판정이 같은 어휘
-// (orchestration 스킬 / 정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
+// (delegation 스킬 / 정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
 // 여러 곳에서 따로 늙는다.
 //
 //   remind                 UserPromptSubmit           위임·병렬 작업을 스킬과 로스터 조회로 라우팅
@@ -27,7 +27,7 @@ import { readFileSync } from "node:fs";
 
 // 아래 상주 텍스트와 block()이 내보내는 차단 사유는 모두 모델이 읽는다. 그래서 영어로 쓴다.
 const TURN_REMINDER = [
-  "If handling this request requires delegation or a parallel workload, invoke the fleet:orchestration skill",
+  "If handling this request requires delegation or a parallel workload, invoke the fleet:delegation skill",
   "before calling Agent or Workflow, and read the live roster with the fleet gateway_models tool in the same turn —",
   "delegation identities are session-scoped, so one not taken from that reading will not resolve.",
   "Do not delegate implementation by default; keep it on the host unless the skill's narrow mechanical exception applies.",

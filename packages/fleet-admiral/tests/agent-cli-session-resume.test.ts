@@ -128,7 +128,7 @@ describe("agent CLI session resume and capture hooks", () => {
         }],
       },
     ]);
-    // Workflow 뒤에는 접수증 계약을 붙인다. orchestration 스킬 전후에는 훅을 걸지 않는다 —
+    // Workflow 뒤에는 접수증 계약을 붙인다. delegation 스킬 전후에는 훅을 걸지 않는다 —
     // Claude Code의 `if`는 퍼미션 룰로 평가되고 Skill 도구에는 룰 콘텐츠 매처가 없어
     // `Skill(<name>)` 조건이 항상 거짓이 된다.
     expect(hooksJson.hooks.PostToolUse).toEqual([
@@ -160,7 +160,7 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },
-      // 위임·병렬 요청을 orchestration 스킬로 보내는 라우팅 트립와이어.
+      // 위임·병렬 요청을 delegation 스킬로 보내는 라우팅 트립와이어.
       { args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "remind"], command: process.execPath, type: "command" },
     ]);
     expect(existsSync(path.join(plugin.pluginRoot, ".codex-plugin", "plugin.json"))).toBe(false);

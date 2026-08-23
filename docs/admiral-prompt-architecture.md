@@ -52,7 +52,7 @@ and the standalone `fleet` launcher — read that one option, and it binds new s
 
 The delegation contract that used to live in the Standing Orders is now split between
 one on-demand skill, the live Workflow tool, the `gateway_models` tool, and embedded
-hooks. `fleet:orchestration` owns semantic execution-graph decisions and opens with a
+hooks. `fleet:delegation` owns semantic execution-graph decisions and opens with a
 preflight that requires a `gateway_models` call; the Workflow tool owns graph mechanics;
 `gateway_models` owns the identity roster and reports its own spellings and constraints.
 The host reads that roster itself. The command hook at
@@ -64,11 +64,11 @@ first argument:
 
 | Subcommand | Event | Matcher | Effect |
 |---|---|---|---|
-| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:orchestration` and names `gateway_models` as the roster source; it does not repeat the pin mechanics. |
+| `remind` | UserPromptSubmit | — | Routes requests that need delegation or parallel work through `fleet:delegation` and names `gateway_models` as the roster source; it does not repeat the pin mechanics. |
 | `gate-delegation` | PreToolUse | `Agent|Workflow` | Blocks an unpinned delegation and a pin whose spelling this run cannot resolve. |
 | `workflow-receipt` | PostToolUse | `Workflow` | States that the dispatch returned a receipt, not a result. |
 
-No hook is attached before or after the orchestration skill, and none may be. Claude Code
+No hook is attached before or after the delegation skill, and none may be. Claude Code
 evaluates a hook's `if` as a permission rule and matches its rule content through the
 tool's `preparePermissionMatcher`, which the Skill tool does not implement, so an
 `if: "Skill(<name>)"` condition is always false and the hook is skipped with only a
@@ -116,8 +116,8 @@ once per identity would put the same table in the session window twenty times ov
 Runtime state is read through direct owners:
 
 - Delegation gate and routing tripwire: `packages/fleet-admiral/assets/hooks/fleet-gateway-model-guard.mjs`, generated into the embedded ESM manifest `EMBEDDED_AGENT_CLI_HOOK_ASSETS` in `packages/fleet-admiral/src/agent-cli/assets.generated.ts` via `scripts/generate-fleet-admiral-assets.mjs`, and wired by `src/agent-cli/plugin/fleet.ts`.
-- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `orchestration` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
-- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the orchestration preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
+- On-demand skill assets: `packages/fleet-admiral/assets/skills/`, generated into `EMBEDDED_AGENT_CLI_SKILL_ASSETS` by `scripts/generate-fleet-admiral-assets.mjs` and rendered under the gateway plugin's `skills/` directory. `delegation` owns semantic execution-graph decisions; the live Workflow tool owns graph mechanics. The skills do not recreate a Fleet system prompt or duplicate hook/runtime policy.
+- Tool-facing facts: `gateway_models` in `src/ai-gateway/gateway-models-tool.ts`. It reports the live roster and nothing else; the host calls it directly from the delegation preflight, so there is no hook mode and no receipt. Only `description` is served as tool doctrine, so `whenToUse`/`usageGuidelines` stay empty rather than carrying rules nothing reads.
 - Executor/session/model state: `@dotobokuri/core-agent`
 - MCP registry/server state: `@dotobokuri/core-agent`
 
