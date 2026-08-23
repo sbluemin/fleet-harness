@@ -217,7 +217,9 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
   border-bottom: 1px solid var(--surface-rim);
-  background: var(--surface-band);
+  background: var(--glass-tint-band);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
 }
 
 .command-band.is-fullscreen {
@@ -300,7 +302,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-left.is-collapsed {
   border-color: transparent;
-  background: var(--surface-band);
+  background: var(--glass-tint-band);
 }
 
 .command-band.is-utility .command-band-left {

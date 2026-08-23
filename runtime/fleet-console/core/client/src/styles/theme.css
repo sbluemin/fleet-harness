@@ -177,27 +177,42 @@
   --glass-tint-deep: var(--ink-deep);
   --glass-tint-abyss: var(--ink-abyss);
   --glass-tint-chrome: var(--surface-chrome);
+  /* 패널 채널 둘 — panel은 패널 루트가 유리 틴트로 쓰고, panel-face는 패널 안에서 같은
+     면을 덧칠하던 자식(캡션·본문 팬)이 쓴다. 게이트가 열리면 face는 transparent가 되어
+     루트 유리 한 장이 그대로 비친다 — 자식이 자기 틴트를 들면 겹침 얼룩(이중 알파)이 된다.
+     xterm 터미널 필드는 terminal-surface.tsx가 --surface-panel 원 토큰을 계속 읽으므로
+     불투명을 유지한다(판독 성역). */
+  --glass-tint-panel: var(--surface-panel);
+  --glass-tint-panel-face: var(--surface-panel);
+  --glass-tint-band: var(--surface-band);
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
   --glass-backdrop-scrim: none;
   --glass-rim: transparent;
+  --glass-sheen: linear-gradient(transparent, transparent);
   /* 게이트가 켜질 때 채널에 실릴 테마별 유리 재료 — 여기(base)와 각 테마 블록에만
      리터럴을 둔다. 게이트 블록은 값 없이 이 재료를 채널로 옮기기만 한다.
      틴트 사다리는 기존 표면 사다리(strong/soft/pillar/raised/deep)를 1:1로 비추되
-     알파 52~72% 대역으로 눕는다 — 블러 20px 아래에서 판독 틴트가 살아남는 하한이
-     α≈0.52임이 실측 기준이고, 그 아래는 판독 계약(AA)이 깨진다. */
+     알파 44~62% 대역으로 눕는다 — 블러 24px가 뒤 콘텐츠의 국소 대비를 뭉개 주므로
+     틴트가 이만큼 물러나도 위 텍스트의 판독 대비가 유지됨을 실측으로 확인했다.
+     알파를 더 내리려면 블러/스크림 보조와 함께 AA를 재실측할 것. */
   --glass-on-underlay: transparent;
-  --glass-on-tint-strong: oklch(24% 0.02 245 / 62%);
-  --glass-on-tint-soft: oklch(19% 0.018 245 / 58%);
-  --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 64%);
-  --glass-on-tint-raised: oklch(22% 0.02 245 / 64%);
-  --glass-on-tint-deep: oklch(16.5% 0.016 245 / 58%);
-  --glass-on-tint-abyss: oklch(13% 0.014 245 / 60%);
-  --glass-on-tint-chrome: oklch(19% 0.018 245 / 72%);
-  --glass-on-backdrop-strong: blur(20px) saturate(1.6);
-  --glass-on-backdrop-soft: blur(10px) saturate(1.5);
+  --glass-on-tint-strong: oklch(24% 0.02 245 / 50%);
+  --glass-on-tint-soft: oklch(19% 0.018 245 / 48%);
+  --glass-on-tint-pillar: oklch(23.5% 0.02 245 / 52%);
+  --glass-on-tint-raised: oklch(22% 0.02 245 / 52%);
+  --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
+  --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
+  --glass-on-tint-chrome: oklch(19% 0.018 245 / 48%);
+  --glass-on-tint-panel: oklch(16.5% 0.016 245 / 55%);
+  --glass-on-tint-band: oklch(13% 0.018 245 / 52%);
+  --glass-on-backdrop-strong: blur(24px) saturate(1.7);
+  --glass-on-backdrop-soft: blur(12px) saturate(1.5);
   --glass-on-backdrop-scrim: blur(3px);
-  --glass-on-rim: oklch(96% 0.01 90 / 10%);
+  --glass-on-rim: oklch(96% 0.01 90 / 16%);
+  /* 유리 광택(sheen) — 대각 하이라이트 한 겹. 무채색 리터럴만 쓰는 독트린 예외 채널이며,
+     평평한 배경 위에서도 유리가 재질로 읽히게 하는 최소 광학 신호다. */
+  --glass-on-sheen: linear-gradient(118deg, oklch(96% 0.01 90 / 10%) 0%, transparent 30%, transparent 74%, oklch(96% 0.01 90 / 5%) 100%);
 
   --identity-file-code: var(--aurora);
   --identity-file-markup: var(--brass);
@@ -349,14 +364,16 @@
   --surface-rim-strong: oklch(72% 0.05 248 / 38%);
   --surface-band: var(--ink-deep);
 
-  --glass-on-tint-strong: oklch(32% 0.045 248 / 55%);
-  --glass-on-tint-soft: oklch(28% 0.04 248 / 52%);
-  --glass-on-tint-pillar: oklch(22% 0.05 248 / 58%);
-  --glass-on-tint-raised: oklch(28% 0.04 248 / 56%);
-  --glass-on-tint-deep: oklch(20% 0.045 248 / 56%);
-  --glass-on-tint-abyss: oklch(15% 0.04 250 / 58%);
-  --glass-on-tint-chrome: oklch(28% 0.04 248 / 58%);
-  --glass-on-rim: oklch(96% 0.012 88 / 13%);
+  --glass-on-tint-strong: oklch(32% 0.045 248 / 46%);
+  --glass-on-tint-soft: oklch(28% 0.04 248 / 44%);
+  --glass-on-tint-pillar: oklch(22% 0.05 248 / 48%);
+  --glass-on-tint-raised: oklch(28% 0.04 248 / 46%);
+  --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
+  --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
+  --glass-on-tint-chrome: oklch(28% 0.04 248 / 42%);
+  --glass-on-tint-panel: oklch(23% 0.03 248 / 48%);
+  --glass-on-tint-band: oklch(20% 0.045 248 / 46%);
+  --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
   --hairline: oklch(36% 0.035 248);
   --hairline-strong: oklch(48% 0.03 248);
@@ -418,14 +435,16 @@
   --surface-rim-strong: oklch(70% 0.007 252 / 36%);
   --surface-band: var(--ink-deep);
 
-  --glass-on-tint-strong: oklch(29% 0.007 252 / 56%);
-  --glass-on-tint-soft: oklch(25% 0.006 252 / 54%);
-  --glass-on-tint-pillar: oklch(20% 0.008 252 / 58%);
-  --glass-on-tint-raised: oklch(25% 0.007 252 / 56%);
-  --glass-on-tint-deep: oklch(18% 0.007 255 / 56%);
-  --glass-on-tint-abyss: oklch(14% 0.006 255 / 58%);
-  --glass-on-tint-chrome: oklch(25% 0.006 252 / 58%);
-  --glass-on-rim: oklch(95% 0.003 250 / 11%);
+  --glass-on-tint-strong: oklch(29% 0.007 252 / 46%);
+  --glass-on-tint-soft: oklch(25% 0.006 252 / 44%);
+  --glass-on-tint-pillar: oklch(20% 0.008 252 / 48%);
+  --glass-on-tint-raised: oklch(25% 0.007 252 / 46%);
+  --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
+  --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
+  --glass-on-tint-chrome: oklch(25% 0.006 252 / 42%);
+  --glass-on-tint-panel: oklch(19% 0.008 252 / 48%);
+  --glass-on-tint-band: oklch(18% 0.007 255 / 46%);
+  --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
   --hairline: oklch(33% 0.006 252);
   --hairline-strong: oklch(45% 0.005 252);
@@ -559,16 +578,19 @@
   /* 라이트 유리는 백지 위 젖빛(milk glass)이다 — 채도 증폭(saturate)을 다크만큼 걸면
      종이 위 파스텔이 형광으로 튀므로 배율을 낮춘다. 크롬 틴트는 극성 계약을 지키기 위해
      종이(98.2%)보다 어두운 96% 대역에 머문다. */
-  --glass-on-tint-strong: oklch(98.5% 0.005 100 / 60%);
-  --glass-on-tint-soft: oklch(98% 0.004 100 / 55%);
-  --glass-on-tint-pillar: oklch(98.5% 0.003 100 / 60%);
-  --glass-on-tint-raised: oklch(95.5% 0.005 100 / 58%);
-  --glass-on-tint-deep: oklch(95.5% 0.005 100 / 58%);
-  --glass-on-tint-abyss: oklch(97% 0.003 100 / 58%);
-  --glass-on-tint-chrome: oklch(96% 0.004 100 / 62%);
-  --glass-on-backdrop-strong: blur(22px) saturate(1.25);
-  --glass-on-backdrop-soft: blur(10px) saturate(1.12);
-  --glass-on-rim: oklch(100% 0 0 / 65%);
+  --glass-on-tint-strong: oklch(98.5% 0.005 100 / 52%);
+  --glass-on-tint-soft: oklch(98% 0.004 100 / 48%);
+  --glass-on-tint-pillar: oklch(98.5% 0.003 100 / 52%);
+  --glass-on-tint-raised: oklch(95.5% 0.005 100 / 50%);
+  --glass-on-tint-deep: oklch(95.5% 0.005 100 / 50%);
+  --glass-on-tint-abyss: oklch(97% 0.003 100 / 50%);
+  --glass-on-tint-chrome: oklch(96% 0.004 100 / 50%);
+  --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
+  --glass-on-tint-band: oklch(95.5% 0.005 100 / 52%);
+  --glass-on-backdrop-strong: blur(26px) saturate(1.3);
+  --glass-on-backdrop-soft: blur(12px) saturate(1.15);
+  --glass-on-rim: oklch(100% 0 0 / 75%);
+  --glass-on-sheen: linear-gradient(118deg, oklch(100% 0 0 / 55%) 0%, transparent 34%, transparent 78%, oklch(100% 0 0 / 28%) 100%);
   /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.
      캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하며 패널 둘레에서
      L 94.9~96.6으로 실측된다. 그래서 프레임 톤(ink-deep 95.5%)으로 통일하면 패널이 책상과
@@ -613,10 +635,14 @@
     --glass-tint-deep: var(--glass-on-tint-deep);
     --glass-tint-abyss: var(--glass-on-tint-abyss);
     --glass-tint-chrome: var(--glass-on-tint-chrome);
+    --glass-tint-panel: var(--glass-on-tint-panel);
+    --glass-tint-panel-face: transparent;
+    --glass-tint-band: var(--glass-on-tint-band);
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
     --glass-backdrop-soft: var(--glass-on-backdrop-soft);
     --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
     --glass-rim: var(--glass-on-rim);
+    --glass-sheen: var(--glass-on-sheen);
   }
 
   @media (prefers-reduced-transparency: reduce) {
@@ -629,10 +655,14 @@
       --glass-tint-deep: var(--ink-deep);
       --glass-tint-abyss: var(--ink-abyss);
       --glass-tint-chrome: var(--surface-chrome);
+      --glass-tint-panel: var(--surface-panel);
+      --glass-tint-panel-face: var(--surface-panel);
+      --glass-tint-band: var(--surface-band);
       --glass-backdrop-strong: none;
       --glass-backdrop-soft: none;
       --glass-backdrop-scrim: none;
       --glass-rim: transparent;
+      --glass-sheen: linear-gradient(transparent, transparent);
     }
   }
 }

@@ -19,7 +19,7 @@
      칠해 캡션부터 로그까지 한 덩어리로 읽힌다. 이 위에 얹히는 카드·버블은
      --surface-panel-raised로 한 칸 물러난다(테마마다 그 방향이 달라 토큰이 진다).
      포커스 워시는 캡션만 진다. 여기 따라가면 활성 채팅 전체가 다른 면으로 바뀐다. */
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel-face);
   /* 작업 면이 컬럼으로 설지 서랍으로 접힐지는 **이 패널의 폭**이 정한다. 뷰포트로 가르면
      넓은 창 안의 좁은 덱 타일에서 두 컬럼이 서고, 어느 쪽도 읽을 수 없는 폭이 된다. */
   container-type: inline-size;
@@ -174,7 +174,7 @@
   border-radius: var(--radius-pill);
   border: 2px solid var(--positive);
   /* 노드는 스파인 위에 뚫린 구멍이다 — 채움은 뒤의 패널 면을 그대로 따라가야 링으로 읽힌다. */
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
 }
 
 .agent-chat-turn.is-working .agent-chat-turn-node {
@@ -636,7 +636,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-xs);
   border: 1px solid var(--hairline);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   color: var(--text-secondary);
   cursor: pointer;
   transition: border-color var(--duration-fast), color var(--duration-fast), background var(--duration-fast);
@@ -645,7 +645,7 @@
 .agent-chat-ask-option:hover:not(:disabled),
 .agent-chat-ask-option:focus-visible {
   border-color: var(--brass);
-  background: color-mix(in oklch, var(--brass) 7%, var(--surface-panel));
+  background: color-mix(in oklch, var(--brass) 7%, var(--glass-tint-panel));
   outline: none;
 }
 
@@ -656,7 +656,7 @@
 
 .agent-chat-ask-option[aria-pressed="true"] {
   border-color: var(--brass);
-  background: color-mix(in oklch, var(--brass) 12%, var(--surface-panel));
+  background: color-mix(in oklch, var(--brass) 12%, var(--glass-tint-panel));
 }
 
 .agent-chat-ask-option:disabled { opacity: 0.55; cursor: default; }
@@ -694,7 +694,7 @@
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-xs);
   border: 1px dashed var(--hairline-strong);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   color: var(--text-primary);
 }
 
@@ -778,7 +778,7 @@
   padding: var(--space-3);
   border-radius: var(--radius-xs);
   border: 1px solid var(--hairline);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
 }
 
 .agent-chat .agent-chat-ask-plan.markdown-body {
@@ -947,7 +947,7 @@
   margin-inline: auto;
   border: 1px solid var(--hairline-strong);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   transition:
     border-color var(--duration-base) var(--ease-spring),
     box-shadow var(--duration-base) var(--ease-spring);
@@ -1040,7 +1040,7 @@
   padding: 0;
   border: 1px solid var(--surface-rim-strong);
   border-radius: 50%;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   color: var(--text-secondary);
   font-size: var(--t-xs);
   line-height: 1;
@@ -1801,7 +1801,7 @@
   cursor: ew-resize;
   display: grid;
   place-items: center;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   border-left: 1px solid var(--hairline);
   touch-action: none;
 }
@@ -2117,7 +2117,7 @@
   width: var(--agent-chat-work, 42%);
   display: flex;
   flex-direction: column;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   padding: var(--space-2) clamp(var(--space-3), 2.5cqi, var(--space-5)) var(--space-2);
 }
 
@@ -2340,7 +2340,7 @@
   padding: var(--space-2);
   border: 1px solid var(--hairline);
   border-radius: var(--radius-xs);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
   line-height: 1.55;

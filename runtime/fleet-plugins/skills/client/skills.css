@@ -531,6 +531,7 @@
   /* 팝업 판독성 계약: maritime/carbon의 --surface-glass는 60~62% 알파라 glass 층만으로는
      backdrop 뒤가 비친다. 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을 보장한다. */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-soft), var(--glass-tint-soft)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);

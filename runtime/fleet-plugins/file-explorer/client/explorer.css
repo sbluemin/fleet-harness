@@ -256,13 +256,13 @@
 .fexp-chips.is-overflowing::after {
   right: 0;
   margin-left: -28px;
-  background: linear-gradient(to right, transparent, var(--surface-panel));
+  background: linear-gradient(to right, transparent, var(--glass-tint-panel));
 }
 
 .fexp-chips.is-scrolled::before {
   left: 0;
   margin-right: -28px;
-  background: linear-gradient(to right, var(--surface-panel), transparent);
+  background: linear-gradient(to right, var(--glass-tint-panel), transparent);
 }
 
 .fexp-chips-more {

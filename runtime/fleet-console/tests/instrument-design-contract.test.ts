@@ -1731,13 +1731,14 @@ describe("Instrument core design contract", () => {
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     expect(sideBarBlock).toContain("background: var(--glass-tint-chrome);");
-    // 패널은 하나의 면이다 — 본체·캡션·본문 거터가 모두 --surface-panel을 소비해야 창 하나로 읽힌다.
-    // 셋 중 하나라도 다른 값을 잡으면 캡션 이음새나 터미널 둘레 액자 테가 되살아난다.
+    // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
+    // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    expect(operationBlock).toContain("background: var(--surface-panel);");
+    expect(operationBlock).toContain("background: var(--glass-tint-panel);");
+    expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-soft);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--surface-panel);");
+    expect(titlebarBlock).toContain("background: var(--glass-tint-panel-face);");
     expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
@@ -2005,11 +2006,11 @@ describe("Instrument core design contract", () => {
 
     // 채팅 뷰도 같은 본문이다 — 자기 면(ink-abyss)으로 되돌아가면 채팅 패널만 두 장으로 읽힌다.
     const chatRootBlock = chat.match(/^\.agent-chat \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatRootBlock).toContain("background: var(--surface-panel);");
+    expect(chatRootBlock).toContain("background: var(--glass-tint-panel-face);");
     expect(chatRootBlock).not.toContain("--surface-window");
     expect(chatRootBlock).not.toContain("transition: background");
     const chatNodeBlock = chat.match(/^\.agent-chat-turn-node \{[^}]*\}/m)?.[0] ?? "";
-    expect(chatNodeBlock).toContain("background: var(--surface-panel);");
+    expect(chatNodeBlock).toContain("background: var(--glass-tint-panel);");
     expect(chatNodeBlock).not.toContain("--surface-window");
     // 상단 세션 띠바는 여전히 폐기 상태다 — 지속 크롬으로 패널 높이를 쓰면서 누를 것이 없었다.
     expect(chat).not.toContain(".agent-chat-head");
@@ -2318,7 +2319,7 @@ describe("Instrument core design contract", () => {
     const terminalAnalysisCss = externalSource(TERMINAL_ANALYSIS_CSS_PATH);
     // 드로어 바닥은 오퍼레이션 패널과 같은 --surface-panel 한 장이다. pillar로 되돌아가면 안 되고,
     // 포커스 워시(--surface-window)는 캡션 전용이므로 본문이 따라가서도 안 된다.
-    expect(terminalAnalysisCss).toContain("background: var(--surface-panel);");
+    expect(terminalAnalysisCss).toContain("background: var(--glass-tint-panel-face);");
     expect(terminalAnalysisCss).not.toContain("surface-pillar");
     expect(terminalAnalysisCss).not.toContain("surface-window");
     // 얹히는 카드·버블·칩은 raised 티어 한 칸으로 물러난다.
@@ -2598,7 +2599,7 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--surface-panel))");
+    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face))");
     expect(components).not.toContain("--surface-window");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
@@ -3433,7 +3434,7 @@ describe("War Room deck panel grammar", () => {
     expect(components).toContain(".canvas-triage-deck-pick:focus-visible {");
     // 겨눈 카드의 캡션 워시는 포커스 패널과 같은 한 값이다 — 새 값을 만들지 않는다.
     const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));");
+    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));");
     expect(wash).toContain("background-clip: padding-box;");
   });
 

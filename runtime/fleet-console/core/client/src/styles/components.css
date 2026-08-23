@@ -799,6 +799,7 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: abyss 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-abyss), var(--glass-tint-abyss)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -941,6 +942,7 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -1065,6 +1067,7 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -3698,7 +3701,7 @@
    .canvas-operation.is-active > .canvas-operation-titlebar와 같은 한 값이다. */
 .canvas-triage-deck-cell:hover .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
 .canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
+  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -3740,7 +3743,7 @@
   padding: 0 12px;
   border: 1px dashed var(--surface-rim);
   border-radius: var(--radius-md);
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel);
 }
 
 .canvas-triage-deck-mount:empty::after {
@@ -3939,7 +3942,7 @@
    베이스는 반드시 --surface-panel이다(반투명 잉크 티어를 깔면 셸 패널만 이음새가 되살아난다).
    background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
 .canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, var(--surface-panel));
+  background: color-mix(in oklch, var(--aurora) 9%, var(--glass-tint-panel-face));
   background-clip: padding-box;
 }
 
@@ -4359,9 +4362,12 @@
   border: 1px solid var(--surface-rim);
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  /* 패널의 유일한 면은 --surface-panel — 캡션·본문·채팅 로그가 같은 값을 칠해 창 하나로 읽힌다. */
-  background: var(--surface-panel);
-  box-shadow: var(--shadow-soft);
+  /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 캡션·본문 팬은 panel-face(게이트
+     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. xterm 필드만 원 토큰의 불투명을 지킨다. */
+  background: var(--glass-tint-panel);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
      --panel-stagger-delay는 formation stagger 전용 채널로 geometry 4속성에만 걸린다 —
@@ -4622,7 +4628,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-width: 0;
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel-face);
   background-clip: padding-box;
   color: var(--text-tertiary);
   cursor: default;
@@ -5882,7 +5888,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   overflow: visible;
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel-face);
   background-clip: padding-box;
   cursor: grab;
   touch-action: none;
@@ -5922,7 +5928,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    워시는 캡션만 진다. 채팅·터미널 본문은 --surface-panel에 남아, 포커스가 로그 전체를
    다른 면으로 다시 칠하지 않는다. */
 .canvas-operation.is-active > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--surface-panel));
+  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -9106,6 +9112,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background:
     radial-gradient(120% 80% at 50% -12%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 58%),
     radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -9362,6 +9369,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -9863,6 +9871,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background:
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -10787,6 +10796,7 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -10862,6 +10872,7 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -11992,6 +12003,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-radius: var(--radius-xs);
   /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -12207,6 +12219,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--hairline));
   border-radius: var(--radius-md);
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -13776,6 +13789,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     radial-gradient(100% 90% at 0 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -13942,6 +13956,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     radial-gradient(100% 90% at 50% 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);

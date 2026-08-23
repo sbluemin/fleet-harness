@@ -34,6 +34,7 @@
   transform: translateX(-50%);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -63,6 +64,7 @@
   transform: translate(-50%, -4px);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -469,6 +471,7 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
@@ -755,6 +758,7 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
+    var(--glass-sheen),
     linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
