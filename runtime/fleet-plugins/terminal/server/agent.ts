@@ -767,8 +767,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const launchedProviderSession = readProviderSession(ctx.host.operations.get(sessionId)?.payload)
         ?? (runtimeSession?.claudeSessionId
           ? {
-            provider: "claude" as const,
-            sessionId: runtimeSession.claudeSessionId,
+            harness: "claude-code" as const,
+            id: runtimeSession.claudeSessionId,
             capturedAt: new Date().toISOString(),
             source: "launch",
           }
@@ -1693,7 +1693,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   function buildSessionTreeReclaim(sessionId: string): () => void {
     const operation = ctx.host.operations.get(sessionId);
     if (!operation) return () => undefined;
-    const providerSessionId = readProviderSession(operation.payload)?.sessionId;
+    const providerSessionId = readProviderSession(operation.payload)?.id;
     const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
     if (!providerSessionId || !cwd) return () => undefined;
     return () => {
