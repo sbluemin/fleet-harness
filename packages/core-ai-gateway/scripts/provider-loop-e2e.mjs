@@ -416,10 +416,10 @@ function createTrialServer(router) {
   });
 }
 
-async function runTrialWithLifecycle({ gateway, infra, options, target }) {
+async function runTrialWithLifecycle({ gateway, options, target }) {
   const diagnostics = {};
   const diagnosticSink = makeDiagnosticSink(diagnostics);
-  const authService = infra.createAuthService();
+  const authService = gateway.createProviderAuthService();
   const router = gateway.createAiGatewayRouter({
     originator: "core-ai-gateway-provider-loop-e2e",
     readAuth: gateway.readCodexSubscriptionAuth,
@@ -459,15 +459,14 @@ async function main() {
     return;
   }
 
-  // Validate the gateway model immediately after its dynamic import and before core-infra.
+  // Validate the gateway model immediately after its dynamic import.
   const gateway = await import("../dist/index.js");
   const target = validateTarget(gateway, options);
-  const infra = await import("@dotobokuri/core-infra");
   const trials = [];
 
   for (let trialIndex = 1; trialIndex <= options.trials; trialIndex += 1) {
     try {
-      trials.push(await runTrialWithLifecycle({ gateway, infra, options, target }));
+      trials.push(await runTrialWithLifecycle({ gateway, options, target }));
     } catch (error) {
       process.stderr.write(
         `provider-loop trial failure: ${safeErrorName(error)} provider=${target.provider} model=${options.model} trial=${trialIndex}\n`,
