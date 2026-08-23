@@ -59,6 +59,10 @@ export * from "./models.js";
 // Claude Code 호스트다. 그래서 호환 파사드는 관대한 쪽을 이 이름으로 계속 내보낸다.
 // 이 명시 export가 위 `export *`의 동명 항목을 가린다.
 export { findClaudeGatewayModel as findGatewayModel } from "./downstream/harness/claude-code/discovery.js";
+// 같은 이유로 `resolveGatewayModel`도 관대한 쪽을 내보낸다. 카탈로그 기본값은 고유 id만 알아서
+// (`models.ts`의 `find` 기본값), 파사드가 그대로 두면 접두 붙은 영속 id가 조용히 fallback 모델로
+// 떨어진다 — 호출자는 다른 업스트림으로 요청을 보내고도 그 사실을 모른다.
+export { resolveClaudeGatewayModel as resolveGatewayModel } from "./downstream/harness/claude-code/discovery.js";
 export * from "./auth/index.js";
 export * from "./settings/index.js";
 export * from "./settings/store.js";

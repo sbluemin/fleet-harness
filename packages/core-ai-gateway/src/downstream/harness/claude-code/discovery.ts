@@ -3,6 +3,7 @@ import {
   GATEWAY_MODELS_UPDATED_AT,
   anthropicModelCapabilities,
   findGatewayModel,
+  resolveGatewayModel,
   type AnthropicModelCapabilities,
   type GatewayModel,
 } from "../../../models.js";
@@ -127,3 +128,22 @@ export function buildAnthropicModelList(
   };
 }
 
+
+/**
+ * Resolve a model string a Claude Code client sent to the upstream wire id it names.
+ *
+ * The published `claude-gateway--`/`[1m]` grammar reaches this package through persisted
+ * sessions, `ANTHROPIC_MODEL` values, and stored defaults, so the resolver a caller gets
+ * from the compatibility facade has to keep understanding it. The catalog itself stays
+ * bare (`models.ts`); this is where that grammar is spent.
+ */
+export function resolveClaudeGatewayModel(
+  requested: string | undefined,
+  options: {
+    readonly override?: string;
+    readonly catalog?: readonly GatewayModel[];
+    readonly fallback: string;
+  },
+): string {
+  return resolveGatewayModel(requested, { ...options, find: findClaudeGatewayModel });
+}

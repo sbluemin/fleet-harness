@@ -1536,7 +1536,12 @@ describe("model catalog", () => {
   });
 
   it("unwraps the alias a picked model comes back as", () => {
-    expect(resolveGatewayModel(toGatewayModelAlias("codex--gpt-5.6-luna"), { fallback: "gpt-5.5", find: findClaudeGatewayModel })).toBe("gpt-5.6-luna");
+    // 파사드가 내보내는 resolver는 발행된 접두 문법을 계속 이해해야 한다 — 영속 세션·
+    // `ANTHROPIC_MODEL`·저장된 기본값이 그 표기를 들고 있고, 못 찾으면 조용히 fallback 모델로
+    // 떨어져 다른 업스트림으로 나간다.
+    expect(resolveGatewayModel(toGatewayModelAlias("codex--gpt-5.6-luna"), { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
+    expect(resolveGatewayModel("codex--gpt-5.6-luna", { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
+    expect(resolveGatewayModel("claude-gateway--codex--not-a-model", { fallback: "gpt-5.5" })).toBe("gpt-5.5");
   });
 
   it("routes a scoped catalog model through translation to its wire id", () => {
