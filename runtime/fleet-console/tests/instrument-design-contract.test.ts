@@ -2073,6 +2073,17 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--apex", "--id-"]) {
       expect(chatLiveTextBlock, signal).not.toContain(signal);
     }
+    // 물결은 끊기지 않고 되풀이해야 한다. 배경 위치 퍼센트는 (상자 폭 - 이미지 폭)을 기준으로
+    // 재므로 한 바퀴의 이동량은 |ΔP|/100 x (이미지 폭 - 상자 폭)이고, 그것이 타일 한 폭의
+    // 정수배가 아니면 마지막 프레임이 첫 프레임과 어긋나 되풀이 지점에서 도약한다(옛 값
+    // 300% x 200 = 4W 대 타일 3W). 200%에서 200%->0%는 2 x (2W - W) = 2W = 타일 한 폭이다.
+    expect(chatLiveTextBlock).toContain("background-size: 200% 100%;");
+    const chatLiveSweepBlock = chat.match(/@keyframes agent-chat-live-sweep \{[^}]*\}[^}]*\}/)?.[0] ?? "";
+    expect(chatLiveSweepBlock).toContain("from { background-position: 200% 0; }");
+    expect(chatLiveSweepBlock).toContain("to { background-position: 0% 0; }");
+    // 타일 경계가 보이지 않으려면 그라데이션 양 끝이 같은 잉크여야 한다.
+    expect(chatLiveTextBlock).toContain("var(--text-tertiary) 0%,");
+    expect(chatLiveTextBlock).toContain("var(--text-tertiary) 100%");
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
     // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
     const chatLiveSealBlock = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-live-text \{[^}]*\}/)?.[0] ?? "";

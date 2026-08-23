@@ -345,16 +345,23 @@
     var(--text-tertiary) 66%,
     var(--text-tertiary) 100%
   );
-  background-size: 300% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
   animation: agent-chat-live-sweep 2.4s linear infinite;
 }
 
+/* 되풀이는 이음매가 없어야 한다. 배경 위치 퍼센트는 상자 폭이 아니라 (상자 폭 - 이미지 폭)을
+   기준으로 재므로, 한 바퀴의 실제 이동량은 |ΔP|/100 x (이미지 폭 - 상자 폭)이다. 이미지가
+   200%(=2W)일 때 200%->0%는 2 x (2W - W) = 2W = 정확히 타일 한 폭이라, 마지막 프레임이 첫
+   프레임과 픽셀 단위로 같아진다. 그라데이션 양 끝이 같은 잉크(tertiary)이므로 타일 경계도
+   보이지 않는다 - 물결은 오른쪽으로 빠져나가고 다음 물결이 왼쪽에서 이어 들어온다.
+   예전 값(이미지 300%, 100%->-100%)은 이동량 4W인데 타일은 3W여서 한 바퀴마다 1W씩
+   어긋났고, 그것이 "오른쪽에서 끝나자마자 도중에 툭 끊기는" 것의 정체였다. */
 @keyframes agent-chat-live-sweep {
-  from { background-position: 100% 0; }
-  to { background-position: -100% 0; }
+  from { background-position: 200% 0; }
+  to { background-position: 0% 0; }
 }
 
 /* 도구 이름은 이 줄에서 유일하게 훑히는 토큰이다. 나머지 문구와 같은 잉크를 쓰면 줄 전체가
