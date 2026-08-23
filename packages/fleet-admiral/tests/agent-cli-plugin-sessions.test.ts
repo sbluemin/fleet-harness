@@ -1,6 +1,5 @@
-import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,7 +7,6 @@ import { findGatewayModel, type GatewayModel } from "@dotobokuri/core-ai-gateway
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createAgentCliPlugin, pluginSessionsRoot } from "../src/agent-cli/plugin/index.js";
-import { reclaimPluginSessions } from "../src/agent-cli/plugin/session-store.js";
 import type { CreateAgentCliPluginOptions } from "../src/agent-cli/types.js";
 
 const tempDirs: string[] = [];
@@ -37,8 +35,8 @@ describe("agent CLI plugin session store", () => {
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
-    // sessions/ 아래에는 세션 트리와 홀더 말고는 아무것도 살지 않는다 — 발행은 제자리에 쓴다.
-    expect(readdirSync(sessionsRoot).sort()).toEqual([".holders", sessionId]);
+    // sessions/ 아래에는 세션 트리 말고 아무것도 살지 않는다.
+    expect(readdirSync(sessionsRoot)).toEqual([sessionId]);
   });
 
   it("rejects a session id that cannot name a directory", async () => {
@@ -73,82 +71,38 @@ describe("agent CLI plugin session store", () => {
     expect(readdirSync(path.join(first.pluginRoot, "agents"))).toEqual([]);
   });
 
-  it("reuses the same tree when the same session relaunches with identical content", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-reuse-");
-    const sessionId = randomUUID();
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    const manifestBefore = readSessionManifest(first.pluginRoot);
-    first.cleanup();
-    // 정상 종료한 세션은 자기 트리를 걷고 간다 — 재개가 그때 다시 렌더한다.
-    expect(existsSync(first.pluginRoot)).toBe(false);
-
-    const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-
-    expect(second.pluginRoot).toBe(first.pluginRoot);
-    expect(readSessionManifest(second.pluginRoot).contentHash).toBe(manifestBefore.contentHash);
-  });
-
-  // 제자리에 쓰므로 발행 중 죽으면 반쯤 쓰인 트리가 남는다. 매니페스트를 맨 마지막에 쓰는
-  // 순서가 그것을 다음 런치에서 손상으로 드러나게 하는 유일한 장치다.
-  it("repairs a tree whose publish was interrupted before the manifest landed", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-partial-");
-    const sessionId = randomUUID();
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    dropHolders(dataDir, cwd, sessionId);
-    // 중단된 발행의 흔적: 파일은 일부 있고 매니페스트가 없다.
-    rmSync(path.join(first.pluginRoot, ".fleet-session.json"), { force: true });
-    rmSync(path.join(first.pluginRoot, "hooks"), { recursive: true, force: true });
-
-    const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-
-    expect(second.pluginRoot).toBe(first.pluginRoot);
-    expect(existsSync(path.join(second.pluginRoot, ".fleet-session.json"))).toBe(true);
-    expect(existsSync(path.join(second.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
-  });
-
-  it("repairs a corrupt tree when no launch holds it", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-repair-");
+  // 한 세션의 트리는 런치 하나가 독점한다 — 같은 Claude 세션을 두 표면이 함께 여는 상태를
+  // Console이 상위에서 거부하므로, 여기서 만나는 기존 트리는 반드시 끝난 런치의 잔해다.
+  // 살리거나 검증할 이유가 없으므로 무조건 걷고 다시 쓴다.
+  it("replaces whatever the previous launch left behind", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-session-replace-");
     const sessionId = randomUUID();
 
     const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
     const guardPath = path.join(first.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs");
     const original = readFileSync(guardPath, "utf8");
-    // 홀더만 지우고 트리는 남긴다 — 홀더를 반납하지 못하고 죽은 런치의 잔해다.
-    dropHolders(dataDir, cwd, sessionId);
+    // 잔해의 모든 모습: 변조된 파일, 사라진 필수 디렉터리, 발행 중 끊긴 흔적, 낯선 여분 파일.
     writeFileSync(guardPath, "// tampered\n");
+    rmSync(path.join(first.pluginRoot, "agents"), { recursive: true, force: true });
+    rmSync(path.join(first.pluginRoot, ".fleet-session.json"), { force: true });
+    writeFileSync(path.join(first.pluginRoot, "stray.txt"), "left over\n");
 
     const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
 
     expect(second.pluginRoot).toBe(first.pluginRoot);
     expect(readFileSync(guardPath, "utf8")).toBe(original);
-  });
-
-  // 빈 로스터 트리의 agents/는 파일이 없는 필수 디렉터리다 — 파일 바이트 검증만으로는 그
-  // 부재를 못 잡으므로, 디렉터리 소실도 손상으로 판정되어 복구 경로가 발동해야 한다.
-  it("repairs a tree whose required empty agents directory was lost", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-agents-dir-");
-    const sessionId = randomUUID();
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    dropHolders(dataDir, cwd, sessionId);
-    rmSync(path.join(first.pluginRoot, "agents"), { recursive: true, force: true });
-
-    const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-
-    expect(second.pluginRoot).toBe(first.pluginRoot);
     expect(existsSync(path.join(second.pluginRoot, "agents"))).toBe(true);
+    expect(existsSync(path.join(second.pluginRoot, ".fleet-session.json"))).toBe(true);
+    // 이전 런치의 여분 파일까지 남지 않는다 — 트리는 통째로 새것이다.
+    expect(existsSync(path.join(second.pluginRoot, "stray.txt"))).toBe(false);
   });
 
-  // 심링크로 바꿔치기된 agents/는 실디렉터리가 아니다 — no-follow 판정으로 손상 처리되어
-  // 복구 경로가 실디렉터리를 되살린다.
-  it("treats a symlinked agents directory as corruption and repairs it", async () => {
+  // 심링크로 바꿔치기된 agents/도 잔해의 한 형태다. no-follow 규약대로 실디렉터리로 되돌아온다.
+  it("replaces a tree whose agents directory was swapped for a symlink", async () => {
     const { dataDir, cwd } = createRoots("fleet-admiral-session-agents-link-");
     const sessionId = randomUUID();
 
     const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    dropHolders(dataDir, cwd, sessionId);
     const agentsPath = path.join(first.pluginRoot, "agents");
     const outside = path.join(dataDir, "outside-agents");
     mkdirSync(outside, { recursive: true });
@@ -158,106 +112,24 @@ describe("agent CLI plugin session store", () => {
 
     const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
 
-    expect(second.pluginRoot).toBe(first.pluginRoot);
     const restored = readdirSync(second.pluginRoot, { withFileTypes: true }).find((entry) => entry.name === "agents");
     expect(restored?.isDirectory()).toBe(true);
     expect(restored?.isSymbolicLink()).toBe(false);
   });
 
-  it("refuses to relaunch onto a differing tree that a live launch still holds", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-held-");
-    const sessionId = randomUUID();
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    writeFileSync(path.join(first.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"), "// tampered\n");
-
-    // 홀더는 아직 살아 있다(이 테스트 프로세스의 pid). 실행 중 런치가 읽는 트리는 고쳐 쓰지
-    // 않고 새 런치를 시끄럽게 실패시킨다.
-    await expect(
-      createAgentCliPlugin(options({ cwd, dataDir, sessionId })),
-    ).rejects.toThrow(/in use by another launch/);
-  });
-
-  // 트리를 발행하고 자식 pid를 붙이기 전에 런처가 죽으면, 홀더 pid는 죽어 보이지만 자식은
-  // 살아날 수 있다. 그 창 안의 흔적은 살아 있는 것으로 취급한다.
-  it("refuses to repair a differing tree that carries a recent dead-pid holder trace", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-orphan-");
-    const sessionId = randomUUID();
-
-    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    dropHolders(dataDir, cwd, sessionId);
-    const guardPath = path.join(first.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs");
-    writeFileSync(guardPath, "// tampered\n");
-    writeDeadHolder(dataDir, cwd, sessionId);
-
-    await expect(
-      createAgentCliPlugin(options({ cwd, dataDir, sessionId })),
-    ).rejects.toThrow(/in use by another launch/);
-    expect(readFileSync(guardPath, "utf8")).toBe("// tampered\n");
-  });
-
-  it("moves the holder onto the child pid that actually reads the tree", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-attach-");
-    const sessionId = randomUUID();
-
-    const plugin = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    expect(readHolders(dataDir, cwd, sessionId).map((holder) => holder.pid)).toEqual([process.pid]);
-
-    plugin.attach(424242);
-
-    const [holder] = readHolders(dataDir, cwd, sessionId);
-    expect(holder?.pid).toBe(424242);
-    expect(holder?.launcherPid).toBe(process.pid);
-  });
-
-  it("removes the tree and its holders on cleanup, and cleanup is idempotent", async () => {
+  it("removes the tree on cleanup, and cleanup is idempotent", async () => {
     const { dataDir, cwd } = createRoots("fleet-admiral-session-cleanup-");
     const sessionId = randomUUID();
 
     const plugin = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    expect(readHolders(dataDir, cwd, sessionId)).toHaveLength(1);
+    expect(existsSync(plugin.pluginRoot)).toBe(true);
 
     plugin.cleanup();
     plugin.cleanup();
 
     expect(existsSync(plugin.pluginRoot)).toBe(false);
-    expect(readHolders(dataDir, cwd, sessionId)).toEqual([]);
-  });
-
-  it("reclaims a crashed launch's tree past the grace window and keeps a held one", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-reclaim-");
-    const heldId = randomUUID();
-    const orphanId = randomUUID();
-
-    const held = await createAgentCliPlugin(options({ cwd, dataDir, sessionId: heldId }));
-    const orphan = await createAgentCliPlugin(options({ cwd, dataDir, sessionId: orphanId }));
-    dropHolders(dataDir, cwd, orphanId);
-    writeDeadHolder(dataDir, cwd, orphanId);
-    const sessionsRoot = pluginSessionsRoot(dataDir, cwd);
-
-    // 유예 안에서는 죽은 pid 흔적도 살아 있는 것으로 취급한다.
-    reclaimPluginSessions(sessionsRoot, heldId);
-    expect(existsSync(orphan.pluginRoot)).toBe(true);
-
-    // 유예 밖으로 나가면 회수한다. 홀더가 살아 있는 트리는 그대로 둔다.
-    reclaimPluginSessions(sessionsRoot, heldId, { now: () => Date.now() + 11 * 60 * 1000 });
-
-    expect(existsSync(orphan.pluginRoot)).toBe(false);
-    expect(existsSync(held.pluginRoot)).toBe(true);
-  });
-
-  it("serializes concurrent renders of the same session and leaves no staging behind", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-race-");
-    const sessionId = randomUUID();
-
-    const [first, second] = await Promise.all([
-      createAgentCliPlugin(options({ cwd, dataDir, sessionId })),
-      createAgentCliPlugin(options({ cwd, dataDir, sessionId })),
-    ]);
-
-    expect(first.pluginRoot).toBe(second.pluginRoot);
-    expect(readHolders(dataDir, cwd, sessionId)).toHaveLength(2);
-    expect(readdirSync(pluginSessionsRoot(dataDir, cwd)).sort()).toEqual([".holders", sessionId]);
+    // 정상 종료한 세션은 아무것도 남기지 않는다 — 걷어야 할 잔해가 애초에 없다.
+    expect(readdirSync(pluginSessionsRoot(dataDir, cwd))).toEqual([]);
   });
 
   describe("legacy marketplace tree", () => {
@@ -405,33 +277,6 @@ function readSessionManifest(pluginRoot: string): { readonly contentHash: string
     readonly contentHash: string;
     readonly renderedAt: number;
   };
-}
-
-function holdersDir(dataDir: string, cwd: string, sessionId: string): string {
-  return path.join(pluginSessionsRoot(dataDir, cwd), ".holders", sessionId);
-}
-
-function readHolders(
-  dataDir: string,
-  cwd: string,
-  sessionId: string,
-): Array<{ readonly pid?: number; readonly launcherPid?: number }> {
-  const dir = holdersDir(dataDir, cwd, sessionId);
-  if (!existsSync(dir)) return [];
-  return readdirSync(dir).map((entry) => JSON.parse(readFileSync(path.join(dir, entry), "utf8")) as { pid?: number });
-}
-
-/** 홀더만 지운다 — 트리는 남기고 "반납하지 못하고 죽은 런치"의 잔해를 만든다. */
-function dropHolders(dataDir: string, cwd: string, sessionId: string): void {
-  rmSync(holdersDir(dataDir, cwd, sessionId), { recursive: true, force: true });
-}
-
-/** 방금 종료된 프로세스의 pid로 죽은 홀더 흔적을 남긴다 — 런처만 죽은 상태의 재현. */
-function writeDeadHolder(dataDir: string, cwd: string, sessionId: string): void {
-  const deadPid = spawnSync(process.execPath, ["-e", ""]).pid!;
-  const dir = holdersDir(dataDir, cwd, sessionId);
-  mkdirSync(dir, { recursive: true });
-  writeFileSync(path.join(dir, `${deadPid}-orphan.json`), `${JSON.stringify({ pid: deadPid, startedAt: Date.now() })}\n`);
 }
 
 function seedLegacyMarketplace(dataDir: string): string {

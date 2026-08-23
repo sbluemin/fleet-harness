@@ -356,15 +356,11 @@ async function createAgentCliLaunchSpec(options: {
       });
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
-    return {
-      ...toLaunchSpec(launchProfile, createOnceCleanup(async () => {
-        for (const cleanup of [...cleanupStack].reverse()) {
-          await cleanup();
-        }
-      }), sessionIdentityResolver),
-      // 플러그인 트리를 실제로 읽는 것은 이 자식이다.
-      onChildSpawned: (pid: number) => injectedProfile.session.attach(pid),
-    };
+    return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
+      for (const cleanup of [...cleanupStack].reverse()) {
+        await cleanup();
+      }
+    }), sessionIdentityResolver);
   } catch (error) {
     for (const cleanup of [...cleanupStack].reverse()) {
       try {
