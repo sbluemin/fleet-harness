@@ -4940,7 +4940,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   letter-spacing: inherit;
   text-align: left;
   text-transform: inherit;
-  cursor: inherit;
+  cursor: pointer;
 }
 
 .side-bar-theater-activate:focus-visible {
