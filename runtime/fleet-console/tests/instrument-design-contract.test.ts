@@ -2084,6 +2084,14 @@ describe("Instrument core design contract", () => {
     // 타일 경계가 보이지 않으려면 그라데이션 양 끝이 같은 잉크여야 한다.
     expect(chatLiveTextBlock).toContain("var(--text-tertiary) 0%,");
     expect(chatLiveTextBlock).toContain("var(--text-tertiary) 100%");
+    // 진행 중 턴 헤드의 시계도 같은 물결을 진다 — 집계 줄과 같은 사실("이 턴이 아직 살아
+    // 있다")을 말하는 자리라 어휘가 갈리면 안 된다. 다만 이 자리의 잉크는 tertiary이므로
+    // 봉인의 기본 채움(secondary)을 덮어써야 모션을 끈 것이 밝기 변화로 읽히지 않는다.
+    expect(chatView0).toContain('<span className="agent-chat-live-text" aria-hidden="true">');
+    expect(chatView0).toContain('t("terminal.chat.turnWorking"');
+    expect(chat).toMatch(
+      /\.agent-chat-turn-head \.agent-chat-live-text \{\s*color: var\(--text-tertiary\);\s*\}/,
+    );
     // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
     // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
     const chatLiveSealBlock = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-live-text \{[^}]*\}/)?.[0] ?? "";
@@ -2115,6 +2123,24 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--id-"]) {
       expect(chatJobGlyphBlock).not.toContain(signal);
     }
+    // 계열 표식은 잡 글리프와 같은 알파벳을 넓힌 것이다 — 같은 일을 두 면이 다른 기호로 부르면
+    // 표식이 어휘가 아니라 장식이 된다. 색은 쥐지 않는다: 계열은 어떤 채널에도 속하지 않고,
+    // 잉크를 쥐면 도는 줄의 물결이 이 글자에서만 끊긴다(배경 클립은 투명한 자식만 통과시킨다).
+    const chatTallyGlyphBlock = chat.match(/^\.agent-chat-tally-glyph \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyGlyphBlock).not.toContain("color:");
+    expect(chatTallyGlyphBlock).toContain("width: 1em;");
+    const chatView0Glyphs = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
+    for (const [family, glyph] of [["delegate", "◆"], ["run", "❯"], ["workflow", "⣿"]] as const) {
+      expect(chatView0Glyphs, family).toContain(`${family}: "${glyph}",`);
+    }
+    // 표식과 그 문구는 한 덩어리다 — 절 사이 간격을 그대로 쓰면 표식이 앞 절 끝에 붙어 읽힌다.
+    const chatTallyClauseBlock = chat.match(/^\.agent-chat-tally-clause \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyClauseBlock).toContain("gap: var(--space-1);");
+    // 집계 줄의 자식은 링·글자 묶음·꺾쇠 셋뿐이고 줄바꿈은 묶음이 자기 안에서 진다. 여기서
+    // wrap을 열면 절이 많은 줄에서 꺾쇠가 홀로 다음 줄로 떨어진다(감싸는 flex는 좁아지기보다
+    // 넘기기를 먼저 고른다).
+    const chatTallyBlock = chat.match(/^\.agent-chat-tally \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatTallyBlock).toContain("flex-wrap: nowrap;");
     // 두 뷰의 전환 진입은 캡션 밴드의 한 버튼이 진다 — 목적지 마크만 바뀐다.
     const chatView = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const chatComposer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
@@ -2126,6 +2152,13 @@ describe("Instrument core design contract", () => {
     expect(chatView).toContain('className="agent-chat-ledger-note markdown-body"');
     expect(chat).toContain(".agent-chat .agent-chat-ledger-note.markdown-body");
     expect(chat).not.toMatch(/\.agent-chat-ledger-note[^{]*\{[^}]*font-style:\s*italic/);
+    // 그 문장은 이 면에서 가장 밝다. tertiary였을 때 집계 줄과 같은 잉크라 스트리밍 중에는
+    // 문장과 장부가 한 덩어리 회색이었다. secondary로는 갈리지 않는다 — 잉크 스케일에서
+    // secondary(L70)와 tertiary(L64)는 6포인트뿐이라 실측에서 같은 회색으로 읽혔다.
+    const chatNoteInkBlock = chat.match(
+      /\.agent-chat \.agent-chat-ledger-note\.markdown-body p,\s*\n\.agent-chat \.agent-chat-ledger-note\.markdown-body li \{[^}]*\}/,
+    )?.[0] ?? "";
+    expect(chatNoteInkBlock).toContain("color: var(--text-primary);");
     expect((terminalEntry.match(/actionId="view-switch"/g) ?? [])).toHaveLength(2);
     expect(terminalEntry).toContain("<CaptionTerminalGlyph />");
     expect(terminalEntry).toContain("<CaptionChatGlyph />");
