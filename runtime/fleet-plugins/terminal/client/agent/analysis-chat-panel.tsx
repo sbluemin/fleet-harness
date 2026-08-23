@@ -499,8 +499,13 @@ function AnalystTurn({ state, language, entry, isLast, liveElapsedMs, decorateEv
     <li className={`session-analyst__message session-analyst__message--analyst${working ? " is-working" : ""}${isError ? " is-error" : ""}${!isError && isStopped ? " is-stopped" : ""}`}>
       <span className="session-analyst__turn-spine" aria-hidden="true"><span className="session-analyst__turn-node" /></span>
       <div className="session-analyst__turn-main">
-        {working ? <div className="session-analyst__turn-head">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</div> : null}
-        {!working && receipt?.outcome === "complete" ? <div className="session-analyst__turn-head">{t("terminal.analyst.turnAnswered", { elapsed: formatElapsed(receipt.durationMs) })}</div> : null}
+        {/* 도는 동안의 시계는 채팅 원장과 같은 명도 물결을 진다 — 두 면이 같은 사실("이 턴이
+            아직 살아 있다")을 말하므로 어휘가 갈리면 안 된다. */}
+        {working ? (
+          <div className="session-analyst__turn-head">
+            <span className="session-analyst__live-text">{t("terminal.chat.turnWorking", { elapsed: formatElapsed(liveElapsedMs) })}</span>
+          </div>
+        ) : null}
         {working || liveError ? <TurnPulse state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {liveStopped ? <StoppedReceipt state={state} language={language} elapsedMs={liveElapsedMs} /> : null}
         {!liveStopped && !working && receipt?.outcome === "stopped" ? (
@@ -534,7 +539,12 @@ function TurnPulse({ state, language, elapsedMs }: { readonly state: AnalysisSta
       <div className={`session-analyst__pulse${isError ? " is-error" : ""}`} role={isError ? "alert" : "status"} aria-live={isError ? undefined : "polite"}>
         <span className="session-analyst__pulse-orbit" aria-hidden="true" />
         <span className="session-analyst__pulse-copy">
-          <strong key={`${state.phase}-${current.label}`}>{isError ? translateServerMessage(language, state.error ?? "") : current.label}</strong>
+          <strong
+            key={`${state.phase}-${current.label}`}
+            className={isError ? undefined : "session-analyst__live-text"}
+          >
+            {isError ? translateServerMessage(language, state.error ?? "") : current.label}
+          </strong>
           <small>{isError ? language === "ko" ? activity : `Last confirmed activity: ${activity}` : current.note}</small>
         </span>
         <time>{elapsed}</time>
@@ -558,13 +568,16 @@ function TurnReceipt({ language, durationMs, tools }: { readonly language: Conso
   const elapsed = formatElapsed(durationMs);
   const steps = tools;
   const stepsLabel = steps.length === 0 ? null : steps.length === 1 ? t("terminal.chat.oneStep") : t("terminal.chat.stepCount", { count: steps.length });
-  const summary = stepsLabel ? `${elapsed} · ${stepsLabel}` : elapsed;
+  // 끝난 턴은 한 문장으로 접힌다 — 채팅 원장의 접힘과 같은 문법이다. 예전에는 이 시간이 두 번
+  // 섰다: 머리의 "{elapsed} 만에 응답"과 알약의 "✓ {elapsed} · N스텝". 같은 사실을 두 모양으로
+  // 말하면 둘 중 무엇이 이 턴의 결말인지 읽는 쪽이 정해야 한다.
+  const answered = t("terminal.analyst.turnAnswered", { elapsed });
+  const summary = stepsLabel ? `${answered} · ${stepsLabel}` : answered;
   return (
     <details className="session-analyst__receipt">
       <summary aria-label={t("terminal.chat.receiptAria")}>
-        <span className="session-analyst__receipt-mark" aria-hidden="true">✓</span>
-        {summary}
-        <span className="session-analyst__receipt-chev" aria-hidden="true">❯</span>
+        <span className="session-analyst__receipt-label">{summary}</span>
+        <span className="session-analyst__receipt-chev" aria-hidden="true">⌄</span>
       </summary>
       {steps.length > 0 ? (
         <div className="session-analyst__receipt-body">

@@ -193,6 +193,10 @@ describe("Session Analyst Evidence Pulse", () => {
     expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Analyzing");
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Using wiki_read");
     expect(container.querySelector(".session-analyst__pulse")?.textContent).toContain("Tool status: running");
+    // 도는 동안의 시계와 펄스 문구는 채팅 원장과 같은 명도 물결을 진다 — 두 면이 같은 사실을
+    // 말하므로 어휘가 갈리면 안 된다. 오류일 때는 물결을 걷는다(진행이 아니라 결말이다).
+    expect(container.querySelector(".session-analyst__turn-head .session-analyst__live-text")).not.toBeNull();
+    expect(container.querySelector(".session-analyst__pulse-copy strong")?.classList.contains("session-analyst__live-text")).toBe(true);
     expect(container.querySelector(".session-analyst__chat ol")?.classList.contains("is-dimmed")).toBe(false);
     expect(container.querySelector("textarea")?.disabled).toBe(false);
     expect(container.querySelectorAll("select")).toHaveLength(0);
@@ -727,10 +731,14 @@ describe("Session Analyst Evidence Pulse", () => {
     const { container, root } = renderPanel();
     const composer = container.querySelector(".session-analyst__composer")!;
     const receipt = container.querySelector(".session-analyst__receipt")!;
-    expect(receipt.querySelector("summary")?.textContent).toContain("18s · 1 step");
+    // 끝난 턴은 채팅 원장과 같은 문법으로 한 문장에 접힌다 — 결말과 소요와 스텝 수가 한 줄이다.
+    expect(receipt.querySelector("summary")?.textContent).toContain("Answered in 18s · 1 step");
     expect(receipt.querySelector(".session-analyst__receipt-step")?.textContent).toContain("wiki_read");
     expect(container.querySelector(".session-analyst__stopped")).toBeNull();
-    expect(container.querySelector(".session-analyst__turn-head")?.textContent).toBe("Answered in 18s");
+    // 같은 시간을 두 번 말하지 않는다: 완료 머리는 접힘 줄에 흡수됐다(예전에는 머리의
+    // "Answered in 18s"와 알약의 "✓ 18s · 1 step"이 나란히 섰다).
+    expect(container.querySelector(".session-analyst__turn-head")).toBeNull();
+    expect(receipt.querySelector(".session-analyst__receipt-mark")).toBeNull();
     expect(container.querySelector(".session-analyst__chip-state")?.textContent).toContain("Complete");
     expect(composer.classList.contains("is-docked")).toBe(true);
     expect(container.querySelectorAll("select")).toHaveLength(0);
