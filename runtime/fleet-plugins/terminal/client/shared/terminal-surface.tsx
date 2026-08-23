@@ -547,11 +547,14 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass", "data-theme"] });
     // OS 접근성 설정(prefers-reduced-transparency)은 속성 변이 없이 채널을 닫는다 —
     // 미디어쿼리 변화도 같은 sync로 받아야 열린 터미널이 즉시 불투명 계약으로 돌아간다.
-    const reducedTransparency = window.matchMedia("(prefers-reduced-transparency: reduce)");
-    reducedTransparency.addEventListener("change", sync);
+    // jsdom에는 matchMedia가 없으므로 기능 검사로 가드한다(테스트 환경 크래시 방지).
+    const reducedTransparency = typeof window.matchMedia === "function"
+      ? window.matchMedia("(prefers-reduced-transparency: reduce)")
+      : null;
+    reducedTransparency?.addEventListener("change", sync);
     return () => {
       observer.disconnect();
-      reducedTransparency.removeEventListener("change", sync);
+      reducedTransparency?.removeEventListener("change", sync);
     };
   }, []);
 

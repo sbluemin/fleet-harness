@@ -20,11 +20,12 @@ describe("Scuttlebutt design tokens", () => {
     expect(bubble).toContain(
       "border: 1px solid color-mix(in oklch, var(--warn) 55%, transparent);",
     );
-    // 팝업 판독성 계약: warn wash는 그대로 두고, 반투명 glass 아래 불투명 언더레이를 깐다.
+    // 팝업 판독성 계약(리퀴드 글래스 채널판): warn wash는 그대로 두고, 틴트·언더레이는
+    // glass 채널로 소비한다 — 게이트가 닫히면 채널 기본값이 구 불투명 계약을 복원한다.
     expect(bubble).toContain(
-      "color-mix(in oklch, var(--warn) 12%, var(--surface-glass-strong))",
+      "color-mix(in oklch, var(--warn) 12%, var(--glass-tint-strong))",
     );
-    expect(bubble).toMatch(/\),\s*var\(--ink-deep\);/);
+    expect(bubble).toMatch(/\),\s*var\(--glass-underlay\);/);
     expect(label).toContain("color: var(--warn-ink);");
     expect(label).not.toContain("72%");
     expect(focus).toContain("outline: 2px solid var(--warn);");
@@ -32,7 +33,7 @@ describe("Scuttlebutt design tokens", () => {
     expect(focus).toContain(".scuttlebutt-departure-dismiss:focus-visible");
   });
 
-  it("keeps floating speech surfaces opaque under translucent glass themes", () => {
+  it("keeps floating speech surfaces on the glass underlay channel", () => {
     for (const selector of [
       ".scuttlebutt-bird-tag",
       ".scuttlebutt-bird-say",
@@ -43,7 +44,8 @@ describe("Scuttlebutt design tokens", () => {
     ]) {
       const escaped = selector.replace(/\./g, "\\.");
       const block = styles.match(new RegExp(`${escaped} \\{[\\s\\S]*?\\n\\}`))?.[0] ?? "";
-      expect(block, selector).toMatch(/\),\s*var\(--ink-deep\);/);
+      expect(block, selector).toMatch(/\),\s*var\(--glass-underlay\);/);
+      expect(block, selector).toContain("backdrop-filter: var(--glass-backdrop-strong);");
     }
   });
 });

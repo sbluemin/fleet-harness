@@ -61,7 +61,7 @@ describe("Session Analyst contract", () => {
     expect(css).not.toContain(".session-analyst__chat ol.is-dimmed");
     // 면 계약 — 드로어는 companion 프레임과 같은 패널 면 한 장을 잇는다. pillar로 되돌아가면 안 되고,
     // 포커스 워시(--surface-window)는 캡션 전용이라 본문이 따라가서도 안 된다(PR#711 결정).
-    expect(css).toContain("background: var(--surface-panel);");
+    expect(css).toContain("background: var(--glass-tint-panel-face);");
     expect(css).not.toContain("var(--surface-pillar)");
     expect(css).not.toContain("surface-window");
     expect(css).toContain("var(--surface-panel-raised)");
