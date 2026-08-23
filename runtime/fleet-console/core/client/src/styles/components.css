@@ -4940,12 +4940,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   letter-spacing: inherit;
   text-align: left;
   text-transform: inherit;
-  cursor: inherit;
+  cursor: pointer;
 }
 
 .side-bar-theater-activate:focus-visible {
   outline: 2px solid var(--brass);
   outline-offset: 2px;
+}
+
+.side-bar-theater-header--dragging .side-bar-theater-activate {
+  cursor: grabbing;
 }
 
 .side-bar-theater-header {
@@ -5076,11 +5080,26 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-chevron {
+  box-sizing: border-box;
   flex: none;
-  width: 12px;
-  height: 12px;
+  width: 22px;
+  height: 22px;
+  padding: 4px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
-  transition: transform 0.15s ease;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring),
+    transform 0.15s ease;
+}
+
+/* 활성 Theater의 본문 전체가 접기/펼치기 버튼이므로 포인터가 그 표면에 들어오면 chevron도
+   + / …와 같은 보더 링으로 응답한다. 비활성 Theater는 클릭 결과가 "전환"이므로 링을 켜지 않는다. */
+.side-bar-theater-header.is-active .side-bar-theater-activate:hover .side-bar-theater-chevron,
+.side-bar-theater-header.is-active .side-bar-theater-activate:focus-visible .side-bar-theater-chevron {
+  border-color: var(--hairline-strong);
+  color: var(--text-primary);
 }
 
 .side-bar-theater-chevron.is-collapsed {
@@ -5114,7 +5133,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 24px;
 }
 
-.side-bar-theater-row-btn {
+.side-bar-theater-row-btn,
+.side-bar-group-header__toggle {
   display: grid;
   place-items: center;
   flex: none;
@@ -5122,12 +5142,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
   padding: 0;
   /* 축 스트립 세그먼트와 동일한 보더 링 hover 문법 — 채움형 사각 hover 금지. */
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   background: transparent;
   color: var(--text-tertiary);
   cursor: pointer;
   transition:
-    background var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     color var(--duration-fast) var(--ease-spring);
 }
@@ -5146,13 +5165,20 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-row-btn:hover,
-.side-bar-theater-row-btn:focus-visible {
+.side-bar-group-header__toggle:hover,
+.side-bar-theater-row-btn:focus-visible,
+.side-bar-group-header__toggle:focus-visible {
   border-color: var(--hairline-strong);
   color: var(--text-primary);
 }
 
 .side-bar-theater-row-btn:focus-visible {
   outline: 2px solid var(--aurora);
+  outline-offset: -2px;
+}
+
+.side-bar-group-header__toggle:focus-visible {
+  outline: 2px solid var(--brass);
   outline-offset: -2px;
 }
 
@@ -5504,17 +5530,24 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
 .side-bar-status-header__toggle {
   cursor: pointer;
-  border: none;
+  border: 1px solid transparent;
   border-left: 3px solid var(--status-color);
-  border-radius: 0;
-  transition: color var(--duration-fast) var(--ease-spring);
+  border-radius: 0 var(--radius-xs) var(--radius-xs) 0;
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
 }
 
-.side-bar-status-header__toggle:hover,
+.side-bar-status-header__toggle:hover {
+  border-color: var(--hairline-strong);
+  border-left-color: var(--status-color);
+  color: var(--text-secondary);
+}
+
 .side-bar-status-header__toggle:focus-visible {
   color: var(--text-secondary);
-  outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent);
-  outline-offset: -1px;
+  outline: 2px solid var(--brass);
+  outline-offset: -2px;
 }
 
 .side-bar-status-header__label {
@@ -5653,24 +5686,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-group-header__toggle {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  cursor: pointer;
-  color: var(--text-tertiary);
-  border-radius: var(--radius-xs);
-  transition: color var(--duration-fast) var(--ease-spring);
-}
-
-.side-bar-group-header__toggle:hover,
-.side-bar-group-header__toggle:focus-visible {
-  color: var(--text-secondary);
-  outline: none;
+  width: 22px;
 }
 
 .side-bar-group-header__arrow {
