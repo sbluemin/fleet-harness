@@ -384,9 +384,9 @@ export function AgentChatView({
           : state.connection === "connecting" && state.turns.length === 0
             ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
             : null}
-        {state.replayedTurns > 0
-          ? <div className="agent-chat-sys">{t("terminal.chat.replayed", { count: state.replayedTurns })}</div>
-          : null}
+        {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
+            사용자 자기 대화이므로, 그것을 "이전 턴 재생됨"으로 알리면 없던 이전 세션을 가리키는
+            오독이 된다. 새 도착 오알림을 막는 replay-start/replay-end 경계는 그대로 남는다. */}
         {state.errorCode === "chat_replay_unavailable"
           ? <div className="agent-chat-sys agent-chat-sys--warn">{t("terminal.chat.replayUnavailable")}</div>
           : null}

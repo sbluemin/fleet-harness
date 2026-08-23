@@ -12,7 +12,6 @@ function makeLogState(): AgentChatLogState {
   return {
     turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
     replaying: false,
-    replayedTurns: 1,
     errorCode: null,
     jobs: [],
     context: null,
@@ -195,7 +194,7 @@ describe("chat log scroll anchor", () => {
   });
 
   it("counts the first live turn after an empty replay while the reader is away", () => {
-    logState = { ...makeLogState(), turns: [], replayedTurns: 0 };
+    logState = { ...makeLogState(), turns: [] };
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 200;
@@ -212,7 +211,7 @@ describe("chat log scroll anchor", () => {
   });
 
   it("does not count replay history before replay-end", () => {
-    logState = { ...makeLogState(), turns: [], replaying: true, replayedTurns: 0 };
+    logState = { ...makeLogState(), turns: [], replaying: true };
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 200;

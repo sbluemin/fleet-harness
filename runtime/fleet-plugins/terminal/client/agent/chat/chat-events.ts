@@ -582,7 +582,6 @@ export function readAgentChatJobDetailPayload(payload: unknown): AgentChatJobDet
 export interface AgentChatLogState {
   readonly turns: readonly AgentChatTurn[];
   readonly replaying: boolean;
-  readonly replayedTurns: number;
   readonly errorCode: string | null;
   /** 도착 순서를 지키는 잡 원장. 살아 있는 것과 끝난 것이 한 목록에 함께 산다. */
   readonly jobs: readonly AgentChatJob[];
@@ -596,7 +595,6 @@ const MAX_DRAFT_CHARS = 60_000;
 export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
-  replayedTurns: 0,
   errorCode: null,
   jobs: [],
   context: null,
@@ -620,7 +618,8 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
       const turns = last !== undefined && last.state === "working"
         ? [...state.turns.slice(0, -1), { ...last, state: "done" as const }]
         : state.turns;
-      return { ...state, turns, replaying: false, replayedTurns: event.turns };
+      // event.turns(재생된 턴 수)는 더는 화면에 쓰지 않는다 — 경계만 닫고 카운트는 버린다.
+      return { ...state, turns, replaying: false };
     }
     case "context": {
       // 턴 종료 스냅숏은 무조건 권위다 — 그 시점의 측정이므로 라이브가 더 말할 것이 없다.
