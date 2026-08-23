@@ -20,6 +20,7 @@ import {
   type AgentChatJobDetail,
   type AgentChatJobKind,
   type AgentChatQuestion,
+  type AgentChatLedgerPart,
   type AgentChatStepGroup,
   type AgentChatTurn,
   type AgentChatTurnItem,
@@ -749,13 +750,6 @@ function ChangeStrip({
  * 라이브 원장 — 스텝과 문장이 도착한 순서 그대로 쌓인다. 진행 중인 스텝 하나만 링을 돌리고,
  * 끝난 스텝은 자리에 남아 결과를 단다. 여기서 사라지는 것은 없다.
  */
-/**
- * 진행 중에 순서대로 남겨 두는 평범한 완료 스텝의 수. 방금 무엇을 했는지가 보여야 "일하는 중"으로
- * 읽히지만, 스무 건짜리 턴을 통째로 세우면 다시 벽이 된다 — 최근 것만 남기고 나머지는 앞머리
- * 한 줄로 접는다. 턴이 끝나면 이 창도 닫히고 전부 집계가 된다.
- */
-const LIVE_STEP_WINDOW = 8;
-
 function Ledger({
   operationId,
   items,
@@ -778,46 +772,91 @@ function Ledger({
   readonly pending?: boolean;
 }) {
   const t = getT(language);
-  // 잡을 낳은 스텝은 접지 않는다 — "위임 1건"으로 접히면 그 잡으로 가는 문이 사라진다. 다만
-  // 구간에서 꺼내지도 않는다: 원장의 구간을 가르는 것은 모델의 문장이고, 꺼내면 그 잡을 부른
-  // 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다. 확인되지 않은 스텝과 같은
-  // "줄을 지키는 예외"로 세그먼터에 넘긴다.
-  const pinned = React.useCallback(
+  const hasJob = React.useCallback(
     (item: AgentChatTurnItem) => item.id !== undefined && jobsByToolUse.has(item.id),
     [jobsByToolUse],
   );
-  const segments = segmentAgentChatLedger(items, working ? LIVE_STEP_WINDOW : 0, pinned);
+  const segments = segmentAgentChatLedger(items, hasJob);
   if (segments.length === 0 && !pending) return null;
-  const step = (item: AgentChatTurnItem, key: string): React.ReactNode => (
-    <Step key={key} item={item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
-  );
   return (
     <div className="agent-chat-ledger">
-      {segments.map((segment, index) => (
-        <div className="agent-chat-segment" key={index}>
-          {segment.note !== undefined ? (
-            <StreamedMarkdown
-              className="agent-chat-ledger-note markdown-body"
-              text={segment.note}
-              streaming={false}
-              language={language}
-            />
-          ) : null}
-          <Tally groups={segment.groups} folded={segment.folded} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
-          {segment.inline.map((item, at) => (item.type === "ask" && item.ask
-            ? <AskCard key={`ask-${item.ask.id}`} ask={item.ask} language={language} onAnswer={onAnswer} />
-            : step(item, `in-${at}`)))}
-          {segment.running.map((item, at) => step(item, `run-${at}`))}
-        </div>
-      ))}
+      {segments.map((segment, index) => {
+        // 도는 턴의 마지막 구간만 라이브다 — 그 구간의 꼬리 한 줄이 "지금 무엇을 하는가"를 진다.
+        const live = working && index === segments.length - 1;
+        const hoisted = live ? runningTails(segment.parts) : new Set<AgentChatLedgerPart>();
+        const tails = segment.parts.flatMap((part) => (hoisted.has(part) && part.kind === "step" ? [part.item] : []));
+        const parts = hoisted.size > 0 ? segment.parts.filter((part) => !hoisted.has(part)) : segment.parts;
+        // 꼬리를 떼고 남은 마지막 조각이 집계라면 그 집계가 곧 라이브 줄이고, 꼬리는 그 줄의
+        // 끝에 붙는다. 집계가 아니면(잡 앵커·확인되지 않은 스텝, 또는 구간이 도구로 시작한 경우)
+        // 아래에서 그 줄을 따로 세운다 — 어느 쪽이든 도는 스텝은 자기 행을 갖지 않는다.
+        const liveTallyAt = live && parts.at(-1)?.kind === "tally" ? parts.length - 1 : -1;
+        return (
+          <div className="agent-chat-segment" key={index}>
+            {segment.note !== undefined ? (
+              <StreamedMarkdown
+                className="agent-chat-ledger-note markdown-body"
+                text={segment.note}
+                streaming={false}
+                language={language}
+              />
+            ) : null}
+            {parts.map((part, at) => {
+              if (part.kind === "tally") {
+                return (
+                  <Tally
+                    key={at}
+                    groups={part.groups}
+                    folded={part.folded}
+                    language={language}
+                    {...(at === liveTallyAt ? { live: true, tails } : {})}
+                  />
+                );
+              }
+              if (part.kind === "job") {
+                return <JobAnchor key={at} item={part.item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />;
+              }
+              return part.item.type === "ask" && part.item.ask
+                ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />
+                : <Step key={at} item={part.item} language={language} live={live} />;
+            })}
+            {tails.length > 0 && liveTallyAt < 0
+              ? <Tally groups={[]} folded={[]} language={language} live tails={tails} />
+              : null}
+          </div>
+        );
+      })}
       {pending ? (
         <div className="agent-chat-step is-running">
           <span className="agent-chat-step-orbit" aria-hidden="true" />
-          <span className="agent-chat-step-verb" role="status">{t("terminal.chat.stepThinking")}</span>
+          <span className="agent-chat-step-verb agent-chat-live-text" role="status">{t("terminal.chat.stepThinking")}</span>
         </div>
       ) : null}
     </div>
   );
+}
+
+/**
+ * 구간의 꼬리에서 라이브 줄로 걷어 올릴 진행 중 스텝 조각들.
+ *
+ * 하나만 걷으면 안 된다. 한 assistant 메시지가 tool_use 블록을 여럿 실으면(병렬 배치) 그
+ * 스텝들은 다음 메시지가 결과를 실어 올 때까지 **동시에** running으로 남고, 걷히지 않은 것이
+ * 그대로 전폭 행으로 선다 — 배치가 클수록 한 줄 원장이 무너진다.
+ *
+ * 잡 앵커에서 멈추지도 않는다. 같은 배치가 백그라운드 잡을 함께 낳으면 그 호출만 앵커가 되어
+ * 도는 스텝 사이에 끼는데, 거기서 멈추면 앞의 스텝이 자기 행을 되찾는다. 앵커는 태어난 자리를
+ * 지키는 물건이므로 걷지 않고 지나가기만 한다 — 그래서 반환은 위치가 아니라 조각의 집합이다.
+ */
+function runningTails(parts: readonly AgentChatLedgerPart[]): ReadonlySet<AgentChatLedgerPart> {
+  const hoisted = new Set<AgentChatLedgerPart>();
+  for (let at = parts.length - 1; at >= 0; at -= 1) {
+    const part = parts[at];
+    if (part === undefined) break;
+    if (part.kind === "job") continue;
+    if (part.kind !== "step") break;
+    if (part.item.type === "ask" || part.item.state !== "running") break;
+    hoisted.add(part);
+  }
+  return hoisted;
 }
 
 /**
@@ -832,17 +871,21 @@ function Tally({
   groups,
   folded,
   language,
-  jobsByToolUse,
-  onOpenJob,
+  live = false,
+  tails = [],
 }: {
   readonly groups: readonly AgentChatStepGroup[];
   readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
-  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
-  readonly onOpenJob: (id: string) => void;
+  /** 도는 턴의 꼬리 집계인가 — 링과 물결을 얻고, 펼침 안에 진행 중 스텝까지 함께 든다. */
+  readonly live?: boolean;
+  /** 지금 도는 스텝들. 이 줄의 꼬리로 붙어 "무엇을 하는 중인지"를 말한다(병렬 배치는 여럿이다). */
+  readonly tails?: readonly AgentChatTurnItem[];
 }) {
   const t = getT(language);
-  if (groups.length === 0) return null;
+  // 셀 것도 도는 것도 없으면 줄이 아니다. 도는 것만 있는 구간(도구로 시작한 구간)에서는 집계가
+  // 비어도 이 줄이 서야 한다 — 그러지 않으면 그 스텝들이 다시 자기 행을 갖는다.
+  if (groups.length === 0 && tails.length === 0) return null;
   const clauses = groups.map((group, index) => (
     <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
@@ -855,20 +898,89 @@ function Tally({
       <span>{groupLabel(group, t)}</span>
     </React.Fragment>
   ));
+  // 라이브 줄은 자기가 살아 있다고 스스로 말해야 한다. 예전에는 최근 여덟 줄이 흘러가는 것
+  // 자체가 그 증거였는데, 그 증거가 읽는 자리의 절반을 먹었다 — 이제 링과 좌→우 물결, 그리고
+  // 지금 도는 도구의 이름 하나가 같은 말을 한 줄로 한다.
+  // 도는 스텝은 전부 이 줄의 꼬리가 된다 — 병렬 배치의 N개도 행이 아니라 절이다.
+  const running = live ? tails : [];
+  const body = [...folded, ...running];
+  const line = (
+    <>
+      {live ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}
+      <span className={live ? "agent-chat-tally-text agent-chat-live-text" : "agent-chat-tally-text"}>
+        {clauses}
+        {running.length > 0 ? (
+          // 라이브 리전은 이 묶음 하나다 — 절마다 걸면 배치 하나가 N번 낭독된다.
+          <span className="agent-chat-tally-running" role="status">
+            {running.map((item, index) => (
+              <React.Fragment key={index}>
+                {index > 0 || clauses.length > 0
+                  ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
+                  : null}
+                <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
+              </React.Fragment>
+            ))}
+          </span>
+        ) : null}
+      </span>
+    </>
+  );
   // 펼칠 것이 없으면 눌리는 척하지 않는다 — 열쇠 없는 자물쇠는 어포던스가 아니라 거짓말이다.
-  if (folded.length === 0) return <div className="agent-chat-tally">{clauses}</div>;
+  if (body.length === 0) return <div className={`agent-chat-tally${live ? " is-live" : ""}`}>{line}</div>;
   return (
     <details className="agent-chat-tally-fold">
-      <summary className="agent-chat-tally" aria-label={t("terminal.chat.tallyAria")}>
-        {clauses}
+      <summary className={`agent-chat-tally${live ? " is-live" : ""}`} aria-label={t("terminal.chat.tallyAria")}>
+        {line}
         <span className="agent-chat-tally-chev" aria-hidden="true">⌄</span>
       </summary>
       <div className="agent-chat-tally-body">
-        {folded.map((item, index) => (
-          <Step key={index} item={item} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} />
+        {body.map((item, index) => (
+          <Step key={index} item={item} language={language} />
         ))}
       </div>
     </details>
+  );
+}
+
+/**
+ * 잡을 낳은 호출이 태어난 자리에 남기는 한 줄.
+ *
+ * 예전에는 여기에 카드가 섰다. 카드의 둘째 줄(종류·누구·토큰·도구·소요)은 작업 면이 이미
+ * 같은 값을 더 자세히 지고 있었고, 원장에서는 읽는 흐름을 두 줄짜리 상자로 끊었다. 남는 것은
+ * 하나다: **그 잡이 여기서 태어났다**, 그리고 거기로 가는 문. 몸은 작업 면의 것이다.
+ */
+function JobAnchor({
+  item,
+  language,
+  jobsByToolUse,
+  onOpenJob,
+}: {
+  readonly item: AgentChatTurnItem;
+  readonly language: "en" | "ko";
+  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
+  readonly onOpenJob: (id: string) => void;
+}) {
+  const t = getT(language);
+  const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
+  if (job === undefined) return <Step item={item} language={language} />;
+  return (
+    <button
+      type="button"
+      className={`agent-chat-job-anchor ${jobStateClass(job)}`}
+      aria-label={t("terminal.chat.workOpenAria")}
+      onClick={() => onOpenJob(job.id)}
+    >
+      {job.open
+        ? <span className="agent-chat-step-orbit" aria-hidden="true" />
+        : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
+      <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
+      {/* 카드가 제목 자리에 쓰던 값 그대로다. subagent_type(`who`)만 남기면 위임 여러 건이
+          "◆ general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
+          `who`는 카드에서도 제목이 아니라 메타 줄의 값이었고, 그 줄은 작업 면이 진다. */}
+      <span className="agent-chat-job-title">{job.title}</span>
+      <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
+      <span className="agent-chat-job-chev" aria-hidden="true">›</span>
+    </button>
   );
 }
 
@@ -1161,19 +1273,14 @@ function AskSettled({
 function Step({
   item,
   language,
-  jobsByToolUse,
-  onOpenJob,
+  live = false,
 }: {
   readonly item: AgentChatTurnItem;
   readonly language: "en" | "ko";
-  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
-  readonly onOpenJob: (id: string) => void;
+  /** 도는 턴의 꼬리에 홀로 선 줄인가 — 집계가 없는 구간에서는 이 줄이 라이브 줄을 진다. */
+  readonly live?: boolean;
 }) {
   const t = getT(language);
-  const job = item.id !== undefined ? jobsByToolUse.get(item.id) : undefined;
-  // 잡을 낳은 호출은 한 줄이 아니라 카드로 선다. 한 줄은 "그 호출이 성공했다"까지만 말할 수
-  // 있는데, 사용자가 알아야 하는 것은 그 뒤에 도는 일이다.
-  if (job !== undefined) return <JobCard job={job} language={language} onOpen={onOpenJob} />;
   const running = item.state === "running";
   const failed = item.state === "fail";
   // 결과를 못 받고 닫힌 스텝은 성공도 실패도 아니다 — 시제도 체크 표시도 붙이지 않는다.
@@ -1196,7 +1303,12 @@ function Step({
       {running
         ? <span className="agent-chat-step-orbit" aria-hidden="true" />
         : <span className="agent-chat-step-mark" aria-hidden="true">{failed ? "✕" : unconfirmed ? "·" : "✓"}</span>}
-      <span className="agent-chat-step-verb" {...(running ? { role: "status" } : {})}>{verb}</span>
+      <span
+        className={`agent-chat-step-verb${live && running ? " agent-chat-live-text" : ""}`}
+        {...(running ? { role: "status" } : {})}
+      >
+        {verb}
+      </span>
       {item.detail ? <span className="agent-chat-step-object">{item.detail}</span> : null}
       {item.outside ? (
         <span className="agent-chat-step-outside" title={t("terminal.chat.outsideTheaterTitle")}>

@@ -981,6 +981,21 @@ export interface AgentChatStepGroup {
 }
 
 /**
+ * 구간을 이루는 한 조각. 구간은 이 조각들의 **순서 있는** 목록이다 — 순서가 곧 시간이다.
+ *
+ * 조각을 순서로 두기 전에는 접힌 것이 전부 집계 한 줄로 구간 맨 위에 서고 접히지 않은 것이
+ * 그 아래로 밀렸다. 그래서 "파일 하나 읽고 → 잡을 띄우고 → 넉 장 더 읽은" 구간이
+ * "파일 5개 읽음" 다음에 잡이 서는 모양으로 그려졌다 — 원장이 일어난 순서를 뒤집은 셈이다.
+ */
+export type AgentChatLedgerPart =
+  /** 이웃한 완료 스텝을 한 줄로 접은 집계. 접히지 않는 조각이 오면 이 집계는 거기서 닫힌다. */
+  | { readonly kind: "tally"; readonly groups: readonly AgentChatStepGroup[]; readonly folded: readonly AgentChatTurnItem[] }
+  /** 백그라운드 잡을 낳은 호출. 접지 않는다 — 접히면 그 잡으로 가는 문이 사라진다. */
+  | { readonly kind: "job"; readonly item: AgentChatTurnItem }
+  /** 줄을 지키는 그 밖의 스텝 — 확인되지 않은 호출, 지금 도는 호출, 그리고 질문 카드. */
+  | { readonly kind: "step"; readonly item: AgentChatTurnItem };
+
+/**
  * 원장의 한 구간 — 모델이 남긴 문장 하나와, 그 문장 뒤에 이어진 스텝들.
  *
  * 턴 전체를 하나로 집계하면 숫자가 끝없이 커지기만 하고("셸 7회 실행 · 파일 19개 읽음"),
@@ -990,35 +1005,29 @@ export interface AgentChatStepGroup {
 export interface AgentChatLedgerSegment {
   /** 이 구간을 여는 문장. 첫 도구가 문장보다 먼저 오면 없다. */
   readonly note?: string;
-  /** 이 구간에서 한 줄로 접힌 끝난 스텝의 집계. */
-  readonly groups: readonly AgentChatStepGroup[];
-  /** 그 집계 뒤에 실제로 있던 스텝들 — 집계 줄을 누르면 이것이 펼쳐진다. */
-  readonly folded: readonly AgentChatTurnItem[];
-  /** 접지 않고 줄을 지키는 것 — 확인되지 않은 스텝, 핀된 스텝, 그리고 열린 구간의 최근 스텝. */
-  readonly inline: readonly AgentChatTurnItem[];
-  /** 지금 도는 스텝. */
-  readonly running: readonly AgentChatTurnItem[];
+  /** 이 구간의 조각들 — 도착한 순서 그대로다. */
+  readonly parts: readonly AgentChatLedgerPart[];
 }
 
 /**
  * 원장을 구간으로 가른다. 구간의 경계는 모델의 문장이고, 각 구간은 그 문장 뒤에 이어진
  * 스텝들을 한 줄로 접는다 — 한 턴이 여러 번 "문장 → 한 일" 쌍으로 읽힌다.
  *
- * 마지막 구간만 예외다. 턴이 도는 동안 그 구간은 열려 있어서, 최근 스텝(`recentLimit`)을
- * 순서대로 세워 둔다 — 방금 무엇을 했는지가 곧 "일하는 중"이라는 감각이다. 다음 문장이
- * 도착하거나 턴이 끝나면 그 구간도 닫히고 한 줄로 접힌다.
+ * 도는 동안에도 예외는 없다. 예전에는 열린 구간이 최근 스텝 여덟 개를 전폭 행으로 세워 두었고,
+ * 실측하면 그 행들이 로그 가시 영역의 58%를 먹었다 — 읽는 자리를 도구 목록이 밀어낸 것이다.
+ * 지금은 도는 구간도 같은 집계 한 줄로 접히고, "일하는 중"은 그 줄이 스스로 진다(호출부가
+ * 링과 물결, 그리고 지금 도는 도구의 이름을 그 줄에 붙인다).
  *
  * 결과가 온 스텝은 실패와 Theater 밖 표식을 포함해 같은 집계로 접힌다. 펼치면 표식은
  * 그대로 있다. 결과 없이 닫힌 스텝만 줄을 지킨다 — 확인되지 않은 것을 과거형으로 세면 안 된다.
  */
 export function segmentAgentChatLedger(
   items: readonly AgentChatTurnItem[],
-  recentLimit = 0,
   /**
-   * 접지 않고 자기 구간에 줄을 지켜야 하는 스텝. 잡을 낳은 호출이 여기 든다 — 집계로 접히면
-   * 그 잡으로 가는 문이 사라지고, 구간 밖으로 꺼내면 자기를 부른 문장보다 위에 서게 된다.
+   * 백그라운드 잡을 낳은 호출인가. 이 스텝은 접히지 않고 태어난 자리에 그대로 서서, 그 잡을
+   * 부른 문장과 그 뒤에 이어진 일 사이의 순서를 지킨다.
    */
-  pinned?: (item: AgentChatTurnItem) => boolean,
+  hasJob?: (item: AgentChatTurnItem) => boolean,
 ): readonly AgentChatLedgerSegment[] {
   const buckets: { note?: string; steps: AgentChatTurnItem[] }[] = [];
   for (const item of items) {
@@ -1034,16 +1043,10 @@ export function segmentAgentChatLedger(
   if (buckets.length === 0) return [];
 
   return buckets
-    .map((bucket, index) => {
-      const open = recentLimit > 0 && index === buckets.length - 1;
-      return foldSegment(bucket.note, bucket.steps, open ? recentLimit : 0, pinned);
-    })
+    .map((bucket) => foldSegment(bucket.note, bucket.steps, hasJob))
     // 문장도 스텝도 남지 않은 구간은 그리지 않는다 — 빈 구간도 구간 사이 간격은 그대로 받아서,
     // 긴 턴일수록 아무것도 말하지 않는 여백만 쌓인다.
-    .filter((segment) => segment.note !== undefined
-      || segment.groups.length > 0
-      || segment.inline.length > 0
-      || segment.running.length > 0);
+    .filter((segment) => segment.note !== undefined || segment.parts.length > 0);
 }
 
 /**
@@ -1060,40 +1063,36 @@ function spokenNote(text: string): string | undefined {
 function foldSegment(
   note: string | undefined,
   steps: readonly AgentChatTurnItem[],
-  recentLimit: number,
-  pinned?: (item: AgentChatTurnItem) => boolean,
+  hasJob?: (item: AgentChatTurnItem) => boolean,
 ): AgentChatLedgerSegment {
-  // 열린 구간에서는 뒤에서부터 세어 순서대로 남길 평범한 완료 스텝의 경계를 먼저 정한다.
-  const keepInline = new Set<number>();
-  let keep = recentLimit;
-  for (let index = steps.length - 1; index >= 0 && keep > 0; index -= 1) {
-    const step = steps[index];
-    if (!step) continue;
-    if (step.type === "ask") continue;
-    if (step.state === "running") continue;
-    // 이미 줄을 지키는 스텝은 최근 창의 자리를 쓰지 않는다 — 쓰면 접히지 않을 것 하나가
-    // 접히지 않을 것 하나를 더 밀어낸다. 실패·Theater 밖은 이제 접힐 수 있으므로 자리를 쓴다.
-    if (step.state !== "ok" && step.state !== "fail") continue;
-    if (pinned?.(step) === true) continue;
-    keepInline.add(index);
-    keep -= 1;
-  }
-
-  const inline: AgentChatTurnItem[] = [];
-  const running: AgentChatTurnItem[] = [];
-  const folded: AgentChatTurnItem[] = [];
-  const groups: AgentChatStepGroup[] = [];
-  const seen = new Map<string, number>();
-  steps.forEach((step, at) => {
+  const parts: AgentChatLedgerPart[] = [];
+  // 지금 열려 있는 집계. 접히지 않는 조각을 만나면 닫히고, 다음 완료 스텝이 새 집계를 연다 —
+  // 이 열고 닫음이 구간 안의 시간 순서를 지킨다.
+  let groups: AgentChatStepGroup[] | null = null;
+  let folded: AgentChatTurnItem[] | null = null;
+  let seen: Map<string, number> | null = null;
+  for (const step of steps) {
     // 카드는 접지 않는다 — 접힌 질문은 답할 수 없고, 답한 뒤의 한 줄도 그 턴이 무엇으로
     // 갈렸는지 말하는 증거라 집계에 삼켜지면 안 된다.
-    if (step.type === "ask") { inline.push(step); return; }
-    if (step.state === "running") { running.push(step); return; }
-    // 결과가 온 스텝은 실패와 Theater 밖 표식을 포함해 같은 집계로 접는다. 결과 없이 닫힌
-    // 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를 원장이 다시
-    // 했다고 말하는 셈이다 — 확인되지 않은 것만 줄을 지킨다.
-    const foldable = step.state === "ok" || step.state === "fail";
-    if (!foldable || keepInline.has(at) || pinned?.(step) === true) { inline.push(step); return; }
+    // 잡을 낳은 호출도 접지 않는다. 접으면 그 잡으로 가는 문이 사라지고, 구간 밖으로 꺼내면
+    // 자기를 부른 문장보다 위에 서서 어느 의도가 그것을 낳았는지가 사라진다.
+    // 결과 없이 닫힌 스텝(`done`)을 과거형으로 세면, 같은 이유로 변경 장부에서 뺀 그 쓰기를
+    // 원장이 다시 했다고 말하는 셈이다 — 확인되지 않은 것과 지금 도는 것은 줄을 지킨다.
+    const job = step.type !== "ask" && hasJob?.(step) === true;
+    const foldable = step.type !== "ask" && !job && (step.state === "ok" || step.state === "fail");
+    if (!foldable) {
+      groups = null;
+      folded = null;
+      seen = null;
+      parts.push(job ? { kind: "job", item: step } : { kind: "step", item: step });
+      continue;
+    }
+    if (groups === null || folded === null || seen === null) {
+      groups = [];
+      folded = [];
+      seen = new Map();
+      parts.push({ kind: "tally", groups, folded });
+    }
     folded.push(step);
     const family = agentChatToolFamily(step.name);
     const key = family === "other" ? `other:${step.name ?? ""}` : family;
@@ -1105,8 +1104,8 @@ function foldSegment(
       const current = groups[found];
       if (current) groups[found] = { ...current, count: current.count + 1 };
     }
-  });
-  return { ...(note !== undefined ? { note } : {}), groups, folded, inline, running };
+  }
+  return { ...(note !== undefined ? { note } : {}), parts };
 }
 
 /** 같은 파일을 여러 번 쓴 턴은 파일 하나로 합산한다 — 장부는 파일 단위다. */

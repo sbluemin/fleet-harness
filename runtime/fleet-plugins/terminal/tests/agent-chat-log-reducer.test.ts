@@ -269,17 +269,15 @@ describe("segmentAgentChatLedger", () => {
     expect(segmentAgentChatLedger(items)).toEqual([
       {
         note: "먼저 읽겠습니다.",
-        groups: [{ family: "read", count: 2 }],
-        folded: [items[1], items[2]],
-        inline: [],
-        running: [],
+        parts: [{ kind: "tally", groups: [{ family: "read", count: 2 }], folded: [items[1], items[2]] }],
       },
       {
         note: "이제 고치고 돌리겠습니다.",
-        groups: [{ family: "edit", count: 1 }, { family: "run", count: 2 }],
-        folded: [items[4], items[5], items[6]],
-        inline: [],
-        running: [],
+        parts: [{
+          kind: "tally",
+          groups: [{ family: "edit", count: 1 }, { family: "run", count: 2 }],
+          folded: [items[4], items[5], items[6]],
+        }],
       },
     ]);
   });
@@ -288,10 +286,7 @@ describe("segmentAgentChatLedger", () => {
     const items = [tool("Read"), note("읽었습니다."), tool("Bash")];
     const segments = segmentAgentChatLedger(items);
     expect(segments[0]).toEqual({
-      groups: [{ family: "read", count: 1 }],
-      folded: [items[0]],
-      inline: [],
-      running: [],
+      parts: [{ kind: "tally", groups: [{ family: "read", count: 1 }], folded: [items[0]] }],
     });
     expect(segments[1]?.note).toBe("읽었습니다.");
   });
@@ -301,59 +296,39 @@ describe("segmentAgentChatLedger", () => {
     const failed = tool("Bash", { state: "fail", result: "exit 2" });
     const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
     const segments = segmentAgentChatLedger([note("해보겠습니다."), read, failed, outside]);
-    expect(segments[0]?.inline).toEqual([]);
-    expect(segments[0]?.groups).toEqual([
-      { family: "read", count: 1 },
-      { family: "run", count: 1 },
-      { family: "write", count: 1 },
-    ]);
-    expect(segments[0]?.folded).toEqual([read, failed, outside]);
+    expect(segments[0]?.parts).toEqual([{
+      kind: "tally",
+      groups: [
+        { family: "read", count: 1 },
+        { family: "run", count: 1 },
+        { family: "write", count: 1 },
+      ],
+      folded: [read, failed, outside],
+    }]);
   });
 
   it("counts a failed step in the same family as a successful sibling", () => {
     const ok = tool("Bash", { detail: "pnpm test" });
     const failed = tool("Bash", { state: "fail", result: "exit 2" });
     const segments = segmentAgentChatLedger([note("돌리겠습니다."), ok, failed]);
-    expect(segments[0]?.groups).toEqual([{ family: "run", count: 2 }]);
-    expect(segments[0]?.folded).toEqual([ok, failed]);
-    expect(segments[0]?.inline).toEqual([]);
+    expect(segments[0]?.parts).toEqual([{ kind: "tally", groups: [{ family: "run", count: 2 }], folded: [ok, failed] }]);
   });
 
-  it("spends a live-window slot on a failed or outside step the same way as an ordinary one", () => {
-    const older = tool("Read", { detail: "a.ts" });
-    const failed = tool("Bash", { state: "fail", result: "exit 2" });
-    const outside = tool("Write", { outside: true, detail: "…/elsewhere/a.ts" });
-    const segments = segmentAgentChatLedger([note("해보겠습니다."), older, failed, outside], 2);
-    expect(segments[0]?.inline).toEqual([failed, outside]);
-    expect(segments[0]?.folded).toEqual([older]);
-    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
-  });
-
-  // 진행 중에는 마지막 구간만 열려 있다 — 방금 무엇을 했는지가 곧 "일하는 중"이다.
-  it("leaves only the last segment open while the turn runs", () => {
+  // 라이브 창은 없다. 도는 구간도 끝난 구간과 같은 집계 한 줄로 접히고, 지금 도는 스텝만
+  // 그 뒤에 줄을 지킨다 — 그 한 줄이 호출부에서 링·물결·도구 이름을 얻어 "일하는 중"을 진다.
+  it("folds a running segment the same way as a finished one, leaving only the running step", () => {
     const items = [
       note("먼저 읽겠습니다."), tool("Read"), tool("Read"),
       note("이제 돌리겠습니다."), tool("Bash"), tool("Write"), tool("Read", { state: "running" }),
     ];
-    const segments = segmentAgentChatLedger(items, 4);
+    const segments = segmentAgentChatLedger(items);
     expect(segments[0]).toEqual({
       note: "먼저 읽겠습니다.",
-      groups: [{ family: "read", count: 2 }],
-      folded: [items[1], items[2]],
-      inline: [],
-      running: [],
+      parts: [{ kind: "tally", groups: [{ family: "read", count: 2 }], folded: [items[1], items[2]] }],
     });
-    expect(segments[1]?.groups).toEqual([]);
-    expect(segments[1]?.inline).toEqual([items[4], items[5]]);
-    expect(segments[1]?.running).toEqual([items[6]]);
-  });
-
-  it("folds the last segment too once the turn is done", () => {
-    const items = [note("돌리겠습니다."), tool("Bash"), tool("Write")];
-    expect(segmentAgentChatLedger(items, 0)[0]?.inline).toEqual([]);
-    expect(segmentAgentChatLedger(items, 0)[0]?.groups).toEqual([
-      { family: "run", count: 1 },
-      { family: "write", count: 1 },
+    expect(segments[1]?.parts).toEqual([
+      { kind: "tally", groups: [{ family: "run", count: 1 }, { family: "write", count: 1 }], folded: [items[4], items[5]] },
+      { kind: "step", item: items[6] },
     ]);
   });
 
@@ -361,25 +336,33 @@ describe("segmentAgentChatLedger", () => {
   // 다시 "씀"이라고 말한다 — 두 표면이 어긋난다. 확인되지 않은 것은 줄을 지킨다.
   it("never counts a result-less step in the past-tense tally", () => {
     const unconfirmed = tool("Write", { state: "done" });
-    const segments = segmentAgentChatLedger([note("쓰겠습니다."), tool("Read"), unconfirmed]);
-    expect(segments[0]?.groups).toEqual([{ family: "read", count: 1 }]);
-    expect(segments[0]?.inline).toEqual([unconfirmed]);
+    const items = [note("쓰겠습니다."), tool("Read"), unconfirmed];
+    const segments = segmentAgentChatLedger(items);
+    expect(segments[0]?.parts).toEqual([
+      { kind: "tally", groups: [{ family: "read", count: 1 }], folded: [items[1]] },
+      { kind: "step", item: unconfirmed },
+    ]);
   });
 
   // 접힌 것은 감춘 것이 아니다 — 집계 줄을 누르면 그 줄이 세고 있던 스텝이 순서대로 나온다.
   it("carries the steps a tally counted so the line can unfold them", () => {
     const items = [note("보겠습니다."), tool("Read"), tool("Bash"), tool("Read")];
     const segment = segmentAgentChatLedger(items)[0];
-    expect(segment?.groups).toEqual([{ family: "read", count: 2 }, { family: "run", count: 1 }]);
-    expect(segment?.folded).toEqual([items[1], items[2], items[3]]);
+    expect(segment?.parts).toEqual([{
+      kind: "tally",
+      groups: [{ family: "read", count: 2 }, { family: "run", count: 1 }],
+      folded: [items[1], items[2], items[3]],
+    }]);
   });
 
   it("counts an unknown tool under its own name", () => {
     const segments = segmentAgentChatLedger([tool("SomeMcpTool"), tool("SomeMcpTool"), tool("Other")]);
-    expect(segments[0]?.groups).toEqual([
-      { family: "other", name: "SomeMcpTool", count: 2 },
-      { family: "other", name: "Other", count: 1 },
-    ]);
+    expect(segments[0]?.parts[0]).toMatchObject({
+      groups: [
+        { family: "other", name: "SomeMcpTool", count: 2 },
+        { family: "other", name: "Other", count: 1 },
+      ],
+    });
   });
 
   // 문장은 마크다운으로 그려지고 그 문법은 공백으로 쓰인다 — 첫 줄의 네 칸은 코드 블록,
@@ -394,7 +377,10 @@ describe("segmentAgentChatLedger", () => {
   it("drops a segment whose sentence and steps are both empty", () => {
     expect(segmentAgentChatLedger([note("\n \n")])).toEqual([]);
     expect(segmentAgentChatLedger([note("  "), note("고치겠습니다."), tool("Edit")])).toEqual([
-      { note: "고치겠습니다.", groups: [{ family: "edit", count: 1 }], folded: [expect.anything()], inline: [], running: [] },
+      {
+        note: "고치겠습니다.",
+        parts: [{ kind: "tally", groups: [{ family: "edit", count: 1 }], folded: [expect.anything()] }],
+      },
     ]);
   });
 });
@@ -636,7 +622,7 @@ describe("background job ledger", () => {
   });
 });
 
-describe("ledger segmentation — pinned steps", () => {
+describe("ledger segmentation — background job anchors", () => {
   const items: readonly AgentChatTurnItem[] = [
     { type: "text", text: "First I will look around." },
     { type: "tool", name: "Read", detail: "a.ts", id: "t1", state: "ok" },
@@ -645,37 +631,42 @@ describe("ledger segmentation — pinned steps", () => {
     { type: "tool", name: "Workflow", detail: "audit", id: "job-call", state: "ok" },
     { type: "tool", name: "Read", detail: "c.ts", id: "t3", state: "ok" },
   ];
-  const pinned = (item: AgentChatTurnItem): boolean => item.id === "job-call";
+  const hasJob = (item: AgentChatTurnItem): boolean => item.id === "job-call";
 
-  it("keeps a pinned step in the segment its note opened", () => {
-    const segments = segmentAgentChatLedger(items, 0, pinned);
+  it("keeps a job anchor in the segment its note opened", () => {
+    const segments = segmentAgentChatLedger(items, hasJob);
     expect(segments).toHaveLength(2);
     expect(segments[0]?.note).toBe("First I will look around.");
-    expect(segments[0]?.inline).toEqual([]);
+    expect(segments[0]?.parts.map((part) => part.kind)).toEqual(["tally"]);
     // 잡을 낳은 호출은 그것을 부른 문장의 구간에 남는다 — 앞 문장 위로 올라가지 않는다.
     expect(segments[1]?.note).toBe("Now I will delegate the audit.");
-    expect(segments[1]?.inline.map((item) => item.id)).toEqual(["job-call"]);
+    expect(segments[1]?.parts.some((part) => part.kind === "job")).toBe(true);
   });
 
-  it("never folds a pinned step into the tally", () => {
-    const segments = segmentAgentChatLedger(items, 0, pinned);
-    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "t3"]);
-    expect(segments[1]?.groups).toEqual([{ family: "read", count: 2 }]);
+  // 접힌 것이 전부 한 집계로 맨 위에 서면, 두 번째로 시작한 잡이 다섯 번째로 읽힌다.
+  // 집계는 잡 앵커에서 닫히고 그 뒤가 새 집계를 연다 — 조각의 순서가 곧 일어난 순서다.
+  it("splits the tally around the anchor so the segment reads in the order it happened", () => {
+    const segments = segmentAgentChatLedger(items, hasJob);
+    expect(segments[1]?.parts).toEqual([
+      { kind: "tally", groups: [{ family: "read", count: 1 }], folded: [items[3]] },
+      { kind: "job", item: items[4] },
+      { kind: "tally", groups: [{ family: "read", count: 1 }], folded: [items[5]] },
+    ]);
   });
 
-  it("folds the same step when nothing pins it", () => {
-    const segments = segmentAgentChatLedger(items, 0);
-    expect(segments[1]?.inline).toEqual([]);
-    expect(segments[1]?.folded.map((item) => item.id)).toEqual(["t2", "job-call", "t3"]);
+  it("never folds a job step into a tally", () => {
+    const segments = segmentAgentChatLedger(items, hasJob);
+    const folded = segments[1]?.parts.flatMap((part) => (part.kind === "tally" ? part.folded : []));
+    expect(folded?.map((item) => item.id)).toEqual(["t2", "t3"]);
   });
 
-  it("does not spend a live-window slot on a pinned step", () => {
-    // 열린 구간의 최근 창은 접힐 수 있었던 스텝을 위한 자리다. 이미 줄을 지키는 스텝이 그 자리를
-    // 쓰면 접히지 않을 것 하나가 접히지 않을 것 하나를 더 밀어낸다.
-    const segments = segmentAgentChatLedger(items, 1, pinned);
-    const last = segments[1];
-    expect(last?.inline.map((item) => item.id)).toEqual(["job-call", "t3"]);
-    expect(last?.folded.map((item) => item.id)).toEqual(["t2"]);
+  it("folds the same step when it owns no job", () => {
+    const segments = segmentAgentChatLedger(items);
+    expect(segments[1]?.parts).toEqual([{
+      kind: "tally",
+      groups: [{ family: "read", count: 2 }, { family: "workflow", count: 1 }],
+      folded: [items[3], items[4], items[5]],
+    }]);
   });
 });
 

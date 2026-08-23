@@ -68,7 +68,8 @@
   min-height: 0;
   overflow-y: auto;
   /* 위쪽 34px은 떠 있던 전환 칩 줄의 몫이었다 — 그 줄이 캡션으로 옮겨 간 지금, 로그는 패널
-     상단에서 바로 시작한다. 아래 45px은 여전히 부유 컨트롤(중지·Follow·잡 스트립)의 자리다.
+     상단에서 바로 시작한다. 아래 45px은 여전히 부유 컨트롤의 자리다: 이제 Follow 칩 하나와,
+     컴포저 경계에 걸터앉은 잡 스트립의 위쪽 절반이 그 안에 든다.
      스크롤 컨테이너의 여백이라야 바닥까지 내린 로그의 마지막 줄이 버튼 위로 올라온다: 여백 없이
      두면 마지막 턴의 아래 36px이 버튼 뒤에 갇혀 스크롤로도 빠져나오지 못한다. 가로는 늘리지
      않는다 — 모든 줄의 측정폭을 줄이는 대가가, 세로 여백만으로 이미 해소되는 겹침보다 크다. */
@@ -300,6 +301,60 @@
 
 .agent-chat-tally-sep {
   color: var(--hairline-strong);
+}
+
+/* 집계 줄의 글자 묶음. 도는 구간에서는 이 묶음만 물결지고 링과 꺾쇠는 제자리에 남는다. */
+.agent-chat-tally-text {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 도는 절 묶음. 라이브 리전은 이 하나이고(절마다 걸면 배치 하나가 N번 낭독된다), 그 안의 절은
+   집계 절과 같은 리듬으로 이어진다. display: contents로 감싸면 레이아웃은 같아지지만 role을
+   가진 요소가 접근성 트리에서 떨어질 수 있어, 같은 규칙을 그대로 쓴 평범한 상자로 둔다. */
+.agent-chat-tally-running {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* 도는 구간의 집계 줄. 예전에는 최근 여덟 스텝이 전폭 행으로 흘러가는 것이 "일하는 중"의
+   증거였고, 실측하면 그 행들이 로그 가시 영역의 58%를 먹었다. 지금은 이 한 줄이 같은 말을
+   한다 — 링이 돌고, 글자가 좌에서 우로 물결지고, 꼬리가 지금 도는 도구를 부른다. */
+.agent-chat-tally.is-live {
+  color: var(--text-secondary);
+}
+
+/* 좌→우 명도 물결.
+   [doctrine] 진행은 이미 링(aurora)이 말한다. 이 물결은 같은 사실을 두 번 말하는 것이 아니라
+   "이 줄이 아직 자라고 있다"를 말하므로 색 채널을 하나도 빌리지 않는다 — 신호(aurora)도,
+   위치(brass)도, 정체성(--id-*)도 아닌 순수 명도 스윕이다. 기법은 제품에 이미 있는
+   ULTRACODE 물결과 같고(배경 클립 + 배경 위치 이동), 그쪽이 apex를 쓰는 것과 갈리는 지점이
+   바로 이 채널 선택이다. */
+.agent-chat-live-text {
+  background-image: linear-gradient(
+    100deg,
+    var(--text-tertiary) 0%,
+    var(--text-tertiary) 34%,
+    var(--text-primary) 50%,
+    var(--text-tertiary) 66%,
+    var(--text-tertiary) 100%
+  );
+  background-size: 300% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-chat-live-sweep 2.4s linear infinite;
+}
+
+@keyframes agent-chat-live-sweep {
+  from { background-position: 100% 0; }
+  to { background-position: -100% 0; }
 }
 
 /* 도구 이름은 이 줄에서 유일하게 훑히는 토큰이다. 나머지 문구와 같은 잉크를 쓰면 줄 전체가
@@ -1168,14 +1223,16 @@
 }
 
 /* Follow 칩 — 자리를 세운 동안만 로그 하단 중앙에 선다. aurora는 "바닥을 놓쳤다"는
-   상태 신호다. brass는 hover/focus의 위치 채널이다. 회신 말풍선은 우하단을 지키고,
-   이 칩은 그 왼쪽 중앙에 따로 선다. 안 읽은 수는 Wave 2. */
-/* 두 떠 있는 줄의 순서: 위가 Follow, 아래가 작업 스트립이다. 아래 줄은 회신·중지 버튼과 같은
-   행이라 "지금 누를 것"의 자리이고, Follow는 그 위 한 층에서 읽던 자리로 돌아가는 문이다. */
+   상태 신호다. brass는 hover/focus의 위치 채널이다.
+   떠 있는 줄은 이제 이것 하나다. 작업 스트립이 컴포저 경계로 내려가면서 로그 위에 두 층으로
+   쌓이던 크롬이 한 층이 됐고, Follow가 그 아래 자리를 물려받는다 — 로그가 자기 컨트롤 몫으로
+   비워 둔 바닥 여백이 그 자리이고, 위층에 서 있던 동안에는 그 여백 밖이라 늘 문장 위였다.
+   Follow는 바닥을 놓친 동안에만 서고 누르면 사라지는 일시적 문이라, 잡이 사는 내내 상주하던
+   스트립과 달리 이 자리를 계속 쥐지 않는다. */
 .agent-chat-follow {
   position: absolute;
   left: 50%;
-  bottom: calc(var(--space-3) + 46px);
+  bottom: var(--space-3);
   z-index: 3;
   transform: translateX(-50%);
   display: inline-flex;
@@ -1219,9 +1276,13 @@
   min-height: 0;
 }
 
-/* 회신·중지가 없으면 스트립이 그 폭을 비울 이유가 없다. 좁은 카드에서 잡 이름이
-   사라진 버튼 자리를 피해 잘린다. */
+/* 카드에는 컴포저가 없다(바로 위 숨김 목록). 스트립이 컴포저 경계에 걸터앉는 좌표를 그대로
+   들고 오면 카드에서는 걸칠 프레임이 없어 본문 밖으로 흘러내린다 — 카드에서는 로그 하단
+   중앙이라는 원래 앵커를 지킨다. Follow는 카드에서 서지 않으므로 그 자리를 다투지 않는다.
+   폭도 카드의 것으로 되돌린다: 걸터앉을 컴포저가 없으니 그 폭을 상한으로 쓸 이유도 없다. */
 .canvas-operation.is-deck-tile .agent-chat-strip {
+  bottom: var(--space-3);
+  transform: translateX(-50%);
   max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));
 }
 
@@ -1473,6 +1534,14 @@
     transition: none;
   }
 
+  /* 라이브 물결 봉인 — 모션만 죽이고 줄은 남긴다. 그라데이션을 지우면서 채움도 함께 되돌려야
+     한다: `color: transparent`가 남으면 글자가 통째로 사라진다(ULTRACODE 물결과 같은 함정). */
+  .agent-chat-live-text {
+    animation: none;
+    background-image: none;
+    color: var(--text-secondary);
+  }
+
   /* 컴포저가 가운데에서 하단으로 내려앉는 이동을 세운다 — 자리는 그대로 바뀌되 한 프레임에 간다. */
   .agent-chat-settle {
     transition: none;
@@ -1592,6 +1661,62 @@
 
 /* ── 잡 카드 ───────────────────────────────────────────────────────────────── */
 
+/* 잡이 태어난 자리에 남는 한 줄. 카드가 아니라 줄인 이유는 카드의 둘째 줄(종류·누구·토큰·
+   도구·소요)을 작업 면이 이미 더 자세히 지고 있었기 때문이다 — 원장에 남을 몫은 "여기서
+   태어났다"와 거기로 가는 문뿐이다. 상자를 두르지 않으므로 읽는 흐름을 끊지 않는다. */
+.agent-chat-job-anchor {
+  appearance: none;
+  cursor: pointer;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  /* 글자만큼만 넓다. 블록으로 두면 파선이 패널을 가로질러 구분선으로 읽히고, 원장을 끊지 않으려
+     상자를 걷어낸 뜻이 사라진다(실측 확인). */
+  width: max-content;
+  max-width: 100%;
+  padding: 2px var(--space-1);
+  background: none;
+  border: none;
+  /* 눌린다는 사실은 파선 밑줄 하나가 진다 — 집계 줄의 꺾쇠와 같은 급의 조용한 어포던스다. */
+  border-bottom: 1px dashed var(--hairline-strong);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-sm);
+  transition: border-color var(--duration-fast), color var(--duration-fast);
+}
+
+.agent-chat-job-anchor:hover {
+  color: var(--text-secondary);
+  border-bottom-color: var(--brass);
+}
+
+.agent-chat-job-anchor:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+.agent-chat-job-anchor.is-open { border-bottom-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline-strong)); }
+.agent-chat-job-anchor.is-fail { border-bottom-color: color-mix(in oklch, var(--coral) 40%, var(--hairline-strong)); }
+.agent-chat-job-anchor.is-stopped { border-bottom-color: color-mix(in oklch, var(--warn) 38%, var(--hairline-strong)); }
+
+.agent-chat-job-anchor.is-done .agent-chat-job-mark { color: var(--positive); }
+.agent-chat-job-anchor.is-fail .agent-chat-job-mark { color: var(--coral); }
+
+.agent-chat-job-anchor .agent-chat-job-title { flex: 0 1 auto; }
+
+.agent-chat-job-anchor .agent-chat-job-outcome { margin-left: 0; }
+.agent-chat-job-anchor.is-open .agent-chat-job-outcome {
+  color: var(--aurora-ink);
+  border-color: color-mix(in oklch, var(--aurora) 40%, var(--hairline));
+}
+.agent-chat-job-anchor.is-done .agent-chat-job-outcome { color: var(--positive); }
+.agent-chat-job-anchor.is-fail .agent-chat-job-outcome { color: var(--coral-ink); }
+.agent-chat-job-anchor.is-stopped .agent-chat-job-outcome { color: var(--warn-ink); }
+
+.agent-chat-job-anchor .agent-chat-job-chev { flex: none; color: var(--text-tertiary); }
+
 .agent-chat-job {
   appearance: none;
   cursor: pointer;
@@ -1708,19 +1833,25 @@
 .agent-chat-strip {
   position: absolute;
   left: 50%;
-  bottom: var(--space-3);
-  transform: translateX(-50%);
+  /* 로그 위가 아니라 컴포저 프레임의 위 모서리에 걸터앉는다. 여기까지 내려오기 전에는 잡이
+     사는 내내 읽는 칼럼 위에 떠 있었고, 스크롤이 바닥에 닿지 않은 동안에는 그 아래로 문장이
+     그대로 지나갔다(실측: 로그 요소 4개와 겹침, 그중 문장 31px). 아래 여백은 스크롤을 바닥까지
+     내렸을 때만 지켜 주는 약속이라, 상주하는 크롬의 자리로는 부족하다.
+     -space-2는 컴포저의 위쪽 여백과 같은 값이고 translateY(50%)가 높이의 절반을 내리므로,
+     줄의 한가운데가 정확히 프레임의 위 테두리에 앉는다. 컴포저는 in-flow라 이 줄이 무엇도
+     밀어내지 않는다. */
+  bottom: calc(-1 * var(--space-2));
+  transform: translate(-50%, 50%);
   z-index: 2;
   appearance: none;
   cursor: pointer;
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  /* 이 줄은 회신·중지 버튼과 같은 행에 산다. 가운데 정렬을 지키면서 그 두 버튼을 침범하지 않으려면
-     양쪽에서 같은 폭을 비워야 한다 — 오른쪽 묶음(회신 40px + 간격 + 중지 ~72px + 가장자리 여백)이
-     그 값이다. 한쪽만 비우면 스트립이 가운데를 잃고, 아무것도 안 비우면 좁은 패널에서 잡 이름이
-     회신 버튼 아래로 들어간다. */
-  max-width: min(var(--agent-chat-measure), calc(100% - 2 * (var(--space-3) + 40px + var(--space-2) + 72px)));
+  /* 컴포저에 걸터앉는 줄이므로 그 프레임과 같은 폭을 상한으로 쓴다. 예전에는 회신·중지 버튼을
+     피하느라 양쪽에서 264px을 비웠는데, 그 두 버튼은 컴포저 안으로 들어간 지 오래고 비워 둔
+     자리만 남아 좁은 패널에서 잡 이름을 먼저 잘랐다. */
+  max-width: min(var(--agent-chat-composer-measure), calc(100% - 2 * var(--space-3)));
   padding: 6px var(--space-3);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
