@@ -318,11 +318,11 @@ describe("agent CLI plugin session store", () => {
         }],
       },
     ]);
-    // orchestration 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰로 평가되고
+    // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰로 평가되고
     // Skill 도구에는 룰 콘텐츠 매처가 없어 `Skill(<name>)` 조건이 항상 거짓이 되기 때문이다.
     expect(hooksJson.hooks.PostToolUseFailure).toBeUndefined();
     expect(hooksJson.hooks.SessionEnd).toBeUndefined();
-    expect(JSON.stringify(hooksJson)).not.toContain("Skill(fleet:orchestration)");
+    expect(JSON.stringify(hooksJson)).not.toContain("Skill(fleet:delegation)");
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(hooksJson.hooks.SubagentStop).toEqual([
       { hooks: [{ type: "command", command: "node", args: ["cli.mjs", "hook", "background-report"] }] },
@@ -349,7 +349,7 @@ describe("agent CLI plugin session store", () => {
     };
     const userPromptSubmit = hooksJson.hooks.UserPromptSubmit?.[0]?.hooks ?? [];
     expect(userPromptSubmit.slice(0, 3).map((hook) => hook.args[2])).toEqual(["capture-session", "turn-start", "auto-name"]);
-    // orchestration 스킬 라우팅 트립와이어는 host 훅 뒤에 선다. 로스터와 핀 문법은
+    // delegation 스킬 라우팅 트립와이어는 host 훅 뒤에 선다. 로스터와 핀 문법은
     // 스킬 완료 뒤 PostToolUse가 공급하고, 여기서는 필요한 요청에서 스킬을 먼저 열게 한다.
     expect(userPromptSubmit[3]?.args).toEqual([
       "${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs",
@@ -366,7 +366,7 @@ describe("agent CLI plugin session store", () => {
 
     const skillsRoot = path.join(plugin.pluginRoot, "skills");
     expect(readdirSync(skillsRoot).sort()).toEqual([
-      "orchestration",
+      "delegation",
       "professional-pushback",
     ]);
     for (const skillName of readdirSync(skillsRoot)) {
