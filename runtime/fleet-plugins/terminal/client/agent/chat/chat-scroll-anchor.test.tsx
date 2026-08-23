@@ -290,6 +290,32 @@ describe("chat log scroll anchor", () => {
     expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
   });
 
+  it("does not let restored history consume a receipt queued during snapshot delivery", async () => {
+    logState = {
+      ...makeLogState(),
+      snapshotting: true,
+      observedTurns: 10,
+      turns: [{ dispatch: { text: "restored" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued during snapshot");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+
+    // 이 receipt보다 앞서 시작한 턴이 snapshot-end에서 드러나도 새 지시를 소비하지 않는다.
+    logState = { ...logState, snapshotting: false, observedTurns: 11 };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")?.textContent).toContain("1");
+  });
+
   it("clears a queued receipt from the monotonic coordinate when capped history shrinks", async () => {
     logState = {
       ...makeLogState(),
