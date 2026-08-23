@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 
-import { setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
+import { getGlobalSettingsStoreState, setGlobalSettingsField, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
 import type { ConsoleState } from "../types.js";
-import { persistFeatureTourSeen } from "./feature-tour.js";
+import { appendSeenFeatureTour } from "./feature-tour.js";
 
 /**
  * 리퀴드 글래스 도입 1회성 환영 모달.
@@ -49,8 +49,18 @@ export function LiquidGlassWelcome({ state }: { readonly state: ConsoleState }) 
     setOpen(false);
     returnFocusRef.current?.focus();
     returnFocusRef.current = null;
-    const base = settings.state?.seenFeatureTours ?? [];
-    void persistFeatureTourSeen(base, GLASS_WELCOME_SEEN_KEY, (next) => setGlobalSettingsField("seenFeatureTours", next));
+    // 닫는 즉시 투어가 재개될 수 있고, 투어 완주가 같은 seenFeatureTours 필드를 저장하면
+    // 스토어는 겹친 같은-필드 저장을 거부한다(false). 거부당한 쪽이 조용히 사라지지 않도록
+    // 매 시도마다 스토어의 최신 seen을 다시 읽어 유한 재시도한다 — 성공했거나 다른 경로가
+    // 이미 키를 실어 줬으면 그 자리에서 끝난다.
+    void (async () => {
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const base = getGlobalSettingsStoreState().state?.seenFeatureTours ?? [];
+        if (base.includes(GLASS_WELCOME_SEEN_KEY)) return;
+        if (await setGlobalSettingsField("seenFeatureTours", appendSeenFeatureTour(base, GLASS_WELCOME_SEEN_KEY))) return;
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    })();
   };
 
   if (!open) return null;
