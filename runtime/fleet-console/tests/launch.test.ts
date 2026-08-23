@@ -390,8 +390,8 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(spec.args[spec.args.indexOf("--resume") + 1]).toBe(resumeSessionId);
     // 이어 붙이는 세션은 id를 고를 수 없다 — 둘을 함께 실으면 자식이 거부한다.
     expect(spec.args).not.toContain("--session-id");
-    // 트리도 그 세션의 자리에 앉는다.
-    expect(path.basename(spec.args[spec.args.indexOf("--plugin-dir") + 1]!)).toBe(resumeSessionId);
+    // 세션 좌표와 무관하게 Fleet 데이터 디렉터리의 공유 트리를 읽는다.
+    expect(spec.args[spec.args.indexOf("--plugin-dir") + 1]).toBe(path.join(root, "harness", "claude"));
 
     await spec.cleanup?.();
   });
@@ -441,11 +441,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     expect(spec.bin).toBe(process.execPath);
     expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
-    // 플러그인 트리는 이 워크스페이스의 세션 자리에 앉고, 그 이름이 곧 못박은 세션 id다.
+    // 세션 id는 자식 좌표만 정하고, 플러그인은 Fleet 데이터 디렉터리의 고정 트리를 공유한다.
     expect(pinnedSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-    expect(path.basename(pluginRoot!)).toBe(pinnedSessionId);
-    expect(path.dirname(pluginRoot!).startsWith(path.join(root, "workspaces") + path.sep)).toBe(true);
-    expect(path.basename(path.dirname(pluginRoot!))).toBe("sessions");
+    expect(pluginRoot).toBe(path.join(root, "harness", "claude"));
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
     // 위임 규율은 시스템 프롬프트가 아니라 이 훅이 싣는다.

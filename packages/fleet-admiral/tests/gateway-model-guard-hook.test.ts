@@ -18,12 +18,12 @@ afterEach(() => {
   }
 });
 
-function run(subcommand: string, payload: unknown): {
+function run(subcommand: string, payload: unknown, args: readonly string[] = []): {
   readonly status: number;
   readonly stderr: string;
   readonly stdout: string;
 } {
-  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand], {
+  const result = spawnSync(process.execPath, [GUARD_SCRIPT, subcommand, ...args], {
     input: JSON.stringify(payload),
     encoding: "utf8",
   });
@@ -37,6 +37,19 @@ function gateWorkflow(toolInput: unknown) {
 function gateAgent(toolInput: unknown) {
   return run("gate-delegation", { tool_name: "Agent", tool_input: toolInput });
 }
+
+describe("gateway model guard — plugin version", () => {
+  it("reports the rendered Fleet plugin version as SessionStart context", () => {
+    const { status, stdout } = run("plugin-version", {}, ["1.72.3"]);
+    expect(status).toBe(0);
+    expect(JSON.parse(stdout)).toEqual({
+      hookSpecificOutput: {
+        hookEventName: "SessionStart",
+        additionalContext: "Fleet plugin version: 1.72.3",
+      },
+    });
+  });
+});
 
 describe("gateway model guard — remind", () => {
   // 이 세션은 Fleet 시스템 프롬프트를 싣지 않는다. 매 턴 주입은 세부 핀 규약 대신

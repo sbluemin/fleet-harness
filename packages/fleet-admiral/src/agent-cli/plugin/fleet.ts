@@ -26,16 +26,17 @@ export interface AssetPluginFile {
 export function buildAssetPluginFiles(
   bundle: AssetPluginBundle,
   options: CreateAgentCliPluginOptions,
+  version: string,
 ): readonly AssetPluginFile[] {
   const files: AssetPluginFile[] = [];
-  files.push({ relativePath: ".claude-plugin/plugin.json", content: toJsonContent(claudeManifest(bundle)) });
+  files.push({ relativePath: ".claude-plugin/plugin.json", content: toJsonContent(claudeManifest(bundle, version)) });
   for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
     files.push({ relativePath: `skills/${asset.relativePath}`, content: asset.content });
   }
   const guardAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
   if (!guardAsset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
   files.push({ relativePath: `hooks/${MODEL_GUARD_SCRIPT_NAME}`, content: guardAsset.content });
-  files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, true)) });
+  files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, version)) });
   for (const file of buildGatewayAgentFiles(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)) {
     files.push({ relativePath: `agents/${file.fileName}`, content: file.content });
   }
@@ -51,20 +52,23 @@ function toJsonContent(value: unknown): string {
  * 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 그 세션이
  * 런치한 스냅숏 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
  */
-function modelGuardHook(subcommand: string): FleetHookExec {
+function modelGuardHook(subcommand: string, ...args: readonly string[]): FleetHookExec {
   return {
     command: process.execPath,
-    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand],
+    args: [`\${CLAUDE_PLUGIN_ROOT}/hooks/${MODEL_GUARD_SCRIPT_NAME}`, subcommand, ...args],
   };
 }
 
-function claudeHooks(options: CreateAgentCliPluginOptions, withModelGuard: boolean): unknown {
+function claudeHooks(options: CreateAgentCliPluginOptions, version: string): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더하고,
   // 위임·병렬 작업을 delegation 스킬과 로스터 조회로 보내는 트립와이어를 그 뒤에 붙인다.
   // 스킬은 의미 정책만 소유하고, 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
-  const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
-    .filter((exec): exec is FleetHookExec => exec !== undefined);
-  if (withModelGuard) userPromptSubmitExecs.push(modelGuardHook("remind"));
+  const userPromptSubmitExecs = [
+    options.captureSessionHookExec,
+    options.turnStartHookExec,
+    options.autoNameHookExec,
+    modelGuardHook("remind"),
+  ].filter((exec): exec is FleetHookExec => exec !== undefined);
   // Stop: 턴 종료 신호. 살아 있는 백그라운드 작업 목록은 같은 payload에 실려 오므로 별도 hook을 걸지 않고
   // 턴 종료 hook이 함께 실어 나른다 — 한 이벤트에 두 hook을 걸면 둘이 병렬로 떠서 턴 종료가 먼저 도착하고,
   // 그 찰나에 세션이 거짓 유휴로 보여 종료 알림과 도착 표시가 튄다.
@@ -79,33 +83,28 @@ function claudeHooks(options: CreateAgentCliPluginOptions, withModelGuard: boole
     ...(inputWaitingExec
       ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
       : []),
-    ...(withModelGuard
-      ? [
-          {
-            // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
-            // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
-            // 보내지 않는다.
-            matcher: "Agent|Workflow",
-            hooks: [claudeCommandHook(modelGuardHook("gate-delegation"))],
-          },
-        ]
-      : []),
+    {
+      // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
+      // 실행 전에 차단하고, 어떻게 핀하는지를 차단 사유로 알린다. 호스트로는 어떤 신호도
+      // 보내지 않는다.
+      matcher: "Agent|Workflow",
+      hooks: [claudeCommandHook(modelGuardHook("gate-delegation"))],
+    },
   ];
   // delegation 스킬 전후에는 훅을 걸지 않는다. Claude Code의 `if`는 퍼미션 룰 문법으로
   // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
   // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
   // 호스트가 스킬의 preflight 지시와 매 턴 리마인더를 읽고 gateway_models로 직접 읽는다.
-  const postToolUse = withModelGuard
-    ? [
-        {
-          // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
-          matcher: "Workflow",
-          hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
-        },
-      ]
-    : [];
+  const postToolUse = [{
+    // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
+    matcher: "Workflow",
+    hooks: [claudeCommandHook(modelGuardHook("workflow-receipt"))],
+  }];
   return {
     hooks: {
+      SessionStart: [{
+        hooks: [claudeCommandHook(modelGuardHook("plugin-version", version))],
+      }],
       ...(userPromptSubmitExecs.length > 0 ? {
         UserPromptSubmit: [{
           hooks: userPromptSubmitExecs.map(claudeCommandHook),
@@ -116,8 +115,8 @@ function claudeHooks(options: CreateAgentCliPluginOptions, withModelGuard: boole
           hooks: stopExecs.map(claudeCommandHook),
         }],
       } : {}),
-      ...(preToolUse.length > 0 ? { PreToolUse: preToolUse } : {}),
-      ...(postToolUse.length > 0 ? { PostToolUse: postToolUse } : {}),
+      PreToolUse: preToolUse,
+      PostToolUse: postToolUse,
       ...(inputWaitingExec ? {
         Notification: [{
           matcher: "permission_prompt|elicitation_dialog",
@@ -147,10 +146,10 @@ function claudeCommandHook(hookExec: FleetHookExec): {
   };
 }
 
-function claudeManifest(bundle: AssetPluginBundle): unknown {
+function claudeManifest(bundle: AssetPluginBundle, version: string): unknown {
   return {
     name: bundle.name,
-    version: "0.0.0",
+    version,
     description: bundle.description,
   };
 }

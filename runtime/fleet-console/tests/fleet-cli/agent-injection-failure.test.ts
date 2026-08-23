@@ -19,8 +19,8 @@ const TEST_PROFILE: AgentCliProfile = {
 describe("agent CLI injection failure cleanup", () => {
   it("releases the MCP token when plugin rendering fails", async () => {
     const dataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-agent-injection-"));
-    // 워크스페이스 루트 자리에 파일이 서 있으면 이 세션의 플러그인 트리를 렌더할 수 없다.
-    closeSync(openSync(path.join(dataDir, "workspaces"), "w"));
+    // 공유 플러그인 부모 자리에 파일이 서 있으면 트리를 렌더할 수 없다.
+    closeSync(openSync(path.join(dataDir, "harness"), "w"));
     const releaseSessionToken = vi.fn();
 
     try {

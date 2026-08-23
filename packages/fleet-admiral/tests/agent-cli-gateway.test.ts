@@ -291,10 +291,10 @@ describe("claude-gateway argument composition", () => {
     vi.spyOn(os, "tmpdir").mockReturnValue(isolatedTmp);
 
     try {
-      // 워크스페이스 루트 자리에 파일을 세워 두면 세션 트리를 렌더할 수 없다.
+      // 공유 플러그인 부모 자리에 파일을 세워 두면 트리를 렌더할 수 없다.
       const blockedDataDir = path.join(root, "blocked-data");
       mkdirSync(blockedDataDir, { recursive: true });
-      writeFileSync(path.join(blockedDataDir, "workspaces"), "not a directory\n");
+      writeFileSync(path.join(blockedDataDir, "harness"), "not a directory\n");
 
       await expect(injectAgentCliProfile(
         {

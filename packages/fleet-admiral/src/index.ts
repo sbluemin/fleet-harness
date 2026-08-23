@@ -117,8 +117,7 @@ export {
 
 export {
   createAgentCliPlugin,
-  pluginSessionsRoot,
-  removePluginSession,
+  fleetClaudePluginRoot,
   type AgentCliPlugin,
   type CreateAgentCliPluginOptions,
 } from "./agent-cli/plugin/index.js";
