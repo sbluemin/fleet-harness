@@ -204,7 +204,6 @@ function fakeClaudeSession(
     readonly resumeOf?: string;
     readonly pluginRoot?: string;
     readonly claudeCodeSystemPrompt?: "on" | "off";
-    readonly release?: () => void;
   } = {},
 ): ClaudeSessionHandle {
   const sessionId = overrides.resumeOf ?? overrides.sessionId ?? "11111111-2222-4333-8444-555555555555";
@@ -229,7 +228,6 @@ function fakeClaudeSession(
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
       },
     },
-    release: overrides.release ?? (() => {}),
   };
 }
 
@@ -350,17 +348,17 @@ describe("AgentChatRegistry — chat-born sessions", () => {
 
   // 스킬·게이트웨이 정체성·정책 훅은 플러그인 한 벌로 실린다. 설정 층까지 같아야 같은 세션을
   // 터미널로 열었을 때와 능력이 갈리지 않는다.
-  it("loads the Fleet plugin, reads the terminal's setting layers, and releases the lease on dispose", async () => {
+  it("loads the Fleet plugin and reads the terminal's setting layers", async () => {
     const home = tempDir("chat-home-");
     const { factory } = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 3 }] },
     ]);
     const registry = new AgentChatRegistry(factory);
-    const cleanup = vi.fn();
+    const resolveClaudeSession = vi.fn(async () => fakeClaudeSession());
     const pluginRoot = "/fleet/workspaces/tmp-workspace/sessions/11111111-2222-4333-8444-555555555555";
     const session = await registry.ensure("op-plugin", () => ({
       ...freshSeedFor(home),
-      resolveClaudeSession: async () => fakeClaudeSession({ release: cleanup }),
+      resolveClaudeSession,
     }));
     session.send("go");
     await drainTurn(registry, "op-plugin");
@@ -370,10 +368,11 @@ describe("AgentChatRegistry — chat-born sessions", () => {
       settingSources: ["user", "project", "local"],
       allowAmbientMcpServers: true,
     }));
-    // 트리는 세션이 접힐 때에야 반납된다 — 그 전에 놓으면 실행 중 세션의 트리가 회수 대상이 된다.
-    expect(cleanup).not.toHaveBeenCalled();
+    // 좌표는 세션당 한 번만 받는다 — 턴마다 다시 받으면 같은 트리를 매번 새로 렌더한다.
+    expect(resolveClaudeSession).toHaveBeenCalledTimes(1);
+    // dispose는 트리를 건드리지 않는다 — 트리는 이 세션의 것이고 런치가 접혀도 남는다.
     await registry.disposeAll();
-    expect(cleanup).toHaveBeenCalledTimes(1);
+    expect(resolveClaudeSession).toHaveBeenCalledTimes(1);
   });
 
   // Console 자신이 Fleet 터미널에서 떴다면 그 세션 id를 상속하고 있다. 자식에게 따라가면

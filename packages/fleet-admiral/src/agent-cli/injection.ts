@@ -147,7 +147,6 @@ export async function injectAgentCliProfile(
       gatewayEffortExposure: options.gatewayEffortExposure,
     });
     const cleanup = createOnceCleanup(() => {
-      session.release();
       for (const tempCleanup of tempCleanups) {
         tempCleanup();
       }
