@@ -70,6 +70,10 @@ export class AnthropicMessagesGateway {
     const canonical = translateAnthropicRequest(request, {
       ...(options.model ? { model: options.model } : {}),
       ...(options.catalog ? { catalog: options.catalog } : {}),
+      // 하네스 id 문법으로 카탈로그를 찾는 방법도 함께 넘긴다. 옵션 타입이 상속만 하고
+      // 전달하지 않으면, model override 없이 부르는 호출자는 자기 문법이 조용히 무시된 채
+      // DEFAULT_CODEX_MODEL로 떨어진다 — 라우터는 override를 늘 보내서 가려질 뿐이다.
+      ...(options.findModel ? { findModel: options.findModel } : {}),
       ...(options.serviceTier ? { serviceTier: options.serviceTier } : {}),
       ...(options.reasoningEfforts ? { reasoningEfforts: options.reasoningEfforts } : {}),
       ...(this.adapter.capabilities?.nativeTools

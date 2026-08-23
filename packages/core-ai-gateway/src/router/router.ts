@@ -32,7 +32,6 @@ import {
   GATEWAY_MODELS,
   upstreamModelId,
 } from "../models.js";
-import { GATEWAY_MODEL_ALIAS_PREFIX } from "../downstream/harness/claude-code/discovery.js";
 import type { GatewayModel } from "../models.js";
 import { DEFAULT_XAI_ENDPOINT_PREFERENCE, resolveAiGatewaySelection } from "../settings/index.js";
 import type { AiGatewayStoredSettings, XaiEndpointPreference } from "../settings/index.js";
@@ -352,7 +351,7 @@ export function createAiGatewayRouter(deps: AiGatewayRouteDeps): AiGatewayRouter
     const modelOverride = deps.readModelOverride?.();
     const requested = modelOverride ?? body.model;
     const target = harness.findModel(requested, GATEWAY_MODELS);
-    if (!target && requested.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) {
+    if (!target && !harness.relaysUnmatchedModel(requested)) {
       writeAnthropicError(res, 400, "invalid_request_error", `Unknown AI gateway model: ${requested}`);
       return true;
     }

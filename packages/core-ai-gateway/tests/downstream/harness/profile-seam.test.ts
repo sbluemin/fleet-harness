@@ -34,6 +34,8 @@ const bareHarness: GatewayHarnessProfile = {
   // Any non-empty credential: a per-model API key the client's own config file carries.
   acceptsCredential: (credential) => credential.length > 0,
   findModel: (id, catalog) => findGatewayModel(id, catalog),
+  // 이 클라이언트는 네이티브 Anthropic 모델을 부르지 않는다. 카탈로그에 없는 id는 오타다.
+  relaysUnmatchedModel: () => false,
   buildModelList: (models: readonly GatewayModel[]) => ({
     models: models.map((model) => ({ id: model.id, context_window: model.contextWindow ?? null })),
   }),
@@ -83,6 +85,41 @@ describe("gateway harness profile seam", () => {
     expect(payload.models?.every((entry) => !entry.id.startsWith("claude-gateway--"))).toBe(true);
   });
 
+  it("refuses an unmatched id instead of relaying it to Anthropic", async () => {
+    // 라우터가 Claude 접두를 직접 보던 시절에는, 접두 없는 오타 id가 네이티브 패스스루로
+    // 떨어져 이 클라이언트의 자격증명이 api.anthropic.com으로 나갔다. 판정은 하네스 것이다.
+    const router = createAiGatewayRouter({
+      originator: "test",
+      harness: bareHarness,
+      readAuth: () => null,
+      readCursorToken: () => null,
+    });
+
+    const res = response();
+    await router.handle(ctx({ res, token: "grok-local-key", model: "codex--typo-not-a-model" }));
+    expect(res.status).toBe(400);
+    expect(res.body).toContain("Unknown AI gateway model");
+  });
+
+  it("forwards the harness model resolver into translation", async () => {
+    // `AnthropicGatewayCallOptions`가 `findModel`을 상속만 하고 넘기지 않으면, model override
+    // 없이 부르는 호출자는 자기 문법이 무시된 채 기본 모델로 떨어진다.
+    let seen: string | undefined;
+    const adapter: AiGatewayAdapter = {
+      async stream(request): Promise<AdapterResponse> {
+        seen = request.model;
+        return emptyAdapterResponse();
+      },
+    };
+
+    await new AnthropicMessagesGateway(adapter).stream(
+      { model: "claude-gateway--codex--gpt-5.6-luna", max_tokens: 16, messages: [{ role: "user", content: "hi" }] } as never,
+      { apiKey: "k", findModel: claudeCodeHarnessProfile.findModel },
+    );
+
+    expect(seen).toBe("gpt-5.6-luna");
+  });
+
   it("declines a probe path the client never dials", async () => {
     const router = createAiGatewayRouter({
       originator: "test",
@@ -124,6 +161,20 @@ describe("gateway harness profile seam", () => {
     expect(bareHarness.usageProjection).toBeUndefined();
   });
 });
+
+function emptyAdapterResponse(): AdapterResponse {
+  return {
+    ok: true,
+    status: 200,
+    headers: new Headers({ "content-type": "text/event-stream" }),
+    events: (async function* () {
+      yield {
+        type: "response.completed",
+        response: { id: "resp_stub", model: "gpt-5.6-luna", usage: { input_tokens: 1, output_tokens: 1 } },
+      } as const;
+    })(),
+  };
+}
 
 function stubGateway(): AnthropicMessagesGateway {
   const adapter: AiGatewayAdapter = {

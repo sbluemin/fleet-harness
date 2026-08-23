@@ -35,6 +35,16 @@ export interface GatewayHarnessProfile {
   readonly acceptsCredential: (credential: string) => boolean;
   /** The catalog entry a caller's model string names, in this client's id grammar. */
   readonly findModel: GatewayModelLookup;
+  /**
+   * Whether an id the catalog did not match may still be relayed to the native Anthropic
+   * passthrough, rather than refused as a malformed gateway id.
+   *
+   * The router cannot decide this: what a legitimate native model looks like is part of the
+   * client's own id grammar. Answering `true` for an id this client would never send relays
+   * the caller's credential — which is not an Anthropic credential for every client — to
+   * Anthropic instead of returning an unknown-model error.
+   */
+  readonly relaysUnmatchedModel: (id: string) => boolean;
   /** The discovery payload this client reads, over the models the user exposed. */
   readonly buildModelList: (models: readonly GatewayModel[]) => unknown;
   /**

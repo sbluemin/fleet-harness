@@ -9,7 +9,11 @@ import {
   projectClaudeContextInputTokens,
   stripClaudeUsageLimitDirectives,
 } from "./context.js";
-import { buildAnthropicModelList, findClaudeGatewayModel } from "./discovery.js";
+import {
+  GATEWAY_MODEL_ALIAS_PREFIX,
+  buildAnthropicModelList,
+  findClaudeGatewayModel,
+} from "./discovery.js";
 
 /** Claude Code가 claude.ai 구독으로 붙을 때 보내는 자격증명 접두. OAuth 토큰도 이 접두를 쓴다. */
 const ANTHROPIC_CREDENTIAL_PREFIX = "sk-ant-";
@@ -29,6 +33,9 @@ export const claudeCodeHarnessProfile: GatewayHarnessProfile = {
   probePaths: ["/api/hello"],
   acceptsCredential: (credential) => credential.startsWith(ANTHROPIC_CREDENTIAL_PREFIX),
   findModel: findClaudeGatewayModel,
+  // 접두가 붙은 id는 게이트웨이를 지목한 것이므로 카탈로그에 없으면 오타이고, 접두 없는 id는
+  // Claude Code가 자기 네이티브 모델을 부르는 표기다. 라우터가 갖고 있던 판정 그대로다.
+  relaysUnmatchedModel: (id) => !id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX),
   buildModelList: (models: readonly GatewayModel[]) => buildAnthropicModelList(models),
   sanitizeRequest: (request: AnthropicMessagesRequest) => {
     // 하네스가 자기 Anthropic 계정의 한도 임박을 근거로 대화에 끼워 넣는 마무리 지시는 여기서 끊는다.
