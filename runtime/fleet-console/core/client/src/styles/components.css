@@ -11498,8 +11498,9 @@ body[data-codex-side="true"] .command-card {
 }
 
 /* 덱은 넓다 — 본문은 읽기 measure로 캡하고 중앙 정렬한다. 전폭이 필요한 유틸 표면
-   (스티키 결정 독)만 예외다. */
-.codex-reading-sheet-read > .document > :not(.queue-decision-dock) {
+   (스티키 결정 독)만 예외다. 리더는 싱글톤 .codex-reader-host 한 겹을 끼고
+   relocate되므로 그 호스트를 경로에 포함해야 실제 문서에 닿는다. */
+.codex-reading-sheet-read > .codex-reader-host > .document > :not(.queue-decision-dock) {
   max-inline-size: 72ch;
   margin-inline: auto;
 }
