@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useState, type ReactNode } from "react";
 
 import type { DiffFileEntry } from "../server/types.js";
 
@@ -15,6 +15,10 @@ interface DiffTreeViewProps {
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly collapsedFolders?: ReadonlySet<string>;
   readonly onToggleFolder?: (path: string) => void;
+  /** 스테이징처럼 행 단위 동사가 필요한 호스트가 잎 행 오른쪽에 끼워 넣는 액션 슬롯. */
+  readonly renderActions?: (entry: DiffFileEntry) => ReactNode;
+  /** 충돌 항목의 칩 라벨 — 리스트 행과 같은 표식을 잎에도 세운다(충돌 U가 untracked로 보이면 안 된다). */
+  readonly conflictLabel?: string;
 }
 
 interface TreeCommonProps {
@@ -22,6 +26,8 @@ interface TreeCommonProps {
   readonly onSelect: (entry: DiffFileEntry) => void;
   readonly collapsedFolders?: ReadonlySet<string>;
   readonly onToggleFolder?: (path: string) => void;
+  readonly renderActions?: (entry: DiffFileEntry) => ReactNode;
+  readonly conflictLabel?: string;
 }
 
 interface TreeChildrenProps extends TreeCommonProps {
@@ -67,7 +73,7 @@ export function buildDiffTree(files: readonly DiffFileEntry[]): TreeNode {
 
 // ─── DiffTreeView (export) ────────────────────────────────────────────────────
 
-export function DiffTreeView({ files, selectedPath, onSelect, collapsedFolders, onToggleFolder }: DiffTreeViewProps) {
+export function DiffTreeView({ files, selectedPath, onSelect, collapsedFolders, onToggleFolder, renderActions, conflictLabel }: DiffTreeViewProps) {
   const tree = buildDiffTree(files);
   return (
     <DiffTreeChildren
@@ -78,13 +84,15 @@ export function DiffTreeView({ files, selectedPath, onSelect, collapsedFolders, 
       onSelect={onSelect}
       collapsedFolders={collapsedFolders}
       onToggleFolder={onToggleFolder}
+      renderActions={renderActions}
+      conflictLabel={conflictLabel}
     />
   );
 }
 
 // ─── 내부 컴포넌트 ─────────────────────────────────────────────────────────────
 
-function DiffTreeChildren({ node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder }: TreeChildrenProps) {
+function DiffTreeChildren({ node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder, renderActions, conflictLabel }: TreeChildrenProps) {
   return (
     <>
       {Object.entries(node.dirs).map(([key, child]) => (
@@ -98,6 +106,8 @@ function DiffTreeChildren({ node, depth, parentPath, selectedPath, onSelect, col
           onSelect={onSelect}
           collapsedFolders={collapsedFolders}
           onToggleFolder={onToggleFolder}
+          renderActions={renderActions}
+          conflictLabel={conflictLabel}
         />
       ))}
       {node.files.map((f) => (
@@ -107,13 +117,15 @@ function DiffTreeChildren({ node, depth, parentPath, selectedPath, onSelect, col
           depth={depth}
           selectedPath={selectedPath}
           onSelect={onSelect}
+          renderActions={renderActions}
+          conflictLabel={conflictLabel}
         />
       ))}
     </>
   );
 }
 
-function DiffTreeFolder({ dirKey, node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder }: TreeFolderProps) {
+function DiffTreeFolder({ dirKey, node, depth, parentPath, selectedPath, onSelect, collapsedFolders, onToggleFolder, renderActions, conflictLabel }: TreeFolderProps) {
   // VS Code 스타일: 자식 디렉터리 하나 + 파일 없음인 체인을 압축해 "a/b" 한 노드로 표시
   let label = dirKey;
   let resolvedNode = node;
@@ -158,22 +170,24 @@ function DiffTreeFolder({ dirKey, node, depth, parentPath, selectedPath, onSelec
           onSelect={onSelect}
           collapsedFolders={collapsedFolders}
           onToggleFolder={onToggleFolder}
+          renderActions={renderActions}
+          conflictLabel={conflictLabel}
         />
       )}
     </div>
   );
 }
 
-function DiffTreeLeaf({ entry, depth, selectedPath, onSelect }: TreeLeafProps) {
+function DiffTreeLeaf({ entry, depth, selectedPath, onSelect, renderActions, conflictLabel }: TreeLeafProps) {
   const isSelected = entry.path === selectedPath;
   const handleClick = useCallback(() => onSelect(entry), [entry, onSelect]);
   const indent = depth * 16 + 12;
   const name = entry.path.split("/").pop() ?? entry.path;
 
-  return (
+  const main = (
     <button
       type="button"
-      className={`repository-file-row${isSelected ? " is-cur" : ""}`}
+      className={renderActions ? "repository-staging-row-main" : `repository-file-row${isSelected ? " is-cur" : ""}`}
       style={{ paddingLeft: `${indent}px` }}
       title={entry.path}
       onClick={handleClick}
@@ -186,9 +200,18 @@ function DiffTreeLeaf({ entry, depth, selectedPath, onSelect }: TreeLeafProps) {
         <span className="repository-file-fn">{name}</span>
       </span>
       <span className="repository-nums">
+        {entry.conflicted && conflictLabel && <span className="repository-conflict-chip">{conflictLabel}</span>}
         {entry.additions > 0 && <span className="repository-additions">+{entry.additions}</span>}
         {entry.deletions > 0 && <span className="repository-deletions">−{entry.deletions}</span>}
       </span>
     </button>
+  );
+  if (!renderActions) return main;
+  // 스테이징 잎은 리스트 행과 같은 래퍼 문법을 쓴다 — 행 hover가 액션 라벨을 여는 축이 같아야 한다.
+  return (
+    <div className={`repository-file-row repository-staging-row${isSelected ? " is-cur" : ""}`}>
+      {main}
+      <span className="repository-stage-actions">{renderActions(entry)}</span>
+    </div>
   );
 }

@@ -16,10 +16,36 @@ const STASH_HARDENING_ARGS = [
   "-c", `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
 ] as const;
 
-export type StashAction = "save" | "apply" | "pop" | "drop";
+export type StashAction = "save" | "apply" | "pop" | "drop" | "show";
 
 export function readStashAction(value: unknown): StashAction | null {
-  return value === "save" || value === "apply" || value === "pop" || value === "drop" ? value : null;
+  return value === "save" || value === "apply" || value === "pop" || value === "drop" || value === "show" ? value : null;
+}
+
+const STASH_SHOW_STATUS_RE = /^[A-Z]\d{0,3}$/;
+const MAX_STASH_SHOW_FILES = 500;
+
+/**
+ * `--name-status -z`의 NUL 구분 레코드를 카드가 그릴 상태·경로로 줄인다.
+ * 줄 지향 출력은 core.quotePath가 비ASCII(한글 포함)·탭·개행 경로를 C-quote로 감싸
+ * 실제 파일명이 깨져 보인다 — NUL 레코드는 경로를 원문 그대로 나른다.
+ * 레코드 문법: `STATUS NUL path NUL`, 리네임/복사는 `R### NUL old NUL new NUL`.
+ */
+export function parseStashShowRecords(stdout: string): { readonly status: string; readonly path: string }[] {
+  const tokens = stdout.split("\0");
+  const files: { status: string; path: string }[] = [];
+  let index = 0;
+  while (index < tokens.length) {
+    const rawStatus = tokens[index]!.trim();
+    if (!STASH_SHOW_STATUS_RE.test(rawStatus)) { index += 1; continue; }
+    const status = rawStatus[0]!;
+    const pathCount = status === "R" || status === "C" ? 2 : 1;
+    const path = tokens[index + pathCount];
+    if (path === undefined || path === "") { index += 1; continue; }
+    files.push({ status, path });
+    index += 1 + pathCount;
+  }
+  return files;
 }
 
 function classifyStashError(stderr: string): "stash_conflict" | "nothing_to_stash" | null {
@@ -108,6 +134,20 @@ export async function handleRepositoryStash(
     }
     if (!resolved.toLowerCase().startsWith((sha as string).toLowerCase())) {
       ctx.host.http.writeJson(res, 409, { error: "stash_moved" });
+      return;
+    }
+    if (action === "show") {
+      // 카드는 "치워 둔 것"을 보여 준다 — untracked만 담긴 스태시가 부모 diff로는 0개 파일로
+      // 보이는 함정이 이 액션의 존재 이유이므로, --include-untracked가 빠지면 안 된다.
+      const shown = await runGit([
+        ...STASH_HARDENING_ARGS,
+        "stash", "show", "--include-untracked", "--name-status", "-z", name as string,
+      ], { cwd: gitCwd });
+      const files = parseStashShowRecords(shown.stdout);
+      ctx.host.http.writeJson(res, 200, {
+        files: files.slice(0, MAX_STASH_SHOW_FILES),
+        ...(files.length > MAX_STASH_SHOW_FILES ? { truncated: true } : {}),
+      });
       return;
     }
     await runGit([...STASH_HARDENING_ARGS, "stash", action, name as string], { cwd: gitCwd });

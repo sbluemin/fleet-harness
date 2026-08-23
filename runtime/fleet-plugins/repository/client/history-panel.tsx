@@ -15,6 +15,7 @@ import { HunkView } from "./hunk-view.js";
 import { getT, localeTag, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
 import { formatCommitTime, refBadges, shortRefName, splitCommitSubject, type RefBadge, type RefBadgeKind } from "./repository-parsers.js";
 import { DIFF_DIVIDER_WIDTH, HISTORY_DETAIL_PANE_MIN_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT, buildHistoryStackTemplate, buildInspectorChangesGridTemplate, buildInspectorDetailsGridTemplate, clampSplitPaneSize, installPointerDragLifecycle } from "./rail-layout.js";
+import { StashInspector } from "./stash-inspector.js";
 import { buildWorkspaceDockTemplate, clampWorkspaceDockHeight, normalizeWorkspaceDockHeight, readWorkspaceDockHeight, saveWorkspaceDockHeight } from "./workspace-layout.js";
 import { consumeRepositorySearchTarget, useRepositorySearchTarget } from "./repository-state.js";
 
@@ -308,16 +309,19 @@ interface HistoryPanelProps {
   readonly workspaceMainVisible?: boolean;
   readonly compareRequest?: { readonly base: string; readonly head: string; readonly baseLabel: string; readonly headLabel: string; readonly seq: number } | null;
   readonly inspectRequest?: { readonly fullHash: string; readonly seq: number } | null;
+  readonly stashRequest?: { readonly name: string; readonly sha: string; readonly subject: string; readonly seq: number } | null;
+  readonly onStashAction?: (action: "apply" | "pop" | "drop", name: string, sha: string) => Promise<boolean>;
+  readonly onReturnToHistory?: () => void;
   readonly onInspectorOpenChange?: (open: boolean) => void;
   readonly onClearRef?: () => void;
   readonly onWip?: () => void;
 }
 
-export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, compareRequest, inspectRequest, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
-  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
+export function HistoryPanel({ ctx, repoRel, cacheScope = `${ctx.theaterId ?? ""}:${repoRel}`, externalRefreshToken = 0, active = true, refFilter = null, wipFiles, workspace = false, workspaceMain, workspaceMainVisible = false, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: HistoryPanelProps) {
+  return <HistoryPanelBody key={cacheScope} ctx={ctx} repoRel={repoRel} cacheScope={cacheScope} externalRefreshToken={externalRefreshToken} active={active} refFilter={refFilter} wipFiles={wipFiles} workspace={workspace} workspaceMain={workspaceMain} workspaceMainVisible={workspaceMainVisible} compareRequest={compareRequest} inspectRequest={inspectRequest} stashRequest={stashRequest} onStashAction={onStashAction} onReturnToHistory={onReturnToHistory} onInspectorOpenChange={onInspectorOpenChange} onClearRef={onClearRef} onWip={onWip} />;
 }
 
-function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, compareRequest, inspectRequest, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "compareRequest" | "inspectRequest" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
+function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, active, refFilter, wipFiles, workspace, workspaceMain, workspaceMainVisible, compareRequest, inspectRequest, stashRequest, onStashAction, onReturnToHistory, onInspectorOpenChange, onClearRef, onWip }: Required<Pick<HistoryPanelProps, "active" | "cacheScope" | "ctx" | "externalRefreshToken" | "refFilter" | "repoRel" | "wipFiles" | "workspace" | "workspaceMainVisible">> & Pick<HistoryPanelProps, "workspaceMain" | "compareRequest" | "inspectRequest" | "stashRequest" | "onStashAction" | "onReturnToHistory" | "onInspectorOpenChange" | "onClearRef" | "onWip">) {
   const t = getT(ctx.language);
   const [order, setOrder] = useState<LogOrder>(readHistoryOrder);
   // 정렬 축이 바뀌면 커밋 순서와 그래프 레이아웃이 통째로 달라지므로 캐시 슬롯도 분리한다.
@@ -329,6 +333,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const [target, setTarget] = useState<CommitTarget | null>(initialRestore?.target ?? null);
   const [pin, setPin] = useState<CompareAnchor | null>(null);
   const [comparePair, setComparePair] = useState<ComparePair | null>(null);
+  const [stashTarget, setStashTarget] = useState<{ readonly name: string; readonly sha: string; readonly subject: string } | null>(null);
   const [announce, setAnnounce] = useState("");
   const [filterText, setFilterText] = useState(initialRestore?.filterText ?? "");
   const [refreshToken, setRefreshToken] = useState(0);
@@ -358,6 +363,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   const dockHeightRef = useRef(dockHeight);
   const handledCompareRequestSeqRef = useRef(0);
   const handledInspectRequestSeqRef = useRef(0);
+  const handledStashRequestSeqRef = useRef(0);
   const generation = useMemo<HistoryLoadGeneration>(() => ({ theaterId: ctx.theaterId, repoRel, refFilter, order, refreshToken: refreshToken + externalRefreshToken }), [ctx.theaterId, externalRefreshToken, order, refFilter, refreshToken, repoRel]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
@@ -368,6 +374,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     setPin(anchor);
     setTarget(null);
     setComparePair(null);
+    setStashTarget(null);
     setAnnounce(t("repository.compare.announcePinned", { short: anchor.shortHash }));
   }, [t]);
   const unpin = useCallback(() => {
@@ -383,12 +390,14 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     setComparePair(pair);
     setPin(null);
     setTarget(null);
+    setStashTarget(null);
     setAnnounce(t("repository.compare.announceResult", { base: pair.baseLabel, head: pair.headLabel }));
   }, [commitIndexes, state, t]);
   const onRowActivate = useCallback((entry: LogCommitEntry, shiftKey: boolean) => {
     if (!shiftKey) {
       setTarget({ fullHash: entry.fullHash, entry });
       setComparePair(null);
+      setStashTarget(null);
       return;
     }
     if (pin) {
@@ -445,6 +454,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     handledCompareRequestSeqRef.current = compareRequest.seq;
     setPin(null);
     setTarget(null);
+    setStashTarget(null);
     setComparePair({ base: compareRequest.base, head: compareRequest.head, baseLabel: compareRequest.baseLabel, headLabel: compareRequest.headLabel });
     setAnnounce(t("repository.compare.announceResult", { base: compareRequest.baseLabel, head: compareRequest.headLabel }));
   }, [compareRequest, t]);
@@ -453,8 +463,17 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     handledInspectRequestSeqRef.current = inspectRequest.seq;
     setPin(null);
     setComparePair(null);
+    setStashTarget(null);
     setTarget({ fullHash: inspectRequest.fullHash });
   }, [inspectRequest]);
+  useEffect(() => {
+    if (!stashRequest || stashRequest.seq === handledStashRequestSeqRef.current) return;
+    handledStashRequestSeqRef.current = stashRequest.seq;
+    setPin(null);
+    setComparePair(null);
+    setTarget(null);
+    setStashTarget({ name: stashRequest.name, sha: stashRequest.sha, subject: stashRequest.subject });
+  }, [stashRequest]);
   useEffect(() => {
     if (
       !searchTarget
@@ -466,6 +485,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     if (!entry) return;
     setFilterText("");
     setComparePair(null);
+    setStashTarget(null);
     setTarget({ fullHash: entry.fullHash, entry });
     consumeRepositorySearchTarget(searchTarget);
   }, [ctx.theaterId, repoRel, searchTarget, state]);
@@ -595,7 +615,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   }, [showWip, updateCommitViewport, visible.length, workspaceMainVisible]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
-    if (!workspace || (target === null && comparePair === null)) return;
+    // 스태시 카드도 같은 독 그리드를 쓴다 — 대상에서 빠지면 축소된 창에서 저장된 높이가 컨테이너를 넘는다.
+    if (!workspace || (target === null && comparePair === null && stashTarget === null)) return;
     const root = rootRef.current;
     if (!root) return;
     const normalize = () => {
@@ -606,7 +627,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     const observer = new ResizeObserver(normalize);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [comparePair, workspace, target]);
+  }, [comparePair, stashTarget, workspace, target]);
   const handleDivider = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const root = rootRef.current;
@@ -690,17 +711,34 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     stateCacheKeyRef.current = null;
     setRefreshToken((value) => value + 1);
   }, [historyCacheKey]);
-  const detailOpen = target !== null || comparePair !== null;
+  const detailOpen = target !== null || comparePair !== null || stashTarget !== null;
+  // 변경 뷰에서는 독이 화면을 따라오지 않는다 — 한 줄 칩으로 접혀 맥락만 남긴다(M1).
+  const dockCollapsed = workspace && workspaceMainVisible && detailOpen;
   const stackTemplate = detailOpen
-    ? workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
+    ? dockCollapsed ? "minmax(0, 1fr) auto"
+      : workspace ? buildWorkspaceDockTemplate(dockHeight) : buildHistoryStackTemplate(logHeight)
     : undefined;
-  return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={(event) => { if (event.key !== "Escape" || target) return; /* 검사기가 열려 있으면 Esc는 검사기 닫기 한 겹만 벗긴다 — 같은 키로 핀까지 잃지 않게 */ if (pin) { unpin(); event.stopPropagation(); event.preventDefault(); } else if (comparePair) { setComparePair(null); event.stopPropagation(); event.preventDefault(); } }}>
+  const closeDetail = () => { setTarget(null); setComparePair(null); setStashTarget(null); };
+  const peekKindLabel = stashTarget ? t("repository.dock.peekStash") : comparePair ? t("repository.dock.peekCompare") : t("repository.dock.peekCommit");
+  const peekBodyLabel = stashTarget ? stashTarget.subject
+    : comparePair ? `${comparePair.baseLabel} ↔ ${comparePair.headLabel}`
+    : target ? (target.entry?.subject ?? target.fullHash.slice(0, 9))
+    : "";
+  return <div ref={rootRef} className={`history-root${workspace ? " repository-ws-history" : ""}${isDragging ? " is-dragging" : ""}`} style={stackTemplate ? { gridTemplateRows: stackTemplate } : undefined} onKeyDown={(event) => { if (event.key !== "Escape" || target || stashTarget) return; /* 검사기가 열려 있으면 Esc는 검사기 닫기 한 겹만 벗긴다 — 같은 키로 핀까지 잃지 않게 */ if (pin) { unpin(); event.stopPropagation(); event.preventDefault(); } else if (comparePair) { setComparePair(null); event.stopPropagation(); event.preventDefault(); } }}>
     <div className="history-list-pane" hidden={workspace && workspaceMainVisible}>
       <div className="history-toolbar"><div className="history-filter"><input className="history-filter-input" placeholder={t("repository.common.filterPlaceholder")} value={filterText} onChange={(event) => setFilterText(event.target.value)} />{filterText && <button type="button" className="history-filter-clear" onClick={() => setFilterText("")}>✕</button>}</div>{pin && <button type="button" className="repository-ref-chip repository-pin-chip" title={t("repository.compare.pinnedHint")} onClick={unpin}>⇆ {t("repository.compare.pinnedChip", { short: pin.shortHash })} ✕</button>}{refFilter && <button type="button" className="repository-ref-chip" title={refFilter} onClick={onClearRef}>⎇ {shortRefName(refFilter)} ✕</button>}{state.kind === "ok" && <><span className="history-count" title={t("repository.history.countLegend")}>{filterText ? `${visible.length}/${state.commits.length}` : state.commits.length}</span><button type="button" className="history-order-toggle" aria-label={t("repository.history.orderToggle")} title={t(order === "topo" ? "repository.history.orderTopoHint" : "repository.history.orderDateHint")} onClick={toggleOrder}><OrderIcon order={order} />{t(order === "topo" ? "repository.history.orderTopo" : "repository.history.orderDate")}</button><button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.history.refresh")}</button></>}<span className="repository-sr-only" role="status">{announce}</span></div>
       <div ref={listRef} className="history-list" onScroll={updateCommitViewport}>{showWip && <button type="button" className="repository-wip-row" onClick={onWip}>{t("repository.history.uncommitted")} <span>{t(wip.files === 1 ? "repository.history.wipStats_one" : "repository.history.wipStats_other", { count: wip.files, additions: wip.additions, deletions: wip.deletions })}</span></button>}{state.kind === "loading" && <div className="history-empty">{t("repository.common.loading")}</div>}{state.kind === "error" && <div className="history-error">{readErrorSentence(t, state.message)}<button type="button" className="repository-refresh-btn" onClick={refreshHistory}>{t("repository.common.retry")}</button></div>}{state.kind === "ok" && state.commits.length === 0 && <div className="history-empty">{t("repository.history.empty")}</div>}{state.kind === "ok" && state.commits.length > 0 && visible.length === 0 && <div className="history-empty">{t("repository.common.noMatchingItems")}</div>}{state.kind === "ok" && layout && visible.length > 0 && <div ref={commitWindowRef} className="history-commit-window"><div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.topSpacerHeight }} />{windowRows.map(({ entry, graphNode }) => <CommitRow key={entry.fullHash} rowRef={(node) => { if (node) rowRefs.current.set(entry.fullHash, node); else rowRefs.current.delete(entry.fullHash); }} entry={entry} checkouts={state.checkouts} selected={target?.fullHash === entry.fullHash} picked={pin?.fullHash === entry.fullHash || comparePair?.base === entry.fullHash || comparePair?.head === entry.fullHash} pin={pin} graphNode={graphNode} onRowActivate={onRowActivate} onCompareAction={onCompareAction} locale={ctx.language} />)}<div className="history-window-spacer" aria-hidden="true" style={{ height: virtualWindow.bottomSpacerHeight }} /></div>}{state.kind === "ok" && state.commits.length > 0 && <div className="history-pagination">{state.hasMore ? loadingMore ? <span>{t("repository.history.loadingMore")}</span> : <button type="button" className="repository-refresh-btn" onClick={loadMore}>{t("repository.history.loadMore")}</button> : <><span>{t("repository.history.end")}</span>{state.truncated && <span>{t("repository.history.capped")}</span>}</>}{loadMoreError && <span className="history-pagination-error">{readErrorSentence(t, loadMoreError)}</span>}</div>}</div>
     </div>
     {workspaceMain !== undefined && <div className="repository-ws-main" hidden={!workspaceMainVisible}>{workspaceMain}</div>}
-    {detailOpen && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane">{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={(next) => { setComparePair(null); setTarget(next); }} onPinCompare={() => setPinFrom({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={() => setTarget(null)} /> : null}</div></>}
+    {detailOpen && dockCollapsed && <div className="repository-ws-peek">
+      <button type="button" className="repository-ws-peek-main" title={t("repository.dock.peekReturn")} onClick={onReturnToHistory}>
+        <span className="repository-ws-peek-kind">{peekKindLabel}</span>
+        <span className="repository-ws-peek-label">{peekBodyLabel}</span>
+        <span className="repository-ws-peek-return" aria-hidden="true">↩ {t("repository.dock.peekReturn")}</span>
+      </button>
+      <button type="button" className="repository-ws-peek-close" aria-label={t("repository.dock.peekClose")} title={t("repository.dock.peekClose")} onClick={closeDetail}>✕</button>
+    </div>}
+    {detailOpen && !dockCollapsed && <><div className="history-divider history-divider--horizontal" role="separator" aria-orientation="horizontal" aria-label={workspace ? t("repository.history.resizeDock") : t("repository.history.resizeLog")} onPointerDown={handleDivider} /><div className="history-detail-pane">{comparePair ? <CompareInspector ctx={ctx} repoRel={repoRel} pair={comparePair} onSwap={() => setComparePair({ base: comparePair.head, head: comparePair.base, baseLabel: comparePair.headLabel, headLabel: comparePair.baseLabel })} onClose={() => setComparePair(null)} /> : target ? <CommitInspector ctx={ctx} repoRel={repoRel} target={target} workspace={workspace} onSelectCommit={(next) => { setComparePair(null); setTarget(next); }} onPinCompare={() => setPinFrom({ fullHash: target.fullHash, shortHash: target.entry?.shortHash ?? target.fullHash.slice(0, 9) })} onClose={() => setTarget(null)} /> : stashTarget ? <StashInspector ctx={ctx} repoRel={repoRel} stash={stashTarget} workspace={workspace} onAction={onStashAction} onClose={() => setStashTarget(null)} /> : null}</div></>}
   </div>;
 }
 function readLogPaneHeight(): number { return readSize(PREFS_LOG_PANE_HEIGHT, LOG_PANE_DEFAULT_HEIGHT, HISTORY_LOG_PANE_MIN_HEIGHT); }

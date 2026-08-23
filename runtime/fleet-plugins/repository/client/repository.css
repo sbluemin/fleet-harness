@@ -2055,3 +2055,163 @@
 
 /* 스태시 컨텍스트 메뉴의 파괴 동사 — 무장 시에만 coral. */
 .repository-context-menu-danger.is-armed { color: var(--coral-ink); }
+
+/* ─── 동선 정비(P1+P2): 보던 커밋 칩 · 스태시 카드 · 스테이징 트리/라벨 ───────── */
+
+/* 변경 뷰에서 커밋/비교/스태시 상세는 한 줄 칩으로 접힌다(M1) — 독은 화면을 따라오지 않는다. */
+.repository-ws-history > .repository-ws-peek {
+  grid-row: 2;
+  grid-column: 1;
+}
+.repository-ws-peek {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-top: 1px solid var(--surface-rim);
+  background: color-mix(in oklab, var(--surface-glass) 70%, transparent);
+}
+.repository-ws-peek-main {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: var(--t-sm);
+  cursor: pointer;
+  text-align: left;
+}
+.repository-ws-peek-main:hover { border-color: var(--hairline-strong); color: var(--text-primary); }
+.repository-ws-peek-kind {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+.repository-ws-peek-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repository-ws-peek-return {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+.repository-ws-peek-main:hover .repository-ws-peek-return { color: var(--text-secondary); }
+.repository-ws-peek-close {
+  flex: none;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+}
+.repository-ws-peek-close:hover { color: var(--text-primary); border-color: var(--hairline); }
+
+/* 스태시 카드(M3·M4) — 인스펙터 결을 물려받되, 머리는 세그먼트 대신 제목+이름 칩이다. */
+.repository-stash-inspector-head {
+  align-items: center;
+  gap: 8px;
+}
+.repository-stash-inspector-title {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.repository-stash-inspector-name {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-pill);
+  padding: 1px 8px;
+  margin-right: auto;
+}
+.repository-stash-inspector-body {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+.repository-stash-inspector-subject {
+  padding: 8px 12px 4px;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.repository-stash-inspector-actions {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  border-top: 1px solid var(--hairline);
+}
+.repository-stash-inspector-drop.is-armed {
+  color: var(--coral-ink);
+  border-color: color-mix(in oklab, var(--coral) 45%, transparent);
+  background: color-mix(in oklab, var(--coral) 12%, transparent);
+}
+
+/* Stash 메시지 팝오버(M5) — 즉시 실행 대신 메시지를 한 번 묻는 작은 비모달 표면. */
+.repository-stash-anchor { position: relative; display: inline-flex; }
+.repository-stash-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 30;
+  display: grid;
+  gap: 6px;
+  width: 240px;
+  padding: 10px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  box-shadow: var(--shadow-floating);
+}
+.repository-stash-popover-label {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: var(--t-xs);
+  color: var(--text-tertiary);
+}
+.repository-stash-popover-input {
+  min-width: 0;
+  padding: 5px 8px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  /* 입력 재질은 커밋 상자와 같은 결 — 원료 잉크 단독 배경은 디자인 계약이 금지한다. */
+  background: color-mix(in oklch, var(--ink-abyss) 35%, transparent);
+  color: var(--text-primary);
+  font-size: var(--t-sm);
+}
+.repository-stash-popover-input:focus-visible { outline: 1px solid var(--brass); outline-offset: 0; }
+.repository-stash-popover-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+/* 스테이징 목록/트리 토글(M6) — 커밋 인스펙터와 같은 토글이 같은 뜻으로 선다. */
+.repository-staging-viewbar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 4px 8px 0;
+}
+
+/* 행 액션 라벨(M10) — 글리프 옆에 뜻을 적는다. 행 hover/focus에서만 열려 평소 밀도는 유지한다. */
+.repository-stage-action-text {
+  display: none;
+  margin-left: 4px;
+}
+.repository-staging-row:hover .repository-stage-action-text,
+.repository-staging-row:focus-within .repository-stage-action-text { display: inline; }

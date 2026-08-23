@@ -241,6 +241,28 @@ const repositoryEn = {
   "repository.stash.dropped": "Stash dropped",
   "repository.stash.moved": "The stash list changed since you opened this menu. Nothing was touched — check the list and try again.",
 
+  // stash inspector card
+  "repository.stash.cardTitle": "Stashed changes",
+  "repository.stash.cardFiles": "Stashed files",
+  "repository.stash.showFailed": "Could not read this stash's files.",
+  "repository.stash.savePrompt": "Stash message",
+  "repository.stash.savePlaceholder": "Leave empty for the automatic message",
+  "repository.stash.saveConfirm": "Stash",
+  "repository.stash.saveCancel": "Cancel",
+
+  // workspace dock peek chip
+  "repository.dock.peekCommit": "Viewing commit",
+  "repository.dock.peekCompare": "Viewing comparison",
+  "repository.dock.peekStash": "Viewing stash",
+  "repository.dock.peekReturn": "Back to History",
+  "repository.dock.peekClose": "Stop viewing",
+
+  // staging row action labels
+  "repository.staging.actionStage": "Stage",
+  "repository.staging.actionUnstage": "Unstage",
+  "repository.staging.actionDiscard": "Discard",
+  "repository.staging.actionDelete": "Delete",
+
   // commit file tree
   "repository.filetree.tab": "File Tree",
   "repository.filetree.loading": "Loading tree…",
@@ -464,6 +486,22 @@ const repositoryKo: Record<keyof typeof repositoryEn, string> = {
   "repository.stash.popped": "스태시 적용 후 제거됨",
   "repository.stash.dropped": "스태시 삭제됨",
   "repository.stash.moved": "메뉴를 연 뒤 스태시 목록이 바뀌었습니다. 아무것도 건드리지 않았습니다 — 목록을 확인하고 다시 시도하세요.",
+  "repository.stash.cardTitle": "치워 둔 변경",
+  "repository.stash.cardFiles": "치워 둔 파일",
+  "repository.stash.showFailed": "이 스태시의 파일을 읽지 못했습니다.",
+  "repository.stash.savePrompt": "스태시 메시지",
+  "repository.stash.savePlaceholder": "비워 두면 자동 문구로 저장됩니다",
+  "repository.stash.saveConfirm": "스태시",
+  "repository.stash.saveCancel": "취소",
+  "repository.dock.peekCommit": "보던 커밋",
+  "repository.dock.peekCompare": "보던 비교",
+  "repository.dock.peekStash": "보던 스태시",
+  "repository.dock.peekReturn": "기록으로",
+  "repository.dock.peekClose": "그만 보기",
+  "repository.staging.actionStage": "스테이지",
+  "repository.staging.actionUnstage": "내리기",
+  "repository.staging.actionDiscard": "버리기",
+  "repository.staging.actionDelete": "삭제",
 
   "repository.filetree.tab": "파일 트리",
   "repository.filetree.loading": "트리 불러오는 중…",
