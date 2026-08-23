@@ -9,6 +9,11 @@ import {
   ComposerInput,
   ComposerSubmitButton,
   isComposerAttachmentCandidate,
+  isUltracodeDisarmCaret,
+  nextUltracodeIgnored,
+  readUltracodeTokens,
+  renderUltracodeHighlight,
+  syncComposerHighlight,
 } from "@fleet-console/sdk/composer";
 
 import { getT } from "../../i18n/index.js";
@@ -93,6 +98,33 @@ export function AgentChatComposer({
   const [dragOver, setDragOver] = React.useState(false);
   const attachmentsRef = React.useRef(attachments);
   attachmentsRef.current = attachments;
+  // `ultracode` 무장 — Quick Launch와 같은 부품(sdk/composer)이 인식·미러 문법을 소유하고,
+  // 상태(해제)와 표식만 이 조립이 진다. 무장은 초안에서 파생하고, 남는 것은 "이 초안에서 껐다"뿐이다.
+  const highlightRef = React.useRef<HTMLDivElement | null>(null);
+  const [ultracodeIgnored, setUltracodeIgnored] = React.useState(false);
+  const ultracodeTokens = React.useMemo(() => readUltracodeTokens(draft), [draft]);
+  const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;
+  // 해제는 단어가 문면에서 전부 사라질 때 만료한다 — 프로그램 쓰기(전송 후 초기화)도 같은 경로를
+  // 지나야 하므로 입력 핸들러가 아니라 문면 자체에 붙인다.
+  React.useEffect(() => {
+    setUltracodeIgnored((ignored) => nextUltracodeIgnored(draft, ignored));
+  }, [draft]);
+  const syncUltracodeHighlight = React.useCallback(() => {
+    syncComposerHighlight(inputRef.current, highlightRef.current);
+  }, []);
+  // 문면·자동 높이가 바뀐 프레임에서 바로 맞춘다(그려진 뒤 맞추면 한 프레임 어긋난 채 보인다).
+  React.useLayoutEffect(() => {
+    syncUltracodeHighlight();
+  }, [draft, syncUltracodeHighlight, ultracodeArmed]);
+  // 프레임 폭은 첨부 트레이·패널 리사이즈로도 바뀐다 — textarea 자신을 관찰하는 것이 유일하게
+  // 빠짐없는 기준이다.
+  React.useEffect(() => {
+    const input = inputRef.current;
+    if (!ultracodeArmed || !input || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => syncUltracodeHighlight());
+    observer.observe(input);
+    return () => observer.disconnect();
+  }, [syncUltracodeHighlight, ultracodeArmed]);
   // 업로드가 끝나기 전에 칩이 제거된 key — 완료 콜백이 자신을 발견하면 방금 받은 id를 서버에서
   // 도로 거둔다(Quick Launch 첨부와 같은 회수 계약).
   const canceledKeysRef = React.useRef(new Set<string>());
@@ -200,7 +232,7 @@ export function AgentChatComposer({
   return (
     <div className="agent-chat-composer">
       <div
-        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}`}
+        className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}`}
         {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
         onDragOver={(event) => {
           if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
@@ -223,33 +255,60 @@ export function AgentChatComposer({
           addFiles(files);
         }}
       >
+        {/* 무장 고지 — field 위 자기 줄에 상주한다(바 슬롯은 전송 실패 alert가 쓴다). */}
+        {ultracodeArmed ? (
+          <p className="agent-chat-composer-ultracode-notice" role="status">
+            <span className="agent-chat-composer-ultracode-glyph" aria-hidden="true">✦</span>
+            <span>{t("terminal.chat.composerUltracodeNotice")}</span>
+            <span className="agent-chat-composer-ultracode-hint">{t("terminal.chat.composerUltracodeHint")}</span>
+          </p>
+        ) : null}
         <ComposerField className="agent-chat-composer-field">
-          <ComposerInput
-            ref={inputRef}
-            className="agent-chat-composer-input"
-            rows={3}
-            value={draft}
-            placeholder={placeholder}
-            aria-label={t("terminal.chat.composerInputAria")}
-            spellCheck={false}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setFailed(false);
-            }}
-            onPaste={(event) => {
-              const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
-              if (files.length === 0) return;
-              // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
-              event.preventDefault();
-              addFiles(files);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+          {/* textarea와 미러를 한 flex 아이템으로 묶는다 — 미러를 field에 직접 붙이면 첨부 칩이 선
+              줄에서 시작점이 어긋난다. 묶으면 정렬 기준이 textarea의 박스 하나로 줄어든다. */}
+          <span className="agent-chat-composer-input-wrap">
+            {ultracodeArmed ? (
+              <div className="agent-chat-composer-highlight" ref={highlightRef} aria-hidden="true">
+                {renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")}
+              </div>
+            ) : null}
+            <ComposerInput
+              ref={inputRef}
+              className="agent-chat-composer-input"
+              rows={3}
+              value={draft}
+              placeholder={placeholder}
+              aria-label={t("terminal.chat.composerInputAria")}
+              spellCheck={false}
+              onChange={(event) => {
+                setDraft(event.target.value);
+                setFailed(false);
+              }}
+              onScroll={syncUltracodeHighlight}
+              onPaste={(event) => {
+                const files = Array.from(event.clipboardData?.files ?? []).filter((file) => isComposerAttachmentCandidate(file));
+                if (files.length === 0) return;
+                // 이미지가 실린 붙여넣기만 가로챈다 — 텍스트 붙여넣기는 브라우저 기본 동작 그대로 흐른다.
                 event.preventDefault();
-                void send();
-              }
-            }}
-          />
+                addFiles(files);
+              }}
+              onKeyDown={(event) => {
+                // caret이 인식된 `ultracode` 바로 뒤일 때의 수식 없는 Backspace 한 번은 글자가 아니라
+                // 무장을 지운다 — 다음 Backspace는 평소대로 지운다. 키 반복·수식 붙은 삭제는 손대지 않는다.
+                if (event.key === "Backspace" && !event.repeat && ultracodeArmed
+                  && !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey
+                  && isUltracodeDisarmCaret(draft, event.currentTarget.selectionStart, event.currentTarget.selectionEnd)) {
+                  event.preventDefault();
+                  setUltracodeIgnored(true);
+                  return;
+                }
+                if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                  event.preventDefault();
+                  void send();
+                }
+              }}
+            />
+          </span>
           {attachments.length > 0 ? (
             <div className="agent-chat-composer-attachments" role="group" aria-label={t("terminal.chat.composerAttach")}>
               {attachments.map((attachment) => (

@@ -222,6 +222,53 @@ describe("chat panel composer", () => {
     expect(receipt?.textContent).toBe("2 next instructions queued");
   });
 
+  // Quick Launch와 같은 `ultracode` 무장을 이 컴포저도 진다 — 같은 부품(sdk/composer)이
+  // 인식·미러 문법을 소유하고, 표식만 이 조립이 싣는다.
+  function type(value: string, caret = value.length): void {
+    const field = input();
+    const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+    setter?.call(field, value);
+    field?.dispatchEvent(new Event("input", { bubbles: true }));
+    if (field) field.selectionStart = field.selectionEnd = caret;
+  }
+
+  it("arms on a recognized ultracode word and paints the mirror, token, and notice", async () => {
+    mount();
+    await act(async () => { type("do it ultracode"); });
+    const frame = container?.querySelector(".agent-chat-composer-frame");
+    expect(frame?.classList.contains("is-ultracode")).toBe(true);
+    expect(container?.querySelector(".agent-chat-composer-highlight")).not.toBeNull();
+    expect(container?.querySelector(".agent-chat-composer-ultracode-token")?.textContent).toBe("ultracode");
+    const notice = container?.querySelector(".agent-chat-composer-ultracode-notice");
+    expect(notice?.getAttribute("role")).toBe("status");
+    expect(notice?.textContent).toContain("Dynamic workflow");
+
+    // 단어가 아닌 형태(부분·접미)는 무장하지 않는다.
+    await act(async () => { type("run ultracoder"); });
+    expect(container?.querySelector(".agent-chat-composer-frame")?.classList.contains("is-ultracode")).toBe(false);
+  });
+
+  it("disarms on a bare Backspace right after the word, and stays disarmed until it is retyped", async () => {
+    mount();
+    await act(async () => { type("do it ultracode"); });
+
+    // caret이 인식된 토큰 바로 뒤일 때의 수식 없는 Backspace는 글자가 아니라 무장을 지운다.
+    await act(async () => {
+      input()?.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true, cancelable: true }));
+    });
+    expect(container?.querySelector(".agent-chat-composer-frame")?.classList.contains("is-ultracode")).toBe(false);
+    // 문면은 그대로다 — 지운 것은 무장이지 글자가 아니다.
+    expect(input()?.value).toBe("do it ultracode");
+
+    // 같은 단어를 계속 고쳐도 다시 켜지지 않는다.
+    await act(async () => { type("do it ultracode now"); });
+    expect(container?.querySelector(".agent-chat-composer-frame")?.classList.contains("is-ultracode")).toBe(false);
+    // 단어가 문면에서 사라지면 해제도 만료한다 — 다시 치면 새 의사표시로 무장한다.
+    await act(async () => { type("do it"); });
+    await act(async () => { type("do it ultracode"); });
+    expect(container?.querySelector(".agent-chat-composer-frame")?.classList.contains("is-ultracode")).toBe(true);
+  });
+
   // 파일 드롭은 이미지가 아니어도 기본 동작을 막는다 — 막지 않으면 브라우저가 그 파일로
   // 내비게이션해 콘솔째로 떠난다.
   it("blocks a file drop from navigating the console away", async () => {
