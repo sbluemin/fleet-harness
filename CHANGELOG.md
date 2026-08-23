@@ -5,6 +5,60 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.73.0] - 2026-08-23
+
+### fleet-cli
+
+#### Changed
+- Claude Code passthrough sessions share one Fleet plugin tree under the Fleet data directory, receive its Fleet Harness version at session start, and load that same version from the plugin manifest.
+- The old shared `marketplace/` plugin tree is no longer written, and Fleet reclaims what it left there once no older `fleet` release has rendered into it for a week.
+
+### fleet-console
+
+#### Added
+- Arm the Chat panel composer on a recognized `ultracode` word the same way the Quick Launch bar does: the word glows on an apex wave, the frame takes an apex border and glow, a notice line explains the mark, and a bare Backspace right after the word hides it for that draft.
+- Codex reading deck: expanding a wiki document now anchors it over the canvas as a non-modal work surface with a left outline, a reading-width column, and the catalog kept alive in the rail.
+- Codex drydock review now shows a rendered diff against the current document with a changes-only toggle, and queue rows carry the proposer and a line diffstat.
+- Codex drydock queue gained a decided-history segment, so approved and rejected patches stay reviewable after the decision.
+- Codex wiki links now open a hover preview card, and each document lists the entries that reference it as backlinks.
+- Give floating menus, popups, and the console chrome a liquid glass material on every theme - translucent, blurred surfaces that reveal the canvas beneath.
+- Add a "Liquid glass" checkbox to Settings - Theme, on by default; unchecking it restores the classic solid look everywhere at once.
+- Introduce the new material once after release notes close, with a one-time welcome card that shows the finish and how to turn it off.
+
+#### Changed
+- Give the Session Analyst the Chat ledger's streaming grammar: a finished turn now folds into the single sentence that already carried its outcome instead of repeating the same duration as both a heading and a pill, and the working clock and live activity line ripple the way the Chat log does. The latest-activity pulse and the artifact cards are unchanged.
+- Make Chat Mode easier to start, control, and follow with a focused first-turn composer, a quieter control row where stop and the context meter stand as glyphs and Esc stops the running turn, queued instructions listed by their own text with a cancel on each, keyboard-resizable background work, accessible answer notices, and new-turn counts while reading earlier messages.
+- Keep the Chat Mode conversation readable while a turn runs: tool calls fold into a single progress line that ripples while it works and unfolds on click, a background job stays as one anchor line where it started instead of a card that reordered the turn, and the running-jobs indicator sits as a glyph in the composer tool row, next to the attach button, opening the work pane on click.
+- Make the streaming Chat Mode ledger scannable: the model's sentences now stand at full reading brightness so prose no longer blends into the folded tool line, every tally clause leads with its tool-family mark, and the working clock carries the same progress ripple as the live line.
+- Codex patch approval controls moved into a sticky decision dock at the top of the review, so the evidence and the decision stay on one screen.
+- Codex navigator condensed its health sentence into an always-visible status chip with a conflict-count badge, and groups entries by freshness with drafts and retired entries set apart.
+- Codex conflict detail now renders a block comparison of the current and proposed texts instead of two stacked full copies.
+- File explorer folders now show a rotating expand chevron with indent guides, and the selected row carries a brass spine so selection reads apart from hover.
+- The file tree sort control opens a menu listing all sort orders with the current one checked, header controls grew to comfortable hit targets, and "/" focuses the filter box.
+- The file viewer header is now a breadcrumb: click a segment to copy the path up to it, double-click a folder segment to reveal it in the tree, and chips for same-named open files show a parent-folder hint.
+- The image viewer gained a Fit/100% zoom toggle and a meta bar stating dimensions, file size, and the actual display scale, keeping upscaled pixels crisp.
+- A new Operation now opens its Claude session under the Operation's own id, so its resume coordinate is known the moment it is created instead of after the first turn reports back.
+- A Chat session that cannot load its Fleet plugin now refuses the turn with a visible error instead of quietly running without skills, identities, and the delegation guard.
+- Claude sessions share one Fleet plugin tree under the Fleet data directory, receive its Fleet Harness version at session start, and load that same version from the plugin manifest.
+- Unify Claude Code operation launch and resume metadata under one durable session identity, with automatic migration and a one-time v3 state backup.
+- The Repository panel now folds the commit inspector into a one-line peek chip when you switch to the Changes view, so staging gets its full height back and one click returns you to the commit you were reading.
+- Opening a stash now shows a dedicated card with the stashed files - untracked ones included - and Apply, Apply-and-remove, and Delete right on the card, and the Stash button asks for an optional message before saving.
+- The staging file list gained the same list/tree toggle as the commit inspector, and row actions now spell out Stage, Unstage, Discard, or Delete on hover instead of showing bare glyphs.
+
+#### Fixed
+- Every provider mark now carries its own supplier color: the xAI and OpenCode chips in AI Gateway settings no longer lose their frame and fall to grey, Kimi is painted in the same tone the Quota panel uses, and the Quota panel colors its xAI mark too.
+- Show a Chat Mode turn as working while it streams when the view attaches after the turn already began, as a Quick Launch session does. Its opening frame now arrives live instead of inside the replayed history, so the turn no longer appears finished with a "worked on this" fold while the answer is still streaming in.
+- Codex search excerpts no longer start mid-word and collapse line breaks into single spaces.
+- Order usage meters by severity in the light theme, so a routine bar no longer reads heavier than a bar that has run out.
+- Lighten the reasoning-effort handle and its filled track in the light theme, so a setting no longer outweighs everything else on the page.
+- Restore the ring around the reasoning-effort handle at ULTRACODE and MAX in the light theme.
+- Calm the gated ULTRACODE and MAX track in the light theme by dropping its metallic grain and drift.
+- Chat Mode and the terminal now receive one session definition instead of assembling their own, so the same Operation no longer gains different skills or setting layers depending on which surface opened it.
+- Stashing or pulling from the toolbar now refreshes the staging list immediately, so the list no longer disagrees with the sidebar counts until a manual reload.
+
+#### Removed
+- Drop the "earlier turns replayed" notice from Chat Mode. Reopening, reconnecting, or moving a session between the terminal and chat rebuilds the conversation silently, so a freshly launched session no longer claims it replayed earlier turns that were really its own. The restored conversation still appears; only the misleading banner is gone.
+
 ## [1.72.0] - 2026-08-22
 
 ### fleet-cli

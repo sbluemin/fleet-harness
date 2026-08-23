@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/core-process",
-  "version": "1.72.0",
+  "version": "1.73.0",
   "private": true,
   "type": "module",
   "types": "./dist/index.d.ts",
