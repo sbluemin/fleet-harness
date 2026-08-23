@@ -485,6 +485,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     if (!entry) return;
     setFilterText("");
     setComparePair(null);
+    setStashTarget(null);
     setTarget({ fullHash: entry.fullHash, entry });
     consumeRepositorySearchTarget(searchTarget);
   }, [ctx.theaterId, repoRel, searchTarget, state]);
@@ -614,7 +615,8 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
   }, [showWip, updateCommitViewport, visible.length, workspaceMainVisible]);
   // 저장된 dock 높이는 현재 컨테이너 기준으로 정규화해 축소된 창에서 주 영역이 잘리지 않게 한다(저장값 자체는 보존).
   useLayoutEffect(() => {
-    if (!workspace || (target === null && comparePair === null)) return;
+    // 스태시 카드도 같은 독 그리드를 쓴다 — 대상에서 빠지면 축소된 창에서 저장된 높이가 컨테이너를 넘는다.
+    if (!workspace || (target === null && comparePair === null && stashTarget === null)) return;
     const root = rootRef.current;
     if (!root) return;
     const normalize = () => {
@@ -625,7 +627,7 @@ function HistoryPanelBody({ ctx, repoRel, cacheScope, externalRefreshToken, acti
     const observer = new ResizeObserver(normalize);
     observer.observe(root);
     return () => observer.disconnect();
-  }, [comparePair, workspace, target]);
+  }, [comparePair, stashTarget, workspace, target]);
   const handleDivider = useCallback((event: React.PointerEvent<HTMLDivElement>) => {
     event.preventDefault();
     const root = rootRef.current;

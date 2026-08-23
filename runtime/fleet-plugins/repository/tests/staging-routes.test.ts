@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleRepositoryCommitCreate, classifyCommitError } from "../server/commit-create.js";
 import { runGit } from "../server/git-executor.js";
 import { handleRepositoryDiscard, handleRepositoryStage, handleRepositoryUnstage, readStagePaths } from "../server/stage.js";
-import { handleRepositoryStash, parseStashShowLine, readStashAction } from "../server/stash.js";
+import { handleRepositoryStash, parseStashShowRecords, readStashAction } from "../server/stash.js";
 import { handleRepositoryStatus, parseStatusV2 } from "../server/status.js";
 import type { StatusResult } from "../server/types.js";
 
@@ -193,13 +193,22 @@ describe("Repository staging routes", () => {
     expect((await runGit(["stash", "list"], { cwd: repo })).stdout.trim()).not.toBe("");
   });
 
-  it("parses --name-status lines and rejects garbage", () => {
-    expect(parseStashShowLine("M\tsrc/ui/panel.ts")).toEqual({ status: "M", path: "src/ui/panel.ts" });
-    expect(parseStashShowLine("R100\told.ts\tnew.ts")).toEqual({ status: "R", path: "new.ts" });
-    expect(parseStashShowLine("A\tloose.txt")).toEqual({ status: "A", path: "loose.txt" });
-    expect(parseStashShowLine("")).toBeNull();
-    expect(parseStashShowLine("garbage line")).toBeNull();
-    expect(parseStashShowLine("\tno-status")).toBeNull();
+  it("parses -z NUL records, renames and non-ASCII paths intact", () => {
+    expect(parseStashShowRecords("M\0src/ui/panel.ts\0A\0loose.txt\0")).toEqual([
+      { status: "M", path: "src/ui/panel.ts" },
+      { status: "A", path: "loose.txt" },
+    ]);
+    // 리네임은 old/new 두 경로를 나르고, 카드는 신 경로를 취한다.
+    expect(parseStashShowRecords("R100\0old.ts\0new.ts\0M\0docs/guide.md\0")).toEqual([
+      { status: "R", path: "new.ts" },
+      { status: "M", path: "docs/guide.md" },
+    ]);
+    // 비ASCII 경로가 원문 그대로 살아남는 것이 -z의 존재 이유다.
+    expect(parseStashShowRecords("A\0\uBB38\uC11C/\uD55C\uAE00 \uD30C\uC77C.md\0")).toEqual([
+      { status: "A", path: "\uBB38\uC11C/\uD55C\uAE00 \uD30C\uC77C.md" },
+    ]);
+    expect(parseStashShowRecords("")).toEqual([]);
+    expect(parseStashShowRecords("garbage")).toEqual([]);
   });
 
   it("rejects malformed stash names and unknown actions", async () => {
