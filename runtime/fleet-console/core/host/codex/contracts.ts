@@ -66,10 +66,18 @@ export interface EntryFrontmatter {
   whyThisMatched?: string;
 }
 
+export interface EntryBacklink {
+  id: string;
+  title: string;
+  updated: string;
+}
+
 export interface EntryResponse {
   frontmatter: EntryFrontmatter;
   body: string;
   raw?: RawSourceItem[];
+  /** 본문에서 [[wiki:이 문서]]를 참조하는 다른 엔트리들(역링크). */
+  backlinks?: EntryBacklink[];
 }
 
 export interface DrydockPatchSetMember {
@@ -98,6 +106,13 @@ export interface DrydockMeta {
   patch_set_id?: string | null;
 }
 
+export interface DrydockDiffStat {
+  /** 제안이 더하는 라인 수(변경 블록 기준). */
+  added: number;
+  /** 제안이 걷어내는 라인 수(변경 블록 기준). */
+  removed: number;
+}
+
 export interface DrydockListItem {
   id: string;
   meta: DrydockMeta;
@@ -105,6 +120,9 @@ export interface DrydockListItem {
   summary?: string;
   op?: "create_wiki" | "update_wiki";
   target?: string;
+  proposer?: string;
+  /** pending(queue) 항목에만 계산된다 — 결정된 패치의 diff는 현재 문서와 무의미하다. */
+  diffstat?: DrydockDiffStat;
 }
 
 export interface DrydockListResponse {

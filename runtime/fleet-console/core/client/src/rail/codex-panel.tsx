@@ -34,6 +34,19 @@ interface CodexWorkspaceState {
 let lastCodexContextKey: string | null = null;
 let lastResolvedWorkspace: CodexWorkspaceState | null = null;
 
+/**
+ * 덱(확대 시트)이 리더 fetch에 쓸 codex workspace id — Theater id가 아니라
+ * 레일 패널이 해석해 둔 12-hex id여야 /console/codex/w/ 라우터가 인식한다.
+ * 덱은 항상 레일의 확대 버튼을 거쳐 열리므로 해석 결과가 이미 따뜻하다.
+ */
+export function resolvedCodexWorkspaceIdFor(theaterId: string | null): string | null {
+  const contextKey = theaterId ?? "";
+  if (lastResolvedWorkspace && lastResolvedWorkspace.contextKey === contextKey && lastResolvedWorkspace.hasWiki) {
+    return lastResolvedWorkspace.id;
+  }
+  return null;
+}
+
 // ─── Rail panel descriptor ───────────────────────────────────────────────────
 
 export const codexPanel: RailPanelDescriptor = {
@@ -127,11 +140,14 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       else if (r.kind === "drydock") openCodexReader({ kind: "drydock", patchId: r.patchId });
       else if (r.kind === "conflicts") openCodexReader({ kind: "conflicts", id: r.id });
       else if (r.kind === "schema") openCodexReader({ kind: "schema", templateId: r.templateId });
+      // 덱이 열려 있는 동안의 카탈로그 선택은 덱 안에서 문서를 교체한다 —
+      // openCodexReader가 expanded를 접으므로 즉시 되살린다(오버레이 콜백과 동일 문법).
+      if (expanded) expandCodexReader();
     });
     return () => {
       setOnRequestOpenReader(null);
     };
-  }, [shouldMountCodex, workspaceId, hasReader, locale]);
+  }, [shouldMountCodex, workspaceId, hasReader, expanded, locale]);
 
   // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾸고,
   // 저장된 reader session은 최초 1회만 정상 entry 요청 경로로 복원한다.
@@ -185,7 +201,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
 
-  if (!hasReader) {
+  if (!hasReader || expanded) {
     return <div ref={navRef} className="codex-rail-host" />;
   }
 

@@ -11368,27 +11368,23 @@ body[data-codex-side="true"] .command-card {
 /* ─── Codex Reading Sheet ────────────────────────────────────────────────────── */
 
 :root {
-  --z-codex-reading-scrim: 50;
-  --z-codex-reading-sheet: 51;
+  /* 덱은 .operations-canvas(자체 스택 컨텍스트) 안에서만 경쟁한다 — Operation 패널의
+     zIndex는 상호 승격으로 상한 없이 자라므로, 정수 최대치 근방으로 항상 위를 보장한다. */
+  --z-codex-reading-sheet: 2147480000;
 }
 
-.codex-reading-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: var(--z-codex-reading-scrim);
-  background: color-mix(in oklch, var(--ink-abyss) 55%, transparent);
-}
-
+/* 리딩 덱 — 중앙 모달 시트의 후신. 캔버스 영역 전체를 문서 작업면으로 쓴다(캔버스
+   안에 정박: 사이드바·레일 폭을 침범하지 않고, 리사이즈를 그대로 따라간다). */
 .codex-reading-sheet {
-  position: fixed;
+  position: absolute;
   z-index: var(--z-codex-reading-sheet);
-  top: var(--space-6);
-  bottom: var(--space-6);
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(960px, calc(100vw - 120px));
+  inset: var(--space-3);
   display: flex;
   flex-direction: column;
+  /* 캔버스가 끄는 텍스트 선택·터치 제스처를 문서 표면에서 복원한다. */
+  user-select: text;
+  touch-action: auto;
+  cursor: auto;
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -11404,8 +11400,6 @@ body[data-codex-side="true"] .command-card {
     ),
     var(--ink-deep);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
-  /* entrance motion-centered는 키프레임에 translateX(-50%)를 보존해 fixed 중앙 정렬을 유지한다.
-     일반 entrance motion는 translateY만 설정해 base transform의 translateX(-50%)를 덮어써 우측으로 밀린다. */
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -11490,19 +11484,29 @@ body[data-codex-side="true"] .command-card {
   flex: 1;
   min-height: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 200px;
+  grid-template-columns: 220px minmax(0, 1fr);
 }
 
 .codex-reading-sheet-read {
+  --codex-reader-gutter-x: var(--space-8);
+  position: relative;
   overflow-y: auto;
   /* --space-7은 미정의 토큰이라 shorthand 전체가 무효화되어 padding 0이 됐었다(.document
      패딩이 가리던 잠복 결함). .document 플랫화로 이 거터가 유일한 가터가 되므로 정의된
-     토큰만 사용해야 한다. */
-  padding: var(--space-6) var(--space-8) var(--space-10);
+     토큰만 사용해야 한다. 하단 여유는 sticky Cowork 도크가 마지막 문단을 덮지 않을 만큼 둔다. */
+  padding: var(--space-6) var(--space-8) calc(var(--space-10) + 88px);
+}
+
+/* 덱은 넓다 — 본문은 읽기 measure로 캡하고 중앙 정렬한다. 전폭이 필요한 유틸 표면
+   (스티키 결정 독)만 예외다. 리더는 싱글톤 .codex-reader-host 한 겹을 끼고
+   relocate되므로 그 호스트를 경로에 포함해야 실제 문서에 닿는다. */
+.codex-reading-sheet-read > .codex-reader-host > .document > :not(.queue-decision-dock) {
+  max-inline-size: 72ch;
+  margin-inline: auto;
 }
 
 .codex-reading-sheet-toc {
-  border-left: 1px solid var(--surface-rim);
+  border-right: 1px solid var(--surface-rim);
   padding: var(--space-5) var(--space-4);
   overflow-y: auto;
 }
@@ -11556,10 +11560,15 @@ body[data-codex-side="true"] .command-card {
   color: var(--coral-ink);
 }
 
-/* Operations 캔버스/SideBar inert — 시트 활성 동안 배경 상호작용 차단 */
-body[data-codex-reading="true"] .operations-canvas,
-body[data-codex-reading="true"] .operations-side-bar {
+/* 리딩 덱 활성 동안 캔버스 제스처(pan/생성)만 차단한다 — 덱은 캔버스 안에 정박하므로
+   자신은 되살리고, 사이드바·레일은 비모달 작업면답게 계속 상호작용 가능해야 한다. */
+body[data-codex-reading="true"] .operations-canvas {
   pointer-events: none;
+  cursor: default;
+}
+
+body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
+  pointer-events: auto;
 }
 
 
@@ -11648,10 +11657,12 @@ body[data-codex-reading="true"] .operations-side-bar {
 }
 
 .codex-doc-scroll {
+  --codex-reader-gutter-x: var(--space-6);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: var(--space-5) var(--space-6) var(--space-10);
+  position: relative;
+  padding: var(--space-5) var(--space-6) calc(var(--space-10) + 88px);
 }
 
 /* split 좌측 문서는 읽기 measure 캡 없이 doc-pane 폭을 채운다(베이스 .markdown-body의

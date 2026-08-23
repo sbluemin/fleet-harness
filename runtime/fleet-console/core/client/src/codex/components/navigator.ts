@@ -122,6 +122,45 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
   </div>`;
 }
 
+const FRESH_WINDOW_MS = 7 * 86_400_000;
+const DORMANT_STATUSES = new Set(["draft", "deprecated", "superseded"]);
+
+// 신선도 그룹 — "이번 주 무엇이 바뀌었나"를 목록 최상단에서 답한다.
+// draft·폐기 계열은 신선해도 하단 그룹에 묶어 현행 지식과 섞이지 않게 한다.
+function renderGroupedEntries(
+  merged: Array<{ entry: WikiIndexEntry; snippet: string | undefined }>,
+  renderRow: (item: { entry: WikiIndexEntry; snippet: string | undefined }) => string,
+  t: ReturnType<typeof consoleT>,
+): string {
+  const now = Date.now();
+  const fresh: typeof merged = [];
+  const current: typeof merged = [];
+  const dormant: typeof merged = [];
+  for (const item of merged) {
+    const status = item.entry.status ?? "current";
+    if (DORMANT_STATUSES.has(status)) {
+      dormant.push(item);
+      continue;
+    }
+    const updatedMs = new Date(item.entry.updated).getTime();
+    if (!Number.isNaN(updatedMs) && now - updatedMs <= FRESH_WINDOW_MS) fresh.push(item);
+    else current.push(item);
+  }
+  const sections: Array<{ label: string; items: typeof merged; dormant?: boolean }> = [
+    { label: t("codex.nav.groupFresh"), items: fresh },
+    { label: t("codex.nav.groupCurrent"), items: current },
+    { label: t("codex.nav.groupDormant"), items: dormant, dormant: true },
+  ];
+  return sections
+    .filter((section) => section.items.length > 0)
+    .map((section) => `
+      <div class="codex-nav-group${section.dormant ? " is-dormant" : ""}">
+        <div class="codex-nav-group-head"><span>${escapeHtml(section.label)}</span><span class="codex-nav-group-count">${section.items.length}</span></div>
+        ${section.items.map(renderRow).join("")}
+      </div>`)
+    .join("");
+}
+
 function filterEntries(entries: WikiIndexEntry[], query: string, activeTag: string | null): WikiIndexEntry[] {
   const q = query.toLowerCase();
   return entries.filter((entry) => {
@@ -203,9 +242,9 @@ export function mountNavigatorInto(
         <button class="codex-nav-quick" data-action="drydock" type="button">
           ${escapeHtml(t("codex.nav.reviewQueue"))} <span class="badge" id="codex-nav-drydock-badge">0</span>
         </button>
-        <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))}</button>
+        <button class="codex-nav-quick" data-action="conflicts" type="button">${escapeHtml(t("codex.nav.conflicts"))} <span class="badge" id="codex-nav-conflict-badge" hidden>0</span></button>
+        <div class="codex-nav-health" hidden></div>
       </div>
-      <div class="codex-nav-health" hidden></div>
       <div class="codex-nav-list-header">
         <div class="codex-nav-list-summary">
           <span class="codex-nav-list-eyebrow" id="codex-nav-eyebrow">${escapeHtml(t("codex.nav.entriesCount", { count: 0 }))}</span>
@@ -230,28 +269,36 @@ export function mountNavigatorInto(
   const eyebrow = root.querySelector<HTMLElement>("#codex-nav-eyebrow")!;
   const drydockBadge = root.querySelector<HTMLElement>("#codex-nav-drydock-badge")!;
   const activeFilterButton = root.querySelector<HTMLButtonElement>("[data-clear-tag]")!;
+  const conflictBadge = root.querySelector<HTMLElement>("#codex-nav-conflict-badge")!;
   const sortControls = root.querySelector<HTMLElement>(".codex-nav-sort")!;
   const healthStrip = root.querySelector<HTMLElement>(".codex-nav-health")!;
 
   function renderHealth(): void {
     const t = consoleT();
     const drydock = health?.lastDrydock ?? null;
-    const conflictCount = health?.conflictCount ?? 0;
-    const pendingCount = health?.pendingCount ?? 0;
     const issueCount = drydock?.issueCount ?? 0;
     const logUnreadable = health?.logUnreadable === true;
-    const visible = health !== null && (logUnreadable || !((drydock === null || (drydock.ok && issueCount === 0)) && conflictCount === 0 && pendingCount === 0));
-    healthStrip.hidden = !visible;
-    if (!visible || !health) {
+    // 문장형 스트립은 좁은 폭에서 잘려 나갔다 — 항상 보이는 응축 칩으로 바꾸고
+    // 세부는 팝오버가 계속 담당한다. 충돌 수는 충돌 칩의 배지로 옮긴다.
+    conflictBadge.textContent = String(health?.conflictCount ?? 0);
+    conflictBadge.hidden = (health?.conflictCount ?? 0) === 0;
+    healthStrip.hidden = health === null;
+    if (!health) {
       healthStrip.innerHTML = "";
       return;
     }
-    const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : "warn";
+    const attention = logUnreadable || (drydock !== null && (!drydock.ok || issueCount > 0));
+    const tone = (drydock?.errorCount ?? 0) > 0 ? "coral" : attention ? "warn" : "ok";
+    const label = logUnreadable
+      ? t("codex.nav.healthLogUnreadable")
+      : attention
+        ? t("codex.nav.healthIssues", { count: issueCount })
+        : t("codex.nav.healthOk");
     const timestamp = drydock ? new Date(drydock.at).toLocaleString(resolveActiveLocale()) : t("codex.nav.healthNever");
     healthStrip.innerHTML = `
-      <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>
-      <span class="codex-nav-health-summary">${escapeHtml(logUnreadable ? t("codex.nav.healthLogUnreadable") : t("codex.nav.healthSummary", { issues: issueCount, conflicts: health.conflictCount, pending: health.pendingCount }))}</span>
-      <button class="codex-nav-health-detail" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}">${escapeHtml(t("codex.nav.healthDetails"))}</button>
+      <button class="codex-nav-health-chip" data-health-detail type="button" aria-expanded="${String(healthPopoverOpen)}" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
+        <span class="codex-nav-health-dot is-${tone}" aria-hidden="true"></span>${escapeHtml(label)}
+      </button>
       ${healthPopoverOpen ? `<div class="codex-nav-health-popover" role="dialog" aria-label="${escapeHtml(t("codex.nav.healthDetailsAria"))}">
         ${logUnreadable ? `<div><span>${escapeHtml(t("codex.nav.healthLogUnreadable"))}</span><strong>${escapeHtml(t("codex.nav.healthAttention"))}</strong></div>` : ""}
         <div><span>${escapeHtml(t("codex.nav.healthErrors"))}</span><strong>${drydock?.errorCount ?? 0}</strong></div>
@@ -338,14 +385,18 @@ export function mountNavigatorInto(
       navList.innerHTML = `<div class="codex-nav-empty">${escapeHtml(currentQuery || activeTag ? t("codex.nav.noMatch") : t("codex.nav.noEntries"))}</div>`;
       return;
     }
-    navList.innerHTML = merged
-      .map(({ entry, snippet }) => renderEntry(entry, {
-        activeTag,
-        isCurrent: entry.id === currentEntryId,
-        query: currentQuery,
-        snippet,
-      }))
-      .join("");
+    const renderRow = ({ entry, snippet }: { entry: WikiIndexEntry; snippet: string | undefined }) => renderEntry(entry, {
+      activeTag,
+      isCurrent: entry.id === currentEntryId,
+      query: currentQuery,
+      snippet,
+    });
+    // 검색·태그 필터·이름순에서는 평평한 목록이 정답이다 — 그룹은 "훑는" 기본 화면 전용.
+    if (currentQuery || activeTag || sortOrder !== "updated") {
+      navList.innerHTML = merged.map(renderRow).join("");
+      return;
+    }
+    navList.innerHTML = renderGroupedEntries(merged, renderRow, t);
   }
 
   function requestServerSearch(): void {
@@ -526,7 +577,12 @@ export function mountNavigatorInto(
         );
       }
       const conflictsBtn = root.querySelector<HTMLElement>('[data-action="conflicts"]');
-      if (conflictsBtn) conflictsBtn.textContent = t("codex.nav.conflicts");
+      if (conflictsBtn) {
+        conflictsBtn.replaceChildren(
+          document.createTextNode(`${t("codex.nav.conflicts")} `),
+          conflictBadge,
+        );
+      }
       renderHealth();
       sortControls.setAttribute("aria-label", t("codex.nav.sortAria"));
       const updatedSort = root.querySelector<HTMLElement>('[data-sort="updated"]');

@@ -116,7 +116,7 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
-  it("refreshes and hides the health strip after the last pending decision", async () => {
+  it("refreshes health and settles into the always-visible OK chip after the last pending decision", async () => {
     vi.resetModules();
     apiMocks.fetchHealth
       .mockResolvedValueOnce({ lastDrydock: null, conflictCount: 0, pendingCount: 1 })
@@ -135,7 +135,12 @@ describe("Codex schema UI contract", () => {
     await Promise.resolve();
 
     expect(apiMocks.fetchHealth).toHaveBeenCalledTimes(2);
-    expect(root.querySelector<HTMLElement>(".codex-nav-health")?.hidden).toBe(true);
+    // Codex Refit: 헬스는 문제 있을 때만 나타나는 스트립이 아니라 상시 칩이다 —
+    // 조용한 상태는 숨김이 아니라 OK로 말한다.
+    const strip = root.querySelector<HTMLElement>(".codex-nav-health")!;
+    expect(strip.hidden).toBe(false);
+    expect(strip.textContent).toContain("drydock OK");
+    expect(strip.querySelector(".codex-nav-health-dot")?.classList.contains("is-ok")).toBe(true);
     controller.destroy();
   });
 

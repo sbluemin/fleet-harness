@@ -455,9 +455,20 @@ function buildMatchSnippet(text: string, query: string): string {
   const lowerText = text.toLowerCase();
   const index = lowerText.indexOf(query.toLowerCase());
   if (index === -1) {
-    return text.slice(0, MATCH_CONTEXT_BEFORE + MATCH_CONTEXT_AFTER).trim();
+    return collapseSnippetWhitespace(text.slice(0, MATCH_CONTEXT_BEFORE + MATCH_CONTEXT_AFTER));
   }
-  const start = Math.max(0, index - MATCH_CONTEXT_BEFORE);
+  let start = Math.max(0, index - MATCH_CONTEXT_BEFORE);
   const end = Math.min(text.length, index + query.length + MATCH_CONTEXT_AFTER);
-  return text.slice(start, end).trim();
+  // 창 시작을 단어 경계로 민다 — 단어 중간에서 시작하는 스니펫("tion\n\nLexical…")은
+  // 판독 소음이고, 매치 위치는 창 안에 그대로 남는다.
+  if (start > 0 && /\S/.test(text[start - 1] ?? "")) {
+    const nextBreak = text.slice(start, index).search(/\s/);
+    if (nextBreak >= 0) start += nextBreak + 1;
+  }
+  return collapseSnippetWhitespace(text.slice(start, end));
+}
+
+// 스니펫은 한 줄 UI 발췌다 — 개행·연속 공백을 단일 공백으로 접는다.
+function collapseSnippetWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
 }

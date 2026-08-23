@@ -375,6 +375,19 @@ kbd {
   font-variation-settings: "opsz" 144;
 }
 
+/* 유틸 표면(대기열·패치 상세·충돌) — 목록 2행에 디스플레이 히어로를 쓰지 않는다(F5). */
+.document--utility h1 {
+  font-size: var(--font-size-title-xl);
+  font-weight: var(--weight-medium);
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+
+.document--utility .document-header {
+  padding-bottom: var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
 .lead {
   margin: 0;
   color: var(--text-secondary);
@@ -1395,6 +1408,194 @@ kbd {
 }
 
 /* 컴팩트 대화형 패치 행 (레일 목록 뷰) */
+/* 대기 ↔ 결정됨 세그먼트 — 결정 이력(F9)으로 가는 상시 문이다. */
+.queue-segments {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  width: fit-content;
+}
+
+.queue-segments button {
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.queue-segments button:hover {
+  color: var(--text-secondary);
+}
+
+.queue-segments button[aria-pressed="true"] {
+  background: var(--surface-pillar);
+  color: var(--text-primary);
+}
+
+.queue-row-top {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+/* diffstat — 가감은 상태이므로 positive/coral 신호 채널이 정당하다. */
+.queue-row-diffstat {
+  flex: none;
+  display: inline-flex;
+  gap: var(--space-1);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+.queue-row-diffstat ins {
+  color: var(--positive-ink);
+  text-decoration: none;
+}
+
+.queue-row-diffstat del {
+  color: var(--coral-ink);
+  text-decoration: none;
+}
+
+.queue-row-decision {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  border: 1px solid var(--surface-rim);
+}
+
+.queue-row-decision--approve {
+  color: var(--positive-ink);
+  border-color: color-mix(in oklch, var(--positive) 40%, transparent);
+}
+
+.queue-row-decision--reject {
+  color: var(--coral-ink);
+  border-color: color-mix(in oklch, var(--coral) 40%, transparent);
+}
+
+/* 스티키 결정 독 — 근거와 결정 수단이 폴드 아래로 사라지지 않는다(F4). */
+.queue-decision-dock {
+  position: sticky;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  margin: calc(var(--space-5) * -1) calc(var(--codex-reader-gutter-x, var(--space-6)) * -1) var(--space-5);
+  padding: var(--space-3) var(--codex-reader-gutter-x, var(--space-6));
+  border-bottom: 1px solid var(--surface-rim-strong);
+  background: var(--ink-deep);
+}
+
+.queue-decision-dock-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.queue-decision-dock-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-primary);
+  font-size: var(--font-size-md);
+  font-weight: var(--weight-medium);
+  min-width: 0;
+}
+
+.queue-decision-dock-meta {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.queue-decision-dock-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* diff 표시 토글 + 접힘 표지 */
+.queue-diff-controls {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
+  margin-bottom: var(--space-4);
+}
+
+.queue-diff-controls button {
+  border: 0;
+  border-radius: var(--radius-xs);
+  padding: var(--space-1) var(--space-3);
+  background: transparent;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.queue-diff-controls button:hover {
+  color: var(--text-secondary);
+}
+
+.queue-diff-controls button[aria-pressed="true"] {
+  background: var(--surface-pillar);
+  color: var(--text-primary);
+}
+
+.queue-diff-fold {
+  margin: var(--space-3) 0;
+  padding: var(--space-1) var(--space-3);
+  border: 1px dashed var(--surface-rim);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  text-align: center;
+}
+
+.queue-diff-legend {
+  display: flex;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.queue-diff-legend-item {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-xs);
+}
+
+.queue-diff-legend-item--added {
+  background: color-mix(in oklch, var(--brass) 8%, transparent);
+}
+
+.queue-diff-legend-item--removed {
+  background: color-mix(in oklch, var(--coral) 5%, transparent);
+  text-decoration: line-through;
+}
+
 .queue-row-list {
   display: flex;
   flex-direction: column;
@@ -2189,6 +2390,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  white-space: nowrap;
   padding: var(--space-1) var(--space-2);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
@@ -2203,6 +2405,11 @@ kbd {
 .codex-nav-quick:hover {
   background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
   color: var(--text-primary);
+}
+
+/* display 지정이 UA의 [hidden]을 이겨 "0" 배지가 새어 나온다 — 명시적으로 닫는다. */
+.codex-nav-quick .badge[hidden] {
+  display: none;
 }
 
 .codex-nav-quick .badge {
@@ -2220,19 +2427,41 @@ kbd {
   line-height: 1;
 }
 
+/* 헬스는 quick-row에 사는 응축 칩이다 — 문장형 스트립은 좁은 폭에서 잘렸다(F6). */
 .codex-nav-health {
   position: relative;
   display: flex;
   align-items: center;
-  gap: var(--space-2);
   min-width: 0;
-  padding: 6px var(--space-3);
-  border-bottom: 1px solid var(--surface-rim);
-  background: color-mix(in oklch, var(--warn) 5%, transparent);
+  margin-left: auto;
+}
+
+.codex-nav-health-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: var(--surface-glass);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
   font-size: var(--t-2xs);
   line-height: 1.35;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.codex-nav-health-chip:hover,
+.codex-nav-health-chip:focus-visible,
+.codex-nav-health-chip[aria-expanded="true"] {
+  color: var(--text-secondary);
+  background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
+}
+
+.codex-nav-health-chip:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  outline-offset: 1px;
 }
 
 .codex-nav-health[hidden] {
@@ -2253,40 +2482,16 @@ kbd {
   box-shadow: 0 0 8px color-mix(in oklch, var(--coral) 45%, transparent);
 }
 
-.codex-nav-health-summary {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.codex-nav-health-detail {
-  flex: none;
-  padding: 2px 4px;
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--brass-bright);
-  font: inherit;
-  cursor: pointer;
-}
-
-.codex-nav-health-detail:hover,
-.codex-nav-health-detail:focus-visible,
-.codex-nav-health-detail[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-}
-
-.codex-nav-health-detail:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
-  outline-offset: 1px;
+.codex-nav-health-dot.is-ok {
+  background: var(--positive);
+  box-shadow: 0 0 8px color-mix(in oklch, var(--positive) 45%, transparent);
 }
 
 .codex-nav-health-popover {
   position: absolute;
   z-index: 8;
   top: calc(100% + var(--space-1));
-  right: var(--space-2);
+  right: 0;
   display: grid;
   min-width: 190px;
   padding: var(--space-3);
@@ -2982,4 +3187,83 @@ kbd {
   .cowork-ghost, .cowork-solid, .cowork-chip, .cowork-send, .cowork-bar, .cowork-card, .cowork-revision-toggle, .cowork-revision-toggle span, .cowork-revision-content { transition: none; }
   .cowork-host .is-cowork-running { transition: none; }
   .cowork-send:hover { transform: none; }
+}
+
+/* ===== Codex Refit — 내비게이터 신선도 그룹 ===== */
+
+/* "이번 주 무엇이 바뀌었나"를 목록 최상단에서 답하는 그룹 헤더. */
+.codex-nav-group-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.codex-nav-group + .codex-nav-group .codex-nav-group-head {
+  margin-top: var(--space-2);
+  border-top: 1px solid var(--surface-rim);
+  padding-top: var(--space-3);
+}
+
+.codex-nav-group-count {
+  letter-spacing: 0;
+}
+
+/* 초안·폐기 계열은 치워둔 항목 톤으로 가라앉힌다 — 상태는 각 행의 메타가 계속 말한다. */
+.codex-nav-group.is-dormant .codex-nav-entry {
+  opacity: 0.62;
+}
+
+.codex-nav-group.is-dormant .codex-nav-entry:hover,
+.codex-nav-group.is-dormant .codex-nav-entry:focus-within {
+  opacity: 1;
+}
+
+/* ===== Codex Refit — 위키 링크 호버 프리뷰 ===== */
+
+.codex-link-preview {
+  position: absolute;
+  z-index: 9;
+  width: 288px;
+  display: grid;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background: var(--ink-deep);
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
+}
+
+.codex-link-preview strong {
+  color: var(--text-primary);
+  font-size: var(--font-size-sm);
+  font-weight: var(--weight-medium);
+}
+
+.codex-link-preview-excerpt {
+  color: var(--text-secondary);
+  font-size: var(--t-xs);
+  line-height: 1.55;
+}
+
+.codex-link-preview-meta,
+.codex-link-preview-empty {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+}
+
+/* ===== Codex Refit — 백링크 ===== */
+
+.codex-backlink-meta {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
 }

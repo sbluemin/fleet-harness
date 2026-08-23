@@ -11,8 +11,8 @@ import {
   updateCoworkAnnotations, updateCoworkSelection, updateCoworkSettings,
 } from "./api.js";
 import type { CoworkAnnotationDto, CoworkOptionsResponse, CoworkSessionDto } from "./api.js";
-import { diffDraftBlocks, diffDraftLines } from "./cowork-diff.js";
-import type { DraftLine } from "./cowork-diff.js";
+import { diffDraftBlocks, diffDraftLines } from "@fleet-console/markdown/diff";
+import type { DraftLine } from "@fleet-console/markdown/diff";
 import { CoworkAgentMenu } from "./cowork-agent-menu.js";
 import { entryPath } from "./router.js";
 import { escapeAttribute, escapeHtml } from "./utils.js";
