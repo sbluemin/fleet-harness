@@ -6,7 +6,7 @@ export type ViewState =
   | { kind: "none" }
   | { kind: "loading" }
   | { kind: "code"; relativePath: string; content: string; lang: string; truncated?: boolean; sizeBytes?: number; mtimeMs?: number; stale?: boolean }
-  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; stale?: boolean }
+  | { kind: "image"; relativePath: string; name: string; src: string; mtimeMs?: number; sizeBytes?: number; stale?: boolean }
   | { kind: "binary"; name: string }
   | { kind: "error"; message: string };
 

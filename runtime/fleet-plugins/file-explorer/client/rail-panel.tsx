@@ -9,11 +9,11 @@ import {
   performFileContextAction,
   type FileContextAction,
 } from "./context-menu.js";
-import { buildViewerMetaParts } from "./format.js";
+import { breadcrumbSegments, buildViewerMetaParts } from "./format.js";
 import { getT } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import { FileIcon } from "./file-icon.js";
-import { FileTree, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
+import { FileTree, isFilterFocusShortcut, type FileTreeHandle, type PluginFilesClient } from "./tree.js";
 import { BinaryViewer } from "./viewer/binary.js";
 import { canWrapLines, CodeViewer } from "./viewer/code.js";
 import { cacheBustedImageSrc, ImageViewer } from "./viewer/image.js";
@@ -23,6 +23,7 @@ import {
   buildSplitGridTemplate,
   canResizeTreePane,
   CHIP_STRIP_GAP_PX,
+  chipDirHints,
   clampTreePaneWidth,
   countOverflowingChips,
   getTreePaneSeparatorState,
@@ -43,10 +44,16 @@ import {
   useFileExplorerViewState,
   type ViewState,
 } from "./view-store.js";
-import { activateFileSearchTarget, consumeFileSearchTarget, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
+import { activateFileSearchTarget, consumeFileSearchTarget, mintRevealRequestId, useFileSearchTarget, type FileSearchTarget } from "./search-navigation.js";
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 const FEEDBACK_DURATION_MS = 2_500;
+/**
+ * 폴더 브레드크럼 클릭 복사의 더블클릭 유예 — 이 안에 두 번째 클릭이 오면 복사 없이 reveal만 한다.
+ * 브라우저는 OS 더블클릭 간격을 노출하지 않으므로 널리 쓰이는 OS 기본 상한(500ms)에 맞춘다 —
+ * 이보다 짧으면 기본 설정의 느긋한 더블클릭에서도 복사가 먼저 나가 클립보드를 덮는다.
+ */
+const CRUMB_DBLCLICK_GRACE_MS = 500;
 
 interface ActiveContextMenu {
   readonly id: number;
@@ -118,11 +125,6 @@ function nameOfPath(relativePath: string): string {
   return relativePath.split("/").filter(Boolean).at(-1) ?? relativePath;
 }
 
-function dirOfPath(relativePath: string): string {
-  const slash = relativePath.lastIndexOf("/");
-  return slash < 0 ? "" : relativePath.slice(0, slash + 1);
-}
-
 function FileExplorerPanel(ctx: RailPanelContext) {
   const { theaterId } = ctx;
   const t = getT(ctx.language);
@@ -145,6 +147,8 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   // Theater마다 다른 경로 공간이다 — 스코프를 바꿀 때 비우지 않으면 A의 foo.png mtime이
   // B의 같은 이름 파일에 실려 바뀌지도 않은 문서를 낡음으로 표시한다.
   const knownMtimesRef = useRef(new Map<string, number>());
+  /** 목록이 알려 준 파일 크기 — 이미지 뷰어 메타 바가 용량을 사실로 말하기 위한 캐시. */
+  const knownSizesRef = useRef(new Map<string, number>());
   const nextTransientIdRef = useRef(0);
   const [isDragging, setIsDragging] = useState(false);
   const [revealTarget, setRevealTarget] = useState<FileSearchTarget | null>(null);
@@ -177,6 +181,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
 
   useEffect(() => {
     knownMtimesRef.current = new Map<string, number>();
+    knownSizesRef.current = new Map<string, number>();
   }, [contextScope]);
 
   const fetchDocContent = useCallback(async (relativePath: string, silent: boolean) => {
@@ -193,16 +198,18 @@ function FileExplorerPanel(ctx: RailPanelContext) {
           const listing = await filesRef.current.listFolder(parentDirOf(relativePath));
           for (const entry of listing.entries) {
             if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+            if (entry.sizeBytes !== undefined) knownSizesRef.current.set(entry.relativePath, entry.sizeBytes);
           }
         } catch { /* 목록 실패는 표식 없이 여는 것으로 감수한다 — 다음 목록에서 회복된다 */ }
         if (scope !== contextScopeRef.current) return;
       }
       const mtimeMs = knownMtimesRef.current.get(relativePath);
+      const sizeBytes = knownSizesRef.current.get(relativePath);
       const src = cacheBustedImageSrc(
         `/plugins/file-explorer/files/image?theaterId=${encodeURIComponent(theaterId)}&path=${encodeURIComponent(relativePath)}`,
         mtimeMs,
       );
-      setDocViewState(scope, relativePath, { kind: "image", relativePath, name, src, mtimeMs, stale: false });
+      setDocViewState(scope, relativePath, { kind: "image", relativePath, name, src, mtimeMs, sizeBytes, stale: false });
       return;
     }
 
@@ -270,6 +277,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   const handleSelect = useCallback((entry: FolderEntry) => {
     if (entry.kind !== "file") return;
     if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+    if (entry.sizeBytes !== undefined) knownSizesRef.current.set(entry.relativePath, entry.sizeBytes);
     openFilePath(entry.relativePath, entry.name);
   }, [openFilePath]);
 
@@ -277,6 +285,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     const entries = result.entries;
     for (const entry of entries) {
       if (entry.mtimeMs !== undefined) knownMtimesRef.current.set(entry.relativePath, entry.mtimeMs);
+      if (entry.sizeBytes !== undefined) knownSizesRef.current.set(entry.relativePath, entry.sizeBytes);
     }
     const loadedMtimeByPath = new Map<string, number | undefined>();
     for (const doc of openDocsRef.current) {
@@ -313,6 +322,12 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   }, [activePath, fetchDocContent]);
 
   const handleRootKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+    // "/"는 패널 어디서든 필터로 — 트리만 잡으면 뷰어 페인(칩·브레드크럼·줌)에서 단축키가 죽는다.
+    if (isFilterFocusShortcut(event.key, event.target)) {
+      event.preventDefault();
+      fileTreeRef.current?.focusFilter();
+      return;
+    }
     if (event.key !== "Escape") return;
     // 컨텍스트 메뉴가 열려 있으면 메뉴의 Escape 경로가 우선한다(메뉴가 stopPropagation한다).
     if (!activePath) return;
@@ -369,6 +384,51 @@ function FileExplorerPanel(ctx: RailPanelContext) {
       })
       .catch(() => showFeedback(t("fileExplorer.menu.actionUnavailable")));
   }, [showFeedback, t, theaterId]);
+
+  /** 브레드크럼 조각 클릭 — 그 조각까지의 상대 경로를 복사한다(컨텍스트 메뉴의 상대 경로 복사와 같은 결과). */
+  const handleCrumbCopy = useCallback((path: string) => {
+    void (async () => {
+      try {
+        const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
+        if (!clipboard) throw new Error("clipboard_unavailable");
+        await clipboard.writeText(path);
+        showFeedback(t("fileExplorer.menu.relativePathCopied"));
+      } catch {
+        showFeedback(t("fileExplorer.menu.actionUnavailable"));
+      }
+    })();
+  }, [showFeedback, t]);
+
+  /** 폴더 조각 더블클릭 — 트리에서 그 폴더를 펼쳐 보여준다(검색 reveal 배선 재사용). */
+  const handleCrumbReveal = useCallback((path: string) => {
+    if (!theaterId) return;
+    setRevealTarget({ theaterId, relativePath: path, requestId: mintRevealRequestId() });
+  }, [theaterId]);
+
+  // 더블클릭은 click을 두 번 앞세운다 — 폴더 조각의 복사를 유예 없이 실행하면
+  // reveal 더블클릭마다 클립보드가 두 번 덮인다. 유예 안에 두 번째 클릭이 오면 복사를 접는다.
+  const crumbCopyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelPendingCrumbCopy = useCallback(() => {
+    if (crumbCopyTimerRef.current === null) return;
+    clearTimeout(crumbCopyTimerRef.current);
+    crumbCopyTimerRef.current = null;
+  }, []);
+  useEffect(() => cancelPendingCrumbCopy, [cancelPendingCrumbCopy, contextScope]);
+
+  const handleCrumbDirClick = useCallback((path: string, detail: number) => {
+    cancelPendingCrumbCopy();
+    // 브라우저가 이미 다중 클릭으로 인식한 클릭(detail>1)은 reveal 제스처의 일부다 — 복사를 다시 걸지 않는다.
+    if (detail > 1) return;
+    crumbCopyTimerRef.current = setTimeout(() => {
+      crumbCopyTimerRef.current = null;
+      handleCrumbCopy(path);
+    }, CRUMB_DBLCLICK_GRACE_MS);
+  }, [cancelPendingCrumbCopy, handleCrumbCopy]);
+
+  const handleCrumbDirDoubleClick = useCallback((path: string) => {
+    cancelPendingCrumbCopy();
+    handleCrumbReveal(path);
+  }, [cancelPendingCrumbCopy, handleCrumbReveal]);
 
   const handleDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -520,6 +580,9 @@ function FileExplorerPanel(ctx: RailPanelContext) {
     ? buildViewerMetaParts(viewState, t)
     : [];
 
+  const chipHints = useMemo(() => chipDirHints(openDocs), [openDocs]);
+  const crumbSegments = useMemo(() => activePath ? breadcrumbSegments(activePath) : [], [activePath]);
+
   return (
     <div
       ref={rootRef}
@@ -554,6 +617,9 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                       onClick={() => openFilePath(doc.relativePath, doc.name)}
                     >
                       <span className="fexp-chip-icon" aria-hidden="true"><FileIcon name={doc.name} /></span>
+                      {chipHints.has(doc.relativePath) && (
+                        <span className="fexp-chip-dir" aria-hidden="true">{chipHints.get(doc.relativePath)}</span>
+                      )}
                       <span className="fexp-chip-name">{doc.name}</span>
                     </button>
                     <button
@@ -604,12 +670,26 @@ function FileExplorerPanel(ctx: RailPanelContext) {
               {activeDoc && (
                 <span className="fexp-viewer-doc-icon" aria-hidden="true"><FileIcon name={activeDoc.name} /></span>
               )}
-              <span className="fexp-viewer-filename" title={activePath ?? undefined}>
-                {activeDoc?.name ?? (activePath ? nameOfPath(activePath) : "")}
-                {activePath && dirOfPath(activePath) && (
-                  <span className="fexp-viewer-dir">{dirOfPath(activePath)}</span>
-                )}
-              </span>
+              <div className="fexp-viewer-crumb" role="group" aria-label={t("fileExplorer.viewer.pathAria")}>
+                {crumbSegments.map((segment, index) => (
+                  <span key={segment.path} className="fexp-crumb-part">
+                    {index > 0 && <span className="fexp-crumb-sep" aria-hidden="true">/</span>}
+                    <button
+                      type="button"
+                      className={`fexp-crumb-seg${segment.isLeaf ? " is-leaf" : ""}`}
+                      title={segment.isLeaf
+                        ? t("fileExplorer.viewer.crumbFileTitle", { path: segment.path })
+                        : t("fileExplorer.viewer.crumbDirTitle", { path: segment.path })}
+                      onClick={segment.isLeaf
+                        ? () => handleCrumbCopy(segment.path)
+                        : (event) => handleCrumbDirClick(segment.path, event.detail)}
+                      onDoubleClick={segment.isLeaf ? undefined : () => handleCrumbDirDoubleClick(segment.path)}
+                    >
+                      {segment.name}
+                    </button>
+                  </span>
+                ))}
+              </div>
               {isStale && (
                 <button
                   type="button"
@@ -687,7 +767,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                 />
               )}
               {viewState.kind === "image" && (
-                <ImageViewer src={viewState.src} name={viewState.name} />
+                <ImageViewer src={viewState.src} name={viewState.name} sizeBytes={viewState.sizeBytes} t={t} />
               )}
               {viewState.kind === "binary" && (
                 <BinaryViewer name={viewState.name} t={t} />
