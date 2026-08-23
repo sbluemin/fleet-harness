@@ -15,7 +15,7 @@ import type { Translate } from "@fleet-console/sdk/i18n";
 
 import type { GitFileStatus, GitStatusResult } from "../server/tree-services.js";
 import type { FileSearchItem, FileSearchResult, FolderEntry, FolderListResult } from "../server/types.js";
-import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, restoreContextMenuFocus } from "./context-menu.js";
+import { contextMenuAnchorFromRowRect, isTreeContextMenuKey, resolveContextMenuKeyboardAction, restoreContextMenuFocus } from "./context-menu.js";
 import type { FileExplorerMessageKey } from "./i18n/index.js";
 import { translateServerError } from "./i18n/index.js";
 import type { FileSearchTarget } from "./search-navigation.js";
@@ -134,12 +134,8 @@ const TYPEAHEAD_RESET_MS = 1000;
 
 export type SortMode = "name" | "modified" | "size";
 
-const SORT_MODE_CYCLE: readonly SortMode[] = ["name", "modified", "size"];
-
-export function nextSortMode(mode: SortMode): SortMode {
-  const index = SORT_MODE_CYCLE.indexOf(mode);
-  return SORT_MODE_CYCLE[(index + 1) % SORT_MODE_CYCLE.length] ?? "name";
-}
+/** 정렬 메뉴가 열거하는 전체 선택지 — 순환 버튼이 아니라 메뉴가 현재 값과 함께 보여준다. */
+export const SORT_MODES: readonly SortMode[] = ["name", "modified", "size"];
 
 /**
  * 한 수준의 엔트리를 정렬한다. 디렉터리는 항상 파일보다 앞이다.
@@ -456,6 +452,39 @@ export function rollupGitStatuses(
   return rollups;
 }
 
+/** 트리 들여쓰기 지오메트리 — 행 높이 30px·수준당 16px 계약과 함께 가상화가 기대는 상수다. */
+export const TREE_INDENT_PX = 16;
+export const TREE_BASE_PADDING_PX = 12;
+/** 인덴트 가이드 세로선의 좌측 오프셋(px) — 각 조상 수준의 chevron 열 중앙 아래에 선다. */
+export function treeGuideOffsets(depth: number): number[] {
+  return Array.from({ length: Math.max(0, depth) }, (_, level) => TREE_BASE_PADDING_PX + level * TREE_INDENT_PX + 5);
+}
+
+/**
+ * type-ahead가 소비하는 키인지 — 한 글자 printable만.
+ * "/"는 제외한다: 파일 이름에 들어갈 수 없는 경로 구분자이고, 필터 포커스 단축키가 이 키를 쓴다.
+ */
+export function isTypeaheadKey(
+  key: string,
+  modifiers: { readonly ctrlKey: boolean; readonly metaKey: boolean; readonly altKey: boolean },
+): boolean {
+  return key.length === 1
+    && key !== " "
+    && key !== "/"
+    && !modifiers.ctrlKey
+    && !modifiers.metaKey
+    && !modifiers.altKey;
+}
+
+/** 필터 포커스 단축키 판정 — 입력 계열 요소 위에서는 글자 입력을 가로채지 않는다. */
+export function isFilterFocusShortcut(key: string, target: EventTarget | null): boolean {
+  if (key !== "/") return false;
+  if (!(target instanceof HTMLElement)) return true;
+  return !(target instanceof HTMLInputElement)
+    && !(target instanceof HTMLTextAreaElement)
+    && !target.isContentEditable;
+}
+
 export function resolveTypeaheadIndex(
   rows: readonly TreeRow[],
   currentIndex: number,
@@ -718,7 +747,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   const [filterOutcome, setFilterOutcome] = useState<FileSearchResult | null>(null);
   const [expandFailedDirs, setExpandFailedDirs] = useState<Set<string>>(new Set());
   const [watchDegraded, setWatchDegraded] = useState(false);
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const treeRef = useRef<HTMLDivElement>(null);
+  const filterInputRef = useRef<HTMLInputElement>(null);
+  const sortButtonRef = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const pendingFocusPathRef = useRef<string | null>(null);
   const revealedRequestRef = useRef(0);
@@ -1129,16 +1161,13 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     });
   }, []);
 
-  const handleCycleSort = useCallback(() => {
-    setSortMode((prev) => {
-      const next = nextSortMode(prev);
-      try {
-        localStorage.setItem(PREFS_SORT_MODE, next);
-      } catch {
-        // localStorage 접근 실패 무시
-      }
-      return next;
-    });
+  const handleSelectSort = useCallback((mode: SortMode) => {
+    setSortMode(mode);
+    try {
+      localStorage.setItem(PREFS_SORT_MODE, mode);
+    } catch {
+      // localStorage 접근 실패 무시
+    }
   }, []);
 
   const refreshTree = useCallback(() => {
@@ -1383,8 +1412,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
     const action = resolveTreeNavigation(flatRows, index, event.key, { pageSize, shiftKey: event.shiftKey });
     if (action.kind === "none") {
       if (event.key === "ArrowRight" || event.key === "ArrowLeft") event.preventDefault();
-      const printable = event.key.length === 1 && event.key !== " " && !event.ctrlKey && !event.metaKey && !event.altKey;
-      if (!printable) return;
+      if (!isTypeaheadKey(event.key, event)) return;
       event.preventDefault();
       const now = Date.now();
       const nextBuffer = now - typeaheadRef.current.at > TYPEAHEAD_RESET_MS
@@ -1503,6 +1531,10 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
           aria-label={t("fileExplorer.git.deletedGhost", { name: row.name })}
           title={t("fileExplorer.git.deletedGhost", { name: row.name })}
         >
+          {treeGuideOffsets(row.depth).map((left) => (
+            <span key={left} className="fexp-tree-guide" style={{ left: `${left}px` }} aria-hidden="true" />
+          ))}
+          <span className="fexp-tree-chevron" aria-hidden="true" />
           <span className="fexp-tree-icon" aria-hidden="true"><FileIcon name={row.name} /></span>
           <span className="fexp-tree-name">{row.name}</span>
           <span className="fexp-git-badge is-deleted" aria-hidden="true">D</span>
@@ -1546,28 +1578,39 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
   };
 
   return (
-    <div className="fexp-tree-container">
+    <div
+      className="fexp-tree-container"
+      onKeyDown={(event) => {
+        if (!isFilterFocusShortcut(event.key, event.target)) return;
+        event.preventDefault();
+        filterInputRef.current?.focus();
+      }}
+    >
       <div className="fexp-head">
       <div className="fexp-filter">
-        <input
-          type="text"
-          className="fexp-filter-input"
-          placeholder={t("fileExplorer.filter.placeholder")}
-          value={filterText}
-          onChange={(e) => {
-            setFilterText(e.target.value);
-            setFilterCollapsedDirs(new Set());
-          }}
-          onKeyDown={(event) => {
-            if (event.key !== "Escape") return;
-            if (!shouldClearFilterOnEscape(filterText)) return;
-            event.preventDefault();
-            event.stopPropagation();
-            setFilterText("");
-            setFilterCollapsedDirs(new Set());
-          }}
-          aria-label={t("fileExplorer.filter.aria")}
-        />
+        <div className="fexp-filter-box">
+          <input
+            ref={filterInputRef}
+            type="text"
+            className="fexp-filter-input"
+            placeholder={t("fileExplorer.filter.placeholder")}
+            value={filterText}
+            onChange={(e) => {
+              setFilterText(e.target.value);
+              setFilterCollapsedDirs(new Set());
+            }}
+            onKeyDown={(event) => {
+              if (event.key !== "Escape") return;
+              if (!shouldClearFilterOnEscape(filterText)) return;
+              event.preventDefault();
+              event.stopPropagation();
+              setFilterText("");
+              setFilterCollapsedDirs(new Set());
+            }}
+            aria-label={t("fileExplorer.filter.aria")}
+          />
+          {!filterText && <span className="fexp-filter-hint" aria-hidden="true">/</span>}
+        </div>
         {filterText && (
           <button
             type="button"
@@ -1581,18 +1624,38 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             ✕
           </button>
         )}
-        <button
-          type="button"
-          className="fexp-sort-btn"
-          onClick={handleCycleSort}
-          aria-label={t("fileExplorer.sort.cycle", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
-          title={t("fileExplorer.sort.cycle", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
-        >
-          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-            <path d="M4.5 3v9M4.5 12l-2-2M4.5 12l2-2M9 4.5h5M9 8h4M9 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          <span className="fexp-sort-label">{t(SORT_MODE_LABEL_KEYS[sortMode])}</span>
-        </button>
+        <div className="fexp-sort-wrap">
+          <button
+            ref={sortButtonRef}
+            type="button"
+            className="fexp-sort-btn"
+            onClick={() => setSortMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={sortMenuOpen}
+            aria-label={t("fileExplorer.sort.open", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
+            title={t("fileExplorer.sort.open", { mode: t(SORT_MODE_LABEL_KEYS[sortMode]) })}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <path d="M4.5 3v9M4.5 12l-2-2M4.5 12l2-2M9 4.5h5M9 8h4M9 11.5h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="fexp-sort-label">{t(SORT_MODE_LABEL_KEYS[sortMode])}</span>
+          </button>
+          {sortMenuOpen && (
+            <SortMenu
+              sortMode={sortMode}
+              t={t}
+              onSelect={(mode) => {
+                handleSelectSort(mode);
+                setSortMenuOpen(false);
+                sortButtonRef.current?.focus();
+              }}
+              onClose={(restoreFocus) => {
+                setSortMenuOpen(false);
+                if (restoreFocus) sortButtonRef.current?.focus();
+              }}
+            />
+          )}
+        </div>
         <button
           type="button"
           className="fexp-refresh-btn"
@@ -1767,6 +1830,16 @@ function FlatTreeRow({ row, cursor, rowRefs, gitAvailable, gitStatus, rollup, on
       onContextMenu={(event) => onContextMenu(row, event)}
       onKeyDown={(event) => onKeyDown(row, event)}
     >
+      {treeGuideOffsets(depth).map((left) => (
+        <span key={left} className="fexp-tree-guide" style={{ left: `${left}px` }} aria-hidden="true" />
+      ))}
+      <span className="fexp-tree-chevron" aria-hidden="true">
+        {isDir && (
+          <svg width="8" height="8" viewBox="0 0 8 8" fill="none">
+            <path d="M2.5 1.2 5.8 4 2.5 6.8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        )}
+      </span>
       <span className="fexp-tree-icon" aria-hidden="true">
         {isDir ? <FolderIcon name={entry.name} open={isExpanded} /> : <FileIcon name={entry.name} />}
       </span>
@@ -1793,6 +1866,86 @@ const SORT_MODE_LABEL_KEYS = {
   modified: "fileExplorer.sort.modified",
   size: "fileExplorer.sort.size",
 } as const satisfies Record<SortMode, FileExplorerMessageKey>;
+
+interface SortMenuProps {
+  readonly sortMode: SortMode;
+  readonly t: Translate<FileExplorerMessageKey>;
+  readonly onSelect: (mode: SortMode) => void;
+  readonly onClose: (restoreFocus: boolean) => void;
+}
+
+/** 정렬 선택 메뉴 — 순환 버튼과 달리 전체 선택지와 현재 값을 한 번에 보여준다. */
+function SortMenu({ sortMode, t, onSelect, onClose }: SortMenuProps) {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
+  const [activeIndex, setActiveIndex] = useState(() => Math.max(0, SORT_MODES.indexOf(sortMode)));
+
+  useEffect(() => {
+    const focusFrame = window.requestAnimationFrame(() => itemRefs.current[activeIndex]?.focus());
+    return () => window.cancelAnimationFrame(focusFrame);
+    // 첫 마운트에서 현재 정렬 항목으로만 포커스를 옮긴다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const handleOutsidePointer = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Node && !menuRef.current?.contains(target)) onClose(false);
+    };
+    document.addEventListener("pointerdown", handleOutsidePointer, true);
+    return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
+  }, [onClose]);
+
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    const action = resolveContextMenuKeyboardAction(activeIndex, event.key, SORT_MODES.length);
+    if (action.kind === "close") {
+      // preventDefault 없이 닫는다 — Tab의 자연스러운 포커스 이동을 보존.
+      onClose(false);
+      return;
+    }
+    if (action.kind === "none") return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (action.kind === "focus") {
+      setActiveIndex(action.index);
+      itemRefs.current[action.index]?.focus();
+      return;
+    }
+    if (action.kind === "activate") {
+      const mode = SORT_MODES[action.index];
+      if (mode) onSelect(mode);
+      return;
+    }
+    onClose(true);
+  };
+
+  return (
+    <div
+      ref={menuRef}
+      className="fexp-context-menu fexp-sort-menu"
+      role="menu"
+      aria-label={t("fileExplorer.sort.menuAria")}
+      onKeyDown={handleKeyDown}
+    >
+      {SORT_MODES.map((mode, index) => (
+        <button
+          key={mode}
+          ref={(node) => { itemRefs.current[index] = node; }}
+          className="fexp-context-menu-item fexp-sort-menu-item"
+          type="button"
+          role="menuitemradio"
+          aria-checked={mode === sortMode}
+          tabIndex={activeIndex === index ? 0 : -1}
+          onClick={() => onSelect(mode)}
+          onFocus={() => setActiveIndex(index)}
+        >
+          <span>{t(SORT_MODE_LABEL_KEYS[mode])}</span>
+          <span className="fexp-sort-menu-check" aria-hidden="true">✓</span>
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function readSortMode(): SortMode {
   try {

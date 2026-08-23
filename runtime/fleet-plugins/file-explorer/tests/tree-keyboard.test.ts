@@ -2,7 +2,7 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-import { buildFlatRows, isEntryRow, resolveTreeNavigation, resolveTypeaheadIndex, type EntryRow } from "../client/tree.js";
+import { buildFlatRows, isEntryRow, isFilterFocusShortcut, isTypeaheadKey, resolveTreeNavigation, resolveTypeaheadIndex, treeGuideOffsets, TREE_BASE_PADDING_PX, TREE_INDENT_PX, type EntryRow } from "../client/tree.js";
 import { contextMenuAnchorFromRowRect, isTreeContextMenuKey } from "../client/context-menu.js";
 import type { FolderEntry, FolderListResult } from "../server/types.js";
 
@@ -197,4 +197,52 @@ describe("FileTree keyboard completeness", () => {
     expect(contextMenuAnchorFromRowRect({ left: 12, bottom: 40 })).toEqual({ x: 12, y: 40 });
   });
 
+});
+
+describe("type-ahead 키 판정", () => {
+  const noMods = { ctrlKey: false, metaKey: false, altKey: false };
+
+  it("한 글자 printable만 소비한다", () => {
+    expect(isTypeaheadKey("r", noMods)).toBe(true);
+    expect(isTypeaheadKey(".", noMods)).toBe(true);
+    expect(isTypeaheadKey("ArrowDown", noMods)).toBe(false);
+    expect(isTypeaheadKey(" ", noMods)).toBe(false);
+  });
+
+  it('"/"는 소비하지 않는다 — 파일 이름에 올 수 없고 필터 포커스 단축키가 쓴다', () => {
+    expect(isTypeaheadKey("/", noMods)).toBe(false);
+  });
+
+  it("수정키 조합은 소비하지 않는다", () => {
+    expect(isTypeaheadKey("r", { ...noMods, metaKey: true })).toBe(false);
+    expect(isTypeaheadKey("r", { ...noMods, ctrlKey: true })).toBe(false);
+    expect(isTypeaheadKey("r", { ...noMods, altKey: true })).toBe(false);
+  });
+});
+
+describe("필터 포커스 단축키 판정", () => {
+  it('"/"만 반응한다', () => {
+    expect(isFilterFocusShortcut("a", document.body)).toBe(false);
+    expect(isFilterFocusShortcut("/", document.body)).toBe(true);
+  });
+
+  it("입력 계열 요소 위에서는 글자 입력을 가로채지 않는다", () => {
+    const input = document.createElement("input");
+    const textarea = document.createElement("textarea");
+    const editable = document.createElement("div");
+    Object.defineProperty(editable, "isContentEditable", { value: true });
+    expect(isFilterFocusShortcut("/", input)).toBe(false);
+    expect(isFilterFocusShortcut("/", textarea)).toBe(false);
+    expect(isFilterFocusShortcut("/", editable)).toBe(false);
+  });
+});
+
+describe("인덴트 가이드 지오메트리", () => {
+  it("조상 수준마다 한 줄 — chevron 열 중앙 아래", () => {
+    expect(treeGuideOffsets(0)).toEqual([]);
+    expect(treeGuideOffsets(2)).toEqual([
+      TREE_BASE_PADDING_PX + 5,
+      TREE_BASE_PADDING_PX + TREE_INDENT_PX + 5,
+    ]);
+  });
 });

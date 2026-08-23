@@ -45,6 +45,7 @@
   .fexp-viewer-stale,
   .fexp-viewer-wrap,
   .fexp-tree-row,
+  .fexp-tree-chevron svg,
   .fexp-hidden-toggle,
   .fexp-sort-btn,
   .fexp-refresh-btn,
@@ -316,6 +317,8 @@
 
 .fexp-chip-open:focus-visible,
 .fexp-chip-close:focus-visible,
+.fexp-crumb-seg:focus-visible,
+.fexp-img-zoom button:focus-visible,
 .fexp-viewer-nav:focus-visible,
 .fexp-view-mode button:focus-visible,
 .fexp-sort-btn:focus-visible,
@@ -334,6 +337,14 @@
   display: inline-flex;
   align-items: center;
   flex-shrink: 0;
+}
+
+/* 동명 칩 구분 힌트 — 파일명보다 한 단 조용한 부모 폴더 한 조각. */
+.fexp-chip-dir {
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
 }
 
 .fexp-chip-name {
@@ -387,11 +398,6 @@
   flex-shrink: 0;
   display: inline-flex;
   align-items: center;
-}
-
-.fexp-viewer-dir {
-  margin-left: 8px;
-  color: var(--text-tertiary);
 }
 
 .fexp-view-mode {
@@ -449,14 +455,61 @@
   background: var(--surface-glass);
 }
 
-.fexp-viewer-filename {
+/* 브레드크럼 — 조각마다 자기까지의 경로를 집을 수 있는, 읽기가 아니라 조작의 표면. */
+.fexp-viewer-crumb {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  white-space: nowrap;
   font-family: var(--font-mono);
   font-size: var(--t-xs);
-  color: var(--text-secondary);
+}
+
+.fexp-crumb-part {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* 마지막 조각(파일명)만 줄임표를 감수한다 — 앞 조각은 자연 폭을 지킨다. */
+.fexp-crumb-part:last-child {
+  flex: 0 1 auto;
+  overflow: hidden;
+}
+
+.fexp-crumb-sep {
+  margin: 0 1px;
+  color: var(--text-tertiary);
+  opacity: 0.55;
+  flex-shrink: 0;
+}
+
+.fexp-crumb-seg {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  padding: 2px 3px;
+  background: none;
+  border: none;
+  border-radius: var(--radius-xs);
+  cursor: pointer;
+  color: var(--text-tertiary);
+  font-family: inherit;
+  font-size: inherit;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-crumb-seg.is-leaf {
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium);
+}
+
+.fexp-crumb-seg:hover {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
 }
 
 .fexp-viewer-stale {
@@ -584,6 +637,33 @@
   color: var(--warn-ink);
 }
 
+.fexp-filter-box {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+/* "/" 단축키 힌트 — 입력 중이거나 포커스면 물러난다. 장식이므로 포인터를 받지 않는다. */
+.fexp-filter-hint {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  padding: 0 4px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  line-height: 1.5;
+  pointer-events: none;
+}
+
+.fexp-filter-box:focus-within .fexp-filter-hint {
+  opacity: 0;
+}
+
 .fexp-filter-input {
   flex: 1;
   min-width: 0;
@@ -644,6 +724,7 @@
 }
 
 .fexp-tree-row {
+  position: relative;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -659,6 +740,54 @@
   font-size: var(--t-sm);
   color: var(--text-secondary);
   transition: background var(--duration-fast) var(--ease-spring);
+}
+
+/* 선택 스파인 — brass는 위치 채널: "지금 여기"를 rail-chip spine과 같은 문법으로 말한다. */
+.fexp-tree-row.is-cur::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--brass);
+}
+
+/* 인덴트 가이드 — 조상 수준마다 한 줄. 선택 행에서는 경로가 한 단 진해진다. */
+.fexp-tree-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 0;
+  border-left: 1px solid color-mix(in oklch, var(--hairline) 72%, transparent);
+  pointer-events: none;
+}
+
+.fexp-tree-row.is-cur .fexp-tree-guide,
+.fexp-tree-row:hover .fexp-tree-guide {
+  border-left-color: var(--hairline-strong);
+}
+
+/* 펼침 어포던스 — 디렉터리만 caret을 그리고, 파일은 같은 폭의 빈 열로 정렬을 지킨다. */
+.fexp-tree-chevron {
+  flex: 0 0 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.fexp-tree-chevron svg {
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+
+.fexp-tree-row[aria-expanded="true"] .fexp-tree-chevron svg {
+  transform: rotate(90deg);
+}
+
+.fexp-tree-row.is-cur .fexp-tree-chevron {
+  color: var(--brass-ink);
 }
 
 .fexp-tree-row:hover {
@@ -979,18 +1108,58 @@
   max-height: 360px;
 }
 
-.fexp-img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-  display: block;
+/* 100% 모드에서 스테이지보다 큰 원본은 스크롤로 본다 — 배율 표시가 사실로 남기 위한 조건. */
+.fexp-img-stage.is-actual {
+  overflow: auto;
+  justify-content: safe center;
+  align-items: safe center;
 }
 
-.fexp-img-caption {
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
+.fexp-img {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* 확대된 픽셀은 뭉개지 않고 그대로 보여준다 — 아이콘·스프라이트 검수가 이 뷰어의 실사용이다. */
+.fexp-img.is-upscaled {
+  image-rendering: pixelated;
+}
+
+.fexp-img-tools {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fexp-img-zoom {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+}
+
+.fexp-img-zoom button {
+  padding: 1px 10px;
+  background: none;
+  border: none;
+  border-radius: calc(var(--radius-xs) - 2px);
+  cursor: pointer;
   color: var(--text-tertiary);
-  text-align: center;
+  font-family: var(--font-body);
+  font-size: var(--t-xs);
+  line-height: 1.5;
+}
+
+.fexp-img-zoom button[aria-pressed="true"] {
+  background: var(--surface-glass-strong);
+  color: var(--text-primary);
+}
+
+/* 이미지 메타는 본문 하단에 선다 — 코드 뷰어의 메타 바와 같은 표면 문법. */
+.fexp-img-meta {
+  justify-content: center;
+  width: 100%;
 }
 
 /* ── 바이너리 폴백 ── */
@@ -1031,16 +1200,20 @@
   border: none;
   cursor: pointer;
   color: var(--text-tertiary);
+  min-width: 26px;
+  min-height: 26px;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   line-height: 1;
   display: flex;
   align-items: center;
-  transition: color var(--duration-fast) var(--ease-spring);
+  justify-content: center;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-hidden-toggle:hover {
   color: var(--text-secondary);
+  background: var(--surface-glass-strong);
 }
 
 .fexp-hidden-toggle.is-active {
@@ -1049,6 +1222,7 @@
 
 /* ── 삭제 파일 고스트 행 — 합성 정보 행, 포커스 불가 ── */
 .fexp-tree-ghost {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -1076,25 +1250,68 @@
 }
 
 /* ── 정렬 순환 버튼 ── */
+.fexp-sort-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
 .fexp-sort-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 3px;
   background: none;
   border: none;
   cursor: pointer;
   color: var(--text-tertiary);
-  padding: 2px 4px;
+  min-width: 26px;
+  min-height: 26px;
+  padding: 2px 6px;
   border-radius: var(--radius-xs);
   line-height: 1;
   font-family: var(--font-mono);
   font-size: var(--t-xs);
-  transition: color var(--duration-fast) var(--ease-spring);
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-sort-btn:hover {
   color: var(--text-secondary);
+  background: var(--surface-glass-strong);
+}
+
+.fexp-sort-btn[aria-expanded="true"] {
+  color: var(--text-secondary);
+  background: var(--surface-glass-strong);
+}
+
+/* 정렬 메뉴 — 컨텍스트 메뉴의 팝업 판독성 계약을 그대로 입고, 버튼 아래 우측 정렬로 선다. */
+.fexp-sort-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 148px;
+  /* 컨텍스트 메뉴의 100% 기준 상한은 26px 버튼 래퍼에서 풀리면 메뉴를 잘라 버린다 —
+     세 항목짜리 고정 메뉴는 자연 크기로 선다. */
+  max-width: none;
+  max-height: none;
+}
+
+.fexp-sort-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fexp-sort-menu-check {
+  font-family: var(--font-mono);
+  color: var(--brass-ink);
+  visibility: hidden;
+}
+
+.fexp-sort-menu-item[aria-checked="true"] .fexp-sort-menu-check {
+  visibility: visible;
 }
 
 .fexp-sort-label {
@@ -1112,14 +1329,18 @@
   cursor: pointer;
   color: var(--text-tertiary);
   font-size: 15px;
+  min-width: 26px;
+  min-height: 26px;
   padding: 2px 4px;
   border-radius: var(--radius-xs);
   line-height: 1;
   display: flex;
   align-items: center;
-  transition: color var(--duration-fast) var(--ease-spring);
+  justify-content: center;
+  transition: color var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
 .fexp-refresh-btn:hover {
   color: var(--text-secondary);
+  background: var(--surface-glass-strong);
 }

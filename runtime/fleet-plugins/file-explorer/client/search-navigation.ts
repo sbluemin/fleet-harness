@@ -17,6 +17,14 @@ export function activateFileSearchTarget(theaterId: string, relativePath: string
   emit();
 }
 
+/**
+ * 검색 타깃과 같은 단조 증가 카운터에서 reveal 전용 requestId를 발급한다.
+ * 트리는 requestId의 전진만 보고 소비 여부를 판정하므로, 별도 카운터를 두면 충돌한다.
+ */
+export function mintRevealRequestId(): number {
+  return ++requestId;
+}
+
 export function consumeFileSearchTarget(expected: FileSearchTarget): void {
   if (target?.requestId !== expected.requestId) return;
   target = null;

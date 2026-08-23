@@ -91,6 +91,26 @@ export function resolveExtraWidth(isViewerActive: boolean, viewportWidth: number
   return Math.min(remaining, desired);
 }
 
+/**
+ * 동명 파일이 2개 이상 열려 있을 때만 각 칩에 붙일 부모 폴더 힌트(relativePath → "dir/").
+ * 같은 폴더에는 같은 이름이 둘일 수 없으므로 부모 폴더 한 조각이면 항상 구분된다.
+ * 루트 파일의 힌트는 "/" — 루트에 있다는 사실 자체가 구분 정보다.
+ */
+export function chipDirHints(
+  docs: readonly { readonly relativePath: string; readonly name: string }[],
+): ReadonlyMap<string, string> {
+  const nameCounts = new Map<string, number>();
+  for (const doc of docs) nameCounts.set(doc.name, (nameCounts.get(doc.name) ?? 0) + 1);
+  const hints = new Map<string, string>();
+  for (const doc of docs) {
+    if ((nameCounts.get(doc.name) ?? 0) < 2) continue;
+    const parts = doc.relativePath.split("/").filter(Boolean);
+    const parent = parts.at(-2);
+    hints.set(doc.relativePath, parent ? `${parent}/` : "/");
+  }
+  return hints;
+}
+
 /** Chips whose box is not fully inside the visible strip. */
 export function countOverflowingChips(
   containerWidth: number,

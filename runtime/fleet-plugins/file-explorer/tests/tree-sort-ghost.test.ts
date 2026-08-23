@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { FolderEntry, FolderListResult } from "../server/types.js";
-import { buildFlatRows, isEntryRow, nextSortMode, sortEntries } from "../client/tree.js";
+import { buildFlatRows, isEntryRow, SORT_MODES, sortEntries } from "../client/tree.js";
 import { countLines, formatByteSize } from "../client/format.js";
 
 const dir = (name: string, mtimeMs?: number): FolderEntry => ({ name, relativePath: name, kind: "dir", mtimeMs });
@@ -24,10 +24,8 @@ describe("sortEntries", () => {
     expect(sorted).toEqual(["docs", "src", "b.ts", "a.ts", "c.ts"]);
   });
 
-  it("정렬 순환은 name→modified→size→name", () => {
-    expect(nextSortMode("name")).toBe("modified");
-    expect(nextSortMode("modified")).toBe("size");
-    expect(nextSortMode("size")).toBe("name");
+  it("정렬 메뉴는 세 선택지를 전부 열거한다 — 순환 버튼이 아니라 메뉴가 상태를 보여준다", () => {
+    expect(SORT_MODES).toEqual(["name", "modified", "size"]);
   });
 });
 

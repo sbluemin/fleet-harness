@@ -23,6 +23,23 @@ function loadedByteSize(content: string): number {
   return new TextEncoder().encode(content).byteLength;
 }
 
+export interface BreadcrumbSegment {
+  readonly name: string;
+  /** 이 조각까지의 상대 경로 — 클릭 시 복사되는 값. */
+  readonly path: string;
+  readonly isLeaf: boolean;
+}
+
+/** 뷰어 헤더 브레드크럼 조각 — 각 조각은 자기까지의 상대 경로를 안다. */
+export function breadcrumbSegments(relativePath: string): readonly BreadcrumbSegment[] {
+  const parts = relativePath.split("/").filter(Boolean);
+  let prefix = "";
+  return parts.map((name, index) => {
+    prefix = prefix ? `${prefix}/${name}` : name;
+    return { name, path: prefix, isLeaf: index === parts.length - 1 };
+  });
+}
+
 export interface ViewerMetaInput {
   readonly content: string;
   readonly truncated?: boolean;
