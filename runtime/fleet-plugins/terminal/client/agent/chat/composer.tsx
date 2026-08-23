@@ -63,6 +63,7 @@ export function AgentChatComposer({
   queuedTurns,
   onStop,
   onQueued,
+  onQueueRejected,
 }: {
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도 배지가 컨트롤 행 좌측에 앉는다. */
@@ -78,12 +79,12 @@ export function AgentChatComposer({
   readonly stopping: boolean;
   /** 서버가 접수해 현재 턴 뒤에 실행할 지시 수 — 접수 뒤 초안이 사라져도 예약 사실을 지킨다. */
   readonly queuedTurns: number;
-  readonly onStop: () => Promise<void>;
+  readonly onStop: () => Promise<boolean>;
   readonly onQueued: () => void;
+  readonly onQueueRejected: () => void;
 }) {
   const t = getT(context.language ?? "en");
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
-  const stopWasRunningRef = React.useRef(false);
   const [draft, setDraft] = React.useState("");
   const [attachments, setAttachments] = React.useState<readonly ComposerDraftAttachment[]>([]);
   const [sending, setSending] = React.useState(false);
@@ -106,20 +107,23 @@ export function AgentChatComposer({
       .filter((id): id is string => id !== null);
     setSending(true);
     setFailed(false);
+    // 큐 receipt는 요청보다 먼저 세운다. 서버는 요청 안에서 턴을 등록하고 WebSocket으로 먼저
+    // 알릴 수 있으므로, 응답 뒤에 세우면 이미 시작한 턴이 내린 수를 다시 올려 stale로 남긴다.
+    if (turnRunning) onQueued();
     try {
       await messageAgentSession(context.operationId, text, ids.length > 0 ? ids : undefined);
       for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
       setAttachments([]);
       setDraft("");
-      if (turnRunning) onQueued();
       inputRef.current?.focus();
     } catch {
+      if (turnRunning) onQueueRejected();
       // 실패는 초안을 지키고 이 바에서 말한다 — 문면이 사라진 채 침묵하면 회복 보장이 깨진다.
       setFailed(true);
     } finally {
       setSending(false);
     }
-  }, [context.operationId, draft, onQueued, sending, turnRunning]);
+  }, [context.operationId, draft, onQueued, onQueueRejected, sending, turnRunning]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
     const images = files.filter((file) => isComposerAttachmentCandidate(file));
@@ -172,10 +176,11 @@ export function AgentChatComposer({
     setRejection(null);
   }, []);
 
-  React.useEffect(() => {
-    if (stopWasRunningRef.current && !turnRunning) inputRef.current?.focus();
-    stopWasRunningRef.current = turnRunning;
-  }, [turnRunning]);
+  const stop = React.useCallback(async () => {
+    // ACK를 받은 중지만 focus를 돌려준다. 정상 완료는 작업 면이나 separator에서 사용자가 두고
+    // 있던 초점을 빼앗지 않고, 실패는 false라 이 줄에서 멈춘다.
+    if (await onStop()) inputRef.current?.focus();
+  }, [onStop]);
 
   // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과
   // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
@@ -296,7 +301,7 @@ export function AgentChatComposer({
                   type="button"
                   className="agent-chat-composer-stop"
                   disabled={stopping}
-                  onClick={() => { void onStop(); }}
+                  onClick={() => { void stop(); }}
                   aria-label={t("terminal.chat.stopAria")}
                   title={t("terminal.chat.stopTitle")}
                 >

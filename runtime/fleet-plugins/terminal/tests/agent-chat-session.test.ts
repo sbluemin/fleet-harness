@@ -430,15 +430,24 @@ describe("AgentChatRegistry", () => {
       { type: "user", message: { role: "user", content: `order ${index}` } },
       { type: "assistant", message: { content: [{ type: "text", text: `answer ${index}` }] } },
     ]).flat());
-    const { factory } = createFakeSdkFactory([]);
+    const { factory } = createFakeSdkFactory([
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-capped-boundary", () => seedFor(transcriptPath));
+    session.send("live after the capped replay");
+    await drainTurn(registry, "op-capped-boundary");
 
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
     expect(events[0]?.event).toEqual({ kind: "replay-start" });
-    expect(events.at(-1)?.event).toMatchObject({ kind: "replay-end" });
-    expect(events.slice(1, -1).some((entry) => entry.event.kind === "dispatch")).toBe(true);
+    const replayEnd = events.at(-1)?.event;
+    expect(replayEnd).toMatchObject({ kind: "replay-end" });
+    const held = events.slice(1, -1).map((entry) => entry.event);
+    const dispatches = held.filter((event) => event.kind === "dispatch").length;
+    // live 턴의 dispatch/start 쌍도 한 턴이다. 둘을 각각 세면 이 값이 dispatches보다 하나 커진다.
+    expect(held.some((event) => event.kind === "turn-start")).toBe(true);
+    expect(replayEnd?.kind === "replay-end" ? replayEnd.turns : -1).toBe(dispatches);
     await registry.disposeAll();
   });
 

@@ -270,15 +270,17 @@ export function AgentChatView({
     setOpenJobId(null);
   }, []);
 
-  const handleStop = React.useCallback(async (): Promise<void> => {
+  const handleStop = React.useCallback(async (): Promise<boolean> => {
     setStopping(true);
     setStopFailed(false);
     try {
       await state.stopTurn();
+      return true;
     } catch {
       // WebSocket이 끊긴 동안의 중지는 서버에 닿지 않는다. 턴이 닫히지 않은 채 버튼만 원래대로
       // 돌아가면 접수된 것처럼 읽히므로, 재연결 뒤 다시 누를 수 있게 초점 가까이에서 실패를 말한다.
       setStopFailed(true);
+      return false;
     } finally {
       setStopping(false);
     }
@@ -490,6 +492,7 @@ export function AgentChatView({
             queuedTurns={queuedTurns}
             onStop={handleStop}
             onQueued={() => setQueuedTurns((current) => current + 1)}
+            onQueueRejected={() => setQueuedTurns((current) => Math.max(0, current - 1))}
           />
 
           {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며

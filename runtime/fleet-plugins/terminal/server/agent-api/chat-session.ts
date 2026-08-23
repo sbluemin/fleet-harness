@@ -190,9 +190,22 @@ export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<Claude
 const JOURNAL_CAP = 2_000;
 
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
-  return entries.reduce((count, entry) => (
-    entry.event.kind === "dispatch" || entry.event.kind === "turn-start" ? count + 1 : count
-  ), 0);
+  let count = 0;
+  let turnOpen = false;
+  for (const { event } of entries) {
+    if (event.kind === "dispatch") {
+      count += 1;
+      turnOpen = true;
+    } else if (event.kind === "turn-start") {
+      // dispatch 바로 뒤의 start는 같은 턴의 시작 좌표다. 디스패치 없이 자식이 스스로 깨어난
+      // start만 별도 턴으로 센다 — 클라이언트 reducer와 같은 문법이다.
+      if (!turnOpen) count += 1;
+      turnOpen = true;
+    } else if (event.kind === "turn-end") {
+      turnOpen = false;
+    }
+  }
+  return count;
 }
 
 const TOOL_NAME_CAP = 500;
