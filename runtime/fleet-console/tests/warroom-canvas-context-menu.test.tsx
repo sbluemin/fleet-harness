@@ -21,7 +21,8 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
 }));
 
 import { OperationsCanvas } from "../core/client/src/canvas/canvas.js";
-import { loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
+import { getTheaterCanvasSnapshot, loadForTheater, setState as setCanvasState } from "../core/client/src/canvas/canvas-store.js";
+import { getIdleArrivalIds, markIdleArrival, resetIdleArrivalForTests } from "../core/client/src/operation-marks.js";
 import { isTriageDeckMapMode, resetTriageDeckZoomForTests, resetTriageTheater, setTriageActive, setTriageDeckZoom } from "../core/client/src/canvas/triage-store.js";
 import { getState, setActiveOperation, setState as setConsoleState } from "../core/client/src/store.js";
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
@@ -60,7 +61,9 @@ beforeEach(() => {
   setCanvasState({
     viewport: { x: 0, y: 0, zoom: 1 },
     operations: { [OPERATION.id]: OPERATION.geometry! },
+    minimized: [],
   });
+  resetIdleArrivalForTests();
   setTriageActive(true);
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -188,6 +191,24 @@ describe("War Room canvas controls reach", () => {
     // 터미널 안은 복사·붙여넣기가 있는 자리다 — 우리 메뉴가 그것을 빼앗지 않는다.
     expect(panelMenu.defaultPrevented).toBe(false);
     expect(container!.querySelector(".canvas-context-menu")).toBeNull();
+  });
+
+  it("acknowledges an unseen idle arrival when its War Room stage is minimized", () => {
+    vi.useFakeTimers();
+    try {
+      markIdleArrival(OPERATION.id);
+      renderCanvas();
+      act(() => { vi.advanceTimersByTime(2_000); });
+
+      const stage = container!.querySelector<HTMLElement>(`.canvas-operation[data-operation-id="${OPERATION.id}"]`);
+      expect(stage).not.toBeNull();
+      act(() => stage!.querySelector<HTMLButtonElement>(".canvas-operation-window-controls .canvas-operation-icon-button")!.click());
+
+      expect(getTheaterCanvasSnapshot(THEATER_A).minimized).toContain(OPERATION.id);
+      expect(getIdleArrivalIds().has(OPERATION.id)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

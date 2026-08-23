@@ -15,7 +15,7 @@ import { createHostCapabilities } from "../plugin-capabilities.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { useGlobalSettingsStore } from "../global-settings-store.js";
 import { useT } from "../i18n/index.js";
-import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
+import { clearIdleArrival, getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import { pluginRuntimeState, resolveOperationActivity } from "../operation-activity.js";
 import type { ConsoleState, OperationNode } from "../types.js";
 import { resolveConsoleLanguage } from "../whatsnew-i18n.js";
@@ -969,6 +969,7 @@ export function OperationsCanvas({
             },
             onMinimize: () => {
               if (state.activeOperationId === operation.id) setActiveOperation(null);
+              clearIdleArrival(operation.id);
               if (triageActive) {
                 // War Room의 최소화는 deck에서 내리는 동작이다. 무대에 서 있던 패널이면 지목까지
                 // 거둬 무대를 함께 비운다 — 지목이 남으면 큐가 비어도 그 패널이 무대에 붙어 있다.
