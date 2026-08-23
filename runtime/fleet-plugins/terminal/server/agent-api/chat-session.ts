@@ -34,6 +34,7 @@ import {
   type AgentChatJobKind,
   type AgentChatJournalEvent,
   type AgentChatQuestion,
+  type AgentChatQueueEntry,
   type AgentChatStreamEvent,
 } from "./chat-events.js";
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
@@ -188,6 +189,12 @@ interface PendingAsk {
 export type CreateChatSdk = (options: ClaudeGatewaySdkOptions) => Promise<ClaudeGatewaySdk>;
 
 const JOURNAL_CAP = 2_000;
+/**
+ * 예약 칩이 화면에 세우는 문면의 상한. 전문은 서버가 그대로 들고 있다가 자기 차례에 보내고,
+ * 브라우저로는 한 줄에 들어갈 만큼만 나간다 — 6만 자짜리 초안이 큐 스냅숏마다 소켓을 지나면
+ * 예약 하나가 대화 전체보다 무거워진다.
+ */
+const QUEUE_PREVIEW_CHARS = 200;
 
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
   let count = 0;
@@ -322,6 +329,13 @@ class AgentChatSession {
   private readonly listeners = new Set<(event: AgentChatJournalEvent) => void>();
   private turnFlight: Promise<void> = Promise.resolve();
   private pendingTurns = 0;
+  /**
+   * 아직 자기 차례가 오지 않은 예약 지시(좌표 → 전문). 취소가 닿는 자리이며, 자기 차례에
+   * 이 맵에서 사라지는 것이 곧 "시작했다"는 뜻이다 — 시작한 턴은 더 이상 취소가 아니라 중지의
+   * 몫이므로 두 문이 같은 지시를 두고 겹치지 않는다.
+   */
+  private readonly queuedDispatches = new Map<string, string>();
+  private queueSeq = 0;
   private disposed = false;
   /**
    * 이 세션이 붙들고 있는 자식. 턴마다 세우고 접는 것이 아니라 **Operation이 열려 있는 동안**
@@ -564,6 +578,12 @@ class AgentChatSession {
     } else {
       for (const entry of snapshot) listener(entry);
     }
+    // 예약은 저널에 없다(라이브 전용). 재접속한 화면이 자기 힘으로 되찾을 길이 없으므로 여기서
+    // 한 번 실어 준다 — 재생 경계 **뒤**여야 한다. 앞에 두면 replay-start가 그 자리를 곧바로 비운다.
+    // snapshot-end **앞**이기도 하다: 예약은 이번 접속이 발견한 사정이지 새 도착이 아니다.
+    if (this.queuedDispatches.size > 0) {
+      listener({ seq: this.seq, event: { kind: "queue", entries: this.queueEntries() } });
+    }
     // 이 접속이 보유하던 snapshot의 끝. replay-end 뒤에 live로 복원한 진행 중 턴도 여기까지는
     // 새 도착이 아니다. 이후 push()가 보내는 이벤트만 이번 접속의 진짜 live tail이다.
     listener({ seq: this.seq + 0.5, event: { kind: "snapshot-end", turns: this.observedTurns } });
@@ -612,16 +632,58 @@ class AgentChatSession {
 
   send(text: string): void {
     if (this.disposed) return;
+    const id = `q${++this.queueSeq}`;
     this.pendingTurns += 1;
+    this.queuedDispatches.set(id, text);
+    // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
+    // 소유하는 이유다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이 따로 말하게 된다.
+    this.pushQueue();
     this.turnFlight = this.turnFlight
       // 이 메시지는 사용자가 별도로 예약한 다음 턴이다. 현재 턴의 중지는 지금 도는 일만 닫으며,
-      // 이미 접수된 다음 지시까지 취소하지 않는다. dispatch는 앞 턴이 닫힐 때까지 기다린 뒤 자기
-      // 세대를 잡으므로 중단 result가 늦게 와도 새 지시의 결말로 읽히지 않는다.
-      .then(() => this.dispatch(text))
+      // 이미 접수된 다음 지시까지 취소하지 않는다 — 그 문은 `cancelQueued`가 따로 연다.
+      // dispatch는 앞 턴이 닫힐 때까지 기다린 뒤 자기 세대를 잡으므로 중단 result가 늦게 와도
+      // 새 지시의 결말로 읽히지 않는다.
+      .then(() => {
+        // 자기 차례에 자리가 비어 있으면 그 사이 취소된 것이다. 취소는 좌표를 지우는 것이
+        // 전부이고, 판정은 이 한 줄이 진다 — 별도의 취소 집합을 두면 그것이 영원히 자란다.
+        if (!this.queuedDispatches.delete(id)) return;
+        // 시작한 지시는 더 이상 예약이 아니다. 화면의 칩은 여기서 내려가고, 그 자리는 도는 턴이 잇는다.
+        this.pushQueue();
+        return this.dispatch(text);
+      })
       .catch(() => undefined)
       .finally(() => {
         this.pendingTurns -= 1;
       });
+  }
+
+  /**
+   * 아직 시작하지 않은 예약 지시 하나를 사용자가 거둔다.
+   *
+   * 이 문이 닿는 것은 **시작 전**의 지시뿐이다. 이미 도는 턴은 `stopTurn`의 몫이고, 자기 차례에
+   * 좌표가 사라진 예약은 조용히 건너뛴다 — 자식은 그 문면을 본 적이 없으므로 되돌릴 것도 없다.
+   *
+   * 돌려주는 값은 "거둘 것이 있었는가"다. 없는데 true를 돌려주면 화면이 칩을 지우고, 그 지시는
+   * 잠시 뒤 태연히 시작한다.
+   */
+  cancelQueued(id: string): boolean {
+    if (this.disposed) return false;
+    if (!this.queuedDispatches.delete(id)) return false;
+    this.pushQueue();
+    return true;
+  }
+
+  /** 지금 예약된 지시들. 문면은 화면에 들어갈 만큼만 잘라 보낸다(전문은 서버가 들고 있다). */
+  private queueEntries(): readonly AgentChatQueueEntry[] {
+    return [...this.queuedDispatches].map(([id, text]) => ({ id, text: text.slice(0, QUEUE_PREVIEW_CHARS) }));
+  }
+
+  /**
+   * 예약 전량을 라이브 구독자에게 흘린다. `jobs`와 같은 REPLACE 시맨틱이고, 같은 이유로 저널에
+   * 남기지 않는다 — 큐는 지나간 사실이 아니라 지금의 사정이라 재생할 것이 없다.
+   */
+  private pushQueue(): void {
+    this.pushEphemeral({ kind: "queue", entries: this.queueEntries() });
   }
 
   /**
@@ -766,6 +828,9 @@ class AgentChatSession {
   async dispose(): Promise<void> {
     if (this.disposed) return;
     this.disposed = true;
+    // 아직 시작하지 않은 예약은 여기서 거둔다. 남겨 두면 접는 도중에 자기 차례가 와 새 턴을
+    // 세우고, dispose는 그 턴의 완주를 기다리며 Operation 삭제·셧다운을 그만큼 붙든다.
+    this.queuedDispatches.clear();
     this.abandonAsks("The chat session closed before the question was answered.");
     // 세션과 SDK를 먼저 접는다 — 자식이 죽어야 리더 스트림이 끝나고 대기 중인 디스패치가 풀린다.
     // 순서를 뒤집어 턴 완주를 먼저 기다리면, 멈춘 턴 하나가 Operation 삭제·Console 셧다운을

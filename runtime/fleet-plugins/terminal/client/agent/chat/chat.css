@@ -1056,6 +1056,90 @@
 }
 
 /* 컨트롤 행 — Quick Launch bar와 같은 문법: 좌측은 좌표(사실)와 키 안내, 우측은 액션. */
+/* 예약 목록 — field 위 자기 자리에 선다.
+
+   바에 두지 않는 이유는 폭이다: 좌표 배지와 계기가 이미 그 행을 쓰고 있어 예약은 한 줄로
+   잘리고, 잘린 한 줄은 무엇이 밀려 있는지 말하지 못한다(그것이 "N개 예약됨"의 한계였다).
+
+   예약은 경보가 아니라 접수 증서다 — 상태 채널 색을 쓰지 않고 중립 잉크로 사실만 남긴다.
+   자기 차례가 오면 서버가 목록에서 내리고, 그때 이 자리는 저절로 비워진다. */
+.agent-chat-composer-queue {
+  padding: var(--space-3) var(--space-4) var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+}
+
+.agent-chat-composer-queue-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.agent-chat-composer-queue-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.agent-chat-composer-queue-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  padding: 6px 6px 6px var(--space-2);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius-xs);
+  background: var(--surface-panel-raised);
+}
+
+.agent-chat-composer-queue-ord {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+}
+
+/* 한 줄이다 — 예약은 읽을 거리가 아니라 "무엇이 밀려 있는가"의 식별자이고, 여러 줄로 펴면
+   목록 서넛이 대화가 설 자리를 통째로 가져간다. */
+.agent-chat-composer-queue-text {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--t-sm);
+  color: var(--text-secondary);
+}
+
+/* 취소는 파괴 동작 — coral은 상태 채널이라 hover에만 오른다(첨부 제거와 같은 계약). */
+.agent-chat-composer-queue-cancel {
+  flex: none;
+  border: 0;
+  background: transparent;
+  padding: 3px var(--space-2);
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  cursor: pointer;
+  transition: color var(--duration-fast), background var(--duration-fast);
+}
+
+.agent-chat-composer-queue-cancel:hover,
+.agent-chat-composer-queue-cancel:focus-visible {
+  color: var(--coral);
+  background: color-mix(in oklab, var(--coral) 12%, transparent);
+  outline: none;
+}
+
 .agent-chat-composer-bar {
   display: flex;
   align-items: center;
@@ -1079,17 +1163,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* 예약은 성공 receipt이지 상태 경보다. 중립 잉크로 사실만 남기고, 다음 턴이 실제로 열릴 때 내린다. */
-.agent-chat-composer-queued {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
 }
 
 /* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 선다. 읽는 화면에 상주하면 여러 패널이
@@ -1206,41 +1279,56 @@
 }
 
 /* 실행 중에는 현재 턴과 다음 턴의 문을 함께 세운다. 중지는 상태 신호가 아니라 행동이라 중립 잉크를
-   쓰고, brass는 hover/focus 위치만 말한다. 다음 지시는 평소 전송과 같은 원형 문을 유지한다. */
+   쓰고, brass는 hover/focus 위치만 말한다. 다음 지시는 평소 전송과 같은 원형 문을 유지한다.
+
+   라벨을 벗고 첨부와 같은 글리프 자리를 쓴다 — 도는 동안에만 서는 문 하나가 바에서 가장 큰
+   물건이 되면, 상시로 읽어야 할 좌표와 계기가 그만큼 밀린다. 이름은 aria/title이 지고, 같은
+   일을 Esc가 함께 진다(컴포저 프레임 안에서만). */
 .agent-chat-composer-stop {
-  height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 7px;
+  border-radius: var(--radius-xs);
   display: inline-flex;
   align-items: center;
-  gap: var(--space-2);
-  padding: 0 var(--space-3);
-  border: 1px solid var(--hairline-strong);
-  border-radius: var(--radius-xs);
-  background: var(--surface-panel-raised);
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  white-space: nowrap;
-  cursor: pointer;
-  transition: border-color var(--duration-fast), color var(--duration-fast);
+  justify-content: center;
+  flex: none;
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .agent-chat-composer-stop:hover:not(:disabled),
 .agent-chat-composer-stop:focus-visible {
-  border-color: var(--brass);
   color: var(--brass-ink);
+  background: var(--brass-glow);
   outline: none;
 }
 
 .agent-chat-composer-stop:disabled { opacity: 0.6; }
 .agent-chat-composer-send.is-queue:not(.is-armed) { opacity: 0.6; }
 
-/* 정지 표식은 사각형 하나다. */
+/* 정지 표식은 사각형 하나다.
+
+   표식 자체가 아니라 **상자**가 16px여야 한다 — 이웃한 첨부·계기 글리프는 16px svg를 싣고 있어,
+   11px 사각형을 그대로 두면 같은 패딩을 써도 버튼이 25×25로 작아진다(실측). 나란히 선 세 글리프가
+   서로 다른 상자와 다른 클릭 과녁을 갖게 되는 자리다. 상자는 글리프 규격에 맞추고, 채워진 사각형은
+   그 안에서 획 아이콘과 광학 무게를 맞춘 크기로 앉는다. */
 .agent-chat-composer-stop-mark {
-  width: 8px;
-  height: 8px;
+  width: 16px;
+  height: 16px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.agent-chat-composer-stop-mark::before {
+  content: "";
+  width: 11px;
+  height: 11px;
   border-radius: 2px;
   background: currentColor;
-  flex: none;
 }
 
 /* ── `ultracode` 무장 ────────────────────────────────────────────────────
@@ -1625,9 +1713,10 @@
   }
 
   .agent-chat-composer-field { padding-inline: var(--space-3); }
+  .agent-chat-composer-queue { padding-inline: var(--space-3); }
   .agent-chat-composer-bar { padding-left: var(--space-3); }
   .agent-chat-composer-actions { gap: var(--space-1); }
-  .agent-chat-composer-stop { padding-inline: var(--space-2); }
+  .agent-chat-composer-stop { padding: 5px; }
 }
 
 /* Analyst 진입 칩의 진행 표식 — 상태 신호는 aurora 도트만 진다. */
@@ -2432,45 +2521,43 @@
 .agent-chat-ctx.is-warn { --agent-chat-ctx-ink: var(--warn); }
 .agent-chat-ctx.is-critical { --agent-chat-ctx-ink: var(--coral); }
 
-/* 미터는 컴포저 컨트롤 행에 산다 — 첨부와 발사 사이, 발사 버튼 바로 왼쪽이다. 누르는 것들
-   사이에 앉지만 자신은 읽는 계기이므로, 좌표 배지와 같은 중립 알약을 쓰고 hover에서만 손에
-   닿는 물건임을 밝힌다. */
+/* 미터는 컴포저 컨트롤 행에 산다 — 첨부와 발사 사이, 발사 버튼 바로 왼쪽이다. 첨부·중지와 같은
+   글리프 자리를 쓴다: 숫자와 알약을 벗고 원호 하나만 남겨, 바에 서는 물건들이 한 문법으로 읽힌다.
+   정확한 값은 누르면 오는 내역이 지고, 이름표는 aria/title이 진다.
+
+   원호 자체가 글리프인 이유는 그것이 잃을 수 없는 신호라서다 — 무채색 계기 아이콘으로 바꾸면
+   바에서 압력을 읽을 길이 사라진다. 채움은 계속 상태 잉크(warn/coral)를 쓰고, brass는 다른
+   글리프와 같이 hover/focus 위치만 말한다. */
 .agent-chat-ctx-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   flex: none;
-  padding: 4px 8px;
-  border: 1px solid var(--hairline);
+  padding: 7px;
+  border: 0;
   border-radius: var(--radius-xs);
-  background: var(--ink-mid);
+  background: transparent;
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  letter-spacing: 0.04em;
   line-height: 1;
-  white-space: nowrap;
   cursor: pointer;
-  font-variant-numeric: tabular-nums;
-  transition: border-color var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast);
 }
 
 .agent-chat-ctx-chip:hover,
 .agent-chat-ctx-chip:focus-visible {
-  border-color: var(--brass);
-  color: var(--brass-ink);
+  background: var(--brass-glow);
   outline: none;
 }
 
-.agent-chat-ctx-pct { color: var(--agent-chat-ctx-ink); }
+.agent-chat-ctx-chip:focus-visible { outline: 1px solid var(--brass); outline-offset: -1px; }
 
 /* 진행 중에는 옛 값이 새 사실인 척하지 않는다. 자리는 지키되 판독만 낮춘다 — 사라지면
    사용자가 방금 무엇을 눌렀는지 잃는다(전환 칩의 disabled와 같은 규율). */
 .agent-chat-ctx-chip.is-stale { opacity: 0.55; }
 
 .agent-chat-ctx-arc {
-  width: 13px;
-  height: 13px;
+  width: 16px;
+  height: 16px;
   flex: none;
   transform: rotate(-90deg);
 }

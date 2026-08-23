@@ -17,6 +17,7 @@ function makeLogState(): AgentChatLogState {
     errorCode: null,
     jobs: [],
     context: null,
+    queue: [],
   };
 }
 

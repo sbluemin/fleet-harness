@@ -42,6 +42,7 @@ function stateWith(context: AgentChatContext | null, turnState: AgentChatTurn["s
     errorCode: null,
     jobs: [],
     context,
+    queue: [],
   };
 }
 

@@ -46,6 +46,7 @@ function stateWith(jobs: readonly AgentChatJob[]): AgentChatLogState {
     errorCode: null,
     jobs,
     context: null,
+    queue: [],
   };
 }
 

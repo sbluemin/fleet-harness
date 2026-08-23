@@ -154,7 +154,15 @@ export type AgentChatStreamEvent =
       readonly durationMs?: number;
     }
   | { readonly kind: "jobs"; readonly ids: readonly string[] }
+  /** 아직 시작하지 않은 예약 지시의 전량 — `jobs`와 같은 REPLACE 시맨틱이고 라이브 전용이다. */
+  | { readonly kind: "queue"; readonly entries: readonly AgentChatQueueEntry[] }
   | { readonly kind: "error"; readonly code: string };
+
+/** 예약된 지시 하나. 취소는 이 좌표로만 닿는다. */
+export interface AgentChatQueueEntry {
+  readonly id: string;
+  readonly text: string;
+}
 
 export interface AgentChatJournalEvent {
   readonly seq: number;
@@ -344,6 +352,18 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
         seq: entry.seq,
         event: { kind: "jobs", ids: event.ids.filter((id): id is string => typeof id === "string" && id.length > 0) },
       };
+    }
+    case "queue": {
+      if (!Array.isArray(event.entries)) return null;
+      const entries: AgentChatQueueEntry[] = [];
+      for (const raw of event.entries) {
+        if (!raw || typeof raw !== "object") continue;
+        const candidate = raw as { readonly id?: unknown; readonly text?: unknown };
+        if (typeof candidate.id !== "string" || candidate.id.length === 0) continue;
+        if (typeof candidate.text !== "string") continue;
+        entries.push({ id: candidate.id, text: candidate.text });
+      }
+      return { seq: entry.seq, event: { kind: "queue", entries } };
     }
     case "error":
       if (typeof event.code !== "string") return null;
@@ -595,6 +615,8 @@ export interface AgentChatLogState {
   readonly jobs: readonly AgentChatJob[];
   /** 마지막으로 끝난 턴 시점의 문맥 창. 아직 한 턴도 끝나지 않았으면 null이다. */
   readonly context: AgentChatContext | null;
+  /** 서버가 접수했으나 아직 시작하지 않은 지시들. 서버가 권위이고 화면은 그대로 그린다. */
+  readonly queue: readonly AgentChatQueueEntry[];
 }
 
 /** 서버 chat-events의 MAX_TEXT_CHARS와 같은 상한 — 확정 text가 이 길이로 도착하므로 draft도 같은 캡을 진다. */
@@ -608,6 +630,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   errorCode: null,
   jobs: [],
   context: null,
+  queue: [],
 };
 
 /**
@@ -849,6 +872,10 @@ export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStr
         jobs: [...state.jobs.map((job) => ({ ...job, open: live.has(job.id) })), ...seeded],
       };
     }
+    case "queue":
+      // REPLACE 시맨틱: 목록이 곧 예약 전량이다. 서버가 접수·시작·취소마다 다시 보내므로
+      // 여기서 세거나 지우지 않는다 — 화면이 자기 셈을 들면 취소가 어긋나는 자리가 생긴다.
+      return { ...state, queue: event.entries };
     case "error":
       return { ...state, errorCode: event.code };
     default:

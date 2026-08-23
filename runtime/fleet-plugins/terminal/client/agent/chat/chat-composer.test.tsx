@@ -10,8 +10,8 @@ import { AgentChatComposer } from "./composer.js";
 const uploads: File[] = [];
 const messages: string[] = [];
 let stops = 0;
-let queued = 0;
-let queueRejected = 0;
+let canceled: string[] = [];
+let cancelOutcome: "accept" | "reject" = "accept";
 let messageDelivery: "resolve" | "reject" | "hold" = "resolve";
 let releaseMessage: (() => void) | null = null;
 vi.mock("../api.js", () => ({
@@ -34,8 +34,8 @@ beforeEach(() => {
   uploads.length = 0;
   messages.length = 0;
   stops = 0;
-  queued = 0;
-  queueRejected = 0;
+  canceled = [];
+  cancelOutcome = "accept";
   messageDelivery = "resolve";
   releaseMessage = null;
   // jsdom에는 객체 URL이 없다 — 미리보기 경로가 컴포저 렌더를 막지 않게 최소 구현을 세운다.
@@ -53,7 +53,12 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function composerProps(options: { readonly turnRunning?: boolean; readonly queuedTurns?: number } = {}) {
+interface MountOptions {
+  readonly turnRunning?: boolean;
+  readonly queue?: readonly { readonly id: string; readonly text: string }[];
+}
+
+function composerProps(options: MountOptions = {}) {
   const context = {
     operationId: "op-1",
     language: "en",
@@ -66,7 +71,7 @@ function composerProps(options: { readonly turnRunning?: boolean; readonly queue
     tourAnchor: false,
     turnRunning: options.turnRunning ?? false,
     stopping: false,
-    queuedTurns: options.queuedTurns ?? 0,
+    queue: options.queue ?? [],
     // 잡이 없으면 백그라운드 작업 글리프는 서지 않는다 — 이 스위트는 전송·큐 문법만 다룬다.
     work: {
       running: 0,
@@ -76,12 +81,18 @@ function composerProps(options: { readonly turnRunning?: boolean; readonly queue
       onOpen: () => {},
     },
     onStop: async () => { stops += 1; return true; },
-    onQueued: () => { queued += 1; },
-    onQueueRejected: () => { queueRejected += 1; },
+    onCancelQueued: async (queueId: string) => {
+      canceled.push(queueId);
+      return cancelOutcome === "accept";
+    },
   };
 }
 
-function mount(options: { readonly turnRunning?: boolean; readonly queuedTurns?: number } = {}): void {
+function mount(options: MountOptions = {}): void {
+  // 같은 테스트가 두 번 세울 수 있다(전이 뒤의 상태를 보는 검사). 앞의 뿌리를 걷지 않으면
+  // 그 마운트가 문서에 남아, 다음 질의는 새 컨테이너를 보는데 리스너는 둘이 산다.
+  if (root) act(() => root?.unmount());
+  container?.remove();
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -140,8 +151,10 @@ describe("chat panel composer", () => {
     mount({ turnRunning: true });
     const stop = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-stop");
     const queue = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue");
-    expect(stop?.textContent).toContain("Stop current");
-    expect(stop?.getAttribute("aria-label")).toBe("Stop this turn");
+    // 중지는 라벨을 벗고 첨부와 같은 글리프로 선다 — 이름은 aria/title이 지고, 표식만 남는다.
+    expect(stop?.textContent).toBe("");
+    expect(stop?.querySelector(".agent-chat-composer-stop-mark")).not.toBeNull();
+    expect(stop?.getAttribute("aria-label")).toBe("Stop this turn (Esc)");
     expect(queue?.getAttribute("aria-label")).toBe("Queue next (Enter)");
     expect(queue?.disabled).toBe(true);
 
@@ -155,7 +168,6 @@ describe("chat panel composer", () => {
     expect(queue?.disabled).toBe(false);
     await act(async () => { queue?.click(); });
     expect(messages).toEqual(["check the tests"]);
-    expect(queued).toBe(1);
 
     await act(async () => { stop?.click(); });
     expect(stops).toBe(1);
@@ -188,46 +200,59 @@ describe("chat panel composer", () => {
     elsewhere.remove();
   });
 
-  it("records a queued receipt before delivery settles and rolls it back on rejection", async () => {
+  // 예약은 수가 아니라 목록이다 — 무엇이 밀려 있는지 문면으로 서야 사용자가 자기 초안을
+  // 잃었는지 예약됐는지 가릴 수 있다. 목록의 권위는 서버이고 화면은 그대로 그린다.
+  it("stands the queued instructions as their own text, in order", () => {
+    mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }, { id: "q2", text: "second" }] });
+    const items = [...container?.querySelectorAll(".agent-chat-composer-queue-item") ?? []];
+    expect(items.map((item) => item.querySelector(".agent-chat-composer-queue-text")?.textContent))
+      .toEqual(["first", "second"]);
+    expect(items.map((item) => item.querySelector(".agent-chat-composer-queue-ord")?.textContent))
+      .toEqual(["1", "2"]);
+    // 빈 큐는 자리를 차지하지 않는다 — 도는 중이라는 사실만으로 서면 대화가 그만큼 밀린다.
+    mount({ turnRunning: true });
+    expect(container?.querySelector(".agent-chat-composer-queue")).toBeNull();
+  });
+
+  it("cancels a queued instruction by its own coordinate", async () => {
+    mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }, { id: "q2", text: "second" }] });
+    const cancels = container?.querySelectorAll<HTMLButtonElement>(".agent-chat-composer-queue-cancel");
+    await act(async () => { cancels?.[1]?.click(); });
+    expect(canceled).toEqual(["q2"]);
+    // 칩은 낙관적으로 지우지 않는다 — 목록을 내리는 것은 서버가 보내는 다음 큐 스냅숏이다.
+    expect(container?.querySelectorAll(".agent-chat-composer-queue-item").length).toBe(2);
+    expect(container?.querySelector(".agent-chat-composer-error")).toBeNull();
+  });
+
+  // 취소가 한 발 늦으면 그 지시는 이미 도는 턴이다. ok로 삼키면 사용자는 취소되지 않은 턴을
+  // 취소된 것으로 읽으므로, 남은 길(중지)을 그 자리에서 말한다.
+  it("says so when the cancel lost the race to the turn starting", async () => {
+    cancelOutcome = "reject";
+    mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }] });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-queue-cancel")?.click();
+    });
+    const notice = container?.querySelector(".agent-chat-composer-error");
+    expect(notice?.getAttribute("role")).toBe("alert");
+    expect(notice?.textContent).toContain("already started");
+  });
+
+  // 중지는 포인터와 키보드 두 길을 함께 진다. Esc는 프레임 안에서만 듣는다 — 문서 전역에 걸면
+  // 한 화면에 열린 다른 채팅 패널의 턴까지 끊는다.
+  it("stops the running turn from Escape inside the frame, and only while it runs", async () => {
     mount({ turnRunning: true });
     const field = input();
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(field, "queue this");
-      field?.dispatchEvent(new Event("input", { bubbles: true }));
+      field?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
+    expect(stops).toBe(1);
 
-    messageDelivery = "hold";
-    let delivery: Promise<void> | undefined;
-    act(() => {
-      delivery = (async () => {
-        container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue")?.click();
-        await Promise.resolve();
-      })();
-    });
-    await act(async () => { await Promise.resolve(); });
-    expect(queued).toBe(1);
-    releaseMessage?.();
-    await act(async () => { await delivery; });
-    expect(queueRejected).toBe(0);
-
-    messageDelivery = "reject";
+    // 도는 턴이 없으면 Esc는 아무것도 끊지 않는다 — 끊을 것이 없는데 멈춤을 그리지 않기 위해서다.
+    mount({ turnRunning: false });
     await act(async () => {
-      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-      setter?.call(field, "reject this");
-      field?.dispatchEvent(new Event("input", { bubbles: true }));
-      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send.is-queue")?.click();
-      await Promise.resolve();
+      input()?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
     });
-    expect(queued).toBe(2);
-    expect(queueRejected).toBe(1);
-  });
-
-  it("keeps a visible receipt for accepted queued turns", () => {
-    mount({ turnRunning: true, queuedTurns: 2 });
-    const receipt = container?.querySelector(".agent-chat-composer-queued");
-    expect(receipt?.getAttribute("role")).toBe("status");
-    expect(receipt?.textContent).toBe("2 next instructions queued");
+    expect(stops).toBe(1);
   });
 
   // Quick Launch와 같은 `ultracode` 무장을 이 컴포저도 진다 — 같은 부품(sdk/composer)이

@@ -48,6 +48,7 @@ function stateWith(turns: readonly AgentChatTurn[]): AgentChatLogState {
     errorCode: null,
     jobs: [],
     context: null,
+    queue: [],
   };
 }
 
