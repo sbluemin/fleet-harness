@@ -817,18 +817,18 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const body = await ctx.host.http.readJsonBody<{ readonly fresh?: unknown }>(req);
     const fresh = body?.fresh === true;
     const node = ctx.host.operations.get(sessionId);
-    const payload = node?.payload;
-    const cliId = node ? CLAUDE_HARNESS_ID : undefined;
+    if (!node || node.pluginId !== ctx.pluginId || node.type !== AGENT_OPERATION_TYPE) {
+      ctx.host.http.writeJson(res, 404, { error: "session_not_found" });
+      return true;
+    }
+    const payload = node.payload;
+    const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(payload);
     // 이어붙일 좌표가 없으면 재개는 정의상 **새 시작**이고, `fresh`와 같은 경로다 — 저장된
     // 세션을 버리는 것이 아니라 애초에 없었으므로 지울 stale 상태도 없다. 여기서 거절하면 첫 턴
     // 전에 표면을 바꾼 세션이 터미널로 돌아올 길을 잃는다. chat 여부로는 판단할 수 없다: 그
     // 복귀는 chat 마커를 먼저 걷고 이 라우트를 부르므로 이 시점의 payload에는 이미 없다.
     const startsFresh = fresh || !providerSession;
-    if (!node || !cliId) {
-      ctx.host.http.writeJson(res, node ? 409 : 404, { error: node ? "resume_unavailable" : "session_not_found" });
-      return true;
-    }
     // chat 모드 Operation의 resume은 터미널 복귀다 — 진행 중 chat 턴이 있으면 같은 세션 위에
     // 두 필자를 만들 수 없어 거절하고, 아니면 chat 세션을 접고 모드 마커를 걷은 뒤 재기동한다.
     let resumeNode = node;

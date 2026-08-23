@@ -318,6 +318,25 @@ describe("agent dormant ticket guards", () => {
     expect(harness.invalidateCalls).toEqual([sessionId]);
   });
 
+  it("rejects resume for an operation not owned by the terminal agent", async () => {
+    const harness = await createHarness();
+    harness.operations.push({
+      id: "shell-operation",
+      theaterId: "theater-1",
+      type: "shell",
+      pluginId: "terminal",
+      title: "Shell",
+      payload: {},
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+
+    await harness.resumeSession("shell-operation");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 404, body: { error: "session_not_found" } });
+    expect(harness.attach).not.toHaveBeenCalled();
+  });
+
   it("allows ticket issuance after resume moves the session out of dormant", async () => {
     const harness = await createHarness();
     const sessionId = await harness.createLiveSession();
