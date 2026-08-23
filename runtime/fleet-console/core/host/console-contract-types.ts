@@ -302,6 +302,8 @@ export interface GlobalSettingsState {
   readonly remoteAccess?: RemoteAccessState;
   readonly seenFeatureTours: readonly string[];
   readonly theme: ConsoleThemeId;
+  /** 리퀴드 글래스 머티리얼 — 기본 옵트인(true). */
+  readonly liquidGlass: boolean;
   readonly uiFont: UiFontSettings;
 }
 

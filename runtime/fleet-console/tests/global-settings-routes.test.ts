@@ -35,7 +35,7 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({ general: {} });
     const handled = await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } }]);
+    expect(harness.writes).toEqual([{ status: 200, body: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "manrope", size: 14 } } }]);
     expect(harness.writes[0]?.body).not.toHaveProperty("version");
     expect(harness.writes[0]?.body).not.toHaveProperty("general");
   });
@@ -43,7 +43,7 @@ describe("global settings routes", () => {
   it("GET /global-settings/state reflects stored values", async () => {
     const harness = createRouterHarness({ general: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
     await harness.router({ req: req("GET"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "maritime", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { consolePortMode: "static", consoleStaticPort: 9000, language: "ko", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "maritime", liquidGlass: true, uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
   });
 
   it("GET /global-settings/state rejects non-GET methods with 405", async () => {
@@ -147,7 +147,7 @@ describe("global settings routes", () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080, theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } });
     const handled = await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
     expect(handled).toBe(true);
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } } } });
     expect(harness.currentGeneral()).toMatchObject({ consolePortMode: "static", consoleStaticPort: 8080, theme: "instrument", uiFont: { source: "builtin", id: "jetbrains-mono", size: 14 } });
   });
 
@@ -193,7 +193,7 @@ describe("global settings routes", () => {
     for (const theme of ["instrument", "maritime", "carbon", "whites"] as const) {
       const harness = createRouterHarness({ authorized: true, body: { theme } });
       await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-      expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
+      expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "dynamic", consoleStaticPort: null, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme, liquidGlass: true, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
       expect(harness.currentGeneral()).toMatchObject({ theme });
     }
   });
@@ -219,7 +219,7 @@ describe("global settings routes", () => {
       general: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } },
     });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
+    expect(harness.writes[0]?.body).toEqual({ state: { consolePortMode: "static", consoleStaticPort: 8080, language: "en", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "source-code-pro", size: 14 } } });
     expect(harness.currentGeneral()).toEqual({ remoteAccess: DEFAULT_REMOTE_ACCESS, consolePortMode: "static", consoleStaticPort: 8080, language: "en", theme: "instrument", uiFont: { source: "builtin", id: "source-code-pro", size: 14 } });
   });
 
@@ -247,7 +247,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores a static console port", async () => {
     const harness = createRouterHarness({ authorized: true, body: { consolePortMode: "static", consoleStaticPort: 8080 } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "auto", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
   });
 
   it("PUT /global-settings rejects an out-of-range static port with 400", async () => {
@@ -295,7 +295,7 @@ describe("global settings routes", () => {
   it("PUT /global-settings stores language and preserves sibling general and plugin settings", async () => {
     const harness = createRouterHarness({ authorized: true, body: { language: "ko" }, general: { consolePortMode: "static", consoleStaticPort: 8080, theme: "instrument" }, plugins: { terminal: { fontSize: 14 } } });
     await harness.router({ req: jsonReq("PUT"), res: res(), pathname: "/api/v1/settings/global" });
-    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "ko", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
+    expect(harness.writes[0]).toEqual({ status: 200, body: { state: { consolePortMode: "static", consoleStaticPort: 8080, language: "ko", remoteAccess: DEFAULT_REMOTE_ACCESS, seenFeatureTours: [], theme: "instrument", liquidGlass: true, uiFont: { source: "builtin", id: "manrope", size: 14 } } } });
     expect(harness.currentData()).toEqual({ version: 1, general: { remoteAccess: DEFAULT_REMOTE_ACCESS, consolePortMode: "static", consoleStaticPort: 8080, language: "ko", theme: "instrument" }, plugins: { terminal: { fontSize: 14 } } });
   });
 

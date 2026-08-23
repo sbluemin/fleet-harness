@@ -19,7 +19,7 @@ import { isDesktopShell } from "../desktop-shell.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readLastDarkTheme, setActiveTheme, setActiveUiFont, themePolarity } from "../store.js";
+import { readLastDarkTheme, setActiveTheme, setActiveUiFont, setLiquidGlass, themePolarity } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import { buildRemoteEndpointPresentation, generateRemoteAutoPort, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
@@ -305,6 +305,15 @@ export function ThemeCard({
     if ((mode === "light") === isLight) return;
     selectTheme(mode === "light" ? LIGHT_THEME_ID : readLastDarkTheme());
   };
+  const liquidGlass = state?.liquidGlass ?? true;
+  const toggleLiquidGlass = (enabled: boolean) => {
+    if (!state) return;
+    // 낙관 적용 후 저장 실패 시 되돌린다 — selectTheme의 실패 복원과 같은 문법.
+    setLiquidGlass(enabled);
+    void setGlobalSettingsField("liquidGlass", enabled).then((saved) => {
+      if (!saved) setLiquidGlass(!enabled);
+    });
+  };
   return (
     <section className="global-settings-card" aria-label={t("settings.theme.aria")}>
       <div className="global-settings-row">
@@ -363,6 +372,18 @@ export function ThemeCard({
           </div>
         </div>
       </div>
+      <label className="theme-liquid-glass">
+        <input
+          type="checkbox"
+          checked={liquidGlass}
+          disabled={saving || state === null}
+          onChange={(event) => toggleLiquidGlass(event.target.checked)}
+        />
+        <span className="theme-liquid-glass-text">
+          <span className="theme-liquid-glass-label">{t("settings.theme.liquidGlass")}</span>
+          <span className="theme-liquid-glass-help">{t("settings.theme.liquidGlassHelp")}</span>
+        </span>
+      </label>
       <p className="global-settings-foot">{t("settings.theme.foot")}</p>
     </section>
   );

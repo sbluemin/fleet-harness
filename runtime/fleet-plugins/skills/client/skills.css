@@ -531,8 +531,10 @@
   /* 팝업 판독성 계약: maritime/carbon의 --surface-glass는 60~62% 알파라 glass 층만으로는
      backdrop 뒤가 비친다. 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을 보장한다. */
   background:
-    linear-gradient(var(--surface-glass), var(--surface-glass)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-soft), var(--glass-tint-soft)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   display: flex;
@@ -613,10 +615,12 @@
   /* 팝업 판독성 계약: glass 믹스 + 불투명 --ink-deep 언더레이 */
   background:
     linear-gradient(
-      color-mix(in srgb, var(--aurora) 15%, var(--surface-glass)),
-      color-mix(in srgb, var(--aurora) 15%, var(--surface-glass))
+      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft)),
+      color-mix(in srgb, var(--aurora) 15%, var(--glass-tint-soft))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   border: 1px solid color-mix(in srgb, var(--aurora) 35%, transparent);
   border-radius: var(--radius-md);
   bottom: var(--space-3);

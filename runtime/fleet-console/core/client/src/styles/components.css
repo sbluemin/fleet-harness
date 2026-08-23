@@ -797,7 +797,12 @@
   padding: var(--space-2);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: var(--ink-abyss);
+  /* 팝업 판독성 계약: abyss 틴트 + glass 언더레이 채널(canonical 주석: whatsnew-card). */
+  background:
+    linear-gradient(var(--glass-tint-abyss), var(--glass-tint-abyss)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: 0 14px 34px rgb(0 0 0 / 48%);
 }
 
@@ -936,8 +941,10 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -1058,8 +1065,10 @@
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
@@ -1693,6 +1702,39 @@
   .theme-dark-tray.is-open {
     max-width: 100%;
   }
+}
+
+/* 리퀴드 글래스 체크박스 — 테마 카드 아래 한 줄. 라벨 전체가 클릭 타깃이다. */
+.theme-liquid-glass {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.theme-liquid-glass input {
+  accent-color: var(--brass);
+  margin-top: 3px;
+}
+
+.theme-liquid-glass-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.theme-liquid-glass-label {
+  color: var(--text-primary);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.theme-liquid-glass-help {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
 }
 
 .theme-card {
@@ -4033,10 +4075,12 @@
   /* 팝업 판독성 계약: .theater-menu와 같은 불투명 --ink-deep 언더레이 위에 선다. */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   font-family: var(--font-body);
   font-size: var(--t-sm);
@@ -4741,14 +4785,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
   min-width: 0;
   height: 100%;
   overflow: hidden;
-  /* 크롬 열은 --surface-chrome — 라이트에서 종이(카드·터미널)보다 어두워 시선을 작업면에 양보한다. */
-  background: var(--surface-chrome);
+  /* 크롬 열은 --surface-chrome — 라이트에서 종이(카드·터미널)보다 어두워 시선을 작업면에 양보한다.
+     리퀴드 글래스 게이트가 열리면 chrome 틴트 채널이 유리 재료로 바뀐다(닫히면 별칭이라 무회귀). */
+  background: var(--glass-tint-chrome);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
   border: 1px solid var(--surface-rim);
   /* 좌측 가장자리·하단 Global Navigation에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-left: none;
   border-bottom: none;
   border-radius: 0 var(--radius-md) 0 0;
-  box-shadow: var(--shadow-soft);
+  /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다. */
+  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
@@ -6134,10 +6182,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
      glass 토큰에서도 뒤 콘텐츠가 비치지 않는다(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 88%, var(--ink-deep))
+      color-mix(in oklch, var(--glass-tint-strong) 88%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 88%, var(--ink-deep))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-anchor);
 }
 
@@ -7710,10 +7760,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
      canonical 주석 참조) — operation-launch·캔버스 컨텍스트 메뉴가 이 규칙을 상속한다. */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -9054,8 +9106,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background:
     radial-gradient(120% 80% at 50% -12%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 58%),
     radial-gradient(70% 80% at 100% 20%, color-mix(in oklch, var(--aurora) 8%, transparent), transparent 62%),
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
 }
 
@@ -9308,8 +9362,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
   /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   pointer-events: auto;
 }
@@ -9458,10 +9514,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--surface-pillar) 92%, transparent),
-      color-mix(in oklch, var(--surface-pillar) 92%, transparent)
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -9805,8 +9863,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-md);
   background:
     radial-gradient(120% 80% at 50% -10%, color-mix(in oklch, var(--brass) 9%, transparent), transparent 60%),
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating), var(--shadow-anchor);
 }
 
@@ -10682,14 +10742,115 @@ body[data-codex-side="true"] .command-card {
   cursor: default;
 }
 
-/* 기존 glass 카드와 동일한 질감: surface-glass 토큰 + backdrop blur(18px).
-   고정 ink 색상을 걷어내 maritime/carbon 테마를 그대로 추종한다.
-   canonical 팝업 판독성 계약: 두 테마의 --surface-glass-strong은 78~80% 알파의 반투명
-   토큰이라 glass 층만으로는 scrim 뒤 콘텐츠가 비쳐 판독을 해친다. 모든 scrim 동반
-   모달·팝업 카드는 glass 층 아래 불투명 --ink-deep 언더레이를 최하단에 깔아 불투명을
-   보장한다 — 언더레이는 glass가 불투명인 instrument에서는 묻혀 무회귀이고, glass 믹스가
-   이미 --ink-deep 계열 위에 놓이는 색조라 색 이동도 없다. 비팝업 glass 표면(패널·카드)은
-   테마의 반투명 glass 미학을 그대로 유지한다. */
+/* 오버레이 스크림 규약: scrim은 약한 blur로 배경만 가라앉히고, 강한 유리 질감은 카드가 진다.
+   채널 기본값이 none이라 리퀴드 글래스 게이트가 닫히면 현행 무블러 스크림과 동일하다. */
+.add-host-scrim,
+.pair-scrim,
+.commissioning-scrim,
+.directory-browser-scrim,
+.whatsnew-scrim,
+.codex-reading-scrim,
+.keyboard-shortcuts-scrim,
+.control-curtain-scrim,
+.glass-welcome-scrim {
+  -webkit-backdrop-filter: var(--glass-backdrop-scrim);
+  backdrop-filter: var(--glass-backdrop-scrim);
+}
+
+/* 리퀴드 글래스 환영 모달 — 소개하는 기능(Tier 2 유리)을 스스로 입는다. 이미지가 가운데,
+   문구가 하단, 확인이 유일한 포커스 정거장이다. What's New가 닫힌 뒤에만 뜨는 1회성. */
+.glass-welcome-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 36;
+  display: grid;
+  place-items: center;
+  padding: clamp(18px, 4vw, 44px);
+  animation: whatsnew-fade-in var(--duration-base) var(--ease-glide) both;
+}
+
+.glass-welcome-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: color-mix(in oklch, var(--ink-abyss) 62%, transparent);
+  cursor: default;
+}
+
+.glass-welcome-card {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-4);
+  width: min(440px, 100%);
+  padding: var(--space-5);
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-md);
+  background:
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-floating), 0 0 44px -30px var(--brass);
+  text-align: center;
+  animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
+}
+
+.glass-welcome-art {
+  width: 100%;
+  height: auto;
+  border-radius: var(--radius-xs);
+}
+
+.glass-welcome-copy {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.glass-welcome-copy h2 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+}
+
+.glass-welcome-copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-md);
+  line-height: 1.6;
+}
+
+.glass-welcome-copy .glass-welcome-revert {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+}
+
+.glass-welcome-confirm {
+  justify-self: center;
+  padding: 8px 22px;
+  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--brass) 18%, transparent);
+  color: var(--brass-ink);
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+}
+
+.glass-welcome-confirm:hover {
+  background: color-mix(in oklch, var(--brass) 26%, transparent);
+}
+
+/* canonical 팝업 판독성 계약(리퀴드 글래스 채널판): 모든 부유 모달·팝업·플로팅 메뉴는
+   틴트 층(--glass-tint-*)과 최하단 언더레이(--glass-underlay), 그리고
+   backdrop-filter(--glass-backdrop-strong)를 theme.css의 glass 채널로만 소비한다.
+   채널 기본값이 곧 구 계약이다 — 언더레이는 불투명 --ink-deep, 틴트는 기존 표면 토큰
+   별칭, 블러는 none. 그래서 게이트(@supports 미달·prefers-reduced-transparency·
+   설정 data-glass="off") 중 하나라도 닫히면 모든 팝업이 구 불투명 계약으로 돌아간다.
+   게이트가 열리면 언더레이가 transparent로, 틴트가 테마별 α52~72% 유리 재료로,
+   블러가 20px대로 바뀌어 리퀴드 글래스가 된다. 판독은 틴트 α 하한(≈0.52)과 블러가
+   함께 보장하며, 원료 표면 토큰(--surface-*)을 팝업이 직접 칠하는 것은 회귀다.
+   비팝업 glass 표면(패널·카드)은 테마의 반투명 glass 미학을 그대로 유지한다. */
 .whatsnew-card {
   position: relative;
   z-index: 1;
@@ -10701,8 +10862,10 @@ body[data-codex-side="true"] .command-card {
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -11403,10 +11566,12 @@ body[data-codex-side="true"] .command-card {
   background:
     radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
     linear-gradient(
-      color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep)),
-      color-mix(in oklch, var(--surface-glass-strong) 94%, var(--ink-deep))
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep)),
+      color-mix(in oklch, var(--glass-tint-strong) 94%, var(--ink-deep))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: 0 40px 90px -40px oklch(0% 0 0 / 80%);
 }
 
@@ -11827,8 +11992,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-radius: var(--radius-xs);
   /* 팝업 판독성 계약: glass 층 + 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
 }
 
@@ -11926,7 +12093,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .command-band-github-version { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
-.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: var(--ink-deep); box-shadow: var(--shadow-floating); outline: none; }
+.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); outline: none; }
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { width: 24px; height: 24px; border-radius: var(--radius-xs); color: var(--text-tertiary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--surface-glass); color: var(--text-primary); }
@@ -12040,8 +12207,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border: 1px solid color-mix(in oklch, var(--brass) 34%, var(--hairline));
   border-radius: var(--radius-md);
   background:
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   color: var(--text-primary);
   pointer-events: auto;
@@ -12162,10 +12331,12 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: pillar 믹스 아래 불투명 --ink-deep 언더레이(whatsnew-card의 canonical 주석 참조). */
   background:
     linear-gradient(
-      color-mix(in oklch, var(--surface-pillar) 92%, transparent),
-      color-mix(in oklch, var(--surface-pillar) 92%, transparent)
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent),
+      color-mix(in oklch, var(--glass-tint-pillar) 92%, transparent)
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   /* 고정 시 언포커스가 물러나는 깊이. 접힘과 한 동작으로 걸린다. */
   --quick-launch-idle-opacity: 0.55;
@@ -12741,10 +12912,12 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   border-radius: var(--radius-md);
   background:
     linear-gradient(
-      color-mix(in oklch, var(--surface-pillar) 94%, transparent),
-      color-mix(in oklch, var(--surface-pillar) 94%, transparent)
+      color-mix(in oklch, var(--glass-tint-pillar) 94%, transparent),
+      color-mix(in oklch, var(--glass-tint-pillar) 94%, transparent)
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   box-shadow: var(--shadow-floating);
   cursor: zoom-out;
 }
@@ -13004,10 +13177,12 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   z-index: 1;
   background:
     linear-gradient(
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar)),
-      color-mix(in oklch, var(--ink-deep) 60%, var(--surface-pillar))
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar)),
+      color-mix(in oklch, var(--glass-tint-deep) 60%, var(--glass-tint-pillar))
     ),
-    var(--ink-deep);
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
 }
 
 /* 밴드가 선 섹션의 행은 밴드 라벨 자리(패딩 + 글리프 16px + 간격 6px)에 맞춰 들어간다.
@@ -13601,8 +13776,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     radial-gradient(100% 90% at 0 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   padding: clamp(var(--space-5), 5vw, var(--space-8));
   column-gap: clamp(var(--space-4), 4vw, var(--space-6));
 }
@@ -13765,8 +13942,10 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   /* 팝업 판독성 계약: warn wash와 glass 층 아래 불투명 --ink-deep 언더레이를 둔다. */
   background:
     radial-gradient(100% 90% at 50% 0, color-mix(in oklch, var(--warn) 12%, transparent), transparent 62%),
-    linear-gradient(var(--surface-glass-strong), var(--surface-glass-strong)),
-    var(--ink-deep);
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
   text-align: center;
 }
 

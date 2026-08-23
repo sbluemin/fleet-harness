@@ -31,6 +31,7 @@ type Listener = () => void;
 const ACTIVE_THEATER_STORAGE_KEY = "fleet-console.activeTheaterId";
 const THEME_HINT_STORAGE_KEY = "fleet-console.theme-hint";
 const LAST_DARK_THEME_STORAGE_KEY = "fleet-console.last-dark-theme";
+const GLASS_HINT_STORAGE_KEY = "fleet-console.glass-hint";
 // 서버 seenFeatureTours로 일방향 승격하기 위한 legacy migration 읽기·삭제 전용 키다. 새 값은 쓰지 않는다.
 const COMMISSIONING_SEEN_STORAGE_KEY = "fleet-console.commissioningSeen";
 // "화면 안내 다시 보기"가 온보딩 전체를 초기화할 때 함께 지우는 최초 설정 가이드 시청 키.
@@ -171,6 +172,27 @@ export function setOperationsViewActive(active: boolean): void {
 export function setActiveTheme(theme: ThemeId): void {
   applyThemeToDocument(theme);
   setState({ activeTheme: theme });
+}
+
+/** 리퀴드 글래스는 기본 옵트인 — 속성 부재가 켜짐이고 "off"만 의미를 가진다.
+    힌트는 theme-hint와 동형: 미주입 서빙 경로의 첫 페인트 플래시 방지 전용이다. */
+export function setLiquidGlass(enabled: boolean): void {
+  if (typeof document !== "undefined") {
+    if (enabled) {
+      document.documentElement.removeAttribute("data-glass");
+    } else {
+      document.documentElement.setAttribute("data-glass", "off");
+    }
+  }
+  try {
+    if (enabled) {
+      globalThis.localStorage?.removeItem(GLASS_HINT_STORAGE_KEY);
+    } else {
+      globalThis.localStorage?.setItem(GLASS_HINT_STORAGE_KEY, "off");
+    }
+  } catch {
+    // localStorage 접근 불가 환경에서는 DOM 속성만 적용한다.
+  }
 }
 
 export function setActiveUiFont(uiFont: UiFontSettings): void {

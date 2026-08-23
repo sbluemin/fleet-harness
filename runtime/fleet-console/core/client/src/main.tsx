@@ -32,7 +32,7 @@ import { fetchGlobalSettingsState } from "./global-settings-api.js";
 import { failGlobalSettingsLoad, hydrateGlobalSettings } from "./global-settings-store.js";
 import { connectOperationsSse } from "./operations-sse.js";
 import { loadPluginRegistry, PluginRegistryProvider } from "./plugin-registry.js";
-import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont } from "./store.js";
+import { applyDesktopShellMarker, migrateStoredCommissioningSeen, readServerInjectedTheme, readStoredThemeHint, setActiveTheme, setActiveUiFont, setLiquidGlass } from "./store.js";
 
 interface FleetConsoleRuntime {
   readonly "react": typeof reactNs;
@@ -75,6 +75,7 @@ applyDesktopShellMarker();
 try {
   const settings = await fetchGlobalSettingsState();
   setActiveTheme(settings.theme);
+  setLiquidGlass(settings.liquidGlass);
   setActiveUiFont(settings.uiFont);
   hydrateGlobalSettings(settings);
   await migrateStoredCommissioningSeen();
