@@ -517,15 +517,29 @@ class AgentChatSession {
     const retainedEnd = snapshot.findIndex((entry) => entry.event.kind === "replay-end");
     const boundaryCoversSnapshot = retainedStart === 0 && retainedEnd === snapshot.length - 1;
     if (!boundaryCoversSnapshot) {
-      // 원래 경계가 상한에 밀렸거나 그 뒤로 live 턴이 쌓였더라도, 이 접속에서 되쓰는 snapshot
-      // 전체는 과거다. 바깥 경계를 다시 세워 다음 실제 push부터만 live가 되게 한다.
+      // 원래 경계가 상한에 밀렸거나 그 뒤로 live 턴이 쌓였더라도, 이 접속에서 되쓰는 snapshot은
+      // 과거다 — 단 하나, 지금 도는 턴만은 예외다. Quick Launch 관찰자는 첫 턴이 이미 시작된 뒤에야
+      // 붙으므로, 그 진행 중 턴까지 경계 안에 넣으면 클라이언트가 그것을 재생된 과거로 읽어
+      // "작업 중"이 아니라 "작업함"으로 굳힌다(재생 turn-start는 done으로 세운다). 진행 중 턴의
+      // 시작부터는 경계 밖으로 흘려, 그 turn-start가 live로 도착해 working으로 서게 한다.
+      const liveFrom = this.turnOpen ? this.inFlightTurnStartIndex(snapshot) : -1;
+      const replayEnd = liveFrom === -1 ? snapshot.length : liveFrom;
+      const replayed = snapshot.slice(0, replayEnd);
+      const live = snapshot.slice(replayEnd);
       listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
       // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
       // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다.
-      for (const entry of snapshot) {
+      for (const entry of replayed) {
         if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
       }
-      listener({ seq: snapshot.at(-1)?.seq ?? this.seq, event: { kind: "replay-end", turns: countReplayedTurns(snapshot) } });
+      listener({
+        seq: replayed.at(-1)?.seq ?? this.seq,
+        event: { kind: "replay-end", turns: countReplayedTurns(replayed) },
+      });
+      // 경계 밖: 지금 도는 턴의 이벤트를 live로 흘린다 — 클라이언트가 새로 여는 working 턴이 된다.
+      for (const entry of live) {
+        if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
+      }
     } else {
       for (const entry of snapshot) listener(entry);
     }
@@ -533,6 +547,24 @@ class AgentChatSession {
     return () => {
       this.listeners.delete(listener);
     };
+  }
+
+  /**
+   * 지금 열려 있는 턴이 snapshot에서 시작하는 자리. 턴은 직렬로 돌므로 열린 턴은 마지막 turn-end
+   * 뒤의 꼬리 하나뿐이고, 그 첫 이벤트는 dispatch(사용자 턴) 또는 turn-start(자식이 다시 연 턴)다.
+   * 열린 턴이 없거나(정상적으로 turnOpen이 false), 상한에 시작 좌표가 밀려 못 찾으면 -1을 돌려
+   * 호출부가 예전처럼 전체를 재생으로 되쓰게 한다.
+   */
+  private inFlightTurnStartIndex(snapshot: readonly AgentChatJournalEvent[]): number {
+    let lastEnd = -1;
+    for (let i = snapshot.length - 1; i >= 0; i -= 1) {
+      if (snapshot[i]?.event.kind === "turn-end") { lastEnd = i; break; }
+    }
+    for (let i = lastEnd + 1; i < snapshot.length; i += 1) {
+      const kind = snapshot[i]?.event.kind;
+      if (kind === "dispatch" || kind === "turn-start") return i;
+    }
+    return -1;
   }
 
   /**

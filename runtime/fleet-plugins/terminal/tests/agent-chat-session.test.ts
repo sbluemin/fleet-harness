@@ -498,6 +498,44 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // Quick Launch 관찰자는 첫 턴이 이미 시작된 뒤에야 붙는다. 그 진행 중 턴까지 재생 경계 안에
+  // 넣으면 클라이언트가 재생 turn-start를 done으로 세워, 스트리밍 중인데 "작업함"으로 굳는다.
+  // 진행 중 턴의 여는 이벤트는 경계 밖(live)으로 와야 working으로 선다.
+  it("streams the in-flight turn live so a mid-turn reconnect renders it working, not done", async () => {
+    const home = tempDir("chat-home-");
+    const { factory } = createFakeSdkFactory([
+      // result가 없어 턴이 닫히지 않는다 — 관찰자가 붙는 순간의 진행 중 턴이다.
+      { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "thinking out loud" }] } }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-inflight", () => freshSeedFor(home));
+
+    // 첫 구독자로 턴이 열렸으되 아직 닫히지 않은 순간을 잡는다.
+    const probe: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => probe.push(entry));
+    session.send("start the work");
+    await vi.waitFor(() => {
+      expect(probe.some((entry) => entry.event.kind === "turn-start")).toBe(true);
+      expect(probe.some((entry) => entry.event.kind === "turn-end")).toBe(false);
+    });
+
+    // mid-turn으로 재접속하는 두 번째 구독자 — subscribe는 이 순간의 저널을 동기로 되쓴다.
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const kindsList = events.map((entry) => entry.event.kind);
+    const endIdx = kindsList.indexOf("replay-end");
+    const startIdx = kindsList.indexOf("turn-start");
+    // 진행 중 턴의 turn-start는 경계(replay-end) 뒤에 live로 온다.
+    expect(endIdx).toBeGreaterThanOrEqual(0);
+    expect(startIdx).toBeGreaterThan(endIdx);
+
+    // 재접속 스냅숏을 리듀스하면 마지막 턴은 done이 아니라 working이다.
+    const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
+    expect(state.turns.at(-1)?.state).toBe("working");
+
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },
