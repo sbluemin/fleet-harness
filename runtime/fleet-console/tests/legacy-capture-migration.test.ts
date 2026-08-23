@@ -14,13 +14,13 @@ afterEach(() => {
 });
 
 describe("migrateLegacyCaptures", () => {
-  it("injects a capture file into payload when providerSession is missing", () => {
+  it("injects a capture file into payload when session is missing", () => {
     const { consoleDataDir, operations, get, patchCalls } = createHarness([
       makeOperation("op-a", {}),
     ]);
     writeCapture(consoleDataDir, "op-a", {
-      provider: "claude",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       source: "startup",
       capturedAt: "2026-06-16T00:00:00.000Z",
@@ -29,9 +29,9 @@ describe("migrateLegacyCaptures", () => {
     migrateLegacyCaptures({ consoleDataDir, operations });
 
     expect(patchCalls).toHaveLength(1);
-    expect(get("op-a")?.payload.providerSession).toEqual({
-      provider: "claude",
-      sessionId: "provider-session-secret",
+    expect(get("op-a")?.payload.session).toEqual({
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       source: "startup",
       capturedAt: "2026-06-16T00:00:00.000Z",
@@ -39,25 +39,46 @@ describe("migrateLegacyCaptures", () => {
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
-  it("does not overwrite an existing removed-provider payload session", () => {
-    const existing = {
-      provider: "codex" as const,
-      sessionId: "already-in-payload",
-      capturedAt: "2026-06-15T00:00:00.000Z",
-    };
-    const { consoleDataDir, operations, get, patchCalls } = createHarness([
-      makeOperation("op-a", { providerSession: existing }),
+  it("preserves launch coordinates while adding a captured legacy session", () => {
+    const { consoleDataDir, operations, get } = createHarness([
+      makeOperation("op-a", { session: { harness: "claude-code", model: "xai--grok-4.6", effort: "high" } }),
     ]);
     writeCapture(consoleDataDir, "op-a", {
       provider: "claude",
-      sessionId: "from-file",
+      sessionId: "captured-id",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(get("op-a")?.payload.session).toEqual({
+      harness: "claude-code",
+      model: "xai--grok-4.6",
+      effort: "high",
+      id: "captured-id",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+  });
+
+  it("does not overwrite an existing removed-provider payload session", () => {
+    const existing = {
+      harness: "claude-code" as const,
+      id: "already-in-payload",
+      capturedAt: "2026-06-15T00:00:00.000Z",
+    };
+    const { consoleDataDir, operations, get, patchCalls } = createHarness([
+      makeOperation("op-a", { session: existing }),
+    ]);
+    writeCapture(consoleDataDir, "op-a", {
+      harness: "claude-code",
+      id: "from-file",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
 
     migrateLegacyCaptures({ consoleDataDir, operations });
 
     expect(patchCalls).toHaveLength(0);
-    expect(get("op-a")?.payload.providerSession).toEqual(existing);
+    expect(get("op-a")?.payload.session).toEqual(existing);
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
@@ -66,8 +87,8 @@ describe("migrateLegacyCaptures", () => {
       makeOperation("op-a", {}),
     ]);
     writeCapture(consoleDataDir, "op-a", {
-      provider: "codex",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
@@ -75,20 +96,42 @@ describe("migrateLegacyCaptures", () => {
     migrateLegacyCaptures({ consoleDataDir, operations });
 
     expect(patchCalls).toHaveLength(1);
-    expect(get("op-a")?.payload.providerSession).toEqual({
-      provider: "codex",
-      sessionId: "provider-session-secret",
+    expect(get("op-a")?.payload.session).toEqual({
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
+  it("keeps a legacy Codex capture analysis-readable and non-Claude", () => {
+    const { consoleDataDir, operations, get } = createHarness([
+      makeOperation("op-a", { session: { harness: "claude-code", model: "codex--gpt-5.6-sol" } }),
+    ]);
+    writeCapture(consoleDataDir, "op-a", {
+      provider: "codex",
+      sessionId: "codex-session",
+      transcriptPath: "/secret/codex.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(get("op-a")?.payload.session).toEqual({
+      harness: "codex",
+      model: "codex--gpt-5.6-sol",
+      id: "codex-session",
+      transcriptPath: "/secret/codex.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+  });
+
   it("deletes orphan capture files without injecting payload", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "orphan-op", {
-      provider: "claude",
-      sessionId: "orphan-session",
+      harness: "claude-code",
+      id: "orphan-session",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
 
@@ -119,8 +162,8 @@ describe("migrateLegacyCaptures", () => {
       makeOperation("op-a", {}),
     ]);
     writeCapture(consoleDataDir, "op-a", {
-      provider: "claude",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
     const saveCalls: number[] = [];
@@ -135,15 +178,15 @@ describe("migrateLegacyCaptures", () => {
     });
 
     expect(saveCalls).toHaveLength(1);
-    expect(get("op-a")?.payload.providerSession).toMatchObject({ sessionId: "provider-session-secret" });
+    expect(get("op-a")?.payload.session).toMatchObject({ id: "provider-session-secret" });
     expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-a.json"))).toBe(true);
   });
 
   it("deletes captures/ without calling save when nothing was migrated", () => {
     const { consoleDataDir, operations } = createHarness([]);
     writeCapture(consoleDataDir, "orphan-op", {
-      provider: "claude",
-      sessionId: "orphan-session",
+      harness: "claude-code",
+      id: "orphan-session",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
     let saveCalled = false;
@@ -169,7 +212,7 @@ describe("migrateLegacyCaptures", () => {
       fs.mkdirSync("captures", { recursive: true });
       fs.writeFileSync(path.join("captures", "op-a.json"), JSON.stringify({
         provider: "claude",
-        sessionId: "provider-session-secret",
+        id: "provider-session-secret",
         capturedAt: "2026-06-16T00:00:00.000Z",
       }));
       const operations = {
@@ -186,11 +229,11 @@ describe("migrateLegacyCaptures", () => {
     }
   });
 
-  it("retains captures/ for a tombstoned operation missing providerSession", () => {
+  it("retains captures/ for a tombstoned operation missing session", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "op-deferred", {
-      provider: "claude",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
@@ -209,8 +252,8 @@ describe("migrateLegacyCaptures", () => {
     const tombstoned = makeOperation("op-deferred", {});
     const { consoleDataDir, operations, get, patchCalls, restore } = createHarness([]);
     writeCapture(consoleDataDir, "op-deferred", {
-      provider: "codex",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
@@ -224,19 +267,19 @@ describe("migrateLegacyCaptures", () => {
     migrateLegacyCaptures({ consoleDataDir, operations });
 
     expect(patchCalls).toHaveLength(1);
-    expect(get("op-deferred")?.payload.providerSession).toMatchObject({
-      provider: "codex",
-      sessionId: "provider-session-secret",
+    expect(get("op-deferred")?.payload.session).toMatchObject({
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
     });
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
-  it("deletes captures/ when a tombstoned operation already has providerSession", () => {
+  it("deletes captures/ when a tombstoned operation already has session", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "op-deferred", {
-      provider: "claude",
-      sessionId: "from-file",
+      harness: "claude-code",
+      id: "from-file",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
 
@@ -244,9 +287,9 @@ describe("migrateLegacyCaptures", () => {
       consoleDataDir,
       operations,
       tombstonedOperations: [makeOperation("op-deferred", {
-        providerSession: {
-          provider: "claude",
-          sessionId: "already-in-tombstone",
+        session: {
+          harness: "claude-code",
+          id: "already-in-tombstone",
           capturedAt: "2026-06-15T00:00:00.000Z",
         },
       })],
@@ -259,8 +302,8 @@ describe("migrateLegacyCaptures", () => {
   it("retains captures/ for operations nested in a theater tombstone", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "op-theater-child", {
-      provider: "codex",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       transcriptPath: "/secret/transcript.jsonl",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
@@ -282,8 +325,8 @@ describe("migrateLegacyCaptures", () => {
       makeOperation("op-broken", {}),
     ]);
     writeCapture(consoleDataDir, "op-a", {
-      provider: "claude",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
     // 손상 JSON은 파싱에서 throw되어 per-file catch로 떨어진다.
@@ -291,7 +334,7 @@ describe("migrateLegacyCaptures", () => {
 
     migrateLegacyCaptures({ consoleDataDir, operations });
 
-    expect(get("op-a")?.payload.providerSession).toBeDefined();
+    expect(get("op-a")?.payload.session).toBeDefined();
     expect(fs.existsSync(path.join(consoleDataDir, "captures", "op-broken.json"))).toBe(true);
   });
 

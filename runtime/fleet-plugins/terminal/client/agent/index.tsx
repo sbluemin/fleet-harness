@@ -95,7 +95,7 @@ export const agentOperationKind = defineOperationKind({
   pluginId: "terminal",
   type: "agent",
   title: (locale) => getT(locale)("terminal.kind.agent"),
-  subtitle: (operation) => readPayloadString(operation.payload, "cliLabel") ?? undefined,
+  subtitle: () => "Claude Code",
   render: (context) => <AgentOperationView context={context} />,
   // 분석가·뷰 전환·읽기 폭은 캡션 밴드가 진다 — 본문 위에 떠 있던 칩 줄이 하던 일이다.
   captionActions: (context) => <AgentCaptionActions context={context} />,
@@ -212,7 +212,7 @@ export const agentPlugin = definePlugin({
     return { id: session.sessionId };
   },
   renderLaunchIcon: (kind) => {
-    if (kind.id === "claude-gateway") return launchProviderGlyph("claude");
+    if (kind.id === "claude") return launchProviderGlyph("claude");
     return <AgentGlyph />;
   },
 });
@@ -451,7 +451,7 @@ function AgentCaptionActions({ context }: { readonly context: OperationRenderCon
 
   // 전환은 목적지 하나로 말한다 — 채팅에서는 터미널 마크가, 터미널에서는 채팅 마크가 선다.
   // 휴면 세션에는 아직 떠날 자리가 없다(휴면 카드의 고스트가 그 전환을 진다).
-  const canSwitch = isSupportedAgentOperationCliId(session.cliId) && (chatMode || session.status !== "dormant");
+  const canSwitch = chatMode || session.status !== "dormant";
   const viewSwitch = !canSwitch ? null : chatMode ? (
     <CaptionActionButton
       actionId="view-switch"
@@ -542,9 +542,7 @@ function AgentOperationView({ context }: { readonly context: OperationRenderCont
     return (
       <div className="agent-stream-host">
         <DormantOperationView context={context} session={session} />
-        {session.resumeAvailable && isSupportedAgentOperationCliId(session.cliId)
-          ? <DormantChatEntry context={context} />
-          : null}
+        {session.resumeAvailable ? <DormantChatEntry context={context} /> : null}
       </div>
     );
   }
@@ -2070,18 +2068,12 @@ function DormantOperationView({ context, session }: { readonly context: Operatio
   );
 }
 
-function isSupportedAgentOperationCliId(value: string | undefined): boolean {
-  return value === "claude-gateway";
-}
-
 function sessionFromOperation(context: OperationRenderContext): SessionInfo {
   return {
     sessionId: context.operation.id,
     terminalSessionId: context.operation.id,
     cwdLabel: context.operation.title || "Workspace",
     label: context.operation.title,
-    cliId: readPayloadString(context.operation.payload, "cliId") ?? undefined,
-    cliLabel: readPayloadString(context.operation.payload, "cliLabel") ?? undefined,
     status: "dormant",
     turnState: "none",
     createdAt: context.operation.ts.createdAt,

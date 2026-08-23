@@ -156,7 +156,7 @@ describe("per-operation analysis store", () => {
     let models = [{ id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" }];
     const harness = createHarness((path) => path === "analysis/catalog"
       ? new Response(
-        JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
+        JSON.stringify({ clis: [{ cliId: "claude", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )
       : null);
@@ -168,7 +168,7 @@ describe("per-operation analysis store", () => {
     store.refreshCatalog();
     await vi.waitFor(() => expect(store.getSnapshot().catalog?.clis[0]?.models).toHaveLength(2));
     // 갱신이 사용자의 현재 선택을 갈아끼우지 않는다.
-    expect(store.getSnapshot()).toMatchObject({ cliId: "claude-gateway", model: "sonnet", effort: "low" });
+    expect(store.getSnapshot()).toMatchObject({ cliId: "claude", model: "sonnet", effort: "low" });
 
     const readsBeforeStart = harness.fetch.mock.calls.filter((call) => call[1] === "analysis/catalog").length;
     store.dispatch({ type: "sending", started: true, text: "go", now: Date.now() });
@@ -200,7 +200,7 @@ describe("per-operation analysis store", () => {
     let models = [{ id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" }];
     const harness = createHarness((path) => path === "analysis/catalog"
       ? new Response(
-        JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
+        JSON.stringify({ clis: [{ cliId: "claude", label: "AI Gateway", available: true, defaultModel: "sonnet", models }] }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       )
       : null);
@@ -221,7 +221,7 @@ describe("per-operation analysis store", () => {
   });
 
   it("migrates a persisted bare Fable selection before catalog hydration", async () => {
-    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude-gateway", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
+    const catalogBody = JSON.stringify({ clis: [{ cliId: "claude", label: "AI Gateway", available: true, defaultModel: "sonnet", models: [
       { id: "sonnet", label: "Claude Sonnet", effortLevels: ["low"], defaultEffort: "low" },
       { id: "fable[1m]", label: "Claude Fable", effortLevels: ["max"] },
     ] }] });
@@ -230,7 +230,7 @@ describe("per-operation analysis store", () => {
       : null);
     let terminalRecord: Record<string, unknown> = {
       font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
-      analyst: { selection: { cliId: "claude-gateway", model: "fable", effort: "max" } },
+      analyst: { selection: { cliId: "claude", model: "fable", effort: "max" } },
     };
     const settings: ClientSettingsCapability = {
       read: vi.fn(async () => terminalRecord),
@@ -239,10 +239,10 @@ describe("per-operation analysis store", () => {
     const operationId = "operation-store-fable-selection-migration";
     const store = getAnalysisStore(operationId, harness.api, settings);
 
-    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ cliId: "claude-gateway", model: "fable[1m]", effort: "max" }));
+    await vi.waitFor(() => expect(store.getSnapshot()).toMatchObject({ cliId: "claude", model: "fable[1m]", effort: "max" }));
     expect(settings.write).toHaveBeenCalledWith("terminal", {
       font: { source: "curated", id: "jetbrains", customName: "", size: 16 },
-      analyst: { selection: { cliId: "claude-gateway", model: "fable[1m]", effort: "max" } },
+      analyst: { selection: { cliId: "claude", model: "fable[1m]", effort: "max" } },
     });
     disposeAnalysisStore(operationId);
   });

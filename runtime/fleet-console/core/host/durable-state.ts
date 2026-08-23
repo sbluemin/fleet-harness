@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 
 import {
@@ -36,7 +37,7 @@ export type DurableDeletionTombstone =
     });
 
 export interface DurableConsoleState {
-  readonly version: 3;
+  readonly version: 4;
   readonly theaters: readonly TheaterRegistration[];
   readonly operations: readonly OperationNode[];
   readonly groups?: readonly DurableOperationGroup[];
@@ -49,10 +50,11 @@ export interface CreateConsoleDurableStateStoreDeps {
   readonly now?: () => number;
 }
 
-export const STATE_VERSION = 3;
+export const STATE_VERSION = 4;
 const STATE_LOCK_DIR_NAME = "state.lock";
 const STATE_LOCK_OWNER_FILE_NAME = "owner.json";
 const STATE_TEMP_PREFIX = ".state.";
+const V3_BACKUP_SUFFIX = ".v3-backup";
 // 그룹 색상 키 화이트리스트 — 8톤 정체성 팔레트(operation-accent.ts)와 동일 키를 durable에 허용한다.
 // 구 16키는 기존 durable state 하위호환용으로만 남는다(클라이언트가 읽기 시점에 8톤으로 매핑).
 const VALID_GROUP_COLOR_KEYS = new Set([
@@ -93,6 +95,26 @@ export function emptyDurableConsoleState(): DurableConsoleState {
   return { version: STATE_VERSION, theaters: [], operations: [], groups: [], deletionTombstones: [] };
 }
 
+export function readDurableStateVersion(stateFilePath: string): number | null {
+  try {
+    const value = JSON.parse(fs.readFileSync(stateFilePath, "utf8")) as unknown;
+    return isRecord(value) && typeof value.version === "number" ? value.version : null;
+  } catch {
+    return null;
+  }
+}
+
+/** v3 원본을 첫 v4 저장 전에 한 번만 보존한다. 백업 실패는 복원을 막지 않는다. */
+export function backupDurableStateV3(stateFilePath: string): void {
+  const backupPath = `${stateFilePath}${V3_BACKUP_SUFFIX}`;
+  try {
+    if (!fs.existsSync(stateFilePath) || fs.existsSync(backupPath)) return;
+    fs.copyFileSync(stateFilePath, backupPath);
+  } catch (error) {
+    console.warn(`[fleet-console] Durable state v3 backup skipped: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 // 릴리스된 stable durable state(v1, flat 세션 레코드)을 현재 스키마(OperationNode)로 1회 변환한다.
 // 변환 결과는 readOperations의 sanitizeOperationNode가 다시 검증하므로 여기서는 모양만 맞춘다.
 // 각 버전 단계를 순서대로 거쳐 단계별 기본값을 보존하고, 최종 sanitizer가 다시 검증한다.
@@ -100,6 +122,7 @@ function migrateToCurrentVersion(value: Record<string, unknown>): Record<string,
   let current = value;
   if (current.version === 1) current = migrateV1ToV2(current);
   if (current.version === 2) current = migrateV2ToV3(current);
+  if (current.version === 3) current = migrateV3ToV4(current);
   return current;
 }
 
@@ -115,12 +138,66 @@ function migrateV1ToV2(v1: Record<string, unknown>): Record<string, unknown> {
 
 function migrateV2ToV3(v2: Record<string, unknown>): Record<string, unknown> {
   return {
-    version: STATE_VERSION,
+    version: 3,
     theaters: v2.theaters ?? [],
     operations: v2.operations ?? [],
     groups: v2.groups ?? [],
     deletionTombstones: [],
   };
+}
+
+function migrateV3ToV4(v3: Record<string, unknown>): Record<string, unknown> {
+  return {
+    version: STATE_VERSION,
+    theaters: v3.theaters ?? [],
+    operations: migrateOperationListToV4(v3.operations),
+    groups: v3.groups ?? [],
+    deletionTombstones: migrateDeletionTombstonesToV4(v3.deletionTombstones),
+  };
+}
+
+function migrateOperationListToV4(value: unknown): unknown {
+  return Array.isArray(value) ? value.map(migrateOperationToV4) : [];
+}
+
+function migrateOperationToV4(value: unknown): unknown {
+  if (!isRecord(value) || value.pluginId !== "terminal" || value.type !== "agent") return value;
+  const payload = isRecord(value.payload) ? value.payload : {};
+  const legacyProviderSession = isRecord(payload.providerSession) ? payload.providerSession : undefined;
+  const existingSession = isRecord(payload.session) ? payload.session : undefined;
+  const legacyHarness = legacyProviderSession?.provider === "codex" ? "codex" : "claude-code";
+  const session: Record<string, unknown> = {
+    ...(existingSession ?? {}),
+    harness: readOptionalString(existingSession?.harness) ?? legacyHarness,
+  };
+  const model = readOptionalString(existingSession?.model) ?? readOptionalString(payload.launchModel);
+  const effort = readOptionalString(existingSession?.effort) ?? readOptionalString(payload.launchEffort);
+  const id = readOptionalString(existingSession?.id) ?? readOptionalString(legacyProviderSession?.sessionId);
+  const transcriptPath = readOptionalString(existingSession?.transcriptPath) ?? readOptionalString(legacyProviderSession?.transcriptPath);
+  const source = readOptionalString(existingSession?.source) ?? readOptionalString(legacyProviderSession?.source);
+  const capturedAt = readOptionalString(existingSession?.capturedAt) ?? readOptionalString(legacyProviderSession?.capturedAt);
+  if (model) session.model = model;
+  if (effort) session.effort = effort;
+  if (id) session.id = id;
+  if (transcriptPath) session.transcriptPath = transcriptPath;
+  if (source) session.source = source;
+  if (capturedAt) session.capturedAt = capturedAt;
+
+  const nextPayload: Record<string, unknown> = { ...payload, session };
+  for (const key of ["cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession"]) {
+    delete nextPayload[key];
+  }
+  return { ...value, payload: nextPayload };
+}
+
+function migrateDeletionTombstonesToV4(value: unknown): unknown {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (!isRecord(item)) return item;
+    if (item.kind === "operation") return { ...item, operation: migrateOperationToV4(item.operation) };
+    if (item.kind === "theater") return { ...item, operations: migrateOperationListToV4(item.operations) };
+    return item;
+  });
 }
 
 function migrateV1Operation(value: unknown): Record<string, unknown> | null {

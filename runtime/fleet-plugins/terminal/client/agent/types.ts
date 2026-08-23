@@ -45,8 +45,6 @@ export interface SessionInfo {
   readonly terminalSessionId: string;
   readonly cwdLabel: string;
   readonly label?: string;
-  readonly cliId?: string;
-  readonly cliLabel?: string;
   readonly status: SessionStatus;
   readonly turnState: TurnState;
   readonly modelActivity?: ModelActivity;

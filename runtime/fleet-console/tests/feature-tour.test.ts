@@ -352,10 +352,8 @@ describe("feature tour", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     expect(claude?.spotlight).toBeNull();
     expect(claude?.walkthrough.map((step) => step.anchor)).toEqual([
-      '[data-operation-launch-kind="claude-gateway"]',
+      '[data-operation-launch-kind="claude"]',
     ]);
-    // 퇴역한 Classic 앵커가 되살아나면 잡는다.
-    expect(claude?.walkthrough.map((step) => step.anchor)).not.toContain('[data-operation-launch-kind="claude"]');
     // 앵커는 번역되는 라벨이 아니라 안정 식별자에 걸려야 한다.
     for (const step of claude?.walkthrough ?? []) {
       expect(step.anchor).not.toMatch(/Classic|Native|Gateway/);
@@ -396,7 +394,7 @@ describe("feature tour", () => {
     const claude = FEATURE_TOURS.find((tour) => tour.id === "claude-operations");
     document.body.innerHTML = [
       '<button data-operation-launch-kind="codex">Codex</button>',
-      '<button data-operation-launch-kind="claude-gateway">Claude (Gateway)</button>',
+      '<button data-operation-launch-kind="claude">Claude</button>',
     ].join("");
 
     const presentation = resolveNextFeatureTour(FEATURE_TOURS, [], document);

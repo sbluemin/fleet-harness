@@ -82,7 +82,7 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Agent",
-      payload: { providerSession: { provider: "claude", sessionId: "provider-secret" } },
+      payload: { session: { harness: "claude-code", id: "provider-secret" } },
     });
     const plain = store.create({
       id: "op-plain",
@@ -109,7 +109,7 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Legacy agent",
-      payload: { providerSession: { provider: "codex", sessionId: "provider-secret" } },
+      payload: { session: { harness: "codex-cli", id: "provider-secret" } },
     });
 
     const dto = createSanitizedOpDto(removedProvider);
@@ -131,7 +131,7 @@ describe("operations platform", () => {
     expect(createSanitizedOpDto(spoofed).payload?.resumeAvailable).toBeUndefined();
   });
 
-  it("does not derive resumeAvailable from a shapeless providerSession object", () => {
+  it("does not derive resumeAvailable from a shapeless session object", () => {
     const store = createOperationStore({ now: () => 10 });
     const shapeless = store.create({
       id: "op-shapeless",
@@ -139,7 +139,7 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Agent",
-      payload: { providerSession: {} },
+      payload: { session: {} },
     });
     const valid = store.create({
       id: "op-valid",
@@ -147,7 +147,7 @@ describe("operations platform", () => {
       type: "agent",
       pluginId: "terminal",
       title: "Agent",
-      payload: { providerSession: { provider: "claude", sessionId: "provider-secret" } },
+      payload: { session: { harness: "claude-code", id: "provider-secret" } },
     });
 
     expect(createSanitizedOpDto(shapeless).payload?.resumeAvailable).toBeUndefined();
@@ -301,9 +301,9 @@ describe("operations platform", () => {
         title: "Terminal",
         kinds: [
           {
-            id: "claude-gateway",
+            id: "claude",
             type: "agent",
-            title: "Claude (Gateway)",
+            title: "Claude",
             variants: [
               {
                 id: "native",
@@ -347,9 +347,9 @@ describe("operations platform", () => {
       title: "Terminal",
       kinds: [
         {
-          id: "claude-gateway",
+          id: "claude",
           type: "agent",
-          title: "Claude (Gateway)",
+          title: "Claude",
           variants: [{
             id: "native",
             label: "Claude",
@@ -425,9 +425,9 @@ describe("operations platform", () => {
         { id: "shell", type: "shell", title: "Shell" },
         { id: "agent", type: "agent", title: "Agent CLI" },
         {
-          id: "claude-gateway",
+          id: "claude",
           type: "agent",
-          title: "Claude (Gateway)",
+          title: "Claude",
           variants: [{
             id: "native",
             label: "Claude",
@@ -464,13 +464,13 @@ describe("operations platform", () => {
     };
     const gateway = catalog.plugins
       .find((plugin) => plugin.id === "terminal")
-      ?.kinds.find((kind) => kind.id === "claude-gateway");
+      ?.kinds.find((kind) => kind.id === "claude");
 
     expect(response.status).toBe(200);
     expect(gateway).toEqual({
-      id: "claude-gateway",
+      id: "claude",
       type: "agent",
-      title: "Claude (Gateway)",
+      title: "Claude",
       variants: [{
         id: "native",
         label: "Claude",
@@ -566,7 +566,7 @@ async function startCatalogFixture(): Promise<{ readonly endpoint: string }> {
     "    { id: 'shell', type: 'ignored-duplicate', title: 'Ignored Duplicate' },",
     "    { id: 'agent', type: 'agent', title: 'Agent CLI' },",
     "    {",
-    "      id: 'claude-gateway', type: 'agent', title: 'Claude (Gateway)', ignored: 'drop-me',",
+    "      id: 'claude', type: 'agent', title: 'Claude', ignored: 'drop-me',",
     "      launchViews: ['terminal', 'chat', 'bogus-surface'],",
     "      variants: [{",
     "        id: 'native', label: 'Claude', rows: [{",

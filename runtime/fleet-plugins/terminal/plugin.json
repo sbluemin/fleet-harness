@@ -6,7 +6,6 @@
   "sensitiveFields": [
     "cwd",
     "canonicalCwd",
-    "providerSession",
     "providerTitle",
     "transcriptPath",
     "token",

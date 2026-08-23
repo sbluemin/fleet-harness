@@ -64,7 +64,7 @@ function mount(language: "en" | "ko" = "en"): void {
       type: "agent",
       pluginId: "terminal",
       title: "op",
-      payload: { launchModel: "opus[1m]", launchEffort: "ultra" },
+      payload: { session: { harness: "claude-code", model: "opus[1m]", effort: "ultra" } },
       geometry: null,
       ts: { createdAt: 0, updatedAt: 0 },
     },

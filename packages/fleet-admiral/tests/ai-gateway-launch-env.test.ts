@@ -103,7 +103,7 @@ function makeTemporaryDirectory(): string {
 
 function makeProfile(env: Record<string, string> = {}): AgentCliProfile {
 	return {
-		id: "claude-gateway",
+		id: "claude",
 		label: "Claude Gateway",
 		bin: "claude",
 		args: [],

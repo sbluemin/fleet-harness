@@ -284,7 +284,7 @@ function options(input: {
   readonly dataDir: string;
   readonly sessionId: string;
 }): CreateAgentCliPluginOptions {
-  return { cliId: "claude-gateway", cwd: input.cwd, dataDir: input.dataDir, sessionId: input.sessionId };
+  return { cliId: "claude", cwd: input.cwd, dataDir: input.dataDir, sessionId: input.sessionId };
 }
 
 function createRoots(prefix: string): { readonly dataDir: string; readonly cwd: string } {

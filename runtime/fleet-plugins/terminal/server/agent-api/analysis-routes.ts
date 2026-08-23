@@ -428,7 +428,7 @@ async function handleStart(
 }
 
 async function resolveOperationTranscript(operation: OperationNode): Promise<{ readonly captureFound: boolean; readonly transcriptPath: string | null }> {
-  const providerSession = readAnalysisProviderSession(operation.payload?.providerSession);
+  const providerSession = readAnalysisProviderSession(operation.payload?.session);
   if (!providerSession) return { captureFound: false, transcriptPath: null };
   const transcriptPath = providerSession.transcriptPath
     ? await resolveTranscriptPath(providerSession.transcriptPath, operation.ts.createdAt)

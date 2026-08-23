@@ -28,8 +28,8 @@ export type AnalysisCatalogModel = { readonly id: string; readonly label: string
  * 예전에는 탐지된 Agent CLI를 골랐지만 이제 분석가는 AI Gateway 위에서만 돈다. 클라이언트는 이
  * 값을 불투명 문자열로만 다루므로 항목이 하나로 줄어도 화면 계약은 그대로다.
  */
-export type AnalystCliId = "claude-gateway";
-const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude-gateway";
+export type AnalystCliId = "claude";
+const ANALYST_GATEWAY_CLI_ID: AnalystCliId = "claude";
 
 /**
  * 분석가의 기본 선택.

@@ -55,9 +55,9 @@ export function buildAgentCliLaunchKinds(
         title: cli.label,
         ...(disabledReason
           ? { disabled: true, disabledReason }
-          : cli.id === "claude-gateway"
+          : cli.id === "claude"
             ? {
-              variants: buildClaudeGatewayLaunchVariants(gatewaySelection),
+              variants: buildClaudeLaunchVariants(gatewaySelection),
               // 채팅으로 태어나는 길은 SDK 인수 계약 위에 서므로 Claude Gateway 종류에서만 열린다
               // (전환 경로의 `chat_unsupported`와 같은 판정). 다른 종류는 선언하지 않으므로
               // 컴포저의 시작 뷰 선택 자체가 서지 않는다.
@@ -68,7 +68,7 @@ export function buildAgentCliLaunchKinds(
     });
 }
 
-function buildClaudeGatewayLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
+function buildClaudeLaunchVariants(selection?: AiGatewaySelection): readonly OperationLaunchVariantGroup[] {
   const native: OperationLaunchVariantGroup = {
     id: "native",
     label: "Claude",

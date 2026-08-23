@@ -213,9 +213,9 @@ describe("Command Band Operation attribute", () => {
       kinds: [
         { id: "claude", type: "agent", title: "Claude Code" },
         {
-          id: "claude-gateway",
+          id: "claude",
           type: "agent",
-          title: "Claude (Gateway)",
+          title: "Claude",
           variants: [
             {
               id: "native",
@@ -242,33 +242,31 @@ describe("Command Band Operation attribute", () => {
 
   it("names the model that is actually running instead of the CLI", () => {
     expect(commandBandOperationAttribute(
-      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" },
+      { session: { harness: "claude-code", model: "codex--gpt-5.6-sol-fast" } },
       labels,
     )).toBe("GPT-5.6-Sol-Fast");
     expect(commandBandOperationAttribute(
-      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "opus[1m]" },
+      { session: { harness: "claude-code", model: "opus[1m]" } },
       labels,
     )).toBe("Opus");
   });
 
-  it("falls back to the CLI label when the coordinate is missing or unknown", () => {
-    // 옛 payload(launchModel 이전)와 카탈로그가 모르는 좌표(꺼진 모델·개편된 id) 둘 다.
-    expect(commandBandOperationAttribute({ cliId: "claude-gateway", cliLabel: "Claude (Gateway)" }, labels))
-      .toBe("Claude (Gateway)");
+  it("falls back to the harness label when the coordinate is missing or unknown", () => {
+    expect(commandBandOperationAttribute({ session: { harness: "claude-code" } }, labels))
+      .toBe("Claude Code");
     expect(commandBandOperationAttribute(
-      { cliId: "claude-gateway", cliLabel: "Claude (Gateway)", launchModel: "kimi--k3" },
+      { session: { harness: "claude-code", model: "kimi--k3" } },
       labels,
-    )).toBe("Claude (Gateway)");
-    expect(commandBandOperationAttribute({ cliId: "codex" }, labels)).toBe("codex");
+    )).toBe("Claude Code");
     expect(commandBandOperationAttribute({}, labels)).toBeNull();
   });
 
   it("reads an empty index before the catalog arrives", () => {
     expect(commandBandLaunchModelLabels([]).size).toBe(0);
     expect(commandBandOperationAttribute(
-      { cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" },
+      { session: { harness: "claude-code", model: "codex--gpt-5.6-sol-fast" } },
       commandBandLaunchModelLabels([]),
-    )).toBe("Claude (Gateway)");
+    )).toBe("Claude Code");
   });
 });
 

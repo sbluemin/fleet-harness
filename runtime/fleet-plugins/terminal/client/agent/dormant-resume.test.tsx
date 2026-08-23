@@ -32,7 +32,7 @@ afterEach(() => {
 describe("dormant resume feedback", () => {
   it("offers Start fresh for a restored Codex Operation without captured resume metadata", async () => {
     const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
-    await renderOperation(fetch, { cliId: "codex" });
+    await renderOperation(fetch, {});
 
     expect(container?.querySelector(".canvas-operation-dormant-status")?.textContent).toBe("Ended");
     const button = dormantButton();
@@ -46,7 +46,7 @@ describe("dormant resume feedback", () => {
 
   it("offers Start fresh for a supported Operation without captured resume metadata", async () => {
     const fetch = vi.fn().mockResolvedValue(sessionResponse("live"));
-    await renderOperation(fetch, { cliId: "claude-gateway" });
+    await renderOperation(fetch, { session: { harness: "claude-code" } });
 
     const button = dormantButton();
     expect(button.textContent).toContain("Start fresh");
@@ -129,7 +129,7 @@ describe("dormant resume feedback", () => {
     const fetch = vi.fn()
       .mockResolvedValueOnce(launchOptionFailure)
       .mockResolvedValueOnce(sessionResponse("live"));
-    await renderOperation(fetch, { cliId: "claude-gateway" });
+    await renderOperation(fetch, { session: { harness: "claude-code" } });
 
     await act(async () => { dormantButton().click(); });
     await act(async () => { await Promise.resolve(); await Promise.resolve(); });
@@ -187,7 +187,7 @@ describe("dormant resume feedback", () => {
     const fetch = vi.fn().mockImplementation((input: RequestInfo | URL) => {
       if (String(input).includes(`/api/v1/operations/${OPERATION_ID}`)) {
         return Promise.resolve(new Response(JSON.stringify({
-          operation: { payload: { cliId: "codex", restoredDormant: true } },
+          operation: { payload: { restoredDormant: true } },
         }), { status: 200, headers: { "Content-Type": "application/json" } }));
       }
       if (String(input).includes(`/sessions/${OPERATION_ID}/resume`)) {

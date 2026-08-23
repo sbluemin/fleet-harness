@@ -753,7 +753,7 @@ describe("Session Analyst Evidence Pulse", () => {
   it("groups the model menu by provider, keeps it on screen, and selects without launching", () => {
     const mixed = {
       clis: [{
-        cliId: "claude-gateway",
+        cliId: "claude",
         label: "AI Gateway",
         available: true,
         defaultModel: "sonnet",
@@ -768,7 +768,7 @@ describe("Session Analyst Evidence Pulse", () => {
     storeState = {
       ...initialAnalysisState,
       catalog: mixed,
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "sonnet",
       effort: "low",
     };

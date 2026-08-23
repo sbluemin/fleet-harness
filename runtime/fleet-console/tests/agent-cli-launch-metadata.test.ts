@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { combineAgentCliLaunchMetadata } from "../../fleet-plugins/terminal/server/agent-api/agent-cli-launch-metadata.js";
 
 const METADATA = [
-  { id: "claude-gateway", label: "Claude (Gateway)" },
+  { id: "claude", label: "Claude" },
 ] as const;
 
 describe("combineAgentCliLaunchMetadata", () => {
@@ -17,7 +17,7 @@ describe("combineAgentCliLaunchMetadata", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
+      { id: "claude", label: "Claude", available: true, signedIn: true },
     ]);
   });
 
@@ -41,7 +41,7 @@ describe("combineAgentCliLaunchMetadata", () => {
 
   it("AI Gateway는 Claude 바이너리 설치 상태를 공유한다", () => {
     const result = combineAgentCliLaunchMetadata(METADATA, [{ id: "claude", available: true }]);
-    expect(result.find((cli) => cli.id === "claude-gateway")).toMatchObject({
+    expect(result.find((cli) => cli.id === "claude")).toMatchObject({
       available: true,
       signedIn: true,
     });

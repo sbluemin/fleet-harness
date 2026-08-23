@@ -21,7 +21,7 @@ describe("Claude gateway launch environment", () => {
     temporaryDirectories.push(configDir);
 
     const profile = {
-      id: "claude-gateway",
+      id: "claude",
       label: "Claude Gateway",
       bin: "claude",
       args: [],
@@ -56,7 +56,7 @@ describe("Claude gateway launch environment", () => {
       ],
     });
     prepareAiGatewayLaunchProfile({
-      id: "claude-gateway",
+      id: "claude",
       label: "Claude Gateway",
       bin: "claude",
       args: [],
@@ -84,7 +84,7 @@ describe("Claude gateway launch environment", () => {
     temporaryDirectories.push(configDir);
 
     prepareAiGatewayLaunchProfile({
-      id: "claude-gateway",
+      id: "claude",
       label: "Claude Gateway",
       bin: "claude",
       args: [],
@@ -111,7 +111,7 @@ describe("Claude gateway launch environment", () => {
       models: [{ id: "kimi--k3-256k" }],
     });
     const configured = prepareAiGatewayLaunchProfile({
-      id: "claude-gateway",
+      id: "claude",
       label: "Claude Gateway",
       bin: "claude",
       args: [],

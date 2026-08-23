@@ -3,7 +3,7 @@ import type { GatewayEffortExposure, GatewayModel } from "@dotobokuri/core-ai-ga
 import type { ClaudeSkillOverride } from "./gateway-skills.js";
 import type { LaunchCommandLineLimit } from "./prompt.js";
 
-export type AgentCliId = "claude-gateway";
+export type AgentCliId = "claude";
 
 export const MAX_LAUNCH_PROMPT_CHARS = 16000;
 
@@ -102,7 +102,7 @@ export interface AgentCliInjectionContext {
 
 export interface AgentCliInjectionCapabilityEnabled {
   readonly enabled: true;
-  readonly builderId: "claude-gateway";
+  readonly builderId: "claude";
 }
 
 export interface FleetHookExec {

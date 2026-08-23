@@ -300,9 +300,10 @@ async function createHarness(options: { readonly resumeAttachError?: Error } = {
     attachProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error("Operation not found");
-      operation.payload.providerSession = {
-        provider: "claude",
-        sessionId: "provider-session-1",
+      operation.payload.session = {
+        ...(operation.payload.session as Record<string, unknown> | undefined),
+        harness: "claude-code",
+        id: "provider-session-1",
         capturedAt: "2026-08-13T00:00:00.000Z",
       };
     },

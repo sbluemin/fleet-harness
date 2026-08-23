@@ -126,7 +126,7 @@ export function validateUserAgentCliPath(
 }
 
 export function agentCliCommandForId(cliId: string | undefined): string | null {
-  if (cliId === "claude-gateway" || cliId === "claude") return "claude";
+  if (cliId === "claude" || cliId === "claude-gateway" || cliId === "claude-native") return "claude";
   return null;
 }
 

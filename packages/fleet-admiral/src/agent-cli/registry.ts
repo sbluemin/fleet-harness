@@ -1,4 +1,4 @@
-import { claudeGatewayCli } from "./claude/definitions.js";
+import { claudeCli } from "./claude/definitions.js";
 import type { AgentCliDefinition, AgentCliId, AgentCliProfile } from "./types.js";
 
 export interface ResolveAgentCliProfileOptions {
@@ -14,9 +14,9 @@ export interface AgentCliMetadata {
   readonly label: string;
 }
 
-const DEFAULT_CLI_ID: AgentCliId = "claude-gateway";
+const DEFAULT_CLI_ID: AgentCliId = "claude";
 const DEFINITIONS: Record<AgentCliId, AgentCliDefinition> = {
-  "claude-gateway": claudeGatewayCli,
+  "claude": claudeCli,
 };
 
 export async function resolveAgentCliProfile(
@@ -63,9 +63,7 @@ function parseEnvCliId(value: string | undefined): AgentCliId | undefined {
     return undefined;
   }
 
-  if (value === "claude" || value === "claude-native") {
-    return "claude-gateway";
-  }
+  if (value === "claude-gateway" || value === "claude-native") return "claude";
 
   if (Object.hasOwn(DEFINITIONS, value)) {
     return value as AgentCliId;

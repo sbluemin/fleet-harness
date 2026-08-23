@@ -127,9 +127,9 @@ describe("CommandBandOperationMenu", () => {
     const onRenameOperation = vi.fn();
     renderMenu(createElement(CommandBandOperationMenu, {
       operations: [
-        { ...makeOperation("op-1", "theater-a"), payload: { cliLabel: "Claude Code" } },
+        { ...makeOperation("op-1", "theater-a"), payload: { session: { harness: "claude-code" } } },
         makeOperation("op-2", "theater-a"),
-        { ...makeOperation("op-3", "theater-a"), payload: { cliLabel: "Claude (Gateway)", launchModel: "codex--gpt-5.6-sol-fast" } },
+        { ...makeOperation("op-3", "theater-a"), payload: { session: { harness: "claude-code", model: "codex--gpt-5.6-sol-fast" } } },
       ],
       activeOperationId: "op-1",
       launchModelLabels: new Map([["codex--gpt-5.6-sol-fast", "GPT-5.6-Sol-Fast"]]),

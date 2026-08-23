@@ -34,7 +34,7 @@ afterEach(() => {
 describe("agent CLI session resume and capture hooks", () => {
   it("places Claude --resume before Fleet injection flags", async () => {
     const root = createTempRoot("fleet-admiral-claude-resume-");
-    const profile = baseProfile("claude-gateway", {
+    const profile = baseProfile("claude", {
       args: ["--model", "claude-opus"],
       cwd: root,
       env: { HOME: root },
@@ -58,7 +58,7 @@ describe("agent CLI session resume and capture hooks", () => {
   it("adds no session flag when the profile's own args already carry a coordinate", async () => {
     const root = createTempRoot("fleet-admiral-claude-passthrough-");
     for (const passthrough of [["--resume", "sid-from-user"], ["-c"], ["--continue"], ["--resume=sid-inline"]]) {
-      const profile = baseProfile("claude-gateway", { args: passthrough, cwd: root, env: { HOME: root } });
+      const profile = baseProfile("claude", { args: passthrough, cwd: root, env: { HOME: root } });
       const injected = await injectAgentCliProfile(profile, baseInjectOptions(root));
 
       expect(injected.args).not.toContain("--session-id");
@@ -72,7 +72,7 @@ describe("agent CLI session resume and capture hooks", () => {
 
   it("pins a Fleet-issued session id for a new session, and forks with a fresh one", async () => {
     const root = createTempRoot("fleet-admiral-claude-pin-");
-    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
 
     const fresh = await injectAgentCliProfile(profile, baseInjectOptions(root));
     expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
@@ -130,7 +130,7 @@ describe("agent CLI session resume and capture hooks", () => {
 
   it("renders the background report alongside turn end without a second hook on Stop", async () => {
     const root = createTempRoot("fleet-admiral-background-hooks-");
-    const profile = baseProfile("claude-gateway", {
+    const profile = baseProfile("claude", {
       args: [],
       cwd: root,
       env: { HOME: root },
@@ -185,7 +185,7 @@ describe("agent CLI session resume and capture hooks", () => {
     const dataDir = path.join(root, "data");
     const plugin = await createAgentCliPlugin({
       captureSessionHookExec: hookExec("node", ["console.js", "hook", "capture-session", "claude"]),
-      cliId: "claude-gateway",
+      cliId: "claude",
       cwd: root,
       dataDir,
       sessionId: randomUUID(),

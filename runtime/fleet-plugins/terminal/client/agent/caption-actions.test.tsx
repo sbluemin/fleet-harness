@@ -78,7 +78,6 @@ async function render({ chatMode, companions = true }: { readonly chatMode: bool
       createdAt: 1,
       theaterId: "theater",
       resumeAvailable: true,
-      cliId: "claude-gateway",
     });
     root?.render(captionActions(context(chatMode, companions)) as React.ReactNode);
     await Promise.resolve();
@@ -112,7 +111,7 @@ function context(chatMode: boolean, companions: boolean): OperationRenderContext
       type: "agent",
       pluginId: "terminal",
       title: "Caption shelf",
-      payload: { chatMode, cliId: "claude-gateway" },
+      payload: { chatMode, session: { harness: "claude-code" } },
       geometry: null,
       ts: { createdAt: 1, updatedAt: 1 },
     },

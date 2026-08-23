@@ -253,12 +253,10 @@ describe("console terminal observability", () => {
       sessionId: "session-a",
       theaterId: workspaceHash(fs.realpathSync.native(dir)),
       cwd: dir,
-      cliId: "claude",
-      cliLabel: "Claude",
       createdAt: 1_000,
-      providerSession: {
-        provider: "claude",
-        sessionId: "provider-session-secret",
+      session: {
+        harness: "claude-code",
+        id: "provider-session-secret",
         transcriptPath: "/secret/transcript.jsonl",
         source: "startup",
         capturedAt: "2026-06-16T00:00:00.000Z",
@@ -285,8 +283,8 @@ describe("console terminal observability", () => {
     store.registerTerminalRuntimeSession({ sessionId: "session-a", label: "Claude Code", mcpToolCount: 3 });
 
     const dormant = store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session-secret",
+      harness: "claude-code",
+      id: "provider-session-secret",
       capturedAt: "2026-06-16T00:00:00.000Z",
     });
 
@@ -1290,7 +1288,7 @@ describe("console static and terminal ticket boundary", () => {
     });
     const stateFile = path.join(fixture.fleetDataDir, "console", "state.json");
     const state = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ id?: string; pluginId?: string; type?: string; payload?: { providerSession?: unknown } }> };
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.operations).toHaveLength(1);
     expect(state.operations[0]).toMatchObject({ id: session.sessionId, pluginId: "terminal", type: "agent" });
     expect(state.operations[0]?.payload?.providerSession).toBeUndefined();
@@ -1484,6 +1482,97 @@ describe("console static and terminal ticket boundary", () => {
     expect(bootstrap.theaters.find((entry) => entry.id === theater.id)?.hasWiki).toBe(true);
   });
 
+  it("migrates v3 state once, preserves its backup, and reopens the v4 state idempotently", async () => {
+    let fleetDataDir = "";
+    const fixture = await startFixture({
+      beforeCreateServer: (paths) => {
+        fleetDataDir = paths.fleetDataDir;
+        const consoleDir = path.join(fleetDataDir, "console");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        fs.writeFileSync(path.join(consoleDir, "state.json"), JSON.stringify({
+          version: 3,
+          theaters: [],
+          operations: [{
+            id: "legacy-agent",
+            theaterId: "legacy-theater",
+            title: "Legacy Agent",
+            pluginId: "terminal",
+            type: "agent",
+            payload: {
+              cwd: "/legacy",
+              cliId: "claude-gateway",
+              launchKindId: "claude-gateway",
+              cliLabel: "Claude (Gateway)",
+              launchProvider: "codex",
+              launchModel: "codex--gpt-5.6-sol",
+              launchEffort: "medium",
+              providerSession: {
+                provider: "claude-gateway",
+                sessionId: "legacy-provider-session",
+                transcriptPath: "/secret/transcript.jsonl",
+                capturedAt: "2026-08-23T00:00:00.000Z",
+              },
+            },
+            geometry: null,
+            ts: { createdAt: 1, updatedAt: 2 },
+          }],
+          groups: [],
+          deletionTombstones: [],
+        }));
+      },
+    });
+    const stateFile = path.join(fleetDataDir, "console", "state.json");
+    const backupFile = `${stateFile}.v3-backup`;
+    const first = JSON.parse(fs.readFileSync(stateFile, "utf8")) as { version: number; operations: Array<{ payload: Record<string, unknown> }> };
+    const backup = fs.readFileSync(backupFile, "utf8");
+
+    expect(first.version).toBe(4);
+    expect(first.operations[0]?.payload).toEqual({
+      cwd: "/legacy",
+      restoredDormant: true,
+      session: {
+        harness: "claude-code",
+        model: "codex--gpt-5.6-sol",
+        effort: "medium",
+        id: "legacy-provider-session",
+        transcriptPath: "/secret/transcript.jsonl",
+        capturedAt: "2026-08-23T00:00:00.000Z",
+      },
+    });
+    expect(JSON.parse(backup)).toMatchObject({ version: 3 });
+
+    await fixture.server.stop();
+    const restarted = createConsoleServer({ port: 0, version: "test", dataDir: fleetDataDir });
+    servers.push(restarted);
+    const restartDir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-restart-lock-"));
+    tempDirs.push(restartDir);
+    await restarted.start({ dir: restartDir, lockFile: path.join(restartDir, "console.lock") });
+
+    const second = JSON.parse(fs.readFileSync(stateFile, "utf8")) as typeof first;
+    expect(second.version).toBe(4);
+    expect(second.operations[0]?.payload).toEqual(first.operations[0]?.payload);
+    expect(fs.readFileSync(backupFile, "utf8")).toBe(backup);
+  });
+
+  it("does not overwrite a durable state with an unsupported version", async () => {
+    const original = JSON.stringify({
+      version: 0,
+      theaters: [{ id: "future-theater" }],
+      operations: [{ id: "future-operation" }],
+    });
+    let stateFile = "";
+    await startFixture({
+      beforeCreateServer: ({ fleetDataDir }) => {
+        const consoleDir = path.join(fleetDataDir, "console");
+        fs.mkdirSync(consoleDir, { recursive: true });
+        stateFile = path.join(consoleDir, "state.json");
+        fs.writeFileSync(stateFile, original);
+      },
+    });
+
+    expect(fs.readFileSync(stateFile, "utf8")).toBe(original);
+  });
+
   it("rehydrates durable provider titles as dormant without starting PTYs", async () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-console-rehydrate-"));
     tempDirs.push(dir);
@@ -1512,12 +1601,10 @@ describe("console static and terminal ticket boundary", () => {
             type: "agent",
             payload: {
               cwd: dir,
-              cliId: "claude",
-              cliLabel: "Claude",
               providerTitle: { source: "provider" },
-              providerSession: {
-                provider: "claude",
-                sessionId: "provider-session-secret",
+              session: {
+                harness: "claude-code",
+                id: "provider-session-secret",
                 capturedAt: "2026-06-16T00:00:02.000Z",
               },
             },
@@ -1533,14 +1620,14 @@ describe("console static and terminal ticket boundary", () => {
 
     const theaters = await getJson<{ readonly theaters: readonly Record<string, unknown>[] }>(`${fixture.endpoint}api/v1/theaters`);
     const sessions = await getJson<{ readonly sessions: readonly Record<string, unknown>[] }>(`${fixture.endpoint}plugins/terminal/agent/sessions`);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly title?: unknown; readonly payload?: { readonly providerSession?: unknown; readonly providerTitle?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly title?: unknown; readonly payload?: { readonly session?: unknown; readonly providerTitle?: unknown } }> };
     const serialized = JSON.stringify({ theaters, sessions });
 
     expect(startedShells).toEqual([]);
     expect(theaters.theaters[0]).toMatchObject({ id: theaterId, label: path.basename(dir) });
     expect(sessions.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
     expect(sessions.sessions[0]).toMatchObject({ label: "Durable provider title" });
-    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
     expect(state.operations[0]).toMatchObject({ title: "Durable provider title", payload: { providerTitle: { source: "provider" } } });
     expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain("provider-session-secret");
@@ -1589,11 +1676,11 @@ describe("console static and terminal ticket boundary", () => {
     expect(capture.status).toBe(200);
     expect(captureBody).toEqual({ ok: true });
     expect(fs.existsSync(path.join(fixture.fleetDataDir, "console", "captures"))).toBe(false);
-    const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown; readonly status?: unknown } }> };
+    const capturedState = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly session?: unknown; readonly status?: unknown } }> };
     const operationsResponse = await getJson<{ readonly operations: ReadonlyArray<{ readonly payload?: Record<string, unknown> }> }>(`${fixture.endpoint}api/v1/operations`);
     const serializedOperations = JSON.stringify(operationsResponse);
 
-    expect(capturedState.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(capturedState.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
     expect(capturedState.operations[0]?.payload?.status).not.toBe("dormant");
     expect(serializedOperations).not.toContain("providerSession");
     expect(serializedOperations).not.toContain("provider-session-secret");
@@ -1602,9 +1689,9 @@ describe("console static and terminal ticket boundary", () => {
 
     ptys[0]!.emitExit();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly session?: unknown } }> };
 
-    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
   });
 
   it("names a Quick Launch Operation from the original prompt without putting that prompt on the browser payload", async () => {
@@ -1702,7 +1789,7 @@ describe("console static and terminal ticket boundary", () => {
       method: "POST", headers, body: JSON.stringify({ provider: "claude", input: JSON.stringify({ session_id: "provider-only-id" }) }),
     });
     await fetch(`${fixture.endpoint}api/v1/operations/${sessionId}`, {
-      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload: { sentinelUnknown: "preserve-me", labelSource: "auto", providerTitle: { source: "stale" }, providerSession: { provider: "claude", sessionId: "provider-only-id", capturedAt: "2026-01-01T00:00:00.000Z" } } }),
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ payload: { sentinelUnknown: "preserve-me", labelSource: "auto", providerTitle: { source: "stale" }, session: { harness: "claude-code", id: "provider-only-id", capturedAt: "2026-01-01T00:00:00.000Z" } } }),
     });
 
     const end = await fetch(`${fixture.endpoint}plugins/terminal/agent/sessions/${sessionId}/turn`, { method: "POST", headers, body: JSON.stringify({ phase: "end" }) });
@@ -1896,9 +1983,9 @@ describe("console static and terminal ticket boundary", () => {
     expect(ptys).toHaveLength(1);
 
     await fixture.server.stop();
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly session?: unknown } }> };
 
-    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
   });
 
   it.skip("does not restore durable operations without provider sessions", async () => {
@@ -2050,7 +2137,7 @@ describe("console static and terminal ticket boundary", () => {
     const before = await getJson<{ readonly sessions: ReadonlyArray<{ readonly sessionId: string; readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
     const resumed = await fetch(`${fixture.endpoint}terminal/sessions/session-a/resume`, { method: "POST" });
     const body = await resumed.json() as Record<string, unknown>;
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly providerSession?: unknown } }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly session?: unknown } }> };
     const serialized = JSON.stringify(body);
 
     expect(before.sessions[0]).toMatchObject({ sessionId: "session-a", status: "dormant", resumeAvailable: true });
@@ -2058,7 +2145,7 @@ describe("console static and terminal ticket boundary", () => {
     expect(body).toMatchObject({ sessionId: "session-a", status: "registered", resumeAvailable: true });
     expect(injectedResumeIds).toEqual(["provider-session-secret"]);
     expect(launchedArgs).toEqual([["--resume-from-admiral"]]);
-    expect(state.operations[0]?.payload?.providerSession).toMatchObject({ provider: "claude", sessionId: "provider-session-secret" });
+    expect(state.operations[0]?.payload?.session).toMatchObject({ harness: "claude-code", id: "provider-session-secret" });
     expect(serialized).not.toContain(dir);
     expect(serialized).not.toContain("provider-session-secret");
     expect(serialized).not.toContain("transcript");
@@ -2221,11 +2308,11 @@ describe("console static and terminal ticket boundary", () => {
     ptys[0]!.emitExit();
     await new Promise((resolve) => setTimeout(resolve, 0));
     const sessions = await getJson<{ readonly sessions: ReadonlyArray<{ readonly status: string; readonly resumeAvailable: boolean }> }>(`${fixture.endpoint}terminal/sessions`);
-    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly providerSession?: unknown }> };
+    const state = JSON.parse(fs.readFileSync(path.join(fixture.fleetDataDir, "console", "state.json"), "utf8")) as { readonly operations: ReadonlyArray<{ readonly payload?: { readonly session?: unknown } }> };
 
     expect(resumed.status).toBe(200);
     expect(sessions.sessions[0]).toMatchObject({ status: "dormant", resumeAvailable: true });
-    expect(state.operations[0]?.providerSession).toBeDefined();
+    expect(state.operations[0]?.payload?.session).toBeDefined();
   });
 
   it.skip("registers wiki-less Theaters as the observer superset without browser tokens", async () => {
@@ -2255,7 +2342,7 @@ describe("console static and terminal ticket boundary", () => {
     expect((listed.agentClis ?? []).map((cli) => ({ id: cli.id, label: cli.label }))).toEqual([
       { id: "claude", label: "Claude" },
       { id: "codex", label: "Codex" },
-      { id: "claude-gateway", label: "Claude (Gateway)" },
+      { id: "claude", label: "Claude" },
     ]);
     for (const cli of listed.agentClis ?? []) {
       expect(typeof cli.available).toBe("boolean");
@@ -2645,7 +2732,7 @@ describe("observer theater order", () => {
     expect(patched.status).toBe(200);
     expect(patchedBody).toMatchObject({ id: theater.id, order: 3 });
     expect(listed.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
-    expect(state.version).toBe(3);
+    expect(state.version).toBe(4);
     expect(state.theaters.find((entry) => entry.id === theater.id)?.order).toBe(3);
 
     await fixture.server.stop();

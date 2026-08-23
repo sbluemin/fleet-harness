@@ -28,7 +28,7 @@ describe("agent client launch prompt threading", () => {
 
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "kimi--k3",
       effort: "max",
       prompt: "ship the prompt",
@@ -45,7 +45,7 @@ describe("agent client launch prompt threading", () => {
 
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "fable[1m]",
       geometry: LAUNCH_GEOMETRY,
     });
@@ -56,11 +56,11 @@ describe("agent client launch prompt threading", () => {
     const launch = agentPlugin.launch;
     if (!launch) throw new Error("Agent plugin launch must exist.");
 
-    await launch(createLaunchContext({ prompt: "" }, "claude-gateway"));
+    await launch(createLaunchContext({ prompt: "" }, "claude"));
 
     expect(readCreateBody(fetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-gateway",
+      cliId: "claude",
       geometry: LAUNCH_GEOMETRY,
     });
   });
@@ -77,17 +77,17 @@ describe("agent client launch prompt threading", () => {
 
   it("createAgentSession itself drops empty prompt while keeping non-empty prompt", async () => {
     const emptyFetch = stubSessionCreate();
-    await createAgentSession("theater-1", "claude-gateway", { prompt: "" });
+    await createAgentSession("theater-1", "claude", { prompt: "" });
     expect(readCreateBody(emptyFetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-gateway",
+      cliId: "claude",
     });
 
     const promptFetch = stubSessionCreate();
-    await createAgentSession("theater-1", "claude-gateway", { prompt: "keep me" });
+    await createAgentSession("theater-1", "claude", { prompt: "keep me" });
     expect(readCreateBody(promptFetch)).toEqual({
       theaterId: "theater-1",
-      cliId: "claude-gateway",
+      cliId: "claude",
       prompt: "keep me",
     });
   });
@@ -118,7 +118,7 @@ const LAUNCH_GEOMETRY = { x: 120, y: 80, width: 560, height: 360, zIndex: 3 } as
 
 function createLaunchContext(
   variant: Readonly<Record<string, string>>,
-  kindId = "claude-gateway",
+  kindId = "claude",
 ): LaunchContext {
   return {
     theaterId: "theater-1",

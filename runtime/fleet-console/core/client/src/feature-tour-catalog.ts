@@ -131,7 +131,7 @@ export const FEATURE_TOURS: readonly FeatureTour[] = [
     walkthrough: [
       // 선택자는 의미 속성에 건다 — title/i18n 문자열에 걸면 라벨을 손보는 순간 앵커가 조용히 사라진다.
       {
-        anchor: '[data-operation-launch-kind="claude-gateway"]',
+        anchor: '[data-operation-launch-kind="claude"]',
         titleKey: "featureTour.claudeOperations.step3Title",
         bodyKey: "featureTour.claudeOperations.step3Body",
       },

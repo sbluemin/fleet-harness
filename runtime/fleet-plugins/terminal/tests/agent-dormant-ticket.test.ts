@@ -26,11 +26,11 @@ afterEach(async () => {
 
 describe("agent launch variants", () => {
   it.each([
-    [{ cliId: "claude-gateway", model: 5 }, 400, "invalid_launch_option"],
-    [{ cliId: "claude-gateway", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
+    [{ cliId: "claude", model: 5 }, 400, "invalid_launch_option"],
+    [{ cliId: "claude", model: "cursor--missing" }, 409, "gateway_model_not_enabled"],
     // 네이티브 행의 ultra는 하네스 능력이라 허용된다 — 사다리 어휘 밖의 값만 거부한다.
-    [{ cliId: "claude-gateway", model: "fable", effort: "minimal" }, 400, "invalid_effort"],
-    [{ cliId: "claude-gateway", effort: "max" }, 400, "invalid_launch_option"],
+    [{ cliId: "claude", model: "fable", effort: "minimal" }, 400, "invalid_effort"],
+    [{ cliId: "claude", effort: "max" }, 400, "invalid_launch_option"],
   ] as const)("rejects invalid launch body %#", async (body, status, error) => {
     const harness = await createHarness({ body });
 
@@ -42,7 +42,7 @@ describe("agent launch variants", () => {
 
   it("rejects effort outside a model's exposed ladder", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "kimi--k3", effort: "high" },
+      body: { cliId: "claude", model: "kimi--k3", effort: "high" },
       aiGatewaySettings: {
         version: 1,
         models: [{ id: "kimi--k3", efforts: ["max"] }],
@@ -78,7 +78,7 @@ describe("agent launch variants", () => {
 
   it("threads a valid scoped gateway model and effort into attach", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "kimi--k3", effort: "max" },
+      body: { cliId: "claude", model: "kimi--k3", effort: "max" },
       aiGatewaySettings: {
         version: 1,
         models: [{ id: "kimi--k3", efforts: ["max"] }],
@@ -89,7 +89,7 @@ describe("agent launch variants", () => {
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "kimi--k3",
       effort: "max",
     }));
@@ -97,7 +97,7 @@ describe("agent launch variants", () => {
 
   it("removes the pending operation when the gateway model becomes stale during spawn", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      body: { cliId: "claude", model: "fable", effort: "max" },
       attachError: new GatewayLaunchOptionError("gateway_model_not_enabled", "gateway_model_not_enabled"),
     });
 
@@ -109,7 +109,7 @@ describe("agent launch variants", () => {
 
   it("maps a spawn-time invalid effort and removes its pending operation", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      body: { cliId: "claude", model: "fable", effort: "max" },
       attachError: new GatewayLaunchOptionError("invalid_effort", "invalid_effort"),
     });
 
@@ -121,7 +121,7 @@ describe("agent launch variants", () => {
 
   it("retains the errored operation when terminal infrastructure fails", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "fable", effort: "max" },
+      body: { cliId: "claude", model: "fable", effort: "max" },
       attachError: new Error("pty unavailable"),
     });
 
@@ -133,26 +133,26 @@ describe("agent launch variants", () => {
 
   it("persists the launch model and effort and reuses them for resume", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "fable[1m]", effort: "max" },
+      body: { cliId: "claude", model: "fable[1m]", effort: "max" },
     });
 
     await harness.postSessions();
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "fable[1m]",
       effort: "max",
     }));
     expect(harness.operations[0]?.payload).toMatchObject({
-      launchModel: "fable[1m]",
-      launchEffort: "max",
+      session: { harness: "claude-code", model: "fable[1m]", effort: "max" },
     });
 
     const sessionId = harness.operations[0]!.id;
-    harness.operations[0]!.payload.providerSession = {
-      provider: "claude",
-      sessionId: "provider-session-1",
+    harness.operations[0]!.payload.session = {
+      ...(harness.operations[0]!.payload.session as Record<string, unknown> | undefined),
+      harness: "claude-code",
+      id: "provider-session-1",
       capturedAt: "2026-08-07T00:00:00.000Z",
     };
     await harness.transitionToDormant(sessionId);
@@ -167,30 +167,32 @@ describe("agent launch variants", () => {
 
   it("falls back to opus[1m] when a legacy Claude Gateway operation has no launch model", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+      body: { cliId: "claude", model: "sonnet", effort: "high" },
     });
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
-    delete harness.operations[0]!.payload.launchModel;
-    delete harness.operations[0]!.payload.launchEffort;
-    expect(harness.operations[0]?.payload).toMatchObject({ cliId: "claude-gateway" });
-    expect(harness.operations[0]?.payload).not.toHaveProperty("launchModel");
+    harness.operations[0]!.payload.session = {
+      harness: "claude-code",
+      id: "provider-session-1",
+      capturedAt: "2026-07-25T00:00:00.000Z",
+    };
+    expect(harness.operations[0]?.payload.session).not.toHaveProperty("model");
 
     await harness.resumeSession(sessionId);
 
     expect(harness.attach).toHaveBeenCalledTimes(2);
     expect(harness.attach.mock.calls[1]?.[0]).toEqual(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "opus[1m]",
       resumeSessionId: "provider-session-1",
     }));
     expect(harness.attach.mock.calls[1]?.[0]).not.toHaveProperty("effort");
-    expect(harness.operations[0]?.payload).toMatchObject({ launchModel: "opus[1m]" });
+    expect(harness.operations[0]?.payload).toMatchObject({ session: { harness: "claude-code", model: "opus[1m]" } });
   });
 
   it("reuses the persisted launch model and effort when starting fresh", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+      body: { cliId: "claude", model: "sonnet", effort: "high" },
     });
     const sessionId = await harness.createLiveSession();
     await harness.transitionToDormant(sessionId);
@@ -202,11 +204,16 @@ describe("agent launch variants", () => {
       effort: "high",
     }));
     expect(harness.attach.mock.calls[1]?.[0]).not.toHaveProperty("resumeSessionId");
+    expect(harness.operations[0]?.payload.session).toMatchObject({
+      harness: "claude-code",
+      model: "sonnet",
+      effort: "high",
+    });
   });
 
   it("reports a persisted gateway model that is no longer enabled", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model: "sonnet", effort: "high" },
+      body: { cliId: "claude", model: "sonnet", effort: "high" },
       resumeAttachError: new GatewayLaunchOptionError("gateway_model_not_enabled", "gateway_model_not_enabled"),
     });
     const sessionId = await harness.createLiveSession();
@@ -223,14 +230,14 @@ describe("agent launch variants", () => {
     ["opus", "opus[1m]"],
   ])("rewrites bare %s onto Claude Code's 1M coordinate before attach", async (model, expected) => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", model, effort: "high" },
+      body: { cliId: "claude", model, effort: "high" },
     });
 
     await harness.postSessions();
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: expected,
       effort: "high",
     }));
@@ -238,7 +245,7 @@ describe("agent launch variants", () => {
 
   it("rejects a non-string prompt", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", prompt: 12 },
+      body: { cliId: "claude", prompt: 12 },
     });
 
     await harness.postSessions();
@@ -249,7 +256,7 @@ describe("agent launch variants", () => {
 
   it("rejects a prompt longer than MAX_LAUNCH_PROMPT_CHARS", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", prompt: "x".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) },
+      body: { cliId: "claude", prompt: "x".repeat(MAX_LAUNCH_PROMPT_CHARS + 1) },
     });
 
     await harness.postSessions();
@@ -260,7 +267,7 @@ describe("agent launch variants", () => {
 
   it("omits a whitespace-only prompt from attach", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", prompt: "   \n\t  " },
+      body: { cliId: "claude", prompt: "   \n\t  " },
     });
 
     await harness.postSessions();
@@ -272,14 +279,14 @@ describe("agent launch variants", () => {
 
   it("accepts prompt for claude-gateway and keeps it out of response and durable payload", async () => {
     const harness = await createHarness({
-      body: { cliId: "claude-gateway", prompt: "launch me" },
+      body: { cliId: "claude", prompt: "launch me" },
     });
 
     await harness.postSessions();
 
     expect(harness.responses.at(-1)?.status).toBe(200);
     expect(harness.attach).toHaveBeenCalledWith(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       prompt: "launch me",
     }));
     expect(containsKey(harness.responses.at(-1)?.body, "prompt")).toBe(false);
@@ -309,6 +316,25 @@ describe("agent dormant ticket guards", () => {
 
     expect(harness.tickets.consume(second.ticket)).toBeNull();
     expect(harness.invalidateCalls).toEqual([sessionId]);
+  });
+
+  it("rejects resume for an operation not owned by the terminal agent", async () => {
+    const harness = await createHarness();
+    harness.operations.push({
+      id: "shell-operation",
+      theaterId: "theater-1",
+      type: "shell",
+      pluginId: "terminal",
+      title: "Shell",
+      payload: {},
+      geometry: null,
+      ts: { createdAt: 1, updatedAt: 1 },
+    });
+
+    await harness.resumeSession("shell-operation");
+
+    expect(harness.responses.at(-1)).toEqual({ status: 404, body: { error: "session_not_found" } });
+    expect(harness.attach).not.toHaveBeenCalled();
   });
 
   it("allows ticket issuance after resume moves the session out of dormant", async () => {
@@ -513,9 +539,10 @@ async function createHarness(options: {
     });
     const sessionId = operations[0]!.id;
     const operation = operations[0]!;
-    operation.payload.providerSession = {
-      provider: "claude",
-      sessionId: "provider-session-1",
+    operation.payload.session = {
+      ...(operation.payload.session as Record<string, unknown> | undefined),
+      harness: "claude-code",
+      id: "provider-session-1",
       capturedAt: "2026-07-25T00:00:00.000Z",
     };
     return sessionId;

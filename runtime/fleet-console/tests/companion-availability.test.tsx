@@ -7,11 +7,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { OperationRenderContext } from "../sdk/plugin/types.js";
 
 const THEATER = "theater-availability";
-const GATEWAY_OPERATION_ID = "operation-gateway";
-const CLASSIC_OPERATION_ID = "operation-classic";
+const CODEX_OPERATION_ID = "operation-codex";
+const CLAUDE_OPERATION_ID = "operation-claude";
 const BARREN_OPERATION_ID = "operation-barren";
 
-// "agent" kind는 실제 Terminal 플러그인 구도를 재현한다: 한 패널만 cliId로 걸리고 나머지는 남는다.
+// "agent" kind는 실제 Terminal 플러그인 구도를 재현한다: 한 패널만 session model로 걸리고 나머지는 남는다.
 const GATED_COMPANION_ID = "gated-panel";
 const ALWAYS_COMPANION_ID = "always-panel";
 // "barren" kind는 선언한 companion이 이 작전에서 전부 사용 불가한 상태다. 제품 kind로는 아직 도달할 수
@@ -40,7 +40,7 @@ vi.mock("../core/client/src/plugin-registry.js", () => ({
             id: GATED_COMPANION_ID,
             title: "Gated",
             available: (operation: { readonly payload: Record<string, unknown> }) =>
-              operation.payload.cliId !== "claude-gateway",
+              (operation.payload.session as { readonly model?: string } | undefined)?.model !== "codex--gpt-5.6-sol",
             render: () => createElement("div", { "data-testid": GATED_COMPANION_ID }),
           },
           {
@@ -77,9 +77,9 @@ import { loadForTheater, setCompanionOperationId, setState as setCanvasState } f
 import type { ConsoleState, OperationNode } from "../core/client/src/types.js";
 
 const OPERATIONS: readonly OperationNode[] = [
-  operation(GATEWAY_OPERATION_ID, "agent", "claude-gateway"),
-  operation(CLASSIC_OPERATION_ID, "agent", "claude"),
-  operation(BARREN_OPERATION_ID, "barren", "claude"),
+  operation(CODEX_OPERATION_ID, "agent", "codex--gpt-5.6-sol"),
+  operation(CLAUDE_OPERATION_ID, "agent", "opus[1m]"),
+  operation(BARREN_OPERATION_ID, "barren", "opus[1m]"),
 ];
 
 let root: Root | null = null;
@@ -109,21 +109,21 @@ afterEach(() => {
 
 describe("companion panel availability", () => {
   it("renders only available companions and still reports the unavailable id as hidden", () => {
-    renderCanvas(GATEWAY_OPERATION_ID);
+    renderCanvas(CODEX_OPERATION_ID);
 
     expect(container?.querySelector(`[data-testid="${GATED_COMPANION_ID}"]`)).toBeNull();
     expect(container?.querySelector(`[data-testid="${ALWAYS_COMPANION_ID}"]`)).not.toBeNull();
     // 이 단언이 이 변경의 핵심 불변식이다. 플러그인은 "hidden 목록에 없음"을 곧 "보임"으로 읽으므로,
     // 사용 불가 패널이 visible에도 hidden에도 없으면 플러그인 쪽 가시성 판정이 뒤집힌다.
-    expect(hiddenCompanionsOf(GATEWAY_OPERATION_ID)).toContain(GATED_COMPANION_ID);
+    expect(hiddenCompanionsOf(CODEX_OPERATION_ID)).toContain(GATED_COMPANION_ID);
   });
 
   it("keeps a companion that omits the predicate and one the predicate admits", () => {
-    renderCanvas(CLASSIC_OPERATION_ID);
+    renderCanvas(CLAUDE_OPERATION_ID);
 
     expect(container?.querySelector(`[data-testid="${GATED_COMPANION_ID}"]`)).not.toBeNull();
     expect(container?.querySelector(`[data-testid="${ALWAYS_COMPANION_ID}"]`)).not.toBeNull();
-    expect(hiddenCompanionsOf(CLASSIC_OPERATION_ID)).not.toContain(GATED_COMPANION_ID);
+    expect(hiddenCompanionsOf(CLAUDE_OPERATION_ID)).not.toContain(GATED_COMPANION_ID);
   });
 
   it("opens no companion layer when the operation admits no companion at all", () => {
@@ -147,14 +147,14 @@ function geometry() {
   return { x: 0, y: 0, width: 320, height: 200, zIndex: 1 };
 }
 
-function operation(id: string, type: string, cliId: string): OperationNode {
+function operation(id: string, type: string, model: string): OperationNode {
   return {
     id,
     theaterId: THEATER,
     type,
     pluginId: "test-plugin",
     title: id,
-    payload: { cliId },
+    payload: { session: { harness: "claude-code", model } },
     geometry: geometry(),
     ts: { createdAt: 0, updatedAt: 0 },
   };

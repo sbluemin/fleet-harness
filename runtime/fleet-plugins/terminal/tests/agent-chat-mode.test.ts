@@ -159,27 +159,14 @@ describe("agent chat mode routes", () => {
     const sessionId = await harness.createSession();
     harness.setLive(sessionId);
     harness.attachProviderSession(sessionId);
-    const payload = harness.operation(sessionId)?.payload as { providerSession?: Record<string, unknown> };
-    payload.providerSession = { ...payload.providerSession, transcriptPath: "/tmp/fleet-chat-never-written/absent.jsonl" };
+    const payload = harness.operation(sessionId)?.payload as { session?: Record<string, unknown> };
+    payload.session = { ...payload.session, transcriptPath: "/tmp/fleet-chat-never-written/absent.jsonl" };
 
     await harness.post(sessionId, "chat");
 
     expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_transcript_missing" } });
   });
 
-  it("rejects conversion for a session whose stored cli is not claude-gateway", async () => {
-    // 신규 실행은 전부 claude-gateway로 정규화되지만, 저장된 payload가 다른 CLI를 말하는
-    // Operation(외부 이식·구세대)은 chat이 받지 않는다.
-    const harness = await createHarness();
-    const sessionId = await harness.createSession();
-    harness.setLive(sessionId);
-    harness.attachProviderSession(sessionId);
-    harness.overrideCliId(sessionId, "codex");
-
-    await harness.post(sessionId, "chat");
-
-    expect(harness.responses.at(-1)).toEqual({ status: 409, body: { error: "chat_unsupported" } });
-  });
 
   it("routes message delivery to the sdk turn instead of the pty while in chat mode", async () => {
     const harness = await createHarness();
@@ -604,9 +591,10 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
     attachProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error("Operation not found");
-      operation.payload.providerSession = {
-        provider: "claude",
-        sessionId: "sid-live",
+      operation.payload.session = {
+        ...(operation.payload.session as Record<string, unknown> | undefined),
+        harness: "claude-code",
+        id: "sid-live",
         transcriptPath,
         capturedAt: "2026-08-14T00:00:00.000Z",
       };

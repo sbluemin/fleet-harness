@@ -5,7 +5,6 @@ export {
   launchProviderCaption,
   launchProviderFromGroupId,
   launchProviderFromModelId,
-  launchProviderFromOperationPayload,
   launchProviderGlyph,
 } from "@fleet-console/sdk/components/launch-provider-glyphs";
 export type {
