@@ -1,6 +1,6 @@
 /**
  * Provider-neutral quota vocabulary and probe plumbing shared by the
- * per-provider usage readers (`src/<provider>/quota.ts`).
+ * per-provider usage readers (`src/upstream/<provider>/quota.ts`).
  *
  * Probe URLs, credential procurement, and response parsing are provider
  * knowledge and live beside each provider. What belongs here is only what every

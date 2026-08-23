@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
+
+import { claudeCodeHarnessProfile } from "../src/downstream/harness/claude-code/profile.js";
 import {
   ANTHROPIC_SSE_KEEPALIVE_INTERVAL_MS,
   AnthropicMessagesGateway,
@@ -13,6 +15,7 @@ import {
   buildGatewayModelConstraints,
   clampReasoningEffort,
   encodeReasoningSignature,
+  findClaudeGatewayModel,
   findGatewayModel,
   gatewayModelIdentity,
   parseGatewayBenchmarksRegistry,
@@ -48,6 +51,18 @@ import type {
   FetchLike,
   GatewayModel
 } from "../src/index.js";
+
+/**
+ * The occupancy map Claude Code's profile installs on every turn.
+ *
+ * The wire itself no longer projects — a harness that meters on the provider's real
+ * window passes nothing — so a test that asserts Claude's coordinate has to hand the
+ * wire the same projection the router does.
+ */
+function claudeProjection(compactCeiling?: "early" | "late" | number) {
+  return claudeCodeHarnessProfile.usageProjection?.(compactCeiling);
+}
+
 
 describe("Anthropic request translation", () => {
   it("maps system text blocks and tools into the OpenAI Responses subset", () => {
@@ -1521,7 +1536,7 @@ describe("model catalog", () => {
   });
 
   it("unwraps the alias a picked model comes back as", () => {
-    expect(resolveGatewayModel(toGatewayModelAlias("codex--gpt-5.6-luna"), { fallback: "gpt-5.5" })).toBe("gpt-5.6-luna");
+    expect(resolveGatewayModel(toGatewayModelAlias("codex--gpt-5.6-luna"), { fallback: "gpt-5.5", find: findClaudeGatewayModel })).toBe("gpt-5.6-luna");
   });
 
   it("routes a scoped catalog model through translation to its wire id", () => {
@@ -1530,16 +1545,16 @@ describe("model catalog", () => {
   });
 
   it("maps Codex Fast variants to priority service tier", () => {
-    const model = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-fast");
+    const model = findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-fast");
     expect(model).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority" });
     expect(translateAnthropicRequest(baseRequest(), {
       model: model?.upstreamId,
       serviceTier: model?.serviceTier,
     })).toMatchObject({ model: "gpt-5.6-sol", service_tier: "priority" });
-    const sol524k = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k");
-    const sol524kFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k-fast");
-    const sol1m = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m");
-    const sol1mFast = findGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m-fast");
+    const sol524k = findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k");
+    const sol524kFast = findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k-fast");
+    const sol1m = findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m");
+    const sol1mFast = findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-1m-fast");
     expect(sol524k).toMatchObject({ upstreamId: "gpt-5.6-sol", contextWindow: 524_288 });
     expect(sol524k).not.toHaveProperty("serviceTier");
     expect(sol524kFast).toMatchObject({ upstreamId: "gpt-5.6-sol", serviceTier: "priority", contextWindow: 524_288 });
@@ -1553,84 +1568,84 @@ describe("model catalog", () => {
   });
 
   it("accepts truthful marked ids and current unmarked aliases", () => {
-    const model = findGatewayModel("claude-gateway--kimi--k3[1m]");
+    const model = findClaudeGatewayModel("claude-gateway--kimi--k3[1m]");
     expect(model).toMatchObject({ id: "kimi--k3", upstreamId: "k3" });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-luna[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-luna")).toMatchObject({
       id: "codex--gpt-5.6-luna",
       upstreamId: "gpt-5.6-luna",
       contextWindow: 272_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-luna-1m[1m]")).toMatchObject({
       id: "codex--gpt-5.6-luna-1m",
       upstreamId: "gpt-5.6-luna",
       contextWindow: 1_000_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra[1m]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-terra[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-terra")).toMatchObject({
       id: "codex--gpt-5.6-terra",
       upstreamId: "gpt-5.6-terra",
       contextWindow: 272_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-terra-1m[1m]")).toMatchObject({
       id: "codex--gpt-5.6-terra-1m",
       upstreamId: "gpt-5.6-terra",
       contextWindow: 1_000_000,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k")).toMatchObject({
       id: "codex--gpt-5.6-sol-524k",
       upstreamId: "gpt-5.6-sol",
       contextWindow: 524_288,
     });
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k[524k]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k[1m]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--kimi--k3")).toMatchObject({ id: "kimi--k3" });
-    expect(findGatewayModel("claude-gateway--cursor--grok-4.5")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k[524k]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--codex--gpt-5.6-sol-524k[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--kimi--k3")).toMatchObject({ id: "kimi--k3" });
+    expect(findClaudeGatewayModel("claude-gateway--cursor--grok-4.5")).toMatchObject({
       id: "cursor--grok-4.5",
       upstreamId: "grok-4.5",
       contextWindow: 256_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--grok-4.6")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--grok-4.6")).toMatchObject({
       id: "cursor--grok-4.6",
       upstreamId: "grok-4.6",
       contextWindow: 256_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--composer-2.5")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--composer-2.5")).toMatchObject({
       id: "cursor--composer-2.5",
       upstreamId: "composer-2.5",
       contextWindow: 200_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--claude-opus-5-1m[1m]")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--claude-opus-5-1m[1m]")).toMatchObject({
       id: "cursor--claude-opus-5-1m",
       upstreamId: "claude-opus-5-1m",
       contextWindow: 1_000_000,
       cursorMaxMode: true,
     });
-    expect(findGatewayModel("claude-gateway--cursor--claude-fable-5-1m[1m]")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--claude-fable-5-1m[1m]")).toMatchObject({
       id: "cursor--claude-fable-5-1m",
       upstreamId: "claude-fable-5-1m",
       contextWindow: 1_000_000,
       cursorMaxMode: true,
     });
-    expect(findGatewayModel("claude-gateway--cursor--kimi-k3")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--kimi-k3")).toMatchObject({
       id: "cursor--kimi-k3",
       upstreamId: "kimi-k3",
       contextWindow: 256_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--kimi-k3[1m]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--cursor--gemini-3.7-flash")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--kimi-k3[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--cursor--gemini-3.7-flash")).toMatchObject({
       id: "cursor--gemini-3.7-flash",
       upstreamId: "gemini-3.7-flash",
       contextWindow: 256_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--gpt-5.6-sol")).toMatchObject({
+    expect(findClaudeGatewayModel("claude-gateway--cursor--gpt-5.6-sol")).toMatchObject({
       id: "cursor--gpt-5.6-sol",
       upstreamId: "gpt-5.6-sol",
       contextWindow: 272_000,
     });
-    expect(findGatewayModel("claude-gateway--cursor--minimax-m3")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--cursor--glm-5.2[1m]")).toBeUndefined();
-    expect(findGatewayModel("claude-gateway--k3[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--cursor--minimax-m3")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--cursor--glm-5.2[1m]")).toBeUndefined();
+    expect(findClaudeGatewayModel("claude-gateway--k3[1m]")).toBeUndefined();
     expect(findGatewayModel("k3[1m]")).toBeUndefined();
     expect(buildAnthropicModelList().data).toContainEqual(expect.objectContaining({
       id: "claude-gateway--kimi--k3[1m]",
@@ -2220,6 +2235,7 @@ describe("Anthropic SSE encoding", () => {
 
     const frames = parseSse(await collectBody(encodeAnthropicSse(events, {
       contextWindow: 272_000,
+      projectInputTokens: claudeProjection(),
     })));
 
     expect(frames[0]?.data).toMatchObject({
@@ -2252,6 +2268,7 @@ describe("Anthropic SSE encoding", () => {
 
     const frames = parseSse(await collectBody(encodeAnthropicSse(events, {
       contextWindow: 256_000,
+      projectInputTokens: claudeProjection(),
     })));
 
     expect(frames[0]?.data).toMatchObject({
@@ -2292,7 +2309,7 @@ describe("Anthropic SSE encoding", () => {
       },
     ]);
 
-    const frames = parseSse(await collectBody(encodeAnthropicSse(events, { contextWindow: 272_000 })));
+    const frames = parseSse(await collectBody(encodeAnthropicSse(events, { contextWindow: 272_000, projectInputTokens: claudeProjection() })));
     const messageDelta = frames.find((item) => item.event === "message_delta");
     const usage = messageDelta?.data.usage as {
       input_tokens: number;
@@ -3869,7 +3886,7 @@ describe("non-streaming requests", () => {
     const { stream: _drop, ...rest } = baseRequest();
     const response = await new AnthropicMessagesGateway(adapter).stream(
       rest as AnthropicMessagesRequest,
-      { apiKey: "k", contextWindow: 272_000 },
+      { apiKey: "k", contextWindow: 272_000, projectInputTokens: claudeProjection() },
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({
@@ -3901,7 +3918,7 @@ describe("non-streaming requests", () => {
     const { stream: _drop, ...rest } = baseRequest();
     const response = await new AnthropicMessagesGateway(adapter).stream(
       rest as AnthropicMessagesRequest,
-      { apiKey: "k", contextWindow: 256_000 },
+      { apiKey: "k", contextWindow: 256_000, projectInputTokens: claudeProjection() },
     );
 
     expect(JSON.parse(await collectBody(response.body))).toMatchObject({

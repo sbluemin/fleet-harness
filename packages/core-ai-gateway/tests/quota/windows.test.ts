@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { CredentialResolverDeps } from "../../src/transport/credentials.js";
 import { createQuotaService } from "../../src/quota/service.js";
 import { sanitizeProviderError } from "../../src/quota/windows.js";
-import { fetchClaudeUsage } from "../../src/anthropic/quota.js";
+import { fetchClaudeUsage } from "../../src/upstream/anthropic/quota.js";
 
 function claudeCredentials(subscriptionType = "max"): CredentialResolverDeps {
   return {

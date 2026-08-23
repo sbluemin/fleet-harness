@@ -10,7 +10,7 @@
  * This file holds only provider-unaware mechanics: bounded file I/O, platform
  * resolver deps, and the shared credential shapes. Each provider's login path,
  * auth-file parsing, and keychain handling lives in its own provider folder
- * (`src/cursor/credentials.ts`, `src/codex/credentials.ts`).
+ * (`src/upstream/cursor/credentials.ts`, `src/upstream/codex/credentials.ts`).
  */
 
 import { execFile as nodeExecFile } from "node:child_process";

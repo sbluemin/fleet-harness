@@ -2,15 +2,15 @@ import {
   hasClaudeOneMillionMarker,
   normalizeCompactCeiling,
   type CompactCeiling,
-} from "../anthropic/claude-context.js";
+} from "../downstream/harness/claude-code/context.js";
 import {
   GATEWAY_MODELS,
   GATEWAY_PROVIDER_NAMES,
   GATEWAY_PROVIDERS,
   buildGatewayModelConstraints,
   findGatewayModel,
-  toClaudeGatewayModelId,
 } from "../models.js";
+import { toClaudeGatewayModelId } from "../downstream/harness/claude-code/discovery.js";
 import type {
   GatewayCapabilityClass,
   GatewayEffortExposure,

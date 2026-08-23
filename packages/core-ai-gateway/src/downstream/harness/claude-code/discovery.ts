@@ -1,0 +1,129 @@
+import {
+  GATEWAY_MODELS,
+  GATEWAY_MODELS_UPDATED_AT,
+  anthropicModelCapabilities,
+  findGatewayModel,
+  type AnthropicModelCapabilities,
+  type GatewayModel,
+} from "../../../models.js";
+
+import {
+  hasClaudeOneMillionMarker,
+  isClaudeOneMillionContextWindow,
+  stripClaudeOneMillionMarker,
+} from "./context.js";
+
+/**
+ * Claude Code의 모델 디스커버리 방언.
+ *
+ * 카탈로그는 자기 id만 알고, 이 파일이 그 위에 Claude Code가 읽는 문법 — `claude-gateway--`
+ * 접두와 `[1m]` 좌표 표식 — 을 씌운다. 다른 하네스는 같은 카탈로그를 자기 문법으로 광고하며,
+ * 그래서 이 문법은 `models.ts`가 아니라 이 하네스 폴더가 소유한다.
+ */
+
+/**
+ * The prefix every discovered gateway model id carries.
+ *
+ * It was introduced against a Claude Code discovery filter that dropped ids not
+ * beginning with `claude`. That filter no longer exists: in 2.1.221 the reader of
+ * the gateway model cache maps every entry into the picker with no id test at all
+ * (observed 2026-08-04). The prefix is therefore not what makes a model
+ * discoverable, and a future reader should not infer that it is.
+ *
+ * It stays because the grammar is already published. Persisted sessions,
+ * `ANTHROPIC_MODEL` values, and stored defaults hold prefixed ids, and
+ * `findGatewayModel` resolves a prefixed id and a bare registry id to the same
+ * model. Dropping the prefix is a migration of those persisted values, not an
+ * edit to this constant.
+ */
+export const GATEWAY_MODEL_ALIAS_PREFIX = "claude-gateway--";
+const CLAUDE_ONE_MILLION_MARKER = "[1m]";
+const CLAUDE_ONE_MILLION_DISPLAY_SUFFIX = " (1M Context)";
+
+export function toGatewayModelAlias(modelId: string): string {
+  return `${GATEWAY_MODEL_ALIAS_PREFIX}${modelId}`;
+}
+
+/**
+ * Claude Code understands only its default 200k coordinate and the `[1m]` 1M
+ * coordinate. Keep that marker truthful: only a provider model whose real window
+ * reaches 1M is advertised as such. The response compatibility seam maps every
+ * other real window onto the unmarked 200k coordinate while preserving Claude's
+ * absolute compaction reserve.
+ */
+export function toClaudeGatewayModelId(model: GatewayModel): string {
+  const alias = toGatewayModelAlias(model.id);
+  return isClaudeOneMillionContextWindow(model.contextWindow)
+    ? `${alias}${CLAUDE_ONE_MILLION_MARKER}`
+    : alias;
+}
+
+function toClaudeGatewayModelDisplayName(model: GatewayModel): string {
+  return isClaudeOneMillionContextWindow(model.contextWindow)
+    ? `${model.displayName}${CLAUDE_ONE_MILLION_DISPLAY_SUFFIX}`
+    : model.displayName;
+}
+
+
+/**
+ * A catalog entry by the id Claude Code actually sends.
+ *
+ * Claude Code may omit the discovery-only marker from the request, so both forms
+ * resolve to the same registry model. A fabricated marker for a genuinely unmarked
+ * 200k model would make Claude undercount its context, so accept a marker only when
+ * discovery emits one. A bare catalog id still resolves — the child sends one when a
+ * stored default predates the alias grammar.
+ */
+export function findClaudeGatewayModel(
+  id: string,
+  catalog: readonly GatewayModel[] = GATEWAY_MODELS,
+): GatewayModel | undefined {
+  if (!id.startsWith(GATEWAY_MODEL_ALIAS_PREFIX)) return findGatewayModel(id, catalog);
+  const scopedId = stripClaudeOneMillionMarker(id).slice(GATEWAY_MODEL_ALIAS_PREFIX.length);
+  const model = catalog.find((candidate) => candidate.id === scopedId);
+  if (!model) return undefined;
+  return hasClaudeOneMillionMarker(id)
+    && !hasClaudeOneMillionMarker(toClaudeGatewayModelId(model))
+    ? undefined
+    : model;
+}
+
+export interface AnthropicModelEntry {
+  readonly type: "model";
+  readonly id: string;
+  readonly display_name: string;
+  readonly created_at: string;
+  readonly capabilities: AnthropicModelCapabilities;
+  readonly max_input_tokens: number | null;
+  readonly max_tokens: null;
+}
+
+export interface AnthropicModelList {
+  readonly data: readonly AnthropicModelEntry[];
+  readonly has_more: false;
+  readonly first_id: string | null;
+  readonly last_id: string | null;
+}
+
+/** Claude Code gateway model discovery (`GET /v1/models`). */
+export function buildAnthropicModelList(
+  models: readonly GatewayModel[] = GATEWAY_MODELS,
+  createdAt = GATEWAY_MODELS_UPDATED_AT,
+): AnthropicModelList {
+  const data = models.map((model) => ({
+    type: "model" as const,
+    id: toClaudeGatewayModelId(model),
+    display_name: toClaudeGatewayModelDisplayName(model),
+    created_at: createdAt,
+    capabilities: anthropicModelCapabilities(model.effort),
+    max_input_tokens: model.contextWindow ?? null,
+    max_tokens: null,
+  }));
+  return {
+    data,
+    has_more: false,
+    first_id: data[0]?.id ?? null,
+    last_id: data[data.length - 1]?.id ?? null,
+  };
+}
+
