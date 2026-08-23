@@ -43,6 +43,24 @@ describe("chipDirHints", () => {
     expect(hints.has("README.md")).toBe(false);
   });
 
+  it("부모 폴더명까지 같으면 갈릴 때까지 서픽스를 늘린다", () => {
+    const hints = chipDirHints([
+      { relativePath: "src/components/index.ts", name: "index.ts" },
+      { relativePath: "tests/components/index.ts", name: "index.ts" },
+    ]);
+    expect(hints.get("src/components/index.ts")).toBe("src/components/");
+    expect(hints.get("tests/components/index.ts")).toBe("tests/components/");
+  });
+
+  it("깊이가 다른 경로도 최단 서픽스에서 갈린다", () => {
+    const hints = chipDirHints([
+      { relativePath: "a/b/x.ts", name: "x.ts" },
+      { relativePath: "b/x.ts", name: "x.ts" },
+    ]);
+    expect(hints.get("a/b/x.ts")).toBe("a/b/");
+    expect(hints.get("b/x.ts")).toBe("b/");
+  });
+
   it("루트에 있는 동명 파일의 힌트는 루트 표식이다", () => {
     const hints = chipDirHints([
       { relativePath: "index.ts", name: "index.ts" },

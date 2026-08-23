@@ -1644,6 +1644,7 @@ export const FileTree = forwardRef<FileTreeHandle, FileTreeProps>(function FileT
             <SortMenu
               sortMode={sortMode}
               t={t}
+              triggerRef={sortButtonRef}
               onSelect={(mode) => {
                 handleSelectSort(mode);
                 setSortMenuOpen(false);
@@ -1870,12 +1871,14 @@ const SORT_MODE_LABEL_KEYS = {
 interface SortMenuProps {
   readonly sortMode: SortMode;
   readonly t: Translate<FileExplorerMessageKey>;
+  /** 바깥 클릭 판정에서 제외할 트리거 버튼 — 빼면 pointerdown 닫힘 뒤 click 토글이 메뉴를 되열어 버튼으로 닫을 수 없다. */
+  readonly triggerRef: React.RefObject<HTMLButtonElement | null>;
   readonly onSelect: (mode: SortMode) => void;
   readonly onClose: (restoreFocus: boolean) => void;
 }
 
 /** 정렬 선택 메뉴 — 순환 버튼과 달리 전체 선택지와 현재 값을 한 번에 보여준다. */
-function SortMenu({ sortMode, t, onSelect, onClose }: SortMenuProps) {
+function SortMenu({ sortMode, t, triggerRef, onSelect, onClose }: SortMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Array<HTMLButtonElement | null>>([]);
   const [activeIndex, setActiveIndex] = useState(() => Math.max(0, SORT_MODES.indexOf(sortMode)));
@@ -1890,11 +1893,15 @@ function SortMenu({ sortMode, t, onSelect, onClose }: SortMenuProps) {
   useEffect(() => {
     const handleOutsidePointer = (event: PointerEvent) => {
       const target = event.target;
-      if (target instanceof Node && !menuRef.current?.contains(target)) onClose(false);
+      if (!(target instanceof Node)) return;
+      if (menuRef.current?.contains(target)) return;
+      // 트리거 버튼 위의 pointerdown은 버튼의 click 토글에 맡긴다 — 여기서 닫으면 토글이 되열어 버린다.
+      if (triggerRef.current?.contains(target)) return;
+      onClose(false);
     };
     document.addEventListener("pointerdown", handleOutsidePointer, true);
     return () => document.removeEventListener("pointerdown", handleOutsidePointer, true);
-  }, [onClose]);
+  }, [onClose, triggerRef]);
 
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const action = resolveContextMenuKeyboardAction(activeIndex, event.key, SORT_MODES.length);

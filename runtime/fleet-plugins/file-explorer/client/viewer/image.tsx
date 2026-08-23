@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { Translate } from "@fleet-console/sdk/i18n";
 
@@ -51,6 +51,12 @@ export function ImageViewer({ src, name, sizeBytes, t }: ImageViewerProps) {
   const [fitMode, setFitMode] = useState<ImageFitMode>("fit");
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null);
   const [stageSize, setStageSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
+
+  // 문서 전환·다시 읽기(src 변경) 시 이전 이미지의 치수를 지운다 —
+  // 남겨 두면 느린 로드 동안 이전 치수가 표시되고, 로드가 실패하면 영원히 낡은 메타로 남는다.
+  useEffect(() => {
+    setNatural(null);
+  }, [src]);
 
   useLayoutEffect(() => {
     const stage = stageRef.current;
