@@ -9,6 +9,7 @@ const CHAT_UNAVAILABLE_CLOSE_CODE = 1013;
 export interface AgentChatSocketSession {
   subscribe(listener: (entry: AgentChatJournalEvent) => void): () => void;
   stopTurn(): boolean;
+  cancelQueued(queueId: string): boolean;
   answer(id: string, input: AgentChatAnswerInput): AgentChatAnswerResult;
 }
 
@@ -39,6 +40,16 @@ export function attachAgentChatSocket(
     if (command.type === "stop") {
       if (!session.stopTurn()) {
         sendJson(socket, { type: "nack", id: command.id, error: "chat_idle" });
+        return;
+      }
+      sendJson(socket, { type: "ok", id: command.id });
+      return;
+    }
+    if (command.type === "cancel-queued") {
+      // 거둘 것이 없으면 거절한다 — 그 사이 자기 차례가 와 이미 시작한 지시이며, 그것을 ok로
+      // 답하면 화면은 칩을 지우고 사용자는 취소되지 않은 턴을 취소된 것으로 읽는다.
+      if (!session.cancelQueued(command.queueId)) {
+        sendJson(socket, { type: "nack", id: command.id, error: "queue_not_found" });
         return;
       }
       sendJson(socket, { type: "ok", id: command.id });
@@ -98,6 +109,7 @@ function commandId(data: TerminalSocketData): string | undefined {
 
 type ChatSocketCommand =
   | { readonly type: "stop"; readonly id: string }
+  | { readonly type: "cancel-queued"; readonly id: string; readonly queueId: string }
   | {
       readonly type: "answer";
       readonly id: string;
@@ -118,6 +130,7 @@ function readChatSocketCommand(raw: string): ChatSocketCommand | null {
   const value = parsed as {
     readonly type?: unknown;
     readonly id?: unknown;
+    readonly queueId?: unknown;
     readonly askId?: unknown;
     readonly answers?: unknown;
     readonly approve?: unknown;
@@ -125,6 +138,10 @@ function readChatSocketCommand(raw: string): ChatSocketCommand | null {
   };
   if (typeof value.id !== "string" || value.id.length === 0) return null;
   if (value.type === "stop") return { type: "stop", id: value.id };
+  if (value.type === "cancel-queued") {
+    if (typeof value.queueId !== "string" || value.queueId.length === 0) return null;
+    return { type: "cancel-queued", id: value.id, queueId: value.queueId };
+  }
   if (value.type !== "answer" || typeof value.askId !== "string" || value.askId.length === 0) return null;
   const answers = Array.isArray(value.answers)
     ? value.answers.filter((entry): entry is string => typeof entry === "string")

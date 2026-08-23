@@ -2208,12 +2208,50 @@ describe("Instrument core design contract", () => {
     expect(chat).not.toContain(".agent-chat-stop");
     expect(chatView).not.toContain('className="agent-chat-stop"');
     const composerStopBlock = chat.match(/^\.agent-chat-composer-stop \{[^}]*\}/m)?.[0] ?? "";
-    expect(composerStopBlock).toContain("color: var(--text-secondary);");
+    // 중지는 첨부와 같은 글리프 자리를 쓴다 — 같은 잉크·같은 패딩·테두리 없는 투명 바탕이라
+    // 바에 선 컨트롤들이 한 문법으로 읽힌다. 라벨을 두르면 도는 동안에만 서는 문 하나가 바에서
+    // 가장 큰 물건이 되어, 상시로 읽어야 할 좌표와 계기를 밀어낸다.
+    const composerAttachBlock = chat.match(/^\.agent-chat-composer-attach \{[^}]*\}/m)?.[0] ?? "";
+    // 한 행에 선 글리프 버튼들은 한 문법을 쓴다 — 백그라운드 작업 글리프도 같은 또래다.
+    for (const glyph of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;"]) {
+      expect(composerAttachBlock, glyph).toContain(glyph);
+      expect(composerStopBlock, glyph).toContain(glyph);
+      expect(composerWorkBlock, glyph).toContain(glyph);
+    }
+    // 작업 글리프의 표식은 도는 중 14px·정착 13px이라 패딩만으로는 이웃보다 작은 상자가 된다.
+    // 상자를 못박아 네 버튼이 같은 크기와 같은 클릭 과녁을 갖고, 잡이 끝나도 행이 움찔하지 않는다.
+    expect(composerWorkBlock).toContain("width: 30px;");
+    expect(composerWorkBlock).toContain("height: 30px;");
+    // 상자는 표식이 아니라 글리프 규격을 따른다 — 이웃이 16px svg를 싣고 있어, 표식 크기를 그대로
+    // 상자로 쓰면 같은 패딩에도 버튼만 작아지고 클릭 과녁이 나란히 어긋난다(실측 25 vs 30).
+    const stopMarkBlock = chat.match(/^\.agent-chat-composer-stop-mark \{[^}]*\}/m)?.[0] ?? "";
+    expect(stopMarkBlock).toContain("width: 16px;");
+    expect(stopMarkBlock).toContain("height: 16px;");
     expect(chatComposer).toContain('className="agent-chat-composer-stop"');
     expect(chatComposer).toContain("is-queue");
+    // 표식만 남고 라벨은 aria/title이 진다.
+    expect(chatComposer).not.toContain("terminal.chat.stopCurrent");
     for (const signal of ["--aurora", "--positive", "--warn", "--coral"]) {
       expect(composerStopBlock, signal).not.toContain(signal);
     }
+    // 문맥 계기도 같은 글리프 자리를 쓴다 — 숫자는 팝오버로 가고 원호만 바에 선다. 채움은
+    // 압력을 나르는 상태 잉크를 그대로 쓰지만(압력은 상태다), 칩 자신은 알약을 두르지 않는다.
+    const ctxChipBlock = chat.match(/^\.agent-chat-ctx-chip \{[^}]*\}/m)?.[0] ?? "";
+    expect(ctxChipBlock).toContain("background: transparent;");
+    expect(ctxChipBlock).toContain("border: 0;");
+    expect(ctxChipBlock).toContain("padding: 7px;");
+    expect(chatView).not.toContain("agent-chat-ctx-pct");
+    // 예약은 접수 증서이지 상태 경보가 아니다 — 중립 잉크로 사실만 남긴다. 취소만이 파괴
+    // 동작이라 coral을 지되, 첨부 제거와 같이 hover/focus에서만 오른다.
+    const queueItemBlock = chat.match(/^\.agent-chat-composer-queue-item \{[^}]*\}/m)?.[0] ?? "";
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
+      expect(queueItemBlock, signal).not.toContain(signal);
+    }
+    const queueCancelBlock = chat.match(/^\.agent-chat-composer-queue-cancel \{[^}]*\}/m)?.[0] ?? "";
+    expect(queueCancelBlock).toContain("color: var(--text-tertiary);");
+    expect(queueCancelBlock).not.toContain("--coral");
+    const queueCancelHoverBlock = chat.match(/^\.agent-chat-composer-queue-cancel:hover,\n\.agent-chat-composer-queue-cancel:focus-visible \{[^}]*\}/m)?.[0] ?? "";
+    expect(queueCancelHoverBlock).toContain("color: var(--coral);");
     const composerFrameFocusBlock = chat.match(/^\.agent-chat-composer-frame:focus-within \{[^}]*\}/m)?.[0] ?? "";
     expect(composerFrameFocusBlock).toContain("border-color: var(--brass);");
     const composerArmedBlock = chat.match(/^\.agent-chat-composer-send\.is-armed \{[^}]*\}/m)?.[0] ?? "";

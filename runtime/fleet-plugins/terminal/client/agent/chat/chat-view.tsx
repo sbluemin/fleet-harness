@@ -26,7 +26,7 @@ import {
   type AgentChatTurnItem,
 } from "./chat-events.js";
 import { CHAT_EFFORT_RUNGS, readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
-import { AgentChatComposer } from "./composer.js";
+import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
 import "./chat.css";
@@ -76,7 +76,6 @@ export function AgentChatView({
   const { terminalError } = useViewSwitchState(context.operationId);
   const [stopping, setStopping] = React.useState(false);
   const [stopFailed, setStopFailed] = React.useState(false);
-  const [queuedTurns, setQueuedTurns] = React.useState(0);
   // 바닥을 따라가는 중인지 — 칩 가시성의 권위. ref 와 같은 값이지만, 스크롤이 바꾼 뒤에는
   // 그려져야 하므로 state 로도 둔다.
   const [following, setFollowing] = React.useState(true);
@@ -106,9 +105,6 @@ export function AgentChatView({
   const previousTurnCountRef = React.useRef(state.turns.length);
   // 재접속 직전 서버 누적 좌표. 저널 상한으로 화면의 과거 턴이 잘려도 이 값은 역행하지 않는다.
   const snapshotTurnBaselineRef = React.useRef<number | null>(state.snapshotting ? state.observedTurns : null);
-  // snapshot이 시작될 때 이미 서 있던 receipt만 그 snapshot에서 시작한 턴과 맞춘다. 전달 중 새로
-  // 넣은 지시는 이 기준 뒤의 것이므로, 앞서 시작한 턴이 대신 소비하면 안 된다.
-  const snapshotQueuedBaselineRef = React.useRef(0);
   const previousReadyAnswersRef = React.useRef(0);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
@@ -167,28 +163,23 @@ export function AgentChatView({
     const previous = previousTurnCountRef.current;
     previousTurnCountRef.current = state.turns.length;
     if (state.snapshotting) {
-      // open이 로그를 비우기 전의 수를 보존한다. snapshot 안에서 같은 턴을 복원한 것은 새 도착이
-      // 아니지만, 끊긴 동안 예약 턴이 실제로 시작했다면 그 receipt는 snapshot-end에서 내려야 한다.
-      if (snapshotTurnBaselineRef.current === null) {
-        snapshotTurnBaselineRef.current = state.observedTurns;
-        snapshotQueuedBaselineRef.current = queuedTurns;
-      }
+      // open이 로그를 비우기 전의 수를 보존한다. snapshot 안에서 같은 턴을 복원한 것은 새 도착이 아니다.
+      if (snapshotTurnBaselineRef.current === null) snapshotTurnBaselineRef.current = state.observedTurns;
       return;
     }
-    const baseline = snapshotTurnBaselineRef.current;
+    const wasSnapshotting = snapshotTurnBaselineRef.current !== null;
     snapshotTurnBaselineRef.current = null;
-    const arrived = baseline === null
-      ? Math.max(0, state.turns.length - previous)
-      : Math.min(snapshotQueuedBaselineRef.current, Math.max(0, state.observedTurns - baseline));
-    snapshotQueuedBaselineRef.current = 0;
+    // 예약 목록은 여기서 내리지 않는다 — 서버가 시작과 동시에 큐 전량을 다시 보내고, 그것이 이 축의
+    // 유일한 권위다. 끊긴 동안 예약이 실제로 시작했는지도 재접속 스냅숏이 그대로 말해 주므로,
+    // 화면이 receipt를 세어 맞출 일 자체가 없다.
+    //
+    // 남는 것은 도착 신호뿐이다. snapshot 안의 증가는 이미 보던 턴의 복원이므로 세지 않고,
+    // snapshot 밖에서 직접 열린 턴만 미확인으로 올린다.
+    if (wasSnapshotting) return;
+    const arrived = Math.max(0, state.turns.length - previous);
     if (arrived === 0) return;
-    // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
-    // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.
-    setQueuedTurns((current) => Math.max(0, current - arrived));
-    // snapshot 안의 증가는 끊긴 동안 시작한 예약일 수 있지만, 이미 보던 턴의 복원이기도 하다.
-    // 화면 도착 신호는 snapshot 밖에서 직접 열린 턴만 센다.
-    if (baseline === null && !nearBottomRef.current) setUnseenTurns((current) => current + arrived);
-  }, [queuedTurns, state.observedTurns, state.snapshotting, state.turns.length]);
+    if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
+  }, [state.observedTurns, state.snapshotting, state.turns.length]);
 
   React.useEffect(() => {
     const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;
@@ -309,6 +300,22 @@ export function AgentChatView({
       setStopping(false);
     }
   }, [state.stopTurn]);
+
+  const handleCancelQueued = React.useCallback(async (queueId: string): Promise<AgentChatQueueCancelOutcome> => {
+    try {
+      await state.cancelQueued(queueId);
+      return "canceled";
+    } catch (error) {
+      // 서버가 판정한 거절과 서버에 닿지도 못한 실패가 여기서 만난다. 둘을 합치면 연결이 끊긴
+      // 사용자에게 "이미 시작됐으니 턴을 중지하라"고 말하게 되는데, 그 지시는 아직 큐에 남아 있을
+      // 수 있다 — 도는 턴의 중지가 같은 자리에서 이미 둘을 갈라 말한다(stopFailed).
+      //
+      // 서버의 판정은 `queue_not_found` 하나뿐이다. 소켓 부재·조기 종료·ACK 시한(chat-store가 던지는
+      // 코드들)은 판정이 아니라 판정의 부재이고, 알 수 없는 NACK도 그쪽에 둔다 — 시작했다고 단정할
+      // 근거가 없는 실패를 시작으로 읽으면 사용자가 멈추지 않아도 될 턴을 멈춘다.
+      return error instanceof Error && error.message === "queue_not_found" ? "started" : "unreachable";
+    }
+  }, [state.cancelQueued]);
 
   const setBoundedWorkRatio = React.useCallback((next: number) => {
     setWorkRatio(Math.min(0.78, Math.max(0.18, next)));
@@ -477,7 +484,7 @@ export function AgentChatView({
             tourAnchor={tourAnchors}
             turnRunning={turnRunning}
             stopping={stopping}
-            queuedTurns={queuedTurns}
+            queue={state.queue}
             work={{
               running: openJobs.length,
               hasJobs,
@@ -486,8 +493,7 @@ export function AgentChatView({
               onOpen: openWork,
             }}
             onStop={handleStop}
-            onQueued={() => setQueuedTurns((current) => current + 1)}
-            onQueueRejected={() => setQueuedTurns((current) => Math.max(0, current - 1))}
+            onCancelQueued={handleCancelQueued}
           />
 
           {/* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며
@@ -1997,6 +2003,8 @@ function ContextMeterChip({
   if (!context) return null;
 
   const occupied = contextOccupied(context);
+  // 화면에서는 원호가 말하고, 숫자는 이름표(aria)와 툴팁이 진다 — 글리프 하나가 스크린리더에게
+  // 아무 값도 말하지 않으면 그 사용자에게는 계기가 사라진 것과 같다.
   const percent = Math.round((occupied / context.max) * 100);
   const summary = `${formatTokens(occupied)} / ${formatTokens(context.max)}`;
   // 낡음을 주장할 수 있는 구간은 하나뿐이다: 턴이 시작됐고 아직 첫 delta가 오지 않은 사이.
@@ -2012,8 +2020,11 @@ function ContextMeterChip({
         title={t("terminal.chat.contextAt", { summary })}
         onClick={() => setOpen((wasOpen) => !wasOpen)}
       >
+        {/* 숫자는 이 자리를 떠나 팝오버로 간다 — 바에서는 첨부와 같은 글리프 하나로 서고,
+            채움이 곧 규모다. 정확한 값이 필요한 순간은 누르는 순간이고, 그때 내역이 함께 온다.
+            원호를 그대로 글리프로 쓰는 이유는 그것이 유일하게 잃지 않는 신호이기 때문이다:
+            무채색 계기 아이콘으로 바꾸면 바에서 압력을 읽을 길이 사라진다. */}
         <ContextArc ratio={occupied / context.max} />
-        <span className="agent-chat-ctx-pct">{percent}%</span>
       </button>
       {open ? <ContextBreakdown context={context} language={language} /> : null}
     </div>

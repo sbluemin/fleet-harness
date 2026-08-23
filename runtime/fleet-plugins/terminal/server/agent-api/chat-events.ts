@@ -229,7 +229,23 @@ export type AgentChatStreamEvent =
    * 워크플로 1건은 spawn 1회에 stop N회를 내므로 가감산 카운터는 반드시 어긋난다.
    */
   | { readonly kind: "jobs"; readonly ids: readonly string[] }
+  /**
+   * 아직 시작하지 않은 예약 지시의 전량. `jobs`와 같은 REPLACE 시맨틱이며, 라이브 전용이다 —
+   * 큐는 지나간 사실이 아니라 지금의 사정이라 저널에 쌓을 것이 없고, 재접속은 구독 시점의
+   * 스냅숏 하나로 자리를 되찾는다.
+   *
+   * 서버가 권위인 이유는 취소 때문이다. 화면이 자기 카운터를 들고 있으면 취소가 무엇을 지웠는지
+   * 서버와 화면이 각자 말하게 되고, 그 둘이 어긋나는 순간 사용자는 취소되지 않은 지시를 취소된
+   * 것으로 읽는다.
+   */
+  | { readonly kind: "queue"; readonly entries: readonly AgentChatQueueEntry[] }
   | { readonly kind: "error"; readonly code: string };
+
+/** 예약된 지시 하나 — 좌표와 사용자가 쓴 문면. 취소는 이 좌표로만 닿는다. */
+export interface AgentChatQueueEntry {
+  readonly id: string;
+  readonly text: string;
+}
 
 /** 저널에 실리는 형태 — seq는 재접속 클라이언트가 중복 반영을 걸러내는 단조 축이다. */
 export interface AgentChatJournalEvent {

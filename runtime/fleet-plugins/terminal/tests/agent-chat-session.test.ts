@@ -2067,6 +2067,144 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
+  /** 마지막으로 실린 예약 전량. REPLACE 시맨틱이라 최신 하나가 곧 지금의 사정이다. */
+  function latestQueue(events: readonly AgentChatJournalEvent[]): readonly { readonly id: string; readonly text: string }[] {
+    const queue = events.map((entry) => entry.event).filter((event) => event.kind === "queue");
+    return queue.at(-1)?.entries ?? [];
+  }
+
+  // 예약은 수가 아니라 좌표를 가진 목록이다 — 취소가 닿을 자리가 있어야 하고, 자기 차례가 오면
+  // 그 자리는 비워져야 한다(시작한 지시는 취소가 아니라 중지의 몫이다).
+  it("carries each queued instruction with a coordinate and drops it once the turn starts", async () => {
+    const transcriptPath = writeTranscript("sess-queue", []);
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    session.send("second");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    // 도는 지시는 목록에 없다 — 남은 것은 아직 서지 않은 하나뿐이다.
+    expect(latestQueue(seen).map((entry) => entry.text)).toEqual(["second"]);
+
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 4 });
+    await drainTurn(registry, "op-queue");
+    expect(sends).toEqual(["first", "second"]);
+    expect(latestQueue(seen)).toEqual([]);
+    await registry.disposeAll();
+  });
+
+  // 첨부가 붙은 지시의 프롬프트에는 호스트 절대 경로가 실린다. 자식은 그것을 받아야 하지만
+  // 브라우저는 받으면 안 된다 — 예약 칩이 임시 파일 경로를 실어 나르는 자리가 여기였다.
+  it("keeps the dispatch prompt's host paths out of the queue it sends to the browser", async () => {
+    const transcriptPath = writeTranscript("sess-queue-preview", []);
+    const { factory, sends, liveSession } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue-preview", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    const prompt = "look at this\n\nRead the attached image file: /tmp/launch-attachments/ab12/shot.png";
+    session.send(prompt, "look at this");
+
+    const queued = latestQueue(seen);
+    expect(queued.map((entry) => entry.text)).toEqual(["look at this"]);
+    expect(JSON.stringify(queued)).not.toContain("/tmp/launch-attachments");
+    // 자식에게는 여전히 전문이 간다 — 경로를 지운 것이 아니라 화면에 내보내지 않을 뿐이다.
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 4 });
+    await drainTurn(registry, "op-queue-preview");
+    expect(sends).toEqual(["first", prompt]);
+    await registry.disposeAll();
+  });
+
+  it("cancels a queued instruction so it never reaches the child", async () => {
+    const transcriptPath = writeTranscript("sess-queue-cancel", []);
+    const { factory, liveSession, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue-cancel", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    session.send("cancel me");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+
+    const queued = latestQueue(seen)[0];
+    expect(session.cancelQueued(queued?.id ?? "")).toBe(true);
+    expect(latestQueue(seen)).toEqual([]);
+
+    // 앞 턴이 닫혀 자기 차례가 와도 서지 않는다 — 자식은 그 문면을 본 적이 없다.
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 4 });
+    await drainTurn(registry, "op-queue-cancel");
+    expect(sends).toEqual(["first"]);
+    const dispatches = seen.map((entry) => entry.event).filter((event) => event.kind === "dispatch");
+    expect(dispatches.map((event) => event.text)).toEqual(["first"]);
+    await registry.disposeAll();
+  });
+
+  // 거둘 것이 없으면 거절한다. ok로 답하면 화면이 칩을 지우고, 그 지시는 잠시 뒤 태연히 시작한다.
+  it("refuses to cancel a coordinate that is unknown or already running", async () => {
+    const transcriptPath = writeTranscript("sess-queue-race", []);
+    const { factory, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue-race", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    // 지어낸 좌표도, 이미 시작해 목록에서 내려간 첫 지시의 좌표도 이 문을 통과하지 못한다.
+    expect(session.cancelQueued("q404")).toBe(false);
+    expect(session.cancelQueued("q1")).toBe(false);
+    await registry.disposeAll();
+  });
+
+  // 예약은 저널에 없다(라이브 전용). 재접속한 화면이 자기 힘으로 되찾을 길이 없으므로 구독이
+  // 재생 경계 **뒤에** 스냅숏 하나를 실어 준다 — 앞에 두면 replay-start가 그 자리를 곧바로 비운다.
+  it("hands a reconnecting subscriber the queue after the replay boundary", async () => {
+    const transcriptPath = writeTranscript("sess-queue-reconnect", []);
+    const { factory, sends } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue-reconnect", () => seedFor(transcriptPath));
+    session.send("first");
+    session.send("still waiting");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+
+    const reconnected: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => reconnected.push(entry));
+    // 재생 경계 뒤, 그리고 snapshot-end 앞이다 — 예약은 이번 접속이 발견한 사정이지 새 도착이 아니다.
+    const order = kinds(reconnected);
+    expect(order.at(-1)).toBe("snapshot-end");
+    expect(order.indexOf("replay-end")).toBeLessThan(order.lastIndexOf("queue"));
+    expect(order.lastIndexOf("queue")).toBeLessThan(order.lastIndexOf("snapshot-end"));
+    expect(latestQueue(reconnected).map((entry) => entry.text)).toEqual(["still waiting"]);
+
+    // 리듀서도 같은 자리에 접는다 — 재생이 비운 뒤 스냅숏이 채운다.
+    let state = initialAgentChatLogState;
+    for (const entry of reconnected) state = reduceAgentChatLog(state, entry.event);
+    expect(state.queue.map((entry) => entry.text)).toEqual(["still waiting"]);
+    await registry.disposeAll();
+  });
+
   // 자식은 중단을 받아도 그 턴의 result를 반드시 낸다(실측: interrupt 뒤 2ms). 중지 직후의 새
   // 메시지가 그 결말에 실려 나가면, 답하지도 않은 프롬프트가 끝난 것으로 그려진다.
   it("keeps a new send behind the interrupted turn's result", async () => {

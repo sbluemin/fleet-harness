@@ -1034,7 +1034,9 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           ctx.host.http.writeJson(res, 503, { error: "chat_activity_unavailable" });
           return true;
         }
-        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string);
+        // 자식에게는 첨부 경로가 붙은 프롬프트를, 화면에는 사람이 쓴 문면을 준다 — 예약 칩이
+        // 호스트 절대 경로를 브라우저로 실어 나르지 않게 하는 경계가 이 인자 둘이다.
+        chat.send(composeLaunchPromptWithAttachments(text.trim(), attachmentPaths) as string, text.trim());
       } catch {
         settleAttachments(false);
         ctx.host.http.writeJson(res, 503, { error: "chat_unavailable" });

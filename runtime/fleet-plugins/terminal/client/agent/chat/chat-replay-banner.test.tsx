@@ -17,8 +17,10 @@ vi.mock("./chat-store.js", () => ({
     errorCode: null,
     jobs: [],
     context: null,
+    queue: [],
     connection: "open",
     stopTurn: async () => {},
+    cancelQueued: async () => {},
     answerAsk: async () => {},
   }),
 }));

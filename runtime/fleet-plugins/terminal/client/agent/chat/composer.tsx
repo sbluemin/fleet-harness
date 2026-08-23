@@ -17,6 +17,7 @@ import {
 } from "@fleet-console/sdk/composer";
 
 import { getT } from "../../i18n/index.js";
+import type { AgentChatQueueEntry } from "./chat-events.js";
 import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } from "../api.js";
 
 /**
@@ -34,9 +35,20 @@ import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } 
  * War Room 카드뷰에서는 서지 않는다: chat.css의 `is-deck-tile` 숨김 목록(부유 크롬과 같은
  * 크로스 번들 클래스 계약)이 이 루트를 함께 걷는다.
  *
- * 실행 중에는 두 문이 선다: 현재 턴을 끊는 text control과 그 뒤에 실행할 지시를 예약하는 원형
+ * 실행 중에는 두 문이 선다: 현재 턴을 끊는 중지 글리프와 그 뒤에 실행할 지시를 예약하는 원형
  * 전송 control이다. 한 버튼의 뜻을 Stop으로 바꾸면서 Enter는 Queue로 남기면 같은 입력이 포인터와
- * 키보드에서 다른 약속을 하므로, 둘을 화면에서도 분리하고 접수된 예약 수를 지운 초안 자리에 남긴다.
+ * 키보드에서 다른 약속을 하므로, 둘은 화면에서도 분리한다.
+ *
+ * 중지는 라벨을 벗고 첨부와 같은 글리프가 된다. 도는 동안에만 서는 문 하나가 라벨까지 두르면
+ * 바에서 가장 큰 물건이 되어, 정작 읽어야 할 좌표와 계기를 밀어낸다. 대신 같은 일을 키보드에도
+ * 배선한다 — 프레임 안에서의 Esc이며, CLI에서 도는 턴을 끊는 그 키와 같은 자리다. 문서 전역이
+ * 아니라 프레임인 이유는 한 화면에 채팅 패널이 여럿 살 수 있어서다: 전역에 걸면 Esc 한 번이
+ * 보이지 않는 패널의 턴까지 끊는다. 안내는 그 키가 실제로 듣는 구간(포커스)에만 선다.
+ *
+ * 예약은 수가 아니라 목록이다. "N개 예약됨" 한 줄은 무엇이 밀려 있는지 말하지 못해 사용자가
+ * 자기 초안을 잃었는지 예약됐는지 가릴 수 없었다. 문면을 실은 칩을 field 위에 세우고 각 칩이
+ * 자기 취소를 진다. 권위는 서버다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이
+ * 따로 말하게 되고, 그 어긋남은 사용자가 취소되지 않은 지시를 취소된 것으로 읽는 자리가 된다.
  *
  * 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
  * 모델·강도는 컨트롤이 아니라 사실 표시다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이라
@@ -58,6 +70,19 @@ type AttachmentRejection =
   | { readonly kind: "tooLarge" }
   | { readonly kind: "failed" };
 
+/**
+ * 취소 요청 하나의 결말.
+ *
+ * 두 실패를 갈라야 한다. `started`는 서버가 판정한 사실이다 — 그 사이 자기 차례가 왔으니 남은 길은
+ * 중지다. `unreachable`은 판정이 아니라 **판정이 없었다**는 뜻이다: 소켓이 끊겼거나 ACK가 오지 않아
+ * 요청이 서버에 닿았는지조차 모르며, 그 지시는 아직 큐에 남아 있을 수 있다. 둘을 한 문구로 합치면
+ * 연결이 끊긴 사용자에게 "이미 시작됐으니 턴을 중지하라"고 말하게 되는데, 그것은 사실이 아닐뿐더러
+ * 필요하지 않은 파괴 동작을 권하는 것이다. 도는 턴의 중지(`stopFailed`)가 이미 같은 규율을 쓴다.
+ */
+export type AgentChatQueueCancelOutcome = "canceled" | "started" | "unreachable";
+
+type QueueRejection = { readonly kind: "started" | "unreachable" };
+
 export function AgentChatComposer({
   context,
   coordinate,
@@ -65,11 +90,10 @@ export function AgentChatComposer({
   tourAnchor,
   turnRunning,
   stopping,
-  queuedTurns,
+  queue,
   work,
   onStop,
-  onQueued,
-  onQueueRejected,
+  onCancelQueued,
 }: {
   readonly context: OperationRenderContext;
   /** 세션 좌표의 사실 표시 — 모델·강도 배지가 컨트롤 행 좌측에 앉는다. */
@@ -83,8 +107,11 @@ export function AgentChatComposer({
   /** 지금 이 세션의 턴이 도는가 — 중지와 다음 지시 예약을 함께 세우는 축이다. */
   readonly turnRunning: boolean;
   readonly stopping: boolean;
-  /** 서버가 접수해 현재 턴 뒤에 실행할 지시 수 — 접수 뒤 초안이 사라져도 예약 사실을 지킨다. */
-  readonly queuedTurns: number;
+  /**
+   * 서버가 접수해 현재 턴 뒤에 실행할 지시들 — 접수 뒤 초안이 사라져도 예약 사실과 그 문면을
+   * 지킨다. 서버가 소유하는 목록이라 화면은 세지 않고 그대로 그린다.
+   */
+  readonly queue: readonly AgentChatQueueEntry[];
   /**
    * 백그라운드 작업 표시 — attach 왼쪽에 선 글리프의 상태·문이다. 잡이 있는 동안에만 서고
    * (`hasJobs`), 도는 잡이 있으면(`running > 0`) aurora 오브, 정착만 남으면 중립 링이다.
@@ -98,8 +125,8 @@ export function AgentChatComposer({
     readonly onOpen: () => void;
   };
   readonly onStop: () => Promise<boolean>;
-  readonly onQueued: () => void;
-  readonly onQueueRejected: () => void;
+  /** 아직 시작하지 않은 예약 하나를 거둔다. 실패는 사유를 갈라 돌려준다(위 타입 참조). */
+  readonly onCancelQueued: (queueId: string) => Promise<AgentChatQueueCancelOutcome>;
 }) {
   const t = getT(context.language ?? "en");
   const inputRef = React.useRef<HTMLTextAreaElement | null>(null);
@@ -108,6 +135,9 @@ export function AgentChatComposer({
   const [sending, setSending] = React.useState(false);
   const [failed, setFailed] = React.useState(false);
   const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
+  const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
+  /** 응답을 기다리는 취소 좌표들 — 같은 칩의 두 번째 활성화를 삼킨다. */
+  const cancelsInFlight = React.useRef(new Set<string>());
   const [dragOver, setDragOver] = React.useState(false);
   const attachmentsRef = React.useRef(attachments);
   attachmentsRef.current = attachments;
@@ -152,23 +182,22 @@ export function AgentChatComposer({
       .filter((id): id is string => id !== null);
     setSending(true);
     setFailed(false);
-    // 큐 receipt는 요청보다 먼저 세운다. 서버는 요청 안에서 턴을 등록하고 WebSocket으로 먼저
-    // 알릴 수 있으므로, 응답 뒤에 세우면 이미 시작한 턴이 내린 수를 다시 올려 stale로 남긴다.
-    if (turnRunning) onQueued();
     try {
+      // 예약 receipt는 여기서 세우지 않는다. 서버가 접수와 동시에 큐 전량을 흘려 보내고 그
+      // 알림은 HTTP 응답보다 먼저 닿을 수 있다 — 화면이 자기 셈을 겹쳐 세우면 이미 시작한 턴이
+      // 내린 수를 다시 올려 stale로 남고, 취소와도 어긋난다.
       await messageAgentSession(context.operationId, text, ids.length > 0 ? ids : undefined);
       for (const attachment of attachmentsRef.current) URL.revokeObjectURL(attachment.previewUrl);
       setAttachments([]);
       setDraft("");
       inputRef.current?.focus();
     } catch {
-      if (turnRunning) onQueueRejected();
       // 실패는 초안을 지키고 이 바에서 말한다 — 문면이 사라진 채 침묵하면 회복 보장이 깨진다.
       setFailed(true);
     } finally {
       setSending(false);
     }
-  }, [context.operationId, draft, onQueued, onQueueRejected, sending, turnRunning]);
+  }, [context.operationId, draft, sending]);
 
   const addFiles = React.useCallback((files: readonly File[]) => {
     const images = files.filter((file) => isComposerAttachmentCandidate(file));
@@ -227,6 +256,25 @@ export function AgentChatComposer({
     if (await onStop()) inputRef.current?.focus();
   }, [onStop]);
 
+  const cancelQueued = React.useCallback(async (queueId: string) => {
+    // 같은 좌표로 두 번 보내지 않는다. 두 번째 요청은 첫 번째가 이미 거둔 좌표를 찾지 못해
+    // `queue_not_found`를 받고, 그 거절은 "이미 시작했다"로 읽혀 **취소에 성공한** 사용자에게
+    // 턴을 중지하라고 말한다 — 더블클릭 한 번이면 닿는 자리다.
+    if (cancelsInFlight.current.has(queueId)) return;
+    cancelsInFlight.current.add(queueId);
+    setQueueRejection(null);
+    // 칩은 낙관적으로 지우지 않는다. 목록의 권위는 서버이고, 거절은 사실이라 지웠다 되돌리면
+    // 사용자가 취소를 두 번 읽는다 — 서버가 보낸 다음 목록이 칩을 내린다.
+    try {
+      const outcome = await onCancelQueued(queueId);
+      if (outcome !== "canceled") setQueueRejection({ kind: outcome });
+    } finally {
+      // 좌표는 성공하면 서버가 보내는 다음 목록과 함께 사라진다. 실패했을 때만 다시 누를 수 있어야
+      // 하므로 여기서 푼다 — 붙들어 두면 연결이 돌아와도 그 칩은 영영 취소되지 않는다.
+      cancelsInFlight.current.delete(queueId);
+    }
+  }, [onCancelQueued]);
+
   // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과
   // 그에 딸린 첨부다) 첨부 하나로 버튼이 켜지면 눌러도 아무 일이 없는 죽은 컨트롤이 된다.
   const uploading = attachments.some((attachment) => attachment.uploading);
@@ -234,19 +282,35 @@ export function AgentChatComposer({
   const placeholder = t("terminal.chat.composerPlaceholder", { name: context.operation.title });
   const notice = failed
     ? t("terminal.chat.composerSendFailed")
-    : rejection === null
-      ? null
-      : rejection.kind === "limit"
-        ? t("terminal.chat.composerAttachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) })
-        : rejection.kind === "tooLarge"
-          ? t("terminal.chat.composerAttachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) })
-          : t("terminal.chat.composerAttachFailed");
+    : queueRejection !== null
+      ? t(queueRejection.kind === "started"
+        ? "terminal.chat.queueCancelFailed"
+        : "terminal.chat.queueCancelUnreachable")
+      : rejection === null
+        ? null
+        : rejection.kind === "limit"
+          ? t("terminal.chat.composerAttachLimit", { count: String(COMPOSER_MAX_ATTACHMENTS) })
+          : rejection.kind === "tooLarge"
+            ? t("terminal.chat.composerAttachTooLarge", { mb: String(Math.round(COMPOSER_ATTACHMENT_MAX_BYTES / (1024 * 1024))) })
+            : t("terminal.chat.composerAttachFailed");
 
   return (
     <div className="agent-chat-composer">
       <div
         className={`agent-chat-composer-frame${dragOver ? " is-drag-over" : ""}${ultracodeArmed ? " is-ultracode" : ""}`}
         {...(tourAnchor ? { "data-chat-tour": "composer" } : {})}
+        onKeyDown={(event) => {
+          // 도는 턴을 끊는 키. 프레임 안에서만 듣는다 — 문서 전역에 걸면 한 화면에 열린 다른
+          // 채팅 패널의 턴까지 함께 끊는다. 안내(`Esc 중지`)가 서는 구간과 정확히 같은 구간이다.
+          //
+          // 조합 중의 Esc는 IME가 후보를 물리는 키라 여기서 가로채지 않는다. 문맥 계기의 팝오버가
+          // 열려 있으면 그쪽이 capture 단계에서 전파를 끊으므로 이 자리에 닿지 않는다 — 열린
+          // 표면을 먼저 닫는 것이 Esc의 통상 위계이고, 그 위계가 저절로 지켜진다.
+          if (event.key !== "Escape" || event.nativeEvent.isComposing) return;
+          if (!turnRunning || stopping) return;
+          event.preventDefault();
+          void stop();
+        }}
         onDragOver={(event) => {
           if (!Array.from(event.dataTransfer?.types ?? []).includes("Files")) return;
           event.preventDefault();
@@ -275,6 +339,30 @@ export function AgentChatComposer({
             <span>{t("terminal.chat.composerUltracodeNotice")}</span>
             <span className="agent-chat-composer-ultracode-hint">{t("terminal.chat.composerUltracodeHint")}</span>
           </p>
+        ) : null}
+        {/* 예약 목록 — field 위 자기 자리에 선다. 바에 두면 좌표·계기와 폭을 다투다 한 줄로
+            잘리고, 그 한 줄은 무엇이 밀려 있는지 말하지 못한다. 서버가 보내는 전량을 그대로 그린다. */}
+        {queue.length > 0 ? (
+          <div className="agent-chat-composer-queue" role="group" aria-label={t("terminal.chat.queueTitle")}>
+            <p className="agent-chat-composer-queue-title">{t("terminal.chat.queueTitle")}</p>
+            <ul className="agent-chat-composer-queue-list">
+              {queue.map((entry, index) => (
+                <li key={entry.id} className="agent-chat-composer-queue-item">
+                  <span className="agent-chat-composer-queue-ord" aria-hidden="true">{index + 1}</span>
+                  <span className="agent-chat-composer-queue-text">{entry.text}</span>
+                  <button
+                    type="button"
+                    className="agent-chat-composer-queue-cancel"
+                    onClick={() => { void cancelQueued(entry.id); }}
+                    aria-label={t("terminal.chat.queueCancel", { index: String(index + 1) })}
+                    title={t("terminal.chat.queueCancel", { index: String(index + 1) })}
+                  >
+                    {t("terminal.chat.queueCancelLabel")}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
         ) : null}
         <ComposerField className="agent-chat-composer-field">
           {/* textarea와 미러를 한 flex 아이템으로 묶는다 — 미러를 field에 직접 붙이면 첨부 칩이 선
@@ -345,16 +433,17 @@ export function AgentChatComposer({
           {coordinate}
           {notice !== null ? (
             <span className="agent-chat-composer-error" role="alert">{notice}</span>
-          ) : queuedTurns > 0 ? (
-            <span className="agent-chat-composer-queued" role="status">
-              {t("terminal.chat.queued", { count: queuedTurns })}
-            </span>
           ) : (
             /* 키 안내는 이 행의 남는 폭에 세 든다 — 쓰는 동안에만 서고, 좁은 패널에서는
                ⇧Enter 항목부터 접힌다(CSS @container). 읽는 화면에 상주하면 여러 패널이
-               같은 문구를 나란히 반복한다. */
+               같은 문구를 나란히 반복한다.
+
+               예약 수는 여기서 말하지 않는다 — 목록이 field 위에 문면째로 서 있고, 같은 사실을
+               두 자리에서 말하면 한쪽이 반드시 먼저 낡는다. 대신 도는 동안에만 중지 키를 밝힌다:
+               그 키가 실제로 듣는 구간이 이 안내가 서는 구간(포커스)과 같다. */
             <span className="agent-chat-composer-hint" aria-hidden="true">
               <span>{t(turnRunning ? "terminal.chat.composerHintQueue" : "terminal.chat.composerHintEnter")}</span>
+              {turnRunning ? <span>{t("terminal.chat.composerHintStop")}</span> : null}
               <span className="is-optional">{t("terminal.chat.composerHintNewline")}</span>
             </span>
           )}
@@ -401,7 +490,6 @@ export function AgentChatComposer({
                   title={t("terminal.chat.stopTitle")}
                 >
                   <span className="agent-chat-composer-stop-mark" aria-hidden="true" />
-                  <span>{t("terminal.chat.stopCurrent")}</span>
                 </button>
                 <ComposerSubmitButton
                   className={`agent-chat-composer-send is-queue${canSend ? " is-armed" : ""}`}

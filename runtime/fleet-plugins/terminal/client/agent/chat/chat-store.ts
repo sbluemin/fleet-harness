@@ -15,6 +15,8 @@ export interface AgentChatAnswerCommand {
 export interface AgentChatViewState extends AgentChatLogState {
   readonly connection: AgentChatConnection;
   readonly stopTurn: () => Promise<void>;
+  /** 아직 시작하지 않은 예약 지시 하나를 거둔다. 이미 시작했으면 서버가 거절한다. */
+  readonly cancelQueued: (queueId: string) => Promise<void>;
   readonly answerAsk: (body: AgentChatAnswerCommand) => Promise<void>;
 }
 
@@ -76,11 +78,17 @@ export function useAgentChatStream(operationId: string, live = true): AgentChatV
   const stopTurn = React.useCallback(async () => {
     await sessionRef.current?.send({ type: "stop" });
   }, []);
+  const cancelQueued = React.useCallback(async (queueId: string) => {
+    await sessionRef.current?.send({ type: "cancel-queued", queueId });
+  }, []);
   const answerAsk = React.useCallback(async (body: AgentChatAnswerCommand) => {
     await sessionRef.current?.send({ type: "answer", ...body });
   }, []);
 
-  return React.useMemo(() => ({ ...log, connection, stopTurn, answerAsk }), [log, connection, stopTurn, answerAsk]);
+  return React.useMemo(
+    () => ({ ...log, connection, stopTurn, cancelQueued, answerAsk }),
+    [log, connection, stopTurn, cancelQueued, answerAsk],
+  );
 }
 
 interface ChatSocketSession {
@@ -91,6 +99,7 @@ interface ChatSocketSession {
 
 type ChatOutboundCommand =
   | { readonly type: "stop" }
+  | { readonly type: "cancel-queued"; readonly queueId: string }
   | { readonly type: "answer"; readonly askId: string; readonly answers?: readonly string[]; readonly approve?: boolean; readonly message?: string };
 
 interface ChatSocketSessionOptions {
