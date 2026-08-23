@@ -4365,8 +4365,8 @@
   /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 캡션·본문 팬은 panel-face(게이트
      열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. xterm 필드만 원 토큰의 불투명을 지킨다. */
   background: var(--glass-tint-panel);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+  -webkit-backdrop-filter: var(--glass-backdrop-panel);
+  backdrop-filter: var(--glass-backdrop-panel);
   box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.

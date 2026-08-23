@@ -688,7 +688,7 @@ describe("Instrument core design contract", () => {
     const backdropDeclarations = css.match(/(?:-webkit-)?backdrop-filter:[^;\n]*;/g) ?? [];
     expect(backdropDeclarations.length).toBeGreaterThan(0);
     for (const declaration of backdropDeclarations) {
-      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: var\(--glass-backdrop-(?:strong|soft|scrim)\);$/);
+      expect(declaration).toMatch(/^(?:-webkit-)?backdrop-filter: var\(--glass-backdrop-(?:strong|soft|panel|scrim)\);$/);
     }
     // 게이트와 폴백 기본값은 theme.css에 존재해야 한다 — 채널 기본값이 곧 구 불투명 계약이다.
     const theme = source("styles/theme.css");
@@ -1735,7 +1735,7 @@ describe("Instrument core design contract", () => {
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
     expect(operationBlock).toContain("background: var(--glass-tint-panel);");
-    expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-soft);");
+    expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
     expect(titlebarBlock).toContain("background: var(--glass-tint-panel-face);");
