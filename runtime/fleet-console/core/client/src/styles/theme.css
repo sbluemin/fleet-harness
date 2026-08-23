@@ -584,22 +584,25 @@
 
   --surface-glass: oklch(98% 0.004 100 / 70%);
   --surface-chrome: oklch(96% 0.004 100);
-  /* 라이트 유리는 백지 위 젖빛(milk glass)이다 — 채도 증폭(saturate)을 다크만큼 걸면
-     종이 위 파스텔이 형광으로 튀므로 배율을 낮춘다. 크롬 틴트는 극성 계약을 지키기 위해
-     종이(98.2%)보다 어두운 96% 대역에 머문다. */
-  --glass-on-tint-strong: oklch(98.5% 0.005 100 / 52%);
-  --glass-on-tint-soft: oklch(98% 0.004 100 / 48%);
-  --glass-on-tint-pillar: oklch(98.5% 0.003 100 / 52%);
-  --glass-on-tint-raised: oklch(95.5% 0.005 100 / 50%);
-  --glass-on-tint-deep: oklch(95.5% 0.005 100 / 50%);
-  --glass-on-tint-abyss: oklch(97% 0.003 100 / 50%);
-  --glass-on-tint-chrome: oklch(96% 0.004 100 / 50%);
+  /* 라이트 유리는 종이보다 살짝 어두운 스모크드 밀크다 — 백지 위 백유리는 지각 불가라서
+     틴트를 L92~94 대역으로 내리고 채도 증폭을 올려야 부유층이 종이와 분리되어 읽힌다
+     (실측 피드백). 텍스트 잉크(L22~37)는 L93 합성 위에서 AA를 유지하고, 패널만은
+     "종이가 최명면" 극성 계약 때문에 밝은 틴트를 지킨다. */
+  --glass-on-tint-strong: oklch(93% 0.006 100 / 58%);
+  --glass-on-tint-soft: oklch(93.5% 0.005 100 / 52%);
+  --glass-on-tint-pillar: oklch(94% 0.005 100 / 55%);
+  --glass-on-tint-raised: oklch(92.5% 0.006 100 / 52%);
+  --glass-on-tint-deep: oklch(92.5% 0.006 100 / 52%);
+  --glass-on-tint-abyss: oklch(94% 0.004 100 / 52%);
+  --glass-on-tint-chrome: oklch(92% 0.005 100 / 52%);
   --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
-  --glass-on-tint-terminal: oklch(98.2% 0.004 100 / 55%);
-  --glass-on-tint-band: oklch(95.5% 0.005 100 / 52%);
-  --glass-on-backdrop-strong: blur(26px) saturate(1.3);
-  --glass-on-backdrop-soft: blur(12px) saturate(1.15);
-  --glass-on-backdrop-panel: blur(30px) saturate(1.2);
+  /* 라이트 필드는 불투명 종이 — mCR(가독 보정)이 배경 실색을 요구하고, 종이 위 젖빛 유리는
+     어차피 지각 불가 수준이다. 필드·거터가 같은 불투명 값으로 만나 격자 경계 띠가 없다. */
+  --glass-on-tint-terminal: oklch(98.2% 0.004 100);
+  --glass-on-tint-band: oklch(92% 0.006 100 / 52%);
+  --glass-on-backdrop-strong: blur(26px) saturate(1.45);
+  --glass-on-backdrop-soft: blur(12px) saturate(1.25);
+  --glass-on-backdrop-panel: blur(30px) saturate(1.35);
   --glass-on-rim: oklch(100% 0 0 / 75%);
   --glass-on-sheen: linear-gradient(118deg, oklch(100% 0 0 / 55%) 0%, transparent 34%, transparent 78%, oklch(100% 0 0 / 28%) 100%);
   /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.

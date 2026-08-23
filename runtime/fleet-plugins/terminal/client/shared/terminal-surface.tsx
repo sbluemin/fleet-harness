@@ -731,19 +731,22 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
   }
 }
 
-/* 터미널 필드는 theme.css의 terminal 유리 채널(--glass-tint-terminal)을 계산값으로 읽는다 —
-   게이트가 닫히면 채널 기본값이 --surface-panel 불투명이라 구 판독 계약 그대로이고, 게이트가
-   열리면 반투명 틴트가 되어 패널 루트의 유리(블러)와 한 장으로 읽힌다(allowTransparency).
-   xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의 background 리터럴은
-   그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 — 두 값이 갈라지지
-   않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
-export function resolvePanelSurface(fallback: string): string {
+/* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
+   필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
+   - 다크 + 게이트 열림: xterm 배경은 완전 투명으로 비우고, 필드·거터를 컨테이너
+     (.canvas-operation-terminal/.terminal-shell)의 --glass-tint-terminal 한 겹이 칠한다.
+     다크는 minimumContrastRatio=1이라 투명 배경이 대비 보정에 관여하지 않는다.
+   - 라이트(Whites)와 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값
+     (라이트 유리=불투명 종이, 게이트 닫힘=불투명 --surface-panel)을 그대로 받는다 —
+     컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
+   xterm은 CSS 변수를 못 받으므로 계산값을 읽고, 압축 CSS의 oklch 변형(`.022` 선행 0
+   생략·% 알파)을 xterm 파서가 검정으로 낙하시키므로(실측) canvas로 rgba() 정규화해 넘긴다.
+   위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
+export function resolvePanelSurface(theme: TerminalThemeId, fallback: string): string {
   if (typeof document === "undefined") return fallback;
+  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) return "rgba(0, 0, 0, 0)";
   const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
   if (!resolved) return fallback;
-  // xterm 내부 색 파서는 압축 CSS가 만드는 oklch 변형(`.022` 선행 0 생략·% 알파)을 검정으로
-  // 낙하시킨다(실측: scrollable-element가 rgb(0,0,0)). 브라우저 canvas로 어떤 CSS 색이든
-  // rgba()로 정규화해 넘기면 파서 방언과 무관하게 알파까지 산다.
   return normalizeCssColorToRgba(resolved) ?? fallback;
 }
 
@@ -782,7 +785,7 @@ export function readLiquidGlassPaneActive(): boolean {
 
 function terminalThemeFor(theme: TerminalThemeId): ITheme {
   const base = baseTerminalThemeFor(theme);
-  return { ...base, background: resolvePanelSurface(base.background ?? "") };
+  return { ...base, background: resolvePanelSurface(theme, base.background ?? "") };
 }
 
 export function syncTerminalViewportBackground(container: HTMLElement, theme: ITheme): void {

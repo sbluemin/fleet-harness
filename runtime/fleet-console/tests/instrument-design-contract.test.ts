@@ -1748,11 +1748,11 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).not.toContain("border-color: inherit;");
     expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
-    expect(panelBodyBlock).toContain("background: var(--glass-tint-panel-face);");
+    expect(panelBodyBlock).toContain("background: var(--glass-tint-terminal);");
     // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
     // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
-    expect(terminalShellBlock).toContain("background: var(--glass-tint-panel-face);");
+    expect(terminalShellBlock).toContain("background: var(--glass-tint-terminal);");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");

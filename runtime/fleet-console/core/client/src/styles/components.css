@@ -6747,7 +6747,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
   /* terminal-shell의 8px 패딩이 xterm 뷰포트를 사방에서 감싸므로 이 면은 실제로 보이는 띠다 —
      캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. 패널 면 하나를 그대로 쓴다. */
-  background: var(--glass-tint-panel-face);
+  background: var(--glass-tint-terminal);
 }
 
 .canvas-operation-terminal .terminal-stage,
@@ -8896,7 +8896,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
      카드 면은 그 안의 xterm과 같은 --surface-panel이어야 한다 — 유리(--surface-glass)는 뒤에
      오는 것에 따라 유효색이 흔들리는데 xterm 배경은 불투명 한 값이라 맞출 수가 없고, Maritime
      5.3%p·Carbon 6.6%p의 계단으로 남는다. 카드의 정체는 테두리가 지고 면은 터미널에 넘긴다. */
-  background: var(--glass-tint-panel-face);
+  background: var(--glass-tint-terminal);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);
