@@ -22,7 +22,9 @@ import type { ClaudeSessionCoordinate, CreateAgentCliPluginOptions } from "./typ
 export type ClaudeSessionOrigin =
   | { readonly kind: "new"; readonly preferredSessionId?: string }
   | { readonly kind: "resume"; readonly sessionId: string }
-  | { readonly kind: "fork"; readonly from: string; readonly preferredSessionId?: string };
+  | { readonly kind: "fork"; readonly from: string; readonly preferredSessionId?: string }
+  /** 좌표를 호출자의 argv가 이미 들고 있다. Fleet은 세션 플래그를 싣지 않는다. */
+  | { readonly kind: "external" };
 
 export type { ClaudeSessionCoordinate } from "./types.js";
 
@@ -122,6 +124,8 @@ export async function prepareClaudeSession(
  * 어긋날 방법이 없다.
  */
 function resolveSessionCoordinate(origin: ClaudeSessionOrigin): ClaudeSessionCoordinate {
+  // 자식이 어떤 세션을 열지 우리는 모른다 — 트리 이름은 이 런치의 것이지 세션 id가 아니다.
+  if (origin.kind === "external") return { kind: "external", sessionId: randomUUID() };
   if (origin.kind === "resume") {
     // 이어 붙이는 세션의 id는 트랜스크립트가 이미 정해 놓은 값이다 — 고를 수 없으므로
     // 형태를 요구하지도 않는다. 디렉터리 이름으로 안전한지는 저장소가 판정한다.
@@ -144,6 +148,8 @@ function toSdkSessionCoordinate(
   coordinate: ClaudeSessionCoordinate,
 ): Pick<ClaudeSessionSdkRequest, "sessionId" | "resume" | "forkSession"> {
   switch (coordinate.kind) {
+    case "external":
+      return {};
     case "resume":
       return { resume: coordinate.sessionId };
     case "fork":

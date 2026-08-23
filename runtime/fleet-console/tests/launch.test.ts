@@ -111,7 +111,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     expect(events).toEqual([]);
   });
 
-  it("passes resumeSessionId and capture hook exec to fleet-admiral injection", async () => {
+  it("passes the resume coordinate and capture hook exec to fleet-admiral injection", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const injectedOptions: InjectAgentCliProfileOptions[] = [];
     const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-gateway" as const, label: "Claude", cwd, env: { ...env } }));
@@ -136,7 +136,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       cliId: "claude-gateway",
       resumeSessionId: "provider-session-a",
     }));
-    expect(injectedOptions[0]).toMatchObject({ resumeSessionId: "provider-session-a" });
+    // 재개는 좌표로 넘어간다. 대역이 아니라 실제 주입이 읽는 필드여야 한다 — 예전 이름을
+    // 그대로 두면 주입이 그것을 무시한 채 매번 새 세션을 열고, 대화가 조용히 끊긴다.
+    expect(injectedOptions[0]?.origin).toEqual({ kind: "resume", sessionId: "provider-session-a" });
     expect(injectedOptions[0]?.captureSessionHookExec).toEqual({
       command: "/node",
       args: ["--import", pathToFileURL("/loader/tsx.mjs").href, "/console/cli.ts", "hook", "capture-session", "claude"],
@@ -338,6 +340,60 @@ describe("createDefaultTerminalLaunchResolver", () => {
       name: "GatewayLaunchOptionError",
       code: "invalid_effort",
     });
+  });
+
+  // 회귀 가드: 재개 런치는 그 세션을 이어 붙여야 한다. 좌표가 주입에 닿지 않으면 매번 새
+  // 세션이 열려 대화가 조용히 끊기는데, 인자를 실제로 보지 않으면 그 사실이 드러나지 않는다.
+  it("resumes the given session instead of opening a new one", async () => {
+    const root = makeTempDir("fleet-gateway-admiral-resume-");
+    const releasedLabels: string[] = [];
+    const resolve = createDefaultTerminalLaunchResolver({
+      agentRuntime: {
+        dedicatedMcpSession: {
+          async getEndpoint() {
+            return { servers: [{ name: "fleet", url: "http://127.0.0.1:48123/mcp" }] };
+          },
+          issueSessionToken() {
+            return [{ name: "fleet", token: "gateway-token" }];
+          },
+          releaseSessionToken(label: string) {
+            releasedLabels.push(label);
+          },
+        },
+        mcpRegistry: { getAllAgentTools: () => [] },
+        async cleanup() {},
+      } as never,
+      aiGateway: {
+        routePath: "/plugins/terminal/ai-gateway",
+        origin: () => "http://127.0.0.1:43210",
+      },
+      createSessionIdentityResolver: (() => ({ resolve: async () => null })) as never,
+      cwd: root,
+      dataDir: root,
+      entryPath: "/console/cli.mjs",
+      env: {
+        CLAUDE_BIN: process.execPath,
+        CLAUDE_CONFIG_DIR: path.join(root, "claude-config"),
+        PATH: process.env.PATH,
+      },
+      execPath: process.execPath,
+      infraServices: createFakeInfraServices() as never,
+    });
+
+    const resumeSessionId = "11111111-2222-4333-8444-555555555555";
+    const spec = await resolve(root, {
+      cliId: "claude-gateway",
+      sessionId: "gateway-resumed",
+      resumeSessionId,
+    });
+
+    expect(spec.args[spec.args.indexOf("--resume") + 1]).toBe(resumeSessionId);
+    // 이어 붙이는 세션은 id를 고를 수 없다 — 둘을 함께 실으면 자식이 거부한다.
+    expect(spec.args).not.toContain("--session-id");
+    // 트리도 그 세션의 자리에 앉는다.
+    expect(path.basename(spec.args[spec.args.indexOf("--plugin-dir") + 1]!)).toBe(resumeSessionId);
+
+    await spec.cleanup?.();
   });
 
   it("launches claude-gateway through the real shared Admiral package", async () => {

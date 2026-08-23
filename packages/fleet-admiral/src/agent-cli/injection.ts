@@ -130,7 +130,11 @@ export async function injectAgentCliProfile(
       cliId: profile.id,
       cwd: profile.cwd,
       dataDir: options.dataDir,
-      origin: options.origin ?? { kind: "new" },
+      // 이 프로필의 인자가 이미 세션 좌표를 들고 있으면 우리 것을 얹지 않는다 — 호스트가
+      // 무엇을 의도했든 자식은 두 좌표를 함께 받으면 거부한다(`fleet --resume <id>` 등).
+      origin: profileCarriesSessionCoordinate(profile.args)
+        ? { kind: "external" }
+        : options.origin ?? { kind: "new" },
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
@@ -217,6 +221,27 @@ export async function injectAgentCliProfile(
   }
 }
 
+
+/**
+ * 이 argv가 이미 Claude 세션 좌표를 정하고 있는가.
+ *
+ * `fleet <passthrough>`는 사용자의 인자를 그대로 이어 붙이므로 여기에 `--resume`·`-c`가
+ * 들어올 수 있다. 그 위에 `--session-id`를 더하면 자식이 곧바로 거부한다(실측:
+ * `--session-id can only be used with --continue or --resume if --fork-session is also
+ * specified`). 좌표를 싣는 쪽이 그 규칙도 알아야 하므로 판정을 여기에 둔다.
+ */
+function profileCarriesSessionCoordinate(args: readonly string[]): boolean {
+  return args.some((arg) => SESSION_COORDINATE_FLAGS.has(arg) || arg.startsWith("--resume=") || arg.startsWith("--session-id="));
+}
+
+const SESSION_COORDINATE_FLAGS = new Set([
+  "--resume",
+  "-r",
+  "--continue",
+  "-c",
+  "--session-id",
+  "--fork-session",
+]);
 
 function buildAgentCliMcpServerConfigs(
   endpoints: readonly ExecutorServerEndpoint[],

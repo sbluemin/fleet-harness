@@ -53,6 +53,23 @@ describe("agent CLI session resume and capture hooks", () => {
     expect(injected.session.sessionId).toBe(resumeSessionId);
   });
 
+  // 회귀: 호스트가 이미 좌표를 들고 오는 argv(`fleet --resume <id>`·`fleet -c`)에 `--session-id`를
+  // 얹으면 자식이 곧바로 거부한다. 좌표를 싣는 쪽이 그 규칙을 알아야 한다.
+  it("adds no session flag when the profile's own args already carry a coordinate", async () => {
+    const root = createTempRoot("fleet-admiral-claude-passthrough-");
+    for (const passthrough of [["--resume", "sid-from-user"], ["-c"], ["--continue"], ["--resume=sid-inline"]]) {
+      const profile = baseProfile("claude-gateway", { args: passthrough, cwd: root, env: { HOME: root } });
+      const injected = await injectAgentCliProfile(profile, baseInjectOptions(root));
+
+      expect(injected.args).not.toContain("--session-id");
+      expect(injected.args).not.toContain("--fork-session");
+      // 사용자의 좌표는 그대로 남고, 우리는 플러그인만 싣는다.
+      expect(injected.args.slice(0, passthrough.length)).toEqual(passthrough);
+      expect(injected.args).toContain("--plugin-dir");
+      injected.cleanup?.();
+    }
+  });
+
   it("pins a Fleet-issued session id for a new session, and forks with a fresh one", async () => {
     const root = createTempRoot("fleet-admiral-claude-pin-");
     const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
