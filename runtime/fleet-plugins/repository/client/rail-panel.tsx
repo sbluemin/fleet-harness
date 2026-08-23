@@ -395,6 +395,9 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
     setChangedFiles({ kind: "loading" });
     setCompareRequest(null);
     setInspectRequest(null);
+    // stashRequest도 같은 one-shot이다 — 남겨 두면 리마운트된 패널이 seq 0에서 옛 요청을 재생해
+    // 다른 체크아웃 위에 낡은 스태시 카드를 세운다.
+    setStashRequest(null);
     setRefs({ branches: [], remotes: [], tags: [], stashes: [] });
     repoRelRef.current = nextRepoRel;
     setRepoRel(nextRepoRel);
@@ -760,6 +763,7 @@ function RepositoryPanelBody({ ctx }: RepositoryPanelProps) {
       // epoch 리마운트는 handled-seq ref를 초기화하므로, 잔존 one-shot 요청을 함께 비워야 착지가 재생 없이 깨끗하다.
       setCompareRequest(null);
       setInspectRequest(null);
+      setStashRequest(null);
       setHistoryLandingEpoch((value) => value + 1);
       setSource(decision.landing);
       return;
