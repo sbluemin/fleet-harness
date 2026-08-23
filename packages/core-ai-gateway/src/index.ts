@@ -40,6 +40,17 @@ export * from "./upstream/cursor/credentials.js";
 export * from "./upstream/cursor/native/index.js";
 export * from "./upstream/cursor/diagnostic-log.js";
 export * from "./router/router.js";
+// 하네스 프로필과 그 계약. 호스트가 `deps.harnesses`에 무엇을 실을지 고르려면 필요하다 —
+// Claude Code는 기본값이라 이름을 부를 일이 없고, 그래서 여기 없다.
+export type { GatewayHarnessProfile, GatewayHarnessWire } from "./downstream/harness/contract.js";
+export { grokBuildHarnessProfile } from "./downstream/harness/grok-build/profile.js";
+export {
+  GROK_GATEWAY_MODEL_ALIAS_PREFIX,
+  buildGrokModelList,
+  findGrokGatewayModel,
+  toGrokGatewayModelId,
+  toGrokModelSlug,
+} from "./downstream/harness/grok-build/discovery.js";
 export * from "./router/types.js";
 export * from "./router/http.js";
 export * from "./router/passthrough.js";
