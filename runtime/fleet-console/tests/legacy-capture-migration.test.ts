@@ -105,6 +105,28 @@ describe("migrateLegacyCaptures", () => {
     expect(fs.existsSync(path.join(consoleDataDir, "captures"))).toBe(false);
   });
 
+  it("keeps a legacy Codex capture analysis-readable and non-Claude", () => {
+    const { consoleDataDir, operations, get } = createHarness([
+      makeOperation("op-a", { session: { harness: "claude-code", model: "codex--gpt-5.6-sol" } }),
+    ]);
+    writeCapture(consoleDataDir, "op-a", {
+      provider: "codex",
+      sessionId: "codex-session",
+      transcriptPath: "/secret/codex.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+
+    migrateLegacyCaptures({ consoleDataDir, operations });
+
+    expect(get("op-a")?.payload.session).toEqual({
+      harness: "codex",
+      model: "codex--gpt-5.6-sol",
+      id: "codex-session",
+      transcriptPath: "/secret/codex.jsonl",
+      capturedAt: "2026-06-16T00:00:00.000Z",
+    });
+  });
+
   it("deletes orphan capture files without injecting payload", () => {
     const { consoleDataDir, operations, patchCalls } = createHarness([]);
     writeCapture(consoleDataDir, "orphan-op", {

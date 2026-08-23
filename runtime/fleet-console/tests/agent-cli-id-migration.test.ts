@@ -53,6 +53,35 @@ describe("Agent session durable migration", () => {
     });
   });
 
+  it("keeps legacy Codex captures analysis-only instead of making them resumable by Claude Code", () => {
+    const state = sanitizeDurableConsoleState({
+      version: 3,
+      theaters: [],
+      operations: [{
+        ...baseOperation,
+        payload: {
+          launchModel: "codex--gpt-5.6-sol",
+          providerSession: {
+            provider: "codex",
+            sessionId: "codex-session",
+            transcriptPath: "/secret/codex.jsonl",
+            capturedAt: "2026-08-23T00:00:00.000Z",
+          },
+        },
+      }],
+      groups: [],
+      deletionTombstones: [],
+    });
+
+    expect(state.operations[0]?.payload.session).toEqual({
+      harness: "codex",
+      model: "codex--gpt-5.6-sol",
+      id: "codex-session",
+      transcriptPath: "/secret/codex.jsonl",
+      capturedAt: "2026-08-23T00:00:00.000Z",
+    });
+  });
+
   it("migrates live and tombstoned Operations and is idempotent", () => {
     const legacy = {
       ...baseOperation,

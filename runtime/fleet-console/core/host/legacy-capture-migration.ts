@@ -137,7 +137,7 @@ function readLaunchSession(value: unknown): { readonly harness: "claude-code"; r
 }
 
 function sanitizeLegacySession(value: unknown): {
-  readonly harness: "claude-code";
+  readonly harness: "claude-code" | "codex";
   readonly id: string;
   readonly capturedAt: string;
   readonly transcriptPath?: string;
@@ -154,10 +154,14 @@ function sanitizeLegacySession(value: unknown): {
     readonly source?: unknown;
   };
   const legacyId = typeof candidate.sessionId === "string" ? candidate.sessionId : candidate.id;
-  const knownSource = candidate.provider === "claude" || candidate.provider === "codex" || candidate.harness === "claude-code";
-  if (!knownSource || typeof legacyId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
+  const harness = candidate.provider === "codex"
+    ? "codex"
+    : candidate.provider === "claude" || candidate.harness === "claude-code"
+      ? "claude-code"
+      : undefined;
+  if (!harness || typeof legacyId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
   return {
-    harness: "claude-code",
+    harness,
     id: legacyId,
     capturedAt: candidate.capturedAt,
     ...(typeof candidate.transcriptPath === "string" && candidate.transcriptPath.length > 0 ? { transcriptPath: candidate.transcriptPath } : {}),
@@ -165,11 +169,13 @@ function sanitizeLegacySession(value: unknown): {
   };
 }
 
-function sanitizeSession(value: unknown): { readonly harness: "claude-code"; readonly id: string; readonly capturedAt: string } | undefined {
+function sanitizeSession(value: unknown): { readonly harness: "claude-code" | "codex"; readonly id: string; readonly capturedAt: string } | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const candidate = value as { readonly harness?: unknown; readonly id?: unknown; readonly capturedAt?: unknown };
-  return candidate.harness === "claude-code" && typeof candidate.id === "string" && typeof candidate.capturedAt === "string"
-    ? { harness: "claude-code", id: candidate.id, capturedAt: candidate.capturedAt }
+  return (candidate.harness === "claude-code" || candidate.harness === "codex")
+    && typeof candidate.id === "string"
+    && typeof candidate.capturedAt === "string"
+    ? { harness: candidate.harness, id: candidate.id, capturedAt: candidate.capturedAt }
     : undefined;
 }
 

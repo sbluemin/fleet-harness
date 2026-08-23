@@ -886,7 +886,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
-        delete payloadWithoutProvider.session;
+        const launchSession = readAgentSession(node.payload);
+        payloadWithoutProvider.session = {
+          harness: "claude-code",
+          ...(launchSession?.model ? { model: launchSession.model } : {}),
+          ...(launchSession?.effort ? { effort: launchSession.effort } : {}),
+        };
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
       await terminalRuntime.attach({
@@ -912,7 +917,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const resumedPayload = toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle);
       // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
-      if (!readAgentSession(resumedPayload)?.model && launchModel) resumedPayload.session = { ...(readAgentSession(resumedPayload) ?? { harness: "claude-code" }), model: launchModel };
+      if (!readAgentSession(resumedPayload)?.model && launchModel) {
+        resumedPayload.session = {
+          ...(readAgentSession(resumedPayload) ?? { harness: "claude-code" }),
+          model: launchModel,
+          ...(launchEffort ? { effort: launchEffort } : {}),
+        };
+      }
       ctx.host.operations.patch(sessionId, { payload: resumedPayload });
       return { ok: true, resumed };
     } catch (error) {
@@ -1862,7 +1873,9 @@ function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: 
     delete payload[key];
   }
   const session = capturedSession
-    ? mergeCapturedAgentSession(existing, capturedSession)
+    ? capturedSession.harness === "codex"
+      ? capturedSession
+      : mergeCapturedAgentSession(existing, capturedSession)
     : readAgentSession(existing);
   return {
     ...payload,

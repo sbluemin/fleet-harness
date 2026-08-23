@@ -204,6 +204,11 @@ describe("agent launch variants", () => {
       effort: "high",
     }));
     expect(harness.attach.mock.calls[1]?.[0]).not.toHaveProperty("resumeSessionId");
+    expect(harness.operations[0]?.payload.session).toMatchObject({
+      harness: "claude-code",
+      model: "sonnet",
+      effort: "high",
+    });
   });
 
   it("reports a persisted gateway model that is no longer enabled", async () => {

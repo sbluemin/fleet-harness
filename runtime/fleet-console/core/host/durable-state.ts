@@ -165,9 +165,10 @@ function migrateOperationToV4(value: unknown): unknown {
   const payload = isRecord(value.payload) ? value.payload : {};
   const legacyProviderSession = isRecord(payload.providerSession) ? payload.providerSession : undefined;
   const existingSession = isRecord(payload.session) ? payload.session : undefined;
+  const legacyHarness = legacyProviderSession?.provider === "codex" ? "codex" : "claude-code";
   const session: Record<string, unknown> = {
     ...(existingSession ?? {}),
-    harness: "claude-code",
+    harness: readOptionalString(existingSession?.harness) ?? legacyHarness,
   };
   const model = readOptionalString(existingSession?.model) ?? readOptionalString(payload.launchModel);
   const effort = readOptionalString(existingSession?.effort) ?? readOptionalString(payload.launchEffort);
