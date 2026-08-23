@@ -254,6 +254,11 @@ export function AgentChatView({
     setOpenJobId(id);
     setWorkOpen(true);
   }, []);
+  // 컴포저의 백그라운드 작업 글리프가 여는 문 — 특정 잡을 고르지 않고 목록(작업 면)을 연다.
+  const openWork = React.useCallback(() => {
+    setOpenJobId(null);
+    setWorkOpen(true);
+  }, []);
   // 스트립과 작업 면을 잇는 좌표. 한 화면에 채팅 패널이 여럿 열릴 수 있으므로 마운트마다 고유해야 한다.
   const paneId = React.useId();
   // 잡을 한 번이라도 낳은 세션에만 문이 선다. 하나도 없으면 스트립도 작업 면도 크롬일 뿐이다.
@@ -438,45 +443,9 @@ export function AgentChatView({
             </button>
           ) : null}
 
-          {/* 살아 있는 잡이 있는 동안만 서는 한 줄. 읽는 자리가 어디든 "지금 나를 위해 도는 일이
-              있다"를 말하고, 그 자체가 작업 면을 여는 문이다 — 읽고 끝나는 표시가 아니다.
-              면이 열리면 이 줄은 사라지고 면의 머리가 같은 내용을 진다: 떠 있는 알약으로 남으면
-              열린 면의 첫 줄을 덮고, 접는 문이 자란 것 밖에 서게 된다.
-              Follow 칩과 같은 하단 중앙을 쓰므로 한 층 위에 선다(CSS가 두 높이를 가른다). */}
-          {!workOpen && openJobs.length > 0 ? (
-            <button
-              type="button"
-              className="agent-chat-strip"
-              aria-label={t("terminal.chat.stripAria")}
-              aria-expanded={false}
-              aria-controls={`${paneId}-work`}
-              onClick={() => { setOpenJobId(null); setWorkOpen(true); }}
-            >
-              <span className="agent-chat-strip-orbit" aria-hidden="true" />
-              <span className="agent-chat-strip-count">{t("terminal.chat.stripRunning", { count: openJobs.length })}</span>
-              <span className="agent-chat-strip-names">
-                {openJobs.map((job) => `${jobGlyph(job.kind)} ${job.who ?? job.title}`).join("  ·  ")}
-              </span>
-              <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
-            </button>
-          ) : null}
-
-          {/* 잡을 한 번이라도 낳았지만 지금 도는 것이 없을 때의 문. 스트립이 살아 있는 잡만
-              말하므로, 이것이 없으면 끝난 잡에 닿을 길이 사라진다(탭이 지던 몫이다). */}
-          {!workOpen && hasJobs && openJobs.length === 0 ? (
-            <button
-              type="button"
-              className="agent-chat-strip is-rest"
-              aria-label={t("terminal.chat.stripAria")}
-              aria-expanded={false}
-              aria-controls={`${paneId}-work`}
-              onClick={() => { setOpenJobId(null); setWorkOpen(true); }}
-            >
-              <span className="agent-chat-strip-dot" aria-hidden="true" />
-              <span className="agent-chat-strip-count">{settledLabel(state.jobs.length, t)}</span>
-              <span className="agent-chat-strip-chev" aria-hidden="true">⌃</span>
-            </button>
-          ) : null}
+          {/* 백그라운드 작업 표시는 이제 로그 위에 떠 있지 않다 — 컴포저 툴 행의 글리프
+              (attach 왼쪽)로 옮겨 가, 로그와 컴포저의 이음새에 걸터앉던 부유 크롬의 소속
+              모호함을 없앴다. 상태·문은 아래 AgentChatComposer의 work prop이 진다. */}
 
           </div>
 
@@ -491,6 +460,13 @@ export function AgentChatView({
             turnRunning={turnRunning}
             stopping={stopping}
             queuedTurns={queuedTurns}
+            work={{
+              running: openJobs.length,
+              hasJobs,
+              open: workOpen,
+              controlsId: `${paneId}-work`,
+              onOpen: openWork,
+            }}
             onStop={handleStop}
             onQueued={() => setQueuedTurns((current) => current + 1)}
             onQueueRejected={() => setQueuedTurns((current) => Math.max(0, current - 1))}

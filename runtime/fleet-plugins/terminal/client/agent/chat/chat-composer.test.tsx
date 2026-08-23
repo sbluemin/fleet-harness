@@ -67,6 +67,14 @@ function composerProps(options: { readonly turnRunning?: boolean; readonly queue
     turnRunning: options.turnRunning ?? false,
     stopping: false,
     queuedTurns: options.queuedTurns ?? 0,
+    // 잡이 없으면 백그라운드 작업 글리프는 서지 않는다 — 이 스위트는 전송·큐 문법만 다룬다.
+    work: {
+      running: 0,
+      hasJobs: false,
+      open: false,
+      controlsId: "op-1-work",
+      onOpen: () => {},
+    },
     onStop: async () => { stops += 1; return true; },
     onQueued: () => { queued += 1; },
     onQueueRejected: () => { queueRejected += 1; },

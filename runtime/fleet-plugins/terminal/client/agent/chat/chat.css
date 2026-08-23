@@ -1131,6 +1131,52 @@
   background: var(--brass-glow);
 }
 
+/* 백그라운드 작업 글리프 — attach의 왼쪽에 선 또래 글리프다. 떠 있던 잡 스트립을 대신해 이
+   툴 행 안으로 들어와, 부유 크롬이 지던 "어느 쪽에도 안 속함"을 없앤다. attach와 같은 문법을
+   쓴다(투명 바탕·tertiary 잉크·hover는 brass=위치). 살아 있는 잡이 있는 동안에만 서고, 눌러서
+   Work 면을 여는 문이다 — 배지도 글자도 없이 글리프 하나이고, 카운트는 접근성 레이블이 진다.
+   [doctrine] 실행 중=aurora orbit(신호), 완료만 남음=중립 정지 링(finished-work 문). 쉬는 링은
+   신호 채널을 쓰지 않는다 — aurora는 "지금 돈다"이고 여기엔 그 사실이 없다. */
+.agent-chat-composer-work {
+  border: 0;
+  background: transparent;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 7px;
+  border-radius: var(--radius-xs);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+
+.agent-chat-composer-work:hover {
+  color: var(--brass-ink);
+  background: var(--brass-glow);
+}
+
+.agent-chat-composer-work:focus-visible {
+  outline: 2px solid var(--brass);
+  outline-offset: 2px;
+}
+
+/* attach 글리프(16px)와 시각 무게를 맞춘 14px 오브 — 스트립의 9px보다 크다. */
+.agent-chat-composer-work-orbit {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-pill);
+  border: 2px solid color-mix(in oklch, var(--aurora) 35%, transparent);
+  border-top-color: var(--aurora);
+  animation: agent-chat-orbit 0.9s linear infinite;
+}
+
+.agent-chat-composer-work-rest {
+  width: 13px;
+  height: 13px;
+  border-radius: var(--radius-pill);
+  border: 2px solid var(--hairline-strong);
+}
+
 .agent-chat-composer-send {
   width: 32px;
   height: 32px;
@@ -1447,15 +1493,9 @@
   min-height: 0;
 }
 
-/* 카드에는 컴포저가 없다(바로 위 숨김 목록). 스트립이 컴포저 경계에 걸터앉는 좌표를 그대로
-   들고 오면 카드에서는 걸칠 프레임이 없어 본문 밖으로 흘러내린다 — 카드에서는 로그 하단
-   중앙이라는 원래 앵커를 지킨다. Follow는 카드에서 서지 않으므로 그 자리를 다투지 않는다.
-   폭도 카드의 것으로 되돌린다: 걸터앉을 컴포저가 없으니 그 폭을 상한으로 쓸 이유도 없다. */
-.canvas-operation.is-deck-tile .agent-chat-strip {
-  bottom: var(--space-3);
-  transform: translateX(-50%);
-  max-width: min(var(--agent-chat-measure), calc(100% - 2 * var(--space-3)));
-}
+/* 카드에는 컴포저가 없다(바로 위 숨김 목록) — 백그라운드 작업 글리프도 그 컴포저 툴 행 안에
+   살므로, 컴포저가 숨는 순간 글리프도 함께 사라진다. 스트립이 컴포저 경계에 걸터앉던 시절의
+   별도 카드 앵커는 그와 함께 폐기됐다. */
 
 /* ── 세션 좌표 칩 ────────────────────────────────────────────────────────
    이 세션이 무엇으로 도는가(모델 · 강도). 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리다.
@@ -2016,52 +2056,11 @@
 
 .agent-chat-fold-running { color: var(--aurora-ink); }
 
-/* ── 고정 스트립 ─────────────────────────────────────────────────────────────
-   doctrine: 하단 스트립은 한 번 폐기됐다. 사유는 "지속 크롬으로 패널 높이를 쓰면서 누를 것이
-   하나도 없다"였다. 이 스트립은 그 두 조건을 모두 뒤집기 때문에 되살아났다 — 살아 있는 잡이
-   있는 동안에만 서고, 눌러서 Work 탭으로 가는 문이다. 원래의 걱정은 계약으로 남겼다:
-   position: absolute로 떠서 로그 흐름의 높이를 한 픽셀도 가져가지 않는다
-   (tests/instrument-design-contract.test.ts가 이 두 가지를 못 박는다). */
-
-.agent-chat-strip {
-  position: absolute;
-  left: 50%;
-  /* 로그 위가 아니라 컴포저 프레임의 위 모서리에 걸터앉는다. 여기까지 내려오기 전에는 잡이
-     사는 내내 읽는 칼럼 위에 떠 있었고, 스크롤이 바닥에 닿지 않은 동안에는 그 아래로 문장이
-     그대로 지나갔다(실측: 로그 요소 4개와 겹침, 그중 문장 31px). 아래 여백은 스크롤을 바닥까지
-     내렸을 때만 지켜 주는 약속이라, 상주하는 크롬의 자리로는 부족하다.
-     -space-2는 컴포저의 위쪽 여백과 같은 값이고 translateY(50%)가 높이의 절반을 내리므로,
-     줄의 한가운데가 정확히 프레임의 위 테두리에 앉는다. 컴포저는 in-flow라 이 줄이 무엇도
-     밀어내지 않는다. */
-  bottom: calc(-1 * var(--space-2));
-  transform: translate(-50%, 50%);
-  z-index: 2;
-  appearance: none;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  /* 컴포저에 걸터앉는 줄이므로 그 프레임과 같은 폭을 상한으로 쓴다. 예전에는 회신·중지 버튼을
-     피하느라 양쪽에서 264px을 비웠는데, 그 두 버튼은 컴포저 안으로 들어간 지 오래고 비워 둔
-     자리만 남아 좁은 패널에서 잡 이름을 먼저 잘랐다. */
-  max-width: min(var(--agent-chat-composer-measure), calc(100% - 2 * var(--space-3)));
-  padding: 6px var(--space-3);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  color: var(--text-secondary);
-  border: 1px solid color-mix(in oklch, var(--aurora) 30%, var(--hairline));
-  border-radius: var(--radius-pill);
-  background: color-mix(in oklch, var(--aurora) 6%, var(--surface-panel-raised));
-  box-shadow: var(--shadow-soft);
-  transition: border-color var(--duration-fast);
-}
-
-.agent-chat-strip:hover { border-color: color-mix(in oklch, var(--aurora) 55%, var(--hairline)); }
-
-.agent-chat-strip:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 3px;
-}
+/* ── 백그라운드 작업 글리프의 남은 부품 ──────────────────────────────────────
+   떠 있던 잡 스트립은 컴포저 툴 행의 글리프(.agent-chat-composer-work)로 옮겨 갔다 — 부유
+   크롬이 로그와 컴포저의 이음새에 걸터앉아 어느 쪽에도 속하지 않았고, 이제 attach와 한 줄에 선
+   또래 글리프다. 아래 세 부품은 Work 탭 머리(.agent-chat-work-cap)가 계속 재사용한다: 도는 오브 ·
+   쉬는 도트 · 카운트. 신호 채널 규약은 그대로다 — aurora는 "지금 돈다", 쉬는 카운트는 중립 잉크다. */
 
 .agent-chat-strip-orbit {
   width: 9px;
@@ -2075,17 +2074,6 @@
 
 .agent-chat-strip-count { flex: none; color: var(--aurora-ink); }
 
-/* 도는 것이 없을 때의 스트립. 탭을 걷으면서 생긴 구멍을 이것이 메운다 — 스트립이 살아 있는
-   잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 화면에서 통째로 사라진다.
-   쉬는 상태는 신호 채널을 쓰지 않는다: aurora는 "지금 돈다"이고, 여기에는 그 사실이 없다. */
-.agent-chat-strip.is-rest {
-  color: var(--text-tertiary);
-  border-color: var(--hairline);
-  background: var(--surface-panel-raised);
-}
-
-.agent-chat-strip.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
-
 .agent-chat-strip-dot {
   width: 9px;
   height: 9px;
@@ -2095,16 +2083,6 @@
 }
 
 .agent-chat-work-cap.is-rest .agent-chat-strip-count { color: var(--text-secondary); }
-
-.agent-chat-strip-names {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: var(--text-tertiary);
-}
-
-.agent-chat-strip-chev { flex: none; color: var(--text-tertiary); }
 
 /* ── Work 탭 본문 ─────────────────────────────────────────────────────────── */
 
@@ -2680,7 +2658,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .agent-chat-strip-orbit { animation: none; }
+  .agent-chat-strip-orbit,
+  .agent-chat-composer-work-orbit { animation: none; }
   .agent-chat-work-cap,
   .agent-chat-grip::after,
   .agent-chat-job,

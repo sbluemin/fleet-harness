@@ -88,8 +88,9 @@ function mount(): void {
   render();
 }
 
+// 백그라운드 작업의 문 — 이제 컴포저 툴 행(attach 왼쪽)의 글리프다. 떠 있던 스트립을 대신한다.
 function strip(): HTMLButtonElement | null {
-  return container?.querySelector<HTMLButtonElement>(".agent-chat-strip") ?? null;
+  return container?.querySelector<HTMLButtonElement>(".agent-chat-composer-work") ?? null;
 }
 
 function workPane(): HTMLElement | null {
@@ -123,13 +124,15 @@ describe("chat work surface", () => {
   });
 
   it("keeps a door to the work surface after the last job settles", () => {
-    // 스트립이 살아 있는 잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 사라진다.
-    // 탭이 지던 몫이라 탭을 걷은 이상 쉬는 스트립이 그 자리를 이어받아야 한다.
+    // 글리프가 살아 있는 잡에만 서면, 마지막 잡이 끝나는 순간 지난 작업에 닿을 문이 사라진다.
+    // 탭이 지던 몫이라 탭을 걷은 이상 쉬는 글리프(중립 정지 링)가 그 자리를 이어받아야 한다.
     logState = stateWith([job({ open: false, status: "completed" })]);
     mount();
     const door = strip();
     expect(door).not.toBeNull();
-    expect(door?.className).toContain("is-rest");
+    // 정착만 남았으면 신호(도는 오브)가 아니라 중립 정지 링이 선다.
+    expect(door?.querySelector(".agent-chat-composer-work-rest")).not.toBeNull();
+    expect(door?.querySelector(".agent-chat-composer-work-orbit")).toBeNull();
     act(() => { door?.click(); });
     expect(workPane()).not.toBeNull();
   });
