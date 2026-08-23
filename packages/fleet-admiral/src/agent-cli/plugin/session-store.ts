@@ -1,10 +1,10 @@
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, lstatSync, readFileSync, readdirSync, renameSync, statSync } from "node:fs";
+import { existsSync, lstatSync, readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
 import { isProcessAlive } from "@dotobokuri/core-infra";
 
-import { cleanupPrivateRoot, ensurePrivateDir, removePrivatePath, writePrivateFile, writePrivateJson } from "./fs.js";
+import { ensurePrivateDir, removePrivatePath, writePrivateFile, writePrivateJson } from "./fs.js";
 import type { AssetPluginFile } from "./fleet.js";
 import type { PluginSessionReclaimDeps } from "../types.js";
 
@@ -23,7 +23,6 @@ export const PLUGIN_SESSIONS_DIR_NAME = "sessions";
 
 const SESSION_MANIFEST_NAME = ".fleet-session.json";
 const HOLDERS_DIR_NAME = ".holders";
-const STAGING_PREFIX = ".stage-";
 /**
  * 홀더 pid가 죽어 보여도 이 유예 안에서는 트리를 지우지 않는다.
  *
@@ -33,18 +32,15 @@ const STAGING_PREFIX = ".stage-";
  * 프로세스를 직접 가리키므로 pid 생사 판정이 정확해지고, 유예는 더 이상 필요하지 않다.
  */
 const RECLAIM_GRACE_MS = 10 * 60 * 1000;
-const STAGING_GRACE_MS = 60 * 60 * 1000;
 /**
  * 디렉터리 이름으로 쓸 수 있는 세션 id.
  *
  * UUID보다 넓다. 새 세션과 갈래의 id는 Claude가 UUID를 요구하므로 그쪽에서 따로 좁히지만,
  * 이어 붙이는 세션의 id는 이미 존재하는 트랜스크립트가 주는 값이라 우리가 고를 수 없다 —
  * 여기서 요구할 수 있는 것은 그 값이 경로를 벗어나지 않는다는 것뿐이다. 점으로 시작하는
- * 이름을 막아 두면 운영용 항목(`.holders`·`.stage-`)과도 섞이지 않는다.
+ * 이름을 막아 두면 운영용 항목(`.holders`)과도 섞이지 않는다.
  */
 const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-let stagingCounter = 0;
 
 export interface PluginSessionLease {
   readonly contentHash: string;
@@ -114,40 +110,33 @@ export function acquirePluginSession(
   return { contentHash, pluginRoot, sessionId, attach: holder.attach, release: holder.release };
 }
 
+/**
+ * 세션 트리를 제자리에 쓴다. 스테이징도 rename도 없다.
+ *
+ * 발행·홀더·회수가 모두 저장소 락 안에서 돌므로 반쯤 쓰인 트리를 볼 프로세스가 없고, 이
+ * 트리를 읽을 자식은 발행이 끝난 뒤에야 선다. 중단된 발행이 남기는 것은 매니페스트가 없거나
+ * 해시가 맞지 않는 트리이고, 그것은 다음 런치의 손상 판정이 그대로 걸러 낸다 — 그래서
+ * 매니페스트를 **맨 마지막에** 쓴다. 이 순서가 이 함수의 유일한 원자성 장치다.
+ */
 function publishPluginSession(
   sessionsRoot: string,
   sessionId: string,
   contentHash: string,
   files: readonly AssetPluginFile[],
 ): void {
-  // 스테이징 이름은 짧아야 한다 — Windows MAX_PATH(260) 안에서 최종 경로보다 길어지면
-  // 발행만 실패하는 트리가 생긴다(실측: 짧은 이름 157자 / 최종 179자).
-  const stageParent = path.join(sessionsRoot, `${STAGING_PREFIX}${process.pid}-${stagingCounter += 1}`);
-  const stagedRoot = path.join(stageParent, "t");
-  try {
-    ensurePrivateDir(stagedRoot, stageParent);
-    // 빈 로스터에서도 agents/는 존재해야 한다 — 소비자는 디렉터리 부재와 정체성 0개를 구분하지 않는다.
-    ensurePrivateDir(path.join(stagedRoot, "agents"), stageParent);
-    for (const file of files) {
-      writePrivateFile(path.join(stagedRoot, ...file.relativePath.split("/")), file.content, stageParent);
-    }
-    writePrivateJson(path.join(stagedRoot, SESSION_MANIFEST_NAME), {
-      version: 1,
-      sessionId,
-      contentHash,
-      renderedAt: Date.now(),
-    }, stageParent);
-    const pluginRoot = path.join(sessionsRoot, sessionId);
-    try {
-      renameSync(stagedRoot, pluginRoot);
-    } catch (error) {
-      // 락 아래라 정상 경합은 없다. 남아 있던 잔해와 부딪히면: 그것이 온전한 같은 내용이면
-      // 그대로 쓰고, 아니면 조용히 덮지 않고 런치를 실패시킨다.
-      if (!verifyPluginSession(pluginRoot, contentHash, files)) throw error;
-    }
-  } finally {
-    cleanupPrivateRoot(stageParent, sessionsRoot);
+  const pluginRoot = path.join(sessionsRoot, sessionId);
+  ensurePrivateDir(pluginRoot, sessionsRoot);
+  // 빈 로스터에서도 agents/는 존재해야 한다 — 소비자는 디렉터리 부재와 정체성 0개를 구분하지 않는다.
+  ensurePrivateDir(path.join(pluginRoot, "agents"), sessionsRoot);
+  for (const file of files) {
+    writePrivateFile(path.join(pluginRoot, ...file.relativePath.split("/")), file.content, sessionsRoot);
   }
+  writePrivateJson(path.join(pluginRoot, SESSION_MANIFEST_NAME), {
+    version: 1,
+    sessionId,
+    contentHash,
+    renderedAt: Date.now(),
+  }, sessionsRoot);
 }
 
 /**
@@ -278,12 +267,6 @@ export function reclaimPluginSessions(
   try {
     for (const entry of readdirSync(sessionsRoot)) {
       try {
-        if (entry.startsWith(STAGING_PREFIX)) {
-          if (now() - entryMtimeMs(sessionsRoot, entry) > STAGING_GRACE_MS) {
-            removePrivatePath(path.join(sessionsRoot, entry), sessionsRoot);
-          }
-          continue;
-        }
         if (entry === keepSessionId || !isPluginSessionId(entry)) continue;
         if (hasLiveHolder(sessionsRoot, entry, isPidAlive)) continue;
         if (hasRecentHolderTrace(sessionsRoot, entry, now)) continue;
@@ -295,13 +278,5 @@ export function reclaimPluginSessions(
     }
   } catch {
     return;
-  }
-}
-
-function entryMtimeMs(parent: string, entry: string): number {
-  try {
-    return statSync(path.join(parent, entry)).mtimeMs;
-  } catch {
-    return 0;
   }
 }

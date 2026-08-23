@@ -37,7 +37,8 @@ describe("agent CLI plugin session store", () => {
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
     expect(existsSync(path.join(plugin.pluginRoot, "agents"))).toBe(true);
-    expect(findStagingEntries(sessionsRoot)).toEqual([]);
+    // sessions/ 아래에는 세션 트리와 홀더 말고는 아무것도 살지 않는다 — 발행은 제자리에 쓴다.
+    expect(readdirSync(sessionsRoot).sort()).toEqual([".holders", sessionId]);
   });
 
   it("rejects a session id that cannot name a directory", async () => {
@@ -86,6 +87,25 @@ describe("agent CLI plugin session store", () => {
 
     expect(second.pluginRoot).toBe(first.pluginRoot);
     expect(readSessionManifest(second.pluginRoot).contentHash).toBe(manifestBefore.contentHash);
+  });
+
+  // 제자리에 쓰므로 발행 중 죽으면 반쯤 쓰인 트리가 남는다. 매니페스트를 맨 마지막에 쓰는
+  // 순서가 그것을 다음 런치에서 손상으로 드러나게 하는 유일한 장치다.
+  it("repairs a tree whose publish was interrupted before the manifest landed", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-session-partial-");
+    const sessionId = randomUUID();
+
+    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
+    dropHolders(dataDir, cwd, sessionId);
+    // 중단된 발행의 흔적: 파일은 일부 있고 매니페스트가 없다.
+    rmSync(path.join(first.pluginRoot, ".fleet-session.json"), { force: true });
+    rmSync(path.join(first.pluginRoot, "hooks"), { recursive: true, force: true });
+
+    const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
+
+    expect(second.pluginRoot).toBe(first.pluginRoot);
+    expect(existsSync(path.join(second.pluginRoot, ".fleet-session.json"))).toBe(true);
+    expect(existsSync(path.join(second.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs"))).toBe(true);
   });
 
   it("repairs a corrupt tree when no launch holds it", async () => {
@@ -237,7 +257,7 @@ describe("agent CLI plugin session store", () => {
 
     expect(first.pluginRoot).toBe(second.pluginRoot);
     expect(readHolders(dataDir, cwd, sessionId)).toHaveLength(2);
-    expect(findStagingEntries(pluginSessionsRoot(dataDir, cwd))).toEqual([]);
+    expect(readdirSync(pluginSessionsRoot(dataDir, cwd)).sort()).toEqual([".holders", sessionId]);
   });
 
   describe("legacy marketplace tree", () => {
@@ -423,7 +443,3 @@ function seedLegacyMarketplace(dataDir: string): string {
   return legacyRoot;
 }
 
-function findStagingEntries(root: string): string[] {
-  if (!existsSync(root)) return [];
-  return readdirSync(root).filter((entry) => entry.startsWith(".stage-")).sort();
-}
