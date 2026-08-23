@@ -59,7 +59,7 @@ env -u CLAUDE_CODE_CHILD_SESSION \
   `FLEET_CONSOLE_DATA_DIR` has no stored value, which is why the variable works there — until
   someone touches the toggle. The file appears on the first gateway call, not at boot.
 - `FLEET_AI_GATEWAY_MODEL` — pins every request to one model whatever the client asked for
-  (`packages/core-ai-gateway/src/gateway-router/router.ts`). Use the roster id verbatim,
+  (`packages/core-ai-gateway/src/router/router.ts`). Use the roster id verbatim,
   quoted so the shell leaves `[1m]` alone. Reach for it when you want one model forced for
   the whole run — not as a substitute for the picker, which works once a model is exposed.
 
