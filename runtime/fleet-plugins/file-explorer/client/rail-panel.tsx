@@ -48,8 +48,12 @@ import { activateFileSearchTarget, consumeFileSearchTarget, mintRevealRequestId,
 
 const IMAGE_EXTS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
 const FEEDBACK_DURATION_MS = 2_500;
-/** 폴더 브레드크럼 클릭 복사의 더블클릭 유예 — 이 안에 두 번째 클릭이 오면 복사 없이 reveal만 한다. */
-const CRUMB_DBLCLICK_GRACE_MS = 250;
+/**
+ * 폴더 브레드크럼 클릭 복사의 더블클릭 유예 — 이 안에 두 번째 클릭이 오면 복사 없이 reveal만 한다.
+ * 브라우저는 OS 더블클릭 간격을 노출하지 않으므로 널리 쓰이는 OS 기본 상한(500ms)에 맞춘다 —
+ * 이보다 짧으면 기본 설정의 느긋한 더블클릭에서도 복사가 먼저 나가 클립보드를 덮는다.
+ */
+const CRUMB_DBLCLICK_GRACE_MS = 500;
 
 interface ActiveContextMenu {
   readonly id: number;
@@ -411,8 +415,10 @@ function FileExplorerPanel(ctx: RailPanelContext) {
   }, []);
   useEffect(() => cancelPendingCrumbCopy, [cancelPendingCrumbCopy, contextScope]);
 
-  const handleCrumbDirClick = useCallback((path: string) => {
+  const handleCrumbDirClick = useCallback((path: string, detail: number) => {
     cancelPendingCrumbCopy();
+    // 브라우저가 이미 다중 클릭으로 인식한 클릭(detail>1)은 reveal 제스처의 일부다 — 복사를 다시 걸지 않는다.
+    if (detail > 1) return;
     crumbCopyTimerRef.current = setTimeout(() => {
       crumbCopyTimerRef.current = null;
       handleCrumbCopy(path);
@@ -676,7 +682,7 @@ function FileExplorerPanel(ctx: RailPanelContext) {
                         : t("fileExplorer.viewer.crumbDirTitle", { path: segment.path })}
                       onClick={segment.isLeaf
                         ? () => handleCrumbCopy(segment.path)
-                        : () => handleCrumbDirClick(segment.path)}
+                        : (event) => handleCrumbDirClick(segment.path, event.detail)}
                       onDoubleClick={segment.isLeaf ? undefined : () => handleCrumbDirDoubleClick(segment.path)}
                     >
                       {segment.name}
