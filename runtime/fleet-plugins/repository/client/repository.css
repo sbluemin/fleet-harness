@@ -2126,7 +2126,7 @@
 }
 .repository-stash-inspector-title {
   font-size: var(--t-sm);
-  font-weight: 600;
+  font-weight: var(--weight-medium);
   color: var(--text-primary);
 }
 .repository-stash-inspector-name {
