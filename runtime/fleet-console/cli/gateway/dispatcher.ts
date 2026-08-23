@@ -1,15 +1,17 @@
 import {
   createAiGatewaySettingsStore,
+  createProviderAuthService,
   readCodexSubscriptionAuth,
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
+  type AuthService,
 } from "@dotobokuri/core-ai-gateway";
 import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
 } from "@dotobokuri/fleet-admiral";
-import { createInfraServices, getFleetDataDir, type AuthService } from "@dotobokuri/core-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { buildGatewayHelpText } from "./help.js";
 import { runGatewayInteractive } from "./interactive.js";
@@ -193,7 +195,11 @@ async function probe(read: () => Promise<unknown>): Promise<"present" | "absent"
 }
 
 function resolveAuthService(deps: GatewayCommandDeps): AuthService {
-  return (deps.createAuthService ?? (() => createInfraServices().authService))();
+  // 자격증명은 게이트웨이 설정과 같은 루트에 산다 — `--data-dir`로 옮긴 실행이 설정만
+  // 격리하고 auth.json은 실사용자 루트에서 읽어 오는 어긋남을 만들지 않는다.
+  return (deps.createAuthService ?? (() => createProviderAuthService(
+    deps.dataDir === undefined ? {} : { dataDir: deps.dataDir },
+  )))();
 }
 
 function hasJsonFlag(argv: readonly string[]): boolean {

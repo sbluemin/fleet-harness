@@ -1,7 +1,8 @@
 import { execFile } from "node:child_process";
 
 import { resolvePathBinary, type ResolvedBinary } from "@dotobokuri/core-process";
-import { getFleetDataDir, type AuthService } from "@dotobokuri/core-infra";
+import type { AuthService } from "@dotobokuri/core-ai-gateway";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 import { AUTH_CLI_DEFINITIONS } from "./auth/login-flow.js";
 import { readFleetCliRelease, type FleetCliRelease } from "./release.js";

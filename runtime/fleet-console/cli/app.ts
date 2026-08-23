@@ -14,7 +14,7 @@ export async function runApp(options: RunAppOptions = {}): Promise<void> {
   try {
     gatewayServer = await startGatewayHttpServer({
       store: runtime.aiGatewayStore,
-      authService: runtime.infraServices.authService,
+      authService: runtime.authService,
     });
   } catch (error) {
     await runtime.cleanup();

@@ -1,4 +1,4 @@
-import { createInfraServices } from "@dotobokuri/core-infra";
+import { createProviderAuthService, type AuthService } from "@dotobokuri/core-ai-gateway";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
@@ -33,7 +33,7 @@ export interface FleetDispatchOptions {
   readonly stderr: { write(chunk: string): boolean };
   readonly env?: NodeJS.ProcessEnv;
   readonly runApp?: typeof runApp;
-  readonly createInfraServices?: typeof createInfraServices;
+  readonly createAuthService?: () => AuthService;
   readonly dispatchAuthCommand?: typeof dispatchAuthCommand;
   readonly dispatchUpdateCommand?: (
     argv: readonly string[],
@@ -75,7 +75,7 @@ export async function dispatchFleetArgv(
 ): Promise<number> {
   const env = options.env ?? process.env;
   const runAppImpl = options.runApp ?? runApp;
-  const createInfra = options.createInfraServices ?? createInfraServices;
+  const createAuth = options.createAuthService ?? (() => createProviderAuthService());
   const auth = options.dispatchAuthCommand ?? dispatchAuthCommand;
   const update = options.dispatchUpdateCommand ?? dispatchUpdateCommand;
   const io = { stdout: options.stdout, stderr: options.stderr };
@@ -96,11 +96,11 @@ export async function dispatchFleetArgv(
     // `fleet auth`는 `fleet gateway auth`로 옮겨 갔다. 손가락이 기억하는 문법을 곧장
     // 깨뜨리지 않되, 어디로 갔는지는 매번 말한다.
     io.stderr.write("`fleet auth` moved to `fleet gateway auth`. The old spelling still works for now.\n");
-    return await auth(dispatch.argv, io, createInfra());
+    return await auth(dispatch.argv, io, { authService: createAuth() });
   }
 
   if (dispatch.kind === "doctor") {
-    return await dispatchDoctorCommand(dispatch.argv, io, { env, authService: createInfra().authService });
+    return await dispatchDoctorCommand(dispatch.argv, io, { env, authService: createAuth() });
   }
 
   if (dispatch.kind === "console") {

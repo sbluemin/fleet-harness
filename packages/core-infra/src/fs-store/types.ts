@@ -41,7 +41,13 @@ export interface DurableJsonStore<T> {
   readonly path: string;
   load(): T;
   save(data: T): void;
-  update(mutate: (current: T) => T): T;
+  /**
+   * 락 안에서 read-mutate-write를 수행한다. mutate가 `undefined`를 반환하면 쓰기를 생략하고
+   * 읽어 온 현재 값을 그대로 돌려준다 — 바꿀 것이 없다고 판정한 호출이 파일을 새로 만들거나
+   * mtime만 흔들지 않게 하려는 것이다. 판정 자체가 락 안에서 일어나야 하므로 호출자가
+   * load 후 분기하는 방식으로는 대체할 수 없다(TOCTOU).
+   */
+  update(mutate: (current: T) => T | undefined): T;
 }
 
 export interface CreateDurableJsonStoreDeps<T> {

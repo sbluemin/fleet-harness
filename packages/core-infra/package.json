@@ -28,11 +28,6 @@
       "import": "./dist/index.js",
       "require": "./dist/index.cjs"
     },
-    "./auth": {
-      "types": "./dist/auth/index.d.ts",
-      "import": "./dist/auth.js",
-      "require": "./dist/auth.cjs"
-    },
     "./data-dir": {
       "types": "./dist/data-dir/paths.d.ts",
       "import": "./dist/data-dir/paths.js",
@@ -56,9 +51,6 @@
   },
   "typesVersions": {
     "*": {
-      "auth": [
-        "dist/auth/index.d.ts"
-      ],
       "data-dir": [
         "dist/data-dir/paths.d.ts"
       ],

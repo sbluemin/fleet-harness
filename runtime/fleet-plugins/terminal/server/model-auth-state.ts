@@ -2,7 +2,7 @@ import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
 } from "@dotobokuri/fleet-admiral";
-import type { AuthService } from "@dotobokuri/core-infra";
+import type { AuthService } from "@dotobokuri/core-ai-gateway";
 
 export type TerminalModelAuthProviderId = "kimi" | "opencode";
 

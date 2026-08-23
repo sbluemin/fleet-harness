@@ -1,10 +1,9 @@
 import type {
+  AuthValidationFailureMessageInput,
   AuthValidationFailureResult,
   AuthValidationRequest,
   AuthValidationResult,
 } from "./types.js";
-
-import { formatAuthValidationFailureMessage } from "./auth-storage.js";
 
 // Auth validation issues a real 1-token generation probe. Upstream TTFB for a
 // live model often exceeds a few seconds, so a short budget falsely times out
@@ -88,6 +87,26 @@ export function isAuthValidationSuccess(
 
 export function createAuthValidationError(result: AuthValidationFailureResult): Error {
   return new Error(formatAuthValidationFailureMessage(result));
+}
+
+export function formatAuthValidationFailureMessage(input: AuthValidationFailureMessageInput): string {
+  const detail = input.detail ? ` Detail: ${input.detail}` : "";
+  if (input.status === "unauthorized") {
+    return `Auth token was rejected (providerId: '${input.providerId}'). Check the token and try again.${detail}`;
+  }
+  if (input.status === "forbidden") {
+    return `Auth token is not allowed for this provider (providerId: '${input.providerId}'). Check the token permissions.${detail}`;
+  }
+  if (input.status === "timeout") {
+    return `Auth token validation timed out (providerId: '${input.providerId}'). Check the connection and try again.${detail}`;
+  }
+  if (input.status === "network") {
+    return `Auth token validation failed due to a network error (providerId: '${input.providerId}'). Check the connection and try again.${detail}`;
+  }
+  if (input.status === "server") {
+    return `Auth token validation failed because the provider returned an error (providerId: '${input.providerId}'). Try again later.${detail}`;
+  }
+  return `Auth token validation failed (providerId: '${input.providerId}'). Check the token and try again.${detail}`;
 }
 
 function buildMessagesUrl(baseUrl: string): string {

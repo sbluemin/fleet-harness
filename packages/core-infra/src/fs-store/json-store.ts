@@ -36,11 +36,16 @@ export function createDurableJsonStore<T>(deps: CreateDurableJsonStoreDeps<T>): 
       });
     },
 
-    update(mutate: (current: T) => T): T {
+    update(mutate: (current: T) => T | undefined): T {
       let result: T | undefined;
       withLock(() => {
         const current = readJsonFile(deps.filePath, deps.sanitize);
         const next = mutate(current);
+        // undefined는 "쓸 것이 없다"는 판정이다. 파일이 없던 경우 빈 문서를 새로 만들지 않는다.
+        if (next === undefined) {
+          result = current;
+          return;
+        }
         writeAtomicSync(deps.filePath, `${JSON.stringify(next, null, 2)}\n`, { mode });
         result = next;
       });

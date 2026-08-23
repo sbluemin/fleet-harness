@@ -4,7 +4,7 @@ import {
   validateKimiAuthKey,
   validateOpencodeGoAuthKey,
 } from "@dotobokuri/fleet-admiral";
-import type { AuthService, AuthValidationFailureResult } from "@dotobokuri/core-infra";
+import type { AuthService, AuthValidationFailureResult } from "@dotobokuri/core-ai-gateway";
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import { registerRouter } from "@fleet-console/sdk/plugin/node";
 

@@ -11,12 +11,13 @@ import {
   readCursorSubscriptionToken,
   readXaiSubscriptionToken,
   type AiGatewaySettingsStore,
+  type AuthService,
 } from "@dotobokuri/core-ai-gateway";
 import {
   KIMI_AUTH_PROVIDER_ID,
   OPENCODE_AUTH_PROVIDER_ID,
 } from "@dotobokuri/fleet-admiral";
-import { getFleetDataDir, type AuthService } from "@dotobokuri/core-infra";
+import { getFleetDataDir } from "@dotobokuri/core-infra";
 
 export interface FleetCliGatewayServer {
   origin(): string;

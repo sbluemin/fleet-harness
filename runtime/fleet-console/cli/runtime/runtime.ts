@@ -4,10 +4,12 @@ import {
   DEFAULT_WIRE_LOG_MAX_BYTES,
   createAiGatewayQuotaCollectors,
   createAiGatewaySettingsStore,
+  createProviderAuthService,
   createQuotaService,
   resolveAiGatewaySelection,
   setWireLogTarget,
   type AiGatewaySettingsStore,
+  type AuthService,
 } from "@dotobokuri/core-ai-gateway";
 import {
   buildGatewayModelsToolSpec,
@@ -26,6 +28,7 @@ import { createWikiWorkspaceResolver, getWikiToolSpecs } from "@dotobokuri/fleet
 
 export interface FleetCliRuntime extends FleetGatewayAgentRuntimeLifecycle {
   readonly aiGatewayStore: AiGatewaySettingsStore;
+  readonly authService: AuthService;
   readonly dataDir: string;
   readonly infraServices: InfraServices;
 }
@@ -39,13 +42,16 @@ export async function createFleetCliRuntime(
 ): Promise<FleetCliRuntime> {
   const dataDir = options.dataDir ?? getFleetDataDir();
   const infraServices = createInfraServices();
+  // 자격증명도 게이트웨이 설정과 같은 Fleet 루트에 산다. dataDir를 넘기지 않으면 격리 실행이
+  // 자기 루트를 정해 두고도 사용자의 진짜 auth.json을 읽는다.
+  const authService = createProviderAuthService({ dataDir });
   const aiGatewayStore = createAiGatewaySettingsStore({ dataDir });
   const quotaService = createQuotaService({
     platform: process.platform,
     // CLI에는 Console의 연결 토글이 없다 — 프로브가 직접 상태를 판정한다.
     isClaudeConnected: async () => true,
     isCursorConnected: async () => true,
-    ...createAiGatewayQuotaCollectors({ authService: infraServices.authService }),
+    ...createAiGatewayQuotaCollectors({ authService }),
   });
   const wikiWorkspaceResolver = createWikiWorkspaceResolver({
     ensureWorkspace: (cwd) => ensureWorkspaceDirectory(dataDir, cwd),
@@ -83,6 +89,7 @@ export async function createFleetCliRuntime(
     return {
       ...agentRuntime,
       aiGatewayStore,
+      authService,
       dataDir,
       infraServices,
       async cleanup() {

@@ -5,16 +5,14 @@ import {
   OPENCODE_AUTH_PROVIDER_ID,
   OPENCODE_GO_API_BASE_URL,
   OPENCODE_GO_MODEL,
-} from "@dotobokuri/core-ai-gateway";
-import {
   isAuthValidationSuccess,
   validateAnthropicCompatibleApiKey,
   type AuthValidationFailureResult,
   type AuthValidationFailureStatus,
-} from "@dotobokuri/core-infra";
+} from "@dotobokuri/core-ai-gateway";
 
-// 접속 좌표(저장 provider id·base URL·검증 모델)는 core-ai-gateway가 소유한다.
-// 여기서는 Admiral 표면을 유지하기 위해 그대로 재노출하고, 키 검증만 이 계층이 맡는다.
+// 접속 좌표(저장 provider id·base URL·검증 모델)도 키 검증 기구도 core-ai-gateway가 소유한다.
+// 여기서는 Admiral 표면을 유지하기 위해 좌표를 재노출하고, 두 공급자에 그 기구를 적용한다.
 export {
   KIMI_AUTH_PROVIDER_ID,
   KIMI_CODE_API_BASE_URL,

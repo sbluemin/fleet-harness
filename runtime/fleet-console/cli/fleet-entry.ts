@@ -1,4 +1,4 @@
-import { createInfraServices } from "@dotobokuri/core-infra";
+import { createProviderAuthService } from "@dotobokuri/core-ai-gateway";
 
 import { runApp } from "./app.js";
 import { dispatchAuthCommand } from "./auth/dispatcher.js";
@@ -11,7 +11,7 @@ const status = await dispatchFleetArgv(process.argv.slice(2), {
   stderr: process.stderr,
   env: process.env,
   runApp,
-  createInfraServices: () => createInfraServices(),
+  createAuthService: () => createProviderAuthService(),
   dispatchAuthCommand,
   dispatchUpdateCommand,
   siblingCliPath: resolveSiblingConsoleCliPath(import.meta.url),

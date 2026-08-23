@@ -174,7 +174,12 @@ export function createConsoleSettingsStore(deps: CreateConsoleSettingsStoreDeps 
     path: base.path,
     load: initialize,
     save(data) { initialized = true; base.save(data); },
-    update(mutate) { const next = mutate(initialize()); base.save(next); return base.load(); },
+    update(mutate) {
+      // 감싼 저장소도 skip 판정을 그대로 전달한다 — 여기서 삼키면 "쓸 것이 없다"가 쓰기가 된다.
+      const next = mutate(initialize());
+      if (next !== undefined) base.save(next);
+      return base.load();
+    },
   };
 }
 

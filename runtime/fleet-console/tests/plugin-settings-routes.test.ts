@@ -138,7 +138,7 @@ function createRouterHarness(options: RouterHarnessOptions) {
       path: "/fake/settings.json",
       load: () => data,
       save: (next) => { data = next; },
-      update: (mutate) => { updateCalls += 1; data = mutate(data); return data; },
+      update: (mutate) => { updateCalls += 1; data = mutate(data) ?? data; return data; },
     },
     isAuthorized: () => options.authorized ?? true,
     readJsonBody: async () => (options.bodyNull ? null : (options.body ?? {})) as never,

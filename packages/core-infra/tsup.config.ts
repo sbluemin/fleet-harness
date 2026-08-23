@@ -3,7 +3,6 @@ import { defineConfig } from "tsup";
 export default defineConfig({
   entry: {
     index: "src/index.ts",
-    auth: "src/auth/index.ts",
     "data-dir/paths": "src/data-dir/paths.ts",
     "data-dir/settings/store": "src/data-dir/settings/store.ts",
     "fs-store": "src/fs-store/index.ts",
