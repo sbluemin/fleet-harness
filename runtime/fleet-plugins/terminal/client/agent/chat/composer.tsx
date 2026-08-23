@@ -52,7 +52,7 @@ import { discardLaunchAttachment, messageAgentSession, uploadLaunchAttachment } 
  *
  * 전송은 Quick Launch 멘션 전달과 같은 경로(`messageAgentSession`)라 서버 계약 변경이 없다.
  * 모델·강도는 컨트롤이 아니라 사실 표시다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이라
- * 이 바에 선 칩과 계기는 읽히기만 한다.
+ * 이 바에 직접 새긴 좌표와 계기는 읽히기만 한다.
  */
 
 interface ComposerDraftAttachment {
@@ -96,7 +96,7 @@ export function AgentChatComposer({
   onCancelQueued,
 }: {
   readonly context: OperationRenderContext;
-  /** 세션 좌표의 사실 표시 — 모델·강도 배지가 컨트롤 행 좌측에 앉는다. */
+  /** 세션 좌표의 사실 표시 — 모델·강도가 별도 배지 없이 컨트롤 행 좌측에 직접 앉는다. */
   readonly coordinate: React.ReactNode;
   /**
    * 문맥 미터 — 읽는 계기이지 컨트롤이 아니다. 발사 버튼 바로 왼쪽에 앉아, 보내기 직전에

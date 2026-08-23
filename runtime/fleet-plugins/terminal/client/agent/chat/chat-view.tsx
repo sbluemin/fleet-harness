@@ -25,7 +25,7 @@ import {
   type AgentChatTurn,
   type AgentChatTurnItem,
 } from "./chat-events.js";
-import { CHAT_EFFORT_RUNGS, readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
+import { readAgentChatSessionCoordinates, type AgentChatSessionCoordinates } from "./session-coordinates.js";
 import { AgentChatComposer, type AgentChatQueueCancelOutcome } from "./composer.js";
 import { useViewSwitchState } from "../view-switch-store.js";
 import "@fleet-console/markdown/styles.css";
@@ -539,12 +539,13 @@ export function AgentChatView({
 }
 
 /**
- * 이 세션의 실행 좌표를 상시로 말하는 칩.
+ * 이 세션의 실행 좌표를 상시로 말하는 각인.
  *
  * 여러 채팅 패널이 한 화면에 서면, 무거운 지시를 어디로 던질지는 좌표가 정한다 — 그래서 이 표식은
- * 대화 안이 아니라 칩 줄 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리에 선다. 평상시에는 중립이라
- * 대화를 이기지 않고, 신호(상태) 채널도 쓰지 않는다. 색을 얻는 것은 강도뿐이며, 그 어휘는
- * 런치 트랙의 것을 그대로 쓴다.
+ * 대화 안이 아니라 컴포저 툴 행 맨 앞, 패널을 훑는 눈이 먼저 닿는 자리에 선다. 최근 백그라운드
+ * 작업 글리프처럼 별도 배지를 두르지 않고 프레임에 직접 놓여, 컴포저를 여러 상자로 쪼개지 않는다.
+ * 평상시에는 중립이라 대화를 이기지 않고, 신호(상태) 채널도 쓰지 않는다. 색을 얻는 것은 강도뿐이며,
+ * 그 어휘는 런치 트랙의 것을 그대로 쓴다.
  *
  * 컨트롤이 아니라 사실이므로 버튼이 아니다. 누를 수 있게 그리면 "여기서 바꿀 수 있다"는
  * 거짓 약속이 된다 — 좌표를 바꾸는 길은 새 세션을 여는 것뿐이다.
