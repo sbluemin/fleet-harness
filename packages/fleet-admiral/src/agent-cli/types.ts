@@ -133,7 +133,6 @@ export interface CreateAgentCliPluginOptions {
   // claude-gateway 렌더만 읽어 `agents/` 정의를 만든다.
   readonly gatewayDelegationModels?: readonly GatewayModel[];
   readonly gatewayEffortExposure?: GatewayEffortExposure;
-  readonly onCleanup?: (cleanup: () => void) => void;
   /** 이 트리를 읽을 Claude 세션의 id. 곧 디렉터리 이름이므로 UUID여야 한다. */
   readonly sessionId: string;
   /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
@@ -146,7 +145,6 @@ export interface LegacyMarketplaceReclaimDeps {
 }
 
 export interface AgentCliPlugin {
-  readonly cleanup: () => void;
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
   readonly sessionId: string;

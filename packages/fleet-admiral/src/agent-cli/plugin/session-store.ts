@@ -30,7 +30,6 @@ const SESSION_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 export interface PluginSessionLease {
   readonly pluginRoot: string;
   readonly sessionId: string;
-  readonly release: () => void;
 }
 
 export function isPluginSessionId(value: string): boolean {
@@ -45,8 +44,10 @@ export function isPluginSessionId(value: string): boolean {
  * 갈래는 매번 새 id를 받는다. 그래서 여기서 만나는 기존 트리는 **반드시 끝난 런치의 잔해**다 —
  * 검증하거나 살릴 이유가 없으므로 그대로 걷고 다시 쓴다.
  *
- * 이 독점 전제가 점유 표식(홀더)과 회수 기계를 통째로 불필요하게 만든다. 잔해는 그 세션이 다시
- * 뜰 때 이 자리에서 정리되고, 정상 종료한 세션은 `release`가 자기 트리를 걷고 간다.
+ * 이 독점 전제가 점유 표식(홀더)과 회수 기계를 통째로 불필요하게 만든다. 그리고 런치가 끝날 때
+ * 걷을 것도 없다 — **트리는 세션의 것이지 런치의 것이 아니다**. 이름이 세션 id인 디렉터리를
+ * 런치마다 지우면, 살아 있는 세션의 플러그인이 CLI↔Chat 전환마다 사라졌다 다시 생긴다. 낡은
+ * 내용은 다음 런치가 이 자리에서 갈아 끼우므로, 지우는 쪽이 사는 것은 그 churn뿐이다.
  */
 export function acquirePluginSession(
   sessionsRoot: string,
@@ -60,17 +61,7 @@ export function acquirePluginSession(
   const pluginRoot = path.join(sessionsRoot, sessionId);
   removePrivatePath(pluginRoot, sessionsRoot);
   publishPluginSession(sessionsRoot, sessionId, files);
-  return {
-    pluginRoot,
-    sessionId,
-    release: () => {
-      try {
-        removePrivatePath(pluginRoot, sessionsRoot);
-      } catch {
-        // 반납 실패는 세션 종료를 막지 않는다. 남은 트리는 이 세션이 다시 뜰 때 걷힌다.
-      }
-    },
-  };
+  return { pluginRoot, sessionId };
 }
 
 /**

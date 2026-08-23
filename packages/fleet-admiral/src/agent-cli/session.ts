@@ -59,7 +59,6 @@ export interface ClaudeSessionHandle {
   readonly claudeCodeSystemPrompt: "on" | "off";
   /** Chat Mode처럼 SDK로 자식을 세우는 표면이 그대로 펼쳐 쓰는 투영. */
   readonly sdk: ClaudeSessionSdkProjection;
-  readonly release: () => void;
 }
 
 export interface PrepareClaudeSessionOptions
@@ -111,7 +110,6 @@ export async function prepareClaudeSession(
         ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
       },
     },
-    release: plugin.cleanup,
   };
 }
 

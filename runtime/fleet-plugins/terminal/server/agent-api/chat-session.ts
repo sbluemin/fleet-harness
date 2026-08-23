@@ -109,8 +109,7 @@ export interface AgentChatSessionSeed {
   /**
    * 이 세션의 Claude 좌표와 능력 표면을 admiral에서 확정해 온다. 세션 id, 플러그인 트리,
    * 스킬 억제, 설정 층, 시스템 프롬프트 정책이 한 핸들에 함께 실린다 — 터미널 세션이
-   * `--session-id`·`--plugin-dir`·`--settings`로 받는 것과 같은 값이다. `release`는 dispose가
-   * 부르고, 그래야 이 세션의 트리가 회수될 수 있다.
+   * `--session-id`·`--plugin-dir`·`--settings`로 받는 것과 같은 값이다.
    */
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
@@ -674,10 +673,8 @@ class AgentChatSession {
     // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
     if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
     this.seed.releaseFleetMcpServers?.();
-    // 발급이 아직 날고 있으면 착지시킨 뒤 반납한다 — 먼저 놓으면 뒤늦게 렌더된 트리가
-    // 주인 없이 남는다.
+    // 발급이 아직 날고 있으면 착지시킨다 — 트리 자체는 세션의 것이라 여기서 걷지 않는다.
     if (this.claudeSessionFlight) await this.claudeSessionFlight.catch(() => undefined);
-    this.claudeSession?.release();
     this.claudeSession = null;
     this.listeners.clear();
   }
@@ -1133,7 +1130,7 @@ class AgentChatSession {
           this.sdk = sdk;
           return sdk;
         } catch (error) {
-          claudeSession.release();
+          // 트리는 그대로 둔다 — 이 세션의 것이고, 다음 시도가 같은 자리를 다시 쓴다.
           this.claudeSession = null;
           throw error;
         }

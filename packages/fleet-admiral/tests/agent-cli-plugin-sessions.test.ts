@@ -117,19 +117,22 @@ describe("agent CLI plugin session store", () => {
     expect(restored?.isSymbolicLink()).toBe(false);
   });
 
-  it("removes the tree on cleanup, and cleanup is idempotent", async () => {
-    const { dataDir, cwd } = createRoots("fleet-admiral-session-cleanup-");
+  // 트리는 세션의 것이지 런치의 것이 아니다. 런치가 끝났다고 걷으면, 살아 있는 세션의
+  // 플러그인이 CLI↔Chat 전환마다 사라졌다 다시 생긴다.
+  it("keeps the tree in place for the session's whole life", async () => {
+    const { dataDir, cwd } = createRoots("fleet-admiral-session-persist-");
     const sessionId = randomUUID();
 
-    const plugin = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
-    expect(existsSync(plugin.pluginRoot)).toBe(true);
+    const first = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
+    const guardPath = path.join(first.pluginRoot, "hooks", "fleet-gateway-model-guard.mjs");
+    expect(existsSync(guardPath)).toBe(true);
 
-    plugin.cleanup();
-    plugin.cleanup();
+    // 한 런치가 끝나고 다음 런치가 서기 전에도 트리는 그 자리에 있다.
+    const second = await createAgentCliPlugin(options({ cwd, dataDir, sessionId }));
 
-    expect(existsSync(plugin.pluginRoot)).toBe(false);
-    // 정상 종료한 세션은 아무것도 남기지 않는다 — 걷어야 할 잔해가 애초에 없다.
-    expect(readdirSync(pluginSessionsRoot(dataDir, cwd))).toEqual([]);
+    expect(second.pluginRoot).toBe(first.pluginRoot);
+    expect(existsSync(guardPath)).toBe(true);
+    expect(readdirSync(pluginSessionsRoot(dataDir, cwd))).toEqual([sessionId]);
   });
 
   describe("legacy marketplace tree", () => {

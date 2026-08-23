@@ -48,21 +48,9 @@ export async function createAgentCliPlugin(
   // 레거시 트리는 이 코드가 읽지도 쓰지도 않지만, 남겨 두면 한 호스트에 Fleet 플러그인
   // 트리가 둘이 된다. 렌더 경로에 붙여 두어 구버전 런치가 끊긴 뒤 자연히 걷히게 한다.
   reclaimLegacyMarketplace(fleetRoot, options.legacyReclaimDeps ?? {});
-  const cleanup = createOnceCleanup(() => lease.release());
-  options.onCleanup?.(cleanup);
   return {
-    cleanup,
     pluginRoot: lease.pluginRoot,
     pluginRoots: [lease.pluginRoot],
     sessionId: lease.sessionId,
-  };
-}
-
-function createOnceCleanup(cleanup: () => void): () => void {
-  let cleaned = false;
-  return () => {
-    if (cleaned) return;
-    cleaned = true;
-    cleanup();
   };
 }
