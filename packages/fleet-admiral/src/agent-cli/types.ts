@@ -66,6 +66,15 @@ export interface AgentCliMcpServerArg {
   readonly name: string;
 }
 
+/**
+ * 못박힌 Claude 세션 좌표. argv 투영과 SDK 투영이 같은 값에서 나온다 —
+ * 두 표면이 각자 이 좌표를 조립하면 한쪽만 정책 변경을 따라온다.
+ */
+export type ClaudeSessionCoordinate =
+  | { readonly kind: "new"; readonly sessionId: string }
+  | { readonly kind: "resume"; readonly sessionId: string }
+  | { readonly kind: "fork"; readonly sessionId: string; readonly from: string };
+
 export interface AgentCliInjectionContext {
   readonly cliId: AgentCliId;
   /**
@@ -76,7 +85,7 @@ export interface AgentCliInjectionContext {
   readonly mcpServers: readonly AgentCliMcpServerArg[];
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
-  readonly resumeSessionId?: string;
+  readonly sessionCoordinate: ClaudeSessionCoordinate;
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략은 `on`이며 플래그가
    * 붙지 않는다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다 —
@@ -96,14 +105,6 @@ export interface FleetHookExec {
 }
 
 export type AgentCliInjectionCapability = AgentCliInjectionCapabilityEnabled;
-
-/**
- * 호스트가 공급하는 플러그인 스냅숏 저장소 락. target은 저장소 루트이고, 호스트 구현은
- * 거기에 `.lock`을 붙인 advisory 디렉터리 락으로 렌더·회수를 프로세스 간 직렬화한다.
- */
-export interface AgentCliPluginStoreLock {
-  <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
-}
 
 export interface CreateAgentCliPluginOptions {
   readonly captureSessionHookExec?: FleetHookExec;
@@ -127,14 +128,30 @@ export interface CreateAgentCliPluginOptions {
   readonly gatewayDelegationModels?: readonly GatewayModel[];
   readonly gatewayEffortExposure?: GatewayEffortExposure;
   readonly onCleanup?: (cleanup: () => void) => void;
-  readonly rootDir?: string;
-  readonly withPluginStoreLock: AgentCliPluginStoreLock;
+  /** 이 트리를 읽을 Claude 세션의 id. 곧 디렉터리 이름이므로 UUID여야 한다. */
+  readonly sessionId: string;
+  /** 테스트가 회수 판정의 시계와 pid 프로브를 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
+  readonly reclaimDeps?: PluginSessionReclaimDeps;
+  /** 테스트가 레거시 트리 회수의 시계와 나이 창을 갈아 끼우는 자리. 프로덕션은 비워 둔다. */
+  readonly legacyReclaimDeps?: LegacyMarketplaceReclaimDeps;
+}
+
+export interface PluginSessionReclaimDeps {
+  readonly now?: () => number;
+  readonly isPidAlive?: (pid: number) => boolean;
+}
+
+export interface LegacyMarketplaceReclaimDeps {
+  readonly now?: () => number;
+  readonly staleAfterMs?: number;
 }
 
 export interface AgentCliPlugin {
+  readonly attach: (childPid: number) => void;
   readonly cleanup: () => void;
   readonly pluginRoot: string;
   readonly pluginRoots: readonly string[];
+  readonly sessionId: string;
 }
 
 export interface PluginBundleBase {

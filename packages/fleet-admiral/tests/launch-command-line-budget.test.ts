@@ -703,7 +703,6 @@ function injectOptions(root: string, released?: { token: boolean }): Parameters<
         if (released) released.token = true;
       },
     },
-    withPluginStoreLock: async (_target, fn) => fn(),
   };
 }
 

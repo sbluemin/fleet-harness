@@ -9,15 +9,17 @@ import { resolvePathBinary } from "@dotobokuri/core-process";
 import { exposableEffortLadder, GATEWAY_REASONING_EFFORTS, resolveAiGatewaySelection, toClaudeGatewayModelId } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewaySelection, AiGatewayStoredSettings, GatewayModel, GatewayReasoningEffort } from "@dotobokuri/core-ai-gateway";
 import {
-  createAgentCliPlugin,
   createSessionCaptureHookExec,
   injectAgentCliProfile,
+  prepareClaudeSession,
   prepareAiGatewayLaunchProfile,
   resolveAgentCliId,
   resolveAgentCliProfile,
   resolveNativeClaudeModelAlias,
   type AgentCliId,
   type AgentCliProfile,
+  type ClaudeSessionHandle,
+  type ClaudeSessionOrigin,
   LaunchPromptError,
   type FleetGatewayAgentRuntimeLifecycle,
 } from "@dotobokuri/fleet-admiral";
@@ -29,7 +31,7 @@ import {
 
 import { resolveClaudeCodeSystemPrompt } from "../settings-routes.js";
 import { createSessionIdentityResolver } from "./session-identity.js";
-import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, withConsolePluginStoreLock, type ConsoleHookCommandEntry } from "./host-hooks.js";
+import { buildConsoleAttentionHookCommand, buildConsoleAutoNameHookCommand, buildConsoleBackgroundHookCommand, buildConsoleCaptureHookCommand, buildConsoleTurnHookCommand, toCaptureProvider, type ConsoleHookCommandEntry } from "./host-hooks.js";
 import type { TerminalLaunchContext, TerminalLaunchSpec } from "../shared/terminal-types.js";
 import { stripConsoleInternalEnv } from "../shared/launch-env.js";
 import { applyAgentCliPathEnvOverlay } from "./agent-cli-paths.js";
@@ -115,40 +117,38 @@ function buildConsoleHookEntry(deps: TerminalLaunchResolverDeps): ConsoleHookCom
   return { entryPath, execPath, ...(tsxLoaderPath ? { tsxLoaderPath } : {}) };
 }
 
-/** Chat 세션이 쥐는 플러그인 스냅숏 리스. cleanup은 세션 종료 시 리스를 해제한다. */
-export interface FleetPluginRootsLease {
-  readonly roots: readonly string[];
-  readonly cleanup: () => void;
-}
-
 /**
- * Chat Mode 세션이 SDK에 넘길 Fleet 플러그인 스냅숏을 확보한다.
+ * Chat Mode 세션이 SDK에 넘길 Claude 세션 핸들을 admiral에서 받는다.
  *
- * PTY 런치와 **같은 자리에 같은 옵션으로** 쓴다 — 내용이 같으면 두 표면이 같은 불변
- * 스냅숏을 공유하고, 갈리면 각자 자기 스냅숏을 받는다. 여기서 훅 exec를 빼면 Chat이
- * 다른 내용의 스냅숏을 받게 될 뿐 터미널 세션의 훅이 지워지지는 않지만, 두 표면의 신호
- * 차이는 이 파일이 아니라 호스트가 그 신호를 읽는 자리에서 가른다는 원칙은 그대로다.
- * 반환된 리스의 cleanup을 세션 teardown에 연결하지 않으면 스냅숏이 회수되지 않는다.
+ * 여기서 조립하는 것은 아무것도 없다 — 세션 id, 플러그인 트리, 스킬 억제, 설정 층, 시스템
+ * 프롬프트 정책은 전부 핸들이 들고 온다. PTY 런치가 같은 함수에서 같은 것을 받으므로, 정책이
+ * 바뀌면 두 표면이 함께 움직인다. 반환된 핸들의 `release`를 세션 teardown에 연결하지 않으면
+ * 트리가 회수되지 않는다.
  */
-export async function renderFleetPluginRootsForChat(
-  deps: TerminalLaunchResolverDeps & { readonly cwd: string },
-): Promise<FleetPluginRootsLease> {
+export async function prepareChatClaudeSession(
+  deps: TerminalLaunchResolverDeps & {
+    readonly cwd: string;
+    readonly origin: ClaudeSessionOrigin;
+    readonly claudeCodeSystemPrompt?: "on" | "off";
+  },
+): Promise<ClaudeSessionHandle> {
   const hookEntry = buildConsoleHookEntry(deps);
   const dataDir = deps.dataDir ?? getFleetDataDir();
   const gatewaySelection = deps.readAiGatewaySettings
     ? resolveAiGatewaySelection(deps.readAiGatewaySettings())
     : undefined;
-  const plugin = await createAgentCliPlugin({
+  return prepareClaudeSession({
     cliId: CHAT_PLUGIN_CLI_ID,
     cwd: deps.cwd,
     dataDir,
+    origin: deps.origin,
+    ...(deps.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: deps.claudeCodeSystemPrompt } : {}),
     captureSessionHookExec: buildConsoleCaptureHookCommand(hookEntry, CHAT_PLUGIN_CLI_ID, createSessionCaptureHookExec),
     turnStartHookExec: buildConsoleTurnHookCommand(hookEntry, "start"),
     turnEndHookExec: buildConsoleTurnHookCommand(hookEntry, "end"),
     backgroundReportHookExec: buildConsoleBackgroundHookCommand(hookEntry),
     inputWaitingHookExec: buildConsoleAttentionHookCommand(hookEntry),
     autoNameHookExec: buildConsoleAutoNameHookCommand(hookEntry),
-    withPluginStoreLock: withConsolePluginStoreLock,
     ...(gatewaySelection
       ? {
         gatewayDelegationModels: gatewaySelection.delegationModels,
@@ -156,7 +156,6 @@ export async function renderFleetPluginRootsForChat(
       }
       : {}),
   });
-  return { roots: plugin.pluginRoots, cleanup: plugin.cleanup };
 }
 
 const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude-gateway";
@@ -326,7 +325,6 @@ async function createAgentCliLaunchSpec(options: {
       // 사용자가 고른 값이며 새 세션에만 적용된다 — 실행 중인 세션은 자기 런치 구성을 유지한다.
       claudeCodeSystemPrompt: resolveClaudeCodeSystemPrompt(options.infraServices.globalOptionsService.load()),
       resumeSessionId: options.resumeSessionId,
-      withPluginStoreLock: withConsolePluginStoreLock,
       mcpSessionLabel: options.sessionId,
       ...(gatewaySelection
         ? {
@@ -343,7 +341,7 @@ async function createAgentCliLaunchSpec(options: {
       mcpToolCount: countMcpTools(agentRuntime),
       sessionId: options.sessionId,
     });
-    let launchProfile = injectedProfile;
+    let launchProfile: AgentCliProfile = injectedProfile;
     if (injectedProfile.id === "claude-gateway") {
       if (!options.aiGateway) {
         throw new Error("The AI gateway launch binding is unavailable.");
@@ -358,11 +356,15 @@ async function createAgentCliLaunchSpec(options: {
       });
     }
     const sessionIdentityResolver = options.createSessionIdentityResolver({ cwd: launchProfile.cwd });
-    return toLaunchSpec(launchProfile, createOnceCleanup(async () => {
-      for (const cleanup of [...cleanupStack].reverse()) {
-        await cleanup();
-      }
-    }), sessionIdentityResolver);
+    return {
+      ...toLaunchSpec(launchProfile, createOnceCleanup(async () => {
+        for (const cleanup of [...cleanupStack].reverse()) {
+          await cleanup();
+        }
+      }), sessionIdentityResolver),
+      // 플러그인 트리를 실제로 읽는 것은 이 자식이다.
+      onChildSpawned: (pid: number) => injectedProfile.session.attach(pid),
+    };
   } catch (error) {
     for (const cleanup of [...cleanupStack].reverse()) {
       try {

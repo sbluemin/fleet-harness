@@ -129,6 +129,8 @@ export async function createClaudeGatewaySdk(
     ...(request.effort === undefined ? {} : { effort: request.effort }),
     ...(request.cwd === undefined ? {} : { cwd: request.cwd }),
     ...(request.resume === undefined ? {} : { resume: request.resume }),
+    ...(request.sessionId === undefined ? {} : { sessionId: request.sessionId }),
+    ...(request.forkSession === undefined ? {} : { forkSession: request.forkSession }),
     ...(request.maxTurns === undefined ? {} : { maxTurns: request.maxTurns }),
     ...(request.maxBudgetUsd === undefined ? {} : { maxBudgetUsd: request.maxBudgetUsd }),
     ...(request.tools === undefined ? {} : { tools: [...request.tools] }),

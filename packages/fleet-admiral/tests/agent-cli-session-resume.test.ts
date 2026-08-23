@@ -5,6 +5,8 @@ import path from "node:path";
 import process from "node:process";
 import { pathToFileURL } from "node:url";
 
+import { randomUUID } from "node:crypto";
+
 import { afterEach, describe, expect, it } from "vitest";
 
 import * as Admiral from "../src/index.js";
@@ -37,14 +39,36 @@ describe("agent CLI session resume and capture hooks", () => {
       cwd: root,
       env: { HOME: root },
     });
+    const resumeSessionId = randomUUID();
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
-      resumeSessionId: "claude-session-123",
+      origin: { kind: "resume", sessionId: resumeSessionId },
     }));
 
-    expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", "claude-session-123"]);
-    expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
-    expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
-    expect(indexOfSequence(injected.args, ["--resume", "claude-session-123"])).toBeLessThan(indexOfSequence(injected.args, ["--dangerously-skip-permissions"]));
+    expect(injected.args.slice(0, 4)).toEqual(["--model", "claude-opus", "--resume", resumeSessionId]);
+    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--plugin-dir"]));
+    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--mcp-config"]));
+    expect(indexOfSequence(injected.args, ["--resume", resumeSessionId])).toBeLessThan(indexOfSequence(injected.args, ["--dangerously-skip-permissions"]));
+    // 이어 붙이는 세션은 id를 고를 수 없다 — 자식이 `--session-id`를 함께 받으면 거부한다.
+    expect(injected.args).not.toContain("--session-id");
+    expect(injected.session.sessionId).toBe(resumeSessionId);
+  });
+
+  it("pins a Fleet-issued session id for a new session, and forks with a fresh one", async () => {
+    const root = createTempRoot("fleet-admiral-claude-pin-");
+    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+
+    const fresh = await injectAgentCliProfile(profile, baseInjectOptions(root));
+    expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
+    expect(fresh.args).not.toContain("--resume");
+    // 못박은 id가 곧 플러그인 트리의 이름이다 — 자식이 만든 id를 기다릴 필요가 없다.
+    expect(path.basename(fresh.session.pluginRoot)).toBe(fresh.session.sessionId);
+
+    const from = randomUUID();
+    const forked = await injectAgentCliProfile(profile, baseInjectOptions(root, {
+      origin: { kind: "fork", from },
+    }));
+    expect(indexOfSequence(forked.args, ["--resume", from, "--fork-session", "--session-id", forked.session.sessionId])).toBe(0);
+    expect(forked.session.sessionId).not.toBe(from);
   });
 
 
@@ -147,7 +171,7 @@ describe("agent CLI session resume and capture hooks", () => {
       cliId: "claude-gateway",
       cwd: root,
       dataDir,
-      withPluginStoreLock: async (_target, fn) => fn(),
+      sessionId: randomUUID(),
     });
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: {
@@ -212,7 +236,7 @@ function baseInjectOptions(
     readonly dedicatedMcpSession?: TestDedicatedMcpSession;
     readonly gatewayDelegationModels?: Parameters<typeof injectAgentCliProfile>[1]["gatewayDelegationModels"];
     readonly inputWaitingHookExec?: FleetHookExec;
-    readonly resumeSessionId?: string;
+    readonly origin?: Parameters<typeof injectAgentCliProfile>[1]["origin"];
     readonly turnEndHookExec?: FleetHookExec;
     readonly turnStartHookExec?: FleetHookExec;
   } = {},
@@ -225,10 +249,9 @@ function baseInjectOptions(
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
     ...(overrides.inputWaitingHookExec ? { inputWaitingHookExec: overrides.inputWaitingHookExec } : {}),
-    ...(overrides.resumeSessionId ? { resumeSessionId: overrides.resumeSessionId } : {}),
+    ...(overrides.origin ? { origin: overrides.origin } : {}),
     ...(overrides.turnEndHookExec ? { turnEndHookExec: overrides.turnEndHookExec } : {}),
     ...(overrides.turnStartHookExec ? { turnStartHookExec: overrides.turnStartHookExec } : {}),
-    withPluginStoreLock: async (_target, fn) => fn(),
   };
 }
 

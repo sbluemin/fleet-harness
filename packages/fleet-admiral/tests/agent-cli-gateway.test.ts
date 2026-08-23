@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -238,6 +239,7 @@ describe("claude-gateway argument composition", () => {
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
       skillOverrides: { "claude-api": "off" },
+      sessionCoordinate: { kind: "new", sessionId: randomUUID() },
     });
 
     expect(args).not.toContain("--append-system-prompt-file");
@@ -255,6 +257,7 @@ describe("claude-gateway argument composition", () => {
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
       claudeCodeSystemPrompt: "off",
+      sessionCoordinate: { kind: "new", sessionId: randomUUID() },
     });
 
     // Fleet은 실을 본문이 없다. 이 플래그는 기본 프롬프트를 비우는 수단이라 값이 빈 문자열이다.
@@ -268,6 +271,7 @@ describe("claude-gateway argument composition", () => {
       mcpServers: [],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
+      sessionCoordinate: { kind: "new", sessionId: randomUUID() },
     });
 
     // 이름을 허용 목록에 올려야 억제가 풀린다. `--tools`는 내장 집합을 통째로
@@ -287,17 +291,19 @@ describe("claude-gateway argument composition", () => {
     vi.spyOn(os, "tmpdir").mockReturnValue(isolatedTmp);
 
     try {
+      // 워크스페이스 루트 자리에 파일을 세워 두면 세션 트리를 렌더할 수 없다.
+      const blockedDataDir = path.join(root, "blocked-data");
+      mkdirSync(blockedDataDir, { recursive: true });
+      writeFileSync(path.join(blockedDataDir, "workspaces"), "not a directory\n");
+
       await expect(injectAgentCliProfile(
         {
           ...baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } }),
           commandLineLimit: { maxChars: 8191, via: "cmd-shim" },
           promptArgs: ["hello & world"],
         },
-        {
-          ...baseInjectOptions(root),
-          withPluginStoreLock: async () => { throw new Error("injected plugin store failure"); },
-        },
-      )).rejects.toThrow("injected plugin store failure");
+        { ...baseInjectOptions(root), dataDir: blockedDataDir },
+      )).rejects.toThrow();
 
       expect(readdirSync(isolatedTmp)).toEqual([]);
     } finally {
@@ -472,6 +478,5 @@ function baseInjectOptions(
     },
     ...(overrides.captureSessionHookExec ? { captureSessionHookExec: overrides.captureSessionHookExec } : {}),
     ...(overrides.gatewayDelegationModels ? { gatewayDelegationModels: overrides.gatewayDelegationModels } : {}),
-    withPluginStoreLock: async (_target, fn) => fn(),
   };
 }

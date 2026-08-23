@@ -96,11 +96,28 @@ export {
 export {
   injectAgentCliProfile,
   type InjectAgentCliProfileOptions,
+  type InjectedAgentCliProfile,
 } from "./agent-cli/injection.js";
 
-// PTY 주입은 위 injection이 플러그인 렌더까지 함께 하지만, SDK 세션은 렌더된 경로만 필요하다.
+/**
+ * 세션 하나의 정체성과 능력 표면을 admiral이 한 번에 확정한다. PTY는 위 injection이 이것을
+ * 감싸 argv까지 만들고, SDK 표면(Chat Mode)은 이 핸들의 `sdk` 투영을 그대로 펼쳐 쓴다 —
+ * 두 표면이 각자 조립하면 한쪽만 정책 변경을 따라오는 드리프트가 생긴다.
+ */
+export {
+  prepareClaudeSession,
+  type ClaudeSessionHandle,
+  type ClaudeSessionOrigin,
+  type ClaudeSessionCoordinate,
+  type ClaudeSessionSdkOptions,
+  type ClaudeSessionSdkProjection,
+  type ClaudeSessionSdkRequest,
+  type PrepareClaudeSessionOptions,
+} from "./agent-cli/session.js";
+
 export {
   createAgentCliPlugin,
+  pluginSessionsRoot,
   type AgentCliPlugin,
   type CreateAgentCliPluginOptions,
 } from "./agent-cli/plugin/index.js";

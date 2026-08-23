@@ -7,7 +7,6 @@ import {
   resolveAgentCliProfile,
 } from "@dotobokuri/fleet-admiral";
 
-import { withFleetPluginStoreLock } from "../runtime/host-hooks.js";
 import type { FleetCliRuntime } from "../runtime/runtime.js";
 import type { FleetCliGatewayServer } from "./server.js";
 
@@ -42,7 +41,6 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       // identity와 roster는 delegationModels를, wire·launch picker·validation은 models를 사용한다.
       gatewayDelegationModels: selection.delegationModels,
       gatewayEffortExposure: selection.effortExposure,
-      withPluginStoreLock: withFleetPluginStoreLock,
       onCleanup: (cleanup) => profileCleanups.push(cleanup),
     });
     const launchProfile = prepareAiGatewayLaunchProfile(injected, {
@@ -54,6 +52,9 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
       env: launchProfile.env,
       stdio: "inherit",
     });
+    // 플러그인 트리를 실제로 읽는 것은 이 자식이다. 홀더를 자식 pid로 옮겨 적어야 런처가
+    // 먼저 죽어도 회수가 살아 있는 트리를 걷지 않는다.
+    if (child.pid !== undefined) injected.session.attach(child.pid);
 
     // stdio inherit + 동일 포그라운드 프로세스 그룹: Ctrl+C의 SIGINT는 커널이 자식에게도
     // 직접 전달한다. 부모가 SIGINT를 재전달하면 자식이 이중 수신해 Claude Code의

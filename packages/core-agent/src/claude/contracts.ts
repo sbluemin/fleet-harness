@@ -237,6 +237,17 @@ export interface ClaudeGatewayTurn {
   readonly effort?: ClaudeGatewayEffort;
   readonly cwd?: string;
   readonly resume?: string;
+  /**
+   * 자식이 스스로 만드는 대신 호출자가 못박는 세션 id. 유효한 UUID여야 한다.
+   *
+   * `resume`·`continue`와 함께 쓰려면 `forkSession`이 있어야 한다(실측: 없으면 자식이
+   * `--session-id can only be used with --continue or --resume if --fork-session is also
+   * specified`로 종료한다). 못박은 id는 실행 성공 여부와 무관하게 확정되므로, 호출자는
+   * 첫 턴을 기다리지 않고 그 세션의 좌표를 알 수 있다.
+   */
+  readonly sessionId?: string;
+  /** 재개할 때 이어 쓰지 않고 새 세션 id로 갈라 나간다. `sessionId`와 함께 주면 그 id가 갈래의 id다. */
+  readonly forkSession?: boolean;
   readonly maxTurns?: number;
   readonly maxBudgetUsd?: number;
   /**
@@ -289,6 +300,8 @@ export const CLAUDE_GATEWAY_TURN_KEYS: readonly string[] = Object.freeze([
   "effort",
   "cwd",
   "resume",
+  "sessionId",
+  "forkSession",
   "maxTurns",
   "maxBudgetUsd",
   "tools",

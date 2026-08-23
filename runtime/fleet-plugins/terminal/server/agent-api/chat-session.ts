@@ -36,11 +36,10 @@ import {
   type AgentChatQuestion,
   type AgentChatStreamEvent,
 } from "./chat-events.js";
-import { chatChildEnv } from "../shared/launch-env.js";
-import type { FleetPluginRootsLease } from "./launch.js";
-import type { AgentProviderSession } from "./types.js";
+import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
-const EMPTY_PLUGIN_LEASE: FleetPluginRootsLease = { roots: [], cleanup: () => {} };
+import { chatChildEnv } from "../shared/launch-env.js";
+import type { AgentProviderSession } from "./types.js";
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -108,16 +107,12 @@ export interface AgentChatSessionSeed {
    */
   readonly resolveFleetMcpServers?: () => Promise<readonly ClaudeGatewayServedMcpServer[]>;
   /**
-   * Fleet 플러그인 스냅숏 리스를 확보한다. 스킬·게이트웨이 정체성·정책 훅이 전부 이 스냅숏
-   * 한 벌로 실린다 — 터미널 세션이 `--plugin-dir`로 받는 것과 같은 것이다. cleanup은 dispose가
-   * 부르고, 그래야 리스가 풀려 옛 스냅숏이 회수될 수 있다.
+   * 이 세션의 Claude 좌표와 능력 표면을 admiral에서 확정해 온다. 세션 id, 플러그인 트리,
+   * 스킬 억제, 설정 층, 시스템 프롬프트 정책이 한 핸들에 함께 실린다 — 터미널 세션이
+   * `--session-id`·`--plugin-dir`·`--settings`로 받는 것과 같은 값이다. `release`는 dispose가
+   * 부르고, 그래야 이 세션의 트리가 회수될 수 있다.
    */
-  readonly resolveFleetPluginRoots?: () => Promise<FleetPluginRootsLease>;
-  /**
-   * 내장 스킬 중 이 doctrine이 끄는 것들. 터미널 세션이 `--settings`로 받는 것과 같은 값이며,
-   * 없으면 같은 프롬프트가 표면에 따라 다른 스킬을 깨운다.
-   */
-  readonly skillOverrides?: Readonly<Record<string, "on" | "name-only" | "user-invocable-only" | "off">>;
+  readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
   readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
@@ -270,7 +265,9 @@ class AgentChatSession {
   private readonly createSdk: CreateChatSdk;
   private sdk: ClaudeGatewaySdk | null = null;
   private sdkFlight: Promise<ClaudeGatewaySdk> | null = null;
-  private pluginLeaseCleanup: (() => void) | null = null;
+  /** admiral이 확정한 이 세션의 좌표. 세션당 한 번 받아 두고 dispose에서 반납한다. */
+  private claudeSession: ClaudeSessionHandle | null = null;
+  private claudeSessionFlight: Promise<ClaudeSessionHandle> | null = null;
   /**
    * Fleet MCP 좌표. 세션당 한 번 발급하고 dispose에서 되돌린다 — 턴마다 발급하면 반납되지 않은
    * 토큰이 턴 수만큼 쌓인다.
@@ -677,9 +674,11 @@ class AgentChatSession {
     // 없이 남는다. 반납 자체는 라벨로 지우므로 발급된 적 없는 세션에서도 무해하다.
     if (this.fleetMcpFlight) await this.fleetMcpFlight.catch(() => undefined);
     this.seed.releaseFleetMcpServers?.();
-    // 플러그인 스냅숏 리스를 반납한다 — 세션이 접힌 뒤에야 옛 스냅숏이 GC 대상이 된다.
-    this.pluginLeaseCleanup?.();
-    this.pluginLeaseCleanup = null;
+    // 발급이 아직 날고 있으면 착지시킨 뒤 반납한다 — 먼저 놓으면 뒤늦게 렌더된 트리가
+    // 주인 없이 남는다.
+    if (this.claudeSessionFlight) await this.claudeSessionFlight.catch(() => undefined);
+    this.claudeSession?.release();
+    this.claudeSession = null;
     this.listeners.clear();
   }
 
@@ -1077,6 +1076,29 @@ class AgentChatSession {
     for (const listener of this.listeners) listener(entry);
   }
 
+  /**
+   * admiral이 확정한 이 세션의 좌표를 한 번만 받아 둔다.
+   *
+   * 두 번 받으면 안 된다 — 두 번째 호출은 같은 트리에 홀더를 하나 더 세우고, dispose가 반납하는
+   * 것은 마지막 것뿐이라 첫 홀더가 영원히 남는다. 발급자가 없는 seed(테스트·구세대 배선)는
+   * 여기서 실패하고, 그 실패가 곧 `chat_fleet_plugin_unavailable`이다.
+   */
+  private async resolveClaudeSession(): Promise<ClaudeSessionHandle> {
+    if (this.claudeSession) return this.claudeSession;
+    if (!this.claudeSessionFlight) {
+      this.claudeSessionFlight = (async () => {
+        const resolve = this.seed.resolveClaudeSession;
+        if (!resolve) throw new Error("Fleet plugin session resolver is unavailable");
+        const handle = await resolve();
+        this.claudeSession = handle;
+        return handle;
+      })().finally(() => {
+        this.claudeSessionFlight = null;
+      });
+    }
+    return this.claudeSessionFlight;
+  }
+
   private async ensureSdk(): Promise<ClaudeGatewaySdk> {
     if (this.sdk) return this.sdk;
     if (!this.sdkFlight) {
@@ -1085,10 +1107,10 @@ class AgentChatSession {
         // 조용히 계속 돌리면 같은 Operation을 터미널로 열었을 때와 다른, 특히 위임 가드가 없는
         // 능력을 갖게 되고 그 차이는 화면 어디에도 드러나지 않는다 — 구체 코드를 저널에 남기고
         // 턴을 실패시킨다. 실패한 턴이 무장 해제된 세션보다 낫다.
-        const pluginLease = await (this.seed.resolveFleetPluginRoots?.() ?? Promise.resolve(EMPTY_PLUGIN_LEASE))
+        const claudeSession = await this.resolveClaudeSession()
           .catch((error: unknown) => {
             this.push({ kind: "error", code: "chat_fleet_plugin_unavailable" });
-            throw error instanceof Error ? error : new Error("Fleet plugin snapshot unavailable");
+            throw error instanceof Error ? error : new Error("Fleet plugin session unavailable");
           });
         try {
           const sdk = await this.createSdk({
@@ -1096,26 +1118,23 @@ class AgentChatSession {
             models: [this.seed.model],
             // 공유 홈이다 — 이 세션의 트랜스크립트는 터미널이 읽는 그 파일이고, 옮겨 올 사본이 없다.
             home: { kind: "shared", configDir: this.seed.claudeConfigDir },
-            // Chat Mode는 같은 세션의 다른 얼굴이다. 터미널로 열었을 때 CLI가 읽는 층을 그대로
-            // 읽어야 리포의 `CLAUDE.md`와 사용자 설정을 같은 세션이 표면에 따라 잃지 않는다.
-            settingSources: ["user", "project", "local"],
-            allowAmbientMcpServers: true,
-            ...(this.seed.skillOverrides ? { skillOverrides: this.seed.skillOverrides } : {}),
+            // 플러그인 트리·스킬 억제·설정 층은 admiral이 확정해 준 그대로 싣는다. 여기서 다시
+            // 조립하면 PTY 런치와 갈리고, 그 차이는 화면 어디에도 드러나지 않는다.
+            ...claudeSession.sdk.options,
             ...(this.seed.ultracode ? { ultracode: true } : {}),
             // 플러그인이 실은 훅은 세션 식별자로 자기 축을 찾는다. 이 자식에게는 그 식별자가
             // 없어야 한다 — 상속된 값이 남으면 남의 세션 축에 보고한다.
             env: chatChildEnv(process.env),
-            ...(pluginLease.roots.length > 0 ? { plugins: pluginLease.roots.map((root) => ({ path: root })) } : {}),
           });
           if (this.disposed) {
             await sdk.dispose().catch(() => undefined);
             throw new Error("chat session disposed");
           }
-          this.pluginLeaseCleanup = pluginLease.cleanup;
           this.sdk = sdk;
           return sdk;
         } catch (error) {
-          pluginLease.cleanup();
+          claudeSession.release();
+          this.claudeSession = null;
           throw error;
         }
       })().finally(() => {
@@ -1162,17 +1181,16 @@ class AgentChatSession {
           this.push({ kind: "error", code: "chat_fleet_tools_unavailable" });
           return [] as readonly ClaudeGatewayServedMcpServer[];
         });
+        const claudeSession = await this.resolveClaudeSession();
         const session = await sdk.openSession({
           model: this.seed.model,
           ...(this.seed.effort ? { effort: this.seed.effort } : {}),
-          ...(this.seed.systemPrompt ? { systemPrompt: this.seed.systemPrompt } : {}),
           ...(fleetMcpServers.length > 0 ? { servedMcpServers: fleetMcpServers } : {}),
           cwd: this.seed.cwd,
-          // 이어붙일 좌표는 세션을 열 때 한 번 선다. 채팅으로 태어난 세션에는 그것이 없고,
-          // SDK가 돌려주는 session_id가 그 자리를 채운다 — 자식이 사는 동안은 그 세션이 계속
-          // 자라므로 매 턴 다시 이어붙일 일이 없다.
-          ...(this.latestSessionId ? { resume: this.latestSessionId } : {}),
-          permissionMode: "bypassPermissions",
+          // 이어붙일 좌표는 admiral이 세션을 준비할 때 이미 확정했다. 채팅으로 태어난 세션도
+          // 마찬가지다 — 자식이 만든 id를 받아 적는 대신 우리가 못박았으므로, 첫 턴을 기다리지
+          // 않고도 이 세션의 좌표를 안다. 시스템 프롬프트 정책도 같은 자리에서 나온다.
+          ...claudeSession.sdk.request,
           // 이 콜백은 권한 게이트가 아니다. 모드는 그대로 bypass이고 평범한 도구는 여기서 그냥
           // 통과한다 — 콜백을 주는 이유는 그래야 자식이 대화형 도구를 갖기 때문이다(실측: 29→32).
           canUseTool: (name, input, context) => this.askUser(name, input, context),

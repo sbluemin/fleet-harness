@@ -4,6 +4,8 @@ import path from "node:path";
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
+
 import { AgentChatRegistry, type AgentChatSessionSeed } from "../server/agent-api/chat-session.js";
 import type { AgentChatJournalEvent } from "../server/agent-api/chat-events.js";
 
@@ -155,6 +157,8 @@ function seedFor(transcriptPath: string, onProviderSessionUpdate: AgentChatSessi
     cwd: "/tmp/workspace",
     claudeConfigDir: homeOf(transcriptPath),
     origin: { kind: "resume", transcriptPath },
+    // 이어 붙이는 세션은 id를 고를 수 없다 — 트랜스크립트가 말하는 id가 그대로 좌표다.
+    resolveClaudeSession: async () => fakeClaudeSession({ resumeOf: path.basename(transcriptPath, ".jsonl") }),
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
@@ -182,11 +186,51 @@ function freshSeedFor(claudeConfigDir: string, onProviderSessionUpdate: AgentCha
     cwd: "/tmp/workspace",
     claudeConfigDir,
     origin: { kind: "fresh" },
+    resolveClaudeSession: async () => fakeClaudeSession(),
     onProviderSessionUpdate,
     reportActivity: () => true,
     canReportActivity: () => true,
     reportAwaiting: () => {},
     reportBackgroundPending: () => {},
+  };
+}
+
+/**
+ * admiral이 돌려주는 세션 핸들의 대역. 좌표와 능력 표면이 한 곳에서 나온다는 계약만 재현한다.
+ */
+function fakeClaudeSession(
+  overrides: {
+    readonly sessionId?: string;
+    readonly resumeOf?: string;
+    readonly pluginRoot?: string;
+    readonly claudeCodeSystemPrompt?: "on" | "off";
+    readonly release?: () => void;
+  } = {},
+): ClaudeSessionHandle {
+  const sessionId = overrides.resumeOf ?? overrides.sessionId ?? "11111111-2222-4333-8444-555555555555";
+  const pluginRoot = overrides.pluginRoot ?? `/fleet/workspaces/tmp-workspace/sessions/${sessionId}`;
+  const claudeCodeSystemPrompt = overrides.claudeCodeSystemPrompt ?? "off";
+  return {
+    sessionId,
+    coordinate: overrides.resumeOf ? { kind: "resume", sessionId } : { kind: "new", sessionId },
+    pluginRoot,
+    pluginRoots: [pluginRoot],
+    claudeCodeSystemPrompt,
+    sdk: {
+      options: {
+        plugins: [{ path: pluginRoot }],
+        settingSources: ["user", "project", "local"],
+        allowAmbientMcpServers: true,
+        skillOverrides: { "claude-api": "off" },
+      },
+      request: {
+        ...(overrides.resumeOf ? { resume: sessionId } : { sessionId }),
+        permissionMode: "bypassPermissions",
+        ...(claudeCodeSystemPrompt === "on" ? { systemPrompt: { mode: "preset" } as const } : {}),
+      },
+    },
+    attach: () => {},
+    release: overrides.release ?? (() => {}),
   };
 }
 
@@ -222,7 +266,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     await registry.disposeAll();
   });
 
-  it("opens the session with the Claude Code prompt only when the seed carries it", async () => {
+  it("opens the session with the Claude Code prompt only when the handle carries it", async () => {
     const home = tempDir("chat-home-");
     const withPrompt = createFakeSdkFactory([
       { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 10 }] },
@@ -232,7 +276,10 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     ]);
 
     const onRegistry = new AgentChatRegistry(withPrompt.factory);
-    await onRegistry.ensure("op-on", () => ({ ...freshSeedFor(home), systemPrompt: { mode: "preset" } }));
+    await onRegistry.ensure("op-on", () => ({
+      ...freshSeedFor(home),
+      resolveClaudeSession: async () => fakeClaudeSession({ claudeCodeSystemPrompt: "on" }),
+    }));
     onRegistry.get("op-on")?.send("hello");
     await drainTurn(onRegistry, "op-on");
 
@@ -311,22 +358,20 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     ]);
     const registry = new AgentChatRegistry(factory);
     const cleanup = vi.fn();
+    const pluginRoot = "/fleet/workspaces/tmp-workspace/sessions/11111111-2222-4333-8444-555555555555";
     const session = await registry.ensure("op-plugin", () => ({
       ...freshSeedFor(home),
-      resolveFleetPluginRoots: async () => ({
-        roots: ["/fleet/plugin-snapshots/fleet-gateway-0123456789abcdef"],
-        cleanup,
-      }),
+      resolveClaudeSession: async () => fakeClaudeSession({ release: cleanup }),
     }));
     session.send("go");
     await drainTurn(registry, "op-plugin");
 
     expect(factory).toHaveBeenCalledWith(expect.objectContaining({
-      plugins: [{ path: "/fleet/plugin-snapshots/fleet-gateway-0123456789abcdef" }],
+      plugins: [{ path: pluginRoot }],
       settingSources: ["user", "project", "local"],
       allowAmbientMcpServers: true,
     }));
-    // 스냅숏 리스는 세션이 접힐 때에야 풀린다 — 그 전에 풀리면 실행 중 세션의 스냅숏이 GC 대상이 된다.
+    // 트리는 세션이 접힐 때에야 반납된다 — 그 전에 놓으면 실행 중 세션의 트리가 회수 대상이 된다.
     expect(cleanup).not.toHaveBeenCalled();
     await registry.disposeAll();
     expect(cleanup).toHaveBeenCalledTimes(1);
@@ -368,7 +413,7 @@ describe("AgentChatRegistry — chat-born sessions", () => {
     const registry = new AgentChatRegistry(factory);
     const session = await registry.ensure("op-plugin-fail", () => ({
       ...freshSeedFor(home),
-      resolveFleetPluginRoots: async () => { throw new Error("render failed"); },
+      resolveClaudeSession: async () => { throw new Error("render failed"); },
     }));
     const events: AgentChatJournalEvent[] = [];
     session.subscribe((entry) => events.push(entry));
