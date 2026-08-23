@@ -12,6 +12,7 @@ function makeLogState(): AgentChatLogState {
   return {
     turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
     replaying: false,
+    snapshotting: false,
     errorCode: null,
     jobs: [],
     context: null,
@@ -211,7 +212,7 @@ describe("chat log scroll anchor", () => {
   });
 
   it("does not count replay history before replay-end", () => {
-    logState = { ...makeLogState(), turns: [], replaying: true };
+    logState = { ...makeLogState(), turns: [], replaying: true, snapshotting: true };
     const log = mountView();
     stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
     log.scrollTop = 200;
@@ -221,6 +222,27 @@ describe("chat log scroll anchor", () => {
       ...logState,
       turns: [{ dispatch: { text: "history" }, items: [], state: "done", toolCount: 0, draft: "" }],
     };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");
+  });
+
+  it("does not count an in-flight turn restored after replay-end as a new arrival", () => {
+    logState = { ...makeLogState(), turns: [], replaying: true, snapshotting: true };
+    const log = mountView();
+    stubMetrics(log, { scrollHeight: 1000, clientHeight: 400 });
+    log.scrollTop = 200;
+    act(() => { log.dispatchEvent(new Event("scroll")); });
+
+    // 서버는 working 문법을 지키려고 opener를 replay-end 뒤에 두지만, snapshot-end 전까지는
+    // 이미 보던 턴의 복원이다. Follow 칩이 새 도착으로 세면 안 된다.
+    logState = {
+      ...logState,
+      replaying: false,
+      turns: [{ dispatch: { text: "in flight" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    logState = { ...logState, snapshotting: false };
     mountView();
 
     expect(container?.querySelector(".agent-chat-follow")?.textContent).toBe("Follow");

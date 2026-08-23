@@ -37,6 +37,7 @@ function stateWith(context: AgentChatContext | null, turnState: AgentChatTurn["s
   return {
     turns: [turn(turnState)],
     replaying: false,
+    snapshotting: false,
     errorCode: null,
     jobs: [],
     context,

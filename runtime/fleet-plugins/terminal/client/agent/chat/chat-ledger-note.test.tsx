@@ -43,6 +43,7 @@ function stateWith(turns: readonly AgentChatTurn[]): AgentChatLogState {
   return {
     turns,
     replaying: false,
+    snapshotting: false,
     errorCode: null,
     jobs: [],
     context: null,

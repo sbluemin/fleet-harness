@@ -41,6 +41,7 @@ function stateWith(jobs: readonly AgentChatJob[]): AgentChatLogState {
   return {
     turns: [{ dispatch: { text: "go" }, items: [], state: "done", toolCount: 0, draft: "" }],
     replaying: false,
+    snapshotting: false,
     errorCode: null,
     jobs,
     context: null,

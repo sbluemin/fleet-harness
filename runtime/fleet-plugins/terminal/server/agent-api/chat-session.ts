@@ -562,6 +562,9 @@ class AgentChatSession {
     } else {
       for (const entry of snapshot) listener(entry);
     }
+    // 이 접속이 보유하던 snapshot의 끝. replay-end 뒤에 live로 복원한 진행 중 턴도 여기까지는
+    // 새 도착이 아니다. 이후 push()가 보내는 이벤트만 이번 접속의 진짜 live tail이다.
+    listener({ seq: this.seq + 0.5, event: { kind: "snapshot-end" } });
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);

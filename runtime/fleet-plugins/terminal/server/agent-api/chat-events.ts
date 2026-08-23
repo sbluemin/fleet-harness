@@ -73,6 +73,8 @@ export interface AgentChatContextSlice {
 
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
+  /** 접속 시점의 snapshot이 모두 도착했다. 이 앞의 live opener는 복원이지 새 도착이 아니다. */
+  | { readonly kind: "snapshot-end" }
   /**
    * 이 턴이 **시작될 때까지의** 문맥 창 내역.
    *

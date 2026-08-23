@@ -161,16 +161,16 @@ export function AgentChatView({
   React.useEffect(() => {
     const previous = previousTurnCountRef.current;
     previousTurnCountRef.current = state.turns.length;
-    // 서버 저널에는 최초 replay-end가 남아 있고, 그 뒤부터 turns가 늘어나는 것은 live turn-start다.
-    // replay-start가 상한에서 잘려도 replay-end 뒤에 과거 턴을 추가하는 경로는 없으므로 별도
-    // "완료" 축을 복제하지 않고 이벤트 순서 자체를 따른다. 빈 chat-born 세션의 첫 턴도 놓치지 않는다.
-    if (state.replaying || state.turns.length <= previous) return;
+    // replay-end 뒤에도 진행 중 턴의 opener가 live 문법으로 복원될 수 있다. snapshot-end가 오기
+    // 전까지는 이번 접속이 이미 보유하던 상태이지 새 도착이 아니다. 그 뒤부터 열린 턴만 receipt와
+    // 미확인 집계를 움직인다. 빈 chat-born 세션의 첫 턴도 snapshot-end 뒤라 놓치지 않는다.
+    if (state.snapshotting || state.turns.length <= previous) return;
     const arrived = state.turns.length - previous;
     // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
     // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.
     setQueuedTurns((current) => Math.max(0, current - arrived));
     if (!nearBottomRef.current) setUnseenTurns((current) => current + arrived);
-  }, [state.replaying, state.turns.length]);
+  }, [state.snapshotting, state.turns.length]);
 
   React.useEffect(() => {
     const ready = state.turns.filter((turn) => turn.state !== "working" && turn.answer !== undefined).length;
