@@ -3131,7 +3131,7 @@ describe("Effort track interaction grammar", () => {
     expect(reduced).toContain(".agent-chat-ask-dot");
   });
 
-  it("pins the chat session-coordinate grammar — neutral by default, apex only for ultracode", () => {
+  it("pins the inline chat session-coordinate grammar — no badge, apex only on ultracode content", () => {
     const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
     const view = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     const block = (selector: string): string => {
@@ -3140,11 +3140,19 @@ describe("Effort track interaction grammar", () => {
       return chat.slice(start, chat.indexOf("}", start));
     };
 
-    // 좌표는 상태(신호)도 위치(brass)도 정체성도 아니다 — 기본형은 어떤 채널도 타지 않는다.
-    const chip = block(".agent-chat-coord");
-    expect(chip).toContain("border: 1px solid var(--hairline);");
+    // 좌표는 최근 백그라운드 작업 글리프처럼 툴 행에 직접 선다. 별도 배지 표면(테두리·바탕·
+    // radius)을 다시 만들지 않고, 상태·위치·정체성 채널도 빌리지 않는다.
+    const coordinate = block(".agent-chat-coord");
+    expect(coordinate).toContain("border: 0;");
+    expect(coordinate).toContain("background: transparent;");
+    expect(coordinate).toContain("padding: 0;");
+    expect(coordinate).not.toContain("border-radius:");
+    const model = block(".agent-chat-coord-model");
+    expect(model).toContain("min-width: 0;");
+    expect(model).toContain("overflow: hidden;");
+    expect(model).toContain("text-overflow: ellipsis;");
     for (const channel of ["--aurora", "--warn", "--coral", "--positive", "--brass", "--id-"]) {
-      expect(chip, channel).not.toContain(channel);
+      expect(coordinate, channel).not.toContain(channel);
     }
 
     // 색을 얻는 것은 강도 한 자리이고, 그 어휘는 런치 트랙의 것이다: MAX는 crest, ULTRACODE는 apex.
@@ -3159,9 +3167,10 @@ describe("Effort track interaction grammar", () => {
       /@keyframes agent-chat-ultracode-wave \{\s*from \{ background-position: 0 0; \}\s*to \{ background-position: -200% 0; \}/,
     );
 
-    // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
-    // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
-    expect(block(".agent-chat-coord.is-ultracode")).toContain("color-mix(in oklab, var(--apex)");
+    // ultracode도 바깥 배지를 되살리지 않는다. apex는 별과 강도 글자만 얻고 모델명·행 표면은
+    // 중립으로 남는다.
+    expect(chat).not.toContain(".agent-chat-coord.is-ultracode {");
+    expect(block(".agent-chat-coord.is-ultracode .agent-chat-coord-mark")).toContain("color: var(--apex-ink);");
 
     // 물결은 모션이므로 감속에서 멈춘다. 그라데이션을 지우면서 채움도 되돌려야 글자가 남는다.
     const reduced = chat.slice(chat.indexOf("@media (prefers-reduced-motion: reduce)"));
@@ -3169,10 +3178,11 @@ describe("Effort track interaction grammar", () => {
       /\.agent-chat-coord-effort\[data-effort-level="ultra"\] \{[\s\S]*?animation: none;[\s\S]*?-webkit-text-fill-color: var\(--apex-ink\);/,
     );
 
-    // 좌표를 말하는 자리는 이제 이 배지 하나다 — 로그 첫 줄의 태생 기록이 퇴역했으므로
-    // 좁은 폭에서도 배지가 물러나지 않는다(물러나면 좌표를 볼 길이 사라진다).
+    // 좌표를 말하는 자리는 이제 이 각인 하나다 — 로그 첫 줄의 태생 기록이 퇴역했으므로
+    // 좁은 폭에서도 각인이 물러나지 않는다(물러나면 좌표를 볼 길이 사라진다). 단독·그룹 선택자
+    // 모두 막는다: 예전 정규식은 `.hint, .coord`를 놓쳐 숨김이 남아도 green이었다.
     expect(chat).not.toContain(".agent-chat-birth");
-    expect(chat).not.toMatch(/@container \([^)]*\) \{\s*\.agent-chat-coord \{\s*display: none;/);
+    expect(chat).not.toMatch(/@container\s*\([^)]*\)\s*\{[\s\S]*?\.agent-chat-coord\s*(?:,|\{)[\s\S]*?display:\s*none;/);
 
     // 좌표는 사실이지 컨트롤이 아니다 — 세션이 실행 정책을 소유하므로 여기서 바꿀 수 없고,
     // 누를 수 있게 그리면 거짓 약속이 된다.
