@@ -414,6 +414,38 @@ describe("antigravity request wire", () => {
     expect(other).not.toBe(first);
   });
 
+  it("collapses a JSON Schema union type into Gemini's scalar type plus nullable", () => {
+    // Gemini의 와이어는 OpenAPI라 `type`이 스칼라 하나여야 하고, 리스트를 받으면
+    // 요청 전체를 400으로 거절한다("Proto field is not repeating, cannot start list").
+    // 선택 인자를 `["string", "null"]`로 적는 클라이언트는 그 한 줄 때문에 도구를
+    // 통째로 잃는다 — Grok Build 1.0.5의 내장 도구 26개가 그렇게 적는다.
+    expect(sanitizeGeminiSchema({
+      type: "object",
+      properties: {
+        timeout: { type: ["integer", "null"], description: "Seconds" },
+        path: { type: ["string", "null"] },
+        domains: { type: ["array", "null"], items: { type: "string" } },
+        plain: { type: "string" },
+      },
+    })).toEqual({
+      type: "object",
+      properties: {
+        timeout: { type: "integer", nullable: true, description: "Seconds" },
+        path: { type: "string", nullable: true },
+        domains: { type: "array", nullable: true, items: { type: "string" } },
+        plain: { type: "string" },
+      },
+    });
+  });
+
+  it("keeps a union of two real types usable instead of refusing it", () => {
+    // 두 실제 타입의 유니온은 이 와이어로 표현할 수 없다. 좁히는 쪽이 거절보다 낫다 —
+    // 모델은 여전히 쓸 수 있는 인자를 받는다.
+    expect(sanitizeGeminiSchema({ type: ["string", "number"] })).toEqual({ type: "string" });
+    // null만 있는 유니온에는 남길 타입이 없다. 루트가 아닌 프로퍼티이므로 untyped로 둔다.
+    expect(sanitizeGeminiSchema({ type: ["null"] })).toEqual({ nullable: true });
+  });
+
   it("strips JSON Schema keys the wire refuses while keeping the shape", () => {
     expect(sanitizeGeminiSchema({
       $schema: "http://json-schema.org/draft-07/schema#",
@@ -508,6 +540,25 @@ describe("antigravity request wire", () => {
     expect(envelopeFor(request({ tool_choice: "auto" })).request.toolConfig).toBeUndefined();
     expect(envelopeFor(request({ tool_choice: "none" })).request.toolConfig)
       .toEqual({ functionCallingConfig: { mode: "NONE" } });
+  });
+
+  it("gives a free-form object the empty property map this wire needs", () => {
+    // 클라이언트는 스키마를 못 적는 페이로드를 `{ type: "object" }`로 적는다 —
+    // Grok Build의 `use_tool.tool_input`이 MCP 도구마다 달라지는 그 자리다. Gemini는
+    // 그것을 "아무 객체"로 읽지 않고 요청을 통째로 거절하며, 그 거절은 필드 이름이 없는
+    // "Request contains an invalid argument"라 무엇이 문제인지 말하지 않는다.
+    expect(sanitizeGeminiSchema({ type: "object", description: "Free-form" }))
+      .toEqual({ type: "object", description: "Free-form", properties: {} });
+  });
+
+  it("clamps an output request above the ceiling instead of letting the turn die", () => {
+    // 창 크기와 출력 상한은 다른 수다: 이 모델의 카탈로그 창은 1M인데 출력은 64k에서 끊긴다.
+    // 실측(2026-08-23): 65,536은 통과, 131,072는 400. 더 달라고 적은 클라이언트가 틀린 것이
+    // 아니다 — Grok Build는 자기 설정에서 읽은 128,000을 매 턴 적어 보낸다.
+    expect(envelopeFor(request({ max_output_tokens: 128_000 })).request.generationConfig.maxOutputTokens)
+      .toBe(65_536);
+    expect(envelopeFor(request({ max_output_tokens: 8_192 })).request.generationConfig.maxOutputTokens)
+      .toBe(8_192);
   });
 
   it("sends no thinkingConfig for a model whose catalog entry declares no ladder", () => {

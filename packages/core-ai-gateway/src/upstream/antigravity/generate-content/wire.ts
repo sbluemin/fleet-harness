@@ -144,6 +144,26 @@ const GEMINI_SCHEMA_KEYS: ReadonlySet<string> = new Set([
   "anyOf",
 ]);
 
+/**
+ * The largest `maxOutputTokens` this wire accepts.
+ *
+ * The context window and the output ceiling are different numbers: the catalog window for
+ * Gemini 3.7 Flash is 1M, and the wire still refuses an output request above 64k with the
+ * contentless `Request contains an invalid argument` — no field name, no limit, just a 400
+ * that kills the turn before a token is produced.
+ *
+ * Measured 2026-08-23 against `daily-cloudcode-pa.googleapis.com`: 65,536 and below are
+ * accepted, 131,072 is refused, with and without tools. A client that asks for more is not
+ * making a mistake — Grok Build asks for 128,000 on every turn because that is the ceiling
+ * it reads from its own config — so clamping is right and refusing is not. A caller cannot
+ * receive more than the provider will emit anyway.
+ */
+const GEMINI_MAX_OUTPUT_TOKENS = 65_536;
+
+function clampGeminiOutputTokens(requested: number): number {
+  return requested > GEMINI_MAX_OUTPUT_TOKENS ? GEMINI_MAX_OUTPUT_TOKENS : requested;
+}
+
 /** `format` values Gemini recognizes; anything else is dropped, not guessed. */
 const GEMINI_STRING_FORMATS: ReadonlySet<string> = new Set(["enum", "date-time"]);
 const GEMINI_NUMBER_FORMATS: ReadonlySet<string> = new Set(["float", "double", "int32", "int64"]);
@@ -183,6 +203,30 @@ export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
       case "required":
         if (Array.isArray(raw)) out.required = raw.filter((entry) => typeof entry === "string");
         break;
+      case "type": {
+        // JSON Schema lets `type` be a union (`["string", "null"]`), which is how a client
+        // spells an optional parameter. Gemini's wire is OpenAPI, where `type` is one scalar
+        // and absence is `nullable` — it answers a list with a request-level 400
+        // ("Proto field is not repeating, cannot start list"), so the whole turn dies, tools
+        // and all. The key whitelist above cannot catch this: the key is legal and the
+        // *value shape* is not.
+        //
+        // Measured against Grok Build 1.0.5, whose 26 built-in tools carry 32 such unions.
+        // Claude Code sends none, which is why this survived until a second client arrived.
+        if (typeof raw === "string") {
+          out.type = raw;
+          break;
+        }
+        if (!Array.isArray(raw)) break;
+        const named = raw.filter((entry): entry is string => typeof entry === "string");
+        const concrete = named.filter((entry) => entry !== "null");
+        // `null` in the union is the client saying "may be omitted" — Gemini's own spelling.
+        if (named.length !== concrete.length) out.nullable = true;
+        // Keep the first concrete member. A union of two real types cannot be expressed here,
+        // and narrowing beats refusing the request: the model still gets a usable parameter.
+        if (concrete[0] !== undefined) out.type = concrete[0];
+        break;
+      }
       default:
         out[key] = raw;
     }
@@ -190,6 +234,13 @@ export function sanitizeGeminiSchema(value: unknown): Record<string, unknown> {
   // An object with no declared type reads as untyped upstream and is refused;
   // every tool parameter document is an object at its root.
   if (out.type === undefined && out.properties !== undefined) out.type = "object";
+  // The mirror case: a declared object with no property map. A client spells a free-form
+  // payload that way — Grok Build's `use_tool.tool_input` carries whatever schema the MCP
+  // tool on the other side declares, so it cannot enumerate fields. Gemini refuses the
+  // request rather than reading it as "any object", and the refusal is the generic
+  // "Request contains an invalid argument", which names nothing. An empty map says the same
+  // thing in the shape this wire accepts.
+  if (out.type === "object" && out.properties === undefined) out.properties = {};
   return out;
 }
 
@@ -450,7 +501,9 @@ export function buildAntigravityEnvelope(
       ...(declarations.length > 0 ? { tools: [{ functionDeclarations: declarations }] as [{ functionDeclarations: GeminiFunctionDeclaration[] }] } : {}),
       ...(toolConfig === undefined ? {} : { toolConfig }),
       generationConfig: {
-        ...(request.max_output_tokens === undefined ? {} : { maxOutputTokens: request.max_output_tokens }),
+        ...(request.max_output_tokens === undefined
+          ? {}
+          : { maxOutputTokens: clampGeminiOutputTokens(request.max_output_tokens) }),
         ...(selection.thinkingLevel === undefined
           ? {}
           : { thinkingConfig: { thinkingLevel: selection.thinkingLevel } }),
