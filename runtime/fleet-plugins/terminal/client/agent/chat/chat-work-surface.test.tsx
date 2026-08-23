@@ -352,3 +352,35 @@ describe("chat ledger — one live line, and a job anchor instead of a card", ()
     expect(workPane()).not.toBeNull();
   });
 });
+
+/**
+ * 병렬 도구 배치 — 한 assistant 메시지가 tool_use 블록을 여럿 실은 경우다. 그 스텝들은 다음
+ * 사용자 메시지가 결과를 실어 올 때까지 **동시에** running으로 남으므로, 꼬리 하나만 라이브 줄로
+ * 걷으면 나머지가 그대로 전폭 행으로 선다 — 배치가 클수록 한 줄 원장이 무너진다.
+ */
+describe("chat ledger — a parallel tool batch", () => {
+  it("folds every concurrently running step into the one live line", () => {
+    logState = {
+      ...stateWith([]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Reading four files at once." },
+          { type: "tool", name: "Read", detail: "alpha.md", state: "ok" },
+          { type: "tool", name: "Read", detail: "beta.md", state: "running" },
+          { type: "tool", name: "Read", detail: "gamma.md", state: "running" },
+          { type: "tool", name: "Grep", detail: "notes", state: "running" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "working",
+        toolCount: 4,
+        draft: "",
+      }],
+    };
+    mount();
+    expect(container?.querySelectorAll(".agent-chat-segment > .agent-chat-step").length).toBe(0);
+    const live = container?.querySelector(".agent-chat-tally.is-live");
+    expect(live?.textContent).toContain("Reading beta.md");
+    expect(live?.textContent).toContain("Reading gamma.md");
+    expect(live?.textContent).toContain("Searching notes");
+  });
+});

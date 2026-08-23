@@ -783,10 +783,11 @@ function Ledger({
       {segments.map((segment, index) => {
         // 도는 턴의 마지막 구간만 라이브다 — 그 구간의 꼬리 한 줄이 "지금 무엇을 하는가"를 진다.
         const live = working && index === segments.length - 1;
-        const tail = live ? runningTail(segment.parts) : undefined;
-        const parts = tail !== undefined ? segment.parts.slice(0, -1) : segment.parts;
+        const tails = live ? runningTails(segment.parts) : [];
+        const parts = tails.length > 0 ? segment.parts.slice(0, -tails.length) : segment.parts;
         // 꼬리를 떼고 남은 마지막 조각이 집계라면 그 집계가 곧 라이브 줄이고, 꼬리는 그 줄의
-        // 끝에 붙는다. 집계가 아니면(잡 앵커·확인되지 않은 스텝) 꼬리가 혼자 라이브 줄이 된다.
+        // 끝에 붙는다. 집계가 아니면(잡 앵커·확인되지 않은 스텝, 또는 구간이 도구로 시작한 경우)
+        // 아래에서 그 줄을 따로 세운다 — 어느 쪽이든 도는 스텝은 자기 행을 갖지 않는다.
         const liveTallyAt = live && parts.at(-1)?.kind === "tally" ? parts.length - 1 : -1;
         return (
           <div className="agent-chat-segment" key={index}>
@@ -806,9 +807,7 @@ function Ledger({
                     groups={part.groups}
                     folded={part.folded}
                     language={language}
-                    jobsByToolUse={jobsByToolUse}
-                    onOpenJob={onOpenJob}
-                    {...(at === liveTallyAt ? { live: true, ...(tail ? { tail } : {}) } : {})}
+                    {...(at === liveTallyAt ? { live: true, tails } : {})}
                   />
                 );
               }
@@ -819,8 +818,8 @@ function Ledger({
                 ? <AskCard key={`ask-${part.item.ask.id}`} ask={part.item.ask} language={language} onAnswer={onAnswer} />
                 : <Step key={at} item={part.item} language={language} live={live} />;
             })}
-            {tail !== undefined && liveTallyAt < 0
-              ? <Step item={tail} language={language} live />
+            {tails.length > 0 && liveTallyAt < 0
+              ? <Tally groups={[]} folded={[]} language={language} live tails={tails} />
               : null}
           </div>
         );
@@ -835,11 +834,22 @@ function Ledger({
   );
 }
 
-/** 구간의 꼬리에 선 진행 중 스텝 — 라이브 줄이 이름을 빌려 오는 자리다. */
-function runningTail(parts: readonly AgentChatLedgerPart[]): AgentChatTurnItem | undefined {
-  const last = parts.at(-1);
-  if (last === undefined || last.kind !== "step") return undefined;
-  return last.item.type !== "ask" && last.item.state === "running" ? last.item : undefined;
+/**
+ * 구간의 꼬리에 선 진행 중 스텝들 — 라이브 줄이 이름을 빌려 오는 자리다.
+ *
+ * 하나만 걷으면 안 된다. 한 assistant 메시지가 tool_use 블록을 여럿 실으면(병렬 배치) 그
+ * 스텝들은 다음 메시지가 결과를 실어 올 때까지 **동시에** running으로 남고, 걷히지 않은 것이
+ * 그대로 전폭 행으로 선다 — 배치가 클수록 한 줄 원장이 무너진다.
+ */
+function runningTails(parts: readonly AgentChatLedgerPart[]): readonly AgentChatTurnItem[] {
+  const tails: AgentChatTurnItem[] = [];
+  for (let at = parts.length - 1; at >= 0; at -= 1) {
+    const part = parts[at];
+    if (part === undefined || part.kind !== "step") break;
+    if (part.item.type === "ask" || part.item.state !== "running") break;
+    tails.unshift(part.item);
+  }
+  return tails;
 }
 
 /**
@@ -854,23 +864,21 @@ function Tally({
   groups,
   folded,
   language,
-  jobsByToolUse,
-  onOpenJob,
   live = false,
-  tail,
+  tails = [],
 }: {
   readonly groups: readonly AgentChatStepGroup[];
   readonly folded: readonly AgentChatTurnItem[];
   readonly language: "en" | "ko";
-  readonly jobsByToolUse: ReadonlyMap<string, AgentChatJob>;
-  readonly onOpenJob: (id: string) => void;
   /** 도는 턴의 꼬리 집계인가 — 링과 물결을 얻고, 펼침 안에 진행 중 스텝까지 함께 든다. */
   readonly live?: boolean;
-  /** 지금 도는 스텝. 이 줄의 꼬리로 붙어 "무엇을 하는 중인지"를 말한다. */
-  readonly tail?: AgentChatTurnItem;
+  /** 지금 도는 스텝들. 이 줄의 꼬리로 붙어 "무엇을 하는 중인지"를 말한다(병렬 배치는 여럿이다). */
+  readonly tails?: readonly AgentChatTurnItem[];
 }) {
   const t = getT(language);
-  if (groups.length === 0) return null;
+  // 셀 것도 도는 것도 없으면 줄이 아니다. 도는 것만 있는 구간(도구로 시작한 구간)에서는 집계가
+  // 비어도 이 줄이 서야 한다 — 그러지 않으면 그 스텝들이 다시 자기 행을 갖는다.
+  if (groups.length === 0 && tails.length === 0) return null;
   const clauses = groups.map((group, index) => (
     <React.Fragment key={`${group.family}-${group.name ?? ""}`}>
       {index > 0 ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span> : null}
@@ -886,20 +894,26 @@ function Tally({
   // 라이브 줄은 자기가 살아 있다고 스스로 말해야 한다. 예전에는 최근 여덟 줄이 흘러가는 것
   // 자체가 그 증거였는데, 그 증거가 읽는 자리의 절반을 먹었다 — 이제 링과 좌→우 물결, 그리고
   // 지금 도는 도구의 이름 하나가 같은 말을 한 줄로 한다.
-  const tailLabel = live && tail !== undefined
-    ? `${runningVerb(tail.name ?? "", language)}${tail.detail !== undefined ? ` ${tail.detail}` : ""}`
-    : null;
-  const body = live && tail !== undefined ? [...folded, tail] : folded;
+  // 도는 스텝은 전부 이 줄의 꼬리가 된다 — 병렬 배치의 N개도 행이 아니라 절이다.
+  const running = live ? tails : [];
+  const body = [...folded, ...running];
   const line = (
     <>
       {live ? <span className="agent-chat-step-orbit" aria-hidden="true" /> : null}
       <span className={live ? "agent-chat-tally-text agent-chat-live-text" : "agent-chat-tally-text"}>
         {clauses}
-        {tailLabel !== null ? (
-          <>
-            <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
-            <span role="status">{tailLabel}</span>
-          </>
+        {running.length > 0 ? (
+          // 라이브 리전은 이 묶음 하나다 — 절마다 걸면 배치 하나가 N번 낭독된다.
+          <span className="agent-chat-tally-running" role="status">
+            {running.map((item, index) => (
+              <React.Fragment key={index}>
+                {index > 0 || clauses.length > 0
+                  ? <span className="agent-chat-tally-sep" aria-hidden="true">·</span>
+                  : null}
+                <span>{`${runningVerb(item.name ?? "", language)}${item.detail !== undefined && item.detail.length > 0 ? ` ${item.detail}` : ""}`}</span>
+              </React.Fragment>
+            ))}
+          </span>
         ) : null}
       </span>
     </>
