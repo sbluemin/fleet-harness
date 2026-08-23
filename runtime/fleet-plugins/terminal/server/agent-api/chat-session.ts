@@ -533,22 +533,28 @@ class AgentChatSession {
       const replayEnd = liveFrom === -1 ? snapshot.length : liveFrom;
       const replayed = snapshot.slice(0, replayEnd);
       const live = snapshot.slice(replayEnd);
-      listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
-      // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
-      // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다.
-      for (const entry of replayed) {
-        if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
+      if (replayed.length === 0) {
+        // 재생할 정착 이벤트가 없다 — 상한이 원래 경계까지 밀어낸 것이다(FIFO 소거라 여는 좌표가
+        // 밀렸으면 그 앞도 다 밀린다: syntheticStart는 곧 여기다). 앞세우는 합성 프레임은 저널
+        // seq가 없으므로, 첫 live seq 바로 아래에 **서로 다른 오름차순** 값을 준다. 같은 seq를
+        // 겹쳐 주면 seq<=lastSeq로 중복을 거르는 소비자가 경계·opener·첫 내용을 버린다(빈 replayed는
+        // 상한 소거뿐이라 첫 live seq가 커서 음수로 내려가지 않는다).
+        const firstLiveSeq = live[0]?.seq ?? this.seq;
+        const lead = syntheticStart ? 3 : 2;
+        let seq = firstLiveSeq - lead;
+        listener({ seq, event: { kind: "replay-start" } });
+        listener({ seq: seq += 1, event: { kind: "replay-end", turns: 0 } });
+        if (syntheticStart) listener({ seq: seq += 1, event: { kind: "turn-start" } });
+      } else {
+        // 남아 있는 원래 경계는 snapshot 전체의 바깥 경계가 아니다. 그대로 보내면 원래 replay-end
+        // 뒤에 쌓인 과거 live 턴이 새 도착으로 읽히므로, 합성한 바깥 경계만 전달한다. replayed가
+        // 비지 않으면 여는 좌표가 살아 있어 live 쪽에 있으므로 합성 turn-start는 필요 없다.
+        listener({ seq: snapshot[0]?.seq ?? this.seq, event: { kind: "replay-start" } });
+        for (const entry of replayed) {
+          if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
+        }
+        listener({ seq: replayed.at(-1)?.seq ?? this.seq, event: { kind: "replay-end", turns: countReplayedTurns(replayed) } });
       }
-      // replayed가 비면(상한이 여는 좌표까지 밀어낸 진행 중 턴) 마지막 재생 seq가 없다. 그때
-      // this.seq(최신)를 쓰면 뒤따르는 합성 turn-start·꼬리가 더 오래된 live[0].seq로 되돌아가
-      // seq 축이 역행한다 — 단조 축 계약(chat-events.ts) 위반이라 seq로 거르는 소비자가 꼬리를
-      // 통째로 버릴 수 있다. 경계 seq를 첫 live 이벤트 이하로 두어 축을 단조로 지킨다.
-      listener({
-        seq: replayed.at(-1)?.seq ?? live[0]?.seq ?? this.seq,
-        event: { kind: "replay-end", turns: countReplayedTurns(replayed) },
-      });
-      // 상한에 여는 좌표가 밀려난 경우: 합성 turn-start로 working 턴을 연 뒤 꼬리를 잇는다.
-      if (syntheticStart) listener({ seq: live[0]?.seq ?? this.seq, event: { kind: "turn-start" } });
       // 경계 밖: 지금 도는 턴의 이벤트를 live로 흘린다 — 클라이언트가 새로 여는 working 턴이 된다.
       for (const entry of live) {
         if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
