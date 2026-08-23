@@ -4,7 +4,21 @@
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { OperationNode } from "./types.js";
 import { type DeferredDeletionReceipt, deleteOperation, fetchOperations } from "./api.js";
-import { getState, hydrateOperations } from "./store.js";
+import { minimizeOperation } from "./canvas/canvas-store.js";
+import { playMinimizeFlight } from "./canvas/panel-motion.js";
+import { clearIdleArrival } from "./operation-marks.js";
+import { getState, hydrateOperations, setActiveOperation } from "./store.js";
+
+// ─── minimize ──────────────────────────────────────────────────────────────────
+
+// 최소화는 패널을 치우는 명시적 처리다. War Room에서는 일반 포커스 확인을 막지만,
+// 사용자가 직접 최소화를 누른 Operation의 유휴 도착은 확인한 것으로 보고 미확인 마크를 걷는다.
+export function minimizeOperationCompletely(operationId: string): void {
+  if (getState().activeOperationId === operationId) setActiveOperation(null);
+  clearIdleArrival(operationId);
+  playMinimizeFlight(operationId);
+  minimizeOperation(operationId);
+}
 
 // ─── close ─────────────────────────────────────────────────────────────────────
 

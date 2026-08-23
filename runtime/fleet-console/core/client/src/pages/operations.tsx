@@ -9,11 +9,11 @@ import type { ClientApiCapability, FleetClientPlugin, OperationKindDescriptor } 
 import { ApiError, createGroup, deleteGroup, fetchGroups, fetchOperations, fetchTheaters, patchOperation, patchTheaterOrder, renameOperation, updateGroup, type DeferredDeletionReceipt } from "../api.js";
 import { clearActiveOperation, shouldReleaseActiveOperation } from "../active-operation-surface.js";
 import { availableCompanionPanels, blocksOperationsShortcutWhileEditing, isBlockingDialogOpen, resolveCompanionShortcutToggle, resolveOperationsArrowShortcutAction, usableCompanionShortcuts } from "../shortcuts.js";
-import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
+import { closeOperationCompletely, minimizeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
 import { findTheaterShellId, forgetTheaterCompletely, isTheaterShellLaunch, registerTheaterFromPath } from "../theater.js";
-import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperation, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
+import { claimTopZIndex, clearCompanionOperationId, clearMaximizedOperationId, consumePendingFitAllOperations, ensureDefaultGeometry, fitAllOperations, focusOperation as focusCanvasOperation, forceDropCompanionOperationId, getCompanionOperationId, getCompanionPanelVisibilityOverrides, getFocusLayerRevision, getFormationView, getLoadedTheaterId, getMaximizedOperationId, getSnapshot as getCanvasSnapshot, getTheaterCanvasSnapshot, getTheaterCompanionOperationId, loadForTheater, minimizeOperations, pruneOperations, resolveLaunchGeometry, restoreOperation, setCompanionOperationId, setCompanionPanelVisible, setMaximizedOperationId, setOperationGeometry, setTheaterOperationGeometry, toggleFormationView, useCompanionOperationId, useFormationView, useMaximizedOperationId, useMinimized, type OperationGeometry } from "../canvas/canvas-store.js";
 import { screenToCanvas, type CanvasPoint } from "../canvas/coordinates.js";
-import { playMinimizeFlight, playRestoreFlight } from "../canvas/panel-motion.js";
+import { playRestoreFlight } from "../canvas/panel-motion.js";
 import { OperationsCanvas } from "../canvas/canvas.js";
 import { GroupContextMenu } from "../canvas/group-context-menu.js";
 import { operationAccentFromNode } from "../canvas/operation-accent.js";
@@ -249,8 +249,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
         const currentIndex = order.indexOf(operationId);
         if (currentIndex === -1) return;
         const nextId = order.length > 1 ? order[(currentIndex + 1) % order.length] ?? null : null;
-        playMinimizeFlight(operationId);
-        minimizeOperation(operationId);
+        minimizeOperationCompletely(operationId);
         setActiveOperation(nextId);
         return;
       }
@@ -463,9 +462,7 @@ export function Operations({ state, claimBootPanelMinimization, onDeferredDeleti
   }, []);
 
   const handleMinimize = useCallback((operationId: string) => {
-    if (stateRef.current.activeOperationId === operationId) setActiveOperation(null);
-    playMinimizeFlight(operationId);
-    minimizeOperation(operationId);
+    minimizeOperationCompletely(operationId);
   }, []);
 
   const handleResume = useCallback((operationId: string) => {
