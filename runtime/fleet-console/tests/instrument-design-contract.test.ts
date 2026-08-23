@@ -2212,10 +2212,16 @@ describe("Instrument core design contract", () => {
     // 바에 선 컨트롤들이 한 문법으로 읽힌다. 라벨을 두르면 도는 동안에만 서는 문 하나가 바에서
     // 가장 큰 물건이 되어, 상시로 읽어야 할 좌표와 계기를 밀어낸다.
     const composerAttachBlock = chat.match(/^\.agent-chat-composer-attach \{[^}]*\}/m)?.[0] ?? "";
+    // 한 행에 선 글리프 버튼들은 한 문법을 쓴다 — 백그라운드 작업 글리프도 같은 또래다.
     for (const glyph of ["border: 0;", "background: transparent;", "color: var(--text-tertiary);", "padding: 7px;"]) {
       expect(composerAttachBlock, glyph).toContain(glyph);
       expect(composerStopBlock, glyph).toContain(glyph);
+      expect(composerWorkBlock, glyph).toContain(glyph);
     }
+    // 작업 글리프의 표식은 도는 중 14px·정착 13px이라 패딩만으로는 이웃보다 작은 상자가 된다.
+    // 상자를 못박아 네 버튼이 같은 크기와 같은 클릭 과녁을 갖고, 잡이 끝나도 행이 움찔하지 않는다.
+    expect(composerWorkBlock).toContain("width: 30px;");
+    expect(composerWorkBlock).toContain("height: 30px;");
     // 상자는 표식이 아니라 글리프 규격을 따른다 — 이웃이 16px svg를 싣고 있어, 표식 크기를 그대로
     // 상자로 쓰면 같은 패딩에도 버튼만 작아지고 클릭 과녁이 나란히 어긋난다(실측 25 vs 30).
     const stopMarkBlock = chat.match(/^\.agent-chat-composer-stop-mark \{[^}]*\}/m)?.[0] ?? "";

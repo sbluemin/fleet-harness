@@ -1221,6 +1221,12 @@
   align-items: center;
   justify-content: center;
   flex: none;
+  /* 상자는 표식이 아니라 글리프 규격이 정한다. 이웃(첨부·계기·중지)은 16px 표식에 7px 패딩이라
+     30px인데, 이 글리프의 표식은 도는 중 14px·정착 13px이라 같은 패딩으로도 28·27px가 된다 —
+     한 줄에 선 네 버튼이 서로 다른 크기와 클릭 과녁을 갖고, 도는 잡이 끝나는 순간 행이 1px
+     움찔한다(실측). 상자를 못박으면 표식은 지금 그대로 그 안에 가운데로 앉는다. */
+  width: 30px;
+  height: 30px;
 }
 
 .agent-chat-composer-work:hover {
