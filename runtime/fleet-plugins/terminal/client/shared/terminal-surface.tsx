@@ -589,10 +589,18 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     const terminal = terminalRef.current;
     const container = containerRef.current;
     if (!terminal || !container) return;
-    const terminalTheme = terminalThemeFor(activeTheme);
-    terminal.options.theme = terminalTheme;
-    terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
-    syncTerminalViewportBackground(container, terminalTheme);
+    const applyTerminalTheme = () => {
+      const terminalTheme = terminalThemeFor(activeTheme);
+      terminal.options.theme = terminalTheme;
+      terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
+      syncTerminalViewportBackground(container, terminalTheme);
+    };
+    applyTerminalTheme();
+    // 리퀴드 글래스 설정 토글은 data-glass 속성으로만 드러난다 — 테마 계산값이 바뀌므로
+    // 열려 있는 터미널도 같은 채널을 다시 읽어야 한다(리로드 없이 즉시 전환).
+    const glassObserver = new MutationObserver(applyTerminalTheme);
+    glassObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass"] });
+    return () => glassObserver.disconnect();
   }, [activeTheme, mountedTerminalEpoch]);
 
   useEffect(() => {
@@ -708,13 +716,15 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
   }
 }
 
-/* 패널 면은 theme.css의 --surface-panel 하나가 소유한다 — 캡션·거터·터미널 필드가 같은 값이라야
-   창 하나로 읽힌다. xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의
-   background 리터럴은 그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 —
-   두 값이 갈라지지 않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
+/* 터미널 필드는 theme.css의 terminal 유리 채널(--glass-tint-terminal)을 계산값으로 읽는다 —
+   게이트가 닫히면 채널 기본값이 --surface-panel 불투명이라 구 판독 계약 그대로이고, 게이트가
+   열리면 반투명 틴트가 되어 패널 루트의 유리(블러)와 한 장으로 읽힌다(allowTransparency).
+   xterm은 CSS 변수를 못 받으므로 여기서 계산값을 읽어 넘긴다. 위 ITheme의 background 리터럴은
+   그 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이며 값의 출처가 아니다 — 두 값이 갈라지지
+   않도록 디자인 계약 테스트가 테마별로 동일함을 고정한다. */
 export function resolvePanelSurface(fallback: string): string {
   if (typeof document === "undefined") return fallback;
-  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--surface-panel").trim();
+  const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
   return resolved || fallback;
 }
 

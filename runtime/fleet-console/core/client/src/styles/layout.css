@@ -217,9 +217,21 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   height: var(--chrome-band-height);
   min-height: var(--chrome-band-height);
   border-bottom: 1px solid var(--surface-rim);
+  background: none;
+}
+
+/* 밴드 유리는 자식 없는 ::before가 진다 — 루트에 backdrop-filter를 직접 걸면 스태킹
+   컨텍스트+containing block이 생겨, 밴드 안에 앵커된 드롭다운(호스트·도움말 메뉴 등)이
+   캔버스 뒤로 갇힌다(실측 리그레션). 사이드바·밴드 캡도 같은 이유로 같은 형태다. */
+.command-band::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--glass-tint-band);
   -webkit-backdrop-filter: var(--glass-backdrop-soft);
   backdrop-filter: var(--glass-backdrop-soft);
+  pointer-events: none;
 }
 
 .command-band.is-fullscreen {
@@ -292,16 +304,30 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   gap: var(--space-1);
   padding-inline: var(--space-2);
   border-right: 1px solid var(--surface-rim);
-  /* 사이드바 상단 캡 — 같은 크롬 표면(chrome 틴트 채널)을 공유해야 한 열로 읽힌다. */
+  /* 사이드바 상단 캡 — 같은 크롬 표면(chrome 틴트 채널)을 ::before로 공유해야 한 열로 읽힌다. */
+  position: relative;
+  background: none;
+  box-shadow: inset 0 1px 0 var(--glass-rim);
+  transition: border-color 200ms ease;
+}
+
+.command-band-left::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
   background: var(--glass-tint-chrome);
   -webkit-backdrop-filter: var(--glass-backdrop-soft);
   backdrop-filter: var(--glass-backdrop-soft);
-  box-shadow: inset 0 1px 0 var(--glass-rim);
-  transition: background 200ms ease, border-color 200ms ease;
+  pointer-events: none;
+  transition: background 200ms ease;
 }
 
 .command-band-left.is-collapsed {
   border-color: transparent;
+}
+
+.command-band-left.is-collapsed::before {
   background: var(--glass-tint-band);
 }
 

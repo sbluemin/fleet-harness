@@ -4792,10 +4792,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 100%;
   overflow: hidden;
   /* 크롬 열은 --surface-chrome — 라이트에서 종이(카드·터미널)보다 어두워 시선을 작업면에 양보한다.
-     리퀴드 글래스 게이트가 열리면 chrome 틴트 채널이 유리 재료로 바뀐다(닫히면 별칭이라 무회귀). */
-  background: var(--glass-tint-chrome);
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+     유리는 자식 없는 ::before가 진다 — 루트 backdrop-filter는 containing block을 만들어
+     안쪽 앵커 팝업을 가둔다(.command-band::before 주석 참조). */
+  background: none;
   border: 1px solid var(--surface-rim);
   /* 좌측 가장자리·하단 Global Navigation에 밀착 — 바깥(왼쪽)·하단 모서리는 각지게, 안쪽 상단만 둥글게. */
   border-left: none;
@@ -4804,6 +4803,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
   /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다. */
   box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+}
+
+.operations-side-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--glass-tint-chrome);
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  pointer-events: none;
 }
 
 /* 펼친 상태에서는 상단 크롬 좌측 블록(.command-band-left)이 같은 폭·표면·우측 경계선으로
@@ -6736,7 +6747,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
   /* terminal-shell의 8px 패딩이 xterm 뷰포트를 사방에서 감싸므로 이 면은 실제로 보이는 띠다 —
      캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. 패널 면 하나를 그대로 쓴다. */
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel-face);
 }
 
 .canvas-operation-terminal .terminal-stage,
@@ -8885,7 +8896,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
      카드 면은 그 안의 xterm과 같은 --surface-panel이어야 한다 — 유리(--surface-glass)는 뒤에
      오는 것에 따라 유효색이 흔들리는데 xterm 배경은 불투명 한 값이라 맞출 수가 없고, Maritime
      5.3%p·Carbon 6.6%p의 계단으로 남는다. 카드의 정체는 테두리가 지고 면은 터미널에 넘긴다. */
-  background: var(--surface-panel);
+  background: var(--glass-tint-panel-face);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-soft);

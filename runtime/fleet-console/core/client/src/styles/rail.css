@@ -22,14 +22,25 @@
   border: 1px solid var(--surface-rim);
   border-right: none;
   border-bottom: none;
-  background:
-    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
-    color-mix(in oklch, var(--glass-tint-chrome) 92%, var(--ink-deep));
-  -webkit-backdrop-filter: var(--glass-backdrop-soft);
-  backdrop-filter: var(--glass-backdrop-soft);
+  background: none;
   box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-floating);
   overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
+}
+
+/* 레일 유리도 자식 없는 ::before가 진다 — 루트 backdrop-filter의 containing block 함정 회피. */
+.right-rail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background:
+    radial-gradient(130% 60% at 100% 0%, color-mix(in oklch, var(--brass) 7%, transparent), transparent 56%),
+    color-mix(in oklch, var(--glass-tint-strong) 92%, var(--ink-deep));
+  -webkit-backdrop-filter: var(--glass-backdrop-soft);
+  backdrop-filter: var(--glass-backdrop-soft);
+  pointer-events: none;
 }
 
 .right-rail.is-overlay {

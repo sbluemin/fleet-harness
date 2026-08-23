@@ -180,10 +180,11 @@
   /* 패널 채널 둘 — panel은 패널 루트가 유리 틴트로 쓰고, panel-face는 패널 안에서 같은
      면을 덧칠하던 자식(캡션·본문 팬)이 쓴다. 게이트가 열리면 face는 transparent가 되어
      루트 유리 한 장이 그대로 비친다 — 자식이 자기 틴트를 들면 겹침 얼룩(이중 알파)이 된다.
-     xterm 터미널 필드는 terminal-surface.tsx가 --surface-panel 원 토큰을 계속 읽으므로
-     불투명을 유지한다(판독 성역). */
+     xterm 터미널 필드는 terminal 채널을 계산값으로 읽어 간다(allowTransparency) — 게이트가
+     닫히면 채널 기본값이 --surface-panel 불투명이라 구 판독 계약으로 돌아간다. */
   --glass-tint-panel: var(--surface-panel);
   --glass-tint-panel-face: var(--surface-panel);
+  --glass-tint-terminal: var(--surface-panel);
   --glass-tint-band: var(--surface-band);
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
@@ -205,6 +206,7 @@
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
   --glass-on-tint-chrome: oklch(19% 0.018 245 / 48%);
   --glass-on-tint-panel: oklch(16.5% 0.016 245 / 55%);
+  --glass-on-tint-terminal: oklch(16.5% 0.016 245 / 50%);
   --glass-on-tint-band: oklch(13% 0.018 245 / 52%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
@@ -372,6 +374,7 @@
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
   --glass-on-tint-chrome: oklch(28% 0.04 248 / 42%);
   --glass-on-tint-panel: oklch(23% 0.03 248 / 48%);
+  --glass-on-tint-terminal: oklch(23% 0.03 248 / 45%);
   --glass-on-tint-band: oklch(20% 0.045 248 / 46%);
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
@@ -443,6 +446,7 @@
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
   --glass-on-tint-chrome: oklch(25% 0.006 252 / 42%);
   --glass-on-tint-panel: oklch(19% 0.008 252 / 48%);
+  --glass-on-tint-terminal: oklch(19% 0.008 252 / 45%);
   --glass-on-tint-band: oklch(18% 0.007 255 / 46%);
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
@@ -586,6 +590,7 @@
   --glass-on-tint-abyss: oklch(97% 0.003 100 / 50%);
   --glass-on-tint-chrome: oklch(96% 0.004 100 / 50%);
   --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
+  --glass-on-tint-terminal: oklch(98.2% 0.004 100 / 55%);
   --glass-on-tint-band: oklch(95.5% 0.005 100 / 52%);
   --glass-on-backdrop-strong: blur(26px) saturate(1.3);
   --glass-on-backdrop-soft: blur(12px) saturate(1.15);
@@ -637,6 +642,7 @@
     --glass-tint-chrome: var(--glass-on-tint-chrome);
     --glass-tint-panel: var(--glass-on-tint-panel);
     --glass-tint-panel-face: transparent;
+    --glass-tint-terminal: var(--glass-on-tint-terminal);
     --glass-tint-band: var(--glass-on-tint-band);
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
     --glass-backdrop-soft: var(--glass-on-backdrop-soft);
@@ -657,6 +663,7 @@
       --glass-tint-chrome: var(--surface-chrome);
       --glass-tint-panel: var(--surface-panel);
       --glass-tint-panel-face: var(--surface-panel);
+      --glass-tint-terminal: var(--surface-panel);
       --glass-tint-band: var(--surface-band);
       --glass-backdrop-strong: none;
       --glass-backdrop-soft: none;

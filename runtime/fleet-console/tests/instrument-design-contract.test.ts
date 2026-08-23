@@ -1727,10 +1727,10 @@ describe("Instrument core design contract", () => {
     // 있어야 한 열 한가운데의 이중 hairline과 우측 경계선 단절이 재발하지 않는다.
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
     expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
-    expect(commandBandLeftBlock).toContain("background: var(--glass-tint-chrome);");
+    expect(layout).toMatch(/\.command-band-left::before \{[^}]*background: var\(--glass-tint-chrome\);/);
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
-    expect(sideBarBlock).toContain("background: var(--glass-tint-chrome);");
+    expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
@@ -1748,11 +1748,11 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).not.toContain("border-color: inherit;");
     expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
-    expect(panelBodyBlock).toContain("background: var(--surface-panel);");
-    // 레일 Shell 카드도 같은 면이다 — 이 기본 규칙의 소비처는 레일 하나뿐이고, 유리로 되돌리면
-    // 카드가 자기 안의 xterm과 갈린다(불투명 xterm 배경은 반투명 유리를 따라갈 수 없다).
+    expect(panelBodyBlock).toContain("background: var(--glass-tint-panel-face);");
+    // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
+    // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
-    expect(terminalShellBlock).toContain("background: var(--surface-panel);");
+    expect(terminalShellBlock).toContain("background: var(--glass-tint-panel-face);");
     // 휴면은 패널 면 위의 상태다 — 톤을 낮추는 베이스 레이어가 돌아오면 창 안에 다른 면이 생긴다.
     const dormantBlock = components.match(/^\.canvas-operation-dormant \{[^}]*\}/m)?.[0] ?? "";
     expect(dormantBlock).toContain("background: radial-gradient(");
@@ -1983,7 +1983,8 @@ describe("Instrument core design contract", () => {
 
     // xterm은 CSS 변수를 못 받으므로 계산값을 읽어 넘긴다 — 이 경로가 사라지면 터미널 필드가
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
-    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--surface-panel")');
+    expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal")');
+    expect(fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8")).toContain("allowTransparency: true");
     expect(surface).toContain("...base, background: resolvePanelSurface(");
 
     // ITheme의 background 리터럴은 토큰을 못 읽는 환경의 폴백일 뿐이다 — 테마별로 theme.css의
