@@ -5,7 +5,9 @@ import type { RailPanelContext } from "@fleet-console/sdk/rail";
 
 import type { CommitResult, DiffFileEntry, StatusResult, WorkstateResult } from "../server/types.js";
 import { getT, readErrorSentence, type RepositoryMessageKey } from "./i18n/index.js";
+import { FilesViewToggle, readFilesViewMode, saveFilesViewMode, type FilesViewMode } from "./changed-files.js";
 import { HunkView } from "./hunk-view.js";
+import { DiffTreeView } from "./repository-tree.js";
 import { DIFF_DIVIDER_WIDTH, HUNK_PANE_MIN_WIDTH, clampListPaneWidth } from "./rail-layout.js";
 
 type T = Translate<RepositoryMessageKey>;
@@ -87,6 +89,12 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<StagingNotice | null>(null);
   const noticeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // 커밋 인스펙터와 같은 선호 키를 읽는다 — 목록/트리는 화면마다 다른 취향이 아니라 한 문법이다.
+  const [filesView, setFilesView] = useState<FilesViewMode>(() => readFilesViewMode());
+  const chooseFilesView = useCallback((mode: FilesViewMode) => {
+    setFilesView(mode);
+    saveFilesViewMode(mode);
+  }, []);
   const [listPaneWidth, setListPaneWidth] = useState(readListPaneWidth);
   const listPaneWidthRef = useRef(listPaneWidth);
   const [isDragging, setIsDragging] = useState(false);
@@ -297,8 +305,12 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
             길이를 더하면 사용자가 찾을 수 있는 파일 수보다 큰 값을 말하게 된다. 경로로 센다. */}
         {status.kind === "ok" && status.truncated && <div className="repository-truncated-note">{t("repository.status.capped", { count: new Set([...staged, ...unstaged].map((entry) => entry.path)).size })}</div>}
         {status.kind === "ok" && <>
+          <div className="repository-staging-viewbar">
+            <FilesViewToggle mode={filesView} onMode={chooseFilesView} t={t} />
+          </div>
           <StagingSection
             t={t}
+            view={filesView}
             label={t("repository.staging.unstaged")}
             files={unstaged}
             emptyLabel={t("repository.staging.emptyUnstaged")}
@@ -322,7 +334,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
                   : t("repository.staging.discardFile", { path: entry.path })}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); armOrDiscard(entry); }}
-              >{armedDiscard === entry.path ? t(entry.status === "U" ? "repository.staging.deleteArm" : "repository.staging.discardArm") : "⌫"}</button>}
+              >{armedDiscard === entry.path
+                ? t(entry.status === "U" ? "repository.staging.deleteArm" : "repository.staging.discardArm")
+                : <><span aria-hidden="true">⌫</span><span className="repository-stage-action-text">{t(entry.status === "U" ? "repository.staging.actionDelete" : "repository.staging.actionDiscard")}</span></>}</button>}
               <button
                 type="button"
                 className="repository-stage-action"
@@ -330,11 +344,12 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
                 title={t("repository.staging.stageFile", { path: entry.path })}
                 disabled={busy || writeLocked}
                 onClick={(event) => { event.stopPropagation(); stagePaths([entry.path]); }}
-              >+</button>
+              ><span aria-hidden="true">+</span><span className="repository-stage-action-text">{t("repository.staging.actionStage")}</span></button>
             </>}
           />
           <StagingSection
             t={t}
+            view={filesView}
             label={t("repository.staging.staged")}
             files={staged}
             emptyLabel={t("repository.staging.emptyStaged")}
@@ -350,7 +365,7 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
                 title={t("repository.staging.unstageFile", { path: entry.path })}
               disabled={busy || writeLocked}
               onClick={(event) => { event.stopPropagation(); unstageEntries([entry]); }}
-            >−</button>}
+            ><span aria-hidden="true">−</span><span className="repository-stage-action-text">{t("repository.staging.actionUnstage")}</span></button>}
           />
         </>}
       </div>
@@ -397,8 +412,9 @@ export function StagingView({ ctx, repoRel, workstate, stateUnknown = false, rel
   </div>;
 }
 
-function StagingSection({ t, label, files, emptyLabel, actionLabel, actionDisabled, onAction, selectedPath, onSelect, rowActions }: {
+function StagingSection({ t, view, label, files, emptyLabel, actionLabel, actionDisabled, onAction, selectedPath, onSelect, rowActions }: {
   readonly t: T;
+  readonly view: FilesViewMode;
   readonly label: string;
   readonly files: readonly DiffFileEntry[];
   readonly emptyLabel: string;
@@ -418,7 +434,9 @@ function StagingSection({ t, label, files, emptyLabel, actionLabel, actionDisabl
     <div className="repository-staging-rows">
       {files.length === 0
         ? <div className="repository-empty-row">{emptyLabel}</div>
-        : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
+        : view === "tree"
+          ? <DiffTreeView files={files} selectedPath={selectedPath} onSelect={onSelect} renderActions={rowActions} />
+          : files.map((entry) => <StagingFileRow key={`${entry.status}:${entry.path}`} t={t} entry={entry} isSelected={entry.path === selectedPath} onSelect={onSelect} actions={rowActions(entry)} />)}
     </div>
   </section>;
 }

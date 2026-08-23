@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handleRepositoryCommitCreate, classifyCommitError } from "../server/commit-create.js";
 import { runGit } from "../server/git-executor.js";
 import { handleRepositoryDiscard, handleRepositoryStage, handleRepositoryUnstage, readStagePaths } from "../server/stage.js";
-import { handleRepositoryStash, readStashAction } from "../server/stash.js";
+import { handleRepositoryStash, parseStashShowLine, readStashAction } from "../server/stash.js";
 import { handleRepositoryStatus, parseStatusV2 } from "../server/status.js";
 import type { StatusResult } from "../server/types.js";
 
@@ -172,6 +172,34 @@ describe("Repository staging routes", () => {
     expect(writes[0]!.status).toBe(200);
     expect(await fs.readFile(path.join(repo, "tracked.txt"), "utf8")).toContain("wip");
     expect(await fs.readFile(path.join(repo, "loose.txt"), "utf8")).toBe("loose\n");
+  });
+
+  it("shows a stash's files including untracked ones — the 0-file card trap (M3)", async () => {
+    await fs.appendFile(path.join(repo, "tracked.txt"), "wip\n");
+    await fs.writeFile(path.join(repo, "loose.txt"), "loose\n");
+    let writes: JsonWrite[] = [];
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "save" }, writes));
+    expect(writes[0]!.status).toBe(200);
+
+    const stashSha = (await runGit(["rev-parse", "--verify", "stash@{0}"], { cwd: repo })).stdout.trim();
+    writes = [];
+    await handleRepositoryStash(req, res, makeContext(repo, { theaterId: "t", action: "show", name: "stash@{0}", sha: stashSha }, writes));
+    expect(writes[0]!.status).toBe(200);
+    const files = (writes[0]!.payload as { files: readonly { status: string; path: string }[] }).files;
+    const paths = files.map((file) => file.path).sort();
+    // untracked(loose.txt)가 빠지면 이 액션의 존재 이유가 사라진다.
+    expect(paths).toEqual(["loose.txt", "tracked.txt"]);
+    // show는 읽기다 — 스태시가 그대로 남아 있어야 한다.
+    expect((await runGit(["stash", "list"], { cwd: repo })).stdout.trim()).not.toBe("");
+  });
+
+  it("parses --name-status lines and rejects garbage", () => {
+    expect(parseStashShowLine("M\tsrc/ui/panel.ts")).toEqual({ status: "M", path: "src/ui/panel.ts" });
+    expect(parseStashShowLine("R100\told.ts\tnew.ts")).toEqual({ status: "R", path: "new.ts" });
+    expect(parseStashShowLine("A\tloose.txt")).toEqual({ status: "A", path: "loose.txt" });
+    expect(parseStashShowLine("")).toBeNull();
+    expect(parseStashShowLine("garbage line")).toBeNull();
+    expect(parseStashShowLine("\tno-status")).toBeNull();
   });
 
   it("rejects malformed stash names and unknown actions", async () => {

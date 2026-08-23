@@ -16,10 +16,26 @@ const STASH_HARDENING_ARGS = [
   "-c", `core.hooksPath=${process.platform === "win32" ? "NUL" : "/dev/null"}`,
 ] as const;
 
-export type StashAction = "save" | "apply" | "pop" | "drop";
+export type StashAction = "save" | "apply" | "pop" | "drop" | "show";
 
 export function readStashAction(value: unknown): StashAction | null {
-  return value === "save" || value === "apply" || value === "pop" || value === "drop" ? value : null;
+  return value === "save" || value === "apply" || value === "pop" || value === "drop" || value === "show" ? value : null;
+}
+
+const STASH_SHOW_STATUS_RE = /^[A-Z]\d{0,3}$/;
+const MAX_STASH_SHOW_FILES = 500;
+
+/** `--name-status` 한 줄(`M\tpath` 또는 `R100\told\tnew`)을 카드가 그릴 상태·경로로 줄인다. */
+export function parseStashShowLine(line: string): { readonly status: string; readonly path: string } | null {
+  const fields = line.split("\t");
+  if (fields.length < 2) return null;
+  const rawStatus = fields[0]!.trim();
+  if (!STASH_SHOW_STATUS_RE.test(rawStatus)) return null;
+  // 리네임/복사는 스코어 접미를 벗기고, 경로는 마지막 필드(신 경로)를 취한다.
+  const status = rawStatus[0]!;
+  const path = fields[fields.length - 1]!;
+  if (path === "") return null;
+  return { status, path };
 }
 
 function classifyStashError(stderr: string): "stash_conflict" | "nothing_to_stash" | null {
@@ -108,6 +124,22 @@ export async function handleRepositoryStash(
     }
     if (!resolved.toLowerCase().startsWith((sha as string).toLowerCase())) {
       ctx.host.http.writeJson(res, 409, { error: "stash_moved" });
+      return;
+    }
+    if (action === "show") {
+      // 카드는 "치워 둔 것"을 보여 준다 — untracked만 담긴 스태시가 부모 diff로는 0개 파일로
+      // 보이는 함정이 이 액션의 존재 이유이므로, --include-untracked가 빠지면 안 된다.
+      const shown = await runGit([
+        ...STASH_HARDENING_ARGS,
+        "stash", "show", "--include-untracked", "--name-status", name as string,
+      ], { cwd: gitCwd });
+      const files = shown.stdout.split("\n")
+        .map(parseStashShowLine)
+        .filter((entry): entry is { status: string; path: string } => entry !== null);
+      ctx.host.http.writeJson(res, 200, {
+        files: files.slice(0, MAX_STASH_SHOW_FILES),
+        ...(files.length > MAX_STASH_SHOW_FILES ? { truncated: true } : {}),
+      });
       return;
     }
     await runGit([...STASH_HARDENING_ARGS, "stash", action, name as string], { cwd: gitCwd });

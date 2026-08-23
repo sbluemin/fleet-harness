@@ -98,7 +98,7 @@ export default definePlugin({
     registerRouter(ctx, "stash", async ({ req, res }) => {
       await handleRepositoryStash(req, res, ctx);
       return true;
-    }, { method: "POST", path: "", summary: "Save, apply, pop, or drop a stash.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
+    }, { method: "POST", path: "", summary: "Save, apply, pop, drop, or show a stash.", category: "Repository Plugin", gate: "origin-write", transport: "http" });
     registerRouter(ctx, "push", async ({ req, res }) => {
       await handleRepositoryPush(req, res, ctx);
       return true;
