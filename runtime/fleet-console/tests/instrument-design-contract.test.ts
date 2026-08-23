@@ -2882,6 +2882,56 @@ describe("Effort track interaction grammar", () => {
     expect(composer).toContain("{ultracodeArmed && !showStrip ? (");
   });
 
+  it("pins the chat composer ultracode grammar — same recognition, apex frame, static border", () => {
+    const chat = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_CSS_PATH), "utf8");
+    const composer = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_COMPOSER_PATH), "utf8");
+
+    // 인식·미러·해제 문법은 Quick Launch와 같은 부품(sdk/composer)에서 온다 — 이 조립은
+    // 상태와 표식만 진다. 무장은 초안과 해제 여부에서만 나온다.
+    expect(composer).toContain('} from "@fleet-console/sdk/composer";');
+    expect(composer).toContain("const ultracodeArmed = ultracodeTokens.length > 0 && !ultracodeIgnored;");
+    expect(composer).toContain('${ultracodeArmed ? " is-ultracode" : ""}');
+    expect(composer).toContain('renderUltracodeHighlight(draft, ultracodeTokens, "agent-chat-composer-ultracode-token")');
+    expect(composer).toContain('<p className="agent-chat-composer-ultracode-notice" role="status">');
+
+    // Backspace 해제는 키 반복도, 수식 키가 붙은 삭제(⌥/Ctrl 단어·⌘ 줄)도 먹지 않는다 —
+    // 가로채면 방금 친 단어를 지우려던 키가 아무것도 지우지 않는다(Quick Launch와 같은 계약).
+    expect(composer).toContain('event.key === "Backspace" && !event.repeat && ultracodeArmed');
+    expect(composer).toContain("&& !event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey");
+
+    const block = (selector: string): string => {
+      const start = chat.indexOf(`${selector} {`);
+      expect(start, selector).toBeGreaterThan(-1);
+      return chat.slice(start, chat.indexOf("}", start));
+    };
+
+    // 무장 프레임은 apex 채널 하나로만 말한다 — 신호 토큰(aurora/warn/coral/positive)도, 위치
+    // 채널(brass)도 빌리지 않는다. Quick Launch의 도는 conic 링과 달리 여기는 정지한 테두리다
+    // (좌표의 is-ultracode가 이 면에서 이미 내린 결정). apex×중립 혼합은 oklab이다(hue 호 관통 방지).
+    const frame = block(".agent-chat-composer-frame.is-ultracode");
+    expect(frame).toMatch(/border-color: color-mix\(in oklab, var\(--apex\)/);
+    for (const signal of ["--aurora", "--warn", "--coral", "--positive", "--brass"]) {
+      expect(frame, signal).not.toContain(signal);
+    }
+
+    // 단어 하이라이트는 좌표 ULTRACODE·강도 트랙과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
+    const token = block(".agent-chat-composer-ultracode-token");
+    expect(token).toContain("animation: agent-chat-ultracode-wave 1.9s linear infinite;");
+    expect(token).toContain("background-size: 200% 100%;");
+    // 미러 층이라 자족 폭을 바꾸는 속성은 못 쓴다 — 쓰면 보이는 글자와 캐럿이 어긋난다.
+    for (const metric of ["font-weight", "letter-spacing", "word-spacing", "font-size", "font-stretch", "text-transform"]) {
+      expect(token, metric).not.toContain(`${metric}:`);
+    }
+
+    // 점화는 유한 애니메이션(both)이라 무한 예외에 기대지 않는다 — 상시로 도는 것은 단어 물결뿐이다.
+    expect(chat).toContain("@keyframes agent-chat-composer-ignite");
+
+    // 감속 모션: 점화·물결은 세우되 상태는 남긴다 — 정지한 apex 테두리와 단색 apex 단어.
+    // 두 규칙 모두 봉인 블록에서만 이 형태를 띤다(무장 블록은 테두리·글로우를 더 얹는다).
+    expect(chat).toMatch(/\.agent-chat-composer-frame\.is-ultracode \{\s*animation: none;\s*\}/);
+    expect(chat).toMatch(/\.agent-chat-composer-ultracode-token \{\s*animation: none;\s*background-image: none;\s*color: var\(--apex-ink\);\s*-webkit-text-fill-color: var\(--apex-ink\);/);
+  });
+
   it("pins the chat start-view arming grammar", () => {
     const components = source("styles/components.css");
     const composer = source("components/quick-launch.tsx");

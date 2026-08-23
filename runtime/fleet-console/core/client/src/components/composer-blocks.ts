@@ -9,5 +9,7 @@ export {
   ComposerInput,
   ComposerRestStrip,
   ComposerSubmitButton,
+  renderUltracodeHighlight,
   SubmitArrowIcon,
+  syncComposerHighlight,
 } from "@fleet-console/sdk/composer";

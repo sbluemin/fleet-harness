@@ -944,6 +944,10 @@
 
 .agent-chat-composer-input {
   flex: 1 1 100%;
+  /* 무장 중에는 입력이 flex 컨테이너(field)가 아니라 상대 배치 래퍼(input-wrap) 안에 들어가
+     flex 기반 폭이 무력해진다 — textarea의 intrinsic cols 폭으로 줄지 않게 폭을 명시한다
+     (Quick Launch 입력과 같은 계약). */
+  width: 100%;
   min-width: 0;
   border: 0;
   background: transparent;
@@ -1161,6 +1165,136 @@
   border-radius: 2px;
   background: currentColor;
   flex: none;
+}
+
+/* ── `ultracode` 무장 ────────────────────────────────────────────────────
+   초안 안에서 `ultracode`가 인식되면 이 컴포저도 Quick Launch와 같은 무장을 진다 — 같은 부품
+   (sdk/composer)이 인식·미러 문법을 소유하고, 표식만 이 조립의 CSS가 싣는다. 채널은 apex다:
+   신호(상태)도 위치(brass)도 아닌 "기본 밖의 선택"이라 좌표의 ultracode 티어와 같은 채널이 맞다.
+   Quick Launch의 도는 conic 링 대신 여기서는 정지한 apex 테두리 + 글로우를 쓴다 — 좌표의
+   `is-ultracode`가 이미 이 면에서 같은 결정을 내렸고(도는 링은 히어로 오버레이의 몫), 패널이
+   여럿 뜨는 War Room에서 링이 여러 개 돌면 읽기를 흔든다. 움직이는 것은 단어 물결 하나뿐이다. */
+.agent-chat-composer-input-wrap {
+  position: relative;
+  flex: 1 1 100%;
+  min-width: 0;
+  display: block;
+}
+
+/* 미러 층 — textarea는 자기 글자 일부만 다르게 칠할 수 없어, 무장 중에만 같은 문면을 같은
+   메트릭으로 그린 레이어를 뒤에 깔고 textarea의 글자를 투명하게 만든다. 폭·높이는 JS가
+   textarea의 client 박스로 맞춘다(syncComposerHighlight). 캐럿·선택·IME는 여전히 textarea의
+   것이므로 caret-color만 되살린다. 그림이라 aria-hidden이다. */
+.agent-chat-composer-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font-family: inherit;
+  font-size: var(--t-md);
+  line-height: 1.5;
+  letter-spacing: normal;
+  word-spacing: normal;
+  text-transform: none;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: normal;
+  tab-size: 8;
+}
+
+.agent-chat-composer-frame.is-ultracode .agent-chat-composer-input {
+  position: relative;
+  z-index: 1;
+  color: transparent;
+  caret-color: var(--text-primary);
+}
+
+/* 인식된 단어는 좌표 ULTRACODE 티어·강도 트랙과 같은 apex 물결로 흐른다 — 같은 능력이면 같은
+   어휘다. 미러 층 위에 겹치므로 자족 폭을 바꾸는 속성(굵기·자간)은 쓰지 않는다: 보이는 글자와
+   textarea가 그리는 캐럿·선택이 어긋난다. 신호는 색이 싣는다. */
+.agent-chat-composer-ultracode-token {
+  background-image: linear-gradient(
+    105deg,
+    var(--apex-ink) 0%,
+    color-mix(in oklch, var(--apex) 55%, white) 16%,
+    var(--apex-ink) 32%,
+    color-mix(in oklch, var(--apex) 65%, var(--brass)) 48%,
+    var(--apex-ink) 64%,
+    color-mix(in oklch, var(--apex) 55%, white) 80%,
+    var(--apex-ink) 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: agent-chat-ultracode-wave 1.9s linear infinite;
+}
+
+/* 무장한 프레임 — 정지한 apex 테두리 + 글로우. 켜지는 순간 한 번만 밝아지는 점화는 유한
+   애니메이션이라 모션 규약의 무한 예외에 기대지 않는다(무장 자체는 단어 물결이 상시로 진다).
+   [doctrine] apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 두 hue 사이 짧은 호를 지나므로,
+   라이트(hairline hue 100)에서 apex(295) 혼합이 coral(신호 채널)을 관통한다(좌표와 같은 결정). */
+.agent-chat-composer-frame.is-ultracode {
+  border-color: color-mix(in oklab, var(--apex) 52%, var(--hairline-strong));
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+    0 0 22px -8px var(--apex-glow);
+  animation: agent-chat-composer-ignite 900ms var(--ease-glide) both;
+}
+
+/* 포커스가 겹치면 apex가 이긴다 — 무장은 사용자가 명시적으로 켠 의사표시이고, brass 포커스보다
+   강한 신호다. 같은 특이도라 소스 순서로 이기도록 focus-within 규칙 뒤에 둔다. */
+.agent-chat-composer-frame.is-ultracode:focus-within {
+  border-color: var(--apex);
+  box-shadow:
+    0 0 0 1px color-mix(in oklch, var(--apex) 40%, transparent),
+    0 0 26px -6px var(--apex-glow);
+}
+
+@keyframes agent-chat-composer-ignite {
+  0% {
+    box-shadow: 0 0 0 1px transparent, 0 0 0 0 transparent;
+  }
+  40% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--apex) 38%, transparent),
+      0 0 32px -4px var(--apex-glow);
+  }
+  100% {
+    box-shadow:
+      0 0 0 1px color-mix(in oklch, var(--apex) 22%, transparent),
+      0 0 22px -8px var(--apex-glow);
+  }
+}
+
+/* 고지 줄 — 무장 동안 프레임 위에 상주한다. 좌표·힌트가 앉는 바 슬롯은 전송 실패가 role="alert"로
+   쓰고 있어, 정보 메시지를 그 자리에 얹으면 경고 채널이 흐려진다. 그래서 field 위 자기 줄에 선다.
+   두 표식(프레임 테두리·이 줄)이 무장의 전부이므로, 기억된 초안이 숨은 모드가 되지 않게 무장한
+   동안 항상 서 있는다. */
+.agent-chat-composer-ultracode-notice {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  padding: var(--space-2) var(--space-4) 0;
+  font-size: var(--t-sm);
+  color: color-mix(in oklch, var(--apex) 72%, var(--text-secondary));
+}
+
+.agent-chat-composer-ultracode-glyph {
+  font-size: var(--t-xs);
+  line-height: 1;
+  flex: none;
+}
+
+.agent-chat-composer-ultracode-hint {
+  color: var(--text-tertiary);
 }
 
 /* 첫 턴 전 컴포저를 가운데로 올려 두는 받침. 첫 턴이 오면 flex-grow가 0으로 줄며 컴포저가
@@ -1571,6 +1705,19 @@
 
   .agent-chat-composer-hint {
     transition: none;
+  }
+
+  /* 컴포저 무장: 점화는 세우고 정지한 apex 테두리·글로우는 남긴다(상태는 유지). 단어 물결은
+     좌표와 같은 함정을 피해 채움을 되돌린다 — `color: transparent`가 남으면 글자가 사라진다. */
+  .agent-chat-composer-frame.is-ultracode {
+    animation: none;
+  }
+
+  .agent-chat-composer-ultracode-token {
+    animation: none;
+    background-image: none;
+    color: var(--apex-ink);
+    -webkit-text-fill-color: var(--apex-ink);
   }
 }
 

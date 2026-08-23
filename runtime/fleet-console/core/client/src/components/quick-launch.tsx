@@ -10,7 +10,7 @@ import { operationActivityLabel } from "../operation-activity.js";
 import type { OperationSearchEntry } from "../operation-search.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { readQuickLaunchSelection, writeQuickLaunchMentionFocused, writeQuickLaunchModelEffort, writeQuickLaunchSelection, writeQuickLaunchStartView, writeQuickLaunchTheater, type QuickLaunchStartView } from "../quick-launch-preferences.js";
-import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken, type UltracodeToken } from "../quick-launch.js";
+import { buildPluginMentionCategories, buildQuickLaunchEffortDeck, buildQuickLaunchMentionGroups, findVariantLaunchKind, isMentionSelectable, isQuickLaunchAttachmentCandidate, isUltracodeDisarmCaret, mentionTargetName, nextUltracodeIgnored, QUICK_LAUNCH_ATTACHMENT_MAX_BYTES, QUICK_LAUNCH_DEFAULT_MODEL, QUICK_LAUNCH_MAX_ATTACHMENTS, QUICK_LAUNCH_PROMPT_MAX_CHARS, quickLaunchAttachmentErrorMessageKey, quickLaunchErrorMessageKey, quickLaunchMentionErrorMessageKey, readCommandInput, readMentionToken, readUltracodeTokens, resolveFocusedMention, resolveMentionEntry, resolveSelection, shouldApplyFocusedMention, stripMentionToken, type QuickLaunchCommandInput, type QuickLaunchMentionTarget, type QuickLaunchMentionToken } from "../quick-launch.js";
 import { FEATURE_TOUR_LAYER_SELECTOR } from "../feature-tour-catalog.js";
 import { formatShortcutCombo, QUICK_LAUNCH_TOGGLE_COMBOS } from "../shortcuts.js";
 import type { QuickLaunchDraftAttachment } from "../types.js";
@@ -19,7 +19,7 @@ import { isTriageActive } from "../canvas/triage-store.js";
 import { clearQuickLaunchRejection, closeQuickLaunch, consumeQuickLaunchDraft, consumeQuickLaunchMentionSeed, getState, isQuickLaunchDocked, preserveQuickLaunchDraft, requestQuickLaunch, setActiveTheater, setQuickLaunchDockSuppressed, setQuickLaunchPinned } from "../store.js";
 import { launchProviderFromGroupId, launchProviderFromModelId, launchProviderGlyph, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
 import { EffortTrack, gatedEffortNames, resolveRowEffort } from "./effort-track.js";
-import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton } from "./composer-blocks.js";
+import { ComposerAttachControl, ComposerBar, ComposerChip, ComposerField, ComposerInput, ComposerRestStrip, ComposerSubmitButton, renderUltracodeHighlight, syncComposerHighlight } from "./composer-blocks.js";
 
 // 카드 폭은 팔레트(920px)보다 좁다 — 팔레트는 결과 목록을 담고, 여기는 한 문단을 담는다.
 const CARD_WIDTH_FALLBACK = 760;
@@ -87,26 +87,6 @@ interface ComposerAttachment {
   readonly name: string;
   readonly previewUrl: string;
   readonly uploading: boolean;
-}
-
-/**
- * 미러 레이어의 문면. 인식된 구간만 토큰으로 감싸고 나머지는 원문 그대로 둔다 — 미러는 읽히는
- * 표면이 아니라 textarea 위에 정확히 겹치는 그림이라, 문면이 한 글자라도 달라지면 어긋난다.
- * 끝에 zero-width space를 한 칸 붙이는 것은 마지막 줄이 개행으로 끝날 때 미러만 한 줄 짧아지는
- * 것을 막기 위해서다.
- */
-function renderUltracodeHighlight(value: string, tokens: readonly UltracodeToken[]): ReactNode {
-  const parts: ReactNode[] = [];
-  let at = 0;
-  tokens.forEach((token, index) => {
-    if (token.start > at) parts.push(value.slice(at, token.start));
-    parts.push(
-      <span key={`ultracode-${index}`} className="quick-launch-ultracode-token">{value.slice(token.start, token.end)}</span>,
-    );
-    at = token.end;
-  });
-  parts.push(`${value.slice(at)}\u200b`);
-  return parts;
 }
 
 export function QuickLaunch() {
@@ -326,17 +306,9 @@ export function QuickLaunch() {
   }, [prompt]);
 
 
-  /**
-   * 미러를 textarea의 **client** 박스에 맞춘다. 테두리 박스로 맞추면 스크롤바가 서는 순간
-   * textarea만 줄바꿈 폭을 잃어 두 층이 다른 곳에서 접힌다. 스크롤 위치도 같은 값으로 끌고 간다.
-   */
+  // 미러를 textarea의 client 박스에 맞추는 동작 문법은 컴포저 블록이 소유한다(채팅 컴포저와 공유).
   const syncUltracodeHighlight = useCallback(() => {
-    const input = inputRef.current;
-    const highlight = highlightRef.current;
-    if (!input || !highlight) return;
-    highlight.style.width = `${input.clientWidth}px`;
-    highlight.style.height = `${input.clientHeight}px`;
-    highlight.scrollTop = input.scrollTop;
+    syncComposerHighlight(inputRef.current, highlightRef.current);
   }, []);
 
   // 문면·자동 높이가 바뀐 프레임에서 바로 맞춘다(그려진 뒤 맞추면 한 프레임 어긋난 채 보인다).
@@ -1635,7 +1607,7 @@ export function QuickLaunch() {
           <span className="quick-launch-input-wrap">
             {ultracodeArmed ? (
               <div className="quick-launch-highlight" ref={highlightRef} aria-hidden="true">
-                {renderUltracodeHighlight(prompt, ultracodeTokens)}
+                {renderUltracodeHighlight(prompt, ultracodeTokens, "quick-launch-ultracode-token")}
               </div>
             ) : null}
           <ComposerInput

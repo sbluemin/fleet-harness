@@ -35,3 +35,11 @@ export type {
   ComposerSubmitButtonProps,
 } from "./primitives.js";
 export { AttachImageIcon, SubmitArrowIcon } from "./icons.js";
+export {
+  isUltracodeDisarmCaret,
+  nextUltracodeIgnored,
+  readUltracodeTokens,
+  renderUltracodeHighlight,
+  syncComposerHighlight,
+} from "./ultracode.js";
+export type { UltracodeToken } from "./ultracode.js";
