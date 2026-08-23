@@ -2003,17 +2003,24 @@ describe("Instrument core design contract", () => {
     expect(chatStripBlock).toContain("cursor: pointer;");
     const chatView0 = fs.readFileSync(fileURLToPath(TERMINAL_CHAT_VIEW_PATH), "utf8");
     expect(chatView0).toContain('className="agent-chat-strip"');
-    // 떠 있는 두 줄의 순서: 아래가 작업 스트립("지금 누를 것"의 행 — 회신·중지와 같은 층),
-    // 위가 Follow다. 스트립이 이 아래 행에 사는 동안 그 높이는 로그의 기본 바닥 여백(회신 버튼
-    // 몫) 안에 들어오므로 스트립 전용 여백은 두지 않는다 — 두면 그만큼이 죽은 띠로 남는다.
+    // 로그 위에 떠 있는 줄은 Follow 하나뿐이다. 잡 스트립은 잡이 사는 내내 상주하므로 읽는
+    // 칼럼 위에 둘 수 없고(실측: 문장 31px을 덮었다), 컴포저 프레임의 위 모서리에 걸터앉는다.
+    // Follow는 바닥을 놓친 동안에만 서는 일시적 문이라 그 자리를 물려받아도 상주하지 않는다.
     const chatFollowBottom = chat.match(/^\.agent-chat-follow \{[^}]*\}/m)?.[0].match(/bottom: ([^;]+);/)?.[1] ?? "";
-    expect(chatStripBlock).toContain("bottom: var(--space-3);");
-    expect(chatFollowBottom).toContain("46px");
+    expect(chatStripBlock).toContain("bottom: calc(-1 * var(--space-2));");
+    expect(chatStripBlock).toContain("transform: translate(-50%, 50%);");
+    expect(chatFollowBottom).toBe("var(--space-3)");
     expect(chat).not.toContain(".agent-chat-log.has-strip");
     expect(chatView0).not.toContain("has-strip");
-    // 같은 행을 쓰는 이상 스트립은 양쪽에서 같은 폭을 비워 회신·중지 버튼을 침범하지 않는다 —
-    // 한쪽만 비우면 가운데 정렬을 잃고, 안 비우면 좁은 패널에서 잡 이름이 버튼 아래로 들어간다.
-    expect(chatStripBlock).toContain("40px + var(--space-2) + 72px");
+    // 컴포저에 걸터앉는 줄은 그 프레임과 같은 폭을 상한으로 쓴다. 회신·중지 버튼 자리를 비우던
+    // 264px은 그 두 버튼이 컴포저 안으로 들어간 뒤로 빈 예약이었고, 좁은 패널에서 잡 이름만 먼저
+    // 잘랐다 — 사라진 것을 계속 피하는 여백은 계약이 아니라 흔적이다.
+    expect(chatStripBlock).toContain("max-width: min(var(--agent-chat-composer-measure), calc(100% - 2 * var(--space-3)));");
+    expect(chatStripBlock).not.toContain("40px + var(--space-2) + 72px");
+    // 카드에는 컴포저가 없으므로 걸터앉을 프레임도 없다 — 그쪽만 원래 앵커로 되돌린다.
+    const stripOnTileBlock = chat.match(/\.canvas-operation\.is-deck-tile \.agent-chat-strip \{[^}]*\}/)?.[0] ?? "";
+    expect(stripOnTileBlock).toContain("bottom: var(--space-3);");
+    expect(stripOnTileBlock).toContain("transform: translateX(-50%);");
     // 잡이 하나도 없으면 렌더되지 않는다 — 조건 없이 서면 폐기 사유가 그대로 되살아난다.
     // 스트립은 두 형태로 서고(도는 중 · 다 끝남), 둘 다 잡이 있을 때만 선다.
     expect(chatView0).toContain("!workOpen && openJobs.length > 0 ? (");
@@ -2053,6 +2060,37 @@ describe("Instrument core design contract", () => {
     // 안 눌리는 줄과 사실상 구별되지 않았다(두 줄이 같은 클래스·같은 활자·같은 색이고 차이는
     // 이 글리프 하나뿐이다). 어포던스는 꺾쇠가, 가독성은 이름이 각각 진다 — 섞으면 "진한 이름 =
     // 눌림"이라는 거짓 규칙이 생기고, 이름 있는 정적 줄이 거짓 어포던스를 갖는다.
+    // 도는 구간의 한 줄. 예전에는 최근 스텝 여덟 개가 전폭 행으로 흘러가는 것이 "일하는 중"의
+    // 증거였고, 실측하면 그 행들이 로그 가시 영역의 58%를 먹었다 — 읽는 자리를 도구 목록이
+    // 밀어냈다. 지금은 이 한 줄이 같은 말을 하므로, 라이브 창이 되살아나지 않는 것이 계약이다.
+    expect(chatView0).not.toContain("LIVE_STEP_WINDOW");
+    // [doctrine] 진행은 이미 링(aurora)이 말한다. 물결은 "이 줄이 아직 자라고 있다"를 말하므로
+    // 색 채널을 하나도 빌리지 않는 명도 스윕이다 — 같은 기법을 쓰는 ULTRACODE 물결이 apex를
+    // 쓰는 것과 갈리는 지점이 바로 이것이고, 신호를 빌리면 링과 두 번 말하게 된다.
+    const chatLiveTextBlock = chat.match(/^\.agent-chat-live-text \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatLiveTextBlock).toContain("background-clip: text;");
+    expect(chatLiveTextBlock).toContain("color: transparent;");
+    for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass", "--apex", "--id-"]) {
+      expect(chatLiveTextBlock, signal).not.toContain(signal);
+    }
+    // 물결 봉인은 모션만 죽이고 줄은 남긴다. `color: transparent`가 남으면 글자가 통째로
+    // 사라지므로 그라데이션과 채움을 함께 되돌려야 한다(ULTRACODE 물결과 같은 함정).
+    const chatLiveSealBlock = chat.match(/@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.agent-chat-live-text \{[^}]*\}/)?.[0] ?? "";
+    expect(chatLiveSealBlock).toContain("animation: none;");
+    expect(chatLiveSealBlock).toContain("background-image: none;");
+    expect(chatLiveSealBlock).toContain("color: var(--text-secondary);");
+    // 원장에 서는 잡은 카드가 아니라 한 줄이다. 카드의 몸(종류·누구·토큰·도구·소요)은 작업 면이
+    // 이미 더 자세히 지고 있었고, 원장에서는 읽는 흐름을 두 줄짜리 상자로 끊었다. 남는 것은
+    // "여기서 태어났다"와 거기로 가는 문뿐이므로 면도 테두리도 두르지 않는다.
+    const chatJobAnchorBlock = chat.match(/^\.agent-chat-job-anchor \{[^}]*\}/m)?.[0] ?? "";
+    expect(chatJobAnchorBlock).toContain("background: none;");
+    expect(chatJobAnchorBlock).toContain("border: none;");
+    expect(chatJobAnchorBlock).toContain("border-bottom: 1px dashed var(--hairline-strong);");
+    // 글자만큼만 넓다 — 블록으로 두면 파선이 패널을 가로질러 구분선으로 읽힌다(실측 적발).
+    expect(chatJobAnchorBlock).toContain("width: max-content;");
+    expect(chatView0).toContain('className={`agent-chat-job-anchor ${jobStateClass(job)}`}');
+    // 카드 자체는 남는다 — 작업 면이 그 몸의 주인이다.
+    expect(chatView0).toContain("function JobCard(");
     const chatTallyChevBlock = chat.match(/^\.agent-chat-tally-chev \{[^}]*\}/m)?.[0] ?? "";
     expect(chatTallyChevBlock).toContain("color: var(--text-tertiary);");
     expect(chatTallyChevBlock).not.toContain("--hairline-strong");
