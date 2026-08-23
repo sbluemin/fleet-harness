@@ -577,6 +577,48 @@ describe("AgentChatRegistry", () => {
     await registry.disposeAll();
   });
 
+  // resume 트랜스크립트의 마지막 턴은 소요 시간 좌표가 없으면 turn-end 없이 남는다. 그 뒤 라이브
+  // 턴이 돌 때 mid-turn 재접속하면, 진행 중 턴의 시작을 "마지막 turn-end 뒤"로만 찾으면 그 과거
+  // 마지막 턴의 opener를 골라 경계 밖으로 흘려 버린다 — 지난 턴이 새로 도착한 것으로 읽힌다.
+  it("splits at the live opener, not a turn-end-less historical turn, on a mid-turn reconnect", async () => {
+    const transcriptPath = writeTranscript("sid-resume-noend", [
+      { type: "user", timestamp: "2026-08-23T00:00:00.000Z", message: { role: "user", content: "first order" } },
+      { type: "assistant", timestamp: "2026-08-23T00:00:05.000Z", message: { content: [{ type: "text", text: "reply one" }] } },
+      // 마지막 과거 턴: 시각 차가 없어 turn-end가 서지 않는다.
+      { type: "user", timestamp: "2026-08-23T00:01:00.000Z", message: { role: "user", content: "HISTORIC last" } },
+      { type: "assistant", timestamp: "2026-08-23T00:01:00.000Z", message: { content: [{ type: "text", text: "hist reply" }] } },
+    ]);
+    const { factory } = createFakeSdkFactory([
+      // result가 없어 라이브 턴은 열린 채다.
+      { messages: [{ type: "assistant", message: { content: [{ type: "text", text: "live streaming" }] } }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-resume-noend", () => seedFor(transcriptPath));
+
+    const probe: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => probe.push(entry));
+    session.send("LIVEPROMPT");
+    await vi.waitFor(() => {
+      expect(probe.some((entry) => entry.event.kind === "dispatch"
+        && (entry.event as { readonly text?: string }).text === "LIVEPROMPT")).toBe(true);
+      expect(probe.some((entry) => entry.event.kind === "turn-start")).toBe(true);
+    });
+
+    const events: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => events.push(entry));
+    const endIdx = events.findIndex((entry) => entry.event.kind === "replay-end");
+    const after = events.slice(endIdx + 1).map((entry) => entry.event);
+    // 경계 뒤엔 라이브 턴만 온다 — 과거 마지막 턴(HISTORIC)의 dispatch가 새로 도착하지 않는다.
+    const dispatchesAfter = after.filter((event) => event.kind === "dispatch") as { readonly text: string }[];
+    expect(dispatchesAfter.map((event) => event.text)).toEqual(["LIVEPROMPT"]);
+    // 리듀스하면 마지막 턴은 working이고, 과거 턴은 재생 안이라 done이다.
+    const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
+    expect(state.turns.at(-1)?.state).toBe("working");
+    expect(state.turns.at(-1)?.dispatch?.text).toBe("LIVEPROMPT");
+
+    await registry.disposeAll();
+  });
+
   it("replays the origin transcript into the journal on ensure", async () => {
     const transcriptPath = writeTranscript("sid-1", [
       { type: "user", message: { role: "user", content: "first order" } },

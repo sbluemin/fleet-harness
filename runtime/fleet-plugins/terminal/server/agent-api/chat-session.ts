@@ -527,21 +527,9 @@ class AgentChatSession {
       // 경계 안에 두면 클라이언트가 done으로 닫고, 서버는 여전히 열린 것으로 알아 새 turn-start를
       // 내지 않으므로 이후 델타가 무시되어 정확히 이 수정이 없애려는 "끝난 척" 상태로 굳는다.
       // 그래서 꼬리를 live로 흘리되 앞에 합성 turn-start를 세워 working 턴을 열어 받게 한다.
-      let liveFrom = -1;
-      let syntheticStart = false;
-      if (this.turnOpen) {
-        const markerIdx = this.inFlightTurnStartIndex(snapshot);
-        if (markerIdx >= 0) {
-          liveFrom = markerIdx;
-        } else {
-          let lastEnd = -1;
-          for (let i = snapshot.length - 1; i >= 0; i -= 1) {
-            if (snapshot[i]?.event.kind === "turn-end") { lastEnd = i; break; }
-          }
-          liveFrom = lastEnd + 1;
-          syntheticStart = true;
-        }
-      }
+      const split = this.turnOpen ? this.inFlightLiveSplit(snapshot) : null;
+      const liveFrom = split ? split.from : -1;
+      const syntheticStart = split?.synthetic ?? false;
       const replayEnd = liveFrom === -1 ? snapshot.length : liveFrom;
       const replayed = snapshot.slice(0, replayEnd);
       const live = snapshot.slice(replayEnd);
@@ -575,21 +563,28 @@ class AgentChatSession {
   }
 
   /**
-   * 지금 열려 있는 턴이 snapshot에서 시작하는 자리. 턴은 직렬로 돌므로 열린 턴은 마지막 turn-end
-   * 뒤의 꼬리 하나뿐이고, 그 첫 이벤트는 dispatch(사용자 턴) 또는 turn-start(자식이 다시 연 턴)다.
-   * 상한에 그 여는 좌표가 밀려 못 찾으면 -1을 돌리고, 그때는 호출부가 꼬리를 live로 흘리며 합성
-   * turn-start를 앞세운다(경계 안에 두면 done으로 굳는다).
+   * 지금 도는 턴을 재생 경계 밖으로 가르는 자리. 진행 중 턴은 (a) 마지막 turn-end 뒤이면서
+   * (b) 원래 재생 경계(replayTranscript가 남긴 replay-end) 뒤에 있다 — 두 조건을 함께 봐야 한다.
+   * resume 트랜스크립트의 마지막 턴은 소요 시간 좌표가 없으면 turn-end 없이 남으므로(closeReplayedTurn),
+   * turn-end만 기준으로 잡으면 그 **과거** 턴의 여는 좌표를 골라 live로 흘려 버린다 — 그러면 지난 턴이
+   * 새 도착·working으로 읽혀 재접속마다 미확인·예약 집계가 흔들린다. 두 경계의 더 뒤에서부터 찾는다.
+   * 여는 좌표가 상한에 밀려 없으면 `synthetic`으로, 꼬리를 live로 흘리며 합성 turn-start를 앞세운다.
    */
-  private inFlightTurnStartIndex(snapshot: readonly AgentChatJournalEvent[]): number {
+  private inFlightLiveSplit(snapshot: readonly AgentChatJournalEvent[]): { readonly from: number; readonly synthetic: boolean } {
     let lastEnd = -1;
+    let lastReplayEnd = -1;
     for (let i = snapshot.length - 1; i >= 0; i -= 1) {
-      if (snapshot[i]?.event.kind === "turn-end") { lastEnd = i; break; }
-    }
-    for (let i = lastEnd + 1; i < snapshot.length; i += 1) {
       const kind = snapshot[i]?.event.kind;
-      if (kind === "dispatch" || kind === "turn-start") return i;
+      if (kind === "turn-end" && lastEnd === -1) lastEnd = i;
+      if (kind === "replay-end" && lastReplayEnd === -1) lastReplayEnd = i;
+      if (lastEnd !== -1 && lastReplayEnd !== -1) break;
     }
-    return -1;
+    const floor = Math.max(lastEnd, lastReplayEnd);
+    for (let i = floor + 1; i < snapshot.length; i += 1) {
+      const kind = snapshot[i]?.event.kind;
+      if (kind === "dispatch" || kind === "turn-start") return { from: i, synthetic: false };
+    }
+    return { from: floor + 1, synthetic: true };
   }
 
   /**
