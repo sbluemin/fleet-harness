@@ -16,6 +16,8 @@ import { translateServerError } from "../core/client/src/i18n/ui.js";
 const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   // 다이어그램 라이트박스 고정 헤드라인
   "MANIFEST · DIAGRAM",
+  // Codex 헬스 칩 — drydock은 도메인 원형이고 OK는 상태 표기 그대로 읽힌다.
+  "drydock OK",
   // 이관 전부터 command-band rename aria가 한국어였음
   "{title} 이름 변경",
   // 호스트 칩의 "여기" 표식은 두 로케일에서 같은 낱말로 읽힌다(대원수 지시).

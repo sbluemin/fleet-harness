@@ -2390,6 +2390,7 @@ kbd {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
+  white-space: nowrap;
   padding: var(--space-1) var(--space-2);
   background: var(--surface-glass);
   border: 1px solid var(--surface-rim);
@@ -2404,6 +2405,11 @@ kbd {
 .codex-nav-quick:hover {
   background: color-mix(in oklch, var(--brass) 8%, var(--surface-glass));
   color: var(--text-primary);
+}
+
+/* display 지정이 UA의 [hidden]을 이겨 "0" 배지가 새어 나온다 — 명시적으로 닫는다. */
+.codex-nav-quick .badge[hidden] {
+  display: none;
 }
 
 .codex-nav-quick .badge {

@@ -325,6 +325,34 @@ describe("wiki briefing", () => {
 
     expect(hits.map((hit) => hit.id)).toContain("unit-renderer");
   });
+  it("starts body snippets on a word boundary and flattens whitespace", async () => {
+    const root = await makeTempRoot();
+    const paths = resolveMemoryPaths(root);
+    const { writeWikiEntry } = await import("../src/store.js");
+    await writeWikiEntry({
+      id: "boundary-entry",
+      title: "Boundary entry",
+      tags: [],
+      created: "2026-05-05T00:00:00.000Z",
+      updated: "2026-05-05T00:00:00.000Z",
+      version: 1,
+      body: `${"registration validation ".repeat(10)}\n\nLexical validation is followed by containment checks on resolved real paths.`,
+    }, paths);
+
+    const hits = await briefingQuery(paths, { topic: "containment", limit: 5 });
+    const wrapped = hits[0]?.matchedSnippets?.[0]?.snippet ?? "";
+    // 커레이션 경계 마커를 걷어낸 본문 스니펫만 판정한다(콘솔 라우트가 하는 것과 동일).
+    const snippet = wrapped
+      .split("\n")
+      .filter((line) => !line.startsWith("<<<FLEET_WIKI_"))
+      .join("\n")
+      .trim();
+    expect(snippet).toContain("containment");
+    // 매치 앞 창은 단어 중간("…tion")이 아니라 온전한 단어에서 시작해야 한다.
+    const firstWord = snippet.split(" ")[0] ?? "";
+    expect(["registration", "validation", "Lexical"]).toContain(firstWord);
+    expect(snippet).not.toContain("\n");
+  });
 });
 
 async function makeTempRoot(): Promise<string> {
