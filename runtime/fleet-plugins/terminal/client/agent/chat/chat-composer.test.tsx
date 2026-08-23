@@ -237,6 +237,20 @@ describe("chat panel composer", () => {
     expect(notice?.textContent).toContain("already started");
   });
 
+  // 더블클릭 한 번이면 같은 좌표로 두 요청이 나가고, 두 번째는 첫 번째가 이미 거둔 좌표를 찾지
+  // 못해 거절된다. 그 거절을 그대로 읽으면 취소에 **성공한** 사용자에게 턴을 중지하라고 말한다.
+  it("sends one cancel per coordinate however often the button is activated", async () => {
+    mount({ turnRunning: true, queue: [{ id: "q1", text: "first" }] });
+    const button = container?.querySelector<HTMLButtonElement>(".agent-chat-composer-queue-cancel");
+    await act(async () => {
+      button?.click();
+      button?.click();
+      button?.click();
+    });
+    expect(canceled).toEqual(["q1"]);
+    expect(container?.querySelector(".agent-chat-composer-error")).toBeNull();
+  });
+
   // 서버에 닿지도 못한 실패를 "이미 시작했다"로 읽으면, 연결이 끊긴 사용자에게 멈추지 않아도 될
   // 턴을 멈추라고 권하게 된다. 그 지시는 아직 큐에 남아 있을 수 있다 — 도는 턴의 중지와 같은 규율로
   // 판정의 부재는 재연결·재시도로 말한다.

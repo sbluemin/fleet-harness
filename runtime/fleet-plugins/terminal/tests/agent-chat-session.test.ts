@@ -2099,6 +2099,34 @@ describe("AgentChatRegistry — stopping a turn", () => {
     await registry.disposeAll();
   });
 
+  // 첨부가 붙은 지시의 프롬프트에는 호스트 절대 경로가 실린다. 자식은 그것을 받아야 하지만
+  // 브라우저는 받으면 안 된다 — 예약 칩이 임시 파일 경로를 실어 나르는 자리가 여기였다.
+  it("keeps the dispatch prompt's host paths out of the queue it sends to the browser", async () => {
+    const transcriptPath = writeTranscript("sess-queue-preview", []);
+    const { factory, sends, liveSession } = createFakeSdkFactory([
+      { messages: [] },
+      { messages: [{ type: "result", subtype: "success", is_error: false, duration_ms: 4 }] },
+    ]);
+    const registry = new AgentChatRegistry(factory);
+    const session = await registry.ensure("op-queue-preview", () => seedFor(transcriptPath));
+    const seen: AgentChatJournalEvent[] = [];
+    session.subscribe((entry) => seen.push(entry));
+
+    session.send("first");
+    await vi.waitFor(() => { expect(sends).toEqual(["first"]); });
+    const prompt = "look at this\n\nRead the attached image file: /tmp/launch-attachments/ab12/shot.png";
+    session.send(prompt, "look at this");
+
+    const queued = latestQueue(seen);
+    expect(queued.map((entry) => entry.text)).toEqual(["look at this"]);
+    expect(JSON.stringify(queued)).not.toContain("/tmp/launch-attachments");
+    // 자식에게는 여전히 전문이 간다 — 경로를 지운 것이 아니라 화면에 내보내지 않을 뿐이다.
+    liveSession()?.emit({ type: "result", subtype: "success", is_error: false, duration_ms: 4 });
+    await drainTurn(registry, "op-queue-preview");
+    expect(sends).toEqual(["first", prompt]);
+    await registry.disposeAll();
+  });
+
   it("cancels a queued instruction so it never reaches the child", async () => {
     const transcriptPath = writeTranscript("sess-queue-cancel", []);
     const { factory, liveSession, sends } = createFakeSdkFactory([

@@ -136,6 +136,8 @@ export function AgentChatComposer({
   const [failed, setFailed] = React.useState(false);
   const [rejection, setRejection] = React.useState<AttachmentRejection | null>(null);
   const [queueRejection, setQueueRejection] = React.useState<QueueRejection | null>(null);
+  /** 응답을 기다리는 취소 좌표들 — 같은 칩의 두 번째 활성화를 삼킨다. */
+  const cancelsInFlight = React.useRef(new Set<string>());
   const [dragOver, setDragOver] = React.useState(false);
   const attachmentsRef = React.useRef(attachments);
   attachmentsRef.current = attachments;
@@ -255,11 +257,22 @@ export function AgentChatComposer({
   }, [onStop]);
 
   const cancelQueued = React.useCallback(async (queueId: string) => {
+    // 같은 좌표로 두 번 보내지 않는다. 두 번째 요청은 첫 번째가 이미 거둔 좌표를 찾지 못해
+    // `queue_not_found`를 받고, 그 거절은 "이미 시작했다"로 읽혀 **취소에 성공한** 사용자에게
+    // 턴을 중지하라고 말한다 — 더블클릭 한 번이면 닿는 자리다.
+    if (cancelsInFlight.current.has(queueId)) return;
+    cancelsInFlight.current.add(queueId);
     setQueueRejection(null);
     // 칩은 낙관적으로 지우지 않는다. 목록의 권위는 서버이고, 거절은 사실이라 지웠다 되돌리면
     // 사용자가 취소를 두 번 읽는다 — 서버가 보낸 다음 목록이 칩을 내린다.
-    const outcome = await onCancelQueued(queueId);
-    if (outcome !== "canceled") setQueueRejection({ kind: outcome });
+    try {
+      const outcome = await onCancelQueued(queueId);
+      if (outcome !== "canceled") setQueueRejection({ kind: outcome });
+    } finally {
+      // 좌표는 성공하면 서버가 보내는 다음 목록과 함께 사라진다. 실패했을 때만 다시 누를 수 있어야
+      // 하므로 여기서 푼다 — 붙들어 두면 연결이 돌아와도 그 칩은 영영 취소되지 않는다.
+      cancelsInFlight.current.delete(queueId);
+    }
   }, [onCancelQueued]);
 
   // 발사 조건은 전송 경로와 같아야 한다 — 첨부만으로는 나가지 않으므로(서버가 받는 것은 문면과

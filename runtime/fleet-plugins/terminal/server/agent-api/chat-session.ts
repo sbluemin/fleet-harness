@@ -196,6 +196,18 @@ const JOURNAL_CAP = 2_000;
  */
 const QUEUE_PREVIEW_CHARS = 200;
 
+/**
+ * 예약된 지시 하나가 들고 있는 두 문면.
+ *
+ * `text`는 자식에게 보낼 프롬프트다 — 첨부가 있으면 호스트 절대 경로가 붙어 있다. `display`는
+ * 사람이 실제로 쓴 문장이고, 화면으로 나가는 것은 이쪽뿐이다. 둘을 하나로 합치면 예약 칩이
+ * 임시 파일 경로를 브라우저로 실어 보낸다.
+ */
+interface QueuedDispatch {
+  readonly text: string;
+  readonly display: string;
+}
+
 function countReplayedTurns(entries: readonly AgentChatJournalEvent[]): number {
   let count = 0;
   let turnOpen = false;
@@ -334,7 +346,7 @@ class AgentChatSession {
    * 이 맵에서 사라지는 것이 곧 "시작했다"는 뜻이다 — 시작한 턴은 더 이상 취소가 아니라 중지의
    * 몫이므로 두 문이 같은 지시를 두고 겹치지 않는다.
    */
-  private readonly queuedDispatches = new Map<string, string>();
+  private readonly queuedDispatches = new Map<string, QueuedDispatch>();
   private queueSeq = 0;
   private disposed = false;
   /**
@@ -630,11 +642,11 @@ class AgentChatSession {
     return this.seed.canReportActivity();
   }
 
-  send(text: string): void {
+  send(text: string, display: string = text): void {
     if (this.disposed) return;
     const id = `q${++this.queueSeq}`;
     this.pendingTurns += 1;
-    this.queuedDispatches.set(id, text);
+    this.queuedDispatches.set(id, { text, display });
     // 접수를 곧바로 말한다. HTTP 응답보다 이 알림이 먼저 닿을 수 있고, 그것이 이 축을 서버가
     // 소유하는 이유다 — 화면이 자기 카운터를 세면 취소가 무엇을 지웠는지 둘이 따로 말하게 된다.
     this.pushQueue();
@@ -673,9 +685,13 @@ class AgentChatSession {
     return true;
   }
 
-  /** 지금 예약된 지시들. 문면은 화면에 들어갈 만큼만 잘라 보낸다(전문은 서버가 들고 있다). */
+  /**
+   * 지금 예약된 지시들. 화면에 나가는 것은 **사람이 쓴 문면**이지 자식에게 보낼 프롬프트가 아니다 —
+   * 후자에는 첨부의 호스트 절대 경로가 붙어 있고(`composeLaunchPromptWithAttachments`), 호스트 경로는
+   * 브라우저 DTO에 실리지 않는다는 것이 이 저장소의 규약이다. 길이는 한 줄에 들어갈 만큼만 자른다.
+   */
   private queueEntries(): readonly AgentChatQueueEntry[] {
-    return [...this.queuedDispatches].map(([id, text]) => ({ id, text: text.slice(0, QUEUE_PREVIEW_CHARS) }));
+    return [...this.queuedDispatches].map(([id, queued]) => ({ id, text: queued.display.slice(0, QUEUE_PREVIEW_CHARS) }));
   }
 
   /**
