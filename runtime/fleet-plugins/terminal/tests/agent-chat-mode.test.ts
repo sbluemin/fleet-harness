@@ -302,7 +302,7 @@ async function createHarness(options: { readonly cliId?: string; readonly holdAt
   const cliId = options.cliId ?? "claude-gateway";
   const fleetDataDir = mkdtempSync(path.join(os.tmpdir(), "fleet-terminal-chat-"));
   temporaryDirectories.push(fleetDataDir);
-  // Theater 루트는 실제로 존재해야 한다 — 이 세션의 플러그인 트리가 그 워크스페이스 안에 앉는다.
+  // 실제 Chat 런치의 cwd로 쓸 Theater 루트를 준비한다.
   mkdirSync(path.join(fleetDataDir, "theater"), { recursive: true });
   // 원 세션 트랜스크립트 픽스처 — providerSession.transcriptPath가 가리킨다.
   const transcriptDir = path.join(fleetDataDir, "projects", "-tmp-workspace");

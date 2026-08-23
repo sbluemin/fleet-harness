@@ -77,8 +77,8 @@ describe("agent CLI session resume and capture hooks", () => {
     const fresh = await injectAgentCliProfile(profile, baseInjectOptions(root));
     expect(indexOfSequence(fresh.args, ["--session-id", fresh.session.sessionId])).toBeGreaterThanOrEqual(0);
     expect(fresh.args).not.toContain("--resume");
-    // 못박은 id가 곧 플러그인 트리의 이름이다 — 자식이 만든 id를 기다릴 필요가 없다.
-    expect(path.basename(fresh.session.pluginRoot)).toBe(fresh.session.sessionId);
+    // 세션 좌표와 무관하게 모든 런치는 Fleet 데이터 디렉터리의 공유 트리를 읽는다.
+    expect(fresh.session.pluginRoot.endsWith(path.join("harness", "claude"))).toBe(true);
 
     const from = randomUUID();
     const forked = await injectAgentCliProfile(profile, baseInjectOptions(root, {
@@ -188,7 +188,6 @@ describe("agent CLI session resume and capture hooks", () => {
       cliId: "claude",
       cwd: root,
       dataDir,
-      sessionId: randomUUID(),
     });
     const hooksJson = JSON.parse(readFileSync(path.join(plugin.pluginRoot, "hooks", "hooks.json"), "utf8")) as {
       readonly hooks: {
@@ -197,7 +196,13 @@ describe("agent CLI session resume and capture hooks", () => {
       };
     };
 
-    expect(hooksJson.hooks.SessionStart).toBeUndefined();
+    expect(hooksJson.hooks.SessionStart).toEqual([{
+      hooks: [{
+        args: ["${CLAUDE_PLUGIN_ROOT}/hooks/fleet-gateway-model-guard.mjs", "plugin-version", expect.any(String)],
+        command: process.execPath,
+        type: "command",
+      }],
+    }]);
     expect(hooksJson.hooks.UserPromptSubmit).toHaveLength(1);
     expect(hooksJson.hooks.UserPromptSubmit[0]?.hooks).toEqual([
       { args: ["console.js", "hook", "capture-session", "claude"], command: "node", type: "command" },

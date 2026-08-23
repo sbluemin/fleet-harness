@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import type { ClaudeGatewaySystemPrompt } from "@dotobokuri/core-agent/claude";
 
 import { createAgentCliPlugin } from "./plugin/index.js";
-import { isPluginSessionId } from "./plugin/session-store.js";
 import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides, type ClaudeSkillOverride } from "./gateway-skills.js";
 import type { ClaudeSessionCoordinate, CreateAgentCliPluginOptions } from "./types.js";
 
@@ -62,7 +61,7 @@ export interface ClaudeSessionHandle {
 }
 
 export interface PrepareClaudeSessionOptions
-  extends Omit<CreateAgentCliPluginOptions, "sessionId"> {
+  extends CreateAgentCliPluginOptions {
   readonly origin: ClaudeSessionOrigin;
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략하면 `on`.
@@ -87,9 +86,9 @@ export async function prepareClaudeSession(
   const coordinate = resolveSessionCoordinate(options.origin);
   const claudeCodeSystemPrompt = options.claudeCodeSystemPrompt ?? "on";
   const skillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-  const plugin = await createAgentCliPlugin({ ...options, sessionId: coordinate.sessionId });
+  const plugin = await createAgentCliPlugin(options);
   return {
-    sessionId: plugin.sessionId,
+    sessionId: coordinate.sessionId,
     coordinate,
     pluginRoot: plugin.pluginRoot,
     pluginRoots: plugin.pluginRoots,
@@ -122,11 +121,10 @@ export async function prepareClaudeSession(
  * 어긋날 방법이 없다.
  */
 function resolveSessionCoordinate(origin: ClaudeSessionOrigin): ClaudeSessionCoordinate {
-  // 자식이 어떤 세션을 열지 우리는 모른다 — 트리 이름은 이 런치의 것이지 세션 id가 아니다.
+  // 자식이 어떤 세션을 열지 우리는 모른다. 외부 좌표도 핸들 식별에는 독립 id가 필요하다.
   if (origin.kind === "external") return { kind: "external", sessionId: randomUUID() };
   if (origin.kind === "resume") {
-    // 이어 붙이는 세션의 id는 트랜스크립트가 이미 정해 놓은 값이다 — 고를 수 없으므로
-    // 형태를 요구하지도 않는다. 디렉터리 이름으로 안전한지는 저장소가 판정한다.
+    // 이어 붙이는 세션의 id는 트랜스크립트가 이미 정해 놓은 값이다 — 고를 수 없다.
     return { kind: "resume", sessionId: origin.sessionId };
   }
   // 새 세션과 갈래만 우리가 못박고, 그때는 UUID여야 한다 — 자식이 그것만 받는다.

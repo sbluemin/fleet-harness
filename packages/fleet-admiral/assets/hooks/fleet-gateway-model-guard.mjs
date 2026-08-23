@@ -16,6 +16,7 @@
 // (delegation 스킬 / 정체성 이름 / modelId)를 공유하기 때문이다 — 파일을 쪼개면 그 어휘가
 // 여러 곳에서 따로 늙는다.
 //
+//   plugin-version <ver>   SessionStart               이 세션이 시작할 때 렌더된 플러그인 버전
 //   remind                 UserPromptSubmit           위임·병렬 작업을 스킬과 로스터 조회로 라우팅
 //   gate-delegation        PreToolUse Agent|Workflow   핀되지 않은 위임을 차단
 //   workflow-receipt       PostToolUse Workflow         접수증을 결과로 읽는 사고를 차단
@@ -237,6 +238,12 @@ function gateWorkflowDelegation(toolInput) {
 }
 
 const subcommand = process.argv[2];
+
+if (subcommand === "plugin-version") {
+  const version = process.argv[3];
+  if (version) emitContext("SessionStart", `Fleet plugin version: ${version}`);
+  process.exit(0);
+}
 
 if (subcommand === "remind") {
   emitContext("UserPromptSubmit", TURN_REMINDER);

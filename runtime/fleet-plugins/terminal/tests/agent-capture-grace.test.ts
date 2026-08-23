@@ -1,5 +1,5 @@
 import http from "node:http";
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -7,8 +7,6 @@ import type { OperationCreateInput, OperationNode, OperationPatchInput } from "@
 import type { FleetPluginServerContext } from "@fleet-console/sdk/plugin";
 import type { RouteHandler } from "@fleet-console/sdk/routing";
 import { afterEach, describe, expect, it, vi } from "vitest";
-
-import { createAgentCliPlugin } from "@dotobokuri/fleet-admiral";
 
 import { registerAgentRoutes } from "../server/agent.js";
 import type { TerminalRuntime } from "../server/shared/index.js";
@@ -185,43 +183,6 @@ describe("agent provider capture grace", () => {
     expect(harness.operations[0]!.payload.session).toEqual(session);
   });
 
-  // 패널을 닫으면 그 세션의 플러그인 트리도 함께 걷힌다 — 세션이 사라지면 트리를 읽을 주체도 없다.
-  it("reclaims the session's plugin tree when the panel is closed", async () => {
-    const harness = await createHarness({ cliId: "claude" });
-    const cwd = path.join(harness.fleetDataDir, "✳ theater");
-    mkdirSync(cwd, { recursive: true });
-    const providerSessionId = "11111111-2222-4333-8444-555555555555";
-    const plugin = await createAgentCliPlugin({
-      cliId: "claude",
-      cwd,
-      dataDir: harness.fleetDataDir,
-      sessionId: providerSessionId,
-    });
-    expect(existsSync(plugin.pluginRoot)).toBe(true);
-
-    harness.operations.push({
-      id: "closing-operation",
-      theaterId: "theater-1",
-      type: "agent",
-      pluginId: "terminal",
-      title: "Closing",
-      payload: {
-        cwd,
-        session: {
-          harness: "claude-code",
-          id: providerSessionId,
-          capturedAt: "2026-08-23T00:00:00.000Z",
-        },
-      },
-      geometry: null,
-      ts: { createdAt: 1, updatedAt: 1 },
-    });
-
-    await harness.deleteSession("closing-operation");
-    await vi.waitFor(() => {
-      expect(existsSync(plugin.pluginRoot)).toBe(false);
-    });
-  });
 });
 
 describe("agent session resume", () => {

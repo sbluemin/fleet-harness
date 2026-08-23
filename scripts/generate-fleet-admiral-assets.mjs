@@ -8,6 +8,10 @@ const assetRoot = path.join(repoRoot, "packages", "fleet-admiral", "assets");
 const skillRoot = path.join(assetRoot, "skills");
 const hookRoot = path.join(assetRoot, "hooks");
 const outputPath = path.join(repoRoot, "packages", "fleet-admiral", "src", "agent-cli", "assets.generated.ts");
+const fleetHarnessPackage = JSON.parse(readFileSync(path.join(repoRoot, "package.json"), "utf8"));
+if (typeof fleetHarnessPackage.version !== "string" || fleetHarnessPackage.version.length === 0) {
+  throw new Error("fleet-harness package version is missing");
+}
 
 function assetEntries(rootPath) {
   if (!existsSync(rootPath)) return [];
@@ -28,6 +32,8 @@ export interface EmbeddedAgentCliAsset {
   readonly content: string;
   readonly relativePath: string;
 }
+
+export const FLEET_HARNESS_VERSION = ${JSON.stringify(fleetHarnessPackage.version)};
 
 export const EMBEDDED_AGENT_CLI_SKILL_ASSETS: readonly EmbeddedAgentCliAsset[] = [
 ${skillEntries}

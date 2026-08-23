@@ -1,5 +1,7 @@
-import { chmodSync, closeSync, constants, lstatSync, mkdirSync, openSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, lstatSync, mkdirSync, realpathSync, rmSync, symlinkSync } from "node:fs";
 import path from "node:path";
+
+import { writeAtomicSync } from "@dotobokuri/core-infra";
 
 const DIR_MODE = 0o700;
 const FILE_MODE = 0o600;
@@ -18,7 +20,8 @@ export function writePrivateFile(filePath: string, content: string, rootBase: st
   const resolvedBase = ensureRootBase(rootBase);
   ensurePathWithinRoot(resolvedBase, filePath);
   ensureDirectorySegments(resolvedBase, path.dirname(filePath));
-  writeFileNoFollow(filePath, content);
+  assertWritableLeaf(filePath);
+  writeAtomicSync(filePath, content, { mode: FILE_MODE });
   chmodBestEffort(filePath, FILE_MODE);
 }
 
@@ -58,13 +61,14 @@ function chmodBestEffort(targetPath: string, mode: number): void {
   }
 }
 
-function writeFileNoFollow(filePath: string, content: string): void {
-  const flags = constants.O_WRONLY | constants.O_CREAT | constants.O_TRUNC | constants.O_NOFOLLOW;
-  const fd = openSync(filePath, flags, FILE_MODE);
+function assertWritableLeaf(filePath: string): void {
   try {
-    writeFileSync(fd, content, { encoding: "utf8" });
-  } finally {
-    closeSync(fd);
+    const stat = lstatSync(filePath);
+    if (stat.isSymbolicLink()) throw new Error(`Plugin file is a symlink: ${filePath}`);
+    if (!stat.isFile()) throw new Error(`Plugin file is unsafe: ${filePath}`);
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") return;
+    throw error;
   }
 }
 
