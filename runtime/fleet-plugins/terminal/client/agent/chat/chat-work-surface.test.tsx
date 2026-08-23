@@ -384,3 +384,58 @@ describe("chat ledger — a parallel tool batch", () => {
     expect(live?.textContent).toContain("Searching notes");
   });
 });
+
+/**
+ * 배치 안에 백그라운드 잡이 섞인 경우. 잡 앵커는 태어난 자리를 지켜야 하고(그것이 이 원장의
+ * 계약이다), 그 앞에서 아직 도는 스텝은 여전히 라이브 줄로 걷혀야 한다 — 앵커 하나가 사이에
+ * 끼었다는 이유로 도는 스텝이 자기 행을 되찾으면 안 된다.
+ */
+describe("chat ledger — a batch that also starts a background job", () => {
+  it("keeps the anchor in place and still folds the running step into the live line", () => {
+    const running = { id: "j2", kind: "shell" as const, title: "sleep 300", open: true, stages: [], ends: 0, toolUseId: "call-bg" };
+    logState = {
+      ...stateWith([running]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Reading and delegating at once." },
+          { type: "tool", name: "Read", detail: "alpha.md", state: "ok" },
+          { type: "tool", name: "Read", detail: "beta.md", state: "running" },
+          { type: "tool", name: "Bash", detail: "sleep 300", id: "call-bg", state: "ok" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "working",
+        toolCount: 3,
+        draft: "",
+      }],
+      jobs: [running],
+    };
+    mount();
+    expect(container?.querySelectorAll(".agent-chat-segment > .agent-chat-step").length).toBe(0);
+    expect(container?.querySelector(".agent-chat-job-anchor")).not.toBeNull();
+    const live = container?.querySelector(".agent-chat-tally.is-live");
+    expect(live?.textContent).toContain("Reading beta.md");
+  });
+
+  it("names the delegated task in the anchor, not just its agent type", () => {
+    // 카드가 제목 자리에 쓰던 값 그대로다. subagent_type만 남기면 위임 여러 건이
+    // "◆ general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다.
+    const delegated = { id: "j3", kind: "agent" as const, title: "Audit the gateway roster", who: "general-purpose", open: true, stages: [], ends: 0, toolUseId: "call-task" };
+    logState = {
+      ...stateWith([delegated]),
+      turns: [{
+        dispatch: { text: "go" },
+        items: [
+          { type: "text", text: "Delegating." },
+          { type: "tool", name: "Task", detail: "audit", id: "call-task", state: "ok" },
+        ] as AgentChatLogState["turns"][number]["items"],
+        state: "done",
+        toolCount: 1,
+        draft: "",
+      }],
+      jobs: [delegated],
+    };
+    mount();
+    const anchor = container?.querySelector(".agent-chat-job-anchor");
+    expect(anchor?.textContent).toContain("Audit the gateway roster");
+  });
+});

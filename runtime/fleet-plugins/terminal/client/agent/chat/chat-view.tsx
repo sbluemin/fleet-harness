@@ -783,8 +783,9 @@ function Ledger({
       {segments.map((segment, index) => {
         // 도는 턴의 마지막 구간만 라이브다 — 그 구간의 꼬리 한 줄이 "지금 무엇을 하는가"를 진다.
         const live = working && index === segments.length - 1;
-        const tails = live ? runningTails(segment.parts) : [];
-        const parts = tails.length > 0 ? segment.parts.slice(0, -tails.length) : segment.parts;
+        const hoisted = live ? runningTails(segment.parts) : new Set<AgentChatLedgerPart>();
+        const tails = segment.parts.flatMap((part) => (hoisted.has(part) && part.kind === "step" ? [part.item] : []));
+        const parts = hoisted.size > 0 ? segment.parts.filter((part) => !hoisted.has(part)) : segment.parts;
         // 꼬리를 떼고 남은 마지막 조각이 집계라면 그 집계가 곧 라이브 줄이고, 꼬리는 그 줄의
         // 끝에 붙는다. 집계가 아니면(잡 앵커·확인되지 않은 스텝, 또는 구간이 도구로 시작한 경우)
         // 아래에서 그 줄을 따로 세운다 — 어느 쪽이든 도는 스텝은 자기 행을 갖지 않는다.
@@ -835,21 +836,27 @@ function Ledger({
 }
 
 /**
- * 구간의 꼬리에 선 진행 중 스텝들 — 라이브 줄이 이름을 빌려 오는 자리다.
+ * 구간의 꼬리에서 라이브 줄로 걷어 올릴 진행 중 스텝 조각들.
  *
  * 하나만 걷으면 안 된다. 한 assistant 메시지가 tool_use 블록을 여럿 실으면(병렬 배치) 그
  * 스텝들은 다음 메시지가 결과를 실어 올 때까지 **동시에** running으로 남고, 걷히지 않은 것이
  * 그대로 전폭 행으로 선다 — 배치가 클수록 한 줄 원장이 무너진다.
+ *
+ * 잡 앵커에서 멈추지도 않는다. 같은 배치가 백그라운드 잡을 함께 낳으면 그 호출만 앵커가 되어
+ * 도는 스텝 사이에 끼는데, 거기서 멈추면 앞의 스텝이 자기 행을 되찾는다. 앵커는 태어난 자리를
+ * 지키는 물건이므로 걷지 않고 지나가기만 한다 — 그래서 반환은 위치가 아니라 조각의 집합이다.
  */
-function runningTails(parts: readonly AgentChatLedgerPart[]): readonly AgentChatTurnItem[] {
-  const tails: AgentChatTurnItem[] = [];
+function runningTails(parts: readonly AgentChatLedgerPart[]): ReadonlySet<AgentChatLedgerPart> {
+  const hoisted = new Set<AgentChatLedgerPart>();
   for (let at = parts.length - 1; at >= 0; at -= 1) {
     const part = parts[at];
-    if (part === undefined || part.kind !== "step") break;
+    if (part === undefined) break;
+    if (part.kind === "job") continue;
+    if (part.kind !== "step") break;
     if (part.item.type === "ask" || part.item.state !== "running") break;
-    tails.unshift(part.item);
+    hoisted.add(part);
   }
-  return tails;
+  return hoisted;
 }
 
 /**
@@ -967,7 +974,10 @@ function JobAnchor({
         ? <span className="agent-chat-step-orbit" aria-hidden="true" />
         : <span className="agent-chat-job-mark" aria-hidden="true">{job.status === "failed" ? "✕" : job.status === "completed" ? "✓" : "·"}</span>}
       <span className="agent-chat-job-glyph" aria-hidden="true">{jobGlyph(job.kind)}</span>
-      <span className="agent-chat-job-title">{job.who ?? job.title}</span>
+      {/* 카드가 제목 자리에 쓰던 값 그대로다. subagent_type(`who`)만 남기면 위임 여러 건이
+          "◆ general-purpose"로 똑같아져, 어느 것이 무엇인지 열어 봐야만 알 수 있다 —
+          `who`는 카드에서도 제목이 아니라 메타 줄의 값이었고, 그 줄은 작업 면이 진다. */}
+      <span className="agent-chat-job-title">{job.title}</span>
       <span className="agent-chat-job-outcome">{jobOutcome(job, language)}</span>
       <span className="agent-chat-job-chev" aria-hidden="true">›</span>
     </button>
