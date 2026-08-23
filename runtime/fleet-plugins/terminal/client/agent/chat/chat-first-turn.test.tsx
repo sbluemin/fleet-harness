@@ -15,7 +15,6 @@ vi.mock("./chat-store.js", () => ({
   useAgentChatStream: () => ({
     turns,
     replaying,
-    replayedTurns: 0,
     errorCode: null,
     jobs: [],
     context: null,

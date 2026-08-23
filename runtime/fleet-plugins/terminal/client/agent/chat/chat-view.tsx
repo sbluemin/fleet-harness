@@ -64,13 +64,6 @@ export function AgentChatView({
 }) {
   const t = getT(context.language ?? "en");
   const state = useAgentChatStream(context.operationId, context.bodyLive !== false);
-  // 채팅으로 태어난 세션의 재생 턴은 다른 표면에서 온 과거가 아니라 이 채팅에서 방금 오간 자기
-  // 턴이다 — 재연결/리마운트로 되쓰는 것뿐이므로 "이전 턴 N개 재생됨"은 없던 이전 세션을 가리키는
-  // 오독을 부른다. 재생 경계(replay-start/replay-end) 자체는 되쓴 과거 Answer가 새 도착 알림을
-  // 다시 울리지 않게 지켜야 하므로 그대로 두고, 사용자에게 보이는 배너만 여기서 억제한다.
-  // 터미널에서 Chat으로 전환한 세션(chatMode만, chatBorn 아님)의 재생 턴은 실제로 CLI 표면에서
-  // 먼저 오갔으므로 배너를 그대로 남긴다. chatBorn은 durable payload 마커라 재연결 뒤에도 선다.
-  const chatBorn = context.operation.payload.chatBorn === true;
   // 읽기 폭 선호 — 콘솔 단위 사용자 선호(플러그인 설정 서버 영속)라 모든 채팅 패널이 함께 따른다.
   const readingWidth = useChatReadingWidth();
   // 현재 작업 여부의 권위는 호스트가 쥔 런타임 축 하나다 — 이 뷰가 따로 축을 주장하면 열려 있는
@@ -391,9 +384,9 @@ export function AgentChatView({
           : state.connection === "connecting" && state.turns.length === 0
             ? <div className="agent-chat-sys">{t("terminal.chat.connecting")}</div>
             : null}
-        {state.replayedTurns > 0 && !chatBorn
-          ? <div className="agent-chat-sys">{t("terminal.chat.replayed", { count: state.replayedTurns })}</div>
-          : null}
+        {/* 재생 자체는 소리 없이 콘텐츠만 되쓴다 — 같은 세션의 지난 턴은 표면(CLI/Chat)을 오가도
+            사용자 자기 대화이므로, 그것을 "이전 턴 재생됨"으로 알리면 없던 이전 세션을 가리키는
+            오독이 된다. 새 도착 오알림을 막는 replay-start/replay-end 경계는 그대로 남는다. */}
         {state.errorCode === "chat_replay_unavailable"
           ? <div className="agent-chat-sys agent-chat-sys--warn">{t("terminal.chat.replayUnavailable")}</div>
           : null}

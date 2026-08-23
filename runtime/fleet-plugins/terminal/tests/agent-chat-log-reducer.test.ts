@@ -26,7 +26,6 @@ describe("chat log reducer", () => {
       { kind: "replay-end", turns: 2 },
     ]);
     expect(state.replaying).toBe(false);
-    expect(state.replayedTurns).toBe(2);
     expect(state.turns).toHaveLength(2);
     expect(state.turns[0]).toMatchObject({ state: "done", toolCount: 1 });
     expect(state.turns[1]).toMatchObject({ state: "done", dispatch: { text: "second" } });
@@ -86,7 +85,6 @@ describe("chat log reducer", () => {
       { kind: "replay-end", turns: 7 },
     ]);
     expect(state.replaying).toBe(false);
-    expect(state.replayedTurns).toBe(7);
     expect(state.turns.at(-1)).toMatchObject({ state: "done", dispatch: null });
   });
 
