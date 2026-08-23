@@ -13,6 +13,7 @@ function makeLogState(): AgentChatLogState {
     turns: [{ dispatch: { text: "go" }, items: [{ type: "text", text: "answer" }], state: "done", toolCount: 0, draft: "" }],
     replaying: false,
     snapshotting: false,
+    observedTurns: 0,
     errorCode: null,
     jobs: [],
     context: null,
@@ -276,6 +277,7 @@ describe("chat log scroll anchor", () => {
     logState = {
       ...logState,
       replaying: false,
+      observedTurns: 2,
       turns: [
         ...logState.turns,
         { dispatch: { text: "queued instruction" }, items: [], state: "working", toolCount: 0, draft: "" },
@@ -283,6 +285,38 @@ describe("chat log scroll anchor", () => {
     };
     mountView();
     logState = { ...logState, snapshotting: false };
+    mountView();
+
+    expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();
+  });
+
+  it("clears a queued receipt from the monotonic coordinate when capped history shrinks", async () => {
+    logState = {
+      ...makeLogState(),
+      observedTurns: 2_000,
+      turns: [{ dispatch: { text: "running" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
+    mountView();
+    const field = container?.querySelector<HTMLTextAreaElement>(".agent-chat-composer-input");
+    if (!field) throw new Error("Missing chat composer input");
+    await act(async () => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
+      setter?.call(field, "queued over cap");
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => {
+      container?.querySelector<HTMLButtonElement>(".agent-chat-composer-send")?.click();
+    });
+
+    logState = { ...logState, snapshotting: true };
+    mountView();
+    // JOURNAL_CAP이 과거를 밀어 화면에는 한 턴만 남아도 서버 누적 좌표는 새 턴을 말한다.
+    logState = {
+      ...logState,
+      snapshotting: false,
+      observedTurns: 2_001,
+      turns: [{ dispatch: { text: "queued over cap" }, items: [], state: "working", toolCount: 0, draft: "" }],
+    };
     mountView();
 
     expect(container?.querySelector(".agent-chat-composer-queued")).toBeNull();

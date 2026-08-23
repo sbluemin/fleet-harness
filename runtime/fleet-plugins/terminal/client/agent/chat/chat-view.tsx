@@ -104,8 +104,8 @@ export function AgentChatView({
   // 팔로우 상태를 뒤집어, 한 번 튄 스크롤이 영영 바닥으로 돌아오지 못한다.
   const suppressScrollRef = React.useRef(0);
   const previousTurnCountRef = React.useRef(state.turns.length);
-  // 재접속 직전 턴 수. snapshot 안에서 그보다 늘어난 몫은 끊긴 동안 시작한 예약 턴이다.
-  const snapshotTurnBaselineRef = React.useRef<number | null>(state.snapshotting ? 0 : null);
+  // 재접속 직전 서버 누적 좌표. 저널 상한으로 화면의 과거 턴이 잘려도 이 값은 역행하지 않는다.
+  const snapshotTurnBaselineRef = React.useRef<number | null>(state.snapshotting ? state.observedTurns : null);
   const previousReadyAnswersRef = React.useRef(0);
 
   // 아직 아무 턴도 오가지 않은 세션. 재생 중이거나 연결 전에는 판단을 미룬다 — 그때의 "비어
@@ -166,14 +166,14 @@ export function AgentChatView({
     if (state.snapshotting) {
       // open이 로그를 비우기 전의 수를 보존한다. snapshot 안에서 같은 턴을 복원한 것은 새 도착이
       // 아니지만, 끊긴 동안 예약 턴이 실제로 시작했다면 그 receipt는 snapshot-end에서 내려야 한다.
-      if (snapshotTurnBaselineRef.current === null) snapshotTurnBaselineRef.current = previous;
+      if (snapshotTurnBaselineRef.current === null) snapshotTurnBaselineRef.current = state.observedTurns;
       return;
     }
     const baseline = snapshotTurnBaselineRef.current;
     snapshotTurnBaselineRef.current = null;
     const arrived = baseline === null
       ? Math.max(0, state.turns.length - previous)
-      : Math.max(0, state.turns.length - baseline);
+      : Math.max(0, state.observedTurns - baseline);
     if (arrived === 0) return;
     // 새 턴이 열렸다면 이 마운트가 접수한 예약 하나도 실행을 시작했다. 이 축은 화면 영속 receipt일
     // 뿐 서버 큐의 권위가 아니므로, 실제 turn-start보다 먼저 추측해서 내리지 않는다.

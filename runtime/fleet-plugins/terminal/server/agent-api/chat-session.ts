@@ -340,6 +340,8 @@ class AgentChatSession {
    * 하나이고, 중지도 여기를 닫는다.
    */
   private turnOpen = false;
+  /** 이 세션이 연 누적 턴 수. 저널이 앞을 버려도 재접속 receipt가 비교할 단조 좌표다. */
+  private observedTurns = 0;
   /** 열린 턴의 완주를 기다리는 디스패치. 턴이 닫히면 풀린다. */
   private awaitingTurn: (() => void) | null = null;
   /**
@@ -564,7 +566,7 @@ class AgentChatSession {
     }
     // 이 접속이 보유하던 snapshot의 끝. replay-end 뒤에 live로 복원한 진행 중 턴도 여기까지는
     // 새 도착이 아니다. 이후 push()가 보내는 이벤트만 이번 접속의 진짜 live tail이다.
-    listener({ seq: this.seq + 0.5, event: { kind: "snapshot-end" } });
+    listener({ seq: this.seq + 0.5, event: { kind: "snapshot-end", turns: this.observedTurns } });
     this.listeners.add(listener);
     return () => {
       this.listeners.delete(listener);
@@ -1447,6 +1449,7 @@ class AgentChatSession {
   private openTurn(options: { readonly dispatched: boolean }): void {
     if (this.turnOpen) return;
     this.turnOpen = true;
+    this.observedTurns += 1;
     // 자식이 스스로 연 턴은 자식이 이미 알고 있다. 디스패치가 연 턴은 `send()`가 닿아야 그렇다.
     this.turnReachedChild = !options.dispatched;
     this.push({ kind: "turn-start", at: Date.now() });

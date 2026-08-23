@@ -70,7 +70,7 @@ export interface AgentChatContextSlice {
 export type AgentChatStreamEvent =
   | { readonly kind: "replay-start" }
   /** 접속 시점의 snapshot이 모두 도착했다. 이 앞의 live opener는 복원이지 새 도착이 아니다. */
-  | { readonly kind: "snapshot-end" }
+  | { readonly kind: "snapshot-end"; readonly turns: number }
   /**
    * 측정된 문맥 창 내역. control 채널만이 카테고리 분해를 알고, 그 왕복은 30초쯤 걸린다(실측).
    * `asOf`가 그 값이 언제의 것인지 말한다 — 부재는 `"start"`이며 옛 저널의 뜻이기도 하다.
@@ -176,7 +176,7 @@ export function readChatJournalEvent(raw: string): AgentChatJournalEvent | null 
     case "replay-start":
       return { seq: entry.seq, event: { kind: "replay-start" } };
     case "snapshot-end":
-      return { seq: entry.seq, event: { kind: "snapshot-end" } };
+      return { seq: entry.seq, event: { kind: "snapshot-end", turns: numberOr(event.turns, 0) } };
     case "context": {
       // 총량과 창 크기가 없으면 그릴 수 있는 것이 없다. 0짜리 미터는 사실이 아니라 빈칸이다.
       if (typeof event.total !== "number" || typeof event.max !== "number" || event.max <= 0) return null;
@@ -588,6 +588,8 @@ export interface AgentChatLogState {
   readonly replaying: boolean;
   /** 현재 접속이 보유하던 snapshot을 아직 받고 있다. replay-end 뒤의 in-flight tail도 포함한다. */
   readonly snapshotting: boolean;
+  /** 이 세션에서 snapshot으로 이미 관찰한 누적 턴 수. 저널 상한과 무관한 단조 좌표다. */
+  readonly observedTurns: number;
   readonly errorCode: string | null;
   /** 도착 순서를 지키는 잡 원장. 살아 있는 것과 끝난 것이 한 목록에 함께 산다. */
   readonly jobs: readonly AgentChatJob[];
@@ -602,6 +604,7 @@ export const initialAgentChatLogState: AgentChatLogState = {
   turns: [],
   replaying: false,
   snapshotting: true,
+  observedTurns: 0,
   errorCode: null,
   jobs: [],
   context: null,
@@ -614,9 +617,9 @@ export const initialAgentChatLogState: AgentChatLogState = {
 export function reduceAgentChatLog(state: AgentChatLogState, event: AgentChatStreamEvent): AgentChatLogState {
   switch (event.kind) {
     case "replay-start":
-      return { ...initialAgentChatLogState, replaying: true };
+      return { ...initialAgentChatLogState, observedTurns: state.observedTurns, replaying: true };
     case "snapshot-end":
-      return { ...state, snapshotting: false };
+      return { ...state, snapshotting: false, observedTurns: event.turns };
     case "replay-end": {
       // 이 이벤트 앞의 턴은 전부 재생된 과거다. 보통은 각 턴이 turn-end로 닫히지만 두 경우에
       // 열린 채 남는다: 마지막 턴의 시각 차가 없어 서버가 소요 시간을 말하지 못했을 때, 그리고

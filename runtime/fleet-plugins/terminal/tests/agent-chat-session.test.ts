@@ -500,7 +500,7 @@ describe("AgentChatRegistry", () => {
     session.subscribe((entry) => events.push(entry));
     expect(events[0]?.event).toEqual({ kind: "replay-start" });
     expect(events.at(-2)?.event).toEqual({ kind: "replay-end", turns: 2 });
-    expect(events.at(-1)?.event).toEqual({ kind: "snapshot-end" });
+    expect(events.at(-1)?.event).toMatchObject({ kind: "snapshot-end", turns: expect.any(Number) });
     expect(events.slice(1, -2).some((entry) => entry.event.kind === "replay-end")).toBe(false);
     await registry.disposeAll();
   });
@@ -540,7 +540,7 @@ describe("AgentChatRegistry", () => {
     // live 문법의 opener까지가 복원 상태이며, 뒤 이벤트부터 새 도착임을 클라이언트에 말한다.
     const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
     expect(state.turns.at(-1)?.state).toBe("working");
-    expect(events.at(-1)?.event).toEqual({ kind: "snapshot-end" });
+    expect(events.at(-1)?.event).toMatchObject({ kind: "snapshot-end", turns: expect.any(Number) });
     expect(state.snapshotting).toBe(false);
 
     await registry.disposeAll();

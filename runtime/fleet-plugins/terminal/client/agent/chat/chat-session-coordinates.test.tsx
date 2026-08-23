@@ -12,6 +12,7 @@ vi.mock("./chat-store.js", () => ({
     turns: [],
     replaying: false,
     snapshotting: false,
+    observedTurns: 0,
     errorCode: null,
     jobs: [],
     context: null,
