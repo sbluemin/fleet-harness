@@ -118,6 +118,7 @@ export {
 export {
   createAgentCliPlugin,
   pluginSessionsRoot,
+  removePluginSession,
   type AgentCliPlugin,
   type CreateAgentCliPluginOptions,
 } from "./agent-cli/plugin/index.js";
