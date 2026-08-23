@@ -8647,15 +8647,23 @@ body[data-side-bar-animating="true"] .canvas-operation {
     color-mix(in oklch, var(--apex) 55%, white) 80%,
     var(--apex-ink) 100%
   );
-  background-size: 240% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 2.6s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite;
 }
 
+/* 되풀이는 이음매가 없어야 한다. 배경 위치 퍼센트는 상자 폭이 아니라 (상자 폭 - 이미지 폭)을
+   기준으로 재므로 한 바퀴의 이동량은 |dP|/100 x (이미지 폭 - 상자 폭)이고, 그것이 타일 한
+   폭의 정수배가 아니면 마지막 프레임이 첫 프레임과 어긋나 물결이 도중에 툭 끊긴다. 옛 값
+   (240%, dP 240)은 이동량 3.36W인데 타일은 2.4W라 한 바퀴마다 0.96W씩 어긋났다. 200%에서
+   dP 200은 2 x (2W - W) = 2W = 정확히 타일 한 폭이다 — 줄무늬 레일이 픽셀로 타일 한 주기를
+   미는 것과 같은 계산이고, 그쪽은 폭이 고정이라 픽셀, 여기는 글자 폭을 따라야 하므로
+   퍼센트다. 2.6s -> 1.9s는 속도 보정이다: 타일이 좁아지면 같은 시간에 지나가는 띠가 줄므로,
+   띠 통과율(약 1.7/s)을 그대로 두려면 주기도 함께 줄여야 한다. */
 @keyframes effort-ultracode-wave {
-  to { background-position: -240% 0; }
+  to { background-position: -200% 0; }
 }
 
 /* 파선 밑줄은 트랙의 파선 테두리와 같은 말이다: 이 값은 사다리 위의 단이 아니라 모델에 맡긴 자리다. */
@@ -12615,11 +12623,11 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     color-mix(in oklch, var(--apex) 55%, white) 80%,
     var(--apex-ink) 100%
   );
-  background-size: 240% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 2.6s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite;
 }
 
 /* ── 이미지 첨부 트레이 ──────────────────────────────────────────────
@@ -13091,11 +13099,11 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     color-mix(in oklch, var(--apex) 55%, white) 80%,
     var(--apex-ink) 100%
   );
-  background-size: 240% 100%;
+  background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: effort-ultracode-wave 2.6s linear infinite;
+  animation: effort-ultracode-wave 1.9s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {

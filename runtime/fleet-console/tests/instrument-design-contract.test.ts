@@ -2728,6 +2728,15 @@ describe("Effort track interaction grammar", () => {
 
     expect(components).toMatch(/\.effort-track-apex-burst \{\s*animation: none;\s*\}/);
     expect(components).toMatch(/effort-ultracode-wave/);
+    // 물결은 끊기지 않고 되풀이해야 한다. 배경 위치 퍼센트는 (상자 폭 - 이미지 폭)을 기준으로
+    // 재므로 한 바퀴의 이동량 |dP|/100 x (이미지 폭 - 상자 폭)이 타일 한 폭의 정수배여야
+    // 마지막 프레임이 첫 프레임과 같다. 200%/dP 200 = 2W = 타일 한 폭이다. 이 물결을 쓰는
+    // 자리는 넷(강도 트랙 값·QL 토큰·QL 멘션 이름·Chat 좌표 칩)이고 값이 갈라지면 안 된다.
+    expect(components).toMatch(
+      /@keyframes effort-ultracode-wave \{\s*to \{ background-position: -200% 0; \}\s*\}/,
+    );
+    expect(components).not.toContain("effort-ultracode-wave 2.6s");
+    expect(components.match(/animation: effort-ultracode-wave 1\.9s linear infinite;/g)?.length).toBe(3);
     expect(components).toMatch(/\.effort-track-value\[data-effort-level="ultra"\] \{\s*animation: none;/);
 
     // 티어 모션은 전부 티어 채널(crest/apex) 안에서만 놀고, 감속 모션에서 정적 상태로 남는다.
@@ -2830,7 +2839,8 @@ describe("Effort track interaction grammar", () => {
     // 단어 하이라이트는 강도 트랙 ULTRACODE 값과 같은 물결을 공유한다 — 같은 능력이면 같은 어휘다.
     const tokenRule = components.slice(components.indexOf(".quick-launch-ultracode-token {"));
     const tokenBlock = tokenRule.slice(0, tokenRule.indexOf("}"));
-    expect(tokenBlock).toContain("animation: effort-ultracode-wave 2.6s linear infinite;");
+    expect(tokenBlock).toContain("animation: effort-ultracode-wave 1.9s linear infinite;");
+    expect(tokenBlock).toContain("background-size: 200% 100%;");
     // 미러 층이라 자족 폭을 바꾸는 속성은 못 쓴다 — 쓰면 보이는 글자와 캐럿이 어긋난다.
     for (const metric of ["font-weight", "letter-spacing", "word-spacing", "font-size", "font-stretch", "text-transform"]) {
       expect(tokenBlock, metric).not.toContain(`${metric}:`);
@@ -2968,7 +2978,13 @@ describe("Effort track interaction grammar", () => {
     expect(block('.agent-chat-coord-effort[data-effort-level="max"]')).toContain("color: var(--crest-ink);");
     const ultra = block('.agent-chat-coord-effort[data-effort-level="ultra"]');
     expect(ultra).toContain("var(--apex-ink)");
-    expect(ultra).toContain("animation: agent-chat-ultracode-wave 2.6s linear infinite;");
+    expect(ultra).toContain("animation: agent-chat-ultracode-wave 1.9s linear infinite;");
+    // 라이브 물결과 같은 이음매 계약: 200% 이미지에 dP 200이면 한 바퀴의 이동량이 정확히
+    // 타일 한 폭이라 되풀이 프레임이 첫 프레임과 같다(옛 240%/dP 240은 3.36W 대 2.4W였다).
+    expect(ultra).toContain("background-size: 200% 100%;");
+    expect(chat).toMatch(
+      /@keyframes agent-chat-ultracode-wave \{\s*from \{ background-position: 0 0; \}\s*to \{ background-position: -200% 0; \}/,
+    );
 
     // apex를 중립 토큰과 섞을 때는 oklab이다 — oklch는 짧은 hue 호를 지나 라이트 테마에서
     // apex(295)와 종이색(100) 사이가 coral(신호 채널)을 관통한다.
@@ -3122,7 +3138,7 @@ describe("Effort track interaction grammar", () => {
       /\.quick-launch-command-row\[data-apex="true"\]\[data-effort-level="max"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation:\s*\n?\s*effort-max-ember-wave 2\.1s linear infinite,\s*\n?\s*effort-max-ember-flicker 1\.7s linear infinite;/,
     );
     expect(components).toMatch(
-      /\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation: effort-ultracode-wave 2\.6s linear infinite;/,
+      /\.quick-launch-command-row\[data-effort-level="ultra"\]:not\(\.is-active\) \.quick-launch-mention-name \{[\s\S]*?animation: effort-ultracode-wave 1\.9s linear infinite;/,
     );
 
     // 덱은 트랙과 달리 여러 행이 동시에 보인다 — 모션은 게이트 뒤 두 단으로 끝나고, 일상 5단은
