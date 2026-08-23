@@ -61,9 +61,32 @@
   --coral-ink: var(--coral);
   --warn-ink: var(--warn);
   --positive-ink: var(--positive);
-  /* 신호 텍스트의 글로우 halo — 라이트 테마는 밝은 종이 위 blur로 읽혀 none으로 단락한다. */
+  /* 신호 텍스트의 글로우 halo — 라이트 테마는 밝은 종이 위 blur로 읽혀 0 0 transparent로 단락한다.
+     단락 값이 `none`이면 안 된다: halo는 단독(`box-shadow: var(--apex-halo)`)뿐 아니라 합성 목록
+     (`0 0 0 2.5px var(--crest), var(--crest-halo), …`) 안에서도 쓰이고, 목록 가운데의 `none`은
+     선언 전체를 무효로 만들어 라이트에서 게이트 티어 손잡이의 링이 통째로 사라진다(실측 확인). */
   --brass-halo: 0 0 18px var(--brass-glow);
   --positive-halo: 0 0 12px var(--positive-glow);
+
+  /* ── 계기 채널 ────────────────────────────────────────────────────────────
+     채워진 계기(추론강도 트랙·쿼터 막대)가 바탕에 지는 **무게**. 다크는 밝을수록 무겁고
+     라이트는 어두울수록 무겁다 — 명도 순서가 곧 무게 순서의 반대다. 그래서 대비(AA)만
+     재조율하고 순서를 다크 그대로 두면 라이트에서 사다리가 뒤집힌다: 평상 채움(L44.9)이
+     위험(L52.0)·경고(L55.0)보다 무겁고, 손잡이(L22.5)가 화면에서 가장 어두운 불투명체가 되는
+     것이 실측으로 확인됐다. 이 채널은 색이 아니라 그 순서를 테마별로 정한다.
+     다크 3종은 var 간접으로 base 값을 상속하고, 라이트만 자기 값으로 분화한다. */
+  --gauge-face: var(--text-primary);
+  --gauge-face-lift: 0 1px 3px oklch(0% 0 0 / 55%);
+  --gauge-face-lift-strong: 0 2px 8px oklch(0% 0 0 / 62%);
+  --gauge-fill: var(--brass);
+  --gauge-apex: var(--apex);
+  --gauge-crest: var(--crest);
+  --gauge-rim: var(--hairline);
+  --gauge-texture: 9%;
+  --gauge-drift: running;
+  --gauge-weight-quiet: 100%;
+  --gauge-weight-warn: 100%;
+  --gauge-weight-critical: 100%;
 
   /* Operations 캔버스(Map)는 bg0 근방의 저채도 심층 계조만 사용한다. */
   --canvas-abyss: oklch(11% 0.014 245);
@@ -418,13 +441,41 @@
   --apex: oklch(52% 0.14 296);
   --apex-ink: oklch(43% 0.13 296);
   --apex-glow: oklch(52% 0.14 296 / 15%);
-  --apex-halo: none;
+  --apex-halo: 0 0 transparent;
   --crest: oklch(54% 0.15 48);
   --crest-ink: oklch(44% 0.14 48);
   --crest-glow: oklch(54% 0.15 48 / 16%);
-  --crest-halo: none;
-  --brass-halo: none;
-  --positive-halo: none;
+  --crest-halo: 0 0 transparent;
+  --brass-halo: 0 0 transparent;
+  --positive-halo: 0 0 transparent;
+
+  /* 계기 채널의 라이트 극성 — 세 축이 함께 뒤집힌다.
+     (1) 무게 사다리 — 채움이 심각도에 따라 무거워진다. 트랙(L90.6) 위 합성 명도는
+         평상 58.0 → 경고 55.0 → 위험 52.0이고, 채도(0.010 → 0.110 → 0.161)가 같은 방향을 가리킨다.
+         평상만 알파를 쓰는 이유는 이 트랙의 여유 폭이 좁기 때문이다 — 비텍스트 대비 3.0배는 합성 L≤60을
+         요구하고(다크의 같은 자리도 3.03배로 딱 이 하한에 서 있다), 신호색은 base가 이미 L55·L52라
+         알파를 낮추는 순간 하한을 깬다. 실제로 26/48/72%를 실측하니 평상 1.44배·위험 2.80배로 미달했다.
+         무게 여유가 남은 단은 중립 잉크(L44.9) 하나뿐이라, 사다리를 세우는 일은 그 한 단을
+         신호색 위로 올리는 일과 같다.
+     (2) 손잡이 — 두 테마 모두 near-white다. 다크의 --text-primary는 near-white(L94)라 밝은 구슬이지만
+         라이트에서는 near-black(L22.5)이라 같은 토큰이 검은 덩어리가 된다. 구슬은 덩어리가 아니라
+         brass 채움에서 도려낸 자리로 읽혀야 한다.
+     (3) 색면 — 큰 brass 채움은 --brass-deep(L64/C0.10) 무게로 내려간다. 컴포저 전송 버튼이
+         color-mix로 이미 도착해 있던 값(L63.8/C0.103)과 같은 자리다.
+     게이트 티어(ULTRACODE/MAX)는 결(--gauge-texture)을 걷고 표류(--gauge-drift)를 멈춰 워시 한 겹으로
+     남긴다 — 종이 위에서 흐르는 금속 결은 계기가 아니라 소음이다. */
+  --gauge-face: oklch(99% 0.004 95);
+  --gauge-face-lift: 0 1px 3px oklch(30% 0.015 95 / 26%);
+  --gauge-face-lift-strong: 0 2px 8px oklch(30% 0.015 95 / 34%);
+  --gauge-fill: var(--brass-deep);
+  --gauge-apex: oklch(64% 0.1 296);
+  --gauge-crest: oklch(66% 0.1 48);
+  --gauge-rim: transparent;
+  --gauge-texture: 0%;
+  --gauge-drift: paused;
+  --gauge-weight-quiet: 71%;
+  --gauge-weight-warn: 100%;
+  --gauge-weight-critical: 100%;
 
   --canvas-abyss: oklch(97.8% 0.003 100);
   --canvas-sea-core: oklch(94% 0.006 98);

@@ -1130,12 +1130,20 @@ describe("Instrument core design contract", () => {
     expect(css).toMatch(/\.quota-meter--warning \{[^}]*--meter-accent: var\(--warn\);/);
     expect(css).toMatch(/\.quota-meter--critical \{[^}]*--meter-accent: var\(--coral\);/);
     const fill = css.match(/\.quota-meter__fill \{[^}]*\}/)?.[0] ?? "";
-    expect(fill).toContain("background: var(--meter-accent);");
+    expect(fill).toContain("background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);");
+    // 심각도는 색상과 무게를 함께 탄다 — 종이 위에서 명도는 무게의 반대라 색상만 갈면
+    // 평상 막대가 위험 막대보다 무거워진다. 세 단이 모두 무게를 집어야 사다리가 성립한다.
+    expect(meterBase).toContain("--meter-weight: var(--gauge-weight-quiet);");
+    expect(css).toMatch(/\.quota-meter--warning \{[^}]*--meter-weight: var\(--gauge-weight-warn\);/);
+    expect(css).toMatch(/\.quota-meter--critical \{[^}]*--meter-weight: var\(--gauge-weight-critical\);/);
 
     // (b) 예측은 아직 쓰지 않은 몫이다 — 단색으로 칠하는 순간 이미 쓴 양으로 읽힌다.
     const projection = css.match(/\.quota-meter__projection \{[^}]*\}/)?.[0] ?? "";
     expect(projection).toContain("repeating-linear-gradient(");
     expect(projection).not.toMatch(/background:\s*var\(--meter-accent\)/);
+    // 빗금은 채움의 분수로 따라간다 — 고정 42%로 두면 채움이 가벼워진 테마에서 "아직 안 쓴 몫"이
+    // "이미 쓴 몫"보다 무거워져 막대가 정반대를 말한다.
+    expect(projection).toContain("calc(var(--meter-weight) * 0.42)");
 
     // (c) 경과 눈금은 상태가 아니라 시계다 — 신호색을 빌리면 위험 표식으로 읽히고,
     // 채움이 이 눈금보다 앞섰는지 뒤졌는지를 비교하는 기준 자체가 사라진다.
@@ -1892,8 +1900,11 @@ describe("Instrument core design contract", () => {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id)[a-z-]*:$/);
       }
     }
-    // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/본문 regular 굵기 보정)을 허용한다.
-    // --weight-regular 단일 예외: 밝은 배경의 얇은 스템 광학 보정 — medium/bold 티어 오버라이드는 계속 차단.
+    // Light 테마만 팔레트 + 광학(color-scheme/shadow/scrollbar/신호 ink·halo/계기 무게/본문 regular 굵기 보정)을
+    // 허용한다. --weight-regular 단일 예외: 밝은 배경의 얇은 스템 광학 보정 — medium/bold 티어 오버라이드는 계속 차단.
+    // [doctrine] --gauge-* 는 형상이 아니라 **무게**를 정한다. 종이 위에서 명도는 무게의 반대이므로,
+    // 다크의 명도 순서를 그대로 상속하면 채워진 계기의 사다리가 뒤집힌다(실측: 평상 L44.9가 위험 L52.0보다 무거움).
+    // 그래서 이 채널만은 라이트가 자기 값으로 분화해야 하며, 형상·타이포 오버라이드 차단은 그대로 유지된다.
     const lightVariantBlocks = theme.match(/^:root\[data-theme="whites"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(lightVariantBlocks).toHaveLength(1);
     for (const block of lightVariantBlocks) {
@@ -1901,7 +1912,7 @@ describe("Instrument core design contract", () => {
       const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
-        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar)[a-z-]*|--weight-regular|color-scheme):$/);
+        expect(declaration.trim()).toMatch(/^(?:--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|provider|shadow|scrollbar|gauge)[a-z-]*|--weight-regular|color-scheme):$/);
       }
     }
     // 신호 ink 티어는 base에서 별칭으로 존재해 다크 3종이 var 간접으로 base 신호색을 상속한다.
@@ -2687,6 +2698,69 @@ describe("Effort track interaction grammar", () => {
     expect(components).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.effort-track\[data-apex="true"\]\[data-effort-level="ultra"\] \.effort-track-fill \{\s*animation: none;/);
   });
 
+  it("pins the gauge weight channel so light never inherits the dark lightness order", () => {
+    const components = source("styles/components.css");
+    const quota = externalSource(QUOTA_CSS_PATH).replace(/\r\n/g, "\n");
+    const theme = source("styles/theme.css");
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
+    const whites = theme.slice(theme.indexOf(':root[data-theme="whites"]'));
+
+    // 계기 무게는 테마마다 갈리는 값이다 — base가 채널을 열고 라이트가 전부 분화한다.
+    // 한 토큰이라도 라이트에서 빠지면 그 자리만 다크의 명도 순서를 상속해 사다리가 부분적으로 뒤집힌다.
+    const GAUGE_TOKENS = [
+      "--gauge-face", "--gauge-face-lift", "--gauge-face-lift-strong",
+      "--gauge-fill", "--gauge-apex", "--gauge-crest", "--gauge-rim",
+      "--gauge-texture", "--gauge-drift",
+      "--gauge-weight-quiet", "--gauge-weight-warn", "--gauge-weight-critical",
+    ] as const;
+    for (const token of GAUGE_TOKENS) {
+      expect(base).toContain(`${token}:`);
+      expect(whites).toContain(`${token}:`);
+      expect(theme.match(new RegExp(`${token}:`, "g"))).toHaveLength(2);
+    }
+
+    // 라이트의 무게 사다리는 단조 증가해야 한다 — 이 부등호가 무너지면 평상 막대가 위험 막대보다
+    // 무거워지는 실측 결함으로 되돌아간다.
+    const weightOf = (token: string): number => {
+      const match = whites.match(new RegExp(`${token}: (\\d+)%;`));
+      expect(match).not.toBeNull();
+      return Number(match![1]);
+    };
+    const quiet = weightOf("--gauge-weight-quiet");
+    const warn = weightOf("--gauge-weight-warn");
+    const critical = weightOf("--gauge-weight-critical");
+    // 평상은 반드시 신호 두 단보다 가벼워야 한다. 신호 단은 base 명도(L55·L52)가 이미 비텍스트
+    // 대비 3:1 하한(합성 L≤60)에 붙어 있어 무게를 더 뺄 수 없다 — 그래서 사다리를 세우는 여유는
+    // 중립 잉크 한 단에만 있고, 신호 단이 평상보다 가벼워지는 순간 다시 뒤집힌다.
+    expect(quiet).toBeLessThan(warn);
+    expect(warn).toBeLessThanOrEqual(critical);
+    // 다크 3종은 지금 그림 그대로다 — base는 사다리를 쓰지 않는다(전부 100%).
+    expect(base).toContain("--gauge-weight-quiet: 100%;");
+    expect(base).toContain("--gauge-weight-critical: 100%;");
+
+    // 손잡이는 "가장 밝은 면"이지 "바탕의 반대"가 아니다 — --text-primary를 쓰면 라이트에서
+    // near-black(L22.5) 덩어리가 되어 화면에서 가장 어두운 불투명체가 된다.
+    const knob = components.match(/^\.effort-track-knob \{[^}]*\}/m)?.[0] ?? "";
+    expect(knob).toContain("background: var(--gauge-face);");
+    expect(knob).not.toContain("var(--text-primary)");
+    expect(base).toContain("--gauge-face: var(--text-primary);");
+
+    // 합성 그림자 목록 안의 halo는 절대 `none`이 될 수 없다 — 목록 가운데의 none은 선언 전체를
+    // 무효로 만들어 라이트에서 게이트 티어 손잡이의 링이 통째로 사라진다.
+    expect(whites).not.toMatch(/--(?:apex|crest|brass|positive)-halo: none;/);
+    expect(components).toMatch(/var\(--crest-halo\),\s*var\(--gauge-face-lift\);/);
+    expect(components).toMatch(/var\(--apex-halo\),\s*var\(--gauge-face-lift\);/);
+
+    // 게이트 티어의 결·표류는 팔레트 토큰으로 꺼진다 — components.css는 테마 분기를 갖지 않는다.
+    expect(components).not.toContain('data-theme=');
+    expect(components).toMatch(/animation-play-state: var\(--gauge-drift\);/);
+    expect(components).toContain("color-mix(in oklch, var(--text-on-brass) var(--gauge-texture), transparent)");
+
+    // 쿼터 막대의 테두리도 같은 채널이다 — 라이트에서는 채움이 옅어져 액자만 남는다.
+    const bar = quota.match(/\.quota-meter__bar \{[^}]*\}/)?.[0] ?? "";
+    expect(bar).toContain("border: 1px solid var(--gauge-rim);");
+  });
+
   it("pins the Quick Launch ultracode recognition grammar", () => {
     const components = source("styles/components.css");
     const composer = source("components/quick-launch.tsx");
@@ -2899,7 +2973,8 @@ describe("Effort track interaction grammar", () => {
     expect(trackSource).toContain("var(--effort-track-gap)");
 
     // 스윕의 티어 분화: MAX는 구리빛 스윕, ULTRACODE는 스윕 대신 ✦ 별빛.
-    expect(components).toMatch(/data-effort-level="max"\] \.effort-track-fill::after \{[^}]*var\(--crest\)/);
+    // 스윕은 계속 crest 열을 말하되 무게는 계기 채널이 정한다 — base에서 --gauge-crest는 var(--crest)다.
+    expect(components).toMatch(/data-effort-level="max"\] \.effort-track-fill::after \{[^}]*var\(--gauge-crest\)/);
     expect(components).toMatch(/data-effort-level="ultra"\] \.effort-track-fill::before,[\s\S]{0,120}::after \{[^}]*content: "✦"/);
   });
 
