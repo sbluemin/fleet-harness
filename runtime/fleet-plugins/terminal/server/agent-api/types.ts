@@ -34,11 +34,18 @@ export interface AgentProviderTitleMarker {
   readonly source: "provider";
 }
 
-export interface AgentProviderSession {
-  readonly provider: "claude";
-  readonly sessionId: string;
+export interface AgentSession {
+  readonly harness: "claude-code";
+  readonly model?: string;
+  readonly effort?: string;
+  readonly id?: string;
   readonly transcriptPath?: string;
   readonly source?: string;
+  readonly capturedAt?: string;
+}
+
+export interface CapturedAgentSession extends AgentSession {
+  readonly id: string;
   readonly capturedAt: string;
 }
 
@@ -49,10 +56,8 @@ export interface AgentDurableOperation {
   readonly label?: string;
   readonly labelSource?: AgentLabelSource;
   readonly providerTitle?: AgentProviderTitleMarker;
-  readonly cliId?: string;
-  readonly cliLabel?: string;
   readonly createdAt: number;
-  readonly providerSession?: AgentProviderSession;
+  readonly session?: CapturedAgentSession;
 }
 
 export interface AgentTerminalSessionInfo {

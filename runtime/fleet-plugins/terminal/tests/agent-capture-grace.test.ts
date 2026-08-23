@@ -26,7 +26,7 @@ afterEach(async () => {
 describe("agent provider capture grace", () => {
   it("cancels pending OSC activity when a session is removed", async () => {
     vi.useFakeTimers();
-    const harness = await createHarness({ cliId: "claude-gateway" });
+    const harness = await createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.emitTitle(sessionId, "⠏ theater");
@@ -40,7 +40,7 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before a PTY exit makes the session dormant", async () => {
     vi.useFakeTimers();
-    const harness = await createHarness({ cliId: "claude-gateway" });
+    const harness = await createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
@@ -58,7 +58,7 @@ describe("agent provider capture grace", () => {
 
   it("cancels pending OSC activity before resume spawns a replacement PTY", async () => {
     vi.useFakeTimers();
-    const harness = await createHarness({ cliId: "claude-gateway" });
+    const harness = await createHarness({ cliId: "claude" });
     await harness.postSessions();
     const sessionId = harness.operations[0]!.id;
     harness.markProviderSession(sessionId);
@@ -76,7 +76,7 @@ describe("agent provider capture grace", () => {
     // Stop이 실어 온 두 사실(턴 종료·남은 백그라운드 작업)이 따로 반영되면 그 사이 프레임에서 세션이
     // 거짓 유휴로 읽혀 종료 알림과 도착 표시가 튄다. 한 번의 turn POST가 둘을 함께 확정해야 한다.
     const harness = await createHarness({
-      cliId: "claude-gateway",
+      cliId: "claude",
       phase: "end",
       input: JSON.stringify({ hook_event_name: "Stop", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
     });
@@ -90,7 +90,7 @@ describe("agent provider capture grace", () => {
 
   it("projects live tasks, holds through an unreadable report, and releases on an empty one", async () => {
     const body: Record<string, unknown> = {
-      cliId: "claude-gateway",
+      cliId: "claude",
       input: JSON.stringify({ hook_event_name: "SubagentStop", agent_id: "agent-1", background_tasks: [{ id: "wf-1", type: "workflow", status: "running" }] }),
     };
     const harness = await createHarness(body);
@@ -118,7 +118,7 @@ describe("agent provider capture grace", () => {
     // 유휴·입력 대기 전이를 잃는다. stop을 이미 보고받았다는 사실은 세션이 기억해야 한다.
     const resident = { id: "a5c0d92a34c49dcfe", type: "teammate", status: "running", description: "probe" };
     const body: Record<string, unknown> = {
-      cliId: "claude-gateway",
+      cliId: "claude",
       input: JSON.stringify({ hook_event_name: "SubagentStop", agent_id: resident.id, background_tasks: [resident] }),
     };
     const harness = await createHarness(body);
@@ -145,27 +145,12 @@ describe("agent provider capture grace", () => {
     expect((await harness.getSessions())[0]).toMatchObject({ sessionId, backgroundPending: true });
   });
 
-  it("returns only invalid_agent_cli when a removed provider Operation is resumed", async () => {
-    const harness = await createHarness({ cliId: "claude-gateway" });
-    await harness.postSessions();
-    const sessionId = harness.operations[0]!.id;
-    harness.operations[0]!.payload.cliId = "codex";
-    harness.markProviderSession(sessionId);
-
-    await harness.resumeSession(sessionId);
-
-    expect(harness.responses).toEqual([
-      { status: 200, body: expect.objectContaining({ sessionId }) },
-      { status: 400, body: { error: "invalid_agent_cli" } },
-    ]);
-    expect(harness.attach).toHaveBeenCalledTimes(1);
-  });
 
   it("preserves legacy Codex transcript metadata when a restored Operation is renamed", async () => {
-    const harness = await createHarness({ cliId: "claude-gateway" });
-    const providerSession = {
-      provider: "codex",
-      sessionId: "legacy-codex-session",
+    const harness = await createHarness({ cliId: "claude" });
+    const session = {
+      harness: "codex",
+      id: "legacy-codex-session",
       transcriptPath: "/legacy/codex/transcript.jsonl",
       source: "legacy-capture",
       capturedAt: "2026-07-25T00:00:00.000Z",
@@ -177,9 +162,8 @@ describe("agent provider capture grace", () => {
       pluginId: "terminal",
       title: "Legacy Codex",
       payload: {
-        cliId: "codex",
         cwd: path.join(harness.fleetDataDir, "✳ theater"),
-        providerSession,
+        session,
       },
       geometry: null,
       ts: { createdAt: 1, updatedAt: 1 },
@@ -198,17 +182,17 @@ describe("agent provider capture grace", () => {
       previousTitle: "Legacy Codex",
     });
 
-    expect(harness.operations[0]!.payload.providerSession).toEqual(providerSession);
+    expect(harness.operations[0]!.payload.session).toEqual(session);
   });
 
   // 패널을 닫으면 그 세션의 플러그인 트리도 함께 걷힌다 — 세션이 사라지면 트리를 읽을 주체도 없다.
   it("reclaims the session's plugin tree when the panel is closed", async () => {
-    const harness = await createHarness({ cliId: "claude-gateway" });
+    const harness = await createHarness({ cliId: "claude" });
     const cwd = path.join(harness.fleetDataDir, "✳ theater");
     mkdirSync(cwd, { recursive: true });
     const providerSessionId = "11111111-2222-4333-8444-555555555555";
     const plugin = await createAgentCliPlugin({
-      cliId: "claude-gateway",
+      cliId: "claude",
       cwd,
       dataDir: harness.fleetDataDir,
       sessionId: providerSessionId,
@@ -222,11 +206,10 @@ describe("agent provider capture grace", () => {
       pluginId: "terminal",
       title: "Closing",
       payload: {
-        cliId: "claude-gateway",
         cwd,
-        providerSession: {
-          provider: "claude",
-          sessionId: providerSessionId,
+        session: {
+          harness: "claude-code",
+          id: providerSessionId,
           capturedAt: "2026-08-23T00:00:00.000Z",
         },
       },
@@ -250,7 +233,7 @@ describe("agent session resume", () => {
     await harness.resumeSession(operation.id);
 
     expect(harness.attach).toHaveBeenLastCalledWith(expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
     }));
   });
 });
@@ -422,9 +405,10 @@ async function createHarness(body: Record<string, unknown>) {
     markProviderSession: (sessionId: string) => {
       const operation = operations.find((candidate) => candidate.id === sessionId);
       if (!operation) throw new Error(`Operation not found: ${sessionId}`);
-      operation.payload.providerSession = {
-        provider: "claude",
-        sessionId: "provider-session-1",
+      operation.payload.session = {
+        ...(operation.payload.session as Record<string, unknown> | undefined),
+        harness: "claude-code",
+        id: "provider-session-1",
         capturedAt: "2026-07-25T00:00:00.000Z",
       };
     },

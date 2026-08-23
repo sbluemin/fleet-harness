@@ -26,17 +26,16 @@ import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
 import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
-import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromCliId, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
 import { writeAgentSessionEvents } from "./agent-api/observability-routes.js";
 import { createOscAgentActivityTracker, type OscAgentActivityTracker } from "./agent-api/osc-agent-activity.js";
-import { readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
+import { mergeCapturedAgentSession, readAgentSession, readAnalysisProviderSession, readProviderSession, type AnalysisProviderSession } from "./agent-api/provider-session.js";
 import { resolveChatLaunchEffort } from "./agent-api/chat-launch-effort.js";
 import { AgentChatRegistry, type AgentChatSessionOrigin, type AgentChatSessionSeed, type CreateChatSdk } from "./agent-api/chat-session.js";
 import { attachAgentChatSocket } from "./agent-api/chat-ws.js";
 import { resolveAnalysisGatewayBaseUrl } from "./agent-api/analysis-types.js";
 import { resolveTranscriptPath } from "./agent-api/transcript-path.js";
-import { normalizeAttentionReason, type AgentProviderSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./agent-api/types.js";
+import { normalizeAttentionReason, type CapturedAgentSession, type AgentProviderTitleMarker, type AgentTerminalSessionInfo, type AgentLabelSource } from "./agent-api/types.js";
 import { resolveClaudeCodeSystemPrompt } from "./settings-routes.js";
 import { startIdleAgentDormantSweeper } from "./agent-idle-dormant-sweeper.js";
 type SessionCreateBody = { readonly cliId?: unknown; readonly theaterId?: unknown; readonly model?: unknown; readonly effort?: unknown; readonly prompt?: unknown; readonly attachmentIds?: unknown; readonly viewMode?: unknown; readonly geometry?: unknown };
@@ -45,7 +44,6 @@ type HookBackgroundBody = { readonly input?: unknown };
 type HookAttentionBody = { readonly input?: unknown; readonly reason?: unknown };
 type HookAutoNameBody = { readonly input?: unknown; readonly prompt?: unknown };
 type HookCaptureBody = { readonly provider?: unknown; readonly input?: unknown };
-type AgentLaunchKindBackfillOperation = Pick<OperationNode, "pluginId" | "type" | "payload">;
 type OperationRenamedEvent = {
   readonly operationId: string;
   readonly pluginId: string;
@@ -80,7 +78,7 @@ const CHAT_MODE_PAYLOAD_KEY = "chatMode";
  */
 const CHAT_BORN_PAYLOAD_KEY = "chatBorn";
 /** Phase 1에서 Chat Mode를 지원하는 유일한 실행 종류. */
-const CHAT_SUPPORTED_CLI_ID = "claude-gateway";
+const CLAUDE_HARNESS_ID = "claude";
 /**
  * 답변에 딸려 오는 자유 문장의 상한. 질문의 물리기 사유와 계획의 수정 요청이 같은 자리를 쓰며,
  * 그 문장은 자식에게 오류 결과로 전달된다 — 새 지시를 보내는 통로가 아니므로 길 필요가 없다.
@@ -137,27 +135,6 @@ export async function registerAgentRoutes(
     { method: "DELETE", path: "/attachments/:attachmentId", summary: "Discard an unsent Quick Launch image attachment.", category: "Terminal Plugin", gate: "origin-write", transport: "http" },
   ]);
   return api.launchKinds;
-}
-
-export function buildAgentLaunchKindBackfillPatch(operation: AgentLaunchKindBackfillOperation): Pick<OperationPatchInput, "payload"> | null {
-  if (operation.pluginId !== TERMINAL_PLUGIN_ID || operation.type !== AGENT_OPERATION_TYPE) return null;
-  const cliId = operation.payload.cliId;
-  if (typeof cliId !== "string" || cliId.length === 0) return null;
-  if (operation.payload.launchKindId !== undefined) return null;
-  return { payload: { ...operation.payload, launchKindId: cliId } };
-}
-
-/**
- * 공급자 기록이 없는 agent Operation은 실행 CLI에서만 메운다. 모델 id가 없으면 Claude가
- * 아니다 — 모르면 필드를 생략해 크롬이 플러그인 종류 아이콘으로 물러나게 한다.
- */
-export function buildAgentLaunchProviderBackfillPatch(operation: AgentLaunchKindBackfillOperation): Pick<OperationPatchInput, "payload"> | null {
-  if (operation.pluginId !== TERMINAL_PLUGIN_ID || operation.type !== AGENT_OPERATION_TYPE) return null;
-  if (isAgentLaunchProvider(operation.payload[AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY])) return null;
-  const cliId = typeof operation.payload.cliId === "string" ? operation.payload.cliId : undefined;
-  const provider = agentLaunchProviderFromCliId(cliId);
-  if (!provider) return null;
-  return { payload: { ...operation.payload, [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: provider } };
 }
 
 // 로스터는 호출 시점에 해석한다. 노출 선별은 세션이 도는 동안에도 사용자가 바꿀 수 있고,
@@ -246,7 +223,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const session = observability.getTerminalSessionInfo(sessionId);
       if (!session) return;
       const cliId = session.cliId;
-      if (cliId !== "claude-gateway") return;
+      if (cliId !== "claude") return;
       tracker = createOscAgentActivityTracker({
         cliId,
         cwdBasename: session.cwdLabel,
@@ -270,7 +247,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const operation = ctx.host.operations.get(payload.operationId);
       if (operation) {
         const cwd = readPayloadString(operation.payload, "cwd") || ctx.host.paths.resolveTheaterPath(operation.theaterId) || "";
-        const providerSession = readAnalysisProviderSession(operation.payload.providerSession);
+        const providerSession = readAnalysisProviderSession(operation.payload.session);
         // 빈 리네임(reset)이면 updated.label이 비므로 title도 기본 표시명(cwdLabel=basename)으로 되돌린다.
         // core PATCH의 빈 title은 기존 title로 normalize되어 사용자 옛 이름이 남기 때문에, 여기서 명시적으로 복원한다.
         // 이 patch는 store.patch(HTTP 미경유)라 operation:renamed를 재발행하지 않아 구독 루프를 만들지 않는다.
@@ -298,7 +275,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     launchAttachments.releaseSession(payload.operationId);
   });
 
-  backfillAgentOperationLaunchAxes();
   rehydrateDormantAgentOperations();
   startIdleAgentDormantSweeper({
     loadGlobalOptions: () => deps.globalOptionsService.load(),
@@ -424,7 +400,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         operationType: operation.type,
         pluginId: operation.pluginId,
         theaterId: operation.theaterId,
-        cliId: readPayloadString(operation.payload, "cliId") ?? undefined,
+        cliId: CLAUDE_HARNESS_ID,
         ...(colorScheme ? { colorScheme } : {}),
         ...(role ? { role } : {}),
       }));
@@ -512,7 +488,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     const chatBorn = body?.viewMode === "chat";
-    if (chatBorn && cliId !== CHAT_SUPPORTED_CLI_ID) {
+    if (chatBorn && cliId !== CLAUDE_HARNESS_ID) {
       ctx.host.http.writeJson(res, 409, { error: "chat_unsupported" });
       return true;
     }
@@ -596,7 +572,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const model = body?.model;
     const effort = body?.effort;
     if (model === undefined && effort === undefined) return {};
-    if (cliId !== "claude-gateway") {
+    if (cliId !== "claude") {
       ctx.host.http.writeJson(res, 400, { error: "launch_option_unsupported" });
       return false;
     }
@@ -738,15 +714,13 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       type: AGENT_OPERATION_TYPE,
       pluginId: ctx.pluginId,
       title: namedSession.label ?? session.label ?? path.basename(cwd),
-      // 공급자는 실행 시점에 한 번 확정되고 이후 어떤 patch도 다시 쓰지 않는다 —
-      // toOperationPayload가 지우는 키 목록 밖이라 resume·복원을 지나도 그대로 남는다.
       payload: {
         ...toOperationPayload(undefined, cwd, namedSession),
-        [AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY]: agentLaunchProviderFromModel(launchOptions.model),
-        // Claude Code의 resume가 launch 좌표를 자체 복원한다고 가정하지 않는다 — 정규화된
-        // 최초 선택을 Operation에 남겨 dormant·Console 재시작 뒤에도 같은 인자로 재개한다.
-        ...(launchOptions.model ? { launchModel: launchOptions.model } : {}),
-        ...(launchOptions.effort ? { launchEffort: launchOptions.effort } : {}),
+        session: {
+          harness: "claude-code",
+          ...(launchOptions.model ? { model: launchOptions.model } : {}),
+          ...(launchOptions.effort ? { effort: launchOptions.effort } : {}),
+        },
         // 채팅으로 태어난 Operation은 두 마커를 함께 진다. chatMode가 뷰를 가르고, chatBorn이
         // "transcript 부재는 상실이 아니라 아직 첫 턴 전"이라는 뜻을 durable하게 남긴다.
         ...(launchOptions.chatBorn ? { [CHAT_MODE_PAYLOAD_KEY]: true, [CHAT_BORN_PAYLOAD_KEY]: true } : {}),
@@ -844,8 +818,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const fresh = body?.fresh === true;
     const node = ctx.host.operations.get(sessionId);
     const payload = node?.payload;
-    const cliId = readOptionalAgentCliId(payload?.cliId, res);
-    if (cliId === false) return true;
+    const cliId = node ? CLAUDE_HARNESS_ID : undefined;
     const providerSession = readProviderSession(payload);
     // 이어붙일 좌표가 없으면 재개는 정의상 **새 시작**이고, `fresh`와 같은 경로다 — 저장된
     // 세션을 버리는 것이 아니라 애초에 없었으므로 지울 stale 상태도 없다. 여기서 거절하면 첫 턴
@@ -890,14 +863,14 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     node: OperationNode,
     sessionId: string,
     cliId: AgentCliId,
-    options: { readonly fresh: boolean; readonly providerSession: AgentProviderSession | undefined },
+    options: { readonly fresh: boolean; readonly providerSession: CapturedAgentSession | undefined },
   ): Promise<{ ok: true; resumed: AgentTerminalSessionInfo } | { ok: false; status: number; error: string }> {
     const { fresh, providerSession } = options;
     // launchModel 도입 전 Operation은 복원할 정확한 좌표가 없으므로 Claude Gateway에만
     // 신규 Quick Launch와 같은 native Opus 1M 기본값을 적용한다. 다른 CLI에는 넘기지 않는다.
-    const launchModel = readPayloadString(node.payload, "launchModel")
-      || (cliId === "claude-gateway" ? "opus[1m]" : undefined);
-    const launchEffort = readPayloadString(node.payload, "launchEffort") || undefined;
+    const launchModel = readAgentSession(node.payload)?.model
+      || (cliId === "claude" ? "opus[1m]" : undefined);
+    const launchEffort = readAgentSession(node.payload)?.effort || undefined;
     // cwd 해석은 상태 전이 전에 끝낸다 — 'starting'으로 올린 뒤 404로 빠지면 catch의 dormant
     // 복귀를 건너뛰어 세션이 starting에 고착된다.
     const cwd = readPayloadString(node.payload, "cwd") ?? ctx.host.paths.resolveTheaterPath(node.theaterId);
@@ -913,7 +886,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // 일반 resume 재시도와 Session Analyst의 transcript 접근을 보존한다.
         observability.clearTerminalSessionProviderSession(sessionId);
         const payloadWithoutProvider = { ...node.payload };
-        delete payloadWithoutProvider.providerSession;
+        delete payloadWithoutProvider.session;
         ctx.host.operations.patch(sessionId, { payload: payloadWithoutProvider });
       }
       await terminalRuntime.attach({
@@ -926,7 +899,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cliId,
         ...(launchModel ? { model: launchModel } : {}),
         ...(launchEffort ? { effort: launchEffort } : {}),
-        ...(fresh ? {} : { resumeSessionId: providerSession?.sessionId }),
+        ...(fresh ? {} : { resumeSessionId: providerSession?.id }),
       });
       const runtimeSession = pendingRuntimeSessions.get(sessionId);
       pendingRuntimeSessions.delete(sessionId);
@@ -939,7 +912,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       const resumedPayload = toOperationPayload(currentPayload ?? node.payload, cwd, resumed, effectiveProviderSession, observability.getDurableOperation(sessionId)?.providerTitle);
       // Legacy fallback도 첫 성공 뒤에는 Operation의 확정 launch 좌표가 된다 — 매 resume마다
       // fallback 정책을 다시 적용해 향후 기본값 변경에 따라 같은 Operation이 흔들리지 않게 한다.
-      if (!readPayloadString(resumedPayload, "launchModel") && launchModel) resumedPayload.launchModel = launchModel;
+      if (!readAgentSession(resumedPayload)?.model && launchModel) resumedPayload.session = { ...(readAgentSession(resumedPayload) ?? { harness: "claude-code" }), model: launchModel };
       ctx.host.operations.patch(sessionId, { payload: resumedPayload });
       return { ok: true, resumed };
     } catch (error) {
@@ -948,7 +921,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         // 실패 롤백: spawn 전에 떼어낸 payload providerSession과 observability 세션을
         // 복원한다 — payload의 providerSession이 resume과 Analyst transcript의 단일 권위다.
         const rollbackPayload = { ...(ctx.host.operations.get(sessionId)?.payload ?? {}) };
-        rollbackPayload.providerSession = providerSession;
+        rollbackPayload.session = providerSession;
         ctx.host.operations.patch(sessionId, { payload: rollbackPayload });
         observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       }
@@ -1079,11 +1052,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return true;
     }
     // dormant 대상은 재기동 후 전달한다(제품 결정). providerSession이 없으면 이어붙일 세션이 없다.
-    const cliId = readOptionalAgentCliId(node.payload?.cliId, res);
-    if (cliId === false) {
-      settleAttachments(false);
-      return true;
-    }
+    const cliId = CLAUDE_HARNESS_ID;
     const providerSession = readProviderSession(node.payload);
     if (!cliId || !providerSession) {
       settleAttachments(false);
@@ -1354,7 +1323,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     | { readonly ok: false; readonly status: number; readonly error: string };
 
   async function resolveChatSeed(node: OperationNode): Promise<ChatSeedResolution> {
-    if (readPayloadString(node.payload, "cliId") !== CHAT_SUPPORTED_CLI_ID) {
+    if (!readAgentSession(node.payload)) {
       return { ok: false, status: 409, error: "chat_unsupported" };
     }
     const providerSession = readProviderSession(node.payload);
@@ -1381,8 +1350,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const cwd = readPayloadString(node.payload, "cwd") || ctx.host.paths.resolveTheaterPath(node.theaterId);
     if (!cwd) return { ok: false, status: 404, error: "theater_not_found" };
     // resume core와 같은 좌표 정책: launchModel이 없던 구세대 Operation은 native Opus 1M로 계속된다.
-    const model = readPayloadString(node.payload, "launchModel") || "opus[1m]";
-    const launchEffort = resolveChatLaunchEffort(readPayloadString(node.payload, "launchEffort"));
+    const model = readAgentSession(node.payload)?.model || "opus[1m]";
+    const launchEffort = resolveChatLaunchEffort(readAgentSession(node.payload)?.effort ?? "");
     // Chat Mode는 표면만 다른 같은 Operation이다 — 터미널에서 열었을 때 CLI가 받는 것과 같은
     // doctrine, 같은 Fleet 도구를 받아야 한다. 프롬프트 모드도 PTY 경로와 같은 전역 설정을 읽는다.
     const claudeConfigDir = resolveClaudeConfigDir();
@@ -1466,7 +1435,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         }),
         onProviderSessionUpdate: (updated) => {
           const operation = ctx.host.operations.get(node.id);
-          if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, providerSession: updated } });
+          if (operation) ctx.host.operations.patch(node.id, { payload: { ...operation.payload, session: mergeCapturedAgentSession(operation.payload, updated) } });
           observability.updateTerminalSessionProviderSession(node.id, updated);
         },
         canReportActivity: () => observability.getTerminalSessionInfo(node.id)?.chatActive === true,
@@ -1583,7 +1552,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       observability.updateTerminalSessionProviderSession(sessionId, providerSession);
       const operation = ctx.host.operations.get(sessionId);
       if (operation) {
-        ctx.host.operations.patch(sessionId, { payload: { ...operation.payload, providerSession } });
+        ctx.host.operations.patch(sessionId, { payload: { ...operation.payload, session: mergeCapturedAgentSession(operation.payload, providerSession) } });
       } else {
         console.warn(`[fleet-console] capture-session persisted without operation payload: ${sessionId}`);
       }
@@ -1628,8 +1597,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
   function launch(cwd: string | undefined, context: { readonly operationId?: string; readonly model?: string; readonly effort?: string; readonly prompt?: string } | undefined) {
     const operationId = context?.operationId ?? "";
     const operation = ctx.host.operations.get(operationId);
-    const cliId = typeof operation?.payload.cliId === "string" ? operation.payload.cliId : undefined;
-    const providerSession = readProviderSession(operation?.payload)?.sessionId;
+    const cliId = operation ? CLAUDE_HARNESS_ID : undefined;
+    const providerSession = readProviderSession(operation?.payload)?.id;
     // prompt는 spawn-only. Operation payload·브라우저 DTO에 넣지 않는다(FORBIDDEN_BROWSER_PAYLOAD_KEYS).
     return launchResolver(cwd, {
       sessionId: operationId,
@@ -1748,7 +1717,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
       return;
     }
     const operation = ctx.host.operations.get(sessionId);
-    const providerSessionId = readProviderSession(operation?.payload)?.sessionId;
+    const providerSessionId = readProviderSession(operation?.payload)?.id;
     if (!providerSessionId) {
       identityRefreshes.delete(sessionId);
       return;
@@ -1759,12 +1728,12 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     void terminalRuntime.resolveSessionIdentity(sessionId, providerSessionId)
       .then((title) => {
         const current = ctx.host.operations.get(sessionId);
-        if (!title || !current || readProviderSession(current.payload)?.sessionId !== providerSessionId) return;
+        if (!title || !current || readProviderSession(current.payload)?.id !== providerSessionId) return;
         const applied = observability.applyTerminalSessionProviderIdentity(sessionId, title);
         if (!applied?.renamed) return;
         observability.notifySessionUpdated(applied.session);
         const operation = ctx.host.operations.get(sessionId);
-        if (!operation || readProviderSession(operation.payload)?.sessionId !== providerSessionId) return;
+        if (!operation || readProviderSession(operation.payload)?.id !== providerSessionId) return;
         const cwd = readPayloadString(operation.payload, "cwd") || applied.session.cwdLabel;
         const providerSession = readProviderSession(operation.payload);
         ctx.host.operations.patch(sessionId, {
@@ -1811,10 +1780,8 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         : readPayloadString(operation.payload, "labelSource")
           ? { label: operation.title, labelSource: readPayloadString(operation.payload, "labelSource") as AgentLabelSource }
           : {}),
-      ...(readPayloadString(operation.payload, "cliId") ? { cliId: readPayloadString(operation.payload, "cliId")! } : {}),
-      ...(readPayloadString(operation.payload, "cliLabel") ? { cliLabel: readPayloadString(operation.payload, "cliLabel")! } : {}),
       createdAt: operation.ts.createdAt,
-      ...(readProviderSession(operation.payload) ? { providerSession: readProviderSession(operation.payload)! } : {}),
+      ...(readProviderSession(operation.payload) ? { session: readProviderSession(operation.payload)! } : {}),
     });
   }
 
@@ -1851,17 +1818,7 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     }
   }
 
-  function backfillAgentOperationLaunchAxes(): void {
-    for (const operation of ctx.host.operations.list()) {
-      // 두 축을 같은 payload 위에 겹쳐 쌓아 한 번만 patch한다 — 축마다 patch하면
-      // 뒤 patch가 읽는 payload가 앞 patch 이전 스냅숏이라 먼저 메운 축이 지워진다.
-      const kindPatch = buildAgentLaunchKindBackfillPatch(operation);
-      const payload = kindPatch?.payload ?? operation.payload;
-      const providerPatch = buildAgentLaunchProviderBackfillPatch({ ...operation, payload });
-      const next = providerPatch?.payload ?? kindPatch?.payload;
-      if (next) ctx.host.operations.patch(operation.id, { payload: next });
-    }
-  }
+
 
   return { cleanup, handle, handleExit, launch, launchKinds: buildLaunchKinds };
 
@@ -1899,19 +1856,19 @@ export function createTerminalWikiToolSpecs(fleetDataDir: string) {
   return getWikiToolSpecs(resolver);
 }
 
-function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, session: AgentTerminalSessionInfo, providerSession?: AgentProviderSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
+function toOperationPayload(existing: Record<string, unknown> | undefined, cwd: string, runtimeSession: AgentTerminalSessionInfo, capturedSession?: CapturedAgentSession | AnalysisProviderSession, providerTitle?: AgentProviderTitleMarker): Record<string, unknown> {
   const payload = { ...(existing ?? {}) };
-  for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "providerSession", "labelSource", "providerTitle", "restoredDormant"]) {
+  for (const key of ["cwd", "cliId", "launchKindId", "cliLabel", "launchProvider", "launchModel", "launchEffort", "providerSession", "labelSource", "providerTitle", "restoredDormant"]) {
     delete payload[key];
   }
+  const session = capturedSession
+    ? mergeCapturedAgentSession(existing, capturedSession)
+    : readAgentSession(existing);
   return {
     ...payload,
     cwd,
-    ...(session.cliId ? { cliId: session.cliId } : {}),
-    ...(session.cliId ? { launchKindId: session.cliId } : {}),
-    ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
-    ...(providerSession ? { providerSession } : {}),
-    ...(session.labelSource ? { labelSource: session.labelSource } : {}),
+    ...(session ? { session } : {}),
+    ...(runtimeSession.labelSource ? { labelSource: runtimeSession.labelSource } : {}),
     ...(providerTitle ? { providerTitle } : {}),
   };
 }
@@ -1942,7 +1899,7 @@ function readOptionalAgentCliId(value: unknown, res: Parameters<FleetPluginServe
   }
 }
 
-function parseCaptureHookInput(provider: string, input: string): AgentProviderSession | undefined {
+function parseCaptureHookInput(provider: string, input: string): CapturedAgentSession | undefined {
   try {
     if (provider !== "claude") throw new Error("invalid_provider");
     const parsed = JSON.parse(input) as unknown;
@@ -1950,8 +1907,8 @@ function parseCaptureHookInput(provider: string, input: string): AgentProviderSe
     const candidate = parsed as { readonly session_id?: unknown; readonly transcript_path?: unknown; readonly source?: unknown };
     if (typeof candidate.session_id !== "string" || candidate.session_id.length === 0) throw new Error("missing_provider_session_id");
     return {
-      provider,
-      sessionId: candidate.session_id,
+      harness: "claude-code",
+      id: candidate.session_id,
       ...(typeof candidate.transcript_path === "string" && candidate.transcript_path.length > 0 ? { transcriptPath: candidate.transcript_path } : {}),
       ...(typeof candidate.source === "string" && candidate.source.length > 0 ? { source: candidate.source } : {}),
       capturedAt: new Date().toISOString(),

@@ -26,7 +26,7 @@ describe("buildAgentCliLaunchKinds", () => {
   it("adds the complete built-in model and effort menu to the enabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
       [
-        { id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true },
+        { id: "claude", label: "Claude (Gateway)", available: true, signedIn: true },
       ],
       "agent",
       resolveAiGatewaySelection({ version: 1 }),
@@ -34,7 +34,7 @@ describe("buildAgentCliLaunchKinds", () => {
 
     expect(result).toEqual([
       {
-        id: "claude-gateway",
+        id: "claude",
         type: "agent",
         title: "Claude (Gateway)",
         variants: [builtinVariants],
@@ -55,7 +55,7 @@ describe("buildAgentCliLaunchKinds", () => {
     });
 
     const result = buildAgentCliLaunchKinds(
-      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
       resolved,
     );
@@ -111,7 +111,7 @@ describe("buildAgentCliLaunchKinds", () => {
     });
 
     const result = buildAgentCliLaunchKinds(
-      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
       selection,
     );
@@ -139,7 +139,7 @@ describe("buildAgentCliLaunchKinds", () => {
     });
 
     const result = buildAgentCliLaunchKinds(
-      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
       selection,
     );
@@ -161,7 +161,7 @@ describe("buildAgentCliLaunchKinds", () => {
     });
 
     const result = buildAgentCliLaunchKinds(
-      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
       selection,
     );
@@ -190,7 +190,7 @@ describe("buildAgentCliLaunchKinds", () => {
     });
 
     const result = buildAgentCliLaunchKinds(
-      [{ id: "claude-gateway", label: "Claude (Gateway)", available: true, signedIn: true }],
+      [{ id: "claude", label: "Claude (Gateway)", available: true, signedIn: true }],
       "agent",
       selection,
     );
@@ -209,7 +209,7 @@ describe("buildAgentCliLaunchKinds", () => {
   it("keeps disabled reasons and does not attach variants to a disabled gateway kind", () => {
     const result = buildAgentCliLaunchKinds(
       [
-        { id: "claude-gateway", label: "Claude (Gateway)", available: false, signedIn: true },
+        { id: "claude", label: "Claude (Gateway)", available: false, signedIn: true },
       ],
       "agent",
       resolveAiGatewaySelection({
@@ -219,7 +219,7 @@ describe("buildAgentCliLaunchKinds", () => {
     );
 
     expect(result).toEqual([
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
+      { id: "claude", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
     ]);
   });
 });

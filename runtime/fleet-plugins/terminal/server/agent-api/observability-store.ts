@@ -12,7 +12,7 @@ import type {
   AgentObservedRequest,
   AgentObservedWorkspace,
   AgentObserverTruncation,
-  AgentProviderSession,
+  CapturedAgentSession,
   AgentProviderTitleMarker,
   AgentSessionAttentionEvent,
   AgentSessionStatus,
@@ -73,7 +73,7 @@ interface PendingTerminalSessionState {
   settledAgentIds?: ReadonlySet<string>;
   registrationId?: string;
   cliRunId?: string;
-  providerSession?: AgentProviderSession;
+  session?: CapturedAgentSession;
 }
 
 type DormantOperationInput = AgentDurableOperation;
@@ -210,13 +210,11 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       label: operation.label,
       labelSource: operation.labelSource,
       providerTitle: operation.providerTitle,
-      cliId: operation.cliId,
-      cliLabel: operation.cliLabel,
       createdAt: operation.createdAt,
       theaterId: operation.theaterId,
       terminalSessionId: operation.sessionId,
       status: "dormant",
-      providerSession: operation.providerSession,
+      session: operation.session,
     };
     terminalSessionsById.set(state.sessionId, state);
     return toTerminalSessionInfo(state);
@@ -234,10 +232,8 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       ...(session.label ? { label: session.label } : {}),
       ...(session.labelSource ? { labelSource: session.labelSource } : {}),
       ...(session.providerTitle ? { providerTitle: session.providerTitle } : {}),
-      ...(session.cliId ? { cliId: session.cliId } : {}),
-      ...(session.cliLabel ? { cliLabel: session.cliLabel } : {}),
       createdAt: session.createdAt,
-      ...(session.providerSession ? { providerSession: session.providerSession } : {}),
+      ...(session.session ? { session: session.session } : {}),
     }));
   }
 
@@ -245,10 +241,10 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return listDurableOperations().find((operation) => operation.sessionId === sessionId) ?? null;
   }
 
-  function updateTerminalSessionProviderSession(sessionId: string, providerSession: AgentProviderSession): AgentTerminalSessionInfo | null {
+  function updateTerminalSessionProviderSession(sessionId: string, providerSession: CapturedAgentSession): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
-    session.providerSession = providerSession;
+    session.session = providerSession;
     return toTerminalSessionInfo(session);
   }
 
@@ -257,7 +253,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
   function clearTerminalSessionProviderSession(sessionId: string): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
-    delete session.providerSession;
+    delete session.session;
     return toTerminalSessionInfo(session);
   }
 
@@ -331,7 +327,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
     return toTerminalSessionInfo(session);
   }
 
-  function transitionTerminalSessionToDormant(sessionId: string, providerSession: AgentProviderSession): AgentTerminalSessionInfo | null {
+  function transitionTerminalSessionToDormant(sessionId: string, providerSession: CapturedAgentSession): AgentTerminalSessionInfo | null {
     const session = terminalSessionsById.get(sessionId);
     if (!session) return null;
     const workspace = workspacesByCliRunId.get(sessionId);
@@ -340,7 +336,7 @@ export function createConsoleObservabilityStore(deps: ConsoleObservabilityStoreD
       workspacesByCliRunId.delete(sessionId);
     }
     session.status = "dormant";
-    session.providerSession = providerSession;
+    session.session = providerSession;
     delete session.modelActivity;
     clearTerminalSessionBackgroundPending(session);
     // attentionPending은 보존한다 — dormant 사이드바 "입력 대기" 배지가 Resume 전까지 유지되어야 한다.
@@ -594,7 +590,7 @@ function toTerminalSessionInfo(state: PendingTerminalSessionState): AgentTermina
     registrationId: state.registrationId,
     cliRunId: state.cliRunId,
     tenantId: state.cliRunId,
-    resumeAvailable: state.providerSession !== undefined,
+    resumeAvailable: state.session !== undefined,
   };
 }
 

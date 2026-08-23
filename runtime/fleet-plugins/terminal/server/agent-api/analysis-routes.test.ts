@@ -34,7 +34,7 @@ const ANALYST_NATIVE_MODELS = [
 ] as const;
 
 /** 카탈로그가 받아들이는 선택. 강도를 지원하는 모델은 강도 없이 시작할 수 없다. */
-const START_SELECTION = { cliId: "claude-gateway", model: "sonnet", effort: "low" } as const;
+const START_SELECTION = { cliId: "claude", model: "sonnet", effort: "low" } as const;
 
 type AnalysisRouteDeps = NonNullable<Parameters<typeof registerAnalysisRoutes>[1]>;
 
@@ -80,7 +80,7 @@ describe("Session Analyst server contract", () => {
     }] as unknown as Parameters<typeof buildAnalysisCatalog>[1];
     const catalog = buildAnalysisCatalog(native, gateway, true);
     const entry = catalog.clis[0]!;
-    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude-gateway"]);
+    expect(catalog.clis.map((cli) => cli.cliId)).toEqual(["claude"]);
     expect(entry.available).toBe(true);
     // 소유자가 정한 기본은 sonnet/low다. 오늘의 기본이던 opus/xhigh를 낮춘 것이며,
     // 분석가 사다리는 low/medium/high만 연다 — xhigh는 기본값으로도, 선택지로도 서지 않는다.
@@ -94,18 +94,18 @@ describe("Session Analyst server contract", () => {
     // 게이트웨이 모델 스키마에는 기본 강도가 없으므로 지어내지 않는다.
     expect(entry.models.find((model) => model.id.startsWith("claude-gateway--"))).not.toHaveProperty("defaultEffort");
     expect(JSON.stringify(catalog)).not.toMatch(/path|version|session/i);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low" })).toBe(true);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low", language: "ko" })).toBe(true);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "low", language: "ja" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet", effort: "low" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet", effort: "low", language: "ko" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet", effort: "low", language: "ja" })).toBe(false);
     // 강도를 지원하는 모델은 강도 없이 시작할 수 없다.
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet" })).toBe(false);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "removed", effort: "low" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "removed", effort: "low" })).toBe(false);
 
     // 반대로 강도가 없는 모델은 강도를 실으면 거부한다 — 사용자가 고르지 않은 값이기 때문이다.
     const noEffortCatalog = buildAnalysisCatalog([{ modelId: "model-b", name: "Model B", effort: { supported: false } }], [], true);
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b" })).toBe(true);
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b", effort: "" })).toBe(true);
-    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude-gateway", model: "model-b", effort: "low" })).toBe(false);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "" })).toBe(true);
+    expect(isAnalysisSelection(noEffortCatalog, { cliId: "claude", model: "model-b", effort: "low" })).toBe(false);
   });
 
   it("reports the analyst unavailable before the Console is listening", () => {
@@ -131,8 +131,8 @@ describe("Session Analyst server contract", () => {
     expect(sonnet.effortLevels).toEqual(["low", "medium", "high"]);
     expect(sonnet.defaultEffort).toBe("low");
     expect(gateway.effortLevels).toEqual(["low", "medium", "high"]);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "high" })).toBe(true);
-    expect(isAnalysisSelection(catalog, { cliId: "claude-gateway", model: "sonnet", effort: "xhigh" })).toBe(false);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet", effort: "high" })).toBe(true);
+    expect(isAnalysisSelection(catalog, { cliId: "claude", model: "sonnet", effort: "xhigh" })).toBe(false);
   });
 
   it("accepts only the frozen message shape", () => {
@@ -348,7 +348,7 @@ describe("Session Analyst server contract", () => {
       createSession: createSession as never,
     });
 
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude-gateway", model: "fixed-effort", language: "ko" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "fixed-effort", language: "ko" });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ effort: undefined, language: "ko" }));
   });
@@ -542,7 +542,7 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-2)).toEqual({ status: 200, body: { ready: true } });
     expect(router.responses.at(-1)).toMatchObject({ status: 200, body: { started: true } });
     expect(createSession).toHaveBeenCalledWith(expect.objectContaining({ capturePath: transcriptPath }));
-    expect(readProviderSession(router.operation.payload)).toBeUndefined();
+    expect(readProviderSession(router.operation.payload)).toMatchObject({ harness: "claude-code", id: "legacy-private" });
   });
 
   it("reports analysis as ready when transcript fallback resolution succeeds", async () => {
@@ -846,7 +846,7 @@ describe("Session Analyst server contract", () => {
     expect(router.responses.at(-1)).toMatchObject({ status: 403, body: { error: { code: "analysis_catalog_invalid" } } });
 
     router.allowHost = true;
-    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude-gateway", model: "sonnet", effort: "low" });
+    await router.call("POST", "/api/v1/plugins/terminal/analysis/op/start", { cliId: "claude", model: "sonnet", effort: "low" });
     expect(router.responses.at(-1)).toMatchObject({ status: 409, body: { error: { code: "analysis_transcript_missing" } } });
     expect(JSON.stringify(router.responses)).not.toContain("private");
   });
@@ -1081,7 +1081,16 @@ function createRouterHarness(initialHostAllowance: boolean) {
     ctx, operation: state.operation, responses,
     get allowHost() { return state.allowHost; }, set allowHost(value: boolean) { state.allowHost = value; },
     setProviderSession(providerSession: { readonly provider: "claude" | "codex"; readonly sessionId: string; readonly capturedAt: string; readonly transcriptPath?: string; readonly source?: string }) {
-      state.operation.payload = { ...state.operation.payload, providerSession };
+      state.operation.payload = {
+        ...state.operation.payload,
+        session: {
+          harness: "claude-code",
+          id: providerSession.sessionId,
+          capturedAt: providerSession.capturedAt,
+          ...(providerSession.transcriptPath ? { transcriptPath: providerSession.transcriptPath } : {}),
+          ...(providerSession.source ? { source: providerSession.source } : {}),
+        },
+      };
     },
     setOrigin(origin: string | null) { state.origin = origin; },
     /** 다음 요청의 본문 읽기를 붙잡아, 준비 단계 한가운데를 관측할 수 있는 지점으로 만든다. */

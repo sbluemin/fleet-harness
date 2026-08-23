@@ -5,7 +5,7 @@ import { EFFORT_LABELS, NATIVE_MODEL_LABELS } from "../../../server/agent-api/ag
 
 describe("agent chat session coordinates", () => {
   it("reads the launch coordinates the Operation payload carries", () => {
-    const coordinates = readAgentChatSessionCoordinates({ launchModel: "opus[1m]", launchEffort: "ultra" });
+    const coordinates = readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "opus[1m]", effort: "ultra" } });
     expect(coordinates).toEqual({
       model: "Opus",
       effort: "ULTRACODE",
@@ -16,12 +16,11 @@ describe("agent chat session coordinates", () => {
     });
   });
 
-  // 이름만으로는 같은 자리에 선 두 모델이 어디서 온 것인지 말하지 못한다. 런치가 적어 둔 값이
-  // 먼저이고, 없으면 게이트웨이 범위에서 읽는다.
-  it("reads the supplier from the launch payload, then from the model scope", () => {
-    expect(readAgentChatSessionCoordinates({ launchModel: "opus[1m]", launchProvider: "xai" }).provider).toBe("xai");
-    expect(readAgentChatSessionCoordinates({ launchModel: "claude-gateway--cursor--auto" }).provider).toBe("cursor");
-    expect(readAgentChatSessionCoordinates({ launchModel: "sonnet" }).provider).toBe("claude");
+  // 공급자는 중복 필드 없이 model scope에서 읽는다.
+  it("reads the supplier from the model scope", () => {
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "xai--grok-4.6" } }).provider).toBe("xai");
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "claude-gateway--cursor--auto" } }).provider).toBe("cursor");
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "sonnet" } }).provider).toBe("claude");
     expect(readAgentChatSessionCoordinates({}).provider).toBeNull();
   });
 
@@ -37,7 +36,7 @@ describe("agent chat session coordinates", () => {
   });
 
   it("keeps the effort level even when only the effort was pinned", () => {
-    const coordinates = readAgentChatSessionCoordinates({ launchEffort: "max" });
+    const coordinates = readAgentChatSessionCoordinates({ session: { harness: "claude-code", effort: "max" } });
     expect(coordinates.model).toBeNull();
     expect(coordinates.effort).toBe("MAX");
     expect(coordinates.effortLevel).toBe("max");
@@ -45,12 +44,12 @@ describe("agent chat session coordinates", () => {
   });
 
   it("shortens a scoped gateway model id to the model it names", () => {
-    expect(readAgentChatSessionCoordinates({ launchModel: "cursor--auto" }).model).toBe("auto");
-    expect(readAgentChatSessionCoordinates({ launchModel: "claude-gateway--xai--grok-4.6" }).model).toBe("grok-4.6");
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "cursor--auto" } }).model).toBe("auto");
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "claude-gateway--xai--grok-4.6" } }).model).toBe("grok-4.6");
   });
 
   it("ignores payload values that are not non-empty strings", () => {
-    expect(readAgentChatSessionCoordinates({ launchModel: "", launchEffort: 3 as unknown as string }).title).toBeNull();
+    expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: "", effort: 3 as unknown as string } }).title).toBeNull();
     expect(readAgentChatSessionCoordinates(undefined).title).toBeNull();
   });
 
@@ -58,10 +57,10 @@ describe("agent chat session coordinates", () => {
   // 못한다. 런치 메뉴가 어휘의 원본이므로, 칩이 그 표에서 갈라지면 여기서 붉어진다.
   it("speaks the launch menu's vocabulary", () => {
     for (const [model, label] of Object.entries(NATIVE_MODEL_LABELS)) {
-      expect(readAgentChatSessionCoordinates({ launchModel: model }).model).toBe(label);
+      expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", model: model } }).model).toBe(label);
     }
     for (const [effort, label] of Object.entries(EFFORT_LABELS)) {
-      expect(readAgentChatSessionCoordinates({ launchEffort: effort }).effort).toBe(label);
+      expect(readAgentChatSessionCoordinates({ session: { harness: "claude-code", effort } }).effort).toBe(label);
     }
   });
 });

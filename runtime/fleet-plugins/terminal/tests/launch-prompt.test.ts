@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createAgentTerminalLaunchResolver } from "../server/agent-api/launch.js";
 
 const baseProfile = {
-  id: "claude-gateway",
+  id: "claude",
   label: "Claude",
   bin: "/bin/claude",
   args: ["--model", "sonnet"],
@@ -62,7 +62,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
 
     await resolve("/work/project", {
       sessionId: "session-a",
-      cliId: "claude-gateway",
+      cliId: "claude",
       prompt: "ship the prompt threading",
     });
 
@@ -70,7 +70,7 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       expect.any(Object),
       "/work/project",
       expect.objectContaining({
-        cliId: "claude-gateway",
+        cliId: "claude",
         prompt: "ship the prompt threading",
       }),
     );
@@ -92,13 +92,13 @@ describe("createAgentTerminalLaunchResolver prompt threading", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-gateway" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
 
     expect(resolveProfile).toHaveBeenCalledWith(
       expect.any(Object),
       "/work/project",
       expect.objectContaining({
-        cliId: "claude-gateway",
+        cliId: "claude",
         prompt: undefined,
       }),
     );

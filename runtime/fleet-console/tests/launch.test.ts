@@ -26,7 +26,7 @@ interface FakeRuntime {
 }
 
 const baseProfile = {
-  id: "claude-gateway",
+  id: "claude",
   label: "Claude Code",
   bin: "/bin/claude",
   args: ["--model", "sonnet"],
@@ -106,7 +106,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       messagePolicy: { bracketedPaste: true, multilineStrategy: "paste-mode" },
       terminalName: "xterm-256color",
     });
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-gateway" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
     expect(injectProfile).toHaveBeenCalledTimes(1);
     expect(events).toEqual([]);
   });
@@ -114,7 +114,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
   it("passes the resume coordinate and capture hook exec to fleet-admiral injection", async () => {
     const runtime = createFakeRuntime(() => undefined);
     const injectedOptions: InjectAgentCliProfileOptions[] = [];
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-gateway" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile: AgentCliProfile, options: InjectAgentCliProfileOptions) => {
       injectedOptions.push(options);
       return { ...profile, args: [...profile.args, "resume", "provider-session-a"] };
@@ -130,10 +130,10 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude-gateway", resumeSessionId: "provider-session-a" });
+    await resolve("/work/project", { sessionId: "fleet-session-a", cliId: "claude", resumeSessionId: "provider-session-a" });
 
     expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({
-      cliId: "claude-gateway",
+      cliId: "claude",
       resumeSessionId: "provider-session-a",
     }));
     // 재개는 좌표로 넘어간다. 대역이 아니라 실제 주입이 읽는 필드여야 한다 — 예전 이름을
@@ -147,7 +147,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
   it("passes a selected Agent CLI id to fleet-admiral profile resolution", async () => {
     const runtime = createFakeRuntime(() => undefined);
-    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude-gateway" as const, label: "Claude", cwd, env: { ...env } }));
+    const resolveProfile = vi.fn(async (env: NodeJS.ProcessEnv, cwd: string) => ({ ...baseProfile, id: "claude" as const, label: "Claude", cwd, env: { ...env } }));
     const injectProfile = vi.fn(async (profile) => profile);
     const resolve = createDefaultTerminalLaunchResolver({
       cwd: "/work",
@@ -157,9 +157,9 @@ describe("createDefaultTerminalLaunchResolver", () => {
       resolveProfile: resolveProfile as never,
     });
 
-    await resolve("/work/project", { sessionId: "session-a", cliId: "claude-gateway" });
+    await resolve("/work/project", { sessionId: "session-a", cliId: "claude" });
 
-    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude-gateway" }));
+    expect(resolveProfile).toHaveBeenCalledWith(expect.any(Object), "/work/project", expect.objectContaining({ cliId: "claude" }));
   });
 
 
@@ -189,19 +189,19 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     const native = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "fable",
       effort: "max",
       sessionId: "gateway-native-variant",
     });
     const scoped = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "cursor--grok-4.5",
       effort: "high",
       sessionId: "gateway-scoped-variant",
     });
     const rowOnly = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "cursor--grok-4.5",
       sessionId: "gateway-scoped-row",
     });
@@ -262,7 +262,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     const spec = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "cursor--auto",
       sessionId: "gateway-host-only",
     });
@@ -298,7 +298,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     await expect(resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "kimi--k3",
       sessionId: "gateway-stale-model",
     })).rejects.toMatchObject({
@@ -332,7 +332,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     await expect(resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "kimi--k3",
       effort: "high",
       sessionId: "gateway-stale-effort",
@@ -382,7 +382,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
 
     const resumeSessionId = "11111111-2222-4333-8444-555555555555";
     const spec = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       sessionId: "gateway-resumed",
       resumeSessionId,
     });
@@ -433,7 +433,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     const spec = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       sessionId: "gateway-integration",
     });
     const pluginRoot = spec.args[spec.args.indexOf("--plugin-dir") + 1];
@@ -490,7 +490,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
     });
 
     const spec = await resolve(root, {
-      cliId: "claude-gateway",
+      cliId: "claude",
       sessionId: "gateway-replace",
     });
 
@@ -526,7 +526,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       infraServices: createFakeInfraServices({ claudeCodeSystemPrompt: "off" }) as never,
     });
 
-    const spec = await resolve(root, { cliId: "claude-gateway", sessionId: "gateway-prompt-off" });
+    const spec = await resolve(root, { cliId: "claude", sessionId: "gateway-prompt-off" });
 
     // Fleet은 실을 본문이 없다 — 값이 비어 있어야 기본 프롬프트가 사라진다.
     expect(spec.args[spec.args.indexOf("--system-prompt") + 1]).toBe("");
@@ -670,7 +670,7 @@ describe("createDefaultTerminalLaunchResolver", () => {
       createSessionIdentityResolver: createResolver as never,
     });
 
-    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
+    const spec = await resolve("/work", { sessionId: "session-a", cliId: "claude" });
 
     expect(spec.sessionIdentityResolver).toMatchObject({ resolve: expect.any(Function) });
     // resolver는 세션 기록을 읽을 뿐이라 프로필에서 필요한 것은 그 기록이 놓인 cwd 하나다.
@@ -691,11 +691,11 @@ describe("createDefaultTerminalLaunchResolver", () => {
       },
       infraServices: createFakeInfraServices() as never,
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
-      resolveProfile: (async () => ({ ...baseProfile, id: "claude-gateway", label: "Claude (Gateway)" })) as never,
+      resolveProfile: (async () => ({ ...baseProfile, id: "claude", label: "Claude" })) as never,
       createSessionIdentityResolver: createResolver as never,
     });
 
-    await resolve("/work", { sessionId: "session-a", cliId: "claude-gateway" });
+    await resolve("/work", { sessionId: "session-a", cliId: "claude" });
 
     expect(createResolver).toHaveBeenCalledWith({ cwd: "/work" });
   });
@@ -714,14 +714,14 @@ describe("createDefaultTerminalLaunchResolver", () => {
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
       resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
         ...baseProfile,
-        id: "claude-gateway",
-        label: "Claude (Gateway)",
+        id: "claude",
+        label: "Claude",
         cwd,
         env: { ...env },
       })) as never,
     });
 
-    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude-gateway" });
+    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude" });
     const cache = JSON.parse(readFileSync(path.join(claudeConfigDir, "cache", "gateway-models.json"), "utf8")) as {
       readonly baseUrl: string;
       readonly fetchedAt: number;
@@ -795,14 +795,14 @@ describe("createDefaultTerminalLaunchResolver", () => {
       injectProfile: (async (profile: AgentCliProfile) => profile) as never,
       resolveProfile: (async (env: NodeJS.ProcessEnv, cwd: string) => ({
         ...baseProfile,
-        id: "claude-gateway",
-        label: "Claude (Gateway)",
+        id: "claude",
+        label: "Claude",
         cwd,
         env: { ...env },
       })) as never,
     });
 
-    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude-gateway" });
+    const spec = await resolve("/work", { sessionId: "session-gateway", cliId: "claude" });
 
     expect(spec.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW).toBe("850000");
   });

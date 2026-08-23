@@ -163,7 +163,7 @@ export async function prepareChatClaudeSession(
   });
 }
 
-const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude-gateway";
+const CHAT_PLUGIN_CLI_ID: AgentCliId = "claude";
 
 export function createAgentTerminalLaunchResolver(deps: TerminalLaunchResolverDeps = {}): TerminalLaunchResolver {
   const baseCwd = deps.cwd ?? process.cwd();
@@ -281,11 +281,11 @@ async function createAgentCliLaunchSpec(options: {
     const cliId = resolveAgentCliId(options.env, { cliId: options.cliId });
     // gateway Agent 주입과 ANTHROPIC_MODEL/cache는 같은 selection을 공유한다.
     // resolveProfile보다 먼저 읽어 명시 모델 검증·Agent 정의 렌더·cache가 한 스냅샷을 공유한다.
-    const gatewaySelection = cliId === "claude-gateway" && options.readAiGatewaySettings
+    const gatewaySelection = cliId === "claude" && options.readAiGatewaySettings
       ? resolveAiGatewaySelection(options.readAiGatewaySettings())
       : undefined;
     let resolvedModel = options.model;
-    if (cliId === "claude-gateway" && resolvedModel) {
+    if (cliId === "claude" && resolvedModel) {
       const nativeAlias = resolveNativeClaudeModelAlias(resolvedModel);
       if (nativeAlias) {
         resolvedModel = nativeAlias;
@@ -351,7 +351,7 @@ async function createAgentCliLaunchSpec(options: {
       claudeSessionId: injectedProfile.session.sessionId,
     });
     let launchProfile: AgentCliProfile = injectedProfile;
-    if (injectedProfile.id === "claude-gateway") {
+    if (injectedProfile.id === "claude") {
       if (!options.aiGateway) {
         throw new Error("The AI gateway launch binding is unavailable.");
       }

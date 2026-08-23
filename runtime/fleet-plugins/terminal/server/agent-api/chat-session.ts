@@ -39,7 +39,7 @@ import {
 import type { ClaudeSessionHandle } from "@dotobokuri/fleet-admiral";
 
 import { chatChildEnv } from "../shared/launch-env.js";
-import type { AgentProviderSession } from "./types.js";
+import type { CapturedAgentSession } from "./types.js";
 
 /**
  * Chat Mode 세션 하나의 서버 소유 상태.
@@ -114,7 +114,7 @@ export interface AgentChatSessionSeed {
   readonly resolveClaudeSession?: () => Promise<ClaudeSessionHandle>;
   /** 위에서 발급한 토큰을 되돌린다. 세션 dispose에서만 불린다. */
   readonly releaseFleetMcpServers?: () => void;
-  readonly onProviderSessionUpdate: (providerSession: AgentProviderSession) => void;
+  readonly onProviderSessionUpdate: (providerSession: CapturedAgentSession) => void;
   /**
    * 이 세션의 실행 활동을 Operation 활동축에 보고한다. 반환 false는 축이 이 보고를 받지 못했다는
    * 뜻이며, 그때는 턴을 시작하지 않는다 — 배선이 끊긴 채 도는 턴은 화면에 휴면으로 보이고,
@@ -1534,8 +1534,8 @@ class AgentChatSession {
     if (!transcriptPath) return;
     this.reportedSessionId = sessionId;
     this.seed.onProviderSessionUpdate({
-      provider: "claude",
-      sessionId,
+      harness: "claude-code",
+      id: sessionId,
       transcriptPath,
       source: "chat-mode",
       capturedAt: new Date().toISOString(),

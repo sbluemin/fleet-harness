@@ -134,14 +134,14 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude", type: "agent", title: "Claude" },
         ],
       },
     ]);
 
-    const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
+    const gateway = document.querySelectorAll<HTMLButtonElement>('[data-operation-launch-kind="claude"]');
     expect(gateway).toHaveLength(1);
-    expect(gateway[0]?.textContent).toContain("Claude (Gateway)");
+    expect(gateway[0]?.textContent).toContain("Claude");
   });
 
   it("annotates the Claude launch kinds with a description and no extra decoration", () => {
@@ -151,7 +151,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "codex", type: "agent", title: "Codex" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude", type: "agent", title: "Claude" },
           { id: "shell", type: "shell", title: "Shell" },
         ],
       },
@@ -160,15 +160,15 @@ describe("CanvasContextMenu launch kind attribute", () => {
     const descriptionOf = (kindId: string) =>
       document.querySelector(`[data-operation-launch-kind="${kindId}"] .operation-launch-menu-description`)?.textContent;
 
-    expect(descriptionOf("claude-gateway")).toContain("built-in Claude and enabled Gateway models");
+    expect(descriptionOf("claude")).toContain("built-in Claude and enabled Gateway models");
     // 설명은 Claude Gateway에만 붙는다 — 대비가 필요 없는 종류까지 늘리면 메뉴만 길어진다.
     expect(descriptionOf("codex")).toBeUndefined();
     expect(descriptionOf("shell")).toBeUndefined();
 
     // 종류 구분은 라벨 괄호 안이 들고 있다 — 항목에 별도 표식을 덧붙이지 않는다.
     expect(document.querySelector(".operation-launch-menu-badge")).toBeNull();
-    expect(document.querySelector('[data-operation-launch-kind="claude-gateway"]')?.textContent)
-      .toContain("Claude (Gateway)");
+    expect(document.querySelector('[data-operation-launch-kind="claude"]')?.textContent)
+      .toContain("Claude");
   });
 
   it("shows the disabled reason instead of the description when the CLI cannot launch", () => {
@@ -177,12 +177,12 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, disabledReason: "Not installed" },
+          { id: "claude", type: "agent", title: "Claude", disabled: true, disabledReason: "Not installed" },
         ],
       },
     ]);
 
-    const item = document.querySelector('[data-operation-launch-kind="claude-gateway"]');
+    const item = document.querySelector('[data-operation-launch-kind="claude"]');
     expect(item?.querySelector(".operation-launch-menu-reason")?.textContent).toBe("Not installed");
     expect(item?.querySelector(".operation-launch-menu-description")).toBeNull();
   });
@@ -217,7 +217,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude", type: "agent", title: "Claude" },
         ],
       },
     ]);
@@ -228,7 +228,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     // 설명 문장은 짚기 전에는 옆에 펴지지 않지만, 버튼 안에는 남아 접근 이름에 실린다.
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
-    const gateway = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    const gateway = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!;
     expect(gateway.textContent).toContain("Runs Claude Code with built-in Claude and enabled Gateway models");
 
     act(() => gateway.dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
@@ -245,7 +245,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         id: "terminal",
         title: "Terminal",
         kinds: [
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude", type: "agent", title: "Claude" },
           { id: "codex", type: "agent", title: "Codex", disabled: true, disabledReason: "Not installed" },
           { id: "shell", type: "shell", title: "Shell" },
         ],
@@ -259,16 +259,16 @@ describe("CanvasContextMenu launch kind attribute", () => {
     expect(document.activeElement).toBe(menu);
 
     act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(activeKind()).toBe("claude-gateway");
+    expect(activeKind()).toBe("claude");
 
     // 실행할 수 없는 종류와 우클릭에서 제거된 Shell을 건너뛰고 처음으로 돈다.
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })));
-    expect(activeKind()).toBe("claude-gateway");
+    expect(activeKind()).toBe("claude");
 
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })));
-    expect(activeKind()).toBe("claude-gateway");
+    expect(activeKind()).toBe("claude");
     act(() => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })));
-    expect(activeKind()).toBe("claude-gateway");
+    expect(activeKind()).toBe("claude");
   });
 
   it("places the description aside on the side that has room and withholds it when neither does", () => {
@@ -276,11 +276,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }],
+        kinds: [{ id: "claude", type: "agent", title: "Claude" }],
       },
     ];
     const point = () => act(() =>
-      document.querySelector('[data-operation-launch-kind="claude-gateway"]')!
+      document.querySelector('[data-operation-launch-kind="claude"]')!
         .dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
 
     // 오른쪽에 자리가 있으면 오른쪽.
@@ -298,7 +298,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
     point();
     expect(document.querySelector(".canvas-context-menu-aside")).toBeNull();
     // 펴지 못해도 대비와 설명 문장 자체는 행에 남는다.
-    const row = document.querySelector('[data-operation-launch-kind="claude-gateway"]')!;
+    const row = document.querySelector('[data-operation-launch-kind="claude"]')!;
     expect(row.querySelector(".operation-launch-menu-brief")?.textContent).toBe("Built-in + Gateway");
     expect(row.textContent).toContain("built-in Claude and enabled Gateway models");
   });
@@ -354,7 +354,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
       {
         id: "terminal",
         title: "Terminal",
-        kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }],
+        kinds: [{ id: "claude", type: "agent", title: "Claude" }],
       },
     ], onClose);
     tourLayer = document.createElement("div");
@@ -383,7 +383,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
         title: "Terminal",
         kinds: [
           { id: "shell", type: "shell", title: "Shell" },
-          { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+          { id: "claude", type: "agent", title: "Claude" },
         ],
       },
     ]);
@@ -449,7 +449,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     const row = document.querySelector<HTMLButtonElement>('[data-launch-variant-row="fable"]')!;
     // 모델 행도 결국 이 실행 종류를 띄운다 — 종류를 짚는 바깥 선택자가 밴드에서도 닿아야 한다.
-    expect(row.getAttribute("data-operation-launch-kind")).toBe("claude-gateway");
+    expect(row.getAttribute("data-operation-launch-kind")).toBe("claude");
     // 펼쳐지는 것은 메뉴가 아니라 슬라이더 하나짜리 상자다 — haspopup=menu로 예고하면 보조기술이
     // 메뉴 탐색 모델을 씌워 트랙을 조작 대상으로 보지 않는다.
     expect(row.hasAttribute("aria-haspopup")).toBe(false);
@@ -492,9 +492,9 @@ describe("CanvasContextMenu launch kind attribute", () => {
       id: "terminal",
       title: "Terminal",
       kinds: [{
-        id: "claude-gateway",
+        id: "claude",
         type: "agent",
-        title: "Claude (Gateway)",
+        title: "Claude",
         variants: [{
           id: "gateway:cursor",
           label: "Cursor",
@@ -533,11 +533,11 @@ describe("CanvasContextMenu launch kind attribute", () => {
     // 모델 행은 자기 키로 덮어야 "설명 없는 자리"가 되고, 포인터가 메뉴를 벗어나면 다시 포커스가 드러난다.
     const [gateway] = gatewayVariantCatalog();
     renderMenu({ x: 320, y: 156 }, { width: 1400, height: 856 }, [
-      { id: "terminal", title: "Terminal", kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }] },
+      { id: "terminal", title: "Terminal", kinds: [{ id: "claude", type: "agent", title: "Claude" }] },
       { ...gateway!, id: "models", title: "Models" },
     ]);
 
-    const annotated = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    const annotated = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!;
     act(() => annotated.focus());
     expect(document.querySelector(".canvas-context-menu-aside")).not.toBeNull();
 
@@ -573,7 +573,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     expect(document.querySelector(".operation-launch-variant-caption")).toBeNull();
     expect(document.querySelector("[data-launch-variant-row]")).toBeNull();
-    const locked = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    const locked = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!;
     expect(locked.disabled).toBe(true);
   });
 
@@ -586,7 +586,7 @@ describe("CanvasContextMenu launch kind attribute", () => {
 
     expect(document.querySelector(".operation-launch-variant-caption")).toBeNull();
     expect(document.querySelector("[data-launch-variant-row]")).toBeNull();
-    const row = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!;
+    const row = document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!;
     expect(row.disabled).toBe(true);
     expect(row.querySelector(".operation-launch-menu-reason")?.textContent).toBe("Not installed");
   });
@@ -832,7 +832,7 @@ describe("CanvasContextMenu effort confirm tip", () => {
   it("keeps showing the tip on non-AUTO selection until the confirm gesture graduates it", async () => {
     const onLaunchKind = vi.fn();
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog(), vi.fn(), false, onLaunchKind);
-    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
+    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!
       .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
 
@@ -864,7 +864,7 @@ describe("CanvasContextMenu effort confirm tip", () => {
   it("keeps AUTO quiet and skips the tip when the confirm gesture was already seen", () => {
     hydrateGlobalSettings({ ...SETTINGS, seenFeatureTours: [EFFORT_CONFIRM_TIP_SEEN_KEY] });
     renderMenu({ x: 520, y: 156 }, { width: 1116, height: 856 }, gatewayVariantCatalog());
-    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]')!
+    act(() => document.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]')!
       .parentElement!.dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
     act(() => effortHandle("fable").dispatchEvent(new MouseEvent("pointerover", { bubbles: true })));
 
@@ -963,9 +963,9 @@ function gatewayVariantCatalog(): readonly OperationCatalogPlugin[] {
     id: "terminal",
     title: "Terminal",
     kinds: [{
-      id: "claude-gateway",
+      id: "claude",
       type: "agent",
-      title: "Claude (Gateway)",
+      title: "Claude",
       variants: [{
         id: "native",
         label: "Claude",

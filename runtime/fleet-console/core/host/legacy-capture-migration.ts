@@ -22,7 +22,7 @@ type CaptureFileOutcome = {
 
 /**
  * One-shot best-effort migration: inject legacy captures/*.json into operation
- * payload.providerSession when missing, then delete the captures/ directory.
+ * payload.session when missing, then delete the captures/ directory.
  * Failures never throw — boot must not be blocked.
  */
 export function migrateLegacyCaptures(deps: MigrateLegacyCapturesDeps): void {
@@ -93,16 +93,21 @@ function processCaptureFile(
 ): CaptureFileOutcome {
   const operation = deps.operations.get(operationId);
   if (operation) {
-    if (hasProviderSession(operation.payload)) return { migrated: false, retained: false };
+    if (hasSession(operation.payload)) return { migrated: false, retained: false };
 
     const filePath = path.join(capturesDir, entry);
     const parsed = JSON.parse(fs.readFileSync(filePath, "utf8")) as unknown;
-    const providerSession = sanitizeProviderSession(parsed);
-    if (!providerSession) return { migrated: false, retained: false };
-    // 제거된 provider도 분석용 transcript 매핑은 durable payload로 이관한다.
-    // 실행과 Resume 가능 여부는 provider-specific consumer가 별도로 제한한다.
+    const session = sanitizeLegacySession(parsed);
+    if (!session) return { migrated: false, retained: false };
+    const existingSession = readLaunchSession(operation.payload.session);
     deps.operations.patch(operationId, {
-      payload: { ...operation.payload, providerSession },
+      payload: {
+        ...operation.payload,
+        session: {
+          ...(existingSession ?? {}),
+          ...session,
+        },
+      },
     });
     return { migrated: true, retained: false };
   }
@@ -110,19 +115,30 @@ function processCaptureFile(
   // live store에 없으면 삭제 유예 tombstone을 본다 — tombstone payload는 수정하지 않고,
   // Analyst transcript용 capture만 다음 부팅까지 보존한다.
   const tombstoned = deps.tombstonedOperations?.find((candidate) => candidate.id === operationId);
-  if (tombstoned && !hasProviderSession(tombstoned.payload)) {
+  if (tombstoned && !hasSession(tombstoned.payload)) {
     return { migrated: false, retained: true };
   }
   return { migrated: false, retained: false };
 }
 
-function hasProviderSession(payload: Record<string, unknown> | undefined): boolean {
-  return sanitizeProviderSession(payload?.providerSession) !== undefined;
+function hasSession(payload: Record<string, unknown> | undefined): boolean {
+  return sanitizeSession(payload?.session) !== undefined;
 }
 
-function sanitizeProviderSession(value: unknown): {
-  readonly provider: "claude" | "codex";
-  readonly sessionId: string;
+function readLaunchSession(value: unknown): { readonly harness: "claude-code"; readonly model?: string; readonly effort?: string } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as { readonly harness?: unknown; readonly model?: unknown; readonly effort?: unknown };
+  if (candidate.harness !== "claude-code") return undefined;
+  return {
+    harness: "claude-code",
+    ...(typeof candidate.model === "string" && candidate.model.length > 0 ? { model: candidate.model } : {}),
+    ...(typeof candidate.effort === "string" && candidate.effort.length > 0 ? { effort: candidate.effort } : {}),
+  };
+}
+
+function sanitizeLegacySession(value: unknown): {
+  readonly harness: "claude-code";
+  readonly id: string;
   readonly capturedAt: string;
   readonly transcriptPath?: string;
   readonly source?: string;
@@ -131,20 +147,30 @@ function sanitizeProviderSession(value: unknown): {
   const candidate = value as {
     readonly provider?: unknown;
     readonly sessionId?: unknown;
+    readonly harness?: unknown;
+    readonly id?: unknown;
     readonly capturedAt?: unknown;
     readonly transcriptPath?: unknown;
     readonly source?: unknown;
   };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") {
-    return undefined;
-  }
+  const legacyId = typeof candidate.sessionId === "string" ? candidate.sessionId : candidate.id;
+  const knownSource = candidate.provider === "claude" || candidate.provider === "codex" || candidate.harness === "claude-code";
+  if (!knownSource || typeof legacyId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
   return {
-    provider: candidate.provider,
-    sessionId: candidate.sessionId,
+    harness: "claude-code",
+    id: legacyId,
     capturedAt: candidate.capturedAt,
     ...(typeof candidate.transcriptPath === "string" && candidate.transcriptPath.length > 0 ? { transcriptPath: candidate.transcriptPath } : {}),
     ...(typeof candidate.source === "string" && candidate.source.length > 0 ? { source: candidate.source } : {}),
   };
+}
+
+function sanitizeSession(value: unknown): { readonly harness: "claude-code"; readonly id: string; readonly capturedAt: string } | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as { readonly harness?: unknown; readonly id?: unknown; readonly capturedAt?: unknown };
+  return candidate.harness === "claude-code" && typeof candidate.id === "string" && typeof candidate.capturedAt === "string"
+    ? { harness: "claude-code", id: candidate.id, capturedAt: candidate.capturedAt }
+    : undefined;
 }
 
 function isSafeCaptureId(value: string): boolean {

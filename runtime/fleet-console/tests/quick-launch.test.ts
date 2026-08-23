@@ -52,15 +52,15 @@ describe("findVariantLaunchKind", () => {
   it("picks the first enabled kind that declares model/effort variants", () => {
     const target = findVariantLaunchKind(catalog([
       { id: "shell", type: "shell", title: "Shell" },
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", variants: GROUPS },
+      { id: "claude", type: "agent", title: "Claude", variants: GROUPS },
     ]));
 
-    expect(target).toEqual({ pluginId: "terminal", kind: expect.objectContaining({ id: "claude-gateway" }) });
+    expect(target).toEqual({ pluginId: "terminal", kind: expect.objectContaining({ id: "claude" }) });
   });
 
   it("skips a disabled kind so an unavailable CLI is never targeted", () => {
     const target = findVariantLaunchKind(catalog([
-      { id: "claude-gateway", type: "agent", title: "Claude (Gateway)", disabled: true, variants: GROUPS },
+      { id: "claude", type: "agent", title: "Claude", disabled: true, variants: GROUPS },
     ]));
 
     expect(target).toBeNull();
@@ -441,7 +441,7 @@ describe("pending request lifecycle", () => {
       pendingQuickLaunch: {
         theaterId: "t1",
         pluginId: "terminal",
-        kind: { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+        kind: { id: "claude", type: "agent", title: "Claude" },
         variant: { prompt: "do the thing" },
       },
     });
@@ -458,7 +458,7 @@ describe("pending request lifecycle", () => {
       pendingQuickLaunch: {
         theaterId: "t2",
         pluginId: "terminal",
-        kind: { id: "claude-gateway", type: "agent", title: "Claude (Gateway)" },
+        kind: { id: "claude", type: "agent", title: "Claude" },
         variant: { prompt: "do the thing" },
       },
     });

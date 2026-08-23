@@ -1,28 +1,49 @@
-import type { AgentProviderSession } from "./types.js";
+import type { AgentSession, CapturedAgentSession } from "./types.js";
 
-export interface AnalysisProviderSession {
-  readonly provider: "claude" | "codex";
-  readonly sessionId: string;
-  readonly transcriptPath?: string;
-  readonly source?: string;
-  readonly capturedAt: string;
+export type AnalysisProviderSession = CapturedAgentSession;
+
+export function readAgentSession(payload: Record<string, unknown> | undefined): AgentSession | undefined {
+  const value = payload?.session;
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.harness !== "claude-code") return undefined;
+  return {
+    harness: "claude-code",
+    ...(readString(candidate.model) ? { model: readString(candidate.model)! } : {}),
+    ...(readString(candidate.effort) ? { effort: readString(candidate.effort)! } : {}),
+    ...(readString(candidate.id) ? { id: readString(candidate.id)! } : {}),
+    ...(readString(candidate.transcriptPath) ? { transcriptPath: readString(candidate.transcriptPath)! } : {}),
+    ...(readString(candidate.source) ? { source: readString(candidate.source)! } : {}),
+    ...(readString(candidate.capturedAt) ? { capturedAt: readString(candidate.capturedAt)! } : {}),
+  };
 }
 
-export function readProviderSession(value: Record<string, unknown> | undefined): AgentProviderSession | undefined {
-  const providerSession = readAnalysisProviderSession(value?.providerSession);
-  if (providerSession?.provider !== "claude") return undefined;
-  return { ...providerSession, provider: "claude" };
+export function readProviderSession(payload: Record<string, unknown> | undefined): CapturedAgentSession | undefined {
+  const session = readAgentSession(payload);
+  if (!session?.id || !session.capturedAt) return undefined;
+  return { ...session, id: session.id, capturedAt: session.capturedAt };
 }
 
 export function readAnalysisProviderSession(value: unknown): AnalysisProviderSession | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
-  const candidate = value as { readonly provider?: unknown; readonly sessionId?: unknown; readonly capturedAt?: unknown; readonly transcriptPath?: unknown; readonly source?: unknown };
-  if ((candidate.provider !== "claude" && candidate.provider !== "codex") || typeof candidate.sessionId !== "string" || typeof candidate.capturedAt !== "string") return undefined;
+  return readProviderSession({ session: value });
+}
+
+export function mergeCapturedAgentSession(
+  payload: Record<string, unknown> | undefined,
+  captured: Pick<CapturedAgentSession, "id" | "capturedAt" | "transcriptPath" | "source">,
+): CapturedAgentSession {
+  const existing = readAgentSession(payload);
   return {
-    provider: candidate.provider,
-    sessionId: candidate.sessionId,
-    capturedAt: candidate.capturedAt,
-    ...(typeof candidate.transcriptPath === "string" && candidate.transcriptPath.length > 0 ? { transcriptPath: candidate.transcriptPath } : {}),
-    ...(typeof candidate.source === "string" ? { source: candidate.source } : {}),
+    harness: "claude-code",
+    ...(existing?.model ? { model: existing.model } : {}),
+    ...(existing?.effort ? { effort: existing.effort } : {}),
+    id: captured.id,
+    ...(captured.transcriptPath ? { transcriptPath: captured.transcriptPath } : {}),
+    ...(captured.source ? { source: captured.source } : {}),
+    capturedAt: captured.capturedAt,
   };
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
 }

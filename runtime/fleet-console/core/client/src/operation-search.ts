@@ -4,7 +4,7 @@ import type { OperationRuntimeState } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 import type { ConsoleLocale } from "@fleet-console/sdk/i18n";
 
-import { launchProviderFromOperationPayload, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
+import { launchProviderFromModelId, type LaunchProviderGlyphId } from "./components/launch-provider-glyphs.js";
 import { getGlobalSettingsStoreState } from "./global-settings-store.js";
 import { resolveOperationActivity } from "./operation-activity.js";
 import type { ConsoleState, OperationNode, TheaterInfo } from "./types.js";
@@ -20,6 +20,12 @@ export interface OperationSearchEntry {
   readonly activity: OperationActivityVisual;
   /** 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이고 마크를 그리지 않는다. */
   readonly launchProvider: LaunchProviderGlyphId | null;
+}
+
+function readSessionModel(payload: Record<string, unknown>): string | null {
+  if (!payload.session || typeof payload.session !== "object" || Array.isArray(payload.session)) return null;
+  const model = (payload.session as Record<string, unknown>).model;
+  return typeof model === "string" ? model : null;
 }
 
 export interface OperationSearchGroup {
@@ -149,7 +155,7 @@ function toOperationSearchEntry(
     pluginId: operation.pluginId,
     status: "operation",
     activity: resolveOperationActivity(operation, operationRuntime),
-    launchProvider: launchProviderFromOperationPayload(operation.payload),
+    launchProvider: launchProviderFromModelId(readSessionModel(operation.payload)),
   };
 }
 

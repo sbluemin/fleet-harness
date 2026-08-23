@@ -322,8 +322,8 @@ describe("AgentChatRegistry — chat-born sessions", () => {
 
     // cwd 인코딩을 재구현하지 않는다 — 세션 id로 홈 안을 훑어 우리 파일을 찾는다.
     expect(updates).toEqual([expect.objectContaining({
-      provider: "claude",
-      sessionId: "born-1",
+      harness: "claude-code",
+      id: "born-1",
       transcriptPath: path.join(home, "projects", "-tmp-workspace", "born-1.jsonl"),
       source: "chat-mode",
     })]);
@@ -627,8 +627,8 @@ describe("AgentChatRegistry", () => {
 
     expect(readFileSync(transcriptPath, "utf8")).toContain("grown");
     expect(updates.at(-1)).toEqual(expect.objectContaining({
-      provider: "claude",
-      sessionId: "sid-3",
+      harness: "claude-code",
+      id: "sid-3",
       transcriptPath,
       source: "chat-mode",
     }));
@@ -738,7 +738,7 @@ describe("AgentChatRegistry", () => {
   // 그 프레임이 마지막이면 Operation은 옛 좌표를 durable 권위로 들고 남는다.
   it("retries the coordinate lookup that arrived while the first one was in flight", async () => {
     const home = tempDir("chat-home-");
-    const updates: Array<{ readonly sessionId: string }> = [];
+    const updates: Array<{ readonly id: string }> = [];
     const configDir = tempDir("chat-sdk-");
     const projectDir = path.join(home, "projects", "-tmp-workspace");
     mkdirSync(projectDir, { recursive: true });
@@ -761,13 +761,13 @@ describe("AgentChatRegistry", () => {
       dispose: async () => {},
     })) as never;
     const registry = new AgentChatRegistry(factory);
-    const session = await registry.ensure("op-sync-retry", () => freshSeedFor(home, (providerSession) => updates.push(providerSession as { sessionId: string })));
+    const session = await registry.ensure("op-sync-retry", () => freshSeedFor(home, (providerSession) => updates.push(providerSession as { id: string })));
 
     session.send("go");
     await drainTurn(registry, "op-sync-retry");
 
     await vi.waitFor(() => {
-      expect(updates.at(-1)?.sessionId).toBe("sid-latest");
+      expect(updates.at(-1)?.id).toBe("sid-latest");
     });
     await registry.disposeAll();
   });

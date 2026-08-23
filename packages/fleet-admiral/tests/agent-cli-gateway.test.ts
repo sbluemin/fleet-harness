@@ -36,11 +36,11 @@ afterEach(() => {
 
 describe("claude-gateway profile", () => {
   it("is the only published Agent CLI and normalizes exact retired aliases", () => {
-    expect(getAgentCliIds()).toEqual(["claude-gateway"]);
-    expect(getAgentCliMetadata()).toEqual([{ id: "claude-gateway", label: "Claude (Gateway)" }]);
-    expect(parseAgentCliId("claude")).toBe("claude-gateway");
-    expect(parseAgentCliId("claude-native")).toBe("claude-gateway");
-    expect(parseAgentCliId("claude-gateway")).toBe("claude-gateway");
+    expect(getAgentCliIds()).toEqual(["claude"]);
+    expect(getAgentCliMetadata()).toEqual([{ id: "claude", label: "Claude" }]);
+    expect(parseAgentCliId("claude")).toBe("claude");
+    expect(parseAgentCliId("claude-native")).toBe("claude");
+    expect(parseAgentCliId("claude-gateway")).toBe("claude");
     expect(() => parseAgentCliId("claude-native-extra")).toThrow(/Unsupported agent CLI/);
   });
 
@@ -51,7 +51,7 @@ describe("claude-gateway profile", () => {
       CLAUDE_BIN: process.execPath,
       KEEP_ME: "yes",
     }, "/tmp", {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "claude-gateway--cursor-auto",
       effort: "xhigh",
     });
@@ -59,8 +59,8 @@ describe("claude-gateway profile", () => {
     expect(profile).toMatchObject({
       args: ["--model", "claude-gateway--cursor-auto", "--effort", "xhigh"],
       bin: process.execPath,
-      id: "claude-gateway",
-      label: "Claude (Gateway)",
+      id: "claude",
+      label: "Claude",
       renameCommand: "/rename",
     });
     expect(profile.env).toMatchObject({
@@ -73,7 +73,7 @@ describe("claude-gateway profile", () => {
   it("caps subagent spawn depth so a delegated worker cannot re-delegate", async () => {
     const profile = await resolveAgentCliProfile({
       CLAUDE_BIN: process.execPath,
-    }, "/tmp", { cliId: "claude-gateway" });
+    }, "/tmp", { cliId: "claude" });
 
     // 1이면 세션 자신만 Agent를 부를 수 있다 — 서브에이전트의 도구 목록에서 Agent가 사라진다.
     expect(profile.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("1");
@@ -83,7 +83,7 @@ describe("claude-gateway profile", () => {
     const profile = await resolveAgentCliProfile({
       CLAUDE_BIN: process.execPath,
       CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH: "3",
-    }, "/tmp", { cliId: "claude-gateway" });
+    }, "/tmp", { cliId: "claude" });
 
     expect(profile.env.CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH).toBe("3");
   });
@@ -92,7 +92,7 @@ describe("claude-gateway profile", () => {
     const profile = await resolveAgentCliProfile({
       CLAUDE_BIN: process.execPath,
     }, "/tmp", {
-      cliId: "claude-gateway",
+      cliId: "claude",
       model: "claude-gateway--codex--gpt-5.6-sol",
       effort: "ultra",
     });
@@ -183,7 +183,7 @@ describe("claude-gateway custom agents", () => {
   it("registers gateway identities as plugin agent files, and never disables a built-in agent", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-");
     const model = requireGatewayModel("cursor--grok-4.5");
-    const gateway = baseProfile("claude-gateway", {
+    const gateway = baseProfile("claude", {
       args: [],
       cwd: root,
       env: { HOME: root },
@@ -217,7 +217,7 @@ describe("claude-gateway custom agents", () => {
 
   it("registers no identity when no gateway models are exposed", async () => {
     const root = createTempRoot("fleet-admiral-gateway-agents-empty-");
-    const profile = baseProfile("claude-gateway", {
+    const profile = baseProfile("claude", {
       args: [],
       cwd: root,
       env: { HOME: root },
@@ -234,7 +234,7 @@ describe("claude-gateway custom agents", () => {
 describe("claude-gateway argument composition", () => {
   it("never carries a system prompt flag while preserving gateway composition", () => {
     const args = buildClaudeGatewayArgs({
-      cliId: "claude-gateway",
+      cliId: "claude",
       mcpServers: [{ name: "fleet", endpointUrl: "http://127.0.0.1:48123/mcp", bearerToken: "token" }],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
@@ -252,7 +252,7 @@ describe("claude-gateway argument composition", () => {
 
   it("turns Claude Code's own prompt off with an empty prompt value, never with an append flag", () => {
     const args = buildClaudeGatewayArgs({
-      cliId: "claude-gateway",
+      cliId: "claude",
       mcpServers: [],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
@@ -267,7 +267,7 @@ describe("claude-gateway argument composition", () => {
 
   it("restores the suppressed search tools without replacing the built-in set", () => {
     const args = buildClaudeGatewayArgs({
-      cliId: "claude-gateway",
+      cliId: "claude",
       mcpServers: [],
       pluginRoot: "/fleet/plugin",
       pluginRoots: ["/fleet/plugin"],
@@ -298,7 +298,7 @@ describe("claude-gateway argument composition", () => {
 
       await expect(injectAgentCliProfile(
         {
-          ...baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } }),
+          ...baseProfile("claude", { args: [], cwd: root, env: { HOME: root } }),
           commandLineLimit: { maxChars: 8191, via: "cmd-shim" },
           promptArgs: ["hello & world"],
         },
@@ -313,7 +313,7 @@ describe("claude-gateway argument composition", () => {
 
   it("empties Claude Code's prompt in place, leaving no file behind", async () => {
     const root = createTempRoot("fleet-admiral-gateway-sysprompt-off-");
-    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
       claudeCodeSystemPrompt: "off",
     }));
@@ -327,7 +327,7 @@ describe("claude-gateway argument composition", () => {
 
   it("leaves Claude Code's prompt alone when the session does not turn it off", async () => {
     const root = createTempRoot("fleet-admiral-gateway-sysprompt-on-");
-    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const on = await injectAgentCliProfile(profile, baseInjectOptions(root, { claudeCodeSystemPrompt: "on" }));
     const byDefault = await injectAgentCliProfile(profile, baseInjectOptions(root));
 
@@ -341,7 +341,7 @@ describe("claude-gateway argument composition", () => {
 
   it("composes gateway assets with no system prompt flag on any path", async () => {
     const root = createTempRoot("fleet-admiral-gateway-compose-");
-    const profile = baseProfile("claude-gateway", { args: [], cwd: root, env: { HOME: root } });
+    const profile = baseProfile("claude", { args: [], cwd: root, env: { HOME: root } });
     const model = requireGatewayModel("cursor--grok-4.5");
     const hook: FleetHookExec = { command: process.execPath, args: ["hook"] };
     const injected = await injectAgentCliProfile(profile, baseInjectOptions(root, {
@@ -380,7 +380,7 @@ describe("claude-gateway argument composition", () => {
 describe("claude-gateway disabled skills", () => {
   it("turns the built-in claude-api skill off through --settings", async () => {
     const root = createTempRoot("fleet-admiral-gateway-skills-");
-    const profile = baseProfile("claude-gateway", {
+    const profile = baseProfile("claude", {
       args: [],
       cwd: root,
       env: { HOME: root },

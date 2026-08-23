@@ -58,9 +58,10 @@ export function MobileOperationList({ operations, operationRuntime, notification
             </header>
             <div className="mobile-operation-cards">
               {entries.map((operation) => {
-                const cliLabel = typeof operation.payload.cliLabel === "string" && operation.payload.cliLabel.trim()
-                  ? operation.payload.cliLabel.trim()
+                const session = operation.payload.session && typeof operation.payload.session === "object" && !Array.isArray(operation.payload.session)
+                  ? operation.payload.session as Record<string, unknown>
                   : null;
+                const harnessLabel = session?.harness === "claude-code" ? "Claude Code" : null;
                 return (
                   <button type="button" className="mobile-operation-card" key={operation.id} onClick={() => onOpen(operation.id)}>
                     {/* Shell은 활동 축을 발행하지 않는다 — 늘 같은 값으로 굳는 비콘 대신 종류 글리프가 선다.
@@ -70,7 +71,7 @@ export function MobileOperationList({ operations, operationRuntime, notification
                       : <span className={beaconClass(status)} aria-hidden="true" />}
                     <span className="mobile-operation-card-copy">
                       <strong>{operation.title}</strong>
-                      {cliLabel ? <span>{cliLabel}</span> : null}
+                      {harnessLabel ? <span>{harnessLabel}</span> : null}
                     </span>
                     {notificationIds.has(operation.id) ? <span className="mobile-operation-alert-mark" aria-label={t("mobile.operations.hasAlert")}>!</span> : null}
                     <span className="mobile-operation-chevron" aria-hidden="true">›</span>

@@ -26,12 +26,10 @@ describe("agent observability DTO boundary", () => {
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
-      cliId: "claude-gateway",
-      cliLabel: "Claude (Gateway)",
       createdAt: 1_000,
-      providerSession: {
-        provider: "claude",
-        sessionId: "provider-session-secret",
+      session: {
+        harness: "claude-code",
+        id: "provider-session-secret",
         transcriptPath: "/secret/transcript.jsonl",
         source: "startup",
         capturedAt: "2026-06-16T00:00:00.000Z",
@@ -58,12 +56,10 @@ describe("agent observability DTO boundary", () => {
       sessionId: "session-a",
       theaterId: "theater-a",
       cwd,
-      cliId: "claude-gateway",
-      cliLabel: "Claude (Gateway)",
       createdAt: 1_000,
-      providerSession: {
-        provider: "claude",
-        sessionId: "provider-session-secret",
+      session: {
+        harness: "claude-code",
+        id: "provider-session-secret",
         transcriptPath: "/secret/transcript.jsonl",
         source: "startup",
         capturedAt: "2026-06-16T00:00:00.000Z",
@@ -82,7 +78,7 @@ describe("agent observability DTO boundary", () => {
 describe("agent activity observability state", () => {
   function createStore() {
     const store = createConsoleObservabilityStore({ workspaceHash: () => "theater-a" });
-    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude-gateway", createdAt: 1_000 });
+    store.createPendingTerminalSession({ sessionId: "session-a", cwd: "/workspace/project", cliId: "claude", createdAt: 1_000 });
     return store;
   }
 
@@ -141,8 +137,6 @@ describe("agent activity observability state", () => {
       sessionId: "session-chat",
       theaterId: "theater-a",
       cwd: "/workspace/project",
-      cliId: "claude-gateway",
-      cliLabel: "Claude (Gateway)",
       createdAt: 1_000,
     });
 
@@ -192,8 +186,8 @@ describe("agent activity observability state", () => {
 
     // 세션이 dormant로 내려가면 그 기억은 CLI 프로세스와 함께 끝난다.
     store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session",
+      harness: "claude-code",
+      id: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
     expect(store.getTerminalSessionSettledAgentIds("session-a")).toEqual(new Set());
@@ -225,8 +219,8 @@ describe("agent activity observability state", () => {
     store.setTerminalSessionBackgroundPending("session-a", true);
 
     const dormant = store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session",
+      harness: "claude-code",
+      id: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
     expect(dormant).not.toHaveProperty("backgroundPending");
@@ -239,8 +233,8 @@ describe("agent activity observability state", () => {
     vi.useFakeTimers();
     const store = createStore();
     store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session",
+      harness: "claude-code",
+      id: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
 
@@ -273,8 +267,8 @@ describe("agent activity observability state", () => {
 
     store.notifySessionAttention(store.getTerminalSessionInfo("session-a")!, "permission_prompt");
     const dormant = store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session",
+      harness: "claude-code",
+      id: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
     expect(dormant).toMatchObject({ status: "dormant", attentionPending: true });
@@ -288,8 +282,8 @@ describe("agent activity observability state", () => {
     expect(store.getTerminalSessionInfo("session-a")).toMatchObject({ attentionPending: true });
 
     const dormant = store.transitionTerminalSessionToDormant("session-a", {
-      provider: "claude",
-      sessionId: "provider-session",
+      harness: "claude-code",
+      id: "provider-session",
       capturedAt: "2026-07-25T00:00:00.000Z",
     });
     expect(dormant).toMatchObject({ status: "dormant", attentionPending: true });

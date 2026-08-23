@@ -1,10 +1,13 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
+  backupDurableStateV3,
   createConsoleDurableStateStore,
+  readDurableStateVersion,
   sanitizeDurableConsoleState,
 } from "../core/host/durable-state.js";
 import type { ConsoleDataPaths } from "../core/host/paths.js";
@@ -17,29 +20,29 @@ afterEach(() => {
 
 describe("durable console state", () => {
   it("falls back to an empty state for version mismatch or malformed data", () => {
-    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 3, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 1, theaters: [], operations: [] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ id: "" }], operations: [{ id: "" }] })).toEqual({ version: 4, theaters: [], operations: [], groups: [], deletionTombstones: [] });
   });
 
   it("drops legacy pathContext values without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
-    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 3, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "packages/core" }], operations: [] })).toMatchObject({ version: 4, theaters: [base] });
+    expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, pathContext: "../escape" }], operations: [] })).toMatchObject({ version: 4, theaters: [base] });
   });
 
   it("round-trips optional Theater order without changing durable version", () => {
     const base = { id: "t", path: "/work/proj", realpath: "/work/proj", label: "proj", registeredAt: "1", lastOpenedAt: "2" };
 
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 3 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [{ ...base, order: 3 }],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: -1 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [base],
     });
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [{ ...base, order: 1.5 }], operations: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       theaters: [base],
     });
   });
@@ -70,7 +73,7 @@ describe("durable console state", () => {
       ],
     });
 
-    expect(migrated.version).toBe(3);
+    expect(migrated.version).toBe(4);
     expect(migrated.theaters).toHaveLength(1);
     expect(migrated.groups).toEqual([]);
     expect(migrated.operations).toEqual([
@@ -80,7 +83,7 @@ describe("durable console state", () => {
         type: "agent",
         pluginId: "terminal",
         title: "My Session",
-        payload: { cwd: "/work/proj", cliId: "claude", cliLabel: "Claude", labelSource: "user", providerSession: { provider: "claude", sessionId: "p-1", transcriptPath: "/t.jsonl", capturedAt: "2026-01-01T00:00:00.000Z" } },
+        payload: { cwd: "/work/proj", labelSource: "user", session: { harness: "claude-code", id: "p-1", transcriptPath: "/t.jsonl", capturedAt: "2026-01-01T00:00:00.000Z" } },
         geometry: null,
         ts: { createdAt: 1000, updatedAt: 1000 },
       },
@@ -90,7 +93,7 @@ describe("durable console state", () => {
         type: "agent",
         pluginId: "terminal",
         title: "sub",
-        payload: { cwd: "/work/proj/sub", cliId: "codex", cliLabel: "Codex" },
+        payload: { cwd: "/work/proj/sub", session: { harness: "claude-code" } },
         geometry: null,
         ts: { createdAt: 2000, updatedAt: 2000 },
       },
@@ -124,7 +127,7 @@ describe("durable console state", () => {
     const operation = makeOperationNode({ id: "op", pluginId: "terminal", type: "agent" });
     const theaterOperation = { ...operation, theaterId: theater.id };
     const sanitized = sanitizeDurableConsoleState({
-      version: 3,
+      version: 4,
       theaters: [],
       operations: [],
       groups: [],
@@ -138,13 +141,31 @@ describe("durable console state", () => {
     });
 
     expect(sanitizeDurableConsoleState({ version: 2, theaters: [theater], operations: [operation], groups: [] })).toMatchObject({
-      version: 3,
+      version: 4,
       deletionTombstones: [],
     });
     expect(sanitized.deletionTombstones).toEqual([
       expect.objectContaining({ deletionId: "d-op", kind: "operation", targetId: "op" }),
       expect.objectContaining({ deletionId: "d-theater", kind: "theater", targetId: "t", operations: [expect.objectContaining({ id: "op" })] }),
     ]);
+  });
+
+  it("reads the on-disk version and preserves the first v3 backup", () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "fleet-durable-state-"));
+    tempDirs.push(dir);
+    const stateFile = path.join(dir, "state.json");
+    const backupFile = `${stateFile}.v3-backup`;
+    const original = '{"version":3,"operations":[]}\n';
+    fs.writeFileSync(stateFile, original);
+
+    expect(readDurableStateVersion(stateFile)).toBe(3);
+    backupDurableStateV3(stateFile);
+    expect(fs.readFileSync(backupFile, "utf8")).toBe(original);
+
+    fs.writeFileSync(stateFile, '{"version":4,"operations":[]}\n');
+    backupDurableStateV3(stateFile);
+    expect(fs.readFileSync(backupFile, "utf8")).toBe(original);
+    expect(readDurableStateVersion(path.join(dir, "missing.json"))).toBeNull();
   });
 
   it("creates the state store with sensitive durable JSON settings", () => {

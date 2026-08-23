@@ -28,7 +28,7 @@ export async function launchClaudeGateway(options: LaunchClaudeGatewayOptions): 
     await cleanupResources(profileCleanups, options.gatewayServer, options.runtime);
   };
   try {
-    let profile = await resolveAgentCliProfile(options.env, options.cwd, { cliId: "claude-gateway" });
+    let profile = await resolveAgentCliProfile(options.env, options.cwd, { cliId: "claude" });
     profile = { ...profile, args: [...profile.args, ...options.passthroughArgs] };
     const selection = resolveAiGatewaySelection(options.runtime.aiGatewayStore.read());
     // Console 설정과 같은 전역 옵션을 읽는다 — 두 런치 표면이 한 스위치를 공유해야

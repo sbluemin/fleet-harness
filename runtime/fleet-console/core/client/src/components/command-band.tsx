@@ -129,7 +129,10 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
   const activeOperation = commandBandActiveOperation(state.operations, state.activeOperationId, state.activeTheaterId);
   const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const [launchModelLabels, setLaunchModelLabels] = useState(NO_LAUNCH_MODEL_LABELS);
-  const activeLaunchModel = typeof activeOperation?.payload.launchModel === "string" ? activeOperation.payload.launchModel : null;
+  const activeSession = activeOperation?.payload.session && typeof activeOperation.payload.session === "object" && !Array.isArray(activeOperation.payload.session)
+    ? activeOperation.payload.session as Record<string, unknown>
+    : null;
+  const activeLaunchModel = typeof activeSession?.model === "string" ? activeSession.model : null;
   // 사이드바 칩과 같은 규율: 이름 왼쪽 슬롯은 활동 상태가 가져간다. 무엇으로 띄웠는지가 아니라
   // 지금 무엇을 하고 있는지가 먼저 읽혀야 한다. 모델 이름은 스위처 메뉴 메타로만 남긴다.
   // Shell만은 예외다 — 활동 축을 발행하지 않으므로 그 자리를 종류 글리프가 가져간다.

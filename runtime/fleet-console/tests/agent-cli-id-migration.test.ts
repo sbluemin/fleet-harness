@@ -1,210 +1,84 @@
-import fs from "node:fs";
-
 import { describe, expect, it } from "vitest";
 
-import {
-  RETIRED_AGENT_CLI_IDS,
-  GATEWAY_LAUNCH_KIND_ID,
-  migrateAgentCliIds,
-} from "../core/host/agent-cli-id-migration.js";
-import type { DurableConsoleState, DurableDeletionTombstone } from "../core/host/durable-state.js";
-import type { OperationNode } from "../core/host/operations/operations-domain.js";
+import { sanitizeDurableConsoleState } from "../core/host/durable-state.js";
 
-function makeOperation(id: string, payload: Record<string, unknown>): OperationNode {
-  return {
-    id,
-    theaterId: "theater-1",
-    type: "agent",
-    pluginId: "terminal",
-    title: id,
-    payload,
-    geometry: null,
-    ts: { createdAt: 1, updatedAt: 1 },
-  };
-}
+const baseOperation = {
+  id: "op",
+  theaterId: "theater",
+  type: "agent",
+  pluginId: "terminal",
+  title: "Agent",
+  geometry: null,
+  ts: { createdAt: 1, updatedAt: 2 },
+};
 
-function makeState(
-  operations: readonly OperationNode[],
-  deletionTombstones?: readonly DurableDeletionTombstone[],
-): DurableConsoleState {
-  return {
-    version: 3,
-    theaters: [],
-    operations,
-    groups: [],
-    ...(deletionTombstones ? { deletionTombstones } : {}),
-  };
-}
-
-describe("migrateAgentCliIds", () => {
-  it("moves both the display and execution axes off the retired Classic id", () => {
-    const state = makeState([
-      makeOperation("op-1", { cwd: "/tmp", launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[0] }),
-    ]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.changed).toBe(true);
-    expect(result.migratedOperations).toBe(1);
-    expect(result.state.operations[0]?.payload).toEqual({
-      cwd: "/tmp",
-      launchKindId: GATEWAY_LAUNCH_KIND_ID,
-      cliId: GATEWAY_LAUNCH_KIND_ID,
-    });
-  });
-
-  it("migrates an operation that carries only the legacy cliId", () => {
-    const state = makeState([makeOperation("op-1", { cliId: RETIRED_AGENT_CLI_IDS[0] })]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.state.operations[0]?.payload).toEqual({
-      cliId: GATEWAY_LAUNCH_KIND_ID,
-    });
-    expect(result.state.operations[0]?.payload.launchKindId).toBeUndefined();
-  });
-
-  it("migrates both retired aliases independently on both payload axes", () => {
-    const state = makeState([
-      makeOperation("mixed", { launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[1] }),
-    ]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.migratedOperations).toBe(1);
-    expect(result.state.operations[0]?.payload).toEqual({
-      launchKindId: GATEWAY_LAUNCH_KIND_ID,
-      cliId: GATEWAY_LAUNCH_KIND_ID,
-    });
-  });
-
-  it.each(["Claude", "Claude (Native)"])("migrates the known retired CLI label %s with a retired id", (cliLabel) => {
-    const state = makeState([
-      makeOperation("labeled", { cliId: RETIRED_AGENT_CLI_IDS[1], cliLabel }),
-    ]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.state.operations[0]?.payload).toEqual({
-      cliId: GATEWAY_LAUNCH_KIND_ID,
-      cliLabel: "Claude (Gateway)",
-    });
-  });
-
-  it("preserves user-authored labels while migrating a retired id", () => {
-    const state = makeState([
-      makeOperation("custom-label", { cliId: RETIRED_AGENT_CLI_IDS[1], cliLabel: "My Claude" }),
-    ]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.state.operations[0]?.payload).toEqual({
-      cliId: GATEWAY_LAUNCH_KIND_ID,
-      cliLabel: "My Claude",
-    });
-  });
-
-  it("does not migrate a retired label without a retired id axis", () => {
-    const state = makeState([
-      makeOperation("label-only", { cliLabel: "Claude (Native)" }),
-    ]);
-
-    expect(migrateAgentCliIds(state)).toEqual({
-      state,
-      changed: false,
-      migratedOperations: 0,
-    });
-  });
-
-  it("leaves neighbouring values untouched — exact match only, never a prefix", () => {
-    const state = makeState([
-      makeOperation("other", { launchKindId: "claude-native-extra", cliId: "other" }),
-      makeOperation("gateway", { launchKindId: GATEWAY_LAUNCH_KIND_ID, cliId: GATEWAY_LAUNCH_KIND_ID }),
-    ]);
-
-    const result = migrateAgentCliIds(state);
-
-    expect(result.changed).toBe(false);
-    expect(result.migratedOperations).toBe(0);
-    expect(result.state).toBe(state);
-  });
-
-  it("migrates the operation embedded in an operation tombstone", () => {
-    const tombstone: DurableDeletionTombstone = {
-      deletionId: "del-1",
-      targetId: "op-1",
-      deletedAt: 1,
-      expiresAt: 2,
-      kind: "operation",
-      operation: makeOperation("op-1", { launchKindId: RETIRED_AGENT_CLI_IDS[0] }),
-    };
-
-    const result = migrateAgentCliIds(makeState([], [tombstone]));
-
-    expect(result.changed).toBe(true);
-    expect(result.migratedOperations).toBe(1);
-    const migrated = result.state.deletionTombstones?.[0];
-    expect(migrated?.kind).toBe("operation");
-    expect(migrated?.kind === "operation" ? migrated.operation.payload.launchKindId : undefined).toBe(GATEWAY_LAUNCH_KIND_ID);
-  });
-
-  it("migrates every operation embedded in a theater tombstone", () => {
-    const tombstone: DurableDeletionTombstone = {
-      deletionId: "del-1",
-      targetId: "theater-1",
-      deletedAt: 1,
-      expiresAt: 2,
-      kind: "theater",
-      theater: {
-        id: "theater-1",
-        path: "/tmp",
-        realpath: "/tmp",
-        label: "tmp",
-        registeredAt: "2026-01-01T00:00:00.000Z",
-        lastOpenedAt: "2026-01-01T00:00:00.000Z",
-      },
-      operations: [
-        makeOperation("op-1", { cliId: RETIRED_AGENT_CLI_IDS[0] }),
-        makeOperation("op-2", { cliId: RETIRED_AGENT_CLI_IDS[1] }),
-      ],
+describe("Agent session durable migration", () => {
+  it("moves v3 CLI and launch coordinates into one session object", () => {
+    const state = sanitizeDurableConsoleState({
+      version: 3,
+      theaters: [],
+      operations: [{
+        ...baseOperation,
+        payload: {
+          cwd: "/work",
+          cliId: "claude-gateway",
+          launchKindId: "claude-gateway",
+          cliLabel: "Claude (Gateway)",
+          launchProvider: "codex",
+          launchModel: "codex--gpt-5.6-sol",
+          launchEffort: "medium",
+          providerSession: {
+            provider: "claude-gateway",
+            sessionId: "provider-session",
+            transcriptPath: "/secret/transcript.jsonl",
+            capturedAt: "2026-08-23T00:00:00.000Z",
+          },
+        },
+      }],
       groups: [],
+      deletionTombstones: [],
+    });
+
+    expect(state.version).toBe(4);
+    expect(state.operations[0]?.payload).toEqual({
+      cwd: "/work",
+      session: {
+        harness: "claude-code",
+        model: "codex--gpt-5.6-sol",
+        effort: "medium",
+        id: "provider-session",
+        transcriptPath: "/secret/transcript.jsonl",
+        capturedAt: "2026-08-23T00:00:00.000Z",
+      },
+    });
+  });
+
+  it("migrates live and tombstoned Operations and is idempotent", () => {
+    const legacy = {
+      ...baseOperation,
+      payload: { cliId: "claude-gateway", launchModel: "opus[1m]" },
     };
+    const once = sanitizeDurableConsoleState({
+      version: 3,
+      theaters: [],
+      operations: [legacy],
+      groups: [],
+      deletionTombstones: [{
+        deletionId: "d",
+        targetId: "op",
+        deletedAt: 1,
+        expiresAt: 2,
+        kind: "operation",
+        operation: legacy,
+      }],
+    });
+    const twice = sanitizeDurableConsoleState(once);
 
-    const result = migrateAgentCliIds(makeState([], [tombstone]));
-
-    expect(result.migratedOperations).toBe(2);
-    const migrated = result.state.deletionTombstones?.[0];
-    const operations = migrated?.kind === "theater" ? migrated.operations : [];
-    expect(operations[0]?.payload.cliId).toBe(GATEWAY_LAUNCH_KIND_ID);
-    expect(operations[1]?.payload.cliId).toBe(GATEWAY_LAUNCH_KIND_ID);
-  });
-
-  it("is idempotent — a second pass reports no change so boot stops rewriting the file", () => {
-    const first = migrateAgentCliIds(
-      makeState([makeOperation("op-1", { launchKindId: RETIRED_AGENT_CLI_IDS[0], cliId: RETIRED_AGENT_CLI_IDS[0] })]),
-    );
-
-    const second = migrateAgentCliIds(first.state);
-
-    expect(second.changed).toBe(false);
-    expect(second.migratedOperations).toBe(0);
-    expect(second.state).toBe(first.state);
-  });
-
-  it("keeps the state reference identical when nothing matches", () => {
-    const state = makeState([makeOperation("op-1", { cwd: "/tmp" })]);
-
-    expect(migrateAgentCliIds(state).state).toBe(state);
-  });
-
-  // `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트다. carriers.json.lock은 withDirectoryLock이
-  // 점유하는 잠금 디렉터리라, 업그레이드 전 호스트가 임계 구역에 있는 동안 지우면 두 번째 writer가
-  // 들어온다. 이주는 자기 state.json 밖의 남의 스토어를 절대 건드리지 않는다.
-  it("never reaches for the retired Carrier store — a legacy host may still hold its lock", () => {
-    const source = fs.readFileSync(new URL("../core/host/agent-cli-id-migration.ts", import.meta.url), "utf8");
-
-    expect(source).not.toContain("carriers.json");
-    expect(source).not.toContain("carrier-subagent");
-    expect(source).not.toContain("rmSync");
+    expect(twice).toEqual(once);
+    expect(once.operations[0]?.payload).toEqual({ session: { harness: "claude-code", model: "opus[1m]" } });
+    expect(once.deletionTombstones?.[0]).toMatchObject({
+      kind: "operation",
+      operation: { payload: { session: { harness: "claude-code", model: "opus[1m]" } } },
+    });
   });
 });

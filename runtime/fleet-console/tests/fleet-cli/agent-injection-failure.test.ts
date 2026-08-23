@@ -11,8 +11,8 @@ const TEST_PROFILE: AgentCliProfile = {
   bin: "claude",
   cwd: process.cwd(),
   env: {},
-  id: "claude-gateway",
-  label: "Claude (Gateway)",
+  id: "claude",
+  label: "Claude",
   terminalName: "xterm-256color",
 };
 
@@ -39,6 +39,6 @@ describe("agent CLI injection failure cleanup", () => {
     }
 
     expect(releaseSessionToken).toHaveBeenCalledTimes(1);
-    expect(releaseSessionToken.mock.calls[0]?.[0]).toMatch(/^agent:claude-gateway:[0-9a-f-]{36}$/);
+    expect(releaseSessionToken.mock.calls[0]?.[0]).toMatch(/^agent:claude:[0-9a-f-]{36}$/);
   });
 });

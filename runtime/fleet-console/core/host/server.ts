@@ -24,7 +24,7 @@ import { createDesktopFullscreenRouter, createDesktopShellRouter, emptyDesktopSh
 import { DESKTOP_THEME_EVENT, DESKTOP_UPDATE_EVENT, desktopThemeSnapshot, emptyDesktopUpdateRequest, type DesktopUpdateRequestSnapshot } from "./desktop-contract.js";
 import { createDesktopThemeRouter, createDesktopUpdateRouter } from "./desktop-contract.js";
 import { createDeferredDeletionCoordinator, DeferredDeletionError, type DeferredDeletionReceipt } from "./deferred-deletion.js";
-import { createConsoleDurableStateStore, emptyDurableConsoleState, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
+import { backupDurableStateV3, createConsoleDurableStateStore, emptyDurableConsoleState, readDurableStateVersion, STATE_VERSION, type DurableConsoleState } from "./durable-state.js";
 import { createGlobalSettingsRouter } from "./settings/settings-domain.js";
 import { createPluginSettingsRouter } from "./settings/settings-domain.js";
 import { createSystemFontsRouter, createSystemFontsService, type SystemFontsService } from "./system-fonts.js";
@@ -34,12 +34,6 @@ import { createOperationsRouter } from "./operations/operations-domain.js";
 import { createSanitizedOpDto } from "./operations/operations-domain.js";
 import { createOperationStore } from "./operations/operations-domain.js";
 import type { OperationNode } from "./operations/operations-domain.js";
-import {
-  backupDurableStateBeforeAgentCliIdMigration,
-  migrateAgentCliIds,
-  RETIRED_AGENT_CLI_IDS,
-  GATEWAY_LAUNCH_KIND_ID,
-} from "./agent-cli-id-migration.js";
 import { migrateLegacyCaptures } from "./legacy-capture-migration.js";
 import { createConsoleDataPaths } from "./paths.js";
 import { createRemoteEndpointStore } from "./remote-endpoint.js";
@@ -2063,33 +2057,28 @@ export function createConsoleServer(deps: ConsoleServerDeps = {}): ConsoleServer
 
   async function rehydrateDurableState(): Promise<void> {
     let state: DurableConsoleState;
-    let agentCliIdsMigrated = false;
+    let restored = false;
+    const loadedVersion = readDurableStateVersion(durablePaths.stateFile);
     try {
-      // 퇴역한 Classic launch kind는 store에 주입하기 전에 옮긴다. 그래야 live Operation과
-      // tombstone 내장 Operation이 한 번에 이주되고, 이후의 어떤 save든 이주분을 기록한다.
-      const loaded = durableStateStore.load();
-      const migration = migrateAgentCliIds(loaded);
-      if (migration.changed) {
-        agentCliIdsMigrated = true;
-        console.warn(`[fleet-console] Migrated ${migration.migratedOperations} operation(s) from retired Agent CLI ids (${RETIRED_AGENT_CLI_IDS.join(", ")}) to "${GATEWAY_LAUNCH_KIND_ID}".`);
-        backupDurableStateBeforeAgentCliIdMigration(durablePaths.stateFile);
-      }
-      state = migration.state;
+      state = durableStateStore.load();
       theaters.restore(state.theaters);
       operations.replace(state.operations);
       operations.replaceGroups(state.groups ?? []);
+      restored = true;
     } catch (error) {
       console.warn(`[fleet-console] Durable state restore skipped: ${error instanceof Error ? error.message : String(error)}`);
-      agentCliIdsMigrated = false;
       state = emptyDurableConsoleState();
       theaters.restore([]);
       operations.replace([]);
       operations.replaceGroups([]);
     }
     deletionCoordinator.load(state.deletionTombstones ?? []);
-    // 이주분을 디스크에 확정한다. sanitizer는 출력만 바꿀 뿐 재기록을 유발하지 않으므로
-    // 명시 save가 없으면 다음 부팅마다 같은 이주를 반복한다.
-    if (agentCliIdsMigrated) persistDurableState();
+    // 지원하는 구버전을 실제로 복원한 경우에만 sanitizer의 단계형 이주를 현재 버전으로 확정한다.
+    // 알 수 없는 버전이나 복원 실패를 빈 v4 상태로 덮으면 재시도할 원본 자체를 잃는다.
+    if (restored && (loadedVersion === 1 || loadedVersion === 2 || loadedVersion === 3)) {
+      if (loadedVersion === 3) backupDurableStateV3(durablePaths.stateFile);
+      persistDurableState();
+    }
     // 퇴역한 Carrier 스토어 파일(carriers.json·carrier-subagent.json·carriers.json.lock)은
     // 그대로 둔다. `~/.fleet`는 CLI와 Console이 공유하는 데이터 루트라, 업그레이드 전 호스트가
     // 아직 그 스토어를 소유한 채 돌고 있을 수 있다. 특히 carriers.json.lock은 withDirectoryLock이

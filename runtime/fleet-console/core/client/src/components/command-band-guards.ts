@@ -62,11 +62,13 @@ export function commandBandOperationAttribute(
   payload: Record<string, unknown>,
   modelLabels: ReadonlyMap<string, string>,
 ): string | null {
-  const launchModel = typeof payload.launchModel === "string" ? payload.launchModel : null;
+  const session = payload.session && typeof payload.session === "object" && !Array.isArray(payload.session)
+    ? payload.session as Record<string, unknown>
+    : undefined;
+  const launchModel = typeof session?.model === "string" ? session.model : null;
   const modelLabel = launchModel === null ? undefined : modelLabels.get(launchModel);
   if (modelLabel !== undefined && modelLabel !== "") return modelLabel;
-  if (typeof payload.cliLabel === "string") return payload.cliLabel;
-  return typeof payload.cliId === "string" ? payload.cliId : null;
+  return session?.harness === "claude-code" ? "Claude Code" : null;
 }
 
 // Tab 등으로 포커스가 스위처 래퍼(트리거+메뉴) 밖으로 나가면 메뉴를 닫는다.

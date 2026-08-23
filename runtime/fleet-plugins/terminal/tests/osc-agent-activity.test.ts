@@ -8,17 +8,17 @@ afterEach(() => {
 
 describe("OSC Agent activity classification", () => {
   it("keeps Claude not-working independent from the working title body", () => {
-    expect(classifyOscAgentActivity("claude-gateway", "⠐ Write sentences for numbers 1 to 120")).toBe("working");
-    expect(classifyOscAgentActivity("claude-gateway", "✳ Claude Code")).toBe("not-working");
-    expect(classifyOscAgentActivity("claude-gateway", "✳ 1부터 200까지 숫자별 문장 작성")).toBe("not-working");
-    expect(classifyOscAgentActivity("claude-gateway", "project")).toBe("unknown");
+    expect(classifyOscAgentActivity("claude", "⠐ Write sentences for numbers 1 to 120")).toBe("working");
+    expect(classifyOscAgentActivity("claude", "✳ Claude Code")).toBe("not-working");
+    expect(classifyOscAgentActivity("claude", "✳ 1부터 200까지 숫자별 문장 작성")).toBe("not-working");
+    expect(classifyOscAgentActivity("claude", "project")).toBe("unknown");
   });
 
 
 
   it("treats child braille as conservatively working and provider-specific star titles without cross-provider inference", () => {
-    expect(classifyOscAgentActivity("claude-gateway", "⠐ child-title")).toBe("working");
-    expect(classifyOscAgentActivity("claude-gateway", "✳ child-title")).toBe("not-working");
+    expect(classifyOscAgentActivity("claude", "⠐ child-title")).toBe("working");
+    expect(classifyOscAgentActivity("claude", "✳ child-title")).toBe("not-working");
   });
 
   // Claude Code v2.1.228은 작업 중 스피너를 브라유가 아니라 원형 4프레임으로 그린다. 두 계열 모두
@@ -26,9 +26,9 @@ describe("OSC Agent activity classification", () => {
   // 입력 대기가 풀리지 않는다.
   it("reads the circle spinner frames as working alongside braille", () => {
     for (const title of ["◐ Claude Code", "◑ Claude Code", "◒ 서브에이전트로 1부터 30까지 세기", "◓ project"]) {
-      expect(classifyOscAgentActivity("claude-gateway", title)).toBe("working");
+      expect(classifyOscAgentActivity("claude", title)).toBe("working");
     }
-    expect(classifyOscAgentActivity("claude-gateway", "○ project")).toBe("unknown");
+    expect(classifyOscAgentActivity("claude", "○ project")).toBe("unknown");
   });
 });
 
@@ -37,7 +37,7 @@ describe("OSC Agent activity debounce", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
     const tracker = createOscAgentActivityTracker({
-      cliId: "claude-gateway",
+      cliId: "claude",
       cwdBasename: "project",
       onActivity: (activity) => emitted.push(activity),
     });
@@ -55,7 +55,7 @@ describe("OSC Agent activity debounce", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
     const tracker = createOscAgentActivityTracker({
-      cliId: "claude-gateway",
+      cliId: "claude",
       cwdBasename: "project",
       onActivity: (activity) => emitted.push(activity),
     });
@@ -82,7 +82,7 @@ describe("OSC Agent activity debounce", () => {
     vi.useFakeTimers();
     const emitted: string[] = [];
     const tracker = createOscAgentActivityTracker({
-      cliId: "claude-gateway",
+      cliId: "claude",
       cwdBasename: "project",
       onActivity: (activity) => emitted.push(activity),
     });

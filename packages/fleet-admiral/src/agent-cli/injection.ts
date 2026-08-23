@@ -285,7 +285,7 @@ function rmBestEffort(targetPath: string): void {
 }
 
 function buildAgentCliArgs(
-  builderId: "claude-gateway",
+  builderId: "claude",
   context: AgentCliInjectionContext,
 ): string[] {
   return buildClaudeGatewayArgs(context);
@@ -293,7 +293,7 @@ function buildAgentCliArgs(
 
 function mergeAgentCliArgs(
   profile: AgentCliProfile,
-  _builderId: "claude-gateway",
+  _builderId: "claude",
   _context: AgentCliInjectionContext,
   injectedArgs: readonly string[],
 ): string[] {

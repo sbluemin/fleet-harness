@@ -314,8 +314,6 @@ export function assertSessionInfo(value: unknown, status: number): SessionInfo {
     terminalSessionId: typeof payload.terminalSessionId === "string" ? payload.terminalSessionId : payload.sessionId,
     cwdLabel: payload.cwdLabel,
     label: typeof payload.label === "string" ? payload.label : undefined,
-    cliId: typeof payload.cliId === "string" ? payload.cliId : undefined,
-    cliLabel: typeof payload.cliLabel === "string" ? payload.cliLabel : undefined,
     status: payload.status,
     turnState: payload.turnState === "running" || payload.turnState === "ended" ? payload.turnState : "none",
     modelActivity: payload.modelActivity === "working" || payload.modelActivity === "not-working" ? payload.modelActivity : undefined,

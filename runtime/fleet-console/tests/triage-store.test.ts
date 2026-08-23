@@ -1726,7 +1726,7 @@ describe("triage store", () => {
       operations,
       operationRuntime: status,
       operationNotifications: {},
-      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }] }],
+      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude", type: "agent", title: "Claude" }] }],
       plugins: [],
       renderKindIcon: () => null,
       canLaunch: true,
@@ -1757,7 +1757,7 @@ describe("triage store", () => {
     expect(launchMenu?.querySelector(".canvas-context-menu-head")).toBeNull();
     // Terminal Shell은 우측 rail 아이콘이 소유하므로 이 메뉴에 없다 — 여기서 짚는 항목은
     // 우클릭 실행 목록에 남는 에이전트 종류다.
-    const launchItem = launchMenu?.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude-gateway"]');
+    const launchItem = launchMenu?.querySelector<HTMLButtonElement>('[data-operation-launch-kind="claude"]');
     expect(launchItem).not.toBeNull();
     expect(launchItem?.disabled).toBe(false);
     expect(launchMenu?.querySelector('[data-operation-launch-kind="shell"]')).toBeNull();
@@ -1766,7 +1766,7 @@ describe("triage store", () => {
     // 항목은 실제로 실행을 배선한다 — 열리기만 하는 메뉴는 진입점이 아니다.
     act(() => launchItem?.click());
     // 변형이 없는 종류는 실행 변형 인자를 비운 채 배선된다 — 계약의 세 번째 인자까지 못 박는다.
-    expect(onLaunchKind).toHaveBeenCalledWith("terminal", expect.objectContaining({ id: "claude-gateway" }), undefined);
+    expect(onLaunchKind).toHaveBeenCalledWith("terminal", expect.objectContaining({ id: "claude" }), undefined);
     expect(document.querySelector(".canvas-context-menu")).toBeNull();
 
     // 캔버스가 Map 클릭에서 보내는 같은 신호로도 닫힌다(pan이 mousedown 합성을 끊어 외부-클릭이 못 잡는다).
@@ -1808,7 +1808,7 @@ describe("triage store", () => {
       operations: [],
       operationRuntime: {},
       operationNotifications: {},
-      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }] }],
+      catalog: [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude", type: "agent", title: "Claude" }] }],
       plugins: [],
       renderKindIcon: () => null,
       canLaunch: false,
@@ -1830,7 +1830,7 @@ describe("triage store", () => {
     document.body.append(container);
     triagePlateRoot = createRoot(container);
     setTriageActive(true);
-    const catalog = [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude-gateway", type: "agent", title: "Claude (Gateway)" }] }];
+    const catalog = [{ id: "terminal", title: "Terminal", kinds: [{ id: "claude", type: "agent", title: "Claude" }] }];
     const props = {
       operations: [],
       operationRuntime: {},

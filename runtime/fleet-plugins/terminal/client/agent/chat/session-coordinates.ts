@@ -12,7 +12,6 @@
 
 import {
   launchProviderFromModelId,
-  launchProviderFromOperationPayload,
   type LaunchProviderGlyphId,
 } from "@fleet-console/sdk/components/launch-provider-glyphs";
 
@@ -82,14 +81,17 @@ function readPayloadString(payload: Record<string, unknown> | undefined, key: st
 export function readAgentChatSessionCoordinates(
   payload: Record<string, unknown> | undefined,
 ): AgentChatSessionCoordinates {
-  const model = readPayloadString(payload, "launchModel");
-  const effort = readPayloadString(payload, "launchEffort");
+  const session = payload?.session && typeof payload.session === "object" && !Array.isArray(payload.session)
+    ? payload.session as Record<string, unknown>
+    : undefined;
+  const model = readPayloadString(session, "model");
+  const effort = readPayloadString(session, "effort");
   return {
     model: model === null ? null : modelLabel(model),
     effort: effort === null ? null : EFFORT_LABELS[effort] ?? effort.toUpperCase(),
     effortLevel: effort ?? "auto",
     title: model === null && effort === null ? null : [model, effort].filter(Boolean).join(" · "),
     ultracode: effort === "ultra",
-    provider: launchProviderFromOperationPayload(payload) ?? launchProviderFromModelId(model),
+    provider: launchProviderFromModelId(model),
   };
 }
