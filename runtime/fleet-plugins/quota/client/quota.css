@@ -114,7 +114,7 @@
   height: 6px;
   margin-top: 4px;
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--gauge-rim);
   border-radius: var(--radius-pill);
   background: var(--ink-veil);
 }
@@ -128,7 +128,7 @@
   left: 0;
   width: 58%;
   border-radius: var(--radius-pill);
-  background: var(--coral);
+  background: color-mix(in oklab, var(--coral) var(--gauge-weight-critical), transparent);
 }
 
 .quota-legend__swatch-elapsed {
@@ -143,7 +143,7 @@
   right: 0;
   background-image: repeating-linear-gradient(
     135deg,
-    color-mix(in oklab, var(--coral) 42%, transparent) 0 2px,
+    color-mix(in oklab, var(--coral) calc(var(--gauge-weight-critical) * 0.42), transparent) 0 2px,
     transparent 2px 5px
   );
 }
@@ -369,9 +369,14 @@
 }
 
 /* 심각도는 이 채널 하나로만 흐른다 — 채움과 예측 빗금이 각자 색을 집으면
-   한 막대가 두 판정을 말하게 된다. */
+   한 막대가 두 판정을 말하게 된다. 그 채널은 색상과 함께 무게(--meter-weight)를 싣는다.
+   종이 위에서는 명도가 곧 무게의 반대이므로, 색상만 갈면 가장 옅어야 할 평상 막대가 가장
+   무거워진다 — 라이트 실측에서 평상 채움은 L44.9로 위험(L52.0)·경고(L55.0)보다 어두웠고,
+   그래서 100% 소진된 막대가 22% 막대보다 가볍게 읽혔다. 무게를 같은 채널에 실어 두면
+   심각도 역전이 재조율이 아니라 구조로 막힌다. 다크 3종은 전부 100%라 지금 그림 그대로다. */
 .quota-meter {
   --meter-accent: var(--ink-fog);
+  --meter-weight: var(--gauge-weight-quiet);
   margin-top: 12px;
 }
 
@@ -405,17 +410,19 @@
 
 .quota-meter--warning {
   --meter-accent: var(--warn);
+  --meter-weight: var(--gauge-weight-warn);
 }
 
 .quota-meter--critical {
   --meter-accent: var(--coral);
+  --meter-weight: var(--gauge-weight-critical);
 }
 
 .quota-meter__bar {
   position: relative;
   height: 6px;
   overflow: hidden;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--gauge-rim);
   border-radius: var(--radius-pill);
   background: var(--ink-veil);
 }
@@ -425,7 +432,7 @@
   inset-block: 0;
   left: 0;
   border-radius: var(--radius-pill);
-  background: var(--meter-accent);
+  background: color-mix(in oklab, var(--meter-accent) var(--meter-weight), transparent);
   transition: width 200ms ease, background-color 200ms ease;
 }
 
@@ -436,7 +443,7 @@
   inset-block: 0;
   background-image: repeating-linear-gradient(
     135deg,
-    color-mix(in oklab, var(--meter-accent) 42%, transparent) 0 2px,
+    color-mix(in oklab, var(--meter-accent) calc(var(--meter-weight) * 0.42), transparent) 0 2px,
     transparent 2px 5px
   );
 }

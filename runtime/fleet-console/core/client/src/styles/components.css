@@ -8237,7 +8237,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-radius: var(--radius-pill);
   /* 광택 스윕은 이 상자 안에서만 지나간다 — 가두지 않으면 트랙 밖 빈자리에 흰 띠로 남는다. */
   overflow: hidden;
-  background: var(--brass);
+  background: var(--gauge-fill);
   transition: width var(--duration-fast) var(--ease-spring);
   pointer-events: none;
 }
@@ -8250,7 +8250,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
       115deg,
       color-mix(in oklch, var(--text-on-brass) 7%, transparent) 0 1.5px,
       transparent 1.5px 10px),
-    var(--brass);
+    var(--gauge-fill);
 }
 
 .effort-track[data-at-max="true"] .effort-track-fill::after {
@@ -8261,7 +8261,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: linear-gradient(
     100deg,
     transparent 35%,
-    color-mix(in oklch, var(--text-primary) 26%, transparent) 50%,
+    color-mix(in oklch, var(--gauge-face) 26%, transparent) 50%,
     transparent 65%);
   animation: effort-track-sweep 2.6s var(--ease-spring) infinite;
 }
@@ -8281,7 +8281,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .effort-track[data-apex="true"][data-effort-level="max"] .effort-track-fill {
-  background: linear-gradient(90deg, var(--brass) 0%, var(--crest) 82%);
+  background: linear-gradient(90deg, var(--gauge-fill) 0%, var(--gauge-crest) 82%);
 }
 
 /* MAX의 결은 용융 금속처럼 손잡이 쪽으로 흐른다. 115° 스트라이프(주기 10px)의 수평 주기는
@@ -8296,9 +8296,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   right: 0;
   background: repeating-linear-gradient(
     115deg,
-    color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+    color-mix(in oklch, var(--text-on-brass) var(--gauge-texture), transparent) 0 1.5px,
     transparent 1.5px 10px);
   animation: effort-max-molten-drift 1.15s linear infinite;
+  animation-play-state: var(--gauge-drift);
 }
 
 @keyframes effort-max-molten-drift {
@@ -8310,7 +8311,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: linear-gradient(
     100deg,
     transparent 35%,
-    color-mix(in oklch, var(--crest) 45%, oklch(100% 0 0 / 30%)) 50%,
+    color-mix(in oklch, var(--gauge-crest) 45%, oklch(100% 0 0 / 30%)) 50%,
     transparent 65%);
 }
 
@@ -8326,17 +8327,18 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background:
     repeating-linear-gradient(
       115deg,
-      color-mix(in oklch, var(--text-on-brass) 9%, transparent) 0 1.5px,
+      color-mix(in oklch, var(--text-on-brass) var(--gauge-texture), transparent) 0 1.5px,
       transparent 1.5px 10px),
     linear-gradient(
       90deg,
-      var(--brass) 0%,
-      var(--apex) 40%,
-      color-mix(in oklch, var(--apex) 62%, white) 58%,
-      var(--apex) 76%,
-      color-mix(in oklch, var(--apex) 75%, var(--brass)) 100%);
+      var(--gauge-fill) 0%,
+      var(--gauge-apex) 40%,
+      color-mix(in oklch, var(--gauge-apex) 62%, white) 58%,
+      var(--gauge-apex) 76%,
+      color-mix(in oklch, var(--gauge-apex) 75%, var(--gauge-fill)) 100%);
   background-size: 100% 100%, 180% 100%;
   animation: effort-ultra-aurora-drift 3.6s ease-in-out infinite alternate;
+  animation-play-state: var(--gauge-drift);
 }
 
 @keyframes effort-ultra-aurora-drift {
@@ -8520,8 +8522,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 20px;
   margin: -10px 0 0 -10px;
   border-radius: var(--radius-pill);
-  background: var(--text-primary);
-  box-shadow: 0 1px 3px oklch(0% 0 0 / 55%);
+  background: var(--gauge-face);
+  box-shadow: var(--gauge-face-lift);
   transition:
     left var(--duration-fast) var(--ease-spring),
     transform var(--duration-fast) var(--ease-spring),
@@ -8531,7 +8533,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .effort-track:hover .effort-track-knob {
-  box-shadow: 0 2px 8px oklch(0% 0 0 / 62%);
+  box-shadow: var(--gauge-face-lift-strong);
   transform: scale(1.1);
 }
 
@@ -8539,7 +8541,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   box-shadow:
     0 0 0 2.5px var(--crest),
     var(--crest-halo),
-    0 1px 3px oklch(0% 0 0 / 55%);
+    var(--gauge-face-lift);
   /* 헤일로가 2.2s로 숨쉰다 — 감속 모션에서는 animation만 꺼져 위의 정적 링이 남는다. */
   animation: effort-max-crest-breathe 2.2s ease-in-out infinite;
 }
@@ -8549,14 +8551,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
     box-shadow:
       0 0 0 2.5px var(--crest),
       0 0 10px var(--crest-glow),
-      0 1px 3px oklch(0% 0 0 / 55%);
+      var(--gauge-face-lift);
   }
 
   50% {
     box-shadow:
       0 0 0 2.5px var(--crest),
       0 0 22px var(--crest-glow),
-      0 1px 3px oklch(0% 0 0 / 55%);
+      var(--gauge-face-lift);
   }
 }
 
@@ -8564,7 +8566,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   box-shadow:
     0 0 0 2.5px var(--apex),
     var(--apex-halo),
-    0 1px 3px oklch(0% 0 0 / 55%);
+    var(--gauge-face-lift);
 }
 
 /* 값을 쥐지 않은 손잡이는 속이 비어 있다 — 꽉 찬 손잡이는 어느 자리에 있든 "이 단을 골랐다"로 읽힌다. */
@@ -8572,7 +8574,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: var(--surface-pillar);
   box-shadow:
     inset 0 0 0 2px color-mix(in oklch, var(--text-tertiary) 85%, transparent),
-    0 1px 3px oklch(0% 0 0 / 45%);
+    var(--gauge-face-lift);
 }
 
 .effort-track-value {
