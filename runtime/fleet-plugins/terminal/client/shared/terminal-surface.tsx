@@ -537,6 +537,24 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     outputSchedulerRef.current?.setInactiveFlushMs(inactiveFlushMs);
   }, [inactiveFlushMs, mountedTerminalEpoch]);
 
+  // 리퀴드 글래스 게이트의 실효 상태 — 채널 계산값이 단일 진실이다(설정·@supports·
+  // prefers-reduced-transparency 세 게이트를 모두 통과했을 때만 backdrop 채널이 none이 아니다).
+  const [liquidGlassPane, setLiquidGlassPane] = useState(() => readLiquidGlassPaneActive());
+  useEffect(() => {
+    const sync = () => setLiquidGlassPane(readLiquidGlassPaneActive());
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass", "data-theme"] });
+    // OS 접근성 설정(prefers-reduced-transparency)은 속성 변이 없이 채널을 닫는다 —
+    // 미디어쿼리 변화도 같은 sync로 받아야 열린 터미널이 즉시 불투명 계약으로 돌아간다.
+    const reducedTransparency = window.matchMedia("(prefers-reduced-transparency: reduce)");
+    reducedTransparency.addEventListener("change", sync);
+    return () => {
+      observer.disconnect();
+      reducedTransparency.removeEventListener("change", sync);
+    };
+  }, []);
+
   // Renderer changes only attach/detach the WebGL addon; the live terminal and websocket stay intact.
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -544,7 +562,10 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
 
     let disposed = false;
 
-    if (terminalRenderer === "webgl") {
+    // 리퀴드 글래스가 켜진 동안은 WebGL을 붙이지 않는다 — WebGL 렌더러는 반투명 배경을
+    // 프리멀티플라이해 틴트가 검게 눌린다(실측: 유리 패널 속 터미널만 새까매짐). DOM 렌더러는
+    // CSS 색을 그대로 그려 알파가 산다. 게이트가 닫히면 설정대로 WebGL로 복귀한다.
+    if (terminalRenderer === "webgl" && !liquidGlassPane) {
       try {
         const webglAddon = new WebglAddon();
         webglAddonRef.current = webglAddon;
@@ -583,7 +604,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         // xterm 내부 dispose 버그(메인 cleanup의 terminal.dispose 경로 포함)를 흡수한다.
       }
     };
-  }, [terminalRenderer, operationId, mountedTerminalEpoch]);
+  }, [terminalRenderer, operationId, mountedTerminalEpoch, liquidGlassPane]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -596,12 +617,9 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
       syncTerminalViewportBackground(container, terminalTheme);
     };
     applyTerminalTheme();
-    // 리퀴드 글래스 설정 토글은 data-glass 속성으로만 드러난다 — 테마 계산값이 바뀌므로
-    // 열려 있는 터미널도 같은 채널을 다시 읽어야 한다(리로드 없이 즉시 전환).
-    const glassObserver = new MutationObserver(applyTerminalTheme);
-    glassObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-glass"] });
-    return () => glassObserver.disconnect();
-  }, [activeTheme, mountedTerminalEpoch]);
+    // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
+    // 바꾸면 위 옵저버가 상태를 올리고, 이 효과가 terminal 채널 계산값을 다시 읽는다.
+  }, [activeTheme, mountedTerminalEpoch, liquidGlassPane]);
 
   useEffect(() => {
     const terminal = terminalRef.current;
@@ -726,6 +744,14 @@ export function resolvePanelSurface(fallback: string): string {
   if (typeof document === "undefined") return fallback;
   const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
   return resolved || fallback;
+}
+
+/* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
+   reduced-transparency)를 개별로 다시 판정하지 않고 채널 계산값 하나를 진실로 삼는다. */
+export function readLiquidGlassPaneActive(): boolean {
+  if (typeof document === "undefined") return false;
+  const backdrop = getComputedStyle(document.documentElement).getPropertyValue("--glass-backdrop-strong").trim();
+  return backdrop !== "" && backdrop !== "none";
 }
 
 function terminalThemeFor(theme: TerminalThemeId): ITheme {

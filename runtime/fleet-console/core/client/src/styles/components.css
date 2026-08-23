@@ -10833,6 +10833,7 @@ body[data-codex-side="true"] .command-card {
   color: var(--text-primary);
   font-size: var(--t-xl);
   font-weight: var(--weight-bold);
+  text-wrap: balance;
 }
 
 .glass-welcome-copy p {
@@ -10840,6 +10841,11 @@ body[data-codex-side="true"] .command-card {
   color: var(--text-secondary);
   font-size: var(--t-md);
   line-height: 1.6;
+  /* 한국어는 어절 중간에서 꺾이면 한 글자 고아("적용됩/니다")가 생긴다 — keep-all로 어절
+     단위 줄바꿈을 강제하고, 넘칠 때만 break-word가 안전망으로 선다. */
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: pretty;
 }
 
 .glass-welcome-copy .glass-welcome-revert {
