@@ -9,6 +9,11 @@
       "import": "./core.ts",
       "default": "./core.ts"
     },
+    "./diff": {
+      "types": "./diff.ts",
+      "import": "./diff.ts",
+      "default": "./diff.ts"
+    },
     "./mermaid": {
       "types": "./mermaid.ts",
       "import": "./mermaid.ts",

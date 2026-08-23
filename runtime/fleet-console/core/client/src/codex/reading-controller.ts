@@ -1,5 +1,7 @@
 import { installDiagramHydrator } from "@fleet-console/markdown/mermaid";
 import { renderMarkdown } from "@fleet-console/markdown/core";
+import { diffDraftBlocks } from "@fleet-console/markdown/diff";
+import type { DraftBlock } from "@fleet-console/markdown/diff";
 import type { Translate } from "@fleet-console/sdk/i18n";
 
 import { getGlobalSettingsStoreState } from "../global-settings-store.js";
@@ -19,8 +21,12 @@ import type {
   ConflictListItem,
   DrydockDetailResponse,
   DrydockListItem,
+  DrydockListResponse,
   DrydockMeta,
+  EntryBacklink,
 } from "./api.js";
+import { installEntryLinkPreview } from "./components/link-preview.js";
+import type { EntryLinkPreview } from "./components/link-preview.js";
 import { renderMetaChips, renderTagChips } from "./components/meta-chips.js";
 import { installTocScrollSpy, renderTocSheet } from "./components/toc-sheet.js";
 import { mountCoworkInline } from "./cowork-controller.js";
@@ -109,8 +115,16 @@ export function mountReadingInto(
   let decisionError: string | null = null;
   let currentDetailMeta: DrydockMeta | null = null;
   let currentDetailPatchId: string | null = null;
+  // 대기열 세그먼트·diff 표시 상태 — 목록은 pending/결정됨을 오가고,
+  // update 패치 상세는 "변경만"이 기본이다(전문은 토글).
+  let queueSegment: "pending" | "decided" = "pending";
+  let diffMode: "changes" | "full" = "changes";
+  let detailDiffBlocks: readonly DraftBlock[] | null = null;
+  let detailProposedToc = "";
+  let detailProposedTocCount = 0;
 
   installDiagramHydrator(readContainer, diagramHydratorLabels(consoleT()));
+  const linkPreview: EntryLinkPreview = installEntryLinkPreview(readContainer, () => liveOpts.theaterId);
 
   function handleClick(event: MouseEvent): void {
     const target = event.target;
@@ -128,6 +142,30 @@ export function mountReadingInto(
       event.preventDefault();
       const entryId = decodeURIComponent(wikiLink.pathname.slice("/entry/".length));
       if (entryId) liveOpts.onRelatedClick(entryId);
+      return;
+    }
+
+    // 대기열 세그먼트 전환 (대기 ↔ 결정됨)
+    const segmentBtn = target.closest<HTMLElement>("[data-queue-segment]");
+    if (segmentBtn) {
+      event.preventDefault();
+      const next = segmentBtn.dataset.queueSegment === "decided" ? "decided" : "pending";
+      if (next !== queueSegment) {
+        queueSegment = next;
+        void renderDrydockView(undefined);
+      }
+      return;
+    }
+
+    // 패치 상세 diff 표시 전환 (변경만 ↔ 전문)
+    const diffModeBtn = target.closest<HTMLElement>("[data-diff-mode]");
+    if (diffModeBtn) {
+      event.preventDefault();
+      const next = diffModeBtn.dataset.diffMode === "full" ? "full" : "changes";
+      if (next !== diffMode) {
+        diffMode = next;
+        redrawDiffBody();
+      }
       return;
     }
 
@@ -244,6 +282,19 @@ export function mountReadingInto(
     wrap.innerHTML = renderDecisionBarContent(decisionPhase, decisionError);
   }
 
+  // diff 모드 전환은 본문만 다시 그린다 — 결정 바 상태(확인/사유 입력)를 보존한다.
+  function redrawDiffBody(): void {
+    const body = readContainer.querySelector<HTMLElement>("[data-diff-body]");
+    if (!body || !detailDiffBlocks) return;
+    body.innerHTML = renderDiffBlocks(detailDiffBlocks, diffMode);
+    readContainer.querySelectorAll<HTMLElement>("[data-diff-mode]").forEach((button) => {
+      button.setAttribute("aria-pressed", String(button.dataset.diffMode === diffMode));
+    });
+    // 전문 모드에서만 제안 문서의 아웃라인이 실제 DOM과 대응한다.
+    opts.tocContainer.innerHTML = diffMode === "full" ? detailProposedToc : "";
+    opts.onTocChanged?.(diffMode === "full" ? detailProposedTocCount : 0);
+  }
+
   readContainer.addEventListener("click", handleClick);
 
   function cleanupReader(): void {
@@ -284,6 +335,7 @@ export function mountReadingInto(
             ${markdownHtml}
           </div>
           ${renderRelatedList(entry.frontmatter.id, entry.frontmatter.tags, index)}
+          ${renderBacklinks(entry.backlinks ?? [])}
         </article>
       `;
 
@@ -334,6 +386,10 @@ export function mountReadingInto(
     currentDetailPatchId = null;
     decisionPhase = "idle";
     decisionError = null;
+    detailDiffBlocks = null;
+    detailProposedToc = "";
+    detailProposedTocCount = 0;
+    diffMode = "changes";
 
     try {
       if (patchId) {
@@ -343,26 +399,58 @@ export function mountReadingInto(
         currentDetailMeta = detail.meta;
         currentDetailPatchId = patchId;
 
+        // 대기 중인 update 패치는 현행 본문을 함께 읽어 "무엇이 바뀌는가"를 보여준다.
+        // 결정된 패치·신규 문서·현행 조회 실패는 전문 렌더로 자연 강등된다.
+        let currentBody: string | null = null;
+        let currentVersion: number | null = null;
+        if (detail.meta.status === "pending" && detail.patch.frontmatter.op === "update_wiki" && detail.targetExists) {
+          try {
+            const current = await fetchEntry(liveOpts.theaterId, detail.wikiEntry.id);
+            if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
+            currentBody = current.body;
+            currentVersion = current.frontmatter.version;
+          } catch {
+            // diff는 향상이다 — 현행을 못 읽으면 전문 검토로 진행한다.
+          }
+        }
+
         const t = consoleT();
         const { html: markdownHtml, toc } = renderMarkdown(detail.wikiEntry.body, {
           omitDuplicateTitle: detail.wikiEntry.title,
           resolveWikiLink: (id) => entryPath(id),
           ...markdownCopyOptions(t),
         });
+        detailProposedToc = renderTocSheet(toc);
+        detailProposedTocCount = toc.length;
+        detailDiffBlocks = currentBody !== null
+          ? diffDraftBlocks(currentBody, detail.wikiEntry.body)
+          : null;
 
-        readContainer.innerHTML = renderPatchDetail(detail, markdownHtml);
+        readContainer.innerHTML = renderPatchDetail(detail, markdownHtml, {
+          currentVersion,
+          diffBlocks: detailDiffBlocks,
+          diffMode,
+        });
 
-        opts.tocContainer.innerHTML = renderTocSheet(toc);
-        const article = readContainer.querySelector<HTMLElement>("article");
-        if (article && toc.length > 0) {
-          cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
+        if (detailDiffBlocks) {
+          // diff 진입은 항상 "변경만"으로 시작한다 — 아웃라인은 전문 토글이 채운다(redrawDiffBody).
+          opts.tocContainer.innerHTML = "";
+          opts.onTocChanged?.(0);
+        } else {
+          opts.tocContainer.innerHTML = detailProposedToc;
+          opts.onTocChanged?.(detailProposedTocCount);
+          const article = readContainer.querySelector<HTMLElement>("article");
+          if (article && toc.length > 0) {
+            cleanupSpy = installTocScrollSpy(article, toc, opts.tocContainer);
+          }
         }
       } else {
-        const list = await fetchDrydock(liveOpts.theaterId, "pending");
+        const status = queueSegment === "pending" ? "pending" : "archived";
+        const list = await fetchDrydock(liveOpts.theaterId, status);
         if (!isCurrentSubRequest("drydock", patchId, requestEpoch)) return;
         opts.tocContainer.innerHTML = "";
         opts.onTocChanged?.(0);
-        readContainer.innerHTML = renderDrydockList(list.items, consoleT()("codex.reading.reviewQueuePending"));
+        readContainer.innerHTML = renderDrydockList(list, queueSegment);
       }
     } catch (error) {
       if (isCurrentSubRequest("drydock", patchId, requestEpoch)) {
@@ -439,6 +527,7 @@ export function mountReadingInto(
       subRequestEpoch += 1;
       schemaRequestEpoch += 1;
       readContainer.removeEventListener("click", handleClick);
+      linkPreview.destroy();
       cleanupReader();
       coworkController?.destroy();
     },
@@ -538,13 +627,43 @@ function renderRelatedList(currentId: string, currentTags: string[], entries: Re
   `;
 }
 
-function renderDrydockList(items: DrydockListItem[], title: string): string {
+// [[wiki:...]]로 이 문서를 참조하는 엔트리들 — 태그 기반 Related와 달리 실제 인용 관계다.
+function renderBacklinks(backlinks: readonly EntryBacklink[]): string {
+  if (backlinks.length === 0) return "";
   const t = consoleT();
-  if (items.length === 0) {
-    return `<div class="codex-reader-empty"><p class="queue-empty">${escapeHtml(t("codex.reading.noPendingPatches"))}</p></div>`;
-  }
   return `
-    <article class="document">
+    <section class="related-list codex-backlinks">
+      <h2>${escapeHtml(t("codex.reading.backlinks"))}</h2>
+      <div class="related-items">
+        ${backlinks
+          .map(
+            (item) =>
+              `<button class="related-card" type="button" data-entry-id="${escapeAttribute(item.id)}">
+                <strong>${escapeHtml(item.title)}</strong>
+                <span class="codex-backlink-meta">${escapeHtml(formatRelativeUpdatedIso(item.updated))}</span>
+              </button>`,
+          )
+          .join("")}
+      </div>
+    </section>
+  `;
+}
+
+function formatRelativeUpdatedIso(iso: string): string {
+  const ms = new Date(iso).getTime();
+  return Number.isNaN(ms) ? iso : formatRelativeTime(ms, consoleLocale());
+}
+
+function renderDrydockList(list: DrydockListResponse, segment: "pending" | "decided"): string {
+  const t = consoleT();
+  const items = list.items;
+  const emptyLabel = segment === "pending" ? t("codex.reading.noPendingPatches") : t("codex.reading.noDecidedPatches");
+  const rows = items.length === 0
+    ? `<div class="codex-reader-empty"><p class="queue-empty">${escapeHtml(emptyLabel)}</p></div>`
+    : `<div class="queue-row-list">${items.map(renderQueueRow).join("")}</div>`;
+  // 유틸 화면 — 디스플레이 타이포 대신 title 스케일(.document--utility)로 강등한다.
+  return `
+    <article class="document document--utility">
       <header class="document-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol>
@@ -552,11 +671,13 @@ function renderDrydockList(items: DrydockListItem[], title: string): string {
             <li><span aria-current="page">${escapeHtml(t("codex.reading.reviewQueue"))}</span></li>
           </ol>
         </nav>
-        <h1>${escapeHtml(title)}</h1>
+        <h1>${escapeHtml(t("codex.reading.reviewQueue"))}</h1>
+        <div class="queue-segments" role="group" aria-label="${escapeAttribute(t("codex.reading.segmentAria"))}">
+          <button type="button" data-queue-segment="pending" aria-pressed="${String(segment === "pending")}">${escapeHtml(t("codex.reading.segmentPending", { count: list.pendingCount }))}</button>
+          <button type="button" data-queue-segment="decided" aria-pressed="${String(segment === "decided")}">${escapeHtml(t("codex.reading.segmentDecided", { count: list.archivedCount }))}</button>
+        </div>
       </header>
-      <div class="queue-row-list">
-        ${items.map(renderQueueRow).join("")}
-      </div>
+      ${rows}
     </article>
   `;
 }
@@ -567,24 +688,45 @@ function renderQueueRow(item: DrydockListItem): string {
   const glyph = OP_BADGE_GLYPHS[op] ?? "?";
   const label = opLabel(op, t);
   const target = item.target ?? item.id;
+  const decidedAtMs = new Date(item.meta.decidedAt ?? "").getTime();
   const createdAtMs = new Date(item.meta.createdAt).getTime();
-  const time = Number.isNaN(createdAtMs) ? "" : formatRelativeTime(createdAtMs, consoleLocale());
-  const metaParts = [time].filter(Boolean);
+  const timeSource = item.meta.status === "pending" ? createdAtMs : (Number.isNaN(decidedAtMs) ? createdAtMs : decidedAtMs);
+  const time = Number.isNaN(timeSource) ? "" : formatRelativeTime(timeSource, consoleLocale());
+  const metaParts = [
+    item.proposer ?? "",
+    time,
+  ].filter(Boolean);
+  const diffstat = item.diffstat
+    ? `<span class="queue-row-diffstat" aria-label="${escapeAttribute(t("codex.reading.diffStatAria", { added: item.diffstat.added, removed: item.diffstat.removed }))}"><ins>+${item.diffstat.added}</ins><del>\u2212${item.diffstat.removed}</del></span>`
+    : "";
+  const decided = item.meta.status !== "pending"
+    ? `<span class="queue-row-decision queue-row-decision--${item.meta.status === "accepted" ? "approve" : "reject"}">${escapeHtml(item.meta.status === "accepted" ? t("codex.reading.approved") : t("codex.reading.rejected"))}</span>`
+    : "";
   return `
     <button class="queue-row" type="button" data-patch-id="${escapeAttribute(item.id)}" aria-label="${escapeAttribute(label + ": " + target)}">
       <span class="queue-row-badge" aria-hidden="true">
         <span class="op-badge">${glyph}</span>
       </span>
       <span class="queue-row-body">
-        <span class="queue-row-target">${escapeHtml(target)}</span>
+        <span class="queue-row-top">
+          <span class="queue-row-target">${escapeHtml(target)}</span>
+          ${diffstat}
+          ${decided}
+        </span>
         ${item.summary ? `<span class="queue-row-summary">${escapeHtml(item.summary)}</span>` : ""}
-        ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.map(escapeHtml).join(" · ")}</span>` : ""}
+        ${metaParts.length > 0 ? `<span class="queue-row-meta">${metaParts.map(escapeHtml).join(" \u00b7 ")}</span>` : ""}
       </span>
     </button>
   `;
 }
 
-function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string): string {
+interface PatchDetailRenderOptions {
+  readonly currentVersion: number | null;
+  readonly diffBlocks: readonly DraftBlock[] | null;
+  readonly diffMode: "changes" | "full";
+}
+
+function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string, options: PatchDetailRenderOptions): string {
   const t = consoleT();
   const { patch, meta, wikiEntry, targetExists } = detail;
   const op = patch.frontmatter.op;
@@ -592,9 +734,39 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
   const label = opLabel(op, t);
   const targetLabel = targetExists ? t("codex.reading.replaceExisting") : t("codex.reading.createNew");
   const isPending = meta.status === "pending";
+  const versionLabel = options.currentVersion !== null
+    ? `v${options.currentVersion} \u2192 v${wikiEntry.version}`
+    : `v${wikiEntry.version}`;
+  const diffstat = options.diffBlocks ? countDiffLines(options.diffBlocks) : null;
+  const diffstatHtml = diffstat
+    ? `<span class="queue-row-diffstat" aria-label="${escapeAttribute(t("codex.reading.diffStatAria", { added: diffstat.added, removed: diffstat.removed }))}"><ins>+${diffstat.added}</ins><del>\u2212${diffstat.removed}</del></span>`
+    : "";
+  const body = options.diffBlocks
+    ? `
+      <div class="queue-diff-controls" role="group" aria-label="${escapeAttribute(t("codex.reading.diffModeAria"))}">
+        <button type="button" data-diff-mode="changes" aria-pressed="${String(options.diffMode === "changes")}">${escapeHtml(t("codex.reading.diffChanges"))}</button>
+        <button type="button" data-diff-mode="full" aria-pressed="${String(options.diffMode === "full")}">${escapeHtml(t("codex.reading.diffFull"))}</button>
+      </div>
+      <div class="markdown-body" id="codex-reader-body" data-diff-body>
+        ${renderDiffBlocks(options.diffBlocks, options.diffMode)}
+      </div>`
+    : `
+      <div class="markdown-body" id="codex-reader-body">
+        ${markdownHtml}
+      </div>`;
 
+  // 결정 독은 문서 위 스티키 — 근거(diff)와 결정 수단이 같은 화면에 머문다.
   return `
-    <article class="document">
+    <article class="document document--utility">
+      <div class="queue-decision-dock">
+        <div class="queue-decision-dock-copy">
+          <span class="queue-decision-dock-title"><span class="op-badge" aria-label="${escapeAttribute(label)}">${glyph}</span> ${escapeHtml(wikiEntry.title)}</span>
+          <span class="queue-decision-dock-meta">${escapeHtml(patch.frontmatter.target)} \u00b7 ${escapeHtml(versionLabel)} \u00b7 ${escapeHtml(targetLabel)}${patch.frontmatter.proposer ? ` \u00b7 ${escapeHtml(patch.frontmatter.proposer)}` : ""} ${diffstatHtml}</span>
+        </div>
+        <div class="queue-decision-dock-actions" data-decision-bar-wrap>
+          ${isPending ? renderDecisionBarContent("idle", null) : renderDecidedState(meta)}
+        </div>
+      </div>
       <header class="document-header">
         <nav class="breadcrumb" aria-label="${escapeAttribute(t("codex.reading.entryLocationAria"))}">
           <ol>
@@ -604,20 +776,44 @@ function renderPatchDetail(detail: DrydockDetailResponse, markdownHtml: string):
           </ol>
         </nav>
         <button type="button" class="queue-back-btn" data-drydock-action="back">${escapeHtml(t("codex.reading.backQueue"))}</button>
-        <h1><span class="op-badge">${glyph}</span> ${escapeHtml(wikiEntry.title)}</h1>
-        <p class="eyebrow">${escapeHtml(patch.frontmatter.target)} · v${escapeHtml(String(wikiEntry.version))} · ${escapeHtml(targetLabel)}</p>
         ${renderPatchMetaChips(patch.frontmatter.proposer, wikiEntry.tags)}
       </header>
-      <div class="markdown-body" id="codex-reader-body">
-        ${markdownHtml}
-      </div>
-      <div class="queue-decision-section" data-decision-bar-wrap>
-        ${isPending
-          ? renderDecisionBarContent("idle", null)
-          : renderDecidedState(meta)}
-      </div>
+      ${body}
     </article>
   `;
+}
+
+function countDiffLines(blocks: readonly DraftBlock[]): { added: number; removed: number } {
+  let added = 0;
+  let removed = 0;
+  for (const block of blocks) {
+    if (block.kind === "same") continue;
+    const lines = block.markdown.split("\n").length;
+    if (block.kind === "added") added += lines;
+    else removed += lines;
+  }
+  return { added, removed };
+}
+
+// 렌더 문서 관점의 블록 diff — Cowork 리뷰와 같은 시각 관용구(cowork-block--*)를 쓴다.
+// "변경만" 모드는 무변경 런을 접힘 표지로 축약해 검토 대상만 남긴다.
+function renderDiffBlocks(blocks: readonly DraftBlock[], mode: "changes" | "full"): string {
+  const t = consoleT();
+  const renderBlock = (block: DraftBlock): string => {
+    const html = renderMarkdown(block.markdown, {
+      resolveWikiLink: (id) => entryPath(id),
+      ...markdownCopyOptions(t),
+    }).html;
+    return block.kind === "same" ? html : `<div class="cowork-block cowork-block--${block.kind}">${html}</div>`;
+  };
+  if (mode === "full") return blocks.map(renderBlock).join("");
+  return blocks
+    .map((block) => {
+      if (block.kind !== "same") return renderBlock(block);
+      const count = block.markdown.split(/\n{2,}/).filter(Boolean).length;
+      return `<div class="queue-diff-fold" role="note">${escapeHtml(t("codex.reading.diffFold", { count }))}</div>`;
+    })
+    .join("");
 }
 
 function renderPatchMetaChips(proposer: string, tags: string[]): string {
@@ -690,11 +886,28 @@ function renderConflictDetail(detail: ConflictDetailResponse): string {
         <p class="eyebrow">${escapeHtml(t("codex.reading.conflictEyebrow", { status }))}</p>
       </header>
       <div class="markdown-body">
-        ${detail.current ? `<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>` : ""}
-        ${detail.proposed ? `<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>` : ""}
+        ${renderConflictComparison(detail, t)}
       </div>
     </article>
   `;
+}
+
+// current·proposed가 모두 있으면 블록 diff로 "어디가 갈라졌는가"를 직접 보여준다.
+// 한쪽만 있으면 기존 전문 나열로 강등한다.
+function renderConflictComparison(detail: ConflictDetailResponse, t: T): string {
+  if (detail.current && detail.proposed) {
+    const legend = `
+      <div class="queue-diff-legend" aria-hidden="true">
+        <span class="queue-diff-legend-item queue-diff-legend-item--added">${escapeHtml(t("codex.reading.proposed"))}</span>
+        <span class="queue-diff-legend-item queue-diff-legend-item--removed">${escapeHtml(t("codex.reading.current"))}</span>
+      </div>`;
+    const blocks = diffDraftBlocks(detail.current, detail.proposed);
+    return legend + renderDiffBlocks(blocks, "full");
+  }
+  const sections: string[] = [];
+  if (detail.current) sections.push(`<h2>${escapeHtml(t("codex.reading.current"))}</h2><pre><code>${escapeHtml(detail.current)}</code></pre>`);
+  if (detail.proposed) sections.push(`<h2>${escapeHtml(t("codex.reading.proposed"))}</h2><pre><code>${escapeHtml(detail.proposed)}</code></pre>`);
+  return sections.join("");
 }
 
 function copyCodeToClipboard(button: HTMLElement, code: string): void {

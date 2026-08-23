@@ -131,7 +131,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     return () => {
       setOnRequestOpenReader(null);
     };
-  }, [shouldMountCodex, workspaceId, hasReader, locale]);
+  }, [shouldMountCodex, workspaceId, hasReader, expanded, locale]);
 
   // Theater 해석으로 결정된 workspace 전환 시 navigator 데이터 소스를 바꾸고,
   // 저장된 reader session은 최초 1회만 정상 entry 요청 경로로 복원한다.
@@ -185,7 +185,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
     return <CodexEmpty activeTheater={activeTheater} hasTheaters={hasTheaters} />;
   }
 
-  if (!hasReader) {
+  if (!hasReader || expanded) {
     return <div ref={navRef} className="codex-rail-host" />;
   }
 

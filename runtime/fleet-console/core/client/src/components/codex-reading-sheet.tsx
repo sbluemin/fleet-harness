@@ -16,9 +16,6 @@ import { loadInitialData } from "../codex/state.js";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const FOCUSABLE =
-  'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function CodexReadingSheet() {
@@ -51,26 +48,18 @@ export function CodexReadingSheet() {
     collapseCodexReader();
   }, []);
 
-  // 시트 열기/닫기 effect: inert·keydown(Esc·Tab)·focus 복귀
+  // 덱 열기/닫기 effect — 덱은 캔버스 위 비모달 작업면이다. 사이드바·레일은 계속
+  // 살아 있어야 하므로 inert·탭 트랩을 걸지 않고, Esc 접기만 유지한다.
   useEffect(() => {
     if (!isOpen) return;
     const opener = reader;
     document.body.setAttribute("data-codex-reading", "true");
-
-    const canvas = document.querySelector<HTMLElement>(".operations-canvas");
-    const sidebar = document.querySelector<HTMLElement>(".operations-side-bar");
-    canvas?.setAttribute("inert", "");
-    sidebar?.setAttribute("inert", "");
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.preventDefault();
         e.stopPropagation();
         closeReading();
-        return;
-      }
-      if (e.key === "Tab") {
-        trapTab(sheetRef.current, e);
       }
     };
 
@@ -79,8 +68,6 @@ export function CodexReadingSheet() {
     return () => {
       window.removeEventListener("keydown", onKey, true);
       document.body.removeAttribute("data-codex-reading");
-      canvas?.removeAttribute("inert");
-      sidebar?.removeAttribute("inert");
       // focus 복귀: Expand 버튼 우선 → is-current entry → 검색 폴백
       const entryId = opener?.kind === "entry" ? opener.entryId : null;
       const restore =
@@ -143,19 +130,20 @@ export function CodexReadingSheet() {
 
   if (!isOpen) return null;
 
+  // 캔버스 안에 정박한다 — 캔버스의 pan/제스처 핸들러가 덱에서 시작한 입력을 집어
+  // 가지 않도록 포인터 계열 이벤트는 덱 경계에서 끊는다.
+  const canvasHost = document.querySelector<HTMLElement>(".operations-canvas");
+
   return createPortal(
-    <>
-      <div
-        className="codex-reading-scrim"
-        onClick={closeReading}
-        aria-hidden="true"
-      />
+    (
       <div
         ref={sheetRef}
         className="codex-reading-sheet"
-        role="dialog"
-        aria-modal="true"
+        role="region"
         aria-label={t("chrome.codexReading.dialogAria")}
+        onPointerDown={(e) => e.stopPropagation()}
+        onWheel={(e) => e.stopPropagation()}
+        onContextMenu={(e) => e.stopPropagation()}
       >
         <div className="codex-reading-sheet-head">
           <div className="codex-reader-history">
@@ -190,38 +178,16 @@ export function CodexReadingSheet() {
           </button>
         </div>
         <div className="codex-reading-sheet-body">
-          <div ref={readRef} className="codex-reading-sheet-read" />
           <aside
             ref={tocRef}
             className="codex-reading-sheet-toc"
             aria-label={t("chrome.codexReading.onThisPage")}
           />
+          <div ref={readRef} className="codex-reading-sheet-read" />
         </div>
       </div>
-    </>,
-    document.body,
+    ),
+    canvasHost ?? document.body,
   );
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function trapTab(sheet: HTMLDivElement | null, event: KeyboardEvent): void {
-  if (!sheet) return;
-  const focusable = [...sheet.querySelectorAll<HTMLElement>(FOCUSABLE)].filter(
-    (el) => !el.closest("[inert]"),
-  );
-  if (focusable.length === 0) return;
-  const first = focusable[0]!;
-  const last = focusable[focusable.length - 1]!;
-  if (event.shiftKey) {
-    if (document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    }
-  } else {
-    if (document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  }
-}

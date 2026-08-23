@@ -3,9 +3,12 @@ import { readFile, readdir, realpath, stat } from "node:fs/promises";
 import net from "node:net";
 import { join, relative as relativePath, resolve as resolvePath, sep } from "node:path";
 
+import { diffDraftBlocks } from "@fleet-console/markdown/diff";
+
 import {
   approvePatch,
   briefingQuery,
+  extractWikiLinks,
   listQueue,
   listWiki,
   parseLog,
@@ -26,6 +29,7 @@ import type {
   ConflictDetailResponse,
   ConflictListItem,
   DrydockDetailResponse,
+  DrydockDiffStat,
   DrydockListItem,
   DrydockListResponse,
   DrydockMeta,
@@ -33,6 +37,7 @@ import type {
   DrydockPatchSetMember,
   DrydockPatchSetResponse,
   DrydockWikiEntry,
+  EntryBacklink,
   EntryFrontmatter,
   EntryResponse,
   RawSourceItem,
@@ -348,6 +353,8 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     }
   }
 
+  const backlinks = await collectEntryBacklinks(id, context.paths);
+
   const responseBody: EntryResponse = {
     frontmatter: {
       id: frontmatter.id,
@@ -368,8 +375,53 @@ async function handleEntry(rawSegment: string, url: URL, response: ServerRespons
     } satisfies EntryFrontmatter,
     body,
     ...(raw !== undefined ? { raw } : {}),
+    ...(backlinks.length > 0 ? { backlinks } : {}),
   };
   sendJson(response, 200, responseBody);
+}
+
+/**
+ * [[wiki:id]]로 이 엔트리를 참조하는 다른 엔트리들. 위키 전량을 다시 읽지만
+ * 인덱스 규모(수십~수백 문서)에서 엔트리 열람 빈도로는 충분히 저렴하다.
+ */
+async function collectEntryBacklinks(id: string, paths: MemoryPaths): Promise<EntryBacklink[]> {
+  try {
+    const all = await listWiki(paths);
+    return all
+      .filter((entry) => entry.id !== id && extractWikiLinks(entry.body).includes(id))
+      .map((entry) => ({ id: entry.id, title: entry.title, updated: entry.updated }))
+      .sort((a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime());
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * 렌더 블록 diff 기준 라인 가감 집계. update는 현행 본문과, create는 빈 본문과
+ * 비교한다 — 큐 목록 행이 "무엇이 얼마나 바뀌는가"를 열람 전에 말하게 한다.
+ */
+async function computeDrydockDiffStat(
+  patch: Awaited<ReturnType<typeof parsePatch>>,
+  paths: MemoryPaths,
+): Promise<DrydockDiffStat | undefined> {
+  try {
+    const proposed = parsePatchWikiEntry(patch).body;
+    const targetId = derivePatchTargetId(patch.frontmatter.target);
+    const current = patch.frontmatter.op === "update_wiki"
+      ? (await readWikiEntry(targetId, paths))?.body ?? ""
+      : "";
+    let added = 0;
+    let removed = 0;
+    for (const block of diffDraftBlocks(current, proposed)) {
+      if (block.kind === "same") continue;
+      const lines = block.markdown.split("\n").length;
+      if (block.kind === "added") added += lines;
+      else removed += lines;
+    }
+    return { added, removed };
+  } catch {
+    return undefined;
+  }
 }
 
 async function handleHealth(response: ServerResponse, context: RouteContext): Promise<void> {
@@ -430,12 +482,18 @@ async function handleDrydockList(url: URL, response: ServerResponse, context: Ro
     try {
       const dir = item.source === "queue" ? context.paths.queueDir : context.paths.archiveDir;
       const patch = await parsePatch(await readFile(join(dir, item.id, PATCH_FILENAME), "utf8"));
+      // diffstat은 pending에만 — 결정된 패치를 현행 문서와 비교하는 것은 의미가 없다.
+      const diffstat = item.source === "queue"
+        ? await computeDrydockDiffStat(patch, context.paths)
+        : undefined;
       return {
         ...item,
         meta: item.meta as DrydockMeta,
         summary: patch.frontmatter.summary,
         op: patch.frontmatter.op as "create_wiki" | "update_wiki",
         target: patch.frontmatter.target,
+        proposer: patch.frontmatter.proposer,
+        ...(diffstat ? { diffstat } : {}),
       };
     } catch {
       return { ...item, meta: item.meta as DrydockMeta };
@@ -591,13 +649,34 @@ function sanitizeSearchExcerpt(value: string): string {
     .trim();
 }
 
-function centerSearchExcerpt(value: string, query: string): string {
+export function centerSearchExcerpt(value: string, query: string): string {
   const maxLength = 180;
   if (value.length <= maxLength) return value;
   const matchIndex = value.toLowerCase().indexOf(query.trim().toLowerCase());
-  if (matchIndex === -1) return value.slice(0, maxLength).trim();
+  if (matchIndex === -1) return trimExcerptWindow(value, 0, maxLength).text;
   const start = Math.max(0, Math.min(matchIndex - 50, value.length - maxLength));
-  return value.slice(start, start + maxLength).trim();
+  const window = trimExcerptWindow(value, start, maxLength);
+  return `${window.leadingEllipsis ? "\u2026" : ""}${window.text}`;
+}
+
+// 창을 단어 경계로 정렬한다 — 단어 중간에서 시작하는 스니펫("tion\n\nLexical…")은
+// 판독 소음이라, 잘린 앞 단어는 버리고 말줄임으로 잘림을 정직하게 표시한다.
+function trimExcerptWindow(value: string, start: number, maxLength: number): { text: string; leadingEllipsis: boolean } {
+  let from = start;
+  let leadingEllipsis = false;
+  if (from > 0 && /\S/.test(value[from - 1] ?? "")) {
+    const nextBreak = value.slice(from, from + maxLength).search(/\s/);
+    if (nextBreak >= 0 && nextBreak < maxLength / 2) {
+      from += nextBreak + 1;
+      leadingEllipsis = true;
+    }
+  }
+  let text = value.slice(from, from + maxLength);
+  if (from + maxLength < value.length) {
+    const lastBreak = text.search(/\s\S*$/);
+    if (lastBreak > maxLength / 2) text = text.slice(0, lastBreak);
+  }
+  return { text: text.replace(/\s+/g, " ").trim(), leadingEllipsis };
 }
 
 async function readRequestBody(request: IncomingMessage): Promise<string | null | typeof BODY_TOO_LARGE> {

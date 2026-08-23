@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { diffDraftLines } from "../core/client/src/codex/cowork-diff.js";
+import { diffDraftLines } from "@fleet-console/markdown/diff";
 import { mountCoworkInline } from "../core/client/src/codex/cowork-controller.js";
 import { renderMarkdown } from "@fleet-console/markdown/core";
 
