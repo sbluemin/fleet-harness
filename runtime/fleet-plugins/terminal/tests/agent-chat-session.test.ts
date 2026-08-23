@@ -565,6 +565,11 @@ describe("AgentChatRegistry", () => {
     expect(kindsList.includes("dispatch")).toBe(false);
     expect(endIdx).toBeGreaterThanOrEqual(0);
     expect(startIdx).toBeGreaterThan(endIdx);
+    // 합성 경계·turn-start가 this.seq로 튀어 축을 역행시키지 않는다 — seq는 단조여야 한다.
+    const seqs = events.map((entry) => entry.seq);
+    for (let i = 1; i < seqs.length; i += 1) {
+      expect(seqs[i]).toBeGreaterThanOrEqual(seqs[i - 1] as number);
+    }
     // 리듀스하면 마지막 턴은 done이 아니라 working이다.
     const state = events.reduce((current, entry) => reduceAgentChatLog(current, entry.event), initialAgentChatLogState);
     expect(state.turns.at(-1)?.state).toBe("working");

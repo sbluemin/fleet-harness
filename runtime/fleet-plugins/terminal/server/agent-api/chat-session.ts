@@ -551,8 +551,12 @@ class AgentChatSession {
       for (const entry of replayed) {
         if (entry.event.kind !== "replay-start" && entry.event.kind !== "replay-end") listener(entry);
       }
+      // replayed가 비면(상한이 여는 좌표까지 밀어낸 진행 중 턴) 마지막 재생 seq가 없다. 그때
+      // this.seq(최신)를 쓰면 뒤따르는 합성 turn-start·꼬리가 더 오래된 live[0].seq로 되돌아가
+      // seq 축이 역행한다 — 단조 축 계약(chat-events.ts) 위반이라 seq로 거르는 소비자가 꼬리를
+      // 통째로 버릴 수 있다. 경계 seq를 첫 live 이벤트 이하로 두어 축을 단조로 지킨다.
       listener({
-        seq: replayed.at(-1)?.seq ?? this.seq,
+        seq: replayed.at(-1)?.seq ?? live[0]?.seq ?? this.seq,
         event: { kind: "replay-end", turns: countReplayedTurns(replayed) },
       });
       // 상한에 여는 좌표가 밀려난 경우: 합성 turn-start로 working 턴을 연 뒤 꼬리를 잇는다.
