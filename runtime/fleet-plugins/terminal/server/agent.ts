@@ -24,7 +24,7 @@ import type { AiGatewayStoredSettings } from "@dotobokuri/core-ai-gateway";
 import type { AiGatewayLaunchBinding } from "./agent-api/launch.js";
 import { deriveOperationLabel } from "./agent-api/auto-name.js";
 import { readBackgroundHookReport } from "./agent-api/background-report.js";
-import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, renderFleetPluginRootsForChat, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
+import { createAgentTerminalLaunchResolver, GatewayLaunchOptionError, isGatewayLaunchEffortAllowed, prepareChatClaudeSession, type ConsoleRuntimeSessionInfo } from "./agent-api/launch.js";
 import { composeLaunchPromptWithAttachments, createLaunchAttachmentStore, LaunchAttachmentError, readLaunchAttachmentBody } from "./agent-api/launch-attachments.js";
 import { AGENT_LAUNCH_PROVIDER_PAYLOAD_KEY, agentLaunchProviderFromCliId, agentLaunchProviderFromModel, isAgentLaunchProvider } from "./agent-api/launch-provider.js";
 import { createConsoleObservabilityStore } from "./agent-api/observability-store.js";
@@ -1399,12 +1399,10 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
     const gatewayCompactCeiling = gatewayContextWindow === undefined
       ? undefined
       : (deps.readAiGatewaySettings?.().compactCeiling ?? null);
-    const chatSkillOverrides = buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS);
-    // 터미널 런치와 같은 설정을 읽는다. `off`는 systemPrompt를 아예 싣지 않는 것이고, SDK는
-    // 그때 Claude Code 기본 프롬프트를 붙이지 않는다(실측: 생략 18,272 / preset 24,632 토큰).
-    const chatSystemPrompt = resolveClaudeCodeSystemPrompt(deps.globalOptionsService.load()) === "on"
-      ? { mode: "preset" } as const
-      : undefined;
+    // 터미널 런치와 같은 설정을 읽는다. 이 값이 두 표면에서 어떤 인자·옵션이 되는지는
+    // admiral이 정한다 — CLI는 끌 때만 플래그를 싣고 SDK는 켤 때만 preset을 싣는, 서로 뒤집힌
+    // 표현이라 호스트가 각자 사상하면 한쪽만 따라온다.
+    const chatClaudeCodeSystemPrompt = resolveClaudeCodeSystemPrompt(deps.globalOptionsService.load());
     const mcpTokenLabel = `chat:${node.id}`;
     return {
       ok: true,
@@ -1420,7 +1418,6 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
         cwd,
         claudeConfigDir,
         origin: sessionOrigin,
-        ...(chatSystemPrompt ? { systemPrompt: chatSystemPrompt } : {}),
         resolveFleetMcpServers: async () => {
           const endpoint = await runtime.dedicatedMcpSession.getEndpoint();
           const tokens = await runtime.dedicatedMcpSession.issueSessionToken({
@@ -1440,14 +1437,18 @@ async function createAgentApi(ctx: FleetPluginServerContext, terminalRuntime: Te
           });
         },
         releaseFleetMcpServers: () => runtime.dedicatedMcpSession.releaseSessionToken(mcpTokenLabel),
-        // 터미널이 `--settings`로 강제하는 것과 같은 값이다. 없으면 같은 프롬프트가 표면에
-        // 따라 다른 내장 스킬을 깨운다.
-        ...(chatSkillOverrides ? { skillOverrides: chatSkillOverrides } : {}),
         ...(launchEffort?.ultracode ? { ultracode: true } : {}),
-        // 터미널 런치와 같은 자리에 같은 옵션으로 렌더한다 — 두 표면이 한 플러그인을 공유한다.
-        resolveFleetPluginRoots: () => renderFleetPluginRootsForChat({
+        // 터미널 런치와 같은 함수에서 같은 옵션으로 받는다 — 두 표면이 한 세션의 두 얼굴이다.
+        // 새로 태어나는 세션은 Operation id를 그대로 Claude 세션 id로 못박아, Operation의
+        // 좌표와 Claude의 좌표가 태어날 때 하나가 된다. 이어 붙이는 세션은 그 id를 고를 수
+        // 없으므로 트랜스크립트가 말하는 id를 그대로 쓴다.
+        resolveClaudeSession: () => prepareChatClaudeSession({
           cwd,
           dataDir: ctx.host.paths.fleetDataDir,
+          claudeCodeSystemPrompt: chatClaudeCodeSystemPrompt,
+          origin: sessionOrigin.kind === "resume"
+            ? { kind: "resume", sessionId: path.basename(sessionOrigin.transcriptPath, ".jsonl") }
+            : { kind: "new", preferredSessionId: node.id },
           ...(deps.readAiGatewaySettings ? { readAiGatewaySettings: deps.readAiGatewaySettings } : {}),
         }),
         onProviderSessionUpdate: (updated) => {

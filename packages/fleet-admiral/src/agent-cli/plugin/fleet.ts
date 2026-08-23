@@ -1,12 +1,7 @@
-import path from "node:path";
-
 import { EMBEDDED_AGENT_CLI_HOOK_ASSETS, EMBEDDED_AGENT_CLI_SKILL_ASSETS } from "../assets.generated.js";
 import { buildGatewayAgentFiles, FLEET_PLUGIN_NAME } from "../gateway-agents.js";
-import { writePrivateFile, writePrivateJson } from "./fs.js";
 import type { FleetHookExec } from "../types.js";
 import type { AssetPluginBundle, CreateAgentCliPluginOptions } from "../types.js";
-
-export const ASSET_PLUGIN_DIRECTORY_NAMES = ["fleet-gateway"] as const;
 
 export const assetBundle: AssetPluginBundle = {
   description: "Fleet gateway identities, on-demand skills, and delegation policy hooks",
@@ -18,48 +13,43 @@ export const assetBundle: AssetPluginBundle = {
 
 const MODEL_GUARD_SCRIPT_NAME = "fleet-gateway-model-guard.mjs";
 
-export function resolveAssetPluginDirectoryName(): string {
-  return "fleet-gateway";
-}
-
-export function renderAssetPluginRoot(
-  pluginRoot: string,
-  bundle: AssetPluginBundle,
-  options: CreateAgentCliPluginOptions,
-): void {
-  renderEmbeddedSkillAssets(pluginRoot);
-  const modelGuardScriptPath = writeModelGuardScript(pluginRoot);
-  writePrivateJson(path.join(pluginRoot, "hooks", "hooks.json"), claudeHooks(options, modelGuardScriptPath), pluginRoot);
-  // 게이트웨이 정체성과 온디맨드 스킬은 이 플러그인이 싣는다. 렌더는 스테이징
-  // 디렉터리에 전부 쓰고 한 번에 rename하므로, 노출 목록이 줄어든 세션에서 옛 자산이
-  // 남을 수 없다.
-  renderGatewayAgentAssets(pluginRoot, options);
-}
-
-function renderEmbeddedSkillAssets(pluginRoot: string): void {
-  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
-    writePrivateFile(path.join(pluginRoot, "skills", asset.relativePath), asset.content, pluginRoot);
-  }
-}
-
-function renderGatewayAgentAssets(pluginRoot: string, options: CreateAgentCliPluginOptions): void {
-  for (const file of buildGatewayAgentFiles(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)) {
-    writePrivateFile(path.join(pluginRoot, "agents", file.fileName), file.content, pluginRoot);
-  }
-}
-
-function writeModelGuardScript(pluginRoot: string): string {
-  const asset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
-  if (!asset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
-  const scriptPath = path.join(pluginRoot, "hooks", MODEL_GUARD_SCRIPT_NAME);
-  writePrivateFile(scriptPath, asset.content, pluginRoot);
-  return scriptPath;
+/** 스냅숏에 들어갈 파일 하나. relativePath는 `/` 구분의 스냅숏 루트 상대 경로다. */
+export interface AssetPluginFile {
+  readonly relativePath: string;
+  readonly content: string;
 }
 
 /**
- * 모델 가드 훅 실행 사양. 플러그인 루트는 렌더 시 스테이징 디렉터리에 쓰였다가 rename되므로
- * 절대 경로를 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 실제
- * 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
+ * 플러그인 스냅숏의 전체 파일 집합을 메모리에서 조립한다. 디스크에는 아무것도 쓰지 않는다 —
+ * 이 목록이 곧 스냅숏의 내용 정체성(해시 입력)이고, 발행 여부는 그 해시가 결정한다.
+ */
+export function buildAssetPluginFiles(
+  bundle: AssetPluginBundle,
+  options: CreateAgentCliPluginOptions,
+): readonly AssetPluginFile[] {
+  const files: AssetPluginFile[] = [];
+  files.push({ relativePath: ".claude-plugin/plugin.json", content: toJsonContent(claudeManifest(bundle)) });
+  for (const asset of EMBEDDED_AGENT_CLI_SKILL_ASSETS) {
+    files.push({ relativePath: `skills/${asset.relativePath}`, content: asset.content });
+  }
+  const guardAsset = EMBEDDED_AGENT_CLI_HOOK_ASSETS.find((entry) => entry.relativePath === MODEL_GUARD_SCRIPT_NAME);
+  if (!guardAsset) throw new Error(`Missing embedded ${MODEL_GUARD_SCRIPT_NAME} hook asset`);
+  files.push({ relativePath: `hooks/${MODEL_GUARD_SCRIPT_NAME}`, content: guardAsset.content });
+  files.push({ relativePath: "hooks/hooks.json", content: toJsonContent(claudeHooks(options, true)) });
+  for (const file of buildGatewayAgentFiles(options.gatewayDelegationModels ?? [], options.gatewayEffortExposure)) {
+    files.push({ relativePath: `agents/${file.fileName}`, content: file.content });
+  }
+  return files;
+}
+
+function toJsonContent(value: unknown): string {
+  return `${JSON.stringify(value, null, 2)}\n`;
+}
+
+/**
+ * 모델 가드 훅 실행 사양. 스냅숏은 내용 해시가 이름인 디렉터리로 발행되므로 절대 경로를
+ * 남기지 않고 `${CLAUDE_PLUGIN_ROOT}` 플레이스홀더를 쓴다 — 훅 실행 시점에 그 세션이
+ * 런치한 스냅숏 루트로 치환된다. command는 런처의 다른 훅과 동일하게 절대 node 경로다.
  */
 function modelGuardHook(subcommand: string): FleetHookExec {
   return {
@@ -68,13 +58,13 @@ function modelGuardHook(subcommand: string): FleetHookExec {
   };
 }
 
-function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?: string): unknown {
+function claudeHooks(options: CreateAgentCliPluginOptions, withModelGuard: boolean): unknown {
   // UserPromptSubmit: 세션 캡처 → 턴 시작 → 자동 작명 순서로 같은 이벤트에 렌더하고,
   // 위임·병렬 작업을 delegation 스킬과 로스터 조회로 보내는 트립와이어를 그 뒤에 붙인다.
   // 스킬은 의미 정책만 소유하고, 살아 있는 로스터는 호스트가 gateway_models로 직접 읽는다.
   const userPromptSubmitExecs = [options.captureSessionHookExec, options.turnStartHookExec, options.autoNameHookExec]
     .filter((exec): exec is FleetHookExec => exec !== undefined);
-  if (modelGuardScriptPath) userPromptSubmitExecs.push(modelGuardHook("remind"));
+  if (withModelGuard) userPromptSubmitExecs.push(modelGuardHook("remind"));
   // Stop: 턴 종료 신호. 살아 있는 백그라운드 작업 목록은 같은 payload에 실려 오므로 별도 hook을 걸지 않고
   // 턴 종료 hook이 함께 실어 나른다 — 한 이벤트에 두 hook을 걸면 둘이 병렬로 떠서 턴 종료가 먼저 도착하고,
   // 그 찰나에 세션이 거짓 유휴로 보여 종료 알림과 도착 표시가 튄다.
@@ -89,7 +79,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
     ...(inputWaitingExec
       ? [{ matcher: "AskUserQuestion", hooks: [claudeCommandHook(inputWaitingExec)] }]
       : []),
-    ...(modelGuardScriptPath
+    ...(withModelGuard
       ? [
           {
             // 위임 게이트: 백그라운드 카운팅 신호가 아니라 정책 게이트다. 핀되지 않은 위임을
@@ -105,7 +95,7 @@ function claudeHooks(options: CreateAgentCliPluginOptions, modelGuardScriptPath?
   // 평가되고 룰 콘텐츠 매칭은 도구의 preparePermissionMatcher에 기대는데 Skill 도구에는 그것이
   // 없어 `Skill(<name>)` 조건이 항상 거짓이 되고, 그런 훅은 조용히 스킵된다. 살아 있는 로스터는
   // 호스트가 스킬의 preflight 지시와 매 턴 리마인더를 읽고 gateway_models로 직접 읽는다.
-  const postToolUse = modelGuardScriptPath
+  const postToolUse = withModelGuard
     ? [
         {
           // 즉시 반환된 Workflow run id를 결과로 읽는 사고를 그 자리에서 막는다.
@@ -154,5 +144,13 @@ function claudeCommandHook(hookExec: FleetHookExec): {
     args: [...hookExec.args],
     command: hookExec.command,
     type: "command",
+  };
+}
+
+function claudeManifest(bundle: AssetPluginBundle): unknown {
+  return {
+    name: bundle.name,
+    version: "0.0.0",
+    description: bundle.description,
   };
 }

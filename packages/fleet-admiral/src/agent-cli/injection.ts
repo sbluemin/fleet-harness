@@ -16,8 +16,7 @@ import {
 import { isHostSessionToolAllowed } from "../tools.js";
 import { getAgentCliInjectionCapability } from "./capabilities.js";
 import { buildGatewayCustomAgents, type GatewayEffortExposure } from "./gateway-agents.js";
-import { GATEWAY_DISABLED_CLAUDE_SKILLS, buildDisabledSkillOverrides } from "./gateway-skills.js";
-import { createAgentCliPlugin } from "./plugin/index.js";
+import { prepareClaudeSession, type ClaudeSessionHandle, type ClaudeSessionOrigin } from "./session.js";
 import type {
   AgentCliInjectionContext,
   AgentCliMcpServerArg,
@@ -40,14 +39,13 @@ export interface InjectAgentCliProfileOptions {
   // 작전명 자동 작명(UserPromptSubmit) hook. host가 빌드해 주입한다.
   readonly autoNameHookExec?: FleetHookExec;
   readonly onCleanup?: (cleanup: () => void) => void;
-  readonly pluginRootDir?: string;
   /**
    * Claude Code 자신의 기본 시스템 프롬프트를 이 세션에 실을지. 생략하면 `on` —
    * 플래그 없는 런치가 이미 하는 일이다. `off`는 빈 본문을 시스템 프롬프트로 세워 그것을 대체한다.
    */
   readonly claudeCodeSystemPrompt?: "on" | "off";
-  readonly resumeSessionId?: string;
-  readonly withMarketplaceLock: AgentCliPluginMarketplaceLock;
+  /** 이 런치가 여는 Claude 세션의 출발점. 생략하면 새 세션을 발급한다. */
+  readonly origin?: ClaudeSessionOrigin;
   /**
    * claude-gateway 전용: 위임 정체성으로 등록할 모델, 즉 AI Gateway 노출 집합에서 host 전용
    * 모델을 뺀 목록이다. `selection.models`를 넘기는 버그를 막기 위해 이름에 delegation을 명시한다.
@@ -57,8 +55,9 @@ export interface InjectAgentCliProfileOptions {
   readonly gatewayEffortExposure?: GatewayEffortExposure;
 }
 
-interface AgentCliPluginMarketplaceLock {
-  <T>(target: string, fn: () => T | Promise<T>): T | Promise<T>;
+/** 주입이 끝난 프로필과, 그 프로필이 열게 될 세션의 확정된 좌표. */
+export interface InjectedAgentCliProfile extends AgentCliProfile {
+  readonly session: ClaudeSessionHandle;
 }
 
 interface DedicatedMcpSession {
@@ -89,7 +88,7 @@ interface ExecutorServerToken {
 export async function injectAgentCliProfile(
   profile: AgentCliProfile,
   options: InjectAgentCliProfileOptions,
-): Promise<AgentCliProfile> {
+): Promise<InjectedAgentCliProfile> {
   const capability = getAgentCliInjectionCapability(profile.id);
   const endpoint = await options.dedicatedMcpSession.getEndpoint();
   const tokenLabel = options.mcpSessionLabel ?? `agent:${profile.id}:${crypto.randomUUID()}`;
@@ -127,11 +126,12 @@ export async function injectAgentCliProfile(
         convertPromptToFile(body);
       }
     }
-    const plugin = await createAgentCliPlugin({
+    const session = await prepareClaudeSession({
       cliId: profile.id,
       cwd: profile.cwd,
       dataDir: options.dataDir,
-      rootDir: options.pluginRootDir,
+      origin: options.origin ?? { kind: "new" },
+      ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
       captureSessionHookExec: options.captureSessionHookExec,
       turnStartHookExec: options.turnStartHookExec,
       turnEndHookExec: options.turnEndHookExec,
@@ -141,10 +141,9 @@ export async function injectAgentCliProfile(
       // 게이트웨이 정체성은 플러그인이 파일로 싣는다 — argv에는 이미 있던 플러그인 경로만 남는다.
       gatewayDelegationModels: options.gatewayDelegationModels,
       gatewayEffortExposure: options.gatewayEffortExposure,
-      withMarketplaceLock: options.withMarketplaceLock,
     });
     const cleanup = createOnceCleanup(() => {
-      plugin.cleanup();
+      session.release();
       for (const tempCleanup of tempCleanups) {
         tempCleanup();
       }
@@ -154,10 +153,10 @@ export async function injectAgentCliProfile(
     const context: AgentCliInjectionContext = {
       cliId: profile.id,
       mcpServers,
-      pluginRoot: plugin.pluginRoot,
-      pluginRoots: plugin.pluginRoots,
-      skillOverrides: buildDisabledSkillOverrides(GATEWAY_DISABLED_CLAUDE_SKILLS),
-      resumeSessionId: options.resumeSessionId,
+      pluginRoot: session.pluginRoot,
+      pluginRoots: session.pluginRoots,
+      ...(session.skillOverrides ? { skillOverrides: session.skillOverrides } : {}),
+      sessionCoordinate: session.coordinate,
       ...(options.claudeCodeSystemPrompt ? { claudeCodeSystemPrompt: options.claudeCodeSystemPrompt } : {}),
     };
     const injectedArgs = buildAgentCliArgs(capability.builderId, context);
@@ -207,6 +206,7 @@ export async function injectAgentCliProfile(
       // 위치 인자는 이미 args 끝에 합쳐졌으므로 비운다. 남겨 두면 하류가 한 번 더 붙일 수 있다.
       promptArgs: [],
       cleanup,
+      session,
     };
   } catch (error) {
     for (const tempCleanup of tempCleanups) {

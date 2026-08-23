@@ -2,7 +2,7 @@ import type { AgentCliInjectionContext, AgentCliMcpServerArg } from "../types.js
 
 export function buildClaudeGatewayArgs(context: AgentCliInjectionContext): string[] {
   return [
-    ...buildResumeArgs(context.resumeSessionId),
+    ...buildSessionArgs(context.sessionCoordinate),
     ...buildBaseSystemPromptArgs(context.claudeCodeSystemPrompt),
     ...context.pluginRoots.flatMap((pluginRoot) => [
       "--plugin-dir",
@@ -42,8 +42,23 @@ function buildSettingsArgs(
   return ["--settings", JSON.stringify({ skillOverrides })];
 }
 
-function buildResumeArgs(resumeSessionId: string | undefined): string[] {
-  return resumeSessionId === undefined ? [] : ["--resume", resumeSessionId];
+/**
+ * 세션 좌표를 자식 인자로 옮긴다.
+ *
+ * 새 세션과 갈래는 Fleet이 발급한 id를 `--session-id`로 못박는다 — 자식이 만든 id를 나중에
+ * 훅으로 받아 적는 것과 달리, 이 값은 spawn 전에 이미 확정이라 플러그인 트리도 그 이름으로
+ * 앉을 수 있다. 이어 붙이는 세션만 id를 고를 수 없다(실측: `--session-id`는 `--fork-session`
+ * 없이 `--resume`과 함께 쓰면 자식이 거부한다).
+ */
+function buildSessionArgs(coordinate: AgentCliInjectionContext["sessionCoordinate"]): string[] {
+  switch (coordinate.kind) {
+    case "resume":
+      return ["--resume", coordinate.sessionId];
+    case "fork":
+      return ["--resume", coordinate.from, "--fork-session", "--session-id", coordinate.sessionId];
+    default:
+      return ["--session-id", coordinate.sessionId];
+  }
 }
 
 /**

@@ -98,6 +98,23 @@ function seedFor(awaitingLog: boolean[]): AgentChatSessionSeed {
     cwd: "/tmp/workspace",
     claudeConfigDir: tempDir("chat-ask-home-"),
     origin: { kind: "fresh" },
+    resolveClaudeSession: async () => {
+      const sessionId = "11111111-2222-4333-8444-555555555555";
+      const pluginRoot = `/fleet/workspaces/tmp-workspace/sessions/${sessionId}`;
+      return {
+        sessionId,
+        coordinate: { kind: "new", sessionId },
+        pluginRoot,
+        pluginRoots: [pluginRoot],
+        claudeCodeSystemPrompt: "off",
+        sdk: {
+          options: { plugins: [{ path: pluginRoot }], settingSources: ["user", "project", "local"], allowAmbientMcpServers: true },
+          request: { sessionId, permissionMode: "bypassPermissions" },
+        },
+        attach: () => {},
+        release: () => {},
+      };
+    },
     onProviderSessionUpdate: () => {},
     reportActivity: () => true,
     canReportActivity: () => true,

@@ -52,7 +52,7 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
   if (testStartShell) return testStartShell(launch, size);
   const { spawn: spawnPty } = loadNodePty();
   const useConptyDll = resolveUseConptyDll(process.platform, process.env);
-  return spawnPty(launch.bin, [...launch.args], {
+  const pty = spawnPty(launch.bin, [...launch.args], {
     cols: size.cols,
     rows: size.rows,
     cwd: launch.cwd,
@@ -60,6 +60,8 @@ export function startTerminalShell(launch: TerminalLaunchSpec, size: { readonly 
     name: launch.terminalName ?? TERMINAL_TERM,
     ...(useConptyDll ? { useConptyDll: true } : {}),
   });
+  if (typeof pty.pid === "number") launch.onChildSpawned?.(pty.pid);
+  return pty;
 }
 
 export function resolveNodePtyModulePath(currentFile: string = fileURLToPath(import.meta.url)): string {

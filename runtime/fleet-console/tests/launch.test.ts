@@ -381,10 +381,15 @@ describe("createDefaultTerminalLaunchResolver", () => {
       sessionId: "gateway-integration",
     });
     const pluginRoot = spec.args[spec.args.indexOf("--plugin-dir") + 1];
+    const pinnedSessionId = spec.args[spec.args.indexOf("--session-id") + 1];
 
     expect(spec.bin).toBe(process.execPath);
     expect(spec.env.ANTHROPIC_BASE_URL).toBe("http://127.0.0.1:43210/plugins/terminal/ai-gateway");
-    expect(pluginRoot).toBe(path.join(root, "marketplace", "plugins", "fleet-gateway"));
+    // 플러그인 트리는 이 워크스페이스의 세션 자리에 앉고, 그 이름이 곧 못박은 세션 id다.
+    expect(pinnedSessionId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
+    expect(path.basename(pluginRoot!)).toBe(pinnedSessionId);
+    expect(path.dirname(pluginRoot!).startsWith(path.join(root, "workspaces") + path.sep)).toBe(true);
+    expect(path.basename(path.dirname(pluginRoot!))).toBe("sessions");
     expect(existsSync(path.join(pluginRoot!, ".claude-plugin", "plugin.json"))).toBe(true);
     expect(existsSync(path.join(pluginRoot!, ".codex-plugin", "plugin.json"))).toBe(false);
     // 위임 규율은 시스템 프롬프트가 아니라 이 훅이 싣는다.
