@@ -1984,8 +1984,21 @@ describe("Instrument core design contract", () => {
     // xterm은 CSS 변수를 못 받으므로 계산값을 읽어 넘긴다 — 이 경로가 사라지면 터미널 필드가
     // 토큰과 갈라져 캡션 이음새가 되살아난다.
     expect(surface).toContain('getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal")');
-    expect(fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8")).toContain("allowTransparency: true");
     expect(surface).toContain("...base, background: resolvePanelSurface(");
+
+    // allowTransparency는 상수가 아니라 해석된 배경의 알파에서 파생된다 — 상수 true는 불투명
+    // 필드(라이트 종이·게이트 닫힘)에서도 글리프를 투명 위에 그려 GPU가 감마 미보정 sRGB로
+    // 재합성하게 만들고, 획 잉크가 18.2% 사라진다(dpr=2 실측). 상수로 되돌리면 그 회귀가 재발한다.
+    const options = fs.readFileSync(fileURLToPath(new URL("../../fleet-plugins/terminal/client/shared/terminal-options.ts", import.meta.url)), "utf8");
+    expect(options).not.toMatch(/^\s*allowTransparency:/m);
+    expect(surface).toContain("allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
+    expect(surface).toContain("terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? \"\")");
+    // 뷰포트 인라인 배경이 먼저다 — 순서가 뒤집히면 xterm의 :not(.allow-transparency) 규칙이
+    // background-color:#000을 한 프레임 드러낸다.
+    const applyBlock = surface.slice(surface.indexOf("const applyTerminalTheme = () => {"));
+    expect(applyBlock.indexOf("syncTerminalViewportBackground(container, terminalTheme)")).toBeLessThan(
+      applyBlock.indexOf("terminal.options.allowTransparency ="),
+    );
 
     // ITheme의 background 리터럴은 토큰을 못 읽는 환경의 폴백일 뿐이다 — 테마별로 theme.css의
     // --surface-panel과 같은 값이어야 폴백이 다른 면을 그리지 않는다.
