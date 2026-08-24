@@ -119,6 +119,26 @@ describe("FontPicker", () => {
     expect(container.textContent).toContain("Unavailable");
   });
 
+  it("keeps search, listbox, disabled, and size controls explicitly labeled", () => {
+    const container = renderPicker({ disabled: true, loading: true });
+    const root = container.querySelector<HTMLElement>(".fc-font-browser");
+    const search = container.querySelector<HTMLInputElement>(".fc-font-browser__search");
+    const searchLabel = container.querySelector<HTMLLabelElement>(".fc-font-browser__search-label");
+    const listbox = container.querySelector<HTMLElement>(".fc-font-browser__listbox");
+    const sizeControl = container.querySelector<HTMLElement>(".fc-font-browser__size-control");
+
+    expect(root?.dataset.disabled).toBe("true");
+    expect(search?.disabled).toBe(true);
+    expect(searchLabel?.htmlFor).toBe(search?.id);
+    expect(listbox?.getAttribute("role")).toBe("listbox");
+    expect(listbox?.getAttribute("aria-label")).toBeTruthy();
+    expect(listbox?.getAttribute("aria-busy")).toBe("true");
+    expect(sizeControl?.getAttribute("role")).toBe("group");
+    expect(sizeControl?.getAttribute("aria-label")).toBeTruthy();
+    expect([...container.querySelectorAll<HTMLButtonElement>(".fc-font-browser__stepper")].every((button) => button.disabled && Boolean(button.getAttribute("aria-label")))).toBe(true);
+    expect(container.querySelector(".fc-font-browser__range")?.getAttribute("aria-label")).toBeTruthy();
+  });
+
   it("keeps slider draft local and commits once when its interaction ends", async () => {
     const onSizeCommit = vi.fn();
     const container = renderPicker({ onSizeCommit });

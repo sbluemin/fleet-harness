@@ -317,6 +317,16 @@
   --duration-base: 220ms;
   --duration-slow: 360ms;
 
+  /* 상호작용 컨트롤의 상태 recipe — 색 역할을 새로 만들지 않고 위치 채널(brass)을
+     한 강도 사다리로 묶는다. rest는 각 소비처의 중립 면이 맡고, hover는 예고,
+     selected는 지속 위치, focus는 입력 수단의 별도 외곽 링이다. */
+  --control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);
+  --control-hover-rim: color-mix(in oklab, var(--brass) 42%, var(--surface-rim));
+  --control-selected-fill: color-mix(in oklab, var(--brass) 12%, transparent);
+  --control-selected-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));
+  --control-focus-ring: var(--brass);
+  --control-disabled-opacity: 0.5;
+
 }
 
 
@@ -776,7 +786,7 @@ a {
 }
 
 :focus-visible {
-  outline: 2px solid var(--brass);
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
 }

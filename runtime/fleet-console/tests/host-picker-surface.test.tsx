@@ -168,7 +168,8 @@ describe("the list home unfolds", () => {
     expect(rowText().join("\n")).toContain("SBLUEMIN2C23");
     const current = rows().find((row) => row.getAttribute("aria-checked") === "true");
     expect(current?.textContent).toContain("dotobokuliui-Macmini");
-    expect((current as HTMLButtonElement).disabled).toBe(true);
+    expect((current as HTMLButtonElement).disabled).toBe(false);
+    expect(current?.getAttribute("aria-disabled")).toBe("true");
   });
 
   it("opens with the list already unfolded and no chip of its own", async () => {
@@ -178,6 +179,78 @@ describe("the list home unfolds", () => {
 
     expect(rows().length).toBeGreaterThan(0);
     expect(document.querySelector(".host-switcher-chip")).toBeNull();
+  });
+
+  it("keeps the picker keyboard behind the Add Host modal", async () => {
+    stubHomeConsole();
+    await mount(createElement(HostPickerScreen, { surface: { at: HERE } }));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    const add = document.querySelector<HTMLButtonElement>('.host-switcher-link[role="menuitem"]')!;
+    await act(async () => { add.click(); });
+    const input = document.querySelector<HTMLInputElement>(".add-host-field input")!;
+    expect(document.activeElement).toBe(input);
+
+    for (const key of ["ArrowDown", "Home", "End"]) {
+      await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true })); });
+      expect(document.activeElement).toBe(input);
+    }
+
+    await act(async () => { input.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })); });
+    expect(document.querySelector('[aria-modal="true"]')).toBeNull();
+    expect(rows().length).toBeGreaterThan(0);
+    expect(assign).not.toHaveBeenCalled();
+  });
+
+  it("moves initial focus to a current saved host that arrives after the first frame", async () => {
+    standOn(HOME);
+    let releaseHosts = (_: Response) => {};
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const path = new URL(input, HOME).pathname;
+      if (path === "/api/v1/desktop/shell") return Response.json({ homeOrigin: HOME });
+      if (path === "/api/v1/local-consoles") return Response.json({ consoles: [scanned(HOME)] });
+      if (path === "/api/v1/remote-hosts") return new Promise<Response>((resolve) => { releaseHosts = resolve; });
+      return Response.json({ reachable: true, trusted: true });
+    }));
+
+    await mount(createElement(HostPickerScreen, { surface: { at: THERE } }));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+    const fallback = rows().find((row) => row.getAttribute("aria-checked") === "true")!;
+    expect(document.activeElement).toBe(fallback);
+    expect((fallback as HTMLButtonElement).disabled).toBe(false);
+
+    await act(async () => {
+      releaseHosts(Response.json({
+        hosts: [{ id: "there", label: "SBLUEMIN2C23", origin: THERE, hostname: "10.211.55.3", port: 6186, fingerprint: "A".repeat(64), addedAt: 1, lastOpenedAt: null }],
+      }));
+      await Promise.resolve();
+    });
+    await act(async () => { await Promise.resolve(); });
+
+    const current = rows().find((row) => row.getAttribute("aria-checked") === "true")!;
+    expect(current.textContent).toContain("SBLUEMIN2C23");
+    expect(document.activeElement).toBe(current);
+  });
+
+  it("focuses the current row and moves through enabled actions with menu keys", async () => {
+    stubHomeConsole();
+
+    await mount(createElement(HostPickerScreen, { surface: { at: HERE } }));
+    await act(async () => { await new Promise((resolve) => requestAnimationFrame(resolve)); });
+
+    const items = [...document.querySelectorAll<HTMLButtonElement>('[role="menuitemradio"], [role="menuitem"]')]
+      .filter((item) => !item.disabled);
+    const current = items.find((item) => item.getAttribute("aria-checked") === "true")!;
+    expect(document.activeElement).toBe(current);
+
+    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true })); });
+    expect(document.activeElement).toBe(items[(items.indexOf(current) + 1) % items.length]);
+
+    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true })); });
+    expect(document.activeElement).toBe(items.at(-1));
+
+    await act(async () => { document.dispatchEvent(new KeyboardEvent("keydown", { key: "Home", bubbles: true })); });
+    expect(document.activeElement).toBe(items[0]);
   });
 
   /** 판은 이 화면의 상태가 아니라 셸이 얹은 덮개라, 접겠다는 말도 셸에게 가야 한다. */

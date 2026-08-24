@@ -36,7 +36,7 @@ const GITHUB_STARGAZERS_URL = "https://github.com/sbluemin/fleet-harness/stargaz
 const GITHUB_STARS_API_URL = "https://api.github.com/repos/sbluemin/fleet-harness";
 const GITHUB_STARS_CACHE_KEY = "fleet-console.github-stars";
 const GITHUB_STARS_TTL_MS = 6 * 60 * 60 * 1000;
-const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled])';
+const ENABLED_MENU_ITEM_SELECTOR = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
 /**
  * Desktop 셸과의 계약 리터럴 — 셸이 이 항해를 가로채므로 요청은 기계를 떠나지 않는다.
@@ -149,6 +149,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   const [reach, setReach] = useState<Readonly<Record<string, RemoteHostReach>>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const menuItems = () => Array.from(panelRef.current?.querySelectorAll<HTMLButtonElement>(ENABLED_MENU_ITEM_SELECTOR) ?? []);
   /**
    * 목록을 접는 일. 집이 펼친 판은 이 화면의 상태가 아니라 셸이 얹은 덮개라, 접겠다는 말도
    * 셸에게 가야 한다 — 여기서 state만 내리면 빈 덮개가 콘솔을 가린 채 남는다.
@@ -189,20 +190,89 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
   }, [open, hosts, servedFromLoopback]);
 
   // 판을 닫는 길은 목록을 어디서 읽어 왔는지와 무관하다 — 묻지 않는 콘솔에서도 판은 닫혀야 한다.
+  // 열리면 현재 행(없으면 첫 행)으로 포커스를 옮기고, 같은 밴드의 Theater 메뉴와 같은 방향키
+  // 문법을 쓴다. 현재 행은 선택 대상은 아니어도 위치 기준이므로 focus 목록에는 남는다.
   useEffect(() => {
-    if (!open) return;
+    // Add Host는 자기 모달·키 문법을 소유한다. 덮개 picker는 그 뒤에서도 open이므로 여기서
+    // 명시적으로 물러나지 않으면 입력의 Home/End와 모달의 Escape를 메뉴가 가로챈다.
+    if (!open || addOpen) return;
+    const panel = panelRef.current;
+    if (panel === null) return;
+    let initialFocusPending = true;
+    let fallbackFocus: HTMLButtonElement | null = null;
+    let focusedCurrent: HTMLButtonElement | null = null;
+    const focusInitialItem = () => {
+      const items = menuItems();
+      const current = items.find((item) => item.getAttribute("aria-checked") === "true");
+      // 목록 응답이 늦으면 임시 current 행이 실제 저장 행으로 교체된다. 사용자가 아직 움직이지
+      // 않았다면 끊긴 기준점을 새 current로 이어 주되, 한 번 직접 이동한 포커스는 덮어쓰지 않는다.
+      if (current && (initialFocusPending || (focusedCurrent !== null && !focusedCurrent.isConnected))) {
+        initialFocusPending = false;
+        fallbackFocus = null;
+        focusedCurrent = current;
+        current.focus();
+        return;
+      }
+      if (!current && initialFocusPending && items[0] && !panel.contains(document.activeElement)) {
+        fallbackFocus = items[0];
+        fallbackFocus.focus();
+      }
+    };
+    const frame = window.requestAnimationFrame(focusInitialItem);
+    const observer = new MutationObserver(focusInitialItem);
+    observer.observe(panel, { childList: true, subtree: true, attributes: true, attributeFilter: ["aria-checked", "disabled"] });
     const onPointer = (event: PointerEvent) => {
       const target = event.target as Node;
-      if (!panelRef.current?.contains(target) && !triggerRef.current?.contains(target)) dismiss();
+      if (panel.contains(target)) {
+        initialFocusPending = false;
+        fallbackFocus = null;
+        focusedCurrent = null;
+        return;
+      }
+      if (!triggerRef.current?.contains(target)) dismiss();
     };
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") { dismiss(); triggerRef.current?.focus(); } };
+    const onFocus = (event: FocusEvent) => {
+      const target = event.target as Node;
+      if (target === fallbackFocus || target === focusedCurrent) return;
+      initialFocusPending = false;
+      fallbackFocus = null;
+      focusedCurrent = null;
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        dismiss();
+        triggerRef.current?.focus();
+        return;
+      }
+      if (event.key !== "ArrowDown" && event.key !== "ArrowUp" && event.key !== "Home" && event.key !== "End") return;
+      if (!panel.contains(document.activeElement) && !panel.contains(event.target as Node)) return;
+      const items = menuItems();
+      if (items.length === 0) return;
+      event.preventDefault();
+      initialFocusPending = false;
+      fallbackFocus = null;
+      focusedCurrent = null;
+      const current = items.findIndex((item) => item === document.activeElement);
+      const next = event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? items.length - 1
+          : event.key === "ArrowDown"
+            ? (current + 1) % items.length
+            : current <= 0 ? items.length - 1 : current - 1;
+      items[next]?.focus();
+    };
     document.addEventListener("pointerdown", onPointer, true);
+    document.addEventListener("focusin", onFocus);
     document.addEventListener("keydown", onKey);
     return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
       document.removeEventListener("pointerdown", onPointer, true);
+      document.removeEventListener("focusin", onFocus);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [addOpen, open]);
 
   /**
    * 어느 콘솔에 서 있는가. 집이 펼친 목록에서는 이 화면(집)이 아니라 목록을 부른 콘솔이
@@ -327,6 +397,7 @@ export function HostSwitcher({ picker }: { readonly picker?: HostPickerContext }
           className={`host-switcher-chip${state.controlHolder !== null ? " is-shared" : ""}`}
           aria-haspopup="menu"
           aria-expanded={pickerHome === null && open}
+          data-open={pickerHome === null && open ? "true" : undefined}
           aria-label={`${t("chrome.hosts.aria")}: ${chipLabel}`}
           title={chipLabel}
           onClick={() => {
@@ -429,8 +500,9 @@ function HostRow({
       role="menuitemradio"
       aria-checked={current}
       className={`${current ? "is-current" : ""} ${compact ? "is-home" : ""}`.trim()}
-      disabled={current || disabled === true || onOpen === undefined}
-      onClick={onOpen}
+      disabled={!current && (disabled === true || onOpen === undefined)}
+      aria-disabled={current || disabled === true || onOpen === undefined}
+      onClick={current || disabled === true ? undefined : onOpen}
     >
       <span className={`host-switcher-dot ${live ? "is-live" : ""}`} aria-hidden="true" />
       <span className="host-switcher-entry">

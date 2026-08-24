@@ -46,6 +46,9 @@ const TERMINAL_CHAT_COMPOSER_PATH = new URL("../../fleet-plugins/terminal/client
 const TERMINAL_CHAT_CSS_PATH = new URL("../../fleet-plugins/terminal/client/agent/chat/chat.css", import.meta.url);
 const QUOTA_CSS_PATH = new URL("../../fleet-plugins/quota/client/quota.css", import.meta.url);
 const QUOTA_PANEL_PATH = new URL("../../fleet-plugins/quota/client/rail-panel.tsx", import.meta.url);
+const FILE_EXPLORER_CSS_PATH = new URL("../../fleet-plugins/file-explorer/client/explorer.css", import.meta.url);
+const REPOSITORY_CSS_PATH = new URL("../../fleet-plugins/repository/client/repository.css", import.meta.url);
+const FONT_PICKER_CSS_PATH = new URL("../font-picker/styles.css", import.meta.url);
 const SDK_RAIL_TYPES_PATH = new URL("../sdk/rail/types.ts", import.meta.url);
 const SDK_CAPTION_ACTIONS_PATH = new URL("../sdk/components/caption-actions.tsx", import.meta.url);
 const SDK_VERSION_PATH = new URL("../sdk/version.ts", import.meta.url);
@@ -482,6 +485,74 @@ describe("Instrument core design contract", () => {
     expect(components).not.toMatch(/@media \(max-width: 720px\) \{\s*\.backend-api-row/);
   });
 
+  it("keeps the interaction control recipe theme-owned", () => {
+    const theme = source("styles/theme.css");
+    const root = theme.match(/^:root \{[\s\S]*?^\}/m)?.[0] ?? "";
+    for (const token of [
+      "--control-hover-fill",
+      "--control-hover-rim",
+      "--control-selected-fill",
+      "--control-selected-rim",
+      "--control-focus-ring",
+      "--control-disabled-opacity",
+    ]) expect(root).toContain(`${token}:`);
+    expect(root).toContain("--control-hover-fill: color-mix(in oklab, var(--brass) 8%, transparent);");
+    expect(root).toContain("--control-selected-rim: color-mix(in oklab, var(--brass) 56%, var(--surface-rim));");
+    expect(theme).toMatch(/:focus-visible \{[^}]*outline: 2px solid var\(--control-focus-ring\);/);
+  });
+
+  it("keeps selected controls stronger than hover and preserves forced-color form state", () => {
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    const explorer = externalSource(FILE_EXPLORER_CSS_PATH);
+    const repository = externalSource(REPOSITORY_CSS_PATH);
+
+    for (const selector of [
+      '.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])',
+      '.command-band-mode-tool:hover:not(:disabled):not([aria-pressed="true"])',
+      ".command-band-segment-trigger:hover:not(.is-open)",
+      ".command-band-menu-item:hover:not(:disabled):not(.is-active)",
+    ]) expect(layout).toContain(selector);
+    expect(components).toContain(".host-switcher-panel > button:hover:not(:disabled):not(.is-current)");
+    expect(components).toContain('.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"])');
+    expect(explorer).toContain('.fexp-view-mode button:hover:not(:disabled):not([aria-pressed="true"])');
+    expect(repository).toContain(".repository-toggle-btn:hover:not(.is-active)");
+
+    for (const css of [components, repository]) {
+      expect(css).toContain("@media (forced-colors: active)");
+      expect(css).toContain("appearance: auto;");
+    }
+  });
+
+  it("keeps Settings, SDK Select, and Font Picker on the shared control recipe", () => {
+    const components = source("styles/components.css");
+    const terminalSettings = externalSource(TERMINAL_AGENT_CLI_CSS_PATH);
+    const fontPicker = externalSource(FONT_PICKER_CSS_PATH);
+
+    for (const selector of [
+      '.global-settings-nav-item:hover:not([aria-pressed="true"])',
+      ".segmented-option:hover:not(:disabled):not(.is-active)",
+      '.fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"])',
+      '.fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"])',
+    ]) expect(components).toContain(selector);
+    for (const token of [
+      "var(--control-hover-fill)",
+      "var(--control-hover-rim)",
+      "var(--control-selected-fill)",
+      "var(--control-selected-rim)",
+      "var(--control-focus-ring)",
+      "var(--control-disabled-opacity)",
+    ]) {
+      expect(components).toContain(token);
+      expect(terminalSettings).toContain(token);
+      expect(fontPicker).toContain(token);
+    }
+    expect(fontPicker).toContain('.fc-font-browser__row:hover:not(:disabled):not(.is-active):not([aria-selected="true"])');
+    expect(fontPicker).toContain('@media (forced-colors: active)');
+    expect(components).toContain('.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible)');
+    expect(components).toContain('.fc-settings-toggle:has(.fc-settings-toggle__input:disabled)');
+  });
+
   it("keeps one control grammar on the caption band", () => {
     const components = source("styles/components.css");
     const frame = source("canvas/operation-frame.tsx");
@@ -495,13 +566,19 @@ describe("Instrument core design contract", () => {
     const svgSize = components.match(/\.canvas-operation-icon-button svg,\n\.fleet-caption-action svg \{[^}]*\}/)?.[0] ?? "";
     expect(svgSize).toContain("width: 14px;");
 
-    // 위치 채널은 oklab으로만 섞는다 — oklch의 hue 호가 brass를 초록·자홍에 내려놓았다(실측).
+    // 선택·hover는 theme.css의 oklab control recipe 하나를 소비한다. hover와 focus를 한
+    // 선택자로 합치면 마우스를 스칠 때도 외곽 focus ring이 떠 입력 수단의 신호가 사라진다.
     const pressed = components.match(/\.canvas-operation-icon-button\.is-active,\n\.fleet-caption-action\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(pressed).toContain("color-mix(in oklab, var(--brass) 60%, var(--surface-rim))");
-    expect(pressed).toContain("color-mix(in oklab, var(--brass) 22%, var(--surface-glass))");
-    expect(pressed).not.toContain("color-mix(in oklch, var(--brass) 60%");
-    const hover = components.match(/\.canvas-operation-icon-button:hover,[\s\S]{0,200}?\.fleet-caption-action:focus-visible \{[^}]*\}/)?.[0] ?? "";
-    expect(hover).toContain("color-mix(in oklab, var(--brass) 45%, var(--surface-rim))");
+    expect(pressed).toContain("border-color: var(--control-selected-rim);");
+    expect(pressed).toContain("background: var(--control-selected-fill);");
+    expect(pressed).toContain("box-shadow: inset 0 -2px 0 var(--brass);");
+    const hover = components.match(/\.canvas-operation-icon-button:hover:not\(\.is-active\),\n\.fleet-caption-action:hover:not\(:disabled\):not\(\[aria-pressed="true"\]\) \{[^}]*\}/)?.[0] ?? "";
+    expect(hover).toContain("border-color: var(--control-hover-rim);");
+    expect(hover).toContain("background: var(--control-hover-fill);");
+    expect(hover).not.toContain("outline:");
+    const focus = components.match(/\.canvas-operation-icon-button:focus-visible:not\(\.is-active\),\n\.fleet-caption-action:focus-visible:not\(\[aria-pressed="true"\]\) \{[^}]*\}/)?.[0] ?? "";
+    expect(focus).toContain("border-color: var(--control-hover-rim);");
+    expect(focus).not.toContain("outline: none;");
 
     // 진행은 aurora(상태)로, 위치는 brass로 — 한 버튼 위에서도 두 채널이 겹치지 않는다.
     const live = components.match(/\.fleet-caption-action-live \{[^}]*\}/)?.[0] ?? "";
@@ -1107,9 +1184,9 @@ describe("Instrument core design contract", () => {
     // 켜진 단계는 사다리 위의 위치이지 Operation 상태가 아니다 — 신호색을 빌리면 같은 카드의
     // 활동 축과 충돌하므로, 코어 segmented와 같은 brass 워시+brass ink+inset 링만 쓴다.
     const on = css.match(/\.ai-gateway-effort-level\.is-on \{[^}]*\}/)?.[0] ?? "";
-    expect(on).toContain("background: color-mix(in oklch, var(--brass) 16%, transparent);");
+    expect(on).toContain("background: var(--control-selected-fill);");
     expect(on).toContain("color: var(--brass-ink);");
-    expect(on).toContain("box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);");
+    expect(on).toContain("box-shadow: inset 0 0 0 1px var(--control-selected-rim);");
     for (const [, , body] of css.matchAll(/([^{}]*\.ai-gateway-effort[^{}]*)\{([^}]*)\}/g)) {
       expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive)[a-z-]*\)/);
     }
@@ -1800,8 +1877,18 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain('body:has([aria-modal="true"]:not([hidden])) .command-band.is-fullscreen:not(.is-docked),');
     // aria-pressed가 화면에 흔적을 남기지 않던 회귀를 막는다 — 밴드 토글의 눌림은 brass 채움이다.
     const pressedBandButtonBlock = layout.match(/\.command-band-button\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
-    expect(pressedBandButtonBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(pressedBandButtonBlock).toContain("background: var(--control-selected-fill);");
     expect(pressedBandButtonBlock).toContain("color: var(--brass-ink);");
+    // 캔버스 모드는 선택 datum을 가져 인접 도구의 pressed 면과 형상으로 갈린다.
+    const modePressedBlock = layout.match(/\.command-band-mode-seg\[aria-pressed="true"\] \{[^}]*\}/)?.[0] ?? "";
+    expect(modePressedBlock).toContain("border-color: var(--control-selected-rim);");
+    expect(modePressedBlock).toContain("background: var(--control-selected-fill);");
+    expect(layout).toMatch(/\.command-band-mode-seg\[aria-pressed="true"\]::after \{[^}]*background: var\(--brass\);/);
+    expect(layout).toContain('.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"])');
+    // 열린 스위처는 hover보다 지속적인 selected 면을 갖고 caret이 방향을 바꾼다.
+    const openTriggerBlock = layout.match(/\.command-band-segment-trigger\.is-open \{[^}]*\}/)?.[0] ?? "";
+    expect(openTriggerBlock).toContain("border-color: var(--control-selected-rim);");
+    expect(layout).toContain(".command-band-segment-trigger.is-open .command-band-trigger-caret { transform: rotate(180deg); }");
   });
 
   it("keeps long What's new content inside the scrollable body without shrinking controls", () => {
@@ -2816,8 +2903,8 @@ describe("Instrument core design contract", () => {
     expect(selectBlock).toContain("font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.2; font-family: var(--font-body);");
     expect(selectBlock).toContain("padding: 0 13px;");
     expect(selectBlock).toContain("box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);");
-    expect(selectBlock).toContain("border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim));");
-    expect(selectBlock).toContain("background: color-mix(in oklch, var(--brass) 12%, transparent);");
+    expect(selectBlock).toContain("border-color: var(--control-selected-rim);");
+    expect(selectBlock).toContain("background: var(--control-selected-fill);");
     expect(selectBlock).toContain('content: "✓";');
     expect(selectBlock).toContain("font-style: italic;");
     expect(selectBlock).toContain(".fc-select--compact .fc-select__trigger {");
