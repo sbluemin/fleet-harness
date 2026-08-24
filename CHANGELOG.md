@@ -5,6 +5,23 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.74.0] - 2026-08-24
+
+### fleet-console
+
+#### Changed
+- Join each completed Chat turn's work summary directly to its final answer, while keeping the process expandable in place.
+- Codex reading surfaces now scale document typography to the pane they actually occupy, start with a one-line outline spine that mirrors the current section, and fold long tag rows, so an entry opened in the split pane starts with its body visible instead of a full-screen preamble.
+- The Codex AI composer dock moved from floating over the document to a fixed row at the reading frame boundary, so it no longer covers the paragraph being read, and its annotation counter appears only when annotations exist.
+- Codex catalog rows read denser: the repeated current status label is gone, the update time sits right-aligned on the title row, exceptional states (draft, deprecated, stale) surface as badges, and tags stay on one line with a +N marker.
+- Tag chips in a Codex entry header are now buttons that filter the catalog by that tag, and the header timestamp uses the same relative time as the catalog with the absolute date in its tooltip.
+- Unify hover, focus, selection, disabled, and form control feedback across Console chrome, settings, and built-in file and repository tools, with keyboard navigation and an undimmed current row in the Host picker.
+- Improve Glass caption legibility and keep the Command Band visually seamless when routes or the sidebar change.
+- Operation rows in the Cmd+K search palette now show the same activity status mark as the sidebar (including the unseen-completion signal) instead of a provider glyph and a text badge, and the launch provider moved into the row's meta caption.
+
+#### Fixed
+- Liquid glass no longer sinks the terminal into the canvas on the dark themes: the reading field rises back above the sidebar and rail, the pane carries a light of its own, and terminal black stays darker than the field it is drawn on.
+
 ## [1.73.1] - 2026-08-24
 
 ### fleet-console
