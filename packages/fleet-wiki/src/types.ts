@@ -267,6 +267,7 @@ export interface BriefingHit {
   rawSourceRefs?: string[];
   status?: WikiEntryFrontmatter["status"];
   confidence?: WikiEntryFrontmatter["confidence"];
+  revalidateAfter?: string;
   aliases?: string[];
   type?: WikiEntryFrontmatter["type"];
   matchedFields: string[];

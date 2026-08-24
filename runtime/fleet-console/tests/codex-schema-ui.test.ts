@@ -409,6 +409,39 @@ describe("Codex schema UI contract", () => {
     controller.destroy();
   });
 
+  it("returns to the entries catalog when a document tag action repeats the active tag from schema mode", async () => {
+    vi.resetModules();
+    const state = await import("../core/client/src/codex/state.js");
+    const { mountNavigatorInto } = await import("../core/client/src/codex/components/navigator.js");
+    Object.assign(state.getState(), {
+      currentWorkspaceId: "workspace-a",
+      error: null,
+      index: [
+        { id: "alpha", title: "Alpha", tags: ["shared"], updated: "2026-08-01T00:00:00.000Z", path: "wiki/alpha.md" },
+        { id: "beta", title: "Beta", tags: ["other"], updated: "2026-08-02T00:00:00.000Z", path: "wiki/beta.md" },
+      ],
+      loading: false,
+      pendingPatchCount: 0,
+      schemaCatalog: { schema: { ref: "schema/wiki-schema.md", exists: true, summary: "s" }, templates: [] },
+    });
+    const root = document.body.appendChild(document.createElement("div"));
+    const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest: vi.fn() });
+
+    controller.setActiveTag("shared");
+    expect(root.querySelectorAll("[data-entry-id]")).toHaveLength(1);
+
+    // 스키마 탭으로 옮겨간 뒤 문서 헤더에서 같은 태그를 다시 눌러도,
+    // 광고된 액션(카탈로그 필터)대로 항목 목록으로 복귀해야 한다.
+    root.querySelector<HTMLButtonElement>('[data-mode="schema"]')!.click();
+    expect(root.querySelector<HTMLElement>(".codex-nav-search-input")?.hidden).toBe(true);
+
+    controller.setActiveTag("shared");
+    expect(root.querySelector<HTMLElement>(".codex-nav-search-input")?.hidden).toBe(false);
+    expect([...root.querySelectorAll<HTMLElement>("[data-entry-id]")].map((entry) => entry.dataset.entryId)).toEqual(["alpha"]);
+    expect(root.querySelector("[data-clear-tag]")?.textContent).toContain("shared");
+    controller.destroy();
+  });
+
 });
 
 function deferred<T>(): { promise: Promise<T>; resolve(value: T): void } {

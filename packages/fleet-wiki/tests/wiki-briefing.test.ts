@@ -128,6 +128,8 @@ describe("wiki briefing", () => {
 
     expect(hits[0]?.id).toBe("stale-alpha");
     expect(hits[0]?.stale).toBe(true);
+    // 소비자가 낡음 판정을 직접 재계산할 수 있도록 원본 재검증 시각도 히트에 실린다.
+    expect(hits[0]?.revalidateAfter).toBe("2020-01-01T00:00:00.000Z");
     expect(hits[0]?.matchedFields).toEqual(expect.arrayContaining(["alias", "tag", "title", "body"]));
     expect(hits[0]?.matchedSnippets?.length).toBeGreaterThan(1);
     expect(hits[0]?.whyThisMatched).toContain("Matched fields:");

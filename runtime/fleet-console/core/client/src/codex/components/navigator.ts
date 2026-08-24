@@ -557,9 +557,14 @@ export function mountNavigatorInto(
       renderList(getState());
     },
     setActiveTag(tag: string | null): void {
-      if (activeTag === tag) return;
-      activeTag = tag;
+      // 광고된 액션은 "카탈로그를 이 태그로 거른다"이다 — 스키마 모드에 있어도 먼저
+      // 항목 목록으로 복귀해야 같은 태그 재클릭이 무반응으로 보이지 않는다.
       mode = "entries";
+      if (activeTag === tag) {
+        renderList(getState());
+        return;
+      }
+      activeTag = tag;
       requestServerSearch();
     },
     refreshHealth(): void {

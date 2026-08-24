@@ -138,6 +138,7 @@ function toRankedHit(
     rawSourceRefs: entry.rawSourceRefs?.map((item) => item.ref),
     status: entry.status,
     confidence: entry.confidence,
+    revalidateAfter: entry.revalidateAfter,
     aliases: entry.aliases,
     type: entry.type,
     matchedFields: [matchedField],
