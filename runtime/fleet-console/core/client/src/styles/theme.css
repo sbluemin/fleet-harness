@@ -185,8 +185,19 @@
   --glass-tint-panel: var(--surface-panel);
   --glass-tint-panel-face: var(--surface-panel);
   --glass-tint-caption: var(--surface-panel);
+  /* field는 터미널 필드와 그것을 감싸는 거터가 **함께** 칠하는 값이다. 다크+열림에서는 패널
+     루트의 유리 한 장이 둘 다 칠하므로 여기서는 비우고(덧칠하면 창 안이 두 값이 된다),
+     라이트·닫힘에서는 xterm이 요구하는 불투명 실색을 그대로 칠해 격자 경계 띠를 없앤다.
+     terminal은 유리 루트가 없는 레일 Shell 카드의 면이며, xterm이 계산값을 읽어 간다. */
+  --glass-tint-field: var(--surface-panel);
   --glass-tint-terminal: var(--surface-panel);
   --glass-tint-band: var(--surface-band);
+  /* 패널 광원(pane-light) — 유리 뒤가 앱에서 가장 어두운 캔버스라 blur가 굴절시킬 빛이 없다.
+     그래서 다크 유리는 자기 위쪽에 광원을 하나 얹어 재질을 명도가 아니라 기울기로 말한다.
+     이 채널은 광원의 **색**만 진다 — 기하(반경·중심)는 창의 구조라 components.css가 쓴다. */
+  --glass-pane-light: transparent;
+  /* 캔버스 대기광 — 유리가 실제로 굴절할 것을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
+  --canvas-ambience: var(--canvas-sea-core);
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
   --glass-backdrop-panel: none;
@@ -207,12 +218,18 @@
   --glass-on-tint-deep: oklch(16.5% 0.016 245 / 48%);
   --glass-on-tint-abyss: oklch(13% 0.014 245 / 50%);
   --glass-on-tint-chrome: oklch(19% 0.018 245 / 50%);
-  /* 다크 유리는 Ghostty 문법이다 — 틴트는 원 면보다 오히려 어둡게, 밀도(α)는 높게, 블러는
-     무겁게. 필드가 거의 검게 남아 대비를 지키고, 뒤 콘텐츠는 블러 너머 희미한 유령빛으로만
-     비친다. 명도를 올려 잿빛 워시를 만드는 방향은 실측 기각됐다. */
-  --glass-on-tint-panel: oklch(15% 0.018 245 / 55%);
+  /* 다크 유리의 밀도 문법 — 뒤에 비칠 빛이 없는 유리에서 투과는 재질감을 만들지 못하고 명도를
+     빼기만 한다(실측: 필드가 패널 면보다 3.1~6.1 L 아래로 내려앉아 사이드바·레일보다 어두워졌고,
+     ANSI black이 필드와 같거나 오히려 밝아졌다). 그래서 틴트는 원 면보다 살짝 위(+2 L)에 서고
+     밀도를 0.83으로 모은다. 명도만 올리면 잿빛 워시가 되므로 채도를 함께 1.7배로 싣고, 재질은
+     명도가 아니라 pane-light의 기울기가 말한다. 알파·명도를 다시 만지면 ANSI black과의 부호
+     (필드보다 어두울 것)를 반드시 재실측할 것. */
+  --glass-on-tint-panel: oklch(18.5% 0.028 245 / 83%);
+  --glass-on-tint-field: transparent;
+  --glass-on-pane-light: oklch(25% 0.032 245);
+  --canvas-on-ambience: oklch(16% 0.022 245);
   --glass-on-tint-caption: oklch(17% 0.018 245 / 82%);
-  --glass-on-tint-terminal: oklch(13% 0.015 245 / 62%);
+  --glass-on-tint-terminal: oklch(18.5% 0.028 245 / 83%);
   --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
   --glass-on-backdrop-soft: blur(12px) saturate(1.5);
@@ -401,9 +418,12 @@
   --glass-on-tint-deep: oklch(20% 0.045 248 / 46%);
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
   --glass-on-tint-chrome: oklch(27% 0.04 248 / 45%);
-  --glass-on-tint-panel: oklch(20% 0.04 248 / 55%);
+  --glass-on-tint-panel: oklch(25% 0.05 248 / 83%);
+  --glass-on-tint-field: transparent;
+  --glass-on-pane-light: oklch(32% 0.055 248);
+  --canvas-on-ambience: oklch(18% 0.035 235);
   --glass-on-tint-caption: oklch(21% 0.03 248 / 82%);
-  --glass-on-tint-terminal: oklch(17% 0.035 248 / 62%);
+  --glass-on-tint-terminal: oklch(25% 0.05 248 / 83%);
   --glass-on-tint-band: oklch(19% 0.045 248 / 50%);
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
 
@@ -474,9 +494,12 @@
   --glass-on-tint-deep: oklch(18% 0.007 255 / 46%);
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
   --glass-on-tint-chrome: oklch(24% 0.006 252 / 45%);
-  --glass-on-tint-panel: oklch(17% 0.008 252 / 55%);
+  --glass-on-tint-panel: oklch(21% 0.013 252 / 83%);
+  --glass-on-tint-field: transparent;
+  --glass-on-pane-light: oklch(28% 0.014 252);
+  --canvas-on-ambience: oklch(18% 0.014 250);
   --glass-on-tint-caption: oklch(19% 0.008 252 / 84%);
-  --glass-on-tint-terminal: oklch(15% 0.007 252 / 62%);
+  --glass-on-tint-terminal: oklch(21% 0.013 252 / 83%);
   --glass-on-tint-band: oklch(17% 0.007 255 / 50%);
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
 
@@ -625,6 +648,11 @@
   /* 라이트 필드는 불투명 종이 — mCR(가독 보정)이 배경 실색을 요구하고, 종이 위 젖빛 유리는
      어차피 지각 불가 수준이다. 필드·거터가 같은 불투명 값으로 만나 격자 경계 띠가 없다. */
   --glass-on-tint-terminal: oklch(98.2% 0.004 100);
+  --glass-on-tint-field: var(--glass-on-tint-terminal);
+  /* 라이트는 유리 뒤가 이미 밝다 — 굴절할 빛이 부족한 문제가 없으므로 광원도 대기광도 얹지 않는다.
+     백지 위에 광원을 더하면 종이가 평평해지고 최명면 극성만 흐려진다. */
+  --glass-on-pane-light: transparent;
+  --canvas-on-ambience: var(--canvas-sea-core);
   --glass-on-tint-band: oklch(92% 0.006 100 / 52%);
   --glass-on-backdrop-strong: blur(26px) saturate(1.45);
   --glass-on-backdrop-soft: blur(12px) saturate(1.25);
@@ -678,7 +706,10 @@
     --glass-tint-panel: var(--glass-on-tint-panel);
     --glass-tint-panel-face: transparent;
     --glass-tint-caption: var(--glass-on-tint-caption);
+    --glass-tint-field: var(--glass-on-tint-field);
     --glass-tint-terminal: var(--glass-on-tint-terminal);
+    --glass-pane-light: var(--glass-on-pane-light);
+    --canvas-ambience: var(--canvas-on-ambience);
     --glass-tint-band: var(--glass-on-tint-band);
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
     --glass-backdrop-soft: var(--glass-on-backdrop-soft);
@@ -701,7 +732,10 @@
       --glass-tint-panel: var(--surface-panel);
       --glass-tint-panel-face: var(--surface-panel);
       --glass-tint-caption: var(--surface-panel);
+      --glass-tint-field: var(--surface-panel);
       --glass-tint-terminal: var(--surface-panel);
+      --glass-pane-light: transparent;
+      --canvas-ambience: var(--canvas-sea-core);
       --glass-tint-band: var(--surface-band);
       --glass-backdrop-strong: none;
       --glass-backdrop-soft: none;

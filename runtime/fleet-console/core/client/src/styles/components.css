@@ -3123,7 +3123,7 @@
 
 .operations-canvas.is-formation-view {
   background:
-    radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%),
+    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%),
     var(--canvas-abyss);
   cursor: default;
 }
@@ -3147,7 +3147,7 @@
 
 .operations-canvas-sea {
   background:
-    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-sea-core) 82%, transparent), transparent 38%),
+    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-ambience) 82%, transparent), transparent 38%),
     radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) 7%, transparent), transparent 34%),
     radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) 5%, transparent), transparent 36%),
     linear-gradient(145deg, var(--canvas-sea-near), var(--canvas-sea-mid) 58%, var(--canvas-sea-far));
@@ -4563,9 +4563,16 @@
   border: 1px solid var(--surface-rim);
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 캡션·본문 팬은 panel-face(게이트
-     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. xterm 필드만 원 토큰의 불투명을 지킨다. */
-  background: var(--glass-tint-panel);
+  /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 박스 안의 본문 팬은 panel-face(게이트
+     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. 틴트 아래의 pane-light는 창 위쪽에 놓인
+     광원 한 겹이다: 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없으므로,
+     재질은 명도가 아니라 이 기울기가 말한다. 게이트가 닫히면 광원은 투명, 틴트는 불투명
+     --surface-panel이라 목록 전체가 오늘의 한 겹으로 축약된다. */
+  --pane-light-origin: -12px;
+  background:
+    linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),
+    radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),
+    var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-panel);
   backdrop-filter: var(--glass-backdrop-panel);
   box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
@@ -6121,6 +6128,16 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-top-style: none;
 }
 
+/* 떠 있는 캡션(Cruise·Tactical·War Room·최대화)과 companion 캡션은 top:-32px로 루트 박스 밖에
+   선다 — 창의 꼭대기가 본문이 아니라 그 캡션이라는 뜻이다. 광원 원점을 캡션 높이만큼 위로 밀어
+   본문이 창 전체를 비추는 한 줄기 빛의 아래쪽을 받게 한다. 각자 자기 박스 기준으로 그리면
+   본문 상단이 한 번 더 밝아져 캡션과의 이음새에 계단이 생긴다.
+   덱 타일과 상단 접힘 캡션(is-top-edge)은 흐름 안이라 루트의 top이 곧 창의 꼭대기다. */
+.canvas-operation:not(.is-deck-tile):not(.is-top-edge):has(> .canvas-operation-titlebar),
+.canvas-operation:has(> .canvas-companion-caption) {
+  --pane-light-origin: -44px;
+}
+
 /* 덱 타일만 그 면제에서 빠진다 — 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로
    (.canvas-operation.is-deck-tile > .canvas-operation-titlebar { border: 0 }) 윗변을 이을 주체가
    패널밖에 없다. is-deck-tile 블록이 이미 border-top 1px을 적어 두었지만 그 선택자는 위 이음새
@@ -6948,8 +6965,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
   overflow: hidden;
   border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
   /* terminal-shell의 8px 패딩이 xterm 뷰포트를 사방에서 감싸므로 이 면은 실제로 보이는 띠다 —
-     캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. 패널 면 하나를 그대로 쓴다. */
-  background: var(--glass-tint-terminal);
+     캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. field 채널 하나를 그대로 쓴다:
+     다크+게이트 열림에서는 비어(transparent) 패널 루트의 유리 한 장이 필드와 거터를 함께 칠하고,
+     라이트·게이트 닫힘에서는 xterm이 받는 불투명 실색과 같은 값을 칠해 격자 경계 띠를 없앤다.
+     여기서 자기 틴트를 들면 루트 유리와 겹쳐 창 안이 두 값이 된다(이중 알파). */
+  background: var(--glass-tint-field);
 }
 
 .canvas-operation-terminal .terminal-stage,
