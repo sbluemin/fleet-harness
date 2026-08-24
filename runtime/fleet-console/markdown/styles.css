@@ -667,7 +667,10 @@ code.hljs {
 .diagram-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  /* 오버레이 사다리 소비. 네이티브 <dialog>.showModal() 경로는 top layer에 서서 z-index의
+     지배 밖이므로(teardown 커튼과의 겹침은 별도 과제), 이 값은 dialog 미지원 폴백
+     (div[role=dialog]) 스태킹만 정한다 — 그 경로의 임의 1200은 teardown 위 역전이었다. */
+  z-index: var(--z-lightbox);
   display: grid;
   place-items: center;
   width: 100vw;

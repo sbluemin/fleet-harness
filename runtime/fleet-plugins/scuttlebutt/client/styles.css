@@ -325,7 +325,7 @@
 
 .scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-l,
 .scuttlebutt-bird.is-alert .scuttlebutt-qk:not([data-morph="bori"]) .scuttlebutt-qk-wing-r {
-  animation-duration: 0.22s;
+  animation-duration: var(--duration-base);
 }
 
 .scuttlebutt-bird.is-alert .scuttlebutt-qk-mark {

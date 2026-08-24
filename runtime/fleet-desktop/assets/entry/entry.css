@@ -1,3 +1,9 @@
+/* Passive entry surface — self-contained by contract (no Console CSS import, CSP blocks webfonts).
+   The mini palette below mirrors the current Instrument charter in theme.css; when the charter
+   moves, re-sync values here by hand. Channel rules apply as in the Console: signal tokens carry
+   state only (positive=complete, coral=danger, brass=location/progress), identity/environment
+   badges stay on neutral ink. Font stacks resolve to system fallbacks unless the faces are
+   installed locally — the Pretendard fallback keeps Korean glyph weight aligned when present. */
 :root {
   color-scheme: dark;
   --ink-abyss: oklch(13% 0.014 245);
@@ -9,15 +15,17 @@
   --ink-pearl: oklch(94% 0.008 90);
   --brass: oklch(80% 0.085 78);
   --brass-glow: oklch(80% 0.085 78 / 13%);
-  --aurora: oklch(77% 0.085 200);
+  --positive: oklch(76% 0.11 160);
   --coral: oklch(68% 0.13 25);
   --hairline: oklch(29% 0.018 245);
-  --radius-sm: 6px;
+  --radius-xs: 6px;
   --chrome-band-height: 44px;
-  --font-display: "Fraunces Variable", "Fraunces", ui-serif, Georgia, serif;
-  --font-body: "Manrope Variable", "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: "Fraunces Variable", "Fraunces", "Pretendard Variable", ui-serif, Georgia, serif;
+  --font-body: "Manrope Variable", "Manrope", "Pretendard Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "JetBrains Mono Variable", "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-base: 220ms;
+  --duration-slow: 360ms;
 }
 
 * { box-sizing: border-box; }
@@ -25,27 +33,28 @@ html, body { height: 100%; margin: 0; }
 body { display: grid; grid-template-rows: 44px 1fr auto; background: var(--ink-abyss); color: var(--ink-spectral); font-family: var(--font-body); }
 .chrome-band { height: var(--chrome-band-height); display: flex; align-items: center; padding: 0 16px; border-bottom: 1px solid var(--hairline); background: var(--ink-deep); -webkit-app-region: drag; }
 .brand { display: flex; align-items: baseline; gap: 8px; margin-left: 88px; }
-.brand strong { color: var(--ink-pearl); font-family: var(--font-display); font-size: 16px; font-weight: 580; }
-.brand span { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; }
-.dev-tag { display: none; margin-left: auto; color: var(--aurora); border: 1px solid color-mix(in oklab, var(--aurora) 45%, transparent); border-radius: 999px; background: color-mix(in oklab, var(--aurora) 13%, transparent); padding: 2px 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; }
+.brand strong { color: var(--ink-pearl); font-family: var(--font-display); font-size: 17px; font-weight: 600; }
+.brand span { color: var(--ink-fog); font-family: var(--font-mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; }
+/* 환경 배지는 정체성이지 상태가 아니다 — 신호색 없이 중립 잉크 칩으로 선다. */
+.dev-tag { display: none; margin-left: auto; color: var(--ink-spectral); border: 1px solid var(--ink-rim); border-radius: var(--radius-xs); background: none; padding: 2px 10px; font-family: var(--font-mono); font-size: 10px; letter-spacing: .1em; }
 .dev-tag.is-visible { display: inline-block; }
 .entry-body { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 0; padding: 40px 24px 28px; }
 .boot-stack { width: min(480px, 100%); }
-.boot-step { display: grid; grid-template-columns: 22px 1fr auto; align-items: baseline; gap: 10px; padding: 9px 2px; opacity: .38; transition: opacity 300ms var(--ease-spring); }
+.boot-step { display: grid; grid-template-columns: 22px 1fr auto; align-items: baseline; gap: 10px; padding: 9px 2px; opacity: .38; transition: opacity var(--duration-slow) var(--ease-spring); }
 .boot-step.active, .boot-step.complete, .boot-step.warning, .boot-step.failed { opacity: 1; }
 .boot-dot { width: 9px; height: 9px; border: 1.5px solid var(--ink-rim); border-radius: 50%; align-self: center; justify-self: center; }
 .boot-step.active .boot-dot { border-color: var(--brass); box-shadow: 0 0 0 3px var(--brass-glow); }
-.boot-step.complete .boot-dot { border-color: var(--aurora); background: var(--aurora); }
+.boot-step.complete .boot-dot { border-color: var(--positive); background: var(--positive); }
 .boot-step.warning .boot-dot, .boot-step.failed .boot-dot { border-color: var(--coral); background: var(--coral); }
-.boot-name { color: var(--ink-pearl); font-size: 13.5px; }
-.boot-sub, .boot-result { display: block; margin-top: 1px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 10.5px; }
-.boot-result { align-self: baseline; font-size: 11px; }
-.boot-step.complete .boot-result { color: var(--aurora); }
+.boot-name { color: var(--ink-pearl); font-size: 13px; }
+.boot-sub, .boot-result { display: block; margin-top: 1px; color: var(--ink-fog); font-family: var(--font-mono); font-size: 11px; }
+.boot-result { align-self: baseline; }
+.boot-step.complete .boot-result { color: var(--positive); }
 .boot-step.warning .boot-result, .boot-step.failed .boot-result { color: var(--coral); }
 .boot-bar { grid-column: 2 / 4; height: 3px; margin-top: 7px; overflow: hidden; border-radius: 2px; background: var(--ink-veil); }
-.boot-bar-fill { height: 100%; background: var(--brass); transition: width 240ms linear; }
-.handoff { margin: 20px 0 0; padding: 11px 14px; border: 1px dashed color-mix(in oklab, var(--aurora) 45%, transparent); border-radius: var(--radius-sm); color: var(--aurora); font-family: var(--font-mono); font-size: 11px; opacity: 0; transition: opacity 300ms; }
+.boot-bar-fill { height: 100%; background: var(--brass); transition: width var(--duration-base) linear; }
+.handoff { margin: 20px 0 0; padding: 11px 14px; border: 1px dashed color-mix(in oklab, var(--positive) 45%, transparent); border-radius: var(--radius-xs); color: var(--positive); font-family: var(--font-mono); font-size: 11px; opacity: 0; transition: opacity var(--duration-slow); }
 .handoff.is-visible { opacity: 1; }
-.entry-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--hairline); background: var(--ink-deep); color: var(--ink-rim); font-family: var(--font-mono); font-size: 10.5px; }
+.entry-foot { display: flex; gap: 16px; padding: 10px 16px; border-top: 1px solid var(--hairline); background: var(--ink-deep); color: var(--ink-rim); font-family: var(--font-mono); font-size: 11px; }
 .entry-foot span:last-child { margin-left: auto; text-align: right; }
 @media (prefers-reduced-motion: reduce) { * { transition-duration: .01ms !important; } }
