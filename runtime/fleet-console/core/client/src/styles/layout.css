@@ -341,10 +341,10 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   box-shadow: none;
 }
 
-/* Utility route에는 아래로 이어질 사이드바가 없다. chrome cap을 남기면 좌측 컨트롤 폭만큼
-   별도 판이 생겨 밴드가 어긋나 보이므로, 이때만 전체 band tint로 합친다. */
+/* Utility route에는 아래로 이어질 사이드바가 없다. band 루트가 이미 전체 Glass 면을 칠하므로
+   좌측 cap을 다시 그리면 같은 반투명 tint가 겹쳐 별도 판으로 보인다. 좌표만 남기고 paint는 끈다. */
 .command-band.is-utility .command-band-left::before {
-  background: var(--glass-tint-band);
+  display: none;
 }
 
 .command-band-brand {

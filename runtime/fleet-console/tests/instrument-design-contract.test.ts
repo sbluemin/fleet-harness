@@ -1727,8 +1727,9 @@ describe("Instrument core design contract", () => {
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
     expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
     expect(layout).toMatch(/\.command-band-left::before \{[^}]*background: var\(--glass-tint-chrome\);/);
-    // 아래 사이드바가 없는 utility route는 좌측 chrome cap을 band에 합쳐 한 면으로 읽힌다.
-    expect(layout).toMatch(/\.command-band\.is-utility \.command-band-left::before \{[^}]*background: var\(--glass-tint-band\);/);
+    // 아래 사이드바가 없는 utility route는 band 루트가 이미 전체 Glass 면을 칠하므로,
+    // 좌측 cap을 다시 합성하지 않고 paint를 끈다.
+    expect(layout).toMatch(/\.command-band\.is-utility \.command-band-left::before \{[^}]*display: none;/);
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
