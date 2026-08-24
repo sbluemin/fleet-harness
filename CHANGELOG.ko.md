@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.73.1] - 2026-08-24
+
+### fleet-console
+
+#### Fixed
+- 라이트 테마에서 터미널과 에이전트 패널 글자가 다시 또렷하게 읽힙니다. 이제 필드가 실제로 반투명할 때만 투명 드로잉 경로를 타므로, 불투명한 라이트 필드는 리퀴드 글래스 도입 이전의 획 굵기를 그대로 유지합니다.
+
 ## [1.73.0] - 2026-08-23
 
 ### fleet-cli

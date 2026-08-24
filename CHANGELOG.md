@@ -5,6 +5,13 @@ This format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+## [1.73.1] - 2026-08-24
+
+### fleet-console
+
+#### Fixed
+- Terminal and agent panel text reads crisply again in the light theme. The terminal now takes its transparent drawing path only when its field is genuinely translucent, so an opaque light field keeps the full stroke weight it had before the liquid glass material arrived.
+
 ## [1.73.0] - 2026-08-23
 
 ### fleet-cli

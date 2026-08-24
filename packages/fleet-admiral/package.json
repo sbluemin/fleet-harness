@@ -1,6 +1,6 @@
 {
   "name": "@dotobokuri/fleet-admiral",
-  "version": "1.73.0",
+  "version": "1.73.1",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sbluemin/fleet-harness.git",
