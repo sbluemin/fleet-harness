@@ -7,6 +7,7 @@ import {
   navigateCodexReaderHistory,
   refreshCodexHealth,
   saveReaderScroll,
+  setNavigatorTagFilter,
   subscribeCodexReaderHistory,
 } from "../codex-host.js";
 import { useConsoleState } from "../hooks/use-store.js";
@@ -35,6 +36,7 @@ export function CodexReadingSheet() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
 
   const readerKey = reader
     ? `${reader.kind}:${reader.kind === "entry" ? reader.entryId : reader.kind === "drydock" ? (reader.patchId ?? "") : reader.kind === "conflicts" ? (reader.id ?? "") : (reader.templateId ?? "")}`
@@ -86,7 +88,7 @@ export function CodexReadingSheet() {
 
   // 콘텐츠 effect: reader 호스트 노드를 시트 슬롯으로 relocate
   useEffect(() => {
-    if (!isOpen || !readRef.current || !tocRef.current || !reader) return;
+    if (!isOpen || !readRef.current || !tocRef.current || !dockRef.current || !reader) return;
 
     const kind = reader.kind;
     const subId =
@@ -95,7 +97,7 @@ export function CodexReadingSheet() {
     // 리더 fetch는 Theater id가 아니라 해석된 codex workspace id로 나가야 한다 —
     // Theater id는 /console/codex/w/ 라우터에서 workspace_not_found로 떨어진다.
     const workspaceId = resolvedCodexWorkspaceIdFor(theaterId);
-    mountReaderInto(readRef.current, tocRef.current, {
+    mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
@@ -117,6 +119,8 @@ export function CodexReadingSheet() {
         openCodexReader({ kind: "conflicts", id });
         expandCodexReader();
       },
+      // 덱이 열려 있어도 카탈로그 레일은 살아 있다 — 태그 칩은 그 레일을 그대로 거른다.
+      onTagClick: (tag) => setNavigatorTagFilter(tag),
       onDecided: () => {
         void loadInitialData();
         refreshCodexHealth();
@@ -187,7 +191,10 @@ export function CodexReadingSheet() {
             className="codex-reading-sheet-toc"
             aria-label={t("chrome.codexReading.onThisPage")}
           />
-          <div ref={readRef} className="codex-reading-sheet-read" />
+          <div className="codex-reading-sheet-main">
+            <div ref={readRef} className="codex-reading-sheet-read" />
+            <div ref={dockRef} className="codex-reader-composer" />
+          </div>
         </div>
       </div>
     ),

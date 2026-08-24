@@ -305,6 +305,7 @@ async function handleSearch(url: URL, response: ServerResponse, context: RouteCo
       updated: hit.updated,
       path: `wiki/${hit.id}.md`,
       status: hit.status,
+      revalidateAfter: hit.revalidateAfter,
       rawSourceRef: hit.rawSourceRef,
       rawSourceRefs: hit.rawSourceRefs,
       score: hit.score,

@@ -1,6 +1,7 @@
 import { getGlobalSettingsStoreState } from "../../global-settings-store.js";
 import { getT } from "../../i18n/index.js";
 import { resolveConsoleLanguage } from "../../whatsnew-i18n.js";
+import { formatRelativeUpdated, getEntryStatusBadge } from "./meta-chips.js";
 import { fetchHealth, fetchSearch } from "../api.js";
 import { getState, subscribeState } from "../state.js";
 import type { AppState } from "../state.js";
@@ -18,6 +19,8 @@ export interface NavigatorController {
   destroy(): void;
   setTheater(theaterId: string | null): void;
   setCurrentEntry(entryId: string | null): void;
+  /** 리더 문서의 태그 칩 등 바깥 표면이 카탈로그 태그 필터를 직접 건다. */
+  setActiveTag(tag: string | null): void;
   refreshHealth(): void;
   /** 로케일 변경 시 셸·목록 문구를 다시 그린다(검색·선택 상태 유지). */
   refreshLocale(): void;
@@ -84,20 +87,6 @@ function renderTagChip(tag: string, isActive: boolean): string {
   return `<button class="codex-nav-tag${isActive ? " is-active" : ""}" data-tag="${escapeHtml(tag)}" type="button" aria-pressed="${String(isActive)}" aria-label="${escapeHtml(label)}">${escapeHtml(tag)}</button>`;
 }
 
-function formatRelativeUpdated(iso: string): string {
-  const updated = new Date(iso);
-  if (Number.isNaN(updated.getTime())) return iso;
-  const now = new Date();
-  const updatedDay = Date.UTC(updated.getFullYear(), updated.getMonth(), updated.getDate());
-  const today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
-  const t = consoleT();
-  const elapsedDays = Math.max(0, Math.floor((today - updatedDay) / 86_400_000));
-  if (elapsedDays === 0) return t("codex.nav.updatedToday");
-  if (elapsedDays < 30) return t("codex.nav.updatedDaysAgo", { count: elapsedDays });
-  if (elapsedDays < 365) return t("codex.nav.updatedMonthsAgo", { count: Math.floor(elapsedDays / 30) });
-  return t("codex.nav.updatedYearsAgo", { count: Math.floor(elapsedDays / 365) });
-}
-
 function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string {
   const tagMatches = options.query
     ? entry.tags.some((tag) => tag.toLowerCase().includes(options.query.toLowerCase()))
@@ -106,8 +95,18 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
     .slice(0, 3)
     .map((tag) => renderTagChip(tag, tag === options.activeTag))
     .join("");
-  const kind = escapeHtml(entry.status ?? "current");
+  const overflowTags = entry.tags.slice(3);
+  const more = overflowTags.length > 0
+    ? `<span class="codex-nav-more" title="${escapeHtml(overflowTags.join(", "))}" aria-hidden="true">+${overflowTags.length}</span>`
+    : "";
   const updated = entry.updated ?? "";
+
+  // 행 우측 한 칸은 변별 정보만 싣는다 — current는 그룹 헤더가 이미 말하므로 시간을,
+  // 예외 상태(초안·폐기·낡음)는 그 배지를 싣는다(전체 시각은 title 툴팁에 보존).
+  const badge = getEntryStatusBadge(entry);
+  const aside = badge
+    ? `<span class="codex-nav-status is-${badge.tone}" title="${escapeHtml(badge.title)}">${escapeHtml(badge.label)}</span>`
+    : `<span class="when" title="${escapeHtml(updated)}">${escapeHtml(formatRelativeUpdated(updated))}</span>`;
 
   return `<div
     class="codex-nav-entry${options.isCurrent ? " is-current" : ""}"
@@ -116,9 +115,9 @@ function renderEntry(entry: WikiIndexEntry, options: RenderEntryOptions): string
     ${options.isCurrent ? 'aria-current="page"' : ""}
   >
     <button class="t" type="button" title="${escapeHtml(entry.title)}">${highlightMatch(entry.title, tagMatches ? "" : options.query)}</button>
-    ${tags ? `<span class="tg">${tags}</span>` : ""}
+    ${aside}
+    ${tags ? `<span class="tg">${tags}${more}</span>` : ""}
     ${options.snippet ? `<span class="snippet">${highlightMatch(options.snippet, options.query)}</span>` : ""}
-    <span class="meta" title="${escapeHtml(updated)}">${kind} · ${escapeHtml(formatRelativeUpdated(updated))}</span>
   </div>`;
 }
 
@@ -556,6 +555,17 @@ export function mountNavigatorInto(
       if (currentEntryId === entryId) return;
       currentEntryId = entryId;
       renderList(getState());
+    },
+    setActiveTag(tag: string | null): void {
+      // 광고된 액션은 "카탈로그를 이 태그로 거른다"이다 — 스키마 모드에 있어도 먼저
+      // 항목 목록으로 복귀해야 같은 태그 재클릭이 무반응으로 보이지 않는다.
+      mode = "entries";
+      if (activeTag === tag) {
+        renderList(getState());
+        return;
+      }
+      activeTag = tag;
+      requestServerSearch();
     },
     refreshHealth(): void {
       loadHealth();

@@ -11681,14 +11681,26 @@ body[data-codex-side="true"] .command-card {
   grid-template-columns: 220px minmax(0, 1fr);
 }
 
+.codex-reading-sheet-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
 .codex-reading-sheet-read {
   --codex-reader-gutter-x: var(--space-8);
   position: relative;
+  flex: 1;
+  min-height: 0;
   overflow-y: auto;
   /* --space-7은 미정의 토큰이라 shorthand 전체가 무효화되어 padding 0이 됐었다(.document
      패딩이 가리던 잠복 결함). .document 플랫화로 이 거터가 유일한 가터가 되므로 정의된
-     토큰만 사용해야 한다. 하단 여유는 sticky Cowork 도크가 마지막 문단을 덮지 않을 만큼 둔다. */
-  padding: var(--space-6) var(--space-8) calc(var(--space-10) + 88px);
+     토큰만 사용해야 한다. Cowork 도크는 스크롤 밖 컴포저 행으로 내려가 본문을 덮지 않는다. */
+  padding: var(--space-6) var(--space-8) var(--space-10);
+  /* 문서 타이포 컨테이너 — 분할·덱이 같은 @container 문법(codex/styles/components.css)을 공유한다. */
+  container-type: inline-size;
+  container-name: codex-reader;
 }
 
 /* 덱은 넓다 — 본문은 읽기 measure로 캡하고 중앙 정렬한다. 전폭이 필요한 유틸 표면
@@ -11856,7 +11868,25 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   min-height: 0;
   overflow-y: auto;
   position: relative;
-  padding: var(--space-5) var(--space-6) calc(var(--space-10) + 88px);
+  padding: var(--space-5) var(--space-6) var(--space-10);
+  container-type: inline-size;
+  container-name: codex-reader;
+}
+
+/* Cowork 도크의 프레임 경계 슬롯 — 스크롤포트 아래 고정 행이라 본문을 가리지 않는다.
+   entry 밖 화면(대기열·충돌·스키마)에서는 도크가 없어 행 자체가 접힌다. */
+.codex-reader-composer {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--surface-glass) 55%, transparent);
+}
+
+.codex-reader-composer:not(:has(.cowork-dock-zone.is-open)) {
+  display: none;
+}
+
+.codex-reader-composer > .codex-dock-host {
+  width: 100%;
 }
 
 /* split 좌측 문서는 읽기 measure 캡 없이 doc-pane 폭을 채운다(베이스 .markdown-body의
@@ -11900,6 +11930,30 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   letter-spacing: 0.12em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.codex-doc-outline-label {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.codex-doc-outline-label > span:first-child {
+  flex: none;
+}
+
+/* 접힌 스파인이 되비추는 현재 섹션 — 위치 표시일 뿐 상태가 아니므로 본문 서체·본문 색으로. */
+.codex-doc-outline-current {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .codex-doc-outline-toggle:hover,

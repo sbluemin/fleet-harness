@@ -37,10 +37,15 @@ export interface MountCoworkInlineOptions {
   entryId: string;
   /** 렌더 중복 제거용 엔트리 제목 */
   title: string;
-  /** 리딩 뷰를 감싸는 article — 필/도크의 포지셔닝 호스트 */
+  /** 리딩 뷰를 감싸는 article — 선택 필/코멘트 컴포저의 포지셔닝 호스트 */
   article: HTMLElement;
   /** 엔트리 마크다운이 렌더된 본문 요소 — 초안 렌더 시 이 내용만 교체 */
   body: HTMLElement;
+  /**
+   * 도크(컴포저 바)가 정박할 프레임 경계 요소. 본문 스크롤 흐름 밖에 두어야
+   * 읽는 중인 문단을 가리지 않는다. 생략 시 article 말미(레거시 흐름 내 위치).
+   */
+  dockHost?: HTMLElement;
   onApplied(): void;
 }
 
@@ -109,7 +114,9 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   tip.className = "cowork-tip";
   tip.hidden = true;
   options.article.classList.add("cowork-host");
-  options.article.append(anchor, dockZone, tip);
+  options.article.append(anchor, tip);
+  // 도크는 스크롤포트 밖 프레임 경계에 선다 — 본문 위 부유(가림)를 만들지 않는다.
+  (options.dockHost ?? options.article).append(dockZone);
 
   const unmountSettingsSelect = () => {
     settingsSelectRoot?.unmount();
@@ -259,7 +266,7 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       ${dirty && !running ? renderReview(changed) : ""}
       <div class="cowork-bar${running ? " is-running" : ""}" data-cowork-form>
         ${running ? '<span class="cowork-glow" aria-hidden="true"></span>' : ""}
-        <button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>
+        ${annotations.length > 0 || panelOpen ? `<button type="button" class="cowork-chip${panelOpen ? " is-active" : ""}" data-cowork-action="toggle-panel" aria-expanded="${panelOpen}" aria-label="${escapeAttribute(t("codex.cowork.annotationsAria"))}" ${running ? "disabled" : ""}><span aria-hidden="true">✦</span>${annotations.length}</button>` : ""}
         <input class="cowork-dock-input" name="prompt" autocomplete="off" value="${escapeAttribute(promptText)}" placeholder="${escapeAttribute(annotations.length ? t("codex.cowork.instructionOptional") : t("codex.cowork.askAi"))}" aria-label="${escapeAttribute(t("codex.cowork.instructionAria"))}" ${running ? "disabled" : ""}>
         <button type="button" class="cowork-chip cowork-chip--config${configOpen ? " is-active" : ""}" data-cowork-action="toggle-config" aria-expanded="${configOpen}" aria-label="${escapeAttribute(t("codex.cowork.agentSettingsAria"))}" ${running ? "disabled" : ""}>${escapeHtml(settings.model || "agent")}${chipEffortGauge()}</button>
         ${running
@@ -814,6 +821,15 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
   options.article.addEventListener("change", onChange);
   options.article.addEventListener("mouseover", onMouseOverMark);
   options.article.addEventListener("mouseleave", onMouseLeaveArticle);
+  // 도크가 article 밖 프레임 경계에 있으면 도크 상호작용 위임을 도크 존에 따로 건다.
+  // (article 내 레거시 배치에서는 버블링이 닿으므로 이중 등록 시 토글류가 두 번 뒤집힌다.)
+  const dockDetached = !options.article.contains(dockZone);
+  if (dockDetached) {
+    dockZone.addEventListener("keydown", onKeyDown);
+    dockZone.addEventListener("click", onClick);
+    dockZone.addEventListener("input", onInput);
+    dockZone.addEventListener("change", onChange);
+  }
 
   return {
     destroy() {
@@ -829,6 +845,12 @@ export function mountCoworkInline(options: MountCoworkInlineOptions): CoworkCont
       options.article.removeEventListener("change", onChange);
       options.article.removeEventListener("mouseover", onMouseOverMark);
       options.article.removeEventListener("mouseleave", onMouseLeaveArticle);
+      if (dockDetached) {
+        dockZone.removeEventListener("keydown", onKeyDown);
+        dockZone.removeEventListener("click", onClick);
+        dockZone.removeEventListener("input", onInput);
+        dockZone.removeEventListener("change", onChange);
+      }
       anchor.remove();
       dockZone.remove();
       tip.remove();

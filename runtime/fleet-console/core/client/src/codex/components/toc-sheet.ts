@@ -54,6 +54,15 @@ export function installTocScrollSpy(
 
   const scrollRoot = article.closest<HTMLElement>(".codex-reading-sheet-read, .codex-doc-scroll");
   const visibleHeadings = new Set<string>();
+  let lastEmittedId: string | null = null;
+
+  // 접힌 아웃라인 스파인이 "지금 읽는 섹션"을 되비출 수 있도록 활성 전환을 이벤트로 알린다.
+  const emitActive = (activeId: string | null) => {
+    if (activeId === lastEmittedId) return;
+    lastEmittedId = activeId;
+    const text = activeId ? items.find((item) => item.id === activeId)?.text ?? "" : "";
+    tocPanel.dispatchEvent(new CustomEvent("codex-toc-active", { bubbles: true, detail: { id: activeId, text } }));
+  };
 
   const observer = new IntersectionObserver(
     (entries) => {
@@ -69,6 +78,7 @@ export function installTocScrollSpy(
         headings[0]?.id ??
         null;
       setActiveLink(links, activeId);
+      emitActive(activeId);
     },
     {
       root: scrollRoot,
@@ -79,8 +89,12 @@ export function installTocScrollSpy(
 
   for (const h of headings) observer.observe(h);
   setActiveLink(links, headings[0]?.id ?? null);
+  emitActive(headings[0]?.id ?? null);
 
-  return () => observer.disconnect();
+  return () => {
+    observer.disconnect();
+    emitActive(null);
+  };
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────

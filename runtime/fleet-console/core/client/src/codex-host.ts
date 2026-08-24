@@ -36,6 +36,8 @@ let activeNavigatorWorkspaceId: string | null = null;
 // Reader 싱글톤 — split·오버레이 사이를 같은 노드로 relocate하여 콘텐츠·스크롤 보존
 let readerHostNode: HTMLDivElement | null = null;
 let tocHostNode: HTMLDivElement | null = null;
+// Cowork 도크 싱글톤 호스트 — 프레임 경계 슬롯(.codex-reader-composer)로 relocate된다.
+let dockHostNode: HTMLDivElement | null = null;
 let readerController: ReadingController | null = null;
 let activeReaderKind: "entry" | "drydock" | "conflicts" | "schema" | null = null;
 let activeReaderEntryId: string | null = null;
@@ -85,6 +87,11 @@ export function setNavigatorTheater(theaterId: string | null): void {
   navigatorController?.setTheater(theaterId);
 }
 
+/** 리더 문서의 태그 칩 클릭을 카탈로그 태그 필터로 잇는다. */
+export function setNavigatorTagFilter(tag: string): void {
+  navigatorController?.setActiveTag(tag);
+}
+
 export function restoreCodexReaderSession(theaterId: string): string | null {
   prepareReaderTheater(theaterId);
   const session = readReaderSession(theaterId);
@@ -126,11 +133,13 @@ export function refreshCodexHealth(): void {
 export function mountReaderInto(
   readSlot: HTMLElement,
   tocSlot: HTMLElement,
+  dockSlot: HTMLElement,
   opts: ReaderSlotOptions,
 ): void {
   scrollRestoreCleanup?.();
   const rNode = ensureReaderHostNode();
   const tNode = ensureTocHostNode();
+  const dNode = ensureDockHostNode();
   if (activeReaderKind === "entry" && rNode.parentElement) {
     persistCurrentReaderSession(rNode.parentElement.scrollTop);
   }
@@ -167,6 +176,7 @@ export function mountReaderInto(
   // DOM의 appendChild는 기존 부모에서 자동 detach → split·오버레이 사이를 콘텐츠 보존으로 relocate
   if (rNode.parentElement !== readSlot) readSlot.appendChild(rNode);
   if (tNode.parentElement !== tocSlot) tocSlot.appendChild(tNode);
+  if (dNode.parentElement !== dockSlot) dockSlot.appendChild(dNode);
 
   const { sessionTheaterId: _sessionTheaterId, ...readingOpts } = opts;
   if (!readerController || activeReaderKind !== opts.kind || !sameTheater) {
@@ -174,6 +184,7 @@ export function mountReaderInto(
     readerController = mountReadingInto(rNode, {
       ...readingOpts,
       tocContainer: tNode,
+      dockContainer: dNode,
       onEntryRendered: handleEntryRendered,
       onTocChanged: handleTocChanged,
     });
@@ -199,6 +210,7 @@ export function mountReaderInto(
     onDecided: opts.onDecided,
     onRelatedClick: opts.onRelatedClick,
     onClose: opts.onClose,
+    onTagClick: opts.onTagClick,
     theaterId: opts.theaterId,
   });
   syncInlineOutline(tNode);
@@ -236,6 +248,7 @@ export function teardownReaderNodes(): void {
   activeEntryRequest = null;
   if (readerHostNode?.parentElement) readerHostNode.parentElement.removeChild(readerHostNode);
   if (tocHostNode?.parentElement) tocHostNode.parentElement.removeChild(tocHostNode);
+  if (dockHostNode?.parentElement) dockHostNode.parentElement.removeChild(dockHostNode);
 }
 
 export function teardownCodex(): void {
@@ -473,4 +486,12 @@ function ensureTocHostNode(): HTMLDivElement {
     tocHostNode.className = "codex-toc-host";
   }
   return tocHostNode;
+}
+
+function ensureDockHostNode(): HTMLDivElement {
+  if (!dockHostNode) {
+    dockHostNode = document.createElement("div");
+    dockHostNode.className = "codex-dock-host";
+  }
+  return dockHostNode;
 }

@@ -61,7 +61,7 @@ export interface ReadingController {
   destroy(): void;
   setEntry(entryId: string): Promise<void>;
   navigateSub(subId: string | undefined): Promise<void>;
-  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "theaterId">>): void;
+  refreshCallbacks(next: Partial<Pick<MountReadingOptions, "onPatchOpen" | "onConflictOpen" | "onDecided" | "onRelatedClick" | "onClose" | "onTagClick" | "theaterId">>): void;
   /** 로케일 변경 시 현재 문서·스크롤을 유지한 채 문구만 다시 그린다. */
   refreshLocale(): Promise<void>;
 }
@@ -78,9 +78,13 @@ export interface MountReadingOptions {
   readonly onConflictOpen?: (conflictId: string | undefined) => void;
   /** 승인/반려 결정 완료 후 목록 갱신을 트리거하는 콜백 */
   readonly onDecided?: () => void;
+  /** 문서 헤더 태그 칩 클릭 — 카탈로그 태그 필터로 라우팅된다. */
+  readonly onTagClick?: (tag: string) => void;
   readonly onEntryRendered?: (entryId: string) => void;
   readonly onTocChanged?: (count: number) => void;
   readonly tocContainer: HTMLElement;
+  /** Cowork 도크가 정박할 프레임 경계 슬롯(스크롤포트 밖). */
+  readonly dockContainer?: HTMLElement;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -143,6 +147,33 @@ export function mountReadingInto(
       event.preventDefault();
       const entryId = decodeURIComponent(wikiLink.pathname.slice("/entry/".length));
       if (entryId) liveOpts.onRelatedClick(entryId);
+      return;
+    }
+
+    // 문서 헤더 태그 칩 — 카탈로그의 같은 시각 어휘와 같은 약속(태그 필터)으로 응답한다.
+    const docTag = target.closest<HTMLElement>("[data-doc-tag]");
+    if (docTag?.dataset.docTag) {
+      event.preventDefault();
+      liveOpts.onTagClick?.(docTag.dataset.docTag);
+      return;
+    }
+
+    // 태그 칩 접힘 토글(+N ↔ −) — 재렌더 없이 컨테이너 상태만 뒤집는다.
+    const chipsToggle = target.closest<HTMLElement>("[data-chips-toggle]");
+    if (chipsToggle) {
+      event.preventDefault();
+      const chips = chipsToggle.closest<HTMLElement>(".meta-chips");
+      if (!chips) return;
+      const collapsed = chips.dataset.collapsed !== "true";
+      chips.dataset.collapsed = String(collapsed);
+      chipsToggle.setAttribute("aria-expanded", String(!collapsed));
+      const overflowCount = chips.querySelectorAll(".chip-tag--overflow").length;
+      const t = consoleT();
+      chipsToggle.textContent = collapsed ? `+${overflowCount}` : "−";
+      chipsToggle.setAttribute(
+        "aria-label",
+        collapsed ? t("codex.meta.moreTags", { count: overflowCount }) : t("codex.meta.collapseTags"),
+      );
       return;
     }
 
@@ -342,7 +373,7 @@ export function mountReadingInto(
           <header class="document-header">
             ${renderSheetBreadcrumb(entry.frontmatter.title)}
             <h1>${escapeHtml(entry.frontmatter.title)}</h1>
-            ${renderMetaChips(entry.frontmatter)}
+            ${renderMetaChips(entry.frontmatter, { interactiveTags: true })}
           </header>
           <div class="markdown-body" id="codex-reader-body">
             ${markdownHtml}
@@ -367,6 +398,7 @@ export function mountReadingInto(
           title: entry.frontmatter.title,
           article,
           body,
+          dockHost: opts.dockContainer,
           onApplied: () => { void renderEntryView(entryId); },
         });
       }
