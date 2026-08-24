@@ -132,6 +132,20 @@ describe("operation search", () => {
     ]);
   });
 
+  it("carries operation type and launch provider for the palette mark and meta caption", () => {
+    const entries = buildOperationSearchEntries(makeState([
+      makeOperation("op-shell", "theater-alpha", "Shell", "shell"),
+      { ...makeOperation("op-claude", "theater-alpha", "Agent Run"), payload: { session: { model: "claude-sonnet-5" } } },
+      { ...makeOperation("op-codex", "theater-alpha", "Codex Run"), payload: { session: { model: "codex--gpt-5.6-sol" } } },
+    ]));
+
+    expect(entries.map((entry) => [entry.operationId, entry.type, entry.launchProvider])).toEqual([
+      ["op-shell", "shell", null],
+      ["op-claude", "agent", "claude"],
+      ["op-codex", "agent", "codex"],
+    ]);
+  });
+
   it("matches case-insensitive AND tokens across operation, Theater, and plugin labels", () => {
     const entries = buildOperationSearchEntries(makeState([
       makeOperation("operation-a", "theater-alpha", "Bridge Watch", "agent"),

@@ -1013,30 +1013,24 @@ describe("Instrument core design contract", () => {
     expect(unclassed).not.toContain("border-color:");
   });
 
-  it("pins the Operation provider mark grammar — one tone table, ink only, no state repaint", () => {
-    // 공급자 마크는 실행 표면(검색·Quick Launch·실행 메뉴)에만 남는다 — 사이드바 칩·커맨드 밴드의
-    // 이름 왼쪽 슬롯은 활동 상태가 가져갔다. 남은 표면이 각자 톤을 적으면 한 곳만 고쳐도 컴파일은
-    // 되고 같은 Operation이 두 색으로 보인다 — 대조표는 .operation-provider-mark 한 곳에만 있어야
-    // 하고, 표면 클래스는 치수만 소유한다.
+  it("pins the Operation list-surface mark grammar — activity owns the name-left slot, provider stays off list surfaces", () => {
+    // 공급자 마크는 실행 표면(Quick Launch·실행 메뉴)에만 남는다 — 목록 표면(사이드바 칩·
+    // 커맨드 밴드·검색 팔레트)의 이름 왼쪽 슬롯은 활동 상태가 소유한다. 목록에서 먼저 읽혀야
+    // 하는 것은 무엇으로 띄웠는지가 아니라 지금 무엇을 하고 있는지다. 마지막 소비자였던
+    // 팔레트가 떠나면서 .operation-provider-mark 대조표는 퇴역했다 — 실행 표면의 톤은
+    // --launch-provider-tone 축이 맡는다(아래 provider tone 테스트가 그 축을 고정한다).
     const css = source("styles/components.css");
-    for (const provider of ["antigravity", "claude", "codex", "cursor", "kimi", "opencode", "xai"]) {
-      expect(css).toContain(`.operation-provider-mark.is-${provider} { color: var(--provider-${provider}); }`);
-    }
-    // 공급자는 정체성 축이다 — 마크의 잉크에만 머물러야 하므로 배경·테두리로 번지지 않고,
-    // 신호색·brass를 빌려 상태·위치 채널과 충돌하지도 않는다.
-    for (const [, body] of css.matchAll(/\.operation-provider-mark[^{}]*\{([^}]*)\}/g)) {
-      expect(body).not.toMatch(/background|border|box-shadow/);
-      expect(body).not.toMatch(/var\(--(aurora|warn|coral|positive|brass)[a-z-]*\)/);
-    }
-    // 정체성은 포커스·활성으로 다시 칠하지 않는다. 명령 행 글리프가 brass로 반응하는 것과
-    // 달리, 공급자 마크는 어느 상태에서도 같은 톤을 유지해야 같은 Operation으로 읽힌다.
-    expect(css).not.toMatch(/\.is-active[^{}]*\.operation-provider-mark/);
-
-    // 남은 표면은 공용 마크 클래스를 통해 톤을 받는다 — 자기 색을 적으면 대조표가 갈라진다.
-    expect(source("components/operation-search.tsx")).toContain("operation-provider-mark is-${entry.launchProvider}");
+    // 행 시작의 셀렉터만 잡는다 — 퇴역 사실을 기록한 독트린 주석이 클래스 이름을 언급해도 무방하다.
+    expect(css).not.toMatch(/(^|\n)\.operation-provider-mark/);
     // 목록 표면은 공급자를 세지 않는다 — 그 자리는 활동 상태가 소유한다.
     expect(source("sidebar/operations-side-bar-chip.tsx")).not.toContain("operation-provider-mark");
     expect(source("components/command-band.tsx")).not.toContain("operation-provider-mark");
+    expect(source("components/operation-search.tsx")).not.toContain("operation-provider-mark");
+    // 팔레트 Operation 행은 사이드바 칩과 같은 마크 하나로 상태를 말한다 — 별도 활동 뱃지를
+    // 되살리면 같은 사실이 한 행에서 두 번 발화된다(Quick Launch 멘션 덱은 마크 없는 다른 표면).
+    expect(source("components/operation-search.tsx")).toContain("<OperationNameMark");
+    expect(source("components/operation-search.tsx")).toContain("resolveOperationMarkVisual");
+    expect(source("components/operation-search.tsx")).not.toContain("operation-search-status--");
   });
 
   it("pins the provider tone table as one axis — every gateway provider named on both surfaces", () => {

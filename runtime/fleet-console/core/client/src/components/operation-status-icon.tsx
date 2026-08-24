@@ -1,8 +1,8 @@
 import { operationMarkLabel, operationMarkVisual, type OperationMarkVisual } from "../operation-activity.js";
 
 /**
- * Operation 활동 상태를 그리는 단일 조형. 사이드바 칩·War Room·커맨드 밴드·모바일 목록이
- * 같은 마크를 쓴다 — 표면마다 다른 조형을 두면 같은 사실이 표면 수만큼의 이야기로 갈라진다.
+ * Operation 활동 상태를 그리는 단일 조형. 사이드바 칩·War Room·커맨드 밴드·모바일 목록·
+ * 검색 팔레트가 같은 마크를 쓴다 — 표면마다 다른 조형을 두면 같은 사실이 표면 수만큼의 이야기로 갈라진다.
  * 조형은 둥근 네모 하나뿐이다(원형 폐지). 상태는 채움·중공·발광·맥동으로만 갈린다.
  */
 function operationStatusIconClass(status: OperationMarkVisual | undefined): string {
