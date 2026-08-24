@@ -718,6 +718,9 @@ describe("Instrument core design contract", () => {
         /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\) > \.canvas-operation-titlebar,\n\.canvas-operation > \.canvas-companion-caption \{[^}]*\}/,
       )?.[0] ?? "";
     expect(floatingCaption).toContain("--caption-base: var(--glass-tint-panel);");
+    // 구조 규칙은 base만 소유한다 — 이 (0,4,0) 선택자가 fill까지 세우면 셸 아우로라 틴트(0,2,0)와
+    // 포커스 brass 워시(0,3,0)를 특이도로 눌러 떠 있는 캡션에서 두 신호가 통째로 사라진다.
+    expect(floatingCaption).not.toContain("--caption-fill:");
     expect(floatingCaption).toContain(
       "radial-gradient(150% 420px at 50% -12px, var(--glass-pane-light) 0%, transparent 62%),",
     );

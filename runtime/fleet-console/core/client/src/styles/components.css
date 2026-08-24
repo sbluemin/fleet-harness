@@ -4632,6 +4632,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-width: 0;
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
+  /* companion 캡션은 .canvas-operation-titlebar가 아니라 그 기본 규칙의 fill 기본값이 닿지 않는다.
+     여기서 세워야 구조 규칙의 배경 목록이 값을 찾는다(워시 규칙은 companion을 겨누지 않는다). */
+  --caption-fill: var(--caption-base);
   background-clip: padding-box;
   color: var(--text-tertiary);
   cursor: default;
@@ -5938,8 +5941,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
    캡션·본문 이음새(창 한가운데)에 그어진다(실측 y=95, L21.9). */
 .canvas-operation:not(.is-deck-tile):not(.is-top-edge) > .canvas-operation-titlebar,
 .canvas-operation > .canvas-companion-caption {
+  /* 이 규칙은 base만 소유한다 — fill까지 세우면 (0,4,0)이 셸 아우로라 틴트(0,2,0)와
+     포커스 brass 워시(0,3,0)를 특이도로 눌러 떠 있는 캡션에서 두 신호가 통째로 사라진다. */
   --caption-base: var(--glass-tint-panel);
-  --caption-fill: var(--caption-base);
   background:
     linear-gradient(var(--caption-fill), var(--caption-fill)),
     radial-gradient(150% 420px at 50% -12px, var(--glass-pane-light) 0%, transparent 62%),
