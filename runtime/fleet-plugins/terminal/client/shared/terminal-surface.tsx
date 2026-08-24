@@ -311,6 +311,7 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
         fontFamily: terminalFontSettings.family,
         fontSize: terminalFontSettings.size * appliedZoom * touchFontScaleRef.current,
         theme: terminalTheme,
+        allowTransparency: terminalFieldIsTranslucent(terminalTheme.background ?? ""),
         minimumContrastRatio: terminalContrastFloorFor(activeTheme),
       });
       terminalRef.current = terminal;
@@ -612,9 +613,13 @@ export function TerminalSurface({ operationId, ticketPath, wsPath, theme = "inst
     if (!terminal || !container) return;
     const applyTerminalTheme = () => {
       const terminalTheme = terminalThemeFor(activeTheme);
+      // 뷰포트 인라인 배경이 allowTransparency보다 먼저 자리를 잡아야 한다 — 이 옵션이 꺼지면
+      // xterm이 `.xterm:not(.allow-transparency)` 클래스를 떼고, 그 규칙의 background-color:#000이
+      // 인라인 값 없이 드러난다. 두 줄의 순서가 곧 그 검은 프레임을 막는 계약이다.
+      syncTerminalViewportBackground(container, terminalTheme);
+      terminal.options.allowTransparency = terminalFieldIsTranslucent(terminalTheme.background ?? "");
       terminal.options.theme = terminalTheme;
       terminal.options.minimumContrastRatio = terminalContrastFloorFor(activeTheme);
-      syncTerminalViewportBackground(container, terminalTheme);
     };
     applyTerminalTheme();
     // liquidGlassPane 의존이 곧 리로드 없는 즉시 전환이다 — 설정 토글이 data-glass 속성을
@@ -777,6 +782,27 @@ function normalizeCssColorToRgba(color: string): string | null {
   } catch {
     return color;
   }
+}
+
+/* xterm의 allowTransparency는 "필드가 실제로 반투명한가" 하나에서만 파생된다 — 테마도
+   게이트도 여기서 다시 판정하지 않고, resolvePanelSurface가 이미 정한 배경의 알파를 읽는다.
+
+   상수 true로 두면 안 된다. 이 옵션은 투명도 지원 여부가 아니라 글리프 래스터 경로를 고른다:
+   false면 TextureAtlas의 임시 캔버스가 {alpha:false}라 배경을 아는 상태에서 감마 보정된 텍스트가
+   구워지고, clearColor()가 배경과 일치하는 픽셀만 비워 AA 경계까지 알파 255의 사전합성 RGB로
+   아틀라스에 남는다(GPU는 복사만 한다). true면 글리프가 투명 위에 선형 커버리지 알파로만 그려지고
+   GlyphRenderer가 sRGB 바이트 공간에서 다시 합성한다 — 감마 미보정 lerp는 밝은 바탕 위 어두운
+   잉크의 커버리지를 과소 표현한다. 라이트(불투명 종이) 터미널에서 획 잉크가 18.2% 사라지고
+   가장자리가 거칠어지는 것이 dpr=2 실측으로 확인됐다(다크는 반대 부호로 +2.6%라 드러나지 않았다).
+   즉 불투명 배경에서 true는 이득이 없고 비용만 있다. */
+export function terminalFieldIsTranslucent(background: string): boolean {
+  const channels = /^rgba?\(([^)]+)\)$/i.exec(background.trim())?.[1]?.split(",");
+  // rgba()가 아니면 resolvePanelSurface가 정규화를 못 한 환경이다(ITheme 폴백, 또는 canvas 프로브
+  // 부재로 되돌아온 원문 oklch). 둘 다 xterm 자신도 알파를 파싱하지 못하는 환경이므로 불투명으로
+  // 읽는다. 알파가 실제로 필요한 유일한 경로(다크+게이트 열림)는 프로브를 거치지 않는
+  // "rgba(0, 0, 0, 0)" 리터럴이라 여기서 항상 검출된다.
+  if (!channels) return false;
+  return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }
 
 /* 게이트가 열려 있을 때만 backdrop 채널이 none이 아니다 — 세 게이트(설정·@supports·
