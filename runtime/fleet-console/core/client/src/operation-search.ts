@@ -14,11 +14,15 @@ export interface OperationSearchEntry {
   readonly operationId: string;
   readonly theaterId: string | null;
   readonly theaterLabel: string;
+  /** Shell 판별용 Operation 종류 — 팔레트의 이름 왼쪽 마크가 사이드바와 같은 분기를 탄다. */
+  readonly type: string;
   readonly operationName: string;
   readonly pluginId: string;
-  readonly status: string;
   readonly activity: OperationActivityVisual;
-  /** 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이고 마크를 그리지 않는다. */
+  /**
+   * 실행된 공급자. 기록하지 않는 플러그인의 Operation은 null이다. Quick Launch 멘션 덱은
+   * 글리프로, 팔레트는 메타 캡션 텍스트로 그린다 — 목록 표면의 이름 왼쪽 슬롯은 활동 상태 소유.
+   */
   readonly launchProvider: LaunchProviderGlyphId | null;
 }
 
@@ -151,9 +155,9 @@ function toOperationSearchEntry(
     operationId: operation.id,
     theaterId: operation.theaterId,
     theaterLabel: theater?.label ?? operation.theaterId,
+    type: operation.type,
     operationName: operation.title,
     pluginId: operation.pluginId,
-    status: "operation",
     activity: resolveOperationActivity(operation, operationRuntime),
     launchProvider: launchProviderFromModelId(readSessionModel(operation.payload)),
   };

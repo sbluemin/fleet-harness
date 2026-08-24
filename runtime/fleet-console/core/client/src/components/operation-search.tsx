@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
 import type { FleetClientPlugin } from "@fleet-console/sdk/plugin";
 import type { RailPanelDescriptor, RailSearchResult } from "@fleet-console/sdk/rail";
 
 import { fetchSearch } from "../codex/api.js";
-import { launchProviderGlyph } from "./launch-provider-glyphs.js";
+import { launchProviderCaption, type LaunchProviderGlyphId } from "./launch-provider-glyphs.js";
+import { OperationNameMark } from "./operation-name-mark.js";
 import { propagateSettingsEntryIndex, recordSettingsEntryIndex } from "./command-band-system-cluster.js";
 import { setGlobalSettingsField } from "../global-settings-store.js";
 import { toggleCommandBandDocked } from "../fullscreen-band-store.js";
@@ -17,8 +18,9 @@ import {
   searchTokens,
   type RailSearchGroup,
 } from "../operation-search.js";
-import { operationActivityLabel } from "../operation-activity.js";
+import { resolveOperationMarkVisual } from "../operation-activity.js";
 import { closeOperationCompletely, resumeOperationInPlace } from "../operation-actions.js";
+import { getIdleArrivalIds, subscribeIdleArrival } from "../operation-marks.js";
 import {
   buildCodexPaletteEntries,
   buildPaletteCommands,
@@ -91,6 +93,8 @@ export function OperationSearch({
   const searchGenerationRef = useRef(0);
   const codexCacheRef = useRef(new Map<string, readonly PaletteCommandEntry[]>());
   const commandMode = isCommandModeInput(query);
+  // 사이드바·커맨드 밴드와 같은 마크 축 — 안 본 채 끝난 Operation이 팔레트에서만 침묵하지 않게 한다.
+  const idleArrivalIds = useSyncExternalStore(subscribeIdleArrival, getIdleArrivalIds, getIdleArrivalIds);
   const entries = useMemo(() => operationSearchEntries(state), [state]);
   const filteredEntries = useMemo(() => filterOperationSearchEntries(entries, query), [entries, query]);
   const groups = useMemo(() => groupOperationSearchEntries(filteredEntries), [filteredEntries]);
@@ -675,18 +679,19 @@ export function OperationSearch({
                           onMouseEnter={() => setSelectedIndex(index)}
                           onClick={() => selectEntry(entry.operationId)}
                         >
-                          {entry.launchProvider ? (
-                            <span className={`operation-search-op-mark operation-provider-mark is-${entry.launchProvider}`} aria-hidden="true">
-                              {launchProviderGlyph(entry.launchProvider)}
-                            </span>
-                          ) : null}
+                          {/* 이름 왼쪽 슬롯은 사이드바 칩과 같은 활동 상태 소유다(Shell만 종류 글리프).
+                              마크가 항상 서므로 무공급자 행도 제목 열이 어긋나지 않고, 공급자는
+                              메타 캡션 텍스트로 강등 보존된다. */}
+                          <span className="operation-search-op-mark">
+                            <OperationNameMark
+                              operation={entry}
+                              status={resolveOperationMarkVisual({ activity: entry.activity, operationId: entry.operationId, idleArrivalIds })}
+                            />
+                          </span>
                           <span className="operation-search-result-text">
                             <strong>{highlightText(entry.operationName, tokens)}</strong>
                             <small>{operationMeta(entry)}</small>
                           </span>
-                          {entry.activity !== "idle" ? (
-                            <span className={`operation-search-status operation-search-status--${entry.activity}`}>{operationActivityLabel(entry.activity)}</span>
-                          ) : null}
                           <span className="operation-search-theater">{highlightText(entry.theaterLabel, tokens)}</span>
                         </button>
                       );
@@ -776,8 +781,10 @@ function ensurePaletteCanvasTheater(state: ConsoleState): void {
   }
 }
 
-function operationMeta(entry: { readonly pluginId: string; readonly status: string }): string {
-  return [entry.pluginId, entry.status].filter(Boolean).join(" · ");
+// 메타의 둘째 단어는 실행 공급자다 — 예전의 상수 "operation"은 전 행이 반복하는 죽은 단어였고,
+// 공급자 글리프가 마크 슬롯을 떠나면서 정체성은 이 조용한 텍스트가 이어받는다.
+function operationMeta(entry: { readonly pluginId: string; readonly launchProvider: LaunchProviderGlyphId | null }): string {
+  return [entry.pluginId, entry.launchProvider ? launchProviderCaption(entry.launchProvider) : null].filter(Boolean).join(" · ");
 }
 
 function operationGroupHeadingId(theaterId: string | null): string {

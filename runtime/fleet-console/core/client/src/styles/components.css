@@ -8054,17 +8054,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .quick-launch-kind-icon.is-opencode { --launch-provider-tone: var(--provider-opencode); }
 .quick-launch-kind-icon.is-xai { --launch-provider-tone: var(--provider-xai); }
 
-/* 실행된 공급자 마크 — Operation 글리프는 어느 공급자의 모델로 돌았는지를 이름한다. Operation을
-   세는 크롬 표면(사이드바 칩·커맨드 밴드·팔레트·War Room 카드)이 하나의 캐리어 시그니처 톤을
-   공유하므로 대조표는 여기 한 번만 적고, 각 표면은 자기 치수만 소유한다. 공급자는 정체성 축이라
-   마크의 잉크에만 머문다 — 테두리·상태 표면을 덧칠하지 않고, 포커스나 활성으로 다시 칠하지도 않는다. */
-.operation-provider-mark.is-antigravity { color: var(--provider-antigravity); }
-.operation-provider-mark.is-claude { color: var(--provider-claude); }
-.operation-provider-mark.is-codex { color: var(--provider-codex); }
-.operation-provider-mark.is-cursor { color: var(--provider-cursor); }
-.operation-provider-mark.is-kimi { color: var(--provider-kimi); }
-.operation-provider-mark.is-opencode { color: var(--provider-opencode); }
-.operation-provider-mark.is-xai { color: var(--provider-xai); }
+/* .operation-provider-mark 대조표는 퇴역했다 — 목록 표면(사이드바 칩·커맨드 밴드·팔레트)의
+   이름 왼쪽 슬롯은 활동 상태(tenant-beacon)가 소유하고, 공급자 글리프가 남는 실행 표면
+   (Quick Launch·실행 메뉴)의 톤은 --launch-provider-tone 축이 이미 맡는다. */
 
 .operation-launch-variant-entry {
   padding: 1px var(--space-1);
@@ -9741,7 +9733,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
   white-space: nowrap;
 }
 
-/* 팔레트 Operation 행의 활동 뱃지. 상태 채널은 signal 토큰만 쓴다(디자인 불변식). */
+/* Quick Launch 멘션 덱 행의 활동 뱃지. 상태 채널은 signal 토큰만 쓴다(디자인 불변식).
+   팔레트 Operation 행은 이 뱃지를 떠나 사이드바와 같은 tenant-beacon 마크로 말한다. */
 .operation-search-status {
   flex: none;
   padding: 2px 8px;
@@ -9789,18 +9782,15 @@ body[data-side-bar-animating="true"] .canvas-operation {
   color: var(--brass-bright);
 }
 
-/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 공급자 마크가 쓴다. */
+/* 명령 행의 선행 글리프 슬롯과 같은 자리를 Operation 행에서는 활동 상태 마크가 쓴다 —
+   내용물(8px tenant-beacon / 14px Shell 종류 글리프)은 자기 치수를 소유하고, 이 슬롯은
+   16px 그리드로 명령 글리프와 같은 정렬 계약만 진다. 마크가 항상 서므로 제목 열이 어긋나지 않는다. */
 .operation-search-op-mark {
   display: grid;
   place-items: center;
   flex: none;
   width: 16px;
   height: 16px;
-}
-
-.operation-search-op-mark svg {
-  width: 14px;
-  height: 14px;
 }
 
 .operation-search-panel-open {
