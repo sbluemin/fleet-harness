@@ -51,12 +51,16 @@
   color: var(--text-primary);
 }
 
+.fc-font-browser__search:hover:not(:disabled):not(:focus-visible) {
+  border-color: var(--control-hover-rim);
+}
+
 .fc-font-browser__search:focus-visible,
 .fc-font-browser__listbox:focus-visible,
 .fc-font-browser__row:focus-visible,
 .fc-font-browser__stepper:focus-visible,
 .fc-font-browser__range:focus-visible {
-  outline: 2px solid var(--brass);
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
 
@@ -71,26 +75,30 @@
   grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--space-1, 4px) var(--space-2, 8px);
   padding: var(--space-2, 8px);
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs, 8px);
   background: transparent;
   color: var(--text-primary);
   text-align: left;
 }
 
-.fc-font-browser__row:hover,
-.fc-font-browser__row.is-active { background: color-mix(in oklab, var(--surface-rim) 38%, transparent); }
+.fc-font-browser__row:hover:not(:disabled):not(.is-active):not([aria-selected="true"]),
+.fc-font-browser__row.is-active:not(:disabled):not([aria-selected="true"]) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
 /* The chosen font stays marked with a soft brass fill (brass = current selection)
    even when keyboard focus moves elsewhere, so a click highlights it immediately. */
 .fc-font-browser__row[aria-selected="true"] {
-  background: color-mix(in oklab, var(--brass) 14%, transparent);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
 }
 .fc-font-browser__row.is-unavailable,
-.fc-font-browser[data-disabled="true"] { opacity: 0.56; }
+.fc-font-browser[data-disabled="true"] { opacity: var(--control-disabled-opacity); }
 .fc-font-browser__row:disabled,
 .fc-font-browser__stepper:disabled,
 .fc-font-browser__range:disabled,
-.fc-font-browser__search:disabled { cursor: not-allowed; opacity: 0.56; }
+.fc-font-browser__search:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .fc-font-browser__row-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .fc-font-browser__row-status { grid-column: 2; }
 
@@ -101,10 +109,25 @@
 .fc-font-browser__availability--unavailable { color: var(--warn-ink); }
 .fc-font-browser__preview-copy { min-height: 5em; margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
 .fc-font-browser__stepper { min-width: 2.2em; border: 1px solid var(--surface-rim); border-radius: var(--radius-xs, 8px); background: color-mix(in oklab, var(--surface-glass-strong) 78%, transparent); color: var(--text-primary); }
+.fc-font-browser__stepper:hover:not(:disabled) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.fc-font-browser__stepper:active:not(:disabled) { transform: translateY(1px); }
 .fc-font-browser__size-value { color: var(--text-secondary); }
 .fc-font-browser__range { width: 100%; accent-color: var(--brass); }
 .fc-font-browser__state { margin: var(--space-2, 8px) 0; color: var(--text-tertiary); }
 .fc-font-browser__state--error { color: var(--coral-ink); }
+
+@media (forced-colors: active) {
+  .fc-font-browser__search,
+  .fc-font-browser__row,
+  .fc-font-browser__stepper,
+  .fc-font-browser__range { appearance: auto; }
+
+  .fc-font-browser[data-disabled="true"],
+  .fc-font-browser__row:disabled,
+  .fc-font-browser__stepper:disabled,
+  .fc-font-browser__range:disabled,
+  .fc-font-browser__search:disabled { opacity: 1; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .fc-font-browser *, .fc-font-browser *::before, .fc-font-browser *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }

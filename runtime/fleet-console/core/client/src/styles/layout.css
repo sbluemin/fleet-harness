@@ -530,12 +530,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   height: 16px;
 }
 
-.command-band-button:hover,
+.command-band-button:hover {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
 .command-band-button:focus-visible {
-  border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
-  color: var(--text-secondary);
-  outline: none;
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
 }
 
 /* 눌린 아이콘 버튼은 밴드의 다른 토글과 같은 문법으로 말한다 — .command-band-mode-seg·
@@ -543,7 +547,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
    이미 이 문법을 입고 있다. 이 규칙이 없던 동안 aria-pressed는 접근성 트리에만 존재하고
    화면에는 아무 흔적도 남기지 않았다. */
 .command-band-button[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
 }
 
@@ -594,6 +598,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   padding: 2px;
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
+  background: color-mix(in oklab, var(--surface-glass) 62%, transparent);
 }
 
 .command-band-mode-seg {
@@ -603,7 +608,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   height: 24px;
   padding: 0 9px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   white-space: nowrap;
   font-family: var(--font-mono);
@@ -611,19 +616,35 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   font-weight: var(--weight-bold);
 }
 
-/* hover는 이웃 command-band-button과 동일한 링 문법 — brass 채움은 활성(pressed) 상태 전용. */
-.command-band-mode-seg:hover:not(:disabled),
-.command-band-mode-seg:focus-visible {
-  border-color: var(--hairline-strong);
+/* hover는 경계와 낮은 wash로 다음 행동만 예고하고, focus는 전역 외곽 링을 보존한다.
+   활성 모드는 wash 아래 짧은 datum을 더해 인접 도구의 pressed 면과 형상으로 갈린다. */
+.command-band-mode-seg:hover:not(:disabled):not([aria-pressed="true"]),
+.command-band-mode-seg:focus-visible:not([aria-pressed="true"]) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .command-band-mode-seg[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  position: relative;
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
 }
 
-.command-band-mode-seg:disabled { cursor: not-allowed; opacity: 0.55; }
+.command-band-mode-seg[aria-pressed="true"]::after {
+  position: absolute;
+  right: var(--space-2);
+  bottom: -3px;
+  left: var(--space-2);
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  content: "";
+}
+
+.command-band-mode-seg:active:not(:disabled) { transform: translateY(1px); }
+.command-band-mode-seg:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .command-band-mode-tray {
   display: flex;
@@ -648,7 +669,7 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   height: 24px;
   padding: 0;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   color: var(--text-tertiary);
 }
 
@@ -670,18 +691,21 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   font-variant-numeric: tabular-nums;
 }
 
-.command-band-mode-tool:hover:not(:disabled),
-.command-band-mode-tool:focus-visible {
-  border-color: var(--hairline-strong);
+.command-band-mode-tool:hover:not(:disabled):not([aria-pressed="true"]),
+.command-band-mode-tool:focus-visible:not([aria-pressed="true"]) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .command-band-mode-tool[aria-pressed="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
 }
 
-.command-band-mode-tool:disabled { cursor: not-allowed; opacity: 0.55; }
+.command-band-mode-tool:active:not(:disabled) { transform: translateY(1px); }
+.command-band-mode-tool:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .command-band-theater-cluster {
   display: flex;
@@ -755,16 +779,25 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   gap: 6px;
   min-width: 0;
   padding: 2px 6px;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-spring), color var(--duration-fast) var(--ease-spring);
+  transition:
+    background var(--duration-fast) var(--ease-spring),
+    border-color var(--duration-fast) var(--ease-spring),
+    color var(--duration-fast) var(--ease-spring);
 }
 
-.command-band-segment-trigger:hover,
-.command-band-segment-trigger:focus-visible,
+.command-band-segment-trigger:hover:not(.is-open),
+.command-band-segment-trigger:focus-visible:not(.is-open) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
 .command-band-segment-trigger.is-open {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  outline: none;
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  color: var(--text-primary);
 }
 
 .command-band-segment-label {
@@ -780,8 +813,10 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
   flex: none;
   color: var(--text-tertiary);
   opacity: 0.75;
+  transition: transform var(--duration-fast) var(--ease-spring);
 }
 
+.command-band-segment-trigger.is-open .command-band-trigger-caret { transform: rotate(180deg); }
 .command-band-trigger-caret svg { display: block; width: 10px; height: 10px; }
 
 .command-band-operation-placeholder {
@@ -818,11 +853,13 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
 }
 
 .command-band-menu-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
   padding: var(--space-2);
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   color: var(--text-tertiary);
   font-family: var(--font-mono);
@@ -834,20 +871,32 @@ body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls 
     background var(--duration-fast) var(--ease-spring);
 }
 
-.command-band-menu-item:hover:not(:disabled),
-.command-band-menu-item:focus-visible {
+.command-band-menu-item:hover:not(:disabled):not(.is-active),
+.command-band-menu-item:focus-visible:not(.is-active) {
+  border-color: var(--control-hover-rim);
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  outline: none;
+  background: var(--control-hover-fill);
 }
 
 .command-band-menu-item.is-active {
-  color: var(--brass-bright);
+  color: var(--text-primary);
+  background: var(--control-selected-fill);
 }
 
-.command-band-menu-action {
-  color: var(--brass-bright);
+.command-band-menu-item.is-active::before {
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  content: "";
 }
+
+.command-band-menu-action { color: var(--text-secondary); }
+.command-band-menu-action:hover:not(:disabled),
+.command-band-menu-action:focus-visible { color: var(--brass-ink); }
 
 .command-band-menu-action:disabled {
   color: color-mix(in oklch, var(--brass-bright) 45%, transparent);

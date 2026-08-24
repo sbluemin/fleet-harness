@@ -80,7 +80,11 @@
   border-radius: var(--radius-xs);
   padding: 8px 14px;
   cursor: pointer;
-  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+  transition:
+    background var(--duration-fast),
+    border-color var(--duration-fast),
+    color var(--duration-fast),
+    transform var(--duration-fast) var(--ease-spring);
 }
 .fc-btn--primary {
   background: var(--brass);
@@ -121,8 +125,11 @@
   background: color-mix(in oklch, var(--coral) 10%, transparent);
 }
 
+.fc-btn:active:not(:disabled) { transform: translateY(1px); }
+.fc-btn:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); transform: none; }
+
 .fc-btn:focus-visible {
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
 }
 /* ===== Global Settings — 전역 옵션(시스템 프롬프트 주입 + 메타포) 표면 ===== */
@@ -216,15 +223,21 @@
 .global-settings-nav-item:nth-child(3) { animation-delay: 80ms; }
 .global-settings-nav-item:nth-child(4) { animation-delay: 120ms; }
 
-.global-settings-nav-item:hover {
-  background: color-mix(in oklch, var(--ink-mid) 72%, transparent);
+.global-settings-nav-item:hover:not([aria-pressed="true"]) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   transform: translateX(2px);
 }
 
-.global-settings-nav-item.is-active {
-  border-color: color-mix(in oklch, var(--brass) 30%, transparent);
-  background: var(--surface-glass-strong);
-  box-shadow: var(--shadow-anchor);
+.global-settings-nav-item:active:not([aria-pressed="true"]) {
+  transform: translateX(2px) translateY(1px);
+}
+
+.global-settings-nav-item.is-active,
+.global-settings-nav-item[aria-pressed="true"] {
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  box-shadow: var(--shadow-anchor), inset 3px 0 0 var(--brass);
 }
 
 .global-settings-nav-label {
@@ -240,7 +253,8 @@
 }
 
 .global-settings-nav-item:hover .global-settings-nav-label,
-.global-settings-nav-item.is-active .global-settings-nav-label {
+.global-settings-nav-item.is-active .global-settings-nav-label,
+.global-settings-nav-item[aria-pressed="true"] .global-settings-nav-label {
   color: var(--text-primary);
 }
 
@@ -255,7 +269,8 @@
   transition: color var(--duration-fast) var(--ease-spring);
 }
 
-.global-settings-nav-item.is-active .global-settings-nav-eyebrow {
+.global-settings-nav-item.is-active .global-settings-nav-eyebrow,
+.global-settings-nav-item[aria-pressed="true"] .global-settings-nav-eyebrow {
   color: var(--brass-bright);
 }
 
@@ -454,14 +469,15 @@
   background: var(--ink-rim);
 }
 
-.global-settings-toggle:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+.global-settings-toggle:hover:not(:disabled):not(.is-on) {
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .global-settings-toggle.is-on {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--control-selected-fill);
   color: var(--aurora-ink);
+  box-shadow: inset 0 -2px 0 var(--brass);
 }
 
 .global-settings-toggle.is-on::before {
@@ -477,7 +493,7 @@
 
 .global-settings-toggle:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
   transform: none;
 }
 
@@ -759,18 +775,25 @@
 }
 
 .host-switcher-chip:hover,
-.host-switcher-chip:focus-visible,
+.host-switcher-chip:focus-visible {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
 .host-switcher-chip[aria-expanded="true"] {
-  border-color: color-mix(in oklch, var(--ink-fog) 30%, transparent);
-  background: color-mix(in oklch, var(--ink-spectral) 10%, transparent);
-  color: var(--text-secondary);
-  outline: none;
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  color: var(--text-primary);
 }
 
 .host-switcher-chip .host-switcher-name { color: inherit; }
-.host-switcher-chip:hover .host-switcher-name,
-.host-switcher-chip[aria-expanded="true"] .host-switcher-name { color: var(--text-primary); }
-.host-switcher-chip svg { width: 10px; height: 10px; }
+.host-switcher-chip svg {
+  width: 10px;
+  height: 10px;
+  transition: transform var(--duration-fast) var(--ease-spring);
+}
+.host-switcher-chip[aria-expanded="true"] > svg:last-child { transform: rotate(180deg); }
 
 .host-switcher-dot {
   flex: none;
@@ -819,11 +842,12 @@
 }
 
 .host-switcher-panel > button {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-3);
   padding: var(--space-2) var(--space-3);
-  border: 0;
+  border: 1px solid transparent;
   border-radius: var(--radius-xs);
   background: none;
   color: var(--text-secondary);
@@ -831,10 +855,32 @@
   text-align: left;
 }
 
-.host-switcher-panel > button:hover:not(:disabled) { background: color-mix(in oklch, var(--ink-deep) 80%, transparent); }
-.host-switcher-panel > button.is-current { background: color-mix(in oklch, var(--ink-deep) 90%, transparent); }
+.host-switcher-panel > button:hover:not(:disabled):not(.is-current),
+.host-switcher-panel > button:focus-visible:not(.is-current) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.host-switcher-panel > button.is-current {
+  background: var(--control-selected-fill);
+  color: var(--text-primary);
+  cursor: default;
+}
+
+.host-switcher-panel > button.is-current::before {
+  position: absolute;
+  top: var(--space-2);
+  bottom: var(--space-2);
+  left: 0;
+  width: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  content: "";
+}
+
 .host-switcher-panel > button.is-current svg { margin-left: auto; color: var(--brass-bright); }
-.host-switcher-panel > button:disabled { cursor: not-allowed; opacity: 0.55; }
+.host-switcher-panel > button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 /* 이 앱이 띄운 콘솔은 한 줄로 접고 강조한다 — 목록에서 유일하게 언제나 거기 있는 기준점이다. */
 .host-switcher-panel > button.is-home { padding-block: 6px; }
@@ -881,7 +927,9 @@
 .host-switcher-entry { display: flex; min-width: 0; flex-direction: column; }
 .host-switcher-entry small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
 .host-switcher-divider { height: 1px; margin: var(--space-2) var(--space-3); background: var(--surface-rim); }
-.host-switcher-link { color: var(--aurora-ink); font-size: var(--t-md); }
+.host-switcher-link { color: var(--text-secondary); font-size: var(--t-md); }
+.host-switcher-link:hover:not(:disabled),
+.host-switcher-link:focus-visible { color: var(--brass-ink); }
 
 /* ── 집이 펼친 호스트 목록 표면 ────────────────────────────────────────
    원격 콘솔을 보고 있을 때 목록은 집이 그려 이 위에 얹힌다. 판 자체는 위와 같은 문법을 쓰고,
@@ -990,16 +1038,23 @@
   min-width: 0;
   min-height: 40px;
   padding: 8px var(--space-3);
-  border: 1px solid color-mix(in oklch, var(--brass) 45%, transparent);
+  border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-xs);
   background: color-mix(in oklch, var(--ink-abyss) 70%, transparent);
-  color: var(--brass-bright);
+  color: var(--text-primary);
   font-family: var(--font-mono);
   font-size: var(--t-sm);
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
 }
 
 .add-host-field input::placeholder { color: var(--text-tertiary); }
-.add-host-field input:disabled { cursor: not-allowed; opacity: 0.6; }
+.add-host-field input:focus-visible {
+  border-color: var(--brass);
+  box-shadow: 0 0 0 3px var(--brass-glow);
+}
+.add-host-field input:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .add-host-actions { display: flex; justify-content: flex-end; gap: var(--space-2); }
 
@@ -1324,6 +1379,75 @@
 .remote-card-help { margin: 0; color: var(--text-secondary); font-size: var(--t-md); line-height: 1.55; }
 .remote-card-alert { margin: 0; color: var(--warn-ink); font-family: var(--font-mono); font-size: var(--t-sm); }
 
+/* 폼 선택 컨트롤은 브라우저 기본 외형을 빌리지 않는다 — 같은 Console 안에서 OS마다
+   checkbox/radio의 크기·stroke·focus가 갈리면 나머지 instrument 문법과 한 제품으로 읽히지 않는다. */
+.theme-liquid-glass input[type="checkbox"],
+.remote-acknowledgment input[type="checkbox"],
+.remote-monitoring input[type="checkbox"],
+.remote-port-control input[type="radio"] {
+  appearance: none;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1px solid var(--surface-rim-strong);
+  background: color-mix(in oklab, var(--ink-deep) 82%, transparent);
+  transition:
+    border-color var(--duration-fast) var(--ease-spring),
+    background var(--duration-fast) var(--ease-spring),
+    box-shadow var(--duration-fast) var(--ease-spring);
+}
+
+.theme-liquid-glass input[type="checkbox"],
+.remote-acknowledgment input[type="checkbox"],
+.remote-monitoring input[type="checkbox"] { border-radius: calc(var(--radius-xs) - 2px); }
+.remote-port-control input[type="radio"] { border-radius: var(--radius-pill); }
+
+.theme-liquid-glass input[type="checkbox"]:hover:not(:disabled):not(:checked),
+.remote-acknowledgment input[type="checkbox"]:hover:not(:disabled):not(:checked),
+.remote-monitoring input[type="checkbox"]:hover:not(:disabled):not(:checked),
+.remote-port-control input[type="radio"]:hover:not(:disabled):not(:checked) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
+.theme-liquid-glass input[type="checkbox"]:checked,
+.remote-acknowledgment input[type="checkbox"]:checked,
+.remote-monitoring input[type="checkbox"]:checked {
+  border-color: var(--brass);
+  background:
+    linear-gradient(135deg, transparent 45%, var(--text-on-brass) 45% 55%, transparent 55%) 2px 4px / 5px 8px no-repeat,
+    linear-gradient(45deg, transparent 38%, var(--text-on-brass) 38% 54%, transparent 54%) 6px 1px / 8px 11px no-repeat,
+    var(--brass);
+}
+
+.theme-liquid-glass input[type="checkbox"]:active:not(:disabled),
+.remote-acknowledgment input[type="checkbox"]:active:not(:disabled),
+.remote-monitoring input[type="checkbox"]:active:not(:disabled),
+.remote-port-control input[type="radio"]:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.remote-port-control input[type="radio"]:checked {
+  border-color: var(--brass);
+  background: radial-gradient(circle, var(--brass) 0 42%, transparent 46%);
+  box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ink-deep) 82%, transparent);
+}
+
+.theme-liquid-glass input:disabled,
+.remote-acknowledgment input:disabled,
+.remote-monitoring input:disabled,
+.remote-port-control input[type="radio"]:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+
+/* 강제 색상에서는 배경 이미지가 사라질 수 있다. 네이티브 외형으로 돌아가 checked 표시를
+   시스템 팔레트에 맡기되, Console의 16px 격자는 그대로 유지한다. */
+@media (forced-colors: active) {
+  .theme-liquid-glass input[type="checkbox"],
+  .remote-acknowledgment input[type="checkbox"],
+  .remote-monitoring input[type="checkbox"],
+  .remote-port-control input[type="radio"] { appearance: auto; }
+}
+
 /* 켜고 끄는 스위치는 상태 하나만 말한다 — 세그먼트 두 칸보다 이쪽이 시안의 문법이다. */
 .remote-switch {
   flex: none;
@@ -1345,9 +1469,11 @@
   transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
-.remote-switch.is-on { border-color: color-mix(in oklch, var(--brass) 60%, transparent); background: color-mix(in oklch, var(--brass) 22%, transparent); }
+.remote-switch:hover:not(:disabled):not(.is-on) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.remote-switch.is-on { border-color: var(--control-selected-rim); background: var(--control-selected-fill); }
 .remote-switch.is-on .remote-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
-.remote-switch:disabled { cursor: not-allowed; opacity: 0.5; }
+.remote-switch:active:not(:disabled) { transform: translateY(1px); }
+.remote-switch:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 /* 한 단으로 흐른다. 옆 칸에 세우면 그리드 행 높이를 따라 늘어나, 짧은 쪽이 제 legend에서 100px 넘게 떨어진다. */
 .remote-endpoint-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
@@ -1360,8 +1486,10 @@
 .remote-interface-presets { display: grid; grid-template-columns: repeat(auto-fit, minmax(196px, 1fr)); gap: var(--space-2); }
 .remote-interface-preset { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; padding: var(--space-2) var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); background: color-mix(in oklch, var(--ink-abyss) 32%, transparent); color: var(--text-secondary); text-align: left; }
 .remote-interface-preset code { color: var(--text-primary); font-family: var(--font-mono); font-size: var(--t-sm); overflow-wrap: anywhere; }
-.remote-interface-preset:hover, .remote-interface-preset.is-selected { border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); background: color-mix(in oklch, var(--brass) 10%, transparent); }
-.remote-interface-preset.is-selected { box-shadow: inset 3px 0 0 var(--brass); }
+.remote-interface-preset:hover:not(:disabled):not(.is-selected) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.remote-interface-preset.is-selected { border-color: var(--control-selected-rim); background: var(--control-selected-fill); box-shadow: inset 3px 0 0 var(--brass); }
+.remote-interface-preset:active:not(:disabled) { transform: translateY(1px); }
+.remote-interface-preset:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-field input, .remote-port-control input[type="number"] {
   min-width: 0;
   min-height: 36px;
@@ -1372,13 +1500,19 @@
   color: var(--text-primary);
   font-family: var(--font-mono);
 }
+.remote-field input:hover:not(:disabled):not([aria-invalid="true"]),
+.remote-port-control input[type="number"]:hover:not(:disabled):not([aria-invalid="true"]),
+.remote-link-field input:hover {
+  border-color: var(--control-hover-rim);
+}
+.remote-field input:focus-visible, .remote-port-control input[type="number"]:focus-visible, .remote-link-field input:focus-visible { border-color: var(--control-hover-rim); }
+.remote-field input:disabled, .remote-port-control input[type="number"]:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-field input[aria-invalid="true"], .remote-port-control input[aria-invalid="true"] { border-color: color-mix(in oklch, var(--coral) 55%, var(--surface-rim-strong)); }
 
 /* 내용 높이만 차지한다 — 이웃 칸을 따라 늘어나지 않으므로 legend와 컨트롤이 붙어 있다. */
 .remote-port-control { display: flex; flex-direction: column; gap: var(--space-2); align-self: start; margin: 0; padding: var(--space-3); border: 1px solid var(--surface-rim); border-radius: var(--radius-xs); }
 .remote-port-control legend { padding: 0 var(--space-1); color: var(--text-secondary); font-size: var(--t-sm); }
 .remote-port-control label { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: var(--t-sm); }
-.remote-port-control input[type="radio"], .remote-acknowledgment input { accent-color: var(--brass); }
 .remote-port-control input[type="number"] { width: 110px; }
 .remote-port-modes { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 .remote-port-value { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
@@ -1426,8 +1560,9 @@
 .remote-actions-note { min-width: 0; color: var(--text-secondary); font-size: var(--t-sm); }
 .remote-actions-buttons { display: flex; flex-wrap: wrap; gap: var(--space-2); }
 .remote-create.is-quiet { border-color: var(--surface-rim-strong); background: transparent; color: var(--text-primary); }
-.remote-create.is-quiet:hover:not(:disabled) { border-color: color-mix(in oklch, var(--brass) 55%, transparent); }
-.remote-create.is-danger { border-color: color-mix(in oklch, var(--coral) 55%, transparent); background: color-mix(in oklch, var(--coral) 12%, transparent); color: var(--coral-ink); }
+.remote-create.is-quiet:hover:not(:disabled) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.remote-create.is-danger { border-color: color-mix(in oklab, var(--coral) 55%, transparent); background: color-mix(in oklab, var(--coral) 12%, transparent); color: var(--coral-ink); }
+.remote-create.is-danger:hover:not(:disabled) { border-color: color-mix(in oklab, var(--coral) 72%, var(--surface-rim)); background: color-mix(in oklab, var(--coral) 18%, transparent); }
 
 .remote-fingerprint {
   overflow-wrap: anywhere;
@@ -1450,9 +1585,12 @@
   font-size: var(--t-sm);
 }
 
-.remote-create { border-color: color-mix(in oklch, var(--brass) 55%, transparent); background: color-mix(in oklch, var(--brass) 16%, transparent); color: var(--brass-bright); }
-.remote-rotate.is-armed, .remote-rotate:hover:not(:disabled) { border-color: color-mix(in oklch, var(--warn) 55%, transparent); background: var(--warn-glow); color: var(--warn-ink); }
-.remote-rotate:disabled, .remote-create:disabled { cursor: not-allowed; opacity: 0.55; }
+.remote-create { border-color: var(--control-selected-rim); background: var(--control-selected-fill); color: var(--brass-bright); }
+.remote-create:hover:not(:disabled):not(.is-quiet):not(.is-danger) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
+.remote-rotate.is-armed { border-color: color-mix(in oklch, var(--warn) 55%, transparent); background: var(--warn-glow); color: var(--warn-ink); }
+.remote-rotate:hover:not(:disabled):not(.is-armed) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
+.remote-rotate:active:not(:disabled), .remote-create:active:not(:disabled) { transform: translateY(1px); }
+.remote-rotate:disabled, .remote-create:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .remote-link-field { display: flex; gap: var(--space-2); }
 .remote-link-field input {
@@ -1478,6 +1616,15 @@
   font-family: var(--font-mono);
   font-size: var(--t-xs);
 }
+
+.remote-link-field button:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.remote-link-field button:active:not(:disabled) { transform: translateY(1px); }
+.remote-link-field button:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 /* 다른 콘솔 목록 — 고르는 것은 연결 방식이 아니라 콘솔이므로 각 줄이 하나의 호스트다. */
 .remote-hosts { display: flex; flex-direction: column; gap: var(--space-2); margin: 0; padding: 0; list-style: none; }
@@ -1508,7 +1655,9 @@
   font-size: var(--t-base);
 }
 
-.remote-host-name:focus { outline: 1px solid color-mix(in oklch, var(--brass) 55%, transparent); outline-offset: 3px; }
+.remote-host-name:hover:not(:disabled) { background: var(--control-hover-fill); }
+.remote-host-name:focus-visible { outline: 2px solid var(--control-focus-ring); outline-offset: 3px; }
+.remote-host-name:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 .remote-host-text small { color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-xs); }
 
 .remote-host-open {
@@ -1521,10 +1670,11 @@
   font-size: var(--t-xs);
 }
 
-.remote-host-open:disabled { cursor: not-allowed; opacity: 0.5; }
+.remote-host-open:hover:not(:disabled) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
+.remote-host-open:active:not(:disabled) { transform: translateY(1px); }
+.remote-host-open:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .remote-monitoring { display: flex; align-items: center; gap: var(--space-3); color: var(--text-secondary); font-size: var(--t-md); }
-.remote-monitoring input { accent-color: var(--brass); }
 
 .remote-table { width: 100%; border-collapse: collapse; font-size: var(--t-md); }
 .remote-table th {
@@ -1565,7 +1715,9 @@
   font-size: var(--t-sm);
 }
 
-.remote-revoke:disabled { cursor: not-allowed; opacity: 0.5; }
+.remote-revoke:hover:not(:disabled) { background: color-mix(in oklab, var(--coral) 10%, transparent); color: var(--coral); }
+.remote-revoke:active:not(:disabled) { transform: translateY(1px); }
+.remote-revoke:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 .remote-row-actions { display: flex; gap: var(--space-4); justify-content: flex-end; }
 
@@ -1581,7 +1733,9 @@
   font-size: var(--t-sm);
 }
 
-.remote-disconnect:disabled { cursor: not-allowed; opacity: 0.5; }
+.remote-disconnect:hover:not(:disabled) { background: var(--control-hover-fill); color: var(--text-primary); }
+.remote-disconnect:active:not(:disabled) { transform: translateY(1px); }
+.remote-disconnect:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 @media (prefers-reduced-motion: reduce) {
   .remote-switch, .remote-switch-knob { transition: none; }
@@ -1597,7 +1751,7 @@
 .typography-reset:disabled,
 .font-card:disabled {
   cursor: not-allowed;
-  opacity: 0.52;
+  opacity: var(--control-disabled-opacity);
 }
 
 /* Theme selection: Light|Dark mode switch. Light은 Whites(오트밀) 단일이라 카드가 없고,
@@ -1647,18 +1801,34 @@
 
 .theme-mode-seg button:disabled {
   cursor: not-allowed;
-  opacity: 0.52;
+  opacity: var(--control-disabled-opacity);
 }
 
-.theme-mode-seg button:hover:not(:disabled):not(.is-active) {
+.theme-mode-seg button:hover:not(:disabled):not(.is-active),
+.theme-mode-seg button:focus-visible:not(.is-active) {
   color: var(--text-primary);
+  background: var(--control-hover-fill);
 }
 
 .theme-mode-seg button.is-active {
+  position: relative;
   color: var(--text-primary);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent);
+  background: var(--control-selected-fill);
+  box-shadow: inset 0 0 0 1px var(--control-selected-rim);
 }
+
+.theme-mode-seg button.is-active::after {
+  position: absolute;
+  right: var(--space-2);
+  bottom: 0;
+  left: var(--space-2);
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+  content: "";
+}
+
+.theme-mode-seg button:active:not(:disabled) { transform: translateY(1px); }
 
 .theme-dark-tray {
   display: flex;
@@ -1718,10 +1888,7 @@
   user-select: none;
 }
 
-.theme-liquid-glass input {
-  accent-color: var(--brass);
-  margin-top: 3px;
-}
+.theme-liquid-glass input { margin-top: 3px; }
 
 .theme-liquid-glass-text {
   display: flex;
@@ -1760,16 +1927,17 @@
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.theme-card:hover:not(:disabled) {
+.theme-card:hover:not(:disabled):not(.is-active) {
   color: var(--text-primary);
-  border-color: color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
 }
 
 .theme-card.is-active {
   color: var(--text-primary);
-  border-color: color-mix(in oklch, var(--brass) 70%, transparent);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 42%, transparent), var(--shadow-soft);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  box-shadow: 0 0 0 1px var(--control-selected-rim), var(--shadow-soft);
 }
 
 .theme-card:active:not(:disabled) {
@@ -1827,9 +1995,13 @@
 }
 
 .typography-reset:hover:not(:disabled) {
-  border-color: color-mix(in oklch, var(--brass) 56%, var(--surface-rim));
-  background: color-mix(in oklch, var(--brass) 10%, transparent);
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
+}
+
+.typography-reset:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .global-settings-row.is-stack {
@@ -2140,14 +2312,25 @@
     background var(--duration-fast) var(--ease-spring);
 }
 
-.segmented-option:hover:not(.is-active) {
+.segmented-option:hover:not(:disabled):not(.is-active) {
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .segmented-option.is-active {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
+  box-shadow: inset 0 0 0 1px var(--control-selected-rim), inset 0 -2px 0 var(--brass);
+}
+
+.segmented-option:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.segmented-option:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
+  transform: none;
 }
 
 /* Kimi provider API key registration. The Terminal plugin owns behavior; the Console shell supplies shared settings visuals. */
@@ -2232,14 +2415,19 @@
   color: var(--text-tertiary);
 }
 
-.model-auth-input:focus {
-  outline: none;
-  border-color: color-mix(in oklch, var(--brass) 55%, var(--surface-rim));
+.model-auth-input:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+}
+
+.model-auth-input:focus-visible {
+  border-color: var(--control-hover-rim);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }
 
 .model-auth-input:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
 }
 
 .model-auth-actions {
@@ -2269,18 +2457,21 @@
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.model-auth-button:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+.model-auth-button:hover:not(:disabled):not(.is-primary) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .model-auth-button.is-primary {
-  border-color: color-mix(in oklch, var(--brass) 45%, var(--surface-rim));
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
 }
 
 .model-auth-button.is-primary:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 14%, transparent);
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
@@ -2290,7 +2481,7 @@
 
 .model-auth-button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
 }
 
 @media (max-width: 720px) {
@@ -2364,17 +2555,27 @@
   cursor: pointer;
 }
 
-.backend-api-core-toggle:hover,
-.backend-api-core-toggle:focus-visible,
-.backend-api-plugin-toggle:hover,
-.backend-api-plugin-toggle:focus-visible {
+.backend-api-core-toggle:hover:not(:disabled):not([aria-expanded="true"]),
+.backend-api-plugin-toggle:hover:not(:disabled):not([aria-expanded="true"]) {
+  background: var(--control-hover-fill);
+  color: var(--brass-bright);
+}
+
+.backend-api-core-toggle[aria-expanded="true"],
+.backend-api-plugin-toggle[aria-expanded="true"] {
+  background: var(--control-selected-fill);
   color: var(--brass-bright);
 }
 
 .backend-api-core-toggle:focus-visible,
 .backend-api-plugin-toggle:focus-visible {
-  outline: 1px solid var(--brass);
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: 5px;
+}
+
+.backend-api-core-toggle:active:not(:disabled),
+.backend-api-plugin-toggle:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .backend-api-core-group {
@@ -2543,25 +2744,25 @@
     transform var(--duration-fast) var(--ease-spring);
 }
 
-.settings-disclosure-toggle:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 8%, transparent);
+.settings-disclosure-toggle:hover:not(:disabled):not([aria-expanded="true"]) {
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
 .settings-disclosure-toggle[aria-expanded="true"] {
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--control-selected-fill);
   color: var(--brass-bright);
+  box-shadow: inset 0 -2px 0 var(--brass);
 }
 
 .settings-disclosure-toggle:active:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
   color: var(--text-primary);
   transform: translateY(1px);
 }
 
 .settings-disclosure-toggle:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
   transform: none;
 }
 
@@ -4951,8 +5152,8 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .operations-side-bar-axis-seg:focus-visible {
-  outline: 2px solid var(--aurora);
-  outline-offset: 1px;
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }
 
 .operations-side-bar-chips {
@@ -6433,27 +6634,28 @@ body[data-side-bar-animating="true"] .canvas-operation {
     background var(--duration-fast) var(--ease-spring);
 }
 
-/* 믹스는 oklab이다 — oklch는 hue를 극좌표 호로 보간하므로 brass(78)와 중립 rim(245)의 믹스가
-   엉뚱한 hue에 착지한다(실측: instrument·maritime 테두리 hue 144 초록, carbon 354 자홍,
-   채움 208~289 청록·보라). 위치 채널이 신호 채널 옆으로 새던 자리이고, 같은 함정을 채팅 좌표
-   칩에서 한 번 치렀다. 투명과 섞는 outline만 hue가 하나뿐이라 호가 생기지 않는다. */
-.canvas-operation-icon-button:hover,
-.canvas-operation-icon-button:focus-visible,
-.fleet-caption-action:hover:not(:disabled),
-.fleet-caption-action:focus-visible {
+/* 포인터 hover는 내부 rim+wash만, 키보드 focus는 전역 외곽 링을 보존한다. 둘을 한
+   선택자에 두면 마우스를 스치기만 해도 focus ring이 떠 입력 수단의 고유 신호가 사라진다. */
+.canvas-operation-icon-button:hover:not(.is-active),
+.fleet-caption-action:hover:not(:disabled):not([aria-pressed="true"]) {
   color: var(--brass-bright);
-  border-color: color-mix(in oklab, var(--brass) 45%, var(--surface-rim));
-  background: color-mix(in oklab, var(--brass) 12%, var(--surface-glass));
-  outline: 2px solid color-mix(in oklch, var(--brass) 48%, transparent);
-  outline-offset: 2px;
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+}
+
+.canvas-operation-icon-button:focus-visible:not(.is-active),
+.fleet-caption-action:focus-visible:not([aria-pressed="true"]) {
+  color: var(--brass-bright);
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
 }
 
 .canvas-operation-icon-button.is-active,
 .fleet-caption-action[aria-pressed="true"] {
   color: var(--brass-bright);
-  border-color: color-mix(in oklab, var(--brass) 60%, var(--surface-rim));
-  background: color-mix(in oklab, var(--brass) 22%, var(--surface-glass));
-  box-shadow: 0 0 0 1px color-mix(in oklch, var(--brass) 30%, transparent);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  box-shadow: inset 0 -2px 0 var(--brass);
 }
 
 .canvas-operation-icon-button svg,
@@ -11438,10 +11640,28 @@ body[data-codex-side="true"] .command-card {
   background: var(--aurora);
 }
 
-.fc-settings-toggle:focus-within .fc-settings-toggle__control,
-.fc-settings-field__control:focus {
-  outline: 2px solid color-mix(in oklch, var(--brass) 70%, transparent);
+.fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:disabled)) .fc-settings-toggle__control {
+  border-color: var(--control-hover-rim);
+}
+
+.fc-settings-toggle:has(.fc-settings-toggle__input:disabled) {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
+}
+
+.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible) .fc-settings-toggle__control,
+.fc-settings-field__control:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
+}
+
+.fc-settings-field__control:hover:not(:disabled):not(:focus-visible) {
+  border-color: var(--control-hover-rim);
+}
+
+.fc-settings-field__control:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
 }
 
 .fc-settings-select,
@@ -11515,6 +11735,22 @@ body[data-codex-side="true"] .command-card {
   .fc-settings-toggle__control::after {
     transition: none;
   }
+}
+
+@media (forced-colors: active) {
+  .fc-settings-toggle__input {
+    appearance: auto;
+    position: static;
+    width: 16px;
+    height: 16px;
+    clip: auto;
+  }
+
+  .fc-settings-toggle__control { display: none; }
+
+  .fc-select__trigger:disabled,
+  .fc-select__option[aria-disabled="true"],
+  .fc-settings-toggle:has(.fc-settings-toggle__input:disabled) { opacity: 1; }
 }
 
 @media (max-width: 720px) {
@@ -12158,10 +12394,11 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   box-shadow: inset 0 1px 0 color-mix(in oklch, var(--ink-pearl) 5%, transparent);
   transition: border-color var(--duration-fast) var(--ease-glide);
 }
-.fc-select__trigger:hover { border-color: var(--surface-rim-strong); }
-.fc-select__trigger:focus-visible { outline: none; border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); }
-.fc-select__trigger[aria-expanded="true"] { border-color: color-mix(in oklch, var(--brass) 58%, var(--surface-rim)); }
-.fc-select__trigger:disabled { opacity: 0.45; cursor: default; }
+.fc-select__trigger:hover:not(:disabled):not([aria-expanded="true"]) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.fc-select__trigger:focus-visible { border-color: var(--control-hover-rim); outline: 2px solid var(--control-focus-ring); outline-offset: 2px; }
+.fc-select__trigger[aria-expanded="true"] { border-color: var(--control-selected-rim); background: var(--control-selected-fill); }
+.fc-select__trigger:active:not(:disabled) { transform: translateY(1px); }
+.fc-select__trigger:disabled { opacity: var(--control-disabled-opacity); cursor: not-allowed; }
 .fc-select__caret { color: var(--text-tertiary); font-size: var(--t-xs); transition: transform var(--duration-fast) var(--ease-glide); }
 .fc-select__trigger[aria-expanded="true"] .fc-select__caret { transform: rotate(180deg); }
 .fc-select__popup {
@@ -12178,15 +12415,15 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .fc-select__popup[data-open="true"] { opacity: 1; transform: translateY(0); pointer-events: auto; }
 .fc-select__option {
   display: flex; align-items: center; justify-content: space-between; gap: var(--space-2);
-  padding: 8px 10px; border-radius: var(--radius-xs);
+  padding: 8px 10px; border: 1px solid transparent; border-radius: var(--radius-xs);
   color: var(--text-secondary); font-weight: var(--weight-medium); font-size: var(--t-md); line-height: 1.3; font-family: var(--font-body); cursor: pointer;
-  transition: background var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
+  transition: background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide), color var(--duration-fast) var(--ease-glide);
 }
-.fc-select__option[data-active="true"] { background: color-mix(in oklch, var(--brass) 12%, transparent); color: var(--text-primary); }
-.fc-select__option[aria-selected="true"] { color: var(--brass-bright); }
+.fc-select__option[data-active="true"]:not([aria-disabled="true"]):not([aria-selected="true"]) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); color: var(--text-primary); }
+.fc-select__option[aria-selected="true"] { border-color: var(--control-selected-rim); background: var(--control-selected-fill); color: var(--brass-bright); }
 .fc-select__option[aria-selected="true"]::after { content: "✓"; font-size: var(--t-xs); color: var(--brass-bright); }
-.fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: default; font-style: italic; }
-.fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; color: var(--text-tertiary); }
+.fc-select__option[aria-disabled="true"] { color: var(--text-tertiary); cursor: not-allowed; font-style: italic; opacity: var(--control-disabled-opacity); }
+.fc-select__option[aria-disabled="true"][data-active="true"] { background: transparent; border-color: transparent; color: var(--text-tertiary); }
 
 .fc-select--compact { min-width: 0; }
 /* compact 트리거는 칩 문법의 모노 티어를 쓴다 — 콘솔 본문 14px 옆에서 9px는 라벨이 아니라 흔적이 된다.

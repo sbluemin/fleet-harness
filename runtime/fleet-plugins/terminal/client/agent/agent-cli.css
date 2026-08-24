@@ -111,9 +111,19 @@
   font-family: var(--font-mono);
 }
 
-.agent-cli-path-input:focus {
-  border-color: var(--brass);
-  outline: 1px solid var(--brass);
+.agent-cli-path-input:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+}
+
+.agent-cli-path-input:focus-visible {
+  border-color: var(--control-hover-rim);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.agent-cli-path-input:disabled {
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
 }
 
 .agent-cli-path-actions {
@@ -134,19 +144,29 @@
   cursor: pointer;
 }
 
-.agent-cli-path-button:hover:not(:disabled),
-.agent-cli-path-button:focus-visible {
-  border-color: var(--brass);
+.agent-cli-path-button:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
+.agent-cli-path-button:focus-visible {
+  border-color: var(--control-hover-rim);
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
 .agent-cli-path-button.is-primary {
-  border-color: var(--brass);
+  border-color: var(--control-selected-rim);
+}
+
+.agent-cli-path-button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .agent-cli-path-button:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
 }
 
 .agent-cli-path-error {
@@ -163,7 +183,17 @@
 
 .agent-cli-searched-paths summary {
   width: fit-content;
+  border-radius: var(--radius-xs);
   cursor: pointer;
+}
+
+.agent-cli-searched-paths summary:hover {
+  color: var(--text-primary);
+}
+
+.agent-cli-searched-paths summary:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
 }
 
 .agent-cli-searched-paths ul {
@@ -386,14 +416,24 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
-.ai-gateway-priority-toggle:hover:not(:disabled) {
-  border-color: var(--surface-rim-strong);
+.ai-gateway-priority-toggle:hover:not(:disabled):not(.is-ranked) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-secondary);
 }
 
+.ai-gateway-priority-toggle:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.ai-gateway-priority-toggle:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
 .ai-gateway-priority-toggle:disabled {
-  cursor: default;
-  opacity: 0.6;
+  cursor: not-allowed;
+  opacity: var(--control-disabled-opacity);
 }
 
 .ai-gateway-priority-toggle.is-ranked {
@@ -470,20 +510,30 @@
     color var(--duration-fast) var(--ease-spring);
 }
 
-.ai-gateway-host-only:hover:not(:disabled) {
-  border-color: var(--surface-rim-strong);
+.ai-gateway-host-only:hover:not(:disabled):not(.is-on) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
+.ai-gateway-host-only:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
 .ai-gateway-host-only.is-on {
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
+}
+
+.ai-gateway-host-only:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .ai-gateway-host-only:disabled {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
 }
 
 /* 라벨 두 단어로는 "와이어에는 남고 로스터에서만 빠진다"를 읽을 수 없으므로, 한 줄 요약
@@ -532,7 +582,17 @@
 }
 
 .ai-gateway-remove:hover:not(:disabled) {
+  background: color-mix(in oklab, var(--coral) 10%, transparent);
   color: var(--coral);
+}
+
+.ai-gateway-remove:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
+.ai-gateway-remove:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 /* 강도 노출 편집 — 속성 칩과 같은 알약 안에서 사다리를 펼친 배지다. 강도는 이 카드에서
@@ -581,13 +641,23 @@
 }
 
 .ai-gateway-effort-level:hover:not(:disabled):not(.is-on) {
+  background: var(--control-hover-fill);
   color: var(--text-primary);
 }
 
+.ai-gateway-effort-level:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
 .ai-gateway-effort-level.is-on {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
-  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--brass) 38%, transparent);
+  box-shadow: inset 0 0 0 1px var(--control-selected-rim);
+}
+
+.ai-gateway-effort-level:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 /* 마지막 한 단계는 끌 수 없다. 켜진 채로 잠긴 상태이므로 흐리게 만들지 않는다 —
@@ -598,7 +668,7 @@
 
 .ai-gateway-effort-level:disabled:not(.is-on) {
   cursor: not-allowed;
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
 }
 
 .ai-gateway-composer {
@@ -635,13 +705,30 @@
   transition: background var(--duration-fast) var(--ease-spring);
 }
 
+.ai-gateway-axis-toggle:hover:not(:disabled):not(.is-on) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.ai-gateway-axis-toggle:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
 .ai-gateway-axis-toggle.is-on {
-  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
 }
 
 .ai-gateway-axis-toggle.is-on::before {
   background: var(--brass);
+}
+
+.ai-gateway-axis-toggle:active:not(:disabled),
+.ai-gateway-add-button:active:not(:disabled) {
+  transform: translateY(1px);
 }
 
 .ai-gateway-composer-note {
@@ -653,9 +740,9 @@
 .ai-gateway-add-button {
   margin-left: auto;
   padding: var(--space-2) var(--space-4);
-  border: 1px solid color-mix(in oklch, var(--brass) 40%, var(--surface-rim));
+  border: 1px solid var(--control-selected-rim);
   border-radius: var(--radius-xs);
-  background: color-mix(in oklch, var(--brass) 12%, transparent);
+  background: var(--control-selected-fill);
   color: var(--brass-ink);
   font-family: var(--font-mono);
   font-size: var(--t-xs);
@@ -665,10 +752,21 @@
   cursor: pointer;
 }
 
+.ai-gateway-add-button:hover:not(:disabled) {
+  border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
+  color: var(--text-primary);
+}
+
+.ai-gateway-add-button:focus-visible {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+}
+
 .ai-gateway-add-button:disabled,
 .ai-gateway-axis-toggle:disabled,
 .ai-gateway-remove:disabled {
-  opacity: 0.45;
+  opacity: var(--control-disabled-opacity);
   cursor: not-allowed;
 }
 
@@ -698,6 +796,12 @@
 
 .compact-timing-track.is-live {
   cursor: ew-resize;
+}
+
+.compact-timing-track:has(.compact-timing-sr:focus-visible) {
+  outline: 2px solid var(--control-focus-ring);
+  outline-offset: 2px;
+  border-radius: var(--radius-xs);
 }
 
 .compact-timing-bar {

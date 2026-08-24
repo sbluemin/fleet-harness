@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { Select, type SelectOption } from "@fleet-console/sdk/react/browser";
-import { SettingsSelect } from "@fleet-console/sdk/settings/browser";
+import { SettingsField, SettingsRow, SettingsSelect, SettingsToggle } from "@fleet-console/sdk/settings/browser";
 import { isSelectOwnedKeyEvent } from "../core/client/src/components/whatsnew-modal.js";
 
 let root: Root | null = null;
@@ -459,6 +459,54 @@ describe("SettingsSelect public contract", () => {
     const trigger = container.querySelector<HTMLButtonElement>(".fc-select__trigger");
     expect(trigger?.getAttribute("aria-label")).toBe("Select setting");
     expect(trigger?.disabled).toBe(true);
+  });
+});
+
+describe("Settings control public contract", () => {
+  it("keeps toggle semantics, labels, and disabled state on the native checkbox", () => {
+    const onChange = vi.fn<(next: boolean) => void>();
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(createElement(SettingsToggle, {
+        label: "Departure bell",
+        checked: true,
+        disabled: false,
+        onChange,
+      }));
+    });
+
+    const input = container.querySelector<HTMLInputElement>(".fc-settings-toggle__input");
+    expect(input?.type).toBe("checkbox");
+    expect(input?.checked).toBe(true);
+    expect(input?.disabled).toBe(false);
+    expect(input?.getAttribute("aria-label")).toBeNull();
+    expect(container.querySelector(".fc-settings-toggle__control")?.getAttribute("aria-hidden")).toBe("true");
+
+    act(() => input?.click());
+    expect(onChange).toHaveBeenCalledWith(false);
+  });
+
+  it("keeps row and field labels and hints associated with their groups", () => {
+    container = document.createElement("div");
+    document.body.appendChild(container);
+    root = createRoot(container);
+    act(() => {
+      root?.render(createElement("div", null,
+        createElement(SettingsRow, { label: "Roster", hint: "Choose admirals" }, createElement("span", null, "Control")),
+        createElement(SettingsField, { label: "Path", hint: "Absolute path" }, createElement("input", null)),
+      ));
+    });
+
+    for (const selector of [".fc-settings-row", ".fc-settings-field"]) {
+      const group = container.querySelector<HTMLElement>(selector);
+      const labelId = group?.getAttribute("aria-labelledby") ?? "";
+      const hintId = group?.getAttribute("aria-describedby") ?? "";
+      expect(group?.getAttribute("role")).toBe("group");
+      expect(document.getElementById(labelId)).not.toBeNull();
+      expect(document.getElementById(hintId)).not.toBeNull();
+    }
   });
 });
 
