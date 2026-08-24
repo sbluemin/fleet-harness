@@ -817,9 +817,76 @@
 .agent-chat-ask-settled.is-open .agent-chat-ask-settled-value {
   color: var(--coral-ink);
 }
-/* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다. */
+/* 끝난 턴의 과정 접힘 — 요약 줄이 곧 소요 시간이고, 펼치기 아이콘은 문구 오른쪽에 선다.
+   바로 뒤에 Answer가 서면 같은 줄이 완료 이음새가 된다: 과정의 결말과 확정 응답이 별개 라벨 두
+   줄로 끊기지 않고, 한 경계의 양끝으로 읽힌다. 과정 자체와 펼침 계약은 그대로 details가 진다. */
 .agent-chat-fold {
   margin-top: var(--space-2);
+}
+
+.agent-chat-fold.leads-to-answer > summary {
+  display: flex;
+  width: 100%;
+}
+
+/* 완료점은 상태 채널을 쓴다. 접힘 안의 도구 실패가 아니라 턴이 어떤 결말로 Answer에 닿았는지를
+   말한다. 성공=positive, 턴 실패=coral, 사용자 중지=중립이다. 위치·hover 채널인 brass는 쓰지 않는다. */
+.agent-chat-completion-node {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--positive);
+  box-shadow: 0 0 0 4px var(--positive-glow);
+}
+
+.agent-chat-completion-node.is-running {
+  background: var(--aurora);
+  box-shadow: 0 0 0 4px var(--aurora-glow);
+}
+
+.agent-chat-completion-node.is-error {
+  background: var(--coral);
+  box-shadow: 0 0 0 4px var(--coral-glow);
+}
+
+.agent-chat-completion-node.is-stopped {
+  background: var(--text-tertiary);
+  box-shadow: 0 0 0 4px color-mix(in oklch, var(--text-tertiary) 13%, transparent);
+}
+
+.agent-chat-completion-rule {
+  min-width: var(--space-4);
+  height: 1px;
+  flex: 1;
+  background: var(--hairline);
+}
+
+.agent-chat-completion-answer {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+/* 펼치면 과정이 이음새 안으로 들어온다. Answer 표식은 summary에 남아 과정을 건너뛰지 않고,
+   펼친 내용의 끝으로 내려가 실제 응답 바로 앞을 계속 가리킨다. */
+.agent-chat-completion-handoff {
+  display: none;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.agent-chat-fold.leads-to-answer[open] > summary > .agent-chat-completion-rule,
+.agent-chat-fold.leads-to-answer[open] > summary > .agent-chat-completion-answer {
+  display: none;
+}
+
+.agent-chat-fold.leads-to-answer[open] > .agent-chat-completion-handoff {
+  display: flex;
 }
 
 .agent-chat-fold > summary {
@@ -889,6 +956,12 @@
 /* Answer — 확정 응답의 전용 문법. 본문은 공유 마크다운 컴포넌트가 렌더한다. */
 .agent-chat-answer {
   margin-top: var(--space-3);
+}
+
+/* 과정 접힘이 완료 이음새를 지면 그 이음새가 이미 Answer의 시작을 말했다. 별도 kicker와 그 아래
+   여백을 다시 세우지 않고 본문을 경계 가까이 붙인다. 과정이 전혀 없는 답은 기존 kicker를 유지한다. */
+.agent-chat-answer.has-seam {
+  margin-top: var(--space-2);
 }
 
 .agent-chat-answer-kicker {

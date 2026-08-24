@@ -623,6 +623,7 @@ function ChatTurn({
   const contextGrew = turn.contextBefore !== undefined && nextContextBefore !== undefined
     ? nextContextBefore - turn.contextBefore
     : undefined;
+  const hasSettledWork = !working && (view.ledger.length > 0 || view.changes.length > 0);
   return (
     <>
       {turn.dispatch ? (
@@ -667,7 +668,7 @@ function ChatTurn({
                     && !view.awaiting}
                 />
               </>
-            ) : view.ledger.length > 0 || view.changes.length > 0 ? (
+            ) : hasSettledWork ? (
               <WorkFold
                 durationMs={turn.durationMs}
                 running={stillRunning}
@@ -675,6 +676,7 @@ function ChatTurn({
                 stopped={turn.state === "stopped"}
                 contextGrew={contextGrew}
                 language={language}
+                leadsToAnswer={view.answer !== null}
               >
                 <ChangeStrip changes={view.changes} language={language} />
                 <Ledger operationId={operationId} items={view.ledger} language={language} jobsByToolUse={jobsByToolUse} onOpenJob={onOpenJob} onAnswer={onAnswer} />
@@ -691,8 +693,10 @@ function ChatTurn({
               />
             ) : null}
             {!working && view.answer !== null ? (
-              <div className="agent-chat-answer">
-                <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>
+              <div className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}>
+                {hasSettledWork
+                  ? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>
+                  : <div className="agent-chat-answer-kicker">{t("terminal.chat.answerLabel")}</div>}
                 <StreamedMarkdown
                   className="agent-chat-answer-body markdown-body"
                   text={view.answer}
@@ -1380,6 +1384,7 @@ function WorkFold({
   stopped,
   contextGrew,
   language,
+  leadsToAnswer,
   children,
 }: {
   readonly durationMs: number | undefined;
@@ -1392,6 +1397,8 @@ function WorkFold({
   /** 이 턴이 문맥 창에 더한 토큰. 앞 턴의 좌표가 없으면 undefined이고, 그때는 서지 않는다. */
   readonly contextGrew: number | undefined;
   readonly language: "en" | "ko";
+  /** 확정 응답이 바로 뒤에 서는가 — 그때만 접힘과 Answer를 한 완료 경계로 잇는다. */
+  readonly leadsToAnswer: boolean;
   readonly children: React.ReactNode;
 }) {
   const t = getT(language);
@@ -1399,8 +1406,11 @@ function WorkFold({
     ? t("terminal.chat.workedFor", { duration: formatDuration(durationMs) })
     : t("terminal.chat.workedLabel");
   return (
-    <details className="agent-chat-fold" {...(running > 0 ? { open: true } : {})}>
-      <summary aria-label={t("terminal.chat.foldAria")}>
+    <details className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`} {...(running > 0 ? { open: true } : {})}>
+      <summary>
+        {leadsToAnswer ? (
+          <span className={`agent-chat-completion-node${running > 0 ? " is-running" : error ? " is-error" : stopped ? " is-stopped" : ""}`} aria-hidden="true" />
+        ) : null}
         <span className="agent-chat-fold-label">{label}</span>
         {running > 0 ? <span className="agent-chat-fold-running">{t("terminal.chat.foldRunning", { count: running })}</span> : null}
         {stopped ? <span className="agent-chat-fold-stopped">{t("terminal.chat.foldTurnStopped")}</span> : null}
@@ -1413,8 +1423,20 @@ function WorkFold({
           </span>
         ) : null}
         <span className="agent-chat-fold-chev" aria-hidden="true">⌄</span>
+        {leadsToAnswer ? (
+          <>
+            <span className="agent-chat-completion-rule" aria-hidden="true" />
+            <span className="agent-chat-completion-answer" aria-hidden="true">{t("terminal.chat.answerLabel")}</span>
+          </>
+        ) : null}
       </summary>
       <div className="agent-chat-fold-body">{children}</div>
+      {leadsToAnswer ? (
+        <div className="agent-chat-completion-handoff" aria-hidden="true">
+          <span className="agent-chat-completion-rule" />
+          <span className="agent-chat-completion-answer">{t("terminal.chat.answerLabel")}</span>
+        </div>
+      ) : null}
     </details>
   );
 }
