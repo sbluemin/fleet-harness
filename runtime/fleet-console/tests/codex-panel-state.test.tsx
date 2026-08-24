@@ -145,6 +145,29 @@ describe("Codex rail panel in-memory state", () => {
     expect(panelMocks.closeCodexReader).toHaveBeenCalledOnce();
     expect(panelMocks.setNavigatorTheater).toHaveBeenLastCalledWith("00000000000b");
   });
+
+  it("resynchronizes the collapsed outline spine from the relocated TOC after expanded view", async () => {
+    // 실제 relocate처럼 mountReaderInto가 TOC 슬롯을 현재 활성 표식으로 채운다.
+    let activeHeading = "Goals";
+    panelMocks.mountReaderInto.mockImplementation((...args: unknown[]) => {
+      const toc = args[1] as HTMLElement;
+      toc.innerHTML = `<a class="ti active" aria-current="location">${activeHeading}</a>`;
+    });
+    panelMocks.consoleState.codexReader = { kind: "entry", entryId: "entry-a" } as never;
+    await renderPanel("theater-a");
+    expect(container.querySelector(".codex-doc-outline-current")?.textContent).toBe("Goals");
+
+    // 덱(확대) 동안 다른 섹션/엔트리로 이동해 TOC 활성 표식이 바뀌었다.
+    panelMocks.consoleState.codexReaderExpanded = true;
+    await renderPanel("theater-a");
+    expect(container.querySelector(".codex-doc-outline-current")).toBeNull();
+    activeHeading = "Problem";
+
+    // 접기 복귀 시 리스너 재부착만으로는 낡은 "Goals"가 남는다 — 재배치된 TOC에서 재동기화되어야 한다.
+    panelMocks.consoleState.codexReaderExpanded = false;
+    await renderPanel("theater-a");
+    expect(container.querySelector(".codex-doc-outline-current")?.textContent).toBe("Problem");
+  });
 });
 
 async function renderPanel(theaterId: string): Promise<void> {

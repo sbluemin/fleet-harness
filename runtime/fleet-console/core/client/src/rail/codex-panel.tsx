@@ -199,8 +199,14 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       setActiveSection(detail?.text ?? "");
     };
     outline.addEventListener("codex-toc-active", onActive);
+    // 덱(확대) 동안의 활성 전환 이벤트는 이 리스너 밖에서 지나간다 — 재부착 시점에
+    // 재배치된 TOC의 활성 표식에서 상태를 다시 읽어 낡은 섹션명이 남지 않게 한다.
+    // (리더 마운트 effect가 먼저 선언되어 TOC 재배치가 이 시점엔 끝나 있다.)
+    const active = outline.querySelector<HTMLElement>('.codex-doc-toc-inline [aria-current="location"]');
+    setActiveSection(active?.textContent ?? "");
     return () => outline.removeEventListener("codex-toc-active", onActive);
-  }, [hasReader, expanded]);
+    // 아웃라인이 (재)마운트되는 모든 전이에서 다시 걸려야 한다 — 리더 마운트 effect와 같은 의존성.
+  }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey]);
 
   // 로케일 변경 시 imperative DOM 문구를 갱신한다(문서·스크롤 보존).
   useEffect(() => {
