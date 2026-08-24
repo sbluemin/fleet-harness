@@ -31,7 +31,7 @@ describe("desktop package boundary", () => {
     expect(html).not.toMatch(/<(script|button|a|form|input)\b|contenteditable|tabindex/i);
     expect(html).not.toMatch(/https?:|runtime\/fleet-console/i);
     expect(css).toContain("--brass:");
-    expect(css).toContain("--aurora:");
+    expect(css).toContain("--positive:");
     expect(css).toContain("--coral:");
     expect(css).toContain("--chrome-band-height");
     expect(css).not.toMatch(/@import|url\(/i);

@@ -78,9 +78,9 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
 .update-curtain {
   position: fixed;
   inset: 0;
-  /* 이 콘솔이 지금 사라지는 중이라는 것보다 급한 화면은 없다 — 온보딩 투어(120)와 모드
+  /* 이 콘솔이 지금 사라지는 중이라는 것보다 급한 화면은 없다 — 온보딩 투어(--z-tour)와 모드
      커튼까지 덮는다. 그 위로 무언가를 누를 수 있게 두면, 곧 없어질 콘솔로 손을 부른다. */
-  z-index: 130;
+  z-index: var(--z-teardown);
   display: flex;
   align-items: center;
   justify-content: center;

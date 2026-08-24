@@ -298,6 +298,17 @@
 
   --chrome-band-height: 44px;
 
+  /* 전면 오버레이 층 사다리 — 값이 아니라 순서가 계약이다: 공지·모달(overlay) < 라이트박스 <
+     모드 커튼 < 온보딩 투어 < teardown(사라지는 콘솔보다 급한 화면은 없다). 번들이 달라도
+     같은 사다리를 소비해야 임의의 큰 수가 teardown 위로 올라서는 역전이 재발하지 않는다.
+     국소 스태킹(패널 내부 0~95)과 스코프 토큰(--z-rail·--z-select-popover 등)은 이 사다리
+     밖의 자기 계약이고, 코덱스 리딩 시트의 극단값은 별도 독트린 예외다. */
+  --z-overlay: 100;
+  --z-lightbox: 104;
+  --z-curtain: 110;
+  --z-tour: 120;
+  --z-teardown: 130;
+
   --ease-spring: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-glide: cubic-bezier(0.4, 0.14, 0.2, 1);
   --duration-fast: 140ms;

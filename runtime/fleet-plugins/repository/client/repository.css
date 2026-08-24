@@ -60,7 +60,7 @@
   width: 4px;
   cursor: col-resize;
   background: var(--surface-rim);
-  transition: background 140ms;
+  transition: background var(--duration-fast);
 }
 
 .repository-divider:hover {
@@ -104,7 +104,7 @@
   font-size: var(--t-sm);
   padding: 3px 8px;
   outline: none;
-  transition: border-color 140ms;
+  transition: border-color var(--duration-fast);
 }
 
 .repository-filter-input:focus,
@@ -169,8 +169,8 @@
   border: none;
   cursor: pointer;
   color: var(--text-tertiary);
-  border-radius: 6px;
-  transition: color 0.14s, background 0.14s;
+  border-radius: var(--radius-xs);
+  transition: color var(--duration-fast), background var(--duration-fast);
 }
 
 .repository-toggle-btn:hover {
@@ -709,7 +709,7 @@
   width: 4px;
   cursor: col-resize;
   background: var(--surface-rim);
-  transition: background 140ms;
+  transition: background var(--duration-fast);
 }
 
 .history-divider:hover {

@@ -667,7 +667,8 @@ code.hljs {
 .diagram-lightbox {
   position: fixed;
   inset: 0;
-  z-index: 1200;
+  /* 오버레이 사다리 소비 — 임의 1200은 커튼·투어·teardown 위로 올라서는 역전이었다. */
+  z-index: var(--z-lightbox);
   display: grid;
   place-items: center;
   width: 100vw;

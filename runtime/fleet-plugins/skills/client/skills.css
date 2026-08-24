@@ -524,7 +524,8 @@
   inset: 0;
   justify-content: center;
   position: fixed;
-  z-index: 200;
+  /* 오버레이 사다리 소비 — 임의 200은 teardown(--z-teardown) 위로 올라서는 역전이었다. */
+  z-index: var(--z-overlay);
 }
 
 .skills-overlay-dialog {

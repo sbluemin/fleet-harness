@@ -2780,7 +2780,7 @@
 /* War Room의 메뉴는 이 모드의 층 위에 서야 한다 — 덱(80)과 레일(90)이 같은 스태킹 문맥에서 위에
    있으면 메뉴가 보여도 항목의 클릭을 덱 카드가 먼저 받는다. Cruise의 30은 그대로 둔다. */
 .operation-launch-control--triage {
-  z-index: 100;
+  z-index: var(--z-overlay);
 }
 
 .workspace-add-button {
@@ -3051,7 +3051,7 @@
 .canvas-mode-curtain {
   position: absolute;
   inset: 0;
-  z-index: 110;
+  z-index: var(--z-curtain);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -8835,6 +8835,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   align-content: center;
   gap: var(--space-3);
   min-height: calc(100vh - 140px);
+  min-height: calc(100dvh - 140px);
   padding: var(--space-10);
   color: var(--text-tertiary);
 }
@@ -10460,6 +10461,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 
   .commissioning-card {
     max-height: calc(100vh - (var(--space-3) * 2));
+    max-height: calc(100dvh - (var(--space-3) * 2));
     padding: var(--space-4);
   }
 
@@ -11544,6 +11546,7 @@ body[data-codex-side="true"] .command-card {
   .whatsnew-card {
     width: 100%;
     max-height: calc(100vh - 24px);
+    max-height: calc(100dvh - 24px);
     border-radius: var(--radius-md);
   }
 
@@ -12122,7 +12125,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .command-band-github-version { margin-left: auto; color: var(--text-tertiary); font-family: var(--font-mono); font-size: var(--t-2xs); white-space: nowrap; }
 
 .keyboard-shortcuts-scrim { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: color-mix(in oklch, var(--ink-abyss) 64%, transparent); }
-.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); outline: none; }
+.keyboard-shortcuts-dialog { width: min(520px, calc(100vw - 48px)); max-height: min(680px, calc(100vh - 64px)); max-height: min(680px, calc(100dvh - 64px)); overflow: auto; padding: 12px; border: 1px solid var(--surface-rim-strong); border-radius: var(--radius-md); background: linear-gradient(var(--glass-tint-deep), var(--glass-tint-deep)), var(--glass-underlay); -webkit-backdrop-filter: var(--glass-backdrop-strong); backdrop-filter: var(--glass-backdrop-strong); box-shadow: var(--shadow-floating); outline: none; }
 .keyboard-shortcuts-dialog-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 4px 10px; color: var(--text-primary); }
 .keyboard-shortcuts-dialog-head button { width: 24px; height: 24px; border-radius: var(--radius-xs); color: var(--text-tertiary); }
 .keyboard-shortcuts-dialog-head button:hover { background: var(--surface-glass); color: var(--text-primary); }
@@ -12222,7 +12225,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .feature-tour-layer {
   position: fixed;
   inset: 0;
-  z-index: 120;
+  z-index: var(--z-tour);
   pointer-events: none;
 }
 
@@ -13770,7 +13773,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
 .control-reclaimed-notice {
   position: fixed;
   inset: 0;
-  z-index: 100;
+  z-index: var(--z-overlay);
   display: grid;
   place-items: center;
   padding: clamp(var(--space-4), 5vw, var(--space-8));
