@@ -1595,10 +1595,10 @@ describe("Instrument core design contract", () => {
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-sidebar-toggle\"");
     expect(commandBand).toContain("{panelTogglesVisible ? <button type=\"button\" className=\"command-band-button command-band-rail-toggle\"");
     expect(commandBand).toContain(`      </div>
-      {operationsViewVisible ? <div ref={mapControlsRef} className={\`command-band-map-controls\${sideBar.collapsed ? " is-docked" : ""}\`}>`);
-    // 접힘 도킹 구분선은 맵 컨트롤의 첫 플로우 자식이다 — 도킹 상태에서만 display로 나타나
-    // 좌측 컨트롤군과 클러스터를 formation-divider 문법의 hairline으로 잇는다.
-    expect(commandBand).toContain('<span className="command-band-dock-divider" aria-hidden="true" />');
+      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">`);
+    // 접힘 상태도 펼침 상태와 같은 단일 간격으로 잇는다. 별도 구분선과 캡 표면은 사라진
+    // 사이드바 경계를 다시 만들어 Command Band를 두 판처럼 보이게 하므로 두지 않는다.
+    expect(commandBand).not.toContain("command-band-dock-divider");
     expect(commandBand).toContain('aria-label={t("chrome.commandBand.resetCanvasView")}');
     expect(commandBand).toContain("<ResetViewIcon />");
     expect(commandBand).toContain("onClick={() => animateViewportTo({ x: 0, y: 0, zoom: 1 })}");
@@ -1658,8 +1658,7 @@ describe("Instrument core design contract", () => {
     // 글라이드는 접힘/펼침 앵커 전환 전용 — 드래그 리사이즈는 :has 게이트로 즉시 추종을 유지한다.
     expect(layout).toContain("transition: left 200ms ease;");
     expect(layout).toContain('body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }');
-    expect(layout).toContain(".command-band-dock-divider {");
-    expect(layout).toContain(".command-band-map-controls.is-docked .command-band-dock-divider {");
+    expect(layout).not.toContain("command-band-dock-divider");
     expect(layout).not.toContain(".command-band-mode-switch {\n  position: absolute;");
     // 구 문법(모드 전용 도구를 밴드에 상시 노출)의 잔재는 남기지 않는다.
     expect(layout).not.toContain(".command-band-formation-group {");
@@ -1728,6 +1727,8 @@ describe("Instrument core design contract", () => {
     const commandBandLeftBlock = layout.match(/\.command-band-left \{[^}]*\}/)?.[0] ?? "";
     expect(commandBandLeftBlock).toContain("border-right: 1px solid var(--surface-rim);");
     expect(layout).toMatch(/\.command-band-left::before \{[^}]*background: var\(--glass-tint-chrome\);/);
+    // 아래 사이드바가 없는 utility route는 좌측 chrome cap을 band에 합쳐 한 면으로 읽힌다.
+    expect(layout).toMatch(/\.command-band\.is-utility \.command-band-left::before \{[^}]*background: var\(--glass-tint-band\);/);
     // 사이드바도 같은 크롬 표면을 소비해야 캡과 한 열로 읽힌다 — glass 회귀를 여기서 잡는다.
     const sideBarBlock = components.match(/^\.operations-side-bar \{[^}]*\}/m)?.[0] ?? "";
     expect(components).toMatch(/\.operations-side-bar::before \{[^}]*background: var\(--glass-tint-chrome\);/);
@@ -1738,7 +1739,7 @@ describe("Instrument core design contract", () => {
     expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--glass-tint-panel-face);");
+    expect(titlebarBlock).toContain("background: var(--glass-tint-caption);");
     expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
@@ -1768,7 +1769,8 @@ describe("Instrument core design contract", () => {
     expect(layout).toContain(".command-band.is-fullscreen {");
     // 접거나 풀스크린이면 상단 캡이 없으므로 부유 카드 문법이 그대로 남는다.
     expect(components).toContain("border-radius: 0 var(--radius-md) 0 0;");
-    expect(layout).toContain(".command-band-left.is-collapsed {");
+    expect(layout).toMatch(/\.command-band-left\.is-collapsed \{[^}]*box-shadow: none;/);
+    expect(layout).toMatch(/\.command-band-left\.is-collapsed::before \{[^}]*display: none;/);
     expect(components).not.toContain(".float-handle");
     expect(components).not.toContain("focus-mode-reveal");
     expect(rail).toContain(".right-rail.is-closed");
@@ -1853,11 +1855,11 @@ describe("Instrument core design contract", () => {
     expect(navigatorScrollBlock).toContain("overflow-y: auto;");
   });
 
-  it("locks Command Band coordinate invariance to tint-only state changes", () => {
+  it("locks Command Band coordinate invariance to paint-only state changes", () => {
     const layout = source("styles/layout.css");
     const components = source("styles/components.css");
     const rail = source("styles/rail.css");
-    // .command-band-left.is-collapsed 블록은 톤 전환(배경·경계색)만 가진다 —
+    // .command-band-left.is-collapsed 블록은 페인트 전환(배경·경계·그림자)만 가진다 —
     // 위치·크기·여백 속성이 들어오는 순간 좌표 불변 계약이 깨진다.
     const collapsedBlocks = layout.match(/^\.command-band-left\.is-collapsed \{[^}]*\}/gm) ?? [];
     expect(collapsedBlocks).toHaveLength(1);
@@ -1869,8 +1871,10 @@ describe("Instrument core design contract", () => {
       .filter((line) => line.length > 0);
     expect(collapsedDeclarations.length).toBeGreaterThan(0);
     for (const declaration of collapsedDeclarations) {
-      expect(declaration).toMatch(/^(?:background|border-color):/);
+      expect(declaration).toMatch(/^(?:background|border-color|box-shadow):/);
     }
+    const collapsedBeforeBlock = layout.match(/^\.command-band-left\.is-collapsed::before \{[^}]*\}/m)?.[0] ?? "";
+    expect(collapsedBeforeBlock).toContain("display: none;");
     // 어떤 상태 셀렉터도 밴드 버튼의 기하를 조건부로 겨냥하지 못한다.
     const statefulBandButtonRule =
       /(?:is-closed|is-collapsed|data-sidebar|data-rail)[^{]*\.command-band-(?:button|sidebar-toggle|search|rail-toggle)|\.command-band-(?:button|sidebar-toggle|search|rail-toggle)[^{]*(?:is-closed|is-collapsed)/;
@@ -1884,7 +1888,6 @@ describe("Instrument core design contract", () => {
     expect(reducedMotionBlock).toContain(".command-band-map-controls,");
     expect(reducedMotionBlock).toContain(".command-band-left {");
     expect(reducedMotionBlock).toContain("transition: none !important;");
-    expect(reducedMotionBlock).toContain(".command-band-dock-divider { animation: none !important; }");
   });
 
   it("keeps the Instrument base tokens and selector while blocking legacy palette escapes", () => {
@@ -2646,7 +2649,7 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face))");
+    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption))");
     expect(components).not.toContain("--surface-window");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
@@ -3491,7 +3494,7 @@ describe("War Room deck panel grammar", () => {
     expect(components).toContain(".canvas-triage-deck-pick:focus-visible {");
     // 겨눈 카드의 캡션 워시는 포커스 패널과 같은 한 값이다 — 새 값을 만들지 않는다.
     const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));");
+    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));");
     expect(wash).toContain("background-clip: padding-box;");
   });
 

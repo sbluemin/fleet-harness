@@ -550,8 +550,7 @@ export function CommandBand({ operationsViewVisible: requestedOperationsViewVisi
           <SearchIcon />
         </button>
       </div>
-      {operationsViewVisible ? <div ref={mapControlsRef} className={`command-band-map-controls${sideBar.collapsed ? " is-docked" : ""}`}>
-        <span className="command-band-dock-divider" aria-hidden="true" />
+      {operationsViewVisible ? <div ref={mapControlsRef} className="command-band-map-controls">
         <div className="command-band-mode-switch" role="group" aria-label={t("chrome.commandBand.canvasMode")}>
           {CANVAS_MODES.map((mode) => (
             <button
