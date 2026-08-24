@@ -2922,7 +2922,7 @@
 
 .operations-canvas.is-formation-view {
   background:
-    radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%),
+    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%),
     var(--canvas-abyss);
   cursor: default;
 }
@@ -2946,7 +2946,7 @@
 
 .operations-canvas-sea {
   background:
-    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-sea-core) 82%, transparent), transparent 38%),
+    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-ambience) 82%, transparent), transparent 38%),
     radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) 7%, transparent), transparent 34%),
     radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) 5%, transparent), transparent 36%),
     linear-gradient(145deg, var(--canvas-sea-near), var(--canvas-sea-mid) 58%, var(--canvas-sea-far));
@@ -3701,9 +3701,7 @@
    .canvas-operation.is-active > .canvas-operation-titlebar와 같은 한 값이다. */
 .canvas-triage-deck-cell:hover .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
 .canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
-  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
-  background-clip: padding-box;
+  --caption-fill: color-mix(in oklab, var(--brass) 10%, var(--caption-base));
 }
 
 /* 지도 모드의 Quick-Look — 은닉된 밴드 안의 칸을 판 위로 끌어올려 점 옆에 세운다. 좌표는
@@ -3938,12 +3936,11 @@
 }
 
 /* 순정 셸 패널 — Operation과 구별되도록 띠바에 아우로라(살아있는 것) 톤의 옅은 강조를 준다.
-   포커스·정체성 워시와 같은 문법이다: 패널 면 위에 얹는 틴트이지 다른 면이 아니므로
-   베이스는 반드시 --surface-panel이다(반투명 잉크 티어를 깔면 셸 패널만 이음새가 되살아난다).
-   background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
+   포커스·정체성 워시와 같은 문법이다: 캡션 면 위에 얹는 틴트이지 다른 면이 아니므로
+   베이스는 반드시 그 캡션이 앉은 면(--caption-base)이다 — 반투명 잉크 티어를 깔면 셸 패널만
+   이음새가 되살아난다. 채움만 바꾸고 배경 목록·clip·광원 층은 구조 규칙이 그대로 소유한다. */
 .canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, var(--glass-tint-panel-face));
-  background-clip: padding-box;
+  --caption-fill: color-mix(in oklch, var(--aurora) 9%, var(--caption-base));
 }
 
 .canvas-context-menu {
@@ -4362,9 +4359,16 @@
   border: 1px solid var(--surface-rim);
   /* 상단 모서리는 캡션이 잇는다 — 본문이 따로 둥글면 두 개의 창처럼 읽힌다. */
   border-radius: 0 0 var(--radius-md) var(--radius-md);
-  /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 캡션·본문 팬은 panel-face(게이트
-     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. xterm 필드만 원 토큰의 불투명을 지킨다. */
-  background: var(--glass-tint-panel);
+  /* 패널의 유일한 면 — 루트가 panel 유리 틴트를 칠하고, 박스 안의 본문 팬은 panel-face(게이트
+     열림 시 transparent)를 칠해 유리 한 장으로 읽힌다. 틴트 아래의 pane-light는 창 위쪽에 놓인
+     광원 한 겹이다: 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없으므로,
+     재질은 명도가 아니라 이 기울기가 말한다. 게이트가 닫히면 pane-light는 none, 틴트는 불투명
+     --surface-panel이라 목록 전체가 오늘의 한 겹으로 축약된다. */
+  --pane-light-origin: -12px;
+  background:
+    linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),
+    radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),
+    var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-panel);
   backdrop-filter: var(--glass-backdrop-panel);
   box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
@@ -4628,7 +4632,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-width: 0;
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: var(--glass-tint-panel-face);
   background-clip: padding-box;
   color: var(--text-tertiary);
   cursor: default;
@@ -5899,7 +5902,12 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   overflow: visible;
-  background: var(--glass-tint-panel-face);
+  /* 캡션 채움은 두 단계다 — base는 이 캡션이 어느 면에 앉아 있는지(루트 유리 안/밖)를,
+     fill은 그 위에 상태·정체가 얹는 워시를 말한다. 워시 규칙은 fill만 바꾸고 background는
+     건드리지 않는다 — 배경 목록을 규칙마다 다시 적으면 clip과 광원 층이 매번 새로 리셋된다. */
+  --caption-base: var(--glass-tint-panel-face);
+  --caption-fill: var(--caption-base);
+  background: var(--caption-fill);
   background-clip: padding-box;
   cursor: grab;
   touch-action: none;
@@ -5918,6 +5926,37 @@ body[data-side-bar-animating="true"] .canvas-operation {
 .canvas-operation:has(> .canvas-operation-titlebar) {
   border-top-width: 0;
   border-top-style: none;
+}
+
+/* 떠 있는 캡션(Cruise·Tactical·War Room·최대화)은 top:-32px로 루트 박스 **밖**에 선다 — 루트의
+   유리도 backdrop도 거기까지 오지 않으므로, 게이트가 panel-face를 transparent로 바꾸는 순간
+   캡션 뒤에는 아무 층도 남지 않았다(실측: 캡션이 캔버스와 0.1~1.1 L 차 = 무도장). 그래서 이
+   캡션만 루트와 같은 유리 한 겹을 자기가 든다. 흐름 안으로 들어오는 덱 타일 캡션과 본문 위로
+   접히는 상단 캡션(is-top-edge)은 루트 박스 안이라 그대로 루트 유리를 받는다 — 여기서 자기
+   틴트를 들면 이중 알파가 된다.
+   상단 하이라이트도 함께 옮긴다: 창의 꼭대기는 이 캡션이고, 루트에 남겨 두면 하이라이트가
+   캡션·본문 이음새(창 한가운데)에 그어진다(실측 y=95, L21.9). */
+.canvas-operation:not(.is-deck-tile):not(.is-top-edge) > .canvas-operation-titlebar,
+.canvas-operation > .canvas-companion-caption {
+  --caption-base: var(--glass-tint-panel);
+  --caption-fill: var(--caption-base);
+  background:
+    linear-gradient(var(--caption-fill), var(--caption-fill)),
+    radial-gradient(150% 420px at 50% -12px, var(--glass-pane-light) 0%, transparent 62%),
+    var(--glass-underlay);
+  background-clip: padding-box;
+  -webkit-backdrop-filter: var(--glass-backdrop-panel);
+  backdrop-filter: var(--glass-backdrop-panel);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
+}
+
+.canvas-operation:not(.is-deck-tile):not(.is-top-edge):has(> .canvas-operation-titlebar),
+.canvas-operation:has(> .canvas-companion-caption) {
+  /* 광원 원점을 캡션 높이(32px)만큼 위로 민다 — 캡션과 본문은 서로 다른 박스지만 같은 절대 좌표의
+     광원 한 줄기를 나눠 샘플링해야 한 장으로 이어진다. 각자 자기 박스 기준으로 그리면 캡션에서
+     한 번, 본문에서 다시 한 번 밝아져 이음새에 어두운 띠가 생긴다. */
+  --pane-light-origin: -44px;
+  box-shadow: var(--shadow-soft-drop);
 }
 
 /* 덱 타일만 그 면제에서 빠진다 — 카드뷰 캡션은 흐름 안으로 들어오며 자기 보더를 내려놓으므로
@@ -5939,9 +5978,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    워시는 캡션만 진다. 채팅·터미널 본문은 --surface-panel에 남아, 포커스가 로그 전체를
    다른 면으로 다시 칠하지 않는다. */
 .canvas-operation.is-active > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
-  /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
-  background-clip: padding-box;
+  --caption-fill: color-mix(in oklab, var(--brass) 10%, var(--caption-base));
 }
 
 .canvas-operation.is-active > .canvas-operation-titlebar .canvas-operation-identity-name {
@@ -6746,8 +6783,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
   overflow: hidden;
   border-radius: 0 0 calc(var(--radius-md) - 1px) calc(var(--radius-md) - 1px);
   /* terminal-shell의 8px 패딩이 xterm 뷰포트를 사방에서 감싸므로 이 면은 실제로 보이는 띠다 —
-     캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. 패널 면 하나를 그대로 쓴다. */
-  background: var(--glass-tint-terminal);
+     캡션·작업면과 다른 값을 주면 창 안에 액자 테가 생긴다. field 채널 하나를 그대로 쓴다:
+     다크+게이트 열림에서는 비어(transparent) 패널 루트의 유리 한 장이 필드와 거터를 함께 칠하고,
+     라이트·게이트 닫힘에서는 xterm이 받는 불투명 실색과 같은 값을 칠해 격자 경계 띠를 없앤다.
+     여기서 자기 틴트를 들면 루트 유리와 겹쳐 창 안이 두 값이 된다(이중 알파). */
+  background: var(--glass-tint-field);
 }
 
 .canvas-operation-terminal .terminal-stage,

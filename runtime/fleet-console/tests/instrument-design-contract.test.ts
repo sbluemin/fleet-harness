@@ -660,7 +660,9 @@ describe("Instrument core design contract", () => {
     // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
     expect(canvas).toContain("setAsideArmed");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
-    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
+    // Formation 판의 중앙은 대기광 채널이 정한다 — 유리가 굴절할 빛을 패널 뒤에 놓기 위해서다.
+    // 채널 기본값은 --canvas-sea-core이므로 게이트가 닫히면 이 그라디언트는 원래 픽셀로 돌아간다.
+    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
@@ -700,6 +702,50 @@ describe("Instrument core design contract", () => {
     expect(css).toContain(":focus-visible");
     // brass 채움 버튼은 전용 on-brass 텍스트 티어를 소비한다 — abyss 재결합은 라이트 AA 회귀다.
     expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
+  });
+
+  // 다크 유리의 판독 계약 — 유리 뒤가 앱에서 가장 어두운 캔버스라 투과는 명도를 빼기만 한다.
+  // 이 셋이 함께 살아 있어야 필드가 캔버스로 가라앉지 않고, 창이 한 장으로 읽힌다.
+  it("keeps the dark glass pane lit, single-layered, and topped by exactly one highlight", () => {
+    const components = source("styles/components.css");
+    const theme = source("styles/theme.css");
+
+    // 떠 있는 캡션은 top:-32px로 유리 루트 박스 **밖**에 선다 — 루트의 유리도 backdrop도 거기까지
+    // 오지 않으므로 자기 유리 한 겹을 들어야 한다. 게이트가 panel-face를 transparent로 바꾸는 순간
+    // 캡션 뒤에는 아무 층도 남지 않고 캔버스가 그대로 드러난다(실측: 캔버스와 0.1~1.1 L 차).
+    const floatingCaption =
+      components.match(
+        /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\) > \.canvas-operation-titlebar,\n\.canvas-operation > \.canvas-companion-caption \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(floatingCaption).toContain("--caption-base: var(--glass-tint-panel);");
+    expect(floatingCaption).toContain(
+      "radial-gradient(150% 420px at 50% -12px, var(--glass-pane-light) 0%, transparent 62%),",
+    );
+    expect(floatingCaption).toContain("var(--glass-underlay);");
+    expect(floatingCaption).toContain("backdrop-filter: var(--glass-backdrop-panel);");
+    // 창의 상단 하이라이트는 꼭대기 한 곳뿐이다 — 캡션이 들고 본문 루트는 내려놓는다.
+    // 루트가 계속 들면 하이라이트가 캡션·본문 이음새(창 한가운데)에 그어진다.
+    expect(floatingCaption).toContain("box-shadow: inset 0 1px 0 var(--glass-rim);");
+    const floatingRoot =
+      components.match(
+        /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\):has\(> \.canvas-operation-titlebar\),\n\.canvas-operation:has\(> \.canvas-companion-caption\) \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(floatingRoot).toContain("--pane-light-origin: -44px;");
+    expect(floatingRoot).toContain("box-shadow: var(--shadow-soft-drop);");
+    expect(theme).toContain("--shadow-soft-drop:");
+
+    // 새 채널 셋의 닫힌-게이트 기본값이 곧 구 불투명 계약이다.
+    expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
+    expect(theme).toContain("--glass-pane-light: transparent;");
+    expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
+    // 다크 3종의 유리 재료는 밀도 문법이다 — 틴트가 원 면보다 어두우면 필드가 캔버스로 가라앉고
+    // ANSI black이 필드보다 밝아진다(실측 maritime +1.2 L·carbon +1.1 L 역전).
+    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / 83%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / 83%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / 83%);");
+    // 다크에서만 필드를 루트 유리에 넘긴다 — 라이트는 mCR이 불투명 실색을 요구한다.
+    expect(theme).toContain("--glass-on-tint-field: var(--glass-on-tint-terminal);");
+    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
   });
 
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
@@ -1734,11 +1780,19 @@ describe("Instrument core design contract", () => {
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    expect(operationBlock).toContain("background: var(--glass-tint-panel);");
+    expect(operationBlock).toContain("linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),");
+    expect(operationBlock).toContain("var(--glass-underlay);");
+    // 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없다 — 재질은 명도가 아니라
+    // 창 위쪽 광원의 기울기가 말한다. 기하는 절대 좌표라 캡션과 본문이 같은 광원을 나눠 샘플링한다.
+    expect(operationBlock).toContain("radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),");
     expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
-    expect(titlebarBlock).toContain("background: var(--glass-tint-panel-face);");
+    // 캡션 채움은 base(어느 면에 앉았는가)와 fill(그 위의 상태·정체 워시) 두 단계다 — 워시 규칙이
+    // background를 다시 적으면 clip과 광원 층이 규칙마다 리셋된다.
+    expect(titlebarBlock).toContain("--caption-base: var(--glass-tint-panel-face);");
+    expect(titlebarBlock).toContain("--caption-fill: var(--caption-base);");
+    expect(titlebarBlock).toContain("background: var(--caption-fill);");
     expect(titlebarBlock).toContain("background var(--duration-base) var(--ease-spring)");
     // 캡션 아웃라인은 본문과 같은 --surface-rim이다. inherit는 본문 윗변을 비운 뒤
     // 계산색이 갈라져 캡션만 선이 빠진다.
@@ -1748,7 +1802,9 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).not.toContain("border-color: inherit;");
     expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
-    expect(panelBodyBlock).toContain("background: var(--glass-tint-terminal);");
+    // 터미널 필드·거터는 field 채널 하나로 만난다 — 다크+열림에서는 비어(transparent) 루트 유리
+    // 한 장이 둘 다 칠하고, 라이트·닫힘에서는 xterm이 받는 불투명 실색을 그대로 칠한다.
+    expect(panelBodyBlock).toContain("background: var(--glass-tint-field);");
     // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
     // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
@@ -2630,7 +2686,8 @@ describe("Instrument core design contract", () => {
     expect(components).toContain("top: -32px;");
     expect(components).toContain("background-clip: padding-box;");
     const shellCaptionBlock = components.match(/\.canvas-operation--shell \.canvas-operation-titlebar \{[^}]*\}/)?.[0] ?? "";
-    expect(shellCaptionBlock).toContain("background-clip: padding-box;");
+    expect(shellCaptionBlock).toContain("--caption-fill: color-mix(in oklch, var(--aurora) 9%, var(--caption-base));");
+    expect(shellCaptionBlock).not.toContain("background:");
     const captionSeamBlock = components.match(/\.canvas-operation:has\(> \.canvas-operation-titlebar\) \{[^}]*\}/)?.[0] ?? "";
     expect(captionSeamBlock).toContain("border-top-width: 0;");
     expect(captionSeamBlock).toContain("border-top-style: none;");
@@ -2646,7 +2703,7 @@ describe("Instrument core design contract", () => {
     // warn과 brass가 한 덩어리 금색으로 읽힌다. 워시는 캡션만 진다 — 채팅 본문까지
     // 따라가면 활성 패널 전체가 다른 면으로 바뀐다.
     expect(components).toContain(".canvas-operation.is-active > .canvas-operation-titlebar {");
-    expect(components).toContain("color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face))");
+    expect(components).toContain("--caption-fill: color-mix(in oklab, var(--brass) 10%, var(--caption-base));");
     expect(components).not.toContain("--surface-window");
     expect(components).not.toContain(".canvas-operation-titlebar::before");
     expect(components).toContain("background: var(--caption-rail, transparent);");
@@ -3491,8 +3548,8 @@ describe("War Room deck panel grammar", () => {
     expect(components).toContain(".canvas-triage-deck-pick:focus-visible {");
     // 겨눈 카드의 캡션 워시는 포커스 패널과 같은 한 값이다 — 새 값을 만들지 않는다.
     const wash = components.match(/\.canvas-triage-deck-cell:hover \.canvas-operation\.is-deck-tile > \.canvas-operation-titlebar,\n[^{]*\{[^}]*\}/)?.[0] ?? "";
-    expect(wash).toContain("background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));");
-    expect(wash).toContain("background-clip: padding-box;");
+    expect(wash).toContain("--caption-fill: color-mix(in oklab, var(--brass) 10%, var(--caption-base));");
+    expect(wash).not.toContain("background:");
   });
 
   it("mixes the map quick-look border in oklab so brass stays on the location channel", () => {
