@@ -737,7 +737,9 @@ describe("Instrument core design contract", () => {
     // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
     expect(canvas).toContain("setAsideArmed");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
-    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-sea-core), var(--canvas-sea-mid) 78%)");
+    // Formation 판의 중앙은 대기광 채널이 정한다 — 유리가 굴절할 빛을 패널 뒤에 놓기 위해서다.
+    // 채널 기본값은 --canvas-sea-core이므로 게이트가 닫히면 원래 픽셀로 돌아간다.
+    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
@@ -777,6 +779,33 @@ describe("Instrument core design contract", () => {
     expect(css).toContain(":focus-visible");
     // brass 채움 버튼은 전용 on-brass 텍스트 티어를 소비한다 — abyss 재결합은 라이트 AA 회귀다.
     expect(css).toMatch(/\.fc-btn--primary \{[^}]*color: var\(--text-on-brass\);/);
+  });
+
+  // 다크 유리의 판독 계약 — 유리 뒤가 앱에서 가장 어두운 캔버스라 투과는 명도를 빼기만 한다.
+  it("keeps the dark glass pane lit and the terminal field single-layered", () => {
+    const components = source("styles/components.css");
+    const theme = source("styles/theme.css");
+
+    // 떠 있는 캡션을 가진 패널만 광원 원점을 캡션 높이만큼 위로 민다 — 창의 꼭대기가 본문이
+    // 아니라 그 캡션이기 때문이다. 덱 타일·상단 접힘 캡션은 흐름 안이라 루트가 곧 꼭대기다.
+    const floatingRoot =
+      components.match(
+        /\.canvas-operation:not\(\.is-deck-tile\):not\(\.is-top-edge\):has\(> \.canvas-operation-titlebar\),\n\.canvas-operation:has\(> \.canvas-companion-caption\) \{[^}]*\}/,
+      )?.[0] ?? "";
+    expect(floatingRoot).toContain("--pane-light-origin: -44px;");
+
+    // 새 채널 셋의 닫힌-게이트 기본값이 곧 구 불투명 계약이다.
+    expect(theme).toContain("--glass-tint-field: var(--surface-panel);");
+    expect(theme).toContain("--glass-pane-light: transparent;");
+    expect(theme).toContain("--canvas-ambience: var(--canvas-sea-core);");
+    // 다크 3종의 유리 재료는 밀도 문법이다 — 틴트가 원 면보다 어두우면 필드가 캔버스로 가라앉고
+    // ANSI black이 필드보다 밝아진다(실측 maritime +1.2 L·carbon +1.1 L 역전).
+    expect(theme).toContain("--glass-on-tint-panel: oklch(18.5% 0.028 245 / 83%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(25% 0.05 248 / 83%);");
+    expect(theme).toContain("--glass-on-tint-panel: oklch(21% 0.013 252 / 83%);");
+    // 다크에서만 필드를 루트 유리에 넘긴다 — 라이트는 mCR이 불투명 실색을 요구한다.
+    expect(theme).toContain("--glass-on-tint-field: var(--glass-on-tint-terminal);");
+    expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
   });
 
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
@@ -1807,7 +1836,12 @@ describe("Instrument core design contract", () => {
     // 패널은 하나의 면이다 — 루트가 panel 유리 틴트를, 캡션·본문 팬은 panel-face(게이트 열림 시
     // transparent)를 소비해 유리 한 장으로 읽힌다. 자식이 자기 틴트를 들면 이중 알파 얼룩이 된다.
     const operationBlock = components.match(/^\.canvas-operation \{[^}]*\}/m)?.[0] ?? "";
-    expect(operationBlock).toContain("background: var(--glass-tint-panel);");
+    expect(operationBlock).toContain("linear-gradient(var(--glass-tint-panel), var(--glass-tint-panel)),");
+    expect(operationBlock).toContain("var(--glass-underlay);");
+    // 유리 뒤가 캔버스(앱에서 가장 어두운 면)라 blur가 굴절시킬 빛이 없다 — 재질은 명도가 아니라
+    // 창 위쪽 광원의 기울기가 말한다. 기하는 절대 좌표라 떠 있는 캡션을 가진 패널은 원점을
+    // 캡션 높이만큼 위로 밀어 창 전체가 한 줄기 빛을 나눠 받는다.
+    expect(operationBlock).toContain("radial-gradient(150% 420px at 50% var(--pane-light-origin), var(--glass-pane-light) 0%, transparent 62%),");
     expect(operationBlock).toContain("backdrop-filter: var(--glass-backdrop-panel);");
     expect(operationBlock).not.toContain("--surface-window");
     const titlebarBlock = components.match(/^\.canvas-operation-titlebar \{[^}]*\}/m)?.[0] ?? "";
@@ -1821,7 +1855,9 @@ describe("Instrument core design contract", () => {
     expect(titlebarBlock).not.toContain("border-color: inherit;");
     expect(titlebarBlock).not.toContain("border-bottom: none;");
     const panelBodyBlock = components.match(/^\.canvas-operation-terminal \{[^}]*\}/m)?.[0] ?? "";
-    expect(panelBodyBlock).toContain("background: var(--glass-tint-terminal);");
+    // 터미널 필드·거터는 field 채널 하나로 만난다 — 다크+열림에서는 비어(transparent) 루트 유리
+    // 한 장이 둘 다 칠하고, 라이트·닫힘에서는 xterm이 받는 불투명 실색을 그대로 칠한다.
+    expect(panelBodyBlock).toContain("background: var(--glass-tint-field);");
     // 레일 Shell 카드도 같은 면이다 — xterm이 terminal 유리 채널을 따라 반투명해지므로
     // 카드 면도 panel-face로 물러나 유리 한 장으로 읽힌다(게이트가 닫히면 둘 다 불투명 복원).
     const terminalShellBlock = components.match(/^\.terminal-shell \{[^}]*\}/m)?.[0] ?? "";
