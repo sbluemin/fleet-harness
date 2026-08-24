@@ -2075,6 +2075,25 @@ describe("Instrument core design contract", () => {
     for (const signal of ["--aurora", "--positive", "--warn", "--coral", "--brass"]) {
       expect(composerWorkRestBlock).not.toContain(signal);
     }
+    // 완료 과정과 Answer는 한 이음새다. 별도 Answer kicker를 다시 세우지 않고, details가 닫히든
+    // 열리든 Answer 표식은 과정과 실제 응답 사이의 경계를 지킨다. 과정이 없는 답만 기존 kicker다.
+    expect(chatView0).toContain('className={`agent-chat-fold${leadsToAnswer ? " leads-to-answer" : ""}`}');
+    // summary의 실제 소요·결말·백그라운드 작업 수·문맥 증가량을 접근성 이름으로 보존한다.
+    // 고정 aria-label을 씌우면 이 가시 상태가 전부 가려진다.
+    expect(chatView0).not.toContain('<summary aria-label={t("terminal.chat.foldAria")}>');
+    expect(chatView0).toContain('className="agent-chat-completion-handoff"');
+    expect(chatView0).toContain('className={`agent-chat-answer${hasSettledWork ? " has-seam" : ""}`}');
+    expect(chatView0).toContain('? <span className="agent-chat-sr-only">{t("terminal.chat.answerLabel")}</span>');
+    const completionSummaryBlock = chat.match(/^\.agent-chat-fold\.leads-to-answer > summary \{[^}]*\}/m)?.[0] ?? "";
+    expect(completionSummaryBlock).toContain("display: flex;");
+    expect(completionSummaryBlock).toContain("width: 100%;");
+    const completionNodeBlock = chat.match(/^\.agent-chat-completion-node \{[^}]*\}/m)?.[0] ?? "";
+    expect(completionNodeBlock).toContain("background: var(--positive);");
+    expect(completionNodeBlock).not.toContain("--brass");
+    const completionRunningNodeBlock = chat.match(/^\.agent-chat-completion-node\.is-running \{[^}]*\}/m)?.[0] ?? "";
+    expect(completionRunningNodeBlock).toContain("background: var(--aurora);");
+    const completionRuleBlock = chat.match(/^\.agent-chat-completion-rule \{[^}]*\}/m)?.[0] ?? "";
+    expect(completionRuleBlock).toContain("background: var(--hairline);");
     // 중지는 실패가 아니다 — 사용자가 스스로 끊은 결말에 coral을 붙이면 자기가 누른 버튼의
     // 결과를 고장으로 읽는다. 성공도 아니므로 positive도 아니고, 남는 것은 중립 잉크다.
     const chatFoldStoppedBlock = chat.match(/^\.agent-chat-fold-stopped \{[^}]*\}/m)?.[0] ?? "";

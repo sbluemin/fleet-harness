@@ -106,7 +106,7 @@ describe("chat ledger commentary", () => {
     expect(el?.textContent ?? "").not.toContain("`Fable`");
   });
 
-  it("keeps markdown on a settled turn inside the work fold", () => {
+  it("keeps markdown inside the completion seam that hands work to the answer", () => {
     // 끝난 턴은 과정을 접는다. 접힘 안에서도 같은 렌더 경로를 타야 한다 — 라이브에서만
     // 마크다운이고 접힘 안에서는 다시 italic 원문이 되면 같은 문장이 두 얼굴이 된다.
     // jsdom 의 details 는 닫혀도 자식을 돔에 남긴다. 여기서 묻는 것은 가시성이 아니라 경로다.
@@ -118,10 +118,36 @@ describe("chat ledger commentary", () => {
     mount();
     const fold = container?.querySelector("details.agent-chat-fold");
     expect(fold).not.toBeNull();
+    expect(fold?.classList.contains("leads-to-answer")).toBe(true);
+    expect(fold?.querySelector(".agent-chat-completion-node")).not.toBeNull();
+    const summary = fold?.querySelector("summary");
+    expect(summary?.querySelector(".agent-chat-completion-answer")?.textContent).toBe("응답");
+    // 이름을 고정 문구로 덮지 않는다. 소요·결말·백그라운드 작업 수·문맥 증가량이 summary의
+    // 실제 텍스트로 함께 읽혀야 한다.
+    expect(summary?.hasAttribute("aria-label")).toBe(false);
+    expect(summary?.textContent).toContain("74.0s 동안 작업함");
+    expect(container?.querySelector(".agent-chat-answer")?.classList.contains("has-seam")).toBe(true);
+    // 이음새가 Answer를 시각적으로 이미 부르므로 별도 kicker는 다시 세우지 않되, 본문 랜드마크의
+    // 접근성 이름은 숨은 텍스트로 보존한다.
+    expect(container?.querySelector(".agent-chat-answer-kicker")).toBeNull();
+    expect(container?.querySelector(".agent-chat-answer > .agent-chat-sr-only")?.textContent).toBe("응답");
     const el = fold?.querySelector<HTMLElement>(".agent-chat-ledger-note") ?? null;
     expect(el).not.toBeNull();
     expect(el?.className).toContain("markdown-body");
     expect(el?.querySelector("strong")?.textContent).toBe("최신 로스터");
     expect(el?.querySelector("code")?.textContent).toBe("Fable");
+  });
+
+  it("keeps the standalone Answer kicker when a turn has no process to fold", () => {
+    logState = stateWith([turn({
+      items: [],
+      state: "done",
+      durationMs: 2_000,
+      answer: "바로 답합니다.",
+    })]);
+    mount();
+    expect(container?.querySelector(".agent-chat-fold")).toBeNull();
+    expect(container?.querySelector(".agent-chat-answer")?.classList.contains("has-seam")).toBe(false);
+    expect(container?.querySelector(".agent-chat-answer-kicker")?.textContent).toBe("응답");
   });
 });
