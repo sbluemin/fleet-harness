@@ -153,10 +153,10 @@ describe("Command Band center visibility measurements", () => {
   it("docks the map controls to the measured left-cluster end only while collapsed", () => {
     // 펼침: 앵커 = 사이드바 폭(경계선 옆) — 기존 문법 그대로.
     expect(commandBandMapControlsAnchor(false, 280, 183)).toBe(280);
-    // 접힘: 앵커 = 콘텐츠 끝 + 구분선 리드(10) - CSS 인셋(8) → 구분선이 정확히 콘텐츠 끝 + 10에 놓인다.
-    expect(commandBandMapControlsAnchor(true, 280, 183)).toBe(183 + 10 - 8);
+    // 접힘: 앵커 = 콘텐츠 끝. CSS 인셋(8)이 펼침 상태와 같은 단일 간격을 만든다.
+    expect(commandBandMapControlsAnchor(true, 280, 183)).toBe(183);
     // 사이드바를 넓혀도 접힘 앵커는 사이드바 폭과 무관하다 — 넓힌-뒤-접기 부유가 소멸한다.
-    expect(commandBandMapControlsAnchor(true, 460, 183)).toBe(183 + 10 - 8);
+    expect(commandBandMapControlsAnchor(true, 460, 183)).toBe(183);
     // 미측정(0 이하) 폴백: 기존 사이드바 폭 앵커를 유지해 첫 페인트가 흔들리지 않는다.
     expect(commandBandMapControlsAnchor(true, 280, 0)).toBe(280);
   });

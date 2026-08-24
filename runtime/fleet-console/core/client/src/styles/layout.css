@@ -325,16 +325,26 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 
 .command-band-left.is-collapsed {
   border-color: transparent;
+  box-shadow: none;
 }
 
+/* 접힌 캡은 좌표만 유지하고 그리지 않는다. band tint를 다시 칠하거나 backdrop-filter를 남기면
+   280px 캡 끝이 모드 스위치 안을 가르는 재질 이음선으로 드러난다. */
 .command-band-left.is-collapsed::before {
-  background: var(--glass-tint-band);
+  display: none;
 }
 
 .command-band.is-utility .command-band-left {
   width: fit-content;
   border-right-color: transparent;
   background: transparent;
+  box-shadow: none;
+}
+
+/* Utility route에는 아래로 이어질 사이드바가 없다. band 루트가 이미 전체 Glass 면을 칠하므로
+   좌측 cap을 다시 그리면 같은 반투명 tint가 겹쳐 별도 판으로 보인다. 좌표만 남기고 paint는 끈다. */
+.command-band.is-utility .command-band-left::before {
+  display: none;
 }
 
 .command-band-brand {
@@ -564,25 +574,6 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
 }
 
 body:has(.operations-side-bar[data-resizing="true"]) .command-band-map-controls { transition: none; }
-
-/* 접힘 도킹 구분선 — 클러스터가 좌측 컨트롤군에 붙을 때만 나타나는 hairline(formation-divider 문법).
-   플로우 형제라 도킹 해제 시 display로 제거해야 gap이 유령 폭을 남기지 않는다. */
-.command-band-dock-divider {
-  display: none;
-  align-self: stretch;
-  flex: none;
-  width: 1px;
-  background: var(--surface-rim);
-}
-
-.command-band-map-controls.is-docked .command-band-dock-divider {
-  display: block;
-  animation: command-band-dock-divider-in 200ms ease;
-}
-
-@keyframes command-band-dock-divider-in {
-  from { opacity: 0; }
-}
 
 /* Cruise / Tactical / War Room — 캔버스 모드는 이 세그먼트 스위치 하나만 소유한다.
    모드 전용 도구는 오른쪽 트레이에 붙으므로, 다른 모드의 도구는 애초에 존재하지 않는다. */
@@ -960,6 +951,5 @@ html[data-desktop-shell="true"][data-desktop-platform="darwin"] .command-band-le
   }
 
   .right-rail-stale-veil { animation: none !important; }
-  .command-band-dock-divider { animation: none !important; }
   .command-band.is-fullscreen { transition: none !important; }
 }

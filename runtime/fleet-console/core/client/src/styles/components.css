@@ -3701,7 +3701,7 @@
    .canvas-operation.is-active > .canvas-operation-titlebar와 같은 한 값이다. */
 .canvas-triage-deck-cell:hover .canvas-operation.is-deck-tile > .canvas-operation-titlebar,
 .canvas-triage-deck-cell:has(> .canvas-triage-deck-pick:focus-visible) .canvas-operation.is-deck-tile > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
+  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }
@@ -3942,7 +3942,7 @@
    베이스는 반드시 --surface-panel이다(반투명 잉크 티어를 깔면 셸 패널만 이음새가 되살아난다).
    background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
 .canvas-operation--shell .canvas-operation-titlebar {
-  background: color-mix(in oklch, var(--aurora) 9%, var(--glass-tint-panel-face));
+  background: color-mix(in oklch, var(--aurora) 9%, var(--glass-tint-caption));
   background-clip: padding-box;
 }
 
@@ -4628,7 +4628,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-width: 0;
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
-  background: var(--glass-tint-panel-face);
+  background: var(--glass-tint-caption);
   background-clip: padding-box;
   color: var(--text-tertiary);
   cursor: default;
@@ -5899,7 +5899,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-bottom-style: none;
   border-radius: var(--radius-md) var(--radius-md) 0 0;
   overflow: visible;
-  background: var(--glass-tint-panel-face);
+  background: var(--glass-tint-caption);
   background-clip: padding-box;
   cursor: grab;
   touch-action: none;
@@ -5939,7 +5939,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
    워시는 캡션만 진다. 채팅·터미널 본문은 --surface-panel에 남아, 포커스가 로그 전체를
    다른 면으로 다시 칠하지 않는다. */
 .canvas-operation.is-active > .canvas-operation-titlebar {
-  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-panel-face));
+  background: color-mix(in oklab, var(--brass) 10%, var(--glass-tint-caption));
   /* background 단축은 clip을 border-box로 되돌리므로 padding-box를 다시 적는다. */
   background-clip: padding-box;
 }

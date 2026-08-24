@@ -102,20 +102,18 @@ const COMMAND_BAND_CENTER_BREATHING_PX = 12;
 const COMMAND_BAND_CENTER_GUTTER_FLOOR_PX = 44;
 const COMMAND_BAND_CENTER_MIN_PX = 168;
 
-// 접힘 도킹 앵커 — 사이드바가 접히면 맵 컨트롤의 정박 경계(사이드바 우측 경계선)가 사라지므로,
+// 접힘 앵커 — 사이드바가 접히면 맵 컨트롤의 정박 경계(사이드바 우측 경계선)가 사라지므로,
 // 좌측 컨트롤군의 실측 콘텐츠 끝을 새 앵커로 쓴다(브레드크럼이 이미 쓰는 "정렬 앵커는 실제
-// 스테이지 경계" 원칙의 클러스터 판). CSS가 앵커에 INSET(--space-2)을 다시 더해 도킹 구분선이
-// 정확히 콘텐츠 끝 + DOCK_DIVIDER_LEAD에 놓인다. 미측정(0 이하)이면 사이드바 폭 앵커로
-// 폴백해 첫 페인트가 기존 문법과 동일하게 남는다.
-const COMMAND_BAND_DOCK_DIVIDER_LEAD_PX = 10;
-
+// 스테이지 경계" 원칙의 클러스터 판). CSS가 앵커에 INSET(--space-2)을 더해 펼침 상태와 같은
+// 단일 간격으로 클러스터를 잇는다. 미측정(0 이하)이면 사이드바 폭 앵커로 폴백해 첫 페인트가
+// 기존 문법과 동일하게 남는다.
 export function commandBandMapControlsAnchor(
   collapsed: boolean,
   sideBarWidth: number,
   leftContentEnd: number,
 ): number {
   if (!collapsed || leftContentEnd <= 0) return sideBarWidth;
-  return leftContentEnd + COMMAND_BAND_DOCK_DIVIDER_LEAD_PX - COMMAND_BAND_MAP_CONTROLS_INSET_PX;
+  return leftContentEnd;
 }
 
 // Activity Rail의 고정 스트립 폭. 패널 폭은 포함하지 않는다 — PR #302가 밴드를 레일

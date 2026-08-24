@@ -184,6 +184,7 @@
      닫히면 채널 기본값이 --surface-panel 불투명이라 구 판독 계약으로 돌아간다. */
   --glass-tint-panel: var(--surface-panel);
   --glass-tint-panel-face: var(--surface-panel);
+  --glass-tint-caption: var(--surface-panel);
   --glass-tint-terminal: var(--surface-panel);
   --glass-tint-band: var(--surface-band);
   --glass-backdrop-strong: none;
@@ -210,6 +211,7 @@
      무겁게. 필드가 거의 검게 남아 대비를 지키고, 뒤 콘텐츠는 블러 너머 희미한 유령빛으로만
      비친다. 명도를 올려 잿빛 워시를 만드는 방향은 실측 기각됐다. */
   --glass-on-tint-panel: oklch(15% 0.018 245 / 55%);
+  --glass-on-tint-caption: oklch(17% 0.018 245 / 82%);
   --glass-on-tint-terminal: oklch(13% 0.015 245 / 62%);
   --glass-on-tint-band: oklch(13% 0.018 245 / 55%);
   --glass-on-backdrop-strong: blur(24px) saturate(1.7);
@@ -390,6 +392,7 @@
   --glass-on-tint-abyss: oklch(15% 0.04 250 / 48%);
   --glass-on-tint-chrome: oklch(27% 0.04 248 / 45%);
   --glass-on-tint-panel: oklch(20% 0.04 248 / 55%);
+  --glass-on-tint-caption: oklch(21% 0.03 248 / 82%);
   --glass-on-tint-terminal: oklch(17% 0.035 248 / 62%);
   --glass-on-tint-band: oklch(19% 0.045 248 / 50%);
   --glass-on-rim: oklch(96% 0.012 88 / 18%);
@@ -462,6 +465,7 @@
   --glass-on-tint-abyss: oklch(14% 0.006 255 / 48%);
   --glass-on-tint-chrome: oklch(24% 0.006 252 / 45%);
   --glass-on-tint-panel: oklch(17% 0.008 252 / 55%);
+  --glass-on-tint-caption: oklch(19% 0.008 252 / 84%);
   --glass-on-tint-terminal: oklch(15% 0.007 252 / 62%);
   --glass-on-tint-band: oklch(17% 0.007 255 / 50%);
   --glass-on-rim: oklch(95% 0.003 250 / 16%);
@@ -607,6 +611,7 @@
   --glass-on-tint-abyss: oklch(94% 0.004 100 / 52%);
   --glass-on-tint-chrome: oklch(92% 0.005 100 / 52%);
   --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
+  --glass-on-tint-caption: oklch(96% 0.006 100 / 88%);
   /* 라이트 필드는 불투명 종이 — mCR(가독 보정)이 배경 실색을 요구하고, 종이 위 젖빛 유리는
      어차피 지각 불가 수준이다. 필드·거터가 같은 불투명 값으로 만나 격자 경계 띠가 없다. */
   --glass-on-tint-terminal: oklch(98.2% 0.004 100);
@@ -662,6 +667,7 @@
     --glass-tint-chrome: var(--glass-on-tint-chrome);
     --glass-tint-panel: var(--glass-on-tint-panel);
     --glass-tint-panel-face: transparent;
+    --glass-tint-caption: var(--glass-on-tint-caption);
     --glass-tint-terminal: var(--glass-on-tint-terminal);
     --glass-tint-band: var(--glass-on-tint-band);
     --glass-backdrop-strong: var(--glass-on-backdrop-strong);
@@ -684,6 +690,7 @@
       --glass-tint-chrome: var(--surface-chrome);
       --glass-tint-panel: var(--surface-panel);
       --glass-tint-panel-face: var(--surface-panel);
+      --glass-tint-caption: var(--surface-panel);
       --glass-tint-terminal: var(--surface-panel);
       --glass-tint-band: var(--surface-band);
       --glass-backdrop-strong: none;
