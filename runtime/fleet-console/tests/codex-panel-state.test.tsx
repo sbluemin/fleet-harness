@@ -96,7 +96,7 @@ describe("Codex rail panel in-memory state", () => {
     panelMocks.consoleState.codexReader = { kind: "drydock", patchId: "patch-a" };
     await renderPanel("theater-a");
 
-    const readerOptions = panelMocks.mountReaderInto.mock.calls.at(-1)?.[2] as { onDecided?: () => void } | undefined;
+    const readerOptions = panelMocks.mountReaderInto.mock.calls.at(-1)?.[3] as { onDecided?: () => void } | undefined;
     expect(readerOptions?.onDecided).toBeTypeOf("function");
     readerOptions?.onDecided?.();
 
@@ -111,7 +111,7 @@ describe("Codex rail panel in-memory state", () => {
       await Promise.resolve();
     });
 
-    const readerOptions = panelMocks.mountReaderInto.mock.calls.at(-1)?.[2] as { onDecided?: () => void } | undefined;
+    const readerOptions = panelMocks.mountReaderInto.mock.calls.at(-1)?.[3] as { onDecided?: () => void } | undefined;
     expect(readerOptions?.onDecided).toBeTypeOf("function");
     readerOptions?.onDecided?.();
 

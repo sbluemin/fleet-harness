@@ -55,6 +55,9 @@ export function mountNavigatorApp(
     setCurrentEntry(entryId: string | null): void {
       controller.setCurrentEntry(entryId);
     },
+    setActiveTag(tag: string | null): void {
+      controller.setActiveTag(tag);
+    },
     refreshHealth(): void {
       controller.refreshHealth();
     },

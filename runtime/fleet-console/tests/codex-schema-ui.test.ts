@@ -391,8 +391,8 @@ describe("Codex schema UI contract", () => {
     const controller = mountNavigatorInto(root, { initialTheaterId: "workspace-a", onRequest });
 
     expect([...root.querySelectorAll<HTMLElement>("[data-entry-id]")].map((entry) => entry.dataset.entryId)).toEqual(["newer", "older"]);
-    expect(root.querySelector<HTMLElement>('[data-entry-id="newer"] .meta')?.textContent).toContain("Today");
-    expect(root.querySelector<HTMLElement>('[data-entry-id="older"] .meta')?.title).toBe("2024-01-01T00:00:00.000Z");
+    expect(root.querySelector<HTMLElement>('[data-entry-id="newer"] .when')?.textContent).toContain("Today");
+    expect(root.querySelector<HTMLElement>('[data-entry-id="older"] .when')?.title).toBe("2024-01-01T00:00:00.000Z");
 
     root.querySelector<HTMLButtonElement>('[data-sort="name"]')!.click();
     expect(localStorage.getItem("fleet.codex.navigator.sort")).toBe("name");

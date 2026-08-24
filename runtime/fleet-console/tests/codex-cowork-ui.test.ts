@@ -145,6 +145,8 @@ describe("Cowork inline copilot", () => {
     // 엔트리를 열면 채팅박스(도크)가 세션 없이도 무조건 떠 있고, 세션은 아직 생성되지 않는다.
     expect(article.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true);
     expect(article.querySelector(".cowork-dock-input")).not.toBeNull();
+    // 주석 0개에서는 ✦0 칩을 그리지 않는다 — 무정보 카운트는 소음이다.
+    expect(article.querySelector('[data-cowork-action="toggle-panel"]')).toBeNull();
     expect(article.querySelector(".cowork-review")).toBeNull();
     expect(body.textContent).toContain("Published body.");
     expect(fetchMock.mock.calls.map(call => String(call[0])).some(url => url.endsWith("/cowork/sessions"))).toBe(false);
@@ -382,13 +384,56 @@ describe("Cowork inline copilot", () => {
     }
 
     expect(article.querySelectorAll(".cowork-agent-row")).toHaveLength(1);
-    article.querySelector<HTMLElement>('[data-cowork-action="toggle-panel"]')!.click();
+    // 주석이 0개면 ✦ 칩은 렌더되지 않는다 — 설정 토글 재클릭으로 팝오버를 닫는다.
+    expect(article.querySelector('[data-cowork-action="toggle-panel"]')).toBeNull();
+    article.querySelector<HTMLElement>('[data-cowork-action="toggle-config"]')!.click();
     await vi.waitFor(() => expect(article.querySelector(".cowork-config")).toBeNull());
     expect(document.querySelectorAll(".cowork-effort-flyout")).toHaveLength(0);
 
     controller.destroy();
     expect(article.querySelector(".cowork-dock-zone")).toBeNull();
     expect(document.querySelectorAll(".cowork-agent-row")).toHaveLength(0);
+    article.remove();
+  });
+
+  it("anchors the dock in a detached frame host and keeps dock interactions working", async () => {
+    const listeners = new Map<string, EventListener>();
+    class FakeEventSource { addEventListener(type: string, listener: EventListener) { listeners.set(type, listener); } close() {} }
+    vi.stubGlobal("EventSource", FakeEventSource);
+    const fresh = sessionDto({ id: "cowork-detached", draft: BASE_DRAFT, revision: 0, annotations: [] });
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/cowork/entries/")) return new Response(JSON.stringify({ error: "cowork_session_not_found" }), { status: 404 });
+      if (url.includes("/options")) return new Response(JSON.stringify({ models: ["sonnet"], efforts: ["medium"], defaultModel: "sonnet", defaultEffort: "medium" }));
+      if (url.endsWith("/cowork/sessions")) return new Response(JSON.stringify(fresh), { status: 201 });
+      return new Response(JSON.stringify(fresh));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    const { article, body } = host();
+    const dockHost = document.createElement("div");
+    document.body.append(dockHost);
+
+    const controller = mountCoworkInline({ theaterId: "theater", entryId: "entry", title: "Entry", article, body, dockHost, onApplied: vi.fn() });
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    // 도크는 article(스크롤 흐름)이 아니라 프레임 경계 호스트에 정박한다.
+    expect(article.querySelector(".cowork-dock-zone")).toBeNull();
+    expect(dockHost.querySelector(".cowork-dock-zone")?.classList.contains("is-open")).toBe(true);
+
+    // article 밖에서도 도크 위임이 살아 있다 — 입력·전송이 세션 지연 생성으로 이어진다.
+    const input = dockHost.querySelector<HTMLInputElement>(".cowork-dock-input")!;
+    input.value = "boundary dock send";
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    dockHost.querySelector<HTMLElement>('[data-cowork-action="send"]')!.click();
+    await vi.waitFor(() => {
+      const urls = fetchMock.mock.calls.map(call => String(call[0]));
+      expect(urls.some(url => url.endsWith("/cowork/sessions"))).toBe(true);
+      expect(urls.some(url => url.endsWith("/prompt"))).toBe(true);
+    });
+
+    controller.destroy();
+    expect(dockHost.querySelector(".cowork-dock-zone")).toBeNull();
+    dockHost.remove();
     article.remove();
   });
 

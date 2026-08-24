@@ -119,7 +119,8 @@ describe("Codex host in-memory state", () => {
   it("reopens history entries and truncates the forward branch after a new entry", () => {
     const readSlot = document.createElement("div");
     const tocSlot = document.createElement("div");
-    document.body.append(readSlot, tocSlot);
+    const dockSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot, dockSlot);
     const requestEntry = vi.fn();
     const options = {
       initialEntryId: "entry-a",
@@ -131,18 +132,18 @@ describe("Codex host in-memory state", () => {
     };
 
     mountNavigatorInto(document.body.appendChild(document.createElement("div")), "workspace-a");
-    mountReaderInto(readSlot, tocSlot, options);
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-b" });
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-c" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, options);
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-b" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-c" });
     expect(codexMocks.navigatorController.setCurrentEntry).toHaveBeenLastCalledWith("entry-c");
     expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: false });
 
     navigateCodexReaderHistory(-1);
     expect(requestEntry).toHaveBeenLastCalledWith("entry-b");
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-b" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-b" });
     expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: true });
 
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-d" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-d" });
     expect(getCodexReaderHistoryState()).toEqual({ canGoBack: true, canGoForward: false });
     navigateCodexReaderHistory(1);
     expect(requestEntry).toHaveBeenCalledTimes(1);
@@ -157,8 +158,9 @@ describe("Codex host in-memory state", () => {
 
     const readSlot = document.createElement("div");
     const tocSlot = document.createElement("div");
-    document.body.append(readSlot, tocSlot);
-    mountReaderInto(readSlot, tocSlot, {
+    const dockSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot, dockSlot);
+    mountReaderInto(readSlot, tocSlot, dockSlot, {
       initialEntryId: "entry-restored",
       kind: "entry",
       theaterId: "workspace-a",
@@ -180,7 +182,8 @@ describe("Codex host in-memory state", () => {
 
     const readSlot = document.createElement("div");
     const tocSlot = document.createElement("div");
-    document.body.append(readSlot, tocSlot);
+    const dockSlot = document.createElement("div");
+    document.body.append(readSlot, tocSlot, dockSlot);
     const options = {
       kind: "entry" as const,
       theaterId: "workspace-a",
@@ -188,8 +191,8 @@ describe("Codex host in-memory state", () => {
       onRelatedClick: vi.fn(),
       onClose: vi.fn(),
     };
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-restored" });
-    mountReaderInto(readSlot, tocSlot, { ...options, initialEntryId: "entry-new" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-restored" });
+    mountReaderInto(readSlot, tocSlot, dockSlot, { ...options, initialEntryId: "entry-new" });
     codexMocks.readerMountOptions.at(-1)?.onEntryRendered?.("entry-new");
 
     readSlot.scrollTop = 480;
@@ -205,9 +208,11 @@ describe("Codex host in-memory state", () => {
   it("keeps the saved reader position when its previous slot was already detached", () => {
     const firstReadSlot = document.createElement("div");
     const firstTocSlot = document.createElement("div");
+    const firstDockSlot = document.createElement("div");
     const nextReadSlot = document.createElement("div");
     const nextTocSlot = document.createElement("div");
-    document.body.append(firstReadSlot, firstTocSlot, nextReadSlot, nextTocSlot);
+    const nextDockSlot = document.createElement("div");
+    document.body.append(firstReadSlot, firstTocSlot, firstDockSlot, nextReadSlot, nextTocSlot, nextDockSlot);
     const options = {
       initialEntryId: "entry-a",
       kind: "entry" as const,
@@ -217,13 +222,13 @@ describe("Codex host in-memory state", () => {
       onClose: vi.fn(),
     };
 
-    mountReaderInto(firstReadSlot, firstTocSlot, options);
+    mountReaderInto(firstReadSlot, firstTocSlot, firstDockSlot, options);
     firstReadSlot.scrollTop = 137;
     saveReaderScroll();
     firstReadSlot.remove();
     firstReadSlot.scrollTop = 0;
 
-    mountReaderInto(nextReadSlot, nextTocSlot, options);
+    mountReaderInto(nextReadSlot, nextTocSlot, nextDockSlot, options);
 
     expect(nextReadSlot.scrollTop).toBe(137);
   });
@@ -319,9 +324,11 @@ function mountRelocatedReader(scrollTop: number): {
 } {
   const firstReadSlot = document.createElement("div");
   const firstTocSlot = document.createElement("div");
+  const firstDockSlot = document.createElement("div");
   const nextReadSlot = document.createElement("div");
   const nextTocSlot = document.createElement("div");
-  document.body.append(firstReadSlot, firstTocSlot, nextReadSlot, nextTocSlot);
+  const nextDockSlot = document.createElement("div");
+  document.body.append(firstReadSlot, firstTocSlot, firstDockSlot, nextReadSlot, nextTocSlot, nextDockSlot);
   const options = {
     initialEntryId: "entry-a",
     kind: "entry" as const,
@@ -331,11 +338,11 @@ function mountRelocatedReader(scrollTop: number): {
     onClose: vi.fn(),
   };
 
-  mountReaderInto(firstReadSlot, firstTocSlot, options);
+  mountReaderInto(firstReadSlot, firstTocSlot, firstDockSlot, options);
   firstReadSlot.scrollTop = scrollTop;
   saveReaderScroll();
   firstReadSlot.remove();
-  mountReaderInto(nextReadSlot, nextTocSlot, options);
+  mountReaderInto(nextReadSlot, nextTocSlot, nextDockSlot, options);
   return { firstReadSlot, nextReadSlot, nextTocSlot };
 }
 

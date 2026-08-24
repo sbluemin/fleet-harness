@@ -98,6 +98,41 @@ kbd {
   color: var(--brass-bright);
 }
 
+/* 문서 헤더의 태그 칩은 카탈로그와 같은 약속(누르면 태그 필터)을 지키는 버튼이다. */
+button.chip {
+  cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-glide), border-color var(--duration-fast) var(--ease-glide);
+}
+
+button.chip-tag:hover,
+button.chip-tag:focus-visible {
+  background: color-mix(in oklch, var(--brass) 22%, transparent);
+  border-color: color-mix(in oklch, var(--brass) 55%, transparent);
+}
+
+button.chip:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--brass) 68%, transparent);
+  outline-offset: 1px;
+}
+
+/* 접힌 태그 초과분 표식(+N) — 점선 테두리로 "더 있음"을 말하는 토글. */
+.chip-more {
+  background: transparent;
+  border-style: dashed;
+  border-color: var(--surface-rim-strong);
+  color: var(--text-tertiary);
+}
+
+.chip-more:hover,
+.chip-more:focus-visible {
+  border-color: color-mix(in oklch, var(--brass) 45%, transparent);
+  color: var(--brass-bright);
+}
+
+.meta-chips[data-collapsed="true"] .chip-tag--overflow {
+  display: none;
+}
+
 .chip-aurora {
   background: color-mix(in oklch, var(--aurora) 12%, transparent);
   border-color: color-mix(in oklch, var(--aurora) 35%, transparent);
@@ -386,6 +421,32 @@ kbd {
 .document--utility .document-header {
   padding-bottom: var(--space-4);
   margin-bottom: var(--space-4);
+}
+
+/* ─── 문서 타이포 컨테이너 문법 ────────────────────────────────────────────────
+   리더 스크롤포트(.codex-doc-scroll·.codex-reading-sheet-read)가 codex-reader
+   컨테이너다. 제목 스케일은 뷰포트가 아니라 "문서가 실제로 놓인 폭"에 응답해,
+   분할·덱·패널 리사이즈가 한 규칙을 공유한다. @container 규칙은 특정성 가산이
+   없어 소스 순서로만 이기므로(reference: @container 특정성 0), 셀렉터를
+   .codex-reader-host로 승급해 base 재배치에도 지지 않게 한다. */
+.codex-reader-host .document h1 {
+  /* 리더 페인은 작업면이다 — 스탠드얼론 히어로 스케일(display-2xl)을 쓰지 않는다. */
+  font-size: var(--font-size-display-lg);
+}
+
+@container codex-reader (max-width: 960px) {
+  .codex-reader-host .document h1 {
+    font-size: var(--font-size-display-md);
+  }
+}
+
+@container codex-reader (max-width: 640px) {
+  .codex-reader-host .document h1 {
+    font-size: var(--font-size-title-xl);
+    font-weight: var(--weight-medium);
+    letter-spacing: -0.01em;
+    line-height: 1.25;
+  }
 }
 
 .lead {
@@ -2595,9 +2656,10 @@ kbd {
 }
 
 .codex-nav-entry {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px var(--space-2);
   width: 100%;
   padding: var(--space-2) var(--space-3);
   background: transparent;
@@ -2634,12 +2696,55 @@ kbd {
 }
 
 .codex-nav-entry .tg {
+  grid-column: 1 / -1;
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow: hidden;
   gap: var(--space-1);
 }
 
+/* 우측 한 칸 — current 행은 시간, 예외 상태 행은 그 배지가 대신 선다. */
+.codex-nav-entry .when {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-tertiary);
+  white-space: nowrap;
+}
+
+.codex-nav-status {
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  padding: 1px var(--space-1);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+}
+
+.codex-nav-status.is-deprecated {
+  border-color: color-mix(in oklch, var(--coral) 45%, transparent);
+  color: var(--coral-ink);
+}
+
+/* 낡음 표식은 헤더 칩(.chip-stale)과 같은 집 관용구(brass 틴트)를 따른다. */
+.codex-nav-status.is-stale {
+  border-color: color-mix(in oklch, var(--brass) 40%, transparent);
+  color: var(--brass-bright);
+}
+
+.codex-nav-more {
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  color: var(--text-tertiary);
+  padding: 1px var(--space-1);
+}
+
 .codex-nav-entry .snippet {
+  grid-column: 1 / -1;
   display: -webkit-box;
   overflow: hidden;
   color: var(--text-tertiary);
@@ -2668,8 +2773,14 @@ kbd {
 }
 
 .codex-nav-tag {
-  display: inline-flex;
-  align-items: center;
+  /* 한 줄 태그 행에서 좁은 페인이 칩을 짜부라뜨리면 내부 줄바꿈 대신 말줄임으로 줄인다
+     (inline-flex는 텍스트 말줄임이 걸리지 않아 block 계열로 둔다). */
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.5;
   padding: 1px var(--space-1);
   background: transparent;
   border: 1px solid var(--surface-rim);
@@ -2717,10 +2828,6 @@ kbd {
 .codex-reading-sheet .markdown-body {
   max-inline-size: 72ch;
   margin-inline: auto;
-}
-
-.codex-reading-sheet .document-header h1 {
-  font-size: var(--font-size-display-md);
 }
 
 /* ─── Cowork inline copilot ─────────────────────────────────────────────────
@@ -2822,20 +2929,16 @@ kbd {
 .cowork-composer textarea::placeholder { color: var(--text-tertiary); }
 .cowork-composer-actions { display: flex; justify-content: flex-end; gap: var(--space-1); }
 
-/* 도크 존 — 리딩 시트 스크롤포트 하단에 붙는 sticky 스택 */
+/* 도크 존 — 스크롤포트 밖 프레임 경계 행(.codex-reader-composer)의 내용물.
+   본문 위 부유가 아니므로 z-index·pointer-events 게임이 필요 없다. */
 .cowork-dock-zone {
-  position: sticky;
-  bottom: var(--space-3);
-  z-index: 7;
   display: none;
   flex-direction: column;
   align-items: center;
   gap: var(--space-2);
-  margin-top: var(--space-6);
-  pointer-events: none;
+  padding: var(--space-2) var(--space-4) var(--space-3);
 }
 .cowork-dock-zone.is-open { display: flex; animation: cowork-rise var(--duration-base) var(--ease-spring); }
-.cowork-dock-zone > * { pointer-events: auto; }
 
 .cowork-revision-stream {
   position: relative;

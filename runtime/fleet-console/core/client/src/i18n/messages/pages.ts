@@ -438,6 +438,8 @@ export const pagesEn = {
 
   // codex — meta chips / toc / op-badge
   "codex.meta.updated": "Updated {date}",
+  "codex.meta.moreTags": "Show {count} more tags",
+  "codex.meta.collapseTags": "Collapse tags",
   "codex.meta.stale": "stale",
   "codex.meta.statusStaleTitle": "{status} · stale",
   "codex.toc.noSections": "No sections",
@@ -948,6 +950,8 @@ export const pagesKo: Record<keyof typeof pagesEn, string> = {
   "codex.reading.workspaceSchema": "워크스페이스 Schema",
 
   "codex.meta.updated": "업데이트 {date}",
+  "codex.meta.moreTags": "태그 {count}개 더 보기",
+  "codex.meta.collapseTags": "태그 접기",
   "codex.meta.stale": "오래됨",
   "codex.meta.statusStaleTitle": "{status} · 오래됨",
   "codex.toc.noSections": "섹션 없음",

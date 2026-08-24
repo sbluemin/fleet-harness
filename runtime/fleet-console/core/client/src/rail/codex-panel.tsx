@@ -14,6 +14,7 @@ import {
   refreshCodexLocale,
   restoreCodexReaderSession,
   saveReaderScroll,
+  setNavigatorTagFilter,
   setNavigatorTheater,
   setOnRequestOpenReader,
   subscribeCodexReaderHistory,
@@ -71,6 +72,8 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   const navRef = useRef<HTMLDivElement>(null);
   const readRef = useRef<HTMLDivElement>(null);
   const tocRef = useRef<HTMLDivElement>(null);
+  const dockRef = useRef<HTMLDivElement>(null);
+  const outlineRef = useRef<HTMLElement>(null);
   const latestContextKeyRef = useRef("");
   const localeRef = useRef(locale);
   const contextKey = theaterId ?? "";
@@ -80,6 +83,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       : null,
   );
   const [outlineCollapsed, setOutlineCollapsed] = useState(readOutlineCollapsed);
+  const [activeSection, setActiveSection] = useState("");
 
   const reader = state.codexReader;
   const hasReader = reader !== null;
@@ -164,10 +168,10 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
   // split reader mount — expanded=true면 오버레이가 처리 중이므로 건너뜀
   useEffect(() => {
     if (!shouldMountCodex || !workspaceId || !hasReader || expanded) return;
-    if (!readRef.current || !tocRef.current || !reader) return;
+    if (!readRef.current || !tocRef.current || !dockRef.current || !reader) return;
     const kind = reader.kind;
     const subId = kind === "drydock" ? reader.patchId : kind === "conflicts" ? reader.id : kind === "schema" ? reader.templateId : undefined;
-    mountReaderInto(readRef.current, tocRef.current, {
+    mountReaderInto(readRef.current, tocRef.current, dockRef.current, {
       initialEntryId: kind === "entry" ? reader.entryId : "",
       kind,
       subId,
@@ -177,6 +181,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       onClose: () => closeCodexReader(),
       onPatchOpen: (pid) => openCodexReader({ kind: "drydock", patchId: pid }),
       onConflictOpen: (id) => openCodexReader({ kind: "conflicts", id }),
+      onTagClick: (tag) => setNavigatorTagFilter(tag),
       onDecided: () => {
         void loadInitialData();
         refreshCodexHealth();
@@ -184,6 +189,18 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
       },
     });
   }, [shouldMountCodex, workspaceId, hasReader, expanded, readerKey, locale]);
+
+  // 접힌 아웃라인 스파인이 현재 섹션명을 되비추도록 스크롤 스파이의 활성 전환을 구독한다.
+  useEffect(() => {
+    const outline = outlineRef.current;
+    if (!outline) return;
+    const onActive = (event: Event) => {
+      const detail = (event as CustomEvent<{ text?: string }>).detail;
+      setActiveSection(detail?.text ?? "");
+    };
+    outline.addEventListener("codex-toc-active", onActive);
+    return () => outline.removeEventListener("codex-toc-active", onActive);
+  }, [hasReader, expanded]);
 
   // 로케일 변경 시 imperative DOM 문구를 갱신한다(문서·스크롤 보존).
   useEffect(() => {
@@ -229,6 +246,7 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
           </button>
         </div>
         <section
+          ref={outlineRef}
           className="codex-doc-outline"
           data-codex-outline
           data-collapsed={outlineCollapsed}
@@ -244,12 +262,18 @@ function CodexRailPanel({ theaterId }: { readonly theaterId: string | null }) {
               writeOutlineCollapsed(next);
             }}
           >
-            <span>{t("codex.nav.outline")} · <span data-codex-outline-count>0</span></span>
+            <span className="codex-doc-outline-label">
+              <span>{t("codex.nav.outline")} · <span data-codex-outline-count>0</span></span>
+              {outlineCollapsed && activeSection ? (
+                <span className="codex-doc-outline-current" title={activeSection}>{activeSection}</span>
+              ) : null}
+            </span>
             <span className="codex-doc-outline-chevron" aria-hidden="true">⌄</span>
           </button>
           <div ref={tocRef} className="codex-doc-toc-inline" />
         </section>
         <div ref={readRef} className="codex-doc-scroll" />
+        <div ref={dockRef} className="codex-reader-composer" />
       </div>
       <div ref={navRef} className="codex-nav-pane" />
     </div>
@@ -323,10 +347,12 @@ async function resolveCodexWorkspace(theaterId: string): Promise<Omit<CodexWorks
 }
 
 function readOutlineCollapsed(): boolean {
+  // 기본은 접힌 스파인 — 펼침은 명시적 선택으로만 유지된다(전주가 본문 도달을 밀지 않도록).
   try {
-    return localStorage.getItem("fleet.codex.outline.collapsed") === "true";
+    const stored = localStorage.getItem("fleet.codex.outline.collapsed");
+    return stored === null ? true : stored === "true";
   } catch {
-    return false;
+    return true;
   }
 }
 
