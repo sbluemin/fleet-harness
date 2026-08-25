@@ -234,6 +234,60 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
   pointer-events: none;
 }
 
+/* ── 본문이 밴드 유리 뒤로 지나가게 한다 ─────────────────────────────────────
+   유리는 뒤에 있는 것을 흐릴 뿐이라, 뒤가 비어 있으면 blur는 항등함수다. 실측에서 모든
+   스크롤 컨테이너의 상단이 밴드의 하단과 같은 좌표(top: 44)에 있어, 밴드의 blur(16px)가
+   평평한 면을 흐려 평평한 면을 만들고 있었다. 본문 잉크(L*23)가 밴드 유리(L*93) 뒤로
+   들어가면 블러는 70포인트의 대비를 얻는다.
+
+   음수 마진은 페이지가 아니라 라우트 컨테이너에 준다 — .console-route-content가
+   overflow:hidden이라, 페이지만 끌어올리면 밴드 뒤로 들어간 부분이 그대로 잘린다.
+
+   밴드의 z-index/isolation이 함께 필요한 이유: 밴드 유리는 자식 없는 ::before(z-index:-1)라
+   밴드가 스태킹 컨텍스트를 갖지 않으면 그 유리가 끌어올린 본문보다 아래로 내려간다.
+   isolation은 스태킹 컨텍스트만 만들고 containing block은 만들지 않으므로, 밴드에 앵커된
+   드롭다운의 위치 계산은 그대로다(루트 backdrop-filter의 함정과 다른 지점).
+
+   게이트 뒤에 둔다 — 유리를 끄면 공간 예약 레이아웃이 정확히 돌아온다.
+   현재 문서 스크롤을 갖는 데스크톱 라우트는 설정 하나뿐이다. Operations 캔버스는 스크롤이
+   아니라 고정 프레임이라 이 규칙의 대상이 아니다. */
+@supports (selector(:has(*)) and ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))) {
+  :root:not([data-glass="off"]) .console-shell:has(.global-settings-page) .console-route-content {
+    margin-top: calc(-1 * var(--chrome-band-height));
+  }
+
+  /* 밴드는 라우트 본문(위치 없음, z:auto)만 이기면 된다. 값을 키우면 What's new(35) 같은
+     낮은 오버레이 위로 밴드가 올라서므로(기존 is-docked 주석의 실측 회귀) 사다리의 맨 아래에 둔다. */
+  :root:not([data-glass="off"]) .console-shell:has(.global-settings-page) .command-band {
+    --z-band-underflow: 2;
+    isolation: isolate;
+    z-index: var(--z-band-underflow);
+  }
+
+  :root:not([data-glass="off"]) .global-settings-page {
+    padding-top: calc(var(--space-5) + var(--chrome-band-height));
+    scroll-padding-top: var(--chrome-band-height);
+  }
+
+  /* 유리 게이트의 셋째 조건. 투명도 축소를 선호하면 밴드는 불투명 실색으로 돌아가므로,
+     본문을 그 뒤로 보내면 굴절 대신 가려지기만 한다 — 공간 예약 레이아웃으로 되돌린다. */
+  @media (prefers-reduced-transparency: reduce) {
+    :root:not([data-glass="off"]) .console-shell:has(.global-settings-page) .console-route-content {
+      margin-top: 0;
+    }
+
+    :root:not([data-glass="off"]) .console-shell:has(.global-settings-page) .command-band {
+      isolation: auto;
+      z-index: auto;
+    }
+
+    :root:not([data-glass="off"]) .global-settings-page {
+      padding-top: var(--space-5);
+      scroll-padding-top: 0;
+    }
+  }
+}
+
 .command-band.is-fullscreen {
   position: fixed;
   inset: 0 0 auto;
@@ -307,7 +361,7 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   /* 사이드바 상단 캡 — 같은 크롬 표면(chrome 틴트 채널)을 ::before로 공유해야 한 열로 읽힌다. */
   position: relative;
   background: none;
-  box-shadow: inset 0 1px 0 var(--glass-rim);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel);
   transition: border-color 200ms ease;
 }
 
@@ -459,8 +513,16 @@ body:has([aria-modal="true"]:not([hidden])) .command-band-edge-reveal.is-fullscr
   padding: var(--space-3);
   border: 1px solid var(--surface-rim-strong);
   border-radius: var(--radius-md);
-  background: var(--surface-band);
-  box-shadow: 0 12px 30px color-mix(in oklch, var(--ink-deep) 70%, transparent);
+  /* 떠 있는 면이므로 형제인 .command-band-system-menu와 같은 strong 계열 유리를 쓴다.
+     유리 전환(PR #888)에서 이 규칙만 --surface-band 불투명으로 남아, 밴드에 앵커된
+     같은 종류의 메뉴 둘이 서로 다른 재질이었다. */
+  background:
+    var(--glass-sheen),
+    linear-gradient(var(--glass-tint-strong), var(--glass-tint-strong)),
+    var(--glass-underlay);
+  -webkit-backdrop-filter: var(--glass-backdrop-strong);
+  backdrop-filter: var(--glass-backdrop-strong);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   font-size: var(--t-xs);
 }

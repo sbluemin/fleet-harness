@@ -23,7 +23,7 @@
   border-right: none;
   border-bottom: none;
   background: none;
-  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-floating);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   overflow: hidden;
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
