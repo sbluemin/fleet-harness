@@ -13,7 +13,7 @@ import {
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsScope, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
@@ -116,12 +116,39 @@ export const agentOperationKind = defineOperationKind({
 export const generalSettingsSection = defineSettingsSection({
   id: "general",
   title: (locale) => getT(locale)("terminal.settings.general"),
+  group: "work",
+  // 이 섹션이 실제로 보여 주는 행 이름을 그대로 싣는다 — 화면에 있는 이름으로 못 찾는 검색은
+  // "모든 설정 검색"이라는 약속을 지키지 못한다. 개념어는 그 뒤에 더한다.
+  keywords: [
+    (locale) => [
+      getT(locale)("terminal.settings.claudeSystemPromptTitle"),
+      getT(locale)("terminal.settings.idleAgent"),
+      getT(locale)("terminal.settings.terminalFont"),
+      getT(locale)("terminal.settings.chatReadingWidthTitle"),
+      getT(locale)("terminal.settings.terminalRenderer"),
+      getT(locale)("terminal.settings.inactiveFlush"),
+      getT(locale)("terminal.settings.compactTiming"),
+    ].join(" "),
+    "terminal font typeface monospace dormant idle session timeout system prompt claude renderer webgl canvas reading width compact",
+    "터미널 글꼴 서체 고정폭 휴면 유휴 세션 시간 시스템 프롬프트 렌더러 읽기 폭 압축",
+  ],
   render: () => <GeneralSection />,
 });
 
 export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: (locale) => getT(locale)("terminal.settings.agentCli"),
+  group: "work",
+  keywords: [
+    (locale) => [
+      getT(locale)("terminal.settings.agentCliAvailable"),
+      getT(locale)("terminal.settings.aiGatewayModels"),
+      getT(locale)("terminal.settings.aiGatewayDiagnostics"),
+      getT(locale)("terminal.settings.aiGatewayWireLog"),
+    ].join(" "),
+    "gateway provider model api key cli path codex cursor opencode xai kimi diagnostics wire log",
+    "게이트웨이 공급자 모델 키 경로 진단 와이어 로그",
+  ],
   render: () => <AgentCliSection />,
 });
 
@@ -704,7 +731,10 @@ function ClaudeCodeSystemPromptSettingsBlock() {
         <>
           <div className="global-settings-row">
             <div className="global-settings-row-text">
-              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</p>
+              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">
+                {t("terminal.settings.claudeSystemPromptTitle")}
+                <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
+              </p>
               <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptHelp")}</p>
             </div>
             <Select
@@ -808,7 +838,10 @@ function IdleAgentSessionsSettingsBlock() {
       {state ? (
         <div className="global-settings-row">
           <div className="global-settings-row-text">
-            <p className="global-settings-resp-title" id="idle-agent-sessions-label">{t("terminal.settings.idleAgent")}</p>
+            <p className="global-settings-resp-title" id="idle-agent-sessions-label">
+              {t("terminal.settings.idleAgent")}
+              <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
+            </p>
             <p className="global-settings-help" id="idle-agent-sessions-help">
               {t("terminal.settings.idleAgentHelp")}
             </p>
@@ -2136,7 +2169,10 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     <section className="global-settings-card" aria-label={t("terminal.settings.terminalFont")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.terminalFont")} <span className="new-badge">{t("terminal.settings.terminalFontNew")}</span></p>
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.terminalFont")}
+            <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
+          </p>
           <p className="global-settings-help" id="terminal-font-help">{t("terminal.settings.terminalFontHelp")}</p>
         </div>
       </div>
@@ -2177,7 +2213,6 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
             onSizeCommit={setTerminalFontSize}
           />
       </div>
-      <p className="global-settings-foot">{t("terminal.settings.terminalFontFoot")}</p>
     </section>
   );
 }

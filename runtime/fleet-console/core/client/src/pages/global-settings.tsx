@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { FontPicker, type FontPickerInstalledFont, type FontPickerSelection } from "@fleet-console/font-picker/browser";
-import type { ConsoleLocale, LocalizedText, Translate } from "@fleet-console/sdk/i18n";
+import type { ConsoleLocale, Translate } from "@fleet-console/sdk/i18n";
 import { resolveLocalizedText } from "@fleet-console/sdk/i18n/translate";
 import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-import { ExperimentalBadge } from "@fleet-console/sdk/settings/browser";
+import { ExperimentalBadge, SettingsScope as SettingsScopeChip, type SettingsScopeKind } from "@fleet-console/sdk/settings/browser";
+import type { SettingsSectionDescriptor, SettingsSectionGroup } from "@fleet-console/sdk/settings";
 import "@fleet-console/font-picker/styles.css";
 import { fetchSystemFonts, SystemFontsFetchError } from "@fleet-console/font-picker/system-fonts";
 
@@ -19,7 +20,7 @@ import { isDesktopShell } from "../desktop-shell.js";
 import { forgetRemoteHost, probeRemoteHost, refreshRemoteHosts, renameRemoteHost, useRemoteHosts, type RemoteHost, type RemoteHostReach } from "../remote-hosts.js";
 import { useConsoleState } from "../hooks/use-store.js";
 import { usePluginRegistry } from "../plugin-registry.js";
-import { readLastDarkTheme, setActiveTheme, setActiveUiFont, setLiquidGlass, themePolarity } from "../store.js";
+import { setActiveTheme, setActiveUiFont, setLiquidGlass } from "../store.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS, UI_FONT_DESCRIPTION_KEYS, UI_FONT_SIZE_RANGE, uiFontFamily } from "../ui-font.js";
 import { buildRemoteEndpointPresentation, generateRemoteAutoPort, REMOTE_AUTO_PORT_MAX, REMOTE_AUTO_PORT_MIN, isCommittableRemotePortDraft, isValidRemoteAdvertisedHost, isValidRemoteListenAddress, isWarnableLocalPort, remoteAccessStateEquals, remoteEndpointImpact, type GlobalSettingsState, type RemoteAccessLink, type RemoteAccessPort, type RemoteAccessState, type RemoteAccessStatus, type RemoteEndpointRequirement, type RemoteForwardRule, type ThemeId, type UiFontId, type UiFontSettings } from "../types.js";
 
@@ -31,6 +32,7 @@ interface LanguageOption {
 interface ThemeOption {
   readonly id: ThemeId;
   readonly label: string;
+  readonly polarity: string;
   readonly swatch: readonly [string, string, string];
 }
 
@@ -39,43 +41,84 @@ interface PortModeOption {
   readonly label: string;
 }
 
-type CoreSettingsSectionId = "general" | "remote-access" | "backend-api";
+export type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced";
 type PluginSettingsSectionId = `${string}:${string}`;
-type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
+export type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
+
+/**
+ * 옛 주소는 계속 열려야 한다. 섹션을 일 기준으로 다시 묶으면서 id가 움직였고, 사람들의
+ * 북마크와 이전 릴리스가 만든 링크는 옛 id를 그대로 들고 온다 — 여기서 새 자리로 넘긴다.
+ */
+const LEGACY_SECTION_IDS: Readonly<Record<string, CoreSettingsSectionId>> = {
+  general: "appearance",
+  console: "language",
+  "remote-access": "connectivity",
+  "backend-api": "advanced",
+};
+
+/**
+ * 주소에 적힌 섹션을 이 빌드가 아는 섹션으로 옮긴다. 데스크톱과 폰이 같은 `/settings` 주소를
+ * 공유하므로 판정도 하나여야 한다 — 한쪽만 아는 id가 생기면 데스크톱이 만든 링크가 폰에서
+ * 쿼리째 지워지고, 창을 좁히는 것만으로 열려 있던 섹션이 사라진다.
+ *
+ * 닿지 못한 id는 `null`로 돌려준다. 무엇으로 대신할지는 레이아웃마다 다르기 때문이다 —
+ * 데스크톱은 목록 옆에 언제나 섹션 하나가 서 있어야 하고, 폰에는 돌아갈 목록 화면이 따로 있다.
+ * 여기서 한쪽 기본값을 심으면 사라진 플러그인을 가리키던 오래된 링크가 폰에서 목록 대신
+ * 엉뚱한 설정을 연다.
+ */
+export function resolveSettingsSectionId(requested: string | null, available: ReadonlySet<string>): SettingsSectionId | null {
+  const migrated = requested !== null && requested in LEGACY_SECTION_IDS ? LEGACY_SECTION_IDS[requested] : requested;
+  if (migrated === null || migrated === undefined) return null;
+  return available.has(migrated) ? migrated as SettingsSectionId : null;
+}
 
 interface SettingsSectionNavItem {
   readonly id: CoreSettingsSectionId;
+  readonly group: SettingsSectionGroup;
   readonly label: string;
-  readonly eyebrow: string;
+  /** 검색이 이 섹션에 닿는 말. 제목에 없는 이름으로도 찾을 수 있어야 한다. */
+  readonly entries: readonly string[];
 }
 
 export interface PluginSettingsNavItem {
   readonly id: PluginSettingsSectionId;
+  readonly group: SettingsSectionGroup;
   readonly pluginId: string;
   readonly pluginLabel: string;
   readonly sectionTitle: string;
+  readonly entries: readonly string[];
   readonly render?: () => ReactNode;
 }
 
-interface PluginSettingsNavGroup {
-  readonly pluginId: string;
-  readonly pluginLabel: string;
-  readonly sections: readonly PluginSettingsNavItem[];
+interface SettingsNavEntry {
+  readonly id: SettingsSectionId;
+  readonly group: SettingsSectionGroup;
+  readonly label: string;
+  readonly meta: string;
+  readonly entries: readonly string[];
 }
+
+const SETTINGS_GROUP_ORDER: readonly SettingsSectionGroup[] = ["setup", "work", "machine"];
+
+const SETTINGS_GROUP_LABEL_KEYS: Readonly<Record<SettingsSectionGroup, CoreMessageKey>> = {
+  setup: "settings.group.setup",
+  work: "settings.group.work",
+  machine: "settings.group.machine",
+};
 
 type T = Translate<CoreMessageKey>;
 
-// 다크 테마 선택지 — 각 항목의 3톤 스와치는 해당 테마의 brass/aurora/ink 시그니처를 미리보기로 보존한다(콘텐츠 색이라 역할색 규칙과 무관).
-// 라이트는 Whites(오트밀) 단일 테마라 카드 없이 Light|Dark 모드 스위치의 Light 자체가 선택이다.
-function buildDarkThemeOptions(t: T): readonly ThemeOption[] {
+// 테마 카드의 3톤 스와치는 각 테마의 ground/brass/aurora 시그니처를 미리 보여 준다(콘텐츠 색이라
+// 역할색 규칙과 무관). 라이트도 같은 카드 문법을 쓴다 — 모드 버튼 뒤에 다크 셋을 숨겨 두면
+// 라이트를 쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 했다.
+function buildThemeOptions(t: T): readonly ThemeOption[] {
   return [
-    { id: "instrument", label: t("settings.theme.instrument"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
-    { id: "maritime", label: t("settings.theme.maritime"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
-    { id: "carbon", label: t("settings.theme.carbon"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+    { id: "instrument", label: t("settings.theme.instrument"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(16.5% 0.016 245)", "oklch(80% 0.085 78)", "oklch(77% 0.085 200)"] },
+    { id: "maritime", label: t("settings.theme.maritime"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(20% 0.045 248)", "oklch(78% 0.13 75)", "oklch(82% 0.13 195)"] },
+    { id: "carbon", label: t("settings.theme.carbon"), polarity: t("settings.theme.group.dark"), swatch: ["oklch(18% 0.007 255)", "oklch(76% 0.115 62)", "oklch(80% 0.105 205)"] },
+    { id: "whites", label: t("settings.theme.whites"), polarity: t("settings.theme.group.light"), swatch: ["oklch(95.5% 0.005 100)", "oklch(56% 0.125 82)", "oklch(50% 0.1 210)"] },
   ];
 }
-
-const LIGHT_THEME_ID: ThemeId = "whites";
 
 function buildPortModes(t: T): readonly PortModeOption[] {
   return [
@@ -95,15 +138,40 @@ function buildLanguages(t: T): readonly LanguageOption[] {
 /**
  * 원격 접속에는 remoteAccess가 실리지 않는다. 그 부재를 그대로 읽어 섹션을 세우지 않는다 —
  * 비활성 항목으로 남겨 두면 손님이 열어 보고 빈 카드를 만나고, 그 카드가 다루는 값은
- * 애초에 이 자리에서 볼 것이 아니다.
+ * 애초에 이 자리에서 볼 것이 아니다. 원격이 없으면 Connectivity는 콘솔 포트만 담는다.
  */
 function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): readonly SettingsSectionNavItem[] {
+  const remoteAvailable = state === null || state.remoteAccess !== undefined;
   return [
-    { id: "general", label: t("settings.core.general.label"), eyebrow: t("settings.core.general.eyebrow") },
-    ...(state !== null && state.remoteAccess === undefined
-      ? []
-      : [{ id: "remote-access" as const, label: t("settings.core.remoteAccess.label"), eyebrow: t("settings.core.remoteAccess.eyebrow") }]),
-    { id: "backend-api", label: t("settings.core.backendApi.label"), eyebrow: t("settings.core.backendApi.eyebrow") },
+    {
+      id: "appearance",
+      group: "setup",
+      label: t("settings.core.appearance.label"),
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.core.appearance.keywords")],
+    },
+    {
+      id: "language",
+      group: "setup",
+      label: t("settings.core.language.label"),
+      entries: [t("settings.language.title"), t("settings.language.label"), t("settings.core.language.keywords")],
+    },
+    {
+      id: "connectivity",
+      group: "machine",
+      label: t("settings.core.connectivity.label"),
+      entries: [
+        t("settings.port.title"),
+        t("settings.port.label"),
+        ...(remoteAvailable ? [t("settings.remote.title"), t("settings.core.connectivity.remoteKeywords")] : []),
+        t("settings.core.connectivity.keywords"),
+      ],
+    },
+    {
+      id: "advanced",
+      group: "machine",
+      label: t("settings.core.advanced.label"),
+      entries: [t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
+    },
   ];
 }
 
@@ -114,7 +182,8 @@ export function GlobalSettings() {
   const settings = useGlobalSettingsStore();
   const state = settings.state;
   const saving = settings.savingField !== null;
-  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("general");
+  const [activeSectionId, setActiveSectionId] = useState<SettingsSectionId>("appearance");
+  const [query, setQuery] = useState("");
   const location = useLocation();
   const navigate = useNavigate();
   const registry = usePluginRegistry();
@@ -122,7 +191,13 @@ export function GlobalSettings() {
   const t = useT();
   const coreSections = buildCoreSettingsSections(t, state);
   const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
-  const pluginGroups = groupPluginSettingsSections(pluginSections);
+  const navEntries = buildNavEntries(coreSections, pluginSections, t);
+  const trimmedQuery = query.trim().toLowerCase();
+  const matches = trimmedQuery === "" ? navEntries : navEntries.filter((entry) => entryMatches(entry, trimmedQuery));
+  const groups = SETTINGS_GROUP_ORDER
+    .map((group) => ({ group, items: matches.filter((entry) => entry.group === group) }))
+    .filter((bucket) => bucket.items.length > 0);
+
   const selectSection = (sectionId: SettingsSectionId) => {
     setActiveSectionId(sectionId);
     // 설정 토글 버튼이 닫힐 때 설정 구간 전체를 소비하려면 진입 마커가 필요하다 —
@@ -136,7 +211,7 @@ export function GlobalSettings() {
     );
     const marked = typeof nextState.settingsEntry === "number";
     navigate(
-      { pathname: "/settings", search: sectionId === "general" ? "" : `?section=${encodeURIComponent(sectionId)}` },
+      { pathname: "/settings", search: sectionId === "appearance" ? "" : `?section=${encodeURIComponent(sectionId)}` },
       { replace: !marked, state: nextState },
     );
   };
@@ -149,19 +224,22 @@ export function GlobalSettings() {
 
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("section");
-    const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
-    const next = requested && available.has(requested as SettingsSectionId) ? requested as SettingsSectionId : "general";
+    const available = new Set<string>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
+    // 데스크톱은 빈 상태가 없다 — 닿지 못한 id는 첫 섹션으로 되돌린다.
+    const next = resolveSettingsSectionId(requested, available) ?? "appearance";
     setActiveSectionId(next);
-    if (requested && requested !== next) navigate({ pathname: "/settings", search: "" }, { replace: true, state: propagateSettingsEntryIndex(location.state) });
+    if (requested !== null && requested !== next) {
+      navigate(
+        { pathname: "/settings", search: next === "appearance" ? "" : `?section=${encodeURIComponent(next)}` },
+        { replace: true, state: propagateSettingsEntryIndex(location.state) },
+      );
+    }
   }, [location.search, navigate, coreSections, pluginSections]);
 
   return (
     <main className="global-settings-page">
       <section className="global-settings-hero" aria-labelledby="global-settings-title">
-        <div>
-          <p className="bridge-kicker">{t("settings.kicker")}</p>
-          <h2 id="global-settings-title">{t("settings.title")}</h2>
-        </div>
+        <h2 id="global-settings-title">{t("settings.title")}</h2>
         <div className="global-settings-status" role="status" aria-live="polite">
           {saving ? t("settings.saving") : ""}
         </div>
@@ -170,42 +248,38 @@ export function GlobalSettings() {
       {settings.error ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
 
       <section className="global-settings-grid">
-        <div className="global-settings-list" aria-label={t("settings.sectionsAria")}>
-          <p className="global-settings-nav-group">{t("settings.nav.console")}</p>
-          {coreSections.map((section) => (
-            <button
-              key={section.id}
-              type="button"
-              className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
-              aria-pressed={section.id === activeSectionId}
-              onClick={() => selectSection(section.id)}
-            >
-              <span className="global-settings-nav-label">{section.label}</span>
-              <span className="global-settings-nav-eyebrow">{section.eyebrow}</span>
-            </button>
-          ))}
-          {pluginSections.length > 0 ? (
-            <>
-              <p className="global-settings-nav-group">{t("settings.nav.plugins")}</p>
-              {pluginGroups.map((group) => (
-                <div key={group.pluginId} className="global-settings-plugin-group">
-                  <p className="global-settings-plugin-heading">{group.pluginLabel}</p>
-                  {group.sections.map((section) => (
-                    <button
-                      key={section.id}
-                      type="button"
-                      className={`global-settings-nav-item ${section.id === activeSectionId ? "is-active" : ""}`}
-                      aria-pressed={section.id === activeSectionId}
-                      onClick={() => selectSection(section.id)}
-                    >
-                      <span className="global-settings-nav-label">{section.sectionTitle}</span>
-                      <span className="global-settings-nav-eyebrow">{section.pluginLabel}</span>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </>
-          ) : null}
+        <div className="global-settings-list">
+          <div className="settings-search">
+            <SearchIcon />
+            <input
+              type="search"
+              value={query}
+              placeholder={t("settings.search.placeholder")}
+              aria-label={t("settings.search.aria")}
+              autoComplete="off"
+              onChange={(event) => setQuery(event.target.value)}
+            />
+          </div>
+          <nav className="settings-nav" aria-label={t("settings.sectionsAria")}>
+            {groups.map((bucket) => (
+              <div key={bucket.group} className="settings-nav-group">
+                <p className="settings-nav-group-label">{t(SETTINGS_GROUP_LABEL_KEYS[bucket.group])}</p>
+                {bucket.items.map((entry) => (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    className={`global-settings-nav-item ${entry.id === activeSectionId ? "is-active" : ""}`}
+                    aria-pressed={entry.id === activeSectionId}
+                    onClick={() => selectSection(entry.id)}
+                  >
+                    <span className="global-settings-nav-label">{entry.label}</span>
+                    {entry.meta ? <span className="global-settings-nav-eyebrow">{entry.meta}</span> : null}
+                  </button>
+                ))}
+              </div>
+            ))}
+            {groups.length === 0 ? <p className="settings-nav-empty">{t("settings.search.empty")}</p> : null}
+          </nav>
         </div>
 
         <div key={activeSectionId} className="global-settings-detail">
@@ -216,12 +290,36 @@ export function GlobalSettings() {
   );
 }
 
+/** 목록과 검색은 같은 항목을 본다 — 검색이 못 찾는 섹션이 목록에만 있으면 인덱스가 거짓이 된다. */
+function buildNavEntries(
+  coreSections: readonly SettingsSectionNavItem[],
+  pluginSections: readonly PluginSettingsNavItem[],
+  t: T,
+): readonly SettingsNavEntry[] {
+  return [
+    ...coreSections.map((section) => ({ id: section.id, group: section.group, label: section.label, meta: "", entries: section.entries })),
+    ...pluginSections.map((section) => ({
+      id: section.id,
+      group: section.group,
+      label: section.sectionTitle,
+      // 섹션 이름이 곧 플러그인 이름이면 뒤에 같은 말을 한 번 더 붙이지 않는다.
+      meta: section.pluginLabel === section.sectionTitle ? "" : section.pluginLabel,
+      entries: section.entries,
+    })),
+  ];
+}
+
+function entryMatches(entry: SettingsNavEntry, query: string): boolean {
+  const haystack = [entry.label, entry.meta, ...entry.entries].join(" ").toLowerCase();
+  return haystack.includes(query);
+}
+
 // 플러그인 render()를 경계 자손의 렌더 단계에서 호출해야 동기 throw가 PluginErrorBoundary에 잡힌다.
 export function PluginSettingsSectionBody({ render }: { readonly render: () => ReactNode }) {
   return <>{render()}</>;
 }
 
-function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T) {
+export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
@@ -231,55 +329,87 @@ function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettin
     ) : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>;
   }
   switch (sectionId) {
-    case "general":
+    case "appearance":
       return (
         <>
           <ThemeCard state={state} saving={saving} />
           <TypographyCard state={state} saving={saving} />
-          <GeneralSettingsCard state={state} saving={saving} />
         </>
       );
-    case "remote-access":
+    case "language":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
-      // 목록에서 뺀 것과 별개로 경로도 막는다 — 주소로 직접 들어오는 길이 남으면 숨긴 것이 아니다.
-      return state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />;
-    case "backend-api":
+      return <LanguageCard state={state} saving={saving} />;
+    case "connectivity":
+      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
+      return (
+        <>
+          <ConsolePortCard state={state} saving={saving} />
+          {/* 목록에서 뺀 것과 별개로 경로도 막는다 — 주소로 직접 들어오는 길이 남으면 숨긴 것이 아니다. */}
+          {state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />}
+        </>
+      );
+    case "advanced":
       return <BackendApiSection />;
   }
 }
 
 export function collectPluginSettingsSections(
-  plugins: readonly { readonly id: string; readonly settingsSections?: readonly { readonly id: string; readonly title: LocalizedText; readonly render?: () => ReactNode }[] }[],
+  plugins: readonly { readonly id: string; readonly settingsSections?: readonly SettingsSectionDescriptor[] }[],
   locale: ConsoleLocale,
   t: T,
 ): readonly PluginSettingsNavItem[] {
   return plugins.flatMap((plugin) =>
     (plugin.settingsSections ?? []).map((section) => ({
       id: `${plugin.id}:${section.id}` as const,
+      // 플러그인 설정은 대부분 작업 도구의 동작이다. 다른 자리가 필요하면 섹션이 직접 말한다.
+      group: section.group ?? "work" as const,
       pluginId: plugin.id,
       pluginLabel: formatPluginLabel(plugin.id, t),
       sectionTitle: resolveLocalizedText(section.title, locale),
+      entries: (section.keywords ?? []).map((keyword) => resolveLocalizedText(keyword, locale)),
       render: section.render,
     })),
   );
 }
 
-function groupPluginSettingsSections(sections: readonly PluginSettingsNavItem[]): readonly PluginSettingsNavGroup[] {
-  const groups: PluginSettingsNavGroup[] = [];
-  for (const section of sections) {
-    const last = groups.at(-1);
-    if (last?.pluginId === section.pluginId) {
-      groups[groups.length - 1] = { ...last, sections: [...last.sections, section] };
-      continue;
-    }
-    groups.push({ pluginId: section.pluginId, pluginLabel: section.pluginLabel, sections: [section] });
-  }
-  return groups;
-}
-
 function formatPluginLabel(pluginId: string, t: T): string {
   if (pluginId === "terminal") return t("settings.plugin.terminal");
   return pluginId.split(/[-_]/g).filter(Boolean).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(" ") || pluginId;
+}
+
+/**
+ * 저장 범위는 줄마다 한 칩으로만 말한다. 예전에는 카드마다 "즉시 적용되고 서버에 저장된다"를
+ * 조금씩 다른 문장으로 되풀이했고, General 카드의 각주는 그 카드에 든 두 줄 모두에 대해
+ * 틀린 말이었다(언어는 즉시, 포트는 콘솔 재시작). 점만 신호 토큰을 쓴다.
+ */
+function SettingsScope({ kind }: { readonly kind: SettingsScopeKind }) {
+  const t = useT();
+  const label = kind === "live"
+    ? t("settings.scope.live")
+    : kind === "restart" ? t("settings.scope.restart") : t("settings.scope.sessions");
+  return <SettingsScopeChip kind={kind} label={label} />;
+}
+
+/** 켬/끔은 콘솔 전체에서 이 한 모양이다 — SDK의 SettingsToggle도 같은 클래스를 쓴다. */
+function SettingsSwitch({ checked, disabled, label, onChange }: {
+  readonly checked: boolean;
+  readonly disabled: boolean;
+  readonly label: string;
+  readonly onChange: (next: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      aria-label={label}
+      className={`settings-switch ${checked ? "is-on" : ""}`}
+      disabled={disabled}
+      onClick={() => onChange(!checked)}
+    >
+      <span className="settings-switch-knob" aria-hidden="true" />
+    </button>
+  );
 }
 
 export function ThemeCard({
@@ -290,9 +420,8 @@ export function ThemeCard({
   readonly saving: boolean;
 }) {
   const t = useT();
-  const darkThemes = buildDarkThemeOptions(t);
+  const themes = buildThemeOptions(t);
   const activeTheme = state?.theme ?? "instrument";
-  const isLight = themePolarity(activeTheme) === "light";
   const selectTheme = (theme: ThemeId) => {
     if (getGlobalSettingsStoreState().savingField !== null) return;
     const previousTheme = activeTheme;
@@ -300,10 +429,6 @@ export function ThemeCard({
     void setGlobalSettingsField("theme", theme).then((saved) => {
       if (!saved) setActiveTheme(previousTheme);
     });
-  };
-  const selectMode = (mode: "light" | "dark") => {
-    if ((mode === "light") === isLight) return;
-    selectTheme(mode === "light" ? LIGHT_THEME_ID : readLastDarkTheme());
   };
   const liquidGlass = state?.liquidGlass ?? true;
   const toggleLiquidGlass = (enabled: boolean) => {
@@ -315,77 +440,119 @@ export function ThemeCard({
     });
   };
   return (
-    <section className="global-settings-card" aria-label={t("settings.theme.aria")}>
-      <div className="global-settings-row">
-        <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("settings.theme.title")}</p>
-          <p className="global-settings-help">{t("settings.theme.help")}</p>
-          <p className="global-settings-help global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
+    <section className="global-settings-card appearance-card" aria-label={t("settings.theme.aria")}>
+      <p className="global-settings-card-title">{t("settings.theme.title")}</p>
+      <div className="appearance-split">
+        <div className="appearance-controls">
+          <div className="global-settings-row is-stack">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.theme.label")}
+                <SettingsScope kind="live" />
+              </p>
+              <p className="global-settings-help">{t("settings.theme.help")}</p>
+            </div>
+            {/* 라이트와 다크가 같은 카드 문법을 쓴다. 모드 버튼 뒤에 다크 셋을 감추면 라이트를
+                쓰는 사람은 무엇이 있는지 보려고 콘솔 전체를 한 번 뒤집어야 한다. */}
+            <div className="theme-grid" role="group" aria-label={t("settings.theme.aria")}>
+              {themes.map((theme) => {
+                const isActive = theme.id === activeTheme;
+                return (
+                  <button
+                    key={theme.id}
+                    type="button"
+                    aria-pressed={isActive}
+                    className={`theme-card ${isActive ? "is-active" : ""}`}
+                    disabled={saving}
+                    onClick={() => selectTheme(theme.id)}
+                  >
+                    <span className="theme-card-swatch" aria-hidden="true">
+                      {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
+                    </span>
+                    <span className="theme-card-name">
+                      <span className="theme-card-label">{theme.label}</span>
+                      <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
+                    </span>
+                    <span className="theme-card-polarity">{theme.polarity}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="global-settings-row">
+            <div className="global-settings-row-text">
+              <p className="global-settings-resp-title">
+                {t("settings.theme.liquidGlass")}
+                <SettingsScope kind="live" />
+              </p>
+              <p className="global-settings-help">{t("settings.theme.liquidGlassHelp")}</p>
+            </div>
+            <SettingsSwitch
+              checked={liquidGlass}
+              disabled={saving || state === null}
+              label={t("settings.theme.liquidGlass")}
+              onChange={toggleLiquidGlass}
+            />
+          </div>
         </div>
-        <div className="theme-picker" role="group" aria-label={t("settings.theme.aria")}>
-          {/* 상호배타 2버튼이지만 radio 대신 aria-pressed 토글 그룹을 쓴다 — radiogroup은 roving
-              tabindex+화살표 탐색 구현 의무가 생기고, 기존 테마 카드(aria-pressed) 문법과도 일치한다. */}
-          <div className="theme-mode-seg" role="group" aria-label={t("settings.theme.aria")}>
-            <button
-              type="button"
-              aria-pressed={isLight}
-              className={isLight ? "is-active" : ""}
-              disabled={saving}
-              onClick={() => selectMode("light")}
-            >
-              <SunIcon />
-              {t("settings.theme.group.light")}
-            </button>
-            <button
-              type="button"
-              aria-pressed={!isLight}
-              className={isLight ? "" : "is-active"}
-              disabled={saving}
-              onClick={() => selectMode("dark")}
-            >
-              <MoonIcon />
-              {t("settings.theme.group.dark")}
-            </button>
+
+        <AppearancePreview />
+      </div>
+      <p className="global-settings-foot global-settings-theme-cli-note">{t("settings.theme.cliNote")}</p>
+    </section>
+  );
+}
+
+/**
+ * 겉모습을 고르는 자리에서 겉모습이 보이게 하는 축소판.
+ *
+ * 설계 요건이 하나 있다. **떠 있는 면이 반드시 내용 위에 겹쳐야 한다.** 유리 뒤가 비어 있으면
+ * backdrop-filter는 블러 없음과 똑같은 픽셀을 그리며, 그것이 바로 예전 설정 화면이 자기
+ * 리퀴드 글래스 스위치를 보여 주지 못한 이유다(끄고 켤 때 바뀌는 화면 픽셀 0.02%).
+ * 그래서 메뉴는 터미널 위에 얹고, 캔버스에는 굴절할 격자를 깐다.
+ *
+ * 상태는 옆의 컨트롤이 말하므로 이 그림은 보조 기술에서 감춘다.
+ */
+function AppearancePreview() {
+  const t = useT();
+  return (
+    <figure className="appearance-preview" aria-hidden="true">
+      {/* 글자 크기는 제품이 이미 :root에 싣는 --font-body-size를 그대로 읽는다 — 축소판이
+          자기 스케일을 따로 열면 옆의 컨트롤이 말하는 값과 어긋날 길이 생긴다. */}
+      <div className="appearance-preview-frame">
+        <div className="appearance-preview-weave" />
+        <div className="appearance-preview-top">
+          <i />
+          <span>{t("settings.preview.caption")}</span>
+        </div>
+        <div className="appearance-preview-body">
+          <div className="appearance-preview-rail">
+            <b>{t("settings.preview.rail.active")}</b>
+            <em>{t("settings.preview.rail.second")}</em>
+            <em>{t("settings.preview.rail.third")}</em>
           </div>
-          {/* 닫힌 트레이는 inert로 봉인한다 — tabIndex=-1은 팔레트 포커스 복원 같은 프로그램적
-              focus()를 막지 못해 aria-hidden 내부에 포커스가 남는 AT 결함이 생긴다. */}
-          <div className={`theme-dark-tray ${isLight ? "" : "is-open"}`} inert={isLight || undefined}>
-            {darkThemes.map((theme) => {
-              const isActive = theme.id === activeTheme;
-              return (
-                <button
-                  key={theme.id}
-                  type="button"
-                  aria-pressed={isActive}
-                  className={`theme-card ${isActive ? "is-active" : ""}`}
-                  disabled={saving}
-                  onClick={() => selectTheme(theme.id)}
-                >
-                  <span className="theme-card-swatch" aria-hidden="true">
-                    {theme.swatch.map((color) => <i key={color} style={{ background: color }} />)}
-                  </span>
-                  <span className="theme-card-label">{theme.label}</span>
-                  <span className="theme-card-check" aria-hidden="true">{isActive ? <CheckIcon /> : null}</span>
-                </button>
-              );
-            })}
+          <div className="appearance-preview-stage">
+            <div className="appearance-preview-panel">
+              <p className="appearance-preview-panel-title">{t("settings.preview.panel.title")}</p>
+              <p className="appearance-preview-panel-value">{t("settings.preview.panel.value")}</p>
+            </div>
+            <pre className="appearance-preview-terminal">
+              <span className="is-prompt">$</span> fleet status{"\n"}
+              <span className="is-good">ready</span> 3 operations{"\n"}
+              <span className="is-busy">running</span> rebuild-index{"\n"}
+              <span className="is-prompt">$</span> fleet logs
+            </pre>
           </div>
+        </div>
+        {/* 겹침이 핵심이다 — 이 메뉴가 터미널 위에 떠 있어야 유리가 읽힌다. */}
+        <div className="appearance-preview-menu">
+          <p>{t("settings.preview.menu.first")}<span>↵</span></p>
+          <p>{t("settings.preview.menu.second")}<span>F2</span></p>
         </div>
       </div>
-      <label className="theme-liquid-glass">
-        <input
-          type="checkbox"
-          checked={liquidGlass}
-          disabled={saving || state === null}
-          onChange={(event) => toggleLiquidGlass(event.target.checked)}
-        />
-        <span className="theme-liquid-glass-text">
-          <span className="theme-liquid-glass-label">{t("settings.theme.liquidGlass")}</span>
-          <span className="theme-liquid-glass-help">{t("settings.theme.liquidGlassHelp")}</span>
-        </span>
-      </label>
-      <p className="global-settings-foot">{t("settings.theme.foot")}</p>
-    </section>
+      <figcaption>{t("settings.preview.caption.help")}</figcaption>
+    </figure>
   );
 }
 
@@ -439,9 +606,13 @@ export function TypographyCard({
 
   return (
     <section className="global-settings-card" aria-label={t("settings.typography.aria")}>
+      <p className="global-settings-card-title">{t("settings.typography.title")}</p>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("settings.typography.title")}</p>
+          <p className="global-settings-resp-title">
+            {t("settings.typography.label")}
+            <SettingsScope kind="live" />
+          </p>
           <p className="global-settings-help">{t("settings.typography.help")}</p>
         </div>
         <button
@@ -495,63 +666,70 @@ export function TypographyCard({
         onSelectionChange={selectUiFont}
         onSizeCommit={(size) => saveUiFont({ ...activeUiFont, size })}
       />
-      <p className="global-settings-foot">{t("settings.typography.foot")}</p>
     </section>
   );
 }
 
-export function GeneralSettingsCard({
+/**
+ * 언어와 콘솔 포트는 성격이 다르다. 언어는 누르는 즉시 화면 전체가 다시 칠해지고, 포트는
+ * 콘솔이 다시 시작할 때 적용된다. 예전에는 둘이 한 카드에 묶여 "새로 시작한 세션에 적용된다"는
+ * 각주 하나를 공유했고, 그 문장은 두 줄 모두에 대해 사실이 아니었다.
+ */
+export function LanguageCard({
   state,
   saving,
 }: {
-  readonly state: GlobalSettingsState | null;
+  readonly state: GlobalSettingsState;
+  readonly saving: boolean;
+}) {
+  const t = useT();
+  const languages = buildLanguages(t);
+  return (
+    <section className="global-settings-card" aria-label={t("settings.language.aria")}>
+      <div className="global-settings-row">
+        <div className="global-settings-row-text">
+          <p className="global-settings-resp-title">
+            {t("settings.language.label")}
+            <SettingsScope kind="live" />
+          </p>
+          <p className="global-settings-help">{t("settings.language.help")}</p>
+        </div>
+        <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
+          {languages.map((language) => {
+            const isActive = state.language === language.id;
+            return (
+              <button
+                key={language.id}
+                type="button"
+                aria-pressed={isActive}
+                className={`segmented-option ${isActive ? "is-active" : ""}`}
+                disabled={saving}
+                onClick={() => void setGlobalSettingsField("language", language.id)}
+              >
+                {language.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function ConsolePortCard({
+  state,
+  saving,
+}: {
+  readonly state: GlobalSettingsState;
   readonly saving: boolean;
 }) {
   const t = useT();
   const consoleState = useConsoleState();
   return (
-    <section className="global-settings-card" aria-label={t("settings.general.aria")}>
-      {state ? (
-        <>
-          <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
-          <LanguageSettings state={state} saving={saving} />
-        </>
-      ) : (
-        <p className="global-settings-help">{t("settings.general.loading")}</p>
-      )}
-      <p className="global-settings-foot">{t("settings.general.foot")}</p>
+    <section className="global-settings-card" aria-label={t("settings.port.title")}>
+      <p className="global-settings-card-title">{t("settings.port.title")}</p>
+      <ConsolePortSettings state={state} saving={saving} consoleState={consoleState} />
     </section>
-  );
-}
-
-function LanguageSettings({ state, saving }: { readonly state: GlobalSettingsState; readonly saving: boolean }) {
-  const t = useT();
-  const languages = buildLanguages(t);
-  return (
-    <div className="global-settings-row is-stack language-settings-row">
-      <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">{t("settings.language.title")}</p>
-        <p className="global-settings-help">{t("settings.language.help")}</p>
-      </div>
-      <div className="segmented language-picker" role="group" aria-label={t("settings.language.aria")}>
-        {languages.map((language) => {
-          const isActive = state.language === language.id;
-          return (
-            <button
-              key={language.id}
-              type="button"
-              aria-pressed={isActive}
-              className={`segmented-option ${isActive ? "is-active" : ""}`}
-              disabled={saving}
-              onClick={() => void setGlobalSettingsField("language", language.id)}
-            >
-              {language.label}
-            </button>
-          );
-        })}
-      </div>
-      <p className="console-port-note">{t("settings.language.note")}</p>
-    </div>
   );
 }
 
@@ -623,7 +801,7 @@ export function RemoteAccessSection({ remote, saving }: { readonly remote: Remot
         <header className="remote-section-head">
           {/* 성숙도 표시는 아래 .remote-danger(보안 경고)와 다른 것을 말한다 — 하나는 "아직 바뀔 수
               있다", 하나는 "켜면 이 기계가 열린다"이므로 한 줄로 합치지 않는다. */}
-          <h3>
+          <h3 className="global-settings-card-title">
             {t("settings.remote.title")}
             <ExperimentalBadge>{t("common.experimental")}</ExperimentalBadge>
           </h3>
@@ -986,9 +1164,9 @@ function RemoteListenerCard({
         </div>
         <button type="button" role="switch" aria-checked={draft.publicEndpointEnabled}
           aria-label={t("settings.remote.publicEndpoint.title")}
-          className={`remote-switch ${draft.publicEndpointEnabled ? "is-on" : ""}`}
+          className={`settings-switch ${draft.publicEndpointEnabled ? "is-on" : ""}`}
           disabled={saving} onClick={() => edit({ publicEndpointEnabled: !draft.publicEndpointEnabled })}>
-          <span className="remote-switch-knob" aria-hidden="true" />
+          <span className="settings-switch-knob" aria-hidden="true" />
         </button>
       </div>
 
@@ -1475,7 +1653,10 @@ function ConsolePortSettings({
   return (
     <div className="global-settings-row is-stack console-port-row">
       <div className="global-settings-row-text">
-        <p className="global-settings-resp-title">{t("settings.port.title")} <span className="new-badge">{t("settings.port.newBadge")}</span></p>
+        <p className="global-settings-resp-title">
+          {t("settings.port.label")}
+          <SettingsScope kind="restart" />
+        </p>
         <p className="global-settings-help">
           {t("settings.port.help")}
         </p>
@@ -1549,7 +1730,6 @@ function ConsolePortSettings({
           </div>
         ) : null}
 
-        <p className="console-port-note">{t("settings.port.note")}</p>
       </div>
     </div>
   );
@@ -1557,6 +1737,15 @@ function ConsolePortSettings({
 
 function isValidConsoleStaticPort(value: number): boolean {
   return Number.isInteger(value) && value >= MIN_CONSOLE_STATIC_PORT && value <= MAX_CONSOLE_STATIC_PORT;
+}
+
+function SearchIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <circle cx="7" cy="7" r="4.4" stroke="currentColor" strokeWidth="1.4" />
+      <path d="M10.4 10.4 14 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  );
 }
 
 function CheckIcon() {
@@ -1567,19 +1756,3 @@ function CheckIcon() {
   );
 }
 
-function SunIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <circle cx="8" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M8 1.2v1.8M8 13v1.8M1.2 8H3M13 8h1.8M3.2 3.2l1.3 1.3M11.5 11.5l1.3 1.3M3.2 12.8l1.3-1.3M11.5 4.5l1.3-1.3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
-}
-
-function MoonIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true">
-      <path d="M13.2 9.4A5.6 5.6 0 1 1 6.6 2.8a4.4 4.4 0 0 0 6.6 6.6Z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-    </svg>
-  );
-}
