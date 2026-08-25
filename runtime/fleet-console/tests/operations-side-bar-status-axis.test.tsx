@@ -644,29 +644,30 @@ describe("OperationsSideBar STATUS axis", () => {
     expect(required<HTMLElement>(".side-bar-status-section--awaiting .side-bar-status-header__count").textContent).toBe("1");
   });
 
-  it("uses the Theater name row for persisted collapse and exposes the split control accessibility contract", () => {
+  it("separates Theater selection from persisted collapse and exposes the split control accessibility contract", () => {
     const onSelectTheater = vi.fn();
     renderSideBar([makeOperation("only", null)], [], onSelectTheater);
 
     expect(container?.querySelector(".side-bar-theater-count")).toBeNull();
-    expect(container?.querySelector(".side-bar-theater-collapse-btn")).toBeNull();
     expect(required<HTMLButtonElement>(".side-bar-theater-split-plus").getAttribute("aria-label")).toBe("New Operation in Alpha");
+    const collapse = required<HTMLButtonElement>(".side-bar-theater-collapse-btn");
+    expect(collapse.getAttribute("aria-label")).toBe("Collapse Alpha");
+    expect(collapse.getAttribute("aria-expanded")).toBe("true");
     const caret = required<HTMLButtonElement>(".side-bar-theater-split-caret");
     expect(caret.getAttribute("aria-haspopup")).toBe("menu");
     expect(caret.getAttribute("aria-expanded")).toBe("false");
     expect(caret.querySelectorAll("circle")).toHaveLength(3);
     expect(caret.querySelector("path")).toBeNull();
 
-    act(() => required<HTMLElement>(".side-bar-theater-activate").click());
+    act(() => collapse.click());
 
-    // 활성 Theater 행 클릭은 접기 토글만 수행한다 — 재선택하지 않는다.
-    // (비활성 Theater 클릭은 선택만 하고 접기 상태를 건드리지 않는 것이 행 제스처 계약이다.)
     expect(onSelectTheater).not.toHaveBeenCalled();
-    expect(required<HTMLElement>(".side-bar-theater-activate").getAttribute("aria-expanded")).toBe("false");
+    expect(collapse.getAttribute("aria-label")).toBe("Expand Alpha");
+    expect(collapse.getAttribute("aria-expanded")).toBe("false");
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
   });
 
-  it("selects an inactive Theater on row click without mutating its persisted collapse preference", () => {
+  it("selects an inactive Theater by name without mutating its persisted collapse preference", () => {
     setTheaterCollapsed("theater-a", true);
     const onSelectTheater = vi.fn();
     renderSideBar([makeOperation("only", null)], [], onSelectTheater, "theater-other");
@@ -674,7 +675,6 @@ describe("OperationsSideBar STATUS axis", () => {
     act(() => required<HTMLElement>(".side-bar-theater-activate").click());
 
     expect(onSelectTheater).toHaveBeenCalledWith("theater-a");
-    // 비활성 클릭=선택만 — 접힘 영속 키는 그대로 남는다.
     expect(window.localStorage.getItem("fleet-console.operations.theater-collapsed")).toBe('["theater-a"]');
   });
 
