@@ -741,9 +741,9 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
 
 /* 터미널 필드의 단일층 규약 — xterm 필드(cols×rows 격자)는 패널 본문을 꽉 채우지 못하므로,
    필드와 남는 거터가 서로 다른 층을 칠하면 경계 띠가 어긋난다(실측). 그래서:
-   - 다크 + 게이트 열림: xterm 배경은 완전 투명으로 비우고, 필드·거터를 컨테이너
-     (.canvas-operation-terminal/.terminal-shell)의 --glass-tint-terminal 한 겹이 칠한다.
-     다크는 minimumContrastRatio=1이라 투명 배경이 대비 보정에 관여하지 않는다.
+   - 다크 + 게이트 열림: xterm 배경은 알파 0으로 비우고(RGB는 아래 glassFieldClearColor 참조),
+     필드·거터를 컨테이너(.canvas-operation-terminal/.terminal-shell)의 --glass-tint-terminal
+     한 겹이 칠한다. 다크는 minimumContrastRatio=1이라 투명 배경이 대비 보정에 관여하지 않는다.
    - 라이트(Whites)와 게이트 닫힘: mCR이 배경 실색을 요구하므로 xterm은 채널 계산값
      (라이트 유리=불투명 종이, 게이트 닫힘=불투명 --surface-panel)을 그대로 받는다 —
      컨테이너도 같은 채널을 칠해 필드·거터가 같은 값으로 만난다.
@@ -752,10 +752,29 @@ function baseTerminalThemeFor(theme: TerminalThemeId): ITheme {
    위 ITheme의 background 리터럴은 토큰을 읽을 수 없는 환경(jsdom·SSR)의 폴백이다. */
 export function resolvePanelSurface(theme: TerminalThemeId, fallback: string): string {
   if (typeof document === "undefined") return fallback;
-  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) return "rgba(0, 0, 0, 0)";
+  if (!LIGHT_TERMINAL_THEMES.has(theme) && readLiquidGlassPaneActive()) return glassFieldClearColor();
   const resolved = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal").trim();
   if (!resolved) return fallback;
   return normalizeCssColorToRgba(resolved) ?? fallback;
+}
+
+/* 다크 유리에서 필드를 비우는 값 — 알파는 0이지만 RGB는 검정이 아니라 유리 톤이어야 한다.
+   xterm은 dim(SGR 2)을 `BgFlags.DIM`, 즉 **배경 워드의 비트**로 싣는다. WebGL RectangleRenderer는
+   배경 사각형을 그릴지를 `bg !== 0` 하나로 판정하므로(updateBackgrounds), 배경이 default인 dim 셀도
+   사각형 대상이 되고, 그 사각형은 테마 배경색을 쓰면서 알파를 상수 1로 덮어쓴다(_updateRectangle).
+   화면 전체를 지우는 뷰포트 사각형만 알파를 보존하므로, 필드는 투명한데 dim 셀만 불투명해진다.
+   `rgba(0,0,0,0)`을 넘기면 그 셀이 순수 검정으로 칠해진다 — Claude Code가 diff 거터를 dim으로
+   찍는 것이 실측으로 확인됐고(PTY 원시 바이트), 유리 위에 검정 블록으로 드러났다.
+   그래서 RGB에는 유리 유효색의 불투명 근사(--glass-tint-terminal-floor)를 싣는다: 알파 0이라
+   필드 자체는 그대로 유리를 통과시키고, 알파가 1로 강제되는 dim 사각형만 필드와 같은 색이 된다.
+   유리는 뒤에 오는 것에 따라 유효색이 흔들리므로 이 값은 일치가 아니라 근사다. */
+function glassFieldClearColor(): string {
+  const floor = getComputedStyle(document.documentElement).getPropertyValue("--glass-tint-terminal-floor").trim();
+  // 빈 값을 프로브에 넘기면 fillStyle 할당이 무시되어 직전 색이 그대로 읽힌다 — 여기서 끊는다.
+  if (!floor) return "rgba(0, 0, 0, 0)";
+  const channels = /^rgba?\(([^)]+)\)$/i.exec(normalizeCssColorToRgba(floor) ?? "")?.[1]?.split(",");
+  if (!channels || channels.length < 3) return "rgba(0, 0, 0, 0)";
+  return `rgba(${channels[0]?.trim()}, ${channels[1]?.trim()}, ${channels[2]?.trim()}, 0)`;
 }
 
 let colorProbeCtx: CanvasRenderingContext2D | null | undefined;
@@ -799,8 +818,8 @@ export function terminalFieldIsTranslucent(background: string): boolean {
   const channels = /^rgba?\(([^)]+)\)$/i.exec(background.trim())?.[1]?.split(",");
   // rgba()가 아니면 resolvePanelSurface가 정규화를 못 한 환경이다(ITheme 폴백, 또는 canvas 프로브
   // 부재로 되돌아온 원문 oklch). 둘 다 xterm 자신도 알파를 파싱하지 못하는 환경이므로 불투명으로
-  // 읽는다. 알파가 실제로 필요한 유일한 경로(다크+게이트 열림)는 프로브를 거치지 않는
-  // "rgba(0, 0, 0, 0)" 리터럴이라 여기서 항상 검출된다.
+  // 읽는다. 알파가 실제로 필요한 유일한 경로(다크+게이트 열림)는 glassFieldClearColor()가 폴백까지
+  // 포함해 언제나 rgba() 형태로 돌려주므로 여기서 항상 검출된다.
   if (!channels) return false;
   return channels.length > 3 && Number.parseFloat(channels[3] ?? "1") < 1;
 }

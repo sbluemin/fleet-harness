@@ -13,10 +13,12 @@ import { resolvePanelSurface, terminalFieldIsTranslucent } from "../client/share
 const openGlassGate = () => document.documentElement.style.setProperty("--glass-backdrop-strong", "blur(24px) saturate(1.7)");
 const closeGlassGate = () => document.documentElement.style.setProperty("--glass-backdrop-strong", "none");
 const setTerminalTint = (value: string) => document.documentElement.style.setProperty("--glass-tint-terminal", value);
+const setTerminalFloor = (value: string) => document.documentElement.style.setProperty("--glass-tint-terminal-floor", value);
 
 afterEach(() => {
   document.documentElement.style.removeProperty("--glass-backdrop-strong");
   document.documentElement.style.removeProperty("--glass-tint-terminal");
+  document.documentElement.style.removeProperty("--glass-tint-terminal-floor");
 });
 
 describe("terminalFieldIsTranslucent", () => {
@@ -42,7 +44,27 @@ describe("resolved terminal field drives allowTransparency", () => {
   it("keeps the dark field translucent while the glass gate is open", () => {
     openGlassGate();
     setTerminalTint("rgb(17, 24, 33)");
+    setTerminalFloor("rgb(7, 19, 29)");
     expect(terminalFieldIsTranslucent(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)"))).toBe(true);
+  });
+
+  /* 비운 필드의 RGB는 검정이 아니라 유리 톤이어야 한다 — xterm이 dim(SGR 2) 셀에 그리는 배경
+     사각형은 알파를 1로 강제하므로, RGB가 (0,0,0)이면 그 셀만 순수 검정으로 칠해진다. */
+  it("clears the dark field to the glass floor color, not to black", () => {
+    openGlassGate();
+    setTerminalTint("rgb(17, 24, 33)");
+    setTerminalFloor("rgb(7, 19, 29)");
+    const cleared = resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)");
+    expect(cleared).toBe("rgba(7, 19, 29, 0)");
+    expect(terminalFieldIsTranslucent(cleared)).toBe(true);
+  });
+
+  /* floor를 못 읽는 환경(토큰 부재·프로브 없음)은 완전 투명으로 물러난다 — 알파가 살아 있어야
+     필드가 유리를 통과시키고, 색을 지어내지 않는다. */
+  it("falls back to a fully transparent field when the floor token is missing", () => {
+    openGlassGate();
+    setTerminalTint("rgb(17, 24, 33)");
+    expect(resolvePanelSurface("instrument", "oklch(16.5% 0.016 245)")).toBe("rgba(0, 0, 0, 0)");
   });
 
   /* 라이트 필드는 유리가 켜져 있어도 불투명 종이다(--glass-on-tint-terminal에 알파가 없다).
@@ -50,6 +72,7 @@ describe("resolved terminal field drives allowTransparency", () => {
   it("keeps the light field opaque even while the glass gate is open", () => {
     openGlassGate();
     setTerminalTint("rgb(250, 249, 246)");
+    setTerminalFloor("rgb(250, 249, 246)");
     expect(terminalFieldIsTranslucent(resolvePanelSurface("whites", "oklch(98.2% 0.004 100)"))).toBe(false);
   });
 
