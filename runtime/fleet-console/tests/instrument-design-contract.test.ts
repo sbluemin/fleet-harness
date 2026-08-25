@@ -203,6 +203,11 @@ function source(path: string): string {
   return fs.readFileSync(new URL(path, CLIENT_ROOT), "utf8").replace(/\r\n/g, "\n");
 }
 
+/* 선언 스캔용 — 콜론을 담은 주석 한 줄이 팔레트 선언으로 오독되는 것을 막는다. */
+function stripComments(css: string): string {
+  return css.replace(/\/\*[\s\S]*?\*\//g, "");
+}
+
 function externalSource(path: URL): string {
   return fs.readFileSync(path, "utf8");
 }
@@ -641,6 +646,61 @@ describe("Instrument core design contract", () => {
     expect(contextMenu).toContain("menuRef.current?.focus({ preventScroll: true });");
   });
 
+  it("lets each theme own the Map terrain while the canvas CSS stays theme-blind", () => {
+    const components = source("styles/components.css");
+    const theme = source("styles/theme.css");
+    const overlays = source("canvas/canvas-overlays.tsx");
+
+    // Map의 두 바닥은 채널을 소비만 한다 — 연출 리터럴이 여기로 돌아오면 세 다크가 다시 한 판을 쓴다.
+    expect(components).toContain(".operations-canvas-sea {\n  background: var(--canvas-field);\n}");
+    expect(components).toContain(".operations-canvas.is-triage {\n  background: var(--canvas-field-triage);");
+    expect(components).toContain(".operations-canvas.is-formation-view {\n  background: var(--canvas-field-formation);");
+
+    // 줌 곱셈은 격자 요소에서 일어나야 한다: :root 커스텀 속성 안에 중첩한 var()는 선언 지점인
+    // :root에서 해석돼 컴포넌트가 넘긴 줌을 영원히 보지 못한다.
+    // `.operations-canvas-grid`는 위치 선언을 sea와 공유하는 블록에도 등장한다 — 연출 블록만 고른다.
+    const gridBlock = (components.match(/\n\.operations-canvas-grid \{[\s\S]*?\n\}/g) ?? [])
+      .find((block) => block.includes("background-image")) ?? "";
+    expect(gridBlock).toContain("background-image: var(--canvas-weave);");
+    expect(gridBlock).toContain("calc(var(--canvas-weave-major) * var(--canvas-weave-zoom))");
+    expect(gridBlock).toContain("calc(var(--canvas-weave-minor) * var(--canvas-weave-zoom))");
+    expect(gridBlock).toContain("opacity: var(--canvas-weave-opacity);");
+    // 격자 어휘는 주선 2슬롯 + 보조선 2슬롯 고정이다 — 레이어 수가 테마마다 달라지면 줌 계산이 컴포넌트로 샌다.
+    expect(gridBlock.match(/--canvas-weave-major/g)).toHaveLength(4);
+    expect(gridBlock.match(/--canvas-weave-minor/g)).toHaveLength(4);
+
+    // 컴포넌트는 줌만 넘긴다. 피치 상수가 돌아오면 그 자리가 곧 테마 불변성이다.
+    expect(overlays).toContain('"--canvas-weave-zoom": viewport.zoom,');
+    expect(overlays).not.toMatch(/backgroundSize:/);
+
+    // 모드 격자는 줌을 따르지 않고 보조 슬롯을 주선 피치로 합친다.
+    // 배수는 calc(4 / 3)이어야 한다 — 1.3333은 48px 기준 63.9984px이라 여덟 칸째에 1px이 밀린다.
+    const triageGrid = components.match(/\.operations-canvas\.is-triage \.operations-canvas-grid \{[^}]*\}/)?.[0] ?? "";
+    expect(triageGrid).toContain("--canvas-weave-zoom: calc(4 / 3) !important;");
+    expect(triageGrid).toContain("--canvas-weave-minor: var(--canvas-weave-major) !important;");
+    expect(triageGrid).not.toMatch(/1\.3333/);
+    const formationGrid = components.match(/\.operations-canvas\.is-formation-view \.operations-canvas-grid \{[^}]*\}/)?.[0] ?? "";
+    expect(formationGrid).toContain("--canvas-weave-zoom: 1 !important;");
+    expect(formationGrid).toContain("--canvas-weave-minor: var(--canvas-weave-major) !important;");
+
+    // 세 다크가 각자의 지형을 선언한다 — base(Instrument) + maritime + carbon.
+    for (const token of ["--canvas-field:", "--canvas-weave:", "--canvas-field-formation:", "--canvas-field-triage:"]) {
+      expect(theme.match(new RegExp(`\\n  \\${token}`, "g"))).toHaveLength(3);
+    }
+    // Instrument 지형은 오늘의 화면 그대로다 — 이 값이 곧 Instrument 사양이다.
+    const base = theme.slice(0, theme.indexOf(':root[data-theme="'));
+    expect(base).toContain("--canvas-weave-major: 48px;");
+    expect(base).toContain("--canvas-weave-minor: 12px;");
+    expect(base).toContain("--canvas-weave-opacity: 0.42;");
+    // Carbon의 눈금은 신호색이 아니라 무채 --ink-rim이다 — 이 테마의 정체성은 색을 쓰지 않는 것이다.
+    // lastIndexOf여야 한다 — indexOf는 maritime과 carbon이 함께 선 공유 셀렉터를 먼저 집어
+    // Maritime 블록까지 삼킨다(그러면 이 단언이 Maritime의 aurora 눈금을 검사하게 된다).
+    const carbon = theme.slice(theme.lastIndexOf(':root[data-theme="carbon"] {'), theme.indexOf(':root[data-theme="whites"]'));
+    const carbonWeave = carbon.match(/--canvas-weave:[\s\S]*?;\n/)?.[0] ?? "";
+    expect(carbonWeave).toContain("var(--ink-rim)");
+    expect(carbonWeave).not.toMatch(/var\(--(?:brass|aurora)\)/);
+  });
+
   it("keeps the Map canvas out of the keyboard focus order", () => {
     const canvas = source("canvas/canvas.tsx");
     const theme = source("styles/theme.css");
@@ -739,8 +799,8 @@ describe("Instrument core design contract", () => {
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
     // Formation 판의 중앙은 대기광 채널이, 둘레는 워시 채널이 정한다 — 유리가 굴절할 빛을
     // 패널 뒤에 놓기 위해서다. 두 채널 모두 기본값이 현행 sea라 게이트가 닫히면 원래 픽셀이다.
-    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%)");
-    expect(components).toContain("background-size: 48px 48px !important;");
+    // 연출 자체는 Map 지형 채널로 옮겨 갔으므로, 이 문장의 근거는 theme.css의 Instrument 사양이 진다.
+    expect(source("styles/theme.css")).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%)");
     expect(components).toContain(".canvas-formation-guide {");
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
     expect(components).not.toContain(".canvas-operation-formation-slot {");
@@ -2155,7 +2215,8 @@ describe("Instrument core design contract", () => {
     const darkVariantBlocks = theme.match(/^:root\[data-theme="(?:maritime|carbon)"\][^{]*\{[^}]*\}/gm) ?? [];
     expect(darkVariantBlocks).toHaveLength(3);
     for (const block of darkVariantBlocks) {
-      const declarations = block.match(/^\s{2}[^\n:]+:/gm) ?? [];
+      // 주석은 선언이 아니다 — 콜론을 담은 설명 한 줄이 팔레트 이탈로 오독되면 안 된다.
+      const declarations = stripComments(block).match(/^\s{2}[^\n:]+:/gm) ?? [];
       expect(declarations.length).toBeGreaterThan(0);
       for (const declaration of declarations) {
         expect(declaration.trim()).toMatch(/^--(?:ink|brass|aurora|coral|warn|positive|apex|crest|canvas|surface|hairline|text|id|glass)[a-z-]*:$/);

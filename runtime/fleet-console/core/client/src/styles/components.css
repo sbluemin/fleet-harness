@@ -3254,9 +3254,7 @@
 }
 
 .operations-canvas.is-triage {
-  background:
-    radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
-    var(--canvas-abyss);
+  background: var(--canvas-field-triage);
   cursor: default;
 }
 
@@ -3274,15 +3272,21 @@
   display: none;
 }
 
+/* 모드 격자는 뷰포트 줌을 따르지 않는다 — 그래서 컴포넌트가 넘긴 --canvas-weave-zoom을
+   여기서 덮어쓴다(구 `background-size: … !important`와 같은 자리, 같은 이유). 성김은 테마
+   피치에 대한 배수로, 진하기는 테마 진하기에 대한 배수로 말해야 테마별 결이 모드에서도 산다.
+   보조 슬롯을 주선 피치로 합치는 것은 연출이다 — 구 단일값 background-size가 모든 레이어에
+   걸리며 만들던 결과이고, 모드의 성긴 판이 그 결과에 기대고 있어 그대로 보존한다.
+   배수는 1.3333이 아니라 calc(4 / 3)이어야 한다: 48 × 1.3333 = 63.9984px이라 여덟 칸째에서
+   누적 반올림이 1px을 넘겨 격자선이 통째로 밀린다(실측 확인). */
 .operations-canvas.is-triage .operations-canvas-grid {
-  opacity: 0.3;
-  background-size: 64px 64px !important;
+  --canvas-weave-zoom: calc(4 / 3) !important;
+  --canvas-weave-minor: var(--canvas-weave-major) !important;
+  opacity: calc(var(--canvas-weave-opacity) * 0.7143);
 }
 
 .operations-canvas.is-formation-view {
-  background:
-    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%),
-    var(--canvas-abyss);
+  background: var(--canvas-field-formation);
   cursor: default;
 }
 
@@ -3291,8 +3295,9 @@
 }
 
 .operations-canvas.is-formation-view .operations-canvas-grid {
-  opacity: 0.62;
-  background-size: 48px 48px !important;
+  --canvas-weave-zoom: 1 !important;
+  --canvas-weave-minor: var(--canvas-weave-major) !important;
+  opacity: calc(var(--canvas-weave-opacity) * 1.4762);
 }
 
 .operations-canvas-background,
@@ -3303,19 +3308,25 @@
   pointer-events: none;
 }
 
+/* Map의 두 바닥은 테마가 소유한다 — 색만이 아니라 연출까지. 세 다크가 같은 형상 하나를
+   공유하는 동안 Map은 테마를 말하지 못했고, 유리가 굴절할 구조도 없었다(실측: 배경 픽셀
+   평균 색차 0.42~2.44/255). 여기는 채널을 소비만 하며 테마 분기를 갖지 않는다.
+   field는 뷰포트에 고정된 대기라 레이어 수가 자유롭고, weave는 판과 함께 움직이는 격자라
+   주선 2슬롯 + 보조선 2슬롯의 고정 어휘를 쓴다(빈 슬롯은 투명 그라디언트로 채운다). */
 .operations-canvas-sea {
-  background:
-    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-ambience) 82%, transparent), transparent 38%),
-    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) var(--canvas-bloom-aurora), transparent), transparent 34%),
-    radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) var(--canvas-bloom-brass), transparent), transparent 36%),
-    linear-gradient(145deg, var(--canvas-wash-near), var(--canvas-wash-mid) 58%, var(--canvas-wash-far));
+  background: var(--canvas-field);
 }
 
 .operations-canvas-grid {
-  background-image:
-    linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
-    radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px);
-  opacity: 0.42;
+  background-image: var(--canvas-weave);
+  /* 줌 곱셈은 반드시 **이 요소**에서 일어나야 한다. :root 커스텀 속성 값 안에 중첩한 var()는
+     선언 지점인 :root에서 해석되므로, 컴포넌트가 격자 요소에 넘긴 줌을 영원히 보지 못한다. */
+  background-size:
+    calc(var(--canvas-weave-major) * var(--canvas-weave-zoom)) calc(var(--canvas-weave-major) * var(--canvas-weave-zoom)),
+    calc(var(--canvas-weave-major) * var(--canvas-weave-zoom)) calc(var(--canvas-weave-major) * var(--canvas-weave-zoom)),
+    calc(var(--canvas-weave-minor) * var(--canvas-weave-zoom)) calc(var(--canvas-weave-minor) * var(--canvas-weave-zoom)),
+    calc(var(--canvas-weave-minor) * var(--canvas-weave-zoom)) calc(var(--canvas-weave-minor) * var(--canvas-weave-zoom));
+  opacity: var(--canvas-weave-opacity);
 }
 
 .operations-canvas.is-formation-view .canvas-minimap,

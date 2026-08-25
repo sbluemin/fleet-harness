@@ -1,3 +1,5 @@
+import { type CSSProperties } from "react";
+
 import { useT } from "../i18n/index.js";
 import { canvasRectToScreen, type CanvasRect, type CanvasViewport } from "./coordinates.js";
 
@@ -13,8 +15,11 @@ export function CanvasGrid({ viewport }: CanvasGridProps) {
         className="operations-canvas-grid"
         style={{
           backgroundPosition: `${viewport.x}px ${viewport.y}px`,
-          backgroundSize: `${48 * viewport.zoom}px ${48 * viewport.zoom}px, ${12 * viewport.zoom}px ${12 * viewport.zoom}px`,
-        }}
+          /* 격자 피치는 테마가 --canvas-weave-major/minor로 소유한다. 여기서 넘기는 것은 줌뿐이고,
+             곱셈은 components.css가 이 요소에서 한다 — 상수를 여기 두면 Map 형상이 Instrument
+             하나로 고정된다. 모드(Tactical·War Room)는 그 CSS가 이 값을 덮어 줌을 따르지 않는다. */
+          "--canvas-weave-zoom": viewport.zoom,
+        } as CSSProperties}
       />
     </div>
   );
