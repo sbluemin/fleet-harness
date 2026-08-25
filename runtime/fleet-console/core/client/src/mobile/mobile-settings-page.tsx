@@ -8,7 +8,8 @@ import { loadGlobalSettings, useGlobalSettingsStore } from "../global-settings-s
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import {
   collectPluginSettingsSections,
-  GeneralSettingsCard,
+  ConsolePortCard,
+  LanguageCard,
   PluginSettingsSectionBody,
   RemoteAccessSection,
   ThemeCard,
@@ -160,7 +161,8 @@ function renderMobileSection(
     case "appearance":
       return <><ThemeCard state={state} saving={saving} /><TypographyCard state={state} saving={saving} /></>;
     case "console":
-      return <GeneralSettingsCard state={state} saving={saving} />;
+      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
+      return <><ConsolePortCard state={state} saving={saving} /><LanguageCard state={state} saving={saving} /></>;
     case "remote-access":
       if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
       return state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />;
@@ -188,14 +190,14 @@ function buildMobileSettingsGroups(
   if (state === null || state.remoteAccess !== undefined) {
     consoleRows.push({
       id: "remote-access",
-      title: t("settings.core.remoteAccess.label"),
+      title: t("settings.core.connectivity.label"),
       value: state?.remoteAccess === undefined ? null : t(state.remoteAccess.enabled ? "mobile.settings.on" : "mobile.settings.off"),
       icon: <RemoteIcon />,
     });
   }
   consoleRows.push({ id: "backend-api", title: t("settings.core.backendApi.label"), value: null, icon: <ApiIcon /> });
 
-  const groups: MobileSettingsGroup[] = [{ key: "console", label: t("settings.nav.console"), rows: consoleRows }];
+  const groups: MobileSettingsGroup[] = [{ key: "console", label: t("settings.group.machine"), rows: consoleRows }];
   for (const section of pluginSections) {
     const last = groups.at(-1);
     const row: MobileSettingsRow = { id: section.id, title: section.sectionTitle, value: null, icon: <PluginIcon /> };

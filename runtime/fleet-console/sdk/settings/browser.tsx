@@ -49,6 +49,22 @@ export function ExperimentalBadge({ children }: { readonly children: React.React
   return <span className="experimental-badge">{children}</span>;
 }
 
+export type SettingsScopeKind = "live" | "restart" | "sessions";
+
+/**
+ * 한 설정이 언제 효력을 갖는지 말하는 칩. 저장 위치와 적용 시점은 설정마다 한 번,
+ * 이 한 모양으로만 말한다 — 카드마다 다른 문장으로 되풀이하면 서로 어긋나기 시작한다.
+ * 문구는 호출자가 자기 카탈로그에서 가져온다(코어는 en/ko, 플러그인은 자기 로케일).
+ */
+export function SettingsScope({ kind, label }: { readonly kind: SettingsScopeKind; readonly label: string }): React.ReactElement {
+  return (
+    <span className={`settings-scope is-${kind}`}>
+      <i aria-hidden="true" />
+      {label}
+    </span>
+  );
+}
+
 export function SettingsCard({ title, description, children }: SettingsCardProps): React.ReactElement {
   return (
     <section className="fc-settings-card">
@@ -73,6 +89,12 @@ export function SettingsRow({ label, hint, children }: SettingsRowProps): React.
   );
 }
 
+/**
+ * 켬/끔은 콘솔 전체에서 이 한 모양으로만 말한다. 이전에는 플러그인 SDK가 자기 iOS형 스위치를
+ * aurora로 칠하고, 코어의 리퀴드 글래스는 맨 체크박스를 쓰고, 원격 접속은 또 다른 스위치를 써서
+ * 같은 뜻이 한 화면에서 세 모양으로 갈렸다. 켜짐은 선택이자 위치이므로 brass가 칠하고,
+ * 신호 토큰(aurora/warn/coral)은 상태를 말하는 자리에만 남는다.
+ */
 export function SettingsToggle({ checked, onChange, label, disabled = false }: SettingsToggleProps): React.ReactElement {
   const id = React.useId();
   return (
@@ -86,7 +108,9 @@ export function SettingsToggle({ checked, onChange, label, disabled = false }: S
         aria-label={label ? undefined : "Toggle setting"}
         onChange={(event) => onChange(event.currentTarget.checked)}
       />
-      <span className="fc-settings-toggle__control" aria-hidden="true" />
+      <span className="settings-switch fc-settings-toggle__control" aria-hidden="true">
+        <span className="settings-switch-knob" />
+      </span>
       {label ? <span className="fc-settings-toggle__label">{label}</span> : null}
     </label>
   );

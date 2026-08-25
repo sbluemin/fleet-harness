@@ -13,7 +13,7 @@ import {
   CaptionReadingWidthGlyph,
   CaptionTerminalGlyph,
 } from "@fleet-console/sdk/components/caption-actions";
-import { defineSettingsSection } from "@fleet-console/sdk/settings/browser";
+import { SettingsScope, defineSettingsSection } from "@fleet-console/sdk/settings/browser";
 import type { OperationRenderContext, PluginInstallContext } from "@fleet-console/sdk/plugin";
 import { TerminalSurface } from "../shared/index.js";
 import { CURATED_TERMINAL_FONTS, DEFAULT_TERMINAL_FONT, TERMINAL_FONT_SIZE_RANGE } from "../shared/terminal-preferences.js";
@@ -116,12 +116,17 @@ export const agentOperationKind = defineOperationKind({
 export const generalSettingsSection = defineSettingsSection({
   id: "general",
   title: (locale) => getT(locale)("terminal.settings.general"),
+  group: "work",
+  // 제목에 없는 이름으로도 닿아야 한다 — "dormant"를 찾는 사람은 그 설정이 여기 있다는 것을 모른다.
+  keywords: ["terminal", "font", "typeface", "monospace", "dormant", "idle", "session", "timeout", "system prompt", "claude"],
   render: () => <GeneralSection />,
 });
 
 export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: (locale) => getT(locale)("terminal.settings.agentCli"),
+  group: "work",
+  keywords: ["gateway", "provider", "model", "api key", "cli", "path", "codex", "cursor", "opencode", "xai", "kimi"],
   render: () => <AgentCliSection />,
 });
 
@@ -704,7 +709,10 @@ function ClaudeCodeSystemPromptSettingsBlock() {
         <>
           <div className="global-settings-row">
             <div className="global-settings-row-text">
-              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">{t("terminal.settings.claudeSystemPromptTitle")}</p>
+              <p className="global-settings-resp-title" id="claude-code-system-prompt-label">
+                {t("terminal.settings.claudeSystemPromptTitle")}
+                <SettingsScope kind="sessions" label={t("terminal.settings.scopeSessions")} />
+              </p>
               <p className="global-settings-help">{t("terminal.settings.claudeSystemPromptHelp")}</p>
             </div>
             <Select
@@ -808,7 +816,10 @@ function IdleAgentSessionsSettingsBlock() {
       {state ? (
         <div className="global-settings-row">
           <div className="global-settings-row-text">
-            <p className="global-settings-resp-title" id="idle-agent-sessions-label">{t("terminal.settings.idleAgent")}</p>
+            <p className="global-settings-resp-title" id="idle-agent-sessions-label">
+              {t("terminal.settings.idleAgent")}
+              <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
+            </p>
             <p className="global-settings-help" id="idle-agent-sessions-help">
               {t("terminal.settings.idleAgentHelp")}
             </p>
@@ -2136,7 +2147,10 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
     <section className="global-settings-card" aria-label={t("terminal.settings.terminalFont")}>
       <div className="global-settings-row">
         <div className="global-settings-row-text">
-          <p className="global-settings-resp-title">{t("terminal.settings.terminalFont")} <span className="new-badge">{t("terminal.settings.terminalFontNew")}</span></p>
+          <p className="global-settings-resp-title">
+            {t("terminal.settings.terminalFont")}
+            <SettingsScope kind="live" label={t("terminal.settings.scopeLive")} />
+          </p>
           <p className="global-settings-help" id="terminal-font-help">{t("terminal.settings.terminalFontHelp")}</p>
         </div>
       </div>
@@ -2177,7 +2191,6 @@ function TerminalFontSettingsCard({ terminalFont }: { readonly terminalFont: Ter
             onSizeCommit={setTerminalFontSize}
           />
       </div>
-      <p className="global-settings-foot">{t("terminal.settings.terminalFontFoot")}</p>
     </section>
   );
 }

@@ -136,7 +136,7 @@
 .global-settings-page {
   display: grid;
   align-content: start;
-  gap: var(--space-5);
+  gap: var(--space-4);
   width: min(1440px, calc(100vw - 48px));
   min-height: 0;
   height: 100%;
@@ -144,28 +144,30 @@
   /* --band-underflow는 스크롤포트가 밴드 유리 뒤까지 올라간 만큼이다(layout.css가 켠다).
      첫 카드가 밴드에 가리지 않도록 같은 값을 위 패딩으로 돌려주고, 키보드 이동의 착지점도
      같이 민다. 그 레이아웃이 아니면 0px이라 오늘의 여백 그대로다. */
-  padding: calc(var(--space-5) + var(--band-underflow, 0px)) 0 var(--space-10);
+  padding: calc(var(--space-4) + var(--band-underflow, 0px)) 0 var(--space-10);
   scroll-padding-top: var(--band-underflow, 0px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
 
+/* 제목은 자리를 알려 주는 한 줄이면 된다. 예전에는 72px 표제와 킥커가 뷰포트의 23%를 먹고
+   첫 컨트롤이 218px 아래에서 시작했다 — 이미 톱니바퀴를 눌러 들어온 사람에게 파는 값이 아니다. */
 .global-settings-hero {
   display: flex;
-  align-items: flex-end;
+  align-items: baseline;
   justify-content: space-between;
   gap: var(--space-4);
-  padding: var(--space-4) 0 var(--space-2);
+  padding: 0 0 var(--space-2);
 }
 
 .global-settings-hero h2 {
   margin: 0;
   color: var(--text-primary);
   font-family: var(--font-body);
-  font-size: clamp(42px, 6vw, 72px);
-  font-weight: var(--weight-regular);
-  letter-spacing: -0.03em;
-  line-height: 0.95;
+  font-size: var(--t-xl);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.02em;
+  line-height: 1.1;
 }
 
 .global-settings-status {
@@ -181,8 +183,8 @@
 
 .global-settings-grid {
   display: grid;
-  grid-template-columns: 360px minmax(0, 1fr);
-  gap: var(--space-6);
+  grid-template-columns: 240px minmax(0, 1fr);
+  gap: var(--space-5);
   align-items: start;
 }
 
@@ -195,25 +197,111 @@
   align-self: start;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
   max-height: calc(100dvh - 132px);
-  overflow-y: auto;
-  padding: 8px;
+  min-height: 0;
+  padding: var(--space-2);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
 }
 
+/* 이름으로 바로 가는 길. 약 150개 컨트롤을 가로지르는 입력이 하나도 없어, 특정 항목을 찾으려면
+   여섯 섹션을 눈으로 훑어야 했다. 검색은 목록과 같은 항목을 본다 — 목록에만 있고 검색이
+   못 찾는 섹션이 생기면 인덱스가 거짓이 된다. */
+.settings-search {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--space-2);
+  min-height: 34px;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklab, var(--ink-deep) 48%, transparent);
+  color: var(--text-tertiary);
+  transition: border-color var(--duration-fast) var(--ease-spring);
+}
+
+.settings-search:focus-within {
+  border-color: var(--control-selected-rim);
+}
+
+.settings-search svg {
+  display: block;
+  flex: none;
+}
+
+.settings-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  background: none;
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: var(--t-md);
+}
+
+.settings-search input:focus-visible {
+  outline: none;
+}
+
+.settings-search input::placeholder {
+  color: var(--text-tertiary);
+}
+
+.settings-search input::-webkit-search-cancel-button {
+  appearance: none;
+}
+
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.settings-nav-group {
+  display: grid;
+  gap: 2px;
+}
+
+/* 그룹 머리글은 자기 항목 위에 붙어 있어야 그룹으로 읽힌다. 예전 좁은 폭에서는 목록이
+   row wrap으로 풀리면서 머리글이 항목 흐름 안으로 들어가 옆 칸의 이름처럼 보였다. */
+.settings-nav-group-label {
+  margin: var(--space-2) 0 2px;
+  padding: 0 var(--space-2);
+  color: var(--brass-ink);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.settings-nav-group:first-child .settings-nav-group-label {
+  margin-top: 0;
+}
+
+.settings-nav-empty {
+  margin: 0;
+  padding: var(--space-3) var(--space-2);
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.55;
+}
+
 .global-settings-nav-item {
   display: flex;
   width: 100%;
   min-width: 0;
-  flex-direction: column;
-  gap: 2px;
-  padding: 14px 16px;
+  align-items: baseline;
+  gap: var(--space-2);
+  padding: 7px var(--space-3);
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-xs);
   background: transparent;
   color: inherit;
   text-align: left;
@@ -221,39 +309,28 @@
     color var(--duration-fast) var(--ease-spring),
     border-color var(--duration-fast) var(--ease-spring),
     background var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
+    box-shadow var(--duration-fast) var(--ease-spring);
 }
-
-.global-settings-nav-item:nth-child(1) { animation-delay: 0ms; }
-.global-settings-nav-item:nth-child(2) { animation-delay: 40ms; }
-.global-settings-nav-item:nth-child(3) { animation-delay: 80ms; }
-.global-settings-nav-item:nth-child(4) { animation-delay: 120ms; }
 
 .global-settings-nav-item:hover:not([aria-pressed="true"]) {
   border-color: var(--control-hover-rim);
   background: var(--control-hover-fill);
-  transform: translateX(2px);
-}
-
-.global-settings-nav-item:active:not([aria-pressed="true"]) {
-  transform: translateX(2px) translateY(1px);
 }
 
 .global-settings-nav-item.is-active,
 .global-settings-nav-item[aria-pressed="true"] {
   border-color: var(--control-selected-rim);
   background: var(--control-selected-fill);
-  box-shadow: var(--shadow-anchor), inset 3px 0 0 var(--brass);
+  box-shadow: inset 2px 0 0 var(--brass);
 }
 
 .global-settings-nav-label {
+  min-width: 0;
   overflow: hidden;
   color: var(--text-secondary);
   font-family: var(--font-body);
-  font-size: var(--t-xl);
+  font-size: var(--t-md);
   font-weight: var(--weight-regular);
-  letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color var(--duration-fast) var(--ease-spring);
@@ -266,11 +343,13 @@
 }
 
 .global-settings-nav-eyebrow {
+  flex: none;
+  margin-left: auto;
   overflow: hidden;
   color: var(--text-tertiary);
   font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
+  font-size: var(--t-2xs);
+  letter-spacing: 0.06em;
   text-overflow: ellipsis;
   white-space: nowrap;
   transition: color var(--duration-fast) var(--ease-spring);
@@ -281,53 +360,37 @@
   color: var(--brass-bright);
 }
 
-.global-settings-nav-group {
-  margin: var(--space-2) 0 0;
-  padding: 0 var(--space-2);
-  color: var(--brass-ink);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-}
-
-.global-settings-nav-group:first-child {
-  margin-top: 0;
-}
-
-.global-settings-plugin-group {
-  display: grid;
-  gap: var(--space-2);
-}
-
-.global-settings-plugin-heading {
-  margin: 0;
-  padding: 0 var(--space-3);
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-}
-
 .global-settings-detail {
   display: grid;
   align-content: start;
-  gap: var(--space-5);
+  gap: var(--space-4);
   min-width: 0;
   min-height: 420px;
 }
 
 .global-settings-card {
   display: grid;
-  gap: var(--space-5);
-  padding: var(--space-6);
+  gap: var(--space-4);
+  padding: var(--space-5);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: var(--surface-glass);
   box-shadow: var(--shadow-soft);
+}
+
+/* 카드 제목은 한 문법이다 — 대문자 모노 한 줄. 예전에는 Console 섹션이 대문자 모노를 쓰고
+   Remote access와 플러그인 섹션이 문장형 표제를 써서 한 화면에 두 말투가 공존했다. */
+.global-settings-card-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .global-settings-row {
@@ -338,37 +401,302 @@
 }
 
 .global-settings-row + .global-settings-row {
-  padding-top: var(--space-5);
+  padding-top: var(--space-4);
   border-top: 1px solid color-mix(in oklch, var(--surface-rim) 55%, transparent);
 }
 
+/* 저장 범위는 줄마다 이 칩 하나로만 말한다. 예전에는 같은 사실이 카드마다 다른 문장으로
+   일곱 번 되풀이됐고, 그중 하나는 자기 카드의 두 줄 모두에 대해 틀렸다. 점만 신호 토큰을
+   쓴다 — 즉시는 positive, 재시작은 warn, 새 세션은 aurora. */
+.settings-scope {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-pill);
+  background: color-mix(in oklab, var(--ink-deep) 42%, transparent);
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  font-weight: var(--weight-regular);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.settings-scope i {
+  width: 5px;
+  height: 5px;
+  flex: none;
+  border-radius: var(--radius-pill);
+  background: var(--text-tertiary);
+}
+
+.settings-scope.is-live i { background: var(--positive); }
+.settings-scope.is-restart i { background: var(--warn); }
+.settings-scope.is-sessions i { background: var(--aurora); }
+
+/* 겉모습은 고르는 자리에서 보여야 한다. 컨트롤과 축소판이 한 행에 서고, 좁아지면 축소판이
+   컨트롤 아래로 내려간다. */
+.appearance-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 320px);
+  gap: var(--space-5);
+  align-items: start;
+}
+
+.appearance-controls {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+}
+
+.appearance-preview {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  min-width: 0;
+}
+
+/*
+  축소판이 유리를 보이게 하는 조건은 하나다. **떠 있는 면이 내용 위에 겹쳐야 한다.**
+  유리 뒤가 빈 그라디언트면 backdrop-filter는 블러 없음과 똑같은 픽셀을 그리고, 그것이
+  예전 설정 화면이 자기 리퀴드 글래스 스위치를 보여 주지 못한 이유다(끄고 켤 때 바뀌는
+  화면 픽셀 0.02%). 그래서 메뉴는 터미널 위에 얹히고 캔버스에는 격자가 깔린다.
+*/
+.appearance-preview-frame {
+  position: relative;
+  display: grid;
+  grid-template-rows: 22px minmax(0, 1fr);
+  min-height: 208px;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim-strong);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(120% 84% at 16% 0%, color-mix(in oklch, var(--brass) 10%, transparent), transparent 56%),
+    linear-gradient(168deg, var(--canvas-sea-near), var(--canvas-sea-mid) 52%, var(--canvas-sea-far));
+}
+
+.appearance-preview-weave {
+  position: absolute;
+  inset: 22px 0 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.5;
+  background-image:
+    linear-gradient(90deg, color-mix(in oklch, var(--aurora) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--aurora) 16%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px);
+  background-size: 48px 48px, 48px 48px, 16px 16px, 16px 16px;
+}
+
+.appearance-preview-top {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 var(--space-2);
+  border-bottom: 1px solid var(--surface-rim);
+  background: color-mix(in oklch, var(--ink-deep) 76%, transparent);
+}
+
+.appearance-preview-top i {
+  width: 5px;
+  height: 5px;
+  border-radius: var(--radius-pill);
+  background: var(--brass);
+}
+
+.appearance-preview-top span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.appearance-preview-body {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: var(--space-2);
+  padding: var(--space-2);
+}
+
+.appearance-preview-rail {
+  display: grid;
+  gap: 4px;
+  align-content: start;
+}
+
+.appearance-preview-rail b,
+.appearance-preview-rail em {
+  overflow: hidden;
+  padding: 5px 6px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-xs);
+  color: var(--text-tertiary);
+  font-size: var(--t-2xs);
+  font-style: normal;
+  font-weight: var(--weight-regular);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.appearance-preview-rail b {
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
+  box-shadow: inset 2px 0 0 var(--brass);
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+}
+
+.appearance-preview-stage {
+  display: grid;
+  gap: 6px;
+  align-content: start;
+  min-width: 0;
+}
+
+.appearance-preview-panel {
+  padding: 6px 8px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-raised);
+  backdrop-filter: var(--glass-backdrop-panel);
+  -webkit-backdrop-filter: var(--glass-backdrop-panel);
+}
+
+.appearance-preview-panel-title {
+  margin: 0;
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.appearance-preview-panel-value {
+  margin: 2px 0 0;
+  color: var(--text-primary);
+  font-size: var(--font-body-size);
+  line-height: 1.3;
+}
+
+.appearance-preview-terminal {
+  margin: 0;
+  overflow: hidden;
+  padding: 7px 8px;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
+  background: color-mix(in oklch, var(--ink-abyss) 72%, transparent);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: calc(var(--font-body-size) - 3px);
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.appearance-preview-terminal .is-prompt { color: var(--brass-bright); }
+.appearance-preview-terminal .is-good { color: var(--positive); }
+.appearance-preview-terminal .is-busy { color: var(--aurora); }
+
+.appearance-preview-menu {
+  position: absolute;
+  right: 10px;
+  bottom: 18px;
+  z-index: 2;
+  display: grid;
+  gap: 3px;
+  width: 132px;
+  padding: 6px 7px;
+  border: 1px solid var(--glass-rim);
+  border-radius: var(--radius-xs);
+  background: var(--glass-tint-panel);
+  backdrop-filter: var(--glass-backdrop-panel);
+  -webkit-backdrop-filter: var(--glass-backdrop-panel);
+  box-shadow: var(--shadow-soft);
+}
+
+.appearance-preview-menu p {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: var(--t-2xs);
+}
+
+.appearance-preview-menu p:first-child {
+  color: var(--text-primary);
+}
+
+.appearance-preview-menu span {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+}
+
+.appearance-preview figcaption {
+  color: var(--text-tertiary);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .appearance-split {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .appearance-preview-frame {
+    max-width: 420px;
+  }
+}
+
+/* 좁은 폭에서는 목록이 접힌다. 예전에는 row wrap 격자로 풀려 세로 328px를 먹고 항목 폭이
+   237/237/237/143/143/165로 어긋났으며, 그룹 머리글이 항목 흐름 안으로 들어갔다. */
 @media (max-width: 1120px) {
   .global-settings-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .global-settings-list {
     position: static;
-    flex-flow: row wrap;
+    max-height: none;
   }
 
-  .global-settings-nav-item {
-    flex: 1 1 190px;
+  .settings-nav {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: var(--space-2);
+    overflow: visible;
+  }
+
+  .settings-nav-group-label {
+    margin-top: 0;
   }
 }
 
-/* 경계는 모바일 셸이 켜지는 폭(view-mode-store의 max-width: 767px)과 같아야 한다. 720px에 두면
-   721~767px 구간이 모바일 셸 안에서 데스크톱 가로 배치로 남아, 설명 문단이 세로 리본으로 눌린다
-   (실측 65px 폭). Fleet Console 앱은 폭과 무관하게 모바일 셸을 켜므로 그 구간이 실제로 열린다. */
+/* 767px는 모바일 셸이 시작하는 폭이다 — 두 경계가 어긋나면 그 사이 띠에서 도움말이
+   65px 리본으로 눌린다(mobile-settings-drilldown 계약). */
 @media (max-width: 767px) {
   .global-settings-page {
-    width: min(100vw - 28px, 760px);
+    width: calc(100vw - 24px);
   }
 
   .global-settings-hero,
   .global-settings-row {
-    align-items: stretch;
     flex-direction: column;
+    align-items: stretch;
+    gap: var(--space-3);
+  }
+
+  .settings-nav {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -379,13 +707,16 @@
 }
 
 .global-settings-resp-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
   margin: 0;
   color: var(--text-primary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
+  font-family: var(--font-body);
+  font-size: var(--t-lg);
   font-weight: var(--weight-medium);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+  letter-spacing: -0.01em;
 }
 
 .global-settings-help {
@@ -445,64 +776,6 @@
 }
 
 /* 토글 — 설정 화면 공통 brass/aurora 스위치 어휘. */
-.global-settings-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  flex: none;
-  min-width: 96px;
-  min-height: 34px;
-  padding: 6px var(--space-3);
-  border: 0;
-  border-radius: var(--radius-xs);
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-sm);
-  font-weight: var(--weight-bold);
-  white-space: nowrap;
-  transition:
-    background var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform var(--duration-fast) var(--ease-spring);
-}
-
-.global-settings-toggle::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--ink-rim);
-}
-
-.global-settings-toggle:hover:not(:disabled):not(.is-on) {
-  background: var(--control-hover-fill);
-  color: var(--text-primary);
-}
-
-.global-settings-toggle.is-on {
-  background: var(--control-selected-fill);
-  color: var(--aurora-ink);
-  box-shadow: inset 0 -2px 0 var(--brass);
-}
-
-.global-settings-toggle.is-on::before {
-  background: var(--aurora);
-  box-shadow: 0 0 10px var(--aurora-glow);
-  animation: aurora-pulse 1.8s ease-in-out infinite;
-}
-
-.global-settings-toggle:active:not(:disabled) {
-  background: color-mix(in oklch, var(--brass) 16%, transparent);
-  transform: translateY(1px);
-}
-
-.global-settings-toggle:disabled {
-  cursor: not-allowed;
-  opacity: var(--control-disabled-opacity);
-  transform: none;
-}
 
 /* Console Port — General 전역 포트 선호. brass는 현재 reachable 위치, warn은 static fallback 상태에만 사용한다. */
 .console-port-row {
@@ -663,13 +936,6 @@
   font-weight: var(--weight-bold);
 }
 
-.console-port-note {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  line-height: 1.55;
-}
 
 /* 원격 접속 — 포트 행의 제어 문법을 그대로 쓰고, 자격을 다루는 부분만 경고 채널을 더한다. */
 .remote-access-row .console-port-input {
@@ -1388,7 +1654,6 @@
 
 /* 폼 선택 컨트롤은 브라우저 기본 외형을 빌리지 않는다 — 같은 Console 안에서 OS마다
    checkbox/radio의 크기·stroke·focus가 갈리면 나머지 instrument 문법과 한 제품으로 읽히지 않는다. */
-.theme-liquid-glass input[type="checkbox"],
 .remote-acknowledgment input[type="checkbox"],
 .remote-monitoring input[type="checkbox"],
 .remote-port-control input[type="radio"] {
@@ -1405,12 +1670,10 @@
     box-shadow var(--duration-fast) var(--ease-spring);
 }
 
-.theme-liquid-glass input[type="checkbox"],
 .remote-acknowledgment input[type="checkbox"],
 .remote-monitoring input[type="checkbox"] { border-radius: calc(var(--radius-xs) - 2px); }
 .remote-port-control input[type="radio"] { border-radius: var(--radius-pill); }
 
-.theme-liquid-glass input[type="checkbox"]:hover:not(:disabled):not(:checked),
 .remote-acknowledgment input[type="checkbox"]:hover:not(:disabled):not(:checked),
 .remote-monitoring input[type="checkbox"]:hover:not(:disabled):not(:checked),
 .remote-port-control input[type="radio"]:hover:not(:disabled):not(:checked) {
@@ -1418,7 +1681,6 @@
   background: var(--control-hover-fill);
 }
 
-.theme-liquid-glass input[type="checkbox"]:checked,
 .remote-acknowledgment input[type="checkbox"]:checked,
 .remote-monitoring input[type="checkbox"]:checked {
   border-color: var(--brass);
@@ -1428,7 +1690,6 @@
     var(--brass);
 }
 
-.theme-liquid-glass input[type="checkbox"]:active:not(:disabled),
 .remote-acknowledgment input[type="checkbox"]:active:not(:disabled),
 .remote-monitoring input[type="checkbox"]:active:not(:disabled),
 .remote-port-control input[type="radio"]:active:not(:disabled) {
@@ -1441,7 +1702,6 @@
   box-shadow: inset 0 0 0 2px color-mix(in oklab, var(--ink-deep) 82%, transparent);
 }
 
-.theme-liquid-glass input:disabled,
 .remote-acknowledgment input:disabled,
 .remote-monitoring input:disabled,
 .remote-port-control input[type="radio"]:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
@@ -1449,14 +1709,15 @@
 /* 강제 색상에서는 배경 이미지가 사라질 수 있다. 네이티브 외형으로 돌아가 checked 표시를
    시스템 팔레트에 맡기되, Console의 16px 격자는 그대로 유지한다. */
 @media (forced-colors: active) {
-  .theme-liquid-glass input[type="checkbox"],
-  .remote-acknowledgment input[type="checkbox"],
+    .remote-acknowledgment input[type="checkbox"],
   .remote-monitoring input[type="checkbox"],
   .remote-port-control input[type="radio"] { appearance: auto; }
 }
 
-/* 켜고 끄는 스위치는 상태 하나만 말한다 — 세그먼트 두 칸보다 이쪽이 시안의 문법이다. */
-.remote-switch {
+/* 켬/끔은 콘솔 전체에서 이 한 모양이다. 코어의 리퀴드 글래스, 원격 리스너, 그리고 플러그인
+   SDK의 SettingsToggle이 모두 이 클래스를 소비한다 — 같은 뜻이 화면마다 다른 모양을 갖지 않게.
+   켜짐은 선택이자 위치이므로 brass가 칠하고, 신호 토큰은 상태를 말하는 자리에만 남는다. */
+.settings-switch {
   flex: none;
   width: 46px;
   height: 26px;
@@ -1467,7 +1728,7 @@
   transition: background var(--duration-fast) var(--ease-spring), border-color var(--duration-fast) var(--ease-spring);
 }
 
-.remote-switch-knob {
+.settings-switch-knob {
   display: block;
   width: 18px;
   height: 18px;
@@ -1476,11 +1737,11 @@
   transition: transform var(--duration-fast) var(--ease-spring), background var(--duration-fast) var(--ease-spring);
 }
 
-.remote-switch:hover:not(:disabled):not(.is-on) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
-.remote-switch.is-on { border-color: var(--control-selected-rim); background: var(--control-selected-fill); }
-.remote-switch.is-on .remote-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
-.remote-switch:active:not(:disabled) { transform: translateY(1px); }
-.remote-switch:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
+.settings-switch:hover:not(:disabled):not(.is-on) { border-color: var(--control-hover-rim); background: var(--control-hover-fill); }
+.settings-switch.is-on { border-color: var(--control-selected-rim); background: var(--control-selected-fill); }
+.settings-switch.is-on .settings-switch-knob { transform: translateX(20px); background: var(--brass-bright); }
+.settings-switch:active:not(:disabled) { transform: translateY(1px); }
+.settings-switch:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 /* 한 단으로 흐른다. 옆 칸에 세우면 그리드 행 높이를 따라 늘어나, 짧은 쪽이 제 legend에서 100px 넘게 떨어진다. */
 .remote-endpoint-grid { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-3); }
@@ -1745,7 +2006,7 @@
 .remote-disconnect:disabled { cursor: not-allowed; opacity: var(--control-disabled-opacity); }
 
 @media (prefers-reduced-motion: reduce) {
-  .remote-switch, .remote-switch-knob { transition: none; }
+  .settings-switch, .settings-switch-knob { transition: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1761,171 +2022,26 @@
   opacity: var(--control-disabled-opacity);
 }
 
-/* Theme selection: Light|Dark mode switch. Light은 Whites(오트밀) 단일이라 카드가 없고,
-   Dark 선택 시 다크 3종 트레이가 우측으로 전개된다. 트레이 전개는 max-width/opacity/transform만
-   사용하고 reduced-motion에서는 즉시 상태로 단락한다. */
-.theme-picker {
-  display: flex;
-  flex: none;
-  flex-wrap: wrap;
-  align-items: center;
+/* 테마 선택 — 네 테마가 같은 카드 문법 하나를 쓴다.
+   예전에는 Light가 모드 버튼이고 Dark가 카드여서, 라이트를 쓰는 사람에게는 다크 세 종이
+   inert 트레이 뒤로 사라졌다. 무엇이 있는지 보려면 콘솔 전체를 한 번 뒤집어야 했다.
+   이제 목록은 언제나 넷을 전부 보여 주고, 카드가 자기 ground/brass/aurora를 미리 비춘다. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--space-2);
-}
-
-.theme-mode-seg {
-  display: inline-flex;
-  flex: none;
-  overflow: hidden;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
-}
-
-.theme-mode-seg button {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  margin: 0;
-  padding: 8px var(--space-3);
-  border: 0;
-  background: transparent;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
-  cursor: pointer;
-  transition:
-    color var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring),
-    box-shadow var(--duration-fast) var(--ease-spring);
-}
-
-.theme-mode-seg button svg {
-  display: block;
-  width: 12px;
-  height: 12px;
-}
-
-.theme-mode-seg button:disabled {
-  cursor: not-allowed;
-  opacity: var(--control-disabled-opacity);
-}
-
-.theme-mode-seg button:hover:not(:disabled):not(.is-active),
-.theme-mode-seg button:focus-visible:not(.is-active) {
-  color: var(--text-primary);
-  background: var(--control-hover-fill);
-}
-
-.theme-mode-seg button.is-active {
-  position: relative;
-  color: var(--text-primary);
-  background: var(--control-selected-fill);
-  box-shadow: inset 0 0 0 1px var(--control-selected-rim);
-}
-
-.theme-mode-seg button.is-active::after {
-  position: absolute;
-  right: var(--space-2);
-  bottom: 0;
-  left: var(--space-2);
-  height: 2px;
-  border-radius: var(--radius-pill);
-  background: var(--brass);
-  content: "";
-}
-
-.theme-mode-seg button:active:not(:disabled) { transform: translateY(1px); }
-
-.theme-dark-tray {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  max-width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transform: translateX(-6px);
-  transition:
-    max-width var(--duration-slow) var(--ease-spring),
-    opacity var(--duration-fast) var(--ease-spring),
-    transform var(--duration-slow) var(--ease-spring);
-}
-
-.theme-dark-tray.is-open {
-  max-width: 480px;
-  opacity: 1;
-  transform: none;
-}
-
-.theme-dark-tray .theme-card {
-  flex: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .theme-dark-tray {
-    transition: none;
-  }
-}
-
-/* 좁은 화면에서는 슬라이드 전개 대신 줄바꿈 표시로 전환한다 — max-width 클리핑을 유지하면
-   세 번째 다크 카드가 뷰포트 밖으로 잘려 도달 불가가 된다(420px 실측 재현). */
-@media (max-width: 560px) {
-  .theme-dark-tray {
-    flex-wrap: wrap;
-    transition: none;
-  }
-
-  .theme-dark-tray:not(.is-open) {
-    display: none;
-  }
-
-  .theme-dark-tray.is-open {
-    max-width: 100%;
-  }
-}
-
-/* 리퀴드 글래스 체크박스 — 테마 카드 아래 한 줄. 라벨 전체가 클릭 타깃이다. */
-.theme-liquid-glass {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-2);
-  margin-top: var(--space-3);
-  cursor: pointer;
-  -webkit-user-select: none;
-  user-select: none;
-}
-
-.theme-liquid-glass input { margin-top: 3px; }
-
-.theme-liquid-glass-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.theme-liquid-glass-label {
-  color: var(--text-primary);
-  font-size: var(--t-md);
-  font-weight: var(--weight-medium);
-}
-
-.theme-liquid-glass-help {
-  color: var(--text-tertiary);
-  font-size: var(--t-sm);
+  min-width: 0;
 }
 
 .theme-card {
-  display: inline-flex;
-  align-items: center;
+  display: grid;
   gap: var(--space-2);
-  padding: 8px var(--space-3);
+  padding: var(--space-2);
   border: 1px solid var(--surface-rim);
   border-radius: var(--radius-md);
   background: color-mix(in oklch, var(--surface-glass-strong) 55%, transparent);
   color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-xs);
-  font-weight: var(--weight-medium);
+  text-align: left;
   cursor: pointer;
   transition:
     color var(--duration-fast) var(--ease-spring),
@@ -1951,22 +2067,49 @@
   transform: translateY(1px);
 }
 
+/* 스와치는 ground 위에 brass와 aurora를 얹은 세 톤이다. 점 셋보다 면이 실제 표면에 가깝다. */
+/* ground가 위 밴드를 채우고, brass와 aurora가 아래 밴드를 반씩 나눈다 — 점 셋보다
+   면이 실제 표면에 가깝고, 어느 테마가 따뜻한지 차가운지가 한눈에 갈린다. */
 .theme-card-swatch {
-  display: inline-flex;
-  flex: none;
-  gap: 3px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 10px;
+  height: 40px;
+  overflow: hidden;
+  border: 1px solid var(--surface-rim);
+  border-radius: var(--radius-xs);
 }
 
 .theme-card-swatch i {
-  width: 10px;
-  height: 10px;
-  flex: none;
-  border: 1px solid var(--surface-rim);
-  border-radius: var(--radius-pill);
+  display: block;
+}
+
+.theme-card-swatch i:nth-child(1) { grid-area: 1 / 1 / 2 / 3; }
+.theme-card-swatch i:nth-child(2) { grid-area: 2 / 1 / 3 / 2; }
+.theme-card-swatch i:nth-child(3) { grid-area: 2 / 2 / 3 / 3; }
+
+.theme-card-name {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  min-width: 0;
 }
 
 .theme-card-label {
-  line-height: 1;
+  overflow: hidden;
+  font-size: var(--t-md);
+  font-weight: var(--weight-medium);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-card-polarity {
+  color: var(--text-tertiary);
+  font-family: var(--font-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .theme-card-check {
@@ -1982,6 +2125,12 @@
   display: block;
   width: 13px;
   height: 13px;
+}
+
+@media (max-width: 640px) {
+  .theme-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .typography-reset {
@@ -2012,7 +2161,9 @@
 }
 
 .global-settings-row.is-stack {
-  grid-template-columns: minmax(0, 1fr);
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-3);
 }
 
 /* 정보 뱃지 — 신호색(aurora) 금지. 중립 잉크 + 헤어라인으로 침묵한다. */
@@ -9081,15 +9232,6 @@ body[data-side-bar-animating="true"] .canvas-operation {
   text-transform: uppercase;
 }
 
-.bridge-kicker {
-  margin: 0;
-  color: var(--text-tertiary);
-  font-family: var(--font-mono);
-  font-size: var(--t-2xs);
-  font-weight: var(--weight-bold);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
 
 /* ── Operations 터미널 ─────────────────────────────────────────────
    높이 전파 체인(stage → shell → canvas)을 flex로 확정해 xterm FitAddon이
@@ -11548,16 +11690,19 @@ body[data-codex-side="true"] .command-card {
   border-radius: var(--radius-md);
 }
 
+/* 플러그인 카드 제목도 코어 카드와 같은 대문자 모노 한 줄이다 — 문장형 표제를 쓰면
+   같은 목록 안에서 Console 섹션과 플러그인 섹션이 다른 제품처럼 읽힌다. */
 .fc-settings-card__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   margin: 0;
-  color: var(--text-primary);
-  font-family: var(--font-body);
-  /* 반응형 제목의 하한은 사다리 최상단(--t-xl)이다 — 좁은 화면에서만 서는 값이라고 사다리
-     밖에 두면, 그 화면에서는 제목만 어휘를 벗어난 크기로 선다. 상한은 디스플레이 영역이다. */
-  font-size: clamp(var(--t-xl), 2vw, 28px);
-  font-weight: var(--weight-medium);
-  letter-spacing: 0;
-  line-height: 1.05;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: var(--t-xs);
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
 }
 
 .fc-settings-card__desc {
@@ -11627,44 +11772,22 @@ body[data-codex-side="true"] .command-card {
   white-space: nowrap;
 }
 
-.fc-settings-toggle__control {
-  position: relative;
-  flex: 0 0 auto;
-  width: 42px;
-  height: 24px;
-  border: 1px solid var(--surface-rim-strong);
-  border-radius: var(--radius-md);
-  background: color-mix(in oklch, var(--ink-mid) 84%, transparent);
+/* SDK 토글은 콘솔의 공용 스위치 모양을 그대로 입는다(.settings-switch). 예전에는 여기만
+   aurora로 칠한 iOS형 스위치를 써서, 같은 켬/끔이 코어와 플러그인 사이에서 다른 색과 다른
+   크기로 갈렸다. 켜짐은 선택이므로 brass가 칠하고, aurora는 상태 채널로 돌아간다. */
+.fc-settings-toggle__input:checked + .settings-switch {
+  border-color: var(--control-selected-rim);
+  background: var(--control-selected-fill);
 }
 
-.fc-settings-toggle__control::after {
-  content: "";
-  position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 16px;
-  height: 16px;
-  border-radius: var(--radius-md);
-  background: var(--ink-fog);
-  box-shadow: 0 4px 10px -6px oklch(0% 0 0 / 72%);
-  transition:
-    transform var(--duration-fast) var(--ease-spring),
-    background var(--duration-fast) var(--ease-spring);
+.fc-settings-toggle__input:checked + .settings-switch .settings-switch-knob {
+  transform: translateX(20px);
+  background: var(--brass-bright);
 }
 
-.fc-settings-toggle__input:checked + .fc-settings-toggle__control {
-  border-color: color-mix(in oklch, var(--aurora) 64%, transparent);
-  background: color-mix(in oklch, var(--aurora) 24%, var(--ink-mid));
-  box-shadow: 0 0 0 1px var(--aurora-glow), 0 0 24px -16px var(--aurora);
-}
-
-.fc-settings-toggle__input:checked + .fc-settings-toggle__control::after {
-  transform: translateX(18px);
-  background: var(--aurora);
-}
-
-.fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:disabled)) .fc-settings-toggle__control {
+.fc-settings-toggle:hover:not(:has(.fc-settings-toggle__input:disabled)):not(:has(.fc-settings-toggle__input:checked)) .settings-switch {
   border-color: var(--control-hover-rim);
+  background: var(--control-hover-fill);
 }
 
 .fc-settings-toggle:has(.fc-settings-toggle__input:disabled) {
@@ -11672,7 +11795,7 @@ body[data-codex-side="true"] .command-card {
   opacity: var(--control-disabled-opacity);
 }
 
-.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible) .fc-settings-toggle__control,
+.fc-settings-toggle:has(.fc-settings-toggle__input:focus-visible) .settings-switch,
 .fc-settings-field__control:focus-visible {
   outline: 2px solid var(--control-focus-ring);
   outline-offset: 2px;
@@ -11755,7 +11878,7 @@ body[data-codex-side="true"] .command-card {
     transition: none;
   }
 
-  .fc-settings-toggle__control::after {
+  .fc-settings-toggle .settings-switch-knob {
     transition: none;
   }
 }
@@ -11769,7 +11892,7 @@ body[data-codex-side="true"] .command-card {
     clip: auto;
   }
 
-  .fc-settings-toggle__control { display: none; }
+  .fc-settings-toggle .settings-switch { display: none; }
 
   .fc-select__trigger:disabled,
   .fc-select__option[aria-disabled="true"],

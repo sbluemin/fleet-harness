@@ -39,6 +39,11 @@ const IDENTICAL_LOCALE_VALUE_ALLOWLIST = new Set([
   "Backend API",
   // Operation 종류 명칭 — 플러그인 카탈로그(terminal.kind.shell)도 두 로케일 모두 "Shell"이다.
   "Shell",
+  // 겉모습 미리보기가 그리는 축소판 안의 문자열 — 레일 항목과 패널 값은 제품 표면에
+  // 실제로 서 있는 이름 그대로여야 미리보기가 미리보기 구실을 한다.
+  "Repository",
+  "Operation",
+  "rebuild-index",
   // 캔버스 모드 3종은 번역하지 않는 제품 고유 명칭이다.
   "Cruise",
   "Tactical",

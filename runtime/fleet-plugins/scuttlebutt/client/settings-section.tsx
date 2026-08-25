@@ -17,6 +17,8 @@ import {
 export const scuttlebuttSettingsSection = defineSettingsSection({
   id: "scuttlebutt",
   title: (locale) => getT(locale)("settings.section.title"),
+  group: "work",
+  keywords: ["aide", "quaker", "tori", "bori", "dori", "mascot", "bell", "announce", "chat"],
   render: () => <ScuttlebuttSettingsSection />,
 });
 
@@ -56,9 +58,9 @@ function ScuttlebuttSettingsSection() {
           ))}
         </div>
       </SettingsRow>
-      <SettingsRow label={t("departure.started")}>
+      <SettingsRow label={t("settings.section.departure")} hint={t("settings.section.departureHint")}>
         <SettingsToggle
-          label={t("departure.started")}
+          label={t("settings.section.departureToggle")}
           checked={settings.departureBell}
           disabled={saving}
           onChange={(enabled) => void save({ departureBell: enabled })}
