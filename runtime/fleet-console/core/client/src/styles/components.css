@@ -141,7 +141,11 @@
   min-height: 0;
   height: 100%;
   margin: 0 auto;
-  padding: var(--space-5) 0 var(--space-10);
+  /* --band-underflow는 스크롤포트가 밴드 유리 뒤까지 올라간 만큼이다(layout.css가 켠다).
+     첫 카드가 밴드에 가리지 않도록 같은 값을 위 패딩으로 돌려주고, 키보드 이동의 착지점도
+     같이 민다. 그 레이아웃이 아니면 0px이라 오늘의 여백 그대로다. */
+  padding: calc(var(--space-5) + var(--band-underflow, 0px)) 0 var(--space-10);
+  scroll-padding-top: var(--band-underflow, 0px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -184,7 +188,10 @@
 
 .global-settings-list {
   position: sticky;
-  top: var(--space-2);
+  /* 스크롤포트가 밴드 뒤까지 올라가면 sticky의 원점도 함께 올라간다 — 오프셋을 같이 밀지 않으면
+     상시 노출되어야 할 섹션 내비의 첫 그룹이 밴드 뒤에 붙어 잘리고 클릭까지 가로챈다.
+     --band-underflow가 꺼진 레이아웃에서는 0px이라 오늘의 위치 그대로다. */
+  top: calc(var(--space-2) + var(--band-underflow, 0px));
   align-self: start;
   display: flex;
   flex-direction: column;
@@ -827,7 +834,7 @@
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: 0 14px 34px rgb(0 0 0 / 48%);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), 0 14px 34px rgb(0 0 0 / 48%);
 }
 
 .host-switcher-heading {
@@ -995,7 +1002,7 @@
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
 
@@ -1127,7 +1134,7 @@
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
 
@@ -3097,7 +3104,7 @@
 
 .operations-canvas.is-triage {
   background:
-    radial-gradient(66% 52% at 50% 46%, var(--canvas-sea-mid), var(--canvas-sea-far) 74%),
+    radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
     var(--canvas-abyss);
   cursor: default;
 }
@@ -3123,7 +3130,7 @@
 
 .operations-canvas.is-formation-view {
   background:
-    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%),
+    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%),
     var(--canvas-abyss);
   cursor: default;
 }
@@ -3148,9 +3155,9 @@
 .operations-canvas-sea {
   background:
     radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-ambience) 82%, transparent), transparent 38%),
-    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) 7%, transparent), transparent 34%),
-    radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) 5%, transparent), transparent 36%),
-    linear-gradient(145deg, var(--canvas-sea-near), var(--canvas-sea-mid) 58%, var(--canvas-sea-far));
+    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) var(--canvas-bloom-aurora), transparent), transparent 34%),
+    radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) var(--canvas-bloom-brass), transparent), transparent 36%),
+    linear-gradient(145deg, var(--canvas-wash-near), var(--canvas-wash-mid) 58%, var(--canvas-wash-far));
 }
 
 .operations-canvas-grid {
@@ -4575,7 +4582,7 @@
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-panel);
   backdrop-filter: var(--glass-backdrop-panel);
-  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-soft);
   /* 공통 geometry 모션 레이어 — formation/최대화/companion/복원의 재배치가 같은 물리로 움직인다.
      visibility는 0s 즉시(복원·focus layer 즉시 표시), 최소화 시에만 is-minimized가 지연을 소유한다.
      --panel-stagger-delay는 formation stagger 전용 채널로 geometry 4속성에만 걸린다 —
@@ -5008,8 +5015,9 @@ body[data-side-bar-animating="true"] .canvas-operation {
   border-left: none;
   border-bottom: none;
   border-radius: 0 var(--radius-md) 0 0;
-  /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다. */
-  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-soft);
+  /* --glass-rim은 무채색 상단 하이라이트 전용 채널 — 기본 transparent라 게이트가 닫히면 소멸한다.
+     --glass-bevel은 그 반대편(아래 모서리)의 그늘로, 라이트에서만 값을 갖는다. */
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--shadow-soft);
   transition: width 200ms ease, border-color 200ms ease, visibility 0s linear 0s;
 }
 
@@ -9338,7 +9346,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
 }
 
 .commissioning-header {
@@ -9595,7 +9603,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   pointer-events: auto;
 }
 
@@ -10095,7 +10103,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating), var(--shadow-anchor);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), var(--shadow-anchor);
 }
 
 .directory-browser-header {
@@ -11021,7 +11029,7 @@ body[data-codex-side="true"] .command-card {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: inset 0 1px 0 var(--glass-rim), var(--shadow-floating), 0 0 44px -30px var(--brass);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
   text-align: center;
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
@@ -11103,7 +11111,7 @@ body[data-codex-side="true"] .command-card {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating), 0 0 44px -30px var(--brass);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -30px var(--brass);
   animation: whatsnew-card-in var(--duration-slow) var(--ease-spring) both;
 }
 
@@ -12323,7 +12331,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
 }
 
 /* 메뉴 항목은 theater-menu-item과 같은 mono 대문자 문법을 쓴다 — 콘솔 메뉴 단일 방언. */
@@ -12540,7 +12548,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
     var(--glass-underlay);
   -webkit-backdrop-filter: var(--glass-backdrop-strong);
   backdrop-filter: var(--glass-backdrop-strong);
-  box-shadow: var(--shadow-floating);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift);
   color: var(--text-primary);
   pointer-events: auto;
   animation: feature-tour-enter var(--duration-slow) var(--ease-glide) both;
@@ -14096,7 +14104,7 @@ body[data-codex-reading="true"] .operations-canvas .codex-reading-sheet {
   overflow: hidden;
   border: 1px solid color-mix(in oklch, var(--warn) 48%, var(--surface-rim));
   border-radius: var(--radius-md);
-  box-shadow: var(--shadow-floating), 0 0 44px -24px var(--warn-glow);
+  box-shadow: inset 0 1px 0 var(--glass-rim), inset 0 -1px 0 var(--glass-bevel), var(--glass-lift), 0 0 44px -24px var(--warn-glow);
   animation: fleet-pop var(--duration-slow) var(--ease-spring) both;
 }
 

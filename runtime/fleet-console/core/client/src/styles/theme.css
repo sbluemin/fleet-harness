@@ -203,11 +203,25 @@
   --glass-pane-light: transparent;
   /* 캔버스 대기광 — 유리가 실제로 굴절할 것을 뒤에 놓는다. 닫히면 원래의 심해 계조. */
   --canvas-ambience: var(--canvas-sea-core);
+  /* 캔버스 워시·블룸 — 대기광과 같은 일을 계조와 방위 라디알에서 한다. 유리는 뒤에 있는 것을
+     흐리고 채도를 올릴 뿐이라, 뒤가 무채색 평면이면 blur도 saturate도 항등함수가 된다.
+     기본값이 현행 sea·현행 혼합률이라 게이트가 닫히면 지금 화면 그대로다. */
+  --canvas-wash-near: var(--canvas-sea-near);
+  --canvas-wash-mid: var(--canvas-sea-mid);
+  --canvas-wash-far: var(--canvas-sea-far);
+  --canvas-bloom-aurora: 7%;
+  --canvas-bloom-brass: 5%;
   --glass-backdrop-strong: none;
   --glass-backdrop-soft: none;
   --glass-backdrop-panel: none;
   --glass-backdrop-scrim: none;
   --glass-rim: transparent;
+  /* 아래쪽 어두운 베벨. 밝은 바탕에서는 흰 하이라이트에 여유가 없어(라이트 유리 본체 L*94.7,
+     흰 천장까지 5.3포인트) 판의 두께를 그늘 쪽이 말한다. 다크는 위쪽 rim이 이미 이기므로
+     값을 두지 않고, 기본 transparent라 게이트가 닫히면 소멸한다. */
+  --glass-bevel: transparent;
+  /* 떠 있는 유리의 부양. 기본값이 곧 현행 계약이라 게이트가 닫히면 --shadow-floating 그대로다. */
+  --glass-lift: var(--shadow-floating);
   --glass-sheen: linear-gradient(transparent, transparent);
   /* 게이트가 켜질 때 채널에 실릴 테마별 유리 재료 — 여기(base)와 각 테마 블록에만
      리터럴을 둔다. 게이트 블록은 값 없이 이 재료를 채널로 옮기기만 한다.
@@ -643,16 +657,20 @@
   /* 라이트 유리는 종이보다 살짝 어두운 스모크드 밀크다 — 백지 위 백유리는 지각 불가라서
      틴트를 L92~94 대역으로 내리고 채도 증폭을 올려야 부유층이 종이와 분리되어 읽힌다
      (실측 피드백). 텍스트 잉크(L22~37)는 L93 합성 위에서 AA를 유지하고, 패널만은
-     "종이가 최명면" 극성 계약 때문에 밝은 틴트를 지킨다. */
-  --glass-on-tint-strong: oklch(93% 0.006 100 / 58%);
-  --glass-on-tint-soft: oklch(93.5% 0.005 100 / 52%);
-  --glass-on-tint-pillar: oklch(94% 0.005 100 / 55%);
-  --glass-on-tint-raised: oklch(92.5% 0.006 100 / 52%);
-  --glass-on-tint-deep: oklch(92.5% 0.006 100 / 52%);
-  --glass-on-tint-abyss: oklch(94% 0.004 100 / 52%);
-  --glass-on-tint-chrome: oklch(92% 0.005 100 / 52%);
+     "종이가 최명면" 극성 계약 때문에 밝은 틴트를 지킨다.
+     명도 대역과 알파는 출시값 그대로 두고 chroma만 0.005 -> 0.015 대역으로 올린다.
+     명도 이동은 라이트에서 상대 1.5~2.2%라 지각 문턱 아래이지만(실측), 같은 자리의 chroma는
+     3 -> 12(RGB 스프레드)로 문턱을 넘는다. 명도를 손대면 잉크 대비가 함께 움직이므로
+     더하는 축은 색 하나뿐이다. hue는 대기광(84)과 한 가족이 되도록 100 -> 90으로 당긴다. */
+  --glass-on-tint-strong: oklch(93% 0.016 90 / 58%);
+  --glass-on-tint-soft: oklch(93.5% 0.015 90 / 52%);
+  --glass-on-tint-pillar: oklch(94% 0.015 90 / 55%);
+  --glass-on-tint-raised: oklch(92.5% 0.016 90 / 52%);
+  --glass-on-tint-deep: oklch(92.5% 0.016 90 / 52%);
+  --glass-on-tint-abyss: oklch(94% 0.014 90 / 52%);
+  --glass-on-tint-chrome: oklch(92% 0.015 90 / 52%);
   --glass-on-tint-panel: oklch(98.2% 0.004 100 / 60%);
-  --glass-on-tint-caption: oklch(96% 0.006 100 / 88%);
+  --glass-on-tint-caption: oklch(96% 0.014 90 / 88%);
   /* 라이트 필드는 불투명 종이 — mCR(가독 보정)이 배경 실색을 요구하고, 종이 위 젖빛 유리는
      어차피 지각 불가 수준이다. 필드·거터가 같은 불투명 값으로 만나 격자 경계 띠가 없다. */
   --glass-on-tint-terminal: oklch(98.2% 0.004 100);
@@ -661,13 +679,31 @@
   /* 라이트는 유리 뒤가 이미 밝다 — 굴절할 빛이 부족한 문제가 없으므로 광원도 대기광도 얹지 않는다.
      백지 위에 광원을 더하면 종이가 평평해지고 최명면 극성만 흐려진다. */
   --glass-on-pane-light: transparent;
-  --canvas-on-ambience: var(--canvas-sea-core);
-  --glass-on-tint-band: oklch(92% 0.006 100 / 52%);
-  --glass-on-backdrop-strong: blur(26px) saturate(1.45);
-  --glass-on-backdrop-soft: blur(12px) saturate(1.25);
-  --glass-on-backdrop-panel: blur(30px) saturate(1.35);
-  --glass-on-rim: oklch(100% 0 0 / 75%);
-  --glass-on-sheen: linear-gradient(118deg, oklch(100% 0 0 / 55%) 0%, transparent 34%, transparent 78%, oklch(100% 0 0 / 28%) 100%);
+  /* 대기광·워시·블룸이 Move A다. 라이트 캔버스의 chroma는 0.003~0.006으로 다크 3종의
+     0.005~0.030 대비 1/3~1/5 예산이었고, saturate가 0에 걸려 항등함수였다(실측).
+     명도는 그대로 두고 chroma만 다크와 같은 예산으로 올린다 — 눈에는 여전히 흰 책상이다.
+     베이스 계조에서 hue를 벌리면 보간이 초록을 통과해 종이가 상해 보이므로(실측),
+     한랭/온난 두 극은 이미 sea에 있던 aurora·brass 라디알의 혼합률로 만든다. */
+  --canvas-on-ambience: oklch(95.4% 0.016 84);
+  --canvas-on-wash-near: oklch(95.3% 0.011 88);
+  --canvas-on-wash-mid: oklch(96.5% 0.008 94);
+  --canvas-on-wash-far: oklch(97.4% 0.006 98);
+  --canvas-on-bloom-aurora: 12%;
+  --canvas-on-bloom-brass: 8%;
+  --glass-on-tint-band: oklch(92% 0.016 90 / 52%);
+  /* 입력이 0이 아니게 된 뒤의 증폭이다. 입력과 증폭을 함께 올리면 곱해져서,
+     saturate(2.2)에서는 사이드바가 RGB 스프레드 27의 베이지로 넘어갔다(실측). */
+  --glass-on-backdrop-strong: blur(30px) saturate(1.75);
+  --glass-on-backdrop-soft: blur(16px) saturate(1.6);
+  --glass-on-backdrop-panel: blur(32px) saturate(1.5);
+  --glass-on-rim: oklch(100% 0 0 / 92%);
+  /* 라이트 유리의 두께는 그늘 쪽이 말한다 — 흰 하이라이트는 본체 L*94.7 위로 4.2포인트를
+     얻는 데 그치지만, 어두운 쪽으로는 74포인트가 비어 있다(모서리 단면 실측). */
+  --glass-on-bevel: oklch(34% 0.03 92 / 30%);
+  /* 접촉 + 대기 두 겹. 밝은 바탕에서 부유를 만드는 것은 명도차가 아니라 그림자다.
+     색을 중성 회색에서 brass 쪽으로 기울여 먼지가 아니라 따뜻한 재질을 통과한 빛으로 읽힌다. */
+  --glass-on-lift: 0 2px 5px -1px oklch(34% 0.035 88 / 22%), 0 20px 46px -18px oklch(32% 0.04 88 / 30%);
+  --glass-on-sheen: linear-gradient(118deg, oklch(100% 0 0 / 72%) 0%, transparent 30%, transparent 74%, oklch(100% 0 0 / 34%) 100%);
   /* 라이트에서 패널은 종이다 — 크롬(96%)보다 밝은 최명면이어야 시선이 작업면에 남는다.
      캔버스는 base 색이 아니라 그 위에 칠하는 sea 그라디언트가 실제 픽셀을 정하며 패널 둘레에서
      L 94.9~96.6으로 실측된다. 그래서 프레임 톤(ink-deep 95.5%)으로 통일하면 패널이 책상과
@@ -726,6 +762,15 @@
     --glass-backdrop-panel: var(--glass-on-backdrop-panel);
     --glass-backdrop-scrim: var(--glass-on-backdrop-scrim);
     --glass-rim: var(--glass-on-rim);
+    /* 베벨·부양·워시·블룸은 라이트에만 재료가 있다. fallback이 곧 현행 계약이라
+       다크 3종은 이 다섯 줄이 있어도 한 픽셀도 바뀌지 않는다. */
+    --glass-bevel: var(--glass-on-bevel, transparent);
+    --glass-lift: var(--glass-on-lift, var(--shadow-floating));
+    --canvas-wash-near: var(--canvas-on-wash-near, var(--canvas-sea-near));
+    --canvas-wash-mid: var(--canvas-on-wash-mid, var(--canvas-sea-mid));
+    --canvas-wash-far: var(--canvas-on-wash-far, var(--canvas-sea-far));
+    --canvas-bloom-aurora: var(--canvas-on-bloom-aurora, 7%);
+    --canvas-bloom-brass: var(--canvas-on-bloom-brass, 5%);
     --glass-sheen: var(--glass-on-sheen);
   }
 
@@ -753,6 +798,13 @@
       --glass-backdrop-panel: none;
       --glass-backdrop-scrim: none;
       --glass-rim: transparent;
+      --glass-bevel: transparent;
+      --glass-lift: var(--shadow-floating);
+      --canvas-wash-near: var(--canvas-sea-near);
+      --canvas-wash-mid: var(--canvas-sea-mid);
+      --canvas-wash-far: var(--canvas-sea-far);
+      --canvas-bloom-aurora: 7%;
+      --canvas-bloom-brass: 5%;
       --glass-sheen: linear-gradient(transparent, transparent);
     }
   }

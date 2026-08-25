@@ -737,9 +737,9 @@ describe("Instrument core design contract", () => {
     // 치워두기의 두 번 눌러 확정 안내는 패널 안 HUD가 소유한다 — 레일이 사라져도 이 기능은 그대로다.
     expect(canvas).toContain("setAsideArmed");
     expect(canvas).not.toMatch(/canvas-triage-(?:frame|bracket|hud(?:-eye|-name)?|curtain-kicker|curtain-ruler)/);
-    // Formation 판의 중앙은 대기광 채널이 정한다 — 유리가 굴절할 빛을 패널 뒤에 놓기 위해서다.
-    // 채널 기본값은 --canvas-sea-core이므로 게이트가 닫히면 원래 픽셀로 돌아간다.
-    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-sea-mid) 78%)");
+    // Formation 판의 중앙은 대기광 채널이, 둘레는 워시 채널이 정한다 — 유리가 굴절할 빛을
+    // 패널 뒤에 놓기 위해서다. 두 채널 모두 기본값이 현행 sea라 게이트가 닫히면 원래 픽셀이다.
+    expect(components).toContain("radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%)");
     expect(components).toContain("background-size: 48px 48px !important;");
     expect(components).toContain(".canvas-formation-guide {");
     // 캡션은 순번을 싣지 않는다 — 번호는 빈 자리를 가리키는 가이드만 진다.
@@ -830,6 +830,90 @@ describe("Instrument core design contract", () => {
     expect(surface).toContain("readLiquidGlassPaneActive()) return glassFieldClearColor();");
     // 검정 리터럴을 그대로 돌려주면 dim 셀 회귀가 재발한다 — 반환은 폴백 두 곳뿐이다.
     expect((surface.match(/return "rgba\(0, 0, 0, 0\)";/g) ?? []).length).toBe(2);
+  });
+
+  // 라이트 유리는 명도가 아니라 색·그늘·부양으로 읽힌다. 밝은 바탕에서 명도 이동은 상대
+  // 1.5~2.2%로 지각 문턱 아래이고(실측), 흰 하이라이트는 본체 L*94.7 위로 4.2포인트밖에
+  // 얻지 못한다. 그래서 라이트에만 베벨(아래 그늘)·부양(접촉 그림자)·대기 채도가 실린다.
+  it("carries the light glass on chroma, bevel and lift instead of luminance", () => {
+    const theme = source("styles/theme.css");
+    const components = source("styles/components.css");
+    const layout = source("styles/layout.css");
+    const rail = source("styles/rail.css");
+
+    // 새 채널 넷의 닫힌-게이트 기본값이 곧 구 계약이다 — 하나라도 어긋나면 유리를 꺼도
+    // 화면이 돌아오지 않는다.
+    expect(theme).toContain("--glass-bevel: transparent;");
+    expect(theme).toContain("--glass-lift: var(--shadow-floating);");
+    expect(theme).toContain("--canvas-wash-near: var(--canvas-sea-near);");
+    expect(theme).toContain("--canvas-wash-mid: var(--canvas-sea-mid);");
+    expect(theme).toContain("--canvas-wash-far: var(--canvas-sea-far);");
+    expect(theme).toContain("--canvas-bloom-aurora: 7%;");
+    expect(theme).toContain("--canvas-bloom-brass: 5%;");
+
+    // 게이트는 라이트에만 있는 재료를 fallback으로 받는다 — 다크 3종이 값을 갖지 않아야
+    // 이 다섯 줄이 다크를 한 픽셀도 건드리지 않는다.
+    expect(theme).toContain("--glass-bevel: var(--glass-on-bevel, transparent);");
+    expect(theme).toContain("--glass-lift: var(--glass-on-lift, var(--shadow-floating));");
+    for (const material of [
+      "--glass-on-bevel",
+      "--glass-on-lift",
+      "--canvas-on-wash-near",
+      "--canvas-on-bloom-aurora",
+      "--canvas-on-bloom-brass",
+    ]) {
+      expect((theme.match(new RegExp(`${material}:`, "g")) ?? []).length).toBe(1);
+    }
+
+    // 라이트 틴트는 무채색이 아니다. chroma 0.005 대역에서는 saturate가 항등함수라
+    // 유리가 "약간 회색이 된 카드"로만 읽혔다(ON/OFF RGB 스프레드 3 대 3, 실측).
+    const whites = theme.match(/:root\[data-theme="whites"\] \{[\s\S]*?\n\}/)?.[0] ?? "";
+    expect(whites).not.toBe("");
+    const lightTints = [...whites.matchAll(/--glass-on-tint-(?:strong|soft|pillar|raised|deep|abyss|chrome|band): oklch\([\d.]+% ([\d.]+) /g)];
+    expect(lightTints.length).toBe(8);
+    for (const [, chroma] of lightTints) expect(Number(chroma)).toBeGreaterThanOrEqual(0.012);
+
+    // 소비처: 크롬·패널·떠 있는 면은 위 rim과 아래 bevel을 한 쌍으로 쓴다.
+    for (const css of [components, layout, rail]) {
+      const rims = (css.match(/inset 0 1px 0 var\(--glass-rim\)/g) ?? []).length;
+      const bevels = (css.match(/inset 0 -1px 0 var\(--glass-bevel\)/g) ?? []).length;
+      expect(bevels).toBeGreaterThanOrEqual(rims);
+    }
+    // 부양은 --shadow-floating을 그대로 두면 라이트에서 접촉면이 없다.
+    expect((components.match(/var\(--glass-lift\)/g) ?? []).length).toBeGreaterThanOrEqual(10);
+  });
+
+  // 밴드 유리 뒤로 본문을 흘리는 레이아웃은 라우트가 밴드에 붙어 있을 때만 성립한다. 그 조건을
+  // 바 목록으로 열거하면 새 바가 생길 때마다 조용히 새어 나가 Reconnect·Dismiss·제어 되찾기의
+  // 히트 테스트를 라우트가 가로챈다(리뷰에서 두 번 적발). 그래서 흐름 바는 한 자리에 모으고,
+  // 게이트는 그 자리가 비었는지만 묻는다.
+  it("gates the band underflow on an empty shell-bar slot, not a list of bars", () => {
+    const layout = source("styles/layout.css");
+    const app = source("app.tsx");
+
+    // 래퍼는 상자를 만들지 않는다 — 있으나 없으나 레이아웃이 같아야 도입 비용이 0이다.
+    expect(layout).toMatch(/\.console-shell-bars \{[^}]*display: contents;/);
+
+    // 게이트 네 곳(마진·밴드 z·축소 투명도 되돌림 둘)이 모두 같은 구조 조건을 쓴다.
+    // :has()는 중첩할 수 없으므로 자식 결합자를 안에 두고 바깥에서 부정한다.
+    const gates = layout.match(/:not\(:has\(\.console-shell-bars > \*\)\)/g) ?? [];
+    expect(gates.length).toBe(4);
+    expect(layout).not.toContain(".console-shell-bars:not(:has(*))");
+
+    // 밴드와 라우트 사이에 흐름 바를 직접 두면 게이트를 우회한다. 그 구간에 남을 수 있는 것은
+    // 흐름 밖 오버레이 레이어와 바 자리뿐이다.
+    const between = app.slice(
+      app.indexOf("<CommandBand"),
+      app.indexOf('<main className="console-route-content"'),
+    );
+    expect(between).not.toBe("");
+    const elementsBetween = [...between.matchAll(/^\s{8}<([A-Za-z][\w.]*)/gm)].map((m) => m[1]);
+    expect(elementsBetween).toEqual(["FloatingWidgetLayer", "div"]);
+    expect(between).toContain('<div className="console-shell-bars">');
+    // 알려진 흐름 바 넷은 그 자리 안에 있어야 한다.
+    for (const bar of ["console-link-banner", "<UpdateCurtain />", "<ControlBar />"]) {
+      expect(between.slice(between.indexOf('<div className="console-shell-bars">'))).toContain(bar);
+    }
   });
 
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
@@ -1678,6 +1762,10 @@ describe("Instrument core design contract", () => {
       expect(components).toMatch(new RegExp(`${scoped} \\{[^}]*backdrop-filter: var\\(--glass-backdrop-strong\\);`));
     }
     expect(layout).toMatch(/\.command-band-menu \{[^}]*\),\s*var\(--glass-underlay\);/);
+    // 밴드에 앵커된 두 메뉴는 같은 재질이어야 한다 — 환경 팝오버만 --surface-band 불투명으로
+    // 남아 있던 유리 전환 누락(Move E)의 재발 방지.
+    expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*\),\s*var\(--glass-underlay\);/);
+    expect(layout).toMatch(/\.command-band-environment-popover \{[^}]*backdrop-filter: var\(--glass-backdrop-strong\);/);
     expect(skillsCss).toMatch(/\.skills-overlay-dialog \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(skillsCss).toMatch(/\.skills-toast \{[^}]*\),\s*var\(--glass-underlay\);/);
     expect(terminalAnalysisCss).toMatch(/\.session-analyst__artifact-menu \{[^}]*var\(--glass-underlay\);/);
