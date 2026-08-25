@@ -808,6 +808,30 @@ describe("Instrument core design contract", () => {
     expect((theme.match(/--glass-on-tint-field: transparent;/g) ?? []).length).toBe(3);
   });
 
+  /* 비운 터미널 필드의 RGB는 검정이 아니라 유리 톤이어야 한다. xterm은 dim(SGR 2)을 배경 워드의
+     플래그로 실어 기본 배경 셀에도 배경 사각형을 만들고, 그 사각형만 알파를 1로 강제한다 —
+     RGB가 (0,0,0)이면 dim 셀이 유리 위에서 순수 검정으로 드러난다(Claude Code diff 거터 실측). */
+  it("clears the dark glass terminal field to a glass-toned floor", () => {
+    const theme = source("styles/theme.css");
+    const surface = fs.readFileSync(fileURLToPath(TERMINAL_SURFACE_PATH), "utf8");
+
+    // 닫힌 게이트의 기본값은 곧 현행 불투명 계약이다 — floor가 따로 놀면 게이트를 닫아도 색이 갈린다.
+    expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-tint-terminal);");
+    expect(theme).toContain("--glass-tint-terminal-floor: var(--glass-on-tint-terminal-floor);");
+    // 다크 3종은 틴트(83%)를 캔버스 대기광 위에 합성한 불투명 근사를 재료로 둔다.
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(18.1% 0.027 245);");
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(23.9% 0.047 247);");
+    expect(theme).toContain("--glass-on-tint-terminal-floor: oklch(20.5% 0.013 252);");
+    // 라이트는 유리에서도 불투명 종이라 floor가 곧 그 값이다.
+    expect(theme).toContain("--glass-on-tint-terminal-floor: var(--glass-on-tint-terminal);");
+
+    // 필드를 비우는 경로는 floor 계산값을 읽어 알파만 0으로 눕힌다.
+    expect(surface).toContain('getPropertyValue("--glass-tint-terminal-floor")');
+    expect(surface).toContain("readLiquidGlassPaneActive()) return glassFieldClearColor();");
+    // 검정 리터럴을 그대로 돌려주면 dim 셀 회귀가 재발한다 — 반환은 폴백 두 곳뿐이다.
+    expect((surface.match(/return "rgba\(0, 0, 0, 0\)";/g) ?? []).length).toBe(2);
+  });
+
   // 텍스트 3티어만 대비를 통제하므로 원료 잉크를 color에 직접 쓰면 판독 하한을 한곳에서 보장할 수 없다.
   it("keeps text color on the semantic three-tier token grammar", () => {
     const violations: string[] = [];
