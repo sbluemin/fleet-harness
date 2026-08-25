@@ -330,9 +330,18 @@ export function App() {
     });
   }, [canUndoLastClose, navigate, resolvePanelShortcut, undoLastClose]);
 
+  // 밴드 유리 뒤로 본문을 흘리는 레이아웃(layout.css)은 라우트가 밴드에 실제로 붙어 있을 때만
+  // 성립한다. 흐름에 배너나 제어 반납 바가 서면 음수 마진이 그 바를 라우트로 덮어 Reconnect 같은
+  // 컨트롤의 히트 테스트를 가로채기 때문이다. CSS 인접 형제로는 이 조건을 말할 수 없어
+  // (항상 렌더되는 .floating-widget-layer가 흐름 밖 형제로 끼어 있다) 셸이 직접 알린다.
+  const linkBannerVisible = state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching;
+  const runtimeBannerVisible = state.operationRuntimeHydration === "degraded" && !updateProgress.watching;
+  const controlBarVisible = state.controlHolder !== null && state.controlCurtainDismissed;
+  const bandUnderflowAvailable = !mobileLayout && !linkBannerVisible && !runtimeBannerVisible && !controlBarVisible;
+
   return (
     <ActiveCompanionShortcutsProvider value={companionShortcuts}>
-      <div className="console-shell">
+      <div className={bandUnderflowAvailable ? "console-shell has-band-underflow" : "console-shell"}>
         {/* The mobile layout carries its own header and tab bar, so the band would be a second,
             taller chrome on the axis a phone has least of. Its view-mode toggle moves to the
             mobile header and its settings entry becomes a tab, so nothing is stranded. */}
@@ -342,7 +351,7 @@ export function App() {
             배너째 언마운트되어, 눌린 버튼의 피드백까지 함께 사라진다(실브라우저 재현). */}
         {/* 업데이트 중에는 링크 상실이 고장이 아니라 진행이다. 같은 순간에 두 가지 이야기를
             내보내면 사용자는 더 무서운 쪽을 믿는다 — 커튼이 떠 있는 동안 배너는 침묵한다. */}
-        {state.connection !== "live" && state.connectionLostAt !== null && !updateProgress.watching ? (
+        {linkBannerVisible ? (
           <div className="console-link-banner" role="status" aria-live="polite">
             <span>{t(state.connection === "offline" ? "chrome.link.offline" : "chrome.link.reconnecting")}. {t("chrome.link.bannerDetail", { time: connectionLostTime })}</span>
             <ReconnectButton />
@@ -352,7 +361,7 @@ export function App() {
         {/* 런타임 축이 degraded면 화면의 활동 표시는 마지막으로 알던 값일 뿐 지금의 사실이 아니다.
             칩마다 물음표를 뿌리는 대신 배너 하나로만 말한다(제품 결정) — 어느 쪽이든 모르는 상태를
             유휴나 휴면으로 추정하지는 않는다. */}
-        {state.operationRuntimeHydration === "degraded" && !updateProgress.watching ? (
+        {runtimeBannerVisible ? (
           <div className="console-link-banner" role="status" aria-live="polite">
             <span>{t("chrome.runtime.degraded")}</span>
           </div>

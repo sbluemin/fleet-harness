@@ -141,7 +141,11 @@
   min-height: 0;
   height: 100%;
   margin: 0 auto;
-  padding: var(--space-5) 0 var(--space-10);
+  /* --band-underflow는 스크롤포트가 밴드 유리 뒤까지 올라간 만큼이다(layout.css가 켠다).
+     첫 카드가 밴드에 가리지 않도록 같은 값을 위 패딩으로 돌려주고, 키보드 이동의 착지점도
+     같이 민다. 그 레이아웃이 아니면 0px이라 오늘의 여백 그대로다. */
+  padding: calc(var(--space-5) + var(--band-underflow, 0px)) 0 var(--space-10);
+  scroll-padding-top: var(--band-underflow, 0px);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -184,7 +188,10 @@
 
 .global-settings-list {
   position: sticky;
-  top: var(--space-2);
+  /* 스크롤포트가 밴드 뒤까지 올라가면 sticky의 원점도 함께 올라간다 — 오프셋을 같이 밀지 않으면
+     상시 노출되어야 할 섹션 내비의 첫 그룹이 밴드 뒤에 붙어 잘리고 클릭까지 가로챈다.
+     --band-underflow가 꺼진 레이아웃에서는 0px이라 오늘의 위치 그대로다. */
+  top: calc(var(--space-2) + var(--band-underflow, 0px));
   align-self: start;
   display: flex;
   flex-direction: column;
