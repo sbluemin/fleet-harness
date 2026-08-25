@@ -830,6 +830,7 @@ describe("Instrument core design contract", () => {
     expect(surface).toContain("readLiquidGlassPaneActive()) return glassFieldClearColor();");
     // 검정 리터럴을 그대로 돌려주면 dim 셀 회귀가 재발한다 — 반환은 폴백 두 곳뿐이다.
     expect((surface.match(/return "rgba\(0, 0, 0, 0\)";/g) ?? []).length).toBe(2);
+  });
 
   // 라이트 유리는 명도가 아니라 색·그늘·부양으로 읽힌다. 밝은 바탕에서 명도 이동은 상대
   // 1.5~2.2%로 지각 문턱 아래이고(실측), 흰 하이라이트는 본체 L*94.7 위로 4.2포인트밖에
