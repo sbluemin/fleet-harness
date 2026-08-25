@@ -1518,16 +1518,16 @@ describe("Instrument core design contract", () => {
     expect(components).not.toContain(".side-bar-status-header__dot");
     expect(components).toContain("background: var(--group-mark);");
     // 세 단계 아코디언(Theater / Group / Status)은 + / … 액션과 같은 보더 링으로 hover에
-    // 응답한다. 화살표 색만 바꾸면 포인터 아래 표면의 버튼 경계가 드러나지 않는다.
+    // 응답한다. Theater의 chevron도 독립 버튼이라 같은 공통 링 선언을 소비한다.
     const theaterActivate = components.match(/\.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
     const theaterDraggingActivate = components.match(/\.side-bar-theater-header--dragging \.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
-    const theaterChevronHover = components.match(/\.side-bar-theater-header\.is-active \.side-bar-theater-activate:hover \.side-bar-theater-chevron,[\s\S]*?\}/)?.[0] ?? "";
+    const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn \{[^}]*\}/)?.[0] ?? "";
     const sharedIconHover = components.match(/\.side-bar-theater-row-btn:hover,[\s\S]*?\.side-bar-group-header__toggle:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const statusToggleHover = components.match(/\.side-bar-status-header__toggle:hover \{[^}]*\}/)?.[0] ?? "";
     expect(theaterActivate).toContain("cursor: pointer;");
     expect(theaterActivate).not.toContain("cursor: inherit;");
     expect(theaterDraggingActivate).toContain("cursor: grabbing;");
-    expect(theaterChevronHover).toContain("border-color: var(--hairline-strong);");
+    expect(theaterCollapse).toContain("width: 22px;");
     expect(sharedIconHover).toContain("border-color: var(--hairline-strong);");
     expect(components).toMatch(/\.side-bar-group-header__toggle:focus-visible \{\s*outline: 2px solid var\(--brass\);/);
     expect(statusToggleHover).toContain("border-color: var(--hairline-strong);");

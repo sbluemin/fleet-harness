@@ -1436,24 +1436,19 @@ function TheaterSectionHeader({
     if (dragging) suppressClickRef.current = true;
   };
 
-  // 행 클릭은 ▾ 버튼을 흡수한 단일 제스처다. 비활성 Theater는 선택만 하고(영속 접힘 선호를
-  // 건드리지 않는다), 이미 활성인 Theater에서만 접기/펼치기를 토글한다.
-  // 행 title도 이 결과와 일치시킨다: 비활성 행은 "Switch to …", 활성 행만 Expand/Collapse를 광고한다.
-  const activateOrToggle = () => {
-    if (!active) {
-      onSelectTheater(theater.id);
-      return;
-    }
-    onToggleCollapsed(theater.id);
-  };
-
+  // Theater 선택과 아코디언은 서로 다른 동작이다. 이름은 Theater를 마운트하고 chevron은
+  // 활성 여부와 무관하게 이 섹션만 접는다. 둘을 한 버튼에 합치면 같은 위치의 동작이
+  // 활성 상태에 따라 바뀌고, 비활성 Theater는 접으려 해도 먼저 마운트해야 한다.
   const select = () => {
     if (suppressClickRef.current) {
       suppressClickRef.current = false;
       return;
     }
-    activateOrToggle();
+    if (!active) onSelectTheater(theater.id);
   };
+  const collapseLabel = collapsed
+    ? t("sidebar.theater.expand", { theater: theater.label })
+    : t("sidebar.theater.collapse", { theater: theater.label });
 
   return (
     // 행 자체가 role="button"이면서 상태 정렬·새 Operation·액션 버튼을 품고 있어, 활성화
@@ -1473,8 +1468,7 @@ function TheaterSectionHeader({
         onClick={select}
         onKeyDown={handleKeyDown}
         aria-current={active ? "true" : undefined}
-        aria-expanded={!collapsed}
-        title={active ? (collapsed ? t("sidebar.theater.expand", { theater: theater.label }) : t("sidebar.theater.collapse", { theater: theater.label })) : t("sidebar.theater.switchTo", { theater: theater.label })}
+        title={active ? theater.label : t("sidebar.theater.switchTo", { theater: theater.label })}
       >
         <span className="side-bar-theater-anchor" aria-hidden="true">
           {theaterInitials(theater.label)}
@@ -1483,9 +1477,18 @@ function TheaterSectionHeader({
           {showStatusLiveTick ? <span className="side-bar-status-axis-live-tick" aria-hidden="true" /> : null}
         </span>
         <span className="side-bar-theater-name">{theater.label}</span>
-        <ChevronIcon collapsed={collapsed} />
       </button>
       <span className="side-bar-theater-row-controls" role="group" aria-label={t("sidebar.theater.controlsAria", { theater: theater.label })}>
+        <button
+          type="button"
+          className="side-bar-theater-row-btn side-bar-theater-collapse-btn"
+          aria-expanded={!collapsed}
+          aria-label={collapseLabel}
+          title={collapseLabel}
+          onClick={() => onToggleCollapsed(theater.id)}
+        >
+          <ChevronIcon collapsed={collapsed} />
+        </button>
         {/* 축 토글이 빠지면서 이 묶음과 바깥 행 컨트롤이 같은 범위가 됐다. 겹친 두 group을
             그대로 두면 보조기술이 분할 버튼 하나를 두 겹으로 읽으므로, 바깥 하나만 남긴다
             (플러스는 Operation, 케밥은 Theater 동작이라 바깥 라벨이 둘을 함께 덮는다). */}

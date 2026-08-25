@@ -70,6 +70,29 @@ describe("inactive Theater sidebar hierarchy", () => {
     expect(JSON.parse(window.localStorage.getItem("fleet-console.canvas.theater-b") ?? "{}").collapsedGroups).toEqual([]);
   });
 
+  it("toggles the inactive Theater directly without selecting it", () => {
+    const onSelectTheater = vi.fn();
+    writeTheaterBSnapshot();
+    renderSideBar(undefined, onSelectTheater);
+
+    const inactive = findInactiveSection();
+    const collapse = inactive.querySelector<HTMLButtonElement>(".side-bar-theater-collapse-btn");
+    expect(collapse?.getAttribute("aria-label")).toBe("Collapse Bravo");
+
+    act(() => collapse?.click());
+
+    expect(onSelectTheater).not.toHaveBeenCalled();
+    expect(collapse?.getAttribute("aria-label")).toBe("Expand Bravo");
+    expect(inactive.querySelector(".side-bar-group-header")).toBeNull();
+    expect(inactive.querySelector("[data-side-bar-chip-id]")).toBeNull();
+
+    act(() => collapse?.click());
+
+    expect(onSelectTheater).not.toHaveBeenCalled();
+    expect(inactive.querySelector(".side-bar-group-header")).not.toBeNull();
+    expect(inactive.querySelectorAll("[data-side-bar-chip-id]")).toHaveLength(6);
+  });
+
   it("hides inactive Group headers and Operations when the Theater section is collapsed", () => {
     writeTheaterBSnapshot();
     setTheaterCollapsed("theater-b", true);
@@ -81,7 +104,7 @@ describe("inactive Theater sidebar hierarchy", () => {
   });
 });
 
-function renderSideBar(onFocus = vi.fn()): void {
+function renderSideBar(onFocus = vi.fn(), onSelectTheater = vi.fn()): void {
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -113,7 +136,7 @@ function renderSideBar(onFocus = vi.fn()): void {
     onReorderGroups: () => {},
     onReorderTheaters: () => {},
     onUngroupAll: () => {},
-    onSelectTheater: () => {},
+    onSelectTheater,
     onAddTheater: () => {},
     onCancelAddTheater: () => {},
     onForgetTheater: () => {},

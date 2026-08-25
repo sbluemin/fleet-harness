@@ -5197,8 +5197,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
   background: transparent;
 }
 
-/* 행 안의 활성화 버튼. 예전에는 행 자체가 버튼 역할을 겸하면서 컨트롤 버튼들을 품고 있었다 —
-   남은 자리를 채워 클릭 영역은 그대로 두고, 활성화 대상만 하나로 되돌린다. */
+/* 행 안의 Theater 선택 버튼. 남은 자리를 채우되 아코디언은 오른쪽의 독립 버튼이 맡는다. */
 .side-bar-theater-activate {
   display: flex;
   align-items: center;
@@ -5352,27 +5351,14 @@ body[data-side-bar-animating="true"] .canvas-operation {
   white-space: nowrap;
 }
 
-.side-bar-theater-chevron {
-  box-sizing: border-box;
-  flex: none;
+.side-bar-theater-collapse-btn {
   width: 22px;
-  height: 22px;
-  padding: 4px;
-  border: 1px solid transparent;
-  border-radius: var(--radius-xs);
-  color: var(--text-tertiary);
-  transition:
-    border-color var(--duration-fast) var(--ease-spring),
-    color var(--duration-fast) var(--ease-spring),
-    transform 0.15s ease;
 }
 
-/* 활성 Theater의 본문 전체가 접기/펼치기 버튼이므로 포인터가 그 표면에 들어오면 chevron도
-   + / …와 같은 보더 링으로 응답한다. 비활성 Theater는 클릭 결과가 "전환"이므로 링을 켜지 않는다. */
-.side-bar-theater-header.is-active .side-bar-theater-activate:hover .side-bar-theater-chevron,
-.side-bar-theater-header.is-active .side-bar-theater-activate:focus-visible .side-bar-theater-chevron {
-  border-color: var(--hairline-strong);
-  color: var(--text-primary);
+.side-bar-theater-chevron {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.15s ease;
 }
 
 .side-bar-theater-chevron.is-collapsed {
