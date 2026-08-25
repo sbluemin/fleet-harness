@@ -60,10 +60,16 @@ const LEGACY_SECTION_IDS: Readonly<Record<string, CoreSettingsSectionId>> = {
  * 주소에 적힌 섹션을 이 빌드가 아는 섹션으로 옮긴다. 데스크톱과 폰이 같은 `/settings` 주소를
  * 공유하므로 판정도 하나여야 한다 — 한쪽만 아는 id가 생기면 데스크톱이 만든 링크가 폰에서
  * 쿼리째 지워지고, 창을 좁히는 것만으로 열려 있던 섹션이 사라진다.
+ *
+ * 닿지 못한 id는 `null`로 돌려준다. 무엇으로 대신할지는 레이아웃마다 다르기 때문이다 —
+ * 데스크톱은 목록 옆에 언제나 섹션 하나가 서 있어야 하고, 폰에는 돌아갈 목록 화면이 따로 있다.
+ * 여기서 한쪽 기본값을 심으면 사라진 플러그인을 가리키던 오래된 링크가 폰에서 목록 대신
+ * 엉뚱한 설정을 연다.
  */
-export function resolveSettingsSectionId(requested: string | null, available: ReadonlySet<string>): SettingsSectionId {
+export function resolveSettingsSectionId(requested: string | null, available: ReadonlySet<string>): SettingsSectionId | null {
   const migrated = requested !== null && requested in LEGACY_SECTION_IDS ? LEGACY_SECTION_IDS[requested] : requested;
-  return migrated !== null && migrated !== undefined && available.has(migrated) ? migrated as SettingsSectionId : "appearance";
+  if (migrated === null || migrated === undefined) return null;
+  return available.has(migrated) ? migrated as SettingsSectionId : null;
 }
 
 interface SettingsSectionNavItem {
@@ -219,7 +225,8 @@ export function GlobalSettings() {
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("section");
     const available = new Set<string>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
-    const next = resolveSettingsSectionId(requested, available);
+    // 데스크톱은 빈 상태가 없다 — 닿지 못한 id는 첫 섹션으로 되돌린다.
+    const next = resolveSettingsSectionId(requested, available) ?? "appearance";
     setActiveSectionId(next);
     if (requested !== null && requested !== next) {
       navigate(

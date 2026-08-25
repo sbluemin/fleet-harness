@@ -67,9 +67,9 @@ export function MobileSettingsPage() {
   const groups = buildMobileSettingsGroups(state, pluginSections, t);
   const rows = groups.flatMap((group) => group.rows);
   const requested = new URLSearchParams(location.search).get("section");
-  // 옛 id와 상대 레이아웃이 만든 id를 데스크톱과 같은 판정으로 옮긴다. 목록을 요청한 것(쿼리 없음)과
-  // 알 수 없는 섹션은 구분해야 하므로, 이행 결과가 목록에 없을 때만 주소를 바로잡는다.
-  const resolved = requested === null ? null : resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
+  // 옛 id와 상대 레이아웃이 만든 id를 데스크톱과 같은 판정으로 옮긴다. 닿지 못한 id는 여기서
+  // 대신할 섹션을 고르지 않는다 — 폰에는 돌아갈 목록이 있고, 아래 effect가 그리로 되돌린다.
+  const resolved = resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
   const active = resolved === null ? null : rows.find((row) => row.id === resolved) ?? null;
 
   const open = (id: MobileSectionId) => {
@@ -162,13 +162,22 @@ function buildMobileSettingsGroups(
     { id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <ApiIcon /> },
   ];
 
+  // 플러그인이 선언한 group은 두 레이아웃에서 같은 뜻이어야 한다 — 폰이 전부 Work로 몰아 넣으면
+  // 방금 연 SDK 계약이 화면마다 다르게 읽힌다.
+  const workRows: MobileSettingsRow[] = [];
+  for (const section of pluginSections) {
+    const row: MobileSettingsRow = {
+      id: section.id,
+      title: section.sectionTitle,
+      value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel,
+      icon: <PluginIcon />,
+    };
+    if (section.group === "setup") setupRows.push(row);
+    else if (section.group === "machine") machineRows.push(row);
+    else workRows.push(row);
+  }
+
   const groups: MobileSettingsGroup[] = [{ key: "setup", label: t("settings.group.setup"), rows: setupRows }];
-  const workRows = pluginSections.map((section) => ({
-    id: section.id,
-    title: section.sectionTitle,
-    value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel,
-    icon: <PluginIcon />,
-  }));
   if (workRows.length > 0) groups.push({ key: "work", label: t("settings.group.work"), rows: workRows });
   groups.push({ key: "machine", label: t("settings.group.machine"), rows: machineRows });
   return groups;
