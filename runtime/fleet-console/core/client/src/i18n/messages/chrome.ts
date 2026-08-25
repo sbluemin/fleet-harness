@@ -76,10 +76,10 @@ export const chromeEn = {
   "chrome.control.bar.joined": "Joined {time}",
   "chrome.control.reclaimed.eyebrow": "REMOTE CONTROL ENDED",
   "chrome.control.reclaimed.title": "Control was taken back",
-  "chrome.control.reclaimed.body": "Returning you to your own console…",
+  "chrome.control.reclaimed.body": "This session will stay disconnected. Open this host again when you want to reconnect.",
   "chrome.control.superseded.eyebrow": "REMOTE CONTROL ENDED",
   "chrome.control.superseded.title": "Another device connected",
-  "chrome.control.superseded.body": "A Console holds one remote connection at a time. Returning you to your own console…",
+  "chrome.control.superseded.body": "A Console holds one remote connection at a time. Open this host again when you want to reconnect.",
 
   // operation-search
   "chrome.operationSearch.commandsDialog": "Console commands",
@@ -435,10 +435,10 @@ export const chromeKo: Record<keyof typeof chromeEn, string> = {
   "chrome.control.bar.joined": "{time} 접속",
   "chrome.control.reclaimed.eyebrow": "원격 제어 종료",
   "chrome.control.reclaimed.title": "제어권이 회수되었습니다",
-  "chrome.control.reclaimed.body": "내 Console로 돌아가는 중…",
+  "chrome.control.reclaimed.body": "이 세션은 연결이 끊긴 상태로 유지됩니다. 다시 연결하려면 이 호스트를 다시 여세요.",
   "chrome.control.superseded.eyebrow": "원격 제어 종료",
   "chrome.control.superseded.title": "다른 기기가 접속했습니다",
-  "chrome.control.superseded.body": "Console은 한 번에 하나의 원격 접속만 유지합니다. 내 Console로 돌아가는 중…",
+  "chrome.control.superseded.body": "Console은 한 번에 하나의 원격 접속만 유지합니다. 다시 연결하려면 이 호스트를 다시 여세요.",
 
   "chrome.operationSearch.commandsDialog": "Console 명령",
   "chrome.operationSearch.quickSearchDialog": "Operation 빠른 검색",

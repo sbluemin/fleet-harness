@@ -78,6 +78,21 @@ export function connectOperationsSse(): void {
     try {
       const data = JSON.parse(msg.data) as { readonly reason?: unknown };
       if (!isSessionEnded(data)) return;
+      /**
+       * 서버는 이 프레임 뒤 스트림을 닫는다. 그 close가 onerror로 번지기 전에 이 source를 폐기해야
+       * 일반 단절로 오인한 자동 재합류가 호스트의 Take back을 곧바로 뒤집지 않는다.
+       *
+       * 페어링은 남기므로 Desktop의 호스트 목록처럼 사람이 명시적으로 다시 여는 길은 그대로다.
+       * 현재 문서의 401 자동 복구만 멈춘 뒤 reload한다. 새 문서는 일반 API의 401에서 pairing join을
+       * 시도하지 않고 종료 안내를 그대로 그리므로, 회수된 session이 같은 문서에서 되살아나지 않는다.
+       */
+      source.close();
+      if (activeSource === source) activeSource = null;
+      connectionGeneration += 1;
+      if (reconnectHandle !== null) {
+        clearTimeout(reconnectHandle);
+        reconnectHandle = null;
+      }
       // 사유를 실어 보낸다 — 안내 문구는 "주인이 되찾았다"와 "다른 기기가 이어받았다"로 갈린다.
       window.dispatchEvent(new CustomEvent<SessionEndedDetail>(CONTROL_RECLAIMED_EVENT, { detail: { reason: data.reason } }));
       window.setTimeout(() => location.reload(), CONTROL_RECLAIM_NAVIGATION_DELAY_MS);

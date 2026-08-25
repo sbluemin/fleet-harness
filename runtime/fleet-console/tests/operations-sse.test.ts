@@ -9,12 +9,22 @@ const mocks = vi.hoisted(() => ({
   getState: vi.fn(),
   hydrateOperations: vi.fn(),
   resetDesktopFullscreenSnapshot: vi.fn(),
+  resumeConsoleSession: vi.fn(),
   setConnectionState: vi.fn(),
 }));
 
 vi.mock("../core/client/src/api.js", () => ({
+  ApiError: class ApiError extends Error {
+    readonly status: number;
+
+    constructor(status: number, message: string) {
+      super(message);
+      this.status = status;
+    }
+  },
   fetchObserverStatus: mocks.fetchObserverStatus,
   fetchOperations: mocks.fetchOperations,
+  resumeConsoleSession: mocks.resumeConsoleSession,
 }));
 
 vi.mock("../core/client/src/store.js", async (importOriginal) => {
@@ -78,6 +88,7 @@ describe("operations SSE update availability", () => {
     mocks.getState.mockReset();
     mocks.hydrateOperations.mockReset();
     mocks.resetDesktopFullscreenSnapshot.mockReset();
+    mocks.resumeConsoleSession.mockReset();
     mocks.setConnectionState.mockReset();
     vi.clearAllTimers();
     vi.useRealTimers();
@@ -250,6 +261,37 @@ describe("operations SSE update availability", () => {
     TestEventSource.instances[0]?.onerror?.();
     expect(actualState.getState().controlHolder).toEqual(holder);
     actualState.setState({ controlHolder: null, controlCurtainDismissed: false });
+  });
+
+  it.each(["reclaimed", "superseded"] as const)("keeps a %s session ended instead of automatically taking control again", async (reason) => {
+    vi.useFakeTimers();
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+
+    connectOperationsSse();
+    const endedSource = TestEventSource.instances[0]!;
+    endedSource.emit("control:reclaimed", JSON.stringify({ reason }));
+    endedSource.onerror?.();
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(endedSource.closed).toBe(true);
+    expect(mocks.fetchOperations).not.toHaveBeenCalled();
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
+    expect(TestEventSource.instances).toHaveLength(1);
+  });
+
+  it("keeps the explicit reconnect path available after a session ends", async () => {
+    vi.stubGlobal("EventSource", TestEventSource);
+    mocks.getState.mockReturnValue({ activeTheaterId: null });
+    mocks.fetchOperations.mockResolvedValue([]);
+
+    connectOperationsSse();
+    TestEventSource.instances[0]?.emit("control:reclaimed", JSON.stringify({ reason: "reclaimed" }));
+    reconnectOperationsSseNow();
+
+    await vi.waitFor(() => expect(TestEventSource.instances).toHaveLength(2));
+    expect(mocks.fetchOperations).toHaveBeenCalledOnce();
+    expect(mocks.resumeConsoleSession).not.toHaveBeenCalled();
   });
 
   it("marks the retry attempt connecting while preserving the existing exponential retry path", async () => {
