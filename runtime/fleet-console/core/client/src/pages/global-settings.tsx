@@ -41,9 +41,9 @@ interface PortModeOption {
   readonly label: string;
 }
 
-type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced";
+export type CoreSettingsSectionId = "appearance" | "language" | "connectivity" | "advanced";
 type PluginSettingsSectionId = `${string}:${string}`;
-type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
+export type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
 
 /**
  * 옛 주소는 계속 열려야 한다. 섹션을 일 기준으로 다시 묶으면서 id가 움직였고, 사람들의
@@ -51,9 +51,20 @@ type SettingsSectionId = CoreSettingsSectionId | PluginSettingsSectionId;
  */
 const LEGACY_SECTION_IDS: Readonly<Record<string, CoreSettingsSectionId>> = {
   general: "appearance",
+  console: "language",
   "remote-access": "connectivity",
   "backend-api": "advanced",
 };
+
+/**
+ * 주소에 적힌 섹션을 이 빌드가 아는 섹션으로 옮긴다. 데스크톱과 폰이 같은 `/settings` 주소를
+ * 공유하므로 판정도 하나여야 한다 — 한쪽만 아는 id가 생기면 데스크톱이 만든 링크가 폰에서
+ * 쿼리째 지워지고, 창을 좁히는 것만으로 열려 있던 섹션이 사라진다.
+ */
+export function resolveSettingsSectionId(requested: string | null, available: ReadonlySet<string>): SettingsSectionId {
+  const migrated = requested !== null && requested in LEGACY_SECTION_IDS ? LEGACY_SECTION_IDS[requested] : requested;
+  return migrated !== null && migrated !== undefined && available.has(migrated) ? migrated as SettingsSectionId : "appearance";
+}
 
 interface SettingsSectionNavItem {
   readonly id: CoreSettingsSectionId;
@@ -130,13 +141,13 @@ function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): rea
       id: "appearance",
       group: "setup",
       label: t("settings.core.appearance.label"),
-      entries: [t("settings.theme.title"), t("settings.theme.liquidGlass"), t("settings.typography.title"), t("settings.typography.sizeTitle"), "theme dark light color colour glass blur translucent font typeface type size"],
+      entries: [t("settings.theme.title"), t("settings.theme.label"), t("settings.theme.liquidGlass"), t("settings.typography.title"), t("settings.typography.label"), t("settings.typography.sizeTitle"), t("settings.core.appearance.keywords")],
     },
     {
       id: "language",
       group: "setup",
       label: t("settings.core.language.label"),
-      entries: [t("settings.language.title"), "language locale english korean 한국어 translate region"],
+      entries: [t("settings.language.title"), t("settings.language.label"), t("settings.core.language.keywords")],
     },
     {
       id: "connectivity",
@@ -144,15 +155,16 @@ function buildCoreSettingsSections(t: T, state: GlobalSettingsState | null): rea
       label: t("settings.core.connectivity.label"),
       entries: [
         t("settings.port.title"),
-        ...(remoteAvailable ? [t("settings.remote.title"), "remote device pairing access link listen address certificate"] : []),
-        "port dynamic static loopback url address network",
+        t("settings.port.label"),
+        ...(remoteAvailable ? [t("settings.remote.title"), t("settings.core.connectivity.remoteKeywords")] : []),
+        t("settings.core.connectivity.keywords"),
       ],
     },
     {
       id: "advanced",
       group: "machine",
       label: t("settings.core.advanced.label"),
-      entries: [t("settings.core.backendApi.label"), "api routes declared http reference catalog"],
+      entries: [t("settings.core.backendApi.label"), t("settings.core.advanced.keywords")],
     },
   ];
 }
@@ -206,10 +218,8 @@ export function GlobalSettings() {
 
   useEffect(() => {
     const requested = new URLSearchParams(location.search).get("section");
-    const available = new Set<SettingsSectionId>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
-    // 옛 id는 조용히 새 자리로 넘긴다. 알 수 없는 id만 첫 섹션으로 되돌린다.
-    const migrated = requested !== null && requested in LEGACY_SECTION_IDS ? LEGACY_SECTION_IDS[requested] : requested;
-    const next = migrated && available.has(migrated as SettingsSectionId) ? migrated as SettingsSectionId : "appearance";
+    const available = new Set<string>([...coreSections.map((section) => section.id), ...pluginSections.map((section) => section.id)]);
+    const next = resolveSettingsSectionId(requested, available);
     setActiveSectionId(next);
     if (requested !== null && requested !== next) {
       navigate(
@@ -302,7 +312,7 @@ export function PluginSettingsSectionBody({ render }: { readonly render: () => R
   return <>{render()}</>;
 }
 
-function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T) {
+export function renderSettingsSection(sectionId: SettingsSectionId, state: GlobalSettingsState | null, saving: boolean, pluginSections: readonly PluginSettingsNavItem[], t: T) {
   if (sectionId.includes(":")) {
     const pluginSection = pluginSections.find((section) => section.id === sectionId);
     return pluginSection?.render ? (
@@ -349,7 +359,7 @@ export function collectPluginSettingsSections(
       pluginId: plugin.id,
       pluginLabel: formatPluginLabel(plugin.id, t),
       sectionTitle: resolveLocalizedText(section.title, locale),
-      entries: section.keywords ?? [],
+      entries: (section.keywords ?? []).map((keyword) => resolveLocalizedText(keyword, locale)),
       render: section.render,
     })),
   );

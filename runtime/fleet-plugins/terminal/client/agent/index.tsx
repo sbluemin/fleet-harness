@@ -117,8 +117,21 @@ export const generalSettingsSection = defineSettingsSection({
   id: "general",
   title: (locale) => getT(locale)("terminal.settings.general"),
   group: "work",
-  // 제목에 없는 이름으로도 닿아야 한다 — "dormant"를 찾는 사람은 그 설정이 여기 있다는 것을 모른다.
-  keywords: ["terminal", "font", "typeface", "monospace", "dormant", "idle", "session", "timeout", "system prompt", "claude"],
+  // 이 섹션이 실제로 보여 주는 행 이름을 그대로 싣는다 — 화면에 있는 이름으로 못 찾는 검색은
+  // "모든 설정 검색"이라는 약속을 지키지 못한다. 개념어는 그 뒤에 더한다.
+  keywords: [
+    (locale) => [
+      getT(locale)("terminal.settings.claudeSystemPromptTitle"),
+      getT(locale)("terminal.settings.idleAgent"),
+      getT(locale)("terminal.settings.terminalFont"),
+      getT(locale)("terminal.settings.chatReadingWidthTitle"),
+      getT(locale)("terminal.settings.terminalRenderer"),
+      getT(locale)("terminal.settings.inactiveFlush"),
+      getT(locale)("terminal.settings.compactTiming"),
+    ].join(" "),
+    "terminal font typeface monospace dormant idle session timeout system prompt claude renderer webgl canvas reading width compact",
+    "터미널 글꼴 서체 고정폭 휴면 유휴 세션 시간 시스템 프롬프트 렌더러 읽기 폭 압축",
+  ],
   render: () => <GeneralSection />,
 });
 
@@ -126,7 +139,16 @@ export const agentSettingsSection = defineSettingsSection({
   id: "agent-cli",
   title: (locale) => getT(locale)("terminal.settings.agentCli"),
   group: "work",
-  keywords: ["gateway", "provider", "model", "api key", "cli", "path", "codex", "cursor", "opencode", "xai", "kimi"],
+  keywords: [
+    (locale) => [
+      getT(locale)("terminal.settings.agentCliAvailable"),
+      getT(locale)("terminal.settings.aiGatewayModels"),
+      getT(locale)("terminal.settings.aiGatewayDiagnostics"),
+      getT(locale)("terminal.settings.aiGatewayWireLog"),
+    ].join(" "),
+    "gateway provider model api key cli path codex cursor opencode xai kimi diagnostics wire log",
+    "게이트웨이 공급자 모델 키 경로 진단 와이어 로그",
+  ],
   render: () => <AgentCliSection />,
 });
 

@@ -18,9 +18,10 @@ export interface SettingsSectionDescriptor {
   /** 생략하면 `work`. 플러그인 설정은 대부분 작업 도구의 동작이다. */
   readonly group?: SettingsSectionGroup;
   /**
-   * 검색이 이 섹션을 찾는 데 쓰는 말. 제목에 없는 이름으로도 닿아야 한다 —
-   * "dormant"를 찾는 사람은 그 설정이 AI Gateway 아래 있다는 것을 모른다.
+   * 검색이 이 섹션을 찾는 데 쓰는 말. 섹션이 실제로 보여 주는 행 이름을 먼저 싣고, 그 이름에
+   * 없는 개념어를 뒤에 더한다 — "dormant"를 찾는 사람은 그 설정이 AI Gateway 아래 있다는 것을
+   * 모른다. 로케일을 받는 형태로 적어야 한국어 화면의 이름으로도 닿는다.
    */
-  readonly keywords?: readonly string[];
+  readonly keywords?: readonly LocalizedText[];
   readonly render?: () => ReactNode;
 }

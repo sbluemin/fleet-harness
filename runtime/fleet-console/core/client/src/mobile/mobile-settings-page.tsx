@@ -1,20 +1,14 @@
 import { useEffect, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
-import { PluginErrorBoundary } from "@fleet-console/sdk/react/browser";
-
-import { BackendApiSection } from "../components/backend-api-section.js";
 import { loadGlobalSettings, useGlobalSettingsStore } from "../global-settings-store.js";
 import { useConsoleLocale, useT, type CoreMessageKey } from "../i18n/index.js";
 import {
   collectPluginSettingsSections,
-  ConsolePortCard,
-  LanguageCard,
-  PluginSettingsSectionBody,
-  RemoteAccessSection,
-  ThemeCard,
-  TypographyCard,
+  renderSettingsSection,
+  resolveSettingsSectionId,
   type PluginSettingsNavItem,
+  type SettingsSectionId,
 } from "../pages/global-settings.js";
 import { usePluginRegistry } from "../plugin-registry.js";
 import { DEFAULT_UI_FONT, UI_FONT_BUILT_INS } from "../ui-font.js";
@@ -31,7 +25,8 @@ import "../styles/mobile.css";
  * return to the list instead of leaving Settings.
  */
 
-type MobileSectionId = "appearance" | "console" | "remote-access" | "backend-api" | `${string}:${string}`;
+/** 폰과 데스크톱은 같은 `/settings` 주소를 쓰므로 섹션 id 어휘도 하나다. */
+type MobileSectionId = SettingsSectionId;
 
 interface MobileSettingsRow {
   readonly id: MobileSectionId;
@@ -70,8 +65,12 @@ export function MobileSettingsPage() {
 
   const pluginSections = collectPluginSettingsSections(registry.plugins, locale, t);
   const groups = buildMobileSettingsGroups(state, pluginSections, t);
+  const rows = groups.flatMap((group) => group.rows);
   const requested = new URLSearchParams(location.search).get("section");
-  const active = groups.flatMap((group) => group.rows).find((row) => row.id === requested) ?? null;
+  // 옛 id와 상대 레이아웃이 만든 id를 데스크톱과 같은 판정으로 옮긴다. 목록을 요청한 것(쿼리 없음)과
+  // 알 수 없는 섹션은 구분해야 하므로, 이행 결과가 목록에 없을 때만 주소를 바로잡는다.
+  const resolved = requested === null ? null : resolveSettingsSectionId(requested, new Set(rows.map((row) => row.id)));
+  const active = resolved === null ? null : rows.find((row) => row.id === resolved) ?? null;
 
   const open = (id: MobileSectionId) => {
     const entry: MobileSettingsLocationState = { mobileSettingsEntry: true };
@@ -87,9 +86,11 @@ export function MobileSettingsPage() {
   // An unknown section — a stale link, or one whose plugin is gone — resolves to the list rather
   // than to an empty screen, and the address is corrected so a reload does not repeat the miss.
   useEffect(() => {
-    if (requested === null || active !== null || state === null) return;
-    navigate({ pathname: "/settings", search: "" }, { replace: true });
-  }, [active, navigate, requested, state]);
+    if (requested === null || state === null) return;
+    if (active === null) { navigate({ pathname: "/settings", search: "" }, { replace: true }); return; }
+    // 이행된 id는 주소에도 반영한다 — 남겨 두면 새로 고칠 때마다 같은 이행을 되풀이한다.
+    if (active.id !== requested) navigate({ pathname: "/settings", search: `?section=${encodeURIComponent(active.id)}` }, { replace: true, state: location.state });
+  }, [active, location.state, navigate, requested, state]);
 
   if (active !== null) {
     return (
@@ -104,7 +105,7 @@ export function MobileSettingsPage() {
         <div className="mobile-settings-scroll">
           <div className="mobile-settings-detail">
             {settings.error !== null ? <p className="global-settings-error" role="alert">{settings.error}</p> : null}
-            {renderMobileSection(active.id, state, saving, pluginSections, t)}
+            {renderSettingsSection(active.id, state, saving, pluginSections, t)}
           </div>
         </div>
       </section>
@@ -142,71 +143,34 @@ export function MobileSettingsPage() {
   );
 }
 
-function renderMobileSection(
-  sectionId: MobileSectionId,
-  state: GlobalSettingsState | null,
-  saving: boolean,
-  pluginSections: readonly PluginSettingsNavItem[],
-  t: (key: CoreMessageKey) => string,
-): ReactNode {
-  if (sectionId.includes(":")) {
-    const plugin = pluginSections.find((section) => section.id === sectionId);
-    return plugin?.render ? (
-      <PluginErrorBoundary fallback={<div className="fc-plugin-error">{t("settings.pluginFailed")}</div>}>
-        <PluginSettingsSectionBody render={plugin.render} />
-      </PluginErrorBoundary>
-    ) : <p className="global-settings-help">{t("settings.pluginUnavailable")}</p>;
-  }
-  switch (sectionId) {
-    case "appearance":
-      return <><ThemeCard state={state} saving={saving} /><TypographyCard state={state} saving={saving} /></>;
-    case "console":
-      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
-      return <><ConsolePortCard state={state} saving={saving} /><LanguageCard state={state} saving={saving} /></>;
-    case "remote-access":
-      if (state === null) return <p className="global-settings-help">{t("settings.general.loading")}</p>;
-      return state.remoteAccess === undefined ? null : <RemoteAccessSection remote={state.remoteAccess} saving={saving} />;
-    case "backend-api":
-      return <BackendApiSection />;
-  }
-}
-
 /**
- * The desktop's "General" holds theme, type, port and language in one section because a wide
- * column can carry all four. A row that stood for all four could not say what it holds, so the
- * phone splits it where the summaries split: what the Console looks like, and how it runs.
+ * 폰은 목록과 섹션을 두 화면으로 가르지만, 어떤 섹션이 있는지는 데스크톱과 같은 어휘로 읽는다 —
+ * 두 레이아웃이 같은 주소를 공유하므로 한쪽만 아는 섹션이 생기면 그 링크가 다른 쪽에서 끊긴다.
+ * 각 행은 열지 않고도 지금 무엇이 들어 있는지 말한다.
  */
 function buildMobileSettingsGroups(
   state: GlobalSettingsState | null,
   pluginSections: readonly PluginSettingsNavItem[],
   t: (key: CoreMessageKey) => string,
 ): readonly MobileSettingsGroup[] {
-  const consoleRows: MobileSettingsRow[] = [
-    { id: "appearance", title: t("mobile.settings.appearance"), value: describeAppearance(state, t), icon: <AppearanceIcon /> },
-    { id: "console", title: t("mobile.settings.console"), value: describeConsole(state, t), icon: <ConsoleIcon /> },
+  const setupRows: MobileSettingsRow[] = [
+    { id: "appearance", title: t("settings.core.appearance.label"), value: describeAppearance(state, t), icon: <AppearanceIcon /> },
+    { id: "language", title: t("settings.core.language.label"), value: describeLanguage(state, t), icon: <ConsoleIcon /> },
   ];
-  // Absent remoteAccess means this Console does not carry the feature at all; the desktop drops the
-  // section rather than showing an empty one, and the phone follows that reading.
-  if (state === null || state.remoteAccess !== undefined) {
-    consoleRows.push({
-      id: "remote-access",
-      title: t("settings.core.connectivity.label"),
-      value: state?.remoteAccess === undefined ? null : t(state.remoteAccess.enabled ? "mobile.settings.on" : "mobile.settings.off"),
-      icon: <RemoteIcon />,
-    });
-  }
-  consoleRows.push({ id: "backend-api", title: t("settings.core.backendApi.label"), value: null, icon: <ApiIcon /> });
+  const machineRows: MobileSettingsRow[] = [
+    { id: "connectivity", title: t("settings.core.connectivity.label"), value: describeConnectivity(state, t), icon: <RemoteIcon /> },
+    { id: "advanced", title: t("settings.core.advanced.label"), value: null, icon: <ApiIcon /> },
+  ];
 
-  const groups: MobileSettingsGroup[] = [{ key: "console", label: t("settings.group.machine"), rows: consoleRows }];
-  for (const section of pluginSections) {
-    const last = groups.at(-1);
-    const row: MobileSettingsRow = { id: section.id, title: section.sectionTitle, value: null, icon: <PluginIcon /> };
-    if (last !== undefined && last.key === section.pluginId) {
-      groups[groups.length - 1] = { ...last, rows: [...last.rows, row] };
-      continue;
-    }
-    groups.push({ key: section.pluginId, label: section.pluginLabel, rows: [row] });
-  }
+  const groups: MobileSettingsGroup[] = [{ key: "setup", label: t("settings.group.setup"), rows: setupRows }];
+  const workRows = pluginSections.map((section) => ({
+    id: section.id,
+    title: section.sectionTitle,
+    value: section.pluginLabel === section.sectionTitle ? null : section.pluginLabel,
+    icon: <PluginIcon />,
+  }));
+  if (workRows.length > 0) groups.push({ key: "work", label: t("settings.group.work"), rows: workRows });
+  groups.push({ key: "machine", label: t("settings.group.machine"), rows: machineRows });
   return groups;
 }
 
@@ -215,10 +179,20 @@ function describeAppearance(state: GlobalSettingsState | null, t: (key: CoreMess
   return [themeLabel(state.theme, t), fontLabel(state)].join(" · ");
 }
 
-function describeConsole(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
+function describeLanguage(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
   if (state === null) return null;
-  const language = state.language === "auto" ? t("settings.language.auto") : state.language === "ko" ? t("settings.language.ko") : t("settings.language.en");
-  return [language, t(state.consolePortMode === "static" ? "settings.port.static" : "settings.port.dynamic")].join(" · ");
+  return state.language === "auto" ? t("settings.language.auto") : state.language === "ko" ? t("settings.language.ko") : t("settings.language.en");
+}
+
+/**
+ * remoteAccess가 실리지 않은 콘솔은 그 기능을 아예 갖고 있지 않다 — 데스크톱이 카드를 세우지
+ * 않는 것과 같은 읽기로, 폰도 포트만 말한다.
+ */
+function describeConnectivity(state: GlobalSettingsState | null, t: (key: CoreMessageKey) => string): string | null {
+  if (state === null) return null;
+  const port = t(state.consolePortMode === "static" ? "settings.port.static" : "settings.port.dynamic");
+  if (state.remoteAccess === undefined) return port;
+  return [port, t(state.remoteAccess.enabled ? "mobile.settings.on" : "mobile.settings.off")].join(" · ");
 }
 
 function themeLabel(theme: ThemeId, t: (key: CoreMessageKey) => string): string {

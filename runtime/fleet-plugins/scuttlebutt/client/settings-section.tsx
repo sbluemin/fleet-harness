@@ -18,7 +18,11 @@ export const scuttlebuttSettingsSection = defineSettingsSection({
   id: "scuttlebutt",
   title: (locale) => getT(locale)("settings.section.title"),
   group: "work",
-  keywords: ["aide", "quaker", "tori", "bori", "dori", "mascot", "bell", "announce", "chat"],
+  keywords: [
+    (locale) => [getT(locale)("settings.section.roster"), getT(locale)("settings.section.departure")].join(" "),
+    "aide quaker tori bori dori mascot bell announce chat",
+    "부관 퀘이커 마스코트 알림 대화",
+  ],
   render: () => <ScuttlebuttSettingsSection />,
 });
 
