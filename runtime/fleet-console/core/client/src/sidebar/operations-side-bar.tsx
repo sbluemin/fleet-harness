@@ -1465,6 +1465,7 @@ function TheaterSectionHeader({
         type="button"
         className="side-bar-theater-activate"
         aria-haspopup="menu"
+        aria-disabled={active ? true : undefined}
         onClick={select}
         onKeyDown={handleKeyDown}
         aria-current={active ? "true" : undefined}

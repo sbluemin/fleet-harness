@@ -649,6 +649,11 @@ describe("OperationsSideBar STATUS axis", () => {
     renderSideBar([makeOperation("only", null)], [], onSelectTheater);
 
     expect(container?.querySelector(".side-bar-theater-count")).toBeNull();
+    const activeTheater = required<HTMLButtonElement>(".side-bar-theater-activate");
+    expect(activeTheater.getAttribute("aria-current")).toBe("true");
+    expect(activeTheater.getAttribute("aria-disabled")).toBe("true");
+    act(() => activeTheater.click());
+    expect(onSelectTheater).not.toHaveBeenCalled();
     expect(required<HTMLButtonElement>(".side-bar-theater-split-plus").getAttribute("aria-label")).toBe("New Operation in Alpha");
     const collapse = required<HTMLButtonElement>(".side-bar-theater-collapse-btn");
     expect(collapse.getAttribute("aria-label")).toBe("Collapse Alpha");

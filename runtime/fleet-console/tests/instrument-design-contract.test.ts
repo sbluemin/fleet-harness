@@ -1521,13 +1521,21 @@ describe("Instrument core design contract", () => {
     // 응답한다. Theater의 chevron도 독립 버튼이라 같은 공통 링 선언을 소비한다.
     const theaterActivate = components.match(/\.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
     const theaterDraggingActivate = components.match(/\.side-bar-theater-header--dragging \.side-bar-theater-activate \{[^}]*\}/)?.[0] ?? "";
+    const theaterCurrentActivate = components.match(/\.side-bar-theater-activate\[aria-disabled="true"\] \{[^}]*\}/)?.[0] ?? "";
     const theaterCollapse = components.match(/\.side-bar-theater-collapse-btn \{[^}]*\}/)?.[0] ?? "";
+    const theaterCollapseChevron = components.match(/\.side-bar-theater-collapse-btn \.side-bar-theater-chevron \{[^}]*\}/)?.[0] ?? "";
+    const theaterRowFocus = components.match(/\.side-bar-theater-row-btn:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const sharedIconHover = components.match(/\.side-bar-theater-row-btn:hover,[\s\S]*?\.side-bar-group-header__toggle:focus-visible \{[^}]*\}/)?.[0] ?? "";
     const statusToggleHover = components.match(/\.side-bar-status-header__toggle:hover \{[^}]*\}/)?.[0] ?? "";
     expect(theaterActivate).toContain("cursor: pointer;");
     expect(theaterActivate).not.toContain("cursor: inherit;");
+    expect(theaterCurrentActivate).toContain("cursor: grab;");
     expect(theaterDraggingActivate).toContain("cursor: grabbing;");
     expect(theaterCollapse).toContain("width: 22px;");
+    expect(theaterCollapseChevron).toContain("width: 16px;");
+    expect(theaterCollapseChevron).toContain("height: 16px;");
+    expect(theaterRowFocus).toContain("outline: 2px solid var(--brass);");
+    expect(theaterRowFocus).not.toContain("--aurora");
     expect(sharedIconHover).toContain("border-color: var(--hairline-strong);");
     expect(components).toMatch(/\.side-bar-group-header__toggle:focus-visible \{\s*outline: 2px solid var\(--brass\);/);
     expect(statusToggleHover).toContain("border-color: var(--hairline-strong);");
