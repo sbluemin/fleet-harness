@@ -95,6 +95,37 @@
   --canvas-sea-mid: oklch(10% 0.014 245);
   --canvas-sea-far: oklch(8.5% 0.012 245);
 
+  /* ── Map 지형 채널 ────────────────────────────────────────────────────────
+     Map의 연출은 색과 함께 테마가 소유한다. 이 채널이 생기기 전에는 형상이 components.css와
+     canvas-overlays.tsx에 Instrument 하나로 굳어 있어, 다크 3종이 색만 갈린 같은 판을 썼다.
+     Instrument = SOUNDING(유리 아래 심해 측심): 구형 심도 + 48px 눈금 + 12px 점 격자.
+     weave는 판과 함께 움직이므로 주선 2슬롯 + 보조선 2슬롯의 **고정 어휘**를 지킨다 —
+     레이어 수가 테마마다 달라지면 줌 계산을 컴포넌트가 다시 알아야 한다. 빈 슬롯은
+     투명 그라디언트로 채운다(Instrument는 가로 눈금과 점 격자 둘뿐이라 두 칸이 빈다). */
+  --canvas-weave-major: 48px;
+  --canvas-weave-minor: 12px;
+  --canvas-weave-opacity: 0.42;
+  /* 계조·블룸은 워시/블룸 채널을 통해 읽는다 — 유리 게이트가 라이트에서 이 둘을 재조율하고,
+     채널 기본값이 현행 sea라 게이트가 닫히면 원래 픽셀로 돌아간다. 지형이 채널로 옮겨 와도
+     그 간접은 그대로 유지되어야 한다. */
+  --canvas-field:
+    radial-gradient(ellipse at 48% 42%, color-mix(in oklch, var(--canvas-ambience) 82%, transparent), transparent 38%),
+    radial-gradient(circle at 18% 18%, color-mix(in oklch, var(--aurora) var(--canvas-bloom-aurora), transparent), transparent 34%),
+    radial-gradient(circle at 84% 76%, color-mix(in oklch, var(--brass) var(--canvas-bloom-brass), transparent), transparent 36%),
+    linear-gradient(145deg, var(--canvas-wash-near), var(--canvas-wash-mid) 58%, var(--canvas-wash-far));
+  --canvas-weave:
+    linear-gradient(color-mix(in oklch, var(--brass) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(transparent, transparent),
+    radial-gradient(circle, color-mix(in oklch, var(--aurora) 11%, transparent) 1px, transparent 1.4px),
+    linear-gradient(transparent, transparent);
+  /* 두 모드는 sea 층을 숨기고 캔버스가 직접 칠한다 — 그래서 자기 field를 따로 갖는다. */
+  --canvas-field-formation:
+    radial-gradient(100% 80% at 50% 42%, var(--canvas-ambience), var(--canvas-wash-mid) 78%),
+    var(--canvas-abyss);
+  --canvas-field-triage:
+    radial-gradient(66% 52% at 50% 46%, var(--canvas-wash-mid), var(--canvas-wash-far) 74%),
+    var(--canvas-abyss);
+
   /* 캐리어 시그니처 색 — 콘솔 팔레트에서 재정의한 provider 정체성 축. */
   --provider-claude: oklch(78% 0.15 62);
   --provider-kimi: oklch(75% 0.15 315);
@@ -422,6 +453,39 @@
   --canvas-sea-mid: oklch(7% 0.015 246);
   --canvas-sea-far: oklch(6% 0.012 250);
 
+  /* Map 지형 = CHART TABLE(해도대). Maritime은 다크 3종 중 채도가 가장 높은 테마이고, 밝은
+     청록(aurora 195)과 진한 호박색(brass 75)이 감청 잉크 위에 얹힌다 — 그 조합이 이미 야간
+     해도대다. 그래서 점 격자가 아니라 두 축의 경위선을 긋고, 중심에서 퍼지는 등심선으로
+     수심을 말하며, 좌상단 램프 하나가 Map에서 유일한 난색이 된다. 대각 심해(145deg) 대신
+     수평에 가까운 168deg를 쓰는 것도 같은 이유다 — 해구가 아니라 수면이어야 한다. */
+  --canvas-weave-major: 96px;
+  --canvas-weave-minor: 32px;
+  --canvas-weave-opacity: 0.5;
+  --canvas-field:
+    radial-gradient(124% 88% at 18% 2%, color-mix(in oklch, var(--brass) 11%, transparent), transparent 54%),
+    repeating-radial-gradient(ellipse 70% 58% at 50% 46%, transparent 0 54px, color-mix(in oklch, var(--aurora) 4.5%, transparent) 54px 55px),
+    radial-gradient(ellipse 84% 68% at 50% 46%, color-mix(in oklch, var(--canvas-sea-core) 94%, transparent), transparent 76%),
+    radial-gradient(96% 74% at 92% 98%, color-mix(in oklch, var(--aurora) 10%, transparent), transparent 58%),
+    linear-gradient(168deg, var(--canvas-wash-near), var(--canvas-wash-mid) 46%, var(--canvas-wash-far));
+  --canvas-weave:
+    linear-gradient(90deg, color-mix(in oklch, var(--aurora) 15%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--aurora) 15%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--aurora) 6%, transparent) 1px, transparent 1px);
+  /* Tactical = 정렬을 위해 치운 해도대. 등불이 띠로 넓어지고 등심선은 걷힌다 — 편대를 놓는
+     판이지 수심을 재는 판이 아니다. */
+  --canvas-field-formation:
+    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 10%, transparent), transparent 28%),
+    radial-gradient(124% 64% at 50% 40%, color-mix(in oklch, var(--canvas-sea-core) 96%, transparent), transparent 78%),
+    radial-gradient(84% 52% at 50% 110%, color-mix(in oklch, var(--aurora) 10%, transparent), transparent 62%),
+    var(--canvas-abyss);
+  /* War Room = 야간 당직. 초점 모드라 밝기를 크게 벌릴 수 없어, 세 테마를 **빛의 자리**로
+     가른다 — Instrument는 가운데 우물, Maritime은 아래 수평선, Carbon은 위 작업등. */
+  --canvas-field-triage:
+    radial-gradient(150% 48% at 50% 114%, color-mix(in oklch, var(--aurora) 12%, transparent), transparent 66%),
+    radial-gradient(98% 36% at 50% 102%, color-mix(in oklch, var(--canvas-sea-core) 66%, transparent), transparent 70%),
+    var(--canvas-abyss);
+
   --surface-glass: oklch(28% 0.04 248 / 60%);
   /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(20%)과 veil(36%) 사이의 터미널 필드 톤이다. */
   --surface-panel: oklch(23% 0.03 248);
@@ -498,6 +562,38 @@
   --canvas-sea-near: oklch(10% 0.007 255);
   --canvas-sea-mid: oklch(8% 0.006 255);
   --canvas-sea-far: oklch(6% 0.005 258);
+
+  /* Map 지형 = MACHINED DECK(가공 갑판). Carbon의 정체성은 색을 쓰지 않는 것이다 — 잉크
+     스케일 전체가 채도 0.005~0.008이고 구리색 brass 하나만 난색이다. 그래서 눈금을 brass나
+     aurora가 아니라 --ink-rim으로 긋는다: 이 테마에서 그 토큰은 채도 0.005라 격자가 완전히
+     무채가 된다(실측 배경 채도 0.0067 -> 0.0041). 빛도 구형 radial이 아니라 위에서 떨어지는
+     평면광이다 — 작업대 조명이 판을 비추는 방식이지 물속에서 빛이 퍼지는 방식이 아니다. */
+  --canvas-weave-major: 64px;
+  --canvas-weave-minor: 16px;
+  --canvas-weave-opacity: 0.6;
+  --canvas-field:
+    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 9%, transparent), transparent 24%),
+    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-sea-core) 92%, transparent), transparent 58%),
+    linear-gradient(to top, color-mix(in oklch, var(--canvas-wash-far) 92%, transparent), transparent 40%),
+    var(--canvas-abyss);
+  --canvas-weave:
+    linear-gradient(90deg, color-mix(in oklch, var(--ink-rim) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink-rim) 26%, transparent) 1px, transparent 1px),
+    linear-gradient(color-mix(in oklch, var(--ink-rim) 9%, transparent) 1px, transparent 1px),
+    linear-gradient(transparent, transparent);
+  /* Tactical = 조명을 켠 지그판. 평면광을 위아래로 벌려 판 전체를 밝힌다 — 슬롯이 보여야
+     하는 모드다. */
+  --canvas-field-formation:
+    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 9%, transparent), transparent 20%),
+    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-sea-core) 98%, transparent), transparent 66%),
+    linear-gradient(to top, color-mix(in oklch, var(--canvas-wash-far) 90%, transparent), transparent 34%),
+    var(--canvas-abyss);
+  /* War Room = 머리 위 작업등 하나. 상단 띠에서만 빛이 떨어지고 아래는 전부 흑연으로 진다 —
+     Instrument의 가운데 우물과 분포가 최대로 갈리도록 radial이 아니라 선형 띠를 쓴다. */
+  --canvas-field-triage:
+    linear-gradient(to bottom, color-mix(in oklch, var(--brass) 12%, transparent), transparent 16%),
+    linear-gradient(to bottom, color-mix(in oklch, var(--canvas-sea-core) 74%, transparent), transparent 28%),
+    var(--canvas-abyss);
 
   --surface-glass: oklch(25% 0.006 252 / 62%);
   /* 패널 면은 ink 스케일의 한 칸이 아니다 — deep(18%)과 mid(25%) 사이의 터미널 필드 톤이다. */
