@@ -257,7 +257,7 @@ body:has([aria-modal="true"]:not([hidden])) .floating-widget-layer * {
      히트 테스트를 가로챈다. 본문이 유리 뒤로 가는 일은 라우트가 실제로 밴드에 붙어 있을
      때만 성립한다.
      CSS 인접 형제로는 이 조건을 말할 수 없다 — 항상 렌더되는 .floating-widget-layer(fixed,
-     흐름 밖)가 사이에 있어 가 영영 매칭되지 않는다. 그래서 흐름 바의 유무는 셸이
+     흐름 밖)가 사이에 있어 인접 형제 셀렉터가 영영 매칭되지 않는다. 그래서 흐름 바의 유무는 셸이
      .has-band-underflow로 알린다.
      --band-underflow는 그 자리에서만 켜지고 자손이 상속한다 — 조건이 깨지면 0px 기본값으로
      떨어져 페이지 패딩과 sticky 오프셋이 함께 원래 레이아웃으로 돌아간다. */
