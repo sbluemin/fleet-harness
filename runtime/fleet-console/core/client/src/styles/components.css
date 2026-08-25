@@ -5220,6 +5220,10 @@ body[data-side-bar-animating="true"] .canvas-operation {
   outline-offset: 2px;
 }
 
+.side-bar-theater-activate[aria-disabled="true"] {
+  cursor: grab;
+}
+
 .side-bar-theater-header--dragging .side-bar-theater-activate {
   cursor: grabbing;
 }
@@ -5423,6 +5427,11 @@ body[data-side-bar-animating="true"] .canvas-operation {
   height: 13px;
 }
 
+.side-bar-theater-collapse-btn .side-bar-theater-chevron {
+  width: 16px;
+  height: 16px;
+}
+
 .side-bar-theater-row-btn:hover,
 .side-bar-group-header__toggle:hover,
 .side-bar-theater-row-btn:focus-visible,
@@ -5432,7 +5441,7 @@ body[data-side-bar-animating="true"] .canvas-operation {
 }
 
 .side-bar-theater-row-btn:focus-visible {
-  outline: 2px solid var(--aurora);
+  outline: 2px solid var(--brass);
   outline-offset: -2px;
 }
 
